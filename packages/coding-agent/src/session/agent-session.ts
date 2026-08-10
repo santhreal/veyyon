@@ -417,7 +417,7 @@ import { extractFileMentions, generateFileMentionMessages } from "../utils/file-
 import { normalizeModelContextImages } from "../utils/image-loading";
 import { describeAttachedImagesForTextModel } from "../utils/image-vision-fallback";
 import { formatLocalCalendarDate } from "../utils/local-date";
-import { generateSessionTitle } from "../utils/title-generator";
+import { generateSessionTitle, type TitleCompleteImpl } from "../utils/title-generator";
 import { buildNamedToolChoice, isToolChoiceActive } from "../utils/tool-choice";
 import type { VibeModeState } from "../vibe/state";
 import type { AuthStorage } from "./auth-storage";
@@ -2324,6 +2324,15 @@ export class AgentSession {
 		const stream = await this.#sideStreamFn(model, ctx, options);
 		return stream.result();
 	};
+	/**
+	 * The side transport, for a subsystem outside this class that makes a request
+	 * on the session's behalf: the first-input title, a spawned subagent's label.
+	 * Handing this over is what gives such a request the same watchdogs, in-flight
+	 * cap and provider-concurrency bracket every summarization already has.
+	 */
+	get sideComplete(): TitleCompleteImpl {
+		return this.#sideCompleteImpl;
+	}
 	#advisorStreamFn: StreamFn | undefined;
 	#preferWebsockets: boolean | undefined;
 	#convertToLlm: (messages: AgentMessage[]) => Message[] | Promise<Message[]>;
@@ -11731,6 +11740,7 @@ export class AgentSession {
 			provider => this.agent.metadataForProvider(provider),
 			this.#titleSystemPrompt,
 			text => this.obfuscateProviderText(text),
+			this.#sideCompleteImpl,
 		);
 		if (!title) return;
 		if (this.sessionManager.getSessionId() !== sessionId) return;

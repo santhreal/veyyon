@@ -35,6 +35,7 @@ import type { ConfiguredThinkingLevel } from "../thinking";
 import { resolveEffectiveToolDiscoveryMode } from "../tool-discovery/mode";
 import type { DiscoverableTool, DiscoverableToolSearchIndex } from "../tool-discovery/tool-index";
 import type { EventBus } from "../utils/event-bus";
+import type { TitleCompleteImpl } from "../utils/title-generator";
 import type { WorkspaceTree } from "../workspace-tree";
 import { type BuiltinToolName, type HiddenToolName, normalizeToolNames, TOOL } from "./builtin-names";
 import type { CheckpointState, CompletedRewindState } from "./checkpoint";
@@ -143,6 +144,13 @@ export interface ToolSession {
 	 * The callback is live: callers must invoke it immediately before dispatch.
 	 */
 	obfuscateProviderText?: (text: string) => string;
+	/**
+	 * The session's side-request transport, handed to a request a tool makes on
+	 * the session's behalf (today the tiny-model label for a spawned subagent).
+	 * Carries the stream watchdogs, the in-flight cap and the per-provider
+	 * concurrency bracket, so a fan-out of labels cannot outrun them.
+	 */
+	sideComplete?: TitleCompleteImpl;
 	/** Whether UI is available */
 	hasUI: boolean;
 	/** Effective concrete effort currently applied to the parent session. */

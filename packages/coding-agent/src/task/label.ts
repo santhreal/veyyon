@@ -6,7 +6,7 @@ import type { ModelRegistry } from "../config/model-registry";
 import type { Settings } from "../config/settings";
 import { subagentPrompts } from "../prompts/subagent/rows";
 import { ONLINE_TINY_TITLE_MODEL_KEY } from "../tiny/models";
-import { generateSessionTitle } from "../utils/title-generator";
+import { generateSessionTitle, type TitleCompleteImpl } from "../utils/title-generator";
 
 const TASK_LABEL_SYSTEM_PROMPT = prompt.render(subagentPrompts["subagent/task-label"].text);
 
@@ -17,6 +17,7 @@ export async function generateTaskLabel(
 	settings: Settings,
 	sessionId?: string,
 	obfuscateProviderText?: (text: string) => string,
+	completeImpl?: TitleCompleteImpl,
 ): Promise<string | null> {
 	const trimmedAssignment = assignment.trim();
 	if (!trimmedAssignment) return null;
@@ -35,6 +36,7 @@ export async function generateTaskLabel(
 			undefined,
 			TASK_LABEL_SYSTEM_PROMPT,
 			obfuscateProviderText,
+			completeImpl,
 		);
 	} catch {
 		logger.debug("task-label: generation failed", { sessionId });

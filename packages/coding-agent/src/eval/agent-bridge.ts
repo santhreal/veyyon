@@ -536,6 +536,7 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 		modelRegistry: options.session.modelRegistry,
 		settings: options.session.settings,
 		obfuscateProviderText: options.session.obfuscateProviderText,
+		completeImpl: options.session.sideComplete,
 		// Eval `agent()` subagents are never wall-clock capped: the parent
 		// cell's idle watchdog is suspended for the whole bridge call
 		// (withBridgeTimeoutPause), so a long-running phase/recovery workflow
