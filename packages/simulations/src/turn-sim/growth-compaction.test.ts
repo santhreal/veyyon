@@ -154,7 +154,8 @@ it("reports the same spend after a compacted session is reopened", async () => {
 	const { spendPerRound } = await growUntilCompacted(6, { persist: true });
 	if (!sim) throw new Error("simulation missing");
 	const before = sim.session.getSessionStats();
-	expect(before.tokens.input).toBe(spendPerRound.at(-1)?.input);
+	const lastRound = spendPerRound[spendPerRound.length - 1];
+	expect(before.tokens.input).toBe(lastRound.input);
 
 	const reopened = await sim.reopen();
 	try {
