@@ -51,9 +51,16 @@ const WORK = simTool("work", async () => ({ content: [{ type: "text", text: "too
 /** About 2500 tokens per round, so the threshold is crossed on the fifth. */
 const ASK = `ask. ${"user chunk. ".repeat(500)}`;
 
-async function growUntilCompacted(rounds: number): Promise<{ summarizerCalls: number }> {
+const TURN_INPUT_TOKENS = 400;
+const TURN_OUTPUT_TOKENS = 40;
+
+async function growUntilCompacted(
+	rounds: number,
+	options: { persist?: boolean } = {},
+): Promise<{ summarizerCalls: number; spendPerRound: Array<{ input: number; cost: number }> }> {
 	let summarizerCalls = 0;
 	sim = await createSimulation({
+		persist: options.persist,
 		model: { contextWindow: CONTEXT_WINDOW },
 		settings: { ...SMALL_WINDOW_COMPACTING },
 		tools: [WORK],
@@ -64,15 +71,18 @@ async function growUntilCompacted(rounds: number): Promise<{ summarizerCalls: nu
 				turn.finish();
 				return;
 			}
-			turn.usage({ input: 400, output: 40 });
+			turn.usage({ input: TURN_INPUT_TOKENS, output: TURN_OUTPUT_TOKENS });
 			turn.text(`answer ${turn.call} ${"reply chunk. ".repeat(300)}`);
 			turn.finish();
 		},
 	});
+	const spendPerRound: Array<{ input: number; cost: number }> = [];
 	for (let round = 1; round <= rounds; round += 1) {
 		await sim.session.prompt(`${ASK} round ${round}`);
+		const stats = sim.session.getSessionStats();
+		spendPerRound.push({ input: stats.tokens.input, cost: stats.cost });
 	}
-	return { summarizerCalls };
+	return { summarizerCalls, spendPerRound };
 }
 
 it("compacts a session that grew into its threshold one turn at a time", async () => {
@@ -102,4 +112,59 @@ it("makes a summarization request the small model can hold", async () => {
 	expect(ends.map(end => end.errorMessage).filter(message => message !== undefined)).toEqual([]);
 	expect(ends.length).toBe(1);
 	expect(ends[0]?.result?.summary).toBe("SUMMARY-OF-THE-EARLY-ROUNDS");
+});
+
+/**
+ * Spend is not a view of the context. Compaction replaces history, so a total
+ * summed over the live context alone falls when a session compacts: `/session`
+ * reports less than the operator paid, and goal mode reads the same total as its
+ * token budget, so a run that compacts buys its budget back.
+ *
+ * RED PROOF, observed: summing `this.state.messages` instead of the stored branch
+ * in `getSessionStats` reds this row, with input falling 1600 -> 800 on the round
+ * that compacts.
+ */
+it("never un-spends a token when the history is summarized away", async () => {
+	const { summarizerCalls, spendPerRound } = await growUntilCompacted(6);
+	if (!sim) throw new Error("simulation missing");
+
+	const decreases = spendPerRound.filter(
+		(round, index) =>
+			index > 0 && (round.input < spendPerRound[index - 1].input || round.cost < spendPerRound[index - 1].cost),
+	);
+	expect(decreases).toEqual([]);
+
+	// Exactly the live turns, priced once each. The summarizer's own request is a
+	// side request and is deliberately not in this total (telemetry owns
+	// provider-level spend), so the arithmetic names it rather than hiding it.
+	const liveTurns = sim.providerCalls() - summarizerCalls;
+	expect(sim.session.getSessionStats().tokens.input).toBe(liveTurns * TURN_INPUT_TOKENS);
+	expect(sim.session.getSessionStats().tokens.output).toBe(liveTurns * TURN_OUTPUT_TOKENS);
+});
+
+/**
+ * A resume reads the same stored branch, so the total it reports is the same one.
+ *
+ * What this does NOT catch: the reader itself. Both sides call `getSessionStats`,
+ * so a reader that drops the summarized range drops it identically here and this
+ * row stays green; the row above is what pins the total. This one catches a resume
+ * whose branch is not the one that was written.
+ */
+it("reports the same spend after a compacted session is reopened", async () => {
+	const { spendPerRound } = await growUntilCompacted(6, { persist: true });
+	if (!sim) throw new Error("simulation missing");
+	const before = sim.session.getSessionStats();
+	expect(before.tokens.input).toBe(spendPerRound.at(-1)?.input);
+
+	const reopened = await sim.reopen();
+	try {
+		const after = reopened.session.getSessionStats();
+		expect({ input: after.tokens.input, output: after.tokens.output, cost: after.cost }).toEqual({
+			input: before.tokens.input,
+			output: before.tokens.output,
+			cost: before.cost,
+		});
+	} finally {
+		await reopened.dispose();
+	}
 });
