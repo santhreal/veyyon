@@ -906,6 +906,7 @@ export class InputController {
 					provider => this.ctx.session.agent.metadataForProvider(provider),
 					this.ctx.session.titleSystemPrompt,
 					providerText => this.ctx.session.obfuscateProviderText(providerText),
+					this.ctx.session.sideComplete,
 				)
 					.then(async title => {
 						// Re-check: a concurrent attempt for an earlier message may have

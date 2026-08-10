@@ -1689,6 +1689,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				// Read live, so `/yolo off` reaches a subagent that is already running.
 				parentApprovalBypassed: () => this.session.isApprovalBypassed?.() ?? false,
 				obfuscateProviderText: this.session.obfuscateProviderText,
+				completeImpl: this.session.sideComplete,
 				mcpManager,
 				contextFiles,
 				skills: inheritedSkills,

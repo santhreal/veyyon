@@ -10,6 +10,7 @@ import {
 	type Context,
 	completeSimple,
 	type Model,
+	type SimpleStreamOptions,
 } from "@veyyon/ai";
 import { StreamMarkupHealing } from "@veyyon/ai/utils/stream-markup-healing";
 import { $env, isTerminalHeadless, logger, prompt } from "@veyyon/utils";
@@ -111,6 +112,8 @@ function getTitleModel(registry: ModelRegistry, settings: Settings, currentModel
  *   reflects the credential actually selected for this request.
  * @param customSystemPrompt Optional title-specific system prompt override
  * @param obfuscateProviderText Final confidentiality boundary for text sent to an online title model
+ * @param completeImpl Transport for the request; defaults to a bare `completeSimple` that reads no
+ *   operator settings (see {@link TitleCompleteImpl})
  */
 /**
  * Whether auto-titling is disabled for this process. The `--no-title` flag (and
@@ -124,6 +127,22 @@ export function autoTitleDisabled(): boolean {
 	return Boolean($env.VEYYON_NO_TITLE);
 }
 
+/**
+ * The transport a title request runs on. Defaults to a bare
+ * {@link completeSimple}, which reads no operator settings at all: no stream
+ * idle or first-event watchdog, no in-flight cap, no per-provider concurrency
+ * bracket, no `providers.openrouterVariant`. A title is a side request like a
+ * summarization or a handoff, so every caller that has a session hands over
+ * that session's side transport instead (`AgentSession.sideComplete`). A title
+ * whose provider goes silent then has a deadline to end it, and a fan-out of
+ * subagent labels queues behind the same cap as every other request.
+ */
+export type TitleCompleteImpl = <TApi extends Api>(
+	model: Model<TApi>,
+	ctx: Context,
+	options: SimpleStreamOptions,
+) => Promise<AssistantMessage>;
+
 export async function generateSessionTitle(
 	firstMessage: string,
 	registry: ModelRegistry,
@@ -133,6 +152,7 @@ export async function generateSessionTitle(
 	metadataResolver?: (provider: string) => Record<string, unknown> | undefined,
 	customSystemPrompt?: string,
 	obfuscateProviderText?: (text: string) => string,
+	completeImpl?: TitleCompleteImpl,
 ): Promise<string | null> {
 	// Hard off switch: --no-title / VEYYON_NO_TITLE disables auto-titling for
 	// every caller of this function (first-input AND replan refresh), so no
@@ -162,6 +182,7 @@ export async function generateSessionTitle(
 			undefined,
 			customSystemPrompt,
 			obfuscateProviderText,
+			completeImpl,
 		);
 	}
 
@@ -215,6 +236,7 @@ export async function generateTitleOnline(
 	signal?: AbortSignal,
 	customSystemPrompt?: string,
 	obfuscateProviderText?: (text: string) => string,
+	completeImpl?: TitleCompleteImpl,
 ): Promise<string | null> {
 	const model = getTitleModel(registry, settings, currentModel);
 	if (!model) {
@@ -279,7 +301,8 @@ export async function generateTitleOnline(
 		const maxTokens = TITLE_MAX_TOKENS;
 		logger.debug("title-generator: request", { ...modelContext, maxTokens });
 
-		const response = await completeSimple(model, requestContext, {
+		const complete = completeImpl ?? completeSimple;
+		const response = await complete(model, requestContext, {
 			apiKey: resolveAttemptApiKey,
 			maxTokens,
 			disableReasoning: true,

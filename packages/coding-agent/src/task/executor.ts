@@ -98,6 +98,7 @@ import { type ReportFindingDetails, toReviewFinding } from "../tools/review";
 import "../tools/yield";
 import { ToolAbortError } from "../tools/tool-errors";
 import type { EventBus } from "../utils/event-bus";
+import type { TitleCompleteImpl } from "../utils/title-generator";
 import { buildNamedToolChoice } from "../utils/tool-choice";
 import type { WorkspaceTree } from "../workspace-tree";
 import { type AutoloadSkillPlan, settleAutoloadSkills } from "./inherited-collections";
@@ -351,6 +352,13 @@ export interface ExecutorOptions {
 	description?: string;
 	/** Final outbound confidentiality boundary for generated label input. */
 	obfuscateProviderText?: (text: string) => string;
+	/**
+	 * The parent session's side transport for the generated label request. When
+	 * absent the label runs on a bare `completeSimple`: no stream watchdog and
+	 * outside the in-flight cap, so a wide spawn fan-out issues one unbracketed
+	 * request per subagent.
+	 */
+	completeImpl?: TitleCompleteImpl;
 	index: number;
 	id: string;
 	parentToolCallId?: string;
@@ -992,6 +1000,7 @@ interface RunMonitorArgs {
 	/** Parent settings for tiny-model label generation. */
 	settings?: Settings;
 	obfuscateProviderText?: (text: string) => string;
+	completeImpl?: TitleCompleteImpl;
 	modelOverride?: string | string[];
 	signal?: AbortSignal;
 	onProgress?: (progress: AgentProgress) => void;
@@ -1329,7 +1338,14 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 	// failures just leave the label unset.
 	const labelSource = assignment?.trim();
 	if (!args.description && args.modelRegistry && args.settings && labelSource) {
-		generateTaskLabel(labelSource, args.modelRegistry, args.settings, id, args.obfuscateProviderText)
+		generateTaskLabel(
+			labelSource,
+			args.modelRegistry,
+			args.settings,
+			id,
+			args.obfuscateProviderText,
+			args.completeImpl,
+		)
 			.then(label => {
 				if (!label || abortSignal.aborted || progress.description) return;
 				progress.description = label;
@@ -2864,6 +2880,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 		modelRegistry: options.modelRegistry,
 		settings,
 		obfuscateProviderText: options.obfuscateProviderText,
+		completeImpl: options.completeImpl,
 		modelOverride,
 		signal,
 		onProgress,

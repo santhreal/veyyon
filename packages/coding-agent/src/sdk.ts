@@ -2462,6 +2462,13 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			setCwd: async (resolvedPath, options) =>
 				session ? session.setCwd(resolvedPath, options) : setCwdBeforeSessionExists(resolvedPath, options),
 			obfuscateProviderText: text => secretRuntimeLease.obfuscateText(text),
+			// A generated subagent label is a side request of THIS session, so it
+			// rides the session's side transport and inherits its watchdogs and
+			// concurrency bracket. Read live: the session is constructed after this
+			// literal, and no tool can run before it exists.
+			get sideComplete() {
+				return session?.sideComplete;
+			},
 			isToolActive: name => activeToolNames.has(name),
 			setActiveToolNames,
 			hasUI: options.hasUI ?? false,
