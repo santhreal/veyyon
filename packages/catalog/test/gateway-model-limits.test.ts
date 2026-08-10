@@ -526,6 +526,112 @@ describe("a gateway's own id spelling reaches the vendor's row", () => {
 	});
 
 	/**
+	 * A gateway also writes its OWN name into the id: Cursor serves the operator's default model as
+	 * `cursor-grok-4.5-medium`, so every rewrite below fired and none of them reached `grok-4.5`, and a 500k
+	 * model went out as a 200k one. That is not cosmetic: the compaction trigger is derived from the window, so
+	 * the session compacted at two fifths of the context it had.
+	 *
+	 * The corpus is a cross product read out of the catalog rather than a list: every gateway id the distrust
+	 * table names, against every bare vendor model the resolver answers ABOVE the assumption for. So a new
+	 * gateway is covered the moment it is distrusted, and a new wide model the moment it is bundled, with no
+	 * list to go stale. Only models above the assumption qualify, so a resolver that stopped resolving and
+	 * answered the floor for everything cannot pass.
+	 */
+	const WIDE_VENDOR_MODELS = ((): { id: string; window: number }[] => {
+		const seen = new Set<string>();
+		return getBundledProviders()
+			.filter(provider => GATEWAY_ROW_PROVIDERS[provider] === undefined)
+			.flatMap(provider => getBundledModels(provider))
+			.filter(publishesBothLimits)
+			.filter(model => !model.id.includes("/"))
+			.filter(model => gatewayContextWindow(model.id) > AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW)
+			.filter(model => (seen.has(model.id) ? false : seen.add(model.id) !== undefined))
+			.slice(0, 30)
+			.map(model => ({ id: model.id, window: gatewayContextWindow(model.id) }));
+	})();
+
+	const GATEWAY_PREFIXES = Object.keys(GATEWAY_ROW_PROVIDERS);
+
+	/** Non-vacuity for both axes of the cross product below. */
+	it("finds gateway names and wide vendor models to cross", () => {
+		expect(GATEWAY_PREFIXES.length).toBeGreaterThanOrEqual(3);
+		expect(WIDE_VENDOR_MODELS.length).toBeGreaterThan(10);
+	});
+
+	it("resolves a gateway-prefixed id like the vendor id it wraps", () => {
+		const wrong: string[] = [];
+		for (const prefix of GATEWAY_PREFIXES) {
+			for (const model of WIDE_VENDOR_MODELS) {
+				const window = gatewayContextWindow(`${prefix}-${model.id}`);
+				if (window !== model.window) wrong.push(`${prefix}-${model.id}: ${window} want ${model.window}`);
+			}
+		}
+		expect(wrong).toEqual([]);
+	});
+
+	/**
+	 * The prefix is a candidate, not a substitution, and the vocabulary is closed: only a bundled provider id
+	 * counts as a gateway name, and stripping one may never produce an empty id. Without the first half any
+	 * model whose real name happens to start with a word before a dash would be resolved as something else;
+	 * without the second, the bare provider id would resolve as a model.
+	 *
+	 * A nested provider id does parse as a shorter provider plus a word (`google-antigravity` offers
+	 * `antigravity` as a candidate), which is why the assertion is that no gateway name names a model rather
+	 * than that it offers nothing: the remainder is a word no vendor publishes, and the assumption is what comes
+	 * back.
+	 */
+	it("strips only a provider id, and never the whole id", () => {
+		expect(gatewayContextWindow(`notaprovider-${WIDER.id}`)).toBe(AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW);
+		expect(gatewayIdCandidates(`notaprovider-${WIDER.id}`)).toEqual([`notaprovider-${WIDER.id}`]);
+		for (const prefix of GATEWAY_PREFIXES) {
+			// The trailing-dash id is the malformed shape the strip could turn into an empty candidate. Two owners
+			// refuse it (the strip returns nothing, and the walk skips a falsy candidate), so what is asserted is
+			// the property they exist for rather than either one of them.
+			for (const id of [prefix, `${prefix}-`]) {
+				const candidates = gatewayIdCandidates(id);
+				expect(candidates[0], id).toBe(id);
+				expect(candidates.filter(candidate => candidate.length === 0), id).toEqual([]);
+				expect(gatewayContextWindow(id), id).toBe(AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW);
+			}
+		}
+	});
+
+	/**
+	 * The longest name wins, which matters because provider ids nest: `google` is a prefix of
+	 * `google-antigravity`, and `minimax-code` of `minimax-code-cn`. Taking the shorter one would leave the rest
+	 * of the gateway's own name glued to the model (`antigravity-grok-4.5`), which resolves to nothing. The
+	 * nesting pairs are derived from the bundled provider ids, so a newly nested id is covered on arrival.
+	 */
+	it("takes the longest provider id when they nest", () => {
+		const providers = getBundledProviders();
+		const nested = providers.flatMap(short =>
+			providers.filter(long => long !== short && long.startsWith(`${short}-`)).map(long => ({ short, long })),
+		);
+		expect(nested.length).toBeGreaterThan(0);
+		for (const { short, long } of nested) {
+			const candidates = gatewayIdCandidates(`${long}-${WIDER.id}`);
+			expect(candidates, `${long} under ${short}`).toContain(WIDER.id);
+			expect(candidates, `${long} under ${short}`).not.toContain(`${long.slice(short.length + 1)}-${WIDER.id}`);
+		}
+	});
+
+	/**
+	 * The incident itself, through Cursor's real discovery: the gateway reports no limits at all, and the id
+	 * composes its own name with an effort tier, so two rewrites have to compose for the vendor row to be
+	 * reached.
+	 */
+	it("publishes the vendor's window for the id shape Cursor really serves", async () => {
+		const cursor = GATEWAYS.find(gateway => gateway.module === "cursor.ts");
+		expect(cursor, "the cursor case is missing from the harness").toBeDefined();
+		const ids = [`cursor-${WIDER.id}`, `cursor-${WIDER.id}-medium`, `cursor-${WIDER.id}-high-fast`];
+		const published = await cursor?.serve(ids.map(id => ({ id })));
+		for (const id of ids) {
+			expect(published?.get(id)?.contextWindow, id).toBe(WIDER.contextWindow);
+		}
+		expect(WIDER.contextWindow).toBeGreaterThan(AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW);
+	});
+
+	/**
 	 * The ladder is a queue that feeds itself: each candidate pushes a tier-stripped, a speed-stripped and a
 	 * dotted rewrite of itself, and those rewrites compose. What makes it end is a measure that every rewrite
 	 * strictly reduces, plus the visited check. A rewrite that lengthens a candidate, or a lost visited check,
