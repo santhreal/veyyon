@@ -478,6 +478,7 @@ import {
 import { OperatorNotices, stderrNoticeSink } from "./operator-notices";
 import { disposeOwnedResources } from "./owned-resources";
 import { ProviderContextCanonicalizer } from "./provider-context-canonicalizer";
+import { applyProviderImagePolicy } from "./provider-image-budget";
 import { normalizeRoots } from "./relativize-paths";
 import { describeRetryPolicySource, type ResolvedRetryPolicy, resolveRetryPolicy } from "./retry-policy";
 import type { BuildSessionContextOptions, SessionContext } from "./session-context";
@@ -3147,11 +3148,18 @@ export class AgentSession {
 							thoughtSignatureMaxLength,
 							thinkingRetention,
 						};
-			if (upstreamTransformProviderContext) return upstreamTransformProviderContext(next, model, runtime);
+			// The model serving THIS request decides which images it can read. The
+			// main turn, a side request, compaction and an advisor each dispatch
+			// their own model, and this is the only seam that sees which one is
+			// going out, so the whole image policy resolves here.
+			const shaped = applyProviderImagePolicy(next, model, {
+				blockImages: Boolean(this.settings.get("images.blockImages")),
+			});
+			if (upstreamTransformProviderContext) return upstreamTransformProviderContext(shaped, model, runtime);
 			const fallbackRuntime = runtime ?? this.#secretRuntime;
 			return fallbackRuntime
-				? fallbackRuntime.obfuscateContext(next)
-				: obfuscateProviderContext(this.#obfuscator, next);
+				? fallbackRuntime.obfuscateContext(shaped)
+				: obfuscateProviderContext(this.#obfuscator, shaped);
 		};
 		this.#transformProviderContext = canonicalizeProviderContext;
 		// Agent was constructed before AgentSession; install the wrapped hook so the
