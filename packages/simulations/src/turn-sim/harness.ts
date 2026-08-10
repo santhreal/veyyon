@@ -86,6 +86,14 @@ export interface ScriptedTurn {
 	 * turn it was never meant for.
 	 */
 	readonly toolChoice: ToolChoice | undefined;
+	/**
+	 * The pair providers route prompt caching on: they use
+	 * `promptCacheKey ?? sessionId`. Every side request the session makes for the
+	 * same conversation (compaction, a summary, an advisor) is supposed to send
+	 * what the live turns sent, so this is the only place a scenario can see a
+	 * request that would cold-miss the cache the live turns paid to populate.
+	 */
+	readonly cacheRouting: { readonly sessionId: string | undefined; readonly promptCacheKey: string | undefined };
 	/** Emit a complete text block. */
 	text(value: string): void;
 	/**
@@ -195,6 +203,10 @@ async function runScript(
 		model,
 		signal: options?.signal,
 		toolChoice: options?.toolChoice,
+		cacheRouting: {
+			sessionId: options?.sessionId,
+			promptCacheKey: options?.promptCacheKey,
+		},
 		text(value) {
 			const index = content.length;
 			content.push({ type: "text", text: value });
