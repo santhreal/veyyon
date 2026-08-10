@@ -1,4 +1,4 @@
-import type { AnyAgentTool } from "@veyyon/agent-core";
+import { type AnyAgentTool, toolResultNeverRan } from "@veyyon/agent-core";
 import type { SnapshotStore } from "@veyyon/hashline";
 import {
 	Box,
@@ -278,20 +278,12 @@ function notExecutedReason(result: { details?: unknown } | undefined, sealed: bo
  * that touched nothing looked exactly like a command that ran and exited non-zero, with the reason
  * stated twice in two registers. {@link notExecutedReason} says it once, in the operator's words.
  *
- * BOTH DISCRIMINATORS, and that is deliberate. `__synthetic` with `executed: false` is a call the
- * loop never dispatched; `__skipped` with `entered: false` is a call an interrupt cut the batch
- * short of. They are the same claim about the machine, and this file's own history is a branch
- * written for one of them while its sibling kept rendering as a failure.
- *
- * `entered: true` is the one that is NOT included: the tool was running when the interrupt arrived,
- * so whatever it printed is real output about real side effects and stays on screen.
+ * The rule itself lives in {@link toolResultNeverRan}, next to the two placeholder shapes the agent
+ * loop writes, because the session reads it too: it decides whether a failed turn is safe to discard
+ * and replay. Two copies could disagree about whether work happened.
  */
 function isNeverRanResult(result: { details?: unknown } | undefined): boolean {
-	const details = result?.details;
-	if (details == null || typeof details !== "object") return false;
-	const record = details as Record<string, unknown>;
-	if (record.__skipped === true) return record.entered !== true;
-	return record.__synthetic === true && record.executed === false;
+	return toolResultNeverRan(result?.details);
 }
 
 /**

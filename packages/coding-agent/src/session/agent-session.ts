@@ -39,6 +39,7 @@ import {
 	TERMINAL_TOOL_RESULT_ABORT_REASON,
 	ThinkingLevel,
 	type ToolChoiceDirective,
+	toolResultNeverRan,
 } from "@veyyon/agent-core";
 import {
 	AGGRESSIVE_SHAKE_CONFIG,
@@ -144,6 +145,7 @@ import {
 } from "@veyyon/ai/instrumentation";
 import { elidedSignatureBytes, signaturePolicy } from "@veyyon/ai/providers/google-shared";
 import { resetOpenAICodexHistoryAfterCompaction } from "@veyyon/ai/providers/openai-codex-responses";
+import { type CursorExecResolvedCarrier, kCursorExecResolved } from "@veyyon/ai/utils/block-symbols";
 import { assistantText } from "@veyyon/ai/utils/message-text";
 import { toolWireSchema } from "@veyyon/ai/utils/schema";
 import { GeminiHeaderRunDetector, isGeminiThinkingModel } from "@veyyon/ai/utils/thinking-loop";
@@ -14337,15 +14339,35 @@ export class AgentSession {
 		});
 	}
 
+	/**
+	 * Drop a failed assistant turn from active context.
+	 *
+	 * The turn is identified at the TAIL, and a turn that failed with tool calls
+	 * in it does not sit there alone: the agent loop pairs every retained call
+	 * with a never-ran placeholder result to keep the API's tool_use/tool_result
+	 * pairing intact, so the assistant message is second-to-last, or further
+	 * back on a wide batch. Matching only the final message therefore missed
+	 * exactly the turns a retry has to clear, and left the dead turn (plus its
+	 * placeholders) in the context the retry replayed. Those placeholders are
+	 * dropped WITH it, and only those: a result that is not a never-ran
+	 * placeholder belongs to a call that ran, which is a turn no caller here is
+	 * allowed to discard.
+	 */
 	#removeAssistantMessageFromActiveContext(
 		assistantMessage: AssistantMessage,
 		reason = "assistant-context-cleanup",
 	): void {
 		const messages = this.agent.state.messages;
-		const lastMessage = messages[messages.length - 1];
+		let end = messages.length;
+		while (end > 0) {
+			const candidate = messages[end - 1];
+			if (candidate?.role !== "toolResult" || !toolResultNeverRan(candidate.details)) break;
+			end -= 1;
+		}
+		const lastMessage = messages[end - 1];
 		const lastAssistant: AssistantMessage | undefined = lastMessage?.role === "assistant" ? lastMessage : undefined;
 		if (lastAssistant !== undefined && this.#isSameAssistantMessage(lastAssistant, assistantMessage)) {
-			this.agent.replaceMessages(messages.slice(0, -1));
+			this.agent.replaceMessages(messages.slice(0, end - 1));
 			return;
 		}
 		// A miss means the failed turn is still in active context (or was never
@@ -14353,6 +14375,7 @@ export class AgentSession {
 		logger.debug("agent active context assistant removal missed", {
 			reason,
 			lastRole: lastMessage?.role,
+			trailingPlaceholders: messages.length - end,
 			candidateTimestamp: assistantMessage.timestamp,
 			lastTimestamp: lastAssistant?.timestamp,
 			candidateStopReason: assistantMessage.stopReason,
@@ -16803,13 +16826,41 @@ export class AgentSession {
 		return AIError.retriable(id, { replayUnsafe: this.#hasReplayUnsafeToolOutput(message) });
 	}
 	/**
-	 * Retried turns remove the failed assistant message from active context.
-	 * Text/thinking-only partials are safe to discard and replay. Retained
-	 * tool calls are not: a completed tool call may already have emitted its
-	 * tool result after this assistant message, so replaying can duplicate work.
+	 * Retried turns remove the failed assistant message from active context, so
+	 * the question here is whether replaying it can double-apply a side effect.
+	 *
+	 * A tool call in a FAILED turn is not evidence that the tool ran. The agent
+	 * loop has exactly one call site for `tool.execute()`, inside
+	 * `executeToolCalls`, and it is reached only from the runnable-stop branch;
+	 * an `error` stop returns before it, pairing every retained call with a
+	 * placeholder result that says `executed: false`. So the ordinary shape of
+	 * this failure (a provider that stalls, or closes without a terminal finish
+	 * reason, after streaming its tool calls) has applied nothing at all, and
+	 * refusing to retry it turned a transport fault into a dead turn: the
+	 * operator saw the provider's error and the model was handed a ledger telling
+	 * it to reissue the calls itself, on a batch where nothing had happened.
+	 *
+	 * Two shapes ARE unsafe and both are checked. A Cursor exec-channel block
+	 * carries {@link kCursorExecResolved} because that channel dispatches the
+	 * tool through the caller's handler INSIDE the provider stream, before the
+	 * block is synthesized, so it may have finished, may still be running, and
+	 * may have applied half its work. And a call answered by a result that is
+	 * not a never-ran placeholder ran by definition, whatever produced it.
 	 */
 	#hasReplayUnsafeToolOutput(message: AssistantMessage): boolean {
-		return message.content.some(block => block.type === "toolCall");
+		const toolCallIds = new Set<string>();
+		for (const block of message.content) {
+			if (block.type !== "toolCall") continue;
+			if ((block as CursorExecResolvedCarrier)[kCursorExecResolved] === true) return true;
+			toolCallIds.add(block.id);
+		}
+		if (toolCallIds.size === 0) return false;
+		for (const contextMessage of this.agent.state.messages) {
+			if (contextMessage.role !== "toolResult") continue;
+			if (!toolCallIds.has(contextMessage.toolCallId)) continue;
+			if (!toolResultNeverRan(contextMessage.details)) return true;
+		}
+		return false;
 	}
 
 	#isClassifierRefusal(message: AssistantMessage): boolean {
