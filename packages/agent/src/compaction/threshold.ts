@@ -163,18 +163,26 @@ export function resolveCompactionThreshold(
 	const { spec, legacyKey } = withLegacyCompactionThreshold(inputs);
 
 	if (spec.kind === "tokens") {
-		// `clampLow`, not `clamp`: a degenerate window inverts the range (low 1, high 0)
-		// and the LOW bound has to win, because a threshold of zero or less is above every
-		// possible context size and would compact on every single turn. The two helpers
-		// agree everywhere else. Non-finite and non-positive amounts never arrive here at
-		// all — `parseCompactionThreshold` sends them to auto — so the helper's own
-		// non-finite guard is defence in depth rather than the live path.
-		const tokens = clampLow(spec.tokens, 1, contextWindow - 1);
-		// `clamped` is strict `>`, not `tokens < spec.tokens`: at equality the
-		// cap removes exactly one token (the below-window invariant), which no
-		// display precision even shows, and callers word the notice "larger
-		// than the window" — false at equality.
-		return { tokens, origin: "tokens", configured: spec.tokens, clamped: spec.tokens > contextWindow, legacyKey };
+		// The ceiling for an absolute amount is the AUTO threshold (window minus
+		// reserve), not the window itself. A trigger that sits inside the reserve
+		// can never fire: a request large enough to push the context that high is
+		// refused or overflows before the pre-turn check gets a look, so capping at
+		// `contextWindow - 1` honored the operator's number by turning proactive
+		// compaction off and leaving error-driven recovery to do the work. Capping
+		// at the auto point keeps the amount as large as this model can reach.
+		//
+		// `clampLow`, not `clamp`: a degenerate window inverts the range (low 1,
+		// high 0) and the LOW bound has to win, because a threshold of zero or less
+		// is above every possible context size and would compact on every single
+		// turn. The two helpers agree everywhere else. Non-finite and non-positive
+		// amounts never arrive here at all (`parseCompactionThreshold` sends them to
+		// auto), so the helper's own non-finite guard is defence in depth rather
+		// than the live path.
+		const ceiling = clampLow(autoTokens(), 1, contextWindow - 1);
+		const tokens = clampLow(Math.min(spec.tokens, ceiling), 1, contextWindow - 1);
+		// Strict `>`: at equality nothing was taken away, and the notice callers
+		// word around this flag would be false.
+		return { tokens, origin: "tokens", configured: spec.tokens, clamped: spec.tokens > ceiling, legacyKey };
 	}
 
 	if (spec.kind === "percent") {
@@ -217,7 +225,7 @@ export function formatCompactionThreshold(resolved: ResolvedCompactionThreshold,
 	}
 	if (resolved.origin === "tokens") {
 		return resolved.clamped
-			? `${tokens} (fixed ${formatTokens(resolved.configured ?? 0)}, capped to this model's ${formatTokens(contextWindow)} window)`
+			? `${tokens} (fixed ${formatTokens(resolved.configured ?? 0)}, capped to the most a ${formatTokens(contextWindow)}-window model can reach)`
 			: `${tokens} (fixed)`;
 	}
 	return `${tokens} (auto: ${formatTokens(contextWindow)} window minus reserve)`;
@@ -357,11 +365,10 @@ export function resolveThresholdTokens(contextWindow: number, settings: Compacti
 }
 
 /**
- * True when the operator configured an absolute token threshold that this model's
- * window cannot hold, so the resolver had to cap it below the configured value.
- * Callers surface this loudly: the absolute amount is honored up to
- * `contextWindow - 1` and never silently reinterpreted, so the operator learns
- * their model-independent amount was capped for the current (smaller) model.
+ * True when the operator configured an absolute token threshold larger than this
+ * model can reach, so the resolver capped it at the auto point (window minus
+ * reserve). Callers report it once per window: the amount is never silently
+ * reinterpreted, and a model with a larger window still uses the full value.
  */
 export function isThresholdTokensClampedForWindow(contextWindow: number, settings: CompactionSettings): boolean {
 	const resolved = resolveThresholdWithOrigin(contextWindow, settings);

@@ -376,7 +376,15 @@ describe("interjections mid-turn", () => {
 		// cancelled, and the next prompt must reach the provider normally.
 		const summaryStarted = Promise.withResolvers<void>();
 		sim = await createSimulation({
-			settings: { "retry.enabled": false, "compaction.enabled": true, "compaction.thresholdTokens": 15_000 },
+			// The reserve is explicit because an absolute threshold is capped at the
+			// window minus the reserve: on a 20k window the DEFAULT 16384 reserve puts
+			// 15k out of reach, and the trigger would be capped down to 3616.
+			settings: {
+				"retry.enabled": false,
+				"compaction.enabled": true,
+				"compaction.thresholdTokens": 15_000,
+				"compaction.reserveTokens": 3_000,
+			},
 			model: { contextWindow: 20_000 },
 			script: scriptTurns(
 				turn => {
@@ -567,7 +575,15 @@ describe("plain multi-turn sessions without interjection", () => {
 		// a fourth turn. The summarization call is a provider call like any
 		// other, and the session must stay drivable after it.
 		sim = await createSimulation({
-			settings: { "retry.enabled": false, "compaction.enabled": true, "compaction.thresholdTokens": 15_000 },
+			// The reserve is explicit because an absolute threshold is capped at the
+			// window minus the reserve: on a 20k window the DEFAULT 16384 reserve puts
+			// 15k out of reach, and the trigger would be capped down to 3616.
+			settings: {
+				"retry.enabled": false,
+				"compaction.enabled": true,
+				"compaction.thresholdTokens": 15_000,
+				"compaction.reserveTokens": 3_000,
+			},
 			model: { contextWindow: 20_000 },
 			script: scriptTurns(
 				turn => {

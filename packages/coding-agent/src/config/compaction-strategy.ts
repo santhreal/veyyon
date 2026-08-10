@@ -70,9 +70,10 @@ export interface ResolvedContextLimit {
  * `tokens` is always inside the window, which is the invariant callers rely on when
  * they render `window - tokens` as a buffer. `resolveThresholdTokens` guarantees it
  * for both threshold origins: a percentage caps at 99% of the window, and an absolute
- * amount is honored only up to `window - 1` (and reports the clamp separately through
- * `isThresholdTokensClampedForWindow`, so an operator whose model-independent amount
- * was capped for a smaller model hears about it).
+ * amount is capped at the auto point (window minus reserve), the largest trigger the
+ * model can actually reach, and reports the cap separately through
+ * `isThresholdTokensClampedForWindow` so an operator whose model-independent amount
+ * was capped for a smaller model hears about it.
  */
 export function resolveContextLimit(
 	contextWindow: number,

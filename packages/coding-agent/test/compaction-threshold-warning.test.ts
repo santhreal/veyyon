@@ -10,26 +10,29 @@ import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { TempDir } from "@veyyon/utils";
 
 /**
- * Regression test for the bogus compaction-threshold clamp warning.
+ * What the compaction-threshold notice may say, and when it may say it.
  *
- * The resolver holds every threshold strictly below the window (the cap is
- * `window - 1`), and the session warning used to key off "the resolved value
- * is below the configured one". At EQUALITY — a 256000 threshold on a 256k
- * window — that predicate is true, so a running session printed:
+ * Two false notices have shipped from this one predicate. The first fired at
+ * EQUALITY (a 256000 threshold on a 256k window) and called it "larger than this
+ * model's context window", which was not true. The second was worse: it fired for
+ * a 256000 threshold on a 200k model, told the operator it was "compacting at
+ * 200k", and advised them to lower the amount. The number was arithmetically
+ * right and behaviourally nonsense, because the resolver capped an oversized
+ * amount at `window - 1` and a trigger inside the reserve can never fire. The
+ * operator's explicit threshold had quietly turned proactive compaction off, and
+ * the notice reported that as normal operation.
  *
- *   "The configured compaction threshold (256000 tokens) is larger than this
- *    model's context window (256000); compacting at 256k (fixed 256k, capped
- *    to this model's 256k window). ..."
+ * The contract now: an absolute amount is capped at the AUTO point (window minus
+ * reserve), which is the largest trigger a request can reach; the notice fires
+ * only when the configured amount is strictly past that point; it is `info`,
+ * because a model-independent amount is a legal choice that a larger model still
+ * honors in full; and its numbers name the real trigger.
  *
- * "Larger than" is false at equality and the one-token cap is the below-window
- * invariant, not lost headroom, so the warning was pure noise. The contract:
- * the warning fires only when the configured amount is STRICTLY greater than
- * the window, and then its numbers must be accurate.
- *
- * These tests drive the real session path — agent_end → #checkCompaction →
- * #noticeCompactionThresholdClamp → emitNotice — with a turn whose usage sits
- * below every threshold under test, so no compaction runs and the notices are
- * the only observable.
+ * These tests drive the real session path (agent_end -> #checkCompaction ->
+ * #noticeCompactionThresholdClamp -> emitNotice) with a turn whose usage sits
+ * below every threshold under test, so no compaction runs and the notices are the
+ * only observable. The 200k window and the unset reserve put the auto point at
+ * 170k: reserve = max(15% of 200k, 16384) = 30k.
  */
 
 const WINDOW = 200_000;
@@ -126,11 +129,9 @@ describe("compaction threshold clamp warning", () => {
 		await session.waitForIdle();
 	}
 
-	it("stays silent when the threshold equals the window", async () => {
-		// WHY: the pre-fix predicate flagged equality as "capped", and the notice
-		// claimed "larger than this model's context window" — both false. A config
-		// that exactly matches the model must produce no warning.
-		await createSession(String(WINDOW));
+	it("stays silent at the reachable auto point", async () => {
+		// The boundary itself: nothing was taken away, so there is nothing to say.
+		await createSession("170000");
 		const notices = collectCompactionNotices();
 
 		await emitModestTurn();
@@ -147,19 +148,38 @@ describe("compaction threshold clamp warning", () => {
 		expect(notices).toEqual([]);
 	});
 
-	it("warns exactly once with accurate numbers when the threshold exceeds the window", async () => {
+	it("reports the cap once, as info, with the trigger it actually uses", async () => {
 		await createSession("300000");
 		const notices = collectCompactionNotices();
 
 		await emitModestTurn();
 
-		// The cap resolves to window - 1 = 199999, displayed the way the status
-		// line rounds token counts ("200k"); the configured amount is quoted raw.
+		// 170k is the real trigger, displayed the way the status line rounds token
+		// counts; the configured amount is quoted raw so the operator can match it
+		// against their config.
 		expect(notices).toEqual([
 			{
-				level: "warning",
+				level: "info",
 				message:
-					"The configured compaction threshold (300000 tokens) is larger than this model's context window (200000); compacting at 200k (fixed 300k, capped to this model's 200k window). Lower the amount or switch to a larger-window model to use the full value.",
+					"The compaction threshold (300000 tokens) is more than a 200000-token model can reach, so this session compacts at 170k (fixed 300k, capped to the most a 200k-window model can reach). A model with a larger window uses the full amount.",
+			},
+		]);
+	});
+
+	it("reports a threshold equal to the window, because the reserve puts it out of reach", async () => {
+		// The old suite asserted SILENCE here, on the theory that equality is not
+		// "larger than the window". The window was the wrong ceiling: a trigger at
+		// 200k on a 200k model never fires.
+		await createSession(String(WINDOW));
+		const notices = collectCompactionNotices();
+
+		await emitModestTurn();
+
+		expect(notices).toEqual([
+			{
+				level: "info",
+				message:
+					"The compaction threshold (200000 tokens) is more than a 200000-token model can reach, so this session compacts at 170k (fixed 200k, capped to the most a 200k-window model can reach). A model with a larger window uses the full amount.",
 			},
 		]);
 	});
