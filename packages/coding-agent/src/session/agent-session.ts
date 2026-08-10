@@ -2464,6 +2464,12 @@ export class AgentSession {
 	#promptGeneration = 0;
 	#pendingAgentEndEmit: AgentSessionEvent | undefined;
 	#pendingContextSnapshot: PendingContextSnapshot | undefined = undefined;
+	/**
+	 * Last branch entry present when a pass last rewrote history in place. Every
+	 * provider usage anchor at or before it reports a prompt that no longer
+	 * exists, so {@link getContextBreakdown} will not read one as ground truth.
+	 */
+	#historyRewriteAnchorBoundaryEntryId: string | undefined = undefined;
 	#sessionStopContinuationCount = 0;
 	#sessionStopHookActive = false;
 	// Bumped whenever the pending in-flight snapshot is set/cleared. The
@@ -12752,6 +12758,41 @@ export class AgentSession {
 	}
 
 	/**
+	 * The epilogue every in-place history rewrite owes, in one place: persist the
+	 * new shape, re-prime the agent's view of it, reset advisor runtimes, drop the
+	 * provider sessions that cache message identity, and put the context report
+	 * back on the messages that now exist.
+	 *
+	 * That last part is two facts, and it is not optional. While a prompt is in
+	 * flight the pending snapshot is what the context report and the
+	 * post-compaction headroom / retry-fit checks measure, so it is re-anchored
+	 * here (see {@link #rebasePendingContextSnapshotAfterHistoryRewrite}). And
+	 * once any provider usage from this turn has landed, THAT is what the report
+	 * reads instead: a number the provider computed over a prompt this rewrite
+	 * just shortened. Recording the boundary is what stops the report from
+	 * counting the bytes it removed until a response arrives that actually
+	 * describes the new shape.
+	 *
+	 * Neither was the rewrite's job before, and the results were exactly what
+	 * that predicts: three call sites re-anchored the snapshot and four rewrite
+	 * paths did not (including `/shake` from both front ends), while nothing
+	 * anywhere invalidated the anchor. Since the compaction decision floors the
+	 * provider figure with a local estimate, an anchor reading high by the bytes
+	 * a pass just removed cannot be argued away by the floor: it wins the max, so
+	 * "the dedup alone brought us back under the bar, skip the summarization"
+	 * could never fire.
+	 */
+	async #afterHistoryRewrite(): Promise<void> {
+		await this.sessionManager.rewriteEntries();
+		const sessionContext = this.buildDisplaySessionContext();
+		this.agent.replaceMessages(sessionContext.messages);
+		this.#resetAllAdvisorRuntimes();
+		this.#closeCodexProviderSessionsForHistoryRewrite();
+		this.#historyRewriteAnchorBoundaryEntryId = this.sessionManager.getBranch().at(-1)?.id;
+		this.#rebasePendingContextSnapshotAfterHistoryRewrite();
+	}
+
+	/**
 	 * Threshold-time overflow prune: blank the oldest tool results outside the
 	 * protect-recent window, plus any result its tool flagged contextually
 	 * useless. Runs before the threshold comparison so a turn that pruning alone
@@ -12775,12 +12816,8 @@ export class AgentSession {
 			return undefined;
 		}
 
-		await this.sessionManager.rewriteEntries();
-		const sessionContext = this.buildDisplaySessionContext();
-		this.agent.replaceMessages(sessionContext.messages);
-		this.#resetAllAdvisorRuntimes();
+		await this.#afterHistoryRewrite();
 		this.#syncTodoPhasesFromBranch();
-		this.#closeCodexProviderSessionsForHistoryRewrite();
 		return result;
 	}
 
@@ -12818,12 +12855,8 @@ export class AgentSession {
 			return undefined;
 		}
 
-		await this.sessionManager.rewriteEntries();
-		const sessionContext = this.buildDisplaySessionContext();
-		this.agent.replaceMessages(sessionContext.messages);
-		this.#resetAllAdvisorRuntimes();
+		await this.#afterHistoryRewrite();
 		this.#syncTodoPhasesFromBranch();
-		this.#closeCodexProviderSessionsForHistoryRewrite();
 		return result;
 	}
 
@@ -12869,11 +12902,7 @@ export class AgentSession {
 		if (removed === 0) {
 			return { removed: 0 };
 		}
-		await this.sessionManager.rewriteEntries();
-		const sessionContext = this.buildDisplaySessionContext();
-		this.agent.replaceMessages(sessionContext.messages);
-		this.#resetAllAdvisorRuntimes();
-		this.#closeCodexProviderSessionsForHistoryRewrite();
+		await this.#afterHistoryRewrite();
 		return { removed };
 	}
 
@@ -12964,11 +12993,7 @@ export class AgentSession {
 
 		applyShakeRegions(items);
 
-		await this.sessionManager.rewriteEntries();
-		const sessionContext = this.buildDisplaySessionContext();
-		this.agent.replaceMessages(sessionContext.messages);
-		this.#resetAllAdvisorRuntimes();
-		this.#closeCodexProviderSessionsForHistoryRewrite();
+		await this.#afterHistoryRewrite();
 
 		return {
 			toolResultsDropped,
@@ -13215,7 +13240,7 @@ export class AgentSession {
 			const newEntries = this.sessionManager.getEntries();
 			const sessionContext = this.buildDisplaySessionContext();
 			this.agent.replaceMessages(sessionContext.messages);
-			this.#rebasePendingContextSnapshotAfterCompaction();
+			this.#rebasePendingContextSnapshotAfterHistoryRewrite();
 			// Compaction discarded the conversation history that carried the approved
 			// plan reference. Clear the sent-flag so #buildPlanReferenceMessage re-reads
 			// the plan from disk and re-injects it on the next turn (issue #1246).
@@ -16035,8 +16060,10 @@ export class AgentSession {
 	 * artifact-recoverable, so this tier only runs once elide has failed the
 	 * progress re-test.
 	 *
-	 * Each tier that rewrote history re-anchors the in-flight context snapshot,
-	 * then the caller's progress predicate is re-tested; the first tier that
+	 * Each tier's rewrite re-anchors the in-flight context snapshot on its way out
+	 * ({@link #afterHistoryRewrite}), so the progress predicate below measures the
+	 * reduced context rather than the run-start figure. The predicate is re-tested
+	 * after each tier; the first tier that
 	 * restores progress emits one info notice describing everything freed and
 	 * stops. Returns whether progress was restored — `false` falls through to
 	 * the dead-end warning.
@@ -16055,12 +16082,6 @@ export class AgentSession {
 				elided = result.toolResultsDropped + result.blocksDropped;
 				elidedTokens = result.tokensFreed;
 				if (result.artifactId) elideSink = "an artifact";
-				if (elided > 0) {
-					// The elide pass rewrote history; re-anchor the in-flight snapshot
-					// so the caller's headroom/retry-fit re-test measures the shaken
-					// context.
-					this.#rebasePendingContextSnapshotAfterCompaction();
-				}
 			} catch (error) {
 				logger.warn("Dead-end shake rescue failed", {
 					error: errorMessage(error),
@@ -16079,7 +16100,6 @@ export class AgentSession {
 		let imagesDropped = 0;
 		try {
 			imagesDropped = (await this.dropImages()).removed;
-			if (imagesDropped > 0) this.#rebasePendingContextSnapshotAfterCompaction();
 		} catch (error) {
 			logger.warn("Dead-end image-drop rescue failed", {
 				error: errorMessage(error),
@@ -16198,7 +16218,6 @@ export class AgentSession {
 			const deduped = await this.dedupeRedundantToolResults();
 			if (deduped.toolResultsDropped > 0) {
 				if (this.#promptGeneration !== generation) return COMPACTION_CHECK_NONE;
-				this.#rebasePendingContextSnapshotAfterCompaction();
 				if (reason === "threshold" && !this.#thresholdStillTrips(compactionSettings)) {
 					return COMPACTION_CHECK_NONE;
 				}
@@ -16569,7 +16588,7 @@ export class AgentSession {
 			const newEntries = this.sessionManager.getEntries();
 			const sessionContext = this.buildDisplaySessionContext();
 			this.agent.replaceMessages(sessionContext.messages);
-			this.#rebasePendingContextSnapshotAfterCompaction();
+			this.#rebasePendingContextSnapshotAfterHistoryRewrite();
 			// Compaction discarded the conversation history that carried the approved
 			// plan reference. Clear the sent-flag so #buildPlanReferenceMessage re-reads
 			// the plan from disk and re-injects it on the next turn (issue #1246).
@@ -16640,7 +16659,7 @@ export class AgentSession {
 						(reason === "incomplete" && lastAssistant.stopReason === "length");
 					if (shouldDrop) {
 						this.agent.replaceMessages(messages.slice(0, -1));
-						this.#rebasePendingContextSnapshotAfterCompaction();
+						this.#rebasePendingContextSnapshotAfterHistoryRewrite();
 					}
 				}
 
@@ -19418,8 +19437,19 @@ export class AgentSession {
 		// Always locate the latest real assistant-usage anchor after the last
 		// compaction. Its provider-reported promptTokens is ground truth for
 		// everything up to that point; only the tail after it is estimated.
+		//
+		// A pass that rewrote history in place (a prune, the dedup, a shake, an
+		// image drop) moves that floor forward too. The provider computed its
+		// prompt tokens over bytes the rewrite has since removed, so an anchor at
+		// or before the rewrite is not ground truth about anything that will be
+		// sent again: it reads high by exactly what was freed. Only a response
+		// received AFTER the rewrite describes the current shape, and until one
+		// lands the estimate below is the honest figure.
+		const rewriteBoundaryId = this.#historyRewriteAnchorBoundaryEntryId;
+		const rewriteIndex = rewriteBoundaryId ? branchEntries.findIndex(entry => entry.id === rewriteBoundaryId) : -1;
+		const anchorFloorIndex = Math.max(compactionIndex, rewriteIndex);
 		let anchorEntry: SessionMessageEntry | undefined;
-		for (let i = branchEntries.length - 1; i > compactionIndex; i--) {
+		for (let i = branchEntries.length - 1; i > anchorFloorIndex; i--) {
 			const entry = branchEntries[i];
 			if (entry.type === "message" && entry.message.role === "assistant") {
 				const assistant = entry.message;
@@ -19564,18 +19594,24 @@ export class AgentSession {
 	}
 
 	/**
-	 * Rebase the in-flight pending context snapshot onto the current message
-	 * set after a compaction (or its dead-end rescue) rewrote history mid-run.
+	 * Rebase the in-flight pending context snapshot onto the current message set
+	 * after ANY pass rewrote history mid-run: a compaction, its dead-end rescue,
+	 * a prune, a dedup, or an operator `/shake`.
+	 *
 	 * The snapshot captures the prompt as submitted at run start and lives for
-	 * the whole run; once a compaction entry lands, every earlier usage anchor
-	 * is hidden from {@link getContextBreakdown}, so the stale run-start figure
-	 * would be reported as live context until the next provider response. That
-	 * inflated residual is what the post-compaction headroom/retry-fit checks
-	 * measure — a run that started above the recovery band then trips the
-	 * "freed too little context" dead-end even when compaction genuinely
-	 * shrank the context. No-op while no prompt is in flight.
+	 * the whole run. Until a step of the current turn produces provider usage it
+	 * is the only thing accounting for that prompt, so it is what
+	 * {@link getContextBreakdown} reports, and after a compaction it is the only
+	 * thing left (every earlier usage anchor is hidden). A rewrite that leaves it
+	 * alone therefore reports bytes it just removed as live context until the
+	 * next provider response. That inflated residual is what the post-compaction
+	 * headroom/retry-fit checks measure (a run that started above the recovery
+	 * band then trips the "freed too little context" dead-end even though the
+	 * context genuinely shrank), which is why {@link #afterHistoryRewrite} calls
+	 * this rather than leaving it to each pass. No-op while no prompt is in
+	 * flight.
 	 */
-	#rebasePendingContextSnapshotAfterCompaction(): void {
+	#rebasePendingContextSnapshotAfterHistoryRewrite(): void {
 		if (!this.#pendingContextSnapshot) return;
 		const nonMessageTokens = computeNonMessageTokens(this);
 		const promptTokens = nonMessageTokens + this.messages.reduce((sum, msg) => sum + estimateTokens(msg), 0);
