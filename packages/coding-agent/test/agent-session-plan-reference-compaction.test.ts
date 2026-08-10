@@ -19,7 +19,6 @@ import * as path from "node:path";
 import { Agent, type AgentMessage } from "@veyyon/agent-core";
 import * as compactionModule from "@veyyon/agent-core/compaction";
 import type { TextContent } from "@veyyon/ai";
-import * as ai from "@veyyon/ai";
 import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { TempDir } from "@veyyon/utils";
@@ -185,7 +184,25 @@ describe("AgentSession approved-plan reference re-injection after compaction (is
 			},
 		});
 
-		session = new AgentSession({ agent, sessionManager, settings, modelRegistry });
+		// The summary compaction runs its LLM summarization on the session's side
+		// transport, so that is where it is answered. Stubbing `completeSimple`
+		// instead leaves the real request to reach the network: the summary never
+		// lands, no continuation turn is scheduled, and the row hangs.
+		session = new AgentSession({
+			agent,
+			sessionManager,
+			settings,
+			modelRegistry,
+			sideStreamFn: () => {
+				const response = createAssistantResponse("summarized plan history");
+				const stream = new AssistantMessageEventStream();
+				queueMicrotask(() => {
+					stream.push({ type: "start", partial: response });
+					stream.push({ type: "done", reason: "stop", message: response });
+				});
+				return stream;
+			},
+		});
 
 		const waitForCall = (predicate: (call: ObservedPromptCall) => boolean) => {
 			const existing = observedCalls.find(predicate);
@@ -254,9 +271,8 @@ describe("AgentSession approved-plan reference re-injection after compaction (is
 		session.markPlanReferenceSent();
 
 		// Unlike the stubbed-compaction cases, this exercises the REAL summary
-		// (context-full) compaction path end to end; mock only the LLM summarize
-		// call so it completes without a network request.
-		vi.spyOn(ai, "completeSimple").mockResolvedValue(createAssistantResponse("summarized plan history"));
+		// (context-full) compaction path end to end; the harness answers the
+		// summarize call on the side transport so it needs no network request.
 
 		await session.prompt("continue executing the approved summary plan");
 		const firstCall = observedCalls[0];
