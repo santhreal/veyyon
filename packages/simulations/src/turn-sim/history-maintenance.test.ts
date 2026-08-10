@@ -20,7 +20,9 @@
  * results were blanked and which were left alone, that the blanked text is the
  * exact notice, that the store and the outbound context agree afterwards, that
  * no result was REMOVED by a rewrite (a blanked result is still an answer to its
- * call), and that the request following the rewrite is still well paired.
+ * call), and that the request following the rewrite is still well paired. A
+ * second block below covers the pass over a turn that died with its calls unrun,
+ * where one of the results on the branch is a placeholder rather than an answer.
  *
  * NOT asserted: which of the two independent protections keeps a `skill://`
  * read intact. The supersede key exempts URL-scheme paths and the protected-tool
@@ -288,4 +290,76 @@ describe("the end-of-turn maintenance pass rewrites history in both places or ne
 			});
 		}
 	}
+});
+
+/**
+ * A read that never ran does not delete the read that did.
+ *
+ * WHY. A turn whose provider stream dies after it emitted its calls pairs every one
+ * of them with a never-ran placeholder, and those placeholders sit on the branch
+ * beside real results. The maintenance pass keys supersede on the CALL's arguments,
+ * so a dropped `read src/a.ts` looked exactly like the newest read of that path: it
+ * marked the earlier real read superseded and blanked its body, and the model was
+ * left holding a pointer to a read that never happened. The pruning unit test pins
+ * the pass in isolation; this pins the sequence that reaches it from a live session,
+ * where the placeholder is written by the loop rather than by a fixture.
+ *
+ * `retry.maxRetries: 0` keeps the dead turn on the branch (a retry would discard it
+ * and its placeholders, which is a different fix), so the collision is reachable and
+ * the prompt after it is what runs the pass over both results.
+ */
+describe("the maintenance pass and a turn that died with its calls unrun", () => {
+	it("keeps the real read and leaves the placeholder saying nothing ran", async () => {
+		const cell = "dead turn / maintenance on";
+		const contexts: Context[] = [];
+		sim = await createSimulation({
+			settings: {
+				"retry.maxRetries": 0,
+				"compaction.supersedeReads": true,
+				"compaction.dropUseless": true,
+			},
+			tools: maintenanceTools(),
+			script: scriptTurns(
+				turn => {
+					contexts.push(turn.context);
+					turn.toolCall("read", { path: "src/a.ts" }, "read-1");
+					turn.finish("toolUse");
+				},
+				turn => {
+					contexts.push(turn.context);
+					turn.text("read the file");
+					turn.finish();
+				},
+				turn => {
+					// The same path again, and then the stream dies before the batch runs.
+					contexts.push(turn.context);
+					turn.toolCall("read", { path: "src/a.ts" }, "read-2");
+					turn.fail("Provider stream stalled while waiting for the next event");
+				},
+				turn => {
+					contexts.push(turn.context);
+					turn.text("now answer");
+					turn.finish();
+				},
+			),
+		});
+
+		await sim.session.prompt("read the file");
+		await sim.session.prompt("read it again");
+		// The pass runs at the end of this turn, over a branch holding one real read
+		// and one placeholder for the same path.
+		await sim.session.prompt("now answer");
+
+		expect(textOfResult(sim.session.messages, "read-1")).toBe(bodyFor("src/a.ts"));
+		expect(textOfResult(sim.session.messages, "read-1")).not.toBe(SUPERSEDED_NOTICE);
+		expect(textOfResult(sim.session.messages, "read-2")).toContain("not executed");
+
+		// And on the wire, which is the copy the next request is shaped from.
+		const outbound = contexts.at(-1);
+		expect(outbound).toBeDefined();
+		expect(describeViolations(cell, pairingViolations(outbound?.messages ?? []))).toEqual([]);
+		const wire = textsOfResults(outbound?.messages ?? []);
+		expect(wire.some(text => text === bodyFor("src/a.ts"))).toBe(true);
+		expect(wire.some(text => text === SUPERSEDED_NOTICE)).toBe(false);
+	});
 });
