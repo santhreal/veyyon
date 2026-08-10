@@ -130,7 +130,8 @@ for (const threshold of [3, 5]) {
 		// the count of the turn that fired is what indexes the wire. Comparing the
 		// redirect's own bytes is what makes this about delivery: a redirect stored
 		// but never sent would satisfy every assertion above it.
-		const redirectText = typeof redirect.content === "string" ? redirect.content : "";
+		const redirectContent = (redirect as { content?: unknown }).content;
+		const redirectText = typeof redirectContent === "string" ? redirectContent : "";
 		expect(redirectText).toContain("work");
 		const sentAfter = wire[threshold];
 		expect(sentAfter).toBeDefined();
