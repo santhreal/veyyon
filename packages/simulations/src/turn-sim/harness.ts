@@ -61,6 +61,13 @@ const SIM_API = "bedrock-converse-stream" as const;
 export const SIM_IDLE_BUDGET_SECONDS = 0.3;
 export const SIM_FIRST_EVENT_BUDGET_SECONDS = 0.3;
 
+/**
+ * Price every simulated token at the same rate. A scenario asserting cost then
+ * states `tokens * SIM_COST_PER_TOKEN` rather than reproducing a price table,
+ * and a rate this large keeps the products exact in floating point.
+ */
+export const SIM_COST_PER_TOKEN = 0.001;
+
 /** Handle a script uses to emit provider events for one turn. */
 export interface ScriptedTurn {
 	/** The live provider stream. Push raw events for shapes the helpers omit. */
@@ -108,6 +115,14 @@ export interface ScriptedTurn {
 	toolCall(name: string, args: Record<string, unknown>, id?: string): void;
 	/** Emit `toolcall_start` + a partial argument delta and never close it. */
 	openToolCall(name: string, partialArgs: string, id?: string): void;
+	/**
+	 * Report what this request cost. Providers stream usage and the turn's stored
+	 * assistant message carries it; a simulation that never sets it leaves every
+	 * token count at zero, which is what makes a spend or budget assertion
+	 * meaningless. Cost is derived from the token counts at a flat rate so a
+	 * scenario states one number per field.
+	 */
+	usage(counts: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number }): void;
 	/**
 	 * Terminate the turn normally. The reasons a provider can END a stream with
 	 * are these three; `aborted` and `error` arrive on other events, so they are
@@ -252,6 +267,29 @@ async function runScript(
 			content.push(block);
 			stream.push({ type: "toolcall_start", contentIndex: index, partial });
 			stream.push({ type: "toolcall_delta", contentIndex: index, delta: partialArgs, partial });
+		},
+		usage(counts) {
+			const input = counts.input ?? 0;
+			const output = counts.output ?? 0;
+			const cacheRead = counts.cacheRead ?? 0;
+			const cacheWrite = counts.cacheWrite ?? 0;
+			// One flat rate per token so a scenario can state an expected cost as a
+			// count times the rate instead of carrying a price table.
+			const rate = SIM_COST_PER_TOKEN;
+			partial.usage = {
+				input,
+				output,
+				cacheRead,
+				cacheWrite,
+				totalTokens: input + output + cacheRead + cacheWrite,
+				cost: {
+					input: input * rate,
+					output: output * rate,
+					cacheRead: cacheRead * rate,
+					cacheWrite: cacheWrite * rate,
+					total: (input + output + cacheRead + cacheWrite) * rate,
+				},
+			};
 		},
 		finish(reason) {
 			if (ended) return;
