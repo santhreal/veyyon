@@ -151,8 +151,18 @@ export interface ScriptedTurn {
 	 * not spellable here.
 	 */
 	finish(reason?: "stop" | "toolUse" | "length"): void;
-	/** Terminate the turn with a provider error the retry classifier will see. */
-	fail(message: string): void;
+	/**
+	 * Terminate the turn with a provider error the retry classifier will see.
+	 *
+	 * `errorId` is how a real provider says what KIND of fault this was, and it is
+	 * not decoration: several genuinely transient faults do not say so in their
+	 * prose. OpenAI's "stream closed before a terminal finish reason was
+	 * received" classifies to 0 from text alone and is only retryable because the
+	 * throw site attaches `Flag.Transient` for `kind: "incomplete-stream"`. A
+	 * scenario that omits the id therefore measures the text classifier rather
+	 * than the decision under test.
+	 */
+	fail(message: string, errorId?: number): void;
 	/** Report local work in flight, the way a server-driven tool bridge does. */
 	trackLocalWork(work: Promise<unknown>): Promise<void>;
 	/**
@@ -322,12 +332,13 @@ async function runScript(
 			partial.stopReason = stopReason;
 			stream.push({ type: "done", reason: stopReason, message: partial });
 		},
-		fail(message) {
+		fail(message, errorId) {
 			if (ended) return;
 			ended = true;
 			const errored = baseMessage(model, []);
 			errored.stopReason = "error";
 			errored.errorMessage = message;
+			if (errorId !== undefined) errored.errorId = errorId;
 			stream.push({ type: "error", reason: "error", error: errored });
 		},
 		async trackLocalWork(work) {
