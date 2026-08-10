@@ -1629,6 +1629,7 @@ async function streamAssistantResponse(
 								retainCompletedToolCalls(await response.result(), completedToolCallIds),
 								context.tools ?? [],
 							),
+							storedToolCallIds(context.messages, addedPartial),
 						);
 						if (harmonyMitigationEnabled) {
 							const detection = detectHarmonyLeakInAssistantMessage(finalMessage);
@@ -1845,22 +1846,35 @@ function retainCompletedToolCalls(
  * the repeat here, at the single funnel where a finished message is assembled,
  * keeps stored history unambiguous and leaves every other layer untouched.
  *
- * Scope is one message. A repeat across turns is a different question: each
- * turn's results still pair 1:1 with that turn's calls, and `context.messages`
- * at this point can already hold the in-flight partial of this very message,
- * so a conversation-wide set would rename calls that are not duplicates.
+ * Scope is the BRANCH, not one message. The reason is the outbound canonicalizer
+ * (`canonicalizeToolCallIds`): its handle map is keyed by the original id and
+ * lives for the whole session, so two distinct calls that happen to share an id
+ * collapse onto one `tc_<n>` handle no matter how many turns apart they are, and
+ * the request then carries two `tool_use` blocks and two `tool_result` blocks
+ * under that one handle. Providers that hand out ids from a per-message counter
+ * (`call_0`, `chatcmpl-tool-0`) produce exactly that on their second tool turn.
+ * Ids already stored on the branch are therefore taken, and a first occurrence
+ * that collides with one is renamed like an in-message repeat.
+ *
+ * `takenIds` must exclude the in-flight partial of the message being finalized:
+ * it is this same message, so its ids are not history, and counting them would
+ * rename every call in the turn. Ids recorded only in `incompleteToolCalls` are
+ * not counted either: that ledger names a call that was never run and has no
+ * result, so nothing pairs against it.
  */
-function disambiguateToolCallIds(message: AssistantMessage): AssistantMessage {
+function disambiguateToolCallIds(message: AssistantMessage, takenIds: ReadonlySet<string>): AssistantMessage {
 	const seen = new Set<string>();
 	let content: AssistantMessage["content"] | undefined;
 	for (const [index, block] of message.content.entries()) {
 		if (block.type !== "toolCall") continue;
-		if (!seen.has(block.id)) {
+		if (!seen.has(block.id) && !takenIds.has(block.id)) {
 			seen.add(block.id);
 			continue;
 		}
 		const taken = (candidate: string): boolean =>
-			seen.has(candidate) || message.content.some(other => other.type === "toolCall" && other.id === candidate);
+			seen.has(candidate) ||
+			takenIds.has(candidate) ||
+			message.content.some(other => other.type === "toolCall" && other.id === candidate);
 		let suffix = 2;
 		while (taken(`${block.id}_${suffix}`)) suffix += 1;
 		const unique = `${block.id}_${suffix}`;
@@ -1869,6 +1883,25 @@ function disambiguateToolCallIds(message: AssistantMessage): AssistantMessage {
 		content[index] = { ...block, id: unique };
 	}
 	return content ? { ...message, content } : message;
+}
+
+/**
+ * Every tool-call id already stored on this branch, for {@link disambiguateToolCallIds}.
+ *
+ * `skipTrailing` drops the last message, which is the in-flight partial of the
+ * message being finalized (the loop appends it and then replaces it in place).
+ */
+function storedToolCallIds(messages: readonly AgentMessage[], skipTrailing: boolean): Set<string> {
+	const ids = new Set<string>();
+	const end = skipTrailing ? messages.length - 1 : messages.length;
+	for (let index = 0; index < end; index++) {
+		const message = messages[index];
+		if (message.role !== "assistant") continue;
+		for (const block of message.content) {
+			if (block.type === "toolCall") ids.add(block.id);
+		}
+	}
+	return ids;
 }
 
 function recoverTransientErrorToolTurn(
@@ -1992,7 +2025,10 @@ function emitAbortedAssistantMessage(
 	// Only tool calls that reached `toolcall_end` survive abort/error replay. A
 	// labeled user interrupt still surfaces through `errorMessage`, but partial
 	// tool arguments are unsafe to keep and can carry incomplete provider IDs.
-	const retained = disambiguateToolCallIds(retainCompletedToolCalls(base, completedToolCallIds));
+	const retained = disambiguateToolCallIds(
+		retainCompletedToolCalls(base, completedToolCallIds),
+		storedToolCallIds(context.messages, addedPartial),
+	);
 	const scopedAbort = toolScopedAbortReason(requestSignal);
 	const toolCallAbortMessages = scopedAbort ? buildToolCallAbortMessages(retained, scopedAbort) : undefined;
 	if (toolCallAbortMessages) {
