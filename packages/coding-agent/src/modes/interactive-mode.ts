@@ -103,6 +103,7 @@ import {
 	resolvePlanTitle,
 } from "../plan-mode/approved-plan";
 import { DEFAULT_PLAN_FILE_URL } from "../plan-mode/plan-file-url";
+import { resolvePlanFilePath } from "../plan-mode/plan-path";
 import { planModePrompts } from "../prompts/plan-mode/rows";
 import { type AgentRegistry, MAIN_AGENT_ID } from "../registry/agent-registry";
 import {
@@ -126,7 +127,6 @@ import { formatTaskId } from "../task/render";
 import type { ConfiguredThinkingLevel } from "../thinking";
 import type { LspStartupServerInfo } from "../tools";
 import { hasForegroundBashWait, onForegroundBashWaitChange } from "../tools/bash-foreground-registry";
-import { normalizeLocalScheme } from "../tools/path-utils";
 import { replaceTabs, TRUNCATE_LENGTHS, truncateToWidth } from "../tools/render-utils";
 import { type ResolveToolDetails, runResolveInvocation } from "../tools/resolve";
 import { boundedTodoPreviewText, formatPhaseDisplayName, todoMatchesAnyDescription } from "../tools/todo";
@@ -2392,14 +2392,13 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	#resolvePlanFilePath(planFilePath: string): string {
-		if (planFilePath.startsWith("local:")) {
-			const normalized = normalizeLocalScheme(planFilePath);
-			return resolveLocalUrlToPath(normalized, {
+		return resolvePlanFilePath(planFilePath, {
+			localProtocol: {
 				getArtifactsDir: () => this.sessionManager.getArtifactsDir(),
 				getSessionId: () => this.sessionManager.getSessionId(),
-			});
-		}
-		return path.resolve(this.sessionManager.getCwd(), planFilePath);
+			},
+			cwd: this.sessionManager.getCwd(),
+		});
 	}
 
 	#updatePlanModeStatus(): void {

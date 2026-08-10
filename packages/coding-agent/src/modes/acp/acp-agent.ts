@@ -56,13 +56,14 @@ import { buildSkillPromptMessage, parseSkillInvocation } from "../../extensibili
 import { loadSlashCommands } from "../../extensibility/slash-commands";
 // The owning module, not the `internal-urls` barrel: the barrel re-exports every protocol
 // handler and reaches hundreds of modules.
-import { listLocalPlanFileUrls, resolveLocalUrlToPath } from "../../internal-urls/local-protocol";
+import { listLocalPlanFileUrls } from "../../internal-urls/local-protocol";
 import { MCPManager } from "../../mcp/manager";
 import type { MCPServerConfig } from "../../mcp/types";
 import { loadAllExtensions } from "../../modes/components/extensions/state-manager";
 import { theme } from "../../modes/theme/theme";
 import { type PlanApprovalDetails, resolveApprovedPlan } from "../../plan-mode/approved-plan";
 import { DEFAULT_PLAN_FILE_URL } from "../../plan-mode/plan-file-url";
+import { resolvePlanFilePath } from "../../plan-mode/plan-path";
 import type { AgentSession, AgentSessionEvent } from "../../session/agent-session";
 import { BlobStore, resolveImageDataSync } from "../../session/blob-store";
 import { abortDetached } from "../../session/detached-abort";
@@ -78,7 +79,6 @@ import {
 	getConfiguredThinkingLevelMetadata,
 	parseConfiguredThinkingLevel,
 } from "../../thinking";
-import { normalizeLocalScheme } from "../../tools/path-utils";
 import { runResolveInvocation } from "../../tools/resolve";
 import { ToolError } from "../../tools/tool-errors";
 import {
@@ -1751,14 +1751,13 @@ export class AcpAgent implements Agent {
 	}
 
 	#resolveAcpPlanFilePath(session: AgentSession, planFilePath: string): string {
-		if (planFilePath.startsWith("local:")) {
-			const normalized = normalizeLocalScheme(planFilePath);
-			return resolveLocalUrlToPath(normalized, {
+		return resolvePlanFilePath(planFilePath, {
+			localProtocol: {
 				getArtifactsDir: () => session.sessionManager.getArtifactsDir(),
 				getSessionId: () => session.sessionManager.getSessionId(),
-			});
-		}
-		return path.resolve(session.sessionManager.getCwd(), planFilePath);
+			},
+			cwd: session.sessionManager.getCwd(),
+		});
 	}
 
 	async #readAcpPlanFile(session: AgentSession, planFilePath: string): Promise<string | null> {
