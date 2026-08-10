@@ -27,7 +27,7 @@ import tipsText from "./tips.txt" with { type: "text" };
 
 /** Optional gate prefix on a tips.txt line: `[gate:magicKeywords.enabled]`.
  *  A gated tip is shown only while that boolean setting is true — a tip that
- *  says "type `orchestrate` and watch it glow" is a lie when magic keywords
+ *  says "type `orchestratez` and watch it glow" is a lie when magic keywords
  *  are disabled, and the hero must never advertise behavior the user turned
  *  off. */
 const TIP_GATE = /^\[gate:([a-zA-Z0-9.]+)\]\s*/;

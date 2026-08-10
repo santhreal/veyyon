@@ -259,7 +259,7 @@ export const INTERACTION_SETTINGS = {
 			tab: "interaction",
 			group: "Magic Keywords",
 			label: "Enable Magic Keywords",
-			description: "Enable hidden notices for standalone ultrathink, orchestrate, and workflowz keywords",
+			description: "Enable hidden notices for standalone ultrathink, orchestratez, and workflowz keywords",
 		},
 	},
 
@@ -281,7 +281,7 @@ export const INTERACTION_SETTINGS = {
 			tab: "interaction",
 			group: "Magic Keywords",
 			label: "Orchestrate Keyword",
-			description: "Let standalone orchestrate append its hidden multi-agent orchestration notice",
+			description: "Let standalone orchestratez append its hidden multi-agent orchestration notice",
 		},
 	},
 

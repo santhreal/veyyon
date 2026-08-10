@@ -27,26 +27,33 @@ function render(text: string): string {
 
 describe("UserMessageComponent magic-keyword highlighting", () => {
 	it("gradient-paints a magic keyword in the rendered (sent) message bubble", () => {
-		const raw = render("please orchestrate the rollout");
+		const raw = render("please orchestratez the rollout");
 		// Visible text is preserved.
-		expect(Bun.stripANSI(raw)).toContain("please orchestrate the rollout");
+		expect(Bun.stripANSI(raw)).toContain("please orchestratez the rollout");
 		// The keyword is gradient-painted: a per-character foreground sequence is emitted,
 		// and the word no longer survives as a contiguous run in the rendered bytes.
 		expect(raw).toContain("\x1b[38");
-		expect(raw).not.toContain("orchestrate");
+		expect(raw).not.toContain("orchestratez");
+	});
+
+	// The ordinary verb is not a keyword, so the bubble must render it as plain
+	// prose: the glow is what tells the operator a hidden notice was attached.
+	it("does not paint the ordinary verb the keyword was built from", () => {
+		const raw = render("please orchestrate the rollout");
+		expect(raw).toContain("orchestrate");
 	});
 
 	it("does not paint a keyword inside an inline code span", () => {
-		const raw = render("ship the `orchestrate` helper");
-		expect(Bun.stripANSI(raw)).toContain("orchestrate");
+		const raw = render("ship the `orchestratez` helper");
+		expect(Bun.stripANSI(raw)).toContain("orchestratez");
 		// Code spans render through the code style as a single run — the word stays intact.
-		expect(raw).toContain("orchestrate");
+		expect(raw).toContain("orchestratez");
 	});
 
 	it("does not paint a keyword inside a fenced code block", () => {
-		const raw = render("intro\n```\norchestrate\n```");
-		expect(Bun.stripANSI(raw)).toContain("orchestrate");
-		expect(raw).toContain("orchestrate");
+		const raw = render("intro\n```\norchestratez\n```");
+		expect(Bun.stripANSI(raw)).toContain("orchestratez");
+		expect(raw).toContain("orchestratez");
 	});
 
 	it("emits no OSC 133 prompt-zone markers", () => {
