@@ -285,18 +285,46 @@ function frameConnectMessage(data: Uint8Array, flags = 0): Buffer {
 	return frame;
 }
 
-function parseConnectEndStream(data: Uint8Array): Error | null {
+/**
+ * A Connect/gRPC stream failure, mapped so the shared classifier can read it.
+ *
+ * THE WIRE SAYS THIS TWICE, IN TWO SPELLINGS: the end-stream JSON trailer carries
+ * the code by name, the HTTP/2 trailers carry the numeric `grpc-status`. Both mean
+ * the same failure, and both used to arrive as a bare `ProviderResponseError` with
+ * an `envelope` kind, which classifies as nothing at all. So an `unavailable` or
+ * an `internal` from Cursor failed the turn outright while the identical code from
+ * Devin (same Connect protocol, same trailer) was retried and recovered.
+ * {@link AIError.connectFailureStatus} is the one table both providers read; a code
+ * it cannot place is a fault of the request itself and stays terminal.
+ *
+ * Exported for tests: the mapping is the whole retry decision for a Cursor stream
+ * failure, and it has to be assertable next to Devin's for the same codes.
+ */
+export function cursorStreamFailure(code: string, message: string, label: string): Error {
+	const text = `${label} ${code}: ${message}`;
+	const failureStatus = AIError.connectFailureStatus({ code, message });
+	if (failureStatus !== undefined) return new AIError.CursorApiError(text, failureStatus);
+	return new AIError.ProviderResponseError(text, { provider: "cursor", kind: "envelope" });
+}
+
+export function parseConnectEndStream(data: Uint8Array): Error | null {
 	try {
 		const payload = JSON.parse(new TextDecoder().decode(data));
 		const error = payload?.error;
 		if (error) {
 			const code = typeof error.code === "string" ? error.code : "unknown";
 			const message = typeof error.message === "string" ? error.message : "Unknown error";
-			return new AIError.ProviderResponseError(`Connect error ${code}: ${message}`, { kind: "envelope" });
+			return cursorStreamFailure(code, message, "Connect error");
 		}
 		return null;
 	} catch {
-		return new AIError.ProviderResponseError("Failed to parse Connect end stream", { kind: "envelope" });
+		// An unreadable end-stream frame means the terminal event never arrived in a
+		// form this can act on, which is an incomplete stream and not a protocol
+		// violation: the bytes were corrupted or truncated in transit.
+		return new AIError.ProviderResponseError("Failed to parse Connect end stream", {
+			provider: "cursor",
+			kind: "incomplete-stream",
+		});
 	}
 }
 
@@ -678,12 +706,7 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 					const msg = trailers["grpc-message"];
 					if (status && status !== "0") {
 						void closeDebugLog().finally(() => {
-							reject(
-								new AIError.ProviderResponseError(
-									`gRPC error ${status}: ${decodeURIComponent(String(msg || ""))}`,
-									{ kind: "envelope" },
-								),
-							);
+							reject(cursorStreamFailure(String(status), decodeURIComponent(String(msg || "")), "gRPC error"));
 						});
 					}
 				});

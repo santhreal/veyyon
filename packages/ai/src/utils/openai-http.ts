@@ -82,8 +82,10 @@ export async function postOpenAIStream<TEvent>(init: OpenAIStreamRequestInit): P
 		throw await captureOpenAIHttpError(response);
 	}
 	if (!response.body) {
+		// A 2xx with no body is an empty body, not a malformed envelope: nothing was
+		// produced, so the request is safe to run again.
 		throw new AIError.ProviderResponseError(`OpenAI stream response has no body (status ${response.status})`, {
-			kind: "envelope",
+			kind: "empty-body",
 		});
 	}
 	return {
