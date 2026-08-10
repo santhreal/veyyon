@@ -533,7 +533,18 @@ describe("AgentSession retry delay cap", () => {
 		expect(last.stopReason).toBe("stop");
 	});
 
-	it("does not auto-retry a timeout after streaming a complete write tool call", async () => {
+	/**
+	 * A transport that dies after streaming a complete tool call has applied
+	 * nothing: the agent loop reaches `tool.execute()` only on the runnable-stop
+	 * branch, so an `error` stop pairs every retained call with a never-ran
+	 * placeholder. Retrying it replays a batch where no side effect happened,
+	 * which is the difference between a transport fault and a dead turn.
+	 *
+	 * The unsafe half is the row below: a call answered by a result that is not a
+	 * never-ran placeholder ran by definition, and replaying it could double-apply
+	 * the write.
+	 */
+	it("retries a timeout that killed a complete write tool call before it ran", async () => {
 		const model = getBundledModel("anthropic", "claude-sonnet-4-5");
 		if (!model) {
 			throw new Error("Expected bundled Anthropic test model to exist");
@@ -571,7 +582,7 @@ describe("AgentSession retry delay cap", () => {
 					};
 					const toolCall: ToolCall = {
 						type: "toolCall",
-						id: "tc-write",
+						id: `tc-write-${streamCalls}`,
 						name: "write",
 						arguments: { path: "doc/report.md", content: "large report chunk" },
 					};
@@ -604,6 +615,7 @@ describe("AgentSession retry delay cap", () => {
 			"compaction.enabled": false,
 			"retry.baseDelayMs": 5,
 			"retry.maxDelayMs": 5_000,
+			"retry.maxRetries": 1,
 		});
 		settings.setModelRole("default", `${model.provider}/${model.id}`);
 
@@ -624,10 +636,113 @@ describe("AgentSession retry delay cap", () => {
 		await session.prompt("Write a large report");
 		await session.waitForIdle();
 
+		// One retry, then the cap: the second death is final.
+		expect(streamCalls).toBe(2);
+		expect(retryStartEvents).toHaveLength(1);
+		expect(retryEndEvents).toHaveLength(1);
+		const lastError = [...session.agent.state.messages]
+			.reverse()
+			.find((message): message is AssistantMessage => message.role === "assistant");
+		expect(lastError?.stopReason).toBe("error");
+		expect(lastError?.errorMessage).toBe("The operation timed out.");
+	});
+
+	it("does not retry a timeout whose tool call already carries a real result", async () => {
+		const model = getBundledModel("anthropic", "claude-sonnet-4-5");
+		if (!model) {
+			throw new Error("Expected bundled Anthropic test model to exist");
+		}
+
+		let streamCalls = 0;
+		const agent = new Agent({
+			getApiKey: model => `${model.provider}-test-key`,
+			initialState: {
+				model,
+				systemPrompt: ["Test"],
+				tools: [],
+				messages: [],
+			},
+			streamFn: requestedModel => {
+				streamCalls += 1;
+				const stream = new AssistantMessageEventStream();
+				queueMicrotask(() => {
+					const partial: AssistantMessage = {
+						role: "assistant",
+						content: [],
+						api: requestedModel.api,
+						provider: requestedModel.provider,
+						model: requestedModel.id,
+						usage: {
+							input: 0,
+							output: 0,
+							cacheRead: 0,
+							cacheWrite: 0,
+							totalTokens: 0,
+							cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+						},
+						stopReason: "stop",
+						timestamp: Date.now(),
+					};
+					const toolCall: ToolCall = {
+						type: "toolCall",
+						id: "tc-write-ran",
+						name: "write",
+						arguments: { path: "doc/report.md", content: "large report chunk" },
+					};
+					partial.content.push(toolCall);
+					stream.push({ type: "start", partial });
+					stream.push({ type: "toolcall_end", contentIndex: 0, toolCall, partial });
+					stream.push({
+						type: "error",
+						reason: "error",
+						error: {
+							...partial,
+							stopReason: "error",
+							errorMessage: "The operation timed out.",
+							duration: 1000,
+						},
+					});
+				});
+				return stream;
+			},
+		});
+
+		// A result for the batch's call that is NOT a never-ran placeholder: the
+		// write applied, so replaying the batch could apply it twice.
+		agent.appendMessage({
+			role: "toolResult",
+			toolCallId: "tc-write-ran",
+			toolName: "write",
+			content: [{ type: "text", text: "wrote doc/report.md" }],
+			isError: false,
+			timestamp: Date.now(),
+		});
+
+		const settings = Settings.isolated({
+			"compaction.enabled": false,
+			"retry.baseDelayMs": 5,
+			"retry.maxDelayMs": 5_000,
+			"retry.maxRetries": 1,
+		});
+		settings.setModelRole("default", `${model.provider}/${model.id}`);
+
+		session = new AgentSession({
+			agent,
+			sessionManager: SessionManager.inMemory(),
+			settings,
+			modelRegistry,
+		});
+
+		const retryStartEvents: AutoRetryStartEvent[] = [];
+		session.subscribe(event => {
+			if (event.type === "auto_retry_start") retryStartEvents.push(event);
+		});
+
+		await session.prompt("Write a large report");
+		await session.waitForIdle();
+
 		expect(streamCalls).toBe(1);
 		expect(retryStartEvents).toHaveLength(0);
-		expect(retryEndEvents).toHaveLength(0);
-		expect(session.agent.state.messages.at(-1)?.role).toBe("toolResult");
 		const lastError = [...session.agent.state.messages]
 			.reverse()
 			.find((message): message is AssistantMessage => message.role === "assistant");

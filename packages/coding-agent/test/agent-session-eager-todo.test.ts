@@ -1,8 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import { Agent, type AgentMessage, type AgentTool } from "@veyyon/agent-core";
-import type { AssistantMessage, TextContent, ToolCall } from "@veyyon/ai";
-import * as ai from "@veyyon/ai";
+import type { AssistantMessage, Context, TextContent, ToolCall } from "@veyyon/ai";
 import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { getBundledModel } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
@@ -94,6 +93,23 @@ function getMessageText(message: AgentMessage): string {
 		.join("\n");
 }
 
+/**
+ * The context a side request carried. The replan title refresh runs on the
+ * session's side transport (`sideStreamFn`), which is what puts the operator's
+ * watchdogs and in-flight cap on it, so the title request is observed there.
+ * Stubbing `completeSimple` instead observes a seam the session no longer uses:
+ * the assertion passes while the real request leaves for the network.
+ */
+function firstMessageText(context: Context): string {
+	const content = context.messages[0]?.content;
+	if (typeof content === "string") return content;
+	if (!Array.isArray(content)) return "";
+	return content
+		.filter(isTextContentBlock)
+		.map(block => block.text)
+		.join("\n");
+}
+
 describe("AgentSession eager todo enforcement", () => {
 	let tempDir: TempDir;
 	let session: AgentSession;
@@ -101,6 +117,8 @@ describe("AgentSession eager todo enforcement", () => {
 	let scriptedResponses: AssistantMessage[] = [];
 	let authStorage: AuthStorage | undefined;
 	const observedCalls: ObservedPromptCall[] = [];
+	let sideResponses: AssistantMessage[] = [];
+	const sideCalls: Context[] = [];
 
 	async function createSession(settingsOverride: Record<string, unknown> = {}): Promise<void> {
 		const model = getBundledModel("anthropic", "claude-sonnet-4-5");
@@ -182,6 +200,16 @@ describe("AgentSession eager todo enforcement", () => {
 			settings,
 			modelRegistry,
 			toolRegistry,
+			sideStreamFn: (_model, context) => {
+				sideCalls.push(context);
+				const response = sideResponses.shift() ?? createAssistantMessage("<title>Untitled</title>");
+				const stream = new AssistantMessageEventStream();
+				queueMicrotask(() => {
+					stream.push({ type: "start", partial: response });
+					stream.push({ type: "done", reason: "stop", message: response });
+				});
+				return stream;
+			},
 		});
 	}
 
@@ -192,6 +220,8 @@ describe("AgentSession eager todo enforcement", () => {
 		streamCallCount = 0;
 		scriptedResponses = [];
 		observedCalls.length = 0;
+		sideResponses = [];
+		sideCalls.length = 0;
 		await createSession(settingsOverride);
 	}
 
@@ -211,6 +241,8 @@ describe("AgentSession eager todo enforcement", () => {
 		streamCallCount = 0;
 		scriptedResponses = [];
 		observedCalls.length = 0;
+		sideResponses = [];
+		sideCalls.length = 0;
 		await createSession();
 	});
 
@@ -295,10 +327,7 @@ describe("AgentSession eager todo enforcement", () => {
 		session.sessionManager.appendMessage(priorUser);
 		session.agent.appendMessage(priorAssistant);
 		session.sessionManager.appendMessage(priorAssistant);
-		const completeSimpleMock = vi.spyOn(ai, "completeSimple").mockResolvedValue({
-			stopReason: "stop",
-			content: [{ type: "text", text: "<title>Parser recovery replan</title>" }],
-		} as never);
+		sideResponses = [createAssistantMessage("<title>Parser recovery replan</title>")];
 		scriptedResponses = [
 			createToolCallAssistantMessage("todo", {
 				op: "init",
@@ -311,9 +340,8 @@ describe("AgentSession eager todo enforcement", () => {
 		await session.prompt("replan parser diagnostics");
 		await titleApplied;
 
-		expect(completeSimpleMock).toHaveBeenCalledTimes(1);
-		const request = completeSimpleMock.mock.calls[0]?.[1] as { messages?: Array<{ content?: string }> } | undefined;
-		const titleInput = request?.messages?.[0]?.content;
+		expect(sideCalls).toHaveLength(1);
+		const titleInput = firstMessageText(sideCalls[0] as Context);
 		expect(titleInput).toContain("fix parser recovery");
 		expect(titleInput).toContain("I found the parser recovery path.");
 		expect(titleInput).toContain("The recovery heuristic should drive the replan title.");
@@ -335,10 +363,7 @@ describe("AgentSession eager todo enforcement", () => {
 		};
 		session.agent.appendMessage(priorUser);
 		session.sessionManager.appendMessage(priorUser);
-		const completeSimpleMock = vi.spyOn(ai, "completeSimple").mockResolvedValue({
-			stopReason: "stop",
-			content: [{ type: "text", text: "<title>plan/parser-diagnostics</title>" }],
-		} as never);
+		sideResponses = [createAssistantMessage("<title>plan/parser-diagnostics</title>")];
 		scriptedResponses = [
 			createToolCallAssistantMessage("todo", {
 				op: "init",
@@ -351,16 +376,14 @@ describe("AgentSession eager todo enforcement", () => {
 		await session.prompt("replan parser diagnostics");
 		await titleApplied;
 
-		expect(completeSimpleMock).toHaveBeenCalledTimes(1);
-		const request = completeSimpleMock.mock.calls[0]?.[1] as { systemPrompt?: string[] } | undefined;
-		expect(request?.systemPrompt?.[0]).toBe(customPrompt);
-		expect(request?.systemPrompt?.[1]).toContain("<title>");
+		expect(sideCalls).toHaveLength(1);
+		expect(sideCalls[0]?.systemPrompt?.[0]).toBe(customPrompt);
+		expect(sideCalls[0]?.systemPrompt?.[1]).toContain("<title>");
 	});
 
 	it("does not refresh todo-init titles when the current title is user-authored", async () => {
 		await recreateSession({ "title.refreshOnReplan": true });
 		await session.setSessionName("Manual parser title", "user");
-		const completeSimpleMock = vi.spyOn(ai, "completeSimple");
 		scriptedResponses = [
 			createToolCallAssistantMessage("todo", {
 				op: "init",
@@ -371,12 +394,11 @@ describe("AgentSession eager todo enforcement", () => {
 
 		await session.prompt("replan parser diagnostics");
 
-		expect(completeSimpleMock).not.toHaveBeenCalled();
+		expect(sideCalls).toEqual([]);
 		expect(session.sessionManager.getSessionName()).toBe("Manual parser title");
 	});
 
 	it("does not refresh todo-init titles when title refresh on replan is disabled", async () => {
-		const completeSimpleMock = vi.spyOn(ai, "completeSimple");
 		await session.setSessionName("Old auto title", "auto");
 		scriptedResponses = [
 			createToolCallAssistantMessage("todo", {
@@ -388,7 +410,7 @@ describe("AgentSession eager todo enforcement", () => {
 
 		await session.prompt("replan parser diagnostics");
 
-		expect(completeSimpleMock).not.toHaveBeenCalled();
+		expect(sideCalls).toEqual([]);
 		expect(session.sessionManager.getSessionName()).toBe("Old auto title");
 	});
 
