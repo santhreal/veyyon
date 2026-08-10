@@ -44,6 +44,7 @@ import { AgentSession, type AgentSessionEvent } from "@veyyon/coding-agent/sessi
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { convertToLlm } from "@veyyon/coding-agent/session/messages";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { MemorySessionStorage } from "@veyyon/coding-agent/session/session-storage";
 import { createSettingsAwareStreamFn } from "@veyyon/coding-agent/session/settings-stream-fn";
 import { wrapStreamFnWithProviderConcurrency } from "@veyyon/coding-agent/task/provider-concurrency";
 import { TempDir } from "@veyyon/utils";
@@ -416,6 +417,13 @@ export interface SimulationOptions {
 	providerConcurrency?: boolean;
 	/** Stream-matched rule engine, when a scenario needs rules to fire. */
 	ttsrManager?: TtsrManager;
+	/**
+	 * Write the transcript through the real session writer into an in-memory
+	 * store, so {@link Simulation.reopen} can read it back the way a new process
+	 * does. Off by default: a simulation that never reopens should not pay for the
+	 * writer, and `inMemory` (persist off) is what every other scenario runs on.
+	 */
+	persist?: boolean;
 }
 
 export interface Simulation {
@@ -427,6 +435,14 @@ export interface Simulation {
 	eventsOfType<T extends AgentSessionEvent["type"]>(type: T): Array<Extract<AgentSessionEvent, { type: T }>>;
 	/** Number of provider calls the simulation has served. */
 	providerCalls(): number;
+	/** The file the transcript is written to, when `persist` is on. */
+	sessionFile(): string | undefined;
+	/**
+	 * Reopen the stored transcript the way a new process does: a second agent and
+	 * session, over a second manager, reading the same store. Requires `persist`.
+	 * The returned simulation owns its own session and must be disposed too.
+	 */
+	reopen(): Promise<Simulation>;
 	dispose(): Promise<void>;
 }
 
@@ -448,29 +464,28 @@ function simulationSettings(overrides: Record<string, unknown> | undefined): Set
 	});
 }
 
-export async function createSimulation(options: SimulationOptions): Promise<Simulation> {
-	installScript(options.script);
-	const tempDir = TempDir.createSync("@pi-simulation-");
-	const authStorage = await AuthStorage.create(`${tempDir.path()}/auth.db`);
-	// The session refuses to prompt a provider it holds no credential for, so
-	// the simulation registers a runtime key. Nothing reads it: the scripted
-	// module replaces the transport before any request is shaped.
-	authStorage.setRuntimeApiKey("amazon-bedrock", "simulation-key");
-	if (options.model?.provider) {
-		authStorage.setRuntimeApiKey(options.model.provider, "simulation-key");
-	}
-	const modelRegistry = new ModelRegistry(authStorage, `${tempDir.path()}/models.yml`);
-	const settings = simulationSettings(options.settings);
-	const sessionManager = SessionManager.inMemory(tempDir.path());
+/**
+ * Everything a session in one simulation shares with the session that reopens it:
+ * the same credentials, the same settings, the same tool list, and above all the
+ * same store, which is what makes a reopen read the bytes the first session wrote
+ * rather than a copy of its memory.
+ */
+interface SimulationScope {
+	tempDir: TempDir;
+	authStorage: AuthStorage;
+	storage: MemorySessionStorage;
+	settings: Settings;
+	modelRegistry: ModelRegistry;
+	tools: AgentTool[];
+	toolRegistry: Map<string, AgentTool>;
+	options: SimulationOptions;
+}
 
-	// The session keeps its own registry of every tool it can run, and several
-	// production paths ask it rather than the agent state: plan-mode convergence
-	// refuses to force a decision unless `ask` and `resolve` are both registered,
-	// and a renamed tool is resolved through it. A simulation whose registry was
-	// empty could not reach those paths at all, so the same list the agent gets is
-	// registered here, keyed by name exactly as production does.
-	const tools = options.tools ?? [];
-	const toolRegistry = new Map(tools.map(tool => [tool.name, tool]));
+function buildSimulation(scope: SimulationScope, ownsScope: boolean): Simulation {
+	const { options, settings, tools } = scope;
+	const sessionManager = options.persist
+		? SessionManager.create(scope.tempDir.path(), `${scope.tempDir.path()}/sessions`, scope.storage)
+		: SessionManager.inMemory(scope.tempDir.path(), scope.storage);
 
 	const baseStreamFn = createSettingsAwareStreamFn(settings);
 	// The loop asks the HOST for the turn's tool-choice directive; the session is
@@ -499,8 +514,8 @@ export async function createSimulation(options: SimulationOptions): Promise<Simu
 		agent,
 		sessionManager,
 		settings,
-		modelRegistry,
-		toolRegistry,
+		modelRegistry: scope.modelRegistry,
+		toolRegistry: scope.toolRegistry,
 		...(options.ttsrManager ? { ttsrManager: options.ttsrManager } : {}),
 	});
 	host = session;
@@ -512,19 +527,71 @@ export async function createSimulation(options: SimulationOptions): Promise<Simu
 	return {
 		session,
 		sessionManager,
-		modelRegistry,
+		modelRegistry: scope.modelRegistry,
 		events,
 		eventsOfType(type) {
 			return events.filter(event => event.type === type) as Array<Extract<AgentSessionEvent, { type: typeof type }>>;
 		},
 		providerCalls: () => callCount,
+		sessionFile: () => sessionManager.getSessionFile(),
+		async reopen() {
+			if (!options.persist) throw new Error("reopen needs `persist: true`: nothing was written to read back");
+			const sessionFile = sessionManager.getSessionFile();
+			if (!sessionFile) throw new Error("the simulation stored no session file");
+			// The writer is asynchronous, so a reopen that skipped this would read a
+			// prefix of the transcript and report a loss the product did not have.
+			await sessionManager.flush();
+			const reopened = buildSimulation(scope, false);
+			if (!(await reopened.session.switchSession(sessionFile))) {
+				await reopened.dispose();
+				throw new Error(`reopening ${sessionFile} was refused`);
+			}
+			return reopened;
+		},
 		async dispose() {
 			await session.dispose();
-			authStorage.close();
-			tempDir.removeSync();
+			// The scope belongs to the simulation that created it: a reopened session
+			// disposing the shared credentials or the temp dir would pull them out from
+			// under the original, whose `dispose` runs in the same `afterEach`.
+			if (!ownsScope) return;
+			scope.authStorage.close();
+			scope.tempDir.removeSync();
 			resetScript();
 		},
 	};
+}
+
+export async function createSimulation(options: SimulationOptions): Promise<Simulation> {
+	installScript(options.script);
+	const tempDir = TempDir.createSync("@pi-simulation-");
+	const authStorage = await AuthStorage.create(`${tempDir.path()}/auth.db`);
+	// The session refuses to prompt a provider it holds no credential for, so
+	// the simulation registers a runtime key. Nothing reads it: the scripted
+	// module replaces the transport before any request is shaped.
+	authStorage.setRuntimeApiKey("amazon-bedrock", "simulation-key");
+	if (options.model?.provider) {
+		authStorage.setRuntimeApiKey(options.model.provider, "simulation-key");
+	}
+	// The session keeps its own registry of every tool it can run, and several
+	// production paths ask it rather than the agent state: plan-mode convergence
+	// refuses to force a decision unless `ask` and `resolve` are both registered,
+	// and a renamed tool is resolved through it. A simulation whose registry was
+	// empty could not reach those paths at all, so the same list the agent gets is
+	// registered here, keyed by name exactly as production does.
+	const tools = options.tools ?? [];
+	return buildSimulation(
+		{
+			tempDir,
+			authStorage,
+			storage: new MemorySessionStorage(),
+			settings: simulationSettings(options.settings),
+			modelRegistry: new ModelRegistry(authStorage, `${tempDir.path()}/models.yml`),
+			tools,
+			toolRegistry: new Map(tools.map(tool => [tool.name, tool])),
+			options,
+		},
+		true,
+	);
 }
 
 /**
