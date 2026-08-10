@@ -72,6 +72,7 @@ import {
 	renderTailElisionArtifact,
 	renderTailElisionMarker,
 	resolveBudgetReserveTokens,
+	resolveCompactionBoundaryIndex,
 	resolveServerCompactionTransport,
 	resolveThresholdTokens,
 	resolveThresholdWithOrigin,
@@ -19152,12 +19153,23 @@ export class AgentSession {
 
 	/**
 	 * Get session statistics.
+	 *
+	 * Spend covers the messages the latest compaction summarized away as well as
+	 * the live context. Summing the context alone silently un-spends every turn
+	 * behind the boundary: after one compaction `/session` reported half the cost
+	 * the session had actually paid, and goal mode reads the same total as its
+	 * token budget, so a long run bought itself budget back every time it
+	 * compacted. `contextUsage` below still reports the LIVE context: what sits in
+	 * the window and what has been spent are two different questions with one
+	 * owner each.
 	 */
 	getSessionStats(): SessionStats {
 		const state = this.state;
-		const userMessages = state.messages.filter(m => m.role === "user").length;
-		const assistantMessages = state.messages.filter(m => m.role === "assistant").length;
-		const toolResults = state.messages.filter(m => m.role === "toolResult").length;
+		const summarizedAway = this.#messagesSummarizedAway();
+		const messages = summarizedAway.length > 0 ? [...summarizedAway, ...state.messages] : state.messages;
+		const userMessages = messages.filter(m => m.role === "user").length;
+		const assistantMessages = messages.filter(m => m.role === "assistant").length;
+		const toolResults = messages.filter(m => m.role === "toolResult").length;
 
 		let toolCalls = 0;
 		let totalInput = 0;
@@ -19177,7 +19189,7 @@ export class AgentSession {
 			return usage as Usage;
 		};
 
-		for (const message of state.messages) {
+		for (const message of messages) {
 			if (message.role === "assistant") {
 				const assistantMsg = message as AssistantMessage;
 				toolCalls += assistantMsg.content.filter(c => c.type === "toolCall").length;
@@ -19213,7 +19225,7 @@ export class AgentSession {
 			assistantMessages,
 			toolCalls,
 			toolResults,
-			totalMessages: state.messages.length,
+			totalMessages: messages.length,
 			tokens: {
 				input: totalInput,
 				output: totalOutput,
@@ -19226,6 +19238,28 @@ export class AgentSession {
 			premiumRequests: totalPremiumRequests,
 			contextUsage: this.getContextUsage(),
 		};
+	}
+
+	/**
+	 * Messages the latest compaction summarized away, oldest first.
+	 *
+	 * They are gone from the live context by design and they are still what this
+	 * session paid for, so spend accounting adds them back. Everything from the
+	 * boundary forward is already in the context, so nothing is counted twice, and
+	 * an earlier compaction's own summary is an ENTRY rather than a message, so a
+	 * session that compacted several times counts each range once. The stored
+	 * branch is also what a resume reads, so the total survives a restart.
+	 */
+	#messagesSummarizedAway(): AgentMessage[] {
+		const branch = this.sessionManager.getBranch();
+		const boundary = resolveCompactionBoundaryIndex(branch, getLatestCompactionEntry(branch)?.firstKeptEntryId);
+		if (boundary <= 0) return [];
+		const summarized: AgentMessage[] = [];
+		for (let index = 0; index < boundary; index++) {
+			const entry = branch[index];
+			if (entry.type === "message") summarized.push(entry.message);
+		}
+		return summarized;
 	}
 
 	/**

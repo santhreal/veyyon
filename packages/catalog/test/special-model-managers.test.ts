@@ -46,10 +46,16 @@ describe("openaiCodexModelManagerOptions", () => {
 });
 
 describe("cursorModelManagerOptions", () => {
-	it("namespaces the cache under the max-mode-v2 id even without a credential", () => {
+	// The version suffix is bumped whenever the resolved windows change, because the
+	// model cache is keyed by `cacheProviderId` and a stale entry decides when
+	// compaction fires for up to the cache TTL. So the row pins what must hold
+	// across a bump: the namespace is versioned, and it is never the bare provider
+	// id that the vendor rows are cached under.
+	it("namespaces the cache under a versioned max-mode id even without a credential", () => {
 		const options = cursorModelManagerOptions();
 		expect(options.providerId).toBe("cursor");
-		expect(options.cacheProviderId).toBe("cursor:max-mode-v2");
+		expect(options.cacheProviderId).toMatch(/^cursor:max-mode-v\d+$/);
+		expect(options.cacheProviderId).not.toBe(options.providerId);
 		expect(options.fetchDynamicModels).toBeUndefined();
 	});
 
