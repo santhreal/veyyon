@@ -1689,6 +1689,20 @@ export class SessionManager {
 	}
 
 	/**
+	 * True when the session file holds a line this manager never wrote.
+	 *
+	 * The question every full-file operation has to ask before it destroys what is
+	 * there, and a delete is the widest of those. It re-reads, so the answer is
+	 * about the bytes on disk now rather than about the last publish, and the
+	 * re-read is what tells the operator once that a second session is writing this
+	 * file.
+	 */
+	async holdsForeignEntries(): Promise<boolean> {
+		await this.#refreshForeignLines();
+		return this.#foreignLines.length > 0;
+	}
+
+	/**
 	 * Drop only session files that this manager saw materialized for a draft and
 	 * that still contain no durable conversation or extension state. Explicit
 	 * ensureOnDisk() records (ACP session/new, handoff) stay resumable.
@@ -1715,6 +1729,18 @@ export class SessionManager {
 		const draftPath = this.#draftPath();
 		if (draftPath && this.#storage.existsStateSync(draftPath) !== "absent") return;
 		if (!this.#entries.every(isDraftOnlyMetadataEntry)) {
+			await this.#clearDraftOnlySessionMarker();
+			this.#draftOnlySessionCleanupArmed = false;
+			return;
+		}
+		// A DELETE IS THE WIDEST FULL-FILE OPERATION, so it asks the same question a
+		// publish asks: is any line in this file not ours? A draft-only session's file
+		// is the newest one in its directory, which makes it exactly the file another
+		// window resumes, and this manager's own entries being draft-only says nothing
+		// about the turns that window appended to it. Dropping the session then
+		// deletes a real conversation, from a process that never held it and cannot
+		// report the loss.
+		if (await this.holdsForeignEntries()) {
 			await this.#clearDraftOnlySessionMarker();
 			this.#draftOnlySessionCleanupArmed = false;
 			return;
@@ -2945,6 +2971,11 @@ export async function cleanupEmptyMoveSession(
 		e => e.type === "message" && (e.message.role === "user" || e.message.role === "assistant"),
 	);
 	if (hasRealMessages) return;
+	// The same question the draft-only drop asks: this session having no real
+	// messages says nothing about the turns another window appended to the file it
+	// created. A `/move` session is a fresh file and therefore the newest one in its
+	// directory, which is exactly the file the other window resumes.
+	if (await sessionManager.holdsForeignEntries()) return;
 	try {
 		await sessionManager.dropSession(sessionFile);
 	} catch (err) {
