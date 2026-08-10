@@ -126,9 +126,18 @@ const SUMMARIZER_BEATS: readonly SummarizerBeat[] = [
 	},
 ];
 
-/** A tool whose result is big enough to be worth compacting. */
+/**
+ * A tool whose result is big enough to be worth compacting, and never
+ * byte-identical to its own earlier results: identical results are elided by the
+ * tier-0 dedup before compaction is considered, which would leave this file
+ * asserting the dedup instead of the crossing.
+ */
 function emitTool() {
-	return simTool("emit", async () => ({ content: [{ type: "text", text: `result. ${bulk(3000)}` }] }));
+	let call = 0;
+	return simTool("emit", async () => {
+		call += 1;
+		return { content: [{ type: "text", text: `result. ${bulk(3000)}call ${call}.` }] };
+	});
 }
 
 /** One request as the provider received it: its messages, and how many tools it carried. */

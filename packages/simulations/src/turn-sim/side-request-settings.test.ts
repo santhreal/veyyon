@@ -43,13 +43,10 @@
  * conversion, which its live half proves.
  */
 import { afterEach, describe, expect, it } from "bun:test";
-import { createSimulation, type Simulation, simTool } from "./harness";
+import { bulkTool, createSimulation, type Simulation } from "./harness";
 
 /** A window small enough that five prompts of tool output cross the trigger. */
 const CONTEXT_WINDOW = 16_000;
-/** About 4000 tokens of tool output a prompt. */
-const BULK = `worked. ${"tool output line. ".repeat(900)}`;
-
 const COMPACTING = {
 	"compaction.enabled": true,
 	"compaction.threshold": "85%",
@@ -78,7 +75,7 @@ async function requestsUnder(settings: Record<string, unknown>): Promise<Budgets
 	sim = await createSimulation({
 		model: { contextWindow: CONTEXT_WINDOW },
 		settings: { ...COMPACTING, ...settings },
-		tools: [simTool("work", async () => ({ content: [{ type: "text", text: BULK }] }))],
+		tools: [bulkTool()],
 		script: turn => {
 			const tools = turn.context.tools?.length ?? 0;
 			requests.push({

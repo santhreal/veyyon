@@ -34,9 +34,8 @@
  * the simulated api has no service-tier field.
  */
 import { afterEach, describe, expect, it } from "bun:test";
-import { createSimulation, type Simulation, simTool } from "./harness";
+import { bulkTool, createSimulation, type Simulation } from "./harness";
 
-const BULK = `worked. ${"tool output line. ".repeat(900)}`;
 const SUMMARY_TEXT = "SUMMARY-OF-THE-WORK";
 
 /** Every live simulation in this file, disposed newest first. */
@@ -136,7 +135,7 @@ describe("the tier a session is on, at runtime and after a resume", () => {
 				"compaction.remote": false,
 			},
 			model: { provider: "openai", contextWindow: 16_000 },
-			tools: [simTool("work", async () => ({ content: [{ type: "text", text: BULK }] }))],
+			tools: [bulkTool()],
 			script: turn => {
 				if ((turn.context.tools?.length ?? 0) === 0) {
 					turn.text(SUMMARY_TEXT);

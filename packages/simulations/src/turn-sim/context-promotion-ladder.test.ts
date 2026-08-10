@@ -71,7 +71,7 @@
  * an equal-window pair, and the resolver's unit tests own it.
  */
 import { afterEach, describe, expect, it } from "bun:test";
-import { createSimulation, type Simulation, simTool } from "./harness";
+import { bulkTool, createSimulation, type Simulation } from "./harness";
 import { describeViolations, pairingViolations, turnViolations } from "./invariants";
 
 const PRIMARY = "anthropic.claude-opus-4-7";
@@ -82,9 +82,6 @@ const TARGET_WINDOW = 40_000;
 /** Bedrock's wording. The classifier flags it as a context overflow. */
 const OVERFLOW_MESSAGE = "input is too long for requested model";
 const SUMMARY_TEXT = "SUMMARY-OF-THE-WORK";
-/** About 4000 tokens of tool output a prompt, so the 85% crossing is reached. */
-const BULK = `worked. ${"tool output line. ".repeat(900)}`;
-
 /**
  * The ladder, as an operator would write it in `models.yml`: two bundled models
  * overridden into windows a simulation can cross, and a promotion edge between
@@ -176,7 +173,7 @@ async function onTheLadder(
 	const simulation = await createSimulation({
 		settings: { ...PERCENT_TRIGGER, "contextPromotion.enabled": promotion },
 		modelsConfig: LADDER,
-		tools: [simTool("work", async () => ({ content: [{ type: "text", text: BULK }] }))],
+		tools: [bulkTool()],
 		script,
 	});
 	const primary = simulation.modelRegistry.find("amazon-bedrock", PRIMARY);

@@ -56,7 +56,7 @@
  * for an author field that has never existed.
  */
 import { afterEach, describe, expect, it } from "bun:test";
-import { createSimulation, type Simulation, simTool } from "./harness";
+import { bulkTool, createSimulation, type Simulation } from "./harness";
 import { describeViolations, pairingViolations, turnViolations } from "./invariants";
 
 /** The conversation's model. Its row recommends {@link RECOMMENDED}. */
@@ -66,9 +66,6 @@ const RECOMMENDED = "anthropic.claude-sonnet-5";
 /** What the operator names in `compaction.model`, which must win. */
 const CONFIGURED = "anthropic.claude-opus-4-8";
 const SUMMARY_TEXT = "SUMMARY-OF-THE-WORK";
-/** About 4000 tokens of tool output a prompt, so the 85% crossing is reached. */
-const BULK = `worked. ${"tool output line. ".repeat(900)}`;
-
 const SUMMARIZED_ELSEWHERE = {
 	providers: {
 		"amazon-bedrock": {
@@ -125,7 +122,7 @@ async function summarize(settings: Record<string, unknown>): Promise<Run> {
 	sim = await createSimulation({
 		settings: { ...PERCENT_TRIGGER, ...settings },
 		modelsConfig: SUMMARIZED_ELSEWHERE,
-		tools: [simTool("work", async () => ({ content: [{ type: "text", text: BULK }] }))],
+		tools: [bulkTool()],
 		script: turn => {
 			const tools = turn.context.tools?.length ?? 0;
 			served.push({
