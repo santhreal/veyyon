@@ -96,13 +96,18 @@ describe("compaction reserve provenance", () => {
 		expect(DEFAULT_RESERVE_TOKENS).toBe(16384);
 	});
 
-	it("prefers an explicit fixed thresholdTokens, clamped to [1, window - 1]", () => {
+	it("prefers an explicit fixed thresholdTokens, clamped to [1, the largest reachable trigger]", () => {
 		const cw = 10000;
 		const settings: CompactionSettings = { enabled: true, thresholdTokens: 4000, keepRecentTokens: 2000 };
 		// A fixed token limit wins over any percentage and is returned as-is when in range.
 		expect(resolveThresholdTokens(cw, settings)).toBe(4000);
-		// Over-window fixed value clamps to window - 1.
-		expect(resolveThresholdTokens(cw, { ...settings, thresholdTokens: 999_999 })).toBe(9999);
+		// An over-window fixed value caps at the auto point (window minus the resolved
+		// reserve), not one token below the window: a trigger inside the reserve can
+		// never fire, because the request that would reach it is refused first.
+		expect(resolveThresholdTokens(cw, { ...settings, thresholdTokens: 999_999 })).toBe(
+			cw - resolveBudgetReserveTokens(cw, settings),
+		);
+		expect(resolveThresholdTokens(cw, { ...settings, thresholdTokens: 999_999 })).toBe(8500);
 		// A zero/negative fixed value is not a valid fixed limit; it falls through.
 		expect(resolveThresholdTokens(cw, { ...settings, thresholdTokens: 0, thresholdPercent: 50 })).toBe(5000);
 	});

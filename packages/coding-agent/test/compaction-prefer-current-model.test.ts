@@ -198,7 +198,14 @@ describe("compaction prefers the current session model over modelRoles.default",
 		session = new AgentSession({
 			agent,
 			sessionManager: SessionManager.inMemory(),
-			settings: Settings.isolated({ "compaction.keepRecentTokens": 1, "compaction.strategy": "context-full" }),
+			// A cross-provider `compactionModel` is only reachable under `any-model`:
+			// `auto` refuses to spend an unrelated provider's credit unattended, which
+			// the last row here asserts from the other side.
+			settings: Settings.isolated({
+				"compaction.keepRecentTokens": 1,
+				"compaction.strategy": "context-full",
+				"compaction.modelFallbackStrategy": "any-model",
+			}),
 			modelRegistry,
 		});
 		session.subscribe(() => {});
@@ -274,7 +281,10 @@ describe("compaction prefers the current session model over modelRoles.default",
 		session = new AgentSession({
 			agent,
 			sessionManager: SessionManager.inMemory(),
-			settings: Settings.isolated({ "compaction.keepRecentTokens": 1 }),
+			settings: Settings.isolated({
+				"compaction.keepRecentTokens": 1,
+				"compaction.modelFallbackStrategy": "any-model",
+			}),
 			modelRegistry,
 		});
 		session.subscribe(() => {});
@@ -309,5 +319,81 @@ describe("compaction prefers the current session model over modelRoles.default",
 		expect(`${firstCandidate.provider}/${firstCandidate.id}`).toBe(
 			`${nonRemoteCompactionModel.provider}/${nonRemoteCompactionModel.id}`,
 		);
+	});
+
+	/**
+	 * The other arm of the same setting. Under the default `auto` strategy a
+	 * catalog-recommended compaction sibling on ANOTHER provider is not taken:
+	 * compaction fires unattended, and nobody named that provider for this
+	 * session, so the bill would land on an account the operator never chose. The
+	 * recommendation is available and authenticated here, so the only thing
+	 * keeping it out of the chain is the boundary rule.
+	 */
+	it("does not cross a provider boundary for a recommended compaction model under auto", async () => {
+		const baseCurrentModel = getBundledModel("anthropic", "claude-sonnet-4-5");
+		const crossProviderCompactionModel = getBundledModel("openai", "gpt-5");
+		if (!baseCurrentModel || !crossProviderCompactionModel) {
+			throw new Error("Expected bundled test models to exist");
+		}
+		const currentModel = buildModel({
+			...baseCurrentModel,
+			compactionModel: `${crossProviderCompactionModel.provider}/${crossProviderCompactionModel.id}`,
+			compat: baseCurrentModel.compatConfig,
+		});
+
+		const agent = new Agent({
+			initialState: { model: currentModel, systemPrompt: ["Test"], tools: [], messages: [] },
+		});
+
+		authStorage = await AuthStorage.create(path.join(tempDir.path(), "testauth.db"));
+		authStorage.setRuntimeApiKey(currentModel.provider, "anthropic-token");
+		authStorage.setRuntimeApiKey(crossProviderCompactionModel.provider, "openai-token");
+		modelRegistry = new ModelRegistry(authStorage, path.join(tempDir.path(), "models.yml"));
+
+		session = new AgentSession({
+			agent,
+			sessionManager: SessionManager.inMemory(),
+			settings: Settings.isolated({ "compaction.keepRecentTokens": 1, "compaction.strategy": "context-full" }),
+			modelRegistry,
+		});
+		session.subscribe(() => {});
+
+		for (const [userText, assistantText] of [
+			["first question", "first answer"],
+			["second question", "second answer"],
+		] as const) {
+			const user = userMsg(userText);
+			const assistant = assistantMsg(assistantText);
+			session.agent.appendMessage(user);
+			session.sessionManager.appendMessage(user);
+			session.agent.appendMessage(assistant);
+			session.sessionManager.appendMessage(assistant);
+		}
+
+		// The skipped candidate is genuinely reachable: authenticated, in the
+		// registry, and named by the model's own row. Without this the row would
+		// pass for the wrong reason on any day the registry stopped resolving it.
+		const available = modelRegistry.getAvailable();
+		expect(
+			available.some(
+				candidate =>
+					candidate.provider === crossProviderCompactionModel.provider &&
+					candidate.id === crossProviderCompactionModel.id,
+			),
+		).toBe(true);
+
+		const compactSpy = vi.spyOn(compactionModule, "compact").mockImplementation(async (preparation, model) => ({
+			summary: "ok",
+			shortSummary: "ok short",
+			firstKeptEntryId: preparation.firstKeptEntryId,
+			tokensBefore: 1,
+			details: { provider: model.provider },
+		}));
+
+		await session.compact();
+
+		expect(compactSpy).toHaveBeenCalled();
+		const [, firstCandidate] = compactSpy.mock.calls[0]!;
+		expect(`${firstCandidate.provider}/${firstCandidate.id}`).toBe(`${currentModel.provider}/${currentModel.id}`);
 	});
 });
