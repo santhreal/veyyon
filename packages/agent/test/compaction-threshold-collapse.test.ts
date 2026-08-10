@@ -141,28 +141,28 @@ describe("resolving a threshold to tokens with its origin", () => {
 		});
 	});
 
-	it("honors an oversized absolute amount up to window - 1 and flags the clamp", () => {
+	it("honors an oversized absolute amount up to the auto point and flags the cap", () => {
 		// Honored-and-reported, never reinterpreted: the operator asked for a
 		// model-independent amount, so they are told it did not fit THIS model.
 		const resolved = resolveCompactionThreshold(WINDOW, { threshold: "500000" }, () => 180_000);
-		expect(resolved.tokens).toBe(WINDOW - 1);
+		expect(resolved.tokens).toBe(180_000);
 		expect(resolved.configured).toBe(500_000);
 		expect(resolved.clamped).toBe(true);
 	});
 
-	it("does not flag the clamp when the amount equals the window", () => {
-		// WHY: `clamped` used to be `tokens < configured`, which is also true at
-		// equality because every threshold is held strictly below the window. The
-		// session notice then claimed the amount was "larger than this model's
-		// context window" — false at equality — and warned on a config that exactly
-		// matches the model (a 256000 threshold on a 256k window). The cap there
-		// removes exactly one token (the below-window invariant), which is not lost
-		// headroom and must stay silent.
+	it("flags an amount equal to the window, which the reserve puts out of reach", () => {
+		// This row used to assert the opposite. `clamped` was once `tokens <
+		// configured`, true at equality only because thresholds were held one token
+		// below the window, and the notice called that "larger than this model's
+		// context window", which was false. The fix then was to go silent at
+		// equality; that was the wrong correction, because a trigger at the window
+		// (or anywhere inside the reserve) never fires at all. The ceiling is the
+		// auto point, so equality is genuinely out of reach and genuinely capped.
 		const resolved = resolveCompactionThreshold(WINDOW, { threshold: String(WINDOW) }, () => 180_000);
-		expect(resolved.tokens).toBe(WINDOW - 1);
+		expect(resolved.tokens).toBe(180_000);
 		expect(resolved.configured).toBe(WINDOW);
-		expect(resolved.clamped).toBe(false);
-		expect(isThresholdTokensClampedForWindow(WINDOW, withReserve({ threshold: String(WINDOW) }))).toBe(false);
+		expect(resolved.clamped).toBe(true);
+		expect(isThresholdTokensClampedForWindow(WINDOW, withReserve({ threshold: String(WINDOW) }))).toBe(true);
 	});
 
 	it("scales a percent against the window and reports the percent configured", () => {
@@ -262,11 +262,28 @@ describe("the bounds of a resolved threshold", () => {
 	});
 
 	/** The ordinary case, restated beside the corners: replacing the inline clamps
-	 * changed nothing about what a normal configured threshold resolves to. */
+	 * changed nothing about what a normal configured threshold resolves to. The auto
+	 * amount is the ceiling for an absolute threshold, so it has to be a realistic
+	 * one here rather than a stand-in. */
 	it("leaves an in-range amount exactly as configured", () => {
-		expect(resolveCompactionThreshold(WINDOW, { threshold: "170000" }, () => 1).tokens).toBe(170_000);
-		expect(resolveCompactionThreshold(WINDOW, { threshold: "1" }, () => 1).tokens).toBe(1);
+		expect(resolveCompactionThreshold(WINDOW, { threshold: "170000" }, () => 180_000).tokens).toBe(170_000);
+		expect(resolveCompactionThreshold(WINDOW, { threshold: "1" }, () => 180_000).tokens).toBe(1);
 		expect(resolveCompactionThreshold(WINDOW, { threshold: "85%" }, () => 1).tokens).toBe(170_000);
+	});
+
+	/**
+	 * An absolute amount is capped at the AUTO point, not at the window. A trigger
+	 * inside the reserve cannot fire at all: the request that would push the context
+	 * that high is refused or overflows first, so honoring the number literally
+	 * turned proactive compaction off. This row is the one that separates the two
+	 * ceilings, because 190k fits inside a 200k window and is still unreachable.
+	 */
+	it("caps an absolute amount at the reachable auto point, not at the window", () => {
+		expect(resolveCompactionThreshold(WINDOW, { threshold: "190000" }, () => 170_000).tokens).toBe(170_000);
+		expect(resolveCompactionThreshold(WINDOW, { threshold: "500000" }, () => 170_000).tokens).toBe(170_000);
+		expect(resolveCompactionThreshold(WINDOW, { threshold: "190000" }, () => 170_000).clamped).toBe(true);
+		// Exactly at the ceiling nothing was taken away, so nothing is reported.
+		expect(resolveCompactionThreshold(WINDOW, { threshold: "170000" }, () => 170_000).clamped).toBe(false);
 	});
 });
 
@@ -303,9 +320,12 @@ describe("resolveThresholdTokens over real compaction settings", () => {
 		).toBe(160_000);
 	});
 
-	it("reports the clamp only for an oversized absolute amount", () => {
+	it("reports the clamp only for an absolute amount this model cannot reach", () => {
+		// withReserve() puts auto at 160k on a 200k window, so 170k is inside the
+		// window and still past the reachable point.
 		expect(isThresholdTokensClampedForWindow(WINDOW, withReserve({ threshold: "500000" }))).toBe(true);
-		expect(isThresholdTokensClampedForWindow(WINDOW, withReserve({ threshold: "170000" }))).toBe(false);
+		expect(isThresholdTokensClampedForWindow(WINDOW, withReserve({ threshold: "170000" }))).toBe(true);
+		expect(isThresholdTokensClampedForWindow(WINDOW, withReserve({ threshold: "150000" }))).toBe(false);
 		// A clamped PERCENT is not a clamped token amount: the notice text names an
 		// absolute value, so firing it for a percent would print nonsense.
 		expect(isThresholdTokensClampedForWindow(WINDOW, withReserve({ threshold: "250%" }))).toBe(false);
@@ -339,7 +359,9 @@ describe("describing a resolved threshold to the operator", () => {
 
 	it("says both the configured amount and the cap when it did not fit", () => {
 		const resolved = resolveCompactionThreshold(WINDOW, { threshold: "500000" }, () => 180_000);
-		expect(formatCompactionThreshold(resolved, WINDOW)).toBe("200k (fixed 500k, capped to this model's 200k window)");
+		expect(formatCompactionThreshold(resolved, WINDOW)).toBe(
+			"180k (fixed 500k, capped to the most a 200k-window model can reach)",
+		);
 	});
 
 	it("explains auto rather than printing a bare number", () => {

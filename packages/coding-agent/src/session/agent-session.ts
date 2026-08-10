@@ -13912,9 +13912,13 @@ export class AgentSession {
 		}
 
 		if (resolved.origin === "tokens" && resolved.clamped) {
+			// Informational, not a warning: the amount is a legal model-independent
+			// choice, and this model simply cannot reach it. Telling the operator to
+			// "lower the amount" would be advice against a setting that is doing
+			// exactly what its picker promises on every larger model.
 			this.emitNotice(
-				"warning",
-				`The configured compaction threshold (${resolved.configured} tokens) is larger than this model's context window (${contextWindow}); compacting at ${formatCompactionThreshold(resolved, contextWindow)}. Lower the amount or switch to a larger-window model to use the full value.`,
+				"info",
+				`The compaction threshold (${resolved.configured} tokens) is more than a ${contextWindow}-token model can reach, so this session compacts at ${formatCompactionThreshold(resolved, contextWindow)}. A model with a larger window uses the full amount.`,
 				"compaction",
 			);
 			return;

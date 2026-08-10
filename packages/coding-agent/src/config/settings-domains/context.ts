@@ -101,9 +101,9 @@ export const CONTEXT_SETTINGS = {
 	// It replaced two same-named rows (thresholdTokens + thresholdPercent) whose
 	// precedence was invisible in the UI. Both are retained below as schema-only
 	// keys and folded in on read by withLegacyCompactionThreshold; nothing else
-	// reads them. An absolute amount larger than the current model's window is
-	// honored up to `contextWindow - 1` and reported loudly, never silently
-	// reinterpreted (see isThresholdTokensClampedForWindow).
+	// reads them. An absolute amount larger than what the current model can reach
+	// is capped at the auto point (window minus reserve) and reported once per
+	// window, never silently reinterpreted (see isThresholdTokensClampedForWindow).
 	"compaction.threshold": {
 		type: "string",
 		default: AUTO_COMPACTION_THRESHOLD,
@@ -112,7 +112,7 @@ export const CONTEXT_SETTINGS = {
 			group: "Compaction",
 			label: "Auto-Compaction Threshold",
 			description:
-				"When auto-compaction triggers. Auto uses the model's window minus the reserve; a percent scales with each model's window; a token amount is the same trigger on every model.",
+				"When auto-compaction triggers. Auto uses the model's window minus the reserve; a percent scales with each model's window; a token amount is the same trigger on every model that can reach it, and a smaller model compacts at its own maximum.",
 			keywords: ["compact", "compaction", "threshold", "trigger", "percent", "tokens", "window"],
 			options: [
 				{
@@ -128,16 +128,16 @@ export const CONTEXT_SETTINGS = {
 				{ value: "85%", label: "85%", description: "Aggressive context usage" },
 				{ value: "90%", label: "90%", description: "Very aggressive" },
 				{ value: "95%", label: "95%", description: "Near the context limit" },
-				{ value: "32000", label: "32k tokens", description: "Compact past 32,000 tokens on every model" },
-				{ value: "64000", label: "64k tokens", description: "Compact past 64,000 tokens on every model" },
-				{ value: "100000", label: "100k tokens", description: "Compact past 100,000 tokens on every model" },
-				{ value: "128000", label: "128k tokens", description: "Compact past 128,000 tokens on every model" },
-				{ value: "150000", label: "150k tokens", description: "Compact past 150,000 tokens on every model" },
-				{ value: "200000", label: "200k tokens", description: "Compact past 200,000 tokens on every model" },
-				{ value: "256000", label: "256k tokens", description: "Compact past 256,000 tokens on every model" },
-				{ value: "400000", label: "400k tokens", description: "Compact past 400,000 tokens on every model" },
-				{ value: "500000", label: "500k tokens", description: "Compact past 500,000 tokens on every model" },
-				{ value: "1000000", label: "1M tokens", description: "Compact past 1,000,000 tokens on every model" },
+				{ value: "32000", label: "32k tokens", description: "Compact past 32,000 tokens" },
+				{ value: "64000", label: "64k tokens", description: "Compact past 64,000 tokens" },
+				{ value: "100000", label: "100k tokens", description: "Compact past 100,000 tokens" },
+				{ value: "128000", label: "128k tokens", description: "Compact past 128,000 tokens" },
+				{ value: "150000", label: "150k tokens", description: "Compact past 150,000 tokens" },
+				{ value: "200000", label: "200k tokens", description: "Compact past 200,000 tokens" },
+				{ value: "256000", label: "256k tokens", description: "Compact past 256,000 tokens" },
+				{ value: "400000", label: "400k tokens", description: "Compact past 400,000 tokens" },
+				{ value: "500000", label: "500k tokens", description: "Compact past 500,000 tokens" },
+				{ value: "1000000", label: "1M tokens", description: "Compact past 1,000,000 tokens" },
 			],
 		},
 	},

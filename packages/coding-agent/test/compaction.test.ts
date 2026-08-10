@@ -444,7 +444,7 @@ describe("resolveThresholdTokens — absolute token amount (the visible knob)", 
 		expect(resolveThresholdTokens(100_000, settings)).toBe(80_000);
 	});
 
-	it("caps the amount at contextWindow - 1 when it exceeds the current model's window", () => {
+	it("caps the amount at the reachable auto point when it exceeds what the model can hold", () => {
 		const settings: CompactionSettings = {
 			enabled: true,
 			thresholdTokens: 500_000,
@@ -453,8 +453,9 @@ describe("resolveThresholdTokens — absolute token amount (the visible knob)", 
 			keepRecentTokens: 20_000,
 		};
 
-		// 500k configured, 200k model window → capped to 199,999.
-		expect(resolveThresholdTokens(200_000, settings)).toBe(199_999);
+		// 500k configured, 200k window, 15% reserve floor (30k) → capped to 170k,
+		// the largest trigger a request can actually reach on this model.
+		expect(resolveThresholdTokens(200_000, settings)).toBe(170_000);
 	});
 });
 
@@ -466,7 +467,7 @@ describe("isThresholdTokensClampedForWindow — loud clamp signal", () => {
 		keepRecentTokens: 20_000,
 	};
 
-	it("is true when the configured amount exceeds contextWindow - 1", () => {
+	it("is true when the configured amount is past what the model can reach", () => {
 		const settings: CompactionSettings = { ...base, thresholdTokens: 500_000 };
 		expect(isThresholdTokensClampedForWindow(200_000, settings)).toBe(true);
 	});
@@ -476,10 +477,16 @@ describe("isThresholdTokensClampedForWindow — loud clamp signal", () => {
 		expect(isThresholdTokensClampedForWindow(200_000, settings)).toBe(false);
 	});
 
-	it("is false exactly at the contextWindow - 1 boundary (honored, not capped)", () => {
-		const settings: CompactionSettings = { ...base, thresholdTokens: 199_999 };
-		expect(resolveThresholdTokens(200_000, settings)).toBe(199_999);
-		expect(isThresholdTokensClampedForWindow(200_000, settings)).toBe(false);
+	it("is false exactly at the auto point and true one token past it", () => {
+		const honored: CompactionSettings = { ...base, thresholdTokens: 170_000 };
+		expect(resolveThresholdTokens(200_000, honored)).toBe(170_000);
+		expect(isThresholdTokensClampedForWindow(200_000, honored)).toBe(false);
+
+		// Inside the window and still unreachable: the reserve is what makes the
+		// difference, which is why the window is the wrong ceiling.
+		const capped: CompactionSettings = { ...base, thresholdTokens: 170_001 };
+		expect(resolveThresholdTokens(200_000, capped)).toBe(170_000);
+		expect(isThresholdTokensClampedForWindow(200_000, capped)).toBe(true);
 	});
 
 	it("is false when thresholdTokens is unset (percent/reserve path, nothing to clamp)", () => {

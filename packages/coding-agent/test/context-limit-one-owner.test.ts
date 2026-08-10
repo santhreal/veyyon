@@ -71,15 +71,16 @@ describe("resolveContextLimit", () => {
 		});
 	});
 
-	it("keeps an over-window absolute threshold as a fire point, clamped to window - 1", () => {
-		// The resolver deliberately honours an absolute amount up to `window - 1` rather
-		// than reinterpreting it, and reports the clamp separately
-		// (`isThresholdTokensClampedForWindow`) so the operator learns their
-		// model-independent amount was capped for this smaller model. So a 500k threshold
-		// on a 200k window still fires, at 199,999 — this is a fire point, not a window,
-		// and calling it `window` would hide a configuration the operator should fix.
+	it("keeps an unreachable absolute threshold as a fire point, capped at the auto point", () => {
+		// The resolver honours an absolute amount up to the largest trigger the model
+		// can actually reach (window minus reserve) rather than reinterpreting it, and
+		// reports the cap separately (`isThresholdTokensClampedForWindow`) so the
+		// operator learns their model-independent amount was capped for this smaller
+		// model. A 500k threshold on a 200k window still fires, at 170,000: a fire
+		// point, not a window, and calling it `window` would hide a configuration the
+		// operator should know about.
 		expect(resolveContextLimit(WINDOW, compaction({ threshold: "500000" as never }))).toEqual({
-			tokens: 199_999,
+			tokens: 170_000,
 			kind: "compaction",
 		});
 	});
@@ -95,13 +96,13 @@ describe("resolveContextLimit", () => {
 		// The invariant every caller relies on: the limit is a point inside the window, so
 		// `window - limit` is a buffer and never negative. Both origins are covered here
 		// with their real resolved values, because the guarantee comes from the resolver's
-		// clamping (percent caps at 99%, absolute at window - 1) and this is what pins it
-		// from the caller's side.
-		const resolved = ["1%", "50%", "99%", "100%", "250%", "1", "199999", "200000", "999999"].map(
+		// clamping (percent caps at 99%, absolute at the auto point) and this is what pins
+		// it from the caller's side.
+		const resolved = ["1%", "50%", "99%", "100%", "250%", "1", "169999", "200000", "999999"].map(
 			threshold => resolveContextLimit(WINDOW, compaction({ threshold: threshold as never })).tokens,
 		);
 
-		expect(resolved).toEqual([2_000, 100_000, 198_000, 198_000, 198_000, 1, 199_999, 199_999, 199_999]);
+		expect(resolved).toEqual([2_000, 100_000, 198_000, 198_000, 198_000, 1, 169_999, 170_000, 170_000]);
 		for (const tokens of resolved) {
 			expect(tokens).toBeGreaterThan(0);
 			expect(tokens).toBeLessThan(WINDOW);
