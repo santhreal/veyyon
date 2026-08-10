@@ -1624,9 +1624,11 @@ async function streamAssistantResponse(
 
 					const event = next.value;
 					if (event.type === "done" || event.type === "error") {
-						let finalMessage = recoverTransientErrorToolTurn(
-							retainCompletedToolCalls(await response.result(), completedToolCallIds),
-							context.tools ?? [],
+						let finalMessage = disambiguateToolCallIds(
+							recoverTransientErrorToolTurn(
+								retainCompletedToolCalls(await response.result(), completedToolCallIds),
+								context.tools ?? [],
+							),
 						);
 						if (harmonyMitigationEnabled) {
 							const detection = detectHarmonyLeakInAssistantMessage(finalMessage);
@@ -1830,6 +1832,45 @@ function retainCompletedToolCalls(
 	};
 }
 
+/**
+ * Give every tool call in one assistant message its own id.
+ *
+ * WHY. A provider that repeats a block id inside one message produces two
+ * `tool_use` blocks sharing that id, and the two results that answer them then
+ * also share it. Nothing downstream can pair them: the outbound canonicalizer
+ * maps by original id, so both calls collapse onto one handle, and the wire
+ * form is rejected by every provider that validates the pairing. Because the
+ * malformed pair is stored, it replays on every later request in the session,
+ * so one glitched stream ends the conversation rather than one turn. Renaming
+ * the repeat here, at the single funnel where a finished message is assembled,
+ * keeps stored history unambiguous and leaves every other layer untouched.
+ *
+ * Scope is one message. A repeat across turns is a different question: each
+ * turn's results still pair 1:1 with that turn's calls, and `context.messages`
+ * at this point can already hold the in-flight partial of this very message,
+ * so a conversation-wide set would rename calls that are not duplicates.
+ */
+function disambiguateToolCallIds(message: AssistantMessage): AssistantMessage {
+	const seen = new Set<string>();
+	let content: AssistantMessage["content"] | undefined;
+	for (const [index, block] of message.content.entries()) {
+		if (block.type !== "toolCall") continue;
+		if (!seen.has(block.id)) {
+			seen.add(block.id);
+			continue;
+		}
+		const taken = (candidate: string): boolean =>
+			seen.has(candidate) || message.content.some(other => other.type === "toolCall" && other.id === candidate);
+		let suffix = 2;
+		while (taken(`${block.id}_${suffix}`)) suffix += 1;
+		const unique = `${block.id}_${suffix}`;
+		seen.add(unique);
+		content ??= [...message.content];
+		content[index] = { ...block, id: unique };
+	}
+	return content ? { ...message, content } : message;
+}
+
 function recoverTransientErrorToolTurn(
 	message: AssistantMessage,
 	availableTools: ReadonlyArray<Pick<AgentTool, "name" | "customWireName">>,
@@ -1951,7 +1992,7 @@ function emitAbortedAssistantMessage(
 	// Only tool calls that reached `toolcall_end` survive abort/error replay. A
 	// labeled user interrupt still surfaces through `errorMessage`, but partial
 	// tool arguments are unsafe to keep and can carry incomplete provider IDs.
-	const retained = retainCompletedToolCalls(base, completedToolCallIds);
+	const retained = disambiguateToolCallIds(retainCompletedToolCalls(base, completedToolCallIds));
 	const scopedAbort = toolScopedAbortReason(requestSignal);
 	const toolCallAbortMessages = scopedAbort ? buildToolCallAbortMessages(retained, scopedAbort) : undefined;
 	if (toolCallAbortMessages) {
