@@ -48,7 +48,12 @@ import { getSixelLineMask } from "../utils/sixel";
 import type { ToolSession } from ".";
 import { truncateForPrompt } from "./approval";
 import { registerForegroundBashWait } from "./bash-foreground-registry";
-import { bashCredentialTargets, CRITICAL_BASH_PATTERNS, findCriticalBashRisk } from "./bash-guard";
+import {
+	bashCredentialTargets,
+	CRITICAL_BASH_PATTERNS,
+	findCriticalBashRisk,
+	hostReachableCommand,
+} from "./bash-guard";
 import { type BashInteractiveResult, runInteractiveBashPty } from "./bash-interactive";
 import { checkBashInterception } from "./bash-interceptor";
 import { canUseInteractiveBashPty } from "./bash-pty-selection";
@@ -160,12 +165,16 @@ export function bashApprovalDecision(
 	// reached the root from any depth of six or less.
 	const argCwd = (args as Partial<BashToolInput>).cwd;
 	const cwd = typeof argCwd === "string" && argCwd.startsWith("/") ? argCwd : sessionCwd;
+	const judgementEnv = bashJudgementEnv(args);
 	const risk =
-		command === ""
-			? undefined
-			: findCriticalBashRisk(command, undefined, extraProtectedPaths, bashJudgementEnv(args), cwd);
+		command === "" ? undefined : findCriticalBashRisk(command, undefined, extraProtectedPaths, judgementEnv, cwd);
 	if (risk) return { tier: "exec", critical: true, reason: risk.reason };
-	if (command !== "" && CRITICAL_BASH_PATTERNS.some(pattern => pattern.test(command))) {
+	// The patterns are about TEXT, so they are matched against the part of the
+	// line that can reach this host. A `curl … | sh` inside a throwaway container
+	// with no volume, privilege, device or host namespace is the container's
+	// business; the same pipeline outside one is still critical.
+	const hostText = command === "" ? "" : hostReachableCommand(command, undefined, judgementEnv);
+	if (hostText !== "" && CRITICAL_BASH_PATTERNS.some(pattern => pattern.test(hostText))) {
 		return { tier: "exec", critical: true, reason: "Critical pattern detected" };
 	}
 	return "exec";

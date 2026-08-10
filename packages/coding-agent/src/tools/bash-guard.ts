@@ -304,9 +304,36 @@ const SEGMENT_BREAKS = new Set([";", "&", "|", "\n", "(", ")"]);
  * does start a new command and its contents deserve judging.
  */
 export function splitCommandSegments(line: string): string[] {
-	const segments: string[] = [];
+	return splitCommandSpans(line).map(span => span.text);
+}
+
+/** One command in a command line, with the bounds it occupies in that line. */
+export interface CommandSpan {
+	/** The command, trimmed, exactly as [`splitCommandSegments`] reports it. */
+	readonly text: string;
+	/** Index of the first character of the span in the line. */
+	readonly start: number;
+	/** Index just past the last character of the span. */
+	readonly end: number;
+}
+
+/**
+ * The same split, keeping where in the line each command sat.
+ *
+ * [`hostReachableCommand`] blanks one command in place rather than rejoining
+ * the survivors, so it needs the bounds. Every other reader wants the strings.
+ */
+export function splitCommandSpans(line: string): CommandSpan[] {
+	const spans: CommandSpan[] = [];
 	let current = "";
+	let start = 0;
 	let quote: '"' | "'" | undefined;
+	const push = (end: number): void => {
+		const text = current.trim();
+		if (text !== "") spans.push({ text, start, end });
+		current = "";
+		start = end + 1;
+	};
 	for (let index = 0; index < line.length; index += 1) {
 		const character = line[index]!;
 		if (character === "\\" && quote !== "'" && index + 1 < line.length) {
@@ -338,14 +365,13 @@ export function splitCommandSegments(line: string): string[] {
 			continue;
 		}
 		if (SEGMENT_BREAKS.has(character)) {
-			segments.push(current);
-			current = "";
+			push(index);
 			continue;
 		}
 		current += character;
 	}
-	segments.push(current);
-	return segments.map(segment => segment.trim()).filter(segment => segment !== "");
+	push(line.length);
+	return spans;
 }
 
 /**
@@ -802,6 +828,198 @@ function isFlag(word: ExpandedWord): boolean {
 }
 
 /**
+ * Container runtimes whose `run` subcommand starts a fresh container.
+ *
+ * `exec` is deliberately absent, and so is `compose run`: both enter or start a
+ * container whose mounts and privileges were decided somewhere this scan cannot
+ * read (a running container, a compose file), so there is nothing here to
+ * vouch for.
+ */
+export const CONTAINER_RUNTIMES: ReadonlySet<string> = new Set(["docker", "podman", "nerdctl"]);
+
+/**
+ * The `docker run` flags that leave this host out of reach, and how many words
+ * each one takes.
+ *
+ * A WHITELIST, NOT A BLOCKLIST. The flags that matter are the ones that hand a
+ * container part of the host (`-v`, `--volume`, `--volumes-from`, `--mount`,
+ * `--privileged`, `--device`, `--cap-add`, `--security-opt`, `--pid host`,
+ * `--ipc host`, `--userns host`, `--cgroupns host`), and a blocklist of those
+ * would exempt whichever escape nobody wrote down. Here a flag that is missing
+ * costs one approval prompt, which is the direction this module is allowed to
+ * be wrong in.
+ */
+export const CONTAINER_RUN_FLAGS: ReadonlyMap<string, "boolean" | "value"> = new Map<string, "boolean" | "value">([
+	["--rm", "boolean"],
+	["--detach", "boolean"],
+	["--interactive", "boolean"],
+	["--tty", "boolean"],
+	["--init", "boolean"],
+	["--read-only", "boolean"],
+	["--no-healthcheck", "boolean"],
+	["--publish-all", "boolean"],
+	["--quiet", "boolean"],
+	["--attach", "value"],
+	["--add-host", "value"],
+	["--cpus", "value"],
+	["--cpu-shares", "value"],
+	["--cpuset-cpus", "value"],
+	["--dns", "value"],
+	["--dns-option", "value"],
+	["--dns-search", "value"],
+	["--entrypoint", "value"],
+	["--env", "value"],
+	["--env-file", "value"],
+	["--expose", "value"],
+	["--health-cmd", "value"],
+	["--health-interval", "value"],
+	["--health-retries", "value"],
+	["--health-start-period", "value"],
+	["--health-timeout", "value"],
+	["--hostname", "value"],
+	["--label", "value"],
+	["--label-file", "value"],
+	["--memory", "value"],
+	["--memory-swap", "value"],
+	["--name", "value"],
+	["--pids-limit", "value"],
+	["--platform", "value"],
+	["--publish", "value"],
+	["--pull", "value"],
+	["--restart", "value"],
+	["--shm-size", "value"],
+	["--stop-signal", "value"],
+	["--stop-timeout", "value"],
+	["--tmpfs", "value"],
+	["--ulimit", "value"],
+	["--user", "value"],
+	["--workdir", "value"],
+]);
+
+/**
+ * Short-flag letters that take no value and grant the container nothing.
+ *
+ * Exported with the two tables above for the same reason
+ * [`INTERPRETED_SCRIPT_COMMANDS`] is: a member added to any of them widens an
+ * exemption on the critical floor, and the suite reads them at run time so a
+ * new member cannot land with nobody having judged it.
+ */
+export const CONTAINER_BOOLEAN_LETTERS: ReadonlySet<string> = new Set(["i", "t", "d", "q", "P"]);
+
+/** Short-flag letters that take the next word: `-e`, `-p`, `-u`, `-w`, `-m`, `-h`, `-l`. */
+export const CONTAINER_VALUE_LETTERS: ReadonlySet<string> = new Set(["e", "p", "u", "w", "m", "h", "l"]);
+
+/**
+ * True when a `--network` value puts the container back on a stack it did not
+ * get on its own. `host` is this machine's stack; `container:NAME` is another
+ * container's, decided somewhere this scan cannot read.
+ */
+function joinsForeignNetwork(value: string): boolean {
+	return value === "host" || value.startsWith("container:");
+}
+
+/**
+ * True when these words are a container run that cannot reach this host.
+ *
+ * WHY THIS EXEMPTION EXISTS. The critical floor is the one thing `/yolo` cannot
+ * lift, and it exists to protect THIS machine. Judged as text, every ordinary
+ * install test in a throwaway container hits it: the operator's
+ * `docker run --rm fedora:latest sh -c 'curl -fsSL … | sh && …'` matched the
+ * remote-fetch-then-execute pattern and prompted, and the scan below it reads
+ * the container's own script against the host's protected roots, so
+ * `docker run --rm alpine rm -rf /` was critical for a root that is the image's
+ * and lives for the length of the command. Neither can touch this host, so
+ * neither is a host risk, and a floor that fires on them is the floor an
+ * operator turns off.
+ *
+ * IT STILL FAILS CLOSED. The exemption holds only while every word from the
+ * runtime through the image resolves and every flag is in
+ * [`CONTAINER_RUN_FLAGS`]. A volume, a mount, a device, a capability, a
+ * relaxed security profile, a host namespace, an unreadable expansion standing
+ * where a flag goes, `docker exec`, and `docker compose run` all fall through
+ * to the ordinary judgement. Words AFTER the image are the container's own
+ * command and are not read: that is the whole point.
+ */
+export function isHostIsolatedContainerRun(words: readonly ExpandedWord[]): boolean {
+	let index = 0;
+	// Step over the same wrapper words and inline assignments the segment scan
+	// steps over, plus a flag belonging to one of them, so `sudo docker run …`
+	// and `sudo -E docker run …` both read as a container run.
+	while (index < words.length) {
+		const text = words[index]!.text;
+		if (!isPrefixCommand(text) && !(index > 0 && text.startsWith("-"))) break;
+		index += 1;
+	}
+	const runtime = words[index];
+	if (runtime === undefined || runtime.unknown || !CONTAINER_RUNTIMES.has(basename(runtime.text))) return false;
+	index += 1;
+	// `docker container run` is the long spelling of `docker run`. Anything else
+	// standing here (`exec`, `compose`, `build`, or the value of a global flag
+	// this scan does not read) is not a fresh container.
+	if (words[index]?.text === "container") index += 1;
+	if (words[index]?.text !== "run") return false;
+	index += 1;
+	while (index < words.length) {
+		const word = words[index]!;
+		// An expansion standing in flag position could be any flag at all,
+		// including `-v /:/host`.
+		if (word.unknown) return false;
+		const text = word.text;
+		if (!text.startsWith("-") || text === "-" || text === "--") break;
+		index += 1;
+		if (text.startsWith("--")) {
+			const equals = text.indexOf("=");
+			const name = equals === -1 ? text : text.slice(0, equals);
+			const inlineValue = equals === -1 ? undefined : text.slice(equals + 1);
+			if (name === "--network" || name === "--net") {
+				const value = inlineValue ?? words[index]?.text;
+				if (value === undefined || joinsForeignNetwork(value)) return false;
+				if (inlineValue === undefined) index += 1;
+				continue;
+			}
+			const arity = CONTAINER_RUN_FLAGS.get(name);
+			if (arity === undefined) return false;
+			if (arity === "value" && inlineValue === undefined) index += 1;
+			continue;
+		}
+		const letters = [...text.slice(1)];
+		if (letters.length === 1 && CONTAINER_VALUE_LETTERS.has(letters[0]!)) {
+			index += 1;
+			continue;
+		}
+		// `-itv /home:/h` is `-v` with company, so a cluster is safe only when
+		// every letter in it is.
+		if (!letters.every(letter => CONTAINER_BOOLEAN_LETTERS.has(letter))) return false;
+	}
+	// A run with no image is not a run this scan can vouch for.
+	return words[index] !== undefined;
+}
+
+/**
+ * The command line with every host-isolated container run blanked out.
+ *
+ * WHY IT RETURNS TEXT RATHER THAN THE SURVIVING SEGMENTS. Several
+ * [`CRITICAL_BASH_PATTERNS`] span a segment break (`curl … | sh`, the fork
+ * bomb, `bash <(curl …)`), so rejoining the survivors with any separator would
+ * quietly retire them. An isolated run is replaced by spaces of the same
+ * length instead: every other character stays where it was, and blanking can
+ * only remove text, never spell a match the line did not contain.
+ */
+export function hostReachableCommand(
+	command: string,
+	home: string = resolveGuardHome(),
+	env: NodeJS.ProcessEnv = process.env,
+): string {
+	let result = command;
+	for (const span of splitCommandSpans(command)) {
+		const words = splitWords(span.text).map(word => expandWord(word, home, env));
+		if (words.length === 0 || !isHostIsolatedContainerRun(words)) continue;
+		result = result.slice(0, span.start) + " ".repeat(span.end - span.start) + result.slice(span.end);
+	}
+	return result;
+}
+
+/**
  * Find the first critical risk in a command line, or `undefined` when there is
  * none.
  *
@@ -885,6 +1103,14 @@ export function findCriticalBashRisk(
 		withdrawReboundNames(rawWords.slice(commandIndex), selfCreatedTemp, staged);
 		const words = rawWords.map(word => expandWord(word, home, segmentEnv));
 		if (words.length === 0) continue;
+
+		// A CONTAINER THAT CANNOT REACH THIS HOST IS NOT A HOST RISK. The words
+		// after the image are the container's own command, judged against the
+		// container's filesystem by the kernel and against nothing here. The
+		// assignment bookkeeping above still ran, so a `mktemp` provenance this
+		// segment staged is carried into the next one either way. See
+		// isHostIsolatedContainerRun for what disqualifies a run.
+		if (isHostIsolatedContainerRun(words)) continue;
 
 		const overwrite = findTruncatingWriteRisk(words, home);
 		if (overwrite) return overwrite;
