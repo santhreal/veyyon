@@ -27,28 +27,46 @@ import { LEGACY_FRAME_TOKEN_ESTIMATE } from "./legacy-snapcompact-archive";
 const IMAGE_TOKEN_ESTIMATE = 1200;
 
 /**
- * Per-message token estimate cache, keyed by message object identity. Agent
- * messages are treated as immutable once constructed — streaming replaces
- * `context.messages[i]` with a new object per delta rather than mutating one
- * in place (see `agent-loop.ts`), so caching by identity is safe: a message
- * object's estimate never needs to change after it is first computed, and a
- * superseded in-flight object is simply dropped by the `WeakMap` once nothing
- * else references it. This avoids re-walking (and re-tokenizing) the same
- * unchanged messages every time compaction/context-usage code re-estimates
- * the stored conversation (`#estimateStoredContextTokens`,
- * `getContextBreakdown`'s tail walk, etc. call `estimateTokens` per message
- * on every recompute).
+ * Per-message token estimate cache, keyed by message object identity plus a
+ * shape digest of the content that identity currently holds.
+ *
+ * The digest is what makes the entry trustworthy, and it is not optional. The
+ * compaction rewrites edit a stored message IN PLACE: `applyShakeRegion`
+ * assigns a placeholder over `message.content` and stamps `prunedAt`,
+ * `pruning.ts` blanks a tool result the same way, and `dropImages` splices
+ * image blocks out of one. Identity survives all three, so an identity-only
+ * cache answers every later caller with the size the message had BEFORE the
+ * bytes were removed, permanently. The consequences are not cosmetic: the
+ * compaction decision floors the provider figure with this estimate
+ * (`compactionContextTokens`), so an estimate that cannot fall means a dedup or
+ * prune can never bring a session back under the trigger, the post-compaction
+ * headroom and retry-fit checks measure a residual that is already gone, and
+ * the operator's context meter reports elided bytes as live.
+ *
+ * So validity is decided by what the message says now, not by whether the
+ * object is the same one. Recomputing the digest walks the blocks and reads
+ * string lengths, which is what the cache is here to make cheap: the expensive
+ * part is `countTokens`, and that still runs only when the shape moved.
+ *
+ * WHAT THE DIGEST DOES NOT CATCH: an in-place edit that preserves the fragment
+ * sequence and every fragment's length (swapping two same-length texts). No
+ * rewrite in this directory does that, and one that did would not change the
+ * estimate by more than rounding.
  *
  * The two option variants (`default` vs `excludeEncryptedReasoning`) can
- * disagree for a message with encrypted reasoning, so they get separate slots
- * rather than sharing one cached number.
+ * disagree for a message with encrypted reasoning, and they also walk different
+ * fragments, so each keeps its own value and its own digest rather than sharing
+ * one slot.
  */
-const tokenEstimateCache = new WeakMap<AgentMessage, { default?: number; noReasoning?: number }>();
+const tokenEstimateCache = new WeakMap<
+	AgentMessage,
+	{ default?: { value: number; shape: number }; noReasoning?: { value: number; shape: number } }
+>();
 
 /**
  * Estimate token count for a message using cl100k_base via the native
  * tokenizer. This is not Claude's first-party tokenizer (Anthropic doesn't
- * publish one) but is within ~5–10% across English/code text.
+ * publish one) but is within ~5-10% across English/code text.
  *
  * `excludeEncryptedReasoning` drops opaque provider reasoning payloads
  * (`thinkingSignature`, `redactedThinking`) from the estimate. Those are billed
@@ -59,33 +77,65 @@ const tokenEstimateCache = new WeakMap<AgentMessage, { default?: number; noReaso
  */
 export function estimateTokens(message: AgentMessage, options?: { excludeEncryptedReasoning?: boolean }): number {
 	const slotKey = options?.excludeEncryptedReasoning ? "noReasoning" : "default";
+	// One walk answers "is the cached number still about this content?" without
+	// tokenizing anything: the sink folds fragment lengths instead of keeping the
+	// strings.
+	let shape = 0;
+	const shapeExtra = walkCountedFragments(message, options, text => {
+		shape = (shape * 31 + text.length) | 0;
+	});
+	shape = (shape * 31 + shapeExtra) | 0;
+
 	const cached = tokenEstimateCache.get(message);
 	const hit = cached?.[slotKey];
-	if (hit !== undefined) return hit;
+	if (hit !== undefined && hit.shape === shape) return hit.value;
 	const value = estimateTokensUncached(message, options);
-	tokenEstimateCache.set(message, { ...cached, [slotKey]: value });
+	tokenEstimateCache.set(message, { ...cached, [slotKey]: { value, shape } });
 	return value;
 }
 
 function estimateTokensUncached(message: AgentMessage, options?: { excludeEncryptedReasoning?: boolean }): number {
 	const fragments: string[] = [];
+	const extra = walkCountedFragments(message, options, text => {
+		fragments.push(text);
+	});
+	if (fragments.length === 0) return extra;
+	return extra + countTokens(fragments);
+}
+
+/**
+ * The one walk over everything a message's estimate counts: every counted text
+ * fragment goes to `sink`, and the return value is the token charge for content
+ * a tokenizer cannot measure (images, legacy frames).
+ *
+ * It is a sink rather than a returned array because the cache validity check in
+ * {@link estimateTokens} needs the same traversal without keeping the strings.
+ * Two traversals would be two places to add a new role to, and a role missing
+ * from one of them is a silent wrong answer in exactly the way the cases below
+ * record.
+ */
+function walkCountedFragments(
+	message: AgentMessage,
+	options: { excludeEncryptedReasoning?: boolean } | undefined,
+	sink: (text: string) => void,
+): number {
 	let extra = 0;
 	if ((message as { role?: string }).role === "bashExecution") {
 		const bash = message as { command?: unknown; output?: unknown };
-		if (typeof bash.command === "string") fragments.push(bash.command);
-		if (typeof bash.output === "string") fragments.push(bash.output);
-		return fragments.length === 0 ? 0 : countTokens(fragments);
+		if (typeof bash.command === "string") sink(bash.command);
+		if (typeof bash.output === "string") sink(bash.output);
+		return 0;
 	}
 
 	switch (message.role) {
 		case "user": {
 			const content = (message as { content: string | Array<{ type: string; text?: string }> }).content;
 			if (typeof content === "string") {
-				fragments.push(content);
+				sink(content);
 			} else if (Array.isArray(content)) {
 				for (const block of content) {
 					if (block.type === "text" && block.text) {
-						fragments.push(block.text);
+						sink(block.text);
 					} else if (block.type === "image") {
 						// A user message is the MOST common way an image enters a session
 						// (paste, drag, `/image`), and its images counted as zero here while
@@ -104,9 +154,9 @@ function estimateTokensUncached(message: AgentMessage, options?: { excludeEncryp
 			const assistant = message as AssistantMessage;
 			for (const block of assistant.content) {
 				if (block.type === "text") {
-					fragments.push(block.text);
+					sink(block.text);
 				} else if (block.type === "thinking") {
-					fragments.push(block.thinking);
+					sink(block.thinking);
 					// Providers charge for the opaque signature/reasoning payload that
 					// rides alongside the thinking text (OpenAI Responses encrypted
 					// reasoning items, Anthropic signed thinking blocks, etc.). Without
@@ -115,15 +165,15 @@ function estimateTokensUncached(message: AgentMessage, options?: { excludeEncryp
 					// compaction-trigger / post-check metric divergence. The compaction
 					// floor excludes it (its local byte size diverges from provider billing).
 					if (block.thinkingSignature && !options?.excludeEncryptedReasoning) {
-						fragments.push(block.thinkingSignature);
+						sink(block.thinkingSignature);
 					}
 				} else if (block.type === "toolCall") {
-					fragments.push(block.name);
-					fragments.push(stringifyJson(block.arguments) ?? "null");
+					sink(block.name);
+					sink(stringifyJson(block.arguments) ?? "null");
 				} else if (block.type === "redactedThinking") {
 					// Encrypted reasoning blob the provider still bills for on replay;
 					// excluded from the compaction floor for the same reason as above.
-					if (!options?.excludeEncryptedReasoning) fragments.push(block.data);
+					if (!options?.excludeEncryptedReasoning) sink(block.data);
 				}
 			}
 			break;
@@ -141,11 +191,11 @@ function estimateTokensUncached(message: AgentMessage, options?: { excludeEncryp
 		case "hookMessage":
 		case "toolResult": {
 			if (typeof message.content === "string") {
-				fragments.push(message.content);
+				sink(message.content);
 			} else {
 				for (const block of message.content) {
 					if (block.type === "text" && block.text) {
-						fragments.push(block.text);
+						sink(block.text);
 					} else if (block.type === "image") {
 						extra += IMAGE_TOKEN_ESTIMATE;
 					}
@@ -155,11 +205,11 @@ function estimateTokensUncached(message: AgentMessage, options?: { excludeEncryp
 		}
 		case "branchSummary":
 		case "compactionSummary": {
-			fragments.push(message.summary);
+			sink(message.summary);
 			if (message.role === "compactionSummary") {
 				if (message.blocks) {
 					for (const block of message.blocks) {
-						if (block.type === "text") fragments.push(block.text);
+						if (block.type === "text") sink(block.text);
 						else extra += LEGACY_FRAME_TOKEN_ESTIMATE;
 					}
 				} else if (message.images) {
@@ -174,6 +224,5 @@ function estimateTokensUncached(message: AgentMessage, options?: { excludeEncryp
 			return 0;
 	}
 
-	if (fragments.length === 0) return extra;
-	return extra + countTokens(fragments);
+	return extra;
 }
