@@ -484,7 +484,11 @@ describe("AgentSession context promotion", () => {
 			settings,
 			modelRegistry,
 		});
-		session.sessionManager.appendMessage(createUserMessage("old context ".repeat(80_000)));
+		// Big enough to be worth compacting, small enough that the summarization
+		// request still fits the model: `"old context "` is 12 characters, so 20k
+		// repeats is ~60k tokens against this model's 128k window. A history larger
+		// than the window is a different case, and it has its own test below.
+		session.sessionManager.appendMessage(createUserMessage("old context ".repeat(20_000)));
 		session.sessionManager.appendMessage(createAssistantMessage(model, "old response"));
 		session.sessionManager.appendMessage(createUserMessage("current request"));
 		session.agent.replaceMessages(session.sessionManager.buildSessionContext().messages);
@@ -509,6 +513,67 @@ describe("AgentSession context promotion", () => {
 		expect(events[0]?.willRetry).toBe(true);
 		await waitFor(() => continueSpy.mock.calls.length === 1);
 		expect(session.sessionManager.getEntries().some(entry => entry.type === "compaction")).toBe(true);
+	});
+
+	it("refuses overflow recovery loudly when the summary cannot fit the model", async () => {
+		// The other side of the row above: a history larger than the window cannot be
+		// summarized by that model at all, because the summarization request carries
+		// the conversation it is summarizing. The recovery has to say so and leave the
+		// overflow in place, rather than reporting a compaction that never ran.
+		const model = modelRegistry.find("openai-codex", "gpt-5.3-codex-spark");
+		if (!model) {
+			throw new Error("Expected codex spark model to exist");
+		}
+		const settings = Settings.isolated({
+			"compaction.enabled": true,
+			"compaction.strategy": "summary",
+			"compaction.keepRecentTokens": 1,
+			"contextPromotion.enabled": false,
+		});
+		const compactSpy = vi.spyOn(compactionModule, "compact");
+
+		const agent = new Agent({
+			initialState: { model, systemPrompt: ["Test"], tools: [], messages: [] },
+		});
+		session = new AgentSession({
+			agent,
+			sessionManager: SessionManager.inMemory(),
+			settings,
+			modelRegistry,
+		});
+		// Roughly twice the window, so no candidate can hold the request.
+		session.sessionManager.appendMessage(createUserMessage("old context ".repeat(80_000)));
+		session.sessionManager.appendMessage(createAssistantMessage(model, "old response"));
+		session.sessionManager.appendMessage(createUserMessage("current request"));
+		session.agent.replaceMessages(session.sessionManager.buildSessionContext().messages);
+		const events: Array<Extract<AgentSessionEvent, { type: "auto_compaction_end" }>> = [];
+		const compactionDone = Promise.withResolvers<void>();
+		session.subscribe(event => {
+			if (event.type === "auto_compaction_end") {
+				events.push(event);
+				compactionDone.resolve();
+			}
+		});
+		vi.spyOn(session.agent, "continue").mockResolvedValue();
+
+		const overflowMessage = createOverflowMessage(model);
+		session.agent.emitExternalEvent({ type: "message_end", message: overflowMessage });
+		session.agent.emitExternalEvent({ type: "agent_end", messages: [overflowMessage] });
+
+		await compactionDone.promise;
+
+		expect(compactSpy).toHaveBeenCalledTimes(0);
+		expect(events[0]?.willRetry).toBe(false);
+		// The number in the message is what makes it actionable: which model, how
+		// much it holds, and how much the summary would have needed.
+		expect(events[0]?.errorMessage).toContain(`${model.provider}/${model.id} holds ${model.contextWindow} tokens`);
+		expect(events[0]?.errorMessage).toContain("the summary needed");
+		expect(session.sessionManager.getEntries().some(entry => entry.type === "compaction")).toBe(false);
+		// And the refusal the user has to read is still the last thing in context.
+		// The rollback runs after the event, so wait for it rather than racing it.
+		await waitFor(() => session.messages.at(-1)?.role === "assistant");
+		expect(session.messages.at(-1)?.role).toBe("assistant");
+		expect((session.messages.at(-1) as AssistantMessage).stopReason).toBe("error");
 	});
 
 	it("promotes to a larger-context model on response.incomplete (length stop)", async () => {
