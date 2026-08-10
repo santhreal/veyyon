@@ -146,7 +146,10 @@ function surfaced(simulation: Simulation): string {
 
 function texts(simulation: Simulation): string {
 	return simulation.session.messages
-		.flatMap(message => (Array.isArray(message.content) ? message.content : []))
+		.flatMap(message => {
+			const content = (message as { content?: unknown }).content;
+			return Array.isArray(content) ? content : [];
+		})
 		.map(block => block as { type?: string; text?: string })
 		.filter(block => block.type === "text")
 		.map(block => block.text ?? "")
@@ -261,7 +264,12 @@ describe("a turn the provider refuses for size", () => {
 			tools: [simTool("work", async () => ({ content: [{ type: "text", text: BULK }] }))],
 			script: async turn => {
 				const tools = turn.context.tools?.length ?? 0;
-				calls.push({ index: turn.call, tools, model: turn.model.id });
+				calls.push({
+					index: turn.call,
+					tools,
+					model: turn.model.id,
+					tokens: estimatedTokens(turn.context.messages),
+				});
 				if (tools === 0) {
 					turn.text("SUMMARY: should not happen on this row.");
 					turn.finish();
