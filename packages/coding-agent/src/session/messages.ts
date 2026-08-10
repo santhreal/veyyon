@@ -17,6 +17,7 @@ import * as AIError from "@veyyon/ai/error";
 import { isRecord } from "@veyyon/utils/type-guards";
 import { formatExitCodeNotice } from "../exec/exit-notice";
 import { ToolAbortError } from "../tools/tool-errors";
+import { isBlobRef, isTextBlobRef } from "./blob-store";
 
 export {
 	type BranchSummaryMessage,
@@ -485,6 +486,98 @@ export function replaceLlmImagesWithText(messages: Message[], placeholder: strin
 		}
 		if (out === undefined) out = messages.slice();
 		out[i] = { ...msg, content: replaced } as Message;
+	}
+	return out ?? messages;
+}
+
+/** Sentence a request carries where an externalized text payload is missing from the blob store. */
+const LOST_TEXT_PAYLOAD_TEXT =
+	"[content unavailable: this text was stored outside the transcript and the stored copy is missing]";
+
+/** Sentence a request carries where an image's stored bytes are missing from the blob store. */
+const LOST_IMAGE_PAYLOAD_TEXT =
+	"[image unavailable: the image was stored outside the transcript and the stored copy is missing]";
+
+/**
+ * Replace content that is still a blob reference with a sentence saying so.
+ *
+ * Persistence moves a large text block or an image out of the JSONL line and leaves
+ * a `blobtext:sha256:…` / `blob:sha256:…` reference in its place, and the load path
+ * puts the bytes back. When the blob is gone (a `veyyon gc --blobs --apply` whose
+ * reference scan never saw this transcript, a home directory restored without its
+ * blobs, a transcript copied off another machine or another `--agent-dir`) the load
+ * keeps the reference rather than guessing, so the payload comes back the moment the
+ * directory does. What must NOT happen is shipping that reference as content: an
+ * image block whose `data` is a hash is not base64, so the provider rejects the whole
+ * request and every later turn of that session dies the same way, and a text block
+ * whose text is a hash tells the model a hash where its own earlier output was.
+ *
+ * So the request carries the loss and the transcript keeps the reference, which is
+ * the same split {@link replaceLlmImagesWithText} makes for the image policy. Every
+ * role is covered, because an assistant text block is externalized like any other.
+ * Consecutive placeholders collapse, so a message that was nothing but lost images is
+ * one sentence rather than a run of identical ones.
+ *
+ * A reference can also survive inside `providerPayload`, the transport-native history
+ * a Responses-style provider replays, where an image lives at an `image_url` key that
+ * no sentence can stand in for. Replay is an optimization over the converted messages,
+ * so a payload holding a lost reference is dropped and the request falls back to the
+ * ordinary conversion, which carries the sentence.
+ *
+ * NOT covered: a reference embedded inside a longer string. Externalization replaces
+ * a whole string value, so that shape is not something this system produces, and
+ * rewriting a substring would edit a message that merely quotes a reference.
+ */
+function holdsLostBlobRef(value: unknown): boolean {
+	if (typeof value === "string") return isBlobRef(value) || isTextBlobRef(value);
+	if (Array.isArray(value)) return value.some(holdsLostBlobRef);
+	if (typeof value !== "object" || value === null) return false;
+	return Object.values(value).some(holdsLostBlobRef);
+}
+
+export function replaceLostBlobPayloads(messages: Message[]): Message[] {
+	let out: Message[] | undefined;
+	for (let i = 0; i < messages.length; i++) {
+		const msg = messages[i];
+		const content = msg.content;
+		const payloadLost =
+			"providerPayload" in msg && msg.providerPayload !== undefined && holdsLostBlobRef(msg.providerPayload);
+		const contentLost =
+			Array.isArray(content) &&
+			content.some(
+				part =>
+					(part.type === "image" && isBlobRef(part.data)) || (part.type === "text" && isTextBlobRef(part.text)),
+			);
+		if (!payloadLost && !contentLost) continue;
+		// Blocks of every role pass through, and an assistant message carries kinds a
+		// user message never does (thinking, tool calls), so the rebuilt list is typed
+		// by what it holds rather than by the two kinds this function creates.
+		let nextContent: unknown = content;
+		if (contentLost && Array.isArray(content)) {
+			const replaced: unknown[] = [];
+			let lastPlaceholder: string | undefined;
+			for (const part of content) {
+				const placeholder =
+					part.type === "image" && isBlobRef(part.data)
+						? LOST_IMAGE_PAYLOAD_TEXT
+						: part.type === "text" && isTextBlobRef(part.text)
+							? LOST_TEXT_PAYLOAD_TEXT
+							: undefined;
+				if (placeholder === undefined) {
+					replaced.push(part);
+					lastPlaceholder = undefined;
+					continue;
+				}
+				if (lastPlaceholder === placeholder) continue;
+				replaced.push({ type: "text", text: placeholder } satisfies TextContent);
+				lastPlaceholder = placeholder;
+			}
+			nextContent = replaced;
+		}
+		if (out === undefined) out = messages.slice();
+		out[i] = (
+			payloadLost ? { ...msg, content: nextContent, providerPayload: undefined } : { ...msg, content: nextContent }
+		) as Message;
 	}
 	return out ?? messages;
 }

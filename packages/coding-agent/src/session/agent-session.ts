@@ -470,6 +470,7 @@ import {
 	normalizeCustomMessagePayload,
 	type PythonExecutionMessage,
 	readQueueChipText,
+	replaceLostBlobPayloads,
 	SILENT_ABORT_MARKER,
 	SKILL_PROMPT_MESSAGE_TYPE,
 	stripImagesFromMessage,
@@ -3154,11 +3155,19 @@ export class AgentSession {
 							thoughtSignatureMaxLength,
 							thinkingRetention,
 						};
+			// A payload the blob store no longer has is still a reference after the
+			// load put back everything it could, and a reference is not content: an
+			// image block whose data is a hash is not base64, so the provider refuses
+			// the request and every later turn of the session refuses the same way.
+			// The transcript keeps the reference, so restoring the blobs directory
+			// restores the payload; the request carries the loss instead of the hash.
+			const recovered = replaceLostBlobPayloads(next.messages);
+			const carried = recovered === next.messages ? next : { ...next, messages: recovered };
 			// The model serving THIS request decides which images it can read. The
 			// main turn, a side request, compaction and an advisor each dispatch
 			// their own model, and this is the only seam that sees which one is
 			// going out, so the whole image policy resolves here.
-			const shaped = applyProviderImagePolicy(next, model, {
+			const shaped = applyProviderImagePolicy(carried, model, {
 				blockImages: Boolean(this.settings.get("images.blockImages")),
 			});
 			if (upstreamTransformProviderContext) return upstreamTransformProviderContext(shaped, model, runtime);
