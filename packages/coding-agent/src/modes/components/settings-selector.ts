@@ -1064,7 +1064,7 @@ class RulesSubmenu extends Container {
 	/** Both warnings apply to every section, so they belong on the screen you always pass through. */
 	#warnings(builtinOff: boolean): void {
 		if (settings.get("ttsr.enabled") !== true) {
-			this.addChild(new Text(theme.fg("warning", "  Rule matching is off (Stream interrupts → TTSR)."), 0, 0));
+			this.addChild(new Text(theme.fg("warning", "  Rule matching is off (Stream Interrupts → TTSR)."), 0, 0));
 			this.addChild(new Spacer(1));
 		}
 		if (builtinOff) {

@@ -371,7 +371,7 @@ completed assistant turn: the operator would lose the work and the money instead
 money.
 
 Two settings drive it, both in `packages/coding-agent/src/config/settings-domains/context.ts`
-under **Settings → Context → Prompt cache**:
+under **Settings → Context → Prompt Cache**:
 
 | Key | Default | Effect |
 | --- | --- | --- |

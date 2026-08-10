@@ -119,7 +119,7 @@ export const EDITING_SETTINGS = {
 		ui: {
 			tab: "files",
 			group: "Read Summaries",
-			label: "Read Summaries",
+			label: "Enable Read Summaries",
 			description: "Return structural code summaries when read is called without an explicit selector",
 		},
 	},
@@ -218,7 +218,7 @@ export const EDITING_SETTINGS = {
 		ui: {
 			tab: "files",
 			group: "LSP",
-			label: "LSP",
+			label: "Enable LSP",
 			description: "Enable the lsp tool for code intelligence (definitions, references, diagnostics, rename)",
 		},
 	},
@@ -294,7 +294,7 @@ export const EDITING_SETTINGS = {
 		ui: {
 			tab: "shell",
 			group: "Bash",
-			label: "Bash",
+			label: "Enable Bash",
 			description: "Enable the bash tool for shell command execution",
 		},
 	},
