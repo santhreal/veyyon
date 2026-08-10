@@ -47,7 +47,11 @@ export interface CursorModelManagerConfig {
 	clientVersion?: string;
 }
 
-const CURSOR_CACHE_PROVIDER_ID = "cursor:max-mode-v2";
+// Bumped from `max-mode-v2` when the gateway-name prefix rewrite landed: every
+// `cursor-<vendor model>` row in an existing cache carries the 200k assumption for a
+// model whose real window is up to 1.05M, and a cached row is served for the full TTL.
+// A stale window is not cosmetic here, it decides when compaction fires.
+const CURSOR_CACHE_PROVIDER_ID = "cursor:max-mode-v3";
 
 export function cursorModelManagerOptions(config: CursorModelManagerConfig = {}): ModelManagerOptions<"cursor-agent"> {
 	const { apiKey, baseUrl, clientVersion } = config;

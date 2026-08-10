@@ -107,10 +107,42 @@ const GATEWAY_SPEED_SUFFIX_RE = /-(?:fast|slow)$/;
 const GATEWAY_VERSION_DASH_RE = /(\d)-(\d)/g;
 
 /**
+ * A gateway that writes its own name into the model id: Cursor serves `cursor-grok-4.5-medium` for xAI's
+ * `grok-4.5`, and every one of those ids resolved to nothing, so the whole prefixed half of its catalog was
+ * published at the assumption. That is the defect this file exists to prevent, arriving through a spelling
+ * rather than a missing row: an operator running `cursor/cursor-grok-4.5-medium` was told they had 200k of a
+ * 500k model, and their compaction threshold was capped against a window two and a half times too small.
+ *
+ * The vocabulary is every provider id the bundled catalog carries, read at run time rather than listed here, so
+ * a new gateway needs no edit. The longest match wins, because provider ids contain dashes
+ * (`vercel-ai-gateway-gpt-5.4` must not strip `vercel`). The bare provider id with nothing after it is not a
+ * model id and is left alone.
+ */
+let gatewayNamePrefixes: string[] | undefined;
+
+function getGatewayNamePrefixes(): string[] {
+	gatewayNamePrefixes ??= getBundledProviders()
+		.map(provider => `${provider}-`)
+		.sort((left, right) => right.length - left.length);
+	return gatewayNamePrefixes;
+}
+
+function stripGatewayNamePrefix(candidate: string): string | undefined {
+	const lowered = candidate.toLowerCase();
+	for (const prefix of getGatewayNamePrefixes()) {
+		if (!lowered.startsWith(prefix)) continue;
+		const rest = candidate.slice(prefix.length);
+		return rest.length > 0 ? rest : undefined;
+	}
+	return undefined;
+}
+
+/**
  * The ids to try for a gateway model, nearest first: the id itself, then the same id with one gateway affix
  * removed or one spelling normalized, and so on. Each rewrite has to compose with the others in any order,
- * since a gateway stacks them (`gpt-5-4-high-fast` is a dash-spelled base model at high effort on fast
- * infrastructure, and no single rewrite reaches the base).
+ * since a gateway stacks them (`cursor-grok-4.5-medium` is a prefixed base model at a fixed effort,
+ * `gpt-5-4-high-fast` is a dash-spelled base model at high effort on fast infrastructure, and no single
+ * rewrite reaches the base).
  *
  * The walk ends because every rewrite strictly reduces the pair (length, dashes between digits) and no
  * candidate is ever visited twice, so the list is finite, free of duplicates, and holds nothing longer than
@@ -133,6 +165,8 @@ export function gatewayIdCandidates(modelId: string): string[] {
 		if (speedBase !== candidate && speedBase.length > 0) queue.push(speedBase);
 		const dotted = candidate.replace(GATEWAY_VERSION_DASH_RE, "$1.$2");
 		if (dotted !== candidate) queue.push(dotted);
+		const unprefixed = stripGatewayNamePrefix(candidate);
+		if (unprefixed !== undefined) queue.push(unprefixed);
 	}
 	return candidates;
 }
