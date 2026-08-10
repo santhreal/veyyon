@@ -734,6 +734,30 @@ function mergePreviousSummaryWithLegacyArchive(
 	return previousSummary ? `${previousSummary}\n\n${archiveSummary}` : archiveSummary;
 }
 
+/** Share of a context window the proportional reserve policy keeps back. */
+const WINDOW_PROPORTIONAL_RESERVE_SHARE = 0.15;
+
+/**
+ * Output budget for one summarization request, in tokens.
+ *
+ * `reserveTokens` is an absolute headroom knob that knows nothing about the
+ * model, so on a small window a large share of it is most of the window itself.
+ * The candidate admission check in `estimateCompactionRequestTokens` adds this
+ * budget to the history it has to send, so an unbounded budget makes the
+ * summarization request unsendable on every candidate: the session refuses to
+ * compact at all, warns once per turn, and keeps growing past the window. When
+ * the reserve is that large for this window, fall back to the proportional
+ * reserve the trigger policy already uses (`resolveBudgetReserveTokens`), so a
+ * small-window model writes a SHORTER summary instead of no summary. A window
+ * the reserve genuinely fits in resolves to the same budget as before.
+ */
+function summaryOutputBudget(model: Model, reserveTokens: number, share: number): number {
+	const contextWindow = model.contextWindow ?? 0;
+	const proportionalReserve = Math.max(1, Math.floor(contextWindow * WINDOW_PROPORTIONAL_RESERVE_SHARE));
+	const impossibleForWindow = contextWindow > 0 && reserveTokens >= contextWindow - proportionalReserve;
+	return Math.floor(share * (impossibleForWindow ? proportionalReserve : reserveTokens));
+}
+
 function buildSummaryPrompt(
 	currentMessages: AgentMessage[],
 	model: Model,
@@ -763,7 +787,7 @@ function buildSummaryPrompt(
 	if (previousSummary) promptText += `<previous-summary>\n${previousSummary}\n</previous-summary>\n\n`;
 	promptText += formatAdditionalContext(options?.extraContext);
 	promptText += basePrompt;
-	return { promptText, maxTokens: Math.floor(0.8 * reserveTokens) };
+	return { promptText, maxTokens: summaryOutputBudget(model, reserveTokens, 0.8) };
 }
 
 export async function generateSummary(
@@ -1276,7 +1300,9 @@ export function estimateCompactionRequestTokens(
 			preferredDialect(model.id),
 		);
 		const promptText = `<conversation>\n${conversationText}\n</conversation>\n\n${TURN_PREFIX_SUMMARIZATION_PROMPT}`;
-		requests.push(countTokens([SUMMARIZATION_SYSTEM_PROMPT, promptText]) + Math.floor(0.5 * reserveTokens));
+		requests.push(
+			countTokens([SUMMARIZATION_SYSTEM_PROMPT, promptText]) + summaryOutputBudget(model, reserveTokens, 0.5),
+		);
 	}
 	return requests.length > 0 ? Math.max(...requests) : 0;
 }
@@ -1871,7 +1897,8 @@ async function generateTurnPrefixSummary(
 	signal?: AbortSignal,
 	options?: SummaryOptions,
 ): Promise<string> {
-	const maxTokens = Math.floor(0.5 * reserveTokens); // Smaller budget for turn prefix
+	// Smaller budget for a turn prefix, bounded by the window like the main summary.
+	const maxTokens = summaryOutputBudget(model, reserveTokens, 0.5);
 
 	const llmMessages = (options?.convertToLlm ?? defaultConvertToLlm)(messages);
 	const conversationText = serializeConversationForSummary(
