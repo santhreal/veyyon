@@ -140,4 +140,32 @@ act on a bare invocation: `/yolo`, `/fast`, and `/browser` flip a switch, `/goal
 | `/queue` | Queue follow-up message |
 | `/drop` | Delete the current session and start a new one (dequeuing a queued message is the `alt+up` chord, not a slash command) |
 
+## Every subcommand
+
+The tables above write `…` where a command takes a subcommand. This is the full set, so a name is
+findable without opening the picker. What each one does is on the picker row and in that feature's
+own page; typing the bare command lists them with their descriptions.
+
+| Command | Subcommands |
+| --- | --- |
+| `/setup` | `providers` |
+| `/account` | `status`, `manager`, `switch`, `use`, `name`, `refresh`, `usage`, `login`, `logout` |
+| `/goal` | `set`, `show`, `pause`, `resume`, `drop` |
+| `/fast` | `on`, `off`, `status` |
+| `/permissions` | `status`, `ask`, `ask-command`, `auto`, `yolo`, `plan`, `reset` |
+| `/yolo` | `on`, `off`, `status` |
+| `/cpu-limit` | `status`, `remove`, `reset`, `kill` |
+| `/secret` | `add`, `list`, `rm`, `rename`, `value`, `scope`, `copy`, `extend`, `log`, `discard`, `help` |
+| `/collab` | `start`, `view`, `status`, `stop` |
+| `/browser` | `headless`, `visible` |
+| `/todo` | `edit`, `copy`, `export`, `import`, `append`, `start`, `done`, `drop`, `rm` |
+| `/session` | `info`, `delete` |
+| `/usage` | `show`, `reset` |
+| `/mcp` | `add`, `list`, `remove`, `test`, `reauth`, `unauth`, `enable`, `disable`, `smithery-search`, `smithery-login`, `smithery-logout`, `reconnect`, `reload`, `resources`, `prompts`, `notifications`, `help` |
+| `/ssh` | `add`, `list`, `remove`, `help` |
+| `/compact` | `summary` |
+| `/shake` | `elide`, `images` |
+| `/memory` | `view`, `stats`, `diagnose`, `clear`, `reset`, `enqueue`, `rebuild`, `mm list`, `mm show`, `mm refresh`, `mm history`, `mm seed`, `mm delete`, `mm reload` |
+| `/plugins` | `list` |
+
 Extension packages (for example swarm) register additional commands when installed. The live set is whatever the session registers; use `/help` or the command palette in the TUI. Status line: `/statusline` opens the Status Line settings group (see [Multi-agent monitoring](../features/cockpit.md)). Keybindings: `/hotkeys`. Memory: `/memory` and settings under the active memory backend.
