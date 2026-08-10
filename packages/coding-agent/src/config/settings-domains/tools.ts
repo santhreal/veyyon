@@ -375,6 +375,9 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
+	// The cache and its two TTLs belong to a tool that ships off, so they follow it.
+	// The TTLs read the cache toggle as well: a window on a cache nobody writes to
+	// is a knob with nothing behind it either way.
 	"github.cache.enabled": {
 		type: "boolean",
 		default: true,
@@ -382,6 +385,7 @@ export const TOOLS_SETTINGS = {
 			tab: "tools",
 			group: "GitHub",
 			label: "GitHub View Cache",
+			condition: "githubEnabled",
 			description:
 				"Cache rendered issue/PR view output in the active profile's `cache/github-cache.db` so repeated reads are free",
 		},
@@ -395,6 +399,7 @@ export const TOOLS_SETTINGS = {
 			tab: "tools",
 			group: "GitHub",
 			label: "GitHub Cache Soft TTL",
+			condition: "githubCacheEnabled",
 			description:
 				"Within this window, cached issue/PR view rows are returned directly (seconds; default 5 minutes)",
 		},
@@ -408,6 +413,7 @@ export const TOOLS_SETTINGS = {
 			tab: "tools",
 			group: "GitHub",
 			label: "GitHub Cache Hard TTL",
+			condition: "githubCacheEnabled",
 			description:
 				"Past the soft TTL the cached row is returned and refreshed in the background; past the hard TTL it is dropped (seconds; default 7 days)",
 		},
@@ -449,6 +455,8 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
+	// Headless, cmux and the screenshot directory describe how a Chromium the
+	// session is not running would behave, so they follow the master above.
 	"browser.headless": {
 		type: "boolean",
 		default: true,
@@ -456,6 +464,7 @@ export const TOOLS_SETTINGS = {
 			tab: "tools",
 			group: "Grep & Browser",
 			label: "Headless Browser",
+			condition: "browserEnabled",
 			description: "Launch browser in headless mode (disable to show browser UI)",
 		},
 	},
@@ -467,6 +476,7 @@ export const TOOLS_SETTINGS = {
 			tab: "tools",
 			group: "Grep & Browser",
 			label: "cmux Browser",
+			condition: "browserEnabled",
 			description:
 				"Use cmux WKWebView surfaces for browser automation when a cmux socket is available. Set VEYYON_BROWSER_CMUX=0 or VEYYON_BROWSER_CMUX=1 to override.",
 		},
@@ -478,6 +488,7 @@ export const TOOLS_SETTINGS = {
 			tab: "tools",
 			group: "Grep & Browser",
 			label: "Screenshot Directory",
+			condition: "browserEnabled",
 			description:
 				"Directory to save screenshots. If unset, screenshots go to a temp file. Supports ~. Examples: ~/Downloads, ~/Desktop, /sdcard/Download (Android)",
 		},

@@ -223,6 +223,10 @@ export const EDITING_SETTINGS = {
 		},
 	},
 
+	// The five knobs below only mean something while a language server runs, so
+	// each is conditioned on the master above. `lsp.enabled` ships off, and the
+	// five rendered anyway: a Files tab offering "Format on Write" and three
+	// diagnostics rules to a session with no server at all.
 	"lsp.lazy": {
 		type: "boolean",
 		default: true,
@@ -230,6 +234,7 @@ export const EDITING_SETTINGS = {
 			tab: "files",
 			group: "LSP",
 			label: "Lazy LSP Startup",
+			condition: "lspEnabled",
 			description:
 				"Start language servers on first use (lsp tool or editing a matching file type) instead of at session startup",
 		},
@@ -242,6 +247,7 @@ export const EDITING_SETTINGS = {
 			tab: "files",
 			group: "LSP",
 			label: "Format on Write",
+			condition: "lspEnabled",
 			description: "Automatically format code files using LSP after writing",
 		},
 	},
@@ -253,6 +259,7 @@ export const EDITING_SETTINGS = {
 			tab: "files",
 			group: "LSP",
 			label: "Diagnostics on Write",
+			condition: "lspEnabled",
 			description: "Return LSP diagnostics after writing code files",
 		},
 	},
@@ -264,6 +271,7 @@ export const EDITING_SETTINGS = {
 			tab: "files",
 			group: "LSP",
 			label: "Diagnostics on Edit",
+			condition: "lspEnabled",
 			description: "Return LSP diagnostics after editing code files",
 		},
 	},
@@ -275,6 +283,7 @@ export const EDITING_SETTINGS = {
 			tab: "files",
 			group: "LSP",
 			label: "Deduplicate Diagnostics",
+			condition: "lspEnabled",
 			description: "Suppress post-edit LSP diagnostics already shown for a file; only surface new or changed ones",
 		},
 	},

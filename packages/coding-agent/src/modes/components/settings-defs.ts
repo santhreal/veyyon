@@ -262,6 +262,23 @@ const CONDITIONS: Record<string, () => boolean> = {
 	// name in the schema lands on a predicate here rather than only the four it lists.
 	unexpectedStopDetection: () =>
 		whenSettingsSay(() => Settings.instance.get("features.unexpectedStopDetection") === true),
+	// Four tools that ship OFF and whose knobs rendered anyway. The Files tab
+	// offered lazy startup, format-on-write and three diagnostics rules to a
+	// session with no language server; the Tools tab offered headless, cmux and a
+	// screenshot directory for a Chromium nothing launches, plus a cache and two
+	// TTLs for an unavailable github tool; the Providers tab offered a secret
+	// lifetime and an audit log with no vault behind them.
+	lspEnabled: () => whenSettingsSay(() => Settings.instance.get("lsp.enabled") === true),
+	browserEnabled: () => whenSettingsSay(() => Settings.instance.get("browser.enabled") === true),
+	githubEnabled: () => whenSettingsSay(() => Settings.instance.get("github.enabled") === true),
+	// The two TTLs read both toggles: a window on a cache nothing writes to is as
+	// empty a knob as one on a tool nothing runs.
+	githubCacheEnabled: () =>
+		whenSettingsSay(
+			() =>
+				Settings.instance.get("github.enabled") === true && Settings.instance.get("github.cache.enabled") === true,
+		),
+	secretsEnabled: () => whenSettingsSay(() => Settings.instance.get("secrets.enabled") === true),
 };
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -98,6 +98,7 @@ export const PROVIDERS_SETTINGS = {
 			tab: "providers",
 			group: "Privacy",
 			label: "Secret Lifetime",
+			condition: "secretsEnabled",
 			description:
 				'How long a /secret lasts when the command does not say. Default 1d; also accepts forms like 30m, 12h, 7d, 2w, or "never"',
 		},
@@ -120,6 +121,7 @@ export const PROVIDERS_SETTINGS = {
 			tab: "providers",
 			group: "Privacy",
 			label: "Record Secret Use",
+			condition: "secretsEnabled",
 			description: "Append which secret was used in which command to the profile's log. Never records values",
 		},
 	},
