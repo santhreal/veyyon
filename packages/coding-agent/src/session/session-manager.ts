@@ -1448,7 +1448,10 @@ export class SessionManager {
 		let adoptedCwd: string | undefined;
 		if (fileEntries.length > 0) {
 			migrated = migrateToCurrentVersion(fileEntries);
-			await resolveBlobRefsInEntries(fileEntries, this.#blobs);
+			await resolveBlobRefsInEntries(fileEntries, this.#blobs, {
+				source: resolvedSessionFile,
+				operatorNotices: this.#operatorNotices,
+			});
 			// loadEntriesFromFile guarantees entries[0] is a valid session header.
 			header = fileEntries[0] as SessionHeader;
 			const headerCwd = header.cwd ? path.resolve(header.cwd) : undefined;
@@ -2756,7 +2759,10 @@ export class SessionManager {
 			await loadEntriesFromFile(sourcePath, storage, { operatorNotices: options?.operatorNotices }),
 		) as FileEntry[];
 		migrateToCurrentVersion(sourceEntries);
-		await resolveBlobRefsInEntries(sourceEntries, manager.#blobs);
+		await resolveBlobRefsInEntries(sourceEntries, manager.#blobs, {
+			source: sourcePath,
+			operatorNotices: options?.operatorNotices,
+		});
 
 		const sourceHeader = sourceEntries.find(entry => entry.type === "session") as SessionHeader | undefined;
 		const history = sourceEntries.filter((entry): entry is SessionEntry => {
