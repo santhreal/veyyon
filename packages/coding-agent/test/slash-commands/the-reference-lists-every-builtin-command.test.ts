@@ -29,15 +29,55 @@ import { BUILTIN_SLASH_COMMAND_DEFS } from "@veyyon/coding-agent/slash-commands/
 const REFERENCE = path.resolve(import.meta.dir, "../../../../docs/handbook/src/reference/slash-commands.md");
 
 /**
- * Every name the parser accepts: each command's own name and each of its aliases.
- *
- * Subcommands (`/session info`) are deliberately not in here. They are documented
- * on their parent's row, they are not typeable on their own, and folding them in
- * would turn a rule about commands into a rule about argument grammar.
+ * Every name the parser accepts as a COMMAND: each command's own name and each of
+ * its aliases. Subcommands have their own rule below, because they are typed and
+ * they were missing.
  */
 function registryNames(): string[] {
 	const defs = BUILTIN_SLASH_COMMAND_DEFS as ReadonlyArray<{ name: string; aliases?: readonly string[] }>;
 	return [...new Set(defs.flatMap(def => [def.name, ...(def.aliases ?? [])]))].sort();
+}
+
+/** The heading whose table is the only place subcommands are enumerated. */
+const SUBCOMMAND_SECTION_HEADING = "## Every subcommand";
+
+/**
+ * Every subcommand the registry accepts, as the user types it: `todo done`.
+ *
+ * `memory` carries two-level names (`mm delete`), so a subcommand name is not one
+ * word and the reader below must not assume it is.
+ */
+function registrySubcommands(): string[] {
+	const defs = BUILTIN_SLASH_COMMAND_DEFS as ReadonlyArray<{
+		name: string;
+		subcommands?: ReadonlyArray<{ name: string }>;
+	}>;
+	return defs.flatMap(def => (def.subcommands ?? []).map(sub => `${def.name} ${sub.name}`)).sort();
+}
+
+/**
+ * Every subcommand the page enumerates, read from that one table.
+ *
+ * Scoped to the section rather than the whole page on purpose. The category tables
+ * write `/shake elide|images` and `/usage show|reset` in prose cells, so a
+ * page-wide pattern would report those two as covered and the other 99 as missing,
+ * which is the shape of a gate that gets deleted instead of fixed.
+ */
+export function documentedSubcommands(markdown: string): string[] {
+	const lines = markdown.split("\n");
+	const start = lines.indexOf(SUBCOMMAND_SECTION_HEADING);
+	if (start < 0) return [];
+	const found: string[] = [];
+	for (const line of lines.slice(start + 1)) {
+		if (line.startsWith("## ")) break;
+		const row = line.match(/^\| `\/([a-z][\w:-]*)` \| (.+) \|$/);
+		if (!row) continue;
+		for (const cell of (row[2] as string).split(",")) {
+			const name = cell.trim().replace(/^`/, "").replace(/`$/, "");
+			if (name.length > 0) found.push(`${row[1]} ${name}`);
+		}
+	}
+	return found.sort();
 }
 
 /**
@@ -96,6 +136,45 @@ describe("the slash-command reference lists every builtin", () => {
 			"these are documented and not in the builtin registry. Remove the row, or say in the prose that an extension provides it",
 		).toEqual([]);
 	});
+
+	/**
+	 * The same rule one level down, and the reason this suite grew: 88 of the 101
+	 * subcommands the registry accepts appeared nowhere on the page. Among them
+	 * `/permissions yolo`, `/account login`, `/todo done` and `/memory rebuild`,
+	 * which are things a reader goes looking for by name. The category tables write
+	 * `/todo …` and `/mcp …`, so the elision was deliberate and the enumeration was
+	 * simply never written.
+	 */
+	it("documents every subcommand the registry accepts", () => {
+		const documented = new Set(documentedSubcommands(REFERENCE_TEXT));
+
+		const missing = registrySubcommands().filter(name => !documented.has(name));
+
+		expect(
+			missing,
+			`these subcommands are typeable and unlisted. Add them under "${SUBCOMMAND_SECTION_HEADING}" in docs/handbook/src/reference/slash-commands.md`,
+		).toEqual([]);
+	});
+
+	/** And the table invents none, the same way the command tables may not. */
+	it("lists no subcommand the registry does not have", () => {
+		const real = new Set(registrySubcommands());
+
+		const ghosts = documentedSubcommands(REFERENCE_TEXT).filter(name => !real.has(name));
+
+		expect(ghosts, "these are listed and the registry does not accept them").toEqual([]);
+	});
+
+	/**
+	 * The section itself is load-bearing. Renaming or dropping the heading makes the
+	 * reader return nothing, and an empty set satisfies the ghost rule silently
+	 * while every subcommand goes undocumented again.
+	 */
+	it("finds a subcommand table with the whole set in it", () => {
+		expect(registrySubcommands().length).toBeGreaterThanOrEqual(101);
+		expect(documentedSubcommands(REFERENCE_TEXT).length).toBe(registrySubcommands().length);
+		expect(documentedSubcommands(REFERENCE_TEXT)).toContain("permissions yolo");
+	});
 });
 
 describe("the token reader sees what a user would type", () => {
@@ -123,5 +202,31 @@ describe("the token reader sees what a user would type", () => {
 		const names = documentedNames("Use `/status-line` but not /barefoot or `packages/coding-agent` or `--flag`.");
 
 		expect([...names]).toEqual(["status-line"]);
+	});
+
+	/**
+	 * A two-level subcommand name, which is what `memory` has. Splitting on
+	 * whitespace would read `mm delete` as two subcommands and report both as
+	 * ghosts.
+	 */
+	it("reads a subcommand name that is two words", () => {
+		const listed = documentedSubcommands(
+			["## Every subcommand", "", "| `/memory` | `stats`, `mm delete` |"].join("\n"),
+		);
+
+		expect(listed).toEqual(["memory mm delete", "memory stats"]);
+	});
+
+	/**
+	 * Rows outside the section are not subcommand rows. The category tables are
+	 * two-column too, so a reader that ignored the heading would turn `/new`,
+	 * `/fresh` into a subcommand called `New session`.
+	 */
+	it("reads no subcommand from a table above the section", () => {
+		const listed = documentedSubcommands(
+			["| `/new`, `/fresh` | New session |", "", "## Every subcommand", ""].join("\n"),
+		);
+
+		expect(listed).toEqual([]);
 	});
 });
