@@ -103,6 +103,52 @@ function emitDroppedRecordNotice(options: SessionLoadOptions, issues: readonly S
 }
 
 /**
+ * Re-link entries whose parent is not in the file, and say how many were re-linked.
+ *
+ * Entries form a tree keyed by `parentId`, and the branch walk climbs from a leaf to
+ * the header, so an entry whose parent is missing is where that climb stops: every
+ * turn on the far side of the gap is still loaded, still on disk, and invisible to the
+ * conversation. One dropped line above (a half-written record from a killed process, a
+ * shape this build refuses) is enough to reach it, which turns a one-record loss into
+ * the loss of everything the walk can no longer reach.
+ *
+ * A missing parent is only ever damage. Every producer of a session file writes the
+ * parent before the child (an append, a full-file publish, a fork's verbatim copy, a
+ * branch's prefix, the foreign-line merge), so a parent that is absent was lost rather
+ * than never written, and re-parenting an orphan onto the record in front of it in FILE
+ * order restores the append order the file was written in. A `parentId` of `null` is NOT
+ * damage: it is how a producer spells "this record is a root", which is what a legacy
+ * migration and the first turn of a session both write, and the branch walk ends there
+ * by design. Entries with a parent that IS present are untouched, so a transcript that
+ * is legitimately a tree (two windows appending at once) keeps its shape.
+ */
+function stitchOrphanedEntries(entries: readonly FileEntry[]): number {
+	if (entries.length < 2) return 0;
+	const ids = new Set<string>();
+	for (const entry of entries) ids.add(entry.id);
+	let stitched = 0;
+	for (let i = 1; i < entries.length; i++) {
+		const entry = entries[i];
+		if (!("parentId" in entry)) continue;
+		if (entry.parentId === null || entry.parentId === undefined) continue;
+		if (ids.has(entry.parentId)) continue;
+		entry.parentId = entries[i - 1].id;
+		stitched += 1;
+	}
+	return stitched;
+}
+
+function emitStitchedRecordNotice(options: SessionLoadOptions, stitched: number): void {
+	if (!options.operatorNotices || stitched === 0) return;
+	options.operatorNotices.warn(
+		"session",
+		`Re-linked ${stitched} record${stitched === 1 ? "" : "s"} whose place in ${
+			options.source ?? "(unknown session)"
+		} was lost, so the turns on the far side of the gap are still part of this conversation.`,
+	);
+}
+
+/**
  * Parse session JSONL while stripping and folding the optional fixed title slot.
  *
  * A malformed record is skipped so one corrupt line cannot make a whole session
@@ -159,6 +205,11 @@ export function parseSessionContent(
 	if (issues.length > 0) {
 		logger.warn("Session load dropped malformed records", { source: context.source, skipped: issues.length });
 		emitDroppedRecordNotice(context, issues);
+	}
+	const stitched = stitchOrphanedEntries(entries);
+	if (stitched > 0) {
+		logger.warn("Re-linked session records whose parent was lost", { source: context.source, stitched });
+		emitStitchedRecordNotice(context, stitched);
 	}
 	return { entries: foldTitleSlot(entries, slot), titleSlot: slot };
 }
@@ -229,6 +280,11 @@ export async function loadEntriesFromFileStream(
 	if (issues.length > 0) {
 		logger.warn("Session streaming load dropped malformed records", { source: filePath, skipped: issues.length });
 		emitDroppedRecordNotice({ ...options, source: options.source ?? filePath }, issues);
+	}
+	const stitched = stitchOrphanedEntries(entries);
+	if (stitched > 0) {
+		logger.warn("Re-linked session records whose parent was lost", { source: filePath, stitched });
+		emitStitchedRecordNotice({ ...options, source: options.source ?? filePath }, stitched);
 	}
 	return { entries: foldTitleSlot(entries, titleSlot), titleSlot };
 }
