@@ -96,9 +96,9 @@ import { type ReportFindingDetails, toReviewFinding } from "../tools/review";
 // child session was a stub rather than a real one. Stating it here is what makes the parent's
 // interpretation of a yield independent of who built the child.
 import "../tools/yield";
+import type { SideCompleteImpl } from "../session/side-complete";
 import { ToolAbortError } from "../tools/tool-errors";
 import type { EventBus } from "../utils/event-bus";
-import type { TitleCompleteImpl } from "../utils/title-generator";
 import { buildNamedToolChoice } from "../utils/tool-choice";
 import type { WorkspaceTree } from "../workspace-tree";
 import { type AutoloadSkillPlan, settleAutoloadSkills } from "./inherited-collections";
@@ -358,7 +358,7 @@ export interface ExecutorOptions {
 	 * outside the in-flight cap, so a wide spawn fan-out issues one unbracketed
 	 * request per subagent.
 	 */
-	completeImpl?: TitleCompleteImpl;
+	completeImpl?: SideCompleteImpl;
 	index: number;
 	id: string;
 	parentToolCallId?: string;
@@ -1000,7 +1000,7 @@ interface RunMonitorArgs {
 	/** Parent settings for tiny-model label generation. */
 	settings?: Settings;
 	obfuscateProviderText?: (text: string) => string;
-	completeImpl?: TitleCompleteImpl;
+	completeImpl?: SideCompleteImpl;
 	modelOverride?: string | string[];
 	signal?: AbortSignal;
 	onProgress?: (progress: AgentProgress) => void;

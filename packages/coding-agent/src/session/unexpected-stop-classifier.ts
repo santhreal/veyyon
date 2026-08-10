@@ -10,6 +10,7 @@ import { turnControlPrompts } from "../prompts/turn-control/rows";
 import { isTinyMemoryLocalModelKey, ONLINE_MEMORY_MODEL_KEY } from "../tiny/models";
 import { tinyModelClient } from "../tiny/title-client";
 import { REASONING_SAFE_MAX_TOKENS } from "./classifier-tokens";
+import type { SideCompleteImpl } from "./side-complete";
 
 /**
  * The instruction half only: the online path sends the message as its own user
@@ -36,6 +37,12 @@ export interface ClassifyUnexpectedStopDeps {
 	signal?: AbortSignal;
 	/** Live final boundary for text sent to the online classifier. */
 	obfuscateProviderText: (text: string) => string;
+	/**
+	 * Transport for the online classification. Absent means a bare
+	 * `completeSimple`: no watchdog and outside every cap, on a request that runs
+	 * at every settle a candidate stop reaches.
+	 */
+	completeImpl?: SideCompleteImpl;
 }
 
 export function isUnexpectedStopCandidate(message: AssistantMessage): boolean {
@@ -109,6 +116,7 @@ async function classifyOnline(text: string, deps: ClassifyUnexpectedStopDeps): P
 	}
 	const metadata = deps.metadataResolver?.(model.provider);
 	const maxTokens = REASONING_SAFE_MAX_TOKENS;
+	const complete = deps.completeImpl ?? completeSimple;
 
 	const response = await withAuth(
 		seedApiKeyResolver(apiKey, deps.registry.resolver(model, deps.sessionId)),
@@ -117,7 +125,7 @@ async function classifyOnline(text: string, deps: ClassifyUnexpectedStopDeps): P
 			// credential resolution. Resolve the live confidentiality runtime now,
 			// immediately before this physical provider attempt.
 			const providerText = sanitizeClassifierText(text, deps);
-			const attemptResponse = await completeSimple(
+			const attemptResponse = await complete(
 				model,
 				{
 					systemPrompt: [CLASSIFIER_SYSTEM_PROMPT],

@@ -24,6 +24,7 @@ import type { Settings } from "../config/settings";
 import { thinkingPrompts } from "../prompts/thinking/rows";
 import { isSecretPlaceholder, PLACEHOLDER_RE } from "../secrets/placeholder";
 import { REASONING_SAFE_MAX_TOKENS } from "../session/classifier-tokens";
+import type { SideCompleteImpl } from "../session/side-complete";
 import { clampAutoThinkingEffort } from "../thinking";
 import { preprocessTinyMessage } from "../tiny/message-preproc";
 import {
@@ -82,6 +83,12 @@ export interface ClassifyDifficultyDeps {
 	metadataResolver?: (provider: string) => Record<string, unknown> | undefined;
 	/** Final confidentiality boundary for text sent to an online classifier. */
 	obfuscateProviderText?: (text: string) => string;
+	/**
+	 * Transport for the online classification. Absent means a bare
+	 * `completeSimple`: no watchdog and outside every cap, on a request that runs
+	 * once per prompt while the operator waits for the turn to start.
+	 */
+	completeImpl?: SideCompleteImpl;
 }
 
 /**
@@ -146,7 +153,8 @@ async function classifyOnline(input: string, deps: ClassifyDifficultyDeps): Prom
 		return key;
 	};
 
-	const response = await completeSimple(model, requestContext, {
+	const complete = deps.completeImpl ?? completeSimple;
+	const response = await complete(model, requestContext, {
 		apiKey: resolveAttemptApiKey,
 		maxTokens,
 		disableReasoning: true,

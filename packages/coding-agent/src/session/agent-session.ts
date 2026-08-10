@@ -417,7 +417,7 @@ import { extractFileMentions, generateFileMentionMessages } from "../utils/file-
 import { normalizeModelContextImages } from "../utils/image-loading";
 import { describeAttachedImagesForTextModel } from "../utils/image-vision-fallback";
 import { formatLocalCalendarDate } from "../utils/local-date";
-import { generateSessionTitle, type TitleCompleteImpl } from "../utils/title-generator";
+import { generateSessionTitle } from "../utils/title-generator";
 import { buildNamedToolChoice, isToolChoiceActive } from "../utils/tool-choice";
 import type { VibeModeState } from "../vibe/state";
 import type { AuthStorage } from "./auth-storage";
@@ -492,6 +492,7 @@ import { formatSessionHistoryMarkdown } from "./session-history-format";
 import { cleanupEmptyMoveSession, type SessionManager } from "./session-manager";
 import { isAwaitingUserAnswer, mayContinueAtSettle, type SettleContinuationState } from "./settle-continuation";
 import type { ShakeMode, ShakeResult } from "./shake-types";
+import type { SideCompleteImpl } from "./side-complete";
 import { incompleteTodoItems, renderTodoContinuationReminder, todoReminderFingerprint } from "./todo-reminder";
 import { ToolChoiceQueue } from "./tool-choice-queue";
 import { parseTurnBudgetDirective } from "./turn-budget";
@@ -2330,7 +2331,7 @@ export class AgentSession {
 	 * Handing this over is what gives such a request the same watchdogs, in-flight
 	 * cap and provider-concurrency bracket every summarization already has.
 	 */
-	get sideComplete(): TitleCompleteImpl {
+	get sideComplete(): SideCompleteImpl {
 		return this.#sideCompleteImpl;
 	}
 	#advisorStreamFn: StreamFn | undefined;
@@ -12517,6 +12518,7 @@ export class AgentSession {
 					signal: controller.signal,
 					metadataResolver: provider => this.agent.metadataForProvider(provider),
 					obfuscateProviderText: text => this.obfuscateProviderText(text),
+					completeImpl: this.#sideCompleteImpl,
 				});
 			} catch (error) {
 				classificationError = errorMessage(error);
@@ -14290,6 +14292,7 @@ export class AgentSession {
 				metadataResolver: (provider: string) => this.agent.metadataForProvider(provider),
 				signal: controller.signal,
 				obfuscateProviderText: text => this.obfuscateProviderText(text),
+				completeImpl: this.#sideCompleteImpl,
 			});
 		} finally {
 			clearTimeout(timeout);
