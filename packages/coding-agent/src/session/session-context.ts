@@ -1,4 +1,9 @@
 import type { AgentMessage } from "@veyyon/agent-core";
+// The reader that owns "which entry does a compaction's keep marker name": it is the
+// only place the keep-nothing sentinel, an ordinary id and an id that resolves to
+// nothing are told apart, and the prune and shake passes already read the field
+// through it. `entries.ts` is a leaf beside the two above.
+import { KEEP_NOTHING_ENTRY_ID, resolveCompactionBoundaryIndex } from "@veyyon/agent-core/compaction/entries";
 // Same reasoning as the line above: the zero-import leaf that owns the predicate,
 // not the compaction barrel. `legacy-provider-native.ts` imports nothing, so this
 // edge adds exactly one module to every graph this file is on.
@@ -21,6 +26,9 @@ import type { TextContent } from "@veyyon/ai";
 // `@veyyon/ai/types` is 5 modules against the barrel's 346, and this file is on
 // `session/session-manager.ts`'s path, which ~200 test files import.
 import { coerceServiceTierByFamily, type ServiceTierByFamily } from "@veyyon/ai/types";
+// The owner, not the `@veyyon/utils` barrel: 2 modules against 74, and this file is on
+// the graph of the URL router and the read tool.
+import * as logger from "@veyyon/utils/logger";
 import {
 	createBranchSummaryMessage,
 	createCompactionSummaryMessage,
@@ -442,16 +450,38 @@ export function buildSessionContext(
 		// Find compaction index in path
 		const compactionIdx = path.findIndex(e => e.type === "compaction" && e.id === compaction.id);
 
-		// Emit kept messages (before compaction, starting from firstKeptEntryId)
-		let foundFirstKept = !usableCompaction;
-		for (let i = 0; i < compactionIdx; i++) {
-			const entry = path[i];
-			if (entry.id === compaction.firstKeptEntryId) {
-				foundFirstKept = true;
-			}
-			if (foundFirstKept) {
-				appendMessage(entry);
-			}
+		// Emit the kept pre-compaction entries, starting at the compaction's keep marker.
+		//
+		// The marker names the first pre-compaction entry the compaction kept verbatim, and
+		// it is resolved through the reader every other pass uses rather than by a private
+		// walk. There are three cases and this loop used to collapse them into one. An
+		// ordinary id keeps from that entry. `KEEP_NOTHING_ENTRY_ID` deliberately names no
+		// entry at all, which is how a compaction of one unbreakable oversized turn says it
+		// kept nothing. An id that named a real entry which is no longer on the path is
+		// damage: the loader drops a record it cannot parse rather than refusing the
+		// session, and the v1 migration left the field unset whenever the old numeric index
+		// pointed at the header. A walk that only asks "have I seen the id yet" answers
+		// "keep nothing" to all three, so one unreadable line silently removed every kept
+		// turn from the model's context and from the transcript while the summary made the
+		// session look whole. The prune and shake passes read the same field through the
+		// shared reader, which treats an id that resolves to nothing as "the whole branch is
+		// live", so they were rewriting entries this rebuild had already refused to send.
+		// Damage now costs only the record that was lost: the span is re-expanded, which
+		// overlaps the summary by a few turns and loses nothing.
+		const keptFrom = usableCompaction ? resolveCompactionBoundaryIndex(path, compaction.firstKeptEntryId) : 0;
+		if (
+			usableCompaction &&
+			compaction.firstKeptEntryId !== KEEP_NOTHING_ENTRY_ID &&
+			keptFrom === 0 &&
+			path[0]?.id !== compaction.firstKeptEntryId
+		) {
+			logger.warn("Compaction keep marker names no entry on the branch; re-expanding the pre-compaction span", {
+				compactionId: compaction.id,
+				firstKeptEntryId: compaction.firstKeptEntryId,
+			});
+		}
+		for (let i = keptFrom; i < compactionIdx; i++) {
+			appendMessage(path[i]);
 		}
 
 		// Display transcript: emit the summary at the chronological compaction
