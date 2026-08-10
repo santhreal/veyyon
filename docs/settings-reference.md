@@ -68,7 +68,7 @@ veyyon config get compaction.threshold
 | `compaction.strategy` | Compaction Type | enum | `summary` | Summary condenses history in place and continues the same session. Values: `summary`. |
 | `compaction.threshold` | Auto-Compaction Threshold | string | `auto` | When auto-compaction triggers. Auto uses the model's window minus the reserve; a percent scales with each model's window; a token amount is the same trigger on every model. |
 | `compaction.model` | Compaction Model | modelChain | _(unset)_ | Models used for in-place summary compaction, tried in order. Default: inherit — follows the main model live. Add fallbacks for when the first is unauthenticated or its window is too small. |
-| `compaction.modelFallbackStrategy` | Compaction Fallback | enum | `auto` | What to try after the compaction models you configured. Auto also tries the main model, your model roles, and the largest-window model available. Configured only stops there and fails loudly. Values: `auto`, `configured-only`. |
+| `compaction.modelFallbackStrategy` | Compaction Fallback | enum | `auto` | What to try after the compaction models you configured. Auto stays on models you named: the main model, its same-provider compaction sibling, and your model roles. Any authenticated model also reaches the largest window available, on any provider you have credentials for. Configured only stops at the chain and fails loudly. Values: `auto`, `any-model`, `configured-only`. |
 | `compaction.modelContextWindow` | Compaction Model Context | number | _(unset)_ | Context window in tokens to assume for the compaction model. Unset uses the compaction model's own reported window. Candidates whose window cannot fit the summarization payload are skipped loudly. |
 
 ### Roles

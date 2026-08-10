@@ -788,6 +788,11 @@ describe("AgentSession handoff", () => {
 		session.settings.set("compaction.keepRecentTokens", 1);
 		session.settings.set("contextPromotion.enabled", false);
 		session.settings.set("retry.baseDelayMs", 1);
+		// This test is about the retry policy on a timeout, and it needs a SECOND
+		// candidate to move to. `auto` stops at models the operator named, and the
+		// only one here is the session model, so the widest-window tail is asked for
+		// explicitly rather than assumed.
+		session.settings.set("compaction.modelFallbackStrategy", "any-model");
 
 		let firstCandidateKey: string | undefined;
 		let fallbackCandidateKey: string | undefined;
@@ -1104,9 +1109,10 @@ describe("AgentSession handoff", () => {
 			details: {},
 		}));
 
-		// Display still shows the provider-anchored (deflated) usage — only the
-		// compaction decision takes the local floor.
-		expect(session.getContextUsage({ contextWindow: 10_000 })?.tokens).toBe(1_000);
+		// Display and decision are ONE number now. A gauge that reported the
+		// deflated 1k while compaction fired on the 20k floor is what put "90% left"
+		// on the footline of a session that compacted on every turn.
+		expect(session.getContextUsage({ contextWindow: 10_000 })?.tokens).toBeGreaterThan(8_000);
 
 		await session.prompt("small pending prompt");
 

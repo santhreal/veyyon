@@ -176,27 +176,35 @@ export const CONTEXT_SETTINGS = {
 		},
 	},
 
-	// What happens once the configured chain is exhausted. `auto` keeps the
-	// historical tail (the main model, then each model role, then the
-	// largest-window model available), which is why compaction almost never
-	// fails. `configured-only` stops at the models you named: compaction fails
-	// with the reason instead of quietly summarizing on a model you did not pick.
+	// What happens once the configured chain is exhausted. Every tier `auto`
+	// reaches is a model the operator NAMED: the chain, the sibling the model's
+	// own catalog row recommends inside the same provider, the interactive model,
+	// and the model roles they assigned. `any-model` adds the historical last
+	// tier, the largest window among everything authenticated, which is the one
+	// that can send a summary to a provider nobody chose and bill it for the
+	// privilege. `configured-only` stops at the models named in the chain and
+	// fails with the reason instead of summarizing anywhere else.
 	"compaction.modelFallbackStrategy": {
 		type: "enum",
-		values: ["auto", "configured-only"] as const,
+		values: ["auto", "any-model", "configured-only"] as const,
 		default: "auto",
 		ui: {
 			tab: "model",
 			group: "Compaction",
 			label: "Compaction Fallback",
 			description:
-				"What to try after the compaction models you configured. Auto also tries the main model, your model roles, and the largest-window model available. Configured only stops there and fails loudly.",
-			keywords: ["compaction", "fallback", "chain", "model", "candidates"],
+				"What to try after the compaction models you configured. Auto stays on models you named: the main model, its same-provider compaction sibling, and your model roles. Any authenticated model also reaches the largest window available, on any provider you have credentials for. Configured only stops at the chain and fails loudly.",
+			keywords: ["compaction", "fallback", "chain", "model", "candidates", "billing"],
 			options: [
 				{
 					value: "auto",
 					label: "Auto",
-					description: "Fall back to the main model, your roles, then the largest window available",
+					description: "Main model, its same-provider sibling, then your model roles",
+				},
+				{
+					value: "any-model",
+					label: "Any authenticated model",
+					description: "Everything Auto tries, then the largest window on any provider you are logged into",
 				},
 				{
 					value: "configured-only",
