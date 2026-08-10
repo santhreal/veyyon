@@ -1065,7 +1065,7 @@ export class Settings {
 	#getEditVariantEntries(): readonly EditVariantEntry[] {
 		if (this.#editVariantCache !== undefined) return this.#editVariantCache;
 
-		const value = getByPath(this.#merged, ["edit", "modelVariants"]);
+		const value = this.get("edit.modelVariants");
 		if (!isRecord(value)) {
 			this.#editVariantCache = [];
 			return this.#editVariantCache;

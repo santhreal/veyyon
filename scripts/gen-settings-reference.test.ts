@@ -14,16 +14,23 @@ import * as path from "node:path";
 import {
 	getPathsForTab,
 	getUi,
+	hasUi,
+	isSettingPath,
 	SETTING_TABS,
+	SETTINGS_SCHEMA,
+	type SettingPath,
 	TAB_GROUPS,
 	TAB_METADATA,
 } from "../packages/coding-agent/src/config/settings-schema";
 import {
+	CONFIG_TABLE_HEADER,
+	configOnlyPaths,
 	documentedPaths,
 	formatDefault,
 	REFERENCE_DOC_PATH,
 	renderReference,
 	schemaUiPaths,
+	UI_TABLE_HEADER,
 } from "./gen-settings-reference";
 
 const root = path.resolve(import.meta.dirname, "..");
@@ -47,9 +54,48 @@ describe("settings reference", () => {
 	});
 
 	it("documents no path that has left the schema", () => {
-		const uiPaths = new Set<string>(schemaUiPaths());
-		const ghosts = [...documentedPaths(committed)].filter(p => !uiPaths.has(p));
+		const ghosts = [...documentedPaths(committed)].filter(p => !isSettingPath(p));
 		expect(ghosts).toEqual([]);
+	});
+
+	/**
+	 * The other half of the coverage contract, and the reason this page exists at
+	 * all: a key with no `ui` block is invisible in `/settings`, so the reference
+	 * is the ONLY place an operator can learn it exists. 118 of them were missing
+	 * from every generated doc, which is the same omission as the UI half and was
+	 * open for the same reason: nothing failed.
+	 */
+	it("documents every schema key that has no ui block", () => {
+		const documented = documentedPaths(committed);
+		const missing = configOnlyPaths().filter(p => !documented.has(p));
+		expect(missing).toEqual([]);
+	});
+
+	/**
+	 * The two sections partition the schema. A key in both would be a knob the
+	 * page describes twice with two different defaults the moment one drifts, and
+	 * a key in neither is the invisible knob again.
+	 */
+	it("puts every schema key in exactly one of the two sections", () => {
+		const ui = new Set<string>(schemaUiPaths());
+		const configOnly = new Set<string>(configOnlyPaths());
+		const both = [...ui].filter(p => configOnly.has(p));
+		const neither = (Object.keys(SETTINGS_SCHEMA) as SettingPath[]).filter(p => !ui.has(p) && !configOnly.has(p));
+
+		expect(both).toEqual([]);
+		expect(neither).toEqual([]);
+		expect(ui.size + configOnly.size).toBe(Object.keys(SETTINGS_SCHEMA).length);
+	});
+
+	/**
+	 * A key gets a `ui` block or it gets a config-file row, and which one it gets
+	 * is decided by `hasUi` alone. Pinned so a future "hide this one from both"
+	 * shortcut cannot pass: the split is structural, never a list of names.
+	 */
+	it("decides the section from the ui block and nothing else", () => {
+		const misfiled = configOnlyPaths().filter(p => hasUi(p));
+		expect(misfiled).toEqual([]);
+		expect(schemaUiPaths().every(p => hasUi(p))).toBe(true);
 	});
 
 	/** Coverage is meaningless if the rows are empty: every row carries the
@@ -60,9 +106,11 @@ describe("settings reference", () => {
 	});
 
 	/** A row's default must be readable as something the user could type back
-	 * into `config.yml`, so no `[object Object]` and no bare `undefined`. */
+	 * into `config.yml`, so no `[object Object]` and no bare `undefined`. Held for
+	 * the config-file keys too: those are the ones an operator cannot discover by
+	 * opening a screen, so their defaults are the whole documentation. */
 	it("renders every default as a literal the reader could type", () => {
-		for (const settingPath of schemaUiPaths()) {
+		for (const settingPath of [...schemaUiPaths(), ...configOnlyPaths()]) {
 			const rendered = formatDefault(settingPath);
 			expect(rendered).not.toContain("[object Object]");
 			expect(rendered).not.toContain("undefined");
@@ -70,12 +118,18 @@ describe("settings reference", () => {
 		}
 	});
 
-	/** The tables are the machine-readable part of the page, so the header the
-	 * row parser depends on must stay exactly as the generator writes it. */
-	it("keeps one table shape across the whole document", () => {
+	/**
+	 * The tables are the machine-readable part of the page, so the headers the row
+	 * parser depends on stay exactly as the generator writes them. There are two,
+	 * pinned by value: the `/settings` tables and the one config-file table, which
+	 * has no label or description column because a key with no `ui` block has
+	 * neither.
+	 */
+	it("keeps the two table shapes exact, and writes no third", () => {
 		const headers = committed.split("\n").filter(line => line.startsWith("| Key |"));
 		expect(headers.length).toBeGreaterThan(5);
-		expect(new Set(headers).size).toBe(1);
+		expect(new Set(headers)).toEqual(new Set([UI_TABLE_HEADER, CONFIG_TABLE_HEADER]));
+		expect(headers.filter(line => line === CONFIG_TABLE_HEADER).length).toBe(1);
 	});
 
 	/**
@@ -97,7 +151,10 @@ describe("settings reference", () => {
 			.split("\n")
 			.filter(line => line.startsWith("## "))
 			.map(line => line.slice(3));
-		const expected = SETTING_TABS.filter(tab => getPathsForTab(tab).length > 0).map(tab => TAB_METADATA[tab].label);
+		const expected = [
+			...SETTING_TABS.filter(tab => getPathsForTab(tab).length > 0).map(tab => TAB_METADATA[tab].label),
+			"Configuration file only",
+		];
 
 		expect(headings).toEqual(expected);
 	});
@@ -137,12 +194,19 @@ describe("settings reference", () => {
 	});
 
 	it("counts the rows it wrote, not the rows it meant to write", () => {
-		// The count that hid the omission. It must be derived from the document.
+		// The count that hid the omission. Both numbers must be derived from the
+		// document, and they must add up to the whole schema: a count taken from the
+		// schema instead of the page is what let 317 be reported for 316 rows.
 		const rendered = renderReference();
 		const rows = documentedPaths(rendered).size;
+		const ui = schemaUiPaths().length;
+		const configOnly = configOnlyPaths().length;
 
-		expect(rendered).toContain(`\n${rows} settings.`);
-		expect(rows).toBe(schemaUiPaths().length);
+		expect(rendered).toContain(
+			`\n${ui} settings in /settings, ${configOnly} configuration-file keys, ${rows} in all.`,
+		);
+		expect(rows).toBe(ui + configOnly);
+		expect(rows).toBe(Object.keys(SETTINGS_SCHEMA).length);
 	});
 
 	/**
@@ -166,14 +230,19 @@ describe("settings reference", () => {
 		const tabHeadings = rendered.split("\n").filter(line => line.startsWith("## "));
 		const groupHeadings = rendered.split("\n").filter(line => line.startsWith("### "));
 
-		// 13 tabs, 66 group sections, 337 rows as committed.
-		expect(tabHeadings.length).toBeGreaterThanOrEqual(13);
+		// 14 sections (13 tabs plus the config-file one), 66 group sections, 462 rows
+		// as committed. The row floor is above the 344 the `/settings` half alone
+		// renders, so losing the whole config-file section fails here rather than
+		// passing on the strength of the other half.
+		expect(tabHeadings.length).toBeGreaterThanOrEqual(14);
 		expect(groupHeadings.length).toBeGreaterThanOrEqual(66);
-		expect(documentedPaths(rendered).size).toBeGreaterThanOrEqual(337);
+		expect(documentedPaths(rendered).size).toBeGreaterThanOrEqual(462);
+		expect(configOnlyPaths().length).toBeGreaterThanOrEqual(118);
 
 		// And named, so losing one specific tab is a failure rather than a number
 		// absorbed by growth elsewhere. Every tab the schema declares is on the page.
 		expect(tabHeadings).toEqual(expect.arrayContaining(SETTING_TABS.map(tab => `## ${TAB_METADATA[tab].label}`)));
+		expect(tabHeadings).toContain("## Configuration file only");
 	});
 
 	/** Every group heading holds rows: an empty section means a group name in

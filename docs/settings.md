@@ -1028,7 +1028,7 @@ Two of these have a different name depending on how you reach them: `config set`
 
 ### Every other setting
 
-The sections above are the settings worth explaining at length. For the complete list, see the [settings reference](./settings-reference.md): every setting that appears in `/settings`, with its key, type, default, and what it does, grouped exactly as the tabs are. That page is generated from the schema, so it cannot fall behind the code; the narrative here is the part written by hand.
+The sections above are the settings worth explaining at length. For the complete list, see the [settings reference](./settings-reference.md): every setting that appears in `/settings`, with its key, type, default, and what it does, grouped exactly as the tabs are, followed by every key that exists only in a configuration file. That page is generated from the schema, so it cannot fall behind the code; the narrative here is the part written by hand.
 
 `veyyon config list` shows the same set with your current values.
 
