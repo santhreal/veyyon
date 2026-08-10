@@ -599,6 +599,37 @@ export class SessionManager {
 		this.#diskFailureLogged = false;
 	}
 
+	/**
+	 * Give a latched persistence fault one attempt to heal, and say whether there
+	 * was one to heal.
+	 *
+	 * A failed write latches `#diskFailure`, and every later persist refused on the
+	 * strength of that latch: the next append threw the OLD error at a caller doing
+	 * nothing wrong, the disk chain refused to run the work, and `close()` rethrew
+	 * instead of publishing. A fault is a moment, not a property of the session. A
+	 * disk that fills and is emptied, a network mount that blips, a directory whose
+	 * permissions are fixed while the session is open: after any of those the
+	 * conversation is still whole in memory and cannot reach the file again, so
+	 * every turn from the fault onwards is lost with a healthy disk underneath it.
+	 *
+	 * The attempt needs no schedule and no backoff, because a full-file publish is
+	 * self-sufficient: it writes every entry this manager holds, so ONE successful
+	 * rewrite makes the file whole again however many appends were refused before
+	 * it. It costs one serialization of the transcript, entries arrive at the pace
+	 * of a conversation, and a fault that is still there simply latches again.
+	 */
+	#retryPersistenceAfterFailure(): boolean {
+		if (!this.#diskFailure) return false;
+		// Unlatch, but leave `#diskFailureLogged` alone. A broken disk retries on every
+		// entry, and clearing the reported flag here would put one notice on screen per
+		// entry for a fault the operator already knows about. Only a successful publish
+		// clears it (`#clearDiskError`), which is what makes the NEXT fault speak.
+		this.#diskFailure = undefined;
+		this.#fileIsCurrent = false;
+		this.#rewriteRequired = true;
+		return true;
+	}
+
 	#noteDiskFailure(errorLike: unknown): Error {
 		const error = toError(errorLike);
 		if (!this.#diskFailure) this.#diskFailure = error;
@@ -610,6 +641,16 @@ export class SessionManager {
 				error: error.message,
 				stack: error.stack,
 			});
+			// The log alone reaches nobody: the default transports are file-only and a
+			// TUI cannot use the console. The conversation continuing on screen while
+			// nothing of it is being saved is exactly the state an operator has to be
+			// told about, so it goes to the channel a surface renders. Once per fault:
+			// `#clearDiskError` resets this, so a fresh fault after a recovery speaks
+			// again and a fault that stays put does not repeat itself every entry.
+			this.#operatorNotices?.error(
+				"session",
+				`could not write this conversation to ${this.#sessionFile ?? "its transcript"} (${error.message}). It is still complete in this window and the whole file is rewritten on the next attempt.`,
+			);
 		}
 
 		return this.#diskFailure;
@@ -844,6 +885,9 @@ export class SessionManager {
 			this.#closeWriterEventually();
 			this.#storage.writeTextSync(this.#sessionFile, body);
 			this.#notePublishedFile(Buffer.byteLength(body, "utf-8"));
+			// The file matches memory again, so the fault episode is over and a later one
+			// is a new thing to report.
+			this.#clearDiskError();
 			this.#fileIsCurrent = true;
 			this.#rewriteRequired = false;
 			this.#hasTitleSlot = true;
@@ -869,6 +913,8 @@ export class SessionManager {
 		await this.#scheduleDiskWork(
 			async () => {
 				if (await this.#runFencedAtomicRewrite(startEpoch)) {
+					// Same as the synchronous publish: the episode ends when the file is whole.
+					this.#clearDiskError();
 					this.#fileIsCurrent = true;
 					this.#rewriteRequired = false;
 					this.#hasTitleSlot = true;
@@ -922,7 +968,11 @@ export class SessionManager {
 
 	#appendToSessionFile(entry: SessionEntry): void {
 		if (!this.#persist || !this.#sessionFile) return;
-		if (this.#diskFailure) throw this.#diskFailure;
+		// A latched fault does not refuse this entry: it makes the entry the reason to
+		// try the file again. The retry marks the file divergent, so the branch below
+		// publishes the whole transcript rather than appending one line to a file that
+		// is missing everything since the fault.
+		this.#retryPersistenceAfterFailure();
 
 		// Lazy gate: a brand-new session is not written until it has an assistant
 		// message (or someone forced creation), so sessions that never produce
@@ -1033,7 +1083,7 @@ export class SessionManager {
 
 	async #persistTitleChangeEntry(entry: TitleChangeEntry, update: SessionTitleUpdate): Promise<void> {
 		if (!this.#persist || !this.#sessionFile) return;
-		if (this.#diskFailure) throw this.#diskFailure;
+		this.#retryPersistenceAfterFailure();
 
 		if (!this.#shouldHaveSessionFile()) {
 			this.#fileIsCurrent = false;
@@ -1661,6 +1711,10 @@ export class SessionManager {
 	/** Flush pending writes. Call before switching sessions or on shutdown. */
 	async flush(): Promise<void> {
 		if (!this.#persist || !this.#sessionFile) return;
+		// A flush is a request to make the file match memory, so a latched fault takes
+		// its attempt here instead of being rethrown at a caller who asked for the
+		// opposite of a refusal.
+		if (this.#retryPersistenceAfterFailure()) await this.#rewriteAtomically();
 		await this.#scheduleDiskWork(async () => {
 			if (this.#writer?.isOpen()) await this.#writer.flush();
 		});
@@ -1678,7 +1732,11 @@ export class SessionManager {
 	 */
 	flushSync(): void {
 		if (!this.#persist || !this.#sessionFile) return;
-		if (this.#diskFailure) throw this.#diskFailure;
+		// The exit path, and the last chance the transcript gets. A latched fault takes
+		// its attempt here because there is no later publish to carry the entries: the
+		// divergent-file branch below writes the whole transcript, and the throw at the
+		// end reports the fault only if that attempt failed as well.
+		this.#retryPersistenceAfterFailure();
 		if (this.#fileIsCurrent && !this.#rewriteRequired) {
 			const writerError = this.#writer?.getError();
 			if (writerError) throw writerError;
@@ -1762,6 +1820,11 @@ export class SessionManager {
 	async close(): Promise<void> {
 		this.#endLifecycle("closed");
 		if (!this.#persist) return;
+		// A fault latched earlier in the session leaves entries that reached memory and
+		// never reached the file, and this is the last call that can carry them. The
+		// publish is conditional on there having BEEN a fault so a session that closes
+		// cleanly writes exactly what it wrote before.
+		if (this.#retryPersistenceAfterFailure()) await this.#rewriteAtomically();
 		await this.#scheduleDiskWork(async () => {
 			const hadWriter = this.#writer !== undefined;
 			await this.#closeWriterHandle();
