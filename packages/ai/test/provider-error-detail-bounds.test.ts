@@ -22,7 +22,11 @@
  */
 import { describe, expect, it } from "bun:test";
 import { AnthropicApiError } from "@veyyon/ai/error";
-import { boundProviderErrorDetail, MAX_PROVIDER_ERROR_DETAIL_CHARS } from "@veyyon/ai/error/detail-bounds";
+import {
+	boundProviderErrorDetail,
+	MAX_PROVIDER_ERROR_DETAIL_CHARS,
+	NO_PROVIDER_ERROR_DETAIL,
+} from "@veyyon/ai/error/detail-bounds";
 import { parseCodexError } from "@veyyon/ai/providers/openai-codex/response-handler";
 
 /** A gateway HTML page, far past anything a real provider envelope carries. */
@@ -64,10 +68,14 @@ describe("boundProviderErrorDetail", () => {
 		expect(boundProviderErrorDetail(detail)).toBe(detail);
 	});
 
-	it("passes an empty body straight through so callers can still detect it", () => {
-		// `AnthropicApiError.fromResponse` relies on the empty string staying
-		// falsy to substitute "status code (no body)".
-		expect(boundProviderErrorDetail("")).toBe("");
+	it("names an empty body instead of returning nothing", () => {
+		// This used to pass the empty string through so `AnthropicApiError.fromResponse`
+		// could substitute "status code (no body)" via `||`. Every OTHER site had no such
+		// fallback and rendered a message ending at a colon, so the naming moved in here
+		// and the Anthropic site now branches on the empty body explicitly, because the
+		// overflow classifier reads its exact wording.
+		expect(boundProviderErrorDetail("")).toBe(NO_PROVIDER_ERROR_DETAIL);
+		expect(boundProviderErrorDetail("   \n")).toBe(NO_PROVIDER_ERROR_DETAIL);
 	});
 });
 
