@@ -13692,6 +13692,14 @@ export class AgentSession {
 					autoContinue,
 				});
 			}
+			// Nothing recovered the turn, and the failed message was pulled out of
+			// active context above so a retry would not replay it. Put it back: it is
+			// the only thing that tells the user the context is too long. Without
+			// this the prompt resolves with no assistant message, no error event and
+			// no branch entry, so an operator who has compaction off sees a question
+			// that produced literally nothing, while every other provider failure
+			// leaves its error in the transcript.
+			this.#restoreFailedAssistantTurnToActiveContext(assistantMessage);
 			return COMPACTION_CHECK_NONE;
 		}
 		// A context promotion can land while the failing call is already in
@@ -13772,8 +13780,10 @@ export class AgentSession {
 					triggerContextTokens: calculateContextTokens(assistantMessage.usage),
 				});
 			}
-			// Neither promotion nor compaction is available — surface the dead-end so
-			// the user understands why the turn yielded with nothing.
+			// Same dead end as the overflow path: the comment below is only true if
+			// the truncated turn is actually still in context, and the cleanup above
+			// took it out. A log line is not a diagnosis a user can read.
+			this.#restoreFailedAssistantTurnToActiveContext(assistantMessage);
 			logger.warn("response.incomplete with no recovery path (promotion + compaction both unavailable)", {
 				model: `${assistantMessage.provider}/${assistantMessage.model}`,
 			});
@@ -14341,8 +14351,26 @@ export class AgentSession {
 		return result;
 	}
 
+	/**
+	 * Restore a failed assistant turn after a recovery attempt that dropped the
+	 * persisted entry and then committed nothing.
+	 */
 	#restoreFailedAssistantTurn(assistantMessage: AssistantMessage): void {
 		if (!isEmptyErrorTurn(assistantMessage)) this.sessionManager.appendMessage(assistantMessage);
+		this.#restoreFailedAssistantTurnToActiveContext(assistantMessage);
+	}
+
+	/**
+	 * Put a failed assistant turn back into ACTIVE context only.
+	 *
+	 * The dead-end paths (no promotion target and compaction unavailable) pull the
+	 * failed turn out of context eagerly so a retry cannot replay it, and then
+	 * never schedule one. Only the branch is left alone there, so re-appending to
+	 * the session would duplicate an entry that was never dropped; the active
+	 * context is the half that has to be put back, because it is what the user
+	 * reads.
+	 */
+	#restoreFailedAssistantTurnToActiveContext(assistantMessage: AssistantMessage): void {
 		const lastMessage = this.agent.state.messages.at(-1);
 		if (
 			lastMessage?.role === "assistant" &&
