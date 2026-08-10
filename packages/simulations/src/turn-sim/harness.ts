@@ -103,6 +103,15 @@ export interface ScriptedTurn {
 	 * request that would cold-miss the cache the live turns paid to populate.
 	 */
 	readonly cacheRouting: { readonly sessionId: string | undefined; readonly promptCacheKey: string | undefined };
+	/**
+	 * The options the request was actually made with, after
+	 * `createSettingsAwareStreamFn` layered the operator's settings onto whatever
+	 * the session passed. This is the only place a scenario can see that a knob
+	 * reached the wire: watchdog budgets, the in-flight cap, the loop guard, the
+	 * thinking-summary switch and the api-gated ones are all resolved there and
+	 * are invisible in the context.
+	 */
+	readonly options: SimpleStreamOptions | undefined;
 	/** Emit a complete text block. */
 	text(value: string): void;
 	/**
@@ -220,6 +229,7 @@ async function runScript(
 		model,
 		signal: options?.signal,
 		toolChoice: options?.toolChoice,
+		options,
 		cacheRouting: {
 			sessionId: options?.sessionId,
 			promptCacheKey: options?.promptCacheKey,
@@ -508,6 +518,18 @@ function buildSimulation(scope: SimulationScope, ownsScope: boolean): Simulation
 		: SessionManager.inMemory(scope.tempDir.path(), scope.storage);
 
 	const baseStreamFn = createSettingsAwareStreamFn(settings);
+	// The stream fn the agent and every SIDE request share, exactly as sdk.ts
+	// builds it. A side request is one the session makes for itself rather than for
+	// the conversation: the compaction summary, a handoff, a branch summary.
+	// `AgentSession` falls back to bare `streamSimple` when no `sideStreamFn` is
+	// given, and a bare transport reads no settings at all, so without this a
+	// simulated compaction ran with the PRODUCTION 100s idle watchdog while the
+	// turn beside it ran on the simulation's 0.3s budget: a summarizer that went
+	// silent would hang the test out instead of being cut off, which is the one
+	// failure mode this harness exists to catch.
+	const sharedStreamFn = options.providerConcurrency
+		? wrapStreamFnWithProviderConcurrency(settings, baseStreamFn)
+		: baseStreamFn;
 	// The loop asks the HOST for the turn's tool-choice directive; the session is
 	// what answers, and it is built after the agent, so the callback reads a
 	// binding assigned below. This is the same shape production uses (sdk.ts), and
@@ -525,9 +547,7 @@ function buildSimulation(scope: SimulationScope, ownsScope: boolean): Simulation
 		},
 		convertToLlm,
 		getToolChoice: () => host?.nextToolChoiceDirective(),
-		streamFn: options.providerConcurrency
-			? wrapStreamFnWithProviderConcurrency(settings, baseStreamFn)
-			: baseStreamFn,
+		streamFn: sharedStreamFn,
 	});
 
 	const session = new AgentSession({
@@ -536,6 +556,7 @@ function buildSimulation(scope: SimulationScope, ownsScope: boolean): Simulation
 		settings,
 		modelRegistry: scope.modelRegistry,
 		toolRegistry: scope.toolRegistry,
+		sideStreamFn: sharedStreamFn,
 		...(options.ttsrManager ? { ttsrManager: options.ttsrManager } : {}),
 	});
 	host = session;

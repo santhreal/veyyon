@@ -94,6 +94,7 @@ import {
 } from "@veyyon/agent-core/compaction/pruning";
 import type { ProtectedToolMatcher } from "@veyyon/agent-core/compaction/tool-protection";
 import type {
+	Api,
 	AssistantMessage,
 	AssistantMessageEvent,
 	AssistantRetryRecovery,
@@ -2299,6 +2300,30 @@ export class AgentSession {
 	#wirePathBytesSaved = 0;
 	#thoughtSignatureBytesSaved = 0;
 	#sideStreamFn: StreamFn;
+	/**
+	 * The transport every SIDE request shares, in the `completeImpl` shape
+	 * `compact()`, the handoff and the branch summary all take. A side request is
+	 * one the session makes for itself rather than for the conversation: a
+	 * summarization, a handoff, a tree navigation summary.
+	 *
+	 * Routing through {@link #sideStreamFn} is what puts the operator's provider
+	 * settings on such a request (the stream idle and first-event watchdogs, the
+	 * in-flight cap, `providers.openrouterVariant`, the loop guard) and what
+	 * brackets it with the provider-concurrency limiter. The default inside
+	 * `compact()` is a bare `completeSimple`, which reads no settings at all, so a
+	 * site that builds its own options and omits this runs unwatched: a
+	 * summarization whose provider goes silent has no deadline to end it. Every
+	 * site names this field instead of writing the adapter again, so a new one
+	 * cannot forget it by construction.
+	 */
+	#sideCompleteImpl = async <TApi extends Api>(
+		model: Model<TApi>,
+		ctx: Context,
+		options: SimpleStreamOptions,
+	): Promise<AssistantMessage> => {
+		const stream = await this.#sideStreamFn(model, ctx, options);
+		return stream.result();
+	};
 	#advisorStreamFn: StreamFn | undefined;
 	#preferWebsockets: boolean | undefined;
 	#convertToLlm: (messages: AgentMessage[]) => Message[] | Promise<Message[]>;
@@ -4089,6 +4114,7 @@ export class AgentSession {
 						promptCacheKey: this.agent.promptCacheKey ?? advisorProviderSessionId,
 						providerSessionState: this.#providerSessionState,
 						codexCompaction,
+						completeImpl: this.#sideCompleteImpl,
 					},
 				);
 				break;
@@ -13347,10 +13373,7 @@ export class AgentSession {
 				model,
 				{
 					streamOptions: handoffStreamOptions,
-					completeImpl: async (requestModel, requestContext, requestOptions) => {
-						const stream = await this.#sideStreamFn(requestModel, requestContext, requestOptions);
-						return stream.result();
-					},
+					completeImpl: this.#sideCompleteImpl,
 					telemetry: resolveTelemetry(this.agent.telemetry, this.sessionId),
 					// Honor the user's /model thinking selection on the handoff path.
 					// Clamped per-model inside generateHandoffFromContext via
@@ -15744,10 +15767,7 @@ export class AgentSession {
 						// subagents auto/manually compacting issued uncapped
 						// summary requests in parallel (chatgpt-codex review on
 						// #3751).
-						completeImpl: async (requestModel, requestContext, requestOptions) => {
-							const stream = await this.#sideStreamFn(requestModel, requestContext, requestOptions);
-							return stream.result();
-						},
+						completeImpl: this.#sideCompleteImpl,
 					},
 				);
 				this.#announceCompactionFallback(candidates, candidate, skipReasons);
@@ -16309,6 +16329,7 @@ export class AgentSession {
 						providerSessionState: this.#providerSessionState,
 						obfuscateProviderText: text => this.obfuscateProviderText(text),
 						codexCompaction,
+						completeImpl: this.#sideCompleteImpl,
 					};
 					const candidateWindow =
 						typeof configuredCompactionWindow === "number" && configuredCompactionWindow > 0
@@ -19024,10 +19045,7 @@ export class AgentSession {
 				telemetry: resolveTelemetry(this.agent.telemetry, this.sessionId),
 				// Same per-provider concurrency cap rationale as the compaction
 				// path above (chatgpt-codex review on #3751).
-				completeImpl: async (requestModel, requestContext, requestOptions) => {
-					const stream = await this.#sideStreamFn(requestModel, requestContext, requestOptions);
-					return stream.result();
-				},
+				completeImpl: this.#sideCompleteImpl,
 			});
 			this.#branchSummaryAbortController = undefined;
 			if (result.aborted) {
