@@ -46,6 +46,7 @@ import type {
 import { setBedrockProviderModule } from "@veyyon/ai/providers/register-builtins";
 import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { buildModel } from "@veyyon/catalog/build";
+import type { Effort } from "@veyyon/catalog/effort";
 import { emptyUsage } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { buildServiceTierByFamily } from "@veyyon/coding-agent/config/service-tier";
@@ -377,6 +378,7 @@ export function simulatedModel(id = "sim-model", options?: SimulatedModelOptions
 		provider: options?.provider ?? "amazon-bedrock",
 		baseUrl: "https://simulation.invalid",
 		reasoning: options?.reasoning ?? false,
+		...(options?.efforts ? { thinking: { mode: "effort" as const, efforts: options.efforts } } : {}),
 		input: ["text"],
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 		contextWindow: options?.contextWindow ?? 200_000,
@@ -401,6 +403,13 @@ export interface SimulatedModelOptions {
 	 * blocks from a model that claims it cannot produce them.
 	 */
 	reasoning?: boolean;
+	/**
+	 * Effort ladder the model declares. A declared ladder is what the session
+	 * consults before it offers `auto` anything to pick, and a synthetic id
+	 * derives none, so a scenario that drives the difficulty classifier states
+	 * the ladder rather than hoping identity invents one.
+	 */
+	efforts?: readonly Effort[];
 }
 
 const ANY_OBJECT = type("object");

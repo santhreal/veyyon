@@ -27,6 +27,7 @@ import type { ArtifactManager } from "../session/artifacts";
 import type { ClientBridge } from "../session/client-bridge";
 import type { CustomMessage } from "../session/messages";
 import type { SubagentSpawnRecord, UsageStatistics } from "../session/session-entries";
+import type { SideCompleteImpl } from "../session/side-complete";
 import type { ToolChoiceQueue } from "../session/tool-choice-queue";
 import type { AgentOutputManager } from "../task/output-manager";
 import { delegationEnabled, resolveSessionMaxNestedSpawnDepth } from "../task/subagent-settings";
@@ -35,7 +36,6 @@ import type { ConfiguredThinkingLevel } from "../thinking";
 import { resolveEffectiveToolDiscoveryMode } from "../tool-discovery/mode";
 import type { DiscoverableTool, DiscoverableToolSearchIndex } from "../tool-discovery/tool-index";
 import type { EventBus } from "../utils/event-bus";
-import type { TitleCompleteImpl } from "../utils/title-generator";
 import type { WorkspaceTree } from "../workspace-tree";
 import { type BuiltinToolName, type HiddenToolName, normalizeToolNames, TOOL } from "./builtin-names";
 import type { CheckpointState, CompletedRewindState } from "./checkpoint";
@@ -150,7 +150,7 @@ export interface ToolSession {
 	 * Carries the stream watchdogs, the in-flight cap and the per-provider
 	 * concurrency bracket, so a fan-out of labels cannot outrun them.
 	 */
-	sideComplete?: TitleCompleteImpl;
+	sideComplete?: SideCompleteImpl;
 	/** Whether UI is available */
 	hasUI: boolean;
 	/** Effective concrete effort currently applied to the parent session. */

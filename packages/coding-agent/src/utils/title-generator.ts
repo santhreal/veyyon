@@ -10,7 +10,6 @@ import {
 	type Context,
 	completeSimple,
 	type Model,
-	type SimpleStreamOptions,
 } from "@veyyon/ai";
 import { StreamMarkupHealing } from "@veyyon/ai/utils/stream-markup-healing";
 import { $env, isTerminalHeadless, logger, prompt } from "@veyyon/utils";
@@ -20,6 +19,7 @@ import { resolveRoleSelectionWithInherit } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
 import { titlesPrompts } from "../prompts/titles/rows";
 import { isSecretPlaceholder, PLACEHOLDER_RE } from "../secrets/placeholder";
+import type { SideCompleteImpl } from "../session/side-complete";
 import { formatTitleUserMessage } from "../tiny/message-preproc";
 import { isTinyTitleLocalModelKey, ONLINE_TINY_TITLE_MODEL_KEY } from "../tiny/models";
 import { isLowSignalTitleInput, normalizeGeneratedTitle } from "../tiny/text";
@@ -113,7 +113,7 @@ function getTitleModel(registry: ModelRegistry, settings: Settings, currentModel
  * @param customSystemPrompt Optional title-specific system prompt override
  * @param obfuscateProviderText Final confidentiality boundary for text sent to an online title model
  * @param completeImpl Transport for the request; defaults to a bare `completeSimple` that reads no
- *   operator settings (see {@link TitleCompleteImpl})
+ *   operator settings (see {@link SideCompleteImpl})
  */
 /**
  * Whether auto-titling is disabled for this process. The `--no-title` flag (and
@@ -127,22 +127,6 @@ export function autoTitleDisabled(): boolean {
 	return Boolean($env.VEYYON_NO_TITLE);
 }
 
-/**
- * The transport a title request runs on. Defaults to a bare
- * {@link completeSimple}, which reads no operator settings at all: no stream
- * idle or first-event watchdog, no in-flight cap, no per-provider concurrency
- * bracket, no `providers.openrouterVariant`. A title is a side request like a
- * summarization or a handoff, so every caller that has a session hands over
- * that session's side transport instead (`AgentSession.sideComplete`). A title
- * whose provider goes silent then has a deadline to end it, and a fan-out of
- * subagent labels queues behind the same cap as every other request.
- */
-export type TitleCompleteImpl = <TApi extends Api>(
-	model: Model<TApi>,
-	ctx: Context,
-	options: SimpleStreamOptions,
-) => Promise<AssistantMessage>;
-
 export async function generateSessionTitle(
 	firstMessage: string,
 	registry: ModelRegistry,
@@ -152,7 +136,7 @@ export async function generateSessionTitle(
 	metadataResolver?: (provider: string) => Record<string, unknown> | undefined,
 	customSystemPrompt?: string,
 	obfuscateProviderText?: (text: string) => string,
-	completeImpl?: TitleCompleteImpl,
+	completeImpl?: SideCompleteImpl,
 ): Promise<string | null> {
 	// Hard off switch: --no-title / VEYYON_NO_TITLE disables auto-titling for
 	// every caller of this function (first-input AND replan refresh), so no
@@ -236,7 +220,7 @@ export async function generateTitleOnline(
 	signal?: AbortSignal,
 	customSystemPrompt?: string,
 	obfuscateProviderText?: (text: string) => string,
-	completeImpl?: TitleCompleteImpl,
+	completeImpl?: SideCompleteImpl,
 ): Promise<string | null> {
 	const model = getTitleModel(registry, settings, currentModel);
 	if (!model) {
