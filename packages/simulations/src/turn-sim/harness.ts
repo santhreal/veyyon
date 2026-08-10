@@ -390,7 +390,7 @@ export function simulatedModel(id = "sim-model", options?: SimulatedModelOptions
 		baseUrl: "https://simulation.invalid",
 		reasoning: options?.reasoning ?? false,
 		...(options?.efforts ? { thinking: { mode: "effort" as const, efforts: options.efforts } } : {}),
-		input: ["text"],
+		input: options?.vision ? ["text", "image"] : ["text"],
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 		contextWindow: options?.contextWindow ?? 200_000,
 		maxTokens: 32_768,
@@ -421,6 +421,13 @@ export interface SimulatedModelOptions {
 	 * the ladder rather than hoping identity invents one.
 	 */
 	efforts?: readonly Effort[];
+	/**
+	 * Declare image input. The image policy at the session's provider-context
+	 * seam reads the serving model's capability, so a scenario that puts an
+	 * image in history needs both arms: text-only (the image must not reach the
+	 * provider) and vision (it must).
+	 */
+	vision?: boolean;
 }
 
 const ANY_OBJECT = type("object");
