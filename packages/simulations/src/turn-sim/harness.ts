@@ -33,12 +33,22 @@
  */
 import * as fs from "node:fs/promises";
 import { Agent, type AgentTool } from "@veyyon/agent-core";
-import type { Api, AssistantMessage, Context, Model, SimpleStreamOptions, ToolCall, ToolChoice } from "@veyyon/ai";
+import type {
+	Api,
+	AssistantMessage,
+	Context,
+	Model,
+	ServiceTier,
+	SimpleStreamOptions,
+	ToolCall,
+	ToolChoice,
+} from "@veyyon/ai";
 import { setBedrockProviderModule } from "@veyyon/ai/providers/register-builtins";
 import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { buildModel } from "@veyyon/catalog/build";
 import { emptyUsage } from "@veyyon/catalog/models";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { buildServiceTierByFamily } from "@veyyon/coding-agent/config/service-tier";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { TtsrManager } from "@veyyon/coding-agent/export/ttsr";
 import { AgentSession, type AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
@@ -452,6 +462,20 @@ export interface SimulationOptions {
 	modelsConfig?: Record<string, unknown>;
 }
 
+/**
+ * One provider request as the SESSION made it: the model it names and the
+ * options it carries before any api-specific projection. `tools` is 0 for a side
+ * request (a compaction summary, a handoff, a branch summary), because those are
+ * asked without the conversation's tools.
+ */
+export interface SimulationRequest {
+	call: number;
+	provider: string;
+	model: string;
+	tools: number;
+	serviceTier?: ServiceTier;
+}
+
 export interface Simulation {
 	readonly session: AgentSession;
 	readonly sessionManager: SessionManager;
@@ -461,6 +485,12 @@ export interface Simulation {
 	eventsOfType<T extends AgentSessionEvent["type"]>(type: T): Array<Extract<AgentSessionEvent, { type: T }>>;
 	/** Number of provider calls the simulation has served. */
 	providerCalls(): number;
+	/**
+	 * Every request the session and the loop handed the transport, in call order.
+	 * The scripted-turn `options` see one api's projection of these; this sees
+	 * what the session actually asked for.
+	 */
+	sessionRequests(): SimulationRequest[];
 	/** The file the transcript is written to, when `persist` is on. */
 	sessionFile(): string | undefined;
 	/**
@@ -530,6 +560,23 @@ function buildSimulation(scope: SimulationScope, ownsScope: boolean): Simulation
 	const sharedStreamFn = options.providerConcurrency
 		? wrapStreamFnWithProviderConcurrency(settings, baseStreamFn)
 		: baseStreamFn;
+	// Everything the session and the loop hand the transport, in call order,
+	// BEFORE `mapOptionsForApi` projects it onto one provider's option shape.
+	// That projection is api-keyed and drops what the api has no field for, so
+	// `serviceTier` never reaches the scripted bedrock module and `turn.options`
+	// cannot see it. A scenario asking whether an operator knob reached the
+	// request the session made therefore reads it here.
+	const requests: SimulationRequest[] = [];
+	const recordingStreamFn: typeof sharedStreamFn = (model, context, streamOptions) => {
+		requests.push({
+			call: requests.length + 1,
+			provider: model.provider,
+			model: model.id,
+			tools: context.tools?.length ?? 0,
+			serviceTier: streamOptions?.serviceTier,
+		});
+		return sharedStreamFn(model, context, streamOptions);
+	};
 	// The loop asks the HOST for the turn's tool-choice directive; the session is
 	// what answers, and it is built after the agent, so the callback reads a
 	// binding assigned below. This is the same shape production uses (sdk.ts), and
@@ -547,7 +594,7 @@ function buildSimulation(scope: SimulationScope, ownsScope: boolean): Simulation
 		},
 		convertToLlm,
 		getToolChoice: () => host?.nextToolChoiceDirective(),
-		streamFn: sharedStreamFn,
+		streamFn: recordingStreamFn,
 	});
 
 	const session = new AgentSession({
@@ -556,7 +603,17 @@ function buildSimulation(scope: SimulationScope, ownsScope: boolean): Simulation
 		settings,
 		modelRegistry: scope.modelRegistry,
 		toolRegistry: scope.toolRegistry,
-		sideStreamFn: sharedStreamFn,
+		sideStreamFn: recordingStreamFn,
+		// `tier.openai` / `tier.anthropic` / `tier.google` reach a session only
+		// through this map (sdk.ts builds it the same way). Without it every
+		// simulated request carries no service tier at all, so a scenario asserting
+		// the operator's tier on the wire would pass for the wrong reason: absent
+		// everywhere looks like agreement.
+		serviceTierByFamily: buildServiceTierByFamily(
+			settings.get("tier.openai"),
+			settings.get("tier.anthropic"),
+			settings.get("tier.google"),
+		),
 		...(options.ttsrManager ? { ttsrManager: options.ttsrManager } : {}),
 	});
 	host = session;
@@ -570,6 +627,9 @@ function buildSimulation(scope: SimulationScope, ownsScope: boolean): Simulation
 		sessionManager,
 		modelRegistry: scope.modelRegistry,
 		events,
+		sessionRequests() {
+			return [...requests];
+		},
 		eventsOfType(type) {
 			return events.filter(event => event.type === type) as Array<Extract<AgentSessionEvent, { type: typeof type }>>;
 		},

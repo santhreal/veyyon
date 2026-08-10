@@ -16,6 +16,7 @@ import type {
 	MessageAttribution,
 	Model,
 	ProviderSessionState,
+	ServiceTier,
 	SimpleStreamOptions,
 	TextContent,
 	Tool,
@@ -626,6 +627,14 @@ export interface SummaryOptions {
 	sessionId?: string;
 	/** Prompt-cache key for remote compaction transports that support provider prefix caching. */
 	promptCacheKey?: string;
+	/**
+	 * Service tier for the summarization request, resolved by the host from the
+	 * candidate model's provider family. Compaction sends the largest payload of
+	 * a session, so a host that puts live turns on a cheaper or faster tier and
+	 * omits it here bills (or paces) its biggest request on a tier the operator
+	 * never selected.
+	 */
+	serviceTier?: ServiceTier;
 	/** Mutable provider state used to keep Codex compaction on the live session identity. */
 	providerSessionState?: Map<string, ProviderSessionState>;
 	/** Classification shared by every provider request in this logical compaction. */
@@ -865,6 +874,7 @@ export async function generateSummary(
 					promptCacheKey: options?.promptCacheKey,
 					providerSessionState: options?.providerSessionState,
 					codexCompaction: localCodexCompaction(options),
+					serviceTier: options?.serviceTier,
 				},
 				{ telemetry: options?.telemetry, oneshotKind: "compaction_summary", completeImpl: options?.completeImpl },
 			);
@@ -1766,6 +1776,7 @@ export async function compact(
 		thinkingLevel: options?.thinkingLevel,
 		sessionId: options?.sessionId,
 		promptCacheKey: options?.promptCacheKey,
+		serviceTier: options?.serviceTier,
 		providerSessionState: options?.providerSessionState,
 		codexCompaction: options?.codexCompaction,
 		tools: options?.tools,
@@ -1925,6 +1936,7 @@ async function generateTurnPrefixSummary(
 					promptCacheKey: options?.promptCacheKey,
 					providerSessionState: options?.providerSessionState,
 					codexCompaction: localCodexCompaction(options),
+					serviceTier: options?.serviceTier,
 				},
 				{
 					telemetry: options?.telemetry,

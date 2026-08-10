@@ -4115,6 +4115,10 @@ export class AgentSession {
 						providerSessionState: this.#providerSessionState,
 						codexCompaction,
 						completeImpl: this.#sideCompleteImpl,
+						// The advisor resolves its own tier (tier.advisor, which may
+						// inherit the session's), so its overflow summary asks the
+						// advisor agent rather than the primary session.
+						serviceTier: agent.serviceTierResolver?.(candidate),
 					},
 				);
 				break;
@@ -15768,6 +15772,10 @@ export class AgentSession {
 						// summary requests in parallel (chatgpt-codex review on
 						// #3751).
 						completeImpl: this.#sideCompleteImpl,
+						// Compaction sends the largest payload of the session. Without
+						// the tier the operator selected for this candidate's family,
+						// that request is billed and paced on a tier they never chose.
+						serviceTier: this.#effectiveServiceTier(candidate),
 					},
 				);
 				this.#announceCompactionFallback(candidates, candidate, skipReasons);
@@ -16330,6 +16338,7 @@ export class AgentSession {
 						obfuscateProviderText: text => this.obfuscateProviderText(text),
 						codexCompaction,
 						completeImpl: this.#sideCompleteImpl,
+						serviceTier: this.#effectiveServiceTier(candidate),
 					};
 					const candidateWindow =
 						typeof configuredCompactionWindow === "number" && configuredCompactionWindow > 0
@@ -19046,6 +19055,7 @@ export class AgentSession {
 				// Same per-provider concurrency cap rationale as the compaction
 				// path above (chatgpt-codex review on #3751).
 				completeImpl: this.#sideCompleteImpl,
+				serviceTier: this.#effectiveServiceTier(model),
 			});
 			this.#branchSummaryAbortController = undefined;
 			if (result.aborted) {

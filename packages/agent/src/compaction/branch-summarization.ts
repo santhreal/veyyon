@@ -5,7 +5,7 @@
  * a summary of the branch being left so context isn't lost.
  */
 
-import type { Api, ApiKey, AssistantMessage, Context, Model, SimpleStreamOptions } from "@veyyon/ai";
+import type { Api, ApiKey, AssistantMessage, Context, Model, ServiceTier, SimpleStreamOptions } from "@veyyon/ai";
 import { preferredDialect } from "@veyyon/catalog/identity";
 import { prompt } from "@veyyon/utils";
 import { instrumentedCompleteSimple } from "../instrumented-complete";
@@ -111,6 +111,11 @@ export interface GenerateBranchSummaryOptions {
 		ctx: Context,
 		options: SimpleStreamOptions,
 	) => Promise<AssistantMessage>;
+	/**
+	 * Service tier for the summarization request, resolved by the host from the
+	 * model's provider family (same contract as {@link SummaryOptions.serviceTier}).
+	 */
+	serviceTier?: ServiceTier;
 }
 
 // ============================================================================
@@ -654,7 +659,7 @@ export async function generateBranchSummary(
 	const response = await instrumentedCompleteSimple(
 		model,
 		context,
-		{ apiKey: attemptApiKey, signal, maxTokens: 2048, metadata, onPayload },
+		{ apiKey: attemptApiKey, signal, maxTokens: 2048, metadata, onPayload, serviceTier: options.serviceTier },
 		{ telemetry: options.telemetry, oneshotKind: "branch_summary", completeImpl: options.completeImpl },
 	);
 
