@@ -67,6 +67,13 @@ export interface ScriptedTurn {
 	readonly stream: AssistantMessageEventStream;
 	/** 1-based index of this provider call within the simulation. */
 	readonly call: number;
+	/**
+	 * The model this call was routed to. A session can switch models between
+	 * turns, or in the middle of one, and this is the only place a scenario can
+	 * see which model actually served a request rather than which one the session
+	 * says it holds now.
+	 */
+	readonly model: Model<Api>;
 	/** The context the agent sent, so a script can react to conversation state. */
 	readonly context: Context;
 	/** The provider-side abort signal, i.e. what a user cancel reaches. */
@@ -177,6 +184,7 @@ async function runScript(
 		stream,
 		call,
 		context,
+		model,
 		signal: options?.signal,
 		toolChoice: options?.toolChoice,
 		text(value) {
