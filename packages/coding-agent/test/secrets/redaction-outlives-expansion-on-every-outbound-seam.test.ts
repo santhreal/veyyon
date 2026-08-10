@@ -338,7 +338,7 @@ describe("no outbound seam reads the expansion authority", () => {
 	 */
 	it("reads the expansion authority only inside the four owner fallbacks", async () => {
 		expect(await outboundExpansionAuthorityLines()).toEqual([
-			": obfuscateProviderContext(this.#obfuscator, next);",
+			": obfuscateProviderContext(this.#obfuscator, shaped);",
 			"return this.#secretRuntime?.obfuscateText(text) ?? this.#obfuscator?.obfuscate(text) ?? text;",
 			"return runtime ? runtime.obfuscateContext(context) : obfuscateProviderContext(this.#obfuscator, context);",
 			"return this.#obfuscator ? obfuscateMessages(this.#obfuscator, messages) : messages;",
