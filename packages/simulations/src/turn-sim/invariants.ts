@@ -76,8 +76,6 @@ export function toolResultsIn(messages: readonly AgentMessage[]): { id: string; 
 export function turnViolations(sim: Simulation): Violation[] {
 	const violations: Violation[] = [];
 	const messages = sim.session.messages;
-	const calls = toolCallsIn(messages);
-	const results = toolResultsIn(messages);
 
 	// Four latches, not one. `isStreaming` is the spinner, but a turn can also be
 	// left waiting on a retry backoff, mid-compaction, or holding a queued steer
@@ -95,6 +93,25 @@ export function turnViolations(sim: Simulation): Violation[] {
 	if (sim.session.agent.hasQueuedMessages()) {
 		violations.push({ rule: "settles", detail: "a queued message was never drained into a turn" });
 	}
+
+	violations.push(...pairingViolations(messages));
+	return violations;
+}
+
+/**
+ * The pairing rules, over any message list.
+ *
+ * Stored history is one list a turn must leave well formed; the CONTEXT of the
+ * next provider call is the other, and they are not the same list. Compaction,
+ * canonicalization, and pruning all rewrite the outbound one, so a session whose
+ * stored history is perfect can still put an unpaired `tool_use` on the wire.
+ * That is the shape a provider rejects, so the check has to be runnable against
+ * whichever list is under test.
+ */
+export function pairingViolations(messages: readonly AgentMessage[]): Violation[] {
+	const violations: Violation[] = [];
+	const calls = toolCallsIn(messages);
+	const results = toolResultsIn(messages);
 
 	const seen = new Set<string>();
 	for (const call of calls) {
