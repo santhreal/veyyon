@@ -337,6 +337,7 @@ import { containsUltrathink, ULTRATHINK_NOTICE } from "../modes/ultrathink-keywo
 import { containsWorkflow, renderWorkflowNotice } from "../modes/workflow-keyword";
 import { resolveApprovedPlan } from "../plan-mode/approved-plan";
 import { DEFAULT_PLAN_FILE_URL } from "../plan-mode/plan-file-url";
+import { resolvePlanFilePath } from "../plan-mode/plan-path";
 import { createPlanReadMatcher } from "../plan-mode/plan-protection";
 import type { PlanModeState } from "../plan-mode/state";
 import { advisorPrompts } from "../prompts/advisor/rows";
@@ -2958,9 +2959,7 @@ export class AgentSession {
 	}
 
 	async #readPlanYoloFile(planFilePath: string): Promise<string | null> {
-		const resolvedPath = planFilePath.startsWith("local:")
-			? resolveLocalUrlToPath(normalizeLocalScheme(planFilePath), this.#localProtocolOptions())
-			: resolveToCwd(planFilePath, this.sessionManager.getCwd());
+		const resolvedPath = this.#resolvePlanPath(planFilePath);
 		try {
 			return await Bun.file(resolvedPath).text();
 		} catch (error) {
@@ -7450,6 +7449,19 @@ export class AgentSession {
 		};
 	}
 
+	/**
+	 * Filesystem path of a plan reference, whichever spelling it carries. One
+	 * delegate to {@link resolvePlanFilePath} rather than a branch per reader:
+	 * a reference with no URL scheme used to throw `Invalid URL` out of the
+	 * prompt path while a sibling reader thirty lines away handled it.
+	 */
+	#resolvePlanPath(planFilePath: string): string {
+		return resolvePlanFilePath(planFilePath, {
+			localProtocol: this.#localProtocolOptions(),
+			cwd: this.sessionManager.getCwd(),
+		});
+	}
+
 	#maybeAbortStreamingEdit(event: AgentEvent): void {
 		if (!this.settings.get("edit.streamingAbort")) return;
 		if (this.#streamingEditAbortTriggered) return;
@@ -10196,7 +10208,7 @@ export class AgentSession {
 		if (this.#planReferenceSent) return null;
 
 		const planFilePath = this.#planReferencePath;
-		const resolvedPlanPath = resolveLocalUrlToPath(planFilePath, this.#localProtocolOptions());
+		const resolvedPlanPath = this.#resolvePlanPath(planFilePath);
 		try {
 			await fs.promises.access(resolvedPlanPath, fs.constants.R_OK);
 		} catch (error) {
@@ -10226,9 +10238,7 @@ export class AgentSession {
 		const state = this.#planModeState;
 		if (!state?.enabled) return null;
 		const sessionPlanUrl = DEFAULT_PLAN_FILE_URL;
-		const resolvedPlanPath = state.planFilePath.startsWith("local:")
-			? resolveLocalUrlToPath(normalizeLocalScheme(state.planFilePath), this.#localProtocolOptions())
-			: resolveToCwd(state.planFilePath, this.sessionManager.getCwd());
+		const resolvedPlanPath = this.#resolvePlanPath(state.planFilePath);
 		const resolvedSessionPlan = resolveLocalUrlToPath(sessionPlanUrl, this.#localProtocolOptions());
 		const displayPlanPath =
 			state.planFilePath.startsWith("local:") || resolvedPlanPath !== resolvedSessionPlan
