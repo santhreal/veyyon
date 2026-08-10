@@ -88,6 +88,14 @@ export interface ScriptedTurn {
 	readonly toolChoice: ToolChoice | undefined;
 	/** Emit a complete text block. */
 	text(value: string): void;
+	/**
+	 * Emit a complete reasoning block. A `signature` is what a provider hands
+	 * back to prove the block is replayable verbatim; a block without one is
+	 * reasoning the session may not send back unchanged.
+	 */
+	thinking(value: string, signature?: string): void;
+	/** Emit `thinking_start` + a delta and never close it: reasoning cut short. */
+	openThinking(partialValue: string): void;
 	/** Emit a complete tool call block. */
 	toolCall(name: string, args: Record<string, unknown>, id?: string): void;
 	/** Emit `toolcall_start` + a partial argument delta and never close it. */
@@ -194,6 +202,23 @@ async function runScript(
 			stream.push({ type: "text_delta", contentIndex: index, delta: value, partial });
 			stream.push({ type: "text_end", contentIndex: index, content: value, partial });
 		},
+		thinking(value, signature) {
+			const index = content.length;
+			content.push({
+				type: "thinking",
+				thinking: value,
+				...(signature === undefined ? {} : { thinkingSignature: signature }),
+			});
+			stream.push({ type: "thinking_start", contentIndex: index, partial });
+			stream.push({ type: "thinking_delta", contentIndex: index, delta: value, partial });
+			stream.push({ type: "thinking_end", contentIndex: index, content: value, partial });
+		},
+		openThinking(partialValue) {
+			const index = content.length;
+			content.push({ type: "thinking", thinking: partialValue });
+			stream.push({ type: "thinking_start", contentIndex: index, partial });
+			stream.push({ type: "thinking_delta", contentIndex: index, delta: partialValue, partial });
+		},
 		toolCall(name, args, id) {
 			toolCallSeq += 1;
 			const block: ToolCall = {
@@ -279,7 +304,7 @@ export function simulatedModel(id = "sim-model", options?: SimulatedModelOptions
 		api: SIM_API,
 		provider: options?.provider ?? "amazon-bedrock",
 		baseUrl: "https://simulation.invalid",
-		reasoning: false,
+		reasoning: options?.reasoning ?? false,
 		input: ["text"],
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 		contextWindow: options?.contextWindow ?? 200_000,
@@ -297,6 +322,13 @@ export interface SimulatedModelOptions {
 	provider?: string;
 	/** Shrink the window when a scenario needs compaction to engage. */
 	contextWindow?: number;
+	/**
+	 * Declare the model as a reasoning model. The capability is what the session
+	 * consults before it offers a thinking level, so a scenario that scripts
+	 * reasoning blocks sets it rather than relying on the provider accepting
+	 * blocks from a model that claims it cannot produce them.
+	 */
+	reasoning?: boolean;
 }
 
 const ANY_OBJECT = type("object");
