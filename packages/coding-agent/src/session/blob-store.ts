@@ -100,6 +100,8 @@ export function blobExtensionForImageMimeType(mimeType: string | undefined): str
 }
 
 export class BlobStore {
+	#writeFailureLogged = false;
+
 	constructor(readonly dir: string) {}
 
 	/**
@@ -147,6 +149,38 @@ export class BlobStore {
 		fs.writeFileSync(blobPath, data);
 		ensureDisplayPathSync(blobPath, displayPath, data);
 		return result;
+	}
+
+	/**
+	 * Attempt a {@link putSync}, returning `undefined` when the blob store cannot be
+	 * written (a full or read-only data directory, a `blobs` path occupied by
+	 * something that is not a directory, a different filesystem than the session).
+	 *
+	 * Externalizing a large payload is a SIZE optimization: the session line gets
+	 * smaller, and nothing about the conversation depends on the blob existing.
+	 * A caller that treats a failed write as fatal turns that optimization into a
+	 * correctness requirement, which is how one broken directory came to kill the
+	 * turn recording an assistant message and leave the whole transcript empty.
+	 * Callers that only wanted a smaller line use this and keep the content inline;
+	 * `putSync` stays strict for callers that need the ref itself.
+	 *
+	 * Logged once per store, because one entry can carry many oversized payloads and
+	 * the reason is the same for all of them.
+	 */
+	tryPutSync(data: Buffer, options?: BlobPutOptions): BlobPutResult | undefined {
+		try {
+			return this.putSync(data, options);
+		} catch (err) {
+			if (!this.#writeFailureLogged) {
+				this.#writeFailureLogged = true;
+				logger.warn("blob store write failed; keeping the payload inline in the session file", {
+					dir: this.dir,
+					bytes: data.byteLength,
+					error: errorMessage(err),
+				});
+			}
+			return undefined;
+		}
 	}
 
 	/** Read blob by hash, returns Buffer or null if not found. */
@@ -225,11 +259,16 @@ export function parseTextBlobRef(data: string): string | null {
  * so identical large strings are stored once. Synchronous (`putSync`) so the bytes
  * are in the page cache before the referencing line is written, matching the
  * OOM-safe image path.
+ *
+ * A blob store that cannot be written returns the text unchanged, so the payload
+ * persists inline (see {@link BlobStore.tryPutSync}). The line is large; the
+ * conversation is intact.
  */
 export function externalizeTextSync(blobStore: BlobStore, text: string): string {
 	if (isTextBlobRef(text)) return text;
-	const { hash } = blobStore.putSync(Buffer.from(text, "utf8"));
-	return `${TEXT_BLOB_PREFIX}${hash}`;
+	const stored = blobStore.tryPutSync(Buffer.from(text, "utf8"));
+	if (!stored) return text;
+	return `${TEXT_BLOB_PREFIX}${stored.hash}`;
 }
 
 /**
@@ -270,10 +309,13 @@ export async function externalizeImageDataUrl(blobStore: BlobStore, dataUrl: str
 	return ref;
 }
 
-/** Synchronous variant of {@link externalizeImageDataUrl}. */
+/**
+ * Synchronous variant of {@link externalizeImageDataUrl}. A blob store that cannot
+ * be written returns the data URL unchanged, keeping it inline.
+ */
 export function externalizeImageDataUrlSync(blobStore: BlobStore, dataUrl: string): string {
 	if (isBlobRef(dataUrl)) return dataUrl;
-	return blobStore.putSync(Buffer.from(dataUrl, "utf8")).ref;
+	return blobStore.tryPutSync(Buffer.from(dataUrl, "utf8"))?.ref ?? dataUrl;
 }
 
 /**
@@ -293,12 +335,16 @@ export async function externalizeImageData(
 	return ref;
 }
 
-/** Synchronous variant of {@link externalizeImageData}. */
+/**
+ * Synchronous variant of {@link externalizeImageData}. A blob store that cannot be
+ * written returns the base64 data unchanged, keeping it inline.
+ */
 export function externalizeImageDataSync(blobStore: BlobStore, base64Data: string, mimeType?: string): string {
 	if (isBlobRef(base64Data)) return base64Data;
-	return blobStore.putSync(Buffer.from(base64Data, "base64"), {
+	const stored = blobStore.tryPutSync(Buffer.from(base64Data, "base64"), {
 		extension: blobExtensionForImageMimeType(mimeType),
-	}).ref;
+	});
+	return stored?.ref ?? base64Data;
 }
 
 /**
