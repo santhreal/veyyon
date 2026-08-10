@@ -1,6 +1,6 @@
 import { EDIT_MODES } from "../../utils/edit-mode";
 import { DEFAULT_BASH_INTERCEPTOR_RULES } from "../bash-interceptor-rules";
-import { EMPTY_STRING_ARRAY } from "./shared";
+import { EMPTY_STRING_ARRAY, EMPTY_STRING_RECORD } from "./shared";
 
 /** Editing domain slice of SETTINGS_SCHEMA — composed in ../settings-schema.ts. */
 export const EDITING_SETTINGS = {
@@ -20,6 +20,19 @@ export const EDITING_SETTINGS = {
 			description: "Select the edit tool variant (replace, patch, hashline, or apply_patch)",
 		},
 	},
+
+	// Per-model override of `edit.mode`, keyed by a substring of the model id
+	// (`{ "kimi": "replace" }`), read by `Settings.getEditVariantForModel` and
+	// outranking `edit.mode` for any model whose id contains the pattern.
+	//
+	// Declared here and not only read: it is an operator-facing knob that
+	// production consults on every edit and that docs/environment-variables.md
+	// tells operators outranks `edit.mode`, yet it was absent from the schema,
+	// so it had no type, no validated shape, no default, and no row in the
+	// generated reference. No `ui` block, because a pattern-to-mode table is not
+	// something the settings selector can edit; it lives in the
+	// configuration-file section of docs/settings-reference.md.
+	"edit.modelVariants": { type: "record", default: EMPTY_STRING_RECORD },
 
 	"edit.fuzzyMatch": {
 		type: "boolean",
