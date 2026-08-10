@@ -26,6 +26,15 @@ import { TempDir } from "@veyyon/utils";
  * boundary: a fork or a branch is a NEW file, so the other writer's tail stays
  * behind while our own history stays ours.
  *
+ * Rows 9 and 10 close the OTHER half of the same class, on the append side. A
+ * publish is a temp write plus a rename, so every handle open on the path keeps
+ * writing into an unlinked inode: the append reports success, the entry sits in
+ * memory, and no reader ever sees it. Detection is by the identity the backend
+ * reports for the path (`dev:ino`), not by size, because the ordinary case is the
+ * other window republishing history it loaded from us, byte for byte the same
+ * length. Row 10 is the burst: several entries land before the deferred merge can
+ * run, and each must reach the file exactly once.
+ *
  * Three producers install ids this manager owns (a load, an append, and the
  * title-change push that goes straight into the held list), and each one is
  * covered: a producer that stops claiming its ids republishes its own line as
@@ -35,15 +44,22 @@ import { TempDir } from "@veyyon/utils";
  * `packages/coding-agent/src/session/session-manager.ts`, rows numbered in file
  * order):
  * - M1 `#fileBody()` drops the `#foreignLines` loop (the pre-fix body): rows 1, 2,
- *   3, 8 red.
- * - M2 `#refreshForeignLines()` returns before reading: rows 1, 2, 3, 6, 8 red.
+ *   3, 8, 10 red.
+ * - M2 `#refreshForeignLines()` returns before reading: rows 1, 2, 3, 6, 8, 10 red.
  * - M3 the refresh keeps every line instead of only ids that were never ours:
- *   rows 1, 2, 3, 4, 5, 7, 8 red.
- * - M4 `#recordEntry` stops claiming the appended id: rows 2, 5, 7 red.
+ *   rows 1, 2, 3, 4, 5, 7, 8, 9, 10 red.
+ * - M4 `#recordEntry` stops claiming the appended id: rows 2, 5, 7, 9, 10 red.
  * - M5 the title-change push stops claiming its id: row 7 red.
  * - M6 `#forgetForeignWriter()` clears without reseeding from what we hold:
  *   rows 1, 2, 3, 4, 8 red.
  * - M7 `#forgetForeignWriter()` keeps the previous file's foreign tail: row 8 red.
+ * - M8 the append path stops probing whether the file was replaced: rows 9, 10 red.
+ * - M9 the probe compares size instead of identity: row 9 red. Row 10 stays green
+ *   there because the other window also appended a line of its own before
+ *   republishing, so the length changed and size was enough; row 9 is the case the
+ *   product actually hits, a republish of exactly the history it loaded.
+ * - M10 the deferred merge does not take the rewrite fence, so an append landing
+ *   before it runs falls to the synchronous rewrite: row 10 red.
  *
  * WHAT THIS DOES NOT CATCH:
  * - The synchronous path. `#rewriteSynchronously` (exit, `flushSync` fallback)
@@ -60,6 +76,11 @@ import { TempDir } from "@veyyon/utils";
  * - Interleaving at sub-write granularity. These rows sequence the two managers
  *   explicitly; a line torn between the read and the rename is a storage-level
  *   concern that `writeTextAtomic` owns.
+ * - A memory or SQL backend appending a line the other writer already published.
+ *   Those backends address by path, so nothing is stranded and nothing is lost,
+ *   but they report no identity either, and the size fallback cannot see a
+ *   same-length republish. Rows 9 and 10 run on real files, which is where the
+ *   product runs and where the loss was.
  */
 
 interface Persisted {
@@ -327,6 +348,76 @@ describe("two managers on one transcript", () => {
 		// The source keeps every line, including the one B never held.
 		expect(await fs.readFile(file, "utf8")).toContain("only A has this");
 
+		await b.close();
+		await a.close();
+	});
+
+	it("keeps appending to the file that exists, not to the one the other writer replaced", async () => {
+		using tempDir = TempDir.createSync("@veyyon-two-writers-");
+		const dir = tempDir.path();
+		const file = path.join(dir, "session.jsonl");
+
+		const a = await SessionManager.open(file, dir);
+		a.appendMessage(userMessage("before the replace"));
+		await a.flush();
+
+		// A full-file publish is a temp write plus a rename, so the path now names a
+		// different inode than the append handle A opened for its first entry.
+		const b = await SessionManager.open(file, dir);
+		await b.rewriteEntries();
+
+		a.appendMessage(userMessage("after the replace"));
+		await a.flush();
+
+		// Writing into the unlinked inode is invisible to A: the append reports
+		// success, the entry is in memory, and nothing that reads the path has it.
+		expect(await fs.readFile(file, "utf8")).toContain("after the replace");
+
+		const reader = await SessionManager.open(file, dir);
+		expect(messageTexts(reader)).toEqual(["before the replace", "after the replace"]);
+
+		await reader.close();
+		await b.close();
+		await a.close();
+	});
+
+	it("writes every entry of a burst that follows a replacement exactly once", async () => {
+		using tempDir = TempDir.createSync("@veyyon-two-writers-");
+		const dir = tempDir.path();
+		const file = path.join(dir, "session.jsonl");
+
+		const a = await SessionManager.open(file, dir);
+		a.appendMessage(userMessage("before the replace"));
+		await a.flush();
+
+		const b = await SessionManager.open(file, dir);
+		b.appendMessage(userMessage("from the other window"));
+		await b.flush();
+		await b.rewriteEntries();
+
+		// A whole turn's worth of entries, all landing before the deferred merge has
+		// had a chance to run: each one has to reach the file, and none of them twice.
+		a.appendMessage(userMessage("burst one"));
+		a.appendMessage(userMessage("burst two"));
+		a.appendMessage(userMessage("burst three"));
+		await a.flush();
+
+		const raw = await fs.readFile(file, "utf8");
+		for (const text of ["burst one", "burst two", "burst three", "from the other window"]) {
+			expect(raw.split(text)).toHaveLength(2);
+		}
+		const after = await readFileState(file);
+		// Five entries: the shared first one, the other window's, and the burst of
+		// three. Both windows appended off the same parent, so the transcript is a
+		// tree and a reader walks one path through it; what matters is that every
+		// entry is on disk exactly once.
+		expect(after.ids).toHaveLength(5);
+		expect(new Set(after.ids).size).toBe(5);
+
+		const reader = await SessionManager.open(file, dir);
+		expect(messageTexts(reader)[0]).toBe("before the replace");
+
+		await reader.close();
 		await b.close();
 		await a.close();
 	});

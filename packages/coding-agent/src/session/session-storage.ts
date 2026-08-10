@@ -18,6 +18,14 @@ export interface SessionStorageStat {
 	size: number;
 	mtimeMs: number;
 	mtime: Date;
+	/**
+	 * What the path names RIGHT NOW, for a backend where a path can start naming
+	 * a different object: `dev:ino` on a real filesystem, where a rewrite is a
+	 * temp write plus a rename and every open handle on the old inode keeps
+	 * writing into a file nothing can reach. Left undefined by backends that
+	 * address by path (memory, sql, redis), which cannot have that problem.
+	 */
+	identity?: string;
 }
 
 export interface SessionStorageWriter {
@@ -315,7 +323,12 @@ export class FileSessionStorage implements SessionStorage {
 
 	statSync(path: string): SessionStorageStat {
 		const stats = fs.statSync(path);
-		return { size: stats.size, mtimeMs: stats.mtimeMs, mtime: stats.mtime };
+		return {
+			size: stats.size,
+			mtimeMs: stats.mtimeMs,
+			mtime: stats.mtime,
+			identity: `${stats.dev}:${stats.ino}`,
+		};
 	}
 
 	/**
