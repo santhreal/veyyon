@@ -91,6 +91,16 @@ export interface SessionStorage {
 
 	exists(path: string): Promise<boolean>;
 	readText(path: string): Promise<string>;
+	/**
+	 * Read a whole file without yielding, for a caller that cannot await.
+	 *
+	 * OPTIONAL, and the reason is the point: a backend that reaches a socket or a
+	 * database cannot answer without awaiting, so requiring this would either make
+	 * those backends lie or make them block. A caller that finds it absent
+	 * degrades. Absent path answers `undefined`; a path the backend holds and
+	 * cannot read throws, because that is a fault rather than an answer.
+	 */
+	readTextSync?(path: string): string | undefined;
 	/** Read the requested UTF-8 byte windows from the head and tail of the file. */
 	readTextSlices(path: string, prefixBytes: number, suffixBytes: number): Promise<[string, string]>;
 	writeText(path: string, content: string): Promise<void>;
@@ -378,6 +388,15 @@ export class FileSessionStorage implements SessionStorage {
 
 	readText(path: string): Promise<string> {
 		return Bun.file(path).text();
+	}
+
+	readTextSync(path: string): string | undefined {
+		try {
+			return fs.readFileSync(path, "utf-8");
+		} catch (err) {
+			if (isEnoent(err)) return undefined;
+			throw toError(err);
+		}
 	}
 
 	async readTextSlices(path: string, prefixBytes: number, suffixBytes: number): Promise<[string, string]> {
@@ -905,6 +924,11 @@ export class MemorySessionStorage implements SessionStorage {
 		const entry = this.#files.get(path);
 		if (!entry) return Promise.reject(new Error(`File not found: ${path}`));
 		return Promise.resolve(materializeMemoryEntry(entry));
+	}
+
+	readTextSync(path: string): string | undefined {
+		const entry = this.#files.get(path);
+		return entry ? materializeMemoryEntry(entry) : undefined;
 	}
 
 	readTextSlices(path: string, prefixBytes: number, suffixBytes: number): Promise<[string, string]> {
