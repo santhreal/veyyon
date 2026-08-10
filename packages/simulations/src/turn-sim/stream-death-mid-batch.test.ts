@@ -39,6 +39,7 @@
  * because a real paired result also stops the retry.
  */
 import { expect, it } from "bun:test";
+import { SUPERSEDED_NOTICE } from "@veyyon/agent-core/compaction/pruning";
 import * as AIError from "@veyyon/ai/error";
 import { TOOL } from "@veyyon/coding-agent/tools/builtin-names";
 import { createSimulation, type ScriptedTurn, type Simulation, simTool } from "./harness";
@@ -254,10 +255,12 @@ it("does not replay the dead turn or its placeholders when the session is resume
 		"toolResult",
 		"assistant:stop",
 	]);
-	// One stored placeholder still names the transport fault. The other was rewritten to
-	// "[Superseded by a newer read of this file]" by the read-supersede pass, which is a
-	// context-saving rewrite of a stale read and not a claim that the call ran.
-	expect(stored?.toolTexts.filter(text => text.includes(PLACEHOLDER_MARKER))).toHaveLength(1);
+	// BOTH stored placeholders still name the transport fault. Neither is rewritten to
+	// "[Superseded by a newer read of this file]": the dead `read` never ran, so it is not
+	// a read of that path in either direction, and blanking it would replace the one fact
+	// it carries with a claim about a read that did not happen.
+	expect(stored?.toolTexts.filter(text => text.includes(PLACEHOLDER_MARKER))).toHaveLength(2);
+	expect(stored?.toolTexts.filter(text => text === SUPERSEDED_NOTICE)).toEqual([]);
 	expect(stored?.toolTexts.filter(text => text === "bash ran" || text === "read ran")).toEqual([
 		"bash ran",
 		"read ran",
