@@ -12619,9 +12619,10 @@ export class AgentSession {
 
 	/**
 	 * `/fast on|off` targets the family of the currently selected model: it sets
-	 * (or clears) that family's `priority` tier. Returns `false` when the model
-	 * has no service-tier family, so callers can report that fast mode is
-	 * unavailable instead of claiming success.
+	 * that family's `priority` tier, and turning it off returns the family to the
+	 * tier the operator configured rather than to no tier at all. Returns `false`
+	 * when the model has no service-tier family, so callers can report that fast
+	 * mode is unavailable instead of claiming success.
 	 */
 	setFastMode(enabled: boolean): boolean {
 		const family = this.model ? serviceTierFamily(this.model) : undefined;
@@ -12630,7 +12631,19 @@ export class AgentSession {
 			return false;
 		}
 		if (!enabled) {
-			if (this.#serviceTierByFamily[family] === "priority") this.setServiceTierFamily(family, undefined);
+			if (this.#serviceTierByFamily[family] !== "priority") return true;
+			// Fast mode OVERRODE whatever this family was configured for, so turning
+			// it off restores that baseline. Clearing outright silently spent the
+			// operator's `tier.openai: flex` (a cheaper, slower tier) for the rest of
+			// the session, and the change is persisted, so a resume kept the loss. A
+			// configured `priority` is the one case where clearing is what was asked
+			// for: there is no other baseline to go back to.
+			const configured = buildServiceTierByFamily(
+				this.settings.get("tier.openai"),
+				this.settings.get("tier.anthropic"),
+				this.settings.get("tier.google"),
+			)[family];
+			this.setServiceTierFamily(family, configured === "priority" ? undefined : configured);
 			return true;
 		}
 		this.setServiceTierFamily(family, "priority");
