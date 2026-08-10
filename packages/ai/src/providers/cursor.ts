@@ -301,7 +301,9 @@ function frameConnectMessage(data: Uint8Array, flags = 0): Buffer {
  * failure, and it has to be assertable next to Devin's for the same codes.
  */
 export function cursorStreamFailure(code: string, message: string, label: string): Error {
-	const text = `${label} ${code}: ${message}`;
+	// A trailer often carries a code and no sentence at all, which used to render as a
+	// dangling colon; the shared bound names an absent detail and caps a long one.
+	const text = `${label} ${code}: ${AIError.boundProviderErrorDetail(message)}`;
 	const failureStatus = AIError.connectFailureStatus({ code, message });
 	if (failureStatus !== undefined) return new AIError.CursorApiError(text, failureStatus);
 	return new AIError.ProviderResponseError(text, { provider: "cursor", kind: "envelope" });

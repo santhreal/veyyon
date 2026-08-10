@@ -476,8 +476,11 @@ async function fetchDevinAuthMetadata(
 	});
 	const payload = new Uint8Array(await response.arrayBuffer());
 	if (!response.ok) {
+		// Through the shared cap like every other interpolated body: an auth endpoint
+		// behind a corporate proxy answers with an HTML page, and this was the one site
+		// still putting a whole decoded payload into `Error.message`.
 		throw new AIError.DevinApiError(
-			`Devin auth error ${response.status} ${response.statusText}: ${new TextDecoder().decode(payload)}`,
+			`Devin auth error ${response.status} ${response.statusText}: ${AIError.boundProviderErrorDetail(new TextDecoder().decode(payload))}`,
 			response.status,
 		);
 	}

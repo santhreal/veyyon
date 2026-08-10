@@ -23,15 +23,33 @@
 export const MAX_PROVIDER_ERROR_DETAIL_CHARS = 4096;
 
 /**
- * Cap `detail` and say how much was dropped.
+ * What an operator reads when the provider said nothing at all.
+ *
+ * A failure that names no reason is not a diagnosis. An empty body left the
+ * message ending in a bare colon (`Devin API error 500 Internal Server Error: `),
+ * which reads as truncated output and hides the one fact that IS available: the
+ * server answered with a status and no envelope, which is what a gateway, a
+ * proxy or a load balancer in front of the provider does. Anthropic's path
+ * already said so in its own words; every other provider said nothing.
+ */
+export const NO_PROVIDER_ERROR_DETAIL = "(no detail)";
+
+/**
+ * Cap `detail` and say how much was dropped, or name it as absent.
  *
  * The suffix is not decoration. Silent truncation and a genuinely short body
  * look identical, so an operator debugging a proxy cannot tell whether the
  * provider said little or the harness ate the rest. Naming the real size also
  * makes the total bounded rather than merely the field: the returned string is
  * never longer than the cap plus this suffix.
+ *
+ * Surrounding whitespace is dropped, because a body that is only whitespace is
+ * an absent detail wearing a costume: it renders as a dangling colon and a few
+ * spaces, and it is the shape a proxy's empty 502 arrives in.
  */
 export function boundProviderErrorDetail(detail: string): string {
-	if (detail.length <= MAX_PROVIDER_ERROR_DETAIL_CHARS) return detail;
-	return `${detail.slice(0, MAX_PROVIDER_ERROR_DETAIL_CHARS)} [truncated, ${detail.length} chars total]`;
+	const trimmed = detail.trim();
+	if (trimmed.length === 0) return NO_PROVIDER_ERROR_DETAIL;
+	if (trimmed.length <= MAX_PROVIDER_ERROR_DETAIL_CHARS) return trimmed;
+	return `${trimmed.slice(0, MAX_PROVIDER_ERROR_DETAIL_CHARS)} [truncated, ${trimmed.length} chars total]`;
 }
