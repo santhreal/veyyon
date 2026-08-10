@@ -1275,6 +1275,7 @@ function renderAnswerOptionLines(
 
 export const askToolRenderer = {
 	mergeCallAndResult: true,
+	callIsLiveWidget: true,
 	renderCall(args: AskRenderArgs, _options: RenderResultOptions, uiTheme: Theme): Component {
 		const label = formatTitle("Ask", uiTheme);
 		const mdTheme = getMarkdownTheme();

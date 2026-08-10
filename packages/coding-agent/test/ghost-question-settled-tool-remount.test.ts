@@ -583,13 +583,15 @@ describe("a settled tool call can never re-mount as a live card", () => {
 	 */
 	// What the errored card shows, per tool, so the test proves the ERROR branch
 	// ran rather than some other branch that also happens to leave one card. The
-	// grouped read collapses to a failed row instead of printing the message;
-	// without the error branch it would leave no card at all, which the count
-	// below catches.
+	// card is painted from the loop's own never-ran placeholder, so what it says is
+	// that the call did not run, not that the tool failed; the provider's sentence
+	// is the turn's error and is stated once, beside the turn. The grouped read
+	// collapses to a not-run row instead of printing anything; without the error
+	// branch it would leave no card at all, which the count below catches.
 	const ERRORED_CARD_MARK: Record<string, string> = {
-		ask: "provider closed the stream",
-		read: "✗ Read README.md",
-		bash: "provider closed the stream",
+		ask: "not executed: the provider stream failed before this call ran",
+		read: "! Read README.md",
+		bash: "not executed: the provider stream failed before this call ran",
 	};
 	for (const toolName of ["ask", "read", "bash"]) {
 		it(`freezes a '${toolName}' card the rebuild painted with a turn-ending error`, async () => {

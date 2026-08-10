@@ -53,6 +53,16 @@ export type ToolRenderer = {
 		args?: unknown,
 	) => Component;
 	mergeCallAndResult?: boolean;
+	/**
+	 * Whether the call render IS an interactive widget rather than a preview of one.
+	 *
+	 * `ask` paints the whole selectable question in `renderCall`, because until a result arrives
+	 * that widget is the card. For a call that never reached the tool, painting it puts an
+	 * answerable question on screen for a question that was never asked, so the component falls
+	 * back to the plain tool label. Only set this where the call render invites an answer: a
+	 * command preview (`bash`) or a diff preview is the one fact the card must keep in that state.
+	 */
+	callIsLiveWidget?: boolean;
 	/** Render without background box, inline in the response flow */
 	inline?: boolean;
 	/**

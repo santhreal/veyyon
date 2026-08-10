@@ -1,4 +1,5 @@
 import * as path from "node:path";
+import { toolResultNeverRan } from "@veyyon/agent-core";
 import type { Component } from "@veyyon/tui";
 import { Container, Text } from "@veyyon/tui";
 import { formatCount, hasUrlScheme } from "@veyyon/utils";
@@ -78,7 +79,7 @@ type ReadEntry = {
 	path: string;
 	displayPaths?: string[];
 	linkPath?: string;
-	status: "pending" | "success" | "warning" | "error";
+	status: "pending" | "success" | "warning" | "notExecuted" | "error";
 	correctedFrom?: string;
 	contentText?: string;
 	conflictCount?: number;
@@ -106,8 +107,11 @@ type ReadSummaryRow = {
 const READ_STATUS_RANK: Record<ReadEntry["status"], number> = {
 	success: 0,
 	pending: 1,
-	warning: 2,
-	error: 3,
+	// A read that never ran is not a failed read: it must not outrank a sibling
+	// that really did fail, and it must still be visible above a plain success.
+	notExecuted: 2,
+	warning: 3,
+	error: 4,
 };
 
 function getDisplayReadTargets(details: ReadToolResultDetails | undefined): string[] | undefined {
@@ -360,6 +364,15 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 		const entry = this.#entries.get(toolCallId);
 		if (!entry) return;
 		if (isPartial) return;
+		if (toolResultNeverRan(result.details)) {
+			// The placeholder's text is written for the MODEL and names the provider
+			// fault, not the file. Showing it as this row's content would read as the
+			// read having failed on that path, and the row has no content because
+			// nothing was read.
+			entry.status = "notExecuted";
+			this.#updateDisplay();
+			return;
+		}
 		const details = result.details as ReadToolResultDetails | undefined;
 		const suffixResolution = getSuffixResolution(details);
 		const displayPaths = getDisplayReadTargets(details);
@@ -632,7 +645,15 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 						code: entry.contentText ?? "",
 						language: lang,
 						title,
-						status: entry.status === "success" ? "complete" : entry.status,
+						// `notExecuted` is this group's own row state; the code cell knows only
+						// the four render states, and a read that never ran is a warning there
+						// (dimmed by the row glyph), never an error.
+						status:
+							entry.status === "success"
+								? "complete"
+								: entry.status === "notExecuted"
+									? "warning"
+									: entry.status,
 						expanded,
 						codeMaxLines: expanded ? undefined : COLLAPSED_PREVIEW_LINES,
 						codeStartLine: entry.codeStartLine,
@@ -662,6 +683,12 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 		}
 		if (status === "warning") {
 			return theme.fg("warning", theme.status.warning);
+		}
+		if (status === "notExecuted") {
+			// Dim, not red: the turn failed, this read did not. It carries the warning
+			// glyph so the row is not read as a completed read, in the dim register
+			// that says nothing happened here.
+			return theme.fg("dim", theme.status.warning);
 		}
 		if (status === "error") {
 			return theme.fg("error", theme.status.error);

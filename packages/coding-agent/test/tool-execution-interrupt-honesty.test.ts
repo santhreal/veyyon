@@ -107,16 +107,42 @@ describe("tool block honesty about calls that never ran", () => {
 	});
 
 	/**
-	 * The provider's own words. `upstreamError` is the only actionable fact a transport failure
-	 * carries — it is what separates "the stream stalled" from anything the operator's prompt
-	 * did — and it reached the screen only inside the model-facing placeholder, wrapped across
-	 * two rows of a red frame. Suppressing that body without moving the detail into the notice
-	 * would have deleted the fact, which is why it is asserted on its own.
+	 * The provider's own words, ONCE PER BATCH. `upstreamError` is the only actionable fact a
+	 * transport failure carries (it is what separates "the stream stalled" from anything the
+	 * operator's prompt did) and it reached the screen only inside the model-facing placeholder,
+	 * wrapped across two rows of a red frame. Repeating it on every dropped call was the other
+	 * half of the same defect: an eight-call batch printed the same sentence eight times under a
+	 * pinned turn error that had already said it. The loop attaches the batch ledger to exactly
+	 * one placeholder per cut-short batch, so that card names the fault and its siblings say only
+	 * that they did not run. Both arms are asserted, because a rule that names it everywhere and
+	 * a rule that names it nowhere both pass a one-sided test.
 	 */
-	it("carries the provider's error into the notice", () => {
-		const block = createToolExecution("bash", { command: "npm run migrate:up" }, {}, undefined, ui);
-		block.setArgsComplete();
-		block.updateResult({
+	it("carries the provider's error on the ledger-bearing card and not on its siblings", () => {
+		const ledgerBearing = createToolExecution("bash", { command: "npm run migrate:up" }, {}, undefined, ui);
+		ledgerBearing.setArgsComplete();
+		ledgerBearing.updateResult({
+			content: [{ type: "text", text: "Tool call was not executed because the provider stream ended." }],
+			details: {
+				__synthetic: true,
+				source: "assistant_stop_error",
+				executed: false,
+				upstreamError: "OpenAI completions stream stalled",
+				batchLedger: { calls: [] },
+			},
+			isError: true,
+		});
+
+		expect(rows(ledgerBearing)).toEqual([
+			"  ┌──────────────────────────────────────────────────────────────────────────┐",
+			"  │ $ npm run migrate:up                                                     │",
+			"  └──────────────────────────────────────────────────────────────────────────┘",
+			"  ! not executed: the provider stream failed before this call ran: OpenAI",
+			"  completions stream stalled",
+		]);
+
+		const sibling = createToolExecution("bash", { command: "npm run migrate:up" }, {}, undefined, ui);
+		sibling.setArgsComplete();
+		sibling.updateResult({
 			content: [{ type: "text", text: "Tool call was not executed because the provider stream ended." }],
 			details: {
 				__synthetic: true,
@@ -127,12 +153,11 @@ describe("tool block honesty about calls that never ran", () => {
 			isError: true,
 		});
 
-		expect(rows(block)).toEqual([
+		expect(rows(sibling)).toEqual([
 			"  ┌──────────────────────────────────────────────────────────────────────────┐",
 			"  │ $ npm run migrate:up                                                     │",
 			"  └──────────────────────────────────────────────────────────────────────────┘",
-			"  ! not executed: the provider stream failed before this call ran: OpenAI",
-			"  completions stream stalled",
+			"  ! not executed: the provider stream failed before this call ran",
 		]);
 	});
 
