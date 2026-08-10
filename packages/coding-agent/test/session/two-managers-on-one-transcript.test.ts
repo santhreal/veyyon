@@ -60,6 +60,10 @@ import { TempDir } from "@veyyon/utils";
  *   product actually hits, a republish of exactly the history it loaded.
  * - M10 the deferred merge does not take the rewrite fence, so an append landing
  *   before it runs falls to the synchronous rewrite: row 10 red.
+ * - M11 the title-change fast path stops probing for replacement (the pre-fix
+ *   body): row 11 red. It is its own mutant because that path appends through the
+ *   writer handle and patches the slot by path, so the title still changes and
+ *   only the entry recording it is lost, which rows 9 and 10 cannot see.
  *
  * WHAT THIS DOES NOT CATCH:
  * - The synchronous path. `#rewriteSynchronously` (exit, `flushSync` fallback)
@@ -416,6 +420,41 @@ describe("two managers on one transcript", () => {
 
 		const reader = await SessionManager.open(file, dir);
 		expect(messageTexts(reader)[0]).toBe("before the replace");
+
+		await reader.close();
+		await b.close();
+		await a.close();
+	});
+
+	it("keeps a title change on the file that exists after the other writer replaced it", async () => {
+		using tempDir = TempDir.createSync("@veyyon-two-writers-");
+		const dir = tempDir.path();
+		const file = path.join(dir, "session.jsonl");
+
+		const a = await SessionManager.open(file, dir);
+		a.appendMessage(userMessage("before the replace"));
+		await a.flush();
+
+		const b = await SessionManager.open(file, dir);
+		await b.rewriteEntries();
+
+		// A title change has its own write path: patch the fixed-width slot in place
+		// and append the entry beside it. The slot patch addresses the path and lands
+		// on the new file, so the title looks written while the entry recording it
+		// goes into the inode nothing can reach.
+		await a.setSessionName("named after the replace", "user");
+		await a.flush();
+
+		const raw = await fs.readFile(file, "utf8");
+		expect(raw.split(TITLE_CHANGE_ENTRY_TYPE)).toHaveLength(2);
+		expect(raw).toContain("before the replace");
+		const after = await readFileState(file);
+		expect(after.ids).toHaveLength(2);
+		expect(new Set(after.ids).size).toBe(2);
+
+		const reader = await SessionManager.open(file, dir);
+		expect(reader.getSessionName()).toBe("named after the replace");
+		expect(reader.getEntries().some(entry => entry.type === TITLE_CHANGE_ENTRY_TYPE)).toBe(true);
 
 		await reader.close();
 		await b.close();
