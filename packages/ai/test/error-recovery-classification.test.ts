@@ -71,6 +71,7 @@ const PROVIDER_ERROR_FACTORIES: Record<string, () => AIError.ProviderHttpError> 
 	AnthropicApiError: () => new AIError.AnthropicApiError(429, NEUTRAL_429, RETRY_AFTER_HEADERS),
 	AuthGatewayError: () => new AIError.AuthGatewayError(NEUTRAL_429, 429, RETRY_AFTER_HEADERS),
 	BedrockApiError: () => new AIError.BedrockApiError(NEUTRAL_429, 429, { headers: RETRY_AFTER_HEADERS }),
+	CursorApiError: () => new AIError.CursorApiError(NEUTRAL_429, 429, { headers: RETRY_AFTER_HEADERS }),
 	DevinApiError: () => new AIError.DevinApiError(NEUTRAL_429, 429, { headers: RETRY_AFTER_HEADERS }),
 	GeminiCliApiError: () => new AIError.GeminiCliApiError(NEUTRAL_429, 429, { headers: RETRY_AFTER_HEADERS }),
 	GitLabDuoApiError: () => new AIError.GitLabDuoApiError(NEUTRAL_429, 429, { headers: RETRY_AFTER_HEADERS }),

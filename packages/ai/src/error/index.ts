@@ -3,6 +3,7 @@ export * from "./auth";
 export * from "./auth-classify";
 export * from "./aws";
 export * from "./classes";
+export * from "./connect";
 export * from "./detail-bounds";
 export * from "./finalize";
 export * from "./flags";

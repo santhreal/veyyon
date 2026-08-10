@@ -69,11 +69,15 @@ export class EventStream<T, R = T> implements AsyncIterable<T> {
 			this.resultSettled = true;
 			this.resolveFinalResult(result);
 		} else if (!this.resultSettled) {
-			// end() without a terminal value must still settle result() —
-			// otherwise complete()/result() awaits hang forever.
+			// end() without a terminal value must still settle result(), because
+			// otherwise complete()/result() awaits hang forever. A stream that
+			// ended with no final message is an incomplete stream, which is what
+			// makes it retryable: nothing terminal was ever delivered.
 			this.resultSettled = true;
 			this.rejectFinalResult(
-				new AIError.ProviderResponseError("Stream ended without a final result", { kind: "envelope" }),
+				new AIError.ProviderResponseError("Stream ended without a final result", {
+					kind: "incomplete-stream",
+				}),
 			);
 		}
 		// Notify all waiting consumers that we're done
@@ -186,10 +190,12 @@ export class AssistantMessageEventStream extends EventStream<AssistantMessageEve
 			this.resolveFinalResult(result);
 		} else if (!this.resultSettled) {
 			// Mirror the base class: a result-less end() must not leave
-			// result() pending forever.
+			// result() pending forever, and it is an incomplete stream.
 			this.resultSettled = true;
 			this.rejectFinalResult(
-				new AIError.ProviderResponseError("Stream ended without a final result", { kind: "envelope" }),
+				new AIError.ProviderResponseError("Stream ended without a final result", {
+					kind: "incomplete-stream",
+				}),
 			);
 		}
 		this.endWaiting();

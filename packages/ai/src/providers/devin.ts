@@ -687,34 +687,6 @@ function readConnectTrailerError(text: string): DevinTrailerError | null {
 }
 
 /**
- * Connect codes whose failures are the server's problem rather than the request's.
- *
- * Taken from the Connect code semantics, not from what Cascade happens to send: `unavailable` and
- * `internal` are explicitly transient, `deadline_exceeded` and `aborted` are timing, and `unknown`
- * carries no claim either way, so treating it as worth one more attempt is the honest reading.
- * `resource_exhausted` is the canonical rate-limit code and is here for servers that use it;
- * Cascade does not, which is what {@link DEVIN_RATE_LIMIT_PATTERN} exists for.
- */
-const DEVIN_RETRYABLE_TRAILER_CODES: ReadonlySet<string> = new Set([
-	"unavailable",
-	"internal",
-	"deadline_exceeded",
-	"aborted",
-	"resource_exhausted",
-	"unknown",
-]);
-
-/**
- * THE MESSAGE OUTRANKS THE CODE for rate limits, because Cascade's code is wrong.
- *
- * It reports a per-minute message rate limit as `permission_denied`, which reads as "this
- * credential may not do this" — a permanent authorization failure — when the same sentence says the
- * limit resets in a minute. Classifying on the code alone would either retry genuine authorization
- * failures or, as it did, refuse to retry a rate limit that asked to be retried.
- */
-const DEVIN_RATE_LIMIT_PATTERN = /\brate.?limit\b|\btoo many requests\b/i;
-
-/**
  * How long Cascade says to wait, read out of the sentence it says it in.
  *
  * There is no `retry-after` header on a Connect trailer, so the only machine-usable signal is the
@@ -736,15 +708,6 @@ export function parseDevinRateLimitResetMs(message: string): number | undefined 
 	return amount * scale;
 }
 
-/**
- * Turn a trailer error into the throwable that classifies correctly.
- *
- * The status codes are how the shared machinery reads these: `isProviderRetryableError` keys off
- * `status(error)` plus the message, so a rate limit has to arrive as 429 and a server fault as 503
- * to be treated the way every other provider's equivalent already is. Anything this cannot place
- * stays a `ValidationError`, which is what the whole function used to return unconditionally, so
- * genuine `invalid_argument` failures are reported exactly as before.
- */
 /**
  * How long to wait before re-running a failed turn, or `undefined` when it must not be re-run.
  *
@@ -784,9 +747,21 @@ function devinRetryDelayMs(
 	return Math.min(DEVIN_RETRY_BASE_DELAY_MS * 2 ** state.attempt, DEVIN_RETRY_MAX_DELAY_MS);
 }
 
-function devinTrailerFailure(trailer: DevinTrailerError): Error {
-	if (DEVIN_RATE_LIMIT_PATTERN.test(trailer.message)) return new AIError.DevinApiError(trailer.text, 429);
-	if (trailer.code === "unauthenticated") return new AIError.DevinApiError(trailer.text, 401);
-	if (DEVIN_RETRYABLE_TRAILER_CODES.has(trailer.code)) return new AIError.DevinApiError(trailer.text, 503);
-	return new AIError.ValidationError(trailer.text);
+/**
+ * Turn a trailer error into the throwable that classifies correctly.
+ *
+ * The status codes are how the shared machinery reads these: `isProviderRetryableError` keys off
+ * `status(error)` plus the message, so a rate limit has to arrive as 429 and a server fault as 503
+ * to be treated the way every other provider's equivalent already is. Anything the shared table
+ * cannot place stays a `ValidationError`, so genuine `invalid_argument` failures are reported
+ * exactly as before. The table itself lives in {@link AIError.connectFailureStatus} because Cursor
+ * speaks the same protocol and has to agree about every code.
+ *
+ * Exported for tests: this and Cursor's equivalent have to be assertable side by side,
+ * because one table with two readers is what keeps them from drifting apart again.
+ */
+export function devinTrailerFailure(trailer: DevinTrailerError): Error {
+	const status = AIError.connectFailureStatus(trailer);
+	if (status === undefined) return new AIError.ValidationError(trailer.text);
+	return new AIError.DevinApiError(trailer.text, status);
 }
