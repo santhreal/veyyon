@@ -53,20 +53,37 @@ function optionalBooleans(): SettingPath[] {
 }
 
 /**
- * A feature master: `<prefix>.enabled`, boolean, off by default, with a row of its
- * own so the operator can turn it on.
+ * A feature master: a boolean that ships off, carrying a row of its own so the
+ * operator can turn it on.
+ *
+ * `<prefix>.enabled` is the usual spelling and it is deliberately not what
+ * qualifies a key here. `dev.autoqa` gates `dev.autoqaPush.*` with no `.enabled`
+ * anywhere in it, and a suite that recognised masters by suffix would hold 11
+ * features and quietly skip the twelfth, which is the same shape of gap the whole
+ * suite exists to close.
  */
 function offByDefaultMasters(): SettingPath[] {
 	return optionalBooleans()
-		.filter(key => key.endsWith(".enabled") && getUi(key) !== undefined)
+		.filter(key => getUi(key) !== undefined)
 		.sort();
 }
 
-/** The visible knobs that live under a master and are not the master itself. */
+/**
+ * The visible knobs that live under a master and are not the master itself.
+ *
+ * The stem is the master minus a trailing `.enabled`, and a key is under it when
+ * the stem is followed by a dot or by a capital, so both `lsp.lazy` under
+ * `lsp.enabled` and `dev.autoqaPush.endpoint` under `dev.autoqa` are found.
+ */
 function dependentsOf(master: SettingPath): SettingPath[] {
-	const prefix = `${master.slice(0, -".enabled".length)}.`;
+	const stem = master.endsWith(".enabled") ? master.slice(0, -".enabled".length) : master;
 	return (Object.keys(SETTINGS_SCHEMA) as SettingPath[])
-		.filter(key => key !== master && key.startsWith(prefix) && getUi(key) !== undefined)
+		.filter(key => key !== master && getUi(key) !== undefined)
+		.filter(key => {
+			if (!key.startsWith(stem) || key.length <= stem.length) return false;
+			const next = key[stem.length];
+			return next === "." || next === next?.toUpperCase();
+		})
 		.sort();
 }
 
@@ -89,10 +106,33 @@ function isVisible(key: SettingPath): boolean {
 
 const touched = new Set<SettingPath>();
 
-function setEveryOptionalBoolean(value: boolean): void {
+/**
+ * The gates that are not booleans, with the value that turns the feature off and
+ * the value that turns it on.
+ *
+ * Three features are chosen rather than switched on: the memory backend is one of
+ * four names, and the two session budgets are amounts where zero means unmetered.
+ * Their knobs cannot be reached by setting booleans, so a run that only flipped
+ * booleans would report them as hidden-forever knobs and be wrong about it. The
+ * table is small and named on purpose: a new non-boolean gate turns the on-state
+ * case red, and the fix is a row here, which is a decision someone makes rather
+ * than a class of gate the suite silently stops covering.
+ */
+const FEATURE_GATES: { key: SettingPath; off: string | number; on: string | number }[] = [
+	{ key: "memory.backend" as SettingPath, off: "off", on: "mnemopi" },
+	{ key: "session.cpuLimitCores" as SettingPath, off: 0, on: 1 },
+	{ key: "session.writeBudgetGb" as SettingPath, off: 0, on: 1 },
+];
+
+/** Put every optional feature, boolean or not, in the same state. */
+function turnEveryFeature(on: boolean): void {
 	for (const key of optionalBooleans()) {
-		Settings.instance.override(key, value);
+		Settings.instance.override(key, on);
 		touched.add(key);
+	}
+	for (const gate of FEATURE_GATES) {
+		Settings.instance.override(gate.key, on ? gate.on : gate.off);
+		touched.add(gate.key);
 	}
 }
 
@@ -111,10 +151,16 @@ describe("a feature that ships off hides its knobs", () => {
 	 * satisfies all of them. These are the numbers as measured, as floors.
 	 */
 	it("finds the masters and the knobs that hang off them", () => {
-		expect(offByDefaultMasters().length).toBeGreaterThanOrEqual(19);
-		expect(gatedKnobs().length).toBeGreaterThanOrEqual(25);
+		const pairs = gatedKnobs();
+		expect(offByDefaultMasters().length).toBeGreaterThanOrEqual(69);
+		expect(new Set(pairs.map(({ master }) => master)).size).toBeGreaterThanOrEqual(12);
+		expect(pairs.length).toBeGreaterThanOrEqual(31);
 		expect(offByDefaultMasters()).toEqual(
-			expect.arrayContaining(["lsp.enabled", "browser.enabled", "github.enabled", "secrets.enabled"]),
+			expect.arrayContaining(["lsp.enabled", "browser.enabled", "github.enabled", "secrets.enabled", "dev.autoqa"]),
+		);
+		// The one master that carries no `.enabled`, so its knobs are found by stem.
+		expect(dependentsOf("dev.autoqa" as SettingPath)).toEqual(
+			expect.arrayContaining(["dev.autoqaPush.enabled", "dev.autoqaPush.endpoint"]),
 		);
 	});
 
@@ -139,7 +185,7 @@ describe("a feature that ships off hides its knobs", () => {
 	 * install is, not one of those knobs is on the screen.
 	 */
 	it("shows no dependent knob while every optional feature is off", () => {
-		setEveryOptionalBoolean(false);
+		turnEveryFeature(false);
 		expect(Settings.instance.get("lsp.enabled")).toBe(false);
 
 		const stillVisible = gatedKnobs()
@@ -156,8 +202,9 @@ describe("a feature that ships off hides its knobs", () => {
 	 * nothing and was never wired.
 	 */
 	it("shows every knob and every master once its feature is on", () => {
-		setEveryOptionalBoolean(true);
+		turnEveryFeature(true);
 		expect(Settings.instance.get("lsp.enabled")).toBe(true);
+		expect(Settings.instance.get("memory.backend")).toBe("mnemopi");
 
 		const stillHidden = [
 			...gatedKnobs().map(({ master, dependent }) => ({ key: dependent, under: master })),
@@ -183,7 +230,7 @@ describe("a feature that ships off hides its knobs", () => {
 	 * honest, since a conditioned master still has to come back.
 	 */
 	it("keeps every unconditioned master visible while its own feature is off", () => {
-		setEveryOptionalBoolean(false);
+		turnEveryFeature(false);
 
 		const unreachable = offByDefaultMasters()
 			.filter(master => getUi(master)?.condition === undefined)
