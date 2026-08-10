@@ -438,11 +438,15 @@ export interface Simulation {
 	/** The file the transcript is written to, when `persist` is on. */
 	sessionFile(): string | undefined;
 	/**
-	 * Reopen the stored transcript the way a new process does: a second agent and
+	 * Reopen a stored transcript the way a new process does: a second agent and
 	 * session, over a second manager, reading the same store. Requires `persist`.
 	 * The returned simulation owns its own session and must be disposed too.
+	 *
+	 * `sessionFile` defaults to this simulation's own file. Naming another one is
+	 * how a scenario reads a session it is no longer on, which is the only way to
+	 * see what a fork left behind in its parent.
 	 */
-	reopen(): Promise<Simulation>;
+	reopen(sessionFile?: string): Promise<Simulation>;
 	dispose(): Promise<void>;
 }
 
@@ -534,17 +538,17 @@ function buildSimulation(scope: SimulationScope, ownsScope: boolean): Simulation
 		},
 		providerCalls: () => callCount,
 		sessionFile: () => sessionManager.getSessionFile(),
-		async reopen() {
+		async reopen(sessionFile) {
 			if (!options.persist) throw new Error("reopen needs `persist: true`: nothing was written to read back");
-			const sessionFile = sessionManager.getSessionFile();
-			if (!sessionFile) throw new Error("the simulation stored no session file");
+			const target = sessionFile ?? sessionManager.getSessionFile();
+			if (!target) throw new Error("the simulation stored no session file");
 			// The writer is asynchronous, so a reopen that skipped this would read a
 			// prefix of the transcript and report a loss the product did not have.
 			await sessionManager.flush();
 			const reopened = buildSimulation(scope, false);
-			if (!(await reopened.session.switchSession(sessionFile))) {
+			if (!(await reopened.session.switchSession(target))) {
 				await reopened.dispose();
-				throw new Error(`reopening ${sessionFile} was refused`);
+				throw new Error(`reopening ${target} was refused`);
 			}
 			return reopened;
 		},
