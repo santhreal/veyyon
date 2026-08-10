@@ -31,6 +31,7 @@
  *    awaiting the turn. A hang fails the test by timing out; there is no
  *    assertion that can be satisfied by a stuck session.
  */
+import * as fs from "node:fs/promises";
 import { Agent, type AgentTool } from "@veyyon/agent-core";
 import type { Api, AssistantMessage, Context, Model, SimpleStreamOptions, ToolCall, ToolChoice } from "@veyyon/ai";
 import { setBedrockProviderModule } from "@veyyon/ai/providers/register-builtins";
@@ -424,6 +425,21 @@ export interface SimulationOptions {
 	 * writer, and `inMemory` (persist off) is what every other scenario runs on.
 	 */
 	persist?: boolean;
+	/**
+	 * A `models.yml` written into the simulation's config directory before the
+	 * registry loads it, in the shape the shipped loader takes
+	 * (`{ providers: { <name>: { modelOverrides: { <id>: { ... } } } } }`). YAML is
+	 * a superset of JSON, so the object is serialized as JSON.
+	 *
+	 * This is the only way to reach code that resolves one catalog model against
+	 * another: context promotion and per-model compaction both read a field
+	 * (`contextPromotionTarget`, `compactionModel`) off the ACTIVE model and look
+	 * the named model up in the registry's available set. A synthetic
+	 * {@link simulatedModel} is in neither the catalog nor the registry, so a
+	 * scenario that needs those paths overrides a real bundled model here and
+	 * sets the session to it (`session.setModel(registry.find(provider, id)!)`).
+	 */
+	modelsConfig?: Record<string, unknown>;
 }
 
 export interface Simulation {
@@ -576,6 +592,12 @@ export async function createSimulation(options: SimulationOptions): Promise<Simu
 	if (options.model?.provider) {
 		authStorage.setRuntimeApiKey(options.model.provider, "simulation-key");
 	}
+	const modelsConfigFile = `${tempDir.path()}/models.yml`;
+	// Written before the registry exists: the loader reads the file on
+	// construction and caches it by mtime, so a later write would not be seen.
+	if (options.modelsConfig) {
+		await fs.writeFile(modelsConfigFile, JSON.stringify(options.modelsConfig, null, 2), "utf8");
+	}
 	// The session keeps its own registry of every tool it can run, and several
 	// production paths ask it rather than the agent state: plan-mode convergence
 	// refuses to force a decision unless `ask` and `resolve` are both registered,
@@ -589,7 +611,7 @@ export async function createSimulation(options: SimulationOptions): Promise<Simu
 			authStorage,
 			storage: new MemorySessionStorage(),
 			settings: simulationSettings(options.settings),
-			modelRegistry: new ModelRegistry(authStorage, `${tempDir.path()}/models.yml`),
+			modelRegistry: new ModelRegistry(authStorage, modelsConfigFile),
 			tools,
 			toolRegistry: new Map(tools.map(tool => [tool.name, tool])),
 			options,

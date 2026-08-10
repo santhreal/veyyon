@@ -38,10 +38,11 @@
  * `#runRecoveryCompactionWithRollback` reds only the failing-summarizer row, so
  * that row covers the rollback rather than restating the dead ends.
  *
- * NOT asserted: promotion to a larger model. A promotion target is resolved from
- * `contextPromotionTarget` against the registry's available models, which a
- * simulated model is not in, so that rung is unreachable here and is left to the
- * unit tests that own the resolver.
+ * NOT asserted: promotion to a larger model, which is the rung above compaction
+ * here. It is reachable in a simulation, but only by overriding real catalog
+ * models into a ladder the registry can resolve, and it has a suite of its own:
+ * `context-promotion-ladder.test.ts` runs both arms of `contextPromotion.enabled`
+ * against a threshold crossing and against this file's overflow error.
  */
 import { afterEach, describe, expect, it } from "bun:test";
 import { createSimulation, type Simulation, simTool, simulatedModel } from "./harness";
