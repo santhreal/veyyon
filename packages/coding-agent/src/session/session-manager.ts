@@ -1013,10 +1013,16 @@ export class SessionManager {
 		// equally reasons to rewrite the whole thing instead. The rewrite then fails with the real
 		// errno if the path is genuinely unusable. What changes is that the unreachable case is
 		// REPORTED once through the storage fault channel rather than looking like an absent file.
+		//
+		// The replacement probe belongs here for the same reason it belongs on the append hot path:
+		// this path appends the entry through the writer handle, which another window's publish
+		// leaves addressing an unlinked inode. The slot patch addresses the PATH and lands on the
+		// new file, so without the probe the title changes and the entry recording it disappears.
 		if (
 			!this.#fileIsCurrent ||
 			this.#rewriteRequired ||
 			!this.#hasTitleSlot ||
+			this.#fileReplacedUnderWriter() ||
 			this.#storage.existsStateSync(this.#sessionFile) !== "present"
 		) {
 			await this.#rewriteAtomically();
