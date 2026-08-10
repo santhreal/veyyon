@@ -12,19 +12,22 @@
  * checked that the two ever meet. A marker naming an id that was never written,
  * or written without the content, is silent data loss wearing a receipt.
  *
- * ASSERTED. The dedup pass drops exactly the older copy of a byte-identical
- * result and keeps the newest one live; the marker it leaves carries an
- * `artifact://<id>` pointer; the file that pointer resolves to exists and holds
- * the elided bytes; the rewrite reaches both the store and the next request; and
- * the pointer still resolves after the session is reopened from its transcript,
+ * ASSERTED, at BOTH owners of that pointer, because one owner covered is one
+ * owner covered: the redundant-result dedup (`#offloadAndApplyShakeRegions`,
+ * shared with `/shake elide`) and the compaction tail bound
+ * (`#persistCompactionTailElisions`). Per owner: the pass takes the bytes out
+ * and leaves a marker carrying an `artifact://<id>` pointer, the file that
+ * pointer resolves to exists and holds those bytes, and the bulk is gone from
+ * the request that follows. The dedup arm additionally pins that exactly the
+ * older copy of an identical pair goes and the newest stays live, and that the
+ * pointer still resolves after the session is reopened from its transcript,
  * which is when a recovery is actually attempted.
  *
- * NOT asserted. The `read` tool's own resolution of an `artifact://` URI (that is
- * the tool's contract, exercised where the tool is) and the shake elide tier's
- * size-driven region selection, whose savings floor needs a context far larger
- * than a simulation builds. This suite takes the one elision path a session
- * reaches with no size pressure at all, because it is the path an operator hits
- * without asking for anything.
+ * NOT asserted. The `read` tool's own resolution of an `artifact://` URI (that
+ * is the tool's contract, exercised where the tool is) and the shake elide
+ * tier's size-driven region SELECTION, whose savings floor needs a context far
+ * larger than a simulation builds; the tail arm reaches the same offload code
+ * through a trigger a simulation can build.
  *
  * The end-of-turn supersede pass is turned OFF here on purpose: it would blank
  * the older read first, on its own rule, and then there would be no identical
@@ -192,5 +195,84 @@ describe("an elided tool result is recoverable through the artifact it points at
 		expect(dedup.artifactId).toBeUndefined();
 		expect(textOfResult(simulation, "read-1")).toBe(bodyFor("src/a.ts"));
 		expect(textOfResult(simulation, "read-2")).toBe(bodyFor("src/b.ts"));
+	});
+});
+
+/**
+ * The tail bound's own pointer, at the other owner.
+ *
+ * A compaction keeps `compaction.keepRecentTokens` of recent history verbatim,
+ * and a single heavy tool result inside that tail blows the bound on its own, so
+ * the preparation elides it in place and the session offloads the bytes. Same
+ * promise, different writer: `renderTailElisionMarker` names the id and
+ * `#persistCompactionTailElisions` writes the file.
+ */
+const HEAVY_WINDOW = 64_000;
+/** A stated trigger, so the window ceiling never enters the measurement. */
+const HEAVY_THRESHOLD = "12000";
+/** One round's tool output on its own is many times the retained-tail budget. */
+const HEAVY_OUTPUT = `HEAVY-OUTPUT ${"payload word ".repeat(600)}`;
+
+describe("the compaction tail bound points at the bytes it removed", () => {
+	it("elides the heavy result inside the kept tail and stores it under the pointer", async () => {
+		let compactions = 0;
+		sim = await createSimulation({
+			persist: true,
+			model: { contextWindow: HEAVY_WINDOW },
+			settings: {
+				"compaction.enabled": true,
+				"compaction.threshold": HEAVY_THRESHOLD,
+				"compaction.keepRecentTokens": 1_000,
+				"compaction.remote": false,
+			},
+			tools: [simTool("work", async () => ({ content: [{ type: "text", text: HEAVY_OUTPUT }] }))],
+			script: turn => {
+				if ((turn.context.tools?.length ?? 0) === 0) {
+					compactions += 1;
+					turn.text("SUMMARY OF THE EARLIER ROUNDS");
+					turn.finish();
+					return;
+				}
+				if (turn.call % 2 === 1) {
+					turn.usage({ input: 400, output: 40 });
+					turn.toolCall("work", { round: turn.call }, `work-${turn.call}`);
+					turn.finish("toolUse");
+					return;
+				}
+				turn.text(`answer ${turn.call}`);
+				turn.finish();
+			},
+		});
+
+		for (let round = 1; round <= 12; round += 1) {
+			await sim.session.prompt(`round ${round}`);
+			if (compactions > 0) break;
+		}
+		if (compactions === 0) throw new Error("no compaction after 12 rounds: the fixture never reached it");
+
+		const elided = sim.session.messages
+			.filter(message => message.role === "toolResult")
+			.flatMap(message => message.content.filter(block => block.type === "text").map(block => block.text))
+			.filter(text => text.startsWith("[output elided by compaction:"));
+		if (elided.length === 0) throw new Error("compaction elided nothing inside the kept tail");
+
+		const pointer = /recover the full output at artifact:\/\/(\S+?)\]/.exec(elided[0]);
+		expect(pointer).not.toBeNull();
+		const artifactId = pointer?.[1] ?? "";
+		const artifactPath = await sim.sessionManager.getArtifactPath(artifactId);
+		expect(artifactPath).toBeTruthy();
+		expect(await fs.readFile(artifactPath ?? "", "utf8")).toContain(HEAVY_OUTPUT);
+
+		// The bound is the point: the bulk it removed is not on the wire either.
+		const contexts: string[] = [];
+		for (const message of sim.session.messages) {
+			if (message.role !== "toolResult") continue;
+			for (const block of message.content) {
+				if (block.type === "text") contexts.push(block.text);
+			}
+		}
+		expect(contexts.filter(text => text.includes(HEAVY_OUTPUT)).length).toBeLessThan(
+			contexts.filter(text => text.startsWith("[output elided by compaction:")).length + 1,
+		);
 	});
 });
