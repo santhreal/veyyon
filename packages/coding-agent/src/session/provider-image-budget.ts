@@ -7,6 +7,7 @@ import type {
 	ToolResultMessage,
 	UserMessage,
 } from "@veyyon/ai";
+import { replaceLlmImagesWithText } from "./messages";
 
 /**
  * Per-provider cap on the number of images allowed in one request, measured
@@ -124,4 +125,53 @@ export function clampProviderContextImages(context: Context, model: Model): Cont
 		return message;
 	});
 	return { ...context, messages };
+}
+
+/** Sentence a request carries where the operator turned image reading off. */
+const IMAGES_BLOCKED_TEXT = "Image reading is disabled.";
+
+/**
+ * Sentence a request carries where the model serving it has no vision input.
+ * Names the request rather than "the active model": a side request, an advisor
+ * and the main turn can each be served by a different model in one session.
+ */
+const NO_VISION_TEXT = "[image omitted: the model serving this request does not support image input]";
+
+/** Operator state the policy reads; one field, read live per request. */
+export interface ProviderImagePolicy {
+	/** `images.blockImages`: no image reaches any provider while this is on. */
+	blockImages: boolean;
+}
+
+/**
+ * Shape `context` for what `model` can actually read, in one place.
+ *
+ * Three rules, strictest first:
+ *
+ * 1. `blockImages` is the operator's own refusal and outranks model capability.
+ * 2. A model whose `input` has no `image` gets every image block replaced by
+ *    {@link NO_VISION_TEXT}. Providers 400 on an image block a text-only model
+ *    cannot read, and the whole request dies with it.
+ * 3. A vision model over its provider's per-request cap loses its oldest
+ *    images ({@link clampProviderContextImages}).
+ *
+ * `model` is the model that will serve THIS request, which is why the policy
+ * lives at the provider-context seam and not at message conversion: the
+ * converter sees one model per session, while compaction, an advisor, a side
+ * request and the main turn each dispatch their own. Deciding vision support
+ * from the session's model shipped image blocks to whichever text-only model a
+ * role pointed at.
+ */
+export function applyProviderImagePolicy(context: Context, model: Model, policy: ProviderImagePolicy): Context {
+	if (policy.blockImages) {
+		return withMessages(context, replaceLlmImagesWithText(context.messages, IMAGES_BLOCKED_TEXT));
+	}
+	if (!model.input.includes("image")) {
+		return withMessages(context, replaceLlmImagesWithText(context.messages, NO_VISION_TEXT));
+	}
+	return clampProviderContextImages(context, model);
+}
+
+function withMessages(context: Context, messages: Context["messages"]): Context {
+	return messages === context.messages ? context : { ...context, messages };
 }

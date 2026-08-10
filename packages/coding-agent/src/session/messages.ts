@@ -458,9 +458,10 @@ export function stripImagesFromMessage(message: AgentMessage): number {
  * Unlike {@link stripImagesFromMessage} (which mutates persisted `AgentMessage`s
  * in place), this operates on the ephemeral provider-request view produced by
  * {@link convertToLlm}, so history on disk keeps its images while the outbound
- * request is scrubbed. Used to keep image blocks off the wire when the active
- * model has no vision support (or `images.blockImages` is set) — e.g. after
- * switching from a vision model to a text-only one mid-session (#5400).
+ * request is scrubbed. Its one caller is `applyProviderImagePolicy`, which
+ * decides from the model serving the request whether images may travel at all
+ * (a text-only model after a mid-session switch, #5400) and whether the
+ * operator blocked them outright (`images.blockImages`).
  *
  * Consecutive placeholder texts collapse into one so a message that was nothing
  * but images does not balloon into a run of identical notes.

@@ -169,11 +169,9 @@ import {
 	type CustomMessage,
 	convertToLlm,
 	LSP_LATE_DIAGNOSTIC_MESSAGE_TYPE,
-	replaceLlmImagesWithText,
 	USER_INTERRUPT_LABEL,
 } from "./session/messages";
 import { OperatorNotices, stderrNoticeSink } from "./session/operator-notices";
-import { clampProviderContextImages } from "./session/provider-image-budget";
 import { getRestorableSessionModels } from "./session/session-context";
 import { SessionManager } from "./session/session-manager";
 import { createSettingsAwareStreamFn } from "./session/settings-stream-fn";
@@ -3847,27 +3845,6 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 
 		const slashCommands = await slashCommandsPromise;
 
-		// Keep image blocks off the wire when they'd be rejected: either the user
-		// disabled images (`images.blockImages`) or the active model has no vision
-		// support. The latter covers switching from a vision model to a text-only
-		// one mid-session — historical image blocks would otherwise be replayed to
-		// a provider that 400s on them (#5400). Read both dynamically so a `/model`
-		// switch or setting change takes effect on the next turn.
-		const convertToLlmWithBlockImages = (messages: AgentMessage[]): Message[] => {
-			const converted = convertToLlm(messages);
-			if (settings.get("images.blockImages")) {
-				return replaceLlmImagesWithText(converted, "Image reading is disabled.");
-			}
-			const activeModel = agent?.state.model ?? model;
-			if (activeModel && !activeModel.input.includes("image")) {
-				return replaceLlmImagesWithText(
-					converted,
-					"[image omitted: the active model does not support image input]",
-				);
-			}
-			return converted;
-		};
-
 		const secretRuntimeByObject = new WeakMap<object, SecretRuntimeLease>();
 		const bindSecretRuntime = (value: unknown, runtime: SecretRuntimeLease): void => {
 			if (typeof value !== "object" || value === null) return;
@@ -3904,7 +3881,11 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 
 		const convertToLlmFinal = (messages: AgentMessage[]): Message[] => {
 			const runtime = secretRuntimeByObject.get(messages) ?? activeMainRequestRuntime;
-			const converted = filterProviderReplayMessages(convertToLlmWithBlockImages(messages));
+			// No image policy here. Conversion sees one model per session, while the
+			// main turn, a side request, compaction and an advisor each dispatch
+			// their own; the policy resolves in AgentSession's provider-context hook,
+			// which knows the model the request is actually going to.
+			const converted = filterProviderReplayMessages(convertToLlm(messages));
 			const redacted = runtime.obfuscateMessages(converted);
 			bindSecretRuntime(converted, runtime);
 			bindSecretRuntime(redacted, runtime);
@@ -3913,17 +3894,15 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 
 		const transformProviderContext = async (
 			context: Context,
-			transformModel: Model,
+			_transformModel: Model,
 			requestRuntime?: SecretRuntimeLease,
 		): Promise<Context> => {
 			const runtime = requestRuntime ?? resolveSecretRuntimeForContext(context) ?? activeMainRequestRuntime;
 			const transformed = runtime.obfuscateContext(context);
-			const clamped = clampProviderContextImages(transformed, transformModel);
 			bindSecretRuntime(context, runtime);
 			bindSecretRuntime(transformed, runtime);
-			bindSecretRuntime(clamped, runtime);
-			bindSecretRuntime(clamped.messages, runtime);
-			return clamped;
+			bindSecretRuntime(transformed.messages, runtime);
+			return transformed;
 		};
 
 		// Raw extension hook. The leased stream wrapper performs the final
