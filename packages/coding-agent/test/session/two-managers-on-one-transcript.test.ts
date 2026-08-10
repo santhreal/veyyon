@@ -3,8 +3,8 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { OperatorNotices } from "@veyyon/coding-agent/session/operator-notices";
 import { SESSION_TITLE_SLOT_ENTRY_TYPE, TITLE_CHANGE_ENTRY_TYPE } from "@veyyon/coding-agent/session/session-entries";
-import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { TempDir } from "@veyyon/utils";
+import { cleanupEmptyMoveSession, SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { pathExists, TempDir } from "@veyyon/utils";
 
 /**
  * WHY: two managers can hold one transcript, and a full-file publish used to
@@ -40,12 +40,27 @@ import { TempDir } from "@veyyon/utils";
  * covered: a producer that stops claiming its ids republishes its own line as
  * though a stranger wrote it.
  *
+ * Rows 11 to 15 are the members of the class that are not the ordinary append. A
+ * title change writes through the handle and patches the title slot by PATH, so
+ * the title survived a replacement while the entry recording it did not. The
+ * publish on the way out (`flushSync`, exit) is the one that cannot be repaired
+ * later, since the process is leaving. And the widest members are not publishes at
+ * all: two automatic DELETES, the draft-only cleanup and the one that drops the
+ * session `/move` left behind. Each decided the session was empty from the entries
+ * this manager held, so a window that had typed nothing deleted a conversation
+ * another window was having, and each now asks one shared question
+ * (`holdsForeignEntries`). Row 14 is the positive control for the draft drop; the
+ * one for the move cleanup lives beside it in
+ * `test/session-manager/move-session-cleanup.test.ts`, which asserts an empty move
+ * session IS deleted.
+ *
  * MEASURED (mutation matrix, each mutant applied alone to
  * `packages/coding-agent/src/session/session-manager.ts`, rows numbered in file
  * order):
  * - M1 `#fileBody()` drops the `#foreignLines` loop (the pre-fix body): rows 1, 2,
  *   3, 8, 10 red.
- * - M2 `#refreshForeignLines()` returns before reading: rows 1, 2, 3, 6, 8, 10 red.
+ * - M2 `#refreshForeignLines()` returns before reading: rows 1, 2, 3, 6, 8, 10, 13
+ *   red.
  * - M3 the refresh keeps every line instead of only ids that were never ours:
  *   rows 1, 2, 3, 4, 5, 7, 8, 9, 10 red.
  * - M4 `#recordEntry` stops claiming the appended id: rows 2, 5, 7, 9, 10 red.
@@ -69,6 +84,13 @@ import { TempDir } from "@veyyon/utils";
  *   that cannot read without yielding looks like: row 12 red. The manager degrades
  *   to the previous behaviour there rather than blocking, so this mutant proves the
  *   row is measuring the READ and not merely the call.
+ * - M14 the draft-only drop deletes without asking whether the file holds a line
+ *   that was never ours: row 13 red, and row 14 stays green under it, which is what
+ *   says the guard narrows the delete rather than breaking it.
+ * - M15 the `/move` cleanup deletes without asking: row 15 red.
+ * - M16 `holdsForeignEntries()` answers from what it already knew instead of
+ *   re-reading: rows 13 and 15 red. Both deletes run on the way out, after the last
+ *   publish, so the only knowledge that can be current is a fresh read.
  *
  * WHAT THIS DOES NOT CATCH:
  * - A backend with no synchronous read. `#rewriteSynchronously` re-reads through
@@ -496,6 +518,80 @@ describe("two managers on one transcript", () => {
 		expect(after.ids).toHaveLength(3);
 		expect(new Set(after.ids).size).toBe(3);
 
+		await b.close();
+		await a.close();
+	});
+
+	it("does not delete the transcript when the file it is dropping holds another writer's turns", async () => {
+		using tempDir = TempDir.createSync("@veyyon-two-writers-");
+		const dir = tempDir.path();
+
+		// A fresh session has no file until something forces one, and saving a draft
+		// is what forces it. That is the state whose close deletes the file again.
+		const a = SessionManager.create(dir, dir);
+		await a.saveDraft("half a thought");
+		const file = a.getSessionFile();
+		if (!file) throw new Error("the draft did not materialize a session file");
+
+		// That file is the newest in the directory, so it is the one another window
+		// resumes. Its turns are real conversation.
+		const b = await SessionManager.open(file, dir);
+		b.appendMessage(userMessage("a real turn from the other window"));
+		await b.flush();
+
+		// Clearing the composer removes the draft and leaves the cleanup armed, so
+		// the close below is the delete.
+		await a.saveDraft("");
+		await a.close();
+
+		expect(await fs.readFile(file, "utf8")).toContain("a real turn from the other window");
+		const reader = await SessionManager.open(file, dir);
+		expect(messageTexts(reader)).toEqual(["a real turn from the other window"]);
+
+		await reader.close();
+		await b.close();
+	});
+
+	it("still drops its own empty draft session when nothing else wrote the file", async () => {
+		using tempDir = TempDir.createSync("@veyyon-two-writers-");
+		const dir = tempDir.path();
+
+		// The positive control for the row above: with no second writer the cleanup
+		// must still delete the file, or the refusal is simply a broken drop.
+		const a = SessionManager.create(dir, dir);
+		await a.saveDraft("half a thought");
+		const file = a.getSessionFile();
+		if (!file) throw new Error("the draft did not materialize a session file");
+		expect(await pathExists(file, "the draft-only session file")).toBe(true);
+
+		await a.saveDraft("");
+		await a.close();
+
+		expect(await pathExists(file, "the draft-only session file")).toBe(false);
+	});
+
+	it("does not delete a moved-from session file another writer has taken over", async () => {
+		using tempDir = TempDir.createSync("@veyyon-two-writers-");
+		const dir = tempDir.path();
+
+		// The other automatic delete in the product: a `/move` leaves behind a fresh
+		// session file, and it is dropped on close when it never received a turn.
+		const a = SessionManager.create(dir, dir);
+		await a.ensureOnDisk();
+		const file = a.getSessionFile();
+		if (!file) throw new Error("the moved-from session has no file");
+
+		const b = await SessionManager.open(file, dir);
+		b.appendMessage(userMessage("a real turn from the other window"));
+		await b.flush();
+
+		await cleanupEmptyMoveSession(a, file);
+
+		expect(await fs.readFile(file, "utf8")).toContain("a real turn from the other window");
+		const reader = await SessionManager.open(file, dir);
+		expect(messageTexts(reader)).toEqual(["a real turn from the other window"]);
+
+		await reader.close();
 		await b.close();
 		await a.close();
 	});
