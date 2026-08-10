@@ -41,6 +41,7 @@ import {
 	type ModeChangeEntry,
 	type ModelChangeEntry,
 	type NewSessionOptions,
+	SESSION_TITLE_SLOT_ENTRY_TYPE,
 	type ServiceTierChangeEntry,
 	type SessionCheckpoint,
 	type SessionCheckpointEntry,
@@ -497,6 +498,33 @@ export class SessionManager {
 	/** Set by synchronous appends that land while an atomic replacement is active. */
 	#atomicRewriteDirty = false;
 
+	/**
+	 * Every entry id this manager has ever held for the CURRENT session file:
+	 * what it loaded, plus everything it appended since.
+	 *
+	 * A full-file publish writes only the entries this manager holds, so a line
+	 * some OTHER process appended after we read the file is deleted by our next
+	 * rewrite. Two terminals on one session (`--continue` twice, or `/resume` on
+	 * a session another instance still has open) is enough: the second process
+	 * compacts, drops images, or dedupes, and the first process's turns are gone
+	 * from disk and from every later reader. Nothing surfaces it, because the
+	 * process that lost the work is not the process that wrote the file.
+	 *
+	 * So a line is foreign only when its id was never ours. An entry we loaded and
+	 * then deliberately dropped (incarnation telemetry, a branch compacted to its
+	 * path) stays in this set, which is what stops the merge below from
+	 * resurrecting it.
+	 */
+	#idsEverSeen = new Set<string>();
+	/**
+	 * Raw lines of the current file that belong to another writer, in file order,
+	 * carried through every full-file publish so a rewrite cannot delete them.
+	 * Refreshed from disk before each atomic publish.
+	 */
+	#foreignLines: string[] = [];
+	/** One warning per file: a foreign writer stays foreign for the whole session. */
+	#reportedForeignWriter = false;
+
 	#artifactManager: ArtifactManager | null = null;
 	#artifactManagerSessionFile: string | null = null;
 	#adoptedArtifactManager: ArtifactManager | null = null;
@@ -653,11 +681,86 @@ export class SessionManager {
 		});
 	}
 
+	/**
+	 * The whole file as this manager would publish it: the title slot, the header,
+	 * our entries, and finally any line another writer appended (see
+	 * {@link #idsEverSeen}). The foreign tail goes last because its entries hang
+	 * off ids we already emitted, so parents still precede children.
+	 */
 	#fileBody(): string {
 		let body = this.#titleSlotLine();
 		body += this.#lineFor(this.#header);
 		for (const entry of this.#entries) body += this.#lineFor(entry);
+		for (const line of this.#foreignLines) body += line.endsWith("\n") ? line : `${line}\n`;
 		return body;
+	}
+
+	/** Remember an id as ours, so a line carrying it is never treated as foreign. */
+	#noteIdSeen(id: string | undefined): void {
+		if (id) this.#idsEverSeen.add(id);
+	}
+
+	/**
+	 * Start foreign tracking over for the file this manager now owns: another
+	 * file's foreign tail is not ours to publish, and everything we hold at this
+	 * moment is ours in the new file.
+	 *
+	 * The reseed is what keeps a fork or a branch from duplicating its own
+	 * history: those paths carry the source entries into a fresh file, and an id
+	 * that is not marked ours reads back as foreign on the next publish.
+	 */
+	#forgetForeignWriter(): void {
+		this.#idsEverSeen.clear();
+		this.#foreignLines = [];
+		this.#reportedForeignWriter = false;
+		this.#noteIdSeen(this.#header.id);
+		for (const entry of this.#entries) this.#noteIdSeen(entry.id);
+	}
+
+	/**
+	 * Re-read the session file and record any line this manager never wrote, so
+	 * the publish that follows carries it instead of deleting it.
+	 *
+	 * A read failure leaves the previous knowledge in place rather than blocking
+	 * the publish: losing the elision a rewrite was asked for is worse than
+	 * carrying a slightly stale foreign tail, and an unreadable file is reported
+	 * by the read paths already.
+	 */
+	async #refreshForeignLines(): Promise<void> {
+		if (!this.#persist || !this.#sessionFile) return;
+		if (!(await this.#storage.exists(this.#sessionFile))) return;
+		let text: string;
+		try {
+			text = await this.#storage.readText(this.#sessionFile);
+		} catch {
+			return;
+		}
+		const foreign: string[] = [];
+		for (const raw of text.split("\n")) {
+			if (!raw.trim()) continue;
+			let parsed: { type?: unknown; id?: unknown } | undefined;
+			try {
+				parsed = JSON.parse(raw) as { type?: unknown; id?: unknown };
+			} catch {
+				continue;
+			}
+			// The title slot is a fixed-width line this manager rewrites every time,
+			// and a header belongs to whoever owns the file's identity.
+			if (parsed.type === SESSION_TITLE_SLOT_ENTRY_TYPE || parsed.type === "session") continue;
+			const id = typeof parsed.id === "string" ? parsed.id : undefined;
+			if (!id || this.#idsEverSeen.has(id)) continue;
+			foreign.push(raw);
+		}
+		this.#foreignLines = foreign;
+		if (foreign.length > 0 && !this.#reportedForeignWriter) {
+			this.#reportedForeignWriter = true;
+			const message = `Another veyyon session is writing ${this.#sessionFile}; its entries are being kept alongside this session's. Close one of them, or run /fork to give this session its own transcript.`;
+			logger.warn("session file has a second writer", {
+				sessionFile: this.#sessionFile,
+				foreignLines: foreign.length,
+			});
+			this.#operatorNotices?.warn("session", message);
+		}
 	}
 
 	#historyContainsAssistantMessage(): boolean {
@@ -672,6 +775,12 @@ export class SessionManager {
 	 * Synchronously rewrite the whole file (header + entries) and keep no open
 	 * writer; the next append re-opens one. `writeTextSync` returns with the
 	 * bytes in the kernel page cache, so the file is software-crash durable.
+	 *
+	 * Being synchronous, this path cannot re-read the file, so it carries only the
+	 * foreign lines the last atomic publish learned about (see
+	 * {@link #refreshForeignLines}); a line a second writer appended since then is
+	 * still lost here. The async path is the one that runs for every rewrite the
+	 * product performs; this one runs on exit and on the `flushSync` fallback.
 	 */
 	#rewriteSynchronously(): void {
 		if (!this.#persist || !this.#sessionFile || !this.#shouldHaveSessionFile()) return;
@@ -733,6 +842,11 @@ export class SessionManager {
 				await this.#closeWriterHandle();
 				const sessionFile = this.#sessionFile;
 				if (!sessionFile) return false;
+				if (this.#diskEpoch !== epoch) return false;
+				// Read the file back first: a second manager holding the same path
+				// appends lines this manager has never seen, and a full-file body
+				// that omits them deletes them (see #refreshForeignLines).
+				await this.#refreshForeignLines();
 				if (this.#diskEpoch !== epoch) return false;
 				await this.#storage.writeTextAtomic(sessionFile, this.#fileBody(), {
 					commitGuard: () => this.#diskEpoch === epoch,
@@ -878,6 +992,7 @@ export class SessionManager {
 
 		this.#entries = [];
 		this.#index.clear();
+		this.#forgetForeignWriter();
 		this.#nextSequence = 1;
 		this.#lifecycleStarted = false;
 		this.#lifecycleEnded = false;
@@ -918,6 +1033,10 @@ export class SessionManager {
 		this.#nextSequence = nextSessionSequence(entries);
 		this.#lifecycleStarted = false;
 		this.#lifecycleEnded = false;
+		// Every loaded id is ours from here on, including one a later rewrite drops
+		// on purpose: that is what keeps the foreign-line merge from resurrecting it.
+		for (const entry of entries) this.#noteIdSeen(entry.id);
+		this.#noteIdSeen(header.id);
 	}
 
 	#allocateSequence(): number {
@@ -946,6 +1065,7 @@ export class SessionManager {
 				this.#nextSequence = Math.max(this.#nextSequence, entry.sequence + 1);
 			}
 		}
+		this.#noteIdSeen(entry.id);
 		this.#entries.push(entry);
 		this.#index.insert(entry);
 		this.#appendToSessionFile(entry);
@@ -1124,6 +1244,7 @@ export class SessionManager {
 		this.#forceFileCreation = snapshot.onDisk;
 		this.#draftOnlySessionCleanupArmed = snapshot.draftOnlySessionCleanupArmed;
 		this.#applyEntries(snapshot.header, [...snapshot.entries]);
+		this.#forgetForeignWriter();
 		this.#nextSequence = snapshot.nextSequence;
 		this.#lifecycleStarted = snapshot.lifecycleStarted;
 		this.#lifecycleEnded = snapshot.lifecycleEnded;
@@ -1189,6 +1310,7 @@ export class SessionManager {
 		}
 
 		this.#applyEntries(header, fileEntries.slice(1) as SessionEntry[]);
+		this.#forgetForeignWriter();
 		this.#titleUpdatedAt = titleSlot?.updatedAt ?? header.timestamp;
 		this.#hasTitleSlot = titleSlot !== undefined;
 		this.#fileIsCurrent = true;
@@ -1268,6 +1390,9 @@ export class SessionManager {
 		this.#artifactManagerSessionFile = null;
 		this.#rememberBreadcrumb(this.#cwd, this.#sessionFile);
 
+		// A new file, so another writer's tail on the old one is not ours to carry,
+		// and the history we brought along is.
+		this.#forgetForeignWriter();
 		await this.#rewriteAtomically();
 		return { oldSessionFile, newSessionFile: this.#sessionFile };
 	}
@@ -1827,6 +1952,7 @@ export class SessionManager {
 		};
 		if (previousTitle) entry.previousTitle = previousTitle;
 		if (trigger) entry.trigger = trigger;
+		this.#noteIdSeen(entry.id);
 		this.#entries.push(entry);
 		this.#index.insert(entry);
 		this.#notifyEntryAppended(entry);
@@ -2284,6 +2410,9 @@ export class SessionManager {
 		this.#titleUpdatedAt = timestamp;
 		this.#hasTitleSlot = true;
 		this.#index.rebuild(this.#entries);
+		// A branch is a new file holding a prefix of the source: the source's foreign
+		// tail stays behind, and the prefix we kept is ours here.
+		this.#forgetForeignWriter();
 		this.#nextSequence = nextSessionSequence(this.#entries);
 		this.#lifecycleStarted = false;
 		this.#lifecycleEnded = false;
