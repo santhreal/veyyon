@@ -21,6 +21,12 @@
  * renders nothing at all produces. So the same group is asserted to come back,
  * heading and rows, the moment its feature is switched on inside one session.
  *
+ * AND THE SEARCH BAR IS THE THIRD SURFACE. `/settings` search walks the same tabs,
+ * so a knob that the list hides and the search still offers is hidden in name only:
+ * the operator types "ttl", gets a row, changes it, and nothing happens. The gate
+ * lives in `#defToItemBase`, which both paths go through, and that is the thing
+ * worth pinning rather than the fact that one of them calls it.
+ *
  * WHAT IT DOES NOT CATCH. Nothing about the sidebar's own section list, only the
  * headings in the row list; and nothing about whether a group's remaining rows
  * still make sense once some of its siblings are hidden.
@@ -167,5 +173,53 @@ describe("a group with every row hidden", () => {
 
 		expect(after).toContain(HEADING("Hindsight"));
 		expect(after).not.toContain(HEADING("Mnemopi"));
+	});
+});
+
+/**
+ * The RESULTS of a global settings search, with the search bar itself removed.
+ *
+ * The bar echoes the query, so a frame that contains the label proves nothing while
+ * the label IS the query: every assertion below would have been trivially true.
+ */
+function searchResults(query: string): string {
+	const comp = createSelector();
+	for (const ch of query) comp.handleInput(ch);
+	return comp
+		.render(120)
+		.map(line => stripVTControlCharacters(line))
+		.filter(line => !line.includes("⌕"))
+		.join("\n");
+}
+
+describe("a knob its feature hides", () => {
+	/**
+	 * The row the operator would find by name. Searching a hidden knob's own label
+	 * must return nothing, because a row found by search is a row you can change,
+	 * and changing an inert setting is the confusion the hiding was meant to end.
+	 */
+	it("is not offered by the settings search either", () => {
+		const offered: string[] = [];
+		for (const tab of SETTING_TABS) {
+			for (const def of getSettingsForTab(tab)) {
+				if (!def.condition || def.condition()) continue;
+				if (searchResults(def.label).includes(def.label)) offered.push(`${tab} / ${def.label}`);
+			}
+		}
+
+		expect(offered, "search offers these rows while the feature behind them is off").toEqual([]);
+	});
+
+	/**
+	 * THE POSITIVE CONTROL. The same query finds the same row once its tool is on,
+	 * so the silence above is the condition gate and not a search bar that never
+	 * matches a three-word label.
+	 */
+	it("is offered the moment its feature is on", () => {
+		expect(searchResults("Cache Soft TTL")).not.toContain("Cache Soft TTL");
+
+		settings.set("github.enabled", true);
+
+		expect(searchResults("Cache Soft TTL")).toContain("Cache Soft TTL");
 	});
 });
