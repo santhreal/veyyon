@@ -77,6 +77,7 @@ import {
 	FileSessionStorage,
 	MemorySessionStorage,
 	type SessionStorage,
+	type SessionStorageStat,
 	type SessionStorageWriter,
 } from "./session-storage";
 import { type SessionTitleUpdate, serializeTitleSlot } from "./session-title-slot";
@@ -524,6 +525,21 @@ export class SessionManager {
 	#foreignLines: string[] = [];
 	/** One warning per file: a foreign writer stays foreign for the whole session. */
 	#reportedForeignWriter = false;
+	/**
+	 * What this manager believes is at {@link #sessionFile}: the object the path
+	 * named when it last published (`identity`, where the backend reports one) and
+	 * how many bytes it has written to it. `null` means it has published nothing
+	 * yet and cannot tell.
+	 *
+	 * An append goes through a writer HANDLE, and a full-file publish by anyone is
+	 * a temp write plus a rename, so a second window's publish leaves this
+	 * window's handle pointing at an unlinked inode. Appends through it then
+	 * report success, are visible to nothing, and disappear when the last handle
+	 * closes. Comparing this against a `statSync` is what makes that detectable
+	 * without reading the file: a different inode means someone republished the
+	 * path, whether or not the body they wrote is the same length as ours.
+	 */
+	#publishedFileState: { size: number; identity?: string } | null = null;
 
 	#artifactManager: ArtifactManager | null = null;
 	#artifactManagerSessionFile: string | null = null;
@@ -713,6 +729,9 @@ export class SessionManager {
 		this.#idsEverSeen.clear();
 		this.#foreignLines = [];
 		this.#reportedForeignWriter = false;
+		// A different file: how many bytes are at the new path is not known until we
+		// publish it.
+		this.#publishedFileState = null;
 		this.#noteIdSeen(this.#header.id);
 		for (const entry of this.#entries) this.#noteIdSeen(entry.id);
 	}
@@ -791,6 +810,7 @@ export class SessionManager {
 			this.#diskTail = Promise.resolve();
 			this.#closeWriterEventually();
 			this.#storage.writeTextSync(this.#sessionFile, body);
+			this.#notePublishedFile(Buffer.byteLength(body, "utf-8"));
 			this.#fileIsCurrent = true;
 			this.#rewriteRequired = false;
 			this.#hasTitleSlot = true;
@@ -848,10 +868,12 @@ export class SessionManager {
 				// that omits them deletes them (see #refreshForeignLines).
 				await this.#refreshForeignLines();
 				if (this.#diskEpoch !== epoch) return false;
-				await this.#storage.writeTextAtomic(sessionFile, this.#fileBody(), {
+				const body = this.#fileBody();
+				await this.#storage.writeTextAtomic(sessionFile, body, {
 					commitGuard: () => this.#diskEpoch === epoch,
 				});
 				if (this.#diskEpoch !== epoch) return false;
+				this.#notePublishedFile(Buffer.byteLength(body, "utf-8"));
 			} while (this.#atomicRewriteDirty);
 			return true;
 		} finally {
@@ -897,18 +919,83 @@ export class SessionManager {
 			return;
 		}
 
+		// Another window may have replaced the file since the writer was opened, in
+		// which case the handle addresses an inode nothing can reach any more. The
+		// merge that carries both histories needs to READ the file, which this
+		// synchronous path cannot do, so hand the entry to the atomic rewrite: it
+		// refreshes the foreign lines and republishes everything, including this
+		// entry. Durability moves to the disk chain (`flush()`) for this one entry,
+		// which is the cost of not writing it into a file that no longer exists.
+		if (this.#fileReplacedUnderWriter()) {
+			this.#fileIsCurrent = false;
+			this.#rewriteRequired = true;
+			// Take the fence NOW, at the epoch the rewrite below will run under, so an
+			// append landing before that task starts is absorbed by its loop
+			// (`#atomicRewriteDirty`) instead of falling to the synchronous rewrite,
+			// which cannot read and would publish a body missing the other window's
+			// lines: the loss this whole path exists to prevent.
+			this.#atomicRewriteDirty = true;
+			this.#atomicRewriteFenceEpoch = this.#diskEpoch;
+			void this.#rewriteAtomically();
+			return;
+		}
+
 		// Hot path: append synchronously so the entry is durable the instant this
 		// returns (file/memory writers perform the write in-body). Never routed
 		// through the async disk chain — durability must hold without a flush().
 		// A mid-close writer leaves `#writer` undefined, so `#appendWriter` simply
 		// opens a fresh append handle and the entry still lands.
+		const line = this.#lineFor(entry);
 		try {
 			void this.#appendWriter()
-				.append(this.#lineFor(entry))
+				.append(line)
 				.catch(err => this.#noteDiskFailure(err));
+			if (this.#publishedFileState !== null) this.#publishedFileState.size += Buffer.byteLength(line, "utf-8");
 		} catch (err) {
 			this.#noteDiskFailure(err);
 		}
+	}
+
+	/**
+	 * True when the bytes at the session path are not the bytes this manager
+	 * wrote, which means someone else published a whole file over it (or removed
+	 * it) and the append handle no longer addresses it.
+	 *
+	 * Identity is the real test where the backend reports one: a full-file publish
+	 * renames a temp file over the path, so the inode changes even when the body
+	 * is byte-identical to ours, which is the ordinary case (the other window
+	 * republished the same history it loaded from us). Size is the fallback for a
+	 * backend that addresses by path and therefore cannot strand a handle at all;
+	 * there it only catches another writer's growth, and reading as replaced
+	 * costs one merging rewrite.
+	 */
+	#fileReplacedUnderWriter(): boolean {
+		const expected = this.#publishedFileState;
+		if (expected === null || !this.#sessionFile) return false;
+		let current: SessionStorageStat;
+		try {
+			current = this.#storage.statSync(this.#sessionFile);
+		} catch {
+			// Gone, or unreadable: whatever the handle points at, it is not the file
+			// at this path.
+			return true;
+		}
+		if (expected.identity !== undefined && current.identity !== undefined) {
+			return current.identity !== expected.identity;
+		}
+		return current.size !== expected.size;
+	}
+
+	/** Record what we just published, so the next append can tell it is still there. */
+	#notePublishedFile(bodyByteLength: number): void {
+		if (!this.#sessionFile) return;
+		let identity: string | undefined;
+		try {
+			identity = this.#storage.statSync(this.#sessionFile).identity;
+		} catch {
+			identity = undefined;
+		}
+		this.#publishedFileState = { size: bodyByteLength, identity };
 	}
 
 	async #persistTitleChangeEntry(entry: TitleChangeEntry, update: SessionTitleUpdate): Promise<void> {
@@ -944,6 +1031,7 @@ export class SessionManager {
 				if (!sessionFile) return;
 				try {
 					await this.#appendWriter().append(line);
+					if (this.#publishedFileState !== null) this.#publishedFileState.size += Buffer.byteLength(line, "utf-8");
 					await this.#storage.updateSessionTitle(sessionFile, update);
 					if (this.#diskEpoch === epoch) this.#fileIsCurrent = true;
 				} catch {
