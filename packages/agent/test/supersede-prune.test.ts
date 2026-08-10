@@ -685,3 +685,98 @@ describe("cache-stable boundary — warm prefix protection", () => {
 		expect(resultMessage(result2).prunedAt).toBeDefined(); // at/after boundary, in tail -> pruned
 	});
 });
+
+/**
+ * A placeholder for a call that never reached the tool is not a read of the file it names.
+ *
+ * WHY. A turn whose stream dies after emitting its calls pairs every one of them with a
+ * never-ran placeholder, and those placeholders live on the branch beside real results. The
+ * supersede pass keyed only on the CALL's arguments, so a dropped `read` of a file counted
+ * as the newest read of it. Both halves are wrong, and the second loses data: the walk is
+ * newest-first, so the placeholder marked the last REAL read of that path superseded and
+ * blanked its content, leaving the model a pointer to a read that never happened.
+ *
+ * WHAT THIS DOES NOT CATCH. Age-based `pruneToolOutputs` can still blank a large
+ * placeholder to `[Output truncated - N tokens]` under overflow; that is a truncation
+ * claim rather than a false claim about a read, and it applies to everything old.
+ */
+describe("pruneSupersededToolResults — a call that never ran is not a read", () => {
+	/** The loop's own placeholder shape for a call a dead stream never dispatched. */
+	function neverRanReadPair(path: string, timestamp: number): [SessionMessageEntry, SessionMessageEntry] {
+		const callId = `call-${idCounter++}`;
+		return [
+			messageEntry(
+				assistantMessage([{ type: "toolCall", id: callId, name: "read", arguments: { path } }], timestamp),
+				timestamp,
+			),
+			messageEntry(
+				{
+					...toolResultMessage(
+						"read",
+						callId,
+						"Tool call was not executed because the provider stream ended with an error before the tool could run.",
+						timestamp,
+					),
+					details: { __synthetic: true, source: "assistant_stop_error", executed: false },
+				},
+				timestamp,
+			),
+		];
+	}
+
+	test("a never-ran placeholder does not supersede the real read it follows", () => {
+		const [call1, result1] = readPair("src/foo.ts", FILE_CONTENT, T0);
+		const [call2, result2] = neverRanReadPair("src/foo.ts", T0 + 1_000);
+		const entries: SessionEntry[] = [call1, result1, call2, result2];
+
+		const result = pruneSupersededToolResults(entries, cfg({ now: T0 + 1_000 }));
+
+		expect(result.prunedCount).toBe(0);
+		expect(resultText(result1)).toBe(FILE_CONTENT);
+		expect(resultMessage(result1).prunedAt).toBeUndefined();
+		expect(resultText(result2)).toContain("was not executed");
+	});
+
+	test("a real read still supersedes an older real read across the placeholder", () => {
+		// The control: with the placeholder in the middle the pass must still do its job,
+		// so the row above cannot pass by disabling supersede pruning altogether.
+		const [call1, result1] = readPair("src/foo.ts", FILE_CONTENT, T0);
+		const [call2, result2] = neverRanReadPair("src/foo.ts", T0 + 1_000);
+		const [call3, result3] = readPair("src/foo.ts", FILE_CONTENT, T0 + 2_000);
+		const entries: SessionEntry[] = [call1, result1, call2, result2, call3, result3];
+
+		const result = pruneSupersededToolResults(entries, cfg({ now: T0 + 2_000 }));
+
+		expect(result.prunedCount).toBe(1);
+		expect(resultText(result1)).toBe(SUPERSEDED_NOTICE);
+		expect(resultText(result2)).toContain("was not executed");
+		expect(resultText(result3)).toBe(FILE_CONTENT);
+	});
+
+	test("an interrupted call that had ENTERED the tool is a real result and still supersedes", () => {
+		// `entered: true` is the one placeholder shape that is not a placeholder: the tool
+		// was running, so its output is real and the ordinary rule applies.
+		const [call1, result1] = readPair("src/foo.ts", FILE_CONTENT, T0);
+		const callId = `call-${idCounter++}`;
+		const call2 = messageEntry(
+			assistantMessage(
+				[{ type: "toolCall", id: callId, name: "read", arguments: { path: "src/foo.ts" } }],
+				T0 + 1_000,
+			),
+			T0 + 1_000,
+		);
+		const result2 = messageEntry(
+			{
+				...toolResultMessage("read", callId, "partial read output", T0 + 1_000),
+				details: { __skipped: true, source: "steering", entered: true },
+			},
+			T0 + 1_000,
+		);
+		const entries: SessionEntry[] = [call1, result1, call2, result2];
+
+		const result = pruneSupersededToolResults(entries, cfg({ now: T0 + 1_000 }));
+
+		expect(result.prunedCount).toBe(1);
+		expect(resultText(result1)).toBe(SUPERSEDED_NOTICE);
+	});
+});

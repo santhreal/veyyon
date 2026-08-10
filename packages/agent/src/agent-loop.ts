@@ -2802,30 +2802,6 @@ export interface SkippedToolResultDetails {
 	batchLedger?: ToolBatchLedger;
 }
 
-/**
- * Whether a tool result is a placeholder for a call that never reached the
- * tool, so nothing it would have done has happened.
- *
- * BOTH placeholder shapes, because they are the same claim about the machine
- * from two directions: {@link SyntheticToolResultDetails} with
- * `executed: false` is a call the loop never dispatched, and
- * {@link SkippedToolResultDetails} with `entered: false` is a call an interrupt
- * cut the batch short of. `entered: true` is the shape that is NOT included:
- * the tool was running when the interrupt arrived, so its side effects are real
- * and partial.
- *
- * This decides two things a caller must not answer for itself: whether a card
- * may drop the model-facing placeholder text, and whether a failed turn is safe
- * to discard and replay. Two copies of the rule could disagree about whether
- * work happened, so there is one.
- */
-export function toolResultNeverRan(details: unknown): boolean {
-	if (details == null || typeof details !== "object") return false;
-	const record = details as Record<string, unknown>;
-	if (record.__skipped === true) return record.entered !== true;
-	return record.__synthetic === true && record.executed === false;
-}
-
 function syntheticDetailsFor(
 	reason: "aborted" | "error" | "skipped" | "length",
 	errorMessage: string | undefined,

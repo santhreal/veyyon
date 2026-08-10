@@ -28,6 +28,8 @@ export * from "./tokenizer";
 // Partial-completion ledger for a batch of tool calls that was cut short
 export * from "./tool-batch-ledger";
 export * from "./tool-result-cap";
+// Whether a tool result is a placeholder for a call that never reached the tool
+export * from "./tool-result-never-ran";
 // Types
 export * from "./types";
 // Yield utilities for Bun event-loop busy-wait prevention
