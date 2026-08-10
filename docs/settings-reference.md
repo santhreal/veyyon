@@ -66,7 +66,7 @@ veyyon config get compaction.threshold
 | `display.collapseCompacted` | Collapse Compacted History | boolean | `true` | Collapse pre-compaction history behind the summary divider on the live transcript; disable to keep the full transcript inline with dividers at each compaction point. |
 | `compaction.remote` | Remote Compaction | boolean | `true` | Applies only when the session model is a supported OpenAI Responses model, which includes Azure OpenAI Responses deployments; every other model, OpenAI Codex included, ignores this setting and compacts locally. On, veyyon calls the OpenAI compaction endpoint and keeps the window it returns, which preserves reasoning state across the cut. That window is the whole compacted context, so the entry stores no summary text and the compaction model chain does not apply. There is no second local summary on purpose: it would pay a model to re-summarize a span the provider already compacted and leave two versions of one range that can disagree. Off, compaction runs locally on the usual summary path and stores readable summary text. |
 | `compaction.strategy` | Compaction Type | enum | `summary` | Summary condenses history in place and continues the same session. Values: `summary`. |
-| `compaction.threshold` | Auto-Compaction Threshold | string | `auto` | When auto-compaction triggers. Auto uses the model's window minus the reserve; a percent scales with each model's window; a token amount is the same trigger on every model. |
+| `compaction.threshold` | Auto-Compaction Threshold | string | `auto` | When auto-compaction triggers. Auto uses the model's window minus the reserve; a percent scales with each model's window; a token amount is the same trigger on every model that can reach it, and a smaller model compacts at its own maximum. |
 | `compaction.model` | Compaction Model | modelChain | _(unset)_ | Models used for in-place summary compaction, tried in order. Default: inherit — follows the main model live. Add fallbacks for when the first is unauthenticated or its window is too small. |
 | `compaction.modelFallbackStrategy` | Compaction Fallback | enum | `auto` | What to try after the compaction models you configured. Auto stays on models you named: the main model, its same-provider compaction sibling, and your model roles. Any authenticated model also reaches the largest window available, on any provider you have credentials for. Configured only stops at the chain and fails loudly. Values: `auto`, `any-model`, `configured-only`. |
 | `compaction.modelContextWindow` | Compaction Model Context | number | _(unset)_ | Context window in tokens to assume for the compaction model. Unset uses the compaction model's own reported window. Candidates whose window cannot fit the summarization payload are skipped loudly. |
@@ -209,9 +209,9 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `magicKeywords.enabled` | Enable Magic Keywords | boolean | `true` | Enable hidden notices for standalone ultrathink, orchestrate, and workflowz keywords. |
+| `magicKeywords.enabled` | Enable Magic Keywords | boolean | `true` | Enable hidden notices for standalone ultrathink, orchestratez, and workflowz keywords. |
 | `magicKeywords.ultrathink` | Ultrathink Keyword | boolean | `true` | Let standalone ultrathink request maximum automatic thinking and append its hidden notice. |
-| `magicKeywords.orchestrate` | Orchestrate Keyword | boolean | `true` | Let standalone orchestrate append its hidden multi-agent orchestration notice. |
+| `magicKeywords.orchestrate` | Orchestrate Keyword | boolean | `true` | Let standalone orchestratez append its hidden multi-agent orchestration notice. |
 | `magicKeywords.workflow` | Workflow Keyword | boolean | `true` | Let standalone workflowz append its hidden eval workflow notice. |
 | `magicKeywords.turnBudget` | Turn Budget Directive | boolean | `false` | Let a standalone +500k or +2m set this turn's output-token budget; when off, +Nk in a message is treated as ordinary text. |
 

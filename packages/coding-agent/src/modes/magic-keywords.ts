@@ -3,7 +3,7 @@ import { containsUltrathink, highlightUltrathink } from "./ultrathink";
 import { containsWorkflow, highlightWorkflow } from "./workflow";
 
 /**
- * Gradient-highlight every magic keyword ("ultrathink", "orchestrate",
+ * Gradient-highlight every magic keyword ("ultrathink", "orchestratez",
  * "workflowz") that appears as standalone prose, skipping any occurrence inside a
  * code block, inline code span, or XML/HTML section. Each highlighter paints its
  * own keyword with its own gradient, so chaining is order-independent — the
@@ -29,14 +29,31 @@ export function highlightMagicKeywords(text: string, resetTo?: string, phase?: n
 }
 
 /**
+ * The tokens that trigger a magic keyword, in one place.
+ *
+ * A TRIGGER IS A TOKEN NOBODY TYPES BY ACCIDENT. Each of these carries a hidden
+ * notice into the turn that changes how the model works, and the operator never
+ * sees the notice, so a token that doubles as an ordinary word steers a session
+ * that never asked for it: `orchestrate` was one until "orchestrate the release"
+ * turned into a parallel subagent run. `ultrathink` is not a word, and the other
+ * two carry a `z` that no sentence does.
+ */
+export const MAGIC_KEYWORD_TOKENS: readonly string[] = ["ultrathink", "orchestratez", "workflowz"];
+
+/**
  * Cheap test for "does this text contain any magic keyword as standalone prose?".
  * Short-circuits on a substring probe before paying for the markdown-aware
  * prose check, so the common "no keyword in buffer" path is just three
  * `String#indexOf`s. Used by the live editor to gate the shimmer timer.
  */
 export function hasMagicKeyword(text: string): boolean {
-	if (!text.includes("ultrathink") && !text.includes("orchestrate") && !text.includes("workflowz")) {
-		return false;
+	let probe = false;
+	for (const token of MAGIC_KEYWORD_TOKENS) {
+		if (text.includes(token)) {
+			probe = true;
+			break;
+		}
 	}
+	if (!probe) return false;
 	return containsUltrathink(text) || containsOrchestrate(text) || containsWorkflow(text);
 }

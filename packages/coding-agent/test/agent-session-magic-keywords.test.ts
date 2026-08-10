@@ -94,7 +94,7 @@ describe("AgentSession magic keyword settings", () => {
 		created.settings.set("magicKeywords.workflow", false);
 		const promptSpy = vi.spyOn(session.agent, "prompt").mockResolvedValue(undefined);
 
-		await session.prompt("please orchestrate and workflowz this");
+		await session.prompt("please orchestratez and workflowz this");
 
 		const promptMessages = promptSpy.mock.calls[0]![0] as unknown as Array<{ customType?: string }>;
 		expect(promptMessages.map(message => message.customType).filter(Boolean)).toEqual([]);
@@ -106,13 +106,31 @@ describe("AgentSession magic keyword settings", () => {
 		authStorage = created.authStorage;
 		const promptSpy = vi.spyOn(session.agent, "prompt").mockResolvedValue(undefined);
 
-		await session.prompt("please orchestrate and workflowz this");
+		await session.prompt("please orchestratez and workflowz this");
 
 		const promptMessages = promptSpy.mock.calls[0]![0] as unknown as Array<{ customType?: string }>;
 		expect(promptMessages.map(message => message.customType).filter(Boolean)).toEqual([
 			"orchestrate-notice",
 			"workflow-notice",
 		]);
+	});
+
+	/**
+	 * THE regression, through the real session: the ordinary verb attaches
+	 * nothing. It used to attach the orchestration contract, which tells the model
+	 * to fan the work out to parallel subagents and to override any tendency to do
+	 * it inline, so this sentence ran as something other than what it says.
+	 */
+	it("attaches nothing for the ordinary verb the keyword was built from", async () => {
+		const created = await createMagicKeywordSession(root);
+		session = created.session;
+		authStorage = created.authStorage;
+		const promptSpy = vi.spyOn(session.agent, "prompt").mockResolvedValue(undefined);
+
+		await session.prompt("please orchestrate this migration yourself, inline");
+
+		const promptMessages = promptSpy.mock.calls[0]![0] as unknown as Array<{ customType?: string }>;
+		expect(promptMessages.map(message => message.customType).filter(Boolean)).toEqual([]);
 	});
 
 	it("renders workflowz notice for the active task schema", async () => {

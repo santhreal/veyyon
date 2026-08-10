@@ -10567,7 +10567,7 @@ export class AgentSession {
 			if (unresolved !== undefined) throw new Error(unknownSlashCommandMessage(unresolved));
 		}
 
-		// Magic keywords ("ultrathink", "orchestrate"): append hidden system notices after the
+		// Magic keywords ("ultrathink", "orchestratez"): append hidden system notices after the
 		// user's message that steer this turn. User-authored prompts only — synthetic /
 		// agent-initiated turns never trigger them.
 		const keywordNotices = options?.synthetic ? [] : this.#createMagicKeywordNotices(expandedText);

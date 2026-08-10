@@ -2,15 +2,16 @@ import { createGradientHighlighter, type KeywordHighlighter } from "./gradient-h
 import { magicKeywordRegex } from "./magic-keyword-boundary";
 
 /**
- * "orchestrate" keyword support.
+ * "orchestratez" keyword support.
  *
  * Typing the standalone word in the input editor paints it with a cool
  * teal→violet gradient ({@link highlightOrchestrate}); submitting a message that
  * mentions it appends a hidden {@link ORCHESTRATE_NOTICE} that switches the model
  * into multi-agent orchestration mode. Matching is prose-delimited and
- * case-sensitive (lowercase only), so "orchestrated", "Orchestrate", or a path
- * like "orchestrate.ts" never trigger either behavior. Replaces the former
- * `/orchestrate` slash command.
+ * case-sensitive (lowercase only), so "orchestratezed", "Orchestratez", or a
+ * path like "orchestratez.ts" never trigger either behavior, and neither does
+ * the ordinary verb `orchestrate` (see `./orchestrate-keyword` for why). Replaces
+ * the former `/orchestrate` slash command.
  *
  * The detection half lives in `./orchestrate-keyword` so a caller that only needs
  * to know whether a message mentions the keyword does not have to import the
@@ -21,13 +22,13 @@ import { magicKeywordRegex } from "./magic-keyword-boundary";
 export { containsOrchestrate, ORCHESTRATE_NOTICE } from "./orchestrate-keyword";
 
 /**
- * Highlight every standalone "orchestrate" in `text` for editor display with a
+ * Highlight every standalone "orchestratez" in `text` for editor display with a
  * cool teal→violet gradient (hue 150..280), visually distinct from ultrathink's
  * full-spectrum rainbow.
  */
 export const highlightOrchestrate: KeywordHighlighter = createGradientHighlighter({
-	probe: /orchestrate/,
-	highlight: magicKeywordRegex("orchestrate", "g"),
+	probe: /orchestratez/,
+	highlight: magicKeywordRegex("orchestratez", "g"),
 	stops: 14,
 	hue: t => 150 + t * 130,
 });
