@@ -3,6 +3,7 @@
  */
 
 import type { ToolResultMessage } from "@veyyon/ai";
+import { toolResultNeverRan } from "../tool-result-never-ran";
 import type { AgentMessage, AgentToolCall } from "../types";
 import type { SessionEntry, SessionMessageEntry } from "./entries";
 import { getToolResultMessage, resolveCompactionBoundaryIndex } from "./entries";
@@ -175,6 +176,14 @@ function collectSupersededResults(
 		const toolCall = toolCallsById.get(message.toolCallId);
 		if (!toolCall) continue;
 		if (isProtectedToolResult(message, toolCall, protectedTools)) continue;
+		// A placeholder for a call that never reached the tool is not a read of the file it
+		// names, in either direction. It must not be blanked to "[Superseded by a newer read
+		// of this file]", which replaces the one fact it carries (nothing ran) with a claim
+		// about a read that did not happen; and it must not COUNT as the newer read either,
+		// which is the half that loses data: the group is walked newest first, so a dropped
+		// call's placeholder marked the last real read of that path superseded and the model
+		// was left with a pointer to a read that never ran instead of the content it had.
+		if (toolResultNeverRan(message.details)) continue;
 		const key = supersedeKey(toolCall.name, toolCall.arguments as Record<string, unknown>);
 		if (key === undefined) continue;
 		const separator = key.indexOf("\u0000");
