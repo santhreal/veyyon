@@ -22,11 +22,11 @@ import { getSettingsForTab, type SettingDef } from "@veyyon/coding-agent/modes/c
 const RULES_SETTINGS: ReadonlyMap<string, string> = new Map([
 	["ttsr.builtinRules", "Rules"],
 	["ttsr.disabledRules", "Rules"],
-	["ttsr.enabled", "Stream interrupts (TTSR)"],
-	["ttsr.contextMode", "Stream interrupts (TTSR)"],
-	["ttsr.interruptMode", "Stream interrupts (TTSR)"],
-	["ttsr.repeatMode", "Stream interrupts (TTSR)"],
-	["ttsr.repeatGap", "Stream interrupts (TTSR)"],
+	["ttsr.enabled", "Stream Interrupts (TTSR)"],
+	["ttsr.contextMode", "Stream Interrupts (TTSR)"],
+	["ttsr.interruptMode", "Stream Interrupts (TTSR)"],
+	["ttsr.repeatMode", "Stream Interrupts (TTSR)"],
+	["ttsr.repeatGap", "Stream Interrupts (TTSR)"],
 ]);
 
 describe("the Rules settings tab", () => {
@@ -39,7 +39,7 @@ describe("the Rules settings tab", () => {
 	it("is registered in the tab order, the metadata and the group order", () => {
 		expect(SETTING_TABS).toContain("rules");
 		expect(TAB_METADATA.rules).toEqual({ label: "Rules", icon: "tab.rules" });
-		expect(TAB_GROUPS.rules).toEqual(["Rules", "Stream interrupts (TTSR)"]);
+		expect(TAB_GROUPS.rules).toEqual(["Rules", "Stream Interrupts (TTSR)"]);
 	});
 
 	/**

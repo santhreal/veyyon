@@ -169,7 +169,7 @@ export const SUBAGENTS_SETTINGS = {
 		ui: {
 			tab: "subagents",
 			group: "Agents",
-			label: "Agents",
+			label: "Agent Roster",
 			description:
 				"Which agent types the model may choose, and how deeply each one may spawn. Enabled means the model can pick that agent on its own; disabled means it cannot. With no row, only the general-purpose deep worker is enabled. Bundled specialists and agents you add are opt-in through onboarding or this table. What each one RUNS is not set here: Subagent Model and Subagent Effort decide that for every subagent at once, and an agent that needs its own model or effort declares it in its own file.",
 			keywords: [

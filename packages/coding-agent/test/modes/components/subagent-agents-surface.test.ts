@@ -42,7 +42,7 @@ describe("subagent.agents settings surface", () => {
 		invalidateSettingDefsCache();
 		const def = getSettingsForTab("subagents").find(entry => entry.path === "subagent.agents");
 		expect(def?.type).toBe("subagentAgents");
-		expect(def?.label).toBe("Agents");
+		expect(def?.label).toBe("Agent Roster");
 		expect(def?.group).toBe("Agents");
 	});
 

@@ -518,7 +518,7 @@ export const CONTEXT_SETTINGS = {
 		default: true,
 		ui: {
 			tab: "context",
-			group: "Prompt cache",
+			group: "Prompt Cache",
 			label: "Report Cache Rejections",
 			description:
 				"Warn when a turn asked the provider to cache a prefix and the provider cached nothing. Anthropic only; other providers do not report cache rejection",
@@ -530,7 +530,7 @@ export const CONTEXT_SETTINGS = {
 		default: false,
 		ui: {
 			tab: "context",
-			group: "Prompt cache",
+			group: "Prompt Cache",
 			label: "Block On Cache Rejection",
 			description:
 				"Anthropic only. Fail the next request after a rejected cache instead of continuing to pay full input rate. Off by default: the verdict is proven against provider usage reporting, so a provider that changes what it reports would stop the session rather than cost money",
@@ -614,8 +614,8 @@ export const CONTEXT_SETTINGS = {
 		default: "off",
 		ui: {
 			tab: "context",
-			group: "Session instrumentation",
-			label: "Session instrumentation",
+			group: "Session Instrumentation",
+			label: "Instrumentation Level",
 			description:
 				"Record structured, redacted study data in the session file. Higher levels add lifecycle, task-state, tool, model-turn, context, and agent-communication detail for `veyyon session stats`. Off still stores the normal resumable conversation and tool history, but adds no study fields.",
 			options: [
@@ -656,7 +656,7 @@ export const CONTEXT_SETTINGS = {
 		ui: {
 			tab: "experimental",
 			group: "Auto-Learn",
-			label: "Auto-Learn",
+			label: "Enable Auto-Learn",
 			description:
 				"After the agent stops, nudge it to capture lessons to memory and create/enhance isolated managed skills",
 		},
@@ -1076,7 +1076,7 @@ export const CONTEXT_SETTINGS = {
 		default: true,
 		ui: {
 			tab: "rules",
-			group: "Stream interrupts (TTSR)",
+			group: "Stream Interrupts (TTSR)",
 			label: "TTSR",
 			description: "Interrupt the agent mid-stream when output matches rule patterns (Time-Traveling Stream Rules)",
 		},
@@ -1088,7 +1088,7 @@ export const CONTEXT_SETTINGS = {
 		default: "discard",
 		ui: {
 			tab: "rules",
-			group: "Stream interrupts (TTSR)",
+			group: "Stream Interrupts (TTSR)",
 			label: "Context Mode",
 			description: "What to do with partial output when TTSR triggers",
 		},
@@ -1100,8 +1100,8 @@ export const CONTEXT_SETTINGS = {
 		default: "always",
 		ui: {
 			tab: "rules",
-			group: "Stream interrupts (TTSR)",
-			label: "Interrupt Mode",
+			group: "Stream Interrupts (TTSR)",
+			label: "Rule Interrupt Mode",
 			description: "When to interrupt mid-stream vs inject warning after completion",
 			options: [
 				{ value: "always", label: "always", description: "Interrupt on prose and tool streams" },
@@ -1118,7 +1118,7 @@ export const CONTEXT_SETTINGS = {
 		default: "once",
 		ui: {
 			tab: "rules",
-			group: "Stream interrupts (TTSR)",
+			group: "Stream Interrupts (TTSR)",
 			label: "Repeat Mode",
 			description:
 				"How rules can repeat: once per session or after a message gap. A rule may override this in its frontmatter",
@@ -1130,7 +1130,7 @@ export const CONTEXT_SETTINGS = {
 		default: 10,
 		ui: {
 			tab: "rules",
-			group: "Stream interrupts (TTSR)",
+			group: "Stream Interrupts (TTSR)",
 			label: "Repeat Gap",
 			description: "Messages before a rule can trigger again. A rule may override this in its frontmatter",
 			options: [

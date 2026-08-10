@@ -371,7 +371,7 @@ export const PROVIDERS_SETTINGS = {
 		ui: {
 			tab: "providers",
 			group: "Tiny Model",
-			label: "Tiny Model",
+			label: "Session Title Model",
 			description:
 				"Session-title model: online (the TINY role from /models, else @smol) by default, or a local on-device model",
 			options: TINY_TITLE_MODEL_OPTIONS,

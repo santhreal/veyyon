@@ -258,7 +258,7 @@ export const INTERACTION_SETTINGS = {
 		ui: {
 			tab: "interaction",
 			group: "Magic Keywords",
-			label: "Magic Keywords",
+			label: "Enable Magic Keywords",
 			description: "Enable hidden notices for standalone ultrathink, orchestrate, and workflowz keywords",
 		},
 	},

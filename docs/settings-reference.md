@@ -209,7 +209,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `magicKeywords.enabled` | Magic Keywords | boolean | `true` | Enable hidden notices for standalone ultrathink, orchestrate, and workflowz keywords. |
+| `magicKeywords.enabled` | Enable Magic Keywords | boolean | `true` | Enable hidden notices for standalone ultrathink, orchestrate, and workflowz keywords. |
 | `magicKeywords.ultrathink` | Ultrathink Keyword | boolean | `true` | Let standalone ultrathink request maximum automatic thinking and append its hidden notice. |
 | `magicKeywords.orchestrate` | Orchestrate Keyword | boolean | `true` | Let standalone orchestrate append its hidden multi-agent orchestration notice. |
 | `magicKeywords.workflow` | Workflow Keyword | boolean | `true` | Let standalone workflowz append its hidden eval workflow notice. |
@@ -295,18 +295,18 @@ veyyon config get compaction.threshold
 | `context.thoughtSignatureRetention` | Thought Signature Retention | number | `-1` | How many of the most recent assistant turns keep their Gemini thought signature when the conversation is sent back. Signatures let the model replay its own reasoning, and they are large, so the recent ones are the ones worth paying to resend. Keep All resends every signature ever produced, which on a long session is the single biggest thing in the context. Other providers ignore this. Shown under the tab's Advanced fold. |
 | `context.thoughtSignatureMaxLength` | Thought Signature Size Limit | number | `-1` | Longest Gemini thought signature still worth resending, in characters. Anything longer sends the skip sentinel instead, however recent it is. Signature sizes are lopsided: the largest tenth of them carry roughly two thirds of all signature bytes, so a limit sheds most of the weight while keeping the great majority of the reasoning chain. Use this instead of Thought Signature Retention when you want a gentler trade, or alongside it, in which case a signature is resent only if it is both recent enough and small enough. Other providers ignore this. Shown under the tab's Advanced fold. |
 
-### Prompt cache
+### Prompt Cache
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `cache.reportRejection` | Report Cache Rejections | boolean | `true` | Warn when a turn asked the provider to cache a prefix and the provider cached nothing. Anthropic only; other providers do not report cache rejection. |
 | `cache.blockOnRejection` | Block On Cache Rejection | boolean | `false` | Anthropic only. Fail the next request after a rejected cache instead of continuing to pay full input rate. Off by default: the verdict is proven against provider usage reporting, so a provider that changes what it reports would stop the session rather than cost money. |
 
-### Session instrumentation
+### Session Instrumentation
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `session.instrumentation` | Session instrumentation | enum | `off` | Record structured, redacted study data in the session file. Higher levels add lifecycle, task-state, tool, model-turn, context, and agent-communication detail for `veyyon session stats`. Off still stores the normal resumable conversation and tool history, but adds no study fields. Values: `off`, `basic`, `rich`, `ultra`. |
+| `session.instrumentation` | Instrumentation Level | enum | `off` | Record structured, redacted study data in the session file. Higher levels add lifecycle, task-state, tool, model-turn, context, and agent-communication detail for `veyyon session stats`. Off still stores the normal resumable conversation and tool history, but adds no study fields. Values: `off`, `basic`, `rich`, `ultra`. |
 
 ## Rules
 
@@ -317,13 +317,13 @@ veyyon config get compaction.threshold
 | `ttsr.builtinRules` | Built-in Rules | boolean | `true` | Load the default rules shipped with the agent. Turn individual rules off under All Rules. |
 | `ttsr.disabledRules` | All Rules | array | `[]` | Every rule this project loads, each on or off. Stores only the ones you turn off, so a rule added in a later release arrives on. |
 
-### Stream interrupts (TTSR)
+### Stream Interrupts (TTSR)
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `ttsr.enabled` | TTSR | boolean | `true` | Interrupt the agent mid-stream when output matches rule patterns (Time-Traveling Stream Rules). |
 | `ttsr.contextMode` | Context Mode | enum | `discard` | What to do with partial output when TTSR triggers. Values: `discard`, `keep`. |
-| `ttsr.interruptMode` | Interrupt Mode | enum | `always` | When to interrupt mid-stream vs inject warning after completion. Values: `never`, `prose-only`, `tool-only`, `always`. |
+| `ttsr.interruptMode` | Rule Interrupt Mode | enum | `always` | When to interrupt mid-stream vs inject warning after completion. Values: `never`, `prose-only`, `tool-only`, `always`. |
 | `ttsr.repeatMode` | Repeat Mode | enum | `once` | How rules can repeat: once per session or after a message gap. A rule may override this in its frontmatter. Values: `once`, `after-gap`. |
 | `ttsr.repeatGap` | Repeat Gap | number | `10` | Messages before a rule can trigger again. A rule may override this in its frontmatter. |
 
@@ -395,7 +395,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `read.summarize.enabled` | Read Summaries | boolean | `true` | Return structural code summaries when read is called without an explicit selector. |
+| `read.summarize.enabled` | Enable Read Summaries | boolean | `true` | Return structural code summaries when read is called without an explicit selector. |
 | `read.summarize.prose` | Prose Summaries | boolean | `false` | Return structural summaries for Markdown and plain text reads. |
 | `read.summarize.minBodyLines` | Read Summary Body Lines | number | `4` | Minimum multiline body or literal length before read summaries collapse it. |
 | `read.summarize.minCommentLines` | Read Summary Comment Lines | number | `6` | Minimum multiline block comment length before read summaries collapse it. |
@@ -407,7 +407,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `lsp.enabled` | LSP | boolean | `false` | Enable the lsp tool for code intelligence (definitions, references, diagnostics, rename). |
+| `lsp.enabled` | Enable LSP | boolean | `false` | Enable the lsp tool for code intelligence (definitions, references, diagnostics, rename). |
 | `lsp.lazy` | Lazy LSP Startup | boolean | `true` | Start language servers on first use (lsp tool or editing a matching file type) instead of at session startup. |
 | `lsp.formatOnWrite` | Format on Write | boolean | `false` | Automatically format code files using LSP after writing. |
 | `lsp.diagnosticsOnWrite` | Diagnostics on Write | boolean | `true` | Return LSP diagnostics after writing code files. |
@@ -420,7 +420,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `bash.enabled` | Bash | boolean | `true` | Enable the bash tool for shell command execution. |
+| `bash.enabled` | Enable Bash | boolean | `true` | Enable the bash tool for shell command execution. |
 | `bash.stallDetection.enabled` | Bash Stall Detection | boolean | `false` | Watch for a bash command that stops producing output; background it and tell the model it may be stuck so it can cancel a truly hung command. Recommends, never force-kills. |
 | `bashInterceptor.enabled` | Bash Interceptor | boolean | `false` | Block shell commands that have dedicated tools. |
 | `shellMinimizer.enabled` | Shell Minimizer | boolean | `true` | Compress verbose shell output (git, npm, cargo, etc.) before returning it to the agent. |
@@ -571,7 +571,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `subagent.agents` | Agents | record | `{}` | Which agent types the model may choose, and how deeply each one may spawn. Enabled means the model can pick that agent on its own; disabled means it cannot. With no row, only the general-purpose deep worker is enabled. Bundled specialists and agents you add are opt-in through onboarding or this table. What each one RUNS is not set here: Subagent Model and Subagent Effort decide that for every subagent at once, and an agent that needs its own model or effort declares it in its own file. |
+| `subagent.agents` | Agent Roster | record | `{}` | Which agent types the model may choose, and how deeply each one may spawn. Enabled means the model can pick that agent on its own; disabled means it cannot. With no row, only the general-purpose deep worker is enabled. Bundled specialists and agents you add are opt-in through onboarding or this table. What each one RUNS is not set here: Subagent Model and Subagent Effort decide that for every subagent at once, and an agent that needs its own model or effort declares it in its own file. |
 
 ### Models
 
@@ -669,7 +669,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `providers.tinyModel` | Tiny Model | enum | `online` | Session-title model: online (the TINY role from /models, else @smol) by default, or a local on-device model. Values: `online`, `lfm2-350m`, `qwen3-0.6b`, `gemma-270m`, `qwen2.5-0.5b`, `lfm2-700m`. |
+| `providers.tinyModel` | Session Title Model | enum | `online` | Session-title model: online (the TINY role from /models, else @smol) by default, or a local on-device model. Values: `online`, `lfm2-350m`, `qwen3-0.6b`, `gemma-270m`, `qwen2.5-0.5b`, `lfm2-700m`. |
 | `providers.tinyModelDevice` | Tiny Model Device | enum | `default` | ONNX execution provider for local tiny models (titles + memory). Default uses CPU-only inference. The VEYYON_TINY_DEVICE env var overrides this. Values: `default`, `gpu`, `cpu`, `metal`, `webgpu`, `cuda`, `dml`, `coreml`, `auto`, `wasm`, `webnn`, `webnn-gpu`, `webnn-cpu`, `webnn-npu`. |
 | `providers.tinyModelDtype` | Tiny Model Precision | enum | `default` | ONNX quantization/precision for local tiny models. Default uses each model's shipped dtype (q4); lower precision is faster, higher is more faithful. The VEYYON_TINY_DTYPE env var overrides this. Values: `default`, `q4`, `q4f16`, `q8`, `fp16`, `fp32`, `int8`, `uint8`, `bnb4`, `q2`, `q2f16`, `q1`, `q1f16`, `auto`. |
 | `providers.unexpectedStopModel` | Unexpected Stop Model | enum | `online` | Classifier for unexpected-stop detection: online (the TINY role from /models, else smol) by default, or a local on-device model. Values: `online`, `qwen3-1.7b`, `llama3.2:3b`, `gemma-3-1b`, `qwen2.5-1.5b`, `lfm2-1.2b`. |
@@ -722,7 +722,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `autolearn.enabled` | Auto-Learn | boolean | `false` | After the agent stops, nudge it to capture lessons to memory and create/enhance isolated managed skills. |
+| `autolearn.enabled` | Enable Auto-Learn | boolean | `false` | After the agent stops, nudge it to capture lessons to memory and create/enhance isolated managed skills. |
 | `autolearn.autoContinue` | Auto-run capture at stop | boolean | `false` | When on, auto-run one capture turn at stop (uses extra tokens). Off = passive reminder on your next turn. |
 
 ## Global
