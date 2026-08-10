@@ -30,7 +30,7 @@ import {
 	readArgsTargetInternalUrl,
 } from "../../modes/components/read-tool-group";
 import { SkillMessageComponent } from "../../modes/components/skill-message";
-import { ToolExecutionComponent } from "../../modes/components/tool-execution";
+import { ToolExecutionComponent, turnFailedToolResult } from "../../modes/components/tool-execution";
 import { TranscriptBlock } from "../../modes/components/transcript-container";
 import { createUsageRowBlock } from "../../modes/components/usage-row";
 import { UserMessageComponent } from "../../modes/components/user-message";
@@ -472,11 +472,7 @@ export class UiHelpers {
 								this.ctx.chatContainer.addChild(readGroup);
 							}
 							readGroup.updateArgs(content.arguments, content.id);
-							readGroup.updateResult(
-								{ content: [{ type: "text", text: errorMessage }], isError: true },
-								false,
-								content.id,
-							);
+							readGroup.updateResult(turnFailedToolResult(errorMessage), false, content.id);
 							// The turn ended in an error, so this row carries its final
 							// content and no result is ever coming for it. That makes it
 							// history exactly like a paired toolResult, and it settles for
@@ -546,11 +542,7 @@ export class UiHelpers {
 					this.ctx.chatContainer.addChild(component);
 
 					if (hasErrorStop && errorMessage) {
-						component.updateResult(
-							{ content: [{ type: "text", text: errorMessage }], isError: true },
-							false,
-							content.id,
-						);
+						component.updateResult(turnFailedToolResult(errorMessage), false, content.id);
 						// Same reason as the read branch above. A card is settled when it
 						// is final, and there are three ways to be final on this path: a
 						// recorded result, a turn-ending error, and the trailing seal.

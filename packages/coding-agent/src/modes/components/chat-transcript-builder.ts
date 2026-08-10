@@ -54,7 +54,7 @@ import { EvalExecutionComponent } from "./eval-execution";
 import { type LateDiagnosticsFile, LateDiagnosticsMessageComponent } from "./late-diagnostics-message";
 import { ReadToolGroupComponent, readArgsHaveTarget, readArgsTargetInternalUrl } from "./read-tool-group";
 import { SkillMessageComponent } from "./skill-message";
-import { ToolExecutionComponent } from "./tool-execution";
+import { ToolExecutionComponent, turnFailedToolResult } from "./tool-execution";
 import { TranscriptContainer } from "./transcript-container";
 import { createUsageRowBlock } from "./usage-row";
 import { UserMessageComponent } from "./user-message";
@@ -336,11 +336,7 @@ export class ChatTranscriptBuilder {
 				if (hasErrorStop && errorMessage) {
 					const group = this.#ensureReadGroup();
 					group.updateArgs(content.arguments, content.id);
-					group.updateResult(
-						{ content: [{ type: "text", text: errorMessage }], isError: true },
-						false,
-						content.id,
-					);
+					group.updateResult(turnFailedToolResult(errorMessage), false, content.id);
 				} else if (afterToolSegment) {
 					const group = this.#ensureReadGroup();
 					group.updateArgs(content.arguments, content.id);
@@ -375,11 +371,7 @@ export class ChatTranscriptBuilder {
 			this.container.addChild(component);
 
 			if (hasErrorStop && errorMessage) {
-				component.updateResult(
-					{ content: [{ type: "text", text: errorMessage }], isError: true },
-					false,
-					content.id,
-				);
+				component.updateResult(turnFailedToolResult(errorMessage), false, content.id);
 			} else {
 				this.#pendingTools.set(content.id, component);
 			}

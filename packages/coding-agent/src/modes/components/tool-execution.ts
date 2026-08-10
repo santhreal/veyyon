@@ -1,4 +1,4 @@
-import { type AnyAgentTool, toolResultNeverRan } from "@veyyon/agent-core";
+import { type AnyAgentTool, type SyntheticToolResultDetails, toolResultNeverRan } from "@veyyon/agent-core";
 import type { SnapshotStore } from "@veyyon/hashline";
 import {
 	Box,
@@ -209,6 +209,32 @@ export function sharedSpinnerFrame(frameCount: number, now: number = performance
 let toolExecutionInstanceSeq = 0;
 
 /**
+ * The result a transcript rebuild gives a tool call whose TURN ended in an
+ * error and which therefore has no result of its own.
+ *
+ * Four rebuild sites used to fabricate `{ content: [error text], isError: true }`
+ * with no details at all, which says the TOOL failed. It did not: the turn did,
+ * and the call never reached a tool. That bare shape is indistinguishable from a
+ * command that ran and exited non-zero, so the operator got failure chrome, the
+ * provider's error as the tool's own output, and no statement that nothing had
+ * run, which is the one fact that mattered. Carrying the loop's own
+ * `assistant_stop_error` discriminator makes the card render exactly like the
+ * live path already does: the call, and one warning line naming the provider
+ * error as the reason nothing ran.
+ */
+export function turnFailedToolResult(errorMessage: string): {
+	content: Array<{ type: string; text: string }>;
+	isError: true;
+	details: SyntheticToolResultDetails;
+} {
+	return {
+		content: [{ type: "text", text: errorMessage }],
+		isError: true,
+		details: { __synthetic: true, source: "assistant_stop_error", executed: false, upstreamError: errorMessage },
+	};
+}
+
+/**
  * Why a tool call produced no work, in the operator's words.
  *
  * Three shapes reach the transcript and none of them used to say anything. The
@@ -252,8 +278,15 @@ function notExecutedReason(result: { details?: unknown } | undefined, sealed: bo
 	// stalled while waiting for the next event" is what tells an operator this was a transport
 	// failure and not their prompt. It used to reach the screen only inside the model-facing
 	// placeholder text, wrapped across two rows of a red `failed` frame.
+	//
+	// ONCE PER BATCH, not once per call. The loop attaches the batch ledger to exactly one
+	// placeholder in a cut-short batch, so that card is the one that names the fault and its
+	// siblings say only that they did not run. A wide batch otherwise printed the same provider
+	// sentence on every row, under a pinned turn error that had already said it, which is the
+	// wall of yellow text this reads as. A lone dropped call still carries the ledger, so a
+	// single-call batch keeps the full statement.
 	const upstream = typeof record.upstreamError === "string" ? record.upstreamError.trim() : "";
-	const detail = upstream.length > 0 ? `: ${upstream}` : "";
+	const detail = upstream.length > 0 && record.batchLedger !== undefined ? `: ${upstream}` : "";
 	switch (record.source) {
 		case "assistant_stop_aborted":
 			return "not executed: the turn was interrupted before this call ran";
@@ -1018,9 +1051,17 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			// missing `renderCall`; when the call is intentionally suppressed
 			// (mergeCallAndResult once a result exists) we render nothing here so
 			// the result component isn't preceded by a redundant tool-name line.
+			//
+			// A renderer whose call render IS a live widget (`callIsLiveWidget`, today only `ask`,
+			// which paints the whole selectable question there) falls back to the plain label when
+			// the call never ran: painting it puts an answerable question on screen for a question
+			// that was never asked, which is the ghost this component's own suite exists to prevent.
+			// A command or diff preview is NOT suppressed, because in that state the call is the one
+			// fact the card has left to show.
+			const suppressMergedWidget = neverRan && Boolean((tool as { callIsLiveWidget?: boolean }).callIsLiveWidget);
 			const shouldRenderCall = !renderableResult || !mergeCallAndResult;
 			if (shouldRenderCall) {
-				if (tool.renderCall) {
+				if (tool.renderCall && !suppressMergedWidget) {
 					try {
 						const callArgs = this.#getCallArgsForRender();
 						const callComponent = tool.renderCall(callArgs, this.#renderState, theme);
@@ -1170,18 +1211,26 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 				const renderContext = this.#buildRenderContext();
 				this.#renderState.renderContext = renderContext;
 
+				// Same rule as the custom-tool branch above: a call render that IS a live widget
+				// (`callIsLiveWidget`) is replaced by the plain label once the call is known never to
+				// have run, so an unasked question is not left looking answerable.
+				const suppressMergedWidget = neverRan && Boolean(renderer.callIsLiveWidget);
 				const shouldRenderCall = !renderableResult || !renderer.mergeCallAndResult;
 				if (shouldRenderCall) {
-					// Render call component
-					try {
-						const callArgs = this.#getCallArgsForRender();
-						const callComponent = renderer.renderCall(callArgs, this.#renderState, theme);
-						if (callComponent) this.#contentBox.addChild(callComponent);
-					} catch (err) {
-						this.#contentBox.addChild(
-							reportRendererFailure(this.#rendererSubject("call"), err, "showing the tool name only"),
-						);
+					if (suppressMergedWidget) {
 						this.#contentBox.addChild(new Text(theme.fg("toolTitle", theme.bold(this.#toolLabel)), 0, 0));
+					} else {
+						// Render call component
+						try {
+							const callArgs = this.#getCallArgsForRender();
+							const callComponent = renderer.renderCall(callArgs, this.#renderState, theme);
+							if (callComponent) this.#contentBox.addChild(callComponent);
+						} catch (err) {
+							this.#contentBox.addChild(
+								reportRendererFailure(this.#rendererSubject("call"), err, "showing the tool name only"),
+							);
+							this.#contentBox.addChild(new Text(theme.fg("toolTitle", theme.bold(this.#toolLabel)), 0, 0));
+						}
 					}
 				}
 
