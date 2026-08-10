@@ -316,17 +316,35 @@ export function buildSessionContext(
 		}
 	};
 
+	// A recovered assistant turn is dropped from the model's context below, and the tool
+	// results paired to it have to go with it. A retried transport death pairs every call
+	// it never ran with a placeholder result, and those placeholders outlive the turn on
+	// disk: replaying them alone handed a resumed session tool results whose `tool_use` is
+	// no longer in the context, one of them carrying the batch ledger that asks the model
+	// to reissue calls the retry had already reissued and run. Re-running a migration
+	// because the transcript was reopened is the cost of that.
+	//
+	// Only the run of results IMMEDIATELY after the dropped turn goes with it. The retried
+	// turn can reissue the same call ids, so a set held for the rest of the walk would take
+	// the replay's real results as well and hand the model a `tool_use` with no answer.
+	let orphanedCallIds: Set<string> | undefined;
+
 	const appendMessage = (entry: SessionEntry) => {
 		handleEntryResetTracking(entry);
 		if (entry.type === "message") {
-			if (
-				!options?.transcript &&
-				entry.message.role === "assistant" &&
-				entry.message.retryRecovery?.status === "recovered"
-			) {
+			const message = entry.message;
+			if (!options?.transcript && message.role === "assistant" && message.retryRecovery?.status === "recovered") {
+				orphanedCallIds = new Set<string>();
+				for (const block of message.content) {
+					if (block.type === "toolCall") orphanedCallIds.add(block.id);
+				}
 				return;
 			}
-			pushMessage(entry.message);
+			if (orphanedCallIds !== undefined) {
+				if (message.role === "toolResult" && orphanedCallIds.delete(message.toolCallId)) return;
+				orphanedCallIds = undefined;
+			}
+			pushMessage(message);
 		} else if (entry.type === "custom_message") {
 			if (!isCustomMessageContent(entry.content)) return;
 			const normalized = normalizeCustomMessagePayload(entry);

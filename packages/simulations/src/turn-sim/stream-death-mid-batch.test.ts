@@ -19,10 +19,16 @@
  *     which is transient only because the throw site attaches the flag. The two
  *     operator reports are different rows because they are transient for
  *     different reasons.
- *  3. With no retry budget the safety net is unchanged: placeholders and the
+ *  3. A RESUME of that session does not replay the death. Rows 1 and 2 watch the
+ *     live context, and history is a second list: the store keeps the recovered
+ *     turn on purpose (the transcript renders a retry from it) and kept its
+ *     never-ran placeholders too, so a reopened session handed the model tool
+ *     results whose call was gone, one of them carrying the ledger asking it to
+ *     reissue calls the retry had already run.
+ *  4. With no retry budget the safety net is unchanged: placeholders and the
  *     ledger still reach the model, because a turn that cannot be replayed still
  *     has to leave the conversation answerable.
- *  4. A non-transient failure with tool calls is still not retried. Narrowing
+ *  5. A non-transient failure with tool calls is still not retried. Narrowing
  *     replay-safety must not promote a permanent fault into the retry ladder.
  *
  * WHAT IT DOES NOT CATCH. The genuinely replay-unsafe shape is a Cursor
@@ -35,7 +41,7 @@
 import { expect, it } from "bun:test";
 import * as AIError from "@veyyon/ai/error";
 import { TOOL } from "@veyyon/coding-agent/tools/builtin-names";
-import { createSimulation, type ScriptedTurn, simTool } from "./harness";
+import { createSimulation, type ScriptedTurn, type Simulation, simTool } from "./harness";
 
 /** Operator report 1: the watchdog's own stall message, transient from its prose. */
 const STALL_TEXT = "Provider stream stalled while waiting for the next event";
@@ -72,17 +78,60 @@ function contextShape(turn: ScriptedTurn): ContextShape {
 	return { roles, texts };
 }
 
-async function runStreamDeath(options: { failWith: (turn: ScriptedTurn) => void; maxRetries: number }): Promise<{
+/**
+ * What a NEW process reads back out of the store, and what it would send.
+ *
+ * Two lists again: the stored branch is the operator's history and legitimately keeps a
+ * turn a retry recovered (that is what the dim "retried" note in the transcript renders
+ * from), while the context a resumed session hands the model must not contain a dead turn
+ * or a placeholder telling it to reissue calls that never ran.
+ */
+interface StoredShape {
+	/** One row per stored message: its role, and an errored assistant's stop reason. */
+	rows: string[];
+	/** Every text stored as a tool result, placeholders included. */
+	toolTexts: string[];
+	/** The context the resumed session's first request carries. */
+	resumed: ContextShape | undefined;
+}
+
+async function storedShape(sim: Simulation, resumeContext: () => ContextShape | undefined): Promise<StoredShape> {
+	const rows: string[] = [];
+	const toolTexts: string[] = [];
+	for (const entry of sim.sessionManager.getBranch()) {
+		if (entry.type !== "message") continue;
+		const message = entry.message;
+		rows.push(message.role === "assistant" ? `assistant:${message.stopReason}` : message.role);
+		if (message.role !== "toolResult") continue;
+		for (const block of message.content) {
+			if (block.type === "text") toolTexts.push(block.text);
+		}
+	}
+	// One prompt on the reopened session, which is what a resume does: the request it
+	// builds is the only place the replayed history is observable.
+	await sim.session.prompt("carry on");
+	return { rows, toolTexts, resumed: resumeContext() };
+}
+
+async function runStreamDeath(options: {
+	failWith: (turn: ScriptedTurn) => void;
+	maxRetries: number;
+	/** Store the transcript and read it back through a second session. */
+	persist?: boolean;
+}): Promise<{
 	ran: string[];
 	requests: number;
 	replayed: ContextShape | undefined;
 	assistantText: string;
 	/** Every text the model is handed as a tool result, placeholders included. */
 	toolTexts: string[];
+	/** The stored transcript as a reopened session reads it, when `persist` is on. */
+	stored: StoredShape | undefined;
 }> {
 	const ran: string[] = [];
 	const contexts: ContextShape[] = [];
 	const sim = await createSimulation({
+		persist: options.persist === true,
 		settings: { "retry.maxRetries": options.maxRetries },
 		tools: [
 			simTool(TOOL.bash, async () => {
@@ -127,12 +176,24 @@ async function runStreamDeath(options: { failWith: (turn: ScriptedTurn) => void;
 				if (block.type === "text") toolTexts.push(block.text);
 			}
 		}
+		let stored: StoredShape | undefined;
+		if (options.persist === true) {
+			// A second session over the same store, which is the only way to see what a
+			// resume would replay: the live context is already asserted above.
+			const reopened = await sim.reopen();
+			try {
+				stored = await storedShape(reopened, () => contexts.at(-1));
+			} finally {
+				await reopened.dispose();
+			}
+		}
 		return {
 			ran,
 			requests: sim.sessionRequests().length,
 			replayed: contexts[1],
 			assistantText: assistant,
 			toolTexts,
+			stored,
 		};
 	} finally {
 		sim.dispose();
@@ -173,6 +234,47 @@ it("retries an OpenAI incomplete stream, which is transient only through its err
 	expect(result.requests).toBe(3);
 	expect(result.replayed?.roles).toEqual(["user"]);
 	expect(result.replayed?.texts.join("\n")).not.toContain(PLACEHOLDER_MARKER);
+});
+
+it("does not replay the dead turn or its placeholders when the session is resumed", async () => {
+	const result = await runStreamDeath({ failWith: turn => turn.fail(STALL_TEXT), maxRetries: 2, persist: true });
+
+	expect(result.ran).toEqual(["bash", "read"]);
+	const stored = result.stored;
+	expect(stored).toBeDefined();
+	// History keeps the recovered turn on purpose: the transcript renders a retry from it.
+	// The two placeholders stored beside it are the reason this row exists.
+	expect(stored?.rows).toEqual([
+		"user",
+		"assistant:error",
+		"toolResult",
+		"toolResult",
+		"assistant:toolUse",
+		"toolResult",
+		"toolResult",
+		"assistant:stop",
+	]);
+	// One stored placeholder still names the transport fault. The other was rewritten to
+	// "[Superseded by a newer read of this file]" by the read-supersede pass, which is a
+	// context-saving rewrite of a stale read and not a claim that the call ran.
+	expect(stored?.toolTexts.filter(text => text.includes(PLACEHOLDER_MARKER))).toHaveLength(1);
+	expect(stored?.toolTexts.filter(text => text === "bash ran" || text === "read ran")).toEqual([
+		"bash ran",
+		"read ran",
+	]);
+
+	// The contract: what a resumed session SENDS. A dead turn whose batch never ran is
+	// not a fact about the conversation, and a placeholder telling the model to reissue
+	// those calls is a fabrication once the retry already reissued them.
+	const resumed = stored?.resumed;
+	expect(resumed).toBeDefined();
+	const resumedText = resumed?.texts.join("\n") ?? "";
+	expect(resumedText).not.toContain(PLACEHOLDER_MARKER);
+	expect(resumedText).not.toContain(LEDGER_MARKER);
+	expect(resumedText).not.toContain(STALL_TEXT);
+	// The row cannot pass by resuming an empty session: the work that DID happen is there.
+	expect(resumed?.texts.join("\n")).toContain("bash ran");
+	expect(resumed?.roles).toEqual(["user", "assistant", "toolResult", "toolResult", "assistant", "user"]);
 });
 
 it("keeps the placeholder safety net when there is no retry budget left", async () => {
