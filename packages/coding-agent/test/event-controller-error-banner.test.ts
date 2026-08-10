@@ -284,6 +284,38 @@ describe("EventController error banner", () => {
 			expect(showPinnedError).not.toHaveBeenCalled();
 		}
 	});
+
+	it("suppresses the inline error on the head segment, which is the one that carries it", async () => {
+		// A turn can write text after a tool call, and that trailing text becomes its own
+		// component. The turn's stop reason rides the HEAD segment, so the head is the
+		// component whose inline `Error: …` the banner is mirroring; `#lastAssistantComponent`
+		// is the trailing segment here, and a segment carries no stop reason at all. Pinning
+		// the trailing one left the head's error on screen under a banner already saying it.
+		const errorMessage = "Provider stream stalled while waiting for the next event";
+		const message = makeAssistantMessage({
+			content: [
+				{ type: "text", text: "running the migration" },
+				{ type: "toolCall", id: "call-1", name: "bash", arguments: { command: "npm run migrate:up" } },
+				{ type: "text", text: "that should have applied it" },
+			],
+			stopReason: "error",
+			errorMessage,
+		});
+		const { controller, ctx, showPinnedError, streamingComponent } = createFixture(message);
+
+		await controller.handleEvent({ type: "message_end", message } as Extract<
+			AgentSessionEvent,
+			{ type: "message_end" }
+		>);
+
+		expect(showPinnedError).toHaveBeenCalledWith(errorMessage);
+		expect(streamingComponent.setErrorPinned).toHaveBeenCalledWith(true);
+		const trailing = ctx.chatContainer.children.filter(child => child instanceof AssistantMessageComponent);
+		expect(trailing).toHaveLength(1);
+		const rendered = Bun.stripANSI(trailing[0]!.render(80).join("\n"));
+		expect(rendered).toContain("that should have applied it");
+		expect(rendered).not.toContain("Error:");
+	});
 });
 
 describe("EventController thinking visibility", () => {
