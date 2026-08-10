@@ -187,7 +187,13 @@ export function splitAssistantMessageToolTimeline(message: AssistantAgentMessage
 		return { beforeTools: message, afterToolCalls, hasToolCalls: false };
 	}
 
-	return { beforeTools: displaySegment(beforeTools), afterToolCalls, hasToolCalls: true };
+	// An after-tool segment is display-only, so `displaySegment` scrubs the stop:
+	// the segment is not the turn and must not restate its ending. The leading
+	// segment IS the turn's head and keeps it, which is what lets a stream death
+	// state the provider's reason once, above the calls it cut short, instead of
+	// once inside every dropped call's card. Live, the pinned banner suppresses
+	// this copy until it is dismissed.
+	return { beforeTools: { ...message, content: beforeTools }, afterToolCalls, hasToolCalls: true };
 }
 
 /**

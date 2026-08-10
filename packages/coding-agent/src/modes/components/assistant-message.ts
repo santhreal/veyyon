@@ -946,11 +946,16 @@ export class AssistantMessageComponent extends Container {
 
 		this.#renderToolImages();
 		const errorPresentation = resolveAssistantErrorPresentation(message);
-		const hasToolCalls = message.content.some(c => c.type === "toolCall");
 		if (errorPresentation.kind === "compact-recovered") {
 			this.#contentContainer.addChild(new Spacer(1));
 			this.#contentContainer.addChild(new Text(theme.fg("dim", errorPresentation.text), 1, 0));
-		} else if (!hasToolCalls && errorPresentation.kind === "full") {
+			// A turn whose stream died states its reason here, once, above the cards it cut
+			// short. `updateContent` never sees a tool call: every caller renders the HEAD
+			// segment from `splitAssistantMessageToolTimeline`, whose content is exactly the
+			// blocks before the first call, so a guard on `content.some(toolCall)` was always
+			// true and said the opposite of what it looked like. What the cards must not do is
+			// repeat this sentence, and that rule lives with the cards.
+		} else if (errorPresentation.kind === "full") {
 			if (!(message.stopReason === "error" && this.#errorPinned)) {
 				this.#contentContainer.addChild(new Spacer(1));
 				if (message.stopReason === "aborted") {

@@ -1133,6 +1133,12 @@ export class EventController {
 				component?.markTranscriptBlockFinalized();
 				if (component) lastPostToolAssistantComponent = component;
 			}
+			// The turn's stop reason rides its HEAD segment, so that component is the
+			// one whose inline error the banner has to suppress. `#lastAssistantComponent`
+			// is a post-tool segment whenever the turn wrote text after a call, and those
+			// segments carry no stop reason at all: pinning one of those left the head's
+			// inline error on screen underneath a banner already saying it.
+			const errorBearingComponent = this.ctx.streamingComponent;
 			this.#lastAssistantComponent = lastPostToolAssistantComponent ?? this.ctx.streamingComponent;
 			if (settings.get("display.showTokenUsage") && assistantUsageIsBilled(event.message.usage)) {
 				this.ctx.chatContainer.addChild(
@@ -1146,8 +1152,8 @@ export class EventController {
 			// turn's agent_start. Suppress the transcript's inline `Error: …` line for
 			// the same message while pinned so the error isn't rendered twice.
 			if (event.message.stopReason === "error" && event.message.errorMessage && !isSilentAbort(event.message)) {
-				this.#lastAssistantComponent?.setErrorPinned(true);
-				this.#pinnedErrorComponent = this.#lastAssistantComponent;
+				errorBearingComponent?.setErrorPinned(true);
+				this.#pinnedErrorComponent = errorBearingComponent;
 				this.ctx.showPinnedError(event.message.errorMessage);
 			}
 			this.ctx.statusLine.invalidate();
@@ -1553,6 +1559,13 @@ export class EventController {
 
 	async #handleAutoRetryStart(event: Extract<AgentSessionEvent, { type: "auto_retry_start" }>): Promise<void> {
 		this.#trackRetrySupersededAssistantComponent(this.#lastAssistantComponent);
+		// The recovery event names a component by persistence key, and that key carries
+		// the turn's stop reason, which rides the HEAD segment. `#lastAssistantComponent`
+		// is a post-tool segment whenever the turn wrote text after a call, and a segment
+		// key says `stop`: tracking only that one meant a recovered error turn with a
+		// trailing sentence never found its component, so its inline error survived the
+		// banner it had been mirroring.
+		this.#trackRetrySupersededAssistantComponent(this.#pinnedErrorComponent);
 		this.#stopWorkingLoader();
 		// Living shimmer: keep the activity truthful across the retry window (the
 		// retry uses its own warning loader; the working loader resumes after).
