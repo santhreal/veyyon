@@ -754,6 +754,37 @@ export class SessionManager {
 		} catch {
 			return;
 		}
+		this.#adoptForeignLines(text);
+	}
+
+	/**
+	 * The same refresh for the synchronous publish, which is the one that runs on
+	 * the way out (`flushSync`, exit) and as the fallback when an append finds the
+	 * file not current.
+	 *
+	 * The loss is at its worst here precisely because the process is leaving: no
+	 * later atomic publish will carry back a line this one deletes. A backend that
+	 * can read without yielding says so by implementing `readTextSync`; one that
+	 * cannot leaves the previous knowledge in place, which is all this path could
+	 * ever do.
+	 */
+	#refreshForeignLinesSync(): void {
+		if (!this.#persist || !this.#sessionFile) return;
+		let text: string | undefined;
+		try {
+			text = this.#storage.readTextSync?.(this.#sessionFile);
+		} catch {
+			return;
+		}
+		if (text === undefined) return;
+		this.#adoptForeignLines(text);
+	}
+
+	/**
+	 * Record which of a file's lines were never ours, and tell the operator once
+	 * that something else is writing the file.
+	 */
+	#adoptForeignLines(text: string): void {
 		const foreign: string[] = [];
 		for (const raw of text.split("\n")) {
 			if (!raw.trim()) continue;
@@ -795,16 +826,18 @@ export class SessionManager {
 	 * writer; the next append re-opens one. `writeTextSync` returns with the
 	 * bytes in the kernel page cache, so the file is software-crash durable.
 	 *
-	 * Being synchronous, this path cannot re-read the file, so it carries only the
-	 * foreign lines the last atomic publish learned about (see
-	 * {@link #refreshForeignLines}); a line a second writer appended since then is
-	 * still lost here. The async path is the one that runs for every rewrite the
-	 * product performs; this one runs on exit and on the `flushSync` fallback.
+	 * This path runs on exit and on the `flushSync` fallback, so it re-reads the
+	 * file first through {@link #refreshForeignLinesSync}: a second writer's tail
+	 * deleted here is deleted for good, since the process is on its way out and no
+	 * later atomic publish will carry it back. A backend that cannot read without
+	 * yielding carries only the foreign lines the last atomic publish learned
+	 * about, which is all a synchronous path can do there.
 	 */
 	#rewriteSynchronously(): void {
 		if (!this.#persist || !this.#sessionFile || !this.#shouldHaveSessionFile()) return;
 
 		try {
+			this.#refreshForeignLinesSync();
 			const body = this.#fileBody();
 			this.#diskEpoch++;
 			this.#diskTail = Promise.resolve();

@@ -64,12 +64,19 @@ import { TempDir } from "@veyyon/utils";
  *   body): row 11 red. It is its own mutant because that path appends through the
  *   writer handle and patches the slot by path, so the title still changes and
  *   only the entry recording it is lost, which rows 9 and 10 cannot see.
+ * - M12 `#refreshForeignLinesSync()` returns before reading: row 12 red.
+ * - M13 `FileSessionStorage.readTextSync` answers nothing, which is what a backend
+ *   that cannot read without yielding looks like: row 12 red. The manager degrades
+ *   to the previous behaviour there rather than blocking, so this mutant proves the
+ *   row is measuring the READ and not merely the call.
  *
  * WHAT THIS DOES NOT CATCH:
- * - The synchronous path. `#rewriteSynchronously` (exit, `flushSync` fallback)
- *   cannot re-read the file, so it carries only the foreign lines the last atomic
- *   publish learned about and still drops a tail appended since then. No row here
- *   asserts otherwise.
+ * - A backend with no synchronous read. `#rewriteSynchronously` re-reads through
+ *   `readTextSync`, which the file and memory backends implement and the indexed
+ *   (Redis/SQL) one cannot: it awaits a per-path queue before it can answer. On
+ *   that backend the synchronous publish still carries only the foreign lines the
+ *   last atomic publish learned about. Row 12 runs on real files, which is where
+ *   the product runs.
  * - Resurrection of an entry deliberately dropped from a file that keeps its
  *   name. `#idsEverSeen` holds ids we no longer carry for exactly that reason,
  *   but no product path drops an entry and republishes the same file today (a
@@ -457,6 +464,38 @@ describe("two managers on one transcript", () => {
 		expect(reader.getEntries().some(entry => entry.type === TITLE_CHANGE_ENTRY_TYPE)).toBe(true);
 
 		await reader.close();
+		await b.close();
+		await a.close();
+	});
+
+	it("carries the other writer's entries through a synchronous publish on the way out", async () => {
+		using tempDir = TempDir.createSync("@veyyon-two-writers-");
+		const dir = tempDir.path();
+		const file = path.join(dir, "session.jsonl");
+
+		const a = await SessionManager.open(file, dir);
+		a.appendMessage(userMessage("shared one"));
+		await a.flush();
+
+		const b = await SessionManager.open(file, dir);
+		b.appendMessage(userMessage("from the other window"));
+		await b.flush();
+		await b.rewriteEntries();
+
+		// The append detects the replacement and defers to the merging rewrite, and
+		// then the process leaves before that rewrite can run: `flushSync` publishes
+		// the whole file with no chance to await a read.
+		a.appendMessage(userMessage("from this window"));
+		a.flushSync();
+
+		const raw = await fs.readFile(file, "utf8");
+		for (const text of ["shared one", "from the other window", "from this window"]) {
+			expect(raw.split(text)).toHaveLength(2);
+		}
+		const after = await readFileState(file);
+		expect(after.ids).toHaveLength(3);
+		expect(new Set(after.ids).size).toBe(3);
+
 		await b.close();
 		await a.close();
 	});
