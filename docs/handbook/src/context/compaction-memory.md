@@ -72,13 +72,19 @@ You see that once per distinct reason, not once per compaction.
 
 `compaction.modelFallbackStrategy` decides what happens after your list runs out:
 
-- `auto` (the default) keeps going: your main model, then each of your model roles, then the model
-  with the largest context window you have access to. Compaction almost never fails, at the cost of
-  possibly summarizing on a model you did not name.
+- `auto` (the default) stays on models you named: your main model, the same-provider compaction
+  sibling its catalog row recommends, then each of your model roles.
+- `any-model` keeps going past those to the largest context window you have credentials for,
+  whichever provider that is. Compaction almost never fails, at the cost of summarizing on a
+  provider you did not choose for this session and being billed for it there.
 - `configured-only` stops at the models you listed. Compaction fails with the reason instead, which
   is what you want when the summary quality matters more than the session continuing.
 
 With `compaction.model` unset, `configured-only` means your interactive model and nothing else.
+
+Compaction fires unattended, so `any-model` is the one setting here that can spend money on an
+account you were not using: a session on one provider can summarize on another provider's key and
+report that provider's billing error as a compaction failure. That is why it is not the default.
 
 ## Shake and duplicate elision
 

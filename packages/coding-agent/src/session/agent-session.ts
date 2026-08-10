@@ -13500,12 +13500,9 @@ export class AgentSession {
 	}
 
 	#estimatePrePromptContextTokens(messages: AgentMessage[], contextWindow: number): number {
-		const breakdown = this.getContextBreakdown({ contextWindow, pendingMessages: messages });
-		const localEstimate = this.#estimateStoredContextTokens(messages);
-		// Floor by the local estimate: a payload-shrinking before_provider_request
-		// hook deflates the provider-anchored breakdown, which must not suppress
-		// pre-prompt compaction (see #estimateStoredContextTokens).
-		return compactionContextTokens(breakdown?.usedTokens ?? 0, localEstimate);
+		// The local-estimate floor lives in getContextBreakdown, so this is the
+		// exact number the footline gauge shows.
+		return this.getContextBreakdown({ contextWindow, pendingMessages: messages })?.usedTokens ?? 0;
 	}
 
 	async #runPrePromptCompactionIfNeeded(messages: AgentMessage[]): Promise<void> {
@@ -15413,27 +15410,41 @@ export class AgentSession {
 
 		// `configured-only` stops at the chain the user wrote down. With no chain
 		// configured, `compaction.model` means "inherit", so the one model they
-		// chose is the main model and that is where the list ends. Everything
-		// below is the `auto` tail: models nobody named, which is exactly what
-		// this strategy exists to refuse.
-		if (this.settings.get("compaction.modelFallbackStrategy") === "configured-only") {
+		// chose is the main model and that is where the list ends.
+		const fallbackStrategy = this.settings.get("compaction.modelFallbackStrategy");
+		if (fallbackStrategy === "configured-only") {
 			if (configuredPatterns.length === 0) addCandidate(preferredModel ?? undefined);
 			return candidates;
 		}
 
 		if (preferredModel) {
-			addCandidate(this.#resolveCompactionConfiguredTarget(preferredModel, availableModels));
+			// The compaction sibling this model's own catalog row recommends. Nobody
+			// named it, so `auto` takes it only while it stays inside the provider
+			// the operator DID name; a cross-provider recommendation spends someone
+			// else's credit and belongs to `any-model`.
+			const recommended = this.#resolveCompactionConfiguredTarget(preferredModel, availableModels);
+			if (recommended && (fallbackStrategy === "any-model" || recommended.provider === preferredModel.provider)) {
+				addCandidate(recommended);
+			}
 		}
 		addCandidate(preferredModel ?? undefined);
 		for (const role of SELECTABLE_MODEL_ROLE_IDS) {
 			addCandidate(this.#resolveRoleModelFull(role, availableModels, preferredModel ?? undefined).model);
 		}
 
-		const sortedByContext = [...availableModels].sort((a, b) => (b.contextWindow ?? 0) - (a.contextWindow ?? 0));
-		for (const model of sortedByContext) {
-			if (!seen.has(this.#getModelKey(model))) {
-				addCandidate(model);
-				break;
+		// The widest window among everything authenticated is the only tier that
+		// can reach a provider the operator never chose for this session, and
+		// compaction fires unattended: under `auto` that tier is an accidental
+		// bill on an unrelated account (a Cursor session summarized on a Hugging
+		// Face key and surfaced its 402 as a compaction failure). `any-model` is
+		// the opt-in that keeps the historical never-fails behavior.
+		if (fallbackStrategy === "any-model") {
+			const sortedByContext = [...availableModels].sort((a, b) => (b.contextWindow ?? 0) - (a.contextWindow ?? 0));
+			for (const model of sortedByContext) {
+				if (!seen.has(this.#getModelKey(model))) {
+					addCandidate(model);
+					break;
+				}
 			}
 		}
 
@@ -15480,6 +15491,20 @@ export class AgentSession {
 			`Compaction requires usable credentials for ${currentModel.provider}/${currentModel.id}. ` +
 				`Configure ${currentModel.provider} credentials or assign an authenticated fallback role such as modelRoles.smol.`,
 		);
+	}
+
+	/**
+	 * A candidate's failure, attributed to the candidate that produced it.
+	 *
+	 * The auto path tries several models and surfaces only the last error, so a
+	 * provider-specific fault ("402 You have depleted your monthly included
+	 * credits") reached the operator with nothing naming WHICH provider billed
+	 * them. On a session running a different provider that reads as a lie. The
+	 * provider's own text stays verbatim after the name so every classifier and
+	 * matcher still sees it, and the original is kept as `cause`.
+	 */
+	#compactionCandidateError(candidate: Model, error: unknown): Error {
+		return new Error(`${this.#getModelKey(candidate)}: ${errorMessage(error)}`, { cause: error });
 	}
 
 	/**
@@ -16215,12 +16240,18 @@ export class AgentSession {
 				// again. `compaction.modelContextWindow` (unset = the candidate's own
 				// metadata) overrides for proxies serving a window they do not advertise.
 				const configuredCompactionWindow = this.settings.get("compaction.modelContextWindow");
+				// Why each candidate before the one that ran was passed over, so the
+				// unattended path can name the swap the way the manual path does.
+				const skipReasons = new Map<string, string>();
 
 				for (let candidateIndex = 0; !compactResult && candidateIndex < candidates.length; candidateIndex++) {
 					const candidate = candidates[candidateIndex];
 					const hasMoreCandidates = candidateIndex < candidates.length - 1;
 					const apiKey = await this.#modelRegistry.getApiKey(candidate, this.sessionId);
-					if (!apiKey) continue;
+					if (!apiKey) {
+						skipReasons.set(this.#getModelKey(candidate), "it is not authenticated");
+						continue;
+					}
 					const cachePrefix = await this.#cacheAlignedCompactionPrefix(candidate, autoCompactionSignal);
 					const candidateOptions: SummaryOptions = {
 						promptOverride: this.#obfuscateTextForProvider(compactionPrep.hookPrompt),
@@ -16265,6 +16296,10 @@ export class AgentSession {
 						// Keep a real reason for the failure event when every candidate is
 						// skipped this way. A thrown provider error from a later candidate
 						// still overwrites it (the catch assigns unconditionally).
+						skipReasons.set(
+							this.#getModelKey(candidate),
+							`its context window holds ${candidateWindow} tokens and the summary needed ${summarizePayloadTokens}`,
+						);
 						lastError ??= new Error(
 							`Compaction failed: ${candidate.provider}/${candidate.id} holds ${candidateWindow} tokens and the summary needed ${summarizePayloadTokens}.`,
 						);
@@ -16289,6 +16324,7 @@ export class AgentSession {
 							}
 
 							const message = errorMessage(error);
+							skipReasons.set(this.#getModelKey(candidate), `it failed: ${message}`);
 							const id = AIError.classify(error, candidate.api);
 							if (AIError.is(id, AIError.Flag.AuthFailed)) {
 								lastError = this.#buildCompactionAuthError();
@@ -16304,7 +16340,7 @@ export class AgentSession {
 										model: `${candidate.provider}/${candidate.id}`,
 									},
 								);
-								lastError = error;
+								lastError = this.#compactionCandidateError(candidate, error);
 								break;
 							}
 
@@ -16316,7 +16352,7 @@ export class AgentSession {
 									AIError.is(id, AIError.Flag.Transient) ||
 									AIError.is(id, AIError.Flag.UsageLimit));
 							if (!shouldRetry) {
-								lastError = error;
+								lastError = this.#compactionCandidateError(candidate, error);
 								break;
 							}
 
@@ -16332,7 +16368,7 @@ export class AgentSession {
 									error: message,
 									model: `${candidate.provider}/${candidate.id}`,
 								});
-								lastError = error;
+								lastError = this.#compactionCandidateError(candidate, error);
 								break; // Exit retry loop, continue to next candidate
 							}
 
@@ -16350,6 +16386,7 @@ export class AgentSession {
 					}
 
 					if (compactResult) {
+						this.#announceCompactionFallback(candidates, candidate, skipReasons);
 						break;
 					}
 				}
@@ -19286,6 +19323,17 @@ export class AgentSession {
 			}
 			usedTokens = currentNonMessageTokens + messagesTokens + pendingMessagesTokens;
 		}
+
+		// One number owns "how full is the context". Every compaction decision
+		// floors the provider-anchored total by the local estimate of what the
+		// session actually holds (see #estimateStoredContextTokens and the
+		// compactionContextTokens call sites), because a provider reporting a
+		// prompt smaller than the stored conversation must not suppress
+		// compaction. The gauge did not apply that floor, so a session whose
+		// provider under-reports its prompt showed "90% left" on the footline
+		// while auto-compaction fired against the same window on every turn.
+		// Display and decision now read the same total.
+		usedTokens = compactionContextTokens(usedTokens, this.#estimateStoredContextTokens(pendingMessages));
 
 		const messagesTokens = Math.max(0, usedTokens - categoryNonMessageTokens);
 

@@ -9,7 +9,10 @@
  * and taking a fallback only ever reached a `debug` log, so the summary that
  * shapes the rest of the session was written by a surprise model with no trace
  * a user would ever see. `compaction.modelFallbackStrategy` makes the tail a
- * choice, and the notice makes the swap visible.
+ * choice, and the notice makes the swap visible. The tail's LAST tier, the widest
+ * window among everything authenticated, is the one that can reach a provider the
+ * operator never chose for this session and bill it for a summary, so it moved
+ * behind `any-model` and `auto` now stops at models they named.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
@@ -34,7 +37,12 @@ describe("compaction model chain", () => {
 	const mainModel = getBundledModel("openai-codex", "gpt-5.4-mini");
 	const firstChoice = getBundledModel("anthropic", "claude-opus-4-1");
 	const secondChoice = getBundledModel("anthropic", "claude-sonnet-4-5");
-	if (!mainModel || !firstChoice || !secondChoice) throw new Error("Expected bundled test models to exist");
+	// Authenticated, and never named by the chain, a role or the interactive model.
+	// Its widest row is what the old tail reached, whichever row that happens to be.
+	const unnamedProvider = "google";
+	if (!mainModel || !firstChoice || !secondChoice) {
+		throw new Error("Expected bundled test models to exist");
+	}
 
 	const selector = (model: { provider: string; id: string }): string => `${model.provider}/${model.id}`;
 
@@ -53,19 +61,27 @@ describe("compaction model chain", () => {
 	/**
 	 * A session whose compaction chain is `overrides["compaction.model"]`.
 	 *
-	 * Every provider gets a stored credential so all three models are in the
+	 * Every provider gets a stored credential so all four models are in the
 	 * registry's available list (an unavailable model resolves to no candidate at
 	 * all, which is a different failure from the one under test). `usable` then
 	 * decides which of them actually hands back a key at compaction time.
 	 */
-	async function createSession(overrides: Record<string, unknown>, usable: (model: { id: string }) => boolean) {
+	async function createSession(
+		overrides: Record<string, unknown>,
+		usable: (model: { id: string; provider: string }) => boolean,
+	) {
 		const settings = Settings.isolated({
 			"compaction.keepRecentTokens": 1,
 			...overrides,
 		} as Parameters<typeof Settings.isolated>[0]);
 
 		authStorage = await AuthStorage.create(path.join(tempDir.path(), "testauth.db"));
-		for (const provider of new Set([mainModel.provider, firstChoice.provider, secondChoice.provider])) {
+		for (const provider of new Set([
+			mainModel.provider,
+			firstChoice.provider,
+			secondChoice.provider,
+			unnamedProvider,
+		])) {
 			authStorage.setRuntimeApiKey(provider, `${provider}-token`);
 		}
 		modelRegistry = new ModelRegistry(authStorage, path.join(tempDir.path(), "models.yml"));
@@ -259,5 +275,46 @@ describe("compaction model chain", () => {
 
 		expect(result.summary).toStartWith(`summary from ${selector(mainModel)}`);
 		expect(compactSpy.mock.calls.map(([, model]) => selector(model))).toEqual([selector(mainModel)]);
+	});
+
+	/**
+	 * The billing contract. `auto` is the default, compaction fires unattended, and
+	 * the widest-window tier reaches any provider holding a credential. A Cursor
+	 * session summarized on a Hugging Face key and surfaced the provider's "402 You
+	 * have depleted your monthly included credits" as a compaction failure, on an
+	 * account the operator had not chosen for this session and could not identify
+	 * from the message. Failing is the correct answer: the reason is nameable, an
+	 * accidental bill is not.
+	 */
+	it("auto refuses to summarize on an authenticated provider nobody named", async () => {
+		// Every key the operator named is dead and the unnamed provider's are all
+		// live, which is the shape that used to reach it.
+		await createSession({ "compaction.model": selector(firstChoice) }, model => model.provider === unnamedProvider);
+		const compactSpy = spyOnCompact();
+
+		const error = await session.compact().catch(err => err);
+
+		expect(error).toBeInstanceOf(Error);
+		expect((error as Error).message).toContain("Compaction requires usable credentials");
+		expect(compactSpy).not.toHaveBeenCalled();
+	});
+
+	/**
+	 * The differential twin: the historical never-fails tail is still available, and
+	 * now it is a decision. Same setup as the test above, one setting apart.
+	 */
+	it("any-model reaches the widest authenticated window when nothing named is usable", async () => {
+		await createSession(
+			{ "compaction.model": selector(firstChoice), "compaction.modelFallbackStrategy": "any-model" },
+			model => model.provider === unnamedProvider,
+		);
+		const compactSpy = spyOnCompact();
+
+		const result = await session.compact();
+
+		// The row it lands on is whichever window is widest in the registry, so the
+		// contract is the PROVIDER: one nobody named for this session.
+		expect(compactSpy.mock.calls.map(([, model]) => model.provider)).toEqual([unnamedProvider]);
+		expect(result.summary).toStartWith(`summary from ${unnamedProvider}/`);
 	});
 });

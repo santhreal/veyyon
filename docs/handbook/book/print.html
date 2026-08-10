@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-f6396a3f.js";
+            window.path_to_searchindex_js = "searchindex-31149a43.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-79e2ba62.js"></script>
@@ -7152,13 +7152,18 @@ a warning in the session naming both models and the reason:</p>
 <p>You see that once per distinct reason, not once per compaction.</p>
 <p><code>compaction.modelFallbackStrategy</code> decides what happens after your list runs out:</p>
 <ul>
-<li><code>auto</code> (the default) keeps going: your main model, then each of your model roles, then the model
-with the largest context window you have access to. Compaction almost never fails, at the cost of
-possibly summarizing on a model you did not name.</li>
+<li><code>auto</code> (the default) stays on models you named: your main model, the same-provider compaction
+sibling its catalog row recommends, then each of your model roles.</li>
+<li><code>any-model</code> keeps going past those to the largest context window you have credentials for,
+whichever provider that is. Compaction almost never fails, at the cost of summarizing on a
+provider you did not choose for this session and being billed for it there.</li>
 <li><code>configured-only</code> stops at the models you listed. Compaction fails with the reason instead, which
 is what you want when the summary quality matters more than the session continuing.</li>
 </ul>
 <p>With <code>compaction.model</code> unset, <code>configured-only</code> means your interactive model and nothing else.</p>
+<p>Compaction fires unattended, so <code>any-model</code> is the one setting here that can spend money on an
+account you were not using: a session on one provider can summarize on another provider’s key and
+report that provider’s billing error as a compaction failure. That is why it is not the default.</p>
 <h2 id="shake-and-duplicate-elision"><a class="header" href="#shake-and-duplicate-elision">Shake and duplicate elision</a></h2>
 <p>Shake is a lighter reducer than compaction. Instead of summarizing history, it drops heavy
 content out of the live context and leaves a short placeholder in its place. Whole tool
