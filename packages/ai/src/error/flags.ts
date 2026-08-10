@@ -109,9 +109,19 @@ export const STREAM_READ_ERROR_PATTERN = /stream[_ -]?read[_ -]?error/i;
  * lives. Excluding a neighbouring hyphen as well as a neighbouring word character narrows nothing
  * real, since every genuine rendering has whitespace, punctuation that is not a hyphen, or a string
  * edge beside the number: `503`, `HTTP 503`, `status: 503`, `(503)`, `upstream/502`, `503.`
+ *
+ * THE ERRNO SPELLINGS ARE HERE because they are the same faults under a different name. Undici
+ * usually wraps a dead socket as `fetch failed` or `terminated`, both matched above, but not
+ * always: a rejection can arrive carrying only `read ECONNRESET` or `connect ETIMEDOUT 10.0.0.1:443`,
+ * and neither contains a word this pattern matched. `connection.?refused` covered the prose form of
+ * one of them and nothing covered the code form of any. {@link OAUTH_TRANSIENT_FAILURE_PATTERN} in
+ * this same file has treated these codes as transient all along, so a token refresh retried the
+ * fault that ended a model request, which is one classifier disagreeing with another about the same
+ * bytes. Word-bounded like the status numbers, so an identifier that happens to contain one does
+ * not match.
  */
 export const TRANSIENT_TRANSPORT_PATTERN =
-	/overloaded|provider.?returned.?error|rate.?limit|too many requests|(?<![\w-])(?:429|500|502|503|504)(?![\w-])|service.?unavailable|server.?error|internal.?error|retry your request|network.?error|connection.?error|connection.?refused|other side closed|fetch failed|upstream.?connect|upstream.?request.?failed|reset before headers|socket hang up|timed? out|timeout|terminated|retry delay|stream stall|no error details in response|HTTP2(?:StreamReset|RefusedStream|EnhanceYourCalm)|malformed.?function.?call/i;
+	/overloaded|provider.?returned.?error|rate.?limit|too many requests|(?<![\w-])(?:429|500|502|503|504)(?![\w-])|service.?unavailable|server.?error|internal.?error|retry your request|network.?error|connection.?error|connection.?refused|other side closed|fetch failed|upstream.?connect|upstream.?request.?failed|reset before headers|socket hang up|timed? out|timeout|terminated|retry delay|stream stall|no error details in response|HTTP2(?:StreamReset|RefusedStream|EnhanceYourCalm)|malformed.?function.?call|(?<![\w-])(?:ECONNRESET|ECONNREFUSED|ECONNABORTED|ETIMEDOUT|EPIPE|EAI_AGAIN)(?![\w-])/i;
 const AUTH_FAILURE_PATTERN =
 	/\b(?:401|403|unauthorized|forbidden|authentication|auth[_ ]?unavailable|no auth available|(?:invalid|no)[_ ]?api[_ ]?key)\b/i;
 const MALFORMED_FUNCTION_CALL_PATTERN = /\bmalformed.?function.?call\b/i;
