@@ -358,3 +358,59 @@ it("gives the second unreplayable death its own budget once a turn has landed", 
 		sim.dispose();
 	}
 });
+
+it("hands a resumed session a paired, ledger-free version of the continued turn", async () => {
+	// The class that produced the resume defect on the RETRY path: history and
+	// the outbound context are two lists, and the stored dead turn is only
+	// history. A reopened session must not re-ask the model to reissue a batch
+	// the continuation already moved past, and must not hand the provider a
+	// `tool_use` with no answer -- the exec-channel call has no result on disk,
+	// because its result was still in flight when the transport died.
+	const contexts: string[] = [];
+	const sim = await createSimulation({
+		persist: true,
+		settings: { "retry.maxRetries": 2 },
+		tools: [simTool(TOOL.bash, async () => ({ content: [{ type: "text", text: "bash ran" }] }))],
+		script: turn => {
+			contexts.push(contextText(turn));
+			if (turn.call === 1) {
+				turn.toolCall(TOOL.bash, { command: "echo" }, "call-a");
+				turn.execResolvedToolCall(TOOL.read, { path: "README.md" }, "call-b");
+				turn.fail(STALL_TEXT);
+				return;
+			}
+			turn.text("carried on");
+			turn.finish();
+		},
+	});
+	try {
+		await sim.session.prompt("do two things");
+		const reopened = await sim.reopen();
+		try {
+			await reopened.session.prompt("and now this");
+			const resumed = reopened.sessionRequests().length;
+			expect(resumed).toBe(1);
+			const request = contexts.at(-1) ?? "";
+			// The work the turn produced survives; the instruction to redo it does not.
+			expect(request).toContain("carried on");
+			expect(request).not.toContain(LEDGER_MARKER);
+			// Pairing, which is what a strict provider rejects.
+			const messages = reopened.session.agent.state.messages;
+			const answered = new Set(
+				messages.filter(message => message.role === "toolResult").map(message => message.toolCallId),
+			);
+			const unanswered: string[] = [];
+			for (const message of messages) {
+				if (message.role !== "assistant") continue;
+				for (const block of message.content) {
+					if (block.type === "toolCall" && !answered.has(block.id)) unanswered.push(block.id);
+				}
+			}
+			expect(unanswered).toEqual([]);
+		} finally {
+			await reopened.dispose();
+		}
+	} finally {
+		sim.dispose();
+	}
+});

@@ -6,12 +6,20 @@
  */
 
 import type { AgentMessage } from "@veyyon/agent-core";
+import { renderToolBatchLedger, type ToolBatchLedger } from "@veyyon/agent-core";
 import {
 	type BranchSummaryMessage,
 	type CompactionSummaryMessage,
 	convertMessageToLlm,
 } from "@veyyon/agent-core/compaction/messages";
-import type { AssistantMessage, ImageContent, Message, MessageAttribution, TextContent } from "@veyyon/ai";
+import type {
+	AssistantMessage,
+	ImageContent,
+	Message,
+	MessageAttribution,
+	TextContent,
+	ToolResultMessage,
+} from "@veyyon/ai";
 import * as AIError from "@veyyon/ai/error";
 // Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { isRecord } from "@veyyon/utils/type-guards";
@@ -801,6 +809,56 @@ function convertImageBearingCustomMessage(message: CustomMessage | HookMessage):
 }
 
 /**
+ * Retire a batch ledger the model has already answered.
+ *
+ * The ledger is a standing INSTRUCTION ("only the calls marked never ran need
+ * retrying"), attached to one placeholder result per cut-short batch so the
+ * model can pick the batch back up. It has an expiry the text cannot express:
+ * once an assistant turn has responded to that batch, the instruction has been
+ * carried out, and every later request re-sent it anyway. On the reported
+ * 75-call batch that is roughly eighty lines of orders about calls the model
+ * already reissued, on every request for the rest of the session and again
+ * after a resume, telling it to redo work whose results are sitting right
+ * there.
+ *
+ * A retried turn does not reach this: the whole dead turn and its placeholders
+ * are dropped from the context (session-context.ts, `retryRecovery`). A turn
+ * the session CONTINUED instead of replaying stays in history on purpose,
+ * because the continuation answered from it, so the ledger it carries needs an
+ * expiry rather than a deletion.
+ *
+ * The stored result is untouched: the transcript still renders the full ledger,
+ * and the details it renders from (`batchLedger`) are what this reads.
+ */
+function expireAnsweredBatchLedger(
+	messages: AgentMessage[],
+	index: number,
+	message: ToolResultMessage,
+): ToolResultMessage {
+	const ledger = (message.details as { batchLedger?: ToolBatchLedger } | undefined)?.batchLedger;
+	if (ledger === undefined) return message;
+	let answered = false;
+	for (let cursor = index + 1; cursor < messages.length; cursor++) {
+		if (messages[cursor]?.role === "assistant") {
+			answered = true;
+			break;
+		}
+	}
+	if (!answered) return message;
+	// Rendered by the ONE owner, so the slice cannot drift from what was written.
+	const rendered = renderToolBatchLedger(ledger);
+	let changed = false;
+	const content = message.content.map(block => {
+		if (block.type !== "text") return block;
+		const at = block.text.indexOf(rendered);
+		if (at < 0) return block;
+		changed = true;
+		return { ...block, text: block.text.slice(0, at).trimEnd() };
+	});
+	return changed ? { ...message, content } : message;
+}
+
+/**
  * Transform AgentMessages (including custom types) to LLM-compatible Messages.
  *
  * This is used by:
@@ -908,11 +966,16 @@ export function convertToLlm(messages: AgentMessage[]): Message[] {
 				const converted = convertMessageToLlm(source);
 				return converted ? [converted] : [];
 			}
+			case "toolResult": {
+				// Core roles share one transformer with agent-core, but this one carries
+				// a standing instruction with an expiry, so it is spelled out.
+				const converted = convertMessageToLlm(expireAnsweredBatchLedger(messages, index, m));
+				return converted ? [converted] : [];
+			}
 			case "branchSummary":
 			case "compactionSummary":
 			case "user":
-			case "developer":
-			case "toolResult": {
+			case "developer": {
 				// Core roles share one transformer with agent-core —
 				// duplicating them here is how compaction-summary image blocks
 				// once silently fell off the provider request.
