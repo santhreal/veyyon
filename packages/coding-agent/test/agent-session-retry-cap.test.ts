@@ -743,6 +743,11 @@ describe("AgentSession retry delay cap", () => {
 
 		expect(streamCalls).toBe(1);
 		expect(retryStartEvents).toHaveLength(0);
+		// POSITIVE PROOF THAT THE CONTINUATION REFUSED, not merely that the retry
+		// ladder did. An answered call must not read as never-ran: the loop pairs
+		// this call with a placeholder anyway, and counting that placeholder as
+		// outstanding work is what continued a batch with nothing left to do.
+		expect(session.operatorNotices.all().map(notice => notice.source)).not.toContain("unreplayable-batch");
 		const lastError = [...session.agent.state.messages]
 			.reverse()
 			.find((message): message is AssistantMessage => message.role === "assistant");
