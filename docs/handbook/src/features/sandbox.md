@@ -105,8 +105,8 @@ The destructive half, and the whole of the first half, stop for approval in `yol
 the `/yolo` session bypass does not lift them. That floor is the one place `yolo` is not
 absolute. The dangerous half stops on every rung below `yolo` and not on `yolo` itself, because
 a rung whose entire promise is that it does not ask cannot be stopping an install the operator
-typed. To turn the floor off, set `tools.approval.bash` to `allow`; setting it to `deny` remains
-a hard block.
+typed. To turn the floor off on `yolo`, set `tools.approval.bash` to `allow`; below `yolo` an
+`allow` is outranked by the guard, and `deny` is a hard block on every rung.
 
 Separately, the bash interceptor (`bashInterceptor.enabled`, default off) blocks shell
 commands that duplicate dedicated tools, so the model reaches for `read`/`grep`/`glob`
