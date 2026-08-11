@@ -48,8 +48,13 @@
  *     second budget bolted onto every failure.
  *  9. A turn that comes back resets the budget, so a session that hits this
  *     twice in its life gets the full allowance both times.
+ * 10. A NEW PROMPT resets it too, even when the turn that spent it never came
+ *     back. That is the case an operator meets: the allowance is per incident,
+ *     and a turn that died for good is not evidence about the next thing they
+ *     type. Restoring it only on a landed turn meant one bad turn disarmed the
+ *     recovery for the rest of the session.
  *
- * The rule the last two rows share is that the question is asked per CALL. A
+ * The rule rows 6 and 7 share is that the question is asked per CALL. A
  * call that already carries a real result is answered, and a never-ran
  * placeholder sitting beside that result does not make it outstanding again;
  * that arm is driven at the session level in
@@ -354,9 +359,11 @@ it("does not continue a replay-safe batch that merely ran out of retries", async
 });
 
 it("gives the second unreplayable death its own budget once a turn has landed", async () => {
-	// A session lives for hours and a flaky transport hits it more than once. The
-	// counter is a per-incident allowance, not a per-session one, so a turn that
-	// came back has to clear it.
+	// A flaky transport hits one prompt more than once. Deliberately a SINGLE
+	// prompt: a per-prompt reset would carry a two-prompt version of this row on
+	// its own, so the landed-turn reset would be untested and could be deleted
+	// with the suite still green. One prompt spans many provider requests, and a
+	// turn that came back mid-prompt is the only evidence available there.
 	const ran: string[] = [];
 	const sim = await createSimulation({
 		settings: { "retry.maxRetries": 1 },
@@ -371,12 +378,17 @@ it("gives the second unreplayable death its own budget once a turn has landed", 
 			}),
 		],
 		script: turn => {
-			// Calls 1 and 3 die on an unreplayable batch; 2 and 4 are the
-			// continuations, and each one lands.
+			// 1 dies on an unreplayable batch, 2 is its continuation and lands with
+			// real work that keeps the same prompt going, 3 dies again, 4 finishes.
 			if (turn.call === 1 || turn.call === 3) {
 				turn.toolCall(TOOL.bash, { command: "echo" }, `call-a-${turn.call}`);
 				turn.execResolvedToolCall(TOOL.read, { path: "README.md" }, `call-b-${turn.call}`);
 				turn.fail(STALL_TEXT);
+				return;
+			}
+			if (turn.call === 2) {
+				turn.toolCall(TOOL.bash, { command: "echo landed" }, "call-landed");
+				turn.finish();
 				return;
 			}
 			turn.text(`answer ${turn.call}`);
@@ -384,13 +396,45 @@ it("gives the second unreplayable death its own budget once a turn has landed", 
 		},
 	});
 	try {
-		await sim.session.prompt("first");
-		await sim.session.prompt("second");
+		await sim.session.prompt("just the one prompt");
 
 		// Four requests: two deaths, two continuations. Three would mean the second
 		// death found the budget already spent by the first.
 		expect(sim.sessionRequests()).toHaveLength(4);
-		expect(ran).toEqual([]);
+		// The landed turn did real work, which is what makes it evidence.
+		expect(ran).toEqual(["bash"]);
+	} finally {
+		sim.dispose();
+	}
+});
+it("gives a new prompt its own budget even though the previous turn never landed", async () => {
+	// The reset the landed-turn row above does not cover, and the one an operator
+	// actually hits: the turn that spent the budget died for good, so nothing ever
+	// came back to clear it. Every other turn-recovery allowance is restored when a
+	// prompt starts, and this one was not, so one bad turn disarmed the recovery
+	// for the rest of the session and the next prompt died the old silent way.
+	const sim = await createSimulation({
+		settings: { "retry.maxRetries": 1 },
+		tools: [
+			simTool(TOOL.bash, async () => ({ content: [{ type: "text", text: "bash ran" }] })),
+			simTool(TOOL.read, async () => ({ content: [{ type: "text", text: "read ran" }] })),
+		],
+		script: turn => {
+			// Nothing ever lands: every request dies on an unreplayable batch.
+			turn.toolCall(TOOL.bash, { command: "echo" }, `call-a-${turn.call}`);
+			turn.execResolvedToolCall(TOOL.read, { path: "README.md" }, `call-b-${turn.call}`);
+			turn.fail(STALL_TEXT);
+		},
+	});
+	try {
+		await sim.session.prompt("first");
+		const afterFirst = sim.sessionRequests().length;
+		await sim.session.prompt("second");
+
+		// One death plus one continuation per prompt. Three would mean the second
+		// prompt found the budget spent by a turn it has nothing to do with.
+		expect(afterFirst).toBe(2);
+		expect(sim.sessionRequests()).toHaveLength(4);
 	} finally {
 		sim.dispose();
 	}
