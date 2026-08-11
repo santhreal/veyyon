@@ -16968,7 +16968,17 @@ export class AgentSession {
 		return true;
 	}
 
-	/** Whether any call in this turn was paired with a never-ran placeholder. */
+	/**
+	 * Whether any call in this turn is left with no answer at all.
+	 *
+	 * The question is per CALL, not per batch. A cut-short batch is normally
+	 * mixed (the reported one: 21 interrupted, 54 never ran), and the interrupted
+	 * calls carry real results, so "the batch holds a placeholder somewhere" is
+	 * the right answer for the wrong reason. Asked per id it also refuses the one
+	 * case where continuing would be wrong: a call that already has a real result
+	 * is answered, and a placeholder sitting beside that result does not make it
+	 * unanswered again.
+	 */
 	#hasNeverRanToolResult(message: AssistantMessage): boolean {
 		const toolCallIds = new Set<string>();
 		for (const block of message.content) {
@@ -16976,10 +16986,17 @@ export class AgentSession {
 		}
 		for (const incomplete of message.incompleteToolCalls ?? []) toolCallIds.add(incomplete.id);
 		if (toolCallIds.size === 0) return false;
+		const answered = new Set<string>();
+		const unanswered = new Set<string>();
 		for (const contextMessage of this.agent.state.messages) {
 			if (contextMessage.role !== "toolResult") continue;
-			if (!toolCallIds.has(contextMessage.toolCallId)) continue;
-			if (toolResultNeverRan(contextMessage.details)) return true;
+			const id = contextMessage.toolCallId;
+			if (!toolCallIds.has(id)) continue;
+			if (toolResultNeverRan(contextMessage.details)) unanswered.add(id);
+			else answered.add(id);
+		}
+		for (const id of unanswered) {
+			if (!answered.has(id)) return true;
 		}
 		return false;
 	}

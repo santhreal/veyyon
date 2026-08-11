@@ -197,6 +197,11 @@ describe("a knob its feature hides", () => {
 	 * The row the operator would find by name. Searching a hidden knob's own label
 	 * must return nothing, because a row found by search is a row you can change,
 	 * and changing an inert setting is the confusion the hiding was meant to end.
+	 *
+	 * It builds a selector and types a whole label per conditional row across every
+	 * tab, which is seconds of real work: 2.4s alone and 6.3s under a loaded
+	 * full-suite run, against the 5s default. The deadline is stated so the sweep
+	 * stays exhaustive rather than being narrowed to a sample to fit.
 	 */
 	it("is not offered by the settings search either", () => {
 		const offered: string[] = [];
@@ -208,7 +213,7 @@ describe("a knob its feature hides", () => {
 		}
 
 		expect(offered, "search offers these rows while the feature behind them is off").toEqual([]);
-	});
+	}, 30_000);
 
 	/**
 	 * THE POSITIVE CONTROL. The same query finds the same row once its tool is on,

@@ -30,11 +30,14 @@
  *  8. The other core roles still convert (the case was split out of the shared
  *     group, and a compaction summary's image blocks are what fell off the
  *     request the last time that group was disturbed).
+ *  9-11. The TURN-LEVEL form of the same ledger. A batch that left no placeholder
+ *     to hang it on (every call exec-resolved, or its arguments never finished)
+ *     carries the whole ledger as a synthetic user message, which stores no
+ *     ledger data to re-render from. It is recognized by the headline prefix its
+ *     own renderer writes and dropped whole once answered, kept while unanswered,
+ *     and a user message that is not synthetic keeps it even when it quotes one.
  *
- * WHAT IT DOES NOT CATCH. The turn-level form of the same notice, which the
- * agent loop sends as a synthetic user message when a batch left no placeholder
- * to carry the ledger, has the same expiry and no marker to recognize it by;
- * that one still travels. Two of the eleven mutants this suite was gated with
+ * WHAT IT DOES NOT CATCH. Two of the eleven mutants this suite was gated with
  * survive, and both survive because the site cannot change behavior rather than
  * because a row is missing: the `changed` guard that returns the original object
  * when no block held the ledger is an allocation choice with no observable
@@ -169,6 +172,34 @@ it("keeps non-text content in an expired result", async () => {
 	const content = result?.content;
 	expect(Array.isArray(content)).toBe(true);
 	expect(Array.isArray(content) ? content.filter(block => block.type === "image") : []).toEqual([image]);
+});
+function ledgerNotice(extra?: Partial<AgentMessage>): AgentMessage {
+	return { role: "user", content: RENDERED, synthetic: true, timestamp: 5, ...extra } as AgentMessage;
+}
+
+it("sends the turn-level notice while the batch is unanswered", async () => {
+	// A batch that left no placeholder to hang the ledger on carries the whole
+	// ledger as a synthetic user message instead. Same instruction, same expiry.
+	const converted = await convertToLlm([ledgerNotice()]);
+
+	expect(converted).toHaveLength(1);
+});
+
+it("drops the turn-level notice once an assistant turn has answered it", async () => {
+	const converted = await convertToLlm([ledgerNotice(), ASSISTANT, USER]);
+
+	expect(converted.some(message => JSON.stringify(message.content).includes("Partial completion ledger"))).toBe(false);
+	// The turns either side survive: the notice is dropped, not the range.
+	expect(converted).toHaveLength(2);
+});
+
+it("keeps a real user message that quotes a ledger", async () => {
+	// THE NEGATIVE CONTROL. Recognition is by the synthetic flag as well as the
+	// headline, so an operator pasting a ledger back to ask about it is content,
+	// not an expired instruction, and is never removed from their own request.
+	const converted = await convertToLlm([ledgerNotice({ synthetic: false }), ASSISTANT]);
+
+	expect(converted.some(message => JSON.stringify(message.content).includes("Partial completion ledger"))).toBe(true);
 });
 
 it("still converts the core roles the ledger case was split out of", async () => {

@@ -117,6 +117,19 @@ const CAUSE_LINE: Record<ToolBatchLedgerCause, string> = {
 };
 
 /**
+ * The opening of the ledger's headline, exported so a reader can recognize a
+ * rendered ledger it has no ledger data for.
+ *
+ * A cut-short batch that left no placeholder result (every call exec-resolved or
+ * its arguments never finished) carries the ledger as a synthetic user message
+ * instead, which stores no `batchLedger` to re-render from. Recognizing it by
+ * this prefix is the only handle there is, and the prefix belongs here rather
+ * than at the reader, so a reworded headline breaks the render and the
+ * recognition together instead of silently retiring the recognition.
+ */
+export const TOOL_BATCH_LEDGER_HEADLINE_PREFIX = "Partial completion ledger for this tool batch (";
+
+/**
  * Render the ledger as the bounded text block attached to one placeholder
  * result per batch. Ids and outcomes only: no arguments, no tool output.
  */
@@ -126,7 +139,7 @@ export function renderToolBatchLedger(ledger: ToolBatchLedger): string {
 	if (ledger.interrupted > 0) counts.push(`${ledger.interrupted} interrupted`);
 	counts.push(`${ledger.dropped} never ran`);
 	const lines = [
-		`Partial completion ledger for this tool batch (${total} call${total === 1 ? "" : "s"}): ${counts.join(", ")}.`,
+		`${TOOL_BATCH_LEDGER_HEADLINE_PREFIX}${total} call${total === 1 ? "" : "s"}): ${counts.join(", ")}.`,
 		CAUSE_LINE[ledger.cause],
 	];
 	for (const entry of ledger.entries) {

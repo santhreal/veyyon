@@ -6,12 +6,18 @@
  */
 
 import type { AgentMessage } from "@veyyon/agent-core";
-import { renderToolBatchLedger, type ToolBatchLedger } from "@veyyon/agent-core";
 import {
 	type BranchSummaryMessage,
 	type CompactionSummaryMessage,
 	convertMessageToLlm,
 } from "@veyyon/agent-core/compaction/messages";
+// Owner, not the `@veyyon/agent-core` barrel: a value import of the barrel drags
+// the whole agent runtime and the `@veyyon/utils` barrel into `tools/read`.
+import {
+	renderToolBatchLedger,
+	TOOL_BATCH_LEDGER_HEADLINE_PREFIX,
+	type ToolBatchLedger,
+} from "@veyyon/agent-core/tool-batch-ledger";
 import type {
 	AssistantMessage,
 	ImageContent,
@@ -19,6 +25,7 @@ import type {
 	MessageAttribution,
 	TextContent,
 	ToolResultMessage,
+	UserMessage,
 } from "@veyyon/ai";
 import * as AIError from "@veyyon/ai/error";
 // Owners, not the `@veyyon/utils` barrel: 1 module against 74.
@@ -837,14 +844,7 @@ function expireAnsweredBatchLedger(
 ): ToolResultMessage {
 	const ledger = (message.details as { batchLedger?: ToolBatchLedger } | undefined)?.batchLedger;
 	if (ledger === undefined) return message;
-	let answered = false;
-	for (let cursor = index + 1; cursor < messages.length; cursor++) {
-		if (messages[cursor]?.role === "assistant") {
-			answered = true;
-			break;
-		}
-	}
-	if (!answered) return message;
+	if (!batchAnsweredAfter(messages, index)) return message;
 	// Rendered by the ONE owner, so the slice cannot drift from what was written.
 	const rendered = renderToolBatchLedger(ledger);
 	let changed = false;
@@ -856,6 +856,33 @@ function expireAnsweredBatchLedger(
 		return { ...block, text: block.text.slice(0, at).trimEnd() };
 	});
 	return changed ? { ...message, content } : message;
+}
+
+/** Has an assistant turn responded to the batch this message belongs to. */
+function batchAnsweredAfter(messages: AgentMessage[], index: number): boolean {
+	for (let cursor = index + 1; cursor < messages.length; cursor++) {
+		if (messages[cursor]?.role === "assistant") return true;
+	}
+	return false;
+}
+
+/**
+ * The turn-level form of the same instruction, and the same expiry.
+ *
+ * When a cut-short batch leaves no placeholder result to attach the ledger to
+ * (every call was exec-resolved out of band, or its arguments never finished),
+ * the agent loop sends the whole ledger as a synthetic user message instead.
+ * That form stores no ledger data, so it is recognized by the headline its own
+ * renderer writes, and the whole message is dropped rather than sliced, because
+ * the message IS the ledger and nothing else.
+ *
+ * It is dropped from the outbound request only. The transcript keeps it, which
+ * is what renders the reason the batch went quiet.
+ */
+function isAnsweredBatchLedgerNotice(messages: AgentMessage[], index: number, message: UserMessage): boolean {
+	if (message.synthetic !== true || typeof message.content !== "string") return false;
+	if (!message.content.startsWith(TOOL_BATCH_LEDGER_HEADLINE_PREFIX)) return false;
+	return batchAnsweredAfter(messages, index);
 }
 
 /**
@@ -972,9 +999,13 @@ export function convertToLlm(messages: AgentMessage[]): Message[] {
 				const converted = convertMessageToLlm(expireAnsweredBatchLedger(messages, index, m));
 				return converted ? [converted] : [];
 			}
+			case "user": {
+				if (isAnsweredBatchLedgerNotice(messages, index, m)) return [];
+				const converted = convertMessageToLlm(m);
+				return converted ? [converted] : [];
+			}
 			case "branchSummary":
 			case "compactionSummary":
-			case "user":
 			case "developer": {
 				// Core roles share one transformer with agent-core —
 				// duplicating them here is how compaction-summary image blocks
