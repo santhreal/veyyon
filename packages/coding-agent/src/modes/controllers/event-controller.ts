@@ -1,3 +1,4 @@
+import { toolResultNeverRan } from "@veyyon/agent-core";
 import type { AssistantMessage, ImageContent, TextContent } from "@veyyon/ai";
 import * as AIError from "@veyyon/ai/error";
 import { getStreamingPartialJson } from "@veyyon/ai/utils/block-symbols";
@@ -1361,7 +1362,12 @@ export class EventController {
 			if (details?.phases) {
 				this.ctx.setTodos(details.phases);
 			}
-		} else if (event.toolName === "todo" && event.isError) {
+		} else if (event.toolName === "todo" && event.isError && !toolResultNeverRan(event.result.details)) {
+			// A never-ran placeholder is not a todo failure. The turn died in transport
+			// before the call was dispatched, which the error card and the batch ledger
+			// already say once; repeating it per `todo` call in the dead batch (three
+			// identical lines on one reported turn) says nothing new and buries the one
+			// message that names the real cause.
 			const textContent = event.result.content.find(
 				(content): content is TextContent => content.type === "text",
 			)?.text;

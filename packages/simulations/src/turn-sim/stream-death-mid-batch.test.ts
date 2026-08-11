@@ -32,11 +32,12 @@
  *     replay-safety must not promote a permanent fault into the retry ladder.
  *
  * WHAT IT DOES NOT CATCH. The genuinely replay-unsafe shape is a Cursor
- * exec-channel block, which dispatches the tool inside the provider stream and
- * cannot be produced in-process, so `kCursorExecResolved` is covered by the
- * session's own unit coverage rather than here. Rows 1 and 2 are what would go
- * red if that guard were dropped in the other direction (retrying everything),
- * because a real paired result also stops the retry.
+ * exec-channel block, which dispatches the tool inside the provider stream.
+ * That is `unreplayable-batch-continue.test.ts`, which stamps
+ * `kCursorExecResolved` through the harness and asserts the session continues
+ * the turn instead of retrying it. Rows 1 and 2 here are what would go red if
+ * the guard were dropped in the other direction (retrying everything), because
+ * a real paired result also stops the retry.
  */
 import { expect, it } from "bun:test";
 import { SUPERSEDED_NOTICE } from "@veyyon/agent-core/compaction/pruning";
