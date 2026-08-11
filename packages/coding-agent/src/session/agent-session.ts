@@ -7859,6 +7859,7 @@ export class AgentSession {
 				delayMs: event.delayMs,
 				errorMessage: event.errorMessage,
 				errorId: event.errorId,
+				mode: event.mode,
 			});
 		} else if (event.type === "auto_retry_end") {
 			await this.#extensionRunner.emit({
@@ -7866,6 +7867,7 @@ export class AgentSession {
 				success: event.success,
 				attempt: event.attempt,
 				finalError: event.finalError,
+				mode: event.mode,
 				recoveredErrors: event.recoveredErrors,
 			});
 		} else if (event.type === "ttsr_triggered") {

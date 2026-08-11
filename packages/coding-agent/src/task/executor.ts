@@ -1779,6 +1779,7 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 					delayMs: event.delayMs,
 					errorMessage: event.errorMessage,
 					startedAtMs: Date.now(),
+					mode: event.mode,
 				};
 				progress.retryFailure = undefined;
 				scheduleProgress(true);
@@ -1791,6 +1792,7 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 					progress.retryFailure = {
 						attempt,
 						errorMessage: event.finalError ?? "Auto-retry failed",
+						mode: event.mode,
 					};
 				}
 				scheduleProgress(true);

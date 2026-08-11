@@ -232,7 +232,7 @@ export interface AutoCompactionEndEvent {
 	skipped?: boolean;
 }
 
-/** Fired when auto-retry starts */
+/** Fired when a recovery starts waiting: an auto-retry, or a continuation. */
 export interface AutoRetryStartEvent {
 	type: "auto_retry_start";
 	attempt: number;
@@ -240,6 +240,12 @@ export interface AutoRetryStartEvent {
 	delayMs: number;
 	errorMessage: string;
 	errorId?: number;
+	/**
+	 * Which recovery is waiting. Absent means a retry, which resends the turn;
+	 * `continue` is a tool batch that cannot be resent being carried forward, so
+	 * an extension rendering this must not call it a retry.
+	 */
+	mode?: "continue" | "retry";
 }
 
 export interface RecoveredRetryError {
@@ -255,6 +261,7 @@ export interface AutoRetryEndEvent {
 	success: boolean;
 	attempt: number;
 	finalError?: string;
+	mode?: "continue" | "retry";
 	recoveredErrors?: RecoveredRetryError[];
 }
 

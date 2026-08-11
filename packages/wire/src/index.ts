@@ -453,8 +453,21 @@ export type AgentEvent =
 	| { type: "notice"; level: "info" | "warning" | "error"; message: string; source?: string }
 	| { type: "auto_compaction_start"; reason: string; action: string }
 	| { type: "auto_compaction_end"; aborted: boolean; willRetry: boolean; errorMessage?: string; skipped?: boolean }
-	| { type: "auto_retry_start"; attempt: number; maxAttempts: number; delayMs: number; errorMessage: string }
-	| { type: "auto_retry_end"; success: boolean; attempt: number; finalError?: string }
+	| {
+			type: "auto_retry_start";
+			attempt: number;
+			maxAttempts: number;
+			delayMs: number;
+			errorMessage: string;
+			/**
+			 * Which recovery is waiting. Absent means a retry; `continue` is a tool
+			 * batch the host cannot resend being carried forward instead, which a
+			 * guest must not render as a retry. Spelled out rather than imported so
+			 * this package keeps depending on nothing.
+			 */
+			mode?: "continue" | "retry";
+	  }
+	| { type: "auto_retry_end"; success: boolean; attempt: number; finalError?: string; mode?: "continue" | "retry" }
 	| { type: "thinking_level_changed"; thinkingLevel?: string };
 
 // ═══════════════════════════════════════════════════════════════════════════
