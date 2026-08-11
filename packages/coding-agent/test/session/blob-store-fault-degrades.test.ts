@@ -6,7 +6,7 @@ import type { AssistantMessage } from "@veyyon/ai";
 import * as blobStoreModule from "@veyyon/coding-agent/session/blob-store";
 import { BlobStore } from "@veyyon/coding-agent/session/blob-store";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { getBlobsDir, setAgentDir, TempDir } from "@veyyon/utils";
+import { getBlobsDir, isRecord, setAgentDir, TempDir } from "@veyyon/utils";
 import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides } from "@veyyon/utils/dirs";
 import * as logger from "@veyyon/utils/logger";
 
@@ -82,10 +82,6 @@ function assistant(text: string): AssistantMessage {
 			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 		},
 	};
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null;
 }
 
 /**
