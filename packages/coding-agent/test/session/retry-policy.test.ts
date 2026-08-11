@@ -16,9 +16,12 @@ import { describe, expect, it } from "bun:test";
 import {
 	describeRetryPolicySource,
 	PROVIDER_RETRY_DEFAULTS,
+	RETRY_BACKOFF_JITTER_RATIO,
+	RETRY_BACKOFF_MAX_DELAY_MS,
 	type RetryPolicy,
 	type RetryPolicyOverride,
 	resolveRetryPolicy,
+	unreplayableContinueDelayMs,
 } from "../../src/session/retry-policy";
 
 /** The shipped global defaults from `retry.*`, so drift in either is visible here. */
@@ -342,5 +345,68 @@ describe("resolveRetryPolicy", () => {
 		it("treats a missing config object as no configuration", () => {
 			expect(resolveRetryPolicy(GLOBAL, undefined, cursorModel).maxRetries).toBe(3);
 		});
+	});
+});
+
+/**
+ * How long a continuation waits, tested at the owner.
+ *
+ * The session cannot be asked this question: the only observable there is wall
+ * time, and an UPPER bound on wall time is not a reliable observation under a
+ * loaded full-suite run, which is exactly what the ceiling needs asserted. The
+ * sim proves a wait happens at all (`unreplayable-batch-continue.test.ts`,
+ * "waits out the retry ladder's backoff"); the arithmetic is pinned here.
+ *
+ * Jitter only ever SHORTENS a wait, so every row asserts a band rather than a
+ * value, and every band is one a zero-delay or unclamped implementation misses.
+ */
+describe("unreplayableContinueDelayMs", () => {
+	const policy = (baseDelayMs: number, maxDelayMs: number): RetryPolicy => ({
+		maxRetries: 3,
+		baseDelayMs,
+		maxDelayMs,
+	});
+	const floor = (value: number) => value * (1 - RETRY_BACKOFF_JITTER_RATIO);
+
+	it("waits the base delay on the first continuation and doubles after it", () => {
+		const first = unreplayableContinueDelayMs(policy(400, 60_000), 1);
+		const second = unreplayableContinueDelayMs(policy(400, 60_000), 2);
+		const third = unreplayableContinueDelayMs(policy(400, 60_000), 3);
+
+		expect(first).toBeGreaterThanOrEqual(floor(400));
+		expect(first).toBeLessThanOrEqual(400);
+		expect(second).toBeGreaterThanOrEqual(floor(800));
+		expect(second).toBeLessThanOrEqual(800);
+		expect(third).toBeGreaterThanOrEqual(floor(1600));
+		expect(third).toBeLessThanOrEqual(1600);
+	});
+
+	it("clamps to the operator's ceiling instead of refusing the continuation", () => {
+		// The ladder REFUSES an attempt whose wait exceeds `retry.maxDelayMs`,
+		// because that wait is one the provider asked for and can be hours. This
+		// wait is ours, so the ceiling bounds it and the recovery still happens: a
+		// ceiling that turned the recovery off would be an off switch nobody
+		// configured.
+		const clamped = unreplayableContinueDelayMs(policy(5_000, 250), 3);
+
+		expect(clamped).toBe(250);
+	});
+
+	it("treats a ceiling of zero as no ceiling at all", () => {
+		// `retry.maxDelayMs: 0` is how the settings spell "unset". Reading it as a
+		// literal ceiling would make every continuation fire with no wait, which is
+		// the defect this delay exists to fix.
+		const unbounded = unreplayableContinueDelayMs(policy(400, 0), 1);
+
+		expect(unbounded).toBeGreaterThanOrEqual(floor(400));
+	});
+
+	it("stops doubling at the shipped backoff ceiling", () => {
+		// Nine continuations at a 500ms base would ask for over two minutes. The
+		// shared cap is what keeps a long ladder finite.
+		const far = unreplayableContinueDelayMs(policy(500, 600_000), 12);
+
+		expect(far).toBeLessThanOrEqual(RETRY_BACKOFF_MAX_DELAY_MS);
+		expect(far).toBeGreaterThanOrEqual(floor(RETRY_BACKOFF_MAX_DELAY_MS));
 	});
 });

@@ -481,7 +481,13 @@ import { disposeOwnedResources } from "./owned-resources";
 import { ProviderContextCanonicalizer } from "./provider-context-canonicalizer";
 import { applyProviderImagePolicy } from "./provider-image-budget";
 import { normalizeRoots } from "./relativize-paths";
-import { describeRetryPolicySource, type ResolvedRetryPolicy, resolveRetryPolicy } from "./retry-policy";
+import {
+	calculateRetryBackoffDelayMs,
+	describeRetryPolicySource,
+	type ResolvedRetryPolicy,
+	resolveRetryPolicy,
+	unreplayableContinueDelayMs,
+} from "./retry-policy";
 import type { BuildSessionContextOptions, SessionContext } from "./session-context";
 import { getLatestCompactionEntry, getRestorableSessionModels } from "./session-context";
 import { formatSessionDumpText } from "./session-dump-format";
@@ -725,7 +731,6 @@ export type AgentSessionEventListener = (event: AgentSessionEvent) => void;
 const UNEXPECTED_STOP_MAX_RETRIES = 3;
 const UNEXPECTED_STOP_TIMEOUT_MS = 4000;
 const EMPTY_STOP_MAX_RETRIES = 3;
-const RETRY_BACKOFF_MAX_DELAY_MS = 8_000;
 /**
  * Budget for callers on the user-visible `/quit` / `/exit` shutdown path that
  * want to cap how long they wait for `MnemopiSessionState.dispose()` to finish
@@ -844,7 +849,6 @@ const SHUTDOWN_DISPOSE_TIMEOUT_MS = 5_000;
 export type CommandMetadataChangedListener = () => void | Promise<void>;
 export type AsyncJobSnapshotItem = Pick<AsyncJob, "id" | "type" | "status" | "label" | "startTime">;
 
-const RETRY_BACKOFF_JITTER_RATIO = 0.25;
 /**
  * Hysteresis band for the post-maintenance "did we actually create headroom?"
  * check shared by the shake tail and the context-full tail. A
@@ -857,12 +861,6 @@ const RETRY_BACKOFF_JITTER_RATIO = 0.25;
  * most-recent kept turn already exceeds the threshold (the compaction thrash).
  */
 const COMPACTION_RECOVERY_BAND = 0.8;
-
-function calculateRetryBackoffDelayMs(baseDelayMs: number, attempt: number): number {
-	const cappedDelayMs = Math.min(Math.max(0, baseDelayMs) * 2 ** Math.max(0, attempt - 1), RETRY_BACKOFF_MAX_DELAY_MS);
-	const jitter = 1 - Math.random() * RETRY_BACKOFF_JITTER_RATIO;
-	return cappedDelayMs * jitter;
-}
 
 /**
  * Slack added past a sibling credential's block expiry before retrying, so
@@ -16973,7 +16971,16 @@ export class AgentSession {
 			"unreplayable-batch",
 			"The provider stream failed partway through a tool batch that cannot be replayed. Continuing with the calls that never ran.",
 		);
-		this.#scheduleAgentContinue({ generation: this.#promptGeneration });
+		// A continuation borrows the retry ladder's budget, so it borrows the same
+		// backoff: the transport just died, and re-requesting the largest context
+		// the session holds with no pause is what backoff exists to prevent. Keyed
+		// on this counter rather than #retryAttempt, so a session that also retried
+		// does not inherit that ladder's position on its first continuation. The
+		// formula and the ceiling rule live with the policy they read.
+		this.#scheduleAgentContinue({
+			delayMs: unreplayableContinueDelayMs(policy, this.#unreplayableBatchContinues),
+			generation: this.#promptGeneration,
+		});
 		return true;
 	}
 

@@ -46,6 +46,41 @@ export interface RetryPolicyOverride {
  */
 export type RetryPolicySource = "global" | "provider-default" | "config";
 
+/** Ceiling on one attempt's backoff, before the operator's own `retry.maxDelayMs`. */
+export const RETRY_BACKOFF_MAX_DELAY_MS = 8_000;
+/** How much of a computed backoff jitter may remove. Never adds. */
+export const RETRY_BACKOFF_JITTER_RATIO = 0.25;
+
+/**
+ * Exponential backoff for one retry attempt, jittered downward.
+ *
+ * `attempt` is 1-based: the first attempt waits `baseDelayMs`, the second twice
+ * that, and so on to {@link RETRY_BACKOFF_MAX_DELAY_MS}. Jitter only ever
+ * shortens the wait, by up to {@link RETRY_BACKOFF_JITTER_RATIO}, so a caller
+ * can treat `baseDelayMs * (1 - RATIO)` as a floor.
+ */
+export function calculateRetryBackoffDelayMs(baseDelayMs: number, attempt: number): number {
+	const cappedDelayMs = Math.min(Math.max(0, baseDelayMs) * 2 ** Math.max(0, attempt - 1), RETRY_BACKOFF_MAX_DELAY_MS);
+	const jitter = 1 - Math.random() * RETRY_BACKOFF_JITTER_RATIO;
+	return cappedDelayMs * jitter;
+}
+
+/**
+ * How long to wait before continuing a turn the transport killed inside a tool
+ * batch that cannot be replayed.
+ *
+ * The same ladder as a retry, because a continuation spends the same budget, but
+ * `maxDelayMs` CLAMPS the result here rather than refusing the attempt. The
+ * ladder's refusal is about a wait the PROVIDER asked for, which can be hours
+ * and must not hang a session; this wait is ours and is bounded by the ceiling
+ * anyway, so refusing on it would turn an operator's ceiling into an off switch
+ * for the recovery. `maxDelayMs <= 0` means no ceiling was configured.
+ */
+export function unreplayableContinueDelayMs(policy: RetryPolicy, attempt: number): number {
+	const backoffMs = calculateRetryBackoffDelayMs(policy.baseDelayMs, attempt);
+	return policy.maxDelayMs > 0 ? Math.min(backoffMs, policy.maxDelayMs) : backoffMs;
+}
+
 export interface ResolvedRetryPolicy extends RetryPolicy {
 	/** The most specific layer that contributed a field, for display. */
 	source: RetryPolicySource;
