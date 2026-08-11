@@ -24,14 +24,19 @@ permissions:
   contents: read
 
 jobs:
-  lint-and-typecheck:
-    name: Lint & type check
+  # Biome only. The workspace type check is ci.yml's `check` job and runs there
+  # alone: `bun run check:ts` is a full tsgo pass over every package, both
+  # workflows fire on the same push and the same pull request, and paying for it
+  # twice buys one answer. It has to live in ci.yml rather than here, because a
+  # release tag starts ci.yml and does not start this workflow, so ci.yml is the
+  # copy that must be self-sufficient. Naming this job for what it runs is the
+  # same lesson its own "Biome check" step records below.
+  lint-and-format:
+    name: Lint & format
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: ./.github/actions/bun-install
-      - name: Workspace type check
-        run: bun run check:ts
       - name: Lint
         run: bun run lint:ts
       # `lint:ts` above runs `biome lint`, which checks lint rules ONLY. The
