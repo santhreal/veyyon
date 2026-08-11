@@ -25,6 +25,18 @@ afterEach(() => {
 	for (const root of tempRoots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
 });
 
+/**
+ * The version the step installs comes from `packageManager`, so the expectation
+ * does too. A literal here would be one more copy of the pin to bump, which is
+ * the drift `scripts/the-bun-pin-has-one-owner.test.ts` exists to stop.
+ */
+function pinnedBunVersion(): string {
+	const manifest = JSON.parse(fs.readFileSync("package.json", "utf8")) as { packageManager?: string };
+	const match = /^bun@(\d+\.\d+\.\d+)$/.exec(manifest.packageManager ?? "");
+	if (!match) throw new Error(`package.json packageManager is not a bun pin: ${manifest.packageManager}`);
+	return match[1];
+}
+
 async function runInstallStep(runnerOs: "Linux" | "Windows", failuresBeforeSuccess = 0): Promise<InstallStepResult> {
 	const action = Bun.YAML.parse(await Bun.file(".github/actions/bun-install/action.yml").text()) as CompositeAction;
 	const step = action.runs.steps.find(candidate => candidate.name === "Install bun when absent");
@@ -124,6 +136,6 @@ describe("bun-install composite action PATH serialization", () => {
 		expect(result.exitCode).toBe(1);
 		expect(result.attempts).toBe(3);
 		expect(result.pathOutput).toBe("");
-		expect(result.stderr).toContain("failed to install bun-v1.3.14 after 3 attempts");
+		expect(result.stderr).toContain(`failed to install bun-v${pinnedBunVersion()} after 3 attempts`);
 	});
 });
