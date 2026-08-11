@@ -122,6 +122,14 @@
  * empty completion as terminal (the wait ends unsuccessfully, because nothing
  * recovered), and the ladder exhausts its own cap (the cap's end is the only one,
  * and a later turn must not add a second claiming success).
+ *
+ * What these rows do NOT pin, deliberately: which owner resolves the retry gate
+ * on the terminal path. `#endAnnouncedContinuationWait` resolves it, and the
+ * settle path resolves it again a few statements later, so removing either call
+ * leaves the gate closed by the time the prompt returns and every row here stays
+ * green. The contract is that the gate is closed and the end event was emitted,
+ * which the rows assert; the redundancy is kept because the helper is named for
+ * closing the wait and a later exit added above the tail would otherwise leak it.
  */
 import { expect, it } from "bun:test";
 import * as AIError from "@veyyon/ai/error";
