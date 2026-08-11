@@ -53,6 +53,14 @@
  *     and a turn that died for good is not evidence about the next thing they
  *     type. Restoring it only on a landed turn meant one bad turn disarmed the
  *     recovery for the rest of the session.
+ * 11. The turn-level ledger stops being sent once an assistant turn answers it,
+ *     live and after a resume, and is still sent while nothing has. That form is
+ *     a synthetic user message carrying no structured ledger to re-render from,
+ *     so recognition rests on the headline its own renderer writes and on the
+ *     flag saying the session wrote it: both have to survive a JSONL round-trip,
+ *     or the orders ride forever on exactly the sessions that were interrupted.
+ *     The record stays in stored history, because this is an outbound rule and
+ *     not a deletion.
  *
  * The rule rows 6 and 7 share is that the question is asked per CALL. A
  * call that already carries a real result is answered, and a never-ran
@@ -488,6 +496,63 @@ it("hands a resumed session a paired, ledger-free version of the continued turn"
 				}
 			}
 			expect(unanswered).toEqual([]);
+		} finally {
+			await reopened.dispose();
+		}
+	} finally {
+		sim.dispose();
+	}
+});
+
+it("stops sending the turn-level ledger once an assistant turn has answered it, live and after a resume", async () => {
+	// The notice form of the ledger, on the wire, through the real conversion seam.
+	// A batch with nothing but out-of-band calls leaves no placeholder to hang the
+	// ledger on, so the whole thing travels as a synthetic user message that stores
+	// no ledger data to re-render from: recognition is by the headline its own
+	// renderer writes, and the flag that says the session wrote it rather than the
+	// operator. Both have to survive a JSONL round-trip or the instruction rides
+	// forever on exactly the sessions that were interrupted.
+	const contexts: string[] = [];
+	const sim = await createSimulation({
+		persist: true,
+		settings: { "retry.maxRetries": 2 },
+		tools: [simTool(TOOL.read, async () => ({ content: [{ type: "text", text: "read ran" }] }))],
+		script: turn => {
+			contexts.push(contextText(turn));
+			if (turn.call === 1) {
+				turn.execResolvedToolCall(TOOL.read, { path: "README.md" }, "call-b");
+				turn.fail(STALL_TEXT);
+				return;
+			}
+			turn.text(`answer ${turn.call}`);
+			turn.finish();
+		},
+	});
+	try {
+		await sim.session.prompt("dispatch it out of band");
+		// THE POSITIVE CONTROL. Nothing has answered the batch yet, so the very
+		// next request still carries the orders. A row that only asserts the
+		// absence would pass against a rule that dropped the notice always.
+		await sim.session.prompt("what happened");
+		expect(contexts.at(-1) ?? "").toContain(LEDGER_MARKER);
+
+		// That turn landed, so the orders have been carried out.
+		await sim.session.prompt("carry on");
+		expect(contexts.at(-1) ?? "").not.toContain(LEDGER_MARKER);
+
+		const reopened = await sim.reopen();
+		try {
+			await reopened.session.prompt("and after a resume");
+			expect(contexts.at(-1) ?? "").not.toContain(LEDGER_MARKER);
+			// The notice is still in stored history: this is an outbound rule, not a
+			// deletion, and a row that passed because the record had vanished would
+			// be proving something else entirely.
+			const storedLedgers = reopened.session.agent.state.messages.filter(message =>
+				message.role === "user" && typeof message.content === "string"
+					? message.content.includes(LEDGER_MARKER)
+					: false,
+			);
+			expect(storedLedgers).toHaveLength(1);
 		} finally {
 			await reopened.dispose();
 		}
