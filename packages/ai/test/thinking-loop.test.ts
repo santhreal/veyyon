@@ -44,6 +44,28 @@ function nearDuplicateLoop(paragraphs: number): string {
 	return out.join("\n\n\n");
 }
 
+/**
+ * A streamed partial the way a provider's partial actually arrives: carrying the
+ * accounting for the prompt it has already been billed for. `usage` is a required
+ * field of `AssistantMessage`, and the loop guard reads it, because an aborted
+ * loop is spend the operator owes for output that is being thrown away.
+ */
+function billedPartial(extra?: Partial<AssistantMessage>): AssistantMessage {
+	return {
+		role: "assistant",
+		content: [],
+		usage: {
+			input: 1200,
+			output: 340,
+			cacheRead: 0,
+			cacheWrite: 800,
+			totalTokens: 2340,
+			cost: { input: 0.0036, output: 0.0017, cacheRead: 0, cacheWrite: 0.003, total: 0.0083 },
+		},
+		...extra,
+	} as unknown as AssistantMessage;
+}
+
 /** Genuinely distinct reasoning paragraphs — must never trip the detector. */
 function distinctReasoning(): string {
 	return [
@@ -462,7 +484,7 @@ describe("gemini thinking-loop guard (stream wrapper)", () => {
 describe("withGeminiThinkingLoopGuard (Vertex transport)", () => {
 	test("emits a retryable empty-content error for a looping Vertex Gemini stream", async () => {
 		const model = { api: "google-vertex", provider: "google-vertex", id: "gemini-2.5-pro" } as unknown as Model<Api>;
-		const partial = { role: "assistant", content: [] } as unknown as AssistantMessage;
+		const partial = billedPartial();
 
 		const guarded = withGeminiThinkingLoopGuard(model, undefined, () => {
 			const inner = new AssistantMessageEventStream();
@@ -483,6 +505,17 @@ describe("withGeminiThinkingLoopGuard (Vertex transport)", () => {
 		expect(result.errorMessage).toContain(THINKING_LOOP_ERROR_MARKER);
 		expect(AIError.is(result.errorId, AIError.Flag.ThinkingLoop)).toBe(true);
 		expect(isRetryableError(new Error(result.errorMessage))).toBe(true);
+		// The loop's own tokens are gone with its text, and the prompt behind them
+		// was billed: the stall error carries that spend instead of writing it off.
+		expect(result.usage.discarded).toEqual({
+			attempts: 1,
+			input: 1200,
+			output: 340,
+			cacheRead: 0,
+			cacheWrite: 800,
+			cost: 0.0083,
+		});
+		expect(result.usage.cost.total).toBeCloseTo(0.0083, 10);
 	});
 });
 describe("isLoopGuardedModel", () => {
@@ -511,7 +544,7 @@ describe("loop guard assistant prose/text loops", () => {
 			provider: "deepseek",
 			id: "deepseek-reasoner",
 		} as unknown as Model<Api>;
-		const partial = { role: "assistant", content: [], stopReason: "stop" } as unknown as AssistantMessage;
+		const partial = billedPartial({ stopReason: "stop" });
 		const options = { loopGuard: { checkAssistantContent: true } };
 
 		const guarded = withGeminiThinkingLoopGuard(model, options, () => {
@@ -537,6 +570,8 @@ describe("loop guard assistant prose/text loops", () => {
 		expect(AIError.is(result.errorId, AIError.Flag.ThinkingLoop)).toBe(true);
 		expect(result.errorMessage).toContain("stream stall");
 		expect(isRetryableError(new Error(result.errorMessage))).toBe(true);
+		expect(result.usage.discarded?.attempts).toBe(1);
+		expect(result.usage.discarded?.input).toBe(1200);
 	});
 
 	test("does not trip on assistant text loop when checkAssistantContent is false", async () => {
@@ -545,7 +580,7 @@ describe("loop guard assistant prose/text loops", () => {
 			provider: "deepseek",
 			id: "deepseek-reasoner",
 		} as unknown as Model<Api>;
-		const partial = { role: "assistant", content: [], stopReason: "stop" } as unknown as AssistantMessage;
+		const partial = billedPartial({ stopReason: "stop" });
 		const options = { loopGuard: { checkAssistantContent: false } };
 
 		const guarded = withGeminiThinkingLoopGuard(model, options, () => {
