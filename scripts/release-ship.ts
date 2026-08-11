@@ -189,7 +189,13 @@ export function failureAdvice(failures: readonly RunSummary[], tag: string): str
 const WAIT_CEILING_MS = 90 * 60 * 1000;
 const POLL_INTERVAL_MS = 15 * 1000;
 
-async function git(...args: string[]): Promise<string> {
+/**
+ * The one `git` runner both halves of a cut use. The buffer is raised because
+ * `status --porcelain -z` on a tree carrying another lane's work overruns the
+ * default, and a preparation that cannot read the tree it is about to rewrite
+ * must not be a truncated read.
+ */
+export async function git(...args: string[]): Promise<string> {
 	const { stdout } = await execFileAsync("git", args, { maxBuffer: 64 * 1024 * 1024 });
 	return stdout;
 }

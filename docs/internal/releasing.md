@@ -489,9 +489,14 @@ tag necessarily landed on a SHA no CI run had tested.
 
 **Now the bump is prepared locally and pushed to `main` first**, so the tag lands
 on a commit `main` already tested and the compensation is unnecessary. The
-controller workflow, the nonce correlation, the source gate, and the release-train
-recovery signals are all gone. Recovering a failed release is the same act as any
-other: fix what failed, and tag the commit that goes green.
+controller workflow, the nonce correlation, the source gate, and the automatic
+re-cut from an unpublished tag are all gone. Recovering a failed release is the
+same act as any other: fix what failed, and tag the commit that goes green.
+
+What survived that removal is the `release_train_alert` job described above. It
+reports rather than recovers: it files or clears one pinned `release-train`
+issue and cuts nothing, so a search for that label finds a live job and not a
+leftover of the controller.
 
 ## Runners and concurrency
 
