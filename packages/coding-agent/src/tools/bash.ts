@@ -50,8 +50,8 @@ import { truncateForPrompt } from "./approval";
 import { registerForegroundBashWait } from "./bash-foreground-registry";
 import {
 	bashCredentialTargets,
-	CRITICAL_BASH_PATTERNS,
 	findCriticalBashRisk,
+	findFlaggedBashPattern,
 	hostReachableCommand,
 } from "./bash-guard";
 import { type BashInteractiveResult, runInteractiveBashPty } from "./bash-interactive";
@@ -114,7 +114,7 @@ export function wrapShellLineForClientTerminal(
 	return { command: shellConfig.shell, args: [...shellConfig.args, finalLine] };
 }
 
-export { CRITICAL_BASH_PATTERNS } from "./bash-guard";
+export { FLAGGED_BASH_PATTERNS } from "./bash-guard";
 
 /**
  * How the bash tool classifies one call.
@@ -172,10 +172,16 @@ export function bashApprovalDecision(
 	// The patterns are about TEXT, so they are matched against the part of the
 	// line that can reach this host. A `curl … | sh` inside a throwaway container
 	// with no volume, privilege, device or host namespace is the container's
-	// business; the same pipeline outside one is still critical.
+	// business; the same pipeline outside one is still flagged.
 	const hostText = command === "" ? "" : hostReachableCommand(command, undefined, judgementEnv);
-	if (hostText !== "" && CRITICAL_BASH_PATTERNS.some(pattern => pattern.test(hostText))) {
-		return { tier: "exec", critical: true, reason: "Critical pattern detected" };
+	const flagged = findFlaggedBashPattern(hostText);
+	if (flagged) {
+		// `critical` is the floor yolo keeps; `override` is a prompt every rung
+		// below yolo raises and yolo does not. Splitting them is what stops yolo
+		// from asking about an install the operator typed: see `BashRiskSeverity`.
+		return flagged.severity === "destroys"
+			? { tier: "exec", critical: true, reason: flagged.reason }
+			: { tier: "exec", override: true, reason: flagged.reason };
 	}
 	return "exec";
 }
