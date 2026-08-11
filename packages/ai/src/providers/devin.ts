@@ -57,6 +57,7 @@ import type {
 	Tool,
 	ToolCall,
 } from "../types";
+import { clearStreamingPartialJson, setStreamingPartialJson } from "../utils/block-symbols";
 import { deterministicUuid } from "../utils/deterministic-id";
 import { AssistantMessageEventStream } from "../utils/event-stream";
 import { toolWireSchema } from "../utils/schema/wire";
@@ -352,6 +353,14 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 								: previousJson + tc.argumentsJson;
 							const delta = accumulated.slice(previousJson.length);
 							toolPartialJson.set(toolCallId, accumulated);
+							// Publish the raw accumulation on the block itself. `arguments` only
+							// re-parses every STREAMING_JSON_PARSE_MIN_GROWTH bytes, so a preview
+							// reading it alone shows nothing until the call closes; the renderer
+							// path (event-controller → ToolArgsRevealController) decodes this
+							// buffer every frame instead. Cleared at `toolcall_end` below,
+							// because a marker left holding text is how `agent-loop.ts` detects
+							// a call whose arguments never finished.
+							setStreamingPartialJson(block, accumulated);
 							const throttled = parseStreamingJsonThrottled(accumulated, toolLastParseLen.get(toolCallId) ?? 0);
 							if (throttled) {
 								block.arguments = throttled.value;
@@ -386,6 +395,7 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 			endThinkingBlock();
 			for (const [id, block] of toolBlocks) {
 				block.arguments = parseStreamingJson(toolPartialJson.get(id));
+				clearStreamingPartialJson(block);
 				stream.push({
 					type: "toolcall_end",
 					contentIndex: output.content.indexOf(block),
