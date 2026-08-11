@@ -44,6 +44,7 @@ import type {
 	ToolChoice,
 } from "@veyyon/ai";
 import { setBedrockProviderModule } from "@veyyon/ai/providers/register-builtins";
+import { type CursorExecResolvedCarrier, kCursorExecResolved } from "@veyyon/ai/utils/block-symbols";
 import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { buildModel } from "@veyyon/catalog/build";
 import type { Effort } from "@veyyon/catalog/effort";
@@ -137,6 +138,18 @@ export interface ScriptedTurn {
 	toolCall(name: string, args: Record<string, unknown>, id?: string): void;
 	/** Emit `toolcall_start` + a partial argument delta and never close it. */
 	openToolCall(name: string, partialArgs: string, id?: string): void;
+	/**
+	 * Emit a tool call block a provider's own exec channel already dispatched.
+	 *
+	 * Cursor's exec channel runs the tool through a caller-supplied handler
+	 * INSIDE the provider stream and synthesizes the `toolCall` block before
+	 * awaiting it, so the call may have finished, may still be running, and may
+	 * have applied half its work. `kCursorExecResolved` is the marker that says
+	 * so, and it is the only shape in the product that makes a failed batch
+	 * genuinely unsafe to replay. Stamping it here is what lets a scenario reach
+	 * that decision without a Cursor transport.
+	 */
+	execResolvedToolCall(name: string, args: Record<string, unknown>, id?: string): void;
 	/**
 	 * Report what this request cost. Providers stream usage and the turn's stored
 	 * assistant message carries it; a simulation that never sets it leaves every
@@ -242,6 +255,29 @@ async function runScript(
 	let toolCallSeq = 0;
 	let ended = false;
 	stream.push({ type: "start", partial });
+	const emitToolCall = (
+		name: string,
+		args: Record<string, unknown>,
+		id: string | undefined,
+		execResolved: boolean,
+	): void => {
+		toolCallSeq += 1;
+		const block: ToolCall = {
+			type: "toolCall",
+			id: id ?? `sim-call-${call}-${toolCallSeq}`,
+			name,
+			arguments: args,
+		};
+		// The one marker that makes a batch replay-unsafe. Set on the block the
+		// stream carries, so it travels the same route a Cursor exec-channel call
+		// takes: every layer between here and the agent loop spreads blocks.
+		if (execResolved) (block as CursorExecResolvedCarrier)[kCursorExecResolved] = true;
+		const index = content.length;
+		content.push(block);
+		stream.push({ type: "toolcall_start", contentIndex: index, partial });
+		stream.push({ type: "toolcall_delta", contentIndex: index, delta: JSON.stringify(args), partial });
+		stream.push({ type: "toolcall_end", contentIndex: index, toolCall: block, partial });
+	};
 
 	const turn: ScriptedTurn = {
 		stream,
@@ -280,18 +316,10 @@ async function runScript(
 			stream.push({ type: "thinking_delta", contentIndex: index, delta: partialValue, partial });
 		},
 		toolCall(name, args, id) {
-			toolCallSeq += 1;
-			const block: ToolCall = {
-				type: "toolCall",
-				id: id ?? `sim-call-${call}-${toolCallSeq}`,
-				name,
-				arguments: args,
-			};
-			const index = content.length;
-			content.push(block);
-			stream.push({ type: "toolcall_start", contentIndex: index, partial });
-			stream.push({ type: "toolcall_delta", contentIndex: index, delta: JSON.stringify(args), partial });
-			stream.push({ type: "toolcall_end", contentIndex: index, toolCall: block, partial });
+			emitToolCall(name, args, id, false);
+		},
+		execResolvedToolCall(name, args, id) {
+			emitToolCall(name, args, id, true);
 		},
 		openToolCall(name, partialArgs, id) {
 			toolCallSeq += 1;

@@ -2140,6 +2140,9 @@ export class AgentSession {
 	// Retry state
 	#retryAbortController: AbortController | undefined = undefined;
 	#retryAttempt = 0;
+	/** Continuations spent on transport deaths inside an unreplayable tool batch;
+	 *  charged against the same budget as a retry and reset by a turn that lands. */
+	#unreplayableBatchContinues = 0;
 	#retryPromise: Promise<void> | undefined = undefined;
 	#retryResolve: (() => void) | undefined = undefined;
 	#activeRetryFallback: ActiveRetryFallbackState | undefined = undefined;
@@ -5863,6 +5866,11 @@ export class AgentSession {
 				if (this.#handoffAbortController) {
 					this.#skipPostTurnMaintenanceAssistantTimestamp = assistantMsg.timestamp;
 				}
+				if (assistantMsg.stopReason !== "error") {
+					// A turn that reached the provider and came back is the evidence the
+					// transport recovered; the next transport death gets the full budget.
+					this.#unreplayableBatchContinues = 0;
+				}
 				if (
 					assistantMsg.stopReason !== "error" &&
 					assistantMsg.stopReason !== "aborted" &&
@@ -6153,6 +6161,13 @@ export class AgentSession {
 					await emitAgentEndNotification();
 					return;
 				}
+			}
+			// Retry was refused because the batch cannot be resent, not because the
+			// failure was final. The turn now in context IS sendable, so continue it
+			// rather than leaving the session parked mid-batch.
+			if (this.#continueAfterUnreplayableBatch(msg)) {
+				await emitAgentEndNotification();
+				return;
 			}
 			// Classifier refusals are persisted-skipped above; also prune the trailing
 			// stub from active context so the next turn's prompt does not replay it.
@@ -16905,6 +16920,66 @@ export class AgentSession {
 			if (contextMessage.role !== "toolResult") continue;
 			if (!toolCallIds.has(contextMessage.toolCallId)) continue;
 			if (!toolResultNeverRan(contextMessage.details)) return true;
+		}
+		return false;
+	}
+
+	/**
+	 * A transport fault killed a tool batch that cannot be replayed, so continue
+	 * the turn instead of ending the session's work.
+	 *
+	 * Retry and continuation answer different questions. Retry re-sends the turn,
+	 * which {@link #hasReplayUnsafeToolOutput} forbids once any call in the batch
+	 * may have run: a Cursor exec-channel call dispatched inside the provider
+	 * stream, or a call that already has a real result. Continuation sends the
+	 * turn that is now in context, which is complete and valid: the failed
+	 * assistant message kept its calls, every call the loop never dispatched was
+	 * paired with a never-ran placeholder, and the batch ledger names exactly
+	 * which ones need reissuing. Nothing is duplicated, because nothing is resent.
+	 *
+	 * Without this the operator's session stopped dead in the middle of a batch
+	 * (a reported turn: 75 calls, 0 ran, 21 interrupted, 54 never ran) on a
+	 * failure the classifier itself calls transient, and the only way forward was
+	 * to notice and type something. The bar is deliberately narrow: the failure
+	 * would have been retried but for replay safety, at least one call genuinely
+	 * never ran, and the attempt is charged against the same retry budget so a
+	 * provider dying on every attempt cannot loop.
+	 */
+	#continueAfterUnreplayableBatch(message: AssistantMessage): boolean {
+		if (message.stopReason !== "error") return false;
+		if (this.#abortInProgress || this.#isDisposed || this.#streamingEditAbortTriggered) return false;
+		const retrySettings = this.settings.getGroup("retry");
+		if (!retrySettings.enabled) return false;
+		const id = this.#classifyRetryMessage(message);
+		// Blocked only by replay safety: transient on its own, refused with it.
+		if (!AIError.retriable(id, { replayUnsafe: false })) return false;
+		if (AIError.retriable(id, { replayUnsafe: true })) return false;
+		if (!this.#hasReplayUnsafeToolOutput(message)) return false;
+		if (!this.#hasNeverRanToolResult(message)) return false;
+		const policy = this.#resolveRetryPolicy(retrySettings);
+		if (this.#unreplayableBatchContinues >= policy.maxRetries) return false;
+		this.#unreplayableBatchContinues += 1;
+		this.#resolveRetry();
+		this.#operatorNotices.warn(
+			"unreplayable-batch",
+			"The provider stream failed partway through a tool batch that cannot be replayed. Continuing with the calls that never ran.",
+		);
+		this.#scheduleAgentContinue({ generation: this.#promptGeneration });
+		return true;
+	}
+
+	/** Whether any call in this turn was paired with a never-ran placeholder. */
+	#hasNeverRanToolResult(message: AssistantMessage): boolean {
+		const toolCallIds = new Set<string>();
+		for (const block of message.content) {
+			if (block.type === "toolCall") toolCallIds.add(block.id);
+		}
+		for (const incomplete of message.incompleteToolCalls ?? []) toolCallIds.add(incomplete.id);
+		if (toolCallIds.size === 0) return false;
+		for (const contextMessage of this.agent.state.messages) {
+			if (contextMessage.role !== "toolResult") continue;
+			if (!toolCallIds.has(contextMessage.toolCallId)) continue;
+			if (toolResultNeverRan(contextMessage.details)) return true;
 		}
 		return false;
 	}
