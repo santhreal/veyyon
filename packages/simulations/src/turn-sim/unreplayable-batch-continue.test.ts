@@ -80,7 +80,16 @@
  * by replay safety") but is unreachable today, because a failure that survives
  * replay-unsafety is consumed by the retry ladder before the gate is reached;
  * and the abort/dispose guard is a re-entrancy interlock a scripted provider
- * cannot race.
+ * cannot race. `stopReason !== "error"` is the third: the settle path returns on
+ * an aborted message before the gate is reached, and an abort is always someone
+ * cancelling (`emitAbortedAssistantMessage` is driven by a request signal), so a
+ * transport death is an error and never arrives here wearing the other label.
+ *
+ * The notice is raised ONCE PER SESSION, not once per incident, because
+ * `OperatorNotices` collapses an identical notice by design: it states the
+ * policy ("this is what veyyon does when a batch cannot be replayed"), and the
+ * per-incident fact is the turn's own error card, which names the transport
+ * reason. A second notice would repeat what the card already says.
  */
 import { expect, it } from "bun:test";
 import * as AIError from "@veyyon/ai/error";
