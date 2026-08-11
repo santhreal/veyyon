@@ -18,7 +18,8 @@
  * Anthropic-messages providers.
  */
 import { scheduler } from "node:timers/promises";
-import type { AssistantMessage, AssistantMessageEvent, Context } from "../types";
+import { discardAttemptUsage } from "@veyyon/catalog/models";
+import type { Api, AssistantMessage, AssistantMessageEvent, Context, Model } from "../types";
 import { AssistantMessageEventStream } from "./event-stream";
 
 export const MAX_EMPTY_COMPLETION_RETRIES = 2;
@@ -78,15 +79,25 @@ interface EmptyCompletionRetryOptions {
  * Wrap a single-attempt provider stream with bounded empty-completion retries.
  * `attempt` MUST create a fresh request (and its own output message) on each
  * call so a retry never inherits stale metadata from an empty attempt.
+ *
+ * A discarded attempt's spend is not stale metadata: the provider billed the
+ * whole prompt (cache write included) for the empty answer it returned, so each
+ * abandoned attempt's usage is carried onto the message finally delivered.
  */
-export function withEmptyCompletionRetry<M, O extends EmptyCompletionRetryOptions>(
-	model: M,
+export function withEmptyCompletionRetry<TApi extends Api, O extends EmptyCompletionRetryOptions>(
+	model: Model<TApi>,
 	context: Context,
 	options: O | undefined,
-	attempt: (model: M, context: Context, options?: O) => AssistantMessageEventStream,
+	attempt: (model: Model<TApi>, context: Context, options?: O) => AssistantMessageEventStream,
 ): AssistantMessageEventStream {
 	const outer = new AssistantMessageEventStream();
 	const signal = options?.signal;
+	const discardedUsages: AssistantMessage["usage"][] = [];
+	const carrySpend = (delivered: AssistantMessage): AssistantMessage => {
+		for (const spent of discardedUsages) discardAttemptUsage(model, spent, delivered.usage);
+		discardedUsages.length = 0;
+		return delivered;
+	};
 	void (async () => {
 		for (let emptyAttempt = 0; ; emptyAttempt++) {
 			const inner = attempt(model, context, options);
@@ -147,16 +158,22 @@ export function withEmptyCompletionRetry<M, O extends EmptyCompletionRetryOption
 					outer.fail(signal?.aborted ? signal.reason : waitError);
 					return;
 				}
-				// Discard the buffered `start` from this empty attempt and retry.
+				// The buffered `start` from this empty attempt is dropped, but the
+				// prompt it billed is not: keep its usage for the delivered message.
+				if (message?.usage) discardedUsages.push(message.usage);
 				continue;
 			}
 
 			flush();
 			if (terminal) {
+				// A failed turn has no message to carry spend onto (the caller sees a
+				// thrown error), so only a terminal event takes it.
+				if (terminal.type === "done") carrySpend(terminal.message);
+				else if (terminal.type === "error") carrySpend(terminal.error);
 				outer.push(terminal);
 			} else if (!outer.done) {
 				try {
-					outer.end(await inner.result());
+					outer.end(carrySpend(await inner.result()));
 				} catch (error) {
 					outer.fail(error);
 				}

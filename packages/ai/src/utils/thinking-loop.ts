@@ -36,7 +36,7 @@
  * `completeSimple`) re-sample it a few times and then let a stubborn loop cook
  * through one unguarded pass. Disable detection with `VEYYON_NO_THINKING_LOOP_GUARD=1`.
  */
-import { emptyUsage } from "@veyyon/catalog/models";
+import { discardAttemptUsage, emptyUsage } from "@veyyon/catalog/models";
 import * as logger from "@veyyon/utils/logger";
 import * as AIError from "../error";
 import type { Api, AssistantMessage, Model, StreamOptions } from "../types";
@@ -378,8 +378,13 @@ export function guardThinkingLoopStream(
 	void (async () => {
 		let thinkingArmed = true;
 		let textArmed = checkAssistantContent;
+		// Last streamed view of the attempt, kept for its usage: a loop that gets
+		// aborted still billed every token it sampled, and the stall message this
+		// guard raises replaces the attempt entirely.
+		let partial: AssistantMessage | undefined;
 		try {
 			for await (const event of inner) {
+				if ("partial" in event) partial = event.partial;
 				let detail: string | null = null;
 				if (thinkingArmed && event.type === "thinking_delta") {
 					detail = thinkingDetector.push(event.delta);
@@ -411,10 +416,12 @@ export function guardThinkingLoopStream(
 					controller.abort(
 						AIError.attach(new Error(THINKING_LOOP_ERROR_MARKER), AIError.create(AIError.Flag.ThinkingLoop)),
 					);
+					const stall = buildThinkingLoopError(model, detail);
+					if (partial) discardAttemptUsage(model, partial.usage, stall.usage);
 					outer.push({
 						type: "error",
 						reason: "error",
-						error: buildThinkingLoopError(model, detail),
+						error: stall,
 					});
 					return;
 				}

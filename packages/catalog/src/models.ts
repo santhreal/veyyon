@@ -99,8 +99,110 @@ export function calculateCost<TApi extends Api>(model: Model<TApi>, usage: Usage
 	usage.cost.output = (model.cost.output / 1000000) * (usage.output + (orchestration?.output ?? 0));
 	usage.cost.cacheRead = (model.cost.cacheRead / 1000000) * (usage.cacheRead + (orchestration?.cacheRead ?? 0));
 	usage.cost.cacheWrite = (model.cost.cacheWrite / 1000000) * usage.cacheWrite;
-	usage.cost.total = usage.cost.input + usage.cost.output + usage.cost.cacheRead + usage.cost.cacheWrite;
+	recomputeCostTotal(usage);
 	return usage.cost;
+}
+
+/**
+ * Sum {@link Usage.cost}'s total from its buckets plus whatever already-discarded
+ * attempts cost.
+ *
+ * This is the ONE owner of that sum. Providers that rescale the buckets after
+ * pricing (a Codex or OpenAI service-tier multiplier) call this instead of adding
+ * the four fields themselves, because a hand-written sum silently drops the spend
+ * of every retried attempt: the buckets price the delivered tokens only.
+ */
+export function recomputeCostTotal(usage: Usage): number {
+	usage.cost.total =
+		usage.cost.input +
+		usage.cost.output +
+		usage.cost.cacheRead +
+		usage.cost.cacheWrite +
+		(usage.discarded?.cost ?? 0);
+	return usage.cost.total;
+}
+
+/**
+ * Scale every priced bucket by a billing multiplier the provider applied after
+ * the fact (an OpenAI or Codex service tier), then re-total.
+ *
+ * The scale-and-total step is the same operation for every biller, and it is the
+ * step that keeps losing money: written out by hand it ends in a four-field sum
+ * that drops what discarded attempts cost. A multiplier of 1 is a no-op, so a
+ * caller can hand over whatever it resolved without guarding first.
+ */
+export function scaleUsageCost(usage: Usage, multiplier: number): void {
+	if (multiplier === 1) return;
+	usage.cost.input *= multiplier;
+	usage.cost.output *= multiplier;
+	usage.cost.cacheRead *= multiplier;
+	usage.cost.cacheWrite *= multiplier;
+	recomputeCostTotal(usage);
+}
+
+/**
+ * Carry the spend of an attempt whose output is being thrown away into the usage
+ * that replaces it.
+ *
+ * Every in-provider retry discards the attempt's text, which is correct (it is
+ * not replayable), and used to discard its billed tokens with it, which is not:
+ * the provider bills a stream that died after `message_start` for the whole
+ * prompt, including the cache write, and bills an aborted thinking loop for every
+ * token it sampled. Dropping that spend understates cost and, for providers whose
+ * limit window is measured locally from observed cost, understates how much of
+ * the operator's quota is already gone.
+ *
+ * The discarded tokens never join the delivered token fields, so the context
+ * meter still describes the message that survived. They land in
+ * {@link Usage.discarded} with their price folded into `cost.total`.
+ */
+export function discardAttemptUsage<TApi extends Api>(model: Model<TApi>, discarded: Usage, next: Usage): Usage {
+	const billed = discarded.input + discarded.output + discarded.cacheRead + discarded.cacheWrite;
+	const carried = discarded.discarded;
+	if (billed === 0 && carried === undefined) return next;
+	next.discarded ??= { attempts: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
+	const bucket = next.discarded;
+	if (billed > 0) bucket.attempts += 1;
+	bucket.attempts += carried?.attempts ?? 0;
+	bucket.input += discarded.input + (carried?.input ?? 0);
+	bucket.output += discarded.output + (carried?.output ?? 0);
+	bucket.cacheRead += discarded.cacheRead + (carried?.cacheRead ?? 0);
+	bucket.cacheWrite += discarded.cacheWrite + (carried?.cacheWrite ?? 0);
+	bucket.cost += discardedAttemptCost(model, discarded);
+	recomputeCostTotal(next);
+	return next;
+}
+
+/**
+ * What a discarded attempt cost. An attempt its provider already priced keeps
+ * that number, so a service-tier multiplier the provider applied is not
+ * recomputed away; an attempt that died before pricing is priced here at the
+ * model that served it. A zero for a free or unpriced model is a real zero and
+ * pricing it again changes nothing.
+ */
+function discardedAttemptCost<TApi extends Api>(model: Model<TApi>, discarded: Usage): number {
+	if (discarded.cost.total !== 0) return discarded.cost.total;
+	return calculateCost(model, { ...discarded, cost: emptyCost() }).total;
+}
+
+/**
+ * Install a freshly built token accounting on a message without destroying the
+ * facts a replacement is not allowed to lose.
+ *
+ * Providers that receive the whole accounting in one wire field (Google's
+ * `usageMetadata`, an OpenAI Responses `response.usage`) rebuild `usage` from
+ * scratch on every update rather than adding to it. That wholesale assignment
+ * destroys anything an earlier step put on the object: what discarded attempts
+ * billed, and Copilot's premium-request counter. Both had to be hand-restored at
+ * one site each, which is how the next carried field gets lost, so the
+ * replacement itself is the thing with an owner.
+ *
+ * `next` is returned so a call site can keep the single assignment it already had.
+ */
+export function inheritUsageCarryovers(previous: Usage, next: Usage): Usage {
+	if (previous.discarded !== undefined) next.discarded = previous.discarded;
+	if (previous.premiumRequests !== undefined) next.premiumRequests ??= previous.premiumRequests;
+	return next;
 }
 
 /**

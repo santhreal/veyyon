@@ -4,11 +4,26 @@
  * completion, and cancellation during backoff rejects instead of resolving it.
  */
 import { describe, expect, it } from "bun:test";
-import type { AssistantMessage, AssistantMessageEvent, Context, Usage } from "@veyyon/ai/types";
+import type { AssistantMessage, AssistantMessageEvent, Context, Model, Usage } from "@veyyon/ai/types";
 import { MAX_EMPTY_COMPLETION_RETRIES, withEmptyCompletionRetry } from "@veyyon/ai/utils/empty-completion-retry";
 import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
+import { buildModel } from "@veyyon/catalog/build";
 
 const CTX = {} as Context;
+
+/** Priced so a discarded attempt's spend is visible in dollars, not just tokens. */
+const MODEL: Model<"openai-completions"> = buildModel({
+	id: "test-model",
+	name: "Test Model",
+	api: "openai-completions",
+	provider: "test",
+	baseUrl: "https://example.invalid",
+	reasoning: false,
+	input: ["text"],
+	cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+	contextWindow: 200_000,
+	maxTokens: 8_192,
+});
 
 function usage(): Usage {
 	return {
@@ -82,10 +97,15 @@ describe("withEmptyCompletionRetry", () => {
 	it("retries past empty attempts and delivers the first non-empty one", async () => {
 		let attempts = 0;
 		const waits: number[] = [];
-		const stream = withEmptyCompletionRetry({}, CTX, { providerRetryWait: async ms => void waits.push(ms) }, () => {
-			attempts++;
-			return attempts <= MAX_EMPTY_COMPLETION_RETRIES ? emptyAttempt() : contentAttempt();
-		});
+		const stream = withEmptyCompletionRetry(
+			MODEL,
+			CTX,
+			{ providerRetryWait: async ms => void waits.push(ms) },
+			() => {
+				attempts++;
+				return attempts <= MAX_EMPTY_COMPLETION_RETRIES ? emptyAttempt() : contentAttempt();
+			},
+		);
 
 		const events = await drain(stream);
 		const result = await stream.result();
@@ -104,10 +124,15 @@ describe("withEmptyCompletionRetry", () => {
 	it("retries an EOS-only empty stop that reports one output token", async () => {
 		let attempts = 0;
 		const waits: number[] = [];
-		const stream = withEmptyCompletionRetry({}, CTX, { providerRetryWait: async ms => void waits.push(ms) }, () => {
-			attempts++;
-			return attempts === 1 ? eosOnlyAttempt() : contentAttempt();
-		});
+		const stream = withEmptyCompletionRetry(
+			MODEL,
+			CTX,
+			{ providerRetryWait: async ms => void waits.push(ms) },
+			() => {
+				attempts++;
+				return attempts === 1 ? eosOnlyAttempt() : contentAttempt();
+			},
+		);
 
 		const events = await drain(stream);
 		const result = await stream.result();
@@ -122,10 +147,15 @@ describe("withEmptyCompletionRetry", () => {
 	it("delivers the empty result after exhausting the retry cap", async () => {
 		let attempts = 0;
 		const waits: number[] = [];
-		const stream = withEmptyCompletionRetry({}, CTX, { providerRetryWait: async ms => void waits.push(ms) }, () => {
-			attempts++;
-			return emptyAttempt();
-		});
+		const stream = withEmptyCompletionRetry(
+			MODEL,
+			CTX,
+			{ providerRetryWait: async ms => void waits.push(ms) },
+			() => {
+				attempts++;
+				return emptyAttempt();
+			},
+		);
 
 		const events = await drain(stream);
 		const result = await stream.result();
@@ -141,7 +171,7 @@ describe("withEmptyCompletionRetry", () => {
 		let attempts = 0;
 		let waited = false;
 		const stream = withEmptyCompletionRetry(
-			{},
+			MODEL,
 			CTX,
 			{
 				providerRetryWait: async () => {
@@ -168,7 +198,7 @@ describe("withEmptyCompletionRetry", () => {
 		errorMessage.stopReason = "error";
 		errorMessage.errorMessage = "provider rejected the request";
 		const stream = withEmptyCompletionRetry(
-			{},
+			MODEL,
 			CTX,
 			{
 				providerRetryWait: async () => {
@@ -194,7 +224,7 @@ describe("withEmptyCompletionRetry", () => {
 
 	it("commits on streamed thinking and does not retry a thinking-only stop", async () => {
 		let attempts = 0;
-		const stream = withEmptyCompletionRetry({}, CTX, {}, () => {
+		const stream = withEmptyCompletionRetry(MODEL, CTX, {}, () => {
 			attempts++;
 			const message = assistant(); // no visible content; only thinking streams
 			return streamFromEvents([
@@ -212,7 +242,7 @@ describe("withEmptyCompletionRetry", () => {
 
 	it("propagates a non-abort backoff failure instead of masking the empty result", async () => {
 		const stream = withEmptyCompletionRetry(
-			{},
+			MODEL,
 			CTX,
 			{
 				providerRetryWait: async () => {
@@ -237,7 +267,7 @@ describe("withEmptyCompletionRetry", () => {
 		const backoffStarted = Promise.withResolvers<void>();
 		let attempts = 0;
 		const stream = withEmptyCompletionRetry(
-			{},
+			MODEL,
 			CTX,
 			{
 				signal: controller.signal,
@@ -264,7 +294,7 @@ describe("withEmptyCompletionRetry", () => {
 
 	it("discards buffered pre-content markers from a retried empty attempt", async () => {
 		let attempts = 0;
-		const stream = withEmptyCompletionRetry({}, CTX, { providerRetryWait: async () => {} }, () => {
+		const stream = withEmptyCompletionRetry(MODEL, CTX, { providerRetryWait: async () => {} }, () => {
 			attempts++;
 			if (attempts === 1) {
 				const message = assistant();
@@ -292,7 +322,7 @@ describe("withEmptyCompletionRetry", () => {
 		const message = assistant(["streamed"]);
 		const inner = new AssistantMessageEventStream();
 		const stream = withEmptyCompletionRetry(
-			{},
+			MODEL,
 			CTX,
 			{
 				providerRetryWait: async () => {

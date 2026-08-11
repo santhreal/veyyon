@@ -14,6 +14,7 @@ import {
 	resolveReasoningSelection,
 	resolveWireModelId,
 } from "@veyyon/catalog/model-thinking";
+import { discardAttemptUsage } from "@veyyon/catalog/models";
 import { CODEX_BASE_URL } from "@veyyon/catalog/wire/codex";
 import { atomicWriteFile } from "@veyyon/utils/atomic-write";
 import { getConfigRootDir } from "@veyyon/utils/dirs";
@@ -1017,7 +1018,8 @@ const THINKING_LOOP_RETRY_MAX_DELAY_MS = 8_000;
  * including genuine errors — return immediately; a caller abort during backoff
  * propagates so cancellation surfaces as an abort, never a stale stall result.
  */
-async function resolveWithThinkingLoopCook(
+async function resolveWithThinkingLoopCook<TApi extends Api>(
+	model: Model<TApi>,
 	signal: AbortSignal | undefined,
 	dispatch: () => AssistantMessageEventStream,
 	cook: () => AssistantMessageEventStream,
@@ -1031,7 +1033,11 @@ async function resolveWithThinkingLoopCook(
 		signal?.throwIfAborted();
 		const delay = Math.min(THINKING_LOOP_RETRY_BASE_DELAY_MS * 2 ** attempt, THINKING_LOOP_RETRY_MAX_DELAY_MS);
 		await scheduler.wait(delay, { signal });
+		const stalled = message;
 		message = await dispatch().result();
+		// A loop is sampled tokens the provider bills and this re-sample throws
+		// away, which is the most expensive discard in the system: carry it.
+		discardAttemptUsage(model, stalled.usage, message.usage);
 		thinkingLoopRetry =
 			message.stopReason === "error" &&
 			message.content.length === 0 &&
@@ -1040,7 +1046,9 @@ async function resolveWithThinkingLoopCook(
 	if (!thinkingLoopRetry) return message;
 	signal?.throwIfAborted();
 	// Abort budget spent and still looping: let it cook with the guard disabled.
-	return cook().result();
+	const cooked = await cook().result();
+	discardAttemptUsage(model, message.usage, cooked.usage);
+	return cooked;
 }
 
 export async function complete<TApi extends Api>(
@@ -1049,6 +1057,7 @@ export async function complete<TApi extends Api>(
 	options?: OptionsForApi<TApi>,
 ): Promise<AssistantMessage> {
 	return resolveWithThinkingLoopCook(
+		model,
 		options?.signal,
 		() => stream(model, context, options),
 		() => stream(model, context, { ...options, loopGuard: { ...options?.loopGuard, enabled: false } }),
@@ -1308,6 +1317,7 @@ export async function completeSimple<TApi extends Api>(
 	options?: SimpleStreamOptions,
 ): Promise<AssistantMessage> {
 	return resolveWithThinkingLoopCook(
+		model,
 		options?.signal,
 		() => streamSimple(model, context, options),
 		() => streamSimple(model, context, { ...options, loopGuard: { ...options?.loopGuard, enabled: false } }),

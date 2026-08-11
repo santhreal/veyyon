@@ -183,6 +183,35 @@ export interface Usage {
 		webSearch?: number;
 		webFetch?: number;
 	};
+	/**
+	 * Tokens a provider already billed for an attempt whose output this turn threw
+	 * away: a stream that died before its first content block and was retried in
+	 * place, a degenerate empty completion that was asked again, a thinking loop
+	 * that was aborted mid-sample. The provider charges for the attempt whether or
+	 * not its text survived, and under prompt caching the discarded attempt is
+	 * frequently the expensive cache WRITE while the surviving one is a cheap read.
+	 *
+	 * The token fields above describe the delivered message only, because they
+	 * answer a different question (how large is the context) with a different
+	 * owner. This bucket answers what was paid for text nobody ever saw, and
+	 * `cost.total` includes it.
+	 */
+	discarded?: {
+		/** How many billed attempts were thrown away. */
+		attempts: number;
+		input: number;
+		output: number;
+		cacheRead: number;
+		cacheWrite: number;
+		/** USD already spent on those attempts, priced by the model that served each one. */
+		cost: number;
+	};
+	/**
+	 * What this turn cost. The four buckets price the delivered tokens; `total` is
+	 * every dollar the turn spent, so it also carries {@link Usage.discarded}'s
+	 * cost and can exceed the sum of the buckets. Anything reporting spend reads
+	 * `total`; anything explaining the gap reads `discarded`.
+	 */
 	cost: {
 		input: number;
 		output: number;

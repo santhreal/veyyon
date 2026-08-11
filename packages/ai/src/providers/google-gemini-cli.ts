@@ -5,7 +5,7 @@
  */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { scheduler } from "node:timers/promises";
-import { calculateCost, emptyCost, emptyUsage } from "@veyyon/catalog/models";
+import { calculateCost, emptyCost, emptyUsage, inheritUsageCarryovers } from "@veyyon/catalog/models";
 import {
 	ANTIGRAVITY_ENDPOINTS,
 	ANTIGRAVITY_PRIMARY_ENDPOINT,
@@ -59,6 +59,7 @@ import {
 	nextToolCallId,
 	pushBlockEndEvent,
 	pushToolCallEvents,
+	resetGoogleStreamOutputForRetry,
 	retainThoughtSignature,
 	startTextOrThinkingBlock,
 } from "./google-shared";
@@ -654,11 +655,9 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 			};
 
 			const resetOutput = () => {
-				output.content = [];
-				output.usage = emptyUsage();
-				output.stopReason = "stop";
-				output.errorMessage = undefined;
-				output.timestamp = Date.now();
+				// One owner for the wipe, shared with the Generative AI path: the tokens
+				// an abandoned attempt already billed ride along on the next usage.
+				resetGoogleStreamOutputForRetry(model, output);
 				sawFinishReason = false;
 			};
 
@@ -884,7 +883,7 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 						const promptTokens = responseData.usageMetadata.promptTokenCount || 0;
 						const cacheReadTokens = responseData.usageMetadata.cachedContentTokenCount || 0;
 						const thinkingTokens = responseData.usageMetadata.thoughtsTokenCount || 0;
-						output.usage = {
+						output.usage = inheritUsageCarryovers(output.usage, {
 							input: promptTokens - cacheReadTokens,
 							output: (responseData.usageMetadata.candidatesTokenCount || 0) + thinkingTokens,
 							cacheRead: cacheReadTokens,
@@ -892,7 +891,7 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 							totalTokens: responseData.usageMetadata.totalTokenCount || 0,
 							...(thinkingTokens > 0 ? { reasoningTokens: thinkingTokens } : {}),
 							cost: emptyCost(),
-						};
+						});
 						calculateCost(model, output.usage);
 					}
 				}
