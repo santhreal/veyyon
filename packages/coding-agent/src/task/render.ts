@@ -935,7 +935,7 @@ function renderAgentProgress(
 	// generic running marker because "we're waiting on a quota window" is
 	// the operationally meaningful state.
 	if (progress.retryState && progress.status === "running") {
-		statusLine += ` ${formatBadge("retrying", "warning", theme)}`;
+		statusLine += ` ${formatBadge(progress.retryState.mode === "continue" ? "continuing" : "retrying", "warning", theme)}`;
 	} else if (progress.retryFailure && (progress.status === "failed" || progress.status === "aborted")) {
 		statusLine += ` ${formatBadge("rate-limited", "error", theme)}`;
 	} else if (progress.status === "failed" || progress.status === "aborted") {
@@ -991,12 +991,17 @@ function renderAgentProgress(
 	if (progress.retryState && progress.status === "running") {
 		const remainingMs = Math.max(0, progress.retryState.startedAtMs + progress.retryState.delayMs - Date.now());
 		const waitLabel = remainingMs > 0 ? `in ${formatDuration(remainingMs)}` : "now";
+		// A continuation is not a retry: the batch cannot be resent, so the child is
+		// carrying the turn forward instead. Saying "retrying" here told the parent
+		// the one thing that did not happen.
+		const verb = progress.retryState.mode === "continue" ? "continuing" : "retrying";
 		const summary =
-			`retrying ${progress.retryState.attempt}/${progress.retryState.maxAttempts} ${waitLabel}: ` +
+			`${verb} ${progress.retryState.attempt}/${progress.retryState.maxAttempts} ${waitLabel}: ` +
 			previewLine(sanitizeText(progress.retryState.errorMessage), 60);
 		lines.push(`${continuePrefix}${theme.tree.hook} ${theme.fg("warning", summary)}`);
 	} else if (progress.retryFailure && progress.status !== "running") {
-		const summary = `auto-retry gave up after ${formatCount("attempt", progress.retryFailure.attempt)}: ${previewLine(sanitizeText(progress.retryFailure.errorMessage), 80)}`;
+		const gaveUp = progress.retryFailure.mode === "continue" ? "continuation" : "auto-retry";
+		const summary = `${gaveUp} gave up after ${formatCount("attempt", progress.retryFailure.attempt)}: ${previewLine(sanitizeText(progress.retryFailure.errorMessage), 80)}`;
 		lines.push(`${continuePrefix}${theme.tree.hook} ${theme.fg("error", summary)}`);
 	}
 

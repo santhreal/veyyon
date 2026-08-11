@@ -164,12 +164,15 @@ export type CustomToolSessionEvent =
 			delayMs: number;
 			errorMessage: string;
 			errorId?: number;
+			/** Which recovery is waiting; absent means a retry. */
+			mode?: "continue" | "retry";
 	  }
 	| {
 			reason: "auto_retry_end";
 			success: boolean;
 			attempt: number;
 			finalError?: string;
+			mode?: "continue" | "retry";
 			recoveredErrors?: RecoveredRetryError[];
 	  }
 	| {

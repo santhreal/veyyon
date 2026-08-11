@@ -2,6 +2,7 @@ import type { Usage } from "@veyyon/ai";
 // Owners, not the `@veyyon/utils` barrel: 1 module against 74.
 import { $envpos } from "@veyyon/utils/env";
 import { type BaseType, type } from "arktype";
+import type { RetryRecoveryMode } from "../modes/retry-display";
 import type { AgentSessionEvent } from "../session/agent-session";
 import type { ConfiguredThinkingLevel } from "../thinking";
 import { DEFAULT_SPAWN_AGENT } from "./spawn-policy";
@@ -409,6 +410,8 @@ export interface AgentProgress {
 		delayMs: number;
 		errorMessage: string;
 		startedAtMs: number;
+		/** Which recovery is waiting; absent means a retry. */
+		mode?: RetryRecoveryMode;
 	};
 	/**
 	 * Terminal retry failure surfaced once the subagent gave up retrying
@@ -419,6 +422,8 @@ export interface AgentProgress {
 	retryFailure?: {
 		attempt: number;
 		errorMessage: string;
+		/** Which recovery gave up; absent means a retry. */
+		mode?: RetryRecoveryMode;
 	};
 	/**
 	 * Snapshot of the most recent `task` tool call's in-flight `TaskToolDetails`,

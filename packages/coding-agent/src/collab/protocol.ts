@@ -337,6 +337,9 @@ export function toWireAgentEvent(event: AgentSessionEvent): WireAgentEvent | und
 				maxAttempts: event.maxAttempts,
 				delayMs: event.delayMs,
 				errorMessage: event.errorMessage,
+				// A guest renders the countdown too, so it needs to know whether the
+				// host is resending the turn or carrying an unreplayable batch forward.
+				mode: event.mode,
 			};
 		case "auto_retry_end":
 			// `recoveredErrors` carries the host's per-attempt error records.
@@ -345,6 +348,7 @@ export function toWireAgentEvent(event: AgentSessionEvent): WireAgentEvent | und
 				success: event.success,
 				attempt: event.attempt,
 				finalError: event.finalError,
+				mode: event.mode,
 			};
 		case "thinking_level_changed":
 			// `configured` and `resolved` are the user's selector and what auto mode picked, both
