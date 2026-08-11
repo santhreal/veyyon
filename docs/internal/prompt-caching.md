@@ -44,17 +44,17 @@ not a guarantee.
 
 ## Anthropic: four breakpoints, spent deliberately
 
-`applyPromptCaching` (`packages/ai/src/providers/anthropic.ts:3160`) is the whole placement
+`applyPromptCaching` (`packages/ai/src/providers/anthropic.ts:3159`) is the whole placement
 policy. The budget is a constant:
 
 ```ts
-// anthropic.ts:3163
+// anthropic.ts:3162
 const MAX_CACHE_BREAKPOINTS = 4;
 let cacheBreakpointsUsed = countCacheControlBreakpoints(params);
 if (cacheBreakpointsUsed >= MAX_CACHE_BREAKPOINTS) return;
 ```
 
-`countCacheControlBreakpoints` (`anthropic.ts:3344`) counts markers already on the wire across
+`countCacheControlBreakpoints` (`anthropic.ts:3343`) counts markers already on the wire across
 **tools, system blocks and message content blocks**. So a marker that arrived on the request
 from somewhere else spends budget, and the function declines to add more rather than exceeding
 the limit.
@@ -64,7 +64,7 @@ the limit.
 There are two layouts, and which one you are in is detected from the first system block:
 
 ```ts
-// anthropic.ts:3172
+// anthropic.ts:3168
 isCCLayout =
 	params.system.length >= 3 &&
 	params.system[0].text?.startsWith(CLAUDE_BILLING_HEADER_PREFIX) === true;
@@ -81,7 +81,7 @@ The anchor index is positional and depends on the layout, which is why the layou
 rather than assumed:
 
 ```ts
-// anthropic.ts:3196
+// anthropic.ts:3195
 const stablePrefixIndex = isCCLayout ? 2 : 0;
 ```
 
@@ -98,7 +98,7 @@ cloaks, so spending the slot would be a difference for the sake of a fallback an
 
 ### Two guards on the anchor
 
-`applyCacheControlToStableSystemPrefix` (`anthropic.ts:3125`) refuses two cases:
+`applyCacheControlToStableSystemPrefix` (`anthropic.ts:3124`) refuses two cases:
 
 ```ts
 if (index < 0 || index >= blocks.length - 1) return false;
@@ -112,7 +112,7 @@ double-marking a block that already carries a marker.
 ### Marking the trailing messages
 
 ```ts
-// anthropic.ts:3207
+// anthropic.ts:3206
 const start = isCCLayout
 	? Math.max(0, params.messages.length - 1)
 	: Math.max(0, params.messages.length - 2);
@@ -120,7 +120,7 @@ const start = isCCLayout
 
 The loop walks forward from `start` and marks each message it can. A string content is promoted
 to a one-element text array carrying the marker. An array content goes through
-`applyCacheControlToLastTextBlock` (`anthropic.ts:3136`), which walks backwards for a `text`
+`applyCacheControlToLastTextBlock` (`anthropic.ts:3135`), which walks backwards for a `text`
 block and, failing that, for any block that is not `thinking` or `redacted_thinking`, because
 those reject `cache_control` with a 400.
 
@@ -130,19 +130,19 @@ turn's prefix, so the conversation stays cached as it grows.
 ### Two post-passes that must run in this order
 
 ```ts
-// anthropic.ts:3642
+// anthropic.ts:3641
 applyPromptCaching(params, cacheControl);
 enforceCacheControlLimit(params, 4);
 normalizeCacheControlTtlOrdering(params);
 ```
 
-`enforceCacheControlLimit` (`anthropic.ts:3365`) is the backstop for markers Veyyon did not
+`enforceCacheControlLimit` (`anthropic.ts:3364`) is the backstop for markers Veyyon did not
 place. It strips in a deliberate order: system blocks except the last marked one, then tool
 blocks except the last marked one, then message markers, then everything remaining. The point is
 that the *last* marker in each group survives longest, because that is the one covering the
 largest prefix.
 
-`normalizeCacheControlTtlOrdering` (`anthropic.ts:3244`) enforces Anthropic's ordering rule that
+`normalizeCacheControlTtlOrdering` (`anthropic.ts:3243`) enforces Anthropic's ordering rule that
 longer TTLs must precede shorter ones. It walks tools, then system, then messages, and once it
 has seen a five-minute marker it deletes `ttl: "1h"` from every later one. This is a
 downgrade, not an error: a mixed-TTL request that would have been rejected becomes a request
@@ -210,7 +210,7 @@ blank block can never make its own marker eligible and would only risk a 400.
 
 ## OpenAI chat-completions: one Anthropic-shaped marker, OpenRouter only
 
-`maybeAddAnthropicCacheControl` (`packages/ai/src/providers/openai-completions.ts:1687`) writes
+`maybeAddAnthropicCacheControl` (`packages/ai/src/providers/openai-completions.ts:1701`) writes
 one `cache_control` marker on the last non-empty text part of the last user, assistant or
 developer message. It runs only when the compat layer asked for it:
 
@@ -229,7 +229,32 @@ cacheControlFormat: isOpenRouter && isAnthropicModel ? "anthropic" : undefined,
 So this is the Claude-through-OpenRouter path and nothing else. The comment above that line
 records what it was fixing: `startsWith("anthropic/")` is false for the aliased ids OpenRouter
 actually serves, so no breakpoint was written and every turn re-prefilled the whole
-conversation at full input rate.
+conversation at full input rate. This path is reached only with `VEYYON_OPENROUTER_RESPONSES=0`;
+the default OpenRouter route is the next section.
+
+## OpenRouter Responses: one request-level marker
+
+`stream.ts:938` sends api `openrouter` to `streamOpenAIResponses` unless
+`VEYYON_OPENROUTER_RESPONSES=0`, so the Responses transport is the default and the
+chat-completions path above is the fallback. The Responses route places no per-block marker. It
+sets one request-level field instead, in `maybeAddOpenRouterAnthropicCacheControl`
+(`packages/ai/src/providers/openai-responses.ts:357`, called at `:854`):
+
+```ts
+if (cacheRetention === "none" || !isOpenRouterAnthropicModel(model)) return;
+if (params.cache_control != null) return;
+params.cache_control = cacheRetention === "long" ? { type: "ephemeral", ttl: "1h" } : { type: "ephemeral" };
+```
+
+`isOpenRouterAnthropicModel` (`openai-shared.ts:455`) is `provider === "openrouter"` and an id
+starting with `anthropic/`. That prefix test is not the `isAnthropicModel` test
+`compat/openai.ts:494` uses, which is what leaves the alias rows uncovered (see the first known
+limitation below).
+
+`prompt_cache_breakpoint` is never sent on this route: it is gated on `official`
+(`openai-prompt-cache.ts:57`), which tests `model.api === "openai-responses"` and is false for
+`openrouter`, so `formatOpenAIInputText` emits none (`:95-97`). `prompt_cache_key` does go out
+(`openai-responses.ts:846`).
 
 ## Cache identity: `promptCacheKey` and `sessionId`
 
@@ -238,7 +263,7 @@ is involved. OpenAI-family caching is keyed, and without a key two requests with
 but different tails do not coalesce.
 
 ```ts
-// packages/ai/src/types.ts:443-452 (abridged)
+// packages/ai/src/types.ts:441-452 (abridged)
 /** Optional session identifier … Providers may also use this as the prompt-cache key
  *  when `promptCacheKey` is not set. */
 sessionId?: string;
@@ -248,7 +273,7 @@ sessionId?: string;
 promptCacheKey?: string;
 ```
 
-`getOpenAIPromptCacheKey` (`packages/ai/src/providers/openai-shared.ts:387`) returns
+`getOpenAIPromptCacheKey` (`packages/ai/src/providers/openai-shared.ts:382`) returns
 `undefined` when retention is `none`, then normalizes `promptCacheKey ?? sessionId`. So opting
 out of caching also removes the identity, rather than leaving a key that identifies a
 conversation for no benefit.
@@ -262,6 +287,8 @@ body first, then these allow-listed headers:
 
 ```
 x-prompt-cache-key
+session_id
+conversation_id
 x-session-id
 x-conversation-id
 ```
@@ -282,7 +309,7 @@ opts.sessionId = promptCacheKey;
 ```
 
 The same value is also the sticky credential id passed to `storage.getApiKey`
-(`auth-gateway/server.ts:442-452`), so cache affinity and credential affinity cannot drift
+(`auth-gateway/server.ts:444-453`), so cache affinity and credential affinity cannot drift
 apart.
 
 ### Inbound per-block markers become one per-request retention
@@ -292,7 +319,7 @@ provider re-places breakpoints on the rebuilt outbound wire, so the server colla
 models by taking the strongest retention asked for:
 
 ```ts
-// packages/ai/src/providers/anthropic-messages-server.ts:250-270 (abridged)
+// packages/ai/src/providers/anthropic-messages-server.ts:268-292 (abridged)
 const visit = (cc) => {
 	if (!cc) return;
 	if (cc.ttl === "1h") strongest = "long";
@@ -313,7 +340,7 @@ Prefix caching is positional, so an edit invalidates everything **after** it, no
 | --- | --- |
 | Model switch | nothing at all. `includeModelInPrompt` ships off, so the model identifier is not in the prompt to change (`settings-domains/model.ts`). Turning it on puts `Model:` inside `project`, and then a switch re-prefills that whole block, measured at 14,198 tokens |
 | Terminal change | nothing behind block 0, because `<workstation>` is volatile-last inside `project` (see [system prompt architecture](system-prompt-architecture.md#ordering-rules)). It used to sit first, and cost 5,396 re-prefilled tokens |
-| A statement's condition flipping (a setting change) | the whole prompt. Block 0 precedes `project`, so the blast radius is the full 18,012 tokens no matter which statement flips, measured at $0.0675 of Sonnet cache write. The registry declares 80 statements, 53 condition-gated and 27 unconditional; 58 are active in the shipped default (3,777 tokens), 31 of those gated (1,704 tokens). Count the gated **registry** rows, not the active ones: a condition that flips an inactive statement *on* invalidates exactly as much as one that flips an active statement off. Reordering the gated set behind `project` would cut the radius to the tail, and is deliberately not done, because it would split tool policy across two places in the reading order for 7 cents a toggle |
+| A statement's condition flipping (a setting change) | the whole prompt. Block 0 precedes `project`, so the blast radius is the full prompt no matter which statement flips. The registry declares 80 statements, 53 condition-gated and 27 unconditional (`packages/coding-agent/src/system-prompt-builder/statement-registry.ts`). Count the gated **registry** rows, not the active ones: a condition that flips an inactive statement *on* invalidates exactly as much as one that flips an active statement off. Reordering the gated set behind `project` would cut the radius to the tail, and is deliberately not done, because it would split tool policy across two places in the reading order |
 | An argot dictionary loading | the `shorthand-handles` block and later blocks; block 0 survives, which is why the handle table is its own block |
 | A new secret becoming spendable | the `available-secrets` block and later blocks |
 | `set_cwd` / `/cd` | the `project` block and later blocks: the cwd line, context files, and workspace tree all change |
@@ -363,7 +390,7 @@ price of never halting a session over a server-side eviction.
 `policy.ts` decides what to do about a verdict. `rejected` is the only enforceable one: the
 request carried anchors, the prompt was over the minimum, it was not the first turn on the key,
 the window was open, and the provider reported neither a read nor a write. `degraded`,
-`invalidated` and `unverifiable` all have innocent explanations.
+`invalidated`, `stalled` and `unverifiable` all have innocent explanations.
 
 The throw is deferred to the **next** request on the same key. A rejection is only knowable
 after usage arrives, when the money is already spent, and throwing there would also destroy a
@@ -378,24 +405,25 @@ under **Settings → Context → Prompt Cache**:
 | `cache.reportRejection` | `true` | warn on a rejection |
 | `cache.blockOnRejection` | `false` | fail the next request after one; hidden unless reporting is on |
 
-They compose into the provider-level option in `agent-session.ts:3017`: reporting off means
+They compose into the provider-level option in `agent-session.ts:3099`: reporting off means
 `off`, reporting on means `warn`, both on means `error`. `VEYYON_CACHE_ENFORCEMENT` sets the same
 three values for a process, and `resolveCacheEnforcement`
-(`packages/ai/src/cache/policy.ts:48`) defaults to `warn` when neither is set.
+(`packages/ai/src/cache/policy.ts:49`) defaults to `warn` when neither is set.
 
 `display.cacheMissMarker` (default off) draws a divider above an assistant turn whose request
 missed the cache. It is a weaker, display-side signal rather than a second verdict: it reads the
 reported usage of two adjacent turns and never consults the window or the enforcement level, and
-it covers a different provider set (see the first known limitation below).
+it covers a different provider set (see the verification limitation below).
 
 ## What to avoid
 
 **As an operator.** Turn on `includeWorkspaceTree` only when you need it: the tree lands in the
 `project` block and any file edit changes it, so it re-prefills that block every turn. Expect a
 cold turn after `/cd`, `/model`, a settings change, or a long pause; each of those is a real
-invalidation, not a bug. Do not set `VEYYON_CACHE_ENFORCEMENT=error` on a provider other than
-Anthropic and conclude your cache is healthy from the silence: the enforcement path is wired only
-on Anthropic, so on every other provider the level you set resolves and then governs nothing.
+invalidation, not a bug. Do not set `VEYYON_CACHE_ENFORCEMENT=error` outside Anthropic and the
+Codex Responses path and conclude your cache is healthy from the silence: those two are the only
+paths that record a verdict, so everywhere else the level you set resolves and then governs
+nothing.
 
 **As a contributor.**
 
@@ -419,33 +447,32 @@ Named rather than fixed. Some of these are places where Nous Research's Hermes a
 ([`agent/prompt_caching.py`](https://github.com/NousResearch/hermes-agent), Python) does more
 than we do, and the comparison is included because it makes the gap concrete.
 
-- **Claude through OpenRouter writes no cacheable-prefix marker on the default route, and nothing
-  reports it.** This is the alias defect above, live again for a different reason. `stream.ts:937`
-  sends api `openrouter` to `streamOpenAIResponses` unless `VEYYON_OPENROUTER_RESPONSES=0`, so the
-  chat-completions path is the fallback, not the default. Two markers exist and neither fires
-  there. `cache_control` is stamped only by `maybeAddAnthropicCacheControl`
-  (`openai-completions.ts:1692`), which the Responses route never calls, so the
-  `cacheControlFormat: "anthropic"` that `compat/openai.ts:494` computes for
-  `isOpenRouter && isAnthropicModel` is carried and never read. The Responses breakpoint is gated
-  on `official` (`openai-prompt-cache.ts:57`), which tests `model.api === "openai-responses"` and
-  is false for `openrouter`, so `formatOpenAIInputText` emits no `prompt_cache_breakpoint`
-  (`:95-97`). What does go out is `prompt_cache_key` (`openai-responses.ts:846`), which an
-  Anthropic upstream does not act on by itself. The alias fix landed on the path that is no longer
-  the default, and the rows it was written for (`~anthropic/claude-*-latest`, which sort to the top
-  of the picker) are the likeliest Claude-on-OpenRouter selection.
-- **Verification is Anthropic-only, and that OpenRouter path has no signal either.**
-  `packages/ai/src/cache/policy.ts:41-46` says so directly: `providers/anthropic.ts` is the single
-  production importer, so on Bedrock, OpenAI Responses and the chat-completions path the
-  enforcement level resolves and then governs nothing. Two of the four defects that motivated the
-  subsystem happened on providers it does not observe. The in-session divider is a separate and
-  weaker signal: `usesExplicitPromptCache`
+- **The OpenRouter alias rows write no cacheable-prefix marker, and no OpenRouter row reports
+  one.** This is the alias defect above, still live on the route that is now the default. The
+  catalog carries 37 Claude rows under api `openrouter`, four of them the
+  `~anthropic/claude-*-latest` aliases that the tilde sorts to the top of the model picker. The
+  Responses route's request-level marker is gated on `isOpenRouterAnthropicModel`
+  (`openai-shared.ts:455`), an `anthropic/` prefix test that is false for all four, so those four
+  rows send `prompt_cache_key` and nothing an Anthropic upstream acts on by itself. That is the
+  same prefix test `compat/openai.ts:494` was changed away from. The
+  `cacheControlFormat: "anthropic"` that line computes for `isOpenRouter && isAnthropicModel` is
+  read only by `maybeAddAnthropicCacheControl` on the chat-completions path, so on the Responses
+  route it is carried and never read.
+- **Verification covers two provider paths, and neither is OpenRouter.**
+  `packages/ai/src/cache/policy.ts:41-47` names them: `providers/anthropic.ts` and
+  `providers/openai-codex-responses.ts` are the production importers, so on Bedrock, on plain
+  OpenAI Responses, on Gemini and on the chat-completions path the enforcement level resolves and
+  then governs nothing. Two of the four defects that motivated the subsystem happened on providers
+  it does not observe. The two operator settings still describe themselves as Anthropic-only
+  (`packages/coding-agent/src/config/settings-domains/context.ts:508-536`). The in-session divider
+  is a separate and weaker signal: `usesExplicitPromptCache`
   (`coding-agent/src/modes/components/cache-invalidation-marker.ts:59-65`) is a display heuristic,
-  not a verdict, and it admits only `anthropic-messages`, `bedrock-converse-stream` and the OpenAI
-  Responses generations that accept explicit breakpoints. Api `openrouter` fails that test, so all
-  26 such rows get neither a verdict nor a divider. Leaving the divider as it is was deliberate:
-  with no marker written, "read nothing and wrote nothing" is the expected result rather than a
-  rejection, so admitting the api here would report a miss every turn and teach an operator to
-  ignore the signal. Fix the marker first, then widen the predicate.
+  not a verdict, and it admits only `anthropic-messages`, `bedrock-converse-stream` and the
+  Responses generations that accept explicit breakpoints. Api `openrouter` fails that test, so no
+  Claude-on-OpenRouter row gets a verdict or a divider. Widening the predicate is worth doing only
+  after the alias rows write a marker: with nothing written for them, "read nothing and wrote
+  nothing" is the expected result rather than a rejection, so the divider would fire every turn
+  and teach an operator to ignore the signal.
 - **Marker positions are chosen positionally, not structurally.** The trailing loop marks the
   last one or two messages whatever they are. Hermes instead computes
   `_completed_transaction_endpoint_indexes`, selecting only the ends of completed tool runs and
@@ -455,27 +482,29 @@ than we do, and the comparison is included because it makes the gap concrete.
   wasted only when that prefix never recurs, which means an aborted or retried turn, or a
   compaction that rewrites history. Measure this before changing it rather than assuming the
   structural rule is worth a slot.
-- **Compaction builds a request that shares no cache with the session it compacts.**
-  `buildCompactionProviderContext` (`packages/agent/src/compaction/compaction.ts:642`) sends a
+- **Cache-aligned compaction is Anthropic-only.** `buildCompactionProviderContext`
+  (`packages/agent/src/compaction/compaction.ts:713`) builds the summarization request from a
   different system prompt (`SUMMARIZATION_SYSTEM_PROMPT`), no tools, and one synthesized user
-  message holding the whole conversation re-serialized by `serializeConversationForSummary`.
-  None of that matches the live prefix, so the request that fires at the largest point in a
-  session pays a full prefill. It is affordable only because it is lossy: `TOOL_RESULT_MAX_CHARS`
-  (`compaction/utils.ts:245`) cuts every tool result to 2,000 characters, which on a real 138 MB
-  session transcript (9,788 tool results, 33.8M characters) keeps 31.5% of tool-result bytes.
-  Replaying the live prefix and appending the instruction as one user message turns that into a
-  cache read and removes the truncation, but only where the provider caches prefixes and the
-  trailing message can legally take an appended user turn.
+  message holding the whole conversation re-serialized by `serializeConversationForSummary`. None
+  of that matches the live prefix, so the request that fires at the largest point in a session
+  pays a full prefill, affordable only because it is lossy: `TOOL_RESULT_MAX_CHARS`
+  (`compaction/utils.ts:245`) cuts every tool result to 2,000 characters.
+  `buildCacheAlignedCompactionContext` (`compaction/cache-aligned-context.ts:183`) replaces that
+  with the live tools, the live system prompt, the message array replayed byte-for-byte and the
+  instruction appended as one user turn, which turns the prefill into a cache read and drops the
+  truncation. `canUseCacheAlignedCompaction` (`cache-aligned-context.ts:131`) admits it only for
+  an api in `PREFIX_CACHE_WIRE_APIS`, and that table holds `anthropic-messages` alone, so every
+  other transport still sends the truncated request.
 - **Inbound markers are clamped, not stripped and replanned.** `enforceCacheControlLimit`
   removes excess markers after the fact. Hermes strips every marker first
   (`strip_anthropic_cache_control`) and then builds a fresh plan for the resolved destination,
   so a marker can never survive into a layout that was not designed for it.
-- **The per-provider decision is distributed across six modules.** `anthropic.ts`,
-  `amazon-bedrock.ts`, `bedrock-prompt-cache.ts`, `openai-prompt-cache.ts`,
+- **The per-provider decision is distributed across seven modules.** `anthropic.ts`,
+  `amazon-bedrock.ts`, `bedrock-prompt-cache.ts`, `openai-prompt-cache.ts`, `openai-responses.ts`,
   `openai-completions.ts` and `catalog/src/compat/openai.ts` each own part of "should this request
   be cached, and in which wire layout". Hermes answers that in one function,
   `anthropic_prompt_cache_policy`, returning `(should_cache, use_native_layout)`. Ours is harder to
-  audit, and the OpenRouter alias bug above is exactly the class of defect a single decision point
+  audit, and the OpenRouter alias gap above is exactly the class of defect a single decision point
   would have made visible.
 - **Anthropic-style markers on OpenAI-wire endpoints stop at Claude.**
   `cacheControlFormat: "anthropic"` is set only for `isOpenRouter && isAnthropicModel`. Hermes
@@ -499,10 +528,11 @@ than we do, and the comparison is included because it makes the gap concrete.
 | Retention type, request options | `packages/ai/src/types.ts` |
 | Retention default, `$env` read | `packages/ai/src/utils.ts` |
 | Anthropic placement, budget, post-passes | `packages/ai/src/providers/anthropic.ts` |
-| Anthropic system-block construction | `buildAnthropicSystemBlocks`, `anthropic.ts:2851` |
+| Anthropic system-block construction | `buildAnthropicSystemBlocks`, `anthropic.ts:2850` |
 | Bedrock `cachePoint` placement | `packages/ai/src/providers/amazon-bedrock.ts`, `bedrock-prompt-cache.ts` |
 | OpenAI Responses policy and serialization | `packages/ai/src/providers/openai-prompt-cache.ts` |
 | OpenAI chat-completions marker | `packages/ai/src/providers/openai-completions.ts` |
+| OpenRouter Responses request-level marker | `packages/ai/src/providers/openai-responses.ts` |
 | Which models get Anthropic-shaped markers | `packages/catalog/src/compat/openai.ts` |
 | Cache-key resolution and derivation | `packages/ai/src/auth-gateway/http.ts`, `packages/ai/src/auth-gateway/server.ts` |
 | Inbound per-block to per-request mapping | `packages/ai/src/providers/anthropic-messages-server.ts` |
@@ -511,5 +541,6 @@ than we do, and the comparison is included because it makes the gap concrete.
 | Per-key tracking state | `packages/ai/src/cache/tracker.ts` |
 | In-session cache-miss divider (display heuristic) | `packages/coding-agent/src/modes/components/cache-invalidation-marker.ts` |
 | Operator settings | `packages/coding-agent/src/config/settings-domains/context.ts` |
+| Cache-aligned compaction request | `packages/agent/src/compaction/cache-aligned-context.ts` |
 
-*Verified against `7fce295f` on 2026-08-05.*
+*Verified against `31e6a6670` on 2026-08-11.*
