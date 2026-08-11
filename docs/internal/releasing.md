@@ -34,8 +34,7 @@ dry run already answers every question you can ask without one.
 
 ### If it stops partway
 
-Every exit that does not publish leaves the bump commit on `main` locally and
-prints the same two moves:
+A dry run and a declined prompt print the same two moves:
 
 ```sh
 git push origin main && gh run watch --exit-status   # let main's CI test the exact commit
@@ -44,9 +43,9 @@ git tag v1.2.3 && git push origin v1.2.3             # the tag push publishes
 
 That is all `bun run release` does after the prompt. The only judgement it
 automates is "are the checks green yet", and it is stricter about that than a
-human watching a run list: it waits for every workflow that fires on a main push
-to appear and finish, and it refuses to tag on anything but `success` or a
-legitimate `skipped`.
+human watching a run list: it waits for `CI` and `Checks`, the two workflows
+every push to `main` starts, to appear and finish, and it refuses to tag on
+anything but `success` or a legitimate `skipped`.
 
 **Pushing to `main` while a cut is waiting is safe.** Every push to `main` gets
 its own per-SHA concurrency group, so the bump commit's runs cannot be cancelled
@@ -70,8 +69,9 @@ waits on a self-hosted runner.
 ### Why the commit goes to main first
 
 The tag must name a commit `main`'s CI has already tested, and the only way to be
-sure of that is to let `main` test it. Step 2 is not a formality: it is the entire
-safety argument, and it is the same one that protects every other commit.
+sure of that is to let `main` test it. Pushing the bump is not a formality: it is
+the entire safety argument, and it is the same one that protects every other
+commit.
 
 This matters because the alternative failed. `v1.0.28` through `v1.0.35` were each
 tagged by a controller that created the bump commit *inside* CI, so the tag landed
@@ -99,23 +99,26 @@ still a commit `main` tested.
 1. **Preflight.** Require the `main` branch and a clean tree, so the bump commit
    contains the bump and nothing else. Require the new version to be greater than
    the latest tag; a repository with no `v*` tags reads as a `0.0.0` baseline.
-2. **Documented.** Assert every publishable package whose shipped source changed
-   has a bullet under its `## [Unreleased]` section.
+2. **Documented.** Assert `packages/coding-agent/CHANGELOG.md` has something to
+   release: a bullet under `## [Unreleased]`, or a `## [version]` section already
+   written by an earlier cut of the same version.
 3. **Bump.** Write the new version to every public `package.json`, the root
    `@veyyon/*` catalog entries, the Rust workspace version, and the
-   `veyyon-natives` version sentinel. Regenerate the lockfiles. Then require every
-   one of those authorities to agree on one version tuple.
+   `veyyon-natives` version sentinel. Regenerate both lockfiles.
 4. **Changelogs.** Roll each package's `## [Unreleased]` into a dated
    `## [version]` section and open a fresh empty `## [Unreleased]` above it.
-   Regenerate the repo-root `CHANGELOG.md` from every package changelog.
-5. **Commit.** Stage exactly the paths the preparation touched and commit
+   Regenerate the repo-root `CHANGELOG.md` from every package changelog. Then
+   require the version's own section to exist and no package to still hold
+   bullets under `## [Unreleased]`.
+5. **Check.** Run `bun run check`, then require every version authority — the
+   public manifests, the root catalog, both lockfiles, the Cargo workspace and
+   the native sentinel — to agree on one version tuple.
+6. **Commit.** Stage exactly the paths the preparation touched and commit
    `chore: bump version to vX.Y.Z`. The subject is a contract, not a message:
    `checks.yml` keys its changelog exemption off the `chore: bump version to `
    prefix, because the bump commit drains `## [Unreleased]` by design.
-6. **Print.** Print the push and tag commands for the version it produced.
-
-Run `bun run check` yourself before pushing if you want the answer sooner; `main`
-CI runs it either way.
+7. **Print.** Print what it committed and the `git show --stat HEAD` that reviews
+   it. A dry run prints the push and tag commands instead.
 
 ### Locally: publishing, with `bun run release`
 
@@ -125,10 +128,13 @@ tag, asks once, then:
 
 1. **Push `main`.** The bump goes through main's ordinary CI like any other
    commit.
-2. **Wait for that SHA.** Poll `gh run list --commit <sha>` until every workflow
-   that fires on a main push has appeared and finished. A workflow that has not
-   registered yet reads as pending, never as passing, because the run list takes
-   a moment to fill in and "everything I can see passed" would tag on a partial
+2. **Wait for that SHA.** Poll `gh run list --commit <sha> --workflow <name>` once
+   per required workflow, `CI` and `Checks`, until both have appeared and
+   finished. The query is scoped per workflow because an unscoped newest-first
+   list is filled by whatever runs most often — `Upstream radar` runs every 30
+   minutes — and that once hid a red gate completely. A workflow that has not
+   registered yet reads as pending, never as passing, because the run list takes a
+   moment to fill in and "everything I can see passed" would tag on a partial
    view.
 3. **Judge the newest run of each workflow.** One commit carries several runs of
    one workflow: a re-run, a `workflow_dispatch`, a run someone stopped. Only the
@@ -137,7 +143,9 @@ tag, asks once, then:
    still outvotes an older green. Within that set only `success` and `skipped` are
    passes: `cancelled` proves nothing about the SHA, and reading "not a failure"
    as "a pass" is how `v1.0.36` published with its Checks run killed by branch
-   churn. A run that ran and failed blocks the tag whether or not it was required.
+   churn. A `CI` or `Checks` run that ran and failed blocks the tag; nothing else
+   is fetched, so a path-filtered `Docs` or `Site` run neither blocks the tag nor
+   clears it.
 4. **Tag.** `git tag vX.Y.Z && git push origin vX.Y.Z`.
 
 Every way this can stop leaves the bump commit on `main` and prints the tag
@@ -162,8 +170,9 @@ third CI round. One tag push, one run.
 ### The publication transaction
 
 The tag's `ci.yml` run checks out the immutable tag, builds every platform
-binary, and then runs six steps in order. Each one has to pass before the next
-starts.
+binary, and then runs six steps. Each one has to pass before the next starts,
+except the draft verification (2) and the pre-publication deploy (3), which both
+hang off the draft and run in parallel.
 
 1. Create or resume a **draft** release. Upload every binary, every native addon,
    and a `.sha256` sidecar for each. Record the exact digest manifest.
@@ -197,7 +206,8 @@ One owner per concern, so a change lands in one place.
 | Release trigger | a `v*` tag push (`push: tags` in `.github/workflows/ci.yml`) |
 | Local preparation | `scripts/release-cut.ts` (`bun run release`, `bun run release:dry`) |
 | Push, wait, tag | `scripts/release-ship.ts` (`bun run release`) |
-| Tree preparation shared by both | `prepareReleaseTree` in `scripts/release.ts` |
+| Tree preparation | `prepareReleaseTree` in `scripts/release.ts` |
+| The one `git` runner both halves call | `git` in `scripts/release-ship.ts` |
 | Tag and asset policy | `scripts/release-policy.ts` |
 | Version authorities | `validateReleaseVersionAuthorities` in `scripts/release.ts` |
 | Changelog normalization | `scripts/fix-changelogs.ts` |
@@ -288,13 +298,13 @@ dirty tree, the wrong branch, a version that is not ahead of the latest tag, or
 an undocumented package. Fix it and run it again — the tree is untouched.
 
 If it failed part-way — an unreconcilable natives sentinel, a changelog the
-prepared-release assertion rejects, or `bun run check` going red — it had
-already rewritten every package version, both lockfiles and every changelog. It
-rolls those back before exiting and reports how many paths it restored, so the
-tree is clean and the retry is not blocked by its own leftovers. Only files it
-*created* are left behind, listed by name, because it does not delete files;
-remove them yourself before re-running. Either way the reported cause is the
-thing to fix, not the rollback.
+prepared-release assertion rejects, or `bun run check` going red — it had already
+rewritten every package version, and by the later failures both lockfiles and
+every changelog as well. It rolls those back before exiting and reports how many
+paths it restored, so the tree is clean and the retry is not blocked by its own
+leftovers. Only files it *created* are left behind, listed by name, because it
+does not delete files; remove them yourself before re-running. Either way the
+reported cause is the thing to fix, not the rollback.
 
 If it committed and `main`'s CI then went red, the bump commit is on `main` like
 any other commit. Fix the cause, push the fix, and tag the commit that goes green.
@@ -352,8 +362,8 @@ Stop the bleeding first:
    version.
 
 Do **not** delete the bad release's tag while you investigate. Deleting a tag can
-orphan the release and it confuses `release.ts`'s latest-tag baseline. Demote the
-release now, and delete it only after a fixed release ships.
+orphan the release and it confuses `release-cut.ts`'s latest-tag baseline. Demote
+the release now, and delete it only after a fixed release ships.
 
 One caveat on rolling back far. Both installers fail closed on a missing or empty
 `.sha256` sidecar, and releases before the sidecar step did not publish one, so
@@ -430,13 +440,12 @@ deploy.
 ## Versioning and the fork
 
 veyyon is a source fork of oh-my-pi. The per-package `CHANGELOG.md` files carry
-oh-my-pi's release history, and each opens with a fork notice marking the
-boundary: every entry at or below `16.5.2` is inherited upstream history, not a
-veyyon release.
+oh-my-pi's release history, and a fork notice marks the boundary: every entry at
+or below `16.5.2` is inherited upstream history, not a veyyon release.
 
 veyyon's own release line starts at `1.0.0`. The fork carried over none of
-oh-my-pi's git tags, so `release.ts` treats a repository with no `v*` tags as a
-`0.0.0` baseline instead of aborting on `git describe`. That is how the first
+oh-my-pi's git tags, so `release-cut.ts` treats a repository with no `v*` tags as
+a `0.0.0` baseline instead of aborting on `git describe`. That is how the first
 release cut cleanly, and it stays true if the tag set is ever rebuilt.
 
 No veyyon package has been published to npm. `@veyyon/coding-agent` is not marked
@@ -555,4 +564,4 @@ the checked-in state. All three copies are gitignored and the assets are declare
 in `types/assets/index.d.ts`, so the generated state still type checks and cannot
 be committed by accident.
 
-*Verified against `dfc80d5fe` on 2026-08-09.*
+*Verified against `31e6a6670` on 2026-08-11.*
