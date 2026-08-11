@@ -26,8 +26,6 @@
  *
  * `docs/internal/releasing.md` is the same flow in prose.
  */
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { isNewerVersion } from "@veyyon/utils/semver";
 import {
 	bumpVersion,
@@ -39,9 +37,7 @@ import {
 	versionNotNewerFailure,
 } from "./release";
 import { assertReleaseIsDocumented, RELEASE_NOTES_CHANGELOG } from "./release-policy";
-import { nextSteps, shipRelease } from "./release-ship";
-
-const execFileAsync = promisify(execFile);
+import { git, nextSteps, shipRelease } from "./release-ship";
 
 /** No `v*` tag yet is veyyon's first-release state; treat it as a 0.0.0 baseline. */
 export const NO_TAG_BASELINE = "0.0.0";
@@ -52,11 +48,6 @@ export const NO_TAG_BASELINE = "0.0.0";
  * on screen, which is the part the operator came for.
  */
 const DIRTY_PATHS_SHOWN = 12;
-
-async function git(...args: string[]): Promise<string> {
-	const { stdout } = await execFileAsync("git", args, { maxBuffer: 64 * 1024 * 1024 });
-	return stdout;
-}
 
 /**
  * Resolve `major`/`minor`/`patch`/`x.y.z` against the latest tag, or return the
