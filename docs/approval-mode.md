@@ -135,7 +135,11 @@ approval: { tier: "exec", critical: true, reason: "rm would recursively remove t
 
 `critical: true` implies `override: true` and adds a floor under it: the call still prompts in `yolo`, and the `/yolo` session bypass does not lift it. Setting `tools.approval.<tool>` explicitly still wins in both directions, so `allow` is the escape hatch and `deny` is still a hard block.
 
-`bash` marks both halves of its guard critical: the paths a command would recursively delete (judged after expansion, so `rm -rf ~/` and `rm -rf "$HOME"/` are recognized) and the text-shaped patterns such as fork bombs, remote-fetch-then-execute, writes to `/etc/passwd`, and host shutdown commands. The reason names the path where there is one, and surfaces as `reason` in the approval prompt. Without the floor the ordering would be inverted: `tools.approvalMode` defaults to `auto`, which runs the exec tier unasked, so the calls the guard considers most dangerous would be the ones most likely to run without a check.
+`bash` splits its guard between the two strengths, by what a command does rather than by how it is detected. `critical` is destruction: the paths a command would recursively delete (judged after expansion, so `rm -rf ~/` and `rm -rf "$HOME"/` are recognized), a formatted filesystem, a raw device written over, a system account file overwritten, a delete running as root. `override` is a call that is dangerous without being irreversible: a script fetched from the network and piped into a shell, a host shutdown, a shell wired to a network socket. Both prompt in `plan`, `ask`, `ask-command` and `auto`; only the destructive half prompts in `yolo`.
+
+That split is the difference between `yolo` and `auto`. `yolo` says the operator has stopped being asked, and a floor that catches `curl -fsSL https://…/install.sh | sh` catches an install somebody typed on purpose, which made the two rungs behave identically for the commands people reach for `yolo` to run. The floor is still there for the incident it exists for: `tools.approvalMode` defaults to `auto`, which runs the exec tier unasked, so without it the calls the guard considers most dangerous would be the ones most likely to run without a check.
+
+Every flagged shape reports its own reason ("Formats a filesystem", "Runs a script fetched from the network"), which surfaces as `reason` in the approval prompt. A shared "Critical pattern detected" named the mechanism rather than the risk, so the prompt said that something in a list matched and nothing about what.
 
 ## Per-tool prompt details
 
@@ -152,7 +156,7 @@ Built-in and custom tools share the same shape:
 
 ```ts
 export type ToolTier = "read" | "write" | "exec";
-export type ToolApprovalDecision = ToolTier | { tier: ToolTier; reason?: string; override?: boolean };
+export type ToolApprovalDecision = ToolTier | { tier: ToolTier; reason?: string; override?: boolean; critical?: boolean };
 export type ToolApproval = ToolApprovalDecision | ((args: unknown) => ToolApprovalDecision);
 
 approval?: ToolApproval;
@@ -167,9 +171,11 @@ approval: "read";
 approval: (args) => (LSP_READONLY_ACTIONS.has(args.action) ? "read" : "write");
 
 approval: (args) =>
-  isCritical(args.command)
-    ? { tier: "exec", critical: true, reason: "Critical pattern detected" }
-    : "exec";
+  destroysData(args.command)
+    ? { tier: "exec", critical: true, reason: "Formats a filesystem" }
+    : fetchesAndRuns(args.command)
+      ? { tier: "exec", override: true, reason: "Runs a script fetched from the network" }
+      : "exec";
 ```
 
 ## ACP sessions

@@ -1,7 +1,7 @@
 /**
  * The one owner of "is this bash command critical".
  *
- * WHY THIS IS NOT A REGEX. `CRITICAL_BASH_PATTERNS` matches the command as
+ * WHY THIS IS NOT A REGEX. `FLAGGED_BASH_PATTERNS` matches the command as
  * TEXT, and every published home-directory wipe happened at EXPANSION time,
  * after such a check passes. The pattern for recursive deletion is
  * `/\brm\s+-[a-z]*[rRfF][a-z]*\s+\//i`, which anchors the slash immediately
@@ -38,7 +38,34 @@
 import * as os from "node:os";
 
 /**
- * Bash patterns flagged as safety critical for approval policy.
+ * Whether a flagged bash shape survives the yolo rung.
+ *
+ * `destroys` is irreversible loss of data or of this host: a formatted disk, an
+ * overwritten device, a system account file, a delete running as root. This is
+ * the floor the yolo rung and the `/yolo` bypass keep, and it is the only thing
+ * the rung's own copy has ever promised still asks: "only blatantly destructive
+ * commands (rm -rf / and its expansions)".
+ *
+ * `dangerous` runs code nobody read, restarts the host, or wires a shell to a
+ * socket. Every rung below yolo stops on it exactly as it stops on `destroys`,
+ * because both force a prompt at a tier that would otherwise run. Yolo does
+ * not, and that is the point: an operator who typed `curl … | sh` themselves,
+ * in the rung whose entire purpose is to stop asking, was being asked with the
+ * reason "Critical pattern detected". A floor that catches an install is not a
+ * floor, it is the `auto` rung wearing yolo's label.
+ */
+export type BashRiskSeverity = "destroys" | "dangerous";
+
+/** One flagged bash shape: what to match, how bad it is, and what to tell the operator. */
+export interface FlaggedBashPattern {
+	readonly pattern: RegExp;
+	readonly severity: BashRiskSeverity;
+	/** Why this call stopped, shown verbatim as the approval dialog's reason. */
+	readonly reason: string;
+}
+
+/**
+ * Bash shapes flagged for approval policy.
  *
  * These are the shapes that are about TEXT rather than about a path: a fork
  * bomb, `mkfs`, `curl | sh`, writing to a raw device. There is nothing to
@@ -52,46 +79,103 @@ import * as os from "node:os";
  * Kept intentionally tight. The cost of a false negative is data loss or a
  * compromised host, while false positives remain actionable through user policy
  * control. New patterns should target shapes that are virtually never
- * legitimate in automation.
+ * legitimate in automation, and MUST pick a severity by the test above: a
+ * `destroys` entry is one an operator would want stopped even after saying
+ * "stop asking me".
+ *
+ * Every entry carries its own reason. The single "Critical pattern detected"
+ * they used to share named the mechanism rather than the risk, so the dialog
+ * told the operator that something in a list matched, and nothing about what.
  */
-export const CRITICAL_BASH_PATTERNS = [
-	/\bsudo\s+rm\b/i, // any `sudo rm`.
-	/\bchmod\s+-R\s+[0-7]+\s+\//i, // `chmod -R 777 /`.
-	/\bchmod\s+-R\s+[ugoa+\-=rwxXst,]+\s+\//, // `chmod -R u+x /`, `chmod -R u+rwx,o+w /etc` (symbolic mode, root target).
-	/\bchown\s+-R\s+\S+\s+\//i, // `chown -R user /`.
+export const FLAGGED_BASH_PATTERNS: readonly FlaggedBashPattern[] = [
+	{ pattern: /\bsudo\s+rm\b/i, severity: "destroys", reason: "Deletes files as root" },
+	// `chmod -R 777 /`, then `chmod -R u+x /` and `chmod -R u+rwx,o+w /etc` (symbolic mode, root target).
+	{ pattern: /\bchmod\s+-R\s+[0-7]+\s+\//i, severity: "destroys", reason: "Rewrites permissions from a system root" },
+	{
+		pattern: /\bchmod\s+-R\s+[ugoa+\-=rwxXst,]+\s+\//,
+		severity: "destroys",
+		reason: "Rewrites permissions from a system root",
+	},
+	{ pattern: /\bchown\s+-R\s+\S+\s+\//i, severity: "destroys", reason: "Rewrites ownership from a system root" },
 
-	// Fork bomb (a few common spacings).
-	/:\(\)\s*\{\s*:\s*\|\s*:/i,
+	// Fork bomb (a few common spacings). Not data loss, but the host is gone
+	// until it is power-cycled, and nobody types one on purpose.
+	{ pattern: /:\(\)\s*\{\s*:\s*\|\s*:/i, severity: "destroys", reason: "Fork bomb: takes this host down" },
 
 	// Disk / filesystem destruction.
-	/>\s*\/dev\/sd[a-z]/i, // write to disk device.
-	/\bmkfs(\.|\b)/i, // format filesystem.
-	/\bdd\s+if=.+of=\/dev\//i, // dd to a device.
-	/\bshred\s+\/dev\//i,
-	/\bcryptsetup\b/i,
+	{ pattern: />\s*\/dev\/sd[a-z]/i, severity: "destroys", reason: "Writes over a raw disk device" },
+	{ pattern: /\bmkfs(\.|\b)/i, severity: "destroys", reason: "Formats a filesystem" },
+	{ pattern: /\bdd\s+if=.+of=\/dev\//i, severity: "destroys", reason: "Writes a raw image over a device" },
+	{ pattern: /\bshred\s+\/dev\//i, severity: "destroys", reason: "Shreds a raw device" },
+	{ pattern: /\bcryptsetup\b/i, severity: "destroys", reason: "Reconfigures disk encryption" },
 
 	// System-config destruction.
-	/>\s*\/etc\/(?:passwd|shadow|sudoers)\b/i,
-	/\btee\s+(?:-a\s+)?\/etc\/(?:passwd|shadow|sudoers)\b/i, // `tee /etc/passwd`, `tee -a /etc/sudoers`.
+	{
+		pattern: />\s*\/etc\/(?:passwd|shadow|sudoers)\b/i,
+		severity: "destroys",
+		reason: "Overwrites a system account file",
+	},
+	// `tee /etc/passwd`, `tee -a /etc/sudoers`.
+	{
+		pattern: /\btee\s+(?:-a\s+)?\/etc\/(?:passwd|shadow|sudoers)\b/i,
+		severity: "destroys",
+		reason: "Overwrites a system account file",
+	},
 
 	// Remote-fetch-then-execute (curl/wget piped to a shell or process-subbed).
-	/\b(?:curl|wget|fetch)\b[^|]*\|\s*(?:bash|sh|zsh|fish)\b/i,
+	{
+		pattern: /\b(?:curl|wget|fetch)\b[^|]*\|\s*(?:bash|sh|zsh|fish)\b/i,
+		severity: "dangerous",
+		reason: "Runs a script fetched from the network",
+	},
 	// Process-sub variants — `bash <(curl …)`, `source <(curl …)`, `. <(curl …)`. `.` and `source` are
 	// anchored to a command boundary so `find . -name` and similar don't false-positive.
-	/(?:^|[\s;&|(])(?:bash|sh|zsh|source|\.)\s+<\(\s*(?:curl|wget|fetch)\b/i,
+	{
+		pattern: /(?:^|[\s;&|(])(?:bash|sh|zsh|source|\.)\s+<\(\s*(?:curl|wget|fetch)\b/i,
+		severity: "dangerous",
+		reason: "Runs a script fetched from the network",
+	},
 	// `eval "$(curl …)"` / `eval $(curl …)` / `eval \`curl …\``.
-	/\beval\s+["'`]?\$\(\s*(?:curl|wget|fetch)\b|\beval\s+`\s*(?:curl|wget|fetch)\b/i,
+	{
+		pattern: /\beval\s+["'`]?\$\(\s*(?:curl|wget|fetch)\b|\beval\s+`\s*(?:curl|wget|fetch)\b/i,
+		severity: "dangerous",
+		reason: "Runs a script fetched from the network",
+	},
 
 	// Process/host control.
-	/\bkill\s+-9\s+1\b/, // kill PID 1.
-	// Process/host control — must sit at command position so `npm run reboot-tests`
-	// or `echo 'shutdown the queue'` don't false-positive.
-	/(?:^|[\s;&|(])(?:shutdown|poweroff|reboot|halt)(?:\s|$|[;|&])/i,
-	/(?:^|[\s;&|(])init\s+0\b/i,
+	{ pattern: /\bkill\s+-9\s+1\b/, severity: "dangerous", reason: "Kills process 1" },
+	// Must sit at command position so `npm run reboot-tests` or
+	// `echo 'shutdown the queue'` don't false-positive.
+	{
+		pattern: /(?:^|[\s;&|(])(?:shutdown|poweroff|reboot|halt)(?:\s|$|[;|&])/i,
+		severity: "dangerous",
+		reason: "Shuts down or reboots this host",
+	},
+	{
+		pattern: /(?:^|[\s;&|(])init\s+0\b/i,
+		severity: "dangerous",
+		reason: "Shuts down or reboots this host",
+	},
 
-	// Network-shell exfil.
-	/\bnc\b[^|;]*\s-[a-zA-Z]*[ec][a-zA-Z]*\s/i, // `nc -e` / `nc -c`.
-] as const;
+	// Network-shell exfil: `nc -e` / `nc -c`.
+	{
+		pattern: /\bnc\b[^|;]*\s-[a-zA-Z]*[ec][a-zA-Z]*\s/i,
+		severity: "dangerous",
+		reason: "Wires a shell to a network socket",
+	},
+];
+
+/**
+ * The first flagged shape in `hostText`, or `undefined`.
+ *
+ * Order in the table decides which reason an operator sees when a line trips
+ * two entries, and the destructive entries lead deliberately: a line that both
+ * formats a disk and fetches a script is a disk being formatted.
+ */
+export function findFlaggedBashPattern(hostText: string): FlaggedBashPattern | undefined {
+	if (hostText === "") return undefined;
+	return FLAGGED_BASH_PATTERNS.find(entry => entry.pattern.test(hostText));
+}
 
 /**
  * Absolute paths a recursive delete may never target.
@@ -999,7 +1083,7 @@ export function isHostIsolatedContainerRun(words: readonly ExpandedWord[]): bool
  * The command line with every host-isolated container run blanked out.
  *
  * WHY IT RETURNS TEXT RATHER THAN THE SURVIVING SEGMENTS. Several
- * [`CRITICAL_BASH_PATTERNS`] span a segment break (`curl … | sh`, the fork
+ * [`FLAGGED_BASH_PATTERNS`] span a segment break (`curl … | sh`, the fork
  * bomb, `bash <(curl …)`), so rejoining the survivors with any separator would
  * quietly retire them. An isolated run is replaced by spaces of the same
  * length instead: every other character stays where it was, and blanking can
@@ -1162,7 +1246,7 @@ export function findCriticalBashRisk(
  * into [`SECRET_HOME_DIRECTORIES`], because writing files is the ordinary work
  * an agent does all day and a broad rule here would prompt constantly. Writes
  * to the system credential files are already covered by
- * [`CRITICAL_BASH_PATTERNS`].
+ * [`FLAGGED_BASH_PATTERNS`].
  */
 function findTruncatingWriteRisk(words: ExpandedWord[], home: string): CriticalBashRisk | undefined {
 	const normalizedHome = home === "" ? "" : normalizeAbsolutePath(home);

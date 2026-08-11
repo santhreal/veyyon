@@ -2,7 +2,7 @@
  * The destructive-command guard, stated as the shapes that have actually
  * destroyed somebody's home directory.
  *
- * WHY THIS SUITE EXISTS. `CRITICAL_BASH_PATTERNS` had no test of any kind, and
+ * WHY THIS SUITE EXISTS. `FLAGGED_BASH_PATTERNS` had no test of any kind, and
  * measured against it directly, it flagged exactly one of the twelve deletion
  * shapes below. The eleven it missed include all three published incidents:
  *
@@ -24,9 +24,10 @@
 import { describe, expect, it } from "bun:test";
 import { bashApprovalDecision } from "../src/tools/bash";
 import {
-	CRITICAL_BASH_PATTERNS,
 	expandWord,
+	FLAGGED_BASH_PATTERNS,
 	findCriticalBashRisk,
+	findFlaggedBashPattern,
 	judgeDeleteTarget,
 	normalizeAbsolutePath,
 	resolveGuardHome,
@@ -835,7 +836,7 @@ describe("the text patterns the guard still carries", () => {
 	 * two halves stayed separate rather than one quietly replacing the other.
 	 */
 	it("still flags the shapes that are about text rather than paths", () => {
-		const flagged = (command: string): boolean => CRITICAL_BASH_PATTERNS.some(pattern => pattern.test(command));
+		const flagged = (command: string): boolean => findFlaggedBashPattern(command) !== undefined;
 
 		expect(flagged(":(){ :|:& };:")).toBe(true);
 		expect(flagged("mkfs.ext4 /dev/sda1")).toBe(true);
@@ -850,11 +851,24 @@ describe("the text patterns the guard still carries", () => {
 	 * kept the array useful before any of this.
 	 */
 	it("does not flag ordinary commands that merely contain the words", () => {
-		const flagged = (command: string): boolean => CRITICAL_BASH_PATTERNS.some(pattern => pattern.test(command));
+		const flagged = (command: string): boolean => findFlaggedBashPattern(command) !== undefined;
 
 		expect(flagged("npm run reboot-tests")).toBe(false);
 		expect(flagged("find . -name '*.ts'")).toBe(false);
 		expect(flagged("curl https://example.com/api > out.json")).toBe(false);
+	});
+
+	/**
+	 * Every entry carries its own reason, and no entry reuses the "Critical
+	 * pattern detected" text that made the dialog useless: the operator was told
+	 * a list matched and nothing about what it matched.
+	 */
+	it("names the risk on every entry", () => {
+		for (const entry of FLAGGED_BASH_PATTERNS) {
+			expect(entry.reason).not.toBe("Critical pattern detected");
+			expect(entry.reason.trim()).toBe(entry.reason);
+			expect(entry.reason.length).toBeGreaterThan(8);
+		}
 	});
 });
 
