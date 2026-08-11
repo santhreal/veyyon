@@ -6,7 +6,7 @@ Tool approval has two independent inputs:
    - `read`: reads data or updates UI-only session metadata.
    - `write`: mutates workspace/session state but does not execute arbitrary code.
    - `exec`: executes code, shells out, drives a browser, spawns agents, or performs similarly broad actions.
-2. **User policy**: `tools.approval.<toolName>: allow | deny | prompt` overrides the mode for that tool unless a tool's safety override forces a prompt. An explicit policy always wins over a `critical` safety prompt, in both directions.
+2. **User policy**: `tools.approval.<toolName>: allow | deny | prompt` overrides the mode for that tool unless a tool's safety override forces a prompt. A `deny` always wins, on every rung. An `allow` wins over a `critical` safety prompt on `yolo`, which is the escape hatch from the floor; below `yolo` a safety override still prompts over it, because that is what makes the shipped `auto` rung stop for a destructive command.
 
 Tools without an `approval` declaration are treated as `exec`. This is the safe default for unknown custom tools. MCP server tools declare `write`.
 
@@ -133,7 +133,7 @@ There is a second strength for calls that must stop even there:
 approval: { tier: "exec", critical: true, reason: "rm would recursively remove the home directory itself" }
 ```
 
-`critical: true` implies `override: true` and adds a floor under it: the call still prompts in `yolo`, and the `/yolo` session bypass does not lift it. Setting `tools.approval.<tool>` explicitly still wins in both directions, so `allow` is the escape hatch and `deny` is still a hard block.
+`critical: true` implies `override: true` and adds a floor under it: the call still prompts in `yolo`, and the `/yolo` session bypass does not lift it. On `yolo`, setting `tools.approval.<tool>` explicitly wins in both directions, so `allow` is the escape hatch from the floor and `deny` is a hard block. Below `yolo` only the `deny` direction wins: an `allow` is outranked by the safety override, which is what makes the shipped `auto` rung stop for a destructive command it would otherwise run unasked.
 
 `bash` splits its guard between the two strengths, by what a command does rather than by how it is detected. `critical` is destruction: the paths a command would recursively delete (judged after expansion, so `rm -rf ~/` and `rm -rf "$HOME"/` are recognized), a formatted filesystem, a raw device written over, a system account file overwritten, a delete running as root. `override` is a call that is dangerous without being irreversible: a script fetched from the network and piped into a shell, a host shutdown, a shell wired to a network socket. Both prompt in `plan`, `ask`, `ask-command` and `auto`; only the destructive half prompts in `yolo`.
 
