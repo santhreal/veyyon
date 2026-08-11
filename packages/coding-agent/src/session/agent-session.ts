@@ -2141,7 +2141,8 @@ export class AgentSession {
 	#retryAbortController: AbortController | undefined = undefined;
 	#retryAttempt = 0;
 	/** Continuations spent on transport deaths inside an unreplayable tool batch;
-	 *  charged against the same budget as a retry and reset by a turn that lands. */
+	 *  charged against the same budget as a retry, and restored both by a turn that
+	 *  lands and by a new prompt, which is a new incident. */
 	#unreplayableBatchContinues = 0;
 	#retryPromise: Promise<void> | undefined = undefined;
 	#retryResolve: (() => void) | undefined = undefined;
@@ -2520,6 +2521,14 @@ export class AgentSession {
 		this.#unexpectedStopRetryCount = 0;
 		this.#yieldTerminationPending = false;
 		this.#acceptTerminalEmptyStopForPrompt = false;
+		// A new prompt is a new incident. Every other turn-recovery allowance is
+		// restored here, and this one was reset only by a turn that came back, so a
+		// session that spent it on a turn which never landed could not continue
+		// again for the rest of its life: the operator's next prompt died on the
+		// same transport with no continuation and nothing said why. Continuations
+		// re-request through #scheduleAgentContinue, which does not pass through
+		// here, so the cap still terminates a provider that dies every attempt.
+		this.#unreplayableBatchContinues = 0;
 	}
 
 	#acquirePowerAssertion(): void {
