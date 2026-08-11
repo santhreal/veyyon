@@ -61,6 +61,20 @@
  *     or the orders ride forever on exactly the sessions that were interrupted.
  *     The record stays in stored history, because this is an outbound rule and
  *     not a deletion.
+ * 12. The wait before continuing is ANNOUNCED, with the attempt, the ceiling and
+ *     the delay, and while it runs the session reads as retrying. The pause was
+ *     silent and unstoppable: `#isRetryableError` is false here by construction,
+ *     which is exactly what routes the failure to a continuation, so the retry
+ *     ladder never ran and never created the gate `isRetrying` reports. Nothing
+ *     was emitted, so the countdown, a subagent HUD's `retryState` and every
+ *     hook, extension, collab and SDK consumer saw an idle session; escape did
+ *     not reach `abortRetry()` because that is gated on `isRetrying`; and the
+ *     wait sat inside the post-prompt scheduler where `abortRetry()` could not
+ *     have cancelled it anyway. Seconds of silence with no way out.
+ * 13. `abortRetry()` during that wait cancels the continuation instead of it: no
+ *     second request, and the session says the wait ended without success. An
+ *     operator who does not want to wait must be able to say so, and the same
+ *     key that stops the retry ladder's wait stops this one.
  *
  * The rule rows 6 and 7 share is that the question is asked per CALL. A
  * call that already carries a real result is answered, and a never-ran
@@ -93,6 +107,7 @@
  */
 import { expect, it } from "bun:test";
 import * as AIError from "@veyyon/ai/error";
+import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
 import { TOOL } from "@veyyon/coding-agent/tools/builtin-names";
 import { createSimulation, type ScriptedTurn, simTool } from "./harness";
 
@@ -114,6 +129,8 @@ interface Outcome {
 	noticeTexts: string[];
 	assistantText: string;
 	toolTexts: string[];
+	/** Every wait the session announced, so a silent pause is visible as an absence. */
+	retryStarts: Array<Extract<AgentSessionEvent, { type: "auto_retry_start" }>>;
 }
 
 function contextText(turn: ScriptedTurn): string {
@@ -213,6 +230,7 @@ async function run(options: {
 				.map(notice => notice.text),
 			assistantText,
 			toolTexts,
+			retryStarts: sim.eventsOfType("auto_retry_start"),
 		};
 	} finally {
 		sim.dispose();
@@ -600,4 +618,80 @@ it("waits out the retry ladder's backoff before continuing", async () => {
 	// jitter can cross, and a zero-delay continuation cannot reach it.
 	expect(result.requests).toBe(2);
 	expect(elapsed).toBeGreaterThanOrEqual(baseDelayMs / 2);
+});
+
+it("announces the wait it is about to take, with the attempt, the ceiling and the delay", async () => {
+	const baseDelayMs = 120;
+	const result = await run({
+		fail: turn => turn.fail(HTTP2_TEXT),
+		execResolved: true,
+		ordinary: true,
+		maxRetries: 2,
+		baseDelayMs,
+	});
+
+	// One continuation, so exactly one announced wait. Before this the pause was
+	// emitted nowhere at all, so the assertion that matters most is that the list
+	// is not empty.
+	expect(result.requests).toBe(2);
+	expect(result.retryStarts).toHaveLength(1);
+	const announced = result.retryStarts[0];
+	// The numbers are the continuation's own ladder, not the retry ladder's: this
+	// is the first continuation, and the ceiling is what the operator configured.
+	expect(announced?.attempt).toBe(1);
+	expect(announced?.maxAttempts).toBe(2);
+	// The delay is real and is the one actually waited: jitter only shortens, by
+	// at most a quarter, and the ceiling here (base * 4) is far above the base.
+	expect(announced?.delayMs).toBeGreaterThanOrEqual(baseDelayMs * 0.75);
+	expect(announced?.delayMs).toBeLessThanOrEqual(baseDelayMs);
+	// It names the transport fault, so a consumer showing the countdown can say
+	// what it is waiting on rather than reporting a bare pause.
+	expect(announced?.errorMessage).toContain(HTTP2_TEXT);
+});
+
+it("lets abortRetry cancel the wait instead of continuing", async () => {
+	// The wait must be stoppable by the same key that stops the retry ladder's
+	// wait, which is gated on `isRetrying`. That gate is a promise the retry
+	// ladder creates, and the ladder never runs on this path, so before the fix
+	// the session read as idle and the wait sat somewhere abortRetry() could not
+	// reach: seconds of silence with no way out of it.
+	const sim = await createSimulation({
+		settings: { "retry.maxRetries": 2, "retry.baseDelayMs": 2_000, "retry.maxDelayMs": 8_000 },
+		tools: [simTool(TOOL.bash, async () => ({ content: [{ type: "text", text: "bash ran" }] }))],
+		script: turn => {
+			if (turn.call === 1) {
+				turn.toolCall(TOOL.bash, { command: "echo one" }, "call-a");
+				turn.execResolvedToolCall(TOOL.read, { path: "README.md" }, "call-b");
+				turn.fail(HTTP2_TEXT);
+				return;
+			}
+			turn.text("carried on");
+			turn.finish();
+		},
+	});
+	try {
+		const settled = sim.session.prompt("do two things");
+		// Wait for the pause to be entered rather than for a fixed time: the point
+		// is that the session reports itself as retrying while it waits.
+		const deadline = Date.now() + 5_000;
+		while (!sim.session.isRetrying && Date.now() < deadline) {
+			await new Promise(resolve => setTimeout(resolve, 5));
+		}
+		expect(sim.session.isRetrying).toBe(true);
+		sim.session.abortRetry();
+		await settled;
+
+		// The cancel took effect: nothing was re-requested, and the session said
+		// the wait ended without success instead of leaving the card mid-countdown.
+		expect(sim.sessionRequests()).toHaveLength(1);
+		expect(sim.eventsOfType("auto_retry_start")).toHaveLength(1);
+		const ended = sim.eventsOfType("auto_retry_end");
+		expect(ended).toHaveLength(1);
+		expect(ended[0]?.success).toBe(false);
+		// And it really did cancel a wait rather than outrun it: a 2 s base cannot
+		// have elapsed inside this test's own budget.
+		expect(sim.session.isRetrying).toBe(false);
+	} finally {
+		sim.dispose();
+	}
 });

@@ -6172,7 +6172,7 @@ export class AgentSession {
 			// Retry was refused because the batch cannot be resent, not because the
 			// failure was final. The turn now in context IS sendable, so continue it
 			// rather than leaving the session parked mid-batch.
-			if (this.#continueAfterUnreplayableBatch(msg)) {
+			if (await this.#continueAfterUnreplayableBatch(msg)) {
 				await emitAgentEndNotification();
 				return;
 			}
@@ -6251,6 +6251,22 @@ export class AgentSession {
 			await emitAgentEndNotification();
 		}
 	};
+
+	/**
+	 * Create the retry gate promise if one does not already exist.
+	 *
+	 * The gate is what `isRetrying` reports, so it is also what decides whether
+	 * escape cancels the wait instead of the turn. Every recovery that makes the
+	 * session sit and wait before re-requesting must hold it, not just the retry
+	 * ladder, and only one of them may own the resolver: a second promise would
+	 * orphan the first and hang the `prompt()` awaiting it.
+	 */
+	#ensureRetryPromise(): void {
+		if (this.#retryPromise) return;
+		const { promise, resolve } = Promise.withResolvers<void>();
+		this.#retryPromise = promise;
+		this.#retryResolve = resolve;
+	}
 
 	/** Resolve the pending retry promise */
 	#resolveRetry(): void {
@@ -16949,10 +16965,14 @@ export class AgentSession {
 	 * failure the classifier itself calls transient, and the only way forward was
 	 * to notice and type something. The bar is deliberately narrow: the failure
 	 * would have been retried but for replay safety, at least one call genuinely
-	 * never ran, and the attempt is charged against the same retry budget so a
-	 * provider dying on every attempt cannot loop.
+	 * never ran, and the attempts run on their own allowance, sized by the same
+	 * `retry.maxRetries`, so a provider dying on every attempt cannot loop. Its
+	 * own counter rather than the retry ladder's: the two answer different
+	 * questions and one turn can legitimately reach both, so a turn that already
+	 * retried must not arrive here with its recovery spent. The wait is the retry
+	 * ladder's, though, down to the event it emits and the gate escape cancels.
 	 */
-	#continueAfterUnreplayableBatch(message: AssistantMessage): boolean {
+	async #continueAfterUnreplayableBatch(message: AssistantMessage): Promise<boolean> {
 		if (message.stopReason !== "error") return false;
 		if (this.#abortInProgress || this.#isDisposed || this.#streamingEditAbortTriggered) return false;
 		const retrySettings = this.settings.getGroup("retry");
@@ -16966,7 +16986,6 @@ export class AgentSession {
 		const policy = this.#resolveRetryPolicy(retrySettings);
 		if (this.#unreplayableBatchContinues >= policy.maxRetries) return false;
 		this.#unreplayableBatchContinues += 1;
-		this.#resolveRetry();
 		this.#operatorNotices.warn(
 			"unreplayable-batch",
 			"The provider stream failed partway through a tool batch that cannot be replayed. Continuing with the calls that never ran.",
@@ -16977,9 +16996,51 @@ export class AgentSession {
 		// on this counter rather than #retryAttempt, so a session that also retried
 		// does not inherit that ladder's position on its first continuation. The
 		// formula and the ceiling rule live with the policy they read.
+		const delayMs = unreplayableContinueDelayMs(policy, this.#unreplayableBatchContinues);
+		// The wait joins the retry ladder's machinery instead of hiding inside the
+		// scheduler's own delay, because a wait nobody can see or stop is worse than
+		// no wait at all. #isRetryableError is false here by construction, which is
+		// what sent us down this path, so #handleRetryableError never ran and the
+		// retry latch does not exist yet: without creating it `isRetrying` stays
+		// false, escape never reaches abortRetry(), and the countdown, a subagent
+		// HUD's retryState and every hook, extension, collab and SDK consumer see
+		// nothing while the session sits silent for seconds.
+		this.#ensureRetryPromise();
+		await this.#emitSessionEvent({
+			type: "auto_retry_start",
+			attempt: this.#unreplayableBatchContinues,
+			maxAttempts: policy.maxRetries,
+			policySource: describeRetryPolicySource(policy),
+			delayMs,
+			errorMessage: message.errorMessage || "Unknown error",
+			errorId: message.errorId,
+		});
+		const continueAbortController = new AbortController();
+		this.#retryAbortController?.abort();
+		this.#retryAbortController = continueAbortController;
+		try {
+			await scheduler.wait(delayMs, { signal: continueAbortController.signal });
+		} catch {
+			if (this.#retryAbortController !== continueAbortController) return false;
+			this.#retryAbortController = undefined;
+			await this.#emitSessionEvent({
+				type: "auto_retry_end",
+				success: false,
+				attempt: this.#unreplayableBatchContinues,
+				finalError: "Retry cancelled",
+			});
+			this.#resolveRetry();
+			return false;
+		}
+		if (this.#retryAbortController === continueAbortController) {
+			this.#retryAbortController = undefined;
+		}
+		// The latch stays live across the wait so the turn reads as retrying, and the
+		// continued turn's own agent_end resolves it. A continuation the scheduler
+		// skips must resolve it here or an in-flight prompt() waits forever.
 		this.#scheduleAgentContinue({
-			delayMs: unreplayableContinueDelayMs(policy, this.#unreplayableBatchContinues),
 			generation: this.#promptGeneration,
+			onSkip: () => this.#resolveRetry(),
 		});
 		return true;
 	}
@@ -17611,13 +17672,8 @@ export class AgentSession {
 		const generation = this.#promptGeneration;
 		this.#retryAttempt++;
 
-		// Create retry promise on first attempt so waitForRetry() can await it
-		// Ensure only one promise exists (avoid orphaned promises from concurrent calls)
-		if (!this.#retryPromise) {
-			const { promise, resolve } = Promise.withResolvers<void>();
-			this.#retryPromise = promise;
-			this.#retryResolve = resolve;
-		}
+		// Create the retry gate on the first attempt so waitForRetry() can await it.
+		this.#ensureRetryPromise();
 
 		// All attempts on the current model are spent. Don't fail yet: the
 		// fallback chain below gets one last consult. Credential rotation can
