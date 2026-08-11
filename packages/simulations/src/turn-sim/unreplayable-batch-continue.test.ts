@@ -39,11 +39,23 @@
  *     dispatched out of band and the results are still in flight, so there is
  *     no work to carry forward; the ledger travels as a turn-level notice and
  *     the conversation stays answerable the old way.
- *  7. A batch that IS safe to replay and exhausted its retry budget does not
+ *  7. A call whose ARGUMENTS never finished streaming is outstanding even though
+ *     no result will ever pair against it: its block is deleted, so the only
+ *     record is `incompleteToolCalls` and the ledger's instruction to rebuild
+ *     the arguments, and only a further request can carry that out.
+ *  8. A batch that IS safe to replay and exhausted its retry budget does not
  *     then continue. Continuation is the answer to replay-unsafety, not a
  *     second budget bolted onto every failure.
- *  8. A turn that comes back resets the budget, so a session that hits this
+ *  9. A turn that comes back resets the budget, so a session that hits this
  *     twice in its life gets the full allowance both times.
+ *
+ * The rule the last two rows share is that the question is asked per CALL. A
+ * call that already carries a real result is answered, and a never-ran
+ * placeholder sitting beside that result does not make it outstanding again;
+ * that arm is driven at the session level in
+ * `packages/coding-agent/test/agent-session-retry-cap.test.ts`, in "does not
+ * retry a timeout whose tool call already carries a real result", which asserts
+ * both that no retry happened and that no continuation notice was raised.
  *
  * WHAT IT DOES NOT CATCH. The exec channel's out-of-band result never arrives
  * in these rows (the transport died), so the continued request carries a
@@ -108,6 +120,8 @@ async function run(options: {
 	execResolved: boolean;
 	/** Emit an ordinary call too, so something in the batch genuinely never ran. */
 	ordinary: boolean;
+	/** Open a call whose arguments never finish, so its block is deleted. */
+	unfinishedArgs?: boolean;
 	maxRetries: number;
 	retryEnabled?: boolean;
 	dieEveryCall?: boolean;
@@ -135,6 +149,8 @@ async function run(options: {
 				if (options.ordinary) turn.toolCall(TOOL.bash, { command: "echo one" }, `call-a-${turn.call}`);
 				if (options.execResolved)
 					turn.execResolvedToolCall(TOOL.read, { path: "README.md" }, `call-b-${turn.call}`);
+				if (options.unfinishedArgs === true)
+					turn.openToolCall(TOOL.bash, '{"command":"echo par', `call-c-${turn.call}`);
 				options.fail(turn);
 				return;
 			}
@@ -298,6 +314,27 @@ it("does not continue a batch in which nothing never ran", async () => {
 	// notice instead and the model still learns what happened.
 	expect(result.contexts).toHaveLength(1);
 	expect(result.toolTexts.filter(text => text.includes(PLACEHOLDER_MARKER))).toEqual([]);
+});
+it("continues when the only outstanding call is one whose arguments never finished", async () => {
+	// The shape that has no placeholder to count. `retainCompletedToolCalls`
+	// deletes the block of a call whose arguments were still streaming, so
+	// nothing in the transcript ever pairs against that id and looking for a
+	// never-ran result can only answer no. The work is outstanding all the same,
+	// and only a further request can reconstruct the arguments the ledger asks
+	// the model to rebuild, so the turn continues rather than going quiet.
+	const result = await run({
+		fail: turn => turn.fail(STALL_TEXT),
+		execResolved: true,
+		ordinary: false,
+		unfinishedArgs: true,
+		maxRetries: 2,
+	});
+
+	expect(result.requests).toBe(2);
+	expect(result.noticeTexts).toEqual([
+		"The provider stream failed partway through a tool batch that cannot be replayed. Continuing with the calls that never ran.",
+	]);
+	expect(result.assistantText).toContain("carried on");
 });
 
 it("does not continue a replay-safe batch that merely ran out of retries", async () => {

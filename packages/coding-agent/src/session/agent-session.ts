@@ -16978,13 +16978,21 @@ export class AgentSession {
 	 * case where continuing would be wrong: a call that already has a real result
 	 * is answered, and a placeholder sitting beside that result does not make it
 	 * unanswered again.
+	 *
+	 * A call whose arguments never finished streaming is outstanding by
+	 * construction and is counted without looking for a result. `retainCompleted-
+	 * ToolCalls` deletes its block, because partial arguments are unsafe to run
+	 * and an unpaired `tool_use` breaks replay, so nothing ever pairs against it:
+	 * looking it up among the results can only ever answer no. Its identity is
+	 * on `incompleteToolCalls` and the ledger tells the model to reconstruct the
+	 * arguments, which is work only a further request can do.
 	 */
 	#hasNeverRanToolResult(message: AssistantMessage): boolean {
+		if ((message.incompleteToolCalls?.length ?? 0) > 0) return true;
 		const toolCallIds = new Set<string>();
 		for (const block of message.content) {
 			if (block.type === "toolCall") toolCallIds.add(block.id);
 		}
-		for (const incomplete of message.incompleteToolCalls ?? []) toolCallIds.add(incomplete.id);
 		if (toolCallIds.size === 0) return false;
 		const answered = new Set<string>();
 		const unanswered = new Set<string>();
