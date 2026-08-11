@@ -147,12 +147,21 @@ async function run(options: {
 	maxRetries: number;
 	retryEnabled?: boolean;
 	dieEveryCall?: boolean;
+	/** Backoff base for the continuation's wait; pinned low unless a row measures it. */
+	baseDelayMs?: number;
 }): Promise<Outcome> {
 	const ran: string[] = [];
 	const contexts: string[] = [];
 	const sim = await createSimulation({
 		settings: {
 			"retry.maxRetries": options.maxRetries,
+			// The harness pins base 1 / max 2 so the ladder's computed delay stays
+			// under its own fail-fast ceiling; a row that measures the continuation's
+			// wait raises BOTH, because raising the base alone makes the ladder
+			// refuse the retry instead of waiting for it.
+			...(options.baseDelayMs === undefined
+				? {}
+				: { "retry.baseDelayMs": options.baseDelayMs, "retry.maxDelayMs": options.baseDelayMs * 4 }),
 			...(options.retryEnabled === false ? { "retry.enabled": false } : {}),
 		},
 		tools: [
@@ -568,4 +577,27 @@ it("stops sending the turn-level ledger once an assistant turn has answered it, 
 	} finally {
 		sim.dispose();
 	}
+});
+
+it("waits out the retry ladder's backoff before continuing", async () => {
+	// The continuation spends the retry budget, so it owes the retry ladder's
+	// pause. Without it a provider dying instantly produced back-to-back requests
+	// carrying the largest context the session holds, at the moment the transport
+	// had just proved it was failing, which is exactly what backoff is for.
+	const baseDelayMs = 400;
+	const startedAt = Date.now();
+	const result = await run({
+		fail: turn => turn.fail(STALL_TEXT),
+		execResolved: true,
+		ordinary: true,
+		maxRetries: 1,
+		baseDelayMs,
+	});
+	const elapsed = Date.now() - startedAt;
+
+	// One continuation happened, so exactly one backoff was owed. Jitter only ever
+	// shortens the wait (up to a quarter), so half the base is a floor no amount of
+	// jitter can cross, and a zero-delay continuation cannot reach it.
+	expect(result.requests).toBe(2);
+	expect(elapsed).toBeGreaterThanOrEqual(baseDelayMs / 2);
 });
