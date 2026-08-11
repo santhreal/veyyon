@@ -1586,11 +1586,14 @@ export class EventController {
 		}
 		// Accumulate what this turn's retries cost, so the summary emitted when
 		// they resolve can attribute the wait instead of leaving it unexplained.
+		// The kind rides along: a continuation is not a retry, and the summary is
+		// what the operator reads after the fact.
 		this.#retryTrace ??= { attempts: 0, totalDelayMs: 0 };
 		const trace = this.#retryTrace;
 		trace.attempts = event.attempt;
 		trace.totalDelayMs += Math.max(0, event.delayMs);
 		trace.reason = retryReason(event.errorId, event.errorMessage);
+		trace.mode = event.mode;
 		// In living mode the activity is now "error", so render the retry text
 		// through the shimmer: it blinks red (the error motion) instead of sitting
 		// in a flat muted grey. Other modes keep the plain warning styling.
@@ -1609,6 +1612,7 @@ export class EventController {
 				errorId: event.errorId,
 				errorMessage: event.errorMessage,
 				policySource: event.policySource,
+				mode: event.mode,
 			})}…${this.#maintenanceEscHint()}`,
 			getSymbolTheme().spinnerFrames,
 		);
@@ -1643,7 +1647,11 @@ export class EventController {
 			if (summary) this.ctx.showStatus(summary);
 		} else {
 			this.#clearRetrySupersededAssistantComponents();
-			this.ctx.showError(`Retry failed after ${event.attempt} attempts: ${event.finalError || "Unknown error"}`);
+			// A cancelled continuation is not a failed retry, and "1 attempts" of the
+			// wrong recovery is the kind of line an operator reads twice.
+			const what = event.mode === "continue" ? "Continuation" : "Retry";
+			const attempts = event.attempt === 1 ? "1 attempt" : `${event.attempt} attempts`;
+			this.ctx.showError(`${what} failed after ${attempts}: ${event.finalError || "Unknown error"}`);
 		}
 		this.#retryTrace = undefined;
 		this.#ensureWorkingLoaderWhileStreaming();

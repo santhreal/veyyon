@@ -87,6 +87,16 @@ export function formatRetryDuration(ms: number): string {
 	return rest === 0 ? `${minutes}m` : `${minutes}m ${rest}s`;
 }
 
+/**
+ * Which recovery is waiting. A retry re-sends the turn; a continuation sends the
+ * turn already in context because the batch cannot be resent. They share this
+ * event, and every consumer of it, but they must not share the word: the
+ * operator notice beside the countdown says the batch is being continued, so a
+ * line claiming a retry contradicts it on the same screen. Absent means retry,
+ * which is what the retry ladder emits and what it has always meant.
+ */
+export type RetryRecoveryMode = "continue" | "retry";
+
 export interface RetryLineInput {
 	attempt: number;
 	maxAttempts: number;
@@ -95,6 +105,7 @@ export interface RetryLineInput {
 	errorMessage?: string;
 	/** Why this attempt budget applies, e.g. `cursor provider default`. */
 	policySource?: string;
+	mode?: RetryRecoveryMode;
 }
 
 /**
@@ -108,7 +119,8 @@ export interface RetryLineInput {
  */
 export function formatRetryLine(input: RetryLineInput): string {
 	const seconds = Math.max(0, Math.round(input.delayMs / 1000));
-	const parts = [`Retrying (${input.attempt}/${input.maxAttempts}) in ${seconds}s`];
+	const verb = input.mode === "continue" ? "Continuing" : "Retrying";
+	const parts = [`${verb} (${input.attempt}/${input.maxAttempts}) in ${seconds}s`];
 	const reason = retryReason(input.errorId, input.errorMessage);
 	if (reason) parts.push(reason);
 	if (input.policySource) parts.push(input.policySource);
@@ -119,6 +131,7 @@ export interface RetryTrace {
 	attempts: number;
 	totalDelayMs: number;
 	reason?: string;
+	mode?: RetryRecoveryMode;
 }
 
 /**
@@ -133,7 +146,8 @@ export interface RetryTrace {
  */
 export function formatRetrySummary(trace: RetryTrace): string | undefined {
 	if (trace.attempts <= 0) return undefined;
-	const attempts = trace.attempts === 1 ? "1 retry" : `${trace.attempts} retries`;
+	const noun = trace.mode === "continue" ? "continuation" : "retry";
+	const attempts = trace.attempts === 1 ? `1 ${noun}` : `${trace.attempts} ${noun}s`;
 	const cost = trace.totalDelayMs > 0 ? ` (${formatRetryDuration(trace.totalDelayMs)} waiting)` : "";
 	const reason = trace.reason ? ` · ${trace.reason}` : "";
 	return `Recovered after ${attempts}${cost}${reason}`;

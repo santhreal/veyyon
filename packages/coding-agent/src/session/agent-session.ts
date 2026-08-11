@@ -332,6 +332,7 @@ import { resolveMemoryBackend } from "../memory-backend";
 import { shutdownMnemopiEmbedClient } from "../mnemopi/embed-client";
 import { getMnemopiSessionState, type MnemopiSessionState, setMnemopiSessionState } from "../mnemopi/state";
 import { containsOrchestrate, ORCHESTRATE_NOTICE } from "../modes/orchestrate-keyword";
+import type { RetryRecoveryMode } from "../modes/retry-display";
 import { theme } from "../modes/theme/theme-binding";
 import { containsUltrathink, ULTRATHINK_NOTICE } from "../modes/ultrathink-keyword";
 import { containsWorkflow, renderWorkflowNotice } from "../modes/workflow-keyword";
@@ -700,12 +701,21 @@ export type AgentSessionEvent =
 			 * limit they never configured is explainable rather than mysterious.
 			 */
 			policySource?: string;
+			/**
+			 * Which recovery is waiting. Absent means a retry, which is what the
+			 * retry ladder emits; `continue` is an unreplayable tool batch being
+			 * carried forward instead of resent. Only the wording differs, but a
+			 * countdown claiming a retry sits on the same screen as a notice saying
+			 * the batch is being continued.
+			 */
+			mode?: RetryRecoveryMode;
 	  }
 	| {
 			type: "auto_retry_end";
 			success: boolean;
 			attempt: number;
 			finalError?: string;
+			mode?: RetryRecoveryMode;
 			recoveredErrors?: RecoveredRetryError[];
 	  }
 	| { type: "retry_fallback_applied"; from: string; to: string; role: string }
@@ -5904,6 +5914,7 @@ export class AgentSession {
 						type: "auto_retry_end",
 						success: true,
 						attempt: this.#retryAttempt > 0 ? this.#retryAttempt : batchContinues,
+						mode: this.#retryAttempt > 0 ? "retry" : "continue",
 						recoveredErrors,
 					});
 					this.#clearPendingRecoveredRetryErrors();
@@ -17017,6 +17028,7 @@ export class AgentSession {
 		await this.#emitSessionEvent({
 			type: "auto_retry_start",
 			attempt: this.#unreplayableBatchContinues,
+			mode: "continue",
 			maxAttempts: policy.maxRetries,
 			policySource: describeRetryPolicySource(policy),
 			delayMs,
@@ -17035,7 +17047,8 @@ export class AgentSession {
 				type: "auto_retry_end",
 				success: false,
 				attempt: this.#unreplayableBatchContinues,
-				finalError: "Retry cancelled",
+				mode: "continue",
+				finalError: "Continuation cancelled",
 			});
 			this.#resolveRetry();
 			return false;
