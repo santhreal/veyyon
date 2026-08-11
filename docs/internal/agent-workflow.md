@@ -40,8 +40,8 @@ that doesn't collide with other active sessions, and drains it.
    (`bun --cwd=packages/<name> run check:types`),
    run the targeted test slice (`bun test <files>`), then the repo gate
    (`bun run check`) before anything is considered done. `bun run check` is the
-   type gate only, `check:ts` plus `cargo fmt --check` and clippy; Checks runs
-   `check:ts`, `lint:ts`, and `check:tools` as three separate steps, so run
+   type gate only, `check:ts` plus `cargo fmt --check` and clippy; CI runs
+   `check:ts` in its own job and Checks runs `lint:ts` and `check:tools`, so run
    `bun run lint:ts` and `bun run check:tools` too or a formatting or
    import-order drift fails CI behind a green local `check`. Website changes
    must pass `bun run site:build`'s brand check. New behavior gets proving tests
@@ -141,4 +141,4 @@ a ledger row like any other bug.
   account-level Cloudflare/GitHub state) is a human-blocker: record it in the
   ledger with what was tried, and continue on other rows rather than stopping.
 
-*Verified against `7e4c6374` on 2026-08-06.*
+*Verified against `289302390` on 2026-08-11.*
