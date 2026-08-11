@@ -87,26 +87,15 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           fetch-depth: 0
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: "1.3.14"
-      # The doc checkers are not all dependency-free, and the job used to have no
-      # install step at all. `gen-settings-reference` renders from the real
-      # settings schema, `check-doc-imports` loads the logger to resolve what the
-      # READMEs import, and `gen-example-js` transpiles through tsgo — so four of
-      # the eight self-tests below died on a missing module, bun reached the npm
-      # registry for a `tsgo` package that does not exist there, and the whole job
-      # was red for a reason that had nothing to do with the docs it checks.
-      - run: bun install --frozen-lockfile
-      # `check-doc-imports` verifies a documented `import { X } from "@veyyon/..."`
-      # by actually importing the package and reading its exports, and importing
-      # `@veyyon/coding-agent` statically pulls in the gitignored build artifact
-      # src/export/html/tool-views.generated.js. Without it the import throws, the
-      # checker reports "cannot load" for every documented SDK symbol, and the
-      # failure names the docs rather than the missing artifact. The doc-examples
-      # job below generates it for the same reason.
-      - name: Generate tool views
-        run: bun --cwd=packages/coding-agent run gen:tool-views
+      # The shared composite: bun on PATH, a cached `bun install
+      # --frozen-lockfile` with the corrupt-store retry, and the gitignored
+      # source codegen. This job needs all three. The doc checkers are not
+      # dependency-free (`gen-settings-reference` renders from the real settings
+      # schema, `gen-example-js` transpiles through tsgo), and `check-doc-imports`
+      # resolves a documented `import { X } from "@veyyon/..."` by importing the
+      # package, which statically pulls in the gitignored
+      # src/export/html/tool-views.generated.js.
+      - uses: ./.github/actions/bun-install
       - name: Build the test sandbox image
         # Every `bun test` in this repo refuses to run unless it can prove the
         # operator's home is unreachable, so CI has to establish the same
@@ -157,17 +146,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: "1.3.14"
-      - name: Install workspace
-        run: bun install --frozen-lockfile
-      # docs-examples imports the HTML-export entrypoint, which statically pulls
-      # in the gitignored build artifact src/export/html/tool-views.generated.js.
-      # A fresh checkout does not have it, so generate it (the binary build does
-      # the same) before the test can load that module.
-      - name: Generate tool views
-        run: bun --cwd=packages/coding-agent run gen:tool-views
+      # Same composite as link-check: install plus the gitignored
+      # tool-views.generated.js, which the HTML-export entrypoint this suite
+      # imports resolves at parse time.
+      - uses: ./.github/actions/bun-install
       - name: Build the test sandbox image
         # Same refusal as the link-check job above: the gate is unconditional,
         # so this suite needs the boundary built before it can run.

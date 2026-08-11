@@ -24,14 +24,26 @@ runs:
         if: steps.env.outputs.setup_bun == 'true'
         shell: bash
         run: |
+           # The pinned version has ONE owner, `packageManager` in the root
+           # package.json: it is what `oven-sh/setup-bun` reads when a workflow
+           # passes no version, and what scripts/test-sandbox/run.sh builds its
+           # guest from. A literal here would be a second pin to forget on the
+           # next bump, and the version is read here rather than passed between
+           # steps so the step is runnable (and tested) on its own.
+           version="$(sed -n 's/.*"packageManager"[[:space:]]*:[[:space:]]*"bun@\([^"]*\)".*/\1/p' package.json | head -n1)"
+           if [ -z "$version" ]; then
+             echo "::error title=bun pin missing::package.json declares no \"packageManager\": \"bun@<version>\"" >&2
+             exit 1
+           fi
+           pin="bun-v${version}"
            export BUN_INSTALL="${HOME}/.bun"
            attempt=1
-           while ! curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.14"; do
+           while ! curl -fsSL https://bun.sh/install | bash -s "${pin}"; do
              if [ "$attempt" -ge 3 ]; then
-               echo "::error title=bun setup failed::failed to install bun-v1.3.14 after $attempt attempts" >&2
+               echo "::error title=bun setup failed::failed to install ${pin} after $attempt attempts" >&2
                exit 1
              fi
-             echo "::warning title=bun setup retry::bun-v1.3.14 install failed on attempt $attempt; retrying" >&2
+             echo "::warning title=bun setup retry::${pin} install failed on attempt $attempt; retrying" >&2
              sleep "$attempt"
              attempt=$((attempt + 1))
            done
