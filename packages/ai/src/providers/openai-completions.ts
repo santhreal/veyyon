@@ -35,7 +35,12 @@ import type {
 } from "../types";
 import { normalizeSystemPrompts, resolveCacheRetention } from "../utils";
 import { createAbortSourceTracker } from "../utils/abort";
-import { isDemotedThinking, kStreamingLastParseLen } from "../utils/block-symbols";
+import {
+	clearStreamingPartialJson,
+	isDemotedThinking,
+	kStreamingLastParseLen,
+	setStreamingPartialJson,
+} from "../utils/block-symbols";
 import {
 	EMPTY_OLLAMA_LENGTH_COMPLETION_MESSAGE,
 	hasVisibleAssistantContent,
@@ -836,6 +841,10 @@ const streamOpenAICompletionsOnce = (
 				block.arguments =
 					typeof block.partialArgs === "string" ? parseStreamingJson(block.partialArgs) : block.partialArgs;
 				delete block.partialArgs;
+				// The published mirror has to go with the accumulator: a marker left
+				// holding text is how `agent-loop.ts` tells a call whose arguments
+				// never finished from one that closed normally.
+				clearStreamingPartialJson(block);
 				if (block.streamIndex !== undefined) {
 					toolCallBlockByIndex.delete(block.streamIndex);
 					delete block.streamIndex;
@@ -1225,6 +1234,11 @@ const streamOpenAICompletionsOnce = (
 									delta = rawArgs;
 									const prev = typeof block.partialArgs === "string" ? block.partialArgs : "";
 									block.partialArgs = prev + rawArgs;
+									// Mirror the accumulation onto the block so live renderers see the
+									// stream. `arguments` is re-parsed only every
+									// STREAMING_JSON_PARSE_MIN_GROWTH bytes, so a preview reading it
+									// alone stays empty for the whole call and pops in at the end.
+									setStreamingPartialJson(block, block.partialArgs);
 									const throttled = parseStreamingJsonThrottled(
 										block.partialArgs,
 										block[kStreamingLastParseLen] ?? 0,
