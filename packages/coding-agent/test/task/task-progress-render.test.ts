@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import type { RenderResultOptions } from "@veyyon/agent-core";
 import type { SettingPath, SettingValue } from "@veyyon/coding-agent/config/settings";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
+import type { RetryRecoveryMode } from "@veyyon/coding-agent/modes/retry-display";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import { taskToolRenderer } from "@veyyon/coding-agent/task/renderer";
 import type { AgentProgress, SingleResult, TaskToolDetails } from "@veyyon/coding-agent/task/types";
@@ -550,5 +551,121 @@ describe("task result detail-less state", () => {
 
 		expect(stripped).toContain(theme.status.done);
 		expect(stripped).not.toContain(theme.status.error);
+	});
+});
+
+/**
+ * WHY: the badge a parent shows when a child's recovery gives up used to read
+ * `rate-limited` for every mode and every cause. `retryFailure` is set from
+ * `auto_retry_end` whenever `success` is false, which covers a retry that
+ * exhausted its attempts, a continuation that ran out of allowance, a
+ * continuation the operator cancelled, and a continued turn that came back
+ * empty. None of those is a quota window, and only one of them is even a
+ * retry, so the badge named a cause nobody established and contradicted the
+ * detail row directly beneath it, which has always said which recovery gave up.
+ *
+ * The class: a terminal recovery failure names the RECOVERY, never a guessed
+ * cause. `RECOVERY_BADGES` is typed as a total map over `RetryRecoveryMode`, so
+ * adding a third recovery mode fails `check:types` until its badge is decided
+ * here rather than defaulting to whatever the last branch happened to say.
+ *
+ * What this does not catch: the wording itself. A future rename of both the
+ * badge and this table stays green, which is correct, because the contract is
+ * that the mode is distinguished and the cause is not invented.
+ */
+describe("a recovery that gives up names the recovery", () => {
+	const RECOVERY_BADGES: Record<RetryRecoveryMode, string> = {
+		retry: "retries gave up",
+		continue: "continuation gave up",
+	};
+
+	beforeEach(async () => {
+		resetSettingsForTest();
+		await Settings.init({ inMemory: true });
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+		resetSettingsForTest();
+	});
+
+	const failedRow = async (retryFailure: AgentProgress["retryFailure"]): Promise<string> => {
+		const theme = (await getThemeByName("dark"))!;
+		const progress = runningProgress({
+			id: "GaveUp",
+			status: "failed",
+			retryFailure,
+		});
+		return Bun.stripANSI(
+			findRow(
+				taskToolRenderer.renderResult(
+					{ content: [{ type: "text", text: "" }], details: detailsFor(progress) },
+					{ expanded: false, isPartial: false },
+					theme,
+				),
+				"GaveUp",
+			),
+		);
+	};
+
+	for (const [mode, badge] of Object.entries(RECOVERY_BADGES) as [RetryRecoveryMode, string][]) {
+		it(`badges a ${mode} that gave up with "${badge}", not a rate limit`, async () => {
+			const row = await failedRow({
+				attempt: 2,
+				errorMessage: "stream error: NGHTTP2_INTERNAL_ERROR",
+				mode,
+			});
+
+			expect(row).toContain(badge);
+			expect(row).not.toContain("rate-limited");
+		});
+	}
+
+	// An absent mode is the documented default (a retry), and it has to render
+	// as one: every event emitted before the continuation path existed omits it.
+	it("treats an absent mode as a retry", async () => {
+		const row = await failedRow({ attempt: 3, errorMessage: "429 Too Many Requests" });
+
+		expect(row).toContain(RECOVERY_BADGES.retry);
+		expect(row).not.toContain("rate-limited");
+	});
+
+	// The mode has to survive the subprocess boundary, or a settled background
+	// task loses it: `SingleResult` is what crosses back, and the parent copies
+	// its `retryFailure` straight onto the progress row it renders.
+	it("carries the mode across a settled background result", async () => {
+		const settled = finishedResult({
+			exitCode: 1,
+			retryFailure: { attempt: 2, errorMessage: "stream closed mid-batch", mode: "continue" },
+		});
+		const row = await failedRow(settled.retryFailure);
+
+		expect(row).toContain(RECOVERY_BADGES.continue);
+	});
+
+	// The badge and the detail row beneath it must agree; the detail row is the
+	// one that was already right, so it is the one the badge is measured against.
+	it("agrees with the detail row about which recovery gave up", async () => {
+		const theme = (await getThemeByName("dark"))!;
+		setThemeInstance(theme);
+		const progress = runningProgress({
+			id: "Disagree",
+			status: "failed",
+			retryFailure: { attempt: 2, errorMessage: "stream closed mid-batch", mode: "continue" },
+		});
+		const stripped = Bun.stripANSI(
+			taskToolRenderer
+				.renderResult(
+					{ content: [{ type: "text", text: "" }], details: detailsFor(progress) },
+					{ expanded: false, isPartial: false },
+					theme,
+				)
+				.render(120)
+				.join("\n"),
+		);
+
+		expect(stripped).toContain("continuation gave up after 2 attempts");
+		expect(stripped).not.toContain("auto-retry gave up");
+		expect(stripped).not.toContain("rate-limited");
 	});
 });
