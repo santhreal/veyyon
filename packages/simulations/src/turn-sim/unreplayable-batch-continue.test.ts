@@ -835,7 +835,7 @@ it("closes the announced wait when the prompt accepts an empty continued turn as
 	});
 	try {
 		await sim.session.sendCustomMessage(
-			{ type: "text", text: "learn something" },
+			{ customType: "autolearn-nudge", content: "learn something", display: false, attribution: "user" },
 			{ triggerTurn: true, deliverAs: "nextTurn", acceptTerminalEmptyStop: true },
 		);
 
@@ -890,7 +890,7 @@ it("does not report a recovery on the next turn after the empty-stop cap gave up
 
 		// An agent-initiated turn, which does not reset the per-prompt allowances.
 		await sim.session.sendCustomMessage(
-			{ type: "text", text: "keep going" },
+			{ customType: "autolearn-nudge", content: "keep going", display: false, attribution: "user" },
 			{ triggerTurn: true, deliverAs: "nextTurn" },
 		);
 
