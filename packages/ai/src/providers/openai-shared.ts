@@ -2,7 +2,7 @@ import type { Effort } from "@veyyon/catalog/effort";
 import { toFirepassWireModelId, toFireworksWireModelId } from "@veyyon/catalog/fireworks-model-id";
 import { isGlm52ReasoningEffortModelId } from "@veyyon/catalog/identity";
 import { getSupportedEfforts } from "@veyyon/catalog/model-thinking";
-import { calculateCost, emptyCost, emptyUsage } from "@veyyon/catalog/models";
+import { calculateCost, emptyCost, emptyUsage, inheritUsageCarryovers, scaleUsageCost } from "@veyyon/catalog/models";
 import type {
 	OpenAICompat,
 	OpenAIReasoningDisableMode,
@@ -326,12 +326,7 @@ export function applyOpenAIResponsesServiceTierCost(
 	// requested tier when the response omits the echo entirely.
 	const served = typeof responseServiceTier === "string" ? responseServiceTier : (requestServiceTier ?? undefined);
 	const multiplier = getOpenAIResponsesServiceTierCostMultiplier(served);
-	if (multiplier === 1) return;
-	usage.cost.input *= multiplier;
-	usage.cost.output *= multiplier;
-	usage.cost.cacheRead *= multiplier;
-	usage.cost.cacheWrite *= multiplier;
-	usage.cost.total = usage.cost.input + usage.cost.output + usage.cost.cacheRead + usage.cost.cacheWrite;
+	scaleUsageCost(usage, multiplier);
 }
 
 export interface OpenAIUsageAccountingInput {
@@ -2948,17 +2943,14 @@ export function populateResponsesUsageFromResponse(
 		accounting.totalTokens = reportedTotalTokens ?? accounting.totalTokens + orchestrationTotal;
 	}
 
-	// Wholesale replacement must not drop provider-annotated extras (Copilot
-	// premium-request accounting): the failed/cancelled paths throw right after
-	// this call with no later chance to re-apply.
-	const premiumRequests = output.usage.premiumRequests;
-	output.usage = {
+	// Wholesale replacement must not drop what the object already carried (Copilot
+	// premium-request accounting, the spend of discarded attempts): the
+	// failed/cancelled paths throw right after this call with no later chance to
+	// re-apply it.
+	output.usage = inheritUsageCarryovers(output.usage, {
 		...accounting,
 		cost: emptyCost(),
-	};
-	if (premiumRequests !== undefined) {
-		output.usage.premiumRequests = premiumRequests;
-	}
+	});
 }
 
 /**

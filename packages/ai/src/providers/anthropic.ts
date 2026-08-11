@@ -4,7 +4,7 @@ import { scheduler } from "node:timers/promises";
 import * as tls from "node:tls";
 import { isOfficialAnthropicApiUrl } from "@veyyon/catalog/compat/anthropic";
 import { mapEffortToAnthropicAdaptiveEffort } from "@veyyon/catalog/model-thinking";
-import { calculateCost, emptyCost, emptyUsage, getBundledModel } from "@veyyon/catalog/models";
+import { calculateCost, discardAttemptUsage, emptyCost, emptyUsage, getBundledModel } from "@veyyon/catalog/models";
 import { ANTHROPIC_API_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 import { isAnthropicOAuthToken } from "@veyyon/catalog/utils";
 import { ANTHROPIC_WEB_SEARCH_TOOL, CLAUDE_CODE_VERSION as claudeCodeVersion } from "@veyyon/catalog/wire/anthropic";
@@ -1649,6 +1649,30 @@ function createEmptyUsage(premiumRequests?: number): Usage {
 	return usage;
 }
 
+/**
+ * Throw away everything a retried attempt produced and keep what it spent.
+ *
+ * Every reason this provider retries in place (strict tools rejected, a signing
+ * proxy, fast mode unavailable, a transient transport failure) wipes the same
+ * fields, and the money is the field that is easy to forget: an attempt that got
+ * as far as `message_start` was billed for the whole prompt, cache write
+ * included. One owner means a fifth reason to retry cannot forget it.
+ */
+function discardAnthropicAttempt(
+	model: Model<"anthropic-messages">,
+	output: AssistantMessage,
+	premiumRequests?: number,
+): void {
+	output.content.length = 0;
+	output.model = model.id;
+	output.responseId = undefined;
+	output.errorMessage = undefined;
+	output.stopDetails = undefined;
+	output.providerPayload = undefined;
+	output.usage = discardAttemptUsage(model, output.usage, createEmptyUsage(premiumRequests));
+	output.stopReason = "stop";
+}
+
 export type AnthropicUsageLike = {
 	cache_creation?: { ephemeral_5m_input_tokens?: number | null; ephemeral_1h_input_tokens?: number | null } | null;
 	server_tool_use?: { web_search_requests?: number | null; web_fetch_requests?: number | null } | null;
@@ -2659,13 +2683,7 @@ const streamAnthropicOnce = (
 						disableStrictTools = true;
 						params = await prepareParams();
 						providerRetryAttempt = 0;
-						output.content.length = 0;
-						output.model = model.id;
-						output.responseId = undefined;
-						output.errorMessage = undefined;
-						output.providerPayload = undefined;
-						output.usage = createEmptyUsage(copilotDynamicHeaders?.premiumRequests);
-						output.stopReason = "stop";
+						discardAnthropicAttempt(model, output, copilotDynamicHeaders?.premiumRequests);
 						firstTokenTime = undefined;
 						continue;
 					}
@@ -2690,13 +2708,7 @@ const streamAnthropicOnce = (
 						forceDemoteUnsignedThinking = true;
 						params = await prepareParams();
 						providerRetryAttempt = 0;
-						output.content.length = 0;
-						output.model = model.id;
-						output.responseId = undefined;
-						output.errorMessage = undefined;
-						output.providerPayload = undefined;
-						output.usage = createEmptyUsage(copilotDynamicHeaders?.premiumRequests);
-						output.stopReason = "stop";
+						discardAnthropicAttempt(model, output, copilotDynamicHeaders?.premiumRequests);
 						firstTokenTime = undefined;
 						continue;
 					}
@@ -2726,13 +2738,7 @@ const streamAnthropicOnce = (
 						dropFastMode = true;
 						params = await prepareParams();
 						providerRetryAttempt = 0;
-						output.content.length = 0;
-						output.model = model.id;
-						output.responseId = undefined;
-						output.errorMessage = undefined;
-						output.providerPayload = undefined;
-						output.usage = createEmptyUsage(copilotDynamicHeaders?.premiumRequests);
-						output.stopReason = "stop";
+						discardAnthropicAttempt(model, output, copilotDynamicHeaders?.premiumRequests);
 						firstTokenTime = undefined;
 						continue;
 					}
@@ -2769,14 +2775,7 @@ const streamAnthropicOnce = (
 					} else {
 						await scheduler.wait(delayMs, { signal: options?.signal });
 					}
-					output.content.length = 0;
-					output.model = model.id;
-					output.responseId = undefined;
-					output.errorMessage = undefined;
-					output.stopDetails = undefined;
-					output.providerPayload = undefined;
-					output.usage = createEmptyUsage(copilotDynamicHeaders?.premiumRequests);
-					output.stopReason = "stop";
+					discardAnthropicAttempt(model, output, copilotDynamicHeaders?.premiumRequests);
 					firstTokenTime = undefined;
 				}
 			}

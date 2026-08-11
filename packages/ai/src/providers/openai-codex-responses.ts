@@ -1,6 +1,6 @@
 import * as os from "node:os";
 import { scheduler } from "node:timers/promises";
-import { calculateCost, emptyUsage } from "@veyyon/catalog/models";
+import { calculateCost, discardAttemptUsage, emptyUsage, scaleUsageCost } from "@veyyon/catalog/models";
 import {
 	CODEX_BASE_URL,
 	CODEX_CLIENT_VERSION,
@@ -1183,17 +1183,13 @@ function applyCodexServiceTierPricing(
 ): void {
 	const resolvedTier = resolveCodexCostServiceTier(resTier, reqTier);
 	const multiplier = getCodexServiceTierCostMultiplier(model, resolvedTier);
-	if (multiplier === 1) return;
-	usage.cost.input *= multiplier;
-	usage.cost.output *= multiplier;
-	usage.cost.cacheRead *= multiplier;
-	usage.cost.cacheWrite *= multiplier;
-	usage.cost.total = usage.cost.input + usage.cost.output + usage.cost.cacheRead + usage.cost.cacheWrite;
+	scaleUsageCost(usage, multiplier);
 }
 
-function resetOutputState(output: AssistantMessage): void {
+function resetOutputState(model: Model<"openai-codex-responses">, output: AssistantMessage): void {
 	output.content.length = 0;
-	output.usage = emptyUsage();
+	// The attempt's text is gone but the tokens it billed are not: carry them.
+	output.usage = discardAttemptUsage(model, output.usage, emptyUsage());
 	output.stopReason = "stop";
 	output.stopDetails = undefined;
 }
@@ -2197,7 +2193,7 @@ class CodexStreamProcessor {
 		this.runtime.resetAccumulators();
 		this.runtime.sawTerminalEvent = false;
 		this.runtime.whitespaceToolCallArgumentsDelta = undefined;
-		resetOutputState(this.output);
+		resetOutputState(this.model, this.output);
 		this.firstTokenTime = undefined;
 		await scheduler.wait(CODEX_WHITESPACE_LOOP_RETRY_DELAY_MS * this.runtime.whitespaceLoopRetries, {
 			signal: this.requestSetup.requestSignal,
@@ -2264,7 +2260,7 @@ class CodexStreamProcessor {
 			// Content already emitted to the caller — cannot safely continue on a new WS.
 			// Reset and replay the full request over SSE.
 			this.runtime.resetAccumulators();
-			resetOutputState(this.output);
+			resetOutputState(this.model, this.output);
 			this.firstTokenTime = undefined;
 			recordCodexWebSocketFailure(websocketState, true, { cause: "connection-limit-after-partial-output" });
 			await this.#reopenSseStream(websocketState);
@@ -2313,7 +2309,7 @@ class CodexStreamProcessor {
 		websocketState.modelsEtag = undefined;
 		this.runtime.resetAccumulators();
 		this.runtime.sawTerminalEvent = false;
-		resetOutputState(this.output);
+		resetOutputState(this.model, this.output);
 		this.firstTokenTime = undefined;
 
 		CODEX_DEBUG &&
@@ -2379,7 +2375,7 @@ class CodexStreamProcessor {
 		}
 
 		this.runtime.resetAccumulators();
-		resetOutputState(this.output);
+		resetOutputState(this.model, this.output);
 		this.firstTokenTime = undefined;
 
 		await this.#reopenSseStream(state);
@@ -2414,7 +2410,7 @@ class CodexStreamProcessor {
 
 		this.runtime.resetAccumulators();
 		this.runtime.sawTerminalEvent = false;
-		resetOutputState(this.output);
+		resetOutputState(this.model, this.output);
 		this.firstTokenTime = undefined;
 		await scheduler.wait(CODEX_RETRY_DELAY_MS * this.runtime.providerRetryAttempt, {
 			signal: this.requestSetup.requestSignal,

@@ -3,7 +3,13 @@
  */
 
 import { scheduler } from "node:timers/promises";
-import { calculateCost, emptyCost, emptyUsage } from "@veyyon/catalog/models";
+import {
+	calculateCost,
+	discardAttemptUsage,
+	emptyCost,
+	emptyUsage,
+	inheritUsageCarryovers,
+} from "@veyyon/catalog/models";
 import { readSseJson } from "@veyyon/utils/stream";
 import { renderDemotedThinking } from "../dialect/demotion";
 import * as AIError from "../error";
@@ -626,10 +632,15 @@ export function hasMeaningfulGoogleContent(output: AssistantMessage): boolean {
 	return false;
 }
 
-/** Wipe a streamed message between empty-response retries so the next attempt starts clean. */
-function resetGoogleStreamOutputForRetry(output: AssistantMessage): void {
+/**
+ * Wipe a streamed message between empty-response retries so the next attempt
+ * starts clean. An empty Gemini response is the most expensive shape of this
+ * failure (the prompt and every thinking token were billed for an answer that
+ * never arrived), so the spend is carried forward even though the text is not.
+ */
+export function resetGoogleStreamOutputForRetry(model: Model<Api>, output: AssistantMessage): void {
 	output.content = [];
-	output.usage = emptyUsage();
+	output.usage = discardAttemptUsage(model, output.usage, emptyUsage());
 	output.stopReason = "stop";
 	output.errorMessage = undefined;
 	output.timestamp = Date.now();
@@ -886,7 +897,7 @@ export async function consumeGoogleStream<T extends GoogleApiType>(args: {
 			// Ref: https://ai.google.dev/api/generate-content#v1beta.GenerateContentResponse.UsageMetadata
 			const cachedTokens = chunk.usageMetadata.cachedContentTokenCount || 0;
 			const thinkingTokens = chunk.usageMetadata.thoughtsTokenCount || 0;
-			output.usage = {
+			output.usage = inheritUsageCarryovers(output.usage, {
 				input: (chunk.usageMetadata.promptTokenCount || 0) - cachedTokens,
 				output: (chunk.usageMetadata.candidatesTokenCount || 0) + thinkingTokens,
 				cacheRead: cachedTokens,
@@ -894,7 +905,7 @@ export async function consumeGoogleStream<T extends GoogleApiType>(args: {
 				totalTokens: chunk.usageMetadata.totalTokenCount || 0,
 				...(thinkingTokens > 0 ? { reasoningTokens: thinkingTokens } : {}),
 				cost: emptyCost(),
-			};
+			});
 			calculateCost(model, output.usage);
 		}
 	}
@@ -1160,7 +1171,7 @@ export function streamGoogleGenAI<T extends "google-generative-ai" | "google-ver
 				} catch {
 					throw new AIError.RequestAbortError();
 				}
-				resetGoogleStreamOutputForRetry(output);
+				resetGoogleStreamOutputForRetry(model, output);
 				body = await openStream();
 			}
 

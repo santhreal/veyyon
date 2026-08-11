@@ -35,7 +35,7 @@ import {
 	MetadataSchema,
 	StopReason,
 } from "@veyyon/catalog/discovery/devin-gen/exa/codeium_common_pb/codeium_common_pb";
-import { calculateCost, emptyUsage } from "@veyyon/catalog/models";
+import { calculateCost, discardAttemptUsage, emptyUsage } from "@veyyon/catalog/models";
 import { DEVIN_CASCADE_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 import { isAbortError } from "@veyyon/utils/abortable";
 import { tryParseJson } from "@veyyon/utils/json";
@@ -425,11 +425,24 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 				// attempt from reaching anyone: the retry builds its own, and the only event the caller
 				// has seen so far is the `start` this attempt emitted, which the retry does not repeat.
 				const retried = streamDevin(model, context, { ...options, devinRetryAttempt: retryAttempt + 1 });
+				// The abandoned attempt's text reaches nobody, but Devin billed whatever
+				// it reported before dying: carry that spend onto the message the retry
+				// delivers, once, whichever terminal shape arrives first.
+				let carried = false;
+				const carrySpend = (message: AssistantMessage): AssistantMessage => {
+					if (!carried) {
+						carried = true;
+						discardAttemptUsage(model, output.usage, message.usage);
+					}
+					return message;
+				};
 				for await (const event of retried) {
+					if (event.type === "done") carrySpend(event.message);
+					else if (event.type === "error") carrySpend(event.error);
 					stream.push(event);
 					if (stream.done) return;
 				}
-				if (!stream.done) stream.end(await retried.result());
+				if (!stream.done) stream.end(carrySpend(await retried.result()));
 				return;
 			}
 			logger.error("devin: stream failed", { error: String(error) });
