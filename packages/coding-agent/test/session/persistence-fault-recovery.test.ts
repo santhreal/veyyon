@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import type { AssistantMessage } from "@veyyon/ai";
-import { TempDir } from "@veyyon/utils";
+import { isRecord, TempDir } from "@veyyon/utils";
 import { type OperatorNotice, OperatorNotices } from "../../src/session/operator-notices";
 import { SessionManager } from "../../src/session/session-manager";
 import {
@@ -161,10 +161,6 @@ function messageText(message: unknown): string {
 	if (typeof message.content === "string") return message.content;
 	if (!Array.isArray(message.content)) return "";
 	return message.content.map(block => (isRecord(block) && typeof block.text === "string" ? block.text : "")).join("");
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null;
 }
 
 /** A persisted session with one turn already on disk, and the fault channel attached. */

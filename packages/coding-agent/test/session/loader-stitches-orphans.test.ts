@@ -5,7 +5,7 @@ import { type OperatorNotice, OperatorNotices } from "@veyyon/coding-agent/sessi
 import type { FileEntry } from "@veyyon/coding-agent/session/session-entries";
 import { loadEntriesFromFileStream, parseSessionContent } from "@veyyon/coding-agent/session/session-loader";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { setAgentDir, TempDir } from "@veyyon/utils";
+import { isRecord, setAgentDir, TempDir } from "@veyyon/utils";
 import { captureDirOverrides, type DirOverridesSnapshot, restoreDirOverrides } from "@veyyon/utils/dirs";
 
 /**
@@ -67,10 +67,6 @@ function wrongShapeEntry(id: string, parentId: string): Record<string, unknown> 
 	const entry = messageEntry(id, parentId, "unused");
 	(entry.message as Record<string, unknown>).content = "a string, not an array of blocks";
 	return entry;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null;
 }
 
 function texts(entries: readonly FileEntry[]): string[] {
