@@ -726,5 +726,10 @@ it("closes the announced wait when the continued turn lands", async () => {
 	// Numbered on the continuation's own allowance, so the pair reads as one wait
 	// that was taken and then finished, not as the retry ladder's attempt zero.
 	expect(result.retryEnds[0]?.attempt).toBe(1);
+	// Both halves are stamped as a continuation, because the countdown and the
+	// summary are rendered from this field and the notice beside them says the
+	// batch is being continued rather than resent.
+	expect(result.retryStarts[0]?.mode).toBe("continue");
+	expect(result.retryEnds[0]?.mode).toBe("continue");
 	expect(result.assistantText).toContain("carried on");
 });
