@@ -71,7 +71,7 @@ act on a bare invocation: `/yolo`, `/fast`, and `/browser` flip a switch, `/goal
 | `/effort [level]` (`/thinking`) | Set reasoning effort; no argument opens the picker |
 | `/cpu-limit [cores]` (`/cpu`) | Set this session's CPU budget for spawned commands |
 | `/permissions [rung]` (`/approval`) | Set how much the agent does unasked, for this session only: `ask`, `ask-command`, `auto`, `yolo`, or `plan`. `/permissions status` reports the rung in force and where it came from; `reset` drops the session override and returns to the saved default from Settings. A bare `/permissions` opens the picker |
-| `/yolo on\|off\|status` | Remove ALL permission prompts for this session (explicit deny and plan mode still block; needs confirmation) |
+| `/yolo on\|off\|status` | Remove this session's permission prompts (a blatantly destructive command, an explicit deny, and plan mode still block; needs confirmation) |
 | `/plan` | Toggle plan mode |
 | `/plan-review` | Re-open plan review |
 | `/goal …` | Goal set/show/pause/resume/drop/budget |

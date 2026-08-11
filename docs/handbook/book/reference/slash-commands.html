@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-f86acbbc.js";
+            window.path_to_searchindex_js = "../searchindex-36b7dc35.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-79e2ba62.js"></script>
@@ -261,7 +261,7 @@ act on a bare invocation: <code>/yolo</code>, <code>/fast</code>, and <code>/bro
 <tr><td><code>/effort [level]</code> (<code>/thinking</code>)</td><td>Set reasoning effort; no argument opens the picker</td></tr>
 <tr><td><code>/cpu-limit [cores]</code> (<code>/cpu</code>)</td><td>Set this session’s CPU budget for spawned commands</td></tr>
 <tr><td><code>/permissions [rung]</code> (<code>/approval</code>)</td><td>Set how much the agent does unasked, for this session only: <code>ask</code>, <code>ask-command</code>, <code>auto</code>, <code>yolo</code>, or <code>plan</code>. <code>/permissions status</code> reports the rung in force and where it came from; <code>reset</code> drops the session override and returns to the saved default from Settings. A bare <code>/permissions</code> opens the picker</td></tr>
-<tr><td><code>/yolo on|off|status</code></td><td>Remove ALL permission prompts for this session (explicit deny and plan mode still block; needs confirmation)</td></tr>
+<tr><td><code>/yolo on|off|status</code></td><td>Remove this session’s permission prompts (a blatantly destructive command, an explicit deny, and plan mode still block; needs confirmation)</td></tr>
 <tr><td><code>/plan</code></td><td>Toggle plan mode</td></tr>
 <tr><td><code>/plan-review</code></td><td>Re-open plan review</td></tr>
 <tr><td><code>/goal …</code></td><td>Goal set/show/pause/resume/drop/budget</td></tr>

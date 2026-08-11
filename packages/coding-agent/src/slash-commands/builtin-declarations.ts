@@ -276,7 +276,8 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 	{
 		name: "yolo",
 		textMode: true,
-		description: "Remove ALL permission prompts for this session (explicit deny and plan mode still block)",
+		description:
+			"Remove this session's permission prompts (a blatantly destructive command, an explicit deny, and plan mode still block)",
 		acpDescription: "Toggle full permission bypass",
 		acpInputHint: "[on|off|status]",
 		// Bare /yolo flips the bypass, behind a danger confirmation in the TUI.

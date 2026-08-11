@@ -192,7 +192,7 @@ export default class Index extends Command {
 		// `cli/args.ts parseArgs`, applied via `bypassAllApprovals` on the session.
 		"dangerously-skip-permissions": Flags.boolean({
 			description:
-				"Remove ALL permission prompts for the session, including per-tool prompt overrides (explicit deny and plan mode still block). Toggle at runtime with /yolo.",
+				"Remove the session's permission prompts, including per-tool prompt overrides (a blatantly destructive command, an explicit deny, and plan mode still block). Toggle at runtime with /yolo.",
 		}),
 		// `--approval-mode`: declared here so the generated `--help` lists it; runtime parsing
 		// happens in `cli/args.ts parseArgs`. The value is applied via `Settings.override("tools.approvalMode", …)`
