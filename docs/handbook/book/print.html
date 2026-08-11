@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-79cfba88.js";
+            window.path_to_searchindex_js = "searchindex-d88ac559.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-79e2ba62.js"></script>
@@ -1995,8 +1995,8 @@ refusing your home directory. See
 the <code>/yolo</code> session bypass does not lift them. That floor is the one place <code>yolo</code> is not
 absolute. The dangerous half stops on every rung below <code>yolo</code> and not on <code>yolo</code> itself, because
 a rung whose entire promise is that it does not ask cannot be stopping an install the operator
-typed. To turn the floor off, set <code>tools.approval.bash</code> to <code>allow</code>; setting it to <code>deny</code> remains
-a hard block.</p>
+typed. To turn the floor off on <code>yolo</code>, set <code>tools.approval.bash</code> to <code>allow</code>; below <code>yolo</code> an
+<code>allow</code> is outranked by the guard, and <code>deny</code> is a hard block on every rung.</p>
 <p>Separately, the bash interceptor (<code>bashInterceptor.enabled</code>, default off) blocks shell
 commands that duplicate dedicated tools, so the model reaches for <code>read</code>/<code>grep</code>/<code>glob</code>
 instead of <code>cat</code>/<code>rg</code>/<code>find</code>. Its rules live in <code>bashInterceptor.patterns</code>.</p>
