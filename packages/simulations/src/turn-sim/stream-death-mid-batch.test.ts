@@ -4,7 +4,7 @@
  *
  * WHAT THIS CLOSES. The session refused to retry any failed turn that carried a
  * tool call, on the premise that a completed call may already have applied its
- * side effects. The premise is false for the shape the operator kept hitting:
+ * side effects. The premise is false for the shape that actually recurs:
  * the agent loop has one `tool.execute()` call site and the error stop returns
  * before it, so every retained call is paired with a never-ran placeholder. The
  * fault was a zero-cost transport failure and the product turned it into a dead
@@ -17,8 +17,8 @@
  *     placeholders nor the ledger.
  *  2. The same for OpenAI's incomplete stream, whose prose classifies to 0 and
  *     which is transient only because the throw site attaches the flag. The two
- *     operator reports are different rows because they are transient for
- *     different reasons.
+ *     failures are different rows because they are transient for different
+ *     reasons.
  *  3. A RESUME of that session does not replay the death. Rows 1 and 2 watch the
  *     live context, and history is a second list: the store keeps the recovered
  *     turn on purpose (the transcript renders a retry from it) and kept its
@@ -45,9 +45,9 @@ import * as AIError from "@veyyon/ai/error";
 import { TOOL } from "@veyyon/coding-agent/tools/builtin-names";
 import { createSimulation, type ScriptedTurn, type Simulation, simTool } from "./harness";
 
-/** Operator report 1: the watchdog's own stall message, transient from its prose. */
+/** Row 1: the watchdog's own stall message, transient from its prose. */
 const STALL_TEXT = "Provider stream stalled while waiting for the next event";
-/** Operator report 2: OpenAI's incomplete stream, transient only via its error id. */
+/** Row 2: OpenAI's incomplete stream, transient only via its error id. */
 const INCOMPLETE_STREAM_TEXT = "OpenAI completions stream closed before a terminal finish reason was received";
 const INCOMPLETE_STREAM_ID = AIError.classify(
 	new AIError.ProviderResponseError(INCOMPLETE_STREAM_TEXT, { provider: "openai", kind: "incomplete-stream" }),

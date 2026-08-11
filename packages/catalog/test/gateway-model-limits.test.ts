@@ -590,7 +590,10 @@ describe("a gateway's own id spelling reaches the vendor's row", () => {
 			for (const id of [prefix, `${prefix}-`]) {
 				const candidates = gatewayIdCandidates(id);
 				expect(candidates[0], id).toBe(id);
-				expect(candidates.filter(candidate => candidate.length === 0), id).toEqual([]);
+				expect(
+					candidates.filter(candidate => candidate.length === 0),
+					id,
+				).toEqual([]);
 				expect(gatewayContextWindow(id), id).toBe(AGENT_GATEWAY_DEFAULT_CONTEXT_WINDOW);
 			}
 		}

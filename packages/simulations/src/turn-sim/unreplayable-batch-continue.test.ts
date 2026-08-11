@@ -139,7 +139,7 @@ import { createSimulation, type ScriptedTurn, simTool } from "./harness";
 
 /** The watchdog's own stall text, transient from its prose alone. */
 const STALL_TEXT = "Provider stream stalled while waiting for the next event";
-/** What the operator's report actually carried. */
+/** The HTTP/2 transport failure the Cursor exec channel produces. */
 const HTTP2_TEXT = "stream error: NGHTTP2_INTERNAL_ERROR";
 const PERMANENT_TEXT = "Provider returned error finish_reason: content_filter";
 const LEDGER_MARKER = "Partial completion ledger";
