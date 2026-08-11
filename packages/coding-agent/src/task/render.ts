@@ -930,14 +930,22 @@ function renderAgentProgress(
 	}
 	statusLine += agentTypeBadge(progress.agent, theme);
 
-	// Show retry-blocked badge so the parent immediately sees that a child
-	// is sleeping on a provider 429, not silently progressing. Wins over the
-	// generic running marker because "we're waiting on a quota window" is
-	// the operationally meaningful state.
+	// Show a recovery badge so the parent immediately sees that a child is
+	// sleeping between attempts, not silently progressing. Wins over the generic
+	// running marker because "we are waiting" is the operationally meaningful
+	// state.
 	if (progress.retryState && progress.status === "running") {
 		statusLine += ` ${formatBadge(progress.retryState.mode === "continue" ? "continuing" : "retrying", "warning", theme)}`;
 	} else if (progress.retryFailure && (progress.status === "failed" || progress.status === "aborted")) {
-		statusLine += ` ${formatBadge("rate-limited", "error", theme)}`;
+		// The badge names the recovery that gave up, never a cause. This said
+		// `rate-limited` for every terminal failure, and `retryFailure` is set
+		// from any unsuccessful `auto_retry_end`: exhausted attempts, a
+		// continuation out of allowance, a cancelled continuation, a continued
+		// turn that came back empty. A quota window was one possibility out of
+		// many, and the detail row directly beneath already said which recovery
+		// it was, so the two lines contradicted each other in the same frame.
+		const gaveUp = progress.retryFailure.mode === "continue" ? "continuation gave up" : "retries gave up";
+		statusLine += ` ${formatBadge(gaveUp, "error", theme)}`;
 	} else if (progress.status === "failed" || progress.status === "aborted") {
 		const statusLabel = progress.status === "failed" ? "failed" : "aborted";
 		statusLine += ` ${formatBadge(statusLabel, iconColor, theme)}`;

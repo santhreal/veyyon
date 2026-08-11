@@ -414,10 +414,11 @@ export interface AgentProgress {
 		mode?: RetryRecoveryMode;
 	};
 	/**
-	 * Terminal retry failure surfaced once the subagent gave up retrying
-	 * (e.g. retry-after exceeded the cap, or all attempts exhausted). Carries
-	 * the final error so the parent UI can render "blocked: rate-limited"
-	 * instead of waiting for a status that never arrives.
+	 * Terminal recovery failure surfaced once the subagent gave up (retry-after
+	 * exceeded the cap, all attempts exhausted, or a continuation that ran out
+	 * of allowance). Carries the final error and which recovery gave up, so the
+	 * parent UI can name what happened instead of waiting for a status that
+	 * never arrives.
 	 */
 	retryFailure?: {
 		attempt: number;
@@ -483,14 +484,17 @@ export interface SingleResult {
 	/** Data extracted by registered subprocess tool handlers (keyed by tool name) */
 	extractedToolData?: Record<string, unknown[]>;
 	/**
-	 * Terminal retry failure, when the subagent exited because the auto-retry
-	 * loop gave up (retry-after exceeded the cap, or all attempts exhausted).
-	 * Lets the parent task tool surface a "blocked: rate-limited" outcome
-	 * instead of a generic failure.
+	 * Terminal recovery failure, when the subagent exited because a recovery
+	 * gave up (retry-after exceeded the cap, all attempts exhausted, or a
+	 * continuation that ran out of allowance). The parent copies this onto the
+	 * progress row it renders, so `mode` has to cross the boundary with it: a
+	 * settled background task otherwise reports every continuation as a retry.
 	 */
 	retryFailure?: {
 		attempt: number;
 		errorMessage: string;
+		/** Which recovery gave up; absent means a retry. */
+		mode?: RetryRecoveryMode;
 	};
 	/** Output metadata for agent:// URL integration */
 	outputMeta?: { lineCount: number; charCount: number };
