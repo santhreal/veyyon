@@ -110,6 +110,18 @@
  * policy ("this is what veyyon does when a batch cannot be replayed"), and the
  * per-incident fact is the turn's own error card, which names the transport
  * reason. A second notice would repeat what the card already says.
+ *
+ * THE EMPTY-TURN ARM (last three rows). An announced wait is closed by a turn
+ * that LANDS, and a turn can come back carrying nothing. Those rows exist
+ * because the two halves of that decision were gated differently: the allowance
+ * was cleared by any non-error turn while the end event beside it also required
+ * the turn to be non-empty, so one empty continued turn left the countdown, the
+ * HUD's retryState and the retry trace open with nothing able to close them. The
+ * three cases are the three ways an empty turn can end: the empty-stop ladder
+ * retries and a later turn lands (the wait closes then), the prompt accepts the
+ * empty completion as terminal (the wait ends unsuccessfully, because nothing
+ * recovered), and the ladder exhausts its own cap (the cap's end is the only one,
+ * and a later turn must not add a second claiming success).
  */
 import { expect, it } from "bun:test";
 import * as AIError from "@veyyon/ai/error";
@@ -732,4 +744,151 @@ it("closes the announced wait when the continued turn lands", async () => {
 	expect(result.retryStarts[0]?.mode).toBe("continue");
 	expect(result.retryEnds[0]?.mode).toBe("continue");
 	expect(result.assistantText).toContain("carried on");
+});
+
+it("keeps the wait open across an empty continued turn and closes it on the next real one", async () => {
+	// THE HOLE THE SUCCESS ARM LEFT. The counter that says a continuation is
+	// waiting was cleared by any turn that came back, while the end event beside
+	// it is also gated on the turn not being EMPTY. So a continued turn that
+	// returned nothing zeroed the counter without closing the wait, and the next
+	// real turn then had nothing left to close it with: the countdown, the HUD's
+	// retryState and the retry trace stayed open for the rest of the session. An
+	// empty completion is not evidence the transport recovered, so it no longer
+	// spends the allowance either.
+	const ran: string[] = [];
+	const sim = await createSimulation({
+		settings: { "retry.maxRetries": 2, "retry.baseDelayMs": 60, "retry.maxDelayMs": 240 },
+		tools: [
+			simTool(TOOL.bash, async () => {
+				ran.push("bash");
+				return { content: [{ type: "text", text: "bash ran" }] };
+			}),
+			simTool(TOOL.read, async () => {
+				ran.push("read");
+				return { content: [{ type: "text", text: "read ran" }] };
+			}),
+		],
+		script: turn => {
+			if (turn.call === 1) {
+				turn.toolCall(TOOL.bash, { command: "echo one" }, "call-a");
+				turn.execResolvedToolCall(TOOL.read, { path: "README.md" }, "call-b");
+				turn.fail(HTTP2_TEXT);
+				return;
+			}
+			// The continuation comes back with nothing at all, which the empty-stop
+			// ladder retries under its own cap of three.
+			if (turn.call === 2) {
+				turn.finish();
+				return;
+			}
+			turn.text("carried on");
+			turn.finish();
+		},
+	});
+	try {
+		await sim.session.prompt("do two things");
+
+		expect(sim.sessionRequests()).toHaveLength(3);
+		const started = sim.eventsOfType("auto_retry_start");
+		const ended = sim.eventsOfType("auto_retry_end");
+		// One wait, announced once and closed once, by the turn that actually landed.
+		expect(started).toHaveLength(1);
+		expect(ended).toHaveLength(1);
+		expect(ended[0]?.success).toBe(true);
+		expect(ended[0]?.attempt).toBe(1);
+		expect(ended[0]?.mode).toBe("continue");
+		expect(sim.session.isRetrying).toBe(false);
+	} finally {
+		sim.dispose();
+	}
+});
+
+it("closes the announced wait when the prompt accepts an empty continued turn as terminal", async () => {
+	// The other half of the same hole, and the one an empty-stop retry cannot
+	// rescue: an agent-initiated prompt may declare an empty completion terminal
+	// (the autolearn nudge does), so the turn settles right there with no further
+	// request. Nothing recovered, so the wait ends unsuccessfully rather than
+	// staying announced on a session that is now idle with nothing to cancel.
+	const sim = await createSimulation({
+		settings: { "retry.maxRetries": 2, "retry.baseDelayMs": 60, "retry.maxDelayMs": 240 },
+		tools: [
+			simTool(TOOL.bash, async () => ({ content: [{ type: "text", text: "bash ran" }] })),
+			simTool(TOOL.read, async () => ({ content: [{ type: "text", text: "read ran" }] })),
+		],
+		script: turn => {
+			if (turn.call === 1) {
+				turn.toolCall(TOOL.bash, { command: "echo one" }, "call-a");
+				turn.execResolvedToolCall(TOOL.read, { path: "README.md" }, "call-b");
+				turn.fail(HTTP2_TEXT);
+				return;
+			}
+			turn.finish();
+		},
+	});
+	try {
+		await sim.session.sendCustomMessage(
+			{ type: "text", text: "learn something" },
+			{ triggerTurn: true, deliverAs: "nextTurn", acceptTerminalEmptyStop: true },
+		);
+
+		expect(sim.sessionRequests()).toHaveLength(2);
+		const started = sim.eventsOfType("auto_retry_start");
+		const ended = sim.eventsOfType("auto_retry_end");
+		expect(started).toHaveLength(1);
+		expect(ended).toHaveLength(1);
+		expect(ended[0]?.success).toBe(false);
+		expect(ended[0]?.mode).toBe("continue");
+		expect(sim.session.isRetrying).toBe(false);
+	} finally {
+		sim.dispose();
+	}
+});
+
+it("does not report a recovery on the next turn after the empty-stop cap gave up", async () => {
+	// The cap emits its own unsuccessful end, so the continuation's allowance has
+	// been answered and must not be left set. A later turn that does NOT run the
+	// per-prompt reset (an agent-initiated nudge, an IRC wake, a queued follow-up)
+	// would otherwise land, see the allowance still spent, and emit a SECOND end
+	// reading as a successful continuation of a recovery that had already given up.
+	const sim = await createSimulation({
+		settings: { "retry.maxRetries": 2, "retry.baseDelayMs": 60, "retry.maxDelayMs": 240 },
+		tools: [
+			simTool(TOOL.bash, async () => ({ content: [{ type: "text", text: "bash ran" }] })),
+			simTool(TOOL.read, async () => ({ content: [{ type: "text", text: "read ran" }] })),
+		],
+		script: turn => {
+			if (turn.call === 1) {
+				turn.toolCall(TOOL.bash, { command: "echo one" }, "call-a");
+				turn.execResolvedToolCall(TOOL.read, { path: "README.md" }, "call-b");
+				turn.fail(HTTP2_TEXT);
+				return;
+			}
+			// Four empty turns: three inside the empty-stop ladder's cap of three,
+			// and the fourth is the one that exceeds it.
+			if (turn.call <= 5) {
+				turn.finish();
+				return;
+			}
+			turn.text("carried on");
+			turn.finish();
+		},
+	});
+	try {
+		await sim.session.prompt("do two things");
+
+		const afterPrompt = sim.eventsOfType("auto_retry_end");
+		expect(afterPrompt).toHaveLength(1);
+		expect(afterPrompt[0]?.success).toBe(false);
+
+		// An agent-initiated turn, which does not reset the per-prompt allowances.
+		await sim.session.sendCustomMessage(
+			{ type: "text", text: "keep going" },
+			{ triggerTurn: true, deliverAs: "nextTurn" },
+		);
+
+		expect(sim.eventsOfType("auto_retry_end")).toHaveLength(1);
+		expect(sim.eventsOfType("auto_retry_start")).toHaveLength(1);
+	} finally {
+		sim.dispose();
+	}
 });

@@ -5886,9 +5886,13 @@ export class AgentSession {
 				// Captured before the reset below: a landed turn is what closes the wait
 				// this ladder announced, and by then the counter is back to zero.
 				const batchContinues = this.#unreplayableBatchContinues;
-				if (assistantMsg.stopReason !== "error") {
-					// A turn that reached the provider and came back is the evidence the
-					// transport recovered; the next transport death gets the full budget.
+				if (assistantMsg.stopReason !== "error" && !this.#isEmptyAssistantStop(assistantMsg)) {
+					// A turn that reached the provider and came back with something is the
+					// evidence the transport recovered; the next transport death gets the
+					// full budget. An EMPTY turn is not that evidence, and clearing the
+					// counter on one left the end event below with nothing to fire on: the
+					// empty-stop ladder would produce a real turn a moment later and the
+					// announced wait would already be unclosable.
 					this.#unreplayableBatchContinues = 0;
 				}
 				if (
@@ -6294,6 +6298,36 @@ export class AgentSession {
 			this.#retryResolve = undefined;
 			this.#retryPromise = undefined;
 		}
+	}
+
+	/**
+	 * Close an unreplayable-batch continuation's announced wait when the prompt
+	 * settles without a turn ever landing.
+	 *
+	 * The wait is announced with `auto_retry_start`, and every consumer of that
+	 * event stays open until an end arrives: the countdown, `progress.retryState`
+	 * on a parent HUD, the turn's retry trace, hooks, extensions, collab and the
+	 * SDK. A landed turn closes it at the arm in the assistant-message handler.
+	 * An EMPTY turn does not, and must not: an empty completion is not evidence
+	 * the transport recovered, so the allowance stays spent and the empty-stop
+	 * ladder gets its own chance to produce a real turn that closes the wait.
+	 * What is left is the prompt that ACCEPTS an empty completion as terminal
+	 * (`acceptTerminalEmptyStop`, which the autolearn nudge sets): the turn
+	 * settles there with no further request, so without this the countdown ran on
+	 * a session that was already idle, with nothing left to cancel it.
+	 */
+	async #endAnnouncedContinuationWait(finalError: string): Promise<void> {
+		const attempt = this.#unreplayableBatchContinues;
+		if (attempt === 0) return;
+		this.#unreplayableBatchContinues = 0;
+		await this.#emitSessionEvent({
+			type: "auto_retry_end",
+			success: false,
+			attempt,
+			mode: "continue",
+			finalError,
+		});
+		this.#resolveRetry();
 	}
 
 	/** Create the TTSR resume gate promise if one doesn't already exist. */
@@ -14265,6 +14299,9 @@ export class AgentSession {
 			this.#acceptTerminalEmptyStopForPrompt = false;
 			this.#discardAcceptedTerminalEmptyStop(assistantMessage);
 			this.#emptyStopRetryCount = 0;
+			// This prompt is over, so a continuation's announced wait has no later
+			// turn to close it. Nothing recovered, which is what the end says.
+			await this.#endAnnouncedContinuationWait("Continued turn returned an empty completion");
 			return false;
 		}
 
@@ -14288,6 +14325,10 @@ export class AgentSession {
 			});
 			this.#clearPendingRecoveredRetryErrors();
 			this.#retryAttempt = 0;
+			// The cap ends the cycle for a continuation's announced wait too: the end
+			// above closed it, and leaving the counter set would let the next landed
+			// turn emit a second end reporting a recovery that never happened.
+			this.#unreplayableBatchContinues = 0;
 			this.#resolveRetry();
 			// The cycle is over, so the budget belongs to the next turn. Leaving the
 			// count above the cap made the next turn that does NOT run the
