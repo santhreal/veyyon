@@ -200,9 +200,10 @@ tools:
 ```
 
 Per run, `--approval-mode <mode>` and `--auto-approve` / `--yolo` override the mode. There is no
-OS shell sandbox. The mode is the main boundary, and three guards sit on top of it and are not
-lifted by raising the rung: the working-directory boundary, the secret-use boundary, and the
-critical-command floor in the bash guard. See
+OS shell sandbox. The mode is the main boundary, and three guards sit on top of it: the
+working-directory boundary, the secret-use boundary, and the destructive-command floor in the bash
+guard. The first two hold on every rung except `yolo`, the shipped `auto` included. The floor holds
+on `yolo` as well, and only `tools.approval.bash: allow` lifts it. See
 [Approvals](../features/sandbox.md) and [Safety](./safety.md).
 
 ## Run unattended or in CI

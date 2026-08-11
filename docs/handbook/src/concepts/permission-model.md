@@ -29,8 +29,8 @@ A mode is a named choice of which tiers run without asking. There are five:
 | `plan` | read | write with an active plan-mode session; write and exec are otherwise denied |
 | `ask` | nothing | read, write, exec |
 | `ask-command` | read + write | exec |
-| `auto` | all tiers | a per-tool policy, the working-directory boundary, credential use, a tool's own critical calls |
-| `yolo` | all tiers | nothing (unless a per-tool override applies) |
+| `auto` | all tiers | a per-tool policy, the working-directory boundary, credential use, a tool's own flagged calls |
+| `yolo` | all tiers | a blatantly destructive command, and a per-tool `deny` or `prompt` |
 
 The schema default is `auto`. Three older names still work: `always-ask` maps to `ask`, and
 `write` and `auto-edit` both map to `ask-command`.
@@ -158,9 +158,11 @@ Deletes inside your workspace are not affected. `rm -rf node_modules`, `rm -rf d
 that does not hold credentials, such as `rm -rf ~/.config/some-app`. Ordinary redirects, such as
 `bun test > /tmp/results.txt`, are not affected either.
 
-The second half is a pattern list (`CRITICAL_BASH_PATTERNS`, in the same file) for the shapes that
-are about text rather than paths: fork bombs, disk destruction, writes to system credential files,
-remote-fetch piped to a shell, and host control commands.
+The second half is a pattern list (`FLAGGED_BASH_PATTERNS`, in the same file) for the shapes that
+are about text rather than paths, and each entry is recorded as one of two strengths. **Destructive**
+covers fork bombs, disk destruction, and writes to system credential files. **Dangerous** covers a
+remote fetch piped to a shell, host control commands such as `reboot`, and a shell wired to a
+network socket: they run code nobody read, or take the machine down, without destroying data.
 
 Both halves ship with Veyyon and cannot be narrowed. You can widen the first half with
 `tools.protectedPaths`, a list of absolute paths (a leading `~` is expanded) that a recursive
@@ -178,11 +180,14 @@ write there can stop the guard refusing your home directory, the system roots, o
 An entry that is not an absolute or `~`-relative path is ignored, because resolving it against a
 guessed working directory would protect somewhere other than what you wrote.
 
-These commands stop for approval in `yolo` too, and the `/yolo` session bypass does not lift them.
-That is the one place `yolo` is not absolute, and it is deliberate: without it, the commands the
-guard considers most dangerous would be the ones most likely to run in the mode that skips the
-check. To turn the floor off, set `tools.approval.bash` to `allow`, which is read as a decision you
-made on purpose. Setting it to `deny` remains a hard block.
+The first half and the destructive patterns stop for approval in `yolo` too, and the `/yolo` session
+bypass does not lift them. That is the one place `yolo` is not absolute, and it is deliberate:
+without it, the commands the guard considers most destructive would be the ones most likely to run
+in the mode that skips the check. The dangerous patterns are an ordinary prompt instead: every rung
+below `yolo` stops on them, and `yolo` does not, because a rung whose whole promise is that it stops
+asking cannot be asking about an install command the operator typed. To turn the floor off, set
+`tools.approval.bash` to `allow`, which is read as a decision you made on purpose. Setting it to
+`deny` remains a hard block.
 
 The guard reasons about what a command will do, and that reasoning can be wrong: a shell function,
 an `eval`, or a script invoked by name defeats any parser. Treat it as a seatbelt, not as

@@ -104,8 +104,8 @@ Every tool call falls into one of three tiers: `read`, `write`, or `exec`. The `
 | `plan` | `read` (it proposes, but does not write) | `write` only inside an active plan-mode session; `write` and `exec` are otherwise denied |
 | `ask` | nothing | every call, `read` included |
 | `ask-command` | `read` and `write` | anything that executes: `bash`, `eval`, `browser`, `task`, `ssh` |
-| `auto` (default) | all tiers | a per-tool policy, a path outside the working directory, credential use, and a tool's own critical calls |
-| `yolo` | all tiers | nothing, unless a per-tool override or a bash safety rule applies |
+| `auto` (default) | all tiers | a per-tool policy, a path outside the working directory, credential use, and a tool's own flagged calls |
+| `yolo` | all tiers | a blatantly destructive command, and a per-tool `deny` or `prompt` |
 
 The older names still work: `always-ask` maps to `ask`, and `write` and `auto-edit` both map to `ask-command`. The schema default is `auto`. You can change it in `/settings` or in your config. See [Approvals](../features/sandbox.md) and [Safety](./safety.md).
 

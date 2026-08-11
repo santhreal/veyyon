@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-36b7dc35.js";
+            window.path_to_searchindex_js = "../searchindex-79cfba88.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-79e2ba62.js"></script>
@@ -368,9 +368,10 @@ compaction:
     read: allow
 </code></pre>
 <p>Per run, <code>--approval-mode &lt;mode&gt;</code> and <code>--auto-approve</code> / <code>--yolo</code> override the mode. There is no
-OS shell sandbox. The mode is the main boundary, and three guards sit on top of it and are not
-lifted by raising the rung: the working-directory boundary, the secret-use boundary, and the
-critical-command floor in the bash guard. See
+OS shell sandbox. The mode is the main boundary, and three guards sit on top of it: the
+working-directory boundary, the secret-use boundary, and the destructive-command floor in the bash
+guard. The first two hold on every rung except <code>yolo</code>, the shipped <code>auto</code> included. The floor holds
+on <code>yolo</code> as well, and only <code>tools.approval.bash: allow</code> lifts it. See
 <a href="../features/sandbox.html">Approvals</a> and <a href="./safety.html">Safety</a>.</p>
 <h2 id="run-unattended-or-in-ci"><a class="header" href="#run-unattended-or-in-ci">Run unattended or in CI</a></h2>
 <div class="table-wrapper">

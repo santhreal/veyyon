@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-36b7dc35.js";
+            window.path_to_searchindex_js = "../searchindex-79cfba88.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-79e2ba62.js"></script>
@@ -202,7 +202,7 @@
 <p><strong>apply_patch</strong>: Edit mode (<code>edit.mode: apply_patch</code>) for a Codex-style <code>*** Begin Patch … *** End Patch</code> envelope. Default edit mode is <strong>hashline</strong> via the <code>edit</code> tool. Apply-patch shares approval policy with other write paths.</p>
 </li>
 <li>
-<p><strong>approval mode</strong>: The autonomy control (<code>tools.approvalMode</code>) for tool tiers: <code>plan</code>, <code>ask</code>, <code>ask-command</code>, <code>auto</code> (the default), <code>yolo</code> (legacy <code>always-ask</code> → <code>ask</code>, <code>write</code> and <code>auto-edit</code> → <code>ask-command</code>). There is no OS command sandbox; the mode, per-tool <code>tools.approval</code> overrides, the working-directory and secret-use boundaries, and hard-coded critical bash patterns are the boundary.</p>
+<p><strong>approval mode</strong>: The autonomy control (<code>tools.approvalMode</code>) for tool tiers: <code>plan</code>, <code>ask</code>, <code>ask-command</code>, <code>auto</code> (the default), <code>yolo</code> (legacy <code>always-ask</code> → <code>ask</code>, <code>write</code> and <code>auto-edit</code> → <code>ask-command</code>). There is no OS command sandbox; the mode, per-tool <code>tools.approval</code> overrides, the working-directory and secret-use boundaries, and hard-coded flagged bash patterns are the boundary. Of those patterns, the destructive ones ask on every rung, <code>yolo</code> included, and the merely dangerous ones ask on every rung below it.</p>
 </li>
 <li>
 <p><strong>model catalog</strong>: Bundled provider/model data plus <code>models.yml</code> / <code>models.yaml</code> custom entries. There is no separate <code>backends.toml</code> subsystem.</p>

@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-36b7dc35.js";
+            window.path_to_searchindex_js = "../searchindex-79cfba88.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-79e2ba62.js"></script>
@@ -201,7 +201,7 @@
 <h3 id="veyyon-plugin-doctor-fails-what-do-i-fix"><a class="header" href="#veyyon-plugin-doctor-fails-what-do-i-fix"><code>veyyon plugin doctor</code> fails. What do I fix?</a></h3>
 <p><code>veyyon plugin doctor</code> exits non-zero when a check reports an error, and it prints the failed check and the next action. Fix the line it reports, then run it again. For the full diagnostics surface, see <a href="../features/doctor.html">Diagnostics and health</a>.</p>
 <h3 id="does-veyyon-sandbox-the-commands-it-runs"><a class="header" href="#does-veyyon-sandbox-the-commands-it-runs">Does Veyyon sandbox the commands it runs?</a></h3>
-<p>No OS confinement (no Landlock, seccomp, Seatbelt, bubblewrap). Policy is <strong><code>tools.approvalMode</code></strong> (schema default <strong><code>auto</code></strong>), plus the working-directory and secret-use boundaries, which apply on every rung except <code>yolo</code>, and hard-coded critical bash patterns, which prompt on every rung including <code>yolo</code>. See <a href="../features/sandbox.html">Approvals</a>.</p>
+<p>No OS confinement (no Landlock, seccomp, Seatbelt, bubblewrap). Policy is <strong><code>tools.approvalMode</code></strong> (schema default <strong><code>auto</code></strong>), plus the working-directory and secret-use boundaries, which apply on every rung except <code>yolo</code>, and hard-coded flagged bash patterns: the destructive ones prompt on every rung including <code>yolo</code>, and the merely dangerous ones (<code>curl | sh</code>, <code>reboot</code>, <code>nc -e</code>) prompt on every rung below it. See <a href="../features/sandbox.html">Approvals</a>.</p>
 <h2 id="database-and-session-locking"><a class="header" href="#database-and-session-locking">Database and session locking</a></h2>
 <p>There is no cross-process lock on a session file: nothing prevents two <code>veyyon</code> processes from opening the same session at once, and the single-writer guarantee is per-process only. Treat one session as belonging to one running process; do not edit or delete its file while that process is alive.</p>
 <p>For how sessions are stored and resumed, see <a href="./sessions.html">Sessions</a>.</p>

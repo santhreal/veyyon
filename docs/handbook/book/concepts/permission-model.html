@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-36b7dc35.js";
+            window.path_to_searchindex_js = "../searchindex-79cfba88.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-79e2ba62.js"></script>
@@ -223,8 +223,8 @@ you know which tier a tool is in, the mode tells you whether it runs.</p>
 <tr><td><code>plan</code></td><td>read</td><td>write with an active plan-mode session; write and exec are otherwise denied</td></tr>
 <tr><td><code>ask</code></td><td>nothing</td><td>read, write, exec</td></tr>
 <tr><td><code>ask-command</code></td><td>read + write</td><td>exec</td></tr>
-<tr><td><code>auto</code></td><td>all tiers</td><td>a per-tool policy, the working-directory boundary, credential use, a tool’s own critical calls</td></tr>
-<tr><td><code>yolo</code></td><td>all tiers</td><td>nothing (unless a per-tool override applies)</td></tr>
+<tr><td><code>auto</code></td><td>all tiers</td><td>a per-tool policy, the working-directory boundary, credential use, a tool’s own flagged calls</td></tr>
+<tr><td><code>yolo</code></td><td>all tiers</td><td>a blatantly destructive command, and a per-tool <code>deny</code> or <code>prompt</code></td></tr>
 </tbody>
 </table>
 </div>
@@ -322,9 +322,11 @@ text says whether it is.</p>
 <code>rm -rf /tmp/build-1234</code> run without a prompt, and so does a delete inside a protected directory
 that does not hold credentials, such as <code>rm -rf ~/.config/some-app</code>. Ordinary redirects, such as
 <code>bun test &gt; /tmp/results.txt</code>, are not affected either.</p>
-<p>The second half is a pattern list (<code>CRITICAL_BASH_PATTERNS</code>, in the same file) for the shapes that
-are about text rather than paths: fork bombs, disk destruction, writes to system credential files,
-remote-fetch piped to a shell, and host control commands.</p>
+<p>The second half is a pattern list (<code>FLAGGED_BASH_PATTERNS</code>, in the same file) for the shapes that
+are about text rather than paths, and each entry is recorded as one of two strengths. <strong>Destructive</strong>
+covers fork bombs, disk destruction, and writes to system credential files. <strong>Dangerous</strong> covers a
+remote fetch piped to a shell, host control commands such as <code>reboot</code>, and a shell wired to a
+network socket: they run code nobody read, or take the machine down, without destroying data.</p>
 <p>Both halves ship with Veyyon and cannot be narrowed. You can widen the first half with
 <code>tools.protectedPaths</code>, a list of absolute paths (a leading <code>~</code> is expanded) that a recursive
 delete must also stop for:</p>
@@ -337,11 +339,14 @@ delete must also stop for:</p>
 write there can stop the guard refusing your home directory, the system roots, or your credentials.
 An entry that is not an absolute or <code>~</code>-relative path is ignored, because resolving it against a
 guessed working directory would protect somewhere other than what you wrote.</p>
-<p>These commands stop for approval in <code>yolo</code> too, and the <code>/yolo</code> session bypass does not lift them.
-That is the one place <code>yolo</code> is not absolute, and it is deliberate: without it, the commands the
-guard considers most dangerous would be the ones most likely to run in the mode that skips the
-check. To turn the floor off, set <code>tools.approval.bash</code> to <code>allow</code>, which is read as a decision you
-made on purpose. Setting it to <code>deny</code> remains a hard block.</p>
+<p>The first half and the destructive patterns stop for approval in <code>yolo</code> too, and the <code>/yolo</code> session
+bypass does not lift them. That is the one place <code>yolo</code> is not absolute, and it is deliberate:
+without it, the commands the guard considers most destructive would be the ones most likely to run
+in the mode that skips the check. The dangerous patterns are an ordinary prompt instead: every rung
+below <code>yolo</code> stops on them, and <code>yolo</code> does not, because a rung whose whole promise is that it stops
+asking cannot be asking about an install command the operator typed. To turn the floor off, set
+<code>tools.approval.bash</code> to <code>allow</code>, which is read as a decision you made on purpose. Setting it to
+<code>deny</code> remains a hard block.</p>
 <p>The guard reasons about what a command will do, and that reasoning can be wrong: a shell function,
 an <code>eval</code>, or a script invoked by name defeats any parser. Treat it as a seatbelt, not as
 containment.</p>
