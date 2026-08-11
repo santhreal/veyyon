@@ -123,9 +123,31 @@ function noRungEnv(): { env: Record<string, string> } {
 			DOCKER_HOST: "unix:///nonexistent/rung-contract-no-docker.sock",
 			VIRTIOFSD: "/nonexistent/rung-contract-no-virtiofsd",
 			VEYYON_SANDBOX_REMOTE_KEY: "/nonexistent/rung-contract-no-key",
+			// The remote rung is out of the automatic order on GitHub Actions, so
+			// without this the reason row below asserts nothing there and the rung
+			// whose reason is hardest to produce is the one that goes unchecked.
+			VEYYON_SANDBOX_REMOTE: "1",
 		},
 	};
 }
+
+/**
+ * The reasons each probe is allowed to give once `noRungEnv` has broken it.
+ *
+ * Every alternative is a `skip <rung> "..."` line in that rung's script, so a
+ * reason that stops naming what it tried fails here. The alternatives exist
+ * because the knob is not the only thing missing on every machine: a runner
+ * without qemu answers before it ever reads `VIRTIOFSD`, and asserting the one
+ * reason this workstation happens to produce is how this suite came to pass
+ * locally and fail on CI.
+ */
+const REASON_BY_RUNG: Record<string, RegExp> = {
+	remote: /(ssh not on PATH|rsync not on PATH|ssh key .* is not readable|no remote host configured|cannot reach )/,
+	docker: /docker (not on PATH|daemon not reachable)/,
+	microvm:
+		/(qemu-system-x86_64 not on PATH|no 'microvm' machine type|\/dev\/kvm is not readable|virtiofsd not found|guest image not built|boot check)/,
+	bwrap: new RegExp(`(bubblewrap not on PATH|${SHIM_SAID})`),
+};
 
 /** The reason text `--probe` printed under one rung's `unavailable` line. */
 function reasonFor(probeStdout: string, rung: string): string {
@@ -155,18 +177,43 @@ describe("the rung table", () => {
 	 * that actually failed. A bare "unavailable" sends the reader to read four shell
 	 * files to discover that a socket is missing.
 	 *
-	 * The bwrap case is the strong one: the reason must quote the shim's own output,
-	 * which the probe can only report by having executed it. A probe rewritten to
-	 * trust `command -v` would find the shim, call the rung available, and this goes
-	 * red.
+	 * Every rung is asserted, from the same table the marker contract enumerates,
+	 * so a rung added without a documented failure reason fails here rather than
+	 * being the one nobody checks. The bwrap case is the strong one: the reason
+	 * must quote the shim's own output, which the probe can only report by having
+	 * executed it. A probe rewritten to trust `command -v` would find the shim,
+	 * call the rung available, and this goes red.
 	 */
-	it("prints a reason naming what it actually tried", () => {
+	it("prints a reason naming what it actually tried, for every rung", () => {
+		expect(Object.keys(REASON_BY_RUNG).sort(), "a rung with no documented failure reason").toEqual(
+			Object.keys(MARKER_BY_RUNG).sort(),
+		);
+
 		const { env } = noRungEnv();
 		const probe = runDriver(["--probe"], env);
 
-		expect(reasonFor(probe.stdout, "docker")).toMatch(/docker (daemon not reachable|not on PATH)/);
-		expect(reasonFor(probe.stdout, "remote")).toMatch(/(is not readable|cannot reach|not on PATH)/);
+		for (const [rung, reason] of Object.entries(REASON_BY_RUNG)) {
+			expect(reasonFor(probe.stdout, rung), `the ${rung} reason`).toMatch(reason);
+		}
 		expect(reasonFor(probe.stdout, "bwrap")).toContain(SHIM_SAID);
+	});
+
+	/**
+	 * The remote rung is first on a workstation and out of the order on a GitHub
+	 * runner, which has no LAN host to reach, and `VEYYON_SANDBOX_REMOTE` is the
+	 * documented override in both directions. An excluded rung still gets a row,
+	 * naming the flag that reaches it: this suite asserted the reason text of a
+	 * rung the runner had silently dropped, and read the missing row as a missing
+	 * reason.
+	 */
+	it("excludes the remote rung on demand and still says how to reach it", () => {
+		const excluded = runDriver(["--probe"], { VEYYON_SANDBOX_REMOTE: "0" });
+		expect(excluded.status).toBe(0);
+		expect(excluded.stdout).toMatch(/^ {2}remote\s+not in the selection order here; pin it with --rung=remote$/m);
+
+		const included = runDriver(["--probe"], { VEYYON_SANDBOX_REMOTE: "1" });
+		expect(included.status).toBe(0);
+		expect(included.stdout).toMatch(/^ {2}remote\s+(AVAILABLE|unavailable)$/m);
 	});
 });
 
