@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-36b7dc35.js";
+            window.path_to_searchindex_js = "searchindex-79cfba88.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-79e2ba62.js"></script>
@@ -603,7 +603,7 @@ by hand. See <a href="#model-and-provider-selection">Model and provider selectio
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="approvals-and-errors"><a class="header" href="#approvals-and-errors">Approvals and errors</a></h1>
-<p>File writes and shell commands are gated by <code>tools.approvalMode</code> and related policy (per-tool <code>tools.approval</code> overrides, hard-coded critical bash patterns). There is no OS-level command sandbox.</p>
+<p>File writes and shell commands are gated by <code>tools.approvalMode</code> and related policy (per-tool <code>tools.approval</code> overrides, hard-coded flagged bash patterns). There is no OS-level command sandbox.</p>
 <h2 id="behavior-1"><a class="header" href="#behavior-1">Behavior</a></h2>
 <ul>
 <li>Approval mode selects which tiers (read / write / exec) auto-run vs prompt</li>
@@ -1219,8 +1219,8 @@ $ veyyon
 <tr><td><code>plan</code></td><td><code>read</code> (it proposes, but does not write)</td><td><code>write</code> only inside an active plan-mode session; <code>write</code> and <code>exec</code> are otherwise denied</td></tr>
 <tr><td><code>ask</code></td><td>nothing</td><td>every call, <code>read</code> included</td></tr>
 <tr><td><code>ask-command</code></td><td><code>read</code> and <code>write</code></td><td>anything that executes: <code>bash</code>, <code>eval</code>, <code>browser</code>, <code>task</code>, <code>ssh</code></td></tr>
-<tr><td><code>auto</code> (default)</td><td>all tiers</td><td>a per-tool policy, a path outside the working directory, credential use, and a tool’s own critical calls</td></tr>
-<tr><td><code>yolo</code></td><td>all tiers</td><td>nothing, unless a per-tool override or a bash safety rule applies</td></tr>
+<tr><td><code>auto</code> (default)</td><td>all tiers</td><td>a per-tool policy, a path outside the working directory, credential use, and a tool’s own flagged calls</td></tr>
+<tr><td><code>yolo</code></td><td>all tiers</td><td>a blatantly destructive command, and a per-tool <code>deny</code> or <code>prompt</code></td></tr>
 </tbody>
 </table>
 </div>
@@ -1501,8 +1501,8 @@ you know which tier a tool is in, the mode tells you whether it runs.</p>
 <tr><td><code>plan</code></td><td>read</td><td>write with an active plan-mode session; write and exec are otherwise denied</td></tr>
 <tr><td><code>ask</code></td><td>nothing</td><td>read, write, exec</td></tr>
 <tr><td><code>ask-command</code></td><td>read + write</td><td>exec</td></tr>
-<tr><td><code>auto</code></td><td>all tiers</td><td>a per-tool policy, the working-directory boundary, credential use, a tool’s own critical calls</td></tr>
-<tr><td><code>yolo</code></td><td>all tiers</td><td>nothing (unless a per-tool override applies)</td></tr>
+<tr><td><code>auto</code></td><td>all tiers</td><td>a per-tool policy, the working-directory boundary, credential use, a tool’s own flagged calls</td></tr>
+<tr><td><code>yolo</code></td><td>all tiers</td><td>a blatantly destructive command, and a per-tool <code>deny</code> or <code>prompt</code></td></tr>
 </tbody>
 </table>
 </div>
@@ -1600,9 +1600,11 @@ text says whether it is.</p>
 <code>rm -rf /tmp/build-1234</code> run without a prompt, and so does a delete inside a protected directory
 that does not hold credentials, such as <code>rm -rf ~/.config/some-app</code>. Ordinary redirects, such as
 <code>bun test &gt; /tmp/results.txt</code>, are not affected either.</p>
-<p>The second half is a pattern list (<code>CRITICAL_BASH_PATTERNS</code>, in the same file) for the shapes that
-are about text rather than paths: fork bombs, disk destruction, writes to system credential files,
-remote-fetch piped to a shell, and host control commands.</p>
+<p>The second half is a pattern list (<code>FLAGGED_BASH_PATTERNS</code>, in the same file) for the shapes that
+are about text rather than paths, and each entry is recorded as one of two strengths. <strong>Destructive</strong>
+covers fork bombs, disk destruction, and writes to system credential files. <strong>Dangerous</strong> covers a
+remote fetch piped to a shell, host control commands such as <code>reboot</code>, and a shell wired to a
+network socket: they run code nobody read, or take the machine down, without destroying data.</p>
 <p>Both halves ship with Veyyon and cannot be narrowed. You can widen the first half with
 <code>tools.protectedPaths</code>, a list of absolute paths (a leading <code>~</code> is expanded) that a recursive
 delete must also stop for:</p>
@@ -1615,11 +1617,14 @@ delete must also stop for:</p>
 write there can stop the guard refusing your home directory, the system roots, or your credentials.
 An entry that is not an absolute or <code>~</code>-relative path is ignored, because resolving it against a
 guessed working directory would protect somewhere other than what you wrote.</p>
-<p>These commands stop for approval in <code>yolo</code> too, and the <code>/yolo</code> session bypass does not lift them.
-That is the one place <code>yolo</code> is not absolute, and it is deliberate: without it, the commands the
-guard considers most dangerous would be the ones most likely to run in the mode that skips the
-check. To turn the floor off, set <code>tools.approval.bash</code> to <code>allow</code>, which is read as a decision you
-made on purpose. Setting it to <code>deny</code> remains a hard block.</p>
+<p>The first half and the destructive patterns stop for approval in <code>yolo</code> too, and the <code>/yolo</code> session
+bypass does not lift them. That is the one place <code>yolo</code> is not absolute, and it is deliberate:
+without it, the commands the guard considers most destructive would be the ones most likely to run
+in the mode that skips the check. The dangerous patterns are an ordinary prompt instead: every rung
+below <code>yolo</code> stops on them, and <code>yolo</code> does not, because a rung whose whole promise is that it stops
+asking cannot be asking about an install command the operator typed. To turn the floor off, set
+<code>tools.approval.bash</code> to <code>allow</code>, which is read as a decision you made on purpose. Setting it to
+<code>deny</code> remains a hard block.</p>
 <p>The guard reasons about what a command will do, and that reasoning can be wrong: a shell function,
 an <code>eval</code>, or a script invoked by name defeats any parser. Treat it as a seatbelt, not as
 containment.</p>
@@ -1895,7 +1900,7 @@ and confirm that it matches the command or browser scenario that ran.</p>
 <p>Approvals are how you decide which tools run without asking. One setting drives them:
 <code>tools.approvalMode</code>. There is no operating-system sandbox behind it (no Landlock, seccomp,
 Seatbelt, or bubblewrap). Shell commands and file writes run as your user, bounded only by
-this policy, per-tool <code>tools.approval</code> overrides, and the hard-coded critical bash patterns
+this policy, per-tool <code>tools.approval</code> overrides, and the hard-coded flagged bash patterns
 below.</p>
 <p>This page is the operator reference. For the model behind it, see
 <a href="#permission-model">Permission model</a>. For the wider boundary, see
@@ -1923,8 +1928,8 @@ below.</p>
 <tr><td><code>plan</code></td><td>auto</td><td>ask with an active plan-mode session, denied otherwise</td><td>denied</td></tr>
 <tr><td><code>ask</code></td><td>ask</td><td>ask</td><td>ask</td></tr>
 <tr><td><code>ask-command</code></td><td>auto</td><td>auto</td><td>ask</td></tr>
-<tr><td><code>auto</code></td><td>auto</td><td>auto</td><td>auto, with the per-tool, working-directory, credential and critical-call guards still asking</td></tr>
-<tr><td><code>yolo</code></td><td>auto</td><td>auto</td><td>auto</td></tr>
+<tr><td><code>auto</code></td><td>auto</td><td>auto</td><td>auto, with the per-tool, working-directory, credential and flagged-command guards still asking</td></tr>
+<tr><td><code>yolo</code></td><td>auto</td><td>auto</td><td>auto, except a blatantly destructive command, which still asks</td></tr>
 </tbody>
 </table>
 </div>
@@ -1949,7 +1954,7 @@ reason from the requested command or file operation, and waits on four options:<
 <p>The two “for session” rows are session memory, not policy: nothing is written to
 <code>tools.approval</code>, and the next launch asks again. A remembered decision also covers only
 the ordinary tier prompt. The three prompts that are about a call’s ARGUMENTS rather than
-its tool name still ask every time: a <code>critical</code> bash command, a path outside the working
+its tool name still ask every time: a flagged bash command, a path outside the working
 directory, and a call that spends a stored credential.</p>
 <p>The selected option uses a radio marker and includes a short description. Navigate with the usual
 list keys (<code>up</code>/<code>down</code>, <code>enter</code> to confirm, <code>esc</code> to cancel; cancelling counts as a denial).
@@ -1973,21 +1978,25 @@ command start at the root. It also stops a truncating redirect into a credential
 such as <code>echo x &gt; ~/.ssh/id_ed25519</code>; appending with <code>&gt;&gt;</code> is left alone. Deletes inside your
 workspace, such as <code>rm -rf node_modules</code> or <code>rm -rf dist</code>, run without a prompt, and so do
 ordinary redirects such as <code>bun test &gt; /tmp/results.txt</code>.</p>
-<p>The second half is a pattern list (<code>CRITICAL_BASH_PATTERNS</code>, same file) for shapes with no
-path to expand: <code>sudo rm</code>, recursive <code>chmod</code>/<code>chown</code> on <code>/</code>, fork bombs, disk and filesystem
-destruction (<code>mkfs</code>, <code>dd</code> to a device, writes to <code>/dev/sd*</code>), writes to
-<code>/etc/passwd</code>/<code>shadow</code>/<code>sudoers</code>, remote-fetch piped to a shell (<code>curl … | sh</code> and its
-process-substitution and <code>eval</code> variants), host control (<code>shutdown</code>, <code>reboot</code>, <code>kill -9 1</code>),
-and network shells (<code>nc -e</code>).</p>
+<p>The second half is a pattern list (<code>FLAGGED_BASH_PATTERNS</code>, same file) for shapes with no
+path to expand, and each entry records what it would do. The <strong>destructive</strong> ones are <code>sudo rm</code>,
+recursive <code>chmod</code>/<code>chown</code> on <code>/</code>, fork bombs, disk and filesystem destruction (<code>mkfs</code>, <code>dd</code> to a
+device, writes to <code>/dev/sd*</code>), and writes to <code>/etc/passwd</code>/<code>shadow</code>/<code>sudoers</code>. The <strong>dangerous</strong>
+ones are a remote fetch piped to a shell (<code>curl … | sh</code> and its process-substitution and <code>eval</code>
+variants), host control (<code>shutdown</code>, <code>reboot</code>, <code>kill -9 1</code>), and network shells (<code>nc -e</code>): these
+run code nobody read or restart the machine, without destroying anything.</p>
 <p>Neither half can be narrowed; the guard exists because a false negative costs data loss or a
 compromised host. You can widen the first half with <code>tools.protectedPaths</code>, a list of absolute
 paths (a leading <code>~</code> is expanded) that a recursive delete must also stop for. It only adds:
 nothing in the built-in judgement reads configuration, so no value there can stop the guard
 refusing your home directory. See
 <a href="#permission-model">the permission model</a> for an example.</p>
-<p>These commands stop for approval in <code>yolo</code> as well, and the <code>/yolo</code> session bypass does not lift
-them. It is the one place <code>yolo</code> is not absolute. To turn the floor off, set
-<code>tools.approval.bash</code> to <code>allow</code>; setting it to <code>deny</code> remains a hard block.</p>
+<p>The destructive half, and the whole of the first half, stop for approval in <code>yolo</code> as well, and
+the <code>/yolo</code> session bypass does not lift them. That floor is the one place <code>yolo</code> is not
+absolute. The dangerous half stops on every rung below <code>yolo</code> and not on <code>yolo</code> itself, because
+a rung whose entire promise is that it does not ask cannot be stopping an install the operator
+typed. To turn the floor off, set <code>tools.approval.bash</code> to <code>allow</code>; setting it to <code>deny</code> remains
+a hard block.</p>
 <p>Separately, the bash interceptor (<code>bashInterceptor.enabled</code>, default off) blocks shell
 commands that duplicate dedicated tools, so the model reaches for <code>read</code>/<code>grep</code>/<code>glob</code>
 instead of <code>cat</code>/<code>rg</code>/<code>find</code>. Its rules live in <code>bashInterceptor.patterns</code>.</p>
@@ -5184,9 +5193,10 @@ compaction:
     read: allow
 </code></pre>
 <p>Per run, <code>--approval-mode &lt;mode&gt;</code> and <code>--auto-approve</code> / <code>--yolo</code> override the mode. There is no
-OS shell sandbox. The mode is the main boundary, and three guards sit on top of it and are not
-lifted by raising the rung: the working-directory boundary, the secret-use boundary, and the
-critical-command floor in the bash guard. See
+OS shell sandbox. The mode is the main boundary, and three guards sit on top of it: the
+working-directory boundary, the secret-use boundary, and the destructive-command floor in the bash
+guard. The first two hold on every rung except <code>yolo</code>, the shipped <code>auto</code> included. The floor holds
+on <code>yolo</code> as well, and only <code>tools.approval.bash: allow</code> lifts it. See
 <a href="#approvals">Approvals</a> and <a href="#safety-1">Safety</a>.</p>
 <h2 id="run-unattended-or-in-ci"><a class="header" href="#run-unattended-or-in-ci">Run unattended or in CI</a></h2>
 <div class="table-wrapper">
@@ -6538,7 +6548,7 @@ Seatbelt, or bubblewrap. The boundary is policy the agent loop enforces before d
 <code>bash</code>, <code>edit</code>, <code>write</code>, and related tools.</li>
 <li>Apply per-tool overrides (<code>tools.approval</code> → <code>allow</code> / <code>deny</code> / <code>prompt</code>) on top of the mode.</li>
 <li>Apply the two argument-level boundaries the tier cannot see: a filesystem target outside the session working directory, and a call whose arguments carry a stored credential. Both prompt on every rung except <code>yolo</code>, the shipped <code>auto</code> included.</li>
-<li>Force a prompt for hard-coded critical bash patterns (recursive deletion of the home directory or a system directory, fork bombs, <code>curl | sh</code>, disk destruction) on every rung, <code>yolo</code> included. This is a floor rather than an ordinary prompt: only an explicit <code>tools.approval.bash: allow</code> lifts it, and <code>deny</code> remains a hard block.</li>
+<li>Force a prompt for hard-coded flagged bash patterns. The destructive ones (recursive deletion of the home directory or a system directory, fork bombs, disk destruction, writes to the system account files) prompt on every rung, <code>yolo</code> included: that is a floor rather than an ordinary prompt, and only an explicit <code>tools.approval.bash: allow</code> lifts it, while <code>deny</code> remains a hard block. The merely dangerous ones (<code>curl | sh</code>, <code>reboot</code>, <code>nc -e</code>) prompt on every rung below <code>yolo</code>.</li>
 <li>Surface the approval prompt in the TUI before a gated command or edit runs.</li>
 </ul>
 <h2 id="public-boundary"><a class="header" href="#public-boundary">Public boundary</a></h2>
@@ -6555,7 +6565,7 @@ exec-server process in the shipped product.</p>
 <tbody>
 <tr><td>Approval mode</td><td>Which tool tiers run without asking (<code>plan</code>, <code>ask</code>, <code>ask-command</code>, <code>auto</code> (default), <code>yolo</code>; legacy <code>always-ask</code> → <code>ask</code>, <code>write</code> and <code>auto-edit</code> → <code>ask-command</code>).</td></tr>
 <tr><td>Per-tool policy</td><td><code>tools.approval</code> overrides the mode for a named tool.</td></tr>
-<tr><td>Critical bash patterns</td><td>Hard-coded destructive-command shapes that prompt on every rung including <code>yolo</code>, even over a per-tool <code>allow</code>.</td></tr>
+<tr><td>Flagged bash patterns</td><td>Hard-coded command shapes recorded as destructive or dangerous. The destructive ones prompt on every rung including <code>yolo</code>, and below <code>yolo</code> a per-tool <code>allow</code> does not lift them. The dangerous ones prompt on every rung below <code>yolo</code>.</td></tr>
 <tr><td>Plan mode</td><td>Restricts mutating tools until the plan is approved (<code>/plan</code>).</td></tr>
 </tbody>
 </table>
@@ -7312,7 +7322,7 @@ veyyon plugin doctor
 <h2 id="provider-errors"><a class="header" href="#provider-errors">Provider errors</a></h2>
 <p>Check API key / auth store / <code>models.yml</code> for that provider id, base URL, and scopes. See <a href="#models-and-providers">Models and providers</a>.</p>
 <h2 id="command-or-edit-blocked-or-prompting"><a class="header" href="#command-or-edit-blocked-or-prompting">Command or edit blocked or prompting</a></h2>
-<p>Policy is <strong><code>tools.approvalMode</code></strong> and <code>tools.approval</code>, plus the working-directory and secret-use boundaries (every rung except <code>yolo</code>) and hard-coded critical bash patterns (every rung, <code>yolo</code> included). There is no OS command sandbox. Schema default is <strong><code>auto</code></strong>. See <a href="#approvals">Approvals</a> and <a href="#configuration-4">Configuration</a>.</p>
+<p>Policy is <strong><code>tools.approvalMode</code></strong> and <code>tools.approval</code>, plus the working-directory and secret-use boundaries (every rung except <code>yolo</code>) and hard-coded flagged bash patterns: the destructive ones prompt on every rung, <code>yolo</code> included, and the merely dangerous ones (<code>curl | sh</code>, <code>reboot</code>, <code>nc -e</code>) prompt on every rung below it. There is no OS command sandbox. Schema default is <strong><code>auto</code></strong>. See <a href="#approvals">Approvals</a> and <a href="#configuration-4">Configuration</a>.</p>
 <h2 id="truncated-tool-output"><a class="header" href="#truncated-tool-output">Truncated tool output</a></h2>
 <p>Tool results truncate at configured budgets; the result text should state that truncation occurred and how to continue (limit, offset, narrower query). See <a href="#context-size-and-retries">Context size and retries</a>, <a href="#bounded-reads-and-search">Bounded reads and search</a>.</p>
 <h2 id="related-20"><a class="header" href="#related-20">Related</a></h2>
@@ -7327,7 +7337,7 @@ veyyon plugin doctor
 <h3 id="veyyon-plugin-doctor-fails-what-do-i-fix"><a class="header" href="#veyyon-plugin-doctor-fails-what-do-i-fix"><code>veyyon plugin doctor</code> fails. What do I fix?</a></h3>
 <p><code>veyyon plugin doctor</code> exits non-zero when a check reports an error, and it prints the failed check and the next action. Fix the line it reports, then run it again. For the full diagnostics surface, see <a href="#diagnostics-and-health">Diagnostics and health</a>.</p>
 <h3 id="does-veyyon-sandbox-the-commands-it-runs"><a class="header" href="#does-veyyon-sandbox-the-commands-it-runs">Does Veyyon sandbox the commands it runs?</a></h3>
-<p>No OS confinement (no Landlock, seccomp, Seatbelt, bubblewrap). Policy is <strong><code>tools.approvalMode</code></strong> (schema default <strong><code>auto</code></strong>), plus the working-directory and secret-use boundaries, which apply on every rung except <code>yolo</code>, and hard-coded critical bash patterns, which prompt on every rung including <code>yolo</code>. See <a href="#approvals">Approvals</a>.</p>
+<p>No OS confinement (no Landlock, seccomp, Seatbelt, bubblewrap). Policy is <strong><code>tools.approvalMode</code></strong> (schema default <strong><code>auto</code></strong>), plus the working-directory and secret-use boundaries, which apply on every rung except <code>yolo</code>, and hard-coded flagged bash patterns: the destructive ones prompt on every rung including <code>yolo</code>, and the merely dangerous ones (<code>curl | sh</code>, <code>reboot</code>, <code>nc -e</code>) prompt on every rung below it. See <a href="#approvals">Approvals</a>.</p>
 <h2 id="database-and-session-locking"><a class="header" href="#database-and-session-locking">Database and session locking</a></h2>
 <p>There is no cross-process lock on a session file: nothing prevents two <code>veyyon</code> processes from opening the same session at once, and the single-writer guarantee is per-process only. Treat one session as belonging to one running process; do not edit or delete its file while that process is alive.</p>
 <p>For how sessions are stored and resumed, see <a href="#sessions">Sessions</a>.</p>
@@ -7443,7 +7453,7 @@ and <code>UPSTREAM.md</code>.</p>
 <p><strong>apply_patch</strong>: Edit mode (<code>edit.mode: apply_patch</code>) for a Codex-style <code>*** Begin Patch … *** End Patch</code> envelope. Default edit mode is <strong>hashline</strong> via the <code>edit</code> tool. Apply-patch shares approval policy with other write paths.</p>
 </li>
 <li>
-<p><strong>approval mode</strong>: The autonomy control (<code>tools.approvalMode</code>) for tool tiers: <code>plan</code>, <code>ask</code>, <code>ask-command</code>, <code>auto</code> (the default), <code>yolo</code> (legacy <code>always-ask</code> → <code>ask</code>, <code>write</code> and <code>auto-edit</code> → <code>ask-command</code>). There is no OS command sandbox; the mode, per-tool <code>tools.approval</code> overrides, the working-directory and secret-use boundaries, and hard-coded critical bash patterns are the boundary.</p>
+<p><strong>approval mode</strong>: The autonomy control (<code>tools.approvalMode</code>) for tool tiers: <code>plan</code>, <code>ask</code>, <code>ask-command</code>, <code>auto</code> (the default), <code>yolo</code> (legacy <code>always-ask</code> → <code>ask</code>, <code>write</code> and <code>auto-edit</code> → <code>ask-command</code>). There is no OS command sandbox; the mode, per-tool <code>tools.approval</code> overrides, the working-directory and secret-use boundaries, and hard-coded flagged bash patterns are the boundary. Of those patterns, the destructive ones ask on every rung, <code>yolo</code> included, and the merely dangerous ones ask on every rung below it.</p>
 </li>
 <li>
 <p><strong>model catalog</strong>: Bundled provider/model data plus <code>models.yml</code> / <code>models.yaml</code> custom entries. There is no separate <code>backends.toml</code> subsystem.</p>

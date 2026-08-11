@@ -10,7 +10,7 @@ This page answers common questions and errors. For a guided diagnostic path, see
 
 ### Does Veyyon sandbox the commands it runs?
 
-No OS confinement (no Landlock, seccomp, Seatbelt, bubblewrap). Policy is **`tools.approvalMode`** (schema default **`auto`**), plus the working-directory and secret-use boundaries, which apply on every rung except `yolo`, and hard-coded critical bash patterns, which prompt on every rung including `yolo`. See [Approvals](../features/sandbox.md).
+No OS confinement (no Landlock, seccomp, Seatbelt, bubblewrap). Policy is **`tools.approvalMode`** (schema default **`auto`**), plus the working-directory and secret-use boundaries, which apply on every rung except `yolo`, and hard-coded flagged bash patterns: the destructive ones prompt on every rung including `yolo`, and the merely dangerous ones (`curl | sh`, `reboot`, `nc -e`) prompt on every rung below it. See [Approvals](../features/sandbox.md).
 
 ## Database and session locking
 

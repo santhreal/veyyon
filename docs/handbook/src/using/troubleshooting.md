@@ -17,7 +17,7 @@ Check API key / auth store / `models.yml` for that provider id, base URL, and sc
 
 ## Command or edit blocked or prompting
 
-Policy is **`tools.approvalMode`** and `tools.approval`, plus the working-directory and secret-use boundaries (every rung except `yolo`) and hard-coded critical bash patterns (every rung, `yolo` included). There is no OS command sandbox. Schema default is **`auto`**. See [Approvals](../features/sandbox.md) and [Configuration](./configuration.md).
+Policy is **`tools.approvalMode`** and `tools.approval`, plus the working-directory and secret-use boundaries (every rung except `yolo`) and hard-coded flagged bash patterns: the destructive ones prompt on every rung, `yolo` included, and the merely dangerous ones (`curl | sh`, `reboot`, `nc -e`) prompt on every rung below it. There is no OS command sandbox. Schema default is **`auto`**. See [Approvals](../features/sandbox.md) and [Configuration](./configuration.md).
 
 ## Truncated tool output
 

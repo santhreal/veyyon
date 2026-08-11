@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-36b7dc35.js";
+            window.path_to_searchindex_js = "../searchindex-79cfba88.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-79e2ba62.js"></script>
@@ -199,7 +199,7 @@
 <p>Approvals are how you decide which tools run without asking. One setting drives them:
 <code>tools.approvalMode</code>. There is no operating-system sandbox behind it (no Landlock, seccomp,
 Seatbelt, or bubblewrap). Shell commands and file writes run as your user, bounded only by
-this policy, per-tool <code>tools.approval</code> overrides, and the hard-coded critical bash patterns
+this policy, per-tool <code>tools.approval</code> overrides, and the hard-coded flagged bash patterns
 below.</p>
 <p>This page is the operator reference. For the model behind it, see
 <a href="../concepts/permission-model.html">Permission model</a>. For the wider boundary, see
@@ -227,8 +227,8 @@ below.</p>
 <tr><td><code>plan</code></td><td>auto</td><td>ask with an active plan-mode session, denied otherwise</td><td>denied</td></tr>
 <tr><td><code>ask</code></td><td>ask</td><td>ask</td><td>ask</td></tr>
 <tr><td><code>ask-command</code></td><td>auto</td><td>auto</td><td>ask</td></tr>
-<tr><td><code>auto</code></td><td>auto</td><td>auto</td><td>auto, with the per-tool, working-directory, credential and critical-call guards still asking</td></tr>
-<tr><td><code>yolo</code></td><td>auto</td><td>auto</td><td>auto</td></tr>
+<tr><td><code>auto</code></td><td>auto</td><td>auto</td><td>auto, with the per-tool, working-directory, credential and flagged-command guards still asking</td></tr>
+<tr><td><code>yolo</code></td><td>auto</td><td>auto</td><td>auto, except a blatantly destructive command, which still asks</td></tr>
 </tbody>
 </table>
 </div>
@@ -253,7 +253,7 @@ reason from the requested command or file operation, and waits on four options:<
 <p>The two “for session” rows are session memory, not policy: nothing is written to
 <code>tools.approval</code>, and the next launch asks again. A remembered decision also covers only
 the ordinary tier prompt. The three prompts that are about a call’s ARGUMENTS rather than
-its tool name still ask every time: a <code>critical</code> bash command, a path outside the working
+its tool name still ask every time: a flagged bash command, a path outside the working
 directory, and a call that spends a stored credential.</p>
 <p>The selected option uses a radio marker and includes a short description. Navigate with the usual
 list keys (<code>up</code>/<code>down</code>, <code>enter</code> to confirm, <code>esc</code> to cancel; cancelling counts as a denial).
@@ -277,21 +277,25 @@ command start at the root. It also stops a truncating redirect into a credential
 such as <code>echo x &gt; ~/.ssh/id_ed25519</code>; appending with <code>&gt;&gt;</code> is left alone. Deletes inside your
 workspace, such as <code>rm -rf node_modules</code> or <code>rm -rf dist</code>, run without a prompt, and so do
 ordinary redirects such as <code>bun test &gt; /tmp/results.txt</code>.</p>
-<p>The second half is a pattern list (<code>CRITICAL_BASH_PATTERNS</code>, same file) for shapes with no
-path to expand: <code>sudo rm</code>, recursive <code>chmod</code>/<code>chown</code> on <code>/</code>, fork bombs, disk and filesystem
-destruction (<code>mkfs</code>, <code>dd</code> to a device, writes to <code>/dev/sd*</code>), writes to
-<code>/etc/passwd</code>/<code>shadow</code>/<code>sudoers</code>, remote-fetch piped to a shell (<code>curl … | sh</code> and its
-process-substitution and <code>eval</code> variants), host control (<code>shutdown</code>, <code>reboot</code>, <code>kill -9 1</code>),
-and network shells (<code>nc -e</code>).</p>
+<p>The second half is a pattern list (<code>FLAGGED_BASH_PATTERNS</code>, same file) for shapes with no
+path to expand, and each entry records what it would do. The <strong>destructive</strong> ones are <code>sudo rm</code>,
+recursive <code>chmod</code>/<code>chown</code> on <code>/</code>, fork bombs, disk and filesystem destruction (<code>mkfs</code>, <code>dd</code> to a
+device, writes to <code>/dev/sd*</code>), and writes to <code>/etc/passwd</code>/<code>shadow</code>/<code>sudoers</code>. The <strong>dangerous</strong>
+ones are a remote fetch piped to a shell (<code>curl … | sh</code> and its process-substitution and <code>eval</code>
+variants), host control (<code>shutdown</code>, <code>reboot</code>, <code>kill -9 1</code>), and network shells (<code>nc -e</code>): these
+run code nobody read or restart the machine, without destroying anything.</p>
 <p>Neither half can be narrowed; the guard exists because a false negative costs data loss or a
 compromised host. You can widen the first half with <code>tools.protectedPaths</code>, a list of absolute
 paths (a leading <code>~</code> is expanded) that a recursive delete must also stop for. It only adds:
 nothing in the built-in judgement reads configuration, so no value there can stop the guard
 refusing your home directory. See
 <a href="../concepts/permission-model.html">the permission model</a> for an example.</p>
-<p>These commands stop for approval in <code>yolo</code> as well, and the <code>/yolo</code> session bypass does not lift
-them. It is the one place <code>yolo</code> is not absolute. To turn the floor off, set
-<code>tools.approval.bash</code> to <code>allow</code>; setting it to <code>deny</code> remains a hard block.</p>
+<p>The destructive half, and the whole of the first half, stop for approval in <code>yolo</code> as well, and
+the <code>/yolo</code> session bypass does not lift them. That floor is the one place <code>yolo</code> is not
+absolute. The dangerous half stops on every rung below <code>yolo</code> and not on <code>yolo</code> itself, because
+a rung whose entire promise is that it does not ask cannot be stopping an install the operator
+typed. To turn the floor off, set <code>tools.approval.bash</code> to <code>allow</code>; setting it to <code>deny</code> remains
+a hard block.</p>
 <p>Separately, the bash interceptor (<code>bashInterceptor.enabled</code>, default off) blocks shell
 commands that duplicate dedicated tools, so the model reaches for <code>read</code>/<code>grep</code>/<code>glob</code>
 instead of <code>cat</code>/<code>rg</code>/<code>find</code>. Its rules live in <code>bashInterceptor.patterns</code>.</p>
