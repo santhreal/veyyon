@@ -222,7 +222,7 @@ describe("the compaction and retry arms", () => {
 			errorId: 7,
 		} as unknown as AgentSessionEvent);
 
-		expect(keysOf(wire)).toEqual(["attempt", "delayMs", "errorMessage", "maxAttempts", "type"]);
+		expect(keysOf(wire)).toEqual(["attempt", "delayMs", "errorMessage", "maxAttempts", "mode", "type"]);
 	});
 
 	/** `recoveredErrors` is the host's per-attempt record of what it recovered from. */
