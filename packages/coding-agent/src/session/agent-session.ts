@@ -5873,6 +5873,9 @@ export class AgentSession {
 				if (this.#handoffAbortController) {
 					this.#skipPostTurnMaintenanceAssistantTimestamp = assistantMsg.timestamp;
 				}
+				// Captured before the reset below: a landed turn is what closes the wait
+				// this ladder announced, and by then the counter is back to zero.
+				const batchContinues = this.#unreplayableBatchContinues;
 				if (assistantMsg.stopReason !== "error") {
 					// A turn that reached the provider and came back is the evidence the
 					// transport recovered; the next transport death gets the full budget.
@@ -5882,7 +5885,12 @@ export class AgentSession {
 					assistantMsg.stopReason !== "error" &&
 					assistantMsg.stopReason !== "aborted" &&
 					!this.#isEmptyAssistantStop(assistantMsg) &&
-					this.#retryAttempt > 0
+					// An unreplayable-batch continuation announces its wait through the
+					// same event as the retry ladder but counts on its own allowance, so
+					// without this arm its start had no end: the countdown, a subagent
+					// HUD's retryState and the turn's retry trace would stay open on a
+					// turn that already came back.
+					(this.#retryAttempt > 0 || batchContinues > 0)
 				) {
 					if (this.#activeRetryFallback && this.model) {
 						await this.#emitSessionEvent({
@@ -5895,7 +5903,7 @@ export class AgentSession {
 					await this.#emitSessionEvent({
 						type: "auto_retry_end",
 						success: true,
-						attempt: this.#retryAttempt,
+						attempt: this.#retryAttempt > 0 ? this.#retryAttempt : batchContinues,
 						recoveredErrors,
 					});
 					this.#clearPendingRecoveredRetryErrors();

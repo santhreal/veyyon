@@ -75,6 +75,12 @@
  *     second request, and the session says the wait ended without success. An
  *     operator who does not want to wait must be able to say so, and the same
  *     key that stops the retry ladder's wait stops this one.
+ * 14. A landed continuation CLOSES the wait it announced. The success-side end
+ *     event is gated on the retry ladder's attempt counter, which a continuation
+ *     never touches, so announcing the wait without widening that gate would
+ *     leave the countdown, a subagent HUD's retryState and the turn's retry
+ *     trace all showing a retry in progress on a turn that already came back. A
+ *     start with no end is worse than no start.
  *
  * The rule rows 6 and 7 share is that the question is asked per CALL. A
  * call that already carries a real result is answered, and a never-ran
@@ -131,6 +137,8 @@ interface Outcome {
 	toolTexts: string[];
 	/** Every wait the session announced, so a silent pause is visible as an absence. */
 	retryStarts: Array<Extract<AgentSessionEvent, { type: "auto_retry_start" }>>;
+	/** And every wait it closed, so an announced wait that never resolves is too. */
+	retryEnds: Array<Extract<AgentSessionEvent, { type: "auto_retry_end" }>>;
 }
 
 function contextText(turn: ScriptedTurn): string {
@@ -231,6 +239,7 @@ async function run(options: {
 			assistantText,
 			toolTexts,
 			retryStarts: sim.eventsOfType("auto_retry_start"),
+			retryEnds: sim.eventsOfType("auto_retry_end"),
 		};
 	} finally {
 		sim.dispose();
@@ -694,4 +703,28 @@ it("lets abortRetry cancel the wait instead of continuing", async () => {
 	} finally {
 		sim.dispose();
 	}
+});
+
+it("closes the announced wait when the continued turn lands", async () => {
+	// A start with no end is worse than no start: the countdown, a subagent HUD's
+	// retryState and the turn's retry trace all resolve on the end event, and the
+	// success-side one is gated on the RETRY ladder's attempt counter, which a
+	// continuation never touches. So announcing the wait without this arm would
+	// leave every consumer showing a retry in progress on a turn that came back.
+	const result = await run({
+		fail: turn => turn.fail(HTTP2_TEXT),
+		execResolved: true,
+		ordinary: true,
+		maxRetries: 2,
+		baseDelayMs: 60,
+	});
+
+	expect(result.requests).toBe(2);
+	expect(result.retryStarts).toHaveLength(1);
+	expect(result.retryEnds).toHaveLength(1);
+	expect(result.retryEnds[0]?.success).toBe(true);
+	// Numbered on the continuation's own allowance, so the pair reads as one wait
+	// that was taken and then finished, not as the retry ladder's attempt zero.
+	expect(result.retryEnds[0]?.attempt).toBe(1);
+	expect(result.assistantText).toContain("carried on");
 });
