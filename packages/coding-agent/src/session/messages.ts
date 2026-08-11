@@ -823,10 +823,10 @@ function convertImageBearingCustomMessage(message: CustomMessage | HookMessage):
  * model can pick the batch back up. It has an expiry the text cannot express:
  * once an assistant turn has responded to that batch, the instruction has been
  * carried out, and every later request re-sent it anyway. On the reported
- * 75-call batch that is roughly eighty lines of orders about calls the model
- * already reissued, on every request for the rest of the session and again
- * after a resume, telling it to redo work whose results are sitting right
- * there.
+ * 75-call batch that is twenty-nine lines and about two thousand characters of
+ * orders about calls the model already reissued, on every request for the rest
+ * of the session and again after a resume, telling it to redo work whose
+ * results are sitting right there.
  *
  * A retried turn does not reach this: the whole dead turn and its placeholders
  * are dropped from the context (session-context.ts, `retryRecovery`). A turn

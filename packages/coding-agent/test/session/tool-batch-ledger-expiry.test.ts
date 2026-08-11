@@ -8,9 +8,11 @@
  * and every later request re-sent them anyway. A retried turn never showed this
  * because the whole dead turn is dropped from a retried context; a turn the
  * session CONTINUED stays in history on purpose, so on the reported 75-call
- * batch roughly eighty lines of orders about calls the model had already
- * reissued travelled on every request for the rest of the session, and again
- * after a resume, pointing at results sitting in the same context.
+ * batch the twenty-nine lines and two thousand characters the ledger renders
+ * (it lists at most 24 calls and then reports a count) travelled on every
+ * request for the rest of the session, and again after a resume, giving orders
+ * about calls the model had already reissued and pointing at results sitting in
+ * the same context.
  *
  * THE ROWS ARE THE SPEC.
  *  1. Unanswered (the placeholder is the last message): the ledger is sent. This
