@@ -117,6 +117,7 @@
 - Ordered compaction-model preferences now persist as an ordered YAML list, and clearing the picker removes the setting instead of saving an undefined value. The selected list and `configured-only` fallback policy survive save and reload unchanged.
 
 - Subagent model, availability, delegation, and reasoning policy now resolve through the singular `subagent.*` settings owner. Parent effort inheritance and one-turn structured-yield repair use the same resolved policy in task, eval, and Vibe execution.
+- The job tool reads the `<task-result>` envelope through `@veyyon/wire` instead of its own copy of the pattern, so the terminal and the HTML/collab renderer cannot disagree about what a settled subagent job says. Both surfaces stripped the envelope with byte-identical private copies, and the copy that stops matching does not throw: it shows the reader `<task-result id=… agent=… status=…` where the other shows the answer.
 
 ### Fixed
 
