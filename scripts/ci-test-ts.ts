@@ -26,6 +26,7 @@ import {
 	sweepStaleTempDirs,
 	TEST_TEMP_DIR_PREFIXES,
 } from "../packages/utils/test/helpers/temp-dir-janitor";
+import { isCI } from "./ci-signal";
 import { ensureToolViewsGenerated } from "./ensure-tool-views";
 
 type Mode =
@@ -863,12 +864,6 @@ function chunkTimeoutMs(): number {
 // memory-capped runner job (a single fat invocation gets OOM-killed at 137), so
 // chunks run sequentially within a job and parallelism happens across jobs.
 // Locally we trade memory for wall-clock and fan the chunks out across cores.
-function isCI(): boolean {
-	const value = Bun.env.CI;
-	if (!value) return false;
-	const normalized = value.trim().toLowerCase();
-	return normalized !== "" && normalized !== "0" && normalized !== "false";
-}
 
 // Fan-out width for the local parallel path, clamped to the command count.
 // Defaults to the machine's available parallelism; `VEYYON_TEST_CONCURRENCY`
