@@ -363,32 +363,12 @@ jobs:
          - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
          - uses: ./.github/actions/setup-system-deps
          - uses: ./.github/actions/bun-install
-         - name: Resolve Linux x64 native artifact run
-           id: source
-           shell: bash
-           run: |
-              if [ "${{ needs.native_linux_x64.result }}" = "success" ]; then
-                echo "artifact-run-id=${{ github.run_id }}" >> "$GITHUB_OUTPUT"
-              else
-                echo "artifact-run-id=${{ needs.native_artifact_lookup.outputs.linux-x64-run-id }}" >> "$GITHUB_OUTPUT"
-              fi
-         - name: Download native addons
-           uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+         - uses: ./.github/actions/ts-test-env
            with:
-              pattern: veyyon-natives-linux-x64-*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
-              path: packages/natives/native
-              merge-multiple: true
-              run-id: ${{ steps.source.outputs.artifact-run-id }}
+              native-result: ${{ needs.native_linux_x64.result }}
+              lookup-run-id: ${{ needs.native_artifact_lookup.outputs.linux-x64-run-id }}
+              source-hash: ${{ needs.native_artifact_lookup.outputs.source-hash }}
               github-token: ${{ secrets.GITHUB_TOKEN }}
-         - name: Build the test sandbox image
-           # Every `bun test` in this repo refuses to run unless it can PROVE the
-           # operator's home is unreachable, so CI has to establish the same boundary
-           # a workstation does or the contract holds on one machine only. On a
-           # GitHub runner that is the container rung, and this builds the guest
-           # userland it runs. There is no /dev/kvm here, so the script builds the
-           # userland only and says so; the microVM rung reports itself unavailable
-           # instead of being silently swapped for something weaker.
-           run: bash scripts/test-sandbox/run.sh --build
          - name: Test workspace packages and repo scripts (TS)
            run: bun run ci:test:ts:workspace
 
@@ -402,32 +382,12 @@ jobs:
          - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
          - uses: ./.github/actions/setup-system-deps
          - uses: ./.github/actions/bun-install
-         - name: Resolve Linux x64 native artifact run
-           id: source
-           shell: bash
-           run: |
-              if [ "${{ needs.native_linux_x64.result }}" = "success" ]; then
-                echo "artifact-run-id=${{ github.run_id }}" >> "$GITHUB_OUTPUT"
-              else
-                echo "artifact-run-id=${{ needs.native_artifact_lookup.outputs.linux-x64-run-id }}" >> "$GITHUB_OUTPUT"
-              fi
-         - name: Download native addons
-           uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+         - uses: ./.github/actions/ts-test-env
            with:
-              pattern: veyyon-natives-linux-x64-*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
-              path: packages/natives/native
-              merge-multiple: true
-              run-id: ${{ steps.source.outputs.artifact-run-id }}
+              native-result: ${{ needs.native_linux_x64.result }}
+              lookup-run-id: ${{ needs.native_artifact_lookup.outputs.linux-x64-run-id }}
+              source-hash: ${{ needs.native_artifact_lookup.outputs.source-hash }}
               github-token: ${{ secrets.GITHUB_TOKEN }}
-         - name: Build the test sandbox image
-           # Every `bun test` in this repo refuses to run unless it can PROVE the
-           # operator's home is unreachable, so CI has to establish the same boundary
-           # a workstation does or the contract holds on one machine only. On a
-           # GitHub runner that is the container rung, and this builds the guest
-           # userland it runs. There is no /dev/kvm here, so the script builds the
-           # userland only and says so; the microVM rung reports itself unavailable
-           # instead of being silently swapped for something weaker.
-           run: bash scripts/test-sandbox/run.sh --build
          - name: Test coding-agent singleton/global-state bucket
            # Keep global Settings/env/fake-timer tests serial; native addon
            # artifacts are still available like every other coding-agent bucket.
@@ -444,32 +404,12 @@ jobs:
 
          - uses: ./.github/actions/setup-system-deps
          - uses: ./.github/actions/bun-install
-         - name: Resolve Linux x64 native artifact run
-           id: source
-           shell: bash
-           run: |
-              if [ "${{ needs.native_linux_x64.result }}" = "success" ]; then
-                echo "artifact-run-id=${{ github.run_id }}" >> "$GITHUB_OUTPUT"
-              else
-                echo "artifact-run-id=${{ needs.native_artifact_lookup.outputs.linux-x64-run-id }}" >> "$GITHUB_OUTPUT"
-              fi
-         - name: Download native addons
-           uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+         - uses: ./.github/actions/ts-test-env
            with:
-              pattern: veyyon-natives-linux-x64-*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
-              path: packages/natives/native
-              merge-multiple: true
-              run-id: ${{ steps.source.outputs.artifact-run-id }}
+              native-result: ${{ needs.native_linux_x64.result }}
+              lookup-run-id: ${{ needs.native_artifact_lookup.outputs.linux-x64-run-id }}
+              source-hash: ${{ needs.native_artifact_lookup.outputs.source-hash }}
               github-token: ${{ secrets.GITHUB_TOKEN }}
-         - name: Build the test sandbox image
-           # Every `bun test` in this repo refuses to run unless it can PROVE the
-           # operator's home is unreachable, so CI has to establish the same boundary
-           # a workstation does or the contract holds on one machine only. On a
-           # GitHub runner that is the container rung, and this builds the guest
-           # userland it runs. There is no /dev/kvm here, so the script builds the
-           # userland only and says so; the microVM rung reports itself unavailable
-           # instead of being silently swapped for something weaker.
-           run: bash scripts/test-sandbox/run.sh --build
          - name: Test native/TUI/browser-ish packages (TS)
            run: bun run ci:test:ts:native
 
@@ -491,32 +431,12 @@ jobs:
          - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
          - uses: ./.github/actions/setup-system-deps
          - uses: ./.github/actions/bun-install
-         - name: Resolve Linux x64 native artifact run
-           id: source
-           shell: bash
-           run: |
-              if [ "${{ needs.native_linux_x64.result }}" = "success" ]; then
-                echo "artifact-run-id=${{ github.run_id }}" >> "$GITHUB_OUTPUT"
-              else
-                echo "artifact-run-id=${{ needs.native_artifact_lookup.outputs.linux-x64-run-id }}" >> "$GITHUB_OUTPUT"
-              fi
-         - name: Download native addons
-           uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+         - uses: ./.github/actions/ts-test-env
            with:
-              pattern: veyyon-natives-linux-x64-*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
-              path: packages/natives/native
-              merge-multiple: true
-              run-id: ${{ steps.source.outputs.artifact-run-id }}
+              native-result: ${{ needs.native_linux_x64.result }}
+              lookup-run-id: ${{ needs.native_artifact_lookup.outputs.linux-x64-run-id }}
+              source-hash: ${{ needs.native_artifact_lookup.outputs.source-hash }}
               github-token: ${{ secrets.GITHUB_TOKEN }}
-         - name: Build the test sandbox image
-           # Every `bun test` in this repo refuses to run unless it can PROVE the
-           # operator's home is unreachable, so CI has to establish the same boundary
-           # a workstation does or the contract holds on one machine only. On a
-           # GitHub runner that is the container rung, and this builds the guest
-           # userland it runs. There is no /dev/kvm here, so the script builds the
-           # userland only and says so; the microVM rung reports itself unavailable
-           # instead of being silently swapped for something weaker.
-           run: bash scripts/test-sandbox/run.sh --build
          - name: Test coding-agent UI/TUI bucket
            run: bun run ci:test:coding-agent:ui
          - name: Test coding-agent runtime bucket
@@ -539,23 +459,15 @@ jobs:
 
          - uses: ./.github/actions/setup-system-deps
          - uses: ./.github/actions/bun-install
-         - name: Resolve Linux x64 native artifact run
-           id: source
-           shell: bash
-           run: |
-              if [ "${{ needs.native_linux_x64.result }}" = "success" ]; then
-                echo "artifact-run-id=${{ github.run_id }}" >> "$GITHUB_OUTPUT"
-              else
-                echo "artifact-run-id=${{ needs.native_artifact_lookup.outputs.linux-x64-run-id }}" >> "$GITHUB_OUTPUT"
-              fi
-         - name: Download native addons
-           uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+         # The smoke bucket drives the built CLI, not `bun test`, so it takes the
+         # native addon and skips the sandbox image it would never enter.
+         - uses: ./.github/actions/ts-test-env
            with:
-              pattern: veyyon-natives-linux-x64-*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
-              path: packages/natives/native
-              merge-multiple: true
-              run-id: ${{ steps.source.outputs.artifact-run-id }}
+              native-result: ${{ needs.native_linux_x64.result }}
+              lookup-run-id: ${{ needs.native_artifact_lookup.outputs.linux-x64-run-id }}
+              source-hash: ${{ needs.native_artifact_lookup.outputs.source-hash }}
               github-token: ${{ secrets.GITHUB_TOKEN }}
+              sandbox: "false"
          - name: CLI smoke test
            run: bun run ci:test:smoke
 
@@ -953,23 +865,15 @@ jobs:
          cancel-in-progress: false
       permissions:
          contents: read
-      env:
-         HAS_CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
-         HAS_CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
-         SITE_AUTODEPLOY: ${{ vars.SITE_AUTODEPLOY }}
       steps:
-         - name: Require release Pages deployment credentials and policy
-           run: |
-              set -euo pipefail
-              if [ "$SITE_AUTODEPLOY" = "off" ]; then
-                echo "::error::SITE_AUTODEPLOY=off, but production site deployment is a required release artifact."
-                exit 1
-              fi
-              if [ "$HAS_CF_TOKEN" != "true" ] || [ "$HAS_CF_ACCOUNT_ID" != "true" ]; then
-                echo "::error::CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID are both required for a release."
-                exit 1
-              fi
+         # Checkout first: the precondition below is a local action, so it does not
+         # exist on the runner until the repository does.
          - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+         - uses: ./.github/actions/require-site-credentials
+           with:
+              has-cf-token: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+              has-cf-account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
+              site-autodeploy: ${{ vars.SITE_AUTODEPLOY }}
          - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
          - name: Regenerate changelog + build site (brand check gates)
            # GITHUB_REPOSITORY is auto-set; gen-changelog reconciles against it.
@@ -1314,23 +1218,15 @@ jobs:
          cancel-in-progress: false
       permissions:
          contents: read
-      env:
-         HAS_CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
-         HAS_CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
-         SITE_AUTODEPLOY: ${{ vars.SITE_AUTODEPLOY }}
       steps:
-         - name: Require release Pages deployment credentials and policy
-           run: |
-              set -euo pipefail
-              if [ "$SITE_AUTODEPLOY" = "off" ]; then
-                echo "::error::SITE_AUTODEPLOY=off, but production site deployment is a required release artifact."
-                exit 1
-              fi
-              if [ "$HAS_CF_TOKEN" != "true" ] || [ "$HAS_CF_ACCOUNT_ID" != "true" ]; then
-                echo "::error::CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID are both required for a release."
-                exit 1
-              fi
+         # Checkout first: the precondition below is a local action, so it does not
+         # exist on the runner until the repository does.
          - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+         - uses: ./.github/actions/require-site-credentials
+           with:
+              has-cf-token: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+              has-cf-account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
+              site-autodeploy: ${{ vars.SITE_AUTODEPLOY }}
          - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
          - name: Rebuild changelog after GitHub publication
            run: node website/build.mjs

@@ -275,6 +275,7 @@ export const workspaceTestPackages = [
 // silently ignores unmatched filters when at least one other filter matches, so a
 // typo'd path in this array is invisible rather than fatal. Check the file exists.)
 export const repoScriptTests = [
+	"scripts/a-local-action-is-called-with-everything-it-requires.test.ts",
 	"scripts/ci-concurrency.test.ts",
 	"scripts/every-workflow-job-has-a-deadline.test.ts",
 	"scripts/every-workflow-pipeline-sets-pipefail.test.ts",

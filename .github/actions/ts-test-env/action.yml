@@ -1,0 +1,64 @@
+name: TS test environment
+description: >-
+   Give a TypeScript test bucket the two things it needs before its first
+   assertion: the Linux x64 native addon (this run's build, or the cached
+   artifact the lookup found) and the built test sandbox image.
+
+inputs:
+   native-result:
+      description: >-
+         `needs.native_linux_x64.result`. On success the addon comes from this
+         run; on any other result it comes from the run the lookup named.
+      required: true
+   lookup-run-id:
+      description: >-
+         `needs.native_artifact_lookup.outputs.linux-x64-run-id`, the cached
+         artifact's run, used when this run did not build one.
+      required: true
+   source-hash:
+      description: >-
+         `needs.native_artifact_lookup.outputs.source-hash`. The artifact name
+         carries it, so a stale addon can never be downloaded for new sources.
+      required: true
+   github-token:
+      description: Token used to read the artifact, which may belong to another run.
+      required: true
+   sandbox:
+      description: >-
+         Build the test sandbox image. "false" for a bucket that runs no
+         `bun test` and would otherwise pay for an image it never enters.
+      default: "true"
+
+runs:
+   using: composite
+   steps:
+      - name: Resolve Linux x64 native artifact run
+        id: source
+        shell: bash
+        run: |
+           if [ "${{ inputs.native-result }}" = "success" ]; then
+             echo "artifact-run-id=${{ github.run_id }}" >> "$GITHUB_OUTPUT"
+           else
+             echo "artifact-run-id=${{ inputs.lookup-run-id }}" >> "$GITHUB_OUTPUT"
+           fi
+
+      - name: Download native addons
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+           pattern: veyyon-natives-linux-x64-*-h${{ inputs.source-hash }}
+           path: packages/natives/native
+           merge-multiple: true
+           run-id: ${{ steps.source.outputs.artifact-run-id }}
+           github-token: ${{ inputs.github-token }}
+
+      - name: Build the test sandbox image
+        # Every `bun test` in this repo refuses to run unless it can PROVE the
+        # operator's home is unreachable, so CI has to establish the same boundary
+        # a workstation does or the contract holds on one machine only. On a
+        # GitHub runner that is the container rung, and this builds the guest
+        # userland it runs. There is no /dev/kvm here, so the script builds the
+        # userland only and says so; the microVM rung reports itself unavailable
+        # instead of being silently swapped for something weaker.
+        if: ${{ inputs.sandbox == 'true' }}
+        shell: bash
+        run: bash scripts/test-sandbox/run.sh --build
