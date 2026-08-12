@@ -281,6 +281,7 @@ export const repoScriptTests = [
 	"scripts/gh-repo-context.test.ts",
 	"scripts/ci-build-native.test.ts",
 	"scripts/bun-install-action.test.ts",
+	"scripts/the-bun-pin-has-one-owner.test.ts",
 	"scripts/ensure-rust-toolchain-action.test.ts",
 	"scripts/native-artifact-lookup.test.ts",
 	"scripts/workflow-source-codegen.test.ts",
