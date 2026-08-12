@@ -6,6 +6,7 @@
  * then cancelled/completed) with type badge, label, duration, and a one-line
  * result preview; we mirror that as rows plus the raw snapshot text.
  */
+import { stripTaskResultEnvelope } from "@veyyon/wire/task-result";
 import type { ReactNode } from "react";
 import type { Tone } from "../parts";
 import { Badge, Badges, Note, ResultText, Row } from "../parts";
@@ -123,16 +124,6 @@ function formatDuration(ms: number): string {
 	if (s < 60) return `${s.toFixed(1)}s`;
 	const m = Math.floor(s / 60);
 	return `${m}m ${Math.round(s % 60)}s`;
-}
-
-/**
- * Task job results arrive in the model-facing `<task-result>` envelope; the
- * wrapper markup is noise to a human — preview the inner body instead.
- */
-function stripTaskResultEnvelope(text: string): string {
-	if (!text.startsWith("<task-result")) return text;
-	const body = /<(output|preview)(?:\s[^>]*)?>\n?([\s\S]*?)\n?<\/\1>/.exec(text)?.[2];
-	return body?.trim() || text;
 }
 
 function JobRow({ job }: { job: JobSnapshotLike }): ReactNode {
