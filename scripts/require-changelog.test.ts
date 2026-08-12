@@ -293,7 +293,13 @@ describe("require-changelog.ts end to end against a real repo", () => {
 
 			const result = await run(root, base);
 			expect(result.exitCode).toBe(0);
-			expect(result.stdout.toString()).toContain("ok");
+			const out = result.stdout.toString();
+			expect(out).toContain("ok");
+			// A gate that prints only its verdict cannot say where it stopped when it stops, and
+			// this one once sat in a CI job for over an hour with an empty log. The progress lines
+			// name the base it compared against and the work it was about to do.
+			expect(out).toContain(`base ${base.slice(0, 12)}`);
+			expect(out).toMatch(/reading \d+ package changelog\(s\)/);
 		} finally {
 			await fs.rm(root, { recursive: true, force: true });
 		}
