@@ -18,7 +18,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { findReproducingWindow, parseArgs, parseTargetFailures, windowSizes } from "./find-order-polluter";
+import { findReproducingWindow, parseArgs, parseTargetFailures, runFiles, windowSizes } from "./find-order-polluter";
 
 const SCRIPT = path.join(import.meta.dir, "find-order-polluter.ts");
 
@@ -84,20 +84,6 @@ async function runScript(target: string, extra: string[] = []): Promise<{ text: 
 	const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
 	const exitCode = await proc.exited;
 	return { text: stdout + stderr, exitCode };
-}
-
-/**
- * Run fixture files together in one `bun test`, which is the premise the search rests on.
- *
- * A case that asserts what the script REPORTS is only meaningful where the leak it is searching
- * for actually crosses the files. Where it does not, the script's refusal is the correct answer
- * and the useful failure names the environment rather than the script.
- */
-async function runTogether(files: string[]): Promise<string> {
-	const proc = Bun.spawn(["bun", "test", ...files], { stdout: "pipe", stderr: "pipe" });
-	const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
-	await proc.exited;
-	return stdout + stderr;
 }
 
 describe("find-order-polluter", () => {
@@ -220,11 +206,13 @@ describe("find-order-polluter", () => {
 				`});\n`,
 		);
 
-		// Pin the premise first. Both halves have to reach the victim when the three files run
-		// together, or the search is being asked about a leak that does not exist here and its
-		// refusal is the right answer. This assertion is what tells those two apart.
-		const together = await runTogether([firstHalf, secondHalf, target]);
+		// Pin the premise first, through the search's OWN runner and parser. Both halves have to
+		// reach the victim when the three files run together, and the parser has to see that
+		// failure in the target's section: where either does not hold, the script's refusal is the
+		// correct answer and the useful failure names the runner rather than the search.
+		const together = await runFiles([firstHalf, secondHalf, target]);
 		expect(together, together).toContain("(fail) needs both halves to fail");
+		expect(parseTargetFailures(together, target).join("\n"), together).toContain("needs both halves to fail");
 
 		const { text, exitCode } = await runScript(target);
 
