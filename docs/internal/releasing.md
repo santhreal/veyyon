@@ -160,7 +160,10 @@ The tag push starts one `ci.yml` run at the tagged commit.
 
 1. **Verify the tag.** `release.ts verify-tag` proves the tag is strict `vX.Y.Z`,
    that the checkout is the commit being published, that the commit is on `main`,
-   and that the tree's version authorities all agree with the tag.
+   and that the tree's version authorities all agree with the tag. The
+   release-notes changelog is one of those authorities: a tag whose version has no
+   `## [x.y.z]` section in `packages/coding-agent/CHANGELOG.md` is refused here,
+   before anything is built.
 2. **Build and test.** The full matrix, then every platform binary.
 3. **Publish.** The ordered transaction below.
 
@@ -267,6 +270,13 @@ The gate is unconditional. `UNDOCUMENTED_RELEASE_BASELINE` in
 entry when you see the failure. Do not add the version to the baseline: it is a
 shrinking record of old debt, and
 `website/tools/undocumented-release-ratchet.test.ts` pins it empty.
+
+The website build is the last place that can catch this, and it catches it too
+late: v1.0.38 through v1.0.46 were each tagged at a tree with no section, so each
+one built its binaries, published its GitHub release, and only then went red in
+`release_site_finalize` with the release already installable. `verify-tag` reads
+the same fact in the first job of the release run, so the refusal now happens
+before anything is published.
 
 ## Verify it worked
 
@@ -564,4 +574,4 @@ the checked-in state. All three copies are gitignored and the assets are declare
 in `types/assets/index.d.ts`, so the generated state still type checks and cannot
 be committed by accident.
 
-*Verified against `31e6a6670` on 2026-08-11.*
+*Verified against `bb79b0574` on 2026-08-11.*
