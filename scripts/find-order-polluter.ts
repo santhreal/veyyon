@@ -154,7 +154,13 @@ export function parseTargetFailures(
 	let inTarget = false;
 	const failures: string[] = [];
 	for (const line of text.split("\n")) {
-		const header = line.trim();
+		// Under GitHub Actions bun folds each file's output, so the header arrives as
+		// `::group::path/to/file.test.ts:` and the annotation is part of the line. Left on, it
+		// resolves to a path no file has, the target's section is never entered, every run reports
+		// zero failures, and the search announces that nothing reproduces -- a clean bill of health
+		// for a suite whose polluter is right there, in exactly the environment that runs the whole
+		// suite.
+		const header = line.trim().replace(/^::group::/, "");
 		if (header.endsWith(".test.ts:")) {
 			inTarget = path.resolve(from, header.slice(0, -1)) === targetPath;
 			continue;
