@@ -2,6 +2,7 @@
 
 import * as path from "node:path";
 import { $ } from "bun";
+import { isCI } from "./ci-signal";
 
 const RUST_AFFECTING_FILE_NAMES = [
 	"Cargo.toml",
@@ -75,13 +76,6 @@ if (import.meta.main) {
 
 function isRustTaskName(value: string | undefined): value is RustTaskName {
 	return value != null && value in TASK_COMMANDS;
-}
-
-function isCI(): boolean {
-	const value = Bun.env.CI;
-	if (!value) return false;
-	const normalized = value.trim().toLowerCase();
-	return normalized !== "" && normalized !== "0" && normalized !== "false";
 }
 
 async function hasRustAffectingChanges(taskName: RustTaskName): Promise<boolean> {
