@@ -276,6 +276,7 @@ export const workspaceTestPackages = [
 // typo'd path in this array is invisible rather than fatal. Check the file exists.)
 export const repoScriptTests = [
 	"scripts/ci-concurrency.test.ts",
+	"scripts/every-workflow-job-has-a-deadline.test.ts",
 	"scripts/every-workflow-pipeline-sets-pipefail.test.ts",
 	"scripts/every-workflow-runs-bun-test-in-the-sandbox.test.ts",
 	"scripts/gh-repo-context.test.ts",

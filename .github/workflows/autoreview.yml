@@ -22,6 +22,7 @@ jobs:
   preflight:
     name: Check autoreview credentials
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # Reads a secret into a step output and writes nothing to the API.
     permissions: {}
     # Draft PRs get no review until marked ready; syncs on a draft are skipped.
@@ -45,6 +46,7 @@ jobs:
   review:
     name: santh-bot review
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: preflight
     if: needs.preflight.outputs.has_key == 'true'
     # pr-agent reads the diff and the repo's own config, then writes the review

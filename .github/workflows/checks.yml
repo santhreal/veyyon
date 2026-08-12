@@ -34,6 +34,7 @@ jobs:
   lint-and-format:
     name: Lint & format
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: ./.github/actions/bun-install
@@ -64,6 +65,7 @@ jobs:
     # copy in actions/build-native was removed so the release path stops paying
     # for a workspace clippy build on a queue-bound runner.
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -101,6 +103,7 @@ jobs:
     # unavailable (a first push, a force push, a manual dispatch) falls back to
     # the whole history rather than to scanning nothing.
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
@@ -151,6 +154,7 @@ jobs:
        github.event.before != '0000000000000000000000000000000000000000' &&
        !startsWith(github.event.head_commit.message, 'chore: bump version to'))
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
@@ -187,6 +191,7 @@ jobs:
       (github.event_name == 'push' &&
        github.event.before != '0000000000000000000000000000000000000000')
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
@@ -261,6 +266,7 @@ jobs:
     # Separate from `test` because it needs no native addon and finishes in about
     # ten seconds, so a red gate here names itself instead of hiding in a long run.
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
