@@ -99,7 +99,7 @@ describe("find-order-polluter", () => {
 
 		const { text, exitCode } = await runScript(target);
 
-		expect(exitCode).toBe(0);
+		expect(exitCode, text).toBe(0);
 		expect(text).toContain(`Polluter: ${leak}`);
 		expect(text).toContain("premise 1 ok: the target passes alone");
 		expect(text).toContain("premise 2 ok: the target fails with the last");
@@ -115,7 +115,7 @@ describe("find-order-polluter", () => {
 
 		const { text, exitCode } = await runScript(target);
 
-		expect(exitCode).toBe(0);
+		expect(exitCode, text).toBe(0);
 		expect(text).toContain(`Polluter: ${leak}`);
 	});
 
@@ -141,7 +141,7 @@ describe("find-order-polluter", () => {
 
 		const { text, exitCode } = await runScript(target);
 
-		expect(exitCode).toBe(1);
+		expect(exitCode, text).toBe(1);
 		expect(text).toContain("The target FAILS on its own");
 		expect(text).not.toContain("Polluter:");
 	});
@@ -156,7 +156,7 @@ describe("find-order-polluter", () => {
 
 		const { text, exitCode } = await runScript(target);
 
-		expect(exitCode).toBe(1);
+		expect(exitCode, text).toBe(1);
 		expect(text).toContain("The target PASSES with the last");
 		expect(text).toContain("That is every candidate");
 		expect(text).not.toContain("Polluter:");
@@ -178,7 +178,7 @@ describe("find-order-polluter", () => {
 
 		const { text, exitCode } = await runScript(target, ["--name", "the order dependent one"]);
 
-		expect(exitCode).toBe(0);
+		expect(exitCode, text).toBe(0);
 		expect(text).toContain(`Polluter: ${leak}`);
 	});
 
@@ -208,7 +208,7 @@ describe("find-order-polluter", () => {
 
 		const { text, exitCode } = await runScript(target);
 
-		expect(exitCode).toBe(0);
+		expect(exitCode, text).toBe(0);
 		expect(text).toContain("needs a combination");
 		expect(text).toContain("a-half.test.ts");
 		expect(text).toContain("m-half.test.ts");
@@ -221,7 +221,7 @@ describe("find-order-polluter", () => {
 
 		const { text, exitCode } = await runScript(target);
 
-		expect(exitCode).toBe(2);
+		expect(exitCode, text).toBe(2);
 		expect(text).toContain("no other test files found");
 	});
 });
