@@ -86,6 +86,20 @@ async function runScript(target: string, extra: string[] = []): Promise<{ text: 
 	return { text: stdout + stderr, exitCode };
 }
 
+/**
+ * Run fixture files together in one `bun test`, which is the premise the search rests on.
+ *
+ * A case that asserts what the script REPORTS is only meaningful where the leak it is searching
+ * for actually crosses the files. Where it does not, the script's refusal is the correct answer
+ * and the useful failure names the environment rather than the script.
+ */
+async function runTogether(files: string[]): Promise<string> {
+	const proc = Bun.spawn(["bun", "test", ...files], { stdout: "pipe", stderr: "pipe" });
+	const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
+	await proc.exited;
+	return stdout + stderr;
+}
+
 describe("find-order-polluter", () => {
 	it("names the one file that leaks, out of several", async () => {
 		// The core claim. Sorted order puts the leaker first, three innocents after it, and the
@@ -185,13 +199,13 @@ describe("find-order-polluter", () => {
 	it("reports the smallest reproducing set when no single file explains it", async () => {
 		// Two leaks that only fail the victim together. Bisecting halves cannot isolate one
 		// file here, and the honest output is the surviving set rather than an arbitrary pick.
-		fixture(
+		const firstHalf = fixture(
 			"a-half.test.ts",
 			`import { expect, it } from "bun:test";\n` +
 				`(globalThis as Record<string, unknown>).veyyonOrderProbeE1 = true;\n` +
 				`it("sets half of it", () => { expect(1).toBe(1); });\n`,
 		);
-		fixture(
+		const secondHalf = fixture(
 			"m-half.test.ts",
 			`import { expect, it } from "bun:test";\n` +
 				`(globalThis as Record<string, unknown>).veyyonOrderProbeE2 = true;\n` +
@@ -205,6 +219,12 @@ describe("find-order-polluter", () => {
 				`\texpect(Boolean(g.veyyonOrderProbeE1 && g.veyyonOrderProbeE2)).toBe(false);\n` +
 				`});\n`,
 		);
+
+		// Pin the premise first. Both halves have to reach the victim when the three files run
+		// together, or the search is being asked about a leak that does not exist here and its
+		// refusal is the right answer. This assertion is what tells those two apart.
+		const together = await runTogether([firstHalf, secondHalf, target]);
+		expect(together, together).toContain("(fail) needs both halves to fail");
 
 		const { text, exitCode } = await runScript(target);
 
