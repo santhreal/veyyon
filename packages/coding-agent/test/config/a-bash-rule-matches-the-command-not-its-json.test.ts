@@ -85,7 +85,7 @@ describe("the bash rules the digest has to serve", () => {
 		// The wire form is what the matcher used to get. The digest is the command itself, so
 		// no rule can be anchored against `"command":"` or terminated by a closing quote.
 		const wire = JSON.stringify({ i: "some intent", command });
-        expect(digest({ i: "some intent", command })).toBe(command);
+		expect(digest({ i: "some intent", command })).toBe(command);
 		expect(digest({ i: "some intent", command })).not.toBe(wire);
 	});
 });
@@ -94,7 +94,7 @@ describe("a search that does not run on this machine", () => {
 	test("the reported misfire: an ssh command whose remote shell has its own && and ;", () => {
 		const remote =
 			'ssh -o BatchMode=yes box "ls /srv/app/nodes_minimax.py && grep -n minimax /srv/app/nodes.py | head -5; ' +
-			'grep -rn \'class CLIPLoader\' /srv/app/nodes_model.py | head -3"';
+			"grep -rn 'class CLIPLoader' /srv/app/nodes_model.py | head -3\"";
 		expect(firedThroughDigest(remote)).not.toContain("bash-tool-nudge");
 	});
 

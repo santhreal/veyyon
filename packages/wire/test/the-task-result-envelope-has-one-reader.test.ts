@@ -27,11 +27,9 @@ import { stripTaskResultEnvelope } from "../src/task-result";
 
 /** An envelope in the shape the prompt emits, with the attributes it always carries. */
 function envelope(inner: string): string {
-	return [
-		'<task-result id="Probe" agent="deep" status="completed" duration="4s">',
-		inner,
-		"</task-result>",
-	].join("\n");
+	return ['<task-result id="Probe" agent="deep" status="completed" duration="4s">', inner, "</task-result>"].join(
+		"\n",
+	);
 }
 
 describe("the task-result envelope has one reader", () => {
