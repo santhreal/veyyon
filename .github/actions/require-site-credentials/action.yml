@@ -1,0 +1,38 @@
+name: Require site deployment credentials
+description: >-
+   Refuse a release that cannot deploy the website. Both Cloudflare secrets have
+   to be present and the SITE_AUTODEPLOY policy variable must not be off, because
+   veyyon.dev and get.veyyon.dev are release artifacts, not optional extras: the
+   installer and the auto-updater read them.
+
+inputs:
+   has-cf-token:
+      description: '`secrets.CLOUDFLARE_API_TOKEN != ''''` — the secret itself is never passed in.'
+      required: true
+   has-cf-account-id:
+      description: '`secrets.CLOUDFLARE_ACCOUNT_ID != ''''`.'
+      required: true
+   site-autodeploy:
+      description: '`vars.SITE_AUTODEPLOY`. Anything but "off" allows the deploy.'
+      required: false
+      default: ""
+
+runs:
+   using: composite
+   steps:
+      - name: Require release Pages deployment credentials and policy
+        shell: bash
+        env:
+           HAS_CF_TOKEN: ${{ inputs.has-cf-token }}
+           HAS_CF_ACCOUNT_ID: ${{ inputs.has-cf-account-id }}
+           SITE_AUTODEPLOY: ${{ inputs.site-autodeploy }}
+        run: |
+           set -euo pipefail
+           if [ "$SITE_AUTODEPLOY" = "off" ]; then
+             echo "::error::SITE_AUTODEPLOY=off, but production site deployment is a required release artifact."
+             exit 1
+           fi
+           if [ "$HAS_CF_TOKEN" != "true" ] || [ "$HAS_CF_ACCOUNT_ID" != "true" ]; then
+             echo "::error::CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID are both required for a release."
+             exit 1
+           fi
