@@ -27,6 +27,7 @@ async function fixture(): Promise<string> {
 			JSON.stringify({
 				workspaces: {
 					"packages/public": { name: "@veyyon/public", version },
+					"packages/coding-agent": { name: "@veyyon/coding-agent", version },
 					"packages/private": { name: "@veyyon/private", version: "9.9.9" },
 				},
 			}),
@@ -46,6 +47,14 @@ async function fixture(): Promise<string> {
 		Bun.write(
 			path.join(root, "crates/core/src/lib.rs"),
 			'#[napi(js_name = "__veyyonNativesV1_2_3")]\nfn sentinel() {}\n',
+		),
+		Bun.write(
+			path.join(root, "packages/coding-agent/package.json"),
+			JSON.stringify({ name: "@veyyon/coding-agent", version }),
+		),
+		Bun.write(
+			path.join(root, "packages/coding-agent/CHANGELOG.md"),
+			`# Changelog\n\n## [Unreleased]\n\n## [${version}] - 2026-01-01\n\n### Fixed\n\n- Something.\n`,
 		),
 	]);
 	return root;
@@ -133,6 +142,31 @@ describe("prepared release version authorities", () => {
 		);
 		await expect(validateReleaseVersionAuthorities(root, version, "latest")).rejects.toThrow(
 			'expected tag "latest" is not a strict v-prefixed semver tag',
+		);
+	});
+
+	/**
+	 * The changelog section is the authority whose absence has actually shipped: v1.0.38 through
+	 * v1.0.46 were each tagged at a tree with no `## [x.y.z]` section, published binaries and a
+	 * GitHub release, and only then went red in `release_site_finalize`, because the website
+	 * generator refuses to build a published release it cannot describe. Both spellings of the
+	 * fault are here — the section missing, and the whole file missing — because a tree that
+	 * loses the file reads as "nothing to describe" just as loudly.
+	 */
+	it("rejects a version the release-notes changelog does not describe", async () => {
+		const withoutSection = await fixture();
+		await Bun.write(
+			path.join(withoutSection, "packages/coding-agent/CHANGELOG.md"),
+			"# Changelog\n\n## [Unreleased]\n\n## [1.2.2] - 2026-01-01\n\n### Fixed\n\n- Something older.\n",
+		);
+		await expect(validateReleaseVersionAuthorities(withoutSection, version, `v${version}`)).rejects.toThrow(
+			'packages/coding-agent/CHANGELOG.md has no "## [1.2.3]" section',
+		);
+
+		const withoutFile = await fixture();
+		await fs.rm(path.join(withoutFile, "packages/coding-agent/CHANGELOG.md"));
+		await expect(validateReleaseVersionAuthorities(withoutFile, version, `v${version}`)).rejects.toThrow(
+			"packages/coding-agent/CHANGELOG.md is missing",
 		);
 	});
 });
