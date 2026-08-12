@@ -15,11 +15,12 @@ import * as path from "node:path";
  */
 import { isReleaseTag, isReleaseVersion, RELEASE_VERSION_BODY } from "@veyyon/utils/semver";
 import { $, Glob, JSONC } from "bun";
-import { unreleasedEntries } from "./changelog-unreleased.ts";
+import { hasVersionHeading, unreleasedEntries } from "./changelog-unreleased.ts";
 import { runChangelogFixer } from "./fix-changelogs";
 import {
 	assertPreparedReleaseChangelogs,
 	type PackageChangelog,
+	RELEASE_NOTES_CHANGELOG,
 	verifyPublishedAssetManifest,
 	verifyReleaseTagIsOnMain,
 } from "./release-policy";
@@ -455,6 +456,26 @@ export async function validateReleaseVersionAuthorities(
 	}
 	if (sentinelAuthorities === 0) errors.push(`prepared tree has no native sentinel authority for ${sentinelName}`);
 
+	// The changelog is an authority in the same sense as the manifests: it is the tree's own
+	// statement of what this version is, and the published surfaces read it. The website
+	// generator refuses to build when a PUBLISHED GitHub release has no `## [x.y.z]` section
+	// (website/tools/gen-changelog.mjs, reportUndocumentedReleases), and until this check
+	// existed that refusal was the FIRST thing to notice: v1.0.38 through v1.0.46 were each
+	// tagged at a tree with no section, so each one built binaries, published a release, and
+	// only then went red in `release_site_finalize` with the release already public and the
+	// site still describing the previous version. Read at the tag, the same fact costs one
+	// file read and refuses before anything ships.
+	const releaseNotesPath = path.join(rootDir, RELEASE_NOTES_CHANGELOG);
+	const releaseNotesFile = Bun.file(releaseNotesPath);
+	if (!(await releaseNotesFile.exists())) {
+		errors.push(`${RELEASE_NOTES_CHANGELOG} is missing; the release notes and the changelog page are built from it`);
+	} else if (!hasVersionHeading(await releaseNotesFile.text(), version)) {
+		errors.push(
+			`${RELEASE_NOTES_CHANGELOG} has no "## [${version}]" section, so a published v${version} would be a ` +
+				`release the website cannot describe`,
+		);
+	}
+
 	if (errors.length > 0) {
 		throw new Error(`Release version authority validation failed:\n- ${errors.join("\n- ")}`);
 	}
@@ -596,6 +617,13 @@ async function runReleaseController(args: readonly string[]): Promise<void> {
 			// commit whose manifests say something else would ship binaries that
 			// report the wrong version, so the tag and the tree must agree.
 			await validateReleaseVersionAuthorities(".", tag.replace(/^v/, ""), tag);
+			// The changelog is a version authority too, and it is the one that has actually
+			// broken releases: v1.0.38 through v1.0.46 were each tagged at a tree with no
+			// `## [x.y.z]` section, so each one built binaries, published a GitHub release,
+			// and only then went red in `release_site_finalize`, where the website generator
+			// refuses to build a published release it cannot describe. The call above reads
+			// that section as one more authority, here in the first job of the release path,
+			// where nothing has been published yet.
 			return;
 		}
 		case "verify-assets": {
