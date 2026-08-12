@@ -536,6 +536,64 @@ function stripBackgroundNotice(text: string, async: BashToolDetails["async"] | u
 }
 
 /**
+ * The command text a stream rule should be matched against.
+ *
+ * A tool without this hook has its rules matched against the RAW streamed argument
+ * JSON, which for bash is the wrong text in both directions. `{"command":"grep -rn foo
+ * src"}` never satisfies a rule anchored at the start of a command, because the command
+ * begins mid-string after `"command":"`; and the `&&` inside a quoted remote command
+ * (`ssh box "ls x && grep y"`) reads as a shell operator to a rule that has no idea it is
+ * looking at JSON. Both were live: the search nudge fired on remote searches it cannot
+ * replace and stayed silent on the plain local search it exists for.
+ *
+ * Heredoc bodies are dropped because they are DATA the command writes, not commands it
+ * runs: a script generated with `cat <<'EOF'` mentions whatever it mentions, and a rule
+ * firing on that text is advising the model about a file it is authoring. An unterminated
+ * heredoc (the normal state mid-stream) drops everything after the opener for the same
+ * reason.
+ */
+export function bashMatcherDigest(args: unknown): string {
+	const command = (args as Partial<BashToolInput> | undefined)?.command;
+	// Never `undefined`: that would hand the raw argument JSON back to the matcher, which
+	// is exactly the wire form no bash rule is written against.
+	if (typeof command !== "string") return "";
+	return stripHeredocBodies(command);
+}
+
+/**
+ * `<<MARK`, `<<-MARK`, `<<'MARK'`, `<<"MARK"` — but never the `<<<` herestring. Both guards
+ * are needed: without the trailing one `<<<yes` matches from the first angle bracket, and
+ * without the leading one it matches from the second, taking `yes` for a marker whose
+ * terminator never comes and swallowing every later command as its body.
+ */
+const HEREDOC_OPENER = /(?<!<)<<(?!<)(-?)\s*(["']?)([A-Za-z_][A-Za-z0-9_]*)\2/g;
+
+function stripHeredocBodies(command: string): string {
+	HEREDOC_OPENER.lastIndex = 0;
+	let result = "";
+	let copiedTo = 0;
+	for (let opener = HEREDOC_OPENER.exec(command); opener; opener = HEREDOC_OPENER.exec(command)) {
+		const bodyStart = command.indexOf("\n", HEREDOC_OPENER.lastIndex);
+		if (bodyStart === -1) break;
+		const marker = opener[3] as string;
+		// `<<-` lets the terminator be indented with tabs; a plain `<<` requires column zero.
+		const terminator = new RegExp(`^${opener[1] === "-" ? "\\t*" : ""}${marker}[ \\t]*$`, "m");
+		terminator.lastIndex = 0;
+		const rest = command.slice(bodyStart + 1);
+		const hit = terminator.exec(rest);
+		result += command.slice(copiedTo, bodyStart);
+		if (!hit) {
+			// Unterminated: the rest of the text is body, so nothing after it is a command.
+			copiedTo = command.length;
+			break;
+		}
+		copiedTo = bodyStart + 1 + hit.index + hit[0].length;
+		HEREDOC_OPENER.lastIndex = copiedTo;
+	}
+	return result + command.slice(copiedTo);
+}
+
+/**
  * Bash tool implementation.
  *
  * Executes bash commands with optional timeout and working directory.
@@ -588,6 +646,9 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 	readonly concurrency = (args: Partial<BashToolInput>): "shared" | "exclusive" =>
 		args.pty === true ? "exclusive" : "shared";
 	readonly strict = true;
+	// Stream rules match the COMMAND, never the argument JSON carrying it; see
+	// `bashMatcherDigest` for the two ways the wire form got the answer wrong.
+	readonly matcherDigest = (args: unknown): string => bashMatcherDigest(args);
 	readonly #asyncEnabled: boolean;
 	readonly #autoBackgroundEnabled: boolean;
 	readonly #autoBackgroundThresholdMs: number;
