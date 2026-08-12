@@ -338,6 +338,21 @@ describe("reading the target's failures out of a run", () => {
 		expect(parseTargetFailures(output, "packages/x/test/z-victim.test.ts")).toEqual(["sees a clean global"]);
 	});
 
+	/**
+	 * Under GitHub Actions bun folds each file, so every header carries a `::group::` prefix and
+	 * the sections close with `::endgroup::`. Reading the prefix as part of the path is how the
+	 * search came to report "nothing reproduces" for a leak it had just triggered, in the one
+	 * environment that runs the entire suite.
+	 */
+	it("reads a header bun folded behind a GitHub Actions group annotation", () => {
+		const folded =
+			"::group::packages/x/test/a-candidate.test.ts:\n(fail) a candidate of its own accord\n::endgroup::\n" +
+			"::group::packages/x/test/z-victim.test.ts:\n(fail) sees a clean global\n(pass) a neighbour that is fine\n" +
+			"::endgroup::\n";
+
+		expect(parseTargetFailures(folded, "packages/x/test/z-victim.test.ts")).toEqual(["sees a clean global"]);
+	});
+
 	/** `--name` narrows the parsed result, never the run. */
 	it("keeps only the named test when a name is given", () => {
 		expect(parseTargetFailures(output, "packages/x/test/z-victim.test.ts", "clean global")).toEqual([
