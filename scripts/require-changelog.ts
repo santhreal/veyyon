@@ -235,12 +235,20 @@ async function main(): Promise<void> {
 	const changedRaw = await gitOutput(["diff", "--name-only", `${base}...HEAD`]);
 	const changedFiles = changedRaw ? changedRaw.split("\n").filter(Boolean) : [];
 
+	// This gate printed nothing until its verdict, and a job once sat inside it for over an
+	// hour with no output at all: the log could not say whether it was resolving the base,
+	// diffing, or reading one package's history. These two lines cost nothing and place a
+	// future stall between two known points.
+	console.log(`changelog gate: base ${base.slice(0, 12)}, ${changedFiles.length} changed file(s)`);
+
 	let packages: ChangelogPackage[];
 	try {
 		packages = await discoverPackages(repoRoot);
 	} catch (error) {
 		fail(error instanceof Error ? error.message : String(error));
 	}
+
+	console.log(`changelog gate: reading ${packages.length} package changelog(s) at ${base.slice(0, 12)}`);
 
 	const baseUnreleased = new Map<string, string[]>();
 	const headUnreleased = new Map<string, string[]>();
