@@ -50,6 +50,7 @@ jobs:
    build_and_deploy:
       name: Build site (deploy on main)
       runs-on: ubuntu-22.04
+      timeout-minutes: 20
       env:
          # secrets can't be used in step-level `if:`; hoist presence to a job env.
          HAS_CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}

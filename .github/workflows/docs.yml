@@ -79,6 +79,7 @@ jobs:
   link-check:
     name: Internal link check
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       # Full history: the freshness gate resolves each doc's verification-stamp
       # commit (`git cat-file -e <sha>`) and its last-edit date (`git log`). A
@@ -144,6 +145,7 @@ jobs:
     # phantom command or setting would ship uncaught.
     name: Docs vs code truth
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       # Same composite as link-check: install plus the gitignored
@@ -165,6 +167,7 @@ jobs:
     # mdbook version (keep the pin in sync with the version contributors use).
     name: Handbook book freshness
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - name: Install mdbook

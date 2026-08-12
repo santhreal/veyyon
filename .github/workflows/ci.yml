@@ -58,6 +58,7 @@ jobs:
    release_metadata:
       name: Resolve release metadata
       runs-on: ubuntu-22.04
+      timeout-minutes: 10
       outputs:
          is-release: ${{ steps.detect.outputs.is-release }}
          release-tag: ${{ steps.detect.outputs.release-tag }}
@@ -113,6 +114,7 @@ jobs:
    release_notes_dryrun:
       name: Release notes dry-run
       runs-on: ubuntu-22.04
+      timeout-minutes: 15
       steps:
          - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
            with:
@@ -158,6 +160,7 @@ jobs:
    native_artifact_lookup:
       name: Look up cached native artifacts
       runs-on: ubuntu-22.04
+      timeout-minutes: 10
       outputs:
          source-hash: ${{ steps.compute.outputs.source-hash }}
          linux-x64-run-id: ${{ steps.find.outputs.linux-x64-run-id }}
@@ -268,6 +271,7 @@ jobs:
    check:
       name: Type check & web build
       runs-on: ubuntu-22.04
+      timeout-minutes: 30
       steps:
          - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
          - uses: ./.github/actions/bun-install
@@ -284,6 +288,7 @@ jobs:
       needs: [release_metadata, native_artifact_lookup]
       if: ${{ needs.release_metadata.outputs.is-release == 'true' || needs.native_artifact_lookup.outputs.linux-x64-run-id == '' }}
       runs-on: ubuntu-22.04
+      timeout-minutes: 45
       strategy:
          fail-fast: false
          matrix:
@@ -313,6 +318,7 @@ jobs:
                - { os: ubuntu-24.04-arm, platform: linux, arch: arm64, target: aarch64-unknown-linux-gnu }
                - { os: ubuntu-22.04, platform: win32, arch: x64, target: x86_64-pc-windows-msvc, variant: baseline }
       runs-on: ${{ matrix.os }}
+      timeout-minutes: 60
       steps:
          - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
          - uses: ./.github/actions/build-native
@@ -336,6 +342,7 @@ jobs:
                - { os: macos-15-intel, platform: darwin, arch: x64, variant: baseline }
                - { os: macos-14, platform: darwin, arch: arm64 }
       runs-on: ${{ matrix.os }}
+      timeout-minutes: 60
       steps:
          - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
          - uses: ./.github/actions/build-native
@@ -579,6 +586,7 @@ jobs:
             # happens to be cut on.
             os: [ubuntu-22.04, macos-14, macos-15-intel]
       runs-on: ${{ matrix.os }}
+      timeout-minutes: 45
       steps:
          - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
          - uses: ./.github/actions/ensure-rust-toolchain
@@ -645,6 +653,7 @@ jobs:
       # on a real Windows shell so the PATH-wiring logic (which never ran on the
       # Linux runners) is actually gated. pwsh ships on windows-latest.
       runs-on: windows-latest
+      timeout-minutes: 20
       steps:
          - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
          - name: install.ps1 function tests
@@ -705,6 +714,7 @@ jobs:
                     binary_path: packages/coding-agent/binaries/veyyon-windows-x64.exe,
                  }
       runs-on: ${{ matrix.os }}
+      timeout-minutes: 90
       permissions:
          contents: read
       steps:
@@ -744,6 +754,7 @@ jobs:
          needs.release_binary.result == 'success' }}
       needs: [release_metadata, release_binary, native_artifact_lookup]
       runs-on: ubuntu-22.04
+      timeout-minutes: 30
       permissions:
          contents: write
       outputs:
@@ -936,6 +947,7 @@ jobs:
          needs.release_github.result == 'success' }}
       needs: [release_metadata, release_github]
       runs-on: ubuntu-22.04
+      timeout-minutes: 30
       concurrency:
          group: production-site-deploy
          cancel-in-progress: false
@@ -994,6 +1006,7 @@ jobs:
          needs.release_github.result == 'success' }}
       needs: [release_metadata, release_github]
       runs-on: macos-14
+      timeout-minutes: 20
       permissions:
          contents: write
       steps:
@@ -1050,6 +1063,7 @@ jobs:
          needs.release_github.result == 'success' }}
       needs: [release_metadata, release_github]
       runs-on: ubuntu-22.04
+      timeout-minutes: 20
       permissions:
          contents: write
       steps:
@@ -1178,6 +1192,7 @@ jobs:
          needs.release_github_verify_windows.result == 'success' }}
       needs: [release_metadata, release_github, release_site, release_github_verify, release_github_verify_linux, release_github_verify_windows]
       runs-on: ubuntu-22.04
+      timeout-minutes: 20
       permissions:
          actions: read
          contents: write
@@ -1293,6 +1308,7 @@ jobs:
          needs.release_github_publish.result == 'success' }}
       needs: [release_metadata, release_github_publish]
       runs-on: ubuntu-22.04
+      timeout-minutes: 30
       concurrency:
          group: production-site-deploy
          cancel-in-progress: false
@@ -1446,6 +1462,7 @@ jobs:
       # from the needs graph and fails when a new release job is not added here.
       needs: [release_metadata, native_artifact_lookup, check, native_linux_x64, native_cross_platform_cross, native_cross_platform_macos, test_workspace, test_coding_agent_singleton, test_ts_native, test_coding_agent_buckets, test_smoke, install_methods, install_ps1_e2e, install_ps1_functions, release_binary, release_github, release_site, release_github_verify, release_github_verify_linux, release_github_verify_windows, release_github_publish, release_site_finalize, release_install_verify]
       runs-on: ubuntu-22.04
+      timeout-minutes: 10
       permissions:
          contents: read
          issues: write
