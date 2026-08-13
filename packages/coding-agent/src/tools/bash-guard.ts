@@ -330,21 +330,67 @@ const RUNS_UNSEEN_SHELL = new Set(["eval", "source", ".", "bash", "sh", "zsh", "
  * means a script this scan cannot read. Those withdraw everything. Withdrawal
  * only ever removes an exemption, so reading a word too broadly costs one
  * question and reading it too narrowly costs a directory.
+ *
+ * Returns the names rather than acting on them, because there are now TWO
+ * things keyed on a name that a rebinding invalidates: the mktemp exemption and
+ * the value an earlier segment assigned. One scan, both withdrawals.
  */
-function withdrawReboundNames(
-	words: readonly { text: string }[],
-	carried: ReadonlySet<string>,
-	staged: { name: string; created: boolean }[],
-): void {
-	if (carried.size === 0) return;
-	if (RUNS_UNSEEN_SHELL.has(basename(words[0]?.text ?? ""))) {
-		for (const name of carried) staged.push({ name, created: false });
-		return;
-	}
+function reboundNames(words: readonly { text: string }[], watched: ReadonlySet<string>): string[] {
+	if (watched.size === 0) return [];
+	if (RUNS_UNSEEN_SHELL.has(basename(words[0]?.text ?? ""))) return [...watched];
+	const rebound: string[] = [];
 	for (const word of words) {
 		const bare = /^([A-Za-z_][A-Za-z0-9_]*)(?:$|=|\[)/.exec(word.text)?.[1];
-		if (bare !== undefined && carried.has(bare)) staged.push({ name: bare, created: false });
+		if (bare !== undefined && watched.has(bare)) rebound.push(bare);
 	}
+	return rebound;
+}
+
+/**
+ * Words that put an assignment behind them: `export DST=/srv`, `local d=…`.
+ *
+ * Not a blocklist of everything that can write a name — {@link reboundNames} is
+ * what covers the rest, by withdrawing whatever it cannot read. This list only
+ * decides whether the scan keeps LOOKING for assignments after the word, and
+ * being wrong about a member costs a resolved value, never a missed delete.
+ */
+export const DECLARATION_BUILTINS: ReadonlySet<string> = new Set(["export", "declare", "typeset", "readonly", "local"]);
+
+/**
+ * The value a name carries into the REST of the command line, or `undefined`
+ * when the line does not settle it.
+ *
+ * Two things make a value unusable, and both are answered the same way, because
+ * an unresolved name in a recursive delete is already critical:
+ *
+ *   - the value itself holds an expansion this module cannot resolve, so the
+ *     text says no more than `$OTHER` did;
+ *   - the AMBIENT environment holds a different value for the same name. The
+ *     scan reads a line's segments unconditionally, but the shell does not run
+ *     them all: `[ -z "$DST" ] && DST=/srv; rm -rf "$DST"` reaches the delete
+ *     with the ambient value when `DST` was already set, so believing the
+ *     assignment would judge a path the command may never touch and wave past
+ *     the one it will.
+ *
+ * The first of those is belt and braces rather than the only defence: a value
+ * this module cannot resolve always still holds a `$`, a backtick or a `~`, and
+ * `isQuietlySubstitutable` refuses to paste any of those in later. No command
+ * distinguishes the two, so the branch is stated here for its meaning — unknown
+ * stays unknown — and not because a test can watch it work.
+ */
+function carriedValue(
+	literal: boolean,
+	value: string,
+	home: string,
+	enteringEnv: NodeJS.ProcessEnv,
+	ambient: NodeJS.ProcessEnv,
+	name: string,
+): string | undefined {
+	const expanded = expandWord({ text: value, literal }, home, enteringEnv);
+	if (expanded.unknown) return undefined;
+	const outer = ambient[name];
+	if (outer !== undefined && outer !== expanded.text) return undefined;
+	return expanded.text;
 }
 
 /** What a word turned out to be once the parts we can expand were expanded. */
@@ -589,7 +635,7 @@ function isQuietlySubstitutable(value: string): boolean {
  * worth being asked about anyway: it is the one variable whose whole purpose is
  * to change under you.
  */
-const SHELL_MAINTAINED_VARIABLES: ReadonlySet<string> = new Set([
+export const SHELL_MAINTAINED_VARIABLES: ReadonlySet<string> = new Set([
 	"PWD",
 	"OLDPWD",
 	"IFS",
@@ -1141,29 +1187,68 @@ export function findCriticalBashRisk(
 	// across segments as provenance with no value attached. See isMktempCreation.
 	const selfCreatedTemp = new Set<string>();
 	const staged: { name: string; created: boolean }[] = [];
+	// VALUES an earlier segment of this same line assigned. `undefined` marks a
+	// name we watched being written and cannot resolve; it MASKS any ambient value
+	// the name would otherwise have read, because the shell will not read that one
+	// either. See carriedValue for what makes a value resolvable.
+	const carried = new Map<string, string | undefined>();
+	const stagedValues = new Map<string, string | undefined>();
 	for (const segment of splitCommandSegments(command)) {
 		for (const entry of staged) {
 			if (entry.created) selfCreatedTemp.add(entry.name);
 			else selfCreatedTemp.delete(entry.name);
 		}
 		staged.length = 0;
+		for (const [name, value] of stagedValues) carried.set(name, value);
+		stagedValues.clear();
 		// Inline `VAR=value` assignments bind for this segment, and the shell
 		// honours them. They were skipped as prefix words and never applied, so
 		// `PWD=/ rm -rf $PWD` expanded `$PWD` from the ambient environment, judged
-		// a harmless directory, and ran `rm -rf /`. Applied first, over a COPY, so
-		// one segment's assignment cannot leak into the next.
+		// a harmless directory, and ran `rm -rf /`.
+		//
+		// AN EARLIER SEGMENT'S ASSIGNMENT IS PART OF THE COMMAND TEXT. Applying
+		// them over a copy that died with the segment made `DST=/srv/app;
+		// rm -rf "$DST/build"` critical, because `$DST` read as an expansion "whose
+		// value is not knowable from the command text" when the line says what it
+		// is on the word before. `critical` is the floor `/yolo` cannot lift, so
+		// that reading turned the most ordinary shape an agent writes into a prompt
+		// in the one mode whose whole promise is that it does not prompt — and a
+		// guard that fires on `DST=…; rm -rf "$DST/build"` is a guard an operator
+		// switches off before it ever sees a real `rm -rf /`.
 		//
 		// Wrapper words are stepped over rather than stopping the scan, because
 		// `env PWD=/ rm -rf $PWD` and `sudo -E FOO=/ rm -rf $FOO` set the variable
 		// just as effectively as the bare form. Stopping at the first non-
 		// assignment word left exactly those spellings reading the ambient value.
+		// A declaration builtin is stepped over for the same reason: `export DST=/`
+		// is an assignment with a word in front of it.
 		const rawWords = splitWords(segment);
 		let segmentEnv = env;
+		const ownEnv = (): NodeJS.ProcessEnv => {
+			if (segmentEnv === env) segmentEnv = { ...env };
+			return segmentEnv;
+		};
+		for (const [name, value] of carried) {
+			const target = ownEnv();
+			if (value === undefined) delete target[name];
+			else target[name] = value;
+		}
+		// The environment as this segment ENTERS it, for expanding the segment's own
+		// assignment values. The shell binds prefix assignments left to right after
+		// expanding the command's words, so a value must never be resolved against a
+		// name the same segment is in the middle of writing.
+		const enteringEnv = segmentEnv === env ? env : { ...segmentEnv };
 		let commandIndex = 0;
 		for (const word of rawWords) {
 			const assignment = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(word.text);
 			if (!assignment) {
-				if (isPrefixCommand(word.text)) {
+				const wrapper = isPrefixCommand(word.text) || DECLARATION_BUILTINS.has(basename(word.text));
+				// A flag belonging to a wrapper already stepped over, the same way
+				// `isHostIsolatedContainerRun` reads `sudo -E docker run …`. Without
+				// it the scan stopped at `-E` and `sudo -E FOO=/ rm -rf $FOO` read the
+				// AMBIENT `FOO`, which is the spelling the comment above claims to
+				// cover and did not.
+				if (wrapper || (commandIndex > 0 && word.text.startsWith("-"))) {
 					commandIndex += 1;
 					continue;
 				}
@@ -1172,8 +1257,7 @@ export function findCriticalBashRisk(
 			commandIndex += 1;
 			const name = assignment[1] as string;
 			const value = assignment[2] ?? "";
-			if (segmentEnv === env) segmentEnv = { ...env };
-			segmentEnv[name] = value;
+			ownEnv()[name] = value;
 			// STAGED, NOT APPLIED. The shell expands a word before a prefix
 			// assignment on the same command takes effect, so
 			// `TMP=$(mktemp -d) rm -rf "$TMP"` deletes whatever the AMBIENT `TMP`
@@ -1182,9 +1266,17 @@ export function findCriticalBashRisk(
 			// for this scan to see, so an exemption there could not be withdrawn.
 			if (!SHELL_MAINTAINED_VARIABLES.has(name)) {
 				staged.push({ name, created: isMktempCreation(value) });
+				stagedValues.set(name, carriedValue(word.literal, value, home, enteringEnv, env, name));
 			}
 		}
-		withdrawReboundNames(rawWords.slice(commandIndex), selfCreatedTemp, staged);
+		// A name written by anything this scan cannot read loses BOTH its mktemp
+		// exemption and its carried value: `DST=/srv/app; read DST; rm -rf "$DST"`
+		// deletes whatever was typed, not what the line said one segment ago.
+		const watched = new Set<string>([...selfCreatedTemp, ...carried.keys(), ...stagedValues.keys()]);
+		for (const name of reboundNames(rawWords.slice(commandIndex), watched)) {
+			staged.push({ name, created: false });
+			stagedValues.set(name, undefined);
+		}
 		const words = rawWords.map(word => expandWord(word, home, segmentEnv));
 		if (words.length === 0) continue;
 
