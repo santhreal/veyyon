@@ -4,9 +4,19 @@
  * published. The pre-publication deployment intentionally renders the draft as
  * pending, so publication is complete only after a second build replaces that
  * card with its immutable GitHub release link.
+ *
+ * The card is found by the id the GENERATOR writes, imported from it rather
+ * than restated here. This file used to spell the id itself, as `1.0.47` where
+ * the page says `v1-0-47`, so the check could not pass on any release and
+ * reported a correct deployment as an unpropagated one for twelve attempts
+ * before failing the release run.
  */
 
-export const CHANGELOG_URL = "https://veyyon.dev/changelog.html";
+// @ts-expect-error — plain .mjs module, no types; imported for its exports.
+import { releaseAnchor } from "../website/tools/gen-changelog.mjs";
+
+/** The canonical path. `/changelog.html` answers 308 and redirects here. */
+export const CHANGELOG_URL = "https://veyyon.dev/changelog";
 export const PROPAGATION_ATTEMPTS = 12;
 export const PROPAGATION_DELAY_MS = 10_000;
 
@@ -26,7 +36,7 @@ export function publishedReleaseUrl(repository: string, tag: string): string {
  */
 export function assertPublishedChangelog(body: string, repository: string, tag: string): void {
 	const version = tag.slice(1);
-	const heading = `<h2 id="${version}">`;
+	const heading = `<h2 id="${releaseAnchor(version)}"`;
 	if (!body.includes(heading)) {
 		throw new Error(`deployed changelog has no ${tag} release card`);
 	}
