@@ -2,11 +2,11 @@ Supervises a process that does NOT end on its own, shared by every veyyon instan
 
 <routing>
 - Pick by how the process ENDS, never by how long it runs. Ends on its own (test suite, build, benchmark, migration, install — any command with a last line)? That is `bash`, backgrounded if it is slow. Runs until something stops it, or you must talk to it later (server, watcher, daemon, REPL, tunnel)? That is `launch`.
-- `launch` is NOT the way to background a command. A supervised process reports its own exit to you as a background job, so you never poll for one — but a finite command belongs in `bash`, which returns its full output and exit code.
+- `launch` is NOT how you background a command. A supervised process reports its own exit as a background job, so you never poll — but a finite command belongs in `bash`, which returns its output and exit code.
 </routing>
 
 <instruction>
-- Every field is documented in the schema; these are the facts the schema cannot state.
+- The schema documents every field; these are the facts it cannot state.
 - `start` BLOCKS until readiness or `ready.timeout`, so a pattern that never prints costs the whole timeout. Without `ready` it returns as soon as the process is spawned.
 - Names are unique per project directory. A completed name MAY be started again; a live name MUST be stopped or restarted.
 - Every op except `start` and `list` addresses the stable `name`.
@@ -19,6 +19,5 @@ Supervises a process that does NOT end on its own, shared by every veyyon instan
 
 <critical>
 - Readiness MUST be observed; process creation alone is not readiness.
-- Omit `persist` and `detached` unless their survival guarantees are required.
 - Use `stop`; NEVER kill an unverified PID through bash.
 </critical>

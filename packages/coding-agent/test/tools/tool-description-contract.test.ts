@@ -24,10 +24,12 @@ const RETAINED: Readonly<Record<string, readonly string[]>> = {
 		"`ls` → `read`",
 		"`find` → `glob`",
 		"even for one quick listing",
-		// The launch routing rule, previously stated three times in this one description
-		// and now stated once. Every clause of the surviving copy is load-bearing.
-		"MUST use `launch`",
-		"needing later stdin",
+		// The launch routing rule, re-cut on how a process ENDS rather than on how long
+		// it runs: a four-minute test gate satisfied "long-running" and went to the
+		// process supervisor, which does not return a result. Every clause is
+		// load-bearing — the axis, the two prohibitions, and the word `launch` itself.
+		"Ends on its own?",
+		"needs later stdin? `launch`",
 		"`nohup`",
 		"process supervisor",
 		// Failure modes that were never candidates for cutting.
@@ -73,10 +75,12 @@ const RETAINED: Readonly<Record<string, readonly string[]>> = {
 		"Subagents start blank",
 	],
 	launch: [
-		// The enumeration moved out of `<instruction>` and into `<critical>`; losing any
-		// term makes the rule unactionable, which is why it moved rather than vanished.
-		"service, watcher, debugger, REPL",
-		"needing later stdin MUST use `launch`",
+		// The routing rule the tool is chosen by. Losing the termination axis puts every
+		// slow finite command back in the supervisor, which reports no result; losing the
+		// second line leaves "background it" reading as a reason to come here.
+		"Pick by how the process ENDS, never by how long it runs",
+		"NOT how you background a command",
+		"reports its own exit as a background job",
 		"Readiness MUST be observed",
 		"NEVER kill an unverified PID",
 	],
