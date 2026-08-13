@@ -4,7 +4,7 @@ import { Text } from "@veyyon/tui";
 import { errorMessage, formatCount, prompt } from "@veyyon/utils";
 import { stripTaskResultEnvelope } from "@veyyon/wire/task-result";
 import { type } from "arktype";
-import type { AsyncJob, AsyncJobManager } from "../async";
+import type { AsyncJob, AsyncJobManager, AsyncJobType } from "../async";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { shimmerEnabled, shimmerText } from "../modes/theme/shimmer";
 import type { Theme } from "../modes/theme/theme";
@@ -48,7 +48,7 @@ function parseWaitDurationMs(value: string | undefined): number {
 
 interface JobSnapshot {
 	id: string;
-	type: "bash" | "task";
+	type: AsyncJobType;
 	status: "running" | "completed" | "failed" | "cancelled";
 	label: string;
 	durationMs: number;
@@ -448,7 +448,7 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 	#snapshotJobs(
 		jobs: {
 			id: string;
-			type: "bash" | "task";
+			type: AsyncJobType;
 			status: string;
 			label: string;
 			startTime: number;
@@ -476,7 +476,7 @@ export class JobTool implements AgentTool<typeof jobSchema, JobToolDetails> {
 		manager: AsyncJobManager,
 		jobs: {
 			id: string;
-			type: "bash" | "task";
+			type: AsyncJobType;
 			status: string;
 			label: string;
 			startTime: number;

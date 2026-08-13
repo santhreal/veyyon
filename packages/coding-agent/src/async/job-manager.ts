@@ -30,9 +30,16 @@ interface PollEscalationState {
 	lastPollEndAt: number;
 }
 
+/**
+ * What produced a background job: a backgrounded `bash` command, a `task`
+ * subagent, or a supervised process from `launch` whose exit is reported when
+ * it happens.
+ */
+export type AsyncJobType = "bash" | "task" | "launch";
+
 export interface AsyncJob {
 	id: string;
-	type: "bash" | "task";
+	type: AsyncJobType;
 	status: "running" | "completed" | "failed" | "cancelled";
 	startTime: number;
 	label: string;
@@ -163,7 +170,7 @@ export class AsyncJobManager {
 	}
 
 	register(
-		type: "bash" | "task",
+		type: AsyncJobType,
 		label: string,
 		run: (ctx: {
 			jobId: string;

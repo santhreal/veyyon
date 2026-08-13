@@ -7,6 +7,7 @@
 import type { AgentMessage } from "@veyyon/agent-core";
 import { type Component, Text } from "@veyyon/tui";
 import { collapseWhitespace, formatBytes, formatDuration } from "@veyyon/utils";
+import type { AsyncJobType } from "../../async";
 import {
 	type CustomMessage,
 	type FileMentionMessage,
@@ -31,10 +32,10 @@ export function buildAsyncResultBlock(message: CustomOrHookMessage): TranscriptB
 	const details = (
 		message as CustomMessage<{
 			jobId?: string;
-			type?: "bash" | "task";
+			type?: AsyncJobType;
 			label?: string;
 			durationMs?: number;
-			jobs?: Array<{ jobId?: string; type?: "bash" | "task"; label?: string; durationMs?: number }>;
+			jobs?: Array<{ jobId?: string; type?: AsyncJobType; label?: string; durationMs?: number }>;
 		}>
 	).details;
 	const jobs =

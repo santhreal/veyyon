@@ -57,7 +57,7 @@ Use bash ONLY for: a single binary call, or one short pipeline that COMPUTES a f
 {{/ifAll}}
 - Avoid head/tail/redirections: stderr already merged; long output auto-truncated, FULL capture kept at `artifact://<id>`.
 {{#if hasLaunch}}
-- Long-running service, watcher, dev server, daemon, debugger, REPL, or anything needing later stdin? MUST use `launch`, never bash. NEVER `cmd &`, `nohup`, or async bash as a process supervisor.
+- A process that does NOT end on its own (server, watcher, dev server, daemon, REPL, tunnel), or one you must send input to later, belongs to `launch`. Duration is NOT the test: a command that ends on its own stays here however long it runs{{#if asyncEnabled}} — a slow one is `async: true`, whose result arrives as a follow-up{{/if}}. NEVER `cmd &`, `nohup`, or async bash as a process supervisor.
 {{/if}}
 </critical>
 
