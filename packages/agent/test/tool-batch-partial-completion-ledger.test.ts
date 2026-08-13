@@ -8,7 +8,7 @@ import {
 import type { AgentContext, AgentEvent, AgentLoopConfig, AgentMessage, AgentTool } from "@veyyon/agent-core/types";
 import type { AssistantMessage, Message, ToolResultMessage } from "@veyyon/ai";
 import { createMockModel } from "@veyyon/ai/providers/mock";
-import { kCursorExecResolved } from "@veyyon/ai/utils/block-symbols";
+import { kCursorExecResolved, setStreamingPartialJson } from "@veyyon/ai/utils/block-symbols";
 import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { type } from "arktype";
 import { createUserMessage } from "./helpers";
@@ -48,11 +48,22 @@ function toolResultTexts(events: AgentEvent[]): string[] {
 	return texts;
 }
 
-function ledgerBlock(texts: string[]): string {
+/**
+ * The one ledger a cut-short batch produces.
+ *
+ * `required` is false only for a turn the operator aborted. An abort is the
+ * operator's own action, so the loop owes the model no explanation of it, and
+ * whether a ledger appears depends on what survived: a batch whose calls were
+ * all retained still gets one naming them as never run, while a turn left with
+ * nothing to inventory gets none. Those rows assert on the retained turn rather
+ * than on ledger prose. What holds either way is that there is never more than
+ * one ledger, never one per call.
+ */
+function ledgerBlock(texts: string[], required = true): string {
 	const found = texts.filter(text => text.includes("Partial completion ledger"));
-	// Bounded: exactly one ledger per cut-short batch, never one per call.
-	expect(found).toHaveLength(1);
-	return found[0] as string;
+	if (required) expect(found).toHaveLength(1);
+	else expect(found.length).toBeLessThanOrEqual(1);
+	return found[0] ?? "";
 }
 
 describe("partial completion ledger on a provider stream abort", () => {
@@ -278,6 +289,20 @@ async function runStreamErrorTurn(options: {
 	blocks: AssistantMessage["content"];
 	completeIds: string[];
 	messages?: AgentMessage[];
+	/**
+	 * Raw accumulated argument JSON per tool-call id, written to the block's
+	 * `kStreamingPartialJson` marker the way every delta-streaming provider does.
+	 * The harness leaves it unset by default, which is the Google-style shape:
+	 * whole call objects, no marker, and therefore no evidence either way.
+	 */
+	partialJson?: Record<string, string>;
+	/**
+	 * Abort the request after the blocks are on the wire instead of ending in a
+	 * transport error, and deliver every `toolcall_end` AFTER the abort so the
+	 * loop discards them unprocessed. This is the operator's case: a steering
+	 * interrupt, not a dead socket.
+	 */
+	abortAfterBlocks?: boolean;
 }): Promise<{ ledger: string; assistant: AssistantMessage; events: AgentEvent[] }> {
 	const context: AgentContext = {
 		systemPrompt: [""],
@@ -285,9 +310,10 @@ async function runStreamErrorTurn(options: {
 		tools: [],
 	};
 	const config: AgentLoopConfig = { model: createMockModel().model, convertToLlm: identityConverter };
+	const controller = new AbortController();
 	const streamFn = () => {
 		const stream = new AssistantMessageEventStream();
-		queueMicrotask(() => {
+		queueMicrotask(async () => {
 			const partial: AssistantMessage = {
 				role: "assistant",
 				content: options.blocks,
@@ -298,7 +324,29 @@ async function runStreamErrorTurn(options: {
 				stopReason: "toolUse",
 				timestamp: Date.now(),
 			};
+			for (const block of partial.content) {
+				if (block.type !== "toolCall") continue;
+				const raw = options.partialJson?.[block.id];
+				if (raw !== undefined) setStreamingPartialJson(block, raw);
+			}
 			stream.push({ type: "start", partial });
+			if (options.abortAfterBlocks) {
+				// The loop has to SEE the blocks first, the way it does in a real turn: it
+				// records the streaming partial as it arrives and only then meets the abort.
+				// Draining the microtask queue is how that ordering is expressed without a
+				// timer; aborting in the same tick as the push would test a turn that never
+				// received the call at all, which is a different (and already covered) case.
+				for (let drain = 0; drain < 20; drain++) await Promise.resolve();
+				// Abort first, THEN deliver the close events. The loop checks the signal
+				// before it processes the event it has already pulled, so these arrive and
+				// are thrown away: the exact sequence that made a finished call look unfinished.
+				controller.abort();
+				partial.content.forEach((block, contentIndex) => {
+					if (block.type !== "toolCall") return;
+					stream.push({ type: "toolcall_end", contentIndex, toolCall: block, partial });
+				});
+				return;
+			}
 			partial.content.forEach((block, contentIndex) => {
 				if (block.type !== "toolCall" || !options.completeIds.includes(block.id)) return;
 				stream.push({ type: "toolcall_end", contentIndex, toolCall: block, partial });
@@ -317,7 +365,7 @@ async function runStreamErrorTurn(options: {
 	};
 
 	const events: AgentEvent[] = [];
-	for await (const event of agentLoop([createUserMessage("go")], context, config, undefined, streamFn)) {
+	for await (const event of agentLoop([createUserMessage("go")], context, config, controller.signal, streamFn)) {
 		events.push(event);
 	}
 	// The finalized assistant turn is the last `message_end` carrying it: that is
@@ -327,7 +375,7 @@ async function runStreamErrorTurn(options: {
 		.map(e => e.message)
 		.findLast((m): m is AssistantMessage => m.role === "assistant");
 	if (!assistant) throw new Error("the loop emitted no assistant message");
-	return { ledger: ledgerBlock(toolResultTexts(events)), assistant, events };
+	return { ledger: ledgerBlock(toolResultTexts(events), !options.abortAfterBlocks), assistant, events };
 }
 
 /**
@@ -385,6 +433,134 @@ describe("a tool call whose arguments never finished streaming", () => {
 	});
 });
 
+/**
+ * A missing `toolcall_end` is not evidence the provider stopped mid-argument.
+ *
+ * WHY THIS SUITE EXISTS. An operator interrupted a turn holding two fully written
+ * `bash` calls and the ledger told the model both had "arguments never finished"
+ * and that "no record of them is left in this transcript. Reconstruct their
+ * arguments rather than copying them back". Every word of that was false, and the
+ * arguments it described were deleted in the same pass. The abort is decided
+ * locally: `runLoop` tests `requestSignal.aborted` before it processes the event
+ * it has already pulled, so a steering interrupt discards delivered events,
+ * including the `toolcall_end` of a call whose last argument byte had arrived.
+ * Completeness therefore cannot be read off that event.
+ *
+ * WHAT THESE ROWS PIN. Completeness is judged from the block's own accumulated
+ * `kStreamingPartialJson`: parses to an object means the provider finished, and
+ * the call is retained with those parsed arguments. Truncated JSON, a payload
+ * that is not an object, and an absent marker all stay incomplete, the last one
+ * deliberately, since a provider that never writes a marker tells us nothing.
+ *
+ * WHAT THEY DO NOT PIN. Whether the retained call is later re-run or answered
+ * from cache is the batch-continuation contract, covered in
+ * `unreplayable-batch-continue.test.ts`. These rows only assert the turn the
+ * model reads back.
+ */
+describe("a tool call the abort never closed, whose arguments are provably complete", () => {
+	const COMPLETE_ARGS = { command: "bun run check:ts", timeout: 600 };
+
+	it("keeps both calls, with their parsed arguments, and calls neither unfinished", async () => {
+		const { assistant } = await runStreamErrorTurn({
+			blocks: [
+				{ type: "toolCall", id: "call-a", name: "bash", arguments: {} },
+				{ type: "toolCall", id: "call-b", name: "bash", arguments: {} },
+			],
+			completeIds: [],
+			partialJson: {
+				"call-a": JSON.stringify(COMPLETE_ARGS),
+				"call-b": JSON.stringify({ command: "git status", timeout: 30 }),
+			},
+			abortAfterBlocks: true,
+		});
+
+		const calls = assistant.content.filter(block => block.type === "toolCall");
+		expect(calls.map(block => block.id)).toEqual(["call-a", "call-b"]);
+		// The arguments the model wrote come back verbatim, not as the tolerant
+		// partial parse a streaming block carries while it is still being written.
+		expect(calls[0]?.arguments).toEqual(COMPLETE_ARGS);
+		expect(calls[1]?.arguments).toEqual({ command: "git status", timeout: 30 });
+		expect(assistant.incompleteToolCalls ?? []).toEqual([]);
+	});
+
+	it("still reports an unfinished call when the accumulated JSON is truncated", async () => {
+		const { assistant } = await runStreamErrorTurn({
+			blocks: [
+				{ type: "toolCall", id: "call-done", name: "bash", arguments: {} },
+				{ type: "toolCall", id: "call-cut", name: "bash", arguments: { command: "npm ru" } },
+			],
+			completeIds: [],
+			partialJson: {
+				"call-done": JSON.stringify(COMPLETE_ARGS),
+				// The provider stopped mid-string: this cannot parse, and guessing at it
+				// is exactly what the ledger's advisory exists to prevent.
+				"call-cut": '{"command": "npm ru',
+			},
+			abortAfterBlocks: true,
+		});
+
+		expect(assistant.content.filter(block => block.type === "toolCall").map(block => block.id)).toEqual([
+			"call-done",
+		]);
+		expect(assistant.incompleteToolCalls).toEqual([{ id: "call-cut", name: "bash" }]);
+	});
+
+	/**
+	 * The wording the operator actually read, on the path that produces one. A dead
+	 * transport ends the same batch with a ledger, so this row is where the sentence
+	 * "arguments never finished" is pinned to the call it is true of and kept off the
+	 * call it is not.
+	 */
+	it("names only the truncated call as unfinished, and keeps the settled one as an ordinary never-ran", async () => {
+		const { ledger, assistant } = await runStreamErrorTurn({
+			blocks: [
+				{ type: "toolCall", id: "call-done", name: "bash", arguments: {} },
+				{ type: "toolCall", id: "call-cut", name: "bash", arguments: { command: "npm ru" } },
+			],
+			completeIds: [],
+			partialJson: {
+				"call-done": JSON.stringify(COMPLETE_ARGS),
+				"call-cut": '{"command": "npm ru',
+			},
+		});
+
+		expect(ledger).toContain("- never ran: call-done (bash)");
+		expect(ledger).toContain("- never ran, arguments never finished: call-cut (bash)");
+		expect(ledger).not.toContain("arguments never finished: call-done");
+		expect(ledger).not.toContain("npm ru");
+
+		const settled = assistant.content.find(block => block.type === "toolCall" && block.id === "call-done");
+		expect(settled?.type === "toolCall" ? settled.arguments : undefined).toEqual(COMPLETE_ARGS);
+		expect(assistant.incompleteToolCalls).toEqual([{ id: "call-cut", name: "bash" }]);
+	});
+
+	it("does not read a marker that parses to something other than an object as complete", async () => {
+		// A bare scalar or array is not an argument set. Accepting one would hand the
+		// tool layer a shape it cannot spread, so the conservative answer stands.
+		for (const raw of ["null", "42", '"done"', "[1,2]"]) {
+			const { assistant } = await runStreamErrorTurn({
+				blocks: [{ type: "toolCall", id: "call-odd", name: "bash", arguments: {} }],
+				completeIds: [],
+				partialJson: { "call-odd": raw },
+				abortAfterBlocks: true,
+			});
+
+			expect(assistant.incompleteToolCalls, `marker ${raw}`).toEqual([{ id: "call-odd", name: "bash" }]);
+		}
+	});
+
+	it("leaves a provider that writes no marker exactly as it was", async () => {
+		// Google-style providers deliver whole call objects and never accumulate
+		// deltas, so an absent marker is silence, not a completion signal.
+		const { assistant } = await runStreamErrorTurn({
+			blocks: [{ type: "toolCall", id: "call-silent", name: "bash", arguments: { command: "ls" } }],
+			completeIds: [],
+			abortAfterBlocks: true,
+		});
+
+		expect(assistant.incompleteToolCalls).toEqual([{ id: "call-silent", name: "bash" }]);
+	});
+});
 /**
  * The third outcome, and the reason the vocabulary is not a boolean: a call
  * that ran server-side but whose result has not landed is neither "safe to
