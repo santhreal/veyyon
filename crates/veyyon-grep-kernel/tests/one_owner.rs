@@ -49,10 +49,18 @@ const OWNER_SEARCHER: &str = "crates/veyyon-grep-kernel/src/searcher.rs";
 /// Every `.rs` file under `crates/`, excluding the vendored trees, which are
 /// read-only snapshots of other people's code and are not ours to unify, and
 /// excluding this file; see [`SCANNER`].
+///
+/// Sorted by path, because several rules below assert a whole `Vec` of
+/// offenders and `fs::read_dir` hands back whatever order the filesystem feels
+/// like. That is not a hypothetical: the two-element expectation in
+/// [`the_pcre_unicode_switches_have_one_owner_and_one_documented_override`]
+/// passed on every developer machine and failed on a CI runner, which reads as
+/// a violation that is not there and blocks a release for a directory listing.
 fn workspace_sources() -> Vec<(PathBuf, String)> {
 	let mut found = Vec::new();
 	collect(&workspace_root().join("crates"), &mut found);
 	found.retain(|(path, _)| relative(path) != SCANNER);
+	found.sort_by(|(left, _), (right, _)| relative(left).cmp(&relative(right)));
 	found
 }
 
@@ -105,6 +113,30 @@ fn the_scan_really_reads_the_workspace() {
 			.iter()
 			.any(|(path, _)| relative(path) == "crates/veyyon-natives/src/grep.rs"),
 		"the scan did not find the N-API grep engine",
+	);
+}
+
+/// The order every multi-file expectation below is written in.
+///
+/// `fs::read_dir` returns entries in whatever order the filesystem stores them,
+/// so an `assert_eq!` against a two-element `Vec` is a coin flip that lands the
+/// same way on one machine and the other way on another. Asserting the sort
+/// here keeps that failure from coming back as "a rule is violated" somewhere
+/// else in this file, which is the shape it took the first time: green locally,
+/// red on a CI runner, with a message about PCRE unicode switches that had
+/// nothing to do with it.
+#[test]
+fn the_scan_is_ordered_by_path_rather_than_by_the_filesystem() {
+	let paths: Vec<String> = workspace_sources()
+		.iter()
+		.map(|(path, _)| relative(path))
+		.collect();
+	let mut sorted = paths.clone();
+	sorted.sort();
+
+	assert_eq!(
+		paths, sorted,
+		"workspace_sources() must be sorted; every Vec expectation below depends on it"
 	);
 }
 
