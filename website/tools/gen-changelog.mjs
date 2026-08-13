@@ -314,8 +314,23 @@ function renderSection(sec) {
 	].join("\n");
 }
 
+/**
+ * The id a release card carries, and the fragment that links to it. Dots are
+ * not usable in a URL fragment the way a version writes them, so `1.0.47`
+ * becomes `v1-0-47`.
+ *
+ * Exported because the deployment proof (`scripts/verify-deployed-changelog.ts`)
+ * looks the card up by this id on the live page. It used to restate the format
+ * itself, guessed `id="1.0.47"`, and so could never find a card: every release
+ * after the anchor took this shape failed its own publication check while the
+ * site it was checking was correct.
+ */
+export function releaseAnchor(version) {
+	return `v${version.replace(/\./g, "-")}`;
+}
+
 export function renderRelease(rel, { isLatest } = {}) {
-	const anchor = `v${rel.version.replace(/\./g, "-")}`;
+	const anchor = releaseAnchor(rel.version);
 	// Publish date (GitHub) wins over the CHANGELOG date when the release is live.
 	const shownDate = rel.published && rel.publishedDate ? rel.publishedDate : rel.date;
 	const date = shownDate ? `<span class="date">${shownDate}</span>` : "";
