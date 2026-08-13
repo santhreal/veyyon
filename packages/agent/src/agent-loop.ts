@@ -38,7 +38,13 @@ import { streamSimple } from "@veyyon/ai/stream";
 // The deep path, not the package entry point: this is one string beside the type it
 // fills in, and the entry point re-exports the whole of `@veyyon/ai`.
 import { EMPTY_ERROR_TOOL_RESULT_TEXT } from "@veyyon/ai/types";
-import { type CursorExecResolvedCarrier, kCursorExecResolved } from "@veyyon/ai/utils/block-symbols";
+import {
+	type CursorExecResolvedCarrier,
+	clearStreamingPartialJson,
+	getStreamingPartialJson,
+	kCursorExecResolved,
+	type StreamingPartialJsonCarrier,
+} from "@veyyon/ai/utils/block-symbols";
 import { EventStream } from "@veyyon/ai/utils/event-stream";
 import {
 	createHarmonyAuditEvent,
@@ -1794,6 +1800,46 @@ async function streamAssistantResponse(
 }
 
 /**
+ * Whether a tool-call block the loop never saw a `toolcall_end` for nonetheless
+ * carries complete arguments, and if so what they parse to.
+ *
+ * WHY. A missing `toolcall_end` is not evidence the provider stopped mid
+ * argument. An abort is decided HERE: the loop checks `requestSignal.aborted`
+ * before it processes the event it just pulled, so a steering interrupt drops
+ * every event already delivered, including the `toolcall_end` of a call whose
+ * every argument byte had arrived. Judging completeness by that event alone
+ * therefore deleted complete calls and told the model, in the batch ledger,
+ * that their "arguments never finished" and that "no record of them is left in
+ * this transcript. Reconstruct their arguments rather than copying them back" —
+ * a false statement about a call it had finished writing, and one that destroys
+ * the arguments it is describing. Reported by an operator whose two complete
+ * `bash` calls came back exactly that way after one interjection.
+ *
+ * The block itself knows better. Every provider that streams argument deltas
+ * accumulates them in `kStreamingPartialJson` and clears the marker when it
+ * closes the call, so a marker still holding text means the loop stopped
+ * reading mid-call, and whether the provider had finished is answerable: a
+ * truncated JSON payload does not parse, a complete one does. Only a payload
+ * that parses to an object counts, and its parse becomes the block's arguments,
+ * because the arguments already on a streaming block are a tolerant partial
+ * parse and must not be run as-is.
+ *
+ * An absent marker is deliberately NOT read as complete: a provider that never
+ * writes one tells us nothing here, and the conservative answer keeps the
+ * pre-existing behaviour for it.
+ */
+function completedStreamedArguments(block: StreamingPartialJsonCarrier): Record<string, unknown> | undefined {
+	const accumulated = getStreamingPartialJson(block)?.trim();
+	if (!accumulated) return undefined;
+	try {
+		const parsed: unknown = JSON.parse(accumulated);
+		return isRecord(parsed) ? parsed : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+/**
  * Drop `toolCall` blocks whose arguments never finished streaming, and record
  * their identity on {@link AssistantMessage.incompleteToolCalls}.
  *
@@ -1804,6 +1850,10 @@ async function streamAssistantResponse(
  * turn in which it had never asked for that tool. The id and name arrive with
  * the provider's block header, before any argument delta, so they are known
  * even here and the ledger can name the call as attempted-and-never-run.
+ *
+ * A call the loop never closed but whose arguments are provably complete is
+ * kept, with those arguments, rather than deleted and misreported: see
+ * {@link completedStreamedArguments}.
  */
 function retainCompletedToolCalls(
 	message: AssistantMessage,
@@ -1811,13 +1861,32 @@ function retainCompletedToolCalls(
 ): AssistantMessage {
 	if (message.stopReason !== "error" && message.stopReason !== "aborted") return message;
 	const incompleteToolCalls: IncompleteToolCall[] = [];
-	const content = message.content.filter(block => {
-		if (block.type !== "toolCall") return true;
-		const keep = completedToolCallIds.has(block.id);
-		if (!keep) incompleteToolCalls.push({ id: block.id, name: block.name });
-		return keep;
-	});
-	if (incompleteToolCalls.length === 0) return message;
+	const content: AssistantMessage["content"] = [];
+	// A block whose arguments were settled here is rewritten, so the rebuilt content
+	// has to be kept even when nothing was incomplete. Returning the original message
+	// on `incompleteToolCalls.length === 0` alone would throw that rewrite away and
+	// replay the tolerant partial parse the streaming block was carrying.
+	let settledAny = false;
+	for (const block of message.content) {
+		if (block.type !== "toolCall") {
+			content.push(block);
+			continue;
+		}
+		if (completedToolCallIds.has(block.id)) {
+			content.push(block);
+			continue;
+		}
+		const settled = completedStreamedArguments(block);
+		if (settled) {
+			const retained = { ...block, arguments: settled };
+			clearStreamingPartialJson(retained);
+			content.push(retained);
+			settledAny = true;
+			continue;
+		}
+		incompleteToolCalls.push({ id: block.id, name: block.name });
+	}
+	if (incompleteToolCalls.length === 0) return settledAny ? { ...message, content } : message;
 	return {
 		...message,
 		content,
