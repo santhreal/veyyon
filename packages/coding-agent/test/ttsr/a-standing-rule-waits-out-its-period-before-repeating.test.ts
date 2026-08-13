@@ -65,14 +65,12 @@ function armed(ttsr: TtsrManager, rule: Rule): boolean {
 const SAMPLE_MATCH: Record<string, string> = {
 	"commit-drift": '{"path":"src/main.ts","oldText":"a","newText":"b"}',
 	"test-scope": "bun test",
-	"bash-tool-nudge": "grep -rn foo src",
 	"irc-signal": '{"op":"send","to":"Main","message":"ack"}',
 };
 
 const TOOL: Record<string, string> = {
 	"commit-drift": "edit",
 	"test-scope": "bash",
-	"bash-tool-nudge": "bash",
 	"irc-signal": "irc",
 };
 

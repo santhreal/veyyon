@@ -3,18 +3,17 @@
  *
  * THE DEFECT. A tool without a `matcherDigest` has its stream rules matched against the raw
  * streamed argument JSON. `bash` had none, so every `tool:bash` rule was really being run
- * against `{"i":"…","command":"grep -rn foo src"}`, and both bundled bash rules were wrong in
- * both directions at once:
+ * against `{"i":"…","command":"bun test"}`, and the bundled bash rules were wrong in both
+ * directions at once:
  *
- *   - SILENT WHERE IT SHOULD FIRE. The search nudge anchors on a search opening a command
- *     (start of text, `&&`, `||`, `;`, `(`). In the wire form the command starts mid-string
- *     after `"command":"`, so the plainest local search there is — `grep -rn foo src` — never
- *     nudged. `test-scope` was dead the same way: its terminator is `$` or `[|;&]`, and in the
- *     wire form `bun test` is followed by a quote.
+ *   - SILENT WHERE IT SHOULD FIRE. `test-scope` terminates on `$` or `[|;&]`, and in the wire
+ *     form `bun test` is followed by a quote, so the plainest command it exists for never
+ *     matched. The search nudge that used to ship beside it was dead the same way: it anchors
+ *     on a search OPENING a command, and in the wire form the command starts mid-string after
+ *     `"command":"`.
  *   - FIRING WHERE IT CANNOT BE OBEYED. The `&&` and `;` inside a QUOTED remote command
- *     (`ssh host "ls x && grep -n foo y"`) are ordinary characters to the remote shell, but the
- *     rule read them as its own boundary and nudged the model to use a built-in tool that
- *     cannot reach that host at all. That is the misfire this suite was opened for.
+ *     (`ssh host "cd /srv && bun test"`) are ordinary characters to the remote shell, but a
+ *     rule reading the wire form takes them as its own boundary.
  *
  * THE CLASS. Any `tool:bash` rule, present or future, matched against the wrong text. So this
  * file does not test one rule: it enumerates the bundled bash-scoped rules AT RUN TIME, pins
@@ -49,7 +48,6 @@ const bashRules: Rule[] = buildBuiltinRules().filter(rule => rule.scope?.include
  * equality against the discovered set, so a new bash rule cannot land without one.
  */
 const FIRES_ON: Record<string, string> = {
-	"bash-tool-nudge": "grep -rn foo src",
 	"test-scope": "bun test",
 };
 
@@ -90,50 +88,21 @@ describe("the bash rules the digest has to serve", () => {
 	});
 });
 
-describe("a search that does not run on this machine", () => {
-	test("the reported misfire: an ssh command whose remote shell has its own && and ;", () => {
-		const remote =
-			'ssh -o BatchMode=yes box "ls /srv/app/nodes_minimax.py && grep -n minimax /srv/app/nodes.py | head -5; ' +
-			"grep -rn 'class CLIPLoader' /srv/app/nodes_model.py | head -3\"";
-		expect(firedThroughDigest(remote)).not.toContain("bash-tool-nudge");
-	});
-
-	// Each remote command carries a shell operator of its own, so the rule has a boundary to
-	// anchor on and the silence below is the exemption doing its job rather than a command
-	// that happened not to match. Dropping the exemption turns all of these RED.
-	test.each([
-		["a quoted remote find", "ssh box 'cd /var/log && find . -name \"*.gz\"'"],
-		["a container exec", "docker exec web sh -c 'cd /app; grep -rn foo .'"],
-		["a pod exec", "kubectl exec pod -- sh -c 'cd /srv && grep -c ready status'"],
-		["podman", "podman run --rm img sh -c 'cd /src; rg needle .'"],
-	])("stays quiet on %s", (_label, command) => {
-		expect(firedThroughDigest(command)).not.toContain("bash-tool-nudge");
-	});
-
-	test("but the same searches on this machine still nudge", () => {
-		// Non-vacuity: the silences above are the dispatcher's doing, not a dead rule.
-		expect(firedThroughDigest("grep -rn foo /app")).toContain("bash-tool-nudge");
-		expect(firedThroughDigest("rg needle /src")).toContain("bash-tool-nudge");
-		// And a local command on a LATER line is not covered by an earlier ssh.
-		expect(firedThroughDigest("ssh box uptime\ngrep -rn foo src")).toContain("bash-tool-nudge");
-	});
-});
-
 describe("heredoc bodies are data, not commands", () => {
 	test("a script written with a heredoc cannot trip a rule with its contents", () => {
-		const command = "cat > probe.sh <<'EOF'\ngrep -rn foo src\nbun test\nEOF\nchmod +x probe.sh";
+		const command = "cat > probe.sh <<'EOF'\nbun test\ncargo test\nEOF\nchmod +x probe.sh";
 		expect(digest({ command })).toBe("cat > probe.sh <<'EOF'\nchmod +x probe.sh");
 		expect(firedThroughDigest(command)).toEqual([]);
 	});
 
 	test("an unterminated heredoc is body to the end, which is the normal state mid-stream", () => {
-		const command = "cat > probe.sh <<'EOF'\ngrep -rn foo src";
+		const command = "cat > probe.sh <<'EOF'\nbun test";
 		expect(digest({ command })).toBe("cat > probe.sh <<'EOF'");
 		expect(firedThroughDigest(command)).toEqual([]);
 	});
 
 	test.each([
-		["an indented terminator after <<-", "cat <<-EOF > f\n\tfind . -name x\n\tEOF\nfind . -name real"],
+		["an indented terminator after <<-", "cat <<-EOF > f\n\tbun test\n\tEOF\ncargo test"],
 		["an unquoted marker", "cat <<EOF > f\nbun test\nEOF\nbun test"],
 	])("a real command after %s still reaches the rules", (_label, command) => {
 		expect(firedThroughDigest(command).length).toBeGreaterThan(0);
@@ -142,15 +111,15 @@ describe("heredoc bodies are data, not commands", () => {
 	test("a herestring is not a heredoc and keeps its text", () => {
 		// `<<<` feeds one line to the command; there is no body to remove and no terminator
 		// to look for, so treating it as an opener would swallow the rest of the command.
-		const command = 'grep -q ok <<<"$out"; find . -name "*.ts"';
+		const command = 'cat <<<"$out"; bun test';
 		expect(digest({ command })).toBe(command);
-		expect(firedThroughDigest(command)).toContain("bash-tool-nudge");
+		expect(firedThroughDigest(command)).toContain("test-scope");
 		// The discriminating case is a BARE-WORD herestring with lines after it: read `<<<yes`
 		// as an opener and `yes` becomes a marker whose terminator never comes, so every later
 		// command is swallowed as its body.
-		const bareWord = 'grep -q ok <<<yes\nfind . -name "*.ts"';
+		const bareWord = "cat <<<yes\nbun test";
 		expect(digest({ command: bareWord })).toBe(bareWord);
-		expect(firedThroughDigest(bareWord)).toContain("bash-tool-nudge");
+		expect(firedThroughDigest(bareWord)).toContain("test-scope");
 	});
 });
 
