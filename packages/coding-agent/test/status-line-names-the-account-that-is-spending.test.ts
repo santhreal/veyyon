@@ -1,12 +1,12 @@
 /**
- * With load balancing off, one of several stored accounts is being spent. The footline says which.
+ * One of several stored accounts is being spent. The footline says which.
  *
- * WHY THIS SUITE EXISTS. `accounts.loadBalancing` defaults to off, deliberately: spreading work
- * across subscriptions is the operator's decision and there is no way to un-spend it. The
- * consequence is that a user holding three Anthropic logins has exactly one of them draining, and
- * until now nothing on screen said which. The account identity reached the status line only as a
- * CACHE KEY for the usage segment (`#getUsageContextKey`), so `5h 71%` was rendered with no owner:
- * three accounts, one percentage, and no way to tell whose quota was at 71 without opening
+ * WHY THIS SUITE EXISTS. A session spends one account at a time, whatever `accounts.loadBalancing`
+ * says: with it off that account is the only one that will ever be spent, and with it on the session
+ * moves between them, so in both cases exactly one of a user's three Anthropic logins is draining
+ * right now and until now nothing on screen said which. The account identity reached the status line
+ * only as a CACHE KEY for the usage segment (`#getUsageContextKey`), so `5h 71%` was rendered with
+ * no owner: three accounts, one percentage, and no way to tell whose quota was at 71 without opening
  * `/account`. A quota you can watch drain is worth nothing if you cannot see which account it
  * belongs to, and it is the expensive kind of not-knowing.
  *
