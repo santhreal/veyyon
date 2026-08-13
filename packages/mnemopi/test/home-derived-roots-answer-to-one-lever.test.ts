@@ -29,43 +29,13 @@ import { join } from "node:path";
 import * as config from "../src/config";
 import * as sanitizer from "../src/core/content-sanitizer";
 import * as costLog from "../src/core/cost-log";
-import * as plugins from "../src/core/plugins";
-import * as triples from "../src/core/triples";
+import { pathResolvers } from "./helpers/home-path-resolvers";
 import { useMnemopiTestEnv } from "./setup";
 
 useMnemopiTestEnv();
 
 /** A home no run may reach: every resolver is called with it as `HOME`. */
 const FORBIDDEN_HOME = join(tmpdir(), "mnemopi-forbidden-home-that-no-resolver-may-use");
-
-/**
- * The modules that own a home-derived path. Namespace imports rather than a name list,
- * so the inventory below is whatever the module exports today.
- */
-const MODULES: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
-	["config", config as unknown as Record<string, unknown>],
-	["content-sanitizer", sanitizer as unknown as Record<string, unknown>],
-	["cost-log", costLog as unknown as Record<string, unknown>],
-	["plugins", plugins as unknown as Record<string, unknown>],
-	["triples", triples as unknown as Record<string, unknown>],
-];
-
-/**
- * A resolver is an exported function whose name says it answers with a location. The
- * name shape is the discovery rule, so adding `blobArchiveDir()` puts it in the sweep
- * without anyone remembering to list it.
- */
-function pathResolvers(): ReadonlyArray<readonly [string, (env: Record<string, string>) => unknown]> {
-	const found: Array<readonly [string, (env: Record<string, string>) => unknown]> = [];
-	for (const [moduleName, namespace] of MODULES) {
-		for (const [exportName, value] of Object.entries(namespace)) {
-			if (typeof value !== "function") continue;
-			if (!/(Home|Root|Dir|Db|Path)$/.test(exportName)) continue;
-			found.push([`${moduleName}.${exportName}`, value as (env: Record<string, string>) => unknown]);
-		}
-	}
-	return found;
-}
 
 describe("every home-derived mnemopi root", () => {
 	it("has resolvers to sweep", () => {
