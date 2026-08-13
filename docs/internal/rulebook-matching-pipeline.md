@@ -86,7 +86,7 @@ Normalization:
 - `name` = filename without `.md`/`.mdc`
 - frontmatter parsed via `parseFrontmatter`
 - `content` = body (frontmatter stripped)
-- `globs`, `alwaysApply`, `description`, `condition`/legacy `ttsr_trigger`, `astCondition`, `scope`, `interruptMode`, `pathScope`, `repeatMode`, and `repeatGap` are parsed by `buildRuleFromMarkdown`
+- `globs`, `alwaysApply`, `description`, `condition`/legacy `ttsr_trigger`, `astCondition`, `scope`, `interruptMode`, `pathScope`, `repeatMode`, `repeatGap`, and `repeatCompactions` are parsed by `buildRuleFromMarkdown`
 - top-level `RULES.md` is synthesized as rule name `RULES` and forced to `alwaysApply: true`
 
 Important caveat: `condition` values that look like file globs are removed from the regex condition list and converted into `tool:edit(...)` / `tool:write(...)` scope shorthands. Catch-all condition `.*` is added only when no non-glob regex condition remains.
@@ -99,7 +99,7 @@ Loads from the home-level `.agent` and `.agents` directories only:
 
 There is no project scope: the provider used to walk up from `cwd` loading `<ancestor>/.agent/rules/` and `<ancestor>/.agents/rules/`, which made a cloned repository a second directory vocabulary for installing rules.
 
-Normalization uses the shared `buildRuleFromMarkdown` path: filename-derived name, stripped frontmatter body, and parsed `globs`, `alwaysApply`, `description`, `condition`/legacy `ttsr_trigger`, `astCondition`, `scope`, `interruptMode`, `pathScope`, `repeatMode`, and `repeatGap`.
+Normalization uses the shared `buildRuleFromMarkdown` path: filename-derived name, stripped frontmatter body, and parsed `globs`, `alwaysApply`, `description`, `condition`/legacy `ttsr_trigger`, `astCondition`, `scope`, `interruptMode`, `pathScope`, `repeatMode`, `repeatGap`, and `repeatCompactions`.
 
 ### Cursor provider (`cursor.ts`)
 
@@ -112,7 +112,7 @@ Normalization (`transformMDCRule`):
 - `description`: kept only if string
 - `alwaysApply`: normalized to a boolean: `true` only when frontmatter has `alwaysApply: true` (anything else becomes `false`)
 - `globs`: accepts array (string elements only) or single string
-- `condition`/legacy `ttsr_trigger`, `astCondition`, `scope`, `interruptMode`, `pathScope`, `repeatMode`, and `repeatGap` are parsed by shared rule helpers
+- `condition`/legacy `ttsr_trigger`, `astCondition`, `scope`, `interruptMode`, `pathScope`, `repeatMode`, `repeatGap`, and `repeatCompactions` are parsed by shared rule helpers
 - `name` from filename without extension
 
 ### Windsurf provider (`windsurf.ts`)
@@ -124,7 +124,7 @@ Loads from:
 Normalization:
 
 - `globs`: array-of-string or single string
-- `alwaysApply`, `description`, `condition`/legacy `ttsr_trigger`, `astCondition`, `scope`, `interruptMode`, `pathScope`, `repeatMode`, and `repeatGap` parsed by shared rule helpers
+- `alwaysApply`, `description`, `condition`/legacy `ttsr_trigger`, `astCondition`, `scope`, `interruptMode`, `pathScope`, `repeatMode`, `repeatGap`, and `repeatCompactions` parsed by shared rule helpers
 - `name` is fixed to `global_rules`
 
 ### GitHub Copilot provider (`github.ts`)
@@ -235,7 +235,7 @@ The first three steps are the operator's levers, and `ruleIsEnabled` (`capabilit
 - **Full rule content is auto-injected into the system prompt** (before the rulebook rules section).
 - Rule is also addressable via `rule://<name>` for re-reading.
 
-### `condition`, `astCondition`, `scope`, `interruptMode`, `pathScope`, `repeatMode`, and `repeatGap`
+### `condition`, `astCondition`, `scope`, `interruptMode`, `pathScope`, `repeatMode`, `repeatGap`, and `repeatCompactions`
 
 - `condition` is the regex TTSR trigger field; legacy `ttsr_trigger` / `ttsrTrigger` are accepted as fallback inputs during parsing.
 - `astCondition` is the ast-grep trigger field: a string or list of structural patterns, kept verbatim (no glob inference). It only matches on edit/write tool streams, where the language is inferred from the file path. A rule may set `condition`, `astCondition`, or both.
@@ -294,4 +294,4 @@ Implications:
 3. Rule selection for `rule://` includes rulebook, always-apply, and registered TTSR rules (so a triggered TTSR rule can be re-read), but not rules that registered no condition and carry neither a description nor `alwaysApply`.
 4. Discovery warnings (`loadCapability("rules").warnings`) are produced but `createAgentSession` does not currently surface/log them in this path.
 
-*Verified against `7e4c6374` on 2026-08-06.*
+*Verified against `7256dd34` on 2026-08-12.*

@@ -315,4 +315,4 @@ replacement for the same section, because the replacement would discard the stat
 | The zero-prose outer scaffold | `src/prompts/session/system-prompt.md` |
 | Per-model section order | `src/harness/model-profile.ts` |
 
-*Verified against `27538ffb` on 2026-08-05.*
+*Verified against `7256dd34` on 2026-08-12.*
