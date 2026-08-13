@@ -2,31 +2,6 @@
 
 ## [Unreleased]
 
-## [1.0.47] - 2026-08-13
-
-### Breaking Changes
-
-- The editor's top border no longer carries status content, and `Editor.setTopBorder`, `Editor.setTopBorderProvider` and the `EditorTopBorder` type are gone. The whole mechanism was unreachable: nothing in this repository ever installed either a provider or eager content, so the branch that laid a status line into the top rule and the lazy provider added to coalesce its rebuilds both ran zero times per frame in production while a test suite exercised them thoroughly. The host they were built for, the coding agent, hides the editor border entirely and renders its status as a quiet footline below the input. A visible border now draws a plain rule, which is what it always drew. `getTopBorderAvailableWidth` stays: it answers the content width inside the editor's horizontal chrome, which is still a real question.
-- `TUI.hideOverlay()` is removed. It had no caller anywhere, production or test, and it was not equivalent to the teardown that IS used: `showOverlay` returns a handle whose `hide()` splices out that specific overlay, while `hideOverlay` popped whichever overlay happened to be on top. Anything holding a handle already does the right thing; anything that did not could only have popped a stranger's overlay.
-- `SettingsList.hasSearchQuery()` is removed. It returned `getSearchQuery().length > 0` and had no caller outside its own test.
-
-### Added
-
-- `window-focus.ts` owns the terminal's reported window focus and exports what reads it: `windowFocusState()`, `isWindowFocused()`, `setWindowFocusState()`, `consumeWindowFocusEvent()`, and the two mode-1004 sequences. `TerminalNotification.deliverWhenFocused` opts a single notification out of the focus gate, which is for a diagnostic the operator just asked for and nothing else.
-- `SelectList.setRowBudget(rows)` sizes a list so its whole render fits a number of terminal rows, while `setMaxVisible` keeps its item-only meaning. `render` emits the item window and, whenever the list overflows or a filter is live, one status row, so a host fitting a list into a fixed viewport had to subtract that row by hand. Three setup-wizard scenes each did it differently and one forgot it entirely, and the host then clipped a row off the bottom of the list. A budget of one row spends it on an item rather than on the status row.
-- `SelectListLayoutOptions.statusLegend` turns off the `↑↓ move · ↵ select · esc close` legend on the status row while keeping the search text. It is for a host that already names those keys and means something else by them: the setup wizard's footer names every key for the whole step, and its Esc leaves onboarding rather than closing the list, so the built-in legend contradicted the footer on the same screen.
-- `SettingItem.labelForValue` renders a stored value as the text a person reads, for the rows whose value is a machine number. It is applied at render time and nowhere else, so submenu preselection, value cycling and the `onChange` write-back all keep working from `currentValue`, and a labelled row still round-trips its real value. A mapper that returns nothing useful falls back to the value itself rather than blanking the column. The alternative, storing the display string in a second field beside the value, goes stale the moment a submenu selection writes the first one.
-
-### Changed
-
-- A desktop notification is no longer delivered while the terminal window has focus. `TerminalInfo.sendNotification` fired unconditionally, so the turn-completion toast and the `ask` toast arrived on the screen the operator was already looking at, and an autonomous run produced one per turn. Focus comes from the terminal itself: `ProcessTerminal.start` enables focus reporting (DECSET 1004) and teardown disables it, and `CSI I` / `CSI O` are consumed rather than forwarded, which also stops a terminal left in mode 1004 by a previous application from delivering them into the editor as keystrokes. Both delivery halves are gated at the one choke point, the in-band OSC and the libnotify fan-out, since gating one would silence half the terminals and keep nagging the rest. The gate fails open: a terminal that reports nothing stays at focus state `unknown` and notifies exactly as before.
-- Comment prose in `tui.ts` that credited a chat report or a screenshot now states the constraint on its own terms. Comments only, so nothing renders differently.
-
-### Fixed
-
-- A dialog that is on screen after an overlay closes now receives the keyboard. An overlay captured whatever had focus when it opened and handed focus straight back to it on close, without checking that it was still there. Those two moments can be far apart: open `/settings` over the input, let a tool approval swap a prompt into the editor slot behind it, then close settings, and focus went to the editor component that had been swapped out and thrown away. The prompt was visible, correct, and completely deaf. Enter did nothing, there was no error, and nothing on screen suggested where the keystrokes were going, which reads as a frozen session. This was previously patched at each call site by re-focusing the slot after closing, which fixed the surfaces someone remembered to patch; the restore itself now declines a captured component that has left the render tree and falls back to one still in it.
-- A block that reflows after part of it has scrolled off no longer appears twice. The engine had two answers for that divergence: erase history with one ED3 and replay it so the block lands exactly once, or recommit the final form below the stale fragment. The second is the right trade only inside a terminal multiplexer, where erasing would take the pane's own history with it, but it was what every terminal got, because the repair was gated behind a flag that defaulted to off. A streaming reply that reflows a block past the window top produces the duplicate every time, which on a long answer is most of them, and it was the most-reported rendering defect in the product. The repair is now the default and the `VEYYON_TUI_SCROLLBACK_REBUILD` environment variable is gone; multiplexer panes keep the append-below behaviour, which is unchanged.
-
 ## [16.5.2] - 2026-07-14
 
 ### Fixed
@@ -1773,6 +1748,31 @@ Initial release under @oh-my-pi scope. See previous releases at [badlogic/pi-mon
 ### Added
 
 - Added `getText()` method to Text component for retrieving current text content
+
+## [1.0.47] - 2026-08-13
+
+### Breaking Changes
+
+- The editor's top border no longer carries status content, and `Editor.setTopBorder`, `Editor.setTopBorderProvider` and the `EditorTopBorder` type are gone. The whole mechanism was unreachable: nothing in this repository ever installed either a provider or eager content, so the branch that laid a status line into the top rule and the lazy provider added to coalesce its rebuilds both ran zero times per frame in production while a test suite exercised them thoroughly. The host they were built for, the coding agent, hides the editor border entirely and renders its status as a quiet footline below the input. A visible border now draws a plain rule, which is what it always drew. `getTopBorderAvailableWidth` stays: it answers the content width inside the editor's horizontal chrome, which is still a real question.
+- `TUI.hideOverlay()` is removed. It had no caller anywhere, production or test, and it was not equivalent to the teardown that IS used: `showOverlay` returns a handle whose `hide()` splices out that specific overlay, while `hideOverlay` popped whichever overlay happened to be on top. Anything holding a handle already does the right thing; anything that did not could only have popped a stranger's overlay.
+- `SettingsList.hasSearchQuery()` is removed. It returned `getSearchQuery().length > 0` and had no caller outside its own test.
+
+### Added
+
+- `window-focus.ts` owns the terminal's reported window focus and exports what reads it: `windowFocusState()`, `isWindowFocused()`, `setWindowFocusState()`, `consumeWindowFocusEvent()`, and the two mode-1004 sequences. `TerminalNotification.deliverWhenFocused` opts a single notification out of the focus gate, which is for a diagnostic the operator just asked for and nothing else.
+- `SelectList.setRowBudget(rows)` sizes a list so its whole render fits a number of terminal rows, while `setMaxVisible` keeps its item-only meaning. `render` emits the item window and, whenever the list overflows or a filter is live, one status row, so a host fitting a list into a fixed viewport had to subtract that row by hand. Three setup-wizard scenes each did it differently and one forgot it entirely, and the host then clipped a row off the bottom of the list. A budget of one row spends it on an item rather than on the status row.
+- `SelectListLayoutOptions.statusLegend` turns off the `↑↓ move · ↵ select · esc close` legend on the status row while keeping the search text. It is for a host that already names those keys and means something else by them: the setup wizard's footer names every key for the whole step, and its Esc leaves onboarding rather than closing the list, so the built-in legend contradicted the footer on the same screen.
+- `SettingItem.labelForValue` renders a stored value as the text a person reads, for the rows whose value is a machine number. It is applied at render time and nowhere else, so submenu preselection, value cycling and the `onChange` write-back all keep working from `currentValue`, and a labelled row still round-trips its real value. A mapper that returns nothing useful falls back to the value itself rather than blanking the column. The alternative, storing the display string in a second field beside the value, goes stale the moment a submenu selection writes the first one.
+
+### Changed
+
+- A desktop notification is no longer delivered while the terminal window has focus. `TerminalInfo.sendNotification` fired unconditionally, so the turn-completion toast and the `ask` toast arrived on the screen the operator was already looking at, and an autonomous run produced one per turn. Focus comes from the terminal itself: `ProcessTerminal.start` enables focus reporting (DECSET 1004) and teardown disables it, and `CSI I` / `CSI O` are consumed rather than forwarded, which also stops a terminal left in mode 1004 by a previous application from delivering them into the editor as keystrokes. Both delivery halves are gated at the one choke point, the in-band OSC and the libnotify fan-out, since gating one would silence half the terminals and keep nagging the rest. The gate fails open: a terminal that reports nothing stays at focus state `unknown` and notifies exactly as before.
+- Comment prose in `tui.ts` that credited a chat report or a screenshot now states the constraint on its own terms. Comments only, so nothing renders differently.
+
+### Fixed
+
+- A dialog that is on screen after an overlay closes now receives the keyboard. An overlay captured whatever had focus when it opened and handed focus straight back to it on close, without checking that it was still there. Those two moments can be far apart: open `/settings` over the input, let a tool approval swap a prompt into the editor slot behind it, then close settings, and focus went to the editor component that had been swapped out and thrown away. The prompt was visible, correct, and completely deaf. Enter did nothing, there was no error, and nothing on screen suggested where the keystrokes were going, which reads as a frozen session. This was previously patched at each call site by re-focusing the slot after closing, which fixed the surfaces someone remembered to patch; the restore itself now declines a captured component that has left the render tree and falls back to one still in it.
+- A block that reflows after part of it has scrolled off no longer appears twice. The engine had two answers for that divergence: erase history with one ED3 and replay it so the block lands exactly once, or recommit the final form below the stale fragment. The second is the right trade only inside a terminal multiplexer, where erasing would take the pane's own history with it, but it was what every terminal got, because the repair was gated behind a flag that defaulted to off. A streaming reply that reflows a block past the window top produces the duplicate every time, which on a long answer is most of them, and it was the most-reported rendering defect in the product. The repair is now the default and the `VEYYON_TUI_SCROLLBACK_REBUILD` environment variable is gone; multiplexer panes keep the append-below behaviour, which is unchanged.
 
 ## [1.0.38] - 2026-07-31
 
