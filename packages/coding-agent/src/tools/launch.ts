@@ -19,6 +19,7 @@ import { toolsPrompts } from "../prompts/tools/rows";
 import { sessionBudgetLimits, sessionCpuAdoption, sessionCpuLimit } from "../session/cpu-limit";
 import { framedBlock, outputBlockContentWidth, renderStatusLine } from "../tui";
 import type { ToolSession } from ".";
+import { releaseLaunchExitWatch, watchLaunchedProcessExit } from "./launch-exit-watch";
 import { foldToolOutputBookkeeping } from "./output-fold";
 import { resolveToCwd } from "./path-utils";
 import {
@@ -357,7 +358,7 @@ export class LaunchTool implements AgentTool<typeof launchSchema, LaunchToolDeta
 	readonly name = "launch";
 	readonly label = "Launch";
 	readonly loadMode = "essential";
-	readonly summary = "Launch and control shared long-running project processes";
+	readonly summary = "Supervise a shared project process that does not end on its own";
 	readonly description = prompt.render(toolsPrompts["tools/launch"].text);
 	readonly parameters = launchSchema;
 	readonly strict = true;
@@ -404,7 +405,15 @@ export class LaunchTool implements AgentTool<typeof launchSchema, LaunchToolDeta
 		const client = await daemonClientForProject(this.session.cwd, {
 			adoptSpawnedPid: sessionCpuAdoption(getSessionId),
 		});
+		if (params.op === "stop" || params.op === "restart") {
+			// The end of a process the caller asked to end is not news. Drop the
+			// watch before the request, so the exit it causes reports nothing.
+			releaseLaunchExitWatch(this.session, client.projectDir, requiredName(params));
+		}
 		const result = await client.request(operationFor(params, this.session), signal);
+		if (result.op === "start" || result.op === "restart") {
+			watchLaunchedProcessExit({ session: this.session, client, daemon: result.daemon });
+		}
 		return {
 			// Folded for the same reason bash and eval are: a test suite streamed
 			// through a launched process lands in context identically, and its

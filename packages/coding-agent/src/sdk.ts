@@ -36,7 +36,7 @@ import {
 	formatAdvisorContextPrompt,
 } from "./advisor";
 import { armArgotAfterStartup } from "./argot-cache";
-import { type AsyncJob, AsyncJobManager } from "./async";
+import { type AsyncJob, AsyncJobManager, type AsyncJobType } from "./async";
 import { AutoLearnController, buildAutoLearnInstructions } from "./autolearn/controller";
 import { type CapabilityResult, loadCapability } from "./capability";
 import { type Rule, ruleCapability, setActiveRules } from "./capability/rule";
@@ -255,7 +255,7 @@ type AsyncResultEntry = {
 
 type AsyncResultJobDetails = {
 	jobId: string;
-	type?: "bash" | "task";
+	type?: AsyncJobType;
 	label?: string;
 	durationMs?: number;
 };

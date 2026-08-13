@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { AgentMessage } from "@veyyon/agent-core";
-import { type AsyncJob, AsyncJobManager } from "@veyyon/coding-agent/async";
+import { type AsyncJob, AsyncJobManager, type AsyncJobType } from "@veyyon/coding-agent/async";
 import type { CustomMessage } from "@veyyon/coding-agent/session/messages";
 import { YieldQueue } from "@veyyon/coding-agent/session/yield-queue";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
@@ -17,7 +17,7 @@ type AsyncEntry = {
 type AsyncDetails = {
 	jobs: Array<{
 		jobId: string;
-		type?: "bash" | "task";
+		type?: AsyncJobType;
 		label?: string;
 		durationMs?: number;
 	}>;
