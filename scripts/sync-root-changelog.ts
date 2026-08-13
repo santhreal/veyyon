@@ -39,7 +39,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 // @ts-expect-error — plain .mjs module, no types; imported for its exports.
 import { renderRootChangelog } from "../website/tools/gen-changelog.mjs";
-import { unreleasedEntries } from "./changelog-unreleased.ts";
+import { allEntries, unreleasedEntries } from "./changelog-unreleased.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = join(HERE, "..");
@@ -107,6 +107,16 @@ function entryIdentity(bullet: string): string | null {
  * times in one session. So an on-disk entry is claimed when its opening matches
  * a rendered entry's opening, not only when the whole paragraph does.
  *
+ * A RELEASE is not a deletion. `prepareReleaseTree` rolls every package's
+ * `## [Unreleased]` into `## [X.Y.Z]` and then regenerates the root, so the fresh
+ * render's Unreleased section is empty by construction while the on-disk root
+ * still holds every entry that was just rolled. Comparing Unreleased against
+ * Unreleased called all of them orphans and refused the write, which meant this
+ * guard blocked EVERY release rather than the one thing it exists to stop. So an
+ * on-disk entry is claimed when it appears anywhere in the render, under any
+ * heading: the question is whether the paragraph survives the write, not which
+ * section it lands in.
+ *
  * What that cannot catch: an entry rewritten from its first word, which is
  * indistinguishable from a paragraph somebody typed into the root by hand. The
  * guard reports it, and the author moves it to its package or forces the write.
@@ -114,7 +124,7 @@ function entryIdentity(bullet: string): string | null {
  * and missing a hand-written paragraph loses it.
  */
 export function orphanedRootEntries(currentRoot: string, expectedRoot: string): string[] {
-	const rendered = unreleasedEntries(expectedRoot);
+	const rendered = allEntries(expectedRoot);
 	const exact = new Set(rendered);
 	const openings = new Set(rendered.map(entryIdentity).filter((id): id is string => id !== null));
 	return unreleasedEntries(currentRoot).filter(bullet => {
