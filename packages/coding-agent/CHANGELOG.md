@@ -120,6 +120,7 @@
 
 - Subagent model, availability, delegation, and reasoning policy now resolve through the singular `subagent.*` settings owner. Parent effort inheritance and one-turn structured-yield repair use the same resolved policy in task, eval, and Vibe execution.
 - The job tool reads the `<task-result>` envelope through `@veyyon/wire` instead of its own copy of the pattern, so the terminal and the HTML/collab renderer cannot disagree about what a settled subagent job says. Both surfaces stripped the envelope with byte-identical private copies, and the copy that stops matching does not throw: it shows the reader `<task-result id=… agent=… status=…` where the other shows the answer.
+- The `launch` tool description no longer restates its own parameter schema. Every field it listed - what `ready.log` is, what `logs` defaults to, which signals `send` takes, what `persist` does - is already sent in the schema beside it, so the model was reading each fact twice and paying for it twice. What is left is what the schema cannot state: that `start` blocks for the whole readiness timeout, that an exit arrives on its own so `wait` is not a poll loop, that the broker stops non-persistent processes when the last veyyon exits. 684 description tokens down to 548, while gaining the routing rule it was missing.
 
 ### Fixed
 
