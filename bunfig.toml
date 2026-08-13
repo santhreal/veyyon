@@ -27,7 +27,16 @@ saveTextLockfile = true
 # helper. Bun reads bunfig.toml from the cwd only, so each package carries its own
 # pointer to this same file, and scripts/ci-test-ts.ts passes it explicitly with
 # --preload. See docs/internal/testing.md.
-preload = ["./packages/utils/test/helpers/real-data-tripwire.ts"]
+#
+# The second preload moves mnemopi's home-derived roots (`.hermes`, `.mnemopi`)
+# into a temp directory. It belongs here as well as in packages/mnemopi/bunfig.toml
+# because a mnemopi suite is routinely run from the repository root — by the leak
+# tracer, and by anyone typing a path — and cwd is what decides which of the two
+# files Bun reads.
+preload = [
+  "./packages/utils/test/helpers/real-data-tripwire.ts",
+  "./packages/mnemopi/test/helpers/home-isolation.ts",
+]
 
 # bun test does NOT honor .gitignore; prune veybot's repo clones and
 # scratch dirs so a root-level `bun test` doesn't walk into them.
