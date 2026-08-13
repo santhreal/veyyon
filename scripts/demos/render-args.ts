@@ -10,6 +10,8 @@
  * why.
  */
 
+import { setAnsiPolicy } from "@veyyon/tui";
+
 /** The value after `--name`, or `fallback` when the flag is absent. */
 export function flag(name: string, fallback: string, argv: readonly string[] = process.argv): string {
 	const index = argv.indexOf(`--${name}`);
@@ -45,6 +47,15 @@ export function renderWidth(argv: readonly string[] = process.argv): number {
  * capturing terminal's background luminance, which is the variable the tapes
  * are deliberately changing.
  *
+ * COLOUR IS FORCED ON, because a proof render's destination is a rasterizer and
+ * not a terminal. The ansi policy downgrades a piped stream to `plain`, which is
+ * right for ordinary output and wrong for exactly this one case: every proof
+ * taken the documented way (`render-*.ts | render-proof.ts`) came out with the
+ * component's body in default white. `theme.fg("error", …)` returned its input,
+ * so a red refusal and a dim hint rasterized as the same colour and the image
+ * could not answer the question it was taken to answer. Only the modal border
+ * survived, because that path writes truecolor escapes itself.
+ *
  * Pass `settings: true` for any component that reads `Settings`.
  */
 export async function initRender(themeName: string, options: { settings?: boolean } = {}): Promise<void> {
@@ -54,4 +65,7 @@ export async function initRender(themeName: string, options: { settings?: boolea
 		await Settings.init({ inMemory: true });
 	}
 	await initTheme(false, "unicode", false, themeName, themeName);
+	// AFTER the inits, both of which set the policy from the environment and would
+	// undo this.
+	setAnsiPolicy("full");
 }
