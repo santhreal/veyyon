@@ -402,6 +402,7 @@ export const repoScriptTests = [
 	"scripts/changelog-unreleased.test.ts",
 	"scripts/changelog-version-headings-have-one-owner.test.ts",
 	"scripts/write-root-changelog-refuses-to-delete-entries.test.ts",
+	"scripts/rolling-a-changelog-entry-into-a-version-is-not-deleting-it.test.ts",
 	"scripts/release-cut-prepares-without-pushing.test.ts",
 	"scripts/release-native-artifacts-match-ci.test.ts",
 	"scripts/release-recut-recovery-message.test.ts",
