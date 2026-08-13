@@ -2,16 +2,6 @@
 
 ## [Unreleased]
 
-## [1.0.47] - 2026-08-13
-
-### Added
-
-- Added the `CpuBudgetGroup` native class and the `cpuBudgetId` option on `Shell.run`, `executeShell`, `PtySession.start`, and `PtySession.startArgv`, backing the coding-agent's per-session CPU limits. A budget group wraps a cgroup v2 directory on Linux, a Windows Job Object with `JOB_OBJECT_CPU_RATE_CONTROL_HARD_CAP`, or a bookkeeping-only group elsewhere; the brush spawn observer and the PTY spawner adopt every spawned child into the named group, and usage, membership, quota rewrite, renice, and teardown are exposed for the session-layer watcher.
-
-### Changed
-
-- Comment prose that credited or dated a chat message is gone from the loader-state fallback note and `ensure-native`; the credit named who reported a defect and never what the code must do. Comments only, so nothing behaves differently.
-
 ## [16.5.2] - 2026-07-14
 
 ### Fixed
@@ -989,6 +979,16 @@
 ### Fixed
 
 - Fixed potential crashes when updating native binaries by using safe copy strategy that avoids overwriting in-memory binaries
+
+## [1.0.47] - 2026-08-13
+
+### Added
+
+- Added the `CpuBudgetGroup` native class and the `cpuBudgetId` option on `Shell.run`, `executeShell`, `PtySession.start`, and `PtySession.startArgv`, backing the coding-agent's per-session CPU limits. A budget group wraps a cgroup v2 directory on Linux, a Windows Job Object with `JOB_OBJECT_CPU_RATE_CONTROL_HARD_CAP`, or a bookkeeping-only group elsewhere; the brush spawn observer and the PTY spawner adopt every spawned child into the named group, and usage, membership, quota rewrite, renice, and teardown are exposed for the session-layer watcher.
+
+### Changed
+
+- Comment prose that credited or dated a chat message is gone from the loader-state fallback note and `ensure-native`; the credit named who reported a defect and never what the code must do. Comments only, so nothing behaves differently.
 
 ## [1.0.38] - 2026-07-31
 
