@@ -237,6 +237,13 @@ export function buildRuleFromMarkdown(
 		typeof rawRepeatGap === "number" && Number.isInteger(rawRepeatGap) && rawRepeatGap >= 0
 			? rawRepeatGap
 			: undefined;
+	const rawRepeatCompactions = frontmatter.repeatCompactions;
+	// Same reading as the gap: a fraction or a non-positive count is a typo, and
+	// falling back to the default period beats inventing one the author did not write.
+	const repeatCompactions =
+		typeof rawRepeatCompactions === "number" && Number.isInteger(rawRepeatCompactions) && rawRepeatCompactions > 0
+			? rawRepeatCompactions
+			: undefined;
 	const rawMode = frontmatter.interruptMode;
 	const interruptMode: Rule["interruptMode"] =
 		rawMode === "never" || rawMode === "prose-only" || rawMode === "tool-only" || rawMode === "always"
@@ -256,6 +263,7 @@ export function buildRuleFromMarkdown(
 		pathScope,
 		repeatMode,
 		repeatGap,
+		repeatCompactions,
 		_source: source,
 	};
 }

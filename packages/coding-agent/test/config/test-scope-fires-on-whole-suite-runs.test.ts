@@ -133,9 +133,19 @@ describe("once per compaction window", () => {
 		expect(nudges("bun test")).toBe(false);
 	});
 
-	test("a compaction re-arms the rule for exactly one more injection", () => {
+	test("a single compaction does not re-arm the rule, because the period is three", () => {
+		// One reset used to be enough, and this rule's subject is a standing state: the
+		// next suite command matches again immediately, so the reminder returned as often
+		// as the transcript was replaced. The period is the rule's own declaration and is
+		// swept for every bundled per-compact rule in
+		// `test/ttsr/a-standing-rule-waits-out-its-period-before-repeating.test.ts`.
 		expect(nudges("bun test")).toBe(true);
 		manager.markInjectedByNames([RULE_NAME]);
+		expect(nudges("bun test")).toBe(false);
+
+		manager.resetForCompaction();
+		expect(nudges("bun test")).toBe(false);
+		manager.resetForCompaction();
 		expect(nudges("bun test")).toBe(false);
 
 		manager.resetForCompaction();

@@ -4,6 +4,7 @@ condition: ".*"
 scope: "tool:edit, tool:write, tool:ast_edit"
 interruptMode: never
 repeatMode: per-compact
+repeatCompactions: 3
 ---
 
 {{#if commitDrift}}

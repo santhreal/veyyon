@@ -41,6 +41,8 @@ export interface RuleFrontmatter {
 	repeatMode?: "once" | "after-gap" | "per-compact";
 	/** Messages before this rule may fire again, overriding `ttsr.repeatGap`. */
 	repeatGap?: number;
+	/** Transcript resets a `per-compact` rule waits out before firing again. */
+	repeatCompactions?: number;
 	[key: string]: unknown;
 }
 
@@ -88,6 +90,15 @@ export interface Rule {
 	repeatMode?: "once" | "after-gap" | "per-compact";
 	/** Messages before this rule may fire again, overriding the global `ttsr.repeatGap`. */
 	repeatGap?: number;
+	/**
+	 * Transcript resets a `per-compact` rule waits out before it may fire again.
+	 *
+	 * Defaults to 1, which is what `per-compact` meant on its own. A rule whose
+	 * subject is a standing STATE rather than an event raises it: the condition is
+	 * true again the instant the rule is re-armed, so the period is the only thing
+	 * deciding how often the model hears it.
+	 */
+	repeatCompactions?: number;
 	/**
 	 * Which group this rule belongs to on screen.
 	 *
@@ -300,6 +311,8 @@ export function buildRuleFromMarkdown(
 			? data.repeatMode
 			: undefined;
 	const repeatGap = typeof data.repeatGap === "number" && data.repeatGap > 0 ? data.repeatGap : undefined;
+	const repeatCompactions =
+		typeof data.repeatCompactions === "number" && data.repeatCompactions > 0 ? data.repeatCompactions : undefined;
 
 	return {
 		name: cleanName,
@@ -315,6 +328,7 @@ export function buildRuleFromMarkdown(
 		pathScope,
 		repeatMode,
 		repeatGap,
+		repeatCompactions,
 		_source,
 	};
 }

@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Changed
+
+- A `per-compact` rule states how many transcript replacements it waits out before it may say the same thing again, as `repeatCompactions` in its frontmatter (default 1, which is what `per-compact` meant on its own). Five session paths re-arm such a rule — compaction, a history rewrite, a rewind, a shake, a restore — and a rule whose subject is a standing STATE rather than an event matches again the instant it is re-armed, so it repeated as often as the transcript was replaced. `commit-drift` and `test-scope` are both that shape and both now carry a period of three; a reminder heard on every replacement is one the reader learns to skip, which costs more than the reminder is worth.
+- `test-scope` ships OFF, in the `experimental/` rule section, so it is silent until named in `ttsr.experimentalRules` (**Settings → Rules → Rules → Built-in · Experimental**). Its advice is sound and its subject is standing rather than occasional: every whole-suite command matches it, on a session whose whole job is running suites. That is the operator's context being spent on the author's behalf, so it is opt-in.
+
 ## [1.0.47] - 2026-08-13
 
 ### Breaking Changes

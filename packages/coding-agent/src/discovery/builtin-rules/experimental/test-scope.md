@@ -8,6 +8,7 @@ condition:
 scope: "tool:bash"
 interruptMode: never
 repeatMode: per-compact
+repeatCompactions: 3
 ---
 
 This runs the whole suite. Prefer the narrowest selection that covers your change: one test file usually returns in well under a second, a package or directory in a few seconds, everything in minutes.

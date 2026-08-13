@@ -16,6 +16,7 @@
  * project rule is free to pick one that means nothing.
  */
 import argotLoadNudge from "./experimental/argot-load-nudge.md" with { type: "text" };
+import testScope from "./experimental/test-scope.md" with { type: "text" };
 import goAddCleanup from "./go/go-add-cleanup.md" with { type: "text" };
 import goBenchLoop from "./go/go-bench-loop.md" with { type: "text" };
 import goExpPromoted from "./go/go-exp-promoted.md" with { type: "text" };
@@ -47,7 +48,6 @@ import commitDrift from "./workflow/commit-drift.md" with { type: "text" };
 import cwdReroot from "./workflow/cwd-reroot.md" with { type: "text" };
 import ircSignal from "./workflow/irc-signal.md" with { type: "text" };
 import projectAuthority from "./workflow/project-authority.md" with { type: "text" };
-import testScope from "./workflow/test-scope.md" with { type: "text" };
 
 /** The directories a bundled rule may live in. */
 export type BuiltinRuleSection = "workflow" | "typescript" | "rust" | "go" | "experimental";
@@ -96,7 +96,6 @@ export const BUILTIN_RULE_SOURCES: readonly BuiltinRuleSource[] = [
 	{ name: "cwd-reroot", section: "workflow", content: cwdReroot },
 	{ name: "irc-signal", section: "workflow", content: ircSignal },
 	{ name: "project-authority", section: "workflow", content: projectAuthority },
-	{ name: "test-scope", section: "workflow", content: testScope },
 	{ name: "go-add-cleanup", section: "go", content: goAddCleanup },
 	{ name: "go-bench-loop", section: "go", content: goBenchLoop },
 	{ name: "go-exp-promoted", section: "go", content: goExpPromoted },
@@ -124,6 +123,7 @@ export const BUILTIN_RULE_SOURCES: readonly BuiltinRuleSource[] = [
 	{ name: "ts-redundant-clear-guard", section: "typescript", content: tsRedundantClearGuard },
 	{ name: "ts-set-map", section: "typescript", content: tsSetMap },
 	{ name: "argot-load-nudge", section: "experimental", content: argotLoadNudge },
+	{ name: "test-scope", section: "experimental", content: testScope },
 ];
 
 /** Whether a bundled rule ships off, awaiting an explicit opt-in. */
