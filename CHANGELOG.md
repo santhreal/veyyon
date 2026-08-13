@@ -8,6 +8,10 @@
 
 - The `bash-tool-nudge` rule. It fired on any `bash` call whose command opened with `grep`, `rg`, `ag`, `ack`, `find` or `fd`, and told the model to reach for the built-in `grep`/`glob` tools instead. Searching from `bash` is a preference, not a defect: the advice already had to carve out pipelines, heredocs, herestrings, and every remote shell (`ssh`, `docker exec`, `kubectl exec`, `podman`), and each carve-out was a case where the reminder had been arriving on a command that could not follow it. What was left is a sentence the system prompt already says, repeated into the transcript at the moment the operator is reading a search result. `ttsr.disabledRules` entries naming it are inert and can be dropped.
 
+### Fixed
+
+- The composer footline divides two states from each other more strongly than it divides a state from its own values. The `mode` segment glued its states together with a bare space, so a session running `/yolo` under a goal read `! YOLO Goal 12K/50K 25%`: the boundary between the approval bypass and the goal was spelled exactly like the space inside the goal's own token readout, and three facts read as one phrase. Independent states are now joined with ` · ` and segments keep their wider `  ·  `, so the hierarchy is visible at any number of simultaneous states. The separator glyph comes from the active symbol preset instead of being hardcoded, so the ascii preset — which exists for terminals that cannot draw `·` — no longer prints one anyway.
+
 ## [1.0.47] - 2026-08-13
 
 ### Added

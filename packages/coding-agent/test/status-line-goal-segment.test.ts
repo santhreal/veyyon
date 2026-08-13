@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import type { SegmentContext } from "@veyyon/coding-agent/modes/components/status-line/segments";
 import { renderSegment } from "@veyyon/coding-agent/modes/components/status-line/segments";
+import { stateSeparator } from "@veyyon/coding-agent/modes/components/status-line/state-grammar";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { normalizeApprovalMode } from "@veyyon/coding-agent/tools/approval";
 import { AUTONOMY_LABEL } from "@veyyon/coding-agent/tools/approval-modes";
@@ -103,9 +104,15 @@ function modeLabel(icon: string, readout: string): string {
 	return readout ? `${base} ${readout}` : base;
 }
 
-/** The whole `mode` segment: the goal readout, then the rung. */
+/**
+ * The whole `mode` segment: the goal readout, then the rung.
+ *
+ * The two are INDEPENDENT states, so they are divided by the footline's state
+ * separator, while the goal's own token readout stays bound to its label with a
+ * plain space. See `modes/components/status-line/state-grammar.ts`.
+ */
 function goalLabel(icon: string, readout: string): string {
-	return `${modeLabel(icon, readout)} ${RUNG}`;
+	return `${modeLabel(icon, readout)}${Bun.stripANSI(stateSeparator())}${RUNG}`;
 }
 
 /** The spinner frame the segment must show for a given active-ms (period 120ms). */
@@ -138,7 +145,7 @@ describe("goal status-line segment (GMI-1)", () => {
 		});
 		expect(plain(ctx)).toBe(goalLabel(theme.icon.goal, "50K"));
 		expect(renderSegment("mode", ctx).content).toBe(
-			`${theme.fg("accent", modeLabel(theme.icon.goal, "50K"))} ${theme.fg("warning", RUNG)}`,
+			`${theme.fg("accent", modeLabel(theme.icon.goal, "50K"))}${stateSeparator()}${theme.fg("warning", RUNG)}`,
 		);
 	});
 
