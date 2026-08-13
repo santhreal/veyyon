@@ -12,8 +12,13 @@
 # downloads the ~270MB model, so a suite that starts needing the real weights
 # says so loudly instead of pulling them into a runner. Every suite here injects
 # its own embeddings today; the tripwire is what keeps that true.
+#
+# The third points every home-derived root (`.hermes`, `.mnemopi`) at a temp
+# directory for the whole process, because only 18 of 109 suites call
+# `useMnemopiTestEnv()` and the rest wrote into the real home.
 [test]
 preload = [
   "../utils/test/helpers/real-data-tripwire.ts",
   "./test/helpers/fastembed-model-tripwire.ts",
+  "./test/helpers/home-isolation.ts",
 ]

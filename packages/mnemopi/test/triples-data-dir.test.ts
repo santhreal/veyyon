@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { defaultTripleDbPath, resolveDefaultTripleDb, TripleStore } from "@veyyon/mnemopi/core/triples";
 
 const originalHome = process.env.HOME;
+const originalMnemopiHome = process.env.MNEMOPI_HOME;
 const originalDataDir = process.env.MNEMOPI_DATA_DIR;
 const roots: string[] = [];
 
@@ -15,15 +16,20 @@ function tempRoot(): string {
 }
 
 /**
- * Point BOTH home mechanisms at `home`, and prove it took.
+ * Point EVERY home mechanism at `home`, and prove it took.
  *
- * `homeDir()` in the triple store prefers `process.env.HOME` and falls back to
- * `os.homedir()`, and Bun fixes that fallback at process start, so the env var alone is
- * one refactor away from silently reading the developer's real `~/.hermes`. The spy
- * closes that path, and the assertion is what makes the isolation a fact rather than an
- * intention.
+ * `MNEMOPI_HOME` is the package's own lever and outranks the rest, and the test
+ * process is started with it pointing at a temp directory
+ * (`test/helpers/home-isolation.ts`), so a test about the legacy `~/.hermes`
+ * location has to move it or it is asking about somebody else's home.
+ * `homeDir()` in the triple store then prefers `process.env.HOME` and falls back
+ * to `os.homedir()`, and Bun fixes that fallback at process start, so the env
+ * vars alone are one refactor away from silently reading the developer's real
+ * `~/.hermes`. The spy closes that path, and the assertion is what makes the
+ * isolation a fact rather than an intention.
  */
 function enterHome(home: string): void {
+	process.env.MNEMOPI_HOME = home;
 	process.env.HOME = home;
 	spyOn(os, "homedir").mockReturnValue(home);
 	expect(os.homedir()).toBe(home);
@@ -33,6 +39,8 @@ afterEach(() => {
 	spyOn(os, "homedir").mockRestore();
 	if (originalHome === undefined) delete process.env.HOME;
 	else process.env.HOME = originalHome;
+	if (originalMnemopiHome === undefined) delete process.env.MNEMOPI_HOME;
+	else process.env.MNEMOPI_HOME = originalMnemopiHome;
 	if (originalDataDir === undefined) delete process.env.MNEMOPI_DATA_DIR;
 	else process.env.MNEMOPI_DATA_DIR = originalDataDir;
 	while (roots.length > 0) rmSync(roots.pop() as string, { recursive: true, force: true });
