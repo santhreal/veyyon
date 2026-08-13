@@ -19,6 +19,7 @@ import { theme } from "../../theme/theme";
 import { canReuseCachedPr, createPrCacheContext, isSamePrCacheContext, type PrCacheContext } from "./git-utils";
 import { getPreset } from "./presets";
 import { focusExitBadge, renderSegment, type SegmentContext } from "./segments";
+import { segmentSeparator, stateSeparator } from "./state-grammar";
 import { calculateTokensPerSecond } from "./token-rate";
 import type {
 	CollabStatus,
@@ -1458,12 +1459,12 @@ export class StatusLineComponent implements Component {
 	 * caller unshifts the slot so the group's left edge eases open instead of
 	 * jumping. */
 	#animatedBadgeSlot(badgeParts: string[]): string | null {
-		const targetWidth = badgeParts.length > 0 ? visibleWidth(badgeParts.join(theme.fg("dim", " · "))) : 0;
+		const targetWidth = badgeParts.length > 0 ? visibleWidth(badgeParts.join(stateSeparator())) : 0;
 		if (targetWidth !== this.#badgeSlotTargetWidth) {
 			this.#badgeSlotFromWidth = this.#badgeSlotCurrentWidth();
 			this.#badgeSlotTargetWidth = targetWidth;
 			this.#badgeSlotAnimStartMs = Date.now();
-			if (targetWidth > 0) this.#badgeSlotText = badgeParts.join(theme.fg("dim", " · "));
+			if (targetWidth > 0) this.#badgeSlotText = badgeParts.join(stateSeparator());
 		}
 		const width = this.#badgeSlotCurrentWidth();
 		if (width === 0) return null;
@@ -1543,7 +1544,7 @@ export class StatusLineComponent implements Component {
 		const badge = rawBadge === "" ? "" : truncateToWidth(rawBadge, Math.max(1, width));
 		const badgeWidth = visibleWidth(badge);
 		const { location, capLeft, capRight } = this.#gatherQuietSegments(Math.max(0, width - badgeWidth));
-		const sep = theme.fg("dim", "  ·  ");
+		const sep = segmentSeparator();
 		// One cell of right margin, always — nothing kisses the terminal edge. Floored at ZERO, not
 		// at one: a badge that already fills the row leaves no room to compete for, and clamping to
 		// one cell is what let a 28-cell badge plus a segment render onto an 8-cell row.
@@ -1686,7 +1687,7 @@ export class StatusLineComponent implements Component {
 		const location = gathered.location.map(part => part.content);
 		const capLeft = gathered.capLeft.map(part => part.content);
 		const capRight = gathered.capRight.map(part => part.content);
-		const sep = theme.fg("dim", "  ·  ");
+		const sep = segmentSeparator();
 		// One cell of right margin, always — nothing kisses the terminal edge.
 		const budget = Math.max(1, width - 1);
 		let locationLine: string | null = null;

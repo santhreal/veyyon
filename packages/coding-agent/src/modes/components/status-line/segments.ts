@@ -28,6 +28,7 @@ import {
 	getContextUsageLevel,
 	getContextUsageThemeColor,
 } from "./context-thresholds";
+import { joinStates } from "./state-grammar";
 import type { RenderedSegment, SegmentContext, StatusLineSegment, StatusLineSegmentId } from "./types";
 
 export type { SegmentContext } from "./types";
@@ -279,7 +280,7 @@ function goalSpinnerIcon(activeMs: number): string {
 	return frames[idx] ?? theme.icon.goal;
 }
 
-function renderGoalMode(ctx: SegmentContext, mode: { enabled: boolean; paused: boolean }): RenderedSegment {
+function renderGoalMode(ctx: SegmentContext, mode: { enabled: boolean; paused: boolean }): string {
 	const goal = ctx.session.getGoalModeState()?.goal;
 	const modelBudgetsEnabled = ctx.session.settings.get("goal.modelBudgetsEnabled");
 	const persistedStatus = goal?.status ?? (mode.paused ? "paused" : "active");
@@ -324,51 +325,88 @@ function renderGoalMode(ctx: SegmentContext, mode: { enabled: boolean; paused: b
 	// Live motion while the agent streams under a running goal; steady otherwise.
 	if (running && ctx.session.isStreaming) icon = goalSpinnerIcon(ctx.activeMs);
 
+	// The goal's own values are bound to it with a plain space: the budget and
+	// percent are this state's readout, not further states, and the separator
+	// grammar reserves `·` for a boundary between independent states.
 	const verbose = ctx.session.settings.get("goal.statusInFooter") === true;
 	const parts: string[] = [withIcon(icon, "Goal")];
 	if (goal) parts.push(formatGoalProgress(tokensUsed, tokenBudget, verbose));
-	return { content: theme.fg(color, parts.join(" ")), visible: true };
+	return theme.fg(color, parts.join(" "));
 }
 
+/**
+ * One base mode the segment can be in, and how it renders when it is.
+ *
+ * The modes are MUTUALLY EXCLUSIVE and this list is their priority order: the
+ * first entry that returns text wins. It is a table rather than a cascade of
+ * `if`s so the state space can be enumerated at run time — the suite that
+ * proves the segment's spacing sweeps this array, so a mode added here is
+ * covered the day it lands instead of the day someone remembers to add it to a
+ * hardcoded list of five.
+ */
+interface BaseModeState {
+	/** Stable id, used by the suite to name the case it is exercising. */
+	readonly id: string;
+	/** The mode's label, already colored, or "" when the mode is not active. */
+	render(ctx: SegmentContext): string;
+}
+
+/** Suffix marking a paused mode: the theme's pause glyph, or words for a preset with none. */
+function pauseSuffix(): string {
+	return theme.icon.pause ? ` ${theme.icon.pause}` : " (paused)";
+}
+
+// Every mode label reads in the cool arc's mode hue (`modeAccent`, violet on
+// titanium) so "what mode am I in" is one color everywhere; paused keeps the
+// semantic warning override.
+export const BASE_MODE_STATES: readonly BaseModeState[] = [
+	{
+		id: "plan",
+		render(ctx) {
+			const plan = ctx.planMode;
+			if (!plan || !(plan.enabled || plan.paused)) return "";
+			const label = plan.paused ? `Plan${pauseSuffix()}` : "Plan";
+			return theme.fg(plan.paused ? "warning" : "modeAccent", withIcon(theme.icon.plan, label));
+		},
+	},
+	{
+		id: "prewalk",
+		render(ctx) {
+			if (!ctx.prewalk?.enabled) return "";
+			return theme.fg("modeAccent", withIcon(theme.icon.prewalk, "Prewalk"));
+		},
+	},
+	{
+		id: "goal",
+		render(ctx) {
+			const goal = ctx.goalMode;
+			if (!goal || !(goal.enabled || goal.paused)) return "";
+			return renderGoalMode(ctx, goal);
+		},
+	},
+	{
+		id: "vibe",
+		render(ctx) {
+			if (!ctx.vibeMode?.enabled) return "";
+			return theme.fg("modeAccent", withIcon(theme.icon.agents, "Vibe"));
+		},
+	},
+	{
+		id: "loop",
+		render(ctx) {
+			if (!ctx.loopMode?.enabled) return "";
+			return theme.fg("modeAccent", withIcon(theme.icon.loop, "Loop"));
+		},
+	},
+];
+
 /** The active mode label (plan/prewalk/goal/vibe/loop), independent of the bypass marker. */
-function renderBaseMode(ctx: SegmentContext): RenderedSegment {
-	const pauseSuffix = theme.icon.pause ? ` ${theme.icon.pause}` : " (paused)";
-
-	// Every mode label reads in the cool arc's mode hue (`modeAccent`, violet
-	// on titanium) so "what mode am I in" is one color everywhere; paused keeps
-	// the semantic warning override.
-	const plan = ctx.planMode;
-	if (plan && (plan.enabled || plan.paused)) {
-		const label = plan.paused ? `Plan${pauseSuffix}` : "Plan";
-		const content = withIcon(theme.icon.plan, label);
-		const color = plan.paused ? "warning" : "modeAccent";
-		return { content: theme.fg(color, content), visible: true };
+function renderBaseMode(ctx: SegmentContext): string {
+	for (const mode of BASE_MODE_STATES) {
+		const content = mode.render(ctx);
+		if (content !== "") return content;
 	}
-
-	const prewalk = ctx.prewalk;
-	if (prewalk?.enabled) {
-		const content = withIcon(theme.icon.prewalk, "Prewalk");
-		return { content: theme.fg("modeAccent", content), visible: true };
-	}
-
-	const goal = ctx.goalMode;
-	if (goal && (goal.enabled || goal.paused)) {
-		return renderGoalMode(ctx, goal);
-	}
-
-	const vibe = ctx.vibeMode;
-	if (vibe?.enabled) {
-		const content = withIcon(theme.icon.agents, "Vibe");
-		return { content: theme.fg("modeAccent", content), visible: true };
-	}
-
-	const loop = ctx.loopMode;
-	if (loop?.enabled) {
-		const content = withIcon(theme.icon.loop, "Loop");
-		return { content: theme.fg("modeAccent", content), visible: true };
-	}
-
-	return { content: "", visible: false };
+	return "";
 }
 
 /**
@@ -406,31 +444,44 @@ function renderApprovalRung(ctx: SegmentContext): string {
 	return theme.fg(color, AUTONOMY_LABEL[level]);
 }
 
+/**
+ * The `/yolo` full-bypass marker: "all prompts off", the single most important
+ * state on the line.
+ *
+ * It does not replace the mode label — it stands beside it — but it DOES
+ * replace the rung label, because the bypass outranks the configured rung and
+ * `YOLO · Ask all` would name a rule that is not being enforced. Errs loud
+ * (Law 10 — a silent bypass would be a safety bug); the red editor border is
+ * the always-on guarantee and this text is the label.
+ */
+function renderBypassMarker(ctx: SegmentContext): string {
+	if (!ctx.session.isApprovalBypassed()) return "";
+	// `withIcon`, not a template: a symbol preset is allowed to render this glyph
+	// as the empty string, and the hand-written form then emitted a leading space
+	// that the join above would carry into the middle of the line.
+	return theme.fg("error", withIcon(theme.symbol("status.warning"), "YOLO"));
+}
+
 const modeSegment: StatusLineSegment = {
 	id: "mode",
 	render(ctx) {
-		const base = renderBaseMode(ctx);
-		// The `/yolo` full-bypass ("all prompts off") is the single most important
-		// state to surface, so it prefixes whatever mode is active rather than
-		// replacing it. The red editor border is the always-on guarantee; this text
-		// is the label. Errs loud (Law 10 — a silent bypass would be a safety bug).
-		// It also REPLACES the rung label: the bypass outranks the configured rung,
-		// and "YOLO Ask all" would name the rung that is not being enforced.
-		if (ctx.session.isApprovalBypassed()) {
-			const marker = theme.fg("error", `${theme.symbol("status.warning")} YOLO`);
-			const content = base.visible && base.content ? `${marker} ${base.content}` : marker;
-			return { content, visible: true };
-		}
-		// Always visible, even with no mode active. The approval rung is the one
-		// piece of session state whose absence is dangerous rather than merely
-		// unknown: an operator who cannot see it has to guess whether the next
+		// THE THREE STATES, COMPOSED BY ONE RULE. Bypass, mode and rung are
+		// independent facts, and any one of them can be absent, so they are joined
+		// through `joinStates` rather than glued with spaces at each call site.
+		// Spelled by hand this produced `! YOLO Goal 12K/50K 25%` — the boundary
+		// between two states rendered exactly like the space inside one — and it
+		// only looked wrong once more than one state was active at a time, which
+		// is why nobody caught it from a screenshot.
+		//
+		// The rung is always shown when there is no bypass, even with no mode
+		// active: an operator who cannot see it has to guess whether the next
 		// command will ask, and this segment used to render nothing at all in the
 		// ordinary case, which is how "there are no permissions" became the honest
 		// reading of a product that had a whole ladder.
-		const rung = renderApprovalRung(ctx);
-		const parts = [base.visible && base.content ? base.content : "", rung].filter(part => part !== "");
-		if (parts.length === 0) return { content: "", visible: false };
-		return { content: parts.join(" "), visible: true };
+		const bypass = renderBypassMarker(ctx);
+		const content = joinStates(bypass, renderBaseMode(ctx), bypass === "" ? renderApprovalRung(ctx) : "");
+		if (content === "") return { content: "", visible: false };
+		return { content, visible: true };
 	},
 };
 
