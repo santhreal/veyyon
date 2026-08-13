@@ -243,6 +243,7 @@ veyyon prompt --statements       # cost per rule, plus every rule this config le
 veyyon prompt --statement tool-policy/lsp
 veyyon prompt --json             # the same breakdown, machine readable
 veyyon prompt --no-tools         # assemble with no tools, to find tool-gated text
+veyyon prompt --tools            # cost per active tool: description plus wire schema
 veyyon prompt --prompts          # every registered prompt, not just this one
 veyyon prompt --cwd ./other-project
 ```

@@ -281,6 +281,7 @@ veyyon prompt --sections      # a size breakdown, largest section first
 veyyon prompt --section role  # one section's text
 veyyon prompt --json          # the same breakdown, machine readable
 veyyon prompt --no-tools      # assemble with no tools
+veyyon prompt --tools         # what each active tool description and schema costs
 ```
 
 `--sections` answers "what is taking up my prompt":
