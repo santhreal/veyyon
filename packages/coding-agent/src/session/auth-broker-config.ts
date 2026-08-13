@@ -38,6 +38,7 @@ import {
 } from "@veyyon/utils";
 import { resolveConfigValue } from "../config/resolve-config-value";
 import { settingsOrNull } from "../config/settings-instance";
+import { getDefault } from "../config/settings-schema";
 import type { AuthStorage } from "./auth-storage";
 
 export { type AuthBrokerClientConfig, getAuthBrokerTokenFilePath };
@@ -117,8 +118,10 @@ export function discoverAuthStorage(
 		configValueResolver: resolveConfigValue,
 		// A resolver, not a snapshot: this runs before `Settings.init` on the boot path, and the
 		// operator can flip the toggle mid-session from `/settings`. Reading per decision is what
-		// makes both of those work without a restart. Absent settings mean the product default,
-		// which is off — never the library's permissive default.
-		loadBalancing: () => settingsOrNull()?.get("accounts.loadBalancing") === true,
+		// makes both of those work without a restart. Absent settings mean the DECLARED default,
+		// read from the schema rather than written here: a hardcoded polarity on this line is how
+		// an embedder that never initializes settings ends up with the opposite of the shipped
+		// behaviour, silently, on the one path no operator ever sees.
+		loadBalancing: () => settingsOrNull()?.get("accounts.loadBalancing") ?? getDefault("accounts.loadBalancing"),
 	});
 }

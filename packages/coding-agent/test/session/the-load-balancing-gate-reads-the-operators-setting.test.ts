@@ -1,24 +1,32 @@
 /**
- * WHY THIS FILE EXISTS. `packages/ai` defaults load balancing ON, because an SDK embedder that hands
- * the library two credentials has already decided both are fair game. The product decides the
- * opposite: two accounts in veyyon are usually a personal plan beside an employer's, so quota
- * exhaustion on one must not quietly start spending the other. That difference lives entirely in one
- * line of wiring (`discoverAuthStorage` passing a `loadBalancing` resolver that reads
- * `accounts.loadBalancing`), and a wiring line is exactly the kind of thing that gets dropped in a
- * refactor while every library-level test stays green.
+ * WHY THIS FILE EXISTS. Whether quota exhaustion may continue on another of your accounts is the
+ * operator's setting, and the entire path from that setting to the routing decision is one line of
+ * wiring (`discoverAuthStorage` passing a `loadBalancing` resolver that reads
+ * `accounts.loadBalancing`). A wiring line is exactly what gets dropped in a refactor while every
+ * library-level test in `packages/ai` stays green, and the failure is invisible: the session simply
+ * stops using an account, or starts using one, with nothing on screen either way.
+ *
+ * The product default is ON. Signing an account in is the decision to use it, and the previous
+ * default turned an idle credential into a hard stop plus a warning telling the operator to go and
+ * enable it. Because it is on, the interesting direction reversed: the value of this file is now
+ * mostly that turning it OFF is honoured, which is the setting an operator walling one account off
+ * depends on.
  *
  * So this file drives the REAL `discoverAuthStorage` against the REAL `Settings` and pins:
- *   - the product default is off, and it is off because the setting's declared default is `false`,
- *     not because something forgot to pass a resolver;
- *   - turning the setting on actually reaches the routing decision;
- *   - the flip reaches the NEXT decision on a storage that already exists, because the operator
- *     flips it from `/settings` mid-session and a snapshot taken at construction would ignore them
- *     until relaunch;
+ *   - the product default moves the session to the idle account, and it does so because the
+ *     setting's declared default is `true`, not because something forgot to pass a resolver;
+ *   - turning the setting off actually reaches the routing decision, so the session waits out the
+ *     window it was told to wait out;
+ *   - the flip reaches the NEXT decision on a storage that already exists, in BOTH directions,
+ *     because the operator flips it from `/settings` mid-session and a snapshot taken at
+ *     construction would ignore them until relaunch;
  *   - storage constructed BEFORE `Settings` exists (the boot path, and any embedder that never
- *     initializes settings) resolves to the product default rather than throwing or falling back to
- *     the library's permissive default;
- *   - auth death still moves accounts under the product default, since a dead credential is not a
- *     spending decision.
+ *     initializes settings) resolves to the DECLARED default, read from the schema. This is the one
+ *     the flip broke: the resolver used to answer `false` for absent settings by writing that
+ *     polarity into the line, so it silently disagreed with the shipped default the moment the
+ *     default changed;
+ *   - auth death still moves accounts with the gate OFF, since a dead credential is not a spending
+ *     decision.
  *
  * WHAT IT DOES NOT CATCH. The gate's own semantics (that the exhausted account is still recorded as
  * blocked, that `retryAtMs` is that account's reset and never a sibling's, and every failover-notice
@@ -33,6 +41,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
 import * as oauthUtils from "@veyyon/ai/registry/oauth";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { settingsOrThrow } from "@veyyon/coding-agent/config/settings-instance";
+import { getDefault } from "@veyyon/coding-agent/config/settings-schema";
 import { discoverAuthStorage } from "@veyyon/coding-agent/session/auth-broker-config";
 import type { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { useIsolatedConfigRoot } from "../helpers/isolated-agent-dir";
@@ -105,11 +114,22 @@ describe("the load balancing gate reads the operator's setting", () => {
 		});
 	}
 
-	test("a fresh install does not spend the second account", async () => {
+	test("a fresh install continues on the account that is idle", async () => {
 		const { targetId } = await openStorageWithTwoAccounts();
-		// The refusal must come from the DECLARED default, not from an absent resolver: an
-		// `accounts.loadBalancing` that defaulted to true would make the assertion below a coincidence.
-		expect(settingsOrThrow().get("accounts.loadBalancing")).toBe(false);
+		// The move must come from the DECLARED default, not from a resolver nobody passed: read the
+		// schema here so this row fails if the shipped default and the behaviour ever disagree, in
+		// either direction, rather than restating `true` and agreeing with itself.
+		expect(getDefault("accounts.loadBalancing")).toBe(true);
+		expect(settingsOrThrow().get("accounts.loadBalancing")).toBe(true);
+
+		const result = await exhaust(targetId);
+
+		expect(result).toEqual({ switched: true });
+	});
+
+	test("turning the setting off makes the session wait out the window", async () => {
+		const { targetId } = await openStorageWithTwoAccounts();
+		settingsOrThrow().set("accounts.loadBalancing", false);
 
 		const result = await exhaust(targetId);
 
@@ -117,25 +137,20 @@ describe("the load balancing gate reads the operator's setting", () => {
 		expect(result.retryAtMs).toBeGreaterThan(Date.now());
 	});
 
-	test("turning the setting on lets exhaustion move to the sibling", async () => {
-		const { targetId } = await openStorageWithTwoAccounts();
-		settingsOrThrow().set("accounts.loadBalancing", true);
-
-		const result = await exhaust(targetId);
-
-		expect(result).toEqual({ switched: true });
-	});
-
 	/**
 	 * The operator flips the toggle from `/settings` while a session is running, on a storage built at
 	 * launch. Both directions, on the one instance: a value captured at construction would answer the
-	 * launch-time setting for the rest of the process.
+	 * launch-time setting for the rest of the process. Both directions are set explicitly, so this row
+	 * says nothing about which one the default is and cannot go green on the default alone.
 	 */
 	test("a mid-session flip reaches the next decision on the storage that already exists", async () => {
 		const { targetId } = await openStorageWithTwoAccounts();
 		const settings = settingsOrThrow();
 
-		expect((await exhaust(targetId)).switched).toBe(false);
+		settings.set("accounts.loadBalancing", false);
+		const refused = await exhaust(targetId);
+		expect(refused.switched).toBe(false);
+		expect(refused.retryAtMs).toBeGreaterThan(Date.now());
 
 		settings.set("accounts.loadBalancing", true);
 		expect((await exhaust(targetId)).switched).toBe(true);
@@ -148,26 +163,29 @@ describe("the load balancing gate reads the operator's setting", () => {
 
 	/**
 	 * Storage is constructed on the boot path before `Settings.init` has run, and an embedder may
-	 * never initialize settings at all. Absent settings mean the product default, so the resolver must
-	 * answer "off" rather than throwing or letting the library's permissive default through.
+	 * never initialize settings at all. Absent settings mean the DECLARED default, so the resolver
+	 * reads the schema instead of naming a polarity: the version of this line that answered `false`
+	 * for absent settings was correct for exactly as long as the default was `false`, and then it
+	 * quietly served the opposite of the shipped behaviour on the one path with no operator in it.
 	 */
-	test("storage built before settings exist still refuses, and picks the setting up once it does", async () => {
+	test("storage built before settings exist follows the declared default, and the flip still reaches it", async () => {
 		const { targetId } = await openStorageWithTwoAccounts();
 		resetSettingsForTest();
 
-		const refused = await exhaust(targetId);
-		expect(refused.switched).toBe(false);
+		expect((await exhaust(targetId)).switched).toBe(getDefault("accounts.loadBalancing"));
 
 		await Settings.init({ inMemory: true });
-		settingsOrThrow().set("accounts.loadBalancing", true);
-		expect((await exhaust(targetId)).switched).toBe(true);
+		settingsOrThrow().set("accounts.loadBalancing", false);
+		const refused = await exhaust(targetId);
+		expect(refused.switched).toBe(false);
+		expect(refused.retryAtMs).toBeGreaterThan(Date.now());
 	});
 
-	/** A revoked credential is not a spending decision, so the product default must not strand the session. */
-	test("auth death still moves accounts under the product default", async () => {
+	/** A revoked credential is not a spending decision, so even a walled-off account must not strand the session. */
+	test("auth death still moves accounts with the gate off", async () => {
 		const { targetId } = await openStorageWithTwoAccounts();
 		if (!storage) throw new Error("test setup failed");
-		expect(settingsOrThrow().get("accounts.loadBalancing")).toBe(false);
+		settingsOrThrow().set("accounts.loadBalancing", false);
 
 		const moved = await storage.rotateSessionCredential(PROVIDER, SESSION_ID, {
 			credentialId: targetId,

@@ -37,25 +37,28 @@ export const PROVIDERS_SETTINGS = {
 	/**
 	 * Whether hitting a quota or rate limit may move a provider to one of your other accounts.
 	 *
-	 * OFF, and off is the honest default. Every account you are signed into belongs to a real
-	 * subscription with a real bill and a real terms-of-service, and spreading one session's work
-	 * across them is a decision only the operator can make. Silently doing it on their behalf is
-	 * how a work account ends up serving personal traffic, and there is no way to un-spend that.
+	 * ON. Signing an account in IS the decision to use it: nobody adds a second account to a
+	 * coding harness in order to watch it sit idle while the first one's window runs down. The
+	 * old default was off, on a billing-and-terms argument, and what that produced in practice
+	 * was a hard stop with a working credential one row away and a warning telling the operator
+	 * to go and flip a setting. A product that can finish the request and instead explains how
+	 * the operator could let it is not being careful, it is refusing to work.
 	 *
-	 * This gates EXHAUSTION only. A revoked or disabled credential still fails over, because a
-	 * dead credential cannot serve the request no matter what this says, and the alternative is a
-	 * hard error where a working account is sitting right there. That move announces itself and
-	 * names both accounts, so it is never the silent kind.
+	 * Every move announces itself and names both accounts, so it is never the silent kind, and
+	 * an operator who does want one account walled off turns this off once.
+	 *
+	 * A revoked or disabled credential fails over regardless of this setting, because a dead
+	 * credential cannot serve the request no matter what this says.
 	 */
 	"accounts.loadBalancing": {
 		type: "boolean",
-		default: false,
+		default: true,
 		ui: {
 			tab: "providers",
 			group: "Accounts",
 			label: "Account Load Balancing",
 			description:
-				"When one account hits its quota or rate limit, continue on another account of the same provider. Off: the session waits for that account's window. A revoked account always fails over regardless, with a notice",
+				"When one account hits its quota or rate limit, continue on another account of the same provider and say so. Off: the session waits out that account's window instead. A revoked account always fails over regardless, with a notice",
 		},
 	},
 
