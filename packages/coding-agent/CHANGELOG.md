@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Publishing a release no longer reports a correct deployment as a failure. The last step of a release asks veyyon.dev whether the new version's card is live, and it looked for `<h2 id="1.0.47">` while the site writes `<h2 id="v1-0-47">`, so it could not pass on any release: 1.0.47 was published, the page was already serving its card, and the run retried twelve times against a site that was right, failed, and filed a release-train issue saying the release had stalled. The anchor has one owner now — the changelog generator exports it and the check imports it — and the check's own tests build every fixture from the real renderer instead of restating the format, which is how both halves came to be wrong together. The link the CLI prints after `veyyon update` and from the rollback picker is pinned to that same anchor, since it ships in the binary and cannot import the site tooling. Nothing in the CLI itself changed in this version.
+
 ## [1.0.47] - 2026-08-13
 
 ### Breaking Changes
