@@ -17,6 +17,9 @@ export default class Prompt extends Command {
 			description: "Print only this rule's text, or why it is not in this prompt (see --statements for the ids)",
 		}),
 		section: Flags.string({ description: "Print only this section (see --sections for the ids)" }),
+		tools: Flags.boolean({
+			description: "Show what each active tool's description and schema cost, which the prompt table does not",
+		}),
 		cwd: Flags.string({ description: "Working directory to resolve context files, skills and the tree from" }),
 		"no-tools": Flags.boolean({ description: "Assemble with no tools, to see which regions are tool-gated" }),
 		prompt: Flags.string({ description: "Which prompt to inspect (default: system; see --prompts for the ids)" }),
@@ -31,6 +34,7 @@ export default class Prompt extends Command {
 			statements: flags.statements,
 			statement: flags.statement,
 			section: flags.section,
+			tools: flags.tools,
 			cwd: flags.cwd,
 			noTools: flags["no-tools"],
 			prompt: flags.prompt,

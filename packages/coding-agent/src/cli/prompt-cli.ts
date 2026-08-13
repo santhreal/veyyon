@@ -14,8 +14,9 @@
  */
 import { agentCorePrompts } from "@veyyon/agent-core/prompts/registry";
 import { aiPrompts } from "@veyyon/ai/prompts/registry";
+import { toolWireSchema } from "@veyyon/ai/utils/schema/wire";
 import { hashlinePrompts } from "@veyyon/hashline/prompts/registry";
-import type { PromptEntry, PromptRegistryView, PromptSection } from "@veyyon/utils";
+import { estimateTokensFromText, type PromptEntry, type PromptRegistryView, type PromptSection } from "@veyyon/utils";
 import { Settings } from "../config/settings";
 import { codingAgentPrompts } from "../prompts/registry";
 import { resolveGateInputs } from "../system-prompt-builder/gate-inputs";
@@ -43,6 +44,16 @@ export interface PromptCommandFlags {
 	statements?: boolean;
 	/** Print only this section's text. */
 	section?: string;
+	/**
+	 * Print what the tool definitions cost, which no other view here can show.
+	 *
+	 * The system prompt is only half of what a turn pays before its first user
+	 * message: every active tool's description and parameter schema is sent
+	 * beside it, and none of that appears in the section or statement tables. A
+	 * reader asking why a session starts expensive was shown the smaller half and
+	 * nothing said so.
+	 */
+	tools?: boolean;
 	/**
 	 * Print only this statement's text, by id.
 	 *
@@ -136,6 +147,7 @@ export async function runPromptCommand(flags: PromptCommandFlags = {}): Promise<
 	const inspectExit = incomplete ? 1 : 0;
 
 	if (flags.statement !== undefined) return renderOneStatement(inspection, flags.statement);
+	if (flags.tools) return formatToolCostTable(tools, inspection.totalTokens);
 	if (flags.section !== undefined) return renderOneSection(inspection, flags.section);
 	if (flags.json) return { output: JSON.stringify(toJson(inspection), null, 2), exitCode: inspectExit };
 	if (flags.statements) return { output: formatStatementTable(inspection), exitCode: inspectExit };
@@ -158,6 +170,58 @@ async function resolveTools(cwd: string, settings: Settings): Promise<Tool[]> {
 		settings,
 	} as ToolSession;
 	return await createTools(session);
+}
+
+/**
+ * What the tool definitions cost, beside what the system prompt costs.
+ *
+ * Every active tool ships a description and a parameter schema on every
+ * request, and neither is part of the prompt this command otherwise measures,
+ * so the answer to "why does a turn start expensive" was missing its larger
+ * half. Both halves are priced from the bytes actually sent: the rendered
+ * description string, and the wire schema the provider receives.
+ *
+ * Sorted by total cost, because the question a reader has is which description
+ * is not earning its tokens.
+ */
+function formatToolCostTable(tools: readonly Tool[], promptTokens: number): PromptCommandResult {
+	const rows = tools
+		.map(tool => {
+			const description = tool.description ?? "";
+			const schema = JSON.stringify(toolWireSchema(tool as never));
+			const descriptionTokens = estimateTokensFromText(description);
+			const schemaTokens = estimateTokensFromText(schema);
+			return {
+				name: tool.name,
+				bytes: Buffer.byteLength(description, "utf8") + Buffer.byteLength(schema, "utf8"),
+				descriptionTokens,
+				schemaTokens,
+				tokens: descriptionTokens + schemaTokens,
+			};
+		})
+		.sort((left, right) => right.tokens - left.tokens);
+	if (rows.length === 0) return { output: "No tools are active in this configuration.", exitCode: 0 };
+
+	const total = rows.reduce((sum, row) => sum + row.tokens, 0);
+	const nameWidth = Math.max(...rows.map(row => row.name.length), "tool".length, "TOTAL".length);
+	const lines = [
+		`${"tool".padEnd(nameWidth)}  ${"bytes".padStart(7)}  ${"desc".padStart(7)}  ${"schema".padStart(7)}  ${"tokens".padStart(7)}  share`,
+	];
+	for (const row of rows) {
+		const share = total === 0 ? 0 : (row.tokens / total) * 100;
+		lines.push(
+			`${row.name.padEnd(nameWidth)}  ${String(row.bytes).padStart(7)}  ${String(row.descriptionTokens).padStart(7)}  ` +
+				`${String(row.schemaTokens).padStart(7)}  ${String(row.tokens).padStart(7)}  ${share.toFixed(1).padStart(5)}%`,
+		);
+	}
+	const bytes = rows.reduce((sum, row) => sum + row.bytes, 0);
+	lines.push(
+		`${"TOTAL".padEnd(nameWidth)}  ${String(bytes).padStart(7)}  ${String(rows.reduce((sum, row) => sum + row.descriptionTokens, 0)).padStart(7)}  ` +
+			`${String(rows.reduce((sum, row) => sum + row.schemaTokens, 0)).padStart(7)}  ${String(total).padStart(7)}`,
+		"",
+		`${rows.length} tools cost ${total} tokens; the system prompt costs ${promptTokens}. Every request pays both.`,
+	);
+	return { output: lines.join("\n"), exitCode: 0 };
 }
 
 /**

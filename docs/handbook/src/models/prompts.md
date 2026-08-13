@@ -80,6 +80,23 @@ dialect applies -- are resolved from your profile `config.yml` before the prompt
 assembled, so what you see is what a session would send. Change a setting, run it
 again, and the difference is visible.
 
+The prompt is only half of what a turn pays before your first message. Every active tool ships a
+description and a parameter schema on every request, and `veyyon prompt --tools` prices that half:
+
+```
+tool          bytes     desc   schema   tokens  share
+edit           8158     2013       27     2040   15.4%
+eval           5720     1258      173     1431   10.8%
+launch         5563      684      707     1391   10.5%
+TOTAL         53060    10011     3266    13277
+
+17 tools cost 13277 tokens; the system prompt costs 23403. Every request pays both.
+```
+
+The row set is the tool set your configuration loads, so disabling a tool removes its row and its
+cost. The two halves are separated because they are cut differently: a description is prose you can
+shorten, a schema is the parameter list and shrinks only by dropping parameters.
+
 Nothing is written while you look. The command opens no database, migrates nothing, and leaves no
 marker files, so inspecting the prompt cannot change what the next session does.
 
