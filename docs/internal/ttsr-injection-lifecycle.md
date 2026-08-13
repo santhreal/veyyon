@@ -21,19 +21,18 @@ At session creation, `createAgentSession()` loads discovered rules, constructs a
 
 ```ts
 const ttsrSettings = settings.getGroup("ttsr");
-const ttsrManager = new TtsrManager(ttsrSettings);
-const rulesResult = await loadCapability<Rule>(ruleCapability.id, { cwd });
-const { rulebookRules, alwaysApplyRules } = bucketRules(
-  rulesResult.items,
-  ttsrManager,
-  {
-    builtinRules: ttsrSettings.builtinRules,
-    disabledRules: ttsrSettings.disabledRules,
-  },
-);
+// A live getter, not a snapshot: a `pathScope` rule compares against the CURRENT
+// working directory, and `set_cwd` moves it mid-session.
+const ttsrManager = new TtsrManager(ttsrSettings, { getCwd: () => sessionManager.getCwd() });
+const rulesResult = await discoverRules(cwd, agentDir);
+const { rulebookRules, alwaysApplyRules } = bucketRules(rulesResult.items, ttsrManager, {
+  builtinRules: ttsrSettings.builtinRules,
+  disabledRules: ttsrSettings.disabledRules,
+  experimentalRules: ttsrSettings.experimentalRules,
+});
 ```
 
-`bucketRules(...)` drops names listed in `ttsr.disabledRules`, drops embedded `builtin-defaults` rules when `ttsr.builtinRules === false`, registers accepted TTSR rules, and then routes the remaining rules to always-apply/rulebook buckets.
+`bucketRules(...)` drops names listed in `ttsr.disabledRules`, drops embedded `builtin-defaults` rules when `ttsr.builtinRules === false`, drops an experimental rule that is not named in `ttsr.experimentalRules`, registers accepted TTSR rules, and then routes the remaining rules to always-apply/rulebook buckets.
 
 ### Pre-registration dedupe behavior
 
@@ -255,5 +254,7 @@ During the timer window, state can change (user interruption, mode actions, addi
 - `interruptMode: "never"`: prose-source matches queue a deferred hidden injection after a successful assistant message; tool-source matches fold an in-band `<system-reminder>` into the matched tool call's `toolResult` content via the `afterToolCall` hook (no mid-stream abort, no separate follow-up turn).
 - Tool-source non-interrupting buckets are cleared when the parent assistant message ends with `stopReason === "aborted"` or `"error"`, so rules whose target tool never produced a result remain eligible to re-trigger.
 - Repeat-after-gap depends on turn count increments at `turn_end`; mid-turn chunks do not advance gap counters.
+- `repeatMode: per-compact` re-arms on a transcript replacement, and `repeatCompactions` (default 1) is how many of them the rule waits out first. Five paths reach `resetForCompaction()` and share its counter: compaction, history rewrite, rewind, shake, restore.
+- An experimental rule (one shipping in `builtin-rules/experimental/`) is dropped before registration unless named in `ttsr.experimentalRules`, and naming it in `ttsr.disabledRules` as well keeps it off.
 
-*Verified against `ad7ede4a` on 2026-07-28.*
+*Verified against `7256dd34` on 2026-08-12.*
