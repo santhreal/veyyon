@@ -35,13 +35,7 @@ import { join } from "node:path";
 import { renderRootChangelog } from "../website/tools/gen-changelog.mjs";
 import { unreleasedEntries, versionHeadings } from "./changelog-unreleased.ts";
 import { applyReleaseToChangelog, bumpVersion } from "./release.ts";
-import {
-	buildRootChangelog,
-	changelogSources,
-	orphanedRootEntries,
-	ROOT_PATH,
-	writeRootChangelog,
-} from "./sync-root-changelog.ts";
+import { buildRootChangelog, changelogSources, orphanedRootEntries, writeRootChangelog } from "./sync-root-changelog.ts";
 
 /**
  * The version the next release would cut, derived from the lead changelog rather
@@ -56,12 +50,39 @@ function nextVersion(): string {
 	return bumpVersion((newest as { version: string }).version, "patch");
 }
 
+/**
+ * A bullet this suite owns, used only when the working tree has just been rolled
+ * and every `## [Unreleased]` section is legitimately empty. Without it the two
+ * repository-derived tests below would pass vacuously right after a release cut
+ * — which is exactly when a release is being prepared and the guard matters.
+ */
+const SEEDED_ENTRY = "A seeded paragraph, so the roll below has something to move.";
+
+/** `md` with {@link SEEDED_ENTRY} under its `## [Unreleased]` heading. */
+function seedUnreleased(md: string): string {
+	return md.replace("## [Unreleased]\n", `## [Unreleased]\n\n### Added\n\n- ${SEEDED_ENTRY}\n`);
+}
+
+/**
+ * Every package `CHANGELOG.md` the release path would roll, carrying at least one
+ * unreleased entry between them.
+ */
+function sources(): { name: string; md: string }[] {
+	const found = changelogSources();
+	expect(found.length).toBeGreaterThan(0);
+	if (found.some(({ md }) => unreleasedEntries(md).length > 0)) return found;
+	return found.map((source, index) => (index === 0 ? { ...source, md: seedUnreleased(source.md) } : source));
+}
+
+/** The root as the guard reads it before a release: the render of those sources. */
+function currentRender(): string {
+	return renderRootChangelog(sources());
+}
+
 /** The release path's own roll, applied to every package changelog it would touch. */
 function rolledRender(version: string): string {
-	const sources = changelogSources();
-	expect(sources.length).toBeGreaterThan(0);
 	return renderRootChangelog(
-		sources.map(({ name, md }) => ({ name, md: applyReleaseToChangelog(md, version, "2026-08-11") })),
+		sources().map(({ name, md }) => ({ name, md: applyReleaseToChangelog(md, version, "2026-08-11") })),
 	);
 }
 
@@ -71,19 +92,18 @@ describe("a release rolls entries into a version section", () => {
 	 * entries under `## [Unreleased]`, the guard would pass for the wrong reason
 	 * and this suite would be green against the defect it exists to catch.
 	 */
-	it("empties the rendered Unreleased section while the on-disk root still holds those entries", () => {
-		const onDisk = unreleasedEntries(readFileSync(ROOT_PATH, "utf8"));
-		expect(onDisk.length).toBeGreaterThan(0);
+	it("empties the rendered Unreleased section while the pre-release root still holds those entries", () => {
+		expect(unreleasedEntries(currentRender()).length).toBeGreaterThan(0);
 
 		expect(unreleasedEntries(rolledRender(nextVersion()))).toEqual([]);
 	});
 
 	/**
-	 * The release failure itself, against the real repository: the root as
-	 * committed, versus what the release would write one step later.
+	 * The release failure itself, against the real repository: the root the guard
+	 * reads, versus what the release would write one step later.
 	 */
 	it("leaves no orphan when the whole repository is rolled, so a release can be cut", () => {
-		expect(orphanedRootEntries(readFileSync(ROOT_PATH, "utf8"), rolledRender(nextVersion()))).toEqual([]);
+		expect(orphanedRootEntries(currentRender(), rolledRender(nextVersion()))).toEqual([]);
 	});
 
 	/** The same thing in one paragraph, so a failure above can be read without the repo. */
