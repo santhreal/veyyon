@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { executeBash } from "@veyyon/coding-agent/exec/bash-executor";
+import { type BashResult, executeBash } from "@veyyon/coding-agent/exec/bash-executor";
 import {
 	__resetDirsFromEnvForTests,
 	captureDirOverrides,
@@ -42,8 +42,19 @@ import {
  * 100MB as fast as the kernel can move it.
  */
 
-/** 100MB of `a`, wrapped into 200-byte lines. The ordinary shape: many lines. */
-const HUGE_MULTILINE = "head -c 100000000 /dev/zero | tr '\\0' 'a' | fold -w 200";
+/**
+ * 100MB of 200-byte lines (199 `a`s and a newline), exactly. The ordinary
+ * shape: many lines.
+ *
+ * `yes` writes in large blocks and `head -c` cuts the pipe at exactly 100MB, so
+ * this costs about a tenth of a second. It used to be
+ * `head -c 100000000 /dev/zero | tr '\0' 'a' | fold -w 200`, and `fold` moves a
+ * character at a time: on a loaded two-core CI runner that pipeline delivered
+ * 62MB in 180 seconds, hit the executor's timeout, and failed an assertion
+ * about the OUTPUT SINK because of the throughput of `fold`. A suite about a
+ * memory bound must not be a benchmark of the command it uses to reach it.
+ */
+const HUGE_MULTILINE = "__huge_line=$(head -c 199 /dev/zero | tr '\\0' 'a'); yes \"$__huge_line\" | head -c 100000000";
 /** 100MB with NO newline at all. The pathological shape for anything line-buffered. */
 const HUGE_SINGLE_LINE = "head -c 100000000 /dev/zero | tr '\\0' 'a'";
 
@@ -103,15 +114,17 @@ describe("a 100MB command does not put 100MB in memory", () => {
 	 * shows.
 	 */
 	it("holds heap growth far below the streamed size for multi-line output", async () => {
-		let bytes = 0;
+		let result: BashResult | undefined;
 		const delta = await heapDeltaMB(async () => {
-			const result = await executeBash(HUGE_MULTILINE, { timeout: 180_000 });
-			bytes = result.totalBytes;
+			result = await executeBash(HUGE_MULTILINE, { timeout: 60_000 });
 		});
 
-		expect(bytes).toBeGreaterThan(HUGE_BYTES - 1_000_000);
+		// Asserted before the size, so a run that never finished says so instead
+		// of reporting a byte count that is really a stopwatch reading.
+		expect(result?.cancelled).toBe(false);
+		expect(result?.totalBytes).toBe(HUGE_BYTES);
 		expect(delta).toBeLessThan(HEAP_BUDGET_MB);
-	}, 200_000);
+	}, 90_000);
 
 	/**
 	 * THE PATHOLOGICAL SHAPE. One 100MB line with no newline anywhere. Any
@@ -119,15 +132,15 @@ describe("a 100MB command does not put 100MB in memory", () => {
 	 * trimming has no trim point here and holds the whole thing.
 	 */
 	it("holds heap growth below the streamed size for a single 100MB line", async () => {
-		let bytes = 0;
+		let result: BashResult | undefined;
 		const delta = await heapDeltaMB(async () => {
-			const result = await executeBash(HUGE_SINGLE_LINE, { timeout: 180_000 });
-			bytes = result.totalBytes;
+			result = await executeBash(HUGE_SINGLE_LINE, { timeout: 60_000 });
 		});
 
-		expect(bytes).toBe(HUGE_BYTES);
+		expect(result?.cancelled).toBe(false);
+		expect(result?.totalBytes).toBe(HUGE_BYTES);
 		expect(delta).toBeLessThan(HEAP_BUDGET_MB);
-	}, 200_000);
+	}, 90_000);
 
 	/**
 	 * The returned body is what actually enters the conversation and gets re-read
@@ -135,11 +148,12 @@ describe("a 100MB command does not put 100MB in memory", () => {
 	 * megabyte here would be a cost regression even with memory under control.
 	 */
 	it("returns a body of kilobytes, not megabytes", async () => {
-		const result = await executeBash(HUGE_MULTILINE, { timeout: 180_000 });
+		const result = await executeBash(HUGE_MULTILINE, { timeout: 60_000 });
 
+		expect(result.cancelled).toBe(false);
 		expect(Buffer.byteLength(result.output, "utf-8")).toBeLessThan(1024 * 1024);
 		expect(result.outputBytes).toBeLessThan(1024 * 1024);
-	}, 200_000);
+	}, 90_000);
 });
 
 describe("the bound is reported, never silent", () => {
@@ -149,14 +163,17 @@ describe("the bound is reported, never silent", () => {
 	 * 100MB build log and has no way to know the other 99.93MB existed.
 	 */
 	it("reports the real streamed size alongside the much smaller kept size", async () => {
-		const result = await executeBash(HUGE_MULTILINE, { timeout: 180_000 });
+		const result = await executeBash(HUGE_MULTILINE, { timeout: 60_000 });
 
+		expect(result.cancelled).toBe(false);
 		expect(result.truncated).toBe(true);
-		expect(result.totalBytes).toBeGreaterThan(HUGE_BYTES - 1_000_000);
+		expect(result.totalBytes).toBe(HUGE_BYTES);
 		expect(result.outputBytes).toBeLessThan(result.totalBytes / 100);
-		expect(result.totalLines).toBeGreaterThan(400_000);
+		// 500,000 newline-terminated lines, plus the empty segment after the final
+		// newline: the sink counts segments, not newlines.
+		expect(result.totalLines).toBe(HUGE_BYTES / 200 + 1);
 		expect(result.outputLines).toBeLessThan(result.totalLines);
-	}, 200_000);
+	}, 90_000);
 
 	/**
 	 * A single line reports one line and its full byte count. The line count must
@@ -164,12 +181,13 @@ describe("the bound is reported, never silent", () => {
 	 * as the few hundred bytes that survived.
 	 */
 	it("reports the full byte count for a single unterminated line", async () => {
-		const result = await executeBash(HUGE_SINGLE_LINE, { timeout: 180_000 });
+		const result = await executeBash(HUGE_SINGLE_LINE, { timeout: 60_000 });
 
+		expect(result.cancelled).toBe(false);
 		expect(result.truncated).toBe(true);
 		expect(result.totalBytes).toBe(HUGE_BYTES);
 		expect(result.outputBytes).toBeLessThan(HUGE_BYTES);
-	}, 200_000);
+	}, 90_000);
 
 	/**
 	 * THE NEGATIVE TWIN. Ordinary output is not touched at all: no truncation
@@ -198,9 +216,9 @@ describe("the bound is reported, never silent", () => {
 	 * anything about output volume.
 	 */
 	it("still reports the exit code of a command that printed 100MB", async () => {
-		const result = await executeBash(`${HUGE_MULTILINE}; sh -c 'exit 3'`, { timeout: 180_000 });
+		const result = await executeBash(`${HUGE_MULTILINE}; sh -c 'exit 3'`, { timeout: 60_000 });
 
 		expect(result.exitCode).toBe(3);
 		expect(result.cancelled).toBe(false);
-	}, 200_000);
+	}, 90_000);
 });
