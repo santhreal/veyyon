@@ -60,7 +60,7 @@ fn workspace_sources() -> Vec<(PathBuf, String)> {
 	let mut found = Vec::new();
 	collect(&workspace_root().join("crates"), &mut found);
 	found.retain(|(path, _)| relative(path) != SCANNER);
-	found.sort_by(|(left, _), (right, _)| relative(left).cmp(&relative(right)));
+	found.sort_by_key(|(path, _)| relative(path));
 	found
 }
 
