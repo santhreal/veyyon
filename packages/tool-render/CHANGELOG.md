@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.0.47] - 2026-08-13
+
 ### Changed
 
 - The ask renderer strips the ` (Recommended)` marker through `@veyyon/wire` instead of its own copy of the string, so a change to the marker in the TUI that writes it cannot leave this renderer showing it as part of the user's answer.

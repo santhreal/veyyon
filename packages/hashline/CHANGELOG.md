@@ -4,13 +4,17 @@
 
 ## [Unreleased]
 
+## [1.0.47] - 2026-08-13
+
 ### Fixed
+
 - An unseen-line rejection names a re-read that can actually clear it. The reveal reported one `truncated` flag for two unrelated causes, and the message spelled a ranged re-read for both. When the blocker was a line too wide to print rather than too many lines, that ranged read applied the same column cap, clipped the line again, and the retry was rejected identically, so the loop had no exit unless you already knew about the `:raw` selector. The reveal now distinguishes `overCap` from `columnClipped`, scans every unseen line for width rather than only the ones inside the reveal cap, and prints `:raw` whenever any of them is too wide.
 - `@veyyon/utils` is declared as a dependency rather than a dev dependency. `prompts/registry` is a published subpath and imports `definePromptRegistry` from it, so an installer outside this workspace got a module that could not resolve its own import. It now takes that one function from `@veyyon/utils/prompt-registry`, the leaf that owns it, rather than from the barrel. (This entry was written into the released `16.5.0` section by mistake; released sections are immutable, so it is restored here.)
 
 ## [16.5.0] - 2026-07-13
 
 ### Fixed
+
 - Fixed a critical issue where ambiguous swaps could silently delete range boundaries.
 - Prevented incorrect auto-repairing of structural closing lines when payload placement is ambiguous.
 - Fixed a bug in stale-hash recovery that could incorrectly relocate edits onto duplicated context after the original target changed.
