@@ -60,8 +60,29 @@ export function unreleasedEntries(md: string): string[] {
 	if (!heading) return [];
 	const rest = md.slice(heading.index + heading[0].length);
 	const nextRelease = rest.search(/\n## /);
-	const block = nextRelease === -1 ? rest : rest.slice(0, nextRelease);
+	return entriesIn(nextRelease === -1 ? rest : rest.slice(0, nextRelease));
+}
 
+/**
+ * Every entry in the document, whichever section it sits under.
+ *
+ * A release ROLLS `## [Unreleased]` into `## [X.Y.Z]`: the entry is not deleted,
+ * it moves. Asking "does this paragraph survive the write?" of the Unreleased
+ * section alone answers no for every rolled entry, which is how the root
+ * changelog guard came to refuse every release — `prepareReleaseTree` rolls the
+ * package changelogs and then regenerates the root, so the fresh render's
+ * Unreleased section is empty by construction and all 542 on-disk entries looked
+ * unclaimed.
+ *
+ * The bullet rules are `unreleasedEntries`', because an entry is the same object
+ * on both sides of a comparison; only the range of the document differs.
+ */
+export function allEntries(md: string): string[] {
+	return entriesIn(md);
+}
+
+/** The bullet scan itself, over one already-selected span of markdown. */
+function entriesIn(block: string): string[] {
 	const entries: string[] = [];
 	let current: string[] = [];
 	const flush = () => {
