@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.0.47] - 2026-08-13
+
 ### Added
 
 - `RECOMMENDED_SUFFIX`, `withRecommendedSuffix` and `stripRecommendedSuffix` own the ` (Recommended)` marker the ask dialog puts on the recommended option. The marker had four private spellings and two of them were writers: `tools/ask.ts` and `modes/components/ask-dialog.ts` both appended it, the second from a bare template literal, and `@veyyon/tool-render` stripped it with a third copy. A reader that stops matching the writer does not throw; the marker survives into the answer, so the model is told the user chose "Deploy to production (Recommended)". The marker lives here rather than beside the other ask labels because tool-render has to read it and cannot import from coding-agent.

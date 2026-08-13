@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.0.47] - 2026-08-13
+
 ### Breaking Changes
 
 - The home-derived path constants are functions. `DEFAULT_DATA_DIR`, `FASTEMBED_CACHE_DIR`, `MODEL_CACHE_DIR`, `DEFAULT_PLUGIN_DIR`, `DEFAULT_LOG_DIR` and `DEFAULT_LOG_DB` computed `os.homedir()` at import time, which is what made them impossible to redirect, so they are replaced by `dataDir()`, `fastembedCacheDir()`, `modelCacheDir()`, `pluginRoot()` and `costLogDb()`, each taking an optional environment. The paths they answer with are unchanged.
