@@ -364,18 +364,25 @@ describe("the rule list is a section index you drill into", () => {
 		for (const name of namesIn("typescript")) expect(text).not.toContain(name);
 	});
 
-	test("a section holding one rule counts in the singular", async () => {
+	test("every section row agrees with its own rule count, in number and in plural", async () => {
+		const text = frame(await openIndex());
+		for (const section of Object.keys(BUILTIN_RULE_SECTIONS) as BuiltinRuleSection[]) {
+			const count = namesIn(section).length;
+			const row = text.split("\n").find(line => line.includes(sectionLabel(section)));
+			// "1 rules" is the tell that the count was formatted by concatenation.
+			expect(row, `${sectionLabel(section)} row`).toContain(`${count} rule${count === 1 ? "" : "s"}`);
+			if (count !== 1) expect(row).not.toContain(`${count} rule `);
+		}
+	});
+
+	test("an experimental section says every rule under it is off", async () => {
 		const text = frame(await openIndex());
 		const experimental = (Object.keys(BUILTIN_RULE_SECTIONS) as BuiltinRuleSection[]).filter(section =>
 			isExperimentalSection(section),
 		);
 		expect(experimental).toHaveLength(1);
-		expect(namesIn(experimental[0] as BuiltinRuleSection)).toHaveLength(1);
 		const row = text.split("\n").find(line => line.includes(sectionLabel(experimental[0] as BuiltinRuleSection)));
-		// Off, because an experimental section ships off — and singular, because
-		// "1 rules" is the tell that the count was formatted by concatenation.
-		expect(row).toContain("1 rule · all off");
-		expect(row).not.toContain("1 rules");
+		expect(row).toContain("all off");
 	});
 
 	test("a section with every rule on says so rather than counting to zero", async () => {

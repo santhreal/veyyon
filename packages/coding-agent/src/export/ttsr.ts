@@ -50,6 +50,11 @@ interface TtsrEntry {
 interface InjectionRecord {
 	/** Message count (turn index) when the rule was last injected. */
 	lastInjectedAt: number;
+	/**
+	 * Transcript-reset count when the rule was last injected, so a `per-compact`
+	 * rule can require several of them before it says the same thing again.
+	 */
+	resetAt: number;
 }
 
 const DEFAULT_SETTINGS: Required<TtsrSettings> = {
@@ -94,6 +99,13 @@ export class TtsrManager {
 	/** Last snapshot evaluated for AST conditions, keyed by stream key, to dedupe matcher runs. */
 	readonly #lastAstSnapshots = new Map<string, string>();
 	#messageCount = 0;
+	/**
+	 * How many times the transcript has been replaced under this session:
+	 * compaction, a history rewrite, a rewind, a shake. Every one of them takes
+	 * an injected reminder out of the model's view, which is why they share a
+	 * counter — from a rule's side they are the same event.
+	 */
+	#transcriptResets = 0;
 	#canMatchText = false;
 	#canMatchThinking = false;
 
@@ -642,12 +654,13 @@ export class TtsrManager {
 			if (ruleName.length === 0) {
 				continue;
 			}
-			const record = this.#injectionRecords.get(ruleName);
-			if (!record) {
-				this.#injectionRecords.set(ruleName, { lastInjectedAt: this.#messageCount });
-			} else {
-				record.lastInjectedAt = this.#messageCount;
-			}
+			// One write rather than create-or-update: the record IS the last injection,
+			// on both fields, and a branch that updated only one of them was a way for the
+			// message stamp and the reset stamp to describe different moments.
+			this.#injectionRecords.set(ruleName, {
+				lastInjectedAt: this.#messageCount,
+				resetAt: this.#transcriptResets,
+			});
 			logger.debug("TTSR rule marked as injected", {
 				ruleName,
 				messageCount: this.#messageCount,
@@ -722,7 +735,7 @@ export class TtsrManager {
 	/** Restore injected state from a list of rule names. */
 	restoreInjected(ruleNames: string[]): void {
 		for (const name of ruleNames) {
-			this.#injectionRecords.set(name, { lastInjectedAt: 0 });
+			this.#injectionRecords.set(name, { lastInjectedAt: 0, resetAt: this.#transcriptResets });
 		}
 		if (ruleNames.length > 0) {
 			logger.debug("TTSR injected state restored", { ruleNames });
@@ -750,12 +763,31 @@ export class TtsrManager {
 		this.#lastAstSnapshots.clear();
 	}
 
-	/** Reset injection records for rules configured to repeat per compaction. */
+	/**
+	 * The transcript was replaced. Re-arm the `per-compact` rules that have waited
+	 * long enough, and count the event for the ones that have not.
+	 *
+	 * `per-compact` used to mean "fires again after the very next reset", and five
+	 * call sites reach this — compaction, a history rewrite, a rewind, a shake —
+	 * so a rule with standing advice said the same thing over and over on a long
+	 * session. `commit-drift` is the one that showed it: uncommitted work is a
+	 * standing state rather than an event, so its condition is true again the
+	 * moment it is re-armed, and re-arming it that often is how a reminder becomes
+	 * something the reader learns to skip.
+	 *
+	 * So a rule states its own period in `repeatCompactions`, and one reset stays
+	 * the default. The counter is shared by all five call sites deliberately: each
+	 * takes the injected reminder out of the model's view, which is the only
+	 * property that matters to a rule deciding whether it still has been heard.
+	 */
 	resetForCompaction(): void {
-		for (const [ruleName] of this.#injectionRecords) {
+		this.#transcriptResets++;
+		for (const [ruleName, record] of this.#injectionRecords) {
 			const rule = this.#rules.get(ruleName)?.rule;
 			const repeatMode = rule?.repeatMode ?? this.#settings.repeatMode;
-			if (repeatMode === "per-compact") {
+			if (repeatMode !== "per-compact") continue;
+			const period = rule?.repeatCompactions ?? 1;
+			if (this.#transcriptResets - record.resetAt >= period) {
 				this.#injectionRecords.delete(ruleName);
 			}
 		}
