@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Devin requests no longer fail outright for anyone with secrets configured. The provider handed its `onPayload` hook the raw protobuf message, but that hook is where the secret redactor lives, and the redactor walks the payload rewriting every string and refuses any value JSON cannot express. A protobuf message is never that shape: `metadata.requestId` is a uint64 and therefore a bigint, and bytes fields are `Uint8Array`. So every single chat request died with "the provider request contains a non-JSON value/object; confidentiality transform failed." — the provider was unusable rather than degraded, and the message named the transform rather than the cause. The hook now receives canonical proto3 JSON, which carries 64-bit fields as strings, so the redactor can read and rewrite the whole payload; the reply is parsed back before it goes on the wire, and a no-op round-trip is byte-identical. Nothing is serialized when no hook is installed.
+
 ## [16.5.2] - 2026-07-14
 
 ### Added

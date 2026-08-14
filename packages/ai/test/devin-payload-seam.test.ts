@@ -2,10 +2,9 @@ import { describe, expect, it } from "bun:test";
 import { gunzipSync } from "node:zlib";
 import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
 import { streamDevin } from "@veyyon/ai/providers/devin";
-import type { Context, Model } from "@veyyon/ai/types";
+import type { Context, Message, Model } from "@veyyon/ai/types";
 import { buildModel } from "@veyyon/catalog/build";
 import {
-	type GetChatMessageRequest,
 	GetChatMessageRequestSchema,
 	GetChatMessageResponseSchema,
 } from "@veyyon/catalog/discovery/devin-gen/exa/api_server_pb/api_server_pb";
@@ -13,10 +12,6 @@ import {
 	GetUserJwtRequestSchema,
 	GetUserJwtResponseSchema,
 } from "@veyyon/catalog/discovery/devin-gen/exa/auth_pb/auth_pb";
-import {
-	ChatMessagePromptSchema,
-	ChatToolDefinitionSchema,
-} from "@veyyon/catalog/discovery/devin-gen/exa/chat_pb/chat_pb";
 import { StopReason } from "@veyyon/catalog/discovery/devin-gen/exa/codeium_common_pb/codeium_common_pb";
 
 const ORIGINAL_SYSTEM = "original-system-secret";
@@ -75,6 +70,35 @@ function successfulChatResponse(): Response {
 	return new Response(frameConnectMessage(toBinary(GetChatMessageResponseSchema, response)));
 }
 
+/**
+ * The shape `onPayload` receives: canonical proto3 JSON, not a protobuf
+ * message. Only the fields these tests read are named.
+ */
+interface DevinPayloadJson {
+	prompt?: string;
+	chatModelUid?: string;
+	chatMessagePrompts?: { prompt?: string }[];
+	tools?: { description?: string }[];
+	metadata?: { apiKey?: string; userJwt?: string; requestId?: unknown };
+}
+
+/**
+ * WHY this seam hands over JSON rather than the protobuf message it used to.
+ *
+ * `onPayload` is the last hook before the wire, and veyyon installs the secret
+ * redactor there. That redactor walks the payload rewriting every string and
+ * REFUSES any value JSON cannot express. A protobuf message is not that shape:
+ * `metadata.requestId` is a uint64 and therefore a bigint, and bytes fields are
+ * Uint8Array. Handing the message over made every Devin request fail with
+ * "the provider request contains a non-JSON value/object; confidentiality
+ * transform failed." for any operator with secrets configured -- the provider
+ * was unusable, not degraded.
+ *
+ * These tests therefore pin the JSON contract deliberately; the earlier
+ * protobuf-shaped assertions described the defect. What they do NOT catch: a
+ * sibling provider (Bedrock's ConverseStreamRequest, Cursor's AgentRunRequest)
+ * committing the same mistake at its own seam.
+ */
 describe("streamDevin onPayload transport seam", () => {
 	it("serializes and gzips only the awaited replacement while preserving resolved auth", async () => {
 		const authResponse = toBinary(
@@ -104,28 +128,32 @@ describe("streamDevin onPayload transport seam", () => {
 			onPayload: async (payload, model) => {
 				hookCalls++;
 				hookModel = model;
-				const request = payload as GetChatMessageRequest;
+				const request = payload as DevinPayloadJson;
 				expect(request.prompt).toBe(ORIGINAL_SYSTEM);
-				expect(request.chatMessagePrompts[0]?.prompt).toBe(ORIGINAL_USER);
-				expect(request.tools[0]?.description).toBe(ORIGINAL_TOOL);
+				expect(request.chatMessagePrompts?.[0]?.prompt).toBe(ORIGINAL_USER);
+				expect(request.tools?.[0]?.description).toBe(ORIGINAL_TOOL);
+				// Mutating the handed object must not reach the wire: only the
+				// awaited return value does.
 				request.prompt = MUTATED_SYSTEM;
-				request.chatMessagePrompts[0]!.prompt = MUTATED_USER;
-				request.tools[0]!.description = MUTATED_TOOL;
-				if (request.metadata) {
-					request.metadata.apiKey = "mutated-api-key";
-					request.metadata.userJwt = "mutated-user-jwt";
+				const mutatedPrompt = request.chatMessagePrompts?.[0];
+				if (mutatedPrompt) mutatedPrompt.prompt = MUTATED_USER;
+				const mutatedTool = request.tools?.[0];
+				if (mutatedTool) mutatedTool.description = MUTATED_TOOL;
+				const metadata = request.metadata;
+				if (metadata) {
+					metadata.apiKey = "mutated-api-key";
+					metadata.userJwt = "mutated-user-jwt";
 				}
 				await Promise.resolve();
-				return create(GetChatMessageRequestSchema, {
+				return {
 					...request,
 					prompt: REPLACEMENT_SYSTEM,
-					chatMessagePrompts: request.chatMessagePrompts.map(prompt =>
-						create(ChatMessagePromptSchema, { ...prompt, prompt: REPLACEMENT_USER }),
-					),
-					tools: request.tools.map(tool =>
-						create(ChatToolDefinitionSchema, { ...tool, description: REPLACEMENT_TOOL }),
-					),
-				});
+					chatMessagePrompts: (request.chatMessagePrompts ?? []).map(prompt => ({
+						...prompt,
+						prompt: REPLACEMENT_USER,
+					})),
+					tools: (request.tools ?? []).map(tool => ({ ...tool, description: REPLACEMENT_TOOL })),
+				};
 			},
 		}).result();
 
@@ -188,5 +216,80 @@ describe("streamDevin onPayload transport seam", () => {
 		expect(result.stopReason).toBe("error");
 		expect(result.errorMessage).toContain("Devin payload hook rejected");
 		expect(chatDispatches).toBe(0);
+	});
+
+	/**
+	 * The invariant, checked at the choke point rather than per field: EVERY
+	 * node handed to `onPayload` must be expressible in JSON. This is what the
+	 * secret redactor requires, so a new protobuf field that is a bigint, a
+	 * Uint8Array, a Date or a class instance turns this red the day it is added
+	 * -- which is the failure mode that shipped.
+	 */
+	it("hands the payload hook a payload JSON can express, every node of it", async () => {
+		const authResponse = toBinary(
+			GetUserJwtResponseSchema,
+			create(GetUserJwtResponseSchema, { userJwt: RESOLVED_USER_JWT }),
+		);
+		const fetchImpl = (async (input: string | URL | Request) => {
+			if (String(input).includes("GetUserJwt")) return new Response(authResponse);
+			return successfulChatResponse();
+		}) as typeof fetch;
+
+		const imageMessage: Message = {
+			role: "user",
+			timestamp: 1,
+			content: [
+				{ type: "text", text: "look at this" },
+				{ type: "image", data: "aGVsbG8=", mimeType: "image/png" },
+			],
+		};
+		const imageContext: Context = { ...context, messages: [...context.messages, imageMessage] };
+
+		let captured: unknown;
+		const offenders: string[] = [];
+		const seen = new WeakSet<object>();
+		const walk = (value: unknown, path: string): void => {
+			if (value === null) return;
+			const kind = typeof value;
+			if (kind === "string" || kind === "number" || kind === "boolean") return;
+			if (kind !== "object") {
+				offenders.push(`${path || "<root>"}: ${kind}`);
+				return;
+			}
+			const node = value as object;
+			if (seen.has(node)) return;
+			seen.add(node);
+			if (Array.isArray(node)) {
+				node.forEach((entry, index) => {
+					walk(entry, `${path}[${index}]`);
+				});
+				return;
+			}
+			const prototype = Object.getPrototypeOf(node);
+			if (prototype !== Object.prototype && prototype !== null) {
+				const name = prototype?.constructor?.name ?? "<null prototype>";
+				offenders.push(`${path || "<root>"}: ${name}`);
+				return;
+			}
+			for (const [key, entry] of Object.entries(node)) walk(entry, path ? `${path}.${key}` : key);
+		};
+
+		const result = await streamDevin(devinModel, imageContext, {
+			apiKey: RESOLVED_API_KEY,
+			fetch: fetchImpl,
+			onPayload: payload => {
+				captured = payload;
+				return undefined;
+			},
+		}).result();
+
+		expect(result.stopReason).toBe("stop");
+		walk(captured, "");
+		// Exact equality, never a count: one tolerated node is how the next one
+		// slips in behind it.
+		expect(offenders).toEqual([]);
+		// The redactor serializes what it walked; a value JSON drops silently is
+		// the same defect wearing a different hat.
+		expect(JSON.parse(JSON.stringify(captured))).toEqual(captured as object);
 	});
 });
