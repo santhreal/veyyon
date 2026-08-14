@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- New family `src/cache-sim/`, which prices a prompt-cache change before anyone makes one. It drives the shipped Anthropic request builder to capture the real wire body and the real breakpoints, then bills the result against a modelled provider cache (longest prefix of the arriving request wins, entries expire on the retention they were written with, published read/write multipliers). Scenarios: every counterfactual arm sends byte-identical content so a delta is never a comparison of two different prompts; a system block that changes each turn is measured against the shipped anchor and against a deeper one; a retention switch is priced across gap lengths and shown to have exactly one crossover; and a rewritten earlier message is shown to forfeit the whole history behind it while rewriting the newest message does not.
+
 ### Removed
 
 - `buildRuleFromMarkdown` in `capability/rule.ts`, a second copy of the rule-frontmatter parser that nothing imported. Every provider, the TTSR CLI and the generated-rule path all go through the one in `discovery/helpers.ts`, so the copy's only remaining effect was to look like the place a new frontmatter field belongs: a field added there parses in nothing and the rule silently ships without it. `parseRuleConditionAndScope`, which helpers.ts does import, stays.

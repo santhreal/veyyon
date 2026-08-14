@@ -6,4 +6,6 @@
  * than a restructuring. Add a family by adding a folder with its own
  * `index.ts`, and re-export it here.
  */
+
+export * from "./cache-sim";
 export * from "./turn-sim";
