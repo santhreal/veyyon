@@ -362,6 +362,15 @@ describe("onPayload is the final physical transport seam", () => {
 	 *
 	 * What it does not catch: a provider not driven here (gitlab-duo-workflow), and
 	 * a field that only appears once real conversation history is present.
+	 *
+	 * Nor does it fail by default on a provider added later that serializes to a
+	 * non-JSON wire format. Typing the hook's parameter `JsonValue` instead of
+	 * `unknown` looks like the guard that would, and is not: the JSON-safe payloads
+	 * the other providers pass are interfaces, which have no implicit index
+	 * signature, so the change yields 16 errors on correct code and the casts that
+	 * silence them are the same cast a protobuf provider would write. Cursor and
+	 * Devin (devin-payload-seam.test.ts) are today's whole at-risk set, each driven
+	 * through its real transport.
 	 */
 	it("hands Cursor's hook a payload a walking redactor can express", async () => {
 		const server = await startH2CaptureServer();
