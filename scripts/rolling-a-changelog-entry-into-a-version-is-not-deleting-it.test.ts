@@ -79,6 +79,31 @@ function sources(): { name: string; md: string }[] {
 	return found.map((source, index) => (index === 0 ? { ...source, md: seedUnreleased(source.md) } : source));
 }
 
+/** `md` with every entry under `## [Unreleased]` removed, as a release cut leaves it. */
+function emptyUnreleased(md: string): string {
+	return md.replace(/(## \[Unreleased\]\n)[\s\S]*?(?=\n## \[)/, "$1");
+}
+
+/**
+ * The state a release cut actually leaves behind, which is when the next release
+ * is prepared: the LEAD package has nothing unreleased, and another package does.
+ * `sources()` cannot express it — it seeds the lead whenever the tree is empty,
+ * and returns the tree untouched whenever any package carries an entry — so which
+ * of the two rules in `renderRootChangelog` gets exercised depends on what happens
+ * to be uncommitted. This pins it.
+ */
+function postCutSources(): { name: string; md: string }[] {
+	const found = changelogSources();
+	expect(found.length).toBeGreaterThan(1);
+	return found.map((source, index) =>
+		index === 0
+			? { ...source, md: emptyUnreleased(source.md) }
+			: index === 1
+				? { ...source, md: seedUnreleased(emptyUnreleased(source.md)) }
+				: source,
+	);
+}
+
 /** The root as the guard reads it before a release: the render of those sources. */
 function currentRender(): string {
 	return renderRootChangelog(sources());
@@ -109,6 +134,30 @@ describe("a release rolls entries into a version section", () => {
 	 */
 	it("leaves no orphan when the whole repository is rolled, so a release can be cut", () => {
 		expect(orphanedRootEntries(currentRender(), rolledRender(nextVersion()))).toEqual([]);
+	});
+
+	/**
+	 * The defect the widening above fixes, in the state that actually produces it.
+	 * `renderRootChangelog` filters the lead package by the positional fork scan and
+	 * every OTHER package by the lead's version list, and only the second rule has
+	 * ever deleted an entry: with the lead's Unreleased empty, a roll gives the lead
+	 * no new heading, so another package's rolled entry matched no lead version and
+	 * was dropped from the render entirely. The release guard then read that as a
+	 * deleted paragraph and refused to write, which is a release that cannot be cut.
+	 *
+	 * The two tests above cannot see it: whether the lead or a non-lead package
+	 * carries the entry depends on what is uncommitted when they run.
+	 */
+	it("carries another package's entry when the lead has nothing of its own to release", () => {
+		const version = nextVersion();
+		const before = renderRootChangelog(postCutSources());
+		const after = renderRootChangelog(
+			postCutSources().map(({ name, md }) => ({ name, md: applyReleaseToChangelog(md, version, "2026-08-11") })),
+		);
+
+		expect(unreleasedEntries(before)).toContain(SEEDED_ENTRY);
+		expect(after).toContain(SEEDED_ENTRY);
+		expect(orphanedRootEntries(before, after)).toEqual([]);
 	});
 
 	/** The same thing in one paragraph, so a failure above can be read without the repo. */
