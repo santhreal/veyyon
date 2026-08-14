@@ -25,6 +25,7 @@ import { describe, expect, test } from "bun:test";
 import type { Rule } from "../../src/capability/rule";
 import { buildBuiltinRules } from "../../src/discovery/builtin-defaults";
 import { TtsrManager } from "../../src/export/ttsr";
+import { warmUpRule } from "../helpers/ttsr-warmup";
 
 /** The periods bundled rules are expected to declare, by name. */
 const DECLARED_PERIODS: Record<string, number> = {
@@ -32,14 +33,20 @@ const DECLARED_PERIODS: Record<string, number> = {
 	"test-scope": 3,
 };
 
+/** The working directory a `pathScope` rule in the sweep is compared against. */
+const CWD = "/work/project";
+
 function manager(): TtsrManager {
-	return new TtsrManager({
-		enabled: true,
-		contextMode: "discard",
-		interruptMode: "never",
-		repeatMode: "once",
-		repeatGap: 10,
-	});
+	return new TtsrManager(
+		{
+			enabled: true,
+			contextMode: "discard",
+			interruptMode: "never",
+			repeatMode: "once",
+			repeatGap: 10,
+		},
+		{ getCwd: () => CWD },
+	);
 }
 
 /** Every bundled rule that repeats per compaction, whichever section it ships in. */
@@ -53,12 +60,18 @@ function perCompactRules(): Rule[] {
  * The buffer is reset first, as a new turn does: `checkDelta` APPENDS, so a
  * second identical probe would otherwise match against `bun testbun test` and
  * report a rule as suppressed when the matcher simply never saw the command.
+ *
+ * A rule carrying a warm-up is driven through it first, so this asks about the
+ * repeat PERIOD and not about the warm-up — the two suppress a rule in ways that
+ * look identical from here, and only one of them is this suite's subject. Warm-up
+ * probes on a suppressed rule count for nothing, which is what keeps the negative
+ * cases below honest.
  */
 function armed(ttsr: TtsrManager, rule: Rule): boolean {
-	ttsr.resetBuffer();
-	return ttsr
-		.checkDelta(SAMPLE_MATCH[rule.name] ?? "", { source: "tool", toolName: TOOL[rule.name] ?? "bash" })
-		.some(fired => fired.name === rule.name);
+	const delta = SAMPLE_MATCH[rule.name] ?? "";
+	const context = { source: "tool", toolName: TOOL[rule.name] ?? "bash" } as const;
+	warmUpRule(ttsr, rule, delta, context);
+	return ttsr.checkDelta(delta, context).some(fired => fired.name === rule.name);
 }
 
 /** A payload each bundled per-compact rule actually matches, so the check is the real one. */
@@ -66,12 +79,14 @@ const SAMPLE_MATCH: Record<string, string> = {
 	"commit-drift": '{"path":"src/main.ts","oldText":"a","newText":"b"}',
 	"test-scope": "bun test",
 	"irc-signal": '{"op":"send","to":"Main","message":"ack"}',
+	"cwd-reroot": '{"path":"/work/other-project/crates/cli/src/main.rs"}',
 };
 
 const TOOL: Record<string, string> = {
 	"commit-drift": "edit",
 	"test-scope": "bash",
 	"irc-signal": "irc",
+	"cwd-reroot": "read",
 };
 
 describe("a per-compact rule's period", () => {

@@ -13,6 +13,7 @@ import { prompt } from "@veyyon/utils";
 // Register all discovery providers as a side effect.
 import "@veyyon/coding-agent/discovery";
 import { TtsrManager, type TtsrMatchContext } from "@veyyon/coding-agent/export/ttsr";
+import { warmUpRule } from "../helpers/ttsr-warmup";
 
 function ruleProvider() {
 	const cap = getCapability(ruleCapability.id);
@@ -85,9 +86,11 @@ describe("builtin-defaults rule provider", () => {
 		expect(manager.addRule(rule)).toBe(true);
 
 		// A read/grep/glob call carrying a deep absolute path (the shape produced only
-		// when reaching into another project) fires the nudge on each nav tool.
+		// when reaching into another project) fires the nudge on each nav tool — once the
+		// rule's own warm-up is past, since it says nothing about the first such reach.
 		const foreign =
 			'{"path":"/workspaces/santh-fixture/software/keyhog/crates/cli/src/subcommands/calibrate_autoroute.rs:1-260"}';
+		warmUpRule(manager, rule, foreign, { source: "tool", toolName: "read" });
 		for (const toolName of ["read", "grep", "glob", "ast_grep"]) {
 			manager.resetBuffer();
 			expect(
@@ -176,7 +179,7 @@ describe("builtin-defaults rule provider", () => {
 
 		const rendered = prompt.render(rule.content, { argot: false, cwd: "/work/veyyon", matchedPath: undefined });
 
-		expect(rendered).toContain("a file by its full absolute path");
+		expect(rendered).toContain("a file named by its full absolute path");
 		expect(rendered).not.toContain("``");
 	});
 

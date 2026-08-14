@@ -43,6 +43,7 @@ import { buildRuleFromMarkdown } from "@veyyon/coding-agent/discovery/helpers";
 import { TtsrManager } from "@veyyon/coding-agent/export/ttsr";
 import { prompt } from "@veyyon/utils";
 import "@veyyon/coding-agent/discovery";
+import { warmUpRule } from "../helpers/ttsr-warmup";
 
 const CWD = "/work/project";
 const OUTSIDE = '{"path":"/work/other-project/crates/cli/src/main.rs"}';
@@ -363,24 +364,36 @@ describe("C: parsing a repeat policy out of rule frontmatter", () => {
 describe("the bundled cwd-reroot rule", () => {
 	/**
 	 * The whole point of the three fixes, asserted on the shipped rule rather than on a fixture: it
-	 * takes the tool-scoped delivery path, and it repeats, so the second foreign project a session
-	 * touches gets the same advice as the first.
+	 * takes the tool-scoped delivery path, and it repeats, so a session that settles into a second
+	 * foreign project gets the same advice as it did for the first.
+	 *
+	 * It repeats per COMPACTION now rather than after a gap of messages. Under the gap it came back
+	 * eight messages after it was heard, which on a long session is the same paragraph several times
+	 * about work that had already moved on.
 	 */
 	it("repeats, because its advice applies again to the next project", async () => {
 		const rule = await builtinRule("cwd-reroot");
 
 		expect(rule.interruptMode).toBe("never");
-		expect(rule.repeatMode).toBe("after-gap");
-		expect(rule.repeatGap).toBeGreaterThan(0);
+		expect(rule.repeatMode).toBe("per-compact");
+		expect(rule.warmupMatches).toBeGreaterThan(1);
 	});
 
-	it("fires a second time for a different project under the global once default", async () => {
-		const manager = managerWith(await builtinRule("cwd-reroot"));
+	it("fires again for a different project once the transcript has been replaced", async () => {
+		const rule = await builtinRule("cwd-reroot");
+		const manager = managerWith(rule);
 
+		warmUpRule(manager, rule, OUTSIDE, TOOL);
 		expect(matchNames(manager)).toEqual(["cwd-reroot"]);
 		manager.markInjectedByNames(["cwd-reroot"]);
-		for (let i = 0; i < 8; i++) manager.incrementMessageCount();
+		expect(matchNames(manager)).toEqual([]);
 
-		expect(matchNames(manager, '{"path":"/work/third-project/src/lib/main.rs"}')).toEqual(["cwd-reroot"]);
+		manager.resetForCompaction();
+		// Re-armed, but the habit has to be established again: the reminder was heard, so the next
+		// one is earned by reaching over there repeatedly rather than by the transcript rolling.
+		const third = '{"path":"/work/third-project/src/lib/main.rs"}';
+		expect(matchNames(manager, third)).toEqual([]);
+		warmUpRule(manager, rule, third, TOOL, "after-compaction");
+		expect(matchNames(manager, third)).toEqual(["cwd-reroot"]);
 	});
 });

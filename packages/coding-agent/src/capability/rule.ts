@@ -5,8 +5,6 @@
  * Translated to a canonical shape regardless of source format.
  */
 
-// The owner, not the `@veyyon/utils` barrel: 1 module against 81.
-import { parseFrontmatter } from "@veyyon/utils/frontmatter";
 import { defineCapability } from ".";
 import type { SourceMeta } from "./types";
 
@@ -43,6 +41,8 @@ export interface RuleFrontmatter {
 	repeatGap?: number;
 	/** Transcript resets a `per-compact` rule waits out before firing again. */
 	repeatCompactions?: number;
+	/** Distinct matching streams the rule stays silent through before it fires. */
+	warmupMatches?: number;
 	[key: string]: unknown;
 }
 
@@ -99,6 +99,19 @@ export interface Rule {
 	 * deciding how often the model hears it.
 	 */
 	repeatCompactions?: number;
+	/**
+	 * Distinct matching streams (tool calls, prose turns) this rule stays silent
+	 * through before it fires at all.
+	 *
+	 * Advice about a HABIT is worth its interruption only once the habit exists. A
+	 * rule with no warm-up speaks on the first match, which for `cwd-reroot` means
+	 * one glance at a file in another project is answered with a paragraph about
+	 * re-rooting — advice whose own body then says to ignore it for a one-off. The
+	 * count is over distinct streams, so the many deltas of one tool call advance
+	 * it once, and it starts again from the injection: a rule that has spoken has
+	 * to see the pattern again before it speaks again.
+	 */
+	warmupMatches?: number;
 	/**
 	 * Which group this rule belongs to on screen.
 	 *
@@ -283,54 +296,6 @@ export function setActiveRules(value: readonly Rule[]): void {
 
 export function resetActiveRulesForTests(): void {
 	activeRules = [];
-}
-
-export function buildRuleFromMarkdown(
-	name: string,
-	content: string,
-	filePath: string,
-	_source: SourceMeta,
-	options?: { stripNamePattern?: RegExp },
-): Rule {
-	const cleanName = options?.stripNamePattern ? name.replace(options.stripNamePattern, "") : name;
-	// `parseFrontmatter` returns `{ frontmatter, body }` and is not generic; the
-	// shape it is asked for is asserted here rather than at each of the eleven reads.
-	const { frontmatter, body } = parseFrontmatter(content);
-	const data = frontmatter as RuleFrontmatter;
-	const { condition, astCondition, scope } = parseRuleConditionAndScope(data);
-	const interruptMode =
-		data.interruptMode === "never" ||
-		data.interruptMode === "prose-only" ||
-		data.interruptMode === "tool-only" ||
-		data.interruptMode === "always"
-			? data.interruptMode
-			: undefined;
-	const pathScope = data.pathScope === "outside-cwd" || data.pathScope === "inside-cwd" ? data.pathScope : undefined;
-	const repeatMode =
-		data.repeatMode === "once" || data.repeatMode === "after-gap" || data.repeatMode === "per-compact"
-			? data.repeatMode
-			: undefined;
-	const repeatGap = typeof data.repeatGap === "number" && data.repeatGap > 0 ? data.repeatGap : undefined;
-	const repeatCompactions =
-		typeof data.repeatCompactions === "number" && data.repeatCompactions > 0 ? data.repeatCompactions : undefined;
-
-	return {
-		name: cleanName,
-		path: filePath,
-		content: body,
-		globs: data.globs,
-		alwaysApply: data.alwaysApply,
-		description: data.description,
-		condition,
-		astCondition,
-		scope,
-		interruptMode,
-		pathScope,
-		repeatMode,
-		repeatGap,
-		repeatCompactions,
-		_source,
-	};
 }
 
 export const ruleCapability = defineCapability<Rule>({

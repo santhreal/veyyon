@@ -31,6 +31,7 @@ import type { Rule } from "@veyyon/coding-agent/capability/rule";
 import { BUILTIN_RULE_SOURCES } from "@veyyon/coding-agent/discovery/builtin-rules/index";
 import { buildRuleFromMarkdown, createSourceMeta } from "@veyyon/coding-agent/discovery/helpers";
 import { TtsrManager } from "@veyyon/coding-agent/export/ttsr";
+import { warmUpRule } from "../helpers/ttsr-warmup";
 
 const CWD = "/work/project";
 const RULE_PATH = "/builtin/cwd-reroot.md";
@@ -59,11 +60,21 @@ function rerootRule(): Rule {
  *
  * A fresh manager per call because a rule that has fired is subject to its repeat policy, and each
  * case here asks an independent question about the first firing.
+ *
+ * The rule carries a WARM-UP, so a probe on a cold manager is silent whatever it contains. The
+ * warm-up is cleared first on streams of the shape the rule is for — a `read` of a foreign path —
+ * so a silent probe below is silent because of the case under test rather than because the rule had
+ * not yet seen a habit. `fires(OUTSIDE, "read")` is the control for that: it goes through the same
+ * helper and must come back true.
  */
 function fires(delta: string, toolName: string, cwd = CWD): boolean {
 	const manager = new TtsrManager(undefined, { getCwd: () => cwd });
-	expect(manager.addRule(rerootRule())).toBe(true);
-	return manager.checkDelta(delta, { source: "tool", toolName }).some(r => r.name === "cwd-reroot");
+	const rule = rerootRule();
+	expect(manager.addRule(rule)).toBe(true);
+	warmUpRule(manager, rule, OUTSIDE, { source: "tool", toolName: "read" });
+	return manager
+		.checkDelta(delta, { source: "tool", toolName, streamKey: `probe:${toolName}` })
+		.some(r => r.name === "cwd-reroot");
 }
 
 const OUTSIDE = '{"path":"/work/other-project/crates/cli/src/main.rs"}';
@@ -171,12 +182,20 @@ describe("the rule's own frontmatter", () => {
 	 * Advice that interrupts the model mid-thought to discuss path length is not worth the
 	 * interruption, and a nudge that repeats trains the model to skim past the channel it arrives
 	 * on. Both are pinned because both are policy the rule chose, not defaults it inherited.
+	 *
+	 * The policy it chose is now the quietest one a repeatable rule can have: it says nothing until
+	 * three separate calls have reached outside the working directory, and having said it once it is
+	 * silent until the transcript is replaced. The two together are what a reader of this rule was
+	 * asking for — it fired on the first glance at a foreign file and then again eight messages
+	 * later, which is a paragraph of advice for work that was already finished.
 	 */
-	it("never interrupts and leaves a gap before repeating", () => {
+	it("never interrupts, waits for a habit, and speaks at most once per compaction", () => {
 		const rule = rerootRule();
 
 		expect(rule.interruptMode).toBe("never");
-		expect(rule.repeatMode).toBe("after-gap");
-		expect(rule.repeatGap).toBe(8);
+		expect(rule.repeatMode).toBe("per-compact");
+		expect(rule.warmupMatches).toBe(3);
+		// A gap belongs to `after-gap` and would be dead frontmatter here, read by nothing.
+		expect(rule.repeatGap).toBeUndefined();
 	});
 });
