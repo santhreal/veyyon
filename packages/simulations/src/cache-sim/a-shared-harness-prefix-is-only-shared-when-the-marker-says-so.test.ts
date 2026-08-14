@@ -46,17 +46,30 @@
  *     interleaving. This is also the mistake the model shipped with for one run —
  *     it made a session-scoped cache look account-wide and credited the shipped
  *     anchor with a saving it does not collect.
+ *   - the shared-write premium made a no-op (the multiplier ignored): the
+ *     pessimistic row reds on its own sensitivity check, so that row cannot pass by
+ *     pricing two identical arms.
+ *   - the anchor-only scoping widened to every system marker: the trap row reds,
+ *     and it reds the way it was found — the premium turned the switch into a loss
+ *     before the decorator was narrowed to the anchor.
  *
  * MEASURED, one six-turn parent with a changing system tail plus N three-turn
  * subagents that share its harness block and differ from block 1 on, in
  * base-input-price equivalents. Session-scoped, as the product ships: the shipped
  * anchor costs 24472 against 13892 at N=0 and 111882 against 75897 at N=6, so the
  * gap WIDENS by about 4234 per subagent and the shallow anchor never breaks even.
- * With `scope: "global"` set, a subagent's first request reads the 4811-token
- * harness prefix its parent wrote thirty seconds earlier, the gap NARROWS by about
- * 1298 per subagent (10580 at N=0, 2790 at N=6), and the crossover lands near nine
- * simultaneously sharing subagents. Below that fan-out the deeper anchor is
- * cheaper even with sharing switched on.
+ * With `scope: "global"` on the anchor, a subagent's first request reads the
+ * 4811-token harness prefix its parent wrote thirty seconds earlier, the gap
+ * NARROWS by 1298 per subagent (10580 at N=0, 2790 at N=6, 193 at N=8, −1105 at
+ * N=9), so the crossover is at nine simultaneously sharing subagents. Below it the
+ * deeper anchor is cheaper even with sharing switched on.
+ *
+ * The switch itself, at N=1: 39040 unshared, 33508 shared, and 37116 shared under
+ * the pessimistic assumption that a shared write costs what the dearest write in
+ * the table costs — still cheaper than not sharing. Scoping every system marker
+ * instead of the anchor costs 49639 under the same assumption, which is worse than
+ * not sharing at all, because the deepest system marker sits on a block that
+ * changes every turn.
  */
 import { describe, expect, it } from "bun:test";
 import {
@@ -64,6 +77,7 @@ import {
 	armPayloads,
 	conversationAfter,
 	deepAnchor,
+	PRICE,
 	PRODUCTION,
 	prefixesOf,
 	runFleet,
@@ -185,6 +199,49 @@ describe("a harness prefix shared between a parent and its subagents", () => {
 		// Below the crossover the deeper anchor is cheaper even with sharing on.
 		expect(deltas[crossover - 1]).toBeGreaterThan(0);
 		expect(crossover).toBeGreaterThan(2);
+	});
+
+	/**
+	 * Setting the field is the cheap candidate this file produces, so it is worth
+	 * knowing what would have to be true for it to be wrong. No published number
+	 * says what a shared write costs; the pessimistic case is that it costs what the
+	 * dearest write in the price table costs, and even then the switch has to pay
+	 * for itself from the first sharing session or it is not a switch worth making.
+	 */
+	it("still pays for itself if a shared write turns out to cost the dearest write in the table", async () => {
+		const pessimistic = PRICE.write1h / PRICE.write5m;
+		const withoutSharing = await fleetCost(PRODUCTION, 1);
+		const free = (await runFleet(sharedGlobally(PRODUCTION), fleetOf(1))).cost;
+		const dear = (await runFleet(sharedGlobally(PRODUCTION), fleetOf(1), { globalWritePremium: pessimistic })).cost;
+
+		expect(pessimistic).toBeGreaterThan(1);
+		// The premium is real money, so the pessimistic arm must cost more than the
+		// free one, or the sensitivity is not being applied at all.
+		expect(dear).toBeGreaterThan(free);
+		// And it still beats not sharing, from one subagent: the parent publishes the
+		// prefix once per lifetime and each subagent skips a whole write of it.
+		expect(dear).toBeLessThan(withoutSharing);
+	});
+
+	/**
+	 * And the mistake the row above nearly shipped as its recommendation: scope
+	 * every system marker rather than the anchor. The deepest one sits on the block
+	 * that changes every turn, so it publishes a shared entry per turn that no
+	 * session can ever match, and any premium at all turns the switch into a loss.
+	 */
+	it("is turned into a loss by scoping the marker on the block that changes", async () => {
+		const pessimistic = PRICE.write1h / PRICE.write5m;
+		const withoutSharing = await fleetCost(PRODUCTION, 1);
+		const anchorOnly = (await runFleet(sharedGlobally(PRODUCTION), fleetOf(1), { globalWritePremium: pessimistic }))
+			.cost;
+		const everywhere = (
+			await runFleet(sharedGlobally(PRODUCTION, { everySystemMarker: true }), fleetOf(1), {
+				globalWritePremium: pessimistic,
+			})
+		).cost;
+
+		expect(everywhere).toBeGreaterThan(anchorOnly);
+		expect(everywhere).toBeGreaterThan(withoutSharing);
 	});
 
 	/**
