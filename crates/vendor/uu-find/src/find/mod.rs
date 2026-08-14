@@ -268,7 +268,7 @@ fn process_dir_walk_request(
 		},
 		|error| {
 			ret.set(1);
-			writeln!(&mut stderr(), "Error: {}: {}", error.path.display(), error.error).unwrap();
+			let _ = writeln!(&mut stderr(), "Error: {}: {}", error.path.display(), error.error);
 			Ok(veyyon_walker::WalkDecision::Include)
 		},
 	);
@@ -284,13 +284,13 @@ fn process_dir_walk_request(
 		},
 		Err(veyyon_walker::WalkError::Interrupted(err)) => {
 			ret_value = 1;
-			writeln!(&mut stderr(), "Error: {err}").unwrap();
+			let _ = writeln!(&mut stderr(), "Error: {err}");
 			finish_find_walk(deps, matcher, &mut current_dir, &mut ret_value);
 			ret_value
 		},
 		Err(veyyon_walker::WalkError::InvalidData { path, message }) => {
 			ret_value = 1;
-			writeln!(&mut stderr(), "Error: {}: {message}", path.display()).unwrap();
+			let _ = writeln!(&mut stderr(), "Error: {}: {message}", path.display());
 			finish_find_walk(deps, matcher, &mut current_dir, &mut ret_value);
 			ret_value
 		},
@@ -461,7 +461,7 @@ pub fn find_main(args: &[&str], deps: &dyn Dependencies) -> i32 {
 	match do_find(&args, deps) {
 		Ok(ret) => ret,
 		Err(e) => {
-			writeln!(&mut stderr(), "Error: {e}").unwrap();
+			let _ = writeln!(&mut stderr(), "Error: {e}");
 			1
 		},
 	}

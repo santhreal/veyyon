@@ -48,7 +48,7 @@ impl Matcher for DeleteMatcher {
 			Ok(()) => true,
 			Err(e) => {
 				matcher_io.set_exit_code(1);
-				writeln!(&mut stderr(), "Failed to delete {path_str}: {e}").unwrap();
+				let _ = writeln!(&mut stderr(), "Failed to delete {path_str}: {e}");
 				false
 			},
 		}

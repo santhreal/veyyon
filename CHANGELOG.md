@@ -7,6 +7,7 @@
 ### Fixed
 
 - Devin requests no longer fail outright for anyone with secrets configured. The provider handed its `onPayload` hook the raw protobuf message, but that hook is where the secret redactor lives, and the redactor walks the payload rewriting every string and refuses any value JSON cannot express. A protobuf message is never that shape: `metadata.requestId` is a uint64 and therefore a bigint, and bytes fields are `Uint8Array`. So every single chat request died with "the provider request contains a non-JSON value/object; confidentiality transform failed." — the provider was unusable rather than degraded, and the message named the transform rather than the cause. The hook now receives canonical proto3 JSON, which carries 64-bit fields as strings, so the redactor can read and rewrite the whole payload; the reply is parsed back before it goes on the wire, and a no-op round-trip is byte-identical. Nothing is serialized when no hook is installed.
+- `find` no longer crashes the worker thread when its output pipe closes early. Every write on both of `find`'s print paths — `-print`/`-print0` and `-printf` — called `.unwrap()`, so an ordinary truncated pipeline like `find . | head -1` arrived as a BrokenPipe panic on a `tokio-rt-worker` rather than as the write error the matcher already knew how to report. Writes now end the entry quietly, and the error reports that used to be issued alongside them can no longer panic either, since stderr is a pipe too and both ends close together.
 
 ## [1.0.49] - 2026-08-14
 
