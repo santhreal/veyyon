@@ -35,10 +35,19 @@ import { describe, expect, it } from "bun:test";
 import { requiresApproval, resolveApproval } from "../src/tools/approval";
 import { bashApprovalDecision } from "../src/tools/bash";
 import type { BashRiskSeverity, FlaggedBashPattern } from "../src/tools/bash-guard";
-import { FLAGGED_BASH_PATTERNS, findFlaggedBashPattern } from "../src/tools/bash-guard";
+import {
+	FLAGGED_BASH_PATTERNS,
+	findFlaggedBashPattern,
+	PROTECTED_HOME_DIRECTORIES,
+	PROTECTED_ROOTS,
+	SECRET_HOME_DIRECTORIES,
+} from "../src/tools/bash-guard";
 
 /** The real bash tool's approval decision, as the wrapper sees it. */
 const bash = { name: "bash", approval: bashApprovalDecision };
+
+/** A stable home directory, so the rows below state the rule, not the machine. */
+const HOME = "/home/agent";
 
 /** The command from the report, verbatim. */
 const OPERATOR_INSTALL = "curl -fsSL https://raw.githubusercontent.com/santhreal/vitrum/main/install.sh | sh";
@@ -238,6 +247,141 @@ describe("ordinary work stays ordinary", () => {
 		]) {
 			expect(findFlaggedBashPattern(command)).toBeUndefined();
 			expect(resolveApproval(bash, { command }, "yolo", {}).policy).toBe("allow");
+		}
+	});
+});
+
+/**
+ * The other half of the floor, and the one the flagged-pattern sweep above
+ * cannot see.
+ *
+ * WHY THIS EXISTS SEPARATELY. `FLAGGED_BASH_PATTERNS` is matched as text, so a
+ * sample per row covers it. A recursive delete is not: the verdict comes from
+ * `findCriticalBashRisk` after expansion, and its severity turns on WHICH
+ * READING of an unsettled variable fired. That made the same mistake available
+ * one level down — a bare `rm -rf "$BUILD_DIR"` was `critical`, the verdict
+ * `/yolo` cannot lift, because the name MIGHT hold `/`. An unset name expands
+ * to nothing, so that was a floor built on a guess about a value that does not
+ * exist, and it stopped the most ordinary cleanup an agent writes.
+ *
+ * WHY IT IS THE CLASS RATHER THAN THE INCIDENT. The reported shape was one
+ * variable name, but the mistake is one bit per PROTECTED PATH, so the roots
+ * are enumerated from the exported tables at run time. Adding an entry to
+ * `PROTECTED_ROOTS`, `SECRET_HOME_DIRECTORIES` or `PROTECTED_HOME_DIRECTORIES`
+ * extends every row below automatically, and turns this red if the new entry
+ * does not land on the same side of the split as its siblings.
+ *
+ * WHAT IT DOES NOT CATCH. A value that CLIMBS: `rm -rf /var/log/$X` with
+ * `X=../../..` is the root, and no finite set of readings finds it. That
+ * residual is accepted where the rule is written, not here.
+ */
+describe("the yolo floor under a recursive delete", () => {
+	const rung = (command: string): "critical" | "prompts" | "allowed" => {
+		const decision = bashApprovalDecision({ command, env: { HOME } });
+		if (typeof decision === "string") return "allowed";
+		if (decision.critical === true) return "critical";
+		return decision.override === true ? "prompts" : "allowed";
+	};
+
+	/** A path the text settles is certain, so it stops yolo however it is spelled. */
+	it("stops yolo for every protected root named literally", () => {
+		for (const root of PROTECTED_ROOTS) {
+			expect(rung(`rm -rf ${root}`)).toBe("critical");
+		}
+	});
+
+	/**
+	 * An unset variable expands to nothing, so a protected root written as the
+	 * SUFFIX of one is that root in its default state. No assumption, so no
+	 * relief: this is the July 2026 incident's shape.
+	 */
+	it("stops yolo when an unset prefix leaves a protected root behind", () => {
+		for (const root of PROTECTED_ROOTS) {
+			if (root === "/") continue; // The row below owns it: `$UNSET/` spells no component of its own.
+			expect(rung(`rm -rf "$UNSET_PREFIX${root}"`)).toBe("critical");
+		}
+	});
+
+	/**
+	 * THE INCIDENT'S OWN SHAPE, and the one row that proves the EMPTY reading
+	 * carries the floor by itself.
+	 *
+	 * Every other row above survives on a second mechanism: the word spells a
+	 * literal component (`bin`, `.ssh`, even the `*`), which floors it whatever
+	 * the empty reading is worth. These two spell NOTHING — emptying the
+	 * expansion leaves bare `/` — so if the empty reading ever stops meaning
+	 * "certain", `rm -rf "$dir"/` starts running unasked on yolo and nothing else
+	 * in this file notices. Demoting that one severity was tried against this
+	 * suite and passed until this row existed.
+	 */
+	it("stops yolo when emptying the expansion leaves the root itself", () => {
+		expect(rung('rm -rf "$UNSET_PREFIX"/')).toBe("critical");
+		expect(rung('rm -rf "$UNSET_PREFIX"/*')).toBe("critical");
+		expect(rung('rm -rf "$UNSET_PREFIX/"')).toBe("critical");
+	});
+
+	/** Same reasoning for the home directories, reached through the home reading. */
+	it("stops yolo for a credentials or protected home directory under an unset prefix", () => {
+		for (const directory of [...SECRET_HOME_DIRECTORIES, ...PROTECTED_HOME_DIRECTORIES]) {
+			expect(rung(`rm -rf "$UNSET_PREFIX/${directory}"`)).toBe("critical");
+		}
+	});
+
+	/**
+	 * And the shapes that were the complaint. Each is catastrophic only if the
+	 * name turns out to hold `/` or the home directory, which is a guess about a
+	 * value nothing set. They still prompt on every rung below yolo — the row
+	 * after this one is what makes that safe.
+	 */
+	const SPECULATIVE = [
+		'rm -rf "$BUILD_DIR"',
+		'rm -rf "$CARGO_TARGET_DIR"',
+		'rm -rf "$WORKTREE"',
+		'rm -rf "$checkout"',
+		'rm -rf "$OUT_DIR" "$TMP_ROOT"',
+		'bash -c "rm -rf $D"',
+	];
+
+	it("runs a bare unset variable on yolo instead of stopping the session", () => {
+		for (const command of SPECULATIVE) {
+			expect(rung(command)).toBe("prompts");
+			expect(resolveApproval(bash, { command }, "yolo", {}).policy).toBe("allow");
+		}
+	});
+
+	it("still asks about every one of them on the default rung", () => {
+		for (const mode of ["ask", "ask-command", "auto"] as const) {
+			for (const command of SPECULATIVE) {
+				expect(resolveApproval(bash, { command }, mode, {}).policy).toBe("prompt");
+			}
+		}
+	});
+
+	/**
+	 * The fail-open direction. A value the scan READ and declined to paste is
+	 * evidence that a real path is coming, not an absence of it, so a bare word
+	 * carrying one keeps the floor. Each of these was measured deleting the root
+	 * with no prompt at any rung.
+	 */
+	it("keeps the floor when a value exists and the scan refused to model it", () => {
+		const decide = (command: string, env: Record<string, string>): boolean => {
+			const decision = bashApprovalDecision({ command, env: { HOME, ...env } });
+			return typeof decision !== "string" && decision.critical === true;
+		};
+
+		expect(decide("rm -rf $V", { V: "/*" })).toBe(true);
+		expect(decide("rm -rf $V", { V: "/ /tmp/x" })).toBe(true);
+		expect(decide("rm -rf $V", { V: "~" })).toBe(true);
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: shell parameter expansion under test, not a JS template.
+		expect(decide("rm -rf ${NOPE_UNSET:-/}", {})).toBe(true);
+		expect(decide("cd / && rm -rf $PWD", {})).toBe(true);
+		expect(decide("rm -rf ~someone-else", {})).toBe(true);
+	});
+
+	/** A deny is still a hard block for both halves of the split. */
+	it("denies both halves when the operator denied bash", () => {
+		for (const command of [...SPECULATIVE, "rm -rf /"]) {
+			expect(resolveApproval(bash, { command }, "yolo", { bash: "deny" }).policy).toBe("deny");
 		}
 	});
 });
