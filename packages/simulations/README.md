@@ -17,7 +17,7 @@ it, kept together.
 | Family | What it drives |
 |---|---|
 | `src/turn-sim/` | One agent turn: a real `AgentSession` against a scripted provider |
-| `src/cache-sim/` | Prompt-cache economics: real request builders, a modelled provider cache, priced counterfactuals |
+| `src/cache-sim/` | Prompt-cache economics on both surfaces: real request builders, a modelled provider cache, priced counterfactuals |
 
 Adding a family means adding a directory with its own `index.ts` and re-exporting
 it from `src/index.ts`. Nothing else moves.
