@@ -1,6 +1,6 @@
 import { scheduler } from "node:timers/promises";
 import { gunzipSync, gzipSync } from "node:zlib";
-import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
+import { create, fromBinary, fromJson, type JsonValue, toBinary, toJson } from "@bufbuild/protobuf";
 import {
 	DEVIN_EXTENSION_NAME,
 	DEVIN_EXTENSION_VERSION,
@@ -201,9 +201,22 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 			const resolvedApiKey = request.metadata?.apiKey ?? apiKey;
 			const resolvedUserJwt = request.metadata?.userJwt ?? auth.userJwt;
 
-			const replacementPayload = await options?.onPayload?.(request, model);
-			if (replacementPayload !== undefined) {
-				request = replacementPayload as typeof request;
+			// `onPayload` is a JSON seam: the secret-redaction walker behind it
+			// (`transformProviderPayload`) rewrites every string and refuses any
+			// value JSON cannot express. A protobuf message is not that shape --
+			// `metadata.requestId` is a uint64 and therefore a bigint, and bytes
+			// fields are Uint8Array -- so handing the message straight over made
+			// EVERY Devin request fail with "the provider request contains a
+			// non-JSON value/object; confidentiality transform failed." for any
+			// operator with secrets configured. Canonical proto3 JSON carries the
+			// 64-bit fields as strings, so the hook sees, and can redact, the
+			// whole payload. Only paid when a hook is installed.
+			const payloadHook = options?.onPayload;
+			if (payloadHook) {
+				const replacementPayload = await payloadHook(toJson(GetChatMessageRequestSchema, request), model);
+				if (replacementPayload !== undefined) {
+					request = fromJson(GetChatMessageRequestSchema, replacementPayload as JsonValue);
+				}
 			}
 			const wireMetadata = create(MetadataSchema, request.metadata);
 			wireMetadata.apiKey = resolvedApiKey;
