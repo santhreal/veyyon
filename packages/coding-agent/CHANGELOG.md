@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Devin and Cursor are usable again with secrets enabled. Every chat request to either provider failed outright with "the provider request contains a non-JSON value/object; confidentiality transform failed" — not a degraded response, no response at all, and a message naming the transform rather than the cause. Both providers speak protobuf and handed the secret redactor the live message; the redactor walks the payload rewriting every string and refuses any value JSON cannot express, which a protobuf message never is (a uint64 field is a bigint, a bytes field is a `Uint8Array`, and Cursor's request carries 26 such fields). Both now hand over canonical proto3 JSON and parse the reply back before it reaches the wire. A session with no secrets configured never installed the hook and was never affected, which is why this survived: it is invisible until the moment secrets are turned on.
+- A `find` whose output pipe closes early no longer panics. `find … | head`, or any consumer that stops reading, closed the pipe underneath a write the code unwrapped, so an ordinary shell idiom aborted the process with a Rust panic instead of the silent exit every other tool in the pipeline performs. Writes now carry their error to the caller, across the printer, the `-printf` formatter, `-delete`, `-exec` and the permission matcher rather than at the one site the crash was first seen.
+
 ## [1.0.49] - 2026-08-14
 
 ### Fixed
