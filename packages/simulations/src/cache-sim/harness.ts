@@ -749,9 +749,11 @@ export function sharedGlobally(arm: Arm, options?: { everySystemMarker?: boolean
 // only anchor the surface accepts — `prompt_cache_breakpoint` is rejected outright
 // (`packages/ai/src/providers/openai-codex-responses.ts:2537-2539`) — so nothing a
 // caller does about placement matters here and everything a caller does about
-// prefix hygiene does. That is why this half of the family exists: the local
-// corpus loses an order of magnitude more tokens to rewritten history on these
-// providers than to breakpoint placement on Anthropic.
+// prefix hygiene does. That is why this half of the family exists: across 152,120
+// judgeable turn pairs in the local corpus, the fast misses whose shape is
+// consistent with a rewritten history forfeit at most 18.5M tokens on these
+// providers against 1.5M on the Anthropic path, where every placement effect lives.
+// The implicit scenario's header states what that bound does and does not prove.
 
 const CODEX_MODEL_SPEC: ModelSpec<"openai-codex-responses"> = {
 	id: "gpt-5.1-codex",
