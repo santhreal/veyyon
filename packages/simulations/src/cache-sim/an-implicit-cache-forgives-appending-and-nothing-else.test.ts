@@ -5,14 +5,28 @@
  * the key is the same key.
  *
  * WHY THIS FILE EXISTS. The Anthropic half of this family argues about breakpoint
- * depth, and the local corpus says that argument is the small one. Of the cache
- * misses that land less than thirty seconds after a hit — too fast to be expiry —
- * rewritten history accounts for an order of magnitude more lost tokens on the
- * implicit-cache providers than every Anthropic placement effect combined. This is
- * the surface where that loss happens, and the surface where no marker can save it:
- * the builder is not allowed to send a breakpoint at all
+ * depth, and a scan of the local corpus says that argument is the smaller one.
+ * 155,197 assistant turns yield 152,120 adjacent pairs where both prompts were
+ * large enough to cache; 531 of those pairs missed, forfeiting at most 68.9M
+ * tokens, and 181 missed within thirty seconds of the previous turn — too fast to
+ * be expiry — for 22.8M. Of that fast-miss loss, 20.0M sits in the class where the
+ * system-and-tools token count did not change and the prompt did not shrink, which
+ * is the shape a rewritten history leaves: 18.5M of it on implicit-cache providers
+ * against 1.5M on the Anthropic path, whose fast-miss loss across every class is
+ * 2.3M. That is the ratio this file exists for, and it is the surface where no
+ * marker can help: the builder is not allowed to send a breakpoint at all
  * (`packages/ai/src/providers/openai-codex-responses.ts:2537-2539`), so prefix
  * hygiene is the whole mechanism.
+ *
+ * Those figures are an upper bound on a class, not a proven cause. A pair is
+ * counted as forfeiting the smaller of the two prompts, which assumes the whole
+ * prefix was readable; and provider-side eviction, a changed cache key or a tool
+ * definition that moved would all land in the same bucket as a rewrite. Four
+ * `cursor/*` paths report no cache reads at all and are excluded rather than
+ * counted as total losses, since a provider that never caches cannot be said to
+ * have missed. An earlier pass over this corpus put the class four times higher by
+ * counting `subagent_spawn` records as turns: each carries the aggregate usage of a
+ * whole subagent run whose own turns are already counted in its own session file.
  *
  * REAL here is the wire body: every row drives `buildTransformedCodexRequestBody`,
  * the same function the shipped provider calls, so the item boundaries, the
