@@ -266,4 +266,4 @@ During the timer window, state can change (user interruption, mode actions, addi
 - `warmupMatches` (default 1) keeps a rule silent until it has matched in that many distinct streams; a released claim restores the count, a delivered one starts it over.
 - An experimental rule (one shipping in `builtin-rules/experimental/`) is dropped before registration unless named in `ttsr.experimentalRules`, and naming it in `ttsr.disabledRules` as well keeps it off.
 
-*Verified against `7256dd34` on 2026-08-12.*
+*Verified against `e80e0a0b` on 2026-08-13.*
