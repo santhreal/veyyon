@@ -417,18 +417,50 @@ export interface ExpandedWord {
 	 * exact collapsed text, which the judge then reads as the path it is.
 	 */
 	readonly emptied: boolean;
+	/**
+	 * True when the word is unknown because a value EXISTS and this scan refuses
+	 * to model it, rather than because nothing set it.
+	 *
+	 * The two are not the same evidence, and the severity of the verdict turns on
+	 * which one it is. A variable nobody set is EMPTY when the command runs, so
+	 * reading it as `/` is an assumption about a value that does not exist. But
+	 * `V="/*"`, `${VAR:-/}`, a shell-maintained `$PWD` after `cd /`, and another
+	 * account's `~user` are all words this scan can see are going to become a
+	 * real path, and refused to paste only because pasting them would be wrong
+	 * (word-splitting, globbing, an unmodelled operator, a passwd lookup). That
+	 * is positive evidence of danger, so those keep the `destroys` floor while a
+	 * merely-unset variable does not. Absent means "nothing set it".
+	 */
+	readonly unmodelled?: boolean;
 }
 
-/** Why a command was judged critical, in words an operator can act on. */
+/** Why a command was judged a risk, in words an operator can act on. */
 export interface CriticalBashRisk {
 	/** The command word that does the damage, e.g. `rm`. */
 	readonly command: string;
-	/** The argument that made it critical, as written. */
+	/** The argument that made it a risk, as written. */
 	readonly argument: string;
 	/** The path that argument resolves to, when it resolves to one. */
 	readonly target?: string;
 	/** One sentence naming the rule that fired. */
 	readonly reason: string;
+	/**
+	 * Whether this survives the yolo rung. See {@link BashRiskSeverity}.
+	 *
+	 * Every risk here was `critical` once, which put "the variable might hold
+	 * `/`" on the same floor as `rm -rf /` itself. A floor that stops
+	 * `rm -rf "$BUILD_DIR"` is a floor an operator switches off, so a verdict
+	 * that depends on ASSUMING a value now carries `dangerous` and yolo lets it
+	 * through. See judgeUnsettledDeleteTarget for which readings are which.
+	 */
+	readonly severity: BashRiskSeverity;
+}
+
+/** The verdict on one delete target: why it is refused, and how badly. */
+export interface DeleteVerdict {
+	/** The reason, as it will read inside the sentence the caller builds. */
+	readonly reason: string;
+	readonly severity: BashRiskSeverity;
 }
 
 /** Characters that end one command and begin another, outside quotes. */
@@ -742,20 +774,37 @@ export function expandWord(
 	if (!word.literal) {
 		// An operator form is unmodelled, and unmodelled is unknown. Checked
 		// before any substitution so a `${VAR:-/}` cannot be partly rewritten.
-		if (OPERATOR_EXPANSION.test(text)) return { text, unknown: true, emptied: false };
+		// `unmodelled` because the form carries its own value: `${VAR:-/}` with
+		// VAR unset IS `/`, which the text says outright.
+		if (OPERATOR_EXPANSION.test(text)) return { text, unknown: true, emptied: false, unmodelled: true };
 
 		text = text.replace(/\$\{HOME\}|\$HOME\b/g, home);
 		let emptiedByEnv = false;
+		// Set when a name was left standing even though its value is knowable, or
+		// is maintained by the shell and therefore certainly exists. See
+		// `ExpandedWord.unmodelled`.
+		let unmodelled = false;
 		const substitute = (name: string, whole: string): string => {
 			// A shell-maintained variable is never substituted: its value at the
 			// moment the command runs is not the one this process holds, and
 			// leaving the literal `$NAME` makes the word unknown, which is correct.
-			if (SHELL_MAINTAINED_VARIABLES.has(name)) return whole;
+			// It always names a real directory, so it is evidence, not an absence.
+			if (SHELL_MAINTAINED_VARIABLES.has(name)) {
+				unmodelled = true;
+				return whole;
+			}
 			const value = env[name];
+			// Nothing set it, so the shell will expand it to nothing. That is the
+			// one case where a dangerous reading is an assumption, and the only one
+			// that leaves `unmodelled` false.
 			if (value === undefined) return whole;
 			// A value that would word-split or glob is left as the literal `$NAME`,
-			// which the unknown test below then catches.
-			if (!isQuietlySubstitutable(value)) return whole;
+			// which the unknown test below then catches. The value was READ, so
+			// whatever it does next, this scan is not guessing that it exists.
+			if (!isQuietlySubstitutable(value)) {
+				unmodelled = true;
+				return whole;
+			}
 			if (value === "") emptiedByEnv = true;
 			return value;
 		};
@@ -766,6 +815,12 @@ export function expandWord(
 			// path is the `rm -rf "$EMPTY"/*` shape, so hand the collapsed text to
 			// the protected-root judgement rather than calling it resolved-and-safe.
 			return { text, unknown: false, emptied: text === "" || text.startsWith("/") };
+		}
+		// A `~user` names another account's home directory: a real directory this
+		// process cannot locate, which is evidence rather than an absence of it.
+		if (/^~[^/]/.test(text)) unmodelled = true;
+		if (unmodelled && (EXPANSION.test(text) || /^~[^/]/.test(text))) {
+			return { text, unknown: true, emptied: false, unmodelled: true };
 		}
 	}
 
@@ -869,7 +924,7 @@ const UNNAMEABLE_EXPANSION =
 /**
  * Judge one expanded target of a recursive delete.
  *
- * Returns the reason it is refused, or `undefined` when it is fine.
+ * Returns the verdict, or `undefined` when it is fine.
  *
  * AN UNSETTLED EXPANSION IS JUDGED BY WHAT IT CAN BECOME, NOT BY THE FACT THAT
  * IT IS ONE. This used to refuse every target holding an expansion the scan
@@ -887,7 +942,8 @@ const UNNAMEABLE_EXPANSION =
  * by the same classifier a literal path goes through. Every incident shape
  * survives it: `$dir` alone reads as `/`, `$dir/*` reads as `/` through the
  * glob rule above, `$dir/lib` reads as `/lib`, and `$D/.ssh` reads as the
- * credentials directory.
+ * credentials directory. What SEVERITY each of those readings earns is
+ * judgeUnsettledDeleteTarget's business.
  *
  * WHAT IT DOES NOT CATCH, deliberately: a value that CLIMBS. `rm -rf /var/log/$X`
  * with `X=../../..` is the root, and no finite set of readings finds that,
@@ -917,15 +973,19 @@ export function judgeDeleteTarget(
 	home: string,
 	extra: readonly string[] = [],
 	cwd = "",
-): string | undefined {
+): DeleteVerdict | undefined {
 	if (target.unknown) {
 		// An unresolvable HOME is the one shape with no reading to instantiate:
 		// the word names a directory that certainly exists and this process
 		// cannot say which one, so there is nothing to judge and it fails closed.
 		if (target.emptied) {
-			return "a path relative to a home directory this process cannot locate, so there is no way to tell what it names";
+			return {
+				reason:
+					"a path relative to a home directory this process cannot locate, so there is no way to tell what it names",
+				severity: "destroys",
+			};
 		}
-		return judgeUnsettledDeleteTarget(target.text, home, extra, cwd);
+		return judgeUnsettledDeleteTarget(target.text, home, extra, cwd, target.unmodelled === true);
 	}
 	// `rm -rf ""` deletes nothing, which is what an expansion resolved to the
 	// empty string leaves behind. Judged before the relative branch, which would
@@ -944,12 +1004,16 @@ export function judgeDeleteTarget(
 	// and "an ancestor of the home directory (/)" is a strange way to describe
 	// deleting the entire filesystem.
 	for (const root of PROTECTED_ROOTS) {
-		if (normalized === root) return `a protected system directory (${root})`;
+		if (normalized === root) return { reason: `a protected system directory (${root})`, severity: "destroys" };
 	}
 	if (normalizedHome !== "" && isAtOrUnder(normalizedHome, normalized)) {
-		return normalized === normalizedHome
-			? "the home directory itself"
-			: `an ancestor of the home directory (${normalized})`;
+		return {
+			reason:
+				normalized === normalizedHome
+					? "the home directory itself"
+					: `an ancestor of the home directory (${normalized})`,
+			severity: "destroys",
+		};
 	}
 	if (normalizedHome !== "") {
 		for (const secret of SECRET_HOME_DIRECTORIES) {
@@ -957,12 +1021,14 @@ export function judgeDeleteTarget(
 			// Both directions: deleting the directory, deleting anything that
 			// contains it, and deleting a single file inside it.
 			if (isAtOrUnder(directory, normalized) || isAtOrUnder(normalized, directory)) {
-				return `a directory holding credentials (${directory})`;
+				return { reason: `a directory holding credentials (${directory})`, severity: "destroys" };
 			}
 		}
 		for (const child of PROTECTED_HOME_DIRECTORIES) {
 			const directory = `${normalizedHome}/${child}`;
-			if (isAtOrUnder(directory, normalized)) return `a protected directory (${directory})`;
+			if (isAtOrUnder(directory, normalized)) {
+				return { reason: `a protected directory (${directory})`, severity: "destroys" };
+			}
 		}
 	}
 	// The operator's own additions, judged last so a built-in reason is never
@@ -972,7 +1038,7 @@ export function judgeDeleteTarget(
 		const directory = expandExtraPath(configured, normalizedHome);
 		if (directory === undefined) continue;
 		if (isAtOrUnder(directory, normalized) || isAtOrUnder(normalized, directory)) {
-			return `a path protected by tools.protectedPaths (${directory})`;
+			return { reason: `a path protected by tools.protectedPaths (${directory})`, severity: "destroys" };
 		}
 	}
 	return undefined;
@@ -984,34 +1050,92 @@ export function judgeDeleteTarget(
  *
  * THE READINGS ARE THE THREE VALUES THAT MAKE A PATH DANGEROUS. Empty is the
  * incident shape and the reason this module exists. The root is the value a
- * variable holds when a script computed one and got `/`, and it is the only
- * reading under which a bare `$VAR` is catastrophic. The home directory is the
- * value that turns a benign-looking suffix into somebody's credentials, so
+ * variable holds when a script computed one and got `/`. The home directory is
+ * the value that turns a benign-looking suffix into somebody's credentials, so
  * `rm -rf "$D/.ssh"` is refused for the same reason `rm -rf ~/.ssh` is.
  *
- * A word that cannot be instantiated at all — `$$`, `$1`, `$@` and the other
- * forms with no name to substitute — has no reading to judge and is refused.
+ * WHICH READINGS ARE KNOWN, AND WHICH ARE ASSUMED. All three used to be
+ * `critical`, the one floor `/yolo` cannot lift, and that made the most ordinary
+ * shape an agent writes stop the session: `rm -rf "$BUILD_DIR"` was refused
+ * because a variable nobody set MIGHT hold `/`. The floor was doing the
+ * opposite of its job — an operator who meets it on `rm -rf "$CARGO_TARGET_DIR"`
+ * switches the guard off, and then nothing is left for the real `rm -rf /`.
+ *
+ * So a reading earns `destroys` only when it needs no assumption about the
+ * value:
+ *
+ * - EMPTY is what an unset or misspelled variable already IS, so a word that is
+ *   catastrophic when empty is catastrophic in its default state. This is the
+ *   published incident (`rm -rf "$dir"/*`, July 2026, `dir` expanded to
+ *   nothing) and it stays on the floor.
+ * - THE ROOT and THE HOME DIRECTORY are assumptions about content. They keep
+ *   `destroys` in two cases and drop to `dangerous` otherwise. They keep it when
+ *   the WORD ITSELF spells a protected path component — `rm -rf "$D/.ssh"` names
+ *   `.ssh` whatever `D` turns out to be — and when the word is `unmodelled`,
+ *   meaning a value EXISTS and this scan refused to paste it. They drop to
+ *   `dangerous` only for the remaining case: nothing set the name and the whole
+ *   path came from it, as in a bare `rm -rf "$D"`. That still prompts at every
+ *   rung below yolo; yolo, whose whole promise is that it does not ask, no
+ *   longer asks.
+ *
+ * TWO WORDS CAN BOTH BE "UNKNOWN" AND CARRY OPPOSITE EVIDENCE, and collapsing
+ * them is a fail-open hole. `rm -rf $V` with `V="/*"` reads a value, sees it
+ * would glob, and declines to paste it; the shell then expands it to every
+ * top-level entry. `${NOPE:-/}` carries `/` in the text. `cd / && rm -rf $PWD`
+ * names a variable the shell maintains and which is `/` by the time it runs.
+ * None of those is an absence of information, so none of them is speculative,
+ * and all three stay on the floor — each was measured deleting the root with no
+ * prompt at any rung before the guard read the environment at all.
+ *
+ * A word that cannot be instantiated at all — `${D}-$$` and other forms with no
+ * name to substitute — has no reading to judge and stays refused on the floor.
+ * (A bare `$$` or `$1` never reaches here: neither matches an expansion this
+ * module recognizes, so the word is settled and judged as the literal text it
+ * is.)
+ *
+ * The most severe verdict across the readings wins, not the first one found, so
+ * reordering the table cannot hide a `destroys` behind a `dangerous`.
  */
 function judgeUnsettledDeleteTarget(
 	text: string,
 	home: string,
 	extra: readonly string[],
 	cwd: string,
-): string | undefined {
-	const readings: readonly { value: string; label: string }[] = [
-		{ value: "", label: "empty" },
-		{ value: "/", label: "the root" },
-		...(home === "" ? [] : [{ value: home, label: "the home directory" }]),
+	/**
+	 * True when a value EXISTS and this scan refused to model it, as opposed to
+	 * nothing having set the name. See `ExpandedWord.unmodelled`: the readings
+	 * stop being assumptions, so they all keep the floor.
+	 */
+	unmodelled: boolean,
+): DeleteVerdict | undefined {
+	// Whether the word contributes any path component of its own. Emptying every
+	// expansion leaves exactly the literal text, so `"$D/.ssh"` leaves `/.ssh`
+	// and a bare `"$D"` leaves nothing. This is what separates a verdict about
+	// text the operator wrote from a verdict about a value nobody knows.
+	const literalOnly = instantiateExpansions(text, "");
+	const spellsOwnComponent = literalOnly !== undefined && normalizeAbsolutePath(literalOnly).replace(/^\//, "") !== "";
+	const assumed: BashRiskSeverity = unmodelled || spellsOwnComponent ? "destroys" : "dangerous";
+
+	const readings: readonly { value: string; label: string; severity: BashRiskSeverity }[] = [
+		{ value: "", label: "empty", severity: "destroys" },
+		{ value: "/", label: "the root", severity: assumed },
+		...(home === "" ? [] : [{ value: home, label: "the home directory", severity: assumed }]),
 	];
+
+	let worst: DeleteVerdict | undefined;
 	for (const reading of readings) {
 		const instantiated = instantiateExpansions(text, reading.value);
-		if (instantiated === undefined) return UNNAMEABLE_EXPANSION;
-		const reason = judgeDeleteTarget({ text: instantiated, unknown: false, emptied: false }, home, extra, cwd);
-		if (reason !== undefined) {
-			return `${reason} when the expansion this command line does not settle is ${reading.label}`;
-		}
+		if (instantiated === undefined) return { reason: UNNAMEABLE_EXPANSION, severity: "destroys" };
+		const verdict = judgeDeleteTarget({ text: instantiated, unknown: false, emptied: false }, home, extra, cwd);
+		if (verdict === undefined) continue;
+		const candidate: DeleteVerdict = {
+			reason: `${verdict.reason} when the expansion this command line does not settle is ${reading.label}`,
+			severity: reading.severity,
+		};
+		if (candidate.severity === "destroys") return candidate;
+		worst ??= candidate;
 	}
-	return undefined;
+	return worst;
 }
 
 /**
@@ -1486,8 +1610,8 @@ export function findCriticalBashRisk(
 				const candidate = argv[index]!;
 				if (isFlag(candidate)) continue;
 				if (commandName === "find" && candidate.text.startsWith("-")) continue;
-				const reason = judgeDeleteTarget(candidate, home, extraProtectedPaths, cwd);
-				if (reason === undefined) continue;
+				const verdict = judgeDeleteTarget(candidate, home, extraProtectedPaths, cwd);
+				if (verdict === undefined) continue;
 				// A path this command line created with `mktemp` is not one it can
 				// destroy more of than it made. Judged on the RAW word, because the
 				// ambient value of the name is stale the moment the assignment ran.
@@ -1496,7 +1620,8 @@ export function findCriticalBashRisk(
 					command: commandName,
 					argument: candidate.text,
 					...(candidate.unknown ? {} : { target: normalizeAbsolutePath(candidate.text) }),
-					reason: `${commandName} would recursively remove ${reason}`,
+					reason: `${commandName} would recursively remove ${verdict.reason}`,
+					severity: verdict.severity,
 				};
 			}
 		}
@@ -1538,6 +1663,7 @@ function findTruncatingWriteRisk(words: ExpandedWord[], home: string): CriticalB
 					argument: target.text,
 					target: normalized,
 					reason: `a redirect would overwrite ${normalized}, inside a directory holding credentials (${directory})`,
+					severity: "destroys",
 				};
 			}
 		}
@@ -1717,6 +1843,7 @@ function findRiskInInterpretedShell(
 			command: name,
 			argument: script.text,
 			reason: `${name} would run a shell script nested deeper than this guard reads (${MAX_INTERPRETED_SHELL_DEPTH} levels)`,
+			severity: "destroys",
 		};
 	}
 
@@ -1727,6 +1854,7 @@ function findRiskInInterpretedShell(
 		command: name,
 		argument: script.text,
 		reason: `${name} would run a delete this guard cannot read, so there is no telling what it removes`,
+		severity: "destroys",
 	};
 }
 

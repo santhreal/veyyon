@@ -125,19 +125,31 @@ describe("a script argument the guard cannot fully resolve", () => {
  * suite that only called the classifier would not be measuring the defect.
  */
 describe("the approval decision a run with no interactive surface receives", () => {
-	const isCritical = (command: string): boolean => {
+	const rung = (command: string): "critical" | "prompts" | "allowed" => {
 		const decision = bashApprovalDecision({ command, env: { HOME } });
-		return typeof decision !== "string" && decision.critical === true;
+		if (typeof decision === "string") return "allowed";
+		if (decision.critical === true) return "critical";
+		return decision.override === true ? "prompts" : "allowed";
 	};
 
 	it("does not mark an unresolvable benign script critical", () => {
-		expect(isCritical('eval "$(direnv hook bash)"')).toBe(false);
-		expect(isCritical('sh -c "$SCRIPT"')).toBe(false);
-		expect(isCritical('bash -lc "npm run build --prefix $PKG"')).toBe(false);
+		expect(rung('eval "$(direnv hook bash)"')).not.toBe("critical");
+		expect(rung('sh -c "$SCRIPT"')).not.toBe("critical");
+		expect(rung('bash -lc "npm run build --prefix $PKG"')).not.toBe("critical");
 	});
 
 	it("still marks a delete it cannot account for critical", () => {
-		expect(isCritical('bash -c "rm -rf $D"')).toBe(true);
-		expect(isCritical('eval "$(rm -rf /)"')).toBe(true);
+		expect(rung('eval "$(rm -rf /)"')).toBe("critical");
+	});
+
+	/**
+	 * Nesting adds no evidence. `rm -rf $D` with nothing setting `D` expands to
+	 * `rm -rf` and deletes nothing, inside a `bash -c` string exactly as outside
+	 * one, so it earns the same prompt-below-yolo verdict it earns on its own and
+	 * not the `critical` floor. The floor is for what the text makes certain, and
+	 * an unset name makes nothing certain wherever it is written.
+	 */
+	it("asks about a nested delete through an unset name without using the floor", () => {
+		expect(rung('bash -c "rm -rf $D"')).toBe("prompts");
 	});
 });
