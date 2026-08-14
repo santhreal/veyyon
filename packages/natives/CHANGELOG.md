@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- `find` no longer crashes the worker thread when its output pipe closes early. Every write on both of `find`'s print paths — `-print`/`-print0` and `-printf` — called `.unwrap()`, so an ordinary truncated pipeline like `find . | head -1` arrived as a BrokenPipe panic on a `tokio-rt-worker` rather than as the write error the matcher already knew how to report. Writes now end the entry quietly, and the error reports that used to be issued alongside them can no longer panic either, since stderr is a pipe too and both ends close together.
+
 ## [16.5.2] - 2026-07-14
 
 ### Fixed

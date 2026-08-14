@@ -85,7 +85,7 @@ impl Matcher for SingleExecMatcher {
 		match command.status() {
 			Ok(status) => status.success(),
 			Err(e) => {
-				writeln!(&mut stderr(), "Failed to run {}: {}", self.executable, e).unwrap();
+				let _ = writeln!(&mut stderr(), "Failed to run {}: {}", self.executable, e);
 				false
 			},
 		}
@@ -139,7 +139,7 @@ impl MultiExecMatcher {
 				}
 			},
 			Err(e) => {
-				writeln!(&mut stderr(), "Failed to run {}: {}", self.executable, e).unwrap();
+				let _ = writeln!(&mut stderr(), "Failed to run {}: {}", self.executable, e);
 				matcher_io.set_exit_code(1);
 			},
 		}

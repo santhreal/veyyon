@@ -568,25 +568,33 @@ impl Printf {
 		Ok(Self { format: FormatString::parse(format)?, output_file })
 	}
 
+	/// Emit one entry. A write failure ends the emission quietly: `find … |
+	/// head` closes the pipe mid-stream, which is ordinary use, and every write
+	/// here used to `.unwrap()` and abort the worker thread with a BrokenPipe
+	/// panic.
 	fn print(&self, file_info: &WalkEntry, mut out: impl Write) {
+		let _ = self.write_entry(file_info, &mut out);
+	}
+
+	fn write_entry(&self, file_info: &WalkEntry, out: &mut impl Write) -> std::io::Result<()> {
 		for component in &self.format.components {
 			match component {
-				FormatComponent::Literal(literal) => write!(out, "{literal}").unwrap(),
-				FormatComponent::Flush => out.flush().unwrap(),
+				FormatComponent::Literal(literal) => write!(out, "{literal}")?,
+				FormatComponent::Flush => out.flush()?,
 				FormatComponent::Directive { directive, width, justify } => {
 					match format_directive(file_info, directive) {
 						Ok(content) => {
 							if let Some(width) = width {
 								match justify {
 									Justify::Left => {
-										write!(out, "{content:<width$}").unwrap();
+										write!(out, "{content:<width$}")?;
 									},
 									Justify::Right => {
-										write!(out, "{content:>width$}").unwrap();
+										write!(out, "{content:>width$}")?;
 									},
 								}
 							} else {
-								write!(out, "{content}").unwrap();
+								write!(out, "{content}")?;
 							}
 						},
 						Err(e) => {
@@ -602,6 +610,7 @@ impl Printf {
 				},
 			}
 		}
+		Ok(())
 	}
 }
 
@@ -1030,5 +1039,91 @@ mod tests {
 		let matcher = Printf::new("%m %M", None).unwrap();
 		assert!(matcher.matches(&file_info, &mut deps.new_matcher_io()));
 		assert_eq!("755 -rwxr-xr-x", deps.get_output_as_string());
+	}
+
+	/// WHY: the twin of `printer.rs`'s closed-pipe test, for the other print
+	/// path. `find … -printf … | head -1` closes the pipe mid-walk; each write
+	/// here used to `.unwrap()`, so that ordinary pipeline aborted the worker
+	/// thread with a BrokenPipe panic. `write_entry` now surfaces the error and
+	/// `print` swallows it, because a `Matcher` has nowhere to return it.
+	///
+	/// What it does not catch: a new print path added elsewhere with
+	/// `.unwrap()`.
+	struct ClosedPipe;
+
+	impl Write for ClosedPipe {
+		fn write(&mut self, _buf: &[u8]) -> std::io::Result<usize> {
+			Err(std::io::Error::new(ErrorKind::BrokenPipe, "closed"))
+		}
+
+		fn flush(&mut self) -> std::io::Result<()> {
+			Err(std::io::Error::new(ErrorKind::BrokenPipe, "closed"))
+		}
+	}
+
+	/// One case per write in `write_entry`, because each is a separate `?` and a
+	/// format that fails on an earlier component never reaches the later ones: a
+	/// first draft used `"%p\n"` for all of them, and restoring `.unwrap()` on
+	/// the literal write left the suite green, since the directive had already
+	/// short-circuited. Each format below puts the branch under test FIRST.
+	#[test]
+	fn a_leading_literal_surfaces_a_closed_pipe() {
+		let abbbc = get_dir_entry_for("./test_data/simple", "abbbc");
+		let matcher = Printf::new("literal-first %p", None).unwrap();
+
+		let err = matcher.write_entry(&abbbc, &mut ClosedPipe).unwrap_err();
+
+		assert_eq!(ErrorKind::BrokenPipe, err.kind());
+	}
+
+	#[test]
+	fn a_leading_flush_surfaces_a_closed_pipe() {
+		let abbbc = get_dir_entry_for("./test_data/simple", "abbbc");
+		let matcher = Printf::new("\\c", None).unwrap();
+
+		let err = matcher.write_entry(&abbbc, &mut ClosedPipe).unwrap_err();
+
+		assert_eq!(ErrorKind::BrokenPipe, err.kind());
+	}
+
+	#[test]
+	fn an_unpadded_directive_surfaces_a_closed_pipe() {
+		let abbbc = get_dir_entry_for("./test_data/simple", "abbbc");
+		let matcher = Printf::new("%p", None).unwrap();
+
+		let err = matcher.write_entry(&abbbc, &mut ClosedPipe).unwrap_err();
+
+		assert_eq!(ErrorKind::BrokenPipe, err.kind());
+	}
+
+	#[test]
+	fn a_left_justified_directive_surfaces_a_closed_pipe() {
+		let abbbc = get_dir_entry_for("./test_data/simple", "abbbc");
+		let matcher = Printf::new("%-40p", None).unwrap();
+
+		let err = matcher.write_entry(&abbbc, &mut ClosedPipe).unwrap_err();
+
+		assert_eq!(ErrorKind::BrokenPipe, err.kind());
+	}
+
+	#[test]
+	fn a_right_justified_directive_surfaces_a_closed_pipe() {
+		let abbbc = get_dir_entry_for("./test_data/simple", "abbbc");
+		let matcher = Printf::new("%40p", None).unwrap();
+
+		let err = matcher.write_entry(&abbbc, &mut ClosedPipe).unwrap_err();
+
+		assert_eq!(ErrorKind::BrokenPipe, err.kind());
+	}
+
+	/// The whole point of the split: `Matcher` has nowhere to return an error,
+	/// so the public path must absorb what `write_entry` reports rather than
+	/// unwind.
+	#[test]
+	fn print_swallows_a_closed_pipe_instead_of_panicking() {
+		let abbbc = get_dir_entry_for("./test_data/simple", "abbbc");
+		let matcher = Printf::new("literal-first %-40p\\c", None).unwrap();
+
+		matcher.print(&abbbc, ClosedPipe);
 	}
 }

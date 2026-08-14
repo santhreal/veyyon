@@ -123,7 +123,7 @@ impl Matcher for PermMatcher {
 
 	#[cfg(not(unix))]
 	fn matches(&self, _dummy_file_info: &WalkEntry, _: &mut MatcherIO) -> bool {
-		writeln!(&mut stderr(), "Permission matching not available on this platform!").unwrap();
+		let _ = writeln!(&mut stderr(), "Permission matching not available on this platform!");
 		return false;
 	}
 }
