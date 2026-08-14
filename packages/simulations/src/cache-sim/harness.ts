@@ -54,6 +54,7 @@ import type {
 	ToolResultMessage,
 } from "@veyyon/ai/types";
 import { buildModel } from "@veyyon/catalog/build";
+import { emptyUsage } from "@veyyon/catalog/models";
 import { estimateTokensFromText } from "@veyyon/utils";
 
 /**
@@ -526,14 +527,12 @@ export async function armPayloads(arm: Arm, steps: readonly Step[]): Promise<Wir
 	return payloads;
 }
 
-const usage = {
-	input: 0,
-	output: 0,
-	cacheRead: 0,
-	cacheWrite: 0,
-	totalTokens: 0,
-	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-};
+/**
+ * A zeroed usage for the scripted assistant turns. The cost fields have exactly
+ * one owner in this repo, so it is imported rather than written out: this family
+ * bills tokens itself and never reads these numbers.
+ */
+const usage = emptyUsage();
 
 /**
  * A system prompt shaped like the one this product sends: a large stable harness
