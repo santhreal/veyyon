@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.0.49] - 2026-08-14
+
 ### Fixed
 
 - A recursive delete through a variable nobody set no longer stops a `yolo` session. `rm -rf "$BUILD_DIR"`, `rm -rf "$CARGO_TARGET_DIR"`, `rm -rf "$WORKTREE"` and `rm -rf "$checkout"` were all `critical`, the one verdict `/yolo` cannot lift and no standing grant can cover, so the most ordinary cleanup an agent writes ended an unattended run — and the reason given was that the variable MIGHT hold `/`. It does not: an unset name expands to nothing, so the guard was refusing a command on a guess about a value that does not exist, at the only severity that cannot be overridden. A floor that fires there is a floor an operator switches off, and then nothing is left for the real `rm -rf /`. An unsettled expansion now earns `destroys` only where no assumption is needed — the EMPTY reading, which is what an unset variable already is, so `rm -rf "$OUT"/*` (the July 2026 incident, `dir` expanded to nothing), `rm -rf "$D"/` and `rm -rf "$D/lib"` all still stop even `yolo` — while a bare `rm -rf "$D"`, catastrophic only if the name turns out to be `/` or the home directory, drops to `dangerous`: still a prompt at every rung below `yolo`, no longer a claim to be as certain as `rm -rf /`. A word that spells a protected component itself keeps the floor whatever the prefix expands to, so `rm -rf "$D/.ssh"` is refused exactly as `rm -rf ~/.ssh` is.
