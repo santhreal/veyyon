@@ -168,7 +168,16 @@ export function bashApprovalDecision(
 	const judgementEnv = bashJudgementEnv(args);
 	const risk =
 		command === "" ? undefined : findCriticalBashRisk(command, undefined, extraProtectedPaths, judgementEnv, cwd);
-	if (risk) return { tier: "exec", critical: true, reason: risk.reason };
+	// Same split as the flagged patterns below: `critical` is the floor yolo
+	// keeps, `override` is a prompt every rung below yolo raises. A delete whose
+	// verdict rests on ASSUMING an unknown variable holds `/` is `dangerous`, so
+	// `rm -rf "$BUILD_DIR"` no longer stops a yolo session while `rm -rf /`,
+	// `rm -rf ~` and `rm -rf "$OUT"/*` still do. See judgeUnsettledDeleteTarget.
+	if (risk) {
+		return risk.severity === "destroys"
+			? { tier: "exec", critical: true, reason: risk.reason }
+			: { tier: "exec", override: true, reason: risk.reason };
+	}
 	// The patterns are about TEXT, so they are matched against the part of the
 	// line that can reach this host. A `curl … | sh` inside a throwaway container
 	// with no volume, privilege, device or host namespace is the container's

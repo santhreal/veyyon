@@ -765,7 +765,7 @@ describe("normalizing a path before it is judged", () => {
 describe("judging one target", () => {
 	/** The home directory itself, named directly. */
 	it("refuses the home directory", () => {
-		expect(judgeDeleteTarget({ text: HOME, unknown: false, emptied: false }, HOME)).toContain(
+		expect(judgeDeleteTarget({ text: HOME, unknown: false, emptied: false }, HOME)?.reason).toContain(
 			"the home directory itself",
 		);
 	});
@@ -775,7 +775,7 @@ describe("judging one target", () => {
 	 * refused even though it is not in the protected-root list.
 	 */
 	it("refuses an ancestor of the home directory", () => {
-		expect(judgeDeleteTarget({ text: "/home", unknown: false, emptied: false }, HOME)).toContain(
+		expect(judgeDeleteTarget({ text: "/home", unknown: false, emptied: false }, HOME)?.reason).toContain(
 			"an ancestor of the home directory",
 		);
 	});
@@ -787,7 +787,7 @@ describe("judging one target", () => {
 	 * buries what is actually about to happen.
 	 */
 	it("describes the root as a system directory rather than as an ancestor", () => {
-		expect(judgeDeleteTarget({ text: "/", unknown: false, emptied: false }, HOME)).toBe(
+		expect(judgeDeleteTarget({ text: "/", unknown: false, emptied: false }, HOME)?.reason).toBe(
 			"a protected system directory (/)",
 		);
 	});
@@ -802,15 +802,31 @@ describe("judging one target", () => {
 	 * An unsettled expansion is judged by what it can become: `$dir/x` is
 	 * `/x` at worst, which the literal spelling `rm -rf /x` is also allowed to
 	 * delete, while `$dir` alone is the root and `$dir/lib` is a protected root.
+	 *
+	 * THE SEVERITY IS THE OTHER HALF OF THE VERDICT, and it is what decides
+	 * whether yolo stops. `$dir/lib` is catastrophic with no assumption at all —
+	 * an unset variable IS empty, so the command reads `rm -rf /lib` in its
+	 * default state — and keeps `destroys`. A bare `$dir` is catastrophic only
+	 * if the variable happens to hold `/` or the home directory, so it is
+	 * `dangerous`: still a prompt at every rung below yolo, no longer a floor
+	 * that stops `rm -rf "$BUILD_DIR"` in the rung whose whole promise is that
+	 * it does not ask.
 	 */
 	it("judges a target it could not resolve by its worst reading", () => {
 		expect(judgeDeleteTarget({ text: "$dir/x", unknown: true, emptied: false }, HOME)).toBeUndefined();
-		expect(judgeDeleteTarget({ text: "$dir", unknown: true, emptied: false }, HOME)).toContain(
+		expect(judgeDeleteTarget({ text: "$dir", unknown: true, emptied: false }, HOME)?.reason).toContain(
 			"a protected system directory (/)",
 		);
-		expect(judgeDeleteTarget({ text: "$dir/lib", unknown: true, emptied: false }, HOME)).toContain(
+		expect(judgeDeleteTarget({ text: "$dir/lib", unknown: true, emptied: false }, HOME)?.reason).toContain(
 			"a protected system directory (/lib)",
 		);
+	});
+
+	it("puts an assumed reading below the floor and a default-state one on it", () => {
+		expect(judgeDeleteTarget({ text: "$dir", unknown: true, emptied: false }, HOME)?.severity).toBe("dangerous");
+		expect(judgeDeleteTarget({ text: "$dir/lib", unknown: true, emptied: false }, HOME)?.severity).toBe("destroys");
+		// The word spells `.ssh`, so the verdict is about text the operator wrote.
+		expect(judgeDeleteTarget({ text: "$dir/.ssh", unknown: true, emptied: false }, HOME)?.severity).toBe("destroys");
 	});
 });
 
@@ -914,9 +930,14 @@ describe("the text patterns the guard still carries", () => {
  * `findCriticalBashRisk` directly with no environment.
  */
 describe("expansion the shell will perform, judged the way the shell will perform it", () => {
-	const verdict = (args: { command: string; env?: Record<string, string> }): "critical" | "allowed" => {
+	// Three rungs, not two. Collapsing `override` into "allowed" would report a
+	// call that still prompts everywhere below yolo as if the guard had waved it
+	// through, which is the difference this suite now turns on.
+	const verdict = (args: { command: string; env?: Record<string, string> }): "critical" | "prompts" | "allowed" => {
 		const decision = bashApprovalDecision(args);
-		return typeof decision !== "string" && decision.critical === true ? "critical" : "allowed";
+		if (typeof decision === "string") return "allowed";
+		if (decision.critical === true) return "critical";
+		return decision.override === true ? "prompts" : "allowed";
 	};
 
 	/** The call's own `env` is what the child gets, so it is what the guard must judge. */
@@ -968,16 +989,43 @@ describe("expansion the shell will perform, judged the way the shell will perfor
 	});
 
 	/**
-	 * An UNSET variable is still the fail-closed case the rule was written for,
-	 * for every reading of it that is dangerous: the bare word is the root, a
-	 * glob under it starts at the root, and a suffix naming a protected root is
-	 * that root. An unset variable under an ordinary suffix is not on this list,
-	 * and the suite next door is where that is stated.
+	 * An UNSET variable is the fail-closed case for every reading of it that
+	 * needs no assumption: a glob under it starts at the root, and a suffix
+	 * naming a protected root IS that root, because an unset variable expands to
+	 * nothing and both of those read as `/…` with nothing supposed.
+	 *
+	 * THE BARE WORD IS THE EXCEPTION AND IT IS DELIBERATE. `rm -rf $UNSET`
+	 * expands to `rm -rf` and deletes nothing; it is catastrophic only if the
+	 * name turns out to hold `/` or the home directory, which is a guess about a
+	 * value that does not exist. It was `critical` — the one verdict `/yolo`
+	 * cannot lift — so every `rm -rf "$BUILD_DIR"` and `rm -rf "$CARGO_TARGET_DIR"`
+	 * stopped an unattended run dead, and a floor that fires on the most ordinary
+	 * cleanup an agent writes is a floor an operator turns off before it ever
+	 * sees a real `rm -rf /`. It still PROMPTS at every rung below yolo. What
+	 * changed is that it no longer pretends to be as certain as `rm -rf /`.
 	 */
-	it("still refuses a variable nothing has set wherever a reading is dangerous", () => {
-		expect(verdict({ command: "rm -rf $NOTHING_SETS_THIS" })).toBe("critical");
+	it("still refuses a variable nothing has set wherever a reading needs no assumption", () => {
 		expect(verdict({ command: "rm -rf $NOTHING_SETS_THIS/bin" })).toBe("critical");
 		expect(verdict({ command: 'rm -rf "$dir"/*' })).toBe("critical");
+	});
+
+	it("asks about a bare unset variable without putting it on the yolo floor", () => {
+		expect(verdict({ command: "rm -rf $NOTHING_SETS_THIS" })).toBe("prompts");
+		expect(verdict({ command: 'rm -rf "$BUILD_DIR"' })).toBe("prompts");
+	});
+
+	/**
+	 * And the reason the bare word is the ONLY thing that moved: a value the
+	 * scan read and declined to paste is evidence, not an absence of it, so it
+	 * keeps the floor even though the word is bare. Each of these was measured
+	 * running `rm -rf /` with no prompt at any rung.
+	 */
+	it("keeps the floor when a value exists and the scan refused to model it", () => {
+		expect(verdict({ command: "rm -rf $V", env: { V: "/*" } })).toBe("critical");
+		expect(verdict({ command: "rm -rf $V", env: { V: "/ /tmp/x" } })).toBe("critical");
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: shell parameter expansion under test, not a JS template.
+		expect(verdict({ command: "rm -rf ${NOPE_UNSET:-/}" })).toBe("critical");
+		expect(verdict({ command: "cd / && rm -rf $PWD" })).toBe("critical");
 	});
 });
 
