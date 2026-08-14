@@ -19,12 +19,14 @@ import {
 	errorMessage,
 	getAutoUpdateStatePath,
 	getUpdateHistoryPath,
+	isCompiledBinary,
 	isEnoent,
 	isNewerVersion,
 	isValidSemver,
 	logger,
 	readPipeText,
 	removeTempPath,
+	stripWindowsExtendedLengthPathPrefix,
 	tryWithFileLock,
 	VERSION,
 	withFileLock,
@@ -654,10 +656,57 @@ export async function verifyDownloadChecksum(filePath: string, sidecarUrl: strin
 }
 
 /**
- * Resolve the path that `veyyon` maps to in the user's PATH.
+ * Where this install lives, as three readings taken at the same moment.
+ *
+ * Separated from the choice below so the choice can be exercised: the two readings
+ * that matter disagree only on a machine where another copy of the name comes first
+ * in PATH, which is exactly the machine a test must not need.
  */
+export interface InstallLocation {
+	/** Whether this process IS the shipped binary rather than bun running sources. */
+	compiled: boolean;
+	/** The executable this process is running, meaningful only when `compiled`. */
+	execPath: string;
+	/** What the command name resolves to in PATH, if anything. */
+	onPath: string | undefined;
+}
+
+export function readInstallLocation(): InstallLocation {
+	return { compiled: isCompiledBinary(), execPath: process.execPath, onPath: $which(APP_NAME) ?? undefined };
+}
+
+/**
+ * The file an update has to replace: the binary that is RUNNING.
+ *
+ * Resolving the command name through PATH asks a different question, and its answer
+ * is a DIFFERENT FILE whenever another copy comes first — which the installer itself
+ * warns about, by name, every time it installs somewhere that is not first on PATH.
+ * Measured: `veyyon update` run from a 1.0.47 binary in a sandbox home reported
+ * "Updated to 1.0.48", left that binary at 1.0.47, and wrote the 1.0.48 release
+ * asset over a completely different install. Both halves of that are silent — the
+ * update you asked for did not happen, and an install you did not name was replaced.
+ *
+ * Only a compiled binary can answer this: running from a source checkout puts bun at
+ * `execPath`, and a source install updates by advancing its checkout anyway, so that
+ * case keeps resolving the launcher through PATH and `resolveUpdateMethod` classifies
+ * it from there.
+ */
+export function chooseUpdateTargetPath(
+	where: InstallLocation,
+	// Taken as an argument for the same reason `stripWindowsExtendedLengthPathPrefix`
+	// takes one: the prefix it removes only ever appears on Windows, and a contract that
+	// can only be checked on Windows is checked by nobody.
+	platform: NodeJS.Platform = process.platform,
+): string | undefined {
+	if (where.compiled) {
+		const running = stripWindowsExtendedLengthPathPrefix(where.execPath, platform).trim();
+		if (running.length > 0) return running;
+	}
+	return where.onPath;
+}
+
 function resolveVeyyonPath(): string | undefined {
-	return $which(APP_NAME) ?? undefined;
+	return chooseUpdateTargetPath(readInstallLocation());
 }
 
 /**
