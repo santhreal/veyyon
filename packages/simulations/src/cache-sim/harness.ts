@@ -44,6 +44,7 @@
  * simulated time is an argument.
  */
 import { streamAnthropic } from "@veyyon/ai/providers/anthropic";
+import { buildTransformedCodexRequestBody } from "@veyyon/ai/providers/openai-codex-responses";
 import type {
 	AssistantMessage,
 	CacheRetention,
@@ -739,5 +740,134 @@ export function sharedGlobally(arm: Arm, options?: { everySystemMarker?: boolean
 			}
 			return marked;
 		},
+	};
+}
+
+// ─── The implicit surface ───────────────────────────────────────────────────
+//
+// Codex-family requests carry no breakpoints at all. `prompt_cache_key` is the
+// only anchor the surface accepts — `prompt_cache_breakpoint` is rejected outright
+// (`packages/ai/src/providers/openai-codex-responses.ts:2537-2539`) — so nothing a
+// caller does about placement matters here and everything a caller does about
+// prefix hygiene does. That is why this half of the family exists: the local
+// corpus loses an order of magnitude more tokens to rewritten history on these
+// providers than to breakpoint placement on Anthropic.
+
+const CODEX_MODEL_SPEC: ModelSpec<"openai-codex-responses"> = {
+	id: "gpt-5.1-codex",
+	name: "GPT-5.1 Codex",
+	api: "openai-codex-responses",
+	provider: "openai-codex",
+	baseUrl: "https://chatgpt.com/backend-api/codex",
+	reasoning: true,
+	input: ["text", "image"],
+	// Zeroed for the same reason as the Anthropic spec: `PRICE` is the one owner.
+	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+	contextWindow: 400_000,
+	maxTokens: 128_000,
+};
+
+export const IMPLICIT_SIM_MODEL: Model<"openai-codex-responses"> = buildModel(CODEX_MODEL_SPEC);
+
+/**
+ * What the implicit cache needs to be true before it stores anything, and how
+ * coarsely it matches. MODELLED from published behavior rather than measured
+ * here: a floor of 1024 tokens (the same floor `packages/ai/src/cache/verdict.ts`
+ * documents for OpenAI) and matching in 128-token increments, so a prefix is
+ * credited only up to the last whole block it shares.
+ */
+export const IMPLICIT = Object.freeze({ minTokens: 1024, blockTokens: 128 });
+
+/** The wire body the shipped Codex builder produces, with no socket involved. */
+export async function captureImplicitBody(context: Context, options?: { sessionId?: string }): Promise<CodexBody> {
+	return (await buildTransformedCodexRequestBody(IMPLICIT_SIM_MODEL, context, {
+		sessionId: options?.sessionId ?? "sim-session",
+	})) as CodexBody;
+}
+
+export type CodexBody = { instructions?: string; input?: unknown[]; prompt_cache_key?: string } & Record<
+	string,
+	unknown
+>;
+
+/**
+ * A request as the implicit cache sees it: an ordered list of blocks, because a
+ * prefix match is over whole items rather than over characters.
+ */
+export function implicitBlocksOf(body: CodexBody): string[] {
+	const blocks: string[] = [];
+	if (body.instructions !== undefined) blocks.push(JSON.stringify(body.instructions));
+	for (const item of body.input ?? []) blocks.push(JSON.stringify(item));
+	return blocks;
+}
+
+/**
+ * A modelled implicit prefix cache.
+ *
+ * There are no markers to place and nothing is billed for populating it, so the
+ * only two questions are how long a prefix the arriving request shares with what
+ * the key last held, and whether the key is the same key at all. Both are exactly
+ * the questions a history rewrite and a fresh session id get wrong.
+ */
+export class ImplicitCache {
+	readonly #entries = new Map<string, { blocks: string[]; expiresAt: number }>();
+
+	serve(key: string | undefined, body: CodexBody, now: number): TurnLedger {
+		const blocks = implicitBlocksOf(body);
+		const promptTokens = estimateTokensFromText(blocks.join(BLOCK_SEPARATOR));
+		// No key means no anchor: every request is cold, which is what the surface
+		// does when a caller forgets to pass one.
+		const entry = key === undefined ? undefined : this.#entries.get(key);
+		let shared = 0;
+		if (entry && entry.expiresAt > now) {
+			while (shared < blocks.length && shared < entry.blocks.length && blocks[shared] === entry.blocks[shared]) {
+				shared++;
+			}
+		}
+		const sharedTokens = estimateTokensFromText(blocks.slice(0, shared).join(BLOCK_SEPARATOR));
+		// Below the floor nothing was stored to read; above it, credit only whole
+		// blocks of the modelled granularity.
+		const credited =
+			sharedTokens < IMPLICIT.minTokens ? 0 : Math.floor(sharedTokens / IMPLICIT.blockTokens) * IMPLICIT.blockTokens;
+		if (key !== undefined && promptTokens >= IMPLICIT.minTokens) {
+			this.#entries.set(key, { blocks, expiresAt: now + TTL_MS.short });
+		}
+		const input = Math.max(0, promptTokens - credited);
+		return {
+			read: credited,
+			write: 0,
+			input,
+			promptTokens,
+			cost: credited * PRICE.read + input * PRICE.input,
+		};
+	}
+}
+
+/** Run one session of implicit-cache steps, billing each request. */
+export async function runImplicit(
+	steps: readonly Step[],
+	options?: { sessionIdFor?: (index: number) => string | undefined },
+): Promise<SessionLedger> {
+	const cache = new ImplicitCache();
+	const turns: TurnLedger[] = [];
+	let now = 0;
+	let stored = false;
+	let misses = 0;
+	for (const [index, step] of steps.entries()) {
+		now += step.gapMs;
+		const key = options?.sessionIdFor ? options.sessionIdFor(index + 1) : "sim-session";
+		const body = await captureImplicitBody(step.context, key === undefined ? {} : { sessionId: key });
+		const ledger = cache.serve(key, body, now);
+		if (stored && ledger.read === 0) misses++;
+		if (ledger.promptTokens >= IMPLICIT.minTokens) stored = true;
+		turns.push(ledger);
+	}
+	return {
+		turns,
+		read: turns.reduce((sum, turn) => sum + turn.read, 0),
+		write: 0,
+		input: turns.reduce((sum, turn) => sum + turn.input, 0),
+		cost: turns.reduce((sum, turn) => sum + turn.cost, 0),
+		misses,
 	};
 }
