@@ -3323,9 +3323,19 @@ async function buildGrpcRequest(
 		runRequest.customSystemPrompt = options.customSystemPrompt;
 	}
 
-	const replacementPayload = await options?.onPayload?.(runRequest, model);
-	if (replacementPayload !== undefined) {
-		runRequest = replacementPayload as AgentRunRequest;
+	const payloadHook = options?.onPayload;
+	if (payloadHook) {
+		// The hook is where a host runs its secret redactor, and a redactor WALKS the
+		// payload rewriting strings, so it can only be handed something JSON can
+		// express. A protobuf message is not: `rootPromptMessagesJson` and the turn
+		// entries are blob IDs (`Uint8Array`) and 64-bit fields decode to `bigint`,
+		// so the redactor refused the whole request and Cursor failed outright for
+		// anyone with secrets configured. Canonical proto3 JSON carries bytes as
+		// base64 and 64-bit values as strings; a no-op round-trip is byte-identical.
+		const replacementPayload = await payloadHook(toJson(AgentRunRequestSchema, runRequest), model);
+		if (replacementPayload !== undefined) {
+			runRequest = fromJson(AgentRunRequestSchema, replacementPayload as JsonValue);
+		}
 	}
 
 	const clientMessage = create(AgentClientMessageSchema, {
