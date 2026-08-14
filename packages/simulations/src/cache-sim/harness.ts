@@ -260,6 +260,11 @@ export interface SessionLedger {
 interface Entry {
 	/** The prefix content this entry holds. */
 	joined: string;
+	/**
+	 * The session that wrote it, or undefined when the marker asked for
+	 * `scope: "global"` and any session may read it.
+	 */
+	owner: string | undefined;
 	tokens: number;
 	retention: "short" | "long";
 	expiresAt: number;
@@ -301,8 +306,11 @@ export class PrefixCache {
 		let served: Entry | undefined;
 		for (const entry of this.#entries.values()) {
 			if (entry.expiresAt <= now) continue;
-			// A session's own entries and globally scoped ones both live in this map;
-			// the key carries the distinction, and the content match is the same test.
+			// An entry another session wrote is invisible unless its marker asked to
+			// be shared. This is the whole content of the `scope: "global"` beta, and
+			// leaving it out makes a session-scoped cache look account-wide — which
+			// would credit the shipped anchor with a saving it does not collect.
+			if (entry.owner !== undefined && entry.owner !== session) continue;
 			if (!request.startsWith(entry.joined)) continue;
 			if (entry.tokens <= read) continue;
 			read = entry.tokens;
@@ -316,6 +324,7 @@ export class PrefixCache {
 			if (prefix.tokens < MIN_CACHEABLE_TOKENS) continue;
 			this.#entries.set(this.#key(session, prefix), {
 				joined: prefix.joined,
+				owner: prefix.global ? undefined : session,
 				tokens: prefix.tokens,
 				retention: prefix.retention,
 				expiresAt: now + TTL_MS[prefix.retention],
@@ -606,4 +615,101 @@ export function growingSession(options: {
 		});
 	}
 	return steps;
+}
+
+/** What one arm cost across a whole fleet of sessions sharing one cache. */
+export interface FleetLedger {
+	/** Per-session bills, keyed by session id. */
+	readonly sessions: Readonly<Record<string, SessionLedger>>;
+	readonly read: number;
+	readonly write: number;
+	readonly input: number;
+	readonly cost: number;
+}
+
+/**
+ * Run one arm over several sessions that share a single provider cache,
+ * interleaved by simulated time.
+ *
+ * This is the only shape in which the shipped anchor's justification can be
+ * measured at all: marking the first system block protects the harness a parent
+ * shares with its subagents, and a single-session scenario has no second reader
+ * for that prefix to be worth anything to. Whether the second reader can ACTUALLY
+ * read it is a property of the marker, not of the bytes — an entry is keyed by
+ * session unless the marker says `scope: "global"` — so the fleet runner is also
+ * what shows an unset field turning the whole argument off.
+ */
+export async function runFleet(arm: Arm, sessions: Readonly<Record<string, readonly Step[]>>): Promise<FleetLedger> {
+	const cache = new PrefixCache();
+	const events: Array<{ at: number; session: string; payload: WirePayload }> = [];
+	for (const [session, steps] of Object.entries(sessions)) {
+		let at = 0;
+		for (const step of steps) {
+			at += step.gapMs;
+			const captured = await capturePayload(step.context, {
+				isOAuth: arm.isOAuth ?? false,
+				cacheRetention: arm.cacheRetention,
+			});
+			events.push({ at, session, payload: arm.remark ? arm.remark(captured) : captured });
+		}
+	}
+	// Ties break on session id so the interleaving is a property of the fixture
+	// rather than of object key order.
+	events.sort((left, right) => left.at - right.at || left.session.localeCompare(right.session));
+
+	const turns = new Map<string, TurnLedger[]>();
+	const stored = new Set<string>();
+	const misses = new Map<string, number>();
+	for (const event of events) {
+		const ledger = cache.serve(event.session, event.payload, event.at);
+		const billed = turns.get(event.session) ?? [];
+		billed.push(ledger);
+		turns.set(event.session, billed);
+		if (stored.has(event.session) && ledger.read === 0)
+			misses.set(event.session, (misses.get(event.session) ?? 0) + 1);
+		if (ledger.write > 0) stored.add(event.session);
+	}
+
+	const ledgers: Record<string, SessionLedger> = {};
+	for (const [session, billed] of turns) {
+		ledgers[session] = {
+			turns: billed,
+			read: billed.reduce((sum, turn) => sum + turn.read, 0),
+			write: billed.reduce((sum, turn) => sum + turn.write, 0),
+			input: billed.reduce((sum, turn) => sum + turn.input, 0),
+			cost: billed.reduce((sum, turn) => sum + turn.cost, 0),
+			misses: misses.get(session) ?? 0,
+		};
+	}
+	const all = Object.values(ledgers);
+	return {
+		sessions: ledgers,
+		read: all.reduce((sum, one) => sum + one.read, 0),
+		write: all.reduce((sum, one) => sum + one.write, 0),
+		input: all.reduce((sum, one) => sum + one.input, 0),
+		cost: all.reduce((sum, one) => sum + one.cost, 0),
+	};
+}
+
+/**
+ * The same arm, with every system marker asking to be shared across sessions.
+ *
+ * `scope: "global"` is the Claude Code prompt-caching-scope beta. This repo
+ * already sends the beta header on both Anthropic layouts
+ * (`packages/ai/src/providers/anthropic.ts:152,160`) and the field is first-class
+ * on the wire type (`anthropic-wire.ts:23`), but nothing sets it, which is why
+ * this is a counterfactual arm rather than a description of production.
+ */
+export function sharedGlobally(arm: Arm): Arm {
+	return {
+		...arm,
+		name: `${arm.name}+global`,
+		remark: payload => {
+			const marked = arm.remark ? arm.remark(payload) : payload;
+			for (const block of marked.system ?? []) {
+				if (block.cache_control) block.cache_control = { ...block.cache_control, scope: "global" };
+			}
+			return marked;
+		},
+	};
 }
