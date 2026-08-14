@@ -518,13 +518,24 @@ export function renderRootChangelog(sources, { forkPointVersion = FORK_POINT_VER
 	const byVersion = new Map();
 	const dates = new Map();
 	for (const [index, { md }] of list.entries()) {
+		const all = index === 0 ? [] : parseAllEntries(md);
+		// A non-lead package's entry used to survive ONLY under a version the lead
+		// had also cut. That silently DELETED it whenever the lead had no section at
+		// that version -- which is the state right after a release, when the lead's
+		// Unreleased is empty and a roll therefore gives it no new heading. The whole
+		// repository rolls to one version, so the other packages' entries went
+		// nowhere and the release guard refused the write. Widened, never narrowed:
+		// the lead's versions still count, and a package's own veyyon-era run (the
+		// same positional fork scan used for the lead) now counts too.
+		const ownVeyyonVersions = new Set(veyyonEntries(all, forkPointVersion).map(entry => entry.version));
 		const entries =
 			index === 0
 				? leadEntries
-				: parseAllEntries(md).filter(
+				: all.filter(
 						entry =>
 							entry.version.toLowerCase() === "unreleased" ||
-							productVersions.has(normalizeVersion(entry.version)),
+							productVersions.has(normalizeVersion(entry.version)) ||
+							ownVeyyonVersions.has(entry.version),
 					);
 		for (const entry of entries) {
 			const sections = byVersion.get(entry.version) ?? new Map();
