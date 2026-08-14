@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- Refreshed the bundled catalog from models.dev: 127 rows across 22 providers that upstream already served, including `gemini-3.7-flash` on Google, Vertex, GitHub Copilot, OpenRouter, Kilo, NanoGPT, OpenCode Zen and Vercel AI Gateway, each carrying the declared `low`/`medium`/`high` effort ladder. The bundle had drifted far enough that a model released the day before was absent from every provider that serves it. A row missing from the bundle still recovers its ladder at runtime through the models.dev fallback, so what this closes is the cold-start and offline window before that fetch lands, not a broken lookup.
+
+### Removed
+
+- Dropped `novita/inclusionai/ling-3.0-tiny` and `umans/umans-deepseek-v4-flash-0731-lab`, which upstream no longer lists.
+
 ## [16.5.2] - 2026-07-14
 
 ### Fixed
