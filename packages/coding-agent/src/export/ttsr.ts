@@ -126,6 +126,25 @@ export class TtsrManager {
 	 * and it guesses the file's own directory rather than the project root.
 	 */
 	readonly #lastMatchedPath = new Map<string, string>();
+	/**
+	 * Distinct streams a warm-up rule has matched in since it was last injected,
+	 * keyed by rule name.
+	 *
+	 * A claim is taken the moment a rule is bucketed and delivered later, so this is
+	 * set aside at the claim rather than deleted, and put back if the claim is
+	 * released undelivered. An aborted turn otherwise costs the reminder AND the
+	 * evidence for it, which is the "it just does not fire" failure wearing a
+	 * warm-up.
+	 */
+	readonly #warmupStreams = new Map<string, Set<string>>();
+	/**
+	 * The warm-up each rule had banked when its claim was taken.
+	 *
+	 * At most one set per rule that has ever been claimed, and each holds at most
+	 * the rule's own `warmupMatches` keys, so it is bounded by the rule set rather
+	 * than by the length of the session.
+	 */
+	readonly #warmupAtClaim = new Map<string, Set<string>>();
 
 	constructor(settings?: TtsrSettings, options?: { getCwd?: () => string }) {
 		this.#settings = { ...DEFAULT_SETTINGS, ...settings };
@@ -561,6 +580,10 @@ export class TtsrManager {
 		const matches: Rule[] = [];
 		for (const entry of candidates) {
 			if (await this.#astConditionsMatch(entry.astConditions, snapshot, lang)) {
+				// A warm-up belongs to the rule, not to the condition dialect it is
+				// written in, or an author moving a rule from regex to ast-grep would
+				// silently lose it.
+				if (!this.#clearedWarmup(entry.rule, bufferKey)) continue;
 				matches.push(entry.rule);
 				logger.debug("TTSR ast condition matched", {
 					ruleName: entry.rule.name,
@@ -610,6 +633,7 @@ export class TtsrManager {
 		if (!this.#settings.enabled) {
 			return [];
 		}
+		const bufferKey = this.#bufferKey(context);
 		const matches: Rule[] = [];
 		for (const [name, entry] of this.#rules) {
 			if (!this.#canTrigger(name)) {
@@ -628,6 +652,9 @@ export class TtsrManager {
 			if (!this.#satisfiesPathScope(entry, matched)) {
 				continue;
 			}
+			if (!this.#clearedWarmup(entry.rule, bufferKey)) {
+				continue;
+			}
 
 			matches.push(entry.rule);
 			logger.debug("TTSR condition matched", {
@@ -640,6 +667,44 @@ export class TtsrManager {
 		}
 
 		return matches;
+	}
+
+	/**
+	 * Whether a rule with a warm-up has now seen enough distinct streams to speak.
+	 *
+	 * The unit is the STREAM, not the match: one tool call is re-matched on every
+	 * delta it streams, so counting matches would clear a warm-up of three inside
+	 * a single call and the rule would still fire on the first reach. Stream keys
+	 * are per tool call (`toolcall:<id>`), which is exactly one invocation.
+	 *
+	 * Counting stops at the threshold, so the set holds at most `warmupMatches`
+	 * keys however long the session runs, and the rule keeps matching every later
+	 * delta the way a rule with no warm-up does — the repeat policy, not this, is
+	 * what stops it saying the same thing twice.
+	 */
+	#clearedWarmup(rule: Rule, bufferKey: string): boolean {
+		const required = rule.warmupMatches ?? 1;
+		if (required <= 1) {
+			return true;
+		}
+		let seen = this.#warmupStreams.get(rule.name);
+		if (!seen) {
+			seen = new Set();
+			this.#warmupStreams.set(rule.name, seen);
+		}
+		if (seen.size >= required) {
+			return true;
+		}
+		seen.add(bufferKey);
+		if (seen.size < required) {
+			logger.debug("TTSR rule matched but is still warming up", {
+				ruleName: rule.name,
+				seen: seen.size,
+				required,
+			});
+			return false;
+		}
+		return true;
 	}
 
 	/** Mark rules as injected (won't trigger again until conditions allow). */
@@ -661,6 +726,15 @@ export class TtsrManager {
 				lastInjectedAt: this.#messageCount,
 				resetAt: this.#transcriptResets,
 			});
+			// The pattern has to be established again before the rule says it again, which
+			// is what keeps a warm-up rule from turning into a per-match rule the moment
+			// its repeat policy re-arms it. Set aside rather than dropped: this claim may
+			// still be released without ever reaching the model.
+			const banked = this.#warmupStreams.get(ruleName);
+			if (banked) {
+				this.#warmupAtClaim.set(ruleName, banked);
+				this.#warmupStreams.delete(ruleName);
+			}
 			logger.debug("TTSR rule marked as injected", {
 				ruleName,
 				messageCount: this.#messageCount,
@@ -690,6 +764,12 @@ export class TtsrManager {
 			const ruleName = rawName.trim();
 			if (ruleName.length === 0) continue;
 			if (this.#injectionRecords.delete(ruleName)) {
+				// The reminder was never read, so the reaches that earned it still count.
+				const banked = this.#warmupAtClaim.get(ruleName);
+				if (banked) {
+					this.#warmupStreams.set(ruleName, banked);
+					this.#warmupAtClaim.delete(ruleName);
+				}
 				logger.debug("TTSR claim released without delivery", { ruleName });
 			}
 		}

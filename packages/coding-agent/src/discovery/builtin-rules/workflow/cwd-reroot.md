@@ -4,11 +4,11 @@ condition: "(?:^|[\\s\"'=(,])/(?!usr/|etc/|opt/|proc/|sys/|dev/|var/|bin/|sbin/|
 scope: "tool:read, tool:grep, tool:glob, tool:ast_grep"
 pathScope: outside-cwd
 interruptMode: never
-repeatMode: after-gap
-repeatGap: 8
+repeatMode: per-compact
+warmupMatches: 3
 ---
 
-You reached into `{{#if matchedPath}}{{matchedPath}}{{else}}a file by its full absolute path{{/if}}`, which is outside your working directory (`{{cwd}}`). A file inside the working directory needs no absolute path: you name it by a short relative path. Every call into a directory outside it carries the full path instead, in the read header and in every edit that echoes that header back, and the cost repeats on every follow-up call.
+You have now reached outside your working directory (`{{cwd}}`) by absolute path several times, most recently `{{#if matchedPath}}{{matchedPath}}{{else}}a file named by its full absolute path{{/if}}`. A file inside the working directory needs no absolute path: you name it by a short relative path. Every call into a directory outside it carries the full path instead, in the read header and in every edit that echoes that header back, and the cost repeats on every follow-up call.
 
 ## What to do
 
@@ -16,4 +16,4 @@ You reached into `{{#if matchedPath}}{{matchedPath}}{{else}}a file by its full a
 {{#if argot}}
 - Also `argot_load` that project so its identifiers compress too. Argot shorthand is armed per project and only your working directory's project is loaded by default, so re-rooting and loading shorthand are separate steps; a settled move into a new project does both.
 {{/if}}
-- If this is a one-off glance, ignore this and carry on. Re-rooting for a single read costs more than the read did.
+- If those reads were unrelated glances rather than work settling over there, ignore this and carry on. Re-rooting to pass through a few files costs more than the reads did.

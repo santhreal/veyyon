@@ -177,6 +177,14 @@ Five session paths reach that reset — compaction, a history rewrite, a rewind,
 
 A rule whose subject is a standing STATE rather than an event needs a period above 1. `commit-drift` counts files that are still uncommitted and `test-scope` sees a command that is still a whole-suite command, so both match again the instant they are re-armed; both carry `repeatCompactions: 3`.
 
+### `warmupMatches`
+
+A rule may also stay silent until the behavior it is about has happened several times. `warmupMatches` is how many DISTINCT streams the rule matches in before it fires; the ledger lives in `TtsrManager.#warmupStreams`, keyed by rule name and holding stream keys (`toolcall:<id>`), so the many deltas of one tool call advance it once.
+
+It is set aside into `#warmupAtClaim` when the rule is marked injected and restored by `releaseInjectedByNames`, because a claim that was never delivered must not cost the rule the evidence that earned it. Delivery therefore starts the warm-up over: the rule was heard, so the next reminder is earned by the pattern happening again rather than by the transcript rolling.
+
+`cwd-reroot` carries `warmupMatches: 3` with `repeatMode: per-compact`, which is the quietest combination available: three separate calls reaching outside the working directory before it says anything, and then nothing until the transcript is replaced.
+
 ## 6. Event emission and extension/hook surfaces
 
 ### Session event
@@ -255,6 +263,7 @@ During the timer window, state can change (user interruption, mode actions, addi
 - Tool-source non-interrupting buckets are cleared when the parent assistant message ends with `stopReason === "aborted"` or `"error"`, so rules whose target tool never produced a result remain eligible to re-trigger.
 - Repeat-after-gap depends on turn count increments at `turn_end`; mid-turn chunks do not advance gap counters.
 - `repeatMode: per-compact` re-arms on a transcript replacement, and `repeatCompactions` (default 1) is how many of them the rule waits out first. Five paths reach `resetForCompaction()` and share its counter: compaction, history rewrite, rewind, shake, restore.
+- `warmupMatches` (default 1) keeps a rule silent until it has matched in that many distinct streams; a released claim restores the count, a delivered one starts it over.
 - An experimental rule (one shipping in `builtin-rules/experimental/`) is dropped before registration unless named in `ttsr.experimentalRules`, and naming it in `ttsr.disabledRules` as well keeps it off.
 
 *Verified against `7256dd34` on 2026-08-12.*

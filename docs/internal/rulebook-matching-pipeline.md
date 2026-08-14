@@ -45,6 +45,7 @@ interface Rule {
   repeatMode?: "once" | "after-gap" | "per-compact";
   repeatGap?: number;
   repeatCompactions?: number;
+  warmupMatches?: number;
   pathScope?: "outside-cwd" | "inside-cwd";
   section?: string;
   experimental?: boolean;
@@ -86,7 +87,7 @@ Normalization:
 - `name` = filename without `.md`/`.mdc`
 - frontmatter parsed via `parseFrontmatter`
 - `content` = body (frontmatter stripped)
-- `globs`, `alwaysApply`, `description`, `condition`/legacy `ttsr_trigger`, `astCondition`, `scope`, `interruptMode`, `pathScope`, `repeatMode`, `repeatGap`, and `repeatCompactions` are parsed by `buildRuleFromMarkdown`
+- `globs`, `alwaysApply`, `description`, `condition`/legacy `ttsr_trigger`, `astCondition`, `scope`, `interruptMode`, `pathScope`, `repeatMode`, `repeatGap`, `repeatCompactions`, and `warmupMatches` are parsed by `buildRuleFromMarkdown`
 - top-level `RULES.md` is synthesized as rule name `RULES` and forced to `alwaysApply: true`
 
 Important caveat: `condition` values that look like file globs are removed from the regex condition list and converted into `tool:edit(...)` / `tool:write(...)` scope shorthands. Catch-all condition `.*` is added only when no non-glob regex condition remains.
@@ -99,7 +100,7 @@ Loads from the home-level `.agent` and `.agents` directories only:
 
 There is no project scope: the provider used to walk up from `cwd` loading `<ancestor>/.agent/rules/` and `<ancestor>/.agents/rules/`, which made a cloned repository a second directory vocabulary for installing rules.
 
-Normalization uses the shared `buildRuleFromMarkdown` path: filename-derived name, stripped frontmatter body, and parsed `globs`, `alwaysApply`, `description`, `condition`/legacy `ttsr_trigger`, `astCondition`, `scope`, `interruptMode`, `pathScope`, `repeatMode`, `repeatGap`, and `repeatCompactions`.
+Normalization uses the shared `buildRuleFromMarkdown` path: filename-derived name, stripped frontmatter body, and parsed `globs`, `alwaysApply`, `description`, `condition`/legacy `ttsr_trigger`, `astCondition`, `scope`, `interruptMode`, `pathScope`, `repeatMode`, `repeatGap`, `repeatCompactions`, and `warmupMatches`.
 
 ### Cursor provider (`cursor.ts`)
 
@@ -112,7 +113,7 @@ Normalization (`transformMDCRule`):
 - `description`: kept only if string
 - `alwaysApply`: normalized to a boolean: `true` only when frontmatter has `alwaysApply: true` (anything else becomes `false`)
 - `globs`: accepts array (string elements only) or single string
-- `condition`/legacy `ttsr_trigger`, `astCondition`, `scope`, `interruptMode`, `pathScope`, `repeatMode`, `repeatGap`, and `repeatCompactions` are parsed by shared rule helpers
+- `condition`/legacy `ttsr_trigger`, `astCondition`, `scope`, `interruptMode`, `pathScope`, `repeatMode`, `repeatGap`, `repeatCompactions`, and `warmupMatches` are parsed by shared rule helpers
 - `name` from filename without extension
 
 ### Windsurf provider (`windsurf.ts`)
@@ -124,7 +125,7 @@ Loads from:
 Normalization:
 
 - `globs`: array-of-string or single string
-- `alwaysApply`, `description`, `condition`/legacy `ttsr_trigger`, `astCondition`, `scope`, `interruptMode`, `pathScope`, `repeatMode`, `repeatGap`, and `repeatCompactions` parsed by shared rule helpers
+- `alwaysApply`, `description`, `condition`/legacy `ttsr_trigger`, `astCondition`, `scope`, `interruptMode`, `pathScope`, `repeatMode`, `repeatGap`, `repeatCompactions`, and `warmupMatches` parsed by shared rule helpers
 - `name` is fixed to `global_rules`
 
 ### GitHub Copilot provider (`github.ts`)
@@ -235,7 +236,7 @@ The first three steps are the operator's levers, and `ruleIsEnabled` (`capabilit
 - **Full rule content is auto-injected into the system prompt** (before the rulebook rules section).
 - Rule is also addressable via `rule://<name>` for re-reading.
 
-### `condition`, `astCondition`, `scope`, `interruptMode`, `pathScope`, `repeatMode`, `repeatGap`, and `repeatCompactions`
+### `condition`, `astCondition`, `scope`, `interruptMode`, `pathScope`, `repeatMode`, `repeatGap`, `repeatCompactions`, and `warmupMatches`
 
 - `condition` is the regex TTSR trigger field; legacy `ttsr_trigger` / `ttsrTrigger` are accepted as fallback inputs during parsing.
 - `astCondition` is the ast-grep trigger field: a string or list of structural patterns, kept verbatim (no glob inference). It only matches on edit/write tool streams, where the language is inferred from the file path. A rule may set `condition`, `astCondition`, or both.
@@ -244,6 +245,7 @@ The first three steps are the operator's levers, and `ruleIsEnabled` (`capabilit
 - `interruptMode` can override the global TTSR interrupt mode for the rule.
 - `repeatMode` and `repeatGap` override the global `ttsr.repeatMode` / `ttsr.repeatGap` for the rule. Use them when the rule's advice is repeatable: the global default retires a rule after one injection per session, which suits a convention and not a nudge that applies again to the next directory. An unrecognised mode, a negative gap, and a fractional gap are ignored rather than coerced, so the global setting governs instead of a policy the author did not write.
 - `repeatCompactions` is the period of a `repeatMode: per-compact` rule: how many transcript replacements it waits out before it may fire again, default 1. Raise it for a rule whose subject is a standing state rather than an event, since that rule matches again the instant it is re-armed. A fractional or non-positive value is ignored, same reading as the gap.
+- `warmupMatches` is how many distinct streams the rule matches in before it fires at all, default 1 (fire on the first match). The unit is the stream, not the match: one tool call is re-matched on every delta it streams, so a warm-up counted in matches clears inside the first call and the rule fires exactly as early as it would with no warm-up. Use it for advice about a HABIT rather than an event — `cwd-reroot` declares 3, because one read of a file in another project is a glance and the rule's own body says to ignore it in that case. The count is set aside when the reminder is claimed and restored if that claim is released undelivered, and it starts again once the reminder has been heard, so a rule that spoke has to see the pattern again before it speaks again. A fractional or non-positive value is ignored, same reading as the gap.
 - `pathScope` requires the path the condition matched to be outside (`outside-cwd`) or inside (`inside-cwd`) the session working directory. A condition is a regex over the model's output and cannot know where the working directory is, so a rule about location fires on any path of the right shape. This is what made `cwd-reroot` advise re-rooting into the project the session was already in. The comparison runs against the LIVE working directory at match time, so it stays right after a `set_cwd`, and it resolves both paths rather than comparing strings, so `/work/project-two` is not read as inside `/work/project`. With no working directory available the rule does not fire: a rule that asked to be filtered must not fire unfiltered. `TtsrManager.lastMatchedPath(name)` returns the path that decided the match, which is how an injected body can name the directory it is advising about.
 
 A rule that uses `pathScope` should stay scoped to navigation tools (`read`, `grep`, `glob`, `ast_grep`). These tools are comparatively safe because their raw argument streams normally contain navigation arguments instead of file bodies, but the stream is not path-only: it can also contain intent, patterns, and other arguments. For `edit`, `write`, `ast_edit`, and `bash`, the stream also carries file content or a heredoc, and content mentions absolute paths constantly: docs, configs, fixtures, path constants. Scoping those tools into a path rule makes it fire on what a file talks about rather than on where the file lives, and no regex over the stream can tell the two apart. When you want to react to where a write actually lands, use the tool's declared `filesystemTargets` instead; `RerootDetector` in `src/tools/reroot-hint.ts` does this.

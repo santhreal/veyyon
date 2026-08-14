@@ -244,6 +244,13 @@ export function buildRuleFromMarkdown(
 		typeof rawRepeatCompactions === "number" && Number.isInteger(rawRepeatCompactions) && rawRepeatCompactions > 0
 			? rawRepeatCompactions
 			: undefined;
+	const rawWarmupMatches = frontmatter.warmupMatches;
+	// Same reading again: a fraction or a non-positive count is a typo, and firing on
+	// the first match beats inventing a warm-up the author did not write.
+	const warmupMatches =
+		typeof rawWarmupMatches === "number" && Number.isInteger(rawWarmupMatches) && rawWarmupMatches > 0
+			? rawWarmupMatches
+			: undefined;
 	const rawMode = frontmatter.interruptMode;
 	const interruptMode: Rule["interruptMode"] =
 		rawMode === "never" || rawMode === "prose-only" || rawMode === "tool-only" || rawMode === "always"
@@ -264,6 +271,7 @@ export function buildRuleFromMarkdown(
 		repeatMode,
 		repeatGap,
 		repeatCompactions,
+		warmupMatches,
 		_source: source,
 	};
 }
