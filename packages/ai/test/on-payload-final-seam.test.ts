@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import * as http2 from "node:http2";
-import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
+import { create, fromBinary, fromJson, type JsonValue, toBinary, toJson } from "@bufbuild/protobuf";
 import { streamBedrock } from "@veyyon/ai/providers/amazon-bedrock";
 import { sha256Hex } from "@veyyon/ai/providers/aws-sigv4";
 import { streamCursor } from "@veyyon/ai/providers/cursor";
@@ -19,6 +19,12 @@ import { withEnv } from "./helpers";
 
 const ORIGINAL_SECRET = "raw-payload-secret";
 const MUTATED_SECRET = "mutated-intermediate-secret";
+
+/** The proto3 JSON form of `AgentRunRequest` the hook now receives. */
+interface CursorRunRequestJson {
+	conversationId?: string;
+	[key: string]: unknown;
+}
 
 function contextWithSecret(): Context {
 	return { messages: [{ role: "user", content: ORIGINAL_SECRET, timestamp: 0 }] };
@@ -309,6 +315,11 @@ describe("onPayload is the final physical transport seam", () => {
 		expect(order).toEqual(["payload", "fetch", "response:503:bedrock-hook-failure"]);
 	});
 
+	/**
+	 * The hook trades in canonical proto3 JSON, not a protobuf message: see the WHY
+	 * on the shape test below. So the replacement it returns is JSON too, and the
+	 * provider rebuilds the message from it.
+	 */
 	it("serializes only the async Cursor replacement into the gRPC request", async () => {
 		const server = await startH2CaptureServer();
 		try {
@@ -317,11 +328,11 @@ describe("onPayload is the final physical transport seam", () => {
 				apiKey: "resolved-cursor-credential",
 				onPayload: async payload => {
 					hookCalls++;
-					const raw = payload as AgentRunRequest;
+					const raw = payload as CursorRunRequestJson;
 					expect(JSON.stringify(raw)).toContain(ORIGINAL_SECRET);
 					raw.conversationId = MUTATED_SECRET;
 					await Promise.resolve();
-					return create(AgentRunRequestSchema, { conversationId: "safe-cursor-replacement" });
+					return { conversationId: "safe-cursor-replacement" };
 				},
 			}).result();
 
@@ -332,6 +343,101 @@ describe("onPayload is the final physical transport seam", () => {
 			expect(frame.includes(Buffer.from(ORIGINAL_SECRET))).toBe(false);
 			expect(frame.includes(Buffer.from(MUTATED_SECRET))).toBe(false);
 			expect(decodeCursorRunRequest(frame).conversationId).toBe("safe-cursor-replacement");
+		} finally {
+			await server.close();
+		}
+	});
+
+	/**
+	 * WHY: `onPayload` is where a host puts its secret redactor, and a redactor has
+	 * to WALK the payload and rewrite strings. `@veyyon/coding-agent`'s refuses any
+	 * value JSON cannot express, so a provider handing it a live protobuf message
+	 * did not degrade — every request died with "the provider request contains a
+	 * non-JSON value/object; confidentiality transform failed", making that provider
+	 * unusable for anyone with secrets configured. Devin shipped exactly that bug.
+	 *
+	 * `JSON.stringify` is NOT this check and is why the case above missed it: it
+	 * turns a `Uint8Array` into `{"0":…}` and a plain object into itself, so it
+	 * passes on payloads a walking redactor rejects. This asserts the shape instead.
+	 *
+	 * What it does not catch: a provider not driven here (gitlab-duo-workflow), and
+	 * a field that only appears once real conversation history is present.
+	 */
+	it("hands Cursor's hook a payload a walking redactor can express", async () => {
+		const server = await startH2CaptureServer();
+		try {
+			const offenders: string[] = [];
+			const seen = new Set<unknown>();
+			const walk = (node: unknown, path: string): void => {
+				if (node === null) return;
+				const kind = typeof node;
+				if (kind === "bigint" || kind === "function" || kind === "symbol") {
+					offenders.push(`${path}: ${kind}`);
+					return;
+				}
+				if (kind !== "object" || seen.has(node)) return;
+				seen.add(node);
+				if (ArrayBuffer.isView(node) || node instanceof ArrayBuffer) {
+					offenders.push(`${path}: ${Object.prototype.toString.call(node)}`);
+					return;
+				}
+				if (Array.isArray(node)) {
+					node.forEach((entry, index) => {
+						walk(entry, `${path}[${index}]`);
+					});
+					return;
+				}
+				const proto = Object.getPrototypeOf(node);
+				if (proto !== Object.prototype && proto !== null) {
+					offenders.push(`${path}: ${proto?.constructor?.name ?? "non-plain"}`);
+				}
+				for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+					walk(value, `${path}.${key}`);
+				}
+			};
+
+			await streamCursor(cursorModel(server.baseUrl), contextWithSecret(), {
+				apiKey: "resolved-cursor-credential",
+				onPayload: payload => {
+					walk(payload, "runRequest");
+				},
+			}).result();
+
+			expect(offenders).toEqual([]);
+		} finally {
+			await server.close();
+		}
+	});
+
+	/**
+	 * The other half of trading in JSON: the provider rebuilds the message from what
+	 * the hook returns, and a redactor that finds nothing to redact hands back the
+	 * payload it was given, so that path is the common one and must lose nothing.
+	 * This is what would catch a `toJson`/`fromJson` asymmetry — a dropped default, a
+	 * bytes field that does not survive base64, a 64-bit value mangled by a string.
+	 *
+	 * Deliberately NOT a comparison of wire bytes across two runs: the request
+	 * carries per-call state, so two runs with no hook at all already differ, and
+	 * such a test fails for a reason that has nothing to do with the seam.
+	 */
+	it("rebuilds Cursor's request from the JSON it handed out, losing nothing", async () => {
+		const server = await startH2CaptureServer();
+		try {
+			let captured: JsonValue | undefined;
+			await streamCursor(cursorModel(server.baseUrl), contextWithSecret(), {
+				apiKey: "resolved-cursor-credential",
+				onPayload: payload => {
+					captured = payload as JsonValue;
+				},
+			}).result();
+
+			expect(captured).toBeDefined();
+			const before = captured as JsonValue;
+			const rebuilt = toJson(AgentRunRequestSchema, fromJson(AgentRunRequestSchema, before));
+
+			// Both sides come out of the same serializer, so key order is stable and a
+			// dropped or mangled field shows up as a difference in the text.
+			expect(JSON.stringify(rebuilt)).toBe(JSON.stringify(before));
 		} finally {
 			await server.close();
 		}

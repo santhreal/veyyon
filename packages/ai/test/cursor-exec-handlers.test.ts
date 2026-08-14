@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { create } from "@bufbuild/protobuf";
+import { create, fromJson, type JsonValue } from "@bufbuild/protobuf";
 import {
 	type BlockState,
 	buildCursorHistoryForTest,
@@ -17,6 +17,7 @@ import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { buildModel } from "@veyyon/catalog/build";
 import {
 	type AgentRunRequest,
+	AgentRunRequestSchema,
 	AgentServerMessageSchema,
 	ExecServerMessageSchema,
 	ReadArgsSchema,
@@ -54,19 +55,18 @@ function captureCursorPayload(context: Context, model: Model<"cursor-agent"> = c
 	streamCursor(model, context, {
 		apiKey: "test-token",
 		onPayload: payload => {
-			if (isAgentRunRequest(payload)) {
-				resolve(payload);
-			} else {
-				reject(new Error("Cursor payload was not an AgentRunRequest"));
+			// The seam hands out canonical proto3 JSON so a walking secret redactor can
+			// express it (see on-payload-final-seam.test.ts); rebuild the message the
+			// assertions below are written against.
+			try {
+				resolve(fromJson(AgentRunRequestSchema, payload as JsonValue));
+			} catch (err) {
+				reject(err instanceof Error ? err : new Error(String(err)));
 			}
 			throw new Error("stop after capturing Cursor payload");
 		},
 	});
 	return promise;
-}
-
-function isAgentRunRequest(payload: unknown): payload is AgentRunRequest {
-	return !!payload && typeof payload === "object" && "$typeName" in payload;
 }
 
 function toolResultContext(): Context {
