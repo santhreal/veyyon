@@ -75,8 +75,25 @@ describe("the exemption stays narrow", () => {
 		expect(isCritical('TMP=$(mktemp -d) && rm -rf "$TMP"/*')).toBe(true);
 	});
 
-	it("refuses a path suffix under the temp path, for the same empty-value reason", () => {
-		expect(isCritical('TMP=$(mktemp -d) && rm -rf "$TMP"/sub')).toBe(true);
+	/**
+	 * A SUFFIX is not exempted either, and the way to see that is a suffix whose
+	 * own worst reading is dangerous: an empty `TMP` makes `"$TMP"/bin` the
+	 * protected root `/bin`, and the mktemp provenance does not save it.
+	 */
+	it("refuses a path suffix whose empty reading is a protected root", () => {
+		expect(isCritical('TMP=$(mktemp -d) && rm -rf "$TMP"/bin')).toBe(true);
+	});
+
+	/**
+	 * A suffix naming an ordinary path IS allowed, and not by this exemption:
+	 * `judgeDeleteTarget` reads `"$TMP"/sub` as `/sub` at worst, which the
+	 * identical spelling with no mktemp anywhere on the line is allowed for too.
+	 * Asserting both is what keeps this row from silently becoming a claim about
+	 * provenance the moment the path rule changes.
+	 */
+	it("leaves an ordinary suffix to the path rule rather than to provenance", () => {
+		expect(isCritical('TMP=$(mktemp -d) && rm -rf "$TMP"/sub')).toBe(false);
+		expect(isCritical('rm -rf "$OTHER"/sub')).toBe(false);
 	});
 
 	it("refuses the name once it has been reassigned to something else", () => {

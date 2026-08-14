@@ -708,12 +708,15 @@ describe("finding out where home is", () => {
 	/**
 	 * The two unresolvable kinds read differently in the prompt, because they
 	 * ask the operator different questions. "I do not know where your home is"
-	 * is a host misconfiguration; "I cannot evaluate `$dir`" is a normal
-	 * consequence of using a variable.
+	 * is a host misconfiguration; "the value that makes `$dir` dangerous is the
+	 * empty one" names the reading the refusal is about, which is the thing an
+	 * operator can act on.
 	 */
 	it("distinguishes an unlocatable home from an unevaluated variable", () => {
 		expect(findCriticalBashRisk("rm -rf ~", "")!.reason).toContain("cannot locate");
-		expect(findCriticalBashRisk('rm -rf "$dir"/*', HOME)!.reason).toContain("not knowable");
+		expect(findCriticalBashRisk('rm -rf "$dir"/*', HOME)!.reason).toBe(
+			"rm would recursively remove a protected system directory (/) when the expansion this command line does not settle is empty",
+		);
 	});
 
 	/**
@@ -795,9 +798,19 @@ describe("judging one target", () => {
 		expect(judgeDeleteTarget({ text: "./home", unknown: false, emptied: false }, HOME)).toBeUndefined();
 	});
 
-	/** Unknown fails closed, which is the whole empty-expansion rule. */
-	it("refuses a target it could not resolve", () => {
-		expect(judgeDeleteTarget({ text: "$dir/x", unknown: true, emptied: false }, HOME)).toContain("not knowable");
+	/**
+	 * An unsettled expansion is judged by what it can become: `$dir/x` is
+	 * `/x` at worst, which the literal spelling `rm -rf /x` is also allowed to
+	 * delete, while `$dir` alone is the root and `$dir/lib` is a protected root.
+	 */
+	it("judges a target it could not resolve by its worst reading", () => {
+		expect(judgeDeleteTarget({ text: "$dir/x", unknown: true, emptied: false }, HOME)).toBeUndefined();
+		expect(judgeDeleteTarget({ text: "$dir", unknown: true, emptied: false }, HOME)).toContain(
+			"a protected system directory (/)",
+		);
+		expect(judgeDeleteTarget({ text: "$dir/lib", unknown: true, emptied: false }, HOME)).toContain(
+			"a protected system directory (/lib)",
+		);
 	});
 });
 
@@ -818,13 +831,13 @@ describe("what the risk report says", () => {
 		expect(risk!.reason).toBe("rm would recursively remove the home directory itself");
 	});
 
-	/** An unresolvable target has no path to report and says so instead. */
+	/** An unresolvable target has no path to report and names its reading instead. */
 	it("reports no target when there is nothing to resolve", () => {
 		const risk = findCriticalBashRisk('rm -rf "$dir"/*', HOME);
 
 		expect(risk).toBeDefined();
 		expect(risk!.target).toBeUndefined();
-		expect(risk!.reason).toContain("not knowable");
+		expect(risk!.reason).toContain("does not settle is empty");
 	});
 });
 
@@ -954,9 +967,16 @@ describe("expansion the shell will perform, judged the way the shell will perfor
 		expect(verdict({ command: "rm -rf node_modules" })).toBe("allowed");
 	});
 
-	/** An UNSET variable is still the fail-closed case the rule was written for. */
-	it("still refuses a variable nothing has set", () => {
-		expect(verdict({ command: "rm -rf $NOTHING_SETS_THIS/build" })).toBe("critical");
+	/**
+	 * An UNSET variable is still the fail-closed case the rule was written for,
+	 * for every reading of it that is dangerous: the bare word is the root, a
+	 * glob under it starts at the root, and a suffix naming a protected root is
+	 * that root. An unset variable under an ordinary suffix is not on this list,
+	 * and the suite next door is where that is stated.
+	 */
+	it("still refuses a variable nothing has set wherever a reading is dangerous", () => {
+		expect(verdict({ command: "rm -rf $NOTHING_SETS_THIS" })).toBe("critical");
+		expect(verdict({ command: "rm -rf $NOTHING_SETS_THIS/bin" })).toBe("critical");
 		expect(verdict({ command: 'rm -rf "$dir"/*' })).toBe("critical");
 	});
 });

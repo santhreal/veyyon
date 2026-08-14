@@ -15,6 +15,13 @@
  * verdict are "an expansion whose value is NOT KNOWABLE FROM THE COMMAND TEXT",
  * and the command text said what it was one word earlier.
  *
+ * THE BLANKET RULE THAT REFUSAL CAME FROM IS GONE. An unsettled expansion is now
+ * instantiated with the values that make a path dangerous and judged as the
+ * concrete path it becomes, so the reported command would pass today even with
+ * no readable assignment on the line. Both halves are still worth holding: this
+ * suite keeps the value-resolution half honest, and every row below still keeps
+ * the floor because the bare word's root reading is the whole filesystem.
+ *
  * THE CLASS THIS CLOSES. Not "the `;` case": every route by which this line
  * settles a name (bare assignment, a declaration builtin, a wrapper word in
  * front of it, a later reassignment) resolves it, and every route by which the
@@ -118,6 +125,17 @@ describe("a value the line does NOT settle", () => {
 	 * was a way to smuggle a delete past a scan that believes assignments. They
 	 * are listed with the reading that makes them dangerous, because a reader
 	 * deleting one of these rows needs to know what it is for.
+	 *
+	 * EVERY ROW DELETES THE BARE WORD, and that is load-bearing. An unsettled
+	 * expansion is no longer refused for being one: it is instantiated with the
+	 * values that make a path dangerous and judged concretely, and the bare word
+	 * is the only shape whose root reading is the whole filesystem. A suffixed
+	 * target under the same unsettled name is ordinary work and is allowed, which
+	 * is asserted next door in
+	 * `an-unsettled-expansion-is-judged-by-what-it-can-become.test.ts`. Adding a
+	 * suffix to a row here would make it pass or fail for the path rather than
+	 * for the name, which is the confusion that suite exists to keep out of this
+	 * one.
 	 */
 	const UNSETTLED: readonly (readonly [string, string])[] = [
 		// The value cannot be had without running the substitution.
@@ -137,7 +155,7 @@ describe("a value the line does NOT settle", () => {
 		["a name rebound by a loop", 'DST=/srv/app; for DST in a b; do :; done; rm -rf "$DST"'],
 		["a name rebound inside an unreadable script", 'DST=/srv/app; bash ./deploy.sh; rm -rf "$DST"'],
 		// No assignment at all: the ambient value is the shell's business.
-		["no assignment on the line", 'rm -rf "$DST/build"'],
+		["no assignment on the line", 'rm -rf "$DST"'],
 	];
 
 	it.each(UNSETTLED)("keeps the floor for %s", (_label, command) => {

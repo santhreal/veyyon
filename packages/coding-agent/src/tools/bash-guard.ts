@@ -23,11 +23,16 @@
  * expand the parts of a word whose value we can know, and then ask whether any
  * resulting target is a path no agent should be recursively deleting.
  *
- * IT FAILS CLOSED. A word we cannot expand, in a command that deletes
- * recursively, is treated as critical. `rm -rf "$dir"/*` has no safe reading:
- * if `dir` is empty the command starts at the root, and nothing in the text
- * says whether it is. The cost of being wrong here is one approval prompt; the
- * cost of the other mistake is the incident this module is named after.
+ * IT FAILS CLOSED ON WHAT THE WORD CAN BECOME. A word we cannot expand is
+ * instantiated with the values that make a path dangerous — empty, the root,
+ * the home directory — and every concrete result is judged by the same
+ * classifier a literal path goes through. `rm -rf "$dir"/*` has no safe
+ * reading, because an empty `dir` starts the delete at the root, and nothing in
+ * the text says whether it is. `rm -rf "$dir/facet"` has one: its worst reading
+ * is `/facet`, which is an ordinary path in the literal spelling too. Refusing
+ * both is what a blanket rule did, and the cost of that is not one prompt but a
+ * floor an operator switches off. See judgeDeleteTarget for the residual this
+ * accepts.
  *
  * WHAT IT IS NOT. This is not containment. A shell function, an `eval`, or a
  * script invoked by name defeats any parser, and the layer that does not
@@ -270,8 +275,12 @@ const RECURSIVE_REWRITE_COMMANDS = new Set(["chmod", "chown", "chgrp"]);
  *
  * The third is the one that matters. `rm -rf "$TMP"/*` stays critical forever:
  * if `mktemp` failed then `TMP` is empty and that command is `rm -rf /*`, which
- * is the July 2026 incident in this module's header. The bare form has no such
- * reading, because an empty `TMP` makes it `rm -rf ""`, which deletes nothing.
+ * is the July 2026 incident in this module's header, and no exemption reaches
+ * it. A suffix like `rm -rf "$TMP"/sub` is not exempted here either; it is
+ * allowed one layer down, because judgeDeleteTarget reads its worst instantiation
+ * as `/sub` and an ordinary top-level path is not the floor's business. Keeping
+ * the gate narrow is what makes that a decision about the PATH rather than a
+ * widening of provenance.
  */
 function isMktempCreation(value: string): boolean {
 	const body = /^\$\(([\s\S]*)\)$/.exec(value)?.[1] ?? /^`([\s\S]*)`$/.exec(value)?.[1];
@@ -399,7 +408,14 @@ export interface ExpandedWord {
 	readonly text: string;
 	/** True when the word still holds an expansion whose value we cannot know. */
 	readonly unknown: boolean;
-	/** True when an expansion we could resolve produced an empty string. */
+	/**
+	 * True when an expansion collapsed the word to nothing, or would have.
+	 *
+	 * Together with `unknown` it marks the one word with no reading to judge: a
+	 * `~` or `$HOME` on a host where this process cannot locate the home
+	 * directory. On a resolved word it records that the shell will produce this
+	 * exact collapsed text, which the judge then reads as the path it is.
+	 */
 	readonly emptied: boolean;
 }
 
@@ -612,9 +628,10 @@ const EXPANSION = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)|\$\
  *     GLOBVAR="/*"          shell: every top-level entry
  *     WEIRD='$OTHER'        a second round of expansion the guard does not model
  *
- * Rejecting is free: an unknown expansion in a recursive delete is already
- * treated as critical, so the cost of refusing is one prompt and the cost of
- * accepting is the incident this module is named after.
+ * Rejecting is close to free: a word left unknown is judged by what it can
+ * become (see judgeDeleteTarget), so a refused value costs one prompt only when
+ * some reading of that word is dangerous, and accepting a value the shell would
+ * split or glob costs the incident this module is named after.
  */
 function isQuietlySubstitutable(value: string): boolean {
 	return !/[\s*?[\]{}$`~\\]/.test(value);
@@ -665,14 +682,16 @@ const OPERATOR_EXPANSION = /\$\{[^}]*[^A-Za-z0-9_}][^}]*\}|\$\{[^A-Za-z_]/;
  *
  * A leading `~`, `$HOME`, and any variable set in `env` whose value is quiet
  * enough to paste (see {@link isQuietlySubstitutable}) are resolved. Everything
- * else stays unknown, and unknown means critical in a recursive delete.
+ * else stays unknown, and a delete target left unknown is judged by every
+ * dangerous value it could hold (see judgeDeleteTarget).
  *
  * WHY READING THE ENVIRONMENT IS NOT GUESSING. The command runs in a shell
  * spawned from this process, so `$TMPDIR` in the command text and `TMPDIR` in
  * the environment that shell inherits are the same lookup with the same answer.
- * Only `HOME` was resolved before, so every other variable was unknown and
- * therefore critical, and that made ordinary commands prompt in a mode whose
- * whole promise is that it does not: `rm -rf $TMPDIR/scratch` and
+ * Only `HOME` was resolved before, so every other variable was unknown and, under
+ * the blanket rule of the time, therefore critical, and that made ordinary
+ * commands prompt in a mode whose whole promise is that it does not:
+ * `rm -rf $TMPDIR/scratch` and
  * `rm -rf ${CARGO_TARGET_DIR}/debug` both blocked. A guard that cries wolf on
  * `$TMPDIR` gets switched off before it ever sees a real one.
  *
@@ -689,7 +708,8 @@ const OPERATOR_EXPANSION = /\$\{[^}]*[^A-Za-z0-9_}][^}]*\}|\$\{[^A-Za-z_]/;
  * rule was written for: `rm -rf "$dir"/*` where the script assigns `dir` itself
  * has no safe reading, because an empty `dir` starts the delete at the root. A
  * variable set to the EMPTY string expands to empty, the same substitution the
- * shell performs, and the collapsed word reaches the protected-root judgement.
+ * shell performs, and the collapsed word — `/*` in that example — reaches the
+ * protected-root judgement as the path it now is.
  *
  * Command substitution (`$(…)`, backticks) stays unknown. Its value cannot be
  * had without running it, and running it is what the guard exists to precede.
@@ -815,10 +835,66 @@ function isAtOrUnder(candidate: string, ancestor: string): boolean {
 	return candidate === ancestor || candidate.startsWith(`${ancestor}/`);
 }
 
+/** Glob and brace characters, which make a component name a SET of entries. */
+const GLOB_METACHARACTERS = /[*?[\]{}]/;
+
+/**
+ * The deepest ancestor of `normalized` whose every component is literal.
+ *
+ * `rm -rf /var/*` empties `/var`, which is `/var` destroyed in every sense that
+ * matters, and judged as the TEXT `/var/*` it matched nothing: `/var/*` equals
+ * no protected root, is not an ancestor of the home directory, and sits under
+ * none of the protected directories. So `rm -rf /*`, `rm -rf ~/*` and
+ * `rm -rf ~/.config/*` were all allowed while every glob-free spelling of the
+ * same destruction was refused. A component holding a glob is dropped together
+ * with everything below it and the directory the glob READS is judged instead,
+ * which is also what makes the empty-expansion shape (`rm -rf "$dir"/*`, the
+ * July 2026 incident) resolve to the root rather than to the harmless-looking
+ * path `/*`.
+ */
+function pathBeforeFirstGlob(normalized: string): string {
+	const parts = normalized.slice(1).split("/");
+	const literal: string[] = [];
+	for (const part of parts) {
+		if (GLOB_METACHARACTERS.test(part)) break;
+		literal.push(part);
+	}
+	return literal.length === parts.length ? normalized : `/${literal.join("/")}`;
+}
+
+/** Said when a word holds an expansion there is no way to instantiate at all. */
+const UNNAMEABLE_EXPANSION =
+	"an expansion whose value is not knowable from the command text, in a form with no reading this scan can even name";
+
 /**
  * Judge one expanded target of a recursive delete.
  *
  * Returns the reason it is refused, or `undefined` when it is fine.
+ *
+ * AN UNSETTLED EXPANSION IS JUDGED BY WHAT IT CAN BECOME, NOT BY THE FACT THAT
+ * IT IS ONE. This used to refuse every target holding an expansion the scan
+ * could not settle, on the reading that an empty variable starts the delete at
+ * the root. That reading is right about `rm -rf "$dir"` and `rm -rf "$dir"/*`
+ * and wrong about `rm -rf "$dir/facet"`, whose empty reading is `/facet` — an
+ * ordinary top-level path that the identical literal spelling `rm -rf /facet`
+ * has always been allowed to delete. Refusing it anyway put the most ordinary
+ * shape an agent writes on the `critical` floor, which is the one thing `/yolo`
+ * cannot lift, and a floor that fires on `rm -rf "$DST/facet"` is a floor an
+ * operator switches off before it ever sees a real `rm -rf /`.
+ *
+ * So the expansion is INSTANTIATED with the values that make a path dangerous —
+ * empty, the root, and the home directory — and each concrete result is judged
+ * by the same classifier a literal path goes through. Every incident shape
+ * survives it: `$dir` alone reads as `/`, `$dir/*` reads as `/` through the
+ * glob rule above, `$dir/lib` reads as `/lib`, and `$D/.ssh` reads as the
+ * credentials directory.
+ *
+ * WHAT IT DOES NOT CATCH, deliberately: a value that CLIMBS. `rm -rf /var/log/$X`
+ * with `X=../../..` is the root, and no finite set of readings finds that,
+ * because a variable can climb from any depth. Covering it means refusing every
+ * unknown suffix under every absolute prefix — `rm -rf ./dist/$TARGET` included
+ * — which is the blanket rule this replaced, so the residual is accepted and
+ * named here rather than paid for in prompts on ordinary work.
  *
  * A RELATIVE path is resolved against `cwd` and then judged like any other.
  * This used to return `undefined` for anything not starting with `/`, on the
@@ -842,18 +918,25 @@ export function judgeDeleteTarget(
 	extra: readonly string[] = [],
 	cwd = "",
 ): string | undefined {
-	if (target.emptied) {
-		return "a path relative to a home directory this process cannot locate, so there is no way to tell what it names";
-	}
 	if (target.unknown) {
-		return "an expansion whose value is not knowable from the command text, which is the shape that starts at the root when the variable is empty";
+		// An unresolvable HOME is the one shape with no reading to instantiate:
+		// the word names a directory that certainly exists and this process
+		// cannot say which one, so there is nothing to judge and it fails closed.
+		if (target.emptied) {
+			return "a path relative to a home directory this process cannot locate, so there is no way to tell what it names";
+		}
+		return judgeUnsettledDeleteTarget(target.text, home, extra, cwd);
 	}
+	// `rm -rf ""` deletes nothing, which is what an expansion resolved to the
+	// empty string leaves behind. Judged before the relative branch, which would
+	// otherwise resolve it against `cwd` and refuse the working directory itself.
+	if (target.text === "") return undefined;
 	if (!target.text.startsWith("/")) {
 		if (cwd === "" || !cwd.startsWith("/")) return undefined;
 		return judgeDeleteTarget({ text: `${cwd}/${target.text}`, unknown: false, emptied: false }, home, extra);
 	}
 
-	const normalized = normalizeAbsolutePath(target.text);
+	const normalized = pathBeforeFirstGlob(normalizeAbsolutePath(target.text));
 	const normalizedHome = home === "" ? "" : normalizeAbsolutePath(home);
 
 	// Most specific reason first, because the reason is what an operator reads
@@ -893,6 +976,98 @@ export function judgeDeleteTarget(
 		}
 	}
 	return undefined;
+}
+
+/**
+ * Judge a target holding an expansion this scan could not settle, by judging
+ * every concrete path it can become.
+ *
+ * THE READINGS ARE THE THREE VALUES THAT MAKE A PATH DANGEROUS. Empty is the
+ * incident shape and the reason this module exists. The root is the value a
+ * variable holds when a script computed one and got `/`, and it is the only
+ * reading under which a bare `$VAR` is catastrophic. The home directory is the
+ * value that turns a benign-looking suffix into somebody's credentials, so
+ * `rm -rf "$D/.ssh"` is refused for the same reason `rm -rf ~/.ssh` is.
+ *
+ * A word that cannot be instantiated at all — `$$`, `$1`, `$@` and the other
+ * forms with no name to substitute — has no reading to judge and is refused.
+ */
+function judgeUnsettledDeleteTarget(
+	text: string,
+	home: string,
+	extra: readonly string[],
+	cwd: string,
+): string | undefined {
+	const readings: readonly { value: string; label: string }[] = [
+		{ value: "", label: "empty" },
+		{ value: "/", label: "the root" },
+		...(home === "" ? [] : [{ value: home, label: "the home directory" }]),
+	];
+	for (const reading of readings) {
+		const instantiated = instantiateExpansions(text, reading.value);
+		if (instantiated === undefined) return UNNAMEABLE_EXPANSION;
+		const reason = judgeDeleteTarget({ text: instantiated, unknown: false, emptied: false }, home, extra, cwd);
+		if (reason !== undefined) {
+			return `${reason} when the expansion this command line does not settle is ${reading.label}`;
+		}
+	}
+	return undefined;
+}
+
+/**
+ * Replace every expansion left in `text` with `value`, or `undefined` when one
+ * of them is a form with no name to replace.
+ *
+ * The whole word is instantiated with ONE value rather than every combination
+ * of values across several expansions: for the readings that matter the uniform
+ * substitution is already the worst one, because emptying every expansion
+ * removes the most path and rooting every expansion is `/` whatever follows.
+ *
+ * An unbalanced substitution runs to the end of the word, exactly as
+ * [`endOfCommandSubstitution`] treats it, so `rm -rf $(cat missing` is still
+ * one unresolvable word and still reads as the root.
+ */
+function instantiateExpansions(text: string, value: string): string | undefined {
+	let result = "";
+	let index = 0;
+	// A leading `~user` names another account's home directory, which this scan
+	// cannot locate. `~` and `~/…` never reach here: they were substituted when
+	// home resolved and made the word `emptied` when it did not.
+	if (text.startsWith("~")) {
+		const cut = text.indexOf("/");
+		result += value;
+		index = cut === -1 ? text.length : cut;
+	}
+	while (index < text.length) {
+		const character = text[index] as string;
+		if (character === "`") {
+			const end = text.indexOf("`", index + 1);
+			result += value;
+			index = end === -1 ? text.length : end + 1;
+			continue;
+		}
+		if (character === "$" && text[index + 1] === "(") {
+			result += value;
+			index = endOfCommandSubstitution(text, index + 1);
+			continue;
+		}
+		if (character === "$" && text[index + 1] === "{") {
+			const end = text.indexOf("}", index + 2);
+			result += value;
+			index = end === -1 ? text.length : end + 1;
+			continue;
+		}
+		if (character === "$") {
+			const name = /^[A-Za-z_][A-Za-z0-9_]*/.exec(text.slice(index + 1));
+			if (name === null) return undefined;
+			result += value;
+			index += 1 + (name[0] as string).length;
+			continue;
+		}
+		result += character;
+		index += 1;
+	}
+	return result;
 }
 
 /**

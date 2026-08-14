@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- A recursive delete through a variable is judged by the path it can become, instead of being refused for holding a variable at all. `rm -rf "$DST/facet"` was `critical`, which is the one verdict `/yolo` cannot lift and no standing grant can cover, so on a long unattended run every variable-shaped cleanup stopped the agent dead — and the reason given, "an expansion whose value is not knowable from the command text", was true of an ordinary staging command whose worst possible reading is `/facet`, a top-level path the literal spelling `rm -rf /facet` has always been allowed to delete. An unsettled expansion is now instantiated with the three values that make a path dangerous (empty, the root, the home directory) and each concrete result goes through the same classifier a literal path does, so the refusal names the reading it is about: "rm would recursively remove a protected system directory (/) when the expansion this command line does not settle is empty". Every incident shape is still refused, including the July 2026 one: the bare word reads as `/`, `"$dir"/*` reads as `/`, `"$dir"/lib` reads as `/lib`, and `"$D/.ssh"` reads as the credentials directory. A value that CLIMBS is the residual this accepts, and it is named where the rule is written.
+- A glob is judged as the directory it reads, which closes the literal half of the same hole. `rm -rf /*`, `rm -rf ~/*`, `rm -rf /var/*` and `rm -rf ~/.config/*` were all allowed, because the text `/var/*` equals no protected root, is not an ancestor of the home directory, and sits under none of the protected directories — so each of them destroys a directory whose glob-free spelling has always been refused. A component holding a glob is now dropped together with everything below it and the directory the glob reads is judged instead. A glob inside an ordinary directory (`rm -rf ./dist/*`, `rm -rf /var/log/nginx/*`) is untouched.
+- `rm -rf ""` no longer reports the working directory as its target. A word an expansion collapsed to nothing was resolved against the working directory like any relative path, so a cleanup run from the home directory was refused as a delete of the home directory itself.
+
 ## [1.0.48] - 2026-08-13
 
 ### Fixed
