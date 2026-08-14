@@ -286,6 +286,17 @@ interface Entry {
  */
 export class PrefixCache {
 	readonly #entries = new Map<string, Entry>();
+	/**
+	 * What a provider might charge extra to write an entry other sessions may read.
+	 * No published number exists for the prompt-caching-scope beta, so the default
+	 * is 1 — no premium — and a scenario that recommends setting `scope: "global"`
+	 * raises it to see whether its recommendation survives being wrong about this.
+	 */
+	readonly #globalWritePremium: number;
+
+	constructor(options?: { globalWritePremium?: number }) {
+		this.#globalWritePremium = options?.globalWritePremium ?? 1;
+	}
 
 	#key(session: string, prefix: Prefix): string {
 		return `${prefix.global ? "" : session}${BLOCK_SEPARATOR}${prefix.joined}`;
@@ -333,13 +344,18 @@ export class PrefixCache {
 		}
 		const writePrice = deepest?.retention === "long" ? PRICE.write1h : PRICE.write5m;
 		const input = Math.max(0, promptTokens - read - write);
-		return {
-			read,
-			write,
-			input,
-			promptTokens,
-			cost: read * PRICE.read + write * writePrice + input * PRICE.input,
-		};
+		// A premium, if one exists, is charged only on the tokens actually published
+		// for other sessions to read: the part of this write that lands inside a
+		// globally scoped prefix. Everything past that prefix is an ordinary write
+		// however the shallow marker was scoped.
+		const deepestGlobal = prefixes.reduce((max, prefix) => (prefix.global ? Math.max(max, prefix.tokens) : max), 0);
+		const shared = Math.max(0, Math.min(covered, deepestGlobal) - read);
+		const cost =
+			read * PRICE.read +
+			shared * writePrice * this.#globalWritePremium +
+			(write - shared) * writePrice +
+			input * PRICE.input;
+		return { read, write, input, promptTokens, cost };
 	}
 }
 
@@ -638,8 +654,12 @@ export interface FleetLedger {
  * session unless the marker says `scope: "global"` — so the fleet runner is also
  * what shows an unset field turning the whole argument off.
  */
-export async function runFleet(arm: Arm, sessions: Readonly<Record<string, readonly Step[]>>): Promise<FleetLedger> {
-	const cache = new PrefixCache();
+export async function runFleet(
+	arm: Arm,
+	sessions: Readonly<Record<string, readonly Step[]>>,
+	options?: { globalWritePremium?: number },
+): Promise<FleetLedger> {
+	const cache = new PrefixCache({ globalWritePremium: options?.globalWritePremium });
 	const events: Array<{ at: number; session: string; payload: WirePayload }> = [];
 	for (const [session, steps] of Object.entries(sessions)) {
 		let at = 0;
@@ -691,22 +711,31 @@ export async function runFleet(arm: Arm, sessions: Readonly<Record<string, reado
 }
 
 /**
- * The same arm, with every system marker asking to be shared across sessions.
+ * The same arm, with the STABLE ANCHOR asking to be shared across sessions.
  *
  * `scope: "global"` is the Claude Code prompt-caching-scope beta. This repo
  * already sends the beta header on both Anthropic layouts
  * (`packages/ai/src/providers/anthropic.ts:152,160`) and the field is first-class
  * on the wire type (`anthropic-wire.ts:23`), but nothing sets it, which is why
  * this is a counterfactual arm rather than a description of production.
+ *
+ * Only the shallowest system marker is scoped, and that is a decision the numbers
+ * forced rather than a detail: the deepest system marker sits on a block that
+ * changes every turn, so scoping it publishes an entry no other session can ever
+ * match, once per turn, at whatever a shared write costs. `everySystemMarker`
+ * exists so a scenario can price that mistake instead of describing it.
  */
-export function sharedGlobally(arm: Arm): Arm {
+export function sharedGlobally(arm: Arm, options?: { everySystemMarker?: boolean }): Arm {
+	const everyMarker = options?.everySystemMarker ?? false;
 	return {
 		...arm,
-		name: `${arm.name}+global`,
+		name: `${arm.name}+global${everyMarker ? "-everywhere" : ""}`,
 		remark: payload => {
 			const marked = arm.remark ? arm.remark(payload) : payload;
 			for (const block of marked.system ?? []) {
-				if (block.cache_control) block.cache_control = { ...block.cache_control, scope: "global" };
+				if (!block.cache_control) continue;
+				block.cache_control = { ...block.cache_control, scope: "global" };
+				if (!everyMarker) break;
 			}
 			return marked;
 		},
