@@ -180,6 +180,9 @@ export function defaultModelsDevFallback<TApi extends Api = Api>(
 	const descriptors = MODELS_DEV_PROVIDER_DESCRIPTORS.filter(descriptor => descriptor.providerId === providerId);
 	if (descriptors.length === 0) return undefined;
 	return {
+		// A twin descriptor's rows may fill surfaces on ids the endpoint serves
+		// but must never add an id of their own (see the descriptor field).
+		enrichOnly: descriptors.some(descriptor => descriptor.enrichOnly === true),
 		// Best-effort enrichment over the bundled catalog: failures stay silent
 		// here (same contract as opencode's ignored refresh). Providers with an
 		// explicit models.dev hook (anthropic) keep their own reporting.

@@ -151,7 +151,16 @@ async function loadModelsDevData(): Promise<ModelSpec[]> {
 		console.log("Fetching models from models.dev API...");
 		const response = await fetch("https://models.dev/api.json");
 		const data = await response.json();
-		const models = mapModelsDevToModels(data as Record<string, unknown>, MODELS_DEV_PROVIDER_DESCRIPTORS);
+		// Enrich-only twin descriptors (OAuth surfaces) are excluded here: their
+		// rows may overlay surfaces at runtime and feed applyTwinReasoningSurfaces
+		// below, but the bundle's model LIST for those providers comes from the
+		// curated seed and endpoint discovery — mapping them in would replace
+		// curated rows (compat, wire effort maps) and list models the
+		// subscription-gated endpoint does not serve.
+		const bundleDescriptors = MODELS_DEV_PROVIDER_DESCRIPTORS.filter(
+			descriptor => descriptor.enrichOnly !== true,
+		);
+		const models = mapModelsDevToModels(data as Record<string, unknown>, bundleDescriptors);
 		models.sort((a, b) => a.id.localeCompare(b.id));
 		console.log(`Loaded ${models.length} tool-capable models from models.dev`);
 		return models;
@@ -323,12 +332,16 @@ function applyKimiCodingAliasSurface(models: readonly ModelSpec[], modelsDevMode
  *   (mirrors the pricing twin fallback above).
  * - `xai` → `xai-oauth`: SuperGrok OAuth endpoint, same Grok models.
  * - `opencode-zen` → `opencode`: legacy provider id for the same Zen gateway.
+ * - `google` → `google-antigravity` / `google-gemini-cli`: the Cloud Code
+ *   OAuth surfaces serve the same Gemini ids under the same effort vocabulary.
  * Ids without a twin keep no surface.
  */
 const REASONING_SURFACE_TWINS: Readonly<Record<string, string>> = {
 	"openai-codex": "openai",
 	"xai-oauth": "xai",
 	opencode: "opencode-zen",
+	"google-antigravity": "google",
+	"google-gemini-cli": "google",
 };
 
 function applyTwinReasoningSurfaces(models: readonly ModelSpec[], modelsDevModels: readonly ModelSpec[]): ModelSpec[] {

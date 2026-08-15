@@ -31,6 +31,14 @@ export interface ModelsDevFallback<TApi extends Api = Api, TPayload = unknown> {
 	fetch(hooks?: DiscoveryHooks): Promise<TPayload>;
 	/** Maps payload into provider models. */
 	map(payload: TPayload, providerId: Provider): readonly ModelSpec<TApi>[];
+	/**
+	 * When true, mapped rows may enrich models another source serves (static,
+	 * cache, or live discovery) but never introduce an id of their own. Twin
+	 * overlays for OAuth surfaces set this: the endpoint's listing is
+	 * subscription-gated, so an additive overlay would offer models that fail
+	 * at request time.
+	 */
+	enrichOnly?: boolean;
 }
 
 /**
@@ -172,13 +180,13 @@ export async function resolveProviderModels<TApi extends Api = Api, TModelsDevPa
 		return { models: collapseBuiltModelVariants(passModelList<TApi>(cache.models)), stale: false };
 	}
 
+	const modelsDev = options.modelsDev ?? defaultModelsDevFallback<TApi>(options.providerId, options.cacheDbPath);
 	const [fetchedModelsDevModels, fetchedDynamicModels] = shouldFetchFromNetwork
 		? await Promise.all([
-				fetchModelsDev(options),
+				fetchModelsDev(options, modelsDev),
 				dynamicFetcher ? fetchDynamicModels(dynamicFetcher, options.onDiscoveryFailure) : null,
 			])
 		: [null, null];
-	const modelsDevModels = normalizeModelList<TApi>(fetchedModelsDevModels ?? []);
 	const shouldUseFreshCacheAsAuthoritative =
 		strategy === "online-if-uncached" && hasUsableFreshCache && hasAuthoritativeCache;
 	const dynamicFetchSucceeded = fetchedDynamicModels !== null;
@@ -191,6 +199,19 @@ export async function resolveProviderModels<TApi extends Api = Api, TModelsDevPa
 				options.dropCachedModelIdsOnStaticMismatch,
 			);
 	const dynamicModels = fetchedDynamicModels ?? [];
+	const modelsDevModelsAll = normalizeModelList<TApi>(fetchedModelsDevModels ?? []);
+	// An enrich-only overlay (OAuth twin surfaces) fills declared surfaces on ids
+	// some real source serves and never adds an id of its own: the endpoint's
+	// listing is subscription-gated, so overlay-only ids would fail at request time.
+	const modelsDevModels = modelsDev?.enrichOnly
+		? modelsDevModelsAll.filter(model => {
+				return (
+					staticModels.some(served => served.id === model.id) ||
+					cacheModels.some(served => served.id === model.id) ||
+					dynamicModels.some(served => served.id === model.id)
+				);
+			})
+		: modelsDevModelsAll;
 	const mergedWithCache = mergeDynamicModels(mergeDynamicModels(staticModels, modelsDevModels), cacheModels);
 	const mergedModels = mergeDynamicModels(mergedWithCache, dynamicModels);
 	const models = collapseBuiltModelVariants(
@@ -243,13 +264,15 @@ export async function resolveProviderModels<TApi extends Api = Api, TModelsDevPa
 
 async function fetchModelsDev<TApi extends Api, TModelsDevPayload>(
 	options: ModelManagerOptions<TApi, TModelsDevPayload>,
+	modelsDev: ModelsDevFallback<TApi, TModelsDevPayload> | undefined,
 ): Promise<Model<TApi>[] | null> {
 	// A provider without its own hook gets the shared models.dev overlay: one
 	// cached catalog fetch, mapped through the provider's descriptor, so its
 	// declared surfaces track upstream between releases (OpenCode's ModelsDev
 	// discipline — the catalog comes from models.dev, never from local
 	// derivation). Providers models.dev does not catalog get no overlay.
-	const modelsDev = options.modelsDev ?? defaultModelsDevFallback<TApi>(options.providerId, options.cacheDbPath);
+	// The caller resolves the fallback once so its enrichOnly flag steers the
+	// merge, not just the fetch.
 	if (!modelsDev) {
 		return null;
 	}

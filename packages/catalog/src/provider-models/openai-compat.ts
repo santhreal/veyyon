@@ -34,6 +34,7 @@ import type {
 } from "../types";
 import { discoveryFetch, isAnthropicOAuthToken, isRecord, toBoolean, toNumber, toPositiveNumber } from "../utils";
 import { coreWeaveProjectHeaders } from "../wire/coreweave";
+import { CODEX_BASE_URL } from "../wire/codex";
 import {
 	COPILOT_API_HEADERS,
 	getGitHubCopilotBaseUrl,
@@ -1359,6 +1360,9 @@ export const XAI_OAUTH_CURATED_MODELS: readonly XAICuratedModel[] = [
 	},
 	{ id: "grok-4.3", contextWindow: 1_000_000, name: "Grok 4.3", input: ["text", "image"] },
 	{ id: "grok-4.5", contextWindow: 500_000, name: "Grok 4.5", input: ["text", "image"] },
+	// Window per models.dev's xai row (500K context/output); its declared effort
+	// ladder reaches the row through the xai twin overlay.
+	{ id: "grok-4.6", contextWindow: 500_000, name: "Grok 4.6", input: ["text", "image"] },
 	// grok-4.20-multi-agent-0309 is text-only per the bundled catalog; omit `input` for the default.
 	{ id: "grok-4.20-multi-agent-0309", contextWindow: 2_000_000, name: "Grok 4.20 (Multi-Agent)" },
 	{
@@ -4427,6 +4431,15 @@ export interface ModelsDevProviderDescriptor {
 	 * If not provided, uses the `api` field.
 	 */
 	resolveApi?: (modelId: string, raw: ModelsDevModel) => { api: Api; baseUrl: string } | null;
+	/**
+	 * Twin-surface descriptors (an OAuth surface models.dev catalogs only under
+	 * its API-key twin, e.g. `xai` -> `xai-oauth`) set this so the runtime merge
+	 * may use their rows to fill declared surfaces on ids the endpoint actually
+	 * serves, but never to introduce an id of their own. The OAuth listing is
+	 * subscription-gated, so an additive overlay would list models that fail at
+	 * request time.
+	 */
+	enrichOnly?: boolean;
 }
 
 /** Generic mapper that converts models.dev data using provider descriptors. */
@@ -4768,6 +4781,23 @@ const MODELS_DEV_PROVIDER_DESCRIPTORS_CORE: readonly ModelsDevProviderDescriptor
 	}),
 	// --- xAI ---
 	openAiCompletionsDescriptor("xai", "xai", "https://api.x.ai/v1"),
+	// --- OAuth twins: surfaces models.dev catalogs only under the API-key twin ---
+	// These exist so LIVE discovery rows pick up the declared reasoning surface;
+	// without them the twin knowledge sat only in the bundle generator, and a
+	// model the OAuth endpoint started serving between regens (grok-4.6 was the
+	// reported case) listed with no effort ladder while models.dev declared one.
+	// All four are enrichOnly: the OAuth listing is subscription-gated, so the
+	// overlay fills surfaces on served ids and never adds an id of its own.
+	simpleModelsDevDescriptor("xai", "xai-oauth", "openai-responses", "https://api.x.ai/v1", { enrichOnly: true }),
+	simpleModelsDevDescriptor("openai", "openai-codex", "openai-codex-responses", CODEX_BASE_URL, {
+		enrichOnly: true,
+	}),
+	simpleModelsDevDescriptor("google", "google-antigravity", "google-gemini-cli", "https://daily-cloudcode-pa.googleapis.com", {
+		enrichOnly: true,
+	}),
+	simpleModelsDevDescriptor("google", "google-gemini-cli", "google-gemini-cli", "https://cloudcode-pa.googleapis.com", {
+		enrichOnly: true,
+	}),
 	// --- DeepSeek ---
 	openAiCompletionsDescriptor("deepseek", "deepseek", "https://api.deepseek.com", {
 		// Only ship the v4 family as built-ins; older deepseek-chat / deepseek-reasoner
