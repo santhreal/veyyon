@@ -43,7 +43,6 @@ import tsNoTinyFunctions from "./typescript/ts-no-tiny-functions.md" with { type
 import tsPromiseWithResolvers from "./typescript/ts-promise-with-resolvers.md" with { type: "text" };
 import tsRedundantClearGuard from "./typescript/ts-redundant-clear-guard.md" with { type: "text" };
 import tsSetMap from "./typescript/ts-set-map.md" with { type: "text" };
-import commitDrift from "./workflow/commit-drift.md" with { type: "text" };
 import cwdReroot from "./workflow/cwd-reroot.md" with { type: "text" };
 import ircSignal from "./workflow/irc-signal.md" with { type: "text" };
 import projectAuthority from "./workflow/project-authority.md" with { type: "text" };
@@ -90,7 +89,6 @@ export interface BuiltinRuleSource {
 
 /** All bundled default rules, ordered by section then name. */
 export const BUILTIN_RULE_SOURCES: readonly BuiltinRuleSource[] = [
-	{ name: "commit-drift", section: "workflow", content: commitDrift },
 	{ name: "cwd-reroot", section: "workflow", content: cwdReroot },
 	{ name: "irc-signal", section: "workflow", content: ircSignal },
 	{ name: "project-authority", section: "workflow", content: projectAuthority },

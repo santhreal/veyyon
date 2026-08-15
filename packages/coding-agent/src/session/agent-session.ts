@@ -433,7 +433,6 @@ import {
 	shouldEvaluateCodexAutoRedeem,
 	shouldPromptCodexAutoRedeem,
 } from "./codex-auto-reset";
-import { CommitDriftTracker } from "./commit-drift";
 import { findCompactMode } from "./compact-modes";
 import { type ContentBlockLike, contentText } from "./content-text";
 // The accounting, not the drawing. Both of these used to be imported from `modes/`, which put the
@@ -2420,8 +2419,6 @@ export class AgentSession {
 	 *  Model-only: they never enter a tool result, so nothing the user reads
 	 *  carries `<system-reminder>` markup. See {@link #ttsrAfterToolCall}. */
 	#pendingTtsrToolReminders: { content: string; rules: string[] }[] = [];
-	/** Drives the `commit-drift` rule: this session's edits that are not committed yet. */
-	readonly #commitDrift = new CommitDriftTracker();
 	#ttsrAbortPending = false;
 	#ttsrRetryToken = 0;
 	#ttsrResumePromise: Promise<void> | undefined = undefined;
@@ -6549,8 +6546,6 @@ export class AgentSession {
 	 * - `cwd` lets a rule say where the session currently is.
 	 * - `matchedPath` lets a rule name what triggered it; it is set only for a rule with a
 	 *   `pathScope`, so a body that uses it must guard the reference.
-	 * - `commitDrift` carries the uncommitted count and file list, and is absent when there is
-	 *   nothing to report — so a rule body gated on it stays silent rather than saying "0 files".
 	 */
 	#renderRuleBody(rule: Rule): string {
 		const argotEnabled = this.settings.get("argot.enabled") === true;
@@ -6563,11 +6558,6 @@ export class AgentSession {
 			argotUnloaded: argotEnabled && this.#argot?.loaded !== true,
 			cwd: this.sessionManager.getCwd(),
 			matchedPath: this.#ttsrManager?.lastMatchedPath(rule.name),
-			// Undefined rather than a zero count when the nudge should not fire: the gate
-			// that decides is `{{#if commitDrift}}`, and a `{ count: 0 }` object is truthy.
-			commitDrift: this.settings.get("git.enabled")
-				? this.#commitDrift.summary(this.sessionManager.getCwd(), this.settings.get("commit.nudgeAfterFiles"))
-				: undefined,
 		});
 	}
 
@@ -6729,12 +6719,6 @@ export class AgentSession {
 			this.#markTerminalYieldToolCall(ctx.toolCall.id);
 			this.#synchronouslyTerminatedYieldToolCallIds.add(ctx.toolCall.id);
 			this.agent.abort(TERMINAL_TOOL_RESULT_ABORT_REASON);
-		}
-		// Before the TTSR delivery below, so `commit-drift` counts the edit that just
-		// landed. Recording after it would make the nudge describe the tree as it was one
-		// edit ago, and it fires on exactly the tools that change that number.
-		if (!ctx.isError && this.settings.get("git.enabled")) {
-			this.#commitDrift.record(ctx.toolCall.name, ctx.result?.details, this.sessionManager.getCwd());
 		}
 		return this.#ttsrAfterToolCall(ctx);
 	}

@@ -4,10 +4,10 @@
  * WHY THIS SUITE EXISTS. `per-compact` meant "fires again after the very next
  * reset", and `resetForCompaction()` is reached from five places in the session:
  * compaction, a history rewrite, a rewind, a shake, and a restore. A rule whose
- * subject is a standing STATE rather than an event — `commit-drift` counts files
- * that are still uncommitted, `test-scope` sees a suite command that is still a
- * suite command — is true again the instant it is re-armed, so it said the same
- * thing over and over on a long session. That is how a reminder becomes something
+ * subject is a standing STATE rather than an event — `test-scope` sees a suite
+ * command that is still a suite command — is true again the instant it is
+ * re-armed, so it said the same thing over and over on a long session. That is
+ * how a reminder becomes something
  * the reader learns to skip, which costs more than the reminder was ever worth.
  *
  * The class this closes: a rule's repeat PERIOD must be its own declaration and
@@ -29,7 +29,6 @@ import { warmUpRule } from "../helpers/ttsr-warmup";
 
 /** The periods bundled rules are expected to declare, by name. */
 const DECLARED_PERIODS: Record<string, number> = {
-	"commit-drift": 3,
 	"test-scope": 3,
 };
 
@@ -76,14 +75,12 @@ function armed(ttsr: TtsrManager, rule: Rule): boolean {
 
 /** A payload each bundled per-compact rule actually matches, so the check is the real one. */
 const SAMPLE_MATCH: Record<string, string> = {
-	"commit-drift": '{"path":"src/main.ts","oldText":"a","newText":"b"}',
 	"test-scope": "bun test",
 	"irc-signal": '{"op":"send","to":"Main","message":"ack"}',
 	"cwd-reroot": '{"path":"/work/other-project/crates/cli/src/main.rs"}',
 };
 
 const TOOL: Record<string, string> = {
-	"commit-drift": "edit",
 	"test-scope": "bash",
 	"irc-signal": "irc",
 	"cwd-reroot": "read",
@@ -152,15 +149,15 @@ describe("a per-compact rule's period", () => {
 	 * four because the arithmetic was done against a stale stamp.
 	 */
 	test("the period is counted from the last injection, not the first", () => {
-		const rule = perCompactRules().find(candidate => candidate.name === "commit-drift") as Rule;
+		const rule = perCompactRules().find(candidate => candidate.name === "test-scope") as Rule;
 		const ttsr = manager();
 		ttsr.addRule(rule);
 
-		ttsr.markInjectedByNames(["commit-drift"]);
+		ttsr.markInjectedByNames(["test-scope"]);
 		for (let reset = 0; reset < 3; reset++) ttsr.resetForCompaction();
 		expect(armed(ttsr, rule)).toBe(true);
 
-		ttsr.markInjectedByNames(["commit-drift"]);
+		ttsr.markInjectedByNames(["test-scope"]);
 		ttsr.resetForCompaction();
 		expect(armed(ttsr, rule)).toBe(false);
 		ttsr.resetForCompaction();

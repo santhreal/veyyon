@@ -214,10 +214,6 @@ const CONDITIONS: Record<string, () => boolean> = {
 	// The footline is opt-in, and a preset or a thinking-level spelling for a row that
 	// does not render is a knob with nothing behind it.
 	statusLineEnabled: () => whenSettingsSay(() => Settings.instance.get("statusLine.enabled") === true),
-	// The commit nudge reads repository state on every edit, which is the polling
-	// `git.enabled` turns off. Offering its threshold while git integration is off
-	// would be a knob with nothing behind it.
-	gitEnabled: () => whenSettingsSay(() => Settings.instance.get("git.enabled") === true),
 	// The kill policy only matters while a budget exists; at 0 cores the toggle
 	// would be a knob with nothing behind it.
 	cpuLimitEnabled: () => whenSettingsSay(() => Settings.instance.get("session.cpuLimitCores") > 0),
