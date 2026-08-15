@@ -17,9 +17,9 @@
  * ## The class, not the reproduction
  *
  * Measured over 778 local session transcripts, 41 tool results lead with the reminder XML
- * across six rules (cwd-reroot 16, commit-drift 13, ts-no-tiny-functions 5, bash-tool-nudge
- * 3, ts-set-map 3, ts-no-test-timers 1). So the tests below fix nothing to a rule name, and
- * close three variant spaces instead of the one case that was reported:
+ * across six rules (cwd-reroot 16, ts-no-tiny-functions 5, bash-tool-nudge 3, ts-set-map 3,
+ * ts-no-test-timers 1, the rest spread thin). So the tests below fix nothing to a rule name,
+ * and close three variant spaces instead of the one case that was reported:
  *
  *   1. `ttsr.interruptMode`, enumerated FROM the settings schema at run time. A tool-stream
  *      match takes one of two delivery paths depending on the mode, and both must keep

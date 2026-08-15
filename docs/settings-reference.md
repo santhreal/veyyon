@@ -252,8 +252,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `git.enabled` | Enable Git Integration | boolean | `true` | Show git branch, status, and PR information in the TUI, watch repository metadata, and let the commit nudge read repository state. |
-| `commit.nudgeAfterFiles` | Commit Nudge Threshold | number | `4` | Remind the agent to commit once this many files it edited itself are uncommitted. Counts only files this session changed, never other work already dirty in the tree. 0 turns the reminder off. |
+| `git.enabled` | Enable Git Integration | boolean | `true` | Show git branch, status, and PR information in the TUI and watch repository metadata. |
 
 ## Resources
 

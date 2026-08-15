@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Removed
+
+- The built-in `commit-drift` rule is gone. It nagged the agent to commit after a self-chosen number of uncommitted files, which is an opinion about how a repository should be worked, and it collided with operators' own standing git rules whenever the two disagreed. Rule body, tracker, session wiring, the `commit.nudgeAfterFiles` setting, and the rule's dedicated suites go with it; a persisted `commit.nudgeAfterFiles` key loads harmlessly (unknown keys are preserved verbatim, not errors).
+
 ### Fixed
 
 - Devin and Cursor are usable again with secrets enabled. Every chat request to either provider failed outright with "the provider request contains a non-JSON value/object; confidentiality transform failed" — not a degraded response, no response at all, and a message naming the transform rather than the cause. Both providers speak protobuf and handed the secret redactor the live message; the redactor walks the payload rewriting every string and refuses any value JSON cannot express, which a protobuf message never is (a uint64 field is a bigint, a bytes field is a `Uint8Array`, and Cursor's request carries 26 such fields). Both now hand over canonical proto3 JSON and parse the reply back before it reaches the wire. A session with no secrets configured never installed the hook and was never affected, which is why this survived: it is invisible until the moment secrets are turned on.

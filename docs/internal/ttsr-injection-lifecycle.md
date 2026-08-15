@@ -175,7 +175,7 @@ A rule re-arms when the transcript is replaced, and `repeatCompactions` says how
 
 Five session paths reach that reset — compaction, a history rewrite, a rewind, a shake, a restore — and they share one counter, because each takes the injected reminder out of the model's view, which is the only property that decides whether the rule has been heard.
 
-A rule whose subject is a standing STATE rather than an event needs a period above 1. `commit-drift` counts files that are still uncommitted and `test-scope` sees a command that is still a whole-suite command, so both match again the instant they are re-armed; both carry `repeatCompactions: 3`.
+A rule whose subject is a standing STATE rather than an event needs a period above 1. `test-scope` sees a command that is still a whole-suite command, so it matches again the instant it is re-armed; it carries `repeatCompactions: 3`.
 
 ### `warmupMatches`
 

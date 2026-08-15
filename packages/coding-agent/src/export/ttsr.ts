@@ -850,7 +850,7 @@ export class TtsrManager {
 	 * `per-compact` used to mean "fires again after the very next reset", and five
 	 * call sites reach this — compaction, a history rewrite, a rewind, a shake —
 	 * so a rule with standing advice said the same thing over and over on a long
-	 * session. `commit-drift` is the one that showed it: uncommitted work is a
+	 * session. `test-scope` is the one that showed it: a whole-suite command is a
 	 * standing state rather than an event, so its condition is true again the
 	 * moment it is re-armed, and re-arming it that often is how a reminder becomes
 	 * something the reader learns to skip.

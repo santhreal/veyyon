@@ -90,7 +90,7 @@ describe("the default state of the rule list", () => {
 	 * makes shipping a new bundled rule a one-file change instead of a migration.
 	 */
 	test("a rule the config has never mentioned is on, not off", () => {
-		expect(survivingRuleNames(["ts-no-any"])).toContain("commit-drift");
+		expect(survivingRuleNames(["ts-no-any"])).toContain("cwd-reroot");
 	});
 });
 

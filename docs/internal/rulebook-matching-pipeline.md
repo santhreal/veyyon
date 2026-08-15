@@ -252,13 +252,12 @@ A rule that uses `pathScope` should stay scoped to navigation tools (`read`, `gr
 
 ### Rule bodies and their render context
 
-A rule body is a template. `AgentSession.#renderRuleBody` is the one place it is resolved, for both TTSR delivery paths, and it provides exactly five variables:
+A rule body is a template. `AgentSession.#renderRuleBody` is the one place it is resolved, for both TTSR delivery paths, and it provides exactly four variables:
 
 - `argot` -- whether the argot feature is enabled, for advice that names an argot tool.
 - `argotUnloaded` -- whether argot is enabled AND the project's dictionary is not loaded yet. This is the gate a nudge to CALL `argot_load` must use: the feature being on does not mean the dictionary is missing, and advising a model to load one it already loaded is advice it cannot act on. The template language has no `unless`, so the inverted condition is passed in pre-inverted.
 - `cwd` -- the session's live working directory.
 - `matchedPath` -- the path that decided a `pathScope` match, absent for every other rule, so a body that uses it must guard the reference.
-- `commitDrift` -- the uncommitted count and file list, present only when `git.enabled` is on and there is something to report. It is left undefined rather than zeroed, because `{{#if commitDrift}}` is the gate a body uses and `{ count: 0 }` would be truthy.
 
 A body that renders to the empty string is never delivered; see `docs/internal/ttsr-injection-lifecycle.md`.
 

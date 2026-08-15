@@ -162,32 +162,7 @@ export const GENERAL_SETTINGS = {
 			tab: "interaction",
 			group: "Git",
 			label: "Enable Git Integration",
-			description:
-				"Show git branch, status, and PR information in the TUI, watch repository metadata, and let the commit nudge read repository state.",
-		},
-	},
-
-	// The threshold for the `commit-drift` rule. A count rather than a boolean
-	// because the right cadence is a property of the repository, not of the agent:
-	// a tree where one logical change spans a dozen files wants a higher number
-	// than one where three files is already two concerns.
-	"commit.nudgeAfterFiles": {
-		type: "number",
-		default: 4,
-		ui: {
-			tab: "interaction",
-			group: "Git",
-			label: "Commit Nudge Threshold",
-			description:
-				"Remind the agent to commit once this many files it edited itself are uncommitted. Counts only files this session changed, never other work already dirty in the tree. 0 turns the reminder off.",
-			condition: "gitEnabled",
-			options: [
-				{ value: "0", label: "Off", description: "Never remind" },
-				{ value: "2", label: "2 files" },
-				{ value: "4", label: "4 files", description: "Default." },
-				{ value: "8", label: "8 files" },
-				{ value: "16", label: "16 files" },
-			],
+			description: "Show git branch, status, and PR information in the TUI and watch repository metadata.",
 		},
 	},
 

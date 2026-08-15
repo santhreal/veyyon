@@ -3,8 +3,8 @@
  *
  * Measured over 778 local session transcripts: 41 tool results whose text
  * LEADS with `<system-reminder reason="rule_violation" ...>`. Top offenders
- * cwd-reroot (16), commit-drift (13), ts-no-tiny-functions (5),
- * bash-tool-nudge (3). A rule reminder is model-directed markup; when it rides
+ * cwd-reroot (16), ts-no-tiny-functions (5), bash-tool-nudge (3). A rule
+ * reminder is model-directed markup; when it rides
  * in front of a tool result it displaces the one thing the reader needs, which
  * is what the tool actually did or failed to do.
  *
