@@ -78,12 +78,6 @@ const TWIN_EXPECTATIONS: ReadonlyArray<{
 		efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh],
 	},
 	{
-		providerId: "google-antigravity",
-		modelId: "gemini-3.1-flash-lite",
-		api: "google-gemini-cli",
-		efforts: [Effort.Minimal, Effort.Low, Effort.Medium, Effort.High],
-	},
-	{
 		providerId: "google-gemini-cli",
 		modelId: "gemini-3.1-flash-lite",
 		api: "google-gemini-cli",
@@ -183,12 +177,18 @@ describe("bundled OAuth twin surfaces", () => {
 
 	it.each([
 		["xai-oauth", "grok-4.6", ["low", "medium", "high", "xhigh"]],
-		["google-antigravity", "gemini-3.1-flash-lite", ["minimal", "low", "medium", "high"]],
 		["google-gemini-cli", "gemini-3.1-pro-preview", ["low", "medium", "high"]],
 		["openai-codex", "gpt-5.3-codex", ["low", "medium", "high", "xhigh"]],
 	] as const)("%s/%s bakes the declared ladder", (provider, id, expected) => {
 		expect(bundledEfforts(provider, id)).toEqual(expected);
 	});
+
+	// google-antigravity is deliberately absent from the twins AND from these
+	// expectations: its auth is the Antigravity IDE's unofficial OAuth surface,
+	// whose served set and effort variants (agy exposes Gemini flashes at
+	// low/medium/high and 3.1 Pro at low/high only) are curated from captured
+	// client traffic in variant-collapse.ts, not from the Google API's
+	// declarations.
 
 	// Deliberately unpinned, both filtered out of the models.dev mapping by
 	// design: xai/grok-4.20-multi-agent-0309 declares [low..xhigh] but is marked

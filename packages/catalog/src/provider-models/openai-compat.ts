@@ -4792,9 +4792,12 @@ const MODELS_DEV_PROVIDER_DESCRIPTORS_CORE: readonly ModelsDevProviderDescriptor
 	simpleModelsDevDescriptor("openai", "openai-codex", "openai-codex-responses", CODEX_BASE_URL, {
 		enrichOnly: true,
 	}),
-	simpleModelsDevDescriptor("google", "google-antigravity", "google-gemini-cli", "https://daily-cloudcode-pa.googleapis.com", {
-		enrichOnly: true,
-	}),
+	// google-antigravity is deliberately NOT twinned from `google`: its auth is
+	// the Antigravity IDE's unofficial OAuth surface, whose served set and effort
+	// variants are captured from the real client (variant-collapse.ts families,
+	// wire/gemini-headers.ts profiles) and differ from the Google API's — e.g.
+	// Gemini 3.1 Pro is low/high only there. Its surfaces stay curated from
+	// those captures.
 	simpleModelsDevDescriptor("google", "google-gemini-cli", "google-gemini-cli", "https://cloudcode-pa.googleapis.com", {
 		enrichOnly: true,
 	}),

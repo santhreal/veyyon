@@ -332,15 +332,17 @@ function applyKimiCodingAliasSurface(models: readonly ModelSpec[], modelsDevMode
  *   (mirrors the pricing twin fallback above).
  * - `xai` → `xai-oauth`: SuperGrok OAuth endpoint, same Grok models.
  * - `opencode-zen` → `opencode`: legacy provider id for the same Zen gateway.
- * - `google` → `google-antigravity` / `google-gemini-cli`: the Cloud Code
- *   OAuth surfaces serve the same Gemini ids under the same effort vocabulary.
+ * - `google` → `google-gemini-cli`: the official CLI OAuth surface shares the
+ *   API's ids and thinking-level vocabulary. `google-antigravity` is NOT
+ *   twinned: its auth is the Antigravity IDE's unofficial OAuth surface, whose
+ *   served set and effort variants differ from the Google API's and are
+ *   curated from captured client traffic (variant-collapse.ts).
  * Ids without a twin keep no surface.
  */
 const REASONING_SURFACE_TWINS: Readonly<Record<string, string>> = {
 	"openai-codex": "openai",
 	"xai-oauth": "xai",
 	opencode: "opencode-zen",
-	"google-antigravity": "google",
 	"google-gemini-cli": "google",
 };
 
