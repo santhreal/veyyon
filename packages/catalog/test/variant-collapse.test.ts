@@ -169,6 +169,112 @@ describe("collapseEffortVariants", () => {
 		expect(out[0]?.thinking?.effortRouting).toEqual({ high: "gemini-3.6-flash-high" });
 	});
 
+	// Regression: Antigravity serves 3.7 Flash ONLY as `gemini-3.7-flash-tiered`
+	// (no bare id, no `-low`/`-medium`/`-high` siblings), and the `-tiered` rows
+	// arrived raw with no thinking block, so the picker offered no effort
+	// levels. models.dev's `google/gemini-3.7-flash` entry declares a
+	// low/medium/high ladder and the official Antigravity harness exposes a
+	// low/medium/high effort slider for the deployment, so the tier travels in
+	// the request body (`thinkingLevel`), which is the `google-level` mode.
+	it("collapses the 3.7-flash-tiered deployment into a level-routed logical spec", () => {
+		const out = collapseEffortVariants([memberSpec("gemini-3.7-flash-tiered")], ANTIGRAVITY_VARIANT_COLLAPSE_TABLE);
+
+		expect(out).toHaveLength(1);
+		const flash = out[0];
+		expect(flash?.id).toBe("gemini-3.7-flash");
+		expect(flash?.name).toBe("Gemini 3.7 Flash");
+		// The tiered id IS the wire id: every effort routes to it and the tier
+		// travels in the request body, never in a sibling id.
+		expect(flash?.requestModelId).toBe("gemini-3.7-flash-tiered");
+		expect(flash?.thinking?.mode).toBe("google-level");
+		expect(flash?.thinking?.efforts).toEqual([Effort.Low, Effort.Medium, Effort.High]);
+		expect(flash?.thinking?.effortRouting).toEqual({
+			low: "gemini-3.7-flash-tiered",
+			medium: "gemini-3.7-flash-tiered",
+			high: "gemini-3.7-flash-tiered",
+		});
+		// The raw tiered id aliases to the collapsed logical id, so a config
+		// still pointing at `gemini-3.7-flash-tiered` resolves to the row.
+		expect(resolveVariantAlias("google-antigravity", "gemini-3.7-flash-tiered")).toBe("gemini-3.7-flash");
+
+		const model = buildModel(flash as ModelSpec<"google-gemini-cli">);
+		// Gemini 3.x reasoning is mandatory: the build-time floor backfills
+		// requiresEffort, matching the bundled `google/gemini-3.7-flash` row.
+		expect(model.thinking?.requiresEffort).toBe(true);
+		expect(resolveWireModelId(model, Effort.Low)).toBe("gemini-3.7-flash-tiered");
+		expect(resolveWireModelId(model, Effort.Medium)).toBe("gemini-3.7-flash-tiered");
+		expect(resolveWireModelId(model, Effort.High)).toBe("gemini-3.7-flash-tiered");
+		expect(resolveWireModelId(model, undefined)).toBe("gemini-3.7-flash-tiered");
+
+		// Both CCA tables share the tiered family: same discovery list, same
+		// level transport for these deployments.
+		const cli = collapseEffortVariants([memberSpec("gemini-3.7-flash-tiered")], GEMINI_CLI_VARIANT_COLLAPSE_TABLE);
+		expect(cli[0]?.id).toBe("gemini-3.7-flash");
+		expect(cli[0]?.thinking?.mode).toBe("google-level");
+	});
+
+	// `gemini-3.6-flash` already belongs to the per-tier effort family, and one
+	// family carries one axis: that family's mode is "effort" (the wire id
+	// carries the tier) while the tiered deployment takes the tier in the
+	// request body ("google-level"). The tiered id therefore stands alone under
+	// its own wire id instead of collapsing onto the 3.6 logical row.
+	it("keeps 3.6-flash-tiered on its own level-routed row beside the 3.6 effort family", () => {
+		const out = collapseEffortVariants(
+			[
+				memberSpec("gemini-3.6-flash-low"),
+				memberSpec("gemini-3.6-flash-medium"),
+				memberSpec("gemini-3.6-flash-high"),
+				memberSpec("gemini-3.6-flash-tiered"),
+			],
+			ANTIGRAVITY_VARIANT_COLLAPSE_TABLE,
+		);
+
+		expect(out.map(m => m.id)).toEqual(["gemini-3.6-flash", "gemini-3.6-flash-tiered"]);
+		// The effort family is untouched.
+		const flash = out[0];
+		expect(flash?.thinking?.mode).toBe("effort");
+		expect(flash?.thinking?.effortRouting).toEqual({
+			minimal: "gemini-3.6-flash-low",
+			low: "gemini-3.6-flash-low",
+			medium: "gemini-3.6-flash-medium",
+			high: "gemini-3.6-flash-high",
+		});
+		const tiered = out[1];
+		expect(tiered?.name).toBe("Gemini 3.6 Flash Tiered");
+		// Logical id IS the wire id: no requestModelId override.
+		expect(tiered?.requestModelId).toBeUndefined();
+		expect(tiered?.thinking?.mode).toBe("google-level");
+		expect(tiered?.thinking?.efforts).toEqual([Effort.Low, Effort.Medium, Effort.High]);
+		expect(tiered?.thinking?.effortRouting).toEqual({
+			low: "gemini-3.6-flash-tiered",
+			medium: "gemini-3.6-flash-tiered",
+			high: "gemini-3.6-flash-tiered",
+		});
+
+		const model = buildModel(tiered as ModelSpec<"google-gemini-cli">);
+		expect(model.thinking?.requiresEffort).toBe(true);
+		expect(resolveWireModelId(model, Effort.Medium)).toBe("gemini-3.6-flash-tiered");
+		expect(resolveWireModelId(model, undefined)).toBe("gemini-3.6-flash-tiered");
+	});
+
+	// The tiered surface is curated per id, never derived from the suffix: an
+	// id the endpoint does not serve today gets no fabricated ladder, and the
+	// picker stays closed.
+	it("leaves an uncurated future -tiered id raw with no effort surface", () => {
+		// 3.10 is the highest version the identity parser recognizes without a
+		// table extension, so the row parses as a Gemini 3.x flash (google-level
+		// mode) while staying uncurated.
+		const raw = memberSpec("gemini-3.10-flash-tiered");
+		const out = collapseEffortVariants([raw], ANTIGRAVITY_VARIANT_COLLAPSE_TABLE);
+
+		expect(out[0]).toBe(raw);
+		expect(out[0]?.thinking).toBeUndefined();
+		expect(resolveVariantAlias("google-antigravity", "gemini-3.10-flash-tiered")).toBeUndefined();
+		// google-level mode has no fallback ladder, so the built model carries
+		// no thinking config at all.
+		expect(buildModel(raw).thinking).toBeUndefined();
+	});
+
 	it("drops routes whose target member is absent", () => {
 		const out = collapseEffortVariants(
 			[memberSpec("gemini-3.5-flash-extra-low")],
@@ -834,6 +940,64 @@ describe("antigravity discovery collapsing", () => {
 		const flash25 = models?.find(m => m.id === "gemini-2.5-flash");
 		expect(flash25?.thinking?.effortRouting?.[Effort.High]).toBe("gemini-2.5-flash-thinking");
 		expect(flash25?.thinking?.effortRouting?.off).toBe("gemini-2.5-flash");
+	});
+
+	// The live endpoint today: a bare 3.6 id, both `-tiered` deployments, and no
+	// 3.6 `-low`/`-medium`/`-high` siblings. The tiered rows must leave
+	// discovery carrying their low/medium/high level surface.
+	it("maps the live tiered flash deployments onto their effort surfaces", async () => {
+		const tieredPayload = {
+			models: {
+				"gemini-3.6-flash": {
+					displayName: "Gemini 3.6 Flash",
+					supportsThinking: true,
+					supportsImages: true,
+					maxTokens: 1_048_576,
+					maxOutputTokens: 65_536,
+				},
+				"gemini-3.6-flash-tiered": {
+					supportsThinking: true,
+					supportsImages: true,
+					maxTokens: 1_048_576,
+					maxOutputTokens: 65_536,
+				},
+				"gemini-3.7-flash-tiered": {
+					supportsThinking: true,
+					supportsImages: true,
+					maxTokens: 1_048_576,
+					maxOutputTokens: 65_536,
+				},
+			},
+		};
+		const tieredFetcher = Object.assign(
+			(_input: Parameters<typeof fetch>[0], _init?: Parameters<typeof fetch>[1]) =>
+				Promise.resolve(new Response(JSON.stringify(tieredPayload), { status: 200 })),
+			{ preconnect: fetch.preconnect },
+		);
+
+		const models = await fetchAntigravityDiscoveryModels({
+			token: "t",
+			endpoint: "https://cca.test",
+			fetcher: tieredFetcher,
+		});
+
+		expect(models?.map(m => m.id).sort()).toEqual([
+			"gemini-3.6-flash",
+			"gemini-3.6-flash-tiered",
+			"gemini-3.7-flash",
+		]);
+		const flash37 = models?.find(m => m.id === "gemini-3.7-flash");
+		expect(flash37?.name).toBe("Gemini 3.7 Flash");
+		expect(flash37?.requestModelId).toBe("gemini-3.7-flash-tiered");
+		expect(flash37?.thinking?.mode).toBe("google-level");
+		expect(flash37?.thinking?.efforts).toEqual([Effort.Low, Effort.Medium, Effort.High]);
+		expect(flash37?.thinking?.effortRouting?.[Effort.High]).toBe("gemini-3.7-flash-tiered");
+		// Member caps survive the collapse.
+		expect(flash37?.contextWindow).toBe(1_048_576);
+		expect(flash37?.maxTokens).toBe(65_536);
+		const tiered36 = models?.find(m => m.id === "gemini-3.6-flash-tiered");
+		expect(tiered36?.thinking?.mode).toBe("google-level");
+		expect(tiered36?.thinking?.efforts).toEqual([Effort.Low, Effort.Medium, Effort.High]);
 	});
 
 	it("keeps collapsed routing through the gemini-cli re-provision", async () => {

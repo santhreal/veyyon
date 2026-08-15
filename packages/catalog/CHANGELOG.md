@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Antigravity discovery no longer leaves the `-tiered` Gemini flash deployments without an effort surface. The endpoint serves `gemini-3.7-flash-tiered` as the only 3.7 Flash id and `gemini-3.6-flash-tiered` beside the 3.6 family, and both arrived as raw unknowns with no thinking block, so the picker offered no effort levels. `gemini-3.7-flash-tiered` now collapses to a logical `gemini-3.7-flash` row, and `gemini-3.6-flash-tiered` stands alone under its wire id because the `gemini-3.6-flash` logical id already belongs to the per-tier effort family. Both carry the declared low/medium/high ladder on the `google-level` transport, sending the tier as `thinkingLevel` in the request body. The surface is curated per id; an uncurated future `-tiered` id still gets no invented ladder.
+
 ## [1.0.49] - 2026-08-14
 
 ### Added
