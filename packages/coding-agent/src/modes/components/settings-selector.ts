@@ -61,14 +61,19 @@ import { getCurrentThemeName, getSelectListTheme, getSettingsListTheme, theme } 
 import { BUILTIN_PERSONALITY_DESCRIPTIONS, NONE_PERSONALITY } from "../../personality/resolver";
 import { discoverAgents } from "../../task/discovery";
 import {
+	clearSubagentModelByDepthRow,
 	delegationBlockedNotice,
 	isSubagentEnableDefaulted,
 	nextSubagentEnableValue,
+	nextSubagentModelByDepth,
 	resolveDelegation,
 	resolveSubagentModel,
 	resolveSubagentThinkingLevel,
 	SUBAGENT_ENABLE_STATE_LABEL,
+	SUBAGENT_MODEL_BY_DEPTH_PATH,
 	subagentEnableState,
+	subagentModelByDepthRows,
+	subagentModelByDepthRowPath,
 	subagentModelSourceLabel,
 	subagentSettingsFor,
 } from "../../task/subagent-settings";
@@ -1290,6 +1295,10 @@ class SubagentAgentsSubmenu extends Container {
 
 	/** One agent's model column: the resolved pattern plus the layer that chose it. */
 	#modelSummary(agent: AgentDefinition): string {
+		// No `taskDepth` is passed: this table describes the AGENT, not one spawn
+		// of it, and a `subagent.modelByDepth` row only decides at the depth a
+		// real spawn runs at. The depth rows themselves edit under Models by
+		// Depth in the same tab.
 		const resolved = resolveSubagentModel({
 			settings,
 			agentName: agent.name,
@@ -1996,6 +2005,130 @@ export class ModelChainSubmenu extends Container {
 		settings.set(this.path, (value.length === 0 ? undefined : value) as never);
 		this.onChange(value.length === 0 ? undefined : value);
 		this.#showChain();
+		this.requestRender?.();
+	}
+
+	handleInput(data: string): void {
+		if (this.#selectList && (matchesKey(data, "delete") || matchesKey(data, "backspace"))) {
+			this.#removeSelectedRow();
+			return;
+		}
+		if (this.#selectList) {
+			this.#selectList.handleInput(data);
+			return;
+		}
+		this.children[0]?.handleInput?.(data);
+	}
+}
+
+/** Synthetic list id for the depth map's append row, on the same NUL-prefixed rule as the chain picker's. */
+const DEPTH_ADD_ROW = "\u0000depth-add-row";
+
+/**
+ * The `subagent.modelByDepth` map: one row per configured spawn depth, plus an
+ * "Add depth…" row for the next unused one.
+ *
+ * Every row opens the SAME ordered-chain picker {@link ModelChainSubmenu} that
+ * `subagent.model` uses, bound to that depth's dotted row path — a parallel
+ * picker here is how the two chain editors would drift apart. The map itself
+ * is read and cleared through `task/subagent-settings.ts`, the one owner of
+ * the `subagent.*` area; this screen never restates the key.
+ *
+ * A row is only an entry in a map, so deleting one is Del on the list, and
+ * clearing the last row removes the map itself (the unset state), done by
+ * {@link clearSubagentModelByDepthRow} rather than here.
+ */
+class SubagentModelByDepthSubmenu extends Container {
+	#selectList: SelectList | undefined;
+
+	constructor(
+		private readonly registry: ModelRegistry,
+		private readonly models: ReadonlyArray<Model>,
+		private readonly onChange: () => void,
+		private readonly onCancel: () => void,
+		private readonly requestRender?: () => void,
+	) {
+		super();
+		this.#showRows();
+	}
+
+	#showRows(): void {
+		this.clear();
+		this.#selectList = undefined;
+		this.addChild(new Text(theme.bold(theme.fg("accent", "Models by Depth")), 0, 0));
+		this.addChild(new Spacer(1));
+		this.addChild(
+			new Text(
+				theme.fg(
+					"muted",
+					"A row outranks Subagent Model for a spawn at exactly that depth: 1 is a direct child, 2 a grandchild. Depths without a row follow Subagent Model.",
+				),
+				0,
+				0,
+			),
+		);
+		this.addChild(new Spacer(1));
+
+		const rows = subagentModelByDepthRows(settings);
+		const items: SelectItem[] = rows.map(row => {
+			const chain = normalizeModelPatternList(row.value);
+			const primary = chain[0] === undefined ? "" : formatSelectorSummary(chain[0]);
+			const fallbacks = chain.length - 1;
+			return {
+				value: String(row.depth),
+				label: `Depth ${row.depth}`,
+				description: fallbacks > 0 ? `${primary}, +${fallbacks}` : primary,
+			};
+		});
+		items.push({
+			value: DEPTH_ADD_ROW,
+			label: "Add depth…",
+			description: `bind a chain to depth ${nextSubagentModelByDepth(settings)}`,
+		});
+
+		this.#selectList = new SelectList(items, clamp(items.length, 1, 12), getSelectListTheme());
+		this.#selectList.onSelect = item => {
+			this.#openDepth(item.value === DEPTH_ADD_ROW ? nextSubagentModelByDepth(settings) : Number(item.value));
+			this.requestRender?.();
+		};
+		this.#selectList.onCancel = this.onCancel;
+		this.addChild(this.#selectList);
+		this.addChild(new Spacer(1));
+		this.addChild(new Text(theme.fg("dim", "  Enter edits · Del clears a depth · Esc to go back"), 0, 0));
+	}
+
+	#openDepth(depth: number): void {
+		this.clear();
+		this.#selectList = undefined;
+		const current = subagentModelByDepthRows(settings).find(row => row.depth === depth)?.value;
+		this.addChild(
+			new ModelChainSubmenu(
+				subagentModelByDepthRowPath(depth),
+				this.registry,
+				this.models,
+				`Depth ${depth}`,
+				current,
+				() => {
+					// The chain picker's own Clear row unsets the dotted row but
+					// leaves an empty map behind; dropping it keeps "no rows" and
+					// "unset" the same stored shape.
+					if (subagentModelByDepthRows(settings).length === 0) settings.unset(SUBAGENT_MODEL_BY_DEPTH_PATH);
+					this.onChange();
+					this.#showRows();
+					this.requestRender?.();
+				},
+				() => this.onChange(),
+				this.requestRender,
+			),
+		);
+	}
+
+	#removeSelectedRow(): void {
+		const value = this.#selectList?.getSelectedItem?.()?.value;
+		if (value === undefined || value === DEPTH_ADD_ROW) return;
+		clearSubagentModelByDepthRow(settings, Number(value));
+		this.onChange();
+		this.#showRows();
 		this.requestRender?.();
 	}
 
@@ -2942,6 +3075,16 @@ export class SettingsSelectorComponent implements Component {
 					changed,
 				};
 
+			case "subagentModelByDepth":
+				return {
+					id: def.path,
+					label: def.label,
+					description: def.description,
+					currentValue: this.#formatSubagentModelByDepthValue(),
+					submenu: (_cv, done) => this.#createSubagentModelByDepthInput(done),
+					changed,
+				};
+
 			case "rules":
 				return {
 					id: def.path,
@@ -3363,6 +3506,39 @@ export class SettingsSelectorComponent implements Component {
 				this.callbacks.onChange("subagent.agents", settings.get("subagent.agents"));
 			},
 			() => done(this.#formatSubagentAgentsValue()),
+			this.context.requestRender,
+		);
+	}
+
+	/**
+	 * Row summary for Models by Depth: each configured depth with its chain's
+	 * first model, e.g. `1: k3 +1, 2: opus`.
+	 */
+	#formatSubagentModelByDepthValue(): string {
+		const rows = subagentModelByDepthRows(settings);
+		if (rows.length === 0) return "off";
+		return rows.map(row => `${row.depth}: ${this.#formatCompactModelSelectorValue(row.value)}`).join(", ");
+	}
+
+	#createSubagentModelByDepthInput(done: (value?: string) => void): Container {
+		const ctx = this.#requireModelPickerContext();
+		if (!ctx) {
+			const fallback = new Container();
+			fallback.addChild(new Text(theme.fg("warning", "Model catalog unavailable in this context"), 0, 0));
+			fallback.addChild(new Spacer(1));
+			fallback.addChild(new Text(theme.fg("dim", "  Esc to go back"), 0, 0));
+			(fallback as Container & { handleInput?: (data: string) => void }).handleInput = data => {
+				if (matchesKey(data, "escape") || data === "\x1b") done();
+			};
+			return fallback;
+		}
+		return new SubagentModelByDepthSubmenu(
+			ctx.registry,
+			ctx.models,
+			() => {
+				this.callbacks.onChange(SUBAGENT_MODEL_BY_DEPTH_PATH, settings.get(SUBAGENT_MODEL_BY_DEPTH_PATH));
+			},
+			() => done(this.#formatSubagentModelByDepthValue()),
 			this.context.requestRender,
 		);
 	}

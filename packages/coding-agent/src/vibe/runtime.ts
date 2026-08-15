@@ -347,11 +347,14 @@ export class VibeSessionRegistry {
 			agentModel: agent.model,
 			activeModelPattern: session.getActiveModelString?.(),
 			fallbackModelPattern: session.getModelString?.(),
+			// The worker session runs one level below its spawner (the executor
+			// derives the same value as `childDepth`), and depth rows key on that.
+			taskDepth: (session.taskDepth ?? 0) + 1,
 		});
 		if (resolvedModel.unresolved) {
-			const { source, value } = resolvedModel.unresolved;
+			const { source, value, depth } = resolvedModel.unresolved;
 			throw new ToolError(
-				`Cannot start vibe worker "${agentName}": ${subagentModelSourceLabel(source, agentName)} is set to "${value}", which matches no available model. Fix that setting (or clear it to inherit the session model) and try again.`,
+				`Cannot start vibe worker "${agentName}": ${subagentModelSourceLabel(source, agentName, depth)} is set to "${value}", which matches no available model. Fix that setting (or clear it to inherit the session model) and try again.`,
 			);
 		}
 		const modelOverride = resolvedModel.patterns;

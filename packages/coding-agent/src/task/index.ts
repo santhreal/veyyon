@@ -1455,8 +1455,8 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				}
 			: agent;
 
-		// Resolve the model through the ONE owner: this agent's row, then the blanket
-		// subagent model, then the definition's frontmatter, then inherit. A
+		// Resolve the model through the ONE owner: the spawn's depth row, then the
+		// blanket subagent model, then the definition's frontmatter, then inherit. A
 		// configured-but-unresolvable pattern refuses the spawn instead of quietly
 		// running whatever the next layer names.
 		const parentActiveModelPattern = this.session.getActiveModelString?.();
@@ -1467,14 +1467,17 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			agentModel: effectiveAgent.model,
 			activeModelPattern: parentActiveModelPattern,
 			fallbackModelPattern: this.session.getModelString?.(),
+			// The spawned child runs one level below this session; depth rows key
+			// on the CHILD's depth, matching the executor's `childDepth`.
+			taskDepth: taskDepth + 1,
 		});
 		if (resolvedModel.unresolved) {
-			const { source, value } = resolvedModel.unresolved;
+			const { source, value, depth } = resolvedModel.unresolved;
 			return {
 				content: [
 					{
 						type: "text",
-						text: `Cannot spawn "${agentName}": ${subagentModelSourceLabel(source, agentName)} is set to "${value}", which matches no available model. Fix that setting (or clear it to inherit the session model) and try again.`,
+						text: `Cannot spawn "${agentName}": ${subagentModelSourceLabel(source, agentName, depth)} is set to "${value}", which matches no available model. Fix that setting (or clear it to inherit the session model) and try again.`,
 					},
 				],
 				details: { projectAgentsDir, results: [], totalDurationMs: Date.now() - startTime },

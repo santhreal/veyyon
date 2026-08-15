@@ -22,7 +22,9 @@ import {
 	DEFAULT_SUBAGENT_MAX_NESTED_SPAWN_DEPTH,
 	DEFAULT_SUBAGENT_PARKED_CLOSE_MS,
 	DEFAULT_SUBAGENT_WAITING_CLOSE_MS,
+	isModelByDepthKey,
 } from "../config/settings-domains/subagents";
+import type { SettingPath } from "../config/settings-schema";
 import type { ConfiguredThinkingLevel } from "../thinking";
 import { currentAgentName, type ResolvedSpawnPolicy, resolveSpawnPolicy } from "./spawn-policy";
 import type { AgentDefinition } from "./types";
@@ -472,7 +474,9 @@ function readNameList(spawner: unknown, key: keyof EnabledSubagentSource): strin
 
 /** Which setting decided a subagent's model. Shown next to the model on every agent surface. */
 export type SubagentModelSource =
-	/** `subagent.model` — the one subagent model setting. */
+	/** `subagent.modelByDepth.<n>` — the row for the depth this spawn runs at. */
+	| "depth"
+	/** `subagent.model` — the blanket subagent model setting. */
 	| "blanket"
 	/** The agent definition's `model:` frontmatter. */
 	| "frontmatter"
@@ -484,17 +488,25 @@ export interface ResolvedSubagentModel {
 	/** Model patterns in preference order. Empty only when nothing at all resolved. */
 	patterns: string[];
 	source: SubagentModelSource;
+	/** The spawn depth whose row decided, when `source` is "depth". */
+	depth?: number;
 	/**
 	 * Set when a CONFIGURED pattern expanded to nothing (a role alias pointing at
 	 * an unset role, or an empty value). The caller must surface this rather than
 	 * fall through to the next layer.
 	 */
-	unresolved?: { source: SubagentModelSource; value: string };
+	unresolved?: { source: SubagentModelSource; value: string; depth?: number };
 }
 
-/** Human-readable name of the setting behind a {@link SubagentModelSource}. */
-export function subagentModelSourceLabel(source: SubagentModelSource, agentName: string): string {
+/**
+ * Human-readable name of the setting behind a {@link SubagentModelSource}. For
+ * the `depth` layer, `depth` names the exact row (`subagent.modelByDepth.2`),
+ * which is the row a spawn refusal has to point at.
+ */
+export function subagentModelSourceLabel(source: SubagentModelSource, agentName: string, depth?: number): string {
 	switch (source) {
+		case "depth":
+			return `subagent.modelByDepth.${depth ?? "?"}`;
 		case "blanket":
 			return "subagent.model";
 		case "frontmatter":
@@ -586,14 +598,86 @@ export function resetRetiredAgentRowReports(): void {
 }
 
 /**
+ * The schema path of the per-depth model map. Exported so the surfaces that
+ * edit or summarize it never restate the literal: this module is the one
+ * reader of `subagent.*`, and a second spelling of the key is how a surface
+ * drifts off the setting it claims to show.
+ */
+export const SUBAGENT_MODEL_BY_DEPTH_PATH: SettingPath = "subagent.modelByDepth";
+
+/** The dotted path of one depth row, which the settings chain picker edits in place. */
+export function subagentModelByDepthRowPath(depth: number): SettingPath {
+	// `settings.get`/`set`/`unset` resolve unregistered dotted sub-paths of a
+	// record setting by splitting; the cast records that this path is a row of
+	// the map, not a schema key of its own.
+	return `${SUBAGENT_MODEL_BY_DEPTH_PATH}.${depth}` as SettingPath;
+}
+
+/** The stored map as a plain table, tolerating a non-record value the validator already reported. */
+function readModelByDepthTable(settings: Settings): Record<string, unknown> {
+	const table: unknown = settings.get(SUBAGENT_MODEL_BY_DEPTH_PATH);
+	return table !== null && typeof table === "object" && !Array.isArray(table)
+		? (table as Record<string, unknown>)
+		: {};
+}
+
+/** One configured depth row, for the surfaces that list them. */
+export interface SubagentModelByDepthRow {
+	depth: number;
+	value: string | string[];
+}
+
+/**
+ * The configured depth rows, shallowest first. Keys that can never be a depth
+ * and values that are not a chain are skipped: reporting them is the load-time
+ * validator's job (see the domain's `validateEntry`), and honoring them here
+ * would let a junk row decide a spawn.
+ */
+export function subagentModelByDepthRows(settings: Settings): SubagentModelByDepthRow[] {
+	const rows: SubagentModelByDepthRow[] = [];
+	for (const [key, value] of Object.entries(readModelByDepthTable(settings))) {
+		if (!isModelByDepthKey(key)) continue;
+		if (typeof value !== "string" && !Array.isArray(value)) continue;
+		rows.push({ depth: Number(key), value });
+	}
+	return rows.sort((a, b) => a.depth - b.depth);
+}
+
+/** The smallest spawn depth with no row yet, which is what "Add depth…" appends. */
+export function nextSubagentModelByDepth(settings: Settings): number {
+	const used = new Set(subagentModelByDepthRows(settings).map(row => row.depth));
+	let depth = 1;
+	while (used.has(depth)) depth++;
+	return depth;
+}
+
+/**
+ * Remove one depth row. When it was the last, remove the map itself so the
+ * stored shape is the unset one rather than an empty table.
+ */
+export function clearSubagentModelByDepthRow(settings: Settings, depth: number): void {
+	settings.unset(subagentModelByDepthRowPath(depth));
+	if (subagentModelByDepthRows(settings).length === 0) settings.unset(SUBAGENT_MODEL_BY_DEPTH_PATH);
+}
+
+/** The map's row for `depth`, or undefined when the spawn's own depth has none. */
+function readDepthModelRow(settings: Settings, depth: number): string | string[] | undefined {
+	const value = readModelByDepthTable(settings)[String(depth)];
+	return typeof value === "string" || Array.isArray(value) ? value : undefined;
+}
+
+/**
  * Resolve the model patterns one subagent runs, with the deciding layer.
  *
  * Precedence, highest first:
- *  1. `subagent.model` — the one subagent model setting, which every enabled
- *     subagent follows and whose entries carry their own `:effort`.
- *  2. The agent definition's `model:` frontmatter, which for a user-authored
+ *  1. `subagent.modelByDepth.<n>` — the row for the depth THIS spawn runs at,
+ *     when the caller passes `taskDepth` (the spawned child's depth, one below
+ *     the calling session) and the map has a row for it.
+ *  2. `subagent.model` — the blanket subagent model setting, which every
+ *     enabled subagent follows and whose entries carry their own `:effort`.
+ *  3. The agent definition's `model:` frontmatter, which for a user-authored
  *     agent is that author's deliberate choice.
- *  3. Inherit the session's live model.
+ *  4. Inherit the session's live model.
  *
  * There is deliberately no per-agent settings layer. `subagent.agents.<name>.model`
  * used to sit above all of these and was editable from one screen while the
@@ -621,14 +705,26 @@ export function resolveSubagentModel(options: {
 	activeModelPattern?: string;
 	/** Fallback when the session has no active model yet (headless start). */
 	fallbackModelPattern?: string;
+	/**
+	 * The depth the SPAWNED agent will run at: the calling session's task depth
+	 * plus one. A `subagent.modelByDepth` row applies only at depth >= 1 and
+	 * only at its own depth. Omitting it — depth 0, or a surface that describes
+	 * an agent rather than a spawn — resolves exactly as if the map did not
+	 * exist.
+	 */
+	taskDepth?: number;
 }): ResolvedSubagentModel {
 	// `agentName` stays in the options because every caller pairs the result with
 	// `subagentModelSourceLabel(source, agentName)`, but no layer reads it any more:
 	// the retired per-agent row was the last one that did.
-	const { settings, agentModel, activeModelPattern, fallbackModelPattern } = options;
+	const { settings, agentModel, activeModelPattern, fallbackModelPattern, taskDepth } = options;
 
 	reportRetiredAgentRows(settings);
-	const layers: Array<{ source: SubagentModelSource; value: string | string[] | undefined }> = [
+	const depthRow = taskDepth !== undefined && taskDepth >= 1 ? readDepthModelRow(settings, taskDepth) : undefined;
+	const layers: Array<{ source: SubagentModelSource; value: string | string[] | undefined; depth?: number }> = [
+		...(depthRow !== undefined && taskDepth !== undefined
+			? [{ source: "depth" as const, value: depthRow, depth: taskDepth }]
+			: []),
 		{ source: "blanket", value: settings.get("subagent.model") },
 		{ source: "frontmatter", value: agentModel },
 	];
@@ -637,12 +733,14 @@ export function resolveSubagentModel(options: {
 		const raw = Array.isArray(layer.value) ? layer.value : layer.value?.trim();
 		if (raw === undefined || (typeof raw === "string" && raw.length === 0)) continue;
 		if (Array.isArray(raw) && raw.length === 0) continue;
+		const depthFields = layer.depth !== undefined ? { depth: layer.depth } : {};
 		const patterns = resolveConfiguredModelPatterns(raw, settings);
-		if (patterns.length > 0) return { patterns, source: layer.source };
+		if (patterns.length > 0) return { patterns, source: layer.source, ...depthFields };
 		return {
 			patterns: [],
 			source: layer.source,
-			unresolved: { source: layer.source, value: Array.isArray(raw) ? raw.join(",") : raw },
+			...depthFields,
+			unresolved: { source: layer.source, value: Array.isArray(raw) ? raw.join(",") : raw, ...depthFields },
 		};
 	}
 

@@ -442,12 +442,13 @@ describe("subagent model: a configured value that resolves to nothing refuses", 
 	 */
 	it("names the setting behind every layer", () => {
 		const expected: Record<SubagentModelSource, string> = {
+			depth: "subagent.modelByDepth.2",
 			blanket: "subagent.model",
 			frontmatter: "scout agent frontmatter",
 			inherit: "inherited from the session model",
 		};
 		for (const [source, label] of Object.entries(expected)) {
-			expect(subagentModelSourceLabel(source as SubagentModelSource, "scout")).toBe(label);
+			expect(subagentModelSourceLabel(source as SubagentModelSource, "scout", 2)).toBe(label);
 		}
 	});
 });

@@ -356,6 +356,14 @@ interface ArrayDef<T> extends SettingDefBase {
 interface RecordDef<T> extends SettingDefBase {
 	type: "record";
 	default: Record<string, T>;
+	/**
+	 * Per-entry validation for a map whose keys or values carry a shape the
+	 * bare `record` type cannot express. Declared by the owning domain and run
+	 * from {@link describeSettingTypeMismatch}, so a hand-edited entry that can
+	 * never take effect is reported with its file rather than sitting in the
+	 * map looking configured.
+	 */
+	validateEntry?: (key: string, value: unknown) => string | undefined;
 	ui?: UiBase;
 }
 
@@ -588,7 +596,15 @@ export function describeSettingTypeMismatch(path: string, value: unknown): strin
 	// assignable to the mutable shapes in that union. Only `type` and `values` are
 	// needed here, and both are safe to read from the literal.
 	const def = (
-		SETTINGS_SCHEMA as unknown as Record<string, { type?: string; values?: readonly string[] } | undefined>
+		SETTINGS_SCHEMA as unknown as Record<
+			string,
+			| {
+					type?: string;
+					values?: readonly string[];
+					validateEntry?: (key: string, value: unknown) => string | undefined;
+				}
+			| undefined
+		>
 	)[path];
 	if (def?.type === undefined || value === undefined) return undefined;
 
@@ -626,8 +642,18 @@ export function describeSettingTypeMismatch(path: string, value: unknown): strin
 		}
 		case "array":
 			return Array.isArray(value) ? undefined : mismatch("an array");
-		case "record":
-			return isRecord(value) ? undefined : mismatch("an object");
+		case "record": {
+			if (!isRecord(value)) return mismatch("an object");
+			// A map whose entries carry a shape of their own (e.g. the
+			// depth-keyed model chains of `subagent.modelByDepth`) names the
+			// offending entry; the entries that are fine keep working.
+			if (def.validateEntry === undefined) return undefined;
+			for (const [key, entry] of Object.entries(value)) {
+				const reason = def.validateEntry(key, entry);
+				if (reason !== undefined) return reason;
+			}
+			return undefined;
+		}
 		default:
 			return undefined;
 	}
