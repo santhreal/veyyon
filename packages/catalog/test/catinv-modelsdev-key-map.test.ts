@@ -56,7 +56,6 @@ describe("the models.dev provider key map is total and injective", () => {
 		);
 		const nonTwin = MODELS_DEV_PROVIDER_DESCRIPTORS.filter(d => d.enrichOnly !== true);
 		expect(twins.sort()).toEqual([
-			"google -> google-antigravity",
 			"google -> google-gemini-cli",
 			"openai -> openai-codex",
 			"xai -> xai-oauth",
