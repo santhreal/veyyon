@@ -111,6 +111,9 @@
 			.success .status .tag { color: var(--green); border-color: rgba(127, 185, 138, 0.4); }
 			.success h1 { color: var(--fg); }
 			.success .icon-error { display: none; }
+			/* Success carries no prose and no close affordance: the badge and the
+			   heading say it, and the tab closes itself. Error keeps both. */
+			.success #message, .success .btn { display: none; }
 			/* error */
 			.error .status .glyph { color: var(--red); }
 			.error .status .tag { color: var(--red); border-color: rgba(226, 104, 106, 0.4); }
@@ -264,8 +267,6 @@
 					statusword.textContent = "authenticated";
 					statustag.textContent = "ok";
 					title.textContent = "Signed in";
-					message.textContent =
-						"You're signed in to Veyyon. This tab closes on its own, or close it now and return to your terminal.";
 					setTimeout(function () { window.close(); }, 3200);
 				} else {
 					app.classList.add("error");
