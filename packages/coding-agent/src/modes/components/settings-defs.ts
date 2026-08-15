@@ -24,6 +24,7 @@ import {
 	TAB_GROUPS,
 } from "../../config/settings-schema";
 import { AUTO_THINKING } from "../../thinking";
+import { SUBAGENT_MODEL_BY_DEPTH_PATH } from "../../task/subagent-settings";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // UI Definition Types
@@ -116,6 +117,19 @@ export interface SubagentAgentsSettingDef extends BaseSettingDef {
 }
 
 /**
+ * The `subagent.modelByDepth` map: one row per configured spawn depth, each
+ * edited with the same ordered-chain picker as `subagent.model`, bound to that
+ * depth's row.
+ *
+ * A dedicated type rather than the generic record-as-text control because the
+ * keys are not free-form — they are positive integer depths, and an operator
+ * typing JSON by hand cannot see which depths exist or what a row resolves to.
+ */
+export interface SubagentModelByDepthSettingDef extends BaseSettingDef {
+	type: "subagentModelByDepth";
+}
+
+/**
  * The profile's default effort per model: rows of `provider/id` (or `*` for any
  * model) to an effort, edited as a list. The one persisted effort surface, so a
  * second row writing the same axis cannot reappear.
@@ -159,6 +173,7 @@ export type SettingDef =
 	| ModelSelectorSettingDef
 	| ModelRolesSettingDef
 	| SubagentAgentsSettingDef
+	| SubagentModelByDepthSettingDef
 	| DefaultEffortSettingDef
 	| DefaultModelSettingDef
 	| RulesSettingDef;
@@ -361,6 +376,7 @@ function pathToSettingDef(path: SettingPath): SettingDef | null {
 		if (path === "providers.maxInFlightRequests") return { ...base, type: "providerLimits" };
 		if (path === "modelRoles") return { ...base, type: "modelRoles" };
 		if (path === "subagent.agents") return { ...base, type: "subagentAgents" };
+		if (path === SUBAGENT_MODEL_BY_DEPTH_PATH) return { ...base, type: "subagentModelByDepth" };
 		if (path === "defaultEffort") return { ...base, type: "defaultEffort" };
 		return { ...base, type: "text" };
 	}

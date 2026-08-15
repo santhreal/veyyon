@@ -53,6 +53,39 @@ export interface SubagentAgentSettings {
 }
 
 /**
+ * A `subagent.modelByDepth` key is a positive integer spawn depth: "1" for a
+ * direct child, "2" for a grandchild, and so on. "0" is refused because no
+ * spawn runs at the root session's own depth, and a zero-padded or non-numeric
+ * key can never match the number the resolver asks with. Shared by the entry
+ * validator below and the one reader (`task/subagent-settings.ts`) so the two
+ * can never disagree about which keys are real.
+ */
+export function isModelByDepthKey(key: string): boolean {
+	return /^[1-9]\d*$/.test(key);
+}
+
+/**
+ * Validate one `subagent.modelByDepth` entry: the key is a depth and the value
+ * is a chain in the same two spellings `subagent.model` accepts. Reported
+ * through `describeSettingTypeMismatch`, so a bad entry is surfaced with its
+ * file at load instead of sitting in the map looking configured and deciding
+ * nothing.
+ */
+function validateModelByDepthEntry(key: string, value: unknown): string | undefined {
+	if (!isModelByDepthKey(key)) {
+		return `subagent.modelByDepth.${key}: depth keys are positive integers ("1", "2", …), found "${key}"`;
+	}
+	if (typeof value === "string") return undefined;
+	if (Array.isArray(value)) {
+		const bad = value.findIndex(entry => typeof entry !== "string");
+		return bad === -1
+			? undefined
+			: `subagent.modelByDepth.${key}: expected model patterns, found ${typeof value[bad]} at index ${bad}`;
+	}
+	return `subagent.modelByDepth.${key}: expected a model pattern, or a list of them`;
+}
+
+/**
  * The one bundled agent enabled out of the box: the end-to-end delegate.
  *
  * The other bundled agents (scout, reviewer, librarian, designer, sonic) stay
@@ -201,6 +234,20 @@ export const SUBAGENTS_SETTINGS = {
 			description:
 				"Models every enabled subagent runs, tried in order: the rest are used when an earlier one errors. Each entry carries its own effort. Unset means inherit: subagents follow the session's live main model. An agent whose own file names a `model:` uses that when this is unset.",
 			keywords: ["task", "deep", "subagent", "spawn", "delegate", "worker", "effort"],
+		},
+	},
+
+	"subagent.modelByDepth": {
+		type: "record",
+		default: {} as Record<string, string | string[]>,
+		validateEntry: validateModelByDepthEntry,
+		ui: {
+			tab: "subagents",
+			group: "Models",
+			label: "Models by Depth",
+			description:
+				"Model chains chosen by spawn depth: depth 1 is a direct child, depth 2 a grandchild, and so on. A row outranks Subagent Model for a spawn at exactly that depth and leaves every other depth to Subagent Model. A row whose chain matches no model refuses the spawn and names the row, exactly like an unresolvable Subagent Model.",
+			keywords: ["subagent", "depth", "nested", "grandchild", "model", "chain"],
 		},
 	},
 

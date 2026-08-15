@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Subagent models can be pinned per spawn depth with `subagent.modelByDepth`, a record of depth to model chain: `"1"` decides what direct children run, `"2"` what grandchildren run, and so on, each value in the same string-or-list chain shape as `subagent.model`. A row outranks `subagent.model` for a spawn at exactly that depth; depths without a row resolve as before (`subagent.model`, then the agent definition's `model:`, then the session's live model), and a row whose chain matches no available model refuses the spawn and names `subagent.modelByDepth.<n>` instead of falling through. Keys that are not positive integers are reported by settings validation at load, naming the entry. Settings → Subagents → Models gains a "Models by Depth" row that edits each depth with the same chain picker as Subagent Model.
+
 ### Removed
 
 - The built-in `commit-drift` rule is gone. It nagged the agent to commit after a self-chosen number of uncommitted files, which is an opinion about how a repository should be worked, and it collided with operators' own standing git rules whenever the two disagreed. Rule body, tracker, session wiring, the `commit.nudgeAfterFiles` setting, and the rule's dedicated suites go with it; a persisted `commit.nudgeAfterFiles` key loads harmlessly (unknown keys are preserved verbatim, not errors).
