@@ -195,8 +195,18 @@ export function streamPiNative<TApi extends Api>(
 				stream: true,
 			};
 			try {
-				const replacementPayload = await options?.onPayload?.(bodyPayload, model as Model<Api>);
-				if (replacementPayload !== undefined) bodyPayload = replacementPayload;
+				const onPayload = options?.onPayload;
+				if (onPayload) {
+					// The hook is a JSON seam: a host's secret redactor walks the payload
+					// rewriting every string and refuses any value JSON cannot express.
+					// `context` carries live arktype schemas in `tools[].parameters`,
+					// which are function objects, so the raw object is never that shape.
+					// The wire form is JSON by construction (the body is stringified
+					// below), so the hook sees exactly the wire shape.
+					const wirePayload: unknown = JSON.parse(JSON.stringify(bodyPayload));
+					const replacementPayload = await onPayload(wirePayload, model as Model<Api>);
+					if (replacementPayload !== undefined) bodyPayload = replacementPayload;
+				}
 			} catch (error) {
 				// Payload sanitization is a local policy decision, not an upstream authentication failure. Keep
 				// the rejection out of the auth-retry classifier even when its original error resembles a 401.

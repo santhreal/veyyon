@@ -1080,6 +1080,14 @@ export function streamGoogleGenAI<T extends "google-generative-ai" | "google-ver
 		try {
 			const plan = await prepare();
 			let params = plan.params;
+			if (options?.onPayload && params.config) {
+				// The hook is a JSON seam: a host's secret redactor walks the payload
+				// rewriting every string and refuses any value JSON cannot express,
+				// and an AbortSignal is never that shape. `paramsToWireBody` drops the
+				// signal before serialization and nothing else reads it, so it does
+				// not cross the hook boundary.
+				delete params.config.abortSignal;
+			}
 			const replacement = await options?.onPayload?.(params, model);
 			if (replacement !== undefined) {
 				params = replacement as GenerateContentParameters;
