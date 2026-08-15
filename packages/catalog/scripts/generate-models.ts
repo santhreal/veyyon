@@ -10,11 +10,12 @@ const COPILOT_PREMIUM_MULTIPLIERS: Record<string, number> = {
 };
 
 import * as path from "node:path";
+import { Database } from "bun:sqlite";
 import { discoverAuthStorage } from "@veyyon/ai/auth-broker/discover";
 import type { OAuthAccess } from "@veyyon/ai/auth-storage";
 import type { OAuthProvider } from "@veyyon/ai/oauth/types";
 import { getGitLabDuoModels } from "@veyyon/ai/providers/gitlab-duo";
-import { $env } from "@veyyon/utils";
+import { $env, getSharedAuthDir } from "@veyyon/utils";
 import { ANTIGRAVITY_PRIMARY_ENDPOINT, fetchAntigravityDiscoveryModels } from "../src/discovery/antigravity";
 import { fetchCodexModels } from "../src/discovery/codex";
 import { buildGitLabDuoWorkflowFallbackModel } from "../src/discovery/gitlab-duo-workflow";
@@ -466,7 +467,7 @@ async function getOAuthAccessFromStorage(provider: OAuthProvider): Promise<OAuth
 			if (!access && provider === "google-antigravity") {
 				access = await authStorage.getOAuthAccess("google-gemini-cli");
 			}
-			return access ?? null;
+			if (access) return access;
 		} finally {
 			authStorage.close();
 		}
@@ -475,6 +476,49 @@ async function getOAuthAccessFromStorage(provider: OAuthProvider): Promise<OAuth
 			`Warning: Failed to retrieve credentials for ${provider}:`,
 			err instanceof Error ? err.message : String(err),
 		);
+	}
+	// OAuth logins land in the machine-wide shared-auth store by default, which
+	// the broker/profile path above does not consult. Read it directly so a
+	// regen on a logged-in machine sees the same credentials the app wrote.
+	const shared = readSharedStoreOAuthAccess(provider);
+	if (!shared && provider === "google-antigravity") {
+		return readSharedStoreOAuthAccess("google-gemini-cli");
+	}
+	return shared;
+}
+
+/**
+ * Direct read of the shared-auth store's `auth_credentials` rows. Returns the
+ * access token only when the stored expiry is still in the future; refresh
+ * stays with the app (a regen machine is a logged-in machine by definition).
+ */
+function readSharedStoreOAuthAccess(provider: OAuthProvider): OAuthAccess | null {
+	try {
+		const db = new Database(path.join(getSharedAuthDir(), "agent.db"), { readonly: true });
+		try {
+			const row = db
+			.query("SELECT data FROM auth_credentials WHERE provider = ? AND credential_type = 'oauth'")
+			.get(provider) as { data: string } | null;
+			if (!row) return null;
+			const data = JSON.parse(row.data) as {
+				access?: string;
+				expires?: number;
+				projectId?: string;
+				email?: string;
+				accountId?: string;
+			};
+			if (!data.access) return null;
+			if (typeof data.expires === "number" && data.expires <= Date.now()) return null;
+			return {
+				accessToken: data.access,
+				accountId: data.accountId,
+				email: data.email,
+				projectId: data.projectId,
+			};
+		} finally {
+			db.close();
+		}
+	} catch {
 		return null;
 	}
 }
@@ -644,6 +688,17 @@ async function generateModels() {
 	for (const model of modelsDevModels) {
 		if (model.provider === "google-vertex") {
 			modelsDevSnapshotExcludedProviders.add(model.provider);
+		}
+	}
+	// A successful Antigravity fetch is the served-set truth for
+	// google-antigravity: the IDE OAuth surface gates its listing per
+	// subscription, so previous-snapshot rows the endpoint no longer serves
+	// must not ride forward (they would sit in the picker offering models that
+	// fail at request time). Only a live success excludes; a failed or
+	// credential-less run keeps the previous snapshot as the offline floor.
+	for (const discovery of specialDiscoveries) {
+		if (discovery.label === "Antigravity" && discovery.models.length > 0) {
+			modelsDevSnapshotExcludedProviders.add("google-antigravity");
 		}
 	}
 	// Merge previous models.json entries as fallback for provider/model pairs not
