@@ -577,6 +577,7 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `subagent.model` | Subagent Model | modelChain | _(unset)_ | Models every enabled subagent runs, tried in order: the rest are used when an earlier one errors. Each entry carries its own effort. Unset means inherit: subagents follow the session's live main model. An agent whose own file names a `model:` uses that when this is unset. |
+| `subagent.modelByDepth` | Models by Depth | record | `{}` | Model chains chosen by spawn depth: depth 1 is a direct child, depth 2 a grandchild, and so on. A row outranks Subagent Model for a spawn at exactly that depth and leaves every other depth to Subagent Model. A row whose chain matches no model refuses the spawn and names the row, exactly like an unresolvable Subagent Model. |
 | `subagent.thinkingLevel` | Subagent Effort | string | _(unset)_ | Thinking level for every enabled subagent, applied when the model above names no effort of its own. Inherit follows the session's effort. An explicit `:level` suffix on a model pattern still wins. |
 | `subagent.showResolvedModelBadge` | Show Resolved Model Badge | boolean | `true` | Show each subagent's resolved model, and the setting that decided it, in the task widget status line and the agent surfaces. |
 
