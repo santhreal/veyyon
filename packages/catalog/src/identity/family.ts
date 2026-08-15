@@ -96,6 +96,9 @@ const GROK_EFFORT_CAPABLE_PREFIXES = [
 	"grok-4.20-multi-agent",
 	"grok-4.3",
 	"grok-4.5",
+	// models.dev's xai declaration lists an effort ladder for grok-4.6 on the
+	// same host the OAuth surface talks to.
+	"grok-4.6",
 	"grok-build",
 ] as const;
 

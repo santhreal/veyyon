@@ -38,7 +38,30 @@ function duplicates(values: readonly string[]): string[] {
 
 describe("the models.dev provider key map is total and injective", () => {
 	it("maps no two descriptors from the same models.dev section", () => {
-		expect(duplicates(MODELS_DEV_PROVIDER_DESCRIPTORS.map(d => d.modelsDevKey))).toEqual([]);
+		// Enrich-only OAuth twins share their API-key twin's section by design;
+		// the exact set is pinned below.
+		const nonTwin = MODELS_DEV_PROVIDER_DESCRIPTORS.filter(d => d.enrichOnly !== true);
+		expect(duplicates(nonTwin.map(d => d.modelsDevKey))).toEqual([]);
+	});
+
+	// The one sanctioned exception to injectivity: OAuth twin descriptors read
+	// the API-key twin's section (`xai` -> `xai-oauth` and friends) to carry its
+	// declared reasoning surfaces onto live-discovered rows. They are
+	// `enrichOnly`, so they emit no standalone rows and cannot produce the
+	// duplicate-stamping failure above. The set is pinned by exact equality: a
+	// NEW twin turns this red until its pair is recorded here.
+	it("shares sections only across the recorded enrich-only twins", () => {
+		const twins = MODELS_DEV_PROVIDER_DESCRIPTORS.filter(d => d.enrichOnly === true).map(
+			d => `${d.modelsDevKey} -> ${d.providerId}`,
+		);
+		const nonTwin = MODELS_DEV_PROVIDER_DESCRIPTORS.filter(d => d.enrichOnly !== true);
+		expect(twins.sort()).toEqual([
+			"google -> google-antigravity",
+			"google -> google-gemini-cli",
+			"openai -> openai-codex",
+			"xai -> xai-oauth",
+		]);
+		expect(duplicates(nonTwin.map(d => d.modelsDevKey))).toEqual([]);
 	});
 
 	it("maps no two descriptors into the same veyyon provider", () => {
