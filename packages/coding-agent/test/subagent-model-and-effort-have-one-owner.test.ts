@@ -13,14 +13,15 @@
  * So every case here derives its variant space at run time and fails by default:
  *
  *  1. WHICH SETTINGS DECIDE. Every `subagent.*` path in `SETTINGS_SCHEMA` is probed against the real
- *     resolvers, and the set that changes the answer must be exactly `subagent.model` and
- *     `subagent.thinkingLevel`. A new setting that reaches either resolver turns this RED.
+ *     resolvers, and the set that changes the answer must be exactly `subagent.model`,
+ *     `subagent.modelByDepth` and `subagent.thinkingLevel`. A new setting that reaches either resolver
+ *     turns this RED.
  *  2. WHAT A PER-AGENT ROW MAY DECIDE. Row field names are derived from the schema's own `subagent.*`
  *     leaf names, so the sweep grows with the settings area rather than with someone's memory. No field
  *     may change the resolved model or effort; exactly one may change enablement and exactly one the
  *     nested spawn depth, pinned by equality in both directions.
  *  3. WHICH LAYER ANSWERED. The `SubagentModelSource` values a combinatorial sweep can actually produce
- *     must be exactly blanket, frontmatter and inherit. Re-adding an `agent` layer produces a fourth.
+ *     must be exactly depth, blanket, frontmatter and inherit. Re-adding an `agent` layer produces a fifth.
  *  4. WHAT THE SCREEN OFFERS. The real Agents editor is driven and its editable rows are pinned by
  *     exact equality, so adding a per-agent Model or Effort row back to the UI turns this RED even if
  *     no resolver reads it yet.
@@ -68,6 +69,7 @@ const BLANKET_MODEL = "anthropic/claude-sonnet-4-5";
 const FRONTMATTER_MODEL = "google/gemini-2.5-pro";
 const SESSION_MODEL = "anthropic/claude-opus-4-5";
 const FALLBACK_MODEL = "openai/gpt-5";
+const DEPTH_MODEL = "openai/gpt-5-mini";
 
 let geometryStub: { restore(): void } | undefined;
 
@@ -101,10 +103,19 @@ afterEach(() => {
  * appears when frontmatter is present.
  */
 function resolutionFingerprint(store: Settings): string {
-	const contexts: Array<{ agentName: string; agentModel?: string; agentThinkingLevel?: ThinkingLevel }> = [
+	const contexts: Array<{
+		agentName: string;
+		agentModel?: string;
+		agentThinkingLevel?: ThinkingLevel;
+		taskDepth?: number;
+	}> = [
 		{ agentName: AGENT },
 		{ agentName: AGENT, agentModel: FRONTMATTER_MODEL, agentThinkingLevel: ThinkingLevel.High },
 		{ agentName: "reviewer", agentModel: FRONTMATTER_MODEL },
+		// Depths a spawn actually runs at: a `subagent.modelByDepth` probe only
+		// moves the answer when the resolution asks at that depth.
+		{ agentName: AGENT, agentModel: FRONTMATTER_MODEL, taskDepth: 1 },
+		{ agentName: AGENT, taskDepth: 2 },
 	];
 	return contexts
 		.map(context => {
@@ -114,6 +125,7 @@ function resolutionFingerprint(store: Settings): string {
 				agentModel: context.agentModel,
 				activeModelPattern: SESSION_MODEL,
 				fallbackModelPattern: FALLBACK_MODEL,
+				taskDepth: context.taskDepth,
 			});
 			const effort = resolveSubagentThinkingLevel({
 				settings: store,
@@ -122,6 +134,7 @@ function resolutionFingerprint(store: Settings): string {
 			});
 			return [
 				context.agentName,
+				String(context.taskDepth ?? ""),
 				model.source,
 				model.patterns.join("+"),
 				model.unresolved?.value ?? "",
@@ -153,7 +166,7 @@ const SUBAGENT_PATHS: SettingPath[] = Object.keys(SETTINGS_SCHEMA)
  * model and effort candidates are deliberately REAL ones: a probe of `"xyz"` would be rejected as junk
  * and a resolver that honored the path would still look inert.
  */
-function probeValuesFor(entry: SchemaEntry): unknown[] {
+function probeValuesFor(path: SettingPath, entry: SchemaEntry): unknown[] {
 	switch (entry.type) {
 		case "boolean":
 			return [true, false];
@@ -168,6 +181,12 @@ function probeValuesFor(entry: SchemaEntry): unknown[] {
 		case "array":
 			return [[FALLBACK_MODEL]];
 		case "record":
+			// The depth map's meaningful probe is keyed by DEPTH, not by agent name:
+			// an agent-shaped probe here would never match a spawn's depth and the
+			// sweep would report the setting inert while it decided models.
+			if (path === "subagent.modelByDepth") {
+				return [{ "1": FALLBACK_MODEL }, { "2": [FALLBACK_MODEL, BLANKET_MODEL] }];
+			}
 			// The retired shape plus the live one, so a table that starts deciding models again is
 			// caught whichever field name it comes back under.
 			return [
@@ -191,22 +210,22 @@ function pathsThatDecideWhatASubagentRuns(): SettingPath[] {
 	const baseline = resolutionFingerprint(Settings.isolated());
 	return SUBAGENT_PATHS.filter(candidate => {
 		const entry: SchemaEntry = SETTINGS_SCHEMA[candidate];
-		return probeValuesFor(entry).some(
+		return probeValuesFor(candidate, entry).some(
 			value => resolutionFingerprint(Settings.isolated({ [candidate]: value })) !== baseline,
 		);
 	});
 }
 
-describe("exactly two settings decide what a subagent runs", () => {
+describe("exactly three settings decide what a subagent runs", () => {
 	/**
 	 * The ownership ratchet, stated as a set rather than as a pair of positive cases.
 	 *
 	 * A per-agent layer is only one way to get a second owner. Any `subagent.*` setting that reaches
-	 * either resolver is one, and the assertion is that there are no others rather than that the two
+	 * either resolver is one, and the assertion is that there are no others rather than that the three
 	 * known ones work.
 	 */
-	it("names them, and finds no third", () => {
-		expect(pathsThatDecideWhatASubagentRuns()).toEqual(["subagent.model", "subagent.thinkingLevel"]);
+	it("names them, and finds no fourth", () => {
+		expect(pathsThatDecideWhatASubagentRuns()).toEqual(["subagent.model", "subagent.modelByDepth", "subagent.thinkingLevel"]);
 	});
 
 	/**
@@ -284,7 +303,7 @@ const ROW_FIELDS: string[] = [
 
 /** Every probe value any `subagent.*` type produces, so each field is tried with all of them. */
 const ROW_VALUES: unknown[] = [
-	...new Set(SUBAGENT_PATHS.flatMap(candidate => probeValuesFor(SETTINGS_SCHEMA[candidate]))),
+	...new Set(SUBAGENT_PATHS.flatMap(candidate => probeValuesFor(candidate, SETTINGS_SCHEMA[candidate]))),
 ];
 
 function rowSettings(field: string, value: unknown): Settings {
@@ -358,30 +377,36 @@ describe("a per-agent row decides which lanes are offered and nothing else", () 
 // Which layer answered.
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("the layer that chose a subagent's model is one of exactly three", () => {
+describe("the layer that chose a subagent's model is one of exactly four", () => {
 	/**
 	 * Enumerated by driving the resolver over every combination rather than by reading the union: a
-	 * fourth member added to the type is only a defect once something can produce it, and a fourth
+	 * fifth member added to the type is only a defect once something can produce it, and a fifth
 	 * member produced without being added to the type is the same defect with no type error.
 	 */
 	function producedSources(): SubagentModelSource[] {
 		const produced = new Set<SubagentModelSource>();
 		for (const blanket of [undefined, BLANKET_MODEL, "@no-such-role"]) {
 			for (const row of [undefined, { model: FALLBACK_MODEL, thinkingLevel: "high" }]) {
-				for (const frontmatter of [undefined, FRONTMATTER_MODEL]) {
-					for (const active of [undefined, SESSION_MODEL]) {
-						const store = Settings.isolated({
-							...(blanket ? { "subagent.model": blanket } : {}),
-							...(row ? { "subagent.agents": { [AGENT]: row } } : {}),
-						});
-						produced.add(
-							resolveSubagentModel({
-								settings: store,
-								agentName: AGENT,
-								agentModel: frontmatter,
-								activeModelPattern: active,
-							}).source,
-						);
+				for (const depthRow of [undefined, DEPTH_MODEL]) {
+					for (const frontmatter of [undefined, FRONTMATTER_MODEL]) {
+						for (const active of [undefined, SESSION_MODEL]) {
+							for (const taskDepth of [undefined, 1]) {
+								const store = Settings.isolated({
+									...(blanket ? { "subagent.model": blanket } : {}),
+									...(row ? { "subagent.agents": { [AGENT]: row } } : {}),
+									...(depthRow ? { "subagent.modelByDepth": { "1": depthRow } } : {}),
+								});
+								produced.add(
+									resolveSubagentModel({
+										settings: store,
+										agentName: AGENT,
+										agentModel: frontmatter,
+										activeModelPattern: active,
+										taskDepth,
+									}).source,
+								);
+							}
+						}
 					}
 				}
 			}
@@ -389,8 +414,8 @@ describe("the layer that chose a subagent's model is one of exactly three", () =
 		return [...produced].sort();
 	}
 
-	it("produces blanket, frontmatter and inherit, and never a per-agent layer", () => {
-		expect(producedSources()).toEqual(["blanket", "frontmatter", "inherit"]);
+	it("produces depth, blanket, frontmatter and inherit, and never a per-agent layer", () => {
+		expect(producedSources()).toEqual(["blanket", "depth", "frontmatter", "inherit"]);
 	});
 
 	/**
@@ -400,14 +425,16 @@ describe("the layer that chose a subagent's model is one of exactly three", () =
 	 */
 	it("names a real setting for every layer, and no per-agent row", () => {
 		const labels: Record<SubagentModelSource, string> = {
+			depth: subagentModelSourceLabel("depth", AGENT, 2),
 			blanket: subagentModelSourceLabel("blanket", AGENT),
 			frontmatter: subagentModelSourceLabel("frontmatter", AGENT),
 			inherit: subagentModelSourceLabel("inherit", AGENT),
 		};
 
+		expect(labels.depth).toBe("subagent.modelByDepth.2");
 		expect(labels.blanket).toBe("subagent.model");
 		expect(labels.frontmatter).toContain("frontmatter");
-		expect(new Set(Object.values(labels)).size).toBe(3);
+		expect(new Set(Object.values(labels)).size).toBe(4);
 		for (const label of Object.values(labels)) {
 			expect(label).not.toContain(`subagent.agents.${AGENT}`);
 		}
