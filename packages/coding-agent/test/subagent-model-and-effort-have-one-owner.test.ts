@@ -48,11 +48,11 @@ import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { resolveEffectiveSubagentThinkingLevel } from "@veyyon/coding-agent/task/executor";
 import {
 	isSubagentEnabled,
-	RETIRED_AGENT_ROW_FIELDS,
-	resetRetiredAgentRowReports,
+	resetSupersededAgentRowReports,
 	resolveSubagentMaxNestedSpawnDepth,
 	resolveSubagentModel,
 	resolveSubagentThinkingLevel,
+	SUPERSEDED_AGENT_ROW_FIELDS,
 	type SubagentModelSource,
 	subagentModelSourceLabel,
 } from "@veyyon/coding-agent/task/subagent-settings";
@@ -80,13 +80,13 @@ beforeAll(async () => {
 beforeEach(async () => {
 	resetSettingsForTest();
 	await Settings.init({ inMemory: true });
-	resetRetiredAgentRowReports();
+	resetSupersededAgentRowReports();
 	geometryStub = stubStdoutGeometry({ columns: 200, rows: 60 });
 });
 
 afterEach(() => {
 	resetSettingsForTest();
-	resetRetiredAgentRowReports();
+	resetSupersededAgentRowReports();
 	geometryStub?.restore();
 	geometryStub = undefined;
 });
@@ -131,6 +131,7 @@ function resolutionFingerprint(store: Settings): string {
 				settings: store,
 				agentName: context.agentName,
 				agentThinkingLevel: context.agentThinkingLevel,
+				taskDepth: context.taskDepth,
 			});
 			return [
 				context.agentName,
@@ -187,8 +188,9 @@ function probeValuesFor(path: SettingPath, entry: SchemaEntry): unknown[] {
 			if (path === "subagent.modelByDepth") {
 				return [{ "1": FALLBACK_MODEL }, { "2": [FALLBACK_MODEL, BLANKET_MODEL] }];
 			}
-			// The retired shape plus the live one, so a table that starts deciding models again is
-			// caught whichever field name it comes back under.
+			// Every field a lane can carry, so a table that starts deciding on some OTHER
+			// field name is caught the day it does. `effort` is not a lane field and must
+			// stay inert; `model` and `thinkingLevel` are, and must not.
 			return [
 				{
 					[AGENT]: {
@@ -216,16 +218,23 @@ function pathsThatDecideWhatASubagentRuns(): SettingPath[] {
 	});
 }
 
-describe("exactly three settings decide what a subagent runs", () => {
+describe("exactly four settings decide what a subagent runs", () => {
 	/**
 	 * The ownership ratchet, stated as a set rather than as a pair of positive cases.
 	 *
-	 * A per-agent layer is only one way to get a second owner. Any `subagent.*` setting that reaches
-	 * either resolver is one, and the assertion is that there are no others rather than that the three
-	 * known ones work.
+	 * `subagent.agents` is one of the four now: a lane owns what its own level runs. That is a
+	 * REVERSAL of the shape this suite was written for, and the reason it is safe is the rule
+	 * enforced further down — the page that shows a lane's value is the page that changes it, and
+	 * the badge names the exact path that decided. What is still forbidden is a SECOND owner for
+	 * one lane, and any `subagent.*` setting reaching either resolver that is not one of these four.
 	 */
-	it("names them, and finds no fourth", () => {
-		expect(pathsThatDecideWhatASubagentRuns()).toEqual(["subagent.model", "subagent.modelByDepth", "subagent.thinkingLevel"]);
+	it("names them, and finds no fifth", () => {
+		expect(pathsThatDecideWhatASubagentRuns()).toEqual([
+			"subagent.agents",
+			"subagent.model",
+			"subagent.modelByDepth",
+			"subagent.thinkingLevel",
+		]);
 	});
 
 	/**
@@ -281,29 +290,38 @@ describe("exactly three settings decide what a subagent runs", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// The per-agent table: which lanes are offered, and nothing about what they run.
+// The per-agent table: which fields a lane owns, and no others.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Field names a per-agent row could plausibly carry, derived from the schema's own `subagent.*` leaf
- * names plus the two that were retired.
+ * names plus the lane's own three and one name it must NOT answer to.
  *
  * Derived rather than listed so that adding `subagent.somethingNew` also probes
- * `subagent.agents.<name>.somethingNew`, which is how a per-agent layer would come back: as the row
- * twin of a blanket setting someone just added.
+ * `subagent.agents.<name>.somethingNew`, which is how an unowned second layer would arrive: as the
+ * row twin of a blanket setting someone just added, with no page showing it.
  */
 const ROW_FIELDS: string[] = [
 	...new Set([
 		...SUBAGENT_PATHS.map(candidate => candidate.slice(candidate.lastIndexOf(".") + 1)),
 		"model",
 		"thinkingLevel",
+		// The recursion, which is a lane field and no `subagent.*` path's leaf name.
+		"subagents",
+		// A plausible synonym nothing may answer to: one page, one spelling.
 		"effort",
 	]),
 ].sort();
 
-/** Every probe value any `subagent.*` type produces, so each field is tried with all of them. */
+/**
+ * Every probe value any `subagent.*` type produces, plus a lane-shaped one.
+ *
+ * The lane shape is what makes `subagents` a real probe rather than an empty object: a nested lane
+ * decides for the depth below, so a value with nothing in it would report the recursion inert.
+ */
 const ROW_VALUES: unknown[] = [
 	...new Set(SUBAGENT_PATHS.flatMap(candidate => probeValuesFor(candidate, SETTINGS_SCHEMA[candidate]))),
+	{ enabled: true, model: FALLBACK_MODEL, thinkingLevel: "high" },
 ];
 
 function rowSettings(field: string, value: unknown): Settings {
@@ -329,47 +347,55 @@ function rowFieldsThatChange(read: (store: Settings) => string): string[] {
 	return ROW_FIELDS.filter(field => ROW_VALUES.some(value => answer(rowSettings(field, value)) !== baseline));
 }
 
-describe("a per-agent row decides which lanes are offered and nothing else", () => {
+describe("a per-agent row decides exactly what its own page shows", () => {
 	const scout: AgentDefinition = { name: AGENT, source: "bundled" } as AgentDefinition;
 
 	/**
-	 * The headline. No field a row can carry — retired, current, or one invented tomorrow as the twin of
-	 * a new blanket setting — may change the model or the effort the agent runs.
+	 * The headline, inverted from what it was and pinned in both directions.
+	 *
+	 * A lane owns four things because its page shows four rows: Enabled, Model, Effort, Subagents.
+	 * Equality is the whole point — a fifth field that moves the answer is a layer with no page,
+	 * which is the defect this suite was written for, and a missing one is a page that shows a
+	 * value it cannot change.
 	 */
-	it("changes neither the model nor the effort, whatever field it carries", () => {
-		expect(rowFieldsThatChange(resolutionFingerprint)).toEqual([]);
+	it("moves the resolved answer for exactly the fields its page edits", () => {
+		expect(rowFieldsThatChange(resolutionFingerprint)).toEqual(["model", "subagents", "thinkingLevel"]);
 		// The sweep is only worth anything if it is actually writing rows the reader can see.
-		expect(ROW_FIELDS).toContain("model");
-		expect(ROW_FIELDS).toContain("thinkingLevel");
+		expect(ROW_FIELDS).toContain("effort");
 		expect(ROW_FIELDS).toContain("maxNestedSpawnDepth");
 		expect(ROW_VALUES.length).toBeGreaterThan(5);
 	});
 
 	/**
-	 * And the two axes a row DOES own, pinned in both directions. Equality rather than `toContain`,
-	 * because a row quietly gaining a third axis is the same defect as a row keeping the model.
+	 * `enabled` and the depth ceiling are the other two axes, and they are separate from what the
+	 * lane RUNS: a row that started changing the model through its enablement field would pass the
+	 * case above by accident.
 	 */
-	it("owns exactly enablement and nested spawn depth", () => {
+	it("owns enablement and the spawn ceiling on their own axes", () => {
 		expect(rowFieldsThatChange(store => String(isSubagentEnabled(store, scout)))).toEqual(["enabled"]);
 		expect(rowFieldsThatChange(store => String(resolveSubagentMaxNestedSpawnDepth(store, AGENT)))).toEqual([
 			"maxNestedSpawnDepth",
+			"subagents",
 		]);
 	});
 
 	/**
-	 * A retired row must not truncate a chain either. It used to REPLACE the blanket list wholesale, so
-	 * one leftover single-model row silently stripped every fallback the operator had configured.
+	 * A lane REPLACES the blanket chain rather than truncating it, and the whole lane chain is
+	 * kept in order. The failure this guards is the one the layer had before it was removed: a
+	 * single-model row silently stripping every fallback beneath it while claiming the blanket
+	 * source.
 	 */
-	it("keeps the whole blanket chain in order over a leftover row", () => {
+	it("keeps a lane's own chain in order, and says the lane decided", () => {
 		const store = Settings.isolated({
-			"subagent.model": `${BLANKET_MODEL}, ${FALLBACK_MODEL}, ${FRONTMATTER_MODEL}`,
-			"subagent.agents": { [AGENT]: { model: "openai/gpt-5-mini", thinkingLevel: "max" } },
+			"subagent.model": `${BLANKET_MODEL}, ${FALLBACK_MODEL}`,
+			"subagent.agents": { [AGENT]: { model: [FALLBACK_MODEL, FRONTMATTER_MODEL] } },
 		});
 
 		const resolved = resolveSubagentModel({ settings: store, agentName: AGENT });
 
-		expect(resolved.source).toBe("blanket");
-		expect(resolved.patterns).toEqual([BLANKET_MODEL, FALLBACK_MODEL, FRONTMATTER_MODEL]);
+		expect(resolved.source).toBe("lane");
+		expect(resolved.patterns).toEqual([FALLBACK_MODEL, FRONTMATTER_MODEL]);
+		expect(subagentModelSourceLabel(resolved.source, AGENT, resolved.depth)).toBe(`subagent.agents.${AGENT}`);
 	});
 });
 
@@ -377,16 +403,16 @@ describe("a per-agent row decides which lanes are offered and nothing else", () 
 // Which layer answered.
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("the layer that chose a subagent's model is one of exactly four", () => {
+describe("the layer that chose a subagent's model is one of exactly five", () => {
 	/**
 	 * Enumerated by driving the resolver over every combination rather than by reading the union: a
-	 * fifth member added to the type is only a defect once something can produce it, and a fifth
+	 * sixth member added to the type is only a defect once something can produce it, and a sixth
 	 * member produced without being added to the type is the same defect with no type error.
 	 */
 	function producedSources(): SubagentModelSource[] {
 		const produced = new Set<SubagentModelSource>();
 		for (const blanket of [undefined, BLANKET_MODEL, "@no-such-role"]) {
-			for (const row of [undefined, { model: FALLBACK_MODEL, thinkingLevel: "high" }]) {
+			for (const row of [undefined, { enabled: true }, { model: FALLBACK_MODEL, thinkingLevel: "high" }]) {
 				for (const depthRow of [undefined, DEPTH_MODEL]) {
 					for (const frontmatter of [undefined, FRONTMATTER_MODEL]) {
 						for (const active of [undefined, SESSION_MODEL]) {
@@ -414,30 +440,30 @@ describe("the layer that chose a subagent's model is one of exactly four", () =>
 		return [...produced].sort();
 	}
 
-	it("produces depth, blanket, frontmatter and inherit, and never a per-agent layer", () => {
-		expect(producedSources()).toEqual(["blanket", "depth", "frontmatter", "inherit"]);
+	it("produces lane, depth, blanket, frontmatter and inherit", () => {
+		expect(producedSources()).toEqual(["blanket", "depth", "frontmatter", "inherit", "lane"]);
 	});
 
 	/**
-	 * Each layer is named by the setting an operator can go and change. "agent" used to be one of these
-	 * and its label pointed at the row that outranked everything; a label that still named a row would
-	 * send someone to a screen that no longer decides anything.
+	 * Each layer is named by the setting an operator can go and change. The lane's label is the path
+	 * through the pages that set it — `subagent.agents.<name>`, then one `.subagents` per level down
+	 * — because a lane refusal has to point at the page that decided rather than at the table.
 	 */
-	it("names a real setting for every layer, and no per-agent row", () => {
+	it("names a real setting for every layer", () => {
 		const labels: Record<SubagentModelSource, string> = {
+			lane: subagentModelSourceLabel("lane", AGENT, 0),
 			depth: subagentModelSourceLabel("depth", AGENT, 2),
 			blanket: subagentModelSourceLabel("blanket", AGENT),
 			frontmatter: subagentModelSourceLabel("frontmatter", AGENT),
 			inherit: subagentModelSourceLabel("inherit", AGENT),
 		};
 
+		expect(labels.lane).toBe(`subagent.agents.${AGENT}`);
+		expect(subagentModelSourceLabel("lane", AGENT, 2)).toBe(`subagent.agents.${AGENT}.subagents.subagents`);
 		expect(labels.depth).toBe("subagent.modelByDepth.2");
 		expect(labels.blanket).toBe("subagent.model");
 		expect(labels.frontmatter).toContain("frontmatter");
-		expect(new Set(Object.values(labels)).size).toBe(4);
-		for (const label of Object.values(labels)) {
-			expect(label).not.toContain(`subagent.agents.${AGENT}`);
-		}
+		expect(new Set(Object.values(labels)).size).toBe(5);
 	});
 });
 
@@ -466,6 +492,9 @@ interface AgentEditor {
 	frame(): string[];
 	/** The rows the operator can actually move to and press Enter on, in list order. */
 	rows(): string[];
+	/** Walk to the row whose label starts with `label` and press Enter on it. */
+	enter(label: string): void;
+	escape(): void;
 }
 
 /**
@@ -487,6 +516,19 @@ async function openAgentEditor(agentName: string): Promise<AgentEditor> {
 	component.handleInput("\n");
 	const frame = (): string[] => component.render(140).map(stripVTControlCharacters);
 	const content = (): string[] => frame().map(contentColumn);
+	/**
+	 * The highlighted row's text, or undefined when nothing in the pane is a list.
+	 *
+	 * The marker is `›` at the START of the row, and the test cannot look for `›` anywhere in the
+	 * line: a nested lane page titles itself `scout › subagents`, and that breadcrumb sorts above
+	 * the rows, so a substring match reads the title as the selection and every walk lands on it.
+	 */
+	const selectedRow = (): string | undefined =>
+		content()
+			.map(line => line.trim())
+			.find(line => line.startsWith("›"))
+			?.slice(1)
+			.trim();
 	// Agent discovery is filesystem IO started in the submenu's constructor and it exposes no
 	// settled signal, so there is nothing to await and no clock to fake. Yielding the event loop
 	// lets the IO completion run without a wall-clock delay tuned to "long enough"; the bound is
@@ -498,12 +540,7 @@ async function openAgentEditor(agentName: string): Promise<AgentEditor> {
 	// Walk to the row by name: the roster is alphabetical, so a fixed number of Down presses
 	// configures whichever agent happens to sort first.
 	for (let step = 0; ; step++) {
-		if (
-			content()
-				.find(line => line.includes(agentName))
-				?.includes("›")
-		)
-			break;
+		if (selectedRow()?.startsWith(agentName)) break;
 		if (step > 64) throw new Error(`never landed on the ${agentName} row`);
 		component.handleInput("\u001b[B");
 	}
@@ -511,55 +548,89 @@ async function openAgentEditor(agentName: string): Promise<AgentEditor> {
 
 	/**
 	 * Enumerate the editor's rows by walking the list rather than by pattern-matching the frame. The
-	 * screen also prints what the lane RUNS and where to change it, and those sentences carry the words
-	 * "Model" and "Effort" — a text scan would read the pointer as a control.
+	 * screen also prints what the lane RUNS above the rows, and that sentence carries the words
+	 * "Model" and "Effort" — a text scan would read the preview as a control.
 	 */
 	const rows = (): string[] => {
 		const seen: string[] = [];
 		for (let step = 0; step < 16; step++) {
-			const selected = content().find(line => line.includes("›"));
-			if (!selected) break;
-			const label = selected.replace("›", "").trim();
-			if (seen.includes(label)) break;
+			const label = selectedRow();
+			if (label === undefined || seen.includes(label)) break;
 			seen.push(label);
 			component.handleInput("\u001b[B");
 		}
 		return seen;
 	};
-	return { component, frame, rows };
+	// The list wraps, so a bounded walk is the only honest way to land on a named row: pressing
+	// Down a fixed number of times lands wherever the roster happens to sort that row.
+	const enter = (label: string): void => {
+		for (let step = 0; step <= 16; step++) {
+			if (selectedRow()?.startsWith(label)) {
+				component.handleInput("\n");
+				return;
+			}
+			component.handleInput("\u001b[B");
+		}
+		throw new Error(`never landed on the ${label} row:\n${frame().join("\n")}`);
+	};
+	const goBack = (): void => component.handleInput("\u001b");
+	return { component, frame, rows, enter, escape: goBack };
 }
 
-describe("the Agents editor offers no model or effort control", () => {
+describe("every row the lane page shows is a row the lane page changes", () => {
 	/**
 	 * The editor's rows, pinned by exact equality.
 	 *
-	 * This is the fail-by-default half of the ownership class that no resolver sweep can provide: a
-	 * Model or Effort row added back to this screen writes a value nothing reads, which is precisely the
-	 * state the deletion removed, and it would pass every resolver sweep above.
+	 * This is the fail-by-default half of the ownership class that no resolver sweep can provide.
+	 * It used to read the other way — the Model and Effort rows were DELETED, because they wrote a
+	 * value that outranked a setting edited on another screen. The rows are back and the rule that
+	 * replaced the deletion is this one: a row here shows a lane's own value and opens the control
+	 * that changes that same value. A row showing an answer decided elsewhere is the old defect;
+	 * so is a row that writes a value nothing reads, and equality catches both.
 	 */
-	it("offers exactly the two rows a lane's availability needs", async () => {
+	it("offers exactly Enabled, Model, Effort and Subagents", async () => {
 		const editor = await openAgentEditor(AGENT);
 
 		const rows = editor.rows();
-		expect(rows.length).toBe(2);
-		expect(rows[0]?.startsWith("Enabled")).toBe(true);
-		expect(rows[1]?.startsWith("Nested spawn depth")).toBe(true);
-		for (const row of rows) {
-			expect(row, row).not.toMatch(/\b(Model|Effort|Thinking)\b/);
-		}
+		expect(rows.map(row => row.split(/\s{2,}/)[0]?.trim())).toEqual(["Enabled", "Model", "Effort", "Subagents"]);
 	});
 
 	/**
-	 * What the lane runs is still SHOWN here, as a fact with a pointer to the one place it is decided.
-	 * Removing the row without saying where the answer moved would leave the screen looking like the
-	 * setting had vanished.
+	 * And the rows lead somewhere. Pinning the labels alone would pass with four inert rows, which
+	 * is the exact shape of "a screen that shows a value it cannot change".
 	 */
-	it("shows what the lane runs and names the settings that decide it", async () => {
-		const body = (await openAgentEditor(AGENT)).frame().join("\n");
+	it("opens a control from the Model row and from the Effort row", async () => {
+		const editor = await openAgentEditor(AGENT);
 
-		expect(body).toContain("Runs");
-		expect(body).toContain("Subagent Model");
-		expect(body).toContain("Subagent Effort");
+		editor.enter("Model");
+		// The chain editor opens on the model picker while the lane's chain is empty, and it titles
+		// itself with the lane it will write. What is under test is that the row REACHES the editor
+		// bound to THIS lane, not what the harness's empty catalog can list.
+		expect(editor.frame().join("\n")).toContain(`Model · ${AGENT}`);
+		editor.escape();
+
+		editor.enter("Effort");
+		const effortScreen = editor.frame().join("\n");
+		expect(effortScreen).toContain(`Effort · ${AGENT}`);
+		expect(effortScreen).toContain("Inherit");
+	});
+
+	/**
+	 * The recursion, driven rather than asserted from the type: the nested page is the same page,
+	 * and its rows edit the nested lane rather than the agent's own. A nested page that showed the
+	 * parent's value would be the two-screens defect one level down, so the page says which level
+	 * it is and its Model row says what unset means here.
+	 */
+	it("recurses into a nested lane with the same four rows", async () => {
+		const editor = await openAgentEditor(AGENT);
+
+		editor.enter("Subagents");
+		const nested = editor.rows();
+
+		expect(nested.map(row => row.split(/\s{2,}/)[0]?.trim())).toEqual(["Enabled", "Model", "Effort", "Subagents"]);
+		const screen = editor.frame().join("\n");
+		expect(screen).toContain(`${AGENT} › subagents`);
+		expect(screen).toContain("inherit · the level above");
 	});
 });
 
@@ -567,18 +638,18 @@ describe("the Agents editor offers no model or effort control", () => {
 // The stale copy on disk.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const makeRetiredRowDir = useTrackedTempDirs("veyyon-retired-agent-row-");
+const makeStaleRowDir = useTrackedTempDirs("veyyon-stale-agent-row-");
 
-describe("a config still carrying the retired per-agent shape", () => {
+describe("a config written before the lane tree", () => {
 	let agentDir = "";
 
 	beforeEach(() => {
-		agentDir = makeRetiredRowDir();
+		agentDir = makeStaleRowDir();
 	});
 
 	afterEach(async () => {
 		if (agentDir) {
-			await removeWithRetries(guardDestructivePath(agentDir, "retired-agent-row"));
+			await removeWithRetries(guardDestructivePath(agentDir, "stale-agent-row"));
 			agentDir = "";
 		}
 	});
@@ -589,10 +660,13 @@ describe("a config still carrying the retired per-agent shape", () => {
 
 	/**
 	 * Through the REAL loader, not `Settings.isolated`. A persisted shape is how a fixed bug comes back:
-	 * the value survives the release that removed the code reading it, and the next reader has to decide
+	 * the value survives the release that changed the code reading it, and the next reader has to decide
 	 * what to do with it. Reading it back once proves nothing about the second load, so both are checked.
+	 *
+	 * The old per-agent row is the LANE now, so a file written before the tree resolves to that row's
+	 * model and effort — the same answer it got when it was written, from a path that now has a page.
 	 */
-	it("resolves the blanket answer on the first load and on the stale reload", async () => {
+	it("keeps the answer a pre-tree row asked for, on the first load and on the stale reload", async () => {
 		writeConfig({
 			subagent: {
 				model: BLANKET_MODEL,
@@ -610,27 +684,24 @@ describe("a config still carrying the retired per-agent shape", () => {
 				activeModelPattern: SESSION_MODEL,
 			});
 
-			expect(model.patterns, pass).toEqual([BLANKET_MODEL]);
-			expect(model.source, pass).toBe("blanket");
-			expect(resolveSubagentThinkingLevel({ settings: store, agentName: AGENT }), pass).toBe(ThinkingLevel.Low);
-			// The lane is still offered: the half of the row that still has a home survives untouched.
+			expect(model.patterns, pass).toEqual([FALLBACK_MODEL]);
+			expect(model.source, pass).toBe("lane");
+			expect(resolveSubagentThinkingLevel({ settings: store, agentName: AGENT }), pass).toBe(ThinkingLevel.Max);
 			expect(isSubagentEnabled(store, { name: AGENT, source: "bundled" } as AgentDefinition), pass).toBe(true);
 		}
 	});
 
 	/**
-	 * EVERY leftover in the table is named, not just the one belonging to whichever agent happened to
-	 * spawn, and not just the first one found. The report used to be scoped to the resolving agent, so a
-	 * retired model on a DISABLED agent was never mentioned: that agent never resolves, so the value sat
-	 * in the operator's config looking configured and doing nothing, which is the exact state this
-	 * retirement exists to end. An operator cannot be expected to enable an agent in order to find out
-	 * that its setting is dead. Two agents carry leftovers here rather than one, because a dedupe keyed
-	 * on the field alone silences every agent after the first and a single-agent case cannot see it.
+	 * EVERY superseded field in the table is named, not just the one belonging to whichever agent
+	 * happened to spawn, and not just the first one found. The report used to be scoped to the resolving
+	 * agent, so a leftover on a DISABLED agent was never mentioned: that agent never resolves, so the
+	 * value sat in the operator's config looking configured, which is the exact state the report exists
+	 * to end. An operator cannot be expected to enable an agent in order to find out its setting moved.
+	 * Two agents carry leftovers here rather than one, because a dedupe keyed on the field alone
+	 * silences every agent after the first and a single-agent case cannot see it.
 	 */
-	it("names every leftover in the table, on agents that never spawn as well", async () => {
-		const leftovers = Object.fromEntries(
-			RETIRED_AGENT_ROW_FIELDS.map(field => [field, field === "model" ? FALLBACK_MODEL : "max"]),
-		);
+	it("names every superseded field in the table, on agents that never spawn as well", async () => {
+		const leftovers = Object.fromEntries(SUPERSEDED_AGENT_ROW_FIELDS.map(field => [field, 2]));
 		writeConfig({
 			subagent: {
 				agents: {
@@ -641,7 +712,7 @@ describe("a config still carrying the retired per-agent shape", () => {
 			},
 		});
 		const store = await Settings.loadIsolated({ agentDir, cwd: agentDir });
-		resetRetiredAgentRowReports();
+		resetSupersededAgentRowReports();
 		const warnings: string[] = [];
 		const warn = spyOn(logger, "warn").mockImplementation((message: string) => {
 			warnings.push(message);
@@ -655,7 +726,7 @@ describe("a config still carrying the retired per-agent shape", () => {
 
 		const expected = Object.fromEntries(
 			[AGENT, "designer"].flatMap(agent =>
-				RETIRED_AGENT_ROW_FIELDS.map(field => [`subagent.agents.${agent}.${field}`, 1]),
+				SUPERSEDED_AGENT_ROW_FIELDS.map(field => [`subagent.agents.${agent}.${field}`, 1]),
 			),
 		);
 		const counted = Object.fromEntries(
@@ -663,21 +734,21 @@ describe("a config still carrying the retired per-agent shape", () => {
 		);
 
 		expect(counted).toEqual(expected);
-		// The agent whose row carries nothing retired is not mentioned at all.
+		// The agent whose row carries nothing superseded is not mentioned at all.
 		expect(warnings.filter(message => message.includes("subagent.agents.librarian"))).toEqual([]);
+		// A live lane field is not a leftover, and must never be reported as one.
+		expect(warnings.filter(message => message.includes(".model") || message.includes(".thinkingLevel"))).toEqual([]);
 	});
 
 	/**
-	 * A dropped value is only acceptable if the operator is told, once per field, with the setting that
-	 * replaced it. Once per field and not once per spawn: this runs on every resolution, and a report
-	 * per spawn is a log flood that gets filtered out and then never read.
+	 * Named once per field, with the control that replaced it. Once per field and not once per spawn:
+	 * this runs on every resolution, and a report per spawn is a log flood that gets filtered out and
+	 * then never read.
 	 */
-	it("names each retired field once, however many times a spawn resolves", async () => {
-		writeConfig({
-			subagent: { agents: { [AGENT]: { model: FALLBACK_MODEL, thinkingLevel: "max" } } },
-		});
+	it("names each superseded field once, however many times a spawn resolves", async () => {
+		writeConfig({ subagent: { agents: { [AGENT]: { maxNestedSpawnDepth: 2 } } } });
 		const store = await Settings.loadIsolated({ agentDir, cwd: agentDir });
-		resetRetiredAgentRowReports();
+		resetSupersededAgentRowReports();
 		const warnings: string[] = [];
 		const warn = spyOn(logger, "warn").mockImplementation((message: string) => {
 			warnings.push(message);
@@ -692,17 +763,18 @@ describe("a config still carrying the retired per-agent shape", () => {
 		}
 
 		const reported = warnings.filter(message => message.includes(`subagent.agents.${AGENT}`));
-		expect(reported.length).toBe(2);
-		expect(reported.find(message => message.includes(".model"))).toContain("Subagent Model");
-		expect(reported.find(message => message.includes(".thinkingLevel"))).toContain("Subagent Effort");
-		for (const message of reported) expect(message).toContain("no longer read");
+		expect(reported.length).toBe(1);
+		expect(reported[0]).toContain("Subagents");
+		expect(reported[0]).toContain("no screen writes");
+		// Reported is not ignored: the ceiling the file asked for is still the one in force.
+		expect(resolveSubagentMaxNestedSpawnDepth(store, AGENT)).toBe(2);
 	});
 
-	/** A blank leftover is what a cleared picker stored, so nobody is losing a value and nobody is told. */
-	it("says nothing about a blank leftover field", async () => {
+	/** A blank lane value is what a cleared picker stored, so nobody is losing a value and nobody is told. */
+	it("says nothing about a blank lane field", async () => {
 		writeConfig({ subagent: { agents: { [AGENT]: { model: "", thinkingLevel: "   " } } } });
 		const store = await Settings.loadIsolated({ agentDir, cwd: agentDir });
-		resetRetiredAgentRowReports();
+		resetSupersededAgentRowReports();
 		const warnings: string[] = [];
 		const warn = spyOn(logger, "warn").mockImplementation((message: string) => {
 			warnings.push(message);
@@ -718,26 +790,42 @@ describe("a config still carrying the retired per-agent shape", () => {
 	});
 
 	/**
-	 * And the stale fields do not survive the next edit of that row. Toggling the lane on is driven
-	 * through the real editor, because the scrub lives in the editor's write path: it rebuilds the row
-	 * from the fields it still owns rather than spreading the stored one, so a leftover is dropped
-	 * instead of being rewritten into the file for the next reader to wonder about.
+	 * The superseded number survives an unrelated edit and dies the moment the control that replaced
+	 * it is used. Dropping it on the toggle would silently lower the ceiling the file asked for;
+	 * keeping it after a chain exists would leave a dead value in the operator's file that used to
+	 * decide. Both halves are asserted, because each is the tempting simplification of the other.
 	 */
-	it("drops the retired fields when the operator next edits the row", async () => {
-		// `model` and `thinkingLevel` were removed from `SubagentAgentSettings`, so the stale shape is
-		// no longer expressible as a literal. It is still what an older config holds on disk.
-		const staleRow: SubagentAgentSettings = { enabled: false, maxNestedSpawnDepth: 2 };
-		Object.assign(staleRow, { model: FALLBACK_MODEL, thinkingLevel: "max" });
+	it("keeps the superseded number until the chain replaces it", async () => {
+		const staleRow: SubagentAgentSettings = {
+			enabled: false,
+			model: FALLBACK_MODEL,
+			thinkingLevel: "max",
+		};
+		Object.assign(staleRow, { maxNestedSpawnDepth: 2 });
 		settings.set("subagent.agents", { [AGENT]: staleRow });
 
 		const editor = await openAgentEditor(AGENT);
 		// The editor opens on the Enabled row; Enter toggles the lane and writes the row back.
 		editor.component.handleInput("\n");
 
-		expect(settings.get("subagent.agents")?.[AGENT]).toEqual({ enabled: true, maxNestedSpawnDepth: 2 });
+		expect(settings.get("subagent.agents")?.[AGENT]).toEqual({
+			enabled: true,
+			model: FALLBACK_MODEL,
+			thinkingLevel: "max",
+			maxNestedSpawnDepth: 2,
+		});
+		expect(resolveSubagentMaxNestedSpawnDepth(settings, AGENT)).toBe(2);
 		expect(resolveSubagentModel({ settings, agentName: AGENT, activeModelPattern: SESSION_MODEL }).patterns).toEqual([
-			SESSION_MODEL,
+			FALLBACK_MODEL,
 		]);
+
+		// Now use the control the report named: Subagents → Enabled.
+		editor.enter("Subagents");
+		editor.enter("Enabled");
+
+		const row = settings.get("subagent.agents")?.[AGENT];
+		expect(row?.subagents).toBeDefined();
+		expect(row).not.toHaveProperty("maxNestedSpawnDepth");
 	});
 });
 
