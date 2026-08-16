@@ -81,6 +81,7 @@ import type { AgentDefinition } from "../../task/types";
 import {
 	configuredThinkingLevelOptions,
 	hasConfigurableThinkingEffort,
+	INHERIT_EFFORT_OPTION_VALUE,
 	noSelectableEffortNotice,
 } from "../../thinking";
 import { getTabBarTheme } from "../shared";
@@ -1216,6 +1217,45 @@ const AGENT_ROW_RECURSION = "\\u0000agent-recursion";
 const AGENT_ROW_RESET = "\\u0000agent-reset";
 
 /**
+ * Row ids for the two settings the roster edits beside the agents themselves:
+ * the model and the effort every subagent runs. They appear at the top of the
+ * roster list and again inside a per-subagent page, and both spellings write
+ * the same setting — the screen that shows what a lane runs is the screen that
+ * changes it, because the previous shape showed it and then named a different
+ * screen to go and change it on.
+ */
+const AGENT_ROW_MODEL = "\u0000subagent-model";
+const AGENT_ROW_EFFORT = "\u0000subagent-effort";
+
+/** The settings one pass through the roster can write. */
+type SubagentRosterPath = "subagent.agents" | "subagent.model" | "subagent.thinkingLevel";
+
+/**
+ * The model whose effort ladder `subagent.thinkingLevel` must be narrowed to:
+ * the head of the subagent model chain when one is configured, and the session's
+ * own model when it is not, because unset means every subagent inherits it.
+ *
+ * Undefined when the chain names a model this session has no catalog entry for
+ * (an unauthenticated provider, a pattern that matches nothing). The picker then
+ * offers the full vocabulary, which is the honest answer: the level is stored and
+ * clamped later against whatever model does run.
+ *
+ * ONE owner, because two screens narrow the same ladder: the tab's Subagent
+ * Effort row and the roster's Effort row. Two copies would drift into offering
+ * different levels for one setting.
+ */
+function subagentEffortModel(
+	models: ReadonlyArray<Model> | undefined,
+	sessionModel: Model | undefined,
+): Model | undefined {
+	const head = resolveConfiguredModelPatterns(settings.get("subagent.model"), settings)[0];
+	if (!head) return sessionModel;
+	if (!models) return undefined;
+	const bare = barePickerSelector(head, models as Model<Api>[]);
+	return models.find(candidate => `${candidate.provider}/${candidate.id}` === bare);
+}
+
+/**
  * The `subagent.agents` table: the discovered agents, each with its offered
  * state and how deeply it may spawn.
  *
@@ -1224,11 +1264,16 @@ const AGENT_ROW_RESET = "\\u0000agent-reset";
  * `/agents` cannot describe the same row differently. It edits settings rows only;
  * writing an agent FILE stays in `/agents`, which is why the footer points there.
  *
- * It does NOT edit what an agent runs. A per-agent model and effort used to be
- * editable here, above the blanket subagent settings in the resolver, so this
- * screen quietly outranked Subagent Model and the two screens showed different
- * answers for the same agent. Model and effort are now decided in one place; this
- * screen SHOWS what each lane resolves to, and names the setting that decided it.
+ * It also edits what every subagent RUNS. There is still exactly one model and
+ * one effort for all of them (`subagent.model`, `subagent.thinkingLevel`): this
+ * screen does not introduce a per-agent layer, it just stops sending the reader
+ * somewhere else to change the value it is showing them. Both rows write those
+ * two settings and nothing else, so the tab row and this screen cannot disagree.
+ *
+ * What it must never grow back is a PER-AGENT model or effort. That existed
+ * once, outranked the blanket setting in the resolver, and left two screens
+ * giving different answers for one agent. A row here edits the blanket value
+ * for every subagent, and says so in its own label.
  *
  * The list is discovered rather than read off the stored table: a row exists only
  * once something is overridden, so a table-driven list would be empty on a stock
@@ -1239,12 +1284,18 @@ class SubagentAgentsSubmenu extends Container {
 	#agents: AgentDefinition[] = [];
 	#loadError: string | undefined;
 	#loaded = false;
+	/** Where Esc goes while a message page (no list) is on screen. */
+	#escapeTo: (() => void) | undefined;
 
 	constructor(
 		private readonly cwd: string,
 		/** The session's live model, so an inheriting row shows what it will actually run. */
 		private readonly activeModelPattern: string | undefined,
-		private readonly onChange: () => void,
+		/** The session's model, used to narrow the effort ladder when no chain is set. */
+		private readonly sessionModel: Model | undefined,
+		/** Catalog for the model chain picker; absent in hosts with no model list. */
+		private readonly picker: { registry: ModelRegistry; models: ReadonlyArray<Model> } | undefined,
+		private readonly onChange: (path: SubagentRosterPath) => void,
 		private readonly onCancel: () => void,
 		private readonly requestRender?: () => void,
 	) {
@@ -1290,7 +1341,7 @@ class SubagentAgentsSubmenu extends Container {
 		if (Object.keys(cleaned).length === 0) delete table[name];
 		else table[name] = cleaned;
 		settings.set("subagent.agents", table);
-		this.onChange();
+		this.onChange("subagent.agents");
 	}
 
 	/** One agent's model column: the resolved pattern plus the layer that chose it. */
@@ -1354,13 +1405,14 @@ class SubagentAgentsSubmenu extends Container {
 
 	#showAgentList(): void {
 		this.clear();
-		this.addChild(new Text(theme.bold(theme.fg("accent", "Agents")), 0, 0));
+		this.#escapeTo = undefined;
+		this.addChild(new Text(theme.bold(theme.fg("accent", "Subagents")), 0, 0));
 		this.addChild(new Spacer(1));
 		this.addChild(
 			new Text(
 				theme.fg(
 					"muted",
-					"Which agent types this session offers, and what each one runs. Model and effort come from the Models settings below.",
+					"Which subagent types this session offers, and what they all run. The first two rows are the model and the effort every subagent uses; the rest are the lanes.",
 				),
 				0,
 				0,
@@ -1397,21 +1449,39 @@ class SubagentAgentsSubmenu extends Container {
 			this.addChild(new Spacer(1));
 		}
 
-		const items: SelectItem[] = this.#agents.map(agent => ({
-			value: agent.name,
-			label: agent.name,
-			description: `${SUBAGENT_ENABLE_STATE_LABEL[subagentEnableState(agent, this.#row(agent.name).enabled)]} · ${this.#modelSummary(agent)}`,
-		}));
-		if (items.length === 0) {
-			this.addChild(new Text(theme.fg("dim", "  No agents found."), 0, 0));
+		// The two settings that decide what a lane RUNS come first, because that is
+		// the question the roster raises and it used to be answered on another
+		// screen. They are the blanket settings, not a per-agent copy.
+		const items: SelectItem[] = [
+			{
+				value: AGENT_ROW_MODEL,
+				label: "Model",
+				description: `every subagent · ${this.#blanketModelSummary()}`,
+			},
+			{
+				value: AGENT_ROW_EFFORT,
+				label: "Effort",
+				description: `every subagent · ${this.#blanketEffortSummary()}`,
+			},
+			...this.#agents.map(agent => ({
+				value: agent.name,
+				label: agent.name,
+				description: `${SUBAGENT_ENABLE_STATE_LABEL[subagentEnableState(agent, this.#row(agent.name).enabled)]} · ${this.#modelSummary(agent)}`,
+			})),
+		];
+		// A session that discovered no lanes still has a model and an effort every
+		// spawn would use, so the note goes ABOVE the rows rather than replacing
+		// them: an early return here left the reader on a screen with nothing on it.
+		if (this.#agents.length === 0) {
+			this.addChild(new Text(theme.fg("dim", "  No subagent types found."), 0, 0));
 			this.addChild(new Spacer(1));
-			this.addChild(new Text(theme.fg("dim", "  Esc to go back"), 0, 0));
-			return;
 		}
 
 		this.#selectList = new SelectList(items, clamp(items.length, 1, 12), getSelectListTheme());
 		this.#selectList.onSelect = item => {
-			this.#showAgentEditor(item.value);
+			if (item.value === AGENT_ROW_MODEL) this.#showModelPicker(() => this.#showAgentList());
+			else if (item.value === AGENT_ROW_EFFORT) this.#showEffortPicker(() => this.#showAgentList());
+			else this.#showAgentEditor(item.value);
 			this.requestRender?.();
 		};
 		this.#selectList.onCancel = this.onCancel;
@@ -1439,10 +1509,40 @@ class SubagentAgentsSubmenu extends Container {
 		return this.#agents.find(candidate => candidate.name === name);
 	}
 
-	/** The highlighted agent's own description: what that lane is for. */
+	/** The highlighted row's own line: what that lane is for, or what a setting does. */
 	#detailText(name: string | undefined): string {
+		if (name === AGENT_ROW_MODEL) {
+			return theme.fg(
+				"muted",
+				"  The model chain every subagent runs. Unset means they follow this session's model.",
+			);
+		}
+		if (name === AGENT_ROW_EFFORT) {
+			return theme.fg(
+				"muted",
+				"  The thinking effort every subagent runs at. Inherit follows this session's effort.",
+			);
+		}
 		const description = name ? this.#agent(name)?.description?.trim() : undefined;
 		return description ? theme.fg("muted", `  ${description}`) : "";
+	}
+
+	/** The blanket model chain, as the roster's own row shows it. */
+	#blanketModelSummary(): string {
+		const chain = normalizeModelPatternList(settings.get("subagent.model"));
+		const head = chain[0];
+		if (!head) return theme.fg("dim", `inherit · ${this.activeModelPattern ?? "session model"}`);
+		const fallbacks = chain.length - 1;
+		return fallbacks > 0
+			? `${formatSelectorSummary(head)} ${theme.fg("dim", `+${fallbacks} fallback${fallbacks === 1 ? "" : "s"}`)}`
+			: formatSelectorSummary(head);
+	}
+
+	/** The blanket effort, or the word for having none. */
+	#blanketEffortSummary(): string {
+		const stored = settings.get("subagent.thinkingLevel");
+		const level = typeof stored === "string" ? stored.trim() : "";
+		return level.length > 0 ? level : theme.fg("dim", "inherit");
 	}
 
 	#showAgentEditor(name: string): void {
@@ -1454,15 +1554,16 @@ class SubagentAgentsSubmenu extends Container {
 		const row = this.#row(name);
 
 		this.clear();
-		this.addChild(new Text(theme.bold(theme.fg("accent", `Agent: ${name}`)), 0, 0));
+		this.#escapeTo = undefined;
+		this.addChild(new Text(theme.bold(theme.fg("accent", `Subagent: ${name}`)), 0, 0));
 		this.addChild(new Spacer(1));
 		this.addChild(new Text(theme.fg("muted", agent.description || `${agent.source} agent`), 0, 0));
 		this.addChild(new Spacer(1));
-		// What this lane runs, as a fact rather than a control. The model and the
-		// effort are one decision made for every subagent at once, so editing them
-		// from here would be a second writer for a value this screen does not own.
+		// What this lane runs, resolved, above the rows that change it. The model
+		// and the effort are one decision for every subagent at once, so the rows
+		// below say so — but they are here, because a screen that shows a value and
+		// then names another screen to change it on is a dead end.
 		this.addChild(new Text(`  ${theme.fg("muted", "Runs")} ${this.#runsSummary(agent)}`, 0, 0));
-		this.addChild(new Text(theme.fg("dim", "  Change it in Models · Subagent Model and Subagent Effort"), 0, 0));
 		this.addChild(new Spacer(1));
 		const items: SelectItem[] = [
 			{
@@ -1486,6 +1587,16 @@ class SubagentAgentsSubmenu extends Container {
 							)
 						: this.#recursionDepthLabel(row.maxNestedSpawnDepth),
 			},
+			{
+				value: AGENT_ROW_MODEL,
+				label: "Model",
+				description: `${theme.fg("dim", "every subagent · ")}${this.#blanketModelSummary()}`,
+			},
+			{
+				value: AGENT_ROW_EFFORT,
+				label: "Effort",
+				description: `${theme.fg("dim", "every subagent · ")}${this.#blanketEffortSummary()}`,
+			},
 		];
 		if (Object.keys(row).length > 0) {
 			items.push({
@@ -1505,6 +1616,12 @@ class SubagentAgentsSubmenu extends Container {
 				case AGENT_ROW_RECURSION:
 					this.#showAgentRecursionPicker(name);
 					break;
+				case AGENT_ROW_MODEL:
+					this.#showModelPicker(() => this.#showAgentEditor(name));
+					break;
+				case AGENT_ROW_EFFORT:
+					this.#showEffortPicker(() => this.#showAgentEditor(name));
+					break;
 				case AGENT_ROW_RESET:
 					this.#writeRow(name, {});
 					this.#showAgentEditor(name);
@@ -1523,6 +1640,7 @@ class SubagentAgentsSubmenu extends Container {
 
 	#showAgentRecursionPicker(name: string): void {
 		this.clear();
+		this.#escapeTo = undefined;
 		this.addChild(new Text(theme.bold(theme.fg("accent", `${name} nested spawn depth`)), 0, 0));
 		this.addChild(new Spacer(1));
 		this.addChild(
@@ -1568,9 +1686,110 @@ class SubagentAgentsSubmenu extends Container {
 		this.addChild(new Text(theme.fg("dim", "  Enter to choose · Esc to go back"), 0, 0));
 	}
 
+	/**
+	 * The blanket model chain, edited through the SAME picker the tab row opens
+	 * ({@link ModelChainSubmenu} bound to `subagent.model`). A second chain editor
+	 * here is how two screens would start disagreeing about one value.
+	 */
+	#showModelPicker(back: () => void): void {
+		this.clear();
+		this.#selectList = undefined;
+		this.#escapeTo = back;
+		if (!this.picker) {
+			this.addChild(new Text(theme.fg("warning", "Model catalog unavailable in this context"), 0, 0));
+			this.addChild(new Spacer(1));
+			this.addChild(new Text(theme.fg("dim", "  Esc to go back"), 0, 0));
+			return;
+		}
+		const stored: unknown = settings.get("subagent.model");
+		let current: string | string[] | undefined;
+		if (typeof stored === "string") current = stored;
+		else if (Array.isArray(stored) && stored.every(entry => typeof entry === "string")) current = stored;
+		this.addChild(
+			new ModelChainSubmenu(
+				"subagent.model",
+				this.picker.registry,
+				this.picker.models,
+				"Subagent Model · every subagent",
+				current,
+				() => {
+					this.#escapeTo = undefined;
+					back();
+					this.requestRender?.();
+				},
+				() => this.onChange("subagent.model"),
+				this.requestRender,
+			),
+		);
+	}
+
+	/**
+	 * The blanket effort, narrowed to the ladder the model these subagents will
+	 * actually run accepts — the same narrowing the tab row does, from the same
+	 * helper, so the two lists cannot offer different levels.
+	 */
+	#showEffortPicker(back: () => void): void {
+		this.clear();
+		this.#selectList = undefined;
+		this.#escapeTo = back;
+		const model = subagentEffortModel(this.picker?.models, this.sessionModel);
+		const options = configuredThinkingLevelOptions({
+			model,
+			inheritLabel: "Inherit",
+			inheritDescription: "Follow the session's effort",
+		}).map(option => ({ ...option }));
+		const stored = settings.get("subagent.thinkingLevel");
+		const current = typeof stored === "string" ? stored.trim() : "";
+		const description =
+			options.length <= 1
+				? `Effort for every subagent. ${noSelectableEffortNotice()}`
+				: "Effort for every subagent. Inherit follows the session's effort; a `:level` on the model chain still wins.";
+		this.addChild(
+			new SelectSubmenu(
+				"Subagent Effort · every subagent",
+				description,
+				options,
+				current,
+				value => {
+					// Inherit is the ABSENCE of a value: storing the empty string would
+					// leave the key configured and reading as a choice nobody made.
+					if (value === INHERIT_EFFORT_OPTION_VALUE) settings.unset("subagent.thinkingLevel");
+					else settings.set("subagent.thinkingLevel", value);
+					this.onChange("subagent.thinkingLevel");
+					this.#escapeTo = undefined;
+					back();
+					this.requestRender?.();
+				},
+				() => {
+					this.#escapeTo = undefined;
+					back();
+					this.requestRender?.();
+				},
+			),
+		);
+	}
+
+	/** The list on screen, or the picker that owns the frame while one is open. */
+	mouseTarget(): SelectList | ModelChainSubmenu | SelectSubmenu | undefined {
+		if (this.#selectList) return this.#selectList;
+		return this.children.find(
+			(child): child is ModelChainSubmenu | SelectSubmenu =>
+				child instanceof ModelChainSubmenu || child instanceof SelectSubmenu,
+		);
+	}
+
 	handleInput(data: string): void {
 		if (this.#selectList) {
 			this.#selectList.handleInput(data);
+			return;
+		}
+		// A message page (no catalog, a discovery failure) has no child that reads
+		// input, so Esc would strand the reader on it.
+		if (this.#escapeTo && (matchesKey(data, "escape") || data === "\x1b")) {
+			const back = this.#escapeTo;
+			this.#escapeTo = undefined;
+			back();
+			this.requestRender?.();
 			return;
 		}
 		this.children[0]?.handleInput?.(data);
@@ -3177,25 +3396,6 @@ export class SettingsSelectorComponent implements Component {
 	}
 
 	/**
-	 * The model whose effort ladder `subagent.thinkingLevel` must be narrowed to:
-	 * the head of the subagent model chain when one is configured, and the session's
-	 * own model when it is not, because unset means every subagent inherits it.
-	 *
-	 * Undefined when the chain names a model this session has no catalog entry for
-	 * (an unauthenticated provider, a pattern that matches nothing). The picker then
-	 * offers the full vocabulary, which is the honest answer: the level is stored and
-	 * clamped later against whatever model does run.
-	 */
-	#subagentEffortModel(): Model | undefined {
-		const models = this.context.availableModels;
-		const head = resolveConfiguredModelPatterns(settings.get("subagent.model"), settings)[0];
-		if (!head) return this.context.model;
-		if (!models) return undefined;
-		const bare = barePickerSelector(head, models as Model<Api>[]);
-		return models.find(candidate => `${candidate.provider}/${candidate.id}` === bare);
-	}
-
-	/**
 	 * The rows a submenu setting offers, including the ones only the runtime knows.
 	 *
 	 * ONE owner, because the picker and the row's own value label each used to
@@ -3224,7 +3424,7 @@ export class SettingsSelectorComponent implements Component {
 		// value the resolver then had to clamp or ignore.
 		if (Object.hasOwn(EFFORT_SUBMENU_PATHS, def.path)) {
 			return configuredThinkingLevelOptions({
-				model: this.#subagentEffortModel(),
+				model: subagentEffortModel(this.context.availableModels, this.context.model),
 				inheritLabel: "Inherit",
 				inheritDescription: "Follow the session's effort",
 			}).map(option => ({ ...option }));
@@ -3492,18 +3692,21 @@ export class SettingsSelectorComponent implements Component {
 	}
 
 	/**
-	 * The Agents table needs no model catalog: it decides which lanes are offered
-	 * and how deeply they may spawn, and the model it SHOWS is a resolved settings
-	 * value rather than a pick from the catalog. It used to refuse to open at all
-	 * without a registry, because it carried model and effort pickers.
+	 * The roster opens with or without a model catalog: which lanes are offered and
+	 * how deeply they may spawn need none, and the model it SHOWS is a resolved
+	 * settings value. The catalog is passed when the host has one so the Model row
+	 * can open the same chain picker the tab row does; without it that row says so
+	 * instead of refusing the whole screen, which is what it used to do.
 	 */
 	#createSubagentAgentsInput(done: (value?: string) => void): Container {
 		const active = this.context.model ? `${this.context.model.provider}/${this.context.model.id}` : undefined;
 		return new SubagentAgentsSubmenu(
 			this.context.cwd,
 			active,
-			() => {
-				this.callbacks.onChange("subagent.agents", settings.get("subagent.agents"));
+			this.context.model,
+			this.#requireModelPickerContext(),
+			path => {
+				this.callbacks.onChange(path, settings.get(path));
 			},
 			() => done(this.#formatSubagentAgentsValue()),
 			this.context.requestRender,
