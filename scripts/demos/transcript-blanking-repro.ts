@@ -33,6 +33,13 @@ function flag(name: string, fallback: number): number {
 
 const TURNS = flag("turns", 14);
 const DELAY_MS = flag("delay", 450);
+// Rows of a root child mounted ABOVE the transcript. The shipped layout always
+// has one (`home-anchor-layout` fills the slack with `topFill`, and the todo and
+// subagent HUDs sit in the same band), and the commit slide used to assume the
+// transcript started at frame row 0, so the header is what the defect needs.
+const HEADER = flag("header", 2);
+// Rows of a still-arriving answer streamed after the finalized turns.
+const STREAM = flag("stream", 45);
 
 /** A finalized transcript block: plain components are final, so rows commit. */
 class Block implements Component {
@@ -43,6 +50,20 @@ class Block implements Component {
 	}
 }
 
+/** An answer still arriving: it grows a row at a time and never finalizes. */
+class LiveBlock implements Component {
+	#rows: string[] = ["  reply: the engine slides its commit coordinates while this grows,"];
+	invalidate(): void {}
+	grow(): void {
+		this.#rows = [...this.#rows, `  and row ${this.#rows.length} arrives under a two-row header.`];
+	}
+	getRenderStablePrefixRows(): number {
+		return 0;
+	}
+	render(): string[] {
+		return this.#rows;
+	}
+}
 class Composer implements Component, Focusable {
 	focused = true;
 	invalidate(): void {}
@@ -62,6 +83,9 @@ async function main(): Promise<void> {
 	// The shipped default. It is the knob that makes a misread divergence
 	// destructive rather than merely wasteful.
 	tui.setScrollbackRebuild(true);
+	if (HEADER > 0) {
+		tui.addChild(new Block(Array.from({ length: HEADER }, (_, row) => (row === 0 ? "  veyyon · demo session" : ""))));
+	}
 	const transcript = new TranscriptContainer();
 	tui.addChild(transcript);
 	tui.addChild(new Composer());
@@ -80,6 +104,18 @@ async function main(): Promise<void> {
 		);
 		tui.requestRender();
 		await sleep(DELAY_MS);
+	}
+
+	// Then an answer that is still arriving. A finalized turn commits in one
+	// step; a live block re-renders every frame while the rows under it keep
+	// moving, which is when the engine slides its commit coordinates and when a
+	// slide that assumes the transcript starts at row 0 tears the screen.
+	const live = new LiveBlock();
+	transcript.addChild(live);
+	for (let row = 0; row < STREAM; row++) {
+		live.grow();
+		tui.requestRender();
+		await sleep(90);
 	}
 
 	// Hold the finished session on screen. The recording scene scrolls the
