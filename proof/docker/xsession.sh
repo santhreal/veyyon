@@ -33,6 +33,12 @@ xdpyinfo -display "${DISPLAY}" >/dev/null
 cat >/tmp/bootstrap.sh <<'BOOT'
 #!/usr/bin/env bash
 exec 2>/tmp/boot.err
+# xterm does not hand COLORTERM to its child, so the app under test resolved
+# terminal id "base" and turned every truecolor-gated surface off -- including
+# the overlay unfold, which is one of the things these recordings exist to show.
+# The terminal is started with directColor, so declaring it here is a statement
+# of what the emulator does, not a widening of it.
+export COLORTERM=truecolor
 printf 'stty=%s\n' "$(stty size </dev/tty)" >/tmp/geom
 cd "${SCENE_CWD:-/sandbox/home/demo}"
 exec ${SCENE_COMMAND:?}
