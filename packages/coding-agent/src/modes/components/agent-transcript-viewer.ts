@@ -21,7 +21,15 @@
  */
 import * as fs from "node:fs";
 import type { AgentTool } from "@veyyon/agent-core";
-import { type Component, Editor, matchesKey, routeSgrMouseInput, ScrollView, type TUI } from "@veyyon/tui";
+import {
+	type Component,
+	Editor,
+	matchesKey,
+	routeSgrMouseInput,
+	ScrollView,
+	type SgrMouseEvent,
+	type TUI,
+} from "@veyyon/tui";
 import { errorMessage, formatDuration, formatNumber, logger } from "@veyyon/utils";
 import type { KeyId } from "../../config/keybindings";
 import type { MessageRenderer } from "../../extensibility/extensions/types";
@@ -42,7 +50,17 @@ const RAIL_PAD = " ".repeat(COMPOSER_INSET_COLS);
 
 import { agentStatusWord } from "./agent-status-display";
 import { ChatTranscriptBuilder } from "./chat-transcript-builder";
-import { DynamicBorder } from "./dynamic-border";
+import {
+	computeModalDims,
+	consumeModalChipHover,
+	hitTestModalChrome,
+	MODAL_SIZING_LARGE,
+	type ModalShellGeometry,
+	type ModalShortcut,
+	planModalChrome,
+	renderModalShell,
+	sizingForArea,
+} from "./modal-shell";
 import { formatContextUsage } from "./status-line/context-thresholds";
 
 /** Result of one host-backed transcript read. */
@@ -178,6 +196,9 @@ export class AgentTranscriptViewer implements Component {
 	#model: string | undefined;
 	#pollTimer: NodeJS.Timeout | undefined;
 	#disposed = false;
+	/** Geometry of the last painted card; every pointer hit-test reads it. */
+	#shellGeometry: ModalShellGeometry | null = null;
+	#hoveredShortcutId: string | null = null;
 
 	constructor(private readonly deps: AgentTranscriptViewerDeps) {
 		this.#builder = new ChatTranscriptBuilder({
@@ -462,14 +483,7 @@ export class AgentTranscriptViewer implements Component {
 
 	handleInput(data: string): void {
 		if (data.startsWith("\x1b[<")) {
-			routeSgrMouseInput(data, event => {
-				if (event.wheel !== null) {
-					this.#scrollView.scroll(event.wheel * 3);
-					this.#syncFollow();
-					this.deps.requestRender();
-				}
-				return true;
-			});
+			routeSgrMouseInput(data, event => this.#routeMouse(event));
 			return;
 		}
 
@@ -494,9 +508,7 @@ export class AgentTranscriptViewer implements Component {
 
 		for (const key of this.deps.expandKeys) {
 			if (matchesKey(data, key)) {
-				this.#expanded = !this.#expanded;
-				this.#builder.setExpanded(this.#expanded);
-				this.deps.requestRender();
+				this.#toggleExpanded();
 				return;
 			}
 		}
@@ -509,6 +521,51 @@ export class AgentTranscriptViewer implements Component {
 			this.#editor.handleInput(data);
 			this.deps.requestRender();
 		}
+	}
+
+	/**
+	 * Pointer: card chrome answers first (close glyph, click-outside, chips),
+	 * then the wheel scrolls the body. A click that lands nowhere is swallowed
+	 * rather than falling through to the surface underneath — this viewer owns
+	 * the whole screen while it is up.
+	 */
+	#routeMouse(event: SgrMouseEvent): boolean {
+		const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
+			motion: event.motion,
+			leftClick: event.leftClick,
+		});
+		if (
+			consumeModalChipHover(chrome, this.#hoveredShortcutId, id => {
+				this.#hoveredShortcutId = id;
+				this.deps.requestRender();
+			})
+		) {
+			return true;
+		}
+		if (
+			chrome.kind === "close" ||
+			chrome.kind === "outside" ||
+			(chrome.kind === "shortcut" && chrome.id === "close")
+		) {
+			this.deps.onClose();
+			return true;
+		}
+		if (chrome.kind === "shortcut" && chrome.id === "expand") {
+			this.#toggleExpanded();
+			return true;
+		}
+		if (event.wheel !== null) {
+			this.#scrollView.scroll(event.wheel * 3);
+			this.#syncFollow();
+			this.deps.requestRender();
+		}
+		return true;
+	}
+
+	#toggleExpanded(): void {
+		this.#expanded = !this.#expanded;
+		this.#builder.setExpanded(this.#expanded);
+		this.deps.requestRender();
 	}
 
 	/** Returns true when the key was a scroll command. ScrollView owns the offset. */
@@ -571,28 +628,41 @@ export class AgentTranscriptViewer implements Component {
 
 	render(width: number): readonly string[] {
 		const termHeight = process.stdout.rows || 40;
-		// `innerWidth` widths the editor/notice chrome (rail-prefixed below).
-		// `contentWidth` widths the transcript: ScrollView reserves the last column
-		// for the scrollbar, and the transcript components carry their own rail
-		// inset — so body rows are emitted WITHOUT an extra outer pad, sharing the
-		// rail with the header/footer (which pad to it). Stacking both shifted the
-		// body one column right of the title.
-		const innerWidth = Math.max(20, width - 2);
-		const contentWidth = Math.max(1, width - 1);
+		const sizing = sizingForArea(MODAL_SIZING_LARGE, termHeight);
+		const dims = computeModalDims(width, termHeight, sizing);
+		if (!dims) {
+			this.#shellGeometry = null;
+			return Array.from({ length: termHeight }, () => " ".repeat(width));
+		}
+		// The transcript components carry their own rail inset, and ScrollView
+		// reserves the last column for the scrollbar, so the body is widthed to
+		// the card's content column and nothing pads it again.
+		const contentWidth = dims.contentWidth;
+		const innerWidth = Math.max(20, contentWidth - COMPOSER_INSET_COLS);
 		const ref = this.deps.registry.get(this.deps.agentId);
 
 		const headerLines = this.#headerLines(ref?.status, ref?.kind, ref?.parentId);
-		const footerLines = this.#footerLines();
 		const noticeLine = this.#notice
-			? `${RAIL_PAD}${theme.fg("error", sanitizeErrorLine(this.#notice, innerWidth))}`
+			? theme.fg("error", sanitizeErrorLine(this.#notice, innerWidth))
 			: this.#remoteError && !this.#builder.isEmpty
-				? `${RAIL_PAD}${theme.fg("error", sanitizeErrorLine(this.#remoteError, innerWidth))}`
+				? theme.fg("error", sanitizeErrorLine(this.#remoteError, innerWidth))
 				: undefined;
 		const editorLines = this.#editor ? this.#editor.render(innerWidth) : [];
+		const statsLine = this.#statsLine();
+		const shortcuts = this.#shortcuts();
 
-		// Chrome: top border + header rows + divider border + (notice) + editor + footer + bottom border.
-		const chrome = headerLines.length + 2 + editorLines.length + footerLines.length + (noticeLine ? 1 : 0) + 1;
-		const viewportHeight = Math.max(3, termHeight - chrome);
+		// One owner for "how many rows do I get": the shell truncates a body that
+		// runs long, so the scroll viewport is sized from the same plan the card
+		// paints with, minus the rows this body spends on its own chrome.
+		const plan = planModalChrome({
+			sizing,
+			modalHeight: dims.modalHeight,
+			contentWidth,
+			shortcuts,
+			tipCandidates: statsLine ? [statsLine] : undefined,
+		});
+		const bodyChrome = headerLines.length + 1 + editorLines.length + (noticeLine ? 1 : 0);
+		const viewportHeight = Math.max(3, plan.maxBodyRows - bodyChrome);
 
 		const contentLines = this.#builder.isEmpty
 			? [`${RAIL_PAD}${theme.fg("dim", this.#placeholder(Math.max(10, contentWidth - 1)))}`]
@@ -601,16 +671,38 @@ export class AgentTranscriptViewer implements Component {
 		this.#scrollView.setHeight(viewportHeight);
 		if (this.#followBottom) this.#scrollView.scrollToBottom();
 
-		const lines: string[] = [];
-		lines.push(...new DynamicBorder().render(width));
-		for (const headerLine of headerLines) lines.push(`${RAIL_PAD}${headerLine}`);
-		lines.push(...new DynamicBorder().render(width));
-		for (const row of this.#scrollView.render(width)) lines.push(row);
-		if (noticeLine) lines.push(noticeLine);
-		for (const editorLine of editorLines) lines.push(`${RAIL_PAD}${editorLine}`);
-		lines.push(...footerLines);
-		lines.push(...new DynamicBorder().render(width));
-		return lines;
+		const body: string[] = [];
+		for (const headerLine of headerLines) body.push(headerLine);
+		body.push("");
+		for (const row of this.#scrollView.render(contentWidth)) body.push(row);
+		if (noticeLine) body.push(noticeLine);
+		for (const editorLine of editorLines) body.push(`${RAIL_PAD}${editorLine}`);
+
+		const shell = renderModalShell({
+			title: `Transcript ${theme.sep.dot} ${this.deps.agentId}`,
+			sizing,
+			areaWidth: width,
+			areaHeight: termHeight,
+			body,
+			preferredBodyRows: plan.maxBodyRows,
+			shortcuts,
+			hoveredShortcutId: this.#hoveredShortcutId,
+			tipCandidates: statsLine ? [statsLine] : undefined,
+			showClose: true,
+		});
+		this.#shellGeometry = shell.geometry;
+		return shell.lines;
+	}
+
+	/** Footer chips: what this viewer can do right now, in house grammar. */
+	#shortcuts(): readonly ModalShortcut[] {
+		const expandKey = this.deps.expandKeys[0] ?? "ctrl+o";
+		const chips: ModalShortcut[] = [];
+		if (this.#editor) chips.push({ label: "enter send" });
+		chips.push({ label: "j/k scroll" }, { label: "g/G top/bottom" });
+		chips.push({ label: `${expandKey} expand`, clickable: true, id: "expand" });
+		chips.push({ label: "esc close", clickable: true, id: "close" });
+		return chips;
 	}
 
 	#headerLines(status: AgentStatus | undefined, kind: string | undefined, parentId: string | undefined): string[] {
@@ -624,17 +716,6 @@ export class AgentTranscriptViewer implements Component {
 			const modelLabel = this.#model ? theme.fg("muted", `${theme.sep.dot}${this.#model}`) : "";
 			lines.push(`${theme.bold(this.deps.agentId)} ${agentStatusWord(status)}${kindTag}${modelLabel}`);
 		}
-		return lines;
-	}
-
-	#footerLines(): string[] {
-		const lines: string[] = [];
-		const statsLine = this.#statsLine();
-		if (statsLine) lines.push(`${RAIL_PAD}${statsLine}`);
-		const hint = this.#editor
-			? `Enter:send  Esc:close  ${this.deps.expandKeys[0] ?? "ctrl+o"}:expand  empty input → j/k:scroll  g/G:top/bottom`
-			: `Esc:close  ${this.deps.expandKeys[0] ?? "ctrl+o"}:expand  j/k:scroll  g/G:top/bottom`;
-		lines.push(`${RAIL_PAD}${theme.fg("dim", hint)}`);
 		return lines;
 	}
 
