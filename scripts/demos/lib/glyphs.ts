@@ -204,6 +204,11 @@ const FONT: Readonly<Record<string, string>> = {
 	// settings differential is a picture of ONE row and its group heading, so drawing the heading's
 	// mark as a hollow box makes the shot ambiguous about whether the row is in a group at all.
 	"◆": "..#../.###./#####/#####/.###./..#../.....",
+	// The cache-miss divider's mark. A transcript divider proof is a picture of a short rule and its
+	// label, so the mark IS the subject: rastered as a hollow box it says only that the font is
+	// missing something. A ring struck by one diagonal, and deliberately not `⊗`'s full cross, since
+	// the two mean different things and a proof that confuses them is worse than no proof.
+	"⊘": "...../.###./#..##/#.#.#/##..#/.###./.....",
 };
 
 /**
