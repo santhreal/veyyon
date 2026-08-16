@@ -18,6 +18,7 @@ import {
 import { createIrcMessageCard } from "../../tools/irc";
 import { replaceTabs, TRUNCATE_LENGTHS, truncateToWidth } from "../../tools/render-utils";
 import { canonicalizeMessage } from "../../utils/thinking-display";
+import { COMPOSER_INSET_COLS } from "../components/composer-chrome";
 import { TranscriptBlock } from "../components/transcript-container";
 import { theme } from "../theme/theme";
 
@@ -270,5 +271,5 @@ export function ledgerMarkerLine(text: string): string | null {
 	if (!text.startsWith(TOOL_BATCH_LEDGER_HEADLINE_PREFIX)) return null;
 	const headline = text.split("\n", 1)[0]!.replace(/\.$/, "");
 	const summary = headline.slice(TOOL_BATCH_LEDGER_HEADLINE_PREFIX.length - 1);
-	return theme.fg("dim", `  ${theme.status.warning} batch cut short ${summary}.`);
+	return theme.fg("dim", `${" ".repeat(COMPOSER_INSET_COLS)}${theme.status.warning} batch cut short ${summary}.`);
 }
