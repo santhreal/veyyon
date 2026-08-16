@@ -11,6 +11,7 @@ import { BracketedPasteHandler, decodeReencodedPasteControls } from "../brackete
 import { getKeybindings, type KeybindingsManager } from "../keybindings";
 import { extractPrintableText, isLoneLineFeed, matchesKey } from "../keys";
 import { KillRing } from "../kill-ring";
+import { BlockReveal, type BlockRevealOptions } from "../motion-grow";
 import type { MouseRoutable, SgrMouseEvent } from "../mouse";
 import type { SymbolTheme } from "../symbols";
 import { type Component, CURSOR_MARKER, type Focusable } from "../tui";
@@ -429,6 +430,12 @@ export class Editor implements Component, Focusable, MouseRoutable {
 	#autocompleteRequestId: number = 0;
 	#autocompleteMaxVisible: number = 5;
 	/**
+	 * Grow for the suggestion popup, when the host lends one. Absent, the popup
+	 * appears whole — every direct construction (tests, embedders) stays on the
+	 * bytes it had before.
+	 */
+	#autocompleteReveal?: BlockReveal;
+	/**
 	 * Frame row the suggestion popup started at in the LAST render, or -1 when it
 	 * painted none. A click arrives in this editor's own rows, and the popup is
 	 * appended after the input card, so this is the only thing that turns a row
@@ -582,6 +589,24 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		if (this.#autocompleteMaxVisible !== newMaxVisible) {
 			this.#autocompleteMaxVisible = newMaxVisible;
 		}
+	}
+
+	/**
+	 * Let the suggestion popup grow into place instead of cutting in. The HOST
+	 * decides whether motion runs at all and which ground the rows resolve out
+	 * of; the editor only knows when the popup appeared.
+	 */
+	setAutocompleteMotion(options: BlockRevealOptions): void {
+		this.#autocompleteReveal?.disarm();
+		// A new reveal starts unarmed, so a popup already on screen keeps every row
+		// it has: only the NEXT appearance grows.
+		this.#autocompleteReveal = new BlockReveal(options);
+	}
+
+	/** Drop the popup's grow, so no frame outlives this editor. */
+	disposeAutocompleteMotion(): void {
+		this.#autocompleteReveal?.disarm();
+		this.#autocompleteReveal = undefined;
 	}
 
 	setHistoryStorage(storage: HistoryStorage): void {
@@ -1083,7 +1108,12 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		if (this.#autocompleteState && this.#autocompleteList) {
 			this.#autocompleteRowStart = result.length;
 			const autocompleteResult = this.#autocompleteList.render(width);
-			result.push(...autocompleteResult);
+			// Only the rows the popup has grown to are painted, so the frame itself is
+			// shorter mid-grow and the composer above it is pushed rather than jumped.
+			// Row N of the popup is still row N of the frame, so a click during the
+			// grow lands on the suggestion it looks like it landed on, and a row that
+			// has not arrived yet is not in the frame to be clicked at all.
+			result.push(...(this.#autocompleteReveal?.apply(autocompleteResult) ?? autocompleteResult));
 		} else {
 			this.#autocompleteRowStart = -1;
 		}
@@ -3036,6 +3066,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 			this.#autocompletePrefix = suggestions.prefix;
 			this.#autocompleteList = this.#createAutocompleteList(suggestions.prefix, suggestions.items);
 			this.#autocompleteState = "regular";
+			this.#autocompleteReveal?.arm();
 			this.onAutocompleteUpdate?.();
 		} else {
 			this.#cancelAutocomplete();
@@ -3094,6 +3125,7 @@ export class Editor implements Component, Focusable, MouseRoutable {
 			this.#autocompletePrefix = suggestions.prefix;
 			this.#autocompleteList = this.#createAutocompleteList(suggestions.prefix, suggestions.items);
 			this.#autocompleteState = "force";
+			this.#autocompleteReveal?.arm();
 			this.onAutocompleteUpdate?.();
 		} else {
 			this.#cancelAutocomplete();
@@ -3207,6 +3239,10 @@ export class Editor implements Component, Focusable, MouseRoutable {
 		this.#autocompleteState = null;
 		this.#autocompleteList = undefined;
 		this.#autocompletePrefix = "";
+		// The next popup is a new appearance and grows again. A cancel is never
+		// animated: the prefix the rows describe no longer says where the caret is,
+		// so rows kept on screen to fade out would be describing the wrong buffer.
+		this.#autocompleteReveal?.disarm();
 		if (notifyCancel && wasAutocompleting) {
 			this.onAutocompleteCancel?.();
 		}
