@@ -533,9 +533,16 @@ describe("setup wizard scene footer copy", () => {
 		expect(footer).not.toContain("ctrl+c");
 	});
 
+	/**
+	 * The wrap belongs to the shared chip packer now, the same one every card
+	 * footer uses, and it borrows backwards rather than leaving one chip alone
+	 * under a full row: `→ skip` moves down to keep `esc leave setup` company.
+	 * That is the contract change, and it is the wrap this pins — the exit is
+	 * still on screen, and no row ends on a bare key.
+	 */
 	it("the real Providers scene, the one users could not get out of, names Tab first", async () => {
 		expect(await footerOf([providersSetupScene])).toBe(
-			"tab switch panel  ·  ↑↓ select  ·  enter confirm  ·  → skip\nesc leave setup",
+			"tab switch panel  ·  ↑↓ select  ·  enter confirm\n→ skip  ·  esc leave setup",
 		);
 	});
 
