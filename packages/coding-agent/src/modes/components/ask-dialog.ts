@@ -2,6 +2,7 @@ import {
 	type Component,
 	clamp,
 	Ellipsis,
+	HoverFade,
 	Markdown,
 	type MarkdownTheme,
 	matchesKey,
@@ -46,9 +47,10 @@ import {
 	type ModalShellGeometry,
 	type ModalShortcut,
 	minModalChromeRows,
+	modalRevealEnabled,
 	renderModalShell,
 } from "./modal-shell";
-import { handleTabSwitchKey, selectionBand } from "./selector-helpers";
+import { handleTabSwitchKey, hoverBandAt } from "./selector-helpers";
 
 const SUBMIT_OPTION = "Submit";
 
@@ -437,6 +439,13 @@ export class AskDialogComponent implements Component {
 	#submitScrollOffset = 0;
 	/** Pointer-highlighted option row on the active question tab (null clears). */
 	#hoveredRowIndex: number | null = null;
+	/**
+	 * The cross-fade between the row the pointer left and the row it arrived at,
+	 * once the card has a repaint to lend it ({@link setOnRequestRender}). Absent,
+	 * the band is switched on the frame the report lands, which is what every
+	 * other picker stopped doing.
+	 */
+	#hoverFade: HoverFade | undefined;
 	/** Last render's option-list geometry for pointer hit-testing. */
 	#listPointerMap: {
 		frameStart: number;
@@ -512,6 +521,12 @@ export class AskDialogComponent implements Component {
 		this.#closed = true;
 		this.#reveal.stop();
 		this.#countdown?.dispose();
+		// A dismissed card leaves nothing running on the shared clock, and forgets
+		// where the pointer was: the next dialog opens with no band under a pointer
+		// that has since moved.
+		this.#hoverFade?.dispose();
+		this.#hoverFade = undefined;
+		this.#hoveredRowIndex = null;
 		// The user answered (or it timed out): drop the `ask` breath back to rest.
 		// The next agent turn's `agent_start` flips it to `thinking`.
 		setShimmerActivity("idle");
@@ -519,6 +534,12 @@ export class AskDialogComponent implements Component {
 
 	setOnRequestRender(callback: () => void): void {
 		this.#onRequestRenderExternal = callback;
+		// The band fades only once the card has a repaint to lend it: the frames
+		// between two mouse reports have no input to hang off. Same ambient gate as
+		// the open unfold; without it the band is switched.
+		this.#hoverFade?.dispose();
+		this.#hoverFade = new HoverFade({ requestRender: callback, enabled: modalRevealEnabled() });
+		if (this.#hoveredRowIndex !== null) this.#hoverFade.set(this.#hoveredRowIndex);
 	}
 
 	handleInput(keyData: string): void {
@@ -668,6 +689,7 @@ export class AskDialogComponent implements Component {
 			if (event.motion) {
 				if (rowIndex !== this.#hoveredRowIndex) {
 					this.#hoveredRowIndex = rowIndex;
+					this.#hoverFade?.set(rowIndex);
 					this.#requestRender();
 				}
 				return true;
@@ -679,6 +701,7 @@ export class AskDialogComponent implements Component {
 				if (active) {
 					active.state.cursorIndex = rowIndex;
 					this.#hoveredRowIndex = null;
+					this.#hoverFade?.set(null);
 					this.#handleQuestionInput("\n");
 				}
 				return true;
@@ -933,6 +956,16 @@ export class AskDialogComponent implements Component {
 		return { lines: lines.slice(0, maxRows), scrollOffset: list.scrollOffset, indicator: list.indicator };
 	}
 
+	/**
+	 * Band strength for an option row. Without a fade — a 256-color terminal, or
+	 * transitions off — the hovered row is at 1 and every other row at 0, which is
+	 * the switched band this replaced, byte for byte.
+	 */
+	#hoverStrength(index: number): number {
+		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
+		return index === this.#hoveredRowIndex ? 1 : 0;
+	}
+
 	#renderQuestionList(
 		question: ExtensionAskDialogQuestion,
 		state: QuestionState,
@@ -950,13 +983,18 @@ export class AskDialogComponent implements Component {
 			allLines.push(...renderRowLabel(rowItem, question, state, index === state.cursorIndex, mdTheme, width));
 		}
 		// Pointer hover bands the whole row (label + description lines); the
-		// cursor row keeps its own accent styling and never double-bands.
-		const hovered = this.#hoveredRowIndex;
-		if (hovered !== null && hovered < rowItems.length && hovered !== state.cursorIndex) {
-			const from = lineStartByRow[hovered] ?? allLines.length;
-			const to = lineStartByRow[hovered + 1] ?? allLines.length;
+		// cursor row keeps its own accent styling and never double-bands. Two rows
+		// carry a band on the frames a pointer crosses between them -- the one it
+		// left is still on its way out -- so this walks every row rather than the
+		// single hovered one.
+		for (let index = 0; index < rowItems.length; index++) {
+			if (index === state.cursorIndex) continue;
+			const strength = this.#hoverStrength(index);
+			if (strength <= 0) continue;
+			const from = lineStartByRow[index] ?? allLines.length;
+			const to = lineStartByRow[index + 1] ?? allLines.length;
 			for (let line = from; line < to; line++) {
-				allLines[line] = selectionBand(allLines[line]!, width);
+				allLines[line] = hoverBandAt(allLines[line]!, width, strength);
 			}
 		}
 		const cursorStart = lineStartByRow[state.cursorIndex] ?? 0;
