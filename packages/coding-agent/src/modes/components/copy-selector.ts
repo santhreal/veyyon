@@ -1,6 +1,7 @@
 import {
 	type Component,
 	clampLow,
+	HoverFade,
 	matchesKey,
 	padding,
 	routeSgrMouseInput,
@@ -31,11 +32,12 @@ import {
 	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
+	modalRevealEnabled,
 	planModalChrome,
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
-import { selectionBand } from "./selector-helpers";
+import { hoverBandAt } from "./selector-helpers";
 
 /** Minimum rows reserved for the tree even on short terminals. */
 const MIN_TREE_ROWS = 3;
@@ -95,6 +97,11 @@ export class CopySelectorComponent implements Component {
 	/** Per-render map of 0-based tree line → flat-node index. */
 	#hitRows: (number | undefined)[] = [];
 	#onRequestRender?: () => void;
+	/**
+	 * The cross-fade between the row the pointer left and the one it arrived at,
+	 * once a host lends this card a repaint. Absent, the band is switched.
+	 */
+	#hoverFade: HoverFade | undefined;
 	#reveal = new ModalRevealDriver();
 	/**
 	 * Fade out on the shared clock before the host drops this card. The overlay stack keeps painting
@@ -119,6 +126,25 @@ export class CopySelectorComponent implements Component {
 
 	setOnRequestRender(cb: () => void): void {
 		this.#onRequestRender = cb;
+		// The band fades only once the card has a repaint to lend it: the frames
+		// between two mouse reports have no input to hang off. Same ambient gate as
+		// the open unfold; without it the band is switched.
+		this.#hoverFade?.dispose();
+		this.#hoverFade = new HoverFade({ requestRender: cb, enabled: modalRevealEnabled() });
+		if (this.#hoveredIndex !== null) this.#hoverFade.set(this.#hoveredIndex);
+	}
+
+	/** Settle the pointer band so no timer outlives a dismissed card. */
+	dispose(): void {
+		this.#hoverFade?.dispose();
+		this.#hoverFade = undefined;
+		this.#hoveredIndex = null;
+	}
+
+	/** Band strength for a tree row; without a fade the hovered row is at 1 and the rest at 0. */
+	#hoverStrength(index: number): number {
+		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
+		return index === this.#hoveredIndex ? 1 : 0;
 	}
 
 	invalidate(): void {
@@ -214,6 +240,7 @@ export class CopySelectorComponent implements Component {
 			const index = this.#hitRows[line] ?? null;
 			if (index !== this.#hoveredIndex) {
 				this.#hoveredIndex = index;
+				this.#hoverFade?.set(index);
 				this.#onRequestRender?.();
 			}
 			return true;
@@ -248,7 +275,7 @@ export class CopySelectorComponent implements Component {
 			}
 			const target = node.target;
 			const isSelected = i === cursorIdx;
-			const isHovered = i === this.#hoveredIndex && !isSelected;
+			const hoverStrength = isSelected ? 0 : this.#hoverStrength(i);
 
 			let prefix = "";
 			for (let l = 0; l < node.depth - 1; l++) prefix += gutterCells(node.ancestorHasNext[l]!);
@@ -265,7 +292,7 @@ export class CopySelectorComponent implements Component {
 			const gap = Math.max(1, inner - used - visibleWidth(labelPlain) - visibleWidth(hint));
 			const row = left + padding(gap) + (hint ? theme.fg("dim", hint) : "");
 			this.#hitRows[r] = i;
-			out.push(isHovered ? selectionBand(row, inner) : row);
+			out.push(hoverStrength > 0 ? hoverBandAt(row, inner, hoverStrength) : row);
 		}
 		return out;
 	}

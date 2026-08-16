@@ -194,7 +194,7 @@ export class SelectorController {
 	 */
 	showModalSelector(
 		create: (done: () => void) => {
-			component: Component & { setOnRequestRender?: (cb: () => void) => void };
+			component: Component & { setOnRequestRender?: (cb: () => void) => void; dispose?: () => void };
 			focus: Component;
 		},
 	): void {
@@ -207,6 +207,10 @@ export class SelectorController {
 		// so the overlay never gets stranded open (Law 10: no silent no-op).
 		let closed = false;
 		let closeRequestedEarly = false;
+		// Assigned by `create` below, and read by a `done` that can outlive this
+		// call: the card is what registered with the shared clock, so it is what
+		// has to be told the card is gone.
+		let card: { dispose?: () => void } | undefined;
 		const done = () => {
 			if (closed) return;
 			if (!overlayHandle) {
@@ -215,10 +219,15 @@ export class SelectorController {
 			}
 			closed = true;
 			overlayHandle.hide();
+			// Everything the card registered with the shared clock goes with it: a
+			// pointer band still travelling when Escape landed is ticking against a
+			// component nobody will paint again.
+			card?.dispose?.();
 			this.focusActiveEditorArea();
 			this.ctx.ui.requestRender();
 		};
 		const { component, focus } = create(done);
+		card = component;
 		component.setOnRequestRender?.(() => this.ctx.ui.requestRender());
 		overlayHandle = this.ctx.ui.showOverlay(component, {
 			anchor: "top-left",
@@ -1071,11 +1080,18 @@ export class SelectorController {
 		}
 
 		let overlayHandle: OverlayHandle | undefined;
+		// Declared before `done` closes over it, for the same reason the shared
+		// modal helper does: the card is constructed with callbacks that reach
+		// `done`, so a close racing construction must not read it too early.
+		let selector: CopySelectorComponent | undefined;
 		const done = () => {
 			overlayHandle?.hide();
+			// The card's pointer band lives on the shared clock; hiding the overlay
+			// does not tell it that.
+			selector?.dispose();
 			this.ctx.ui.requestRender();
 		};
-		const selector = new CopySelectorComponent(
+		selector = new CopySelectorComponent(
 			targets,
 			{
 				onPick: target => {
