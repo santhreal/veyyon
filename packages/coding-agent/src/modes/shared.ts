@@ -1,6 +1,6 @@
 import { stripVTControlCharacters } from "node:util";
 import type { TabBarTheme } from "@veyyon/tui";
-import { theme } from "./theme/theme";
+import { hoverBand, theme } from "./theme/theme";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Text Sanitization
@@ -25,7 +25,9 @@ export function getTabBarTheme(): TabBarTheme {
 		activeTab: (text: string) => theme.bold(theme.bg("selectedBg", theme.fg("text", text))),
 		inactiveTab: (text: string) => theme.fg("muted", text),
 		mutedTab: (text: string) => theme.fg("dim", text),
-		hoverTab: (text: string) => theme.bg("selectedBg", theme.fg("text", text)),
+		// The same band the lists paint, at whatever strength the fade has reached.
+		// At full strength these are the bytes the switched band always had.
+		hoverTab: (text: string, strength: number) => hoverBand(theme.fg("text", text), strength),
 		hint: (text: string) => theme.fg("dim", text),
 	};
 }

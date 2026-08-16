@@ -9,6 +9,7 @@
  * - Shift+Tab / Arrow Left: Previous tab (wraps around)
  */
 import { matchesKey } from "../keys";
+import { HoverFade, type HoverFadeOptions } from "../motion-hover";
 import type { Component } from "../tui";
 import { clamp, clampLow, padding, truncateToWidth, visibleWidth } from "../utils";
 
@@ -36,8 +37,15 @@ export interface TabBarTheme {
 	hint: (text: string) => string;
 	/** Style for muted tabs. Falls back to `inactiveTab` when omitted. */
 	mutedTab?: (text: string) => string;
-	/** Style for the tab under the mouse pointer. Falls back to `inactiveTab` when omitted. */
-	hoverTab?: (text: string) => string;
+	/**
+	 * Style for the tab under the mouse pointer. Falls back to `inactiveTab` when omitted.
+	 *
+	 * `strength` is 1 for a tab the pointer is resting on and a fraction while the band is
+	 * fading in or out (see {@link TabBar.setHoverMotion}); a theme that paints a band
+	 * unconditionally ignores it and gets exactly the switched band it had before. A tab is
+	 * never painted through this at strength 0 — strength 0 is the absence of a band.
+	 */
+	hoverTab?: (text: string, strength: number) => string;
 }
 
 /**
@@ -59,6 +67,12 @@ export class TabBar implements Component {
 	#theme: TabBarTheme;
 	#label: string;
 	#hoverTabId: string | null = null;
+	/**
+	 * The cross-fade, once a host has offered a way to repaint between mouse
+	 * reports ({@link setHoverMotion}). Absent, the band is switched: exactly the
+	 * behavior every existing host has.
+	 */
+	#hoverFade?: HoverFade<string>;
 	/** Per-render tab hit zones: 0-based line + [start, end) columns. */
 	#hitZones: { line: number; start: number; end: number; index: number }[] = [];
 
@@ -194,18 +208,7 @@ export class TabBar implements Component {
 			}
 			for (let i = 0; i < this.#tabs.length; i++) {
 				const tab = this.#tabs[i];
-				// Muted tabs never take the active highlight: they are skipped by
-				// navigation and only become "active" transiently via setTabs swaps.
-				// A hovered (non-active) tab lights up so mouse users see the target.
-				const hovered = tab.id === this.#hoverTabId && !tab.muted && i !== this.#activeIndex;
-				const style = tab.muted
-					? (this.#theme.mutedTab ?? this.#theme.inactiveTab)
-					: i === this.#activeIndex
-						? this.#theme.activeTab
-						: hovered
-							? (this.#theme.hoverTab ?? this.#theme.inactiveTab)
-							: this.#theme.inactiveTab;
-				chunks.push({ text: style(` ${labels[i]} `), tabIndex: i });
+				chunks.push({ text: this.#paintTab(tab, i, ` ${labels[i]} `), tabIndex: i });
 				if (i < this.#tabs.length - 1) {
 					chunks.push({ text: "  " });
 				}
@@ -302,7 +305,6 @@ export class TabBar implements Component {
 			const tab = this.#tabs[i];
 			// Muted tabs never take the active highlight (matches render()).
 			const active = i === this.#activeIndex && !tab.muted;
-			const hovered = tab.id === this.#hoverTabId && !tab.muted && !active;
 			let label = tab.label;
 			if (cursorW + visibleWidth(label) > maxWidth && tab.short !== undefined) {
 				label = tab.short;
@@ -312,15 +314,8 @@ export class TabBar implements Component {
 			// Infinite or multi-million width, and `repeat` throws a RangeError on
 			// Infinity — a throw here takes down the whole frame, not just the bar.
 			text += padding(maxWidth - visibleWidth(text));
-			const style = tab.muted
-				? (this.#theme.mutedTab ?? this.#theme.inactiveTab)
-				: active
-					? this.#theme.activeTab
-					: hovered
-						? (this.#theme.hoverTab ?? this.#theme.inactiveTab)
-						: this.#theme.inactiveTab;
 			this.#hitZones.push({ line: i, start: 0, end: maxWidth, index: i });
-			lines.push(style(text));
+			lines.push(this.#paintTab(tab, i, text));
 		}
 		return lines.length > 0 ? lines : [""];
 	}
@@ -342,5 +337,55 @@ export class TabBar implements Component {
 	/** Highlight the tab under the pointer (null clears). */
 	setHoverTab(id: string | null): void {
 		this.#hoverTabId = id;
+		this.#hoverFade?.set(id);
+	}
+
+	/**
+	 * Lend the bar a repaint, so the band under the pointer can cross-fade.
+	 *
+	 * A hover band moves between mouse reports and has no input of its own to
+	 * hang off, so the host has to lend its render. Call once after
+	 * construction; call {@link disposeHoverMotion} when the host goes away, or
+	 * the shared clock keeps ticking for a card nobody can see.
+	 *
+	 * `enabled: false` is the switched band, which is what a non-truecolor
+	 * terminal and a user with transitions off must keep seeing.
+	 */
+	setHoverMotion(options: HoverFadeOptions): void {
+		this.#hoverFade?.dispose();
+		this.#hoverFade = new HoverFade<string>(options);
+		if (this.#hoverTabId !== null) this.#hoverFade.set(this.#hoverTabId);
+	}
+
+	/** Cancel every fade and forget the pointer. The bar paints no band after this. */
+	disposeHoverMotion(): void {
+		this.#hoverFade?.dispose();
+		this.#hoverFade = undefined;
+		this.#hoverTabId = null;
+	}
+
+	/**
+	 * Band strength for a tab: 0 through 1, and 0 means no band at all rather
+	 * than a band mixed out to nothing. Muted and active tabs never reach here —
+	 * {@link #paintTab} answers for both before asking, since a muted tab is not
+	 * a pointer target and the active tab's own accent is the stronger signal.
+	 */
+	#hoverStrength(tab: Tab): number {
+		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(tab.id);
+		return tab.id === this.#hoverTabId ? 1 : 0;
+	}
+
+	/**
+	 * The one place a tab's style is chosen. Both render paths draw the same tab
+	 * set from the same state, so a band wired into one of them and not the
+	 * other is a bar that fades in a settings sidebar and switches everywhere
+	 * else.
+	 */
+	#paintTab(tab: Tab, index: number, text: string): string {
+		if (tab.muted) return (this.#theme.mutedTab ?? this.#theme.inactiveTab)(text);
+		if (index === this.#activeIndex) return this.#theme.activeTab(text);
+		const strength = this.#hoverStrength(tab);
+		const band = this.#theme.hoverTab;
+		return band !== undefined && strength > 0 ? band(text, strength) : this.#theme.inactiveTab(text);
 	}
 }
