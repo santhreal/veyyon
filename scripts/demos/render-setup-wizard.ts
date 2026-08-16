@@ -19,10 +19,15 @@
  * sees it. `--rows` sets the viewport height, which the overlay reads from the
  * terminal to fill edge to edge; that filler is exactly where a hardcoded ground
  * shows up as a slab, so the proof needs it.
+ *
+ * `--hover <text>` points the mouse at the first cell of `<text>` in the frame
+ * the component just painted and renders again, so a hover proof shows the real
+ * band the component paints under a pointer rather than a mock of it.
  */
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { stripVTControlCharacters } from "node:util";
 import { Settings } from "../../packages/coding-agent/src/config/settings";
 import { agentsSetupScene } from "../../packages/coding-agent/src/modes/setup-wizard/scenes/agents";
 import { glyphSetupScene } from "../../packages/coding-agent/src/modes/setup-wizard/scenes/glyph";
@@ -40,6 +45,7 @@ const rows = Number.parseInt(flag("rows", "30"), 10);
 const themeName = flag("theme", "titanium");
 const phase = flag("phase", "scene");
 const sceneName = flag("scene", "theme");
+const hoverText = flag("hover", "");
 
 // The real onboarding order, so the progress breadcrumb in a proof reads exactly
 // as a user sees it. Padding the list with repeats of one scene made the
@@ -124,7 +130,17 @@ try {
 		throw new Error(`unknown phase "${phase}"; expected scene or splash`);
 	}
 
-	const frame = component.render(width);
+	let frame = component.render(width);
+	if (hoverText) {
+		// The overlay is fullscreen, so a frame row index IS the screen row the
+		// component hit-tests against, and the pointer can be aimed from the frame
+		// the component itself just produced instead of a guessed coordinate.
+		const row = frame.findIndex(line => stripVTControlCharacters(line).includes(hoverText));
+		if (row < 0) throw new Error(`--hover text "${hoverText}" is not in the frame`);
+		const col = stripVTControlCharacters(frame[row] ?? "").indexOf(hoverText);
+		component.handleInput(`\x1b[<35;${col + 1};${row + 1}M`);
+		frame = component.render(width);
+	}
 	component.dispose();
 	process.stdout.write(`${frame.join("\n")}\n`);
 } finally {
