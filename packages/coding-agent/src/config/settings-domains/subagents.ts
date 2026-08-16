@@ -27,30 +27,68 @@
  */
 
 /**
- * Per-agent configuration held in {@link SUBAGENTS_SETTINGS}`["subagent.agents"]`,
- * keyed by agent name (`deep`, `scout`, a user-authored agent, …).
+ * One lane in {@link SUBAGENTS_SETTINGS}`["subagent.agents"]`, keyed at the top
+ * level by agent name (`deep`, `scout`, a user-authored agent, …).
  *
- * Every field is optional and an omitted field means "use the default", never
- * "off": `enabled` defaults per {@link subagentEnabledByDefault} and
- * `maxNestedSpawnDepth` defaults to the blanket limit.
+ * A lane is RECURSIVE, because that is the shape of the question. You pick what
+ * an agent runs; then you go inside it and pick what IT may spawn, and what
+ * that runs; and so on for as long as you keep turning the next level on. Every
+ * level carries the same three answers and a door to the level below, so one
+ * page shape serves every depth:
  *
- * There is deliberately no per-agent `model` or `thinkingLevel`. Both existed
- * here, above the blanket `subagent.model` / `subagent.thinkingLevel` in the
- * resolver, so this table silently outranked the setting an operator had just
- * changed and the same axis was editable from two screens that disagreed about
- * the value. What a subagent runs is now ONE question with one answer;
- * this table only decides which lanes are offered. An agent that needs its own
- * model or effort declares it in its own file (`model:` / `thinking-level:`),
- * which is a statement about that agent rather than a fourth override layer.
- * A leftover row field is reported by `task/subagent-settings.ts` rather than
- * honored.
+ * ```
+ * deep
+ * ├── enabled        may this agent be spawned at all
+ * ├── model          what deep runs
+ * ├── thinkingLevel  the effort deep runs at
+ * └── subagents      what deep may spawn ─┐
+ *     ├── enabled    unset = the ceiling   │ …and so on, unbounded
+ *     ├── model      unset = deep's model  │
+ *     ├── thinkingLevel                    │
+ *     └── subagents ───────────────────────┘
+ * ```
+ *
+ * Two rules make the recursion answerable rather than merely deep:
+ *
+ *  1. UNSET MEANS THE LEVEL ABOVE. Not the session, not a default table: the
+ *     lane that spawned you. Change what `deep` runs and everything under `deep`
+ *     follows, which is the only reading under which a nested page needs no
+ *     absolute value to be understood.
+ *  2. `subagents.enabled` IS THE DEPTH LIMIT. Turning a level on grants it; the
+ *     first level nobody turned on is where `subagent.maxNestedSpawnDepth`
+ *     resumes answering. A separate per-agent number is gone: two controls over
+ *     one axis is how a ceiling came to be edited on one screen and read on
+ *     another.
+ *
+ * `maxNestedSpawnDepth` is not an API and is not called anywhere; it is a key
+ * that EXISTS IN SHIPPED CONFIG FILES, so it is declared here and honored by
+ * `laneDepthOf`. Deleting it would not remove it from an operator's `config.yml`
+ * — it would only stop reading it, and silently change what that file means.
+ * No screen writes it.
  */
-export interface SubagentAgentSettings {
-	/** Whether this agent can be spawned at all. */
+export interface SubagentLaneSettings {
+	/**
+	 * Whether this lane may run at all. At the top level: whether the model may
+	 * choose this agent. Nested: whether the level above may spawn anything.
+	 * Absent is not a decision — the blanket ceiling answers for that level.
+	 */
 	enabled?: boolean;
-	/** Nested levels this agent may still spawn; blank inherits the blanket limit. */
+	/** What this lane runs. Unset inherits the lane above. */
+	model?: string | string[];
+	/** The effort this lane runs at. Unset inherits the lane above. */
+	thinkingLevel?: string;
+	/** What this lane may spawn, one level down. */
+	subagents?: SubagentLaneSettings;
+	/**
+	 * The pre-tree numeric ceiling, as written by an earlier release. Read so
+	 * that file keeps its meaning; superseded by the `subagents` chain, which is
+	 * what every screen writes.
+	 */
 	maxNestedSpawnDepth?: number;
 }
+
+/** The top level of a lane chain is a lane like any other. */
+export type SubagentAgentSettings = SubagentLaneSettings;
 
 /**
  * A `subagent.modelByDepth` key is a positive integer spawn depth: "1" for a
@@ -209,7 +247,7 @@ export const SUBAGENTS_SETTINGS = {
 			group: "Agents",
 			label: "Agent Roster",
 			description:
-				"Which subagent types the model may choose, and how deeply each one may spawn. Enabled means the model can pick that subagent on its own; disabled means it cannot. With no row, only the general-purpose deep worker is enabled. Bundled specialists and subagents you add are opt-in through onboarding or this roster. The roster also carries Subagent Model and Subagent Effort, which decide what every subagent runs, so the same screen answers which lanes exist and what they run.",
+				"Which subagent types the model may choose, and what each one runs. Enabled means the model can pick that subagent on its own; disabled means it cannot. With no row, only the general-purpose deep worker is enabled. Bundled specialists and subagents you add are opt-in through onboarding or this roster. Each subagent's page carries its own Model and Effort, and a Subagents chain naming what it may spawn in turn, level by level; unset anywhere follows the level above. The roster also carries Subagent Model and Subagent Effort, which decide what a subagent with no row of its own runs.",
 			keywords: [
 				"agents",
 				"scout",
@@ -233,7 +271,7 @@ export const SUBAGENTS_SETTINGS = {
 			group: "Subagents",
 			label: "Max Nested Spawn Depth",
 			description:
-				"How many nested levels subagents may spawn, for every subagent with no override of its own. 0 still lets this session spawn direct subagents, but those children do not receive the task tool. Open Subagent Roster above to give one subagent a different ceiling.",
+				"How many nested levels subagents may spawn, for every level no roster chain decides. 0 still lets this session spawn direct subagents, but those children do not receive the task tool. Open Subagent Roster above, pick a subagent, then Subagents, to turn individual levels on or off for that one; this number answers from the first level its chain does not name.",
 			keywords: ["depth", "nested", "recursion", "spawn", "roster"],
 			options: SUBAGENT_RECURSION_DEPTH_OPTIONS,
 		},
