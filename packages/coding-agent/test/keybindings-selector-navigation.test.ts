@@ -125,7 +125,6 @@ describe("selector navigation keybindings", () => {
 		const selector = new TreeSelectorComponent(
 			[root],
 			"root",
-			40,
 			id => selected.push(id),
 			() => {},
 		);

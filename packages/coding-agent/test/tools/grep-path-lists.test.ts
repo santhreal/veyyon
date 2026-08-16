@@ -112,7 +112,6 @@ function renderTree(tree: SessionTreeNode[], currentLeafId: string): string {
 	const selector = new TreeSelectorComponent(
 		tree,
 		currentLeafId,
-		60,
 		() => {},
 		() => {},
 	);
