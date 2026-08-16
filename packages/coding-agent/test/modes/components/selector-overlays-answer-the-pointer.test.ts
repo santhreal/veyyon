@@ -25,8 +25,13 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import type { Model } from "@veyyon/ai";
+import { buildModel } from "@veyyon/catalog/build";
+import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { Settings } from "@veyyon/coding-agent/config/settings";
 import { CopySelectorComponent } from "@veyyon/coding-agent/modes/components/copy-selector";
 import { HistorySearchComponent } from "@veyyon/coding-agent/modes/components/history-search";
+import { ModelPickerComponent } from "@veyyon/coding-agent/modes/components/model-picker";
 import { MoveOverlay } from "@veyyon/coding-agent/modes/components/move-overlay";
 import { ResetUsageSelectorComponent } from "@veyyon/coding-agent/modes/components/reset-usage-selector";
 import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/components/session-selector";
@@ -36,7 +41,7 @@ import type { CopyTarget } from "@veyyon/coding-agent/modes/utils/copy-targets";
 import type { HistoryEntry, HistoryStorage } from "@veyyon/coding-agent/session/history-storage";
 import type { SessionInfo } from "@veyyon/coding-agent/session/session-listing";
 import type { ResetUsageAccount } from "@veyyon/coding-agent/slash-commands/helpers/reset-usage";
-import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
+import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, type TUI } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
 import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";
 
@@ -213,6 +218,54 @@ describe("selector overlays answer the pointer", () => {
 
 		component.handleInput(clickAt(rowOf(component, "Beta block")));
 		expect(copied?.id).toBe("b");
+	});
+
+	it("model picker: hover bands a model row, click selects, second click picks", () => {
+		const makeModel = (id: string): Model =>
+			buildModel({
+				id,
+				name: id,
+				api: "ollama-chat",
+				provider: "ollama",
+				baseUrl: "https://example.com",
+				reasoning: false,
+				input: ["text"],
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+				contextWindow: 128_000,
+				maxTokens: 1024,
+			});
+		const first = makeModel("llama-3");
+		const second = makeModel("qwen-4");
+		const registry = {
+			refresh: () => Promise.resolve(),
+			refreshProvider: () => Promise.resolve(),
+			getError: () => undefined,
+			getAvailable: () => [first, second],
+			getAll: () => [first, second],
+		} as unknown as ModelRegistry;
+		let picked: Model | undefined;
+		const picker = new ModelPickerComponent(
+			{ requestRender: () => {}, terminal: { rows: 40 } } as unknown as TUI,
+			Settings.isolated({}),
+			registry,
+			[{ model: first }, { model: second }],
+			{
+				onPick: (m: Model) => {
+					picked = m;
+				},
+				onCancel: () => {},
+			},
+		);
+
+		// The scoped list pre-selects the current model (qwen-4); llama-3 is the
+		// non-selected row, so the first click selects and the second activates.
+		expectHoverBand(picker, "llama-3");
+
+		const row = rowOf(picker, "llama-3");
+		picker.handleInput(clickAt(row)); // selects
+		expect(picked).toBeUndefined();
+		picker.handleInput(clickAt(row)); // click-again activates
+		expect(picked?.id).toBe("llama-3");
 	});
 
 	it("session selector: hover bands a session row", () => {
