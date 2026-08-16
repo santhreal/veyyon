@@ -5,7 +5,6 @@
 ### Fixed
 
 - `compaction.modelFallbackStrategy: any-model` no longer stakes the session on the single widest-window model. The tier now walks every authenticated candidate widest-first, so a dead credential on the widest row falls through to the next usable one instead of failing compaction under the strategy that exists to never fail. Three tests that hard-coded bundled model ids (`google-antigravity/gemini-3-pro`) were decoupled from the bundle so a catalog regeneration no longer breaks them, and the subagent settings migration sweep classifies `subagent.modelByDepth`.
-- The transcript no longer blanks itself mid-stream. `TranscriptContainer` splices out the rows the engine reports committed to native scrollback, which held the composed frame near one screen but left the engine's commit index pointing at the pre-splice coordinates; the next frame read the shift as a committed-prefix divergence and, with `tui.scrollbackRebuild` on (the default), erased native scrollback and replayed a frame whose history the container had already dropped. Fourteen turns at a twelve-row viewport lost the first seven turns and twenty of twenty-nine rows across ten erases; the same run now takes one full paint, no erase, and keeps every row. Faster output made it worse, because output rate is what drives compaction. Multiplexer panes were never affected: the rebuild is gated off there.
 
 ### Added
 

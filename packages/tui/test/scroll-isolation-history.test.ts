@@ -4,7 +4,6 @@ import {
 	CURSOR_MARKER,
 	type Focusable,
 	type NativeScrollbackCommittedRows,
-	type NativeScrollbackCompaction,
 	type NativeScrollbackReplay,
 	TUI,
 } from "@veyyon/tui";
@@ -35,14 +34,11 @@ const WHEEL_DOWN = "\x1b[<65;5;5M";
  * `TranscriptContainer`: the engine reports how many of the child's rows are in
  * native scrollback, and the child stops rendering them.
  */
-class VirtualizedTranscript
-	implements Component, NativeScrollbackCommittedRows, NativeScrollbackCompaction, NativeScrollbackReplay
-{
+class VirtualizedTranscript implements Component, NativeScrollbackCommittedRows, NativeScrollbackReplay {
 	all: string[] = [];
 	dropped = 0;
 	replays = 0;
 	#committed = 0;
-	#reported = 0;
 
 	invalidate(): void {}
 
@@ -50,23 +46,14 @@ class VirtualizedTranscript
 		this.#committed = rows;
 	}
 
-	/** The seam the real `TranscriptContainer` implements: rows dropped since asked. */
-	takeNativeScrollbackDroppedRows(): number {
-		const dropped = this.#reported;
-		this.#reported = 0;
-		return dropped;
-	}
-
 	prepareNativeScrollbackReplay(): void {
 		this.replays++;
 		this.dropped = 0;
-		this.#reported = 0;
 	}
 
 	render(_width: number): readonly string[] {
 		if (this.#committed > 0) {
 			this.dropped += this.#committed;
-			this.#reported += this.#committed;
 			this.#committed = 0;
 		}
 		return this.all.slice(this.dropped);
@@ -395,16 +382,12 @@ describe("scroll isolation over dropped history", () => {
 		}
 	});
 
-	it("keeps the reader's history with the rebuild on, instead of erasing it", async () => {
-		// `tui.scrollbackRebuild` on (the shipped default). It erases native
-		// scrollback and replays, and the tape mirrors the terminal, so the two
-		// must agree afterwards. They used to agree by LOSS: compaction shifted
-		// the frame, the engine read the shift as a committed-prefix divergence,
-		// the erase replayed the frame the transcript had already emptied, and
-		// the tape was reset to match the handful of rows that survived — a
-		// reader mid-history had the history deleted under them. Now the
-		// transcript reports its drops, the engine slides its commit coordinates
-		// instead of diverging, and they agree by KEEPING the history.
+	it("returns the reader to the live tail when a rebuild erases the history behind them", async () => {
+		// With `tui.scrollbackRebuild` on (off by default), a divergence erases
+		// native scrollback and replays. The tape mirrors the terminal, so it is
+		// reset with it and the frozen view resumes: showing rows the terminal no
+		// longer holds would make the engine's own record disagree with the
+		// screen, which is the one thing the tape must never do.
 		const term = new VirtualTerminal(WIDTH, HEIGHT, 5_000);
 		const scheduler = new StressRenderScheduler();
 		const tui = new TUI(term, true, { renderScheduler: scheduler });
@@ -425,15 +408,11 @@ describe("scroll isolation over dropped history", () => {
 				tui.requestRender();
 				await scheduler.drain(term);
 			}
-			expect(tui.scrollTapeRows).toBeGreaterThan(HEIGHT);
-			// The engine's record and the terminal's own buffer hold the same
-			// oldest row: neither erased what the other kept.
-			const buffer = term.getScrollBuffer().map(line => Bun.stripANSI(line).trimEnd());
-			expect(buffer.some(line => line === "h0")).toBe(true);
-
+			// The rebuild path erased and replayed, so nothing older than the
+			// replayed frame is on the tape and there is nothing to scroll back to.
+			expect(tui.scrollTapeRows).toBeLessThanOrEqual(HEIGHT);
 			term.sendInput(WHEEL_UP);
 			await scheduler.drain(term);
-			expect(tui.virtualScrollActive).toBe(true); // there is history to read
 			expect(view(term)[9]).toBe(">"); // and the composer is still pinned
 		} finally {
 			tui.stop();
