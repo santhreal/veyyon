@@ -6,7 +6,7 @@
  * next safe boundary — nothing is aborted, so a later resume continues exactly
  * where each loop parked. While engaged, this component owns the alternate
  * screen (the `runStartupSplash` idiom) and paints a large pause glyph with a
- * live hold timer; esc / enter / space / ctrl+c releases the gate.
+ * live hold timer; esc / enter / space / ctrl+c / a click releases the gate.
  *
  * Use case: freeze a busy session, hand-edit the repo, resume, then explain
  * the change via a normal steering message.
@@ -19,6 +19,7 @@ import {
 	type OverlayFocusOwner,
 	type OverlayHandle,
 	type OverlayOptions,
+	parseSgrMouse,
 	TERMINAL,
 } from "@veyyon/tui";
 import { formatClock } from "@veyyon/utils";
@@ -59,7 +60,9 @@ const BODY_LINES = [
 	"Main agent, subagents, and advisor hold at their next step.",
 	"In-flight calls finish; nothing new starts until you resume.",
 ] as const;
-const RESUME_HINT = "esc · enter · space — resume";
+const RESUME_HINT = "esc · enter · space · click — resume";
+/** The compact card has no room for the key list; both surfaces name the click. */
+const COMPACT_RESUME_HINT = "esc · click — resume";
 
 /**
  * Paint the pause scene as exactly `height` rows, vertically centered.
@@ -77,7 +80,7 @@ export function renderPauseScreen(width: number, height: number, elapsedMs: numb
 		content.push(centerLine(theme.bold(theme.fg("accent", `▌▌ ${TITLE}`)), width));
 		content.push("");
 		content.push(centerLine(theme.fg("dim", `paused for ${formatClock(elapsedMs)}`), width));
-		content.push(centerLine(theme.fg("dim", "esc to resume"), width));
+		content.push(centerLine(theme.fg("dim", COMPACT_RESUME_HINT), width));
 	} else {
 		if (sessionName) {
 			content.push(centerLine(theme.bold(sessionName), width));
@@ -148,6 +151,14 @@ export class PauseScreenComponent implements Component, OverlayFocusOwner {
 	}
 
 	handleInput(data: string): void {
+		// The scene is one target: anywhere on it resumes, which is what the
+		// hint promises. A fullscreen overlay holds the whole mouse-tracking
+		// set, so motion, release, and wheel reports arrive here too and must
+		// not resume — only a left press does.
+		if (data.startsWith("\x1b[<")) {
+			if (parseSgrMouse(data)?.leftClick && !this.#disposed) this.#done.resolve();
+			return;
+		}
 		// Every dismissal path resumes — including ctrl+c, which must never
 		// double as "abort agents" while the whole point of the screen is that
 		// nothing gets lost.
