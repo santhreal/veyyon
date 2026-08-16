@@ -36,18 +36,41 @@ key_repeat() { # key_repeat <key> <count> [delay]
 t() { xdotool type --clearmodifiers --window "${SCENE_WINDOW}" --delay "${TYPE_DELAY:-28}" -- "$1"; }
 submit() { t "$1"; pause 0.4; k Return; }
 
-# Move the real pointer to a cell. The terminal turns that into the same SGR
+# Move the real pointer to a pixel. The terminal turns that into the same SGR
 # motion report a hand on a mouse produces, which is the only way a hover state
 # is real evidence.
-point() { xdotool mousemove --sync "$(px_x "$2")" "$(px_y "$1")"; }
+#
+# A move to the pixel the pointer already occupies is skipped, and that check is
+# the difference between a scene that runs and one that does not: `xdotool
+# mousemove --sync` waits for a motion event, a move to the current position
+# produces none, and it stands there for FIFTEEN SECONDS before giving up. The
+# card-bands scene measured 351s against sixty seconds of its own sleeps, all of
+# it duplicate moves inside `glide`.
+move_px() {
+	local x="$1" y="$2" loc cx cy
+	loc="$(xdotool getmouselocation --shell)"
+	cx="$(printf '%s\n' "${loc}" | sed -n 's/^X=//p')"
+	cy="$(printf '%s\n' "${loc}" | sed -n 's/^Y=//p')"
+	if [ "${cx}" = "${x}" ] && [ "${cy}" = "${y}" ]; then return 0; fi
+	xdotool mousemove --sync "${x}" "${y}"
+}
+
+# Move the real pointer to a cell.
+point() { move_px "$(px_x "$2")" "$(px_y "$1")"; }
+
 # Glide, so the recording shows the pointer travelling and every row it crosses
-# lighting up on the way.
+# lighting up on the way. Interpolated in PIXELS: stepping in cells rounds every
+# intermediate step onto one of the endpoint rows, which is a teleport with
+# extra sleeps rather than a travelling pointer.
 glide() { # glide <row-from> <col-from> <row-to> <col-to> [steps] [delay]
 	local r0="$1" c0="$2" r1="$3" c1="$4" steps="${5:-16}" delay="${6:-0.03}"
+	local x0 y0 x1 y1 i
+	x0="$(px_x "${c0}")"
+	y0="$(px_y "${r0}")"
+	x1="$(px_x "${c1}")"
+	y1="$(px_y "${r1}")"
 	for i in $(seq 0 "${steps}"); do
-		xdotool mousemove --sync \
-			"$(px_x $((c0 + (c1 - c0) * i / steps)))" \
-			"$(px_y $((r0 + (r1 - r0) * i / steps)))"
+		move_px "$((x0 + (x1 - x0) * i / steps))" "$((y0 + (y1 - y0) * i / steps))"
 		sleep "${delay}"
 	done
 }
