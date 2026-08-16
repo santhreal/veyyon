@@ -3,7 +3,19 @@
  *
  * Interactive multi-step wizard for adding MCP servers.
  */
-import { Container, Input, matchesKey, replaceTabs, Spacer, Text, TruncatedText, truncateToWidth } from "@veyyon/tui";
+import {
+	type Component,
+	Container,
+	Input,
+	matchesKey,
+	padding,
+	replaceTabs,
+	routeSgrMouseInput,
+	type SgrMouseEvent,
+	Spacer,
+	Text,
+	truncateToWidth,
+} from "@veyyon/tui";
 import { errorMessage, getMCPConfigPath, getProjectDir } from "@veyyon/utils";
 import { validateServerName } from "../../mcp/config-writer";
 import { analyzeAuthError, discoverOAuthEndpoints, fetchResourceMetadataScopes } from "../../mcp/oauth-discovery";
@@ -11,7 +23,20 @@ import type { MCPHttpServerConfig, MCPServerConfig, MCPSseServerConfig, MCPStdio
 import { shortenPath } from "../../tools/render-utils";
 import { theme } from "../theme/theme";
 import { matchesAppInterrupt, matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
-import { DynamicBorder } from "./dynamic-border";
+import {
+	applyModalReveal,
+	computeModalDims,
+	consumeModalChipHover,
+	hitTestModalChrome,
+	MODAL_SIZING_MEDIUM,
+	ModalRevealDriver,
+	type ModalShellGeometry,
+	type ModalShortcut,
+	planModalChrome,
+	renderModalShell,
+	sizingForArea,
+} from "./modal-shell";
+import { selectionBand } from "./selector-helpers";
 
 type TransportType = "stdio" | "http" | "sse";
 type AuthMethod = "none" | "oauth" | "manual";
@@ -92,7 +117,7 @@ function sanitize(text: string): string {
 	return truncateToWidth(replaceTabs(text), MAX_DISPLAY_WIDTH);
 }
 
-export class MCPAddWizard extends Container {
+export class MCPAddWizard implements Component {
 	#currentStep: WizardStep = "name";
 	#state: WizardState = {
 		name: "",
@@ -115,7 +140,18 @@ export class MCPAddWizard extends Container {
 		headerName: "Authorization",
 	};
 
-	#contentContainer: Container;
+	#contentContainer = new Container();
+	/** Body children that are option rows, and the option index each stands for. */
+	#optionRows = new Map<Component, number>();
+	/** Per-render map of 0-based body line → option index. */
+	#hitRows: (number | undefined)[] = [];
+	/** Pointer-highlighted option (never the selected one; selection owns its row). */
+	#hoveredIndex: number | null = null;
+	#shellGeometry: ModalShellGeometry | null = null;
+	#hoveredShortcutId: string | null = null;
+	/** Frame row where the body begins (shell body start). */
+	#bodyRowStart = 0;
+	#reveal = new ModalRevealDriver();
 	#inputField: Input | null = null;
 	#selectedIndex = 0;
 	#validationError: string | null = null;
@@ -155,7 +191,6 @@ export class MCPAddWizard extends Container {
 		onRender?: () => void,
 		initialName?: string,
 	) {
-		super();
 		this.#onCompleteCallback = onComplete;
 		this.#onCancelCallback = onCancel;
 		this.#onOAuthCallback = onOAuth ?? null;
@@ -166,25 +201,33 @@ export class MCPAddWizard extends Container {
 			this.#currentStep = "transport";
 		}
 
-		// Add border
-		this.addChild(new DynamicBorder());
-		this.addChild(new Spacer(1));
-
-		// Add title
-		this.addChild(new TruncatedText(theme.bold("Add MCP Server")));
-		this.addChild(new Spacer(1));
-
-		// Content container for step-specific content
-		this.#contentContainer = new Container();
-		this.addChild(this.#contentContainer);
-
-		this.addChild(new Spacer(1));
-
-		// Add bottom border
-		this.addChild(new DynamicBorder());
-
-		// Render first step
 		this.#renderStep();
+	}
+
+	invalidate(): void {
+		this.#contentContainer.invalidate();
+	}
+
+	setOnRequestRender(cb: () => void): void {
+		this.#onRenderCallback = cb;
+	}
+
+	/**
+	 * Drop the step's children AND the option map built alongside them. The two
+	 * are one state: a stale map answers a click with the option a previous step
+	 * happened to paint on that row.
+	 */
+	#clearContent(): void {
+		this.#contentContainer.clear();
+		this.#optionRows.clear();
+		this.#hoveredIndex = null;
+	}
+
+	/** Add an option row and record which option it stands for, for the pointer. */
+	#addOptionRow(line: string, index: number): void {
+		const row = new Text(line, 0, 0);
+		this.#contentContainer.addChild(row);
+		this.#optionRows.set(row, index);
 	}
 
 	#requestRender(): void {
@@ -192,7 +235,7 @@ export class MCPAddWizard extends Container {
 	}
 
 	#renderStep(): void {
-		this.#contentContainer.clear();
+		this.#clearContent();
 		this.#inputField = null; // Reset input field
 
 		switch (this.#currentStep) {
@@ -266,11 +309,6 @@ export class MCPAddWizard extends Container {
 			this.#contentContainer.addChild(new Text(theme.fg("error", `x ${sanitize(this.#validationError)}`), 0, 0));
 			this.#contentContainer.addChild(new Spacer(1));
 		}
-
-		this.#contentContainer.addChild(
-			new Text(theme.fg("muted", "[Only letters, numbers, dash, underscore, dot, colon]"), 0, 0),
-		);
-		this.#contentContainer.addChild(new Text(theme.fg("muted", "[Enter to continue, Esc to cancel]"), 0, 0));
 	}
 
 	#renderTransportStep(): void {
@@ -290,13 +328,10 @@ export class MCPAddWizard extends Container {
 			const isSelected = i === this.#selectedIndex;
 			const prefix = isSelected ? theme.fg("accent", `${theme.nav.cursor} `) : "  ";
 			const text = isSelected ? theme.fg("accent", option.label) : option.label;
-			this.#contentContainer.addChild(new Text(prefix + text, 0, 0));
+			this.#addOptionRow(prefix + text, i);
 		}
 
 		this.#contentContainer.addChild(new Spacer(1));
-		this.#contentContainer.addChild(
-			new Text(theme.fg("muted", "[↑↓ to navigate, Enter to select, Esc to cancel]"), 0, 0),
-		);
 	}
 
 	#renderCommandStep(): void {
@@ -309,7 +344,6 @@ export class MCPAddWizard extends Container {
 		this.#inputField.setValue(this.#state.command);
 		this.#contentContainer.addChild(this.#inputField);
 		this.#contentContainer.addChild(new Spacer(1));
-		this.#contentContainer.addChild(new Text(theme.fg("muted", "[Enter to continue, Esc to go back]"), 0, 0));
 	}
 
 	#renderArgsStep(): void {
@@ -322,7 +356,6 @@ export class MCPAddWizard extends Container {
 		this.#inputField.setValue(this.#state.args);
 		this.#contentContainer.addChild(this.#inputField);
 		this.#contentContainer.addChild(new Spacer(1));
-		this.#contentContainer.addChild(new Text(theme.fg("muted", "[Press Enter to skip or continue]"), 0, 0));
 	}
 
 	#renderUrlStep(): void {
@@ -341,9 +374,6 @@ export class MCPAddWizard extends Container {
 			this.#contentContainer.addChild(new Text(theme.fg("error", `x ${sanitize(this.#validationError)}`), 0, 0));
 			this.#contentContainer.addChild(new Spacer(1));
 		}
-
-		this.#contentContainer.addChild(new Text(theme.fg("muted", "[Must start with http:// or https://]"), 0, 0));
-		this.#contentContainer.addChild(new Text(theme.fg("muted", "[Enter to continue, Esc to go back]"), 0, 0));
 	}
 
 	#renderAuthLocationStep(): void {
@@ -360,13 +390,10 @@ export class MCPAddWizard extends Container {
 			const isSelected = i === this.#selectedIndex;
 			const prefix = isSelected ? theme.fg("accent", `${theme.nav.cursor} `) : "  ";
 			const text = isSelected ? theme.fg("accent", option.label) : option.label;
-			this.#contentContainer.addChild(new Text(prefix + text, 0, 0));
+			this.#addOptionRow(prefix + text, i);
 		}
 
 		this.#contentContainer.addChild(new Spacer(1));
-		this.#contentContainer.addChild(
-			new Text(theme.fg("muted", "[↑↓ to navigate, Enter to select, Esc to go back]"), 0, 0),
-		);
 	}
 
 	#renderEnvVarNameStep(): void {
@@ -379,7 +406,6 @@ export class MCPAddWizard extends Container {
 		this.#inputField.setValue(this.#state.envVarName);
 		this.#contentContainer.addChild(this.#inputField);
 		this.#contentContainer.addChild(new Spacer(1));
-		this.#contentContainer.addChild(new Text(theme.fg("muted", "[Enter to continue, Esc to go back]"), 0, 0));
 	}
 
 	#renderHeaderNameStep(): void {
@@ -392,7 +418,6 @@ export class MCPAddWizard extends Container {
 		this.#inputField.setValue(this.#state.headerName);
 		this.#contentContainer.addChild(this.#inputField);
 		this.#contentContainer.addChild(new Spacer(1));
-		this.#contentContainer.addChild(new Text(theme.fg("muted", "[Enter to continue, Esc to go back]"), 0, 0));
 	}
 
 	#renderConfirmStep(): void {
@@ -437,16 +462,157 @@ export class MCPAddWizard extends Container {
 			const isSelected = i === this.#selectedIndex;
 			const prefix = isSelected ? theme.fg("accent", `${theme.nav.cursor} `) : "  ";
 			const text = isSelected ? theme.fg("accent", options[i]) : options[i];
-			this.#contentContainer.addChild(new Text(prefix + text, 0, 0));
+			this.#addOptionRow(prefix + text, i);
 		}
 
 		this.#contentContainer.addChild(new Spacer(1));
-		this.#contentContainer.addChild(
-			new Text(theme.fg("muted", "[↑↓ to navigate, Enter to select, Esc to go back]"), 0, 0),
-		);
+	}
+
+	/**
+	 * Footer chips for the step on screen. Esc means CANCEL on the first step
+	 * and BACK on every later one, which is what `handleInput` does, so the chip
+	 * has to say the same thing rather than one fixed label for the whole flow.
+	 */
+	#shortcuts(): readonly ModalShortcut[] {
+		const escapeChip: ModalShortcut =
+			this.#currentStep === "name"
+				? { label: "esc cancel", clickable: true, id: "close" }
+				: { label: "esc back", clickable: true, id: "back" };
+		if (this.#oauthAbort) {
+			return [{ label: "esc cancel the login", clickable: true, id: "close" }];
+		}
+		if (this.#inputField) {
+			return [{ label: "enter continue", clickable: true, id: "confirm" }, escapeChip];
+		}
+		return [
+			{ label: "navigate", keybindings: ["tui.select.up", "tui.select.down"] },
+			{ label: "enter select", clickable: true, id: "confirm" },
+			escapeChip,
+		];
+	}
+
+	#routeMouse(event: SgrMouseEvent): boolean {
+		const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
+			motion: event.motion,
+			leftClick: event.leftClick,
+		});
+		if (
+			consumeModalChipHover(chrome, this.#hoveredShortcutId, id => {
+				this.#hoveredShortcutId = id;
+				this.#requestRender();
+			})
+		) {
+			return true;
+		}
+		if (
+			chrome.kind === "close" ||
+			chrome.kind === "outside" ||
+			(chrome.kind === "shortcut" && chrome.id === "close")
+		) {
+			// The glyph closes the WIZARD, not the step: an abandoned add leaves
+			// nothing behind, and stepping back from a click on `[x]` would be a
+			// different action from the one the glyph draws.
+			if (this.#oauthAbort) {
+				this.#oauthAbort.abort("MCP OAuth flow cancelled by user");
+				return true;
+			}
+			this.#onCancelCallback();
+			return true;
+		}
+		if (chrome.kind === "shortcut" && chrome.id === "back") {
+			this.#goBack();
+			this.#requestRender();
+			return true;
+		}
+		if (chrome.kind === "shortcut" && chrome.id === "confirm") {
+			this.handleInput("\n");
+			return true;
+		}
+		// An input step has no rows to pick; the text field owns the body.
+		if (this.#inputField) return true;
+		const line = event.row - this.#bodyRowStart;
+		if (event.wheel !== null) {
+			this.#moveSelection(event.wheel < 0 ? -1 : 1);
+			this.#requestRender();
+			return true;
+		}
+		if (event.motion) {
+			const index = this.#hitRows[line] ?? null;
+			if (index !== this.#hoveredIndex) {
+				this.#hoveredIndex = index;
+				this.#requestRender();
+			}
+			return true;
+		}
+		if (event.leftClick) {
+			const index = this.#hitRows[line];
+			if (index !== undefined) {
+				// A click mirrors Enter: move onto the option, then take it.
+				this.#selectedIndex = index;
+				this.#renderStep();
+				this.#selectCurrentOption();
+			}
+			return true;
+		}
+		return true;
+	}
+
+	render(width: number): readonly string[] {
+		const height = process.stdout.rows || 40;
+		const sizing = sizingForArea(MODAL_SIZING_MEDIUM, height);
+		const dims = computeModalDims(width, height, sizing);
+		if (!dims) {
+			this.#shellGeometry = null;
+			return Array.from({ length: height }, () => padding(width));
+		}
+
+		const shortcuts = this.#shortcuts();
+		const chrome = planModalChrome({
+			sizing,
+			modalHeight: dims.modalHeight,
+			contentWidth: dims.contentWidth,
+			shortcuts,
+			hoveredShortcutId: this.#hoveredShortcutId,
+		});
+
+		// The body is assembled child by child rather than through the container
+		// so each option's LINES are known: an option row can wrap, and a hit map
+		// built from child order would then answer the wrong option.
+		const body: string[] = [];
+		this.#hitRows = [];
+		for (const child of this.#contentContainer.children) {
+			const option = this.#optionRows.get(child);
+			for (const rendered of child.render(dims.contentWidth)) {
+				if (option !== undefined) {
+					this.#hitRows[body.length] = option;
+					body.push(option === this.#hoveredIndex ? selectionBand(rendered, dims.contentWidth) : rendered);
+					continue;
+				}
+				body.push(rendered);
+			}
+		}
+
+		const shell = renderModalShell({
+			title: "Add MCP Server",
+			sizing,
+			areaWidth: width,
+			areaHeight: height,
+			body: body.slice(0, chrome.maxBodyRows),
+			preferredBodyRows: body.length,
+			shortcuts,
+			hoveredShortcutId: this.#hoveredShortcutId,
+			showClose: true,
+		});
+		this.#shellGeometry = shell.geometry;
+		this.#bodyRowStart = shell.geometry?.bodyRowStart ?? 0;
+		return applyModalReveal(shell, width, this.#reveal.value);
 	}
 
 	handleInput(keyData: string): void {
+		if (keyData.startsWith("\x1b[<")) {
+			routeSgrMouseInput(keyData, event => this.#routeMouse(event));
+			return;
+		}
 		// While an OAuth callback is being awaited, Esc/Ctrl+C aborts the flow
 		// rather than stepping back through the form: the wizard advertises
 		// "(Press Esc to cancel)" during the wait, and stepping back would
@@ -796,16 +962,15 @@ export class MCPAddWizard extends Container {
 			const isSelected = i === this.#selectedIndex;
 			const prefix = isSelected ? theme.fg("accent", `${theme.nav.cursor} `) : "  ";
 			const text = isSelected ? theme.fg("accent", option.label) : option.label;
-			this.#contentContainer.addChild(new Text(prefix + text, 0, 0));
+			this.#addOptionRow(prefix + text, i);
 			if (!isSelected) {
-				this.#contentContainer.addChild(new Text(`    ${theme.fg("dim", option.desc)}`, 0, 0));
+				// The description belongs to the option above it, so a click on
+				// either line picks the same method.
+				this.#addOptionRow(`    ${theme.fg("dim", option.desc)}`, i);
 			}
 		}
 
 		this.#contentContainer.addChild(new Spacer(1));
-		this.#contentContainer.addChild(
-			new Text(theme.fg("muted", "[↑↓ to navigate, Enter to select, Esc to go back]"), 0, 0),
-		);
 	}
 
 	#renderOAuthAuthUrlStep(): void {
@@ -822,7 +987,6 @@ export class MCPAddWizard extends Container {
 			new Text(theme.fg("muted", "e.g., https://auth.example.com/oauth/authorize"), 0, 0),
 		);
 		this.#contentContainer.addChild(new Spacer(1));
-		this.#contentContainer.addChild(new Text(theme.fg("muted", "[Enter to continue, Esc to go back]"), 0, 0));
 	}
 
 	#renderOAuthTokenUrlStep(): void {
@@ -837,7 +1001,6 @@ export class MCPAddWizard extends Container {
 		this.#contentContainer.addChild(new Spacer(1));
 		this.#contentContainer.addChild(new Text(theme.fg("muted", "e.g., https://auth.example.com/oauth/token"), 0, 0));
 		this.#contentContainer.addChild(new Spacer(1));
-		this.#contentContainer.addChild(new Text(theme.fg("muted", "[Enter to continue, Esc to go back]"), 0, 0));
 	}
 
 	#renderOAuthClientIdStep(): void {
@@ -850,7 +1013,6 @@ export class MCPAddWizard extends Container {
 		this.#inputField.setValue(this.#state.oauthClientId);
 		this.#contentContainer.addChild(this.#inputField);
 		this.#contentContainer.addChild(new Spacer(1));
-		this.#contentContainer.addChild(new Text(theme.fg("muted", "[Enter to continue, Esc to go back]"), 0, 0));
 	}
 
 	#renderOAuthClientSecretStep(): void {
@@ -864,7 +1026,6 @@ export class MCPAddWizard extends Container {
 		this.#inputField.setValue(this.#state.oauthClientSecret);
 		this.#contentContainer.addChild(this.#inputField);
 		this.#contentContainer.addChild(new Spacer(1));
-		this.#contentContainer.addChild(new Text(theme.fg("muted", "[Enter to continue, Esc to go back]"), 0, 0));
 	}
 
 	#renderOAuthScopesStep(): void {
@@ -879,7 +1040,6 @@ export class MCPAddWizard extends Container {
 		this.#contentContainer.addChild(new Spacer(1));
 		this.#contentContainer.addChild(new Text(theme.fg("muted", "e.g., read write"), 0, 0));
 		this.#contentContainer.addChild(new Spacer(1));
-		this.#contentContainer.addChild(new Text(theme.fg("muted", "[Enter to continue, Esc to go back]"), 0, 0));
 	}
 
 	#renderOAuthErrorStep(): void {
@@ -893,13 +1053,10 @@ export class MCPAddWizard extends Container {
 			const isSelected = i === this.#selectedIndex;
 			const prefix = isSelected ? theme.fg("accent", `${theme.nav.cursor} `) : "  ";
 			const text = isSelected ? theme.fg("accent", options[i]) : options[i];
-			this.#contentContainer.addChild(new Text(prefix + text, 0, 0));
+			this.#addOptionRow(prefix + text, i);
 		}
 
 		this.#contentContainer.addChild(new Spacer(1));
-		this.#contentContainer.addChild(
-			new Text(theme.fg("muted", "[↑↓ to navigate, Enter to select, Esc to go back]"), 0, 0),
-		);
 	}
 
 	#renderApiKeyStep(): void {
@@ -913,7 +1070,6 @@ export class MCPAddWizard extends Container {
 		this.#inputField.setValue(this.#state.apiKey);
 		this.#contentContainer.addChild(this.#inputField);
 		this.#contentContainer.addChild(new Spacer(1));
-		this.#contentContainer.addChild(new Text(theme.fg("muted", "[Enter to continue, Esc to go back]"), 0, 0));
 	}
 
 	/**
@@ -935,7 +1091,7 @@ export class MCPAddWizard extends Container {
 			await this.#onTestConnectionCallback(testConfig);
 
 			// Success! No auth required
-			this.#contentContainer.clear();
+			this.#clearContent();
 			this.#contentContainer.addChild(new Text(theme.fg("success", "ok Connection successful!"), 0, 0));
 			this.#contentContainer.addChild(new Spacer(1));
 			this.#contentContainer.addChild(new Text("No authentication required", 0, 0));
@@ -983,7 +1139,7 @@ export class MCPAddWizard extends Container {
 					this.#state.oauthResource = oauth.resource || (this.#state.transport === "stdio" ? "" : this.#state.url);
 					this.#state.authMethod = "oauth";
 
-					this.#contentContainer.clear();
+					this.#clearContent();
 					this.#contentContainer.addChild(new Text(theme.fg("success", "ok OAuth detected"), 0, 0));
 					this.#contentContainer.addChild(new Spacer(1));
 					this.#contentContainer.addChild(new Text("Launching browser for authorization...", 0, 0));
@@ -994,7 +1150,7 @@ export class MCPAddWizard extends Container {
 				}
 
 				// OAuth metadata unavailable: fallback to manual API key.
-				this.#contentContainer.clear();
+				this.#clearContent();
 				this.#contentContainer.addChild(new Text(theme.fg("warning", "warn Authentication required"), 0, 0));
 				this.#contentContainer.addChild(new Spacer(1));
 				this.#contentContainer.addChild(new Text("OAuth parameters could not be discovered.", 0, 0));
@@ -1005,7 +1161,7 @@ export class MCPAddWizard extends Container {
 			} else {
 				// Not an auth error - just a connection failure
 				const errorMsg = sanitize(errorMessage(error));
-				this.#contentContainer.clear();
+				this.#clearContent();
 				this.#contentContainer.addChild(new Text(theme.fg("error", "x Connection failed"), 0, 0));
 				this.#contentContainer.addChild(new Spacer(1));
 				this.#contentContainer.addChild(new Text(errorMsg, 0, 0));
@@ -1103,7 +1259,7 @@ export class MCPAddWizard extends Container {
 
 	async #launchOAuthFlow(): Promise<void> {
 		if (!this.#onOAuthCallback) {
-			this.#contentContainer.clear();
+			this.#clearContent();
 			this.#contentContainer.addChild(new Text(theme.fg("error", "OAuth flow not available"), 0, 0));
 			this.#renderStep();
 			this.#requestRender();
@@ -1112,18 +1268,17 @@ export class MCPAddWizard extends Container {
 
 		// Validate OAuth configuration
 		if (!this.#state.oauthAuthUrl || !this.#state.oauthTokenUrl) {
-			this.#contentContainer.clear();
+			this.#clearContent();
 			this.#contentContainer.addChild(new Text(theme.fg("error", "OAuth configuration incomplete"), 0, 0));
 			this.#contentContainer.addChild(new Spacer(1));
 			this.#contentContainer.addChild(new Text("Authorization and Token URLs are required.", 0, 0));
 			this.#contentContainer.addChild(new Spacer(1));
-			this.#contentContainer.addChild(new Text(theme.fg("muted", "[Press Esc to go back]"), 0, 0));
 			this.#requestRender();
 			return;
 		}
 
 		// Show "Authenticating..." message
-		this.#contentContainer.clear();
+		this.#clearContent();
 		this.#contentContainer.addChild(new Text(theme.fg("accent", "OAuth Authentication"), 0, 0));
 		this.#contentContainer.addChild(new Spacer(1));
 		this.#contentContainer.addChild(new Text("Launching OAuth flow...", 0, 0));
@@ -1133,7 +1288,6 @@ export class MCPAddWizard extends Container {
 			new Text(theme.fg("warning", "If browser doesn't open, copy the URL from chat."), 0, 0),
 		);
 		this.#contentContainer.addChild(new Spacer(1));
-		this.#contentContainer.addChild(new Text(theme.fg("muted", "(Press Esc to cancel)"), 0, 0));
 		this.#requestRender();
 
 		this.#oauthAbort = new AbortController();
@@ -1161,7 +1315,7 @@ export class MCPAddWizard extends Container {
 			this.#state.oauthResource = oauthResult.resource ?? oauthResource;
 
 			// Show success message
-			this.#contentContainer.clear();
+			this.#clearContent();
 			this.#contentContainer.addChild(new Text(theme.fg("success", "ok Authentication successful!"), 0, 0));
 			this.#contentContainer.addChild(new Spacer(1));
 			this.#contentContainer.addChild(new Text(theme.fg("muted", "Running connection health check..."), 0, 0));
@@ -1228,7 +1382,7 @@ export class MCPAddWizard extends Container {
 			// stay meaningful. Name-matching avoids importing controller types.
 			const cancelled = error instanceof Error && error.name === "MCPOAuthCancelledError";
 			const errorMsg = sanitize(errorMessage(error));
-			this.#contentContainer.clear();
+			this.#clearContent();
 			this.#contentContainer.addChild(
 				new Text(
 					cancelled ? theme.fg("muted", "o OAuth cancelled") : theme.fg("error", "x OAuth authentication failed"),
@@ -1263,9 +1417,6 @@ export class MCPAddWizard extends Container {
 			this.#contentContainer.addChild(new Text(`${theme.fg("accent", "→ ")}Retry`, 0, 0));
 			this.#contentContainer.addChild(new Text("  Edit OAuth settings", 0, 0));
 			this.#contentContainer.addChild(new Spacer(1));
-			this.#contentContainer.addChild(
-				new Text(theme.fg("muted", "[↑↓ to navigate, Enter to select, Esc to go back]"), 0, 0),
-			);
 			this.#requestRender();
 
 			// Set up as a selector step

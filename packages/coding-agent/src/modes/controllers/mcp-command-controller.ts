@@ -3,7 +3,7 @@
  *
  * Handles /mcp subcommands for managing MCP servers.
  */
-import { type Component, replaceTabs, Spacer, Text } from "@veyyon/tui";
+import { type Component, type OverlayHandle, replaceTabs, Spacer, Text } from "@veyyon/tui";
 import { errorMessage, getMCPConfigPath, getProjectDir, isAbortError } from "@veyyon/utils";
 import type { SourceMeta } from "../../capability/types";
 import { expandEnvVarsDeep } from "../../discovery/helpers";
@@ -647,11 +647,16 @@ export class MCPCommandController {
 			return;
 		}
 
-		// Save current editor state
+		// The wizard is a floating card on the alternate screen, so its close
+		// glyph and chips have somewhere to live and the transcript stays put.
+		let overlayHandle: OverlayHandle | undefined;
+		let closed = false;
 		const done = () => {
-			this.ctx.editorContainer.clear();
-			this.ctx.editorContainer.addChild(this.ctx.editor);
-			this.ctx.ui.setFocus(this.ctx.editor);
+			if (closed) return;
+			closed = true;
+			overlayHandle?.hide();
+			this.ctx.ui.setFocus(this.ctx.editorContainer.children[0] ?? this.ctx.editor);
+			this.ctx.ui.requestRender();
 		};
 
 		// Create wizard with OAuth handler and connection test
@@ -676,9 +681,14 @@ export class MCPCommandController {
 			parsed.initialName,
 		);
 
-		// Replace editor with wizard
-		this.ctx.editorContainer.clear();
-		this.ctx.editorContainer.addChild(wizard);
+		wizard.setOnRequestRender(() => this.ctx.ui.requestRender());
+		overlayHandle = this.ctx.ui.showOverlay(wizard, {
+			anchor: "top-left",
+			width: "100%",
+			maxHeight: "100%",
+			margin: 0,
+			fullscreen: true,
+		});
 		this.ctx.ui.setFocus(wizard);
 		this.ctx.ui.requestRender();
 	}
