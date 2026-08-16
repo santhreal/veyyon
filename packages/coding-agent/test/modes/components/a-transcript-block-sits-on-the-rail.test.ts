@@ -38,6 +38,7 @@ import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/components/compo
 import { ComposerLoader } from "@veyyon/coding-agent/modes/components/composer-loader";
 import { ErrorBannerComponent } from "@veyyon/coding-agent/modes/components/error-banner";
 import { OmfgPanelComponent, type OmfgPanelState } from "@veyyon/coding-agent/modes/components/omfg-panel";
+import { TinyTitleDownloadProgressComponent } from "@veyyon/coding-agent/modes/components/tiny-title-download-progress";
 import {
 	mountTranscriptBlock,
 	transcriptBlockText,
@@ -45,6 +46,7 @@ import {
 import { TranscriptBlock } from "@veyyon/coding-agent/modes/components/transcript-container";
 import { showCommandMessage } from "@veyyon/coding-agent/modes/controllers/command-controller-shared";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { TinyTitleProgressEvent, TinyTitleProgressStatus } from "@veyyon/coding-agent/tiny/title-protocol";
 import type { Component, TUI } from "@veyyon/tui";
 
 const WIDTH = 100;
@@ -195,6 +197,40 @@ describe("a transcript block sits on the rail", () => {
 			expect(rows.at(-1)?.trimEnd()).toBe(`${" ".repeat(COMPOSER_INSET_COLS)}esc cancel`);
 		} finally {
 			loader.dispose();
+		}
+	});
+
+	/**
+	 * The tiny-title download block was the last bordered band in the transcript:
+	 * a rule above and below, rows padded edge to edge from column zero. Keyed by
+	 * the exported status union, so a new progress status does not type check
+	 * until someone decides what it paints.
+	 */
+	it("paints every tiny-model download status at the rail, with no rule", () => {
+		const events: Record<TinyTitleProgressStatus, TinyTitleProgressEvent> = {
+			initiate: { modelKey: "lfm2-700m", status: "initiate", name: "onnx-community/LFM2-700M-ONNX" },
+			download: { modelKey: "lfm2-700m", status: "download", file: "onnx/model_q4.onnx" },
+			progress: { modelKey: "lfm2-700m", status: "progress", progress: 12.5, loaded: 1_250, total: 10_000 },
+			progress_total: {
+				modelKey: "lfm2-700m",
+				status: "progress_total",
+				progress: 50,
+				loaded: 50_000_000,
+				total: 100_000_000,
+				files: { "onnx/model_q4.onnx": { loaded: 50_000_000, total: 100_000_000 } },
+			},
+			done: { modelKey: "lfm2-700m", status: "done", progress: 100, loaded: 100, total: 100 },
+			ready: { modelKey: "lfm2-700m", status: "ready", task: "text-generation", model: "repo" },
+			error: { modelKey: "lfm2-700m", status: "error" },
+		};
+
+		for (const [status, event] of Object.entries(events)) {
+			const component = new TinyTitleDownloadProgressComponent("lfm2-700m");
+			component.update(event);
+			const rows = paintedRows(component);
+			assertOnTheRail(rows, `tiny-download/${status}`);
+			assertNoFullWidthRule(rows, `tiny-download/${status}`);
+			expect(rows[0]?.trimEnd().startsWith(`${" ".repeat(COMPOSER_INSET_COLS)}Tiny model`)).toBe(true);
 		}
 	});
 });
