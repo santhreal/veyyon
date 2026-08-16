@@ -196,9 +196,20 @@ export const CONFIGURED_THINKING_LEVELS: readonly ConfiguredThinkingLevel[] = [
 	...THINKING_EFFORTS,
 ];
 
-/** Return the valid configured choices for one model, in cycle order. */
+/**
+ * The choices ONE model accepts, in cycle order.
+ *
+ * No model means no choices. It used to mean the whole vocabulary, on the
+ * theory that a level with nothing to narrow against is stored and clamped
+ * later — but a picker cannot tell the reader that. It showed `minimal` for a
+ * row whose endpoint declares `low, high, max`, and it would invent a ladder
+ * for `cursor-grok-4.6-medium`, whose id IS its effort and whose row exposes no
+ * control at all. A level nobody declared is never offered here; a surface with
+ * genuinely no model in scope asks for {@link configuredThinkingLevelsInScope}
+ * instead, which is a fact about the catalog rather than a constant.
+ */
 export function configuredThinkingLevelsForModel(model: Model | undefined): readonly ConfiguredThinkingLevel[] {
-	if (!model) return CONFIGURED_THINKING_LEVELS;
+	if (!model) return [];
 	const supported = getSupportedEfforts(model);
 	if (supported.length === 0) return [];
 	// On a routed row (effort lives in sibling model ids, not a wire field),
@@ -209,6 +220,28 @@ export function configuredThinkingLevelsForModel(model: Model | undefined): read
 	const offRoutable = routing === undefined || routing.off !== undefined;
 	const offerOff = offRoutable && model.thinking?.requiresEffort !== true;
 	return [...(offerOff ? [ThinkingLevel.Off] : []), ...(offRoutable ? [AUTO_THINKING] : []), ...supported];
+}
+
+/**
+ * The choices a BLANKET row can offer: the union of what the models in scope
+ * declare, in canonical order.
+ *
+ * Two rows have no single model and never will — Default Effort's any-model `*`
+ * row and `subagent.thinkingLevel` with no chain — and each stores a level that
+ * is clamped against whatever model later runs. They still may not invent: the
+ * union is what SOME model in this session's catalog actually accepts, so every
+ * row offered is addressable somewhere, and a catalog that declares nothing
+ * yields nothing rather than the full vocabulary.
+ */
+export function configuredThinkingLevelsInScope(
+	models: ReadonlyArray<Model> | undefined,
+): readonly ConfiguredThinkingLevel[] {
+	if (!models || models.length === 0) return [];
+	const seen = new Set<ConfiguredThinkingLevel>();
+	for (const model of models) {
+		for (const level of configuredThinkingLevelsForModel(model)) seen.add(level);
+	}
+	return CONFIGURED_THINKING_LEVELS.filter(level => seen.has(level));
 }
 
 /**
@@ -247,41 +280,60 @@ export function noSelectableEffortNotice(inheritLabel = "Inherit"): string {
 }
 
 export interface ConfiguredThinkingLevelOptions {
+	/** The one model this picker sits under. */
 	model?: Model;
+	/**
+	 * The catalog a BLANKET row spans, used only when `model` is absent: the rows
+	 * offered are the union of what these models declare. Absent as well means no
+	 * scope at all, and a picker with no scope offers no levels rather than a
+	 * vocabulary nothing in the session accepts.
+	 */
+	scope?: ReadonlyArray<Model>;
 	includeInherit?: boolean;
 	inheritLabel?: string;
 	inheritDescription?: string;
 }
 
-function effortDescription(level: ConfiguredThinkingLevel, model: Model | undefined): string {
+/**
+ * The row description for one level.
+ *
+ * `auto` names the efforts it will choose between, so a blanket row says what
+ * its own union accepts rather than the vocabulary's `low–xhigh` shorthand — a
+ * row that prints a level nothing in scope declares is the defect this module
+ * exists to prevent, and a description is as visible as a label.
+ */
+function effortDescription(level: ConfiguredThinkingLevel, efforts: ReadonlyArray<ConfiguredThinkingLevel>): string {
 	const metadata = getConfiguredThinkingLevelMetadata(level);
-	if (level !== AUTO_THINKING || !model) return metadata.description;
-	const supported = getSupportedEfforts(model);
-	return `Choose per prompt from ${supported.join(", ")}`;
+	if (level !== AUTO_THINKING || efforts.length === 0) return metadata.description;
+	return `Choose per prompt from ${efforts.join(", ")}`;
 }
 
 /**
- * Picker rows for the active model's named effort variants.
+ * Picker rows for the effort variants something in scope actually declares.
  *
  * Like OpenCode's variant selector, this shows only valid model-specific
  * choices plus Veyyon's `auto` and `off` controls. The base model remains the
  * first, suffix-free row when inheritance is enabled.
  *
- * With no model in scope the full vocabulary is offered rather than nothing.
- * Two real rows have no model and never will: `defaultEffort`'s any-model `*`
- * row and the blanket `subagent.thinkingLevel`. Both store a level that is
- * clamped against whatever model later runs, so a picker that went empty here
- * would turn every pick into a row deletion.
+ * Nothing is offered that nothing accepts. A picker under one model shows that
+ * model's declared ladder; a blanket row passes `scope` and shows the union its
+ * catalog declares; a surface with neither shows only the inherit row. The
+ * vocabulary constant is never a picker's answer — offering `minimal` on a row
+ * that declares `low, high, max` is the whole reason this narrowing exists.
  */
 export function configuredThinkingLevelOptions(
 	options: ConfiguredThinkingLevelOptions = {},
 ): ReadonlyArray<{ value: string; label: string; description: string }> {
-	const rows = configuredThinkingLevelsForModel(options.model).map(level => {
+	const levels = options.model
+		? configuredThinkingLevelsForModel(options.model)
+		: configuredThinkingLevelsInScope(options.scope);
+	const efforts = levels.filter(level => level !== AUTO_THINKING && level !== ThinkingLevel.Off);
+	const rows = levels.map(level => {
 		const metadata = getConfiguredThinkingLevelMetadata(level);
 		return {
 			value: level,
 			label: metadata.label,
-			description: effortDescription(level, options.model),
+			description: effortDescription(level, efforts),
 		};
 	});
 	if (options.includeInherit === false) return rows;

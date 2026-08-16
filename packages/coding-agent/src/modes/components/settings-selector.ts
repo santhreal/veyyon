@@ -1242,28 +1242,70 @@ const AGENT_ROW_EFFORT = "\u0000subagent-effort";
 type SubagentRosterPath = "subagent.agents" | "subagent.model" | "subagent.thinkingLevel";
 
 /**
- * The model whose effort ladder `subagent.thinkingLevel` must be narrowed to:
- * the head of the subagent model chain when one is configured, and the session's
- * own model when it is not, because unset means every subagent inherits it.
+ * What `subagent.thinkingLevel` narrows against, as three distinct answers
+ * rather than one nullable model.
  *
- * Undefined when the chain names a model this session has no catalog entry for
- * (an unauthenticated provider, a pattern that matches nothing). The picker then
- * offers the full vocabulary, which is the honest answer: the level is stored and
- * clamped later against whatever model does run.
+ * `model` — a model is named and resolved: the chain head, or the session's own
+ * model when no chain is set, because unset means every subagent inherits it.
+ * `unresolved` — a model is named and this session has no catalog entry for it
+ * (an unauthenticated provider, a pattern matching nothing). Offering a ladder
+ * here invents one: the picker says which pattern it cannot read instead.
+ * `blanket` — nothing is named at all, so the row spans the catalog and the
+ * honest list is the union of what the catalog declares.
+ *
+ * The three used to be one `Model | undefined`, and undefined fell through to
+ * the full vocabulary: `minimal` on a row whose endpoint declares `low, high,
+ * max`, and an invented ladder for an id like `cursor-grok-4.6-medium` whose id
+ * IS its effort.
  *
  * ONE owner, because two screens narrow the same ladder: the tab's Subagent
  * Effort row and the roster's Effort row. Two copies would drift into offering
  * different levels for one setting.
  */
-function subagentEffortModel(
+type SubagentEffortScope =
+	| { kind: "model"; model: Model }
+	| { kind: "unresolved"; pattern: string }
+	| { kind: "blanket" };
+
+function subagentEffortScope(
 	models: ReadonlyArray<Model> | undefined,
 	sessionModel: Model | undefined,
-): Model | undefined {
+): SubagentEffortScope {
 	const head = resolveConfiguredModelPatterns(settings.get("subagent.model"), settings)[0];
-	if (!head) return sessionModel;
-	if (!models) return undefined;
-	const bare = barePickerSelector(head, models as Model<Api>[]);
-	return models.find(candidate => `${candidate.provider}/${candidate.id}` === bare);
+	if (!head) return sessionModel ? { kind: "model", model: sessionModel } : { kind: "blanket" };
+	const bare = models ? barePickerSelector(head, models as Model<Api>[]) : head;
+	const found = models?.find(candidate => `${candidate.provider}/${candidate.id}` === bare);
+	return found ? { kind: "model", model: found } : { kind: "unresolved", pattern: head };
+}
+
+/** The picker rows and the sentence that explains a short list, from one scope. */
+function subagentEffortOptions(
+	scope: SubagentEffortScope,
+	catalog: ReadonlyArray<Model> | undefined,
+): { options: Array<{ value: string; label: string; description: string }>; notice: string | undefined } {
+	if (scope.kind === "unresolved") {
+		return {
+			options: configuredThinkingLevelOptions({
+				inheritLabel: "Inherit",
+				inheritDescription: "Follow the session's effort",
+			}).map(option => ({ ...option })),
+			notice: `No model in this session matches \`${scope.pattern}\`, so its effort levels are unknown. Inherit is the only choice that means anything until the chain resolves.`,
+		};
+	}
+	const options = configuredThinkingLevelOptions({
+		model: scope.kind === "model" ? scope.model : undefined,
+		scope: scope.kind === "blanket" ? catalog : undefined,
+		inheritLabel: "Inherit",
+		inheritDescription: "Follow the session's effort",
+	}).map(option => ({ ...option }));
+	if (options.length > 1) return { options, notice: undefined };
+	return {
+		options,
+		notice:
+			scope.kind === "model"
+				? noSelectableEffortNotice()
+				: "No model in this session declares a selectable effort, so only Inherit applies.",
+	};
 }
 
 /**
@@ -1304,7 +1346,13 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 		private readonly activeModelPattern: string | undefined,
 		/** The session's model, used to narrow the effort ladder when no chain is set. */
 		private readonly sessionModel: Model | undefined,
-		/** Catalog for the model chain picker; absent in hosts with no model list. */
+		/**
+		 * Every model this session knows. Narrowing an effort ladder needs only
+		 * this; the chain picker below additionally needs a registry, and a host
+		 * with models but no registry must still show the right levels.
+		 */
+		private readonly models: ReadonlyArray<Model> | undefined,
+		/** Catalog plus registry for the model chain picker; absent in hosts with no model list. */
 		private readonly picker: { registry: ModelRegistry; models: ReadonlyArray<Model> } | undefined,
 		private readonly onChange: (path: SubagentRosterPath) => void,
 		private readonly onCancel: () => void,
@@ -1735,26 +1783,28 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 	}
 
 	/**
-	 * The blanket effort, narrowed to the ladder the model these subagents will
-	 * actually run accepts — the same narrowing the tab row does, from the same
-	 * helper, so the two lists cannot offer different levels.
+	 * The blanket effort, narrowed by the same scope helper the tab row uses, so
+	 * the two lists cannot offer different levels — and neither offers a level
+	 * nothing in scope declares.
+	 *
+	 * The catalog comes from `models`, not from the chain picker's context: that
+	 * context also needs a registry, and gating the ladder on it made the effort
+	 * list fall back to a vocabulary in a session whose models were right there.
 	 */
 	#showEffortPicker(back: () => void): void {
 		this.clear();
 		this.#selectList = undefined;
 		this.#escapeTo = back;
-		const model = subagentEffortModel(this.picker?.models, this.sessionModel);
-		const options = configuredThinkingLevelOptions({
-			model,
-			inheritLabel: "Inherit",
-			inheritDescription: "Follow the session's effort",
-		}).map(option => ({ ...option }));
+		const { options, notice } = subagentEffortOptions(
+			subagentEffortScope(this.models, this.sessionModel),
+			this.models,
+		);
 		const stored = settings.get("subagent.thinkingLevel");
 		const current = typeof stored === "string" ? stored.trim() : "";
 		const description =
-			options.length <= 1
-				? `Effort for every subagent. ${noSelectableEffortNotice()}`
-				: "Effort for every subagent. Inherit follows the session's effort; a `:level` on the model chain still wins.";
+			notice === undefined
+				? "Effort for every subagent. Inherit follows the session's effort; a `:level` on the model chain still wins."
+				: `Effort for every subagent. ${notice}`;
 		this.addChild(
 			new SelectSubmenu(
 				"Subagent Effort · every subagent",
@@ -1955,6 +2005,9 @@ class DefaultEffortSubmenu extends MouseRoutedSubmenu {
 				this.#showRows();
 				this.requestRender?.();
 			},
+			// The any-model row spans the catalog, so its rows are the union of what
+			// the catalog declares — never the vocabulary constant.
+			key === ANY_MODEL_EFFORT_KEY ? this.models : undefined,
 		);
 	}
 
@@ -3477,11 +3530,10 @@ export class SettingsSelectorComponent implements Component {
 		// models that route effort through sibling model ids — picks that stored a
 		// value the resolver then had to clamp or ignore.
 		if (Object.hasOwn(EFFORT_SUBMENU_PATHS, def.path)) {
-			return configuredThinkingLevelOptions({
-				model: subagentEffortModel(this.context.availableModels, this.context.model),
-				inheritLabel: "Inherit",
-				inheritDescription: "Follow the session's effort",
-			}).map(option => ({ ...option }));
+			return subagentEffortOptions(
+				subagentEffortScope(this.context.availableModels, this.context.model),
+				this.context.availableModels,
+			).options;
 		}
 		return def.options;
 	}
@@ -3494,14 +3546,19 @@ export class SettingsSelectorComponent implements Component {
 		currentValue: string,
 		done: (value?: string) => void,
 	): Container {
-		const options = this.#submenuOptions(def);
+		const effort = Object.hasOwn(EFFORT_SUBMENU_PATHS, def.path)
+			? subagentEffortOptions(
+					subagentEffortScope(this.context.availableModels, this.context.model),
+					this.context.availableModels,
+				)
+			: undefined;
+		const options = effort?.options ?? this.#submenuOptions(def);
 		// A row whose only choice is "inherit" has nothing to pick, and saying why
-		// beats a one-row list: this model decides effort through its model id, so
-		// there is no effort field for this setting to fill.
-		const description =
-			Object.hasOwn(EFFORT_SUBMENU_PATHS, def.path) && options.length <= 1
-				? `${def.description} ${noSelectableEffortNotice()}`
-				: def.description;
+		// beats a one-row list. WHICH sentence is true depends on the scope: a model
+		// that decides effort through its model id exposes no effort field, a
+		// catalog can declare no effort at all, and a chain naming a model this
+		// session cannot resolve knows nothing either way. The scope owner picks.
+		const description = effort?.notice ? `${def.description} ${effort.notice}` : def.description;
 
 		// Preview handlers
 		let onPreview: ((value: string) => void | Promise<void>) | undefined;
@@ -3758,6 +3815,7 @@ export class SettingsSelectorComponent implements Component {
 			this.context.cwd,
 			active,
 			this.context.model,
+			this.context.availableModels,
 			this.#requireModelPickerContext(),
 			path => {
 				this.callbacks.onChange(path, settings.get(path));

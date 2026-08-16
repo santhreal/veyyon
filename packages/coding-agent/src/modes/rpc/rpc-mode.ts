@@ -648,11 +648,14 @@ export function rpcUnknownCommandResponse(commandType: string): RpcResponse {
  *
  * `inherit` is always accepted: it is how a client clears its choice, not a level,
  * and it is the one value every picker keeps offering for exactly that reason. No
- * model in scope means no row to narrow against, so nothing is refused — the same
- * rule {@link configuredThinkingLevelsForModel} applies to a missing model.
+ * model in scope means no row to narrow against, so nothing is refused: a client
+ * that sets a level before a model resolves is not making a mistake this function
+ * can see. That is a decision HERE, not a fallback ladder in the narrowing helper,
+ * which offers nothing for a model it cannot read.
  */
 export function rpcThinkingLevelRefusal(model: Model | undefined, level: ThinkingLevel): string | undefined {
 	if (level === ThinkingLevel.Inherit) return undefined;
+	if (!model) return undefined;
 	const choices = configuredThinkingLevelsForModel(model);
 	if (choices.includes(level)) return undefined;
 	const accepted = choices.length > 0 ? choices.join(", ") : "none (this model exposes no effort control)";

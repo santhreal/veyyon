@@ -14,6 +14,7 @@
  */
 
 import { describe, expect, it, vi } from "bun:test";
+import { getBundledModel } from "@veyyon/catalog/models";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 import { executeAcpBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/acp-builtins";
 import {
@@ -327,21 +328,34 @@ describe("an ACP-reachable remedy names something an ACP client can run", () => 
 	 * its own wording to drift.
 	 */
 	it("/effort names the config key beside the settings screen, under either spelling", async () => {
-		// The ladder comes from the session's own model through formatThinkingLevelChoices,
-		// not from a runtime callback, so there is nothing to stub here: what the command
-		// offers is what the model accepts.
+		// A REAL model, because the ladder comes from the session's own model through
+		// formatThinkingLevelChoices rather than from a runtime callback: what the command offers is
+		// what the endpoint accepts. With no model at all the command has no ladder to name and says
+		// so instead, which is the case below.
+		const model = getBundledModel("azure", "gpt-5");
 		const expected =
-			"Effort: auto (this session). Choose one of: off, auto, minimal, low, medium, high, xhigh, max. " +
+			"Effort: auto (this session). Choose one of: off, auto, minimal, low, medium, high. " +
 			"Usage: /effort <level>. " +
 			'To change the saved default, use /settings → Model → Default Effort, or run: veyyon config set defaultEffort \'{"*":"high"}\'.';
 
-		const primary = acpRuntime({ configuredThinkingLevel: () => undefined });
+		const primary = acpRuntime({ model, configuredThinkingLevel: () => undefined });
 		await executeAcpBuiltinSlashCommand("/effort", primary.runtime);
 		expect(primary.said).toEqual([expected]);
 
-		const alias = acpRuntime({ configuredThinkingLevel: () => undefined });
+		const alias = acpRuntime({ model, configuredThinkingLevel: () => undefined });
 		await executeAcpBuiltinSlashCommand("/thinking", alias.runtime);
 		expect(alias.said).toEqual([expected]);
+	});
+
+	/**
+	 * With no model there is no ladder, and the command says that rather than printing the whole
+	 * configuration vocabulary. Printing it is what put `minimal` in front of a session whose models
+	 * declare `low, high, max`.
+	 */
+	it("/effort refuses to name a ladder when the session has no model", async () => {
+		const h = acpRuntime({ configuredThinkingLevel: () => undefined });
+		await executeAcpBuiltinSlashCommand("/effort", h.runtime);
+		expect(h.said).toEqual(["No model selected."]);
 	});
 
 	it("/cwd names the config key beside the settings path", async () => {
