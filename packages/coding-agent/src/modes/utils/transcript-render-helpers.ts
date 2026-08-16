@@ -5,6 +5,7 @@
  * here keeps the two byte-for-byte identical.
  */
 import type { AgentMessage } from "@veyyon/agent-core";
+import { TOOL_BATCH_LEDGER_HEADLINE_PREFIX } from "@veyyon/agent-core/tool-batch-ledger";
 import { type Component, Text } from "@veyyon/tui";
 import { collapseWhitespace, formatBytes, formatDuration } from "@veyyon/utils";
 import type { AsyncJobType } from "../../async";
@@ -256,4 +257,18 @@ export function assistantUsageIsBilled(usage: AssistantAgentMessage["usage"]): b
 	if (usage.cacheRead > 0 || usage.cacheWrite > 0) return true;
 	if ((usage.premiumRequests ?? 0) > 0) return true;
 	return false;
+}
+
+/**
+ * Collapse a turn-level tool-batch ledger to a one-line transcript marker, or
+ * return null when `text` is not a ledger. The ledger's full body is a standing
+ * instruction to the MODEL (which calls ran, which to retry); the operator
+ * needs only the fact that a batch was cut short and continued, in the same
+ * dim one-liner language as the compaction marker.
+ */
+export function ledgerMarkerLine(text: string): string | null {
+	if (!text.startsWith(TOOL_BATCH_LEDGER_HEADLINE_PREFIX)) return null;
+	const headline = text.split("\n", 1)[0]!.replace(/\.$/, "");
+	const summary = headline.slice(TOOL_BATCH_LEDGER_HEADLINE_PREFIX.length - 1);
+	return theme.fg("dim", `  ${theme.status.warning} batch cut short ${summary}.`);
 }
