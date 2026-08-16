@@ -16,8 +16,14 @@
 //
 // Nothing here knows what a gauge looks like. It owns WHERE the value is right
 // now; the renderer owns what 61.4% draws as.
+//
+// The curve is an option because "a number that walks to its new value" is not
+// only a gauge. A viewport's scroll offset is the same primitive read as rows
+// instead of percent, and it names `MOTION.move` -- the interruptible travel a
+// selection uses -- rather than `MOTION.settle`. One owner for the walking, two
+// curves for what is walking.
 
-import { type Animation, MOTION, type MotionClock, motionClock } from "./motion";
+import { type Animation, type AnimationCurve, MOTION, type MotionClock, motionClock } from "./motion";
 
 export interface SettleValueOptions {
 	/** Called on every animated frame, so the host repaints between revisions. */
@@ -37,6 +43,12 @@ export interface SettleValueOptions {
 	epsilon?: number;
 	/** The clock to run on. Tests pass a hand-ticked one. */
 	clock?: MotionClock;
+	/**
+	 * Which motion the travel runs on. Defaults to {@link MOTION.settle}, the
+	 * nudged-value spring. A caller whose value is a position rather than a
+	 * measurement passes {@link MOTION.move}.
+	 */
+	curve?: AnimationCurve;
 }
 
 /**
@@ -53,12 +65,14 @@ export class SettleValue {
 	readonly #enabled: boolean;
 	readonly #epsilon: number;
 	readonly #clock: MotionClock;
+	readonly #curve: AnimationCurve;
 
 	constructor(options: SettleValueOptions) {
 		this.#requestRender = options.requestRender;
 		this.#enabled = options.enabled ?? true;
 		this.#epsilon = options.epsilon ?? 0;
 		this.#clock = options.clock ?? motionClock;
+		this.#curve = options.curve ?? MOTION.settle;
 	}
 
 	/** Where the value is right now, or undefined before it has ever been set. */
@@ -95,7 +109,7 @@ export class SettleValue {
 			this.#clock.resume(this.#animation);
 			return true;
 		}
-		this.#animation = this.#clock.animate(MOTION.settle, {
+		this.#animation = this.#clock.animate(this.#curve, {
 			from: current,
 			to: target,
 			onFrame: () => this.#requestRender(),
