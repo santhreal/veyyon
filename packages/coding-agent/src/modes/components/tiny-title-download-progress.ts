@@ -1,8 +1,9 @@
-import { type Component, padLineToWidth } from "@veyyon/tui";
+import type { Component } from "@veyyon/tui";
 import { clamp01, clampLow, formatBytes } from "@veyyon/utils";
 import { getTinyTitleModelSpec, type TinyTitleLocalModelKey } from "../../tiny/models";
 import type { TinyTitleProgressEvent } from "../../tiny/title-protocol";
 import { theme } from "../theme/theme";
+import { COMPOSER_INSET_COLS } from "./composer-chrome";
 
 const DEFAULT_BAR_WIDTH = 24;
 
@@ -66,20 +67,35 @@ export class TinyTitleDownloadProgressComponent implements Component {
 		// No cached state.
 	}
 
+	/**
+	 * Two rows on the transcript's rail: what is downloading, then how far.
+	 *
+	 * It used to be a bordered band — a full-width rule above and below, its
+	 * rows padded edge to edge from column zero — which made a background
+	 * download the loudest thing on screen and put it two columns left of every
+	 * other block. A download is a status, so it reads as one.
+	 */
 	render(width: number): readonly string[] {
 		width = Math.max(1, width);
+		const inset = " ".repeat(COMPOSER_INSET_COLS);
 		const spec = getTinyTitleModelSpec(this.#modelKey);
-		const border = theme.fg("border", theme.boxSharp.horizontal.repeat(width));
+		const dot = theme.sep.dot.trim();
 		const status = statusLabel(this.#event);
 		const file = currentFile(this.#event);
 		const pct =
 			this.#event?.progress === undefined ? "" : `${Math.floor(this.#event.progress).toString().padStart(3, " ")}%`;
 		const bytes = byteLabel(this.#event);
-		const title = `${theme.fg("accent", "Tiny model")} ${theme.fg("muted", status)} ${spec.label}`;
-		const details = [progressBar(this.#event?.progress, Math.max(8, width - 36)), pct, bytes, file]
-			.filter((part): part is string => Boolean(part))
-			.join(" ");
+		const title = [theme.fg("accent", "Tiny model"), theme.fg("muted", status), theme.fg("dim", spec.label)].join(
+			theme.fg("dim", ` ${dot} `),
+		);
+		// The bar carries its own colors, so the trailing facts are dimmed one by
+		// one: wrapping the joined row would end at the bar's own reset and leave
+		// the numbers on the default foreground.
+		const details = [
+			progressBar(this.#event?.progress, Math.max(8, width - COMPOSER_INSET_COLS - 36)),
+			...[pct, bytes, file].filter((part): part is string => Boolean(part)).map(part => theme.fg("dim", part)),
+		].join(" ");
 
-		return [border, padLineToWidth(` ${title}`, width), padLineToWidth(` ${details}`, width), border];
+		return [`${inset}${title}`, `${inset}${details}`];
 	}
 }
