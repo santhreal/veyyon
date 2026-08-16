@@ -47,7 +47,7 @@ import {
 	minModalChromeRows,
 	renderModalShell,
 } from "./modal-shell";
-import { handleTabSwitchKey } from "./selector-helpers";
+import { handleTabSwitchKey, selectionBand } from "./selector-helpers";
 
 const SUBMIT_OPTION = "Submit";
 
@@ -148,6 +148,10 @@ interface RenderedList {
 	lines: string[];
 	scrollOffset: number;
 	indicator: string;
+	/** Question lists only: per-row start line within the unclipped list, and the
+	 *  total unclipped line count, so pointer rows map back to option rows. */
+	lineStarts?: number[];
+	lineCount?: number;
 }
 
 interface PreviewSegment {
@@ -430,6 +434,15 @@ export class AskDialogComponent implements Component {
 	#states: QuestionState[];
 	#activeTabIndex = 0;
 	#submitScrollOffset = 0;
+	/** Pointer-highlighted option row on the active question tab (null clears). */
+	#hoveredRowIndex: number | null = null;
+	/** Last render's option-list geometry for pointer hit-testing. */
+	#listPointerMap: {
+		frameStart: number;
+		lineStarts: number[];
+		lineCount: number;
+		scrollOffset: number;
+	} | null = null;
 	#remainingSeconds: number | undefined;
 	#countdown: CountdownTimer | undefined;
 	#promptActive = false;
@@ -549,6 +562,18 @@ export class AskDialogComponent implements Component {
 			showClose: true,
 		});
 		this.#shellGeometry = shell.geometry;
+		// Pointer map for the option list: frame row of the list's first rendered
+		// line plus the unclipped row starts from this render. Null on the submit
+		// tab, whose body is a scrollable summary with no selectable rows.
+		this.#listPointerMap =
+			bodyLines.lineStarts !== undefined && bodyLines.lineCount !== undefined
+				? {
+						frameStart: (shell.geometry?.bodyRowStart ?? 0) + headerLines.length,
+						lineStarts: bodyLines.lineStarts,
+						lineCount: bodyLines.lineCount,
+						scrollOffset: bodyLines.scrollOffset,
+					}
+				: null;
 		return applyModalReveal(shell, width, this.#reveal.value);
 	}
 
@@ -601,6 +626,54 @@ export class AskDialogComponent implements Component {
 			if (chrome.kind === "shortcut" && chrome.id === "confirm") {
 				if (this.#isSubmitTab()) this.#handleSubmitTabInput("\n");
 				else this.#handleQuestionInput("\n");
+				return true;
+			}
+			if (event.wheel !== null) {
+				if (this.#isSubmitTab()) {
+					this.#submitScrollOffset = Math.max(0, this.#submitScrollOffset + event.wheel);
+				} else {
+					const active = this.#activeQuestionState();
+					if (active) {
+						const rowCount = this.#questionRows(active.question).length;
+						active.state.cursorIndex = clamp(
+							active.state.cursorIndex + event.wheel,
+							0,
+							Math.max(0, rowCount - 1),
+						);
+					}
+				}
+				this.#requestRender();
+				return true;
+			}
+			const map = this.#listPointerMap;
+			const local = map ? event.row - map.frameStart + map.scrollOffset : -1;
+			let rowIndex: number | null = null;
+			if (map && local >= 0 && local < map.lineCount) {
+				// Largest row start at or below the line: the row the pointer is over.
+				for (let index = map.lineStarts.length - 1; index >= 0; index--) {
+					if ((map.lineStarts[index] ?? 0) <= local) {
+						rowIndex = index;
+						break;
+					}
+				}
+			}
+			if (event.motion) {
+				if (rowIndex !== this.#hoveredRowIndex) {
+					this.#hoveredRowIndex = rowIndex;
+					this.#requestRender();
+				}
+				return true;
+			}
+			if (event.leftClick && rowIndex !== null) {
+				// Click mirrors the cursor + Enter: an option answers (single) or
+				// toggles (multi), the Other row opens the inline input.
+				const active = this.#activeQuestionState();
+				if (active) {
+					active.state.cursorIndex = rowIndex;
+					this.#hoveredRowIndex = null;
+					this.#handleQuestionInput("\n");
+				}
+				return true;
 			}
 			return true;
 		});
@@ -751,6 +824,7 @@ export class AskDialogComponent implements Component {
 		const tabCount = this.questions.length + 1;
 		this.#activeTabIndex = (this.#activeTabIndex + direction + tabCount) % tabCount;
 		this.#submitScrollOffset = 0;
+		this.#hoveredRowIndex = null;
 	}
 
 	#advanceAfterQuestion(): void {
@@ -867,6 +941,16 @@ export class AskDialogComponent implements Component {
 			if (!rowItem) continue;
 			allLines.push(...renderRowLabel(rowItem, question, state, index === state.cursorIndex, mdTheme, width));
 		}
+		// Pointer hover bands the whole row (label + description lines); the
+		// cursor row keeps its own accent styling and never double-bands.
+		const hovered = this.#hoveredRowIndex;
+		if (hovered !== null && hovered < rowItems.length && hovered !== state.cursorIndex) {
+			const from = lineStartByRow[hovered] ?? allLines.length;
+			const to = lineStartByRow[hovered + 1] ?? allLines.length;
+			for (let line = from; line < to; line++) {
+				allLines[line] = selectionBand(allLines[line]!, width);
+			}
+		}
 		const cursorStart = lineStartByRow[state.cursorIndex] ?? 0;
 		state.scrollOffset = this.#scrollOffsetForCursor(state.scrollOffset, cursorStart, rows, allLines.length);
 		const scrollView = new ScrollView(allLines, {
@@ -881,6 +965,8 @@ export class AskDialogComponent implements Component {
 			lines: lines.slice(0, rows),
 			scrollOffset: state.scrollOffset,
 			indicator: this.#clipIndicator(state.scrollOffset, rows, allLines.length),
+			lineStarts: lineStartByRow,
+			lineCount: allLines.length,
 		};
 	}
 

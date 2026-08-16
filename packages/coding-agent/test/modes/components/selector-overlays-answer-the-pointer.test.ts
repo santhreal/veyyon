@@ -29,6 +29,8 @@ import type { Model } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
 import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { Settings } from "@veyyon/coding-agent/config/settings";
+import type { ExtensionAskDialogQuestion } from "@veyyon/coding-agent/extensibility/extensions/types";
+import { AskDialogComponent } from "@veyyon/coding-agent/modes/components/ask-dialog";
 import { CopySelectorComponent } from "@veyyon/coding-agent/modes/components/copy-selector";
 import { HistorySearchComponent } from "@veyyon/coding-agent/modes/components/history-search";
 import { ModelPickerComponent } from "@veyyon/coding-agent/modes/components/model-picker";
@@ -36,7 +38,7 @@ import { MoveOverlay } from "@veyyon/coding-agent/modes/components/move-overlay"
 import { ResetUsageSelectorComponent } from "@veyyon/coding-agent/modes/components/reset-usage-selector";
 import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/components/session-selector";
 import { UserMessageSelectorComponent } from "@veyyon/coding-agent/modes/components/user-message-selector";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { CopyTarget } from "@veyyon/coding-agent/modes/utils/copy-targets";
 import type { HistoryEntry, HistoryStorage } from "@veyyon/coding-agent/session/history-storage";
 import type { SessionInfo } from "@veyyon/coding-agent/session/session-listing";
@@ -266,6 +268,44 @@ describe("selector overlays answer the pointer", () => {
 		expect(picked).toBeUndefined();
 		picker.handleInput(clickAt(row)); // click-again activates
 		expect(picked?.id).toBe("llama-3");
+	});
+
+	it("ask dialog: hover bands an option, click answers it", () => {
+		const questions: ExtensionAskDialogQuestion[] = [
+			{ id: "q1", question: "Choose one?", options: [{ label: "Option A" }, { label: "Option B" }] },
+		];
+		let selected: string[] | undefined;
+		const dialog = new AskDialogComponent(questions, {
+			onSubmit: result => {
+				selected = result.results[0]?.selectedOptions;
+			},
+			onCancel: () => {},
+			onPrompt: () => Promise.resolve(undefined),
+		});
+
+		expectHoverBand(dialog, "Option B");
+
+		dialog.handleInput(clickAt(rowOf(dialog, "Option B")));
+		expect(selected).toEqual(["Option B"]);
+	});
+
+	it("ask dialog: wheel moves the option cursor like the arrow keys", () => {
+		const questions: ExtensionAskDialogQuestion[] = [
+			{ id: "q1", question: "Choose one?", options: [{ label: "Option A" }, { label: "Option B" }] },
+		];
+		const dialog = new AskDialogComponent(questions, {
+			onSubmit: () => {},
+			onCancel: () => {},
+			onPrompt: () => {},
+		});
+
+		dialog.handleInput(wheelAt("down", rowOf(dialog, "Option A")));
+		// The selection cursor left Option A's row for Option B's.
+		const lines = dialog.render(WIDTH);
+		const optionB = lines.find(line => line.includes("Option B"));
+		const optionA = lines.find(line => line.includes("Option A"));
+		expect(optionB).toContain(theme.nav.cursor);
+		expect(optionA).not.toContain(theme.nav.cursor);
 	});
 
 	it("session selector: hover bands a session row", () => {
