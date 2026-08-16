@@ -21,7 +21,6 @@ function render(tree: SessionTreeNode[], width = 120): string {
 	const selector = new TreeSelectorComponent(
 		tree,
 		tree[tree.length - 1]?.entry.id ?? null,
-		60,
 		() => {},
 		() => {},
 	);

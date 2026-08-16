@@ -46,8 +46,7 @@ function userMessageTree(): SessionTreeNode[] {
 }
 
 function renderSelector(selector: TreeSelectorComponent): string {
-	const lines = (selector as unknown as { render: (w: number) => string[] }).render(120);
-	return Bun.stripANSI(lines.join("\n"));
+	return Bun.stripANSI(selector.render(120).join("\n"));
 }
 
 describe("issue #1909: tree-selector empty-state messaging", () => {
@@ -55,7 +54,6 @@ describe("issue #1909: tree-selector empty-state messaging", () => {
 		const selector = new TreeSelectorComponent(
 			freshSessionTree(),
 			"e2",
-			60,
 			() => {},
 			() => {},
 		);
@@ -75,7 +73,6 @@ describe("issue #1909: tree-selector empty-state messaging", () => {
 		const selector = new TreeSelectorComponent(
 			userMessageTree(),
 			"e1",
-			60,
 			() => {},
 			() => {},
 		);
@@ -93,7 +90,6 @@ describe("issue #1909: tree-selector empty-state messaging", () => {
 		const selector = new TreeSelectorComponent(
 			[],
 			null,
-			60,
 			() => {},
 			() => {},
 		);

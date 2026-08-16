@@ -3,6 +3,7 @@ import type { AgentMessage } from "@veyyon/agent-core";
 import { TreeSelectorComponent } from "@veyyon/coding-agent/modes/components/tree-selector";
 import * as themeModule from "@veyyon/coding-agent/modes/theme/theme";
 import type { SessionEntry, SessionTreeNode } from "@veyyon/coding-agent/session/session-entries";
+import { cardBodyLines } from "../../helpers/modal-card";
 
 let counter = 0;
 function makeNode(role: "user" | "assistant", text: string, parentId: string | null = null): SessionTreeNode {
@@ -30,11 +31,12 @@ function renderStripped(tree: SessionTreeNode[], leafId: string, width = 120): s
 	const selector = new TreeSelectorComponent(
 		tree,
 		leafId,
-		60,
 		() => {},
 		() => {},
 	);
-	return selector.render(width).map(line => Bun.stripANSI(line));
+	// The tree now paints inside a ModalShell card, so the gutter columns these
+	// assertions measure start after the card's left border, not at column 0.
+	return cardBodyLines(selector.render(width));
 }
 
 describe("issue #2298: chain rows under last-sibling branches keep their gutter", () => {

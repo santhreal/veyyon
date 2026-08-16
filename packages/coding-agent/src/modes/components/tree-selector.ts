@@ -1,14 +1,13 @@
 import { ThinkingLevel } from "@veyyon/agent-core";
 import {
 	type Component,
-	Container,
 	extractPrintableText,
 	fuzzyMatch,
 	Input,
 	matchesKey,
-	Spacer,
-	Text,
-	TruncatedText,
+	padding,
+	routeSgrMouseInput,
+	type SgrMouseEvent,
 	truncateToWidth,
 } from "@veyyon/tui";
 import type { TreeFilterMode } from "../../config/settings-schema";
@@ -19,7 +18,19 @@ import { toPathList } from "../../tools/path-utils";
 import { shortenPath } from "../../tools/render-utils";
 import { canonicalizeMessage } from "../../utils/thinking-display";
 import { resolveAssistantErrorPresentation } from "../utils/transcript-render-helpers";
-import { DynamicBorder } from "./dynamic-border";
+import {
+	applyModalReveal,
+	computeModalDims,
+	consumeModalChipHover,
+	hitTestModalChrome,
+	MODAL_SIZING_LARGE,
+	ModalRevealDriver,
+	type ModalShellGeometry,
+	type ModalShortcut,
+	planModalChrome,
+	renderModalShell,
+	sizingForArea,
+} from "./modal-shell";
 import { centeredWindow, renderScrollableList, selectionBand } from "./selector-helpers";
 
 /** Gutter info: position (displayIndent where connector was) and whether to show │ */
@@ -65,6 +76,12 @@ class TreeList implements Component {
 	#multipleRoots = false;
 	#activePathIds: Set<string> = new Set();
 	#lastSelectedId: string | null = null;
+	/** Rows the card can spare for tree entries; the shell decides it per frame. */
+	#maxVisibleLines: number;
+	/** Pointer-highlighted entry (never the selected one; selection owns its row). */
+	#hoveredIndex: number | null = null;
+	/** Per-render map of 0-based rendered line → filtered-node index. */
+	#hitRows: (number | undefined)[] = [];
 
 	onSelect?: (entryId: string) => void;
 	onCancel?: () => void;
@@ -73,10 +90,11 @@ class TreeList implements Component {
 	constructor(
 		tree: SessionTreeNode[],
 		private readonly currentLeafId: string | null,
-		private readonly maxVisibleLines: number,
+		maxVisibleLines: number,
 		initialFilterMode: FilterMode = "default",
 		initialSelectedId?: string,
 	) {
+		this.#maxVisibleLines = maxVisibleLines;
 		this.#filterMode = initialFilterMode;
 		this.#multipleRoots = tree.length > 1;
 		this.#flatNodes = this.#flattenTree(tree);
@@ -412,8 +430,43 @@ class TreeList implements Component {
 		return this.#searchQuery;
 	}
 
-	getSelectedNode(): SessionTreeNode | undefined {
-		return this.#filteredNodes[this.#selectedIndex]?.node;
+	/** Size the viewport to the rows the card can spare this frame. */
+	setMaxVisibleLines(rows: number): void {
+		this.#maxVisibleLines = Math.max(1, rows);
+	}
+
+	/** Resolve a rendered line (0-based within this list) to a filtered-node index. */
+	hitTest(line: number): number | undefined {
+		return this.#hitRows[line];
+	}
+
+	/** Highlight the entry under the pointer (null clears). Returns true on change. */
+	setHoverIndex(index: number | null): boolean {
+		if (this.#hoveredIndex === index) return false;
+		this.#hoveredIndex = index;
+		return true;
+	}
+
+	/** Move the selection one step for a wheel notch (wraps like the arrow keys). */
+	handleWheel(delta: -1 | 1): void {
+		const total = this.#filteredNodes.length;
+		if (total === 0) return;
+		this.#selectedIndex =
+			delta < 0
+				? this.#selectedIndex === 0
+					? total - 1
+					: this.#selectedIndex - 1
+				: this.#selectedIndex === total - 1
+					? 0
+					: this.#selectedIndex + 1;
+	}
+
+	/** Move to the entry under the pointer and jump to it, exactly as Enter does. */
+	clickItem(index: number): void {
+		const target = this.#filteredNodes[index];
+		if (!target) return;
+		this.#selectedIndex = index;
+		this.onSelect?.(target.node.entry.id);
 	}
 
 	updateNodeLabel(entryId: string, label: string | undefined): void {
@@ -442,6 +495,10 @@ class TreeList implements Component {
 
 	render(width: number): readonly string[] {
 		const lines: string[] = [];
+		// Cleared here, not only in `#buildRows`: an empty filter result returns
+		// before the rows are built, and a stale map would answer clicks with the
+		// entries the previous filter showed.
+		this.#hitRows = [];
 
 		if (this.#filteredNodes.length === 0) {
 			// Three empty-state shapes:
@@ -479,7 +536,7 @@ class TreeList implements Component {
 		const { startIndex, endIndex } = centeredWindow(
 			this.#selectedIndex,
 			this.#filteredNodes.length,
-			this.maxVisibleLines,
+			this.#maxVisibleLines,
 		);
 
 		lines.push(
@@ -521,6 +578,7 @@ class TreeList implements Component {
 		const maxIndentLevels = Math.max(1, Math.floor((rowWidth - contentReserve - OVERHEAD_COLS) / 3));
 
 		const rows: string[] = [];
+		this.#hitRows = [];
 
 		for (let i = startIndex; i < endIndex; i++) {
 			const flatNode = this.#filteredNodes[i];
@@ -603,8 +661,12 @@ class TreeList implements Component {
 
 			const line = cursor + theme.fg("dim", prefix) + pathMarker + label + content;
 			// The selection band is the ROW, not the text: pad to the full row width
-			// before tinting so the highlight has the same shape on every entry.
-			rows.push(isSelected ? selectionBand(line, rowWidth) : truncateToWidth(line, rowWidth));
+			// before tinting so the highlight has the same shape on every entry. The
+			// pointer borrows the same band; the cursor keeps its accent arrow, so
+			// the two never read as one selection.
+			const isHovered = i === this.#hoveredIndex && !isSelected;
+			this.#hitRows[i - startIndex] = i;
+			rows.push(isSelected || isHovered ? selectionBand(line, rowWidth) : truncateToWidth(line, rowWidth));
 		}
 
 		return rows;
@@ -801,10 +863,10 @@ class TreeList implements Component {
 			this.#selectedIndex = this.#selectedIndex === this.#filteredNodes.length - 1 ? 0 : this.#selectedIndex + 1;
 		} else if (matchesKey(keyData, "left")) {
 			// Page up
-			this.#selectedIndex = Math.max(0, this.#selectedIndex - this.maxVisibleLines);
+			this.#selectedIndex = Math.max(0, this.#selectedIndex - this.#maxVisibleLines);
 		} else if (matchesKey(keyData, "right")) {
 			// Page down
-			this.#selectedIndex = Math.min(this.#filteredNodes.length - 1, this.#selectedIndex + this.maxVisibleLines);
+			this.#selectedIndex = Math.min(this.#filteredNodes.length - 1, this.#selectedIndex + this.#maxVisibleLines);
 		} else if (matchesKey(keyData, "enter") || matchesKey(keyData, "return") || keyData === "\n") {
 			const selected = this.#filteredNodes[this.#selectedIndex];
 			if (selected && this.onSelect) {
@@ -866,22 +928,18 @@ class TreeList implements Component {
 	}
 }
 
-/** Component that displays the current search query */
-class SearchLine implements Component {
-	constructor(private treeList: TreeList) {}
+/** ModalShell footer chips. One array, so the chrome plan matches the chips the card paints. */
+const TREE_SHORTCUTS: readonly ModalShortcut[] = [
+	{ label: "move", keybindings: ["tui.select.up", "tui.select.down"] },
+	{ label: "left/right page" },
+	{ label: "shift+L label" },
+	{ label: "ctrl+O filter" },
+	{ label: "enter jump", clickable: true, id: "confirm" },
+	{ label: "esc close", clickable: true, id: "close" },
+];
 
-	invalidate(): void {}
-
-	render(width: number): readonly string[] {
-		const query = this.treeList.getSearchQuery();
-		if (query) {
-			return [truncateToWidth(`  ${theme.fg("muted", "Search:")} ${theme.fg("accent", query)}`, width)];
-		}
-		return [truncateToWidth(`  ${theme.fg("muted", "Search:")}`, width)];
-	}
-
-	handleInput(_keyData: string): void {}
-}
+/** Rows the tree keeps even on a short terminal. */
+const MIN_TREE_ROWS = 3;
 
 /** Label input component shown when editing a label */
 class LabelInput implements Component {
@@ -924,60 +982,51 @@ class LabelInput implements Component {
 }
 
 /**
- * Component that renders a session tree selector for navigation
+ * `/tree` picker: the session tree inside a floating ModalShell card, with the
+ * label editor taking the body while it is open.
  */
-export class TreeSelectorComponent extends Container {
+export class TreeSelectorComponent implements Component {
 	#treeList: TreeList;
 	#labelInput: LabelInput | null = null;
-	#labelInputContainer: Container;
-	#treeContainer: Container;
+	#shellGeometry: ModalShellGeometry | null = null;
+	#hoveredShortcutId: string | null = null;
+	/** Frame row where the tree's own rows begin (shell body start). */
+	#listRowStart = 0;
+	#onRequestRender?: () => void;
+	#reveal = new ModalRevealDriver();
 
 	constructor(
 		tree: SessionTreeNode[],
 		currentLeafId: string | null,
-		terminalHeight: number,
 		onSelect: (entryId: string) => void,
-		onCancel: () => void,
+		private readonly onCancel: () => void,
 		private readonly onLabelChangeCallback?: (entryId: string, label: string | undefined) => void,
 		initialFilterMode: FilterMode = "default",
+		/** Play the open unfold (TOUCH-5). Show site decides via modalRevealEnabled(). */
+		reveal?: boolean,
 	) {
-		super();
-		const maxVisibleLines = Math.max(5, Math.floor(terminalHeight / 2));
-
-		this.#treeList = new TreeList(tree, currentLeafId, maxVisibleLines, initialFilterMode);
+		// The viewport is re-sized from the chrome plan on every frame; this seed
+		// only has to be positive for the first centered window.
+		this.#treeList = new TreeList(tree, currentLeafId, MIN_TREE_ROWS, initialFilterMode);
 		this.#treeList.onSelect = onSelect;
 		this.#treeList.onCancel = onCancel;
 		this.#treeList.onLabelEdit = (entryId, currentLabel) => this.#showLabelInput(entryId, currentLabel);
 
-		this.#treeContainer = new Container();
-		this.#treeContainer.addChild(this.#treeList);
-
-		this.#labelInputContainer = new Container();
-
-		this.addChild(new Spacer(1));
-		this.addChild(new DynamicBorder());
-		this.addChild(new Text(theme.bold("  Session Tree"), 1, 0));
-		this.addChild(
-			new TruncatedText(
-				theme.fg(
-					"muted",
-					"Up/Down: move. Left/Right: page. Shift+L: label. Ctrl+O/Shift+Ctrl+O: filter. Alt+D/T/U/L/A: filter. Type to search",
-				),
-				0,
-				0,
-			),
-		);
-		this.addChild(new SearchLine(this.#treeList));
-		this.addChild(new DynamicBorder());
-		this.addChild(new Spacer(1));
-		this.addChild(this.#treeContainer);
-		this.addChild(this.#labelInputContainer);
-		this.addChild(new Spacer(1));
-		this.addChild(new DynamicBorder());
+		if (reveal) {
+			this.#reveal.start(() => this.#onRequestRender?.());
+		}
 
 		if (tree.length === 0) {
 			setTimeout(() => onCancel(), 100);
 		}
+	}
+
+	setOnRequestRender(cb: () => void): void {
+		this.#onRequestRender = cb;
+	}
+
+	invalidate(): void {
+		this.#treeList.invalidate();
 	}
 
 	#showLabelInput(entryId: string, currentLabel: string | undefined): void {
@@ -988,20 +1037,17 @@ export class TreeSelectorComponent extends Container {
 			this.#hideLabelInput();
 		};
 		this.#labelInput.onCancel = () => this.#hideLabelInput();
-
-		this.#treeContainer.clear();
-		this.#labelInputContainer.clear();
-		this.#labelInputContainer.addChild(this.#labelInput);
 	}
 
 	#hideLabelInput(): void {
 		this.#labelInput = null;
-		this.#labelInputContainer.clear();
-		this.#treeContainer.clear();
-		this.#treeContainer.addChild(this.#treeList);
 	}
 
 	handleInput(keyData: string): void {
+		if (keyData.startsWith("\x1b[<")) {
+			routeSgrMouseInput(keyData, event => this.#routeMouse(event));
+			return;
+		}
 		if (this.#labelInput) {
 			this.#labelInput.handleInput(keyData);
 		} else {
@@ -1009,7 +1055,106 @@ export class TreeSelectorComponent extends Container {
 		}
 	}
 
-	getTreeList(): TreeList {
-		return this.#treeList;
+	#routeMouse(event: SgrMouseEvent): boolean {
+		const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
+			motion: event.motion,
+			leftClick: event.leftClick,
+		});
+		if (
+			consumeModalChipHover(chrome, this.#hoveredShortcutId, id => {
+				this.#hoveredShortcutId = id;
+				this.#onRequestRender?.();
+			})
+		) {
+			return true;
+		}
+		if (
+			chrome.kind === "close" ||
+			chrome.kind === "outside" ||
+			(chrome.kind === "shortcut" && chrome.id === "close")
+		) {
+			// While the label editor owns the body, close means "abandon the edit"
+			// — the same thing Esc does there — and the tree stays up.
+			if (this.#labelInput) {
+				this.#hideLabelInput();
+				this.#onRequestRender?.();
+				return true;
+			}
+			this.onCancel();
+			return true;
+		}
+		if (chrome.kind === "shortcut" && chrome.id === "confirm") {
+			this.handleInput("\n");
+			return true;
+		}
+		// The label editor has no rows to hit-test; only the chrome answers.
+		if (this.#labelInput) return true;
+		if (event.wheel !== null) {
+			this.#treeList.handleWheel(event.wheel);
+			this.#onRequestRender?.();
+			return true;
+		}
+		const line = event.row - this.#listRowStart;
+		if (event.motion) {
+			if (this.#treeList.setHoverIndex(this.#treeList.hitTest(line) ?? null)) {
+				this.#onRequestRender?.();
+			}
+			return true;
+		}
+		if (event.leftClick) {
+			const index = this.#treeList.hitTest(line);
+			if (index !== undefined) this.#treeList.clickItem(index);
+			return true;
+		}
+		return true;
+	}
+
+	render(width: number): readonly string[] {
+		const height = process.stdout.rows || 40;
+		const sizing = sizingForArea(MODAL_SIZING_LARGE, height);
+		const dims = computeModalDims(width, height, sizing);
+		if (!dims) {
+			this.#shellGeometry = null;
+			return Array.from({ length: height }, () => padding(width));
+		}
+
+		const query = this.#treeList.getSearchQuery();
+		const searchLine = query
+			? `${theme.fg("muted", "Search:")} ${theme.fg("accent", query)}`
+			: theme.fg("dim", "Type to search");
+		const chrome = planModalChrome({
+			sizing,
+			modalHeight: dims.modalHeight,
+			contentWidth: dims.contentWidth,
+			shortcuts: TREE_SHORTCUTS,
+			hoveredShortcutId: this.#hoveredShortcutId,
+			hasSearch: true,
+		});
+
+		let body: readonly string[];
+		if (this.#labelInput) {
+			body = this.#labelInput.render(dims.contentWidth);
+		} else {
+			// The tree owns the whole body minus the filter footer line the list
+			// appends for a non-default filter; the shell truncates an overrun
+			// silently, and the row it would eat is the one under the cursor.
+			this.#treeList.setMaxVisibleLines(Math.max(MIN_TREE_ROWS, chrome.maxBodyRows - 1));
+			body = this.#treeList.render(dims.contentWidth);
+		}
+
+		const shell = renderModalShell({
+			title: "Session Tree",
+			sizing,
+			areaWidth: width,
+			areaHeight: height,
+			body,
+			searchLine,
+			shortcuts: TREE_SHORTCUTS,
+			hoveredShortcutId: this.#hoveredShortcutId,
+			showClose: true,
+		});
+		this.#shellGeometry = shell.geometry;
+		this.#listRowStart = shell.geometry?.bodyRowStart ?? 0;
+		return applyModalReveal(shell, width, this.#reveal.value);
 	}
 }

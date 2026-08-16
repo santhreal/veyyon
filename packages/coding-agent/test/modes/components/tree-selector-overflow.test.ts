@@ -3,6 +3,7 @@ import type { AgentMessage } from "@veyyon/agent-core";
 import { TreeSelectorComponent } from "@veyyon/coding-agent/modes/components/tree-selector";
 import * as themeModule from "@veyyon/coding-agent/modes/theme/theme";
 import type { SessionEntry, SessionTreeNode } from "@veyyon/coding-agent/session/session-entries";
+import { cardBodyLines } from "../../helpers/modal-card";
 
 let counter = 0;
 function makeUserNode(text: string, parentId: string | null = null): SessionTreeNode {
@@ -35,11 +36,19 @@ function renderSelector(tree: SessionTreeNode, leafId: string, width: number): s
 	const selector = new TreeSelectorComponent(
 		[tree],
 		leafId,
-		200,
 		() => {},
 		() => {},
 	);
-	return selector.render(width).map(line => Bun.stripANSI(line));
+	return [...selector.render(width)];
+}
+
+/**
+ * The card's content columns. The row-fits-the-viewport assertion stays on the
+ * whole frame (that is the contract the terminal sees); the cursor-row lookup
+ * moves here, because the card's left border precedes every row now.
+ */
+function bodyOf(tree: SessionTreeNode, leafId: string, width: number): string[] {
+	return cardBodyLines(renderSelector(tree, leafId, width));
 }
 
 describe("TreeSelectorComponent deep branching overflow", () => {
@@ -50,7 +59,7 @@ describe("TreeSelectorComponent deep branching overflow", () => {
 	it("keeps the selected entry text visible when branching exceeds the viewport width", () => {
 		const { root, leaf } = buildBranchyTree(80);
 		const width = 120;
-		const rendered = renderSelector(root, leaf.entry.id, width);
+		const rendered = renderSelector(root, leaf.entry.id, width).map(line => Bun.stripANSI(line));
 
 		// Every rendered row must fit the viewport — never wider than `width` display cols.
 		for (const line of rendered) {
@@ -59,7 +68,7 @@ describe("TreeSelectorComponent deep branching overflow", () => {
 
 		// The selected row (marked with the `›` cursor) must still show the entry text
 		// instead of spending the whole viewport on branch gutters.
-		const selectedRow = rendered.find(line => line.trimStart().startsWith("›"));
+		const selectedRow = bodyOf(root, leaf.entry.id, width).find(line => line.trimStart().startsWith("›"));
 		expect(selectedRow).toBeDefined();
 		expect(selectedRow!).toContain("user:");
 		expect(selectedRow!).toMatch(/branch-\d+-b/);
@@ -68,9 +77,7 @@ describe("TreeSelectorComponent deep branching overflow", () => {
 	it("preserves prefix budget so the selected entry text remains legible at narrow width", () => {
 		const { root, leaf } = buildBranchyTree(40);
 		const width = 80;
-		const rendered = renderSelector(root, leaf.entry.id, width);
-
-		const selectedRow = rendered.find(line => line.trimStart().startsWith("›"));
+		const selectedRow = bodyOf(root, leaf.entry.id, width).find(line => line.trimStart().startsWith("›"));
 		expect(selectedRow).toBeDefined();
 		expect(selectedRow!).toContain("user:");
 	});

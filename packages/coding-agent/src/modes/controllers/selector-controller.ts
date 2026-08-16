@@ -1104,11 +1104,10 @@ export class SelectorController {
 			return;
 		}
 
-		this.showSelector(done => {
+		this.showModalSelector(done => {
 			const selector = new TreeSelectorComponent(
 				tree,
 				realLeafId,
-				this.ctx.ui.terminal.rows,
 				async entryId => {
 					// Selecting the current leaf is a no-op (already there)
 					if (entryId === realLeafId) {
@@ -1217,6 +1216,7 @@ export class SelectorController {
 					this.ctx.ui.requestRender();
 				},
 				settings.get("treeFilterMode"),
+				modalRevealEnabled(),
 			);
 			return { component: selector, focus: selector };
 		});

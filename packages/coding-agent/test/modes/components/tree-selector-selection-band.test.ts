@@ -25,6 +25,7 @@ import { TreeSelectorComponent } from "@veyyon/coding-agent/modes/components/tre
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { SessionEntry, SessionTreeNode } from "@veyyon/coding-agent/session/session-entries";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy, visibleWidth } from "@veyyon/tui";
+import { cardBodyLines } from "../../helpers/modal-card";
 
 const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g;
 const BG_OPEN = /\x1b\[(?:4[0-7]|10[0-7]|48;(?:2;\d+;\d+;\d+|5;\d+))m/;
@@ -81,7 +82,6 @@ function rows(root: SessionTreeNode, selectedId: string): string[] {
 	const selector = new TreeSelectorComponent(
 		[root],
 		selectedId,
-		200,
 		() => {},
 		() => {},
 	);
@@ -165,7 +165,9 @@ describe("The selected row's band", () => {
 	test("carries the selection with a cursor glyph when colour is off", () => {
 		const { root, shortId } = unevenTree();
 		setAnsiPolicy("plain");
-		const rendered = rows(root, shortId);
+		// The card's left border precedes every row, so the cursor is read from
+		// the card's content columns rather than from column zero.
+		const rendered = cardBodyLines(rows(root, shortId));
 
 		expect(rendered.some(line => BG_OPEN.test(line))).toBeFalse();
 		expect(rendered.filter(line => line.trimStart().startsWith("›"))).toHaveLength(1);
