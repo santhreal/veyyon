@@ -7,10 +7,9 @@
  * wording, and add-flow logic stay in the per-controller files because they
  * diverge in workflow.
  */
-import { Text } from "@veyyon/tui";
 import type { SourceMeta } from "../../capability/types";
 import { shortenPath } from "../../tools/render-utils";
-import { DynamicBorder } from "../components/dynamic-border";
+import { mountTranscriptBlock, transcriptBlockText } from "../components/transcript-block-chrome";
 import { TranscriptBlock } from "../components/transcript-container";
 import { parseCommandArgs } from "../shared";
 import type { InteractiveModeContext } from "../types";
@@ -97,17 +96,12 @@ export function* groupBySource<T>(
 }
 
 /**
- * Render a message block (DynamicBorder / Text / DynamicBorder) into the chat
- * container and request a render.
- */
-/**
- * Present a bordered message block. Reads one member, so it asks for one:
- * controllers that have been narrowed to their own slice can still call it.
+ * Present a message block on the transcript rail. Reads one member, so it asks
+ * for one: controllers that have been narrowed to their own slice can still
+ * call it.
  */
 export function showCommandMessage(ctx: Pick<InteractiveModeContext, "present">, text: string): void {
 	const block = new TranscriptBlock();
-	block.addChild(new DynamicBorder());
-	block.addChild(new Text(text, 1, 1));
-	block.addChild(new DynamicBorder());
+	mountTranscriptBlock(block, { body: transcriptBlockText(text) });
 	ctx.present(block);
 }

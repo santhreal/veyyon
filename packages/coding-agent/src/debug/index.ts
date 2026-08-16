@@ -17,8 +17,8 @@ import {
 	Text,
 } from "@veyyon/tui";
 import { errorMessage, getSessionsDir } from "@veyyon/utils";
-import { DynamicBorder } from "../modes/components/dynamic-border";
 import { ModalSelectListComponent } from "../modes/components/modal-select-list";
+import { mountTranscriptBlock, transcriptBlockText } from "../modes/components/transcript-block-chrome";
 import { TranscriptBlock } from "../modes/components/transcript-container";
 import { getSelectListTheme, getSymbolTheme, theme } from "../modes/theme/theme";
 import type { InteractiveModeContext } from "../modes/types";
@@ -460,9 +460,7 @@ export class DebugSelectorComponent {
 			const formatted = formatSystemInfo(info);
 
 			const block = new TranscriptBlock();
-			block.addChild(new DynamicBorder());
-			block.addChild(new Text(formatted, 1, 0));
-			block.addChild(new DynamicBorder());
+			mountTranscriptBlock(block, { body: transcriptBlockText(formatted) });
 			this.ctx.present(block);
 		} catch (err) {
 			this.ctx.showError(`Failed to collect system info: ${errorMessage(err)}`);
@@ -478,9 +476,7 @@ export class DebugSelectorComponent {
 		const formatted = formatTerminalState(info);
 
 		const block = new TranscriptBlock();
-		block.addChild(new DynamicBorder());
-		block.addChild(new Text(formatted, 1, 0));
-		block.addChild(new DynamicBorder());
+		mountTranscriptBlock(block, { body: transcriptBlockText(formatted) });
 		this.ctx.present(block);
 	}
 
