@@ -34,6 +34,7 @@ import {
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
+import { selectionBand } from "./selector-helpers";
 
 /** Minimum rows reserved for the tree even on short terminals. */
 const MIN_TREE_ROWS = 3;
@@ -86,6 +87,12 @@ export class CopySelectorComponent implements Component {
 	#previewText = new Text("", 0, 0);
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
+	/** Frame row where the tree rows begin (shell body start). */
+	#listRowStart = 0;
+	/** Pointer-highlighted tree row (never the cursor row; the cursor owns its row). */
+	#hoveredIndex: number | null = null;
+	/** Per-render map of 0-based tree line → flat-node index. */
+	#hitRows: (number | undefined)[] = [];
 	#onRequestRender?: () => void;
 	#reveal = new ModalRevealDriver();
 
@@ -180,12 +187,50 @@ export class CopySelectorComponent implements Component {
 			this.handleInput("\n");
 			return true;
 		}
+		if (event.wheel !== null) {
+			const flat = this.#flatten();
+			if (flat.length > 0) {
+				const idx = Math.max(
+					0,
+					flat.findIndex(n => n.target.id === this.#cursorId),
+				);
+				const next =
+					event.wheel < 0 ? (idx === 0 ? flat.length - 1 : idx - 1) : idx === flat.length - 1 ? 0 : idx + 1;
+				this.#cursorId = flat[next]!.target.id;
+				this.#onRequestRender?.();
+			}
+			return true;
+		}
+		const line = event.row - this.#listRowStart;
+		if (event.motion) {
+			const index = this.#hitRows[line] ?? null;
+			if (index !== this.#hoveredIndex) {
+				this.#hoveredIndex = index;
+				this.#onRequestRender?.();
+			}
+			return true;
+		}
+		if (event.leftClick) {
+			const index = this.#hitRows[line];
+			if (index !== undefined) {
+				// Click mirrors the cursor + Enter: move to the row, then pick it
+				// when it carries copyable content.
+				const node = this.#flatten()[index];
+				if (node) {
+					this.#cursorId = node.target.id;
+					if (node.target.content !== undefined) this.callbacks.onPick(node.target);
+					this.#onRequestRender?.();
+				}
+			}
+			return true;
+		}
 		return true;
 	}
 
 	#renderTree(inner: number, flat: FlatNode[], cursorIdx: number, rows: number): string[] {
 		const start = clampLow(cursorIdx - Math.floor(rows / 2), 0, Math.max(0, flat.length - rows));
 		const out: string[] = [];
+		this.#hitRows = [];
 		for (let r = 0; r < rows; r++) {
 			const i = start + r;
 			const node = flat[i];
@@ -195,6 +240,7 @@ export class CopySelectorComponent implements Component {
 			}
 			const target = node.target;
 			const isSelected = i === cursorIdx;
+			const isHovered = i === this.#hoveredIndex && !isSelected;
 
 			let prefix = "";
 			for (let l = 0; l < node.depth - 1; l++) prefix += gutterCells(node.ancestorHasNext[l]!);
@@ -209,7 +255,9 @@ export class CopySelectorComponent implements Component {
 				? theme.fg("accent", cursor) + theme.fg("dim", prefix) + theme.bold(theme.fg("accent", labelPlain))
 				: cursor + theme.fg("dim", prefix) + labelPlain;
 			const gap = Math.max(1, inner - used - visibleWidth(labelPlain) - visibleWidth(hint));
-			out.push(left + padding(gap) + (hint ? theme.fg("dim", hint) : ""));
+			const row = left + padding(gap) + (hint ? theme.fg("dim", hint) : "");
+			this.#hitRows[r] = i;
+			out.push(isHovered ? selectionBand(row, inner) : row);
 		}
 		return out;
 	}
@@ -303,6 +351,7 @@ export class CopySelectorComponent implements Component {
 			showClose: true,
 		});
 		this.#shellGeometry = shell.geometry;
+		this.#listRowStart = shell.geometry?.bodyRowStart ?? 0;
 		return applyModalReveal(shell, width, this.#reveal.value);
 	}
 }

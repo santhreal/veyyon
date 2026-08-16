@@ -15,6 +15,7 @@ import {
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
+import { selectionBand } from "./selector-helpers";
 
 const RESET_SELECTOR_MAX_VISIBLE = 10;
 
@@ -44,6 +45,12 @@ export class ResetUsageSelectorComponent implements Component {
 	#onCancelCallback: () => void;
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
+	/** Frame row where the account rows begin (shell body start). */
+	#listRowStart = 0;
+	/** Pointer-highlighted account (never the selected one; selection owns its row). */
+	#hoveredIndex: number | null = null;
+	/** Per-render map of 0-based body line → account index. */
+	#hitRows: (number | undefined)[] = [];
 	#onRequestRender?: () => void;
 	#reveal = new ModalRevealDriver();
 
@@ -84,10 +91,12 @@ export class ResetUsageSelectorComponent implements Component {
 		const endIndex = Math.min(startIndex + maxVisible, total);
 
 		const rows: string[] = [];
+		this.#hitRows = [];
 		for (let i = startIndex; i < endIndex; i++) {
 			const account = this.#accounts[i];
 			if (!account) continue;
 			const isSelected = i === this.#selectedIndex;
+			const isHovered = i === this.#hoveredIndex && !isSelected;
 			const redeemable = account.availableCount > 0;
 			const countLabel = account.error ? account.error : formatCount("saved reset", account.availableCount);
 			const countText = account.error
@@ -96,13 +105,16 @@ export class ResetUsageSelectorComponent implements Component {
 					? theme.fg("success", countLabel)
 					: theme.fg("dim", countLabel);
 			const activeTag = account.active ? theme.fg("muted", " (active)") : "";
+			let row: string;
 			if (isSelected) {
 				const name = redeemable ? theme.fg("accent", account.label) : theme.fg("dim", account.label);
-				rows.push(`${theme.fg("accent", `${theme.nav.cursor} `)}${name}${activeTag}  ${countText}`);
+				row = `${theme.fg("accent", `${theme.nav.cursor} `)}${name}${activeTag}  ${countText}`;
 			} else {
 				const name = redeemable ? `  ${account.label}` : theme.fg("dim", `  ${account.label}`);
-				rows.push(`${name}${activeTag}  ${countText}`);
+				row = `${name}${activeTag}  ${countText}`;
 			}
+			this.#hitRows[rows.length] = i;
+			rows.push(isHovered ? selectionBand(row, width) : row);
 		}
 
 		const body: string[] = [];
@@ -222,6 +234,43 @@ export class ResetUsageSelectorComponent implements Component {
 			this.handleInput("\n");
 			return true;
 		}
+		if (event.wheel !== null) {
+			if (this.#accounts.length > 0) {
+				const total = this.#accounts.length;
+				this.#selectedIndex =
+					event.wheel < 0
+						? this.#selectedIndex === 0
+							? total - 1
+							: this.#selectedIndex - 1
+						: this.#selectedIndex === total - 1
+							? 0
+							: this.#selectedIndex + 1;
+				this.#pendingIndex = null;
+				this.#statusMessage = undefined;
+				this.#onRequestRender?.();
+			}
+			return true;
+		}
+		const line = event.row - this.#listRowStart;
+		if (event.motion) {
+			const index = this.#hitRows[line] ?? null;
+			if (index !== this.#hoveredIndex) {
+				this.#hoveredIndex = index;
+				this.#onRequestRender?.();
+			}
+			return true;
+		}
+		if (event.leftClick) {
+			const index = this.#hitRows[line];
+			if (index !== undefined) {
+				// Click mirrors Enter: first press arms the pending state, a second
+				// press on the same row spends the reset.
+				this.#selectedIndex = index;
+				this.handleInput("\n");
+				this.#onRequestRender?.();
+			}
+			return true;
+		}
 		return true;
 	}
 
@@ -246,6 +295,7 @@ export class ResetUsageSelectorComponent implements Component {
 			showClose: true,
 		});
 		this.#shellGeometry = shell.geometry;
+		this.#listRowStart = shell.geometry?.bodyRowStart ?? 0;
 		return applyModalReveal(shell, width, this.#reveal.value);
 	}
 }

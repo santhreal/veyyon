@@ -33,6 +33,7 @@ import {
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
+import { selectionBand } from "./selector-helpers";
 
 export interface MoveOverlayResult {
 	directory: string;
@@ -196,6 +197,10 @@ export class MoveOverlay implements Component, Focusable {
 	#done: (result: MoveOverlayResult | undefined) => void;
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
+	/** Frame row where the suggestion rows begin (shell body start + input + blank). */
+	#listRowStart = 0;
+	/** Pointer-highlighted suggestion (never the selected one; selection owns its row). */
+	#hoveredIndex: number | null = null;
 	#onRequestRender?: () => void;
 	#reveal = new ModalRevealDriver();
 
@@ -296,12 +301,15 @@ export class MoveOverlay implements Component, Focusable {
 		if (this.#results.length === 0 && this.#input.length > 0) {
 			body.push(theme.fg("dim", "No matching directories"));
 		} else {
-			for (let i = 0; i < Math.min(this.#results.length, MAX_RESULTS); i++) {
+			const shown = Math.min(this.#results.length, MAX_RESULTS);
+			for (let i = 0; i < shown; i++) {
 				const item = this.#results[i]!;
 				const selected = i === this.#selectedIndex;
+				const hovered = i === this.#hoveredIndex && !selected;
 				const marker = selected ? theme.fg("accent", "▶ ") : "  ";
 				const label = selected ? theme.fg("accent", item.label) : theme.fg("text", item.label);
-				body.push(`${marker}${label}`);
+				const row = `${marker}${label}`;
+				body.push(hovered ? selectionBand(row, dims.contentWidth) : row);
 			}
 		}
 
@@ -316,6 +324,8 @@ export class MoveOverlay implements Component, Focusable {
 			showClose: true,
 		});
 		this.#shellGeometry = shell.geometry;
+		// The body leads with the input line and a blank before the suggestion rows.
+		this.#listRowStart = (shell.geometry?.bodyRowStart ?? 0) + 2;
 		return applyModalReveal(shell, width, this.#reveal.value);
 	}
 
@@ -344,6 +354,31 @@ export class MoveOverlay implements Component, Focusable {
 		}
 		if (chrome.kind === "shortcut" && chrome.id === "confirm") {
 			this.#confirm();
+			return true;
+		}
+		if (event.wheel !== null) {
+			if (this.#results.length > 0) {
+				this.#selectedIndex = Math.max(0, Math.min(this.#results.length - 1, this.#selectedIndex + event.wheel));
+				this.#onRequestRender?.();
+			}
+			return true;
+		}
+		const index = event.row - this.#listRowStart;
+		const shown = Math.min(this.#results.length, MAX_RESULTS);
+		if (event.motion) {
+			const hovered = index >= 0 && index < shown ? index : null;
+			if (hovered !== this.#hoveredIndex) {
+				this.#hoveredIndex = hovered;
+				this.#onRequestRender?.();
+			}
+			return true;
+		}
+		if (event.leftClick) {
+			// Click mirrors Enter: confirm the suggestion under the pointer.
+			if (index >= 0 && index < shown) {
+				this.#selectedIndex = index;
+				this.#confirm();
+			}
 			return true;
 		}
 		return true;

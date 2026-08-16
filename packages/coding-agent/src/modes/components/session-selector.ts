@@ -32,6 +32,7 @@ import {
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
+import { selectionBand } from "./selector-helpers";
 
 /**
  * Themed glyph + colored label for a session's lifecycle status, or `undefined`
@@ -280,6 +281,8 @@ class SessionList implements Component {
 	// scroll window. Only consulted while the picker holds the alternate screen
 	// (where the overlay enables mouse tracking and paints from screen row 0).
 	#hitRows: (number | undefined)[] = [];
+	/** Pointer-highlighted session (never the selected one; selection owns its block). */
+	#hoveredIndex: number | null = null;
 	readonly #searchInput: Input;
 	onSelect?: (session: SessionInfo) => void;
 	onCancel?: () => void;
@@ -511,6 +514,13 @@ class SessionList implements Component {
 		return this.#hitRows[line];
 	}
 
+	/** Highlight the session under the pointer (null clears). Returns true on change. */
+	setHoverIndex(index: number | null): boolean {
+		if (this.#hoveredIndex === index) return false;
+		this.#hoveredIndex = index;
+		return true;
+	}
+
 	/** Wheel notch: move the selection one step (clamped, no wrap). */
 	handleWheel(delta: -1 | 1): void {
 		if (this.#filteredSessions.length === 0) return;
@@ -588,6 +598,7 @@ class SessionList implements Component {
 			const blockStart = sessionLines.length;
 			const session = this.#filteredSessions[i];
 			const isSelected = i === this.#selectedIndex;
+			const isHovered = i === this.#hoveredIndex && !isSelected;
 
 			// Normalize first message to single line
 			const normalizedMessage = session.firstMessage.replace(/\n/g, " ").trim();
@@ -634,6 +645,12 @@ class SessionList implements Component {
 			const metadataLine = truncateToWidth(metadata, rowWidth);
 
 			sessionLines.push(metadataLine);
+			if (isHovered) {
+				// Pointer hover bands the whole block; the blank separator stays bare.
+				for (let k = blockStart; k < sessionLines.length; k++) {
+					sessionLines[k] = selectionBand(sessionLines[k]!, rowWidth);
+				}
+			}
 			sessionLines.push(""); // Blank line between sessions
 			for (let k = blockStart; k < sessionLines.length; k++) sessionRowIndex[k] = i;
 		}
@@ -1068,6 +1085,11 @@ export class SessionSelectorComponent extends Container {
 			}
 			if (event.wheel !== null) {
 				this.#sessionList.handleWheel(event.wheel);
+				return true;
+			}
+			if (event.motion) {
+				const index = this.#sessionList.hitTestSession(event.row - this.#listLineOffset) ?? null;
+				if (this.#sessionList.setHoverIndex(index)) this.#onRequestRender?.();
 				return true;
 			}
 			if (!event.leftClick || event.row >= this.#footerStart) return true;

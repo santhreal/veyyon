@@ -23,6 +23,7 @@ import {
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
+import { selectionBand } from "./selector-helpers";
 
 interface UserMessageItem {
 	id: string; // Entry ID in the session
@@ -46,6 +47,10 @@ class UserMessageList implements Component {
 	onSelect?: (entryId: string) => void;
 	onCancel?: () => void;
 	#maxVisible: number = 10; // Max messages visible
+	/** Pointer-highlighted message (never the selected one; selection owns its rows). */
+	#hoveredIndex: number | null = null;
+	/** Per-render map of 0-based rendered line → filtered-message index. */
+	#hitRows: (number | undefined)[] = [];
 
 	constructor(private readonly messages: UserMessageItem[]) {
 		// Store messages in chronological order (oldest to newest)
@@ -80,6 +85,40 @@ class UserMessageList implements Component {
 		this.#selectedIndex = query.trim() ? 0 : Math.max(0, this.#filteredMessages.length - 1);
 	}
 
+	/** Resolve a rendered line (0-based within this list) to a message index. */
+	hitTest(line: number): number | undefined {
+		return this.#hitRows[line];
+	}
+
+	/** Highlight the message under the pointer (null clears). Returns true on change. */
+	setHoverIndex(index: number | null): boolean {
+		if (this.#hoveredIndex === index) return false;
+		this.#hoveredIndex = index;
+		return true;
+	}
+
+	/** Move the selection one step for a wheel notch (wraps like the arrow keys). */
+	handleWheel(delta: -1 | 1): void {
+		if (this.#filteredMessages.length === 0) return;
+		const total = this.#filteredMessages.length;
+		this.#selectedIndex =
+			delta < 0
+				? this.#selectedIndex === 0
+					? total - 1
+					: this.#selectedIndex - 1
+				: this.#selectedIndex === total - 1
+					? 0
+					: this.#selectedIndex + 1;
+	}
+
+	/** Select the message under the pointer and confirm it, like Enter. */
+	clickItem(index: number): void {
+		const message = this.#filteredMessages[index];
+		if (!message) return;
+		this.#selectedIndex = index;
+		this.onSelect?.(message.id);
+	}
+
 	#handleSearchInput(keyData: string): boolean {
 		if (!this.#isSearchEnabled()) return false;
 
@@ -101,6 +140,7 @@ class UserMessageList implements Component {
 
 	render(width: number): readonly string[] {
 		const lines: string[] = [];
+		this.#hitRows = [];
 
 		if (this.messages.length === 0) {
 			lines.push(theme.fg("muted", "  No user messages found"));
@@ -124,6 +164,7 @@ class UserMessageList implements Component {
 			const message = this.#filteredMessages[i];
 			if (!message) continue;
 			const isSelected = i === this.#selectedIndex;
+			const isHovered = i === this.#hoveredIndex && !isSelected;
 
 			// Normalize message to single line
 			const normalizedMessage = message.text.replace(/\n/g, " ").trim();
@@ -134,13 +175,15 @@ class UserMessageList implements Component {
 			const truncatedMsg = truncateToWidth(normalizedMessage, maxMsgWidth);
 			const messageLine = cursor + (isSelected ? theme.bold(truncatedMsg) : truncatedMsg);
 
-			messageLines.push(messageLine);
+			this.#hitRows[messageLines.length] = i;
+			messageLines.push(isHovered ? selectionBand(messageLine, rowWidth) : messageLine);
 
 			// Second line: metadata (position in history)
 			const position = this.messages.indexOf(message) + 1;
 			const metadata = `  Message ${position} of ${this.messages.length}`;
 			const metadataLine = theme.fg("muted", metadata);
-			messageLines.push(metadataLine);
+			this.#hitRows[messageLines.length] = i;
+			messageLines.push(isHovered ? selectionBand(metadataLine, rowWidth) : metadataLine);
 			messageLines.push(""); // Blank line between messages
 		}
 
@@ -213,6 +256,8 @@ export class UserMessageSelectorComponent implements Component {
 	#onCancelCallback: () => void;
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
+	/** Frame row where the message list begins (shell body start + hint + blank). */
+	#listRowStart = 0;
 	#onRequestRender?: () => void;
 	#reveal = new ModalRevealDriver();
 
@@ -282,6 +327,24 @@ export class UserMessageSelectorComponent implements Component {
 			this.handleInput("\n");
 			return true;
 		}
+		if (event.wheel !== null) {
+			this.#messageList.handleWheel(event.wheel);
+			this.#onRequestRender?.();
+			return true;
+		}
+		// The body leads with a hint line and a blank before the list's own rows.
+		const line = event.row - this.#listRowStart;
+		if (event.motion) {
+			if (this.#messageList.setHoverIndex(this.#messageList.hitTest(line) ?? null)) {
+				this.#onRequestRender?.();
+			}
+			return true;
+		}
+		if (event.leftClick) {
+			const index = this.#messageList.hitTest(line);
+			if (index !== undefined) this.#messageList.clickItem(index);
+			return true;
+		}
 		return true;
 	}
 
@@ -311,6 +374,8 @@ export class UserMessageSelectorComponent implements Component {
 			showClose: true,
 		});
 		this.#shellGeometry = shell.geometry;
+		// The body leads with a hint line and a blank before the list's own rows.
+		this.#listRowStart = (shell.geometry?.bodyRowStart ?? 0) + 2;
 		return applyModalReveal(shell, width, this.#reveal.value);
 	}
 }

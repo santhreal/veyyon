@@ -93,6 +93,10 @@ class HistoryResultsList implements Component {
 	#tokens: string[] = [];
 	#selectedIndex = 0;
 	#maxVisible = MAX_VISIBLE;
+	/** Pointer-highlighted row (never the selected one; selection owns its row). */
+	#hoveredIndex: number | null = null;
+	/** Per-render map of 0-based rendered line → result index. */
+	#hitRows: (number | undefined)[] = [];
 
 	setResults(results: HistoryEntry[], selectedIndex: number, tokens: string[]): void {
 		this.#results = results;
@@ -104,12 +108,25 @@ class HistoryResultsList implements Component {
 		this.#selectedIndex = selectedIndex;
 	}
 
+	/** Resolve a rendered line (0-based within this list) to a result index. */
+	hitTest(line: number): number | undefined {
+		return this.#hitRows[line];
+	}
+
+	/** Highlight the row under the pointer (null clears). Returns true on change. */
+	setHoverIndex(index: number | null): boolean {
+		if (this.#hoveredIndex === index) return false;
+		this.#hoveredIndex = index;
+		return true;
+	}
+
 	invalidate(): void {
 		// No cached state to invalidate currently
 	}
 
 	render(width: number): readonly string[] {
 		const lines: string[] = [];
+		this.#hitRows = [];
 
 		if (this.#results.length === 0) {
 			const message = this.#tokens.length > 0 ? "No matching history" : "No history yet";
@@ -130,6 +147,7 @@ class HistoryResultsList implements Component {
 					for (let i = startIndex; i < endIndex; i++) {
 						const entry = this.#results[i];
 						const isSelected = i === this.#selectedIndex;
+						const isHovered = i === this.#hoveredIndex && !isSelected;
 
 						const timeStr = relativeTime(entry.created_at);
 						const timeWidth = visibleWidth(timeStr);
@@ -148,7 +166,8 @@ class HistoryResultsList implements Component {
 							line = `${truncateToWidth(line, rowWidth - timeWidth - 1, Ellipsis.Unicode, true)} ${theme.fg("dim", timeStr)}`;
 						}
 
-						rows.push(isSelected ? selectionBand(line, rowWidth) : truncateToWidth(line, rowWidth));
+						this.#hitRows[rows.length] = i;
+						rows.push(isSelected || isHovered ? selectionBand(line, rowWidth) : truncateToWidth(line, rowWidth));
 					}
 					return rows;
 				},
@@ -169,6 +188,8 @@ export class HistorySearchComponent implements Component {
 	#onCancel: () => void;
 	#resultLimit = 100;
 	#shellGeometry: ModalShellGeometry | null = null;
+	/** Frame row where the results list begins (shell body start; the search line is its own region). */
+	#listRowStart = 0;
 	#hoveredShortcutId: string | null = null;
 	#onRequestRender?: () => void;
 	#reveal = new ModalRevealDriver();
@@ -300,6 +321,30 @@ export class HistorySearchComponent implements Component {
 			this.handleInput("\n");
 			return true;
 		}
+		if (event.wheel !== null) {
+			if (this.#results.length > 0) {
+				this.#selectedIndex = Math.max(0, Math.min(this.#results.length - 1, this.#selectedIndex + event.wheel));
+				this.#resultsList.setSelectedIndex(this.#selectedIndex);
+				this.#onRequestRender?.();
+			}
+			return true;
+		}
+		const line = event.row - this.#listRowStart;
+		if (event.motion) {
+			if (this.#resultsList.setHoverIndex(this.#resultsList.hitTest(line) ?? null)) {
+				this.#onRequestRender?.();
+			}
+			return true;
+		}
+		if (event.leftClick) {
+			const index = this.#resultsList.hitTest(line);
+			if (index !== undefined) {
+				this.#selectedIndex = index;
+				this.#resultsList.setSelectedIndex(index);
+				this.handleInput("\n");
+			}
+			return true;
+		}
 		return true;
 	}
 
@@ -336,6 +381,7 @@ export class HistorySearchComponent implements Component {
 			showClose: true,
 		});
 		this.#shellGeometry = shell.geometry;
+		this.#listRowStart = shell.geometry?.bodyRowStart ?? 0;
 		return applyModalReveal(shell, width, this.#reveal.value);
 	}
 }
