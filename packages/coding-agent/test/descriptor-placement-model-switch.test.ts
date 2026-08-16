@@ -39,7 +39,7 @@ describe("session descriptor placement across model switches", () => {
 
 	/** Locks out a Gemini-start session retaining inline descriptors after switching to a native OpenAI model. */
 	it("moves descriptors from the prompt into native schemas as one synchronized transition", async () => {
-		const gemini = bundledModel("google-antigravity", "gemini-3-pro");
+		const gemini = bundledModel("google-antigravity", "gemini-3.1-pro");
 		const openai = bundledModel("openai-codex", "gpt-5.6-sol");
 		const created = await createAgentSession({
 			cwd: dir.path(),
