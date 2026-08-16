@@ -1,0 +1,269 @@
+/**
+ * Deterministic, offline paint simulations.
+ *
+ * The render engine is the one subsystem that had no simulation, and it is the
+ * subsystem whose defects reach the operator first: a screen that flickers, a
+ * transcript that blanks, a band of blank rows where history should be. Those
+ * were being chased by hand each time — a bespoke rig per investigation, each
+ * one drawing the component tree slightly differently, so two investigations
+ * could not be compared and none of them survived into the repo.
+ *
+ * This family is that rig, once, with the shape as data. It drives the real
+ * engine and the real virtualized transcript:
+ *
+ *   TUI -> Container children (header, TranscriptContainer, HUD, pinned footer)
+ *     -> compose -> commit-prefix audit -> frame classification -> emit
+ *     -> VirtualTerminal (a real terminal state machine, not a spy)
+ *
+ * What it measures per frame is what a reader would see go wrong: whether the
+ * engine took a WHOLE-SCREEN repaint, whether it ERASED native scrollback
+ * (ED3), how many bytes and rows it wrote, and whether any earlier turn stopped
+ * being in the terminal's buffer.
+ *
+ * Determinism rules this file exists to enforce:
+ *  - No wall-clock sleeps. Frames advance through `settleFrames`, which drains
+ *    the engine's own scheduling until it stops asking to render.
+ *  - No animation clock. Motion is a repaint SOURCE, not a paint decision, and
+ *    a simulation that let a 60 Hz spring run would measure the clock's rate
+ *    instead of the engine's classification.
+ *  - Nothing is mocked below the terminal. `VirtualTerminal` parses the escape
+ *    sequences the engine actually writes, so a claim about scrollback is a
+ *    claim about bytes.
+ */
+import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript-container";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { type Component, Container, CURSOR_MARKER, type Focusable, TUI } from "@veyyon/tui";
+import { settleFrames } from "../../../tui/test/helpers/settle-frames";
+import { VirtualTerminal } from "../../../tui/test/virtual-terminal";
+
+/** The screen a scenario is asking about. Every field is a shipped shape. */
+export interface PaintShape {
+	width: number;
+	height: number;
+	/**
+	 * Rows of a root child mounted ABOVE the transcript. The shipped layout
+	 * always has some: `home-anchor-layout` routes viewport slack into `topFill`
+	 * whenever a conversation exists.
+	 */
+	headerRows: number;
+	/**
+	 * Rows of a root child mounted BELOW the transcript and above the footer —
+	 * the todo and subagent HUDs, which appear and disappear mid-turn.
+	 */
+	hudRows: number;
+	/** Pinned footer children: loader, hairline, composer, status line. */
+	footerRows: number;
+	/** Finalized turns written before the measurement window opens. */
+	turns: number;
+	/** Frames of a still-arriving answer, one row per frame, inside the window. */
+	streamFrames: number;
+	/** `tui.scrollbackRebuild`: whether a divergence repair is destructive. */
+	scrollbackRebuild: boolean;
+	/** False mounts a plain `Container`, the control that drops no rows. */
+	virtualized: boolean;
+}
+
+export interface PaintFrame {
+	/** Whole-screen repaints the engine took on this frame. */
+	fullRedraws: number;
+	/** Native-scrollback erases (ED3) written on this frame. */
+	erases: number;
+	/** Bytes written on this frame. */
+	bytes: number;
+}
+
+export interface PaintReport {
+	/** One entry per frame of the measurement window, in order. */
+	frames: PaintFrame[];
+	/** Whole-screen repaints across the window. Steady state is 0. */
+	fullRedraws: number;
+	/** ED3 erases across the window. Steady state is 0. */
+	erases: number;
+	/** Bytes across the window. */
+	bytes: number;
+	/** Turns whose text is no longer anywhere in the terminal's buffer. */
+	lostTurns: number[];
+	/** Rows the engine believes it has handed to native scrollback. */
+	scrollTapeRows: number;
+	/**
+	 * Times THIS scenario shrank the HUD, counted from the script rather than
+	 * from the engine, so a test comparing repaints against it is not comparing
+	 * the engine to itself. A frame that gets shorter has to move every row on
+	 * screen, so it costs one in-place window rewrite; nothing else may.
+	 */
+	hudShrinks: number;
+}
+
+/** A finalized block: plain components are final, so their rows commit. */
+class Block implements Component {
+	constructor(private readonly lines: readonly string[]) {}
+	invalidate(): void {}
+	render(): string[] {
+		return [...this.lines];
+	}
+}
+
+/** An answer still arriving: it grows a row a frame and never finalizes. */
+class LiveBlock implements Component {
+	#rows: string[] = ["  reply: still arriving"];
+	invalidate(): void {}
+	grow(): void {
+		this.#rows = [...this.#rows, `  row ${this.#rows.length} of the answer`];
+	}
+	getRenderStablePrefixRows(): number {
+		return 0;
+	}
+	render(): string[] {
+		return [...this.#rows];
+	}
+}
+
+/** A HUD that changes height while a turn runs, the way the todo list does. */
+class Hud implements Component {
+	#rows: number;
+	constructor(rows: number) {
+		this.#rows = rows;
+	}
+	invalidate(): void {}
+	setRows(rows: number): void {
+		this.#rows = rows;
+	}
+	render(): string[] {
+		return Array.from({ length: this.#rows }, (_, row) => `  hud row ${row}`);
+	}
+}
+
+class Composer implements Component, Focusable {
+	focused = true;
+	invalidate(): void {}
+	setUseTerminalCursor(): void {}
+	handleInput(): void {}
+	render(): string[] {
+		return [`> ask anything${CURSOR_MARKER}`];
+	}
+}
+
+class FooterRow implements Component {
+	constructor(private readonly text: string) {}
+	invalidate(): void {}
+	render(): string[] {
+		return [this.text];
+	}
+}
+
+let themeReady: Promise<void> | undefined;
+/** The theme is process-global and idempotent; every scenario shares one init. */
+function theme(): Promise<void> {
+	themeReady ??= initTheme(false, "unicode", false, "titanium", "dark").then(() => undefined);
+	return themeReady;
+}
+
+const turnText = (turn: number): string[] => [
+	`> turn ${turn}: what changed?`,
+	"",
+	`  reply ${turn}: the engine committed these rows and the transcript dropped them.`,
+	"",
+];
+
+/**
+ * Drive one shape and report what the engine wrote.
+ *
+ * The measurement window opens AFTER the lead turns, so a scenario is asking
+ * about steady state rather than about the first paint: the startup repaint is
+ * legitimate and is never counted.
+ */
+export async function paintSim(shape: PaintShape): Promise<PaintReport> {
+	await theme();
+	const term = new VirtualTerminal(shape.width, shape.height, 20_000);
+	let erases = 0;
+	let bytes = 0;
+	const write = term.write.bind(term);
+	term.write = (data: string) => {
+		if (data.includes("\x1b[3J")) erases++;
+		bytes += data.length;
+		write(data);
+	};
+	const tui = new TUI(term, true);
+	tui.setScrollbackRebuild(shape.scrollbackRebuild);
+
+	if (shape.headerRows > 0) {
+		tui.addChild(new Block(Array.from({ length: shape.headerRows }, (_, row) => `header ${row}`)));
+	}
+	const transcript = shape.virtualized ? new TranscriptContainer() : new Container();
+	tui.addChild(transcript);
+	const hud = new Hud(shape.hudRows);
+	if (shape.hudRows > 0) tui.addChild(hud);
+	// The footer is built from the bottom up the way the composer zone is: a
+	// status row, a composer that owns the cursor, and filler rows above it.
+	for (let row = shape.footerRows; row > 1; row--) tui.addChild(new FooterRow(`footer ${row}`));
+	if (shape.footerRows > 0) tui.addChild(new Composer());
+	tui.setPinnedFooterChildCount(Math.max(0, shape.footerRows));
+	tui.start();
+	await settleFrames(term, tui);
+
+	for (let turn = 0; turn < shape.turns; turn++) {
+		transcript.addChild(new Block(turnText(turn)));
+		tui.requestRender();
+		await settleFrames(term, tui);
+	}
+
+	// The window opens here: everything above is the session getting long.
+	const redrawsAtOpen = tui.fullRedraws;
+	const erasesAtOpen = erases;
+	const bytesAtOpen = bytes;
+	const frames: PaintFrame[] = [];
+	let hudShrinks = 0;
+	const live = new LiveBlock();
+	if (shape.streamFrames > 0) transcript.addChild(live);
+	for (let frame = 0; frame < shape.streamFrames; frame++) {
+		const before = { redraws: tui.fullRedraws, erases, bytes };
+		live.grow();
+		// A HUD that appears and disappears is the other thing that moves every
+		// row under it, and it is what a running job or a todo list does.
+		if (shape.hudRows > 0 && frame % 7 === 6) {
+			const gone = frame % 14 === 6;
+			hud.setRows(gone ? 0 : shape.hudRows);
+			if (gone) hudShrinks++;
+		}
+		tui.requestRender();
+		await settleFrames(term, tui);
+		frames.push({
+			fullRedraws: tui.fullRedraws - before.redraws,
+			erases: erases - before.erases,
+			bytes: bytes - before.bytes,
+		});
+	}
+
+	const history = term
+		.getScrollBuffer()
+		.map(row => Bun.stripANSI(row).trimEnd())
+		.filter(row => row.length > 0);
+	const lostTurns: number[] = [];
+	for (let turn = 0; turn < shape.turns; turn++) {
+		if (!history.some(row => row.includes(`turn ${turn}:`))) lostTurns.push(turn);
+	}
+
+	return {
+		frames,
+		fullRedraws: tui.fullRedraws - redrawsAtOpen,
+		erases: erases - erasesAtOpen,
+		bytes: bytes - bytesAtOpen,
+		lostTurns,
+		scrollTapeRows: tui.scrollTapeRows,
+		hudShrinks,
+	};
+}
+
+/** Every combination of the fields a scenario sweeps, as a flat list. */
+export function shapes(base: PaintShape, sweep: Partial<Record<keyof PaintShape, readonly number[]>>): PaintShape[] {
+	let out: PaintShape[] = [base];
+	for (const [field, values] of Object.entries(sweep) as Array<[keyof PaintShape, readonly number[]]>) {
+		out = out.flatMap(shape => values.map(value => ({ ...shape, [field]: value })));
+	}
+	return out;
+}
+
+/** A one-line shape label, for a failure message that names the arm. */
+export function label(shape: PaintShape): string {
+	return `${shape.width}x${shape.height} header=${shape.headerRows} hud=${shape.hudRows} footer=${shape.footerRows} turns=${shape.turns} stream=${shape.streamFrames} rebuild=${shape.scrollbackRebuild} virtualized=${shape.virtualized}`;
+}

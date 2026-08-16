@@ -36,6 +36,7 @@
 		"@veyyon/ai": "catalog:",
 		"@veyyon/catalog": "catalog:",
 		"@veyyon/coding-agent": "catalog:",
+		"@veyyon/tui": "catalog:",
 		"@veyyon/utils": "catalog:",
 		"arktype": "catalog:"
 	},
