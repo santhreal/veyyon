@@ -21,6 +21,7 @@ import {
 	MODAL_SIZING_MEDIUM,
 	ModalRevealDriver,
 	type ModalShellGeometry,
+	modalRevealEnabled,
 	renderModalShell,
 	SELECT_LIST_SHORTCUTS,
 	sizingForArea,
@@ -127,6 +128,11 @@ export class ModalSelectListComponent implements Component {
 
 	setOnRequestRender(cb: () => void): void {
 		this.#onRequestRender = cb;
+		// The pointer band fades only once the card has a repaint to lend it: the
+		// frames between two mouse reports have no input to hang off. Same ambient
+		// gate as the unfold, so a terminal that shows no structural motion shows a
+		// switched band, which is what it had before.
+		this.#list.setHoverMotion({ requestRender: cb, enabled: modalRevealEnabled() });
 	}
 
 	getSelectList(): SelectList {
@@ -227,8 +233,9 @@ export class ModalSelectListComponent implements Component {
 		return applyModalReveal(shell, width, this.#reveal.value);
 	}
 
-	/** Settle the reveal so no timer outlives a dismissed card. */
+	/** Settle the reveal and the pointer band so no timer outlives a dismissed card. */
 	dispose(): void {
 		this.#reveal.stop();
+		this.#list.disposeHoverMotion();
 	}
 }

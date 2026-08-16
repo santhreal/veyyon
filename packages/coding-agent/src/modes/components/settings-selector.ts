@@ -97,6 +97,7 @@ import {
 	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
+	modalRevealEnabled,
 	planModalChrome,
 	renderModalShell,
 	SETTINGS_BROWSE_SHORTCUTS,
@@ -2977,6 +2978,11 @@ export class SettingsSelectorComponent implements Component {
 
 	/** Swap the active content (per-tab list, search list, or plugins). */
 	#setContent(build: () => void): void {
+		// Whichever list is being thrown away takes its pointer fades with it: they
+		// are registered with the shared clock, and a list nobody can see must not
+		// keep asking for frames.
+		this.#currentList?.disposeHoverMotion();
+		this.#searchList?.disposeHoverMotion();
 		this.#currentList = null;
 		this.#searchList = null;
 		this.#pluginComponent = null;
@@ -3339,6 +3345,10 @@ export class SettingsSelectorComponent implements Component {
 				hint: "",
 			},
 		);
+		list.setHoverMotion({
+			requestRender: () => this.context.requestRender?.(),
+			enabled: modalRevealEnabled(),
+		});
 		// Keep the footer tab highlight on the tab owning the selected result.
 		list.onSelectionChange = item => this.#syncTabBarToSelection(item);
 		this.#setContent(() => {
@@ -4320,6 +4330,10 @@ export class SettingsSelectorComponent implements Component {
 			// split sidebar width so the divider never jumps between tabs.
 			{ typeToSearch: false, hint: "", layout: "flat", descriptionMode: "expand", expandedIds: this.#expandedIds },
 		);
+		this.#currentList.setHoverMotion({
+			requestRender: () => this.context.requestRender?.(),
+			enabled: modalRevealEnabled(),
+		});
 	}
 
 	/** Whether the tab's "Advanced" fold is currently expanded (default: collapsed). */

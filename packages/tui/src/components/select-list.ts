@@ -2,6 +2,7 @@ import { popLoopPhase, pushLoopPhase } from "@veyyon/utils/loop-phase";
 import { fuzzyFilter, matchPositions } from "../fuzzy";
 import { getKeybindings } from "../keybindings";
 import { extractPrintableText } from "../keys";
+import { HoverFade, type HoverFadeOptions } from "../motion-hover";
 import { type MouseRoutable, routeSelectListMouse, type SgrMouseEvent } from "../mouse";
 import type { SymbolTheme } from "../symbols";
 import type { Component } from "../tui";
@@ -58,8 +59,15 @@ export interface SelectListTheme {
 	scrollInfo: (text: string) => string;
 	noMatch: (text: string) => string;
 	symbols: SymbolTheme;
-	/** Hover band applied to the full row under the mouse pointer. */
-	hovered?: (text: string) => string;
+	/**
+	 * Hover band applied to the full row under the mouse pointer.
+	 *
+	 * `strength` is 1 for a row the pointer is resting on and a fraction while
+	 * the band is fading in or out (see {@link SelectList.setHoverMotion}); a
+	 * theme that paints a band unconditionally ignores it and gets exactly the
+	 * switched band it had before. The row is never called at strength 0.
+	 */
+	hovered?: (text: string, strength: number) => string;
 	/**
 	 * Paint applied to the label characters the active filter query matched
 	 * (see fuzzy `matchPositions`). Unselected rows only: the selected row's
@@ -142,6 +150,12 @@ export class SelectList implements Component, MouseRoutable {
 	#filterTypedByUser = false;
 	#selectedIndex: number = 0;
 	#hoveredIndex: number | null = null;
+	/**
+	 * The cross-fade, once a host has offered a way to repaint between mouse
+	 * reports ({@link setHoverMotion}). Absent, the band is switched: exactly the
+	 * behavior every existing host has.
+	 */
+	#hoverFade?: HoverFade;
 	/** Per-render map of 0-based output line → filtered-item index. */
 	#hitRows: (number | undefined)[] = [];
 	/**
@@ -240,6 +254,49 @@ export class SelectList implements Component, MouseRoutable {
 	/** Highlight the item under the pointer (null clears). */
 	setHoverIndex(index: number | null): void {
 		this.#hoveredIndex = index;
+		this.#hoverFade?.set(index);
+	}
+
+	/**
+	 * Fade the pointer band in and out instead of switching it.
+	 *
+	 * A list cannot do this on its own: the frames between two mouse reports have
+	 * no input to hang off, so the host has to lend the list its repaint. Call
+	 * once after construction; call {@link disposeHoverMotion} when the host goes
+	 * away, or the shared clock keeps ticking for a list nobody can see.
+	 *
+	 * `enabled: false` is the switched band, which is what a non-truecolor
+	 * terminal and `display.transitions: off` get.
+	 */
+	setHoverMotion(options: HoverFadeOptions): void {
+		this.#hoverFade?.dispose();
+		this.#hoverFade = new HoverFade(options);
+		if (this.#hoveredIndex !== null) this.#hoverFade.set(this.#hoveredIndex);
+	}
+
+	/**
+	 * Drop the cross-fade and everything it has registered with the clock, and
+	 * forget the pointer with it: a disposed list is one nothing is pointing at,
+	 * and keeping the row would jump a half-faded band to full strength on the way
+	 * out rather than taking it away.
+	 */
+	disposeHoverMotion(): void {
+		this.#hoverFade?.dispose();
+		this.#hoverFade = undefined;
+		this.#hoveredIndex = null;
+	}
+
+	/**
+	 * Band strength for a filtered-item index: 0 for no band through 1 for the
+	 * full one. The selected row never takes a band — its own selection paint is
+	 * the stronger signal and a band over it reads as two selections — but a row
+	 * that WAS hovered keeps fading out after the selection moves onto it, so the
+	 * suppression is applied here rather than by dropping the fade.
+	 */
+	#hoverStrength(index: number): number {
+		if (index === this.#selectedIndex) return 0;
+		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
+		return index === this.#hoveredIndex ? 1 : 0;
 	}
 
 	/** Move the selection one step for a wheel notch. */
@@ -331,12 +388,13 @@ export class SelectList implements Component, MouseRoutable {
 				// hitRows slot stays undefined so mouse routing skips them.
 				rows.push(this.theme.groupHeader!(item.group!));
 			}
-			const hovered = this.theme.hovered !== undefined && i === this.#hoveredIndex && i !== this.#selectedIndex;
+			const band = this.theme.hovered;
+			const strength = this.#hoverStrength(i);
 			const itemRows = this.#renderItem(item, i === this.#selectedIndex, rowWidth, primaryColumnWidth);
 			for (const row of itemRows) {
 				if (rows.length >= visualBudget) break;
 				this.#hitRows[rows.length] = i;
-				rows.push(hovered && this.theme.hovered ? this.theme.hovered(row) : row);
+				rows.push(band !== undefined && strength > 0 ? band(row, strength) : row);
 			}
 		}
 
