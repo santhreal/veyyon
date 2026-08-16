@@ -141,7 +141,7 @@ describe("streaming reveal", () => {
 			{ type: "text", text: "answer" },
 		]);
 
-		expect(visibleUnits(target, false)).toBe("... (1 line of code)answer".length);
+		expect(visibleUnits(target, false)).toBe("...answer".length);
 		const display = buildDisplayMessage(target, 3, false);
 
 		expect(thinkingAt(display, 0)).toBe("...");
@@ -157,7 +157,7 @@ describe("streaming reveal", () => {
 		const { component, controller } = makeController({ smooth: false, proseOnly: () => proseOnly });
 
 		controller.begin(component, target);
-		expect(thinkingAt(latestMessage(component), 0)).toBe("... (1 line of code)");
+		expect(thinkingAt(latestMessage(component), 0)).toBe("...");
 
 		proseOnly = false;
 		controller.setTarget(target);

@@ -40,29 +40,9 @@ function isCommentNoise(line: string, isLastLine: boolean): boolean {
 }
 
 /**
- * Trailing marker prose-only mode leaves where it elided a fenced code block.
- *
- * The line count is the point of it. Without one, a reasoning trace that opens
- * a fence and then emits a document for minutes renders as a sentence that
- * simply stops — `Acceptance criteria:` followed by `1...` and nothing more,
- * for the rest of the turn — which reads as output that was truncated or
- * killed rather than reasoning that is still arriving. The count grows on every
- * streamed tick while the fence is open, so the block visibly keeps moving, and
- * a finished block states how much of itself it is hiding.
- */
-function elisionMarker(hidden: number): string {
-	if (hidden <= 0) return "...";
-	return `... (${hidden} ${hidden === 1 ? "line" : "lines"} of code)`;
-}
-
-/** Matches {@link elisionMarker} at the end of a line, capturing its count. */
-const ELISION_MARKER_PATTERN = /\.\.\.(?: \((\d+) lines? of code\))?$/;
-
-/**
  * Thinking text prepared for display. Both modes drop empty `<!-- -->`
  * sentinel lines outside code fences (see {@link isCommentNoise}); prose-only
- * mode additionally elides fenced code down to a trailing ellipsis that names
- * how many lines it hid (see {@link elisionMarker}).
+ * mode additionally elides fenced code down to a trailing ellipsis.
  */
 export function formatThinkingForDisplay(text: string, proseOnly: boolean): string {
 	if (!text) return text;
@@ -79,31 +59,27 @@ export function formatThinkingForDisplay(text: string, proseOnly: boolean): stri
 	let inFence = false;
 	let fenceChar = "";
 	let fenceLen = 0;
-	/** Content lines hidden by the fence currently open, delimiters excluded. */
-	let fenceHiddenLines = 0;
 
 	const FENCE = /^( {0,3})([`~]{3,})/;
-	const appendElision = (hidden: number) => {
+	const appendEllipsis = () => {
 		let lastLineIdx = resultLines.length - 1;
 		while (lastLineIdx >= 0 && resultLines[lastLineIdx]!.trim() === "") {
 			lastLineIdx--;
 		}
 
-		if (lastLineIdx < 0) {
-			resultLines.push(elisionMarker(hidden));
-			return;
+		if (lastLineIdx >= 0) {
+			const lastLine = resultLines[lastLineIdx]!;
+			const trimmed = lastLine.trimEnd();
+			if (trimmed.endsWith("...")) {
+				resultLines[lastLineIdx] = trimmed;
+			} else if (trimmed.endsWith(".")) {
+				resultLines[lastLineIdx] = `${trimmed.slice(0, -1)}...`;
+			} else {
+				resultLines[lastLineIdx] = `${trimmed}...`;
+			}
+		} else {
+			resultLines.push("...");
 		}
-		const trimmed = resultLines[lastLineIdx]!.trimEnd();
-		const existing = ELISION_MARKER_PATTERN.exec(trimmed);
-		if (existing) {
-			// Fences separated only by blank lines collapse onto one marker
-			// rather than stacking ellipses on the same sentence.
-			const already = existing[1] === undefined ? 0 : Number(existing[1]);
-			resultLines[lastLineIdx] = trimmed.slice(0, existing.index) + elisionMarker(already + hidden);
-			return;
-		}
-		const stem = trimmed.endsWith(".") ? trimmed.slice(0, -1) : trimmed;
-		resultLines[lastLineIdx] = stem + elisionMarker(hidden);
 	};
 
 	for (let i = 0; i < lines.length; i++) {
@@ -121,14 +97,6 @@ export function formatThinkingForDisplay(text: string, proseOnly: boolean): stri
 				inFence = false;
 				fenceChar = "";
 				fenceLen = 0;
-				// The marker lands when the fence closes, because only then is
-				// its size known.
-				if (proseOnly) {
-					appendElision(fenceHiddenLines);
-					fenceHiddenLines = 0;
-				}
-			} else if (proseOnly) {
-				fenceHiddenLines++;
 			}
 			// Prose mode skips all fence lines; raw mode keeps them verbatim
 			// (comment markers inside fences are code, not noise).
@@ -148,16 +116,16 @@ export function formatThinkingForDisplay(text: string, proseOnly: boolean): stri
 				inFence = true;
 				fenceChar = ch;
 				fenceLen = marker.length;
-				fenceHiddenLines = 0;
-				if (!proseOnly) resultLines.push(line);
+				if (proseOnly) {
+					appendEllipsis();
+				} else {
+					resultLines.push(line);
+				}
 				continue;
 			}
 		}
 		resultLines.push(line);
 	}
-	// A fence the model never closed hides everything after it: still
-	// streaming, or nested fences of equal length that flipped the parity.
-	if (inFence && proseOnly) appendElision(fenceHiddenLines);
 
 	const formatted = resultLines.join("\n");
 	if (proseOnly) {
