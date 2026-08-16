@@ -638,6 +638,60 @@ export function createOpenAICodexCompatibilityMetadata(
 }
 
 /**
+ * URL, credential headers, and canonical client metadata for a direct
+ * (non-streaming) Codex HTTP call made outside the turn path — today the
+ * server-side compaction route `POST {base}/codex/responses/compact`, which
+ * codex-rs drives with the same identity a turn carries.
+ *
+ * The turn path builds these inside `buildCodexRequestContext`, which also
+ * opens websockets, resolves tools, and mutates transport state. A compaction
+ * call needs the credential and identity halves only, so they are assembled
+ * here rather than reached by faking a turn — and, being here, the codex wire
+ * truth (host path, beta header, originator, client version, installation id)
+ * stays owned by this module instead of copied into the compaction transport.
+ */
+export function createOpenAICodexDirectRequest(options: {
+	model: Model<"openai-codex-responses">;
+	/** Resolved ChatGPT OAuth access token. */
+	accessToken: string;
+	/** Path suffix appended to the codex responses route, e.g. `"/compact"`. */
+	pathSuffix?: string;
+	requestKind: OpenAICodexRequestKind;
+	sessionId?: string;
+	providerSessionState?: Map<string, ProviderSessionState>;
+	compaction?: CodexCompactionRequestContext;
+	responsesLite?: boolean;
+}): { url: string; headers: Record<string, string>; clientMetadata: Record<string, string> } {
+	const baseUrl = options.model.baseUrl || CODEX_BASE_URL;
+	const identity = createOpenAICodexCompatibilityMetadata({
+		sessionId: options.sessionId,
+		providerSessionState: options.providerSessionState,
+		requestKind: options.requestKind,
+		compaction: options.compaction,
+		includeInstallationHeader: true,
+	});
+	const headers = createCodexHeaders(
+		options.model.headers,
+		getCodexAccountId(options.accessToken),
+		options.accessToken,
+		CODEX_CLIENT_VERSION,
+		normalizeOpenAIPromptCacheKey(options.sessionId),
+		"sse",
+		undefined,
+		options.responsesLite ?? false,
+	);
+	for (const [name, value] of Object.entries(identity.headers)) headers.set(name, value);
+	// The compact route answers with one JSON document, not an event stream.
+	headers.set("accept", "application/json");
+	headers.set("content-type", "application/json");
+	return {
+		url: `${resolveCodexResponsesUrl(baseUrl)}${options.pathSuffix ?? ""}`,
+		headers: Object.fromEntries(headers.entries()),
+		clientMetadata: identity.clientMetadata,
+	};
+}
+
+/**
  * Invalidate Codex history-dependent transport state after compaction while
  * retaining the session identity and live connection.
  */
