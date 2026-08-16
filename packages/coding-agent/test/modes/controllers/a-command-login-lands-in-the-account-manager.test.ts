@@ -134,9 +134,7 @@ async function harness(outcome: Outcome): Promise<Harness> {
 		editorContainer: {
 			children: [],
 			clear: () => {},
-			addChild: (child: unknown) => {
-				if (child instanceof LoginDialogComponent) dialogs.push(child);
-			},
+			addChild: () => {},
 		},
 		editor: {},
 		oauthManualInput: { waitForInput: async () => "", clear: () => {} },
@@ -148,8 +146,11 @@ async function harness(outcome: Outcome): Promise<Harness> {
 			requestRender: vi.fn(),
 			requestComponentRender: vi.fn(),
 			showOverlay: vi.fn((component: unknown) => {
+				// Both surfaces this flow opens are fullscreen overlays: the login
+				// dialog while a provider flow runs, then the account card.
 				if (component instanceof AccountManagerComponent) cards.push(component);
-				return { hide: vi.fn() };
+				if (component instanceof LoginDialogComponent) dialogs.push(component);
+				return { hide: vi.fn(), setHidden: vi.fn(), isHidden: () => false };
 			}),
 		},
 		session: {

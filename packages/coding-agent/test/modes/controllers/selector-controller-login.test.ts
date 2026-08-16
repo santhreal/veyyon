@@ -71,8 +71,9 @@ describe("SelectorController login", () => {
 				setFocus: vi.fn(),
 				requestRender: vi.fn(),
 				requestComponentRender: vi.fn(),
-				// The finished login opens the account card in an overlay; this case is about the success block.
-				showOverlay: vi.fn(() => ({ close: vi.fn(), update: vi.fn() })),
+				// The login dialog and the account card the finished login opens are
+				// both fullscreen overlays; this case is about the success block.
+				showOverlay: vi.fn(() => ({ hide: vi.fn(), setHidden: vi.fn(), isHidden: () => false })),
 			},
 			showStatus: vi.fn(),
 			showError: vi.fn(),
@@ -103,7 +104,7 @@ describe("SelectorController login", () => {
 		expect(ctx.showError).not.toHaveBeenCalled();
 	});
 
-	it("Esc during a pending login aborts the flow and restores the editor", async () => {
+	it("Esc during a pending login aborts the flow and takes the overlay down", async () => {
 		const login = vi.fn(
 			(_provider: string, ctrl: { signal?: AbortSignal }) =>
 				new Promise<void>((_resolve, reject) => {
@@ -111,19 +112,25 @@ describe("SelectorController login", () => {
 				}),
 		);
 		const authStorage = { login } as unknown as AuthStorage;
-		const editorSlot: unknown[] = [];
+		const overlays: unknown[] = [];
+		const hide = vi.fn();
 		const editor = {};
 		const presentedBlocks: unknown[] = [];
 		const ctx = {
 			oauthManualInput: { waitForInput: vi.fn(), clear: vi.fn() },
 			session: { modelRegistry: { authStorage, refreshInBackground: vi.fn() } },
-			editorContainer: {
-				clear: vi.fn(() => editorSlot.splice(0)),
-				addChild: vi.fn((child: unknown) => editorSlot.push(child)),
-				children: editorSlot,
-			},
+			// The dialog is a fullscreen overlay now, so the editor never leaves
+			// its own container; the slot stays empty and focus returns to it.
+			editorContainer: { clear: vi.fn(), addChild: vi.fn(), children: [] },
 			editor,
-			ui: { setFocus: vi.fn(), requestRender: vi.fn() },
+			ui: {
+				setFocus: vi.fn(),
+				requestRender: vi.fn(),
+				showOverlay: vi.fn((component: unknown) => {
+					overlays.push(component);
+					return { hide, setHidden: vi.fn(), isHidden: () => false };
+				}),
+			},
 			showStatus: vi.fn(),
 			showError: vi.fn(),
 			present: vi.fn((block: unknown) => {
@@ -140,7 +147,7 @@ describe("SelectorController login", () => {
 		const controller = new SelectorController(ctx);
 
 		const loginDone = controller.showLogin("xai-oauth");
-		const dialog = editorSlot[0] as { handleInput(data: string): void };
+		const dialog = overlays[0] as { handleInput(data: string): void };
 		expect(dialog).toBeDefined();
 		expect(dialog).not.toBe(editor);
 
@@ -148,10 +155,11 @@ describe("SelectorController login", () => {
 		await loginDone;
 
 		// The abort is user-driven: no error surfaced, the cancellation is
-		// announced, and the editor owns the slot again.
+		// announced, the overlay comes down, and focus goes back to the editor.
 		expect(ctx.showError).not.toHaveBeenCalled();
 		expect(ctx.showStatus).toHaveBeenCalledWith("Login cancelled");
-		expect(editorSlot).toEqual([editor]);
+		expect(hide).toHaveBeenCalled();
+		expect(ctx.ui.setFocus).toHaveBeenLastCalledWith(editor);
 		expect(renderPresented(presentedBlocks)).not.toContain("Successfully logged in");
 	});
 	it("routes enhanced paste into a direct API-key prompt", async () => {
