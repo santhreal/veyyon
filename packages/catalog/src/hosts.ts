@@ -29,6 +29,8 @@ export const KNOWN_HOSTS = {
 		providers: ["azure"],
 		urlMarkers: [".openai.azure.com", "azure.com/openai", "models.inference.ai.azure.com"],
 	},
+	/** ChatGPT Codex backend (`chatgpt.com/backend-api/codex`), reached with a ChatGPT OAuth credential rather than an API key. */
+	codexBackend: { providers: ["openai-codex"], urlMarkers: ["chatgpt.com/backend-api"] },
 	openrouter: { providers: ["openrouter"], urlMarkers: ["openrouter.ai"] },
 	/** Hugging Face Inference Providers router — fans out to third-party inference providers whose output caps differ per routed upstream. */
 	huggingfaceRouter: { providers: ["huggingface"], urlMarkers: ["router.huggingface.co"] },
