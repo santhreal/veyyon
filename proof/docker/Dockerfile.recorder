@@ -61,3 +61,18 @@ RUN set -eux; \
 	rm -rf /var/lib/apt/lists/*; \
 	chromium --version
 ENV ROD_BROWSER_BIN=/usr/bin/chromium
+
+# A second recording path, because vhs cannot move a mouse. Xvfb gives the
+# container a real X display, kitty and xterm are real terminal emulators that
+# speak SGR 1006 mouse reporting, xdotool moves the pointer and presses keys at
+# it, and ffmpeg records the display as video rather than a frame at a time.
+# imagemagick's `import` takes the stills.
+RUN set -eux; \
+	apt-get update; \
+	DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+		xvfb x11-utils x11-xserver-utils xdotool xterm kitty \
+		libgl1-mesa-dri mesa-utils imagemagick; \
+	apt-get clean; \
+	rm -rf /var/lib/apt/lists/*; \
+	xdotool --version; \
+	kitty --version
