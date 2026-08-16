@@ -8,4 +8,5 @@
  */
 
 export * from "./cache-sim";
+export * from "./paint-sim";
 export * from "./turn-sim";
