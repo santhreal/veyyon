@@ -392,6 +392,64 @@ SECTIONS = [
         ],
     ),
     Section(
+        "Two more cards that band, and the ground a fade mixes out of",
+        [
+            "<p>The model picker and the <code>/mcp add</code> wizard are the last two surfaces that paint their own"
+            " rows. On <code>main</code> the picker answers a pointer with nothing, and the wizard's second step is"
+            " not a card at all: it is a plain transcript block starting at column zero, six rows lower down the"
+            " screen. That is why the scene below hovers twice in the <em>main</em> arm — once at the branch card's"
+            " geometry and once at main's own rows, at the coordinates main actually draws them — so <em>no band"
+            " anywhere</em> is a measurement of main's list rather than a pointer that missed a card that moved.</p>",
+            video_pair(
+                XB + "card-bands.mp4",
+                X + "card-bands.mp4",
+                "the pointer crosses the picker rows and then main's own transport list, and neither answers it",
+                "each card bands the row under the pointer and cross-fades to the next",
+                start=24,
+            ),
+            "<h3>The model picker, frame by frame</h3>",
+            strip(
+                S + "card-bands-picker-main",
+                8,
+                "<strong>main.</strong> Eight consecutive frames at 60fps at 26.50s, across a jump between two model"
+                " rows. Only the pointer moves.",
+            ),
+            strip(
+                S + "card-bands-picker",
+                8,
+                "<strong>branch.</strong> The same eight frames of the same jump. The row left goes down while the"
+                " row reached comes up, and the keyboard selection under both is untouched.",
+            ),
+            "<h3>The wizard step, frame by frame</h3>",
+            strip(
+                S + "card-bands-wizard-main",
+                8,
+                "<strong>main.</strong> The same moment in the same scene, cut wider because there is no card to cut"
+                " into: the transport choices are transcript rows at column zero and the pointer passes over them.",
+            ),
+            strip(
+                S + "card-bands-wizard",
+                8,
+                "<strong>branch.</strong> The step is a card, its rows are the card's rows, and they band and"
+                " cross-fade on the same clock as every other surface on this page.",
+            ),
+            "<h3>The ground the mix travels out of</h3>",
+            "<p>Recording this at 60fps found a defect the fade itself had been hiding. A band is a blend between"
+            " the page under the row and the selection colour, and the blend was reading the ground the <em>theme"
+            " declares</em>. Titanium declares black; <code>tui.paintGround</code> defaults to <code>auto</code> and"
+            " refuses to paint black onto a terminal that is already grey, so nothing on screen was black and every"
+            " mix still started there. A leaving row measured <code>#090401</code> between a <code>#1c1f26</code>"
+            " page and a <code>#231310</code> band: darker than the page it sat on and darker than the band it was"
+            " leaving, a dip on the way in and again on the way out.</p>",
+            "<p>The ground now has one owner and one order — the ground this process painted, else the one the"
+            " terminal reported over OSC 11, else the theme's declared ground for a terminal that answered neither"
+            " — and the call that paints is the call that records what it painted, so a policy that declines to"
+            " paint cannot leave the animations mixing out of a colour nothing put on screen. The frames above are"
+            " the fixed build: the leaving row reads <code>(31,30,33)</code>, between the two endpoints rather than"
+            " below both.</p>",
+        ],
+    ),
+    Section(
         "The composer popup grows out of the composer",
         [
             "<p>The autocomplete used to arrive at its full height, so the rows slid past a border already sitting"

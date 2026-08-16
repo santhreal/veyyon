@@ -4,7 +4,28 @@ providers:
     api: openai-completions
     apiKey: LOCAL_LLM_KEY
     models:
+      # Every row points at the one llama.cpp server on the recorder's network,
+      # which serves whatever weights it was started with and ignores the model
+      # name in a request. The rows below the first are catalog entries for the
+      # other quantizations of the same weights, so the model picker has a list
+      # a pointer can travel over. A turn on any of them is a real turn.
       - id: qwen2.5-1.5b
         name: Qwen2.5 1.5B (local)
+        contextWindow: 65536
+        maxTokens: 1024
+      - id: qwen2.5-1.5b-q8
+        name: Qwen2.5 1.5B q8_0 (local)
+        contextWindow: 65536
+        maxTokens: 1024
+      - id: qwen2.5-1.5b-q5
+        name: Qwen2.5 1.5B q5_k_m (local)
+        contextWindow: 65536
+        maxTokens: 1024
+      - id: qwen2.5-1.5b-q4
+        name: Qwen2.5 1.5B q4_k_m (local)
+        contextWindow: 65536
+        maxTokens: 1024
+      - id: qwen2.5-1.5b-f16
+        name: Qwen2.5 1.5B f16 (local)
         contextWindow: 65536
         maxTokens: 1024
