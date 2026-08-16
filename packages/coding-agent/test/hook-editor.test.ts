@@ -60,12 +60,27 @@ function createControllerContext() {
 			this.children.push(child);
 		},
 	};
+	// The selector is a floating card, so the surface it occupies is the overlay
+	// stack rather than the editor slot: the serialization cases below read this
+	// to see which dialog is actually on screen.
+	const overlays: unknown[] = [];
+	const showOverlay = vi.fn((component: unknown) => {
+		overlays.push(component);
+		return {
+			hide: () => {
+				const at = overlays.indexOf(component);
+				if (at >= 0) overlays.splice(at, 1);
+			},
+			setHidden: () => {},
+		};
+	});
 	const ui = {
 		requestRender: vi.fn(),
 		setFocus: vi.fn(),
 		start: vi.fn(),
 		stop: vi.fn(),
-		terminal: { columns: 120 },
+		showOverlay,
+		terminal: { columns: 120, rows: 40 },
 	} as unknown as TestContext["ui"] & {
 		setFocus: Mock<any>;
 		requestRender: Mock<any>;
@@ -75,9 +90,10 @@ function createControllerContext() {
 		editorContainer,
 		ui,
 		hookEditor: undefined,
+		focusActiveEditorArea: () => ui.setFocus(editor),
 	} as unknown as TestContext;
 
-	return { ctx, editor, editorContainer, ui };
+	return { ctx, editor, editorContainer, ui, overlays };
 }
 
 describe("HookEditorComponent default (hook) mode", () => {
@@ -527,7 +543,7 @@ describe("ExtensionUiController dialog serialization", () => {
 	};
 
 	it("queues a second selector instead of clobbering the open one", async () => {
-		const { ctx, editor, editorContainer } = createControllerContext();
+		const { ctx, overlays } = createControllerContext();
 		const controller = new ExtensionUiController(ctx) as unknown as SelectorController;
 
 		const abortA = new AbortController();
@@ -537,13 +553,13 @@ describe("ExtensionUiController dialog serialization", () => {
 		// First dialog is presented synchronously on the shared surface.
 		const componentA = ctx.hookSelector;
 		expect(componentA).toBeDefined();
-		expect(editorContainer.children).toEqual([componentA]);
+		expect(overlays).toEqual([componentA]);
 
 		const promiseB = controller.showHookSelector("B", ["b1", "b2"], { signal: abortB.signal });
 		// The second request must NOT swap itself into the surface while A is open —
 		// that orphaning is exactly the hang this serialization fixes.
 		expect(ctx.hookSelector).toBe(componentA);
-		expect(editorContainer.children).toEqual([componentA]);
+		expect(overlays).toEqual([componentA]);
 
 		// Resolving A hands the surface to the queued B.
 		abortA.abort();
@@ -552,18 +568,18 @@ describe("ExtensionUiController dialog serialization", () => {
 		const componentB = ctx.hookSelector;
 		expect(componentB).toBeDefined();
 		expect(componentB).not.toBe(componentA);
-		expect(editorContainer.children).toEqual([componentB]);
+		expect(overlays).toEqual([componentB]);
 
-		// Resolving B restores the core editor.
+		// Resolving B leaves nothing on screen.
 		abortB.abort();
 		await Bun.sleep(0);
 		expect(await promiseB).toBeUndefined();
 		expect(ctx.hookSelector).toBeUndefined();
-		expect(editorContainer.children).toEqual([editor]);
+		expect(overlays).toEqual([]);
 	});
 
 	it("never presents a queued selector whose signal aborts before its turn", async () => {
-		const { ctx, editor, editorContainer } = createControllerContext();
+		const { ctx, overlays } = createControllerContext();
 		const controller = new ExtensionUiController(ctx) as unknown as SelectorController;
 
 		const abortA = new AbortController();
@@ -578,13 +594,13 @@ describe("ExtensionUiController dialog serialization", () => {
 		expect(await promiseB).toBeUndefined();
 		// A is untouched and still owns the surface.
 		expect(ctx.hookSelector).toBe(componentA);
-		expect(editorContainer.children).toEqual([componentA]);
+		expect(overlays).toEqual([componentA]);
 
-		// When A resolves, the skipped B must not be shown — surface returns to editor.
+		// When A resolves, the skipped B must not be shown.
 		abortA.abort();
 		await Bun.sleep(0);
 		expect(await promiseA).toBeUndefined();
 		expect(ctx.hookSelector).toBeUndefined();
-		expect(editorContainer.children).toEqual([editor]);
+		expect(overlays).toEqual([]);
 	});
 });

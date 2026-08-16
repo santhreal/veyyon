@@ -3,6 +3,15 @@ import { HookSelectorComponent } from "@veyyon/coding-agent/modes/components/hoo
 import { getThemeByName, setThemeInstance, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { visibleWidth } from "@veyyon/tui";
 import { useFullColor } from "../test/helpers/theme-assertions";
+import { cardBodyLines } from "./helpers/modal-card";
+
+/**
+ * Terminal width these cases render at. The selector is a floating card, so the
+ * list is drawn at the card's CONTENT width (60% of the area, capped at 120),
+ * not at the terminal width: a case about how a long option wraps has to hand
+ * the list room comparable to what a real terminal gives it.
+ */
+const CARD_AREA = 200;
 
 beforeAll(async () => {
 	const theme = await getThemeByName("dark");
@@ -25,7 +34,7 @@ describe("HookSelectorComponent", () => {
 			options,
 			() => {},
 			() => {},
-			{ outline: true, initialIndex: 0 },
+			{ initialIndex: 0 },
 		);
 
 		const width = 80;
@@ -35,7 +44,7 @@ describe("HookSelectorComponent", () => {
 		}
 	});
 
-	it("wraps outlined option text without omitting the tail", () => {
+	it("wraps long option text without omitting the tail", () => {
 		const options = [
 			"Option A: Move to Veyyon-native only by migrating reusable shared AI instructions into .veyyon/AGENTS.md, .veyyon/rules, .veyyon/skills, and .veyyon/agents while deliberately not creating a root .github directory.",
 			"Option B: Keep dual support by migrating canonical instructions into .veyyon while also maintaining a root .github/copilot-instructions.md compatibility bridge for editors that do not understand Veyyon resources yet.",
@@ -45,17 +54,15 @@ describe("HookSelectorComponent", () => {
 			options,
 			() => {},
 			() => {},
-			{ outline: true, initialIndex: 0 },
+			{ initialIndex: 0 },
 		);
 
-		const width = 72;
-		const lines = component.render(width);
-		const plain = lines.map(line => Bun.stripANSI(line)).join("\n");
-		const normalizedPlain = plain.replace(/[\u2500-\u257f]/g, " ").replace(/\s+/g, " ");
+		const lines = component.render(CARD_AREA);
+		const normalizedPlain = cardBodyLines(lines).join("\n").replace(/\s+/g, " ");
 		expect(normalizedPlain).toContain("not creating a root .github directory");
 		expect(normalizedPlain).toContain("do not understand Veyyon resources yet");
 		for (const line of lines) {
-			expect(visibleWidth(Bun.stripANSI(line))).toBeLessThanOrEqual(width);
+			expect(visibleWidth(Bun.stripANSI(line))).toBeLessThanOrEqual(CARD_AREA);
 		}
 	});
 
@@ -77,24 +84,20 @@ describe("HookSelectorComponent", () => {
 			options,
 			() => {},
 			() => {},
-			{ outline: true, initialIndex: 0 },
+			{ initialIndex: 0 },
 		);
 
-		const width = 76;
-		const lines = component.render(width);
-		const plainLines = lines.map(line => Bun.stripANSI(line));
-		const normalizedPlain = plainLines
-			.join("\n")
-			.replace(/[\u2500-\u257f]/g, " ")
-			.replace(/\s+/g, " ");
-		const labelLineIndex = plainLines.findIndex(line => line.includes("Use existing local credentials"));
-		const descriptionLineIndex = plainLines.findIndex(line => line.includes("Authenticate via the provider keys"));
+		const lines = component.render(CARD_AREA);
+		const bodyLines = cardBodyLines(lines);
+		const normalizedPlain = bodyLines.join("\n").replace(/\s+/g, " ");
+		const labelLineIndex = bodyLines.findIndex(line => line.includes("Use existing local credentials"));
+		const descriptionLineIndex = bodyLines.findIndex(line => line.includes("Authenticate via the provider keys"));
 		expect(labelLineIndex).toBeGreaterThanOrEqual(0);
 		expect(descriptionLineIndex).toBeGreaterThan(labelLineIndex);
 		expect(normalizedPlain).toContain("without opening a new browser-based setup flow");
 		expect(normalizedPlain).toContain("keep the current editor session waiting for the configured credentials");
 		for (const line of lines) {
-			expect(visibleWidth(Bun.stripANSI(line))).toBeLessThanOrEqual(width);
+			expect(visibleWidth(Bun.stripANSI(line))).toBeLessThanOrEqual(CARD_AREA);
 		}
 	});
 
@@ -110,13 +113,10 @@ describe("HookSelectorComponent", () => {
 			options,
 			() => {},
 			() => {},
-			{ outline: true, initialIndex: 0, maxVisible: 6 },
+			{ initialIndex: 0, maxVisible: 6 },
 		);
 
-		const plain = component
-			.render(76)
-			.map(line => Bun.stripANSI(line))
-			.join("\n");
+		const plain = cardBodyLines(component.render(CARD_AREA)).join("\n");
 		// Every option label stays on screen so the user can see the whole menu...
 		expect(plain).toContain("Path A");
 		expect(plain).toContain("Path B");
@@ -131,10 +131,7 @@ describe("HookSelectorComponent", () => {
 		// The detail pane follows the cursor: moving down expands Path B and
 		// collapses Path A's description.
 		component.handleInput("\x1b[B");
-		const afterDown = component
-			.render(76)
-			.map(line => Bun.stripANSI(line))
-			.join("\n");
+		const afterDown = cardBodyLines(component.render(CARD_AREA)).join("\n");
 		expect(afterDown).toContain("Path A");
 		expect(afterDown).toContain("Path D");
 		expect(afterDown).toContain("Authorize a provider in the browser.");
@@ -154,7 +151,7 @@ describe("HookSelectorComponent", () => {
 			options,
 			() => {},
 			() => {},
-			{ outline: true, initialIndex: 0, maxVisible: 3 },
+			{ initialIndex: 0, maxVisible: 3 },
 		);
 
 		const plainLines = component.render(50).map(line => Bun.stripANSI(line));
@@ -178,7 +175,7 @@ describe("HookSelectorComponent", () => {
 			],
 			() => {},
 			() => {},
-			{ outline: true, maxVisible: 3 },
+			{ maxVisible: 3 },
 		);
 
 		for (const key of "browser") {
@@ -302,7 +299,7 @@ describe("HookSelectorComponent", () => {
 		expect(done).not.toContain(theme.checkbox.unchecked);
 	});
 
-	it("paints a selectedBg focus band across the highlighted checkbox row (outlined)", () => {
+	it("paints a selectedBg focus band across the highlighted checkbox row", () => {
 		// Bug #4157: multi-select checkbox picker used only an accent fg to signal
 		// focus, which vanished on themes where accent ≈ text. The focused row
 		// must now carry the selectedBg band regardless of accent/text contrast.
@@ -312,7 +309,6 @@ describe("HookSelectorComponent", () => {
 			() => {},
 			() => {},
 			{
-				outline: true,
 				selectionMarker: "checkbox",
 				markableCount: 3,
 				checkedIndices: [],
@@ -342,7 +338,6 @@ describe("HookSelectorComponent", () => {
 				() => {},
 				() => {},
 				{
-					outline: true,
 					selectionMarker: "checkbox",
 					markableCount: 3,
 					checkedIndices: [],
@@ -376,7 +371,7 @@ describe("HookSelectorComponent", () => {
 			],
 			() => {},
 			() => {},
-			{ outline: true, initialIndex: 0 },
+			{ initialIndex: 0 },
 		);
 		const bgProbe = theme.bg("selectedBg", "|");
 		const openBg = bgProbe.slice(0, bgProbe.indexOf("|"));

@@ -3,6 +3,7 @@
  * Displays a list of string options with keyboard navigation.
  */
 import {
+	type Component,
 	Container,
 	clampLow,
 	Ellipsis,
@@ -14,11 +15,12 @@ import {
 	padding,
 	renderInlineMarkdown,
 	replaceTabs,
+	routeSgrMouseInput,
+	type SgrMouseEvent,
 	Spacer,
 	Text,
 	type TUI,
 	truncateToWidth,
-	visibleWidth,
 	wrapTextWithAnsi,
 } from "@veyyon/tui";
 import { getMarkdownTheme } from "../../modes/theme/markdown-theme";
@@ -30,8 +32,22 @@ import {
 	matchesSelectUp,
 } from "../../modes/utils/keybinding-matchers";
 import { CountdownTimer } from "./countdown-timer";
-import { DynamicBorder } from "./dynamic-border";
+import {
+	applyModalReveal,
+	computeModalDims,
+	consumeModalChipHover,
+	hitTestModalChrome,
+	MODAL_SIZING_MEDIUM,
+	ModalRevealDriver,
+	type ModalShellGeometry,
+	type ModalShortcut,
+	planModalChrome,
+	renderModalShell,
+	SELECT_LIST_SHORTCUTS,
+	sizingForArea,
+} from "./modal-shell";
 import { renderSliderLines } from "./segment-track";
+import { selectionBand } from "./selector-helpers";
 
 /** One segment of a {@link HookSelectorSlider} — a label and an optional
  *  detail line (e.g. the resolved model name) shown beneath the track while
@@ -66,7 +82,6 @@ export interface HookSelectorOptions {
 	onTimeoutStart?: () => void;
 	onTimeoutReset?: () => void;
 	initialIndex?: number;
-	outline?: boolean;
 	maxVisible?: number;
 	onLeft?: () => void;
 	onRight?: () => void;
@@ -87,6 +102,16 @@ export interface HookSelectorOptions {
 	/** Number of leading options (original order) that receive a selection
 	 *  marker. Defaults to every option when {@link selectionMarker} is set. */
 	markableCount?: number;
+	/**
+	 * `"card"` (default) is the standalone surface: a floating ModalShell over
+	 * the transcript, with house footer chips and pointer support. `"embedded"`
+	 * renders the bare title and option list for a host that already owns a
+	 * card and mounts this inside its body (the session picker's delete
+	 * confirmation), so the two frames never nest.
+	 */
+	presentation?: "card" | "embedded";
+	/** Card presentation only: repaint request for hover and countdown paints. */
+	onRequestRender?: () => void;
 }
 
 export interface HookSelectorOption {
@@ -104,58 +129,18 @@ function normalizeHookSelectorOption(option: HookSelectorOptionInput): HookSelec
 	return { label: option.label };
 }
 
-function splitLeadingSpacesForWrap(line: string, width: number): { indent: string; body: string } {
-	let indentLength = 0;
-	while (indentLength < line.length && line.charCodeAt(indentLength) === 32) {
-		indentLength += 1;
-	}
-	const maxIndentLength = Math.max(0, width - 1);
-	const clampedIndentLength = Math.min(indentLength, maxIndentLength);
-	return {
-		indent: line.slice(0, clampedIndentLength),
-		body: line.slice(indentLength),
-	};
-}
-
-/** One row fed to {@link OutlinedList} or the plain list container. `highlight`
- *  causes the row (and its wrapped continuations, plus trailing padding) to be
- *  painted with the theme's `selectedBg` band — the focus cue that survives
- *  themes where `accent` fg is close to the terminal foreground. */
-type SelectorRow = { text: string; highlight: boolean };
+/** One row of the option list. `highlight` causes the row (and its wrapped
+ *  continuations, plus trailing padding) to be painted with the theme's
+ *  `selectedBg` band — the focus cue that survives themes where `accent` fg is
+ *  close to the terminal foreground. `option` is the filtered option index the
+ *  row belongs to, so the pointer can answer a click on any of an option's
+ *  lines with that option. */
+type SelectorRow = { text: string; highlight: boolean; option?: number };
 
 /** Paint `content` with the `selectedBg` background, applied AFTER any inner
  *  ANSI styling so the band spans padding as well as content. */
 function paintSelectedRow(content: string): string {
 	return theme.bg("selectedBg", content);
-}
-
-class OutlinedList extends Container {
-	#rows: SelectorRow[] = [];
-
-	setLines(rows: readonly SelectorRow[]): void {
-		this.#rows = rows.slice();
-		this.invalidate();
-	}
-
-	render(width: number): readonly string[] {
-		const borderColor = (text: string) => theme.fg("border", text);
-		const horizontal = borderColor(theme.boxSharp.horizontal.repeat(Math.max(1, width)));
-		const innerWidth = Math.max(1, width - 2);
-		const content: string[] = [];
-		for (const row of this.#rows) {
-			const normalized = replaceTabs(row.text);
-			const { indent, body } = splitLeadingSpacesForWrap(normalized, innerWidth);
-			const wrapped = wrapTextWithAnsi(body, Math.max(1, innerWidth - visibleWidth(indent)));
-			for (const wrappedBody of wrapped.length > 0 ? wrapped : [""]) {
-				const wrappedLine = `${indent}${wrappedBody}`;
-				const pad = Math.max(0, innerWidth - visibleWidth(wrappedLine));
-				const filled = `${wrappedLine}${padding(pad)}`;
-				const painted = row.highlight ? paintSelectedRow(filled) : filled;
-				content.push(`${borderColor(theme.boxSharp.vertical)}${painted}${borderColor(theme.boxSharp.vertical)}`);
-			}
-		}
-		return [horizontal, ...content, horizontal];
-	}
 }
 
 /** A filtered option paired with its index into the original options array, so
@@ -172,11 +157,10 @@ export class HookSelectorComponent extends Container {
 	#checkedIndices: Set<number>;
 	#markableCount: number;
 	#maxVisible: number;
-	#listContainer: Container | undefined;
-	#outlinedList: OutlinedList | undefined;
+	readonly #listContainer = new Container();
 	#onSelectCallback: (option: string) => void;
 	#onCancelCallback: () => void;
-	#titleComponent: Markdown;
+	#titleComponent: Markdown | undefined;
 	#baseTitle: string;
 	#countdown: CountdownTimer | undefined;
 	#onLeftCallback: (() => void) | undefined;
@@ -187,6 +171,23 @@ export class HookSelectorComponent extends Container {
 	#sliderIndex: number = 0;
 	#sliderComponent: Text | undefined;
 	#lastRenderWidth: number | undefined;
+	/** Floating card (default) versus bare rows inside a host's own card. */
+	readonly #card: boolean;
+	#helpText: string | undefined;
+	#onRequestRender: (() => void) | undefined;
+	/** Card title bar text: the title's first line, plus the countdown suffix. */
+	#cardTitle: string;
+	#countdownSuffix = "";
+	/** List children that are option rows, and the filtered index each stands for. */
+	#optionRows = new Map<Component, number>();
+	/** Per-render map of 0-based body line → filtered option index. */
+	#hitRows: (number | undefined)[] = [];
+	/** Pointer-highlighted option (never the selected one; selection owns its row). */
+	#hoveredIndex: number | null = null;
+	#shellGeometry: ModalShellGeometry | null = null;
+	#hoveredShortcutId: string | null = null;
+	#bodyRowStart = 0;
+	#reveal = new ModalRevealDriver();
 	constructor(
 		title: string,
 		options: HookSelectorOptionInput[],
@@ -214,7 +215,12 @@ export class HookSelectorComponent extends Container {
 		this.#maxVisible = Math.max(3, opts?.maxVisible ?? 12);
 		this.#onSelectCallback = onSelect;
 		this.#onCancelCallback = onCancel;
+		const [firstTitleLine = "", ...restTitleLines] = title.split("\n");
+		this.#card = opts?.presentation !== "embedded";
+		this.#helpText = opts?.helpText;
+		this.#onRequestRender = opts?.onRequestRender;
 		this.#baseTitle = title;
+		this.#cardTitle = firstTitleLine;
 		this.#onLeftCallback = opts?.onLeft;
 		this.#onRightCallback = opts?.onRight;
 		this.#onExternalEditorCallback = opts?.onExternalEditor;
@@ -224,12 +230,17 @@ export class HookSelectorComponent extends Container {
 			this.#sliderIndex = clampLow(opts.slider.index, 0, opts.slider.segments.length - 1);
 		}
 
-		this.addChild(new DynamicBorder());
-		this.addChild(new Spacer(1));
-
-		this.#titleComponent = new Markdown(title, 1, 0, getMarkdownTheme(), { color: t => theme.fg("accent", t) });
-		this.addChild(this.#titleComponent);
-		this.addChild(new Spacer(1));
+		// The card's title bar carries the title's first line, so the body opens
+		// on whatever the caller put under it (the session name a delete
+		// confirmation is about) rather than repeating the heading.
+		const bodyTitle = this.#card ? restTitleLines.join("\n") : title;
+		if (bodyTitle.length > 0) {
+			this.#titleComponent = new Markdown(bodyTitle, 1, 0, getMarkdownTheme(), {
+				color: t => theme.fg("accent", t),
+			});
+			this.addChild(this.#titleComponent);
+			this.addChild(new Spacer(1));
+		}
 
 		if (this.#slider) {
 			this.#sliderComponent = new Text(this.#renderSliderLine(), 1, 0);
@@ -243,7 +254,7 @@ export class HookSelectorComponent extends Container {
 				opts.timeout,
 				opts.tui,
 				this,
-				s => this.#titleComponent.setText(`${this.#baseTitle} (${s}s)`),
+				s => this.#showCountdown(s),
 				() => {
 					opts?.onTimeout?.();
 					// Auto-select current option on timeout (typically the first/recommended option)
@@ -257,19 +268,7 @@ export class HookSelectorComponent extends Container {
 			);
 		}
 
-		if (opts?.outline) {
-			this.#outlinedList = new OutlinedList();
-			this.addChild(this.#outlinedList);
-		} else {
-			this.#listContainer = new Container();
-			this.addChild(this.#listContainer);
-		}
-		this.addChild(new Spacer(1));
-		const controlsHint = opts?.helpText ?? "up/down navigate  enter select  esc cancel";
-		this.addChild(new Text(theme.fg("dim", controlsHint), 1, 0));
-		this.addChild(new Spacer(1));
-		this.addChild(new DynamicBorder());
-
+		this.addChild(this.#listContainer);
 		this.#updateList();
 	}
 
@@ -387,12 +386,6 @@ export class HookSelectorComponent extends Container {
 
 	#renderedLineRowCount(line: string, renderWidth: number): number {
 		const normalized = replaceTabs(line);
-		if (this.#outlinedList) {
-			const innerWidth = Math.max(1, renderWidth - 2);
-			const { indent, body } = splitLeadingSpacesForWrap(normalized, innerWidth);
-			const wrapped = wrapTextWithAnsi(body, Math.max(1, innerWidth - visibleWidth(indent)));
-			return Math.max(1, wrapped.length);
-		}
 		const wrapped = wrapTextWithAnsi(normalized, Math.max(1, renderWidth - 2));
 		return Math.max(1, wrapped.length);
 	}
@@ -536,7 +529,7 @@ export class HookSelectorComponent extends Container {
 				renderWidth,
 				filtered.index,
 			)) {
-				rows.push({ text, highlight });
+				rows.push({ text, highlight, option: i });
 			}
 		}
 
@@ -547,15 +540,29 @@ export class HookSelectorComponent extends Container {
 		if (startIndex > 0 || endIndex < total || this.#shouldRenderSearchStatus(renderWidth, mdTheme)) {
 			rows.push({ text: this.#renderStatusLine(total), highlight: false });
 		}
-		if (this.#outlinedList) {
-			this.#outlinedList.setLines(rows);
-			return;
-		}
-		this.#listContainer?.clear();
+		this.#listContainer.clear();
+		this.#optionRows.clear();
 		for (const row of rows) {
 			const bgFn = row.highlight ? paintSelectedRow : undefined;
-			this.#listContainer?.addChild(new Text(row.text, 1, 0, bgFn));
+			const child = new Text(row.text, 1, 0, bgFn);
+			this.#listContainer.addChild(child);
+			if (row.option !== undefined) this.#optionRows.set(child, row.option);
 		}
+	}
+
+	/** Countdown tick: the card shows it in the title bar, an embedded selector
+	 *  in its own title row, because that is the heading each one draws. */
+	#showCountdown(seconds: number): void {
+		if (!this.#card) {
+			this.#titleComponent?.setText(`${this.#baseTitle} (${seconds}s)`);
+			return;
+		}
+		this.#countdownSuffix = ` (${seconds}s)`;
+		this.#onRequestRender?.();
+	}
+
+	setOnRequestRender(callback: () => void): void {
+		this.#onRequestRender = callback;
 	}
 
 	/** Render the slider block in the style of the status line: each option is a
@@ -631,6 +638,13 @@ export class HookSelectorComponent extends Container {
 	}
 
 	handleInput(keyData: string): void {
+		if (keyData.startsWith("\x1b[<")) {
+			// Only a card reads its own reports. Embedded, the host's card offsets
+			// these rows, so a report read in this component's coordinates would
+			// answer the wrong option: the host routes it through hitTestOption.
+			if (this.#card) routeSgrMouseInput(keyData, event => this.#routeMouse(event));
+			return;
+		}
 		if (this.#countdown) {
 			this.#countdown.reset();
 			this.#onTimeoutResetCallback?.();
@@ -650,8 +664,7 @@ export class HookSelectorComponent extends Container {
 		} else if (matchesSelectDown(keyData) || (!this.#isSearchEnabled() && matchesKey(keyData, "j"))) {
 			this.#moveSelection(1);
 		} else if (matchesKey(keyData, "enter") || matchesKey(keyData, "return") || keyData === "\n") {
-			const selected = this.#filteredOptions[this.#selectedIndex];
-			if (selected && !this.#isDisabled(selected.index)) this.#onSelectCallback(selected.option.label);
+			this.#selectCurrentOption();
 		} else if (
 			matchesKey(keyData, "left") ||
 			(this.#slider && !this.#isSearchEnabled() && matchesKey(keyData, "h"))
@@ -669,13 +682,217 @@ export class HookSelectorComponent extends Container {
 		}
 	}
 
+	#selectCurrentOption(): void {
+		const selected = this.#filteredOptions[this.#selectedIndex];
+		if (selected && !this.#isDisabled(selected.index)) this.#onSelectCallback(selected.option.label);
+	}
+
+	/**
+	 * Footer chips. A caller that passed `helpText` already wrote the keys its
+	 * dialog takes — an ask question toggles where a menu selects — so those
+	 * segments become the chips verbatim rather than a house row that would
+	 * name the wrong key. The double-space between segments is the separator
+	 * every caller writes.
+	 */
+	#shortcuts(): readonly ModalShortcut[] {
+		if (this.#helpText !== undefined) {
+			return this.#helpText
+				.split(/\s{2,}/)
+				.map(segment => segment.trim())
+				.filter(segment => segment.length > 0)
+				.map(label => {
+					if (label.startsWith("enter ")) return { label, clickable: true, id: "confirm" };
+					if (label.toLowerCase().startsWith("esc")) return { label, clickable: true, id: "close" };
+					return { label };
+				});
+		}
+		// Every other list surface names these keys the same way, and the labels
+		// carry the live keybinding rather than a hardcoded "enter"/"esc".
+		const extras: ModalShortcut[] = [];
+		if (this.#slider) extras.push({ label: "←/→ tier" });
+		if (this.#onExternalEditorCallback) {
+			extras.push({ label: "external editor", keybindings: ["app.editor.external"] });
+		}
+		if (extras.length === 0) return SELECT_LIST_SHORTCUTS;
+		// The close chip stays last; the surface's own keys sit in front of it.
+		const shortcuts = [...SELECT_LIST_SHORTCUTS];
+		shortcuts.splice(shortcuts.length - 1, 0, ...extras);
+		return shortcuts;
+	}
+
+	#routeMouse(event: SgrMouseEvent): boolean {
+		const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
+			motion: event.motion,
+			leftClick: event.leftClick,
+		});
+		if (
+			consumeModalChipHover(chrome, this.#hoveredShortcutId, id => {
+				this.#hoveredShortcutId = id;
+				this.#onRequestRender?.();
+			})
+		) {
+			return true;
+		}
+		if (
+			chrome.kind === "close" ||
+			chrome.kind === "outside" ||
+			(chrome.kind === "shortcut" && chrome.id === "close")
+		) {
+			this.#onCancelCallback();
+			return true;
+		}
+		if (chrome.kind === "shortcut" && chrome.id === "confirm") {
+			this.#selectCurrentOption();
+			return true;
+		}
+		if (event.wheel !== null) {
+			this.#moveSelection(event.wheel < 0 ? -1 : 1);
+			this.#onRequestRender?.();
+			return true;
+		}
+		const line = event.row - this.#bodyRowStart;
+		if (event.motion) {
+			const index = this.#hitRows[line] ?? null;
+			if (index !== this.#hoveredIndex) {
+				this.#hoveredIndex = index;
+				this.#onRequestRender?.();
+			}
+			return true;
+		}
+		if (event.leftClick) {
+			const index = this.#hitRows[line];
+			const filtered = index === undefined ? undefined : this.#filteredOptions[index];
+			// A click mirrors Enter: move onto the option, then take it. A
+			// disabled row is inert under the pointer exactly as it is under the
+			// cursor keys, rather than moving the selection onto it.
+			if (index !== undefined && filtered && !this.#isDisabled(filtered.index)) {
+				this.#selectedIndex = index;
+				this.#updateList();
+				this.#selectCurrentOption();
+			}
+			return true;
+		}
+		return true;
+	}
+
+	/**
+	 * Rows this selector draws, with `#hitRows` filled in as they are produced.
+	 * Assembled child by child rather than through the container so each
+	 * option's LINES are known: an option row wraps, and a hit map built from
+	 * child order would answer the wrong option.
+	 */
+	#assembleBody(contentWidth: number): string[] {
+		const body: string[] = [];
+		this.#hitRows = [];
+		const list = this.#listContainer;
+		for (const child of this.children) {
+			if (child === list) {
+				for (const row of list.children) {
+					const option = this.#optionRows.get(row);
+					for (const rendered of row.render(contentWidth)) {
+						if (option === undefined) {
+							body.push(rendered);
+							continue;
+						}
+						this.#hitRows[body.length] = option;
+						// The cursor row already carries the selection band; the
+						// pointer band is what the OTHER rows get under the mouse.
+						body.push(
+							option === this.#hoveredIndex && option !== this.#selectedIndex
+								? selectionBand(rendered, contentWidth)
+								: rendered,
+						);
+					}
+				}
+				continue;
+			}
+			for (const rendered of child.render(contentWidth)) body.push(rendered);
+		}
+		return body;
+	}
+
+	/**
+	 * Embedded presentation: the option index drawn on `line` (0-based within
+	 * this selector's own rows), or undefined for a heading, gap or the status
+	 * row. The host owns the card and therefore owns the pointer; this is how
+	 * it asks which option a click landed on.
+	 */
+	hitTestOption(line: number): number | undefined {
+		return this.#hitRows[line];
+	}
+
+	/** Embedded presentation: hover `index` (or clear it with null). Returns
+	 *  true when the paint changed. */
+	setHoveredOption(index: number | null): boolean {
+		if (index === this.#hoveredIndex) return false;
+		this.#hoveredIndex = index;
+		return true;
+	}
+
+	/** Embedded presentation: take the option on `line`, exactly as Enter
+	 *  would. A gap, heading or disabled row is inert. */
+	selectOptionAt(line: number): boolean {
+		const index = this.#hitRows[line];
+		const filtered = index === undefined ? undefined : this.#filteredOptions[index];
+		if (index === undefined || !filtered || this.#isDisabled(filtered.index)) return false;
+		this.#selectedIndex = index;
+		this.#updateList();
+		this.#selectCurrentOption();
+		return true;
+	}
+
+	/** Embedded presentation: a wheel notch steps the cursor like an arrow. */
+	handleWheel(delta: number): void {
+		this.#moveSelection(delta < 0 ? -1 : 1);
+	}
+
 	override render(width: number): readonly string[] {
 		const renderWidth = Math.max(1, width);
-		if (this.#lastRenderWidth !== renderWidth) {
-			this.#lastRenderWidth = renderWidth;
-			this.#updateList(renderWidth);
+		if (!this.#card) {
+			if (this.#lastRenderWidth !== renderWidth) {
+				this.#lastRenderWidth = renderWidth;
+				this.#updateList(renderWidth);
+			}
+			return this.#assembleBody(renderWidth);
 		}
-		return super.render(renderWidth);
+
+		const height = process.stdout.rows || 40;
+		const sizing = sizingForArea(MODAL_SIZING_MEDIUM, height);
+		const dims = computeModalDims(renderWidth, height, sizing);
+		if (!dims) {
+			this.#shellGeometry = null;
+			return Array.from({ length: height }, () => padding(renderWidth));
+		}
+		if (this.#lastRenderWidth !== dims.contentWidth) {
+			this.#lastRenderWidth = dims.contentWidth;
+			this.#updateList(dims.contentWidth);
+		}
+
+		const shortcuts = this.#shortcuts();
+		const chrome = planModalChrome({
+			sizing,
+			modalHeight: dims.modalHeight,
+			contentWidth: dims.contentWidth,
+			shortcuts,
+			hoveredShortcutId: this.#hoveredShortcutId,
+		});
+
+		const body = this.#assembleBody(dims.contentWidth);
+
+		const shell = renderModalShell({
+			title: truncateToWidth(this.#cardTitle + this.#countdownSuffix, dims.contentWidth, Ellipsis.Unicode),
+			sizing,
+			areaWidth: renderWidth,
+			areaHeight: height,
+			body: body.slice(0, chrome.maxBodyRows),
+			preferredBodyRows: body.length,
+			shortcuts,
+			hoveredShortcutId: this.#hoveredShortcutId,
+			showClose: true,
+		});
+		this.#shellGeometry = shell.geometry;
+		this.#bodyRowStart = shell.geometry?.bodyRowStart ?? 0;
+		return applyModalReveal(shell, renderWidth, this.#reveal.value);
 	}
 
 	dispose(): void {
