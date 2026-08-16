@@ -96,9 +96,12 @@ const MOUSE_TRACKING_OFF = "\x1b[?1006l\x1b[?1003l\x1b[?1000l";
 // presses (the wheel arrives as buttons 64/65) and 1006h SGR coordinates,
 // skipping 1003h any-motion so idle pointer moves never flood the input
 // queue. Tradeoff against native scroll: while the grab is held, drag-select
-// becomes Shift+drag -- the standard convention in mouse-capturing TUIs, and
-// held for as long as the transcript is scrollable rather than coming and
-// going, so the gesture never depends on timing.
+// becomes Shift+drag -- the standard convention in mouse-capturing TUIs. It is
+// held while the transcript is scrollable, and also while a pinned-footer child
+// declares a click target (MouseRoutable.wantsPointer), since a target the
+// terminal never reports is not a target at all. In a short session that second
+// reason comes and goes with the chips; in any session long enough to scroll,
+// the first reason already holds it for the duration.
 const MOUSE_WHEEL_TRACKING_ON = "\x1b[?1000h\x1b[?1006h";
 // Scroll position, drawn on the right edge of a frozen transcript region. The
 // groove is dimmed rather than coloured: the engine owns no palette (themes
@@ -1851,13 +1854,33 @@ export class TUI extends Container {
 		this.requestRender();
 	}
 
+	/** True while a pinned-footer child has click targets on screen.
+	 *
+	 * Scroll isolation is not the only reason to hold the mouse: the composer
+	 * chips are click targets whose whole session may never overflow the
+	 * viewport, and without the grab the terminal reports nothing and the chip
+	 * is inert text. The want is per frame — the ledger is re-read after every
+	 * compose — so the grab lasts exactly as long as the targets do. */
+	#footerWantsPointer(): boolean {
+		const segments = this.#frameSegments;
+		if (this.#pinnedFooterChildCount <= 0 || segments.length === 0) return false;
+		const first = Math.max(0, segments.length - this.#pinnedFooterChildCount);
+		for (let i = first; i < segments.length; i++) {
+			const component = segments[i]!.component as Component & Partial<MouseRoutable>;
+			if (component.wantsPointer?.() === true) return true;
+		}
+		return false;
+	}
+
 	/** Apply or tear down wheel/button mouse tracking for scroll isolation.
 	 * Alt-screen overlays own the full tracking set while active, so this is
 	 * a no-op then; the alt-exit path re-syncs.
 	 *
 	 * The `"alt-arrows"` transport never grabs the mouse — that grab is exactly
 	 * what it exists to avoid, since it is what takes native drag-select away.
-	 * There it gets its gestures from Alternate Scroll Mode instead. */
+	 * There it gets its gestures from Alternate Scroll Mode instead. A footer
+	 * click target does not override that choice: the operator who picked that
+	 * transport asked for the terminal to keep the mouse. */
 	#syncWheelTracking(): void {
 		const want =
 			this.#scrollTransport === "mouse" &&
@@ -1865,7 +1888,7 @@ export class TUI extends Container {
 			!this.#stopped &&
 			this.#hasEverRendered &&
 			!this.#altActive &&
-			this.#frameScrollable;
+			(this.#frameScrollable || this.#footerWantsPointer());
 		if (want === this.#wheelTrackingActive) return;
 		this.#wheelTrackingActive = want;
 		// A press whose release lands after tracking flips would pair a stale cell

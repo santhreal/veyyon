@@ -11,6 +11,7 @@
 ### Fixed
 
 - Kept the transcript on screen when a virtualized root compacts its committed rows. A root can now report the rows it dropped, and the engine slides its commit index onto the new frame instead of reading the shift as a committed-prefix divergence, erasing native scrollback and replaying a frame the component had already emptied. A root that drops rows without reporting them is rehydrated before any destructive replay, so it costs an extra full repaint rather than the history.
+- Held mouse button reporting while a pinned-footer component has a click target on screen. A footer target used to be reachable only while the frame overflowed the viewport, since scroll isolation was the sole reason the engine took the mouse, so every footer click in a short session was reported to nobody. A component declares its targets through the new optional `MouseRoutable.wantsPointer()`, and the grab is scanned from the frame-segment ledger after each compose, so it is held exactly while a target exists and the terminal keeps native drag-select the rest of the time. The `alt-arrows` scroll transport and scroll isolation being off both still refuse the grab.
 
 ## [16.5.2] - 2026-07-14
 

@@ -12,22 +12,27 @@
  *
  * Not covered: the host's id-to-action dispatch (editor callbacks), and hover
  * paint — the main session holds press/release tracking only so native
- * drag-select keeps working, so no motion events ever reach the bar.
+ * drag-select keeps working, so no motion events ever reach the bar. The bar
+ * also has to ASK for that tracking (wantsPointer), or the terminal reports no
+ * buttons at all in a session short enough that nothing scrolls and every chip
+ * is dead; the engine side of that is pinned in the TUI package by
+ * a-footer-click-target-holds-the-mouse-in-a-session-that-never-scrolls.test.ts.
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/components/composer-chrome";
-import {
-	buildComposerShortcuts,
-	ComposerShortcutsBar,
-} from "@veyyon/coding-agent/modes/components/composer-shortcuts";
+import { buildComposerShortcuts, ComposerShortcutsBar } from "@veyyon/coding-agent/modes/components/composer-shortcuts";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { SgrMouseEvent } from "@veyyon/tui";
 
 beforeAll(() => initTheme());
 
 function clickAt(col: number, row = 0): { event: SgrMouseEvent; line: number; col: number } {
-	return { event: { button: 0, col, row, release: false, wheel: null, motion: false, leftClick: true }, line: row, col };
+	return {
+		event: { button: 0, col, row, release: false, wheel: null, motion: false, leftClick: true },
+		line: row,
+		col,
+	};
 }
 
 function click(bar: ComposerShortcutsBar, col: number, row = 0): void {
@@ -122,5 +127,29 @@ describe("composer chip clicks", () => {
 		expect(lines[0]).toContain("interrupt");
 		expect(lines[0]).not.toContain("dequeue");
 		expect(lines[0]).not.toContain("background");
+	});
+
+	it("asks for the pointer exactly while a chip is on screen", () => {
+		// The grab costs the terminal's native drag-select, so it is claimed
+		// only for a row that has something to click, and dropped the moment
+		// the chips clear. Before rendering the bar owns no screen row at all.
+		const bar = new ComposerShortcutsBar();
+		expect(bar.wantsPointer()).toBe(false);
+
+		bar.setShortcuts(
+			buildComposerShortcuts(new KeybindingsManager(), {
+				busy: true,
+				hasDraft: false,
+				hasQueue: true,
+				focused: false,
+				canBackgroundBash: true,
+			}),
+		);
+		bar.render(100);
+		expect(bar.wantsPointer()).toBe(true);
+
+		bar.setShortcuts([]);
+		bar.render(100);
+		expect(bar.wantsPointer()).toBe(false);
 	});
 });

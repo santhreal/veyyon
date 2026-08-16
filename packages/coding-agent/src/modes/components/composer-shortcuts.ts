@@ -29,10 +29,7 @@ export interface ComposerShortcutContext {
  *   left-to-right), then dequeue.
  * - Empty state (idle, no draft, no queue) renders nothing.
  */
-export function buildComposerShortcuts(
-	keybindings: KeybindingsManager,
-	ctx: ComposerShortcutContext,
-): ModalShortcut[] {
+export function buildComposerShortcuts(keybindings: KeybindingsManager, ctx: ComposerShortcutContext): ModalShortcut[] {
 	const chips: ModalShortcut[] = [];
 
 	if (ctx.busy && !ctx.focused) {
@@ -73,9 +70,12 @@ export function buildComposerShortcuts(
  *
  * Chips are click targets (MouseRoutable): the pinned-footer mouse route in
  * the TUI delivers clicks here in frame-local coordinates, and the host maps
- * a chip id to the same action its keybinding runs. Hover paint stays off —
- * the main session holds press/release tracking only (any-motion stays with
- * the terminal so drag-select keeps working), so no motion events ever arrive.
+ * a chip id to the same action its keybinding runs. The bar declares the grab
+ * itself through wantsPointer(), because a session whose frame never overflows
+ * the viewport gets no scroll isolation and therefore no button reports at all,
+ * which left every chip inert. Hover paint stays off — the grab is press/release
+ * only (any-motion stays with the terminal so drag-select keeps working), so no
+ * motion events ever arrive.
  */
 export class ComposerShortcutsBar implements Component, MouseRoutable {
 	#shortcuts: readonly ModalShortcut[] = [];
@@ -114,6 +114,11 @@ export class ComposerShortcutsBar implements Component, MouseRoutable {
 		}
 		const inset = " ".repeat(COMPOSER_INSET_COLS);
 		return [inset + first.styled];
+	}
+
+	/** The grab is worth taking only while a chip is actually on screen. */
+	wantsPointer(): boolean {
+		return this.#hits.length > 0;
 	}
 
 	routeMouse(event: SgrMouseEvent, line: number, col: number): void {
