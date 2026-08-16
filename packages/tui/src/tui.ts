@@ -1099,6 +1099,9 @@ export class TUI extends Container {
 	// output (see NativeScrollbackCompaction). Consumed once per frame, right
 	// after compose, to slide the commit coordinates onto the new frame.
 	#frameDroppedRows = 0;
+	// Frame row the drop happened at, in the PREVIOUS frame's coordinates: the
+	// topmost dropping child's start. Undefined when nothing dropped.
+	#frameDroppedAt: number | undefined;
 	// Guards the one-shot rehydrating re-render a destructive rebuild takes when
 	// a virtualized root has dropped the history that rebuild is about to erase.
 	#rehydratingDivergence = false;
@@ -1383,6 +1386,7 @@ export class TUI extends Container {
 		width = Math.max(1, width);
 		this.#nativeScrollbackLiveRegionStart = undefined;
 		this.#frameDroppedRows = 0;
+		this.#frameDroppedAt = undefined;
 		const children = this.children;
 		const previousSegments = this.#frameSegments;
 		const segments: FrameSegment[] = new Array(children.length);
@@ -1424,7 +1428,14 @@ export class TUI extends Container {
 				// is read straight after it. Only rows the engine itself reported
 				// committed can be dropped, so the total is an offset into the
 				// committed prefix and never past it.
-				this.#frameDroppedRows += takeNativeScrollbackDroppedRows(child);
+				const childDropped = takeNativeScrollbackDroppedRows(child);
+				if (childDropped > 0) {
+					this.#frameDroppedRows += childDropped;
+					// Previous-frame coordinates: the prefix being spliced is the one
+					// the last emit built, so the offset must be the child's start
+					// THERE, not in the frame being composed now.
+					this.#frameDroppedAt = Math.min(this.#frameDroppedAt ?? prevStart, prevStart);
+				}
 				const liveRegionStart = getNativeScrollbackLiveRegionStart(child);
 				if (liveRegionStart !== undefined) {
 					liveLocalStart = Number.isFinite(liveRegionStart)
@@ -3634,12 +3645,24 @@ export class TUI extends Container {
 		// give those rows back, and leaving the indices behind is what makes the
 		// next classification read the shift as a prefix violation.
 		if (this.#frameDroppedRows > 0) {
-			const dropped = Math.min(this.#frameDroppedRows, this.#committedRows);
+			// The rows left at the drop site's own offset. A virtualized root is
+			// not necessarily the first child: `home-anchor-layout` mounts a
+			// `topFill` above the transcript whenever a conversation exists, so
+			// the dropped rows begin at that child's start row and splicing from
+			// index 0 would delete the filler's committed rows instead and leave
+			// the prefix misaligned by exactly the header height — which the next
+			// audit reads as a divergence and repairs with a whole-screen rebuild.
+			const at = Math.min(this.#frameDroppedAt ?? 0, this.#committedRows);
+			const dropped = Math.min(this.#frameDroppedRows, Math.max(0, this.#committedRows - at));
 			this.#frameDroppedRows = 0;
+			this.#frameDroppedAt = undefined;
 			if (dropped > 0) {
 				this.#committedRows -= dropped;
-				this.#committedPrefixAuditRows = Math.max(0, this.#committedPrefixAuditRows - dropped);
-				this.#committedPrefix.splice(0, dropped);
+				this.#committedPrefixAuditRows =
+					this.#committedPrefixAuditRows > at
+						? Math.max(at, this.#committedPrefixAuditRows - dropped)
+						: this.#committedPrefixAuditRows;
+				this.#committedPrefix.splice(at, dropped);
 				this.#windowTopRow = Math.max(0, this.#windowTopRow - dropped);
 				this.#previousFrameLength = Math.max(0, this.#previousFrameLength - dropped);
 			}
