@@ -18,6 +18,8 @@
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
+import { Effort } from "@veyyon/catalog/effort";
+import { ANY_MODEL_EFFORT_KEY } from "@veyyon/coding-agent/config/effort-resolver";
 import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { getRoleInfo, SELECTABLE_MODEL_ROLE_IDS } from "@veyyon/coding-agent/config/model-roles";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
@@ -230,6 +232,30 @@ describe("settings submenus answer the pointer", () => {
 
 		component.handleInput(clickAt(rowIndex(component, "Add a model…") + 1));
 		expect(frameText(component)).toContain("No models available");
+	});
+
+	it("default effort: a click on an effort row picks that level, which is what the picker's hint promises", () => {
+		// The effort step (`renderEffortStep`) is the third surface whose footer
+		// advertises "click pick". Its three hosts all reach it through
+		// `MouseRoutedSubmenu`, and the any-model row opens it with no catalog,
+		// so one drive of the real host covers the claim for all three.
+		const { component } = createSelector();
+		component.openTab("model");
+		expect(component.selectSetting("defaultEffort")).toBe(true);
+		component.handleInput("\n");
+
+		// The legacy `defaultThinkingLevel` folds in as the any-model row, so the
+		// list opens holding `high` and the click below has to move it.
+		expect(settings.get("defaultEffort")).toEqual({});
+		component.handleInput(clickAt(rowIndex(component, "Change the any-model effort…") + 1));
+		expect(frameText(component)).toContain("Enter / click pick");
+
+		// Rows are matched by description: the `auto` row's own description names
+		// "xhigh", so a label match on an effort name lands on the wrong row.
+		expectHoverBand(component, "Moderate reasoning");
+
+		component.handleInput(clickAt(rowIndex(component, "Moderate reasoning") + 1));
+		expect(settings.get("defaultEffort")).toEqual({ [ANY_MODEL_EFFORT_KEY]: Effort.Medium });
 	});
 
 	it(
