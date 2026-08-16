@@ -15682,14 +15682,15 @@ export class AgentSession {
 		// compaction fires unattended: under `auto` that tier is an accidental
 		// bill on an unrelated account (a Cursor session summarized on a Hugging
 		// Face key and surfaced its 402 as a compaction failure). `any-model` is
-		// the opt-in that keeps the historical never-fails behavior.
+		// the opt-in that keeps the historical never-fails behavior. The tier
+		// walks every authenticated row widest-first rather than staking the
+		// session on the single widest: a dead key on that one row must not fail
+		// compaction when a slightly narrower usable row exists, because
+		// never-failing is the strategy's whole point.
 		if (fallbackStrategy === "any-model") {
 			const sortedByContext = [...availableModels].sort((a, b) => (b.contextWindow ?? 0) - (a.contextWindow ?? 0));
 			for (const model of sortedByContext) {
-				if (!seen.has(this.#getModelKey(model))) {
-					addCandidate(model);
-					break;
-				}
+				addCandidate(model);
 			}
 		}
 
