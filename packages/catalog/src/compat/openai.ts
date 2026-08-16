@@ -564,6 +564,7 @@ interface OpenAIResponsesSpecLike {
 export function buildOpenAIResponsesCompat(spec: OpenAIResponsesSpecLike): ResolvedOpenAIResponsesCompat {
 	const baseUrl = spec.baseUrl ?? "";
 	const isAzure = modelMatchesHost({ provider: spec.provider, baseUrl }, "azureOpenAI");
+	const isCodexBackend = modelMatchesHost({ provider: spec.provider, baseUrl }, "codexBackend");
 	const isOpenRouter = modelMatchesHost({ provider: spec.provider, baseUrl }, "openrouter");
 	const isHuggingfaceRouter = modelMatchesHost({ provider: spec.provider, baseUrl }, "huggingfaceRouter");
 	const isOpenAIUrl = hostMatchesUrl(baseUrl, "openai");
@@ -636,12 +637,17 @@ export function buildOpenAIResponsesCompat(spec: OpenAIResponsesSpecLike): Resol
 		// actually meant here, unset-means-official and a re-pointed host means not.
 		supportsObfuscationOptOut: isOfficialOpenAIEndpoint(spec.provider, baseUrl),
 		// `POST /responses/compact` is documented for the official OpenAI API
-		// (Compaction guide) and for Azure OpenAI's v1 API (Microsoft Learn,
-		// `{resource}.openai.azure.com/openai/v1/responses/compact`). The codex
-		// provider stays off: its websocket/session transport owns history state,
-		// so a client-side compacted window has no replay contract there. A
-		// compatible gateway opts in with a `supportsServerCompaction` override.
-		supportsServerCompaction: isOfficialOpenAIEndpoint(spec.provider, baseUrl) || isAzure,
+		// (Compaction guide), for Azure OpenAI's v1 API (Microsoft Learn,
+		// `{resource}.openai.azure.com/openai/v1/responses/compact`), and it is
+		// what codex-rs itself calls on the ChatGPT Codex backend
+		// (`chatgpt.com/backend-api/codex/responses/compact`) for a ChatGPT
+		// OAuth session. Codex was held off on the theory that its session
+		// transport owns history state; it does not — the endpoint is stateless
+		// there too, the window it returns is the client's to store and replay,
+		// and it carries the same encrypted reasoning the turn path already
+		// sends. A compatible gateway opts in with a `supportsServerCompaction`
+		// override.
+		supportsServerCompaction: isOfficialOpenAIEndpoint(spec.provider, baseUrl) || isAzure || isCodexBackend,
 		stripDeepseekSpecialTokens:
 			Boolean(id) && isDeepseekModelIdOrName(id) && (spec.provider === "nvidia" || spec.provider === "deepseek"),
 		streamMarkupHealingPattern: id ? detectStreamMarkupHealingPattern(spec.provider, id, baseUrl) : undefined,
