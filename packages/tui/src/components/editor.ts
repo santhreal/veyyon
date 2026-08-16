@@ -435,6 +435,18 @@ export class Editor implements Component, Focusable, MouseRoutable {
 	 * into a suggestion.
 	 */
 	#autocompleteRowStart = -1;
+	/**
+	 * Where the LAST paint put the input text, so a click can be turned back
+	 * into a caret position: the first text row of this editor's own frame, how
+	 * many text rows it painted, the column that text starts at (the prompt
+	 * gutter's width, or the left border plus its padding), and the scroll
+	 * offset in force for that paint. Recorded at render because each depends on
+	 * that frame's geometry; the wrap width is `#lastLayoutWidth`.
+	 */
+	#textRowStart = 0;
+	#textRowCount = 0;
+	#textColStart = 0;
+	#textScrollOffset = 0;
 	onAutocompleteUpdate?: () => void;
 
 	// Paste tracking for large pastes
@@ -848,6 +860,14 @@ export class Editor implements Component, Focusable, MouseRoutable {
 			const topFillWidth = Math.max(0, width - borderWidth * 2);
 			result.push(topLeft + horizontal.repeat(topFillWidth) + topRight);
 		}
+
+		// The click-to-caret map for this paint. In gutter mode the text starts
+		// after the prompt gutter and the first row is row 0; framed, it starts
+		// after the left border and its padding, one row below the top rule.
+		this.#textRowStart = borderVisible ? 1 : 0;
+		this.#textRowCount = visibleLayoutLines.length;
+		this.#textColStart = borderVisible ? 1 + paddingX : (promptGutter?.width ?? 0);
+		this.#textScrollOffset = this.#scrollOffset;
 
 		// Render each layout line
 		// Emit hardware cursor marker only when focused and not showing autocomplete
@@ -3126,22 +3146,58 @@ export class Editor implements Component, Focusable, MouseRoutable {
 	}
 
 	/**
-	 * A left click on a suggestion accepts it, exactly as Tab does.
+	 * A left click accepts a suggestion, or places the caret in the text.
 	 *
 	 * The popup paints as the tail rows of this editor's own frame, so the row
 	 * span is known from the last render and the list resolves a row to an item.
+	 * A click on a text row instead moves the caret there, which is what a click
+	 * in a text field means everywhere else; the row and column come from the
+	 * same paint, so a wrapped line, a scrolled input, and a prompt gutter all
+	 * land on the character under the pointer.
+	 *
 	 * Only a click is honored: the composer lives in the engine's pinned footer,
 	 * which reports presses and releases and no motion at all, so there is no
 	 * hover to keep, and a wheel notch there belongs to the transcript.
 	 */
-	routeMouse(event: SgrMouseEvent, line: number, _col: number): void {
+	routeMouse(event: SgrMouseEvent, line: number, col: number): void {
 		if (!event.leftClick) return;
 		const list = this.#autocompleteList;
-		if (!this.#autocompleteState || !list || this.#autocompleteRowStart < 0) return;
-		const index = list.hitTest(line - this.#autocompleteRowStart);
-		if (index === undefined) return;
-		list.setSelectedIndex(index);
-		this.#acceptAutocompleteSelection(list.getSelectedItem());
+		if (this.#autocompleteState && list && this.#autocompleteRowStart >= 0) {
+			const index = list.hitTest(line - this.#autocompleteRowStart);
+			if (index !== undefined) {
+				list.setSelectedIndex(index);
+				this.#acceptAutocompleteSelection(list.getSelectedItem());
+				return;
+			}
+		}
+		this.#placeCaretAt(line, col);
+	}
+
+	/**
+	 * Move the caret to the character the pointer is over, or do nothing when
+	 * the click missed the rows this editor painted. A click past the end of a
+	 * row lands at the end of that row's text, the way a click past the end of a
+	 * line does in an editor — the grapheme walk stops there on its own, so no
+	 * upper clamp is needed. A click while a suggestion popup is open dismisses
+	 * the popup: its prefix no longer describes where the caret is.
+	 */
+	#placeCaretAt(line: number, col: number): void {
+		const row = line - this.#textRowStart;
+		// Both bounds matter: a row above the text is a negative index, and a row
+		// below what this paint showed can still name a real line of a scrolled
+		// buffer, which would put the caret somewhere the pointer never was.
+		if (row < 0 || row >= this.#textRowCount) return;
+		const visualLines = this.#buildVisualLineMap(this.#lastLayoutWidth);
+		const target = visualLines[this.#textScrollOffset + row];
+		if (!target) return;
+		const logical = this.#state.lines[target.logicalLine] ?? "";
+		const segment = logical.slice(target.startCol, target.startCol + target.length);
+		const wanted = Math.max(0, col - this.#textColStart);
+		this.#resetKillSequence();
+		this.#preferredVisualCol = null;
+		this.#state.cursorLine = target.logicalLine;
+		this.#setCursorCol(target.startCol + offsetAtVisualCol(segment, wanted));
+		if (this.#autocompleteState) this.#cancelAutocomplete(true);
 	}
 
 	#cancelAutocomplete(notifyCancel: boolean = false): void {

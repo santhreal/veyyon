@@ -5,6 +5,7 @@
 ### Added
 
 - A left click on a composer autocomplete suggestion accepts it, through the same apply path as Tab. Container routes a pointer event to the child under the pointed row, so a click reaches a component mounted inside the pinned footer.
+- A left click on the editor's text places the caret on the character under the pointer. The row and column are read from the last paint, so a prompt gutter, a wrapped line, a scrolled draft and the framed variant all resolve the same way; a click past the end of a row lands at the end of that row, and a click on the text while a suggestion popup is open dismisses the popup, since its prefix no longer describes where the caret is. Motion, release and wheel reports are still ignored.
 
 ### Fixed
 
