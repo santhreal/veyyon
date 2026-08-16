@@ -7,7 +7,7 @@
  */
 import { clampLow, Ellipsis, extractPrintableText, matchesKey, ScrollView, truncateToWidth } from "@veyyon/tui";
 import type { ThemeBg } from "../theme/theme";
-import { theme } from "../theme/theme";
+import { hoverBand, theme } from "../theme/theme";
 
 /**
  * Paint `line` as a selection or hover band that fills the whole row.
@@ -20,6 +20,22 @@ import { theme } from "../theme/theme";
  */
 export function selectionBand(line: string, rowWidth: number, background: ThemeBg = "selectedBg"): string {
 	return theme.bg(background, truncateToWidth(line, rowWidth, Ellipsis.Omit, true));
+}
+
+/**
+ * Paint `line` as a pointer band at `strength`, the fading sibling of
+ * {@link selectionBand}.
+ *
+ * At strength 1 this IS `selectionBand(line, rowWidth)`, byte for byte: a list
+ * whose pointer band does not fade paints the same row it always did. Below it
+ * the theme mixes the band out of the ground the row sits on, so the band
+ * arrives from the page instead of appearing on it. What a strength LOOKS like
+ * is the theme's decision ({@link hoverBand}); a list only decides when a row is
+ * at what strength, and only calls this for a strength above 0 — the band at 0
+ * is the absence of a band, not a band mixed all the way out.
+ */
+export function hoverBandAt(line: string, rowWidth: number, strength: number): string {
+	return hoverBand(truncateToWidth(line, rowWidth, Ellipsis.Omit, true), strength);
 }
 
 /**

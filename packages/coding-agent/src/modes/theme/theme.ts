@@ -1044,7 +1044,7 @@ export { getSymbolTheme } from "./symbol-theme";
  * the theme is what decides which color space it paints in, and a mix computed for a space the
  * theme is not using is quantized right back.
  */
-function hoverBand(text: string, strength: number): string {
+export function hoverBand(text: string, strength: number): string {
 	if (strength >= 1) return theme.bg("selectedBg", text);
 	if (theme.getColorMode() !== "truecolor") return strength >= 0.5 ? theme.bg("selectedBg", text) : text;
 	return theme.bgHex(blendHex(theme.getResolvedGroundHex(), theme.getBgColorHex("selectedBg"), strength), text);

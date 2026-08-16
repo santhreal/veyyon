@@ -2,6 +2,8 @@ import {
 	type Component,
 	extractPrintableText,
 	fuzzyFilter,
+	HoverFade,
+	type HoverFadeOptions,
 	matchesKey,
 	padding,
 	routeSgrMouseInput,
@@ -21,10 +23,11 @@ import {
 	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
+	modalRevealEnabled,
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
-import { selectionBand } from "./selector-helpers";
+import { hoverBandAt } from "./selector-helpers";
 
 interface UserMessageItem {
 	id: string; // Entry ID in the session
@@ -50,6 +53,11 @@ class UserMessageList implements Component {
 	#maxVisible: number = 10; // Max messages visible
 	/** Pointer-highlighted message (never the selected one; selection owns its rows). */
 	#hoveredIndex: number | null = null;
+	/**
+	 * The cross-fade, once the card has lent this list a repaint
+	 * ({@link setHoverMotion}). Absent, the band is switched.
+	 */
+	#hoverFade?: HoverFade;
 	/** Per-render map of 0-based rendered line → filtered-message index. */
 	#hitRows: (number | undefined)[] = [];
 
@@ -95,7 +103,33 @@ class UserMessageList implements Component {
 	setHoverIndex(index: number | null): boolean {
 		if (this.#hoveredIndex === index) return false;
 		this.#hoveredIndex = index;
+		this.#hoverFade?.set(index);
 		return true;
+	}
+
+	/**
+	 * Fade the pointer band instead of switching it. The frames between two mouse
+	 * reports have no input to hang off, so the card lends its repaint.
+	 * `enabled: false` is the switched band.
+	 */
+	setHoverMotion(options: HoverFadeOptions): void {
+		this.#hoverFade?.dispose();
+		this.#hoverFade = new HoverFade(options);
+		if (this.#hoveredIndex !== null) this.#hoverFade.set(this.#hoveredIndex);
+	}
+
+	/** Drop the fade and forget the pointer, so no timer outlives the card. */
+	disposeHoverMotion(): void {
+		this.#hoverFade?.dispose();
+		this.#hoverFade = undefined;
+		this.#hoveredIndex = null;
+	}
+
+	/** Band strength for a message: 0 for the selected one, which owns its own styling. */
+	#hoverStrength(index: number, isSelected: boolean): number {
+		if (isSelected) return 0;
+		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
+		return index === this.#hoveredIndex ? 1 : 0;
 	}
 
 	/** Move the selection one step for a wheel notch (wraps like the arrow keys). */
@@ -165,7 +199,7 @@ class UserMessageList implements Component {
 			const message = this.#filteredMessages[i];
 			if (!message) continue;
 			const isSelected = i === this.#selectedIndex;
-			const isHovered = i === this.#hoveredIndex && !isSelected;
+			const hoverStrength = this.#hoverStrength(i, isSelected);
 
 			// Normalize message to single line
 			const normalizedMessage = message.text.replace(/\n/g, " ").trim();
@@ -177,14 +211,14 @@ class UserMessageList implements Component {
 			const messageLine = cursor + (isSelected ? theme.bold(truncatedMsg) : truncatedMsg);
 
 			this.#hitRows[messageLines.length] = i;
-			messageLines.push(isHovered ? selectionBand(messageLine, rowWidth) : messageLine);
+			messageLines.push(hoverStrength > 0 ? hoverBandAt(messageLine, rowWidth, hoverStrength) : messageLine);
 
 			// Second line: metadata (position in history)
 			const position = this.messages.indexOf(message) + 1;
 			const metadata = `  Message ${position} of ${this.messages.length}`;
 			const metadataLine = theme.fg("muted", metadata);
 			this.#hitRows[messageLines.length] = i;
-			messageLines.push(isHovered ? selectionBand(metadataLine, rowWidth) : metadataLine);
+			messageLines.push(hoverStrength > 0 ? hoverBandAt(metadataLine, rowWidth, hoverStrength) : metadataLine);
 			messageLines.push(""); // Blank line between messages
 		}
 
@@ -292,6 +326,16 @@ export class UserMessageSelectorComponent implements Component {
 
 	setOnRequestRender(cb: () => void): void {
 		this.#onRequestRender = cb;
+		// The pointer band fades only once the card has a repaint to lend it: the
+		// frames between two mouse reports have no input to hang off. Same ambient
+		// gate as the open unfold; without it the band is switched.
+		this.#messageList.setHoverMotion({ requestRender: cb, enabled: modalRevealEnabled() });
+	}
+
+	/** Settle the reveal and the pointer band so no timer outlives a dismissed card. */
+	dispose(): void {
+		this.#reveal.stop();
+		this.#messageList.disposeHoverMotion();
 	}
 
 	invalidate(): void {
