@@ -12,6 +12,11 @@
 - The composer chips (`interrupt`, `background`, `dequeue`) are click targets. A left click on a chip runs the same action its keybinding runs. Hover paint stays off: the main session holds press/release tracking only, so drag-select in the terminal keeps working.
 - The `/pause` screen resumes on a click. It is a fullscreen overlay, so it already held the whole mouse-tracking set and every report reached it and was dropped: the pointer did nothing on the one screen whose only job is to let you out. A left press anywhere on the scene now resumes exactly as Esc does, motion, drag, release, wheel and the other buttons still do nothing, and both the full scene and the compact card name the click in their hint.
 
+### Changed
+
+- Settings → Subagents says "subagent" wherever it means a spawned worker. The tab held an `Agents` section carrying an `Agent Roster` row, an `Agent Delegation` row beside it, and a roster screen headed `Agents` whose per-agent page was headed `Agent: <name>`, so one thing wore two names on one screen. The section is `Subagents` now, the rows are `Subagent Roster` and `Subagent Delegation`, and the screens read `Subagents` and `Subagent: <name>`. No setting key changed, so nothing in a config file moves.
+- `Max Nested Spawn Depth` sits in the Subagents section directly under `Subagent Roster`, not under Limits. It is the ceiling every per-subagent override inherits from, and the roster's own depth picker names it, so the blanket value and the overrides that outrank it were two sections apart with nothing on either screen saying so.
+
 ### Removed
 
 - `PluginSelectorComponent` is deleted. Marketplace plugins were removed earlier and its one entry point has been a stub that says so ever since, leaving the component with no callers, no tests, and a DynamicBorder chrome nobody can reach.
