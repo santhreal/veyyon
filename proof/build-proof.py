@@ -1,302 +1,526 @@
 #!/usr/bin/env python3
-"""Assemble proof/ui-polish-proof.html from the captures on disk.
+"""Assemble proof/ui-polish-proof.html from the recordings on disk.
 
-Every figure names a file under proof/. A missing file is an error, not a
-skipped row, so the page can never ship a broken reference.
+Every figure on the page is a frame of a real terminal. The page carries no
+rasterized component renders: a picture produced by drawing a component into a
+PNG proves the component's bytes, not that a user can reach it, and the two kept
+being read as the same claim. What is left is video of the shipped CLI running
+in a container, the filmstrips cut out of that video, and the stills the scene
+itself took off the X display it was recording.
+
+    proof/build-proof.py          # writes proof/ui-polish-proof.html
+
+A missing file is a hard error: a proof page with a broken figure is worse than
+no page, because the caption still reads as evidence.
 """
+
 from __future__ import annotations
 
-import html
 import subprocess
 import sys
+from dataclasses import dataclass, field
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 REPO = ROOT.parent
 
-CSS = """
-:root { color-scheme: dark; }
-body { margin: 0 auto; padding: 40px 32px 96px; max-width: 1520px; background: #14161b; color: #d8dce4;
-  font: 15px/1.6 ui-sans-serif, -apple-system, "Segoe UI", sans-serif; }
-h1 { font-size: 26px; margin: 0 0 4px; }
-h2 { font-size: 19px; margin: 56px 0 4px; border-top: 1px solid #2a2f39; padding-top: 24px; }
-h3 { font-size: 14px; margin: 24px 0 8px; color: #9aa3b2; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
-p { margin: 8px 0; max-width: 105ch; }
-.lede { color: #9aa3b2; }
-code { font: 13px/1.5 ui-monospace, "SF Mono", Menlo, monospace; background: #1d2129; padding: 1px 5px; border-radius: 4px; }
-figure { margin: 0 0 20px; }
-figcaption { margin: 6px 0 0; color: #8b93a3; font-size: 13px; }
-.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
-.pair img, .single img { width: 100%; display: block; border: 1px solid #2a2f39; border-radius: 6px; }
-.tag { display: inline-block; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; padding: 2px 7px; border-radius: 4px; margin-bottom: 6px; }
-.before { background: #3a2224; color: #ffb4ae; }
-.after { background: #1d3326; color: #9fe0b0; }
-.hover { background: #2a2740; color: #c7bcff; }
-.motion { background: #23303a; color: #8fd0e8; }
-table { border-collapse: collapse; margin-top: 12px; font-size: 13px; width: 100%; }
-th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #262b34; vertical-align: top; }
-th { color: #9aa3b2; font-weight: 600; }
-td.sha { font-family: ui-monospace, Menlo, monospace; color: #e0a05a; white-space: nowrap; }
-td.ev { font-family: ui-monospace, Menlo, monospace; color: #8b93a3; font-size: 12px; }
-.note { background: #1a1e26; border-left: 3px solid #e0a05a; padding: 12px 16px; margin: 20px 0; }
-"""
-
 missing: list[str] = []
 
 
-def img(rel: str, tag: str, caption: str) -> str:
+def need(rel: str) -> str:
     if not (ROOT / rel).exists():
         missing.append(rel)
-    label = {"before": "on main", "after": "on this branch", "hover": "pointer", "motion": "motion"}[tag]
+    return rel
+
+
+CSS = """
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0 auto; padding: 48px 32px 96px; max-width: 1180px; background: #14161a; color: #d7dae0;
+       font: 15px/1.65 -apple-system, "Segoe UI", Inter, system-ui, sans-serif; }
+h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -0.02em; }
+h2 { font-size: 21px; margin: 64px 0 4px; padding-top: 18px; border-top: 1px solid #262b33; letter-spacing: -0.01em; }
+h3 { font-size: 15px; margin: 30px 0 6px; color: #f0b57a; font-weight: 600; }
+p { margin: 10px 0; max-width: 78ch; }
+p.lede { color: #9aa2ae; }
+code { font: 13px/1.5 ui-monospace, "SF Mono", Menlo, monospace; background: #1c2027; padding: 1px 5px;
+       border-radius: 4px; color: #e6c08a; }
+a { color: #7fb2e5; }
+figure { margin: 18px 0 0; }
+figcaption { color: #8d95a1; font-size: 13px; margin-top: 8px; }
+video, img { width: 100%; display: block; border: 1px solid #2a3039; border-radius: 8px; background: #0b0d10; }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.pair figcaption strong { color: #d7dae0; }
+.strip { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.strip img { border-radius: 3px; }
+.note { background: #171b21; border: 1px solid #262b33; border-left: 3px solid #f0b57a; border-radius: 6px;
+        padding: 14px 18px; margin: 22px 0; }
+.note p { margin: 6px 0; }
+table { border-collapse: collapse; width: 100%; margin-top: 14px; font-size: 13.5px; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid #232830; vertical-align: top; }
+th { color: #8d95a1; font-weight: 600; }
+td.sha { font-family: ui-monospace, monospace; color: #e6c08a; white-space: nowrap; }
+.miss { background: #3b1d1d; border: 1px solid #7a3030; padding: 10px; border-radius: 6px; color: #ffb4b4; }
+"""
+
+
+def video(rel: str, caption: str, start: float | None = None) -> str:
+    """A figure holding the recording itself.
+
+    `start` is a media fragment, and it is what stops the poster frame being
+    the black display the recorder had before the terminal painted anything.
+    """
+    need(rel)
+    src = f"{rel}#t={start:g}" if start is not None else rel
     return (
-        f'<figure><span class="tag {tag}">{label}</span>'
-        f'<img src="{html.escape(rel)}" alt="{html.escape(caption)}" />'
+        "<figure>"
+        f'<video controls loop muted playsinline preload="metadata"><source src="{src}" type="video/mp4"></video>'
         f"<figcaption>{caption}</figcaption></figure>"
     )
 
 
-def pair(before: str, after: str, cap_before: str, cap_after: str) -> str:
+def video_pair(before: str, after: str, cap_before: str, cap_after: str, start: float | None = None) -> str:
+    need(before)
+    need(after)
+    frag = f"#t={start:g}" if start is not None else ""
     return (
         '<div class="pair">'
-        + img(before, "before", cap_before)
-        + img(after, "after", cap_after)
-        + "</div>"
+        f'<figure><video controls loop muted playsinline preload="metadata"><source src="{before}{frag}" type="video/mp4"></video>'
+        f"<figcaption><strong>main</strong> — {cap_before}</figcaption></figure>"
+        f'<figure><video controls loop muted playsinline preload="metadata"><source src="{after}{frag}" type="video/mp4"></video>'
+        f"<figcaption><strong>branch</strong> — {cap_after}</figcaption></figure>"
+        "</div>"
     )
 
 
-def single(rel: str, tag: str, caption: str) -> str:
-    return '<div class="single">' + img(rel, tag, caption) + "</div>"
+def strip(prefix: str, frames: int, caption: str) -> str:
+    imgs = "".join(f'<img src="{need(f"{prefix}-f{i:02d}.png")}" alt="frame {i}">' for i in range(frames))
+    # Two rows of equal length, so an eight-frame strip is 4x2 rather than 6+2.
+    cols = frames if frames <= 6 else (frames + 1) // 2
+    style = f' style="grid-template-columns: repeat({cols}, 1fr)"'
+    return f'<figure><div class="strip"{style}>{imgs}</div><figcaption>{caption}</figcaption></figure>'
 
 
-def commit_rows(evidence: dict[str, str]) -> str:
+def still(rel: str, caption: str) -> str:
+    need(rel)
+    return f'<figure><img src="{rel}" alt=""><figcaption>{caption}</figcaption></figure>'
+
+
+def still_pair(before: str, after: str, cap_before: str, cap_after: str) -> str:
+    need(before)
+    need(after)
+    return (
+        '<div class="pair">'
+        f'<figure><img src="{before}" alt=""><figcaption><strong>main</strong> — {cap_before}</figcaption></figure>'
+        f'<figure><img src="{after}" alt=""><figcaption><strong>branch</strong> — {cap_after}</figcaption></figure>'
+        "</div>"
+    )
+
+
+def pair(left: str, right: str, cap_left: str, cap_right: str) -> str:
+    """Two stills side by side that are NOT a before/after arm pair."""
+    need(left)
+    need(right)
+    return (
+        '<div class="pair">'
+        f'<figure><img src="{left}" alt=""><figcaption>{cap_left}</figcaption></figure>'
+        f'<figure><img src="{right}" alt=""><figcaption>{cap_right}</figcaption></figure>'
+        "</div>"
+    )
+
+
+@dataclass
+class Section:
+    title: str
+    body: list[str] = field(default_factory=list)
+
+    def html(self) -> str:
+        return f"<h2>{self.title}</h2>\n" + "\n".join(self.body)
+
+
+def commit_table() -> str:
     log = subprocess.run(
-        ["git", "log", "--reverse", "--format=%h\t%s", "main..HEAD"],
+        ["git", "log", "--oneline", "--no-decorate", "main..HEAD"],
         cwd=REPO, capture_output=True, text=True, check=True,
     ).stdout.strip().split("\n")
     rows = []
     for line in log:
-        sha, subject = line.split("\t", 1)
-        ev = evidence.get(sha, "")
-        rows.append(
-            f'<tr><td class="sha">{sha}</td><td>{html.escape(subject)}</td>'
-            f'<td class="ev">{html.escape(ev)}</td></tr>'
-        )
+        sha, _, subject = line.partition(" ")
+        rows.append(f'<tr><td class="sha">{sha}</td><td>{subject}</td></tr>')
     return "\n".join(rows)
 
 
-def build(sections: list[str], evidence: dict[str, str], head: str, base: str, ahead: int) -> str:
-    body = "\n".join(sections)
-    table = commit_rows(evidence)
+def build(sections: list[Section], head: str, base: str, ahead: int) -> str:
+    body = "\n".join(section.html() for section in sections)
     return f"""<!doctype html>
 <html lang="en">
-<head><meta charset="utf-8" /><title>feat/ui-polish — visual proof</title><style>{CSS}</style></head>
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>feat/ui-polish — recorded proof</title><style>{CSS}</style></head>
 <body>
-<h1>feat/ui-polish — visual proof</h1>
+<h1>feat/ui-polish — recorded proof</h1>
 <p class="lede">Branch <code>feat/ui-polish</code> at <code>{head}</code>, {ahead} commits ahead of
-<code>main</code> (<code>{base}</code>). The captures below are real terminal frames: the shipped CLI running
-under <a href="https://github.com/charmbracelet/vhs">vhs</a> in a container, driven by a local
-<code>llama.cpp</code> server. Nothing is a mock-up and nothing is a tmux dump.</p>
+<code>main</code> (<code>{base}</code>). Every figure below is a frame of a real terminal running the shipped
+CLI. No component was drawn into a picture for this page, and nothing here is a tmux capture.</p>
 
 <div class="note">
-<p><strong>How a capture is taken.</strong> <code>proof/docker/record.sh &lt;tape&gt;</code> runs
-<code>veyyon-proof-recorder</code> on a private docker network: the repo is bound read-write at <code>/repo</code>,
-<code>HOME</code> is a tmpfs seeded from <code>proof/docker/home-seed</code>, and vhs types into a real ttyd
-terminal at 1500x900. The machine's own <code>~/.veyyon</code> is not in the container's mount table and no
-provider account is reachable from it.</p>
+<p><strong>Where the recording happens.</strong> <code>proof/docker/record-x11.sh &lt;scene&gt;</code> runs
+<code>veyyon-proof-recorder</code> on a private docker network. Inside it, <code>Xvfb</code> owns display
+<code>:99</code>, <code>xterm</code> is the terminal, <code>xdotool</code> moves a real pointer and presses real
+keys, and <code>ffmpeg</code> records the display continuously at 60fps. The machine's own
+<code>~/.veyyon</code> is not in the container's mount table — <code>HOME</code> is a tmpfs seeded from
+<code>proof/docker/home-seed</code> — so nothing here touches a live session, and the operator's own display is
+never opened.</p>
 <p><strong>Which model answers.</strong> A <code>llama.cpp</code> server holding
-<code>qwen2.5-1.5b-instruct-q4_k_m</code>, reachable only on the container network as the custom provider
-<code>local</code>. Every model turn in these frames is that model, on CPU, which is why the recordings wait
-minutes for one answer.</p>
-<p><strong>How "before" is taken.</strong> <code>proof/docker/record-before.sh</code> holds every source file the
-branch changed at its <code>main</code> content (<code>git show main:&lt;file&gt;</code>), writes back the three
-files the branch deleted, records the same tapes into <code>proof/captures/real/before/</code>, then restores from
-an in-memory copy and proves the restore by sha256. No git mutation command runs and the working tree ends
-byte-identical.</p>
-<p><strong>Pointer proofs are not terminal frames.</strong> vhs cannot move a mouse, so hover evidence comes from
-injecting a real SGR motion report into the component's own input path and rasterizing the frame it paints.
-Those figures are marked as such.</p>
+<code>qwen2.5-1.5b-instruct-q4_k_m</code>, reachable only as the container-network provider <code>local</code>.
+No provider account is reachable from the container, so a streamed answer in these recordings is that model on
+CPU or it is nothing.</p>
+<p><strong>How the <em>main</em> arm is taken.</strong> <code>proof/docker/record-x11-before.sh</code> holds every
+source file the branch changed at its <code>main</code> content (<code>git show main:&lt;file&gt;</code>), records
+the same scene into <code>proof/captures/x11/before/</code>, then restores from an in-memory copy and proves the
+restore by sha256. No git mutation command runs and the working tree ends byte-identical.</p>
+<p><strong>Where the filmstrips come from.</strong> <code>proof/filmstrip.py</code> decodes consecutive frames out
+of the recording. An animation of 220ms is thirteen frames at 60fps and a still taken from inside the scene
+always lands after it, so the frames have to be cut from the video afterwards.</p>
 </div>
 
 {body}
 
-<h2>Every commit on the branch, and what shows it</h2>
-<table><thead><tr><th>commit</th><th>subject</th><th>evidence</th></tr></thead>
+<h2>Every commit on the branch</h2>
+<table><thead><tr><th>commit</th><th>subject</th></tr></thead>
 <tbody>
-{table}
+{commit_table()}
 </tbody></table>
 </body></html>
 """
 
 
-def write(sections: list[str], evidence: dict[str, str]) -> None:
-    head = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=REPO,
-                          capture_output=True, text=True, check=True).stdout.strip()
-    base = subprocess.run(["git", "rev-parse", "--short", "main"], cwd=REPO,
-                          capture_output=True, text=True, check=True).stdout.strip()
-    ahead = int(subprocess.run(["git", "rev-list", "--count", "main..HEAD"], cwd=REPO,
-                               capture_output=True, text=True, check=True).stdout.strip())
-    out = ROOT / "ui-polish-proof.html"
-    out.write_text(build(sections, evidence, head, base, ahead), encoding="utf-8")
+def write(sections: list[Section]) -> None:
+    def git(*args: str) -> str:
+        return subprocess.run(["git", *args], cwd=REPO, capture_output=True, text=True, check=True).stdout.strip()
+
+    head = git("rev-parse", "--short", "HEAD")
+    base = git("rev-parse", "--short", "main")
+    ahead = int(git("rev-list", "--count", "main..HEAD"))
+    html = build(sections, head, base, ahead)
     if missing:
-        print("MISSING IMAGES:", *sorted(set(missing)), sep="\n  ", file=sys.stderr)
+        print("MISSING FILES:", *sorted(set(missing)), sep="\n  ", file=sys.stderr)
         raise SystemExit(1)
+    out = ROOT / "ui-polish-proof.html"
+    out.write_text(html, encoding="utf-8")
     print("wrote", out)
 
 
-R = "captures/real/"
-B = "captures/real/before/"
-C = "captures/"
-
+X = "captures/x11/"
+XB = "captures/x11/before/"
+S = "captures/x11/strips/"
 SECTIONS = [
-    """<h2>1. First run: the wizard footer is a row of chips</h2>
-<p>A fresh HOME lands in the setup wizard. The footer used to be a dim sentence of key names; it is now the
-house chip row a pointer can hit, laid out by <code>layoutShortcutRows</code>, the same function the modal
-footers use.</p>"""
-    + pair(B + "wizard-providers.png", R + "wizard-providers.png",
-           "main: every footer key dim, in one sentence of a line",
-           "branch: each key a chip, bold on the accent, dot-separated")
-    + pair(B + "wizard-approvals.png", R + "wizard-approvals.png",
-           "main: step 2, approvals", "branch: step 2, approvals")
-    + """<h3>Pointer, rasterized</h3>
-<p>vhs cannot move a mouse. The hover state comes from injecting a real SGR motion report into the wizard's own
-input path and rasterizing the frame it paints.</p>"""
-    + pair(C + "wizard-footer-before-grey.png", C + "wizard-footer-after-grey.png",
-           "main: dim sentence", "branch: chips")
-    + single(C + "wizard-footer-hover-grey.png", "hover", "a chip under the pointer takes the selection wash"),
-
-    """<h2>2. The transcript sits on one rail</h2>
-<p>Every block that owns a turn now opens at the composer's rail inset and nothing draws a rule across the
-viewport. The frames below are one real turn from the local model.</p>"""
-    + pair(B + "transcript-answer.png", R + "transcript-answer.png",
-           "main: answer prose in the terminal default, blocks at column zero",
-           "branch: themed prose, every row on the rail")
-    + """<h3>The /btw block</h3>"""
-    + pair(B + "transcript-btw.png", R + "transcript-btw.png",
-           "main: a full-width dim rule above and below the block",
-           "branch: the block sits on the rail with no rules at all")
-    + """<h3>Every block type at once, rasterized</h3>
-<p>One renderer stacks the prompt gutter, prose, <code>/btw</code>, <code>/omfg</code>, a command answer, the
-tiny-model download, the batch ledger and the error banner through the real
-<code>UiHelpers.addMessageToChat</code>. Eight full-width rules and 54 rows become none and 33.</p>"""
-    + pair(C + "transcript-blocks-before-grey.png", C + "transcript-blocks-after-grey.png",
-           "main: 8 rules, 54 rows", "branch: 0 rules, 33 rows")
-    + pair(C + "transcript-dividers-before-grey.png", C + "transcript-dividers-after-grey.png",
-           "main: a divider spans the viewport", "branch: a divider is a short mark on the rail"),
-
-    """<h2>3. The MCP add-server wizard is a card</h2>
-<p><code>/mcp add</code> used to be a pair of dim rules with the step text between them. It is a ModalShell card:
-title on the top rule, <code>[x]</code> close glyph, chips in the footer, and it answers the pointer.</p>"""
-    + pair(B + "overlay-mcp.png", R + "overlay-mcp.png",
-           "main: DynamicBorder sandwich", "branch: ModalShell card"),
-
-    """<h2>4. The session tree is a card</h2>
-<p><code>/tree</code> was keyboard-only inside the same dim-rule chrome.</p>"""
-    + pair(B + "overlay-tree.png", R + "overlay-tree.png",
-           "main: DynamicBorder sandwich", "branch: ModalShell card"),
-
-    """<h2>5. Settings: the Subagents tab is about subagents</h2>
-<p>The tab used to open on unrelated rows with the spawn ceiling parked in another group. It opens on the
-subagent roster, and the ceiling sits directly under it.</p>"""
-    + pair(B + "settings-subagents.png", R + "settings-subagents.png",
-           "main: the old tab contents", "branch: Subagent Roster, then Max Nested Spawn Depth")
-    + pair(C + "settings-subagents-before-grey.png", C + "settings-subagents-after-grey.png",
-           "main, rasterized", "branch, rasterized"),
-
-    """<h2>6. The plugins tab names its keys as chips</h2>
-<p>The container has no plugin installed, so the row list is empty in both frames and the footer is the whole
-visible difference: the tab named its keys in the settings screen's generic footer, and now names its own. The
-pointer half of that commit is covered by its suite, not by this frame.</p>"""
-    + pair(B + "settings-plugins.png", R + "settings-plugins.png",
-           "main: enter change · / search · esc close",
-           "branch: enter configure · esc close"),
-
-    """<h2>7. The login screen is a card</h2>"""
-    + pair(B + "overlay-login-list.png", R + "overlay-login-list.png",
-           "main: DynamicBorder sandwich around the provider list",
-           "branch: ModalShell card"),
-
-    """<h2>8. A click resumes the pause screen</h2>
-<p>The resume hint used to list keys only. It names the click, and a click resumes.</p>"""
-    + pair(B + "overlay-pause.png", R + "overlay-pause.png",
-           "main: esc · enter · space", "branch: esc · enter · space · click"),
-
-    """<h2>9. The hook selector, rasterized</h2>
-<p>An extension hook cannot be provoked from a recorded terminal without an extension, so this surface is proved
-by constructing the shipped component and rasterizing what it paints.</p>"""
-    + pair(C + "hook-selector-before-grey.png", C + "hook-selector-after-grey.png",
-           "main: dim rules, no chips", "branch: card, chips, countdown")
-    + single(C + "hook-selector-hover-grey.png", "hover", "a row under the pointer takes the hover band"),
-
-    """<h2>10. The recordings</h2>
-<p>Each GIF is the whole tape the screenshots above were cut from.</p>
-<div class="pair">
-<figure><span class="tag motion">recording</span><img src="captures/real/transcript.gif" alt="a real turn" />
-<figcaption>a real turn from the local model, then <code>/btw</code></figcaption></figure>
-<figure><span class="tag motion">recording</span><img src="captures/real/settings-subagents.gif" alt="settings" />
-<figcaption>opening settings and walking to the Subagents tab</figcaption></figure>
-<figure><span class="tag motion">recording</span><img src="captures/real/mcp.gif" alt="mcp wizard" />
-<figcaption><code>/mcp add</code></figcaption></figure>
-<figure><span class="tag motion">recording</span><img src="captures/real/pause.gif" alt="pause screen" />
-<figcaption><code>/pause</code></figcaption></figure>
-<figure><span class="tag motion">recording</span><img src="captures/real/wizard.gif" alt="setup wizard" />
-<figcaption>the setup wizard, first run</figcaption></figure>
-<figure><span class="tag motion">recording</span><img src="captures/real/tree.gif" alt="session tree" />
-<figcaption>one turn, then <code>/tree</code></figcaption></figure>
-</div>""",
-
-    """<h2>What these captures do not cover</h2>
-<ul>
-<li>Hover and click are keyboard-invisible: vhs types, it does not point. Every pointer claim on the branch is
-proved by a test that injects a real SGR report, and three of them are rasterized above.</li>
-<li>The agent transcript viewer and the drill-in card need a subagent run. A 1.5B model does not drive one
-reliably, so those two are covered by their suites only.</li>
-<li><code>c511ae76b</code> (a virtualized root compacting used to blank the transcript) reproduces from a
-resize, not from a keystroke, and is covered by its regression suite.</li>
-<li><code>4d566d927</code> is a provider fix with no surface.</li>
-<li>The model answering in these frames is a 1.5B running on CPU. It is there to make the transcript real, not
-to be right.</li>
-</ul>""",
+    Section(
+        "One animation clock, and a card that unfolds onto it",
+        [
+            "<p>Every overlay in the product opens through one shared clock. The card's top border stays put, the"
+            " bottom border slides down as the body arrives, and each row that arrives resolves out of the theme's"
+            " ground rather than snapping to full strength. Recorded at 60fps, because the curve runs 220ms and a"
+            " still taken from inside the scene lands after it every time.</p>",
+            video(
+                X + "overlay-motion.mp4",
+                "One take: <code>/settings</code> opens and closes, <code>/hotkeys</code> prints its block into the"
+                " transcript, <code>/model</code> opens and the pointer glides down the model list.",
+                start=18,
+            ),
+            "<h3>The settings card arriving</h3>",
+            strip(
+                S + "settings-open",
+                12,
+                "Twelve consecutive frames at 60fps, cut from the recording above at 19.60s. Frames three and four"
+                " are the card at its two-border minimum, a single line where the top and bottom borders meet; the"
+                " body resolves out of the ground over the frames after it. Nothing here was drawn: these are pixels"
+                " off the X display.",
+            ),
+            "<h3>The model picker arriving</h3>",
+            strip(
+                S + "model-open",
+                12,
+                "The same curve on a different card, from 36.25s of the same take. A second surface on the same"
+                " clock is the point: the two cannot drift, because there is only one timer in the process.",
+            ),
+        ],
+    ),
+    Section(
+        "And a card that folds away",
+        [
+            "<p>The dismissal used to be the half that was missing: the card was on screen in one frame and gone in"
+            " the next. It now runs the same curve backwards, from wherever the reveal had got to, so a card"
+            " dismissed before it finished opening folds away from there instead of jumping to full height first.</p>",
+            video_pair(
+                XB + "overlay-fold.mp4",
+                X + "overlay-fold.mp4",
+                "<code>/settings</code> and <code>/model</code> both vanish between two frames",
+                "both fold away on the clock they opened on",
+                start=20,
+            ),
+            "<h3>Escape, frame by frame</h3>",
+            strip(
+                S + "close-fold-main",
+                12,
+                "<strong>main.</strong> Twelve consecutive frames across the Escape. The card occupies one frame and"
+                " the transcript occupies the next; there are no frames in between to show.",
+            ),
+            strip(
+                S + "close-fold",
+                12,
+                "<strong>branch.</strong> The same twelve frames on the same scene. The bottom border walks back up"
+                " to meet the top, the rows dim into the ground on the way, and the transcript underneath is never"
+                " covered by a card that is no longer there.",
+            ),
+            still_pair(
+                XB + "overlay-fold-settings-closed.png",
+                X + "overlay-fold-settings-closed.png",
+                "after the dismissal settles",
+                "the same moment, and the same screen: the motion costs the transcript nothing",
+            ),
+        ],
+    ),
+    Section(
+        "The band under the pointer, and the cross-fade between two rows",
+        [
+            "<p>The settings card paints nothing under the pointer on <code>main</code>: neither the setting rows in"
+            " the pane nor the categories down the left edge answer a pointer that is over them, and the recording"
+            " below is four jumps across both surfaces with the band count staying at zero. The category strip is a"
+            " vertical tab bar, and it came last even on this branch: the pane rows were already banding while it"
+            " was still switching its accent in a single frame, so it is the one this section is cut from.</p>",
+            "<p>A band is per row, keyed on the row's identity rather than its position on screen, so a list that"
+            " scrolls under a still pointer does not drag the band with it. Moving the pointer retargets every other"
+            " live fade to zero and the named one to one: the row being left is still fading out while the row"
+            " arrived at comes up. Strength zero is the absence of a band, not a band mixed all the way out, so an"
+            " unhovered row keeps its exact unhovered bytes.</p>",
+            "<p>The scene jumps the pointer eight rows at a time rather than gliding, because a glide crosses every"
+            " row in between and gives each one a single frame, which is where a cross-fade and a switch look"
+            " identical. Neither row it jumps between is the active category: the active one wears its own accent"
+            " and would hide the band under it.</p>",
+            video_pair(
+                XB + "sidebar-crossfade.mp4",
+                X + "sidebar-crossfade.mp4",
+                "the pointer crosses the card and nothing follows it",
+                "the row left fades out under the row reached",
+                start=22,
+            ),
+            strip(
+                S + "band-crossfade-main",
+                8,
+                "<strong>main.</strong> Eight consecutive frames at 60fps across the jump from Interaction to Tools,"
+                " cut at 31.50s. The pointer is the only thing in the strip that moves.",
+            ),
+            strip(
+                S + "band-crossfade",
+                8,
+                "<strong>branch.</strong> The same eight frames of the same jump in the same scene. Tools is banded,"
+                " Interaction comes up over the middle four frames while Tools goes down, and neither is at full"
+                " strength while the other is.",
+            ),
+        ],
+    ),
+    Section(
+        "A real pointer, inside the card",
+        [
+            "<p>xdotool moves the X pointer over the terminal window and presses real buttons; the CLI reads SGR"
+            " 1006 reports off its own stdin. Nothing is injected into the app.</p>",
+            video(
+                X + "settings-pointer.mp4",
+                "The pointer walks the settings sidebar, clicks a section, then crosses the footer chips.",
+                start=20,
+            ),
+            pair(
+                X + "settings-pointer-sidebar-hover.png",
+                X + "settings-pointer-sidebar-click.png",
+                "The band tracks the pointer down the sidebar while the selection stays where the keyboard left it.",
+                "A click opens that section, exactly as Enter does.",
+            ),
+            still(
+                X + "settings-pointer-chip-hover-1.png",
+                "The footer chips light under the pointer. A chip is a click target that does what its key does, so"
+                " the keys a card advertises are the keys a mouse can press.",
+            ),
+        ],
+    ),
+    Section(
+        "Four pickers that paint their own rows, and the same fade in each",
+        [
+            "<p>The branch card, the session tree, the history search and the session list are not the shared list"
+            " component: each one paints its rows itself, so each one had to learn the fade separately. On"
+            " <code>main</code> none of the four answers the pointer at all — the recording below crosses every one"
+            " of them and the only band that ever appears is the keyboard selection. The fence against the four"
+            " drifting apart is an equality rather than a convention: a band at full strength is the same bytes as"
+            " the selection band, asserted directly, so a settled row cannot change appearance by adopting the"
+            " motion.</p>",
+            "<p>They also need state before they list anything, which is what the three turns at the top of this"
+            " recording buy: three user messages, three history entries, and a session on disk. The model answering"
+            " them is the container's own, so the recording runs at the speed that model reads a prompt on CPU.</p>",
+            video_pair(
+                XB + "pane-bands.mp4",
+                X + "pane-bands.mp4",
+                "the pointer crosses four cards and none of them answers it",
+                "each card fades the row it left out under the row it reached",
+                start=170,
+            ),
+            "<h3>The branch card, frame by frame</h3>",
+            strip(
+                S + "pane-crossfade-main",
+                8,
+                "<strong>main.</strong> Eight consecutive frames at 60fps across a jump from the first message to"
+                " the second. The selection band on the third message is the only band in the strip.",
+            ),
+            strip(
+                S + "pane-crossfade",
+                8,
+                "<strong>branch.</strong> The same jump. The first message is still going down while the second"
+                " comes up, and the selection band underneath both is untouched by either.",
+            ),
+            pair(
+                X + "pane-bands-tree-hover.png",
+                X + "pane-bands-history-hover.png",
+                "The session tree: one row per node, banded under the pointer while the selection stays where the"
+                " keyboard left it.",
+                "The history search, over the prompts this session typed.",
+            ),
+            still(
+                X + "pane-bands-resume-hover.png",
+                "The session list, the fourth of them. A selected row is never banded — it already wears the"
+                " selection band, and a band at full strength is the same bytes — so the scene runs"
+                " <code>/new</code> first and hovers the session it just left. Both titles were written by the"
+                " container's 1.5B model, which is also what answered the turns.",
+            ),
+        ],
+    ),
+    Section(
+        "The composer popup grows out of the composer",
+        [
+            "<p>The autocomplete used to arrive at its full height, so the rows slid past a border already sitting"
+            " where it would end up. It now grows: the frame itself is short on the first frame and reaches its"
+            " height over the curve. Dismissal stays instant, and that asymmetry is deliberate — a popup you have"
+            " decided against should not take a fifth of a second to agree.</p>",
+            video_pair(
+                XB + "popup-grow.mp4",
+                X + "popup-grow.mp4",
+                "the list is at full height in the first frame that has it",
+                "the frame grows, and the rows arrive inside it",
+                start=19,
+            ),
+            strip(
+                S + "popup-grow",
+                12,
+                "Twelve frames from the slash. The border reaches its height over the curve; the dismissal that"
+                " follows it in the recording takes one frame.",
+            ),
+            pair(
+                X + "popup-grow-slash-popup.png",
+                X + "popup-grow-at-filtered.png",
+                "The command list, settled.",
+                "The file list narrowed to <code>src/</code>, off the working tree the container seeded.",
+            ),
+        ],
+    ),
+    Section(
+        "A real turn, on a model in the same container",
+        [
+            "<p>The provider is <code>llama.cpp</code> on the recorder's own docker network holding"
+            " <code>qwen2.5-1.5b-instruct-q4_k_m</code>. No provider account is reachable from inside, so what"
+            " streams below is that model or nothing.</p>",
+            video(
+                X + "session-local-llm.mp4",
+                "A turn streams, the pointer crosses the composer chips while it is in flight, and a left click on"
+                " <code>escape interrupt</code> stops the turn.",
+            ),
+            pair(
+                X + "session-local-llm-streaming-1.png",
+                X + "session-local-llm-chip-hover-2.png",
+                "The answer arriving, a token at a time.",
+                "The interrupt chip under the pointer while the turn is in flight.",
+            ),
+            pair(
+                X + "session-local-llm-after-interrupt.png",
+                X + "session-local-llm-answer-settled.png",
+                "After the click: the turn is stopped and the chips are gone.",
+                "A later turn, left to finish.",
+            ),
+        ],
+    ),
+    Section(
+        "One left rail, and a printed block that is no longer a box",
+        [
+            "<p>The transcript carries one left rail two columns in, and every block hangs off it. On"
+            " <code>main</code> a block printed into the transcript draws its own frame instead: <code>/hotkeys</code>"
+            " comes out as a full-width box with a rule under it at column zero, which reads as a page break in the"
+            " middle of a conversation. Both stills below are the same scene, the same command and the same"
+            " terminal size, one arm apart.</p>",
+            still_pair(
+                XB + "overlay-motion-hotkeys-settled.png",
+                X + "overlay-motion-hotkeys-settled.png",
+                "the block is boxed on all four sides and followed by a full-width rule",
+                "the same block, hung off the rail, with no horizontal at column zero",
+            ),
+            still(
+                X + "overlay-motion-idle.png",
+                "The transcript at rest on the branch: one rail, two columns in.",
+            ),
+        ],
+    ),
+    Section(
+        "What a spawned agent runs, on one page instead of five",
+        [
+            "<p>On <code>main</code> the category holds a flat list in three sections: an <code>Agents</code>"
+            " section whose single row is <code>Agent Roster</code>, a <code>Models</code> section three rows below"
+            " it carrying <code>Subagent Model</code>, <code>Models by Depth</code> and <code>Subagent Effort</code>,"
+            " and <code>Max Nested Spawn Depth</code> further down again under <code>Limits</code>. The roster's"
+            " per-agent page changed none of them — it printed a sentence telling you to go back up and edit the"
+            " Models section — so the screen that showed what a lane runs and the rows that decided it were three"
+            " sections apart, and the ceiling was edited on one screen and read on another.</p>",
+            "<p>It is one recursive tree now. Every level carries the same four rows — Enabled, Model, Effort, and"
+            " Subagents, the door to the level below — so the page that answers <em>what does deep run</em> is the"
+            " page that answers <em>what may deep spawn, and what does that run</em>, unbounded. Unset means the"
+            " lane above, not a default table: change what <code>deep</code> runs and everything under it follows."
+            " <code>Subagents → Enabled</code> IS the depth limit, level by level, so the per-agent number is gone"
+            " from every screen; the blanket ceiling that shipped config files still carry sits beside the roster"
+            " rather than two sections away.</p>",
+            still_pair(
+                XB + "subagent-lanes-pane.png",
+                X + "subagent-lanes-pane.png",
+                "main: <code>Agents</code>, then <code>Models</code>, then the ceiling down in <code>Limits</code>"
+                " — and no band under the pointer, which is the same defect the pickers above have",
+                "the branch: one <code>Subagents</code> section — roster, ceiling, model, effort — and the row the"
+                " pointer is on is banded",
+            ),
+            pair(
+                X + "subagent-lanes-lane.png",
+                X + "subagent-lanes-nested.png",
+                "One lane. Every value names where it came from: <em>inherit · the session's model</em>,"
+                " <em>off · this lane may not spawn</em>.",
+                "Through the door. The same four rows, one level down, and now unset reads"
+                " <em>inherit · the level above</em> — the lane, not the session.",
+            ),
+            video(
+                X + "subagent-lanes.mp4",
+                "The whole descent, in one take: the category opened with a click, the roster, one lane, the level"
+                " under it, and back out.",
+                start=24,
+            ),
+        ],
+    ),
+    Section(
+        "A defect this branch fixes, on camera",
+        [
+            "<p>A virtualized transcript spliced out the rows the engine had committed to native scrollback, and"
+            " the engine kept the pre-splice coordinates. The next frame read the shift as a divergence and, with"
+            " <code>tui.scrollbackRebuild</code> on, erased native scrollback and replayed a frame whose history"
+            " the container had already dropped. Both arms below drive the same scene at the same size.</p>",
+            video_pair(
+                XB + "transcript-blanking.mp4",
+                X + "after/transcript-blanking.mp4",
+                "history is erased as the session runs; scrolling back finds nothing",
+                "every row survives; scrollback walks the whole session",
+            ),
+        ],
+    ),
 ]
 
-EVIDENCE = {
-    "766ee5a26": "duplicate of main, no surface",
-    "8981629d1": "merge",
-    "b6a6bd07b": "every-settings-submenu-answers-the-pointer.test.ts",
-    "d0226c921": "selector-overlays-answer-the-pointer.test.ts",
-    "aa2d62dc7": "§2 answer prose colour",
-    "b852f2543": "§2 ledger marker, rasterized stack",
-    "08ade60cb": "selector-overlays-answer-the-pointer.test.ts",
-    "c18816b62": "selector-overlays-answer-the-pointer.test.ts",
-    "0c36cf201": "selector-overlays-answer-the-pointer.test.ts",
-    "b373c7c55": "a-clicked-composer-chip-runs-its-action.test.ts",
-    "d4d2a4290": "§7 login card",
-    "ab7f1b8be": "the-transcript-card-answers-the-pointer.test.ts",
-    "4d566d927": "a-chatgpt-oauth-session-compacts-on-the-codex-backend.test.ts",
-    "5afa7ff34": "the-transcript-card-answers-the-pointer.test.ts",
-    "4ed3a44b4": "§4 session tree",
-    "1f2ea74b3": "§3 MCP wizard",
-    "c511ae76b": "a-virtualized-transcript-never-loses-history-to-a-rebuild.test.ts",
-    "3f583d196": "§9 hook selector",
-    "929469b5f": "§9 hook trio, same chrome",
-    "36df196c3": "§6 plugins tab",
-    "489fd453f": "a-click-on-a-suggestion-accepts-the-completion.test.ts",
-    "7e1aa54cb": "§2 /btw block",
-    "b02f7dc2d": "§2 command blocks on the rail",
-    "f9160c99c": "§2 no full-width rule",
-    "9be29f814": "every-settings-submenu-answers-the-pointer.test.ts",
-    "07372af28": "§8 pause screen",
-    "e86818539": "§5 subagents tab",
-    "db946f360": "a-click-in-the-composer-places-the-caret.test.ts",
-    "253111668": "§1 wizard chips",
-    "08ec85de5": "§1 pointer render",
-    "bc9e33085": "§2 dividers",
-    "23504cc4d": "§2 dividers",
-    "bfc3ed7b5": "§2 tiny-model download",
-    "73b3a350f": "§2 cut-short marker",
-    "d12a2639f": "the renderers behind §1, §2, §9",
-    "7ef968fa2": "the cache-miss glyph in §2",
-    "907edbc2b": "the recorder behind every real frame",
-}
-
 if __name__ == "__main__":
-    write(SECTIONS, EVIDENCE)
+    write(SECTIONS)

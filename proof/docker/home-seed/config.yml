@@ -5,3 +5,7 @@
 onboardingVersion: 99
 theme: titanium
 model: local/qwen2.5-1.5b
+# `/branch` follows this setting: `tree` sends it to the session tree, which the
+# recordings reach with `/tree` anyway. Seeding `branch` is what makes the
+# fourth picker -- the user-message card -- reachable in a scene.
+doubleEscapeAction: branch
