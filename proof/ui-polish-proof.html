@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>feat/ui-polish — recorded proof</title><style>
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0 auto; padding: 48px 32px 96px; max-width: 1180px; background: #14161a; color: #d7dae0;
+       font: 15px/1.65 -apple-system, "Segoe UI", Inter, system-ui, sans-serif; }
+h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -0.02em; }
+h2 { font-size: 21px; margin: 64px 0 4px; padding-top: 18px; border-top: 1px solid #262b33; letter-spacing: -0.01em; }
+h3 { font-size: 15px; margin: 30px 0 6px; color: #f0b57a; font-weight: 600; }
+p { margin: 10px 0; max-width: 78ch; }
+p.lede { color: #9aa2ae; }
+code { font: 13px/1.5 ui-monospace, "SF Mono", Menlo, monospace; background: #1c2027; padding: 1px 5px;
+       border-radius: 4px; color: #e6c08a; }
+a { color: #7fb2e5; }
+figure { margin: 18px 0 0; }
+figcaption { color: #8d95a1; font-size: 13px; margin-top: 8px; }
+video, img { width: 100%; display: block; border: 1px solid #2a3039; border-radius: 8px; background: #0b0d10; }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.pair figcaption strong { color: #d7dae0; }
+.strip { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.strip img { border-radius: 3px; }
+.note { background: #171b21; border: 1px solid #262b33; border-left: 3px solid #f0b57a; border-radius: 6px;
+        padding: 14px 18px; margin: 22px 0; }
+.note p { margin: 6px 0; }
+table { border-collapse: collapse; width: 100%; margin-top: 14px; font-size: 13.5px; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid #232830; vertical-align: top; }
+th { color: #8d95a1; font-weight: 600; }
+td.sha { font-family: ui-monospace, monospace; color: #e6c08a; white-space: nowrap; }
+.miss { background: #3b1d1d; border: 1px solid #7a3030; padding: 10px; border-radius: 6px; color: #ffb4b4; }
+</style></head>
+<body>
+<h1>feat/ui-polish — recorded proof</h1>
+<p class="lede">Branch <code>feat/ui-polish</code> at <code>0ab477850</code>, 54 commits ahead of
+<code>main</code> (<code>4b9a811b0</code>). Every figure below is a frame of a real terminal running the shipped
+CLI. No component was drawn into a picture for this page, and nothing here is a tmux capture.</p>
+
+<div class="note">
+<p><strong>Where the recording happens.</strong> <code>proof/docker/record-x11.sh &lt;scene&gt;</code> runs
+<code>veyyon-proof-recorder</code> on a private docker network. Inside it, <code>Xvfb</code> owns display
+<code>:99</code>, <code>xterm</code> is the terminal, <code>xdotool</code> moves a real pointer and presses real
+keys, and <code>ffmpeg</code> records the display continuously at 60fps. The machine's own
+<code>~/.veyyon</code> is not in the container's mount table — <code>HOME</code> is a tmpfs seeded from
+<code>proof/docker/home-seed</code> — so nothing here touches a live session, and the operator's own display is
+never opened.</p>
+<p><strong>Which model answers.</strong> A <code>llama.cpp</code> server holding
+<code>qwen2.5-1.5b-instruct-q4_k_m</code>, reachable only as the container-network provider <code>local</code>.
+No provider account is reachable from the container, so a streamed answer in these recordings is that model on
+CPU or it is nothing.</p>
+<p><strong>How the <em>main</em> arm is taken.</strong> <code>proof/docker/record-x11-before.sh</code> holds every
+source file the branch changed at its <code>main</code> content (<code>git show main:&lt;file&gt;</code>), records
+the same scene into <code>proof/captures/x11/before/</code>, then restores from an in-memory copy and proves the
+restore by sha256. No git mutation command runs and the working tree ends byte-identical.</p>
+<p><strong>Where the filmstrips come from.</strong> <code>proof/filmstrip.py</code> decodes consecutive frames out
+of the recording. An animation of 220ms is thirteen frames at 60fps and a still taken from inside the scene
+always lands after it, so the frames have to be cut from the video afterwards.</p>
+</div>
+
+<h2>One animation clock, and a card that unfolds onto it</h2>
+<p>Every overlay in the product opens through one shared clock. The card's top border stays put, the bottom border slides down as the body arrives, and each row that arrives resolves out of the theme's ground rather than snapping to full strength. Recorded at 60fps, because the curve runs 220ms and a still taken from inside the scene lands after it every time.</p>
+<figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/overlay-motion.mp4#t=18" type="video/mp4"></video><figcaption>One take: <code>/settings</code> opens and closes, <code>/hotkeys</code> prints its block into the transcript, <code>/model</code> opens and the pointer glides down the model list.</figcaption></figure>
+<h3>The settings card arriving</h3>
+<figure><div class="strip" style="grid-template-columns: repeat(6, 1fr)"><img src="captures/x11/strips/settings-open-f00.png" alt="frame 0"><img src="captures/x11/strips/settings-open-f01.png" alt="frame 1"><img src="captures/x11/strips/settings-open-f02.png" alt="frame 2"><img src="captures/x11/strips/settings-open-f03.png" alt="frame 3"><img src="captures/x11/strips/settings-open-f04.png" alt="frame 4"><img src="captures/x11/strips/settings-open-f05.png" alt="frame 5"><img src="captures/x11/strips/settings-open-f06.png" alt="frame 6"><img src="captures/x11/strips/settings-open-f07.png" alt="frame 7"><img src="captures/x11/strips/settings-open-f08.png" alt="frame 8"><img src="captures/x11/strips/settings-open-f09.png" alt="frame 9"><img src="captures/x11/strips/settings-open-f10.png" alt="frame 10"><img src="captures/x11/strips/settings-open-f11.png" alt="frame 11"></div><figcaption>Twelve consecutive frames at 60fps, cut from the recording above at 19.60s. Frames three and four are the card at its two-border minimum, a single line where the top and bottom borders meet; the body resolves out of the ground over the frames after it. Nothing here was drawn: these are pixels off the X display.</figcaption></figure>
+<h3>The model picker arriving</h3>
+<figure><div class="strip" style="grid-template-columns: repeat(6, 1fr)"><img src="captures/x11/strips/model-open-f00.png" alt="frame 0"><img src="captures/x11/strips/model-open-f01.png" alt="frame 1"><img src="captures/x11/strips/model-open-f02.png" alt="frame 2"><img src="captures/x11/strips/model-open-f03.png" alt="frame 3"><img src="captures/x11/strips/model-open-f04.png" alt="frame 4"><img src="captures/x11/strips/model-open-f05.png" alt="frame 5"><img src="captures/x11/strips/model-open-f06.png" alt="frame 6"><img src="captures/x11/strips/model-open-f07.png" alt="frame 7"><img src="captures/x11/strips/model-open-f08.png" alt="frame 8"><img src="captures/x11/strips/model-open-f09.png" alt="frame 9"><img src="captures/x11/strips/model-open-f10.png" alt="frame 10"><img src="captures/x11/strips/model-open-f11.png" alt="frame 11"></div><figcaption>The same curve on a different card, from 36.25s of the same take. A second surface on the same clock is the point: the two cannot drift, because there is only one timer in the process.</figcaption></figure>
+<h2>And a card that folds away</h2>
+<p>The dismissal used to be the half that was missing: the card was on screen in one frame and gone in the next. It now runs the same curve backwards, from wherever the reveal had got to, so a card dismissed before it finished opening folds away from there instead of jumping to full height first.</p>
+<div class="pair"><figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/before/overlay-fold.mp4#t=20" type="video/mp4"></video><figcaption><strong>main</strong> — <code>/settings</code> and <code>/model</code> both vanish between two frames</figcaption></figure><figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/overlay-fold.mp4#t=20" type="video/mp4"></video><figcaption><strong>branch</strong> — both fold away on the clock they opened on</figcaption></figure></div>
+<h3>Escape, frame by frame</h3>
+<figure><div class="strip" style="grid-template-columns: repeat(6, 1fr)"><img src="captures/x11/strips/close-fold-main-f00.png" alt="frame 0"><img src="captures/x11/strips/close-fold-main-f01.png" alt="frame 1"><img src="captures/x11/strips/close-fold-main-f02.png" alt="frame 2"><img src="captures/x11/strips/close-fold-main-f03.png" alt="frame 3"><img src="captures/x11/strips/close-fold-main-f04.png" alt="frame 4"><img src="captures/x11/strips/close-fold-main-f05.png" alt="frame 5"><img src="captures/x11/strips/close-fold-main-f06.png" alt="frame 6"><img src="captures/x11/strips/close-fold-main-f07.png" alt="frame 7"><img src="captures/x11/strips/close-fold-main-f08.png" alt="frame 8"><img src="captures/x11/strips/close-fold-main-f09.png" alt="frame 9"><img src="captures/x11/strips/close-fold-main-f10.png" alt="frame 10"><img src="captures/x11/strips/close-fold-main-f11.png" alt="frame 11"></div><figcaption><strong>main.</strong> Twelve consecutive frames across the Escape. The card occupies one frame and the transcript occupies the next; there are no frames in between to show.</figcaption></figure>
+<figure><div class="strip" style="grid-template-columns: repeat(6, 1fr)"><img src="captures/x11/strips/close-fold-f00.png" alt="frame 0"><img src="captures/x11/strips/close-fold-f01.png" alt="frame 1"><img src="captures/x11/strips/close-fold-f02.png" alt="frame 2"><img src="captures/x11/strips/close-fold-f03.png" alt="frame 3"><img src="captures/x11/strips/close-fold-f04.png" alt="frame 4"><img src="captures/x11/strips/close-fold-f05.png" alt="frame 5"><img src="captures/x11/strips/close-fold-f06.png" alt="frame 6"><img src="captures/x11/strips/close-fold-f07.png" alt="frame 7"><img src="captures/x11/strips/close-fold-f08.png" alt="frame 8"><img src="captures/x11/strips/close-fold-f09.png" alt="frame 9"><img src="captures/x11/strips/close-fold-f10.png" alt="frame 10"><img src="captures/x11/strips/close-fold-f11.png" alt="frame 11"></div><figcaption><strong>branch.</strong> The same twelve frames on the same scene. The bottom border walks back up to meet the top, the rows dim into the ground on the way, and the transcript underneath is never covered by a card that is no longer there.</figcaption></figure>
+<div class="pair"><figure><img src="captures/x11/before/overlay-fold-settings-closed.png" alt=""><figcaption><strong>main</strong> — after the dismissal settles</figcaption></figure><figure><img src="captures/x11/overlay-fold-settings-closed.png" alt=""><figcaption><strong>branch</strong> — the same moment, and the same screen: the motion costs the transcript nothing</figcaption></figure></div>
+<h2>The band under the pointer, and the cross-fade between two rows</h2>
+<p>The settings card paints nothing under the pointer on <code>main</code>: neither the setting rows in the pane nor the categories down the left edge answer a pointer that is over them, and the recording below is four jumps across both surfaces with the band count staying at zero. The category strip is a vertical tab bar, and it came last even on this branch: the pane rows were already banding while it was still switching its accent in a single frame, so it is the one this section is cut from.</p>
+<p>A band is per row, keyed on the row's identity rather than its position on screen, so a list that scrolls under a still pointer does not drag the band with it. Moving the pointer retargets every other live fade to zero and the named one to one: the row being left is still fading out while the row arrived at comes up. Strength zero is the absence of a band, not a band mixed all the way out, so an unhovered row keeps its exact unhovered bytes.</p>
+<p>The scene jumps the pointer eight rows at a time rather than gliding, because a glide crosses every row in between and gives each one a single frame, which is where a cross-fade and a switch look identical. Neither row it jumps between is the active category: the active one wears its own accent and would hide the band under it.</p>
+<div class="pair"><figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/before/sidebar-crossfade.mp4#t=22" type="video/mp4"></video><figcaption><strong>main</strong> — the pointer crosses the card and nothing follows it</figcaption></figure><figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/sidebar-crossfade.mp4#t=22" type="video/mp4"></video><figcaption><strong>branch</strong> — the row left fades out under the row reached</figcaption></figure></div>
+<figure><div class="strip" style="grid-template-columns: repeat(4, 1fr)"><img src="captures/x11/strips/band-crossfade-main-f00.png" alt="frame 0"><img src="captures/x11/strips/band-crossfade-main-f01.png" alt="frame 1"><img src="captures/x11/strips/band-crossfade-main-f02.png" alt="frame 2"><img src="captures/x11/strips/band-crossfade-main-f03.png" alt="frame 3"><img src="captures/x11/strips/band-crossfade-main-f04.png" alt="frame 4"><img src="captures/x11/strips/band-crossfade-main-f05.png" alt="frame 5"><img src="captures/x11/strips/band-crossfade-main-f06.png" alt="frame 6"><img src="captures/x11/strips/band-crossfade-main-f07.png" alt="frame 7"></div><figcaption><strong>main.</strong> Eight consecutive frames at 60fps across the jump from Interaction to Tools, cut at 31.50s. The pointer is the only thing in the strip that moves.</figcaption></figure>
+<figure><div class="strip" style="grid-template-columns: repeat(4, 1fr)"><img src="captures/x11/strips/band-crossfade-f00.png" alt="frame 0"><img src="captures/x11/strips/band-crossfade-f01.png" alt="frame 1"><img src="captures/x11/strips/band-crossfade-f02.png" alt="frame 2"><img src="captures/x11/strips/band-crossfade-f03.png" alt="frame 3"><img src="captures/x11/strips/band-crossfade-f04.png" alt="frame 4"><img src="captures/x11/strips/band-crossfade-f05.png" alt="frame 5"><img src="captures/x11/strips/band-crossfade-f06.png" alt="frame 6"><img src="captures/x11/strips/band-crossfade-f07.png" alt="frame 7"></div><figcaption><strong>branch.</strong> The same eight frames of the same jump in the same scene. Tools is banded, Interaction comes up over the middle four frames while Tools goes down, and neither is at full strength while the other is.</figcaption></figure>
+<h2>A real pointer, inside the card</h2>
+<p>xdotool moves the X pointer over the terminal window and presses real buttons; the CLI reads SGR 1006 reports off its own stdin. Nothing is injected into the app.</p>
+<figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/settings-pointer.mp4#t=20" type="video/mp4"></video><figcaption>The pointer walks the settings sidebar, clicks a section, then crosses the footer chips.</figcaption></figure>
+<div class="pair"><figure><img src="captures/x11/settings-pointer-sidebar-hover.png" alt=""><figcaption>The band tracks the pointer down the sidebar while the selection stays where the keyboard left it.</figcaption></figure><figure><img src="captures/x11/settings-pointer-sidebar-click.png" alt=""><figcaption>A click opens that section, exactly as Enter does.</figcaption></figure></div>
+<figure><img src="captures/x11/settings-pointer-chip-hover-1.png" alt=""><figcaption>The footer chips light under the pointer. A chip is a click target that does what its key does, so the keys a card advertises are the keys a mouse can press.</figcaption></figure>
+<h2>Four pickers that paint their own rows, and the same fade in each</h2>
+<p>The branch card, the session tree, the history search and the session list are not the shared list component: each one paints its rows itself, so each one had to learn the fade separately. On <code>main</code> none of the four answers the pointer at all — the recording below crosses every one of them and the only band that ever appears is the keyboard selection. The fence against the four drifting apart is an equality rather than a convention: a band at full strength is the same bytes as the selection band, asserted directly, so a settled row cannot change appearance by adopting the motion.</p>
+<p>They also need state before they list anything, which is what the three turns at the top of this recording buy: three user messages, three history entries, and a session on disk. The model answering them is the container's own, so the recording runs at the speed that model reads a prompt on CPU.</p>
+<div class="pair"><figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/before/pane-bands.mp4#t=170" type="video/mp4"></video><figcaption><strong>main</strong> — the pointer crosses four cards and none of them answers it</figcaption></figure><figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/pane-bands.mp4#t=170" type="video/mp4"></video><figcaption><strong>branch</strong> — each card fades the row it left out under the row it reached</figcaption></figure></div>
+<h3>The branch card, frame by frame</h3>
+<figure><div class="strip" style="grid-template-columns: repeat(4, 1fr)"><img src="captures/x11/strips/pane-crossfade-main-f00.png" alt="frame 0"><img src="captures/x11/strips/pane-crossfade-main-f01.png" alt="frame 1"><img src="captures/x11/strips/pane-crossfade-main-f02.png" alt="frame 2"><img src="captures/x11/strips/pane-crossfade-main-f03.png" alt="frame 3"><img src="captures/x11/strips/pane-crossfade-main-f04.png" alt="frame 4"><img src="captures/x11/strips/pane-crossfade-main-f05.png" alt="frame 5"><img src="captures/x11/strips/pane-crossfade-main-f06.png" alt="frame 6"><img src="captures/x11/strips/pane-crossfade-main-f07.png" alt="frame 7"></div><figcaption><strong>main.</strong> Eight consecutive frames at 60fps across a jump from the first message to the second. The selection band on the third message is the only band in the strip.</figcaption></figure>
+<figure><div class="strip" style="grid-template-columns: repeat(4, 1fr)"><img src="captures/x11/strips/pane-crossfade-f00.png" alt="frame 0"><img src="captures/x11/strips/pane-crossfade-f01.png" alt="frame 1"><img src="captures/x11/strips/pane-crossfade-f02.png" alt="frame 2"><img src="captures/x11/strips/pane-crossfade-f03.png" alt="frame 3"><img src="captures/x11/strips/pane-crossfade-f04.png" alt="frame 4"><img src="captures/x11/strips/pane-crossfade-f05.png" alt="frame 5"><img src="captures/x11/strips/pane-crossfade-f06.png" alt="frame 6"><img src="captures/x11/strips/pane-crossfade-f07.png" alt="frame 7"></div><figcaption><strong>branch.</strong> The same jump. The first message is still going down while the second comes up, and the selection band underneath both is untouched by either.</figcaption></figure>
+<div class="pair"><figure><img src="captures/x11/pane-bands-tree-hover.png" alt=""><figcaption>The session tree: one row per node, banded under the pointer while the selection stays where the keyboard left it.</figcaption></figure><figure><img src="captures/x11/pane-bands-history-hover.png" alt=""><figcaption>The history search, over the prompts this session typed.</figcaption></figure></div>
+<figure><img src="captures/x11/pane-bands-resume-hover.png" alt=""><figcaption>The session list, the fourth of them. A selected row is never banded — it already wears the selection band, and a band at full strength is the same bytes — so the scene runs <code>/new</code> first and hovers the session it just left. Both titles were written by the container's 1.5B model, which is also what answered the turns.</figcaption></figure>
+<h2>The composer popup grows out of the composer</h2>
+<p>The autocomplete used to arrive at its full height, so the rows slid past a border already sitting where it would end up. It now grows: the frame itself is short on the first frame and reaches its height over the curve. Dismissal stays instant, and that asymmetry is deliberate — a popup you have decided against should not take a fifth of a second to agree.</p>
+<div class="pair"><figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/before/popup-grow.mp4#t=19" type="video/mp4"></video><figcaption><strong>main</strong> — the list is at full height in the first frame that has it</figcaption></figure><figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/popup-grow.mp4#t=19" type="video/mp4"></video><figcaption><strong>branch</strong> — the frame grows, and the rows arrive inside it</figcaption></figure></div>
+<figure><div class="strip" style="grid-template-columns: repeat(6, 1fr)"><img src="captures/x11/strips/popup-grow-f00.png" alt="frame 0"><img src="captures/x11/strips/popup-grow-f01.png" alt="frame 1"><img src="captures/x11/strips/popup-grow-f02.png" alt="frame 2"><img src="captures/x11/strips/popup-grow-f03.png" alt="frame 3"><img src="captures/x11/strips/popup-grow-f04.png" alt="frame 4"><img src="captures/x11/strips/popup-grow-f05.png" alt="frame 5"><img src="captures/x11/strips/popup-grow-f06.png" alt="frame 6"><img src="captures/x11/strips/popup-grow-f07.png" alt="frame 7"><img src="captures/x11/strips/popup-grow-f08.png" alt="frame 8"><img src="captures/x11/strips/popup-grow-f09.png" alt="frame 9"><img src="captures/x11/strips/popup-grow-f10.png" alt="frame 10"><img src="captures/x11/strips/popup-grow-f11.png" alt="frame 11"></div><figcaption>Twelve frames from the slash. The border reaches its height over the curve; the dismissal that follows it in the recording takes one frame.</figcaption></figure>
+<div class="pair"><figure><img src="captures/x11/popup-grow-slash-popup.png" alt=""><figcaption>The command list, settled.</figcaption></figure><figure><img src="captures/x11/popup-grow-at-filtered.png" alt=""><figcaption>The file list narrowed to <code>src/</code>, off the working tree the container seeded.</figcaption></figure></div>
+<h2>A real turn, on a model in the same container</h2>
+<p>The provider is <code>llama.cpp</code> on the recorder's own docker network holding <code>qwen2.5-1.5b-instruct-q4_k_m</code>. No provider account is reachable from inside, so what streams below is that model or nothing.</p>
+<figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/session-local-llm.mp4" type="video/mp4"></video><figcaption>A turn streams, the pointer crosses the composer chips while it is in flight, and a left click on <code>escape interrupt</code> stops the turn.</figcaption></figure>
+<div class="pair"><figure><img src="captures/x11/session-local-llm-streaming-1.png" alt=""><figcaption>The answer arriving, a token at a time.</figcaption></figure><figure><img src="captures/x11/session-local-llm-chip-hover-2.png" alt=""><figcaption>The interrupt chip under the pointer while the turn is in flight.</figcaption></figure></div>
+<div class="pair"><figure><img src="captures/x11/session-local-llm-after-interrupt.png" alt=""><figcaption>After the click: the turn is stopped and the chips are gone.</figcaption></figure><figure><img src="captures/x11/session-local-llm-answer-settled.png" alt=""><figcaption>A later turn, left to finish.</figcaption></figure></div>
+<h2>One left rail, and a printed block that is no longer a box</h2>
+<p>The transcript carries one left rail two columns in, and every block hangs off it. On <code>main</code> a block printed into the transcript draws its own frame instead: <code>/hotkeys</code> comes out as a full-width box with a rule under it at column zero, which reads as a page break in the middle of a conversation. Both stills below are the same scene, the same command and the same terminal size, one arm apart.</p>
+<div class="pair"><figure><img src="captures/x11/before/overlay-motion-hotkeys-settled.png" alt=""><figcaption><strong>main</strong> — the block is boxed on all four sides and followed by a full-width rule</figcaption></figure><figure><img src="captures/x11/overlay-motion-hotkeys-settled.png" alt=""><figcaption><strong>branch</strong> — the same block, hung off the rail, with no horizontal at column zero</figcaption></figure></div>
+<figure><img src="captures/x11/overlay-motion-idle.png" alt=""><figcaption>The transcript at rest on the branch: one rail, two columns in.</figcaption></figure>
+<h2>What a spawned agent runs, on one page instead of five</h2>
+<p>On <code>main</code> the category holds a flat list in three sections: an <code>Agents</code> section whose single row is <code>Agent Roster</code>, a <code>Models</code> section three rows below it carrying <code>Subagent Model</code>, <code>Models by Depth</code> and <code>Subagent Effort</code>, and <code>Max Nested Spawn Depth</code> further down again under <code>Limits</code>. The roster's per-agent page changed none of them — it printed a sentence telling you to go back up and edit the Models section — so the screen that showed what a lane runs and the rows that decided it were three sections apart, and the ceiling was edited on one screen and read on another.</p>
+<p>It is one recursive tree now. Every level carries the same four rows — Enabled, Model, Effort, and Subagents, the door to the level below — so the page that answers <em>what does deep run</em> is the page that answers <em>what may deep spawn, and what does that run</em>, unbounded. Unset means the lane above, not a default table: change what <code>deep</code> runs and everything under it follows. <code>Subagents → Enabled</code> IS the depth limit, level by level, so the per-agent number is gone from every screen; the blanket ceiling that shipped config files still carry sits beside the roster rather than two sections away.</p>
+<div class="pair"><figure><img src="captures/x11/before/subagent-lanes-pane.png" alt=""><figcaption><strong>main</strong> — main: <code>Agents</code>, then <code>Models</code>, then the ceiling down in <code>Limits</code> — and no band under the pointer, which is the same defect the pickers above have</figcaption></figure><figure><img src="captures/x11/subagent-lanes-pane.png" alt=""><figcaption><strong>branch</strong> — the branch: one <code>Subagents</code> section — roster, ceiling, model, effort — and the row the pointer is on is banded</figcaption></figure></div>
+<div class="pair"><figure><img src="captures/x11/subagent-lanes-lane.png" alt=""><figcaption>One lane. Every value names where it came from: <em>inherit · the session's model</em>, <em>off · this lane may not spawn</em>.</figcaption></figure><figure><img src="captures/x11/subagent-lanes-nested.png" alt=""><figcaption>Through the door. The same four rows, one level down, and now unset reads <em>inherit · the level above</em> — the lane, not the session.</figcaption></figure></div>
+<figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/subagent-lanes.mp4#t=24" type="video/mp4"></video><figcaption>The whole descent, in one take: the category opened with a click, the roster, one lane, the level under it, and back out.</figcaption></figure>
+<h2>A defect this branch fixes, on camera</h2>
+<p>A virtualized transcript spliced out the rows the engine had committed to native scrollback, and the engine kept the pre-splice coordinates. The next frame read the shift as a divergence and, with <code>tui.scrollbackRebuild</code> on, erased native scrollback and replayed a frame whose history the container had already dropped. Both arms below drive the same scene at the same size.</p>
+<div class="pair"><figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/before/transcript-blanking.mp4" type="video/mp4"></video><figcaption><strong>main</strong> — history is erased as the session runs; scrolling back finds nothing</figcaption></figure><figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/after/transcript-blanking.mp4" type="video/mp4"></video><figcaption><strong>branch</strong> — every row survives; scrollback walks the whole session</figcaption></figure></div>
+
+<h2>Every commit on the branch</h2>
+<table><thead><tr><th>commit</th><th>subject</th></tr></thead>
+<tbody>
+<tr><td class="sha">0ab477850</td><td>feat(tui): fade the settings category band under the pointer</td></tr>
+<tr><td class="sha">d92669c37</td><td>feat(tui): the hand-painted pickers cross-fade the pointer band</td></tr>
+<tr><td class="sha">d2eb9dec2</td><td>feat(tui): the suggestion popup grows instead of cutting in</td></tr>
+<tr><td class="sha">c823e9828</td><td>feat(tui): the pointer band fades in and out instead of switching</td></tr>
+<tr><td class="sha">3cd9362a9</td><td>feat(tui): a dismissed card folds away before it leaves</td></tr>
+<tr><td class="sha">85e166ac7</td><td>test(settings): point the subagent pointer case at the lane page</td></tr>
+<tr><td class="sha">bbc96f153</td><td>feat(settings): a subagent's page owns what it runs, and recurses</td></tr>
+<tr><td class="sha">8afbbfe66</td><td>fix(effort): an effort picker offers only levels the endpoint declares</td></tr>
+<tr><td class="sha">5ab98e6d6</td><td>fix(settings): one Subagents section that edits what every subagent runs</td></tr>
+<tr><td class="sha">2645becbd</td><td>fix(tui): hold the mouse while a pinned-footer child has a click target</td></tr>
+<tr><td class="sha">f60036e6f</td><td>docs(changelog): order the two fix bullets the way main carries them</td></tr>
+<tr><td class="sha">23fac74b5</td><td>demo(proof): declare truecolor to the app inside the recording terminal</td></tr>
+<tr><td class="sha">3e8038714</td><td>fix(coding-agent): an elided reasoning fence says how many lines it hid</td></tr>
+<tr><td class="sha">f5e0aad58</td><td>demo(tui): reproduce the transcript blanking defect in a real terminal</td></tr>
+<tr><td class="sha">ed8cd31b2</td><td>feat(tui): one animation clock for the whole terminal</td></tr>
+<tr><td class="sha">ba22b669a</td><td>demo(ui): record scenes in an X terminal with a real pointer</td></tr>
+<tr><td class="sha">670d0793b</td><td>demo(ui): build the proof page from the real-terminal captures</td></tr>
+<tr><td class="sha">907edbc2b</td><td>demo(ui): record real-terminal proof captures with vhs and a local model</td></tr>
+<tr><td class="sha">7ef968fa2</td><td>demo(proof): draw the cache-miss mark instead of a placeholder box</td></tr>
+<tr><td class="sha">d12a2639f</td><td>demo(ui): render the three surfaces this branch changed most</td></tr>
+<tr><td class="sha">73b3a350f</td><td>polish(transcript): read the cut-short marker's indent from the rail constant</td></tr>
+<tr><td class="sha">bfc3ed7b5</td><td>polish(transcript): take the border off the tiny-model download block</td></tr>
+<tr><td class="sha">23504cc4d</td><td>polish(transcript): start a divider on the rail, not at column zero</td></tr>
+<tr><td class="sha">bc9e33085</td><td>polish(transcript): make every divider a mark on the rail, not a rule across it</td></tr>
+<tr><td class="sha">08ec85de5</td><td>demo(setup-wizard): let the wizard renderer aim the pointer at a chip</td></tr>
+<tr><td class="sha">253111668</td><td>polish(setup-wizard): draw the footer keys as chips a pointer can hit</td></tr>
+<tr><td class="sha">db946f360</td><td>polish(composer): place the caret where the composer is clicked</td></tr>
+<tr><td class="sha">e86818539</td><td>polish(settings): name the subagents tab for subagents, and fold the spawn ceiling into the roster section</td></tr>
+<tr><td class="sha">07372af28</td><td>polish(pause): resume the pause screen on a click</td></tr>
+<tr><td class="sha">9be29f814</td><td>test(settings): drive the effort step's click hint</td></tr>
+<tr><td class="sha">f9160c99c</td><td>polish(ui): delete the full-width rule</td></tr>
+<tr><td class="sha">b02f7dc2d</td><td>polish(transcript): print command blocks on the rail</td></tr>
+<tr><td class="sha">7e1aa54cb</td><td>polish(transcript): put the /btw and /omfg blocks on the rail</td></tr>
+<tr><td class="sha">489fd453f</td><td>feat(tui): accept a composer suggestion on click</td></tr>
+<tr><td class="sha">36df196c3</td><td>polish(plugins): answer the pointer in the settings plugins tab and name its keys as chips</td></tr>
+<tr><td class="sha">929469b5f</td><td>polish(hooks): open the hook input and editor as ModalShell cards</td></tr>
+<tr><td class="sha">3f583d196</td><td>polish(hooks): open the hook selector as a ModalShell card that answers the pointer</td></tr>
+<tr><td class="sha">c511ae76b</td><td>fix(tui): keep the transcript when a virtualized root compacts</td></tr>
+<tr><td class="sha">1f2ea74b3</td><td>polish(mcp): open the add-server wizard as a ModalShell card that answers the pointer</td></tr>
+<tr><td class="sha">4ed3a44b4</td><td>polish(tree): open the session tree as a ModalShell card that answers the pointer</td></tr>
+<tr><td class="sha">5afa7ff34</td><td>test(coding-agent): copy the transcript rows the harness hands back</td></tr>
+<tr><td class="sha">4d566d927</td><td>fix(ai): compact a ChatGPT OAuth session on the codex backend</td></tr>
+<tr><td class="sha">ab7f1b8be</td><td>feat(coding-agent): move the transcript drill-in onto ModalShell</td></tr>
+<tr><td class="sha">d4d2a4290</td><td>feat(coding-agent): move the login screen onto ModalShell</td></tr>
+<tr><td class="sha">b373c7c55</td><td>feat(coding-agent): make the composer chips answer clicks</td></tr>
+<tr><td class="sha">0c36cf201</td><td>chore(coding-agent): delete the dead marketplace plugin selector</td></tr>
+<tr><td class="sha">c18816b62</td><td>feat(coding-agent): answer the pointer on ask-dialog option rows</td></tr>
+<tr><td class="sha">08ade60cb</td><td>feat(coding-agent): forward pointer events into the model picker's browser</td></tr>
+<tr><td class="sha">b852f2543</td><td>fix(coding-agent): collapse the turn-level batch ledger to a one-line marker</td></tr>
+<tr><td class="sha">aa2d62dc7</td><td>fix(coding-agent): theme assistant answer prose instead of terminal default</td></tr>
+<tr><td class="sha">d0226c921</td><td>feat(coding-agent): answer the pointer at the row level in the six selector overlays</td></tr>
+<tr><td class="sha">b6a6bd07b</td><td>feat(coding-agent): route pointer events into settings submenus and modal bodies</td></tr>
+<tr><td class="sha">8981629d1</td><td>Merge branch 'main' into feat/ui-polish</td></tr>
+<tr><td class="sha">766ee5a26</td><td>fix(coding-agent): duplicate of main's compaction-tier and bundle-decoupling fixes</td></tr>
+</tbody></table>
+</body></html>

@@ -1,0 +1,11 @@
+# Profile settings for the recording container only.
+#
+# `theme` and `model` are machine-wide and live in ~/.veyyon/config.yml; the
+# rest of the settings are per-profile and are read from here. Seeding
+# `doubleEscapeAction` in the machine-wide file did nothing for that reason, and
+# `/branch` kept opening the session tree.
+#
+# `/branch` follows this setting: `tree` sends it to the session tree, which the
+# recordings reach with `/tree` anyway. `branch` is what makes the fourth
+# picker -- the user-message card -- reachable in a scene.
+doubleEscapeAction: branch
