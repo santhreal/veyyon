@@ -14,6 +14,7 @@ import {
 } from "@veyyon/tui";
 import {
 	applyModalReveal,
+	beginModalExit,
 	computeModalDims,
 	consumeModalChipHover,
 	hitTestModalChrome,
@@ -73,6 +74,14 @@ export class ModalSelectListComponent implements Component {
 	#onCancel: () => void;
 	#onRequestRender?: () => void;
 	#reveal = new ModalRevealDriver();
+	/**
+	 * Fade out on the shared clock before the host drops this card. The overlay stack keeps painting
+	 * it and stops routing input to it the moment this is called.
+	 */
+	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
+		return beginModalExit(this.#reveal, requestRender, done);
+	}
+
 	/**
 	 * Tallest body this card has ever drawn, which is the height it keeps.
 	 *

@@ -34,6 +34,7 @@ import {
 import { CountdownTimer } from "./countdown-timer";
 import {
 	applyModalReveal,
+	beginModalExit,
 	computeModalDims,
 	consumeModalChipHover,
 	hitTestModalChrome,
@@ -188,6 +189,14 @@ export class HookSelectorComponent extends Container {
 	#hoveredShortcutId: string | null = null;
 	#bodyRowStart = 0;
 	#reveal = new ModalRevealDriver();
+	/**
+	 * Fade out on the shared clock before the host drops this card. The overlay stack keeps painting
+	 * it and stops routing input to it the moment this is called.
+	 */
+	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
+		return beginModalExit(this.#reveal, requestRender, done);
+	}
+
 	constructor(
 		title: string,
 		options: HookSelectorOptionInput[],

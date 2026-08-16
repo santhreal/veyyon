@@ -19,6 +19,7 @@ import { matchesAppInterrupt } from "../../modes/utils/keybinding-matchers";
 import { CountdownTimer } from "./countdown-timer";
 import {
 	applyModalReveal,
+	beginModalExit,
 	computeModalDims,
 	consumeModalChipHover,
 	hitTestModalChrome,
@@ -68,6 +69,13 @@ export class HookInputComponent extends Container {
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
 	#reveal = new ModalRevealDriver();
+	/**
+	 * Fade out on the shared clock before the host drops this card. The overlay stack keeps painting
+	 * it and stops routing input to it the moment this is called.
+	 */
+	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
+		return beginModalExit(this.#reveal, requestRender, done);
+	}
 
 	constructor(
 		title: string,

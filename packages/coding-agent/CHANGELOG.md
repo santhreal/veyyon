@@ -11,6 +11,7 @@
 
 - The composer chips (`interrupt`, `background`, `dequeue`) are click targets. A left click on a chip runs the same action its keybinding runs. Hover paint stays off: the main session holds press/release tracking only, so drag-select in the terminal keeps working.
 - The `/pause` screen resumes on a click. It is a fullscreen overlay, so it already held the whole mouse-tracking set and every report reached it and was dropped: the pointer did nothing on the one screen whose only job is to let you out. A left press anywhere on the scene now resumes exactly as Esc does, motion, drag, release, wheel and the other buttons still do nothing, and both the full scene and the compact card name the click in their hint.
+- Every modal card folds away when it is dismissed, on the same clock and the same curve it opened on, played backwards and shorter. A card dismissed while it is still opening leaves from where it had got to rather than snapping open first. The animation is paint and nothing else: the keyboard, the mouse and the session behind the card are handed back the instant Esc is pressed, so a fading card cannot swallow the next keystroke, and a card disposed halfway through its fade still leaves rather than staying on screen. A terminal that skips the open unfold — non-truecolor, or `display.transitions: off` — skips the close too.
 
 ### Changed
 

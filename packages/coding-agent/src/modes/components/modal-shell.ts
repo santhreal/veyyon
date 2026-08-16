@@ -882,6 +882,8 @@ export class ModalRevealDriver {
 	#animation: Animation | null = null;
 	#settled = false;
 	#requestRender: (() => void) | null = null;
+	#exit: Animation | null = null;
+	#exiting = false;
 	readonly #clock: MotionClock;
 
 	constructor(clock: MotionClock = motionClock) {
@@ -889,13 +891,18 @@ export class ModalRevealDriver {
 	}
 
 	/**
-	 * Eased reveal fraction in [0, 1]; 1 once settled or never started. The
-	 * timeline begins on the FIRST read after start(), not at start() itself:
-	 * an overlay's first paint can lag construction by more than the whole
-	 * animation (alt-screen switch, session work), and a construction-anchored
-	 * clock then plays the unfold to nobody.
+	 * Eased reveal fraction in [0, 1]; 1 once settled or never started, and running back to 0 once
+	 * the card is leaving. The timeline begins on the FIRST read after start(), not at start()
+	 * itself: an overlay's first paint can lag construction by more than the whole animation
+	 * (alt-screen switch, session work), and a construction-anchored clock then plays the unfold to
+	 * nobody.
 	 */
 	get value(): number {
+		// The exit outranks every other state: it is started from whatever the card was showing,
+		// including mid-entrance, so a card dismissed while still opening folds away from where it
+		// had got to rather than snapping open first.
+		const exit = this.#exit;
+		if (exit !== null) return exit.value;
 		if (this.#settled || !this.#armed) return 1;
 		if (this.#animation === null) {
 			this.#animation = this.#clock.animate(MOTION.enter, {
@@ -911,24 +918,79 @@ export class ModalRevealDriver {
 		return this.#animation.value;
 	}
 
+	/** True while the card is playing its exit, which is when it must take no input. */
+	get exiting(): boolean {
+		return this.#exiting;
+	}
+
 	/** Begin the reveal (idempotent; a second call replays from zero). */
 	start(requestRender: () => void): void {
 		this.stop();
 		this.#settled = false;
 		this.#armed = true;
 		this.#animation = null;
+		this.#exit = null;
+		this.#exiting = false;
 		this.#requestRender = requestRender;
 		requestRender();
 	}
 
-	/** Settle immediately (also used on dismount so no frame outlives the card). */
-	stop(): void {
-		// cancel, not finish: a dismount must not ask a disposed card to repaint.
+	/**
+	 * Play the reveal BACKWARDS, then hand back to `done`.
+	 *
+	 * Returns false when there is nothing to play — a card already leaving — and the caller removes
+	 * it on the spot. The exit is the shorter curve on purpose: an entrance can be admired, but
+	 * waiting on something you have already dismissed reads as the program being slow rather than
+	 * the card being graceful.
+	 */
+	exit(requestRender: () => void, done: () => void): boolean {
+		if (this.#exiting) return false;
+		const from = this.value;
 		this.#animation?.cancel();
 		this.#animation = null;
+		this.#settled = false;
+		this.#exiting = true;
+		this.#requestRender = requestRender;
+		this.#exit = this.#clock.animate(MOTION.exit, {
+			from,
+			to: 0,
+			onFrame: () => this.#requestRender?.(),
+			onDone: () => {
+				this.#requestRender = null;
+				done();
+			},
+		});
+		requestRender();
+		return true;
+	}
+
+	/** Settle immediately (also used on dismount so no frame outlives the card). */
+	stop(): void {
+		// The entrance is CANCELLED: a dismount must not ask a disposed card to repaint.
+		this.#animation?.cancel();
+		this.#animation = null;
+		// An exit is FINISHED instead, because its `onDone` is what removes the card from the
+		// overlay stack. Cancelling one would leave a dismissed card painted on screen with nothing
+		// left running to take it off — the exit turning a close into a permanent overlay is a worse
+		// failure than any missed frame. The finish runs synchronously, so no frame is painted
+		// between clearing the state here and the host dropping the card.
+		const exit = this.#exit;
+		this.#exit = null;
 		this.#requestRender = null;
 		this.#settled = true;
+		exit?.finish();
 	}
+}
+
+/**
+ * Start a card's exit under the ambient motion gate, which is the same gate the open unfold is
+ * shown under: a terminal that skips the entrance must not be handed an exit.
+ *
+ * Returns false when nothing will play, which is the host's signal to remove the card at once
+ * rather than wait for a frame that is never coming.
+ */
+export function beginModalExit(reveal: ModalRevealDriver, requestRender: () => void, done: () => void): boolean {
+	return modalRevealEnabled() && reveal.exit(requestRender, done);
 }
 
 /**

@@ -59,6 +59,11 @@ export class QueueModeSelectorComponent {
 		return this.#inner.render(width);
 	}
 
+	/** Forwarded to the inner card, which owns the reveal this plays backwards. */
+	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
+		return this.#inner.beginOverlayExit(requestRender, done);
+	}
+
 	invalidate(): void {
 		this.#inner.invalidate();
 	}

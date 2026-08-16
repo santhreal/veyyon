@@ -23,6 +23,7 @@ import {
 } from "../utils/keybinding-matchers";
 import {
 	applyModalReveal,
+	beginModalExit,
 	computeModalDims,
 	consumeModalChipHover,
 	hitTestModalChrome,
@@ -95,6 +96,13 @@ export class CopySelectorComponent implements Component {
 	#hitRows: (number | undefined)[] = [];
 	#onRequestRender?: () => void;
 	#reveal = new ModalRevealDriver();
+	/**
+	 * Fade out on the shared clock before the host drops this card. The overlay stack keeps painting
+	 * it and stops routing input to it the moment this is called.
+	 */
+	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
+		return beginModalExit(this.#reveal, requestRender, done);
+	}
 
 	constructor(
 		roots: CopyTarget[],
