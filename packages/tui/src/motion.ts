@@ -90,6 +90,59 @@ const FRAME_MS = 1000 / 60;
 /** A frame gap longer than this is a stall (debugger, blocked loop); the
  * animation jumps rather than replaying the missed time in one lurch. */
 const MAX_FRAME_MS = 100;
+/**
+ * The longest an animation may run from its last retarget before the clock
+ * lands it and lets go. Nothing in {@link MOTION} travels for more than about
+ * two thirds of a second, so this is six times the longest real motion and
+ * never fires for one; it exists because "the animation reports done" is what
+ * stops the ticker, and an animation that never reports done is a 60fps
+ * repaint of the whole terminal for as long as the process lives. A spring is
+ * an asymptote with a threshold on it, and a threshold is exactly the kind of
+ * condition that can be missed forever: an integrator that diverges to
+ * Infinity never comes back inside its rest band, and a spring damped by an
+ * arbitrarily small amount decays for arbitrarily long. Retargeting resets the
+ * deadline, so a value the host keeps moving is never cut off mid-travel.
+ */
+const MAX_MOTION_MS = 4000;
+
+function isPositiveFinite(value: number): boolean {
+	return Number.isFinite(value) && value > 0;
+}
+
+/**
+ * Whether a curve can reach its resting state at all. A spring settles only
+ * with a restoring force, dissipation, finite inertia, a rest band it can
+ * enter, and a period the integrator can resolve: zero or negative damping
+ * conserves or pumps energy and oscillates forever, zero stiffness never pulls
+ * toward the target, infinite mass never moves, a zero restDelta is a
+ * threshold an asymptote never crosses, and a stiffness past the sub-step's
+ * stability limit diverges to Infinity. A fixed curve settles whenever its
+ * duration is a real number — zero and negative land on the first frame, where
+ * NaN and Infinity never let the normalized time reach 1.
+ *
+ * A spec that fails this is a caller error, and the honest answer to it is the
+ * one `enabled: false` already gives: the value is at its target, and nothing
+ * registers with the clock.
+ */
+function curveSettles(curve: AnimationCurve): boolean {
+	if (!("spring" in curve)) return Number.isFinite(curve.duration);
+	const { stiffness, damping, mass = 1, restDelta = DEFAULT_REST_DELTA } = curve.spring;
+	if (
+		!isPositiveFinite(stiffness) ||
+		!isPositiveFinite(damping) ||
+		!isPositiveFinite(mass) ||
+		!isPositiveFinite(restDelta)
+	) {
+		return false;
+	}
+	// Semi-implicit Euler is stable only while its step is short against the
+	// spring's own period. Past h·sqrt(k/m) = 2 the integrator gains energy on
+	// every step and the value walks out to Infinity instead of settling, which
+	// puts it outside a rest band it can never re-enter. The sub-step is pinned
+	// at one 60Hz frame, so this is a property of the spec alone and the answer
+	// is available here rather than a hundred frames into the divergence.
+	return (FRAME_MS / 1000) * Math.sqrt(stiffness / mass) < 2;
+}
 
 /**
  * A single running value. Read `value` during render; the clock advances it.
@@ -103,17 +156,31 @@ export class Animation {
 	#from: number;
 	#done = false;
 	readonly #curve: AnimationCurve;
+	/** False when this curve provably cannot reach rest; see {@link curveSettles}. */
+	readonly #settles: boolean;
 	readonly #onFrame?: (value: number) => void;
 	readonly #onDone?: () => void;
 
 	constructor(curve: AnimationCurve, spec: AnimationSpec) {
 		this.#curve = curve;
-		this.#from = spec.from ?? 0;
+		// A start that is not a number is not a position, and 0 is already what
+		// `from` means when it is left out.
+		const from = spec.from;
+		this.#from = from !== undefined && Number.isFinite(from) ? from : 0;
 		this.#value = this.#from;
 		this.#target = spec.to;
 		this.#onFrame = spec.onFrame;
 		this.#onDone = spec.onDone;
-		if (this.#value === this.#target) this.#done = true;
+		this.#settles = curveSettles(curve);
+		// Everything the clock accepts must eventually report done, because that
+		// is the only thing that stops the ticker. A target that is not a real
+		// number is not a destination — the value stays where it is — and a curve
+		// that cannot settle lands on its target the way `enabled: false` does.
+		if (!Number.isFinite(this.#target)) this.#done = true;
+		else if (!this.#settles) {
+			this.#value = this.#target;
+			this.#done = true;
+		} else if (this.#value === this.#target) this.#done = true;
 	}
 
 	get value(): number {
@@ -135,10 +202,17 @@ export class Animation {
 	 * fixed curve gets to continuity.
 	 */
 	retarget(to: number): void {
+		if (!Number.isFinite(to)) return;
 		if (to === this.#target && !this.#done) return;
 		this.#target = to;
 		this.#from = this.#value;
 		this.#elapsed = 0;
+		if (!this.#settles) {
+			this.#value = to;
+			this.#velocity = 0;
+			this.#done = true;
+			return;
+		}
 		this.#done = this.#value === to && Math.abs(this.#velocity) < DEFAULT_REST_DELTA;
 	}
 
@@ -161,16 +235,26 @@ export class Animation {
 	step(dtMs: number): boolean {
 		if (this.#done) return false;
 		const dt = Math.min(Math.max(dtMs, 0), MAX_FRAME_MS);
+		this.#elapsed += dt;
 		if ("spring" in this.#curve) this.#stepSpring(dt);
-		else this.#stepCurve(dt);
+		else this.#stepCurve();
+		// The backstop under the invariant the whole clock rests on. Rejecting the
+		// specs that provably cannot settle is not enough on its own: a spring is
+		// an asymptote with a threshold on it, and a damping small enough will
+		// decay for longer than the session without ever crossing that threshold.
+		// Past the deadline the value is where it was going.
+		if (!this.#done && this.#elapsed >= MAX_MOTION_MS) {
+			this.#value = this.#target;
+			this.#velocity = 0;
+			this.#done = true;
+		}
 		this.#onFrame?.(this.#value);
 		if (this.#done) this.#onDone?.();
 		return !this.#done;
 	}
 
-	#stepCurve(dt: number): void {
+	#stepCurve(): void {
 		const { duration, easing } = this.#curve as { duration: number; easing: Easing };
-		this.#elapsed += dt;
 		const t = duration <= 0 ? 1 : Math.min(1, this.#elapsed / duration);
 		this.#value = this.#from + (this.#target - this.#from) * easing(t);
 		if (t >= 1) {
