@@ -6,6 +6,7 @@ import { getMarkdownTheme } from "../../modes/theme/markdown-theme";
 import { theme } from "../../modes/theme/theme";
 import { actionKeyHint } from "../../modes/utils/key-hint";
 import type { BranchSummaryMessage, CompactionSummaryMessage, CustomMessage } from "../../session/messages";
+import { renderTranscriptDivider } from "./transcript-divider";
 
 /**
  * Whether the next compaction pass will go to the provider's own compaction
@@ -69,30 +70,10 @@ class SummaryDividerComponent implements Component {
 		if (this.#cache?.width === width && this.#cache.hint === hint) {
 			return this.#cache.lines;
 		}
-		const lines = this.#expanded
-			? ["", this.#divider(width, hint), "", ...this.#detailBox().render(width)]
-			: ["", this.#divider(width, hint), ""];
+		const row = renderTranscriptDivider(width, this.options.label(), hint || undefined);
+		const lines = this.#expanded ? ["", row, "", ...this.#detailBox().render(width)] : ["", row, ""];
 		this.#cache = { width, hint, lines };
 		return lines;
-	}
-
-	#divider(width: number, keyHint: string): string {
-		const rule = theme.tree.horizontal;
-		const label = this.options.label();
-		// sep.dot ships pre-padded (" · "); trim so a bound hint joins with single spaces.
-		const hint = keyHint ? `${theme.sep.dot.trim()} ${keyHint}` : "";
-		const content = hint ? `${label} ${hint}` : label;
-		const plainWidth = Bun.stringWidth(content, { countAnsiEscapeCodes: false });
-		// ` label hint ` framed by rules on both sides.
-		const remaining = width - plainWidth - 2;
-		if (remaining < 4) {
-			// Too narrow for a framed rule — emit the bare label.
-			return theme.fg("muted", label);
-		}
-		const left = Math.floor(remaining / 2);
-		const right = remaining - left;
-		const styledContent = hint ? `${theme.fg("muted", label)} ${theme.fg("dim", hint)}` : theme.fg("muted", label);
-		return `${theme.fg("dim", rule.repeat(left))} ${styledContent} ${theme.fg("dim", rule.repeat(right))}`;
 	}
 
 	#detailBox(): Box {
@@ -110,9 +91,9 @@ class SummaryDividerComponent implements Component {
 }
 
 /**
- * Compaction point in the transcript, rendered as a slim horizontal divider:
+ * Compaction point in the transcript, rendered as the house divider:
  *
- *   ────────  compacted · ctrl+o ────────
+ *   ────────── 📷 compacted · ctrl+o
  *
  * The conversation above the divider stays visible (display transcript keeps
  * full history); only the LLM context was reset. Expanding (ctrl+o) reveals

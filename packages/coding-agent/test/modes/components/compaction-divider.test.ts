@@ -1,7 +1,7 @@
 /**
  * Contract: the compaction point renders as a slim horizontal divider —
- * `── 📷 compacted · ctrl+o ──` — instead of a full summary box, keeping the
- * transcript visually continuous. Expansion (ctrl+o) reveals the summary.
+ * `────────── 📷 compacted · ctrl+o` — instead of a full summary box, keeping
+ * the transcript visually continuous. Expansion (ctrl+o) reveals the summary.
  * The render cache must honor the pi-tui same-reference contract: unchanged
  * components return the identical array so containers can memoize.
  */
@@ -38,14 +38,17 @@ function makeComponent(images?: ImageContent[]): CompactionSummaryMessageCompone
 }
 
 describe("CompactionSummaryMessageComponent", () => {
-	it("collapsed: a single full-width divider carrying the expand affordance", () => {
+	it("collapsed: a single short divider carrying the expand affordance", () => {
 		const lines = makeComponent().render(80);
 		expect(lines.length).toBe(3); // breathing room above and below the rule
 		const rule = Bun.stripANSI(lines[1]);
 		expect(rule).toContain("compacted");
 		expect(rule).toContain("ctrl+o");
-		// The rule spans the full width and hides the summary body.
-		expect(Bun.stringWidth(rule)).toBe(80);
+		// The divider stops at its label. It used to pad out to the viewport, which
+		// put a second full-width horizontal on a transcript that already carries
+		// one left rail; the shape itself is swept in
+		// a-transcript-divider-marks-a-point-instead-of-spanning-the-viewport.
+		expect(Bun.stringWidth(rule)).toBeLessThan(80);
 		expect(rule).not.toContain(SUMMARY);
 	});
 

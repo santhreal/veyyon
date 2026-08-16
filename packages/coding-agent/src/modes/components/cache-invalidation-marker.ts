@@ -3,6 +3,7 @@ import { supportsOpenAIPromptCacheBreakpoints } from "@veyyon/catalog/identity";
 import type { Component } from "@veyyon/tui";
 import { formatNumber } from "@veyyon/utils";
 import { theme } from "../../modes/theme/theme";
+import { renderTranscriptDivider } from "./transcript-divider";
 
 /**
  * Minimum prefix the previous turn must have READ back from cache before a
@@ -133,13 +134,10 @@ export function detectCacheInvalidation(
 	return named ? { reprocessedTokens, cause: named } : { reprocessedTokens };
 }
 
-const CACHE_INVALIDATION_RULE_WIDTH = 10;
-
 /**
- * Slim left-aligned divider rendered above an assistant turn whose request lost
- * the prompt cache. Mirrors the compaction divider's banner styling but spans
- * only a short rule plus label (not the full width) and carries no expandable
- * detail:
+ * Slim divider rendered above an assistant turn whose request lost the prompt
+ * cache. Same house divider as a compaction point, and like that one it carries
+ * no expandable detail:
  *
  *   ────────── ⊘ cache miss · 50.9k tokens
  */
@@ -175,13 +173,6 @@ export class CacheInvalidationMarkerComponent implements Component {
 		const parts = [head];
 		if (tokens > 0) parts.push(`${formatNumber(tokens)} tokens`);
 		if (this.info.cause) parts.push(this.info.cause);
-		const label = parts.join(` ${dot} `);
-		const labelWidth = Bun.stringWidth(label, { countAnsiEscapeCodes: false });
-		const ruleWidth = Math.min(CACHE_INVALIDATION_RULE_WIDTH, width - labelWidth - 1);
-		if (ruleWidth < 1) {
-			// Too narrow to frame — emit the bare label.
-			return theme.fg("muted", label);
-		}
-		return `${theme.fg("dim", theme.tree.horizontal.repeat(ruleWidth))} ${theme.fg("muted", label)}`;
+		return renderTranscriptDivider(width, parts.join(` ${dot} `));
 	}
 }
