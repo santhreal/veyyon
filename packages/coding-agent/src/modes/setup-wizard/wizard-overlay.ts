@@ -7,12 +7,17 @@ import {
 	routeSgrMouseInput,
 	type SgrMouseEvent,
 	TERMINAL,
-	truncateToWidth,
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "@veyyon/tui";
 import { SGR_RESET } from "@veyyon/tui/ansi";
 import { APP_NAME } from "@veyyon/utils";
+import {
+	layoutShortcutRows,
+	type ModalShortcut,
+	type ShortcutHitRect,
+	type ShortcutLayoutRow,
+} from "../components/modal-shell";
 import { sunMark } from "../components/sun";
 import { silverEscape } from "../components/welcome";
 import { theme } from "../theme/theme";
@@ -33,8 +38,6 @@ const SCENE_MARGIN_X = 4;
 const MIN_CONTENT_WIDTH = 20;
 /** Cross-dissolve duration from the splash into the first scene. */
 const SCENE_TRANSITION_MS = 420;
-/** Between two footer hints, and the only place a hint row may break. */
-const HINT_SEPARATOR = "  ·  ";
 
 /**
  * In-scene hints for a scene that declares none: a list you move through and
@@ -45,6 +48,16 @@ const DEFAULT_SCENE_HINTS: readonly SetupKeyHint[] = [
 	{ keys: "↑↓", label: "select" },
 	{ keys: "enter", label: "confirm" },
 ];
+
+/** Chip ids for the three keys the wizard itself acts on. */
+const CHIP_BACK = "back";
+const CHIP_SKIP = "skip";
+const CHIP_LEAVE = "leave";
+
+/** A hint as one chip label: the key, then what it does. */
+function hintLabel(hint: SetupKeyHint): string {
+	return `${hint.keys} ${hint.label}`;
+}
 
 function indentLine(line: string, width: number, indent: number): string {
 	const prefix = padding(Math.min(indent, Math.max(0, width - 1)));
@@ -90,6 +103,9 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 	#lastWidth = 0;
 	#lastHeight = 0;
 	#sceneFocusTarget: Component | undefined;
+	/** Clickable footer chips of the last rendered frame, in screen coordinates. */
+	#footerHitRects: ShortcutHitRect[] = [];
+	#hoveredChipId: string | null = null;
 
 	constructor(
 		readonly ctx: SetupWizardContext,
@@ -206,6 +222,13 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 	 * for the rest a wheel notch falls back to an arrow key. A left click
 	 * advances the splash/outro like Enter. Raw reports never reach scene
 	 * keyboard input.
+	 *
+	 * The footer chips are tested first, and only while a scene is settled: the
+	 * strip is the wizard's own chrome, so a click there must not be read as a
+	 * click into the scene column under it, and a chip pressed mid-dissolve would
+	 * act on a step whose frame is still fading in. Hover over a chip lights it
+	 * and stops there; hover anywhere else clears the highlight and falls through
+	 * so the scene keeps its own hover.
 	 */
 	#routeMouseEvent(event: SgrMouseEvent): void {
 		if (this.#phase === "splash" || this.#phase === "outro") {
@@ -213,6 +236,21 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 			if (this.#phase === "splash") this.#beginScene();
 			else this.#complete();
 			return;
+		}
+		if (this.#phase === "scene") {
+			const chip = this.#chipAt(event.row, event.col);
+			if (event.leftClick && chip) {
+				this.#runFooterChip(chip.id);
+				return;
+			}
+			if (event.motion) {
+				const hovered = chip?.id ?? null;
+				if (hovered !== this.#hoveredChipId) {
+					this.#hoveredChipId = hovered;
+					this.ctx.ui.requestRender();
+				}
+				if (chip) return;
+			}
 		}
 		const scene = this.#activeScene;
 		if (!scene) return;
@@ -294,7 +332,7 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 	}
 
 	/**
-	 * The footer's key hints for the frame being rendered.
+	 * The footer's key chips for the frame being rendered.
 	 *
 	 * The active scene owns the keys that act inside it (select, toggle, switch
 	 * panel); the wizard owns the keys that move the run, because only the wizard
@@ -310,50 +348,58 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 	 * When the active scene claims Esc for a sub-state of its own, its meaning
 	 * takes the Esc slot and `ctrl+c leave setup` is named instead, because the
 	 * user must always be able to read one key that ends the run.
+	 *
+	 * Only the three keys the WIZARD acts on are clickable. A scene hint names a
+	 * key the scene reads, and the wizard has no way to press it on the reader's
+	 * behalf: turning `↑↓ select` into a click target would mean guessing which
+	 * keystroke a chip stands for and sending it into a scene that never asked.
 	 */
-	#footerHints(): SetupKeyHint[] {
+	#footerShortcuts(): ModalShortcut[] {
 		const inScene = this.#activeScene?.keyHints?.() ?? DEFAULT_SCENE_HINTS;
 		const isLastScene = this.#sceneIndex >= this.scenes.length - 1;
-		const hints: SetupKeyHint[] = [...inScene];
+		const chips: ModalShortcut[] = inScene.map(hint => ({ label: hintLabel(hint) }));
 		if (this.#sceneIndex > 0) {
-			hints.push({ keys: "←", label: "back" });
+			chips.push({ label: "← back", clickable: true, id: CHIP_BACK });
 		}
-		hints.push({ keys: "→", label: isLastScene ? "skip" : "skip step" });
+		chips.push({ label: isLastScene ? "→ skip" : "→ skip step", clickable: true, id: CHIP_SKIP });
 		const sceneEscape = this.#activeScene?.escapeAction?.();
-		if (sceneEscape) hints.push(sceneEscape, { keys: "ctrl+c", label: "leave setup" });
-		else hints.push({ keys: "esc", label: "leave setup" });
-		return hints;
+		if (sceneEscape) {
+			chips.push({ label: hintLabel(sceneEscape) });
+			chips.push({ label: "ctrl+c leave setup", clickable: true, id: CHIP_LEAVE });
+		} else {
+			chips.push({ label: "esc leave setup", clickable: true, id: CHIP_LEAVE });
+		}
+		return chips;
 	}
 
 	/**
-	 * The hint rows for this frame, wrapped to the width instead of cut.
+	 * The chip rows for this frame, wrapped to the width instead of cut.
 	 *
 	 * It used to be one row, truncated. At 80 columns the six hints of the
 	 * subagents and import steps ran past the frame, and what fell off the end
 	 * was `esc leave setup`: the one hint a stuck user needs was the first to
-	 * go, on exactly the terminal size where being stuck is most likely. Rows
-	 * break between hints, never inside one, so no line ends on a bare key.
+	 * go, on exactly the terminal size where being stuck is most likely. The
+	 * shared chip packer breaks between chips, never inside one, and it is the
+	 * same one every card footer uses, so a wizard row and a card row wrap the
+	 * same way at the same width.
 	 *
 	 * The count is computed before the body budget, so a second row costs the
-	 * scene a row rather than overflowing the frame. A single hint too long for
-	 * the width is still truncated: it cannot be broken, and a row wider than
-	 * the frame would push the layout.
+	 * scene a row rather than overflowing the frame.
 	 */
-	#footerRows(width: number): string[] {
-		const rows: string[] = [];
-		let current = "";
-		for (const hint of this.#footerHints()) {
-			const text = `${hint.keys} ${hint.label}`;
-			const candidate = current === "" ? text : `${current}${HINT_SEPARATOR}${text}`;
-			if (current !== "" && visibleWidth(candidate) > width) {
-				rows.push(current);
-				current = text;
-				continue;
-			}
-			current = candidate;
-		}
-		if (current !== "") rows.push(current);
-		return rows.map(row => truncateToWidth(row, width));
+	#footerLayout(width: number): ShortcutLayoutRow[] {
+		return layoutShortcutRows(this.#footerShortcuts(), width, this.#hoveredChipId);
+	}
+
+	/** The clickable chip under a screen coordinate, if the pointer is on one. */
+	#chipAt(row: number, col: number): ShortcutHitRect | undefined {
+		return this.#footerHitRects.find(rect => rect.row === row && col >= rect.colStart && col < rect.colEnd);
+	}
+
+	/** A chip does exactly what its key does. */
+	#runFooterChip(id: string): void {
+		if (id === CHIP_BACK) this.#previousScene();
+		else if (id === CHIP_SKIP) this.#finishScene();
+		else if (id === CHIP_LEAVE) this.#beginOutro();
 	}
 
 	#renderScene(width: number, height: number): string[] {
@@ -387,10 +433,8 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 		header.push("");
 		this.#bodyRowStart = header.length;
 
-		const footer = [
-			"",
-			...this.#footerRows(contentWidth).map(row => indentLine(theme.fg("dim", row), width, marginX)),
-		];
+		const chipRows = this.#footerLayout(contentWidth);
+		const footer = ["", ...chipRows.map(row => indentLine(row.styled, width, marginX))];
 		const maxBodyLines = Math.max(0, height - header.length - footer.length);
 		// The scene is told its row budget so it can size its own list to the
 		// viewport. A scene that still overruns is clipped, but never silently:
@@ -405,7 +449,42 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 			lines.push("");
 		}
 		lines.push(...footer);
+		this.#recordChipRects(chipRows, lines.length, marginX, height);
 		return lines;
+	}
+
+	/**
+	 * Where this frame put its clickable chips, so the next report can be turned
+	 * back into the key the chip stands for. The chip strip closes the frame, so
+	 * the first chip row is the frame height minus the number of chip rows, and a
+	 * chip's screen column is the scene margin plus its offset within the row.
+	 * Anything past the visible height is dropped rather than recorded: those
+	 * rows are about to be cut by `#fitToScreen`, and a rect for a row nobody can
+	 * see is a click target on empty terminal.
+	 *
+	 * Both halves of the chip filter are meant: only one of them can fail today,
+	 * because `layoutShortcutRows` computes `clickable` as `Boolean(s.clickable
+	 * && s.id)`, so a chip carrying an id is clickable and one without an id is
+	 * not. A chip declared with an id and no `clickable` flag is expressible and
+	 * must never become a target, so the flag stays the primary test and the id
+	 * check narrows it for the rect.
+	 */
+	#recordChipRects(rows: readonly ShortcutLayoutRow[], frameRows: number, marginX: number, height: number): void {
+		this.#footerHitRects = [];
+		const firstRow = frameRows - rows.length;
+		for (let index = 0; index < rows.length; index++) {
+			const row = firstRow + index;
+			if (row < 0 || row >= height) continue;
+			for (const chip of rows[index]?.chips ?? []) {
+				if (!chip.clickable || chip.id === undefined) continue;
+				this.#footerHitRects.push({
+					id: chip.id,
+					row,
+					colStart: marginX + chip.offset,
+					colEnd: marginX + chip.offset + chip.width,
+				});
+			}
+		}
 	}
 
 	/**
