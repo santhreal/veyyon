@@ -5,6 +5,7 @@
 ### Fixed
 
 - `compactWithProvider` forwards the live session identity (`sessionId`, provider session state, and the codex compaction context, tagged `responses_compact`) to the transport, which is what a host keying request identity to the conversation needs. Server-side compaction now runs for a ChatGPT OAuth (codex) session, where it previously could not resolve a transport at all and every compaction fell through to a local summary.
+- `estimateTokens` counts `fileMention` and `pythonExecution` messages, which both fell through to `default: return 0` and cost a session nothing. A `@file` mention carries up to 50KB of file body per turn and a `$` cell carries its code and its output, all of it sent to the provider and billed, so the compaction trigger, the pruning budgets and the context gauge each read short by the whole payload: one measured session's gauge said "61% left" while the request it had just sent was 40459 tokens against a 32768-token window, and the provider refused it. Host-contributed roles are now counted from one table beside `bashExecution`, and a mentioned image is charged the same fixed estimate as any other inline image.
 
 ## [16.5.2] - 2026-07-14
 

@@ -104,6 +104,32 @@ function estimateTokensUncached(message: AgentMessage, options?: { excludeEncryp
 }
 
 /**
+ * Roles a host application contributes through the `CustomAgentMessages`
+ * augmentation, and the string fields each one carries. This module compiles
+ * without them in `AgentMessage`, so they are matched on the role string rather
+ * than in the typed switch below.
+ *
+ * They are not exotic: the host turns each one into a user message on its way to
+ * the provider, so their bytes are billed like any other. A role missing from
+ * here is content the estimate believes is free, which is the same defect the
+ * `developer` case and the user-image charge below each record — and it kept
+ * happening on the roles that carry the MOST text. `pythonExecution` (a `$`
+ * cell's code and output) counted zero from the day it was added, and
+ * `fileMention` counted zero while carrying up to 50KB of file body per turn:
+ * a session that mentioned two files reported a fifth of its real prompt to the
+ * compaction trigger, the pruning budgets and the operator's context gauge, and
+ * the first thing the operator saw was the provider refusing the request.
+ *
+ * Like `bashExecution` before it, `pythonExecution` is counted even when
+ * `excludeFromContext` drops it from the payload: over-counting an excluded cell
+ * only makes compaction keener, while under-counting one is the failure above.
+ */
+const HOST_ROLE_TEXT_FIELDS: Record<string, readonly string[]> = {
+	bashExecution: ["command", "output"],
+	pythonExecution: ["code", "output"],
+};
+
+/**
  * The one walk over everything a message's estimate counts: every counted text
  * fragment goes to `sink`, and the return value is the token charge for content
  * a tokenizer cannot measure (images, legacy frames).
@@ -120,11 +146,27 @@ function walkCountedFragments(
 	sink: (text: string) => void,
 ): number {
 	let extra = 0;
-	if ((message as { role?: string }).role === "bashExecution") {
-		const bash = message as { command?: unknown; output?: unknown };
-		if (typeof bash.command === "string") sink(bash.command);
-		if (typeof bash.output === "string") sink(bash.output);
+	const hostRole = (message as { role?: string }).role;
+	const textFields = hostRole === undefined ? undefined : HOST_ROLE_TEXT_FIELDS[hostRole];
+	if (textFields) {
+		const record = message as unknown as Record<string, unknown>;
+		for (const field of textFields) {
+			const value = record[field];
+			if (typeof value === "string") sink(value);
+		}
 		return 0;
+	}
+	if (hostRole === "fileMention") {
+		const files = (message as unknown as { files?: readonly unknown[] }).files;
+		for (const entry of files ?? []) {
+			const file = entry as { path?: unknown; content?: unknown; image?: unknown };
+			if (typeof file.path === "string") sink(file.path);
+			if (typeof file.content === "string") sink(file.content);
+			// A mentioned image rides as an `ImageContent` beside a placeholder body,
+			// and is billed like any other inline image.
+			if (file.image) extra += IMAGE_TOKEN_ESTIMATE;
+		}
+		return extra;
 	}
 
 	switch (message.role) {
