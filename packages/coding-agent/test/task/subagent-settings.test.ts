@@ -922,16 +922,35 @@ describe("subagent effort choices", () => {
 	});
 
 	/**
-	 * No model in scope is the one case where the whole vocabulary is right: the
-	 * caller does not know which row the level will be clamped against, so
-	 * narrowing would hide levels that are legal on the model actually used. An
-	 * empty ladder here is the regression `any-model-effort-is-settable` guards on
-	 * the sibling `defaultEffort` `*` row: with only the inherit sentinel left,
-	 * every pick lands on it and deletes the value instead of setting one.
+	 * With NOTHING in scope a picker offers nothing but inherit. It used to offer the whole
+	 * vocabulary, on the theory that a level with nothing to narrow against is stored now and
+	 * clamped later — but the picker cannot say that, and a session whose models declare
+	 * `low, high, max` was shown `minimal`, a level no endpoint in it accepts.
 	 */
-	it("offers inherit plus the whole vocabulary when no model is in scope", () => {
-		const options = configuredThinkingLevelOptions();
-		expect(options.map(option => option.value)).toEqual([INHERIT_EFFORT_OPTION_VALUE, ...CONFIGURED_THINKING_LEVELS]);
+	it("offers inherit and nothing else when nothing is in scope", () => {
+		expect(configuredThinkingLevelOptions().map(option => option.value)).toEqual([INHERIT_EFFORT_OPTION_VALUE]);
+	});
+
+	/**
+	 * A row that has no single model and never will — this one with no chain set, and
+	 * `defaultEffort`'s any-model `*` row — passes the catalog instead, and offers the UNION of what
+	 * that catalog declares. Every row is then addressable on some model the operator can select,
+	 * which is what "nothing is invented" means for a row with no model of its own.
+	 */
+	it("offers the union of the catalog when a scope is passed instead of a model", () => {
+		// `high, max` and `low, medium, high`: two real ladders that overlap without covering the
+		// vocabulary, so the union is provably narrower than the constant it replaced.
+		const glm = getBundledModel("zai", "glm-5.2");
+		const o1 = getBundledModel("azure", "o1");
+		const union = configuredThinkingLevelOptions({ scope: [glm, o1] })
+			.map(option => option.value)
+			.slice(1);
+		const declared = new Set([...configuredThinkingLevelsForModel(glm), ...configuredThinkingLevelsForModel(o1)]);
+
+		expect(union).toEqual(CONFIGURED_THINKING_LEVELS.filter(level => declared.has(level)));
+		// Both bounds: a build that publishes everything and one that publishes nothing both fail.
+		expect(union.length).toBeGreaterThan(0);
+		expect(union.length).toBeLessThan(CONFIGURED_THINKING_LEVELS.length);
 	});
 
 	/** With a model in scope the picker offers exactly the row's declared choices. */
