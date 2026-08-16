@@ -105,7 +105,13 @@ interface Rig {
 	history: () => string[];
 }
 
-async function conversation(options: { rebuild: boolean; virtualized: boolean; turns?: number }): Promise<Rig> {
+async function conversation(options: {
+	rebuild: boolean;
+	virtualized: boolean;
+	turns?: number;
+	/** Rows of a root child mounted ABOVE the transcript, as the home anchor does. */
+	header?: number;
+}): Promise<Rig> {
 	const term = new VirtualTerminal(WIDTH, HEIGHT, 5_000);
 	let erases = 0;
 	const write = term.write.bind(term);
@@ -115,6 +121,9 @@ async function conversation(options: { rebuild: boolean; virtualized: boolean; t
 	};
 	const tui = new TUI(term, true);
 	tui.setScrollbackRebuild(options.rebuild);
+	if (options.header) {
+		tui.addChild(new Block(Array.from({ length: options.header }, (_, row) => `header ${row}`)));
+	}
 	const transcript = options.virtualized ? new TranscriptContainer() : new Container();
 	tui.addChild(transcript);
 	tui.addChild(new Composer());
@@ -142,17 +151,25 @@ async function conversation(options: { rebuild: boolean; virtualized: boolean; t
 }
 
 describe("a virtualized transcript never loses history to a rebuild", () => {
-	// The sweep is over the two knobs that decide whether an ordinary frame can
-	// turn destructive. Adding a third state to either means adding a row here.
+	// The sweep is over the three things that decide whether an ordinary frame
+	// can turn destructive: the two knobs, and whether the virtualized root is
+	// the FIRST root child. It is not in the shipped layout —
+	// `home-anchor-layout` mounts a `topFill` above the transcript whenever a
+	// conversation exists — and the commit slide used to splice the dropped rows
+	// off the front of the prefix regardless, which misaligned it by exactly the
+	// header height and made every later frame a whole-screen rebuild.
 	const arms = [
-		{ rebuild: true, virtualized: true },
-		{ rebuild: false, virtualized: true },
-		{ rebuild: true, virtualized: false },
-		{ rebuild: false, virtualized: false },
+		{ rebuild: true, virtualized: true, header: 0 },
+		{ rebuild: false, virtualized: true, header: 0 },
+		{ rebuild: true, virtualized: false, header: 0 },
+		{ rebuild: false, virtualized: false, header: 0 },
+		{ rebuild: true, virtualized: true, header: 2 },
+		{ rebuild: false, virtualized: true, header: 2 },
+		{ rebuild: true, virtualized: true, header: 5 },
 	] as const;
 
 	for (const arm of arms) {
-		const label = `scrollbackRebuild=${arm.rebuild} virtualized=${arm.virtualized}`;
+		const label = `scrollbackRebuild=${arm.rebuild} virtualized=${arm.virtualized} header=${arm.header}`;
 		it(
 			`keeps every turn in the terminal (${label})`,
 			async () => {
