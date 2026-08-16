@@ -39,6 +39,7 @@ import type { FileEntry, SessionMessageEntry } from "../../session/session-entri
 import { parseSessionEntries } from "../../session/session-loader";
 import { replaceTabs, shortenPath, truncateToWidth } from "../../tools/render-utils";
 import type { ObservableSession, SessionObserverRegistry } from "../session-observer-registry";
+import { transitionsEnabled } from "../theme/shimmer";
 import { getEditorTheme, theme } from "../theme/theme";
 import { matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
 import { COMPOSER_INSET_COLS } from "./composer-chrome";
@@ -215,6 +216,7 @@ export class AgentTranscriptViewer implements Component {
 			scrollbar: "auto",
 			theme: { track: t => theme.fg("dim", t), thumb: t => theme.fg("accent", t) },
 		});
+		this.#scrollView.setScrollMotion({ requestRender: deps.requestRender, enabled: transitionsEnabled() });
 		if (this.#sendable) {
 			this.#editor = new Editor(getEditorTheme());
 			this.#editor.setMaxHeight(4);
@@ -237,6 +239,7 @@ export class AgentTranscriptViewer implements Component {
 		this.#stopPolling();
 		this.#remoteToken++;
 		this.#builder.dispose();
+		this.#scrollView.disposeScrollMotion();
 	}
 
 	#stopPolling(): void {
