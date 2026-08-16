@@ -1,6 +1,8 @@
 import {
 	type Component,
 	Ellipsis,
+	HoverFade,
+	type HoverFadeOptions,
 	Input,
 	matchesKey,
 	padding,
@@ -28,11 +30,12 @@ import {
 	MODAL_SIZING_MEDIUM,
 	ModalRevealDriver,
 	type ModalShellGeometry,
+	modalRevealEnabled,
 	renderModalShell,
 	SELECT_LIST_SHORTCUTS,
 	sizingForArea,
 } from "./modal-shell";
-import { centeredWindow, renderScrollableList, selectionBand } from "./selector-helpers";
+import { centeredWindow, hoverBandAt, renderScrollableList, selectionBand } from "./selector-helpers";
 
 /** Visible result rows; also the jump distance for PageUp/PageDown. */
 const MAX_VISIBLE = 10;
@@ -96,6 +99,11 @@ class HistoryResultsList implements Component {
 	#maxVisible = MAX_VISIBLE;
 	/** Pointer-highlighted row (never the selected one; selection owns its row). */
 	#hoveredIndex: number | null = null;
+	/**
+	 * The cross-fade, once the card has lent this list a repaint
+	 * ({@link setHoverMotion}). Absent, the band is switched.
+	 */
+	#hoverFade?: HoverFade;
 	/** Per-render map of 0-based rendered line → result index. */
 	#hitRows: (number | undefined)[] = [];
 
@@ -118,7 +126,33 @@ class HistoryResultsList implements Component {
 	setHoverIndex(index: number | null): boolean {
 		if (this.#hoveredIndex === index) return false;
 		this.#hoveredIndex = index;
+		this.#hoverFade?.set(index);
 		return true;
+	}
+
+	/**
+	 * Fade the pointer band instead of switching it. The frames between two mouse
+	 * reports have no input to hang off, so the card lends its repaint.
+	 * `enabled: false` is the switched band.
+	 */
+	setHoverMotion(options: HoverFadeOptions): void {
+		this.#hoverFade?.dispose();
+		this.#hoverFade = new HoverFade(options);
+		if (this.#hoveredIndex !== null) this.#hoverFade.set(this.#hoveredIndex);
+	}
+
+	/** Drop the fade and forget the pointer, so no timer outlives the card. */
+	disposeHoverMotion(): void {
+		this.#hoverFade?.dispose();
+		this.#hoverFade = undefined;
+		this.#hoveredIndex = null;
+	}
+
+	/** Band strength for a result row: 0 for the selected one, which owns its own styling. */
+	#hoverStrength(index: number, isSelected: boolean): number {
+		if (isSelected) return 0;
+		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
+		return index === this.#hoveredIndex ? 1 : 0;
 	}
 
 	invalidate(): void {
@@ -148,7 +182,7 @@ class HistoryResultsList implements Component {
 					for (let i = startIndex; i < endIndex; i++) {
 						const entry = this.#results[i];
 						const isSelected = i === this.#selectedIndex;
-						const isHovered = i === this.#hoveredIndex && !isSelected;
+						const hoverStrength = this.#hoverStrength(i, isSelected);
 
 						const timeStr = relativeTime(entry.created_at);
 						const timeWidth = visibleWidth(timeStr);
@@ -168,7 +202,9 @@ class HistoryResultsList implements Component {
 						}
 
 						this.#hitRows[rows.length] = i;
-						rows.push(isSelected || isHovered ? selectionBand(line, rowWidth) : truncateToWidth(line, rowWidth));
+						if (isSelected) rows.push(selectionBand(line, rowWidth));
+						else if (hoverStrength > 0) rows.push(hoverBandAt(line, rowWidth, hoverStrength));
+						else rows.push(truncateToWidth(line, rowWidth));
 					}
 					return rows;
 				},
@@ -233,6 +269,16 @@ export class HistorySearchComponent implements Component {
 
 	setOnRequestRender(cb: () => void): void {
 		this.#onRequestRender = cb;
+		// The pointer band fades only once the card has a repaint to lend it: the
+		// frames between two mouse reports have no input to hang off. Same ambient
+		// gate as the open unfold; without it the band is switched.
+		this.#resultsList.setHoverMotion({ requestRender: cb, enabled: modalRevealEnabled() });
+	}
+
+	/** Settle the reveal and the pointer band so no timer outlives a dismissed card. */
+	dispose(): void {
+		this.#reveal.stop();
+		this.#resultsList.disposeHoverMotion();
 	}
 
 	invalidate(): void {

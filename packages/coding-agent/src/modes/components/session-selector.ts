@@ -2,6 +2,8 @@ import {
 	type Component,
 	Container,
 	FuzzyText,
+	HoverFade,
+	type HoverFadeOptions,
 	Input,
 	matchesKey,
 	padding,
@@ -30,11 +32,12 @@ import {
 	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
+	modalRevealEnabled,
 	planModalChrome,
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
-import { selectionBand } from "./selector-helpers";
+import { hoverBandAt } from "./selector-helpers";
 
 /**
  * Themed glyph + colored label for a session's lifecycle status, or `undefined`
@@ -285,6 +288,12 @@ class SessionList implements Component {
 	#hitRows: (number | undefined)[] = [];
 	/** Pointer-highlighted session (never the selected one; selection owns its block). */
 	#hoveredIndex: number | null = null;
+	/**
+	 * The cross-fade, once the card has lent this list a repaint
+	 * ({@link setHoverMotion}). Absent, the band is switched: exactly what this
+	 * list did before there was a fade.
+	 */
+	#hoverFade?: HoverFade;
 	readonly #searchInput: Input;
 	onSelect?: (session: SessionInfo) => void;
 	onCancel?: () => void;
@@ -486,7 +495,7 @@ class SessionList implements Component {
 		}, HISTORY_MERGE_DEBOUNCE_MS);
 	}
 
-	/** Cancel pending async search work; idempotent, called on every picker exit path. */
+	/** Cancel pending async search work and the pointer band; idempotent, called on every picker exit path. */
 	dispose(): void {
 		this.#scanGeneration++;
 		if (this.#scanTimer !== undefined) {
@@ -497,6 +506,7 @@ class SessionList implements Component {
 			clearTimeout(this.#historyMergeTimer);
 			this.#historyMergeTimer = undefined;
 		}
+		this.disposeHoverMotion();
 	}
 
 	removeSession(sessionPath: string): void {
@@ -520,7 +530,37 @@ class SessionList implements Component {
 	setHoverIndex(index: number | null): boolean {
 		if (this.#hoveredIndex === index) return false;
 		this.#hoveredIndex = index;
+		this.#hoverFade?.set(index);
 		return true;
+	}
+
+	/**
+	 * Fade the pointer band instead of switching it. The frames between two mouse
+	 * reports have no input to hang off, so the card has to lend its repaint.
+	 * `enabled: false` is the switched band, which is what a non-truecolor
+	 * terminal or a user with transitions off gets.
+	 */
+	setHoverMotion(options: HoverFadeOptions): void {
+		this.#hoverFade?.dispose();
+		this.#hoverFade = new HoverFade(options);
+		if (this.#hoveredIndex !== null) this.#hoverFade.set(this.#hoveredIndex);
+	}
+
+	/** Drop the fade and forget the pointer, so no timer outlives the card. */
+	disposeHoverMotion(): void {
+		this.#hoverFade?.dispose();
+		this.#hoverFade = undefined;
+		this.#hoveredIndex = null;
+	}
+
+	/**
+	 * Band strength for a session block: 0 for the selected one, which owns its
+	 * own styling and must never read as a second selection.
+	 */
+	#hoverStrength(index: number, isSelected: boolean): number {
+		if (isSelected) return 0;
+		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
+		return index === this.#hoveredIndex ? 1 : 0;
 	}
 
 	/** Wheel notch: move the selection one step (clamped, no wrap). */
@@ -600,7 +640,7 @@ class SessionList implements Component {
 			const blockStart = sessionLines.length;
 			const session = this.#filteredSessions[i];
 			const isSelected = i === this.#selectedIndex;
-			const isHovered = i === this.#hoveredIndex && !isSelected;
+			const hoverStrength = this.#hoverStrength(i, isSelected);
 
 			// Normalize first message to single line
 			const normalizedMessage = session.firstMessage.replace(/\n/g, " ").trim();
@@ -647,10 +687,10 @@ class SessionList implements Component {
 			const metadataLine = truncateToWidth(metadata, rowWidth);
 
 			sessionLines.push(metadataLine);
-			if (isHovered) {
+			if (hoverStrength > 0) {
 				// Pointer hover bands the whole block; the blank separator stays bare.
 				for (let k = blockStart; k < sessionLines.length; k++) {
-					sessionLines[k] = selectionBand(sessionLines[k]!, rowWidth);
+					sessionLines[k] = hoverBandAt(sessionLines[k]!, rowWidth, hoverStrength);
 				}
 			}
 			sessionLines.push(""); // Blank line between sessions
@@ -916,6 +956,11 @@ export class SessionSelectorComponent extends Container {
 
 	setOnRequestRender(callback: () => void): void {
 		this.#onRequestRender = callback;
+		// The pointer band fades only once the card has a repaint to lend it: the
+		// frames between two mouse reports have no input to hang off. Same ambient
+		// gate as the open unfold; without it the band is switched, which is what
+		// this picker had before.
+		this.#sessionList.setHoverMotion({ requestRender: callback, enabled: modalRevealEnabled() });
 	}
 
 	/**
