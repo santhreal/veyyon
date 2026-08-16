@@ -21,6 +21,7 @@ import { stripVTControlCharacters } from "node:util";
 import type { AgentMessage } from "@veyyon/agent-core";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { ChatTranscriptBuilder } from "@veyyon/coding-agent/modes/components/chat-transcript-builder";
+import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/components/composer-chrome";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 import { UiHelpers } from "@veyyon/coding-agent/modes/utils/ui-helpers";
@@ -71,7 +72,11 @@ describe("a turn-level batch ledger in the transcript", () => {
 		const rows = plainRows(chatContainer);
 		const body = rows.join("\n");
 
-		expect(rows.filter(row => row.includes("batch cut short"))).toHaveLength(1);
+		const marker = rows.filter(row => row.includes("batch cut short"));
+		expect(marker).toHaveLength(1);
+		// The marker is a transcript block like any other: it opens on the rail.
+		expect(marker[0]?.slice(0, COMPOSER_INSET_COLS)).toBe(" ".repeat(COMPOSER_INSET_COLS));
+		expect(marker[0]?.[COMPOSER_INSET_COLS]).not.toBe(" ");
 		expect(rows.some(row => row.includes("(1 call): 0 ran, 1 never ran"))).toBe(true);
 		expect(body).not.toContain("Partial completion ledger");
 		expect(body).not.toContain("tool_lqkR2mNN5n7yrjUqtWSj4yaj");
@@ -96,7 +101,9 @@ describe("a turn-level batch ledger in the transcript", () => {
 			const rows = plainRows(builder.container);
 			const body = rows.join("\n");
 
-			expect(rows.filter(row => row.includes("batch cut short"))).toHaveLength(1);
+			const marker = rows.filter(row => row.includes("batch cut short"));
+			expect(marker).toHaveLength(1);
+			expect(marker[0]?.slice(0, COMPOSER_INSET_COLS)).toBe(" ".repeat(COMPOSER_INSET_COLS));
 			expect(body).not.toContain("Partial completion ledger");
 			expect(body).not.toContain("tool_lqkR2mNN5n7yrjUqtWSj4yaj");
 		} finally {

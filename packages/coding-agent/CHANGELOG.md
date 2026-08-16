@@ -16,6 +16,7 @@
 
 - Settings → Subagents says "subagent" wherever it means a spawned worker. The tab held an `Agents` section carrying an `Agent Roster` row, an `Agent Delegation` row beside it, and a roster screen headed `Agents` whose per-agent page was headed `Agent: <name>`, so one thing wore two names on one screen. The section is `Subagents` now, the rows are `Subagent Roster` and `Subagent Delegation`, and the screens read `Subagents` and `Subagent: <name>`. No setting key changed, so nothing in a config file moves.
 - `Max Nested Spawn Depth` sits in the Subagents section directly under `Subagent Roster`, not under Limits. It is the ceiling every per-subagent override inherits from, and the roster's own depth picker names it, so the blanket value and the overrides that outrank it were two sections apart with nothing on either screen saying so.
+- The cut-short batch marker takes its indent from `COMPOSER_INSET_COLS` instead of two literal spaces. No visible change: the rail is two columns, so the bytes are the same ones. The rail now has one owner, and the marker's suite asserts it sits on it.
 
 ### Removed
 
