@@ -1,0 +1,7 @@
+# Machine-wide config for the recording container only. The operator's own
+# ~/.veyyon is not mounted here; this file exists so a tape does not spend its
+# first fifteen seconds in the setup wizard, and so every capture is taken
+# against one known theme and one known model.
+onboardingVersion: 99
+theme: titanium
+model: local/qwen2.5-1.5b
