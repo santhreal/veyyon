@@ -158,7 +158,7 @@ import type { EvalExecutionComponent } from "./components/eval-execution";
 import type { HookEditorComponent } from "./components/hook-editor";
 import type { HookInputComponent } from "./components/hook-input";
 import type { HookSelectorComponent, HookSelectorSlider } from "./components/hook-selector";
-import { modalRevealEnabled } from "./components/modal-shell";
+import { modalRevealEnabled, modalRevealGround } from "./components/modal-shell";
 import { PlanReviewOverlay } from "./components/plan-review-overlay";
 import { StatusLineComponent } from "./components/status-line";
 import { renderSunsetField } from "./components/sun";
@@ -865,6 +865,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.editor.onAutocompleteUpdate = () => {
 			this.ui.requestRender();
 		};
+		this.#lendPopupMotion(this.editor);
 		this.editor.setShimmerRepaintHandler(() => this.ui.requestComponentRender(this.editor));
 		this.#syncEditorMaxHeight();
 		this.#resizeHandler = () => {
@@ -4173,6 +4174,8 @@ export class InteractiveMode implements InteractiveModeContext {
 		nextEditor.onAutocompleteUpdate = () => {
 			this.ui.requestRender();
 		};
+		this.#lendPopupMotion(nextEditor);
+		previousEditor.disposeAutocompleteMotion();
 		nextEditor.setShimmerRepaintHandler(() => this.ui.requestComponentRender(this.editor));
 		nextEditor.setBorderVisible(false);
 		nextEditor.setPlaceholder(COMPOSER_PLACEHOLDER);
@@ -4196,6 +4199,20 @@ export class InteractiveMode implements InteractiveModeContext {
 
 		this.updateEditorBorderColor();
 		this.ui.requestRender();
+	}
+
+	/**
+	 * Lend an editor the frames and the ground its suggestion popup needs to grow
+	 * instead of cutting in. Both gates are the overlay ones — a terminal that
+	 * skips a card's unfold must not be handed a popup's, and the rows resolve out
+	 * of the same ground a card unfolds out of.
+	 */
+	#lendPopupMotion(editor: CustomEditor): void {
+		editor.setAutocompleteMotion({
+			requestRender: () => this.ui.requestRender(),
+			enabled: modalRevealEnabled(),
+			ground: modalRevealGround(),
+		});
 	}
 
 	// UI helpers
