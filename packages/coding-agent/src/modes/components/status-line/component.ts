@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, UsageLimit, UsageReport } from "@veyyon/ai";
-import { type Component, type MotionClock, padding, SettleValue, truncateToWidth, visibleWidth } from "@veyyon/tui";
+import { type Component, padding, truncateToWidth, visibleWidth } from "@veyyon/tui";
 import { formatClock, getProjectDir, scopedTimeoutSignal, withScopedTimeoutSignal } from "@veyyon/utils";
 import { resolveContextLimit } from "../../../config/compaction-strategy";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
@@ -15,7 +15,6 @@ import { type ActiveRepoContext, resolveActiveRepoContextSync } from "../../../u
 import * as git from "../../../utils/git";
 import { sanitizeStatusText } from "../../shared";
 import { withIcon } from "../../theme/icon-label";
-import { transitionsEnabled } from "../../theme/shimmer";
 import { theme } from "../../theme/theme";
 import { canReuseCachedPr, createPrCacheContext, isSamePrCacheContext, type PrCacheContext } from "./git-utils";
 import { getPreset } from "./presets";
@@ -425,18 +424,6 @@ export class StatusLineComponent implements Component {
 	// count (matching the provider and the `/context` panel), so a stable
 	// message list + model window yields a stable result we can return verbatim.
 	#contextUsageCache: ContextUsageMemo | undefined;
-	/**
-	 * Where the context gauge is right now, which is not always where the number
-	 * behind it is. A turn revises the estimate in one step — a tool result of a
-	 * hundred thousand characters lands as a single event — and the gauge used to
-	 * teleport, which says "it is 61% now" and never says "you just spent nine".
-	 * The percentage, the eight-cell bar and the usage hue all read this one
-	 * value, so the three of them travel together and cannot disagree mid-flight.
-	 *
-	 * Undefined until a host wires a repaint into it: a spring with nowhere to
-	 * ask for a frame would move only when something else happened to redraw.
-	 */
-	#contextGauge: SettleValue | undefined;
 
 	constructor(private session: AgentSession) {
 		this.#settings = {
@@ -661,21 +648,6 @@ export class StatusLineComponent implements Component {
 		this.#setupGitWatcher();
 	}
 
-	/**
-	 * Hand the context gauge a repaint, which is what turns it from a number into
-	 * a travelling one. A host that never calls this (a test, `--print`, the RPC
-	 * mode) gets the raw percentage on every frame, unchanged byte for byte.
-	 *
-	 * The resolution of the gauge is the gauge's own business, so the epsilon is
-	 * decided here rather than by the host: a tenth of a point moves neither the
-	 * integer percentage nor a cell of an eight-cell bar, and a spring chasing
-	 * one would keep the process ticking for a frame nobody can see.
-	 */
-	watchContextGauge(options: { requestRender: () => void; clock?: MotionClock }): void {
-		this.#contextGauge?.dispose();
-		this.#contextGauge = new SettleValue({ ...options, epsilon: 0.5 });
-	}
-
 	#setupGitWatcher(): void {
 		if (this.#gitWatcher) {
 			this.#gitWatcher.close();
@@ -716,8 +688,6 @@ export class StatusLineComponent implements Component {
 			this.#gitWatcher.close();
 			this.#gitWatcher = null;
 		}
-		this.#contextGauge?.dispose();
-		this.#contextGauge = undefined;
 	}
 
 	#clearUsageStartTimer(): void {
@@ -737,9 +707,6 @@ export class StatusLineComponent implements Component {
 		this.#contextUsageCache = undefined;
 		this.#lastTokensPerSecond = null;
 		this.#lastTokensPerSecondTimestamp = null;
-		// A different session's usage is not a change to this one's: the next
-		// percentage is a first sighting and lands where it lands.
-		this.#contextGauge?.reset();
 	}
 
 	#invalidateGitCaches(): void {
@@ -1279,11 +1246,6 @@ export class StatusLineComponent implements Component {
 			contextLimitKind = "window";
 		}
 
-		// One seam, after every source of the number has had its say: the host's
-		// frame, this session's own accounting, or neither. Whatever the gauge
-		// ends up reporting is what travels.
-		contextPercent = this.#settleContextPercent(contextPercent, includeContext);
-
 		const shouldResolveActiveRepo = this.#gitEnabled() && (includePath || includeGit || includePr);
 		const projectDir = this.session.sessionManager?.getCwd?.() ?? getProjectDir();
 		const activeRepoCache = shouldResolveActiveRepo
@@ -1326,29 +1288,6 @@ export class StatusLineComponent implements Component {
 			account: this.#servingAccount(this.session),
 			usage: this.#cachedUsage,
 		};
-	}
-
-	/**
-	 * Where the gauge is drawn this frame, which lags where the session is by up
-	 * to the length of one spring.
-	 *
-	 * Three cases end the travel rather than continue it. A frame that carries no
-	 * context at all (the segment is off, the preset drops it) forgets the value,
-	 * so switching the gauge back on shows the number rather than sweeping up to
-	 * it. A null percentage — no limit to measure against — is not a position on
-	 * the gauge and cannot be travelled to. And `display.transitions: off` returns
-	 * the raw number, checked per frame so the setting takes effect on the next
-	 * paint instead of the next restart.
-	 */
-	#settleContextPercent(percent: number | null, includeContext: boolean): number | null {
-		const gauge = this.#contextGauge;
-		if (!gauge) return percent;
-		if (!includeContext || percent === null || !transitionsEnabled()) {
-			gauge.reset();
-			return percent;
-		}
-		gauge.set(percent);
-		return gauge.value ?? percent;
 	}
 
 	#resolveSettings(): EffectiveStatusLineSettings {

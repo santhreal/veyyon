@@ -1,17 +1,9 @@
 import { matchesKey } from "../keys";
-import { MOTION } from "../motion";
-import { SettleValue, type SettleValueOptions } from "../motion-settle";
 import type { Component } from "../tui";
 import { clamp, Ellipsis, replaceTabs, truncateToWidth, visibleWidth } from "../utils";
 
 const DEFAULT_TRACK = "│";
 const DEFAULT_THUMB = "█";
-/**
- * A change this small lands instead of travelling. One row of travel is a
- * quarter of a second spent not showing the row the key asked for, and a
- * streaming viewport that follows its own tail grows a row at a time.
- */
-const MIN_TRAVEL_ROWS = 2;
 
 type ScrollbarMode = "auto" | "always" | "never";
 
@@ -71,7 +63,6 @@ export class ScrollView implements Component {
 	#thumbChar: string;
 	#ellipsis: Ellipsis;
 	#fastScrollLines: number;
-	#motion: SettleValue | undefined;
 
 	constructor(lines: readonly string[], options: ScrollViewOptions) {
 		this.#lines = [...lines];
@@ -87,40 +78,6 @@ export class ScrollView implements Component {
 		this.#ellipsis = options.ellipsis ?? Ellipsis.Unicode;
 		this.#fastScrollLines = Math.max(1, Math.trunc(options.fastScrollLines ?? 5));
 		this.#clampScrollOffset();
-	}
-
-	/**
-	 * Walk the viewport to its new offset instead of cutting to it.
-	 *
-	 * Off by default, and opt-in for the same reason {@link
-	 * SelectList.setHoverMotion} is: the frames between two keystrokes have no
-	 * input to hang off, so the host has to lend the viewport its repaint. A
-	 * host that rebuilds its ScrollView every render must NOT call this — the
-	 * travel it starts would be thrown away with the instance, and the clock
-	 * would keep ticking for a viewport nobody can see. Call
-	 * {@link disposeScrollMotion} when the host goes away.
-	 *
-	 * `enabled: false` is the cut, which is what `display.transitions: off`
-	 * gets.
-	 *
-	 * What travels is a scroll: a wheel notch, an arrow, a page, a jump to a
-	 * known offset. What lands is everything that is not someone moving through
-	 * the content — the ends ({@link scrollToTop}, {@link scrollToBottom}, which
-	 * is also how a viewport follows its own tail), a re-layout that moves the
-	 * offset because the content changed underneath it, a change of less than
-	 * {@link MIN_TRAVEL_ROWS}, and a jump further than two screens, which is too
-	 * far to read on the way past.
-	 */
-	setScrollMotion(options: Omit<SettleValueOptions, "curve" | "epsilon">): void {
-		this.#motion?.dispose();
-		this.#motion = new SettleValue({ ...options, curve: MOTION.move, epsilon: MIN_TRAVEL_ROWS });
-		this.#motion.set(this.#scrollOffset);
-	}
-
-	/** Drop the travel and everything it registered with the clock. */
-	disposeScrollMotion(): void {
-		this.#motion?.dispose();
-		this.#motion = undefined;
 	}
 
 	setLines(lines: readonly string[]): void {
@@ -148,13 +105,6 @@ export class ScrollView implements Component {
 		this.#scrollbar = normalizeScrollbarMode(scrollbar);
 	}
 
-	/**
-	 * Where the viewport is headed, which is where the keyboard thinks it is. A
-	 * travelling viewport sits between two offsets for a few frames, and every
-	 * caller that asks this — a follow-bottom check, a ToC cursor, a focus
-	 * handoff at the ends — wants the offset the key produced rather than the
-	 * frame it happens to be on.
-	 */
 	getScrollOffset(): number {
 		return this.#scrollOffset;
 	}
@@ -165,7 +115,8 @@ export class ScrollView implements Component {
 	}
 
 	setScrollOffset(offset: number): void {
-		this.#aim(Number.isFinite(offset) ? Math.trunc(offset) : 0, "travel");
+		this.#scrollOffset = Number.isFinite(offset) ? Math.trunc(offset) : 0;
+		this.#clampScrollOffset();
 	}
 
 	scroll(delta: number): void {
@@ -178,11 +129,11 @@ export class ScrollView implements Component {
 	}
 
 	scrollToTop(): void {
-		this.#aim(0, "land");
+		this.#scrollOffset = 0;
 	}
 
 	scrollToBottom(): void {
-		this.#aim(this.getMaxScrollOffset(), "land");
+		this.#scrollOffset = this.getMaxScrollOffset();
 	}
 
 	/**
@@ -259,9 +210,8 @@ export class ScrollView implements Component {
 		const contentWidth = this.contentWidth(safeWidth);
 		const thumb = showScrollbar ? this.#thumbRange() : undefined;
 		const lines: string[] = [];
-		const offset = this.#paintedOffset();
 		for (let row = 0; row < this.#height; row++) {
-			const sourceIndex = this.#totalRows === undefined ? offset + row : row;
+			const sourceIndex = this.#totalRows === undefined ? this.#scrollOffset + row : row;
 			const source = this.#lines[sourceIndex] ?? "";
 			const truncated = truncateToWidth(replaceTabs(source), contentWidth, this.#ellipsis);
 			if (!showScrollbar) {
@@ -277,60 +227,8 @@ export class ScrollView implements Component {
 		return lines;
 	}
 
-	/**
-	 * Re-clamp the target after the content or the height changed underneath it,
-	 * and land there: a viewport whose bottom moved has not been scrolled. This
-	 * runs on every render, so it must do nothing at all when the clamp does not
-	 * move — landing unconditionally here would cut short every travel on the
-	 * frame after it started.
-	 */
 	#clampScrollOffset(): void {
-		const clamped = clamp(this.#scrollOffset, 0, this.getMaxScrollOffset());
-		if (clamped === this.#scrollOffset) return;
-		this.#aim(clamped, "land");
-	}
-
-	/**
-	 * Point the viewport at `offset`. `land` is every move that is not someone
-	 * travelling through the content; {@link setScrollMotion} says which is
-	 * which.
-	 */
-	#aim(offset: number, mode: "land" | "travel"): void {
-		this.#scrollOffset = clamp(Number.isFinite(offset) ? Math.trunc(offset) : 0, 0, this.getMaxScrollOffset());
-		const motion = this.#motion;
-		if (!motion) return;
-		const from = motion.value ?? this.#scrollOffset;
-		motion.set(this.#scrollOffset);
-		// Three ways a travel is not worth having: it is not a scroll; the rows
-		// are the caller's own window, so nothing on screen would move anyway; or
-		// it is further than two screens, which is past the far edge of a travel
-		// worth watching — the rows in between are a blur and the reader is
-		// waiting on the one they asked for.
-		const tooFar = Math.abs(this.#scrollOffset - from) > this.#height * 2;
-		if (mode === "land" || this.#totalRows !== undefined || tooFar) motion.finish();
-	}
-
-	/**
-	 * Where the viewport is this frame, which is between two offsets while a
-	 * scroll travels. Both readings of it — the rows {@link render} slices and
-	 * the thumb {@link #thumbRange} puts on the track — come from here, so the
-	 * bar can never disagree with the content beside it.
-	 *
-	 * A pre-windowed viewport ({@link ScrollViewOptions.totalRows}) reads the
-	 * target instead: the caller sliced the rows itself against the offset it
-	 * asked for, and a thumb travelling behind rows that already moved would
-	 * point at a row that is not on screen.
-	 */
-	#travelled(): number {
-		if (this.#totalRows !== undefined) return this.#scrollOffset;
-		const value = this.#motion?.value;
-		if (value === undefined) return this.#scrollOffset;
-		return clamp(value, 0, this.getMaxScrollOffset());
-	}
-
-	/** {@link #travelled}, on a row boundary, because a row is what paints. */
-	#paintedOffset(): number {
-		return Math.round(this.#travelled());
+		this.#scrollOffset = clamp(this.#scrollOffset, 0, this.getMaxScrollOffset());
 	}
 
 	#shouldRenderScrollbar(): boolean {
@@ -347,7 +245,7 @@ export class ScrollView implements Component {
 		const thumbSize = clamp(Math.floor((this.#height * this.#height) / rowCount), 1, this.#height);
 		const travel = this.#height - thumbSize;
 		const maxOffset = this.getMaxScrollOffset();
-		const start = maxOffset === 0 ? 0 : Math.round((this.#travelled() / maxOffset) * travel);
+		const start = maxOffset === 0 ? 0 : Math.round((this.#scrollOffset / maxOffset) * travel);
 		return { start, end: start + thumbSize };
 	}
 }
