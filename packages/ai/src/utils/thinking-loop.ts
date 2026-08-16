@@ -1,5 +1,5 @@
 /**
- * Gemini thinking-loop guard.
+ * Output-loop guard.
  *
  * Gemini models (notably `gemini-3.5-flash` via OpenRouter) occasionally fall
  * into a degenerate reasoning loop: they re-emit the same paragraph intent over
@@ -29,7 +29,7 @@
  *    anchor-free segments; a segment naming a path/identifier resets the run, so
  *    genuine but vocabulary-repetitive work (per-file templates) is spared.
  *
- * Scope is narrow: guarded Gemini/DeepSeek streams before any tool call. Native
+ * Every model's stream is guarded, up to its first tool call. Native
  * thinking is checked first; assistant text can also be checked for providers
  * that surface reasoning as visible prose. On a hit the failed turn is emitted as
  * an empty retryable stream-stall error; result-awaiting callers (`complete`,
@@ -119,21 +119,22 @@ export function isGeminiThinkingModel(model: Model<Api>): boolean {
 }
 
 /**
- * True when `model` should be guarded for thinking/response loops (Gemini & DeepSeek).
+ * True when a stream should be watched for a degenerate output loop.
  *
- * OpenAI-compat transports can serve Gemini or DeepSeek under an arbitrary provider/id.
- * Direct Gemini/DeepSeek transports carry a clearly shaped id/provider, so a string match
- * is sufficient.
+ * Every model is, unless the caller turns the guard off. The guard used to be
+ * armed only for Gemini and DeepSeek, on the theory that those were the models
+ * observed looping — which meant a Claude or GPT stream could repeat one word
+ * five hundred times and nothing was even looking. The detectors below are
+ * model-agnostic (verbatim repetition, near-duplicate paragraphs, recycled
+ * vocabulary) and were calibrated to zero false positives against 536k real
+ * reasoning blocks from every provider, and a false hit costs a re-sample
+ * rather than a lost turn, so the narrow scope bought nothing and hid loops.
+ *
+ * The Gemini-specific *header-run* detector is separate and still keyed on
+ * {@link isGeminiThinkingModel}; only the general loop guard is universal.
  */
-export function isLoopGuardedModel(model: Model<Api>, options?: StreamOptions): boolean {
-	if (options?.loopGuard?.enabled === false) return false;
-	const isDeepseek = /deepseek/i.test(`${model.provider}/${model.id}`);
-	return isGeminiThinkingModel(model) || isDeepseek;
-}
-
-/** @deprecated Use isLoopGuardedModel instead. */
-export function isGeminiThinkingLoopModel(model: Model<Api>): boolean {
-	return isLoopGuardedModel(model);
+export function isLoopGuardEnabled(options?: StreamOptions): boolean {
+	return options?.loopGuard?.enabled !== false;
 }
 
 /**
@@ -458,7 +459,7 @@ export function withGeminiThinkingLoopGuard<
 	options: O | undefined,
 	dispatch: (options: O | undefined) => AssistantMessageEventStream,
 ): AssistantMessageEventStream {
-	if (process.env.VEYYON_NO_THINKING_LOOP_GUARD === "1" || !isLoopGuardedModel(model, options)) {
+	if (process.env.VEYYON_NO_THINKING_LOOP_GUARD === "1" || !isLoopGuardEnabled(options)) {
 		return dispatch(options);
 	}
 	const controller = new AbortController();
