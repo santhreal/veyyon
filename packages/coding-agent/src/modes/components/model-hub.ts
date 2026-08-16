@@ -42,6 +42,7 @@ import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../util
 import {
 	applyModalReveal,
 	computeModalDims,
+	consumeModalChipHover,
 	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
 	ModalRevealDriver,
@@ -1383,11 +1384,12 @@ export class ModelHubComponent implements Component {
 			motion: event.motion,
 			leftClick: event.leftClick,
 		});
-		if (chrome.kind === "hover-shortcut") {
-			if (this.#hoveredShortcutId !== chrome.id) {
-				this.#hoveredShortcutId = chrome.id;
+		if (
+			consumeModalChipHover(chrome, this.#hoveredShortcutId, id => {
+				this.#hoveredShortcutId = id;
 				this.#tui.requestRender();
-			}
+			})
+		) {
 			return true;
 		}
 		if (

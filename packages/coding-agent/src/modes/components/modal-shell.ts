@@ -802,6 +802,29 @@ export function hitTestModalChrome(
 	return { kind: "none" };
 }
 
+/**
+ * The motion half of chrome hit-testing, with the consumption answer folded
+ * in. {@link hitTestModalChrome} reports EVERY motion as `"hover-shortcut"`
+ * — carrying the hovered chip's id, or `null` as the clear-hover signal — so
+ * a host that early-returns on the kind alone swallows every body-row
+ * motion, which is exactly what every ModalShell host did: pointer hover on
+ * list rows, browser rows, and settings submenu rows never reached the body
+ * until this. Update the host's hovered chip (the setter fires only on
+ * change, which is when a re-render is wanted) and answer whether the chrome
+ * consumed the event: `true` only while the pointer is actually on a chip or
+ * the breadcrumb, `false` to continue into body handling.
+ */
+export function consumeModalChipHover(
+	chrome: ModalChromeAction,
+	currentHoveredId: string | null,
+	setHoveredId: (id: string | null) => void,
+): boolean {
+	if (chrome.kind !== "hover-shortcut") return false;
+	const next = chrome.id ?? null;
+	if (currentHoveredId !== next) setHoveredId(next);
+	return next !== null;
+}
+
 /** Default settings footer chips (Browse layer). */
 export const SETTINGS_BROWSE_SHORTCUTS: readonly ModalShortcut[] = [
 	{ label: "up/down navigate" },

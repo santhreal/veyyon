@@ -11,7 +11,6 @@ import {
 	padding,
 	rankSettingItems,
 	replaceTabs,
-	routeSelectListMouse,
 	routeSgrMouseInput,
 	type SelectItem,
 	SelectList,
@@ -72,8 +71,8 @@ import {
 	SUBAGENT_ENABLE_STATE_LABEL,
 	SUBAGENT_MODEL_BY_DEPTH_PATH,
 	subagentEnableState,
-	subagentModelByDepthRows,
 	subagentModelByDepthRowPath,
+	subagentModelByDepthRows,
 	subagentModelSourceLabel,
 	subagentSettingsFor,
 } from "../../task/subagent-settings";
@@ -89,6 +88,7 @@ import {
 	applyModalReveal,
 	BREADCRUMB_HOVER_ID,
 	computeModalDims,
+	consumeModalChipHover,
 	hitTestModalChrome,
 	MODAL_SIZING_SETTINGS,
 	ModalRevealDriver,
@@ -104,6 +104,7 @@ import {
 import { ModelSelectorPanel } from "./model-selector";
 import { handleInputOrEscape, PluginSettingsComponent } from "./plugin-settings";
 import { RollbackPanelComponent } from "./rollback-panel";
+import { MouseRoutedSubmenu } from "./select-list-mouse-routing";
 import {
 	DEFAULT_MODEL_SETTING_ID,
 	getSettingDef,
@@ -209,11 +210,10 @@ class TextInputSubmenu extends Container {
 	}
 }
 
-class SelectSubmenu extends Container {
+class SelectSubmenu extends MouseRoutedSubmenu {
 	#selectList: SelectList;
 	#previewText: Text | null = null;
 	#previewUpdateRequestId: number = 0;
-	#selectListLineOffset = 0;
 
 	constructor(
 		title: string,
@@ -302,24 +302,11 @@ class SelectSubmenu extends Container {
 	}
 
 	/**
-	 * Concatenate children like Container.render, recording where the select
-	 * list lands so routed mouse events can be hit-tested against it.
+	 * The select list is the only interactive child; the base records where it
+	 * lands and routes wheel/hover/click to it.
 	 */
-	override render(width: number): readonly string[] {
-		const lines: string[] = [];
-		for (const child of this.children) {
-			const childLines = child.render(Math.max(1, width));
-			if (child === this.#selectList) {
-				this.#selectListLineOffset = lines.length;
-			}
-			lines.push(...childLines);
-		}
-		return lines;
-	}
-
-	/** Mouse routed from the host: wheel steps, hover lights, click confirms. */
-	routeMouse(event: SgrMouseEvent, line: number, _col: number): void {
-		routeSelectListMouse(this.#selectList, event, line - this.#selectListLineOffset);
+	mouseTarget(): SelectList {
+		return this.#selectList;
 	}
 
 	handleInput(data: string): void {
@@ -376,7 +363,7 @@ function formatThresholdShort(raw: string): string {
  * hand-edited `170000`, a legacy fold-in) appears as a marked custom row in
  * its mode's list, never silently presented as a preset pick.
  */
-class CompactionThresholdSubmenu extends Container {
+class CompactionThresholdSubmenu extends MouseRoutedSubmenu {
 	#selectList: SelectList | undefined;
 
 	constructor(
@@ -583,6 +570,11 @@ class CompactionThresholdSubmenu extends Container {
 		this.requestRender?.();
 	}
 
+	/** The list is the only interactive child; undefined in the custom-input state, which consumes pointer events silently. */
+	mouseTarget(): SelectList | undefined {
+		return this.#selectList;
+	}
+
 	handleInput(data: string): void {
 		if (this.#selectList) {
 			this.#selectList.handleInput(data);
@@ -592,7 +584,7 @@ class CompactionThresholdSubmenu extends Container {
 	}
 }
 
-class ProviderLimitsSubmenu extends Container {
+class ProviderLimitsSubmenu extends MouseRoutedSubmenu {
 	#selectList: SelectList | undefined;
 
 	constructor(
@@ -690,6 +682,11 @@ class ProviderLimitsSubmenu extends Container {
 		);
 	}
 
+	/** The list is the only interactive child; undefined in the provider editor state, which consumes pointer events silently. */
+	mouseTarget(): SelectList | undefined {
+		return this.#selectList;
+	}
+
 	handleInput(data: string): void {
 		if (this.#selectList) {
 			this.#selectList.handleInput(data);
@@ -744,7 +741,7 @@ export function replaceModelChainEntry(
  * Role list → reusable {@link ModelSelectorPanel} for each role.
  * Assignments write through `settings.setModelRole` (profile-scoped).
  */
-class ModelRolesSubmenu extends Container {
+class ModelRolesSubmenu extends MouseRoutedSubmenu {
 	#selectList: SelectList | undefined;
 	#models: ReadonlyArray<Model>;
 	#registry: ModelRegistry;
@@ -859,6 +856,15 @@ class ModelRolesSubmenu extends Container {
 		this.requestRender?.();
 	}
 
+	/** The role list or effort list; the model-picker state targets its panel. */
+	mouseTarget(): SelectList | ModelSelectorPanel | undefined {
+		return this.#selectList ?? this.#pickerPanel();
+	}
+
+	#pickerPanel(): ModelSelectorPanel | undefined {
+		return this.children.find((child): child is ModelSelectorPanel => child instanceof ModelSelectorPanel);
+	}
+
 	handleInput(data: string): void {
 		if (this.#selectList) {
 			this.#selectList.handleInput(data);
@@ -920,7 +926,7 @@ function ruleSectionLabel(rule: Rule): string {
  * even exist, and the section a rule sits in is the fact that decides whether it
  * ships on — so the section is worth being a screen rather than a heading.
  */
-class RulesSubmenu extends Container {
+class RulesSubmenu extends MouseRoutedSubmenu {
 	#selectList: SelectList | undefined;
 	#rules: Rule[] = [];
 	#loadError: string | undefined;
@@ -1198,6 +1204,11 @@ class RulesSubmenu extends Container {
 		}
 	}
 
+	/** The section/rule list is the only interactive child. */
+	mouseTarget(): SelectList | undefined {
+		return this.#selectList;
+	}
+
 	handleInput(data: string): void {
 		if (this.#selectList) {
 			this.#selectList.handleInput(data);
@@ -1234,7 +1245,7 @@ const AGENT_ROW_RESET = "\\u0000agent-reset";
  * once something is overridden, so a table-driven list would be empty on a stock
  * install and would hide exactly the specialists the operator came to turn on.
  */
-class SubagentAgentsSubmenu extends Container {
+class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 	#selectList: SelectList | undefined;
 	#agents: AgentDefinition[] = [];
 	#loadError: string | undefined;
@@ -1568,6 +1579,11 @@ class SubagentAgentsSubmenu extends Container {
 		this.addChild(new Text(theme.fg("dim", "  Enter to choose · Esc to go back"), 0, 0));
 	}
 
+	/** The agent list/editor/recursion list is the only interactive child. */
+	mouseTarget(): SelectList | undefined {
+		return this.#selectList;
+	}
+
 	handleInput(data: string): void {
 		if (this.#selectList) {
 			this.#selectList.handleInput(data);
@@ -1612,7 +1628,7 @@ const CHAIN_CLEAR_ROW = "\u0000chain-clear-row";
  * row reuses the same searchable model picker and the same effort list the role
  * slots use, so a third effort vocabulary cannot appear here.
  */
-class DefaultEffortSubmenu extends Container {
+class DefaultEffortSubmenu extends MouseRoutedSubmenu {
 	#selectList: SelectList | undefined;
 
 	constructor(
@@ -1758,6 +1774,14 @@ class DefaultEffortSubmenu extends Container {
 		this.requestRender?.();
 	}
 
+	/** The effort rows list; the model-picker state targets its panel. */
+	mouseTarget(): SelectList | ModelSelectorPanel | undefined {
+		return (
+			this.#selectList ??
+			this.children.find((child): child is ModelSelectorPanel => child instanceof ModelSelectorPanel)
+		);
+	}
+
 	handleInput(data: string): void {
 		if (this.#selectList && (matchesKey(data, "delete") || matchesKey(data, "backspace"))) {
 			this.#removeSelectedRow();
@@ -1779,7 +1803,7 @@ class DefaultEffortSubmenu extends Container {
  * effort surface for the main model; this picker must not create a competing
  * suffix. Del clears the saved pin without rewriting a session override.
  */
-class DefaultModelSubmenu extends Container {
+class DefaultModelSubmenu extends MouseRoutedSubmenu {
 	constructor(
 		private readonly models: ReadonlyArray<Model>,
 		private readonly registry: ModelRegistry,
@@ -1823,6 +1847,11 @@ class DefaultModelSubmenu extends Container {
 		this.onCancel();
 	}
 
+	/** The one picker panel is always the only child. */
+	mouseTarget(): ModelSelectorPanel | undefined {
+		return this.children.find((child): child is ModelSelectorPanel => child instanceof ModelSelectorPanel);
+	}
+
 	handleInput(data: string): void {
 		this.children[0]?.handleInput?.(data);
 	}
@@ -1850,7 +1879,7 @@ class DefaultModelSubmenu extends Container {
  * Persisted as a string array so the ordered choices survive YAML save/reload
  * without being reparsed from a display-oriented comma string.
  */
-export class ModelChainSubmenu extends Container {
+export class ModelChainSubmenu extends MouseRoutedSubmenu {
 	#selectList: SelectList | undefined;
 	#chain: string[];
 
@@ -2008,6 +2037,14 @@ export class ModelChainSubmenu extends Container {
 		this.requestRender?.();
 	}
 
+	/** The chain list or effort list; the model-picker state targets its panel. */
+	mouseTarget(): SelectList | ModelSelectorPanel | undefined {
+		return (
+			this.#selectList ??
+			this.children.find((child): child is ModelSelectorPanel => child instanceof ModelSelectorPanel)
+		);
+	}
+
 	handleInput(data: string): void {
 		if (this.#selectList && (matchesKey(data, "delete") || matchesKey(data, "backspace"))) {
 			this.#removeSelectedRow();
@@ -2038,7 +2075,7 @@ const DEPTH_ADD_ROW = "\u0000depth-add-row";
  * clearing the last row removes the map itself (the unset state), done by
  * {@link clearSubagentModelByDepthRow} rather than here.
  */
-class SubagentModelByDepthSubmenu extends Container {
+class SubagentModelByDepthSubmenu extends MouseRoutedSubmenu {
 	#selectList: SelectList | undefined;
 
 	constructor(
@@ -2130,6 +2167,14 @@ class SubagentModelByDepthSubmenu extends Container {
 		this.onChange();
 		this.#showRows();
 		this.requestRender?.();
+	}
+
+	/** The depth rows list; an open depth targets its chain picker (which routes its own mouse). */
+	mouseTarget(): SelectList | ModelChainSubmenu | undefined {
+		return (
+			this.#selectList ??
+			this.children.find((child): child is ModelChainSubmenu => child instanceof ModelChainSubmenu)
+		);
 	}
 
 	handleInput(data: string): void {
@@ -2644,11 +2689,12 @@ export class SettingsSelectorComponent implements Component {
 			motion: event.motion,
 			leftClick: event.leftClick,
 		});
-		if (chrome.kind === "hover-shortcut") {
-			if (this.#hoveredShortcutId !== chrome.id) {
-				this.#hoveredShortcutId = chrome.id;
+		if (
+			consumeModalChipHover(chrome, this.#hoveredShortcutId, id => {
+				this.#hoveredShortcutId = id;
 				this.context.requestRender?.();
-			}
+			})
+		) {
 			return true;
 		}
 		if (chrome.kind === "close" || chrome.kind === "outside") {

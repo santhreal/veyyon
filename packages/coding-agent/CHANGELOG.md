@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- Settings submenus answer the pointer. The host has always dispatched mouse events into an open submenu, but nine of the ten submenus had no route for them, so moving the cursor over a submenu row changed nothing and clicking a row did nothing despite the footer advertising "click pick". A shared base now carries every list-backed submenu: hover paints the same band the arrow keys produce and a click selects the row under the cursor. The settings suites drive each of the ten submenus with SGR motion and click bytes and assert both.
+- Pointer motion over a ModalShell body row no longer dies at the chrome hit-test. `hitTestModalChrome` reports `hover-shortcut` with a null id whenever the cursor is anywhere inside the modal, which every host read as "a shortcut event, consume it", so body motion never reached the row-hover branch below. Hosts now consume only an actual chip hit and let inert motion fall through; the settings selector, model picker, session and user-message selectors, ask dialog, agent dashboard, and the rest of the sixteen ModalShell hosts all share the one helper.
 - `compaction.modelFallbackStrategy: any-model` no longer stakes the session on the single widest-window model. The tier now walks every authenticated candidate widest-first, so a dead credential on the widest row falls through to the next usable one instead of failing compaction under the strategy that exists to never fail. Three tests that hard-coded bundled model ids (`google-antigravity/gemini-3-pro`) were decoupled from the bundle so a catalog regeneration no longer breaks them, and the subagent settings migration sweep classifies `subagent.modelByDepth`.
 
 ### Added

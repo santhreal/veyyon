@@ -38,6 +38,7 @@ import { HOOK_EDITOR_TEXT_PAD_COLS } from "./hook-editor";
 import {
 	applyModalReveal,
 	computeModalDims,
+	consumeModalChipHover,
 	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
 	ModalRevealDriver,
@@ -580,11 +581,12 @@ export class AskDialogComponent implements Component {
 				motion: event.motion,
 				leftClick: event.leftClick,
 			});
-			if (chrome.kind === "hover-shortcut") {
-				if (this.#hoveredShortcutId !== chrome.id) {
-					this.#hoveredShortcutId = chrome.id;
+			if (
+				consumeModalChipHover(chrome, this.#hoveredShortcutId, id => {
+					this.#hoveredShortcutId = id;
 					this.#requestRender();
-				}
+				})
+			) {
 				return true;
 			}
 			if (this.#closed || this.#promptActive) return true;
