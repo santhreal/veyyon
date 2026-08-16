@@ -3,10 +3,11 @@
  *
  * Two independent call sites pre-truncated the title of the editor overlay to
  * `terminal columns - 4`, both explaining the 4 as the title row's padding plus
- * the surrounding border's vertical chrome. `DynamicBorder` has no vertical
- * chrome: it renders one full-width horizontal rule and consumes zero columns.
- * The real chrome is the title row's padding alone, one column per side, so
- * every question was pre-truncated two columns short of the space it had.
+ * the surrounding border's vertical chrome. That border was one full-width
+ * horizontal rule and consumed zero columns (it has since been deleted along
+ * with every other full-width rule). The real chrome is the title row's padding
+ * alone, one column per side, so every question was pre-truncated two columns
+ * short of the space it had.
  *
  * Nothing caught it because being narrower than available never wraps and never
  * looks broken. It silently costs two columns of question text at every terminal
@@ -18,7 +19,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { Text, visibleWidth } from "@veyyon/tui";
 import { boundPromptTitle } from "../../../src/modes/components/ask-dialog";
-import { DynamicBorder } from "../../../src/modes/components/dynamic-border";
 import { HOOK_EDITOR_TEXT_PAD_COLS } from "../../../src/modes/components/hook-editor";
 
 const originalColumns = process.stdout.columns;
@@ -54,20 +54,6 @@ describe("the chrome around a hook editor title row", () => {
 		expect(renderedContentWidth(80)).toBe(78);
 		expect(renderedContentWidth(120)).toBe(118);
 		expect(renderedContentWidth(40)).toBe(38);
-	});
-
-	/**
-	 * The half of the old explanation that was false. If the border consumed
-	 * columns the reservation would have to account for them, so this is the
-	 * assertion that keeps the derived constant honest: one row, exactly as wide
-	 * as it was given, nothing subtracted from the sides.
-	 */
-	it("does not include the border, which consumes no columns", () => {
-		for (const width of [40, 80, 120]) {
-			const rows = new DynamicBorder(str => str).render(width);
-			expect(rows.length).toBe(1);
-			expect(visibleWidth(rows[0] ?? "")).toBe(width);
-		}
 	});
 
 	/** The padding is applied on BOTH sides, which is why the reservation

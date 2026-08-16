@@ -27,7 +27,7 @@ import {
 	Text,
 	type TextSizingScale,
 } from "@veyyon/tui";
-import { DynamicBorder } from "../modes/components/dynamic-border";
+import { COMPOSER_INSET_COLS } from "../modes/components/composer-chrome";
 import { theme } from "../modes/theme/theme";
 
 const PNG_SIGNATURE = Uint8Array.of(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a);
@@ -199,8 +199,8 @@ export class ProtocolProbeComponent extends Container {
 		const sizingOn = TERMINAL.textSizing;
 		const yesNo = (on: boolean) => (on ? theme.fg("success", "supported") : theme.fg("muted", "unsupported"));
 
-		this.addChild(new DynamicBorder());
-		this.addChild(new Text(theme.bold(theme.fg("accent", "Terminal Protocol Test")), 1, 0));
+		this.addChild(new Text(theme.bold(theme.fg("accent", "Terminal Protocol Test")), COMPOSER_INSET_COLS, 0));
+		this.addChild(new Spacer(1));
 
 		// Styling: SGR attributes, themed foregrounds, and a truecolor sweep.
 		const styling = [
@@ -209,7 +209,7 @@ export class ProtocolProbeComponent extends Container {
 			`  ${theme.fg("accent", "accent")}  ${theme.fg("success", "success")}  ${theme.fg("warning", "warning")}  ${theme.fg("error", "error")}`,
 			`  truecolor: ${truecolorBar(32)} (${theme.fg("muted", `24-bit ${TERMINAL.trueColor ? "on" : "off"}`)})`,
 		].join("\n");
-		this.addChild(new Text(styling, 1, 0));
+		this.addChild(new Text(styling, COMPOSER_INSET_COLS, 0));
 		this.addChild(new Spacer(1));
 
 		// Hyperlinks: OSC 8. Renders as plain text where unsupported.
@@ -219,25 +219,37 @@ export class ProtocolProbeComponent extends Container {
 					`${theme.fg("muted", "Hyperlinks (OSC 8)")} — ${yesNo(hyperlinksOn)}`,
 					`  \x1b]8;;https://github.com/santhreal/veyyon\x07Veyyon repo\x1b]8;;\x07`,
 				].join("\n"),
-				1,
+				COMPOSER_INSET_COLS,
 				0,
 			),
 		);
 		this.addChild(new Spacer(1));
 
 		// Text sizing: OSC 66.
-		this.addChild(new Text(`${theme.fg("muted", "Text sizing (OSC 66)")} — ${yesNo(sizingOn)}`, 1, 0));
+		this.addChild(
+			new Text(`${theme.fg("muted", "Text sizing (OSC 66)")} — ${yesNo(sizingOn)}`, COMPOSER_INSET_COLS, 0),
+		);
 		if (sizingOn) {
 			this.addChild(new RawLines(buildLargeTextLines()));
 		} else {
 			this.addChild(
-				new Text(theme.fg("dim", "  (enable via the tui.textSizing setting on a Kitty terminal)"), 1, 0),
+				new Text(
+					theme.fg("dim", "  (enable via the tui.textSizing setting on a Kitty terminal)"),
+					COMPOSER_INSET_COLS,
+					0,
+				),
 			);
 		}
 		this.addChild(new Spacer(1));
 
 		// Graphics: Kitty / iTerm2 / Sixel, with a text fallback baked into Image.
-		this.addChild(new Text(`${theme.fg("muted", "Graphics")} — ${theme.fg("dim", imageProtocolLabel())}`, 1, 0));
+		this.addChild(
+			new Text(
+				`${theme.fg("muted", "Graphics")} — ${theme.fg("dim", imageProtocolLabel())}`,
+				COMPOSER_INSET_COLS,
+				0,
+			),
+		);
 		this.addChild(
 			new Image(
 				options.image.base64,
@@ -258,10 +270,9 @@ export class ProtocolProbeComponent extends Container {
 		this.addChild(
 			new Text(
 				`${theme.fg("muted", "Notification")} (${theme.fg("dim", notifyProtocolLabel())}) — ${notifyStatus}`,
-				1,
+				COMPOSER_INSET_COLS,
 				0,
 			),
 		);
-		this.addChild(new DynamicBorder());
 	}
 }
