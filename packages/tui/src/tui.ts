@@ -287,6 +287,34 @@ function prepareNativeScrollbackReplay(component: Component): void {
 	(component as Component & Partial<NativeScrollbackReplay>).prepareNativeScrollbackReplay?.();
 }
 
+/**
+ * A virtualized root that DROPS committed rows out of the front of its render
+ * output reports how many it dropped this render, so the engine can move its
+ * own commit coordinates with the frame.
+ *
+ * Without the report the shift is invisible until classification, where it
+ * reads as a committed-prefix violation: the frame is suddenly shorter than
+ * the commit index and row 0 no longer matches the recorded prefix, so the
+ * engine re-anchors and — on a direct terminal with `tui.scrollbackRebuild`
+ * on — erases native scrollback and replays a frame the component has already
+ * emptied of history. That is a whole transcript deleted to repair a
+ * divergence that never happened.
+ */
+export interface NativeScrollbackCompaction {
+	takeNativeScrollbackDroppedRows(): number;
+}
+
+function takeNativeScrollbackDroppedRows(component: Component): number {
+	const rows = (component as Component & Partial<NativeScrollbackCompaction>).takeNativeScrollbackDroppedRows?.();
+	return typeof rows === "number" && Number.isFinite(rows) && rows > 0 ? Math.trunc(rows) : 0;
+}
+
+function canPrepareNativeScrollbackReplay(component: Component): boolean {
+	return (
+		typeof (component as Component & Partial<NativeScrollbackReplay>).prepareNativeScrollbackReplay === "function"
+	);
+}
+
 function setNativeScrollbackCommittedRows(component: Component, rows: number): void {
 	(component as Component & Partial<NativeScrollbackCommittedRows>).setNativeScrollbackCommittedRows?.(rows);
 }
@@ -1067,6 +1095,13 @@ export class TUI extends Container {
 	// references to component-cached strings, so the audit is a pointer walk
 	// in the common case.
 	#committedPrefix: string[] = [];
+	// Rows the current compose's children dropped out of the front of their own
+	// output (see NativeScrollbackCompaction). Consumed once per frame, right
+	// after compose, to slide the commit coordinates onto the new frame.
+	#frameDroppedRows = 0;
+	// Guards the one-shot rehydrating re-render a destructive rebuild takes when
+	// a virtualized root has dropped the history that rebuild is about to erase.
+	#rehydratingDivergence = false;
 	// The scroll tape: every PREPARED row the engine has painted and let scroll
 	// off the window, oldest first — the engine's own mirror of what the
 	// terminal's scrollback holds. Scroll isolation reads history from here and
@@ -1347,6 +1382,7 @@ export class TUI extends Container {
 	override render(width: number): readonly string[] {
 		width = Math.max(1, width);
 		this.#nativeScrollbackLiveRegionStart = undefined;
+		this.#frameDroppedRows = 0;
 		const children = this.children;
 		const previousSegments = this.#frameSegments;
 		const segments: FrameSegment[] = new Array(children.length);
@@ -1384,6 +1420,11 @@ export class TUI extends Container {
 				const prevStart = previous !== undefined && previous.component === child ? previous.start : offset;
 				setNativeScrollbackCommittedRows(child, Math.min(prevRows, Math.max(0, this.#committedRows - prevStart)));
 				childLines = child.render(width);
+				// A virtualized child drops rows DURING this render, so the report
+				// is read straight after it. Only rows the engine itself reported
+				// committed can be dropped, so the total is an offset into the
+				// committed prefix and never past it.
+				this.#frameDroppedRows += takeNativeScrollbackDroppedRows(child);
 				const liveRegionStart = getNativeScrollbackLiveRegionStart(child);
 				if (liveRegionStart !== undefined) {
 					liveLocalStart = Number.isFinite(liveRegionStart)
@@ -3585,6 +3626,24 @@ export class TUI extends Container {
 			rawFrame = this.render(width);
 			this.#imageBudget.endPass();
 		}
+		// Slide the commit coordinates onto the frame a virtualized child just
+		// compacted. The rows it dropped are rows the engine reported committed
+		// and the terminal already holds, so history is unchanged: only the
+		// indices move. This runs BEFORE the Ghostty deferral because the drop
+		// already happened inside the render above — an abandoned frame does not
+		// give those rows back, and leaving the indices behind is what makes the
+		// next classification read the shift as a prefix violation.
+		if (this.#frameDroppedRows > 0) {
+			const dropped = Math.min(this.#frameDroppedRows, this.#committedRows);
+			this.#frameDroppedRows = 0;
+			if (dropped > 0) {
+				this.#committedRows -= dropped;
+				this.#committedPrefixAuditRows = Math.max(0, this.#committedPrefixAuditRows - dropped);
+				this.#committedPrefix.splice(0, dropped);
+				this.#windowTopRow = Math.max(0, this.#windowTopRow - dropped);
+				this.#previousFrameLength = Math.max(0, this.#previousFrameLength - dropped);
+			}
+		}
 		// Ghostty initial-image deferral must run before any render state is
 		// consumed (#resizeEventPending, hardware-cursor state, commit
 		// re-anchoring): the early return abandons this frame and the deferred
@@ -3743,6 +3802,29 @@ export class TUI extends Container {
 			!frameSqueezed &&
 			(committedRowsResynced || frameLength <= this.#committedRows);
 		const fullPaint = firstPaint || replaceRequested || geometryRebuild || divergenceRebuild;
+		// A destructive rebuild erases native scrollback and replays THIS frame.
+		// When a virtualized root has dropped its committed rows, this frame is
+		// only the tail, so the replay would put a few rows on a screen the ED3
+		// just emptied and the transcript would be gone. The rebuild is decided
+		// here, after compose, which is too late to ask for the rows — so ask
+		// now and compose again: `#clearScrollbackOnNextRender` makes the next
+		// pass a replace, which rehydrates every child (see `replayFullHistory`)
+		// and still erases-and-replays, this time with the whole transcript in
+		// hand. One shot only; the flag stops a rebuild inside the rebuild.
+		if (
+			divergenceRebuild &&
+			!this.#rehydratingDivergence &&
+			this.children.some(child => canPrepareNativeScrollbackReplay(child))
+		) {
+			this.#rehydratingDivergence = true;
+			this.#clearScrollbackOnNextRender = true;
+			try {
+				this.#doRender();
+			} finally {
+				this.#rehydratingDivergence = false;
+			}
+			return;
+		}
 		let windowTop: number;
 		let chunkTo: number;
 		if (fullPaint) {
