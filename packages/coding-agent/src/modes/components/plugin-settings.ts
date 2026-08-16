@@ -9,7 +9,6 @@
  *     - Config value editor
  */
 import {
-	Container,
 	Input,
 	matchesKey,
 	type SelectItem,
@@ -25,6 +24,8 @@ import type { InstalledPluginSummary, MarketplaceManager } from "../../extensibi
 import type { InstalledPlugin, PluginSettingSchema } from "../../extensibility/plugins/types";
 import { getSelectListTheme, getSettingsListTheme, theme } from "../../modes/theme/theme";
 import { shortenPath } from "../../tools/render-utils";
+import { type ModalShortcut, SETTINGS_SUBPANE_SHORTCUTS } from "./modal-shell";
+import { MouseRoutedSubmenu, type TrackedMouseTarget } from "./select-list-mouse-routing";
 
 /**
  * Forwards a keystroke to `input`, but cancels via `onCancel` when the user presses Escape.
@@ -45,6 +46,29 @@ export function handleInputOrEscape(
 	}
 	input.handleInput(data);
 }
+
+/**
+ * Footer chips per view. The plugins tab lives inside the settings card, so
+ * these reach the user through that card's footer, named the way every other
+ * settings pane names its keys.
+ */
+const PLUGIN_LIST_SHORTCUTS: readonly ModalShortcut[] = [
+	{ label: "up/down navigate" },
+	{ label: "enter configure" },
+	{ label: "esc close", clickable: true, id: "close" },
+];
+
+const PLUGIN_DETAIL_SHORTCUTS: readonly ModalShortcut[] = [
+	{ label: "up/down navigate" },
+	{ label: "enter edit" },
+	{ label: "esc back", clickable: true, id: "back" },
+];
+
+const MARKETPLACE_DETAIL_SHORTCUTS: readonly ModalShortcut[] = [
+	{ label: "up/down navigate" },
+	{ label: "enter toggle" },
+	{ label: "esc back", clickable: true, id: "back" },
+];
 
 // =============================================================================
 // Plugin List Component
@@ -92,7 +116,7 @@ function findEntryByValue(entries: ReadonlyArray<PluginListEntry>, value: string
  * enable/disable status, scope tag, and shadow indicator. Selecting an entry
  * fans out to the kind-specific detail callback.
  */
-export class PluginListComponent extends Container {
+export class PluginListComponent extends MouseRoutedSubmenu {
 	readonly #selectList: SelectList;
 
 	constructor(
@@ -145,8 +169,6 @@ export class PluginListComponent extends Container {
 		this.#selectList.onCancel = callbacks.onCancel;
 
 		this.addChild(this.#selectList);
-		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("dim", "  Enter to configure · Esc to go back"), 0, 0));
 	}
 
 	#renderItem(entry: PluginListEntry): SelectItem {
@@ -191,6 +213,14 @@ export class PluginListComponent extends Container {
 		};
 	}
 
+	mouseTarget(): TrackedMouseTarget {
+		return this.#selectList;
+	}
+
+	shortcuts(): readonly ModalShortcut[] {
+		return PLUGIN_LIST_SHORTCUTS;
+	}
+
 	handleInput(data: string): void {
 		this.#selectList.handleInput(data);
 	}
@@ -213,7 +243,7 @@ export interface PluginDetailCallbacks {
  * - Feature toggles
  * - Config settings
  */
-export class PluginDetailComponent extends Container {
+export class PluginDetailComponent extends MouseRoutedSubmenu {
 	#settingsList!: SettingsList;
 
 	constructor(
@@ -362,8 +392,18 @@ export class PluginDetailComponent extends Container {
 		);
 
 		this.addChild(this.#settingsList);
-		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("dim", "  Enter to edit · Esc to go back"), 0, 0));
+	}
+
+	mouseTarget(): TrackedMouseTarget | undefined {
+		// The list mounts asynchronously (plugin settings are read from disk).
+		return this.#settingsList;
+	}
+
+	shortcuts(): readonly ModalShortcut[] {
+		// A config row opens its own sub-pane inside the list; while it owns the
+		// keys, the footer names ITS keys and not the pane behind it.
+		if (this.#settingsList?.hasOpenSubmenu()) return SETTINGS_SUBPANE_SHORTCUTS;
+		return PLUGIN_DETAIL_SHORTCUTS;
 	}
 
 	handleInput(data: string): void {
@@ -386,7 +426,7 @@ export interface MarketplacePluginDetailCallbacks {
  * features or settings, so the panel exposes a single enable/disable toggle
  * plus the read-only metadata from the installed-plugins registry.
  */
-export class MarketplacePluginDetailComponent extends Container {
+export class MarketplacePluginDetailComponent extends MouseRoutedSubmenu {
 	#settingsList: SettingsList;
 
 	constructor(
@@ -452,9 +492,14 @@ export class MarketplacePluginDetailComponent extends Container {
 		if (entry?.gitCommitSha) {
 			this.addChild(new Text(theme.fg("dim", `  git sha       ${entry.gitCommitSha}`), 0, 0));
 		}
+	}
 
-		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("dim", "  Enter to toggle · Esc to go back"), 0, 0));
+	mouseTarget(): TrackedMouseTarget {
+		return this.#settingsList;
+	}
+
+	shortcuts(): readonly ModalShortcut[] {
+		return MARKETPLACE_DETAIL_SHORTCUTS;
 	}
 
 	handleInput(data: string): void {
@@ -469,7 +514,7 @@ export class MarketplacePluginDetailComponent extends Container {
 /**
  * Submenu for enum config values.
  */
-class ConfigEnumSubmenu extends Container {
+class ConfigEnumSubmenu extends MouseRoutedSubmenu {
 	#selectList: SelectList;
 
 	constructor(
@@ -501,8 +546,10 @@ class ConfigEnumSubmenu extends Container {
 		this.#selectList.onCancel = onCancel;
 
 		this.addChild(this.#selectList);
-		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("dim", "  Enter to select · Esc to cancel"), 0, 0));
+	}
+
+	mouseTarget(): TrackedMouseTarget {
+		return this.#selectList;
 	}
 
 	handleInput(data: string): void {
@@ -513,7 +560,7 @@ class ConfigEnumSubmenu extends Container {
 /**
  * Submenu for string/number config values with text input.
  */
-class ConfigInputSubmenu extends Container {
+class ConfigInputSubmenu extends MouseRoutedSubmenu {
 	#input: Input;
 
 	constructor(
@@ -559,8 +606,12 @@ class ConfigInputSubmenu extends Container {
 		};
 
 		this.addChild(this.#input);
-		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("dim", "  Enter to save · Esc to cancel"), 0, 0));
+	}
+
+	mouseTarget(): TrackedMouseTarget | undefined {
+		// A text field has no rows to hit: the pointer is swallowed, which is the
+		// settings-list contract for a submenu without a route.
+		return undefined;
 	}
 
 	handleInput(data: string): void {
@@ -577,16 +628,20 @@ export interface PluginSettingsCallbacks {
 	onPluginChanged: () => void | Promise<void>;
 }
 
-/** Component with handleInput method */
-interface InputHandler {
+/**
+ * A plugin tab view: it handles keys, names its own footer chips, and points
+ * the pointer at whichever list it currently shows.
+ */
+interface PluginView extends MouseRoutedSubmenu {
 	handleInput(data: string): void;
+	shortcuts(): readonly ModalShortcut[];
 }
 
 /**
  * Top-level plugin settings component.
  * Manages navigation between plugin list and plugin detail views.
  */
-export class PluginSettingsComponent extends Container {
+export class PluginSettingsComponent extends MouseRoutedSubmenu {
 	#cwd: string;
 	#manager: PluginManager;
 	/**
@@ -600,7 +655,7 @@ export class PluginSettingsComponent extends Container {
 	 * component already answers the question; the fields were a second state
 	 * machine that could only ever go out of step with the first.
 	 */
-	#viewComponent: (Container & InputHandler) | null = null;
+	#viewComponent: PluginView | null = null;
 
 	constructor(
 		cwd: string,
@@ -706,6 +761,18 @@ export class PluginSettingsComponent extends Container {
 		});
 
 		this.addChild(this.#viewComponent);
+	}
+
+	mouseTarget(): TrackedMouseTarget | undefined {
+		return this.#viewComponent ?? undefined;
+	}
+
+	/**
+	 * The settings card owns the footer, so the view in front of the user names
+	 * its own keys there rather than printing a dim hint line under itself.
+	 */
+	shortcuts(): readonly ModalShortcut[] {
+		return this.#viewComponent?.shortcuts() ?? PLUGIN_LIST_SHORTCUTS;
 	}
 
 	handleInput(data: string): void {

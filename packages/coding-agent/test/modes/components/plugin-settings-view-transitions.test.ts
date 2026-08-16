@@ -34,18 +34,27 @@ beforeAll(async () => {
 });
 
 /**
- * The footer line each view renders, and the only per-view marker that is not shared with any other view:
- * the list offers "configure", the npm detail "edit", the marketplace detail "toggle". Classifying on the
- * footer rather than on a plugin name is deliberate -- a plugin name appears in the list AND in its own
- * detail view, so it cannot tell the two apart.
+ * The marker each view renders, and the only per-view string that is not shared with any other view: the
+ * list heads itself "Plugins", the npm detail describes its toggle as "this plugin", the marketplace
+ * detail as "this marketplace plugin". Classifying on a plugin name is not possible -- a name appears in
+ * the list AND in its own detail view -- and the dim hint footers this used to read ("Enter to configure"
+ * and friends) are gone: the keys are footer chips on the settings card now, so the panel no longer
+ * prints them. `shortcuts()` is asserted separately, since it is what the card paints.
  */
-const VIEW_FOOTERS = {
-	list: "Enter to configure",
-	"npm-detail": "Enter to edit",
-	"marketplace-detail": "Enter to toggle",
+const VIEW_MARKERS = {
+	list: "Plugins",
+	"npm-detail": "Enable or disable this plugin",
+	"marketplace-detail": "Enable or disable this marketplace plugin",
 } as const;
 
-type ViewName = keyof typeof VIEW_FOOTERS;
+/** The chip labels each view hands the settings card, in order. */
+const VIEW_CHIPS = {
+	list: ["up/down navigate", "enter configure", "esc close"],
+	"npm-detail": ["up/down navigate", "enter edit", "esc back"],
+	"marketplace-detail": ["up/down navigate", "enter toggle", "esc back"],
+} as const;
+
+type ViewName = keyof typeof VIEW_MARKERS;
 
 /**
  * Which view the panel is actually showing, read off its own output.
@@ -57,11 +66,16 @@ type ViewName = keyof typeof VIEW_FOOTERS;
  */
 function viewOf(component: PluginSettingsComponent): ViewName | "loading" {
 	const text = stripVTControlCharacters(component.render(120).join("\n"));
-	const matches = (Object.keys(VIEW_FOOTERS) as ViewName[]).filter(view => text.includes(VIEW_FOOTERS[view]));
+	const matches = (Object.keys(VIEW_MARKERS) as ViewName[]).filter(view => text.includes(VIEW_MARKERS[view]));
 	if (matches.length > 1) {
 		throw new Error(`plugin settings rendered ${matches.length} views at once: ${matches.join(", ")}\n${text}`);
 	}
 	return matches[0] ?? "loading";
+}
+
+/** Chip labels the panel is currently handing its host, stripped of styling. */
+function chipsOf(component: PluginSettingsComponent): string[] {
+	return component.shortcuts().map(shortcut => stripVTControlCharacters(shortcut.label));
 }
 
 /** The rendered panel, for assertions about which plugin the current view is about. */
@@ -152,6 +166,7 @@ describe("navigating the plugin settings panel", () => {
 			await waitForView(component, "list");
 			expect(textOf(component)).toContain("npm-side");
 			expect(textOf(component)).toContain("mkt-side@catalog");
+			expect(chipsOf(component)).toEqual([...VIEW_CHIPS.list]);
 
 			// Entry 0 is the npm plugin.
 			component.handleInput(ENTER);
@@ -161,6 +176,7 @@ describe("navigating the plugin settings panel", () => {
 			expect(npmDetail).toContain("the npm half of the list");
 			// The detail view is about ONE plugin: the other entry must be gone from the frame.
 			expect(npmDetail).not.toContain("mkt-side@catalog");
+			expect(chipsOf(component)).toEqual([...VIEW_CHIPS["npm-detail"]]);
 
 			component.handleInput(ESCAPE);
 			await waitForView(component, "list");
@@ -173,11 +189,15 @@ describe("navigating the plugin settings panel", () => {
 			expect(marketplaceDetail).toContain("mkt-side@catalog");
 			expect(marketplaceDetail).toContain("install path");
 			expect(marketplaceDetail).not.toContain("npm-side");
+			// The card's footer follows the view: from a detail view esc goes back
+			// to the list, and the chip says so instead of "esc close".
+			expect(chipsOf(component)).toEqual([...VIEW_CHIPS["marketplace-detail"]]);
 
 			component.handleInput(ESCAPE);
 			await waitForView(component, "list");
 			expect(textOf(component)).toContain("npm-side");
 			expect(textOf(component)).toContain("mkt-side@catalog");
+			expect(chipsOf(component)).toEqual([...VIEW_CHIPS.list]);
 		} finally {
 			restore();
 		}
@@ -250,7 +270,7 @@ describe("navigating the plugin settings panel", () => {
 			expect(text).toContain("mkt-side@catalog");
 			expect(text).toContain("[user]");
 			expect(text).toContain("0.4.2");
-			expect(text).not.toContain("Enter to edit");
+			expect(text).not.toContain("Enable or disable this plugin");
 		} finally {
 			restore();
 		}
@@ -258,13 +278,13 @@ describe("navigating the plugin settings panel", () => {
 
 	/**
 	 * The ambiguity check earns its keep only if it can actually see two views at once, so prove the
-	 * classifier is not vacuously passing: three distinct footers exist, and a frame containing two of them
+	 * classifier is not vacuously passing: three distinct markers exist, and a frame containing two of them
 	 * is reported as a failure rather than resolved to whichever comes first.
 	 */
 	it("treats two simultaneously rendered views as a failure rather than picking one", () => {
-		expect(new Set(Object.values(VIEW_FOOTERS)).size).toBe(3);
+		expect(new Set(Object.values(VIEW_MARKERS)).size).toBe(3);
 
-		const bothMounted = `${VIEW_FOOTERS.list}\n${VIEW_FOOTERS["npm-detail"]}`;
+		const bothMounted = `${VIEW_MARKERS.list}\n${VIEW_MARKERS["npm-detail"]}`;
 		const fake = {
 			render: () => [bothMounted],
 		} as unknown as PluginSettingsComponent;

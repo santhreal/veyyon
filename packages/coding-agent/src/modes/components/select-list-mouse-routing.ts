@@ -1,4 +1,4 @@
-import type { Component, SelectList, SgrMouseEvent } from "@veyyon/tui";
+import type { Component, SelectList, SettingsList, SgrMouseEvent } from "@veyyon/tui";
 import { Container, routeSelectListMouse } from "@veyyon/tui";
 
 interface RoutableSelectList {
@@ -39,16 +39,14 @@ export function renderTrackingChild(
 /**
  * Route a mouse event to the interactive child {@link renderTrackingChild}
  * tracked: a SelectList gets wheel/hover/click via the shared
- * {@link routeSelectListMouse}, any other MouseRoutable child gets the event
- * forwarded at its own offset. Undefined target (a state with nothing
+ * {@link routeSelectListMouse}, a SettingsList gets the pane semantics in
+ * {@link routeSettingsListPointer}, and any other MouseRoutable child gets the
+ * event forwarded at its own offset. Undefined target (a state with nothing
  * interactive, e.g. a text input) consumes the event silently, matching the
  * settings-list contract for submenus without a route.
  */
 export function routeTrackedMouse(
-	target:
-		| SelectList
-		| (Component & { routeMouse?: (event: SgrMouseEvent, line: number, col: number) => void })
-		| undefined,
+	target: TrackedMouseTarget | undefined,
 	event: SgrMouseEvent,
 	line: number,
 	trackedLineOffset: number,
@@ -56,6 +54,12 @@ export function routeTrackedMouse(
 ): void {
 	if (!target) return;
 	const localLine = line - trackedLineOffset;
+	// A SettingsList answers the value column and item submenus, which a
+	// SelectList has no notion of, so the two lists take different routes.
+	if ("isValueColumnHit" in target) {
+		routeSettingsListPointer(target as SettingsList, event, localLine, col);
+		return;
+	}
 	if ("hitTest" in target && "clickItem" in target) {
 		routeSelectListMouse(target as SelectList, event, localLine);
 		return;
@@ -66,6 +70,7 @@ export function routeTrackedMouse(
 /** The interactive child a {@link MouseRoutedSubmenu} can point at. */
 export type TrackedMouseTarget =
 	| SelectList
+	| SettingsList
 	| (Component & { routeMouse?: (event: SgrMouseEvent, line: number, col: number) => void });
 
 /**
@@ -117,4 +122,40 @@ export function routeSelectListMouseWithTopBorder(
 	if (event.leftClick && index !== undefined) {
 		target.clickItem(index);
 	}
+}
+
+/**
+ * Pointer over a {@link SettingsList} pane, in the list's own coordinates:
+ * wheel steps the selection, motion lights the row under the cursor, a click
+ * selects it and activates when the click lands on the value column or
+ * re-clicks the selected row. An open item submenu owns the pointer outright.
+ *
+ * Returns true when a click landed on a row, which is the caller's cue that
+ * the pane — not the sidebar beside it — now holds focus.
+ *
+ * The settings overlay and the plugins tab both drive SettingsList panes, and
+ * this is the one spelling of what a pointer does to one, so a pane cannot
+ * grow a second set of click semantics on one screen.
+ */
+export function routeSettingsListPointer(list: SettingsList, event: SgrMouseEvent, line: number, col: number): boolean {
+	if (list.hasOpenSubmenu()) {
+		list.routeSubmenuMouse(event, line, col);
+		return false;
+	}
+	if (event.wheel !== null) {
+		list.handleWheelAt(event.wheel, line, col);
+		return false;
+	}
+	if (event.motion) {
+		list.setHoverItem(list.hoverTest(line, col) ?? null);
+		return false;
+	}
+	if (!event.leftClick) return false;
+	const id = list.hitTest(line, col);
+	if (id === undefined) return false;
+	const wasSelected = list.getSelectedItem()?.id === id;
+	const onValueColumn = list.isValueColumnHit(line, col);
+	list.selectItem(id);
+	if (wasSelected || onValueColumn) list.handleInput("\n");
+	return true;
 }
