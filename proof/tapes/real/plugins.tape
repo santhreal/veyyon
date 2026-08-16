@@ -1,5 +1,5 @@
-# The MCP add-server wizard, a ModalShell card in the real binary.
-Output "/out/mcp.gif"
+# The settings Plugins tab, which now names its keys as chips and answers a click.
+Output "/out/plugins.gif"
 Set Shell "bash"
 Set FontFamily "JetBrains Mono"
 Set FontSize 15
@@ -15,14 +15,17 @@ Enter
 Type "bun /repo/packages/coding-agent/src/cli.ts --model local/qwen2.5-1.5b"
 Enter
 Sleep 20s
+Type "/settings"
+Sleep 1s
+Enter
+Sleep 3s
 Show
+# Left focuses the category sidebar; Plugins is the last category.
+Left
+Sleep 500ms
+Down@220ms 15
 Sleep 1s
-# The first Enter accepts the command-menu completion; the second submits it.
-Type "/mcp add"
-Sleep 1s
-Enter
-Sleep 800ms
-Enter
-Sleep 4s
-Screenshot "/out/overlay-mcp.png"
+Right
+Sleep 2s
+Screenshot "/out/settings-plugins.png"
 Sleep 1s

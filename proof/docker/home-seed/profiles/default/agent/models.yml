@@ -6,5 +6,5 @@ providers:
     models:
       - id: qwen2.5-1.5b
         name: Qwen2.5 1.5B (local)
-        contextWindow: 32768
+        contextWindow: 65536
         maxTokens: 1024

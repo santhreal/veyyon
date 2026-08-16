@@ -1,5 +1,5 @@
-# The MCP add-server wizard, a ModalShell card in the real binary.
-Output "/out/mcp.gif"
+# The login card, reached with /login. No account is reachable from the container.
+Output "/out/login.gif"
 Set Shell "bash"
 Set FontFamily "JetBrains Mono"
 Set FontSize 15
@@ -17,12 +17,15 @@ Enter
 Sleep 20s
 Show
 Sleep 1s
-# The first Enter accepts the command-menu completion; the second submits it.
-Type "/mcp add"
+Type "/login"
 Sleep 1s
 Enter
 Sleep 800ms
 Enter
-Sleep 4s
-Screenshot "/out/overlay-mcp.png"
+Sleep 5s
+Screenshot "/out/overlay-login-list.png"
+Sleep 1s
+Down
+Sleep 500ms
+Screenshot "/out/overlay-login-hover.png"
 Sleep 1s
