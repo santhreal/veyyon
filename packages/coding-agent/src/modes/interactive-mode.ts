@@ -1459,6 +1459,11 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.statusLine.watchBranch(() => {
 			this.ui.requestRender();
 		});
+
+		// The context gauge travels to its new reading rather than jumping to it,
+		// which needs a frame per step: the spring asks the host for one, and the
+		// footline it lives in is repainted by the same render.
+		this.statusLine.watchContextGauge({ requestRender: () => this.ui.requestRender() });
 	}
 
 	/** Themes already warned about an unhonored `always`, so the log is not repeated. */

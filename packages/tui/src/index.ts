@@ -40,6 +40,7 @@ export * from "./motion";
 export * from "./motion-grow";
 export * from "./motion-hover";
 export * from "./motion-paint";
+export * from "./motion-settle";
 // SGR mouse report parsing
 export * from "./mouse";
 // Terminal interface and implementations
