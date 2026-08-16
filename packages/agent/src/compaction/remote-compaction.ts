@@ -35,6 +35,7 @@
 
 import type { ApiKey, Model } from "@veyyon/ai";
 import { withAuth } from "@veyyon/ai/auth-retry";
+import { createOpenAICodexCompactionRequestContext } from "@veyyon/ai/providers/openai-codex-responses";
 import { resolveServerCompactionTransport } from "@veyyon/ai/providers/openai-compaction";
 import type { CompactionPreparation, CompactionResult, SummaryOptions } from "./compaction";
 import { defaultConvertToLlm } from "./messages";
@@ -116,6 +117,14 @@ export async function compactWithProvider(
 				messages: llmMessages,
 				previousWindow,
 				instructions: instructions.length > 0 ? instructions : undefined,
+				// Codex keys request identity to the live conversation; the
+				// official and Azure routes ignore all three.
+				sessionId: options?.sessionId,
+				providerSessionState: options?.providerSessionState,
+				codexCompaction: createOpenAICodexCompactionRequestContext({
+					context: options?.codexCompaction,
+					implementation: "responses_compact",
+				}),
 				apiKey: key,
 				signal,
 				fetch: options?.fetch,

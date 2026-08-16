@@ -189,10 +189,15 @@ describe("server-side compaction transport resolution is capability data", () =>
 		expect(resolveServerCompactionTransport(anthropic)).toBeUndefined();
 	});
 
-	test("codex does not resolve a transport", () => {
+	// Contract change: codex was excluded while the flag said its session
+	// transport owned history state. It does not — codex-rs posts the span to
+	// `chatgpt.com/backend-api/codex/responses/compact` and replays the window
+	// it stores — so a ChatGPT OAuth session compacts server-side like any
+	// other Responses host.
+	test("a codex model resolves a transport", () => {
 		const codex = getBundledModel("openai-codex", "gpt-5.1-codex");
 		if (!codex) throw new Error("Expected built-in openai-codex/gpt-5.1-codex to exist");
-		expect(resolveServerCompactionTransport(codex)).toBeUndefined();
+		expect(resolveServerCompactionTransport(codex)).toBeDefined();
 	});
 
 	test("an Azure Responses model resolves a transport", () => {
