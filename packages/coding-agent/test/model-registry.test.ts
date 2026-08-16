@@ -2110,7 +2110,17 @@ describe("ModelRegistry", () => {
 			});
 			antigravityOverride = readonlyRegistry({
 				providers: {
-					"google-antigravity": { modelOverrides: { "gemini-3-pro-high": { contextWindow: 222_222 } } },
+					// Serve the retired variant ids from CONFIG, not the bundle: the
+					// legacy gemini-3-pro family exists for stale snapshots and caches,
+					// and the live endpoint no longer serves any gemini-3-pro id, so a
+					// bundle-keyed fixture breaks on every catalog regeneration.
+					"google-antigravity": {
+						...providerConfig("https://antigravity.example.com/v1", [
+							{ id: "gemini-3-pro-low" },
+							{ id: "gemini-3-pro-high" },
+						]),
+						modelOverrides: { "gemini-3-pro-high": { contextWindow: 222_222 } },
+					},
 				},
 			});
 			// Dedicated instance: the suppression test mutates it via suppressSelector.

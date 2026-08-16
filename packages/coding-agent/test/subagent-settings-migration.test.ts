@@ -440,6 +440,7 @@ describe("subagent settings migration", () => {
 			"subagent.autoClose.enabled",
 			"subagent.autoClose.parkedMs",
 			"subagent.autoClose.waitingMs",
+			"subagent.modelByDepth",
 			"subagent.thinkingLevel",
 		];
 
