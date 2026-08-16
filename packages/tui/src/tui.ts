@@ -565,7 +565,7 @@ export interface OverlayHandle {
 /**
  * Container - a component that contains other components
  */
-export class Container implements Component {
+export class Container implements Component, MouseRoutable {
 	children: Component[] = [];
 
 	// Memoized concatenation of the children's latest renders. Children are
@@ -661,6 +661,33 @@ export class Container implements Component {
 		}
 		this.#memoLines = lines;
 		return lines;
+	}
+
+	/**
+	 * Hand a pointer event to the child under `line`, in that child's own rows.
+	 *
+	 * A pinned-footer click is routed to a ROOT child (see `#routeFooterMouse`),
+	 * and the composer zone mounts its editor inside a container, so without this
+	 * the event stopped at the container and nothing below it could own a click
+	 * target. Row spans come from the last render's memoized child lines, so this
+	 * costs nothing per frame; a container that has not rendered since its child
+	 * list changed has no trustworthy geometry and drops the event rather than
+	 * routing to the wrong child.
+	 */
+	routeMouse(event: SgrMouseEvent, line: number, col: number): void {
+		const children = this.children;
+		const refs = this.#memoChildLines;
+		if (refs.length !== children.length) return;
+		let start = 0;
+		for (let i = 0; i < children.length; i++) {
+			const rows = refs[i]?.length ?? 0;
+			if (line < start + rows) {
+				const child = children[i] as Component & Partial<MouseRoutable>;
+				child.routeMouse?.(event, line - start, col);
+				return;
+			}
+			start += rows;
+		}
 	}
 }
 

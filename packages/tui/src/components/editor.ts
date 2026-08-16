@@ -11,6 +11,7 @@ import { BracketedPasteHandler, decodeReencodedPasteControls } from "../brackete
 import { getKeybindings, type KeybindingsManager } from "../keybindings";
 import { extractPrintableText, isLoneLineFeed, matchesKey } from "../keys";
 import { KillRing } from "../kill-ring";
+import type { MouseRoutable, SgrMouseEvent } from "../mouse";
 import type { SymbolTheme } from "../symbols";
 import { type Component, CURSOR_MARKER, type Focusable } from "../tui";
 import {
@@ -370,7 +371,7 @@ interface HistoryStorage {
 
 type HistoryCursorAnchor = "start" | "end";
 
-export class Editor implements Component, Focusable {
+export class Editor implements Component, Focusable, MouseRoutable {
 	#state: EditorState = {
 		lines: [""],
 		cursorLine: 0,
@@ -427,6 +428,13 @@ export class Editor implements Component, Focusable {
 	#autocompletePrefix: string = "";
 	#autocompleteRequestId: number = 0;
 	#autocompleteMaxVisible: number = 5;
+	/**
+	 * Frame row the suggestion popup started at in the LAST render, or -1 when it
+	 * painted none. A click arrives in this editor's own rows, and the popup is
+	 * appended after the input card, so this is the only thing that turns a row
+	 * into a suggestion.
+	 */
+	#autocompleteRowStart = -1;
 	onAutocompleteUpdate?: () => void;
 
 	// Paste tracking for large pastes
@@ -1053,8 +1061,11 @@ export class Editor implements Component, Focusable {
 
 		// Add autocomplete list if active
 		if (this.#autocompleteState && this.#autocompleteList) {
+			this.#autocompleteRowStart = result.length;
 			const autocompleteResult = this.#autocompleteList.render(width);
 			result.push(...autocompleteResult);
+		} else {
+			this.#autocompleteRowStart = -1;
 		}
 
 		return result;
@@ -1155,43 +1166,7 @@ export class Editor implements Component, Focusable {
 
 				// If Tab was pressed, always apply the selection
 				if (kb.matches(data, "tui.input.tab")) {
-					const selected = this.#autocompleteList.getSelectedItem();
-					// Check for stale autocomplete state due to buffer edits since last refresh
-					// (destructive keys or paste can outrun the debounced update).
-					const currentLine = this.#state.lines[this.#state.cursorLine] ?? "";
-					const currentTextBeforeCursor = currentLine.slice(0, this.#state.cursorCol);
-					if (!this.#autocompletePrefixMatchesCursorText(currentTextBeforeCursor, selected)) {
-						// Autocomplete is stale - silently cancel; Tab has no fallback action here.
-						this.#cancelAutocomplete();
-						return;
-					}
-					if (selected && this.#autocompleteProvider) {
-						const shouldChainSlashCommandAutocomplete = this.#isSlashCommandNameAutocompleteSelection();
-						const result = this.#autocompleteProvider.applyCompletion(
-							this.#state.lines,
-							this.#state.cursorLine,
-							this.#state.cursorCol,
-							selected,
-							this.#autocompletePrefix,
-						);
-
-						this.#state.lines = result.lines;
-						this.#state.cursorLine = result.cursorLine;
-						this.#setCursorCol(result.cursorCol);
-
-						this.#cancelAutocomplete();
-						this.onAutocompleteUpdate?.();
-
-						if (this.onChange) {
-							this.onChange(this.getText());
-						}
-
-						result.onApplied?.();
-
-						if (shouldChainSlashCommandAutocomplete && this.#isCompletedSlashCommandAtCursor()) {
-							void this.#tryTriggerAutocomplete();
-						}
-					}
+					this.#acceptAutocompleteSelection(this.#autocompleteList.getSelectedItem());
 					return;
 				}
 
@@ -3104,6 +3079,69 @@ export class Editor implements Component, Focusable {
 			this.#cancelAutocomplete();
 			this.onAutocompleteUpdate?.();
 		}
+	}
+
+	/**
+	 * Apply one suggestion to the buffer — the shared body of Tab-accept and
+	 * click-accept, so the pointer can never drift from the key.
+	 *
+	 * A destructive edit or a paste can outrun the debounced refresh, leaving the
+	 * popup describing text that is no longer under the cursor. Accepting that
+	 * would rewrite the wrong span, so a stale popup is cancelled and nothing is
+	 * applied.
+	 */
+	#acceptAutocompleteSelection(selected: SelectItem | null): void {
+		const currentLine = this.#state.lines[this.#state.cursorLine] ?? "";
+		const currentTextBeforeCursor = currentLine.slice(0, this.#state.cursorCol);
+		if (!this.#autocompletePrefixMatchesCursorText(currentTextBeforeCursor, selected)) {
+			this.#cancelAutocomplete();
+			return;
+		}
+		if (!selected || !this.#autocompleteProvider) return;
+		const shouldChainSlashCommandAutocomplete = this.#isSlashCommandNameAutocompleteSelection();
+		const result = this.#autocompleteProvider.applyCompletion(
+			this.#state.lines,
+			this.#state.cursorLine,
+			this.#state.cursorCol,
+			selected,
+			this.#autocompletePrefix,
+		);
+
+		this.#state.lines = result.lines;
+		this.#state.cursorLine = result.cursorLine;
+		this.#setCursorCol(result.cursorCol);
+
+		this.#cancelAutocomplete();
+		this.onAutocompleteUpdate?.();
+
+		if (this.onChange) {
+			this.onChange(this.getText());
+		}
+
+		result.onApplied?.();
+
+		if (shouldChainSlashCommandAutocomplete && this.#isCompletedSlashCommandAtCursor()) {
+			void this.#tryTriggerAutocomplete();
+		}
+	}
+
+	/**
+	 * A left click on a suggestion accepts it, exactly as Tab does.
+	 *
+	 * The popup paints as the tail rows of this editor's own frame, so the row
+	 * span is known from the last render and the list resolves a row to an item.
+	 * Only a click is honored: the composer lives in the engine's pinned footer,
+	 * which reports presses and releases and no motion at all, so there is no
+	 * hover to keep, and a wheel notch there belongs to the transcript.
+	 */
+	routeMouse(event: SgrMouseEvent, line: number, _col: number): void {
+		if (!event.leftClick) return;
+		const list = this.#autocompleteList;
+		if (!this.#autocompleteState || !list || this.#autocompleteRowStart < 0) return;
+		const index = list.hitTest(line - this.#autocompleteRowStart);
+		if (index === undefined) return;
+		list.setSelectedIndex(index);
+		this.#acceptAutocompleteSelection(list.getSelectedItem());
 	}
 
 	#cancelAutocomplete(notifyCancel: boolean = false): void {
