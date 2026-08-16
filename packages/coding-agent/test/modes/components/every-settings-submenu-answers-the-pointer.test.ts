@@ -211,7 +211,9 @@ describe("settings submenus answer the pointer", () => {
 			expectHoverBand(component, "scout");
 
 			component.handleInput(clickAt(rowIndex(component, "scout") + 1));
-			expect(frameText(component)).toContain("Nested spawn depth");
+			// The lane page, headed with the subagent it configures. The row it opens on used to be a
+			// numeric `Nested spawn depth`; the nested `Subagents` chain replaced it.
+			expect(frameText(component)).toContain("Subagent: scout");
 		},
 		{ timeout: 30_000 },
 	);
