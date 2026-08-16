@@ -21,6 +21,7 @@
 
 import { beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
+import { getBundledModel } from "@veyyon/catalog/models";
 import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { settings } from "@veyyon/coding-agent/config/settings";
 import { SETTING_TABS, TAB_GROUPS } from "@veyyon/coding-agent/config/settings-schema";
@@ -169,7 +170,11 @@ describe("subagent.agents settings surface", () => {
 				providers: [],
 				cwd: process.cwd(),
 				modelRegistry: {} as ModelRegistry,
-				availableModels: [],
+				// A real catalog, because the blanket Effort row offers the union of what the models in
+				// this session declare and nothing else. With an empty list there is no level to pick,
+				// which is correct behaviour and a useless fixture. `gpt-5` declares
+				// `minimal, low, medium, high`, which is what these cases choose from.
+				availableModels: [getBundledModel("azure", "gpt-5")],
 				requestRender: () => rendered.resolve(),
 			},
 			{ onChange: path => changed.push(path), onCancel: () => {} },
@@ -182,13 +187,20 @@ describe("subagent.agents settings surface", () => {
 			rendered = Promise.withResolvers<void>();
 		}
 
-		// Reach the rows by name rather than by a press count. The roster is alphabetical,
-		// so renaming any agent reorders it, and a fixed number of Down presses silently
-		// configured whichever agent happened to sort first instead of the one with the
-		// persisted override.
+		// Reach the rows by LABEL rather than by a press count or a substring. The roster is
+		// alphabetical, so renaming any agent reorders it and a fixed number of Down presses
+		// configures whichever agent happens to sort first. The label rather than the whole line,
+		// because a description names other rows: the `auto` row describes itself as "Choose per
+		// prompt from minimal, low, medium, high", so a search for `minimal` landed on `auto` and
+		// stored the wrong level while reporting success.
+		const labelOf = (line: string): string =>
+			line
+				.replace(/^[\s›]*/, "")
+				.split(/\s{2,}/)[0]
+				?.trim() ?? "";
 		const selectRow = (needle: string): void => {
 			for (let step = 0; step < 32; step++) {
-				const line = paneLines(component).find(candidate => candidate.includes(needle));
+				const line = paneLines(component).find(candidate => labelOf(candidate) === needle);
 				if (line?.includes("›")) return;
 				component.handleInput("\u001b[B");
 			}
@@ -217,29 +229,64 @@ describe("subagent.agents settings surface", () => {
 	});
 
 	/**
-	 * Opening a picker must highlight the value already stored on the agent row.
+	 * Opening a picker must highlight the value already stored on that lane.
 	 * Starting every picker on Inherit makes an explicit override look inactive
 	 * and lets Enter erase it without the operator moving the cursor.
 	 */
-	it("opens the recursion picker on the persisted per-agent override", async () => {
-		settings.set("subagent.agents", { designer: { maxNestedSpawnDepth: 2 } });
+	it("opens a lane's effort picker on the level that lane stores, not on Inherit", async () => {
+		settings.set("subagent.agents", { designer: { thinkingLevel: "medium" } });
 		const { component, selectRow } = await openRoster("designer");
 
 		selectRow("designer");
 		component.handleInput("\n");
-		selectRow("Nested spawn depth");
+		selectRow("Effort");
 		component.handleInput("\n");
 
 		const frame = paneLines(component);
-		// The picker is open, which the row it replaced no longer being on screen is what proves: the
-		// options are the depths themselves, so finding "Two nested levels" on the editor page would
-		// have matched the row's own VALUE column and said nothing about a picker.
-		expect(frame.some(line => line.includes("Nested spawn depth") && line.includes("Enabled"))).toBe(false);
-		const selected = frame.find(line => line.includes("Two nested levels"));
-		expect(selected).toContain("›");
-		const inherit = frame.find(line => line.includes("Inherit"));
-		expect(inherit).toBeDefined();
-		expect(inherit).not.toContain("›");
+		// The picker is bound to THIS lane, which its title is what proves: the blanket picker over
+		// the same options titles itself "every subagent".
+		expect(frame.some(line => line.includes("Effort · designer"))).toBe(true);
+		// By LABEL, never by substring: every effort word also appears inside `auto`'s description
+		// ("Choose per prompt from minimal, low, medium, high"), so a line search for "medium"
+		// matches a row nobody selected and passes while the picker opens on Inherit.
+		const selected = frame.find(line => line.trim().startsWith("›"));
+		expect(
+			selected
+				?.replace(/^[\s›]*/, "")
+				.split(/\s{2,}/)[0]
+				?.trim(),
+		).toBe("medium");
+	});
+
+	/**
+	 * The page draws the ceiling the SPAWN GATE applies, never a rule of its own. A hardcoded "one
+	 * level is fine" on this screen is invisible: the row reads as available, the operator leaves it
+	 * alone because it already says what they want, and the gate refuses the spawn anyway. The two
+	 * arms differ only in the blanket ceiling, so a page default that stopped reading it stays green
+	 * on one arm and red on the other.
+	 */
+	it("draws the nesting row from the ceiling the spawn gate applies", async () => {
+		const labelOf = (line: string): string =>
+			line
+				.replace(/^[\s›]*/, "")
+				.split(/\s{2,}/)[0]
+				?.trim() ?? "";
+		const nestingRow = async (): Promise<string> => {
+			const { component, selectRow } = await openRoster("designer");
+			selectRow("designer");
+			component.handleInput("\n");
+			const row = paneLines(component).find(line => labelOf(line) === "Subagents");
+			if (row === undefined) throw new Error(`no Subagents row:\n${paneLines(component).join("\n")}`);
+			return row;
+		};
+
+		// The shipped default: this session may spawn `designer`, and `designer` may not spawn in turn.
+		settings.set("subagent.maxNestedSpawnDepth", 0);
+		expect(await nestingRow()).toContain("may not spawn");
+
+		// One nested level granted, and the row stops saying the level is closed.
+		settings.set("subagent.maxNestedSpawnDepth", 1);
+		expect(await nestingRow()).not.toContain("may not spawn");
 	});
 
 	/**
@@ -310,8 +357,7 @@ describe("subagent.agents settings surface", () => {
 
 		selectRow("Effort");
 		component.handleInput("\n");
-		// The row's own description, because the picker's blurb also says "Inherit".
-		selectRow("Follow the session's effort");
+		selectRow("Inherit");
 		component.handleInput("\n");
 
 		expect(settings.get("subagent.thinkingLevel")).toBeUndefined();
@@ -342,31 +388,31 @@ describe("subagent.agents settings surface", () => {
 	});
 
 	/**
-	 * The per-subagent page shows what that lane runs, so it carries the same two
-	 * rows. It must not grow a per-agent model or effort while doing it: both rows
-	 * say "every subagent" and write the blanket paths.
+	 * The per-subagent page shows what THAT lane runs, and the value it shows is the value it
+	 * changes: an effort chosen here lands on the agent's own row and leaves the blanket alone.
+	 * The screen this replaced printed the blanket value on the agent's page and wrote the blanket
+	 * path from it, so configuring one lane silently retuned every other one.
 	 */
-	it("changes what every subagent runs from the per-subagent page too", async () => {
+	it("writes the agent's own lane from the per-subagent page, never the blanket", async () => {
 		settings.unset("subagent.thinkingLevel");
 		settings.unset("subagent.agents");
 		const changed: string[] = [];
 		const { component, selectRow } = await openRoster("designer", changed);
 		selectRow("designer");
 		component.handleInput("\n");
-		const editor = paneLines(component);
-		expect(editor.some(line => line.includes("Change it in"))).toBe(false);
-		expect(editor.some(line => /\bModel\b/.test(line) && line.includes("every subagent"))).toBe(true);
+		expect(paneLines(component).some(line => line.includes("Change it in"))).toBe(false);
 
 		selectRow("Effort");
 		component.handleInput("\n");
 		selectRow("minimal");
 		component.handleInput("\n");
-		expect(settings.get("subagent.thinkingLevel")).toBe("minimal");
-		expect(changed).toContain("subagent.thinkingLevel");
+
+		expect(settings.get("subagent.agents")).toEqual({ designer: { thinkingLevel: "minimal" } });
+		expect(settings.get("subagent.thinkingLevel")).toBeUndefined();
+		expect(changed).toContain("subagent.agents");
+		expect(changed).not.toContain("subagent.thinkingLevel");
 		// Back on the SUBAGENT page it came from, not the roster.
 		expect(paneLines(component).some(line => line.includes("Subagent: designer"))).toBe(true);
-		// A blanket write must not touch the per-agent table on its way past.
-		expect(settings.get("subagent.agents")).toEqual({});
 	});
 
 	/**
