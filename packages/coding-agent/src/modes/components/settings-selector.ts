@@ -1365,13 +1365,13 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 
 	#showAgentList(): void {
 		this.clear();
-		this.addChild(new Text(theme.bold(theme.fg("accent", "Agents")), 0, 0));
+		this.addChild(new Text(theme.bold(theme.fg("accent", "Subagents")), 0, 0));
 		this.addChild(new Spacer(1));
 		this.addChild(
 			new Text(
 				theme.fg(
 					"muted",
-					"Which agent types this session offers, and what each one runs. Model and effort come from the Models settings below.",
+					"Which subagent types this session offers, and what each one runs. Model and effort come from the Models settings below.",
 				),
 				0,
 				0,
@@ -1387,7 +1387,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 			return;
 		}
 		if (!this.#loaded) {
-			this.addChild(new Text(theme.fg("dim", "  Reading agents…"), 0, 0));
+			this.addChild(new Text(theme.fg("dim", "  Reading subagents…"), 0, 0));
 			return;
 		}
 
@@ -1414,7 +1414,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 			description: `${SUBAGENT_ENABLE_STATE_LABEL[subagentEnableState(agent, this.#row(agent.name).enabled)]} · ${this.#modelSummary(agent)}`,
 		}));
 		if (items.length === 0) {
-			this.addChild(new Text(theme.fg("dim", "  No agents found."), 0, 0));
+			this.addChild(new Text(theme.fg("dim", "  No subagents found."), 0, 0));
 			this.addChild(new Spacer(1));
 			this.addChild(new Text(theme.fg("dim", "  Esc to go back"), 0, 0));
 			return;
@@ -1465,9 +1465,9 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 		const row = this.#row(name);
 
 		this.clear();
-		this.addChild(new Text(theme.bold(theme.fg("accent", `Agent: ${name}`)), 0, 0));
+		this.addChild(new Text(theme.bold(theme.fg("accent", `Subagent: ${name}`)), 0, 0));
 		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("muted", agent.description || `${agent.source} agent`), 0, 0));
+		this.addChild(new Text(theme.fg("muted", agent.description || `${agent.source} subagent`), 0, 0));
 		this.addChild(new Spacer(1));
 		// What this lane runs, as a fact rather than a control. The model and the
 		// effort are one decision made for every subagent at once, so editing them
@@ -1540,7 +1540,7 @@ class SubagentAgentsSubmenu extends MouseRoutedSubmenu {
 			new Text(
 				theme.fg(
 					"muted",
-					"How deeply this agent may spawn. Inherit follows Max Nested Spawn Depth; Parent only removes task from direct children.",
+					"How deeply this subagent may spawn. Inherit follows Max Nested Spawn Depth; Parent only removes task from direct children.",
 				),
 				0,
 				0,

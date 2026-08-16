@@ -139,7 +139,7 @@ export const SUBAGENTS_SETTINGS = {
 			group: "Delegation",
 			label: "Subagents",
 			description:
-				"Whether this session may use subagents at all. Off removes the task tool and every delegation instruction from the prompt, so nothing can be spawned. This is the only setting that takes the ability away: Agent Delegation below decides how hard the model is PUSHED to delegate, never whether it may. Your delegation strength and Agents table are kept while this is off and take effect again when you turn it back on.",
+				"Whether this session may use subagents at all. Off removes the task tool and every delegation instruction from the prompt, so nothing can be spawned. This is the only setting that takes the ability away: Subagent Delegation below decides how hard the model is PUSHED to delegate, never whether it may. Your delegation strength and Subagent Roster are kept while this is off and take effect again when you turn it back on.",
 			keywords: ["subagent", "spawn", "delegate", "off", "disable"],
 		},
 	},
@@ -151,9 +151,9 @@ export const SUBAGENTS_SETTINGS = {
 		ui: {
 			tab: "subagents",
 			group: "Delegation",
-			label: "Agent Delegation",
+			label: "Subagent Delegation",
 			description:
-				"How strongly this session routes work to the agent types you enabled. Allowed leaves delegation available without prompting for it. Preferred asks for substantial eligible work to be delegated. Required adds a first-turn reminder. The enabled Agents table is the routing policy: each name is a distinct type that owns only work matching its description, no type is a fallback for another, and work no enabled type covers stays with the main agent. Turn Subagents off above to remove delegation entirely.",
+				"How strongly this session routes work to the subagent types you enabled. Allowed leaves delegation available without prompting for it. Preferred asks for substantial eligible work to be delegated. Required adds a first-turn reminder. The enabled Subagent Roster is the routing policy: each name is a distinct type that owns only work matching its description, no type is a fallback for another, and work no enabled type covers stays with the main agent. Turn Subagents off above to remove delegation entirely.",
 			keywords: ["subagent", "spawn", "fan out", "parallel", "eager"],
 			options: [
 				{ value: "allowed", label: "Allowed", description: "Offered, never asked for — the model decides" },
@@ -184,7 +184,7 @@ export const SUBAGENTS_SETTINGS = {
 	},
 
 	// ────────────────────────────────────────────────────────────────────────
-	// Agents — which lanes this session offers
+	// Subagents — which lanes this session offers, and how deep they may go
 	// ────────────────────────────────────────────────────────────────────────
 
 	/**
@@ -194,17 +194,20 @@ export const SUBAGENTS_SETTINGS = {
 	 * settings row is a summary that opens the per-agent editor. This is the ONLY
 	 * surface that edits these rows: the Agent Control Center (`/agents`) used to
 	 * carry a second copy of the same table, and two editors over one setting is
-	 * how the surfaces drifted apart before.
+	 * how the surfaces drifted apart before. The blanket depth limit each row
+	 * inherits from sits in this same section for that reason: a spawn ceiling
+	 * edited two sections apart from the overrides that outrank it is how an
+	 * operator changes one and reads the other.
 	 */
 	"subagent.agents": {
 		type: "record",
 		default: {} as Record<string, SubagentAgentSettings>,
 		ui: {
 			tab: "subagents",
-			group: "Agents",
-			label: "Agent Roster",
+			group: "Subagents",
+			label: "Subagent Roster",
 			description:
-				"Which agent types the model may choose, and how deeply each one may spawn. Enabled means the model can pick that agent on its own; disabled means it cannot. With no row, only the general-purpose deep worker is enabled. Bundled specialists and agents you add are opt-in through onboarding or this table. What each one RUNS is not set here: Subagent Model and Subagent Effort decide that for every subagent at once, and an agent that needs its own model or effort declares it in its own file.",
+				"Which subagent types the model may choose, and how deeply each one may spawn. Enabled means the model can pick that subagent on its own; disabled means it cannot. With no row, only the general-purpose deep worker is enabled. Bundled specialists and subagents you add are opt-in through onboarding or this roster. What each one RUNS is not set here: Subagent Model and Subagent Effort decide that for every subagent at once, and a subagent that needs its own model or effort declares it in its own file.",
 			keywords: [
 				"agents",
 				"scout",
@@ -217,6 +220,20 @@ export const SUBAGENTS_SETTINGS = {
 				"disable",
 				"per-agent",
 			],
+		},
+	},
+
+	"subagent.maxNestedSpawnDepth": {
+		type: "number",
+		default: DEFAULT_SUBAGENT_MAX_NESTED_SPAWN_DEPTH,
+		ui: {
+			tab: "subagents",
+			group: "Subagents",
+			label: "Max Nested Spawn Depth",
+			description:
+				"How many nested levels subagents may spawn, for every subagent with no override of its own. 0 still lets this session spawn direct subagents, but those children do not receive the task tool. Open Subagent Roster above to give one subagent a different ceiling.",
+			keywords: ["depth", "nested", "recursion", "spawn", "roster"],
+			options: SUBAGENT_RECURSION_DEPTH_OPTIONS,
 		},
 	},
 
@@ -305,19 +322,6 @@ export const SUBAGENTS_SETTINGS = {
 				{ value: "32", label: "32 subagents" },
 				{ value: "64", label: "64 subagents" },
 			],
-		},
-	},
-
-	"subagent.maxNestedSpawnDepth": {
-		type: "number",
-		default: DEFAULT_SUBAGENT_MAX_NESTED_SPAWN_DEPTH,
-		ui: {
-			tab: "subagents",
-			group: "Limits",
-			label: "Max Nested Spawn Depth",
-			description:
-				"How many nested levels subagents may spawn. 0 still lets the parent session spawn direct subagents, but those children do not receive the task tool. Each agent can override this in the Agents editor.",
-			options: SUBAGENT_RECURSION_DEPTH_OPTIONS,
 		},
 	},
 

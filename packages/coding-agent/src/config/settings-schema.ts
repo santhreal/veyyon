@@ -149,7 +149,7 @@ export const TAB_GROUPS: Record<SettingTab, readonly string[]> = {
 		"Developer",
 	],
 	tasks: ["Modes", "Commands & Skills"],
-	subagents: ["Delegation", "Agents", "Models", "Limits", "Auto Close", "Isolation", "Coordination"],
+	subagents: ["Delegation", "Subagents", "Models", "Limits", "Auto Close", "Isolation", "Coordination"],
 	providers: ["Accounts", "Services", "Discovery", "Fireworks", "Tiny Model", "Protocol", "Timeouts", "Privacy"],
 	experimental: ["Argot", "Tool Calling", "Auto-Learn"],
 };
@@ -602,7 +602,7 @@ export function describeSettingTypeMismatch(path: string, value: unknown): strin
 					type?: string;
 					values?: readonly string[];
 					validateEntry?: (key: string, value: unknown) => string | undefined;
-				}
+			  }
 			| undefined
 		>
 	)[path];
