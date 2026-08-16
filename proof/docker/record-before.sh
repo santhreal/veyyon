@@ -29,11 +29,17 @@ held, deleted_by_branch = [], []
 for line in changed:
     if not line.strip():
         continue
-    status, path = line.split("\t")[0], line.split("\t")[-1]
+    fields = line.split("\t")
+    status = fields[0]
     if status.startswith("D"):
-        deleted_by_branch.append(path)
-    elif status.startswith("M") or status.startswith("R"):
-        held.append(path)
+        # The branch deleted it, so main's copy has to come back for the run.
+        deleted_by_branch.append(fields[-1])
+    elif status.startswith("R"):
+        # A rename is main's old path missing plus a new path main never had.
+        # Bringing the old path back is what main's own imports resolve against.
+        deleted_by_branch.append(fields[1])
+    elif status.startswith("M"):
+        held.append(fields[-1])
     # "A" is a file main never had; leaving it in place is harmless because
     # nothing in main's own source imports it.
 
@@ -56,9 +62,19 @@ try:
             raise SystemExit("no main copy of " + p)
         with open(p, "wb") as fh:
             fh.write(old.stdout)
+    os.makedirs("proof/captures/real/before", exist_ok=True)
     for tape in tapes:
+        # The tape names its own output paths, so a before run writes into a
+        # sibling directory rather than over the after capture of the same name.
+        text = open(tape, encoding="utf-8").read().replace('"/out/', '"/out/before/')
+        scratch = os.path.join(os.path.dirname(tape), ".before-" + os.path.basename(tape))
+        with open(scratch, "w", encoding="utf-8") as fh:
+            fh.write(text)
         print("recording", tape, flush=True)
-        subprocess.run(["proof/docker/record.sh", tape], check=True)
+        try:
+            subprocess.run(["proof/docker/record.sh", scratch], check=True)
+        finally:
+            os.remove(scratch)
 finally:
     for p, content in kept.items():
         with open(p, "wb") as fh:
