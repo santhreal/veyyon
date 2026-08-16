@@ -1,10 +1,12 @@
-import { type Component, Container, Markdown, Spacer, Text, type TUI } from "@veyyon/tui";
+import { type Component, Container, Markdown, Text, type TUI } from "@veyyon/tui";
 import { replaceTabs } from "../../tools/render-utils";
 import { getMarkdownTheme } from "../theme/markdown-theme";
 import { theme } from "../theme/theme";
-import { DynamicBorder } from "./dynamic-border";
+import { COMPOSER_INSET_COLS } from "./composer-chrome";
+import { mountTranscriptBlock } from "./transcript-block-chrome";
 
-type BtwPanelState = "running" | "complete" | "aborted" | "error";
+/** Exported so a caller (and the rail suite) can enumerate every state the panel paints. */
+export type BtwPanelState = "running" | "complete" | "aborted" | "error";
 
 interface BtwPanelComponentOptions {
 	question: string;
@@ -80,16 +82,11 @@ export class BtwPanelComponent extends Container {
 	}
 
 	#rebuild(): void {
-		this.clear();
-		this.addChild(new DynamicBorder(str => theme.fg("dim", str)));
-		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("accent", replaceTabs(this.#question)), 1, 0));
-		this.addChild(new Spacer(1));
-		this.addChild(this.#contentComponent());
-		this.addChild(new Spacer(1));
-		this.addChild(new Text(this.#footerLine(), 1, 0));
-		this.addChild(new Spacer(1));
-		this.addChild(new DynamicBorder(str => theme.fg("dim", str)));
+		mountTranscriptBlock(this, {
+			header: theme.bold(theme.fg("accent", replaceTabs(`/btw ${this.#question}`))),
+			body: this.#contentComponent(),
+			footer: this.#footerLine(),
+		});
 		// Component-scoped: a rebuild replaces only this panel's own children
 		// (streaming deltas arrive per token, and a full compose would re-walk
 		// the whole transcript each time). Before the panel is mounted the TUI
@@ -112,14 +109,14 @@ export class BtwPanelComponent extends Container {
 
 	#contentComponent(): Component {
 		if (this.#state === "error") {
-			return new Text(theme.fg("error", replaceTabs(this.#errorMessage ?? "Unknown error")), 1, 0);
+			return new Text(theme.fg("error", replaceTabs(this.#errorMessage ?? "Unknown error")), COMPOSER_INSET_COLS, 0);
 		}
 		const text = this.#visibleAnswer;
 		if (!text) {
 			const waiting =
 				this.#state === "running" ? `${theme.status.pending} Waiting for response…` : "No text returned.";
-			return new Text(theme.fg("dim", waiting), 1, 0);
+			return new Text(theme.fg("dim", waiting), COMPOSER_INSET_COLS, 0);
 		}
-		return new Markdown(text, 1, 0, getMarkdownTheme());
+		return new Markdown(text, COMPOSER_INSET_COLS, 0, getMarkdownTheme());
 	}
 }
