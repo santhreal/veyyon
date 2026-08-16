@@ -1257,16 +1257,32 @@ type SubagentEffortScope =
 	| { kind: "unresolved"; pattern: string }
 	| { kind: "blanket" };
 
-
-function subagentEffortScope(
+/**
+ * The scope one resolved model pattern implies. Separate from the blanket-row
+ * reader below because a lane resolves its own head, and the narrowing rule
+ * must be identical for both or the two screens offer different ladders.
+ */
+function effortScopeForPattern(
 	models: ReadonlyArray<Model> | undefined,
+	head: string | undefined,
 	sessionModel: Model | undefined,
 ): SubagentEffortScope {
-	const head = resolveConfiguredModelPatterns(settings.get("subagent.model"), settings)[0];
 	if (!head) return sessionModel ? { kind: "model", model: sessionModel } : { kind: "blanket" };
 	const bare = models ? barePickerSelector(head, models as Model<Api>[]) : head;
 	const found = models?.find(candidate => `${candidate.provider}/${candidate.id}` === bare);
 	return found ? { kind: "model", model: found } : { kind: "unresolved", pattern: head };
+}
+
+/** The blanket scope: what `subagent.model` resolves to for every lane with no override. */
+function subagentEffortScope(
+	models: ReadonlyArray<Model> | undefined,
+	sessionModel: Model | undefined,
+): SubagentEffortScope {
+	return effortScopeForPattern(
+		models,
+		resolveConfiguredModelPatterns(settings.get("subagent.model"), settings)[0],
+		sessionModel,
+	);
 }
 
 /** The picker rows and the sentence that explains a short list, from one scope. */
@@ -1583,7 +1599,7 @@ class SubagentAgentsSubmenu extends Container {
 			return;
 		}
 		if (!this.#loaded) {
-			this.addChild(new Text(theme.fg("dim", "  Reading agents…"), 0, 0));
+			this.addChild(new Text(theme.fg("dim", "  Reading subagents…"), 0, 0));
 			return;
 		}
 

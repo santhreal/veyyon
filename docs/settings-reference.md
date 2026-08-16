@@ -566,7 +566,7 @@ veyyon config get compaction.threshold
 | `subagent.delegation` | Subagent Delegation | enum | `preferred` | How strongly this session routes work to the subagent types you enabled. Allowed leaves delegation available without prompting for it. Preferred asks for substantial eligible work to be delegated. Required adds a first-turn reminder. The enabled Subagent Roster is the routing policy: each name is a distinct type that owns only work matching its description, no type is a fallback for another, and work no enabled type covers stays with the main agent. Turn Subagents off above to remove delegation entirely. Values: `allowed`, `preferred`, `required`. |
 | `subagent.batch` | Batch Task Calls | boolean | `true` | Switch the task tool to its batch shape: one call carries { agent, context, tasks[] } — one subagent per item (with per-item isolation) and a required shared context prepended to every assignment. With async.enabled=true, each spawn runs as an independent background agent with the normal idle/parked lifecycle; otherwise the call blocks for merged results. Disable to restore the flat single-spawn schema. Shown under the tab's Advanced fold. |
 
-### Agents
+### Subagents
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
@@ -582,7 +582,6 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `subagent.maxConcurrency` | Max Concurrent Subagents | number | `32` | Maximum number of subagents running concurrently. |
-| `subagent.maxNestedSpawnDepth` | Max Nested Spawn Depth | number | `0` | How many nested levels subagents may spawn. 0 still lets the parent session spawn direct subagents, but those children do not receive the task tool. Each agent can override this in the Agents editor. |
 | `subagent.maxRuntimeMs` | Max Subagent Runtime | number | `0` | Hard wall-clock limit per subagent (ms). 0 disables it. Defense-in-depth against provider-side stream hangs that escape the inference-layer watchdog; triggers a normal subagent abort with a 'timed out' reason. |
 | `subagent.softRequestBudget` | Soft Request Budget | number | `200` | Soft per-subagent request budget (assistant requests per run). Crossing it injects a wrap-up steering notice (see the notice setting below); at 1.5x the budget the run is force-stopped and the agent must yield its partial findings. 0 disables the guard. Bundled scout/sonic agents use a lower built-in budget. |
 | `subagent.softRequestBudgetNotice` | Soft Request Budget Notice | boolean | `true` | Inject one steering notice when a subagent crosses its soft request budget, asking it to wrap up before the 1.5x forced-yield stop. |
