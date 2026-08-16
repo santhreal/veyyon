@@ -102,4 +102,16 @@ export function routeSelectListMouse(target: SelectListMouseTarget, event: SgrMo
 export interface MouseRoutable {
 	/** `line`/`col` are 0-based within the component's rendered output. */
 	routeMouse(event: SgrMouseEvent, line: number, col: number): void;
+	/**
+	 * True while this component currently has click targets on screen.
+	 *
+	 * A pinned-footer component only ever receives a click if the terminal is
+	 * reporting button presses, and on the normal screen the engine holds that
+	 * grab for scroll isolation alone — so in a session whose frame never
+	 * overflows the viewport, footer targets were unreachable. A component that
+	 * answers true here makes the engine hold the grab while its targets exist,
+	 * and only while they exist: the grab costs the terminal's native
+	 * drag-select, so it is not taken for a component that has nothing to click.
+	 */
+	wantsPointer?(): boolean;
 }
