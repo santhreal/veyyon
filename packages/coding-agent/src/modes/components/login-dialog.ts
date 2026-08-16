@@ -13,6 +13,7 @@ import { formatProviderName } from "../../slash-commands/helpers/format";
 import { openPath } from "../../utils/open";
 import {
 	applyModalReveal,
+	beginModalExit,
 	computeModalDims,
 	consumeModalChipHover,
 	hitTestModalChrome,
@@ -85,6 +86,13 @@ export class LoginDialogComponent implements Component {
 	#hoveredShortcutId: string | null = null;
 	#getTerminalRows: () => number;
 	#reveal = new ModalRevealDriver();
+	/**
+	 * Fade out on the shared clock before the host drops this card. The overlay stack keeps painting
+	 * it and stops routing input to it the moment this is called.
+	 */
+	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
+		return beginModalExit(this.#reveal, requestRender, done);
+	}
 
 	constructor(
 		tui: TUI,

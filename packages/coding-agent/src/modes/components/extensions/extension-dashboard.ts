@@ -32,6 +32,7 @@ import { theme } from "../../../modes/theme/theme";
 import { matchesAppInterrupt } from "../../../modes/utils/keybinding-matchers";
 import {
 	applyModalReveal,
+	beginModalExit,
 	computeModalDims,
 	consumeModalChipHover,
 	hitTestModalChrome,
@@ -99,6 +100,13 @@ export class ExtensionDashboard implements Component {
 	onClose?: () => void;
 	onRequestRender?: () => void;
 	#reveal = new ModalRevealDriver();
+	/**
+	 * Fade out on the shared clock before the host drops this card. The overlay stack keeps painting
+	 * it and stops routing input to it the moment this is called.
+	 */
+	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
+		return beginModalExit(this.#reveal, requestRender, done);
+	}
 
 	private constructor(
 		private readonly cwd: string,

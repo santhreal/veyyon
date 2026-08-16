@@ -566,6 +566,26 @@ export interface OverlayHandle {
 }
 
 /**
+ * An overlay that would rather fade out than vanish.
+ *
+ * `hide()` asks the component for an exit before removing it. Answering `true` means the component
+ * has taken a repaint callback and will call `done` when its last frame is drawn; the host keeps
+ * painting it until then and stops routing input to it at once. Answering `false`, or not
+ * implementing this at all, removes the overlay the way it always has.
+ *
+ * The capability lives here rather than in a modal base class because the overlay STACK is what
+ * has to keep the card alive: a component cannot outlive the host's decision to drop it.
+ */
+export interface OverlayExitAnimatable {
+	beginOverlayExit(requestRender: () => void, done: () => void): boolean;
+}
+
+/** Whether `component` can play itself out. */
+export function canAnimateOverlayExit(component: Component): component is Component & OverlayExitAnimatable {
+	return typeof (component as Partial<OverlayExitAnimatable>).beginOverlayExit === "function";
+}
+
+/**
  * Container - a component that contains other components
  */
 export class Container implements Component, MouseRoutable {
@@ -1399,6 +1419,12 @@ export class TUI extends Container {
 		options?: OverlayOptions;
 		preFocus: Component | null;
 		hidden: boolean;
+		/**
+		 * The card is playing itself out: still PAINTED, no longer INTERACTIVE. Focus has already
+		 * gone back to whatever the overlay took it from, so the transcript answers a keystroke
+		 * during the fade rather than a card the operator has already dismissed.
+		 */
+		exiting: boolean;
 	}[] = [];
 
 	constructor(terminal: Terminal, showHardwareCursor?: boolean, options?: TUIOptions) {
@@ -1944,7 +1970,7 @@ export class TUI extends Container {
 	}
 
 	setFocus(component: Component | null): void {
-		const topVisibleOverlay = this.#getTopmostVisibleOverlay();
+		const topVisibleOverlay = this.#getTopmostInteractiveOverlay();
 		if (topVisibleOverlay && !isOverlayFocusTarget(topVisibleOverlay.component, component)) {
 			const currentFocus = this.#focusedComponent;
 			component = isOverlayFocusTarget(topVisibleOverlay.component, currentFocus)
@@ -2006,7 +2032,7 @@ export class TUI extends Container {
 	 * of one that is still in it.
 	 */
 	#restoreFocusAfterOverlay(preFocus: Component | null): void {
-		const topVisible = this.#getTopmostVisibleOverlay();
+		const topVisible = this.#getTopmostInteractiveOverlay();
 		if (topVisible) {
 			this.setFocus(topVisible.component);
 			return;
@@ -2044,7 +2070,7 @@ export class TUI extends Container {
 	 */
 	showOverlay(component: Component, options?: OverlayOptions): OverlayHandle {
 		component.setIgnoreTight?.(true);
-		const entry = { component, options, preFocus: this.#focusedComponent, hidden: false };
+		const entry = { component, options, preFocus: this.#focusedComponent, hidden: false, exiting: false };
 		this.overlayStack.push(entry);
 		// Only focus if overlay is actually visible
 		if (this.#isOverlayVisible(entry)) {
@@ -2054,22 +2080,37 @@ export class TUI extends Container {
 		this.#recordHardwareCursorHidden();
 		this.requestRender();
 
+		/** Drop the entry and hand the terminal back. Idempotent: a second call finds no index. */
+		const remove = (): void => {
+			const index = this.overlayStack.indexOf(entry);
+			if (index === -1) return;
+			this.overlayStack.splice(index, 1);
+			if (this.overlayStack.length === 0) {
+				this.terminal.hideCursor();
+				this.#recordHardwareCursorHidden();
+			}
+			this.requestRender();
+		};
+
 		// Return handle for controlling this overlay
 		return {
 			hide: () => {
-				const index = this.overlayStack.indexOf(entry);
-				if (index !== -1) {
-					this.overlayStack.splice(index, 1);
-					// Restore focus if this overlay or one of its owned targets had focus
-					if (isOverlayFocusTarget(component, this.#focusedComponent)) {
-						this.#restoreFocusAfterOverlay(entry.preFocus);
-					}
-					if (this.overlayStack.length === 0) {
-						this.terminal.hideCursor();
-						this.#recordHardwareCursorHidden();
-					}
-					this.requestRender();
+				if (entry.exiting || this.overlayStack.indexOf(entry) === -1) return;
+				// Non-interactive FIRST, and only then the focus handoff: the handoff looks for the
+				// topmost overlay that can still take input, and a card that is still marked live
+				// finds ITSELF and hands its own focus straight back, which is a dismissed overlay
+				// that never gives the keyboard up.
+				entry.exiting = true;
+				// Everything after this point is paint. A card being played out must never answer a
+				// keystroke; the operator's next one belongs to whatever they returned to.
+				if (isOverlayFocusTarget(component, this.#focusedComponent)) {
+					this.#restoreFocusAfterOverlay(entry.preFocus);
 				}
+				if (canAnimateOverlayExit(component) && component.beginOverlayExit(() => this.requestRender(), remove)) {
+					this.requestRender();
+					return;
+				}
+				remove();
 			},
 			setHidden: (hidden: boolean) => {
 				if (entry.hidden === hidden) return;
@@ -2093,12 +2134,12 @@ export class TUI extends Container {
 		};
 	}
 
-	/** Check if there are any visible overlays */
+	/** Check if there are any overlays that can still take input. */
 	hasOverlay(): boolean {
-		return this.overlayStack.some(o => this.#isOverlayVisible(o));
+		return this.overlayStack.some(o => this.#isOverlayInteractive(o));
 	}
 
-	/** Check if an overlay entry is currently visible */
+	/** Check if an overlay entry is currently PAINTED. An exiting card is: that is the whole point. */
 	#isOverlayVisible(entry: (typeof this.overlayStack)[number]): boolean {
 		if (entry.hidden) return false;
 		if (entry.options?.visible) {
@@ -2107,10 +2148,29 @@ export class TUI extends Container {
 		return true;
 	}
 
-	/** Find the topmost visible overlay, if any */
+	/**
+	 * Whether an overlay entry can take input and hold focus. Painting and interaction diverge for
+	 * exactly the length of an exit: the card is on screen, and it is already gone as far as the
+	 * keyboard, the mouse and `hasOverlay()` are concerned.
+	 */
+	#isOverlayInteractive(entry: (typeof this.overlayStack)[number]): boolean {
+		return !entry.exiting && this.#isOverlayVisible(entry);
+	}
+
+	/** The topmost overlay that is PAINTED, including one that is playing itself out. */
 	#getTopmostVisibleOverlay(): (typeof this.overlayStack)[number] | undefined {
 		for (let i = this.overlayStack.length - 1; i >= 0; i--) {
 			if (this.#isOverlayVisible(this.overlayStack[i])) {
+				return this.overlayStack[i];
+			}
+		}
+		return undefined;
+	}
+
+	/** The topmost overlay that can hold focus, which an exiting card cannot. */
+	#getTopmostInteractiveOverlay(): (typeof this.overlayStack)[number] | undefined {
+		for (let i = this.overlayStack.length - 1; i >= 0; i--) {
+			if (this.#isOverlayInteractive(this.overlayStack[i])) {
 				return this.overlayStack[i];
 			}
 		}
@@ -3151,10 +3211,11 @@ export class TUI extends Container {
 			return;
 		}
 
-		// If focused component is an overlay, verify it's still visible
-		// (visibility can change due to terminal resize or visible() callback)
+		// If focused component is an overlay, verify it can still take input (visibility can change
+		// due to terminal resize or the `visible()` callback, and a card that is playing itself out
+		// stops being interactive before it stops being drawn).
 		const focusedOverlay = this.overlayStack.find(o => o.component === this.#focusedComponent);
-		if (focusedOverlay && !this.#isOverlayVisible(focusedOverlay)) {
+		if (focusedOverlay && !this.#isOverlayInteractive(focusedOverlay)) {
 			// Focused overlay went invisible under us (resize, or its visible()
 			// callback). Hand focus on the same way a close does.
 			this.#restoreFocusAfterOverlay(focusedOverlay.preFocus);

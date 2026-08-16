@@ -89,6 +89,7 @@ import { formatSelectorSummary, renderEffortStep } from "./effort-picker";
 import {
 	applyModalReveal,
 	BREADCRUMB_HOVER_ID,
+	beginModalExit,
 	computeModalDims,
 	consumeModalChipHover,
 	hitTestModalChrome,
@@ -2878,6 +2879,13 @@ export class SettingsSelectorComponent implements Component {
 	 */
 	#sidebarFocused = false;
 	#reveal = new ModalRevealDriver();
+	/**
+	 * Fade out on the shared clock before the host drops this card. The overlay stack keeps painting
+	 * it and stops routing input to it the moment this is called.
+	 */
+	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
+		return beginModalExit(this.#reveal, requestRender, done);
+	}
 
 	/** @deprecated Prefer ModalShell sizing; kept for tests that assert width. */
 	static readonly MODAL_MAX_WIDTH = MODAL_SIZING_SETTINGS.maxWidth;

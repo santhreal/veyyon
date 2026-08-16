@@ -97,6 +97,7 @@ import { type AgentTranscriptRemote, AgentTranscriptViewer } from "./agent-trans
 import { AGENT_VIEW_AGE_TICK_MS, AGENT_VIEW_DATA_CHANGE_COALESCE_MS } from "./agent-view-timings";
 import {
 	applyModalReveal,
+	beginModalExit,
 	CARD_BODY_COL_INSET,
 	computeModalDims,
 	consumeModalChipHover,
@@ -907,6 +908,13 @@ export class AgentDashboard extends Container {
 	onClose?: () => void;
 	onRequestRender?: () => void;
 	#reveal = new ModalRevealDriver();
+	/**
+	 * Fade out on the shared clock before the host drops this card. The overlay stack keeps painting
+	 * it and stops routing input to it the moment this is called.
+	 */
+	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
+		return beginModalExit(this.#reveal, requestRender, done);
+	}
 
 	constructor(deps: AgentDashboardDeps = {}) {
 		super();

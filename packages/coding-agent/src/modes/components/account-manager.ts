@@ -55,6 +55,7 @@ import {
 } from "./account-manager-rows";
 import {
 	applyModalReveal,
+	beginModalExit,
 	computeModalDims,
 	consumeModalChipHover,
 	hitTestModalChrome,
@@ -221,6 +222,14 @@ export class AccountManagerComponent implements Component {
 	#sidebarWidthLast = SIDEBAR_MIN_WIDTH;
 	#bodyLines: BodyLine[] = [];
 	#reveal = new ModalRevealDriver();
+	/**
+	 * Fade out on the shared clock before the host drops this card. The overlay stack keeps painting
+	 * it and stops routing input to it the moment this is called.
+	 */
+	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
+		return beginModalExit(this.#reveal, requestRender, done);
+	}
+
 	/** Mirrors `accounts.loadBalancing`; only `b` and the chip change it. */
 	#loadBalancing = false;
 

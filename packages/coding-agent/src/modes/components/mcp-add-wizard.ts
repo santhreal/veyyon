@@ -25,6 +25,7 @@ import { theme } from "../theme/theme";
 import { matchesAppInterrupt, matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
 import {
 	applyModalReveal,
+	beginModalExit,
 	computeModalDims,
 	consumeModalChipHover,
 	hitTestModalChrome,
@@ -152,6 +153,14 @@ export class MCPAddWizard implements Component {
 	/** Frame row where the body begins (shell body start). */
 	#bodyRowStart = 0;
 	#reveal = new ModalRevealDriver();
+	/**
+	 * Fade out on the shared clock before the host drops this card. The overlay stack keeps painting
+	 * it and stops routing input to it the moment this is called.
+	 */
+	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
+		return beginModalExit(this.#reveal, requestRender, done);
+	}
+
 	#inputField: Input | null = null;
 	#selectedIndex = 0;
 	#validationError: string | null = null;

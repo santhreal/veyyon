@@ -40,6 +40,7 @@ import {
 import type { HookSelectorSlider } from "./hook-selector";
 import {
 	applyModalReveal,
+	beginModalExit,
 	computeModalDims,
 	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
@@ -133,6 +134,14 @@ export class PlanReviewOverlay implements Component {
 	#mdTheme: MarkdownTheme;
 	#scrollView: ScrollView;
 	#reveal = new ModalRevealDriver();
+	/**
+	 * Fade out on the shared clock before the host drops this card. The overlay stack keeps painting
+	 * it and stops routing input to it the moment this is called.
+	 */
+	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
+		return beginModalExit(this.#reveal, requestRender, done);
+	}
+
 	#sections: OverlaySection[] = [];
 	#toc: number[] = [];
 	/** Shallowest level among ToC entries, used to flatten indentation. */

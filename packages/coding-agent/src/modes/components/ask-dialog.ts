@@ -37,6 +37,7 @@ import { CountdownTimer } from "./countdown-timer";
 import { HOOK_EDITOR_TEXT_PAD_COLS } from "./hook-editor";
 import {
 	applyModalReveal,
+	beginModalExit,
 	computeModalDims,
 	consumeModalChipHover,
 	hitTestModalChrome,
@@ -453,6 +454,13 @@ export class AskDialogComponent implements Component {
 	#hoveredShortcutId: string | null = null;
 	#onRequestRenderExternal: (() => void) | undefined;
 	#reveal = new ModalRevealDriver();
+	/**
+	 * Fade out on the shared clock before the host drops this card. The overlay stack keeps painting
+	 * it and stops routing input to it the moment this is called.
+	 */
+	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
+		return beginModalExit(this.#reveal, requestRender, done);
+	}
 
 	constructor(
 		private readonly questions: ExtensionAskDialogQuestion[],
