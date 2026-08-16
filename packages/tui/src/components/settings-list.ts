@@ -1,5 +1,6 @@
 import { getKeybindings } from "../keybindings";
 import { extractPrintableText, isLoneLineFeed } from "../keys";
+import { HoverFade, type HoverFadeOptions } from "../motion-hover";
 import type { MouseRoutable, SgrMouseEvent } from "../mouse";
 import type { Component } from "../tui";
 import {
@@ -59,8 +60,15 @@ export interface SettingsListTheme {
 	heading?: (text: string, dimmed: boolean) => string;
 	/** Style for sidebar section names in the split layout. Falls back to label/hint. */
 	section?: (text: string, active: boolean) => string;
-	/** Hover band applied to the full row under the mouse pointer. */
-	hovered?: (text: string) => string;
+	/**
+	 * Hover band applied to the full row under the mouse pointer.
+	 *
+	 * `strength` is 1 for a row the pointer is resting on and a fraction while the
+	 * band fades in or out (see {@link SettingsList.setHoverMotion}); a theme that
+	 * paints unconditionally ignores it and keeps the switched band. Never called
+	 * at strength 0.
+	 */
+	hovered?: (text: string, strength: number) => string;
 }
 
 /** A contiguous run of items under one heading, derived from the item list. */
@@ -143,6 +151,13 @@ export class SettingsList implements Component {
 	// Mouse support: hover highlight and per-render hit maps (content-line
 	// index → item id), rebuilt by every main-list render.
 	#hoveredItemId: string | null = null;
+	/**
+	 * The cross-fade, once a host has lent this list a repaint
+	 * ({@link setHoverMotion}). Absent, the band is switched, which is what every
+	 * host had before. Keyed by setting id: a row keeps its band across a filter
+	 * keystroke that moves it, and loses it when the row itself goes away.
+	 */
+	#hoverFade?: HoverFade<string>;
 	#hitRows: (string | undefined)[] = [];
 	#sidebarHitRows: (string | undefined)[] = [];
 	#sidebarHitCol = 0;
@@ -250,6 +265,45 @@ export class SettingsList implements Component {
 	/** Highlight the item under the pointer (null clears). */
 	setHoverItem(id: string | null): void {
 		this.#hoveredItemId = id;
+		this.#hoverFade?.set(id);
+	}
+
+	/**
+	 * Fade the pointer band in and out instead of switching it.
+	 *
+	 * The frames between two mouse reports have no input to hang off, so the host
+	 * lends the list its repaint. Call once after construction, and
+	 * {@link disposeHoverMotion} when the host goes away. `enabled: false` is the
+	 * switched band, which is what a non-truecolor terminal and
+	 * `display.transitions: off` get.
+	 */
+	setHoverMotion(options: HoverFadeOptions): void {
+		this.#hoverFade?.dispose();
+		this.#hoverFade = new HoverFade<string>(options);
+		if (this.#hoveredItemId !== null) this.#hoverFade.set(this.#hoveredItemId);
+	}
+
+	/**
+	 * Drop the cross-fade and everything it has registered with the clock, and
+	 * forget the pointer with it: a disposed list is one nothing is pointing at, so
+	 * a half-faded band leaves rather than jumping to full strength.
+	 */
+	disposeHoverMotion(): void {
+		this.#hoverFade?.dispose();
+		this.#hoverFade = undefined;
+		this.#hoveredItemId = null;
+	}
+
+	/**
+	 * Band strength for a row id: 0 for no band through 1 for the full one. The
+	 * selected row takes no band — the cursor glyph and accent are the stronger
+	 * signal — but a row the pointer left keeps fading out even once the selection
+	 * has moved onto it, so the suppression lives here rather than in the fade.
+	 */
+	#hoverStrength(id: string, isSelected: boolean): number {
+		if (isSelected) return 0;
+		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(id);
+		return id === this.#hoveredItemId ? 1 : 0;
 	}
 
 	/**
@@ -564,22 +618,23 @@ export class SettingsList implements Component {
 		const shownValue = item.labelForValue?.(item.currentValue) ?? item.currentValue;
 		const rawValue = cyclable ? `‹ ${shownValue} ›` : String(shownValue ?? "");
 		const valuePlain = truncateToWidth(rawValue, valueMaxWidth, Ellipsis.Omit);
-		const hovered = !isSelected && this.#theme.hovered !== undefined && item.id === this.#hoveredItemId;
+		const band = this.#theme.hovered;
+		const strength = band === undefined ? 0 : this.#hoverStrength(item.id, isSelected);
 		// De-emphasized rows (outside the active section) render as plain text
 		// under one dim wash so inner label/value colors don't fight it.
 		if (dimmed && !isSelected) {
 			const text = this.#theme.hint(
 				truncateToWidth(`  ${labelPadded}${separator}${valuePlain}`, Math.max(0, rowWidth)),
 			);
-			return hovered && this.#theme.hovered ? this.#theme.hovered(text) : text;
+			return strength > 0 && band !== undefined ? band(text, strength) : text;
 		}
 		const labelText = this.#theme.label(labelPadded, isSelected, item.changed === true);
 		const valueText = this.#theme.value(valuePlain, isSelected, item.changed === true);
 		const text = truncateToWidth(prefix + labelText + separator + valueText, Math.max(0, rowWidth));
 		// Pointer hover paints a band behind the whole row, distinct from the
 		// keyboard selection (cursor glyph + accent) which stays where it is.
-		if (hovered && this.#theme.hovered) {
-			return this.#theme.hovered(text);
+		if (strength > 0 && band !== undefined) {
+			return band(text, strength);
 		}
 		return text;
 	}

@@ -251,6 +251,22 @@ export class Theme {
 	}
 
 	/**
+	 * The ground an animation resolves a color OUT OF: the declared ground when the
+	 * theme has one, else the extreme of its appearance.
+	 *
+	 * Distinct from {@link getGroundHex}, and the difference is which answer is
+	 * safe. Painting the terminal background with a color the theme never declared
+	 * would leave the operator's terminal recolored, so that consumer takes the
+	 * undefined. An animation cannot use undefined — it needs a color to mix from
+	 * for one frame — and black or white by appearance is the neutral choice, never
+	 * the terminal's own reported background, which is how a fade acquires a hue
+	 * the theme has nothing to do with.
+	 */
+	getResolvedGroundHex(): string {
+		return this.#groundHex ?? (this.isLight ? "#ffffff" : "#000000");
+	}
+
+	/**
 	 * Get all foreground and background theme colors as CSS hex strings.
 	 * Skips colors resolved to the default terminal color (unstyled).
 	 */
@@ -320,6 +336,21 @@ export class Theme {
 		if (!ansi) throw new Error(`Unknown theme background color: ${color}`);
 		if (!colorEnabled()) return text;
 		return `${ansi}${text}\x1b[49m`; // Reset only background color
+	}
+
+	/**
+	 * A background band in a hex an animation computed, rather than one of the
+	 * theme's named backgrounds. Degradation is the same as {@link bg}: the color
+	 * goes through the theme's own color mode, so a 256-color terminal gets the
+	 * nearest index and a mono one gets no band at all.
+	 *
+	 * The caller owns the color. This exists because a fading band's color is not
+	 * a theme color — it is a mix of one with whatever it sits on — and the
+	 * alternative was every animated surface writing its own `48;2;r;g;b`.
+	 */
+	bgHex(hex: string, text: string): string {
+		if (!colorEnabled()) return text;
+		return `${bgAnsi(hex, this.mode)}${text}\x1b[49m`;
 	}
 
 	// Text attributes emit raw SGR pairs, NEVER chalk: chalk's level

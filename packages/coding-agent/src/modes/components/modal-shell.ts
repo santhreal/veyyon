@@ -1006,14 +1006,12 @@ export function modalRevealEnabled(): boolean {
 }
 
 /**
- * The color a card resolves out of while it unfolds: the theme's declared page
- * ground when it has one, else the extreme of the theme's appearance. A wrong
- * ground is visible as a wash of the wrong hue, so this never guesses from the
- * terminal's own reported background — a theme either declares its ground or
- * gets the neutral one.
+ * The color a card resolves out of while it unfolds. One owner, in the theme:
+ * the pointer band fades out of the same ground, and two policies for "what is
+ * behind this row" drift into two different washes on the same screen.
  */
 export function modalRevealGround(): string {
-	return theme.getGroundHex() ?? (theme.isLight ? "#ffffff" : "#000000");
+	return theme.getResolvedGroundHex();
 }
 
 /**

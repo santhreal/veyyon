@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { detectMacOSAppearance, MacAppearanceObserver } from "@veyyon/natives";
 import type { EditorTheme, SelectListTheme, SettingsListTheme } from "@veyyon/tui";
-import { parseHexColor, TERMINAL } from "@veyyon/tui";
+import { blendHex, parseHexColor, TERMINAL } from "@veyyon/tui";
 import { adjustHsv, colorLuma } from "@veyyon/utils/color";
 import { getCustomThemesDir } from "@veyyon/utils/dirs";
 import { isEnoent } from "@veyyon/utils/fs-error";
@@ -1029,6 +1029,27 @@ export async function getThemeExportColors(themeName?: string): Promise<{
  */
 export { getSymbolTheme } from "./symbol-theme";
 
+/**
+ * The pointer band, at a strength an animation decided.
+ *
+ * At full strength this is the selection background, byte for byte what a switched
+ * band always was. Below it the band color is mixed out of the ground the row sits
+ * on — the same ground a card unfolds out of — so the band arrives from the page
+ * instead of appearing on it.
+ *
+ * A theme running in 256-color mode gets the switched band at half strength instead of a mix. It
+ * cannot show one: every intermediate color quantizes onto the nearest palette entry, which reads
+ * as the band changing hue rather than fading in. The band still tracks the pointer, exactly as it
+ * did before there was a fade. The mode is the THEME's, not the terminal's reported capability —
+ * the theme is what decides which color space it paints in, and a mix computed for a space the
+ * theme is not using is quantized right back.
+ */
+function hoverBand(text: string, strength: number): string {
+	if (strength >= 1) return theme.bg("selectedBg", text);
+	if (theme.getColorMode() !== "truecolor") return strength >= 0.5 ? theme.bg("selectedBg", text) : text;
+	return theme.bgHex(blendHex(theme.getResolvedGroundHex(), theme.getBgColorHex("selectedBg"), strength), text);
+}
+
 export function getSelectListTheme(): SelectListTheme {
 	// Guard against `theme` being undefined (pre-init or cross-module-instance
 	// plugin calls). See #2998.
@@ -1053,7 +1074,7 @@ export function getSelectListTheme(): SelectListTheme {
 		scrollInfo: (text: string) => theme.fg("muted", text),
 		noMatch: (text: string) => theme.fg("muted", text),
 		symbols: getSymbolTheme(),
-		hovered: (text: string) => theme.bg("selectedBg", text),
+		hovered: hoverBand,
 		// The found thing is gold: filter-hit characters paint matchHighlight.
 		matchHighlight: (text: string) => theme.fg("matchHighlight", text),
 		// Category headers per the approved / menu design: an ember uppercase
@@ -1115,6 +1136,6 @@ export function getSettingsListTheme(): SettingsListTheme {
 					`${theme.fg("accent", "◆")} ${theme.fg("muted", theme.bold(text))}`,
 		section: (text: string, active: boolean) =>
 			active ? theme.fg("accent", theme.bold(text)) : theme.fg("muted", text),
-		hovered: (text: string) => theme.bg("selectedBg", text),
+		hovered: hoverBand,
 	};
 }
