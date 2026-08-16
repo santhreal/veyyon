@@ -198,7 +198,7 @@ import {
 import { createSessionTeardown, type SessionTeardown } from "./session-teardown";
 import { runProviderSetupWizard } from "./setup-wizard/lazy";
 import { interruptHint } from "./shared";
-import { setDetectedTerminalGround } from "./theme/ground-tints";
+import { applyGroundPaint, setDetectedTerminalGround } from "./theme/ground-tints";
 import { setMarkdownMermaidRendering } from "./theme/markdown-theme";
 import { clearMermaidCache } from "./theme/mermaid-cache";
 import {
@@ -1494,11 +1494,9 @@ export class InteractiveMode implements InteractiveModeContext {
 				);
 			}
 		}
-		if (plan.paint !== null) {
-			this.ui.terminal.setBackgroundColor?.(plan.paint);
-		} else {
-			this.ui.terminal.resetBackgroundColor?.();
-		}
+		// Paint and record together: what the policy leaves on screen is the ground
+		// every animation resolves a color out of.
+		applyGroundPaint(plan, this.ui.terminal);
 	}
 
 	/** Reload the title-generation system prompt override for the provided working

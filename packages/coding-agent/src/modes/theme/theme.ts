@@ -33,6 +33,7 @@ import {
 	type ThemeColor,
 	type ThemeJson,
 } from "./color";
+import { getVisibleGround } from "./ground-tints";
 import { lavaText } from "./shimmer";
 import { getSymbolTheme } from "./symbol-theme";
 import { normalizeSpinnerFramesOverride, type SymbolPreset } from "./symbols";
@@ -1030,6 +1031,28 @@ export async function getThemeExportColors(themeName?: string): Promise<{
 export { getSymbolTheme } from "./symbol-theme";
 
 /**
+ * The color an animation resolves a row OUT OF: the ground that is actually on
+ * screen behind it.
+ *
+ * The theme's own declared ground is the wrong answer whenever the terminal was
+ * not painted with it, and the default theme is exactly that case: titanium
+ * declares black, `tui.paintGround: auto` refuses to paint black onto a grey
+ * terminal, and the row therefore sits on the operator's grey. Mixing out of the
+ * declared black made every arriving band and every unfolding card dip through
+ * black first — a dark flash on a light-grey terminal, which is the same class of
+ * fault as the absolute dark fills that shipped as black slabs on 2026-07-22.
+ * Recorded off a real xterm at 60fps, the leaving row read `#090401` between a
+ * `#1c1f26` ground and a `#231310` band.
+ *
+ * Falls back to the theme's declared ground only when nothing painted and the
+ * terminal answered no OSC 11 — there is no better guess then, and it is the
+ * pre-detection rendering.
+ */
+export function visibleGroundHex(): string {
+	return getVisibleGround() ?? theme.getResolvedGroundHex();
+}
+
+/**
  * The pointer band, at a strength an animation decided.
  *
  * At full strength this is the selection background, byte for byte what a switched
@@ -1047,7 +1070,7 @@ export { getSymbolTheme } from "./symbol-theme";
 export function hoverBand(text: string, strength: number): string {
 	if (strength >= 1) return theme.bg("selectedBg", text);
 	if (theme.getColorMode() !== "truecolor") return strength >= 0.5 ? theme.bg("selectedBg", text) : text;
-	return theme.bgHex(blendHex(theme.getResolvedGroundHex(), theme.getBgColorHex("selectedBg"), strength), text);
+	return theme.bgHex(blendHex(visibleGroundHex(), theme.getBgColorHex("selectedBg"), strength), text);
 }
 
 export function getSelectListTheme(): SelectListTheme {
