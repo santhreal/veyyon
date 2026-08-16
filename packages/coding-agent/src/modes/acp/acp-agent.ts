@@ -1617,6 +1617,13 @@ export class AcpAgent implements Agent {
 		if (!thinkingLevel) {
 			throw new Error(`Unknown ACP thinking level: ${value}`);
 		}
+		// A session with no resolved model has no row to narrow against, so the
+		// level is stored and clamped when one arrives. The narrowing helper offers
+		// nothing for a model it cannot read, so the skip is stated here.
+		if (!session.model) {
+			session.setThinkingLevel(thinkingLevel);
+			return;
+		}
 		const choices = configuredThinkingLevelsForModel(session.model);
 		if (!choices.includes(thinkingLevel)) {
 			const accepted = choices.length > 0 ? choices.join(", ") : "none (this model exposes no effort control)";
