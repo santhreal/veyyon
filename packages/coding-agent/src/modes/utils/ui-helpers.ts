@@ -55,6 +55,7 @@ import {
 	buildAsyncResultBlock,
 	buildFileMentionBlock,
 	buildIrcMessageCard,
+	ledgerMarkerLine,
 	normalizeToolArgs,
 	resolveAssistantErrorPresentation,
 	splitAssistantMessageToolTimeline,
@@ -284,6 +285,13 @@ export class UiHelpers {
 			case "developer": {
 				const textContent = this.ctx.getUserMessageText(message);
 				if (textContent) {
+					// A turn-level batch ledger is a standing instruction to the
+					// model, not operator prose: collapse it to a one-line marker.
+					const ledgerMarker = ledgerMarkerLine(textContent);
+					if (ledgerMarker !== null) {
+						this.ctx.chatContainer.addChild(new Text(ledgerMarker, 0, 0));
+						break;
+					}
 					const isSynthetic = message.role === "developer" ? true : (message.synthetic ?? false);
 					const imageLinks =
 						options?.imageLinks ??

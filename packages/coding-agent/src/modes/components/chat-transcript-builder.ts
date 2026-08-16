@@ -13,7 +13,7 @@
  */
 import type { AgentMessage, AgentTool } from "@veyyon/agent-core";
 import type { Usage } from "@veyyon/ai";
-import type { TUI } from "@veyyon/tui";
+import { Text, type TUI } from "@veyyon/tui";
 import type { AdvisorMessageDetails } from "../../advisor";
 import { COLLAB_PROMPT_MESSAGE_TYPE, type CollabPromptDetails } from "../../collab/protocol";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
@@ -34,6 +34,7 @@ import {
 	buildAsyncResultBlock,
 	buildFileMentionBlock,
 	buildIrcMessageCard,
+	ledgerMarkerLine,
 	normalizeToolArgs,
 	resolveAssistantErrorPresentation,
 	splitAssistantMessageToolTimeline,
@@ -225,6 +226,13 @@ export class ChatTranscriptBuilder {
 				if (message.role === "user") this.#resolveTodoSnapshot();
 				const textContent = message.role === "user" ? userMessageText(message) : "";
 				if (textContent) {
+					// A turn-level batch ledger is a standing instruction to the
+					// model, not operator prose: collapse it to a one-line marker.
+					const ledgerMarker = ledgerMarkerLine(textContent);
+					if (ledgerMarker !== null) {
+						this.container.addChild(new Text(ledgerMarker, 0, 0));
+						break;
+					}
 					const isSynthetic = message.role === "developer" ? true : (message.synthetic ?? false);
 					this.container.addChild(new UserMessageComponent(textContent, isSynthetic));
 				}
