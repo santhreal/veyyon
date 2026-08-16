@@ -6,7 +6,7 @@
  * auth badges, or clear/unset.
  */
 import type { Model } from "@veyyon/ai";
-import { type Component, Container, matchesKey, Spacer, Text, truncateToWidth } from "@veyyon/tui";
+import { type Component, Container, matchesKey, type SgrMouseEvent, Spacer, Text, truncateToWidth } from "@veyyon/tui";
 import type { ModelRegistry } from "../../config/model-registry";
 import type { Settings } from "../../config/settings";
 import { theme } from "../theme/theme";
@@ -18,6 +18,7 @@ import {
 	type ModelBrowserItem,
 	sortModelItems,
 } from "./model-browser";
+import { renderTrackingChild } from "./select-list-mouse-routing";
 
 /** Auth posture shown next to a model id in the selector. */
 export type ModelAuthStatus = "authenticated" | "unauthenticated" | "keyless";
@@ -201,11 +202,22 @@ export class ModelSelectorPanel extends Container {
 		this.#browser.handleInput(data);
 	}
 
+	#browserLineOffset = 0;
+
 	render(width: number): string[] {
-		const lines = [...super.render(width)];
+		// Track where the browser lands so routed mouse events can be
+		// hit-tested against it; the plain concatenation this replaces was
+		// super.render(), which cannot report the offset.
+		const { lines, trackedLineOffset } = renderTrackingChild(this, this.#browser as unknown as Component, width);
+		this.#browserLineOffset = trackedLineOffset;
 		if (lines.length > 0) {
 			lines[lines.length - 1] = truncateToWidth(lines[lines.length - 1] ?? "", width);
 		}
 		return lines;
+	}
+
+	/** Mouse routed from the host: forwarded to the browser at its own offset (wheel pans, hover lights, click selects then activates). */
+	routeMouse(event: SgrMouseEvent, line: number): void {
+		this.#browser.routeMouse(event, line - this.#browserLineOffset);
 	}
 }

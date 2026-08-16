@@ -99,6 +99,7 @@ import {
 	applyModalReveal,
 	CARD_BODY_COL_INSET,
 	computeModalDims,
+	consumeModalChipHover,
 	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
 	MODAL_SIZING_MEDIUM,
@@ -495,11 +496,12 @@ class AgentTerminationDialog implements Component {
 					motion: event.motion,
 					leftClick: event.leftClick,
 				});
-				if (chrome.kind === "hover-shortcut") {
-					if (this.#hoveredShortcutId !== chrome.id) {
-						this.#hoveredShortcutId = chrome.id;
+				if (
+					consumeModalChipHover(chrome, this.#hoveredShortcutId, id => {
+						this.#hoveredShortcutId = id;
 						this.onRequestRender?.();
-					}
+					})
+				) {
 					return true;
 				}
 				if (
@@ -1744,11 +1746,12 @@ export class AgentDashboard extends Container {
 				const hoveredIndex = overRosterColumns ? this.#rosterIndexAt(event.row) : -1;
 				this.#setHoveredRosterIndex(hoveredIndex);
 			}
-			if (chrome.kind === "hover-shortcut") {
-				if (this.#hoveredShortcutId !== chrome.id) {
-					this.#hoveredShortcutId = chrome.id;
+			if (
+				consumeModalChipHover(chrome, this.#hoveredShortcutId, id => {
+					this.#hoveredShortcutId = id;
 					this.onRequestRender?.();
-				}
+				})
+			) {
 				return true;
 			}
 			if (

@@ -20,6 +20,7 @@ import { theme } from "../theme/theme";
 import {
 	applyModalReveal,
 	computeModalDims,
+	consumeModalChipHover,
 	hitTestModalChrome,
 	MODAL_SIZING_MEDIUM,
 	ModalRevealDriver,
@@ -216,11 +217,12 @@ export class ModelPickerComponent implements Component {
 			motion: event.motion,
 			leftClick: event.leftClick,
 		});
-		if (chrome.kind === "hover-shortcut") {
-			if (this.#hoveredShortcutId !== chrome.id) {
-				this.#hoveredShortcutId = chrome.id;
+		if (
+			consumeModalChipHover(chrome, this.#hoveredShortcutId, id => {
+				this.#hoveredShortcutId = id;
 				this.#tui.requestRender();
-			}
+			})
+		) {
 			return true;
 		}
 		if (chrome.kind === "close" || chrome.kind === "outside") {
