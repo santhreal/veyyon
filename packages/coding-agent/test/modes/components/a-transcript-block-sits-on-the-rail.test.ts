@@ -9,24 +9,34 @@
  * `composer-chrome.ts`). The execution blocks had already settled this — see
  * `buildExecutionFrame` — so these two were the surviving exceptions.
  *
- * The class this closes is "a transcript block that invents its own geometry":
- * the assertions run over EVERY state each panel can paint, driven through the
+ * The class this closes is "a block that invents its own geometry": the
+ * assertions run over EVERY state each panel can paint, driven through the
  * panel's own public methods, and they read the painted rows rather than the
  * child list, so a future block that reintroduces a rule or an inset of its own
  * fails here whichever way it builds it. The state maps are keyed by the
  * exported state unions, so adding a state without deciding what it paints does
- * not type check.
+ * not type check. The two composer-zone members are here for the same reason —
+ * the pinned error banner and the loader that takes the composer's place both
+ * drew the same pair of rules, in a zone whose rule is that it has no box.
+ *
+ * The component that drew every one of those rules is deleted, so the closure
+ * is structural as well: there is no full-width rule component left to reach
+ * for.
  *
  * What it does not catch: a NEW transcript component that never routes through
  * `mountTranscriptBlock` is not enumerable from source (a transcript child is
- * any `Component`), so it is not swept here. It also says nothing about colour:
- * the rail is geometry, and the tone of a header is a theme question proven by
- * the render-proof images.
+ * any `Component`), so it is not swept here. The debug protocol probe is not
+ * driven either — it needs an image budget and a decoded PNG, and its geometry
+ * is the same two calls the others make. It also says nothing about colour: the
+ * rail is geometry, and the tone of a header is a theme question proven by the
+ * render-proof images.
  */
 import { beforeAll, describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { BtwPanelComponent, type BtwPanelState } from "@veyyon/coding-agent/modes/components/btw-panel";
 import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/components/composer-chrome";
+import { ComposerLoader } from "@veyyon/coding-agent/modes/components/composer-loader";
+import { ErrorBannerComponent } from "@veyyon/coding-agent/modes/components/error-banner";
 import { OmfgPanelComponent, type OmfgPanelState } from "@veyyon/coding-agent/modes/components/omfg-panel";
 import {
 	mountTranscriptBlock,
@@ -34,7 +44,7 @@ import {
 } from "@veyyon/coding-agent/modes/components/transcript-block-chrome";
 import { TranscriptBlock } from "@veyyon/coding-agent/modes/components/transcript-container";
 import { showCommandMessage } from "@veyyon/coding-agent/modes/controllers/command-controller-shared";
-import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { Component, TUI } from "@veyyon/tui";
 
 const WIDTH = 100;
@@ -167,5 +177,24 @@ describe("a transcript block sits on the rail", () => {
 		const bare = new TranscriptBlock();
 		mountTranscriptBlock(bare, { body: transcriptBlockText("body") });
 		expect(paintedRows(bare).map(row => row.trimEnd())).toEqual(["  body"]);
+	});
+
+	it("pins the error banner to the rail, with no rule", () => {
+		const banner = new ErrorBannerComponent("Output blocked by content filtering policy");
+		const rows = paintedRows(banner);
+		assertOnTheRail(rows, "error-banner");
+		assertNoFullWidthRule(rows, "error-banner");
+		expect(rows.filter(row => row.trim() !== "").length).toBe(2);
+	});
+
+	it("puts the composer loader's hint on the rail, with no rule", () => {
+		const loader = new ComposerLoader(stubUi(), theme, "Sharing session...");
+		try {
+			const rows = paintedRows(loader);
+			assertNoFullWidthRule(rows, "composer-loader");
+			expect(rows.at(-1)?.trimEnd()).toBe(`${" ".repeat(COMPOSER_INSET_COLS)}esc cancel`);
+		} finally {
+			loader.dispose();
+		}
 	});
 });

@@ -31,9 +31,9 @@ import {
 } from "../../hindsight";
 import { buildMemoryPayloadForDisplay, resolveMemoryBackend } from "../../memory-backend";
 import { BashExecutionComponent } from "../../modes/components/bash-execution";
-import { BorderedLoader } from "../../modes/components/bordered-loader";
 import { compactionActionLabel, willCompactRemotely } from "../../modes/components/compaction-summary-message";
 import { COMPOSER_INSET_COLS } from "../../modes/components/composer-chrome";
+import { ComposerLoader } from "../../modes/components/composer-loader";
 import { EvalExecutionComponent } from "../../modes/components/eval-execution";
 import { modalRevealEnabled } from "../../modes/components/modal-shell";
 import { MoveOverlay, type MoveOverlayResult } from "../../modes/components/move-overlay";
@@ -200,7 +200,7 @@ export class CommandController {
 			return;
 		}
 
-		const loader = new BorderedLoader(this.ctx.ui, theme, "Sharing session...");
+		const loader = new ComposerLoader(this.ctx.ui, theme, "Sharing session...");
 		this.ctx.editorContainer.clear();
 		this.ctx.editorContainer.addChild(loader);
 		this.ctx.ui.setFocus(loader);

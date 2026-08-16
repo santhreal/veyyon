@@ -15,7 +15,7 @@
 import { serializeConversation } from "@veyyon/agent-core";
 import { type Context, complete, type Message } from "@veyyon/ai";
 import type { HookAPI, SessionEntry } from "@veyyon/coding-agent";
-import { BorderedLoader, convertToLlm } from "@veyyon/coding-agent";
+import { ComposerLoader, convertToLlm } from "@veyyon/coding-agent";
 import { mapJsonStrings } from "@veyyon/coding-agent/secrets/obfuscator";
 
 const SYSTEM_PROMPT = `You are a context transfer assistant. Given a conversation history and the user's goal for a new thread, generate a focused prompt that:
@@ -77,7 +77,7 @@ export default function (pi: HookAPI) {
 
 			// Generate the handoff prompt with loader UI
 			const result = await ctx.ui.custom<string | null>((tui, theme, done) => {
-				const loader = new BorderedLoader(tui, theme, `Generating handoff prompt...`);
+				const loader = new ComposerLoader(tui, theme, `Generating handoff prompt...`);
 				loader.onAbort = () => done(null);
 
 				const doGenerate = async () => {

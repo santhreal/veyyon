@@ -2,13 +2,12 @@
 
 export * from "./assistant-message";
 export * from "./bash-execution";
-export * from "./bordered-loader";
 export * from "./compaction-summary-message";
+export * from "./composer-loader";
 export * from "./countdown-timer";
 export * from "./custom-editor";
 export * from "./custom-message";
 export * from "./diff";
-export * from "./dynamic-border";
 export * from "./hook-editor";
 export * from "./hook-input";
 export * from "./hook-message";
@@ -32,6 +31,7 @@ export * from "./thinking-selector";
 export * from "./tiny-title-download-progress";
 export * from "./todo-reminder";
 export * from "./tool-execution";
+export * from "./transcript-block-chrome";
 export * from "./tree-selector";
 export * from "./ttsr-notification";
 export * from "./user-message";
