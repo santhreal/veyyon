@@ -26,7 +26,7 @@ import {
 	visibleWidth,
 } from "@veyyon/tui";
 import { transitionsEnabled } from "../theme/shimmer";
-import { theme } from "../theme/theme";
+import { theme, visibleGroundHex } from "../theme/theme";
 import { actionKeyHint } from "../utils/key-hint";
 import { emberTick } from "./composer-chrome";
 import { bottomBorder, divider, fit, row, topBorder } from "./overlay-box";
@@ -1008,10 +1008,12 @@ export function modalRevealEnabled(): boolean {
 /**
  * The color a card resolves out of while it unfolds. One owner, in the theme:
  * the pointer band fades out of the same ground, and two policies for "what is
- * behind this row" drift into two different washes on the same screen.
+ * behind this row" drift into two different washes on the same screen. That
+ * ground is the one on SCREEN, not the one the theme declares — see
+ * {@link visibleGroundHex}.
  */
 export function modalRevealGround(): string {
-	return theme.getResolvedGroundHex();
+	return visibleGroundHex();
 }
 
 /**

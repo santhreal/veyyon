@@ -18,8 +18,13 @@
  * exact pre-detection rendering, never a wrong guess at the ground.
  */
 
+import type { PaintGroundPlan } from "@veyyon/tui";
+
 /** Currently detected terminal background (`#rrggbb`), if any. */
 let detectedGround: string | undefined;
+
+/** The ground this process painted onto the terminal (`#rrggbb`), if any. */
+let paintedGround: string | undefined;
 
 /** Change listeners (the TUI re-render hook). */
 const listeners: Array<() => void> = [];
@@ -39,14 +44,59 @@ export function getDetectedTerminalGround(): string | undefined {
 	return detectedGround;
 }
 
+/**
+ * Record the ground the app painted onto the terminal (OSC 11), or `undefined`
+ * when it painted none. The paint policy (`tui.paintGround`) decides this, and a
+ * theme's declared ground is NOT it: `auto` refuses to paint a ground far from
+ * the terminal's own, so a theme declaring black on a grey terminal leaves grey
+ * on screen. Anything mixing a color out of "what is behind this row" needs the
+ * color that is actually behind it.
+ */
+export function setPaintedGround(hex: string | undefined): void {
+	const normalized = hex !== undefined && HEX_RE.test(hex) ? hex.toLowerCase() : undefined;
+	if (normalized === paintedGround) return;
+	paintedGround = normalized;
+	for (const listener of listeners) listener();
+}
+
+/**
+ * The ground a row VISIBLY sits on: the ground this process painted, else the
+ * one the terminal reported, else undefined when neither is known.
+ */
+export function getVisibleGround(): string | undefined {
+	return paintedGround ?? detectedGround;
+}
+
+/** The two terminal calls a ground paint needs; both optional on the Terminal interface. */
+interface GroundPaintTarget {
+	setBackgroundColor?(hex: string): void;
+	resetBackgroundColor?(): void;
+}
+
+/**
+ * Carry out a paint decision: set (or clear) the terminal background, and record
+ * the ground that leaves on screen.
+ *
+ * One function because the two halves cannot be allowed to disagree. Painting
+ * without recording is the defect this closes — the policy declined to paint
+ * titanium's black onto a grey terminal, nothing told the animations, and every
+ * fade went on mixing out of a black that was not there.
+ */
+export function applyGroundPaint(plan: PaintGroundPlan, terminal: GroundPaintTarget): void {
+	if (plan.paint !== null) terminal.setBackgroundColor?.(plan.paint);
+	else terminal.resetBackgroundColor?.();
+	setPaintedGround(plan.paint ?? undefined);
+}
+
 /** Subscribe to ground changes (used to request a repaint). */
 export function onGroundTintChange(listener: () => void): void {
 	listeners.push(listener);
 }
 
-/** Test hook: drop all listeners and the detected ground. */
+/** Test hook: drop all listeners, the detected ground, and the painted one. */
 export function resetGroundTintsForTest(): void {
 	detectedGround = undefined;
+	paintedGround = undefined;
 	listeners.length = 0;
 }
 
