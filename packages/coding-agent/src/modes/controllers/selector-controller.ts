@@ -249,12 +249,18 @@ export class SelectorController {
 			// enables mouse tracking (click/hover/wheel) for its lifetime and
 			// the transcript stays untouched underneath.
 			let overlayHandle: OverlayHandle | undefined;
+			// Declared before `done` closes over it: the card is constructed with
+			// callbacks that can reach `done`, so a `const` below this point would
+			// be a temporal-dead-zone throw on a close that races construction.
+			let selector: SettingsSelectorComponent | undefined;
 			const done = () => {
 				overlayHandle?.hide();
+				// Everything the card registered with the shared clock goes with it.
+				selector?.dispose();
 				this.focusActiveEditorArea();
 				this.ctx.ui.requestRender();
 			};
-			const selector = new SettingsSelectorComponent(
+			selector = new SettingsSelectorComponent(
 				{
 					availableThinkingLevels: [...this.ctx.session.getAvailableThinkingLevels()],
 					thinkingLevel: this.ctx.session.thinkingLevel,

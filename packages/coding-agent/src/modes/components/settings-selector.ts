@@ -2906,6 +2906,13 @@ export class SettingsSelectorComponent implements Component {
 		// "(tab to cycle)" hint (folded into the footer hint line).
 		this.#tabBar = new TabBar("", getSettingsTabs(), getTabBarTheme());
 		this.#tabBar.showHint = false;
+		// The category sidebar is a pointer surface like the pane beside it, and
+		// the two are two columns apart in the same card: a band that fades in one
+		// and switches in the other reads as a rendering fault.
+		this.#tabBar.setHoverMotion({
+			requestRender: () => this.context.requestRender?.(),
+			enabled: modalRevealEnabled(),
+		});
 		this.#tabBar.onTabChange = () => {
 			const tabId = this.#tabBar.getActiveTab().id as SettingTab | "plugins";
 			if (this.#searchList) {
@@ -2920,6 +2927,18 @@ export class SettingsSelectorComponent implements Component {
 		// Initialize with first tab
 		this.#switchToTab("appearance");
 		if (initialItemId) this.#currentList?.selectItem(initialItemId);
+	}
+
+	/**
+	 * Drop everything registered with the shared clock. The host calls this when
+	 * the card is gone for good; a card nobody can see must not keep asking for
+	 * frames.
+	 */
+	dispose(): void {
+		this.#reveal.stop();
+		this.#tabBar.disposeHoverMotion();
+		this.#currentList?.disposeHoverMotion();
+		this.#searchList?.disposeHoverMotion();
 	}
 
 	/** The currently selected setting's path, or undefined (e.g. on a heading or empty tab). Test/debug hook. */
