@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- `compactWithProvider` forwards the live session identity (`sessionId`, provider session state, and the codex compaction context, tagged `responses_compact`) to the transport, which is what a host keying request identity to the conversation needs. Server-side compaction now runs for a ChatGPT OAuth (codex) session, where it previously could not resolve a transport at all and every compaction fell through to a local summary.
+
 ## [16.5.2] - 2026-07-14
 
 ### Fixed
