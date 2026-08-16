@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- A left click on a composer autocomplete suggestion accepts it, through the same apply path as Tab. Container routes a pointer event to the child under the pointed row, so a click reaches a component mounted inside the pinned footer.
+
 ### Fixed
 
 - Kept the transcript on screen when a virtualized root compacts its committed rows. A root can now report the rows it dropped, and the engine slides its commit index onto the new frame instead of reading the shift as a committed-prefix divergence, erasing native scrollback and replaying a frame the component had already emptied. A root that drops rows without reporting them is rehydrated before any destructive replay, so it costs an extra full repaint rather than the history.
