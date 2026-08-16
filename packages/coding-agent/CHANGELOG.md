@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- `compaction.modelFallbackStrategy: any-model` no longer stakes the session on the single widest-window model. The tier now walks every authenticated candidate widest-first, so a dead credential on the widest row falls through to the next usable one instead of failing compaction under the strategy that exists to never fail. Three tests that hard-coded bundled model ids (`google-antigravity/gemini-3-pro`) were decoupled from the bundle so a catalog regeneration no longer breaks them, and the subagent settings migration sweep classifies `subagent.modelByDepth`.
+
 ### Added
 
 - Subagent models can be pinned per spawn depth with `subagent.modelByDepth`, a record of depth to model chain: `"1"` decides what direct children run, `"2"` what grandchildren run, and so on, each value in the same string-or-list chain shape as `subagent.model`. A row outranks `subagent.model` for a spawn at exactly that depth; depths without a row resolve as before (`subagent.model`, then the agent definition's `model:`, then the session's live model), and a row whose chain matches no available model refuses the spawn and names `subagent.modelByDepth.<n>` instead of falling through. Keys that are not positive integers are reported by settings validation at load, naming the entry. Settings → Subagents → Models gains a "Models by Depth" row that edits each depth with the same chain picker as Subagent Model.
