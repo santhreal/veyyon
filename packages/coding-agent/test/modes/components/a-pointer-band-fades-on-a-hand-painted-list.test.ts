@@ -1,15 +1,16 @@
 // WHY THIS SUITE EXISTS (A-HAND-PAINTED-LIST-STROBES-WHILE-THE-SHARED-ONE-FADES).
 //
 // The pointer band learned to fade, and it learned it inside `SelectList` — the tui list every
-// picker built out of a `SelectList` inherits it for free. Five pickers are not built that way.
-// `/resume`, `/tree`, the branch-from-message card, `/history` and the extension ask dialog paint
-// their own rows, hold their own hovered index, and called `selectionBand` the frame a motion
-// report arrived. So half the product cross-faded and half of it strobed, at whatever rate the
-// terminal coalesces motion reports, and which half you got depended on which card you opened.
-// (The ask dialog was found last, by walking the table below and asking which surface hit-tests
-// its own rows and is missing from it. That question is the cheapest way to find the next one.)
+// picker built out of a `SelectList` inherits it for free. Six pickers are not built that way.
+// `/resume`, `/tree`, the branch-from-message card, `/history`, the extension ask dialog and the
+// copy picker paint their own rows, hold their own hovered index, and called `selectionBand` the
+// frame a motion report arrived. So half the product cross-faded and half of it strobed, at
+// whatever rate the terminal coalesces motion reports, and which half you got depended on which
+// card you opened. (The ask dialog and the copy picker were found by walking the table below and
+// asking which surface hit-tests its own rows and is missing from it. That question is the
+// cheapest way to find the next one, and it has now found two.)
 //
-// This suite pins the contract each of those five now owes, and it pins it at both ends:
+// This suite pins the contract each of those six now owes, and it pins it at both ends:
 //
 //   1. The band ARRIVES. The frame the report lands on paints no band at all, and the strength
 //      climbs from there. A list that switches the band on is the defect this closes.
@@ -28,8 +29,8 @@
 //      disposed card forgets the pointer instead of leaving a band and a live animation behind.
 //
 // The panes are enumerated by hand because each has its own constructor surface (a session list, a
-// message tree, a branch list, a SQLite-backed history search, an extension question) and no
-// runtime registry names them. WHAT THIS DOES NOT CATCH: a SIXTH hand-painted list added later,
+// message tree, a branch list, a SQLite-backed history search, an extension question, a copy tree)
+// and no runtime registry names them. WHAT THIS DOES NOT CATCH: a SEVENTH hand-painted list added later,
 // which inherits nothing and would sit outside this table. The shared helper case below is the
 // fence that makes such a list cheap to bring in — `hoverBandAt` is the only way to paint a fading
 // band, and its full strength is asserted to be `selectionBand` itself, so adopting it can never
@@ -44,6 +45,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import type { AgentMessage } from "@veyyon/agent-core";
 import { AskDialogComponent } from "@veyyon/coding-agent/modes/components/ask-dialog";
+import { CopySelectorComponent } from "@veyyon/coding-agent/modes/components/copy-selector";
 import { HistorySearchComponent } from "@veyyon/coding-agent/modes/components/history-search";
 import { modalRevealGround } from "@veyyon/coding-agent/modes/components/modal-shell";
 import { hoverBandAt, selectionBand } from "@veyyon/coding-agent/modes/components/selector-helpers";
@@ -269,6 +271,21 @@ const PANES: readonly PaneCase[] = [
 		first: "the postgres backend",
 		second: "the memory backend",
 		selected: "the sqlite backend",
+	},
+	{
+		name: "the copy picker",
+		make: () =>
+			new CopySelectorComponent(
+				[
+					{ id: "c1", label: "the first reply", preview: "one", content: "one" },
+					{ id: "c2", label: "the second reply", preview: "two", content: "two" },
+					{ id: "c3", label: "the third reply", preview: "three", content: "three" },
+				],
+				{ onPick: () => {}, onCancel: () => {} },
+			),
+		first: "the second reply",
+		second: "the third reply",
+		selected: "the first reply",
 	},
 ];
 
