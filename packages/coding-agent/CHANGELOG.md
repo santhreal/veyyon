@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- The composer chips (`interrupt`, `background`, `dequeue`) are click targets. A left click on a chip runs the same action its keybinding runs. Hover paint stays off: the main session holds press/release tracking only, so drag-select in the terminal keeps working.
+
 ### Removed
 
 - `PluginSelectorComponent` is deleted. Marketplace plugins were removed earlier and its one entry point has been a stub that says so ever since, leaving the component with no callers, no tests, and a DynamicBorder chrome nobody can reach.

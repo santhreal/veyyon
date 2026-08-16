@@ -1,99 +1,124 @@
-/**
- * Contextual shortcut chip band under the composer (Grok ShortcutsBar dialect).
- * Same chip renderer as ModalShell footers — one grammar for overlays and session.
- */
-import type { Component } from "@veyyon/tui";
+import type { Component, MouseRoutable, SgrMouseEvent } from "@veyyon/tui";
 import type { KeybindingsManager } from "../../config/keybindings";
 import { COMPOSER_INSET_COLS } from "./composer-chrome";
 import { appKey } from "./keybinding-hints";
-import { layoutShortcutRows, type ModalShortcut } from "./modal-shell";
+import { layoutShortcutRows, type ModalShortcut, type ShortcutHitRect } from "./modal-shell";
 
-export type ComposerContext = {
-	/** Agent is streaming / tools running. */
+export interface ComposerShortcutContext {
+	/** Session is streaming/executing (turn in flight). */
 	busy: boolean;
-	/** Composer draft is non-empty. */
+	/** Editor has a non-empty draft. */
 	hasDraft: boolean;
-	/** Queue has pending messages. */
+	/** Queue holds steered/follow-up messages. */
 	hasQueue: boolean;
-	/**
-	 * A foreground bash command is waiting and can be moved to the background
-	 * right now. Read from the bash foreground registry, never inferred from
-	 * `busy`: the agent is busy for every tool call, and advertising a key that
-	 * would fall through to its other meaning is worse than no hint at all.
-	 */
-	canBackgroundBash: boolean;
-	/**
-	 * The view is proxied onto a subagent's session.
-	 *
-	 * Both the interrupt and the dequeue chip name keys that do NOT do what the
-	 * chip says from inside an agent's view: `esc` returns to the main session
-	 * rather than interrupting (InputController: "Esc never interrupts the
-	 * focused agent's turn"), and the dequeue key drains the DRIVING session's
-	 * queue, invisibly, into the editor the agent is looking at. Both are
-	 * suppressed there. The footline's focus badge already names the one thing
-	 * `esc` does in that view, so nothing replaces them.
-	 */
+	/** Focused session is a subagent (Esc returns instead of interrupting). */
 	focused: boolean;
-};
+	/** A foreground bash command is waiting (Ctrl+B moves it to background). */
+	canBackgroundBash: boolean;
+}
 
 /**
- * Build contextual chips for the idle/busy composer. Always includes a quiet
- * baseline; busy mode swaps send for interrupt.
+ * Build the composer chip strip: a single row of actionable context hints
+ * rendered between the footline and the input card.
+ *
+ * Design contract (docs/ui/composer-design.md):
+ * - Exactly one row in every state: busy, draft, queue, or any mix.
+ * - Hints are imperative verbs ("cancel queue", "interrupt"), never key
+ *   lists; the key prefix is dimmed and shortened (Ctrl → ^).
+ * - Order is stable: interrupt first, then background (escalation reads
+ *   left-to-right), then dequeue.
+ * - Empty state (idle, no draft, no queue) renders nothing.
  */
-export function buildComposerShortcuts(keybindings: KeybindingsManager, ctx: ComposerContext): ModalShortcut[] {
-	// A quiet composer: no chrome when idle. `enter` to send, `/` for commands
-	// and `alt+m` for the model are self-evident and discoverable in `/help` —
-	// crowding the prompt with them is exactly the pre-rebrand clutter we removed.
-	// Chips appear only when there is a live action to surface: an interrupt
-	// while the agent is streaming, or a queued message to dequeue.
+export function buildComposerShortcuts(
+	keybindings: KeybindingsManager,
+	ctx: ComposerShortcutContext,
+): ModalShortcut[] {
 	const chips: ModalShortcut[] = [];
+
 	if (ctx.busy && !ctx.focused) {
-		chips.push({ label: `${appKey(keybindings, "app.interrupt")} interrupt` });
+		chips.push({ label: `${appKey(keybindings, "app.interrupt")} interrupt`, clickable: true, id: "interrupt" });
 	}
 	if (ctx.canBackgroundBash) {
 		// Ordered after interrupt deliberately. Both appear while a command runs,
-		// and interrupt is the destructive one: it stays in the same position it
-		// occupies when a command is not backgroundable, so muscle memory built on
+		// and the footline reads left-to-right as escalation: background the
+		// command if it is healthy, interrupt it if it is not. Keeping background
+		// second also keeps the chip order stable when a command starts mid-turn —
 		// a plain streaming turn does not land on a different chip here.
-		chips.push({ label: `${appKey(keybindings, "app.bash.background")} background` });
+		chips.push({
+			label: `${appKey(keybindings, "app.bash.background")} background`,
+			clickable: true,
+			id: "background",
+		});
 	}
 	if (ctx.hasQueue && !ctx.focused) {
-		chips.push({ label: `${appKey(keybindings, "app.message.dequeue")} dequeue` });
+		// The queue hint is the most actionable — the operator usually wants to
+		// either drain it (if the draft was wrong) or add to it.
+		chips.push({
+			label: `${appKey(keybindings, "app.message.dequeue")} dequeue`,
+			clickable: true,
+			id: "dequeue",
+		});
 	}
+
 	return chips;
 }
 
 /**
- * Contextual chip band under the composer, left-aligned at the composer rail so
- * it sits under the footline's location group on one shared axis. Fixed height:
- * exactly one row in every state, chips or blank. A 0/1-row band changes the
- * composer zone's height on every busy flip, jerking the whole footer up and
- * down mid-conversation; the zone reserves this row whether or not there is a
- * live action to surface.
+ * Composer chip strip. Fixed height (one row), rendered inside the composer
+ * zone between the footline and the input card.
  *
- * It carries the composer's own actions and NOTHING else. This row used to be
- * taken over by the scroll indicator while the transcript was frozen, which
- * meant scrolling up mid-run silently removed the `esc interrupt` chip — the one
- * action you are most likely to want while reading a run back. Scroll position
- * is the scrolled region's business and the engine draws it there, on the right
- * edge (`TUI` scroll track), so the composer zone renders byte-identically
- * whether the view is frozen or following.
+ * The zone owns the full terminal width; the bar renders its chips in the
+ * content inset (COMPOSER_INSET_COLS) so chips align with the input card's
+ * text column.
+ *
+ * Chips are click targets (MouseRoutable): the pinned-footer mouse route in
+ * the TUI delivers clicks here in frame-local coordinates, and the host maps
+ * a chip id to the same action its keybinding runs. Hover paint stays off —
+ * the main session holds press/release tracking only (any-motion stays with
+ * the terminal so drag-select keeps working), so no motion events ever arrive.
  */
-export class ComposerShortcutsBar implements Component {
+export class ComposerShortcutsBar implements Component, MouseRoutable {
 	#shortcuts: readonly ModalShortcut[] = [];
+	#hits: ShortcutHitRect[] = [];
+
+	/** Host maps a clicked chip id to the action its keybinding runs. */
+	onChipClick?: (id: string) => void;
 
 	setShortcuts(shortcuts: readonly ModalShortcut[]): void {
 		this.#shortcuts = shortcuts;
 	}
 
-	invalidate(): void {}
+	invalidate(): void {
+		// Stateless; nothing to invalidate.
+	}
 
 	render(width: number): string[] {
+		this.#hits = [];
+		// Fixed height: one row in every state, blank when idle, so the footer
+		// never jumps when a turn starts or the queue drains.
+		if (this.#shortcuts.length === 0) return [""];
+		const maxWidth = Math.max(0, width - COMPOSER_INSET_COLS);
+		const rows = layoutShortcutRows(this.#shortcuts, maxWidth);
+		if (rows.length === 0) return [""];
+		// One row in every state: on a narrow terminal the layout would wrap to
+		// two, so keep the first row and drop the rest rather than grow the band.
+		const first = rows[0]!;
+		for (const chip of first.chips) {
+			if (!chip.clickable || !chip.id) continue;
+			this.#hits.push({
+				id: chip.id,
+				row: 0,
+				colStart: COMPOSER_INSET_COLS + chip.offset,
+				colEnd: COMPOSER_INSET_COLS + chip.offset + chip.width,
+			});
+		}
 		const inset = " ".repeat(COMPOSER_INSET_COLS);
-		if (this.#shortcuts.length === 0 || width < 20) return [""];
-		// renderModalShortcuts centers within the given width; the band aligns
-		// at the rail instead, so use the raw layout rows.
-		const rows = layoutShortcutRows(this.#shortcuts, Math.max(1, width - COMPOSER_INSET_COLS));
-		return rows.map(({ styled }) => inset + styled);
+		return [inset + first.styled];
+	}
+
+	routeMouse(event: SgrMouseEvent, line: number, col: number): void {
+		if (!event.leftClick) return;
+		const hit = this.#hits.find(h => h.row === line && col >= h.colStart && col < h.colEnd);
+		if (hit) this.onChipClick?.(hit.id);
 	}
 }

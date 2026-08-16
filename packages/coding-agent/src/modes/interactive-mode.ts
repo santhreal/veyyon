@@ -894,6 +894,14 @@ export class InteractiveMode implements InteractiveModeContext {
 		// controller. Everything else it needs from the host is read lazily.
 		this.#focusController = new SessionFocusController(this);
 		this.composerShortcuts = new ComposerShortcutsBar();
+		// A chip click runs the same action its keybinding runs; the editor owns
+		// those callbacks (input-controller assigns them with the full panel,
+		// maintenance, and focus logic), so the click just invokes them.
+		this.composerShortcuts.onChipClick = id => {
+			if (id === "interrupt") this.editor.onEscape?.();
+			else if (id === "background") this.editor.onBashBackground?.();
+			else if (id === "dequeue") this.editor.onDequeue?.();
+		};
 		this.#refreshComposerShortcuts();
 		this.#bashForegroundUnsubscribe = onForegroundBashWaitChange(() => this.#refreshComposerShortcuts());
 		this.statusLine = new StatusLineComponent(session);
