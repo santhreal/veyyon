@@ -21,6 +21,7 @@
 
 import { beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
+import { getBundledModel } from "@veyyon/catalog/models";
 import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { settings } from "@veyyon/coding-agent/config/settings";
 import { SETTING_TABS, TAB_GROUPS } from "@veyyon/coding-agent/config/settings-schema";
@@ -169,7 +170,11 @@ describe("subagent.agents settings surface", () => {
 				providers: [],
 				cwd: process.cwd(),
 				modelRegistry: {} as ModelRegistry,
-				availableModels: [],
+				// A real catalog, because the blanket Effort row offers the union of what the models in
+				// this session declare and nothing else. With an empty list there is no level to pick,
+				// which is correct behaviour and a useless fixture. `gpt-5` declares
+				// `minimal, low, medium, high`, which is what these cases choose from.
+				availableModels: [getBundledModel("azure", "gpt-5")],
 				requestRender: () => rendered.resolve(),
 			},
 			{ onChange: path => changed.push(path), onCancel: () => {} },
@@ -182,13 +187,16 @@ describe("subagent.agents settings surface", () => {
 			rendered = Promise.withResolvers<void>();
 		}
 
-		// Reach the rows by name rather than by a press count. The roster is alphabetical,
-		// so renaming any agent reorders it, and a fixed number of Down presses silently
-		// configured whichever agent happened to sort first instead of the one with the
-		// persisted override.
+		// Reach the rows by LABEL rather than by a press count or a substring. The roster is
+		// alphabetical, so renaming any agent reorders it and a fixed number of Down presses
+		// configures whichever agent happens to sort first. The label rather than the whole line,
+		// because a description names other rows: the `auto` row describes itself as "Choose per
+		// prompt from minimal, low, medium, high", so a search for `minimal` landed on `auto` and
+		// stored the wrong level while reporting success.
+		const labelOf = (line: string): string => line.replace(/^[\s›]*/, "").split(/\s{2,}/)[0]?.trim() ?? "";
 		const selectRow = (needle: string): void => {
 			for (let step = 0; step < 32; step++) {
-				const line = paneLines(component).find(candidate => candidate.includes(needle));
+				const line = paneLines(component).find(candidate => labelOf(candidate) === needle);
 				if (line?.includes("›")) return;
 				component.handleInput("\u001b[B");
 			}
@@ -310,8 +318,7 @@ describe("subagent.agents settings surface", () => {
 
 		selectRow("Effort");
 		component.handleInput("\n");
-		// The row's own description, because the picker's blurb also says "Inherit".
-		selectRow("Follow the session's effort");
+		selectRow("Inherit");
 		component.handleInput("\n");
 
 		expect(settings.get("subagent.thinkingLevel")).toBeUndefined();

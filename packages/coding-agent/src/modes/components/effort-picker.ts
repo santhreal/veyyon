@@ -14,10 +14,18 @@ import { getSelectListTheme, theme } from "../theme/theme";
 /** The label the suffix-free base row carries here: this picker sits under a model. */
 const MODEL_DEFAULT_LABEL = "Model default";
 
-/** Valid effort rows for the selected model, with the suffix-free base first. */
-export function effortStepItems(model?: Model): SelectItem[] {
+/**
+ * Valid effort rows for the selected model, with the suffix-free base first.
+ *
+ * `scope` is for the one row that has no model and never will — Default Effort's
+ * any-model `*` row. It offers the union of what the session's catalog declares
+ * rather than the whole vocabulary, so a level nothing here accepts is never a
+ * row. With neither a model nor a scope only the base row remains.
+ */
+export function effortStepItems(model?: Model, scope?: ReadonlyArray<Model>): SelectItem[] {
 	return configuredThinkingLevelOptions({
 		model,
+		scope,
 		inheritLabel: MODEL_DEFAULT_LABEL,
 		inheritDescription: "Use this model's own default reasoning",
 	}).map(option => ({ ...option }));
@@ -50,9 +58,11 @@ export function renderEffortStep(
 	model: Model | undefined,
 	onPersist: (value: string) => void,
 	onBack: () => void,
+	/** The catalog a model-less row spans; see {@link effortStepItems}. */
+	scope?: ReadonlyArray<Model>,
 ): SelectList {
 	container.clear();
-	const items = effortStepItems(model);
+	const items = effortStepItems(model, scope);
 	const list = new SelectList(items, Math.max(1, items.length), getSelectListTheme());
 	list.onSelect = item => {
 		const level = item.value ? parseConfiguredThinkingLevel(item.value) : undefined;
@@ -66,8 +76,10 @@ export function renderEffortStep(
 	// broken screen, which is what the Subagent Effort row already learned; the
 	// sentence has one owner so both surfaces say the same thing.
 	const heading =
-		items.length <= 1 && model !== undefined
-			? noSelectableEffortNotice(MODEL_DEFAULT_LABEL)
+		items.length <= 1
+			? model !== undefined
+				? noSelectableEffortNotice(MODEL_DEFAULT_LABEL)
+				: `No model in this session declares a selectable effort, so only ${MODEL_DEFAULT_LABEL} applies.`
 			: `Valid effort variants for ${selector}.`;
 	container.addChild(new Text(theme.fg("muted", heading), 0, 0));
 	container.addChild(new Spacer(1));

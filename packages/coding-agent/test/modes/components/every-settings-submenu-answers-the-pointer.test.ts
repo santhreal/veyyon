@@ -18,6 +18,8 @@
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
+import type { Model } from "@veyyon/ai";
+import { getBundledModel } from "@veyyon/catalog/models";
 import { Effort } from "@veyyon/catalog/effort";
 import { ANY_MODEL_EFFORT_KEY } from "@veyyon/coding-agent/config/effort-resolver";
 import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
@@ -73,7 +75,14 @@ afterEach(() => {
  * The catalog stub makes the model-backed submenus render their rows; an
  * empty catalog still lists stored chain entries and role names.
  */
-function createSelector(): { component: SettingsSelectorComponent; awaitRenderRequest: () => Promise<void> } {
+function createSelector(
+	/**
+	 * The session's catalog. Empty by default, which is what most of these cases want; the effort
+	 * rows need one, because a blanket effort row offers the union of what the catalog declares and
+	 * an empty catalog declares nothing.
+	 */
+	catalog: readonly Model[] = [],
+): { component: SettingsSelectorComponent; awaitRenderRequest: () => Promise<void> } {
 	let rendered = Promise.withResolvers<void>();
 	const component = new SettingsSelectorComponent(
 		{
@@ -84,7 +93,7 @@ function createSelector(): { component: SettingsSelectorComponent; awaitRenderRe
 			providers: ["alpha"],
 			cwd: process.cwd(),
 			modelRegistry: {} as ModelRegistry,
-			availableModels: [],
+			availableModels: catalog,
 			requestRender: () => rendered.resolve(),
 		},
 		{ onChange: () => {}, onCancel: () => {} },
@@ -237,9 +246,11 @@ describe("settings submenus answer the pointer", () => {
 	it("default effort: a click on an effort row picks that level, which is what the picker's hint promises", () => {
 		// The effort step (`renderEffortStep`) is the third surface whose footer
 		// advertises "click pick". Its three hosts all reach it through
-		// `MouseRoutedSubmenu`, and the any-model row opens it with no catalog,
-		// so one drive of the real host covers the claim for all three.
-		const { component } = createSelector();
+		// `MouseRoutedSubmenu`, so one drive of the real host covers the claim for
+		// all three. The any-model row has no model of its own and offers what the
+		// session's catalog declares, so the catalog is what puts rows on the list:
+		// `gpt-5` declares `minimal, low, medium, high`.
+		const { component } = createSelector([getBundledModel("azure", "gpt-5")]);
 		component.openTab("model");
 		expect(component.selectSetting("defaultEffort")).toBe(true);
 		component.handleInput("\n");

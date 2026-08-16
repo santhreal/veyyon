@@ -322,7 +322,12 @@ function classifiedExports(): { producers: string[]; narrowing: string[]; fixed:
 // The surfaces, each driven for real.
 // ─────────────────────────────────────────────────────────────────────────────
 
-function buildSelector(model: Model<Api> | undefined): SettingsSelectorComponent {
+/**
+ * `scope` is the session's catalog. It defaults to the one model in scope, which is what every
+ * per-model case wants; a blanket row (`subagent.thinkingLevel`, Default Effort's `*`) reads it
+ * instead of a model, so those cases pass a corpus explicitly.
+ */
+function buildSelector(model: Model<Api> | undefined, scope?: ReadonlyArray<Model<Api>>): SettingsSelectorComponent {
 	return new SettingsSelectorComponent(
 		{
 			model,
@@ -333,17 +338,37 @@ function buildSelector(model: Model<Api> | undefined): SettingsSelectorComponent
 			providers: model ? [model.provider] : [],
 			cwd: process.cwd(),
 			modelRegistry,
-			availableModels: model ? [model] : [],
+			availableModels: scope ?? (model ? [model] : []),
 		},
 		{ onChange: () => {}, onCancel: () => {} },
 	);
 }
 
-/** Open one settings row's submenu with `model` in scope and return the frame it renders. */
-function openSettingsRow(path: SettingPath, model: Model<Api> | undefined): string {
+/**
+ * A rendered frame as one line of prose, sidebar removed.
+ *
+ * A settings frame is TWO columns on every physical line: `│ Rules │ exposes no selectable effort…`.
+ * A sentence long enough to wrap therefore has a tab name and two box rules spliced into the middle
+ * of it, so matching the sentence against the raw frame fails on a screen that is displaying it
+ * perfectly. Taking the pane column and collapsing whitespace reads what the user reads.
+ */
+function paneText(frame: string): string {
+	return frame
+		.split("\n")
+		.map(line => {
+			// A bare container (the model-selector effort step) has no sidebar and no box at all.
+			const columns = line.split("│");
+			return columns.length >= 4 ? columns[2]! : line;
+		})
+		.join(" ")
+		.replace(/\s+/g, " ");
+}
+
+/** Open one settings row's submenu with `model` (and optionally a wider catalog) in scope. */
+function openSettingsRow(path: SettingPath, model: Model<Api> | undefined, scope?: ReadonlyArray<Model<Api>>): string {
 	const tab = getUi(path)?.tab;
 	if (!tab) throw new Error(`${path} declares no tab, so no screen can reach it`);
-	const component = buildSelector(model);
+	const component = buildSelector(model, scope);
 	component.openTab(tab);
 	expect(component.selectSetting(path)).toBe(true);
 	component.handleInput(ENTER);
@@ -608,7 +633,7 @@ describe("a surface that has narrowed to nothing says why", () => {
 		const { emptyNotice, render } = surface;
 		if (emptyNotice === undefined || render === undefined) continue;
 		it(`${surface.id} explains its one-row list`, () => {
-			const rendered = render(shapeModel("declares-nothing"));
+			const rendered = paneText(render(shapeModel("declares-nothing")));
 
 			expect(rendered).toContain(emptyNotice);
 			// The heading a one-row list must NOT carry: it reads as a truncated list.
@@ -680,35 +705,55 @@ describe("a surface that has narrowed to nothing says why", () => {
 	});
 });
 
-describe("no model in scope is the one case that offers the whole vocabulary", () => {
+describe("a row with no single model offers the union its catalog declares, and never more", () => {
 	/**
 	 * `subagent.thinkingLevel` and `defaultEffort`'s any-model row store a level clamped later against
-	 * whatever model runs. Narrowing them to nothing would turn every pick into a row deletion, so the
-	 * honest answer is the full ladder.
+	 * whatever model runs, so neither can narrow to one model. They used to answer with the whole
+	 * vocabulary instead, which is how `minimal` reached a session whose every model declares
+	 * `low, high, max`. The honest answer is the UNION of what the session's catalog declares: every
+	 * row is addressable on something the operator can actually select, and nothing is invented.
 	 */
-	it("offers every level on the subagent effort row with no session model", () => {
-		expect(effortWordsIn(openSettingsRow("subagent.thinkingLevel", undefined)).sort()).toEqual(
-			[...VOCABULARY].sort(),
+	const BLANKET_SCOPE: Model<Api>[] = [shapeModel("reasons-without-plain-levels"), shapeModel("declares-nothing")];
+	const UNION: string[] = thinking.configuredThinkingLevelsInScope(BLANKET_SCOPE).map(String);
+
+	/**
+	 * A strict, non-empty subset. Without both bounds these cases pass on a build that publishes the
+	 * whole vocabulary and on one that publishes nothing.
+	 */
+	it("draws a union that is a strict subset of the vocabulary", () => {
+		expect(UNION.length).toBeGreaterThan(0);
+		expect(UNION.length).toBeLessThan(VOCABULARY.length);
+	});
+
+	it("offers the catalog's union on the subagent effort row with no session model", () => {
+		expect(effortWordsIn(openSettingsRow("subagent.thinkingLevel", undefined, BLANKET_SCOPE)).sort()).toEqual(
+			[...UNION].sort(),
 		);
 	});
 
-	/**
-	 * The any-model `*` row has no model and never will. Narrowing it to the session's model would hide
-	 * levels that are legal on whatever model the row later applies to, and with only the inherit
-	 * sentinel left every pick would delete the row instead of setting it. The notice must not appear
-	 * here either: there is no model to say it about, even while the session model declares nothing.
-	 */
-	it("offers every level on the any-model default-effort row", () => {
+	it("offers the catalog's union on the any-model default-effort row", () => {
 		settings.set("defaultEffort", { [ANY_MODEL_EFFORT_KEY]: "high" });
-		const component = buildSelector(shapeModel("declares-nothing"));
+		const component = buildSelector(shapeModel("declares-nothing"), BLANKET_SCOPE);
 		component.openTab("model");
 		expect(component.selectSetting("defaultEffort")).toBe(true);
 		component.handleInput(ENTER);
 		component.handleInput(ENTER);
 		const rendered = stripVTControlCharacters(component.render(PANEL_WIDTH).join("\n"));
 
-		expect(effortWordsIn(rendered).sort()).toEqual([...VOCABULARY].sort());
+		expect(effortWordsIn(rendered).sort()).toEqual([...UNION].sort());
+		// There IS no model here, so the model-shaped notice would be a lie even though the session
+		// model declares nothing.
 		expect(rendered).not.toContain(thinking.noSelectableEffortNotice(MODEL_STEP_INHERIT_LABEL));
+	});
+
+	/**
+	 * A catalog that declares nothing yields nothing. The blanket rows are the only surfaces allowed to
+	 * answer without a model, and that licence is to read the catalog — not to fall back to a constant.
+	 */
+	it("offers no level at all when nothing in the catalog declares one", () => {
+		const barren = [shapeModel("declares-nothing")];
+		expect(thinking.configuredThinkingLevelsInScope(barren)).toEqual([]);
+		expect(effortWordsIn(openSettingsRow("subagent.thinkingLevel", undefined, barren))).toEqual([]);
 	});
 
 	it("refuses nothing over RPC when there is no model to narrow against", () => {
