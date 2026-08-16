@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Kept the transcript on screen when a virtualized root compacts its committed rows. A root can now report the rows it dropped, and the engine slides its commit index onto the new frame instead of reading the shift as a committed-prefix divergence, erasing native scrollback and replaying a frame the component had already emptied. A root that drops rows without reporting them is rehydrated before any destructive replay, so it costs an extra full repaint rather than the history.
+
 ## [16.5.2] - 2026-07-14
 
 ### Fixed
