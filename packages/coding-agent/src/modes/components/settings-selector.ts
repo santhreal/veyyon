@@ -104,7 +104,7 @@ import {
 import { ModelSelectorPanel } from "./model-selector";
 import { handleInputOrEscape, PluginSettingsComponent } from "./plugin-settings";
 import { RollbackPanelComponent } from "./rollback-panel";
-import { MouseRoutedSubmenu } from "./select-list-mouse-routing";
+import { MouseRoutedSubmenu, routeSettingsListPointer } from "./select-list-mouse-routing";
 import {
 	DEFAULT_MODEL_SETTING_ID,
 	getSettingDef,
@@ -2486,10 +2486,13 @@ export class SettingsSelectorComponent implements Component {
 		});
 	}
 
-	#settingsShortcuts() {
+	#settingsShortcuts(): readonly ModalShortcut[] {
 		if (this.#searchList) return SETTINGS_FILTER_SHORTCUTS;
 		if (this.#currentList?.hasOpenSubmenu()) return SETTINGS_SUBPANE_SHORTCUTS;
 		if (this.#sidebarFocused) return SETTINGS_SIDEBAR_SHORTCUTS;
+		// The plugins tab is a stack of its own views (list, plugin detail, config
+		// sub-pane), so the view in front of the user names the keys.
+		if (this.#pluginComponent) return this.#pluginComponent.shortcuts();
 		if (this.#currentList?.getSelectedItem()?.readOnly) return SETTINGS_READ_ONLY_SHORTCUTS;
 		return SETTINGS_BROWSE_SHORTCUTS;
 	}
@@ -2684,6 +2687,19 @@ export class SettingsSelectorComponent implements Component {
 		this.callbacks.onCancel();
 	}
 
+	/**
+	 * One level back: out of an open sub-pane, or one view up the plugins tab's
+	 * own stack. Exactly what Esc does to whatever holds the keys, so the "esc
+	 * back" chip and the breadcrumb cannot drift from the key they name.
+	 */
+	#stepBack(): void {
+		if (this.#pluginComponent) {
+			this.#pluginComponent.handleInput("\x1b");
+			return;
+		}
+		(this.#searchList ?? this.#currentList)?.handleInput("\x1b");
+	}
+
 	#routeMouseEvent(event: SgrMouseEvent): boolean {
 		const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
 			motion: event.motion,
@@ -2704,7 +2720,7 @@ export class SettingsSelectorComponent implements Component {
 		if (chrome.kind === "breadcrumb") {
 			// Peel one sub-pane level back to Browse — same as the "esc back"
 			// footer chip, just reachable from the title too.
-			(this.#searchList ?? this.#currentList)?.handleInput("\x1b");
+			this.#stepBack();
 			return true;
 		}
 		if (chrome.kind === "shortcut") {
@@ -2717,7 +2733,7 @@ export class SettingsSelectorComponent implements Component {
 				return true;
 			}
 			if (chrome.id === "back") {
-				(this.#searchList ?? this.#currentList)?.handleInput("\x1b");
+				this.#stepBack();
 				return true;
 			}
 		}
@@ -2737,8 +2753,8 @@ export class SettingsSelectorComponent implements Component {
 			if (overPane) {
 				this.#sidebarFocused = false;
 				// An open submenu owns the pane pointer (text inputs ignore it).
-				if (list?.hasOpenSubmenu()) list.routeSubmenuMouse(event, bodyLine, paneCol);
-				else list?.handleWheelAt(event.wheel, bodyLine, paneCol);
+				if (list) routeSettingsListPointer(list, event, bodyLine, paneCol);
+				else this.#pluginComponent?.routeMouse(event, bodyLine, paneCol);
 			}
 			return true;
 		}
@@ -2746,12 +2762,14 @@ export class SettingsSelectorComponent implements Component {
 		if (event.motion) {
 			const hovered = overSidebar ? this.#tabBar.tabAt(bodyLine, innerCol) : undefined;
 			this.#tabBar.setHoverTab(hovered && !hovered.muted ? hovered.id : null);
-			if (list?.hasOpenSubmenu()) {
+			if (!list) {
+				if (overPane) this.#pluginComponent?.routeMouse(event, bodyLine, paneCol);
+			} else if (list.hasOpenSubmenu()) {
 				// Only rows the pointer is actually on — never light up submenu
 				// rows while the pointer is over the sidebar.
-				if (overPane) list.routeSubmenuMouse(event, bodyLine, paneCol);
+				if (overPane) routeSettingsListPointer(list, event, bodyLine, paneCol);
 			} else {
-				list?.setHoverItem(overPane ? (list.hoverTest(bodyLine, paneCol) ?? null) : null);
+				list.setHoverItem(overPane ? (list.hoverTest(bodyLine, paneCol) ?? null) : null);
 			}
 			return true;
 		}
@@ -2769,23 +2787,18 @@ export class SettingsSelectorComponent implements Component {
 			}
 			return true;
 		}
-		if (list?.hasOpenSubmenu()) {
-			list.routeSubmenuMouse(event, bodyLine, paneCol);
+		// The plugins tab is not a SettingsList: it owns a stack of views and
+		// carries the pointer into whichever one is mounted.
+		if (!list) {
+			if (overPane) this.#pluginComponent?.routeMouse(event, bodyLine, paneCol);
 			return true;
 		}
-		if (overPane && list) {
-			const id = list.hitTest(bodyLine, paneCol);
-			if (id !== undefined) {
-				this.#sidebarFocused = false;
-				const wasSelected = list.getSelectedItem()?.id === id;
-				const onValueColumn = list.isValueColumnHit(bodyLine, paneCol);
-				list.selectItem(id);
-				// A click on the always-aligned value column activates
-				// immediately (toggle / open submenu) — mirrors Grok's
-				// per-row value+chevron hit-rect. Re-clicking an
-				// already-selected label does the same (legacy dual-click).
-				if (wasSelected || onValueColumn) list.handleInput("\n");
-			}
+		if (list.hasOpenSubmenu()) {
+			routeSettingsListPointer(list, event, bodyLine, paneCol);
+			return true;
+		}
+		if (overPane && routeSettingsListPointer(list, event, bodyLine, paneCol)) {
+			this.#sidebarFocused = false;
 		}
 		return true;
 	}
