@@ -15,7 +15,7 @@ import { logger } from "@veyyon/utils";
 import { parseConfiguredEffortSetting } from "../config/effort-resolver";
 import { resolveConfiguredModelPatterns } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
-import type { SubagentAgentSettings } from "../config/settings-domains/subagents";
+import type { SubagentAgentSettings, SubagentLaneSettings } from "../config/settings-domains/subagents";
 import {
 	DEFAULT_ENABLED_BUNDLED_AGENT,
 	DEFAULT_SUBAGENT_IDLE_TTL_MS,
@@ -226,19 +226,87 @@ function parseMaxNestedSpawnDepth(setting: string, value: unknown): number {
 }
 
 /**
- * Resolve the absolute task depth at which `agentName` may still spawn.
- * A per-agent row wins over the blanket limit. Zero means the root may spawn
- * direct children, while a child at task depth 1 cannot spawn again.
+ * The lane chain for an agent: its own lane first, then what it may spawn, then
+ * what THAT may spawn, for as long as the operator kept turning the next level
+ * on.
+ *
+ * The chain stops at the first level that is absent, and absent is not a
+ * decision: a fresh roster row has no `subagents` child at all, so the blanket
+ * ceiling still answers for every level below it.
+ */
+export function subagentLaneChain(row: SubagentLaneSettings): SubagentLaneSettings[] {
+	const chain: SubagentLaneSettings[] = [];
+	// Bounded rather than `while (lane)`, because this walks a structure read
+	// from a settings FILE. A hand-written or merged config can carry a node
+	// that points at itself, and a settings read is not a place to hang.
+	let lane: SubagentLaneSettings | undefined = row;
+	for (let depth = 0; lane !== undefined && depth <= MAX_LANE_DEPTH; depth++) {
+		chain.push(lane);
+		lane = lane.subagents;
+	}
+	return chain;
+}
+
+/**
+ * The deepest lane an operator can build. Not a policy — a spawn ceiling is
+ * `enabled`, not this — but a settings file is untrusted input and a cycle in it
+ * must cost a bounded walk rather than the process.
+ */
+const MAX_LANE_DEPTH = 64;
+
+/**
+ * How deep `row` lets its agent's tree run, as the inclusive parent-depth cap
+ * {@link canSpawnAtDepth} takes.
+ *
+ * Lane index `i` is the process at task depth `i + 1`: index 0 is the agent
+ * itself, index 1 what it spawns. So a process at depth `d` may spawn exactly
+ * when lane index `d` is enabled, and the cap is the last index reached before
+ * a lane says `false`.
+ *
+ * Where the chain STOPS, nothing is written, and the blanket ceiling answers
+ * from there down — which is what keeps a stock install unchanged: a roster row
+ * with no `subagents` child is not a decision to forbid nesting, it is the
+ * absence of one.
+ *
+ * A row carrying only the pre-tree number is that number: it meant the same
+ * cap, so a config written by the previous release still means what it meant.
+ */
+export function laneDepthOf(row: SubagentLaneSettings, blanketMax: number, agentName: string): number {
+	if (row.subagents === undefined && row.maxNestedSpawnDepth !== undefined) {
+		// The message has to name the row an operator can edit, so the agent is threaded in rather
+		// than printed as a placeholder: a refusal pointing at `<agent>` sends them looking for a
+		// key that is not in their file.
+		return parseMaxNestedSpawnDepth(`subagent.agents.${agentName}.maxNestedSpawnDepth`, row.maxNestedSpawnDepth);
+	}
+	const chain = subagentLaneChain(row);
+	for (let index = 1; index < chain.length; index++) {
+		// Explicitly off: the cap is the depth above, and the blanket does not get
+		// to widen a limit the operator set by hand.
+		if (chain[index]?.enabled === false) return index - 1;
+	}
+	// Unlimited stays unlimited: it is not a number to take the larger of.
+	if (blanketMax < 0) return blanketMax;
+	return Math.max(chain.length - 1, blanketMax);
+}
+
+/**
+ * The absolute task depth at which `agentName` may still spawn.
+ *
+ * The agent's own lane chain answers first, because that is the screen the
+ * operator edits: `deep → Subagents → Enabled` is the control, and the number
+ * here is read off it. Only an agent with NO chain and no migrated number is
+ * the blanket ceiling's answer alone.
  */
 export function resolveSubagentMaxNestedSpawnDepth(settings: Settings, agentName?: string): number {
-	const rowValue = agentName === undefined ? undefined : subagentSettingsFor(settings, agentName).maxNestedSpawnDepth;
-	if (rowValue !== undefined) {
-		return parseMaxNestedSpawnDepth(`subagent.agents.${agentName}.maxNestedSpawnDepth`, rowValue);
-	}
 	const blanket = settings.get("subagent.maxNestedSpawnDepth");
-	return blanket === undefined
-		? DEFAULT_SUBAGENT_MAX_NESTED_SPAWN_DEPTH
-		: parseMaxNestedSpawnDepth("subagent.maxNestedSpawnDepth", blanket);
+	const blanketMax =
+		blanket === undefined
+			? DEFAULT_SUBAGENT_MAX_NESTED_SPAWN_DEPTH
+			: parseMaxNestedSpawnDepth("subagent.maxNestedSpawnDepth", blanket);
+	if (agentName === undefined) return blanketMax;
+	const row = subagentSettingsFor(settings, agentName);
+	if (row.subagents === undefined && row.maxNestedSpawnDepth === undefined) return blanketMax;
+	return laneDepthOf(row, blanketMax, agentName);
 }
 
 /**
@@ -474,6 +542,12 @@ function readNameList(spawner: unknown, key: keyof EnabledSubagentSource): strin
 
 /** Which setting decided a subagent's model. Shown next to the model on every agent surface. */
 export type SubagentModelSource =
+	/**
+	 * A `subagent.agents.<name>` lane — the agent's own row, or a `subagents`
+	 * level under it. The most specific layer there is: it names both the agent
+	 * and how far down this spawn sits.
+	 */
+	| "lane"
 	/** `subagent.modelByDepth.<n>` — the row for the depth this spawn runs at. */
 	| "depth"
 	/** `subagent.model` — the blanket subagent model setting. */
@@ -505,6 +579,13 @@ export interface ResolvedSubagentModel {
  */
 export function subagentModelSourceLabel(source: SubagentModelSource, agentName: string, depth?: number): string {
 	switch (source) {
+		case "lane":
+			// The path an operator can act on. Depth 0 is the agent's own row; below
+			// that, one `.subagents` per level, which is exactly the sequence of
+			// pages walked to set it.
+			return depth === undefined || depth <= 0
+				? `subagent.agents.${agentName}`
+				: `subagent.agents.${agentName}${".subagents".repeat(depth)}`;
 		case "depth":
 			return `subagent.modelByDepth.${depth ?? "?"}`;
 		case "blanket":
@@ -517,55 +598,60 @@ export function subagentModelSourceLabel(source: SubagentModelSource, agentName:
 }
 
 /**
- * Retired per-agent fields, reported once each rather than once per spawn.
+ * Superseded per-agent fields, reported once each rather than once per spawn.
  * Keyed by agent and field so a second agent's leftover row is still named.
  */
-const reportedRetiredAgentFields = new Set<string>();
+const reportedSupersededAgentFields = new Set<string>();
 
 /**
- * The per-agent row fields that were retired when model and effort got one owner.
+ * The per-agent row fields a newer shape replaced.
  *
- * Exported so the regression suite enumerates the fields instead of restating them: a third retired
- * field added here gets its cases without anybody remembering to write them.
+ * `model` and `thinkingLevel` are NOT here. They were, while a lane had no page of its own and the
+ * table silently outranked the setting an operator had just changed; they are live again now that
+ * every page which shows a lane's model edits that same lane. What is left is the numeric ceiling:
+ * `subagents.enabled` is the depth control, a number beside it is a second answer to one question,
+ * and a config carrying the number is still HONORED through `laneDepthOf` — it is reported
+ * because nothing writes it any more, not because it is ignored.
+ *
+ * Exported so the regression suite enumerates the fields instead of restating them: another
+ * superseded field added here gets its cases without anybody remembering to write them.
  */
-export const RETIRED_AGENT_ROW_FIELDS = ["model", "thinkingLevel"] as const;
+export const SUPERSEDED_AGENT_ROW_FIELDS = ["maxNestedSpawnDepth"] as const;
 
-export type RetiredAgentRowField = (typeof RETIRED_AGENT_ROW_FIELDS)[number];
+export type SupersededAgentRowField = (typeof SUPERSEDED_AGENT_ROW_FIELDS)[number];
 
 /**
- * Where the value went, per retired field. A record rather than a conditional so a new retired field
+ * Where the value went, per superseded field. A record rather than a conditional so a new entry
  * does not compile until its replacement is named: a report that points nowhere is worse than none.
  */
-const RETIRED_FIELD_REPLACEMENT: Record<RetiredAgentRowField, string> = {
-	model: "Set Subagents → Subagent Model, or the agent file's own `model:` frontmatter.",
-	thinkingLevel:
-		"Set the effort on the Subagent Model entry (`model:effort`), Subagents → Subagent Effort, or the agent file's own `thinking-level:` frontmatter.",
+const SUPERSEDED_FIELD_REPLACEMENT: Record<SupersededAgentRowField, string> = {
+	maxNestedSpawnDepth:
+		"Open Subagents → Subagent Roster → that agent → Subagents and turn each level on or off; the chain is the ceiling.",
 };
 
 /**
- * Report a `subagent.agents.<name>` row that still carries a retired field.
+ * Report a `subagent.agents.<name>` row that still carries a superseded field.
  *
- * Those fields were removed: model and effort for every subagent are now decided by the one subagent
- * setting (`subagent.model`, whose entries carry their own `:effort`) plus the agent file's own
- * frontmatter. A leftover row is a value the operator can still see in their config and that no longer
- * governs anything, which is the exact shape of a setting that looks configured and does nothing, so it
- * is said out loud instead of dropped in silence.
+ * The value is still honored — a config written by an older release keeps meaning what it meant —
+ * but nothing writes the field any more, and a value no screen can edit is one an operator will
+ * eventually change in the wrong place. So it is said out loud, once, with the control that replaced
+ * it, instead of sitting in the file looking authoritative.
  */
-function reportRetiredAgentRowField(agentName: string, field: RetiredAgentRowField, value: unknown): void {
+function reportSupersededAgentRowField(agentName: string, field: SupersededAgentRowField, value: unknown): void {
 	const key = `${agentName}.${field}`;
-	if (reportedRetiredAgentFields.has(key)) return;
-	reportedRetiredAgentFields.add(key);
+	if (reportedSupersededAgentFields.has(key)) return;
+	reportedSupersededAgentFields.add(key);
 	logger.warn(
-		`Settings: subagent.agents.${agentName}.${field} is "${String(value)}", which is no longer read — ` +
-			`per-agent model and effort were unified into the subagent model setting. ${RETIRED_FIELD_REPLACEMENT[field]}`,
+		`Settings: subagent.agents.${agentName}.${field} is "${String(value)}", which no screen writes any more — ` +
+			`the nested Subagents chain replaced it. ${SUPERSEDED_FIELD_REPLACEMENT[field]}`,
 		{ setting: `subagent.agents.${agentName}.${field}`, value },
 	);
 }
 
 /**
- * Name every retired field left anywhere in the `subagent.agents` table. Called
- * from both resolvers so the report happens on the path that would previously
- * have honored the value.
+ * Name every superseded field left anywhere in the `subagent.agents` table.
+ * Called from both resolvers so the report happens on the path that reads the
+ * value.
  *
  * The WHOLE table rather than the resolving agent's row. Scoped to one row, a
  * leftover on an agent that is disabled was never mentioned at all: that agent
@@ -575,26 +661,27 @@ function reportRetiredAgentRowField(agentName: string, field: RetiredAgentRowFie
  * The per-field dedupe below is what keeps the sweep from costing anything after
  * the first resolution.
  *
- * A blank field is what a cleared row leaves behind and what the old pickers'
- * Inherit rows stored, so it is not a value anyone is losing and gets no report.
+ * An unset field is what a cleared row leaves behind, so it is not a value
+ * anyone is losing and gets no report. `0` IS a value — it means this agent
+ * spawns nothing — and is reported like any other.
  */
-function reportRetiredAgentRows(settings: Settings): void {
+function reportSupersededAgentRows(settings: Settings): void {
 	const table = settings.get("subagent.agents");
 	if (!table || typeof table !== "object") return;
 	for (const [agentName, row] of Object.entries(table)) {
 		if (!row || typeof row !== "object") continue;
-		for (const field of RETIRED_AGENT_ROW_FIELDS) {
+		for (const field of SUPERSEDED_AGENT_ROW_FIELDS) {
 			if (!(field in row)) continue;
 			const value = Reflect.get(row, field);
-			if (value === undefined || (typeof value === "string" && value.trim().length === 0)) continue;
-			reportRetiredAgentRowField(agentName, field, value);
+			if (value === undefined) continue;
+			reportSupersededAgentRowField(agentName, field, value);
 		}
 	}
 }
 
-/** Test seam: forget which retired rows have been reported. */
-export function resetRetiredAgentRowReports(): void {
-	reportedRetiredAgentFields.clear();
+/** Test seam: forget which superseded rows have been reported. */
+export function resetSupersededAgentRowReports(): void {
+	reportedSupersededAgentFields.clear();
 }
 
 /**
@@ -665,26 +752,73 @@ function readDepthModelRow(settings: Settings, depth: number): string | string[]
 	const value = readModelByDepthTable(settings)[String(depth)];
 	return typeof value === "string" || Array.isArray(value) ? value : undefined;
 }
+/**
+ * The lane governing a spawn: the agent's own row at depth 0 or 1, and one
+ * `subagents` level deeper for each level below that.
+ *
+ * A spawn at task depth 1 is a direct child, which the agent's OWN row describes
+ * — that row is the page titled with the agent's name. Depth 2 is what its
+ * `Subagents` page describes, and so on, so the index into the chain is
+ * `taskDepth - 1`.
+ */
+function laneForSpawn(
+	settings: Settings,
+	agentName: string,
+	taskDepth: number | undefined,
+): { chain: SubagentLaneSettings[]; index: number } {
+	const chain = subagentLaneChain(subagentSettingsFor(settings, agentName));
+	return { chain, index: Math.max(0, (taskDepth ?? 1) - 1) };
+}
+
+/**
+ * The lane layer for a spawn's model, or undefined when no lane on the way down
+ * names one.
+ *
+ * Reads the governing lane first and walks UP its ancestors, so an unset level
+ * inherits the level above rather than falling past the whole tree to the
+ * blanket setting. The reported `depth` is the level that actually decided,
+ * which is what the badge and a refusal message have to name.
+ */
+function laneModelLayer(
+	settings: Settings,
+	agentName: string,
+	taskDepth: number | undefined,
+): { source: "lane"; value: string | string[]; depth: number } | undefined {
+	const { chain, index } = laneForSpawn(settings, agentName, taskDepth);
+	for (let level = Math.min(index, chain.length - 1); level >= 0; level--) {
+		const value = chain[level]?.model;
+		if (value === undefined) continue;
+		if (typeof value === "string" && value.trim().length === 0) continue;
+		if (Array.isArray(value) && value.length === 0) continue;
+		return { source: "lane", value, depth: level };
+	}
+	return undefined;
+}
 
 /**
  * Resolve the model patterns one subagent runs, with the deciding layer.
  *
  * Precedence, highest first:
- *  1. `subagent.modelByDepth.<n>` — the row for the depth THIS spawn runs at,
+ *  1. The LANE — `subagent.agents.<name>`, or the `subagents` level under it
+ *     that governs this spawn. Deepest lane first, then up the chain: a level
+ *     that names no model inherits the level above, which is what makes
+ *     "inherit" on a nested page mean the page you came from.
+ *  2. `subagent.modelByDepth.<n>` — the row for the depth THIS spawn runs at,
  *     when the caller passes `taskDepth` (the spawned child's depth, one below
  *     the calling session) and the map has a row for it.
- *  2. `subagent.model` — the blanket subagent model setting, which every
+ *  3. `subagent.model` — the blanket subagent model setting, which every
  *     enabled subagent follows and whose entries carry their own `:effort`.
- *  3. The agent definition's `model:` frontmatter, which for a user-authored
+ *  4. The agent definition's `model:` frontmatter, which for a user-authored
  *     agent is that author's deliberate choice.
- *  4. Inherit the session's live model.
+ *  5. Inherit the session's live model.
  *
- * There is deliberately no per-agent settings layer. `subagent.agents.<name>.model`
- * used to sit above all of these and was editable from one screen while the
- * blanket model was editable from another, so the Agents table quietly outranked
- * the setting the operator had just changed. Model and effort are now decided in
- * ONE place; the Agents table decides only whether a lane is offered, and an
- * agent that wants its own model says so in its own file.
+ * The lane sits on top because it is the most specific statement anyone can
+ * make: it names the agent AND the depth. An earlier design had no lane layer at
+ * all, after a per-agent `model` field was retired for outranking the blanket
+ * setting from a screen that did not show it. The field is back because the
+ * screen is fixed, not because the hazard was imaginary: every page that shows a
+ * lane's model edits that same lane, and the badge names the exact path
+ * (`subagent.agents.deep.subagents`) that decided.
  *
  * A configured layer that expands to NOTHING does not fall through: it comes back
  * as `unresolved` so the caller can refuse to spawn and say which setting is
@@ -693,8 +827,8 @@ function readDepthModelRow(settings: Settings, depth: number): string | string[]
  * instead.
  *
  * Bundled specialists intentionally carry no `model:` frontmatter, so on a stock
- * install every subagent lands on case 3 and runs the model the operator is
- * looking at.
+ * install every subagent with no lane of its own lands on case 5 and runs the
+ * model the operator is looking at.
  */
 export function resolveSubagentModel(options: {
 	settings: Settings;
@@ -714,14 +848,13 @@ export function resolveSubagentModel(options: {
 	 */
 	taskDepth?: number;
 }): ResolvedSubagentModel {
-	// `agentName` stays in the options because every caller pairs the result with
-	// `subagentModelSourceLabel(source, agentName)`, but no layer reads it any more:
-	// the retired per-agent row was the last one that did.
-	const { settings, agentModel, activeModelPattern, fallbackModelPattern, taskDepth } = options;
+	const { settings, agentName, agentModel, activeModelPattern, fallbackModelPattern, taskDepth } = options;
 
-	reportRetiredAgentRows(settings);
+	reportSupersededAgentRows(settings);
 	const depthRow = taskDepth !== undefined && taskDepth >= 1 ? readDepthModelRow(settings, taskDepth) : undefined;
+	const lane = laneModelLayer(settings, agentName, taskDepth);
 	const layers: Array<{ source: SubagentModelSource; value: string | string[] | undefined; depth?: number }> = [
+		...(lane === undefined ? [] : [lane]),
 		...(depthRow !== undefined && taskDepth !== undefined
 			? [{ source: "depth" as const, value: depthRow, depth: taskDepth }]
 			: []),
@@ -752,17 +885,15 @@ export function resolveSubagentModel(options: {
  * Resolve a subagent's thinking level. Precedence, highest first, deliberately
  * the same shape as {@link resolveSubagentModel} so one sentence describes both:
  *
- *  1. `subagent.thinkingLevel` — the one subagent effort setting.
- *  2. the agent definition's `thinking-level` frontmatter.
- *  3. undefined — inherit the session's effort.
+ *  1. The LANE — the `subagent.agents.<name>` level governing this spawn, then
+ *     up its chain, so a nested page's "inherit" means the page above it.
+ *  2. `subagent.thinkingLevel` — the one blanket subagent effort setting.
+ *  3. the agent definition's `thinking-level` frontmatter.
+ *  4. undefined — inherit the session's effort.
  *
  * An explicit `:level` suffix on the resolved model pattern still outranks all of
  * these; the executor applies that, since only it knows whether the suffix was
  * present (see `resolveEffectiveSubagentThinkingLevel`).
- *
- * There is no per-agent settings layer, for the reason spelled out on
- * {@link resolveSubagentModel}: effort is decided in one place, and an agent that
- * wants its own effort declares `thinking-level` in its own file.
  *
  * A configured value that names no level does not silently become "inherited":
  * it is reported with the setting and the accepted values, then skipped, so the
@@ -773,8 +904,21 @@ export function resolveSubagentThinkingLevel(options: {
 	settings: Settings;
 	agentName: string;
 	agentThinkingLevel?: ConfiguredThinkingLevel;
+	/** The depth the SPAWNED agent runs at, as {@link resolveSubagentModel} takes it. */
+	taskDepth?: number;
 }): ConfiguredThinkingLevel | undefined {
-	reportRetiredAgentRows(options.settings);
+	reportSupersededAgentRows(options.settings);
+	const { chain, index } = laneForSpawn(options.settings, options.agentName, options.taskDepth);
+	for (let level = Math.min(index, chain.length - 1); level >= 0; level--) {
+		const raw = chain[level]?.thinkingLevel;
+		if (raw === undefined) continue;
+		const path = `subagent.agents.${options.agentName}${".subagents".repeat(level)}.thinkingLevel`;
+		const parsed = parseConfiguredEffortSetting(path, raw);
+		// An empty value is an explicit inherit rather than a level, and a value
+		// naming no level was already reported by the parse. Both mean "this level
+		// decides nothing", so the walk continues up rather than stopping here.
+		if (parsed !== undefined) return parsed;
+	}
 	// Blanket BEFORE frontmatter, the same order {@link resolveSubagentModel} uses.
 	// This used to be the other way round, and bundled agents carry a
 	// `thinking-level` even though they carry no `model:` (scout `medium`,

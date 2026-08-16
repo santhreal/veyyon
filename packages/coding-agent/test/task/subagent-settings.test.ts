@@ -40,21 +40,22 @@ import {
 	isSubagentEnableDefaulted,
 	isSubagentEnabled,
 	nextSubagentEnableValue,
-	RETIRED_AGENT_ROW_FIELDS,
-	type RetiredAgentRowField,
-	resetRetiredAgentRowReports,
+	resetSupersededAgentRowReports,
 	resolveDelegation,
+	resolveSubagentMaxNestedSpawnDepth,
 	resolveSubagentModel,
 	resolveSubagentThinkingLevel,
 	SUBAGENT_ENABLE_STATE_LABEL,
+	SUPERSEDED_AGENT_ROW_FIELDS,
 	type SubagentEnableState,
 	type SubagentModelSource,
+	type SupersededAgentRowField,
 	subagentEnabledByDefault,
 	subagentEnableState,
 	subagentModelSourceLabel,
 	subagentSettingsFor,
 } from "@veyyon/coding-agent/task/subagent-settings";
-import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
+import { type AgentDefinition, canSpawnAtDepth } from "@veyyon/coding-agent/task/types";
 import {
 	AUTO_THINKING,
 	CLI_THINKING_LEVELS,
@@ -235,8 +236,8 @@ describe("subagent enable states: on, off, and nothing in between", () => {
 	});
 });
 
-describe("subagent model precedence: three layers, one owner", () => {
-	const RETIRED_ROW = "openai/gpt-5";
+describe("subagent model precedence: five layers, one owner", () => {
+	const LANE_ROW = "openai/gpt-5";
 	const BLANKET = "anthropic/claude-sonnet-4-5";
 	const FRONTMATTER = "google/gemini-2.5-pro";
 	const SESSION = "anthropic/claude-opus-4-5";
@@ -276,17 +277,76 @@ describe("subagent model precedence: three layers, one owner", () => {
 	});
 
 	/**
-	 * A LEFTOVER PER-AGENT ROW IS NOT A LAYER. `subagent.agents.<name>.model` used
-	 * to sit above the blanket setting, and it was edited from the Agents screen
-	 * while the blanket model was edited from the Models screen, so the table
-	 * quietly outranked the setting the operator had just changed and the two
-	 * screens printed different answers for the same agent. The field is retired:
-	 * a config that still carries it runs the blanket chain.
+	 * THE LANE OUTRANKS THE BLANKET SETTING, because it is the more specific
+	 * statement and because the page that shows it is the page that changes it.
+	 *
+	 * This field spent a release retired for the opposite reason: it sat above the
+	 * blanket setting while being edited from the Agents screen and read from the
+	 * Models screen, so the table quietly outranked the setting the operator had
+	 * just changed. What fixed that was the screen, not the removal — so the layer
+	 * is back, and the badge below is the part that must not regress.
 	 */
-	it("ignores a retired per-agent model row", () => {
+	it("puts the agent's own lane above the blanket chain", () => {
 		const settings = Settings.isolated({
 			"subagent.model": BLANKET,
-			"subagent.agents": { scout: { model: RETIRED_ROW } },
+			"subagent.agents": { scout: { model: LANE_ROW } },
+		} as Parameters<typeof Settings.isolated>[0]);
+
+		const resolved = resolveSubagentModel({
+			settings,
+			agentName: "scout",
+			agentModel: FRONTMATTER,
+			activeModelPattern: SESSION,
+		});
+
+		expect(resolved.patterns).toEqual([LANE_ROW]);
+		expect(resolved.source).toBe("lane");
+		expect(subagentModelSourceLabel(resolved.source, "scout", resolved.depth)).toBe("subagent.agents.scout");
+	});
+
+	/**
+	 * A nested lane names itself, not its agent. The badge is the whole defense
+	 * against the old defect: an operator who cannot see WHICH level decided is
+	 * back to editing one screen and reading another.
+	 */
+	it("lets a nested lane decide for the depth it governs, and names that level", () => {
+		const settings = Settings.isolated({
+			"subagent.agents": { scout: { model: LANE_ROW, subagents: { model: FRONTMATTER } } },
+		} as Parameters<typeof Settings.isolated>[0]);
+
+		const child = resolveSubagentModel({ settings, agentName: "scout", taskDepth: 1 });
+		expect(child.patterns).toEqual([LANE_ROW]);
+		expect(subagentModelSourceLabel(child.source, "scout", child.depth)).toBe("subagent.agents.scout");
+
+		const grandchild = resolveSubagentModel({ settings, agentName: "scout", taskDepth: 2 });
+		expect(grandchild.patterns).toEqual([FRONTMATTER]);
+		expect(subagentModelSourceLabel(grandchild.source, "scout", grandchild.depth)).toBe(
+			"subagent.agents.scout.subagents",
+		);
+	});
+
+	/**
+	 * Unset on a nested page means the level above, never the session: that is the
+	 * only reading under which a nested page needs no absolute value to be
+	 * understood, and the walk is upward for exactly that reason.
+	 */
+	it("inherits the level above when a nested lane names no model", () => {
+		const settings = Settings.isolated({
+			"subagent.model": BLANKET,
+			"subagent.agents": { scout: { model: LANE_ROW, subagents: { enabled: true } } },
+		} as Parameters<typeof Settings.isolated>[0]);
+
+		const grandchild = resolveSubagentModel({ settings, agentName: "scout", taskDepth: 2 });
+
+		expect(grandchild.patterns).toEqual([LANE_ROW]);
+		expect(subagentModelSourceLabel(grandchild.source, "scout", grandchild.depth)).toBe("subagent.agents.scout");
+	});
+
+	/** With no lane anywhere on the way down, the blanket chain still answers. */
+	it("falls through an empty lane to the blanket chain", () => {
+		const settings = Settings.isolated({
+			"subagent.model": BLANKET,
+			"subagent.agents": { scout: { enabled: true } },
 		} as Parameters<typeof Settings.isolated>[0]);
 
 		const resolved = resolveSubagentModel({
@@ -298,23 +358,6 @@ describe("subagent model precedence: three layers, one owner", () => {
 
 		expect(resolved.patterns).toEqual([BLANKET]);
 		expect(resolved.source).toBe("blanket");
-	});
-
-	/** With no blanket model, a retired row does not stand in for one either. */
-	it("falls through a retired per-agent row to frontmatter", () => {
-		const settings = Settings.isolated({
-			"subagent.agents": { scout: { model: RETIRED_ROW } },
-		} as Parameters<typeof Settings.isolated>[0]);
-
-		const resolved = resolveSubagentModel({
-			settings,
-			agentName: "scout",
-			agentModel: FRONTMATTER,
-			activeModelPattern: SESSION,
-		});
-
-		expect(resolved.patterns).toEqual([FRONTMATTER]);
-		expect(resolved.source).toBe("frontmatter");
 	});
 
 	/**
@@ -352,9 +395,9 @@ describe("subagent model precedence: three layers, one owner", () => {
 
 	/** A comma list or YAML list is a preference order, preserved as given. */
 	it("keeps a multi-pattern value in order", () => {
-		const settings = Settings.isolated({ "subagent.model": `${BLANKET}, ${RETIRED_ROW}` });
+		const settings = Settings.isolated({ "subagent.model": `${BLANKET}, ${LANE_ROW}` });
 
-		expect(resolveSubagentModel({ settings, agentName: "scout" }).patterns).toEqual([BLANKET, RETIRED_ROW]);
+		expect(resolveSubagentModel({ settings, agentName: "scout" }).patterns).toEqual([BLANKET, LANE_ROW]);
 	});
 
 	/** With no session model yet (a headless start), the caller's fallback stands in. */
@@ -397,12 +440,13 @@ describe("subagent model: a configured value that resolves to nothing refuses", 
 	});
 
 	/**
-	 * A retired per-agent row is not a layer, so a broken one is not a refusal
-	 * either: it cannot resolve to nothing, because it is never consulted. Keeping
-	 * the refusal here would be worse than dropping the field — the operator would
-	 * be blocked from spawning by a value that no longer decides anything.
+	 * A lane IS a layer, so a lane that expands to nothing refuses like every
+	 * other configured layer, and the refusal names the lane rather than the
+	 * setting below it. Falling through to the blanket chain here is the exact
+	 * failure this whole area exists to prevent: the operator changed one thing,
+	 * something else ran, and nothing said so.
 	 */
-	it("does not refuse over a retired per-agent row", () => {
+	it("refuses over a lane whose value resolves to nothing", () => {
 		const settings = Settings.isolated({
 			"subagent.model": "anthropic/claude-sonnet-4-5",
 			"subagent.agents": { scout: { model: "@designer" } },
@@ -410,8 +454,8 @@ describe("subagent model: a configured value that resolves to nothing refuses", 
 
 		const resolved = resolveSubagentModel({ settings, agentName: "scout" });
 
-		expect(resolved.unresolved).toBeUndefined();
-		expect(resolved.patterns).toEqual(["anthropic/claude-sonnet-4-5"]);
+		expect(resolved.patterns).toEqual([]);
+		expect(resolved.unresolved).toEqual({ source: "lane", value: "@designer", depth: 0 });
 	});
 
 	/**
@@ -442,6 +486,10 @@ describe("subagent model: a configured value that resolves to nothing refuses", 
 	 */
 	it("names the setting behind every layer", () => {
 		const expected: Record<SubagentModelSource, string> = {
+			// For a lane the number is its index in the chain, not a spawn depth: 0 is the
+			// agent's own row and each step down adds one `.subagents`, so the label spells
+			// the exact sequence of pages an operator walked to set it.
+			lane: "subagent.agents.scout.subagents.subagents",
 			depth: "subagent.modelByDepth.2",
 			blanket: "subagent.model",
 			frontmatter: "scout agent frontmatter",
@@ -455,19 +503,31 @@ describe("subagent model: a configured value that resolves to nothing refuses", 
 
 describe("subagent thinking level", () => {
 	/**
-	 * A retired per-agent effort row does not outrank the one effort setting, for
-	 * the same reason its model twin does not: it was written from a different
-	 * screen and silently won.
+	 * The effort axis has the same five layers in the same order as the model
+	 * axis, so a lane's effort outranks the blanket setting — and a nested lane
+	 * that names none takes the level above rather than the setting.
 	 */
-	it("ignores a retired per-agent effort row", () => {
+	it("puts a lane's effort above the blanket setting, and inherits upward", () => {
 		const settings = Settings.isolated({
 			"subagent.thinkingLevel": "low",
-			"subagent.agents": { scout: { thinkingLevel: "high" } },
+			"subagent.agents": { scout: { thinkingLevel: "high", subagents: { enabled: true } } },
 		} as Parameters<typeof Settings.isolated>[0]);
 
 		expect(resolveSubagentThinkingLevel({ settings, agentName: "scout", agentThinkingLevel: AUTO_THINKING })).toBe(
-			ThinkingLevel.Low,
+			ThinkingLevel.High,
 		);
+		expect(resolveSubagentThinkingLevel({ settings, agentName: "scout", taskDepth: 2 })).toBe(ThinkingLevel.High);
+	});
+
+	/** A nested lane that names its own effort decides for the depth it governs. */
+	it("lets a nested lane set an effort its parent does not use", () => {
+		const settings = Settings.isolated({
+			"subagent.thinkingLevel": "low",
+			"subagent.agents": { scout: { thinkingLevel: "high", subagents: { thinkingLevel: "minimal" } } },
+		} as Parameters<typeof Settings.isolated>[0]);
+
+		expect(resolveSubagentThinkingLevel({ settings, agentName: "scout", taskDepth: 1 })).toBe(ThinkingLevel.High);
+		expect(resolveSubagentThinkingLevel({ settings, agentName: "scout", taskDepth: 2 })).toBe(ThinkingLevel.Minimal);
 	});
 
 	/**
@@ -616,46 +676,49 @@ describe("subagent thinking level", () => {
 	});
 });
 
-describe("retired per-agent model and effort rows are named, not honored", () => {
+describe("superseded per-agent rows are named, and still honored", () => {
 	/**
-	 * WHY THIS SUITE READS THIS WAY (RETIRED-AGENT-ROWS-ARE-REPORTED).
-	 * `subagent.agents.<name>.model` and `.thinkingLevel` used to outrank the blanket
-	 * settings, so an operator who had pinned one agent will see that agent change
-	 * model and effort the first time they launch a build that stopped reading those
-	 * fields. Nothing in the config file distinguishes a field that is still honored
-	 * from one that is not, so a silent drop reads as veyyon ignoring the config.
+	 * WHY THIS SUITE READS THIS WAY (SUPERSEDED-AGENT-ROWS-ARE-REPORTED).
+	 * `subagent.agents.<name>.maxNestedSpawnDepth` is the pre-tree numeric ceiling.
+	 * The nested `subagents` chain replaced it, and no screen writes it any more,
+	 * but it EXISTS in config files an earlier release wrote. Dropping it would
+	 * silently change what those files mean, so it is read and it is named.
 	 *
-	 * The contract is: the value never decides anything, and it is named once with
-	 * the setting that replaced it. It is a report, not a refusal — a leftover field
-	 * must not stop a spawn (see the refusal suite above).
+	 * The contract is therefore two-sided, and both sides are easy to break in
+	 * opposite directions: the value still decides (a config keeps its meaning),
+	 * AND it is named once with the control that replaced it (nobody edits a dead
+	 * field for an hour). It is a report, not a refusal — a leftover field must
+	 * not stop a spawn (see the refusal suite above).
+	 *
+	 * NOT COVERED: whether the roster page renders the chain the number implies.
+	 * That is a surface concern and lives in the selector suites.
 	 */
 	/**
-	 * The fields are read from the owner table rather than restated, so a third retired field gets its
-	 * cases the moment it is added there. The probe value and the replacement wording each live in a
-	 * `Record` over that same union, so a new field does not typecheck until someone records both.
+	 * The fields are read from the owner table rather than restated, so a second superseded field
+	 * gets its cases the moment it is added there. The probe value and the replacement wording each
+	 * live in a `Record` over that same union, so a new field does not typecheck until someone
+	 * records both.
 	 */
-	const RETIRED_ROW_VALUE: Record<RetiredAgentRowField, string> = {
-		model: "openai/gpt-5",
-		thinkingLevel: "xhigh",
+	const SUPERSEDED_ROW_VALUE: Record<SupersededAgentRowField, number> = {
+		maxNestedSpawnDepth: 2,
 	};
-	const REPLACEMENT_NAMED: Record<RetiredAgentRowField, string> = {
-		model: "Subagent Model",
-		thinkingLevel: "Subagent Effort",
+	const REPLACEMENT_NAMED: Record<SupersededAgentRowField, string> = {
+		maxNestedSpawnDepth: "Subagents",
 	};
 
-	it("records a probe value and a replacement for every retired field", () => {
-		expect(Object.keys(RETIRED_ROW_VALUE).sort()).toEqual([...RETIRED_AGENT_ROW_FIELDS].sort());
-		expect(Object.keys(REPLACEMENT_NAMED).sort()).toEqual([...RETIRED_AGENT_ROW_FIELDS].sort());
+	it("records a probe value and a replacement for every superseded field", () => {
+		expect(Object.keys(SUPERSEDED_ROW_VALUE).sort()).toEqual([...SUPERSEDED_AGENT_ROW_FIELDS].sort());
+		expect(Object.keys(REPLACEMENT_NAMED).sort()).toEqual([...SUPERSEDED_AGENT_ROW_FIELDS].sort());
 	});
 
 	// A `for` loop rather than `it.each`: each case needs its own agent name, because
 	// the report is deduplicated per agent and field for the life of the process.
-	for (const field of RETIRED_AGENT_ROW_FIELDS) {
-		it(`names subagent.agents.<name>.${field} and where the value moved to`, () => {
-			resetRetiredAgentRowReports();
-			const agentName = `retired-${field}`;
+	for (const field of SUPERSEDED_AGENT_ROW_FIELDS) {
+		it(`names subagent.agents.<name>.${field} and where the control moved to`, () => {
+			resetSupersededAgentRowReports();
+			const agentName = `superseded-${field}`;
 			const row: SubagentAgentSettings = {};
-			Object.assign(row, { [field]: RETIRED_ROW_VALUE[field] });
+			Object.assign(row, { [field]: SUPERSEDED_ROW_VALUE[field] });
 			const settings = Settings.isolated({ "subagent.agents": { [agentName]: row } });
 			const warnings: string[] = [];
 			const restore = captureLoggerWarnings(warnings);
@@ -668,7 +731,7 @@ describe("retired per-agent model and effort rows are named, not honored", () =>
 
 			const reported = warnings.find(message => message.includes(`subagent.agents.${agentName}.${field}`));
 			expect(reported).toBeDefined();
-			expect(reported).toContain("no longer read");
+			expect(reported).toContain("no screen writes");
 			expect(reported).toContain(REPLACEMENT_NAMED[field]);
 		});
 	}
@@ -678,50 +741,171 @@ describe("retired per-agent model and effort rows are named, not honored", () =>
 	 * spawn and on every settings render, so an undeduplicated message would bury
 	 * the log and the operator would learn to skip it.
 	 */
-	it("reports each retired field once per process", () => {
-		resetRetiredAgentRowReports();
+	it("reports each superseded field once per process", () => {
+		resetSupersededAgentRowReports();
 		const row: SubagentAgentSettings = {};
-		Object.assign(row, RETIRED_ROW_VALUE);
-		const settings = Settings.isolated({ "subagent.agents": { "retired-twice": row } });
+		Object.assign(row, SUPERSEDED_ROW_VALUE);
+		const settings = Settings.isolated({ "subagent.agents": { "superseded-twice": row } });
 		const warnings: string[] = [];
 		const restore = captureLoggerWarnings(warnings);
 		try {
 			for (let attempt = 0; attempt < 3; attempt++) {
-				resolveSubagentModel({ settings, agentName: "retired-twice" });
-				resolveSubagentThinkingLevel({ settings, agentName: "retired-twice" });
+				resolveSubagentModel({ settings, agentName: "superseded-twice" });
+				resolveSubagentThinkingLevel({ settings, agentName: "superseded-twice" });
 			}
 		} finally {
 			restore();
 		}
 
-		const counted = RETIRED_AGENT_ROW_FIELDS.map(
-			field => warnings.filter(message => message.includes(`subagent.agents.retired-twice.${field}`)).length,
+		const counted = SUPERSEDED_AGENT_ROW_FIELDS.map(
+			field => warnings.filter(message => message.includes(`subagent.agents.superseded-twice.${field}`)).length,
 		);
-		expect(counted).toEqual(RETIRED_AGENT_ROW_FIELDS.map(() => 1));
+		expect(counted).toEqual(SUPERSEDED_AGENT_ROW_FIELDS.map(() => 1));
 	});
 
-	/** The value is ignored, so it can never be the deciding layer. */
-	it("keeps the blanket setting as the answer over a retired row", () => {
-		resetRetiredAgentRowReports();
-		const row: SubagentAgentSettings = {};
-		Object.assign(row, RETIRED_ROW_VALUE);
+	/**
+	 * Reported is not ignored. The whole reason the field is still read is that an
+	 * operator's file must keep meaning what it meant, and a report that came with
+	 * a behavior change would be a worse outcome than either alone.
+	 */
+	it("still resolves the depth the superseded number asked for", () => {
+		resetSupersededAgentRowReports();
 		const settings = Settings.isolated({
-			"subagent.model": "anthropic/opus",
-			"subagent.thinkingLevel": "low",
-			"subagent.agents": { "retired-loses": row },
+			"subagent.maxNestedSpawnDepth": 0,
+			"subagent.agents": { "superseded-depth": { maxNestedSpawnDepth: 2 } },
 		});
 
-		const resolved = resolveSubagentModel({ settings, agentName: "retired-loses" });
-		expect(resolved.source).toBe("blanket");
-		expect(resolved.patterns).toEqual(["anthropic/opus"]);
-		expect(resolveSubagentThinkingLevel({ settings, agentName: "retired-loses" })).toBe(ThinkingLevel.Low);
+		expect(resolveSubagentMaxNestedSpawnDepth(settings, "superseded-depth")).toBe(2);
+		// And the blanket still answers for an agent that never carried the field,
+		// so the migration is scoped to the row that has it.
+		expect(resolveSubagentMaxNestedSpawnDepth(settings, "scout")).toBe(0);
 	});
 
-	/** The retired paths are gone from the schema, so no picker can write one again. */
-	it("declares no retired field in the settings schema", () => {
-		const declared = RETIRED_AGENT_ROW_FIELDS.filter(field => isSettingPath(`subagent.agents.${field}`));
+	/** The superseded path is gone from the schema, so no picker can write one again. */
+	it("declares no superseded field in the settings schema", () => {
+		const declared = SUPERSEDED_AGENT_ROW_FIELDS.filter(field => isSettingPath(`subagent.agents.${field}`));
 
 		expect(declared).toEqual([]);
+	});
+});
+
+/**
+ * WHY THIS SUITE READS THIS WAY (THE-ENABLED-CHAIN-IS-THE-SPAWN-CEILING).
+ *
+ * The whole lane tree turns on one sentence: lane index `i` governs the process at task depth `i`,
+ * so a process at depth `d` may spawn exactly when lane index `d` is enabled. Every screen, the
+ * resolver, and `canSpawnAtDepth` agree only while that holds, and an off-by-one in it is invisible
+ * on any screen — it shows up as a subagent that cannot spawn, or one that can spawn a level too
+ * far. The cases below drive the arithmetic directly at each of its four branches: an explicit
+ * `false`, a chain shorter than the blanket, an unlimited blanket, and a row with no chain at all.
+ *
+ * The class this closes is "the ceiling the page draws is not the ceiling the gate applies", which
+ * is why each case asserts through `canSpawnAtDepth` as well as on the number: a resolver returning
+ * a plausible number that gates the wrong depth is the defect, not the number.
+ *
+ * WHAT IT DOES NOT CATCH: what a screen prints. The page default is pinned where the page is
+ * driven, in `modes/components/subagent-agents-surface.test.ts`.
+ */
+describe("the enabled chain is the spawn ceiling", () => {
+	/** A cap and the two depths that bracket it, so a number cannot pass while gating the wrong one. */
+	function gate(cap: number, depth: number): boolean {
+		return canSpawnAtDepth(cap, depth);
+	}
+
+	it("stops at the level turned off, and the blanket may not widen it", () => {
+		const settings = Settings.isolated({
+			"subagent.maxNestedSpawnDepth": 5,
+			"subagent.agents": { scout: { subagents: { enabled: false } } },
+		});
+
+		const cap = resolveSubagentMaxNestedSpawnDepth(settings, "scout");
+		expect(cap).toBe(0);
+		// Depth 0 is this session spawning `scout`; depth 1 would be `scout` spawning in turn, which
+		// is the level the operator turned off.
+		expect(gate(cap, 0)).toBe(true);
+		expect(gate(cap, 1)).toBe(false);
+	});
+
+	it("stops at the deepest level turned off, not the first level named", () => {
+		const settings = Settings.isolated({
+			"subagent.maxNestedSpawnDepth": 0,
+			"subagent.agents": { scout: { subagents: { enabled: true, subagents: { enabled: false } } } },
+		});
+
+		const cap = resolveSubagentMaxNestedSpawnDepth(settings, "scout");
+		expect(cap).toBe(1);
+		expect(gate(cap, 1)).toBe(true);
+		expect(gate(cap, 2)).toBe(false);
+	});
+
+	it("raises the ceiling to the depth the chain reaches", () => {
+		const settings = Settings.isolated({
+			"subagent.maxNestedSpawnDepth": 0,
+			"subagent.agents": { scout: { subagents: { enabled: true, subagents: { enabled: true } } } },
+		});
+
+		const cap = resolveSubagentMaxNestedSpawnDepth(settings, "scout");
+		expect(cap).toBe(2);
+		expect(gate(cap, 2)).toBe(true);
+		expect(gate(cap, 3)).toBe(false);
+	});
+
+	/**
+	 * Where the chain STOPS, nothing was written, so the blanket keeps answering from there down. A
+	 * chain shorter than the blanket that lowered the ceiling would turn "I turned one level on"
+	 * into "I turned every level below it off".
+	 */
+	it("keeps answering from the blanket where the chain stops", () => {
+		const settings = Settings.isolated({
+			"subagent.maxNestedSpawnDepth": 3,
+			"subagent.agents": { scout: { subagents: { enabled: true } } },
+		});
+
+		const cap = resolveSubagentMaxNestedSpawnDepth(settings, "scout");
+		expect(cap).toBe(3);
+		expect(gate(cap, 3)).toBe(true);
+		expect(gate(cap, 4)).toBe(false);
+	});
+
+	/** Unlimited is not a number to take the larger of: a chain must not make it finite. */
+	it("leaves an unlimited blanket unlimited", () => {
+		const settings = Settings.isolated({
+			"subagent.maxNestedSpawnDepth": -1,
+			"subagent.agents": { scout: { subagents: { enabled: true } } },
+		});
+
+		const cap = resolveSubagentMaxNestedSpawnDepth(settings, "scout");
+		expect(cap).toBe(-1);
+		expect(gate(cap, 64)).toBe(true);
+	});
+
+	/** An absent lane is not a decision, which is what keeps a stock install unchanged. */
+	it("answers with the blanket for a row that names no chain", () => {
+		const settings = Settings.isolated({
+			"subagent.maxNestedSpawnDepth": 2,
+			"subagent.agents": { scout: { enabled: true } },
+		});
+
+		expect(resolveSubagentMaxNestedSpawnDepth(settings, "scout")).toBe(2);
+		expect(resolveSubagentMaxNestedSpawnDepth(settings, "designer")).toBe(2);
+		expect(resolveSubagentMaxNestedSpawnDepth(settings)).toBe(2);
+	});
+
+	/**
+	 * A settings file is untrusted input. A lane that points at itself is a bounded walk, not a
+	 * hung settings read, and the bound is asserted rather than the process being trusted to return.
+	 */
+	it("bounds a self-referential lane instead of hanging", () => {
+		const cyclic: SubagentAgentSettings = { enabled: true };
+		cyclic.subagents = cyclic;
+		const settings = Settings.isolated({
+			"subagent.maxNestedSpawnDepth": 0,
+			"subagent.agents": { scout: cyclic },
+		});
+
+		const cap = resolveSubagentMaxNestedSpawnDepth(settings, "scout");
+		expect(Number.isFinite(cap)).toBe(true);
+		expect(cap).toBeLessThanOrEqual(64);
 	});
 });
 
