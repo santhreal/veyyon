@@ -891,7 +891,13 @@ export class AssistantMessageComponent extends Container {
 			if (content.type === "text" && canonicalizeMessage(content.text)) {
 				// Set paddingY=0 to avoid extra spacing before tool executions
 				const trimmed = content.text.trim();
-				const md = new Markdown(trimmed, 2, 0, getMarkdownTheme());
+				// Body prose must carry the theme's text color: without a default
+				// style, plain paragraphs fall to the terminal's default foreground
+				// (gray on many setups) and only bold/code/links pop, which makes
+				// sparse-markup answers read as an unstyled gray slab.
+				const md = new Markdown(trimmed, 2, 0, getMarkdownTheme(), {
+					color: (text: string) => theme.fg("text", text),
+				});
 				md.transientRenderCache = this.#lastUpdateTransient;
 				this.#contentContainer.addChild(md);
 				captureItems?.push({ md, contentIndex: i, blockType: "text", lastText: trimmed });
