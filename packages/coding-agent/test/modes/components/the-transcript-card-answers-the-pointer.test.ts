@@ -109,7 +109,7 @@ function makeViewer(): Harness {
 		onClose,
 		onHubClose: () => {},
 	});
-	return { viewer, onClose, rows: () => viewer.render(WIDTH) };
+	return { viewer, onClose, rows: () => [...viewer.render(WIDTH)] };
 }
 
 /** SGR left-press at 1-based screen coordinates, the way a terminal reports it. */
