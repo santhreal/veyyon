@@ -18,6 +18,7 @@ import {
 	extractPrintableText,
 	fuzzyFilter,
 	getKeybindings,
+	HoverFade,
 	Input,
 	matchesKey,
 	padding,
@@ -49,6 +50,7 @@ import {
 	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
+	modalRevealEnabled,
 	planModalChrome,
 	renderModalShell,
 	sizingForArea,
@@ -64,7 +66,7 @@ import {
 } from "./model-browser";
 import { fit } from "./overlay-box";
 import { renderSegmentTrack } from "./segment-track";
-import { selectionBand } from "./selector-helpers";
+import { hoverBandAt } from "./selector-helpers";
 
 /**
  * A row of the Roles view: a role, a model/wildcard chain-key header, one of a
@@ -218,6 +220,8 @@ export class ModelHubComponent implements Component {
 	/** Snap the sidebar viewport to the active entry on the next render; wheel panning leaves it free. */
 	#sidebarFollowActive = true;
 	#sidebarHover: number | null = null;
+	/** Cross-fade for the sidebar band. The hub owns a repaint, so it is built in the constructor. */
+	#sidebarFade: HoverFade | undefined;
 	/**
 	 * Arrow-key ownership: `scope` (default) hops the sidebar even while the
 	 * search bar holds the caret; `list` navigates rows (browser models or
@@ -228,6 +232,8 @@ export class ModelHubComponent implements Component {
 	#rolesRows: RolesRow[] = [];
 	#roleIndex = 0;
 	#roleHover: number | null = null;
+	/** Cross-fade for the roles-pane band; a second surface, so a second fade. */
+	#roleFade: HoverFade | undefined;
 
 	#assigning: AssignTarget | null = null;
 	#strip: StripState | null = null;
@@ -297,6 +303,13 @@ export class ModelHubComponent implements Component {
 		this.#browser.onCancel = () => this.#callbacks.onCancel();
 		this.#browser.onQueryChange = query => this.#onQueryChanged(query);
 
+		// Three pointer surfaces share the card's repaint: the sidebar, the roles pane, and the
+		// model list. The browser paints inside this card's frame and has no repaint of its own.
+		const bandMotion = { requestRender: () => this.#tui.requestRender(), enabled: modalRevealEnabled() };
+		this.#sidebarFade = new HoverFade(bandMotion);
+		this.#roleFade = new HoverFade(bandMotion);
+		this.#browser.setHoverMotion(bandMotion);
+
 		// Hydrate synchronously from the current registry snapshot so the first
 		// Enter after opening acts on cached models instead of being dropped
 		// while the offline refresh promise is still pending.
@@ -326,6 +339,13 @@ export class ModelHubComponent implements Component {
 	/** Cancel pending provider refresh timers and the spinner. Host calls this on overlay close. */
 	dispose(): void {
 		this.#reveal.stop();
+		this.#sidebarFade?.dispose();
+		this.#sidebarFade = undefined;
+		this.#sidebarHover = null;
+		this.#roleFade?.dispose();
+		this.#roleFade = undefined;
+		this.#roleHover = null;
+		this.#browser.disposeHoverMotion();
 		for (const [, timer] of this.#scheduledProviderRefreshes) clearTimeout(timer);
 		this.#scheduledProviderRefreshes.clear();
 		this.#refreshingProviders.clear();
@@ -1444,7 +1464,7 @@ export class ModelHubComponent implements Component {
 				// Wheel pans the sidebar viewport; picking a scope is click/keys only.
 				const maxScroll = Math.max(0, this.#entries.length - this.#splitRowCount);
 				this.#sidebarScroll = clampLow(this.#sidebarScroll + event.wheel, 0, maxScroll);
-				this.#sidebarHover = this.#sidebarEntryIndexAt(contentLine);
+				this.#setSidebarHover(this.#sidebarEntryIndexAt(contentLine));
 			} else if (overBody) {
 				if (entry.kind === "roles" && this.#assigning === null) {
 					this.#roleIndex = this.#stepRoleIndex(this.#roleIndex, event.wheel > 0 ? 1 : -1, { wrap: false });
@@ -1456,12 +1476,12 @@ export class ModelHubComponent implements Component {
 		}
 
 		if (event.motion) {
-			this.#sidebarHover = overSidebar ? this.#sidebarEntryIndexAt(contentLine) : null;
+			this.#setSidebarHover(overSidebar ? this.#sidebarEntryIndexAt(contentLine) : null);
 			if (overBody && entry.kind === "roles" && this.#assigning === null) {
 				const roleLine = bodyLine - this.#rolesRowStart + this.#rolesScroll;
-				this.#roleHover = roleLine >= 0 && roleLine < this.#rolesRowCount ? roleLine : null;
+				this.#setRoleHover(roleLine >= 0 && roleLine < this.#rolesRowCount ? roleLine : null);
 			} else {
-				this.#roleHover = null;
+				this.#setRoleHover(null);
 				if (overBody && this.#isBrowserView(entry)) {
 					this.#browser.routeMouse(event, bodyLine);
 				} else {
@@ -1563,7 +1583,7 @@ export class ModelHubComponent implements Component {
 				continue;
 			}
 			const active = entry.id === this.#activeEntryId;
-			const hovered = i === this.#sidebarHover;
+			const hoverStrength = this.#sidebarStrength(i);
 			const searching = this.#searchCounts !== null;
 			let matchCount: number | undefined;
 			if (searching) {
@@ -1616,8 +1636,8 @@ export class ModelHubComponent implements Component {
 				const lineWidth = visibleWidth(line);
 				if (lineWidth < width) line += " ".repeat(width - lineWidth);
 			}
-			if (hovered) {
-				line = selectionBand(line, width);
+			if (hoverStrength > 0) {
+				line = hoverBandAt(line, width, hoverStrength);
 			}
 			lines.push(line);
 		}
@@ -1677,9 +1697,33 @@ export class ModelHubComponent implements Component {
 	}
 
 	/** Clamp a roles row to `width`; the bg band is reserved for mouse hover. */
-	#finishRolesRow(line: string, width: number, hovered: boolean): string {
-		if (hovered) return selectionBand(line, width);
+	#finishRolesRow(line: string, width: number, hoverStrength: number): string {
+		if (hoverStrength > 0) return hoverBandAt(line, width, hoverStrength);
 		return truncateToWidth(line, width);
+	}
+
+	/** Move the sidebar band, telling the fade so the row left behind travels out. */
+	#setSidebarHover(index: number | null): void {
+		this.#sidebarHover = index;
+		this.#sidebarFade?.set(index);
+	}
+
+	/** Move the roles band; same contract as {@link #setSidebarHover}. */
+	#setRoleHover(index: number | null): void {
+		this.#roleHover = index;
+		this.#roleFade?.set(index);
+	}
+
+	/** Sidebar band strength; without a fade the hovered row is at 1 and the rest at 0. */
+	#sidebarStrength(index: number): number {
+		if (this.#sidebarFade !== undefined) return this.#sidebarFade.strengthAt(index);
+		return index === this.#sidebarHover ? 1 : 0;
+	}
+
+	/** Roles-pane band strength; same contract as {@link #sidebarStrength}. */
+	#roleStrength(index: number): number {
+		if (this.#roleFade !== undefined) return this.#roleFade.strengthAt(index);
+		return index === this.#roleHover ? 1 : 0;
 	}
 
 	#renderRolesView(fullWidth: number, rows: number): string[] {
@@ -1727,7 +1771,7 @@ export class ModelHubComponent implements Component {
 			const rowDef = this.#rolesRows[i];
 			if (!rowDef) continue;
 			const selected = i === this.#roleIndex;
-			const hovered = i === this.#roleHover;
+			const hoverStrength = this.#roleStrength(i);
 			// The unfocused pane draws no cursor; accent text still marks the row.
 			const cursor = selected && listFocused ? theme.fg("accent", theme.nav.cursor) : " ";
 
@@ -1739,7 +1783,7 @@ export class ModelHubComponent implements Component {
 			if (rowDef.kind === "newRole" || rowDef.kind === "newFallback") {
 				const label = rowDef.kind === "newRole" ? "+ New role…" : "+ New fallback…";
 				let line = ` ${cursor} ${theme.fg(selected ? "accent" : "dim", label)}`;
-				line = this.#finishRolesRow(line, width, hovered);
+				line = this.#finishRolesRow(line, width, hoverStrength);
 				rowLines.push(line);
 				continue;
 			}
@@ -1750,7 +1794,7 @@ export class ModelHubComponent implements Component {
 				const tail = key.slice(slash + 1);
 				const keyStyled = theme.fg("dim", key.slice(0, slash + 1)) + (selected ? theme.fg("accent", tail) : tail);
 				let line = ` ${cursor} ${theme.fg("dim", theme.status.shadowed)} ${keyStyled}`;
-				line = this.#finishRolesRow(line, width, hovered);
+				line = this.#finishRolesRow(line, width, hoverStrength);
 				rowLines.push(line);
 				continue;
 			}
@@ -1759,7 +1803,7 @@ export class ModelHubComponent implements Component {
 				const branch = theme.fg("dim", `${"".padEnd(tagWidth + 3)}↳`);
 				const selector = selected ? theme.fg("accent", rowDef.selector) : theme.fg("muted", rowDef.selector);
 				let line = ` ${cursor} ${branch} ${selector}`;
-				line = this.#finishRolesRow(line, width, hovered);
+				line = this.#finishRolesRow(line, width, hoverStrength);
 				rowLines.push(line);
 				continue;
 			}
@@ -1801,7 +1845,7 @@ export class ModelHubComponent implements Component {
 			if (rightWidth > 0 && lineWidth + rightWidth + 2 <= width) {
 				line = `${line}${" ".repeat(width - lineWidth - rightWidth - 1)}${right}`;
 			}
-			line = this.#finishRolesRow(line, width, hovered);
+			line = this.#finishRolesRow(line, width, hoverStrength);
 			rowLines.push(line);
 		}
 

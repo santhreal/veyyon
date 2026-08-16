@@ -92,6 +92,17 @@ export abstract class MouseRoutedSubmenu extends Container {
 		return lines;
 	}
 
+	/**
+	 * A submenu swaps screens by rebuilding its children from scratch, never by detaching one for
+	 * later reuse, so the children a `clear()` drops are gone. Hand each of them back first: a
+	 * child holding a pointer band keeps asking the shared clock for frames otherwise, and the
+	 * card is off screen by then.
+	 */
+	override clear(): void {
+		this.dispose();
+		super.clear();
+	}
+
 	/** Mouse routed from the host: wheel steps, hover lights, click confirms. */
 	routeMouse(event: SgrMouseEvent, line: number, col: number): void {
 		routeTrackedMouse(this.mouseTarget(), event, line, this.#mouseTargetLineOffset, col);

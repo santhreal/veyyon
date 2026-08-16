@@ -26,6 +26,7 @@ import {
 	MODAL_SIZING_MEDIUM,
 	ModalRevealDriver,
 	type ModalShellGeometry,
+	modalRevealEnabled,
 	planModalChrome,
 	renderModalShell,
 	sizingForArea,
@@ -139,6 +140,12 @@ export class ModelPickerComponent implements Component {
 		};
 		this.#browser.onCancel = () => callbacks.onCancel();
 		this.#browser.onQueryChange = () => this.#syncFromRegistryState();
+		// The browser paints inside this card's frame and owns no repaint, so its band fades on the
+		// card's clock or not at all. Same ambient gate as the open unfold.
+		this.#browser.setHoverMotion({
+			requestRender: () => this.#tui.requestRender(),
+			enabled: modalRevealEnabled(),
+		});
 
 		this.#syncFromRegistryState();
 		if (options.currentSelector) {
@@ -154,6 +161,12 @@ export class ModelPickerComponent implements Component {
 				})
 				.finally(() => this.#tui.requestRender());
 		}
+	}
+
+	/** Settle the browser's pointer band so no timer outlives a dismissed picker. */
+	dispose(): void {
+		this.#reveal.stop();
+		this.#browser.disposeHoverMotion();
 	}
 
 	invalidate(): void {}

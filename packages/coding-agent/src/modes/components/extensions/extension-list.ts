@@ -5,12 +5,20 @@
  * that toggles the entire provider. All items below are dimmed when the
  * master switch is off.
  */
-import { type Component, matchesKey, padding, truncateToWidth, visibleWidth } from "@veyyon/tui";
+import {
+	type Component,
+	HoverFade,
+	type HoverFadeOptions,
+	matchesKey,
+	padding,
+	truncateToWidth,
+	visibleWidth,
+} from "@veyyon/tui";
 import { isProviderEnabled } from "../../../discovery";
 import { withIcon } from "../../../modes/theme/icon-label";
 import { theme } from "../../../modes/theme/theme";
 import { matchesSelectDown, matchesSelectUp } from "../../utils/keybinding-matchers";
-import { clampSelection, renderScrollableList, searchableChar, selectionBand } from "../selector-helpers";
+import { clampSelection, hoverBandAt, renderScrollableList, searchableChar, selectionBand } from "../selector-helpers";
 import { applyFilter } from "./state-manager";
 import type { ExtensionKind, ExtensionRow, ExtensionState } from "./types";
 
@@ -42,6 +50,11 @@ export class ExtensionList implements Component {
 	#masterSwitchProvider: string | null = null;
 	#maxVisible: number;
 	#hoveredIndex: number | null = null;
+	/**
+	 * The cross-fade, once the dashboard has lent this list a repaint ({@link setHoverMotion}).
+	 * Absent, the band is switched.
+	 */
+	#hoverFade: HoverFade | undefined;
 	/** Item rows rendered in the last frame, for mouse hit-testing. */
 	#visibleCount = 0;
 
@@ -146,7 +159,7 @@ export class ExtensionList implements Component {
 					for (let i = startIdx; i < endIdx; i++) {
 						const listItem = this.#listItems[i];
 						const isSelected = this.#focused && i === this.#selectedIndex;
-						const isHovered = this.#focused && i === this.#hoveredIndex && !isSelected;
+						const hoverStrength = this.#focused && !isSelected ? this.#hoverStrength(i) : 0;
 
 						let rowStr: string;
 						if (listItem.type === "master") {
@@ -156,7 +169,7 @@ export class ExtensionList implements Component {
 						} else {
 							rowStr = this.#renderExtensionRow(listItem.item, isSelected, rowWidth, masterDisabled);
 						}
-						if (isHovered) rowStr = selectionBand(rowStr, rowWidth);
+						if (hoverStrength > 0) rowStr = hoverBandAt(rowStr, rowWidth, hoverStrength);
 						rows.push(rowStr);
 					}
 					this.#visibleCount = rows.length;
@@ -413,6 +426,31 @@ export class ExtensionList implements Component {
 	/** Highlight the row under the pointer (null clears). */
 	setHoverIndex(index: number | null): void {
 		this.#hoveredIndex = index;
+		this.#hoverFade?.set(index);
+	}
+
+	/**
+	 * Lend the list a repaint so the band can cross-fade between rows. Without it the list has no
+	 * frames of its own between two mouse reports and the band is switched, which is what every
+	 * direct construction still gets.
+	 */
+	setHoverMotion(options: HoverFadeOptions): void {
+		this.#hoverFade?.dispose();
+		this.#hoverFade = new HoverFade(options);
+		if (this.#hoveredIndex !== null) this.#hoverFade.set(this.#hoveredIndex);
+	}
+
+	/** Settle the band so no timer outlives the dashboard that owns this list. */
+	disposeHoverMotion(): void {
+		this.#hoverFade?.dispose();
+		this.#hoverFade = undefined;
+		this.#hoveredIndex = null;
+	}
+
+	/** Band strength for a row; without a fade the hovered row is at 1 and the rest at 0. */
+	#hoverStrength(index: number): number {
+		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
+		return index === this.#hoveredIndex ? 1 : 0;
 	}
 
 	/**

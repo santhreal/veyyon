@@ -468,12 +468,15 @@ export class SelectorController {
 		});
 		dashboard.onClose = () => {
 			overlay.hide();
+			// The list band and the tab band live on the shared clock; hiding the overlay does not
+			// tell them that.
+			dashboard.dispose();
 			this.focusActiveEditorArea();
 			this.ctx.ui.requestRender();
 		};
-		dashboard.onRequestRender = () => {
+		dashboard.setOnRequestRender(() => {
 			this.ctx.ui.requestRender();
-		};
+		});
 	}
 
 	/**
@@ -855,15 +858,19 @@ export class SelectorController {
 		const currentContextTokens = this.ctx.session.getContextUsage()?.tokens ?? 0;
 		const current = this.ctx.session.model;
 		let overlayHandle: OverlayHandle | undefined;
+		// The card holds a pointer band on the shared motion clock; hiding an overlay only stops
+		// painting it. The show site created the card, so the show site hands it back.
+		let picker: ModelPickerComponent | undefined;
 		let closed = false;
 		const done = () => {
 			if (closed) return;
 			closed = true;
+			picker?.dispose();
 			overlayHandle?.hide();
 			this.focusActiveEditorArea();
 			this.ctx.ui.requestRender();
 		};
-		const picker = new ModelPickerComponent(
+		picker = new ModelPickerComponent(
 			this.ctx.ui,
 			this.ctx.settings,
 			this.ctx.session.modelRegistry,

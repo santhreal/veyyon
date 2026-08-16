@@ -837,6 +837,7 @@ class ModelRolesSubmenu extends MouseRoutedSubmenu {
 				},
 			},
 		);
+		panel.setHoverMotion({ requestRender: () => this.requestRender?.(), enabled: modalRevealEnabled() });
 		this.addChild(panel);
 	}
 
@@ -2204,6 +2205,7 @@ class DefaultEffortSubmenu extends MouseRoutedSubmenu {
 				},
 			},
 		);
+		panel.setHoverMotion({ requestRender: () => this.requestRender?.(), enabled: modalRevealEnabled() });
 		this.addChild(panel);
 	}
 
@@ -2289,6 +2291,7 @@ class DefaultModelSubmenu extends MouseRoutedSubmenu {
 		private readonly registry: ModelRegistry,
 		private readonly onChange: () => void,
 		private readonly onCancel: () => void,
+		private readonly requestRender?: () => void,
 	) {
 		super();
 		this.#showModelPicker();
@@ -2318,6 +2321,7 @@ class DefaultModelSubmenu extends MouseRoutedSubmenu {
 				onCancel: () => this.onCancel(),
 			},
 		);
+		panel.setHoverMotion({ requestRender: () => this.requestRender?.(), enabled: modalRevealEnabled() });
 		this.addChild(panel);
 	}
 
@@ -2476,6 +2480,7 @@ export class ModelChainSubmenu extends MouseRoutedSubmenu {
 				},
 			},
 		);
+		panel.setHoverMotion({ requestRender: () => this.requestRender?.(), enabled: modalRevealEnabled() });
 		this.addChild(panel);
 	}
 
@@ -4208,6 +4213,7 @@ export class SettingsSelectorComponent implements Component {
 					settings.getModelRole(DEFAULT_MODEL_SLOT) ?? "",
 				),
 			() => done(this.#formatModelSelectorValue(settings.getModelRole(DEFAULT_MODEL_SLOT))),
+			() => this.context.requestRender?.(),
 		);
 	}
 

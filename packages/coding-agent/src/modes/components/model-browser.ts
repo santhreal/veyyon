@@ -15,6 +15,8 @@ import {
 	type Component,
 	Ellipsis,
 	fuzzyRank,
+	HoverFade,
+	type HoverFadeOptions,
 	Input,
 	matchesKey,
 	ScrollView,
@@ -37,7 +39,7 @@ import {
 	matchesSelectPageUp,
 	matchesSelectUp,
 } from "../utils/keybinding-matchers";
-import { selectionBand } from "./selector-helpers";
+import { hoverBandAt } from "./selector-helpers";
 
 /** One selectable row. `selector` is a canonical model key or host-specific virtual key. */
 export interface ModelBrowserItem {
@@ -422,6 +424,11 @@ export class ModelBrowser implements Component {
 	#columnWidths: { perfMode: PerfMode; ctx: number; cost: number; perf: number } | undefined;
 	#selectedIndex = 0;
 	#hoveredIndex: number | null = null;
+	/**
+	 * The cross-fade, once a host has lent this browser a repaint ({@link setHoverMotion}).
+	 * Absent, the band is switched: the browser is an inner list and owns no repaint of its own.
+	 */
+	#hoverFade: HoverFade | undefined;
 	#maxVisible = 10;
 	#showProvider: boolean;
 	#currentContextTokens: number;
@@ -734,11 +741,11 @@ export class ModelBrowser implements Component {
 		if (event.wheel !== null) {
 			// Wheel pans the window; it never moves the selection and never wraps.
 			this.#windowStart = this.#clampWindowStart(this.#windowStart + event.wheel);
-			this.#hoveredIndex = this.#hoverIndexAt(line);
+			this.#setHoveredIndex(this.#hoverIndexAt(line));
 			return;
 		}
 		if (event.motion) {
-			this.#hoveredIndex = this.#hoverIndexAt(line);
+			this.#setHoveredIndex(this.#hoverIndexAt(line));
 			return;
 		}
 		if (!event.leftClick) return;
@@ -754,7 +761,36 @@ export class ModelBrowser implements Component {
 	}
 	/** Drop the hover band. Hosts call this when the pointer leaves the browser pane. */
 	clearHover(): void {
+		this.#setHoveredIndex(null);
+	}
+
+	/** Move the band, and tell the fade so it can carry the old row out as the new one arrives. */
+	#setHoveredIndex(index: number | null): void {
+		this.#hoveredIndex = index;
+		this.#hoverFade?.set(index);
+	}
+
+	/**
+	 * Lend the browser the host card's repaint so its band cross-fades. The browser paints inside
+	 * someone else's frame and has no repaint of its own, so the clock has to come from above.
+	 */
+	setHoverMotion(options: HoverFadeOptions): void {
+		this.#hoverFade?.dispose();
+		this.#hoverFade = new HoverFade(options);
+		if (this.#hoveredIndex !== null) this.#hoverFade.set(this.#hoveredIndex);
+	}
+
+	/** Settle the band so no timer outlives the host card that owns this list. */
+	disposeHoverMotion(): void {
+		this.#hoverFade?.dispose();
+		this.#hoverFade = undefined;
 		this.#hoveredIndex = null;
+	}
+
+	/** Band strength for a row; without a fade the hovered row is at 1 and the rest at 0. */
+	#hoverStrength(index: number): number {
+		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
+		return index === this.#hoveredIndex ? 1 : 0;
 	}
 
 	/** List index under a frame-local row, or null when off-list or on a disabled row. */
@@ -810,7 +846,7 @@ export class ModelBrowser implements Component {
 		item: ModelBrowserItem,
 		width: number,
 		selected: boolean,
-		hovered: boolean,
+		hoverStrength: number,
 		ctxWidth: number,
 		costWidth: number,
 		perfWidth: number,
@@ -829,7 +865,9 @@ export class ModelBrowser implements Component {
 			const currentMark =
 				item.selector === this.#currentSelector ? ` ${theme.fg("success", theme.status.enabled)}` : "";
 			const line = `${prefix}${name}${currentMark}`;
-			return hovered ? selectionBand(line, width) : truncateToWidth(line, width, Ellipsis.Omit, true);
+			return hoverStrength > 0
+				? hoverBandAt(line, width, hoverStrength)
+				: truncateToWidth(line, width, Ellipsis.Omit, true);
 		}
 		const disabled = this.#isDisabled(item);
 		const prefix = selected && this.#focused ? `${theme.fg("accent", theme.nav.cursor)} ` : "  ";
@@ -862,8 +900,8 @@ export class ModelBrowser implements Component {
 		}
 		// The bg band is reserved for the mouse: it marks hover, nothing else.
 		// Keyboard selection is the cursor glyph + accent name.
-		if (hovered && !disabled) {
-			return selectionBand(line, width);
+		if (hoverStrength > 0 && !disabled) {
+			return hoverBandAt(line, width, hoverStrength);
 		}
 		return truncateToWidth(line, width);
 	}
@@ -969,7 +1007,7 @@ export class ModelBrowser implements Component {
 						item,
 						width - barCols,
 						i === this.#selectedIndex,
-						i === this.#hoveredIndex,
+						this.#hoverStrength(i),
 						ctxWidth,
 						costWidth,
 						perfWidth,

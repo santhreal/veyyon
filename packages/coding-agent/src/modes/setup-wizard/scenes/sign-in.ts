@@ -122,7 +122,9 @@ export class SignInTab implements SetupTab {
 
 	dispose(): void {
 		this.#disposed = true;
-		this.#selector.stopValidation();
+		// Not just the validation spinner: the provider band is on the shared clock too, and a
+		// scene that leaves is the only thing that knows the card is gone.
+		this.#selector.dispose();
 		this.#loginAbort?.abort();
 		this.#resolvePrompt("");
 	}
@@ -299,7 +301,7 @@ export class SignInTab implements SetupTab {
 			this.#authLaunchUrl = undefined;
 			this.#loggingInProvider = undefined;
 			this.#loginAbort = undefined;
-			this.#selector.stopValidation();
+			this.#selector.dispose();
 			this.#selector = this.#createSelector();
 			this.host.restoreFocus();
 			this.host.requestRender();

@@ -650,10 +650,14 @@ export class MCPCommandController {
 		// The wizard is a floating card on the alternate screen, so its close
 		// glyph and chips have somewhere to live and the transcript stays put.
 		let overlayHandle: OverlayHandle | undefined;
+		// The wizard holds a pointer band on the shared motion clock, and hiding an overlay only
+		// stops painting it. The show site created the card, so the show site hands it back.
+		let card: MCPAddWizard | undefined;
 		let closed = false;
 		const done = () => {
 			if (closed) return;
 			closed = true;
+			card?.dispose();
 			overlayHandle?.hide();
 			this.ctx.ui.setFocus(this.ctx.editorContainer.children[0] ?? this.ctx.editor);
 			this.ctx.ui.requestRender();
@@ -681,6 +685,7 @@ export class MCPCommandController {
 			parsed.initialName,
 		);
 
+		card = wizard;
 		wizard.setOnRequestRender(() => this.ctx.ui.requestRender());
 		overlayHandle = this.ctx.ui.showOverlay(wizard, {
 			anchor: "top-left",

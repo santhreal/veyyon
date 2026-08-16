@@ -6,6 +6,7 @@
 import {
 	type Component,
 	Container,
+	HoverFade,
 	Input,
 	matchesKey,
 	padding,
@@ -33,11 +34,12 @@ import {
 	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
+	modalRevealEnabled,
 	planModalChrome,
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
-import { selectionBand } from "./selector-helpers";
+import { hoverBandAt } from "./selector-helpers";
 
 type TransportType = "stdio" | "http" | "sse";
 type AuthMethod = "none" | "oauth" | "manual";
@@ -148,6 +150,11 @@ export class MCPAddWizard implements Component {
 	#hitRows: (number | undefined)[] = [];
 	/** Pointer-highlighted option (never the selected one; selection owns its row). */
 	#hoveredIndex: number | null = null;
+	/**
+	 * The cross-fade between the option the pointer left and the one it arrived at, once a host
+	 * lends this card a repaint. Absent, the band is switched.
+	 */
+	#hoverFade: HoverFade | undefined;
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
 	/** Frame row where the body begins (shell body start). */
@@ -204,7 +211,7 @@ export class MCPAddWizard implements Component {
 		this.#onCancelCallback = onCancel;
 		this.#onOAuthCallback = onOAuth ?? null;
 		this.#onTestConnectionCallback = onTestConnection ?? null;
-		this.#onRenderCallback = onRender ?? null;
+		if (onRender) this.#useRequestRender(onRender);
 		if (initialName && initialName.trim().length > 0) {
 			this.#state.name = initialName.trim();
 			this.#currentStep = "transport";
@@ -218,7 +225,31 @@ export class MCPAddWizard implements Component {
 	}
 
 	setOnRequestRender(cb: () => void): void {
+		this.#useRequestRender(cb);
+	}
+
+	/** Take a repaint seam and rebuild the hover fade on it. The wizard's host hands the callback
+	 *  in at construction time, so the constructor lands here too. */
+	#useRequestRender(cb: () => void): void {
 		this.#onRenderCallback = cb;
+		// The band fades only once the card has a repaint to lend it: the frames between two mouse
+		// reports have no input to hang off. Same ambient gate as the open unfold.
+		this.#hoverFade?.dispose();
+		this.#hoverFade = new HoverFade({ requestRender: cb, enabled: modalRevealEnabled() });
+		if (this.#hoveredIndex !== null) this.#hoverFade.set(this.#hoveredIndex);
+	}
+
+	/** Settle the pointer band so no timer outlives a dismissed wizard. */
+	dispose(): void {
+		this.#hoverFade?.dispose();
+		this.#hoverFade = undefined;
+		this.#hoveredIndex = null;
+	}
+
+	/** Band strength for an option row; without a fade the hovered row is at 1 and the rest at 0. */
+	#hoverStrength(index: number): number {
+		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
+		return index === this.#hoveredIndex ? 1 : 0;
 	}
 
 	/**
@@ -230,6 +261,7 @@ export class MCPAddWizard implements Component {
 		this.#contentContainer.clear();
 		this.#optionRows.clear();
 		this.#hoveredIndex = null;
+		this.#hoverFade?.set(null);
 	}
 
 	/** Add an option row and record which option it stands for, for the pointer. */
@@ -549,6 +581,7 @@ export class MCPAddWizard implements Component {
 			const index = this.#hitRows[line] ?? null;
 			if (index !== this.#hoveredIndex) {
 				this.#hoveredIndex = index;
+				this.#hoverFade?.set(index);
 				this.#requestRender();
 			}
 			return true;
@@ -594,7 +627,9 @@ export class MCPAddWizard implements Component {
 			for (const rendered of child.render(dims.contentWidth)) {
 				if (option !== undefined) {
 					this.#hitRows[body.length] = option;
-					body.push(option === this.#hoveredIndex ? selectionBand(rendered, dims.contentWidth) : rendered);
+					// The selected row owns its own styling; a band over it reads as two selections.
+					const strength = option === this.#selectedIndex ? 0 : this.#hoverStrength(option);
+					body.push(strength > 0 ? hoverBandAt(rendered, dims.contentWidth, strength) : rendered);
 					continue;
 				}
 				body.push(rendered);

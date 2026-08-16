@@ -13,12 +13,20 @@
 // It drives the real `SelectorController.showSettingsSelector` against the real card and the real
 // shared clock — no fake component, since the defect is precisely that the real one was never told.
 //
+// The second defect, same class one level down: a card the operator has NOT closed still throws
+// surfaces away. A settings submenu swaps screens by rebuilding its children, so stepping back out
+// of a role's model panel drops a live pointer band on the floor. Nothing at the dozens of
+// `this.clear()` sites could be trusted to remember, so the base class hands the children back.
+//
 // WHAT IT DOES NOT CATCH: whether the fade LOOKS right (the band-bytes suite), and a card closed by
 // a route other than the overlay's own cancel — every route ends in the same `done`, but nothing
 // here proves a future route will.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
+import type { Model } from "@veyyon/ai";
+import { buildModel } from "@veyyon/catalog/build";
+import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import type { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/settings-selector";
 import { SelectorController } from "@veyyon/coding-agent/modes/controllers/selector-controller";
@@ -44,7 +52,36 @@ interface OpenedCard {
 	hide: () => void;
 }
 
-async function openSettings(): Promise<OpenedCard> {
+/**
+ * Three models under two providers: enough for the role picker to paint a list with a hoverable
+ * row that is neither the first nor the last, which is what a band test needs.
+ */
+const MODELS: ReadonlyArray<Model> = ["alpha/one", "alpha/two", "beta/three"].map(name => {
+	const [provider, id] = name.split("/") as [string, string];
+	return buildModel({
+		id,
+		name: id,
+		api: "ollama-chat",
+		provider,
+		baseUrl: "https://example.invalid",
+		reasoning: false,
+		input: ["text"],
+		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+		contextWindow: 128_000,
+		maxTokens: 1024,
+	});
+});
+
+/** Only what the role picker reads: the catalog, and whether each row is already usable. */
+const MODEL_REGISTRY = {
+	getAvailable: () => MODELS,
+	getAll: () => MODELS,
+	isKeylessProvider: () => false,
+	hasConfiguredAuth: () => true,
+	authStorage: { hasAuth: () => true },
+} as unknown as ModelRegistry;
+
+async function openSettings(options?: { withModels?: boolean }): Promise<OpenedCard> {
 	const hide = vi.fn();
 	const opened = Promise.withResolvers<SettingsSelectorComponent>();
 	const showOverlay = vi.fn((component: SettingsSelectorComponent) => {
@@ -63,9 +100,9 @@ async function openSettings(): Promise<OpenedCard> {
 		session: {
 			getAvailableThinkingLevels: () => [],
 			thinkingLevel: undefined,
-			getAvailableModels: () => [],
+			getAvailableModels: () => (options?.withModels ? MODELS : []),
 			model: undefined,
-			modelRegistry: undefined,
+			modelRegistry: options?.withModels ? MODEL_REGISTRY : undefined,
 		},
 		statusLine: {
 			updateSettings: vi.fn(),
@@ -101,6 +138,26 @@ function categoryCell(card: SettingsSelectorComponent, label: string): { row: nu
 	expect(index, `sidebar row for ${label}`).toBeGreaterThanOrEqual(0);
 	const col = stripVTControlCharacters(rows[index] as string).indexOf(label) + 1;
 	return { row: index + 1, col };
+}
+
+/** The card as the operator reads it, one entry per screen row. */
+function plain(card: SettingsSelectorComponent): string[] {
+	return card.render(WIDTH).map(line => stripVTControlCharacters(line));
+}
+
+/** 1-based cell of the first row carrying `text`, wherever on the card it is painted. */
+function cellOf(card: SettingsSelectorComponent, text: string): { row: number; col: number } {
+	const rows = plain(card);
+	const index = rows.findIndex(line => line.includes(text));
+	expect(index, `a row reading ${text}`).toBeGreaterThanOrEqual(0);
+	return { row: index + 1, col: (rows[index] as string).indexOf(text) + 1 };
+}
+
+/** Press and release over a row: how the operator picks one with the pointer. */
+function click(card: SettingsSelectorComponent, text: string): void {
+	const { row, col } = cellOf(card, text);
+	card.handleInput(`\x1b[<0;${col};${row}M`);
+	card.handleInput(`\x1b[<0;${col};${row}m`);
 }
 
 beforeEach(async () => {
@@ -168,5 +225,32 @@ describe("a closed settings card lets go of the clock", () => {
 		drain(performance.now());
 		cancel();
 		expect(motionClock.liveCount).toBe(0);
+	});
+
+	it("hands the clock back when a role's model panel is stepped out of", async () => {
+		const { card } = await openSettings({ withModels: true });
+		drain(performance.now());
+
+		// Model → Role Models → the first role's picker, each step asserted by what the card
+		// paints: a navigation that silently landed somewhere else would test nothing at all.
+		click(card, "Model");
+		click(card, "Role Models");
+		card.handleInput("\r");
+		expect(plain(card).some(line => line.includes("Enter to pick model"))).toBe(true);
+		card.handleInput("\r");
+		expect(plain(card).some(line => line.includes("alpha/two"))).toBe(true);
+
+		const spot = cellOf(card, "alpha/two");
+		card.handleInput(`\x1b[<35;${spot.col};${spot.row}M`);
+		expect(motionClock.liveCount, "the panel's band is travelling").toBeGreaterThan(0);
+
+		// Escape here does not close the card: the submenu rebuilds its children back into the
+		// role list, and the panel it drops is the thing that has to give the clock back.
+		card.handleInput("\x1b");
+		expect(plain(card).some(line => line.includes("Enter to pick model"))).toBe(true);
+
+		const now = performance.now();
+		for (let frame = 1; frame <= 2; frame++) motionClock.tick(now + frame * FRAME);
+		expect(motionClock.liveCount, "the swapped-out panel left nothing on the clock").toBe(0);
 	});
 });
