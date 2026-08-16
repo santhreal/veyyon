@@ -478,6 +478,55 @@ SECTIONS = [
         ],
     ),
     Section(
+        "The context gauge walks to its new reading, and now has one to walk to",
+        [
+            "<p>The footline gauge is eight cells and a percentage, both reporting room LEFT. It used to be written"
+            " straight into the next frame: a turn that spent nine points of the window put the new number on screen"
+            " with no travel, which says <em>it is 52 now</em> where the same number walking says <em>you just spent"
+            " nine</em>. That is the whole reason a spend meter is on screen. It now settles on the shared clock, one"
+            " value read three ways — the percentage, the eight-cell bar, and the heat the bar is coloured with — so"
+            " the three can never disagree about where the value is.</p>",
+            "<p>Recording it found the defect underneath. The scene mentions a 20KB file, which the session reads and"
+            " sends; the gauge did not move at all, and the reason was not the animation. Nothing counted the"
+            " message: a <code>@file</code> mention reaches the provider as a developer message wrapping every body"
+            " it read, and a <code>$</code> cell as a user message wrapping its code and its output, and both roles"
+            " fell through the token estimator's default arm at zero. The first attempt at this scene used a 50KB"
+            " mention and the endpoint answered <code>400 request (40459 tokens) exceeds the available context size"
+            " (32768 tokens)</code> while the footline still read <code>61% left</code>. So the <em>main</em> arm"
+            " below is a measurement of two defects at once, and it is the honest one: main's reading is"
+            " <code>61% left</code> in every frame of a 37-second take that sends a 5.8k-token file.</p>",
+            video_pair(
+                XB + "context-gauge.mp4",
+                X + "context-gauge.mp4",
+                "the file is read and sent, and the gauge never moves",
+                "the reading walks from 61% to 50% and the bar drops a cell",
+                start=17,
+            ),
+            strip(
+                S + "context-gauge-main",
+                8,
+                "<strong>main.</strong> Eight frames at 60fps, one in four across the half second where the branch"
+                " travels. The reading is <code>61% left</code> in all eight, and in all 2221 frames of the take:"
+                " grouping every frame of the gauge region by its own pixels leaves 23 distinct states, 22 of them"
+                " reading 61 and the twenty-third a stretch of 25 frames right after the submit where the footline is"
+                " not on that row at all.",
+            ),
+            strip(
+                S + "context-gauge",
+                8,
+                "<strong>branch.</strong> The same eight offsets of the same scene: 61, 60, 57, 56, 53, 51, 51, 50,"
+                " and the bar giving up a cell in the middle of it. The travel runs 19.65s to 20.13s of the take —"
+                " the spring's own settling time, not a duration the gauge picked.",
+            ),
+            "<p>What the interrupt does is a measurement too, not a claim. Escape at 25.72s retires the in-flight"
+            " estimate and the reading stays at <code>50% left</code>: the file body is in the conversation now and"
+            " keeps costing what it costs. The only thing that changes is the bar's tip, which stops pulsing because"
+            " the turn is no longer live. Neither arm can cross a heat threshold on this endpoint — the hue steps at"
+            " 50% USED, and 50% of the model card's declared 65536 is 32768, which is exactly the prompt"
+            " <code>llama.cpp</code> refuses to serve for a model trained at 32768.</p>",
+        ],
+    ),
+    Section(
         "A real turn, on a model in the same container",
         [
             "<p>The provider is <code>llama.cpp</code> on the recorder's own docker network holding"
