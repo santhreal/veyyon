@@ -140,11 +140,6 @@ export class PlanReviewOverlay implements Component {
 	 * it and stops routing input to it the moment this is called.
 	 */
 	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
-		// The card is going away whether or not it fades, so the viewport's travel
-		// goes with it: a spring that outlives the card keeps the shared clock
-		// ticking for rows nobody can see. Dropping it lands the offset on the
-		// target, which is where the keyboard already was.
-		this.#scrollView.disposeScrollMotion();
 		return beginModalExit(this.#reveal, requestRender, done);
 	}
 
@@ -204,9 +199,6 @@ export class PlanReviewOverlay implements Component {
 			ellipsis: Ellipsis.Omit,
 			theme: { track: t => theme.fg("dim", t), thumb: t => theme.fg("accent", t) },
 		});
-		if (options.requestRender) {
-			this.#scrollView.setScrollMotion({ requestRender: options.requestRender, enabled: transitionsEnabled() });
-		}
 		this.#options = options.options;
 		this.#disabled = new Set(
 			(options.disabledIndices ?? []).filter(i => Number.isInteger(i) && i >= 0 && i < this.#options.length),
