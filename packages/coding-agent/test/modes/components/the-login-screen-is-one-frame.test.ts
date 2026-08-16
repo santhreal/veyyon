@@ -68,13 +68,17 @@ describe("the login screen is one frame", () => {
 	});
 
 	it("shows one footer, naming the keys that actually work right now", () => {
+		// The footer is the ModalShell chip row now: one row of chips whose key
+		// prefixes come from the live keybindings, so the assertions name the
+		// ACTIONS the row offers rather than a hardcoded chord. The contract is
+		// unchanged: one footer row, naming only what works right now.
 		const { dialog, rows } = makeDialog();
-		expect(rowsWith(rows(), "Esc  cancel")).toBe(1);
-		expect(rowsWith(rows(), "Enter")).toBe(0);
+		expect(rowsWith(rows(), "cancel")).toBe(1);
+		expect(rowsWith(rows(), "submit")).toBe(0);
 
 		void dialog.showPrompt({ message: "Paste your Groq API key", secret: true });
-		expect(rowsWith(rows(), "Enter  submit    Esc  cancel")).toBe(1);
-		expect(rows().filter(row => row.includes("Esc")).length).toBe(1);
+		expect(rowsWith(rows(), "enter submit")).toBe(1);
+		expect(rowsWith(rows(), "cancel")).toBe(1);
 	});
 
 	it("replaces the status line instead of stacking one line per attempt", () => {
@@ -186,7 +190,8 @@ describe("the login screen is one frame", () => {
 		const { dialog, completed, rows } = makeDialog();
 		const named = dialog.askOptionalName("Name this account (optional)", "work");
 
-		expect(rowsWith(rows(), "Enter  save    Esc  skip")).toBe(1);
+		expect(rowsWith(rows(), "enter save")).toBe(1);
+		expect(rowsWith(rows(), "skip")).toBe(1);
 		dialog.handleInput("\x1b");
 
 		// The credential is already stored: Esc here means "leave it unnamed", not "cancel".

@@ -1,8 +1,28 @@
-import { Container, getKeybindings, Input, Spacer, Text, type TUI } from "@veyyon/tui";
+import {
+	type Component,
+	getKeybindings,
+	Input,
+	padding,
+	routeSgrMouseInput,
+	type SgrMouseEvent,
+	type TUI,
+	wrapTextWithAnsi,
+} from "@veyyon/tui";
 import { theme } from "../../modes/theme/theme";
 import { formatProviderName } from "../../slash-commands/helpers/format";
 import { openPath } from "../../utils/open";
-import { DynamicBorder } from "./dynamic-border";
+import {
+	applyModalReveal,
+	computeModalDims,
+	consumeModalChipHover,
+	hitTestModalChrome,
+	MODAL_SIZING_LARGE,
+	ModalRevealDriver,
+	type ModalShellGeometry,
+	type ModalShortcut,
+	renderModalShell,
+	sizingForArea,
+} from "./modal-shell";
 
 /** What a login flow is currently asking the operator to paste. */
 interface PromptState {
@@ -10,8 +30,8 @@ interface PromptState {
 	placeholder?: string;
 	/** Mask the value and take the paste byte for byte: the answer is a credential. */
 	secret: boolean;
-	/** Footer text for this prompt, because Esc does not mean the same thing in every one. */
-	footer: string;
+	/** The verb Enter performs in this prompt ("submit" a credential, "save" a name). */
+	submitVerb: string;
 }
 
 /** Where the operator has to go to authorize, once a flow knows. */
@@ -21,24 +41,33 @@ interface AuthState {
 	instructions?: string;
 }
 
+const LOGIN_CANCEL_CHIPS: readonly ModalShortcut[] = [
+	{ label: "cancel", keybindings: ["tui.select.cancel"], clickable: true, id: "cancel" },
+];
+
+function loginPromptChips(submitVerb: string, cancelVerb: string): readonly ModalShortcut[] {
+	return [
+		{ label: submitVerb, keybindings: ["tui.select.confirm"] },
+		{ label: cancelVerb, keybindings: ["tui.select.cancel"], clickable: true, id: "cancel" },
+	];
+}
+
 /**
- * The login surface: one frame, rebuilt from state, that replaces the editor while a provider flow
- * runs.
+ * The login surface: one floating ModalShell card, rebuilt from state, hosted
+ * as a fullscreen overlay while a provider flow runs.
  *
- * WHY IT IS REBUILT rather than appended to. Every `show*` used to push rows onto one container, so
- * the frame was a log of everything the flow had ever said. An API-key login that failed validation
- * and asked again rendered two prompts, two "(Escape to cancel, Enter to submit)" footers, and its
- * second question BELOW the input it belonged to, because the input was already mounted from the
- * first one and only moved if it had never been added. Progress messages stacked the same way, so
- * "Validating API key..." accumulated one line per attempt.
- *
- * There are four things this frame can show, and each has exactly one place: where to authorize, what
- * is happening right now, what is being asked, and which keys work. Setting one replaces it.
+ * WHY IT IS REBUILT rather than appended to. Every `show*` used to push rows
+ * onto one container, so the frame was a log of everything the flow had ever
+ * said. An API-key login that failed validation and asked again rendered two
+ * prompts, two footers, and its second question BELOW the input it belonged
+ * to. There are four things this card can show, and each has exactly one
+ * place: where to authorize, what is happening right now, what is being
+ * asked, and which keys work. Setting one replaces it.
  */
-export class LoginDialogComponent extends Container {
-	#contentContainer: Container;
+export class LoginDialogComponent implements Component {
 	#input: Input;
 	#tui: TUI;
+	#title: string;
 	#abortController = new AbortController();
 	#inputResolver?: (value: string) => void;
 	#inputRejecter?: (error: Error) => void;
@@ -52,23 +81,28 @@ export class LoginDialogComponent extends Container {
 	 * "undo the login I just completed".
 	 */
 	#escapeMode: "cancel" | "skip" = "cancel";
+	#shellGeometry: ModalShellGeometry | null = null;
+	#hoveredShortcutId: string | null = null;
+	#getTerminalRows: () => number;
+	#reveal = new ModalRevealDriver();
 
 	constructor(
 		tui: TUI,
 		providerId: string,
 		private onComplete: (success: boolean, message?: string) => void,
+		options?: { getTerminalRows?: () => number; reveal?: boolean },
 	) {
-		super();
 		this.#tui = tui;
-
-		this.addChild(new DynamicBorder());
 		// One label owner for provider names, the same one the status line, the account card and the
 		// logout dialog use. Reading the browser-login table here printed a raw slug (`Login to groq`)
 		// for every provider that authenticates with a pasted key, since that table has no row for one.
-		this.addChild(new Text(theme.fg("warning", `Login to ${formatProviderName(providerId)}`), 1, 0));
-
-		this.#contentContainer = new Container();
-		this.addChild(this.#contentContainer);
+		this.#title = `Login to ${formatProviderName(providerId)}`;
+		this.#getTerminalRows = options?.getTerminalRows ?? (() => process.stdout.rows || 40);
+		if (options?.reveal) {
+			// The driver anchors its clock at first paint, so starting here never
+			// skips the unfold.
+			this.#reveal.start(() => this.#tui.requestRender());
+		}
 
 		this.#input = new Input();
 		this.#input.onSubmit = () => {
@@ -77,23 +111,20 @@ export class LoginDialogComponent extends Container {
 		this.#input.onEscape = () => {
 			this.#escape();
 		};
-
-		this.addChild(new DynamicBorder());
-		this.#rebuild();
 	}
 
 	get signal(): AbortSignal {
 		return this.#abortController.signal;
 	}
 
-	/** Hand the pending prompt its answer and take the question off the frame. */
+	/** Hand the pending prompt its answer and take the question off the card. */
 	#settlePrompt(value: string): void {
 		const resolve = this.#inputResolver;
 		this.#inputResolver = undefined;
 		this.#inputRejecter = undefined;
 		this.#prompt = undefined;
 		this.#escapeMode = "cancel";
-		this.#rebuild();
+		this.#tui.requestRender();
 		resolve?.(value);
 	}
 
@@ -116,52 +147,118 @@ export class LoginDialogComponent extends Container {
 		this.onComplete(false, "Login cancelled");
 	}
 
-	/**
-	 * Lay the frame out from state: where to go, what is happening, what is being asked, which keys
-	 * work. One blank line between blocks and none inside one, so the frame reads the same however
-	 * many times a flow re-asked.
-	 */
-	#rebuild(): void {
-		this.#contentContainer.clear();
+	#chips(): readonly ModalShortcut[] {
+		const prompt = this.#prompt;
+		if (!prompt) return LOGIN_CANCEL_CHIPS;
+		return loginPromptChips(prompt.submitVerb, this.#escapeMode === "skip" ? "skip" : "cancel");
+	}
+
+	invalidate(): void {
+		// Stateless: the card is laid out from fields on every render.
+	}
+
+	render(width: number): string[] {
+		const termHeight = Math.max(14, this.#getTerminalRows());
+		// LARGE, not MEDIUM: the authorize URL is a copy target and a narrow card
+		// wraps it mid-token, so the card takes the wider sizing to keep a typical
+		// URL on one row.
+		const sizing = sizingForArea(MODAL_SIZING_LARGE, termHeight);
+		const dims = computeModalDims(width, termHeight, sizing);
+		if (!dims) {
+			this.#shellGeometry = null;
+			return Array.from({ length: termHeight }, () => padding(width));
+		}
+
+		// Lay the card out from state: where to go, what is happening, what is
+		// being asked. One blank line between blocks and none inside one, so the
+		// card reads the same however many times a flow re-asked. Body lines wrap
+		// rather than clip: the authorize URL is a copy target, and a clipped
+		// tail silently drops OAuth query parameters.
+		const body: string[] = [];
+		const say = (line: string): void => {
+			body.push(...wrapTextWithAnsi(line, dims.contentWidth));
+		};
 		const auth = this.#auth;
 		if (auth) {
-			this.#contentContainer.addChild(new Spacer(1));
-			this.#contentContainer.addChild(new Text(theme.fg("accent", auth.url), 1, 0));
+			say(theme.fg("accent", auth.url));
 			const clickHint = process.platform === "darwin" ? "Cmd+click to open" : "Ctrl+click to open";
-			this.#contentContainer.addChild(
-				new Text(theme.fg("dim", `\x1b]8;;${auth.url}\x07${clickHint}\x1b]8;;\x07`), 1, 0),
-			);
+			body.push(theme.fg("dim", `\x1b]8;;${auth.url}\x07${clickHint}\x1b]8;;\x07`));
 			if (auth.launchUrl && auth.launchUrl !== auth.url) {
-				this.#contentContainer.addChild(
-					new Text(theme.fg("dim", `Local shortcut (this machine only): ${auth.launchUrl}`), 1, 0),
-				);
+				say(theme.fg("dim", `Local shortcut (this machine only): ${auth.launchUrl}`));
 			}
 			if (auth.instructions) {
-				this.#contentContainer.addChild(new Spacer(1));
-				this.#contentContainer.addChild(new Text(theme.fg("warning", auth.instructions), 1, 0));
+				body.push("");
+				say(theme.fg("warning", auth.instructions));
 			}
 		}
 
 		if (this.#status) {
-			this.#contentContainer.addChild(new Spacer(1));
-			this.#contentContainer.addChild(new Text(theme.fg("dim", this.#status), 1, 0));
+			if (body.length > 0) body.push("");
+			say(theme.fg("dim", this.#status));
 		}
 
 		const prompt = this.#prompt;
 		if (prompt) {
-			this.#contentContainer.addChild(new Spacer(1));
-			this.#contentContainer.addChild(new Text(theme.fg("text", prompt.message), 1, 0));
-			this.#contentContainer.addChild(this.#input);
+			if (body.length > 0) body.push("");
+			say(theme.fg("text", prompt.message));
+			body.push(...this.#input.render(dims.contentWidth));
 			if (prompt.placeholder) {
-				this.#contentContainer.addChild(new Text(theme.fg("dim", `looks like ${prompt.placeholder}`), 1, 0));
+				body.push(theme.fg("dim", `looks like ${prompt.placeholder}`));
 			}
 		}
 
-		// The footer is last and there is one of it. It names the keys that work on the frame as it
-		// stands, which is why it is rebuilt with the frame rather than appended by whoever spoke last.
-		this.#contentContainer.addChild(new Spacer(1));
-		this.#contentContainer.addChild(new Text(theme.fg("dim", prompt?.footer ?? "Esc  cancel"), 1, 0));
-		this.#tui.requestRender();
+		const shell = renderModalShell({
+			title: this.#title,
+			sizing,
+			areaWidth: width,
+			areaHeight: termHeight,
+			body,
+			shortcuts: this.#chips(),
+			hoveredShortcutId: this.#hoveredShortcutId,
+			showClose: true,
+		});
+		this.#shellGeometry = shell.geometry;
+		return applyModalReveal(shell, width, this.#reveal.value);
+	}
+
+	handleInput(data: string): void {
+		if (data.startsWith("\x1b[<")) {
+			routeSgrMouseInput(data, event => this.#routeMouse(event));
+			return;
+		}
+
+		const kb = getKeybindings();
+		if (kb.matches(data, "tui.select.cancel")) {
+			this.#escape();
+			return;
+		}
+
+		this.#input.handleInput(data);
+	}
+
+	#routeMouse(event: SgrMouseEvent): boolean {
+		const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
+			motion: event.motion,
+			leftClick: event.leftClick,
+		});
+		if (
+			consumeModalChipHover(chrome, this.#hoveredShortcutId, id => {
+				this.#hoveredShortcutId = id;
+				this.#tui.requestRender();
+			})
+		) {
+			return true;
+		}
+		if (event.motion) return true;
+		if (
+			chrome.kind === "close" ||
+			chrome.kind === "outside" ||
+			(chrome.kind === "shortcut" && chrome.id === "cancel")
+		) {
+			this.#escape();
+			return true;
+		}
+		return true;
 	}
 
 	/**
@@ -175,8 +272,8 @@ export class LoginDialogComponent extends Container {
 	 */
 	showAuth(url: string, instructions?: string, launchUrl?: string): void {
 		this.#auth = { url, ...(launchUrl ? { launchUrl } : {}), ...(instructions ? { instructions } : {}) };
-		this.#rebuild();
-		// Best-effort, and deliberately outside `#rebuild`: a relayout must never open a second tab.
+		this.#tui.requestRender();
+		// Best-effort: a relayout must never open a second tab.
 		openPath(url);
 	}
 
@@ -186,7 +283,7 @@ export class LoginDialogComponent extends Container {
 	 */
 	showProgress(message: string): void {
 		this.#status = message;
-		this.#rebuild();
+		this.#tui.requestRender();
 	}
 
 	/** Ask for a credential (or a pasted code) and wait. Replaces any question already on screen. */
@@ -196,7 +293,7 @@ export class LoginDialogComponent extends Container {
 			...(prompt.placeholder ? { placeholder: prompt.placeholder } : {}),
 			// Absent means masked: a flow that wants a readable field says so.
 			secret: prompt.secret !== false,
-			footer: "Enter  submit    Esc  cancel",
+			submitVerb: "submit",
 		});
 	}
 
@@ -213,7 +310,7 @@ export class LoginDialogComponent extends Container {
 			message,
 			...(placeholder ? { placeholder } : {}),
 			secret: false,
-			footer: "Enter  save    Esc  skip",
+			submitVerb: "save",
 		});
 		this.#escapeMode = "skip";
 		return answered.then(value => {
@@ -227,7 +324,7 @@ export class LoginDialogComponent extends Container {
 		this.#escapeMode = "cancel";
 		this.#input.credentialMode = prompt.secret;
 		this.#input.setValue("");
-		this.#rebuild();
+		this.#tui.requestRender();
 
 		const { promise, resolve, reject } = Promise.withResolvers<string>();
 		this.#inputResolver = resolve;
@@ -240,14 +337,8 @@ export class LoginDialogComponent extends Container {
 		this.#input.pasteText(text);
 	}
 
-	handleInput(data: string): void {
-		const kb = getKeybindings();
-
-		if (kb.matches(data, "tui.select.cancel")) {
-			this.#escape();
-			return;
-		}
-
-		this.#input.handleInput(data);
+	/** Settle the reveal so no timer outlives a dismissed card. */
+	dispose(): void {
+		this.#reveal.stop();
 	}
 }

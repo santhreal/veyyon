@@ -1403,22 +1403,33 @@ export class SelectorController {
 		const manualInput = this.ctx.oauthManualInput;
 		const useManualInput = PASTE_CODE_LOGIN_PROVIDERS.has(providerId);
 		let restored = false;
+		let overlayHandle: OverlayHandle | undefined;
 		const restoreEditor = () => {
 			if (restored) return;
 			restored = true;
-			this.ctx.editorContainer.clear();
-			this.ctx.editorContainer.addChild(this.ctx.editor);
-			this.ctx.ui.setFocus(this.ctx.editor);
+			overlayHandle?.hide();
+			dialog.dispose();
+			this.focusActiveEditorArea();
 			this.ctx.ui.requestRender();
 		};
-		const dialog = new LoginDialogComponent(this.ctx.ui, providerId, (_success, message) => {
-			// Fires on Esc: unblock the editor immediately; the aborted flow's
-			// rejection settles the awaited login below.
-			restoreEditor();
-			if (message) this.ctx.showStatus(message);
+		const dialog = new LoginDialogComponent(
+			this.ctx.ui,
+			providerId,
+			(_success, message) => {
+				// Fires on Esc: unblock the editor immediately; the aborted flow's
+				// rejection settles the awaited login below.
+				restoreEditor();
+				if (message) this.ctx.showStatus(message);
+			},
+			{ getTerminalRows: () => this.ctx.ui.terminal.rows, reveal: modalRevealEnabled() },
+		);
+		overlayHandle = this.ctx.ui.showOverlay(dialog, {
+			anchor: "top-left",
+			width: "100%",
+			maxHeight: "100%",
+			margin: 0,
+			fullscreen: true,
 		});
-		this.ctx.editorContainer.clear();
-		this.ctx.editorContainer.addChild(dialog);
 		this.ctx.ui.setFocus(dialog);
 		this.ctx.ui.requestRender();
 		try {
