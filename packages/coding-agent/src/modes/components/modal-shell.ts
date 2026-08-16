@@ -11,7 +11,20 @@
  * Product constraint: Veyyon stays transcript + composer; overlays float on
  * top. This is not a full-screen TUI conversion.
  */
-import { clamp, clampLow, type Keybinding, padding, TERMINAL, truncateToWidth, visibleWidth } from "@veyyon/tui";
+import {
+	type Animation,
+	clamp,
+	clampLow,
+	fadeLineTowards,
+	type Keybinding,
+	MOTION,
+	type MotionClock,
+	motionClock,
+	padding,
+	TERMINAL,
+	truncateToWidth,
+	visibleWidth,
+} from "@veyyon/tui";
 import { transitionsEnabled } from "../theme/shimmer";
 import { theme } from "../theme/theme";
 import { actionKeyHint } from "../utils/key-hint";
@@ -853,22 +866,27 @@ export const SELECT_LIST_SHORTCUTS: readonly ModalShortcut[] = [
 
 // --- Open reveal (TOUCH-5) ---------------------------------------------------
 
-/** Total reveal duration. Short enough that a fast typist never waits on it. */
-const REVEAL_MS = 130;
-const REVEAL_TICK_MS = 33;
-
 /**
- * Drives a one-shot open reveal for a modal card: `value` eases 0 → 1 over
- * {@link REVEAL_MS}, ticking a re-render until settled. Follows the welcome
- * bloom's convention (interval + requestRender, `display.transitions: off`
- * gating is the CALLER's job via modalRevealEnabled()). Idle after settling: the
- * timer self-clears, so a settled overlay costs nothing per frame.
+ * Drives a one-shot open reveal for a modal card: `value` eases 0 → 1 on the
+ * shared {@link motionClock} under {@link MOTION.enter}, requesting a render
+ * per frame until it settles. The card owns no timer of its own, so every
+ * overlay in the product opens on the same curve and on the same frame as
+ * anything else animating, and a settled overlay costs nothing (the clock
+ * drops a finished animation and stops ticking when nothing is left).
+ *
+ * `display.transitions: off` gating is the CALLER's job via
+ * modalRevealEnabled(). Tests pass their own clock and drive frames by hand.
  */
 export class ModalRevealDriver {
 	#armed = false;
-	#start: number | null = null;
-	#timer: NodeJS.Timeout | null = null;
+	#animation: Animation | null = null;
 	#settled = false;
+	#requestRender: (() => void) | null = null;
+	readonly #clock: MotionClock;
+
+	constructor(clock: MotionClock = motionClock) {
+		this.#clock = clock;
+	}
 
 	/**
 	 * Eased reveal fraction in [0, 1]; 1 once settled or never started. The
@@ -878,15 +896,19 @@ export class ModalRevealDriver {
 	 * clock then plays the unfold to nobody.
 	 */
 	get value(): number {
-		if (this.#settled) return 1;
-		if (!this.#armed) return 1;
-		if (this.#start === null) {
-			this.#start = performance.now();
+		if (this.#settled || !this.#armed) return 1;
+		if (this.#animation === null) {
+			this.#animation = this.#clock.animate(MOTION.enter, {
+				from: 0,
+				to: 1,
+				onFrame: () => this.#requestRender?.(),
+				onDone: () => {
+					this.#settled = true;
+				},
+			});
 			return 0;
 		}
-		const t = Math.min(1, (performance.now() - this.#start) / REVEAL_MS);
-		// easeOutCubic: fast unfold, gentle landing.
-		return 1 - (1 - t) ** 3;
+		return this.#animation.value;
 	}
 
 	/** Begin the reveal (idempotent; a second call replays from zero). */
@@ -894,22 +916,17 @@ export class ModalRevealDriver {
 		this.stop();
 		this.#settled = false;
 		this.#armed = true;
-		this.#start = null;
-		this.#timer = setInterval(() => {
-			// The settle deadline counts from first paint; keep ticking until the
-			// timeline has both started and elapsed.
-			if (this.#start !== null && performance.now() - this.#start >= REVEAL_MS) this.stop();
-			requestRender();
-		}, REVEAL_TICK_MS);
+		this.#animation = null;
+		this.#requestRender = requestRender;
 		requestRender();
 	}
 
-	/** Settle immediately (also used on dismount so no timer outlives the card). */
+	/** Settle immediately (also used on dismount so no frame outlives the card). */
 	stop(): void {
-		if (this.#timer !== null) {
-			clearInterval(this.#timer);
-			this.#timer = null;
-		}
+		// cancel, not finish: a dismount must not ask a disposed card to repaint.
+		this.#animation?.cancel();
+		this.#animation = null;
+		this.#requestRender = null;
 		this.#settled = true;
 	}
 }
@@ -927,27 +944,49 @@ export function modalRevealEnabled(): boolean {
 }
 
 /**
+ * The color a card resolves out of while it unfolds: the theme's declared page
+ * ground when it has one, else the extreme of the theme's appearance. A wrong
+ * ground is visible as a wash of the wrong hue, so this never guesses from the
+ * terminal's own reported background — a theme either declares its ground or
+ * gets the neutral one.
+ */
+export function modalRevealGround(): string {
+	return theme.getGroundHex() ?? (theme.isLight ? "#ffffff" : "#000000");
+}
+
+/**
  * Clip a rendered modal frame to an unfolding card: the top border stays put,
- * the bottom border slides down as the body grows. Pure so the exact frames
- * are byte-assertable in tests. `reveal >= 1` returns the lines untouched;
+ * the bottom border slides down as the body grows, and every visible card row
+ * resolves out of the ground as it arrives. Pure so the exact frames are
+ * byte-assertable in tests. `reveal >= 1` returns the lines untouched;
  * during the unfold every hidden card row becomes a blank area row, so nothing
  * below the moving bottom border ever paints. The minimum visible card is the
  * two border rows — a reveal never shows a borderless sliver.
+ *
+ * The fade is what separates an unfold from a wipe: a card whose chrome is at
+ * full strength on its first frame reads as a cut with a moving edge, however
+ * smooth the edge is.
  */
-export function applyModalReveal(result: ModalShellResult, areaWidth: number, reveal: number): string[] {
+export function applyModalReveal(
+	result: ModalShellResult,
+	areaWidth: number,
+	reveal: number,
+	ground: string = modalRevealGround(),
+): string[] {
 	const geometry = result.geometry;
 	if (geometry === null || reveal >= 1) return result.lines;
 	// cardRowEnd is EXCLUSIVE (see hitTestModalChrome's `row < cardRowEnd`).
 	const { cardRowStart, cardRowEnd } = geometry;
 	const cardRows = cardRowEnd - cardRowStart;
 	const visible = Math.max(2, Math.round(cardRows * Math.max(0, reveal)));
-	if (visible >= cardRows) return result.lines;
+	const strength = Math.max(0, Math.min(1, reveal));
 	const blank = padding(areaWidth);
 	return result.lines.map((line, row) => {
 		if (row < cardRowStart || row >= cardRowEnd) return line;
 		const cardRow = row - cardRowStart;
-		if (cardRow < visible - 1) return line; // top border + grown body rows
-		if (cardRow === visible - 1) return result.lines[cardRowEnd - 1]!; // bottom border, slid up
+		if (cardRow < visible - 1) return fadeLineTowards(line, ground, strength);
+		// The bottom border slides up to close the card at its current height.
+		if (cardRow === visible - 1) return fadeLineTowards(result.lines[cardRowEnd - 1]!, ground, strength);
 		return blank;
 	});
 }

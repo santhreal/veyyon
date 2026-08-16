@@ -35,6 +35,9 @@ export * from "./kitty-graphics";
 // LaTeX → Unicode/ANSI math rendering
 export * from "./latex-block";
 export * from "./latex-to-unicode";
+// One shared animation clock, its curve table, and the frame transforms it drives
+export * from "./motion";
+export * from "./motion-paint";
 // SGR mouse report parsing
 export * from "./mouse";
 // Terminal interface and implementations

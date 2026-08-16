@@ -6,6 +6,7 @@
 
 - A left click on a composer autocomplete suggestion accepts it, through the same apply path as Tab. Container routes a pointer event to the child under the pointed row, so a click reaches a component mounted inside the pinned footer.
 - A left click on the editor's text places the caret on the character under the pointer. The row and column are read from the last paint, so a prompt gutter, a wrapped line, a scrolled draft and the framed variant all resolve the same way; a click past the end of a row lands at the end of that row, and a click on the text while a suggestion popup is open dismisses the popup, since its prefix no longer describes where the caret is. Motion, release and wheel reports are still ignored.
+- One animation clock for the whole terminal, exported as `motionClock`, with the product's curve table (`MOTION`), an interruptible mass-spring-damper, and the frame transforms an animation drives (`blendHex`, `fadeLineTowards`, `revealedRows`). A surface names a preset instead of owning a timer and inventing a duration, so two surfaces animating at once share a frame instead of beating against each other, a finished animation is dropped and the ticker stops, a retargeted spring keeps its velocity instead of restarting from rest, and a frame gap longer than 100ms advances one frame instead of replaying the stall in one lurch. `enabled: false` lands the value on its target and never registers, which is what a terminal with transitions off shows.
 
 ### Fixed
 
