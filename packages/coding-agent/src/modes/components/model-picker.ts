@@ -93,6 +93,8 @@ export class ModelPickerComponent implements Component {
 	#currentSelector: string | undefined;
 	#modelItems: ModelBrowserItem[] = [];
 	#shellGeometry: ModalShellGeometry | null = null;
+	/** Frame row where the browser's first rendered row (its search row) sits. */
+	#browserRowStart = 0;
 	#hoveredShortcutId: string | null = null;
 	#refreshing = false;
 	#onCancel: () => void;
@@ -244,6 +246,14 @@ export class ModelPickerComponent implements Component {
 			this.#refreshCatalog();
 			return true;
 		}
+		// The body is [status, ...browser, hint]: the browser owns the rows
+		// between the status line and the trailing hint.
+		const line = event.row - this.#browserRowStart;
+		if (event.wheel !== null || event.motion || event.leftClick) {
+			this.#browser.routeMouse(event, line);
+			this.#tui.requestRender();
+			return true;
+		}
 		return true;
 	}
 
@@ -303,6 +313,8 @@ export class ModelPickerComponent implements Component {
 			showClose: true,
 		});
 		this.#shellGeometry = shell.geometry;
+		// The body leads with the status line; the browser starts one row later.
+		this.#browserRowStart = (shell.geometry?.bodyRowStart ?? 0) + 1;
 		return applyModalReveal(shell, width, this.#reveal.value);
 	}
 }
