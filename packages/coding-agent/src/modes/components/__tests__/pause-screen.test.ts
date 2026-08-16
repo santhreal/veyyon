@@ -63,7 +63,8 @@ describe("pause screen", () => {
 			expect(text).toContain("P A U S E D");
 			expect(text).toContain("Main agent, subagents, and advisor");
 			expect(text).toContain("paused for 1:05");
-			expect(text).toContain("esc · enter · space — resume");
+			// The hint names the click since the pointer resumes too (see the pointer suite below).
+			expect(text).toContain("esc · enter · space · click — resume");
 			// The pause bars are dithered ember fields, not flat blocks: two
 			// burning panes separated by a gap.
 			expect(text).toMatch(/[▒▓█]{2,}/);
@@ -75,7 +76,7 @@ describe("pause screen", () => {
 			const text = lines.map(stripAnsi).join("\n");
 			expect(text).toContain("▌▌ P A U S E D");
 			expect(text).toContain("paused for 0:03");
-			expect(text).toContain("esc to resume");
+			expect(text).toContain("esc · click — resume");
 			expect(text).not.toContain("█".repeat(5)); // no room for the big glyph
 		});
 
@@ -140,6 +141,74 @@ describe("pause screen", () => {
 			await runPauseScreen(host); // must resolve immediately, not park
 			expect(shown.length).toBe(0);
 			expect(agentPauseGate.paused).toBe(true); // foreign pause not stolen
+		});
+	});
+
+	/**
+	 * WHY: the scene is a fullscreen overlay, so the TUI hands it the whole
+	 * mouse-tracking set (1000h+1003h+1006h) and every report lands in
+	 * `handleInput` as raw SGR bytes. Before this, the pointer did nothing on a
+	 * screen whose only job is "get me out of here". The class closed: a
+	 * resume affordance the hint names but the input path ignores, and its
+	 * mirror, a report that is not a left press resuming by accident.
+	 *
+	 * Not caught: which pixel was clicked. The scene has no targets, so every
+	 * coordinate is the same click, and the test does not pretend otherwise.
+	 */
+	describe("the pointer resumes the same way the keys do", () => {
+		/** Let `runPauseScreen` reach its `await`, and let a resume settle, without a clock. */
+		async function flush(): Promise<void> {
+			for (let turn = 0; turn < 8; turn++) await Promise.resolve();
+		}
+
+		async function open(): Promise<{ component: PauseScreenComponent; run: Promise<void>; hiddenCount(): number }> {
+			const { host, shown, hiddenCount } = makeHost();
+			const run = runPauseScreen(host);
+			await flush();
+			const component = shown[0];
+			if (!(component instanceof PauseScreenComponent)) throw new Error("pause screen did not open");
+			return { component, run, hiddenCount };
+		}
+
+		it("resumes on a left press anywhere on the scene", async () => {
+			const { component, run, hiddenCount } = await open();
+			expect(agentPauseGate.paused).toBe(true);
+
+			component.handleInput("\x1b[<0;40;12M");
+			await run;
+
+			expect(agentPauseGate.paused).toBe(false);
+			expect(hiddenCount()).toBe(1);
+		});
+
+		it("never resumes on a report that is not a left press", async () => {
+			const { component, run, hiddenCount } = await open();
+
+			// Every non-press form the overlay's tracking set can emit: motion,
+			// left-drag, left release, wheel up/down, and the other buttons.
+			for (const report of [
+				"\x1b[<35;40;12M",
+				"\x1b[<32;40;12M",
+				"\x1b[<0;40;12m",
+				"\x1b[<64;40;12M",
+				"\x1b[<65;40;12M",
+				"\x1b[<1;40;12M",
+				"\x1b[<2;40;12M",
+			]) {
+				component.handleInput(report);
+				await flush();
+				expect(agentPauseGate.paused).toBe(true);
+				expect(hiddenCount()).toBe(0);
+			}
+
+			component.handleInput("\x1b[<0;40;12M");
+			await run;
+			expect(agentPauseGate.paused).toBe(false);
+		});
+
+		it("names the click in both the full scene and the compact card", () => {
+			expect(stripAnsi(renderPauseScreen(80, 24, 1_000).join("\n"))).toContain("click — resume");
+			expect(stripAnsi(renderPauseScreen(40, 10, 1_000).join("\n"))).toContain("click — resume");
 		});
 	});
 });

@@ -10,6 +10,7 @@
 ### Added
 
 - The composer chips (`interrupt`, `background`, `dequeue`) are click targets. A left click on a chip runs the same action its keybinding runs. Hover paint stays off: the main session holds press/release tracking only, so drag-select in the terminal keeps working.
+- The `/pause` screen resumes on a click. It is a fullscreen overlay, so it already held the whole mouse-tracking set and every report reached it and was dropped: the pointer did nothing on the one screen whose only job is to let you out. A left press anywhere on the scene now resumes exactly as Esc does, motion, drag, release, wheel and the other buttons still do nothing, and both the full scene and the compact card name the click in their hint.
 
 ### Removed
 
