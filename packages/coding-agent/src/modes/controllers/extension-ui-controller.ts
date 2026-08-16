@@ -115,6 +115,10 @@ export class ExtensionUiController {
 	#dialogQueue: Array<() => void> = [];
 	/** Live overlay for the hook selector card, so `hide` reaches the right one. */
 	#hookSelectorOverlay: OverlayHandle | undefined;
+	/** Live overlay for the hook input card. */
+	#hookInputOverlay: OverlayHandle | undefined;
+	/** Live overlay for the hook editor card. */
+	#hookEditorOverlay: OverlayHandle | undefined;
 	constructor(private ctx: ExtensionUiControllerContext) {}
 
 	/**
@@ -678,10 +682,12 @@ export class ExtensionUiController {
 			let promptResolve: ((value: string | undefined) => void) | undefined;
 			let closed = false;
 
+			let promptOverlay: OverlayHandle | undefined;
+
 			const restoreAskDialog = (): void => {
+				promptOverlay?.hide();
+				promptOverlay = undefined;
 				if (closed || !askDialog) return;
-				this.ctx.editorContainer.clear();
-				this.ctx.editorContainer.addChild(this.ctx.editor);
 				overlayHandle?.setHidden(false);
 				this.ctx.ui.setFocus(askDialog);
 				this.ctx.ui.requestRender();
@@ -705,11 +711,19 @@ export class ExtensionUiController {
 					prefill,
 					value => finishPrompt(value),
 					() => finishPrompt(undefined),
-					{ promptStyle: true },
+					{ promptStyle: true, onRequestRender: () => this.ctx.ui.requestRender() },
 				);
+				// The question's own card steps aside while its custom answer is
+				// being typed: two cards stacked over the transcript would put the
+				// question's chips under the editor's.
 				overlayHandle?.setHidden(true);
-				this.ctx.editorContainer.clear();
-				this.ctx.editorContainer.addChild(promptEditor);
+				promptOverlay = this.ctx.ui.showOverlay(promptEditor, {
+					anchor: "top-left",
+					width: "100%",
+					maxHeight: "100%",
+					margin: 0,
+					fullscreen: true,
+				});
 				this.ctx.ui.setFocus(promptEditor);
 				this.ctx.ui.requestRender();
 				return promise;
@@ -745,13 +759,12 @@ export class ExtensionUiController {
 				askDialog?.dispose();
 				overlayHandle?.hide();
 				overlayHandle = undefined;
+				// A nested prompt card may have been mid-flight when this settled.
+				promptOverlay?.hide();
+				promptOverlay = undefined;
 				promptResolve?.(undefined);
 				promptResolve = undefined;
 				promptEditor = undefined;
-				// A nested prompt may have been mid-flight when this settled — make
-				// sure the normal editor slot is restored before handing focus back.
-				this.ctx.editorContainer.clear();
-				this.ctx.editorContainer.addChild(this.ctx.editor);
 				this.ctx.focusActiveEditorArea();
 				this.ctx.ui.requestRender();
 			};
@@ -1017,7 +1030,7 @@ export class ExtensionUiController {
 		inputOptions?: { mask?: string; hint?: string },
 	): Promise<string | undefined> {
 		return this.#presentDialog(dialogOptions?.signal, settle => {
-			this.ctx.hookInput = new HookInputComponent(
+			const input = new HookInputComponent(
 				title,
 				placeholder,
 				value => settle(value),
@@ -1028,11 +1041,18 @@ export class ExtensionUiController {
 					tui: this.ctx.ui,
 					mask: inputOptions?.mask,
 					hint: inputOptions?.hint,
+					onRequestRender: () => this.ctx.ui.requestRender(),
 				},
 			);
-			this.ctx.editorContainer.clear();
-			this.ctx.editorContainer.addChild(this.ctx.hookInput);
-			this.ctx.ui.setFocus(this.ctx.hookInput);
+			this.ctx.hookInput = input;
+			this.#hookInputOverlay = this.ctx.ui.showOverlay(input, {
+				anchor: "top-left",
+				width: "100%",
+				maxHeight: "100%",
+				margin: 0,
+				fullscreen: true,
+			});
+			this.ctx.ui.setFocus(input);
 			this.ctx.ui.requestRender();
 			return () => this.hideHookInput();
 		});
@@ -1043,10 +1063,11 @@ export class ExtensionUiController {
 	 */
 	hideHookInput(): void {
 		this.ctx.hookInput?.dispose();
-		this.ctx.editorContainer.clear();
-		this.ctx.editorContainer.addChild(this.ctx.editor);
+		// The overlay only hides; disposing the component is the host's job.
+		this.#hookInputOverlay?.hide();
+		this.#hookInputOverlay = undefined;
 		this.ctx.hookInput = undefined;
-		this.ctx.ui.setFocus(this.ctx.editor);
+		this.ctx.focusActiveEditorArea();
 		this.ctx.ui.requestRender();
 	}
 
@@ -1060,17 +1081,23 @@ export class ExtensionUiController {
 		editorOptions?: { promptStyle?: boolean },
 	): Promise<string | undefined> {
 		return this.#presentDialog(dialogOptions?.signal, settle => {
-			this.ctx.hookEditor = new HookEditorComponent(
+			const editor = new HookEditorComponent(
 				this.ctx.ui,
 				title,
 				prefill,
 				value => settle(value),
 				() => settle(undefined),
-				editorOptions,
+				{ ...editorOptions, onRequestRender: () => this.ctx.ui.requestRender() },
 			);
-			this.ctx.editorContainer.clear();
-			this.ctx.editorContainer.addChild(this.ctx.hookEditor);
-			this.ctx.ui.setFocus(this.ctx.hookEditor);
+			this.ctx.hookEditor = editor;
+			this.#hookEditorOverlay = this.ctx.ui.showOverlay(editor, {
+				anchor: "top-left",
+				width: "100%",
+				maxHeight: "100%",
+				margin: 0,
+				fullscreen: true,
+			});
+			this.ctx.ui.setFocus(editor);
 			this.ctx.ui.requestRender();
 			return () => this.hideHookEditor();
 		});
@@ -1080,10 +1107,11 @@ export class ExtensionUiController {
 	 * Hide the hook editor.
 	 */
 	hideHookEditor(): void {
-		this.ctx.editorContainer.clear();
-		this.ctx.editorContainer.addChild(this.ctx.editor);
+		// The overlay only hides; disposing what it held is the host's job.
+		this.#hookEditorOverlay?.hide();
+		this.#hookEditorOverlay = undefined;
 		this.ctx.hookEditor = undefined;
-		this.ctx.ui.setFocus(this.ctx.editor);
+		this.ctx.focusActiveEditorArea();
 		this.ctx.ui.requestRender();
 	}
 

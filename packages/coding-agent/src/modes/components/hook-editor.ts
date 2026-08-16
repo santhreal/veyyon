@@ -7,7 +7,19 @@
  *   (Ctrl+Q / Ctrl+Enter) submits, bordered popup
  * - Prompt-style (ask): Enter submits, Shift+Enter inserts newline, legacy ask chrome
  */
-import { Container, Editor, matchesKey, Spacer, Text, type TUI } from "@veyyon/tui";
+import {
+	Container,
+	Editor,
+	Ellipsis,
+	matchesKey,
+	padding,
+	routeSgrMouseInput,
+	type SgrMouseEvent,
+	Spacer,
+	Text,
+	type TUI,
+	truncateToWidth,
+} from "@veyyon/tui";
 import { getEditorTheme, theme } from "../../modes/theme/theme";
 import { actionKeyHint } from "../../modes/utils/key-hint";
 import {
@@ -16,22 +28,42 @@ import {
 	matchesAppInterrupt,
 } from "../../modes/utils/keybinding-matchers";
 import { getEditorCommand, openInEditor } from "../../utils/external-editor";
-import { DynamicBorder } from "./dynamic-border";
+import {
+	applyModalReveal,
+	computeModalDims,
+	consumeModalChipHover,
+	hitTestModalChrome,
+	MODAL_SIZING_MEDIUM,
+	ModalRevealDriver,
+	type ModalShellGeometry,
+	type ModalShortcut,
+	planModalChrome,
+	renderModalShell,
+	sizingForArea,
+} from "./modal-shell";
 
 export interface HookEditorOptions {
 	/** When true, use prompt-style keybindings with the legacy ask prompt chrome. */
 	promptStyle?: boolean;
+	/**
+	 * `"card"` (default) is the standalone surface: a floating ModalShell over
+	 * the transcript, with the keys as footer chips. `"embedded"` renders the
+	 * title, editor and key line as bare rows for a host that already owns a
+	 * card and mounts this inside its body (the advisor config's instructions
+	 * screen), so the two frames never nest.
+	 */
+	presentation?: "card" | "embedded";
+	/** Card presentation only: repaint request for chip hover paints. */
+	onRequestRender?: () => void;
 }
 
 /**
- * Columns of padding on EACH side of the editor's title and hint rows.
+ * Columns of padding on EACH side of the editor's title and hint rows in the
+ * embedded presentation.
  *
  * Exported because a caller that pre-wraps or pre-truncates the title has to
  * know the width it will actually be rendered at, and the only other way to
- * know is to guess. `ask.ts` guessed 2 columns per side and attributed the
- * extra pair to "DynamicBorder vertical chrome", which does not exist: the
- * border renders one full-width horizontal row and consumes no columns. The
- * result was a title truncated two columns narrower than the space it had.
+ * know is to guess.
  */
 export const HOOK_EDITOR_TEXT_PAD_COLS = 1;
 
@@ -41,6 +73,13 @@ export class HookEditorComponent extends Container {
 	#onCancelCallback: () => void;
 	#tui: TUI;
 	#promptStyle: boolean;
+	/** Floating card (default) versus bare rows inside a host's own card. */
+	readonly #card: boolean;
+	#cardTitle: string;
+	#onRequestRender: (() => void) | undefined;
+	#shellGeometry: ModalShellGeometry | null = null;
+	#hoveredShortcutId: string | null = null;
+	#reveal = new ModalRevealDriver();
 
 	constructor(
 		tui: TUI,
@@ -56,15 +95,19 @@ export class HookEditorComponent extends Container {
 		this.#onSubmitCallback = onSubmit;
 		this.#onCancelCallback = onCancel;
 		this.#promptStyle = options?.promptStyle ?? false;
+		this.#card = options?.presentation !== "embedded";
+		this.#onRequestRender = options?.onRequestRender;
 
-		this.addChild(new DynamicBorder());
-		this.addChild(new Spacer(1));
+		// The card's title bar takes the title's first line; the rest (the ask
+		// prompt's option list, for one) is context and stays in the body.
+		const [firstTitleLine = "", ...restTitleLines] = title.split("\n");
+		this.#cardTitle = firstTitleLine;
+		const bodyTitle = this.#card ? restTitleLines.join("\n") : title;
+		if (bodyTitle.length > 0) {
+			this.addChild(new Text(theme.fg("accent", bodyTitle), HOOK_EDITOR_TEXT_PAD_COLS, 0));
+			this.addChild(new Spacer(1));
+		}
 
-		// Title
-		this.addChild(new Text(theme.fg("accent", title), HOOK_EDITOR_TEXT_PAD_COLS, 0));
-		this.addChild(new Spacer(1));
-
-		// Editor
 		this.#editor = new Editor(getEditorTheme());
 		if (this.#promptStyle) {
 			this.#editor.setBorderVisible(false);
@@ -76,27 +119,128 @@ export class HookEditorComponent extends Container {
 		}
 		this.addChild(this.#editor);
 
-		this.addChild(new Spacer(1));
+		// Embedded, the keys are a dim line under the editor, because the host's
+		// card footer names its own. A card puts them in that footer instead.
+		if (!this.#card) {
+			this.addChild(new Spacer(1));
+			this.addChild(
+				new Text(
+					theme.fg(
+						"dim",
+						this.#shortcuts()
+							.map(shortcut => shortcut.label)
+							.join("  "),
+					),
+					HOOK_EDITOR_TEXT_PAD_COLS,
+					0,
+				),
+			);
+		}
+	}
 
-		// Hint. Both chords named here are remappable (`app.message.followUp` and
-		// `app.editor.external`), and the handlers read them, so writing them out
-		// meant a rebind left this footer naming keys that do nothing.
+	setOnRequestRender(callback: () => void): void {
+		this.#onRequestRender = callback;
+	}
+
+	/**
+	 * Footer chips. Both chords named here are remappable
+	 * (`app.message.followUp` and `app.editor.external`) and the handlers read
+	 * the binding, so the chip carries the live key rather than a written-out
+	 * one that a rebind would leave lying.
+	 */
+	#shortcuts(): readonly ModalShortcut[] {
 		const submit = actionKeyHint("app.message.followUp");
+		const shortcuts: ModalShortcut[] = [
+			{
+				label: this.#promptStyle ? `enter${submit ? ` or ${submit}` : ""} submit` : `${submit || "enter"} submit`,
+				clickable: true,
+				id: "confirm",
+			},
+			{ label: "esc cancel", clickable: true, id: "close" },
+		];
 		const external = actionKeyHint("app.editor.external");
-		const hint = [
-			this.#promptStyle ? `enter${submit ? ` or ${submit}` : ""} submit` : `${submit || "enter"} submit`,
-			"esc cancel",
-			external ? `${external} external editor` : "",
-		]
-			.filter(Boolean)
-			.join("  ");
-		this.addChild(new Text(theme.fg("dim", hint), HOOK_EDITOR_TEXT_PAD_COLS, 0));
+		if (external) shortcuts.push({ label: `${external} external editor` });
+		return shortcuts;
+	}
 
-		this.addChild(new Spacer(1));
-		this.addChild(new DynamicBorder());
+	#routeMouse(event: SgrMouseEvent): boolean {
+		const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
+			motion: event.motion,
+			leftClick: event.leftClick,
+		});
+		if (
+			consumeModalChipHover(chrome, this.#hoveredShortcutId, id => {
+				this.#hoveredShortcutId = id;
+				this.#onRequestRender?.();
+			})
+		) {
+			return true;
+		}
+		if (event.motion) return true;
+		if (
+			chrome.kind === "close" ||
+			chrome.kind === "outside" ||
+			(chrome.kind === "shortcut" && chrome.id === "close")
+		) {
+			this.#onCancelCallback();
+			return true;
+		}
+		if (chrome.kind === "shortcut" && chrome.id === "confirm") {
+			this.#submitCurrentText();
+			return true;
+		}
+		return true;
+	}
+
+	override render(width: number): readonly string[] {
+		const renderWidth = Math.max(1, width);
+		if (!this.#card) return super.render(renderWidth);
+
+		const height = process.stdout.rows || 40;
+		const sizing = sizingForArea(MODAL_SIZING_MEDIUM, height);
+		const dims = computeModalDims(renderWidth, height, sizing);
+		if (!dims) {
+			this.#shellGeometry = null;
+			return Array.from({ length: height }, () => padding(renderWidth));
+		}
+
+		const shortcuts = this.#shortcuts();
+		const chrome = planModalChrome({
+			sizing,
+			modalHeight: dims.modalHeight,
+			contentWidth: dims.contentWidth,
+			shortcuts,
+			hoveredShortcutId: this.#hoveredShortcutId,
+		});
+
+		const body: string[] = [];
+		for (const child of this.children) {
+			for (const line of child.render(dims.contentWidth)) body.push(line);
+		}
+
+		const shell = renderModalShell({
+			title: truncateToWidth(this.#cardTitle, dims.contentWidth, Ellipsis.Unicode),
+			sizing,
+			areaWidth: renderWidth,
+			areaHeight: height,
+			body: body.slice(0, chrome.maxBodyRows),
+			preferredBodyRows: body.length,
+			shortcuts,
+			hoveredShortcutId: this.#hoveredShortcutId,
+			showClose: true,
+		});
+		this.#shellGeometry = shell.geometry;
+		return applyModalReveal(shell, renderWidth, this.#reveal.value);
 	}
 
 	handleInput(keyData: string): void {
+		if (keyData.startsWith("\x1b[<")) {
+			// Only the card paints a shell, so an embedded editor's geometry stays
+			// null, every chrome hit-test misses, and the report is swallowed here
+			// rather than typed into the text as literal escape bytes.
+			routeSgrMouseInput(keyData, event => this.#routeMouse(event));
+			return;
+		}
 		if (this.#promptStyle) {
 			this.#handlePromptStyleInput(keyData);
 		} else {
