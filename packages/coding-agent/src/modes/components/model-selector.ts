@@ -6,7 +6,16 @@
  * auth badges, or clear/unset.
  */
 import type { Model } from "@veyyon/ai";
-import { type Component, Container, matchesKey, type SgrMouseEvent, Spacer, Text, truncateToWidth } from "@veyyon/tui";
+import {
+	type Component,
+	Container,
+	type HoverFadeOptions,
+	matchesKey,
+	type SgrMouseEvent,
+	Spacer,
+	Text,
+	truncateToWidth,
+} from "@veyyon/tui";
 import type { ModelRegistry } from "../../config/model-registry";
 import type { Settings } from "../../config/settings";
 import { theme } from "../theme/theme";
@@ -214,6 +223,20 @@ export class ModelSelectorPanel extends Container {
 			lines[lines.length - 1] = truncateToWidth(lines[lines.length - 1] ?? "", width);
 		}
 		return lines;
+	}
+
+	/**
+	 * Lend the browser the host card's repaint so its band cross-fades. The panel is embedded in
+	 * someone else's card and owns no repaint, so the clock has to come from the host.
+	 */
+	setHoverMotion(options: HoverFadeOptions): void {
+		this.#browser.setHoverMotion(options);
+	}
+
+	/** Settle the browser's band so no timer outlives a panel the host has swapped out. */
+	dispose(): void {
+		this.#browser.disposeHoverMotion();
+		super.dispose();
 	}
 
 	/** Mouse routed from the host: forwarded to the browser at its own offset (wheel pans, hover lights, click selects then activates). */

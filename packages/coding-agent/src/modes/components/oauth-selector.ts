@@ -5,6 +5,7 @@ import {
 	clampLow,
 	extractPrintableText,
 	fuzzyFilter,
+	HoverFade,
 	matchesKey,
 	type SgrMouseEvent,
 	truncateToWidth,
@@ -14,7 +15,8 @@ import { settings } from "../../config/settings-instance";
 import { theme } from "../../modes/theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../../modes/utils/keybinding-matchers";
 import type { AuthStorage, CredentialOriginKind } from "../../session/auth-storage";
-import { renderScrollableList, selectionBand } from "./selector-helpers";
+import { modalRevealEnabled } from "./modal-shell";
+import { hoverBandAt, renderScrollableList } from "./selector-helpers";
 
 /** Default visible provider rows when the host does not size the selector. */
 const OAUTH_SELECTOR_MAX_VISIBLE = 10;
@@ -69,6 +71,11 @@ export class OAuthSelectorComponent implements Component {
 	#searchTypedByUser = false;
 	#selectedIndex: number = 0;
 	#hoveredIndex: number | null = null;
+	/**
+	 * The cross-fade between the provider the pointer left and the one it arrived at, when the host
+	 * gave this card a repaint. Absent, the band is switched.
+	 */
+	#hoverFade: HoverFade | undefined;
 	/** First provider index of the visible ScrollView window (last #buildBody). */
 	#scrollStart = 0;
 	#visibleCount = 0;
@@ -104,6 +111,12 @@ export class OAuthSelectorComponent implements Component {
 		this.#onCancelCallback = onCancel;
 		this.#validateAuthCallback = options?.validateAuth;
 		this.#requestRenderCallback = options?.requestRender;
+		// The band fades only when the host lends a repaint: the frames between two mouse reports
+		// have no input to hang off. Same ambient gate as a card's open unfold.
+		if (this.#requestRenderCallback !== undefined) {
+			const requestRender = this.#requestRenderCallback;
+			this.#hoverFade = new HoverFade({ requestRender, enabled: modalRevealEnabled() });
+		}
 		this.#loadProviders();
 		this.#startValidation();
 	}
@@ -133,6 +146,14 @@ export class OAuthSelectorComponent implements Component {
 	stopValidation(): void {
 		this.#validationGeneration += 1;
 		this.#stopSpinner();
+	}
+
+	/** Settle the pointer band so no timer outlives a card the host has finished with. */
+	dispose(): void {
+		this.stopValidation();
+		this.#hoverFade?.dispose();
+		this.#hoverFade = undefined;
+		this.#hoveredIndex = null;
 	}
 
 	invalidate(): void {
@@ -333,11 +354,8 @@ export class OAuthSelectorComponent implements Component {
 								const text = isAvailable ? `  ${provider.name}` : theme.fg("dim", `  ${provider.name}`);
 								line = text + statusIndicator;
 							}
-							rows.push(
-								!isSelected && i === this.#hoveredIndex
-									? selectionBand(line, rowWidth)
-									: truncateToWidth(line, rowWidth),
-							);
+							const strength = isSelected ? 0 : this.#hoverStrength(i);
+							rows.push(strength > 0 ? hoverBandAt(line, rowWidth, strength) : truncateToWidth(line, rowWidth));
 						}
 						return rows;
 					},
@@ -459,6 +477,7 @@ export class OAuthSelectorComponent implements Component {
 		const target = index !== undefined && index < this.#filteredProviders.length ? index : null;
 		if (event.motion) {
 			this.#hoveredIndex = target;
+			this.#hoverFade?.set(target);
 			return;
 		}
 		if (!event.leftClick || target === null) return;
@@ -467,6 +486,12 @@ export class OAuthSelectorComponent implements Component {
 			this.#statusMessage = undefined;
 		}
 		this.#confirmSelection();
+	}
+
+	/** Band strength for a provider row; without a fade the hovered row is at 1 and the rest at 0. */
+	#hoverStrength(index: number): number {
+		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
+		return index === this.#hoveredIndex ? 1 : 0;
 	}
 
 	render(width: number): readonly string[] {

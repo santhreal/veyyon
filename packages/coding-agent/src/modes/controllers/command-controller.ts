@@ -907,6 +907,9 @@ export class CommandController {
 				if (closed) return;
 				closed = true;
 				overlayHandle?.hide();
+				// The suggestion band lives on the shared clock; hiding the overlay does not tell
+				// it that, and a band still travelling would keep asking for frames.
+				overlay.dispose();
 				this.ctx.focusActiveEditorArea();
 				this.ctx.ui.requestRender();
 				resolve(result);

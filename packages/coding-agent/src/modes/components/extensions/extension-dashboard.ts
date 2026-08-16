@@ -39,6 +39,7 @@ import {
 	MODAL_SIZING_LARGE,
 	ModalRevealDriver,
 	type ModalShellGeometry,
+	modalRevealEnabled,
 	planModalChrome,
 	renderModalShell,
 	sizingForArea,
@@ -106,6 +107,24 @@ export class ExtensionDashboard implements Component {
 	 */
 	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
 		return beginModalExit(this.#reveal, requestRender, done);
+	}
+
+	/**
+	 * Lend the two pointer surfaces a repaint and take the frames the shared clock will owe them.
+	 * The list band and the tab band have no frames of their own between two mouse reports, so
+	 * without this both switch. Same ambient gate as the open unfold.
+	 */
+	setOnRequestRender(cb: () => void): void {
+		this.onRequestRender = cb;
+		this.#mainList.setHoverMotion({ requestRender: cb, enabled: modalRevealEnabled() });
+		this.#tabBar.setHoverMotion({ requestRender: cb, enabled: modalRevealEnabled() });
+	}
+
+	/** Settle both bands so no timer outlives a dismissed dashboard. */
+	dispose(): void {
+		this.#reveal.stop();
+		this.#mainList.disposeHoverMotion();
+		this.#tabBar.disposeHoverMotion();
 	}
 
 	private constructor(

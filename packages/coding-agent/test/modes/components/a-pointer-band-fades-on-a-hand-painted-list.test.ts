@@ -1,16 +1,22 @@
 // WHY THIS SUITE EXISTS (A-HAND-PAINTED-LIST-STROBES-WHILE-THE-SHARED-ONE-FADES).
 //
 // The pointer band learned to fade, and it learned it inside `SelectList` — the tui list every
-// picker built out of a `SelectList` inherits it for free. Six pickers are not built that way.
-// `/resume`, `/tree`, the branch-from-message card, `/history`, the extension ask dialog and the
-// copy picker paint their own rows, hold their own hovered index, and called `selectionBand` the
-// frame a motion report arrived. So half the product cross-faded and half of it strobed, at
-// whatever rate the terminal coalesces motion reports, and which half you got depended on which
-// card you opened. (The ask dialog and the copy picker were found by walking the table below and
-// asking which surface hit-tests its own rows and is missing from it. That question is the
-// cheapest way to find the next one, and it has now found two.)
+// picker built out of a `SelectList` inherits it for free. Ten pickers are not built that way.
+// `/resume`, `/tree`, the branch-from-message card, `/history`, the extension ask dialog, the copy
+// picker, the reset-usage picker, `/move`'s path picker, the hook selector and the MCP add wizard
+// paint their own rows, hold their own hovered index, and called `selectionBand` the frame a motion
+// report arrived. So half the product cross-faded and half of it strobed, at whatever rate the
+// terminal coalesces motion reports, and which half you got depended on which card you opened.
+// (Every one after the first four was found by walking the table below and asking which surface
+// hit-tests its own rows and is missing from it. That question is the cheapest way to find the
+// next one, and it has now found six.)
 //
-// This suite pins the contract each of those six now owes, and it pins it at both ends:
+// The last two also fixed a second defect the table found: a card whose host hands the repaint in
+// through the CONSTRUCTOR rather than through `setOnRequestRender` built no fade at all, so the
+// seam existed and the real host never reached it. `lend()` below drives whichever seam the card's
+// own host drives, which is why a pane may pass the callback to `make`.
+//
+// This suite pins the contract each of those ten now owes, and it pins it at both ends:
 //
 //   1. The band ARRIVES. The frame the report lands on paints no band at all, and the strength
 //      climbs from there. A list that switches the band on is the defect this closes.
@@ -29,9 +35,11 @@
 //      disposed card forgets the pointer instead of leaving a band and a live animation behind.
 //
 // The panes are enumerated by hand because each has its own constructor surface (a session list, a
-// message tree, a branch list, a SQLite-backed history search, an extension question, a copy tree)
-// and no runtime registry names them. WHAT THIS DOES NOT CATCH: a SEVENTH hand-painted list added later,
-// which inherits nothing and would sit outside this table. The shared helper case below is the
+// message tree, a branch list, a SQLite-backed history search, an extension question, a copy tree,
+// an account list, a directory listing) and no runtime registry names them. WHAT THIS DOES NOT
+// CATCH: a NINTH hand-painted list added later, or a pointer surface inside a composite card that
+// hit-tests for it (the extensions dashboard is one, fenced in its own suite). Either inherits
+// nothing and would sit outside this table. The shared helper case below is the
 // fence that makes such a list cheap to bring in — `hoverBandAt` is the only way to paint a fading
 // band, and its full strength is asserted to be `selectionBand` itself, so adopting it can never
 // change how a settled row looks. The eye-level question (does the fade read as motion?) is a
@@ -43,11 +51,18 @@
 // assertion could tell them apart.
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
 import { AskDialogComponent } from "@veyyon/coding-agent/modes/components/ask-dialog";
 import { CopySelectorComponent } from "@veyyon/coding-agent/modes/components/copy-selector";
 import { HistorySearchComponent } from "@veyyon/coding-agent/modes/components/history-search";
+import { HookSelectorComponent } from "@veyyon/coding-agent/modes/components/hook-selector";
+import { MCPAddWizard } from "@veyyon/coding-agent/modes/components/mcp-add-wizard";
 import { modalRevealGround } from "@veyyon/coding-agent/modes/components/modal-shell";
+import { MoveOverlay } from "@veyyon/coding-agent/modes/components/move-overlay";
+import { ResetUsageSelectorComponent } from "@veyyon/coding-agent/modes/components/reset-usage-selector";
 import { hoverBandAt, selectionBand } from "@veyyon/coding-agent/modes/components/selector-helpers";
 import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/components/session-selector";
 import { TreeSelectorComponent } from "@veyyon/coding-agent/modes/components/tree-selector";
@@ -128,22 +143,39 @@ function motionAt(row1: number, col1 = 40): string {
 	return `\x1b[<35;${col1};${row1}M`;
 }
 
-/** The four panes share only this much surface, and it is all the cases below touch. */
+/** The panes share only this much surface, and it is all the cases below touch. */
 interface Pane {
 	render(width: number): readonly string[];
 	handleInput(data: string): void;
-	setOnRequestRender(cb: () => void): void;
+	/** Cards whose host lends the repaint at construction time have no setter; see {@link lend}. */
+	setOnRequestRender?: (cb: () => void) => void;
 	dispose(): void;
 }
 
 interface PaneCase {
 	readonly name: string;
-	/** A fresh card, mounted at nothing: the cases lend it a repaint only when they mean to. */
-	make(): Pane;
+	/**
+	 * A fresh card, mounted at nothing. `requestRender` is handed in the way this card's real host
+	 * hands it in; a case that means "no host lent a repaint" calls this with nothing.
+	 */
+	make(requestRender?: () => void): Pane;
 	/** Two rows the pointer visits, and the row that is already selected. Neither visited row is. */
 	readonly first: string;
 	readonly second: string;
 	readonly selected: string;
+}
+
+/**
+ * A card with the repaint lent through the seam its own host uses, and only that one. A case that
+ * declares a parameter on `make` stands for a host that hands the callback to the CONSTRUCTOR, so
+ * the card has to build its fade there; lending it a second time through the setter would paper
+ * over exactly the defect this table found.
+ */
+function lend(paneCase: PaneCase, cb: () => void): Pane {
+	if (paneCase.make.length > 0) return paneCase.make(cb);
+	const pane = paneCase.make();
+	pane.setOnRequestRender?.(cb);
+	return pane;
 }
 
 const NOW = Math.floor(Date.parse("2026-08-10T12:00:00.000Z") / 1000);
@@ -184,6 +216,13 @@ function historyStorage(prompts: string[]): HistoryStorage {
 	const storage = { getRecent: () => entries, search: () => entries } as unknown as HistoryStorage;
 	return storage;
 }
+
+/**
+ * The `/move` card lists real directories, so its rows come from a real tree. Three sibling
+ * directories, named so the card's alphabetical order is the order the cases assume.
+ */
+const moveCwd = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-band-move-"));
+for (const name of ["alpha", "beta", "gamma"]) fs.mkdirSync(path.join(moveCwd, name));
 
 const PANES: readonly PaneCase[] = [
 	{
@@ -287,6 +326,64 @@ const PANES: readonly PaneCase[] = [
 		second: "the third reply",
 		selected: "the first reply",
 	},
+	{
+		name: "the reset-usage picker",
+		make: () =>
+			new ResetUsageSelectorComponent(
+				[
+					{ label: "first account", availableCount: 0, active: false, target: { credentialId: 1 } },
+					{ label: "second account", availableCount: 2, active: false, target: { credentialId: 2 } },
+					{ label: "third account", availableCount: 3, active: false, target: { credentialId: 3 } },
+				],
+				() => {},
+				() => {},
+			),
+		// The card selects the first REDEEMABLE account, so the one with no resets left is free
+		// for the pointer and the second is the row that owns its own styling.
+		first: "first account",
+		second: "third account",
+		selected: "second account",
+	},
+	{
+		name: "the move path picker",
+		make: () => new MoveOverlay(moveCwd, () => {}),
+		first: "beta",
+		second: "gamma",
+		selected: "alpha",
+	},
+	{
+		// The extension/hook dialog: its host hands the repaint in through the CONSTRUCTOR options,
+		// which is why this pane passes `onRequestRender` there rather than only through the setter.
+		name: "the hook selector",
+		make: requestRender =>
+			new HookSelectorComponent(
+				"Pick a hook",
+				["the first hook", "the second hook", "the third hook"],
+				() => {},
+				() => {},
+				{ initialIndex: 2, onRequestRender: requestRender },
+			),
+		first: "the first hook",
+		second: "the second hook",
+		selected: "the third hook",
+	},
+	{
+		// The MCP add wizard on its transport step; the name step is a text field with no rows.
+		// Its host passes the repaint as a constructor argument too.
+		name: "the mcp add wizard",
+		make: requestRender =>
+			new MCPAddWizard(
+				async () => {},
+				() => {},
+				undefined,
+				undefined,
+				requestRender,
+				"a-server",
+			),
+		first: "http (HTTP server)",
+		second: "sse (Server-Sent Events)",
+		selected: "stdio (Local process)",
+	},
 ];
 
 /** 1-based screen row of the first rendered line containing `text`. */
@@ -353,9 +450,8 @@ describe("a pointer band fades on a hand-painted list", () => {
 	for (const paneCase of PANES) {
 		describe(paneCase.name, () => {
 			it("arrives over frames and lands on the band it always painted", () => {
-				const pane = paneCase.make();
 				let renders = 0;
-				pane.setOnRequestRender(() => {
+				const pane = lend(paneCase, () => {
 					renders += 1;
 				});
 				const row = rowOf(pane, paneCase.first);
@@ -390,8 +486,7 @@ describe("a pointer band fades on a hand-painted list", () => {
 			});
 
 			it("keeps the row the pointer left banding while the new row arrives", () => {
-				const pane = paneCase.make();
-				pane.setOnRequestRender(() => {});
+				const pane = lend(paneCase, () => {});
 				const leaving = rowOf(pane, paneCase.first);
 				const arriving = rowOf(pane, paneCase.second);
 				const bareLeaving = rowText(pane, leaving);
@@ -417,8 +512,7 @@ describe("a pointer band fades on a hand-painted list", () => {
 			});
 
 			it("never bands the selected row", () => {
-				const pane = paneCase.make();
-				pane.setOnRequestRender(() => {});
+				const pane = lend(paneCase, () => {});
 				const row = rowOf(pane, paneCase.selected);
 				const before = rowText(pane, row);
 
@@ -448,9 +542,8 @@ describe("a pointer band fades on a hand-painted list", () => {
 			});
 
 			it("settles, stops asking for frames, and drops the band when disposed", () => {
-				const pane = paneCase.make();
 				let renders = 0;
-				pane.setOnRequestRender(() => {
+				const pane = lend(paneCase, () => {
 					renders += 1;
 				});
 				const row = rowOf(pane, paneCase.first);

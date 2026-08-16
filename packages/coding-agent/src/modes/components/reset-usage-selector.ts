@@ -1,4 +1,12 @@
-import { type Component, matchesKey, padding, routeSgrMouseInput, ScrollView, type SgrMouseEvent } from "@veyyon/tui";
+import {
+	type Component,
+	HoverFade,
+	matchesKey,
+	padding,
+	routeSgrMouseInput,
+	ScrollView,
+	type SgrMouseEvent,
+} from "@veyyon/tui";
 import { clampLow, formatCount } from "@veyyon/utils";
 import type { ResetUsageAccount } from "../../slash-commands/helpers/reset-usage";
 import { theme } from "../theme/theme";
@@ -13,10 +21,11 @@ import {
 	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
+	modalRevealEnabled,
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
-import { selectionBand } from "./selector-helpers";
+import { hoverBandAt } from "./selector-helpers";
 
 const RESET_SELECTOR_MAX_VISIBLE = 10;
 
@@ -53,6 +62,11 @@ export class ResetUsageSelectorComponent implements Component {
 	/** Per-render map of 0-based body line → account index. */
 	#hitRows: (number | undefined)[] = [];
 	#onRequestRender?: () => void;
+	/**
+	 * The cross-fade between the account the pointer left and the one it arrived at, once a host
+	 * lends this card a repaint. Absent, the band is switched.
+	 */
+	#hoverFade: HoverFade | undefined;
 	#reveal = new ModalRevealDriver();
 	/**
 	 * Fade out on the shared clock before the host drops this card. The overlay stack keeps painting
@@ -81,6 +95,24 @@ export class ResetUsageSelectorComponent implements Component {
 
 	setOnRequestRender(cb: () => void): void {
 		this.#onRequestRender = cb;
+		// The band fades only once the card has a repaint to lend it: the frames between two mouse
+		// reports have no input to hang off. Same ambient gate as the open unfold.
+		this.#hoverFade?.dispose();
+		this.#hoverFade = new HoverFade({ requestRender: cb, enabled: modalRevealEnabled() });
+		if (this.#hoveredIndex !== null) this.#hoverFade.set(this.#hoveredIndex);
+	}
+
+	/** Settle the pointer band so no timer outlives a dismissed card. */
+	dispose(): void {
+		this.#hoverFade?.dispose();
+		this.#hoverFade = undefined;
+		this.#hoveredIndex = null;
+	}
+
+	/** Band strength for an account row; without a fade the hovered row is at 1 and the rest at 0. */
+	#hoverStrength(index: number): number {
+		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
+		return index === this.#hoveredIndex ? 1 : 0;
 	}
 
 	invalidate(): void {
@@ -104,7 +136,7 @@ export class ResetUsageSelectorComponent implements Component {
 			const account = this.#accounts[i];
 			if (!account) continue;
 			const isSelected = i === this.#selectedIndex;
-			const isHovered = i === this.#hoveredIndex && !isSelected;
+			const hoverStrength = isSelected ? 0 : this.#hoverStrength(i);
 			const redeemable = account.availableCount > 0;
 			const countLabel = account.error ? account.error : formatCount("saved reset", account.availableCount);
 			const countText = account.error
@@ -122,7 +154,7 @@ export class ResetUsageSelectorComponent implements Component {
 				row = `${name}${activeTag}  ${countText}`;
 			}
 			this.#hitRows[rows.length] = i;
-			rows.push(isHovered ? selectionBand(row, width) : row);
+			rows.push(hoverStrength > 0 ? hoverBandAt(row, width, hoverStrength) : row);
 		}
 
 		const body: string[] = [];
@@ -264,6 +296,7 @@ export class ResetUsageSelectorComponent implements Component {
 			const index = this.#hitRows[line] ?? null;
 			if (index !== this.#hoveredIndex) {
 				this.#hoveredIndex = index;
+				this.#hoverFade?.set(index);
 				this.#onRequestRender?.();
 			}
 			return true;

@@ -13,6 +13,7 @@ import {
 	type Component,
 	CURSOR_MARKER,
 	type Focusable,
+	HoverFade,
 	Key,
 	matchesKey,
 	padding,
@@ -31,10 +32,11 @@ import {
 	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
+	modalRevealEnabled,
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
-import { selectionBand } from "./selector-helpers";
+import { hoverBandAt } from "./selector-helpers";
 
 export interface MoveOverlayResult {
 	directory: string;
@@ -203,6 +205,11 @@ export class MoveOverlay implements Component, Focusable {
 	/** Pointer-highlighted suggestion (never the selected one; selection owns its row). */
 	#hoveredIndex: number | null = null;
 	#onRequestRender?: () => void;
+	/**
+	 * The cross-fade between the suggestion the pointer left and the one it arrived at, once a host
+	 * lends this card a repaint. Absent, the band is switched.
+	 */
+	#hoverFade: HoverFade | undefined;
 	#reveal = new ModalRevealDriver();
 	/**
 	 * Fade out on the shared clock before the host drops this card. The overlay stack keeps painting
@@ -230,6 +237,24 @@ export class MoveOverlay implements Component, Focusable {
 
 	setOnRequestRender(cb: () => void): void {
 		this.#onRequestRender = cb;
+		// The band fades only once the card has a repaint to lend it: the frames between two mouse
+		// reports have no input to hang off. Same ambient gate as the open unfold.
+		this.#hoverFade?.dispose();
+		this.#hoverFade = new HoverFade({ requestRender: cb, enabled: modalRevealEnabled() });
+		if (this.#hoveredIndex !== null) this.#hoverFade.set(this.#hoveredIndex);
+	}
+
+	/** Settle the pointer band so no timer outlives a dismissed card. */
+	dispose(): void {
+		this.#hoverFade?.dispose();
+		this.#hoverFade = undefined;
+		this.#hoveredIndex = null;
+	}
+
+	/** Band strength for a suggestion row; without a fade the hovered row is at 1 and the rest at 0. */
+	#hoverStrength(index: number): number {
+		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
+		return index === this.#hoveredIndex ? 1 : 0;
 	}
 
 	get focused(): boolean {
@@ -313,11 +338,11 @@ export class MoveOverlay implements Component, Focusable {
 			for (let i = 0; i < shown; i++) {
 				const item = this.#results[i]!;
 				const selected = i === this.#selectedIndex;
-				const hovered = i === this.#hoveredIndex && !selected;
+				const hoverStrength = selected ? 0 : this.#hoverStrength(i);
 				const marker = selected ? theme.fg("accent", "▶ ") : "  ";
 				const label = selected ? theme.fg("accent", item.label) : theme.fg("text", item.label);
 				const row = `${marker}${label}`;
-				body.push(hovered ? selectionBand(row, dims.contentWidth) : row);
+				body.push(hoverStrength > 0 ? hoverBandAt(row, dims.contentWidth, hoverStrength) : row);
 			}
 		}
 
@@ -377,6 +402,7 @@ export class MoveOverlay implements Component, Focusable {
 			const hovered = index >= 0 && index < shown ? index : null;
 			if (hovered !== this.#hoveredIndex) {
 				this.#hoveredIndex = hovered;
+				this.#hoverFade?.set(hovered);
 				this.#onRequestRender?.();
 			}
 			return true;

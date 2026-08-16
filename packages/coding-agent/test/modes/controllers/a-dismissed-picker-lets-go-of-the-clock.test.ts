@@ -1,30 +1,44 @@
 // WHY THIS SUITE EXISTS (A-DISMISSED-PICKER-KEEPS-ASKING-FOR-FRAMES).
 //
-// Six hand-painted pickers now cross-fade their pointer band on the process-wide `motionClock`, and
-// the band suite proves each of them gives the clock back when `dispose()` is called. Nothing called
-// it. `/tree`, `/history` and the branch-from-message card all open through
-// `SelectorController.showModalSelector`, whose `done()` hid the overlay and stopped there; `/copy`
-// opens through `showCopySelector`, whose card had no `dispose()` at all. So a band still travelling
-// when Escape landed kept ticking against a card that would never be painted again, and the clock
-// kept its ticker running for it — the exact defect the settings card closed, reopened one layer out
-// on every picker the settings card does not route through.
+// Eight hand-painted pickers now cross-fade their pointer band on the process-wide `motionClock`,
+// and the band suites prove each of them gives the clock back when `dispose()` is called. Nothing
+// called it. `/tree`, `/history`, the branch-from-message card and the reset-usage picker all open
+// through `SelectorController.showModalSelector`, whose `done()` hid the overlay and stopped there;
+// `/copy` and `/move` open through their own inline show sites, whose cards had no `dispose()` at
+// all. So a band still travelling when Escape landed kept ticking against a card that would never be
+// painted again, and the clock kept its ticker running for it — the exact defect the settings card
+// closed, reopened one layer out on every picker the settings card does not route through.
 //
 // The class this closes: a SHOW SITE that mounts a card with motion and never unmounts it. There are
-// two of those, and the fence below walks the real controller through both. `showModalSelector` is
-// the shared one — every card routed through it inherits the fix, and the enumeration asserts that,
-// so a seventh caller cannot be added with its own private teardown. `showCopySelector` is the one
-// that opts out of the shared helper, which is precisely why it was missed.
+// three of those, on two controllers, and the fence below walks the real controllers through all
+// three. `showModalSelector` is the shared one — every card routed through it inherits the fix, and
+// the two cases at the bottom pin the helper itself rather than any one caller, so a card mounted
+// there is handed back on both of its exits. `showCopySelector` and `/move`'s picker opt out of the
+// shared helper, which is precisely why they were missed. The extensions dashboard is a fourth such
+// site; it is fenced beside its own bands, in
+// `test/modes/components/the-extensions-dashboard-fades-both-its-bands.test.ts`.
 //
-// It drives the real `SelectorController` against the real cards and the real shared clock. A fake
-// component would prove the fake was disposed, and the defect was that the real one never was.
+// It drives the real controllers against the real cards and the real shared clock. A fake component
+// would prove the fake was disposed, and the defect was that the real one never was.
 //
 // WHAT IT DOES NOT CATCH: a show site that hides its overlay by a route other than its own `done`
 // (nothing here proves a future route reaches it), a card that registers motion with something other
 // than the shared clock, and how the fade LOOKS while it travels — that is the band suite's job.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import {
+	CommandController,
+	type CommandControllerContext,
+} from "@veyyon/coding-agent/modes/controllers/command-controller";
+import {
+	MCPCommandController,
+	type McpCommandControllerContext,
+} from "@veyyon/coding-agent/modes/controllers/mcp-command-controller";
 import { SelectorController } from "@veyyon/coding-agent/modes/controllers/selector-controller";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
@@ -34,6 +48,10 @@ import { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/st
 
 const FRAME = 1000 / 60;
 const WIDTH = 160;
+
+/** The `/move` card lists real directories, so the pointer needs a real tree to travel over. */
+const moveCwd = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-dismiss-move-"));
+for (const name of ["alpha", "beta", "gamma"]) fs.mkdirSync(path.join(moveCwd, name));
 
 /** The cards' motion gate is `TERMINAL.trueColor`, probed once at load from a real terminal. */
 const terminalCaps: { trueColor: boolean } = TERMINAL;
@@ -146,6 +164,41 @@ async function openCopy(): Promise<OpenedPicker> {
 	return { card: await mounted, hide };
 }
 
+/**
+ * `/move`: a third show site, on a different controller, with its own inline teardown. It lists
+ * real directories, so the pointer needs a real tree to travel over.
+ */
+async function openMove(): Promise<OpenedPicker> {
+	const hide = vi.fn();
+	const opened = Promise.withResolvers<Card>();
+	const ctx = {
+		session: { isStreaming: false },
+		sessionManager: { getCwd: () => moveCwd },
+		ui: {
+			showOverlay: (component: Card) => {
+				opened.resolve(component);
+				return { hide };
+			},
+			setFocus: vi.fn(),
+			requestRender: vi.fn(),
+			terminal: { columns: WIDTH, rows: 40 },
+		},
+		focusActiveEditorArea: vi.fn(),
+		showError: vi.fn(),
+		showWarning: vi.fn(),
+		applyCwdChange: vi.fn(async () => {}),
+		updateEditorBorderColor: vi.fn(),
+		reloadTodos: vi.fn(async () => {}),
+		refreshComposerShortcuts: vi.fn(),
+		dismissWelcome: vi.fn(),
+		present: vi.fn(),
+	};
+	const controller = new CommandController(ctx as unknown as CommandControllerContext);
+	// The command awaits the picker's answer; Escape resolves it undefined and the command returns.
+	void controller.handleMoveCommand();
+	return { card: await opened.promise, hide };
+}
+
 interface PickerCase {
 	readonly name: string;
 	readonly open: () => Promise<OpenedPicker>;
@@ -156,6 +209,7 @@ interface PickerCase {
 const PICKERS: readonly PickerCase[] = [
 	{ name: "the session tree card", open: openTree, hoverRow: "bravo the second prompt" },
 	{ name: "the copy picker", open: openCopy, hoverRow: "the second reply" },
+	{ name: "the move path picker", open: openMove, hoverRow: "beta" },
 ];
 
 /** 1-based screen row of the first painted line containing `text`. */
@@ -282,5 +336,62 @@ describe("a dismissed picker lets go of the clock", () => {
 		});
 		expect(hide).toHaveBeenCalledTimes(1);
 		expect(dispose).toHaveBeenCalledTimes(1);
+	});
+
+	// A fourth show site, on a third controller: `/mcp add` builds its wizard inline and hides the
+	// overlay from a `done` of its own. The wizard is the card whose host lends the repaint through
+	// the CONSTRUCTOR, so it is also the one whose band exists only if that seam was wired.
+	it("hands back the /mcp add wizard when it is cancelled", async () => {
+		const hide = vi.fn();
+		const opened = Promise.withResolvers<Card>();
+		const ctx = {
+			ui: {
+				showOverlay: (component: Card) => {
+					opened.resolve(component);
+					return { hide };
+				},
+				setFocus: vi.fn(),
+				requestRender: vi.fn(),
+				terminal: { columns: WIDTH, rows: 40 },
+			},
+			editorContainer: { children: [{}] },
+			editor: { getTopBorderAvailableWidth: () => WIDTH },
+			showError: vi.fn(),
+			showStatus: vi.fn(),
+			showWarning: vi.fn(),
+			// The cancel path prints "cancelled" into the transcript on its way out.
+			present: vi.fn(),
+		};
+		const controller = new MCPCommandController(ctx as unknown as McpCommandControllerContext);
+		// A name on the command line skips the wizard's text step and opens it on the transport
+		// list, which is the step with rows a pointer can travel over.
+		void controller.handle("/mcp add a-server");
+		const card = await opened.promise;
+		card.render(WIDTH);
+		drain(performance.now());
+
+		let now = performance.now();
+		const tickFrames = (count: number) => {
+			for (let frame = 0; frame < count; frame++) {
+				now += FRAME;
+				motionClock.tick(now);
+			}
+		};
+
+		card.handleInput(motionAt(rowOf(card, "http (HTTP server)")));
+		expect(motionClock.liveCount, "a fade is in flight").toBeGreaterThan(0);
+		// The band is given real strength before the card is left. Stepping back a step tells the
+		// fade the pointer is gone, and a fade told to leave from zero has nowhere to travel and
+		// drops itself off the clock — which would pass whether or not anyone disposed the card.
+		tickFrames(3);
+
+		// Escape on the transport step steps back to the name step; the second one cancels, which
+		// is the exit that reaches the show site's `done`.
+		card.handleInput("\x1b");
+		card.handleInput("\x1b");
+		expect(hide).toHaveBeenCalledTimes(1);
+
+		tickFrames(2);
+		expect(motionClock.liveCount, "the cancelled wizard left nothing on the clock").toBe(0);
 	});
 });

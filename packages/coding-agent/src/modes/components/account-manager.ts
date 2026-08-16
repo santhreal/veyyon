@@ -23,6 +23,7 @@
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import {
 	type Component,
+	HoverFade,
 	Input,
 	matchesKey,
 	padding,
@@ -63,12 +64,13 @@ import {
 	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
+	modalRevealEnabled,
 	planModalChrome,
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
 import { fit } from "./overlay-box";
-import { renderScrollableList, selectionBand } from "./selector-helpers";
+import { hoverBandAt, renderScrollableList, selectionBand } from "./selector-helpers";
 
 /** Body lines one wrapped warning may occupy before it is clipped. */
 const NOTE_MAX_LINES = 3;
@@ -204,6 +206,11 @@ export class AccountManagerComponent implements Component {
 	/** Set by an activation (keys, click, open) so the next paint reveals the active provider. */
 	#sidebarFollowActive = true;
 	#sidebarHover: number | null = null;
+	/**
+	 * The cross-fade for the sidebar band, once the host has lent the card a repaint. A card
+	 * constructed without one keeps the switched band, which is what a non-interactive test sees.
+	 */
+	#sidebarFade: HoverFade | undefined;
 	#bodyScroll = 0;
 
 	/** Inline rename editor, open over the selected row. */
@@ -246,6 +253,12 @@ export class AccountManagerComponent implements Component {
 		}
 		this.#selectFirstEntry();
 		if (options.reveal) this.#reveal.start(() => this.#requestRender?.());
+		// The band fades only once the card has a repaint to lend it: the frames between two mouse
+		// reports have no input to hang off. Same ambient gate as the open unfold.
+		const requestRender = options.requestRender;
+		if (requestRender) {
+			this.#sidebarFade = new HoverFade({ requestRender, enabled: modalRevealEnabled() });
+		}
 	}
 
 	/**
@@ -269,6 +282,15 @@ export class AccountManagerComponent implements Component {
 
 	dispose(): void {
 		this.#reveal.stop();
+		this.#sidebarFade?.dispose();
+		this.#sidebarFade = undefined;
+		this.#sidebarHover = null;
+	}
+
+	/** Sidebar band strength; without a fade the hovered row is at 1 and the rest at 0. */
+	#sidebarStrength(index: number): number {
+		if (this.#sidebarFade !== undefined) return this.#sidebarFade.strengthAt(index);
+		return index === this.#sidebarHover ? 1 : 0;
 	}
 
 	#rebuildEntries(): void {
@@ -546,6 +568,7 @@ export class AccountManagerComponent implements Component {
 
 		if (event.motion) {
 			this.#sidebarHover = overSidebar ? this.#sidebarScroll + contentLine : null;
+			this.#sidebarFade?.set(this.#sidebarHover);
 			return true;
 		}
 		if (event.wheel !== null) {
@@ -669,7 +692,8 @@ export class AccountManagerComponent implements Component {
 			const left = `${cursor} ${label}`;
 			const gap = Math.max(1, width - visibleWidth(left) - visibleWidth(annotation));
 			let line = `${left}${" ".repeat(gap)}${annotation}`;
-			if (i === this.#sidebarHover) line = selectionBand(line, width);
+			const hoverStrength = this.#sidebarStrength(i);
+			if (hoverStrength > 0) line = hoverBandAt(line, width, hoverStrength);
 			lines.push(line);
 		}
 		while (lines.length < listRows + 1) lines.push("");

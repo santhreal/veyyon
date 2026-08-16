@@ -9,6 +9,7 @@ import {
 	Ellipsis,
 	extractPrintableText,
 	fuzzyFilter,
+	HoverFade,
 	Markdown,
 	type MarkdownTheme,
 	matchesKey,
@@ -42,13 +43,14 @@ import {
 	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
+	modalRevealEnabled,
 	planModalChrome,
 	renderModalShell,
 	SELECT_LIST_SHORTCUTS,
 	sizingForArea,
 } from "./modal-shell";
 import { renderSliderLines } from "./segment-track";
-import { selectionBand } from "./selector-helpers";
+import { hoverBandAt } from "./selector-helpers";
 
 /** One segment of a {@link HookSelectorSlider} — a label and an optional
  *  detail line (e.g. the resolved model name) shown beneath the track while
@@ -185,6 +187,11 @@ export class HookSelectorComponent extends Container {
 	#hitRows: (number | undefined)[] = [];
 	/** Pointer-highlighted option (never the selected one; selection owns its row). */
 	#hoveredIndex: number | null = null;
+	/**
+	 * The cross-fade between the option the pointer left and the one it arrived at, once a host
+	 * lends this card a repaint. Absent, the band is switched.
+	 */
+	#hoverFade: HoverFade | undefined;
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
 	#bodyRowStart = 0;
@@ -227,7 +234,7 @@ export class HookSelectorComponent extends Container {
 		const [firstTitleLine = "", ...restTitleLines] = title.split("\n");
 		this.#card = opts?.presentation !== "embedded";
 		this.#helpText = opts?.helpText;
-		this.#onRequestRender = opts?.onRequestRender;
+		if (opts?.onRequestRender) this.#useRequestRender(opts.onRequestRender);
 		this.#baseTitle = title;
 		this.#cardTitle = firstTitleLine;
 		this.#onLeftCallback = opts?.onLeft;
@@ -571,7 +578,25 @@ export class HookSelectorComponent extends Container {
 	}
 
 	setOnRequestRender(callback: () => void): void {
+		this.#useRequestRender(callback);
+	}
+
+	/** Take a repaint seam and rebuild the hover fade on it. Both the constructor option and the
+	 *  later setter land here, because a host that hands the callback in at construction time is
+	 *  just as entitled to the fade as one that lends it afterwards. */
+	#useRequestRender(callback: () => void): void {
 		this.#onRequestRender = callback;
+		// The band fades only once the card has a repaint to lend it: the frames between two mouse
+		// reports have no input to hang off. Same ambient gate as the open unfold.
+		this.#hoverFade?.dispose();
+		this.#hoverFade = new HoverFade({ requestRender: callback, enabled: modalRevealEnabled() });
+		if (this.#hoveredIndex !== null) this.#hoverFade.set(this.#hoveredIndex);
+	}
+
+	/** Band strength for an option row; without a fade the hovered row is at 1 and the rest at 0. */
+	#hoverStrength(index: number): number {
+		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
+		return index === this.#hoveredIndex ? 1 : 0;
 	}
 
 	/** Render the slider block in the style of the status line: each option is a
@@ -764,6 +789,7 @@ export class HookSelectorComponent extends Container {
 			const index = this.#hitRows[line] ?? null;
 			if (index !== this.#hoveredIndex) {
 				this.#hoveredIndex = index;
+				this.#hoverFade?.set(index);
 				this.#onRequestRender?.();
 			}
 			return true;
@@ -806,11 +832,8 @@ export class HookSelectorComponent extends Container {
 						this.#hitRows[body.length] = option;
 						// The cursor row already carries the selection band; the
 						// pointer band is what the OTHER rows get under the mouse.
-						body.push(
-							option === this.#hoveredIndex && option !== this.#selectedIndex
-								? selectionBand(rendered, contentWidth)
-								: rendered,
-						);
+						const strength = option === this.#selectedIndex ? 0 : this.#hoverStrength(option);
+						body.push(strength > 0 ? hoverBandAt(rendered, contentWidth, strength) : rendered);
 					}
 				}
 				continue;
@@ -835,6 +858,7 @@ export class HookSelectorComponent extends Container {
 	setHoveredOption(index: number | null): boolean {
 		if (index === this.#hoveredIndex) return false;
 		this.#hoveredIndex = index;
+		this.#hoverFade?.set(index);
 		return true;
 	}
 
@@ -906,5 +930,8 @@ export class HookSelectorComponent extends Container {
 
 	dispose(): void {
 		this.#countdown?.dispose();
+		this.#hoverFade?.dispose();
+		this.#hoverFade = undefined;
+		this.#hoveredIndex = null;
 	}
 }
