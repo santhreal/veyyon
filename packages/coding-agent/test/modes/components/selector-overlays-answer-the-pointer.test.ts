@@ -296,7 +296,7 @@ describe("selector overlays answer the pointer", () => {
 		const dialog = new AskDialogComponent(questions, {
 			onSubmit: () => {},
 			onCancel: () => {},
-			onPrompt: () => {},
+			onPrompt: () => Promise.resolve(undefined),
 		});
 
 		dialog.handleInput(wheelAt("down", rowOf(dialog, "Option A")));
