@@ -3,6 +3,7 @@ import {
 	Container,
 	clampLow,
 	type NativeScrollbackCommittedRows,
+	type NativeScrollbackCompaction,
 	type NativeScrollbackLiveRegion,
 	type NativeScrollbackReplay,
 	type RenderStablePrefix,
@@ -161,6 +162,7 @@ export class TranscriptContainer
 	implements
 		NativeScrollbackLiveRegion,
 		NativeScrollbackCommittedRows,
+		NativeScrollbackCompaction,
 		NativeScrollbackReplay,
 		RenderStablePrefix,
 		ViewportTailProvider
@@ -189,6 +191,9 @@ export class TranscriptContainer
 	// committed-row count immediately before render, so resetting that count
 	// alone cannot distinguish a replay from an ordinary update.
 	#replayPending = false;
+	// Rows dropped out of the front of #lines since the engine last read the
+	// count. The engine slides its commit index by exactly this much.
+	#droppedRows = 0;
 	// Stable-prefix floor accumulated across renders since the last
 	// getRenderStablePrefixRows() read (see RenderStablePrefix: reading
 	// consumes the report and re-bases the baseline). Out-of-band renders
@@ -205,7 +210,7 @@ export class TranscriptContainer
 		this.#generation++;
 		super.clear();
 		this.#compactedChildStart = 0;
-		this.#committedRows = 0;
+		this.#droppedRows = 0;
 		this.#replayPending = false;
 	}
 
@@ -220,6 +225,22 @@ export class TranscriptContainer
 		this.#generation++;
 		this.#lines.length = 0;
 		this.#stableRowsFloor = 0;
+		// The replay re-renders the whole transcript, so the rows dropped so far
+		// come back in the same frame. Reporting them would slide the engine's
+		// commit index down against a frame that just grew.
+		this.#droppedRows = 0;
+	}
+
+	/**
+	 * Rows dropped out of the front of the frame since the last read, so the
+	 * engine can move its commit index with them (see NativeScrollbackCompaction).
+	 * Reading consumes the count: it describes one frame's shift, and counting a
+	 * shift twice moves the index off the frame in the other direction.
+	 */
+	takeNativeScrollbackDroppedRows(): number {
+		const rows = this.#droppedRows;
+		this.#droppedRows = 0;
+		return rows;
 	}
 
 	getRenderStablePrefixRows(): number {
@@ -551,6 +572,7 @@ export class TranscriptContainer
 		if (dropRows === 0) return;
 
 		lines.splice(0, dropRows);
+		this.#droppedRows += dropRows;
 		for (let i = this.#compactedChildStart; i < dropUntil; i++) {
 			const segment = segments[i];
 			if (segment === undefined) continue;
