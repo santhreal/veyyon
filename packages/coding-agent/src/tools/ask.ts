@@ -35,6 +35,7 @@ import { type as arkType } from "arktype";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { ExtensionUISelectItem } from "../extensibility/extensions";
 import { HOOK_EDITOR_TEXT_PAD_COLS } from "../modes/components/hook-editor";
+import { computeModalDims, MODAL_SIZING_MEDIUM, sizingForArea } from "../modes/components/modal-shell";
 import { getMarkdownTheme } from "../modes/theme/markdown-theme";
 import { type Theme, theme } from "../modes/theme/theme";
 import { toolsPrompts } from "../prompts/tools/rows";
@@ -180,27 +181,27 @@ const MAX_CUSTOM_INPUT_TITLE_ROWS = 16;
 const MIN_CUSTOM_INPUT_CONTENT_WIDTH = 20;
 /**
  * Subtracted from the terminal width to leave room for the chrome the title is
- * rendered inside.
+ * rendered inside, when the card's own geometry cannot be computed (a terminal
+ * too small for a card at all).
  *
- * That chrome is exactly the title row's own horizontal padding, taken from the
- * component that applies it rather than restated here. `HookEditorComponent`
- * mounts the title as `new Text(title, HOOK_EDITOR_TEXT_PAD_COLS, 0)` and `Text`
- * wraps at `width - paddingX * 2`, so this is the width the title actually gets.
- *
- * It used to be a hardcoded 4, described as the padding "+ DynamicBorder
- * vertical chrome". `DynamicBorder` has no vertical chrome: it renders one
- * full-width horizontal rule and consumes zero columns. So every title row was
- * truncated two columns short of the space it had, on every terminal width.
- * There is no clamp anywhere else that would have caught it, because narrower
- * than available never wraps and never looks broken, it just quietly loses two
- * columns of question text.
+ * That chrome is the title row's own horizontal padding, taken from the
+ * component that applies it rather than restated here.
  */
 const CUSTOM_INPUT_CHROME_COLUMNS = HOOK_EDITOR_TEXT_PAD_COLS * 2;
 const CUSTOM_INPUT_DESCRIPTION_INDENT = "    ";
 
+/**
+ * Width the pre-wrapped title actually gets. The custom-input editor is a
+ * ModalShell card, so that is the card's CONTENT width, not the terminal's:
+ * wrapping at the terminal width hands the card lines it has to wrap a second
+ * time, and the option list the title carries comes out ragged.
+ */
 function customInputContentWidth(): number {
 	const cols = process.stdout.columns ?? 80;
-	return Math.max(MIN_CUSTOM_INPUT_CONTENT_WIDTH, cols - CUSTOM_INPUT_CHROME_COLUMNS);
+	const rows = process.stdout.rows || 40;
+	const dims = computeModalDims(cols, rows, sizingForArea(MODAL_SIZING_MEDIUM, rows));
+	const width = dims ? dims.contentWidth : cols - CUSTOM_INPUT_CHROME_COLUMNS;
+	return Math.max(MIN_CUSTOM_INPUT_CONTENT_WIDTH, width);
 }
 
 function clampLineToWidth(line: string, width: number): string {

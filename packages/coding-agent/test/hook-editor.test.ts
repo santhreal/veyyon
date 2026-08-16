@@ -5,6 +5,7 @@ import { ExtensionUiController } from "@veyyon/coding-agent/modes/controllers/ex
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 import { getKeybindings, setKeybindings, type TUI } from "@veyyon/tui";
+import { cardBodyLines } from "./helpers/modal-card";
 
 beforeAll(async () => {
 	const theme = await getThemeByName("dark");
@@ -364,23 +365,26 @@ describe("HookEditorComponent prompt-style mode", () => {
 		expect(onCancel).not.toHaveBeenCalled();
 	});
 
-	it("renders prompt-style editor with legacy ask chrome", () => {
+	it("draws the prompt editor as a card whose chips name the live chords", () => {
 		const component = new HookEditorComponent(createTui(), "Prompt", undefined, vi.fn(), vi.fn(), {
 			promptStyle: true,
 		});
 
 		const rendered = renderText(component);
-		const lines = renderLines(component);
+		const body = cardBodyLines(component.render(120));
 
-		expect(lines[0]).toMatch(/^─+$/);
-		expect(lines.at(-1)).toMatch(/^─+$/);
-		expect(lines[4]?.startsWith("> ")).toBe(true);
+		// The card is the frame the DynamicBorder rules used to draw, so the
+		// contract moved from "a rule above and below" to "a titled card".
+		expect(rendered).toContain("Prompt");
+		expect(rendered).toContain("[x]");
+		expect(body.some(line => line.startsWith("> "))).toBe(true);
 		// Every chord the footer names is read from its binding rather than written
 		// out, so this is the live text. It names BOTH follow-up chords, which the
 		// old hardcoded string did not: `app.message.followUp` defaults to
 		// `["ctrl+q", "ctrl+enter"]` and `matchesAppFollowUp` has always accepted
 		// both, so the footer used to omit a chord that really submits.
-		expect(rendered).toContain(" enter or ctrl+q/ctrl+enter submit  esc cancel");
+		expect(rendered).toContain("enter or ctrl+q/ctrl+enter submit");
+		expect(rendered).toContain("esc cancel");
 		expect(rendered).not.toContain("shift+enter newline");
 		expect(rendered).toContain("ctrl+g external editor");
 	});
@@ -421,20 +425,29 @@ describe("HookEditorComponent prompt-style mode", () => {
 			component.handleInput(char);
 		}
 
-		const lines = renderLines(component);
-		expect(lines[4]?.startsWith("> hello")).toBe(true);
-		expect(lines[4]?.startsWith("hello")).toBe(false);
+		const body = cardBodyLines(component.render(120));
+		expect(body.some(line => line.startsWith("> hello"))).toBe(true);
+		expect(body.some(line => line.startsWith("hello"))).toBe(false);
 	});
 
+	/**
+	 * The wrap contract belongs to the editor, not to the card around it, so this
+	 * drives the embedded presentation: a card refuses to lay out at twelve
+	 * columns at all, and asserting the wrap through one would be asserting the
+	 * card's minimum width instead.
+	 */
 	it("aligns wrapped prompt-style continuation rows under the text column", () => {
 		const component = new HookEditorComponent(createTui(), "Prompt", "abcdefghijklm", vi.fn(), vi.fn(), {
 			promptStyle: true,
+			presentation: "embedded",
 		});
 
 		const lines = renderLines(component, 12);
-		expect(lines[4]).toBe("> abcdefghij");
-		expect(lines[5]?.startsWith("  klm")).toBe(true);
-		expect(lines[5]?.startsWith(">")).toBe(false);
+		const gutter = lines.findIndex(line => line.startsWith("> "));
+		expect(gutter).toBeGreaterThanOrEqual(0);
+		expect(lines[gutter]).toBe("> abcdefghij");
+		expect(lines[gutter + 1]?.startsWith("  klm")).toBe(true);
+		expect(lines[gutter + 1]?.startsWith(">")).toBe(false);
 	});
 
 	it("cancels on Escape", () => {
@@ -471,7 +484,7 @@ describe("HookEditorComponent prompt-style mode", () => {
 
 describe("ExtensionUiController hook editor abort", () => {
 	it("hides the hook editor and resolves undefined when the caller aborts", async () => {
-		const { ctx, editor, editorContainer, ui } = createControllerContext();
+		const { ctx, editor, overlays, ui } = createControllerContext();
 		const controller = new ExtensionUiController(ctx);
 		const abortController = new AbortController();
 		const controllerWithAbort = controller as unknown as {
@@ -485,13 +498,13 @@ describe("ExtensionUiController hook editor abort", () => {
 
 		const promise = controllerWithAbort.showHookEditor("Prompt", "draft", { signal: abortController.signal });
 
-		expect(editorContainer.children).toHaveLength(1);
+		expect(overlays).toHaveLength(1);
 		expect(ctx.hookEditor).toBeDefined();
 
 		abortController.abort();
 		await Bun.sleep(0);
 
-		expect(editorContainer.children).toEqual([editor]);
+		expect(overlays).toEqual([]);
 		expect(ctx.hookEditor).toBeUndefined();
 		expect(ui.setFocus).toHaveBeenLastCalledWith(editor);
 
@@ -501,7 +514,7 @@ describe("ExtensionUiController hook editor abort", () => {
 	});
 
 	it("forwards editorOptions to HookEditorComponent", async () => {
-		const { ctx, editorContainer } = createControllerContext();
+		const { ctx, overlays } = createControllerContext();
 		const controller = new ExtensionUiController(ctx);
 		const controllerWithOptions = controller as unknown as {
 			showHookEditor: (
@@ -517,7 +530,7 @@ describe("ExtensionUiController hook editor abort", () => {
 			promptStyle: true,
 		});
 
-		expect(editorContainer.children).toHaveLength(1);
+		expect(overlays).toHaveLength(1);
 		expect(ctx.hookEditor).toBeDefined();
 
 		// The component should be a HookEditorComponent in prompt-style mode.

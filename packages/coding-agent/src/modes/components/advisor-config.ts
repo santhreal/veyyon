@@ -568,6 +568,8 @@ export class AdvisorConfigOverlayComponent implements Component {
 				if (shared) this.#showList();
 				else this.#showDetail(index);
 			},
+			// This overlay owns the card; the editor is a screen inside its body.
+			{ presentation: "embedded" },
 		);
 		this.#setScreen("instructions", editor, "");
 	}
