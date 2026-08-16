@@ -33,10 +33,11 @@ import { buildMemoryPayloadForDisplay, resolveMemoryBackend } from "../../memory
 import { BashExecutionComponent } from "../../modes/components/bash-execution";
 import { BorderedLoader } from "../../modes/components/bordered-loader";
 import { compactionActionLabel, willCompactRemotely } from "../../modes/components/compaction-summary-message";
-import { DynamicBorder } from "../../modes/components/dynamic-border";
+import { COMPOSER_INSET_COLS } from "../../modes/components/composer-chrome";
 import { EvalExecutionComponent } from "../../modes/components/eval-execution";
 import { modalRevealEnabled } from "../../modes/components/modal-shell";
 import { MoveOverlay, type MoveOverlayResult } from "../../modes/components/move-overlay";
+import { mountTranscriptBlock, transcriptBlockText } from "../../modes/components/transcript-block-chrome";
 import { TranscriptBlock } from "../../modes/components/transcript-container";
 import { getMarkdownTheme } from "../../modes/theme/markdown-theme";
 import { getSymbolTheme, theme } from "../../modes/theme/theme";
@@ -106,11 +107,10 @@ export type CommandControllerContext = Pick<
 
 function showMarkdownPanel(ctx: CommandControllerContext, title: string, markdown: string): void {
 	const block = new TranscriptBlock();
-	block.addChild(new DynamicBorder());
-	block.addChild(new Text(theme.bold(theme.fg("accent", title)), 1, 0));
-	block.addChild(new Spacer(1));
-	block.addChild(new Markdown(markdown.trim(), 1, 1, getMarkdownTheme()));
-	block.addChild(new DynamicBorder());
+	mountTranscriptBlock(block, {
+		header: theme.bold(theme.fg("accent", title)),
+		body: new Markdown(markdown.trim(), COMPOSER_INSET_COLS, 0, getMarkdownTheme()),
+	});
 	ctx.present(block);
 }
 
@@ -461,12 +461,12 @@ export class CommandController {
 		// Release notes live on the website now, not in the terminal. Print the
 		// link and try to open it in the browser (best-effort; harmless if headless).
 		const block = new TranscriptBlock();
-		block.addChild(new DynamicBorder());
-		block.addChild(new Text(theme.bold(theme.fg("accent", "Changelog")), 1, 0));
-		block.addChild(new Spacer(1));
-		block.addChild(new Text(`${theme.fg("dim", "What's new in")} ${APP_NAME}${theme.fg("dim", ":")}`, 1, 0));
-		block.addChild(new Text(theme.fg("link", CHANGELOG_URL), 1, 0));
-		block.addChild(new DynamicBorder());
+		mountTranscriptBlock(block, {
+			header: theme.bold(theme.fg("accent", "Changelog")),
+			body: transcriptBlockText(
+				`${theme.fg("dim", "What's new in")} ${APP_NAME}${theme.fg("dim", ":")}\n${theme.fg("link", CHANGELOG_URL)}`,
+			),
+		});
 		this.ctx.present(block);
 		try {
 			openPath(CHANGELOG_URL);
@@ -493,11 +493,10 @@ export class CommandController {
 		}
 		const output = renderContextUsage(breakdown, theme);
 		const block = new TranscriptBlock();
-		block.addChild(new DynamicBorder());
-		block.addChild(new Text(theme.bold(theme.fg("accent", "Context Usage")), 1, 0));
-		block.addChild(new Spacer(1));
-		block.addChild(new Text(output, 1, 0));
-		block.addChild(new DynamicBorder());
+		mountTranscriptBlock(block, {
+			header: theme.bold(theme.fg("accent", "Context Usage")),
+			body: transcriptBlockText(output),
+		});
 		this.ctx.present(block);
 	}
 
@@ -527,11 +526,10 @@ export class CommandController {
 				return;
 			}
 			const block = new TranscriptBlock();
-			block.addChild(new DynamicBorder());
-			block.addChild(new Text(theme.bold(theme.fg("accent", "Memory Injection Payload")), 1, 0));
-			block.addChild(new Spacer(1));
-			block.addChild(new Markdown(payload, 1, 1, getMarkdownTheme()));
-			block.addChild(new DynamicBorder());
+			mountTranscriptBlock(block, {
+				header: theme.bold(theme.fg("accent", "Memory Injection Payload")),
+				body: new Markdown(payload, COMPOSER_INSET_COLS, 0, getMarkdownTheme()),
+			});
 			this.ctx.present(block);
 			return;
 		}

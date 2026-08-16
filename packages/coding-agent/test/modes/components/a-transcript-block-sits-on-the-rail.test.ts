@@ -28,8 +28,14 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { BtwPanelComponent, type BtwPanelState } from "@veyyon/coding-agent/modes/components/btw-panel";
 import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/components/composer-chrome";
 import { OmfgPanelComponent, type OmfgPanelState } from "@veyyon/coding-agent/modes/components/omfg-panel";
+import {
+	mountTranscriptBlock,
+	transcriptBlockText,
+} from "@veyyon/coding-agent/modes/components/transcript-block-chrome";
+import { TranscriptBlock } from "@veyyon/coding-agent/modes/components/transcript-container";
+import { showCommandMessage } from "@veyyon/coding-agent/modes/controllers/command-controller-shared";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import type { TUI } from "@veyyon/tui";
+import type { Component, TUI } from "@veyyon/tui";
 
 const WIDTH = 100;
 
@@ -139,5 +145,27 @@ describe("a transcript block sits on the rail", () => {
 		panel.markComplete();
 		const rows = paintedRows(panel).filter(row => row.trim() !== "");
 		expect(rows.at(-1)?.trimEnd()).toBe(`${" ".repeat(COMPOSER_INSET_COLS)}c copy · b branch to chat · Esc dismiss`);
+	});
+
+	it("presents a command's answer at the rail, with no rule", () => {
+		const presented: Component[] = [];
+		showCommandMessage({ present: (block: Component) => presented.push(block) }, "Server added: local-fs");
+
+		const block = presented[0];
+		if (!block) throw new Error("showCommandMessage presented nothing");
+		const rows = paintedRows(block);
+		assertOnTheRail(rows, "command-message");
+		assertNoFullWidthRule(rows, "command-message");
+		expect(rows.map(row => row.trimEnd())).toEqual([`${" ".repeat(COMPOSER_INSET_COLS)}Server added: local-fs`]);
+	});
+
+	it("drops the header gap for a block that has no header", () => {
+		const withHeader = new TranscriptBlock();
+		mountTranscriptBlock(withHeader, { header: "Title", body: transcriptBlockText("body") });
+		expect(paintedRows(withHeader).map(row => row.trimEnd())).toEqual(["  Title", "", "  body"]);
+
+		const bare = new TranscriptBlock();
+		mountTranscriptBlock(bare, { body: transcriptBlockText("body") });
+		expect(paintedRows(bare).map(row => row.trimEnd())).toEqual(["  body"]);
 	});
 });
