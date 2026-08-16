@@ -202,19 +202,24 @@ describe("a click on a composer suggestion", () => {
 		expect(byClick).toBe("/mcp ");
 	});
 
-	it("ignores a click on the input row and leaves the popup open", async () => {
+	it("places the caret and dismisses the popup when the click lands on the input row", async () => {
+		// This row used to be inert on purpose. It stopped being inert when a
+		// click on the text became a caret move (see
+		// a-click-in-the-composer-places-the-caret.test.ts): the buffer is still
+		// untouched, but the caret follows the pointer and the popup goes, because
+		// its prefix no longer describes where the caret is.
 		const h = await mountComposer();
 		stop = () => h.tui.stop();
 		await openPopup(h);
-		const before = h.term.getViewport();
 
-		// The prompt row carries the typed text, so it is above the popup.
+		// The prompt row carries the typed text, so it is above the popup. Column
+		// 3 is the first text cell of the framed variant (border plus padding).
 		h.term.sendInput(clickAt(h.rowOf("/m"), 3));
 		await h.term.waitForRender();
 
 		expect(h.editor.getText()).toBe("/m");
-		expect(h.editor.isShowingAutocomplete()).toBe(true);
-		expect(h.term.getViewport()).toEqual(before);
+		expect(h.editor.getCursor()).toEqual({ line: 0, col: 0 });
+		expect(h.editor.isShowingAutocomplete()).toBe(false);
 	});
 
 	it("ignores a press on a row past the last suggestion", async () => {
