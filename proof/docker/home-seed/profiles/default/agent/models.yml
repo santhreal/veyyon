@@ -1,0 +1,10 @@
+providers:
+  local:
+    baseUrl: http://veyyon-proof-llm:8080/v1
+    api: openai-completions
+    apiKey: LOCAL_LLM_KEY
+    models:
+      - id: qwen2.5-1.5b
+        name: Qwen2.5 1.5B (local)
+        contextWindow: 32768
+        maxTokens: 1024
