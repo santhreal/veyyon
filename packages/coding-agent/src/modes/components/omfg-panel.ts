@@ -1,8 +1,9 @@
-import { type Component, Container, Markdown, Spacer, Text, type TUI } from "@veyyon/tui";
+import { type Component, Container, Markdown, Text, type TUI } from "@veyyon/tui";
 import { replaceTabs } from "../../tools/render-utils";
 import { getMarkdownTheme } from "../theme/markdown-theme";
 import { theme } from "../theme/theme";
-import { DynamicBorder } from "./dynamic-border";
+import { COMPOSER_INSET_COLS } from "./composer-chrome";
+import { mountTranscriptBlock } from "./transcript-block-chrome";
 
 export type OmfgPanelState =
 	| "generating"
@@ -94,17 +95,12 @@ export class OmfgPanelComponent extends Container {
 	}
 
 	#rebuild(): void {
-		this.clear();
-		this.addChild(new DynamicBorder(str => theme.fg("dim", str)));
-		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.fg("accent", replaceTabs(`/omfg ${this.#complaint}`)), 1, 0));
-		this.addChild(new Text(theme.fg("muted", replaceTabs(this.#status)), 1, 0));
-		this.addChild(new Spacer(1));
-		this.addChild(this.#contentComponent());
-		this.addChild(new Spacer(1));
-		this.addChild(new Text(this.#footerLine(), 1, 0));
-		this.addChild(new Spacer(1));
-		this.addChild(new DynamicBorder(str => theme.fg("dim", str)));
+		mountTranscriptBlock(this, {
+			header: theme.bold(theme.fg("accent", replaceTabs(`/omfg ${this.#complaint}`))),
+			subheader: theme.fg("muted", replaceTabs(this.#status)),
+			body: this.#contentComponent(),
+			footer: this.#footerLine(),
+		});
 		this.#tui.requestRender();
 	}
 
@@ -131,12 +127,16 @@ export class OmfgPanelComponent extends Container {
 
 	#contentComponent(): Component {
 		if (this.#state === "error") {
-			return new Text(theme.fg("error", replaceTabs(this.#errorMessage ?? "Unknown error")), 1, 0);
+			return new Text(theme.fg("error", replaceTabs(this.#errorMessage ?? "Unknown error")), COMPOSER_INSET_COLS, 0);
 		}
 		const text = replaceTabs(this.#preview).trim();
 		if (!text) {
-			return new Text(theme.fg("dim", `${theme.status.pending} Waiting for candidate rule…`), 1, 0);
+			return new Text(
+				theme.fg("dim", `${theme.status.pending} Waiting for candidate rule…`),
+				COMPOSER_INSET_COLS,
+				0,
+			);
 		}
-		return new Markdown(text, 1, 0, getMarkdownTheme());
+		return new Markdown(text, COMPOSER_INSET_COLS, 0, getMarkdownTheme());
 	}
 }
