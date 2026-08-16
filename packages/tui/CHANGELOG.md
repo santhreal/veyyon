@@ -2,12 +2,6 @@
 
 ## [Unreleased]
 
-### Fixed
-
-- A live turn no longer repaints the whole screen about ten times a second. Two surfaces put a spring on the shared 60 Hz clock and re-targeted it continuously while a turn streamed — the status line's context gauge, whose reading is revised on every token, and `ScrollView`'s travelling offset — so the clock never stopped and the host was asked for a frame on 99% of frames (measured: 595 render requests in 10 seconds). The engine's adaptive throttle collapsed that into a repaint roughly every 100 ms, and on a long transcript each one was classified as a destructive rebuild, which is the flicker. Both springs are gone: `ScrollView.setScrollMotion`/`disposeScrollMotion` and `StatusLineComponent.watchContextGauge` no longer exist, and the viewport lands on its offset as it did before. Gesture-scoped motion (hover bands, the popup grow) stays, because it settles and stops.
-- A virtualized transcript that is not the first root child no longer turns every streaming frame into a whole-screen rebuild. When rows are dropped, the engine slides its commit coordinates onto the shortened frame, and that slide spliced the dropped rows off the FRONT of the recorded prefix — correct only when the dropping child starts at frame row 0. The shipped layout always mounts a filler above the transcript, and every HUD sits in that band too, so the prefix was left misaligned by exactly the header height, the next audit called that a committed-prefix divergence, and the repair erased native scrollback and replayed the whole transcript: 20 full redraws and 20 ED3 erases over 40 streaming frames, against 0 and 0 once the splice happens at the drop site's own offset. That is the tearing and the blank bands during a streaming answer.
-- Kept the transcript on screen when a virtualized root compacts its committed rows. A root can now report the rows it dropped, and the engine slides its commit index onto the new frame instead of reading the shift as a committed-prefix divergence, erasing native scrollback and replaying a frame the component had already emptied. A root that drops rows without reporting them is rehydrated before any destructive replay, so it costs an extra full repaint rather than the history.
-
 ## [16.5.2] - 2026-07-14
 
 ### Fixed

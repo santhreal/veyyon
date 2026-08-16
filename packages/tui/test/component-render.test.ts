@@ -3,7 +3,6 @@ import {
 	type Component,
 	Container,
 	type NativeScrollbackCommittedRows,
-	type NativeScrollbackCompaction,
 	type NativeScrollbackLiveRegion,
 	type NativeScrollbackReplay,
 	TUI,
@@ -77,43 +76,25 @@ class RenderCountingTUI extends TUI {
 	}
 }
 
-class ReplayVirtualizedLines
-	implements Component, NativeScrollbackCommittedRows, NativeScrollbackCompaction, NativeScrollbackReplay
-{
+class ReplayVirtualizedLines implements Component, NativeScrollbackCommittedRows, NativeScrollbackReplay {
 	readonly lines: readonly string[];
 	replayPreparations = 0;
-	/** Whether this root reports its drops, i.e. implements the compaction seam. */
-	readonly reportsDrops: boolean;
 	#compacted = false;
 	#replayPending = false;
-	#dropped = 0;
 
-	constructor(lines: readonly string[], reportsDrops = true) {
+	constructor(lines: readonly string[]) {
 		this.lines = lines;
-		this.reportsDrops = reportsDrops;
 	}
 
 	invalidate(): void {}
 
 	setNativeScrollbackCommittedRows(rows: number): void {
-		if (rows >= 4 && !this.#compacted) {
-			this.#compacted = true;
-			this.#dropped += 4;
-		}
-	}
-
-	takeNativeScrollbackDroppedRows(): number {
-		if (!this.reportsDrops) return 0;
-		const dropped = this.#dropped;
-		this.#dropped = 0;
-		return dropped;
+		if (rows >= 4) this.#compacted = true;
 	}
 
 	prepareNativeScrollbackReplay(): void {
 		this.replayPreparations++;
 		this.#replayPending = true;
-		this.#compacted = false;
-		this.#dropped = 0;
 	}
 
 	render(_width: number): readonly string[] {
@@ -126,13 +107,7 @@ class ReplayVirtualizedLines
 }
 
 describe("TUI native scrollback replay", () => {
-	/**
-	 * A root that reports its drops (the `NativeScrollbackCompaction` seam) is
-	 * rehydrated exactly once, by the explicit replace: the engine slides its
-	 * commit index by the reported rows, so the compaction itself never reads
-	 * as a divergence and never asks for the history back.
-	 */
-	it("rehydrates a reporting virtualized root once, for the destructive full paint only", async () => {
+	it("rehydrates virtualized roots before a destructive full paint", async () => {
 		const term = new VirtualTerminal(40, 4, 1_000);
 		const scheduler = new StressRenderScheduler();
 		const tui = new TUI(term, undefined, { renderScheduler: scheduler });
@@ -158,41 +133,6 @@ describe("TUI native scrollback replay", () => {
 			await scheduler.drain(term);
 
 			expect(transcript.replayPreparations).toBe(1);
-			const buffer = strip(term.getScrollBuffer());
-			expect(buffer).toContain("history-0");
-			expect(buffer).toContain("tail-3");
-		} finally {
-			tui.stop();
-			await term.flush();
-		}
-	});
-
-	/**
-	 * A root that drops rows WITHOUT reporting them still must not lose them.
-	 * The engine cannot see the shift, so the shrunken frame reads as a
-	 * committed-prefix divergence; with `tui.scrollbackRebuild` on, that erases
-	 * native scrollback and replays. Replaying the dropped frame is what
-	 * deleted whole transcripts, so the engine asks for the rows back first and
-	 * pays an extra rehydration — the cost of not reporting.
-	 */
-	it("rehydrates a silent virtualized root rather than replaying a frame it emptied", async () => {
-		const term = new VirtualTerminal(40, 4, 1_000);
-		const scheduler = new StressRenderScheduler();
-		const tui = new TUI(term, undefined, { renderScheduler: scheduler });
-		tui.setScrollbackRebuild(true);
-		const transcript = new ReplayVirtualizedLines(
-			["history-0", "history-1", "history-2", "history-3", "tail-0", "tail-1", "tail-2", "tail-3"],
-			false,
-		);
-		tui.addChild(transcript);
-
-		try {
-			tui.start();
-			await scheduler.drain(term);
-			tui.requestRender();
-			await scheduler.drain(term);
-
-			expect(transcript.replayPreparations).toBeGreaterThanOrEqual(1);
 			const buffer = strip(term.getScrollBuffer());
 			expect(buffer).toContain("history-0");
 			expect(buffer).toContain("tail-3");
