@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Removed
+
+- `PluginSelectorComponent` is deleted. Marketplace plugins were removed earlier and its one entry point has been a stub that says so ever since, leaving the component with no callers, no tests, and a DynamicBorder chrome nobody can reach.
+
 ### Fixed
 
 - The ask dialog's option rows answer the pointer. Mouse events stopped at the footer chips, so hovering an option did nothing and clicking one did nothing. Hover now bands the whole option row (label and description lines), a click does exactly what Enter does on that row — answers a single-select question, toggles a multi-select one, opens the inline input on Other — and a wheel notch moves the cursor like an arrow key. The submit tab's wheel scrolls its summary.
