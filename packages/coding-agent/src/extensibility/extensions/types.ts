@@ -180,8 +180,6 @@ export interface ExtensionUIDialogOptions {
 	 * (an ACP client's elicitation form) cannot honour it and say so where they are wired.
 	 */
 	secret?: boolean;
-	/** Render an outlined list for select dialogs */
-	outline?: boolean;
 	/** Invoked when user presses left arrow in select dialogs */
 	onLeft?: () => void;
 	/** Invoked when user presses right arrow in select dialogs */

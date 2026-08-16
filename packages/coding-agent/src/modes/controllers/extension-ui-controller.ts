@@ -113,6 +113,8 @@ export class ExtensionUiController {
 	// the rest queue. See `#presentDialog`.
 	#dialogActive = false;
 	#dialogQueue: Array<() => void> = [];
+	/** Live overlay for the hook selector card, so `hide` reaches the right one. */
+	#hookSelectorOverlay: OverlayHandle | undefined;
 	constructor(private ctx: ExtensionUiControllerContext) {}
 
 	/**
@@ -918,7 +920,9 @@ export class ExtensionUiController {
 	}
 
 	/**
-	 * Show a selector for hooks.
+	 * Show a selector for hooks: a fullscreen ModalShell overlay over the
+	 * transcript, the same surface the ask dialog and the session pickers use,
+	 * rather than a bordered stack swapped into the editor slot.
 	 */
 	showHookSelector(
 		title: string,
@@ -928,7 +932,7 @@ export class ExtensionUiController {
 	): Promise<string | undefined> {
 		return this.#presentDialog(dialogOptions?.signal, settle => {
 			const maxVisible = clampLow(this.ctx.ui.terminal.rows - 12, 4, 15);
-			this.ctx.hookSelector = new HookSelectorComponent(
+			const selector = new HookSelectorComponent(
 				title,
 				options,
 				option => settle(option),
@@ -954,18 +958,24 @@ export class ExtensionUiController {
 					onTimeoutStart: dialogOptions?.onTimeoutStart,
 					onTimeoutReset: dialogOptions?.onTimeoutReset,
 					tui: this.ctx.ui,
-					outline: dialogOptions?.outline,
 					disabledIndices: dialogOptions?.disabledIndices,
 					selectionMarker: dialogOptions?.selectionMarker,
 					checkedIndices: dialogOptions?.checkedIndices,
 					markableCount: dialogOptions?.markableCount,
 					maxVisible,
 					slider: extra?.slider,
+					onRequestRender: () => this.ctx.ui.requestRender(),
 				},
 			);
-			this.ctx.editorContainer.clear();
-			this.ctx.editorContainer.addChild(this.ctx.hookSelector);
-			this.ctx.ui.setFocus(this.ctx.hookSelector);
+			this.ctx.hookSelector = selector;
+			this.#hookSelectorOverlay = this.ctx.ui.showOverlay(selector, {
+				anchor: "top-left",
+				width: "100%",
+				maxHeight: "100%",
+				margin: 0,
+				fullscreen: true,
+			});
+			this.ctx.ui.setFocus(selector);
 			this.ctx.ui.requestRender();
 			return () => this.hideHookSelector();
 		});
@@ -975,10 +985,11 @@ export class ExtensionUiController {
 	 */
 	hideHookSelector(): void {
 		this.ctx.hookSelector?.dispose();
-		this.ctx.editorContainer.clear();
-		this.ctx.editorContainer.addChild(this.ctx.editor);
+		// The overlay only hides; disposing the component is the host's job.
+		this.#hookSelectorOverlay?.hide();
+		this.#hookSelectorOverlay = undefined;
 		this.ctx.hookSelector = undefined;
-		this.ctx.ui.setFocus(this.ctx.editor);
+		this.ctx.focusActiveEditorArea();
 		this.ctx.ui.requestRender();
 	}
 

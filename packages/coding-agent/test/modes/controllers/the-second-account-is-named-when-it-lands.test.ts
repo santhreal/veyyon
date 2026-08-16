@@ -71,6 +71,7 @@ function harness(options: { rows: number; credentialId?: number; nameAccepted?: 
 		listUsageWindows: vi.fn(() => []),
 	} as unknown as AuthStorage;
 	const editorSlot: unknown[] = [];
+	const overlayStack: unknown[] = [];
 	const presented: unknown[] = [];
 	const editor = {};
 	const ctx = {
@@ -95,8 +96,21 @@ function harness(options: { rows: number; credentialId?: number; nameAccepted?: 
 			setFocus: vi.fn(),
 			requestRender: vi.fn(),
 			requestComponentRender: vi.fn(),
-			// The finished login opens the account card in an overlay; this case is about the login.
-			showOverlay: vi.fn(() => ({ close: vi.fn(), update: vi.fn() })),
+			terminal: { columns: 100, rows: 40 },
+			// The login and the account card it opens are overlays, so the fake
+			// hands back a real handle: a stub without `hide` made the login look
+			// like it had crashed rather than closed.
+			showOverlay: vi.fn((component: unknown) => {
+				overlayStack.push(component);
+				return {
+					hide: () => {
+						const at = overlayStack.indexOf(component);
+						if (at >= 0) overlayStack.splice(at, 1);
+					},
+					setHidden: () => {},
+					isHidden: () => false,
+				};
+			}),
 		},
 		showStatus: vi.fn(),
 		showError: vi.fn(),
@@ -110,7 +124,10 @@ function harness(options: { rows: number; credentialId?: number; nameAccepted?: 
 	} as unknown as InteractiveModeContext;
 
 	const controller = new SelectorController(ctx);
-	const dialog = (): Renderable | undefined => editorSlot.find(child => child !== editor) as Renderable | undefined;
+	// The name prompt is an overlay card now; before that it replaced the editor
+	// in the slot, and both are searched so this reads the dialog on screen.
+	const dialog = (): Renderable | undefined =>
+		(overlayStack.at(-1) ?? editorSlot.find(child => child !== editor)) as Renderable | undefined;
 	const transcript = () =>
 		presented
 			.flatMap(block => (block as Renderable).render(120))
@@ -146,7 +163,9 @@ describe("the second account is named when it lands", () => {
 			.map(line => stripVTControlCharacters(line))
 			.join("\n");
 		expect(frame).toContain("Name this Groq account (optional)");
-		expect(frame).toContain("Enter  save    Esc  skip");
+		// The prompt is a card now: its keys are footer chips carrying the live
+		// binding, not the hand-built hint line ("Enter  save    Esc  skip").
+		expect(frame).toContain("enter save  ·  esc/ctrl+c skip");
 
 		h.dialog()?.pasteText?.("work laptop");
 		h.dialog()?.handleInput?.("\r");

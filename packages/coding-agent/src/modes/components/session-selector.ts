@@ -28,6 +28,7 @@ import {
 	MODAL_SIZING_LARGE,
 	ModalRevealDriver,
 	type ModalShellGeometry,
+	type ModalShortcut,
 	planModalChrome,
 	renderModalShell,
 	sizingForArea,
@@ -961,7 +962,9 @@ export class SessionSelectorComponent extends Container {
 			closeDialog,
 			// Destructive dialog: the cursor starts on "No" so a reflexive Enter
 			// (or a buffered keystroke landing after the Del) can't delete a session.
-			{ initialIndex: 1 },
+			// Embedded: this picker's own card is the frame, and its chips below
+			// name the keys, so the dialog draws neither.
+			{ initialIndex: 1, presentation: "embedded" },
 		);
 		// Swap the SessionList out of the content slot and mount the dialog in its
 		// place: the dialog competes only with the SessionList's rendered budget,
@@ -993,12 +996,21 @@ export class SessionSelectorComponent extends Container {
 		for (const line of this.#contentSlot.render(dims.contentWidth)) body.push(line);
 
 		const scopeLabel = this.#scope === "all" ? "current folder" : "all projects";
-		const shortcuts = [
-			{ label: "enter select", clickable: true, id: "confirm" },
-			{ label: "del delete", clickable: true, id: "delete" },
-			{ label: `tab ${scopeLabel}` },
-			{ label: "esc close", clickable: true, id: "close" },
-		];
+		// The confirmation owns the body while it is up, and it takes a different
+		// set of keys than the list under it: chips that still said "del delete"
+		// would name a key the surface no longer answers.
+		const shortcuts: readonly ModalShortcut[] = this.#confirmationDialog
+			? [
+					{ label: "navigate", keybindings: ["tui.select.up", "tui.select.down"] },
+					{ label: "enter confirm", clickable: true, id: "confirm" },
+					{ label: "esc cancel", clickable: true, id: "close" },
+				]
+			: [
+					{ label: "enter select", clickable: true, id: "confirm" },
+					{ label: "del delete", clickable: true, id: "delete" },
+					{ label: `tab ${scopeLabel}` },
+					{ label: "esc close", clickable: true, id: "close" },
+				];
 		// Card height tracks the content: the shell pads the body to fill the
 		// area it is given, and handing it the whole terminal stretched a
 		// 2-session list into a full-height card of blank rows (read as broken
@@ -1050,10 +1062,14 @@ export class SessionSelectorComponent extends Container {
 	 * SGR mouse reports, delivered only while the picker holds the alternate
 	 * screen (the fullscreen overlay enables tracking and paints from screen row
 	 * 0). Wheel scrolls the list; a left click resumes the session under the
-	 * pointer. Mouse is inert while the delete-confirmation dialog is open.
+	 * pointer. While the delete confirmation owns the body the same gestures
+	 * drive IT — the card is the picker's, so the pointer has to be too.
 	 */
 	#handleMouse(data: string): void {
-		if (this.#confirmationDialog) return;
+		if (this.#confirmationDialog) {
+			this.#handleConfirmationMouse(data);
+			return;
+		}
 		routeSgrMouseInput(data, event => {
 			const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
 				motion: event.motion,
@@ -1095,6 +1111,52 @@ export class SessionSelectorComponent extends Container {
 			if (!event.leftClick || event.row >= this.#footerStart) return true;
 			const index = this.#sessionList.hitTestSession(event.row - this.#listLineOffset);
 			if (index !== undefined) this.#sessionList.selectAndConfirm(index);
+			return true;
+		});
+	}
+
+	/** Pointer while the delete confirmation is up: chips, wheel, and a click on
+	 *  Yes/No. Cancelling anywhere in the chrome closes the DIALOG, not the
+	 *  picker — the confirmation is the thing in front of the reader. */
+	#handleConfirmationMouse(data: string): void {
+		routeSgrMouseInput(data, event => {
+			const dialog = this.#confirmationDialog;
+			if (!dialog) return true;
+			const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
+				motion: event.motion,
+				leftClick: event.leftClick,
+			});
+			if (
+				consumeModalChipHover(chrome, this.#hoveredShortcutId, id => {
+					this.#hoveredShortcutId = id;
+					this.#onRequestRender?.();
+				})
+			) {
+				return true;
+			}
+			if (
+				chrome.kind === "close" ||
+				chrome.kind === "outside" ||
+				(chrome.kind === "shortcut" && chrome.id === "close")
+			) {
+				dialog.handleInput("\x1b");
+				return true;
+			}
+			if (chrome.kind === "shortcut" && chrome.id === "confirm") {
+				dialog.handleInput("\n");
+				return true;
+			}
+			if (event.wheel !== null) {
+				dialog.handleWheel(event.wheel);
+				this.#onRequestRender?.();
+				return true;
+			}
+			const line = event.row - this.#listLineOffset;
+			if (event.motion) {
+				if (dialog.setHoveredOption(dialog.hitTestOption(line) ?? null)) this.#onRequestRender?.();
+				return true;
+			}
+			if (event.leftClick) dialog.selectOptionAt(line);
 			return true;
 		});
 	}

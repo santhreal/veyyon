@@ -414,7 +414,6 @@ interface UIContext {
 			initialIndex?: number;
 			timeout?: number;
 			signal?: AbortSignal;
-			outline?: boolean;
 			onTimeout?: () => void;
 			onTimeoutStart?: () => void;
 			onTimeoutReset?: () => void;
@@ -482,7 +481,6 @@ async function askSingleQuestion(
 			initialIndex,
 			timeout,
 			signal: dialogSignal,
-			outline: true,
 			onTimeout,
 			onTimeoutStart: timeoutMs === undefined ? undefined : () => armFallbackTimeout(timeoutMs),
 			onTimeoutReset: timeoutMs === undefined ? undefined : () => armFallbackTimeout(timeoutMs),

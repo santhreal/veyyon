@@ -32,7 +32,6 @@ function createContext(args: {
 			initialIndex?: number;
 			timeout?: number;
 			signal?: AbortSignal;
-			outline?: boolean;
 			onTimeout?: () => void;
 			onLeft?: () => void;
 			onRight?: () => void;
