@@ -29,6 +29,7 @@ import {
 import { KEYBINDINGS } from "@veyyon/coding-agent/config/keybindings";
 import * as cacheMarkerModule from "@veyyon/coding-agent/modes/components/cache-invalidation-marker";
 import * as compactionModule from "@veyyon/coding-agent/modes/components/compaction-summary-message";
+import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/components/composer-chrome";
 import { TRANSCRIPT_DIVIDER_RULE_WIDTH } from "@veyyon/coding-agent/modes/components/transcript-divider";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { Component } from "@veyyon/tui";
@@ -98,8 +99,16 @@ describe("a transcript divider", () => {
 
 	for (const [name, make] of Object.entries(FIXTURES)) {
 		describe(name, () => {
-			it("opens with a short rule and stops at its label", () => {
+			it("starts on the transcript's rail", () => {
 				const row = dividerRow(make(), WIDTH);
+				// Every other transcript block opens at the composer gutter. A divider
+				// only sat at column zero while it spanned the viewport.
+				expect(row.slice(0, COMPOSER_INSET_COLS)).toBe(" ".repeat(COMPOSER_INSET_COLS));
+				expect(row[COMPOSER_INSET_COLS]).not.toBe(" ");
+			});
+
+			it("opens with a short rule and stops at its label", () => {
+				const row = dividerRow(make(), WIDTH).slice(COMPOSER_INSET_COLS);
 				const rule = theme.tree.horizontal;
 				const leading = row.length - row.replace(new RegExp(`^${rule}+`), "").length;
 
@@ -120,7 +129,7 @@ describe("a transcript divider", () => {
 
 			it("drops the rule rather than the words when the viewport cannot hold both", () => {
 				const row = dividerRow(make(), 12);
-				expect(row.startsWith(theme.tree.horizontal)).toBe(false);
+				expect(row.trimStart().startsWith(theme.tree.horizontal)).toBe(false);
 				expect(row.trim().length).toBeGreaterThan(0);
 			});
 		});
