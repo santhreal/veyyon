@@ -23,8 +23,8 @@ import {
 	type SubmenuOption,
 	TAB_GROUPS,
 } from "../../config/settings-schema";
-import { AUTO_THINKING } from "../../thinking";
 import { SUBAGENT_MODEL_BY_DEPTH_PATH } from "../../task/subagent-settings";
+import { AUTO_THINKING } from "../../thinking";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // UI Definition Types
@@ -242,6 +242,14 @@ const CONDITIONS: Record<string, () => boolean> = {
 	// Both close budgets are meaningless while nothing closes, and a visible timer
 	// that does not run reads as a bug in the feature rather than an off switch.
 	subagentAutoCloseEnabled: () => whenSettingsSay(() => Settings.instance.get("subagent.autoClose.enabled") === true),
+	// Isolation ships off, and the merge strategy and commit style only describe
+	// how an isolated run's changes come back. Shown while no backend is selected
+	// they are two choices with no case where either applies.
+	subagentIsolationEnabled: () => whenSettingsSay(() => Settings.instance.get("subagent.isolation.mode") !== "none"),
+	// The wrap-up notice announces crossing a budget; with the guard at 0 there is
+	// no crossing, so the row would be a switch over nothing.
+	subagentSoftRequestBudgetEnabled: () =>
+		whenSettingsSay(() => (Settings.instance.get("subagent.softRequestBudget") ?? 0) > 0),
 	bashAutoBackgroundEnabled: () =>
 		whenSettingsSay(() => Settings.instance.get("bash.autoBackground.enabled") === true),
 	bashStallDetectionEnabled: () =>

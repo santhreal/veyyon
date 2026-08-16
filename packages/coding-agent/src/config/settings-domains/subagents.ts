@@ -180,13 +180,18 @@ export const SUBAGENTS_SETTINGS = {
 			label: "Batch Task Calls",
 			description:
 				"Switch the task tool to its batch shape: one call carries { agent, context, tasks[] } — one subagent per item (with per-item isolation) and a required shared context prepended to every assignment. With async.enabled=true, each spawn runs as an independent background agent with the normal idle/parked lifecycle; otherwise the call blocks for merged results. Disable to restore the flat single-spawn schema.",
+			// Advanced: it changes the tool's SCHEMA rather than any policy, so it is
+			// a shape an integrator picks once, not a knob a session tunes.
+			advanced: true,
 		},
 	},
 
 	// ────────────────────────────────────────────────────────────────────────
-	// Subagents — which lanes this session offers, and how deep they may go
+	// Subagents — which ones this session offers, how deep they may go, and what
+	// they run. One section, because those are one decision: an operator turning
+	// a specialist on immediately asks what it will run, and the answer used to
+	// be two sections away under a heading of its own.
 	// ────────────────────────────────────────────────────────────────────────
-
 	/**
 	 * Per-agent settings keyed by agent name; see {@link SubagentAgentSettings}.
 	 *
@@ -207,7 +212,7 @@ export const SUBAGENTS_SETTINGS = {
 			group: "Subagents",
 			label: "Subagent Roster",
 			description:
-				"Which subagent types the model may choose, and how deeply each one may spawn. Enabled means the model can pick that subagent on its own; disabled means it cannot. With no row, only the general-purpose deep worker is enabled. Bundled specialists and subagents you add are opt-in through onboarding or this roster. What each one RUNS is not set here: Subagent Model and Subagent Effort decide that for every subagent at once, and a subagent that needs its own model or effort declares it in its own file.",
+				"Which subagent types the model may choose, and how deeply each one may spawn. Enabled means the model can pick that subagent on its own; disabled means it cannot. With no row, only the general-purpose deep worker is enabled. Bundled specialists and subagents you add are opt-in through onboarding or this roster. The roster also carries Subagent Model and Subagent Effort, which decide what every subagent runs, so the same screen answers which lanes exist and what they run.",
 			keywords: [
 				"agents",
 				"scout",
@@ -237,34 +242,16 @@ export const SUBAGENTS_SETTINGS = {
 		},
 	},
 
-	// ────────────────────────────────────────────────────────────────────────
-	// Models — the one place a subagent's model and effort are chosen
-	// ────────────────────────────────────────────────────────────────────────
-
 	"subagent.model": {
 		type: "modelChain",
 		default: undefined,
 		ui: {
 			tab: "subagents",
-			group: "Models",
+			group: "Subagents",
 			label: "Subagent Model",
 			description:
-				"Models every enabled subagent runs, tried in order: the rest are used when an earlier one errors. Each entry carries its own effort. Unset means inherit: subagents follow the session's live main model. An agent whose own file names a `model:` uses that when this is unset.",
-			keywords: ["task", "deep", "subagent", "spawn", "delegate", "worker", "effort"],
-		},
-	},
-
-	"subagent.modelByDepth": {
-		type: "record",
-		default: {} as Record<string, string | string[]>,
-		validateEntry: validateModelByDepthEntry,
-		ui: {
-			tab: "subagents",
-			group: "Models",
-			label: "Models by Depth",
-			description:
-				"Model chains chosen by spawn depth: depth 1 is a direct child, depth 2 a grandchild, and so on. A row outranks Subagent Model for a spawn at exactly that depth and leaves every other depth to Subagent Model. A row whose chain matches no model refuses the spawn and names the row, exactly like an unresolvable Subagent Model.",
-			keywords: ["subagent", "depth", "nested", "grandchild", "model", "chain"],
+				"Models every enabled subagent runs, tried in order: the rest are used when an earlier one errors. Each entry carries its own effort. Unset means inherit: subagents follow the session's live main model. An agent whose own file names a `model:` uses that when this is unset. Editable from the roster as well, which is the same setting and not a copy.",
+			keywords: ["task", "deep", "subagent", "spawn", "delegate", "worker", "effort", "model"],
 		},
 	},
 
@@ -273,10 +260,10 @@ export const SUBAGENTS_SETTINGS = {
 		default: undefined,
 		ui: {
 			tab: "subagents",
-			group: "Models",
+			group: "Subagents",
 			label: "Subagent Effort",
 			description:
-				"Thinking level for every enabled subagent, applied when the model above names no effort of its own. Inherit follows the session's effort. An explicit `:level` suffix on a model pattern still wins.",
+				"Thinking level for every enabled subagent, applied when the model above names no effort of its own. Inherit follows the session's effort. An explicit `:level` suffix on a model pattern still wins. Editable from the roster as well, which is the same setting and not a copy.",
 			keywords: ["thinking", "reasoning", "effort"],
 			// Narrowed at render time to the levels the model these subagents will
 			// actually run accepts, exactly as `/effort` does — a fixed list here is
@@ -288,15 +275,34 @@ export const SUBAGENTS_SETTINGS = {
 		},
 	},
 
+	"subagent.modelByDepth": {
+		type: "record",
+		default: {} as Record<string, string | string[]>,
+		validateEntry: validateModelByDepthEntry,
+		ui: {
+			tab: "subagents",
+			group: "Subagents",
+			label: "Models by Depth",
+			description:
+				"Model chains chosen by spawn depth: depth 1 is a direct child, depth 2 a grandchild, and so on. A row outranks Subagent Model for a spawn at exactly that depth and leaves every other depth to Subagent Model. A row whose chain matches no model refuses the spawn and names the row, exactly like an unresolvable Subagent Model.",
+			keywords: ["subagent", "depth", "nested", "grandchild", "model", "chain"],
+			// Advanced: a depth-keyed chain is a rare shape, and it outranks the row
+			// above it, so it belongs behind the fold rather than beside the setting
+			// most sessions use.
+			advanced: true,
+		},
+	},
+
 	"subagent.showResolvedModelBadge": {
 		type: "boolean",
 		default: true,
 		ui: {
 			tab: "subagents",
-			group: "Models",
+			group: "Subagents",
 			label: "Show Resolved Model Badge",
 			description:
 				"Show each subagent's resolved model, and the setting that decided it, in the task widget status line and the agent surfaces.",
+			advanced: true,
 		},
 	},
 
@@ -453,6 +459,10 @@ export const SUBAGENTS_SETTINGS = {
 			label: "Soft Request Budget Notice",
 			description:
 				"Inject one steering notice when a subagent crosses its soft request budget, asking it to wrap up before the 1.5x forced-yield stop.",
+			// Only reachable behaviour while a budget exists: with the guard disabled
+			// there is no crossing to announce, so the row is hidden rather than
+			// shown doing nothing.
+			condition: "subagentSoftRequestBudgetEnabled",
 		},
 	},
 
@@ -533,6 +543,10 @@ export const SUBAGENTS_SETTINGS = {
 				{ value: "patch", label: "Patch", description: "Combine diffs and git apply" },
 				{ value: "branch", label: "Branch", description: "Commit per task, merge with --no-ff" },
 			],
+			// Isolation is off by default, and these two decide only how an isolated
+			// run's changes come back. A knob for a mode nobody selected is a knob
+			// that reads as broken, so both hide until a backend is chosen.
+			condition: "subagentIsolationEnabled",
 		},
 	},
 
@@ -549,6 +563,7 @@ export const SUBAGENTS_SETTINGS = {
 				{ value: "generic", label: "Generic", description: "Static commit message" },
 				{ value: "ai", label: "AI", description: "AI-generated commit message from diff" },
 			],
+			condition: "subagentIsolationEnabled",
 		},
 	},
 
