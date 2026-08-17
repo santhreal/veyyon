@@ -157,6 +157,8 @@ export type SymbolKey =
 	| "md.colorSwatch"
 	// Advisor note rail
 	| "advisor.rail"
+	// The rail a tool block hangs its output on, in place of a box
+	| "block.rail"
 	// Language/file type icons
 	| "lang.default"
 	| "lang.typescript"
@@ -439,6 +441,10 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"md.colorSwatch": "■",
 	// Advisor note rail (heavier than md.quoteBorder so notes read as a distinct voice)
 	"advisor.rail": "▎",
+	// The tool block's rail. One cell, lighter than `advisor.rail`: a note speaks once
+	// and a tool block is the most repeated object in a session, so its rail has to
+	// carry the block's colour without becoming the loudest column on the screen.
+	"block.rail": "▏",
 	// Language/file icons. EVERY ONE IS EMPTY, AND THAT IS THE VALUE.
 	//
 	// There is no Nerd Font here, and the honest set of one-cell glyphs that read as
@@ -781,6 +787,8 @@ export const NERD_SYMBOLS: SymbolMap = {
 	"md.colorSwatch": "■",
 	// pick: ▎ | alt: ┃ │
 	"advisor.rail": "▎",
+	// pick: ▏ | alt: │ ▎
+	"block.rail": "▏",
 	// Language icons (nerd font devicons)
 	"lang.default": "",
 	"lang.typescript": "\u{E628}",
@@ -1007,6 +1015,7 @@ export const ASCII_SYMBOLS: SymbolMap = {
 	"md.bullet": "*",
 	"md.colorSwatch": "[]",
 	"advisor.rail": "|",
+	"block.rail": "|",
 	// Language icons (ASCII uses abbreviations)
 	"lang.default": "code",
 	"lang.typescript": "ts",
