@@ -43,11 +43,16 @@ export * from "./motion-paint";
 export * from "./motion-settle";
 // SGR mouse report parsing
 export * from "./mouse";
+// Per-column background repainting, and the surface language built on it
+export * from "./paint-columns";
+export * from "./paint-surface";
 // Terminal interface and implementations
 export * from "./paint-ground";
 // Mermaid diagram support
 // Input buffering for batch splitting
 export * from "./stdin-buffer";
+// Every horizontal bar the product draws, at eight steps per cell
+export * from "./sub-cell-bar";
 export type * from "./symbols";
 export * from "./terminal";
 // Terminal image support

@@ -50,14 +50,30 @@ export interface SpringSpec {
  * instead of inventing a duration, so the whole terminal moves as one thing.
  */
 export const MOTION = {
-	/** A surface arriving: card, popup, panel. */
-	enter: { duration: 220, easing: easeOutQuint },
+	/**
+	 * A surface arriving: card, popup, panel. 220ms was chosen when the entrance
+	 * was one fade over the whole block, where the extra 40ms bought nothing: the
+	 * block had as many distinct frames as it had rows either way. With a per-row
+	 * cascade every row owns a continuous ramp, so the duration is what decides how
+	 * much of the overlap is visible, and at 220ms the cascade was over before the
+	 * eye had followed it.
+	 */
+	enter: { duration: 260, easing: easeOutQuint },
 	/** The same surface leaving. Shorter — waiting on an exit feels broken. */
 	exit: { duration: 130, easing: easeInCubic },
 	/** A pointer affordance lighting up. Must be under a frame of perception. */
 	hover: { duration: 90, easing: easeOutCubic },
 	/** Content growing or collapsing in place. */
 	expand: { duration: 180, easing: easeOutQuint },
+	/**
+	 * One specular highlight crossing a surface that has just arrived. It outlasts
+	 * the entrance deliberately: the card is in place and settled while the light
+	 * is still travelling over it, which is what reads as material rather than as a
+	 * transition. Slower than everything else here because it is the only motion in
+	 * the product with a frame for every frame of the clock — it moves through
+	 * colour, not through terminal rows, so it cannot look stepped.
+	 */
+	sweep: { duration: 520, easing: easeOutCubic },
 	/** A selection or caret travelling between two rows, interruptible. */
 	move: { spring: { stiffness: 260, damping: 30, mass: 1 } },
 	/** A value being nudged, e.g. a progress or context bar. */

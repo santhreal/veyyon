@@ -66,10 +66,11 @@ const SETTLE_BOUND = Math.ceil(900 / FRAME);
  * fails the sweep below.
  */
 const RENDERS_PER_SETTLE: Record<string, number> = {
-	enter: 14,
+	enter: 16,
 	exit: 8,
 	hover: 6,
 	expand: 11,
+	sweep: 32,
 	move: 28,
 	settle: 39,
 };
