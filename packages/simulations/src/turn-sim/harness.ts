@@ -46,6 +46,7 @@ import type {
 import { setBedrockProviderModule } from "@veyyon/ai/providers/register-builtins";
 import { type CursorExecResolvedCarrier, kCursorExecResolved } from "@veyyon/ai/utils/block-symbols";
 import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
+import { ThinkingLoopDetector } from "@veyyon/ai/utils/thinking-loop";
 import { buildModel } from "@veyyon/catalog/build";
 import type { Effort } from "@veyyon/catalog/effort";
 import { emptyUsage } from "@veyyon/catalog/models";
@@ -229,6 +230,89 @@ setBedrockProviderModule({
 	},
 });
 
+/**
+ * The shipped output-loop guard sits between this harness and `AgentSession`
+ * (see the route in the header) and it watches EVERY model's stream, thinking
+ * and visible text alike. So a script that emits `"reply chunk. ".repeat(300)`
+ * is not scripting a long answer: it is scripting the exact degenerate loop the
+ * product is built to abort, and the turn comes back as a retryable stall with
+ * its usage discarded. Three compaction suites were written that way, and when
+ * the guard stopped being Gemini-only they measured a re-sample storm instead of
+ * a session that grows: no tokens accumulated, so no threshold was ever crossed
+ * and `compactions: 1` became `0`.
+ *
+ * Every scripted payload therefore goes through the real detector before it is
+ * streamed, and a payload the product would abort fails the simulation here,
+ * loudly, at the line that wrote it. Bulk goes through {@link bulkProse}.
+ */
+function assertScriptedPayloadIsNotALoop(kind: "text" | "thinking", value: string): void {
+	const detector = new ThinkingLoopDetector();
+	const detail = detector.push(value) ?? detector.flush();
+	if (detail === null) return;
+	throw new Error(
+		`simulation: scripted ${kind} is a degenerate loop the shipped guard aborts (${detail}). ` +
+			"A long answer is bulkProse(words); a payload that repeats one phrase is a stall, not an answer.",
+	);
+}
+
+/**
+ * Vocabulary for {@link bulkProse}. Ordinary words, deliberately unremarkable:
+ * the point is volume that reads like prose to every detector in the guard, not
+ * plausible content.
+ */
+const FILLER_WORDS = [
+	"parser",
+	"buffer",
+	"window",
+	"header",
+	"branch",
+	"cursor",
+	"handle",
+	"marker",
+	"anchor",
+	"stream",
+	"packet",
+	"record",
+	"vector",
+	"symbol",
+	"module",
+	"target",
+	"budget",
+	"filter",
+	"socket",
+	"thread",
+	"column",
+	"origin",
+	"legend",
+	"matrix",
+	"driver",
+	"editor",
+	"loader",
+	"logger",
+	"router",
+	"walker",
+	"writer",
+	"reader",
+] as const;
+
+/**
+ * `words` words of deterministic filler that is BULKY without being a loop.
+ *
+ * The three shapes the guard recognizes are all avoided on purpose, and the
+ * harness's own lock is what proves it: no phrase repeats back-to-back (the
+ * index strides the lexicon), consecutive paragraphs share almost no word
+ * trigrams, and every 24th word is a fresh `snake_case` anchor, which is what
+ * keeps a lexical-stall run from building over a long answer.
+ */
+export function bulkProse(words: number, tag = "sim"): string {
+	const out: string[] = [];
+	for (let i = 0; i < words; i += 1) {
+		if (i % 24 === 0) out.push(`${tag}_span${i}`);
+		out.push(FILLER_WORDS[(i * 7 + ((i * i) % 13)) % FILLER_WORDS.length]);
+	}
+	return out.join(" ");
+}
+
 function baseMessage(model: Model<Api>, content: AssistantMessage["content"]): AssistantMessage {
 	return {
 		role: "assistant",
@@ -292,6 +376,7 @@ async function runScript(
 			promptCacheKey: options?.promptCacheKey,
 		},
 		text(value) {
+			assertScriptedPayloadIsNotALoop("text", value);
 			const index = content.length;
 			content.push({ type: "text", text: value });
 			stream.push({ type: "text_start", contentIndex: index, partial });
@@ -299,6 +384,7 @@ async function runScript(
 			stream.push({ type: "text_end", contentIndex: index, content: value, partial });
 		},
 		thinking(value, signature) {
+			assertScriptedPayloadIsNotALoop("thinking", value);
 			const index = content.length;
 			content.push({
 				type: "thinking",
@@ -310,6 +396,7 @@ async function runScript(
 			stream.push({ type: "thinking_end", contentIndex: index, content: value, partial });
 		},
 		openThinking(partialValue) {
+			assertScriptedPayloadIsNotALoop("thinking", partialValue);
 			const index = content.length;
 			content.push({ type: "thinking", thinking: partialValue });
 			stream.push({ type: "thinking_start", contentIndex: index, partial });
