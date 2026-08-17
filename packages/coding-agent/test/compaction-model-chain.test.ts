@@ -65,6 +65,14 @@ describe("compaction model chain", () => {
 	 * registry's available list (an unavailable model resolves to no candidate at
 	 * all, which is a different failure from the one under test). `usable` then
 	 * decides which of them actually hands back a key at compaction time.
+	 *
+	 * `compaction.remote` is OFF here. The session model is a ChatGPT Codex row,
+	 * which is one of the wire shapes that CAN compact server-side, so with the
+	 * setting at its shipped default every case in this suite reached the live
+	 * compaction endpoint before it ever looked at the chain: the notice cases
+	 * failed on a transport error from the network rather than on the chain, and
+	 * whether they passed depended on the machine. The remote pass is a different
+	 * path with its own contract, and one case below pins how the two meet.
 	 */
 	async function createSession(
 		overrides: Record<string, unknown>,
@@ -72,6 +80,7 @@ describe("compaction model chain", () => {
 	) {
 		const settings = Settings.isolated({
 			"compaction.keepRecentTokens": 1,
+			"compaction.remote": false,
 			...overrides,
 		} as Parameters<typeof Settings.isolated>[0]);
 
@@ -221,6 +230,34 @@ describe("compaction model chain", () => {
 		await session.compact();
 
 		expect(notices).toHaveLength(1);
+	});
+
+	/**
+	 * WHERE THE TWO PATHS MEET. With `compaction.remote` on and the session model on a wire shape
+	 * that can compact server-side, the remote pass runs FIRST and the chain is only reached if it
+	 * refuses. Compaction is the recovery path for a full context, so a refusing remote pass must
+	 * not fail closed: the local chain still decides, its own fallback is still announced, and the
+	 * remote refusal is announced beside it rather than instead of it.
+	 *
+	 * The refusal is the product's own credential gate rather than a stubbed transport: the session
+	 * model holds no key here, which is the branch that must not downgrade silently. So this case
+	 * reaches no network either, which is what the rest of the suite gets by turning the setting off.
+	 */
+	it("falls through to the configured chain when the remote pass refuses, and announces both", async () => {
+		await createSession(
+			{ "compaction.model": `${selector(firstChoice)},${selector(secondChoice)}`, "compaction.remote": true },
+			model => model.id === secondChoice.id,
+		);
+		const compactSpy = spyOnCompact();
+
+		const result = await session.compact();
+
+		expect(result.summary).toStartWith(`summary from ${selector(secondChoice)}`);
+		expect(compactSpy.mock.calls.map(([, model]) => selector(model))).toEqual([selector(secondChoice)]);
+		expect(notices.map(notice => notice.message)).toEqual([
+			`Server-side compaction unavailable (no API key for ${selector(mainModel)}); falling back to local compaction.`,
+			`Compacted with ${selector(secondChoice)}. ${selector(firstChoice)} was skipped: it is not authenticated.`,
+		]);
 	});
 
 	/**
