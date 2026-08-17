@@ -9,6 +9,7 @@
  */
 import type { AuthStorage, UsageHistoryEntry, UsageLimit, UsageReport, UsageUnit } from "@veyyon/ai";
 import { resolveUsedFraction } from "@veyyon/ai/usage";
+import { SUB_CELL_BAR_RAMP, subCellBar } from "@veyyon/tui/sub-cell-bar";
 import { clamp01, DAY_MS, formatCount, formatDuration, formatNumber, pluralize, sanitizeText } from "@veyyon/utils";
 import chalk from "chalk";
 import { credentialRemedySentence } from "../config/missing-credentials";
@@ -216,13 +217,20 @@ function describeAmount(limit: UsageLimit): string {
 	return parts.join(" · ");
 }
 
+/**
+ * One usage bar for the CLI report: fill in the status colour, track dimmed.
+ *
+ * STATIC. This is a one-shot print with no render loop to settle a value on,
+ * and the default (unicode) ramp because a plain CLI carries no theme — the
+ * glyphs it drew before were the same unconditional block glyphs.
+ */
 function renderBar(limit: UsageLimit): string {
 	const fraction = resolveUsedFraction(limit);
 	if (fraction === undefined) return chalk.dim("·".repeat(BAR_WIDTH));
-	const clamped = clamp01(fraction);
-	const filled = Math.round(clamped * BAR_WIDTH);
+	const bar = subCellBar(clamp01(fraction), BAR_WIDTH);
+	const trackAt = bar.indexOf(SUB_CELL_BAR_RAMP.track);
 	const color = STATUS_COLOR[resolveStatus(limit)];
-	return color("█".repeat(filled)) + chalk.dim("░".repeat(BAR_WIDTH - filled));
+	return trackAt < 0 ? color(bar) : color(bar.slice(0, trackAt)) + chalk.dim(bar.slice(trackAt));
 }
 
 /** Append the window label when the limit label doesn't already carry it. */

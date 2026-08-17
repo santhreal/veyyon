@@ -68,10 +68,15 @@ describe("renderAsciiBar", () => {
 		expect(Bun.stripANSI(renderAsciiBar(1.5, 4, testTheme))).toBe("[████] 100%");
 	});
 
-	it("rounds the fill count and the percent independently", () => {
+	it("draws the half cell the fraction lands on, and rounds the percent independently", () => {
 		vi.spyOn(Date, "now").mockReturnValue(CLASSIC_CREST_VISIBLE_MS);
-		// 0.375 * 4 = 1.5 fill cells, rounded to 2; 37.5% rounds to 38.
-		expect(Bun.stripANSI(renderAsciiBar(0.375, 4, testTheme))).toBe("[██░░] 38%");
+		// 0.375 * 4 = 1.5 cells: one whole cell and four eighths of the next, which
+		// is `▌`. 37.5% still rounds to 38 — the label is the precise value, the bar
+		// is the position, and they are quantised separately.
+		expect(Bun.stripANSI(renderAsciiBar(0.375, 4, testTheme))).toBe("[█▌░░] 38%");
+		// A fraction under an eighth of a cell shows the smallest step there is
+		// rather than nothing: 0.03 * 4 = 0.12 cells, one eighth.
+		expect(Bun.stripANSI(renderAsciiBar(0.03, 4, testTheme))).toBe("[▏░░░] 3%");
 	});
 
 	it("defaults to a 24-cell bar when no width is given", () => {

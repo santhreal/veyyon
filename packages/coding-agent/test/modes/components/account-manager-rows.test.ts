@@ -159,7 +159,7 @@ describe("account row wording", () => {
 		).map(line => stripVTControlCharacters(line));
 
 		// 20 characters, exactly the clamp: rendered in full, never abbreviated.
-		expect(lines[1]).toBe("Claude 7 Day (Fable) [███░░░░░░░] 34%");
+		expect(lines[1]).toBe("Claude 7 Day (Fable) [███▍░░░░░░] 34%");
 		// The short label pads to the same column, so the two bars line up.
 		expect(lines[0]).toBe("5h                   [███████░░░] 70%   resets in 2h");
 		expect(lines[0]?.indexOf("[")).toBe(lines[1]?.indexOf("[") ?? -1);
@@ -175,7 +175,7 @@ describe("account row wording", () => {
 			now,
 		).map(line => stripVTControlCharacters(line));
 
-		expect(lines[0]).toBe("Claude 7 Day (Fable… [███░░░░░░░] 34%");
+		expect(lines[0]).toBe("Claude 7 Day (Fable… [███▍░░░░░░] 34%");
 	});
 });
 
@@ -250,7 +250,7 @@ describe("usage windows line up under the labels providers actually send", () =>
 			NOW,
 		).map(line => stripVTControlCharacters(line));
 
-		expect(lines[0]).toBe("5 Hour  [████░░░░░░] 36%   resets in 4h");
+		expect(lines[0]).toBe("5 Hour  [███▋░░░░░░] 36%   resets in 4h");
 		expect(lines[1]).toBe("7 Day   [████░░░░░░] 40%   resets in 2d");
 		// The load-bearing assertion: both bars open in the same column.
 		expect(lines[0]?.indexOf("[")).toBe(lines[1]?.indexOf("["));

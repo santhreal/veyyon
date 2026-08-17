@@ -109,7 +109,7 @@ function line(...parts: string[]): string {
 	return parts.join("").trimEnd();
 }
 
-/** `5 Hour   [███████░░░] 71%   resets in 2h` for one usage window. */
+/** `5 Hour   [███████▏░░] 71%   resets in 2h` for one usage window. */
 function usageLines(row: AccountRow, now: number): string[] {
 	const lines: string[] = [];
 	const labels = row.usage.map(window => sanitizeText(window.label));

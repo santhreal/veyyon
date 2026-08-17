@@ -6,11 +6,13 @@
 import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { Effort } from "@veyyon/ai";
 import { attributesEnabled, colorEnabled } from "@veyyon/tui";
+import type { SubCellBarRamp } from "@veyyon/tui/sub-cell-bar";
 import { colorLuma, relativeLuminance } from "@veyyon/utils/color";
 // Owners, not the `@veyyon/utils` barrel: 2 modules against 74.
 import * as logger from "@veyyon/utils/logger";
 import { bgAnsi, type ColorMode, colorToAnsi, fgAnsi, resolveToHex, type ThemeBg, type ThemeColor } from "./color";
 import {
+	BAR_RAMPS,
 	SPINNER_FRAMES,
 	type SpinnerType,
 	SYMBOL_PRESETS,
@@ -689,6 +691,17 @@ export class Theme {
 	 */
 	getSpinnerFrames(type: SpinnerType = "status"): string[] {
 		return this.#spinnerFramesOverrides[type] ?? SPINNER_FRAMES[this.symbolPreset][type];
+	}
+
+	/**
+	 * The glyphs a bar is drawn from under the active symbol preset.
+	 *
+	 * One accessor rather than each bar reading the preset itself, for the same
+	 * reason `getSpinnerFrames` exists: the six surfaces that draw a bar have to
+	 * agree, and `ascii` has to reach all six or it reaches none.
+	 */
+	getBarRamp(): SubCellBarRamp {
+		return BAR_RAMPS[this.symbolPreset];
 	}
 
 	/**

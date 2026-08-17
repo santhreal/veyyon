@@ -1,3 +1,4 @@
+import { subCellBar } from "@veyyon/tui/sub-cell-bar";
 import { clampLow, formatBytes } from "@veyyon/utils";
 import chalk from "chalk";
 import { transformersRepoCacheState } from "../subprocess/transformers-cache";
@@ -119,10 +120,12 @@ function makeProgressReporter(modelKey: TinyLocalModelKey, json: boolean | undef
 		const progress = event.progress ?? lastProgress;
 		if (progress >= 0 && progress < lastProgress + 1 && event.status !== "ready") return;
 		if (progress >= 0) lastProgress = progress;
+		// Eight steps per column through the shared owner. STATIC: a one-shot
+		// `\r`-rewritten line with no render loop, so there is no clock to settle
+		// a value on — the 8x resolution is what makes the 1% reports visible.
 		const ratio = progress >= 0 ? clampLow(progress / 100, 0, 1) : 0;
 		const barWidth = 30;
-		const filled = Math.round(ratio * barWidth);
-		const bar = `${"█".repeat(filled)}${"░".repeat(barWidth - filled)}`;
+		const bar = subCellBar(ratio, barWidth);
 		const pct = progress >= 0 ? `${Math.floor(progress).toString().padStart(3, " ")}%` : " --%";
 		const bytes = event.loaded && event.total ? ` ${formatBytes(event.loaded)}/${formatBytes(event.total)}` : "";
 		const file = event.file ? ` ${event.file.split("/").at(-1) ?? event.file}` : "";

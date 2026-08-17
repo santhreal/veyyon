@@ -265,7 +265,7 @@ export function accountPlanLine(row: AccountRow): string {
 }
 
 /**
- * One line per usage window: `5 Hour   [███░░░░░░░] 34%   resets in 4h`.
+ * One line per usage window: `5 Hour   [███▍░░░░░░] 34%   resets in 4h`.
  *
  * The label column is sized against THIS account's own labels, so an account whose bars carry a
  * qualifier (`Daily · Anthropic`) still lines its bars up without padding an account whose windows

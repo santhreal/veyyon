@@ -1,4 +1,4 @@
-import { truncateToWidth, visibleWidth } from "@veyyon/tui";
+import { SUB_CELL_BAR_RAMP, subCellBar, truncateToWidth, visibleWidth } from "@veyyon/tui";
 import { clamp01 } from "@veyyon/utils";
 import { shimmerText } from "../../modes/theme/shimmer";
 import { theme as currentTheme, type Theme } from "../../modes/theme/theme";
@@ -39,17 +39,24 @@ function resolveProgressBarTheme(uiTheme: ProgressBarTheme | undefined): Progres
 }
 
 /**
- * Render an ASCII progress bar with a trailing percent label.
+ * Render a progress bar with a trailing percent label.
  * `fraction` is clamped to `[0, 1]`. `undefined` renders a dotted placeholder.
+ *
+ * The bar is eight steps per column, so 3% of a 24-column bar moves it and a
+ * value crossing a column shows the crossing instead of jumping it. The glyphs
+ * come from the active symbol preset, which is what keeps an `ascii` terminal
+ * off the partial blocks; `uiTheme` is the COLOUR seam and does not carry them,
+ * so a caller injecting a bare colour stub still draws the real glyphs.
  */
 export function renderAsciiBar(fraction: number | undefined, width = 24, uiTheme?: ProgressBarTheme): string {
 	const progressBarTheme = resolveProgressBarTheme(uiTheme);
 	if (fraction === undefined) return `[${shimmerText("·".repeat(width), progressBarTheme)}]`;
 	const clamped = clamp01(fraction);
-	const filled = Math.round(clamped * width);
 	const pct = Math.round(clamped * 100);
-	const bar = `${"█".repeat(filled)}${"░".repeat(Math.max(0, width - filled))}`;
-	return `[${shimmerText(bar, progressBarTheme)}] ${pct}%`;
+	// `typeof` rather than a nullish check: the binding is declared `Theme` and is
+	// genuinely unset until a theme is applied (see `fgOrPlain` in theme.ts).
+	const ramp = typeof currentTheme === "undefined" ? SUB_CELL_BAR_RAMP : currentTheme.getBarRamp();
+	return `[${shimmerText(subCellBar(clamped, width, { ramp }), progressBarTheme)}] ${pct}%`;
 }
 
 /**
@@ -83,7 +90,7 @@ export function usageWindowLabelColumn(labels: readonly string[]): number {
 }
 
 /**
- * One usage window as both account surfaces print it: `7 Day    [███░░░░░░░] 34%   resets in 4h`.
+ * One usage window as both account surfaces print it: `7 Day    [███▍░░░░░░] 34%   resets in 4h`.
  *
  * ONE owner for the layout, because the two surfaces have to agree: they sit next to each other in
  * the same session, and a bar that starts one column further left in `/account` than on the card

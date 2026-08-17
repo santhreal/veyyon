@@ -13,6 +13,7 @@ import { resolveLocalRoot } from "../../internal-urls/local-protocol";
 import { AGENT_VIEW_LEFT_TAP_WINDOW_MS } from "../../modes/components/agent-view-timings";
 import { AssistantMessageComponent } from "../../modes/components/assistant-message";
 import { extractImagePathFromText } from "../../modes/components/custom-editor";
+import { modalRevealEnabled } from "../../modes/components/modal-shell";
 import { renderSegmentTrack } from "../../modes/components/segment-track";
 import { TinyTitleDownloadProgressComponent } from "../../modes/components/tiny-title-download-progress";
 import { expandEmoticons } from "../../modes/emoji-autocomplete";
@@ -235,7 +236,13 @@ export class InputController {
 
 	#showTinyTitleDownloadProgress(modelKey: string): void {
 		if (!isTinyTitleLocalModelKey(modelKey)) return;
-		const component = new TinyTitleDownloadProgressComponent(modelKey);
+		// The show site owns the ambient motion gate, as every other animated
+		// surface here does: `display.transitions: off` and non-truecolor
+		// terminals get the jump they had, everything else gets the travel.
+		const component = new TinyTitleDownloadProgressComponent(modelKey, {
+			requestRender: () => this.ctx.ui.requestRender(),
+			enabled: modalRevealEnabled(),
+		});
 		let added = false;
 		let disposed = false;
 		let removeTimer: NodeJS.Timeout | undefined;
@@ -243,6 +250,9 @@ export class InputController {
 			if (disposed) return;
 			disposed = true;
 			unsubscribe();
+			// `removeChild` does not tear a child down, so the settle has to be
+			// stopped here or it keeps asking for frames for a row that is gone.
+			component.dispose();
 			if (removeTimer) {
 				clearTimeout(removeTimer);
 				removeTimer = undefined;
