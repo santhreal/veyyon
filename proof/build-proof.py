@@ -493,6 +493,7 @@ def write(sections: list[Section]) -> None:
 X = "captures/x11/"
 XB = "captures/x11/before/"
 S = "captures/x11/strips/"
+N = "captures/notes/"
 SECTIONS = [
     Section(
         "One animation clock, and a card that unfolds onto it",
@@ -922,6 +923,50 @@ SECTIONS = [
                 " whole life: <code>/settings</code>, <code>/hotkeys</code> and <code>/model</code>, each card"
                 " arriving as a lit surface.",
                 start=18,
+            ),
+        ],
+    ),
+    Section(
+        "The loudest object on the screen was a note",
+        [
+            "<p>A still from a real session showed a note about twelve todos rendered as a saturated mustard"
+            " rectangle of black text, full bleed from column 0, in the middle of a grey transcript. Two components"
+            " drew it: the todo reminder and the rule-injection notice, both building"
+            " <code>new Box(1, 1, t =&gt; theme.inverse(theme.fg(&quot;warning&quot;, t)))</code>, which pads every"
+            " row out to the terminal width and inverts it. They were the only blocks in the transcript touching"
+            " the left edge, and inverting spent the foreground too, which is why the rule notice carried a comment"
+            " saying styling inside the block was limited to bold and italic.</p>",
+            "<p>The hue now lives in one column. A rail glyph down the left names the note's kind, the block is as"
+            " wide as its own widest line, it sits at the composer's inset, and its background is a lift off the"
+            " ground the terminal actually reported: on a grey page the reminder measures <code>47,50,55</code>"
+            " against a <code>30,33,39</code> ground, grading down to <code>46,48,54</code> at its last row. The"
+            " arms below are the same three notes with the same text, drawn through the two chromes"
+            " (<code>scripts/demos/render-todo-reminder.ts --slab</code> against its default), rasterized from the"
+            " real components' own bytes.</p>",
+            still_pair(
+                N + "note-slab-grey.png",
+                N + "note-card-grey.png",
+                "three full-width inverted slabs, each starting at column 0",
+                "three cards on a rail, each as wide as its text and inset like everything else",
+            ),
+            "<h3>The same notes on a black terminal</h3>",
+            "<p>One ground answers half the question, and this is the case the treatment has to get right: a fill"
+            " chosen for a grey page is a slab on black, and a fill chosen for black is invisible on grey. The"
+            " elevation is not a colour, it is a step away from whatever the terminal reported, so the pair below is"
+            " the same two chromes with the ground answered as <code>#000000</code>. The slab does not change &mdash;"
+            " it never asked what it was standing on.</p>",
+            still_pair(
+                N + "note-slab-onblack-black.png",
+                N + "note-card-onblack-black.png",
+                "the same rectangle whatever it is standing on",
+                "a card that lifts off black by the same step it lifts off grey",
+            ),
+            "<h3>And with no ground to stand on</h3>",
+            still(
+                N + "note-flat-grey.png",
+                "The OFF arm of the material: a terminal that never answered OSC 11, or one without 24-bit colour,"
+                " gets the rail and the colours and no surface at all. It is still a note, and it is still not a"
+                " slab &mdash; the treatment degrades rather than guessing at a ground.",
             ),
         ],
     ),
