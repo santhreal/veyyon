@@ -10,7 +10,12 @@
 # The command touches /tmp/scene-done when it finishes, so a run that takes four
 # seconds produces a nine-second video rather than a two-minute one with a still
 # frame on the end. SCENE_HOLD is the ceiling, reached only when the command
-# never finishes.
+# never finishes -- and a scene that reaches it recorded a command that was still
+# working, which for a piped command (`bun test ... | tail -32` prints nothing
+# until the pipeline closes) is a video of an empty terminal. Three arms shipped
+# that way: 131s and 171s of a bare cursor. The ceiling therefore leaves
+# /out/scene-timeout behind so the arm recorder can refuse the clip instead of
+# filing it as evidence.
 
 # The scene is SOURCED by xsession.sh, so `exit` here would take the whole
 # recorder down with it -- the camera stops, the mp4 survives because the trap
@@ -24,3 +29,8 @@ while ((SECONDS < deadline)); do
 	fi
 	sleep 0.5
 done
+
+if [[ ! -f /tmp/scene-done ]]; then
+	echo "scene hold: ceiling of ${SCENE_HOLD:-120}s reached with the command still running" >&2
+	: >/out/scene-timeout
+fi

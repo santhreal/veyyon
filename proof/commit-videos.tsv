@@ -20,7 +20,7 @@ b852f2543	test	130	./packages/coding-agent/test/modes/components/a-cut-short-bat
 c18816b62	test	130	./packages/coding-agent/test/modes/components/selector-overlays-answer-the-pointer.test.ts	feat(coding-agent): answer the pointer on ask-dialog option rows
 0c36cf201	test	130	./packages/coding-agent/test/modes/components/selector-overlays-answer-the-pointer.test.ts	chore(coding-agent): delete the dead marketplace plugin selector
 b373c7c55	test	130	./packages/coding-agent/test/modes/components/a-clicked-composer-chip-runs-its-action.test.ts	feat(coding-agent): make the composer chips answer clicks
-d4d2a4290	test	170	./packages/coding-agent/test/modes/components/the-login-card-answers-the-pointer.test.ts ./packages/coding-agent/test/modes/components/the-login-screen-is-one-frame.test.ts ./packages/coding-agent/test/modes/controllers/a-command-login-lands-in-the-account-manager.test.ts ./packages/coding-agent/test/modes/controllers/selector-controller-login.test.ts	feat(coding-agent): move the login screen onto ModalShell
+d4d2a4290	test	600	./packages/coding-agent/test/modes/components/the-login-card-answers-the-pointer.test.ts ./packages/coding-agent/test/modes/components/the-login-screen-is-one-frame.test.ts ./packages/coding-agent/test/modes/controllers/a-command-login-lands-in-the-account-manager.test.ts ./packages/coding-agent/test/modes/controllers/selector-controller-login.test.ts	feat(coding-agent): move the login screen onto ModalShell
 ab7f1b8be	test	130	./packages/coding-agent/test/modes/components/the-transcript-card-answers-the-pointer.test.ts	feat(coding-agent): move the transcript drill-in onto ModalShell
 4d566d927	test	170	./packages/agent/test/a-chatgpt-oauth-session-compacts-on-the-codex-backend.test.ts ./packages/agent/test/compaction-remote.test.ts ./packages/catalog/test/server-compaction-capability.test.ts	fix(ai): compact a ChatGPT OAuth session on the codex backend
 5afa7ff34	test	130	./packages/coding-agent/test/modes/components/the-transcript-card-answers-the-pointer.test.ts	test(coding-agent): copy the transcript rows the harness hands back
@@ -82,8 +82,8 @@ e244a33d7	test	170	./packages/coding-agent/test/modes/components/a-virtualized-t
 8553d06d4	test	130	./packages/coding-agent/test/modes/components/a-transcript-under-a-header-does-not-rebuild-the-screen.test.ts ./packages/coding-agent/test/modes/components/a-virtualized-transcript-never-loses-history-to-a-rebuild.test.ts	fix(tui): slide the commit prefix at the drop site, not at row zero
 67a2d7098	test	130	./packages/tui/test/the-motion-clock-always-stops.test.ts	fix(tui): an animation that cannot settle never registers on the clock
 9beabe14a	driver	60	scripts/demos/transcript-blanking-repro.ts	proof(ui-polish): drop the gauge-travel section, and give the blanking driver a header
-23be42251	test	130	./packages/simulations/src/paint-sim/a-streaming-answer-never-repaints-the-whole-screen.test.ts	test(simulations): a paint sim that measures what the screen costs per frame
-030960d65	test	130	./packages/simulations/src/paint-sim/a-streaming-answer-never-repaints-the-whole-screen.test.ts	fix(tui): a frame the viewport squeezed is not a frame that diverged
+23be42251	test	600	./packages/simulations/src/paint-sim/a-streaming-answer-never-repaints-the-whole-screen.test.ts	test(simulations): a paint sim that measures what the screen costs per frame
+030960d65	test	600	./packages/simulations/src/paint-sim/a-streaming-answer-never-repaints-the-whole-screen.test.ts	fix(tui): a frame the viewport squeezed is not a frame that diverged
 74195a042	test	130	./packages/tui/test/chrome-taller-than-the-viewport-never-reaches-native-scrollback.test.ts	fix(tui): chrome is painted, never committed
 6582723f9	diff	45		proof(ui-polish): the capture set the page is built from
 92a895e36	diff	45		proof(tooling): the vhs capture wrapper and the flicker probes

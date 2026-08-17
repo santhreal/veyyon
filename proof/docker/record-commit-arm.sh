@@ -126,7 +126,39 @@ docker run --rm \
 		exec /rig/docker/xsession.sh /rig/scenes/'"${SCENE:-hold}"'.sh
 	' >"${OUT}/record.log" 2>&1
 
+# A scene that hit its ceiling recorded a command that never finished, and that is
+# worth knowing rather than hiding: `d4d2a4290`'s before arm hangs in the container
+# on a suite that passes locally in 836ms, and the recording of it hanging is the
+# most informative thing that arm can produce.
+#
+# So the clip is KEPT and the ceiling is RECORDED beside it, for the page to say out
+# loud. What must never ship is a clip that shows nothing -- the same arm previously
+# filed 171.6 seconds of a bare cursor, because a piped command prints only when its
+# pipe closes. That judgement belongs to one place, the blank-clip gate in
+# build-proof.py, which reads tighten.py's measurements: a clip that drew nothing
+# fails the page build wherever it came from. Deleting it here would have destroyed
+# the evidence AND left the gate nothing to catch.
+timed_out=""
+if [[ -f "${OUT}/scene-timeout" ]]; then
+	timed_out="yes"
+	rm -f "${OUT}/scene-timeout"
+	printf '%s\n' "${HOLD}" >"${OUT}/timeout-seconds"
+else
+	rm -f "${OUT}/timeout-seconds"
+fi
+
 mv -f "${OUT}/${SCENE:-hold}.mp4" "${OUT}/../${HASH}-${ARM}.mp4"
 mv -f "${OUT}/${SCENE:-hold}.gif" "${OUT}/../${HASH}-${ARM}.gif"
+
+# Every held frame past a readable beat is runtime the reader pays and learns
+# nothing from: the campaign's 178 clips summed to 38.8 minutes, of which 33
+# were frozen frames. Trim at the source so a new recording never ships holds.
+# One clip by name, never the directory: six containers record at once and two
+# encoders must never meet on the same file.
+python3 "${REPO_ROOT}/proof/tighten.py" trim "${OUT}/../${HASH}-${ARM}.mp4" --show 0 >/dev/null
 rm -rf "${TREE}"
+if [[ -n "${timed_out}" ]]; then
+	echo "recorded ${HASH}-${ARM} BUT the command was still running at the ${HOLD}s ceiling" >&2
+	exit 3
+fi
 echo "recorded ${HASH}-${ARM}"
