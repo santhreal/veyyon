@@ -387,6 +387,6 @@ export class CopySelectorComponent implements Component {
 		});
 		this.#shellGeometry = shell.geometry;
 		this.#listRowStart = shell.geometry?.bodyRowStart ?? 0;
-		return applyModalReveal(shell, width, this.#reveal.value);
+		return applyModalReveal(shell, width, this.#reveal);
 	}
 }

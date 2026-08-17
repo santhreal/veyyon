@@ -238,7 +238,7 @@ export class HookEditorComponent extends Container {
 			showClose: true,
 		});
 		this.#shellGeometry = shell.geometry;
-		return applyModalReveal(shell, renderWidth, this.#reveal.value);
+		return applyModalReveal(shell, renderWidth, this.#reveal);
 	}
 
 	handleInput(keyData: string): void {

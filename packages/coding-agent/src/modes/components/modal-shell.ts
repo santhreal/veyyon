@@ -13,19 +13,24 @@
  */
 import {
 	type Animation,
+	cascadeStrength,
+	type ColumnWindow,
 	clamp,
 	clampLow,
 	fadeLineTowards,
+	fillSurface,
 	type Keybinding,
 	MOTION,
 	type MotionClock,
 	motionClock,
 	padding,
+	sweepSurface,
 	TERMINAL,
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
 import { transitionsEnabled } from "../theme/shimmer";
+import { getVisibleGround } from "../theme/ground-tints";
 import { theme, visibleGroundHex } from "../theme/theme";
 import { actionKeyHint } from "../utils/key-hint";
 import { emberTick } from "./composer-chrome";
@@ -867,23 +872,36 @@ export const SELECT_LIST_SHORTCUTS: readonly ModalShortcut[] = [
 // --- Open reveal (TOUCH-5) ---------------------------------------------------
 
 /**
+ * The two quantities a card's entrance carries: how far it has unfolded, and where
+ * the specular highlight has travelled to. They are read together because they are
+ * one entrance; passing only the unfold is what made the arrival a wipe.
+ */
+export interface ModalRevealProgress {
+	readonly value: number;
+	/** Highlight position in [0, 1]; 1 means no highlight is crossing. */
+	readonly sweep: number;
+}
+
+/**
  * Drives a one-shot open reveal for a modal card: `value` eases 0 → 1 on the
  * shared {@link motionClock} under {@link MOTION.enter}, requesting a render
- * per frame until it settles. The card owns no timer of its own, so every
- * overlay in the product opens on the same curve and on the same frame as
- * anything else animating, and a settled overlay costs nothing (the clock
- * drops a finished animation and stops ticking when nothing is left).
+ * per frame until it settles, while `sweep` carries a highlight across the card
+ * on its own longer curve. The card owns no timer of its own, so every overlay in
+ * the product opens on the same curve and on the same frame as anything else
+ * animating, and a settled overlay costs nothing (the clock drops a finished
+ * animation and stops ticking when nothing is left).
  *
  * `display.transitions: off` gating is the CALLER's job via
  * modalRevealEnabled(). Tests pass their own clock and drive frames by hand.
  */
-export class ModalRevealDriver {
+export class ModalRevealDriver implements ModalRevealProgress {
 	#armed = false;
 	#animation: Animation | null = null;
 	#settled = false;
 	#requestRender: (() => void) | null = null;
 	#exit: Animation | null = null;
 	#exiting = false;
+	#sweepAnimation: Animation | null = null;
 	readonly #clock: MotionClock;
 
 	constructor(clock: MotionClock = motionClock) {
@@ -923,12 +941,41 @@ export class ModalRevealDriver {
 		return this.#exiting;
 	}
 
+	/**
+	 * Where the highlight has travelled to, in [0, 1]. 1 means there is none: a
+	 * settled card, a card that never played an entrance, and a card on its way out
+	 * are all lit flat.
+	 *
+	 * The sweep runs on its own curve rather than off `value`, because it outlasts
+	 * the unfold on purpose — the card is in place while the light is still moving
+	 * across it. Anchored to the first READ for the same reason the unfold is: an
+	 * overlay's first paint can arrive long after its construction.
+	 */
+	get sweep(): number {
+		// `#settled` is checked for the same reason `value` checks it: a stopped or
+		// dismounted driver must not START a light on its next read. Without it, a
+		// disposed card's last render put a fresh 520ms animation on the shared clock
+		// and reported a sweep at phase zero, which is a flash of light on a card that
+		// is already gone.
+		if (this.#exit !== null || this.#settled || !this.#armed) return 1;
+		if (this.#sweepAnimation === null) {
+			this.#sweepAnimation = this.#clock.animate(MOTION.sweep, {
+				from: 0,
+				to: 1,
+				onFrame: () => this.#requestRender?.(),
+			});
+			return 0;
+		}
+		return this.#sweepAnimation.value;
+	}
+
 	/** Begin the reveal (idempotent; a second call replays from zero). */
 	start(requestRender: () => void): void {
 		this.stop();
 		this.#settled = false;
 		this.#armed = true;
 		this.#animation = null;
+		this.#sweepAnimation = null;
 		this.#exit = null;
 		this.#exiting = false;
 		this.#requestRender = requestRender;
@@ -948,6 +995,10 @@ export class ModalRevealDriver {
 		const from = this.value;
 		this.#animation?.cancel();
 		this.#animation = null;
+		// A leaving card is not being lit. `get sweep` returns 1 once an exit exists, so
+		// the animation has no reader left and would only keep the clock alive.
+		this.#sweepAnimation?.cancel();
+		this.#sweepAnimation = null;
 		this.#settled = false;
 		this.#exiting = true;
 		this.#requestRender = requestRender;
@@ -969,6 +1020,12 @@ export class ModalRevealDriver {
 		// The entrance is CANCELLED: a dismount must not ask a disposed card to repaint.
 		this.#animation?.cancel();
 		this.#animation = null;
+		// The sweep is a light crossing a card that no longer exists, and it is the one
+		// animation here that outlives the unfold: MOTION.sweep is twice MOTION.enter, so
+		// a card dismissed while the light is still travelling left a live animation on
+		// the clock and the clock ticking with nothing to show.
+		this.#sweepAnimation?.cancel();
+		this.#sweepAnimation = null;
 		// An exit is FINISHED instead, because its `onDone` is what removes the card from the
 		// overlay stack. Cancelling one would leave a dismissed card painted on screen with nothing
 		// left running to take it off — the exit turning a close into a permanent overlay is a worse
@@ -1017,38 +1074,106 @@ export function modalRevealGround(): string {
 }
 
 /**
- * Clip a rendered modal frame to an unfolding card: the top border stays put,
- * the bottom border slides down as the body grows, and every visible card row
- * resolves out of the ground as it arrives. Pure so the exact frames are
- * byte-assertable in tests. `reveal >= 1` returns the lines untouched;
- * during the unfold every hidden card row becomes a blank area row, so nothing
- * below the moving bottom border ever paints. The minimum visible card is the
- * two border rows — a reveal never shows a borderless sliver.
+ * Whether a card may be painted as a surface at all, and out of which colour.
  *
- * The fade is what separates an unfold from a wipe: a card whose chrome is at
- * full strength on its first frame reads as a cut with a moving edge, however
- * smooth the edge is.
+ * A surface is an explicit background on every cell of the card, so it is only
+ * ever as safe as the ground it is mixed out of. `visibleGroundHex` falls back to
+ * the theme's DECLARED ground when nothing painted and the terminal answered no
+ * OSC 11 — titanium declares black — and a black-derived fill laid on a grey
+ * terminal is the slab that shipped on 2026-07-22, which is also what the pointer
+ * band suites forbid in as many words.
+ *
+ * So: a known ground gets the material, an unknown one gets the product exactly as
+ * it was. The clip and the fade are colour-agnostic and play either way.
+ */
+function modalSurfaceGround(ground: string): string | undefined {
+	return getVisibleGround() === undefined ? undefined : ground;
+}
+
+/**
+ * Paint a rendered modal frame as a SURFACE, and play its entrance.
+ *
+ * Three things happen here, and the order matters:
+ *
+ *   1. The card's rows are filled with an elevation gradient — a few percent off
+ *      the ground the terminal is actually showing, lighter at the top edge than
+ *      the bottom. This is not part of the animation: a settled card is still a
+ *      surface. Cells the component gave their own background keep it.
+ *   2. While the entrance runs, the card is clipped to the rows it has grown to
+ *      and each row resolves out of the ground on ITS OWN ramp. A single strength
+ *      for the whole block gives an animation as many distinct frames as the card
+ *      has rows, which is why the unfold read as a cut with a moving edge; a
+ *      cascade gives every row a continuous fade and the overlap is what the eye
+ *      reads as one smooth motion. The bottom border still slides down with the
+ *      body, so the card is never a borderless sliver.
+ *   3. One specular highlight crosses the card, on a curve that outlasts the
+ *      unfold. This is the only motion in the product with a frame for every frame
+ *      of the clock: it moves through colour rather than through terminal rows, so
+ *      it cannot look stepped.
+ *
+ * Pure, so every frame is byte-assertable. Takes the whole {@link ModalRevealProgress}
+ * rather than one number because the entrance is two quantities; a bare number is
+ * still accepted, which is what a test that only cares about the unfold passes.
  */
 export function applyModalReveal(
 	result: ModalShellResult,
 	areaWidth: number,
-	reveal: number,
+	reveal: number | ModalRevealProgress,
 	ground: string = modalRevealGround(),
 ): string[] {
+	const progress = typeof reveal === "number" ? { value: reveal, sweep: 1 } : reveal;
 	const geometry = result.geometry;
-	if (geometry === null || reveal >= 1) return result.lines;
+	if (geometry === null) return result.lines;
 	// cardRowEnd is EXCLUSIVE (see hitTestModalChrome's `row < cardRowEnd`).
-	const { cardRowStart, cardRowEnd } = geometry;
+	const { cardRowStart, cardRowEnd, cardColStart, cardColEnd } = geometry;
 	const cardRows = cardRowEnd - cardRowStart;
-	const visible = Math.max(2, Math.round(cardRows * Math.max(0, reveal)));
-	const strength = Math.max(0, Math.min(1, reveal));
-	const blank = padding(areaWidth);
-	return result.lines.map((line, row) => {
-		if (row < cardRowStart || row >= cardRowEnd) return line;
-		const cardRow = row - cardRowStart;
-		if (cardRow < visible - 1) return fadeLineTowards(line, ground, strength);
-		// The bottom border slides up to close the card at its current height.
-		if (cardRow === visible - 1) return fadeLineTowards(result.lines[cardRowEnd - 1]!, ground, strength);
-		return blank;
-	});
+	const card = result.lines.slice(cardRowStart, cardRowEnd);
+	// The card's own columns. A card row is as wide as the screen, and the padding
+	// that centres it belongs to the page: a treatment given the whole row puts the
+	// card's material and its light out on the page beside it.
+	const columns: ColumnWindow = { start: cardColStart, end: cardColEnd };
+
+	const strength = clamp(progress.value, 0, 1);
+	// The surface and the sweep are written as `48;2;r;g;b` mixed out of the ground
+	// behind the card, so both need a truecolor terminal AND a ground that is known
+	// rather than assumed (see modalSurfaceGround). Without either, the product is
+	// exactly what it was; the clip and the fade below are colour-agnostic and play.
+	const surface = TERMINAL.trueColor ? modalSurfaceGround(ground) : undefined;
+	let treated = surface === undefined ? card : fillSurface(card, areaWidth, { ground: surface, columns }, strength);
+
+	// How many rows of the card are on screen this frame. Everything below is blank
+	// page, and nothing may be painted onto it — a swept blank row is light lying
+	// outside the card, which reads as a bug rather than as a reflection.
+	let visibleRows = cardRows;
+	if (strength < 1) {
+		const visible = Math.max(2, Math.round(cardRows * strength));
+		visibleRows = visible;
+		// Per-row cascade. One strength for the whole card gives an animation as
+		// many distinct frames as the card has rows, and it reads as a cut with a
+		// moving edge; a row that owns its own ramp gives every row a continuous
+		// fade, and the overlap is what the eye reads as smooth.
+		treated = treated.map((line, cardRow) => {
+			if (cardRow < visible - 1) {
+				return fadeLineTowards(line, ground, cascadeStrength(cardRow, cardRows, strength));
+			}
+			// The bottom border slides down as the body grows, so the card always
+			// closes: a borderless sliver is not a card opening.
+			if (cardRow === visible - 1) {
+				return fadeLineTowards(treated[cardRows - 1] ?? line, ground, cascadeStrength(cardRow, cardRows, strength));
+			}
+			return padding(areaWidth);
+		});
+	}
+
+	// The specular sweep: one highlight crossing the card as it arrives. This is
+	// the part of the entrance that has a frame for every frame of the clock,
+	// because it moves through colour instead of through rows.
+	if (surface !== undefined && progress.sweep > 0 && progress.sweep < 1) {
+		const lit = sweepSurface(treated.slice(0, visibleRows), areaWidth, surface, { phase: progress.sweep, columns });
+		treated = [...lit, ...treated.slice(visibleRows)];
+	}
+
+	const lines = [...result.lines];
+	for (let i = 0; i < treated.length; i++) lines[cardRowStart + i] = treated[i]!;
+	return lines;
 }

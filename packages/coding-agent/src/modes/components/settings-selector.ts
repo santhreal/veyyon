@@ -3201,7 +3201,7 @@ export class SettingsSelectorComponent implements Component {
 		this.#contentRowStart = this.#tabRowStart;
 		this.#contentRowCount = shell.geometry?.bodyRowCount ?? 0;
 		this.#sidebarCols = sidebarWidth;
-		return applyModalReveal(shell, width, this.#reveal.value);
+		return applyModalReveal(shell, width, this.#reveal);
 	}
 
 	/**

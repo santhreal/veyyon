@@ -603,7 +603,7 @@ export class AskDialogComponent implements Component {
 						scrollOffset: bodyLines.scrollOffset,
 					}
 				: null;
-		return applyModalReveal(shell, width, this.#reveal.value);
+		return applyModalReveal(shell, width, this.#reveal);
 	}
 
 	/** Footer chips for the active tab (browse vs submit review), mirroring

@@ -649,7 +649,7 @@ export class MCPAddWizard implements Component {
 		});
 		this.#shellGeometry = shell.geometry;
 		this.#bodyRowStart = shell.geometry?.bodyRowStart ?? 0;
-		return applyModalReveal(shell, width, this.#reveal.value);
+		return applyModalReveal(shell, width, this.#reveal);
 	}
 
 	handleInput(keyData: string): void {

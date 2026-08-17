@@ -250,7 +250,7 @@ export class ExtensionDashboard implements Component {
 		this.#tabRowCount = tabLines.length;
 		this.#bodyRowStart = this.#tabRowStart + tabLines.length;
 		this.#bodyRowCount = contentRows;
-		return applyModalReveal(shell, width, this.#reveal.value);
+		return applyModalReveal(shell, width, this.#reveal);
 	}
 
 	invalidate(): void {

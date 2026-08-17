@@ -925,7 +925,7 @@ export class HookSelectorComponent extends Container {
 		});
 		this.#shellGeometry = shell.geometry;
 		this.#bodyRowStart = shell.geometry?.bodyRowStart ?? 0;
-		return applyModalReveal(shell, renderWidth, this.#reveal.value);
+		return applyModalReveal(shell, renderWidth, this.#reveal);
 	}
 
 	dispose(): void {

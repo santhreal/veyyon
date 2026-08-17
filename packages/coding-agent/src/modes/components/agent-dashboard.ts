@@ -1307,7 +1307,7 @@ export class AgentDashboard extends Container {
 		// not compact, which put the row-local [x] permanently out of reach of the
 		// pointer while still drawing it under the cursor.
 		this.#bodyColStart = (shell.geometry?.cardColStart ?? 0) + CARD_BODY_COL_INSET;
-		return applyModalReveal(shell, width, this.#reveal.value);
+		return applyModalReveal(shell, width, this.#reveal);
 	}
 
 	#switchView(direction: 1 | -1): void {
