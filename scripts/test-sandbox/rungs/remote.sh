@@ -163,6 +163,13 @@ remote_tree() { printf '%s/%s' "${REMOTE_HOME}" "${REMOTE_TREE_REL}"; }
 # protected from --delete, and without that the stamp the install step writes is
 # deleted by the next sync and every run reinstalls the world.
 #
+# NO REPOSITORY TRAVELS WITH THE TREE. The sync carries working-tree files, so a
+# suite that asks git anything -- HEAD, a committed blob -- sees a directory that is
+# not a repository on this rung. The local rungs bind the git directory (including a
+# linked worktree's, see SANDBOX_GITDIR in run.sh); shipping one here would mean
+# sending the whole object store over the LAN, which costs more than the handful of
+# suites is worth. Run those on a local rung.
+#
 # GENERATED SOURCES ARE PUT BACK. Honouring .gitignore is right for build output
 # and wrong for the handful of generated files that live INSIDE a package's src
 # tree and are imported at runtime: tool-views.generated.js and the three embedded

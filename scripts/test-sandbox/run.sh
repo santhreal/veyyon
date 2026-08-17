@@ -199,6 +199,41 @@ case "${REPO_ROOT}/" in
 		;;
 esac
 
+# The git directory, when the checkout is a linked WORKTREE and therefore does not
+# contain one.
+#
+# A worktree's `.git` is a file reading `gitdir: <abs path>`, and that path lives
+# under the primary checkout's `.git`, outside the repo bind. Without it every
+# `git` call inside the sandbox fails: a suite that reads HEAD saw a directory that
+# is not a repository, and one that reads a committed blob saw exit 128, both from a
+# tree that is a perfectly good checkout on the host. Binding the primary `.git` at
+# its own host path is what makes the pointer resolve, since the pointer is absolute
+# and `commondir` is relative to it.
+#
+# Read-only, and skipped entirely when that path is inside the home being hidden:
+# the whole contract of this sandbox is that the home is unreachable, and no
+# convenience is worth handing part of it back. A git-dependent suite then behaves
+# as it did before this bind existed.
+SANDBOX_GITDIR=""
+if [ -f "${REPO_ROOT}/.git" ]; then
+	worktree_gitdir="$(sed -n 's/^gitdir: *//p' "${REPO_ROOT}/.git" | head -n1)"
+	case "${worktree_gitdir}" in
+		/*/.git/worktrees/*) primary_gitdir="${worktree_gitdir%/worktrees/*}" ;;
+		/*) primary_gitdir="${worktree_gitdir}" ;;
+		*) primary_gitdir="" ;;
+	esac
+	if [ -n "${primary_gitdir}" ] && [ -d "${primary_gitdir}" ]; then
+		case "${primary_gitdir}/" in
+			"${HOST_HOME}"/*)
+				log "the git directory ${primary_gitdir} is inside ${HOST_HOME}, so it stays out of the sandbox: git-dependent suites will see a tree that is not a repository"
+				;;
+			*)
+				SANDBOX_GITDIR="${primary_gitdir}"
+				;;
+		esac
+	fi
+fi
+
 # Exit status a runner uses to say "the sandbox could not be established and NO
 # guest command ran". It is the ONLY status that lets the driver descend the
 # ladder. A suite that ran and failed returns its own status and is never retried
