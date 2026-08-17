@@ -114,3 +114,9 @@ d6293b7b1	diff	45		fix(tools): the ask tool stops reaching into the modal layout
 5e4c56045	diff	45		test(git): the head-sha arms build the repository they read
 81d595f3b	diff	45		test(task): a per-agent row routes the spawn it is written for
 5359075e9	diff	45		test(sandbox): a linked worktree takes its git directory into the sandbox
+402fd539d	diff	45		test(vibe): the lane row outranks the blanket pair on the vibe path too
+ce6240325	diff	45		proof(page): the last thirteen commits carry their recordings
+39d18b0b0	diff	45		test(tui): the chrome sweep counts the band, not just the prompt
+ca919629b	diff	45		test(edit): the diff gutter hangs on the rail, and lines up
+6272e7b93	diff	45		test(bash): the pending call is one rail row, not a bordered block
+3fb49b0cc	diff	45		chore(repo): the branch pays its four hygiene gates

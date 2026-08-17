@@ -1,0 +1,68 @@
+[33m402fd539d[m test(vibe): the lane row outranks the blanket pair on the vibe path too
+
+
+
+ .../coding-agent/test/vibe/vibe-runtime.test.ts    | 30 [32m+++++++++++[m[31m-----------[m
+ 1 file changed, 15 insertions(+), 15 deletions(-)
+
+[1mdiff --git a/packages/coding-agent/test/vibe/vibe-runtime.test.ts b/packages/coding-agent/test/vibe/vibe-runtime.test.ts[m
+[1mindex 4b9ca382b..d4a8bab99 100644[m
+[1m--- a/packages/coding-agent/test/vibe/vibe-runtime.test.ts[m
+[1m+++ b/packages/coding-agent/test/vibe/vibe-runtime.test.ts[m
+[36m@@ -460,16 +460,16 @@[m [mdescribe("vibe session registry", () => {[m
+ 	});[m
+ [m
+ 	/**[m
+[31m-	 * The retired layer, asserted rather than described.[m
+[32m+[m	[32m * The lane layer, asserted rather than described.[m
+ 	 *[m
+[31m-	 * `subagent.agents.<name>.model` and `.thinkingLevel` used to decide here and[m
+[31m-	 * ranked above the blanket settings, so an operator who changed the subagent[m
+[31m-	 * model watched the Agents table win. A leftover row must now decide NOTHING:[m
+[31m-	 * the worker takes the blanket values, and the row governs only whether the[m
+[31m-	 * lane is offered at all. Without this case the retired fields could quietly[m
+[31m-	 * come back and only the spawn path would know.[m
+[32m+[m	[32m * `subagent.agents.<name>.model` and `.thinkingLevel` are the highest-precedence[m
+[32m+[m	[32m * layer, above the blanket settings the case before this one pins, so a row[m
+[32m+[m	[32m * written for one agent decides what THAT agent runs and leaves every other[m
+[32m+[m	[32m * agent on the blanket pair. The vibe path resolves through the same layers as[m
+[32m+[m	[32m * a spawn, and it is the path that would keep the old order longest if the two[m
+[32m+[m	[32m * ever drifted, which is why the precedence is asserted here too.[m
+ 	 */[m
+[31m-	it("lets a leftover per-agent model and effort row decide nothing", async () => {[m
+[32m+[m	[32mit("lets a per-agent row outrank the blanket model and effort", async () => {[m
+ 		const spy = vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {[m
+ 			AgentRegistry.global().register({[m
+ 				id: options.id,[m
+[36m@@ -486,10 +486,10 @@[m [mdescribe("vibe session registry", () => {[m
+ 			cwd: "/tmp",[m
+ 			hasUI: false,[m
+ 			settings: Settings.isolated({[m
+[31m-				// The retired row asks for one model and effort; the blanket settings ask[m
+[31m-				// for another. The blanket pair is what must reach the executor.[m
+[32m+[m				[32m// The row asks for one model and effort; the blanket settings ask for[m
+[32m+[m				[32m// another. The row is the pair that must reach the executor.[m
+ 				"subagent.agents": {[m
+[31m-					sonic: { enabled: true, model: "anthropic/claude-retired", thinkingLevel: "minimal" },[m
+[32m+[m					[32msonic: { enabled: true, model: "anthropic/claude-sonnet-4-5", thinkingLevel: "minimal" },[m
+ 				},[m
+ 				"subagent.model": "openai/gpt-5.2-codex",[m
+ 				"subagent.thinkingLevel": "xhigh",[m
+[36m@@ -501,13 +501,13 @@[m [mdescribe("vibe session registry", () => {[m
+ [m
+ 		const { jobId } = await VibeSessionRegistry.global().spawn(session, {[m
+ 			cli: "fast",[m
+[31m-			name: "LeftoverRowVibe",[m
+[31m-			prompt: "Ignore the retired row.",[m
+[32m+[m			[32mname: "LaneRowVibe",[m
+[32m+[m			[32mprompt: "Take the row that names you.",[m
+ 		});[m
+ 		await manager.getJob(jobId)?.promise;[m
+ [m
+[31m-		expect(spy.mock.calls[0]?.[0]?.modelOverride).toEqual(["openai/gpt-5.2-codex"]);[m
+[31m-		expect(spy.mock.calls[0]?.[0]?.thinkingLevel).toBe(ThinkingLevel.XHigh);[m
+[32m+[m		[32mexpect(spy.mock.calls[0]?.[0]?.modelOverride).toEqual(["anthropic/claude-sonnet-4-5"]);[m
+[32m+[m		[32mexpect(spy.mock.calls[0]?.[0]?.thinkingLevel).toBe(ThinkingLevel.Minimal);[m
+ 	});[m
+ [m
+ 	it("spawn returns immediately and self-delivers a turn result with activity trace + response", async () => {[m
