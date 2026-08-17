@@ -1,0 +1,12 @@
+SCENE_WINDOW=2097164
+-- ps:
+     27 kitty --override font_family=JetBrains Mono --override font_size=15 --override background=#1e2127 --override foreground=#d7dae0 --override cursor_blink_interval=0 --override window_padding_width=8 --override remember_window_size=no --override initial_window_width=1600 --override initial_window_height=1000 --override hide_window_decorations=yes --override confirm_os_window_close=0 --override scrollback_lines=20000 --override enable_audio_bell=no --override focus_follows_mouse=yes /tmp/bootstrap.sh
+    121 sleep 60
+-- children:
+  Root window id: 0x21f (the root window) (has no name)
+  Parent window id: 0x0 (none)
+     2 children:
+     0x20000c "bootstrap.sh": ("kitty" "kitty")  1600x1000+0+0  +0+0
+     0x200001 (has no name): ()  1x1+0+0  +0+0
+
+-- loc: x:700 y:400 screen:0 window:2097164
