@@ -1,24 +1,29 @@
-// Drive the blank-band defect in a REAL terminal, live.
+// A turn that ends short, in a REAL terminal, live.
 //
-// The symptom: a session that has scrolled, whose last turn ends SHORT (a tall
-// streaming answer settling to its final two-row tail), painted a screen-sized
-// band of blank rows where the conversation was — a stray fence and rule
-// floating over the HUD with nothing above them.
+// The defect this belongs to: a session that has scrolled, whose last turn ends
+// SHORT (a tall streaming answer settling to its final two-row tail), painted a
+// screen-sized band of blank rows where the conversation was — a stray fence and
+// rule floating over the HUD with nothing above them.
 //
-// Two production components make it, and both are here, unmocked: the real
-// `TranscriptContainer` (which hands committed rows to native scrollback and
-// used to drop every one of them) and the real `HomeAnchorLayout` (which
-// measures viewport slack off the composed frame, so a long session read as a
-// short one and it filled the difference with blank rows). The engine is the
-// real `TUI` writing real escapes to a real tty through `ProcessTerminal`.
+// Both components that decide that screen are here, unmocked: the real
+// `TranscriptContainer` (which hands committed rows to native scrollback and used
+// to drop every one of them) and the real `HomeAnchorLayout` (which measures
+// viewport slack off the composed frame). The engine is the real `TUI` writing
+// real escapes to a real tty through `ProcessTerminal`.
 //
 //   bun scripts/demos/blank-band-repro.ts [--turns 24] [--stream 30] [--hud 5]
+//   DIAG_PATH=/tmp/diag.txt bun scripts/demos/blank-band-repro.ts   # + accounting
 //
-// Run it with the fix and without. Without, the screen holds a void and the
-// live tail is squeezed off the top; with it, the conversation reaches the
-// composer on the bottom row like a shell prompt under its output. The only
-// thing standing in for a model is the text of each turn: the defect is driven
-// by row volume against a short viewport, not by where the bytes came from.
+// WHAT THIS IS NOT. It is not a two-arm comparison, and it was measured before
+// that was written here. Driven from this script the transcript never reaches the
+// compaction path at all — `committedRows=104` against a frame of 128 rows, the
+// same numbers with the retention floor fed and with it forced to zero — so
+// turning the fix off changes nothing you can see. The byte-level before/after
+// lives where the frame can be driven a frame at a time: the paint-sim arm in
+// `a-turn-that-ends-short-never-paints-a-blank-band-over-the-conversation`, which
+// measures a 23-row band collapsing to 1 and is mutation-gated. What this script
+// is good for is watching the shipped path run against a real terminal and
+// reading its frame accounting through `DIAG_PATH`.
 
 import { type Component, CURSOR_MARKER, type Focusable, ProcessTerminal, TUI } from "@veyyon/tui";
 import { TranscriptContainer } from "../../packages/coding-agent/src/modes/components/transcript-container";
@@ -155,6 +160,17 @@ async function main(): Promise<void> {
 	await sleep(600);
 	answer.settle();
 	tui.requestRender();
+	await sleep(700);
+
+	// The frame accounting behind whatever is on screen, so the arm can be read
+	// as numbers and not only looked at. DIAG_PATH is set by the recorder.
+	const diag = process.env.DIAG_PATH;
+	if (diag !== undefined) {
+		await Bun.write(
+			diag,
+			`committedRows=${tui.committedRows} scrollTapeRows=${tui.scrollTapeRows} composedFrameRows=${tui.composedFrameRows} topFill=${anchor.topFill.render(terminal.columns).length} bottomFill=${anchor.bottomFill.render(terminal.columns).length} rows=${terminal.rows}\n`,
+		);
+	}
 
 	// Hold the settled screen. This is the frame to look at and to scroll back
 	// from: with the fix the conversation runs to the composer on the bottom
