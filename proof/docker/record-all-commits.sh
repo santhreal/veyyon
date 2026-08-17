@@ -26,7 +26,12 @@ if [[ "${1:-}" == "--one" ]]; then
 	HASH="$1" KIND="$2" HOLD="$3" PAYLOAD="$4"
 	case "${KIND}" in
 	test)
-		CMD="bun test ${PAYLOAD} 2>&1 | tail -32"
+		# `| tail -32` alone prints NOTHING until the pipeline closes, so a suite
+		# that outlives the hold ceiling records a bare cursor for the whole clip
+		# -- three arms shipped exactly that (131s, 131s, 171s of an empty
+		# terminal). Stream to the screen through `tee` so a long run is visibly
+		# working, then clear and leave the last 32 lines standing as the result.
+		CMD="{ bun test ${PAYLOAD} 2>&1 | tee /tmp/arm.log; clear; tail -32 /tmp/arm.log; }"
 		ARMS="before after"
 		;;
 	driver)

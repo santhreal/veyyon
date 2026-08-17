@@ -16,6 +16,7 @@ no page, because the caption still reads as evidence.
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -91,7 +92,161 @@ th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid #232830; 
 th { color: #8d95a1; font-weight: 600; }
 td.sha { font-family: ui-monospace, monospace; color: #e6c08a; white-space: nowrap; }
 .miss { background: #3b1d1d; border: 1px solid #7a3030; padding: 10px; border-radius: 6px; color: #ffb4b4; }
+pre.difftext { font: 12px/1.5 ui-monospace, "SF Mono", Menlo, monospace; background: #0f1216; color: #c6ccd6;
+       border: 1px solid #262b33; border-radius: 8px; padding: 14px 16px; margin: 16px 0 0;
+       max-height: 420px; overflow: auto; white-space: pre; tab-size: 4; }
+pre.difftext .green { color: #7fd18b; }
+pre.difftext .red { color: #ec8a8a; }
+pre.difftext .cyan { color: #79c0d6; }
+pre.difftext .yellow { color: #e6c08a; }
+pre.difftext .blue { color: #7fb2e5; }
+pre.difftext .magenta { color: #c99ae0; }
+pre.difftext .white { color: #d7dae0; }
+pre.difftext .dim { color: #7b828d; }
+pre.difftext .b { font-weight: 600; }
+details.clip { margin: 14px 0 0; }
+details.clip summary { cursor: pointer; color: #8d95a1; font-size: 13px; }
+details.clip summary:hover { color: #d7dae0; }
+.budget { color: #8d95a1; font-size: 13.5px; margin: 10px 0 0; }
 """
+
+CLIP_AUDIT = ROOT / "captures/clip-audit.tsv"
+blank_clips: list[str] = []
+# Every clip a figure on this page actually points at, so the runtime it quotes is
+# what a reader is being asked to watch rather than what happens to sit on disk.
+shown: set[str] = set()
+
+
+def clip_audit() -> dict[str, tuple[int, float, int, float]]:
+    """(bytes, seconds, distinct frames, last-frame ink) per clip, from tighten.py audit."""
+    if not CLIP_AUDIT.exists():
+        return {}
+    rows: dict[str, tuple[int, float, int, float]] = {}
+    for line in CLIP_AUDIT.read_text(encoding="utf-8").splitlines()[1:]:
+        parts = line.split("\t")
+        if len(parts) != 5:
+            continue
+        try:
+            rows[parts[0]] = (int(parts[1]), float(parts[2]), int(parts[3]), float(parts[4]))
+        except ValueError:
+            continue
+    return rows
+
+
+AUDIT = clip_audit()
+
+# The same rule tighten.py judges by: what proves a terminal drew something is that
+# it CHANGED, so the frame count carries it and ink only breaks the tie among clips
+# that barely changed. An ink threshold on its own condemns real captures of sparse
+# surfaces (the tall-HUD arms sit at ink 660 over eight distinct frames).
+BLANK_FRAMES = 1
+BARELY_FRAMES = 4
+BLANK_INK = 1200.0
+
+
+def audit_key(rel: str) -> str:
+    """The clip's key in captures/clip-audit.tsv: its path below that file's directory."""
+    return rel[len("captures/") :] if rel.startswith("captures/") else rel
+
+
+def sound(rel: str) -> str:
+    """A clip is evidence only if it drew something.
+
+    `d4d2a4290-before.mp4` was 171.6 seconds of an empty terminal with a cursor:
+    the suite outlived the recorder's hold ceiling, and because the command only
+    prints when its pipe closes, the camera filmed nothing. It sat on this page
+    under a commit's name as though it showed the commit. A missing file was
+    already a hard error here; a file that shows nothing is the same claim with a
+    poster frame, so it fails the build too. The numbers come from
+    `tighten.py audit`, which also refuses to leave a stale row: a clip whose
+    size no longer matches its audited size is unaudited.
+    """
+    need(rel)
+    shown.add(audit_key(rel))
+    path = ROOT / rel
+    if not path.exists():
+        return rel
+    key = audit_key(rel)
+    row = AUDIT.get(key)
+    if row is None:
+        blank_clips.append(f"{key}: not in captures/clip-audit.tsv (run proof/tighten.py audit)")
+        return rel
+    size, _seconds, frames, ink = row
+    if size != path.stat().st_size:
+        blank_clips.append(f"{key}: audited at {size}B, now {path.stat().st_size}B (re-run tighten.py audit)")
+    elif frames <= BLANK_FRAMES or (frames <= BARELY_FRAMES and ink < BLANK_INK):
+        blank_clips.append(f"{key}: {frames} distinct frame(s), ink {ink:.0f} — the terminal drew nothing")
+    return rel
+
+
+def clip_runtime(*rels: str) -> float:
+    total = 0.0
+    for rel in rels:
+        row = AUDIT.get(audit_key(rel))
+        if row:
+            total += row[1]
+    return total
+
+
+ANSI = re.compile(r"\x1b\[([0-9;]*)m")
+SGR_CLASS = {
+    "1": "b",
+    "31": "red",
+    "32": "green",
+    "33": "yellow",
+    "34": "blue",
+    "35": "magenta",
+    "36": "cyan",
+    "37": "white",
+    "90": "dim",
+}
+
+
+def ansi_to_html(text: str) -> str:
+    """git's own colours, kept, as spans.
+
+    The diff on the page is the same bytes the terminal paged in the recording --
+    written by record-all-commits.sh with --color=always -- so the reader gets the
+    hunk colouring without watching a pager walk it at 2.5 seconds a page.
+    """
+    out: list[str] = []
+    depth = 0
+    pos = 0
+    for m in ANSI.finditer(text):
+        out.append(escape(text[pos : m.start()]))
+        pos = m.end()
+        codes = [c for c in m.group(1).split(";") if c] or ["0"]
+        if codes == ["0"] or codes == ["22"] or codes == ["39"]:
+            out.append("</span>" * depth)
+            depth = 0
+            continue
+        classes = " ".join(SGR_CLASS[c] for c in codes if c in SGR_CLASS)
+        if classes:
+            out.append(f'<span class="{classes}">')
+            depth += 1
+    out.append(escape(text[pos:]))
+    out.append("</span>" * depth)
+    return "".join(out)
+
+
+def diff_text(hash_: str) -> str:
+    """The commit's diff, as text, in the page.
+
+    A commit that ships nothing a terminal can execute used to be presented as a
+    video of a pager: 23 static pages, 2.5 seconds each, and the reader waits for
+    text that was already committed beside the recording. Rendered here it is
+    scrollable, searchable with the browser's own find, and instant. The
+    recording stays one click away, because the claim it backs -- this really was
+    paged in a real terminal -- is still worth being able to check.
+    """
+    rel = f"{COMMITS_REL}{hash_}-after/{hash_}.diff"
+    need(rel)
+    path = ROOT / rel
+    if not path.exists():
+        return ""
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    return f'<pre class="difftext">{ansi_to_html(chr(10).join(lines))}</pre>'
+
 
 
 def video(rel: str, caption: str, start: float | None = None) -> str:
@@ -100,7 +255,7 @@ def video(rel: str, caption: str, start: float | None = None) -> str:
     `start` is a media fragment, and it is what stops the poster frame being
     the black display the recorder had before the terminal painted anything.
     """
-    need(rel)
+    sound(rel)
     src = f"{rel}#t={start:g}" if start is not None else rel
     return (
         "<figure>"
@@ -110,8 +265,8 @@ def video(rel: str, caption: str, start: float | None = None) -> str:
 
 
 def video_pair(before: str, after: str, cap_before: str, cap_after: str, start: float | None = None) -> str:
-    need(before)
-    need(after)
+    sound(before)
+    sound(after)
     frag = f"#t={start:g}" if start is not None else ""
     return (
         '<div class="pair">'
@@ -276,8 +431,10 @@ def commit_pair(hash_: str, cap_before: str, cap_after: str) -> str:
     branch, one commit apart.
     """
     before, after = f"{COMMITS_REL}{hash_}-before.mp4", f"{COMMITS_REL}{hash_}-after.mp4"
-    need(before)
-    need(after)
+    sound(before)
+    sound(after)
+    cap_before += timeout_note(hash_, "before")
+    cap_after += timeout_note(hash_, "after")
     return (
         '<div class="pair">'
         f'<figure><video controls loop muted playsinline preload="metadata"><source src="{before}#t=1" type="video/mp4"></video>'
@@ -286,6 +443,22 @@ def commit_pair(hash_: str, cap_before: str, cap_after: str) -> str:
         f"<figcaption><strong>this commit</strong> — {cap_after}</figcaption></figure>"
         "</div>"
     )
+
+
+def timeout_note(hash_: str, arm: str) -> str:
+    """Says so when the arm's command never finished.
+
+    A clip that stops at the recorder's ceiling looks exactly like a clip that
+    stops because the command ended, and the difference matters: `d4d2a4290`'s
+    parent arm hangs in the container on a suite that passes locally in under a
+    second. The recorder leaves the ceiling in `timeout-seconds`, so the caption
+    reports it instead of a reader assuming the run completed.
+    """
+    marker = ROOT / COMMITS_REL / f"{hash_}-{arm}" / "timeout-seconds"
+    if not marker.exists():
+        return ""
+    seconds = marker.read_text(encoding="utf-8").strip() or "?"
+    return f" <em>(still running at the {escape(seconds)}s ceiling; the recording is what it had drawn by then)</em>"
 
 
 def manifest_rows() -> list[tuple[str, str, str, str]]:
@@ -323,12 +496,20 @@ def commit_video_sections() -> str:
     for hash_, kind, payload, subject in rows:
         heading = f'<h3 id="c-{hash_}"><code>{hash_}</code> — {escape(subject)}</h3>'
         if kind == "diff":
-            body = video(
-                f"{COMMITS_REL}{hash_}-after.mp4",
-                "the change itself, paged in the terminal",
-                start=1,
+            rel = f"{COMMITS_REL}{hash_}-after.mp4"
+            seconds = clip_runtime(rel)
+            body = (
+                diff_text(hash_)
+                + "<details class=\"clip\"><summary>the same diff paged in a real terminal"
+                + (f" ({seconds:.0f}s)" if seconds else "")
+                + "</summary>"
+                + video(rel, "the change itself, paged in the terminal", start=0.5)
+                + "</details>"
             )
-            what = "<p class=\"lede\">Ships nothing a terminal can run: the video is the diff.</p>"
+            what = (
+                '<p class="lede">Ships nothing a terminal can run, so the change itself is the'
+                " evidence: the diff below is the text the recording pages, byte for byte.</p>"
+            )
         else:
             ran = escape(payload.replace("./", ""))
             before, after = _arm_result(hash_, "before"), _arm_result(hash_, "after")
@@ -368,7 +549,26 @@ def commit_video_sections() -> str:
         f' {kinds.count("driver")} renderer rows and {kinds.count("diff")} rows that ship nothing a terminal can'
         " execute.</p>"
     )
-    return summary + "\n" + "\n".join(blocks)
+    # What it costs to read this page, counted off the clips the page itself points
+    # at. The campaign shipped at 38.8 minutes for the commit arms alone and 47.8 for
+    # the scene recordings, nearly all of it frozen frames -- which is the same as
+    # saying nobody was going to watch it. The sentence is built here rather than
+    # typed so it cannot drift from the files.
+    shown_rows = [AUDIT[k] for k in sorted(shown) if k in AUDIT]
+    watch = sum(seconds for _size, seconds, _frames, _ink in shown_rows)
+    longest = max((seconds for _s, seconds, _f, _i in shown_rows), default=0.0)
+    pairs = kinds.count("test") + kinds.count("driver")
+    budget = (
+        f'<p class="budget"><strong>How long this takes to read.</strong> {kinds.count("diff")} of the'
+        f" {len(rows)} commits ship nothing a terminal can execute, and those carry their diff as text below —"
+        f" nothing to play. The other {pairs} carry a parent/commit pair of recordings. All"
+        f" {len(shown_rows)} clips on this page run {watch / 60:.0f} minutes end to end, longest {longest:.0f}s,"
+        " and none of it is a held frame: <code>proof/tighten.py trim</code> keeps every frame that differs from"
+        " the one before it and clamps the still gap after it to under a second, so the runtime left is the"
+        " terminal actually changing. A clip that drew nothing fails this build instead of appearing as a poster"
+        " frame.</p>"
+    )
+    return summary + "\n" + budget + "\n" + "\n".join(blocks)
 
 
 def _tally(hash_: str, arm: str) -> tuple[int | None, int | None]:
@@ -484,6 +684,14 @@ def write(sections: list[Section]) -> None:
     html = build(sections, head, base, ahead)
     if missing:
         print("MISSING FILES:", *sorted(set(missing)), sep="\n  ", file=sys.stderr)
+        raise SystemExit(1)
+    if blank_clips:
+        print("CLIPS THAT SHOW NOTHING:", *sorted(set(blank_clips)), sep="\n  ", file=sys.stderr)
+        print(
+            "\nRe-record the arm (raise its hold column in proof/commit-videos.tsv) and re-run"
+            " proof/tighten.py audit.",
+            file=sys.stderr,
+        )
         raise SystemExit(1)
     out = ROOT / "ui-polish-proof.html"
     out.write_text(html, encoding="utf-8")
