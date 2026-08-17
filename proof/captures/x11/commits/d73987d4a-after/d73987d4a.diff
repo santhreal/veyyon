@@ -1,0 +1,91 @@
+[33md73987d4a[m test: read the launch block off its rail, and give the acp probe a model
+
+
+
+ ...knowing-which-commands-a-text-client-can-drive.test.ts | 15 [32m+++++++++++[m[31m----[m
+ packages/coding-agent/test/tools/launch-renderer.test.ts  | 13 [32m+++++++++[m[31m----[m
+ 2 files changed, 20 insertions(+), 8 deletions(-)
+
+[1mdiff --git a/packages/coding-agent/test/architecture/knowing-which-commands-a-text-client-can-drive.test.ts b/packages/coding-agent/test/architecture/knowing-which-commands-a-text-client-can-drive.test.ts[m
+[1mindex 10eb53939..95328fa68 100644[m
+[1m--- a/packages/coding-agent/test/architecture/knowing-which-commands-a-text-client-can-drive.test.ts[m
+[1m+++ b/packages/coding-agent/test/architecture/knowing-which-commands-a-text-client-can-drive.test.ts[m
+[36m@@ -29,6 +29,7 @@[m
+ import { describe, expect, it } from "bun:test";[m
+ import * as fs from "node:fs";[m
+ import * as path from "node:path";[m
+[32m+[m[32mimport { getBundledModel } from "@veyyon/catalog/models";[m
+ import {[m
+ 	BUILTIN_SLASH_COMMAND_DECLARATIONS,[m
+ 	type BuiltinSlashCommandDeclaration,[m
+[36m@@ -40,6 +41,7 @@[m [mimport {[m
+ 	isAcpBuiltinShadowedName,[m
+ 	TEXT_MODE_BUILTIN_DECLARATIONS,[m
+ } from "@veyyon/coding-agent/slash-commands/text-mode-builtins";[m
+[32m+[m[32mimport { configuredThinkingLevelsForModel } from "@veyyon/coding-agent/thinking";[m
+ import {[m
+ 	createModuleReachCache,[m
+ 	type ModuleReachResolution,[m
+[36m@@ -157,20 +159,25 @@[m [mdescribe("the text-mode view is a leaf", () => {[m
+ 		// A command shape with no such builtin: the registry IS loaded, and says no.[m
+ 		expect(await executeAcpBuiltinSlashCommand("/definitely-not-a-command", runtime)).toBe(false);[m
+ 		// A real text-mode builtin: loaded and run. `/thinking` with no argument reports the current[m
+[31m-		// level and the choices, which is the smallest handler that needs nothing but the two session[m
+[31m-		// reads stubbed below, so the assertion is about dispatch rather than about a command's state.[m
+[32m+[m		[32m// level and the choices, which is the smallest handler that needs nothing but the session's[m
+[32m+[m		[32m// model and its configured level, so the assertion is about dispatch rather than about a[m
+[32m+[m		[32m// command's state. The choices come from the MODEL's catalog row rather than from a session[m
+[32m+[m		[32m// method: no model means no levels, so the stub carries a real reasoning row instead of a[m
+[32m+[m		[32m// list it makes up.[m
+[32m+[m		[32mconst model = getBundledModel("anthropic", "claude-opus-4-1");[m
+[32m+[m		[32mif (!model) throw new Error("Expected a bundled reasoning model to exist");[m
+ 		const withSession = {[m
+ 			output: (text: string) => lines.push(text),[m
+ 			session: {[m
+[32m+[m				[32mmodel,[m
+ 				configuredThinkingLevel: () => "high",[m
+[31m-				getAvailableThinkingLevels: () => ["low", "medium", "high"],[m
+ 			},[m
+ 		} as never;[m
+ 		const result = await executeAcpBuiltinSlashCommand("/thinking", withSession);[m
+ [m
+ 		expect(result).toEqual({ consumed: true });[m
+ 		expect(lines.join("\n")).toContain("Effort: high");[m
+[31m-		expect(lines.join("\n")).toContain("low, medium, high");[m
+[32m+[m		[32mexpect(lines.join("\n")).toContain(configuredThinkingLevelsForModel(model).join(", "));[m
+ 	});[m
+ });[m
+ [m
+[1mdiff --git a/packages/coding-agent/test/tools/launch-renderer.test.ts b/packages/coding-agent/test/tools/launch-renderer.test.ts[m
+[1mindex 14417bee2..4c9520c17 100644[m
+[1m--- a/packages/coding-agent/test/tools/launch-renderer.test.ts[m
+[1m+++ b/packages/coding-agent/test/tools/launch-renderer.test.ts[m
+[36m@@ -79,9 +79,12 @@[m [mdescribe("launchToolRenderer", () => {[m
+ 		);[m
+ 		expect(rendered[0]).toContain("Launch logs");[m
+ 		expect(rendered[0]).toContain("cursor 2210");[m
+[31m-		expect(rendered[0]).toContain("┌");[m
+[32m+[m		[32m// A block hangs its output on a rail: a title row, one rail glyph down the left of the[m
+[32m+[m		[32m// body, and nothing above the title or below the last row. The box glyphs this used to[m
+[32m+[m		[32m// assert are a shape the product no longer draws.[m
+[32m+[m		[32mexpect(rendered[0]).not.toContain("┌");[m
+[32m+[m		[32mexpect(rendered.at(-1)).not.toContain("└");[m
+ 		expect(rendered[1]).toContain("Output");[m
+[31m-		expect(rendered.at(-1)).toContain("└");[m
+ [m
+ 		// The log body, in order and complete. Two `some(...)` checks asserted the[m
+ 		// lines existed somewhere and a third asserted the `[web: running; ...]`[m
+[36m@@ -89,9 +92,11 @@[m [mdescribe("launchToolRenderer", () => {[m
+ 		// order, which is the one thing a log tail has to get right. Reading the[m
+ 		// body out as an array proves the ordering and the suffix stripping at[m
+ 		// once: a line that survived would have to appear here.[m
+[32m+[m		[32mconst rail = uiTheme.symbol("block.rail");[m
+ 		const body = rendered[m
+[31m-			.filter(line => line.startsWith("│"))[m
+[31m-			.map(line => line.replace(/^│\s?/, "").replace(/\s*│$/, "").trimEnd());[m
+[32m+[m			[32m.filter(line => line.trimStart().startsWith(rail))[m
+[32m+[m			[32m.map(line => line.trimStart().slice(rail.length).trim())[m
+[32m+[m			[32m.filter(line => line.length > 0 && line !== "Output");[m
+ [m
+ 		expect(body).toEqual(["line one", "line two"]);[m
+ 	});[m

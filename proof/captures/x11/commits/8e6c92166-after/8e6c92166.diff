@@ -1,0 +1,170 @@
+[33m8e6c92166[m test(settings): pin the lane precedence and the one Subagents section that shipped
+
+
+
+ .../src/eval/__tests__/agent-bridge.test.ts        | 31 [32m++++++++++[m[31m--------[m
+ ...pawn-depth-row-picks-the-subagent-model.test.ts | 22 [32m++++++++[m[31m-----[m
+ .../test/model-chain-round-trip.test.ts            | 38 [32m+++++++++++++++++[m[31m-----[m
+ 3 files changed, 59 insertions(+), 32 deletions(-)
+
+[1mdiff --git a/packages/coding-agent/src/eval/__tests__/agent-bridge.test.ts b/packages/coding-agent/src/eval/__tests__/agent-bridge.test.ts[m
+[1mindex dbe6230de..4e8911554 100644[m
+[1m--- a/packages/coding-agent/src/eval/__tests__/agent-bridge.test.ts[m
+[1m+++ b/packages/coding-agent/src/eval/__tests__/agent-bridge.test.ts[m
+[36m@@ -493,19 +493,22 @@[m [mdescribe("runEvalAgent", () => {[m
+ 		expect(secondOptions.outputSchemaOverridesAgent).toBeUndefined();[m
+ 	});[m
+ [m
+[31m-	it("ignores a retired per-agent effort row and takes the blanket setting instead", async () => {[m
+[31m-		// `subagent.agents.<name>.thinkingLevel` is retired: effort is decided in one[m
+[31m-		// place, either the `subagent.thinkingLevel` setting or the agent's own[m
+[31m-		// `thinking-level` frontmatter. A retired row is reported and skipped, never[m
+[31m-		// honoured, so a spawn under it inherits the session effort — asserting the[m
+[31m-		// old row still worked is what let the retirement look complete while the[m
+[31m-		// bridge quietly read a setting nothing else does.[m
+[32m+[m	[32mit("takes a per-agent lane effort over the blanket setting, and the call's model over the lane's", async () => {[m
+[32m+[m		[32m// `subagent.agents.<name>.thinkingLevel` is a LANE field and the highest[m
+[32m+[m		[32m// layer there is: it names the agent, and the page that shows it is the page[m
+[32m+[m		[32m// that edits it. So a lane row beats `subagent.thinkingLevel`, and a spawn[m
+[32m+[m		[32m// under a lane must not quietly run at the blanket effort — that is the[m
+[32m+[m		[32m// regression this arm catches, since both values are plausible and only one[m
+[32m+[m		[32m// is the one the operator set on that agent. The model is the other half:[m
+[32m+[m		[32m// the explicit `model` on the call outranks the lane's own `model`, so a[m
+[32m+[m		[32m// caller naming a model is never overridden by settings.[m
+ 		mockAgents([taskAgent]);[m
+ 		const runSpy = vi.spyOn(taskExecutor, "runSubprocess").mockImplementation(async options => singleResult(options));[m
+[31m-		const retiredRow = makeSession({[m
+[32m+[m		[32mconst laneRow = makeSession({[m
+ 			settings: Settings.isolated({[m
+ 				"async.enabled": false,[m
+ 				"subagent.isolation.mode": "none",[m
+[32m+[m				[32m"subagent.thinkingLevel": "low",[m
+ 				"subagent.agents": {[m
+ 					task: { model: "p/profile", thinkingLevel: "high" },[m
+ 				},[m
+[36m@@ -519,15 +522,15 @@[m [mdescribe("runEvalAgent", () => {[m
+ 			}),[m
+ 		});[m
+ [m
+[31m-		await runEvalAgent({ prompt: "retired row", model: "p/call" }, { session: retiredRow });[m
+[32m+[m		[32mawait runEvalAgent({ prompt: "lane row", model: "p/call" }, { session: laneRow });[m
+ 		await runEvalAgent({ prompt: "blanket setting", model: "p/call:max" }, { session: blanket });[m
+ [m
+[31m-		const ignored = runSpy.mock.calls[0]?.[0];[m
+[32m+[m		[32mconst lane = runSpy.mock.calls[0]?.[0];[m
+ 		const applied = runSpy.mock.calls[1]?.[0];[m
+[31m-		if (!ignored || !applied) throw new Error("runSubprocess was not called twice");[m
+[31m-		expect(ignored.modelOverride).toEqual(["p/call"]);[m
+[31m-		expect(ignored.thinkingLevel).toBeUndefined();[m
+[31m-		expect(ignored.parentThinkingLevel).toBeUndefined();[m
+[32m+[m		[32mif (!lane || !applied) throw new Error("runSubprocess was not called twice");[m
+[32m+[m		[32mexpect(lane.modelOverride).toEqual(["p/call"]);[m
+[32m+[m		[32mexpect(lane.thinkingLevel).toBe(ThinkingLevel.High);[m
+[32m+[m		[32mexpect(lane.parentThinkingLevel).toBeUndefined();[m
+ 		// The `:max` suffix rides on the model pattern: only the executor knows a[m
+ 		// suffix was present, so the resolved effort stays the blanket value here.[m
+ 		expect(applied.modelOverride).toEqual(["p/call:max"]);[m
+[1mdiff --git a/packages/coding-agent/test/a-spawn-depth-row-picks-the-subagent-model.test.ts b/packages/coding-agent/test/a-spawn-depth-row-picks-the-subagent-model.test.ts[m
+[1mindex ac809f249..2e3cc6c0f 100644[m
+[1m--- a/packages/coding-agent/test/a-spawn-depth-row-picks-the-subagent-model.test.ts[m
+[1m+++ b/packages/coding-agent/test/a-spawn-depth-row-picks-the-subagent-model.test.ts[m
+[36m@@ -217,9 +217,12 @@[m [mdescribe("a caller with no depth keeps today's behavior", () => {[m
+ 	it("treats an empty map as no map at all", () => {[m
+ 		const settings = Settings.isolated({ "subagent.modelByDepth": {} });[m
+ [m
+[31m-		expect(resolveSubagentModel({ settings, agentName: AGENT, taskDepth: 1, activeModelPattern: SESSION })).toEqual([m
+[31m-			{ patterns: [SESSION], source: "inherit", depth: undefined, unresolved: undefined },[m
+[31m-		);[m
+[32m+[m		[32mexpect(resolveSubagentModel({ settings, agentName: AGENT, taskDepth: 1, activeModelPattern: SESSION })).toEqual({[m
+[32m+[m			[32mpatterns: [SESSION],[m
+[32m+[m			[32msource: "inherit",[m
+[32m+[m			[32mdepth: undefined,[m
+[32m+[m			[32munresolved: undefined,[m
+[32m+[m		[32m});[m
+ 	});[m
+ });[m
+ [m
+[36m@@ -239,17 +242,18 @@[m [mdescribe("the source label", () => {[m
+ [m
+ describe("the settings domain declaration", () => {[m
+ 	/**[m
+[31m-	 * The map is declared where every other `subagent.*` setting is declared,[m
+[31m-	 * with a UI row in the Models section of the Subagents tab. Pinning the[m
+[31m-	 * declaration itself keeps the rest of the suite from passing against a[m
+[32m+[m	[32m * The map is declared where every other `subagent.*` setting is declared, in the one Subagents[m
+[32m+[m	[32m * section that edits what subagents run. A separate "Models" group came before it, and splitting[m
+[32m+[m	[32m * the model rows across two sections is how a chain came to be edited on one screen and read on[m
+[32m+[m	[32m * another. Pinning the declaration itself keeps the rest of the suite from passing against a[m
+ 	 * schema that quietly lost the key.[m
+ 	 */[m
+[31m-	it("is a record in the Models group of the Subagents tab, defaulting to no rows", () => {[m
+[32m+[m	[32mit("is a record in the Subagents group of the Subagents tab, defaulting to no rows", () => {[m
+ 		expect(getType("subagent.modelByDepth")).toBe("record");[m
+ 		expect(getDefault("subagent.modelByDepth")).toEqual({});[m
+ 		const ui = getUi("subagent.modelByDepth");[m
+ 		expect(ui?.tab).toBe("subagents");[m
+[31m-		expect(ui?.group).toBe("Models");[m
+[32m+[m		[32mexpect(ui?.group).toBe("Subagents");[m
+ 		expect(ui?.label).toBe("Models by Depth");[m
+ 	});[m
+ [m
+[36m@@ -263,6 +267,6 @@[m [mdescribe("the settings domain declaration", () => {[m
+ 		const def = getSettingsForTab("subagents").find(entry => entry.path === "subagent.modelByDepth");[m
+ [m
+ 		expect(def?.type).toBe("subagentModelByDepth");[m
+[31m-		expect(def?.group).toBe("Models");[m
+[32m+[m		[32mexpect(def?.group).toBe("Subagents");[m
+ 	});[m
+ });[m
+[1mdiff --git a/packages/coding-agent/test/model-chain-round-trip.test.ts b/packages/coding-agent/test/model-chain-round-trip.test.ts[m
+[1mindex 92ce1a888..9d859fabd 100644[m
+[1m--- a/packages/coding-agent/test/model-chain-round-trip.test.ts[m
+[1m+++ b/packages/coding-agent/test/model-chain-round-trip.test.ts[m
+[36m@@ -98,18 +98,38 @@[m [mdescribe("model chain encoding", () => {[m
+ 	});[m
+ [m
+ 	/**[m
+[31m-	 * A retired per-agent row cannot truncate the chain. It used to replace the[m
+[31m-	 * blanket list wholesale, so a leftover single-model row on an old config would[m
+[31m-	 * quietly strip every fallback the operator configured — the exact failure this[m
+[31m-	 * suite exists to catch, arriving through a field nothing is supposed to read.[m
+[32m+[m	[32m * A per-agent lane row is the most specific statement anyone can make — it[m
+[32m+[m	[32m * names the agent — so a lane that names a model REPLACES the blanket chain[m
+[32m+[m	[32m * and reports `source: "lane"`, which is what the Agents column badges. The[m
+[32m+[m	[32m * field was retired once for outranking the blanket setting from a screen[m
+[32m+[m	[32m * that did not show it, and reinstated when every page that shows a lane's[m
+[32m+[m	[32m * model became the page that edits it. This asserts the layer that decided is[m
+[32m+[m	[32m * named, so a silent replacement can never come back.[m
+ 	 */[m
+[31m-	it("ignores a retired per-agent model row and keeps the blanket chain", () => {[m
+[31m-		// The retired shape is no longer expressible as a literal, and an old config still holds it.[m
+[31m-		const staleRow: SubagentAgentSettings = {};[m
+[31m-		Object.assign(staleRow, { model: "openai/gpt-5" });[m
+[32m+[m	[32mit("lets a per-agent lane row outrank the blanket chain, and names the layer that decided", () => {[m
+[32m+[m		[32mconst lane: SubagentAgentSettings = { model: ["openai/gpt-5", "openai/gpt-5-mini"] };[m
+ 		const settings = Settings.isolated({[m
+ 			"subagent.model": "anthropic/opus,anthropic/sonnet",[m
+[31m-			"subagent.agents": { reviewer: staleRow },[m
+[32m+[m			[32m"subagent.agents": { reviewer: lane },[m
+[32m+[m		[32m});[m
+[32m+[m		[32mconst resolved = resolveSubagentModel({ settings, agentName: "reviewer", agentModel: undefined });[m
+[32m+[m		[32mexpect(resolved.source).toBe("lane");[m
+[32m+[m		[32m// The lane keeps its own whole chain, in order: truncating here would strip[m
+[32m+[m		[32m// the fallbacks the caller configured, just as truncating the blanket did.[m
+[32m+[m		[32mexpect(resolved.patterns).toEqual(["openai/gpt-5", "openai/gpt-5-mini"]);[m
+[32m+[m	[32m});[m
+[32m+[m
+[32m+[m	[32m/**[m
+[32m+[m	[32m * The failure this suite exists to catch: a leftover row quietly stripping[m
+[32m+[m	[32m * every fallback. A row that names NO model must not touch the chain, so a[m
+[32m+[m	[32m * row carrying only `enabled` — or only the superseded `maxNestedSpawnDepth`[m
+[32m+[m	[32m * an older release wrote — resolves exactly as if the table were empty.[m
+[32m+[m	[32m */[m
+[32m+[m	[32mit("keeps the blanket chain whole under a per-agent row that names no model", () => {[m
+[32m+[m		[32mconst row: SubagentAgentSettings = { enabled: true, maxNestedSpawnDepth: 0 };[m
+[32m+[m		[32mconst settings = Settings.isolated({[m
+[32m+[m			[32m"subagent.model": "anthropic/opus,anthropic/sonnet",[m
+[32m+[m			[32m"subagent.agents": { reviewer: row },[m
+ 		});[m
+ 		const resolved = resolveSubagentModel({ settings, agentName: "reviewer", agentModel: undefined });[m
+ 		expect(resolved.source).toBe("blanket");[m

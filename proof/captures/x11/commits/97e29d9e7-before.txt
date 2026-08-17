@@ -1,0 +1,40 @@
+    ],
+-   "modes/components/modal-shell" => [
+-     "mediumModalContentWidth",
+-   ],
++   "modes/components/modal-shell" => [],
+  }
+
+- Expected  - 3
++ Received  + 1
+
+      at <anonymous> (/repo/packages/coding-agent/test/architecture/tools-reach-the-ui-only-to-draw.test.ts:154:17)
+(fail) tools reach the terminal UI only to draw > takes only the sanctioned names out of the two interactive components [20.02ms]
+(pass) tools reach the terminal UI only to draw > narrows only modules the allow-list carries [0.05ms]
+166 | 	 */
+167 | 	it("has no stale entries in the allow-list", () => {
+168 | 		const used = new Set(files.flatMap(uiImportsIn));
+169 | 		const unused = [...ALLOWED.keys()].filter(allowed => !used.has(allowed));
+170 | 
+171 | 		expect(unused).toEqual([]);
+                       ^
+error: expect(received).toEqual(expected)
+
+- []
++ [
++   "modes/components/modal-shell",
++ ]
+
+- Expected  - 1
++ Received  + 3
+
+      at <anonymous> (/repo/packages/coding-agent/test/architecture/tools-reach-the-ui-only-to-draw.test.ts:171:18)
+(fail) tools reach the terminal UI only to draw > has no stale entries in the allow-list [8.07ms]
+(pass) tools reach the terminal UI only to draw > the panel exports the drawing and the session module exports the accounting [0.04ms]
+(pass) tools reach the terminal UI only to draw > has no turn budget left under modes [0.05ms]
+(pass) tools reach the terminal UI only to draw > has the panel depending on the numbers only as types, and the numbers on nothing in the UI [0.18ms]
+
+ 6 pass
+ 2 fail
+ 14 expect() calls
+Ran 8 tests across 1 file. [328.00ms]

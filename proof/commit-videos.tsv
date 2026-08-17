@@ -101,3 +101,16 @@ ad14fca53	diff	45		feat(overlays): a card is a ladder of materials, measured on 
 8baebe34e	test	90	./packages/coding-agent/test/modes/controllers/a-taller-terminal-still-hugs-the-composer-to-the-bottom.test.ts	fix(tui): the frame length is the invariant, not the fill routing
 880794c05	diff	45		demo(band): say what the real-terminal arm actually shows
 782605878	test	90	./packages/coding-agent/test/a-tool-block-hangs-its-output-on-a-rail-not-in-a-box.test.ts	polish(tui): a tool block hangs its output on a rail, not in a box
+488ca8049	diff	45		proof(blocks): the rail commit carries its arms and its image pair
+9a82206f9	diff	45		test(tui): retarget every box-geometry suite at the rail
+7184efa23	test	90	./packages/coding-agent/test/secrets/the-masked-prompt-cannot-be-read-as-a-name-prompt.test.ts	fix(hooks): a field's card is as wide as the sentences it has to say
+8e6c92166	diff	45		test(settings): pin the lane precedence and the one Subagents section that shipped
+3a71d64c2	diff	45		fix(compaction): the chain suite stops calling the compaction endpoint, and the setting says Codex is included
+d73987d4a	diff	45		test: read the launch block off its rail, and give the acp probe a model
+d6293b7b1	diff	45		fix(tools): the ask tool stops reaching into the modal layout
+4dfb85288	diff	45		docs(changelog): note the ask tool's dropped modal import
+00f724b60	diff	45		test(task): pin the per-agent effort row that actually ships
+97e29d9e7	test	90	./packages/coding-agent/test/architecture/tools-reach-the-ui-only-to-draw.test.ts	fix(tools): the ask tool asks a card how wide it is
+5e4c56045	diff	45		test(git): the head-sha arms build the repository they read
+81d595f3b	diff	45		test(task): a per-agent row routes the spawn it is written for
+5359075e9	diff	45		test(sandbox): a linked worktree takes its git directory into the sandbox

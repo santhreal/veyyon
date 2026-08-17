@@ -1,0 +1,106 @@
+[33m3a71d64c2[m fix(compaction): the chain suite stops calling the compaction endpoint, and the setting says Codex is included
+
+
+
+ .../src/config/settings-domains/context.ts         | 16 [32m+++++[m[31m-----[m
+ .../test/compaction-model-chain.test.ts            | 37 [32m++++++++++++++++++++++[m
+ 2 files changed, 45 insertions(+), 8 deletions(-)
+
+[1mdiff --git a/packages/coding-agent/src/config/settings-domains/context.ts b/packages/coding-agent/src/config/settings-domains/context.ts[m
+[1mindex ae138cfbb..33647e573 100644[m
+[1m--- a/packages/coding-agent/src/config/settings-domains/context.ts[m
+[1m+++ b/packages/coding-agent/src/config/settings-domains/context.ts[m
+[36m@@ -35,15 +35,15 @@[m [mexport const CONTEXT_SETTINGS = {[m
+ 	// side. Unrelated to `compaction.remoteEndpoint`, which is an[m
+ 	// operator-configured external summarizer and shares nothing but the word.[m
+ 	//[m
+[31m-	// It applies when the SESSION model is on the OpenAI Responses API family[m
+[31m-	// (`openai-responses` or `azure-openai-responses`, so Azure OpenAI[m
+[31m-	// Responses deployments are included) AND that model's row reports[m
+[32m+[m	[32m// It applies when the SESSION model is on the OpenAI Responses wire shape[m
+[32m+[m	[32m// (`openai-responses`, `azure-openai-responses`, or the ChatGPT Codex[m
+[32m+[m	[32m// backend's `openai-codex-responses`, so Azure deployments and a Codex OAuth[m
+[32m+[m	[32m// session are both included) AND that model's row reports[m
+ 	// `compat.supportsServerCompaction`. Both halves are DATA, resolved per[m
+ 	// host at model build time and flippable per row by config or discovery;[m
+[31m-	// nothing here checks a provider name. OpenAI Codex is on a different api[m
+[31m-	// and is therefore excluded. On any other model the toggle is inert and[m
+[31m-	// compaction stays local; with the toggle off, compaction is local on every[m
+[31m-	// model. Local means the ordinary LLM summary path, unchanged.[m
+[32m+[m	[32m// nothing here checks a provider name. On any other model the toggle is[m
+[32m+[m	[32m// inert and compaction stays local; with the toggle off, compaction is local[m
+[32m+[m	[32m// on every model. Local means the ordinary LLM summary path, unchanged.[m
+ 	//[m
+ 	// When it applies, veyyon calls the compaction endpoint and stores the[m
+ 	// window it returns. That window IS the compacted context, so the entry's[m
+[36m@@ -64,7 +64,7 @@[m [mexport const CONTEXT_SETTINGS = {[m
+ 			group: "Compaction",[m
+ 			label: "Remote Compaction",[m
+ 			description:[m
+[31m-				"Applies only when the session model is a supported OpenAI Responses model, which includes Azure OpenAI Responses deployments; every other model, OpenAI Codex included, ignores this setting and compacts locally. On, veyyon calls the OpenAI compaction endpoint and keeps the window it returns, which preserves reasoning state across the cut. That window is the whole compacted context, so the entry stores no summary text and the compaction model chain does not apply. There is no second local summary on purpose: it would pay a model to re-summarize a span the provider already compacted and leave two versions of one range that can disagree. Off, compaction runs locally on the usual summary path and stores readable summary text.",[m
+[32m+[m				[32m"Applies only when the session model is a supported OpenAI Responses model, which includes Azure OpenAI Responses deployments and a ChatGPT Codex session; every other model ignores this setting and compacts locally. On, veyyon calls the OpenAI compaction endpoint and keeps the window it returns, which preserves reasoning state across the cut. That window is the whole compacted context, so the entry stores no summary text and the compaction model chain does not apply. There is no second local summary on purpose: it would pay a model to re-summarize a span the provider already compacted and leave two versions of one range that can disagree. Off, compaction runs locally on the usual summary path and stores readable summary text.",[m
+ 			keywords: ["compaction", "remote", "server", "provider", "openai", "context"],[m
+ 		},[m
+ 	},[m
+[1mdiff --git a/packages/coding-agent/test/compaction-model-chain.test.ts b/packages/coding-agent/test/compaction-model-chain.test.ts[m
+[1mindex 1060ac7cb..c59c10405 100644[m
+[1m--- a/packages/coding-agent/test/compaction-model-chain.test.ts[m
+[1m+++ b/packages/coding-agent/test/compaction-model-chain.test.ts[m
+[36m@@ -65,6 +65,14 @@[m [mdescribe("compaction model chain", () => {[m
+ 	 * registry's available list (an unavailable model resolves to no candidate at[m
+ 	 * all, which is a different failure from the one under test). `usable` then[m
+ 	 * decides which of them actually hands back a key at compaction time.[m
+[32m+[m	[32m *[m
+[32m+[m	[32m * `compaction.remote` is OFF here. The session model is a ChatGPT Codex row,[m
+[32m+[m	[32m * which is one of the wire shapes that CAN compact server-side, so with the[m
+[32m+[m	[32m * setting at its shipped default every case in this suite reached the live[m
+[32m+[m	[32m * compaction endpoint before it ever looked at the chain: the notice cases[m
+[32m+[m	[32m * failed on a transport error from the network rather than on the chain, and[m
+[32m+[m	[32m * whether they passed depended on the machine. The remote pass is a different[m
+[32m+[m	[32m * path with its own contract, and one case below pins how the two meet.[m
+ 	 */[m
+ 	async function createSession([m
+ 		overrides: Record<string, unknown>,[m
+[36m@@ -72,6 +80,7 @@[m [mdescribe("compaction model chain", () => {[m
+ 	) {[m
+ 		const settings = Settings.isolated({[m
+ 			"compaction.keepRecentTokens": 1,[m
+[32m+[m			[32m"compaction.remote": false,[m
+ 			...overrides,[m
+ 		} as Parameters<typeof Settings.isolated>[0]);[m
+ [m
+[36m@@ -223,6 +232,34 @@[m [mdescribe("compaction model chain", () => {[m
+ 		expect(notices).toHaveLength(1);[m
+ 	});[m
+ [m
+[32m+[m	[32m/**[m
+[32m+[m	[32m * WHERE THE TWO PATHS MEET. With `compaction.remote` on and the session model on a wire shape[m
+[32m+[m	[32m * that can compact server-side, the remote pass runs FIRST and the chain is only reached if it[m
+[32m+[m	[32m * refuses. Compaction is the recovery path for a full context, so a refusing remote pass must[m
+[32m+[m	[32m * not fail closed: the local chain still decides, its own fallback is still announced, and the[m
+[32m+[m	[32m * remote refusal is announced beside it rather than instead of it.[m
+[32m+[m	[32m *[m
+[32m+[m	[32m * The refusal is the product's own credential gate rather than a stubbed transport: the session[m
+[32m+[m	[32m * model holds no key here, which is the branch that must not downgrade silently. So this case[m
+[32m+[m	[32m * reaches no network either, which is what the rest of the suite gets by turning the setting off.[m
+[32m+[m	[32m */[m
+[32m+[m	[32mit("falls through to the configured chain when the remote pass refuses, and announces both", async () => {[m
+[32m+[m		[32mawait createSession([m
+[32m+[m			[32m{ "compaction.model": `${selector(firstChoice)},${selector(secondChoice)}`, "compaction.remote": true },[m
+[32m+[m			[32mmodel => model.id === secondChoice.id,[m
+[32m+[m		[32m);[m
+[32m+[m		[32mconst compactSpy = spyOnCompact();[m
+[32m+[m
+[32m+[m		[32mconst result = await session.compact();[m
+[32m+[m
+[32m+[m		[32mexpect(result.summary).toStartWith(`summary from ${selector(secondChoice)}`);[m
+[32m+[m		[32mexpect(compactSpy.mock.calls.map(([, model]) => selector(model))).toEqual([selector(secondChoice)]);[m
+[32m+[m		[32mexpect(notices.map(notice => notice.message)).toEqual([[m
+[32m+[m			[32m`Server-side compaction unavailable (no API key for ${selector(mainModel)}); falling back to local compaction.`,[m
+[32m+[m			[32m`Compacted with ${selector(secondChoice)}. ${selector(firstChoice)} was skipped: it is not authenticated.`,[m
+[32m+[m		[32m]);[m
+[32m+[m	[32m});[m
+[32m+[m
+ 	/**[m
+ 	 * `auto` is the historical tail and stays the default: with the configured[m
+ 	 * chain unusable it reaches the main model rather than failing. This is the[m

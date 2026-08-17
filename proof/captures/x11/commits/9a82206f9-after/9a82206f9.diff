@@ -1,0 +1,422 @@
+[33m9a82206f9[m test(tui): retarget every box-geometry suite at the rail
+
+
+
+ docs/internal/tui-design-language.md               |   4 [32m+[m[31m-[m
+ packages/coding-agent/CHANGELOG.md                 |   2 [32m+[m
+ .../src/modes/components/modal-shell.ts            |  32 [32m++[m[31m-[m
+ packages/coding-agent/src/tools/eval-render.ts     |   2 [32m+[m[31m-[m
+ packages/coding-agent/src/tui/code-cell.ts         |   3 [32m+[m[31m-[m
+ packages/coding-agent/src/tui/output-block.ts      |   2 [32m+[m[31m-[m
+ ...hangs-its-output-on-a-rail-not-in-a-box.test.ts |  56 [32m+++++[m
+ ...as-its-output-not-as-wide-as-the-screen.test.ts | 245 [31m---------------------[m
+ packages/coding-agent/test/gallery-cli.test.ts     |  11 [32m+[m[31m-[m
+ ...nterrupted-tool-blocks-are-not-failures.test.ts |  22 [32m+[m[31m-[m
+ packages/coding-agent/test/modal-shell.test.ts     |  28 [32m++[m[31m-[m
+ .../test/streaming-preview-height.test.ts          |  41 [32m++[m[31m--[m
+ .../test/tool-execution-interrupt-honesty.test.ts  |  66 [32m++[m[31m----[m
+ .../test/tools/eval-agent-progress.test.ts         |  40 [32m++[m[31m--[m
+ .../coding-agent/test/tools/read-renderer.test.ts  |  22 [32m+[m[31m-[m
+ .../test/transcript-single-full-width-rule.test.ts |  16 [32m+[m[31m-[m
+ 16 files changed, 230 insertions(+), 362 deletions(-)
+
+[1mdiff --git a/docs/internal/tui-design-language.md b/docs/internal/tui-design-language.md[m
+[1mindex 22c377e62..5d077bfd8 100644[m
+[1m--- a/docs/internal/tui-design-language.md[m
+[1m+++ b/docs/internal/tui-design-language.md[m
+[36m@@ -145,7 +145,7 @@[m [msurface instead of pasting a separator literal into a widget.[m
+ [m
+ Never rely on color alone. Pair hue with a glyph or word. Color-off is environment-driven and owned by `detectAnsiPolicy` / `detectStreamAnsiPolicy` in `packages/tui/src/terminal-capabilities.ts`: a non-empty `NO_COLOR` yields `noColor`, `TERM=dumb` yields `plain`, `FORCE_COLOR` yields `full`. There is no `--no-color` flag anywhere in the CLI; do not document one.[m
+ [m
+[31m-A block's `state` is not a signal by itself. `renderOutputBlock` turns `state` into a border TINT and nothing else, so passing `state: "error"` and stopping there leaves the outcome carried by hue alone. This shipped in the bash renderer (2026-07-25): `showHeader: false` suppressed the title, correctly, and suppressed the failure marker with it, so with SGR sequences stripped a failed command rendered byte-identically to a clean one. A failed run now draws its own `✗ failed` header. When you pass a state to a block, ask what a reader sees with every color removed, and assert it with the styling stripped — a test that reads the ANSI is testing the tint, not the signal.[m
+[32m+[m[32mA block's `state` is not a signal by itself. `renderOutputBlock` turns `state` into a rail tint and a plate behind the block and nothing else, so passing `state: "error"` and stopping there leaves the outcome carried by hue alone. This shipped in the bash renderer (2026-07-25): `showHeader: false` suppressed the title, correctly, and suppressed the failure marker with it, so with SGR sequences stripped a failed command rendered byte-identically to a clean one. A failed run now draws its own `✗ failed` header. When you pass a state to a block, ask what a reader sees with every color removed, and assert it with the styling stripped — a test that reads the ANSI is testing the tint, not the signal.[m
+ [m
+ A modal never gets smaller when the terminal gets bigger. `computeModalDims` takes its vertical margin off both ends, and `sizingForArea` sheds padding on a card that has no room to spare, and those two rules used to meet in the middle of ordinary window sizes: a 24-row terminal gave a full-screen card, a 25-row terminal gave an 11-row one, and a list surface opened on a split pane showed an empty box. Card height is floored, the floor rises with the padding the card carries so switching the padding on cannot cost the body a row, and compact mode sheds padding only. A card that asks for `preferredBodyRows` still shrinks to its content, so the floor gives a LIST more room without inflating a short dialog into an empty box. If you add a sizing or a chrome band, re-run `modal-shell-height-is-monotonic.test.ts`: it scans every terminal height from 8 to 120 and fails on any step DOWN, which is the only way to catch a discontinuity that lives between the sizes anyone thinks to test.[m
+ [m
+[36m@@ -188,6 +188,8 @@[m [mEvery transcript block declares its role visually, never by content alone: a pas[m
+ 3. Output: collapse large bodies; keep a one-line summary visible.[m
+ 4. MCP tools: titled `server/tool` in accent, so the origin is in the words. The `tool.mcp` marker adds a glyph only under the `nerd` and `ascii` presets; under `unicode` it is a deliberate blank.[m
+ [m
+[32m+[m[32m**A block hangs its output on a rail, not in a box.** `renderOutputBlock` draws the title on a line of its own and one thin glyph (`block.rail`, U+258F) down the left of the output, in the state's colour. Nothing sits above the title, below the last row, or to the right of anything, so a result with no body is one line where a box spent three. The rail costs the two columns the two walls cost, which is why `outputBlockContentWidth` is unchanged and every renderer that budgets rows against it counts the rows it always counted; the block is still as wide as its own widest row plus that chrome and one column of air, and a state background is a plate that size rather than a band across the screen. `tools/bash-interactive.ts` is the one renderer that keeps its own frame, deliberately: it mirrors a live PTY whose width is the terminal's.[m
+[32m+[m
+ ## Iconography[m
+ [m
+ Prefer ASCII-safe glyphs with Unicode upgrades when width is known (`theme.symbols` presets: `unicode`, `nerd`, `ascii`). Width math uses grapheme-aware helpers in `@veyyon/tui`, not byte length.[m
+[1mdiff --git a/packages/coding-agent/CHANGELOG.md b/packages/coding-agent/CHANGELOG.md[m
+[1mindex c4f39e1b3..431dfe147 100644[m
+[1m--- a/packages/coding-agent/CHANGELOG.md[m
+[1m+++ b/packages/coding-agent/CHANGELOG.md[m
+[36m@@ -27,6 +27,7 @@[m
+ - The todo reminder and the rule-injection notice are raised cards on a coloured rail, not full-width inverted slabs. Both built `new Box(1, 1, t => theme.inverse(theme.fg("warning", t)))`, which pads each row out to the terminal width and inverts it, so a note about twelve todos was a saturated mustard rectangle carrying black text from column 0 — the loudest object on a grey transcript, and the only one touching the left edge. The hue now lives in a rail glyph down the left of the block, the block is exactly as wide as its own widest line, it sits at the composer's inset, and its background is a lift off whatever ground the terminal actually reported, away from that ground's own luminance, so a paper-white terminal gets a card that darkens rather than one that glares. Inverting also spent the foreground, which is why the rule notice could only use bold and italic inside the block; it colours rule names and descriptions now. A terminal that cannot take 24-bit colour, or one whose ground nothing answered for, keeps the rail and the colours and paints no surface.[m
+ - A tool block is as wide as its own output, not as wide as the terminal. `renderOutputBlock` drew its frame from column 0 to the last column and padded every row out to meet it, so reading one line of a file produced a rectangle the width of the screen with one line of text at the left of it, and a state background painted that whole rectangle — the wall version of the slab. The block is measured against its widest line now: the frame closes after the content, a state background is a plate the size of the block rather than a band across the screen, and a header longer than the content keeps the block open wide enough to hold it. Every tool in the product draws through that one function, so all 22 renderers change together. Content still wraps at the width it always did, so a renderer that budgets rows against `outputBlockContentWidth` counts the same rows; at the terminal edge it is the block's right-hand air that is dropped, never a column of text. `bash-interactive` keeps its full-width frame, because it mirrors a live PTY whose width is the terminal's.[m
+ - A tool block hangs its output on a rail instead of sitting in a box. Hugging the box to its own ink fixed the wall and left the box: a rule with the title cut into it, a wall down each side, a rule under the last row — five glyph kinds and two whole rows of chrome around one line of output, on the most repeated object in a session. A block now draws a title line and one thin glyph down the left of the output, in the state's colour, with nothing above the title, nothing below the last row and nothing to the right of anything; a result with no body is one line where it used to be three. The rail is two columns wide, exactly what the two walls cost, so `outputBlockContentWidth` is unchanged and every renderer that budgets rows against it counts the rows it always counted, and a state background is still a plate the size of the block. `bash-interactive` keeps its own frame on purpose: that block mirrors a live PTY whose width is the terminal's, so a hugged or railed frame there would misreport the geometry the program inside it draws to.[m
+[32m+[m[32m- A settled overlay stops copying the screen once a frame. `applyModalReveal` runs on every frame an overlay is open, and it rebuilt the frame array even when the entrance had finished and there was no material to paint: same bytes, new array, every row copied, for nothing. A frame with nothing to treat is now handed back as the array it arrived as, which is also the identity the reveal suite asserts. A settled card that DOES carry a plate still gets painted, and is now asserted to be byte-stable frame to frame rather than only assert-able on a terminal that reports no truecolor.[m
+ - Every remaining hand-painted hover surface cross-fades its pointer band, so no card is left where the row under the pointer switches on. The reset-usage picker, `/move`, the extension list and the extensions dashboard's tab bar, the hook selector, the `/mcp add` wizard, the OAuth picker and the sign-in scene, the model hub's scope sidebar and roles pane, the model list embedded in the hub, the model picker, the account manager's provider sidebar, and every model panel on the settings screen all band through the same strength-aware paint now. Doing the whole set rather than the reachable half turned up two defects: a card whose host hands the repaint in through its CONSTRUCTOR rather than through `setOnRequestRender` built no fade at all, so the seam existed and the real host never reached it; and the `/mcp add` wizard banded its own selected row, which reads as two selections at once. Teardown is the other half — `/mcp add`'s wizard, the model picker, and a settings panel swapped out when a submenu steps back to its list all hand the shared clock back, so a band still travelling when Escape lands goes with the card instead of ticking against something that will never be painted again. A terminal without truecolor, or transitions off, keeps the switched band byte for byte.[m
+ - Settings → Subagents says "subagent" wherever it means a spawned worker. The tab held an `Agents` section carrying an `Agent Roster` row, an `Agent Delegation` row beside it, and a roster screen headed `Agents` whose per-agent page was headed `Agent: <name>`, so one thing wore two names on one screen. The section is `Subagents` now, the rows are `Subagent Roster` and `Subagent Delegation`, and the screens read `Subagents` and `Subagent: <name>`. No setting key changed, so nothing in a config file moves.[m
+ - `Max Nested Spawn Depth` sits in the Subagents section directly under `Subagent Roster`, not under Limits. It is the ceiling every per-subagent override inherits from, and the roster's own depth picker names it, so the blanket value and the overrides that outrank it were two sections apart with nothing on either screen saying so.[m
+[36m@@ -47,6 +48,7 @@[m
+ [m
+ ### Fixed[m
+ [m
+[32m+[m[32m- A hook field's card is as wide as the sentences it has to say. Every hook prompt is a medium ModalShell card at 60% of the terminal, and both the title and the hint chip are cut to that width: on a 100-column terminal the credential field asked for "Paste the secret value here. You can name it afte…" and promised "hidden as you type, stored encr…", losing the two statements that stop an operator answering a masked field with the secret's NAME. The card's width floor now rises to fit its own title row and its own hint row, each priced by the layout owner rather than by a second copy of the border arithmetic, so a card whose text already fits keeps the shared proportions and a terminal too narrow for the sentence still clamps to the screen instead of overflowing it.[m
+ - A turn that ends on a short answer no longer paints a screen-sized band of blank rows over the conversation. The home anchor routes viewport slack above the transcript so a young conversation hugs the composer, and it measures that slack from the composed frame — which is only ever empty room because the frame is never shorter than the window. A virtualized transcript broke that: it hands committed rows to native scrollback and dropped every one of them, so a long session measured as a short one and the anchor wrote up to 23 blank rows over 82 rows of live history, leaving a stray fence and rule floating above the HUD. The transcript now keeps a viewport's worth of committed rows in the frame, so the measurement is honest and the engine has history to re-show instead of blanks. Measured over a 24-turn session at 24 and 40 rows tall, virtualized and not: a 23-row band becomes 1 row, the conversation is on screen, the composer is on the bottom row, and the repaint count is unchanged. Guarding the routing instead — route nothing once anything has scrolled — was measured on the same session and fixes nothing: the band simply moves below the composer and strands it 18 rows off the bottom edge.[m
+ - `clampLow` from `@veyyon/utils` now does the block separator's width clamp, and the subagent settings reader uses the shared `isRecord`. Both were inline copies the shared owners exist to prevent; a non-finite width or a stored array now falls to the defined bound instead of through the guard, which no shipped path can reach today.[m
+ - The light that crosses an opening card travels its whole length instead of dying the instant the card stops growing. The sweep runs on a 520ms curve on purpose, twice the 260ms unfold, so the card is in place while the highlight is still moving across it — but the driver reported a finished sweep as soon as the unfold settled, which cut every one of them in half. Measured on a real terminal: the card arrived at t=19.550 and every pixel was static from t=19.800, 250ms of a 520ms light. The light now ends when the card is dismissed or dismounted, which is what already cancels it; a card whose unfold finished before anything read the sweep is still lit flat, since starting a fresh 520ms animation on a card that has been sitting still is a flash, not a reveal.[m
+[1mdiff --git a/packages/coding-agent/src/modes/components/modal-shell.ts b/packages/coding-agent/src/modes/components/modal-shell.ts[m
+[1mindex 1e153c677..f93e7b73c 100644[m
+[1m--- a/packages/coding-agent/src/modes/components/modal-shell.ts[m
+[1m+++ b/packages/coding-agent/src/modes/components/modal-shell.ts[m
+[36m@@ -300,6 +300,29 @@[m [mexport function computeModalDims(areaWidth: number, areaHeight: number, sizing:[m
+ 	return { modalWidth, modalHeight, leftPad, topPad, contentWidth };[m
+ }[m
+ [m
+[32m+[m[32m/** The close chip on a card's title row, and the one place its cells are counted. */[m
+[32m+[m[32mconst MODAL_CLOSE_CHIP = " [x] ";[m
+[32m+[m
+[32m+[m[32m/**[m
+[32m+[m[32m * The card width whose CONTENT row is `contentWidth` cells wide — the inverse of the[m
+[32m+[m[32m * `contentWidth` {@link computeModalDims} returns. A caller that knows how wide its widest row[m
+[32m+[m[32m * has to be raises `minWidth` to this instead of restating the border-and-padding arithmetic.[m
+[32m+[m[32m */[m
+[32m+[m[32mexport function modalWidthForContent(contentWidth: number, sizing: ModalSizing): number {[m
+[32m+[m	[32mreturn contentWidth + 2 + 2 * Math.max(1, sizing.hPad);[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m/**[m
+[32m+[m[32m * The card width whose TITLE row shows `titleWidth` cells without an ellipsis. The title row is[m
+[32m+[m[32m * not the content row: it pays for the two borders, the ember tick that replaces the leading[m
+[32m+[m[32m * rule, a space each side of the title, and the close chip. A card sized only by[m
+[32m+[m[32m * {@link modalWidthForContent} cuts the last word off its own title, which is how a credential[m
+[32m+[m[32m * prompt lost the sentence that told the operator a name comes later.[m
+[32m+[m[32m */[m
+[32m+[m[32mexport function modalWidthForTitle(titleWidth: number): number {[m
+[32m+[m	[32mreturn titleWidth + 2 + 2 + 2 + visibleWidth(MODAL_CLOSE_CHIP);[m
+[32m+[m[32m}[m
+[32m+[m
+ /** One footer chip. `clickable` marks action vs inert hint (mouse targets). */[m
+ export interface ModalShortcut {[m
+ 	/** Display text. When `keybindings` is present, the live bound keys are prepended at render time. */[m
+[36m@@ -628,7 +651,7 @@[m [mexport function renderModalShell(input: ModalShellInput): ModalShellResult {[m
+ 	const breadcrumbClickable = Boolean(input.breadcrumb && input.breadcrumbClickable);[m
+ [m
+ 	if (input.showClose !== false) {[m
+[31m-		const closePlain = " [x] ";[m
+[32m+[m		[32mconst closePlain = MODAL_CLOSE_CHIP;[m
+ 		// Close glyph is silver structure (same as the frame), not dim soup.[m
+ 		const closeStyled = theme.fg("accent", closePlain);[m
+ 		const closeW = visibleWidth(closePlain);[m
+[36m@@ -1252,6 +1275,13 @@[m [mexport function applyModalReveal([m
+ 		treated = [...lit, ...treated.slice(visibleRows)];[m
+ 	}[m
+ [m
+[32m+[m	[32m// Nothing was treated: no material to paint, settled, no sweep. The frame it was[m
+[32m+[m	[32m// handed IS the answer, and handing back the same array keeps a settled overlay off[m
+[32m+[m	[32m// the allocator entirely -- this runs on every frame the overlay is open, and a copy[m
+[32m+[m	[32m// of every row per frame is the one cost an entrance has no business charging after[m
+[32m+[m	[32m// it has finished.[m
+[32m+[m	[32mif (treated === card) return result.lines;[m
+[32m+[m
+ 	const lines = [...result.lines];[m
+ 	for (let i = 0; i < treated.length; i++) lines[cardRowStart + i] = treated[i]!;[m
+ 	return lines;[m
+[1mdiff --git a/packages/coding-agent/src/tools/eval-render.ts b/packages/coding-agent/src/tools/eval-render.ts[m
+[1mindex 4de9b5430..b0a7ce2ea 100644[m
+[1m--- a/packages/coding-agent/src/tools/eval-render.ts[m
+[1m+++ b/packages/coding-agent/src/tools/eval-render.ts[m
+[36m@@ -450,7 +450,7 @@[m [mfunction formatCellOutputLines([m
+ 	}[m
+ [m
+ 	// Cell output lands in renderCodeCell → renderOutputBlock, which re-wraps it[m
+[31m-	// at the box's inner content width. Bound the collapsed tail by VISUAL rows[m
+[32m+[m	[32m// at the block's inner content width. Bound the collapsed tail by VISUAL rows[m
+ 	// at that width so a long-line tail can't wrap into more rows than budgeted[m
+ 	// and scroll its mutating preview above the live-region window — the[m
+ 	// duplicate "ctrl+o to expand" scrollback spray.[m
+[1mdiff --git a/packages/coding-agent/src/tui/code-cell.ts b/packages/coding-agent/src/tui/code-cell.ts[m
+[1mindex 09280dd58..4f9d4e63f 100644[m
+[1m--- a/packages/coding-agent/src/tui/code-cell.ts[m
+[1m+++ b/packages/coding-agent/src/tui/code-cell.ts[m
+[36m@@ -251,7 +251,8 @@[m [mexport function renderMarkdownCell(options: MarkdownCellOptions, theme: Theme):[m
+ 	const state = getState(options.status);[m
+ [m
+ 	// Markdown component manages its own wrapping at the inner content width.[m
+[31m-	// `renderOutputBlock` adds a `│ ` prefix + `│` suffix → 3 visible columns.[m
+[32m+[m	[32m// `renderOutputBlock` spends 3 columns on the left: the rail, the space after it,[m
+[32m+[m	[32m// and one column of content padding.[m
+ 	const innerWidth = Math.max(20, width - 3);[m
+ 	const allLines = content.trim() ? new Markdown(content, 0, 0, getMarkdownTheme()).render(innerWidth) : [];[m
+ 	const maxContentLines = Math.min(allLines.length, expanded ? EXPANDED_MAX_LINES : contentMaxLines);[m
+[1mdiff --git a/packages/coding-agent/src/tui/output-block.ts b/packages/coding-agent/src/tui/output-block.ts[m
+[1mindex a29726637..c4e6221da 100644[m
+[1m--- a/packages/coding-agent/src/tui/output-block.ts[m
+[1m+++ b/packages/coding-agent/src/tui/output-block.ts[m
+[36m@@ -12,7 +12,7 @@[m [mimport {[m
+ 	wrapTextWithAnsi,[m
+ } from "@veyyon/tui";[m
+ import { SGR_BG_RESET } from "@veyyon/tui/ansi";[m
+[31m-import { clampLow } from "@veyyon/utils";[m
+[32m+[m[32mimport { clampLow } from "@veyyon/utils/math";[m
+ import type { Theme, ThemeColor } from "../modes/theme/theme";[m
+ import { getSixelLineMask } from "../utils/sixel";[m
+ import type { State } from "./types";[m
+[1mdiff --git a/packages/coding-agent/test/a-tool-block-hangs-its-output-on-a-rail-not-in-a-box.test.ts b/packages/coding-agent/test/a-tool-block-hangs-its-output-on-a-rail-not-in-a-box.test.ts[m
+[1mindex 2452a7ff6..adbdae3f9 100644[m
+[1m--- a/packages/coding-agent/test/a-tool-block-hangs-its-output-on-a-rail-not-in-a-box.test.ts[m
+[1m+++ b/packages/coding-agent/test/a-tool-block-hangs-its-output-on-a-rail-not-in-a-box.test.ts[m
+[36m@@ -30,6 +30,15 @@[m
+  * or railed frame would misreport the geometry the program inside it draws to. A second[m
+  * hand-rolled frame added elsewhere would be a second definition of what a block looks[m
+  * like, and nothing here would see it.[m
+[32m+[m[32m *[m
+[32m+[m[32m * WHAT MOVED IN HERE. This suite replaces the hug suite that preceded it[m
+[32m+[m[32m * (`a-tool-block-is-as-wide-as-its-output-not-as-wide-as-the-screen.test.ts`), which[m
+[32m+[m[32m * measured the box: its corner glyph, its right wall, and the two chrome rows it spent.[m
+[32m+[m[32m * Those assertions describe a shape the product no longer draws, so keeping them would[m
+[32m+[m[32m * have meant one of the two suites had to be wrong. The three contracts of that suite[m
+[32m+[m[32m * that outlive the box are asserted below rather than deleted with it: the block's width[m
+[32m+[m[32m * follows its own ink and grows with it, the width is the widest row plus the rail, and[m
+[32m+[m[32m * a plate changes the block's fill and nothing about its rows.[m
+  */[m
+ [m
+ import { beforeAll, describe, expect, it } from "bun:test";[m
+[36m@@ -344,6 +353,53 @@[m [mdescribe("a tool block hangs its output on a rail, not in a box", () => {[m
+ 		expect([...widths][0]!).toBeGreaterThan(visibleWidth(header));[m
+ 	});[m
+ [m
+[32m+[m	[32mit("grows with its content rather than staying pinned to the terminal", () => {[m
+[32m+[m		[32mconst short = "!".repeat(20);[m
+[32m+[m		[32mconst long = "!".repeat(60);[m
+[32m+[m		[32mconst build = (line: string): string[] =>[m
+[32m+[m			[32mplain(renderOutputBlock({ width: 200, header: "T", state: "success", sections: [{ lines: [line] }] }, theme));[m
+[32m+[m		[32m// Both blocks are content-dominated, so the whole difference between them is the[m
+[32m+[m		[32m// difference between their bodies. A block taking its width from the terminal[m
+[32m+[m		[32m// reports 0 here: that was the defect the hug closed, and the rail keeps it closed[m
+[32m+[m		[32m// because a rail with a terminal-width plate behind it is the slab again.[m
+[32m+[m		[32mexpect(visibleWidth(build(long)[0]!) - visibleWidth(build(short)[0]!)).toBe(40);[m
+[32m+[m	[32m});[m
+[32m+[m
+[32m+[m	[32mit("takes its width from its widest row plus the rail, and nothing more", () => {[m
+[32m+[m		[32mconst body = ["a", "a much longer line than the first one", "mid"];[m
+[32m+[m		[32mconst painted = plain([m
+[32m+[m			[32mrenderOutputBlock({ width: 200, header: "T", state: "success", sections: [{ lines: body }] }, theme),[m
+[32m+[m		[32m);[m
+[32m+[m		[32mconst widestInk = Math.max(...body.map(visibleWidth));[m
+[32m+[m		[32m// Four columns, the same four a box spent, made of different things: two walls,[m
+[32m+[m		[32m// a column of left padding and a column of air on the right became a rail, the[m
+[32m+[m		[32m// space after it, that same left padding, and the same column of air. The air is[m
+[32m+[m		[32m// what keeps a painted plate from being text jammed against its own edge.[m
+[32m+[m		[32mexpect(new Set(painted.map(visibleWidth))).toEqual(new Set([widestInk + 4]));[m
+[32m+[m	[32m});[m
+[32m+[m
+[32m+[m	[32mit("is the same block whether or not it is painted", async () => {[m
+[32m+[m		[32mfor (const state of await declaredStates()) {[m
+[32m+[m			[32mconst base: OutputBlockOptions = {[m
+[32m+[m				[32mwidth: 120,[m
+[32m+[m				[32mheader: "Read src/parser.ts",[m
+[32m+[m				[32mstate: state as OutputBlockOptions["state"],[m
+[32m+[m				[32msections: [{ lines: ["export function parse() {}"] }],[m
+[32m+[m			[32m};[m
+[32m+[m			[32mconst painted = plain(renderOutputBlock({ ...base, applyBg: true }, theme));[m
+[32m+[m			[32mconst bare = plain(renderOutputBlock({ ...base, applyBg: false }, theme));[m
+[32m+[m			[32m// A plate is fill that squares the block off. It moves nothing: same rows, same[m
+[32m+[m			[32m// ink, same order. The rectangle it fills to is the widest row the unpainted[m
+[32m+[m			[32m// block already had, plus the one column of air at the right.[m
+[32m+[m			[32mexpect([m
+[32m+[m				[32mpainted.map(row => row.trimEnd()),[m
+[32m+[m				[32mstate,[m
+[32m+[m			[32m).toEqual(bare.map(row => row.trimEnd()));[m
+[32m+[m			[32mexpect(new Set(painted.map(visibleWidth)).size, state).toBe(1);[m
+[32m+[m			[32mexpect(visibleWidth(painted[0]!), state).toBe(Math.max(...bare.map(visibleWidth)) + 1);[m
+[32m+[m		[32m}[m
+[32m+[m	[32m});[m
+[32m+[m
+ 	/**[m
+ 	 * A real `ToolExecutionComponent` prints the block inside its OWN frame: a blank[m
+ 	 * row above and below, a two-column gutter on the left, and every row padded out[m
+[1mdiff --git a/packages/coding-agent/test/a-tool-block-is-as-wide-as-its-output-not-as-wide-as-the-screen.test.ts b/packages/coding-agent/test/a-tool-block-is-as-wide-as-its-output-not-as-wide-as-the-screen.test.ts[m
+[1mdeleted file mode 100644[m
+[1mindex 1ec04c2e1..000000000[m
+[1m--- a/packages/coding-agent/test/a-tool-block-is-as-wide-as-its-output-not-as-wide-as-the-screen.test.ts[m
+[1m+++ /dev/null[m
+[36m@@ -1,245 +0,0 @@[m
+[31m-/**[m
+[31m- * What a tool block's frame is measured against.[m
+[31m- *[m
+[31m- * THE DEFECT. `renderOutputBlock` drew every frame at the terminal width and padded[m
+[31m- * every row out to it. A tool block is the most repeated object in a session — every[m
+[31m- * read, bash, grep, edit and task result is one — so the screen was a stack of[m
+[31m- * full-bleed rectangles whose right wall was always in the same column no matter what[m
+[31m- * was in them: a two-word result claimed the same rectangle as a hundred-line diff.[m
+[31m- * `Box.setHugContent` had already carried the reason since 2026-07-22 ("the same frame[m
+[31m- * stretched to the terminal edge reads as a wall"), and two other components had been[m
+[31m- * fixed for it; the one that draws most of the screen had not.[m
+[31m- *[m
+[31m- * THE CLASS. Any block-drawing owner that takes its width from the terminal rather[m
+[31m- * than from its own ink. That is why these tests are written against[m
+[31m- * `renderOutputBlock` — the single choke point every framed tool result passes[m
+[31m- * through — with the arithmetic asserted rather than a pinned rectangle, plus real[m
+[31m- * `ToolExecutionComponent` arms so the wiring is proven and not just the helper.[m
+[31m- *[m
+[31m- * WHAT THIS DOES NOT CATCH. A renderer that hand-rolls its own frame instead of going[m
+[31m- * through the owner. There is exactly one, `tools/bash-interactive.ts`, and it is[m
+[31m- * deliberate: that block mirrors a live PTY, whose width IS the terminal's, so a[m
+[31m- * hugged frame would misreport the geometry the program inside it is drawing to. A[m
+[31m- * second hand-rolled frame added elsewhere would be a second definition of what a[m
+[31m- * block looks like, and nothing here would see it.[m
+[31m- */[m
+[31m-[m
+[31m-import { beforeAll, describe, expect, it } from "bun:test";[m
+[31m-import * as fs from "node:fs/promises";[m
+[31m-import * as path from "node:path";[m
+[31m-import { stripVTControlCharacters } from "node:util";[m
+[31m-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";[m
+[31m-import {[m
+[31m-	type OutputBlockOptions,[m
+[31m-	outputBlockContentWidth,[m
+[31m-	renderOutputBlock,[m
+[31m-} from "@veyyon/coding-agent/tui/output-block";[m
+[31m-import { type TUI, visibleWidth, wrapTextWithAnsi } from "@veyyon/tui";[m
+[31m-import { createToolExecution } from "./helpers/tool-execution";[m
+[31m-[m
+[31m-const ui = { requestRender: () => {}, requestComponentRender: () => {} } as unknown as TUI;[m
+[31m-[m
+[31m-const SRC = path.join(import.meta.dirname, "..", "src");[m
+[31m-[m
+[31m-/** Rows with every escape sequence removed, so widths are ink and not bytes. */[m
+[31m-function plain(lines: readonly string[]): string[] {[m
+[31m-	return lines.map(line => stripVTControlCharacters(line));[m
+[31m-}[m
+[31m-[m
+[31m-/**[m
+[31m- * The states a block can be in, read out of the declaration at run time. A state[m
+[31m- * added to `State` and not to this sweep would otherwise be the one member whose[m
+[31m- * background nobody checked.[m
+[31m- */[m
+[31m-async function declaredStates(): Promise<string[]> {[m
+[31m-	const text = await fs.readFile(path.join(SRC, "tui", "types.ts"), "utf8");[m
+[31m-	const declaration = /export type State\s*=([^;]+);/.exec(text);[m
+[31m-	if (!declaration) throw new Error("State is no longer an exported type alias in src/tui/types.ts");[m
+[31m-	const members = [...declaration[1].matchAll(/"([^"]+)"/g)].map(m => m[1]!);[m
+[31m-	if (members.length === 0) throw new Error("State declares no string members");[m
+[31m-	return members;[m
+[31m-}[m
+[31m-[m
+[31m-/** The shapes a block is built in, so no arm of the layout escapes the measurement. */[m
+[31m-const SHAPES: ReadonlyArray<{ name: string; build: (width: number) => OutputBlockOptions }> = [[m
+[31m-	{[m
+[31m-		name: "a header and one short line",[m
+[31m-		build: width => ({ width, header: "Read src/parser.ts", sections: [{ lines: ["export function parse() {}"] }] }),[m
+[31m-	},[m
+[31m-	{[m
+[31m-		name: "a header with meta",[m
+[31m-		build: width => ({ width, header: "Read", headerMeta: "src/parser.ts", sections: [{ lines: ["ok"] }] }),[m
+[31m-	},[m
+[31m-	{[m
+[31m-		name: "no header at all",[m
+[31m-		build: width => ({ width, sections: [{ lines: ["$ npm run migrate:up"] }] }),[m
+[31m-	},[m
+[31m-	{[m
+[31m-		name: "a labelled section",[m
+[31m-		build: width => ({[m
+[31m-			width,[m
+[31m-			header: "bash",[m
+[31m-			sections: [{ lines: ["$ ls"] }, { label: "Output", lines: ["a.ts", "b.ts"] }],[m
+[31m-		}),[m
+[31m-	},[m
+[31m-	{[m
+[31m-		name: "a plain separator between sections",[m
+[31m-		build: width => ({[m
+[31m-			width,[m
+[31m-			header: "bash",[m
+[31m-			sections: [{ lines: ["$ ls"] }, { separator: true, lines: ["a.ts"] }],[m
+[31m-		}),[m
+[31m-	},[m
+[31m-	{[m
+[31m-		name: "a header longer than its body",[m
+[31m-		build: width => ({[m
+[31m-			width,[m
+[31m-			header: "Read a/very/long/path/that/is/wider/than/the/body.ts",[m
+[31m-			sections: [{ lines: ["x"] }],[m
+[31m-		}),[m
+[31m-	},[m
+[31m-	{[m
+[31m-		name: "no content at all",[m
+[31m-		build: width => ({ width, header: "Read src/parser.ts" }),[m
+[31m-	},[m
+[31m-	{[m
+[31m-		name: "two columns of left padding",[m
+[31m-		build: width => ({ width, header: "Read", contentPaddingLeft: 2, sections: [{ lines: ["ok"] }] }),[m
+[31m-	},[m
+[31m-	{[m
+[31m-		name: "no left padding",[m
+[31m-		build: width => ({ width, header: "Read", contentPaddingLeft: 0, sections: [{ lines: ["ok"] }] }),[m
+[31m-	},[m
+[31m-];[m
+[31m-[m
+[31m-/** The one glyph that says a block drew a frame, in the theme's own alphabet. */[m
+[31m-function frameGlyph(): string {[m
+[31m-	return theme.boxSharp.topLeft;[m
+[31m-}[m
+[31m-[m
+[31m-describe("a tool block is as wide as its output, not as wide as the screen", () => {[m
+[31m-	beforeAll(async () => {[m
+[31m-		await initTheme();[m
+[31m-	});[m
+[31m-[m
+[31m-	it.each(SHAPES.map(shape => [shape.name, shape] as const))("%s draws one rectangle", (_name, shape) => {[m
+[31m-		const lines = plain(renderOutputBlock(shape.build(120), theme));[m
+[31m-		const widths = new Set(lines.map(visibleWidth));[m
+[31m-		expect(widths.size).toBe(1);[m
+[31m-	});[m
+[31m-[m
+[31m-	it.each(SHAPES.map(shape => [shape.name, shape] as const))("%s stops well short of the terminal", (_name, shape) => {[m
+[31m-		const lines = plain(renderOutputBlock(shape.build(120), theme));[m
+[31m-		// Not merely "at most the terminal": a wall also satisfies that. The block has[m
+[31m-		// to be narrower than the screen it is standing on, by the margin its own text[m
+[31m-		// leaves, and the widest shape here is nowhere near 120 columns.[m
+[31m-		expect(visibleWidth(lines[0]!)).toBeLessThan(100);[m
+[31m-		expect(lines[0]!).toStartWith(frameGlyph());[m
+[31m-	});[m
+[31m-[m
+[31m-	it("takes its width from its widest row, plus its own chrome and one column of air", () => {[m
+[31m-		const body = ["a", "a much longer line than the first one", "mid"];[m
+[31m-		const lines = plain(renderOutputBlock({ width: 200, header: "T", sections: [{ lines: body }] }, theme));[m
+[31m-		const widestInk = Math.max(...body.map(visibleWidth));[m
+[31m-		// Two walls, one column of left padding, one column of air before the right wall.[m
+[31m-		expect(visibleWidth(lines[0]!)).toBe(widestInk + 4);[m
+[31m-	});[m
+[31m-[m
+[31m-	it("keeps a header longer than its body whole, with a rule after it", () => {[m
+[31m-		const header = "Read a/very/long/path/that/is/wider/than/the/body.ts";[m
+[31m-		const lines = plain(renderOutputBlock({ width: 200, header, sections: [{ lines: ["x"] }] }, theme));[m
+[31m-		// The label is the widest thing in the block, so the block is built around it: the[m
+[31m-		// whole path is on screen and the rule still runs to the corner. A block sized off[m
+[31m-		// its body alone truncates the one row that says which file this is.[m
+[31m-		expect(lines[0]!).toContain(header);[m
+[31m-		const tail = theme.boxSharp.horizontal.repeat(3) + theme.boxSharp.topRight;[m
+[31m-		expect(lines[0]!).toEndWith(tail);[m
+[31m-	});[m
+[31m-[m
+[31m-	it("grows with its content rather than staying pinned to the frame", () => {[m
+[31m-		const short = "!".repeat(20);[m
+[31m-		const long = "!".repeat(60);[m
+[31m-		const narrow = plain(renderOutputBlock({ width: 200, header: "T", sections: [{ lines: [short] }] }, theme));[m
+[31m-		const wide = plain(renderOutputBlock({ width: 200, header: "T", sections: [{ lines: [long] }] }, theme));[m
+[31m-		// Both blocks are content-dominated, so the whole difference between them is the[m
+[31m-		// difference between their bodies. A frame taken from the terminal would report 0.[m
+[31m-		expect(visibleWidth(wide[0]!) - visibleWidth(narrow[0]!)).toBe(40);[m
+[31m-	});[m
+[31m-[m
+[31m-	it("never reaches past the terminal, even when a line fills every column it was wrapped to", () => {[m
+[31m-		const width = 40;[m
+[31m-		const line = "x".repeat(outputBlockContentWidth(width));[m
+[31m-		const lines = plain(renderOutputBlock({ width, header: "T", sections: [{ lines: [line] }] }, theme));[m
+[31m-		for (const row of lines) expect(visibleWidth(row)).toBeLessThanOrEqual(width);[m
+[31m-		// And it really did use the room: the air is what gets dropped at the edge, not[m
+[31m-		// a column of the content.[m
+[31m-		expect(visibleWidth(lines[0]!)).toBe(width);[m
+[31m-	});[m
+[31m-[m
+[31m-	it("wraps its body at the width a renderer budgets rows against, not at the hugged width", () => {[m
+[31m-		const width = 40;[m
+[31m-		const contentWidth = outputBlockContentWidth(width);[m
