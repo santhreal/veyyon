@@ -32,7 +32,7 @@ td.sha { font-family: ui-monospace, monospace; color: #e6c08a; white-space: nowr
 </style></head>
 <body>
 <h1>feat/ui-polish — recorded proof</h1>
-<p class="lede">Branch <code>feat/ui-polish</code> at <code>555a4e2ea</code>, 89 commits ahead of
+<p class="lede">Branch <code>feat/ui-polish</code> at <code>de1d15a08</code>, 98 commits ahead of
 <code>main</code> (<code>5ce31890e</code>). Every figure below is a frame of a real terminal running the shipped
 CLI. No component was drawn into a picture for this page, and nothing here is a tmux capture.</p>
 
@@ -161,7 +161,7 @@ afterwards rather than screenshotted mid-motion.</p>
 <p>The resumed arm carries one cost the control does not, and it is model-side rather than renderer-side: a history that large does not fit a 65k window, so the app compacts before it can ask anything, and says so on screen while it does. That is the 1.5B summarizing on CPU, not a frame being repainted.</p>
 
 <h2>Every commit on the branch, on camera</h2>
-<p>87 of the 89 commits are below, one recording each. Every video is a real terminal in the recording
+<p>90 of the 98 commits are below, one recording each. Every video is a real terminal in the recording
 container: <code>proof/docker/record-commit-arm.sh</code> extracts the commit's tree and its parent's tree with
 <code>git archive</code>, mounts the same <code>node_modules</code> and the same native addon into both, and runs
 the same command in each. A test the commit ADDS is copied into the parent tree first, so the test is
@@ -176,6 +176,15 @@ a video is the text of the same command run again headlessly by
 rather than writing lines to a pipe, and the video is the only place its output exists.</p>
 <table><thead><tr><th>commit</th><th>subject</th></tr></thead>
 <tbody>
+<tr><td class="sha">de1d15a08</td><td>proof(commits): a before arm keeps the commit's harness, not only its tests <em>— carries this page and its videos; filming it means filming the film</em></td></tr>
+<tr><td class="sha">d64dd67be</td><td>fix(simulations): a scripted payload is prose, not the loop the guard aborts <em>— carries this page and its videos; filming it means filming the film</em></td></tr>
+<tr><td class="sha"><a href="#c-880794c05">880794c05</a></td><td>demo(band): say what the real-terminal arm actually shows</td></tr>
+<tr><td class="sha"><a href="#c-8baebe34e">8baebe34e</a></td><td>fix(tui): the frame length is the invariant, not the fill routing</td></tr>
+<tr><td class="sha"><a href="#c-161922a84">161922a84</a></td><td>fix(tui): a short turn no longer paints a blank band over the conversation</td></tr>
+<tr><td class="sha">71c6bbf02</td><td>polish(tui): a tool block is as wide as its output, not as wide as the screen <em>— carries this page and its videos; filming it means filming the film</em></td></tr>
+<tr><td class="sha">2a53f6448</td><td>test(prompt): pin that the grant sweep reads both kinds of prompt <em>— carries this page and its videos; filming it means filming the film</em></td></tr>
+<tr><td class="sha">5b295c050</td><td>fix(prompt): no prompt claims a permission the user did not give <em>— carries this page and its videos; filming it means filming the film</em></td></tr>
+<tr><td class="sha">b96ab24d2</td><td>proof(transcript): the note's two chromes, same text, both grounds <em>— carries this page and its videos; filming it means filming the film</em></td></tr>
 <tr><td class="sha">555a4e2ea</td><td>polish(transcript): a note is a raised card on a rail, not an inverted slab <em>— carries this page and its videos; filming it means filming the film</em></td></tr>
 <tr><td class="sha">8db5bb3a3</td><td>proof(ui-polish): the material and the light, on camera, per commit <em>— carries this page and its videos; filming it means filming the film</em></td></tr>
 <tr><td class="sha"><a href="#c-38fa0e836">38fa0e836</a></td><td>fix(overlays): the light crosses the whole card, not just the unfold</td></tr>
@@ -267,7 +276,7 @@ rather than writing lines to a pipe, and the video is the only place its output 
 <tr><td class="sha"><a href="#c-766ee5a26">766ee5a26</a></td><td>fix(coding-agent): duplicate of main's compaction-tier and bundle-decoupling fixes</td></tr>
 </tbody></table>
 
-<p><strong>51</strong> of the 59 commits that carry tests fail against their parent's source and pass against their own — the test byte-identical in both trees, so nothing but the commit moved. On 1 more the parent tree cannot load the test at all, which is a harder differential than a failing assertion rather than a softer one. <strong>7</strong> pass on both arms, which is what a commit that only adds a test, or duplicates a fix already on main, is supposed to do. The rest of the branch is 4 renderer rows and 24 rows that ship nothing a terminal can execute.</p>
+<p><strong>52</strong> of the 61 commits that carry tests fail against their parent's source and pass against their own — the test byte-identical in both trees, so nothing but the commit moved. On 1 more the parent tree cannot load the test at all, which is a harder differential than a failing assertion rather than a softer one. <strong>8</strong> pass on both arms, which is what a commit that only adds a test, or duplicates a fix already on main, is supposed to do. The rest of the branch is 4 renderer rows and 25 rows that ship nothing a terminal can execute.</p>
 <h3 id="c-766ee5a26"><code>766ee5a26</code> — fix(coding-agent): duplicate of main's compaction-tier and bundle-decoupling fixes</h3>
 <p class="lede">Same terminal, same command, two source trees: its own tests, <code>packages/coding-agent/test/descriptor-placement-model-switch.test.ts packages/coding-agent/test/model-registry.test.ts</code>.</p>
 <div class="pair"><figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/commits/766ee5a26-before.mp4#t=1" type="video/mp4"></video><figcaption><strong>parent</strong> — 82 pass · 0 fail · 3600 expect() calls · Ran 82 tests across 2 files. [3.65s]</figcaption></figure><figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/commits/766ee5a26-after.mp4#t=1" type="video/mp4"></video><figcaption><strong>this commit</strong> — 82 pass · 0 fail · 3600 expect() calls · Ran 82 tests across 2 files. [3.70s]</figcaption></figure></div>
@@ -529,4 +538,13 @@ rather than writing lines to a pipe, and the video is the only place its output 
 <h3 id="c-38fa0e836"><code>38fa0e836</code> — fix(overlays): the light crosses the whole card, not just the unfold</h3>
 <p class="lede">Ships nothing a terminal can run: the video is the diff.</p>
 <figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/commits/38fa0e836-after.mp4#t=1" type="video/mp4"></video><figcaption>the change itself, paged in the terminal</figcaption></figure>
+<h3 id="c-161922a84"><code>161922a84</code> — fix(tui): a short turn no longer paints a blank band over the conversation</h3>
+<p class="lede">Same terminal, same command, two source trees: its own tests, <code>packages/simulations/src/paint-sim/a-turn-that-ends-short-never-paints-a-blank-band-over-the-conversation.test.ts</code>.</p>
+<div class="pair"><figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/commits/161922a84-before.mp4#t=1" type="video/mp4"></video><figcaption><strong>parent</strong> — 11 pass · 5 fail · 59 expect() calls · Ran 16 tests across 1 file. [22.28s]</figcaption></figure><figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/commits/161922a84-after.mp4#t=1" type="video/mp4"></video><figcaption><strong>this commit</strong> — 16 pass · 0 fail · 71 expect() calls · Ran 16 tests across 1 file. [20.70s]</figcaption></figure></div>
+<h3 id="c-8baebe34e"><code>8baebe34e</code> — fix(tui): the frame length is the invariant, not the fill routing</h3>
+<p class="lede">Same terminal, same command, two source trees: its own tests, <code>packages/coding-agent/test/modes/controllers/a-taller-terminal-still-hugs-the-composer-to-the-bottom.test.ts</code>.</p>
+<div class="pair"><figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/commits/8baebe34e-before.mp4#t=1" type="video/mp4"></video><figcaption><strong>parent</strong> — 4 pass · 0 fail · 12 expect() calls · Ran 4 tests across 1 file. [1.56s]</figcaption></figure><figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/commits/8baebe34e-after.mp4#t=1" type="video/mp4"></video><figcaption><strong>this commit</strong> — 4 pass · 0 fail · 12 expect() calls · Ran 4 tests across 1 file. [1498.00ms]</figcaption></figure></div>
+<h3 id="c-880794c05"><code>880794c05</code> — demo(band): say what the real-terminal arm actually shows</h3>
+<p class="lede">Ships nothing a terminal can run: the video is the diff.</p>
+<figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/commits/880794c05-after.mp4#t=1" type="video/mp4"></video><figcaption>the change itself, paged in the terminal</figcaption></figure>
 </body></html>
