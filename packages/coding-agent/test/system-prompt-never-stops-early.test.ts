@@ -62,7 +62,7 @@ describe("the composed prompt forbids stopping with work left", () => {
 	it.each([
 		["no-partial-yield", NO_PARTIAL_YIELD],
 		["no-punting", "- NEVER punt half-solved work back."],
-		["verification-source", "- Tool results are THE verification."],
+		["verification-source", "Tool results are THE verification."],
 		["never-stop-early", NEVER_STOP_EARLY],
 	])("carries %s verbatim at a reduced tool set", async (_id, sentence) => {
 		expect(await blockZero(MINIMAL_TOOLS)).toContain(sentence);

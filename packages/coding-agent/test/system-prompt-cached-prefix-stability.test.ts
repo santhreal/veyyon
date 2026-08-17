@@ -85,6 +85,20 @@ describe("the cacheable prefix does not move without somebody saying so", () => 
 		const blockZero = systemPrompt[0] as string;
 
 		expect({ sha: sha(blockZero), length: blockZero.length }).toEqual({
+			// Updated 2026-08-16, deliberately: `3a000fddb2eb6620` / 10_515 ->
+			// `868374d0fd2969de` / 9_469 (−1_046).
+			//
+			// WHAT THE −1_046 IS. Duplicate always-on prose left block 0. Exploration
+			// no longer restates Specialized Tools as "use grep/glob to…"; implement
+			// no longer says "Grep instead of guessing"; verification-source is one
+			// clause on `<critical>` instead of its own XML block; completeness no
+			// longer restates contract's don't-shrink-the-ask; cleanup is one
+			// paragraph; internal URL schemes dropped their query-flag grammars; the
+			// default personality dropped Reasoning Format / Succinct Patterns. The
+			// two early-stop sentences stay (this fixture still ends in
+			// `<never-stop-early>`). Personality is in this fixture, so that cut is
+			// in the number.
+			//
 			// Updated 2026-08-16, deliberately: `562a3940c0412e3a` / 11_160 ->
 			// `3a000fddb2eb6620` / 10_515 (−645).
 			//
@@ -172,8 +186,8 @@ describe("the cacheable prefix does not move without somebody saying so", () => 
 			//
 			// The one-time cost this gate exists to surface is real and was accepted:
 			// every conversation re-reads its prefix once after the release.
-			sha: "3a000fddb2eb6620",
-			length: 10_515,
+			sha: "868374d0fd2969de",
+			length: 9_469,
 		});
 	});
 
