@@ -460,16 +460,16 @@ describe("vibe session registry", () => {
 	});
 
 	/**
-	 * The retired layer, asserted rather than described.
+	 * The lane layer, asserted rather than described.
 	 *
-	 * `subagent.agents.<name>.model` and `.thinkingLevel` used to decide here and
-	 * ranked above the blanket settings, so an operator who changed the subagent
-	 * model watched the Agents table win. A leftover row must now decide NOTHING:
-	 * the worker takes the blanket values, and the row governs only whether the
-	 * lane is offered at all. Without this case the retired fields could quietly
-	 * come back and only the spawn path would know.
+	 * `subagent.agents.<name>.model` and `.thinkingLevel` are the highest-precedence
+	 * layer, above the blanket settings the case before this one pins, so a row
+	 * written for one agent decides what THAT agent runs and leaves every other
+	 * agent on the blanket pair. The vibe path resolves through the same layers as
+	 * a spawn, and it is the path that would keep the old order longest if the two
+	 * ever drifted, which is why the precedence is asserted here too.
 	 */
-	it("lets a leftover per-agent model and effort row decide nothing", async () => {
+	it("lets a per-agent row outrank the blanket model and effort", async () => {
 		const spy = vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
 			AgentRegistry.global().register({
 				id: options.id,
@@ -486,10 +486,10 @@ describe("vibe session registry", () => {
 			cwd: "/tmp",
 			hasUI: false,
 			settings: Settings.isolated({
-				// The retired row asks for one model and effort; the blanket settings ask
-				// for another. The blanket pair is what must reach the executor.
+				// The row asks for one model and effort; the blanket settings ask for
+				// another. The row is the pair that must reach the executor.
 				"subagent.agents": {
-					sonic: { enabled: true, model: "anthropic/claude-retired", thinkingLevel: "minimal" },
+					sonic: { enabled: true, model: "anthropic/claude-sonnet-4-5", thinkingLevel: "minimal" },
 				},
 				"subagent.model": "openai/gpt-5.2-codex",
 				"subagent.thinkingLevel": "xhigh",
@@ -501,13 +501,13 @@ describe("vibe session registry", () => {
 
 		const { jobId } = await VibeSessionRegistry.global().spawn(session, {
 			cli: "fast",
-			name: "LeftoverRowVibe",
-			prompt: "Ignore the retired row.",
+			name: "LaneRowVibe",
+			prompt: "Take the row that names you.",
 		});
 		await manager.getJob(jobId)?.promise;
 
-		expect(spy.mock.calls[0]?.[0]?.modelOverride).toEqual(["openai/gpt-5.2-codex"]);
-		expect(spy.mock.calls[0]?.[0]?.thinkingLevel).toBe(ThinkingLevel.XHigh);
+		expect(spy.mock.calls[0]?.[0]?.modelOverride).toEqual(["anthropic/claude-sonnet-4-5"]);
+		expect(spy.mock.calls[0]?.[0]?.thinkingLevel).toBe(ThinkingLevel.Minimal);
 	});
 
 	it("spawn returns immediately and self-delivers a turn result with activity trace + response", async () => {
