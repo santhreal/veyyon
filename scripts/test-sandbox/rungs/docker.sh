@@ -57,6 +57,12 @@ run_docker() {
 
 	local -a mount_args=(--mount "type=bind,src=${REPO_ROOT},dst=${GUEST_REPO}")
 	[ "$repo_mode" = ro ] && mount_args=(--mount "type=bind,src=${REPO_ROOT},dst=${GUEST_REPO},readonly")
+	# A linked worktree's `.git` points at an absolute path outside the repo bind, so
+	# it is mounted at that same path or the pointer resolves to nothing. Read-only:
+	# the suites read HEAD and committed blobs, and nothing in a test may rewrite the
+	# operator's history. Empty on a checkout that owns its own `.git`.
+	[ -n "${SANDBOX_GITDIR:-}" ] &&
+		mount_args+=(--mount "type=bind,src=${SANDBOX_GITDIR},dst=${SANDBOX_GITDIR},readonly")
 
 	local -a tty_args=()
 	[ -t 0 ] && [ -t 1 ] && tty_args=(-it)
