@@ -55,9 +55,9 @@ describe("tool block honesty about calls that never ran", () => {
 		const sealedRows = rows(sealed);
 
 		expect(runningRows).toEqual([
-			"  ┌──────────────────────────────────────────────────────────────────────────┐",
-			"  │ $ npm run migrate:up                                                     │",
-			"  └──────────────────────────────────────────────────────────────────────────┘",
+			"  ┌──────────────────────┐",
+			"  │ $ npm run migrate:up │",
+			"  └──────────────────────┘",
 		]);
 		expect(sealedRows).toEqual([
 			...runningRows,
@@ -99,9 +99,9 @@ describe("tool block honesty about calls that never ran", () => {
 		});
 
 		expect(rows(block)).toEqual([
-			"  ┌──────────────────────────────────────────────────────────────────────────┐",
-			"  │ $ npm run migrate:up                                                     │",
-			"  └──────────────────────────────────────────────────────────────────────────┘",
+			"  ┌──────────────────────┐",
+			"  │ $ npm run migrate:up │",
+			"  └──────────────────────┘",
 			...expectedRows,
 		]);
 	});
@@ -133,9 +133,9 @@ describe("tool block honesty about calls that never ran", () => {
 		});
 
 		expect(rows(ledgerBearing)).toEqual([
-			"  ┌──────────────────────────────────────────────────────────────────────────┐",
-			"  │ $ npm run migrate:up                                                     │",
-			"  └──────────────────────────────────────────────────────────────────────────┘",
+			"  ┌──────────────────────┐",
+			"  │ $ npm run migrate:up │",
+			"  └──────────────────────┘",
 			"  ! not executed: the provider stream failed before this call ran: OpenAI",
 			"  completions stream stalled",
 		]);
@@ -154,9 +154,9 @@ describe("tool block honesty about calls that never ran", () => {
 		});
 
 		expect(rows(sibling)).toEqual([
-			"  ┌──────────────────────────────────────────────────────────────────────────┐",
-			"  │ $ npm run migrate:up                                                     │",
-			"  └──────────────────────────────────────────────────────────────────────────┘",
+			"  ┌──────────────────────┐",
+			"  │ $ npm run migrate:up │",
+			"  └──────────────────────┘",
 			"  ! not executed: the provider stream failed before this call ran",
 		]);
 	});
@@ -174,20 +174,20 @@ describe("tool block honesty about calls that never ran", () => {
 		[
 			false,
 			[
-				"  ┌──────────────────────────────────────────────────────────────────────────┐",
-				"  │ $ npm run migrate:up                                                     │",
-				"  └──────────────────────────────────────────────────────────────────────────┘",
+				"  ┌──────────────────────┐",
+				"  │ $ npm run migrate:up │",
+				"  └──────────────────────┘",
 				"  ! not executed: an interrupt cut the batch short before this call ran",
 			],
 		],
 		[
 			true,
 			[
-				"  ┌─── ✗ failed ─────────────────────────────────────────────────────────────┐",
-				"  │ $ npm run migrate:up                                                     │",
-				"  ├─── Output ───────────────────────────────────────────────────────────────┤",
-				"  │ dropped table users                                                      │",
-				"  └──────────────────────────────────────────────────────────────────────────┘",
+				"  ┌─── ✗ failed ─────────┐",
+				"  │ $ npm run migrate:up │",
+				"  ├─── Output ───────────┤",
+				"  │ dropped table users  │",
+				"  └──────────────────────┘",
 				"  ! cut off while running: side effects may be partial",
 			],
 		],
@@ -218,12 +218,12 @@ describe("tool block honesty about calls that never ran", () => {
 		});
 
 		expect(rows(block)).toEqual([
-			"  ┌─── ✗ failed ─────────────────────────────────────────────────────────────┐",
-			"  │ $ npm run migrate:up                                                     │",
-			"  ├─── Output ───────────────────────────────────────────────────────────────┤",
-			"  │ exit 1: relation already exists                                          │",
-			"  │ ⟦Exit: 1⟧                                                                │",
-			"  └──────────────────────────────────────────────────────────────────────────┘",
+			"  ┌─── ✗ failed ────────────────────┐",
+			"  │ $ npm run migrate:up            │",
+			"  ├─── Output ──────────────────────┤",
+			"  │ exit 1: relation already exists │",
+			"  │ ⟦Exit: 1⟧                       │",
+			"  └─────────────────────────────────┘",
 		]);
 	});
 
@@ -239,11 +239,11 @@ describe("tool block honesty about calls that never ran", () => {
 		block.seal();
 
 		expect(rows(block)).toEqual([
-			"  ┌──────────────────────────────────────────────────────────────────────────┐",
-			"  │ $ npm run migrate:up                                                     │",
-			"  ├─── Output ───────────────────────────────────────────────────────────────┤",
-			"  │ migrated 3 tables                                                        │",
-			"  └──────────────────────────────────────────────────────────────────────────┘",
+			"  ┌──────────────────────┐",
+			"  │ $ npm run migrate:up │",
+			"  ├─── Output ───────────┤",
+			"  │ migrated 3 tables    │",
+			"  └──────────────────────┘",
 		]);
 	});
 });

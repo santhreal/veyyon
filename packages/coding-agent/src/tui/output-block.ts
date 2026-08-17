@@ -136,8 +136,7 @@ export function renderOutputBlock(options: OutputBlockOptions, theme: Theme): st
 			}
 			const wrappedLines = wrapTextWithAnsi(line.trimEnd(), contentWidth);
 			for (const wrappedLine of wrappedLines) {
-				const innerPadding = padding(Math.max(0, contentWidth - visibleWidth(wrappedLine)));
-				rows.push({ kind: "content", inner: `${wrappedLine}${innerPadding}` });
+				rows.push({ kind: "content", inner: wrappedLine });
 			}
 		}
 	}
@@ -146,23 +145,51 @@ export function renderOutputBlock(options: OutputBlockOptions, theme: Theme): st
 
 	const H = rows.length;
 
+	// The width the frame is actually drawn at: the widest thing in the block plus its
+	// own chrome, never the terminal. A frame stretched to the terminal edge reads as a
+	// wall rather than as a block, and a tool block is the most repeated object in a
+	// session, so the wall was on screen more often than anything else. Content is
+	// still WRAPPED at `contentWidth`, which is derived from the outer width: a
+	// renderer budgeting rows against `outputBlockContentWidth` counts the same rows it
+	// counted before.
+	const chromeWidth = visibleWidth(v) * 2 + contentPaddingLeft;
+	// One column of air before the right wall, so a block is not text jammed against a
+	// border, and three cells of rule after the longest header, so a bar always reads as
+	// a rule with a label on it rather than as a label with a corner stuck to it. Both
+	// are wants, not needs: at the terminal width the air is what gets dropped, which is
+	// also the only way a content line can be as wide as it was wrapped to.
+	let blockWidth = 0;
+	for (const row of rows) {
+		if (row.kind === "content") {
+			blockWidth = Math.max(blockWidth, visibleWidth(row.inner) + chromeWidth + 1);
+			continue;
+		}
+		if (row.kind === "sixel") continue;
+		const label = row.kind === "bar" ? [row.label, row.meta].filter(Boolean).join(theme.sep.dot) : "";
+		const bar =
+			visibleWidth(`${row.leftChar}${cap}${cap}${row.rightChar}`) + (label ? visibleWidth(` ${label} `) : 0);
+		blockWidth = Math.max(blockWidth, bar);
+	}
+	blockWidth = Math.min(lineWidth, blockWidth);
+	const innerWidth = Math.max(0, blockWidth - chromeWidth);
+
 	const renderBar = (row: { leftChar: string; rightChar: string; label?: string; meta?: string }): string => {
 		const leftGlyphs = `${row.leftChar}${cap}`;
 		const rightGlyph = row.rightChar;
-		if (lineWidth <= 0) return border(leftGlyphs) + border(rightGlyph);
+		if (blockWidth <= 0) return border(leftGlyphs) + border(rightGlyph);
 		const labelText = [row.label, row.meta].filter(Boolean).join(theme.sep.dot);
 		if (!labelText) {
 			// No header: draw a clean, continuous top/separator bar (no 1-col gap).
-			const fillCount = Math.max(0, lineWidth - visibleWidth(leftGlyphs) - visibleWidth(rightGlyph));
+			const fillCount = Math.max(0, blockWidth - visibleWidth(leftGlyphs) - visibleWidth(rightGlyph));
 			return `${border(leftGlyphs)}${border(h.repeat(fillCount))}${border(rightGlyph)}`;
 		}
 		const rawLabel = ` ${labelText} `;
 		const leftWidth = visibleWidth(leftGlyphs);
 		const rightWidth = visibleWidth(rightGlyph);
-		const maxLabelWidth = Math.max(0, lineWidth - leftWidth - rightWidth);
+		const maxLabelWidth = Math.max(0, blockWidth - leftWidth - rightWidth);
 		const trimmedLabel = truncateToWidth(rawLabel, maxLabelWidth);
 		const labelWidth = visibleWidth(trimmedLabel);
-		const fillCount = Math.max(0, lineWidth - leftWidth - labelWidth - rightWidth);
+		const fillCount = Math.max(0, blockWidth - leftWidth - labelWidth - rightWidth);
 		const fillGlyphs = h.repeat(fillCount);
 		return `${border(leftGlyphs)}${trimmedLabel}${border(fillGlyphs)}${border(rightGlyph)}`;
 	};
@@ -170,12 +197,15 @@ export function renderOutputBlock(options: OutputBlockOptions, theme: Theme): st
 	const renderBottom = (row: { leftChar: string; rightChar: string }): string => {
 		const leftGlyphs = `${row.leftChar}${cap}`;
 		const rightGlyph = row.rightChar;
-		const fillCount = Math.max(0, lineWidth - visibleWidth(leftGlyphs) - visibleWidth(rightGlyph));
+		const fillCount = Math.max(0, blockWidth - visibleWidth(leftGlyphs) - visibleWidth(rightGlyph));
 		const fillGlyphs = h.repeat(fillCount);
 		return `${border(leftGlyphs)}${border(fillGlyphs)}${border(rightGlyph)}`;
 	};
 
-	const renderContent = (inner: string): string => `${border(v)}${contentLeftPadding}${inner}${border(v)}`;
+	const renderContent = (inner: string): string => {
+		const pad = padding(Math.max(0, innerWidth - visibleWidth(inner)));
+		return `${border(v)}${contentLeftPadding}${inner}${pad}${border(v)}`;
+	};
 
 	const lines: string[] = [];
 	for (let r = 0; r < H; r++) {
@@ -186,7 +216,7 @@ export function renderOutputBlock(options: OutputBlockOptions, theme: Theme): st
 		}
 		const line =
 			row.kind === "bar" ? renderBar(row) : row.kind === "bottom" ? renderBottom(row) : renderContent(row.inner);
-		lines.push(padToWidth(line, lineWidth, bgFn));
+		lines.push(padToWidth(line, blockWidth, bgFn));
 	}
 
 	return lines;
