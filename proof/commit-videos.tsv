@@ -87,3 +87,5 @@ e244a33d7	test	170	./packages/coding-agent/test/modes/components/a-virtualized-t
 74195a042	test	130	./packages/tui/test/chrome-taller-than-the-viewport-never-reaches-native-scrollback.test.ts	fix(tui): chrome is painted, never committed
 6582723f9	diff	45		proof(ui-polish): the capture set the page is built from
 92a895e36	diff	45		proof(tooling): the vhs capture wrapper and the flicker probes
+e414827fc	diff	45		proof(tooling): record every commit on this branch, both arms, in a real terminal
+b88806395	diff	45		proof(ui-polish): 140 videos, one arm per commit, and the page that plays them
