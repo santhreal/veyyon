@@ -35,15 +35,15 @@ export const CONTEXT_SETTINGS = {
 	// side. Unrelated to `compaction.remoteEndpoint`, which is an
 	// operator-configured external summarizer and shares nothing but the word.
 	//
-	// It applies when the SESSION model is on the OpenAI Responses API family
-	// (`openai-responses` or `azure-openai-responses`, so Azure OpenAI
-	// Responses deployments are included) AND that model's row reports
+	// It applies when the SESSION model is on the OpenAI Responses wire shape
+	// (`openai-responses`, `azure-openai-responses`, or the ChatGPT Codex
+	// backend's `openai-codex-responses`, so Azure deployments and a Codex OAuth
+	// session are both included) AND that model's row reports
 	// `compat.supportsServerCompaction`. Both halves are DATA, resolved per
 	// host at model build time and flippable per row by config or discovery;
-	// nothing here checks a provider name. OpenAI Codex is on a different api
-	// and is therefore excluded. On any other model the toggle is inert and
-	// compaction stays local; with the toggle off, compaction is local on every
-	// model. Local means the ordinary LLM summary path, unchanged.
+	// nothing here checks a provider name. On any other model the toggle is
+	// inert and compaction stays local; with the toggle off, compaction is local
+	// on every model. Local means the ordinary LLM summary path, unchanged.
 	//
 	// When it applies, veyyon calls the compaction endpoint and stores the
 	// window it returns. That window IS the compacted context, so the entry's
@@ -64,7 +64,7 @@ export const CONTEXT_SETTINGS = {
 			group: "Compaction",
 			label: "Remote Compaction",
 			description:
-				"Applies only when the session model is a supported OpenAI Responses model, which includes Azure OpenAI Responses deployments; every other model, OpenAI Codex included, ignores this setting and compacts locally. On, veyyon calls the OpenAI compaction endpoint and keeps the window it returns, which preserves reasoning state across the cut. That window is the whole compacted context, so the entry stores no summary text and the compaction model chain does not apply. There is no second local summary on purpose: it would pay a model to re-summarize a span the provider already compacted and leave two versions of one range that can disagree. Off, compaction runs locally on the usual summary path and stores readable summary text.",
+				"Applies only when the session model is a supported OpenAI Responses model, which includes Azure OpenAI Responses deployments and a ChatGPT Codex session; every other model ignores this setting and compacts locally. On, veyyon calls the OpenAI compaction endpoint and keeps the window it returns, which preserves reasoning state across the cut. That window is the whole compacted context, so the entry stores no summary text and the compaction model chain does not apply. There is no second local summary on purpose: it would pay a model to re-summarize a span the provider already compacted and leave two versions of one range that can disagree. Off, compaction runs locally on the usual summary path and stores readable summary text.",
 			keywords: ["compaction", "remote", "server", "provider", "openai", "context"],
 		},
 	},
