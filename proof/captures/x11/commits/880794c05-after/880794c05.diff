@@ -1,0 +1,95 @@
+[33m880794c05[m demo(band): say what the real-terminal arm actually shows
+
+
+
+ proof/scenes/blank-band.sh        |  8 [32m++++[m[31m---[m
+ scripts/demos/blank-band-repro.ts | 48 [32m++++++++++++++++++++++++++[m[31m-------------[m
+ 2 files changed, 37 insertions(+), 19 deletions(-)
+
+[1mdiff --git a/proof/scenes/blank-band.sh b/proof/scenes/blank-band.sh[m
+[1mindex d88c31daa..9e6e42830 100755[m
+[1m--- a/proof/scenes/blank-band.sh[m
+[1m+++ b/proof/scenes/blank-band.sh[m
+[36m@@ -6,9 +6,11 @@[m
+ # own scrollback. shift+PageUp is xterm's key, handled by the terminal rather[m
+ # than the application, so it reads what is really in the buffer.[m
+ #[m
+[31m-# With the fix the settled frame runs from the top of the window to the composer[m
+[31m-# on the bottom row. Without it the rows above the tail are blank -- a[m
+[31m-# screen-sized void with a stray fence and rule floating over the HUD.[m
+[32m+[m[32m# The settled frame runs from the top of the window to the composer on the bottom[m
+[32m+[m[32m# row, and every turn is still in the scrollback the walk reads. This is a[m
+[32m+[m[32m# single-arm recording on purpose: the driver's header records the measurement[m
+[32m+[m[32m# showing that turning the fix off changes nothing reachable from this script, so[m
+[32m+[m[32m# a second arm here would be a comparison of two identical screens.[m
+ [m
+ # 24 turns at 160ms, 30 streamed rows at 70ms, then the settle: ~7s of driver[m
+ # plus startup.[m
+[1mdiff --git a/scripts/demos/blank-band-repro.ts b/scripts/demos/blank-band-repro.ts[m
+[1mindex d510e5b12..f94203cc1 100644[m
+[1m--- a/scripts/demos/blank-band-repro.ts[m
+[1m+++ b/scripts/demos/blank-band-repro.ts[m
+[36m@@ -1,24 +1,29 @@[m
+[31m-// Drive the blank-band defect in a REAL terminal, live.[m
+[32m+[m[32m// A turn that ends short, in a REAL terminal, live.[m
+ //[m
+[31m-// The symptom: a session that has scrolled, whose last turn ends SHORT (a tall[m
+[31m-// streaming answer settling to its final two-row tail), painted a screen-sized[m
+[31m-// band of blank rows where the conversation was — a stray fence and rule[m
+[31m-// floating over the HUD with nothing above them.[m
+[32m+[m[32m// The defect this belongs to: a session that has scrolled, whose last turn ends[m
+[32m+[m[32m// SHORT (a tall streaming answer settling to its final two-row tail), painted a[m
+[32m+[m[32m// screen-sized band of blank rows where the conversation was — a stray fence and[m
+[32m+[m[32m// rule floating over the HUD with nothing above them.[m
+ //[m
+[31m-// Two production components make it, and both are here, unmocked: the real[m
+[31m-// `TranscriptContainer` (which hands committed rows to native scrollback and[m
+[31m-// used to drop every one of them) and the real `HomeAnchorLayout` (which[m
+[31m-// measures viewport slack off the composed frame, so a long session read as a[m
+[31m-// short one and it filled the difference with blank rows). The engine is the[m
+[31m-// real `TUI` writing real escapes to a real tty through `ProcessTerminal`.[m
+[32m+[m[32m// Both components that decide that screen are here, unmocked: the real[m
+[32m+[m[32m// `TranscriptContainer` (which hands committed rows to native scrollback and used[m
+[32m+[m[32m// to drop every one of them) and the real `HomeAnchorLayout` (which measures[m
+[32m+[m[32m// viewport slack off the composed frame). The engine is the real `TUI` writing[m
+[32m+[m[32m// real escapes to a real tty through `ProcessTerminal`.[m
+ //[m
+ //   bun scripts/demos/blank-band-repro.ts [--turns 24] [--stream 30] [--hud 5][m
+[32m+[m[32m//   DIAG_PATH=/tmp/diag.txt bun scripts/demos/blank-band-repro.ts   # + accounting[m
+ //[m
+[31m-// Run it with the fix and without. Without, the screen holds a void and the[m
+[31m-// live tail is squeezed off the top; with it, the conversation reaches the[m
+[31m-// composer on the bottom row like a shell prompt under its output. The only[m
+[31m-// thing standing in for a model is the text of each turn: the defect is driven[m
+[31m-// by row volume against a short viewport, not by where the bytes came from.[m
+[32m+[m[32m// WHAT THIS IS NOT. It is not a two-arm comparison, and it was measured before[m
+[32m+[m[32m// that was written here. Driven from this script the transcript never reaches the[m
+[32m+[m[32m// compaction path at all — `committedRows=104` against a frame of 128 rows, the[m
+[32m+[m[32m// same numbers with the retention floor fed and with it forced to zero — so[m
+[32m+[m[32m// turning the fix off changes nothing you can see. The byte-level before/after[m
+[32m+[m[32m// lives where the frame can be driven a frame at a time: the paint-sim arm in[m
+[32m+[m[32m// `a-turn-that-ends-short-never-paints-a-blank-band-over-the-conversation`, which[m
+[32m+[m[32m// measures a 23-row band collapsing to 1 and is mutation-gated. What this script[m
+[32m+[m[32m// is good for is watching the shipped path run against a real terminal and[m
+[32m+[m[32m// reading its frame accounting through `DIAG_PATH`.[m
+ [m
+ import { type Component, CURSOR_MARKER, type Focusable, ProcessTerminal, TUI } from "@veyyon/tui";[m
+ import { TranscriptContainer } from "../../packages/coding-agent/src/modes/components/transcript-container";[m
+[36m@@ -155,6 +160,17 @@[m [masync function main(): Promise<void> {[m
+ 	await sleep(600);[m
+ 	answer.settle();[m
+ 	tui.requestRender();[m
+[32m+[m	[32mawait sleep(700);[m
+[32m+[m
+[32m+[m	[32m// The frame accounting behind whatever is on screen, so the arm can be read[m
+[32m+[m	[32m// as numbers and not only looked at. DIAG_PATH is set by the recorder.[m
+[32m+[m	[32mconst diag = process.env.DIAG_PATH;[m
+[32m+[m	[32mif (diag !== undefined) {[m
+[32m+[m		[32mawait Bun.write([m
+[32m+[m			[32mdiag,[m
+[32m+[m			[32m`committedRows=${tui.committedRows} scrollTapeRows=${tui.scrollTapeRows} composedFrameRows=${tui.composedFrameRows} topFill=${anchor.topFill.render(terminal.columns).length} bottomFill=${anchor.bottomFill.render(terminal.columns).length} rows=${terminal.rows}\n`,[m
+[32m+[m		[32m);[m
+[32m+[m	[32m}[m
+ [m
+ 	// Hold the settled screen. This is the frame to look at and to scroll back[m
+ 	// from: with the fix the conversation runs to the composer on the bottom[m
