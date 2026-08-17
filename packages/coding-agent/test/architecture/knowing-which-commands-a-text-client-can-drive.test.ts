@@ -29,6 +29,7 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { getBundledModel } from "@veyyon/catalog/models";
 import {
 	BUILTIN_SLASH_COMMAND_DECLARATIONS,
 	type BuiltinSlashCommandDeclaration,
@@ -40,6 +41,7 @@ import {
 	isAcpBuiltinShadowedName,
 	TEXT_MODE_BUILTIN_DECLARATIONS,
 } from "@veyyon/coding-agent/slash-commands/text-mode-builtins";
+import { configuredThinkingLevelsForModel } from "@veyyon/coding-agent/thinking";
 import {
 	createModuleReachCache,
 	type ModuleReachResolution,
@@ -157,20 +159,25 @@ describe("the text-mode view is a leaf", () => {
 		// A command shape with no such builtin: the registry IS loaded, and says no.
 		expect(await executeAcpBuiltinSlashCommand("/definitely-not-a-command", runtime)).toBe(false);
 		// A real text-mode builtin: loaded and run. `/thinking` with no argument reports the current
-		// level and the choices, which is the smallest handler that needs nothing but the two session
-		// reads stubbed below, so the assertion is about dispatch rather than about a command's state.
+		// level and the choices, which is the smallest handler that needs nothing but the session's
+		// model and its configured level, so the assertion is about dispatch rather than about a
+		// command's state. The choices come from the MODEL's catalog row rather than from a session
+		// method: no model means no levels, so the stub carries a real reasoning row instead of a
+		// list it makes up.
+		const model = getBundledModel("anthropic", "claude-opus-4-1");
+		if (!model) throw new Error("Expected a bundled reasoning model to exist");
 		const withSession = {
 			output: (text: string) => lines.push(text),
 			session: {
+				model,
 				configuredThinkingLevel: () => "high",
-				getAvailableThinkingLevels: () => ["low", "medium", "high"],
 			},
 		} as never;
 		const result = await executeAcpBuiltinSlashCommand("/thinking", withSession);
 
 		expect(result).toEqual({ consumed: true });
 		expect(lines.join("\n")).toContain("Effort: high");
-		expect(lines.join("\n")).toContain("low, medium, high");
+		expect(lines.join("\n")).toContain(configuredThinkingLevelsForModel(model).join(", "));
 	});
 });
 

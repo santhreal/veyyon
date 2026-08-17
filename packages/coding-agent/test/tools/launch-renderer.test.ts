@@ -79,9 +79,12 @@ describe("launchToolRenderer", () => {
 		);
 		expect(rendered[0]).toContain("Launch logs");
 		expect(rendered[0]).toContain("cursor 2210");
-		expect(rendered[0]).toContain("┌");
+		// A block hangs its output on a rail: a title row, one rail glyph down the left of the
+		// body, and nothing above the title or below the last row. The box glyphs this used to
+		// assert are a shape the product no longer draws.
+		expect(rendered[0]).not.toContain("┌");
+		expect(rendered.at(-1)).not.toContain("└");
 		expect(rendered[1]).toContain("Output");
-		expect(rendered.at(-1)).toContain("└");
 
 		// The log body, in order and complete. Two `some(...)` checks asserted the
 		// lines existed somewhere and a third asserted the `[web: running; ...]`
@@ -89,9 +92,11 @@ describe("launchToolRenderer", () => {
 		// order, which is the one thing a log tail has to get right. Reading the
 		// body out as an array proves the ordering and the suffix stripping at
 		// once: a line that survived would have to appear here.
+		const rail = uiTheme.symbol("block.rail");
 		const body = rendered
-			.filter(line => line.startsWith("│"))
-			.map(line => line.replace(/^│\s?/, "").replace(/\s*│$/, "").trimEnd());
+			.filter(line => line.trimStart().startsWith(rail))
+			.map(line => line.trimStart().slice(rail.length).trim())
+			.filter(line => line.length > 0 && line !== "Output");
 
 		expect(body).toEqual(["line one", "line two"]);
 	});
