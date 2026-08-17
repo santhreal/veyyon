@@ -35,6 +35,7 @@ import { type as arkType } from "arktype";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { ExtensionUISelectItem } from "../extensibility/extensions";
 import { HOOK_EDITOR_TEXT_PAD_COLS } from "../modes/components/hook-editor";
+import { mediumModalContentWidth } from "../modes/components/modal-shell";
 import { getMarkdownTheme } from "../modes/theme/markdown-theme";
 import { type Theme, theme } from "../modes/theme/theme";
 import { toolsPrompts } from "../prompts/tools/rows";
@@ -198,8 +199,7 @@ const CUSTOM_INPUT_DESCRIPTION_INDENT = "    ";
 function customInputContentWidth(): number {
 	const cols = process.stdout.columns ?? 80;
 	const rows = process.stdout.rows || 40;
-	const dims = computeModalDims(cols, rows, sizingForArea(MODAL_SIZING_MEDIUM, rows));
-	const width = dims ? dims.contentWidth : cols - CUSTOM_INPUT_CHROME_COLUMNS;
+	const width = mediumModalContentWidth(cols, rows) ?? cols - CUSTOM_INPUT_CHROME_COLUMNS;
 	return Math.max(MIN_CUSTOM_INPUT_CONTENT_WIDTH, width);
 }
 

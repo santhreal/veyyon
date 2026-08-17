@@ -323,6 +323,18 @@ export function modalWidthForTitle(titleWidth: number): number {
 	return titleWidth + 2 + 2 + 2 + visibleWidth(MODAL_CLOSE_CHIP);
 }
 
+/**
+ * How many cells a medium card's content row gets on a terminal this size, or null when the
+ * terminal is too small for a card at all. It exists so a caller that has to pre-wrap text for a
+ * medium card asks the layout owner one question instead of assembling `sizingForArea` and
+ * {@link computeModalDims} itself: the sizing a medium card uses is this module's decision, and a
+ * second copy of it wraps to a width the card then wraps again.
+ */
+export function mediumModalContentWidth(areaWidth: number, areaHeight: number): number | null {
+	const dims = computeModalDims(areaWidth, areaHeight, sizingForArea(MODAL_SIZING_MEDIUM, areaHeight));
+	return dims ? dims.contentWidth : null;
+}
+
 /** One footer chip. `clickable` marks action vs inert hint (mouse targets). */
 export interface ModalShortcut {
 	/** Display text. When `keybindings` is present, the live bound keys are prepended at render time. */
