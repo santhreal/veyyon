@@ -493,19 +493,22 @@ describe("runEvalAgent", () => {
 		expect(secondOptions.outputSchemaOverridesAgent).toBeUndefined();
 	});
 
-	it("ignores a retired per-agent effort row and takes the blanket setting instead", async () => {
-		// `subagent.agents.<name>.thinkingLevel` is retired: effort is decided in one
-		// place, either the `subagent.thinkingLevel` setting or the agent's own
-		// `thinking-level` frontmatter. A retired row is reported and skipped, never
-		// honoured, so a spawn under it inherits the session effort — asserting the
-		// old row still worked is what let the retirement look complete while the
-		// bridge quietly read a setting nothing else does.
+	it("takes a per-agent lane effort over the blanket setting, and the call's model over the lane's", async () => {
+		// `subagent.agents.<name>.thinkingLevel` is a LANE field and the highest
+		// layer there is: it names the agent, and the page that shows it is the page
+		// that edits it. So a lane row beats `subagent.thinkingLevel`, and a spawn
+		// under a lane must not quietly run at the blanket effort — that is the
+		// regression this arm catches, since both values are plausible and only one
+		// is the one the operator set on that agent. The model is the other half:
+		// the explicit `model` on the call outranks the lane's own `model`, so a
+		// caller naming a model is never overridden by settings.
 		mockAgents([taskAgent]);
 		const runSpy = vi.spyOn(taskExecutor, "runSubprocess").mockImplementation(async options => singleResult(options));
-		const retiredRow = makeSession({
+		const laneRow = makeSession({
 			settings: Settings.isolated({
 				"async.enabled": false,
 				"subagent.isolation.mode": "none",
+				"subagent.thinkingLevel": "low",
 				"subagent.agents": {
 					task: { model: "p/profile", thinkingLevel: "high" },
 				},
@@ -519,15 +522,15 @@ describe("runEvalAgent", () => {
 			}),
 		});
 
-		await runEvalAgent({ prompt: "retired row", model: "p/call" }, { session: retiredRow });
+		await runEvalAgent({ prompt: "lane row", model: "p/call" }, { session: laneRow });
 		await runEvalAgent({ prompt: "blanket setting", model: "p/call:max" }, { session: blanket });
 
-		const ignored = runSpy.mock.calls[0]?.[0];
+		const lane = runSpy.mock.calls[0]?.[0];
 		const applied = runSpy.mock.calls[1]?.[0];
-		if (!ignored || !applied) throw new Error("runSubprocess was not called twice");
-		expect(ignored.modelOverride).toEqual(["p/call"]);
-		expect(ignored.thinkingLevel).toBeUndefined();
-		expect(ignored.parentThinkingLevel).toBeUndefined();
+		if (!lane || !applied) throw new Error("runSubprocess was not called twice");
+		expect(lane.modelOverride).toEqual(["p/call"]);
+		expect(lane.thinkingLevel).toBe(ThinkingLevel.High);
+		expect(lane.parentThinkingLevel).toBeUndefined();
 		// The `:max` suffix rides on the model pattern: only the executor knows a
 		// suffix was present, so the resolved effort stays the blanket value here.
 		expect(applied.modelOverride).toEqual(["p/call:max"]);
