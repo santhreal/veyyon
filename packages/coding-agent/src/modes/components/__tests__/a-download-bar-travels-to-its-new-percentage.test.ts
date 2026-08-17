@@ -4,8 +4,8 @@
 // it. Twenty-four columns give twenty-four states, so a jump from 40% to 65%
 // has six states to pass through and each one is a whole cell wide: the eye
 // reads six discrete positions, which is not motion, it is a bar being moved.
-// That is the concrete reason the operator's verdict on this build was that the
-// animations are barely noticeable — there was nothing between the frames.
+// That is why the animation was barely noticeable at whole-cell resolution:
+// there was nothing between the frames.
 //
 // Two changes make the travel visible, and this suite refuses to let either one
 // be quietly dropped. The bar is drawn in eighths of a cell, so the same

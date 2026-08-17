@@ -1,6 +1,8 @@
 /**
  * Film a real overlay's entrance, frame by frame, without a terminal.
  *
+ * Run:
+ *
  *     bun scripts/demos/render-overlay-entrance.ts --out /tmp/entrance --frames 14 --step 33
  *
  * The component is the one `/settings` constructs and the frames come out of its

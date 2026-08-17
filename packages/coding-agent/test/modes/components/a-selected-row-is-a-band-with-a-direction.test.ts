@@ -3,10 +3,10 @@
  *
  * WHY THIS SUITE EXISTS. `theme.bg("selectedBg", row)` paints one flat slab of one colour across
  * the whole row. Nothing in it says which end the cursor came from, so it reads as a rectangle
- * somebody drew rather than as a surface the cursor is resting on — the operator's verdict on the
- * shipped build was that the selection is "boring", and rendering the real components to PNG
- * confirmed the cause is that every surface is one flat ground. The replacement is a hard accent
- * leading cell plus an eased ramp out of `selectedBg` toward the ground behind the row.
+ * somebody drew rather than as a surface the cursor is resting on. Rendering the real components
+ * to PNG showed why the shipped selection read as flat: every surface is one flat ground. The
+ * replacement is a hard accent leading cell plus an eased ramp out of `selectedBg` toward the
+ * ground behind the row.
  *
  * Four ways a directional band goes wrong, and this suite pins each:
  *

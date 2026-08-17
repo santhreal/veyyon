@@ -8,6 +8,8 @@
  * proof stacks the real components between two lines of ordinary transcript at
  * the shared inset, which is the only place the difference is visible.
  *
+ * Run:
+ *
  *     bun scripts/demos/render-transcript-dividers.ts --width 100 |
  *       bun scripts/demos/render-proof.ts --out /tmp/dividers --width 100
  *
