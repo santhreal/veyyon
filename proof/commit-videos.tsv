@@ -1,0 +1,89 @@
+# Every commit on feat/ui-polish, and the recording that shows it.
+#
+# hash  kind  hold-ceiling-seconds  payload  subject
+#
+# kind=test    the commit's own test files, run twice: once against its first
+#              parent's source, once against its own. The before arm is the
+#              mutation gate as a movie -- the test exists in both trees, only
+#              the source under it differs.
+# kind=driver  a renderer the commit added or changed, run against both trees.
+# kind=diff    the change itself, paged in the terminal. Used where the commit
+#              ships no code the terminal can execute: captures, a page rebuild,
+#              a changelog ordering, the recorder's own plumbing, a merge.
+766ee5a26	test	130	./packages/coding-agent/test/descriptor-placement-model-switch.test.ts ./packages/coding-agent/test/model-registry.test.ts	fix(coding-agent): duplicate of main's compaction-tier and bundle-decoupling fixes
+8981629d1	diff	45		Merge branch 'main' into feat/ui-polish
+b6a6bd07b	test	130	./packages/coding-agent/test/modes/components/every-settings-submenu-answers-the-pointer.test.ts	feat(coding-agent): route pointer events into settings submenus and modal bodies
+d0226c921	test	130	./packages/coding-agent/test/modes/components/selector-overlays-answer-the-pointer.test.ts	feat(coding-agent): answer the pointer at the row level in the six selector overlays
+aa2d62dc7	test	130	./packages/coding-agent/test/modes/components/assistant-prose-carries-the-text-color.test.ts	fix(coding-agent): theme assistant answer prose instead of terminal default
+b852f2543	test	130	./packages/coding-agent/test/modes/components/a-cut-short-batch-ledger-renders-as-one-marker-line.test.ts	fix(coding-agent): collapse the turn-level batch ledger to a one-line marker
+08ade60cb	test	130	./packages/coding-agent/test/modes/components/selector-overlays-answer-the-pointer.test.ts	feat(coding-agent): forward pointer events into the model picker's browser
+c18816b62	test	130	./packages/coding-agent/test/modes/components/selector-overlays-answer-the-pointer.test.ts	feat(coding-agent): answer the pointer on ask-dialog option rows
+0c36cf201	test	130	./packages/coding-agent/test/modes/components/selector-overlays-answer-the-pointer.test.ts	chore(coding-agent): delete the dead marketplace plugin selector
+b373c7c55	test	130	./packages/coding-agent/test/modes/components/a-clicked-composer-chip-runs-its-action.test.ts	feat(coding-agent): make the composer chips answer clicks
+d4d2a4290	test	170	./packages/coding-agent/test/modes/components/the-login-card-answers-the-pointer.test.ts ./packages/coding-agent/test/modes/components/the-login-screen-is-one-frame.test.ts ./packages/coding-agent/test/modes/controllers/a-command-login-lands-in-the-account-manager.test.ts ./packages/coding-agent/test/modes/controllers/selector-controller-login.test.ts	feat(coding-agent): move the login screen onto ModalShell
+ab7f1b8be	test	130	./packages/coding-agent/test/modes/components/the-transcript-card-answers-the-pointer.test.ts	feat(coding-agent): move the transcript drill-in onto ModalShell
+4d566d927	test	170	./packages/agent/test/a-chatgpt-oauth-session-compacts-on-the-codex-backend.test.ts ./packages/agent/test/compaction-remote.test.ts ./packages/catalog/test/server-compaction-capability.test.ts	fix(ai): compact a ChatGPT OAuth session on the codex backend
+5afa7ff34	test	130	./packages/coding-agent/test/modes/components/the-transcript-card-answers-the-pointer.test.ts	test(coding-agent): copy the transcript rows the harness hands back
+4ed3a44b4	test	170	./packages/coding-agent/test/keybindings-selector-navigation.test.ts ./packages/coding-agent/test/modes/components/the-session-tree-card-answers-the-pointer.test.ts ./packages/coding-agent/test/modes/components/tree-selector-chain-gutter-2298.test.ts ./packages/coding-agent/test/modes/components/tree-selector-developer.test.ts	polish(tree): open the session tree as a ModalShell card that answers the pointer
+1f2ea74b3	test	130	./packages/coding-agent/test/modes/components/the-mcp-add-wizard-card-answers-the-pointer.test.ts	polish(mcp): open the add-server wizard as a ModalShell card that answers the pointer
+c511ae76b	test	170	./packages/coding-agent/test/modes/components/a-virtualized-transcript-never-loses-history-to-a-rebuild.test.ts ./packages/tui/test/component-render.test.ts ./packages/tui/test/scroll-isolation-history.test.ts	fix(tui): keep the transcript when a virtualized root compacts
+3f583d196	test	170	./packages/coding-agent/test/hook-editor.test.ts ./packages/coding-agent/test/hook-selector-overflow.test.ts ./packages/coding-agent/test/modes/components/session-selector-mouse.test.ts ./packages/coding-agent/test/modes/components/the-hook-selector-answers-the-pointer.test.ts	polish(hooks): open the hook selector as a ModalShell card that answers the pointer
+929469b5f	test	130	./packages/coding-agent/test/hook-editor.test.ts ./packages/coding-agent/test/modes/components/the-hook-dialogs-answer-the-pointer.test.ts	polish(hooks): open the hook input and editor as ModalShell cards
+36df196c3	test	130	./packages/coding-agent/test/modes/components/plugin-settings-view-transitions.test.ts ./packages/coding-agent/test/modes/components/the-plugins-tab-answers-the-pointer.test.ts	polish(plugins): answer the pointer in the settings plugins tab and name its keys as chips
+489fd453f	test	130	./packages/tui/test/a-click-on-a-suggestion-accepts-the-completion.test.ts	feat(tui): accept a composer suggestion on click
+7e1aa54cb	test	130	./packages/coding-agent/test/modes/components/a-transcript-block-sits-on-the-rail.test.ts	polish(transcript): put the /btw and /omfg blocks on the rail
+b02f7dc2d	test	130	./packages/coding-agent/test/modes/components/a-transcript-block-sits-on-the-rail.test.ts	polish(transcript): print command blocks on the rail
+f9160c99c	test	130	./packages/coding-agent/test/modes/components/a-transcript-block-sits-on-the-rail.test.ts ./packages/coding-agent/test/modes/components/hook-editor-title-width.test.ts	polish(ui): delete the full-width rule
+9be29f814	test	130	./packages/coding-agent/test/modes/components/every-settings-submenu-answers-the-pointer.test.ts	test(settings): drive the effort step's click hint
+07372af28	test	130	./packages/coding-agent/src/modes/components/__tests__/pause-screen.test.ts	polish(pause): resume the pause screen on a click
+e86818539	test	130	./packages/coding-agent/test/modes/components/subagent-agents-surface.test.ts	polish(settings): name the subagents tab for subagents, and fold the spawn ceiling into the roster section
+db946f360	test	130	./packages/tui/test/a-click-in-the-composer-places-the-caret.test.ts ./packages/tui/test/a-click-on-a-suggestion-accepts-the-completion.test.ts	polish(composer): place the caret where the composer is clicked
+253111668	test	130	./packages/coding-agent/test/setup-wizard.test.ts ./packages/coding-agent/test/the-setup-wizard-footer-chips-answer-the-pointer.test.ts	polish(setup-wizard): draw the footer keys as chips a pointer can hit
+08ec85de5	driver	60	scripts/demos/render-setup-wizard.ts	demo(setup-wizard): let the wizard renderer aim the pointer at a chip
+bc9e33085	test	130	./packages/coding-agent/test/modes/components/a-transcript-divider-marks-a-point-instead-of-spanning-the-viewport.test.ts ./packages/coding-agent/test/modes/components/compaction-divider.test.ts	polish(transcript): make every divider a mark on the rail, not a rule across it
+23504cc4d	test	130	./packages/coding-agent/test/modes/components/a-transcript-divider-marks-a-point-instead-of-spanning-the-viewport.test.ts	polish(transcript): start a divider on the rail, not at column zero
+bfc3ed7b5	test	130	./packages/coding-agent/test/modes/components/a-transcript-block-sits-on-the-rail.test.ts	polish(transcript): take the border off the tiny-model download block
+73b3a350f	test	130	./packages/coding-agent/test/modes/components/a-cut-short-batch-ledger-renders-as-one-marker-line.test.ts	polish(transcript): read the cut-short marker's indent from the rail constant
+d12a2639f	driver	60	scripts/demos/render-hook-selector.ts	demo(ui): render the three surfaces this branch changed most
+7ef968fa2	diff	45		demo(proof): draw the cache-miss mark instead of a placeholder box
+907edbc2b	diff	45		demo(ui): record real-terminal proof captures with vhs and a local model
+670d0793b	diff	45		demo(ui): build the proof page from the real-terminal captures
+ba22b669a	diff	45		demo(ui): record scenes in an X terminal with a real pointer
+ed8cd31b2	test	130	./packages/coding-agent/test/modal-shell.test.ts ./packages/tui/test/every-animation-in-the-terminal-shares-one-clock.test.ts	feat(tui): one animation clock for the whole terminal
+f5e0aad58	driver	60	scripts/demos/transcript-blanking-repro.ts	demo(tui): reproduce the transcript blanking defect in a real terminal
+3e8038714	test	170	./packages/coding-agent/test/modes/components/an-elided-thinking-fence-says-how-much-it-hid.test.ts ./packages/coding-agent/test/modes/components/prose-only-thinking.test.ts ./packages/coding-agent/test/streaming-reveal.test.ts	fix(coding-agent): an elided reasoning fence says how many lines it hid
+23fac74b5	diff	45		demo(proof): declare truecolor to the app inside the recording terminal
+f60036e6f	diff	45		docs(changelog): order the two fix bullets the way main carries them
+2645becbd	test	130	./packages/coding-agent/test/modes/components/a-clicked-composer-chip-runs-its-action.test.ts ./packages/tui/test/a-footer-click-target-holds-the-mouse-in-a-session-that-never-scrolls.test.ts	fix(tui): hold the mouse while a pinned-footer child has a click target
+5ab98e6d6	test	130	./packages/coding-agent/test/modes/components/subagent-agents-surface.test.ts	fix(settings): one Subagents section that edits what every subagent runs
+8afbbfe66	test	170	./packages/coding-agent/test/an-effort-picker-offers-no-level-the-endpoint-never-declared.test.ts ./packages/coding-agent/test/every-effort-surface-offers-only-what-the-model-declares.test.ts ./packages/coding-agent/test/modes/components/any-model-effort-is-settable.test.ts ./packages/coding-agent/test/modes/components/every-settings-submenu-answers-the-pointer.test.ts	fix(effort): an effort picker offers only levels the endpoint declares
+bbc96f153	test	170	./packages/coding-agent/test/modes/components/subagent-agents-surface.test.ts ./packages/coding-agent/test/subagent-model-and-effort-have-one-owner.test.ts ./packages/coding-agent/test/task/subagent-settings.test.ts	feat(settings): a subagent's page owns what it runs, and recurses
+85e166ac7	test	130	./packages/coding-agent/test/modes/components/every-settings-submenu-answers-the-pointer.test.ts	test(settings): point the subagent pointer case at the lane page
+3cd9362a9	test	130	./packages/coding-agent/test/a-dismissed-overlay-plays-out-before-it-leaves.test.ts	feat(tui): a dismissed card folds away before it leaves
+c823e9828	test	130	./packages/coding-agent/test/a-fading-hover-band-is-mixed-out-of-the-ground.test.ts ./packages/tui/test/a-hover-band-fades-in-instead-of-switching.test.ts	feat(tui): the pointer band fades in and out instead of switching
+d2eb9dec2	test	130	./packages/tui/test/a-suggestion-popup-grows-instead-of-cutting-in.test.ts	feat(tui): the suggestion popup grows instead of cutting in
+d92669c37	test	130	./packages/coding-agent/test/modes/components/a-pointer-band-fades-on-a-hand-painted-list.test.ts	feat(tui): the hand-painted pickers cross-fade the pointer band
+0ab477850	test	170	./packages/coding-agent/test/modes/components/a-settings-category-fades-under-the-pointer.test.ts ./packages/coding-agent/test/modes/controllers/a-closed-settings-card-lets-go-of-the-clock.test.ts ./packages/tui/test/a-category-tab-fades-in-under-the-pointer.test.ts	feat(tui): fade the settings category band under the pointer
+60a74b32f	diff	45		proof(ui-polish): rebuild the page from real-terminal captures
+82630ee6b	test	130	./packages/coding-agent/test/modes/components/a-pointer-band-fades-on-a-hand-painted-list.test.ts	feat(tui): the ask dialog cross-fades its option band
+b30f10d2f	test	130	./packages/coding-agent/test/modes/components/a-pointer-band-fades-on-a-hand-painted-list.test.ts ./packages/coding-agent/test/modes/controllers/a-dismissed-picker-lets-go-of-the-clock.test.ts	feat(tui): the copy picker fades its band and every picker gives the clock back
+05bd9d643	test	170	./packages/coding-agent/test/modes/components/a-pointer-band-fades-on-a-hand-painted-list.test.ts ./packages/coding-agent/test/modes/components/the-extensions-dashboard-fades-both-its-bands.test.ts ./packages/coding-agent/test/modes/components/the-model-cards-fade-every-band-they-own.test.ts ./packages/coding-agent/test/modes/controllers/a-closed-settings-card-lets-go-of-the-clock.test.ts	polish(ui): fade the pointer band on every remaining hand-painted surface
+929eabeac	test	130	./packages/coding-agent/test/a-band-is-mixed-out-of-the-ground-the-terminal-is-showing.test.ts	fix(tui): mix a band out of the ground the terminal is showing
+3db717670	diff	45		proof(ui-polish): record both arms of the card-band scene and page it
+10b6c2dfb	test	130	./packages/coding-agent/test/a-context-gauge-travels-to-its-new-reading.test.ts	feat(tui): walk the context gauge to its new reading
+e7aaaea3c	test	130	./packages/coding-agent/test/no-message-role-reaches-the-provider-uncounted.test.ts	fix(agent): count file mentions and python cells in token estimates
+3508daa38	diff	45		proof(ui-polish): context gauge, both arms
+2be636905	test	130	./packages/tui/test/a-scrolled-viewport-travels-through-the-rows-between.test.ts	feat(tui): a scrolled viewport travels through the rows between
+47d777c8c	diff	45		proof(scene): plan-review scroll scene, with a seeded resumable session
+b8d9af818	test	130	./packages/ai/test/thinking-loop.test.ts	fix(ai): the loop guard watches every model, not just Gemini and DeepSeek
+41840037f	diff	45		fix(tui): stop the 60Hz render pump that flickers the screen during a turn
+247ae5792	test	130	./packages/tui/test/component-render.test.ts ./packages/tui/test/scroll-isolation-history.test.ts	Revert "fix(tui): keep the transcript when a virtualized root compacts"
+e244a33d7	test	170	./packages/coding-agent/test/modes/components/a-virtualized-transcript-never-loses-history-to-a-rebuild.test.ts ./packages/tui/test/component-render.test.ts ./packages/tui/test/scroll-isolation-history.test.ts	Reapply "fix(tui): keep the transcript when a virtualized root compacts"
+8553d06d4	test	130	./packages/coding-agent/test/modes/components/a-transcript-under-a-header-does-not-rebuild-the-screen.test.ts ./packages/coding-agent/test/modes/components/a-virtualized-transcript-never-loses-history-to-a-rebuild.test.ts	fix(tui): slide the commit prefix at the drop site, not at row zero
+67a2d7098	test	130	./packages/tui/test/the-motion-clock-always-stops.test.ts	fix(tui): an animation that cannot settle never registers on the clock
+9beabe14a	driver	60	scripts/demos/transcript-blanking-repro.ts	proof(ui-polish): drop the gauge-travel section, and give the blanking driver a header
+23be42251	test	130	./packages/simulations/src/paint-sim/a-streaming-answer-never-repaints-the-whole-screen.test.ts	test(simulations): a paint sim that measures what the screen costs per frame
+030960d65	test	130	./packages/simulations/src/paint-sim/a-streaming-answer-never-repaints-the-whole-screen.test.ts	fix(tui): a frame the viewport squeezed is not a frame that diverged
+74195a042	test	130	./packages/tui/test/chrome-taller-than-the-viewport-never-reaches-native-scrollback.test.ts	fix(tui): chrome is painted, never committed
+6582723f9	diff	45		proof(ui-polish): the capture set the page is built from
+92a895e36	diff	45		proof(tooling): the vhs capture wrapper and the flicker probes

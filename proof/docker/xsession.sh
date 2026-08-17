@@ -122,7 +122,7 @@ export SCENE_NAME="${NAME}"
 export SCENE_WINDOW="${WINDOW}"
 export SCENE_OUT="${OUT}"
 # shellcheck disable=SC1090
-source /repo/proof/scenes/lib.sh
+source "${SCENE_LIB:-/repo/proof/scenes/lib.sh}"
 # shellcheck disable=SC1090
 source "${SCENE}"
 
