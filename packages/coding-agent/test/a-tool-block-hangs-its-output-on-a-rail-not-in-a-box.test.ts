@@ -30,6 +30,15 @@
  * or railed frame would misreport the geometry the program inside it draws to. A second
  * hand-rolled frame added elsewhere would be a second definition of what a block looks
  * like, and nothing here would see it.
+ *
+ * WHAT MOVED IN HERE. This suite replaces the hug suite that preceded it
+ * (`a-tool-block-is-as-wide-as-its-output-not-as-wide-as-the-screen.test.ts`), which
+ * measured the box: its corner glyph, its right wall, and the two chrome rows it spent.
+ * Those assertions describe a shape the product no longer draws, so keeping them would
+ * have meant one of the two suites had to be wrong. The three contracts of that suite
+ * that outlive the box are asserted below rather than deleted with it: the block's width
+ * follows its own ink and grows with it, the width is the widest row plus the rail, and
+ * a plate changes the block's fill and nothing about its rows.
  */
 
 import { beforeAll, describe, expect, it } from "bun:test";
@@ -342,6 +351,53 @@ describe("a tool block hangs its output on a rail, not in a box", () => {
 		const widths = new Set(painted.map(visibleWidth));
 		expect(widths.size).toBe(1);
 		expect([...widths][0]!).toBeGreaterThan(visibleWidth(header));
+	});
+
+	it("grows with its content rather than staying pinned to the terminal", () => {
+		const short = "!".repeat(20);
+		const long = "!".repeat(60);
+		const build = (line: string): string[] =>
+			plain(renderOutputBlock({ width: 200, header: "T", state: "success", sections: [{ lines: [line] }] }, theme));
+		// Both blocks are content-dominated, so the whole difference between them is the
+		// difference between their bodies. A block taking its width from the terminal
+		// reports 0 here: that was the defect the hug closed, and the rail keeps it closed
+		// because a rail with a terminal-width plate behind it is the slab again.
+		expect(visibleWidth(build(long)[0]!) - visibleWidth(build(short)[0]!)).toBe(40);
+	});
+
+	it("takes its width from its widest row plus the rail, and nothing more", () => {
+		const body = ["a", "a much longer line than the first one", "mid"];
+		const painted = plain(
+			renderOutputBlock({ width: 200, header: "T", state: "success", sections: [{ lines: body }] }, theme),
+		);
+		const widestInk = Math.max(...body.map(visibleWidth));
+		// Four columns, the same four a box spent, made of different things: two walls,
+		// a column of left padding and a column of air on the right became a rail, the
+		// space after it, that same left padding, and the same column of air. The air is
+		// what keeps a painted plate from being text jammed against its own edge.
+		expect(new Set(painted.map(visibleWidth))).toEqual(new Set([widestInk + 4]));
+	});
+
+	it("is the same block whether or not it is painted", async () => {
+		for (const state of await declaredStates()) {
+			const base: OutputBlockOptions = {
+				width: 120,
+				header: "Read src/parser.ts",
+				state: state as OutputBlockOptions["state"],
+				sections: [{ lines: ["export function parse() {}"] }],
+			};
+			const painted = plain(renderOutputBlock({ ...base, applyBg: true }, theme));
+			const bare = plain(renderOutputBlock({ ...base, applyBg: false }, theme));
+			// A plate is fill that squares the block off. It moves nothing: same rows, same
+			// ink, same order. The rectangle it fills to is the widest row the unpainted
+			// block already had, plus the one column of air at the right.
+			expect(
+				painted.map(row => row.trimEnd()),
+				state,
+			).toEqual(bare.map(row => row.trimEnd()));
+			expect(new Set(painted.map(visibleWidth)).size, state).toBe(1);
+			expect(visibleWidth(painted[0]!), state).toBe(Math.max(...bare.map(visibleWidth)) + 1);
+		}
 	});
 
 	/**

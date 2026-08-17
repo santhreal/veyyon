@@ -12,7 +12,7 @@ import {
 	wrapTextWithAnsi,
 } from "@veyyon/tui";
 import { SGR_BG_RESET } from "@veyyon/tui/ansi";
-import { clampLow } from "@veyyon/utils";
+import { clampLow } from "@veyyon/utils/math";
 import type { Theme, ThemeColor } from "../modes/theme/theme";
 import { getSixelLineMask } from "../utils/sixel";
 import type { State } from "./types";

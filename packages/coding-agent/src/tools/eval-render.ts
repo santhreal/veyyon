@@ -450,7 +450,7 @@ function formatCellOutputLines(
 	}
 
 	// Cell output lands in renderCodeCell → renderOutputBlock, which re-wraps it
-	// at the box's inner content width. Bound the collapsed tail by VISUAL rows
+	// at the block's inner content width. Bound the collapsed tail by VISUAL rows
 	// at that width so a long-line tail can't wrap into more rows than budgeted
 	// and scroll its mutating preview above the live-region window — the
 	// duplicate "ctrl+o to expand" scrollback spray.

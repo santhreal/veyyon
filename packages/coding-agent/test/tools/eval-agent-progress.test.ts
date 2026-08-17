@@ -6,11 +6,16 @@ import { evalToolRenderer } from "@veyyon/coding-agent/tools/eval-render";
 
 /**
  * Defends the contract that `agent()` calls inside an eval cell surface as a
- * live, Task-tool-style progress tree drawn *below* the notebook (code cell
- * box) — not buried inside the box's collapsed "Status" list, and not deferred
- * to the final result.
+ * live, Task-tool-style progress tree drawn *below* the cell block — not buried
+ * inside the block's collapsed "Status" list, and not deferred to the final
+ * result.
+ *
+ * The block's last row is the last row hanging on its rail. It used to be a
+ * closing box border, which is what these arms looked for; a boundary read off a
+ * glyph the block no longer draws is a boundary of -1, and every "below the
+ * block" assertion then passes on any row anywhere.
  */
-describe("eval renderer: agent() progress below the cell box", () => {
+describe("eval renderer: agent() progress below the cell block", () => {
 	let theme: Theme;
 
 	beforeAll(async () => {
@@ -49,12 +54,13 @@ describe("eval renderer: agent() progress below the cell box", () => {
 		return Bun.stripANSI(component.render(120).join("\n")).split("\n");
 	}
 
-	/** Index of the box's closing border (bottom-right corner glyph). */
-	function boxBottomIndex(lines: string[]): number {
-		return lines.findIndex(line => line.includes(theme.boxSharp.bottomRight));
+	/** Index of the block's last row: the last one hanging on its rail. */
+	function blockBottomIndex(lines: string[]): number {
+		const rail = theme.symbol("block.rail");
+		return lines.findLastIndex(line => line.includes(rail));
 	}
 
-	it("draws a running subagent below the box with its current tool and intent", () => {
+	it("draws a running subagent below the block with its current tool and intent", () => {
 		const event: EvalStatusEvent = {
 			op: "agent",
 			id: "0-Scout",
@@ -73,11 +79,11 @@ describe("eval renderer: agent() progress below the cell box", () => {
 		};
 
 		const lines = render([event]);
-		const bottom = boxBottomIndex(lines);
+		const bottom = blockBottomIndex(lines);
 		expect(bottom).toBeGreaterThanOrEqual(0);
 
 		const idLine = lines.findIndex(line => line.includes("0-Scout"));
-		// The subagent id renders strictly *below* the closing box border.
+		// The subagent id renders strictly *below* the block's last railed row.
 		expect(idLine).toBeGreaterThan(bottom);
 
 		const below = lines.slice(bottom + 1).join("\n");
@@ -85,12 +91,12 @@ describe("eval renderer: agent() progress below the cell box", () => {
 		expect(below).toContain("0-Scout");
 		expect(below).toContain("read");
 		expect(below).toContain("Reading config");
-		// Agent progress is NOT folded into the box's Status section.
+		// Agent progress is NOT folded into the block's Status section.
 		expect(inside).not.toContain("0-Scout");
 		expect(inside).not.toContain("Reading config");
 	});
 
-	it("keeps full stats on a completed subagent below the box", () => {
+	it("keeps full stats on a completed subagent below the block", () => {
 		const event: EvalStatusEvent = {
 			op: "agent",
 			id: "0-Scout",
@@ -105,7 +111,7 @@ describe("eval renderer: agent() progress below the cell box", () => {
 		};
 
 		const lines = render([event], "complete");
-		const bottom = boxBottomIndex(lines);
+		const bottom = blockBottomIndex(lines);
 		const idLine = lines.findIndex(line => line.includes("0-Scout"));
 		expect(idLine).toBeGreaterThan(bottom);
 
@@ -122,24 +128,24 @@ describe("eval renderer: agent() progress below the cell box", () => {
 		];
 
 		const lines = render(events);
-		const below = lines.slice(boxBottomIndex(lines) + 1).join("\n");
+		const below = lines.slice(blockBottomIndex(lines) + 1).join("\n");
 		expect(below).toContain("0-Alpha");
 		expect(below).toContain("1-Beta");
 		expect(below).toContain("2-Gamma");
 	});
 
-	it("still folds non-agent status events into the box Status section", () => {
+	it("still folds non-agent status events into the block's Status section", () => {
 		const events: EvalStatusEvent[] = [
 			{ op: "read", path: "/tmp/file.ts", chars: 1200 },
 			{ op: "agent", id: "0-Scout", agent: "task", status: "running", lastIntent: "thinking" },
 		];
 
 		const lines = render(events);
-		const bottom = boxBottomIndex(lines);
+		const bottom = blockBottomIndex(lines);
 		const inside = lines.slice(0, bottom + 1).join("\n");
 		const below = lines.slice(bottom + 1).join("\n");
 
-		// Discrete ops stay inside the box; agent progress renders below it.
+		// Discrete ops stay inside the block; agent progress renders below it.
 		expect(inside).toContain("read");
 		expect(inside).toContain("file.ts");
 		expect(inside).not.toContain("0-Scout");

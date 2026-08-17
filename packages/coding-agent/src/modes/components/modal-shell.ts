@@ -300,6 +300,29 @@ export function computeModalDims(areaWidth: number, areaHeight: number, sizing: 
 	return { modalWidth, modalHeight, leftPad, topPad, contentWidth };
 }
 
+/** The close chip on a card's title row, and the one place its cells are counted. */
+const MODAL_CLOSE_CHIP = " [x] ";
+
+/**
+ * The card width whose CONTENT row is `contentWidth` cells wide — the inverse of the
+ * `contentWidth` {@link computeModalDims} returns. A caller that knows how wide its widest row
+ * has to be raises `minWidth` to this instead of restating the border-and-padding arithmetic.
+ */
+export function modalWidthForContent(contentWidth: number, sizing: ModalSizing): number {
+	return contentWidth + 2 + 2 * Math.max(1, sizing.hPad);
+}
+
+/**
+ * The card width whose TITLE row shows `titleWidth` cells without an ellipsis. The title row is
+ * not the content row: it pays for the two borders, the ember tick that replaces the leading
+ * rule, a space each side of the title, and the close chip. A card sized only by
+ * {@link modalWidthForContent} cuts the last word off its own title, which is how a credential
+ * prompt lost the sentence that told the operator a name comes later.
+ */
+export function modalWidthForTitle(titleWidth: number): number {
+	return titleWidth + 2 + 2 + 2 + visibleWidth(MODAL_CLOSE_CHIP);
+}
+
 /** One footer chip. `clickable` marks action vs inert hint (mouse targets). */
 export interface ModalShortcut {
 	/** Display text. When `keybindings` is present, the live bound keys are prepended at render time. */
@@ -628,7 +651,7 @@ export function renderModalShell(input: ModalShellInput): ModalShellResult {
 	const breadcrumbClickable = Boolean(input.breadcrumb && input.breadcrumbClickable);
 
 	if (input.showClose !== false) {
-		const closePlain = " [x] ";
+		const closePlain = MODAL_CLOSE_CHIP;
 		// Close glyph is silver structure (same as the frame), not dim soup.
 		const closeStyled = theme.fg("accent", closePlain);
 		const closeW = visibleWidth(closePlain);
@@ -1251,6 +1274,13 @@ export function applyModalReveal(
 		const lit = sweepSurface(treated.slice(0, visibleRows), areaWidth, surface, { phase: progress.sweep, columns });
 		treated = [...lit, ...treated.slice(visibleRows)];
 	}
+
+	// Nothing was treated: no material to paint, settled, no sweep. The frame it was
+	// handed IS the answer, and handing back the same array keeps a settled overlay off
+	// the allocator entirely -- this runs on every frame the overlay is open, and a copy
+	// of every row per frame is the one cost an entrance has no business charging after
+	// it has finished.
+	if (treated === card) return result.lines;
 
 	const lines = [...result.lines];
 	for (let i = 0; i < treated.length; i++) lines[cardRowStart + i] = treated[i]!;

@@ -92,15 +92,19 @@ describe("transcript blocks", () => {
 		}
 	});
 
-	/** The framed tool blocks DO draw a box, and that is fine: it has corners and a
-	 * label, so it frames content instead of dividing the screen. Asserting it is
-	 * present keeps this suite from passing because the blocks render nothing. */
-	it("still draws its framed box around the output", () => {
+	/** The tool blocks DO draw chrome — a rail down the left of the output — and that is
+	 * fine: a rail is one column beside the content instead of a rule across the screen.
+	 * Asserting it is present keeps this suite from passing because the blocks render
+	 * nothing at all. */
+	it("still hangs its output on a rail", () => {
+		const rail = theme.symbol("block.rail");
 		const lines = toolBlock(false)
 			.render(120)
 			.map(line => line.replace(/\x1b\[[0-9;]*m/g, ""));
 
-		expect(lines.some(line => line.includes(theme.boxSharp.topLeft))).toBe(true);
-		expect(lines.some(line => line.includes(theme.boxSharp.bottomRight))).toBe(true);
+		const railed = lines.filter(line => line.includes(rail));
+		expect(railed.length).toBeGreaterThan(0);
+		// One column, in the same column on every row: the shape a rule cannot have.
+		expect(new Set(railed.map(line => line.indexOf(rail))).size).toBe(1);
 	});
 });

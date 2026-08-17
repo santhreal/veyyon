@@ -113,7 +113,7 @@ describe("readToolRenderer hyperlinks", () => {
 });
 
 describe("read ToolExecutionComponent framing", () => {
-	it("renders framed read results inside the standard tool container padding", () => {
+	it("renders read results on the rail inside the standard tool container padding", () => {
 		const uiStub = { requestRender() {}, requestComponentRender() {} } as unknown as TUI;
 		const component = createToolExecution("read", { path: "src/example.ts" }, {}, undefined, uiStub);
 		component.updateResult(
@@ -128,17 +128,17 @@ describe("read ToolExecutionComponent framing", () => {
 		);
 
 		try {
+			const rail = activeTheme.symbol("block.rail");
 			const lines = component.render(80).map(line => Bun.stripANSI(line));
-			const topBorderIndex = lines.findIndex(
-				line => line.includes(activeTheme.boxSharp.topLeft) && line.includes("Read"),
-			);
-			const bottomBorderIndex = lines.findIndex(
-				(line, index) => index > topBorderIndex && line.includes(activeTheme.boxSharp.bottomLeft),
-			);
-
-			expect(topBorderIndex).toBeGreaterThanOrEqual(0);
-			expect(lines[topBorderIndex + 1]).toContain("export const x = 1;");
-			expect(bottomBorderIndex).toBeGreaterThan(topBorderIndex);
+			// The title owns its own row at the container's gutter, and the output hangs on
+			// the rail under it. Nothing closes the block: the last row of output is the
+			// last row of the block, which is what the rail replaced two chrome rows with.
+			const titleIndex = lines.findIndex(line => line.includes("Read") && !line.includes(rail));
+			expect(titleIndex).toBeGreaterThanOrEqual(0);
+			expect(lines[titleIndex]).toStartWith("  ");
+			expect(lines[titleIndex + 1]).toStartWith(`  ${rail} `);
+			expect(lines[titleIndex + 1]).toContain("export const x = 1;");
+			for (const line of lines.slice(titleIndex + 2)) expect(line.trim()).toBe("");
 		} finally {
 			component.stopAnimation();
 		}

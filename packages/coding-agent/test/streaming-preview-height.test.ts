@@ -404,34 +404,39 @@ describe("streaming tool call preview height (bounded across renderers)", () => 
 	}
 
 	function getRenderedLines(lines: readonly string[]): string[] {
+		const rail = activeTheme.symbol("block.rail");
 		return lines
 			.map(line => Bun.stripANSI(line).trim())
-			.filter(line => line.startsWith("│") && line.endsWith("│"))
-			.map(line => line.slice(1, -1).trim())
+			.filter(line => line.startsWith(rail))
+			.map(line => line.slice(rail.length).trim())
 			.filter(line => line !== "" && !line.includes("earlier lines"));
 	}
 
 	/**
-	 * The frame spans the tool's width INSIDE the transcript rail: it starts at
-	 * `COMPOSER_INSET_COLS` and ends the same distance from the right edge. It used to
-	 * start at column 0 and run edge to edge, which put it two columns left of every
-	 * other block on screen; see `transcript-one-left-rail.test.ts` for the rail itself.
-	 * What this test still guards is that the frame is a full-width band within that
-	 * rail rather than hugging its content, which is what a preview must not do while
-	 * args stream in and the content width jumps every tick.
+	 * The preview hangs on a rail at `COMPOSER_INSET_COLS`, inside the transcript rail, and
+	 * the row it sits on is padded to the full width by the container. It used to be a box
+	 * band spanning that same width: the band belongs to the container now and the block
+	 * hugs its own ink, so what still has to hold is that the preview starts two columns in
+	 * rather than at column 0 (it did, once, which put it left of every other block on
+	 * screen; see `transcript-one-left-rail.test.ts` for the rail itself) and that the row
+	 * under it is a full rectangle for the transcript to paint on.
 	 */
-	test("framed inline tool previews span the full tool width inside the rail", () => {
+	test("inline tool previews hang on a rail at the transcript inset", () => {
 		const width = 80;
+		const rail = activeTheme.symbol("block.rail");
 		const { lines } = renderPending("bash", { command: "echo hi" });
 		const strippedLines = lines.map(line => Bun.stripANSI(line));
-		const topBorder = strippedLines.find(line => line.includes(activeTheme.boxSharp.topLeft));
+		const railed = strippedLines.filter(line => line.includes(rail));
 
-		expect(topBorder).toBeDefined();
-		const trimmed = (topBorder ?? "").trimEnd();
-		expect(trimmed.length - trimmed.trimStart().length).toBe(COMPOSER_INSET_COLS);
-		expect(trimmed.trimStart()[0]).toBe(activeTheme.boxSharp.topLeft);
-		expect(trimmed.endsWith(activeTheme.boxSharp.topRight)).toBe(true);
-		expect(visibleWidth(trimmed)).toBe(width - COMPOSER_INSET_COLS);
+		expect(railed.length).toBeGreaterThan(0);
+		for (const row of railed) {
+			expect(row.indexOf(rail)).toBe(COMPOSER_INSET_COLS);
+			expect(visibleWidth(row)).toBe(width);
+		}
+		const box = activeTheme.boxSharp;
+		for (const glyph of [box.topLeft, box.topRight, box.bottomLeft, box.vertical]) {
+			for (const row of strippedLines) expect(row, glyph).not.toContain(glyph);
+		}
 	});
 
 	test("bash/ssh pending previews stay short even with very long multiline args", () => {
