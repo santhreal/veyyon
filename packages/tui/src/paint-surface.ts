@@ -22,6 +22,7 @@
 // the same reasoning as `motion-paint.ts`: the component stays ignorant, and every
 // frame of the treatment is byte-assertable.
 
+import { clamp01 } from "@veyyon/utils/math";
 import { blendHex } from "./motion-paint";
 import { type ColumnPainter, type ColumnWindow, paintBlockBackground } from "./paint-columns";
 import { parseHexColor } from "./paint-ground";
@@ -48,7 +49,7 @@ function liftTarget(ground: string): string {
 
 /** A colour `amount` of the way off `ground`, in whichever direction is visible on it. */
 export function liftHex(ground: string, amount: number): string {
-	return blendHex(ground, liftTarget(ground), Math.max(0, Math.min(1, amount)));
+	return blendHex(ground, liftTarget(ground), clamp01(amount));
 }
 
 /**
@@ -105,7 +106,7 @@ const DEFAULT_BOTTOM_LIFT = 0.055;
 export function surfaceColorAt(spec: SurfaceSpec, t: number): string {
 	const top = spec.lift ?? DEFAULT_LIFT;
 	const bottom = spec.bottomLift ?? DEFAULT_BOTTOM_LIFT;
-	const k = Math.max(0, Math.min(1, t));
+	const k = clamp01(t);
 	return liftHex(spec.ground, top + (bottom - top) * k);
 }
 
@@ -134,7 +135,7 @@ export function surfaceRowColor(spec: SurfaceSpec, row: number, rows: number): s
 export function fillSurface(lines: readonly string[], width: number, spec: SurfaceSpec, strength = 1): string[] {
 	if (strength <= 0 || lines.length === 0) return [...lines];
 	const rows = Math.max(1, lines.length - 1);
-	const clamped = Math.max(0, Math.min(1, strength));
+	const clamped = clamp01(strength);
 	return paintBlockBackground(
 		lines,
 		width,
@@ -234,10 +235,10 @@ export function sweepSurface(lines: readonly string[], width: number, ground: st
  * cascade does not make the card slower to arrive.
  */
 export function cascadeStrength(row: number, rows: number, progress: number, stagger = 0.045): number {
-	if (rows <= 1) return Math.max(0, Math.min(1, progress));
+	if (rows <= 1) return clamp01(progress);
 	const spread = Math.min(0.85, stagger * (rows - 1));
 	const start = rows === 1 ? 0 : (row / (rows - 1)) * spread;
 	const window = 1 - spread;
-	if (window <= 0) return Math.max(0, Math.min(1, progress));
-	return Math.max(0, Math.min(1, (progress - start) / window));
+	if (window <= 0) return clamp01(progress);
+	return clamp01((progress - start) / window);
 }

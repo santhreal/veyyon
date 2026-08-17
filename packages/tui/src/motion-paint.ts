@@ -11,11 +11,12 @@
 // terminal may not be using, and a wrong guess is a visible color shift rather
 // than a missing fade. Motion is gated on truecolor at the call site anyway.
 
+import { clamp, clamp01 } from "@veyyon/utils/math";
 import { sgrSequence } from "./ansi";
 import { parseHexColor } from "./paint-ground";
 
 function clampChannel(value: number): number {
-	return Math.max(0, Math.min(255, Math.round(value)));
+	return clamp(Math.round(value), 0, 255);
 }
 
 /** `#rrggbb` from channels, each clamped to a byte. */
@@ -32,7 +33,7 @@ export function blendHex(from: string, to: string, t: number): string {
 	const a = parseHexColor(from);
 	const b = parseHexColor(to);
 	if (a === null || b === null) return t >= 0.5 ? to : from;
-	const k = Math.max(0, Math.min(1, t));
+	const k = clamp01(t);
 	return toHexColor(a.r + (b.r - a.r) * k, a.g + (b.g - a.g) * k, a.b + (b.b - a.b) * k);
 }
 
@@ -53,7 +54,7 @@ const SGR = sgrSequence("g");
  * back out in the spelling it went in with.
  */
 export function fadeLineTowards(line: string, groundHex: string, strength: number): string {
-	const k = Math.max(0, Math.min(1, strength));
+	const k = clamp01(strength);
 	if (k >= 1) return line;
 	const ground = parseHexColor(groundHex);
 	if (ground === null) return line;
@@ -94,6 +95,7 @@ export function fadeLinesTowards(lines: readonly string[], groundHex: string, st
  */
 export function revealedRows(total: number, progress: number, minimum = 0): number {
 	if (total <= 0) return 0;
-	const clamped = Math.max(0, Math.min(1, progress));
-	return Math.max(Math.min(minimum, total), Math.min(total, Math.round(total * clamped)));
+	const floor = Math.min(minimum, total);
+	const shown = Math.min(total, Math.round(total * clamp01(progress)));
+	return Math.max(floor, shown);
 }

@@ -11,7 +11,7 @@
  * Import this instead of reading `subagent.*` keys directly.
  */
 
-import { logger } from "@veyyon/utils";
+import { isRecord, logger } from "@veyyon/utils";
 import { parseConfiguredEffortSetting } from "../config/effort-resolver";
 import { resolveConfiguredModelPatterns } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
@@ -217,7 +217,7 @@ export function subagentSettingsFor(settings: Settings, name: string): SubagentA
 	// Without this an operator who had pinned a model on `subagent.agents.task`
 	// would keep the row in their config and silently stop getting the model.
 	const row = table?.[name] ?? table?.[currentAgentName(name)];
-	return row && typeof row === "object" ? row : {};
+	return isRecord(row) ? (row as SubagentAgentSettings) : {};
 }
 
 function parseMaxNestedSpawnDepth(setting: string, value: unknown): number {
@@ -703,9 +703,7 @@ export function subagentModelByDepthRowPath(depth: number): SettingPath {
 /** The stored map as a plain table, tolerating a non-record value the validator already reported. */
 function readModelByDepthTable(settings: Settings): Record<string, unknown> {
 	const table: unknown = settings.get(SUBAGENT_MODEL_BY_DEPTH_PATH);
-	return table !== null && typeof table === "object" && !Array.isArray(table)
-		? (table as Record<string, unknown>)
-		: {};
+	return isRecord(table) ? table : {};
 }
 
 /** One configured depth row, for the surfaces that list them. */
