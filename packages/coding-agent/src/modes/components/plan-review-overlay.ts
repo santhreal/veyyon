@@ -952,6 +952,6 @@ export class PlanReviewOverlay implements Component {
 		this.#shellGeometry = shell.geometry;
 		this.#bodyRowOffset = shell.geometry?.bodyRowStart ?? 0;
 		this.#sidebarClickMaxCol = sidebarShown ? (shell.geometry?.leftPad ?? 0) + 2 + sidebarWidth + 1 : 0;
-		return applyModalReveal(shell, width, this.#reveal.value);
+		return applyModalReveal(shell, width, this.#reveal);
 	}
 }

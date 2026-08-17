@@ -1010,6 +1010,6 @@ export class AccountManagerComponent implements Component {
 		this.#shellGeometry = shell.geometry;
 		this.#frameLeft = shell.geometry?.leftPad ?? 0;
 		this.#contentRowStart = shell.geometry?.bodyRowStart ?? 0;
-		return applyModalReveal(shell, width, this.#reveal.value);
+		return applyModalReveal(shell, width, this.#reveal);
 	}
 }

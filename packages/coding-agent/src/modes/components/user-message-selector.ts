@@ -428,6 +428,6 @@ export class UserMessageSelectorComponent implements Component {
 		this.#shellGeometry = shell.geometry;
 		// The body leads with a hint line and a blank before the list's own rows.
 		this.#listRowStart = (shell.geometry?.bodyRowStart ?? 0) + 2;
-		return applyModalReveal(shell, width, this.#reveal.value);
+		return applyModalReveal(shell, width, this.#reveal);
 	}
 }

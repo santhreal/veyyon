@@ -230,7 +230,7 @@ export class ModalSelectListComponent implements Component {
 			showClose: true,
 		});
 		this.#shellGeometry = shell.geometry;
-		return applyModalReveal(shell, width, this.#reveal.value);
+		return applyModalReveal(shell, width, this.#reveal);
 	}
 
 	/** Settle the reveal and the pointer band so no timer outlives a dismissed card. */

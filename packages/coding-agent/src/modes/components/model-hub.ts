@@ -2181,6 +2181,6 @@ export class ModelHubComponent implements Component {
 		this.#frameLeft = shell.geometry?.leftPad ?? 0;
 		this.#contentRowStart = shell.geometry?.bodyRowStart ?? 0;
 		this.#stripRow = this.#contentRowStart + splitRows;
-		return applyModalReveal(shell, width, this.#reveal.value);
+		return applyModalReveal(shell, width, this.#reveal);
 	}
 }

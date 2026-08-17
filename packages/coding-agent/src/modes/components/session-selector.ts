@@ -1096,7 +1096,7 @@ export class SessionSelectorComponent extends Container {
 		this.#shellGeometry = shell.geometry;
 		this.#listLineOffset = (shell.geometry?.bodyRowStart ?? 0) + this.#listLineOffset;
 		this.#footerStart = shell.geometry?.footerRowStart ?? shell.lines.length;
-		return applyModalReveal(shell, width, this.#reveal.value);
+		return applyModalReveal(shell, width, this.#reveal);
 	}
 
 	handleInput(keyData: string): void {

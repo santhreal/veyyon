@@ -359,7 +359,7 @@ export class MoveOverlay implements Component, Focusable {
 		this.#shellGeometry = shell.geometry;
 		// The body leads with the input line and a blank before the suggestion rows.
 		this.#listRowStart = (shell.geometry?.bodyRowStart ?? 0) + 2;
-		return applyModalReveal(shell, width, this.#reveal.value);
+		return applyModalReveal(shell, width, this.#reveal);
 	}
 
 	invalidate(): void {}

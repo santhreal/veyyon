@@ -336,6 +336,6 @@ export class ModelPickerComponent implements Component {
 		this.#shellGeometry = shell.geometry;
 		// The body leads with the status line; the browser starts one row later.
 		this.#browserRowStart = (shell.geometry?.bodyRowStart ?? 0) + 1;
-		return applyModalReveal(shell, width, this.#reveal.value);
+		return applyModalReveal(shell, width, this.#reveal);
 	}
 }
