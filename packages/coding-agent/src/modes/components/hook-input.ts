@@ -12,6 +12,7 @@ import {
 	Spacer,
 	type TUI,
 	truncateToWidth,
+	visibleWidth,
 } from "@veyyon/tui";
 import { getMarkdownTheme } from "../../modes/theme/markdown-theme";
 import { theme } from "../../modes/theme/theme";
@@ -27,6 +28,9 @@ import {
 	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
+	type ModalSizing,
+	modalWidthForContent,
+	modalWidthForTitle,
 	planModalChrome,
 	renderModalShell,
 	sizingForArea,
@@ -194,10 +198,32 @@ export class HookInputComponent extends Container {
 		this.#input.pasteText(text);
 	}
 
+	/**
+	 * The card is at least as wide as the two sentences it exists to say.
+	 *
+	 * A medium card takes 60% of the terminal, and the title and the hint are both cut to the
+	 * content width: on a 100-column terminal that turned the credential field's instruction into
+	 * "You can name it afte…" and its promise into "stored encr…". Those sentences ARE the field —
+	 * a masked prompt whose wording is truncated is the misread it was written to prevent — so the
+	 * card's floor rises to fit them instead. Only the floor moves, so a card whose text already
+	 * fits keeps the shared proportions, and a terminal too narrow for the sentence still clamps
+	 * (`computeModalDims` caps the floor at the area) rather than overflowing the screen.
+	 */
+	#sizing(height: number): ModalSizing {
+		const base = sizingForArea(MODAL_SIZING_MEDIUM, height);
+		// The title row and the footer row charge different chrome, so each sentence asks the
+		// layout owner what it costs rather than restating the arithmetic here.
+		const needed = Math.max(
+			modalWidthForTitle(visibleWidth(this.#cardTitle + this.#countdownSuffix)),
+			this.#hint === undefined ? 0 : modalWidthForContent(visibleWidth(this.#hint), base),
+		);
+		return needed <= base.minWidth ? base : { ...base, minWidth: needed };
+	}
+
 	override render(width: number): readonly string[] {
 		const renderWidth = Math.max(1, width);
 		const height = process.stdout.rows || 40;
-		const sizing = sizingForArea(MODAL_SIZING_MEDIUM, height);
+		const sizing = this.#sizing(height);
 		const dims = computeModalDims(renderWidth, height, sizing);
 		if (!dims) {
 			this.#shellGeometry = null;

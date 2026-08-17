@@ -92,6 +92,45 @@ function mustNotOpen(field: string): Drive {
 }
 
 /**
+ * The host the controller presents a field INTO.
+ *
+ * The hook input is a floating card on the overlay stack, not a child of the editor slot, so
+ * `showOverlay` is the seam the field has to cross to be on screen at all. The stack is kept
+ * here and read by the callers below: a field the controller built but never handed to an
+ * overlay is a field the operator cannot see, and a host missing the call would otherwise make
+ * every case in this suite fail for the host rather than for the grammar or the wording.
+ */
+function hookHost(): {
+	overlays: unknown[];
+	ctx: { hookInput: HookInputComponent | undefined };
+} {
+	const overlays: unknown[] = [];
+	const ctx = {
+		ui: {
+			setFocus() {},
+			requestRender() {},
+			requestComponentRender() {},
+			showOverlay(component: unknown) {
+				overlays.push(component);
+				return {
+					hide() {
+						const at = overlays.indexOf(component);
+						if (at >= 0) overlays.splice(at, 1);
+					},
+					setHidden() {},
+				};
+			},
+			terminal: { columns: 100, rows: 40 },
+		},
+		editorContainer: { clear() {}, addChild() {} },
+		editor: {},
+		focusActiveEditorArea() {},
+		hookInput: undefined as HookInputComponent | undefined,
+	};
+	return { overlays, ctx };
+}
+
+/**
  * Run `/secret <args>` through the REAL dialogs, with `typeValue`/`typeName` driving the real
  * components.
  *
@@ -104,12 +143,7 @@ async function secretThroughRealDialog(
 ): Promise<{ fields: PresentedField[]; outcome: SecretCommandOutcome }> {
 	const { typeName } = options;
 	const fields: PresentedField[] = [];
-	const uiCtx = {
-		ui: { setFocus() {}, requestRender() {}, requestComponentRender() {}, terminal: { rows: 40 } },
-		editorContainer: { clear() {}, addChild() {} },
-		editor: {},
-		hookInput: undefined as { handleInput(bytes: string): void } | undefined,
-	};
+	const { overlays, ctx: uiCtx } = hookHost();
 	const controller = new ExtensionUiController(uiCtx as never);
 
 	const present = (title: string, mask: string | undefined, drive: Drive): Promise<string | undefined> => {
@@ -117,6 +151,7 @@ async function secretThroughRealDialog(
 		const pending = controller.showHookInput(title, undefined, undefined, mask ? { mask } : undefined);
 		const component = uiCtx.hookInput;
 		if (component === undefined) throw new Error("The field was never presented.");
+		if (!overlays.includes(component)) throw new Error("The field was built but never put on screen.");
 		drive(bytes => component.handleInput(bytes));
 		return pending;
 	};
@@ -301,22 +336,20 @@ describe("the verbless /secret grammar in a terminal", () => {
  * statement that it masks what you type.
  */
 describe("the masked credential field as the operator sees it", () => {
-	/** Present the masked field the way the registry does, and return what it paints. */
-	function paintedMaskedField(): string {
-		const uiCtx = {
-			ui: { setFocus() {}, requestRender() {}, requestComponentRender() {}, terminal: { rows: 40 } },
-			editorContainer: { clear() {}, addChild() {} },
-			editor: {},
-			hookInput: undefined as HookInputComponent | undefined,
-		};
+	/** Present a masked field through the real controller, and return what it paints at 100 columns. */
+	function paintedField(title: string, hint: string): string {
+		const { overlays, ctx: uiCtx } = hookHost();
 		const controller = new ExtensionUiController(uiCtx as never);
-		void controller.showHookInput(maskedPromptTitle(), undefined, undefined, {
-			mask: DEFAULT_MASK_CHAR,
-			hint: maskedPromptHint(),
-		});
+		void controller.showHookInput(title, undefined, undefined, { mask: DEFAULT_MASK_CHAR, hint });
 		const field = uiCtx.hookInput;
 		if (field === undefined) throw new Error("The field was never presented.");
+		if (!overlays.includes(field)) throw new Error("The field was built but never put on screen.");
 		return stripAnsi(field.render(100).join("\n"));
+	}
+
+	/** The field the way the registry presents it, which is what the wording cases below read. */
+	function paintedMaskedField(): string {
+		return paintedField(maskedPromptTitle(), maskedPromptHint());
 	}
 
 	/**
@@ -364,15 +397,69 @@ describe("the masked credential field as the operator sees it", () => {
 	});
 
 	/**
-	 * The legend keeps its keys. The hint shares that row, and a naive implementation that
+	 * THE CARD IS AS WIDE AS ITS OWN SENTENCES. The field is a floating card sized at a fraction of
+	 * the terminal, and a 60% card on a 100-column terminal cut the instruction to "You can name it
+	 * afte…" and the promise to "stored encr…". Both sentences are the field's defence against
+	 * storing a NAME as a credential, so neither may end in an ellipsis: `HookInputComponent` raises
+	 * the card's width floor to fit them. Asserted as "no ellipsis on the title or the hint row"
+	 * rather than as a width number, because the contract is legibility and not a column count.
+	 */
+	it("shows its instruction and its promise whole, with nothing cut off", () => {
+		const rows = paintedMaskedField().split("\n");
+		const titleRow = rows.find(row => row.includes("Paste the secret value")) ?? "";
+		const hintRow = rows.find(row => row.includes("hidden as you type")) ?? "";
+
+		expect(titleRow).toContain("You can name it afterwards.");
+		expect(titleRow).not.toContain("…");
+		expect(hintRow).toContain("stored encrypted");
+		expect(hintRow).not.toContain("…");
+	});
+
+	/**
+	 * EITHER sentence sets the width, and this is the arm that proves it separately.
+	 *
+	 * The shipped wording happens to have the longer requirement in the TITLE, so a card that sized
+	 * itself to the title alone still painted the shipped hint whole and the case above stayed green
+	 * while half the rule was gone. These two fields invert the pair: one whose hint is far longer
+	 * than its title, one whose title is far longer than its hint. Each must be readable, so
+	 * dropping either term of the width floor fails here even when the shipped strings would not
+	 * notice.
+	 */
+	it("sizes to whichever of the two sentences is longer", () => {
+		const longHint = "a hint that is considerably longer than the title above it, and still one line";
+		const hintLed = paintedField("Short title", longHint);
+		expect(hintLed.split("\n").find(row => row.includes("considerably longer")) ?? "").toContain("still one line");
+		expect(hintLed).not.toContain("…");
+
+		const longTitle = "A title that is considerably longer than the hint under it, ending in a period.";
+		const titleLed = paintedField(longTitle, "short hint");
+		expect(titleLed.split("\n").find(row => row.includes("considerably longer")) ?? "").toContain(
+			"ending in a period.",
+		);
+		expect(titleLed).not.toContain("…");
+	});
+
+	/**
+	 * The legend keeps its keys, in the same footer band as the hint. A naive implementation that
 	 * REPLACED the legend rather than joining it would take the only statement of how to submit or
 	 * escape off the screen.
+	 *
+	 * The keys are asserted by ACTION rather than by one spelling of a binding: `cancel` is bound to
+	 * esc and to ctrl+c, the chip names every live binding, and pinning "esc cancel" as a literal
+	 * made the suite fail for a card that named one key MORE than it used to.
 	 */
-	it("keeps the submit and cancel keys beside the hint", () => {
-		const painted = paintedMaskedField();
+	it("keeps the submit and cancel keys in the footer band beside the hint", () => {
+		const rows = paintedMaskedField().split("\n");
+		const hintRow = rows.findIndex(row => row.includes("hidden as you type"));
+		const keyRow = rows.findIndex(row => row.includes("submit"));
 
-		expect(painted).toContain("enter submit");
-		expect(painted).toContain("esc cancel");
+		expect(hintRow).toBeGreaterThanOrEqual(0);
+		// Same band: the keys sit on the hint's row or the one under it, never elsewhere on screen.
+		expect(keyRow - hintRow).toBeGreaterThanOrEqual(0);
+		expect(keyRow - hintRow).toBeLessThanOrEqual(1);
+		expect(rows[keyRow]).toContain("enter");
+		expect(rows[keyRow]).toContain("cancel");
+		expect(rows[keyRow]).toContain("esc");
 	});
 });
 
