@@ -1,8 +1,12 @@
-// Symbol presets and spinner frames: the single owner of every glyph the TUI
-// renders (status icons, tree connectors, box drawing, tool glyphs) and of the
-// per-preset spinner frame sets. Pure data + pure helpers — no runtime state.
+// Symbol presets, spinner frames and bar ramps: the single owner of every glyph
+// the TUI renders (status icons, tree connectors, box drawing, tool glyphs), of
+// the per-preset spinner frame sets, and of the glyphs a progress bar is drawn
+// from. Pure data + pure helpers — no runtime state.
 // Consumers go through `theme.ts` (the theme boundary), which re-exports the
 // public pieces.
+
+import { SUB_CELL_BAR_RAMP, type SubCellBarRamp } from "@veyyon/tui/sub-cell-bar";
+
 // ============================================================================
 // Symbol Presets
 // ============================================================================
@@ -1113,6 +1117,26 @@ export const SPINNER_FRAMES: Record<SymbolPreset, Record<SpinnerType, string[]>>
 		// one-frame set, so ASCII terminals get a static marker, not churn.
 		thinking: ["*"],
 	},
+};
+
+/**
+ * The glyphs a progress, usage or context bar is drawn from, per preset.
+ *
+ * Sub-cell precision is a GLYPH capability, so it belongs to the same preset
+ * that already decides whether this terminal gets `└─` or `+-`: a font without
+ * the partial blocks renders `▍` as a replacement box, which is a hole in the
+ * middle of the bar rather than a coarser bar. `ascii` therefore carries no
+ * partials at all, and `subCellBar` degrades to whole cells — the same
+ * resolution ASCII had before, in glyphs ASCII actually has.
+ *
+ * `#` and `-` for the ASCII fill and track rather than `=` and `-`: the track
+ * has to stay visible next to the fill at one column, and `-` against `=` reads
+ * as one dashed line.
+ */
+export const BAR_RAMPS: Record<SymbolPreset, SubCellBarRamp> = {
+	unicode: SUB_CELL_BAR_RAMP,
+	nerd: SUB_CELL_BAR_RAMP,
+	ascii: { full: "#", track: "-", partials: [] },
 };
 
 /**

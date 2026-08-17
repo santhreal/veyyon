@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { CompactionCancelledError, type CompactionOutcome } from "@veyyon/agent-core/compaction";
 import { getEnvApiKey, getProviderDetails, type ProviderDetails, type UsageLimit, type UsageReport } from "@veyyon/ai";
 import { resolveUsedFraction } from "@veyyon/ai/usage";
-import { Loader, Markdown, type OverlayHandle, padding, Spacer, Text, visibleWidth } from "@veyyon/tui";
+import { Loader, Markdown, type OverlayHandle, padding, Spacer, subCellBar, Text, visibleWidth } from "@veyyon/tui";
 import {
 	APP_NAME,
 	CHANGELOG_URL,
@@ -1540,22 +1540,35 @@ function resolveStatusColor(status: UsageLimit["status"]): "success" | "warning"
 	return "dim";
 }
 
+/**
+ * One usage bar: the fill in the limit's status colour, the track dimmed.
+ *
+ * Eight steps per column through the shared owner, which replaces a local
+ * three-state approximation (`▒` at a third of a cell, `▓` at two thirds).
+ * That approximation was the only sub-cell precision in the product and it read
+ * as a shading artifact rather than as a position; the partial blocks read as
+ * the bar ending part way through a column, because that is what they are.
+ *
+ * STATIC, deliberately. `renderUsageReports` returns one string that `/usage`
+ * presents as a `Text` in the transcript: there is no component holding this
+ * bar and no repaint after the first, so a spring here would have nothing to
+ * drive it. See `tiny-title-download-progress.ts` for the animated case.
+ */
 function renderUsageBar(limit: UsageLimit, uiTheme: typeof theme, barWidth: number): string {
 	const fraction = resolveUsedFraction(limit);
 	if (fraction === undefined) {
 		return uiTheme.fg("dim", "·".repeat(barWidth));
 	}
-	const clamped = clamp01(fraction);
-	const exact = clamped * barWidth;
-	const fullCells = Math.floor(exact);
-	const remainder = exact - fullCells;
-	let partial = "";
-	if (remainder >= 2 / 3) partial = "▓";
-	else if (remainder >= 1 / 3) partial = "▒";
-	const leading = "█".repeat(fullCells) + partial;
-	const empty = "░".repeat(Math.max(0, barWidth - fullCells - (partial ? 1 : 0)));
+	const ramp = uiTheme.getBarRamp();
+	const bar = subCellBar(clamp01(fraction), barWidth, { ramp });
+	// The first track cell is where the fill ends: every glyph before it is fill,
+	// whole or partial. One slice, so the two tones cannot disagree about the
+	// boundary the way two independently counted `repeat`s could.
+	const trackAt = bar.indexOf(ramp.track);
 	const color = resolveStatusColor(limit.status);
-	return `${uiTheme.fg(color, leading)}${uiTheme.fg("dim", empty)}`;
+	return trackAt < 0
+		? uiTheme.fg(color, bar)
+		: `${uiTheme.fg(color, bar.slice(0, trackAt))}${uiTheme.fg("dim", bar.slice(trackAt))}`;
 }
 
 /**

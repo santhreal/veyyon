@@ -2,6 +2,7 @@
  * CLI handler for `veyyon grievances` — view, clean, and manually push reported tool issues.
  */
 import { existsSync } from "node:fs";
+import { subCellBar } from "@veyyon/tui/sub-cell-bar";
 import { formatCount, getAutoQaDbDir, pluralize } from "@veyyon/utils";
 import chalk from "chalk";
 import { Settings } from "../config/settings";
@@ -196,9 +197,11 @@ function makeProgressBar(total: number, width = 30): ProgressBar {
 		return { update: () => undefined, finish: () => undefined };
 	}
 	const render = (done: number): void => {
+		// Eight steps per column through the shared owner. STATIC: a `\r`-rewritten
+		// line driven by the push loop, with no clock and no render loop, so the
+		// value cannot be settled — the resolution is the whole improvement here.
 		const ratio = Math.min(1, done / total);
-		const filled = Math.round(ratio * width);
-		const bar = `${"█".repeat(filled)}${"░".repeat(width - filled)}`;
+		const bar = subCellBar(ratio, width);
 		const pct = `${Math.floor(ratio * 100)
 			.toString()
 			.padStart(3, " ")}%`;
