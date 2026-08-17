@@ -18,6 +18,8 @@
 // hover from row to row, or a list that is scrolled while it is still settling,
 // stays continuous.
 
+import { clamp } from "@veyyon/utils/math";
+
 /** A normalized easing curve: 0 → 0, 1 → 1, sampled on [0, 1]. */
 export type Easing = (t: number) => number;
 
@@ -250,7 +252,7 @@ export class Animation {
 	/** Advance by `dtMs`. Returns true while the animation is still live. */
 	step(dtMs: number): boolean {
 		if (this.#done) return false;
-		const dt = Math.min(Math.max(dtMs, 0), MAX_FRAME_MS);
+		const dt = clamp(dtMs, 0, MAX_FRAME_MS);
 		this.#elapsed += dt;
 		if ("spring" in this.#curve) this.#stepSpring(dt);
 		else this.#stepCurve();

@@ -87,19 +87,18 @@ export class HomeAnchorLayout {
 		}
 
 		const slack = Math.max(0, rows - contentExclFill);
-		// Slack is only EMPTY room while the session has never scrolled. Once rows
-		// have left the window onto the scroll tape, the screen above the frame
-		// holds painted conversation history, and a fill row there is not a margin:
-		// it is a blank row written over the transcript. A frame that shrinks below
-		// the viewport mid-session (a tall streaming answer collapsing to its final
-		// short render, an overlay closing, the todo HUD finishing) then routed the
-		// entire difference into `topFill` and painted a void where the answer was —
-		// up to 23 blank rows over 82 rows of live history, with the live tail
-		// squeezed off the top of the screen. There is nothing to anchor at that
-		// point: history already fills the rows above, so both fills stay collapsed
-		// and the tail paints directly under the conversation, the way a shell
-		// prompt follows its output.
-		const room = ui.scrollTapeRows > 0 ? 0 : slack;
+		// Slack is empty room, and it is only ever empty room because the frame is
+		// never shorter than the window once history exists: the transcript keeps a
+		// viewport's worth of committed rows in the frame for the engine's shrink
+		// repair (`NativeScrollbackCompaction.setNativeScrollbackRetainRows`). Break
+		// that contract and this measurement is reading a short frame for a long
+		// session, which is what wrote up to 23 blank rows over 82 rows of live
+		// history when a tall streaming answer settled to a two-row tail. Guarding
+		// here instead (route nothing once anything has scrolled) fixes nothing and
+		// costs the hug: measured on the same session, the band simply moves below
+		// the composer and strands it 18 rows off the bottom edge. The frame length
+		// is the invariant; this routing is downstream of it.
+		//
 		// Slack routing is the whole design:
 		// - Hero up: 2/5 above the hero (optically centred), the rest below so
 		//   the composer sits on the viewport bottom.
@@ -118,9 +117,9 @@ export class HomeAnchorLayout {
 		// committed blank rows overflowed the screen and pushed the prompt
 		// into scrollback while the viewport was mostly empty.
 		const conversation = this.port.transcriptChildCount() > 0;
-		const top = this.port.hasHero() ? Math.floor((room * 2) / 5) : conversation ? room : 0;
+		const top = this.port.hasHero() ? Math.floor((slack * 2) / 5) : conversation ? slack : 0;
 		if (top !== currentTopFill) this.topFill.setLines(top);
-		if (room - top !== currentFill) this.bottomFill.setLines(room - top);
+		if (slack - top !== currentFill) this.bottomFill.setLines(slack - top);
 	}
 
 	/**
