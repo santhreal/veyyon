@@ -1,6 +1,7 @@
 /**
  * Bordered output container with optional header and sections.
  */
+
 import type { Component } from "@veyyon/tui";
 import {
 	ImageProtocol,
@@ -11,11 +12,12 @@ import {
 	wrapTextWithAnsi,
 } from "@veyyon/tui";
 import { SGR_BG_RESET } from "@veyyon/tui/ansi";
+import { clampLow } from "@veyyon/utils";
 import type { Theme, ThemeColor } from "../modes/theme/theme";
 import { getSixelLineMask } from "../utils/sixel";
 import type { State } from "./types";
 import type { RenderCache } from "./utils";
-import { getStateBgColor, Hasher, padToWidth, truncateToWidth } from "./utils";
+import { getStateBgColor, Hasher, padToWidth } from "./utils";
 
 export interface OutputBlockOptions {
 	header?: string;
@@ -44,10 +46,14 @@ export function isFramedBlockComponent(component: Component): boolean {
 }
 
 type BlockRow =
-	| { kind: "bar"; leftChar: string; rightChar: string; label?: string; meta?: string }
-	| { kind: "bottom"; leftChar: string; rightChar: string }
+	| { kind: "header"; text: string }
+	| { kind: "label"; text: string }
+	| { kind: "rule" }
 	| { kind: "content"; inner: string }
 	| { kind: "sixel"; raw: string };
+
+/** Cells of rule a label-less section separator draws on the rail. */
+const SEPARATOR_CELLS = 12;
 
 function normalizeContentPaddingLeft(value: number | undefined): number {
 	if (value === undefined || !Number.isFinite(value)) return 1;
@@ -56,10 +62,15 @@ function normalizeContentPaddingLeft(value: number | undefined): number {
 
 /**
  * Inner content width that {@link renderOutputBlock} wraps its body to, for a
- * given outer `width`: both vertical borders (1 cell each) plus the left
+ * given outer `width`: the rail and the space after it (2 cells) plus the left
  * content padding. Renderers that size a tail window MUST budget visual rows
  * against this, not the outer width — otherwise the block re-wraps their lines
- * into more rows than they counted and the box overflows its intended height.
+ * into more rows than they counted and the block overflows its intended height.
+ *
+ * The number is unchanged from when a block was a box: a box spent its two
+ * chrome columns on a left and a right border, and a rail spends them on the
+ * rail glyph and the space after it. Every renderer that budgets against this
+ * counts exactly the rows it counted before.
  */
 export function outputBlockContentWidth(width: number, contentPaddingLeft?: number): number {
 	return Math.max(1, width - 2 - normalizeContentPaddingLeft(contentPaddingLeft));
@@ -68,10 +79,9 @@ export function outputBlockContentWidth(width: number, contentPaddingLeft?: numb
 export function renderOutputBlock(options: OutputBlockOptions, theme: Theme): string[] {
 	const { header, headerMeta, state, sections = [], width, applyBg = true } = options;
 	const h = theme.boxSharp.horizontal;
-	const v = theme.boxSharp.vertical;
-	const cap = h.repeat(3);
+	const rail = theme.symbol("block.rail");
 	const lineWidth = Math.max(0, width);
-	// Border colors: running/pending use accent, success uses dim (gray), error/warning keep their colors
+	// Rail colors: running/pending use accent, success uses dim (gray), error/warning keep their colors
 	const borderColor: ThemeColor =
 		options.borderColor ??
 		(state === "error"
@@ -93,38 +103,27 @@ export function renderOutputBlock(options: OutputBlockOptions, theme: Theme): st
 	})();
 
 	const contentPaddingLeft = normalizeContentPaddingLeft(options.contentPaddingLeft);
-	const contentWidth = Math.max(0, lineWidth - visibleWidth(v) - contentPaddingLeft - visibleWidth(v));
+	// The rail glyph and the one space after it, so this is the same two columns the
+	// two borders used to take and `outputBlockContentWidth` still describes it.
+	const chromeWidth = visibleWidth(rail) + 1 + contentPaddingLeft;
+	const contentWidth = Math.max(0, lineWidth - chromeWidth);
 	const contentLeftPadding = contentPaddingLeft > 0 ? padding(contentPaddingLeft) : "";
 
-	// ── Layout pass: collect row descriptors before emitting the bordered lines. ──
+	// ── Layout pass: collect row descriptors before emitting the railed lines. ──
 	const rows: BlockRow[] = [];
-	rows.push({
-		kind: "bar",
-		leftChar: theme.boxSharp.topLeft,
-		rightChar: theme.boxSharp.topRight,
-		label: header,
-		meta: headerMeta,
-	});
+	const headerText = [header, headerMeta].filter(Boolean).join(theme.sep.dot);
+	if (headerText) rows.push({ kind: "header", text: headerText });
 
 	const normalizedSections = sections.length > 0 ? sections : [{ lines: [] as string[] }];
 	for (let sectionIndex = 0; sectionIndex < normalizedSections.length; sectionIndex++) {
 		const section = normalizedSections[sectionIndex]!;
-		// A labeled section always draws its titled separator bar. A label-less
-		// section can still request a plain divider via `separator`, but only
-		// between sections — leading with one would just double the header bar.
+		// A labelled section names itself on the rail. A label-less section can still
+		// ask for a divider, but only between sections — leading with one would draw a
+		// stray rule above the first line of output.
 		if (section.label) {
-			rows.push({
-				kind: "bar",
-				leftChar: theme.boxSharp.teeRight,
-				rightChar: theme.boxSharp.teeLeft,
-				label: section.label,
-			});
+			rows.push({ kind: "label", text: section.label });
 		} else if (section.separator && sectionIndex > 0) {
-			rows.push({
-				kind: "bar",
-				leftChar: theme.boxSharp.teeRight,
-				rightChar: theme.boxSharp.teeLeft,
-			});
+			rows.push({ kind: "rule" });
 		}
 		const allLines = section.lines.flatMap(l => l.split("\n"));
 		const sixelLineMask = TERMINAL.imageProtocol === ImageProtocol.Sixel ? getSixelLineMask(allLines) : undefined;
@@ -141,82 +140,55 @@ export function renderOutputBlock(options: OutputBlockOptions, theme: Theme): st
 		}
 	}
 
-	rows.push({ kind: "bottom", leftChar: theme.boxSharp.bottomLeft, rightChar: theme.boxSharp.bottomRight });
-
-	const H = rows.length;
-
-	// The width the frame is actually drawn at: the widest thing in the block plus its
-	// own chrome, never the terminal. A frame stretched to the terminal edge reads as a
-	// wall rather than as a block, and a tool block is the most repeated object in a
-	// session, so the wall was on screen more often than anything else. Content is
-	// still WRAPPED at `contentWidth`, which is derived from the outer width: a
-	// renderer budgeting rows against `outputBlockContentWidth` counts the same rows it
-	// counted before.
-	const chromeWidth = visibleWidth(v) * 2 + contentPaddingLeft;
-	// One column of air before the right wall, so a block is not text jammed against a
-	// border, and three cells of rule after the longest header, so a bar always reads as
-	// a rule with a label on it rather than as a label with a corner stuck to it. Both
-	// are wants, not needs: at the terminal width the air is what gets dropped, which is
-	// also the only way a content line can be as wide as it was wrapped to.
+	// The width the block is drawn at: the widest thing in it plus its own chrome,
+	// never the terminal. This only shows when a state background is painted — a plate
+	// the size of the block instead of a band across the screen — and in the length of
+	// a separator rule. Content is still WRAPPED at `contentWidth`, which is derived
+	// from the outer width, so a renderer budgeting rows against
+	// `outputBlockContentWidth` counts the same rows it counted before.
 	let blockWidth = 0;
 	for (const row of rows) {
-		if (row.kind === "content") {
-			blockWidth = Math.max(blockWidth, visibleWidth(row.inner) + chromeWidth + 1);
-			continue;
-		}
 		if (row.kind === "sixel") continue;
-		const label = row.kind === "bar" ? [row.label, row.meta].filter(Boolean).join(theme.sep.dot) : "";
-		const bar =
-			visibleWidth(`${row.leftChar}${cap}${cap}${row.rightChar}`) + (label ? visibleWidth(` ${label} `) : 0);
-		blockWidth = Math.max(blockWidth, bar);
+		const ink =
+			row.kind === "header"
+				? visibleWidth(row.text)
+				: row.kind === "content"
+					? visibleWidth(row.inner) + chromeWidth
+					: row.kind === "label"
+						? visibleWidth(row.text) + chromeWidth
+						: SEPARATOR_CELLS + chromeWidth;
+		// One column of air at the right, so a painted plate is not text jammed against
+		// its own edge. At the terminal width the air is what gets dropped, which is also
+		// the only way a content line can be as wide as it was wrapped to.
+		blockWidth = Math.max(blockWidth, ink + 1);
 	}
 	blockWidth = Math.min(lineWidth, blockWidth);
 	const innerWidth = Math.max(0, blockWidth - chromeWidth);
 
-	const renderBar = (row: { leftChar: string; rightChar: string; label?: string; meta?: string }): string => {
-		const leftGlyphs = `${row.leftChar}${cap}`;
-		const rightGlyph = row.rightChar;
-		if (blockWidth <= 0) return border(leftGlyphs) + border(rightGlyph);
-		const labelText = [row.label, row.meta].filter(Boolean).join(theme.sep.dot);
-		if (!labelText) {
-			// No header: draw a clean, continuous top/separator bar (no 1-col gap).
-			const fillCount = Math.max(0, blockWidth - visibleWidth(leftGlyphs) - visibleWidth(rightGlyph));
-			return `${border(leftGlyphs)}${border(h.repeat(fillCount))}${border(rightGlyph)}`;
-		}
-		const rawLabel = ` ${labelText} `;
-		const leftWidth = visibleWidth(leftGlyphs);
-		const rightWidth = visibleWidth(rightGlyph);
-		const maxLabelWidth = Math.max(0, blockWidth - leftWidth - rightWidth);
-		const trimmedLabel = truncateToWidth(rawLabel, maxLabelWidth);
-		const labelWidth = visibleWidth(trimmedLabel);
-		const fillCount = Math.max(0, blockWidth - leftWidth - labelWidth - rightWidth);
-		const fillGlyphs = h.repeat(fillCount);
-		return `${border(leftGlyphs)}${trimmedLabel}${border(fillGlyphs)}${border(rightGlyph)}`;
-	};
-
-	const renderBottom = (row: { leftChar: string; rightChar: string }): string => {
-		const leftGlyphs = `${row.leftChar}${cap}`;
-		const rightGlyph = row.rightChar;
-		const fillCount = Math.max(0, blockWidth - visibleWidth(leftGlyphs) - visibleWidth(rightGlyph));
-		const fillGlyphs = h.repeat(fillCount);
-		return `${border(leftGlyphs)}${border(fillGlyphs)}${border(rightGlyph)}`;
-	};
-
-	const renderContent = (inner: string): string => {
-		const pad = padding(Math.max(0, innerWidth - visibleWidth(inner)));
-		return `${border(v)}${contentLeftPadding}${inner}${pad}${border(v)}`;
-	};
+	const onRail = (body: string): string => `${border(rail)} ${body}`;
 
 	const lines: string[] = [];
-	for (let r = 0; r < H; r++) {
-		const row = rows[r]!;
+	for (const row of rows) {
 		if (row.kind === "sixel") {
 			lines.push(row.raw);
 			continue;
 		}
 		const line =
-			row.kind === "bar" ? renderBar(row) : row.kind === "bottom" ? renderBottom(row) : renderContent(row.inner);
-		lines.push(padToWidth(line, blockWidth, bgFn));
+			row.kind === "header"
+				? row.text
+				: row.kind === "content"
+					? onRail(`${contentLeftPadding}${row.inner}`)
+					: row.kind === "label"
+						? // A label names the rows under it, so it sits at their indent rather than one
+							// column left of them. Its colour is the caller's: every section label in the
+							// product arrives pre-styled (`toolTitle`, `dim`), and re-styling here would
+							// wrap an inner reset in an outer colour and lose both.
+							onRail(`${contentLeftPadding}${row.text}`)
+						: onRail(border(h.repeat(clampLow(innerWidth, 0, SEPARATOR_CELLS))));
+		// Unpainted rows are emitted at their own length: with no right border to reach,
+		// padding them would only add trailing spaces to every line of every block, which
+		// the live-tail paint has to strip again and a copied transcript keeps.
+		lines.push(bgFn ? padToWidth(line, blockWidth, bgFn) : line);
 	}
 
 	return lines;
