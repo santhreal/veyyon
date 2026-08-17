@@ -35,7 +35,6 @@ import { type as arkType } from "arktype";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { ExtensionUISelectItem } from "../extensibility/extensions";
 import { HOOK_EDITOR_TEXT_PAD_COLS } from "../modes/components/hook-editor";
-import { computeModalDims, MODAL_SIZING_MEDIUM, sizingForArea } from "../modes/components/modal-shell";
 import { getMarkdownTheme } from "../modes/theme/markdown-theme";
 import { type Theme, theme } from "../modes/theme/theme";
 import { toolsPrompts } from "../prompts/tools/rows";
