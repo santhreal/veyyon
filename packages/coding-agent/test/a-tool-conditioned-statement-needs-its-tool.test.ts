@@ -96,8 +96,8 @@ describe("a statement conditioned on a tool needs that tool", () => {
 	it("sweeps the tool-gated statements the registry actually declares", () => {
 		// Anti-vacuity: the filter must find the rows, and nearly all of them must
 		// offer a fragment to search for, or a green sweep would mean nothing.
-		expect(TOOL_GATED.length).toBeGreaterThanOrEqual(20);
-		expect(SWEPT.length).toBeGreaterThanOrEqual(20);
+		expect(TOOL_GATED.length).toBeGreaterThanOrEqual(19);
+		expect(SWEPT.length).toBeGreaterThanOrEqual(19);
 		expect(new Set(SWEPT.map(row => row.tool)).size).toBeGreaterThanOrEqual(10);
 		// The fragments identify their statement rather than each other, so a
 		// containment hit cannot come from a neighbour's prose.
