@@ -51,6 +51,7 @@ import {
 	type ModalShellGeometry,
 	type ModalShortcut,
 	modalRevealEnabled,
+	paintCardInset,
 	planModalChrome,
 	renderModalShell,
 	sizingForArea,
@@ -2161,7 +2162,13 @@ export class ModelHubComponent implements Component {
 
 		const body: string[] = [];
 		for (let i = 0; i < splitRows; i++) {
-			body.push(fit(sidebarLines[i] ?? "", sidebarWidth) + paneSep + fit(paneLines[i] ?? "", bodyWidth));
+			// The scope column is set INTO the card, on the inset material, so the split
+			// reads as two panes rather than as one wash with a rule drawn down it.
+			body.push(
+				paintCardInset(fit(sidebarLines[i] ?? "", sidebarWidth), sidebarWidth) +
+					paneSep +
+					fit(paneLines[i] ?? "", bodyWidth),
+			);
 		}
 		this.#splitRowCount = splitRows;
 		body.push(this.#renderStripRow(contentWidth));
