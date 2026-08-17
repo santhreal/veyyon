@@ -85,6 +85,14 @@ describe("the cacheable prefix does not move without somebody saying so", () => 
 		const blockZero = systemPrompt[0] as string;
 
 		expect({ sha: sha(blockZero), length: blockZero.length }).toEqual({
+			// Updated 2026-08-16, deliberately: `3a000fddb2eb6620` / 10_515 ->
+			// `202098222aec1f01` / 10_413 (−102).
+			//
+			// WHAT THE −102 IS. `execution-workflow/verify` is the same four proof
+			// types and the same test-quality bar, worded shorter. Delegation-gates
+			// was rewritten in the same change and does not move this fixture (no
+			// `task` tool). No rule left.
+			//
 			// Updated 2026-08-16, deliberately: `562a3940c0412e3a` / 11_160 ->
 			// `3a000fddb2eb6620` / 10_515 (−645).
 			//
@@ -172,8 +180,8 @@ describe("the cacheable prefix does not move without somebody saying so", () => 
 			//
 			// The one-time cost this gate exists to surface is real and was accepted:
 			// every conversation re-reads its prefix once after the release.
-			sha: "3a000fddb2eb6620",
-			length: 10_515,
+			sha: "202098222aec1f01",
+			length: 10_413,
 		});
 	});
 

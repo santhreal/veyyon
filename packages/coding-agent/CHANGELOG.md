@@ -23,6 +23,7 @@
 - Choosing `Inherit` for the subagent effort clears the setting instead of storing an empty string, so an inherited effort reads as unset everywhere rather than as a configured blank.
 - Every overlay card opens on the shared animation clock and resolves out of the theme's ground as it unfolds. The unfold was a clip on a timer the card owned: full-strength chrome from its first frame, so a card opening while anything else animated ran on a second timer that never shared a frame with it. The card now eases on the one clock under the `enter` preset, and each visible row is blended from the ground to full strength as it arrives, which is the difference between a card arriving and a wipe with a moving edge. A theme without a declared page background fades from black or white to match its appearance, and an indexed-color frame is left alone rather than being repainted from a palette the terminal may not be using.
 - The cut-short batch marker takes its indent from `COMPOSER_INSET_COLS` instead of two literal spaces. No visible change: the rail is two columns, so the bytes are the same ones. The rail now has one owner, and the marker's suite asserts it sits on it.
+- Delegation gates and the verify step say the same rules in fewer words. No gate, proof type, or test-quality bar left.
 
 ### Removed
 
