@@ -86,6 +86,9 @@ import statementDeliveryNeverStopEarly from "./statements/delivery-contract/neve
 import statementDeliveryNoPartialYield from "./statements/delivery-contract/no-partial-yield.md" with { type: "text" };
 import statementDeliveryNoPunting from "./statements/delivery-contract/no-punting.md" with { type: "text" };
 import statementDeliveryPersonality from "./statements/delivery-contract/personality.md" with { type: "text" };
+import statementDeliveryVerificationSource from "./statements/delivery-contract/verification-source.md" with {
+	type: "text",
+};
 import statementDeliveryYielding from "./statements/delivery-contract/yielding.md" with { type: "text" };
 import statementExecutionCleanup from "./statements/execution-workflow/cleanup.md" with { type: "text" };
 import statementExecutionDecompose from "./statements/execution-workflow/decompose.md" with { type: "text" };
@@ -96,6 +99,7 @@ import statementExecutionImplement from "./statements/execution-workflow/impleme
 import statementExecutionImplementAskFirst from "./statements/execution-workflow/implement-ask-first.md" with {
 	type: "text",
 };
+import statementExecutionImplementGrep from "./statements/execution-workflow/implement-grep.md" with { type: "text" };
 import statementExecutionImplementNoDestructive from "./statements/execution-workflow/implement-no-destructive.md" with {
 	type: "text",
 };
@@ -162,6 +166,8 @@ import statementToolPolicyDelegationSubagentValue from "./statements/tool-policy
 	type: "text",
 };
 import statementToolPolicyExploration from "./statements/tool-policy/exploration.md" with { type: "text" };
+import statementToolPolicyExplorationGlob from "./statements/tool-policy/exploration-glob.md" with { type: "text" };
+import statementToolPolicyExplorationGrep from "./statements/tool-policy/exploration-grep.md" with { type: "text" };
 import statementToolPolicyExplorationRead from "./statements/tool-policy/exploration-read.md" with { type: "text" };
 import statementToolPolicyGeneral from "./statements/tool-policy/general.md" with { type: "text" };
 import statementToolPolicyInspectImage from "./statements/tool-policy/inspect-image.md" with { type: "text" };
@@ -572,6 +578,20 @@ export const PROMPT_STATEMENTS = [
 		purpose: "the Exploration heading and the rule against opening files hopefully, true of every tool set",
 	},
 	{
+		id: "tool-policy/exploration-grep",
+		section: "tool-policy",
+		condition: contains("tools", "grep"),
+		text: statementToolPolicyExplorationGrep,
+		purpose: "names grep as the way to locate targets during exploration",
+	},
+	{
+		id: "tool-policy/exploration-glob",
+		section: "tool-policy",
+		condition: contains("tools", "glob"),
+		text: statementToolPolicyExplorationGlob,
+		purpose: "names glob as the way to map structure during exploration",
+	},
+	{
 		id: "tool-policy/exploration-read",
 		section: "tool-policy",
 		condition: contains("tools", "read"),
@@ -821,6 +841,13 @@ export const PROMPT_STATEMENTS = [
 		purpose: "the Implement heading and the fix-at-source, prefer-existing-files, review-as-the-user rules",
 	},
 	{
+		id: "execution-workflow/implement-grep",
+		section: "execution-workflow",
+		condition: contains("tools", "grep"),
+		text: statementExecutionImplementGrep,
+		purpose: "grep instead of guessing, which needs the tool that makes it possible",
+	},
+	{
 		id: "execution-workflow/implement-ask-first",
 		section: "execution-workflow",
 		condition: contains("tools", "ask"),
@@ -923,7 +950,15 @@ export const PROMPT_STATEMENTS = [
 		section: "delivery-contract",
 		condition: { kind: "always" },
 		text: statementDeliveryCritical,
-		purpose: "the closing critical block: never narrate budgets, never re-audit an applied edit, tool results are the verification",
+		purpose: "the closing critical block: never narrate budgets, never re-audit an applied edit",
+	},
+	{
+		id: "delivery-contract/verification-source",
+		section: "delivery-contract",
+		condition: { kind: "always" },
+		text: statementDeliveryVerificationSource,
+		purpose:
+			"names the tool result as the verification, so the row above it forbidding a re-audit reads as a redirection rather than as a ban on checking anything",
 	},
 	{
 		id: "delivery-contract/never-stop-early",
