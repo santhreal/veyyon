@@ -1,0 +1,44 @@
+[33m6272e7b93[m test(bash): the pending call is one rail row, not a bordered block
+
+
+
+ .../coding-agent/test/tools/bash-sixel-render.test.ts | 19 [32m+++++++++[m[31m----------[m
+ 1 file changed, 9 insertions(+), 10 deletions(-)
+
+[1mdiff --git a/packages/coding-agent/test/tools/bash-sixel-render.test.ts b/packages/coding-agent/test/tools/bash-sixel-render.test.ts[m
+[1mindex 40e14c625..1add906b0 100644[m
+[1m--- a/packages/coding-agent/test/tools/bash-sixel-render.test.ts[m
+[1m+++ b/packages/coding-agent/test/tools/bash-sixel-render.test.ts[m
+[36m@@ -70,7 +70,7 @@[m [mdescribe("bashToolRenderer", () => {[m
+ 		expect(rendered).not.toContain("\t");[m
+ 	});[m
+ [m
+[31m-	it("renders the pending call as a bordered block with the command in the body", async () => {[m
+[32m+[m	[32mit("renders the pending call as one rail row carrying the command", async () => {[m
+ 		const theme = await getThemeByName("dark");[m
+ 		expect(theme).toBeDefined();[m
+ 		const uiTheme = theme!;[m
+[36m@@ -80,15 +80,14 @@[m [mdescribe("bashToolRenderer", () => {[m
+ 			uiTheme,[m
+ 		);[m
+ 		const lines = Bun.stripANSI(component.render(60).join("\n")).split("\n");[m
+[31m-		// A block frames the command: a header bar, the command row, and a bottom border.[m
+[31m-		expect(lines.length).toBeGreaterThanOrEqual(3);[m
+[31m-		const header = lines[0]!;[m
+[31m-		const body = lines.slice(1, -1).join("\n");[m
+[31m-		// Bash commands already carry a `$` prompt in the body, so the frame header[m
+[31m-		// stays a plain rule instead of repeating "Bash" in the title bar.[m
+[31m-		expect(header).not.toContain("Bash");[m
+[31m-		expect(header).not.toContain("sleep 30");[m
+[31m-		expect(body).toContain("$ sleep 30");[m
+[32m+[m		[32m// A pending call hangs on a rail: one row, the rail glyph down its left, the[m
+[32m+[m		[32m// command beside it. It used to be a three-row bordered block with a header[m
+[32m+[m		[32m// bar and a bottom border, which is a shape the product no longer draws —[m
+[32m+[m		[32m// there is nothing above the row and nothing below it to assert.[m
+[32m+[m		[32mconst rail = uiTheme.symbol("block.rail");[m
+[32m+[m		[32mexpect(lines).toEqual([`${rail}  $ sleep 30 `]);[m
+[32m+[m		[32m// Bash commands already carry a `$` prompt, so the rail never repeats "Bash".[m
+[32m+[m		[32mexpect(lines[0]).not.toContain("Bash");[m
+ 	});[m
+ [m
+ 	it("shows the effective timeout from result details when it differs from call args", async () => {[m

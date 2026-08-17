@@ -1,0 +1,281 @@
+[33m3fb49b0cc[m chore(repo): the branch pays its four hygiene gates
+
+
+
+ CHANGELOG.md                                       | 25 [32m++++++++++++++++++++++[m
+ docs/README.md                                     |  1 [32m+[m
+ ...nload-bar-travels-to-its-new-percentage.test.ts |  4 [32m++[m[31m--[m
+ ...selected-row-is-a-band-with-a-direction.test.ts |  8 [32m+++[m[31m----[m
+ scripts/demos/blank-band-repro.ts                  |  2 [32m++[m
+ scripts/demos/lift-lab.ts                          |  8 [32m++++[m[31m---[m
+ scripts/demos/render-hook-selector.ts              |  2 [32m++[m
+ scripts/demos/render-overlay-entrance.ts           |  2 [32m++[m
+ scripts/demos/render-tool-block.ts                 |  2 [32m++[m
+ scripts/demos/render-transcript-blocks.ts          |  2 [32m++[m
+ scripts/demos/render-transcript-dividers.ts        |  2 [32m++[m
+ scripts/first-party-docs-are-indexed.test.ts       |  4 [32m++++[m
+ scripts/no-attribution-in-the-tree.test.ts         |  7 [32m++++++[m
+ 13 files changed, 60 insertions(+), 9 deletions(-)
+
+[1mdiff --git a/CHANGELOG.md b/CHANGELOG.md[m
+[1mindex f0490691d..e856be53a 100644[m
+[1m--- a/CHANGELOG.md[m
+[1m+++ b/CHANGELOG.md[m
+[36m@@ -14,6 +14,7 @@[m
+ - The settings card's category sidebar cross-fades under the pointer, like the pane beside it. The sidebar is a tab bar, which was the one pointer surface the band fade never reached, so the same card faded on the right and switched on the left, two columns apart in one frame. The card lends the bar its repaint and takes it back when it closes: a dismissed card leaves nothing running on the shared clock, including a fade still travelling when Escape landed. A terminal without truecolor, or a user with transitions off, keeps the switched band byte for byte.[m
+ - The extension ask dialog cross-fades the option row under the pointer, like every other picker. It hit-tests and answers on a click, so it was already a pointer surface — it just banded on the frame the motion report landed, which is the strobe the rest of the product stopped doing. The dialog now takes the card's repaint and gives it back on dismissal, so nothing outlives an answered question, and a terminal without truecolor or with transitions off keeps the switched band byte for byte.[m
+ - The `/copy` picker cross-fades the row under the pointer, and every picker gives the shared animation clock back when it is dismissed. The copy tree paints its own rows, so it switched the band on the frame a motion report arrived while the pickers beside it faded. The teardown is the bigger half: `/tree`, `/history`, the branch-from-message card, the thinking picker, the slash-command picker, the reset-usage picker and the debug picker all open through one show site that hid the overlay and told the card nothing, so a band still travelling when Escape landed kept asking for frames against a card that would never be painted again. The show site hands the card back now — including a card that closes itself before its overlay exists — and `/copy`, which does not use that show site, does the same at its own.[m
+[32m+[m[32m- Every overlay card is a lit surface that opens with light crossing it, instead of line art that appears. A card's own columns are filled with an elevation gradient — brighter along the top row than the bottom, so the card reads as standing in front of the page rather than being drawn onto it — and while it unfolds each row arrives on its own ramp inside the 260ms curve, so twenty rows give twenty overlapping fades rather than one strength for the whole card. One specular highlight then travels across it over 520ms on a diagonal, lifting the selection band and every chip it crosses rather than erasing them. All twenty-one cards get it from one seam, so no card animates differently from the card beside it. It is off unless the terminal can take `48;2` truecolor AND the ground behind the card is actually known: a terminal that answered no OSC 11 leaves the theme's declared ground as the only guess, and titanium declares black, so a card on a grey terminal would have been filled with a black-derived slab. The light is released the moment a card starts leaving and when it is dismounted — it outlasts the unfold by design, and a card dismissed mid-entrance used to leave it running on the shared clock.[m
+ - Subagent models can be pinned per spawn depth with `subagent.modelByDepth`, a record of depth to model chain: `"1"` decides what direct children run, `"2"` what grandchildren run, and so on, each value in the same string-or-list chain shape as `subagent.model`. A row outranks `subagent.model` for a spawn at exactly that depth; depths without a row resolve as before (`subagent.model`, then the agent definition's `model:`, then the session's live model), and a row whose chain matches no available model refuses the spawn and names `subagent.modelByDepth.<n>` instead of falling through. Keys that are not positive integers are reported by settings validation at load, naming the entry. Settings → Subagents → Models gains a "Models by Depth" row that edits each depth with the same chain picker as Subagent Model.[m
+ - A left click on a composer autocomplete suggestion accepts it, through the same apply path as Tab. Container routes a pointer event to the child under the pointed row, so a click reaches a component mounted inside the pinned footer.[m
+ - A left click on the editor's text places the caret on the character under the pointer. The row and column are read from the last paint, so a prompt gutter, a wrapped line, a scrolled draft and the framed variant all resolve the same way; a click past the end of a row lands at the end of that row, and a click on the text while a suggestion popup is open dismisses the popup, since its prefix no longer describes where the caret is. Motion, release and wheel reports are still ignored.[m
+[36m@@ -23,10 +24,21 @@[m
+ - A block appended under a live surface can grow into place instead of cutting in. `BlockReveal` clips a rendered block to the rows it has reached and resolves each visible row out of the ground behind it, on the shared clock: `arm()` when the block appears, `disarm()` when it goes, `apply(rows)` on every frame. It is armed by APPEARANCE rather than by render, so a block whose contents are rebuilt on every keystroke grows once per appearance instead of replaying the animation per character. The composer's suggestion popup rides it through `Editor.setAutocompleteMotion` / `disposeAutocompleteMotion`: rows arrive over the enter curve, a click during the grow lands on the suggestion it looks like it landed on (a row that has not arrived is not in the frame to be clicked), a dismissal is instant because the prefix those rows describe no longer says where the caret is, and an editor with no motion lent paints the popup exactly as before, byte for byte.[m
+ - `TabBar` fades its hover band like every other pointer surface. `setHoverMotion` lends the bar a repaint so the band under the pointer cross-fades on the shared clock, keyed by tab ID rather than by position — a bar re-tabbed under the pointer (settings search rebuilds its tab set on every keystroke) keeps the band on the tab, not on the slot. Both render paths take their style from one owner, so the horizontal bar and the vertical sidebar cannot disagree; `hoverTab` now receives a strength alongside the text; and a bar with no motion lent, or lent it with `enabled: false`, paints the switched band byte for byte. `disposeHoverMotion` gives the clock back.[m
+ - A gauge can walk to its new value instead of teleporting to it. `SettleValue` runs one number on the shared clock under the `settle` spring: the first value it is given lands (a gauge sweeping up from zero on its first paint animates the session starting, which is not a change anyone made), every later value travels, and a value retargeted mid-flight keeps its velocity, so a reading revised every few frames is one continuous travel rather than a stutter. `epsilon` refuses to spend a frame on a change too small for the surface to show, `enabled: false` lands every target immediately and registers nothing, `reset()` makes the next value a first sighting again for a host that swapped what it is measuring, and `dispose()` gives the clock back. `MOTION.settle` had been in the curve table since the clock landed with nothing using it.[m
+[32m+[m[32m- Every horizontal bar the product draws has one owner and eight steps per column. `subCellBar(ratio, width, options?)` quantises the fill in eighths across the whole bar and derives the cells from that count, so a ten-column bar has eighty-one reachable states instead of eleven: a value rising by 3% moves it, and a value crossing a column shows the crossing through `▏▎▍▌▋▊▉` rather than jumping a whole cell. A ratio landing on a column emits no partial glyph (never `█▏` where `██` is meant) and a ratio just under one keeps its `▉` instead of rounding into a column it has not reached. The row is always exactly `width` columns, at every eighth of every column, because hit-testing and layout elsewhere are computed from positions in the row. Colour is the caller's: the function returns glyphs, and the callers split the string at its first track cell into a fill tone and a track tone. The glyph ramp is an option (`SUB_CELL_BAR_RAMP` by default, with `EIGHTH_BLOCKS` and `barGlyphEighths` exported alongside it) so a terminal whose font has no partial blocks is sent a ramp with none, which degrades to whole cells and still rounds to the nearest one rather than truncating.[m
+[32m+[m[32m- A rendered line's background can be repainted column by column, which is what anything moving ACROSS a row needs. `paintLineBackground(line, width, painter, window?)` walks a line once, tracks the truecolor background in effect, and asks a painter what each column should be instead; `paintBlockBackground` does the same for every row of a block. A new escape is written only where the answer changes, so a caller quantising its gradient into ten steps pays ten sequences rather than one per cell — these run on every frame of an animation over every row of a card. Text, foregrounds and attributes survive byte for byte, an indexed background (`48;5;n`) is reported as unknown and left alone rather than guessed at from a palette the terminal may not be using, and a `ColumnWindow` bounds both the painter and the padding, so a treatment on a card centred in a wider area cannot reach the page beside it. A component's own `39m` does not count as closing the pass's paint: a bare foreground reset leaves the background alone, and reading it as a close left the paint running off the end of the window it owned.[m
+[32m+[m[32m- A block can be painted as a lit SURFACE rather than as line art. `fillSurface` fills a block with an elevation gradient — a few percent above the ground at the top row, a shade below it at the bottom — and leaves alone every cell the component gave its own background, since a selection band, a chip, a swatch or a scrollbar thumb is the component saying that cell is not the surface. `sweepSurface` crosses the block with one specular highlight on a raised-cosine falloff, quantised to sixteen steps and skewed so it travels as a diagonal, lifting whatever background each cell already has instead of replacing it: the light crosses a band without erasing it. `cascadeStrength(row, rows, progress)` gives each row its own ramp inside one block-wide progress, compressed so the last row still lands at 1 — the difference between an animation with as many frames as the block has rows and one with a frame for every frame of the clock. Both take a column window, and everything is a pure transform over lines a component already rendered, so no component learns it is being lit and every frame is byte-assertable.[m
+[32m+[m[32m- `MOTION.sweep` is the 520ms curve a specular highlight crosses a surface on, and `MOTION.enter` is 260ms rather than 220ms: a card's rows now arrive on staggered ramps inside that window, so the same duration reads as shorter than it measures.[m
+[32m+[m[32m- A surface can be a STACK of materials instead of one wash. `SurfaceSpec` now names the elevation at the top row and the elevation at the bottom row (both off the ground, so a plate's foot cannot sink below the page the way a fall toward black made it), plus `bands` — runs of rows at their own flat elevation, which is what a header tray and a recessed footer tray are. `liftHex(ground, amount)` moves a colour off the ground in the direction that is actually visible on it, chosen by the same BT.601 luminance the terminal uses to call itself light or dark, so a card on a paper-white terminal darkens instead of lifting toward an invisible white; the specular sweep follows the same direction. `surfaceRowColor` resolves one row's material, bands included.[m
+ [m
+ ### Changed[m
+ [m
+[32m+[m[32m- Every bar in the product is drawn in eighths of a cell by one owner, so a value moves instead of jumping. The `/usage` bars, `/account` and the account card's usage windows, `/context`, the tiny-model download row, and `veyyon usage`, `veyyon tiny-models` and `veyyon grievances push` each built their own bar out of `█` and `░`, which gives a ten-column bar ten states: 3% moved nothing and a crossed column jumped a whole cell. They all draw through `subCellBar` now, at eight steps per column, with the same colours and the same column layout — a bar is still exactly as wide as it was, since the account surfaces line their bars up by column position. The context/usage bar also loses its own `▒`/`▓` approximation of a third and two thirds of a cell, which was the only sub-cell precision in the product and read as a shading artifact rather than as a position. The glyphs come from the symbol preset: `ascii` gets `#` and `-` at whole-cell resolution, because a font without the partial blocks draws a replacement box in the middle of the bar.[m
+[32m+[m[32m- The tiny-model download bar travels to each new percentage instead of appearing at it. Its ratio is a `SettleValue` on the shared clock under the `settle` spring, so a download reporting in 1% steps and a cached shard completing in one event both read as movement; the percent beside it still prints what was last reported, since the number is the fact and the bar is the travel toward it. The first reading lands with no travel, the row stops the settle when it leaves the transcript, and a terminal without truecolor or with `display.transitions: off` gets the jump it had. The three CLI bars stay static: they are one-shot `\r`-rewritten lines with no render loop for a clock to drive, and so is the `/usage` report, which is one string presented into the transcript once.[m
+ - `/resume`, `/tree`, the branch-from-message card and `/history` cross-fade the pointer band like every other picker. Those four paint their own rows rather than building a `SelectList`, so they switched the band on the frame a motion report arrived while the rest of the product faded, and which behaviour you got depended on which card you opened. All four now band through the same strength-aware paint, so the row the pointer leaves is still visible while the row it arrives at comes up, a settled row is the exact byte sequence it always was, a card with no repaint to lend keeps the switched band, and a dismissed card drops the band instead of leaving one behind under a pointer that is gone.[m
+[32m+[m[32m- The todo reminder and the rule-injection notice are raised cards on a coloured rail, not full-width inverted slabs. Both built `new Box(1, 1, t => theme.inverse(theme.fg("warning", t)))`, which pads each row out to the terminal width and inverts it, so a note about twelve todos was a saturated mustard rectangle carrying black text from column 0 — the loudest object on a grey transcript, and the only one touching the left edge. The hue now lives in a rail glyph down the left of the block, the block is exactly as wide as its own widest line, it sits at the composer's inset, and its background is a lift off whatever ground the terminal actually reported, away from that ground's own luminance, so a paper-white terminal gets a card that darkens rather than one that glares. Inverting also spent the foreground, which is why the rule notice could only use bold and italic inside the block; it colours rule names and descriptions now. A terminal that cannot take 24-bit colour, or one whose ground nothing answered for, keeps the rail and the colours and paints no surface.[m
+[32m+[m[32m- A tool block is as wide as its own output, not as wide as the terminal. `renderOutputBlock` drew its frame from column 0 to the last column and padded every row out to meet it, so reading one line of a file produced a rectangle the width of the screen with one line of text at the left of it, and a state background painted that whole rectangle — the wall version of the slab. The block is measured against its widest line now: the frame closes after the content, a state background is a plate the size of the block rather than a band across the screen, and a header longer than the content keeps the block open wide enough to hold it. Every tool in the product draws through that one function, so all 22 renderers change together. Content still wraps at the width it always did, so a renderer that budgets rows against `outputBlockContentWidth` counts the same rows; at the terminal edge it is the block's right-hand air that is dropped, never a column of text. `bash-interactive` keeps its full-width frame, because it mirrors a live PTY whose width is the terminal's.[m
+[32m+[m[32m- A tool block hangs its output on a rail instead of sitting in a box. Hugging the box to its own ink fixed the wall and left the box: a rule with the title cut into it, a wall down each side, a rule under the last row — five glyph kinds and two whole rows of chrome around one line of output, on the most repeated object in a session. A block now draws a title line and one thin glyph down the left of the output, in the state's colour, with nothing above the title, nothing below the last row and nothing to the right of anything; a result with no body is one line where it used to be three. The rail is two columns wide, exactly what the two walls cost, so `outputBlockContentWidth` is unchanged and every renderer that budgets rows against it counts the rows it always counted, and a state background is still a plate the size of the block. `bash-interactive` keeps its own frame on purpose: that block mirrors a live PTY whose width is the terminal's, so a hugged or railed frame there would misreport the geometry the program inside it draws to.[m
+[32m+[m[32m- A settled overlay stops copying the screen once a frame. `applyModalReveal` runs on every frame an overlay is open, and it rebuilt the frame array even when the entrance had finished and there was no material to paint: same bytes, new array, every row copied, for nothing. A frame with nothing to treat is now handed back as the array it arrived as, which is also the identity the reveal suite asserts. A settled card that DOES carry a plate still gets painted, and is now asserted to be byte-stable frame to frame rather than only assert-able on a terminal that reports no truecolor.[m
+ - Every remaining hand-painted hover surface cross-fades its pointer band, so no card is left where the row under the pointer switches on. The reset-usage picker, `/move`, the extension list and the extensions dashboard's tab bar, the hook selector, the `/mcp add` wizard, the OAuth picker and the sign-in scene, the model hub's scope sidebar and roles pane, the model list embedded in the hub, the model picker, the account manager's provider sidebar, and every model panel on the settings screen all band through the same strength-aware paint now. Doing the whole set rather than the reachable half turned up two defects: a card whose host hands the repaint in through its CONSTRUCTOR rather than through `setOnRequestRender` built no fade at all, so the seam existed and the real host never reached it; and the `/mcp add` wizard banded its own selected row, which reads as two selections at once. Teardown is the other half — `/mcp add`'s wizard, the model picker, and a settings panel swapped out when a submenu steps back to its list all hand the shared clock back, so a band still travelling when Escape lands goes with the card instead of ticking against something that will never be painted again. A terminal without truecolor, or transitions off, keeps the switched band byte for byte.[m
+ - Settings → Subagents says "subagent" wherever it means a spawned worker. The tab held an `Agents` section carrying an `Agent Roster` row, an `Agent Delegation` row beside it, and a roster screen headed `Agents` whose per-agent page was headed `Agent: <name>`, so one thing wore two names on one screen. The section is `Subagents` now, the rows are `Subagent Roster` and `Subagent Delegation`, and the screens read `Subagents` and `Subagent: <name>`. No setting key changed, so nothing in a config file moves.[m
+ - `Max Nested Spawn Depth` sits in the Subagents section directly under `Subagent Roster`, not under Limits. It is the ceiling every per-subagent override inherits from, and the roster's own depth picker names it, so the blanket value and the overrides that outrank it were two sections apart with nothing on either screen saying so.[m
+[36m@@ -37,6 +49,10 @@[m
+ - Choosing `Inherit` for the subagent effort clears the setting instead of storing an empty string, so an inherited effort reads as unset everywhere rather than as a configured blank.[m
+ - Every overlay card opens on the shared animation clock and resolves out of the theme's ground as it unfolds. The unfold was a clip on a timer the card owned: full-strength chrome from its first frame, so a card opening while anything else animated ran on a second timer that never shared a frame with it. The card now eases on the one clock under the `enter` preset, and each visible row is blended from the ground to full strength as it arrives, which is the difference between a card arriving and a wipe with a moving edge. A theme without a declared page background fades from black or white to match its appearance, and an indexed-color frame is left alone rather than being repainted from a palette the terminal may not be using.[m
+ - The cut-short batch marker takes its indent from `COMPOSER_INSET_COLS` instead of two literal spaces. No visible change: the rail is two columns, so the bytes are the same ones. The rail now has one owner, and the marker's suite asserts it sits on it.[m
+[32m+[m[32m- The selected and hovered row is a band with a direction instead of a flat rectangle of one colour. Its first cell is the accent at full strength, and from the second cell the background ramps out of `selectedBg` toward the ground the row sits on, eased so most of the colour lives in the first third — a flat slab says nothing about which end the cursor came from, which is why a selected row read as a rectangle somebody drew rather than as a surface the cursor is resting on. The ramp is quantised to one span per eight columns, three at the fewest and ten at the most, so a 40-column row costs five extra escapes rather than forty on a row that repaints on every keystroke. A row that carries no styling of its own also gets a brighter label over that first third; a row that paints its own colours keeps every byte of them. Hover is the same treatment at a strength, so a settled hover is byte-identical to a selection and every colour in the gradient, the accent cell included, is mixed out of the ground on the way in. The row's printed width is unchanged — the treatment only adds zero-width escapes, which is what the mouse routing depends on — and a terminal that is not truecolor gets the flat band byte for byte, since every intermediate colour there quantises onto the nearest palette entry and the ramp would read as the band changing hue.[m
+[32m+[m[32m- The settings, model and account cards read as objects on the page instead of frames drawn onto it. A card is now four materials — a title-rail tray, a plate lit from above, a recessed footer tray under the tip and the chips, and, in a two-pane card, the category column set into the plate — where it was one gradient measured on a real terminal at twelve of 255 above the page at its top row and four at its foot, over a page of 28. Nothing is painted unless the terminal answered OSC 11 and takes truecolor: an unknown ground still gets the card exactly as it was, which is what keeps the 2026-07-22 slab from coming back.[m
+[32m+[m[32m- The system prompt no longer tells the agent that it needs no permission to commit and never waits to be asked. Landing each green chunk as its own commit is still the instruction, and the prohibition on push, force-push, revert, reset, checkout-over-changes, clean, stash-drop and branch deletion without the user asking is unchanged; what is gone is the framing that granted a permission on the user's repository that the user never gave, in a prompt every session reads. The orchestrator notice carried the same two sentences and loses them too. Block 0 of the cached prefix is 106 bytes shorter, which its digest gate records.[m
+[32m+[m[32m- The transcript viewer and the plan-review overlay no longer import `transitionsEnabled` and never call it, and `spliceAtColumns` in the theme no longer names a local `escape` over the global of that name. Both were flagged by the linter and neither changes a painted byte: the two components already read the transitions setting through the motion they lend their lists, and the renamed local is the ANSI run it always was.[m
+ [m
+ ### Removed[m
+ [m
+[36m@@ -45,6 +61,11 @@[m
+ [m
+ ### Fixed[m
+ [m
+[32m+[m[32m- The ask tool asks a card how wide it is instead of assembling the card's geometry itself. Its custom-input title has to be pre-wrapped to the content width of the medium `ModalShell` the editor draws it in — wrapping at the terminal width hands the card lines it wraps a second time and the option list comes out ragged — and it computed that width by importing `MODAL_SIZING_MEDIUM`, `sizingForArea` and `computeModalDims` and restating the composition. The layout owner now answers the one question, `mediumModalContentWidth(cols, rows)`, so the sizing a medium card uses stays this module's decision and the tool holds no copy of it. Same wrapping width; a terminal too small for a card at all still falls back to the editor's own pad columns.[m
+[32m+[m[32m- A hook field's card is as wide as the sentences it has to say. Every hook prompt is a medium ModalShell card at 60% of the terminal, and both the title and the hint chip are cut to that width: on a 100-column terminal the credential field asked for "Paste the secret value here. You can name it afte…" and promised "hidden as you type, stored encr…", losing the two statements that stop an operator answering a masked field with the secret's NAME. The card's width floor now rises to fit its own title row and its own hint row, each priced by the layout owner rather than by a second copy of the border arithmetic, so a card whose text already fits keeps the shared proportions and a terminal too narrow for the sentence still clamps to the screen instead of overflowing it.[m
+[32m+[m[32m- A turn that ends on a short answer no longer paints a screen-sized band of blank rows over the conversation. The home anchor routes viewport slack above the transcript so a young conversation hugs the composer, and it measures that slack from the composed frame — which is only ever empty room because the frame is never shorter than the window. A virtualized transcript broke that: it hands committed rows to native scrollback and dropped every one of them, so a long session measured as a short one and the anchor wrote up to 23 blank rows over 82 rows of live history, leaving a stray fence and rule floating above the HUD. The transcript now keeps a viewport's worth of committed rows in the frame, so the measurement is honest and the engine has history to re-show instead of blanks. Measured over a 24-turn session at 24 and 40 rows tall, virtualized and not: a 23-row band becomes 1 row, the conversation is on screen, the composer is on the bottom row, and the repaint count is unchanged. Guarding the routing instead — route nothing once anything has scrolled — was measured on the same session and fixes nothing: the band simply moves below the composer and strands it 18 rows off the bottom edge.[m
+[32m+[m[32m- `clampLow` from `@veyyon/utils` now does the block separator's width clamp, and the subagent settings reader uses the shared `isRecord`. Both were inline copies the shared owners exist to prevent; a non-finite width or a stored array now falls to the defined bound instead of through the guard, which no shipped path can reach today.[m
+[32m+[m[32m- The light that crosses an opening card travels its whole length instead of dying the instant the card stops growing. The sweep runs on a 520ms curve on purpose, twice the 260ms unfold, so the card is in place while the highlight is still moving across it — but the driver reported a finished sweep as soon as the unfold settled, which cut every one of them in half. Measured on a real terminal: the card arrived at t=19.550 and every pixel was static from t=19.800, 250ms of a 520ms light. The light now ends when the card is dismissed or dismounted, which is what already cancels it; a card whose unfold finished before anything read the sweep is still lit flat, since starting a fresh 520ms animation on a card that has been sitting still is a flash, not a reveal.[m
+ - The screen no longer flickers about ten times a second during a live turn. The composer footline's context gauge rode a spring on the shared 60 Hz motion clock, and a streaming turn revises the token estimate continuously, so the spring was re-targeted on nearly every frame and never settled: the host was asked for a repaint at roughly 60/s for the whole turn (measured 595 requests in 10 seconds), the engine's adaptive throttle turned that into a repaint about every 100 ms, and on a long transcript each repaint erased native scrollback and replayed the transcript, which is the flash. The gauge prints its reading again, and the two travelling viewports (the fullscreen agent transcript viewer, the plan-review body) land on their offset. Hover-band fades and the suggestion-popup grow are unaffected: they are gesture-scoped and settle in a few hundred milliseconds.[m
+ - A fading band and an unfolding card resolve out of the ground that is on screen, instead of the one the theme declares. Titanium declares a black page background and `tui.paintGround` defaults to `auto`, which refuses to paint black onto a grey terminal — so the row sat on the operator's own grey while every mix travelled out of black, and each band flashed DARKER than both the page and the band on its way in and again on its way out. Measured off a real xterm at 60fps: a leaving row read `#090401` between a `#1c1f26` page and a `#231310` band. The ground now comes from one owner and in one order — the ground this process painted, else the one the terminal reported over OSC 11, else the theme's declared ground for a terminal that answered neither — and the paint decision records what it painted in the same call that paints it, so a policy that declines to paint can no longer leave the animations mixing out of a colour nothing put on screen. A theme whose ground the terminal was actually painted with is unaffected, byte for byte.[m
+ - The context gauge, the `/context` panel and the compaction trigger count a `@file` mention and a `$` python cell. Both roles reach the provider — a mention as a `developer` message wrapping every file body it read, a cell as a user message wrapping its code and its output — and both were estimated at zero tokens, so a session that mentioned a file reported a fraction of the prompt it had just sent. Measured against a 32768-token endpoint: the footline read `61% left` while the request in flight was 40459 tokens, and the endpoint refused it. Every role the outbound converter handles is now counted, and the suite derives what each role must cost from what that converter actually puts on the wire, so a role added later cannot be free.[m
+[36m@@ -92,11 +113,15 @@[m
+ - Antigravity discovery no longer leaves the `-tiered` Gemini flash deployments without an effort surface. The endpoint serves `gemini-3.7-flash-tiered` as the only 3.7 Flash id and `gemini-3.6-flash-tiered` beside the 3.6 family, and both arrived as raw unknowns with no thinking block, so the picker offered no effort levels. `gemini-3.7-flash-tiered` now collapses to a logical `gemini-3.7-flash` row, and `gemini-3.6-flash-tiered` stands alone under its wire id because the `gemini-3.6-flash` logical id already belongs to the per-tier effort family. Both carry the declared low/medium/high ladder on the `google-level` transport, sending the tier as `thinkingLevel` in the request body. The surface is curated per id; an uncurated future `-tiered` id still gets no invented ladder.[m
+ - The ChatGPT Codex backend declares `supportsServerCompaction`, so a codex session compacts server-side instead of paying a second model to paraphrase the span. The flag resolved true only for `api.openai.com` and Azure, on the stated ground that the codex session transport owns history state. It does not: codex-rs posts the span to `chatgpt.com/backend-api/codex/responses/compact` and stores the window it gets back, exactly as the official host does. A new `codexBackend` host class carries the classification, so provider id `openai-codex` and any `chatgpt.com/backend-api` base URL are covered while a repointed proxy row still is not.[m
+ - `find` no longer crashes the worker thread when its output pipe closes early. Every write on both of `find`'s print paths — `-print`/`-print0` and `-printf` — called `.unwrap()`, so an ordinary truncated pipeline like `find . | head -1` arrived as a BrokenPipe panic on a `tokio-rt-worker` rather than as the write error the matcher already knew how to report. Writes now end the entry quietly, and the error reports that used to be issued alongside them can no longer panic either, since stderr is a pipe too and both ends close together.[m
+[32m+[m[32m- A frame that shrinks below the viewport now has history to fill the screen with, instead of a band of blank rows where the conversation was. The engine re-shows committed rows when a frame gets shorter than the window ("duplication, never loss"), and it can only re-show rows the frame still holds — but a virtualized root compacts committed rows out of the frame entirely, so a session that had already scrolled had nothing left to re-show and painted seven rows into a thirty-row viewport. `NativeScrollbackCompaction` gained `setNativeScrollbackRetainRows`, fed a viewport's worth before every render, so a screen's worth of already-assembled history stays in the frame while compaction still does its job for everything above it. Measured on a 24-turn session whose turn ends on a two-row tail: a 23-row blank band becomes 1 row, at both 24 and 40 rows tall, with no change to the erase count.[m
+[32m+[m[32m- The motion clock's frame delta, the surface lift and cascade ramps, and the channel and colour mixes call `clamp`/`clamp01` from `@veyyon/utils` instead of each writing the clamp out by hand. Behaviour is identical for every finite input; a `NaN` frame delta or strength now lands on the low bound rather than propagating.[m
+[32m+[m[32m- Chrome no longer enters native scrollback, so a tall todo list or subagent HUD no longer strobes the screen and leaves a blank void where the session was. Everything above the window top was committed as history; once the pinned chrome outgrew the viewport that boundary landed inside the chrome, whose rows are rewritten every frame, so the very next frame's prefix audit found them changed and repaired it the only way it can — erase native scrollback and replay, every frame of a live turn. Commits are now capped at the end of the last root child that claims the native-scrollback contract (the transcript); anything mounted after it is chrome, painted and never committed, and a frame that cannot commit takes a bounded in-place repaint instead of a destructive one. Measured in a real terminal at 100 columns, forty turns under a 22-row HUD: ED3 erases 9 → 0 at 30 rows, and 1 → 0 at 24, 20 and 16.[m
+ - A live turn no longer repaints the whole screen about ten times a second. Two surfaces put a spring on the shared 60 Hz clock and re-targeted it continuously while a turn streamed — the status line's context gauge, whose reading is revised on every token, and `ScrollView`'s travelling offset — so the clock never stopped and the host was asked for a frame on 99% of frames (measured: 595 render requests in 10 seconds). The engine's adaptive throttle collapsed that into a repaint roughly every 100 ms, and on a long transcript each one was classified as a destructive rebuild, which is the flicker. Both springs are gone: `ScrollView.setScrollMotion`/`disposeScrollMotion` and `StatusLineComponent.watchContextGauge` no longer exist, and the viewport lands on its offset as it did before. Gesture-scoped motion (hover bands, the popup grow) stays, because it settles and stops.[m
+ - A virtualized transcript that is not the first root child no longer turns every streaming frame into a whole-screen rebuild. When rows are dropped, the engine slides its commit coordinates onto the shortened frame, and that slide spliced the dropped rows off the FRONT of the recorded prefix — correct only when the dropping child starts at frame row 0. The shipped layout always mounts a filler above the transcript, and every HUD sits in that band too, so the prefix was left misaligned by exactly the header height, the next audit called that a committed-prefix divergence, and the repair erased native scrollback and replayed the whole transcript: 20 full redraws and 20 ED3 erases over 40 streaming frames, against 0 and 0 once the splice happens at the drop site's own offset. That is the tearing and the blank bands during a streaming answer.[m
+ - An animation that cannot reach rest can no longer hold the clock live forever, asking for a repaint sixty times a second for the life of the process. Fourteen reachable specs did exactly that — a non-finite target or `from`, a non-finite duration, a zero or negative damping, a zero stiffness or mass, a `restDelta` of zero, a stiffness past the integrator's stability limit, a retarget to NaN, and a damping small enough to outlive the session. The clock now refuses a curve that provably cannot settle (it lands on its target instead, exactly as `enabled: false` does), ignores a non-finite target, and holds a 4-second settle deadline measured from the last retarget, so a host that keeps moving a value is never cut off mid-travel. Every `MOTION` preset costs the same frames as before: hover 6, exit 8, expand 11, enter 14, move 28, settle 39.[m
+ - Kept the transcript on screen when a virtualized root compacts its committed rows. A root can now report the rows it dropped, and the engine slides its commit index onto the new frame instead of reading the shift as a committed-prefix divergence, erasing native scrollback and replaying a frame the component had already emptied. A root that drops rows without reporting them is rehydrated before any destructive replay, so it costs an extra full repaint rather than the history.[m
+ - Held mouse button reporting while a pinned-footer component has a click target on screen. A footer target used to be reachable only while the frame overflowed the viewport, since scroll isolation was the sole reason the engine took the mouse, so every footer click in a short session was reported to nobody. A component declares its targets through the new optional `MouseRoutable.wantsPointer()`, and the grab is scanned from the frame-segment ledger after each compose, so it is held exactly while a target exists and the terminal keeps native drag-select the rest of the time. The `alt-arrows` scroll transport and scroll isolation being off both still refuse the grab.[m
+[32m+[m[32m- Import order in the package barrel and line wrapping in `paint-columns` follow the formatter, with no behaviour change: the same exports resolve to the same modules and every painted byte is identical. The lint report that found them also flagged a dead constant in the chrome-scrollback sweep, which counted the composer's single row and ignored the two markers that matter more — so a leak committing the HUD band while sparing the prompt sat inside the ceiling unseen. The sweep now counts every chrome marker, at the peak the buffer held over the whole run rather than whatever survived the last erase, against a bound the run measures for itself: the buffer may not hold more copies of a chrome row than the screen ever showed at once. Healthy arms hold exactly what they showed; commit the band and a 32-row HUD holds 32 against 14 shown, which is now red.[m
+ [m
+ ### Breaking Changes[m
+ [m
+[1mdiff --git a/docs/README.md b/docs/README.md[m
+[1mindex bbc15c9b2..dccc26f25 100644[m
+[1m--- a/docs/README.md[m
+[1m+++ b/docs/README.md[m
+[36m@@ -94,6 +94,7 @@[m [mA handful of first-party pages sit next to the thing they describe rather than u[m
+ | [`packages/deepswe-bench/dicts/report.md`](../packages/deepswe-bench/dicts/report.md) | Generated by `gen-dicts.ts` and stamped with the run that produced it. A generated artifact, not a page to edit. |[m
+ | [`scripts/rewrite-system-prompt.style.md`](../scripts/rewrite-system-prompt.style.md), [`scripts/session-stats/audit-prompt.md`](../scripts/session-stats/audit-prompt.md), [`scripts/upstream-port-issue.md`](../scripts/upstream-port-issue.md) | Prompt text a script feeds to a model. Markdown because the model reads markdown, not because a human does. |[m
+ | [`website/blog/argot.md`](../website/blog/argot.md), [`website/blog/secrets.md`](../website/blog/secrets.md) | Published and draft blog posts. Their home is the website's content tree. |[m
+[32m+[m[32m| [`proof/ui-polish-inventory.md`](../proof/ui-polish-inventory.md) | The catalogue of interactive TUI surfaces the UI-polish evidence is built against, beside the captures and the page that renders them. It describes the evidence tree, not the product, so a reader who is not looking at that tree has no use for it. |[m
+ [m
+ Rules of thumb:[m
+ [m
+[1mdiff --git a/packages/coding-agent/src/modes/components/__tests__/a-download-bar-travels-to-its-new-percentage.test.ts b/packages/coding-agent/src/modes/components/__tests__/a-download-bar-travels-to-its-new-percentage.test.ts[m
+[1mindex 611fbd764..e9cfadedc 100644[m
+[1m--- a/packages/coding-agent/src/modes/components/__tests__/a-download-bar-travels-to-its-new-percentage.test.ts[m
+[1m+++ b/packages/coding-agent/src/modes/components/__tests__/a-download-bar-travels-to-its-new-percentage.test.ts[m
+[36m@@ -4,8 +4,8 @@[m
+ // it. Twenty-four columns give twenty-four states, so a jump from 40% to 65%[m
+ // has six states to pass through and each one is a whole cell wide: the eye[m
+ // reads six discrete positions, which is not motion, it is a bar being moved.[m
+[31m-// That is the concrete reason the operator's verdict on this build was that the[m
+[31m-// animations are barely noticeable — there was nothing between the frames.[m
+[32m+[m[32m// That is why the animation was barely noticeable at whole-cell resolution:[m
+[32m+[m[32m// there was nothing between the frames.[m
+ //[m
+ // Two changes make the travel visible, and this suite refuses to let either one[m
+ // be quietly dropped. The bar is drawn in eighths of a cell, so the same[m
+[1mdiff --git a/packages/coding-agent/test/modes/components/a-selected-row-is-a-band-with-a-direction.test.ts b/packages/coding-agent/test/modes/components/a-selected-row-is-a-band-with-a-direction.test.ts[m
+[1mindex 7a43a4629..d88faa67a 100644[m
+[1m--- a/packages/coding-agent/test/modes/components/a-selected-row-is-a-band-with-a-direction.test.ts[m
+[1m+++ b/packages/coding-agent/test/modes/components/a-selected-row-is-a-band-with-a-direction.test.ts[m
+[36m@@ -3,10 +3,10 @@[m
+  *[m
+  * WHY THIS SUITE EXISTS. `theme.bg("selectedBg", row)` paints one flat slab of one colour across[m
+  * the whole row. Nothing in it says which end the cursor came from, so it reads as a rectangle[m
+[31m- * somebody drew rather than as a surface the cursor is resting on — the operator's verdict on the[m
+[31m- * shipped build was that the selection is "boring", and rendering the real components to PNG[m
+[31m- * confirmed the cause is that every surface is one flat ground. The replacement is a hard accent[m
+[31m- * leading cell plus an eased ramp out of `selectedBg` toward the ground behind the row.[m
+[32m+[m[32m * somebody drew rather than as a surface the cursor is resting on. Rendering the real components[m
+[32m+[m[32m * to PNG showed why the shipped selection read as flat: every surface is one flat ground. The[m
+[32m+[m[32m * replacement is a hard accent leading cell plus an eased ramp out of `selectedBg` toward the[m
+[32m+[m[32m * ground behind the row.[m
+  *[m
+  * Four ways a directional band goes wrong, and this suite pins each:[m
+  *[m
+[1mdiff --git a/scripts/demos/blank-band-repro.ts b/scripts/demos/blank-band-repro.ts[m
+[1mindex f94203cc1..03b9839b2 100644[m
+[1m--- a/scripts/demos/blank-band-repro.ts[m
+[1m+++ b/scripts/demos/blank-band-repro.ts[m
+[36m@@ -11,6 +11,8 @@[m
+ // viewport slack off the composed frame). The engine is the real `TUI` writing[m
+ // real escapes to a real tty through `ProcessTerminal`.[m
+ //[m
+[32m+[m[32m// Run:[m
+[32m+[m[32m//[m
+ //   bun scripts/demos/blank-band-repro.ts [--turns 24] [--stream 30] [--hud 5][m
+ //   DIAG_PATH=/tmp/diag.txt bun scripts/demos/blank-band-repro.ts   # + accounting[m
+ //[m
+[1mdiff --git a/scripts/demos/lift-lab.ts b/scripts/demos/lift-lab.ts[m
+[1mindex 21fc7bbc0..ce9d1bcdb 100644[m
+[1m--- a/scripts/demos/lift-lab.ts[m
+[1m+++ b/scripts/demos/lift-lab.ts[m
+[36m@@ -1,15 +1,17 @@[m
+ /**[m
+  * A bench for the LOOK, not for a component.[m
+  *[m
+[31m- * The animations were called barely noticeable and the surfaces boring, and both[m
+[31m- * complaints are about the same thing: the product draws line art and text on one[m
+[31m- * flat ground. A terminal with truecolour can do surfaces — a filled panel with a[m
+[32m+[m[32m * Barely-noticeable animation and a flat-looking surface are the same defect: the[m
+[32m+[m[32m * product draws line art and text on one flat ground. A terminal with truecolour can[m
+[32m+[m[32m * do surfaces — a filled panel with a[m
+  * vertical gradient, a hairline lighter at the top edge than the bottom, a shadow[m
+  * under the thing that is in front, a selection that is a filled band rather than[m
+  * a coloured word, and a specular sweep that crosses a surface as it arrives.[m
+  * Every one of those is a per-cell colour, which means it can be judged from a[m
+  * PNG before any of it is wired into the app.[m
+  *[m
+[32m+[m[32m * Run:[m
+[32m+[m[32m *[m
+  *     env -u NO_COLOR FORCE_COLOR=3 bun scripts/demos/render-settings-tab.ts |[m
+  *       bun scripts/demos/lift-lab.ts --out /tmp/lift/settings --scale 3[m
+  *[m
+[1mdiff --git a/scripts/demos/render-hook-selector.ts b/scripts/demos/render-hook-selector.ts[m
+[1mindex 798957dd8..4a978052b 100644[m
+[1m--- a/scripts/demos/render-hook-selector.ts[m
+[1m+++ b/scripts/demos/render-hook-selector.ts[m
+[36m@@ -7,6 +7,8 @@[m
+  * shortcut chips and row-level hover, so the before/after pair is a pair of[m
+  * images of this one component:[m
+  *[m
+[32m+[m[32m * Run:[m
+[32m+[m[32m *[m
+  *     bun scripts/demos/render-hook-selector.ts --width 100 |[m
+  *       bun scripts/demos/render-proof.ts --out /tmp/hook-selector --width 100[m
+  *[m
+[1mdiff --git a/scripts/demos/render-overlay-entrance.ts b/scripts/demos/render-overlay-entrance.ts[m
+[1mindex 93eba62e8..7fa4bd404 100644[m
+[1m--- a/scripts/demos/render-overlay-entrance.ts[m
+[1m+++ b/scripts/demos/render-overlay-entrance.ts[m
+[36m@@ -1,6 +1,8 @@[m
+ /**[m
+  * Film a real overlay's entrance, frame by frame, without a terminal.[m
+  *[m
+[32m+[m[32m * Run:[m
+[32m+[m[32m *[m
+  *     bun scripts/demos/render-overlay-entrance.ts --out /tmp/entrance --frames 14 --step 33[m
+  *[m
+  * The component is the one `/settings` constructs and the frames come out of its[m
+[1mdiff --git a/scripts/demos/render-tool-block.ts b/scripts/demos/render-tool-block.ts[m
+[1mindex 36cd1e624..a40955f12 100644[m
+[1m--- a/scripts/demos/render-tool-block.ts[m
+[1m+++ b/scripts/demos/render-tool-block.ts[m
+[36m@@ -12,6 +12,8 @@[m
+  * here rather than in the product, which is the only way to put the two side by side[m
+  * once the product has stopped drawing one of them.[m
+  *[m
+[32m+[m[32m * Run:[m
+[32m+[m[32m *[m
+  *     bun scripts/demos/render-tool-block.ts --width 100 [--box] |[m
+  *       bun scripts/demos/render-proof.ts --out /tmp/block --width 100[m
+  *[m
+[1mdiff --git a/scripts/demos/render-transcript-blocks.ts b/scripts/demos/render-transcript-blocks.ts[m
+[1mindex 26d3cb81c..e1d15edd5 100644[m
+[1m--- a/scripts/demos/render-transcript-blocks.ts[m
+[1m+++ b/scripts/demos/render-transcript-blocks.ts[m
+[36m@@ -11,6 +11,8 @@[m
+  * Every block is a REAL component driven through its own public API, so the[m
+  * image answers what ships. Pipe into `render-proof.ts` for the pair:[m
+  *[m
+[32m+[m[32m * Run:[m
+[32m+[m[32m *[m
+  *     bun scripts/demos/render-transcript-blocks.ts --width 100 --ruler |[m
+  *       bun scripts/demos/render-proof.ts --out /tmp/blocks --width 100[m
+  *[m
+[1mdiff --git a/scripts/demos/render-transcript-dividers.ts b/scripts/demos/render-transcript-dividers.ts[m
+[1mindex 7f37edf13..33522141d 100644[m
+[1m--- a/scripts/demos/render-transcript-dividers.ts[m
+[1m+++ b/scripts/demos/render-transcript-dividers.ts[m
+[36m@@ -8,6 +8,8 @@[m
+  * proof stacks the real components between two lines of ordinary transcript at[m
+  * the shared inset, which is the only place the difference is visible.[m
+  *[m
+[32m+[m[32m * Run:[m
+[32m+[m[32m *[m
+  *     bun scripts/demos/render-transcript-dividers.ts --width 100 |[m
+  *       bun scripts/demos/render-proof.ts --out /tmp/dividers --width 100[m
+  *[m
+[1mdiff --git a/scripts/first-party-docs-are-indexed.test.ts b/scripts/first-party-docs-are-indexed.test.ts[m
+[1mindex b94e25a54..e8da234ca 100644[m
+[1m--- a/scripts/first-party-docs-are-indexed.test.ts[m
+[1m+++ b/scripts/first-party-docs-are-indexed.test.ts[m
+[36m@@ -49,6 +49,10 @@[m [mconst NOT_A_PROSE_PAGE: readonly RegExp[] = [[m
+ 	/(^|\/)builtin-rules\//,[m
+ 	/(^|\/)statements\//,[m
+ 	/(^|\/)fixtures?\//,[m
+[32m+[m	[32m// A seeded home directory for the proof recorder: profile, sessions, and[m
+[32m+[m	[32m// whatever a session wrote inside one. Markdown in there is a session[m
+[32m+[m	[32m// artifact the recorder replays, the same kind of thing as a fixture.[m
+[32m+[m	[32m/(^|\/)home-seed\//,[m
+ 	/(^|\/)arms\//,[m
+ 	/(^|\/)(README|CHANGELOG|LICENSE|CONTRIBUTING|CODE_OF_CONDUCT)\.md$/i,[m
+ 	/(^|\/)SKILL\.md$/,[m
+[1mdiff --git a/scripts/no-attribution-in-the-tree.test.ts b/scripts/no-attribution-in-the-tree.test.ts[m
+[1mindex b23a00c1a..182fdbc82 100644[m
+[1m--- a/scripts/no-attribution-in-the-tree.test.ts[m
+[1m+++ b/scripts/no-attribution-in-the-tree.test.ts[m
+[36m@@ -109,6 +109,12 @@[m [mconst EXTENSION_POLICY: Readonly<Record<string, ExtensionDecision>> = {[m
+ 	".exit": RECORDED_OUTPUT,[m
+ 	".cmd": RECORDED_OUTPUT,[m
+ 	".patch": RECORDED_OUTPUT,[m
+[32m+[m	[32m".diff": RECORDED_OUTPUT,[m
+[32m+[m	[32m".err": RECORDED_OUTPUT,[m
+[32m+[m	[32m".typescript": RECORDED_OUTPUT,[m
+[32m+[m	[32m".jsonl": NO_COMMENT_SYNTAX,[m
+[32m+[m	[32m".tsv": NO_COMMENT_SYNTAX,[m
+[32m+[m	[32m".recorder": "scan", // A Dockerfile named by its stage: `#` comments[m
+ 	".typed": { skip: "empty marker file" },[m
+ 	".LICENSE": LEGAL_TEXT,[m
+ 	".png": BINARY_ASSET,[m
+[36m@@ -483,6 +489,7 @@[m [mdescribe("no comment or internal doc attributes a change to a person", () => {[m
+ 			".sublime-syntax": line => `# ${line}`,[m
+ 			".tape": line => `# ${line}`,[m
+ 			".dockerfile": line => `# ${line}`,[m
+[32m+[m			[32m".recorder": line => `# ${line}`,[m
+ 			".dockerignore": line => `# ${line}`,[m
+ 			".veybot": line => `# ${line}`,[m
+ 			".example": line => `# ${line}`,[m

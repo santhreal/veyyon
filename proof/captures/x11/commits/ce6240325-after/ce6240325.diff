@@ -1,0 +1,453 @@
+[33mce6240325[m proof(page): the last thirteen commits carry their recordings
+
+
+
+ proof/captures/x11/commits/00f724b60-after.mp4     | Bin [31m0[m -> [32m79926[m bytes
+ .../x11/commits/00f724b60-after/00f724b60.diff     |  47 [32m+++[m
+ proof/captures/x11/commits/00f724b60-after/cmd.sh  |   6 [32m+[m
+ proof/captures/x11/commits/3a71d64c2-after.mp4     | Bin [31m0[m -> [32m99707[m bytes
+ .../x11/commits/3a71d64c2-after/3a71d64c2.diff     | 106 [32m++++++[m
+ proof/captures/x11/commits/3a71d64c2-after/cmd.sh  |   6 [32m+[m
+ proof/captures/x11/commits/488ca8049-after.mp4     | Bin [31m0[m -> [32m731828[m bytes
+ .../x11/commits/488ca8049-after/488ca8049.diff     | 215 [32m+++++++++++[m
+ proof/captures/x11/commits/488ca8049-after/cmd.sh  |   6 [32m+[m
+ proof/captures/x11/commits/4dfb85288-after.mp4     | Bin [31m0[m -> [32m207311[m bytes
+ .../x11/commits/4dfb85288-after/4dfb85288.diff     |  19 [32m+[m
+ proof/captures/x11/commits/4dfb85288-after/cmd.sh  |   6 [32m+[m
+ proof/captures/x11/commits/5359075e9-after.mp4     | Bin [31m0[m -> [32m15068[m bytes
+ .../x11/commits/5359075e9-after/5359075e9.diff     | 117 [32m++++++[m
+ proof/captures/x11/commits/5359075e9-after/cmd.sh  |   6 [32m+[m
+ proof/captures/x11/commits/5e4c56045-after.mp4     | Bin [31m0[m -> [32m34419[m bytes
+ .../x11/commits/5e4c56045-after/5e4c56045.diff     |  93 [32m+++++[m
+ proof/captures/x11/commits/5e4c56045-after/cmd.sh  |   6 [32m+[m
+ proof/captures/x11/commits/7184efa23-after.mp4     | Bin [31m0[m -> [32m127078[m bytes
+ proof/captures/x11/commits/7184efa23-after.txt     |  31 [32m++[m
+ proof/captures/x11/commits/7184efa23-after/cmd.sh  |   6 [32m+[m
+ proof/captures/x11/commits/7184efa23-before.mp4    | Bin [31m0[m -> [32m115927[m bytes
+ proof/captures/x11/commits/7184efa23-before.txt    |  40 [32m++[m
+ proof/captures/x11/commits/7184efa23-before/cmd.sh |   6 [32m+[m
+ proof/captures/x11/commits/81d595f3b-after.mp4     | Bin [31m0[m -> [32m68293[m bytes
+ .../x11/commits/81d595f3b-after/81d595f3b.diff     |  44 [32m+++[m
+ proof/captures/x11/commits/81d595f3b-after/cmd.sh  |   6 [32m+[m
+ proof/captures/x11/commits/8e6c92166-after.mp4     | Bin [31m0[m -> [32m131072[m bytes
+ .../x11/commits/8e6c92166-after/8e6c92166.diff     | 170 [32m+++++++++[m
+ proof/captures/x11/commits/8e6c92166-after/cmd.sh  |   6 [32m+[m
+ proof/captures/x11/commits/97e29d9e7-after.mp4     | Bin [31m0[m -> [32m88604[m bytes
+ proof/captures/x11/commits/97e29d9e7-after.txt     |  16 [32m+[m
+ proof/captures/x11/commits/97e29d9e7-after/cmd.sh  |   6 [32m+[m
+ proof/captures/x11/commits/97e29d9e7-before.mp4    | Bin [31m0[m -> [32m78022[m bytes
+ proof/captures/x11/commits/97e29d9e7-before.txt    |  40 [32m++[m
+ proof/captures/x11/commits/97e29d9e7-before/cmd.sh |   6 [32m+[m
+ proof/captures/x11/commits/9a82206f9-after.mp4     | Bin [31m0[m -> [32m1164521[m bytes
+ .../x11/commits/9a82206f9-after/9a82206f9.diff     | 422 [32m+++++++++++++++++++++[m
+ proof/captures/x11/commits/9a82206f9-after/cmd.sh  |   6 [32m+[m
+ proof/captures/x11/commits/d6293b7b1-after.mp4     | Bin [31m0[m -> [32m79618[m bytes
+ proof/captures/x11/commits/d6293b7b1-after/cmd.sh  |   6 [32m+[m
+ .../x11/commits/d6293b7b1-after/d6293b7b1.diff     |  19 [32m+[m
+ proof/captures/x11/commits/d73987d4a-after.mp4     | Bin [31m0[m -> [32m19050[m bytes
+ proof/captures/x11/commits/d73987d4a-after/cmd.sh  |   6 [32m+[m
+ .../x11/commits/d73987d4a-after/d73987d4a.diff     |  91 [32m+++++[m
+ proof/commit-videos.tsv                            |  13 [32m+[m
+ proof/ui-polish-proof.html                         |  58 [32m++[m[31m-[m
+ 47 files changed, 1628 insertions(+), 3 deletions(-)
+
+[1mdiff --git a/proof/captures/x11/commits/00f724b60-after.mp4 b/proof/captures/x11/commits/00f724b60-after.mp4[m
+[1mnew file mode 100644[m
+[1mindex 000000000..ecc8ccd5f[m
+Binary files /dev/null and b/proof/captures/x11/commits/00f724b60-after.mp4 differ
+[1mdiff --git a/proof/captures/x11/commits/00f724b60-after/00f724b60.diff b/proof/captures/x11/commits/00f724b60-after/00f724b60.diff[m
+[1mnew file mode 100644[m
+[1mindex 000000000..75d174638[m
+[1m--- /dev/null[m
+[1m+++ b/proof/captures/x11/commits/00f724b60-after/00f724b60.diff[m
+[36m@@ -0,0 +1,47 @@[m
+[32m+[m[32m[33m00f724b60[m test(task): pin the per-agent effort row that actually ships[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m[32m .../test/task/subagent-effort-inheritance.test.ts  | 26 [32m++++++++++++++++[m[31m------[m[m
+[32m+[m[32m 1 file changed, 19 insertions(+), 7 deletions(-)[m
+[32m+[m
+[32m+[m[32m[1mdiff --git a/packages/coding-agent/test/task/subagent-effort-inheritance.test.ts b/packages/coding-agent/test/task/subagent-effort-inheritance.test.ts[m[m
+[32m+[m[32m[1mindex 805adc0fa..953e5dc25 100644[m[m
+[32m+[m[32m[1m--- a/packages/coding-agent/test/task/subagent-effort-inheritance.test.ts[m[m
+[32m+[m[32m[1m+++ b/packages/coding-agent/test/task/subagent-effort-inheritance.test.ts[m[m
+[32m+[m[32m[36m@@ -92,16 +92,28 @@[m [mdescribe("task subagent effort inheritance", () => {[m[m
+[32m+[m[41m [m	[32m});[m[m
+[32m+[m[32m [m[m
+[32m+[m[41m [m	[32m/**[m[m
+[32m+[m[32m[31m-	 * A per-agent `thinkingLevel` row is retired: model and effort have one owner[m[m
+[32m+[m[32m[31m-	 * (the blanket setting plus the agent file's frontmatter), and this row is a[m[m
+[32m+[m[32m[31m-	 * value an operator can still see in their config that governs nothing. It must[m[m
+[32m+[m[32m[31m-	 * not resurface as an override here, and the parent's effort must still cross[m[m
+[32m+[m[32m[31m-	 * the boundary as the fallback layer.[m[m
+[32m+[m[32m[32m+[m	[32m * A per-agent `thinkingLevel` row is the highest-precedence effort layer, so it[m[m
+[32m+[m[32m[32m+[m	[32m * crosses the boundary as the child's own effort instead of the parent's. The[m[m
+[32m+[m[32m[32m+[m	[32m * parent's effort still travels beside it, because the executor needs a fallback[m[m
+[32m+[m[32m[32m+[m	[32m * for the case where the resolved level names nothing.[m[m
+[32m+[m[41m [m	[32m */[m[m
+[32m+[m[32m[31m-	it("ignores a retired per-agent effort row and still inherits the parent effort", async () => {[m[m
+[32m+[m[32m[32m+[m	[32mit("sends a per-agent effort row as the child's own effort, and still carries the parent's", async () => {[m[m
+[32m+[m[32m[32m+[m		[32mconst options = await dispatch({ task: { thinkingLevel: ThinkingLevel.Low } });[m[m
+[32m+[m[32m[32m+[m[m
+[32m+[m[32m[32m+[m		[32mexpect(options.thinkingLevel).toBe(ThinkingLevel.Low);[m[m
+[32m+[m[32m[32m+[m		[32mexpect(options.parentThinkingLevel).toBe(ThinkingLevel.High);[m[m
+[32m+[m[32m[32m+[m	[32m});[m[m
+[32m+[m[32m[32m+[m[m
+[32m+[m[32m[32m+[m	[32m/**[m[m
+[32m+[m[32m[32m+[m	[32m * `auto` is a level an operator can choose, not an absent row: it means the model[m[m
+[32m+[m[32m[32m+[m	[32m * routes its own effort. It must reach the executor as `auto` rather than as[m[m
+[32m+[m[32m[32m+[m	[32m * `undefined`, since `undefined` is what makes the child inherit the parent, and[m[m
+[32m+[m[32m[32m+[m	[32m * the two decisions are not the same one.[m[m
+[32m+[m[32m[32m+[m	[32m */[m[m
+[32m+[m[32m[32m+[m	[32mit("keeps an explicit auto row distinct from no row at all", async () => {[m[m
+[32m+[m[41m [m		[32mconst options = await dispatch({ task: { thinkingLevel: AUTO_THINKING } });[m[m
+[32m+[m[32m [m[m
+[32m+[m[32m[31m-		expect(options.thinkingLevel).toBeUndefined();[m[m
+[32m+[m[32m[32m+[m		[32mexpect(options.thinkingLevel).toBe(AUTO_THINKING);[m[m
+[32m+[m[41m [m		[32mexpect(options.parentThinkingLevel).toBe(ThinkingLevel.High);[m[m
+[32m+[m[41m [m	[32m});[m[m
+[32m+[m[32m });[m[m
+[1mdiff --git a/proof/captures/x11/commits/00f724b60-after/cmd.sh b/proof/captures/x11/commits/00f724b60-after/cmd.sh[m
+[1mnew file mode 100644[m
+[1mindex 000000000..3033c7bde[m
+[1m--- /dev/null[m
+[1m+++ b/proof/captures/x11/commits/00f724b60-after/cmd.sh[m
+[36m@@ -0,0 +1,6 @@[m
+[32m+[m[32mcd /repo[m
+[32m+[m[32mbash /rig/docker/page-file.sh /out/00f724b60.diff[m
+[32m+[m[32mecho[m
+[32m+[m[32mecho "--- command finished, arm=after ref=00f724b60"[m
+[32m+[m[32mtouch /tmp/scene-done[m
+[32m+[m[32msleep 99999[m
+[1mdiff --git a/proof/captures/x11/commits/3a71d64c2-after.mp4 b/proof/captures/x11/commits/3a71d64c2-after.mp4[m
+[1mnew file mode 100644[m
+[1mindex 000000000..1c56671f5[m
+Binary files /dev/null and b/proof/captures/x11/commits/3a71d64c2-after.mp4 differ
+[1mdiff --git a/proof/captures/x11/commits/3a71d64c2-after/3a71d64c2.diff b/proof/captures/x11/commits/3a71d64c2-after/3a71d64c2.diff[m
+[1mnew file mode 100644[m
+[1mindex 000000000..5dec73d94[m
+[1m--- /dev/null[m
+[1m+++ b/proof/captures/x11/commits/3a71d64c2-after/3a71d64c2.diff[m
+[36m@@ -0,0 +1,106 @@[m
+[32m+[m[32m[33m3a71d64c2[m fix(compaction): the chain suite stops calling the compaction endpoint, and the setting says Codex is included[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m[32m .../src/config/settings-domains/context.ts         | 16 [32m+++++[m[31m-----[m[m
+[32m+[m[32m .../test/compaction-model-chain.test.ts            | 37 [32m++++++++++++++++++++++[m[m
+[32m+[m[32m 2 files changed, 45 insertions(+), 8 deletions(-)[m
+[32m+[m
+[32m+[m[32m[1mdiff --git a/packages/coding-agent/src/config/settings-domains/context.ts b/packages/coding-agent/src/config/settings-domains/context.ts[m[m
+[32m+[m[32m[1mindex ae138cfbb..33647e573 100644[m[m
+[32m+[m[32m[1m--- a/packages/coding-agent/src/config/settings-domains/context.ts[m[m
+[32m+[m[32m[1m+++ b/packages/coding-agent/src/config/settings-domains/context.ts[m[m
+[32m+[m[32m[36m@@ -35,15 +35,15 @@[m [mexport const CONTEXT_SETTINGS = {[m[m
+[32m+[m[41m [m	[32m// side. Unrelated to `compaction.remoteEndpoint`, which is an[m[m
+[32m+[m[41m [m	[32m// operator-configured external summarizer and shares nothing but the word.[m[m
+[32m+[m[41m [m	[32m//[m[m
+[32m+[m[32m[31m-	// It applies when the SESSION model is on the OpenAI Responses API family[m[m
+[32m+[m[32m[31m-	// (`openai-responses` or `azure-openai-responses`, so Azure OpenAI[m[m
+[32m+[m[32m[31m-	// Responses deployments are included) AND that model's row reports[m[m
+[32m+[m[32m[32m+[m	[32m// It applies when the SESSION model is on the OpenAI Responses wire shape[m[m
+[32m+[m[32m[32m+[m	[32m// (`openai-responses`, `azure-openai-responses`, or the ChatGPT Codex[m[m
+[32m+[m[32m[32m+[m	[32m// backend's `openai-codex-responses`, so Azure deployments and a Codex OAuth[m[m
+[32m+[m[32m[32m+[m	[32m// session are both included) AND that model's row reports[m[m
+[32m+[m[41m [m	[32m// `compat.supportsServerCompaction`. Both halves are DATA, resolved per[m[m
+[32m+[m[41m [m	[32m// host at model build time and flippable per row by config or discovery;[m[m
+[32m+[m[32m[31m-	// nothing here checks a provider name. OpenAI Codex is on a different api[m[m
+[32m+[m[32m[31m-	// and is therefore excluded. On any other model the toggle is inert and[m[m
+[32m+[m[32m[31m-	// compaction stays local; with the toggle off, compaction is local on every[m[m
+[32m+[m[32m[31m-	// model. Local means the ordinary LLM summary path, unchanged.[m[m
+[32m+[m[32m[32m+[m	[32m// nothing here checks a provider name. On any other model the toggle is[m[m
+[32m+[m[32m[32m+[m	[32m// inert and compaction stays local; with the toggle off, compaction is local[m[m
+[32m+[m[32m[32m+[m	[32m// on every model. Local means the ordinary LLM summary path, unchanged.[m[m
+[32m+[m[41m [m	[32m//[m[m
+[32m+[m[41m [m	[32m// When it applies, veyyon calls the compaction endpoint and stores the[m[m
+[32m+[m[41m [m	[32m// window it returns. That window IS the compacted context, so the entry's[m[m
+[32m+[m[32m[36m@@ -64,7 +64,7 @@[m [mexport const CONTEXT_SETTINGS = {[m[m
+[32m+[m[41m [m			[32mgroup: "Compaction",[m[m
+[32m+[m[41m [m			[32mlabel: "Remote Compaction",[m[m
+[32m+[m[41m [m			[32mdescription:[m[m
+[32m+[m[32m[31m-				"Applies only when the session model is a supported OpenAI Responses model, which includes Azure OpenAI Responses deployments; every other model, OpenAI Codex included, ignores this setting and compacts locally. On, veyyon calls the OpenAI compaction endpoint and keeps the window it returns, which preserves reasoning state across the cut. That window is the whole compacted context, so the entry stores no summary text and the compaction model chain does not apply. There is no second local summary on purpose: it would pay a model to re-summarize a span the provider already compacted and leave two versions of one range that can disagree. Off, compaction runs locally on the usual summary path and stores readable summary text.",[m[m
+[32m+[m[32m[32m+[m				[32m"Applies only when the session model is a supported OpenAI Responses model, which includes Azure OpenAI Responses deployments and a ChatGPT Codex session; every other model ignores this setting and compacts locally. On, veyyon calls the OpenAI compaction endpoint and keeps the window it returns, which preserves reasoning state across the cut. That window is the whole compacted context, so the entry stores no summary text and the compaction model chain does not apply. There is no second local summary on purpose: it would pay a model to re-summarize a span the provider already compacted and leave two versions of one range that can disagree. Off, compaction runs locally on the usual summary path and stores readable summary text.",[m[m
+[32m+[m[41m [m			[32mkeywords: ["compaction", "remote", "server", "provider", "openai", "context"],[m[m
+[32m+[m[41m [m		[32m},[m[m
+[32m+[m[41m [m	[32m},[m[m
+[32m+[m[32m[1mdiff --git a/packages/coding-agent/test/compaction-model-chain.test.ts b/packages/coding-agent/test/compaction-model-chain.test.ts[m[m
+[32m+[m[32m[1mindex 1060ac7cb..c59c10405 100644[m[m
+[32m+[m[32m[1m--- a/packages/coding-agent/test/compaction-model-chain.test.ts[m[m
+[32m+[m[32m[1m+++ b/packages/coding-agent/test/compaction-model-chain.test.ts[m[m
+[32m+[m[32m[36m@@ -65,6 +65,14 @@[m [mdescribe("compaction model chain", () => {[m[m
+[32m+[m[41m [m	[32m * registry's available list (an unavailable model resolves to no candidate at[m[m
+[32m+[m[41m [m	[32m * all, which is a different failure from the one under test). `usable` then[m[m
+[32m+[m[41m [m	[32m * decides which of them actually hands back a key at compaction time.[m[m
+[32m+[m[32m[32m+[m	[32m *[m[m
+[32m+[m[32m[32m+[m	[32m * `compaction.remote` is OFF here. The session model is a ChatGPT Codex row,[m[m
+[32m+[m[32m[32m+[m	[32m * which is one of the wire shapes that CAN compact server-side, so with the[m[m
+[32m+[m[32m[32m+[m	[32m * setting at its shipped default every case in this suite reached the live[m[m
+[32m+[m[32m[32m+[m	[32m * compaction endpoint before it ever looked at the chain: the notice cases[m[m
+[32m+[m[32m[32m+[m	[32m * failed on a transport error from the network rather than on the chain, and[m[m
+[32m+[m[32m[32m+[m	[32m * whether they passed depended on the machine. The remote pass is a different[m[m
+[32m+[m[32m[32m+[m	[32m * path with its own contract, and one case below pins how the two meet.[m[m
+[32m+[m[41m [m	[32m */[m[m
+[32m+[m[41m [m	[32masync function createSession([m[m
+[32m+[m[41m [m		[32moverrides: Record<string, unknown>,[m[m
+[32m+[m[32m[36m@@ -72,6 +80,7 @@[m [mdescribe("compaction model chain", () => {[m[m
+[32m+[m[41m [m	[32m) {[m[m
+[32m+[m[41m [m		[32mconst settings = Settings.isolated({[m[m
+[32m+[m[41m [m			[32m"compaction.keepRecentTokens": 1,[m[m
+[32m+[m[32m[32m+[m			[32m"compaction.remote": false,[m[m
+[32m+[m[41m [m			[32m...overrides,[m[m
+[32m+[m[41m [m		[32m} as Parameters<typeof Settings.isolated>[0]);[m[m
+[32m+[m[32m [m[m
+[32m+[m[32m[36m@@ -223,6 +232,34 @@[m [mdescribe("compaction model chain", () => {[m[m
+[32m+[m[41m [m		[32mexpect(notices).toHaveLength(1);[m[m
+[32m+[m[41m [m	[32m});[m[m
+[32m+[m[32m [m[m
+[32m+[m[32m[32m+[m	[32m/**[m[m
+[32m+[m[32m[32m+[m	[32m * WHERE THE TWO PATHS MEET. With `compaction.remote` on and the session model on a wire shape[m[m
+[32m+[m[32m[32m+[m	[32m * that can compact server-side, the remote pass runs FIRST and the chain is only reached if it[m[m
+[32m+[m[32m[32m+[m	[32m * refuses. Compaction is the recovery path for a full context, so a refusing remote pass must[m[m
+[32m+[m[32m[32m+[m	[32m * not fail closed: the local chain still decides, its own fallback is still announced, and the[m[m
+[32m+[m[32m[32m+[m	[32m * remote refusal is announced beside it rather than instead of it.[m[m
+[32m+[m[32m[32m+[m	[32m *[m[m
+[32m+[m[32m[32m+[m	[32m * The refusal is the product's own credential gate rather than a stubbed transport: the session[m[m
+[32m+[m[32m[32m+[m	[32m * model holds no key here, which is the branch that must not downgrade silently. So this case[m[m
+[32m+[m[32m[32m+[m	[32m * reaches no network either, which is what the rest of the suite gets by turning the setting off.[m[m
+[32m+[m[32m[32m+[m	[32m */[m[m
+[32m+[m[32m[32m+[m	[32mit("falls through to the configured chain when the remote pass refuses, and announces both", async () => {[m[m
+[32m+[m[32m[32m+[m		[32mawait createSession([m[m
+[32m+[m[32m[32m+[m			[32m{ "compaction.model": `${selector(firstChoice)},${selector(secondChoice)}`, "compaction.remote": true },[m[m
+[32m+[m[32m[32m+[m			[32mmodel => model.id === secondChoice.id,[m[m
+[32m+[m[32m[32m+[m		[32m);[m[m
+[32m+[m[32m[32m+[m		[32mconst compactSpy = spyOnCompact();[m[m
+[32m+[m[32m[32m+[m[m
+[32m+[m[32m[32m+[m		[32mconst result = await session.compact();[m[m
+[32m+[m[32m[32m+[m[m
+[32m+[m[32m[32m+[m		[32mexpect(result.summary).toStartWith(`summary from ${selector(secondChoice)}`);[m[m
+[32m+[m[32m[32m+[m		[32mexpect(compactSpy.mock.calls.map(([, model]) => selector(model))).toEqual([selector(secondChoice)]);[m[m
+[32m+[m[32m[32m+[m		[32mexpect(notices.map(notice => notice.message)).toEqual([[m[m
+[32m+[m[32m[32m+[m			[32m`Server-side compaction unavailable (no API key for ${selector(mainModel)}); falling back to local compaction.`,[m[m
+[32m+[m[32m[32m+[m			[32m`Compacted with ${selector(secondChoice)}. ${selector(firstChoice)} was skipped: it is not authenticated.`,[m[m
+[32m+[m[32m[32m+[m		[32m]);[m[m
+[32m+[m[32m[32m+[m	[32m});[m[m
+[32m+[m[32m[32m+[m[m
+[32m+[m[41m [m	[32m/**[m[m
+[32m+[m[41m [m	[32m * `auto` is the historical tail and stays the default: with the configured[m[m
+[32m+[m[41m [m	[32m * chain unusable it reaches the main model rather than failing. This is the[m[m
+[1mdiff --git a/proof/captures/x11/commits/3a71d64c2-after/cmd.sh b/proof/captures/x11/commits/3a71d64c2-after/cmd.sh[m
+[1mnew file mode 100644[m
+[1mindex 000000000..49e3f2ad5[m
+[1m--- /dev/null[m
+[1m+++ b/proof/captures/x11/commits/3a71d64c2-after/cmd.sh[m
+[36m@@ -0,0 +1,6 @@[m
+[32m+[m[32mcd /repo[m
+[32m+[m[32mbash /rig/docker/page-file.sh /out/3a71d64c2.diff[m
+[32m+[m[32mecho[m
+[32m+[m[32mecho "--- command finished, arm=after ref=3a71d64c2"[m
+[32m+[m[32mtouch /tmp/scene-done[m
+[32m+[m[32msleep 99999[m
+[1mdiff --git a/proof/captures/x11/commits/488ca8049-after.mp4 b/proof/captures/x11/commits/488ca8049-after.mp4[m
+[1mnew file mode 100644[m
+[1mindex 000000000..7bdb248e8[m
+Binary files /dev/null and b/proof/captures/x11/commits/488ca8049-after.mp4 differ
+[1mdiff --git a/proof/captures/x11/commits/488ca8049-after/488ca8049.diff b/proof/captures/x11/commits/488ca8049-after/488ca8049.diff[m
+[1mnew file mode 100644[m
+[1mindex 000000000..bed86196a[m
+[1m--- /dev/null[m
+[1m+++ b/proof/captures/x11/commits/488ca8049-after/488ca8049.diff[m
+[36m@@ -0,0 +1,215 @@[m
+[32m+[m[32m[33m488ca8049[m proof(blocks): the rail commit carries its arms and its image pair[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m[32m proof/captures/blocks/block-box-black.png          | Bin [31m0[m -> [32m9992[m bytes[m
+[32m+[m[32m proof/captures/blocks/block-box-grey.png           | Bin [31m0[m -> [32m17792[m bytes[m
+[32m+[m[32m proof/captures/blocks/block-rail-black.png         | Bin [31m0[m -> [32m8026[m bytes[m
+[32m+[m[32m proof/captures/blocks/block-rail-grey.png          | Bin [31m0[m -> [32m14758[m bytes[m
+[32m+[m[32m proof/captures/x11/commits/782605878-after.mp4     | Bin [31m0[m -> [32m122981[m bytes[m
+[32m+[m[32m proof/captures/x11/commits/782605878-after.txt     |  40 [32m+++++++++++++++++++++[m[m
+[32m+[m[32m proof/captures/x11/commits/782605878-after/cmd.sh  |   6 [32m++++[m[m
+[32m+[m[32m proof/captures/x11/commits/782605878-before.mp4    | Bin [31m0[m -> [32m79604[m bytes[m
+[32m+[m[32m proof/captures/x11/commits/782605878-before.txt    |  40 [32m+++++++++++++++++++++[m[m
+[32m+[m[32m proof/captures/x11/commits/782605878-before/cmd.sh |   6 [32m++++[m[m
+[32m+[m[32m proof/commit-videos.tsv                            |   1 [32m+[m[m
+[32m+[m[32m proof/ui-polish-proof.html                         |  11 [32m++++[m[31m--[m[m
+[32m+[m[32m 12 files changed, 101 insertions(+), 3 deletions(-)[m
+[32m+[m
+[32m+[m[32m[1mdiff --git a/proof/captures/blocks/block-box-black.png b/proof/captures/blocks/block-box-black.png[m[m
+[32m+[m[32m[1mnew file mode 100644[m[m
+[32m+[m[32m[1mindex 000000000..dfc9ca7e5[m[m
+[32m+[m[32mBinary files /dev/null and b/proof/captures/blocks/block-box-black.png differ[m
+[32m+[m[32m[1mdiff --git a/proof/captures/blocks/block-box-grey.png b/proof/captures/blocks/block-box-grey.png[m[m
+[32m+[m[32m[1mnew file mode 100644[m[m
+[32m+[m[32m[1mindex 000000000..a6d8ddd08[m[m
+[32m+[m[32mBinary files /dev/null and b/proof/captures/blocks/block-box-grey.png differ[m
+[32m+[m[32m[1mdiff --git a/proof/captures/blocks/block-rail-black.png b/proof/captures/blocks/block-rail-black.png[m[m
+[32m+[m[32m[1mnew file mode 100644[m[m
+[32m+[m[32m[1mindex 000000000..6327c65b6[m[m
+[32m+[m[32mBinary files /dev/null and b/proof/captures/blocks/block-rail-black.png differ[m
+[32m+[m[32m[1mdiff --git a/proof/captures/blocks/block-rail-grey.png b/proof/captures/blocks/block-rail-grey.png[m[m
+[32m+[m[32m[1mnew file mode 100644[m[m
+[32m+[m[32m[1mindex 000000000..a0b2a36ae[m[m
+[32m+[m[32mBinary files /dev/null and b/proof/captures/blocks/block-rail-grey.png differ[m
+[32m+[m[32m[1mdiff --git a/proof/captures/x11/commits/782605878-after.mp4 b/proof/captures/x11/commits/782605878-after.mp4[m[m
+[32m+[m[32m[1mnew file mode 100644[m[m
+[32m+[m[32m[1mindex 000000000..12b799992[m[m
+[32m+[m[32mBinary files /dev/null and b/proof/captures/x11/commits/782605878-after.mp4 differ[m
+[32m+[m[32m[1mdiff --git a/proof/captures/x11/commits/782605878-after.txt b/proof/captures/x11/commits/782605878-after.txt[m[m
+[32m+[m[32m[1mnew file mode 100644[m[m
+[32m+[m[32m[1mindex 000000000..edc016d21[m[m
+[32m+[m[32m[1m--- /dev/null[m[m
+[32m+[m[32m[1m+++ b/proof/captures/x11/commits/782605878-after.txt[m[m
+[32m+[m[32m[36m@@ -0,0 +1,40 @@[m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > a header longer than its body draws no box [0.02ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > no content at all draws no box [0.02ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > two columns of left padding draws no box [0.02ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > no left padding draws no box [0.02ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > a header and one short line rails every row under the title [0.07ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > a header with meta rails every row under the title [0.02ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > no header at all rails every row under the title[m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > a labelled section rails every row under the title [0.02ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > a plain separator between sections rails every row under the title [0.02ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > a header longer than its body rails every row under the title [0.01ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > no content at all rails every row under the title[m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > two columns of left padding rails every row under the title [0.01ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > no left padding rails every row under the title [0.01ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > a header and one short line stops well short of the terminal [0.04ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > a header with meta stops well short of the terminal [0.02ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > no header at all stops well short of the terminal [0.02ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > a labelled section stops well short of the terminal [0.03ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > a plain separator between sections stops well short of the terminal [0.03ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > a header longer than its body stops well short of the terminal [0.01ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > no content at all stops well short of the terminal [0.02ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > two columns of left padding stops well short of the terminal [0.02ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > no left padding stops well short of the terminal [0.03ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > spends two columns on chrome, the same two the walls cost [0.07ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > is one line when a tool has nothing to show but its result [0.03ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > spends no row on chrome above or below the output [0.05ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > keeps a header longer than its body whole [0.02ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > wraps its body at the width a renderer budgets rows against [0.06ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > never reaches past the terminal, even when a line fills every column it was wrapped to [0.04ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > carries no trailing padding on an unpainted row [0.04ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > colours the rail from the state, and lets a caller override it [0.62ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > paints a state background as a plate the size of the block, not a band across the screen [0.35ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > paints no plate at all when the caller has already painted the ground [0.29ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > reaches the plate under a header wider than everything below it [0.05ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > rails a real bash block through the component that owns it [127.71ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > rails a real read block through the component that owns it [11.47ms][m[m
+[32m+[m[32m[32m+[m[m
+[32m+[m[32m[32m+[m[32m 40 pass[m[m
+[32m+[m[32m[32m+[m[32m 0 fail[m[m
+[32m+[m[32m[32m+[m[32m 327 expect() calls[m[m
+[32m+[m[32m[32m+[m[32mRan 40 tests across 1 file. [831.00ms][m[m
+[32m+[m[32m[1mdiff --git a/proof/captures/x11/commits/782605878-after/cmd.sh b/proof/captures/x11/commits/782605878-after/cmd.sh[m[m
+[32m+[m[32m[1mnew file mode 100644[m[m
+[32m+[m[32m[1mindex 000000000..5d6c41202[m[m
+[32m+[m[32m[1m--- /dev/null[m[m
+[32m+[m[32m[1m+++ b/proof/captures/x11/commits/782605878-after/cmd.sh[m[m
+[32m+[m[32m[36m@@ -0,0 +1,6 @@[m[m
+[32m+[m[32m[32m+[m[32mcd /repo[m[m
+[32m+[m[32m[32m+[m[32mbun test ./packages/coding-agent/test/a-tool-block-hangs-its-output-on-a-rail-not-in-a-box.test.ts 2>&1 | tail -32[m[m
+[32m+[m[32m[32m+[m[32mecho[m[m
+[32m+[m[32m[32m+[m[32mecho "--- command finished, arm=after ref=782605878"[m[m
+[32m+[m[32m[32m+[m[32mtouch /tmp/scene-done[m[m
+[32m+[m[32m[32m+[m[32msleep 99999[m[m
+[32m+[m[32m[1mdiff --git a/proof/captures/x11/commits/782605878-before.mp4 b/proof/captures/x11/commits/782605878-before.mp4[m[m
+[32m+[m[32m[1mnew file mode 100644[m[m
+[32m+[m[32m[1mindex 000000000..92223864f[m[m
+[32m+[m[32mBinary files /dev/null and b/proof/captures/x11/commits/782605878-before.mp4 differ[m
+[32m+[m[32m[1mdiff --git a/proof/captures/x11/commits/782605878-before.txt b/proof/captures/x11/commits/782605878-before.txt[m[m
+[32m+[m[32m[1mnew file mode 100644[m[m
+[32m+[m[32m[1mindex 000000000..30263a523[m[m
+[32m+[m[32m[1m--- /dev/null[m[m
+[32m+[m[32m[1m+++ b/proof/captures/x11/commits/782605878-before.txt[m[m
+[32m+[m[32m[36m@@ -0,0 +1,40 @@[m[m
+[32m+[m[32m[32m+[m[32m(fail) a tool block hangs its output on a rail, not in a box > wraps its body at the width a renderer budgets rows against [0.10ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > never reaches past the terminal, even when a line fills every column it was wrapped to [0.06ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > carries no trailing padding on an unpainted row [0.06ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > colours the rail from the state, and lets a caller override it [2.67ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > paints a state background as a plate the size of the block, not a band across the screen [0.63ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > paints no plate at all when the caller has already painted the ground [0.63ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > reaches the plate under a header wider than everything below it [0.09ms][m[m
+[32m+[m[32m[32m+[m[32m404 | 		(_name, entry) => {[m[m
+[32m+[m[32m[32m+[m[32m405 | 			const lines = entry.build().render(120);[m[m
+[32m+[m[32m[32m+[m[32m406 | 			const { railed, ink } = componentFrame(lines);[m[m
+[32m+[m[32m[32m+[m[32m407 | 			// Every row of output hangs on the rail; only the tool's own title row, when it[m[m
+[32m+[m[32m[32m+[m[32m408 | 			// has one, owns column 0.[m[m
+[32m+[m[32m[32m+[m[32m409 | 			expect(ink.length - railed.length, `${ink.length} ink rows, ${railed.length} railed`).toBe(entry.unrailed);[m[m
+[32m+[m[32m[32m+[m[32m                                                                                               ^[m[m
+[32m+[m[32m[32m+[m[32merror: 5 ink rows, 0 railed[m[m
+[32m+[m[32m[32m+[m[m
+[32m+[m[32m[32m+[m[32mExpected: 0[m[m
+[32m+[m[32m[32m+[m[32mReceived: 5[m[m
+[32m+[m[32m[32m+[m[m
+[32m+[m[32m[32m+[m[32m      at <anonymous> (/repo/packages/coding-agent/test/a-tool-block-hangs-its-output-on-a-rail-not-in-a-box.test.ts:409:90)[m[m
+[32m+[m[32m[32m+[m[32m(fail) a tool block hangs its output on a rail, not in a box > rails a real bash block through the component that owns it [126.62ms][m[m
+[32m+[m[32m[32m+[m[32m404 | 		(_name, entry) => {[m[m
+[32m+[m[32m[32m+[m[32m405 | 			const lines = entry.build().render(120);[m[m
+[32m+[m[32m[32m+[m[32m406 | 			const { railed, ink } = componentFrame(lines);[m[m
+[32m+[m[32m[32m+[m[32m407 | 			// Every row of output hangs on the rail; only the tool's own title row, when it[m[m
+[32m+[m[32m[32m+[m[32m408 | 			// has one, owns column 0.[m[m
+[32m+[m[32m[32m+[m[32m409 | 			expect(ink.length - railed.length, `${ink.length} ink rows, ${railed.length} railed`).toBe(entry.unrailed);[m[m
+[32m+[m[32m[32m+[m[32m                                                                                               ^[m[m
+[32m+[m[32m[32m+[m[32merror: 3 ink rows, 0 railed[m[m
+[32m+[m[32m[32m+[m[m
+[32m+[m[32m[32m+[m[32mExpected: 1[m[m
+[32m+[m[32m[32m+[m[32mReceived: 3[m[m
+[32m+[m[32m[32m+[m[m
+[32m+[m[32m[32m+[m[32m      at <anonymous> (/repo/packages/coding-agent/test/a-tool-block-hangs-its-output-on-a-rail-not-in-a-box.test.ts:409:90)[m[m
+[32m+[m[32m[32m+[m[32m(fail) a tool block hangs its output on a rail, not in a box > rails a real read block through the component that owns it [11.35ms][m[m
+[32m+[m[32m[32m+[m[m
+[32m+[m[32m[32m+[m[32m 15 pass[m[m
+[32m+[m[32m[32m+[m[32m 25 fail[m[m
+[32m+[m[32m[32m+[m[32m 133 expect() calls[m[m
+[32m+[m[32m[32m+[m[32mRan 40 tests across 1 file. [838.00ms][m[m
+[32m+[m[32m[1mdiff --git a/proof/captures/x11/commits/782605878-before/cmd.sh b/proof/captures/x11/commits/782605878-before/cmd.sh[m[m
+[32m+[m[32m[1mnew file mode 100644[m[m
+[32m+[m[32m[1mindex 000000000..a590565da[m[m
+[32m+[m[32m[1m--- /dev/null[m[m
+[32m+[m[32m[1m+++ b/proof/captures/x11/commits/782605878-before/cmd.sh[m[m
+[32m+[m[32m[36m@@ -0,0 +1,6 @@[m[m
+[32m+[m[32m[32m+[m[32mcd /repo[m[m
+[32m+[m[32m[32m+[m[32mbun test ./packages/coding-agent/test/a-tool-block-hangs-its-output-on-a-rail-not-in-a-box.test.ts 2>&1 | tail -32[m[m
+[32m+[m[32m[32m+[m[32mecho[m[m
+[32m+[m[32m[32m+[m[32mecho "--- command finished, arm=before ref=782605878^"[m[m
+[32m+[m[32m[32m+[m[32mtouch /tmp/scene-done[m[m
+[32m+[m[32m[32m+[m[32msleep 99999[m[m
+[32m+[m[32m[1mdiff --git a/proof/commit-videos.tsv b/proof/commit-videos.tsv[m[m
+[32m+[m[32m[1mindex 05682e747..34fa9e95d 100644[m[m
+[32m+[m[32m[1m--- a/proof/commit-videos.tsv[m[m
+[32m+[m[32m[1m+++ b/proof/commit-videos.tsv[m[m
+[32m+[m[32m[36m@@ -100,3 +100,4 @@[m [mad14fca53	diff	45		feat(overlays): a card is a ladder of materials, measured on[m[m
+[32m+[m[32m 161922a84	test	90	./packages/simulations/src/paint-sim/a-turn-that-ends-short-never-paints-a-blank-band-over-the-conversation.test.ts	fix(tui): a short turn no longer paints a blank band over the conversation[m[m
+[32m+[m[32m 8baebe34e	test	90	./packages/coding-agent/test/modes/controllers/a-taller-terminal-still-hugs-the-composer-to-the-bottom.test.ts	fix(tui): the frame length is the invariant, not the fill routing[m[m
+[32m+[m[32m 880794c05	diff	45		demo(band): say what the real-terminal arm actually shows[m[m
+[32m+[m[32m[32m+[m[32m782605878	test	90	./packages/coding-agent/test/a-tool-block-hangs-its-output-on-a-rail-not-in-a-box.test.ts	polish(tui): a tool block hangs its output on a rail, not in a box[m[m
+[32m+[m[32m[1mdiff --git a/proof/ui-polish-proof.html b/proof/ui-polish-proof.html[m[m
+[32m+[m[32m[1mindex 0cb25d993..ead46bc22 100644[m[m
+[32m+[m[32m[1m--- a/proof/ui-polish-proof.html[m[m
+[32m+[m[32m[1m+++ b/proof/ui-polish-proof.html[m[m
+[32m+[m[32m[36m@@ -32,7 +32,7 @@[m [mtd.sha { font-family: ui-monospace, monospace; color: #e6c08a; white-space: nowr[m[m
+[32m+[m[32m </style></head>[m[m
+[32m+[m[32m <body>[m[m
+[32m+[m[32m <h1>feat/ui-polish — recorded proof</h1>[m[m
+[32m+[m[32m[31m-<p class="lede">Branch <code>feat/ui-polish</code> at <code>de1d15a08</code>, 98 commits ahead of[m[m
+[32m+[m[32m[32m+[m[32m<p class="lede">Branch <code>feat/ui-polish</code> at <code>782605878</code>, 100 commits ahead of[m[m
+[32m+[m[32m <code>main</code> (<code>5ce31890e</code>). Every figure below is a frame of a real terminal running the shipped[m[m
+[32m+[m[32m CLI. No component was drawn into a picture for this page, and nothing here is a tmux capture.</p>[m[m
+[32m+[m[32m [m[m
+[32m+[m[32m[36m@@ -161,7 +161,7 @@[m [mafterwards rather than screenshotted mid-motion.</p>[m[m
+[32m+[m[32m <p>The resumed arm carries one cost the control does not, and it is model-side rather than renderer-side: a history that large does not fit a 65k window, so the app compacts before it can ask anything, and says so on screen while it does. That is the 1.5B summarizing on CPU, not a frame being repainted.</p>[m[m
+[32m+[m[32m [m[m
+[32m+[m[32m <h2>Every commit on the branch, on camera</h2>[m[m
+[32m+[m[32m[31m-<p>90 of the 98 commits are below, one recording each. Every video is a real terminal in the recording[m[m
+[32m+[m[32m[32m+[m[32m<p>91 of the 100 commits are below, one recording each. Every video is a real terminal in the recording[m[m
+[32m+[m[32m container: <code>proof/docker/record-commit-arm.sh</code> extracts the commit's tree and its parent's tree with[m[m
+[32m+[m[32m <code>git archive</code>, mounts the same <code>node_modules</code> and the same native addon into both, and runs[m[m
+[32m+[m[32m the same command in each. A test the commit ADDS is copied into the parent tree first, so the test is[m[m
+[32m+[m[32m[36m@@ -176,6 +176,8 @@[m [ma video is the text of the same command run again headlessly by[m[m
+[32m+[m[32m rather than writing lines to a pipe, and the video is the only place its output exists.</p>[m[m
+[32m+[m[32m <table><thead><tr><th>commit</th><th>subject</th></tr></thead>[m[m
+[32m+[m[32m <tbody>[m[m

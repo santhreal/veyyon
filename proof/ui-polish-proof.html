@@ -32,7 +32,7 @@ td.sha { font-family: ui-monospace, monospace; color: #e6c08a; white-space: nowr
 </style></head>
 <body>
 <h1>feat/ui-polish — recorded proof</h1>
-<p class="lede">Branch <code>feat/ui-polish</code> at <code>5359075e9</code>, 113 commits ahead of
+<p class="lede">Branch <code>feat/ui-polish</code> at <code>3fb49b0cc</code>, 119 commits ahead of
 <code>main</code> (<code>5ce31890e</code>). Every figure below is a frame of a real terminal running the shipped
 CLI. No component was drawn into a picture for this page, and nothing here is a tmux capture.</p>
 
@@ -161,7 +161,7 @@ afterwards rather than screenshotted mid-motion.</p>
 <p>The resumed arm carries one cost the control does not, and it is model-side rather than renderer-side: a history that large does not fit a 65k window, so the app compacts before it can ask anything, and says so on screen while it does. That is the 1.5B summarizing on CPU, not a frame being repainted.</p>
 
 <h2>Every commit on the branch, on camera</h2>
-<p>104 of the 113 commits are below, one recording each. Every video is a real terminal in the recording
+<p>110 of the 119 commits are below, one recording each. Every video is a real terminal in the recording
 container: <code>proof/docker/record-commit-arm.sh</code> extracts the commit's tree and its parent's tree with
 <code>git archive</code>, mounts the same <code>node_modules</code> and the same native addon into both, and runs
 the same command in each. A test the commit ADDS is copied into the parent tree first, so the test is
@@ -176,6 +176,12 @@ a video is the text of the same command run again headlessly by
 rather than writing lines to a pipe, and the video is the only place its output exists.</p>
 <table><thead><tr><th>commit</th><th>subject</th></tr></thead>
 <tbody>
+<tr><td class="sha"><a href="#c-3fb49b0cc">3fb49b0cc</a></td><td>chore(repo): the branch pays its four hygiene gates</td></tr>
+<tr><td class="sha"><a href="#c-ca919629b">ca919629b</a></td><td>test(edit): the diff gutter hangs on the rail, and lines up</td></tr>
+<tr><td class="sha"><a href="#c-6272e7b93">6272e7b93</a></td><td>test(bash): the pending call is one rail row, not a bordered block</td></tr>
+<tr><td class="sha"><a href="#c-39d18b0b0">39d18b0b0</a></td><td>test(tui): the chrome sweep counts the band, not just the prompt</td></tr>
+<tr><td class="sha"><a href="#c-402fd539d">402fd539d</a></td><td>test(vibe): the lane row outranks the blanket pair on the vibe path too</td></tr>
+<tr><td class="sha"><a href="#c-ce6240325">ce6240325</a></td><td>proof(page): the last thirteen commits carry their recordings</td></tr>
 <tr><td class="sha"><a href="#c-5359075e9">5359075e9</a></td><td>test(sandbox): a linked worktree takes its git directory into the sandbox</td></tr>
 <tr><td class="sha"><a href="#c-81d595f3b">81d595f3b</a></td><td>test(task): a per-agent row routes the spawn it is written for</td></tr>
 <tr><td class="sha"><a href="#c-5e4c56045">5e4c56045</a></td><td>test(git): the head-sha arms build the repository they read</td></tr>
@@ -291,7 +297,7 @@ rather than writing lines to a pipe, and the video is the only place its output 
 <tr><td class="sha"><a href="#c-766ee5a26">766ee5a26</a></td><td>fix(coding-agent): duplicate of main's compaction-tier and bundle-decoupling fixes</td></tr>
 </tbody></table>
 
-<p><strong>55</strong> of the 64 commits that carry tests fail against their parent's source and pass against their own — the test byte-identical in both trees, so nothing but the commit moved. On 1 more the parent tree cannot load the test at all, which is a harder differential than a failing assertion rather than a softer one. <strong>8</strong> pass on both arms, which is what a commit that only adds a test, or duplicates a fix already on main, is supposed to do. The rest of the branch is 4 renderer rows and 36 rows that ship nothing a terminal can execute.</p>
+<p><strong>55</strong> of the 64 commits that carry tests fail against their parent's source and pass against their own — the test byte-identical in both trees, so nothing but the commit moved. On 1 more the parent tree cannot load the test at all, which is a harder differential than a failing assertion rather than a softer one. <strong>8</strong> pass on both arms, which is what a commit that only adds a test, or duplicates a fix already on main, is supposed to do. The rest of the branch is 4 renderer rows and 42 rows that ship nothing a terminal can execute.</p>
 <h3 id="c-766ee5a26"><code>766ee5a26</code> — fix(coding-agent): duplicate of main's compaction-tier and bundle-decoupling fixes</h3>
 <p class="lede">Same terminal, same command, two source trees: its own tests, <code>packages/coding-agent/test/descriptor-placement-model-switch.test.ts packages/coding-agent/test/model-registry.test.ts</code>.</p>
 <div class="pair"><figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/commits/766ee5a26-before.mp4#t=1" type="video/mp4"></video><figcaption><strong>parent</strong> — 82 pass · 0 fail · 3600 expect() calls · Ran 82 tests across 2 files. [3.65s]</figcaption></figure><figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/commits/766ee5a26-after.mp4#t=1" type="video/mp4"></video><figcaption><strong>this commit</strong> — 82 pass · 0 fail · 3600 expect() calls · Ran 82 tests across 2 files. [3.70s]</figcaption></figure></div>
@@ -604,4 +610,22 @@ rather than writing lines to a pipe, and the video is the only place its output 
 <h3 id="c-5359075e9"><code>5359075e9</code> — test(sandbox): a linked worktree takes its git directory into the sandbox</h3>
 <p class="lede">Ships nothing a terminal can run: the video is the diff.</p>
 <figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/commits/5359075e9-after.mp4#t=1" type="video/mp4"></video><figcaption>the change itself, paged in the terminal</figcaption></figure>
+<h3 id="c-402fd539d"><code>402fd539d</code> — test(vibe): the lane row outranks the blanket pair on the vibe path too</h3>
+<p class="lede">Ships nothing a terminal can run: the video is the diff.</p>
+<figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/commits/402fd539d-after.mp4#t=1" type="video/mp4"></video><figcaption>the change itself, paged in the terminal</figcaption></figure>
+<h3 id="c-ce6240325"><code>ce6240325</code> — proof(page): the last thirteen commits carry their recordings</h3>
+<p class="lede">Ships nothing a terminal can run: the video is the diff.</p>
+<figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/commits/ce6240325-after.mp4#t=1" type="video/mp4"></video><figcaption>the change itself, paged in the terminal</figcaption></figure>
+<h3 id="c-39d18b0b0"><code>39d18b0b0</code> — test(tui): the chrome sweep counts the band, not just the prompt</h3>
+<p class="lede">Ships nothing a terminal can run: the video is the diff.</p>
+<figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/commits/39d18b0b0-after.mp4#t=1" type="video/mp4"></video><figcaption>the change itself, paged in the terminal</figcaption></figure>
+<h3 id="c-ca919629b"><code>ca919629b</code> — test(edit): the diff gutter hangs on the rail, and lines up</h3>
+<p class="lede">Ships nothing a terminal can run: the video is the diff.</p>
+<figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/commits/ca919629b-after.mp4#t=1" type="video/mp4"></video><figcaption>the change itself, paged in the terminal</figcaption></figure>
+<h3 id="c-6272e7b93"><code>6272e7b93</code> — test(bash): the pending call is one rail row, not a bordered block</h3>
+<p class="lede">Ships nothing a terminal can run: the video is the diff.</p>
+<figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/commits/6272e7b93-after.mp4#t=1" type="video/mp4"></video><figcaption>the change itself, paged in the terminal</figcaption></figure>
+<h3 id="c-3fb49b0cc"><code>3fb49b0cc</code> — chore(repo): the branch pays its four hygiene gates</h3>
+<p class="lede">Ships nothing a terminal can run: the video is the diff.</p>
+<figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/commits/3fb49b0cc-after.mp4#t=1" type="video/mp4"></video><figcaption>the change itself, paged in the terminal</figcaption></figure>
 </body></html>
