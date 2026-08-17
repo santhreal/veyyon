@@ -869,7 +869,7 @@ export const PROMPT_STATEMENTS = [
 		condition: contains("tools", "bash"),
 		text: statementExecutionCommitOften,
 		purpose:
-			"tells the agent to commit its own finished work frequently without asking, and separates that from the destructive git commands that do need permission; needs bash because that is what runs git",
+			"tells the agent to land each green chunk of its own work as a commit instead of hoarding one large uncommitted tree, and separates that from the destructive git commands that do need permission; needs bash because that is what runs git",
 	},
 	{
 		id: "execution-workflow/verify",
