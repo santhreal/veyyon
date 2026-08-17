@@ -1,0 +1,215 @@
+[33m488ca8049[m proof(blocks): the rail commit carries its arms and its image pair
+
+
+
+ proof/captures/blocks/block-box-black.png          | Bin [31m0[m -> [32m9992[m bytes
+ proof/captures/blocks/block-box-grey.png           | Bin [31m0[m -> [32m17792[m bytes
+ proof/captures/blocks/block-rail-black.png         | Bin [31m0[m -> [32m8026[m bytes
+ proof/captures/blocks/block-rail-grey.png          | Bin [31m0[m -> [32m14758[m bytes
+ proof/captures/x11/commits/782605878-after.mp4     | Bin [31m0[m -> [32m122981[m bytes
+ proof/captures/x11/commits/782605878-after.txt     |  40 [32m+++++++++++++++++++++[m
+ proof/captures/x11/commits/782605878-after/cmd.sh  |   6 [32m++++[m
+ proof/captures/x11/commits/782605878-before.mp4    | Bin [31m0[m -> [32m79604[m bytes
+ proof/captures/x11/commits/782605878-before.txt    |  40 [32m+++++++++++++++++++++[m
+ proof/captures/x11/commits/782605878-before/cmd.sh |   6 [32m++++[m
+ proof/commit-videos.tsv                            |   1 [32m+[m
+ proof/ui-polish-proof.html                         |  11 [32m++++[m[31m--[m
+ 12 files changed, 101 insertions(+), 3 deletions(-)
+
+[1mdiff --git a/proof/captures/blocks/block-box-black.png b/proof/captures/blocks/block-box-black.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..dfc9ca7e5[m
+Binary files /dev/null and b/proof/captures/blocks/block-box-black.png differ
+[1mdiff --git a/proof/captures/blocks/block-box-grey.png b/proof/captures/blocks/block-box-grey.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..a6d8ddd08[m
+Binary files /dev/null and b/proof/captures/blocks/block-box-grey.png differ
+[1mdiff --git a/proof/captures/blocks/block-rail-black.png b/proof/captures/blocks/block-rail-black.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..6327c65b6[m
+Binary files /dev/null and b/proof/captures/blocks/block-rail-black.png differ
+[1mdiff --git a/proof/captures/blocks/block-rail-grey.png b/proof/captures/blocks/block-rail-grey.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..a0b2a36ae[m
+Binary files /dev/null and b/proof/captures/blocks/block-rail-grey.png differ
+[1mdiff --git a/proof/captures/x11/commits/782605878-after.mp4 b/proof/captures/x11/commits/782605878-after.mp4[m
+[1mnew file mode 100644[m
+[1mindex 000000000..12b799992[m
+Binary files /dev/null and b/proof/captures/x11/commits/782605878-after.mp4 differ
+[1mdiff --git a/proof/captures/x11/commits/782605878-after.txt b/proof/captures/x11/commits/782605878-after.txt[m
+[1mnew file mode 100644[m
+[1mindex 000000000..edc016d21[m
+[1m--- /dev/null[m
+[1m+++ b/proof/captures/x11/commits/782605878-after.txt[m
+[36m@@ -0,0 +1,40 @@[m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > a header longer than its body draws no box [0.02ms][m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > no content at all draws no box [0.02ms][m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > two columns of left padding draws no box [0.02ms][m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > no left padding draws no box [0.02ms][m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > a header and one short line rails every row under the title [0.07ms][m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > a header with meta rails every row under the title [0.02ms][m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > no header at all rails every row under the title[m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > a labelled section rails every row under the title [0.02ms][m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > a plain separator between sections rails every row under the title [0.02ms][m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > a header longer than its body rails every row under the title [0.01ms][m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > no content at all rails every row under the title[m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > two columns of left padding rails every row under the title [0.01ms][m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > no left padding rails every row under the title [0.01ms][m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > a header and one short line stops well short of the terminal [0.04ms][m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > a header with meta stops well short of the terminal [0.02ms][m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > no header at all stops well short of the terminal [0.02ms][m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > a labelled section stops well short of the terminal [0.03ms][m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > a plain separator between sections stops well short of the terminal [0.03ms][m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > a header longer than its body stops well short of the terminal [0.01ms][m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > no content at all stops well short of the terminal [0.02ms][m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > two columns of left padding stops well short of the terminal [0.02ms][m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > no left padding stops well short of the terminal [0.03ms][m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > spends two columns on chrome, the same two the walls cost [0.07ms][m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > is one line when a tool has nothing to show but its result [0.03ms][m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > spends no row on chrome above or below the output [0.05ms][m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > keeps a header longer than its body whole [0.02ms][m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > wraps its body at the width a renderer budgets rows against [0.06ms][m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > never reaches past the terminal, even when a line fills every column it was wrapped to [0.04ms][m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > carries no trailing padding on an unpainted row [0.04ms][m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > colours the rail from the state, and lets a caller override it [0.62ms][m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > paints a state background as a plate the size of the block, not a band across the screen [0.35ms][m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > paints no plate at all when the caller has already painted the ground [0.29ms][m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > reaches the plate under a header wider than everything below it [0.05ms][m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > rails a real bash block through the component that owns it [127.71ms][m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > rails a real read block through the component that owns it [11.47ms][m
+[32m+[m
+[32m+[m[32m 40 pass[m
+[32m+[m[32m 0 fail[m
+[32m+[m[32m 327 expect() calls[m
+[32m+[m[32mRan 40 tests across 1 file. [831.00ms][m
+[1mdiff --git a/proof/captures/x11/commits/782605878-after/cmd.sh b/proof/captures/x11/commits/782605878-after/cmd.sh[m
+[1mnew file mode 100644[m
+[1mindex 000000000..5d6c41202[m
+[1m--- /dev/null[m
+[1m+++ b/proof/captures/x11/commits/782605878-after/cmd.sh[m
+[36m@@ -0,0 +1,6 @@[m
+[32m+[m[32mcd /repo[m
+[32m+[m[32mbun test ./packages/coding-agent/test/a-tool-block-hangs-its-output-on-a-rail-not-in-a-box.test.ts 2>&1 | tail -32[m
+[32m+[m[32mecho[m
+[32m+[m[32mecho "--- command finished, arm=after ref=782605878"[m
+[32m+[m[32mtouch /tmp/scene-done[m
+[32m+[m[32msleep 99999[m
+[1mdiff --git a/proof/captures/x11/commits/782605878-before.mp4 b/proof/captures/x11/commits/782605878-before.mp4[m
+[1mnew file mode 100644[m
+[1mindex 000000000..92223864f[m
+Binary files /dev/null and b/proof/captures/x11/commits/782605878-before.mp4 differ
+[1mdiff --git a/proof/captures/x11/commits/782605878-before.txt b/proof/captures/x11/commits/782605878-before.txt[m
+[1mnew file mode 100644[m
+[1mindex 000000000..30263a523[m
+[1m--- /dev/null[m
+[1m+++ b/proof/captures/x11/commits/782605878-before.txt[m
+[36m@@ -0,0 +1,40 @@[m
+[32m+[m[32m(fail) a tool block hangs its output on a rail, not in a box > wraps its body at the width a renderer budgets rows against [0.10ms][m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > never reaches past the terminal, even when a line fills every column it was wrapped to [0.06ms][m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > carries no trailing padding on an unpainted row [0.06ms][m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > colours the rail from the state, and lets a caller override it [2.67ms][m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > paints a state background as a plate the size of the block, not a band across the screen [0.63ms][m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > paints no plate at all when the caller has already painted the ground [0.63ms][m
+[32m+[m[32m(pass) a tool block hangs its output on a rail, not in a box > reaches the plate under a header wider than everything below it [0.09ms][m
+[32m+[m[32m404 | 		(_name, entry) => {[m
+[32m+[m[32m405 | 			const lines = entry.build().render(120);[m
+[32m+[m[32m406 | 			const { railed, ink } = componentFrame(lines);[m
+[32m+[m[32m407 | 			// Every row of output hangs on the rail; only the tool's own title row, when it[m
+[32m+[m[32m408 | 			// has one, owns column 0.[m
+[32m+[m[32m409 | 			expect(ink.length - railed.length, `${ink.length} ink rows, ${railed.length} railed`).toBe(entry.unrailed);[m
+[32m+[m[32m                                                                                               ^[m
+[32m+[m[32merror: 5 ink rows, 0 railed[m
+[32m+[m
+[32m+[m[32mExpected: 0[m
+[32m+[m[32mReceived: 5[m
+[32m+[m
+[32m+[m[32m      at <anonymous> (/repo/packages/coding-agent/test/a-tool-block-hangs-its-output-on-a-rail-not-in-a-box.test.ts:409:90)[m
+[32m+[m[32m(fail) a tool block hangs its output on a rail, not in a box > rails a real bash block through the component that owns it [126.62ms][m
+[32m+[m[32m404 | 		(_name, entry) => {[m
+[32m+[m[32m405 | 			const lines = entry.build().render(120);[m
+[32m+[m[32m406 | 			const { railed, ink } = componentFrame(lines);[m
+[32m+[m[32m407 | 			// Every row of output hangs on the rail; only the tool's own title row, when it[m
+[32m+[m[32m408 | 			// has one, owns column 0.[m
+[32m+[m[32m409 | 			expect(ink.length - railed.length, `${ink.length} ink rows, ${railed.length} railed`).toBe(entry.unrailed);[m
+[32m+[m[32m                                                                                               ^[m
+[32m+[m[32merror: 3 ink rows, 0 railed[m
+[32m+[m
+[32m+[m[32mExpected: 1[m
+[32m+[m[32mReceived: 3[m
+[32m+[m
+[32m+[m[32m      at <anonymous> (/repo/packages/coding-agent/test/a-tool-block-hangs-its-output-on-a-rail-not-in-a-box.test.ts:409:90)[m
+[32m+[m[32m(fail) a tool block hangs its output on a rail, not in a box > rails a real read block through the component that owns it [11.35ms][m
+[32m+[m
+[32m+[m[32m 15 pass[m
+[32m+[m[32m 25 fail[m
+[32m+[m[32m 133 expect() calls[m
+[32m+[m[32mRan 40 tests across 1 file. [838.00ms][m
+[1mdiff --git a/proof/captures/x11/commits/782605878-before/cmd.sh b/proof/captures/x11/commits/782605878-before/cmd.sh[m
+[1mnew file mode 100644[m
+[1mindex 000000000..a590565da[m
+[1m--- /dev/null[m
+[1m+++ b/proof/captures/x11/commits/782605878-before/cmd.sh[m
+[36m@@ -0,0 +1,6 @@[m
+[32m+[m[32mcd /repo[m
+[32m+[m[32mbun test ./packages/coding-agent/test/a-tool-block-hangs-its-output-on-a-rail-not-in-a-box.test.ts 2>&1 | tail -32[m
+[32m+[m[32mecho[m
+[32m+[m[32mecho "--- command finished, arm=before ref=782605878^"[m
+[32m+[m[32mtouch /tmp/scene-done[m
+[32m+[m[32msleep 99999[m
+[1mdiff --git a/proof/commit-videos.tsv b/proof/commit-videos.tsv[m
+[1mindex 05682e747..34fa9e95d 100644[m
+[1m--- a/proof/commit-videos.tsv[m
+[1m+++ b/proof/commit-videos.tsv[m
+[36m@@ -100,3 +100,4 @@[m [mad14fca53	diff	45		feat(overlays): a card is a ladder of materials, measured on[m
+ 161922a84	test	90	./packages/simulations/src/paint-sim/a-turn-that-ends-short-never-paints-a-blank-band-over-the-conversation.test.ts	fix(tui): a short turn no longer paints a blank band over the conversation[m
+ 8baebe34e	test	90	./packages/coding-agent/test/modes/controllers/a-taller-terminal-still-hugs-the-composer-to-the-bottom.test.ts	fix(tui): the frame length is the invariant, not the fill routing[m
+ 880794c05	diff	45		demo(band): say what the real-terminal arm actually shows[m
+[32m+[m[32m782605878	test	90	./packages/coding-agent/test/a-tool-block-hangs-its-output-on-a-rail-not-in-a-box.test.ts	polish(tui): a tool block hangs its output on a rail, not in a box[m
+[1mdiff --git a/proof/ui-polish-proof.html b/proof/ui-polish-proof.html[m
+[1mindex 0cb25d993..ead46bc22 100644[m
+[1m--- a/proof/ui-polish-proof.html[m
+[1m+++ b/proof/ui-polish-proof.html[m
+[36m@@ -32,7 +32,7 @@[m [mtd.sha { font-family: ui-monospace, monospace; color: #e6c08a; white-space: nowr[m
+ </style></head>[m
+ <body>[m
+ <h1>feat/ui-polish — recorded proof</h1>[m
+[31m-<p class="lede">Branch <code>feat/ui-polish</code> at <code>de1d15a08</code>, 98 commits ahead of[m
+[32m+[m[32m<p class="lede">Branch <code>feat/ui-polish</code> at <code>782605878</code>, 100 commits ahead of[m
+ <code>main</code> (<code>5ce31890e</code>). Every figure below is a frame of a real terminal running the shipped[m
+ CLI. No component was drawn into a picture for this page, and nothing here is a tmux capture.</p>[m
+ [m
+[36m@@ -161,7 +161,7 @@[m [mafterwards rather than screenshotted mid-motion.</p>[m
+ <p>The resumed arm carries one cost the control does not, and it is model-side rather than renderer-side: a history that large does not fit a 65k window, so the app compacts before it can ask anything, and says so on screen while it does. That is the 1.5B summarizing on CPU, not a frame being repainted.</p>[m
+ [m
+ <h2>Every commit on the branch, on camera</h2>[m
+[31m-<p>90 of the 98 commits are below, one recording each. Every video is a real terminal in the recording[m
+[32m+[m[32m<p>91 of the 100 commits are below, one recording each. Every video is a real terminal in the recording[m
+ container: <code>proof/docker/record-commit-arm.sh</code> extracts the commit's tree and its parent's tree with[m
+ <code>git archive</code>, mounts the same <code>node_modules</code> and the same native addon into both, and runs[m
+ the same command in each. A test the commit ADDS is copied into the parent tree first, so the test is[m
+[36m@@ -176,6 +176,8 @@[m [ma video is the text of the same command run again headlessly by[m
+ rather than writing lines to a pipe, and the video is the only place its output exists.</p>[m
+ <table><thead><tr><th>commit</th><th>subject</th></tr></thead>[m
+ <tbody>[m
+[32m+[m[32m<tr><td class="sha"><a href="#c-782605878">782605878</a></td><td>polish(tui): a tool block hangs its output on a rail, not in a box</td></tr>[m
+[32m+[m[32m<tr><td class="sha">41f32c842</td><td>proof(page): the blank-band commits carry their arm tallies <em>— carries this page and its videos; filming it means filming the film</em></td></tr>[m
+ <tr><td class="sha">de1d15a08</td><td>proof(commits): a before arm keeps the commit's harness, not only its tests <em>— carries this page and its videos; filming it means filming the film</em></td></tr>[m
+ <tr><td class="sha">d64dd67be</td><td>fix(simulations): a scripted payload is prose, not the loop the guard aborts <em>— carries this page and its videos; filming it means filming the film</em></td></tr>[m
+ <tr><td class="sha"><a href="#c-880794c05">880794c05</a></td><td>demo(band): say what the real-terminal arm actually shows</td></tr>[m
+[36m@@ -276,7 +278,7 @@[m [mrather than writing lines to a pipe, and the video is the only place its output[m
+ <tr><td class="sha"><a href="#c-766ee5a26">766ee5a26</a></td><td>fix(coding-agent): duplicate of main's compaction-tier and bundle-decoupling fixes</td></tr>[m
+ </tbody></table>[m
+ [m
+[31m-<p><strong>52</strong> of the 61 commits that carry tests fail against their parent's source and pass against their own — the test byte-identical in both trees, so nothing but the commit moved. On 1 more the parent tree cannot load the test at all, which is a harder differential than a failing assertion rather than a softer one. <strong>8</strong> pass on both arms, which is what a commit that only adds a test, or duplicates a fix already on main, is supposed to do. The rest of the branch is 4 renderer rows and 25 rows that ship nothing a terminal can execute.</p>[m
+[32m+[m[32m<p><strong>53</strong> of the 62 commits that carry tests fail against their parent's source and pass against their own — the test byte-identical in both trees, so nothing but the commit moved. On 1 more the parent tree cannot load the test at all, which is a harder differential than a failing assertion rather than a softer one. <strong>8</strong> pass on both arms, which is what a commit that only adds a test, or duplicates a fix already on main, is supposed to do. The rest of the branch is 4 renderer rows and 25 rows that ship nothing a terminal can execute.</p>[m
+ <h3 id="c-766ee5a26"><code>766ee5a26</code> — fix(coding-agent): duplicate of main's compaction-tier and bundle-decoupling fixes</h3>[m
+ <p class="lede">Same terminal, same command, two source trees: its own tests, <code>packages/coding-agent/test/descriptor-placement-model-switch.test.ts packages/coding-agent/test/model-registry.test.ts</code>.</p>[m
+ <div class="pair"><figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/commits/766ee5a26-before.mp4#t=1" type="video/mp4"></video><figcaption><strong>parent</strong> — 82 pass · 0 fail · 3600 expect() calls · Ran 82 tests across 2 files. [3.65s]</figcaption></figure><figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/commits/766ee5a26-after.mp4#t=1" type="video/mp4"></video><figcaption><strong>this commit</strong> — 82 pass · 0 fail · 3600 expect() calls · Ran 82 tests across 2 files. [3.70s]</figcaption></figure></div>[m
+[36m@@ -547,4 +549,7 @@[m [mrather than writing lines to a pipe, and the video is the only place its output[m
+ <h3 id="c-880794c05"><code>880794c05</code> — demo(band): say what the real-terminal arm actually shows</h3>[m
+ <p class="lede">Ships nothing a terminal can run: the video is the diff.</p>[m
+ <figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/commits/880794c05-after.mp4#t=1" type="video/mp4"></video><figcaption>the change itself, paged in the terminal</figcaption></figure>[m
+[32m+[m[32m<h3 id="c-782605878"><code>782605878</code> — polish(tui): a tool block hangs its output on a rail, not in a box</h3>[m
+[32m+[m[32m<p class="lede">Same terminal, same command, two source trees: its own tests, <code>packages/coding-agent/test/a-tool-block-hangs-its-output-on-a-rail-not-in-a-box.test.ts</code>.</p>[m
+[32m+[m[32m<div class="pair"><figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/commits/782605878-before.mp4#t=1" type="video/mp4"></video><figcaption><strong>parent</strong> — 15 pass · 25 fail · 133 expect() calls · Ran 40 tests across 1 file. [838.00ms]</figcaption></figure><figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/commits/782605878-after.mp4#t=1" type="video/mp4"></video><figcaption><strong>this commit</strong> — 40 pass · 0 fail · 327 expect() calls · Ran 40 tests across 1 file. [831.00ms]</figcaption></figure></div>[m
+ </body></html>[m

@@ -1,0 +1,31 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/secrets/the-masked-prompt-cannot-be-read-as-a-name-prompt.test.ts:
+(pass) the verbless /secret grammar in a terminal > stores a pasted token as the value without opening the masked field [22.18ms]
+(pass) the verbless /secret grammar in a terminal > reads add as a synonym for the bare value form [5.31ms]
+(pass) the verbless /secret grammar in a terminal > keeps whitespace inside the credential and drops only what surrounds it [6.93ms]
+(pass) the verbless /secret grammar in a terminal > runs a reserved word without opening a field or writing anything [1.29ms]
+(pass) the verbless /secret grammar in a terminal > refuses a malformed reserved line rather than storing it [0.68ms]
+(pass) the verbless /secret grammar in a terminal > stores an escaped line whose first word is reserved [4.13ms]
+(pass) the verbless /secret grammar in a terminal > still reads a credential out of the environment without a field [5.16ms]
+(pass) the verbless /secret grammar in a terminal > refuses a --from-env with no variable rather than storing the flag [0.45ms]
+(pass) the masked credential field as the operator sees it > says it wants a value and not a name [1.92ms]
+(pass) the masked credential field as the operator sees it > promises the name can be given afterwards [0.36ms]
+(pass) the masked credential field as the operator sees it > promises masking and encryption at rest [0.27ms]
+(pass) the masked credential field as the operator sees it > puts the instruction above the mechanics [0.25ms]
+(pass) the masked credential field as the operator sees it > shows its instruction and its promise whole, with nothing cut off [0.31ms]
+(pass) the masked credential field as the operator sees it > sizes to whichever of the two sentences is longer [0.39ms]
+(pass) the masked credential field as the operator sees it > keeps the submit and cancel keys in the footer band beside the hint [0.30ms]
+(pass) a credential entered through the real masked dialog > stores exactly the typed bytes under the name given afterwards [6.52ms]
+(pass) a credential entered through the real masked dialog > stores a bracketed paste as the credential, without its framing [7.21ms]
+(pass) a credential entered through the real masked dialog > stores the typed value under a generated name when no name field exists [5.13ms]
+(pass) a credential entered through the real masked dialog > stores nothing when the value field is cancelled [0.74ms]
+(pass) the optional name field shown after the credential > asks for the value first, masked, then the name, unmasked [5.11ms]
+(pass) the optional name field shown after the credential > generates a name when the field is left empty [6.50ms]
+(pass) the optional name field shown after the credential > stores nothing when the name field is cancelled [0.54ms]
+(pass) the optional name field shown after the credential > refuses an unusable typed name and stores nothing [0.77ms]
+
+ 23 pass
+ 0 fail
+ 54 expect() calls
+Ran 23 tests across 1 file. [413.00ms]

@@ -1,0 +1,47 @@
+[33m00f724b60[m test(task): pin the per-agent effort row that actually ships
+
+
+
+ .../test/task/subagent-effort-inheritance.test.ts  | 26 [32m++++++++++++++++[m[31m------[m
+ 1 file changed, 19 insertions(+), 7 deletions(-)
+
+[1mdiff --git a/packages/coding-agent/test/task/subagent-effort-inheritance.test.ts b/packages/coding-agent/test/task/subagent-effort-inheritance.test.ts[m
+[1mindex 805adc0fa..953e5dc25 100644[m
+[1m--- a/packages/coding-agent/test/task/subagent-effort-inheritance.test.ts[m
+[1m+++ b/packages/coding-agent/test/task/subagent-effort-inheritance.test.ts[m
+[36m@@ -92,16 +92,28 @@[m [mdescribe("task subagent effort inheritance", () => {[m
+ 	});[m
+ [m
+ 	/**[m
+[31m-	 * A per-agent `thinkingLevel` row is retired: model and effort have one owner[m
+[31m-	 * (the blanket setting plus the agent file's frontmatter), and this row is a[m
+[31m-	 * value an operator can still see in their config that governs nothing. It must[m
+[31m-	 * not resurface as an override here, and the parent's effort must still cross[m
+[31m-	 * the boundary as the fallback layer.[m
+[32m+[m	[32m * A per-agent `thinkingLevel` row is the highest-precedence effort layer, so it[m
+[32m+[m	[32m * crosses the boundary as the child's own effort instead of the parent's. The[m
+[32m+[m	[32m * parent's effort still travels beside it, because the executor needs a fallback[m
+[32m+[m	[32m * for the case where the resolved level names nothing.[m
+ 	 */[m
+[31m-	it("ignores a retired per-agent effort row and still inherits the parent effort", async () => {[m
+[32m+[m	[32mit("sends a per-agent effort row as the child's own effort, and still carries the parent's", async () => {[m
+[32m+[m		[32mconst options = await dispatch({ task: { thinkingLevel: ThinkingLevel.Low } });[m
+[32m+[m
+[32m+[m		[32mexpect(options.thinkingLevel).toBe(ThinkingLevel.Low);[m
+[32m+[m		[32mexpect(options.parentThinkingLevel).toBe(ThinkingLevel.High);[m
+[32m+[m	[32m});[m
+[32m+[m
+[32m+[m	[32m/**[m
+[32m+[m	[32m * `auto` is a level an operator can choose, not an absent row: it means the model[m
+[32m+[m	[32m * routes its own effort. It must reach the executor as `auto` rather than as[m
+[32m+[m	[32m * `undefined`, since `undefined` is what makes the child inherit the parent, and[m
+[32m+[m	[32m * the two decisions are not the same one.[m
+[32m+[m	[32m */[m
+[32m+[m	[32mit("keeps an explicit auto row distinct from no row at all", async () => {[m
+ 		const options = await dispatch({ task: { thinkingLevel: AUTO_THINKING } });[m
+ [m
+[31m-		expect(options.thinkingLevel).toBeUndefined();[m
+[32m+[m		[32mexpect(options.thinkingLevel).toBe(AUTO_THINKING);[m
+ 		expect(options.parentThinkingLevel).toBe(ThinkingLevel.High);[m
+ 	});[m
+ });[m

@@ -1,0 +1,16 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/architecture/tools-reach-the-ui-only-to-draw.test.ts:
+(pass) tools reach the terminal UI only to draw > reads a real set of tool modules, and they really do import the UI [13.25ms]
+(pass) tools reach the terminal UI only to draw > imports nothing from modes/ outside the allowed drawing leaves [10.42ms]
+(pass) tools reach the terminal UI only to draw > takes only the sanctioned names out of the two interactive components [21.66ms]
+(pass) tools reach the terminal UI only to draw > narrows only modules the allow-list carries [0.04ms]
+(pass) tools reach the terminal UI only to draw > has no stale entries in the allow-list [8.71ms]
+(pass) tools reach the terminal UI only to draw > the panel exports the drawing and the session module exports the accounting [0.04ms]
+(pass) tools reach the terminal UI only to draw > has no turn budget left under modes [0.05ms]
+(pass) tools reach the terminal UI only to draw > has the panel depending on the numbers only as types, and the numbers on nothing in the UI [0.13ms]
+
+ 8 pass
+ 0 fail
+ 14 expect() calls
+Ran 8 tests across 1 file. [324.00ms]

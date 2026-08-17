@@ -1,0 +1,117 @@
+[33m5359075e9[m test(sandbox): a linked worktree takes its git directory into the sandbox
+
+
+
+ scripts/test-sandbox/run.sh          | 35 [32m+++++++++++++++++++++++++++++++++++[m
+ scripts/test-sandbox/rungs/bwrap.sh  |  8 [32m++++++++[m
+ scripts/test-sandbox/rungs/docker.sh |  6 [32m++++++[m
+ scripts/test-sandbox/rungs/remote.sh |  7 [32m+++++++[m
+ 4 files changed, 56 insertions(+)
+
+[1mdiff --git a/scripts/test-sandbox/run.sh b/scripts/test-sandbox/run.sh[m
+[1mindex dd92839fb..32f9b14be 100755[m
+[1m--- a/scripts/test-sandbox/run.sh[m
+[1m+++ b/scripts/test-sandbox/run.sh[m
+[36m@@ -199,6 +199,41 @@[m [mcase "${REPO_ROOT}/" in[m
+ 		;;[m
+ esac[m
+ [m
+[32m+[m[32m# The git directory, when the checkout is a linked WORKTREE and therefore does not[m
+[32m+[m[32m# contain one.[m
+[32m+[m[32m#[m
+[32m+[m[32m# A worktree's `.git` is a file reading `gitdir: <abs path>`, and that path lives[m
+[32m+[m[32m# under the primary checkout's `.git`, outside the repo bind. Without it every[m
+[32m+[m[32m# `git` call inside the sandbox fails: a suite that reads HEAD saw a directory that[m
+[32m+[m[32m# is not a repository, and one that reads a committed blob saw exit 128, both from a[m
+[32m+[m[32m# tree that is a perfectly good checkout on the host. Binding the primary `.git` at[m
+[32m+[m[32m# its own host path is what makes the pointer resolve, since the pointer is absolute[m
+[32m+[m[32m# and `commondir` is relative to it.[m
+[32m+[m[32m#[m
+[32m+[m[32m# Read-only, and skipped entirely when that path is inside the home being hidden:[m
+[32m+[m[32m# the whole contract of this sandbox is that the home is unreachable, and no[m
+[32m+[m[32m# convenience is worth handing part of it back. A git-dependent suite then behaves[m
+[32m+[m[32m# as it did before this bind existed.[m
+[32m+[m[32mSANDBOX_GITDIR=""[m
+[32m+[m[32mif [ -f "${REPO_ROOT}/.git" ]; then[m
+[32m+[m	[32mworktree_gitdir="$(sed -n 's/^gitdir: *//p' "${REPO_ROOT}/.git" | head -n1)"[m
+[32m+[m	[32mcase "${worktree_gitdir}" in[m
+[32m+[m		[32m/*/.git/worktrees/*) primary_gitdir="${worktree_gitdir%/worktrees/*}" ;;[m
+[32m+[m		[32m/*) primary_gitdir="${worktree_gitdir}" ;;[m
+[32m+[m		[32m*) primary_gitdir="" ;;[m
+[32m+[m	[32mesac[m
+[32m+[m	[32mif [ -n "${primary_gitdir}" ] && [ -d "${primary_gitdir}" ]; then[m
+[32m+[m		[32mcase "${primary_gitdir}/" in[m
+[32m+[m			[32m"${HOST_HOME}"/*)[m
+[32m+[m				[32mlog "the git directory ${primary_gitdir} is inside ${HOST_HOME}, so it stays out of the sandbox: git-dependent suites will see a tree that is not a repository"[m
+[32m+[m				[32m;;[m
+[32m+[m			[32m*)[m
+[32m+[m				[32mSANDBOX_GITDIR="${primary_gitdir}"[m
+[32m+[m				[32m;;[m
+[32m+[m		[32mesac[m
+[32m+[m	[32mfi[m
+[32m+[m[32mfi[m
+[32m+[m
+ # Exit status a runner uses to say "the sandbox could not be established and NO[m
+ # guest command ran". It is the ONLY status that lets the driver descend the[m
+ # ladder. A suite that ran and failed returns its own status and is never retried[m
+[1mdiff --git a/scripts/test-sandbox/rungs/bwrap.sh b/scripts/test-sandbox/rungs/bwrap.sh[m
+[1mindex 0ddaaea1c..2e1418726 100755[m
+[1m--- a/scripts/test-sandbox/rungs/bwrap.sh[m
+[1m+++ b/scripts/test-sandbox/rungs/bwrap.sh[m
+[36m@@ -23,6 +23,13 @@[m [mprobe_bwrap() {[m
+ }[m
+ [m
+ run_bwrap() {[m
+[32m+[m	[32m# A linked worktree's `.git` names an absolute path outside the repo bind, so it is[m
+[32m+[m	[32m# bound read-only at that same path or every `git` call inside sees a tree that is[m
+[32m+[m	[32m# not a repository. The driver leaves SANDBOX_GITDIR empty for a checkout that owns[m
+[32m+[m	[32m# its own `.git`, and for one whose git directory is inside the home being hidden.[m
+[32m+[m	[32mlocal -a gitdir_args=()[m
+[32m+[m	[32m[ -n "${SANDBOX_GITDIR:-}" ] && gitdir_args=(--ro-bind "${SANDBOX_GITDIR}" "${SANDBOX_GITDIR}")[m
+[32m+[m
+ 	bwrap \[m
+ 		--unshare-user --unshare-pid --unshare-ipc --unshare-uts --unshare-cgroup \[m
+ 		--die-with-parent --new-session \[m
+[36m@@ -31,6 +38,7 @@[m [mrun_bwrap() {[m
+ 		--proc /proc --dev /dev \[m
+ 		--tmpfs /home --tmpfs /tmp --tmpfs /sandbox --tmpfs /run \[m
+ 		--bind "${REPO_ROOT}" "${REPO_ROOT}" \[m
+[32m+[m		[32m"${gitdir_args[@]+"${gitdir_args[@]}"}" \[m
+ 		--chdir "${REPO_ROOT}" \[m
+ 		--setenv VEYYON_TEST_SANDBOX bwrap-userns \[m
+ 		--setenv VEYYON_TEST_HOST_HOME "${HOST_HOME}" \[m
+[1mdiff --git a/scripts/test-sandbox/rungs/docker.sh b/scripts/test-sandbox/rungs/docker.sh[m
+[1mindex e28c2c683..f331eb8af 100755[m
+[1m--- a/scripts/test-sandbox/rungs/docker.sh[m
+[1m+++ b/scripts/test-sandbox/rungs/docker.sh[m
+[36m@@ -57,6 +57,12 @@[m [mrun_docker() {[m
+ [m
+ 	local -a mount_args=(--mount "type=bind,src=${REPO_ROOT},dst=${GUEST_REPO}")[m
+ 	[ "$repo_mode" = ro ] && mount_args=(--mount "type=bind,src=${REPO_ROOT},dst=${GUEST_REPO},readonly")[m
+[32m+[m	[32m# A linked worktree's `.git` points at an absolute path outside the repo bind, so[m
+[32m+[m	[32m# it is mounted at that same path or the pointer resolves to nothing. Read-only:[m
+[32m+[m	[32m# the suites read HEAD and committed blobs, and nothing in a test may rewrite the[m
+[32m+[m	[32m# operator's history. Empty on a checkout that owns its own `.git`.[m
+[32m+[m	[32m[ -n "${SANDBOX_GITDIR:-}" ] &&[m
+[32m+[m		[32mmount_args+=(--mount "type=bind,src=${SANDBOX_GITDIR},dst=${SANDBOX_GITDIR},readonly")[m
+ [m
+ 	local -a tty_args=()[m
+ 	[ -t 0 ] && [ -t 1 ] && tty_args=(-it)[m
+[1mdiff --git a/scripts/test-sandbox/rungs/remote.sh b/scripts/test-sandbox/rungs/remote.sh[m
+[1mindex 7b27f65b1..7a97ccbb3 100755[m
+[1m--- a/scripts/test-sandbox/rungs/remote.sh[m
+[1m+++ b/scripts/test-sandbox/rungs/remote.sh[m
+[36m@@ -163,6 +163,13 @@[m [mremote_tree() { printf '%s/%s' "${REMOTE_HOME}" "${REMOTE_TREE_REL}"; }[m
+ # protected from --delete, and without that the stamp the install step writes is[m
+ # deleted by the next sync and every run reinstalls the world.[m
+ #[m
+[32m+[m[32m# NO REPOSITORY TRAVELS WITH THE TREE. The sync carries working-tree files, so a[m
+[32m+[m[32m# suite that asks git anything -- HEAD, a committed blob -- sees a directory that is[m
+[32m+[m[32m# not a repository on this rung. The local rungs bind the git directory (including a[m
+[32m+[m[32m# linked worktree's, see SANDBOX_GITDIR in run.sh); shipping one here would mean[m
+[32m+[m[32m# sending the whole object store over the LAN, which costs more than the handful of[m
+[32m+[m[32m# suites is worth. Run those on a local rung.[m
+[32m+[m[32m#[m
+ # GENERATED SOURCES ARE PUT BACK. Honouring .gitignore is right for build output[m
+ # and wrong for the handful of generated files that live INSIDE a package's src[m
+ # tree and are imported at runtime: tool-views.generated.js and the three embedded[m

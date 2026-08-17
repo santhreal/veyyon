@@ -1,0 +1,19 @@
+[33md6293b7b1[m fix(tools): the ask tool stops reaching into the modal layout
+
+
+
+ packages/coding-agent/src/tools/ask.ts | 1 [31m-[m
+ 1 file changed, 1 deletion(-)
+
+[1mdiff --git a/packages/coding-agent/src/tools/ask.ts b/packages/coding-agent/src/tools/ask.ts[m
+[1mindex 14b67631f..f538d92a5 100644[m
+[1m--- a/packages/coding-agent/src/tools/ask.ts[m
+[1m+++ b/packages/coding-agent/src/tools/ask.ts[m
+[36m@@ -35,7 +35,6 @@[m [mimport { type as arkType } from "arktype";[m
+ import type { RenderResultOptions } from "../extensibility/custom-tools/types";[m
+ import type { ExtensionUISelectItem } from "../extensibility/extensions";[m
+ import { HOOK_EDITOR_TEXT_PAD_COLS } from "../modes/components/hook-editor";[m
+[31m-import { computeModalDims, MODAL_SIZING_MEDIUM, sizingForArea } from "../modes/components/modal-shell";[m
+ import { getMarkdownTheme } from "../modes/theme/markdown-theme";[m
+ import { type Theme, theme } from "../modes/theme/theme";[m
+ import { toolsPrompts } from "../prompts/tools/rows";[m
