@@ -1,0 +1,12 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/modes/controllers/a-taller-terminal-still-hugs-the-composer-to-the-bottom.test.ts:
+(pass) a taller terminal still hugs the composer to the bottom > plain transcript, 30 rows grown to 48 [249.03ms]
+(pass) a taller terminal still hugs the composer to the bottom > plain transcript, 24 rows grown to 60 [232.29ms]
+(pass) a taller terminal still hugs the composer to the bottom > virtualized transcript, 30 rows grown to 48 [225.06ms]
+(pass) a taller terminal still hugs the composer to the bottom > virtualized transcript, 24 rows grown to 60 [281.38ms]
+
+ 4 pass
+ 0 fail
+ 12 expect() calls
+Ran 4 tests across 1 file. [1498.00ms]

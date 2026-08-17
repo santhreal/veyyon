@@ -50,14 +50,17 @@ mkdir -p "${TREE}" "${OUT}"
 git -C "${REPO_ROOT}" archive "${REF}" | tar -x -C "${TREE}" --exclude='proof/captures/*' -f -
 
 # A test the commit ADDS does not exist in its parent, so the before arm would
-# record a missing file instead of a failing assertion. Every test file the
-# commit touched is copied into the before tree: the test is then identical in
-# both arms and the only variable left is the source it is pointed at.
+# record a missing file instead of a failing assertion. Every non-shipped file
+# the commit touched is copied into the before tree: the test is then identical
+# in both arms and the only variable left is the shipped source it is pointed at.
+# `packages/simulations` is the whole test-harness package (private, never
+# published), so a suite whose harness grew a measurement in the same commit
+# still compiles against the parent instead of dying on a missing export.
 if [[ "${ARM}" == "before" && "${OVERLAY_TESTS:-1}" == "1" ]]; then
 	while IFS= read -r f; do
 		[[ -z "${f}" ]] && continue
 		case "${f}" in
-		*.test.ts | scripts/demos/*.ts | proof/scenes/*.sh) ;;
+		*.test.ts | packages/simulations/src/*.ts | packages/simulations/src/*/*.ts | scripts/demos/*.ts | proof/scenes/*.sh) ;;
 		*) continue ;;
 		esac
 		mkdir -p "${TREE}/$(dirname "${f}")"

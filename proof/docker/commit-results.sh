@@ -33,11 +33,15 @@ if [[ "${1:-}" == "--one" ]]; then
 	rm -rf "${TREE}"
 	mkdir -p "${TREE}"
 	git -C "${REPO_ROOT}" archive "${REF}" | tar -x -C "${TREE}" --exclude='proof/captures/*' -f -
+	# The before arm points the commit's OWN tests at the parent's shipped source,
+	# so every non-shipped file it touched comes from the commit itself. Keep this
+	# list identical to record-commit-arm.sh: a video and its tally that overlay
+	# different files are measuring different trees.
 	if [[ "${ARM}" == "before" ]]; then
 		while IFS= read -r f; do
 			[[ -z "${f}" ]] && continue
 			case "${f}" in
-			*.test.ts | scripts/demos/*.ts | proof/scenes/*.sh) ;;
+			*.test.ts | packages/simulations/src/*.ts | packages/simulations/src/*/*.ts | scripts/demos/*.ts | proof/scenes/*.sh) ;;
 			*) continue ;;
 			esac
 			mkdir -p "${TREE}/$(dirname "${f}")"

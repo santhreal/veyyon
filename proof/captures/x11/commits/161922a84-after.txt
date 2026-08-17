@@ -1,0 +1,24 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/simulations/src/paint-sim/a-turn-that-ends-short-never-paints-a-blank-band-over-the-conversation.test.ts:
+(pass) a turn that ends short never paints a blank band over the conversation > the shrink kinds this suite claims to cover are the shipped ones [0.07ms]
+(pass) a turn that ends short never paints a blank band over the conversation > 100x24 header=2 hud=5 footer=2 turns=24 stream=20 rebuild=true virtualized=true anchor=true shrink=none [1644.01ms]
+(pass) a turn that ends short never paints a blank band over the conversation > 100x24 header=2 hud=5 footer=2 turns=24 stream=20 rebuild=true virtualized=true anchor=true shrink=answer-collapse [1631.61ms]
+(pass) a turn that ends short never paints a blank band over the conversation > 100x24 header=2 hud=5 footer=2 turns=24 stream=20 rebuild=true virtualized=true anchor=true shrink=hud-collapse [1635.48ms]
+(pass) a turn that ends short never paints a blank band over the conversation > 100x24 header=2 hud=5 footer=2 turns=24 stream=20 rebuild=true virtualized=false anchor=true shrink=none [1631.73ms]
+(pass) a turn that ends short never paints a blank band over the conversation > 100x24 header=2 hud=5 footer=2 turns=24 stream=20 rebuild=true virtualized=false anchor=true shrink=answer-collapse [1633.47ms]
+(pass) a turn that ends short never paints a blank band over the conversation > 100x24 header=2 hud=5 footer=2 turns=24 stream=20 rebuild=true virtualized=false anchor=true shrink=hud-collapse [1628.36ms]
+(pass) a turn that ends short never paints a blank band over the conversation > 100x40 header=2 hud=5 footer=2 turns=24 stream=20 rebuild=true virtualized=true anchor=true shrink=none [1634.08ms]
+(pass) a turn that ends short never paints a blank band over the conversation > 100x40 header=2 hud=5 footer=2 turns=24 stream=20 rebuild=true virtualized=true anchor=true shrink=answer-collapse [1627.22ms]
+(pass) a turn that ends short never paints a blank band over the conversation > 100x40 header=2 hud=5 footer=2 turns=24 stream=20 rebuild=true virtualized=true anchor=true shrink=hud-collapse [1642.99ms]
+(pass) a turn that ends short never paints a blank band over the conversation > 100x40 header=2 hud=5 footer=2 turns=24 stream=20 rebuild=true virtualized=false anchor=true shrink=none [1644.64ms]
+(pass) a turn that ends short never paints a blank band over the conversation > 100x40 header=2 hud=5 footer=2 turns=24 stream=20 rebuild=true virtualized=false anchor=true shrink=answer-collapse [1646.36ms]
+(pass) a turn that ends short never paints a blank band over the conversation > 100x40 header=2 hud=5 footer=2 turns=24 stream=20 rebuild=true virtualized=false anchor=true shrink=hud-collapse [1650.79ms]
+(pass) a turn that ends short never paints a blank band over the conversation > a young conversation still hugs the composer to the bottom (shrink=none) [243.34ms]
+(pass) a turn that ends short never paints a blank band over the conversation > a young conversation still hugs the composer to the bottom (shrink=answer-collapse) [241.33ms]
+(pass) a turn that ends short never paints a blank band over the conversation > a young conversation still hugs the composer to the bottom (shrink=hud-collapse) [242.97ms]
+
+ 16 pass
+ 0 fail
+ 71 expect() calls
+Ran 16 tests across 1 file. [20.70s]

@@ -1,0 +1,40 @@
+error: expect(received).toBe(expected)
+
+Expected: 0
+Received: 3
+
+      at <anonymous> (/repo/packages/simulations/src/paint-sim/a-turn-that-ends-short-never-paints-a-blank-band-over-the-conversation.test.ts:164:35)
+(fail) a turn that ends short never paints a blank band over the conversation > a young conversation still hugs the composer to the bottom (shrink=none) [215.67ms]
+159 | 			async () => {
+160 | 				const report = await paintSim({ ...young, shrink });
+161 | 
+162 | 				// Nothing has scrolled: the screen is not full, so the fill is what
+163 | 				// puts the conversation on the bottom edge, and it must be there.
+164 | 				expect(report.scrollTapeRows).toBe(0);
+                                        ^
+error: expect(received).toBe(expected)
+
+Expected: 0
+Received: 3
+
+      at <anonymous> (/repo/packages/simulations/src/paint-sim/a-turn-that-ends-short-never-paints-a-blank-band-over-the-conversation.test.ts:164:35)
+(fail) a turn that ends short never paints a blank band over the conversation > a young conversation still hugs the composer to the bottom (shrink=answer-collapse) [209.35ms]
+159 | 			async () => {
+160 | 				const report = await paintSim({ ...young, shrink });
+161 | 
+162 | 				// Nothing has scrolled: the screen is not full, so the fill is what
+163 | 				// puts the conversation on the bottom edge, and it must be there.
+164 | 				expect(report.scrollTapeRows).toBe(0);
+                                        ^
+error: expect(received).toBe(expected)
+
+Expected: 0
+Received: 3
+
+      at <anonymous> (/repo/packages/simulations/src/paint-sim/a-turn-that-ends-short-never-paints-a-blank-band-over-the-conversation.test.ts:164:35)
+(fail) a turn that ends short never paints a blank band over the conversation > a young conversation still hugs the composer to the bottom (shrink=hud-collapse) [213.42ms]
+
+ 11 pass
+ 5 fail
+ 59 expect() calls
+Ran 16 tests across 1 file. [22.28s]
