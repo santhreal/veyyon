@@ -25,6 +25,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { modalRevealGround } from "@veyyon/coding-agent/modes/components/modal-shell";
+import { selectionBand } from "@veyyon/coding-agent/modes/components/selector-helpers";
 import {
 	getSelectListTheme,
 	getSettingsListTheme,
@@ -32,7 +33,7 @@ import {
 	setThemeInstance,
 	theme,
 } from "@veyyon/coding-agent/modes/theme/theme";
-import { getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
+import { getAnsiPolicy, setAnsiPolicy, visibleWidth } from "@veyyon/tui";
 
 const originalColorterm = Bun.env.COLORTERM;
 const originalAnsiPolicy = getAnsiPolicy();
@@ -110,8 +111,12 @@ describe("a fading hover band is mixed out of the ground", () => {
 		const settingsBand = getSettingsListTheme().hovered;
 		expect(band).toBeDefined();
 		expect(settingsBand).toBeDefined();
-		// The band this product has always painted. A fade that changes this changed the theme.
-		expect(band?.("row", 1)).toBe(theme.bg("selectedBg", "row"));
+		// The band a SWITCHED row paints, byte for byte. A fade that changes this changed the theme.
+		// It is `selectionBand`'s own bytes rather than a flat `theme.bg` fill because the band is a
+		// directional gradient now, and the contract is that hover and selection are one treatment:
+		// re-deriving the expected bytes here would let the two drift apart in exactly the gap this
+		// assertion exists to close.
+		expect(band?.("row", 1)).toBe(selectionBand("row", visibleWidth("row")));
 		// Both list families answer to the same band, so neither can drift from the other.
 		expect(settingsBand?.("row", 1)).toBe(band?.("row", 1));
 	});

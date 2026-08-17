@@ -2,12 +2,13 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { detectMacOSAppearance, MacAppearanceObserver } from "@veyyon/natives";
 import type { EditorTheme, SelectListTheme, SettingsListTheme } from "@veyyon/tui";
-import { blendHex, parseHexColor, TERMINAL } from "@veyyon/tui";
+import { blendHex, colorEnabled, parseHexColor, sliceWithWidth, TERMINAL, visibleWidth } from "@veyyon/tui";
 import { adjustHsv, colorLuma } from "@veyyon/utils/color";
 import { getCustomThemesDir } from "@veyyon/utils/dirs";
 import { isEnoent } from "@veyyon/utils/fs-error";
 // Owners, not the `@veyyon/utils` barrel: 5 modules against 74.
 import * as logger from "@veyyon/utils/logger";
+import { clamp } from "@veyyon/utils/math";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { type } from "arktype";
 import {
@@ -24,8 +25,10 @@ import {
 import { getBuiltinThemes } from "./builtin-themes";
 import {
 	ansi256ToHex,
+	bgAnsi,
 	type ColorMode,
 	detectColorMode,
+	fgAnsi,
 	getThemeJsonSchema,
 	resolveThemeColors,
 	resolveVarRefs,
@@ -1053,24 +1056,185 @@ export function visibleGroundHex(): string {
 }
 
 /**
- * The pointer band, at a strength an animation decided.
+ * How many columns one span of the ramp covers. A span is a single `48;2;r;g;b`, so this is the
+ * knob that trades bytes for smoothness: a per-cell ramp is ~19 bytes of SGR per column on a row
+ * that repaints on every keystroke, and at terminal cell size the eye cannot resolve the step
+ * between adjacent cells anyway. Eight columns puts a 40-column row at 5 spans and a 110-column
+ * one at the ceiling, for ~200 bytes instead of ~2000.
+ */
+const BAND_COLUMNS_PER_SPAN = 8;
+/** Fewest spans worth calling a ramp: below three there is no middle and the band reads as two blocks. */
+const BAND_MIN_SPANS = 3;
+/** Most spans any row gets, whatever its width. */
+const BAND_MAX_SPANS = 10;
+/** How far the trailing end of the band has dissolved into the ground behind it. */
+const BAND_TRAIL_MIX = 0.75;
+/**
+ * Ramp easing. Below 1 it front-loads the colour: at a third of the way across, `t ** 0.55` has
+ * already covered 55% of the distance to the trailing end, so the strong part of the band sits
+ * under the label. A linear ramp spreads the same colour evenly and reads as a wash rather than
+ * as a direction.
+ */
+const BAND_RAMP_EASE = 0.55;
+/** Fraction of the row the lifted label covers — the third the band is strongest under. */
+const BAND_LIFT_SPAN = 1 / 3;
+/** How far the lifted label is pushed toward the theme's own contrast extreme. */
+const BAND_LIFT = 0.4;
+
+/**
+ * Every escape shape a rendered row can carry: a CSI (colour, cursor), an OSC (hyperlink, kitty
+ * text sizing) with either terminator, and the two-byte forms. Splitting a row on this leaves runs
+ * of pure cells, which is the only thing the native column slicer cuts as a plain prefix — handed a
+ * run with an escape in it, it appends the SGR carry it thinks the caller needs and the result is
+ * no longer a prefix of the input, so byte offsets computed from it are wrong.
+ */
+const BAND_ESCAPE_PATTERN = "\\x1b(?:\\[[0-9;:?]*[ -/]*[@-~]|\\][\\s\\S]*?(?:\\x07|\\x1b\\\\)|[@-Z\\\\-_])";
+
+/** Background reset. Spelled out rather than imported for the same reason `Theme` spells it out. */
+const BAND_BG_RESET = "\x1b[49m";
+/** Foreground reset, which closes the lifted label and nothing else. */
+const BAND_FG_RESET = "\x1b[39m";
+
+/**
+ * Splice `inserts` into `text` at the visible COLUMN each is keyed by, copying every original byte
+ * through untouched.
  *
- * At full strength this is the selection background, byte for byte what a switched
- * band always was. Below it the band color is mixed out of the ground the row sits
- * on — the same ground a card unfolds out of — so the band arrives from the page
- * instead of appearing on it.
+ * The row's printed width is the invariant: hit-testing and layout are computed from column
+ * positions elsewhere, so a treatment that adds or drops a cell breaks mouse routing. Nothing here
+ * emits a cell — only zero-width escapes — and the walk never re-encodes a grapheme.
  *
- * A theme running in 256-color mode gets the switched band at half strength instead of a mix. It
- * cannot show one: every intermediate color quantizes onto the nearest palette entry, which reads
- * as the band changing hue rather than fading in. The band still tracks the pointer, exactly as it
- * did before there was a fade. The mode is the THEME's, not the terminal's reported capability —
- * the theme is what decides which color space it paints in, and a mix computed for a space the
- * theme is not using is quantized right back.
+ * A boundary landing inside a double-width grapheme takes the whole grapheme to the FAR side of
+ * the boundary rather than emitting half of it, so a span can come out one column wide of nominal.
+ * That is a colour boundary off by a cell, not a width change.
+ */
+function spliceAtColumns(text: string, inserts: ReadonlyMap<number, string>): string {
+	const columns = [...inserts.keys()].sort((a, b) => a - b);
+	const escapes = new RegExp(BAND_ESCAPE_PATTERN, "g");
+	let escape = escapes.exec(text);
+	let out = "";
+	let column = 0;
+	let cursor = 0;
+	let next = 0;
+	while (cursor < text.length || next < columns.length) {
+		// Anything due at the column already reached goes out before the cell that column holds.
+		while (next < columns.length && (columns[next] as number) <= column) {
+			out += inserts.get(columns[next] as number) as string;
+			next += 1;
+		}
+		if (cursor >= text.length) break;
+		while (escape !== null && escape.index < cursor) escape = escapes.exec(text);
+		if (escape !== null && escape.index === cursor) {
+			out += escape[0];
+			cursor += escape[0].length;
+			continue;
+		}
+		const runEnd = escape === null ? text.length : escape.index;
+		const run = text.slice(cursor, runEnd);
+		const runWidth = visibleWidth(run);
+		// `take` is at least 1: everything due at or before `column` was flushed above.
+		const take = next < columns.length ? (columns[next] as number) - column : Number.POSITIVE_INFINITY;
+		if (take >= runWidth) {
+			out += run;
+			column += runWidth;
+			cursor = runEnd;
+			continue;
+		}
+		const piece = sliceWithWidth(run, 0, take, true);
+		// Empty means the boundary lands inside the run's FIRST grapheme, which strict slicing
+		// drops; pulling that grapheme forward whole is what keeps the walk advancing.
+		const cut = piece.text.length === 0 ? sliceWithWidth(run, 0, take + 1, false) : piece;
+		out += cut.text;
+		column += cut.width;
+		cursor += cut.text.length;
+	}
+	return out;
+}
+
+/**
+ * The band under a selected or pointed-at row: a directional gradient with a hard accent leading
+ * edge, at a strength an animation decided.
+ *
+ * A flat rectangle of `selectedBg` reads as a rectangle somebody drew rather than as a surface the
+ * cursor is resting on, because nothing in it says which end the cursor came from. So the first
+ * cell is the accent at full strength — one cell, the row's own character kept — and the body ramps
+ * from `selectedBg` at the leading side toward a 75% mix into the ground at the trailing side,
+ * eased so the colour lives in the first third.
+ *
+ * At full strength this is the band a switched row paints, and the first body span is the switched
+ * band's own bytes. Below full strength every colour in the ramp is mixed out of the ground the row
+ * sits on — the same ground a card unfolds out of — so the band arrives from the page instead of
+ * appearing on it. At 0 there is no band at all: a band mixed all the way out is still an escape
+ * pair around a row that is supposed to be untouched.
+ *
+ * A theme running in 256-color mode gets the flat switched band at half strength instead, exactly
+ * what it had. It cannot show a ramp: every intermediate color quantizes onto the nearest palette
+ * entry, which reads as the band changing hue rather than as a direction. The mode is the THEME's,
+ * not the terminal's reported capability — the theme is what decides which color space it paints
+ * in, and a mix computed for a space the theme is not using is quantized right back.
+ */
+export function paintBand(text: string, background: ThemeBg, strength: number): string {
+	if (strength <= 0) return text;
+	if (theme.getColorMode() !== "truecolor") return strength >= 0.5 ? theme.bg(background, text) : text;
+	if (!colorEnabled()) return text;
+	const width = visibleWidth(text);
+	// No cells is the flat band's empty escape pair, and there is no ramp to put in it.
+	if (width === 0) return theme.bg(background, text);
+
+	const mode = theme.getColorMode();
+	const ground = visibleGroundHex();
+	const arriving = (hex: string): string => (strength >= 1 ? hex : blendHex(ground, hex, strength));
+	const head = theme.getBgColorHex(background);
+	const inserts = new Map<number, string>();
+	// The leading edge. One cell of accent is what gives the band an end the cursor came from.
+	inserts.set(0, bgAnsi(arriving(theme.getAccentColorHex()), mode));
+
+	const bodyWidth = width - 1;
+	const spans = Math.min(
+		bodyWidth,
+		clamp(Math.round(width / BAND_COLUMNS_PER_SPAN), BAND_MIN_SPANS, BAND_MAX_SPANS),
+	);
+	for (let index = 0; index < spans; index++) {
+		const t = spans === 1 ? 0 : index / (spans - 1);
+		// The first span at full strength is the switched band's OWN escape, not a recomputation of
+		// it: every suite that looks for `theme.getBgAnsi(background)` in a selected row is asking
+		// whether the band is still the theme's, and a byte-equal recomputation is a coincidence
+		// rather than a guarantee.
+		const fill =
+			index === 0 && strength >= 1
+				? theme.getBgAnsi(background)
+				: bgAnsi(arriving(blendHex(head, ground, BAND_TRAIL_MIX * t ** BAND_RAMP_EASE)), mode);
+		inserts.set(1 + Math.floor((index * bodyWidth) / spans), fill);
+	}
+
+	// The label lift, and the one case it is safe in: a row carrying NO escapes of its own. Lifting
+	// the text where the band is strongest needs a foreground colour opened mid-row, and on a row
+	// that already paints its own colours that means either honouring SGR state this function would
+	// have to parse, or overwriting a colour the caller chose. Neither is worth a brighter label, so
+	// a styled row keeps every byte of its own styling and gets the gradient alone.
+	//
+	// It starts at column 1, not 0: the leading cell is a bright accent fill and a lifted label on
+	// it would be near-invisible, so that one cell keeps whatever foreground it arrived with.
+	const lifted =
+		width >= 3 && !text.includes("\x1b")
+			? blendHex(theme.getColorHex("text"), theme.isLight ? "#000000" : "#ffffff", BAND_LIFT * strength)
+			: null;
+	let tail = BAND_BG_RESET;
+	if (lifted !== null) {
+		const closeAt = Math.max(2, Math.round(width * BAND_LIFT_SPAN));
+		inserts.set(1, `${inserts.get(1) ?? ""}${fgAnsi(lifted, mode)}`);
+		if (closeAt >= width) tail = `${BAND_FG_RESET}${BAND_BG_RESET}`;
+		else inserts.set(closeAt, `${inserts.get(closeAt) ?? ""}${BAND_FG_RESET}`);
+	}
+	return `${spliceAtColumns(text, inserts)}${tail}`;
+}
+
+/**
+ * The pointer band, at a strength an animation decided. The shape is {@link paintBand}'s; a hover
+ * differs from a selection only in the strength it asks for, so at full strength the two are the
+ * same bytes and a list that adopts a fade can never change what a settled row looks like.
  */
 export function hoverBand(text: string, strength: number): string {
-	if (strength >= 1) return theme.bg("selectedBg", text);
-	if (theme.getColorMode() !== "truecolor") return strength >= 0.5 ? theme.bg("selectedBg", text) : text;
-	return theme.bgHex(blendHex(visibleGroundHex(), theme.getBgColorHex("selectedBg"), strength), text);
+	return paintBand(text, "selectedBg", strength);
 }
 
 export function getSelectListTheme(): SelectListTheme {

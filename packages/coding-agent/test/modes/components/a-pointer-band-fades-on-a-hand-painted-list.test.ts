@@ -54,6 +54,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import * as util from "node:util";
 import type { AgentMessage } from "@veyyon/agent-core";
 import { AskDialogComponent } from "@veyyon/coding-agent/modes/components/ask-dialog";
 import { CopySelectorComponent } from "@veyyon/coding-agent/modes/components/copy-selector";
@@ -386,10 +387,18 @@ const PANES: readonly PaneCase[] = [
 	},
 ];
 
-/** 1-based screen row of the first rendered line containing `text`. */
+/**
+ * 1-based screen row of the first rendered line whose CELLS contain `text`.
+ *
+ * Matched against the stripped row rather than the bytes, because a rendered row's label is not a
+ * contiguous byte run and never was: `SelectList.#paintHits` interleaves a `matchHighlight` escape
+ * around every filter-hit character, and the selection band is a gradient whose span boundaries
+ * fall wherever the ramp says. Nothing in the product looks a row up by its rendered bytes — hit
+ * testing is column arithmetic — so the reader is what was wrong here, not the paint.
+ */
 function rowOf(pane: Pane, text: string): number {
 	const lines = pane.render(WIDTH);
-	const index = lines.findIndex(line => line.includes(text));
+	const index = lines.findIndex(line => util.stripVTControlCharacters(line).includes(text));
 	expect(index, `row containing ${JSON.stringify(text)}`).toBeGreaterThanOrEqual(0);
 	return index + 1;
 }

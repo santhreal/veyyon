@@ -7,7 +7,7 @@
  */
 import { clampLow, Ellipsis, extractPrintableText, matchesKey, ScrollView, truncateToWidth } from "@veyyon/tui";
 import type { ThemeBg } from "../theme/theme";
-import { hoverBand, theme } from "../theme/theme";
+import { paintBand, theme } from "../theme/theme";
 
 /**
  * Paint `line` as a selection or hover band that fills the whole row.
@@ -17,9 +17,15 @@ import { hoverBand, theme } from "../theme/theme";
  * stop, so the band changes shape as the cursor moves and reads as a rendering
  * fault. The row is padded to `rowWidth` first and only then tinted, which also
  * keeps the closing escape inside the width the list will render at.
+ *
+ * What the tint LOOKS like is the theme's ({@link paintBand}): a hard accent
+ * leading cell and a ramp out of `selectedBg` toward the ground, so the band has
+ * an end the cursor came from rather than reading as a rectangle somebody drew.
+ * The row's printed width is identical either way, which is the invariant the
+ * mouse routing is computed from.
  */
 export function selectionBand(line: string, rowWidth: number, background: ThemeBg = "selectedBg"): string {
-	return theme.bg(background, truncateToWidth(line, rowWidth, Ellipsis.Omit, true));
+	return paintBand(truncateToWidth(line, rowWidth, Ellipsis.Omit, true), background, 1);
 }
 
 /**
@@ -28,14 +34,15 @@ export function selectionBand(line: string, rowWidth: number, background: ThemeB
  *
  * At strength 1 this IS `selectionBand(line, rowWidth)`, byte for byte: a list
  * whose pointer band does not fade paints the same row it always did. Below it
- * the theme mixes the band out of the ground the row sits on, so the band
- * arrives from the page instead of appearing on it. What a strength LOOKS like
- * is the theme's decision ({@link hoverBand}); a list only decides when a row is
- * at what strength, and only calls this for a strength above 0 — the band at 0
- * is the absence of a band, not a band mixed all the way out.
+ * the theme mixes every colour in the gradient out of the ground the row sits
+ * on, so the band arrives from the page instead of appearing on it. What a
+ * strength LOOKS like is the theme's decision ({@link paintBand}); a list only
+ * decides when a row is at what strength, and only calls this for a strength
+ * above 0 — the band at 0 is the absence of a band, not a band mixed all the
+ * way out.
  */
 export function hoverBandAt(line: string, rowWidth: number, strength: number): string {
-	return hoverBand(truncateToWidth(line, rowWidth, Ellipsis.Omit, true), strength);
+	return paintBand(truncateToWidth(line, rowWidth, Ellipsis.Omit, true), "selectedBg", strength);
 }
 
 /**
