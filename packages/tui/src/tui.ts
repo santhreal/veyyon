@@ -305,11 +305,26 @@ function prepareNativeScrollbackReplay(component: Component): void {
  */
 export interface NativeScrollbackCompaction {
 	takeNativeScrollbackDroppedRows(): number;
+	/**
+	 * Rows of already-committed history the render MUST keep in the frame,
+	 * however committed they are. The engine re-shows committed rows whenever
+	 * the frame shrinks below the viewport — a tall streaming answer collapsing
+	 * to its short final render, an overlay closing — and it can only re-show
+	 * rows the frame still contains ("duplication, never loss"). A child that
+	 * compacted every committed row leaves the engine nothing to fill the screen
+	 * with, and the viewport paints a screen-sized band of blank rows over a
+	 * conversation that is still on the tape.
+	 */
+	setNativeScrollbackRetainRows?(rows: number): void;
 }
 
 function takeNativeScrollbackDroppedRows(component: Component): number {
 	const rows = (component as Component & Partial<NativeScrollbackCompaction>).takeNativeScrollbackDroppedRows?.();
 	return typeof rows === "number" && Number.isFinite(rows) && rows > 0 ? Math.trunc(rows) : 0;
+}
+
+function setNativeScrollbackRetainRows(component: Component, rows: number): void {
+	(component as Component & Partial<NativeScrollbackCompaction>).setNativeScrollbackRetainRows?.(rows);
 }
 
 function canPrepareNativeScrollbackReplay(component: Component): boolean {
@@ -1479,6 +1494,10 @@ export class TUI extends Container {
 				const prevRows = previous !== undefined && previous.component === child ? previous.rowCount : 0;
 				const prevStart = previous !== undefined && previous.component === child ? previous.start : offset;
 				setNativeScrollbackCommittedRows(child, Math.min(prevRows, Math.max(0, this.#committedRows - prevStart)));
+				// A viewport's worth of committed history stays in the frame so a
+				// shrink can re-show it instead of painting blank rows (see
+				// NativeScrollbackCompaction.setNativeScrollbackRetainRows).
+				setNativeScrollbackRetainRows(child, this.terminal.rows);
 				childLines = child.render(width);
 				// A virtualized child drops rows DURING this render, so the report
 				// is read straight after it. Only rows the engine itself reported

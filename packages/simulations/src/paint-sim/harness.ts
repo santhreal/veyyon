@@ -31,6 +31,7 @@
  *    claim about bytes.
  */
 import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript-container";
+import { HomeAnchorLayout } from "@veyyon/coding-agent/modes/controllers/home-anchor-layout";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { type Component, Container, CURSOR_MARKER, type Focusable, TUI } from "@veyyon/tui";
 import { settleFrames } from "../../../tui/test/helpers/settle-frames";
@@ -61,6 +62,19 @@ export interface PaintShape {
 	scrollbackRebuild: boolean;
 	/** False mounts a plain `Container`, the control that drops no rows. */
 	virtualized: boolean;
+	/**
+	 * Mounts the real `HomeAnchorLayout` fills around the transcript and drives
+	 * its frame-composed correction, which is how the shipped screen decides
+	 * where viewport slack goes. False leaves them out, the control that invents
+	 * no rows.
+	 */
+	homeAnchor: boolean;
+	/**
+	 * What makes the frame SHRINK after the stream, which is when a screen ends
+	 * up shorter than the viewport in a session that has already scrolled. Each
+	 * kind is a shipped event; see `SHRINKS`.
+	 */
+	shrink: ShrinkKind;
 }
 
 export interface PaintFrame {
@@ -92,6 +106,61 @@ export interface PaintReport {
 	 * screen, so it costs one in-place window rewrite; nothing else may.
 	 */
 	hudShrinks: number;
+	/**
+	 * The viewport after the shrink, ANSI stripped and right-trimmed: what a
+	 * reader is looking at when the screen settles.
+	 */
+	viewport: string[];
+	/** Longest run of consecutive blank rows in that viewport. */
+	blankBand: number;
+	/**
+	 * Longest run of blank rows in the painted content itself (the tape plus the
+	 * composed frame). The bound a blank band is judged against is derived from
+	 * what was painted, so nobody can tune a constant to make a void acceptable.
+	 */
+	contentBlankRun: number;
+	/** Rows of real conversation on screen after the shrink. */
+	historyRowsOnScreen: number;
+	/** Whole-screen repaints and erases charged to the shrink frame alone. */
+	shrinkRedraws: number;
+	shrinkErases: number;
+	/** Where the anchor put the slack on the settled frame. */
+	topFillRows: number;
+	bottomFillRows: number;
+}
+
+/**
+ * The shipped ways a settled screen ends up SHORTER than the viewport partway
+ * through a session that has already scrolled. Every one of them is an ordinary
+ * end-of-turn event, which is why the blank band they used to leave was a screen
+ * the operator saw rather than an edge case:
+ *
+ *  - `answer-collapse`: the tall streaming answer finishes and its final render
+ *    is a few rows (a fence, a rule) instead of the dozens it streamed.
+ *  - `hud-collapse`: the todo board or the subagent tree finishes and unmounts.
+ *
+ * `none` is the control: the same session with nothing shrinking.
+ *
+ * A window dragged TALLER shrinks the frame the same way and is deliberately not
+ * here: the resize path paints the viewport at once and defers the authoritative
+ * replay past a 120 ms settle window of real wall-clock time, and a family whose
+ * first rule is "no wall-clock sleeps" cannot ask that question without measuring
+ * the timer instead of the engine. It is asked where resize already lives, with
+ * the sleep those suites use.
+ */
+export type ShrinkKind = "none" | "answer-collapse" | "hud-collapse";
+
+export const SHRINKS: readonly ShrinkKind[] = ["none", "answer-collapse", "hud-collapse"];
+
+/** Longest run of consecutive blank rows in `rows`. */
+export function blankRun(rows: readonly string[]): number {
+	let run = 0;
+	let longest = 0;
+	for (const row of rows) {
+		run = row.trim().length === 0 ? run + 1 : 0;
+		if (run > longest) longest = run;
+	}
+	return longest;
 }
 
 /** A finalized block: plain components are final, so their rows commit. */
@@ -103,12 +172,30 @@ class Block implements Component {
 	}
 }
 
-/** An answer still arriving: it grows a row a frame and never finalizes. */
+/**
+ * An answer still arriving. It grows a row a frame and declares itself
+ * unfinalized while it does, which is what the shipped streaming block does and
+ * what keeps its still-changing rows out of native scrollback: a block that
+ * declares nothing counts as final (see `isBlockFinalized`), so its streamed
+ * rows commit and rewriting them later reads as history diverging.
+ */
 class LiveBlock implements Component {
 	#rows: string[] = ["  reply: still arriving"];
+	#settled = false;
 	invalidate(): void {}
 	grow(): void {
 		this.#rows = [...this.#rows, `  row ${this.#rows.length} of the answer`];
+	}
+	/**
+	 * The turn ends and the answer's final render is short: a closing fence and a
+	 * rule, which is what the streamed rows collapse to once the markdown settles.
+	 */
+	settle(): void {
+		this.#rows = ["```", "—"];
+		this.#settled = true;
+	}
+	isTranscriptBlockFinalized(): boolean {
+		return this.#settled;
 	}
 	getRenderStablePrefixRows(): number {
 		return 0;
@@ -190,14 +277,27 @@ export async function paintSim(shape: PaintShape): Promise<PaintReport> {
 		tui.addChild(new Block(Array.from({ length: shape.headerRows }, (_, row) => `header ${row}`)));
 	}
 	const transcript = shape.virtualized ? new TranscriptContainer() : new Container();
+	// Shipped root order: the centring fill, the transcript, the HUD band, the
+	// bottom fill, then the pinned footer (interactive-mode mounts them in
+	// exactly this order).
+	const anchor = shape.homeAnchor
+		? new HomeAnchorLayout({
+				ui: tui,
+				transcriptChildCount: () => transcript.children.length,
+				hasHero: () => false,
+			})
+		: undefined;
+	if (anchor) tui.addChild(anchor.topFill);
 	tui.addChild(transcript);
 	const hud = new Hud(shape.hudRows);
 	if (shape.hudRows > 0) tui.addChild(hud);
+	if (anchor) tui.addChild(anchor.bottomFill);
 	// The footer is built from the bottom up the way the composer zone is: a
 	// status row, a composer that owns the cursor, and filler rows above it.
 	for (let row = shape.footerRows; row > 1; row--) tui.addChild(new FooterRow(`footer ${row}`));
 	if (shape.footerRows > 0) tui.addChild(new Composer());
 	tui.setPinnedFooterChildCount(Math.max(0, shape.footerRows));
+	if (anchor) tui.onFrameComposed = () => anchor.onFrameComposed();
 	tui.start();
 	await settleFrames(term, tui);
 
@@ -234,10 +334,36 @@ export async function paintSim(shape: PaintShape): Promise<PaintReport> {
 		});
 	}
 
-	const history = term
-		.getScrollBuffer()
-		.map(row => Bun.stripANSI(row).trimEnd())
-		.filter(row => row.length > 0);
+	// The turn ends. Whatever the shape names shrinks the frame, and the screen is
+	// then measured where a reader looks: the viewport.
+	const beforeShrink = { redraws: tui.fullRedraws, erases };
+	switch (shape.shrink) {
+		case "answer-collapse":
+			live.settle();
+			break;
+		case "hud-collapse":
+			hud.setRows(0);
+			break;
+		case "none":
+			break;
+	}
+	tui.requestRender();
+	await settleFrames(term, tui);
+	// A second settle: the anchor corrects on the frame-composed hook, so its
+	// answer only reaches the screen on the following frame.
+	tui.requestRender();
+	await settleFrames(term, tui);
+
+	const viewport = term.getViewport().map(row => Bun.stripANSI(row).trimEnd());
+	const buffer = term.getScrollBuffer().map(row => Bun.stripANSI(row).trimEnd());
+	// History that has already scrolled off: rows the engine painted while the
+	// frame still filled the screen. Its own blank runs (block separators) are the
+	// only blank runs the transcript legitimately produces, so they are the bound
+	// a blank band on screen is judged against — measured, never chosen.
+	const scrolledOff = buffer.slice(0, Math.max(0, buffer.length - viewport.length));
+	const historyRowsOnScreen = viewport.filter(row => /turn \d+:|reply \d+:|row \d+ of the answer/.test(row)).length;
+
+	const history = buffer.filter(row => row.length > 0);
 	const lostTurns: number[] = [];
 	for (let turn = 0; turn < shape.turns; turn++) {
 		if (!history.some(row => row.includes(`turn ${turn}:`))) lostTurns.push(turn);
@@ -251,6 +377,14 @@ export async function paintSim(shape: PaintShape): Promise<PaintReport> {
 		lostTurns,
 		scrollTapeRows: tui.scrollTapeRows,
 		hudShrinks,
+		viewport,
+		blankBand: blankRun(viewport),
+		contentBlankRun: blankRun(scrolledOff),
+		historyRowsOnScreen,
+		shrinkRedraws: tui.fullRedraws - beforeShrink.redraws,
+		shrinkErases: erases - beforeShrink.erases,
+		topFillRows: anchor ? anchor.topFill.render(shape.width).length : 0,
+		bottomFillRows: anchor ? anchor.bottomFill.render(shape.width).length : 0,
 	};
 }
 
@@ -265,5 +399,5 @@ export function shapes(base: PaintShape, sweep: Partial<Record<keyof PaintShape,
 
 /** A one-line shape label, for a failure message that names the arm. */
 export function label(shape: PaintShape): string {
-	return `${shape.width}x${shape.height} header=${shape.headerRows} hud=${shape.hudRows} footer=${shape.footerRows} turns=${shape.turns} stream=${shape.streamFrames} rebuild=${shape.scrollbackRebuild} virtualized=${shape.virtualized}`;
+	return `${shape.width}x${shape.height} header=${shape.headerRows} hud=${shape.hudRows} footer=${shape.footerRows} turns=${shape.turns} stream=${shape.streamFrames} rebuild=${shape.scrollbackRebuild} virtualized=${shape.virtualized} anchor=${shape.homeAnchor} shrink=${shape.shrink}`;
 }

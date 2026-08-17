@@ -44,6 +44,12 @@ const BASE: PaintShape = {
 	streamFrames: 40,
 	scrollbackRebuild: true,
 	virtualized: true,
+	// This suite asks about the STREAM, not about where slack goes when a turn
+	// ends: no anchor fills and no shrink, so its arms measure what they always
+	// measured. The anchor and the shrink kinds are swept by the blank-band
+	// scenario beside it.
+	homeAnchor: false,
+	shrink: "none",
 };
 
 const CASE_TIMEOUT_MS = 60_000;

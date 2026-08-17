@@ -87,6 +87,19 @@ export class HomeAnchorLayout {
 		}
 
 		const slack = Math.max(0, rows - contentExclFill);
+		// Slack is only EMPTY room while the session has never scrolled. Once rows
+		// have left the window onto the scroll tape, the screen above the frame
+		// holds painted conversation history, and a fill row there is not a margin:
+		// it is a blank row written over the transcript. A frame that shrinks below
+		// the viewport mid-session (a tall streaming answer collapsing to its final
+		// short render, an overlay closing, the todo HUD finishing) then routed the
+		// entire difference into `topFill` and painted a void where the answer was —
+		// up to 23 blank rows over 82 rows of live history, with the live tail
+		// squeezed off the top of the screen. There is nothing to anchor at that
+		// point: history already fills the rows above, so both fills stay collapsed
+		// and the tail paints directly under the conversation, the way a shell
+		// prompt follows its output.
+		const room = ui.scrollTapeRows > 0 ? 0 : slack;
 		// Slack routing is the whole design:
 		// - Hero up: 2/5 above the hero (optically centred), the rest below so
 		//   the composer sits on the viewport bottom.
@@ -105,9 +118,9 @@ export class HomeAnchorLayout {
 		// committed blank rows overflowed the screen and pushed the prompt
 		// into scrollback while the viewport was mostly empty.
 		const conversation = this.port.transcriptChildCount() > 0;
-		const top = this.port.hasHero() ? Math.floor((slack * 2) / 5) : conversation ? slack : 0;
+		const top = this.port.hasHero() ? Math.floor((room * 2) / 5) : conversation ? room : 0;
 		if (top !== currentTopFill) this.topFill.setLines(top);
-		if (slack - top !== currentFill) this.bottomFill.setLines(slack - top);
+		if (room - top !== currentFill) this.bottomFill.setLines(room - top);
 	}
 
 	/**
