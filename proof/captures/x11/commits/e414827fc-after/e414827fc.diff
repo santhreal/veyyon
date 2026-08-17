@@ -1,0 +1,420 @@
+[33me414827fc[m proof(tooling): record every commit on this branch, both arms, in a real terminal
+
+
+
+ .gitignore                          |  17 [32m+++[m
+ proof/build-proof.py                | 235 [32m+++++++++++++++++++++++++++++++++++[m[31m-[m
+ proof/commit-videos.tsv             |  89 [32m++++++++++++++[m
+ proof/docker/commit-results.sh      |  88 [32m++++++++++++++[m
+ proof/docker/page-file.sh           |  25 [32m++++[m
+ proof/docker/pty-stats.py           |  72 [32m+++++++++++[m
+ proof/docker/record-all-commits.sh  |  94 [32m+++++++++++++++[m
+ proof/docker/record-commit-arm.sh   | 129 [32m++++++++++++++++++++[m
+ proof/docker/record-long-session.sh |  95 [32m+++++++++++++++[m
+ proof/docker/resume-probe.sh        |  50 [32m++++++++[m
+ proof/docker/xsession.sh            |   2 [32m+[m[31m-[m
+ proof/scenes/hold.sh                |  26 [32m++++[m
+ proof/scenes/lib.sh                 |  29 [32m++++[m[31m-[m
+ proof/scenes/long-session.sh        |  46 [32m+++++++[m
+ 14 files changed, 989 insertions(+), 8 deletions(-)
+
+[1mdiff --git a/.gitignore b/.gitignore[m
+[1mindex 28c2ba4a2..6967b84bb 100644[m
+[1m--- a/.gitignore[m
+[1m+++ b/.gitignore[m
+[36m@@ -180,3 +180,20 @@[m [mscratch-docs-lane/[m
+ /release-notes.md[m
+ /release-notes-dryrun.md[m
+ [m
+[32m+[m[32m# The long-session proof is recorded against one of the operator's REAL sessions,[m
+[32m+[m[32m# so every frame of it and every byte of its pty capture is that conversation[m
+[32m+[m[32m# rendered on a screen: prompts, file paths, todo text, tool output. The[m
+[32m+[m[32m# recording is what the proof page shows locally and it is not committable for[m
+[32m+[m[32m# the same reason a transcript is not. The fresh-session control arm beside it[m
+[32m+[m[32m# carries nothing but the welcome screen and a sentence from a 1.5B, so that one[m
+[32m+[m[32m# is tracked.[m
+[32m+[m[32m/proof/captures/x11/long-session-72m.mp4[m
+[32m+[m[32m/proof/captures/x11/long-session-72m.gif[m
+[32m+[m[32m/proof/captures/x11/long-session-72m/[m
+[32m+[m[32m/proof/captures/x11/*/pty.raw[m
+[32m+[m
+[32m+[m[32m# The per-commit recordings are mp4. xsession.sh writes a gif beside every one[m
+[32m+[m[32m# for a browser with no codec, and for 141 arms that is 27MB of duplicate of the[m
+[32m+[m[32m# 21MB the page actually plays. The page references the mp4; the gif is a local[m
+[32m+[m[32m# convenience.[m
+[32m+[m[32m/proof/captures/x11/commits/*.gif[m
+[1mdiff --git a/proof/build-proof.py b/proof/build-proof.py[m
+[1mindex 4ca67c70f..ceaa0a048 100755[m
+[1m--- a/proof/build-proof.py[m
+[1m+++ b/proof/build-proof.py[m
+[36m@@ -138,6 +138,220 @@[m [mclass Section:[m
+         return f"<h2>{self.title}</h2>\n" + "\n".join(self.body)[m
+ [m
+ [m
+[32m+[m[32mMANIFEST = ROOT / "commit-videos.tsv"[m
+[32m+[m[32mCOMMITS_REL = "captures/x11/commits/"[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef _arm_result(hash_: str, arm: str) -> str:[m
+[32m+[m[32m    """The last lines the command printed on that arm, as text.[m
+[32m+[m
+[32m+[m[32m    Written by proof/docker/commit-results.sh -- the same trees and the same[m
+[32m+[m[32m    commands as the videos, run again with no camera. The page quotes this file[m
+[32m+[m[32m    rather than a number typed by hand, so a caption that says twelve failed is[m
+[32m+[m[32m    reading a file anyone can open next to the video that shows it.[m
+[32m+[m[32m    """[m
+[32m+[m[32m    path = ROOT / COMMITS_REL / f"{hash_}-{arm}.txt"[m
+[32m+[m[32m    if not path.exists():[m
+[32m+[m[32m        return ""[m
+[32m+[m[32m    lines = [ln.rstrip() for ln in path.read_text(errors="replace").splitlines() if ln.strip()][m
+[32m+[m[32m    tally = [ln for ln in lines if RESULT_LINE.match(ln)][m
+[32m+[m[32m    return " · ".join(ln.strip() for ln in tally[:4]) if tally else lines[-1][:120][m
+[32m+[m
+[32m+[m
+[32m+[m[32mRESULT_LINE = __import__("re").compile(r"^\s*\d+ (pass|fail|error|expect\(\) calls)|^Ran \d+ tests")[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef _pty_stats(name: str) -> dict[str, str]:[m
+[32m+[m[32m    """The counters pty-stats.py wrote for one arm of the long-session proof."""[m
+[32m+[m[32m    path = ROOT / f"captures/x11/{name}/pty-stats.txt"[m
+[32m+[m[32m    if not path.exists():[m
+[32m+[m[32m        missing.append(str(path.relative_to(ROOT)))[m
+[32m+[m[32m        return {}[m
+[32m+[m[32m    out: dict[str, str] = {}[m
+[32m+[m[32m    for line in path.read_text(errors="replace").splitlines():[m
+[32m+[m[32m        if line.startswith("---"):[m
+[32m+[m[32m            break[m
+[32m+[m[32m        key, _, value = line.rpartition("  ")[m
+[32m+[m[32m        if key.strip() and value.strip():[m
+[32m+[m[32m            out[key.strip()] = value.strip()[m
+[32m+[m[32m    return out[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef long_session_section() -> Section:[m
+[32m+[m[32m    """Streaming at the tail of a multi-million-token session, against an empty one.[m
+[32m+[m
+[32m+[m[32m    The session is one of the operator's own: 289MB of JSONL, 69,727 records,[m
+[32m+[m[32m    34,552 messages, 87 earlier compactions, about 72 million tokens of text. It[m
+[32m+[m[32m    is bind-mounted read-only into the container and copied into the container's[m
+[32m+[m[32m    tmpfs home before the app opens it, so the app writes to the copy. The[m
+[32m+[m[32m    operator's ~/.veyyon is not in the mount table and no setting of theirs is[m
+[32m+[m[32m    read.[m
+[32m+[m
+[32m+[m[32m    The control arm is the same scene with no session at all. Both arms are[m
+[32m+[m[32m    driven by the same keys, answered by the same 1.5B on the container network,[m
+[32m+[m[32m    and recorded by the same camera; the app runs under `script` inside the[m
+[32m+[m[32m    terminal, so each arm yields a video AND the bytes it wrote.[m
+[32m+[m[32m    """[m
+[32m+[m[32m    big, fresh = _pty_stats("long-session-72m"), _pty_stats("long-session-fresh")[m
+[32m+[m[32m    keys = [[m
+[32m+[m[32m        "session bytes",[m
+[32m+[m[32m        "session messages",[m
+[32m+[m[32m        "pty bytes",[m
+[32m+[m[32m        "ED3 native-scrollback erases",[m
+[32m+[m[32m        "ED2 screen erases",[m
+[32m+[m[32m        "synchronized frames",[m
+[32m+[m[32m        "bytes per frame",[m
+[32m+[m[32m        "wall seconds",[m
+[32m+[m[32m    ][m
+[32m+[m[32m    head = "<tr><th>counter</th><th>72M-token session</th><th>fresh session</th></tr>"[m
+[32m+[m[32m    body = "".join([m
+[32m+[m[32m        f"<tr><td>{k}</td><td>{big.get(k, '—')}</td><td>{fresh.get(k, '—')}</td></tr>"[m
+[32m+[m[32m        for k in keys[m
+[32m+[m[32m        if k in big or k in fresh[m
+[32m+[m[32m    )[m
+[32m+[m[32m    return Section([m
+[32m+[m[32m        "Streaming at the tail of a 72-million-token session",[m
+[32m+[m[32m        [[m
+[32m+[m[32m            "<p>The session in the left video is a real one of the operator's, resumed inside the container:"[m
+[32m+[m[32m            " 289MB of JSONL, 69,727 records, 34,552 messages, 87 earlier compactions. The right video is the"[m
+[32m+[m[32m            " same scene with no session at all, so the two differ in exactly one thing — what is above the"[m
+[32m+[m[32m            " window. Same keys, same 1.5B model on the container network, same camera, same terminal.</p>",[m
+[32m+[m[32m            "<p>The app runs under <code>script</code> inside that terminal, so each arm produced a byte capture"[m
+[32m+[m[32m            " as well as a picture. <code>ED3</code> is the counter that matters: it is the sequence that erases"[m
+[32m+[m[32m            " the terminal's own scroll buffer, and it is what both symptoms this branch chased were made of."[m
+[32m+[m[32m            " A frame that repaints in place writes cursor moves and text; a frame that gives up writes"[m
+[32m+[m[32m            " <code>ED3</code>.</p>",[m
+[32m+[m[32m            video_pair([m
+[32m+[m[32m                X + "long-session-72m.mp4",[m
+[32m+[m[32m                X + "long-session-fresh.mp4",[m
+[32m+[m[32m                "the operator's own session, resumed: the transcript, a scroll back through it, a prompt, and the"[m
+[32m+[m[32m                " answer streaming in at the tail",[m
+[32m+[m[32m                "control: the same scene on an empty session",[m
+[32m+[m[32m                start=25,[m
+[32m+[m[32m            ),[m
+[32m+[m[32m            f"<table><thead>{head}</thead><tbody>{body}</tbody></table>",[m
+[32m+[m[32m            "<p>The resumed arm carries one cost the control does not, and it is model-side rather than"[m
+[32m+[m[32m            " renderer-side: a history that large does not fit a 65k window, so the app compacts before it can"[m
+[32m+[m[32m            " ask anything, and says so on screen while it does. That is the 1.5B summarizing on CPU, not a"[m
+[32m+[m[32m            " frame being repainted.</p>",[m
+[32m+[m[32m        ],[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef commit_pair(hash_: str, cap_before: str, cap_after: str) -> str:[m
+[32m+[m[32m    """The two arms of one commit, labelled for what they are.[m
+[32m+[m
+[32m+[m[32m    `video_pair` labels its arms main and branch, which is right for a scene[m
+[32m+[m[32m    recorded against two branches and wrong here: both of these arms are on this[m
+[32m+[m[32m    branch, one commit apart.[m
+[32m+[m[32m    """[m
+[32m+[m[32m    before, after = f"{COMMITS_REL}{hash_}-before.mp4", f"{COMMITS_REL}{hash_}-after.mp4"[m
+[32m+[m[32m    need(before)[m
+[32m+[m[32m    need(after)[m
+[32m+[m[32m    return ([m
+[32m+[m[32m        '<div class="pair">'[m
+[32m+[m[32m        f'<figure><video controls loop muted playsinline preload="metadata"><source src="{before}#t=1" type="video/mp4"></video>'[m
+[32m+[m[32m        f"<figcaption><strong>parent</strong> — {cap_before}</figcaption></figure>"[m
+[32m+[m[32m        f'<figure><video controls loop muted playsinline preload="metadata"><source src="{after}#t=1" type="video/mp4"></video>'[m
+[32m+[m[32m        f"<figcaption><strong>this commit</strong> — {cap_after}</figcaption></figure>"[m
+[32m+[m[32m        "</div>"[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef commit_video_sections() -> str:[m
+[32m+[m[32m    """One block per commit on the branch: what it was, and it running.[m
+[32m+[m
+[32m+[m[32m    Nothing here is chosen by hand. The rows come out of commit-videos.tsv, the[m
+[32m+[m[32m    videos out of proof/captures/x11/commits, and which of the three shapes a[m
+[32m+[m[32m    commit gets follows from what the commit contains:[m
+[32m+[m
+[32m+[m[32m      test    its own test files, run against its parent's source and against[m
+[32m+[m[32m              its own. The before arm is the mutation gate as a movie: the test[m
+[32m+[m[32m              is byte-identical in both trees, so a difference is the source.[m
+[32m+[m[32m      driver  a renderer it added or changed, drawing the surface in both trees.[m
+[32m+[m[32m      diff    the change itself, paged in the terminal, for a commit that ships[m
+[32m+[m[32m              nothing a terminal can execute -- captures, a page rebuild, a[m
+[32m+[m[32m              changelog ordering, a merge.[m
+[32m+[m[32m    """[m
+[32m+[m[32m    rows = [][m
+[32m+[m[32m    for line in MANIFEST.read_text().splitlines():[m
+[32m+[m[32m        if not line or line.startswith("#"):[m
+[32m+[m[32m            continue[m
+[32m+[m[32m        parts = line.split("\t")[m
+[32m+[m[32m        if len(parts) < 5:[m
+[32m+[m[32m            continue[m
+[32m+[m[32m        hash_, kind, _hold, payload, subject = parts[:5][m
+[32m+[m[32m        rows.append((hash_, kind, payload, subject))[m
+[32m+[m
+[32m+[m[32m    blocks = [][m
+[32m+[m[32m    for hash_, kind, payload, subject in rows:[m
+[32m+[m[32m        heading = f'<h3 id="c-{hash_}"><code>{hash_}</code> — {escape(subject)}</h3>'[m
+[32m+[m[32m        if kind == "diff":[m
+[32m+[m[32m            body = video([m
+[32m+[m[32m                f"{COMMITS_REL}{hash_}-after.mp4",[m
+[32m+[m[32m                "the change itself, paged in the terminal",[m
+[32m+[m[32m                start=1,[m
+[32m+[m[32m            )[m
+[32m+[m[32m            what = "<p class=\"lede\">Ships nothing a terminal can run: the video is the diff.</p>"[m
+[32m+[m[32m        else:[m
+[32m+[m[32m            ran = escape(payload.replace("./", ""))[m
+[32m+[m[32m            before, after = _arm_result(hash_, "before"), _arm_result(hash_, "after")[m
+[32m+[m[32m            cap_b = escape(before) or "parent tree"[m
+[32m+[m[32m            cap_a = escape(after) or "commit tree"[m
+[32m+[m[32m            body = commit_pair(hash_, cap_b, cap_a)[m
+[32m+[m[32m            verb = "its own tests" if kind == "test" else "its own renderer"[m
+[32m+[m[32m            what = f'<p class="lede">Same terminal, same command, two source trees: {verb}, <code>{ran}</code>.</p>'[m
+[32m+[m[32m        blocks.append(f"{heading}\n{what}\n{body}")[m
+[32m+[m
+[32m+[m[32m    # The tally, counted off the same result files the captions quote. Stated at[m
+[32m+[m[32m    # build time rather than typed, so it cannot drift from what is on the page:[m
+[32m+[m[32m    # if a re-record turns an arm green the sentence changes with it.[m
+[32m+[m[32m    kinds = [k for _h, k, _p, _s in rows][m
+[32m+[m[32m    red = green = unbuildable = 0[m
+[32m+[m[32m    for hash_, kind, _payload, _subject in rows:[m
+[32m+[m[32m        if kind != "test":[m
+[32m+[m[32m            continue[m
+[32m+[m[32m        before, after = _tally(hash_, "before"), _tally(hash_, "after")[m
+[32m+[m[32m        if after == (None, None):[m
+[32m+[m[32m            continue[m
+[32m+[m[32m        if before == (None, None):[m
+[32m+[m[32m            # The parent tree cannot even run the test -- it fails to load, which[m
+[32m+[m[32m            # is a harder differential than a failing assertion, not a softer one.[m
+[32m+[m[32m            unbuildable += 1[m
+[32m+[m[32m        elif after[1] == 0 and (before[1] or 0) > 0:[m
+[32m+[m[32m            red += 1[m
+[32m+[m[32m        elif after[1] == 0:[m
+[32m+[m[32m            green += 1[m
+[32m+[m[32m    summary = ([m
+[32m+[m[32m        f'<p><strong>{red}</strong> of the {kinds.count("test")} commits that carry tests fail against their'[m
+[32m+[m[32m        f" parent's source and pass against their own — the test byte-identical in both trees, so nothing but the"[m
+[32m+[m[32m        f" commit moved. On {unbuildable} more the parent tree cannot load the test at all, which is a harder"[m
+[32m+[m[32m        f" differential than a failing assertion rather than a softer one. <strong>{green}</strong> pass on both"[m
+[32m+[m[32m        " arms, which is what a commit that only adds a test, or duplicates a fix already on main, is supposed to"[m
+[32m+[m[32m        " do. The rest of the branch is"[m
+[32m+[m[32m        f' {kinds.count("driver")} renderer rows and {kinds.count("diff")} rows that ship nothing a terminal can'[m
+[32m+[m[32m        " execute.</p>"[m
+[32m+[m[32m    )[m
+[32m+[m[32m    return summary + "\n" + "\n".join(blocks)[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef _tally(hash_: str, arm: str) -> tuple[int | None, int | None]:[m
+[32m+[m[32m    """(pass, fail) out of an arm's result file, or (None, None) when it has neither."""[m
+[32m+[m[32m    path = ROOT / COMMITS_REL / f"{hash_}-{arm}.txt"[m
+[32m+[m[32m    if not path.exists():[m
+[32m+[m[32m        return (None, None)[m
+[32m+[m[32m    text = path.read_text(errors="replace")[m
+[32m+[m[32m    passed = __import__("re").search(r"^\s*(\d+) pass\s*$", text, __import__("re").M)[m
+[32m+[m[32m    failed = __import__("re").search(r"^\s*(\d+) fail\s*$", text, __import__("re").M)[m
+[32m+[m[32m    if not passed and not failed:[m
+[32m+[m[32m        return (None, None)[m
+[32m+[m[32m    return (int(passed.group(1)) if passed else 0, int(failed.group(1)) if failed else 0)[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef escape(text: str) -> str:[m
+[32m+[m[32m    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")[m
+[32m+[m
+[32m+[m
+ def commit_table() -> str:[m
+     log = subprocess.run([m
+         ["git", "log", "--oneline", "--no-decorate", "main..HEAD"],[m
+[36m@@ -146,7 +360,7 @@[m [mdef commit_table() -> str:[m
+     rows = [][m
+     for line in log:[m
+         sha, _, subject = line.partition(" ")[m
+[31m-        rows.append(f'<tr><td class="sha">{sha}</td><td>{subject}</td></tr>')[m
+[32m+[m[32m        rows.append(f'<tr><td class="sha"><a href="#c-{sha}">{sha}</a></td><td>{subject}</td></tr>')[m
+     return "\n".join(rows)[m
+ [m
+ [m
+[36m@@ -185,11 +399,26 @@[m [malways lands after it, so the frames have to be cut from the video afterwards.</[m
+ [m
+ {body}[m
+ [m
+[31m-<h2>Every commit on the branch</h2>[m
+[32m+[m[32m<h2>Every commit on the branch, on camera</h2>[m
+[32m+[m[32m<p>{ahead} commits, and a recording of each one below. Every video is a real terminal in the recording[m
+[32m+[m[32mcontainer: <code>proof/docker/record-commit-arm.sh</code> extracts the commit's tree and its parent's tree with[m
+[32m+[m[32m<code>git archive</code>, mounts the same <code>node_modules</code> and the same native addon into both, and runs[m
+[32m+[m[32mthe same command in each. A test the commit ADDS is copied into the parent tree first, so the test is[m
+[32m+[m[32mbyte-identical in both arms and the only variable left is the source under it.</p>[m
+[32m+[m[32m<p>Two build outputs are mounted into both trees beside <code>node_modules</code>, because neither is in git and[m
+[32m+[m[32ma tree without them fails for a reason that has nothing to do with the commit: the native addon[m
+[32m+[m[32m(<code>veyyon_natives.linux-x64-*.node</code>) and the generated HTML-export bundle[m
+[32m+[m[32m(<code>tool-views.generated.js</code>). The first campaign was recorded without them and every arm of fifty[m
+[32m+[m[32mcommits failed on a missing addon — the videos looked like a broken branch and were re-recorded. A caption under[m
+[32m+[m[32ma video is the text of the same command run again headlessly by[m
+[32m+[m[32m<code>proof/docker/commit-results.sh</code>; where a caption is empty the command drew a surface to the terminal[m
+[32m+[m[32mrather than writing lines to a pipe, and the video is the only place its output exists.</p>[m
+ <table><thead><tr><th>commit</th><th>subject</th></tr></thead>[m
+ <tbody>[m
+ {commit_table()}[m
+ </tbody></table>[m
+[32m+[m
+[32m+[m[32m{commit_video_sections()}[m
+ </body></html>[m
+ """[m
+ [m
+[36m@@ -581,4 +810,4 @@[m [mSECTIONS = [[m
+ ][m
+ [m
+ if __name__ == "__main__":[m
+[31m-    write(SECTIONS)[m
+[32m+[m[32m    write([*SECTIONS, long_session_section()])[m
+[1mdiff --git a/proof/commit-videos.tsv b/proof/commit-videos.tsv[m
+[1mnew file mode 100644[m
+[1mindex 000000000..16d1bd1d2[m
+[1m--- /dev/null[m
+[1m+++ b/proof/commit-videos.tsv[m
+[36m@@ -0,0 +1,89 @@[m
+[32m+[m[32m# Every commit on feat/ui-polish, and the recording that shows it.[m
+[32m+[m[32m#[m
+[32m+[m[32m# hash  kind  hold-ceiling-seconds  payload  subject[m
+[32m+[m[32m#[m
+[32m+[m[32m# kind=test    the commit's own test files, run twice: once against its first[m
+[32m+[m[32m#              parent's source, once against its own. The before arm is the[m
+[32m+[m[32m#              mutation gate as a movie -- the test exists in both trees, only[m
+[32m+[m[32m#              the source under it differs.[m
+[32m+[m[32m# kind=driver  a renderer the commit added or changed, run against both trees.[m
+[32m+[m[32m# kind=diff    the change itself, paged in the terminal. Used where the commit[m
+[32m+[m[32m#              ships no code the terminal can execute: captures, a page rebuild,[m
+[32m+[m[32m#              a changelog ordering, the recorder's own plumbing, a merge.[m
+[32m+[m[32m766ee5a26	test	130	./packages/coding-agent/test/descriptor-placement-model-switch.test.ts ./packages/coding-agent/test/model-registry.test.ts	fix(coding-agent): duplicate of main's compaction-tier and bundle-decoupling fixes[m
+[32m+[m[32m8981629d1	diff	45		Merge branch 'main' into feat/ui-polish[m
+[32m+[m[32mb6a6bd07b	test	130	./packages/coding-agent/test/modes/components/every-settings-submenu-answers-the-pointer.test.ts	feat(coding-agent): route pointer events into settings submenus and modal bodies[m
+[32m+[m[32md0226c921	test	130	./packages/coding-agent/test/modes/components/selector-overlays-answer-the-pointer.test.ts	feat(coding-agent): answer the pointer at the row level in the six selector overlays[m
+[32m+[m[32maa2d62dc7	test	130	./packages/coding-agent/test/modes/components/assistant-prose-carries-the-text-color.test.ts	fix(coding-agent): theme assistant answer prose instead of terminal default[m
+[32m+[m[32mb852f2543	test	130	./packages/coding-agent/test/modes/components/a-cut-short-batch-ledger-renders-as-one-marker-line.test.ts	fix(coding-agent): collapse the turn-level batch ledger to a one-line marker[m
+[32m+[m[32m08ade60cb	test	130	./packages/coding-agent/test/modes/components/selector-overlays-answer-the-pointer.test.ts	feat(coding-agent): forward pointer events into the model picker's browser[m
+[32m+[m[32mc18816b62	test	130	./packages/coding-agent/test/modes/components/selector-overlays-answer-the-pointer.test.ts	feat(coding-agent): answer the pointer on ask-dialog option rows[m
+[32m+[m[32m0c36cf201	test	130	./packages/coding-agent/test/modes/components/selector-overlays-answer-the-pointer.test.ts	chore(coding-agent): delete the dead marketplace plugin selector[m
+[32m+[m[32mb373c7c55	test	130	./packages/coding-agent/test/modes/components/a-clicked-composer-chip-runs-its-action.test.ts	feat(coding-agent): make the composer chips answer clicks[m
+[32m+[m[32md4d2a4290	test	170	./packages/coding-agent/test/modes/components/the-login-card-answers-the-pointer.test.ts ./packages/coding-agent/test/modes/components/the-login-screen-is-one-frame.test.ts ./packages/coding-agent/test/modes/controllers/a-command-login-lands-in-the-account-manager.test.ts ./packages/coding-agent/test/modes/controllers/selector-controller-login.test.ts	feat(coding-agent): move the login screen onto ModalShell[m
+[32m+[m[32mab7f1b8be	test	130	./packages/coding-agent/test/modes/components/the-transcript-card-answers-the-pointer.test.ts	feat(coding-agent): move the transcript drill-in onto ModalShell[m
+[32m+[m[32m4d566d927	test	170	./packages/agent/test/a-chatgpt-oauth-session-compacts-on-the-codex-backend.test.ts ./packages/agent/test/compaction-remote.test.ts ./packages/catalog/test/server-compaction-capability.test.ts	fix(ai): compact a ChatGPT OAuth session on the codex backend[m
+[32m+[m[32m5afa7ff34	test	130	./packages/coding-agent/test/modes/components/the-transcript-card-answers-the-pointer.test.ts	test(coding-agent): copy the transcript rows the harness hands back[m
+[32m+[m[32m4ed3a44b4	test	170	./packages/coding-agent/test/keybindings-selector-navigation.test.ts ./packages/coding-agent/test/modes/components/the-session-tree-card-answers-the-pointer.test.ts ./packages/coding-agent/test/modes/components/tree-selector-chain-gutter-2298.test.ts ./packages/coding-agent/test/modes/components/tree-selector-developer.test.ts	polish(tree): open the session tree as a ModalShell card that answers the pointer[m
+[32m+[m[32m1f2ea74b3	test	130	./packages/coding-agent/test/modes/components/the-mcp-add-wizard-card-answers-the-pointer.test.ts	polish(mcp): open the add-server wizard as a ModalShell card that answers the pointer[m
+[32m+[m[32mc511ae76b	test	170	./packages/coding-agent/test/modes/components/a-virtualized-transcript-never-loses-history-to-a-rebuild.test.ts ./packages/tui/test/component-render.test.ts ./packages/tui/test/scroll-isolation-history.test.ts	fix(tui): keep the transcript when a virtualized root compacts[m
+[32m+[m[32m3f583d196	test	170	./packages/coding-agent/test/hook-editor.test.ts ./packages/coding-agent/test/hook-selector-overflow.test.ts ./packages/coding-agent/test/modes/components/session-selector-mouse.test.ts ./packages/coding-agent/test/modes/components/the-hook-selector-answers-the-pointer.test.ts	polish(hooks): open the hook selector as a ModalShell card that answers the pointer[m
+[32m+[m[32m929469b5f	test	130	./packages/coding-agent/test/hook-editor.test.ts ./packages/coding-agent/test/modes/components/the-hook-dialogs-answer-the-pointer.test.ts	polish(hooks): open the hook input and editor as ModalShell cards[m
+[32m+[m[32m36df196c3	test	130	./packages/coding-agent/test/modes/components/plugin-settings-view-transitions.test.ts ./packages/coding-agent/test/modes/components/the-plugins-tab-answers-the-pointer.test.ts	polish(plugins): answer the pointer in the settings plugins tab and name its keys as chips[m
+[32m+[m[32m489fd453f	test	130	./packages/tui/test/a-click-on-a-suggestion-accepts-the-completion.test.ts	feat(tui): accept a composer suggestion on click[m
+[32m+[m[32m7e1aa54cb	test	130	./packages/coding-agent/test/modes/components/a-transcript-block-sits-on-the-rail.test.ts	polish(transcript): put the /btw and /omfg blocks on the rail[m
+[32m+[m[32mb02f7dc2d	test	130	./packages/coding-agent/test/modes/components/a-transcript-block-sits-on-the-rail.test.ts	polish(transcript): print command blocks on the rail[m
+[32m+[m[32mf9160c99c	test	130	./packages/coding-agent/test/modes/components/a-transcript-block-sits-on-the-rail.test.ts ./packages/coding-agent/test/modes/components/hook-editor-title-width.test.ts	polish(ui): delete the full-width rule[m
+[32m+[m[32m9be29f814	test	130	./packages/coding-agent/test/modes/components/every-settings-submenu-answers-the-pointer.test.ts	test(settings): drive the effort step's click hint[m
+[32m+[m[32m07372af28	test	130	./packages/coding-agent/src/modes/components/__tests__/pause-screen.test.ts	polish(pause): resume the pause screen on a click[m
+[32m+[m[32me86818539	test	130	./packages/coding-agent/test/modes/components/subagent-agents-surface.test.ts	polish(settings): name the subagents tab for subagents, and fold the spawn ceiling into the roster section[m
+[32m+[m[32mdb946f360	test	130	./packages/tui/test/a-click-in-the-composer-places-the-caret.test.ts ./packages/tui/test/a-click-on-a-suggestion-accepts-the-completion.test.ts	polish(composer): place the caret where the composer is clicked[m
+[32m+[m[32m253111668	test	130	./packages/coding-agent/test/setup-wizard.test.ts ./packages/coding-agent/test/the-setup-wizard-footer-chips-answer-the-pointer.test.ts	polish(setup-wizard): draw the footer keys as chips a pointer can hit[m
+[32m+[m[32m08ec85de5	driver	60	scripts/demos/render-setup-wizard.ts	demo(setup-wizard): let the wizard renderer aim the pointer at a chip[m
+[32m+[m[32mbc9e33085	test	130	./packages/coding-agent/test/modes/components/a-transcript-divider-marks-a-point-instead-of-spanning-the-viewport.test.ts ./packages/coding-agent/test/modes/components/compaction-divider.test.ts	polish(transcript): make every divider a mark on the rail, not a rule across it[m
+[32m+[m[32m23504cc4d	test	130	./packages/coding-agent/test/modes/components/a-transcript-divider-marks-a-point-instead-of-spanning-the-viewport.test.ts	polish(transcript): start a divider on the rail, not at column zero[m
+[32m+[m[32mbfc3ed7b5	test	130	./packages/coding-agent/test/modes/components/a-transcript-block-sits-on-the-rail.test.ts	polish(transcript): take the border off the tiny-model download block[m
+[32m+[m[32m73b3a350f	test	130	./packages/coding-agent/test/modes/components/a-cut-short-batch-ledger-renders-as-one-marker-line.test.ts	polish(transcript): read the cut-short marker's indent from the rail constant[m
+[32m+[m[32md12a2639f	driver	60	scripts/demos/render-hook-selector.ts	demo(ui): render the three surfaces this branch changed most[m
+[32m+[m[32m7ef968fa2	diff	45		demo(proof): draw the cache-miss mark instead of a placeholder box[m
+[32m+[m[32m907edbc2b	diff	45		demo(ui): record real-terminal proof captures with vhs and a local model[m
+[32m+[m[32m670d0793b	diff	45		demo(ui): build the proof page from the real-terminal captures[m
+[32m+[m[32mba22b669a	diff	45		demo(ui): record scenes in an X terminal with a real pointer[m
+[32m+[m[32med8cd31b2	test	130	./packages/coding-agent/test/modal-shell.test.ts ./packages/tui/test/every-animation-in-the-terminal-shares-one-clock.test.ts	feat(tui): one animation clock for the whole terminal[m
+[32m+[m[32mf5e0aad58	driver	60	scripts/demos/transcript-blanking-repro.ts	demo(tui): reproduce the transcript blanking defect in a real terminal[m
+[32m+[m[32m3e8038714	test	170	./packages/coding-agent/test/modes/components/an-elided-thinking-fence-says-how-much-it-hid.test.ts ./packages/coding-agent/test/modes/components/prose-only-thinking.test.ts ./packages/coding-agent/test/streaming-reveal.test.ts	fix(coding-agent): an elided reasoning fence says how many lines it hid[m
+[32m+[m[32m23fac74b5	diff	45		demo(proof): declare truecolor to the app inside the recording terminal[m
+[32m+[m[32mf60036e6f	diff	45		docs(changelog): order the two fix bullets the way main carries them[m
+[32m+[m[32m2645becbd	test	130	./packages/coding-agent/test/modes/components/a-clicked-composer-chip-runs-its-action.test.ts ./packages/tui/test/a-footer-click-target-holds-the-mouse-in-a-session-that-never-scrolls.test.ts	fix(tui): hold the mouse while a pinned-footer child has a click target[m
+[32m+[m[32m5ab98e6d6	test	130	./packages/coding-agent/test/modes/components/subagent-agents-surface.test.ts	fix(settings): one Subagents section that edits what every subagent runs[m
+[32m+[m[32m8afbbfe66	test	170	./packages/coding-agent/test/an-effort-picker-offers-no-level-the-endpoint-never-declared.test.ts ./packages/coding-agent/test/every-effort-surface-offers-only-what-the-model-declares.test.ts ./packages/coding-agent/test/modes/components/any-model-effort-is-settable.test.ts ./packages/coding-agent/test/modes/components/every-settings-submenu-answers-the-pointer.test.ts	fix(effort): an effort picker offers only levels the endpoint declares[m
+[32m+[m[32mbbc96f153	test	170	./packages/coding-agent/test/modes/components/subagent-agents-surface.test.ts ./packages/coding-agent/test/subagent-model-and-effort-have-one-owner.test.ts ./packages/coding-agent/test/task/subagent-settings.test.ts	feat(settings): a subagent's page owns what it runs, and recurses[m
+[32m+[m[32m85e166ac7	test	130	./packages/coding-agent/test/modes/components/every-settings-submenu-answers-the-pointer.test.ts	test(settings): point the subagent pointer case at the lane page[m
+[32m+[m[32m3cd9362a9	test	130	./packages/coding-agent/test/a-dismissed-overlay-plays-out-before-it-leaves.test.ts	feat(tui): a dismissed card folds away before it leaves[m
+[32m+[m[32mc823e9828	test	130	./packages/coding-agent/test/a-fading-hover-band-is-mixed-out-of-the-ground.test.ts ./packages/tui/test/a-hover-band-fades-in-instead-of-switching.test.ts	feat(tui): the pointer band fades in and out instead of switching[m
+[32m+[m[32md2eb9dec2	test	130	./packages/tui/test/a-suggestion-popup-grows-instead-of-cutting-in.test.ts	feat(tui): the suggestion popup grows instead of cutting in[m
+[32m+[m[32md92669c37	test	130	./packages/coding-agent/test/modes/components/a-pointer-band-fades-on-a-hand-painted-list.test.ts	feat(tui): the hand-painted pickers cross-fade the pointer band[m
+[32m+[m[32m0ab477850	test	170	./packages/coding-agent/test/modes/components/a-settings-category-fades-under-the-pointer.test.ts ./packages/coding-agent/test/modes/controllers/a-closed-settings-card-lets-go-of-the-clock.test.ts ./packages/tui/test/a-category-tab-fades-in-under-the-pointer.test.ts	feat(tui): fade the settings category band under the pointer[m
+[32m+[m[32m60a74b32f	diff	45		proof(ui-polish): rebuild the page from real-terminal captures[m
+[32m+[m[32m82630ee6b	test	130	./packages/coding-agent/test/modes/components/a-pointer-band-fades-on-a-hand-painted-list.test.ts	feat(tui): the ask dialog cross-fades its option band[m
+[32m+[m[32mb30f10d2f	test	130	./packages/coding-agent/test/modes/components/a-pointer-band-fades-on-a-hand-painted-list.test.ts ./packages/coding-agent/test/modes/controllers/a-dismissed-picker-lets-go-of-the-clock.test.ts	feat(tui): the copy picker fades its band and every picker gives the clock back[m
+[32m+[m[32m05bd9d643	test	170	./packages/coding-agent/test/modes/components/a-pointer-band-fades-on-a-hand-painted-list.test.ts ./packages/coding-agent/test/modes/components/the-extensions-dashboard-fades-both-its-bands.test.ts ./packages/coding-agent/test/modes/components/the-model-cards-fade-every-band-they-own.test.ts ./packages/coding-agent/test/modes/controllers/a-closed-settings-card-lets-go-of-the-clock.test.ts	polish(ui): fade the pointer band on every remaining hand-painted surface[m
+[32m+[m[32m929eabeac	test	130	./packages/coding-agent/test/a-band-is-mixed-out-of-the-ground-the-terminal-is-showing.test.ts	fix(tui): mix a band out of the ground the terminal is showing[m
+[32m+[m[32m3db717670	diff	45		proof(ui-polish): record both arms of the card-band scene and page it[m
+[32m+[m[32m10b6c2dfb	test	130	./packages/coding-agent/test/a-context-gauge-travels-to-its-new-reading.test.ts	feat(tui): walk the context gauge to its new reading[m
+[32m+[m[32me7aaaea3c	test	130	./packages/coding-agent/test/no-message-role-reaches-the-provider-uncounted.test.ts	fix(agent): count file mentions and python cells in token estimates[m
+[32m+[m[32m3508daa38	diff	45		proof(ui-polish): context gauge, both arms[m
+[32m+[m[32m2be636905	test	130	./packages/tui/test/a-scrolled-viewport-travels-through-the-rows-between.test.ts	feat(tui): a scrolled viewport travels through the rows between[m
+[32m+[m[32m47d777c8c	diff	45		proof(scene): plan-review scroll scene, with a seeded resumable session[m
+[32m+[m[32mb8d9af818	test	130	./packages/ai/test/thinking-loop.test.ts	fix(ai): the loop guard watches every model, not just Gemini and DeepSeek[m
+[32m+[m[32m41840037f	diff	45		fix(tui): stop the 60Hz render pump that flickers the screen during a turn[m
+[32m+[m[32m247ae5792	test	130	./packages/tui/test/component-render.test.ts ./packages/tui/test/scroll-isolation-history.test.ts	Revert "fix(tui): keep the transcript when a virtualized root compacts"[m
+[32m+[m[32me244a33d7	test	170	./packages/coding-agent/test/modes/components/a-virtualized-transcript-never-loses-history-to-a-rebuild.test.ts ./packages/tui/test/component-render.test.ts ./packages/tui/test/scroll-isolation-history.test.ts	Reapply "fix(tui): keep the transcript when a virtualized root compacts"[m
+[32m+[m[32m8553d06d4	test	130	./packages/coding-agent/test/modes/components/a-transcript-under-a-header-does-not-rebuild-the-screen.test.ts ./packages/coding-agent/test/modes/components/a-virtualized-transcript-never-loses-history-to-a-rebuild.test.ts	fix(tui): slide the commit prefix at the drop site, not at row zero[m
+[32m+[m[32m67a2d7098	test	130	./packages/tui/test/the-motion-clock-always-stops.test.ts	fix(tui): an animation that cannot settle never registers on the clock[m
+[32m+[m[32m9beabe14a	driver	60	scripts/demos/transcript-blanking-repro.ts	proof(ui-polish): drop the gauge-travel section, and give the blanking driver a header[m
+[32m+[m[32m23be42251	test	130	./packages/simulations/src/paint-sim/a-streaming-answer-never-repaints-the-whole-screen.test.ts	test(simulations): a paint sim that measures what the screen costs per frame[m
+[32m+[m[32m030960d65	test	130	./packages/simulations/src/paint-sim/a-streaming-answer-never-repaints-the-whole-screen.test.ts	fix(tui): a frame the viewport squeezed is not a frame that diverged[m
+[32m+[m[32m74195a042	test	130	./packages/tui/test/chrome-taller-than-the-viewport-never-reaches-native-scrollback.test.ts	fix(tui): chrome is painted, never committed[m
+[32m+[m[32m6582723f9	diff	45		proof(ui-polish): the capture set the page is built from[m
+[32m+[m[32m92a895e36	diff	45		proof(tooling): the vhs capture wrapper and the flicker probes[m
+[1mdiff --git a/proof/docker/commit-results.sh b/proof/docker/commit-results.sh[m
+[1mnew file mode 100755[m
+[1mindex 000000000..098ff1719[m
+[1m--- /dev/null[m
+[1m+++ b/proof/docker/commit-results.sh[m
+[36m@@ -0,0 +1,88 @@[m
+[32m+[m[32m#!/usr/bin/env bash[m
+[32m+[m[32m# The numbers behind the videos, in text, headless.[m
+[32m+[m[32m#[m
+[32m+[m[32m#   proof/docker/commit-results.sh [hash ...][m
+[32m+[m[32m#[m
+[32m+[m[32m# Runs each manifest row's command against both trees with no X display and no[m

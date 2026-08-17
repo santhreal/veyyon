@@ -33,6 +33,36 @@ def need(rel: str) -> str:
     return rel
 
 
+def capture_fps(*globs: str, skip: str = "") -> str:
+    """The frame rates ffmpeg actually recorded, read back off the files.
+
+    Typed into the page this drifted: the note claimed 60fps for everything
+    while a commit arm was recorded at 15 and the long session at 20, and a
+    reader has no way to tell a wrong number from a right one. Probing the mp4s
+    at build time means the sentence cannot disagree with the videos under it.
+    """
+    rates: set[int] = set()
+    for pattern in globs:
+        for path in sorted(ROOT.glob(pattern)):
+            if skip and path.name.startswith(skip):
+                continue
+            probe = subprocess.run(
+                ["ffprobe", "-v", "error", "-select_streams", "v",
+                 "-show_entries", "stream=r_frame_rate", "-of", "csv=p=0", str(path)],
+                capture_output=True, text=True,
+            )
+            num, _, den = probe.stdout.strip().partition("/")
+            if not num.isdigit():
+                continue
+            rates.add(round(int(num) / int(den or 1)))
+    if not rates:
+        return "an unknown rate"
+    ordered = sorted(rates)
+    if len(ordered) == 1:
+        return f"{ordered[0]}fps"
+    return ", ".join(f"{r}fps" for r in ordered[:-1]) + f" and {ordered[-1]}fps"
+
+
 CSS = """
 :root { color-scheme: dark; }
 * { box-sizing: border-box; }
@@ -258,6 +288,20 @@ def commit_pair(hash_: str, cap_before: str, cap_after: str) -> str:
     )
 
 
+def manifest_rows() -> list[tuple[str, str, str, str]]:
+    """(hash, kind, payload, subject) per recorded commit, out of commit-videos.tsv."""
+    rows = []
+    for line in MANIFEST.read_text().splitlines():
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split("\t")
+        if len(parts) < 5:
+            continue
+        hash_, kind, _hold, payload, subject = parts[:5]
+        rows.append((hash_, kind, payload, subject))
+    return rows
+
+
 def commit_video_sections() -> str:
     """One block per commit on the branch: what it was, and it running.
 
@@ -273,15 +317,7 @@ def commit_video_sections() -> str:
               nothing a terminal can execute -- captures, a page rebuild, a
               changelog ordering, a merge.
     """
-    rows = []
-    for line in MANIFEST.read_text().splitlines():
-        if not line or line.startswith("#"):
-            continue
-        parts = line.split("\t")
-        if len(parts) < 5:
-            continue
-        hash_, kind, _hold, payload, subject = parts[:5]
-        rows.append((hash_, kind, payload, subject))
+    rows = manifest_rows()
 
     blocks = []
     for hash_, kind, payload, subject in rows:
@@ -353,14 +389,24 @@ def escape(text: str) -> str:
 
 
 def commit_table() -> str:
+    """Every commit on the branch, linked to its recording when it has one.
+
+    A commit that carries only this page and the videos themselves cannot be
+    filmed: a recording of the commit that contains the recording is circular.
+    Those rows stay in the table, unlinked and named, so the table is the whole
+    branch rather than the part that was convenient to film.
+    """
     log = subprocess.run(
         ["git", "log", "--oneline", "--no-decorate", "main..HEAD"],
         cwd=REPO, capture_output=True, text=True, check=True,
     ).stdout.strip().split("\n")
+    filmed = {hash_ for hash_, _kind, _payload, _subject in manifest_rows()}
     rows = []
     for line in log:
         sha, _, subject = line.partition(" ")
-        rows.append(f'<tr><td class="sha"><a href="#c-{sha}">{sha}</a></td><td>{subject}</td></tr>')
+        cell = f'<a href="#c-{sha}">{sha}</a>' if sha in filmed else sha
+        note = "" if sha in filmed else " <em>— carries this page and its videos; filming it means filming the film</em>"
+        rows.append(f'<tr><td class="sha">{cell}</td><td>{escape(subject)}{note}</td></tr>')
     return "\n".join(rows)
 
 
@@ -379,11 +425,15 @@ CLI. No component was drawn into a picture for this page, and nothing here is a 
 <div class="note">
 <p><strong>Where the recording happens.</strong> <code>proof/docker/record-x11.sh &lt;scene&gt;</code> runs
 <code>veyyon-proof-recorder</code> on a private docker network. Inside it, <code>Xvfb</code> owns display
-<code>:99</code>, <code>xterm</code> is the terminal, <code>xdotool</code> moves a real pointer and presses real
-keys, and <code>ffmpeg</code> records the display continuously at 60fps. The machine's own
-<code>~/.veyyon</code> is not in the container's mount table — <code>HOME</code> is a tmpfs seeded from
-<code>proof/docker/home-seed</code> — so nothing here touches a live session, and the operator's own display is
-never opened.</p>
+<code>:99</code>, <code>kitty</code> is the terminal — a real emulator that reports SGR 1006 mouse —
+<code>xdotool</code> moves a real X pointer and presses real keys through XTEST, and <code>ffmpeg</code> grabs
+the display continuously: {capture_fps("captures/x11/*.mp4", "captures/x11/before/*.mp4", skip="long-session")} for the scenes,
+{capture_fps("captures/x11/long-session-*.mp4")} for the long-session runs and
+{capture_fps("captures/x11/commits/*.mp4")} for a commit arm, each rate read back off the files themselves. The
+machine's own <code>~/.veyyon</code> is not in the container's mount table — <code>HOME</code> is a tmpfs seeded
+from <code>proof/docker/home-seed</code> — so nothing here touches a live session, and the operator's own display
+is never opened. A pointer is only moved where a scene is about a pointer; the commit arms below run a command
+and need neither pointer nor keys.</p>
 <p><strong>Which model answers.</strong> A <code>llama.cpp</code> server holding
 <code>qwen2.5-1.5b-instruct-q4_k_m</code>, reachable only as the container-network provider <code>local</code>.
 No provider account is reachable from the container, so a streamed answer in these recordings is that model on
@@ -393,14 +443,15 @@ source file the branch changed at its <code>main</code> content (<code>git show 
 the same scene into <code>proof/captures/x11/before/</code>, then restores from an in-memory copy and proves the
 restore by sha256. No git mutation command runs and the working tree ends byte-identical.</p>
 <p><strong>Where the filmstrips come from.</strong> <code>proof/filmstrip.py</code> decodes consecutive frames out
-of the recording. An animation of 220ms is thirteen frames at 60fps and a still taken from inside the scene
-always lands after it, so the frames have to be cut from the video afterwards.</p>
+of the recording. 220ms of animation is thirteen frames on the app's own 60Hz clock, and a still taken from
+inside the scene always lands after the animation has settled, so the frames have to be cut from the video
+afterwards rather than screenshotted mid-motion.</p>
 </div>
 
 {body}
 
 <h2>Every commit on the branch, on camera</h2>
-<p>{ahead} commits, and a recording of each one below. Every video is a real terminal in the recording
+<p>{len(manifest_rows())} of the {ahead} commits are below, one recording each. Every video is a real terminal in the recording
 container: <code>proof/docker/record-commit-arm.sh</code> extracts the commit's tree and its parent's tree with
 <code>git archive</code>, mounts the same <code>node_modules</code> and the same native addon into both, and runs
 the same command in each. A test the commit ADDS is copied into the parent tree first, so the test is

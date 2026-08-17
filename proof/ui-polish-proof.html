@@ -32,18 +32,22 @@ td.sha { font-family: ui-monospace, monospace; color: #e6c08a; white-space: nowr
 </style></head>
 <body>
 <h1>feat/ui-polish — recorded proof</h1>
-<p class="lede">Branch <code>feat/ui-polish</code> at <code>e414827fc</code>, 78 commits ahead of
+<p class="lede">Branch <code>feat/ui-polish</code> at <code>b88806395</code>, 79 commits ahead of
 <code>main</code> (<code>5ce31890e</code>). Every figure below is a frame of a real terminal running the shipped
 CLI. No component was drawn into a picture for this page, and nothing here is a tmux capture.</p>
 
 <div class="note">
 <p><strong>Where the recording happens.</strong> <code>proof/docker/record-x11.sh &lt;scene&gt;</code> runs
 <code>veyyon-proof-recorder</code> on a private docker network. Inside it, <code>Xvfb</code> owns display
-<code>:99</code>, <code>xterm</code> is the terminal, <code>xdotool</code> moves a real pointer and presses real
-keys, and <code>ffmpeg</code> records the display continuously at 60fps. The machine's own
-<code>~/.veyyon</code> is not in the container's mount table — <code>HOME</code> is a tmpfs seeded from
-<code>proof/docker/home-seed</code> — so nothing here touches a live session, and the operator's own display is
-never opened.</p>
+<code>:99</code>, <code>kitty</code> is the terminal — a real emulator that reports SGR 1006 mouse —
+<code>xdotool</code> moves a real X pointer and presses real keys through XTEST, and <code>ffmpeg</code> grabs
+the display continuously: 30fps and 60fps for the scenes,
+20fps for the long-session runs and
+15fps for a commit arm, each rate read back off the files themselves. The
+machine's own <code>~/.veyyon</code> is not in the container's mount table — <code>HOME</code> is a tmpfs seeded
+from <code>proof/docker/home-seed</code> — so nothing here touches a live session, and the operator's own display
+is never opened. A pointer is only moved where a scene is about a pointer; the commit arms below run a command
+and need neither pointer nor keys.</p>
 <p><strong>Which model answers.</strong> A <code>llama.cpp</code> server holding
 <code>qwen2.5-1.5b-instruct-q4_k_m</code>, reachable only as the container-network provider <code>local</code>.
 No provider account is reachable from the container, so a streamed answer in these recordings is that model on
@@ -53,8 +57,9 @@ source file the branch changed at its <code>main</code> content (<code>git show 
 the same scene into <code>proof/captures/x11/before/</code>, then restores from an in-memory copy and proves the
 restore by sha256. No git mutation command runs and the working tree ends byte-identical.</p>
 <p><strong>Where the filmstrips come from.</strong> <code>proof/filmstrip.py</code> decodes consecutive frames out
-of the recording. An animation of 220ms is thirteen frames at 60fps and a still taken from inside the scene
-always lands after it, so the frames have to be cut from the video afterwards.</p>
+of the recording. 220ms of animation is thirteen frames on the app's own 60Hz clock, and a still taken from
+inside the scene always lands after the animation has settled, so the frames have to be cut from the video
+afterwards rather than screenshotted mid-motion.</p>
 </div>
 
 <h2>One animation clock, and a card that unfolds onto it</h2>
@@ -135,7 +140,7 @@ always lands after it, so the frames have to be cut from the video afterwards.</
 <p>The resumed arm carries one cost the control does not, and it is model-side rather than renderer-side: a history that large does not fit a 65k window, so the app compacts before it can ask anything, and says so on screen while it does. That is the 1.5B summarizing on CPU, not a frame being repainted.</p>
 
 <h2>Every commit on the branch, on camera</h2>
-<p>78 commits, and a recording of each one below. Every video is a real terminal in the recording
+<p>79 of the 79 commits are below, one recording each. Every video is a real terminal in the recording
 container: <code>proof/docker/record-commit-arm.sh</code> extracts the commit's tree and its parent's tree with
 <code>git archive</code>, mounts the same <code>node_modules</code> and the same native addon into both, and runs
 the same command in each. A test the commit ADDS is copied into the parent tree first, so the test is
@@ -150,6 +155,7 @@ a video is the text of the same command run again headlessly by
 rather than writing lines to a pipe, and the video is the only place its output exists.</p>
 <table><thead><tr><th>commit</th><th>subject</th></tr></thead>
 <tbody>
+<tr><td class="sha"><a href="#c-b88806395">b88806395</a></td><td>proof(ui-polish): 140 videos, one arm per commit, and the page that plays them</td></tr>
 <tr><td class="sha"><a href="#c-e414827fc">e414827fc</a></td><td>proof(tooling): record every commit on this branch, both arms, in a real terminal</td></tr>
 <tr><td class="sha"><a href="#c-92a895e36">92a895e36</a></td><td>proof(tooling): the vhs capture wrapper and the flicker probes</td></tr>
 <tr><td class="sha"><a href="#c-6582723f9">6582723f9</a></td><td>proof(ui-polish): the capture set the page is built from</td></tr>
@@ -230,7 +236,7 @@ rather than writing lines to a pipe, and the video is the only place its output 
 <tr><td class="sha"><a href="#c-766ee5a26">766ee5a26</a></td><td>fix(coding-agent): duplicate of main's compaction-tier and bundle-decoupling fixes</td></tr>
 </tbody></table>
 
-<p><strong>51</strong> of the 59 commits that carry tests fail against their parent's source and pass against their own — the test byte-identical in both trees, so nothing but the commit moved. On 1 more the parent tree cannot load the test at all, which is a harder differential than a failing assertion rather than a softer one. <strong>7</strong> pass on both arms, which is what a commit that only adds a test, or duplicates a fix already on main, is supposed to do. The rest of the branch is 4 renderer rows and 14 rows that ship nothing a terminal can execute.</p>
+<p><strong>51</strong> of the 59 commits that carry tests fail against their parent's source and pass against their own — the test byte-identical in both trees, so nothing but the commit moved. On 1 more the parent tree cannot load the test at all, which is a harder differential than a failing assertion rather than a softer one. <strong>7</strong> pass on both arms, which is what a commit that only adds a test, or duplicates a fix already on main, is supposed to do. The rest of the branch is 4 renderer rows and 16 rows that ship nothing a terminal can execute.</p>
 <h3 id="c-766ee5a26"><code>766ee5a26</code> — fix(coding-agent): duplicate of main's compaction-tier and bundle-decoupling fixes</h3>
 <p class="lede">Same terminal, same command, two source trees: its own tests, <code>packages/coding-agent/test/descriptor-placement-model-switch.test.ts packages/coding-agent/test/model-registry.test.ts</code>.</p>
 <div class="pair"><figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/commits/766ee5a26-before.mp4#t=1" type="video/mp4"></video><figcaption><strong>parent</strong> — 82 pass · 0 fail · 3600 expect() calls · Ran 82 tests across 2 files. [3.65s]</figcaption></figure><figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/commits/766ee5a26-after.mp4#t=1" type="video/mp4"></video><figcaption><strong>this commit</strong> — 82 pass · 0 fail · 3600 expect() calls · Ran 82 tests across 2 files. [3.70s]</figcaption></figure></div>
@@ -462,4 +468,10 @@ rather than writing lines to a pipe, and the video is the only place its output 
 <h3 id="c-92a895e36"><code>92a895e36</code> — proof(tooling): the vhs capture wrapper and the flicker probes</h3>
 <p class="lede">Ships nothing a terminal can run: the video is the diff.</p>
 <figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/commits/92a895e36-after.mp4#t=1" type="video/mp4"></video><figcaption>the change itself, paged in the terminal</figcaption></figure>
+<h3 id="c-e414827fc"><code>e414827fc</code> — proof(tooling): record every commit on this branch, both arms, in a real terminal</h3>
+<p class="lede">Ships nothing a terminal can run: the video is the diff.</p>
+<figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/commits/e414827fc-after.mp4#t=1" type="video/mp4"></video><figcaption>the change itself, paged in the terminal</figcaption></figure>
+<h3 id="c-b88806395"><code>b88806395</code> — proof(ui-polish): 140 videos, one arm per commit, and the page that plays them</h3>
+<p class="lede">Ships nothing a terminal can run: the video is the diff.</p>
+<figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/commits/b88806395-after.mp4#t=1" type="video/mp4"></video><figcaption>the change itself, paged in the terminal</figcaption></figure>
 </body></html>
