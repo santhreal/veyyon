@@ -433,7 +433,11 @@ describe("editToolRenderer", () => {
 		);
 
 		const lines = component.render(48).map(line => Bun.stripANSI(line));
-		expect(lines.every(line => visibleWidth(line) === 48)).toBe(true);
+		// One rectangle, and it never reaches past the terminal: the block is as wide as
+		// its own widest row rather than as wide as the screen.
+		const widths = new Set(lines.map(visibleWidth));
+		expect(widths.size).toBe(1);
+		expect([...widths][0]).toBeLessThanOrEqual(48);
 		expect(lines[1]).toStartWith("│+1│");
 		expect(lines[1]).not.toStartWith("│ +1│");
 	});
