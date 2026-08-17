@@ -217,9 +217,12 @@ describe("a caller with no depth keeps today's behavior", () => {
 	it("treats an empty map as no map at all", () => {
 		const settings = Settings.isolated({ "subagent.modelByDepth": {} });
 
-		expect(resolveSubagentModel({ settings, agentName: AGENT, taskDepth: 1, activeModelPattern: SESSION })).toEqual(
-			{ patterns: [SESSION], source: "inherit", depth: undefined, unresolved: undefined },
-		);
+		expect(resolveSubagentModel({ settings, agentName: AGENT, taskDepth: 1, activeModelPattern: SESSION })).toEqual({
+			patterns: [SESSION],
+			source: "inherit",
+			depth: undefined,
+			unresolved: undefined,
+		});
 	});
 });
 
@@ -239,17 +242,18 @@ describe("the source label", () => {
 
 describe("the settings domain declaration", () => {
 	/**
-	 * The map is declared where every other `subagent.*` setting is declared,
-	 * with a UI row in the Models section of the Subagents tab. Pinning the
-	 * declaration itself keeps the rest of the suite from passing against a
+	 * The map is declared where every other `subagent.*` setting is declared, in the one Subagents
+	 * section that edits what subagents run. A separate "Models" group came before it, and splitting
+	 * the model rows across two sections is how a chain came to be edited on one screen and read on
+	 * another. Pinning the declaration itself keeps the rest of the suite from passing against a
 	 * schema that quietly lost the key.
 	 */
-	it("is a record in the Models group of the Subagents tab, defaulting to no rows", () => {
+	it("is a record in the Subagents group of the Subagents tab, defaulting to no rows", () => {
 		expect(getType("subagent.modelByDepth")).toBe("record");
 		expect(getDefault("subagent.modelByDepth")).toEqual({});
 		const ui = getUi("subagent.modelByDepth");
 		expect(ui?.tab).toBe("subagents");
-		expect(ui?.group).toBe("Models");
+		expect(ui?.group).toBe("Subagents");
 		expect(ui?.label).toBe("Models by Depth");
 	});
 
@@ -263,6 +267,6 @@ describe("the settings domain declaration", () => {
 		const def = getSettingsForTab("subagents").find(entry => entry.path === "subagent.modelByDepth");
 
 		expect(def?.type).toBe("subagentModelByDepth");
-		expect(def?.group).toBe("Models");
+		expect(def?.group).toBe("Subagents");
 	});
 });

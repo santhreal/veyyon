@@ -98,18 +98,38 @@ describe("model chain encoding", () => {
 	});
 
 	/**
-	 * A retired per-agent row cannot truncate the chain. It used to replace the
-	 * blanket list wholesale, so a leftover single-model row on an old config would
-	 * quietly strip every fallback the operator configured — the exact failure this
-	 * suite exists to catch, arriving through a field nothing is supposed to read.
+	 * A per-agent lane row is the most specific statement anyone can make — it
+	 * names the agent — so a lane that names a model REPLACES the blanket chain
+	 * and reports `source: "lane"`, which is what the Agents column badges. The
+	 * field was retired once for outranking the blanket setting from a screen
+	 * that did not show it, and reinstated when every page that shows a lane's
+	 * model became the page that edits it. This asserts the layer that decided is
+	 * named, so a silent replacement can never come back.
 	 */
-	it("ignores a retired per-agent model row and keeps the blanket chain", () => {
-		// The retired shape is no longer expressible as a literal, and an old config still holds it.
-		const staleRow: SubagentAgentSettings = {};
-		Object.assign(staleRow, { model: "openai/gpt-5" });
+	it("lets a per-agent lane row outrank the blanket chain, and names the layer that decided", () => {
+		const lane: SubagentAgentSettings = { model: ["openai/gpt-5", "openai/gpt-5-mini"] };
 		const settings = Settings.isolated({
 			"subagent.model": "anthropic/opus,anthropic/sonnet",
-			"subagent.agents": { reviewer: staleRow },
+			"subagent.agents": { reviewer: lane },
+		});
+		const resolved = resolveSubagentModel({ settings, agentName: "reviewer", agentModel: undefined });
+		expect(resolved.source).toBe("lane");
+		// The lane keeps its own whole chain, in order: truncating here would strip
+		// the fallbacks the caller configured, just as truncating the blanket did.
+		expect(resolved.patterns).toEqual(["openai/gpt-5", "openai/gpt-5-mini"]);
+	});
+
+	/**
+	 * The failure this suite exists to catch: a leftover row quietly stripping
+	 * every fallback. A row that names NO model must not touch the chain, so a
+	 * row carrying only `enabled` — or only the superseded `maxNestedSpawnDepth`
+	 * an older release wrote — resolves exactly as if the table were empty.
+	 */
+	it("keeps the blanket chain whole under a per-agent row that names no model", () => {
+		const row: SubagentAgentSettings = { enabled: true, maxNestedSpawnDepth: 0 };
+		const settings = Settings.isolated({
+			"subagent.model": "anthropic/opus,anthropic/sonnet",
+			"subagent.agents": { reviewer: row },
 		});
 		const resolved = resolveSubagentModel({ settings, agentName: "reviewer", agentModel: undefined });
 		expect(resolved.source).toBe("blanket");
