@@ -91,7 +91,6 @@ import statementDeliveryVerificationSource from "./statements/delivery-contract/
 };
 import statementDeliveryYielding from "./statements/delivery-contract/yielding.md" with { type: "text" };
 import statementExecutionCleanup from "./statements/execution-workflow/cleanup.md" with { type: "text" };
-import statementExecutionCommitOften from "./statements/execution-workflow/commit-often.md" with { type: "text" };
 import statementExecutionDecompose from "./statements/execution-workflow/decompose.md" with { type: "text" };
 import statementExecutionDecomposeTodoBatching from "./statements/execution-workflow/decompose-todo-batching.md" with {
 	type: "text",
@@ -862,14 +861,6 @@ export const PROMPT_STATEMENTS = [
 		text: statementExecutionImplementNoDestructive,
 		purpose:
 			"forbids destructive commands outright when there is no way to ask; the else arm of the same block, so it is `not` rather than a second variable",
-	},
-	{
-		id: "execution-workflow/commit-often",
-		section: "execution-workflow",
-		condition: contains("tools", "bash"),
-		text: statementExecutionCommitOften,
-		purpose:
-			"tells the agent to commit its own finished work frequently without asking, and separates that from the destructive git commands that do need permission; needs bash because that is what runs git",
 	},
 	{
 		id: "execution-workflow/verify",

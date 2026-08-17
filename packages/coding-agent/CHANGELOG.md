@@ -27,6 +27,7 @@
 ### Removed
 
 - `PluginSelectorComponent` is deleted. Marketplace plugins were removed earlier and its one entry point has been a stub that says so ever since, leaving the component with no callers, no tests, and a DynamicBorder chrome nobody can reach.
+- The system prompt no longer tells the agent to commit often. That rule was arbitrary and could contradict a project's own commit policy; commit cadence now comes from the operator or the project's `AGENTS.md`.
 
 ### Fixed
 
