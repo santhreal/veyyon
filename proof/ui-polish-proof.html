@@ -48,7 +48,7 @@ details.clip summary:hover { color: #d7dae0; }
 </style></head>
 <body>
 <h1>feat/ui-polish — recorded proof</h1>
-<p class="lede">Branch <code>feat/ui-polish</code> at <code>22c746189</code>, 120 commits ahead of
+<p class="lede">Branch <code>feat/ui-polish</code> at <code>6130201c5</code>, 122 commits ahead of
 <code>main</code> (<code>5ce31890e</code>). Every figure below is a frame of a real terminal running the shipped
 CLI. No component was drawn into a picture for this page, and nothing here is a tmux capture.</p>
 
@@ -177,7 +177,7 @@ afterwards rather than screenshotted mid-motion.</p>
 <p>The resumed arm carries one cost the control does not, and it is model-side rather than renderer-side: a history that large does not fit a 65k window, so the app compacts before it can ask anything, and says so on screen while it does. That is the 1.5B summarizing on CPU, not a frame being repainted.</p>
 
 <h2>Every commit on the branch, on camera</h2>
-<p>110 of the 120 commits are below, one recording each. Every video is a real terminal in the recording
+<p>110 of the 122 commits are below, one recording each. Every video is a real terminal in the recording
 container: <code>proof/docker/record-commit-arm.sh</code> extracts the commit's tree and its parent's tree with
 <code>git archive</code>, mounts the same <code>node_modules</code> and the same native addon into both, and runs
 the same command in each. A test the commit ADDS is copied into the parent tree first, so the test is
@@ -192,6 +192,8 @@ a video is the text of the same command run again headlessly by
 rather than writing lines to a pipe, and the video is the only place its output exists.</p>
 <table><thead><tr><th>commit</th><th>subject</th></tr></thead>
 <tbody>
+<tr><td class="sha">6130201c5</td><td>proof(page): 42 commits read as text, 197 clips run 23 minutes <em>— carries this page and its videos; filming it means filming the film</em></td></tr>
+<tr><td class="sha">93c03dcab</td><td>proof(tooling): dead space is trimmed at the source and a blank clip cannot ship <em>— carries this page and its videos; filming it means filming the film</em></td></tr>
 <tr><td class="sha">22c746189</td><td>proof(page): six more commits carry their recordings <em>— carries this page and its videos; filming it means filming the film</em></td></tr>
 <tr><td class="sha"><a href="#c-3fb49b0cc">3fb49b0cc</a></td><td>chore(repo): the branch pays its four hygiene gates</td></tr>
 <tr><td class="sha"><a href="#c-ca919629b">ca919629b</a></td><td>test(edit): the diff gutter hangs on the rail, and lines up</td></tr>
