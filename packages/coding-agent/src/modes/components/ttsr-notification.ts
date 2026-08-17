@@ -1,35 +1,30 @@
-import { Box, Container, Spacer, Text } from "@veyyon/tui";
 import type { Rule } from "../../capability/rule";
 import { withIcon } from "../../modes/theme/icon-label";
 import { theme } from "../../modes/theme/theme";
 import { actionKeyHint } from "../utils/key-hint";
+import { type TranscriptNote, TranscriptNoteComponent } from "./transcript-note";
 
 /** Collapsed view shows at most this many rules before eliding the rest. */
 const MAX_COLLAPSED_RULES = 4;
 
 /**
- * Component that renders a TTSR (Time Traveling Stream Rules) notification.
- * Shows when a rule violation is detected and the stream is being rewound.
- * One block can carry several rules: a single event may match multiple rules,
- * and consecutive notifications merge into the previous block via
+ * A TTSR (Time Traveling Stream Rules) notification: a rule matched and the stream is
+ * being rewound. One block can carry several rules, since a single event may match
+ * more than one and consecutive notifications merge into the previous block through
  * {@link addRules} while it is still the live transcript tail.
+ *
+ * It is a {@link TranscriptNoteComponent}, so the rule names and descriptions can use
+ * colour: the block used to invert its whole width to get a yellow background, which
+ * spent the foreground and left bold and italic as the only styling available inside
+ * it.
  */
-export class TtsrNotificationComponent extends Container {
-	#box: Box;
+export class TtsrNotificationComponent extends TranscriptNoteComponent {
 	#expanded = false;
 	#rules: Rule[];
 
 	constructor(rules: Rule[]) {
-		super();
+		super({ tone: "warning", headline: "", rows: [] });
 		this.#rules = [...rules];
-
-		this.addChild(new Spacer(1));
-
-		// Use inverse warning color for yellow background effect
-		this.#box = new Box(1, 1, t => theme.inverse(theme.fg("warning", t)));
-		this.#box.setIgnoreTight(true);
-		this.addChild(this.#box);
-
 		this.#rebuild();
 	}
 
@@ -67,22 +62,13 @@ export class TtsrNotificationComponent extends Container {
 	}
 
 	#rebuild(): void {
-		this.#box.clear();
-		// fg colors conflict with inverse, so styling inside the block is limited
-		// to bold (names) and italic (descriptions).
-		if (this.#rules.length === 1) {
-			this.#rebuildSingle(this.#rules[0]!);
-		} else {
-			this.#rebuildMulti();
-		}
+		this.setNote(this.#rules.length === 1 ? this.#single(this.#rules[0]!) : this.#multi());
 	}
 
-	#rebuildSingle(rule: Rule): void {
-		const header = withIcon(theme.icon.warning, `Injecting rule: ${theme.bold(rule.name)}  ${theme.icon.rewind}`);
-		this.#box.addChild(new Text(header, 0, 0));
-
+	#single(rule: Rule): TranscriptNote {
+		const headline = withIcon(theme.icon.warning, `Injecting rule: ${rule.name}  ${theme.icon.rewind}`);
 		const desc = (rule.description || rule.content)?.trim();
-		if (!desc) return;
+		if (!desc) return { tone: "warning", headline, rows: [] };
 
 		let displayText = desc;
 		let truncated = false;
@@ -94,24 +80,20 @@ export class TtsrNotificationComponent extends Container {
 			}
 		}
 
-		this.#box.addChild(new Spacer(1));
-		this.#box.addChild(new Text(theme.italic(displayText), 0, 0));
+		const rows = [theme.italic(theme.fg("text", displayText))];
 		const hint = this.#expandHint();
-		if (truncated && hint) {
-			this.#box.addChild(new Text(theme.italic(` (${hint} to expand)`), 0, 0));
-		}
+		if (truncated && hint) rows.push(theme.italic(theme.fg("muted", `(${hint} to expand)`)));
+		return { tone: "warning", headline, rows };
 	}
 
-	#rebuildMulti(): void {
-		const header = withIcon(theme.icon.warning, `Injecting ${this.#rules.length} rules:  ${theme.icon.rewind}`);
-		this.#box.addChild(new Text(header, 0, 0));
-		this.#box.addChild(new Spacer(1));
-
+	#multi(): TranscriptNote {
+		const headline = withIcon(theme.icon.warning, `Injecting ${this.#rules.length} rules:  ${theme.icon.rewind}`);
 		const visible = this.#expanded ? this.#rules : this.#rules.slice(0, MAX_COLLAPSED_RULES);
+		const rows: string[] = [];
 		let elidedDetail = false;
 		for (const rule of visible) {
 			const desc = (rule.description || rule.content)?.trim();
-			let line = theme.bold(rule.name);
+			let line = theme.bold(theme.fg("text", rule.name));
 			if (desc) {
 				let displayText = desc;
 				if (!this.#expanded) {
@@ -122,19 +104,20 @@ export class TtsrNotificationComponent extends Container {
 						elidedDetail = true;
 					}
 				}
-				line += `: ${theme.italic(displayText)}`;
+				line += `${theme.fg("muted", ":")} ${theme.italic(theme.fg("text", displayText))}`;
 			}
-			this.#box.addChild(new Text(line, 0, 0));
+			rows.push(line);
 		}
 
 		const hidden = this.#rules.length - visible.length;
 		const hint = this.#expandHint();
-		// The COUNT is stated whether or not there is a key to name: a block that
-		// hides four rules silently reads as a block with one rule in it.
+		// The COUNT is stated whether or not there is a key to name: a block that hides
+		// four rules silently reads as a block with one rule in it.
 		if (hidden > 0) {
-			this.#box.addChild(new Text(theme.italic(`… +${hidden} more${hint ? ` (${hint} to expand)` : ""}`), 0, 0));
+			rows.push(theme.italic(theme.fg("muted", `… +${hidden} more${hint ? ` (${hint} to expand)` : ""}`)));
 		} else if (elidedDetail && hint) {
-			this.#box.addChild(new Text(theme.italic(` (${hint} to expand)`), 0, 0));
+			rows.push(theme.italic(theme.fg("muted", `(${hint} to expand)`)));
 		}
+		return { tone: "warning", headline, rows };
 	}
 }
