@@ -92,16 +92,28 @@ describe("task subagent effort inheritance", () => {
 	});
 
 	/**
-	 * A per-agent `thinkingLevel` row is retired: model and effort have one owner
-	 * (the blanket setting plus the agent file's frontmatter), and this row is a
-	 * value an operator can still see in their config that governs nothing. It must
-	 * not resurface as an override here, and the parent's effort must still cross
-	 * the boundary as the fallback layer.
+	 * A per-agent `thinkingLevel` row is the highest-precedence effort layer, so it
+	 * crosses the boundary as the child's own effort instead of the parent's. The
+	 * parent's effort still travels beside it, because the executor needs a fallback
+	 * for the case where the resolved level names nothing.
 	 */
-	it("ignores a retired per-agent effort row and still inherits the parent effort", async () => {
+	it("sends a per-agent effort row as the child's own effort, and still carries the parent's", async () => {
+		const options = await dispatch({ task: { thinkingLevel: ThinkingLevel.Low } });
+
+		expect(options.thinkingLevel).toBe(ThinkingLevel.Low);
+		expect(options.parentThinkingLevel).toBe(ThinkingLevel.High);
+	});
+
+	/**
+	 * `auto` is a level an operator can choose, not an absent row: it means the model
+	 * routes its own effort. It must reach the executor as `auto` rather than as
+	 * `undefined`, since `undefined` is what makes the child inherit the parent, and
+	 * the two decisions are not the same one.
+	 */
+	it("keeps an explicit auto row distinct from no row at all", async () => {
 		const options = await dispatch({ task: { thinkingLevel: AUTO_THINKING } });
 
-		expect(options.thinkingLevel).toBeUndefined();
+		expect(options.thinkingLevel).toBe(AUTO_THINKING);
 		expect(options.parentThinkingLevel).toBe(ThinkingLevel.High);
 	});
 });
