@@ -74,19 +74,38 @@ const REGISTRIES: readonly (readonly [string, PromptRegistryView])[] = [
 	["hashline", hashlinePrompts],
 ];
 
-/** `<surface>:<id> — <claim>` for every grant in every prompt the product can send. */
-const offenders = (): string[] => {
+/** The two shapes the scan reads, so a synthetic corpus can exercise the same code the sweep runs. */
+interface ScannedStatement {
+	readonly id: string;
+	readonly text: string;
+}
+interface ScannedRegistry {
+	readonly ids: readonly string[];
+	require(id: string): { readonly text: string };
+}
+
+/** `<surface>:<id> — <claim>` for every grant in the given corpus, sorted. */
+const scan = (
+	statements: readonly ScannedStatement[],
+	registries: readonly (readonly [string, ScannedRegistry])[],
+): string[] => {
 	const found: string[] = [];
-	for (const statement of PROMPT_STATEMENTS) {
+	for (const statement of statements) {
 		for (const claim of grantsIn(statement.text)) found.push(`statement:${statement.id} — ${claim}`);
 	}
-	for (const [surface, registry] of REGISTRIES) {
+	for (const [surface, registry] of registries) {
 		for (const id of registry.ids) {
 			for (const claim of grantsIn(registry.require(id).text)) found.push(`${surface}:${id} — ${claim}`);
 		}
 	}
 	return found.sort();
 };
+
+/** Every grant in every prompt the product can send. */
+const offenders = (): string[] => scan(PROMPT_STATEMENTS, REGISTRIES);
+
+/** One sentence that carries exactly one grant, for the per-surface mechanism tests. */
+const GRANT_SENTENCE = "You do NOT need permission to commit your own work.";
 
 describe("the prompts the product ships", () => {
 	/**
@@ -116,6 +135,29 @@ describe("the prompts the product ships", () => {
 		expect(
 			PROMPT_STATEMENTS.filter(statement => statement.text.trim() === "").map(statement => statement.id),
 		).toEqual([]);
+	});
+
+	/**
+	 * The mechanism, pinned per surface. The gate above is over a corpus that is clean, so on its
+	 * own it stays green if the scan stops reading one of the two kinds of prompt entirely — which
+	 * is exactly the mutation that survived when this suite was first gated. These feed the same
+	 * scan a synthetic corpus carrying one known grant per surface, so deleting either loop turns
+	 * the suite red without waiting for a real prompt to reacquire the defect.
+	 */
+	it("report a grant in a statement row", () => {
+		expect(scan([{ id: "execution-workflow/example", text: GRANT_SENTENCE }], [])).toEqual([
+			"statement:execution-workflow/example — says permission is not needed",
+		]);
+	});
+
+	it("report a grant in a prompt registry row", () => {
+		const registry: ScannedRegistry = {
+			ids: ["subagent/example"],
+			require: () => ({ text: GRANT_SENTENCE }),
+		};
+		expect(scan([], [["example-package", registry]])).toEqual([
+			"example-package:subagent/example — says permission is not needed",
+		]);
 	});
 });
 
