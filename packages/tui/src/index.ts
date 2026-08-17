@@ -45,9 +45,9 @@ export * from "./motion-settle";
 export * from "./mouse";
 // Per-column background repainting, and the surface language built on it
 export * from "./paint-columns";
-export * from "./paint-surface";
 // Terminal interface and implementations
 export * from "./paint-ground";
+export * from "./paint-surface";
 // Mermaid diagram support
 // Input buffering for batch splitting
 export * from "./stdin-buffer";

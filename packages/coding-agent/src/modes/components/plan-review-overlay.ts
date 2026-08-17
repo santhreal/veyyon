@@ -30,7 +30,6 @@ import {
 	visibleWidth,
 } from "@veyyon/tui";
 import { getMarkdownTheme } from "../theme/markdown-theme";
-import { transitionsEnabled } from "../theme/shimmer";
 import { theme } from "../theme/theme";
 import {
 	matchesAppExternalEditor,

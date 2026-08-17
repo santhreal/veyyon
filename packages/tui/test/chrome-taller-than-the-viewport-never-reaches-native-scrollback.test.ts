@@ -119,6 +119,25 @@ interface Run {
 	erases: number;
 	/** Turns whose text is no longer anywhere in the buffer. */
 	lostTurns: number[];
+	/**
+	 * Rows of the LIVE screen carrying each marker, at the widest the run ever showed it.
+	 *
+	 * The ceiling is per screenful, and one scroll carries up every row that marker occupies
+	 * on screen — one for the composer, up to twice the viewport for the HUD band. Measured
+	 * rather than derived from the shape, because what the layout actually gave the band is
+	 * the number the bound has to be about.
+	 */
+	rowsOnScreen: Map<string, number>;
+	/**
+	 * Most rows carrying each marker the scroll buffer ever held, sampled every frame.
+	 *
+	 * NOT the final count, because the defect destroys its own evidence: chrome in the
+	 * committed prefix diverges on the next frame, and the repair for that is an ED3 erase
+	 * of native scrollback — so the buffer read at the end of a leaking run can be SHORTER
+	 * than the buffer of a healthy one. A count taken only at the end is green while the
+	 * screen strobes.
+	 */
+	peakInBuffer: Map<string, number>;
 }
 
 const label = (shape: Shape): string =>
@@ -161,6 +180,20 @@ async function drive(shape: Shape): Promise<Run> {
 	for (let turn = 0; turn < shape.turns; turn++) {
 		if (paintedAtOpen.some(row => row.includes(`turn ${turn}:`))) paintedTurns.push(turn);
 	}
+	const rowsOnScreen = new Map<string, number>(CHROME_MARKERS.map(marker => [marker, 0]));
+	const peakInBuffer = new Map<string, number>(CHROME_MARKERS.map(marker => [marker, 0]));
+	const sample = () => {
+		const viewport = term.getViewport().map(row => Bun.stripANSI(row));
+		const buffer = term.getScrollBuffer().map(row => Bun.stripANSI(row));
+		for (const marker of CHROME_MARKERS) {
+			const shown = viewport.filter(row => row.includes(marker)).length;
+			if (shown > (rowsOnScreen.get(marker) as number)) rowsOnScreen.set(marker, shown);
+			const held = buffer.filter(row => row.includes(marker)).length;
+			if (held > (peakInBuffer.get(marker) as number)) peakInBuffer.set(marker, held);
+		}
+	};
+	sample();
+
 	const live = new LiveBlock();
 	transcript.addChild(live);
 	for (let frame = 0; frame < shape.streamFrames; frame++) {
@@ -169,6 +202,7 @@ async function drive(shape: Shape): Promise<Run> {
 		if (frame % 7 === 6) hud.setRows(frame % 14 === 6 ? 0 : shape.hudRows);
 		tui.requestRender();
 		await settleFrames(term, tui);
+		sample();
 	}
 
 	const history = term
@@ -182,7 +216,7 @@ async function drive(shape: Shape): Promise<Run> {
 	// that over-subscribed the screen. What the engine owes is that a row it DID
 	// paint stays painted.
 	const lostTurns = paintedTurns.filter(turn => !history.some(row => row.includes(`turn ${turn}:`)));
-	return { history, erases: erases - erasesAtOpen, lostTurns };
+	return { history, erases: erases - erasesAtOpen, lostTurns, rowsOnScreen, peakInBuffer };
 }
 
 describe("chrome taller than the viewport never reaches native scrollback", () => {
@@ -201,19 +235,32 @@ describe("chrome taller than the viewport never reaches native scrollback", () =
 		test(label(shape), async () => {
 			const run = await drive(shape);
 
-			// Chrome reaching the terminal's buffer is NOT by itself the defect:
-			// the screen scrolls, and whatever was on it at that moment goes up,
-			// chrome included. Once per screenful of new content is the honest
-			// ceiling. Beyond that the engine is committing chrome as history,
-			// which is the mechanism — so the bound is derived from the rows the
-			// run actually produced, never a constant somebody can tune.
-			const producedRows = shape.turns * 4 + shape.streamFrames;
-			const screenfuls = Math.ceil(producedRows / shape.height) + 2;
-			const composerCopies = run.history.filter(row => row.includes("ask anything")).length;
-			expect({ arm: label(shape), overCeiling: composerCopies > screenfuls }).toEqual({
-				arm: label(shape),
-				overCeiling: false,
+			// Chrome reaching the terminal's buffer is NOT by itself the defect: the
+			// screen scrolls, and whatever was on it at that moment goes up, chrome
+			// included. The bound is what the screen ITSELF ever showed of that
+			// marker at once. A row that scrolled up is a row that was on screen, so
+			// the buffer cannot hold more copies than the screen ever displayed —
+			// unless the engine put them there as history, which is the mechanism.
+			// Measured from the run, so there is no constant to tune and no shape
+			// arithmetic to get wrong.
+			//
+			// Every marker is counted, not the composer's alone. That is the whole
+			// reason the bound had to be per marker: the composer is one row, so a
+			// per-screenful count sufficed for it, while the band is up to a viewport
+			// tall and a leak that commits the band and spares the prompt sat inside
+			// a "once per screenful" ceiling unseen. On this engine every healthy arm
+			// holds exactly as many copies as it showed (2, 8, 12, 14); commit the
+			// band and hud=16 holds 16 against 14 shown, hud=32 holds 32.
+			//
+			// It is the PEAK the buffer ever held, not the count at the end, because
+			// the defect can erase its own evidence: committed chrome diverges on the
+			// next frame and the repair is an ED3 wipe of native scrollback, so what
+			// is left at the end depends on when the last erase landed.
+			const overCeiling = CHROME_MARKERS.filter(marker => {
+				const held = run.peakInBuffer.get(marker) as number;
+				return held > (run.rowsOnScreen.get(marker) as number);
 			});
+			expect({ arm: label(shape), overCeiling }).toEqual({ arm: label(shape), overCeiling: [] });
 
 			// The repair that leak triggers, and the history it destroys.
 			expect({ arm: label(shape), erases: run.erases, lost: run.lostTurns }).toEqual({

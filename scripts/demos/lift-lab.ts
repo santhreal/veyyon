@@ -21,13 +21,15 @@
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { type Cell, type Grid, type Rgb, ansiToGrid } from "./lib/ansi-grid";
+import { ansiToGrid, type Grid, type Rgb } from "./lib/ansi-grid";
 import { BLACK_GROUND, GREY_GROUND, type Ground, rasterizeGrid } from "./lib/ansi-raster";
 import { flag, hasFlag } from "./render-args";
 
 const out = hasFlag("out") ? flag("out", "") : "";
 if (!out) {
-	console.error("usage: <renderer emitting ANSI> | bun scripts/demos/lift-lab.ts --out <prefix> [--scale N] [--sheen 0..1] [--frames N]");
+	console.error(
+		"usage: <renderer emitting ANSI> | bun scripts/demos/lift-lab.ts --out <prefix> [--scale N] [--sheen 0..1] [--frames N]",
+	);
 	process.exit(2);
 }
 const scale = Number.parseInt(flag("scale", "3"), 10);
@@ -206,7 +208,10 @@ function selectionSpans(
  * no second material. A divider is a column of vertical rule glyphs running most
  * of the surface's height; a stray `│` in a value does not qualify.
  */
-function dividerColumn(grid: Grid, bounds: { top: number; bottom: number; left: number; right: number }): number | null {
+function dividerColumn(
+	grid: Grid,
+	bounds: { top: number; bottom: number; left: number; right: number },
+): number | null {
 	const span = bounds.bottom - bounds.top;
 	if (span < 4) return null;
 	for (let x = bounds.left + 2; x < bounds.right - 2; x++) {
@@ -225,7 +230,11 @@ function dividerColumn(grid: Grid, bounds: { top: number; bottom: number; left: 
  * cosine falloff so it has no edge, and a slight diagonal so it reads as light
  * moving over a plane instead of a wipe.
  */
-function applySheen(grid: Grid, bounds: { top: number; bottom: number; left: number; right: number }, phase: number): void {
+function applySheen(
+	grid: Grid,
+	bounds: { top: number; bottom: number; left: number; right: number },
+	phase: number,
+): void {
 	const { top, bottom, left, right } = bounds;
 	const span = right - left;
 	// Narrow and strong. A wide soft band at low strength is not a highlight, it is
