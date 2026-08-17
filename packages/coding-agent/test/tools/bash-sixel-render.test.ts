@@ -70,7 +70,7 @@ describe("bashToolRenderer", () => {
 		expect(rendered).not.toContain("\t");
 	});
 
-	it("renders the pending call as a bordered block with the command in the body", async () => {
+	it("renders the pending call as one rail row carrying the command", async () => {
 		const theme = await getThemeByName("dark");
 		expect(theme).toBeDefined();
 		const uiTheme = theme!;
@@ -80,15 +80,14 @@ describe("bashToolRenderer", () => {
 			uiTheme,
 		);
 		const lines = Bun.stripANSI(component.render(60).join("\n")).split("\n");
-		// A block frames the command: a header bar, the command row, and a bottom border.
-		expect(lines.length).toBeGreaterThanOrEqual(3);
-		const header = lines[0]!;
-		const body = lines.slice(1, -1).join("\n");
-		// Bash commands already carry a `$` prompt in the body, so the frame header
-		// stays a plain rule instead of repeating "Bash" in the title bar.
-		expect(header).not.toContain("Bash");
-		expect(header).not.toContain("sleep 30");
-		expect(body).toContain("$ sleep 30");
+		// A pending call hangs on a rail: one row, the rail glyph down its left, the
+		// command beside it. It used to be a three-row bordered block with a header
+		// bar and a bottom border, which is a shape the product no longer draws —
+		// there is nothing above the row and nothing below it to assert.
+		const rail = uiTheme.symbol("block.rail");
+		expect(lines).toEqual([`${rail}  $ sleep 30 `]);
+		// Bash commands already carry a `$` prompt, so the rail never repeats "Bash".
+		expect(lines[0]).not.toContain("Bash");
 	});
 
 	it("shows the effective timeout from result details when it differs from call args", async () => {
