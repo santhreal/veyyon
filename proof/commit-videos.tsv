@@ -89,3 +89,11 @@ e244a33d7	test	170	./packages/coding-agent/test/modes/components/a-virtualized-t
 92a895e36	diff	45		proof(tooling): the vhs capture wrapper and the flicker probes
 e414827fc	diff	45		proof(tooling): record every commit on this branch, both arms, in a real terminal
 b88806395	diff	45		proof(ui-polish): 140 videos, one arm per commit, and the page that plays them
+65e3f65e3	diff	45		proof(ui-polish): film the last two commits too, and read the frame rates off the files
+a16b52cc8	diff	45		feat(tui): paint a background per column, and a surface that can be lit
+ca29178e8	diff	45		feat(overlays): a card is a lit surface, and the light crosses it as it opens
+bb46832f3	diff	45		feat(theme): the band under the cursor has a direction
+5dc1457ad	diff	45		feat: every bar moves in eighths of a cell, from one owner
+a87aa3b99	diff	45		tools(demos): judge a surface from images, and film an entrance frame by frame
+ad14fca53	diff	45		feat(overlays): a card is a ladder of materials, measured on the terminal
+38fa0e836	diff	45		fix(overlays): the light crosses the whole card, not just the unfold

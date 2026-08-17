@@ -1,0 +1,412 @@
+[33ma16b52cc8[m feat(tui): paint a background per column, and a surface that can be lit
+
+
+
+ packages/tui/CHANGELOG.md                          |   4 [32m+[m
+ packages/tui/src/index.ts                          |   5 [32m+[m
+ packages/tui/src/motion.ts                         |  20 [32m+[m[31m-[m
+ packages/tui/src/paint-columns.ts                  | 210 [32m+++++++++++++++++++++[m
+ packages/tui/src/paint-surface.ts                  | 197 [32m+++++++++++++++++++[m
+ .../tui/test/the-motion-clock-always-stops.test.ts |   3 [32m+[m[31m-[m
+ 6 files changed, 436 insertions(+), 3 deletions(-)
+
+[1mdiff --git a/packages/tui/CHANGELOG.md b/packages/tui/CHANGELOG.md[m
+[1mindex 645fa7ebe..dcb1c6039 100644[m
+[1m--- a/packages/tui/CHANGELOG.md[m
+[1m+++ b/packages/tui/CHANGELOG.md[m
+[36m@@ -12,6 +12,10 @@[m
+ - A block appended under a live surface can grow into place instead of cutting in. `BlockReveal` clips a rendered block to the rows it has reached and resolves each visible row out of the ground behind it, on the shared clock: `arm()` when the block appears, `disarm()` when it goes, `apply(rows)` on every frame. It is armed by APPEARANCE rather than by render, so a block whose contents are rebuilt on every keystroke grows once per appearance instead of replaying the animation per character. The composer's suggestion popup rides it through `Editor.setAutocompleteMotion` / `disposeAutocompleteMotion`: rows arrive over the enter curve, a click during the grow lands on the suggestion it looks like it landed on (a row that has not arrived is not in the frame to be clicked), a dismissal is instant because the prefix those rows describe no longer says where the caret is, and an editor with no motion lent paints the popup exactly as before, byte for byte.[m
+ - `TabBar` fades its hover band like every other pointer surface. `setHoverMotion` lends the bar a repaint so the band under the pointer cross-fades on the shared clock, keyed by tab ID rather than by position — a bar re-tabbed under the pointer (settings search rebuilds its tab set on every keystroke) keeps the band on the tab, not on the slot. Both render paths take their style from one owner, so the horizontal bar and the vertical sidebar cannot disagree; `hoverTab` now receives a strength alongside the text; and a bar with no motion lent, or lent it with `enabled: false`, paints the switched band byte for byte. `disposeHoverMotion` gives the clock back.[m
+ - A gauge can walk to its new value instead of teleporting to it. `SettleValue` runs one number on the shared clock under the `settle` spring: the first value it is given lands (a gauge sweeping up from zero on its first paint animates the session starting, which is not a change anyone made), every later value travels, and a value retargeted mid-flight keeps its velocity, so a reading revised every few frames is one continuous travel rather than a stutter. `epsilon` refuses to spend a frame on a change too small for the surface to show, `enabled: false` lands every target immediately and registers nothing, `reset()` makes the next value a first sighting again for a host that swapped what it is measuring, and `dispose()` gives the clock back. `MOTION.settle` had been in the curve table since the clock landed with nothing using it.[m
+[32m+[m[32m- Every horizontal bar the product draws has one owner and eight steps per column. `subCellBar(ratio, width, options?)` quantises the fill in eighths across the whole bar and derives the cells from that count, so a ten-column bar has eighty-one reachable states instead of eleven: a value rising by 3% moves it, and a value crossing a column shows the crossing through `▏▎▍▌▋▊▉` rather than jumping a whole cell. A ratio landing on a column emits no partial glyph (never `█▏` where `██` is meant) and a ratio just under one keeps its `▉` instead of rounding into a column it has not reached. The row is always exactly `width` columns, at every eighth of every column, because hit-testing and layout elsewhere are computed from positions in the row. Colour is the caller's: the function returns glyphs, and the callers split the string at its first track cell into a fill tone and a track tone. The glyph ramp is an option (`SUB_CELL_BAR_RAMP` by default, with `EIGHTH_BLOCKS` and `barGlyphEighths` exported alongside it) so a terminal whose font has no partial blocks is sent a ramp with none, which degrades to whole cells and still rounds to the nearest one rather than truncating.[m
+[32m+[m[32m- A rendered line's background can be repainted column by column, which is what anything moving ACROSS a row needs. `paintLineBackground(line, width, painter, window?)` walks a line once, tracks the truecolor background in effect, and asks a painter what each column should be instead; `paintBlockBackground` does the same for every row of a block. A new escape is written only where the answer changes, so a caller quantising its gradient into ten steps pays ten sequences rather than one per cell — these run on every frame of an animation over every row of a card. Text, foregrounds and attributes survive byte for byte, an indexed background (`48;5;n`) is reported as unknown and left alone rather than guessed at from a palette the terminal may not be using, and a `ColumnWindow` bounds both the painter and the padding, so a treatment on a card centred in a wider area cannot reach the page beside it. A component's own `39m` does not count as closing the pass's paint: a bare foreground reset leaves the background alone, and reading it as a close left the paint running off the end of the window it owned.[m
+[32m+[m[32m- A block can be painted as a lit SURFACE rather than as line art. `fillSurface` fills a block with an elevation gradient — a few percent above the ground at the top row, a shade below it at the bottom — and leaves alone every cell the component gave its own background, since a selection band, a chip, a swatch or a scrollbar thumb is the component saying that cell is not the surface. `sweepSurface` crosses the block with one specular highlight on a raised-cosine falloff, quantised to sixteen steps and skewed so it travels as a diagonal, lifting whatever background each cell already has instead of replacing it: the light crosses a band without erasing it. `cascadeStrength(row, rows, progress)` gives each row its own ramp inside one block-wide progress, compressed so the last row still lands at 1 — the difference between an animation with as many frames as the block has rows and one with a frame for every frame of the clock. Both take a column window, and everything is a pure transform over lines a component already rendered, so no component learns it is being lit and every frame is byte-assertable.[m
+[32m+[m[32m- `MOTION.sweep` is the 520ms curve a specular highlight crosses a surface on, and `MOTION.enter` is 260ms rather than 220ms: a card's rows now arrive on staggered ramps inside that window, so the same duration reads as shorter than it measures.[m
+ [m
+ ### Fixed[m
+ [m
+[1mdiff --git a/packages/tui/src/index.ts b/packages/tui/src/index.ts[m
+[1mindex 25c36d0b6..155be221f 100644[m
+[1m--- a/packages/tui/src/index.ts[m
+[1m+++ b/packages/tui/src/index.ts[m
+[36m@@ -43,11 +43,16 @@[m [mexport * from "./motion-paint";[m
+ export * from "./motion-settle";[m
+ // SGR mouse report parsing[m
+ export * from "./mouse";[m
+[32m+[m[32m// Per-column background repainting, and the surface language built on it[m
+[32m+[m[32mexport * from "./paint-columns";[m
+[32m+[m[32mexport * from "./paint-surface";[m
+ // Terminal interface and implementations[m
+ export * from "./paint-ground";[m
+ // Mermaid diagram support[m
+ // Input buffering for batch splitting[m
+ export * from "./stdin-buffer";[m
+[32m+[m[32m// Every horizontal bar the product draws, at eight steps per cell[m
+[32m+[m[32mexport * from "./sub-cell-bar";[m
+ export type * from "./symbols";[m
+ export * from "./terminal";[m
+ // Terminal image support[m
+[1mdiff --git a/packages/tui/src/motion.ts b/packages/tui/src/motion.ts[m
+[1mindex ca841cdd6..b0a543e6f 100644[m
+[1m--- a/packages/tui/src/motion.ts[m
+[1m+++ b/packages/tui/src/motion.ts[m
+[36m@@ -50,14 +50,30 @@[m [mexport interface SpringSpec {[m
+  * instead of inventing a duration, so the whole terminal moves as one thing.[m
+  */[m
+ export const MOTION = {[m
+[31m-	/** A surface arriving: card, popup, panel. */[m
+[31m-	enter: { duration: 220, easing: easeOutQuint },[m
+[32m+[m	[32m/**[m
+[32m+[m	[32m * A surface arriving: card, popup, panel. 220ms was chosen when the entrance[m
+[32m+[m	[32m * was one fade over the whole block, where the extra 40ms bought nothing: the[m
+[32m+[m	[32m * block had as many distinct frames as it had rows either way. With a per-row[m
+[32m+[m	[32m * cascade every row owns a continuous ramp, so the duration is what decides how[m
+[32m+[m	[32m * much of the overlap is visible, and at 220ms the cascade was over before the[m
+[32m+[m	[32m * eye had followed it.[m
+[32m+[m	[32m */[m
+[32m+[m	[32menter: { duration: 260, easing: easeOutQuint },[m
+ 	/** The same surface leaving. Shorter — waiting on an exit feels broken. */[m
+ 	exit: { duration: 130, easing: easeInCubic },[m
+ 	/** A pointer affordance lighting up. Must be under a frame of perception. */[m
+ 	hover: { duration: 90, easing: easeOutCubic },[m
+ 	/** Content growing or collapsing in place. */[m
+ 	expand: { duration: 180, easing: easeOutQuint },[m
+[32m+[m	[32m/**[m
+[32m+[m	[32m * One specular highlight crossing a surface that has just arrived. It outlasts[m
+[32m+[m	[32m * the entrance deliberately: the card is in place and settled while the light[m
+[32m+[m	[32m * is still travelling over it, which is what reads as material rather than as a[m
+[32m+[m	[32m * transition. Slower than everything else here because it is the only motion in[m
+[32m+[m	[32m * the product with a frame for every frame of the clock — it moves through[m
+[32m+[m	[32m * colour, not through terminal rows, so it cannot look stepped.[m
+[32m+[m	[32m */[m
+[32m+[m	[32msweep: { duration: 520, easing: easeOutCubic },[m
+ 	/** A selection or caret travelling between two rows, interruptible. */[m
+ 	move: { spring: { stiffness: 260, damping: 30, mass: 1 } },[m
+ 	/** A value being nudged, e.g. a progress or context bar. */[m
+[1mdiff --git a/packages/tui/src/paint-columns.ts b/packages/tui/src/paint-columns.ts[m
+[1mnew file mode 100644[m
+[1mindex 000000000..b12b2d7f6[m
+[1m--- /dev/null[m
+[1m+++ b/packages/tui/src/paint-columns.ts[m
+[36m@@ -0,0 +1,210 @@[m
+[32m+[m[32m// Repainting the background of a rendered line, column by column.[m
+[32m+[m[32m//[m
+[32m+[m[32m// `motion-paint.ts` can already fade a whole line toward a ground, which is[m
+[32m+[m[32m// enough for an animation that treats a row as one object. It is not enough for[m
+[32m+[m[32m// anything that moves ACROSS a row: a specular sweep, a band with a direction, a[m
+[32m+[m[32m// surface lit from one side. Those need to know which column they are on.[m
+[32m+[m[32m//[m
+[32m+[m[32m// The transform stays where motion-paint's does — over lines a component has[m
+[32m+[m[32m// already rendered — so a component never learns that a sweep is crossing it, and[m
+[32m+[m[32m// every frame is byte-assertable. What is added here is column tracking: the line[m
+[32m+[m[32m// is walked once, the background in effect is tracked as it goes, and a caller's[m
+[32m+[m[32m// function is asked, per column, what the background should be instead.[m
+[32m+[m[32m//[m
+[32m+[m[32m// A new SGR is written only where the answer CHANGES, so a caller that quantizes[m
+[32m+[m[32m// its gradient into ten steps pays for ten sequences and not for one per cell.[m
+[32m+[m[32m// That matters: these run on every frame of an animation over every row of a card,[m
+[32m+[m[32m// and a per-cell background is nineteen bytes a cell.[m
+[32m+[m[32m//[m
+[32m+[m[32m// Only truecolor backgrounds are read. An indexed background (`48;5;n`) is[m
+[32m+[m[32m// reported as `undefined` and left untouched, on the same reasoning motion-paint[m
+[32m+[m[32m// gives: resolving it means carrying a palette the terminal may not be using, and[m
+[32m+[m[32m// a wrong guess is a visible colour shift rather than a missing effect.[m
+[32m+[m
+[32m+[m[32mimport { CSI, sgrSequence } from "./ansi";[m
+[32m+[m[32mimport { toHexColor } from "./motion-paint";[m
+[32m+[m[32mimport { parseHexColor } from "./paint-ground";[m
+[32m+[m[32mimport { getSegmenter, visibleWidth } from "./utils";[m
+[32m+[m
+[32m+[m[32m/** What the caller is told about one column of the line. */[m
+[32m+[m[32mexport interface ColumnPaint {[m
+[32m+[m	[32m/** Zero-based visible column. A double-width grapheme reports its first column only. */[m
+[32m+[m	[32mcol: number;[m
+[32m+[m	[32m/**[m
+[32m+[m	[32m * The background in effect, as `#rrggbb`, or undefined for the terminal's[m
+[32m+[m	[32m * default ground and for any background this module will not guess at.[m
+[32m+[m	[32m */[m
+[32m+[m	[32mbackground: string | undefined;[m
+[32m+[m	[32m/** True for a column past the end of the line's own content. */[m
+[32m+[m	[32mpast: boolean;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m/**[m
+[32m+[m[32m * The background a column should paint, or undefined to leave the column exactly[m
+[32m+[m[32m * as the component wrote it.[m
+[32m+[m[32m */[m
+[32m+[m[32mexport type ColumnPainter = (column: ColumnPaint) => string | undefined;[m
+[32m+[m
+[32m+[m[32m/**[m
+[32m+[m[32m * The columns of a row a treatment owns.[m
+[32m+[m[32m *[m
+[32m+[m[32m * A card's rows are as wide as the screen: the leading padding that centres the[m
+[32m+[m[32m * card and the trailing space beside it belong to the page, not to the card. A[m
+[32m+[m[32m * treatment given no window paints all of them, which puts a card's own light out[m
+[32m+[m[32m * on the page beside it.[m
+[32m+[m[32m */[m
+[32m+[m[32mexport interface ColumnWindow {[m
+[32m+[m	[32m/** First column the treatment may touch. */[m
+[32m+[m	[32mstart: number;[m
+[32m+[m	[32m/** One past the last column the treatment may touch. */[m
+[32m+[m	[32mend: number;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mconst SGR = sgrSequence("g");[m
+[32m+[m
+[32m+[m[32m/** The truecolor background a run of SGR parameters leaves in effect. */[m
+[32m+[m[32mfunction trackBackground(current: string | undefined, params: string): string | undefined {[m
+[32m+[m	[32m// `\x1b[m` is `\x1b[0m`: an empty parameter list is a full reset.[m
+[32m+[m	[32mconst codes = params === "" ? ["0"] : params.split(";");[m
+[32m+[m	[32mlet background = current;[m
+[32m+[m	[32mfor (let i = 0; i < codes.length; i++) {[m
+[32m+[m		[32mconst code = codes[i];[m
+[32m+[m		[32mif (code === "0" || code === "") background = undefined;[m
+[32m+[m		[32melse if (code === "49") background = undefined;[m
+[32m+[m		[32melse if (code === "48") {[m
+[32m+[m			[32m// 48;2;r;g;b is truecolor and readable; 48;5;n is indexed and is not.[m
+[32m+[m			[32mif (codes[i + 1] === "2") {[m
+[32m+[m				[32mconst r = Number(codes[i + 2]);[m
+[32m+[m				[32mconst g = Number(codes[i + 3]);[m
+[32m+[m				[32mconst b = Number(codes[i + 4]);[m
+[32m+[m				[32mbackground = Number.isFinite(r) && Number.isFinite(g) && Number.isFinite(b) ? toHexColor(r, g, b) : undefined;[m
+[32m+[m				[32mi += 4;[m
+[32m+[m			[32m} else if (codes[i + 1] === "5") {[m
+[32m+[m				[32mbackground = undefined;[m
+[32m+[m				[32mi += 2;[m
+[32m+[m			[32m}[m
+[32m+[m		[32m} else if (code.startsWith("48:")) {[m
+[32m+[m			[32m// Colon form: `48:2::r:g:b` or `48:2:r:g:b`.[m
+[32m+[m			[32mconst parts = code.split(":").filter(part => part !== "");[m
+[32m+[m			[32mif (parts[1] === "2" && parts.length >= 5) {[m
+[32m+[m				[32mconst [r, g, b] = parts.slice(-3).map(Number);[m
+[32m+[m				[32mbackground = Number.isFinite(r) && Number.isFinite(g) && Number.isFinite(b) ? toHexColor(r, g, b) : undefined;[m
+[32m+[m			[32m} else background = undefined;[m
+[32m+[m		[32m}[m
+[32m+[m	[32m}[m
+[32m+[m	[32mreturn background;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m/**[m
+[32m+[m[32m * Whether a run of SGR parameters says anything about the BACKGROUND.[m
+[32m+[m[32m *[m
+[32m+[m[32m * The distinction is what keeps a treatment inside its window. A component's own[m
+[32m+[m[32m * `\x1b[39m` closes a foreground and leaves the background exactly as it was, so a[m
+[32m+[m[32m * pass that treated every component sequence as "the background is whatever the[m
+[32m+[m[32m * component had now" would believe its own paint had been closed and stop emitting[m
+[32m+[m[32m * the `49m` that actually closes it. The paint then survived past the last column[m
+[32m+[m[32m * it owned — visibly, as the card's surface running off its right edge and out[m
+[32m+[m[32m * across the page.[m
+[32m+[m[32m */[m
+[32m+[m[32mfunction touchesBackground(params: string): boolean {[m
+[32m+[m	[32mconst codes = params === "" ? ["0"] : params.split(";");[m
+[32m+[m	[32mfor (const code of codes) {[m
+[32m+[m		[32mif (code === "0" || code === "" || code === "49" || code === "48") return true;[m
+[32m+[m		[32mif (code.startsWith("48:")) return true;[m
+[32m+[m		[32m// The 8/16-colour background ranges. Not read as a colour (see the module[m
+[32m+[m		[32m// header) but they do change the background, so a paint over them is closed.[m
+[32m+[m		[32mconst value = Number(code);[m
+[32m+[m		[32mif (Number.isInteger(value) && ((value >= 40 && value <= 47) || (value >= 100 && value <= 107))) return true;[m
+[32m+[m	[32m}[m
+[32m+[m	[32mreturn false;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunction bgSequence(hex: string): string {[m
+[32m+[m	[32mconst rgb = parseHexColor(hex);[m
+[32m+[m	[32mif (!rgb) return "";[m
+[32m+[m	[32mreturn `${CSI}48;2;${rgb.r};${rgb.g};${rgb.b}m`;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m/**[m
+[32m+[m[32m * Repaint one rendered line's background, asking `painter` what each column[m
+[32m+[m[32m * should be.[m
+[32m+[m[32m *[m
+[32m+[m[32m * The line is extended to `width` columns with spaces, because a surface that[m
+[32m+[m[32m * stops where its text stops is not a surface: the sweep, the gradient and the[m
+[32m+[m[32m * fill all have to reach the edge of the card. Text, foreground colours and every[m
+[32m+[m[32m * attribute the component wrote are preserved untouched; only backgrounds move.[m
+[32m+[m[32m */[m
+[32m+[m[32mexport function paintLineBackground(line: string, width: number, painter: ColumnPainter, window?: ColumnWindow): string {[m
+[32m+[m	[32m// A window bounds the padding as well as the painter. Padding a row out to the[m
+[32m+[m	[32m// full area so a treatment can reach a card's right edge is correct; doing it[m
+[32m+[m	[32m// when the treatment stops at that edge writes spaces across the page instead.[m
+[32m+[m	[32mconst first = window === undefined ? 0 : Math.max(0, window.start);[m
+[32m+[m	[32mconst last = window === undefined ? width : Math.min(width, window.end);[m
+[32m+[m	[32mconst content = visibleWidth(line);[m
+[32m+[m	[32mconst padded = content < last ? line + " ".repeat(last - content) : line;[m
+[32m+[m
+[32m+[m	[32mlet out = "";[m
+[32m+[m	[32mlet col = 0;[m
+[32m+[m	[32m// The background the component asked for, and the one currently emitted, so a[m
+[32m+[m	[32m// span that ends can restore what the component had rather than resetting.[m
+[32m+[m	[32mlet componentBg: string | undefined;[m
+[32m+[m	[32mlet paintedBg: string | undefined;[m
+[32m+[m	[32mlet index = 0;[m
+[32m+[m
+[32m+[m	[32mconst emitCell = (text: string, cellWidth: number): void => {[m
+[32m+[m		[32mconst inWindow = col >= first && col < last;[m
+[32m+[m		[32mconst wanted = inWindow ? painter({ col, background: componentBg, past: col >= content }) : undefined;[m
+[32m+[m		[32mconst target = wanted ?? componentBg;[m
+[32m+[m		[32mif (target !== paintedBg) {[m
+[32m+[m			[32mout += target === undefined ? `${CSI}49m` : bgSequence(target);[m
+[32m+[m			[32mpaintedBg = target;[m
+[32m+[m		[32m}[m
+[32m+[m		[32mout += text;[m
+[32m+[m		[32mcol += cellWidth;[m
+[32m+[m	[32m};[m
+[32m+[m
+[32m+[m	[32mSGR.lastIndex = 0;[m
+[32m+[m	[32mfor (let match = SGR.exec(padded); match !== null; match = SGR.exec(padded)) {[m
+[32m+[m		[32memitText(padded.slice(index, match.index), emitCell);[m
+[32m+[m		[32mconst params = match[1] ?? "";[m
+[32m+[m		[32mcomponentBg = trackBackground(componentBg, params);[m
+[32m+[m		[32m// The component's own sequence is written verbatim, so its foreground and[m
+[32m+[m		[32m// attributes survive. Whether it also cleared the background this pass had[m
+[32m+[m		[32m// open is the question `touchesBackground` answers: if it did, the terminal is[m
+[32m+[m		[32m// back on the component's own background and the next cell re-asserts whatever[m
+[32m+[m		[32m// it needs; if it did not — a bare `39m`, an attribute, a foreground colour —[m
+[32m+[m		[32m// this pass's paint is still in effect and must still be closed by this pass.[m
+[32m+[m		[32mout += match[0];[m
+[32m+[m		[32mif (touchesBackground(params)) paintedBg = componentBg;[m
+[32m+[m		[32mindex = match.index + match[0].length;[m
+[32m+[m	[32m}[m
+[32m+[m	[32memitText(padded.slice(index), emitCell);[m
+[32m+[m
+[32m+[m	[32m// Leave the line as the component left it: a background this pass opened must[m
+[32m+[m	[32m// not leak into whatever the host writes next.[m
+[32m+[m	[32mif (paintedBg !== undefined) out += `${CSI}49m`;[m
+[32m+[m	[32mreturn out;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m/** Walk a run of plain text as graphemes, reporting each cell's width. */[m
+[32m+[m[32mfunction emitText(text: string, emitCell: (text: string, width: number) => void): void {[m
+[32m+[m	[32mif (text === "") return;[m
+[32m+[m	[32m// Graphemes, not code points: a combining mark or a ZWJ sequence is one cell,[m
+[32m+[m	[32m// and splitting it would paint half of it and measure the rest wrong.[m
+[32m+[m	[32mfor (const { segment } of getSegmenter().segment(text)) {[m
+[32m+[m		[32memitCell(segment, visibleWidth(segment));[m
+[32m+[m	[32m}[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m/** Every line of a block, repainted with the same painter. Rows are numbered from 0. */[m
+[32m+[m[32mexport function paintBlockBackground([m
+[32m+[m	[32mlines: readonly string[],[m
+[32m+[m	[32mwidth: number,[m
+[32m+[m	[32mpainter: (row: number) => ColumnPainter | null,[m
+[32m+[m	[32mwindow?: ColumnWindow,[m
+[32m+[m[32m): string[] {[m
+[32m+[m	[32mreturn lines.map((line, row) => {[m
+[32m+[m		[32mconst columnPainter = painter(row);[m
+[32m+[m		[32mreturn columnPainter === null ? line : paintLineBackground(line, width, columnPainter, window);[m
+[32m+[m	[32m});[m
+[32m+[m[32m}[m
+[1mdiff --git a/packages/tui/src/paint-surface.ts b/packages/tui/src/paint-surface.ts[m
+[1mnew file mode 100644[m
+[1mindex 000000000..ab7680ac3[m
+[1m--- /dev/null[m
+[1m+++ b/packages/tui/src/paint-surface.ts[m
+[36m@@ -0,0 +1,197 @@[m
+[32m+[m[32m// What a card is MADE OF, as opposed to where its edges are.[m
+[32m+[m[32m//[m
+[32m+[m[32m// The product drew line art: a frame in one accent colour, text in one grey, on[m
+[32m+[m[32m// the terminal's own ground. Nothing was a surface, so nothing was in front of[m
+[32m+[m[32m// anything, and an animation over it had nothing to move except whole rows. That[m
+[32m+[m[32m// is the whole of "the animations are barely noticeable": a 220ms unfold over a[m
+[32m+[m[32m// grid whose smallest unit is one row has about five distinct frames, and four of[m
+[32m+[m[32m// them look like the fifth.[m
+[32m+[m[32m//[m
+[32m+[m[32m// A truecolor terminal can do better, and every part of it is per-cell colour:[m
+[32m+[m[32m//[m
+[32m+[m[32m//   elevation  a fill a few percent off the ground, lighter at the top edge than[m
+[32m+[m[32m//              the bottom, so the surface reads as lit from above and as being in[m
+[32m+[m[32m//              front of the page rather than drawn onto it.[m
+[32m+[m[32m//   hairline   the frame carrying the light instead of an accent: bright along the[m
+[32m+[m[32m//              top, barely there at the sides, a shadow line underneath.[m
+[32m+[m[32m//   sweep      one specular highlight crossing the surface as it arrives. This is[m
+[32m+[m[32m//              the part with 60 distinct frames instead of 5, because it moves[m
+[32m+[m[32m//              through colour rather than through rows.[m
+[32m+[m[32m//[m
+[32m+[m[32m// Everything here is a pure transform over lines a component already rendered, on[m
+[32m+[m[32m// the same reasoning as `motion-paint.ts`: the component stays ignorant, and every[m
+[32m+[m[32m// frame of the treatment is byte-assertable.[m
+[32m+[m
+[32m+[m[32mimport { blendHex } from "./motion-paint";[m
+[32m+[m[32mimport { type ColumnPainter, type ColumnWindow, paintBlockBackground } from "./paint-columns";[m
+[32m+[m
+[32m+[m[32m/** White, as a hex the blender can take. Lifting toward it is what "lit" means. */[m
+[32m+[m[32mconst LIGHT = "#ffffff";[m
+[32m+[m[32m/** Black. Sinking toward it is what a shadow is. */[m
+[32m+[m[32mconst DARK = "#000000";[m
+[32m+[m
+[32m+[m[32mexport interface SurfaceSpec {[m
+[32m+[m	[32m/** The ground the surface sits on, `#rrggbb`. Everything is measured from it. */[m
+[32m+[m	[32mground: string;[m
+[32m+[m	[32m/**[m
+[32m+[m	[32m * How far the top of the surface stands off the ground, 0–1 as a fraction of[m
+[32m+[m	[32m * the way to white. Small: 0.05 already reads as elevation at terminal scale,[m
+[32m+[m	[32m * and 0.12 reads as a light-grey slab pasted onto a dark page.[m
+[32m+[m	[32m */[m
+[32m+[m	[32mlift?: number;[m
+[32m+[m	[32m/**[m
+[32m+[m	[32m * How far the BOTTOM of the surface sinks, as a fraction of the way to black.[m
+[32m+[m	[32m * The gradient between the two is what makes the surface look lit rather than[m
+[32m+[m	[32m * filled.[m
+[32m+[m	[32m */[m
+[32m+[m	[32mfall?: number;[m
+[32m+[m	[32m/**[m
+[32m+[m	[32m * The columns the surface occupies. Omitted, it is the whole row — right for a[m
+[32m+[m	[32m * block that IS the row, wrong for a card centred in a wider area, whose[m
+[32m+[m	[32m * leading and trailing padding belongs to the page behind it.[m
+[32m+[m	[32m */[m
+[32m+[m	[32mcolumns?: ColumnWindow;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mconst DEFAULT_LIFT = 0.055;[m
+[32m+[m[32mconst DEFAULT_FALL = 0.03;[m
+[32m+[m
+[32m+[m[32m/** The surface colour at a normalized height `t`, 0 at the top row, 1 at the bottom. */[m
+[32m+[m[32mexport function surfaceColorAt(spec: SurfaceSpec, t: number): string {[m
+[32m+[m	[32mconst top = blendHex(spec.ground, LIGHT, spec.lift ?? DEFAULT_LIFT);[m
+[32m+[m	[32mconst bottom = blendHex(spec.ground, DARK, spec.fall ?? DEFAULT_FALL);[m
+[32m+[m	[32mreturn blendHex(top, bottom, Math.max(0, Math.min(1, t)));[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m/**[m
+[32m+[m[32m * Fill a block's own rows with the surface gradient.[m
+[32m+[m[32m *[m
+[32m+[m[32m * A cell the component gave an explicit background — a selection band, a chip, a[m
+[32m+[m[32m * swatch, a scrollbar thumb — keeps it: those are the component saying "this cell[m
+[32m+[m[32m * is not the surface", and overpainting them is how a treatment eats the one row[m
+[32m+[m[32m * the user is looking at. Everything else, including the columns past the end of[m
+[32m+[m[32m * the text, becomes surface.[m
+[32m+[m[32m *[m
+[32m+[m[32m * `strength` scales the whole treatment, so an entrance can bring the surface in[m
+[32m+[m[32m * with the rest of the card instead of having it snap on at full contrast on the[m
+[32m+[m[32m * first frame.[m
+[32m+[m[32m */[m
+[32m+[m[32mexport function fillSurface([m
+[32m+[m	[32mlines: readonly string[],[m
+[32m+[m	[32mwidth: number,[m
+[32m+[m	[32mspec: SurfaceSpec,[m
+[32m+[m	[32mstrength = 1,[m
+[32m+[m[32m): string[] {[m
+[32m+[m	[32mif (strength <= 0 || lines.length === 0) return [...lines];[m
+[32m+[m	[32mconst rows = Math.max(1, lines.length - 1);[m
+[32m+[m	[32mconst clamped = Math.max(0, Math.min(1, strength));[m
+[32m+[m	[32mreturn paintBlockBackground([m
+[32m+[m		[32mlines,[m
+[32m+[m		[32mwidth,[m
+[32m+[m		[32mrow => {[m
+[32m+[m			[32mconst surface = blendHex(spec.ground, surfaceColorAt(spec, row / rows), clamped);[m
+[32m+[m			[32mreturn ({ background }) => (background === undefined ? surface : undefined);[m
+[32m+[m		[32m},[m
+[32m+[m		[32mspec.columns,[m
+[32m+[m	[32m);[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mexport interface SweepSpec {[m
+[32m+[m	[32m/** Where the highlight is, 0 just before the left edge, 1 just past the right. */[m
+[32m+[m	[32mphase: number;[m
+[32m+[m	[32m/** How far toward white the centre of the highlight lifts a cell. */[m
+[32m+[m	[32mstrength?: number;[m
+[32m+[m	[32m/** Half-width of the highlight in columns. Narrow reads as light; wide reads as a wash. */[m
+[32m+[m	[32mhalfWidth?: number;[m

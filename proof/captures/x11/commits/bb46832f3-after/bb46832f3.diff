@@ -1,0 +1,412 @@
+[33mbb46832f3[m feat(theme): the band under the cursor has a direction
+
+
+
+ .../src/modes/components/selector-helpers.ts       |  23 [32m+[m[31m-[m
+ packages/coding-agent/src/modes/theme/theme.ts     | 194 [32m++++++++++[m[31m-[m
+ ...g-hover-band-is-mixed-out-of-the-ground.test.ts |  11 [32m+[m[31m-[m
+ ...inter-band-fades-on-a-hand-painted-list.test.ts |  13 [32m+[m[31m-[m
+ ...selected-row-is-a-band-with-a-direction.test.ts | 378 [32m+++++++++++++++++++++[m
+ scripts/demos/render-selection-band.ts             |  71 [32m++++[m
+ 6 files changed, 662 insertions(+), 28 deletions(-)
+
+[1mdiff --git a/packages/coding-agent/src/modes/components/selector-helpers.ts b/packages/coding-agent/src/modes/components/selector-helpers.ts[m
+[1mindex 2309d5792..447213c35 100644[m
+[1m--- a/packages/coding-agent/src/modes/components/selector-helpers.ts[m
+[1m+++ b/packages/coding-agent/src/modes/components/selector-helpers.ts[m
+[36m@@ -7,7 +7,7 @@[m
+  */[m
+ import { clampLow, Ellipsis, extractPrintableText, matchesKey, ScrollView, truncateToWidth } from "@veyyon/tui";[m
+ import type { ThemeBg } from "../theme/theme";[m
+[31m-import { hoverBand, theme } from "../theme/theme";[m
+[32m+[m[32mimport { paintBand, theme } from "../theme/theme";[m
+ [m
+ /**[m
+  * Paint `line` as a selection or hover band that fills the whole row.[m
+[36m@@ -17,9 +17,15 @@[m [mimport { hoverBand, theme } from "../theme/theme";[m
+  * stop, so the band changes shape as the cursor moves and reads as a rendering[m
+  * fault. The row is padded to `rowWidth` first and only then tinted, which also[m
+  * keeps the closing escape inside the width the list will render at.[m
+[32m+[m[32m *[m
+[32m+[m[32m * What the tint LOOKS like is the theme's ({@link paintBand}): a hard accent[m
+[32m+[m[32m * leading cell and a ramp out of `selectedBg` toward the ground, so the band has[m
+[32m+[m[32m * an end the cursor came from rather than reading as a rectangle somebody drew.[m
+[32m+[m[32m * The row's printed width is identical either way, which is the invariant the[m
+[32m+[m[32m * mouse routing is computed from.[m
+  */[m
+ export function selectionBand(line: string, rowWidth: number, background: ThemeBg = "selectedBg"): string {[m
+[31m-	return theme.bg(background, truncateToWidth(line, rowWidth, Ellipsis.Omit, true));[m
+[32m+[m	[32mreturn paintBand(truncateToWidth(line, rowWidth, Ellipsis.Omit, true), background, 1);[m
+ }[m
+ [m
+ /**[m
+[36m@@ -28,14 +34,15 @@[m [mexport function selectionBand(line: string, rowWidth: number, background: ThemeB[m
+  *[m
+  * At strength 1 this IS `selectionBand(line, rowWidth)`, byte for byte: a list[m
+  * whose pointer band does not fade paints the same row it always did. Below it[m
+[31m- * the theme mixes the band out of the ground the row sits on, so the band[m
+[31m- * arrives from the page instead of appearing on it. What a strength LOOKS like[m
+[31m- * is the theme's decision ({@link hoverBand}); a list only decides when a row is[m
+[31m- * at what strength, and only calls this for a strength above 0 — the band at 0[m
+[31m- * is the absence of a band, not a band mixed all the way out.[m
+[32m+[m[32m * the theme mixes every colour in the gradient out of the ground the row sits[m
+[32m+[m[32m * on, so the band arrives from the page instead of appearing on it. What a[m
+[32m+[m[32m * strength LOOKS like is the theme's decision ({@link paintBand}); a list only[m
+[32m+[m[32m * decides when a row is at what strength, and only calls this for a strength[m
+[32m+[m[32m * above 0 — the band at 0 is the absence of a band, not a band mixed all the[m
+[32m+[m[32m * way out.[m
+  */[m
+ export function hoverBandAt(line: string, rowWidth: number, strength: number): string {[m
+[31m-	return hoverBand(truncateToWidth(line, rowWidth, Ellipsis.Omit, true), strength);[m
+[32m+[m	[32mreturn paintBand(truncateToWidth(line, rowWidth, Ellipsis.Omit, true), "selectedBg", strength);[m
+ }[m
+ [m
+ /**[m
+[1mdiff --git a/packages/coding-agent/src/modes/theme/theme.ts b/packages/coding-agent/src/modes/theme/theme.ts[m
+[1mindex d96f6ec84..4463f6988 100644[m
+[1m--- a/packages/coding-agent/src/modes/theme/theme.ts[m
+[1m+++ b/packages/coding-agent/src/modes/theme/theme.ts[m
+[36m@@ -2,12 +2,13 @@[m [mimport * as fs from "node:fs";[m
+ import * as path from "node:path";[m
+ import { detectMacOSAppearance, MacAppearanceObserver } from "@veyyon/natives";[m
+ import type { EditorTheme, SelectListTheme, SettingsListTheme } from "@veyyon/tui";[m
+[31m-import { blendHex, parseHexColor, TERMINAL } from "@veyyon/tui";[m
+[32m+[m[32mimport { blendHex, colorEnabled, parseHexColor, sliceWithWidth, TERMINAL, visibleWidth } from "@veyyon/tui";[m
+ import { adjustHsv, colorLuma } from "@veyyon/utils/color";[m
+ import { getCustomThemesDir } from "@veyyon/utils/dirs";[m
+ import { isEnoent } from "@veyyon/utils/fs-error";[m
+ // Owners, not the `@veyyon/utils` barrel: 5 modules against 74.[m
+ import * as logger from "@veyyon/utils/logger";[m
+[32m+[m[32mimport { clamp } from "@veyyon/utils/math";[m
+ import { errorMessage } from "@veyyon/utils/type-guards";[m
+ import { type } from "arktype";[m
+ import {[m
+[36m@@ -24,8 +25,10 @@[m [mimport {[m
+ import { getBuiltinThemes } from "./builtin-themes";[m
+ import {[m
+ 	ansi256ToHex,[m
+[32m+[m	[32mbgAnsi,[m
+ 	type ColorMode,[m
+ 	detectColorMode,[m
+[32m+[m	[32mfgAnsi,[m
+ 	getThemeJsonSchema,[m
+ 	resolveThemeColors,[m
+ 	resolveVarRefs,[m
+[36m@@ -1053,24 +1056,185 @@[m [mexport function visibleGroundHex(): string {[m
+ }[m
+ [m
+ /**[m
+[31m- * The pointer band, at a strength an animation decided.[m
+[32m+[m[32m * How many columns one span of the ramp covers. A span is a single `48;2;r;g;b`, so this is the[m
+[32m+[m[32m * knob that trades bytes for smoothness: a per-cell ramp is ~19 bytes of SGR per column on a row[m
+[32m+[m[32m * that repaints on every keystroke, and at terminal cell size the eye cannot resolve the step[m
+[32m+[m[32m * between adjacent cells anyway. Eight columns puts a 40-column row at 5 spans and a 110-column[m
+[32m+[m[32m * one at the ceiling, for ~200 bytes instead of ~2000.[m
+[32m+[m[32m */[m
+[32m+[m[32mconst BAND_COLUMNS_PER_SPAN = 8;[m
+[32m+[m[32m/** Fewest spans worth calling a ramp: below three there is no middle and the band reads as two blocks. */[m
+[32m+[m[32mconst BAND_MIN_SPANS = 3;[m
+[32m+[m[32m/** Most spans any row gets, whatever its width. */[m
+[32m+[m[32mconst BAND_MAX_SPANS = 10;[m
+[32m+[m[32m/** How far the trailing end of the band has dissolved into the ground behind it. */[m
+[32m+[m[32mconst BAND_TRAIL_MIX = 0.75;[m
+[32m+[m[32m/**[m
+[32m+[m[32m * Ramp easing. Below 1 it front-loads the colour: at a third of the way across, `t ** 0.55` has[m
+[32m+[m[32m * already covered 55% of the distance to the trailing end, so the strong part of the band sits[m
+[32m+[m[32m * under the label. A linear ramp spreads the same colour evenly and reads as a wash rather than[m
+[32m+[m[32m * as a direction.[m
+[32m+[m[32m */[m
+[32m+[m[32mconst BAND_RAMP_EASE = 0.55;[m
+[32m+[m[32m/** Fraction of the row the lifted label covers — the third the band is strongest under. */[m
+[32m+[m[32mconst BAND_LIFT_SPAN = 1 / 3;[m
+[32m+[m[32m/** How far the lifted label is pushed toward the theme's own contrast extreme. */[m
+[32m+[m[32mconst BAND_LIFT = 0.4;[m
+[32m+[m
+[32m+[m[32m/**[m
+[32m+[m[32m * Every escape shape a rendered row can carry: a CSI (colour, cursor), an OSC (hyperlink, kitty[m
+[32m+[m[32m * text sizing) with either terminator, and the two-byte forms. Splitting a row on this leaves runs[m
+[32m+[m[32m * of pure cells, which is the only thing the native column slicer cuts as a plain prefix — handed a[m
+[32m+[m[32m * run with an escape in it, it appends the SGR carry it thinks the caller needs and the result is[m
+[32m+[m[32m * no longer a prefix of the input, so byte offsets computed from it are wrong.[m
+[32m+[m[32m */[m
+[32m+[m[32mconst BAND_ESCAPE_PATTERN = "\\x1b(?:\\[[0-9;:?]*[ -/]*[@-~]|\\][\\s\\S]*?(?:\\x07|\\x1b\\\\)|[@-Z\\\\-_])";[m
+[32m+[m
+[32m+[m[32m/** Background reset. Spelled out rather than imported for the same reason `Theme` spells it out. */[m
+[32m+[m[32mconst BAND_BG_RESET = "\x1b[49m";[m
+[32m+[m[32m/** Foreground reset, which closes the lifted label and nothing else. */[m
+[32m+[m[32mconst BAND_FG_RESET = "\x1b[39m";[m
+[32m+[m
+[32m+[m[32m/**[m
+[32m+[m[32m * Splice `inserts` into `text` at the visible COLUMN each is keyed by, copying every original byte[m
+[32m+[m[32m * through untouched.[m
+[32m+[m[32m *[m
+[32m+[m[32m * The row's printed width is the invariant: hit-testing and layout are computed from column[m
+[32m+[m[32m * positions elsewhere, so a treatment that adds or drops a cell breaks mouse routing. Nothing here[m
+[32m+[m[32m * emits a cell — only zero-width escapes — and the walk never re-encodes a grapheme.[m
+[32m+[m[32m *[m
+[32m+[m[32m * A boundary landing inside a double-width grapheme takes the whole grapheme to the FAR side of[m
+[32m+[m[32m * the boundary rather than emitting half of it, so a span can come out one column wide of nominal.[m
+[32m+[m[32m * That is a colour boundary off by a cell, not a width change.[m
+[32m+[m[32m */[m
+[32m+[m[32mfunction spliceAtColumns(text: string, inserts: ReadonlyMap<number, string>): string {[m
+[32m+[m	[32mconst columns = [...inserts.keys()].sort((a, b) => a - b);[m
+[32m+[m	[32mconst escapes = new RegExp(BAND_ESCAPE_PATTERN, "g");[m
+[32m+[m	[32mlet escape = escapes.exec(text);[m
+[32m+[m	[32mlet out = "";[m
+[32m+[m	[32mlet column = 0;[m
+[32m+[m	[32mlet cursor = 0;[m
+[32m+[m	[32mlet next = 0;[m
+[32m+[m	[32mwhile (cursor < text.length || next < columns.length) {[m
+[32m+[m		[32m// Anything due at the column already reached goes out before the cell that column holds.[m
+[32m+[m		[32mwhile (next < columns.length && (columns[next] as number) <= column) {[m
+[32m+[m			[32mout += inserts.get(columns[next] as number) as string;[m
+[32m+[m			[32mnext += 1;[m
+[32m+[m		[32m}[m
+[32m+[m		[32mif (cursor >= text.length) break;[m
+[32m+[m		[32mwhile (escape !== null && escape.index < cursor) escape = escapes.exec(text);[m
+[32m+[m		[32mif (escape !== null && escape.index === cursor) {[m
+[32m+[m			[32mout += escape[0];[m
+[32m+[m			[32mcursor += escape[0].length;[m
+[32m+[m			[32mcontinue;[m
+[32m+[m		[32m}[m
+[32m+[m		[32mconst runEnd = escape === null ? text.length : escape.index;[m
+[32m+[m		[32mconst run = text.slice(cursor, runEnd);[m
+[32m+[m		[32mconst runWidth = visibleWidth(run);[m
+[32m+[m		[32m// `take` is at least 1: everything due at or before `column` was flushed above.[m
+[32m+[m		[32mconst take = next < columns.length ? (columns[next] as number) - column : Number.POSITIVE_INFINITY;[m
+[32m+[m		[32mif (take >= runWidth) {[m
+[32m+[m			[32mout += run;[m
+[32m+[m			[32mcolumn += runWidth;[m
+[32m+[m			[32mcursor = runEnd;[m
+[32m+[m			[32mcontinue;[m
+[32m+[m		[32m}[m
+[32m+[m		[32mconst piece = sliceWithWidth(run, 0, take, true);[m
+[32m+[m		[32m// Empty means the boundary lands inside the run's FIRST grapheme, which strict slicing[m
+[32m+[m		[32m// drops; pulling that grapheme forward whole is what keeps the walk advancing.[m
+[32m+[m		[32mconst cut = piece.text.length === 0 ? sliceWithWidth(run, 0, take + 1, false) : piece;[m
+[32m+[m		[32mout += cut.text;[m
+[32m+[m		[32mcolumn += cut.width;[m
+[32m+[m		[32mcursor += cut.text.length;[m
+[32m+[m	[32m}[m
+[32m+[m	[32mreturn out;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m/**[m
+[32m+[m[32m * The band under a selected or pointed-at row: a directional gradient with a hard accent leading[m
+[32m+[m[32m * edge, at a strength an animation decided.[m
+[32m+[m[32m *[m
+[32m+[m[32m * A flat rectangle of `selectedBg` reads as a rectangle somebody drew rather than as a surface the[m
+[32m+[m[32m * cursor is resting on, because nothing in it says which end the cursor came from. So the first[m
+[32m+[m[32m * cell is the accent at full strength — one cell, the row's own character kept — and the body ramps[m
+[32m+[m[32m * from `selectedBg` at the leading side toward a 75% mix into the ground at the trailing side,[m
+[32m+[m[32m * eased so the colour lives in the first third.[m
+  *[m
+[31m- * At full strength this is the selection background, byte for byte what a switched[m
+[31m- * band always was. Below it the band color is mixed out of the ground the row sits[m
+[31m- * on — the same ground a card unfolds out of — so the band arrives from the page[m
+[31m- * instead of appearing on it.[m
+[32m+[m[32m * At full strength this is the band a switched row paints, and the first body span is the switched[m
+[32m+[m[32m * band's own bytes. Below full strength every colour in the ramp is mixed out of the ground the row[m
+[32m+[m[32m * sits on — the same ground a card unfolds out of — so the band arrives from the page instead of[m
+[32m+[m[32m * appearing on it. At 0 there is no band at all: a band mixed all the way out is still an escape[m
+[32m+[m[32m * pair around a row that is supposed to be untouched.[m
+  *[m
+[31m- * A theme running in 256-color mode gets the switched band at half strength instead of a mix. It[m
+[31m- * cannot show one: every intermediate color quantizes onto the nearest palette entry, which reads[m
+[31m- * as the band changing hue rather than fading in. The band still tracks the pointer, exactly as it[m
+[31m- * did before there was a fade. The mode is the THEME's, not the terminal's reported capability —[m
+[31m- * the theme is what decides which color space it paints in, and a mix computed for a space the[m
+[31m- * theme is not using is quantized right back.[m
+[32m+[m[32m * A theme running in 256-color mode gets the flat switched band at half strength instead, exactly[m
+[32m+[m[32m * what it had. It cannot show a ramp: every intermediate color quantizes onto the nearest palette[m
+[32m+[m[32m * entry, which reads as the band changing hue rather than as a direction. The mode is the THEME's,[m
+[32m+[m[32m * not the terminal's reported capability — the theme is what decides which color space it paints[m
+[32m+[m[32m * in, and a mix computed for a space the theme is not using is quantized right back.[m
+[32m+[m[32m */[m
+[32m+[m[32mexport function paintBand(text: string, background: ThemeBg, strength: number): string {[m
+[32m+[m	[32mif (strength <= 0) return text;[m
+[32m+[m	[32mif (theme.getColorMode() !== "truecolor") return strength >= 0.5 ? theme.bg(background, text) : text;[m
+[32m+[m	[32mif (!colorEnabled()) return text;[m
+[32m+[m	[32mconst width = visibleWidth(text);[m
+[32m+[m	[32m// No cells is the flat band's empty escape pair, and there is no ramp to put in it.[m
+[32m+[m	[32mif (width === 0) return theme.bg(background, text);[m
+[32m+[m
+[32m+[m	[32mconst mode = theme.getColorMode();[m
+[32m+[m	[32mconst ground = visibleGroundHex();[m
+[32m+[m	[32mconst arriving = (hex: string): string => (strength >= 1 ? hex : blendHex(ground, hex, strength));[m
+[32m+[m	[32mconst head = theme.getBgColorHex(background);[m
+[32m+[m	[32mconst inserts = new Map<number, string>();[m
+[32m+[m	[32m// The leading edge. One cell of accent is what gives the band an end the cursor came from.[m
+[32m+[m	[32minserts.set(0, bgAnsi(arriving(theme.getAccentColorHex()), mode));[m
+[32m+[m
+[32m+[m	[32mconst bodyWidth = width - 1;[m
+[32m+[m	[32mconst spans = Math.min([m
+[32m+[m		[32mbodyWidth,[m
+[32m+[m		[32mclamp(Math.round(width / BAND_COLUMNS_PER_SPAN), BAND_MIN_SPANS, BAND_MAX_SPANS),[m
+[32m+[m	[32m);[m
+[32m+[m	[32mfor (let index = 0; index < spans; index++) {[m
+[32m+[m		[32mconst t = spans === 1 ? 0 : index / (spans - 1);[m
+[32m+[m		[32m// The first span at full strength is the switched band's OWN escape, not a recomputation of[m
+[32m+[m		[32m// it: every suite that looks for `theme.getBgAnsi(background)` in a selected row is asking[m
+[32m+[m		[32m// whether the band is still the theme's, and a byte-equal recomputation is a coincidence[m
+[32m+[m		[32m// rather than a guarantee.[m
+[32m+[m		[32mconst fill =[m
+[32m+[m			[32mindex === 0 && strength >= 1[m
+[32m+[m				[32m? theme.getBgAnsi(background)[m
+[32m+[m				[32m: bgAnsi(arriving(blendHex(head, ground, BAND_TRAIL_MIX * t ** BAND_RAMP_EASE)), mode);[m
+[32m+[m		[32minserts.set(1 + Math.floor((index * bodyWidth) / spans), fill);[m
+[32m+[m	[32m}[m
+[32m+[m
+[32m+[m	[32m// The label lift, and the one case it is safe in: a row carrying NO escapes of its own. Lifting[m
+[32m+[m	[32m// the text where the band is strongest needs a foreground colour opened mid-row, and on a row[m
+[32m+[m	[32m// that already paints its own colours that means either honouring SGR state this function would[m
+[32m+[m	[32m// have to parse, or overwriting a colour the caller chose. Neither is worth a brighter label, so[m
+[32m+[m	[32m// a styled row keeps every byte of its own styling and gets the gradient alone.[m
+[32m+[m	[32m//[m
+[32m+[m	[32m// It starts at column 1, not 0: the leading cell is a bright accent fill and a lifted label on[m
+[32m+[m	[32m// it would be near-invisible, so that one cell keeps whatever foreground it arrived with.[m
+[32m+[m	[32mconst lifted =[m
+[32m+[m		[32mwidth >= 3 && !text.includes("\x1b")[m
+[32m+[m			[32m? blendHex(theme.getColorHex("text"), theme.isLight ? "#000000" : "#ffffff", BAND_LIFT * strength)[m
+[32m+[m			[32m: null;[m
+[32m+[m	[32mlet tail = BAND_BG_RESET;[m
+[32m+[m	[32mif (lifted !== null) {[m
+[32m+[m		[32mconst closeAt = Math.max(2, Math.round(width * BAND_LIFT_SPAN));[m
+[32m+[m		[32minserts.set(1, `${inserts.get(1) ?? ""}${fgAnsi(lifted, mode)}`);[m
+[32m+[m		[32mif (closeAt >= width) tail = `${BAND_FG_RESET}${BAND_BG_RESET}`;[m
+[32m+[m		[32melse inserts.set(closeAt, `${inserts.get(closeAt) ?? ""}${BAND_FG_RESET}`);[m
+[32m+[m	[32m}[m
+[32m+[m	[32mreturn `${spliceAtColumns(text, inserts)}${tail}`;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m/**[m
+[32m+[m[32m * The pointer band, at a strength an animation decided. The shape is {@link paintBand}'s; a hover[m
+[32m+[m[32m * differs from a selection only in the strength it asks for, so at full strength the two are the[m
+[32m+[m[32m * same bytes and a list that adopts a fade can never change what a settled row looks like.[m
+  */[m
+ export function hoverBand(text: string, strength: number): string {[m
+[31m-	if (strength >= 1) return theme.bg("selectedBg", text);[m
+[31m-	if (theme.getColorMode() !== "truecolor") return strength >= 0.5 ? theme.bg("selectedBg", text) : text;[m
+[31m-	return theme.bgHex(blendHex(visibleGroundHex(), theme.getBgColorHex("selectedBg"), strength), text);[m
+[32m+[m	[32mreturn paintBand(text, "selectedBg", strength);[m
+ }[m
+ [m
+ export function getSelectListTheme(): SelectListTheme {[m
+[1mdiff --git a/packages/coding-agent/test/a-fading-hover-band-is-mixed-out-of-the-ground.test.ts b/packages/coding-agent/test/a-fading-hover-band-is-mixed-out-of-the-ground.test.ts[m
+[1mindex 7d5520271..3fc6a4a36 100644[m
+[1m--- a/packages/coding-agent/test/a-fading-hover-band-is-mixed-out-of-the-ground.test.ts[m
+[1m+++ b/packages/coding-agent/test/a-fading-hover-band-is-mixed-out-of-the-ground.test.ts[m
+[36m@@ -25,6 +25,7 @@[m
+ [m
+ import { afterAll, beforeAll, describe, expect, it } from "bun:test";[m
+ import { modalRevealGround } from "@veyyon/coding-agent/modes/components/modal-shell";[m
+[32m+[m[32mimport { selectionBand } from "@veyyon/coding-agent/modes/components/selector-helpers";[m
+ import {[m
+ 	getSelectListTheme,[m
+ 	getSettingsListTheme,[m
+[36m@@ -32,7 +33,7 @@[m [mimport {[m
+ 	setThemeInstance,[m
+ 	theme,[m
+ } from "@veyyon/coding-agent/modes/theme/theme";[m
+[31m-import { getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";[m
+[32m+[m[32mimport { getAnsiPolicy, setAnsiPolicy, visibleWidth } from "@veyyon/tui";[m
+ [m
+ const originalColorterm = Bun.env.COLORTERM;[m
+ const originalAnsiPolicy = getAnsiPolicy();[m
+[36m@@ -110,8 +111,12 @@[m [mdescribe("a fading hover band is mixed out of the ground", () => {[m
+ 		const settingsBand = getSettingsListTheme().hovered;[m
+ 		expect(band).toBeDefined();[m
+ 		expect(settingsBand).toBeDefined();[m
+[31m-		// The band this product has always painted. A fade that changes this changed the theme.[m
+[31m-		expect(band?.("row", 1)).toBe(theme.bg("selectedBg", "row"));[m
+[32m+[m		[32m// The band a SWITCHED row paints, byte for byte. A fade that changes this changed the theme.[m
+[32m+[m		[32m// It is `selectionBand`'s own bytes rather than a flat `theme.bg` fill because the band is a[m
+[32m+[m		[32m// directional gradient now, and the contract is that hover and selection are one treatment:[m
+[32m+[m		[32m// re-deriving the expected bytes here would let the two drift apart in exactly the gap this[m
+[32m+[m		[32m// assertion exists to close.[m
+[32m+[m		[32mexpect(band?.("row", 1)).toBe(selectionBand("row", visibleWidth("row")));[m
+ 		// Both list families answer to the same band, so neither can drift from the other.[m
+ 		expect(settingsBand?.("row", 1)).toBe(band?.("row", 1));[m
+ 	});[m
+[1mdiff --git a/packages/coding-agent/test/modes/components/a-pointer-band-fades-on-a-hand-painted-list.test.ts b/packages/coding-agent/test/modes/components/a-pointer-band-fades-on-a-hand-painted-list.test.ts[m
+[1mindex b9b7ec058..2db82df05 100644[m
+[1m--- a/packages/coding-agent/test/modes/components/a-pointer-band-fades-on-a-hand-painted-list.test.ts[m
+[1m+++ b/packages/coding-agent/test/modes/components/a-pointer-band-fades-on-a-hand-painted-list.test.ts[m
+[36m@@ -54,6 +54,7 @@[m [mimport { afterEach, beforeEach, describe, expect, it } from "bun:test";[m
+ import * as fs from "node:fs";[m
+ import * as os from "node:os";[m
+ import * as path from "node:path";[m
+[32m+[m[32mimport * as util from "node:util";[m
+ import type { AgentMessage } from "@veyyon/agent-core";[m
+ import { AskDialogComponent } from "@veyyon/coding-agent/modes/components/ask-dialog";[m
+ import { CopySelectorComponent } from "@veyyon/coding-agent/modes/components/copy-selector";[m
+[36m@@ -386,10 +387,18 @@[m [mconst PANES: readonly PaneCase[] = [[m
+ 	},[m
+ ];[m
+ [m
+[31m-/** 1-based screen row of the first rendered line containing `text`. */[m
+[32m+[m[32m/**[m
+[32m+[m[32m * 1-based screen row of the first rendered line whose CELLS contain `text`.[m
+[32m+[m[32m *[m
+[32m+[m[32m * Matched against the stripped row rather than the bytes, because a rendered row's label is not a[m
+[32m+[m[32m * contiguous byte run and never was: `SelectList.#paintHits` interleaves a `matchHighlight` escape[m
+[32m+[m[32m * around every filter-hit character, and the selection band is a gradient whose span boundaries[m
+[32m+[m[32m * fall wherever the ramp says. Nothing in the product looks a row up by its rendered bytes — hit[m
+[32m+[m[32m * testing is column arithmetic — so the reader is what was wrong here, not the paint.[m
+[32m+[m[32m */[m
+ function rowOf(pane: Pane, text: string): number {[m
+ 	const lines = pane.render(WIDTH);[m
+[31m-	const index = lines.findIndex(line => line.includes(text));[m
+[32m+[m	[32mconst index = lines.findIndex(line => util.stripVTControlCharacters(line).includes(text));[m
+ 	expect(index, `row containing ${JSON.stringify(text)}`).toBeGreaterThanOrEqual(0);[m
+ 	return index + 1;[m
+ }[m
+[1mdiff --git a/packages/coding-agent/test/modes/components/a-selected-row-is-a-band-with-a-direction.test.ts b/packages/coding-agent/test/modes/components/a-selected-row-is-a-band-with-a-direction.test.ts[m
+[1mnew file mode 100644[m
+[1mindex 000000000..7a43a4629[m
+[1m--- /dev/null[m
+[1m+++ b/packages/coding-agent/test/modes/components/a-selected-row-is-a-band-with-a-direction.test.ts[m
+[36m@@ -0,0 +1,378 @@[m
+[32m+[m[32m/**[m
+[32m+[m[32m * A selected or pointed-at row is a band with a DIRECTION, not a flat rectangle.[m
+[32m+[m[32m *[m
+[32m+[m[32m * WHY THIS SUITE EXISTS. `theme.bg("selectedBg", row)` paints one flat slab of one colour across[m
+[32m+[m[32m * the whole row. Nothing in it says which end the cursor came from, so it reads as a rectangle[m
+[32m+[m[32m * somebody drew rather than as a surface the cursor is resting on — the operator's verdict on the[m
+[32m+[m[32m * shipped build was that the selection is "boring", and rendering the real components to PNG[m
+[32m+[m[32m * confirmed the cause is that every surface is one flat ground. The replacement is a hard accent[m
+[32m+[m[32m * leading cell plus an eased ramp out of `selectedBg` toward the ground behind the row.[m
+[32m+[m[32m *[m
+[32m+[m[32m * Four ways a directional band goes wrong, and this suite pins each:[m
+[32m+[m[32m *[m
+[32m+[m[32m *   1. THE WIDTH CHANGES. This is the dangerous one and it is why the width assertions come first.[m
+[32m+[m[32m *      Hit-testing and layout are computed from column positions elsewhere in the product, so a[m
+[32m+[m[32m *      treatment that adds or drops a single cell silently breaks mouse routing on every list.[m
+[32m+[m[32m *      The band may only add zero-width escapes, and the double-width and already-coloured inputs[m
+[32m+[m[32m *      are the two shapes that break a naive column walk.[m
+[32m+[m[32m *   2. THE DIRECTION IS LOST. A band whose ramp runs the wrong way, or not at all, is a wash. The[m
+[32m+[m[32m *      assertion decodes the `48;2;r;g;b` spans out of the returned bytes and requires each one to[m
+[32m+[m[32m *      be strictly nearer the visible ground than the last, which fails on a reversed ramp, on a[m
+[32m+[m[32m *      constant fill, and on an unordered splice.[m
+[32m+[m[32m *   3. THE RAMP IS UNQUANTISED. A per-cell gradient is ~19 bytes of SGR per column on a row that[m
+[32m+[m[32m *      repaints on every keystroke. The span count is pinned per width, so a change that goes[m
+[32m+[m[32m *      per-cell (or drops to two blocks) is red rather than merely expensive.[m
+[32m+[m[32m *   4. A TERMINAL THAT CANNOT SHOW IT GETS IT ANYWAY. In 256-colour mode every intermediate[m
+[32m+[m[32m *      quantises onto the nearest palette entry and the ramp reads as the band changing hue. That[m
+[32m+[m[32m *      mode must return the exact bytes it returned before there was a ramp, so the expectation is[m
+[32m+[m[32m *      a captured literal rather than a re-derivation that would drift with the implementation.[m
+[32m+[m[32m *[m
+[32m+[m[32m * Hover is the same treatment at a strength, so the two are asserted to be one thing: full strength[m
+[32m+[m[32m * is byte-identical to a selection, and strength 0 is the untouched line rather than a band mixed[m
+[32m+[m[32m * all the way out.[m
+[32m+[m[32m *[m
+[32m+[m[32m * WHAT IT DOES NOT CATCH: whether the band LOOKS like a surface to an eye — a render proof answers[m
+[32m+[m[32m * that, an assertion cannot; and the timing of the hover fade, which is the motion clock's suite.[m
+[32m+[m[32m */[m
+[32m+[m[32mimport { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";[m
+[32m+[m[32mimport { hoverBandAt, selectionBand } from "@veyyon/coding-agent/modes/components/selector-helpers";[m
+[32m+[m[32mimport { resetGroundTintsForTest, setDetectedTerminalGround } from "@veyyon/coding-agent/modes/theme/ground-tints";[m
+[32m+[m[32mimport {[m
+[32m+[m	[32mgetThemeByName,[m
+[32m+[m	[32mhoverBand,[m
+[32m+[m	[32minitTheme,[m

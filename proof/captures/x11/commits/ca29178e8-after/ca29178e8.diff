@@ -1,0 +1,430 @@
+[33mca29178e8[m feat(overlays): a card is a lit surface, and the light crosses it as it opens
+
+
+
+ packages/coding-agent/CHANGELOG.md                 |   4 [32m+[m
+ .../src/modes/components/account-manager.ts        |   2 [32m+[m[31m-[m
+ .../src/modes/components/agent-dashboard.ts        |   2 [32m+[m[31m-[m
+ .../src/modes/components/ask-dialog.ts             |   2 [32m+[m[31m-[m
+ .../src/modes/components/copy-selector.ts          |   2 [32m+[m[31m-[m
+ .../components/extensions/extension-dashboard.ts   |   2 [32m+[m[31m-[m
+ .../src/modes/components/history-search.ts         |   2 [32m+[m[31m-[m
+ .../src/modes/components/hook-editor.ts            |   2 [32m+[m[31m-[m
+ .../src/modes/components/hook-input.ts             |   2 [32m+[m[31m-[m
+ .../src/modes/components/hook-selector.ts          |   2 [32m+[m[31m-[m
+ .../src/modes/components/login-dialog.ts           |   2 [32m+[m[31m-[m
+ .../src/modes/components/mcp-add-wizard.ts         |   2 [32m+[m[31m-[m
+ .../src/modes/components/modal-select-list.ts      |   2 [32m+[m[31m-[m
+ .../src/modes/components/modal-shell.ts            | 183 [32m++++++++++[m[31m--[m
+ .../coding-agent/src/modes/components/model-hub.ts |   2 [32m+[m[31m-[m
+ .../src/modes/components/model-picker.ts           |   2 [32m+[m[31m-[m
+ .../src/modes/components/move-overlay.ts           |   2 [32m+[m[31m-[m
+ .../src/modes/components/plan-review-overlay.ts    |   2 [32m+[m[31m-[m
+ .../src/modes/components/reset-usage-selector.ts   |   2 [32m+[m[31m-[m
+ .../src/modes/components/session-selector.ts       |   2 [32m+[m[31m-[m
+ .../src/modes/components/settings-selector.ts      |   2 [32m+[m[31m-[m
+ .../src/modes/components/tree-selector.ts          |   2 [32m+[m[31m-[m
+ .../src/modes/components/user-message-selector.ts  |   2 [32m+[m[31m-[m
+ ...-its-material-only-inside-its-own-edges.test.ts | 319 [32m+++++++++++++++++++++[m
+ 24 files changed, 498 insertions(+), 50 deletions(-)
+
+[1mdiff --git a/packages/coding-agent/CHANGELOG.md b/packages/coding-agent/CHANGELOG.md[m
+[1mindex d7cbf2466..907055d41 100644[m
+[1m--- a/packages/coding-agent/CHANGELOG.md[m
+[1m+++ b/packages/coding-agent/CHANGELOG.md[m
+[36m@@ -17,9 +17,12 @@[m
+ - The settings card's category sidebar cross-fades under the pointer, like the pane beside it. The sidebar is a tab bar, which was the one pointer surface the band fade never reached, so the same card faded on the right and switched on the left, two columns apart in one frame. The card lends the bar its repaint and takes it back when it closes: a dismissed card leaves nothing running on the shared clock, including a fade still travelling when Escape landed. A terminal without truecolor, or a user with transitions off, keeps the switched band byte for byte.[m
+ - The extension ask dialog cross-fades the option row under the pointer, like every other picker. It hit-tests and answers on a click, so it was already a pointer surface — it just banded on the frame the motion report landed, which is the strobe the rest of the product stopped doing. The dialog now takes the card's repaint and gives it back on dismissal, so nothing outlives an answered question, and a terminal without truecolor or with transitions off keeps the switched band byte for byte.[m
+ - The `/copy` picker cross-fades the row under the pointer, and every picker gives the shared animation clock back when it is dismissed. The copy tree paints its own rows, so it switched the band on the frame a motion report arrived while the pickers beside it faded. The teardown is the bigger half: `/tree`, `/history`, the branch-from-message card, the thinking picker, the slash-command picker, the reset-usage picker and the debug picker all open through one show site that hid the overlay and told the card nothing, so a band still travelling when Escape landed kept asking for frames against a card that would never be painted again. The show site hands the card back now — including a card that closes itself before its overlay exists — and `/copy`, which does not use that show site, does the same at its own.[m
+[32m+[m[32m- Every overlay card is a lit surface that opens with light crossing it, instead of line art that appears. A card's own columns are filled with an elevation gradient — brighter along the top row than the bottom, so the card reads as standing in front of the page rather than being drawn onto it — and while it unfolds each row arrives on its own ramp inside the 260ms curve, so twenty rows give twenty overlapping fades rather than one strength for the whole card. One specular highlight then travels across it over 520ms on a diagonal, lifting the selection band and every chip it crosses rather than erasing them. All twenty-one cards get it from one seam, so no card animates differently from the card beside it. It is off unless the terminal can take `48;2` truecolor AND the ground behind the card is actually known: a terminal that answered no OSC 11 leaves the theme's declared ground as the only guess, and titanium declares black, so a card on a grey terminal would have been filled with a black-derived slab. The light is released the moment a card starts leaving and when it is dismounted — it outlasts the unfold by design, and a card dismissed mid-entrance used to leave it running on the shared clock.[m
+ [m
+ ### Changed[m
+ [m
+[32m+[m[32m- Every bar in the product is drawn in eighths of a cell by one owner, so a value moves instead of jumping. The `/usage` bars, `/account` and the account card's usage windows, `/context`, the tiny-model download row, and `veyyon usage`, `veyyon tiny-models` and `veyyon grievances push` each built their own bar out of `█` and `░`, which gives a ten-column bar ten states: 3% moved nothing and a crossed column jumped a whole cell. They all draw through `subCellBar` now, at eight steps per column, with the same colours and the same column layout — a bar is still exactly as wide as it was, since the account surfaces line their bars up by column position. The context/usage bar also loses its own `▒`/`▓` approximation of a third and two thirds of a cell, which was the only sub-cell precision in the product and read as a shading artifact rather than as a position. The glyphs come from the symbol preset: `ascii` gets `#` and `-` at whole-cell resolution, because a font without the partial blocks draws a replacement box in the middle of the bar.[m
+[32m+[m[32m- The tiny-model download bar travels to each new percentage instead of appearing at it. Its ratio is a `SettleValue` on the shared clock under the `settle` spring, so a download reporting in 1% steps and a cached shard completing in one event both read as movement; the percent beside it still prints what was last reported, since the number is the fact and the bar is the travel toward it. The first reading lands with no travel, the row stops the settle when it leaves the transcript, and a terminal without truecolor or with `display.transitions: off` gets the jump it had. The three CLI bars stay static: they are one-shot `\r`-rewritten lines with no render loop for a clock to drive, and so is the `/usage` report, which is one string presented into the transcript once.[m
+ - `/resume`, `/tree`, the branch-from-message card and `/history` cross-fade the pointer band like every other picker. Those four paint their own rows rather than building a `SelectList`, so they switched the band on the frame a motion report arrived while the rest of the product faded, and which behaviour you got depended on which card you opened. All four now band through the same strength-aware paint, so the row the pointer leaves is still visible while the row it arrives at comes up, a settled row is the exact byte sequence it always was, a card with no repaint to lend keeps the switched band, and a dismissed card drops the band instead of leaving one behind under a pointer that is gone.[m
+ - Every remaining hand-painted hover surface cross-fades its pointer band, so no card is left where the row under the pointer switches on. The reset-usage picker, `/move`, the extension list and the extensions dashboard's tab bar, the hook selector, the `/mcp add` wizard, the OAuth picker and the sign-in scene, the model hub's scope sidebar and roles pane, the model list embedded in the hub, the model picker, the account manager's provider sidebar, and every model panel on the settings screen all band through the same strength-aware paint now. Doing the whole set rather than the reachable half turned up two defects: a card whose host hands the repaint in through its CONSTRUCTOR rather than through `setOnRequestRender` built no fade at all, so the seam existed and the real host never reached it; and the `/mcp add` wizard banded its own selected row, which reads as two selections at once. Teardown is the other half — `/mcp add`'s wizard, the model picker, and a settings panel swapped out when a submenu steps back to its list all hand the shared clock back, so a band still travelling when Escape lands goes with the card instead of ticking against something that will never be painted again. A terminal without truecolor, or transitions off, keeps the switched band byte for byte.[m
+ - Settings → Subagents says "subagent" wherever it means a spawned worker. The tab held an `Agents` section carrying an `Agent Roster` row, an `Agent Delegation` row beside it, and a roster screen headed `Agents` whose per-agent page was headed `Agent: <name>`, so one thing wore two names on one screen. The section is `Subagents` now, the rows are `Subagent Roster` and `Subagent Delegation`, and the screens read `Subagents` and `Subagent: <name>`. No setting key changed, so nothing in a config file moves.[m
+[36m@@ -31,6 +34,7 @@[m
+ - Choosing `Inherit` for the subagent effort clears the setting instead of storing an empty string, so an inherited effort reads as unset everywhere rather than as a configured blank.[m
+ - Every overlay card opens on the shared animation clock and resolves out of the theme's ground as it unfolds. The unfold was a clip on a timer the card owned: full-strength chrome from its first frame, so a card opening while anything else animated ran on a second timer that never shared a frame with it. The card now eases on the one clock under the `enter` preset, and each visible row is blended from the ground to full strength as it arrives, which is the difference between a card arriving and a wipe with a moving edge. A theme without a declared page background fades from black or white to match its appearance, and an indexed-color frame is left alone rather than being repainted from a palette the terminal may not be using.[m
+ - The cut-short batch marker takes its indent from `COMPOSER_INSET_COLS` instead of two literal spaces. No visible change: the rail is two columns, so the bytes are the same ones. The rail now has one owner, and the marker's suite asserts it sits on it.[m
+[32m+[m[32m- The selected and hovered row is a band with a direction instead of a flat rectangle of one colour. Its first cell is the accent at full strength, and from the second cell the background ramps out of `selectedBg` toward the ground the row sits on, eased so most of the colour lives in the first third — a flat slab says nothing about which end the cursor came from, which is why a selected row read as a rectangle somebody drew rather than as a surface the cursor is resting on. The ramp is quantised to one span per eight columns, three at the fewest and ten at the most, so a 40-column row costs five extra escapes rather than forty on a row that repaints on every keystroke. A row that carries no styling of its own also gets a brighter label over that first third; a row that paints its own colours keeps every byte of them. Hover is the same treatment at a strength, so a settled hover is byte-identical to a selection and every colour in the gradient, the accent cell included, is mixed out of the ground on the way in. The row's printed width is unchanged — the treatment only adds zero-width escapes, which is what the mouse routing depends on — and a terminal that is not truecolor gets the flat band byte for byte, since every intermediate colour there quantises onto the nearest palette entry and the ramp would read as the band changing hue.[m
+ [m
+ ### Removed[m
+ [m
+[1mdiff --git a/packages/coding-agent/src/modes/components/account-manager.ts b/packages/coding-agent/src/modes/components/account-manager.ts[m
+[1mindex bcaf21282..0568d7013 100644[m
+[1m--- a/packages/coding-agent/src/modes/components/account-manager.ts[m
+[1m+++ b/packages/coding-agent/src/modes/components/account-manager.ts[m
+[36m@@ -1010,6 +1010,6 @@[m [mexport class AccountManagerComponent implements Component {[m
+ 		this.#shellGeometry = shell.geometry;[m
+ 		this.#frameLeft = shell.geometry?.leftPad ?? 0;[m
+ 		this.#contentRowStart = shell.geometry?.bodyRowStart ?? 0;[m
+[31m-		return applyModalReveal(shell, width, this.#reveal.value);[m
+[32m+[m		[32mreturn applyModalReveal(shell, width, this.#reveal);[m
+ 	}[m
+ }[m
+[1mdiff --git a/packages/coding-agent/src/modes/components/agent-dashboard.ts b/packages/coding-agent/src/modes/components/agent-dashboard.ts[m
+[1mindex 6ebf6eeea..921f0ec4c 100644[m
+[1m--- a/packages/coding-agent/src/modes/components/agent-dashboard.ts[m
+[1m+++ b/packages/coding-agent/src/modes/components/agent-dashboard.ts[m
+[36m@@ -1307,7 +1307,7 @@[m [mexport class AgentDashboard extends Container {[m
+ 		// not compact, which put the row-local [x] permanently out of reach of the[m
+ 		// pointer while still drawing it under the cursor.[m
+ 		this.#bodyColStart = (shell.geometry?.cardColStart ?? 0) + CARD_BODY_COL_INSET;[m
+[31m-		return applyModalReveal(shell, width, this.#reveal.value);[m
+[32m+[m		[32mreturn applyModalReveal(shell, width, this.#reveal);[m
+ 	}[m
+ [m
+ 	#switchView(direction: 1 | -1): void {[m
+[1mdiff --git a/packages/coding-agent/src/modes/components/ask-dialog.ts b/packages/coding-agent/src/modes/components/ask-dialog.ts[m
+[1mindex cfb3114f4..d609bd275 100644[m
+[1m--- a/packages/coding-agent/src/modes/components/ask-dialog.ts[m
+[1m+++ b/packages/coding-agent/src/modes/components/ask-dialog.ts[m
+[36m@@ -603,7 +603,7 @@[m [mexport class AskDialogComponent implements Component {[m
+ 						scrollOffset: bodyLines.scrollOffset,[m
+ 					}[m
+ 				: null;[m
+[31m-		return applyModalReveal(shell, width, this.#reveal.value);[m
+[32m+[m		[32mreturn applyModalReveal(shell, width, this.#reveal);[m
+ 	}[m
+ [m
+ 	/** Footer chips for the active tab (browse vs submit review), mirroring[m
+[1mdiff --git a/packages/coding-agent/src/modes/components/copy-selector.ts b/packages/coding-agent/src/modes/components/copy-selector.ts[m
+[1mindex 051834c13..27e76defa 100644[m
+[1m--- a/packages/coding-agent/src/modes/components/copy-selector.ts[m
+[1m+++ b/packages/coding-agent/src/modes/components/copy-selector.ts[m
+[36m@@ -387,6 +387,6 @@[m [mexport class CopySelectorComponent implements Component {[m
+ 		});[m
+ 		this.#shellGeometry = shell.geometry;[m
+ 		this.#listRowStart = shell.geometry?.bodyRowStart ?? 0;[m
+[31m-		return applyModalReveal(shell, width, this.#reveal.value);[m
+[32m+[m		[32mreturn applyModalReveal(shell, width, this.#reveal);[m
+ 	}[m
+ }[m
+[1mdiff --git a/packages/coding-agent/src/modes/components/extensions/extension-dashboard.ts b/packages/coding-agent/src/modes/components/extensions/extension-dashboard.ts[m
+[1mindex 85bedaa28..9576d272a 100644[m
+[1m--- a/packages/coding-agent/src/modes/components/extensions/extension-dashboard.ts[m
+[1m+++ b/packages/coding-agent/src/modes/components/extensions/extension-dashboard.ts[m
+[36m@@ -250,7 +250,7 @@[m [mexport class ExtensionDashboard implements Component {[m
+ 		this.#tabRowCount = tabLines.length;[m
+ 		this.#bodyRowStart = this.#tabRowStart + tabLines.length;[m
+ 		this.#bodyRowCount = contentRows;[m
+[31m-		return applyModalReveal(shell, width, this.#reveal.value);[m
+[32m+[m		[32mreturn applyModalReveal(shell, width, this.#reveal);[m
+ 	}[m
+ [m
+ 	invalidate(): void {[m
+[1mdiff --git a/packages/coding-agent/src/modes/components/history-search.ts b/packages/coding-agent/src/modes/components/history-search.ts[m
+[1mindex 741d595f4..d12a1e311 100644[m
+[1m--- a/packages/coding-agent/src/modes/components/history-search.ts[m
+[1m+++ b/packages/coding-agent/src/modes/components/history-search.ts[m
+[36m@@ -436,6 +436,6 @@[m [mexport class HistorySearchComponent implements Component {[m
+ 		});[m
+ 		this.#shellGeometry = shell.geometry;[m
+ 		this.#listRowStart = shell.geometry?.bodyRowStart ?? 0;[m
+[31m-		return applyModalReveal(shell, width, this.#reveal.value);[m
+[32m+[m		[32mreturn applyModalReveal(shell, width, this.#reveal);[m
+ 	}[m
+ }[m
+[1mdiff --git a/packages/coding-agent/src/modes/components/hook-editor.ts b/packages/coding-agent/src/modes/components/hook-editor.ts[m
+[1mindex 9c7762b04..7a9b0cbb4 100644[m
+[1m--- a/packages/coding-agent/src/modes/components/hook-editor.ts[m
+[1m+++ b/packages/coding-agent/src/modes/components/hook-editor.ts[m
+[36m@@ -238,7 +238,7 @@[m [mexport class HookEditorComponent extends Container {[m
+ 			showClose: true,[m
+ 		});[m
+ 		this.#shellGeometry = shell.geometry;[m
+[31m-		return applyModalReveal(shell, renderWidth, this.#reveal.value);[m
+[32m+[m		[32mreturn applyModalReveal(shell, renderWidth, this.#reveal);[m
+ 	}[m
+ [m
+ 	handleInput(keyData: string): void {[m
+[1mdiff --git a/packages/coding-agent/src/modes/components/hook-input.ts b/packages/coding-agent/src/modes/components/hook-input.ts[m
+[1mindex a3b37fd1c..cf3337821 100644[m
+[1m--- a/packages/coding-agent/src/modes/components/hook-input.ts[m
+[1m+++ b/packages/coding-agent/src/modes/components/hook-input.ts[m
+[36m@@ -230,7 +230,7 @@[m [mexport class HookInputComponent extends Container {[m
+ 			showClose: true,[m
+ 		});[m
+ 		this.#shellGeometry = shell.geometry;[m
+[31m-		return applyModalReveal(shell, renderWidth, this.#reveal.value);[m
+[32m+[m		[32mreturn applyModalReveal(shell, renderWidth, this.#reveal);[m
+ 	}[m
+ [m
+ 	dispose(): void {[m
+[1mdiff --git a/packages/coding-agent/src/modes/components/hook-selector.ts b/packages/coding-agent/src/modes/components/hook-selector.ts[m
+[1mindex f36bc91c0..e25b74306 100644[m
+[1m--- a/packages/coding-agent/src/modes/components/hook-selector.ts[m
+[1m+++ b/packages/coding-agent/src/modes/components/hook-selector.ts[m
+[36m@@ -925,7 +925,7 @@[m [mexport class HookSelectorComponent extends Container {[m
+ 		});[m
+ 		this.#shellGeometry = shell.geometry;[m
+ 		this.#bodyRowStart = shell.geometry?.bodyRowStart ?? 0;[m
+[31m-		return applyModalReveal(shell, renderWidth, this.#reveal.value);[m
+[32m+[m		[32mreturn applyModalReveal(shell, renderWidth, this.#reveal);[m
+ 	}[m
+ [m
+ 	dispose(): void {[m
+[1mdiff --git a/packages/coding-agent/src/modes/components/login-dialog.ts b/packages/coding-agent/src/modes/components/login-dialog.ts[m
+[1mindex b264a5e69..292c4f697 100644[m
+[1m--- a/packages/coding-agent/src/modes/components/login-dialog.ts[m
+[1m+++ b/packages/coding-agent/src/modes/components/login-dialog.ts[m
+[36m@@ -226,7 +226,7 @@[m [mexport class LoginDialogComponent implements Component {[m
+ 			showClose: true,[m
+ 		});[m
+ 		this.#shellGeometry = shell.geometry;[m
+[31m-		return applyModalReveal(shell, width, this.#reveal.value);[m
+[32m+[m		[32mreturn applyModalReveal(shell, width, this.#reveal);[m
+ 	}[m
+ [m
+ 	handleInput(data: string): void {[m
+[1mdiff --git a/packages/coding-agent/src/modes/components/mcp-add-wizard.ts b/packages/coding-agent/src/modes/components/mcp-add-wizard.ts[m
+[1mindex 534096e02..e4aa7b380 100644[m
+[1m--- a/packages/coding-agent/src/modes/components/mcp-add-wizard.ts[m
+[1m+++ b/packages/coding-agent/src/modes/components/mcp-add-wizard.ts[m
+[36m@@ -649,7 +649,7 @@[m [mexport class MCPAddWizard implements Component {[m
+ 		});[m
+ 		this.#shellGeometry = shell.geometry;[m
+ 		this.#bodyRowStart = shell.geometry?.bodyRowStart ?? 0;[m
+[31m-		return applyModalReveal(shell, width, this.#reveal.value);[m
+[32m+[m		[32mreturn applyModalReveal(shell, width, this.#reveal);[m
+ 	}[m
+ [m
+ 	handleInput(keyData: string): void {[m
+[1mdiff --git a/packages/coding-agent/src/modes/components/modal-select-list.ts b/packages/coding-agent/src/modes/components/modal-select-list.ts[m
+[1mindex b6c48f4e3..b0a871028 100644[m
+[1m--- a/packages/coding-agent/src/modes/components/modal-select-list.ts[m
+[1m+++ b/packages/coding-agent/src/modes/components/modal-select-list.ts[m
+[36m@@ -230,7 +230,7 @@[m [mexport class ModalSelectListComponent implements Component {[m
+ 			showClose: true,[m
+ 		});[m
+ 		this.#shellGeometry = shell.geometry;[m
+[31m-		return applyModalReveal(shell, width, this.#reveal.value);[m
+[32m+[m		[32mreturn applyModalReveal(shell, width, this.#reveal);[m
+ 	}[m
+ [m
+ 	/** Settle the reveal and the pointer band so no timer outlives a dismissed card. */[m
+[1mdiff --git a/packages/coding-agent/src/modes/components/modal-shell.ts b/packages/coding-agent/src/modes/components/modal-shell.ts[m
+[1mindex 6c47a09c0..52f82a2ab 100644[m
+[1m--- a/packages/coding-agent/src/modes/components/modal-shell.ts[m
+[1m+++ b/packages/coding-agent/src/modes/components/modal-shell.ts[m
+[36m@@ -13,19 +13,24 @@[m
+  */[m
+ import {[m
+ 	type Animation,[m
+[32m+[m	[32mcascadeStrength,[m
+[32m+[m	[32mtype ColumnWindow,[m
+ 	clamp,[m
+ 	clampLow,[m
+ 	fadeLineTowards,[m
+[32m+[m	[32mfillSurface,[m
+ 	type Keybinding,[m
+ 	MOTION,[m
+ 	type MotionClock,[m
+ 	motionClock,[m
+ 	padding,[m
+[32m+[m	[32msweepSurface,[m
+ 	TERMINAL,[m
+ 	truncateToWidth,[m
+ 	visibleWidth,[m
+ } from "@veyyon/tui";[m
+ import { transitionsEnabled } from "../theme/shimmer";[m
+[32m+[m[32mimport { getVisibleGround } from "../theme/ground-tints";[m
+ import { theme, visibleGroundHex } from "../theme/theme";[m
+ import { actionKeyHint } from "../utils/key-hint";[m
+ import { emberTick } from "./composer-chrome";[m
+[36m@@ -866,24 +871,37 @@[m [mexport const SELECT_LIST_SHORTCUTS: readonly ModalShortcut[] = [[m
+ [m
+ // --- Open reveal (TOUCH-5) ---------------------------------------------------[m
+ [m
+[32m+[m[32m/**[m
+[32m+[m[32m * The two quantities a card's entrance carries: how far it has unfolded, and where[m
+[32m+[m[32m * the specular highlight has travelled to. They are read together because they are[m
+[32m+[m[32m * one entrance; passing only the unfold is what made the arrival a wipe.[m
+[32m+[m[32m */[m
+[32m+[m[32mexport interface ModalRevealProgress {[m
+[32m+[m	[32mreadonly value: number;[m
+[32m+[m	[32m/** Highlight position in [0, 1]; 1 means no highlight is crossing. */[m
+[32m+[m	[32mreadonly sweep: number;[m
+[32m+[m[32m}[m
+[32m+[m
+ /**[m
+  * Drives a one-shot open reveal for a modal card: `value` eases 0 → 1 on the[m
+  * shared {@link motionClock} under {@link MOTION.enter}, requesting a render[m
+[31m- * per frame until it settles. The card owns no timer of its own, so every[m
+[31m- * overlay in the product opens on the same curve and on the same frame as[m
+[31m- * anything else animating, and a settled overlay costs nothing (the clock[m
+[31m- * drops a finished animation and stops ticking when nothing is left).[m
+[32m+[m[32m * per frame until it settles, while `sweep` carries a highlight across the card[m
+[32m+[m[32m * on its own longer curve. The card owns no timer of its own, so every overlay in[m
+[32m+[m[32m * the product opens on the same curve and on the same frame as anything else[m
+[32m+[m[32m * animating, and a settled overlay costs nothing (the clock drops a finished[m
+[32m+[m[32m * animation and stops ticking when nothing is left).[m
+  *[m
+  * `display.transitions: off` gating is the CALLER's job via[m
+  * modalRevealEnabled(). Tests pass their own clock and drive frames by hand.[m
+  */[m
+[31m-export class ModalRevealDriver {[m
+[32m+[m[32mexport class ModalRevealDriver implements ModalRevealProgress {[m
+ 	#armed = false;[m
+ 	#animation: Animation | null = null;[m
+ 	#settled = false;[m
+ 	#requestRender: (() => void) | null = null;[m
+ 	#exit: Animation | null = null;[m
+ 	#exiting = false;[m
+[32m+[m	[32m#sweepAnimation: Animation | null = null;[m
+ 	readonly #clock: MotionClock;[m
+ [m
+ 	constructor(clock: MotionClock = motionClock) {[m
+[36m@@ -923,12 +941,41 @@[m [mexport class ModalRevealDriver {[m
+ 		return this.#exiting;[m
+ 	}[m
+ [m
+[32m+[m	[32m/**[m
+[32m+[m	[32m * Where the highlight has travelled to, in [0, 1]. 1 means there is none: a[m
+[32m+[m	[32m * settled card, a card that never played an entrance, and a card on its way out[m
+[32m+[m	[32m * are all lit flat.[m
+[32m+[m	[32m *[m
+[32m+[m	[32m * The sweep runs on its own curve rather than off `value`, because it outlasts[m
+[32m+[m	[32m * the unfold on purpose — the card is in place while the light is still moving[m
+[32m+[m	[32m * across it. Anchored to the first READ for the same reason the unfold is: an[m
+[32m+[m	[32m * overlay's first paint can arrive long after its construction.[m
+[32m+[m	[32m */[m
+[32m+[m	[32mget sweep(): number {[m
+[32m+[m		[32m// `#settled` is checked for the same reason `value` checks it: a stopped or[m
+[32m+[m		[32m// dismounted driver must not START a light on its next read. Without it, a[m
+[32m+[m		[32m// disposed card's last render put a fresh 520ms animation on the shared clock[m
+[32m+[m		[32m// and reported a sweep at phase zero, which is a flash of light on a card that[m
+[32m+[m		[32m// is already gone.[m
+[32m+[m		[32mif (this.#exit !== null || this.#settled || !this.#armed) return 1;[m
+[32m+[m		[32mif (this.#sweepAnimation === null) {[m
+[32m+[m			[32mthis.#sweepAnimation = this.#clock.animate(MOTION.sweep, {[m
+[32m+[m				[32mfrom: 0,[m
+[32m+[m				[32mto: 1,[m
+[32m+[m				[32monFrame: () => this.#requestRender?.(),[m
+[32m+[m			[32m});[m
+[32m+[m			[32mreturn 0;[m
+[32m+[m		[32m}[m
+[32m+[m		[32mreturn this.#sweepAnimation.value;[m
+[32m+[m	[32m}[m
+[32m+[m
+ 	/** Begin the reveal (idempotent; a second call replays from zero). */[m
+ 	start(requestRender: () => void): void {[m
+ 		this.stop();[m
+ 		this.#settled = false;[m
+ 		this.#armed = true;[m
+ 		this.#animation = null;[m
+[32m+[m		[32mthis.#sweepAnimation = null;[m
+ 		this.#exit = null;[m
+ 		this.#exiting = false;[m
+ 		this.#requestRender = requestRender;[m
+[36m@@ -948,6 +995,10 @@[m [mexport class ModalRevealDriver {[m
+ 		const from = this.value;[m
+ 		this.#animation?.cancel();[m
+ 		this.#animation = null;[m
+[32m+[m		[32m// A leaving card is not being lit. `get sweep` returns 1 once an exit exists, so[m
+[32m+[m		[32m// the animation has no reader left and would only keep the clock alive.[m
+[32m+[m		[32mthis.#sweepAnimation?.cancel();[m
+[32m+[m		[32mthis.#sweepAnimation = null;[m
+ 		this.#settled = false;[m
+ 		this.#exiting = true;[m
+ 		this.#requestRender = requestRender;[m
+[36m@@ -969,6 +1020,12 @@[m [mexport class ModalRevealDriver {[m
+ 		// The entrance is CANCELLED: a dismount must not ask a disposed card to repaint.[m
+ 		this.#animation?.cancel();[m
+ 		this.#animation = null;[m
+[32m+[m		[32m// The sweep is a light crossing a card that no longer exists, and it is the one[m
+[32m+[m		[32m// animation here that outlives the unfold: MOTION.sweep is twice MOTION.enter, so[m
+[32m+[m		[32m// a card dismissed while the light is still travelling left a live animation on[m
+[32m+[m		[32m// the clock and the clock ticking with nothing to show.[m
+[32m+[m		[32mthis.#sweepAnimation?.cancel();[m
+[32m+[m		[32mthis.#sweepAnimation = null;[m
+ 		// An exit is FINISHED instead, because its `onDone` is what removes the card from the[m
+ 		// overlay stack. Cancelling one would leave a dismissed card painted on screen with nothing[m
+ 		// left running to take it off — the exit turning a close into a permanent overlay is a worse[m
+[36m@@ -1017,38 +1074,106 @@[m [mexport function modalRevealGround(): string {[m
+ }[m
+ [m
+ /**[m
+[31m- * Clip a rendered modal frame to an unfolding card: the top border stays put,[m
+[31m- * the bottom border slides down as the body grows, and every visible card row[m
+[31m- * resolves out of the ground as it arrives. Pure so the exact frames are[m
+[31m- * byte-assertable in tests. `reveal >= 1` returns the lines untouched;[m
+[31m- * during the unfold every hidden card row becomes a blank area row, so nothing[m
+[31m- * below the moving bottom border ever paints. The minimum visible card is the[m
+[31m- * two border rows — a reveal never shows a borderless sliver.[m
+[32m+[m[32m * Whether a card may be painted as a surface at all, and out of which colour.[m
+[32m+[m[32m *[m
+[32m+[m[32m * A surface is an explicit background on every cell of the card, so it is only[m
+[32m+[m[32m * ever as safe as the ground it is mixed out of. `visibleGroundHex` falls back to[m
+[32m+[m[32m * the theme's DECLARED ground when nothing painted and the terminal answered no[m
+[32m+[m[32m * OSC 11 — titanium declares black — and a black-derived fill laid on a grey[m
+[32m+[m[32m * terminal is the slab that shipped on 2026-07-22, which is also what the pointer[m
+[32m+[m[32m * band suites forbid in as many words.[m
+  *[m
+[31m- * The fade is what separates an unfold from a wipe: a card whose chrome is at[m
+[31m- * full strength on its first frame reads as a cut with a moving edge, however[m
+[31m- * smooth the edge is.[m
+[32m+[m[32m * So: a known ground gets the material, an unknown one gets the product exactly as[m
+[32m+[m[32m * it was. The clip and the fade are colour-agnostic and play either way.[m
+[32m+[m[32m */[m
+[32m+[m[32mfunction modalSurfaceGround(ground: string): string | undefined {[m
+[32m+[m	[32mreturn getVisibleGround() === undefined ? undefined : ground;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m/**[m
+[32m+[m[32m * Paint a rendered modal frame as a SURFACE, and play its entrance.[m
+[32m+[m[32m *[m
+[32m+[m[32m * Three things happen here, and the order matters:[m
+[32m+[m[32m *[m
+[32m+[m[32m *   1. The card's rows are filled with an elevation gradient — a few percent off[m
+[32m+[m[32m *      the ground the terminal is actually showing, lighter at the top edge than[m
+[32m+[m[32m *      the bottom. This is not part of the animation: a settled card is still a[m
+[32m+[m[32m *      surface. Cells the component gave their own background keep it.[m
+[32m+[m[32m *   2. While the entrance runs, the card is clipped to the rows it has grown to[m
+[32m+[m[32m *      and each row resolves out of the ground on ITS OWN ramp. A single strength[m
+[32m+[m[32m *      for the whole block gives an animation as many distinct frames as the card[m
+[32m+[m[32m *      has rows, which is why the unfold read as a cut with a moving edge; a[m
+[32m+[m[32m *      cascade gives every row a continuous fade and the overlap is what the eye[m
+[32m+[m[32m *      reads as one smooth motion. The bottom border still slides down with the[m
+[32m+[m[32m *      body, so the card is never a borderless sliver.[m
+[32m+[m[32m *   3. One specular highlight crosses the card, on a curve that outlasts the[m
+[32m+[m[32m *      unfold. This is the only motion in the product with a frame for every frame[m
+[32m+[m[32m *      of the clock: it moves through colour rather than through terminal rows, so[m
+[32m+[m[32m *      it cannot look stepped.[m
+[32m+[m[32m *[m
+[32m+[m[32m * Pure, so every frame is byte-assertable. Takes the whole {@link ModalRevealProgress}[m
+[32m+[m[32m * rather than one number because the entrance is two quantities; a bare number is[m
+[32m+[m[32m * still accepted, which is what a test that only cares about the unfold passes.[m
+  */[m
+ export function applyModalReveal([m
+ 	result: ModalShellResult,[m
+ 	areaWidth: number,[m
+[31m-	reveal: number,[m
+[32m+[m	[32mreveal: number | ModalRevealProgress,[m
+ 	ground: string = modalRevealGround(),[m
+ ): string[] {[m
+[32m+[m	[32mconst progress = typeof reveal === "number" ? { value: reveal, sweep: 1 } : reveal;[m
+ 	const geometry = result.geometry;[m
+[31m-	if (geometry === null || reveal >= 1) return result.lines;[m
+[32m+[m	[32mif (geometry === null) return result.lines;[m
+ 	// cardRowEnd is EXCLUSIVE (see hitTestModalChrome's `row < cardRowEnd`).[m
+[31m-	const { cardRowStart, cardRowEnd } = geometry;[m
+[32m+[m	[32mconst { cardRowStart, cardRowEnd, cardColStart, cardColEnd } = geometry;[m
+ 	const cardRows = cardRowEnd - cardRowStart;[m
+[31m-	const visible = Math.max(2, Math.round(cardRows * Math.max(0, reveal)));[m
+[31m-	const strength = Math.max(0, Math.min(1, reveal));[m
+[31m-	const blank = padding(areaWidth);[m
+[31m-	return result.lines.map((line, row) => {[m
+[31m-		if (row < cardRowStart || row >= cardRowEnd) return line;[m
+[31m-		const cardRow = row - cardRowStart;[m
+[31m-		if (cardRow < visible - 1) return fadeLineTowards(line, ground, strength);[m
+[31m-		// The bottom border slides up to close the card at its current height.[m
+[31m-		if (cardRow === visible - 1) return fadeLineTowards(result.lines[cardRowEnd - 1]!, ground, strength);[m
+[31m-		return blank;[m
+[31m-	});[m
+[32m+[m	[32mconst card = result.lines.slice(cardRowStart, cardRowEnd);[m
+[32m+[m	[32m// The card's own columns. A card row is as wide as the screen, and the padding[m
+[32m+[m	[32m// that centres it belongs to the page: a treatment given the whole row puts the[m

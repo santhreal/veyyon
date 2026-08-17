@@ -1,0 +1,409 @@
+[33ma87aa3b99[m tools(demos): judge a surface from images, and film an entrance frame by frame
+
+
+
+ scripts/demos/lib/glyphs.ts              |  26 [32m+++[m
+ scripts/demos/lift-lab.ts                | 308 [32m+++++++++++++++++++++++++++++++[m
+ scripts/demos/render-overlay-entrance.ts |  91 [32m+++++++++[m
+ 3 files changed, 425 insertions(+)
+
+[1mdiff --git a/scripts/demos/lib/glyphs.ts b/scripts/demos/lib/glyphs.ts[m
+[1mindex e913e3b7e..e2ee1be8f 100644[m
+[1m--- a/scripts/demos/lib/glyphs.ts[m
+[1m+++ b/scripts/demos/lib/glyphs.ts[m
+[36m@@ -144,6 +144,32 @@[m [mconst FONT: Readonly<Record<string, string>> = {[m
+ 	"▒": "#.#.#/.#.#./#.#.#/.#.#./#.#.#/.#.#./#.#.#",[m
+ 	"▓": "##.##/#####/##.##/#####/##.##/#####/##.##",[m
+ [m
+[32m+[m	[32m// Eighth blocks, vertical and horizontal. These are how a terminal animates[m
+[32m+[m	[32m// below one cell: a card that grows by an eighth of a row per frame has eight[m
+[32m+[m	[32m// times the resolution of one that grows by a row, and that is the difference[m
+[32m+[m	[32m// between motion a viewer sees and motion a viewer is told about. A proof of[m
+[32m+[m	[32m// sub-cell motion is a proof about WHICH of these glyphs each frame chose, so[m
+[32m+[m	[32m// the font has to be able to draw all of them.[m
+[32m+[m	[32m//[m
+[32m+[m	[32m// A 5x7 cell cannot hold eight distinct fill levels. Each glyph rounds to the[m
+[32m+[m	[32m// nearest row (or column), so three pairs land on the same bitmap: ▃ with the[m
+[32m+[m	[32m// existing ▄, ▆ with ▇, and ▏ with ▎, ▍ with ▌, ▊ with ▉ horizontally. The[m
+[32m+[m	[32m// collision is in the picture only: an assertion about sub-cell motion reads[m
+[32m+[m	[32m// the glyph out of the bytes, where all eight levels differ.[m
+[32m+[m	[32m"▁": "...../...../...../...../...../...../#####",[m
+[32m+[m	[32m"▂": "...../...../...../...../...../#####/#####",[m
+[32m+[m	[32m"▃": "...../...../...../...../#####/#####/#####",[m
+[32m+[m	[32m"▅": "...../...../#####/#####/#####/#####/#####",[m
+[32m+[m	[32m"▆": "...../#####/#####/#####/#####/#####/#####",[m
+[32m+[m	[32m"▇": "...../#####/#####/#####/#####/#####/#####",[m
+[32m+[m	[32m"▏": "#..../#..../#..../#..../#..../#..../#....",[m
+[32m+[m	[32m"▎": "#..../#..../#..../#..../#..../#..../#....",[m
+[32m+[m	[32m"▍": "##.../##.../##.../##.../##.../##.../##...",[m
+[32m+[m	[32m"▌": "##.../##.../##.../##.../##.../##.../##...",[m
+[32m+[m	[32m"▋": "###../###../###../###../###../###../###..",[m
+[32m+[m	[32m"▊": "####./####./####./####./####./####./####.",[m
+[32m+[m	[32m"▉": "####./####./####./####./####./####./####.",[m
+[32m+[m
+ 	// The handful of symbols veyyon's status lines and lists actually use.[m
+ 	"•": "...../...../.###./.###./.###./...../.....",[m
+ 	"·": "...../...../...../..#../...../...../.....",[m
+[1mdiff --git a/scripts/demos/lift-lab.ts b/scripts/demos/lift-lab.ts[m
+[1mnew file mode 100644[m
+[1mindex 000000000..fc58bf15d[m
+[1m--- /dev/null[m
+[1m+++ b/scripts/demos/lift-lab.ts[m
+[36m@@ -0,0 +1,308 @@[m
+[32m+[m[32m/**[m
+[32m+[m[32m * A bench for the LOOK, not for a component.[m
+[32m+[m[32m *[m
+[32m+[m[32m * The animations were called barely noticeable and the surfaces boring, and both[m
+[32m+[m[32m * complaints are about the same thing: the product draws line art and text on one[m
+[32m+[m[32m * flat ground. A terminal with truecolour can do surfaces — a filled panel with a[m
+[32m+[m[32m * vertical gradient, a hairline lighter at the top edge than the bottom, a shadow[m
+[32m+[m[32m * under the thing that is in front, a selection that is a filled band rather than[m
+[32m+[m[32m * a coloured word, and a specular sweep that crosses a surface as it arrives.[m
+[32m+[m[32m * Every one of those is a per-cell colour, which means it can be judged from a[m
+[32m+[m[32m * PNG before any of it is wired into the app.[m
+[32m+[m[32m *[m
+[32m+[m[32m *     env -u NO_COLOR FORCE_COLOR=3 bun scripts/demos/render-settings-tab.ts |[m
+[32m+[m[32m *       bun scripts/demos/lift-lab.ts --out /tmp/lift/settings --scale 3[m
+[32m+[m[32m *[m
+[32m+[m[32m * It writes `<out>-now-{grey,black}.png` (the bytes as they are today) and[m
+[32m+[m[32m * `<out>-lift-{grey,black}.png` (the same cells with the surface treatment), so the[m
+[32m+[m[32m * pair is a differential of the treatment alone: same component, same text, same[m
+[32m+[m[32m * layout, only colour moved. `--sheen <0..1>` places the sweep; `--frames N` writes[m
+[32m+[m[32m * N sheen positions so the sweep can be judged as motion rather than as one still.[m
+[32m+[m[32m */[m
+[32m+[m[32mimport * as fs from "node:fs/promises";[m
+[32m+[m[32mimport * as path from "node:path";[m
+[32m+[m[32mimport { type Cell, type Grid, type Rgb, ansiToGrid } from "./lib/ansi-grid";[m
+[32m+[m[32mimport { BLACK_GROUND, GREY_GROUND, type Ground, rasterizeGrid } from "./lib/ansi-raster";[m
+[32m+[m[32mimport { flag, hasFlag } from "./render-args";[m
+[32m+[m
+[32m+[m[32mconst out = hasFlag("out") ? flag("out", "") : "";[m
+[32m+[m[32mif (!out) {[m
+[32m+[m	[32mconsole.error("usage: <renderer emitting ANSI> | bun scripts/demos/lift-lab.ts --out <prefix> [--scale N] [--sheen 0..1] [--frames N]");[m
+[32m+[m	[32mprocess.exit(2);[m
+[32m+[m[32m}[m
+[32m+[m[32mconst scale = Number.parseInt(flag("scale", "3"), 10);[m
+[32m+[m[32mconst frames = Number.parseInt(flag("frames", "1"), 10);[m
+[32m+[m[32mconst sheenAt = Number.parseFloat(flag("sheen", "0.42"));[m
+[32m+[m
+[32m+[m[32m/** The page the surface sits on. Matches the grey proof ground. */[m
+[32m+[m[32mconst PAGE: Rgb = [0x1e, 0x21, 0x27];[m
+[32m+[m[32m/** Top and bottom of the elevated surface: lit from above, so the top is lighter. */[m
+[32m+[m[32mconst SURFACE_TOP: Rgb = [0x2b, 0x30, 0x39];[m
+[32m+[m[32mconst SURFACE_BOTTOM: Rgb = [0x1f, 0x23, 0x2a];[m
+[32m+[m[32m/** The hairline at the very top edge of the surface, where the light lands. */[m
+[32m+[m[32mconst HAIRLINE: Rgb = [0x3f, 0x47, 0x55];[m
+[32m+[m[32m/** The accent, used for exactly one thing per surface. */[m
+[32m+[m[32mconst ACCENT: Rgb = [0xf0, 0x86, 0x2e];[m
+[32m+[m
+[32m+[m[32mconst mix = (from: Rgb, to: Rgb, t: number): Rgb => [[m
+[32m+[m	[32mMath.round(from[0] + (to[0] - from[0]) * t),[m
+[32m+[m	[32mMath.round(from[1] + (to[1] - from[1]) * t),[m
+[32m+[m	[32mMath.round(from[2] + (to[2] - from[2]) * t),[m
+[32m+[m[32m];[m
+[32m+[m[32mconst lift = (color: Rgb, amount: number): Rgb => mix(color, [255, 255, 255], amount);[m
+[32m+[m[32mconst sink = (color: Rgb, amount: number): Rgb => mix(color, [0, 0, 0], amount);[m
+[32m+[m
+[32m+[m[32mconst BOX = new Set("─│┌┐└┘├┤┬┴┼╭╮╯╰━┃┏┓┗┛".split(""));[m
+[32m+[m
+[32m+[m[32mfunction cloneGrid(grid: Grid): Grid {[m
+[32m+[m	[32mreturn { width: grid.width, height: grid.height, rows: grid.rows.map(row => row.map(cell => ({ ...cell }))) };[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m/** The bounding box of the drawn frame: where the surface is. */[m
+[32m+[m[32mfunction cardBounds(grid: Grid): { top: number; bottom: number; left: number; right: number } | null {[m
+[32m+[m	[32mlet top = Number.POSITIVE_INFINITY;[m
+[32m+[m	[32mlet bottom = -1;[m
+[32m+[m	[32mlet left = Number.POSITIVE_INFINITY;[m
+[32m+[m	[32mlet right = -1;[m
+[32m+[m	[32mfor (let y = 0; y < grid.height; y++) {[m
+[32m+[m		[32mfor (let x = 0; x < grid.width; x++) {[m
+[32m+[m			[32mif (!BOX.has(grid.rows[y][x].char)) continue;[m
+[32m+[m			[32mtop = Math.min(top, y);[m
+[32m+[m			[32mbottom = Math.max(bottom, y);[m
+[32m+[m			[32mleft = Math.min(left, x);[m
+[32m+[m			[32mright = Math.max(right, x);[m
+[32m+[m		[32m}[m
+[32m+[m	[32m}[m
+[32m+[m	[32mreturn bottom < 0 ? null : { top, bottom, left, right };[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m/**[m
+[32m+[m[32m * Paint the surface treatment over already-rendered cells.[m
+[32m+[m[32m *[m
+[32m+[m[32m * Nothing here reads the component: it reads the cells the component produced. A[m
+[32m+[m[32m * cell inside the frame gets the surface gradient behind whatever it already says,[m
+[32m+[m[32m * the frame itself becomes a hairline that is lighter where the light is, the two[m
+[32m+[m[32m * columns to the right and the row below fall into shadow, and the row that was[m
+[32m+[m[32m * already carrying a filled selection keeps it as a gradient band with the accent[m
+[32m+[m[32m * at its leading edge.[m
+[32m+[m[32m */[m
+[32m+[m[32mfunction applyLift(grid: Grid, sheen: number | null): void {[m
+[32m+[m	[32mconst bounds = cardBounds(grid);[m
+[32m+[m	[32mif (!bounds) return;[m
+[32m+[m	[32mconst { top, bottom, left, right } = bounds;[m
+[32m+[m	[32m// The filled rows have to be found BEFORE the surface is painted: once every[m
+[32m+[m	[32m// cell inside the frame carries a background, "has a background" no longer[m
+[32m+[m	[32m// means "is selected", and the treatment floods the whole card with accent.[m
+[32m+[m	[32mconst selectedRows = selectionSpans(grid, bounds);[m
+[32m+[m	[32mconst height = bottom - top;[m
+[32m+[m
+[32m+[m	[32m// Everything outside the surface recedes: this is what makes the surface read[m
+[32m+[m	[32m// as being in front rather than as another block of text.[m
+[32m+[m	[32mfor (let y = 0; y < grid.height; y++) {[m
+[32m+[m		[32mfor (let x = 0; x < grid.width; x++) {[m
+[32m+[m			[32mconst inside = y >= top && y <= bottom && x >= left && x <= right;[m
+[32m+[m			[32mif (inside) continue;[m
+[32m+[m			[32mconst cell = grid.rows[y][x];[m
+[32m+[m			[32mif (cell.fg) cell.fg = mix(cell.fg, PAGE, 0.6);[m
+[32m+[m			[32mif (cell.bg) cell.bg = mix(cell.bg, PAGE, 0.6);[m
+[32m+[m		[32m}[m
+[32m+[m	[32m}[m
+[32m+[m
+[32m+[m	[32m// The shadow the surface casts. Two columns and one row, falling off, so the[m
+[32m+[m	[32m// edge has a soft side rather than a drawn outline.[m
+[32m+[m	[32mfor (let y = top + 1; y <= bottom + 1; y++) {[m
+[32m+[m		[32mfor (let dx = 1; dx <= 2; dx++) {[m
+[32m+[m			[32mconst x = right + dx;[m
+[32m+[m			[32mif (y >= grid.height || x >= grid.width) continue;[m
+[32m+[m			[32mconst cell = grid.rows[y][x];[m
+[32m+[m			[32mcell.bg = sink(cell.bg ?? PAGE, dx === 1 ? 0.5 : 0.24);[m
+[32m+[m		[32m}[m
+[32m+[m	[32m}[m
+[32m+[m	[32mfor (let x = left + 1; x <= right + 1; x++) {[m
+[32m+[m		[32mconst y = bottom + 1;[m
+[32m+[m		[32mif (y >= grid.height || x >= grid.width) continue;[m
+[32m+[m		[32mconst cell = grid.rows[y][x];[m
+[32m+[m		[32mcell.bg = sink(cell.bg ?? PAGE, 0.42);[m
+[32m+[m	[32m}[m
+[32m+[m
+[32m+[m	[32m// Apple's panels are made of two materials, not one: the sidebar sits a shade[m
+[32m+[m	[32m// deeper than the pane it selects into. One column of the frame's own divider[m
+[32m+[m	[32m// glyphs says where the split is, so this is read off the render rather than[m
+[32m+[m	[32m// configured.[m
+[32m+[m	[32mconst divider = dividerColumn(grid, bounds);[m
+[32m+[m	[32m// A row that opens a group is the one thing on a settings pane a reader scans[m
+[32m+[m	[32m// for. The theme marks it with a bullet glyph; nothing else on the row says so.[m
+[32m+[m	[32mconst headingRows = new Set<number>();[m
+[32m+[m	[32mfor (let y = top; y <= bottom; y++) {[m
+[32m+[m		[32mif (grid.rows[y].some(cell => cell.char === "◆" || cell.char === "◇")) headingRows.add(y);[m
+[32m+[m	[32m}[m
+[32m+[m	[32mfor (let y = top; y <= bottom; y++) {[m
+[32m+[m		[32mconst t = height === 0 ? 0 : (y - top) / height;[m
+[32m+[m		[32mconst surface = mix(SURFACE_TOP, SURFACE_BOTTOM, t);[m
+[32m+[m		[32mconst span = selectedRows.get(y);[m
+[32m+[m		[32mfor (let x = left; x <= right; x++) {[m
+[32m+[m			[32mconst cell = grid.rows[y][x];[m
+[32m+[m			[32mif (!span || x < span.first || x > span.last) cell.bg = surface;[m
+[32m+[m			[32mif (divider !== null && x < divider && (!span || x < span.first || x > span.last)) {[m
+[32m+[m				[32mcell.bg = sink(surface, 0.34);[m
+[32m+[m			[32m}[m
+[32m+[m
+[32m+[m			[32mif (BOX.has(cell.char)) {[m
+[32m+[m				[32m// A hairline, not a drawn box: the top edge takes the light, the[m
+[32m+[m				[32m// sides are barely there, the bottom is a shadow line. The amber[m
+[32m+[m				[32m// frame was the loudest thing on screen and said nothing.[m
+[32m+[m				[32mconst edgeLight = y === top ? 1 : y === bottom ? 0.15 : 0.45;[m
+[32m+[m				[32mcell.fg = mix(surface, HAIRLINE, edgeLight);[m
+[32m+[m				[32mcell.bold = false;[m
+[32m+[m			[32m} else if (cell.fg) {[m
+[32m+[m				[32m// Contrast expansion. A single mid-grey for labels, values, headings[m
+[32m+[m				[32m// and hints is most of why this reads as boring: everything is equally[m
+[32m+[m				[32m// important, so nothing is. What was already bright goes brighter, a[m
+[32m+[m				[32m// heading row goes brighter still, and what was quiet recedes into the[m
+[32m+[m				[32m// surface instead of competing with it.[m
+[32m+[m				[32mconst luma = (cell.fg[0] * 0.299 + cell.fg[1] * 0.587 + cell.fg[2] * 0.114) / 255;[m
+[32m+[m				[32mconst heading = headingRows.has(y) && (divider === null || x > divider);[m
+[32m+[m				[32mif (heading) {[m
+[32m+[m					[32mcell.fg = lift(cell.fg, 0.45);[m
+[32m+[m					[32mcell.bold = true;[m
+[32m+[m				[32m} else if (luma > 0.62) cell.fg = lift(cell.fg, 0.3);[m
+[32m+[m				[32melse cell.fg = mix(cell.fg, surface, 0.3);[m
+[32m+[m			[32m}[m
+[32m+[m		[32m}[m
+[32m+[m	[32m}[m
+[32m+[m
+[32m+[m	[32mif (sheen !== null) applySheen(grid, bounds, sheen);[m
+[32m+[m	[32mapplyBand(grid, bounds, selectedRows);[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m/**[m
+[32m+[m[32m * Where each filled row starts and ends, read off the cells as the theme wrote[m
+[32m+[m[32m * them: an explicit background that is neither the page nor black.[m
+[32m+[m[32m */[m
+[32m+[m[32mfunction selectionSpans([m
+[32m+[m	[32mgrid: Grid,[m
+[32m+[m	[32mbounds: { top: number; bottom: number; left: number; right: number },[m
+[32m+[m[32m): Map<number, { first: number; last: number }> {[m
+[32m+[m	[32mconst spans = new Map<number, { first: number; last: number }>();[m
+[32m+[m	[32mfor (let y = bounds.top; y <= bounds.bottom; y++) {[m
+[32m+[m		[32mlet first = -1;[m
+[32m+[m		[32mlet last = -1;[m
+[32m+[m		[32mfor (let x = bounds.left; x <= bounds.right; x++) {[m
+[32m+[m			[32mconst bg = grid.rows[y][x].bg;[m
+[32m+[m			[32mif (!bg) continue;[m
+[32m+[m			[32mconst isPage = bg[0] === PAGE[0] && bg[1] === PAGE[1] && bg[2] === PAGE[2];[m
+[32m+[m			[32mif (isPage || bg[0] + bg[1] + bg[2] === 0) continue;[m
+[32m+[m			[32mif (first < 0) first = x;[m
+[32m+[m			[32mlast = x;[m
+[32m+[m		[32m}[m
+[32m+[m		[32m// A single filled cell is a swatch or a scrollbar thumb, not a row band.[m
+[32m+[m		[32mif (first >= 0 && last - first >= 4) spans.set(y, { first, last });[m
+[32m+[m	[32m}[m
+[32m+[m	[32mreturn spans;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m/**[m
+[32m+[m[32m * The column the frame's own inner divider sits in, or null when the surface has[m
+[32m+[m[32m * no second material. A divider is a column of vertical rule glyphs running most[m
+[32m+[m[32m * of the surface's height; a stray `│` in a value does not qualify.[m
+[32m+[m[32m */[m
+[32m+[m[32mfunction dividerColumn(grid: Grid, bounds: { top: number; bottom: number; left: number; right: number }): number | null {[m
+[32m+[m	[32mconst span = bounds.bottom - bounds.top;[m
+[32m+[m	[32mif (span < 4) return null;[m
+[32m+[m	[32mfor (let x = bounds.left + 2; x < bounds.right - 2; x++) {[m
+[32m+[m		[32mlet run = 0;[m
+[32m+[m		[32mfor (let y = bounds.top + 1; y < bounds.bottom; y++) {[m
+[32m+[m			[32mconst char = grid.rows[y][x].char;[m
+[32m+[m			[32mif (char === "│" || char === "┃" || char === "┆") run++;[m
+[32m+[m		[32m}[m
+[32m+[m		[32mif (run >= span * 0.6) return x;[m
+[32m+[m	[32m}[m
+[32m+[m	[32mreturn null;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m/**[m
+[32m+[m[32m * The specular sweep. A band of raised luminance crossing the surface once, with a[m
+[32m+[m[32m * cosine falloff so it has no edge, and a slight diagonal so it reads as light[m
+[32m+[m[32m * moving over a plane instead of a wipe.[m
+[32m+[m[32m */[m
+[32m+[m[32mfunction applySheen(grid: Grid, bounds: { top: number; bottom: number; left: number; right: number }, phase: number): void {[m
+[32m+[m	[32mconst { top, bottom, left, right } = bounds;[m
+[32m+[m	[32mconst span = right - left;[m
+[32m+[m	[32m// Narrow and strong. A wide soft band at low strength is not a highlight, it is[m
+[32m+[m	[32m// a lighter rectangle: the first pass covered a fifth of the surface at 10% and[m
+[32m+[m	[32m// read as the pane simply being brighter than the sidebar.[m
+[32m+[m	[32mconst width = Math.max(4, Math.round(span * 0.09));[m
+[32m+[m	[32mconst rows = Math.max(1, bottom - top);[m
+[32m+[m	[32mfor (let y = top; y <= bottom; y++) {[m
+[32m+[m		[32m// Skewed by a fixed fraction of the surface, so the leading edge is the same[m
+[32m+[m		[32m// diagonal on a tall card as on a short one.[m
+[32m+[m		[32mconst skew = ((y - top) / rows) * width * 2.2;[m
+[32m+[m		[32mconst centre = left - width + phase * (span + width * 2) + skew;[m
+[32m+[m		[32mfor (let x = left; x <= right; x++) {[m
+[32m+[m			[32mconst d = Math.abs(x - centre) / width;[m
+[32m+[m			[32mif (d >= 1) continue;[m
+[32m+[m			[32mconst strength = ((Math.cos(d * Math.PI) + 1) / 2) ** 1.4;[m
+[32m+[m			[32mconst cell = grid.rows[y][x];[m
+[32m+[m			[32mcell.bg = lift(cell.bg ?? PAGE, strength * 0.26);[m
+[32m+[m			[32mif (cell.fg) cell.fg = lift(cell.fg, strength * 0.3);[m
+[32m+[m		[32m}[m
+[32m+[m	[32m}[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m/** The selected row, as a band that has a direction: accent at the leading edge. */[m
+[32m+[m[32mfunction applyBand([m
+[32m+[m	[32mgrid: Grid,[m
+[32m+[m	[32mbounds: { top: number; bottom: number; left: number; right: number },[m
+[32m+[m	[32mspans: Map<number, { first: number; last: number }>,[m
+[32m+[m[32m): void {[m
+[32m+[m	[32mfor (const [y, { first, last }] of spans) {[m
+[32m+[m		[32mconst row = grid.rows[y];[m
+[32m+[m		[32mconst width = Math.max(1, last - first);[m
+[32m+[m		[32mfor (let x = first; x <= last; x++) {[m
+[32m+[m			[32mconst t = (x - first) / width;[m
+[32m+[m			[32mconst cell = row[x];[m
+[32m+[m			[32m// Strong at the leading edge, gone by the trailing one: a band with a[m
+[32m+[m			[32m// direction reads as a thing the cursor is sitting on, where a flat slab[m
+[32m+[m			[32m// reads as a rectangle somebody drew.[m
+[32m+[m			[32mcell.bg = mix(mix(ACCENT, PAGE, 0.55), mix(ACCENT, PAGE, 0.94), t ** 0.55);[m
+[32m+[m			[32mif (cell.fg) cell.fg = lift(cell.fg, 0.4 * (1 - t * 0.6));[m
+[32m+[m		[32m}[m
+[32m+[m		[32mconst edge = row[Math.max(bounds.left, first - 1)];[m
+[32m+[m		[32medge.char = "▎";[m
+[32m+[m		[32medge.fg = ACCENT;[m
+[32m+[m		[32medge.bold = true;[m
+[32m+[m	[32m}[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mconst text = await Bun.stdin.text();[m
+[32m+[m[32mconst lines = text.replace(/\n$/, "").split("\n");[m
+[32m+[m[32mconst measured = Math.max(1, ...lines.map(line => line.replace(/\x1b\[[0-9;]*[@-~]/g, "").length));[m
+[32m+[m[32mconst base = ansiToGrid(lines, measured);[m
+[32m+[m
+[32m+[m[32mawait fs.mkdir(path.dirname(out), { recursive: true });[m
+[32m+[m[32mconst written: string[] = [];[m
+[32m+[m
+[32m+[m[32masync function writePair(grid: Grid, label: string): Promise<void> {[m
+[32m+[m	[32mfor (const ground of [GREY_GROUND, BLACK_GROUND] as Ground[]) {[m
+[32m+[m		[32mconst result = rasterizeGrid(grid, ground, { scale });[m
+[32m+[m		[32mconst file = `${out}-${label}-${ground.name}.png`;[m
+[32m+[m		[32mawait fs.writeFile(file, result.png);[m
+[32m+[m		[32mwritten.push(file);[m
+[32m+[m	[32m}[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mawait writePair(base, "now");[m
+[32m+[m
+[32m+[m[32mif (frames > 1) {[m
+[32m+[m	[32mfor (let i = 0; i < frames; i++) {[m
+[32m+[m		[32mconst grid = cloneGrid(base);[m
+[32m+[m		[32mapplyLift(grid, i / (frames - 1));[m
+[32m+[m		[32mawait writePair(grid, `lift-f${String(i).padStart(2, "0")}`);[m
+[32m+[m	[32m}[m
+[32m+[m[32m} else {[m
+[32m+[m	[32mconst grid = cloneGrid(base);[m
+[32m+[m	[32mapplyLift(grid, Number.isFinite(sheenAt) ? sheenAt : null);[m
+[32m+[m	[32mawait writePair(grid, "lift");[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfor (const file of written) console.error(`wrote ${file}`);[m
+[1mdiff --git a/scripts/demos/render-overlay-entrance.ts b/scripts/demos/render-overlay-entrance.ts[m
+[1mnew file mode 100644[m
+[1mindex 000000000..2d50ea0f6[m
+[1m--- /dev/null[m
+[1m+++ b/scripts/demos/render-overlay-entrance.ts[m
+[36m@@ -0,0 +1,91 @@[m
+[32m+[m[32m/**[m
+[32m+[m[32m * Film a real overlay's entrance, frame by frame, without a terminal.[m
+[32m+[m[32m *[m
+[32m+[m[32m *     bun scripts/demos/render-overlay-entrance.ts --out /tmp/entrance --frames 14 --step 33[m
+[32m+[m[32m *[m
+[32m+[m[32m * The component is the one `/settings` constructs and the frames come out of its[m
+[32m+[m[32m * own `render(width)`, so what is rasterized is the production path: the modal[m
+[32m+[m[32m * shell, `applyModalReveal`, the surface fill, the per-row cascade and the sweep.[m
+[32m+[m[32m * Nothing here draws a picture of a card.[m
+[32m+[m[32m *[m
+[32m+[m[32m * Time is supplied rather than waited for. The shared motion clock takes an[m
+[32m+[m[32m * explicit `tick(now)`, so this walks the entrance in exact 60Hz-sized steps and[m
+[32m+[m[32m * writes one PNG pair per frame — which is the only way to look at a 260ms[m
+[32m+[m[32m * animation honestly, since a still taken from inside the animation always lands[m
+[32m+[m[32m * after it has finished.[m
+[32m+[m[32m *[m
+[32m+[m[32m * `--variant flat` renders the same frames with the surface treatment bypassed, so[m
+[32m+[m[32m * the pair is a differential of the treatment rather than a picture of it.[m
+[32m+[m[32m */[m
+[32m+[m[32mimport * as fs from "node:fs/promises";[m
+[32m+[m[32mimport * as path from "node:path";[m
+[32m+[m[32mimport { motionClock } from "../../packages/tui/src/motion";[m
+[32m+[m[32mimport type { SettingTab } from "../../packages/coding-agent/src/config/settings-schema";[m
+[32m+[m[32mimport { setDetectedTerminalGround } from "../../packages/coding-agent/src/modes/theme/ground-tints";[m
+[32m+[m[32mimport { SettingsSelectorComponent } from "../../packages/coding-agent/src/modes/components/settings-selector";[m
+[32m+[m[32mimport { ansiToGrid } from "./lib/ansi-grid";[m
+[32m+[m[32mimport { BLACK_GROUND, GREY_GROUND, type Ground, rasterizeGrid } from "./lib/ansi-raster";[m
+[32m+[m[32mimport { flag, hasFlag, initRender, renderWidth } from "./render-args";[m
+[32m+[m
+[32m+[m[32mconst out = hasFlag("out") ? flag("out", "") : "";[m
+[32m+[m[32mif (!out) {[m
+[32m+[m	[32mconsole.error("usage: bun scripts/demos/render-overlay-entrance.ts --out <prefix> [--frames N] [--step MS] [--scale N] [--tab NAME]");[m
+[32m+[m	[32mprocess.exit(2);[m
+[32m+[m[32m}[m
+[32m+[m[32mconst frames = Number(flag("frames", "14"));[m
+[32m+[m[32mconst stepMs = Number(flag("step", "33"));[m
+[32m+[m[32mconst scale = Number(flag("scale", "2"));[m
+[32m+[m[32mconst themeName = flag("theme", "titanium");[m
+[32m+[m[32mconst tab = flag("tab", "subagents") as SettingTab;[m
+[32m+[m[32mconst height = Number(flag("height", "26"));[m
+[32m+[m[32mconst groundHex = flag("ground", `#${GREY_GROUND.background.map((c) => c.toString(16).padStart(2, "0")).join("")}`);[m
+[32m+[m[32mconst width = renderWidth();[m
+[32m+[m

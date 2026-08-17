@@ -858,6 +858,73 @@ SECTIONS = [
             ),
         ],
     ),
+    Section(
+        "A card made of materials, measured in the terminal",
+        [
+            "<p>The animation was landing on a card that was still line art: a frame in one accent colour and text"
+            " in one grey, on the terminal's own ground. Nothing was in front of anything, so a card arriving had"
+            " nothing to arrive over. The first attempt at a material was one gradient across the whole card, and"
+            " that is what the arms below are: it measured <strong>twelve of 255</strong> above the page at the top"
+            " row and <strong>four</strong> at the foot, on a page of 28 — and the foot mixed toward black, so the"
+            " lower half of every card sank BELOW the page it was standing on.</p>",
+            "<p>A card is now four materials and the page. Each number here was read off the pixels of the"
+            " recording beside it, not out of the source: page <code>30,33,39</code>; the category column set into"
+            " the plate <code>36,39,44</code>; the footer tray under the tip and the chips <code>39,42,48</code>;"
+            " the plate itself <code>52,54,60</code> at its top row grading to <code>47,49,55</code> at its last;"
+            " and the title rail <code>64,66,71</code>. The direction is chosen by the ground's own luminance, so a"
+            " card on a paper-white terminal darkens instead of lifting toward an invisible white, and a terminal"
+            " that never answered OSC 11 still gets the card it always had.</p>",
+            still_pair(
+                X + "overlay-motion-settings-settled.png",
+                X + "ladder/overlay-motion-settings-settled.png",
+                "one wash: the card and the page measure the same colour",
+                "four materials: rail, plate, tray, and the category column set into it",
+            ),
+            "<h3>The light crossing the plate, and where it used to die</h3>",
+            "<p>The highlight runs on a 520ms curve, twice the 260ms unfold, because the point of it is that the"
+            " card is already in place while the light is still travelling across it. It was not doing that. The"
+            " driver reported a finished sweep the moment the UNFOLD settled, so the light died on the frame the"
+            " card stopped growing.</p>",
+            "<p>Measured, not asserted. Both recordings below are the same take at 60fps. For each frame, a"
+            " 660&times;260 window of the plate is averaged down to one row of column means and differenced against"
+            " the settled frame, so the brightest column of the difference IS the light's position and a zero"
+            " difference means the card is static. The light's position, in columns of that window, frame by"
+            " frame:</p>",
+            "<table><tr><th>from the card's arrival</th><th>before</th><th>after</th></tr>"
+            "<tr><td>117ms</td><td>0</td><td>1</td></tr>"
+            "<tr><td>150ms</td><td>142</td><td>175</td></tr>"
+            "<tr><td>200ms</td><td>298</td><td>323</td></tr>"
+            "<tr><td>233ms</td><td>433</td><td>455</td></tr>"
+            "<tr><td>267ms</td><td>531</td><td>557</td></tr>"
+            "<tr><td>300ms</td><td><em>gone</em></td><td>590</td></tr>"
+            "<tr><td>317ms</td><td><em>gone</em></td><td>590</td></tr>"
+            "<tr><td>333ms</td><td><em>gone</em></td><td><em>past the edge</em></td></tr></table>",
+            "<p>Before, the light vanished with its centre at column 531 of 660 — four fifths of the way across a"
+            " card it never finished crossing, and the whole card static from that frame on. After, it keeps going"
+            " to 590 and then leaves by the right edge, which is where a highlight is supposed to go: the band's"
+            " centre travels from off the left edge to off the right, so it exits at about 95% of its curve rather"
+            " than being switched off mid-plate.</p>",
+            strip(
+                S + "light-before",
+                8,
+                "BEFORE. Eight frames at 60fps from the moment the card lands. The diagonal band crosses the plate"
+                " and then simply is not there.",
+            ),
+            strip(
+                S + "light-after",
+                8,
+                "AFTER. The same eight-frame window on the same scene, one commit later. The band keeps travelling"
+                " over a card that has already landed, and leaves by the far edge.",
+            ),
+            video(
+                X + "sweep/overlay-motion.mp4",
+                "The same take as the top of this page, recorded again on the material with the light living its"
+                " whole life: <code>/settings</code>, <code>/hotkeys</code> and <code>/model</code>, each card"
+                " arriving as a lit surface.",
+                start=18,
+            ),
+        ],
+    ),
 ]
 
 if __name__ == "__main__":

@@ -1,0 +1,414 @@
+[33mad14fca53[m feat(overlays): a card is a ladder of materials, measured on the terminal
+
+
+
+ packages/coding-agent/CHANGELOG.md                 |   1 [32m+[m
+ .../src/modes/components/account-manager.ts        |   9 [32m+[m[31m-[m
+ .../src/modes/components/modal-shell.ts            |  79 [32m++++[m[31m-[m
+ .../coding-agent/src/modes/components/model-hub.ts |   9 [32m+[m[31m-[m
+ .../src/modes/components/settings-selector.ts      |   8 [32m+[m[31m-[m
+ ...rd-is-a-stack-of-materials-not-one-wash.test.ts | 390 [32m+++++++++++++++++++++[m
+ packages/tui/CHANGELOG.md                          |   1 [32m+[m
+ packages/tui/src/paint-surface.ts                  | 102 [32m++++[m[31m--[m
+ 8 files changed, 565 insertions(+), 34 deletions(-)
+
+[1mdiff --git a/packages/coding-agent/CHANGELOG.md b/packages/coding-agent/CHANGELOG.md[m
+[1mindex 907055d41..e803ee2ea 100644[m
+[1m--- a/packages/coding-agent/CHANGELOG.md[m
+[1m+++ b/packages/coding-agent/CHANGELOG.md[m
+[36m@@ -35,6 +35,7 @@[m
+ - Every overlay card opens on the shared animation clock and resolves out of the theme's ground as it unfolds. The unfold was a clip on a timer the card owned: full-strength chrome from its first frame, so a card opening while anything else animated ran on a second timer that never shared a frame with it. The card now eases on the one clock under the `enter` preset, and each visible row is blended from the ground to full strength as it arrives, which is the difference between a card arriving and a wipe with a moving edge. A theme without a declared page background fades from black or white to match its appearance, and an indexed-color frame is left alone rather than being repainted from a palette the terminal may not be using.[m
+ - The cut-short batch marker takes its indent from `COMPOSER_INSET_COLS` instead of two literal spaces. No visible change: the rail is two columns, so the bytes are the same ones. The rail now has one owner, and the marker's suite asserts it sits on it.[m
+ - The selected and hovered row is a band with a direction instead of a flat rectangle of one colour. Its first cell is the accent at full strength, and from the second cell the background ramps out of `selectedBg` toward the ground the row sits on, eased so most of the colour lives in the first third — a flat slab says nothing about which end the cursor came from, which is why a selected row read as a rectangle somebody drew rather than as a surface the cursor is resting on. The ramp is quantised to one span per eight columns, three at the fewest and ten at the most, so a 40-column row costs five extra escapes rather than forty on a row that repaints on every keystroke. A row that carries no styling of its own also gets a brighter label over that first third; a row that paints its own colours keeps every byte of them. Hover is the same treatment at a strength, so a settled hover is byte-identical to a selection and every colour in the gradient, the accent cell included, is mixed out of the ground on the way in. The row's printed width is unchanged — the treatment only adds zero-width escapes, which is what the mouse routing depends on — and a terminal that is not truecolor gets the flat band byte for byte, since every intermediate colour there quantises onto the nearest palette entry and the ramp would read as the band changing hue.[m
+[32m+[m[32m- The settings, model and account cards read as objects on the page instead of frames drawn onto it. A card is now four materials — a title-rail tray, a plate lit from above, a recessed footer tray under the tip and the chips, and, in a two-pane card, the category column set into the plate — where it was one gradient measured on a real terminal at twelve of 255 above the page at its top row and four at its foot, over a page of 28. Nothing is painted unless the terminal answered OSC 11 and takes truecolor: an unknown ground still gets the card exactly as it was, which is what keeps the 2026-07-22 slab from coming back.[m
+ [m
+ ### Removed[m
+ [m
+[1mdiff --git a/packages/coding-agent/src/modes/components/account-manager.ts b/packages/coding-agent/src/modes/components/account-manager.ts[m
+[1mindex 0568d7013..a87e72f38 100644[m
+[1m--- a/packages/coding-agent/src/modes/components/account-manager.ts[m
+[1m+++ b/packages/coding-agent/src/modes/components/account-manager.ts[m
+[36m@@ -65,6 +65,7 @@[m [mimport {[m
+ 	type ModalShellGeometry,[m
+ 	type ModalShortcut,[m
+ 	modalRevealEnabled,[m
+[32m+[m	[32mpaintCardInset,[m
+ 	planModalChrome,[m
+ 	renderModalShell,[m
+ 	sizingForArea,[m
+[36m@@ -994,7 +995,13 @@[m [mexport class AccountManagerComponent implements Component {[m
+ 		const sidebarLines = this.#renderSidebar(sidebarWidth);[m
+ 		const body: string[] = [];[m
+ 		for (let i = 0; i < splitRows; i++) {[m
+[31m-			body.push(fit(sidebarLines[i] ?? "", sidebarWidth) + paneSep + fit(paneLines[i] ?? "", bodyWidth));[m
+[32m+[m			[32m// The scope column is set INTO the card, on the inset material, so the split[m
+[32m+[m			[32m// reads as two panes rather than as one wash with a rule drawn down it.[m
+[32m+[m			[32mbody.push([m
+[32m+[m				[32mpaintCardInset(fit(sidebarLines[i] ?? "", sidebarWidth), sidebarWidth) +[m
+[32m+[m					[32mpaneSep +[m
+[32m+[m					[32mfit(paneLines[i] ?? "", bodyWidth),[m
+[32m+[m			[32m);[m
+ 		}[m
+ [m
+ 		const shell = renderModalShell({[m
+[1mdiff --git a/packages/coding-agent/src/modes/components/modal-shell.ts b/packages/coding-agent/src/modes/components/modal-shell.ts[m
+[1mindex 52f82a2ab..68899d40b 100644[m
+[1m--- a/packages/coding-agent/src/modes/components/modal-shell.ts[m
+[1m+++ b/packages/coding-agent/src/modes/components/modal-shell.ts[m
+[36m@@ -13,24 +13,27 @@[m
+  */[m
+ import {[m
+ 	type Animation,[m
+[31m-	cascadeStrength,[m
+ 	type ColumnWindow,[m
+[32m+[m	[32mcascadeStrength,[m
+ 	clamp,[m
+ 	clampLow,[m
+ 	fadeLineTowards,[m
+ 	fillSurface,[m
+ 	type Keybinding,[m
+[32m+[m	[32mliftHex,[m
+ 	MOTION,[m
+ 	type MotionClock,[m
+ 	motionClock,[m
+ 	padding,[m
+[32m+[m	[32mpaintLineBackground,[m
+[32m+[m	[32mtype SurfaceBand,[m
+ 	sweepSurface,[m
+ 	TERMINAL,[m
+ 	truncateToWidth,[m
+ 	visibleWidth,[m
+ } from "@veyyon/tui";[m
+[31m-import { transitionsEnabled } from "../theme/shimmer";[m
+ import { getVisibleGround } from "../theme/ground-tints";[m
+[32m+[m[32mimport { transitionsEnabled } from "../theme/shimmer";[m
+ import { theme, visibleGroundHex } from "../theme/theme";[m
+ import { actionKeyHint } from "../utils/key-hint";[m
+ import { emberTick } from "./composer-chrome";[m
+[36m@@ -1090,6 +1093,55 @@[m [mfunction modalSurfaceGround(ground: string): string | undefined {[m
+ 	return getVisibleGround() === undefined ? undefined : ground;[m
+ }[m
+ [m
+[32m+[m[32m/**[m
+[32m+[m[32m * The elevation ladder a card is made of, top to bottom.[m
+[32m+[m[32m *[m
+[32m+[m[32m * One wash over the whole card was measured on a real terminal at twelve of 255[m
+[32m+[m[32m * above the page at its top row and four at its foot: an elevation the eye cannot[m
+[32m+[m[32m * find, so a settled card still read as line art on the page. Three materials fix[m
+[32m+[m[32m * that without brightening anything into a slab — a header tray carrying the title[m
+[32m+[m[32m * and the search line, the body in front of it, and a recessed footer tray under[m
+[32m+[m[32m * the tip and the chips. The ladder is what gives the eye an edge to catch.[m
+[32m+[m[32m */[m
+[32m+[m[32mconst CARD_HEADER_LIFT = 0.15;[m
+[32m+[m[32mconst CARD_BODY_LIFT = 0.1;[m
+[32m+[m[32mconst CARD_BODY_BOTTOM_LIFT = 0.07;[m
+[32m+[m[32mconst CARD_TRAY_LIFT = 0.04;[m
+[32m+[m[32m/** A pane the card sets INTO its own body: a category sidebar, a preview column. */[m
+[32m+[m[32mconst CARD_INSET_LIFT = 0.025;[m
+[32m+[m
+[32m+[m[32m/**[m
+[32m+[m[32m * The material a two-pane card sets its side column in, or undefined when this[m
+[32m+[m[32m * terminal gets no material at all.[m
+[32m+[m[32m *[m
+[32m+[m[32m * The shell cannot do this one itself: it is handed finished body rows and has no[m
+[32m+[m[32m * idea where a component split them. So the component paints its own inset, and[m
+[32m+[m[32m * because {@link applyModalReveal} never overpaints a cell that already carries a[m
+[32m+[m[32m * background, the inset survives the fill that follows it.[m
+[32m+[m[32m */[m
+[32m+[m[32mexport function cardInsetHex(): string | undefined {[m
+[32m+[m	[32mconst ground = modalSurfaceGround(modalRevealGround());[m
+[32m+[m	[32mif (ground === undefined || !TERMINAL.trueColor) return undefined;[m
+[32m+[m	[32mreturn liftHex(ground, CARD_INSET_LIFT);[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m/**[m
+[32m+[m[32m * Set one pane of a two-pane card INTO the card: the same rendered columns, on the[m
+[32m+[m[32m * inset material.[m
+[32m+[m[32m *[m
+[32m+[m[32m * `width` is the pane's own width, and the paint stops there, so the hairline and[m
+[32m+[m[32m * the pane beside it keep the plate. A terminal with no material gets the line[m
+[32m+[m[32m * back unchanged, which is the byte-identity the card suites assert.[m
+[32m+[m[32m */[m
+[32m+[m[32mexport function paintCardInset(line: string, width: number): string {[m
+[32m+[m	[32mconst inset = cardInsetHex();[m
+[32m+[m	[32mif (inset === undefined) return line;[m
+[32m+[m	[32mreturn paintLineBackground(line, width, ({ background }) => (background === undefined ? inset : undefined), {[m
+[32m+[m		[32mstart: 0,[m
+[32m+[m		[32mend: width,[m
+[32m+[m	[32m});[m
+[32m+[m[32m}[m
+[32m+[m
+ /**[m
+  * Paint a rendered modal frame as a SURFACE, and play its entrance.[m
+  *[m
+[36m@@ -1139,7 +1191,28 @@[m [mexport function applyModalReveal([m
+ 	// rather than assumed (see modalSurfaceGround). Without either, the product is[m
+ 	// exactly what it was; the clip and the fade below are colour-agnostic and play.[m
+ 	const surface = TERMINAL.trueColor ? modalSurfaceGround(ground) : undefined;[m
+[31m-	let treated = surface === undefined ? card : fillSurface(card, areaWidth, { ground: surface, columns }, strength);[m
+[32m+[m	[32m// Header tray: the top border, the title rail, and the search line if there is[m
+[32m+[m	[32m// one — everything above the first body row. Footer tray: the tip, the chips and[m
+[32m+[m	[32m// the bottom border. Rows are relative to the card block, `end` exclusive.[m
+[32m+[m	[32mconst bands: readonly SurfaceBand[] = [[m
+[32m+[m		[32m{ start: 0, end: Math.max(1, geometry.bodyRowStart - cardRowStart), lift: CARD_HEADER_LIFT },[m
+[32m+[m		[32m{ start: Math.max(0, geometry.footerRowStart - cardRowStart), end: cardRows, lift: CARD_TRAY_LIFT },[m
+[32m+[m	[32m];[m
+[32m+[m	[32mlet treated =[m
+[32m+[m		[32msurface === undefined[m
+[32m+[m			[32m? card[m
+[32m+[m			[32m: fillSurface([m
+[32m+[m					[32mcard,[m
+[32m+[m					[32mareaWidth,[m
+[32m+[m					[32m{[m
+[32m+[m						[32mground: surface,[m
+[32m+[m						[32mlift: CARD_BODY_LIFT,[m
+[32m+[m						[32mbottomLift: CARD_BODY_BOTTOM_LIFT,[m
+[32m+[m						[32mbands,[m
+[32m+[m						[32mcolumns,[m
+[32m+[m					[32m},[m
+[32m+[m					[32mstrength,[m
+[32m+[m				[32m);[m
+ [m
+ 	// How many rows of the card are on screen this frame. Everything below is blank[m
+ 	// page, and nothing may be painted onto it — a swept blank row is light lying[m
+[1mdiff --git a/packages/coding-agent/src/modes/components/model-hub.ts b/packages/coding-agent/src/modes/components/model-hub.ts[m
+[1mindex 640f98ae0..28939dfc1 100644[m
+[1m--- a/packages/coding-agent/src/modes/components/model-hub.ts[m
+[1m+++ b/packages/coding-agent/src/modes/components/model-hub.ts[m
+[36m@@ -51,6 +51,7 @@[m [mimport {[m
+ 	type ModalShellGeometry,[m
+ 	type ModalShortcut,[m
+ 	modalRevealEnabled,[m
+[32m+[m	[32mpaintCardInset,[m
+ 	planModalChrome,[m
+ 	renderModalShell,[m
+ 	sizingForArea,[m
+[36m@@ -2161,7 +2162,13 @@[m [mexport class ModelHubComponent implements Component {[m
+ [m
+ 		const body: string[] = [];[m
+ 		for (let i = 0; i < splitRows; i++) {[m
+[31m-			body.push(fit(sidebarLines[i] ?? "", sidebarWidth) + paneSep + fit(paneLines[i] ?? "", bodyWidth));[m
+[32m+[m			[32m// The scope column is set INTO the card, on the inset material, so the split[m
+[32m+[m			[32m// reads as two panes rather than as one wash with a rule drawn down it.[m
+[32m+[m			[32mbody.push([m
+[32m+[m				[32mpaintCardInset(fit(sidebarLines[i] ?? "", sidebarWidth), sidebarWidth) +[m
+[32m+[m					[32mpaneSep +[m
+[32m+[m					[32mfit(paneLines[i] ?? "", bodyWidth),[m
+[32m+[m			[32m);[m
+ 		}[m
+ 		this.#splitRowCount = splitRows;[m
+ 		body.push(this.#renderStripRow(contentWidth));[m
+[1mdiff --git a/packages/coding-agent/src/modes/components/settings-selector.ts b/packages/coding-agent/src/modes/components/settings-selector.ts[m
+[1mindex 392e8bb79..0045e7231 100644[m
+[1m--- a/packages/coding-agent/src/modes/components/settings-selector.ts[m
+[1m+++ b/packages/coding-agent/src/modes/components/settings-selector.ts[m
+[36m@@ -98,6 +98,7 @@[m [mimport {[m
+ 	type ModalShellGeometry,[m
+ 	type ModalShortcut,[m
+ 	modalRevealEnabled,[m
+[32m+[m	[32mpaintCardInset,[m
+ 	planModalChrome,[m
+ 	renderModalShell,[m
+ 	SETTINGS_BROWSE_SHORTCUTS,[m
+[36m@@ -3164,9 +3165,14 @@[m [mexport class SettingsSelectorComponent implements Component {[m
+ 		const paneLines: string[] = [...listLines, ...previewLines];[m
+ 		const bar = theme.fg("borderAccent", theme.boxSharp.vertical);[m
+ 		const bodyRows = Math.max(sidebarLines.length, paneLines.length);[m
+[32m+[m		[32m// The category column is a pane set INTO the card, not part of the plate the[m
+[32m+[m		[32m// settings rows sit on: two materials either side of the hairline is what makes[m
+[32m+[m		[32m// the split read as a split rather than as one wash with a line drawn on it.[m
+[32m+[m		[32m// The card's own fill leaves these cells alone, because a cell that already[m
+[32m+[m		[32m// carries a background is the component saying it is not the surface.[m
+ 		const body: string[] = [];[m
+ 		for (let r = 0; r < bodyRows; r++) {[m
+[31m-			const side = sidebarLines[r] ?? padding(sidebarWidth);[m
+[32m+[m			[32mconst side = paintCardInset(sidebarLines[r] ?? padding(sidebarWidth), sidebarWidth);[m
+ 			body.push(`${side}${bar}  ${paneLines[r] ?? ""}`);[m
+ 		}[m
+ [m
+[1mdiff --git a/packages/coding-agent/test/modes/components/a-card-is-a-stack-of-materials-not-one-wash.test.ts b/packages/coding-agent/test/modes/components/a-card-is-a-stack-of-materials-not-one-wash.test.ts[m
+[1mnew file mode 100644[m
+[1mindex 000000000..bb18ca62f[m
+[1m--- /dev/null[m
+[1m+++ b/packages/coding-agent/test/modes/components/a-card-is-a-stack-of-materials-not-one-wash.test.ts[m
+[36m@@ -0,0 +1,390 @@[m
+[32m+[m[32m/**[m
+[32m+[m[32m * WHY: the first material a card got was one gradient over the whole plate, and on[m
+[32m+[m[32m * a real terminal it measured twelve of 255 above the page at the top row and four[m
+[32m+[m[32m * at the foot — over a page of 28. Nobody could see it. Worse, the gradient's lower[m
+[32m+[m[32m * half ran BELOW the page, because "fall" mixed the bottom row toward black, so the[m
+[32m+[m[32m * bottom of every card faded into the page it was supposed to be standing on.[m
+[32m+[m[32m *[m
+[32m+[m[32m * The class this closes is "a surface that is not a surface": any elevation a card[m
+[32m+[m[32m * claims that the eye cannot find, in either direction, on either kind of terminal.[m
+[32m+[m[32m * Four ways to land in it, and each has a case here:[m
+[32m+[m[32m *[m
+[32m+[m[32m *   1. NO LADDER. One wash gives the eye no edge. A card is a header tray, a body[m
+[32m+[m[32m *      plate and a recessed footer tray, and the assertions read that ordering out[m
+[32m+[m[32m *      of the painted bytes rather than trusting the constants.[m
+[32m+[m[32m *   2. A ZONE THAT SINKS INTO THE PAGE. Every zone must stand strictly off the[m
+[32m+[m[32m *      ground, at the top row and at the last body row alike.[m
+[32m+[m[32m *   3. THE WRONG DIRECTION. On a light terminal, a lift toward white is invisible.[m
+[32m+[m[32m *      Both grounds are swept, and a ground added to the sweep must be decided for.[m
+[32m+[m[32m *   4. AN INSET THAT IS NOT AN INSET. A two-pane card sets its side column into the[m
+[32m+[m[32m *      body, which only reads as a split if the two materials differ AND the inset[m
+[32m+[m[32m *      stops at the hairline. The subject there is the shipped `/settings` card.[m
+[32m+[m[32m *[m
+[32m+[m[32m * The subject is always the production seam — `renderModalShell` then[m
+[32m+[m[32m * `applyModalReveal`, and the real `SettingsSelectorComponent` for the inset —[m
+[32m+[m[32m * because a constant asserted against itself proves nothing about the card.[m
+[32m+[m[32m *[m
+[32m+[m[32m * NOT covered here: how large the steps should be (0.10 versus 0.14 is taste, and[m
+[32m+[m[32m * `scripts/demos/render-overlay-entrance.ts` plus a real-terminal recording are[m
+[32m+[m[32m * where that is judged); and the material's interaction with the sweep, which the[m
+[32m+[m[32m * containment suite beside this one owns.[m
+[32m+[m[32m */[m
+[32m+[m[32mimport { afterEach, beforeEach, describe, expect, it } from "bun:test";[m
+[32m+[m[32mimport { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";[m
+[32m+[m[32mimport {[m
+[32m+[m	[32mapplyModalReveal,[m
+[32m+[m	[32mcardInsetHex,[m
+[32m+[m	[32mMODAL_SIZING_SETTINGS,[m
+[32m+[m	[32mtype ModalShellGeometry,[m
+[32m+[m	[32mtype ModalShellResult,[m
+[32m+[m	[32mrenderModalShell,[m
+[32m+[m[32m} from "@veyyon/coding-agent/modes/components/modal-shell";[m
+[32m+[m[32mimport { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/settings-selector";[m
+[32m+[m[32mimport { resetGroundTintsForTest, setDetectedTerminalGround } from "@veyyon/coding-agent/modes/theme/ground-tints";[m
+[32m+[m[32mimport { getThemeByName, initTheme, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";[m
+[32m+[m[32mimport {[m
+[32m+[m	[32mtype AnsiPolicy,[m
+[32m+[m	[32mgetAnsiPolicy,[m
+[32m+[m	[32mliftHex,[m
+[32m+[m	[32mmotionClock,[m
+[32m+[m	[32msetAnsiPolicy,[m
+[32m+[m	[32mTERMINAL,[m
+[32m+[m	[32mvisibleWidth,[m
+[32m+[m[32m} from "@veyyon/tui";[m
+[32m+[m[32mimport { type StubbedStdoutGeometry, stubStdoutGeometry } from "../../helpers/stdout-geometry";[m
+[32m+[m
+[32m+[m[32mconst WIDTH = 100;[m
+[32m+[m[32mconst HEIGHT = 30;[m
+[32m+[m
+[32m+[m[32m/**[m
+[32m+[m[32m * How far apart two MATERIALS have to be, in BT.601 luminance, before the eye[m
+[32m+[m[32m * reads them as two things. Seven of 255 on a dark page, which is about where a[m
+[32m+[m[32m * terminal cell stops looking like its neighbour; the failed first attempt was[m
+[32m+[m[32m * measured at one of 255 between the plate's foot and the page.[m
+[32m+[m[32m */[m
+[32m+[m[32mconst MATERIAL_STEP = 0.03;[m
+[32m+[m[32m/**[m
+[32m+[m[32m * The grade down ONE plate is deliberately gentler than a step between two: it is[m
+[32m+[m[32m * the plate being lit from above, not a second surface. Still has to be findable.[m
+[32m+[m[32m */[m
+[32m+[m[32mconst PLATE_GRADE = 0.012;[m
+[32m+[m
+[32m+[m[32m/**[m
+[32m+[m[32m * The grounds a card may be opened on, and the direction "off the page" points on[m
+[32m+[m[32m * each. Adding a ground here without deciding its direction turns the sweep red,[m
+[32m+[m[32m * which is the point: a third kind of terminal must not inherit a guess.[m
+[32m+[m[32m */[m
+[32m+[m[32mconst GROUNDS = [[m
+[32m+[m	[32m{ name: "a grey terminal", hex: "#1e2127", brighter: true },[m
+[32m+[m	[32m{ name: "a black terminal", hex: "#000000", brighter: true },[m
+[32m+[m	[32m{ name: "a paper-white terminal", hex: "#f7f7f8", brighter: false },[m
+[32m+[m[32m] as const;[m
+[32m+[m
+[32m+[m[32m/** The one writable capability this suite drives; `TERMINAL` declares it readonly. */[m
+[32m+[m[32mconst terminalCaps: { trueColor: boolean } = TERMINAL;[m
+[32m+[m
+[32m+[m[32mlet policy: AnsiPolicy;[m
+[32m+[m[32mlet trueColorWas: boolean;[m
+[32m+[m[32mlet stdout: StubbedStdoutGeometry;[m
+[32m+[m
+[32m+[m[32mfunction shell(bodyRows = 12): ModalShellResult {[m
+[32m+[m	[32mconst body = Array.from({ length: bodyRows }, (_, row) => `body row ${row}`);[m
+[32m+[m	[32mreturn renderModalShell({[m
+[32m+[m		[32mtitle: "Settings",[m
+[32m+[m		[32msizing: MODAL_SIZING_SETTINGS,[m
+[32m+[m		[32mareaWidth: WIDTH,[m
+[32m+[m		[32mareaHeight: HEIGHT,[m
+[32m+[m		[32mbody,[m
+[32m+[m		[32msearchLine: "search settings",[m
+[32m+[m		[32mshortcuts: [{ id: "close", label: "esc close" }],[m
+[32m+[m	[32m});[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunction geometryOf(result: ModalShellResult): ModalShellGeometry {[m
+[32m+[m	[32mconst geometry = result.geometry;[m
+[32m+[m	[32mif (geometry === null) throw new Error("the card did not fit, so there is nothing to assert");[m
+[32m+[m	[32mreturn geometry;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m/** The truecolor background in effect at every column of a row, as `#rrggbb`. */[m
+[32m+[m[32mfunction backgroundsByColumn(line: string): Map<number, string> {[m
+[32m+[m	[32mconst found = new Map<number, string>();[m
+[32m+[m	[32mconst sgr = /\x1b\[([0-9;:]*)m/g;[m
+[32m+[m	[32mlet col = 0;[m
+[32m+[m	[32mlet index = 0;[m
+[32m+[m	[32mlet background: string | null = null;[m
+[32m+[m	[32mconst advance = (text: string): void => {[m
+[32m+[m		[32mconst width = visibleWidth(text);[m
+[32m+[m		[32mfor (let step = 0; step < width; step++) {[m
+[32m+[m			[32mif (background !== null) found.set(col + step, background);[m
+[32m+[m		[32m}[m
+[32m+[m		[32mcol += width;[m
+[32m+[m	[32m};[m
+[32m+[m	[32mfor (let match = sgr.exec(line); match !== null; match = sgr.exec(line)) {[m
+[32m+[m		[32madvance(line.slice(index, match.index));[m
+[32m+[m		[32mindex = match.index + match[0].length;[m
+[32m+[m		[32mconst params = match[1] ?? "";[m
+[32m+[m		[32mconst truecolor = /48;2;(\d+);(\d+);(\d+)/.exec(params);[m
+[32m+[m		[32mif (truecolor !== null) {[m
+[32m+[m			[32mconst channel = (value: string) => Number(value).toString(16).padStart(2, "0");[m
+[32m+[m			[32mbackground = `#${channel(truecolor[1] as string)}${channel(truecolor[2] as string)}${channel(truecolor[3] as string)}`;[m
+[32m+[m		[32m} else if (params === "49" || params === "0" || params === "") background = null;[m
+[32m+[m	[32m}[m
+[32m+[m	[32madvance(line.slice(index));[m
+[32m+[m	[32mreturn found;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m/** BT.601, the weighting the terminal itself uses to call a ground light or dark. */[m
+[32m+[m[32mfunction luminance(hex: string): number {[m
+[32m+[m	[32mconst value = Number.parseInt(hex.slice(1), 16);[m
+[32m+[m	[32mconst r = (value >> 16) & 0xff;[m
+[32m+[m	[32mconst g = (value >> 8) & 0xff;[m
+[32m+[m	[32mconst b = value & 0xff;[m
+[32m+[m	[32mreturn (0.299 * r + 0.587 * g + 0.114 * b) / 255;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m/**[m
+[32m+[m[32m * The material a row is made of: the background covering most of the card's own[m
+[32m+[m[32m * columns. The mode rather than one sampled column, because a row carries text, a[m
+[32m+[m[32m * selection band and a scrollbar thumb, and any of those is a colour that is not[m
+[32m+[m[32m * the surface.[m
+[32m+[m[32m */[m
+[32m+[m[32mfunction rowMaterial(line: string, geometry: ModalShellGeometry): string {[m
+[32m+[m	[32mconst backgrounds = backgroundsByColumn(line);[m
+[32m+[m	[32mconst tally = new Map<string, number>();[m
+[32m+[m	[32mfor (let col = geometry.cardColStart; col < geometry.cardColEnd; col++) {[m
+[32m+[m		[32mconst hex = backgrounds.get(col);[m
+[32m+[m		[32mif (hex === undefined) continue;[m
+[32m+[m		[32mtally.set(hex, (tally.get(hex) ?? 0) + 1);[m
+[32m+[m	[32m}[m
+[32m+[m	[32mlet best = "";[m
+[32m+[m	[32mlet bestCount = 0;[m
+[32m+[m	[32mfor (const [hex, count] of tally) {[m
+[32m+[m		[32mif (count > bestCount) {[m
+[32m+[m			[32mbest = hex;[m
+[32m+[m			[32mbestCount = count;[m
+[32m+[m		[32m}[m
+[32m+[m	[32m}[m
+[32m+[m	[32mif (best === "") throw new Error("the row carries no material at all");[m
+[32m+[m	[32mreturn best;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m/** The zones of a settled card, each as the colour its rows are actually painted. */[m
+[32m+[m[32mfunction zonesOf(ground: string): {[m
+[32m+[m	[32mpage: string;[m
+[32m+[m	[32mheader: string;[m
+[32m+[m	[32mbodyTop: string;[m
+[32m+[m	[32mbodyBottom: string;[m
+[32m+[m	[32mtray: string;[m
+[32m+[m	[32mgeometry: ModalShellGeometry;[m
+[32m+[m	[32mlines: readonly string[];[m
