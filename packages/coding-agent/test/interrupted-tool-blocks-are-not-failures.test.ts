@@ -39,7 +39,7 @@ function rows(component: { render(width: number): readonly string[] }): string[]
  * result renderer would state the reason twice, once in the model's register and
  * once in the operator's.
  */
-const CALL_ONLY_FRAME = ["  ┌──────────────────────┐", "  │ $ npm run migrate:up │", "  └──────────────────────┘"];
+const CALL_ONLY_FRAME = ["  ▏  $ npm run migrate:up"];
 
 /**
  * A call the interrupt caught INSIDE `tool.execute()`: whatever it printed is
@@ -47,11 +47,10 @@ const CALL_ONLY_FRAME = ["  ┌────────────────�
  * frame keeps its failed header.
  */
 const ENTERED_FRAME = [
-	"  ┌─── ✗ failed ────────────────────────┐",
-	"  │ $ npm run migrate:up                │",
-	"  ├─── Output ──────────────────────────┤",
-	"  │ Skipped due to queued user message. │",
-	"  └─────────────────────────────────────┘",
+	"  ✗ failed",
+	"  ▏  $ npm run migrate:up",
+	"  ▏  Output",
+	"  ▏  Skipped due to queued user message.",
 ];
 
 function renderSkipped(source: string, entered: boolean): string[] {
@@ -116,12 +115,11 @@ describe("a tool block an interrupt cut short says so", () => {
 		});
 
 		expect(rows(block)).toEqual([
-			"  ┌─── ✗ failed ────────────────────┐",
-			"  │ $ npm run migrate:up            │",
-			"  ├─── Output ──────────────────────┤",
-			"  │ exit 1: relation already exists │",
-			"  │ ⟦Exit: 1⟧                       │",
-			"  └─────────────────────────────────┘",
+			"  ✗ failed",
+			"  ▏  $ npm run migrate:up",
+			"  ▏  Output",
+			"  ▏  exit 1: relation already exists",
+			"  ▏  ⟦Exit: 1⟧",
 		]);
 	});
 });

@@ -251,7 +251,8 @@ export function renderMarkdownCell(options: MarkdownCellOptions, theme: Theme): 
 	const state = getState(options.status);
 
 	// Markdown component manages its own wrapping at the inner content width.
-	// `renderOutputBlock` adds a `│ ` prefix + `│` suffix → 3 visible columns.
+	// `renderOutputBlock` spends 3 columns on the left: the rail, the space after it,
+	// and one column of content padding.
 	const innerWidth = Math.max(20, width - 3);
 	const allLines = content.trim() ? new Markdown(content, 0, 0, getMarkdownTheme()).render(innerWidth) : [];
 	const maxContentLines = Math.min(allLines.length, expanded ? EXPANDED_MAX_LINES : contentMaxLines);

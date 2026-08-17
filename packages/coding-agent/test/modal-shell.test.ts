@@ -18,7 +18,7 @@ import {
 	sizingForArea,
 } from "@veyyon/coding-agent/modes/components/modal-shell";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import { MotionClock } from "@veyyon/tui";
+import { MotionClock, TERMINAL } from "@veyyon/tui";
 
 await initTheme(false, "unicode", false, "titanium", "light");
 
@@ -223,8 +223,34 @@ describe("applyModalReveal — the open unfold (TOUCH-5)", () => {
 
 	it("returns the frame byte-identical at reveal >= 1 (settled state)", () => {
 		const shell = renderCard();
+		// With no material to paint, a settled card IS the frame it was handed: the same
+		// array, so an open overlay does not copy every row of the screen once a frame.
 		expect(applyModalReveal(shell, 120, 1, GROUND)).toBe(shell.lines);
 		expect(applyModalReveal(shell, 120, 2, GROUND)).toBe(shell.lines);
+	});
+
+	it("is byte-stable once settled on a terminal that takes the material", () => {
+		// The arm above can only see the unpainted world, which is the one this process
+		// reports; a settled PAINTED card has to be stable too, or an idle overlay
+		// repaints differently every frame.
+		const caps: { trueColor: boolean } = TERMINAL;
+		const before = caps.trueColor;
+		caps.trueColor = true;
+		try {
+			const shell = renderCard();
+			const geometry = shell.geometry!;
+			const first = applyModalReveal(shell, 120, 1, GROUND);
+			const second = applyModalReveal(shell, 120, 1, GROUND);
+			expect(second).toEqual(first);
+			// And whatever it did, it did inside the card: every row of the page around it
+			// is the row it was given, by identity.
+			for (let row = 0; row < shell.lines.length; row++) {
+				if (row >= geometry.cardRowStart && row < geometry.cardRowEnd) continue;
+				expect(first[row], `row ${row}`).toBe(shell.lines[row]);
+			}
+		} finally {
+			caps.trueColor = before;
+		}
 	});
 
 	it("returns the frame untouched when the terminal was too small (null geometry)", () => {

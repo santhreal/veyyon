@@ -34,6 +34,13 @@ function rows(component: { render(width: number): readonly string[] }): string[]
 		.filter(line => line.length > 0);
 }
 
+/**
+ * A call with nothing to show but the command, as the component prints it: the
+ * two-column gutter, the rail, the space after it and one column of content padding.
+ * It used to be three rows of box around this one.
+ */
+const CALL_ONLY = ["  ▏  $ npm run migrate:up"];
+
 describe("tool block honesty about calls that never ran", () => {
 	beforeAll(async () => {
 		await initTheme();
@@ -54,11 +61,7 @@ describe("tool block honesty about calls that never ran", () => {
 		sealed.seal();
 		const sealedRows = rows(sealed);
 
-		expect(runningRows).toEqual([
-			"  ┌──────────────────────┐",
-			"  │ $ npm run migrate:up │",
-			"  └──────────────────────┘",
-		]);
+		expect(runningRows).toEqual(CALL_ONLY);
 		expect(sealedRows).toEqual([
 			...runningRows,
 			"  ! no result recorded: this call was cut off before it reported back",
@@ -98,12 +101,7 @@ describe("tool block honesty about calls that never ran", () => {
 			isError: true,
 		});
 
-		expect(rows(block)).toEqual([
-			"  ┌──────────────────────┐",
-			"  │ $ npm run migrate:up │",
-			"  └──────────────────────┘",
-			...expectedRows,
-		]);
+		expect(rows(block)).toEqual([...CALL_ONLY, ...expectedRows]);
 	});
 
 	/**
@@ -133,9 +131,7 @@ describe("tool block honesty about calls that never ran", () => {
 		});
 
 		expect(rows(ledgerBearing)).toEqual([
-			"  ┌──────────────────────┐",
-			"  │ $ npm run migrate:up │",
-			"  └──────────────────────┘",
+			...CALL_ONLY,
 			"  ! not executed: the provider stream failed before this call ran: OpenAI",
 			"  completions stream stalled",
 		]);
@@ -154,9 +150,7 @@ describe("tool block honesty about calls that never ran", () => {
 		});
 
 		expect(rows(sibling)).toEqual([
-			"  ┌──────────────────────┐",
-			"  │ $ npm run migrate:up │",
-			"  └──────────────────────┘",
+			...CALL_ONLY,
 			"  ! not executed: the provider stream failed before this call ran",
 		]);
 	});
@@ -171,23 +165,14 @@ describe("tool block honesty about calls that never ran", () => {
 	 * describes side effects that really happened.
 	 */
 	it.each([
-		[
-			false,
-			[
-				"  ┌──────────────────────┐",
-				"  │ $ npm run migrate:up │",
-				"  └──────────────────────┘",
-				"  ! not executed: an interrupt cut the batch short before this call ran",
-			],
-		],
+		[false, [...CALL_ONLY, "  ! not executed: an interrupt cut the batch short before this call ran"]],
 		[
 			true,
 			[
-				"  ┌─── ✗ failed ─────────┐",
-				"  │ $ npm run migrate:up │",
-				"  ├─── Output ───────────┤",
-				"  │ dropped table users  │",
-				"  └──────────────────────┘",
+				"  ✗ failed",
+				"  ▏  $ npm run migrate:up",
+				"  ▏  Output",
+				"  ▏  dropped table users",
 				"  ! cut off while running: side effects may be partial",
 			],
 		],
@@ -218,12 +203,11 @@ describe("tool block honesty about calls that never ran", () => {
 		});
 
 		expect(rows(block)).toEqual([
-			"  ┌─── ✗ failed ────────────────────┐",
-			"  │ $ npm run migrate:up            │",
-			"  ├─── Output ──────────────────────┤",
-			"  │ exit 1: relation already exists │",
-			"  │ ⟦Exit: 1⟧                       │",
-			"  └─────────────────────────────────┘",
+			"  ✗ failed",
+			"  ▏  $ npm run migrate:up",
+			"  ▏  Output",
+			"  ▏  exit 1: relation already exists",
+			"  ▏  ⟦Exit: 1⟧",
 		]);
 	});
 
@@ -238,12 +222,6 @@ describe("tool block honesty about calls that never ran", () => {
 		block.updateResult({ content: [{ type: "text", text: "migrated 3 tables" }] });
 		block.seal();
 
-		expect(rows(block)).toEqual([
-			"  ┌──────────────────────┐",
-			"  │ $ npm run migrate:up │",
-			"  ├─── Output ───────────┤",
-			"  │ migrated 3 tables    │",
-			"  └──────────────────────┘",
-		]);
+		expect(rows(block)).toEqual(["  ▏  $ npm run migrate:up", "  ▏  Output", "  ▏  migrated 3 tables"]);
 	});
 });
