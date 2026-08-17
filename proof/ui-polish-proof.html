@@ -32,7 +32,7 @@ td.sha { font-family: ui-monospace, monospace; color: #e6c08a; white-space: nowr
 </style></head>
 <body>
 <h1>feat/ui-polish — recorded proof</h1>
-<p class="lede">Branch <code>feat/ui-polish</code> at <code>38fa0e836</code>, 87 commits ahead of
+<p class="lede">Branch <code>feat/ui-polish</code> at <code>555a4e2ea</code>, 89 commits ahead of
 <code>main</code> (<code>5ce31890e</code>). Every figure below is a frame of a real terminal running the shipped
 CLI. No component was drawn into a picture for this page, and nothing here is a tmux capture.</p>
 
@@ -144,6 +144,15 @@ afterwards rather than screenshotted mid-motion.</p>
 <figure><div class="strip" style="grid-template-columns: repeat(4, 1fr)"><img src="captures/x11/strips/light-before-f00.png" alt="frame 0"><img src="captures/x11/strips/light-before-f01.png" alt="frame 1"><img src="captures/x11/strips/light-before-f02.png" alt="frame 2"><img src="captures/x11/strips/light-before-f03.png" alt="frame 3"><img src="captures/x11/strips/light-before-f04.png" alt="frame 4"><img src="captures/x11/strips/light-before-f05.png" alt="frame 5"><img src="captures/x11/strips/light-before-f06.png" alt="frame 6"><img src="captures/x11/strips/light-before-f07.png" alt="frame 7"></div><figcaption>BEFORE. Eight frames at 60fps from the moment the card lands. The diagonal band crosses the plate and then simply is not there.</figcaption></figure>
 <figure><div class="strip" style="grid-template-columns: repeat(4, 1fr)"><img src="captures/x11/strips/light-after-f00.png" alt="frame 0"><img src="captures/x11/strips/light-after-f01.png" alt="frame 1"><img src="captures/x11/strips/light-after-f02.png" alt="frame 2"><img src="captures/x11/strips/light-after-f03.png" alt="frame 3"><img src="captures/x11/strips/light-after-f04.png" alt="frame 4"><img src="captures/x11/strips/light-after-f05.png" alt="frame 5"><img src="captures/x11/strips/light-after-f06.png" alt="frame 6"><img src="captures/x11/strips/light-after-f07.png" alt="frame 7"></div><figcaption>AFTER. The same eight-frame window on the same scene, one commit later. The band keeps travelling over a card that has already landed, and leaves by the far edge.</figcaption></figure>
 <figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/sweep/overlay-motion.mp4#t=18" type="video/mp4"></video><figcaption>The same take as the top of this page, recorded again on the material with the light living its whole life: <code>/settings</code>, <code>/hotkeys</code> and <code>/model</code>, each card arriving as a lit surface.</figcaption></figure>
+<h2>The loudest object on the screen was a note</h2>
+<p>A still from a real session showed a note about twelve todos rendered as a saturated mustard rectangle of black text, full bleed from column 0, in the middle of a grey transcript. Two components drew it: the todo reminder and the rule-injection notice, both building <code>new Box(1, 1, t =&gt; theme.inverse(theme.fg(&quot;warning&quot;, t)))</code>, which pads every row out to the terminal width and inverts it. They were the only blocks in the transcript touching the left edge, and inverting spent the foreground too, which is why the rule notice carried a comment saying styling inside the block was limited to bold and italic.</p>
+<p>The hue now lives in one column. A rail glyph down the left names the note's kind, the block is as wide as its own widest line, it sits at the composer's inset, and its background is a lift off the ground the terminal actually reported: on a grey page the reminder measures <code>47,50,55</code> against a <code>30,33,39</code> ground, grading down to <code>46,48,54</code> at its last row. The arms below are the same three notes with the same text, drawn through the two chromes (<code>scripts/demos/render-todo-reminder.ts --slab</code> against its default), rasterized from the real components' own bytes.</p>
+<div class="pair"><figure><img src="captures/notes/note-slab-grey.png" alt=""><figcaption><strong>main</strong> — three full-width inverted slabs, each starting at column 0</figcaption></figure><figure><img src="captures/notes/note-card-grey.png" alt=""><figcaption><strong>branch</strong> — three cards on a rail, each as wide as its text and inset like everything else</figcaption></figure></div>
+<h3>The same notes on a black terminal</h3>
+<p>One ground answers half the question, and this is the case the treatment has to get right: a fill chosen for a grey page is a slab on black, and a fill chosen for black is invisible on grey. The elevation is not a colour, it is a step away from whatever the terminal reported, so the pair below is the same two chromes with the ground answered as <code>#000000</code>. The slab does not change &mdash; it never asked what it was standing on.</p>
+<div class="pair"><figure><img src="captures/notes/note-slab-onblack-black.png" alt=""><figcaption><strong>main</strong> — the same rectangle whatever it is standing on</figcaption></figure><figure><img src="captures/notes/note-card-onblack-black.png" alt=""><figcaption><strong>branch</strong> — a card that lifts off black by the same step it lifts off grey</figcaption></figure></div>
+<h3>And with no ground to stand on</h3>
+<figure><img src="captures/notes/note-flat-grey.png" alt=""><figcaption>The OFF arm of the material: a terminal that never answered OSC 11, or one without 24-bit colour, gets the rail and the colours and no surface at all. It is still a note, and it is still not a slab &mdash; the treatment degrades rather than guessing at a ground.</figcaption></figure>
 <h2>Streaming at the tail of a 72-million-token session</h2>
 <p>The session in the left video is a real one of the operator's, resumed inside the container: 289MB of JSONL, 69,727 records, 34,552 messages, 87 earlier compactions. The right video is the same scene with no session at all, so the two differ in exactly one thing — what is above the window. Same keys, same 1.5B model on the container network, same camera, same terminal.</p>
 <p>The app runs under <code>script</code> inside that terminal, so each arm produced a byte capture as well as a picture. <code>ED3</code> is the counter that matters: it is the sequence that erases the terminal's own scroll buffer, and it is what both symptoms this branch chased were made of. A frame that repaints in place writes cursor moves and text; a frame that gives up writes <code>ED3</code>.</p>
@@ -152,7 +161,7 @@ afterwards rather than screenshotted mid-motion.</p>
 <p>The resumed arm carries one cost the control does not, and it is model-side rather than renderer-side: a history that large does not fit a 65k window, so the app compacts before it can ask anything, and says so on screen while it does. That is the 1.5B summarizing on CPU, not a frame being repainted.</p>
 
 <h2>Every commit on the branch, on camera</h2>
-<p>87 of the 87 commits are below, one recording each. Every video is a real terminal in the recording
+<p>87 of the 89 commits are below, one recording each. Every video is a real terminal in the recording
 container: <code>proof/docker/record-commit-arm.sh</code> extracts the commit's tree and its parent's tree with
 <code>git archive</code>, mounts the same <code>node_modules</code> and the same native addon into both, and runs
 the same command in each. A test the commit ADDS is copied into the parent tree first, so the test is
@@ -167,6 +176,8 @@ a video is the text of the same command run again headlessly by
 rather than writing lines to a pipe, and the video is the only place its output exists.</p>
 <table><thead><tr><th>commit</th><th>subject</th></tr></thead>
 <tbody>
+<tr><td class="sha">555a4e2ea</td><td>polish(transcript): a note is a raised card on a rail, not an inverted slab <em>— carries this page and its videos; filming it means filming the film</em></td></tr>
+<tr><td class="sha">8db5bb3a3</td><td>proof(ui-polish): the material and the light, on camera, per commit <em>— carries this page and its videos; filming it means filming the film</em></td></tr>
 <tr><td class="sha"><a href="#c-38fa0e836">38fa0e836</a></td><td>fix(overlays): the light crosses the whole card, not just the unfold</td></tr>
 <tr><td class="sha"><a href="#c-ad14fca53">ad14fca53</a></td><td>feat(overlays): a card is a ladder of materials, measured on the terminal</td></tr>
 <tr><td class="sha"><a href="#c-a87aa3b99">a87aa3b99</a></td><td>tools(demos): judge a surface from images, and film an entrance frame by frame</td></tr>

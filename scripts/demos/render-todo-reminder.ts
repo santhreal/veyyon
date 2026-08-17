@@ -21,12 +21,20 @@
  * the value arrives from that answer, and a headless script would otherwise fall
  * back to the theme's DECLARED ground — black for titanium — and film a black slab
  * sitting on a grey page.
+ *
+ * `--slab` is the OFF arm of the whole treatment: the same notes drawn through the
+ * chrome they used to have, a full-width inverted warning box. Take the pair to see
+ * what changed rather than one frame of what is there now.
  */
+import { Box, Spacer, Text } from "@veyyon/tui";
+import { stripAnsi } from "@veyyon/utils";
 import type { Rule } from "../../packages/coding-agent/src/capability/rule";
 import { createSourceMeta } from "../../packages/coding-agent/src/discovery/helpers";
 import { TodoReminderComponent } from "../../packages/coding-agent/src/modes/components/todo-reminder";
+import type { TranscriptNote } from "../../packages/coding-agent/src/modes/components/transcript-note";
 import { TtsrNotificationComponent } from "../../packages/coding-agent/src/modes/components/ttsr-notification";
 import { setDetectedTerminalGround } from "../../packages/coding-agent/src/modes/theme/ground-tints";
+import { theme } from "../../packages/coding-agent/src/modes/theme/theme";
 import type { TodoItem } from "../../packages/coding-agent/src/tools/todo";
 import { GREY_GROUND } from "./lib/ansi-raster";
 import { flag, hasFlag, initRender, renderWidth } from "./render-args";
@@ -64,5 +72,24 @@ const notes = [
 	]),
 ];
 
-const lines = notes.flatMap(note => note.render(width));
+/**
+ * The chrome the notes used to have: a `Box` whose background function inverts the
+ * warning colour, padding every row out to the terminal width. Rendered from the
+ * note the component itself is carrying, so the OFF arm of the pair differs from the
+ * ON arm in the chrome and in nothing else.
+ */
+function renderSlab(note: TranscriptNote): string[] {
+	const box = new Box(1, 1, t => theme.inverse(theme.fg("warning", t)));
+	box.setIgnoreTight(true);
+	box.addChild(new Text(note.headline, 0, 0));
+	if (note.rows.length > 0) {
+		box.addChild(new Spacer(1));
+		box.addChild(new Text(note.rows.map(row => stripAnsi(row)).join("\n"), 0, 0));
+	}
+	return ["", ...box.render(width), ""];
+}
+
+const lines = hasFlag("slab")
+	? notes.flatMap(note => renderSlab(note.note))
+	: notes.flatMap(note => note.render(width));
 process.stdout.write(`${lines.join("\n")}\n`);

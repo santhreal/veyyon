@@ -104,6 +104,15 @@ export class TranscriptNoteComponent extends Container {
 		this.addChild(new Spacer(1));
 	}
 
+	/**
+	 * The note this block is carrying. Read by the off arm of the note's proof, which
+	 * renders this exact content through the chrome the notes used to have: a
+	 * differential is only evidence if it varies the chrome and nothing else.
+	 */
+	get note(): TranscriptNote {
+		return this.#note;
+	}
+
 	setNote(note: TranscriptNote): void {
 		this.#note = note;
 		this.#text.invalidate();
