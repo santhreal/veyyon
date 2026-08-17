@@ -3959,12 +3959,18 @@ export class TUI extends Container {
 			}
 			return;
 		}
+		// Ceiling on what may enter native scrollback: chrome mounted after the
+		// transcript (a HUD, the composer, the status line) rewrites itself every
+		// frame, and a chrome row that reached the committed prefix diverges on
+		// the very next frame — which is repaired by erasing scrollback and
+		// replaying, on every frame of the turn. That is the strobe.
+		const historyEnd = this.#historyEndRow(frameLength);
 		let windowTop: number;
 		let chunkTo: number;
 		if (fullPaint) {
 			committedPrefixResliced = true;
 			windowTop = Math.max(0, frameLength - height);
-			chunkTo = windowTop;
+			chunkTo = Math.min(windowTop, historyEnd);
 		} else if (
 			frameLength <= this.#committedRows ||
 			(frameLength - this.#committedRows < height && cursorMarkers.some(marker => marker.row >= this.#committedRows))
@@ -3987,7 +3993,7 @@ export class TUI extends Container {
 			// is the ED3-unsafe fallback contract.
 			committedPrefixResliced = true;
 			windowTop = Math.max(0, frameLength - height);
-			chunkTo = windowTop;
+			chunkTo = Math.min(windowTop, historyEnd);
 			this.#committedRows = chunkTo;
 			this.#committedPrefix = rawFrame.slice(0, chunkTo);
 		} else {
@@ -4006,7 +4012,19 @@ export class TUI extends Container {
 			// history — and re-bases the audit prefix at the new width so the
 			// accepted wrap drift does not read as a violation on the next
 			// ordinary frame.
-			chunkTo = hasVisibleOverlay || geometryChanged ? this.#committedRows : windowTop;
+			// Rows at or after `finalBoundary` are still LIVE — a HUD mounted
+			// between the transcript and the footer, a streaming block's tail.
+			// Committing one writes a row that is about to change into immutable
+			// history; the next frame's audit reads that as a prefix violation and
+			// repairs it by erasing native scrollback and replaying the whole
+			// transcript, on every frame of the turn. That is the screen strobing,
+			// and a tall todo list or a busy subagent HUD is all it takes: once the
+			// pinned chrome outgrows the viewport, `frameLength - height` lands
+			// inside the live band. Freeze commits for such a frame — the window
+			// still paints in place, and the only rows that miss native scrollback
+			// are chrome rows, which were never history to begin with.
+			const commitWouldTakeLiveRows = windowTop > this.#historyEndRow(frameLength);
+			chunkTo = hasVisibleOverlay || geometryChanged || commitWouldTakeLiveRows ? this.#committedRows : windowTop;
 			if (geometryChanged) {
 				committedPrefixResliced = true;
 				this.#committedPrefix = rawFrame.slice(0, this.#committedRows);
@@ -4224,6 +4242,28 @@ export class TUI extends Container {
 			const msg = `[${new Date().toISOString()}] commit resync: committed prefix diverged at row ${resyncTo}; recommitting\n`;
 			fs.appendFileSync(getDebugLogPath(), msg);
 		}
+	}
+
+	/**
+	 * Frame row where HISTORY ends. Root children that implement the native
+	 * scrollback contract are the transcript — the only rows that belong in the
+	 * terminal's own scrollback. Anything mounted after the last of them is
+	 * chrome: a todo or subagent HUD, the composer, the status line. Chrome
+	 * rewrites itself every frame, so a chrome row that reached the committed
+	 * prefix is a prefix violation waiting to happen, and the repair for that is
+	 * an erase-and-replay of the whole screen.
+	 *
+	 * Falls back to the whole frame when no child claims history, which is every
+	 * plain-container host (a dialog, a one-shot command): there is no chrome to
+	 * separate and the old ceiling is the right one.
+	 */
+	#historyEndRow(frameLength: number): number {
+		const segments = this.#frameSegments;
+		for (let i = segments.length - 1; i >= 0; i--) {
+			const segment = segments[i]!;
+			if (canPrepareNativeScrollbackReplay(segment.component)) return segment.start + segment.rowCount;
+		}
+		return frameLength;
 	}
 
 	/**
