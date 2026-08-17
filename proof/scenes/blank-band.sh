@@ -6,9 +6,11 @@
 # own scrollback. shift+PageUp is xterm's key, handled by the terminal rather
 # than the application, so it reads what is really in the buffer.
 #
-# With the fix the settled frame runs from the top of the window to the composer
-# on the bottom row. Without it the rows above the tail are blank -- a
-# screen-sized void with a stray fence and rule floating over the HUD.
+# The settled frame runs from the top of the window to the composer on the bottom
+# row, and every turn is still in the scrollback the walk reads. This is a
+# single-arm recording on purpose: the driver's header records the measurement
+# showing that turning the fix off changes nothing reachable from this script, so
+# a second arm here would be a comparison of two identical screens.
 
 # 24 turns at 160ms, 30 streamed rows at 70ms, then the settle: ~7s of driver
 # plus startup.
