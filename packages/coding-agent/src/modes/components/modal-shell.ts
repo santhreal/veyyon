@@ -13,24 +13,27 @@
  */
 import {
 	type Animation,
-	cascadeStrength,
 	type ColumnWindow,
+	cascadeStrength,
 	clamp,
 	clampLow,
 	fadeLineTowards,
 	fillSurface,
 	type Keybinding,
+	liftHex,
 	MOTION,
 	type MotionClock,
 	motionClock,
 	padding,
+	paintLineBackground,
+	type SurfaceBand,
 	sweepSurface,
 	TERMINAL,
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
-import { transitionsEnabled } from "../theme/shimmer";
 import { getVisibleGround } from "../theme/ground-tints";
+import { transitionsEnabled } from "../theme/shimmer";
 import { theme, visibleGroundHex } from "../theme/theme";
 import { actionKeyHint } from "../utils/key-hint";
 import { emberTick } from "./composer-chrome";
@@ -1091,6 +1094,55 @@ function modalSurfaceGround(ground: string): string | undefined {
 }
 
 /**
+ * The elevation ladder a card is made of, top to bottom.
+ *
+ * One wash over the whole card was measured on a real terminal at twelve of 255
+ * above the page at its top row and four at its foot: an elevation the eye cannot
+ * find, so a settled card still read as line art on the page. Three materials fix
+ * that without brightening anything into a slab — a header tray carrying the title
+ * and the search line, the body in front of it, and a recessed footer tray under
+ * the tip and the chips. The ladder is what gives the eye an edge to catch.
+ */
+const CARD_HEADER_LIFT = 0.15;
+const CARD_BODY_LIFT = 0.1;
+const CARD_BODY_BOTTOM_LIFT = 0.07;
+const CARD_TRAY_LIFT = 0.04;
+/** A pane the card sets INTO its own body: a category sidebar, a preview column. */
+const CARD_INSET_LIFT = 0.025;
+
+/**
+ * The material a two-pane card sets its side column in, or undefined when this
+ * terminal gets no material at all.
+ *
+ * The shell cannot do this one itself: it is handed finished body rows and has no
+ * idea where a component split them. So the component paints its own inset, and
+ * because {@link applyModalReveal} never overpaints a cell that already carries a
+ * background, the inset survives the fill that follows it.
+ */
+export function cardInsetHex(): string | undefined {
+	const ground = modalSurfaceGround(modalRevealGround());
+	if (ground === undefined || !TERMINAL.trueColor) return undefined;
+	return liftHex(ground, CARD_INSET_LIFT);
+}
+
+/**
+ * Set one pane of a two-pane card INTO the card: the same rendered columns, on the
+ * inset material.
+ *
+ * `width` is the pane's own width, and the paint stops there, so the hairline and
+ * the pane beside it keep the plate. A terminal with no material gets the line
+ * back unchanged, which is the byte-identity the card suites assert.
+ */
+export function paintCardInset(line: string, width: number): string {
+	const inset = cardInsetHex();
+	if (inset === undefined) return line;
+	return paintLineBackground(line, width, ({ background }) => (background === undefined ? inset : undefined), {
+		start: 0,
+		end: width,
+	});
+}
+
+/**
  * Paint a rendered modal frame as a SURFACE, and play its entrance.
  *
  * Three things happen here, and the order matters:
@@ -1139,7 +1191,28 @@ export function applyModalReveal(
 	// rather than assumed (see modalSurfaceGround). Without either, the product is
 	// exactly what it was; the clip and the fade below are colour-agnostic and play.
 	const surface = TERMINAL.trueColor ? modalSurfaceGround(ground) : undefined;
-	let treated = surface === undefined ? card : fillSurface(card, areaWidth, { ground: surface, columns }, strength);
+	// Header tray: the top border, the title rail, and the search line if there is
+	// one — everything above the first body row. Footer tray: the tip, the chips and
+	// the bottom border. Rows are relative to the card block, `end` exclusive.
+	const bands: readonly SurfaceBand[] = [
+		{ start: 0, end: Math.max(1, geometry.bodyRowStart - cardRowStart), lift: CARD_HEADER_LIFT },
+		{ start: Math.max(0, geometry.footerRowStart - cardRowStart), end: cardRows, lift: CARD_TRAY_LIFT },
+	];
+	let treated =
+		surface === undefined
+			? card
+			: fillSurface(
+					card,
+					areaWidth,
+					{
+						ground: surface,
+						lift: CARD_BODY_LIFT,
+						bottomLift: CARD_BODY_BOTTOM_LIFT,
+						bands,
+						columns,
+					},
+					strength,
+				);
 
 	// How many rows of the card are on screen this frame. Everything below is blank
 	// page, and nothing may be painted onto it — a swept blank row is light lying
