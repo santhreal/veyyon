@@ -1,0 +1,183 @@
+[33m38fa0e836[m fix(overlays): the light crosses the whole card, not just the unfold
+
+
+
+ packages/coding-agent/CHANGELOG.md                 |  1 [32m+[m
+ .../src/modes/components/modal-shell.ts            | 18 [32m+++[m[31m--[m
+ ...-its-material-only-inside-its-own-edges.test.ts | 84 [32m++++++++++++++++++++[m[31m--[m
+ 3 files changed, 91 insertions(+), 12 deletions(-)
+
+[1mdiff --git a/packages/coding-agent/CHANGELOG.md b/packages/coding-agent/CHANGELOG.md[m
+[1mindex e803ee2ea..211e63968 100644[m
+[1m--- a/packages/coding-agent/CHANGELOG.md[m
+[1m+++ b/packages/coding-agent/CHANGELOG.md[m
+[36m@@ -43,6 +43,7 @@[m
+ [m
+ ### Fixed[m
+ [m
+[32m+[m[32m- The light that crosses an opening card travels its whole length instead of dying the instant the card stops growing. The sweep runs on a 520ms curve on purpose, twice the 260ms unfold, so the card is in place while the highlight is still moving across it — but the driver reported a finished sweep as soon as the unfold settled, which cut every one of them in half. Measured on a real terminal: the card arrived at t=19.550 and every pixel was static from t=19.800, 250ms of a 520ms light. The light now ends when the card is dismissed or dismounted, which is what already cancels it; a card whose unfold finished before anything read the sweep is still lit flat, since starting a fresh 520ms animation on a card that has been sitting still is a flash, not a reveal.[m
+ - The screen no longer flickers about ten times a second during a live turn. The composer footline's context gauge rode a spring on the shared 60 Hz motion clock, and a streaming turn revises the token estimate continuously, so the spring was re-targeted on nearly every frame and never settled: the host was asked for a repaint at roughly 60/s for the whole turn (measured 595 requests in 10 seconds), the engine's adaptive throttle turned that into a repaint about every 100 ms, and on a long transcript each repaint erased native scrollback and replayed the transcript, which is the flash. The gauge prints its reading again, and the two travelling viewports (the fullscreen agent transcript viewer, the plan-review body) land on their offset. Hover-band fades and the suggestion-popup grow are unaffected: they are gesture-scoped and settle in a few hundred milliseconds.[m
+ - A fading band and an unfolding card resolve out of the ground that is on screen, instead of the one the theme declares. Titanium declares a black page background and `tui.paintGround` defaults to `auto`, which refuses to paint black onto a grey terminal — so the row sat on the operator's own grey while every mix travelled out of black, and each band flashed DARKER than both the page and the band on its way in and again on its way out. Measured off a real xterm at 60fps: a leaving row read `#090401` between a `#1c1f26` page and a `#231310` band. The ground now comes from one owner and in one order — the ground this process painted, else the one the terminal reported over OSC 11, else the theme's declared ground for a terminal that answered neither — and the paint decision records what it painted in the same call that paints it, so a policy that declines to paint can no longer leave the animations mixing out of a colour nothing put on screen. A theme whose ground the terminal was actually painted with is unaffected, byte for byte.[m
+ - The context gauge, the `/context` panel and the compaction trigger count a `@file` mention and a `$` python cell. Both roles reach the provider — a mention as a `developer` message wrapping every file body it read, a cell as a user message wrapping its code and its output — and both were estimated at zero tokens, so a session that mentioned a file reported a fraction of the prompt it had just sent. Measured against a 32768-token endpoint: the footline read `61% left` while the request in flight was 40459 tokens, and the endpoint refused it. Every role the outbound converter handles is now counted, and the suite derives what each role must cost from what that converter actually puts on the wire, so a role added later cannot be free.[m
+[1mdiff --git a/packages/coding-agent/src/modes/components/modal-shell.ts b/packages/coding-agent/src/modes/components/modal-shell.ts[m
+[1mindex 68899d40b..1e153c677 100644[m
+[1m--- a/packages/coding-agent/src/modes/components/modal-shell.ts[m
+[1m+++ b/packages/coding-agent/src/modes/components/modal-shell.ts[m
+[36m@@ -955,13 +955,19 @@[m [mexport class ModalRevealDriver implements ModalRevealProgress {[m
+ 	 * overlay's first paint can arrive long after its construction.[m
+ 	 */[m
+ 	get sweep(): number {[m
+[31m-		// `#settled` is checked for the same reason `value` checks it: a stopped or[m
+[31m-		// dismounted driver must not START a light on its next read. Without it, a[m
+[31m-		// disposed card's last render put a fresh 520ms animation on the shared clock[m
+[31m-		// and reported a sweep at phase zero, which is a flash of light on a card that[m
+[31m-		// is already gone.[m
+[31m-		if (this.#exit !== null || this.#settled || !this.#armed) return 1;[m
+[32m+[m		[32m// A card on its way out and one that never played an entrance are lit flat.[m
+[32m+[m		[32m// `#settled` deliberately does NOT belong in this guard: the unfold finishing is[m
+[32m+[m		[32m// not the light finishing, and checking it here cut every sweep down to the[m
+[32m+[m		[32m// length of the unfold (measured on a real terminal as 250ms of a 520ms curve,[m
+[32m+[m		[32m// the light dying the instant the card stopped growing).[m
+[32m+[m		[32mif (this.#exit !== null || !this.#armed) return 1;[m
+ 		if (this.#sweepAnimation === null) {[m
+[32m+[m			[32m// Nothing read the light while the entrance played, so there is none to pick up[m
+[32m+[m			[32m// mid-travel. Starting one now would light a card that is already in place —[m
+[32m+[m			[32m// and after stop(), which cancels the animation and settles, a disposed card[m
+[32m+[m			[32m// would put a fresh 520ms animation on the shared clock and report phase zero:[m
+[32m+[m			[32m// a flash of light on a card that is already gone.[m
+[32m+[m			[32mif (this.#settled) return 1;[m
+ 			this.#sweepAnimation = this.#clock.animate(MOTION.sweep, {[m
+ 				from: 0,[m
+ 				to: 1,[m
+[1mdiff --git a/packages/coding-agent/test/modes/components/a-card-paints-its-material-only-inside-its-own-edges.test.ts b/packages/coding-agent/test/modes/components/a-card-paints-its-material-only-inside-its-own-edges.test.ts[m
+[1mindex 2d56ec9b8..2b72aba5f 100644[m
+[1m--- a/packages/coding-agent/test/modes/components/a-card-paints-its-material-only-inside-its-own-edges.test.ts[m
+[1m+++ b/packages/coding-agent/test/modes/components/a-card-paints-its-material-only-inside-its-own-edges.test.ts[m
+[36m@@ -29,18 +29,27 @@[m
+  * fallback is pretty.[m
+  */[m
+ import { afterEach, beforeEach, describe, expect, it } from "bun:test";[m
+[31m-import { type AnsiPolicy, getAnsiPolicy, motionClock, setAnsiPolicy, TERMINAL, visibleWidth } from "@veyyon/tui";[m
+[32m+[m[32mimport {[m
+[32m+[m	[32mtype AnsiPolicy,[m
+[32m+[m	[32mgetAnsiPolicy,[m
+[32m+[m	[32mMOTION,[m
+[32m+[m	[32mMotionClock,[m
+[32m+[m	[32mmotionClock,[m
+[32m+[m	[32msetAnsiPolicy,[m
+[32m+[m	[32mTERMINAL,[m
+[32m+[m	[32mvisibleWidth,[m
+[32m+[m[32m} from "@veyyon/tui";[m
+ import { stripAnsi } from "@veyyon/utils";[m
+ import {[m
+ 	applyModalReveal,[m
+ 	MODAL_SIZING_SETTINGS,[m
+[31m-	type ModalShellGeometry,[m
+ 	ModalRevealDriver,[m
+[32m+[m	[32mtype ModalShellGeometry,[m
+ 	type ModalShellResult,[m
+ 	renderModalShell,[m
+ } from "../../../src/modes/components/modal-shell";[m
+[31m-import { getThemeByName, initTheme, setThemeInstance } from "../../../src/modes/theme/theme";[m
+ import { resetGroundTintsForTest, setDetectedTerminalGround } from "../../../src/modes/theme/ground-tints";[m
+[32m+[m[32mimport { getThemeByName, initTheme, setThemeInstance } from "../../../src/modes/theme/theme";[m
+ [m
+ const WIDTH = 100;[m
+ const HEIGHT = 30;[m
+[36m@@ -133,7 +142,9 @@[m [mdescribe("a card paints its material only inside its own edges", () => {[m
+ 			const columns = paintedColumns(lines[row] ?? "");[m
+ 			painted += columns.size;[m
+ 			for (const col of columns) {[m
+[31m-				expect(col, `row ${row} painted column ${col} outside the card`).toBeGreaterThanOrEqual(geometry.cardColStart);[m
+[32m+[m				[32mexpect(col, `row ${row} painted column ${col} outside the card`).toBeGreaterThanOrEqual([m
+[32m+[m					[32mgeometry.cardColStart,[m
+[32m+[m				[32m);[m
+ 				expect(col, `row ${row} painted column ${col} outside the card`).toBeLessThan(geometry.cardColEnd);[m
+ 			}[m
+ 		}[m
+[36m@@ -159,7 +170,9 @@[m [mdescribe("a card paints its material only inside its own edges", () => {[m
+ 					expect(col, `sweep ${sweep} row ${row} lit column ${col} outside the card`).toBeGreaterThanOrEqual([m
+ 						geometry.cardColStart,[m
+ 					);[m
+[31m-					expect(col, `sweep ${sweep} row ${row} lit column ${col} outside the card`).toBeLessThan(geometry.cardColEnd);[m
+[32m+[m					[32mexpect(col, `sweep ${sweep} row ${row} lit column ${col} outside the card`).toBeLessThan([m
+[32m+[m						[32mgeometry.cardColEnd,[m
+[32m+[m					[32m);[m
+ 				}[m
+ 			}[m
+ 			// A sweep that paints nothing anywhere would satisfy every containment[m
+[36m@@ -239,7 +252,10 @@[m [mdescribe("a card paints its material only inside its own edges", () => {[m
+ 		const lifted = [...lit.matchAll(/48;2;(\d+);(\d+);(\d+)/g)].map(m => [Number(m[1]), Number(m[2]), Number(m[3])]);[m
+ 		const warm = lifted.filter(([r, g, b]) => r > g && g > b && r > 100);[m
+ 		expect(warm.length, "the swept row still carries the band's warm colour").toBeGreaterThan(0);[m
+[31m-		expect(warm.some(([r]) => r > 120), "the sweep lifted the band rather than leaving it flat").toBe(true);[m
+[32m+[m		[32mexpect([m
+[32m+[m			[32mwarm.some(([r]) => r > 120),[m
+[32m+[m			[32m"the sweep lifted the band rather than leaving it flat",[m
+[32m+[m		[32m).toBe(true);[m
+ 	});[m
+ });[m
+ [m
+[36m@@ -256,6 +272,62 @@[m [mdescribe("the entrance hands the clock back", () => {[m
+ 		return motionClock.liveCount;[m
+ 	}[m
+ [m
+[32m+[m	[32mit("keeps the light travelling after the card has landed, and still ends it", () => {[m
+[32m+[m		[32m// The sweep is twice the unfold on purpose, and a driver that reported a settled[m
+[32m+[m		[32m// sweep the moment the UNFOLD settled cut every one of them in half: measured on[m
+[32m+[m		[32m// a real terminal as 250ms of light on a 520ms curve, ending the instant the card[m
+[32m+[m		[32m// stopped growing. `stop()` is what ends a sweep, not the entrance finishing.[m
+[32m+[m		[32mconst clock = new MotionClock();[m
+[32m+[m		[32mconst driver = new ModalRevealDriver(clock);[m
+[32m+[m		[32mdriver.start(() => {});[m
+[32m+[m		[32mexpect(driver.value, "the unfold is anchored on its first read").toBeLessThan(1);[m
+[32m+[m		[32mexpect(driver.sweep, "and so is the light").toBeLessThan(1);[m
+[32m+[m
+[32m+[m		[32m// A real terminal delivers frames, not jumps: the clock deliberately advances a[m
+[32m+[m		[32m// single frame across a gap wider than 100ms rather than replaying a stall in one[m
+[32m+[m		[32m// lurch, so this walks the timeline the way a paint loop does.[m
+[32m+[m		[32mlet now = performance.now();[m
+[32m+[m		[32mconst step = () => {[m
+[32m+[m			[32mnow += 1000 / 60;[m
+[32m+[m			[32mclock.tick(now);[m
+[32m+[m		[32m};[m
+[32m+[m		[32mconst enterFrames = Math.ceil(MOTION.enter.duration / (1000 / 60)) + 2;[m
+[32m+[m		[32mfor (let i = 0; i < enterFrames; i += 1) step();[m
+[32m+[m		[32mexpect(driver.value, "the card has landed").toBe(1);[m
+[32m+[m		[32mconst midTravel = driver.sweep;[m
+[32m+[m		[32mexpect(midTravel, "the light is still crossing it").toBeLessThan(1);[m
+[32m+[m		[32mexpect(midTravel, "and it is well past the start of its own curve").toBeGreaterThan(0.5);[m
+[32m+[m
+[32m+[m		[32m// It ENDS: a light with no end is a clock that never stops asking for frames.[m
+[32m+[m		[32mlet frames = 0;[m
+[32m+[m		[32mwhile (clock.liveCount > 0 && frames < 120) {[m
+[32m+[m			[32mstep();[m
+[32m+[m			[32mframes += 1;[m
+[32m+[m		[32m}[m
+[32m+[m		[32mexpect(frames, "the light reaches its end and the clock empties").toBeLessThan(120);[m
+[32m+[m		[32mexpect(driver.sweep, "a finished light is a flat card").toBe(1);[m
+[32m+[m	[32m});[m
+[32m+[m
+[32m+[m	[32mit("does not light a card that landed before anyone read the sweep", () => {[m
+[32m+[m		[32m// The light is anchored on its first read so an overlay whose first paint lags[m
+[32m+[m		[32m// construction still gets a full sweep. The other end of that rule: a card whose[m
+[32m+[m		[32m// unfold has already finished by the time something reads the sweep must not start[m
+[32m+[m		[32m// a 520ms light on a card that has been sitting still — the reveal is over.[m
+[32m+[m		[32mconst clock = new MotionClock();[m
+[32m+[m		[32mconst driver = new ModalRevealDriver(clock);[m
+[32m+[m		[32mdriver.start(() => {});[m
+[32m+[m		[32mexpect(driver.value, "the unfold is anchored on this read").toBeLessThan(1);[m
+[32m+[m		[32mlet now = performance.now();[m
+[32m+[m		[32mfor (let i = 0; i < Math.ceil(MOTION.enter.duration / (1000 / 60)) + 2; i += 1) {[m
+[32m+[m			[32mnow += 1000 / 60;[m
+[32m+[m			[32mclock.tick(now);[m
+[32m+[m		[32m}[m
+[32m+[m		[32mexpect(driver.value, "the card landed with nobody reading the light").toBe(1);[m
+[32m+[m		[32mexpect(clock.liveCount, "and nothing is left on the clock").toBe(0);[m
+[32m+[m		[32mexpect(driver.sweep, "a card already in place is lit flat").toBe(1);[m
+[32m+[m		[32mexpect(clock.liveCount, "reading it started no late animation").toBe(0);[m
+[32m+[m	[32m});[m
+[32m+[m
+ 	it("reports a settled sweep before it is armed and after it is stopped", () => {[m
+ 		const driver = new ModalRevealDriver();[m
+ 		expect(driver.sweep, "an unarmed driver is not mid-sweep").toBe(1);[m

@@ -1,0 +1,415 @@
+[33m65e3f65e3[m proof(ui-polish): film the last two commits too, and read the frame rates off the files
+
+
+
+ proof/build-proof.py                               |  87 [32m+++[m[31m-[m
+ proof/captures/x11/commits/b88806395-after.mp4     | Bin [31m0[m -> [32m560564[m bytes
+ .../x11/commits/b88806395-after/b88806395.diff     | 461 [32m+++++++++++++++++++++[m
+ proof/captures/x11/commits/b88806395-after/cmd.sh  |   6 [32m+[m
+ proof/captures/x11/commits/e414827fc-after.mp4     | Bin [31m0[m -> [32m1536910[m bytes
+ proof/captures/x11/commits/e414827fc-after/cmd.sh  |   6 [32m+[m
+ .../x11/commits/e414827fc-after/e414827fc.diff     | 420 [32m+++++++++++++++++++[m
+ proof/commit-videos.tsv                            |   2 [32m+[m
+ proof/ui-polish-proof.html                         |  32 [32m+[m[31m-[m
+ 9 files changed, 986 insertions(+), 28 deletions(-)
+
+[1mdiff --git a/proof/build-proof.py b/proof/build-proof.py[m
+[1mindex ceaa0a048..b7b016c50 100755[m
+[1m--- a/proof/build-proof.py[m
+[1m+++ b/proof/build-proof.py[m
+[36m@@ -33,6 +33,36 @@[m [mdef need(rel: str) -> str:[m
+     return rel[m
+ [m
+ [m
+[32m+[m[32mdef capture_fps(*globs: str, skip: str = "") -> str:[m
+[32m+[m[32m    """The frame rates ffmpeg actually recorded, read back off the files.[m
+[32m+[m
+[32m+[m[32m    Typed into the page this drifted: the note claimed 60fps for everything[m
+[32m+[m[32m    while a commit arm was recorded at 15 and the long session at 20, and a[m
+[32m+[m[32m    reader has no way to tell a wrong number from a right one. Probing the mp4s[m
+[32m+[m[32m    at build time means the sentence cannot disagree with the videos under it.[m
+[32m+[m[32m    """[m
+[32m+[m[32m    rates: set[int] = set()[m
+[32m+[m[32m    for pattern in globs:[m
+[32m+[m[32m        for path in sorted(ROOT.glob(pattern)):[m
+[32m+[m[32m            if skip and path.name.startswith(skip):[m
+[32m+[m[32m                continue[m
+[32m+[m[32m            probe = subprocess.run([m
+[32m+[m[32m                ["ffprobe", "-v", "error", "-select_streams", "v",[m
+[32m+[m[32m                 "-show_entries", "stream=r_frame_rate", "-of", "csv=p=0", str(path)],[m
+[32m+[m[32m                capture_output=True, text=True,[m
+[32m+[m[32m            )[m
+[32m+[m[32m            num, _, den = probe.stdout.strip().partition("/")[m
+[32m+[m[32m            if not num.isdigit():[m
+[32m+[m[32m                continue[m
+[32m+[m[32m            rates.add(round(int(num) / int(den or 1)))[m
+[32m+[m[32m    if not rates:[m
+[32m+[m[32m        return "an unknown rate"[m
+[32m+[m[32m    ordered = sorted(rates)[m
+[32m+[m[32m    if len(ordered) == 1:[m
+[32m+[m[32m        return f"{ordered[0]}fps"[m
+[32m+[m[32m    return ", ".join(f"{r}fps" for r in ordered[:-1]) + f" and {ordered[-1]}fps"[m
+[32m+[m
+[32m+[m
+ CSS = """[m
+ :root { color-scheme: dark; }[m
+ * { box-sizing: border-box; }[m
+[36m@@ -258,6 +288,20 @@[m [mdef commit_pair(hash_: str, cap_before: str, cap_after: str) -> str:[m
+     )[m
+ [m
+ [m
+[32m+[m[32mdef manifest_rows() -> list[tuple[str, str, str, str]]:[m
+[32m+[m[32m    """(hash, kind, payload, subject) per recorded commit, out of commit-videos.tsv."""[m
+[32m+[m[32m    rows = [][m
+[32m+[m[32m    for line in MANIFEST.read_text().splitlines():[m
+[32m+[m[32m        if not line or line.startswith("#"):[m
+[32m+[m[32m            continue[m
+[32m+[m[32m        parts = line.split("\t")[m
+[32m+[m[32m        if len(parts) < 5:[m
+[32m+[m[32m            continue[m
+[32m+[m[32m        hash_, kind, _hold, payload, subject = parts[:5][m
+[32m+[m[32m        rows.append((hash_, kind, payload, subject))[m
+[32m+[m[32m    return rows[m
+[32m+[m
+[32m+[m
+ def commit_video_sections() -> str:[m
+     """One block per commit on the branch: what it was, and it running.[m
+ [m
+[36m@@ -273,15 +317,7 @@[m [mdef commit_video_sections() -> str:[m
+               nothing a terminal can execute -- captures, a page rebuild, a[m
+               changelog ordering, a merge.[m
+     """[m
+[31m-    rows = [][m
+[31m-    for line in MANIFEST.read_text().splitlines():[m
+[31m-        if not line or line.startswith("#"):[m
+[31m-            continue[m
+[31m-        parts = line.split("\t")[m
+[31m-        if len(parts) < 5:[m
+[31m-            continue[m
+[31m-        hash_, kind, _hold, payload, subject = parts[:5][m
+[31m-        rows.append((hash_, kind, payload, subject))[m
+[32m+[m[32m    rows = manifest_rows()[m
+ [m
+     blocks = [][m
+     for hash_, kind, payload, subject in rows:[m
+[36m@@ -353,14 +389,24 @@[m [mdef escape(text: str) -> str:[m
+ [m
+ [m
+ def commit_table() -> str:[m
+[32m+[m[32m    """Every commit on the branch, linked to its recording when it has one.[m
+[32m+[m
+[32m+[m[32m    A commit that carries only this page and the videos themselves cannot be[m
+[32m+[m[32m    filmed: a recording of the commit that contains the recording is circular.[m
+[32m+[m[32m    Those rows stay in the table, unlinked and named, so the table is the whole[m
+[32m+[m[32m    branch rather than the part that was convenient to film.[m
+[32m+[m[32m    """[m
+     log = subprocess.run([m
+         ["git", "log", "--oneline", "--no-decorate", "main..HEAD"],[m
+         cwd=REPO, capture_output=True, text=True, check=True,[m
+     ).stdout.strip().split("\n")[m
+[32m+[m[32m    filmed = {hash_ for hash_, _kind, _payload, _subject in manifest_rows()}[m
+     rows = [][m
+     for line in log:[m
+         sha, _, subject = line.partition(" ")[m
+[31m-        rows.append(f'<tr><td class="sha"><a href="#c-{sha}">{sha}</a></td><td>{subject}</td></tr>')[m
+[32m+[m[32m        cell = f'<a href="#c-{sha}">{sha}</a>' if sha in filmed else sha[m
+[32m+[m[32m        note = "" if sha in filmed else " <em>— carries this page and its videos; filming it means filming the film</em>"[m
+[32m+[m[32m        rows.append(f'<tr><td class="sha">{cell}</td><td>{escape(subject)}{note}</td></tr>')[m
+     return "\n".join(rows)[m
+ [m
+ [m
+[36m@@ -379,11 +425,15 @@[m [mCLI. No component was drawn into a picture for this page, and nothing here is a[m
+ <div class="note">[m
+ <p><strong>Where the recording happens.</strong> <code>proof/docker/record-x11.sh &lt;scene&gt;</code> runs[m
+ <code>veyyon-proof-recorder</code> on a private docker network. Inside it, <code>Xvfb</code> owns display[m
+[31m-<code>:99</code>, <code>xterm</code> is the terminal, <code>xdotool</code> moves a real pointer and presses real[m
+[31m-keys, and <code>ffmpeg</code> records the display continuously at 60fps. The machine's own[m
+[31m-<code>~/.veyyon</code> is not in the container's mount table — <code>HOME</code> is a tmpfs seeded from[m
+[31m-<code>proof/docker/home-seed</code> — so nothing here touches a live session, and the operator's own display is[m
+[31m-never opened.</p>[m
+[32m+[m[32m<code>:99</code>, <code>kitty</code> is the terminal — a real emulator that reports SGR 1006 mouse —[m
+[32m+[m[32m<code>xdotool</code> moves a real X pointer and presses real keys through XTEST, and <code>ffmpeg</code> grabs[m
+[32m+[m[32mthe display continuously: {capture_fps("captures/x11/*.mp4", "captures/x11/before/*.mp4", skip="long-session")} for the scenes,[m
+[32m+[m[32m{capture_fps("captures/x11/long-session-*.mp4")} for the long-session runs and[m
+[32m+[m[32m{capture_fps("captures/x11/commits/*.mp4")} for a commit arm, each rate read back off the files themselves. The[m
+[32m+[m[32mmachine's own <code>~/.veyyon</code> is not in the container's mount table — <code>HOME</code> is a tmpfs seeded[m
+[32m+[m[32mfrom <code>proof/docker/home-seed</code> — so nothing here touches a live session, and the operator's own display[m
+[32m+[m[32mis never opened. A pointer is only moved where a scene is about a pointer; the commit arms below run a command[m
+[32m+[m[32mand need neither pointer nor keys.</p>[m
+ <p><strong>Which model answers.</strong> A <code>llama.cpp</code> server holding[m
+ <code>qwen2.5-1.5b-instruct-q4_k_m</code>, reachable only as the container-network provider <code>local</code>.[m
+ No provider account is reachable from the container, so a streamed answer in these recordings is that model on[m
+[36m@@ -393,14 +443,15 @@[m [msource file the branch changed at its <code>main</code> content (<code>git show[m
+ the same scene into <code>proof/captures/x11/before/</code>, then restores from an in-memory copy and proves the[m
+ restore by sha256. No git mutation command runs and the working tree ends byte-identical.</p>[m
+ <p><strong>Where the filmstrips come from.</strong> <code>proof/filmstrip.py</code> decodes consecutive frames out[m
+[31m-of the recording. An animation of 220ms is thirteen frames at 60fps and a still taken from inside the scene[m
+[31m-always lands after it, so the frames have to be cut from the video afterwards.</p>[m
+[32m+[m[32mof the recording. 220ms of animation is thirteen frames on the app's own 60Hz clock, and a still taken from[m
+[32m+[m[32minside the scene always lands after the animation has settled, so the frames have to be cut from the video[m
+[32m+[m[32mafterwards rather than screenshotted mid-motion.</p>[m
+ </div>[m
+ [m
+ {body}[m
+ [m
+ <h2>Every commit on the branch, on camera</h2>[m
+[31m-<p>{ahead} commits, and a recording of each one below. Every video is a real terminal in the recording[m
+[32m+[m[32m<p>{len(manifest_rows())} of the {ahead} commits are below, one recording each. Every video is a real terminal in the recording[m
+ container: <code>proof/docker/record-commit-arm.sh</code> extracts the commit's tree and its parent's tree with[m
+ <code>git archive</code>, mounts the same <code>node_modules</code> and the same native addon into both, and runs[m
+ the same command in each. A test the commit ADDS is copied into the parent tree first, so the test is[m
+[1mdiff --git a/proof/captures/x11/commits/b88806395-after.mp4 b/proof/captures/x11/commits/b88806395-after.mp4[m
+[1mnew file mode 100644[m
+[1mindex 000000000..f78ca78fa[m
+Binary files /dev/null and b/proof/captures/x11/commits/b88806395-after.mp4 differ
+[1mdiff --git a/proof/captures/x11/commits/b88806395-after/b88806395.diff b/proof/captures/x11/commits/b88806395-after/b88806395.diff[m
+[1mnew file mode 100644[m
+[1mindex 000000000..9495c6c27[m
+[1m--- /dev/null[m
+[1m+++ b/proof/captures/x11/commits/b88806395-after/b88806395.diff[m
+[36m@@ -0,0 +1,461 @@[m
+[32m+[m[32m[33mb88806395[m proof(ui-polish): 140 videos, one arm per commit, and the page that plays them[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m[32m proof/captures/x11/commits/030960d65-after.mp4     | Bin [31m0[m -> [32m103342[m bytes[m
+[32m+[m[32m proof/captures/x11/commits/030960d65-after.txt     |  40 [32m++[m[m
+[32m+[m[32m proof/captures/x11/commits/030960d65-after/cmd.sh  |   6 [32m+[m[m
+[32m+[m[32m proof/captures/x11/commits/030960d65-before.mp4    | Bin [31m0[m -> [32m103342[m bytes[m
+[32m+[m[32m proof/captures/x11/commits/030960d65-before.txt    |  40 [32m++[m[m
+[32m+[m[32m proof/captures/x11/commits/030960d65-before/cmd.sh |   6 [32m+[m[m
+[32m+[m[32m proof/captures/x11/commits/05bd9d643-after.mp4     | Bin [31m0[m -> [32m123481[m bytes[m
+[32m+[m[32m proof/captures/x11/commits/05bd9d643-after.txt     |  40 [32m++[m[m
+[32m+[m[32m proof/captures/x11/commits/05bd9d643-after/cmd.sh  |   6 [32m+[m[m
+[32m+[m[32m proof/captures/x11/commits/05bd9d643-before.mp4    | Bin [31m0[m -> [32m129829[m bytes[m
+[32m+[m[32m proof/captures/x11/commits/05bd9d643-before.txt    |  40 [32m++[m[m
+[32m+[m[32m proof/captures/x11/commits/05bd9d643-before/cmd.sh |   6 [32m+[m[m
+[32m+[m[32m proof/captures/x11/commits/07372af28-after.mp4     | Bin [31m0[m -> [32m109024[m bytes[m
+[32m+[m[32m proof/captures/x11/commits/07372af28-after.txt     |  19 [32m+[m[m
+[32m+[m[32m proof/captures/x11/commits/07372af28-after/cmd.sh  |   6 [32m+[m[m
+[32m+[m[32m proof/captures/x11/commits/07372af28-before.mp4    | Bin [31m0[m -> [32m82447[m bytes[m
+[32m+[m[32m proof/captures/x11/commits/07372af28-before.txt    |  40 [32m++[m[m
+[32m+[m[32m proof/captures/x11/commits/07372af28-before/cmd.sh |   6 [32m+[m[m
+[32m+[m[32m proof/captures/x11/commits/08ade60cb-after.mp4     | Bin [31m0[m -> [32m94403[m bytes[m
+[32m+[m[32m proof/captures/x11/commits/08ade60cb-after.txt     |  16 [32m+[m[m
+[32m+[m[32m proof/captures/x11/commits/08ade60cb-after/cmd.sh  |   6 [32m+[m[m
+[32m+[m[32m proof/captures/x11/commits/08ade60cb-before.mp4    | Bin [31m0[m -> [32m99698[m bytes[m
+[32m+[m[32m proof/captures/x11/commits/08ade60cb-before.txt    |  29 [32m++[m[m
+[32m+[m[32m proof/captures/x11/commits/08ade60cb-before/cmd.sh |   6 [32m+[m[m
+[32m+[m[32m proof/captures/x11/commits/08ec85de5-after.mp4     | Bin [31m0[m -> [32m46798[m bytes[m
+[32m+[m[32m proof/captures/x11/commits/08ec85de5-after.txt     |  30 [32m++[m[m
+[32m+[m[32m proof/captures/x11/commits/08ec85de5-after/cmd.sh  |   6 [32m+[m[m
+[32m+[m[32m proof/captures/x11/commits/08ec85de5-before.mp4    | Bin [31m0[m -> [32m46875[m bytes[m
+[32m+[m[32m proof/captures/x11/commits/08ec85de5-before.txt    |  30 [32m++[m[m
+[32m+[m[32m proof/captures/x11/commits/08ec85de5-before/cmd.sh |   6 [32m+[m[m
+[32m+[m[32m proof/captures/x11/commits/0ab477850-after.mp4     | Bin [31m0[m -> [32m119441[m bytes[m
+[32m+[m[32m proof/captures/x11/commits/0ab477850-after.txt     |  28 [32m++[m[m
+[32m+[m[32m proof/captures/x11/commits/0ab477850-after/cmd.sh  |   6 [32m+[m[m
+[32m+[m[32m proof/captures/x11/commits/0ab477850-before.mp4    | Bin [31m0[m -> [32m115879[m bytes[m
+[32m+[m[32m proof/captures/x11/commits/0ab477850-before.txt    |  40 [32m++[m[m
+[32m+[m[32m proof/captures/x11/commits/0ab477850-before/cmd.sh |   6 [32m+[m[m
+[32m+[m[32m proof/captures/x11/commits/0c36cf201-after.mp4     | Bin [31m0[m -> [32m110475[m bytes[m
+[32m+[m[32m proof/captures/x11/commits/0c36cf201-after.txt     |  18 [32m+[m[m
+[32m+[m[32m proof/captures/x11/commits/0c36cf201-after/cmd.sh  |   6 [32m+[m[m
+[32m+[m[32m proof/captures/x11/commits/0c36cf201-before.mp4    | Bin [31m0[m -> [32m110518[m bytes[m
+[32m+[m[32m proof/captures/x11/commits/0c36cf201-before.txt    |  18 [32m+[m[m
+[32m+[m[32m proof/captures/x11/commits/0c36cf201-before/cmd.sh |   6 [32m+[m[m
+[32m+[m[32m proof/captures/x11/commits/10b6c2dfb-after.mp4     | Bin [31m0[m -> [32m124606[m bytes[m
+[32m+[m[32m proof/captures/x11/commits/10b6c2dfb-after.txt     |  20 [32m+[m[m
+[32m+[m[32m proof/captures/x11/commits/10b6c2dfb-after/cmd.sh  |   6 [32m+[m[m
+[32m+[m[32m proof/captures/x11/commits/10b6c2dfb-before.mp4    | Bin [31m0[m -> [32m33558[m bytes[m
+[32m+[m[32m proof/captures/x11/commits/10b6c2dfb-before.txt    |  14 [32m+[m[m
+[32m+[m[32m proof/captures/x11/commits/10b6c2dfb-before/cmd.sh |   6 [32m+[m[m
+[32m+[m[32m proof/captures/x11/commits/1f2ea74b3-after.mp4     | Bin [31m0[m -> [32m87904[m bytes[m
+[32m+[m[32m proof/captures/x11/commits/1f2ea74b3-after.txt     |  16 [32m+[m[m
+[32m+[m[32m proof/captures/x11/commits/1f2ea74b3-after/cmd.sh  |   6 [32m+[m[m
+[32m+[m[32m proof/captures/x11/commits/1f2ea74b3-before.mp4    | Bin [31m0[m -> [32m95073[m bytes[m
+[32m+[m[32m proof/captures/x11/commits/1f2ea74b3-before.txt    |  40 [32m++[m[m
+[32m+[m[32m proof/captures/x11/commits/1f2ea74b3-before/cmd.sh |   6 [32m+[m[m
+[32m+[m[32m proof/captures/x11/commits/23504cc4d-after.mp4     | Bin [31m0[m -> [32m139149[m bytes[m
+[32m+[m[32m proof/captures/x11/commits/23504cc4d-after.txt     |  25 [32m++[m[m
+[32m+[m
+[32m+[m[32m[1mdiff --git a/proof/captures/x11/commits/030960d65-after.mp4 b/proof/captures/x11/commits/030960d65-after.mp4[m[m
+[32m+[m[32m[1mnew file mode 100644[m[m
+[32m+[m[32m[1mindex 000000000..35a0cd001[m[m
+[32m+[m[32mBinary files /dev/null and b/proof/captures/x11/commits/030960d65-after.mp4 differ[m
+[32m+[m[32m[1mdiff --git a/proof/captures/x11/commits/030960d65-after.txt b/proof/captures/x11/commits/030960d65-after.txt[m[m
+[32m+[m[32m[1mnew file mode 100644[m[m
+[32m+[m[32m[1mindex 000000000..d5c3fe3a2[m[m
+[32m+[m[32m[1m--- /dev/null[m[m
+[32m+[m[32m[1m+++ b/proof/captures/x11/commits/030960d65-after.txt[m[m
+[32m+[m[32m[36m@@ -0,0 +1,40 @@[m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x40 header=2 hud=0 footer=1 turns=30 stream=40 rebuild=true virtualized=true [2322.21ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x40 header=2 hud=0 footer=1 turns=30 stream=40 rebuild=false virtualized=true [2323.33ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x24 header=2 hud=0 footer=1 turns=30 stream=40 rebuild=true virtualized=true [2321.67ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x24 header=2 hud=0 footer=1 turns=30 stream=40 rebuild=false virtualized=true [2323.19ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x40 header=2 hud=0 footer=3 turns=30 stream=40 rebuild=true virtualized=true [2321.07ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x40 header=2 hud=0 footer=3 turns=30 stream=40 rebuild=false virtualized=true [2323.04ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x24 header=2 hud=0 footer=3 turns=30 stream=40 rebuild=true virtualized=true [2323.44ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x24 header=2 hud=0 footer=3 turns=30 stream=40 rebuild=false virtualized=true [2319.30ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x40 header=2 hud=3 footer=1 turns=30 stream=40 rebuild=true virtualized=true [2319.13ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x40 header=2 hud=3 footer=1 turns=30 stream=40 rebuild=false virtualized=true [2322.56ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x24 header=2 hud=3 footer=1 turns=30 stream=40 rebuild=true virtualized=true [2320.34ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x24 header=2 hud=3 footer=1 turns=30 stream=40 rebuild=false virtualized=true [2327.36ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x40 header=2 hud=3 footer=3 turns=30 stream=40 rebuild=true virtualized=true [2321.52ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x40 header=2 hud=3 footer=3 turns=30 stream=40 rebuild=false virtualized=true [2323.54ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x24 header=2 hud=3 footer=3 turns=30 stream=40 rebuild=true virtualized=true [2326.27ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x24 header=2 hud=3 footer=3 turns=30 stream=40 rebuild=false virtualized=true [2318.94ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x40 header=5 hud=0 footer=1 turns=30 stream=40 rebuild=true virtualized=true [2320.59ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x40 header=5 hud=0 footer=1 turns=30 stream=40 rebuild=false virtualized=true [2318.67ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x24 header=5 hud=0 footer=1 turns=30 stream=40 rebuild=true virtualized=true [2325.59ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x24 header=5 hud=0 footer=1 turns=30 stream=40 rebuild=false virtualized=true [2329.76ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x40 header=5 hud=0 footer=3 turns=30 stream=40 rebuild=true virtualized=true [2319.18ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x40 header=5 hud=0 footer=3 turns=30 stream=40 rebuild=false virtualized=true [2319.52ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x24 header=5 hud=0 footer=3 turns=30 stream=40 rebuild=true virtualized=true [2320.95ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x24 header=5 hud=0 footer=3 turns=30 stream=40 rebuild=false virtualized=true [2317.54ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x40 header=5 hud=3 footer=1 turns=30 stream=40 rebuild=true virtualized=true [2329.23ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x40 header=5 hud=3 footer=1 turns=30 stream=40 rebuild=false virtualized=true [2322.26ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x24 header=5 hud=3 footer=1 turns=30 stream=40 rebuild=true virtualized=true [2320.26ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x24 header=5 hud=3 footer=1 turns=30 stream=40 rebuild=false virtualized=true [2317.61ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x40 header=5 hud=3 footer=3 turns=30 stream=40 rebuild=true virtualized=true [2310.50ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x40 header=5 hud=3 footer=3 turns=30 stream=40 rebuild=false virtualized=true [2326.45ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x24 header=5 hud=3 footer=3 turns=30 stream=40 rebuild=true virtualized=true [2320.52ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x24 header=5 hud=3 footer=3 turns=30 stream=40 rebuild=false virtualized=true [2321.18ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > a plain container is the control: no drops, no repaints [2318.37ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > the rebuild knob changes nothing while nothing diverges [4650.36ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > a frame writes a screenful at most, so no frame can be a hidden replay [2327.82ms][m[m
+[32m+[m[32m[32m+[m[m
+[32m+[m[32m[32m+[m[32m 67 pass[m[m
+[32m+[m[32m[32m+[m[32m 0 fail[m[m
+[32m+[m[32m[32m+[m[32m 134 expect() calls[m[m
+[32m+[m[32m[32m+[m[32mRan 67 tests across 1 file. [158.08s][m[m
+[32m+[m[32m[1mdiff --git a/proof/captures/x11/commits/030960d65-after/cmd.sh b/proof/captures/x11/commits/030960d65-after/cmd.sh[m[m
+[32m+[m[32m[1mnew file mode 100644[m[m
+[32m+[m[32m[1mindex 000000000..127765f7c[m[m
+[32m+[m[32m[1m--- /dev/null[m[m
+[32m+[m[32m[1m+++ b/proof/captures/x11/commits/030960d65-after/cmd.sh[m[m
+[32m+[m[32m[36m@@ -0,0 +1,6 @@[m[m
+[32m+[m[32m[32m+[m[32mcd /repo[m[m
+[32m+[m[32m[32m+[m[32mbun test ./packages/simulations/src/paint-sim/a-streaming-answer-never-repaints-the-whole-screen.test.ts 2>&1 | tail -32[m[m
+[32m+[m[32m[32m+[m[32mecho[m[m
+[32m+[m[32m[32m+[m[32mecho "--- command finished, arm=after ref=030960d65"[m[m
+[32m+[m[32m[32m+[m[32mtouch /tmp/scene-done[m[m
+[32m+[m[32m[32m+[m[32msleep 99999[m[m
+[32m+[m[32m[1mdiff --git a/proof/captures/x11/commits/030960d65-before.mp4 b/proof/captures/x11/commits/030960d65-before.mp4[m[m
+[32m+[m[32m[1mnew file mode 100644[m[m
+[32m+[m[32m[1mindex 000000000..35a0cd001[m[m
+[32m+[m[32mBinary files /dev/null and b/proof/captures/x11/commits/030960d65-before.mp4 differ[m
+[32m+[m[32m[1mdiff --git a/proof/captures/x11/commits/030960d65-before.txt b/proof/captures/x11/commits/030960d65-before.txt[m[m
+[32m+[m[32m[1mnew file mode 100644[m[m
+[32m+[m[32m[1mindex 000000000..243e58b92[m[m
+[32m+[m[32m[1m--- /dev/null[m[m
+[32m+[m[32m[1m+++ b/proof/captures/x11/commits/030960d65-before.txt[m[m
+[32m+[m[32m[36m@@ -0,0 +1,40 @@[m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x40 header=2 hud=0 footer=1 turns=30 stream=40 rebuild=true virtualized=true [2321.17ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x40 header=2 hud=0 footer=1 turns=30 stream=40 rebuild=false virtualized=true [2317.86ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x24 header=2 hud=0 footer=1 turns=30 stream=40 rebuild=true virtualized=true [2325.36ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x24 header=2 hud=0 footer=1 turns=30 stream=40 rebuild=false virtualized=true [2323.88ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x40 header=2 hud=0 footer=3 turns=30 stream=40 rebuild=true virtualized=true [2316.17ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x40 header=2 hud=0 footer=3 turns=30 stream=40 rebuild=false virtualized=true [2320.78ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x24 header=2 hud=0 footer=3 turns=30 stream=40 rebuild=true virtualized=true [2318.53ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x24 header=2 hud=0 footer=3 turns=30 stream=40 rebuild=false virtualized=true [2320.74ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x40 header=2 hud=3 footer=1 turns=30 stream=40 rebuild=true virtualized=true [2322.44ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x40 header=2 hud=3 footer=1 turns=30 stream=40 rebuild=false virtualized=true [2318.68ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x24 header=2 hud=3 footer=1 turns=30 stream=40 rebuild=true virtualized=true [2322.78ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x24 header=2 hud=3 footer=1 turns=30 stream=40 rebuild=false virtualized=true [2321.87ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x40 header=2 hud=3 footer=3 turns=30 stream=40 rebuild=true virtualized=true [2320.20ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x40 header=2 hud=3 footer=3 turns=30 stream=40 rebuild=false virtualized=true [2322.52ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x24 header=2 hud=3 footer=3 turns=30 stream=40 rebuild=true virtualized=true [2324.62ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x24 header=2 hud=3 footer=3 turns=30 stream=40 rebuild=false virtualized=true [2323.86ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x40 header=5 hud=0 footer=1 turns=30 stream=40 rebuild=true virtualized=true [2328.55ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x40 header=5 hud=0 footer=1 turns=30 stream=40 rebuild=false virtualized=true [2319.26ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x24 header=5 hud=0 footer=1 turns=30 stream=40 rebuild=true virtualized=true [2322.07ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x24 header=5 hud=0 footer=1 turns=30 stream=40 rebuild=false virtualized=true [2325.20ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x40 header=5 hud=0 footer=3 turns=30 stream=40 rebuild=true virtualized=true [2327.29ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x40 header=5 hud=0 footer=3 turns=30 stream=40 rebuild=false virtualized=true [2326.79ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x24 header=5 hud=0 footer=3 turns=30 stream=40 rebuild=true virtualized=true [2322.12ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x24 header=5 hud=0 footer=3 turns=30 stream=40 rebuild=false virtualized=true [2317.12ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x40 header=5 hud=3 footer=1 turns=30 stream=40 rebuild=true virtualized=true [2317.02ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x40 header=5 hud=3 footer=1 turns=30 stream=40 rebuild=false virtualized=true [2322.04ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x24 header=5 hud=3 footer=1 turns=30 stream=40 rebuild=true virtualized=true [2323.75ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x24 header=5 hud=3 footer=1 turns=30 stream=40 rebuild=false virtualized=true [2318.36ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x40 header=5 hud=3 footer=3 turns=30 stream=40 rebuild=true virtualized=true [2322.59ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x40 header=5 hud=3 footer=3 turns=30 stream=40 rebuild=false virtualized=true [2322.69ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x24 header=5 hud=3 footer=3 turns=30 stream=40 rebuild=true virtualized=true [2321.67ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > 100x24 header=5 hud=3 footer=3 turns=30 stream=40 rebuild=false virtualized=true [2320.13ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > a plain container is the control: no drops, no repaints [2318.04ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > the rebuild knob changes nothing while nothing diverges [4642.32ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a streaming answer never repaints the whole screen > a frame writes a screenful at most, so no frame can be a hidden replay [2318.39ms][m[m
+[32m+[m[32m[32m+[m[m
+[32m+[m[32m[32m+[m[32m 67 pass[m[m
+[32m+[m[32m[32m+[m[32m 0 fail[m[m
+[32m+[m[32m[32m+[m[32m 134 expect() calls[m[m
+[32m+[m[32m[32m+[m[32mRan 67 tests across 1 file. [158.12s][m[m
+[32m+[m[32m[1mdiff --git a/proof/captures/x11/commits/030960d65-before/cmd.sh b/proof/captures/x11/commits/030960d65-before/cmd.sh[m[m
+[32m+[m[32m[1mnew file mode 100644[m[m
+[32m+[m[32m[1mindex 000000000..f4afa1f0e[m[m
+[32m+[m[32m[1m--- /dev/null[m[m
+[32m+[m[32m[1m+++ b/proof/captures/x11/commits/030960d65-before/cmd.sh[m[m
+[32m+[m[32m[36m@@ -0,0 +1,6 @@[m[m
+[32m+[m[32m[32m+[m[32mcd /repo[m[m
+[32m+[m[32m[32m+[m[32mbun test ./packages/simulations/src/paint-sim/a-streaming-answer-never-repaints-the-whole-screen.test.ts 2>&1 | tail -32[m[m
+[32m+[m[32m[32m+[m[32mecho[m[m
+[32m+[m[32m[32m+[m[32mecho "--- command finished, arm=before ref=030960d65^"[m[m
+[32m+[m[32m[32m+[m[32mtouch /tmp/scene-done[m[m
+[32m+[m[32m[32m+[m[32msleep 99999[m[m
+[32m+[m[32m[1mdiff --git a/proof/captures/x11/commits/05bd9d643-after.mp4 b/proof/captures/x11/commits/05bd9d643-after.mp4[m[m
+[32m+[m[32m[1mnew file mode 100644[m[m
+[32m+[m[32m[1mindex 000000000..9d70058d0[m[m
+[32m+[m[32mBinary files /dev/null and b/proof/captures/x11/commits/05bd9d643-after.mp4 differ[m
+[32m+[m[32m[1mdiff --git a/proof/captures/x11/commits/05bd9d643-after.txt b/proof/captures/x11/commits/05bd9d643-after.txt[m[m
+[32m+[m[32m[1mnew file mode 100644[m[m
+[32m+[m[32m[1mindex 000000000..ee12f6beb[m[m
+[32m+[m[32m[1m--- /dev/null[m[m
+[32m+[m[32m[1m+++ b/proof/captures/x11/commits/05bd9d643-after.txt[m[m
+[32m+[m[32m[36m@@ -0,0 +1,40 @@[m[m
+[32m+[m[32m[32m+[m[32m(pass) a pointer band fades on a hand-painted list > the hook selector > never bands the selected row [0.74ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a pointer band fades on a hand-painted list > the hook selector > paints the switched band when no host lends a repaint [1.09ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a pointer band fades on a hand-painted list > the hook selector > settles, stops asking for frames, and drops the band when disposed [0.66ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a pointer band fades on a hand-painted list > the mcp add wizard > arrives over frames and lands on the band it always painted [1.21ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a pointer band fades on a hand-painted list > the mcp add wizard > keeps the row the pointer left banding while the new row arrives [0.61ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a pointer band fades on a hand-painted list > the mcp add wizard > never bands the selected row [0.29ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a pointer band fades on a hand-painted list > the mcp add wizard > paints the switched band when no host lends a repaint [0.32ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a pointer band fades on a hand-painted list > the mcp add wizard > settles, stops asking for frames, and drops the band when disposed [0.26ms][m[m
+[32m+[m[32m[32m+[m[m
+[32m+[m[32m[32m+[m[32mpackages/coding-agent/test/modes/components/the-extensions-dashboard-fades-both-its-bands.test.ts:[m[m
+[32m+[m[32m[32m+[m[32m(pass) the extensions inventory list fades its band > arrives over frames and lands on the band it always painted [4.58ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) the extensions inventory list fades its band > bands the row it left and the row it arrived at in the same frame [0.89ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) the extensions inventory list fades its band > never bands the selected row from the pointer [0.45ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) the extensions inventory list fades its band > switches the band when no motion was lent to it [0.39ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) the extensions inventory list fades its band > forgets the pointer and the clock when the motion is taken back [0.32ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) the extensions dashboard hands both its bands the clock and takes it back > registers a fade when the pointer moves over a provider tab, and drops it on close [28.91ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) the extensions dashboard hands both its bands the clock and takes it back > registers a fade when the pointer moves over an inventory row [3.59ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) the extensions dashboard hands both its bands the clock and takes it back > hands the clock back when the show site's card is dismissed [6.29ms][m[m
+[32m+[m[32m[32m+[m[m
+[32m+[m[32m[32m+[m[32mpackages/coding-agent/test/modes/components/the-model-cards-fade-every-band-they-own.test.ts:[m[m
+[32m+[m[32m[32m+[m[32m(pass) the model hub fades every band it owns > arrives over frames on a scope sidebar row and settles on the full band [6.94ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) the model hub fades every band it owns > keeps the sidebar row the pointer left banding while the new row arrives [1.88ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) the model hub fades every band it owns > fades the model list the body pane embeds [1.66ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) the model hub fades every band it owns > fades the roles pane and hands every one of its bands back when disposed [2.46ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) the model hub fades every band it owns > settles and stops asking for frames [0.75ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) the session model picker fades the list it embeds > arrives over frames and settles on the full band [1.77ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) the session model picker fades the list it embeds > hands the clock back when the show site's card is dismissed [1.64ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) the account manager fades its provider sidebar > arrives over frames and settles on the full band [4.37ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) the account manager fades its provider sidebar > cancels a band still travelling when the card is disposed [1.01ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) the account manager fades its provider sidebar > paints the switched band when no host lends a repaint [1.18ms][m[m
+[32m+[m[32m[32m+[m[m
+[32m+[m[32m[32m+[m[32mpackages/coding-agent/test/modes/controllers/a-closed-settings-card-lets-go-of-the-clock.test.ts:[m[m
+[32m+[m[32m[32m+[m[32m(pass) a closed settings card lets go of the clock > cancels a travelling sidebar fade when the card is dismissed [7.45ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a closed settings card lets go of the clock > leaves the clock idle when a card is opened and closed without ever being pointed at [1.09ms][m[m
+[32m+[m[32m[32m+[m[32m(pass) a closed settings card lets go of the clock > hands the clock back when a role's model panel is stepped out of [4.92ms][m[m
+[32m+[m[32m[32m+[m[m
+[32m+[m[32m[32m+[m[32m 72 pass[m[m
+[32m+[m[32m[32m+[m[32m 0 fail[m[m
+[32m+[m[32m[32m+[m[32m 476 expect() calls[m[m
+[32m+[m[32m[32m+[m[32mRan 72 tests across 4 files. [850.00ms][m[m
+[32m+[m[32m[1mdiff --git a/proof/captures/x11/commits/05bd9d643-after/cmd.sh b/proof/captures/x11/commits/05bd9d643-after/cmd.sh[m[m
+[32m+[m[32m[1mnew file mode 100644[m[m
+[32m+[m[32m[1mindex 000000000..e852d3a90[m[m
+[32m+[m[32m[1m--- /dev/null[m[m
+[32m+[m[32m[1m+++ b/proof/captures/x11/commits/05bd9d643-after/cmd.sh[m[m
+[32m+[m[32m[36m@@ -0,0 +1,6 @@[m[m
+[32m+[m[32m[32m+[m[32mcd /repo[m[m
+[32m+[m[32m[32m+[m[32mbun test ./packages/coding-agent/test/modes/components/a-pointer-band-fades-on-a-hand-painted-list.test.ts ./packages/coding-agent/test/modes/components/the-extensions-dashboard-fades-both-its-bands.test.ts ./packages/coding-agent/test/modes/components/the-model-cards-fade-every-band-they-own.test.ts ./packages/coding-agent/test/modes/controllers/a-closed-settings-card-lets-go-of-the-clock.test.ts 2>&1 | tail -32[m[m
+[32m+[m[32m[32m+[m[32mecho[m[m
+[32m+[m[32m[32m+[m[32mecho "--- command finished, arm=after ref=05bd9d643"[m[m

@@ -1,0 +1,425 @@
+[33m5dc1457ad[m feat: every bar moves in eighths of a cell, from one owner
+
+
+
+ packages/coding-agent/src/cli/grievances-cli.ts    |   7 [32m+[m[31m-[m
+ packages/coding-agent/src/cli/tiny-models-cli.ts   |   7 [32m+[m[31m-[m
+ packages/coding-agent/src/cli/usage-cli.ts         |  14 [32m+[m[31m-[m
+ ...nload-bar-travels-to-its-new-percentage.test.ts | 193 [32m++++++++++++++++++++[m
+ .../src/modes/components/account-manager-rows.ts   |   2 [32m+[m[31m-[m
+ .../components/tiny-title-download-progress.ts     |  65 [32m++++++[m[31m-[m
+ .../src/modes/controllers/command-controller.ts    |  35 [32m++[m[31m--[m
+ .../src/modes/controllers/input-controller.ts      |  12 [32m+[m[31m-[m
+ packages/coding-agent/src/modes/theme/symbols.ts   |  30 [32m++[m[31m-[m
+ .../coding-agent/src/modes/theme/theme-class.ts    |  13 [32m++[m
+ .../src/slash-commands/helpers/account-status.ts   |   2 [32m+[m[31m-[m
+ .../src/slash-commands/helpers/format.ts           |  19 [32m+[m[31m-[m
+ ...-terminal-is-never-sent-a-partial-block.test.ts | 141 [32m++++++++++++++[m
+ .../modes/components/account-manager-rows.test.ts  |   6 [32m+[m[31m-[m
+ .../coding-agent/test/slash-command-format.test.ts |  11 [32m+[m[31m-[m
+ .../slash-commands/account-status-block.test.ts    |   6 [32m+[m[31m-[m
+ packages/tui/src/sub-cell-bar.ts                   | 109 [32m+++++++++++[m
+ .../test/a-bar-moves-in-eighths-of-a-cell.test.ts  | 203 [32m+++++++++++++++++++++[m
+ scripts/demos/render-sub-cell-bars.ts              |  81 [32m++++++++[m
+ 19 files changed, 909 insertions(+), 47 deletions(-)
+
+[1mdiff --git a/packages/coding-agent/src/cli/grievances-cli.ts b/packages/coding-agent/src/cli/grievances-cli.ts[m
+[1mindex 839199568..4ccd349bd 100644[m
+[1m--- a/packages/coding-agent/src/cli/grievances-cli.ts[m
+[1m+++ b/packages/coding-agent/src/cli/grievances-cli.ts[m
+[36m@@ -2,6 +2,7 @@[m
+  * CLI handler for `veyyon grievances` — view, clean, and manually push reported tool issues.[m
+  */[m
+ import { existsSync } from "node:fs";[m
+[32m+[m[32mimport { subCellBar } from "@veyyon/tui/sub-cell-bar";[m
+ import { formatCount, getAutoQaDbDir, pluralize } from "@veyyon/utils";[m
+ import chalk from "chalk";[m
+ import { Settings } from "../config/settings";[m
+[36m@@ -196,9 +197,11 @@[m [mfunction makeProgressBar(total: number, width = 30): ProgressBar {[m
+ 		return { update: () => undefined, finish: () => undefined };[m
+ 	}[m
+ 	const render = (done: number): void => {[m
+[32m+[m		[32m// Eight steps per column through the shared owner. STATIC: a `\r`-rewritten[m
+[32m+[m		[32m// line driven by the push loop, with no clock and no render loop, so the[m
+[32m+[m		[32m// value cannot be settled — the resolution is the whole improvement here.[m
+ 		const ratio = Math.min(1, done / total);[m
+[31m-		const filled = Math.round(ratio * width);[m
+[31m-		const bar = `${"█".repeat(filled)}${"░".repeat(width - filled)}`;[m
+[32m+[m		[32mconst bar = subCellBar(ratio, width);[m
+ 		const pct = `${Math.floor(ratio * 100)[m
+ 			.toString()[m
+ 			.padStart(3, " ")}%`;[m
+[1mdiff --git a/packages/coding-agent/src/cli/tiny-models-cli.ts b/packages/coding-agent/src/cli/tiny-models-cli.ts[m
+[1mindex a46191fcc..94ee56060 100644[m
+[1m--- a/packages/coding-agent/src/cli/tiny-models-cli.ts[m
+[1m+++ b/packages/coding-agent/src/cli/tiny-models-cli.ts[m
+[36m@@ -1,3 +1,4 @@[m
+[32m+[m[32mimport { subCellBar } from "@veyyon/tui/sub-cell-bar";[m
+ import { clampLow, formatBytes } from "@veyyon/utils";[m
+ import chalk from "chalk";[m
+ import { transformersRepoCacheState } from "../subprocess/transformers-cache";[m
+[36m@@ -119,10 +120,12 @@[m [mfunction makeProgressReporter(modelKey: TinyLocalModelKey, json: boolean | undef[m
+ 		const progress = event.progress ?? lastProgress;[m
+ 		if (progress >= 0 && progress < lastProgress + 1 && event.status !== "ready") return;[m
+ 		if (progress >= 0) lastProgress = progress;[m
+[32m+[m		[32m// Eight steps per column through the shared owner. STATIC: a one-shot[m
+[32m+[m		[32m// `\r`-rewritten line with no render loop, so there is no clock to settle[m
+[32m+[m		[32m// a value on — the 8x resolution is what makes the 1% reports visible.[m
+ 		const ratio = progress >= 0 ? clampLow(progress / 100, 0, 1) : 0;[m
+ 		const barWidth = 30;[m
+[31m-		const filled = Math.round(ratio * barWidth);[m
+[31m-		const bar = `${"█".repeat(filled)}${"░".repeat(barWidth - filled)}`;[m
+[32m+[m		[32mconst bar = subCellBar(ratio, barWidth);[m
+ 		const pct = progress >= 0 ? `${Math.floor(progress).toString().padStart(3, " ")}%` : " --%";[m
+ 		const bytes = event.loaded && event.total ? ` ${formatBytes(event.loaded)}/${formatBytes(event.total)}` : "";[m
+ 		const file = event.file ? ` ${event.file.split("/").at(-1) ?? event.file}` : "";[m
+[1mdiff --git a/packages/coding-agent/src/cli/usage-cli.ts b/packages/coding-agent/src/cli/usage-cli.ts[m
+[1mindex d9f15bd2d..4fe1e1bf0 100644[m
+[1m--- a/packages/coding-agent/src/cli/usage-cli.ts[m
+[1m+++ b/packages/coding-agent/src/cli/usage-cli.ts[m
+[36m@@ -9,6 +9,7 @@[m
+  */[m
+ import type { AuthStorage, UsageHistoryEntry, UsageLimit, UsageReport, UsageUnit } from "@veyyon/ai";[m
+ import { resolveUsedFraction } from "@veyyon/ai/usage";[m
+[32m+[m[32mimport { SUB_CELL_BAR_RAMP, subCellBar } from "@veyyon/tui/sub-cell-bar";[m
+ import { clamp01, DAY_MS, formatCount, formatDuration, formatNumber, pluralize, sanitizeText } from "@veyyon/utils";[m
+ import chalk from "chalk";[m
+ import { credentialRemedySentence } from "../config/missing-credentials";[m
+[36m@@ -216,13 +217,20 @@[m [mfunction describeAmount(limit: UsageLimit): string {[m
+ 	return parts.join(" · ");[m
+ }[m
+ [m
+[32m+[m[32m/**[m
+[32m+[m[32m * One usage bar for the CLI report: fill in the status colour, track dimmed.[m
+[32m+[m[32m *[m
+[32m+[m[32m * STATIC. This is a one-shot print with no render loop to settle a value on,[m
+[32m+[m[32m * and the default (unicode) ramp because a plain CLI carries no theme — the[m
+[32m+[m[32m * glyphs it drew before were the same unconditional block glyphs.[m
+[32m+[m[32m */[m
+ function renderBar(limit: UsageLimit): string {[m
+ 	const fraction = resolveUsedFraction(limit);[m
+ 	if (fraction === undefined) return chalk.dim("·".repeat(BAR_WIDTH));[m
+[31m-	const clamped = clamp01(fraction);[m
+[31m-	const filled = Math.round(clamped * BAR_WIDTH);[m
+[32m+[m	[32mconst bar = subCellBar(clamp01(fraction), BAR_WIDTH);[m
+[32m+[m	[32mconst trackAt = bar.indexOf(SUB_CELL_BAR_RAMP.track);[m
+ 	const color = STATUS_COLOR[resolveStatus(limit)];[m
+[31m-	return color("█".repeat(filled)) + chalk.dim("░".repeat(BAR_WIDTH - filled));[m
+[32m+[m	[32mreturn trackAt < 0 ? color(bar) : color(bar.slice(0, trackAt)) + chalk.dim(bar.slice(trackAt));[m
+ }[m
+ [m
+ /** Append the window label when the limit label doesn't already carry it. */[m
+[1mdiff --git a/packages/coding-agent/src/modes/components/__tests__/a-download-bar-travels-to-its-new-percentage.test.ts b/packages/coding-agent/src/modes/components/__tests__/a-download-bar-travels-to-its-new-percentage.test.ts[m
+[1mnew file mode 100644[m
+[1mindex 000000000..611fbd764[m
+[1m--- /dev/null[m
+[1m+++ b/packages/coding-agent/src/modes/components/__tests__/a-download-bar-travels-to-its-new-percentage.test.ts[m
+[36m@@ -0,0 +1,193 @@[m
+[32m+[m[32m// WHY THIS EXISTS.[m
+[32m+[m[32m//[m
+[32m+[m[32m// A download bar drawn in whole cells could not animate even if something drove[m
+[32m+[m[32m// it. Twenty-four columns give twenty-four states, so a jump from 40% to 65%[m
+[32m+[m[32m// has six states to pass through and each one is a whole cell wide: the eye[m
+[32m+[m[32m// reads six discrete positions, which is not motion, it is a bar being moved.[m
+[32m+[m[32m// That is the concrete reason the operator's verdict on this build was that the[m
+[32m+[m[32m// animations are barely noticeable — there was nothing between the frames.[m
+[32m+[m[32m//[m
+[32m+[m[32m// Two changes make the travel visible, and this suite refuses to let either one[m
+[32m+[m[32m// be quietly dropped. The bar is drawn in eighths of a cell, so the same[m
+[32m+[m[32m// twenty-four columns carry 193 states. And the ratio is a `SettleValue` on the[m
+[32m+[m[32m// shared clock rather than the last number the worker reported, so a revised[m
+[32m+[m[32m// percentage walks to its new place over `MOTION.settle` instead of appearing[m
+[32m+[m[32m// there. Six distinct glyph states between two values 25% apart is the[m
+[32m+[m[32m// contract: it is what the whole-cell bar could not do, and it is what makes[m
+[32m+[m[32m// the motion something a reader sees rather than infers.[m
+[32m+[m[32m//[m
+[32m+[m[32m// Every frame here is driven by hand through a `MotionClock({ autoTick: false[m
+[32m+[m[32m// })`, so nothing waits on a real timer and the frame count is the assertion[m
+[32m+[m[32m// rather than an approximation of one.[m
+[32m+[m[32m//[m
+[32m+[m[32m// The class this closes: "an animated gauge whose value is written straight[m
+[32m+[m[32m// into the next frame". It is closed at the component, on the production render[m
+[32m+[m[32m// path, with the real theme loaded — not against a stand-in for either.[m
+[32m+[m[32m//[m
+[32m+[m[32m// What it does NOT catch: whether the host actually TICKS the shared clock (the[m
+[32m+[m[32m// production clock is `autoTick: true` and owns that), whether `requestRender`[m
+[32m+[m[32m// reaches the terminal, and the glyph contract itself, which is asserted[m
+[32m+[m[32m// exhaustively in `packages/tui/test/a-bar-moves-in-eighths-of-a-cell.test.ts`.[m
+[32m+[m
+[32m+[m[32mimport { beforeAll, describe, expect, test } from "bun:test";[m
+[32m+[m[32mimport { MotionClock } from "@veyyon/tui";[m
+[32m+[m[32mimport { stripAnsi } from "@veyyon/utils/strip-ansi";[m
+[32m+[m[32mimport { Settings } from "../../../config/settings";[m
+[32m+[m[32mimport type { TinyTitleProgressEvent } from "../../../tiny/title-protocol";[m
+[32m+[m[32mimport { getThemeByName, setThemeInstance } from "../../theme/theme";[m
+[32m+[m[32mimport { TinyTitleDownloadProgressComponent } from "../tiny-title-download-progress";[m
+[32m+[m
+[32m+[m[32mconst FRAME_MS = 1000 / 60;[m
+[32m+[m[32mconst WIDTH = 70;[m
+[32m+[m[32mconst MODEL_KEY = "lfm2-700m";[m
+[32m+[m
+[32m+[m[32m/** Every bar glyph the unicode ramp can produce, so the bar can be found in a row. */[m
+[32m+[m[32mconst BAR_RUN = /[█▏▎▍▌▋▊▉░]+/;[m
+[32m+[m
+[32m+[m[32mfunction progressEvent(progress: number): TinyTitleProgressEvent {[m
+[32m+[m	[32mreturn { modelKey: MODEL_KEY, status: "progress", progress };[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m/** The bar, with its colours and its trailing facts removed. */[m
+[32m+[m[32mfunction barOf(component: TinyTitleDownloadProgressComponent): string {[m
+[32m+[m	[32mconst rows = component.render(WIDTH);[m
+[32m+[m	[32mconst details = stripAnsi(rows[1] ?? "");[m
+[32m+[m	[32mconst bar = BAR_RUN.exec(details);[m
+[32m+[m	[32mif (!bar) throw new Error(`no bar in rendered row: ${JSON.stringify(details)}`);[m
+[32m+[m	[32mreturn bar[0];[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mdescribe("a download bar travels to its new percentage", () => {[m
+[32m+[m	[32mbeforeAll(async () => {[m
+[32m+[m		[32mawait Settings.init({ inMemory: true });[m
+[32m+[m		[32mconst loaded = await getThemeByName("dark");[m
+[32m+[m		[32mif (!loaded) throw new Error("theme unavailable");[m
+[32m+[m		[32msetThemeInstance(loaded);[m
+[32m+[m	[32m});[m
+[32m+[m
+[32m+[m	[32mtest("passes through at least six distinct glyph states between two values 25% apart", () => {[m
+[32m+[m		[32mconst clock = new MotionClock({ autoTick: false });[m
+[32m+[m		[32mlet renders = 0;[m
+[32m+[m		[32mconst component = new TinyTitleDownloadProgressComponent(MODEL_KEY, {[m
+[32m+[m			[32mrequestRender: () => {[m
+[32m+[m				[32mrenders++;[m
+[32m+[m			[32m},[m
+[32m+[m			[32mclock,[m
+[32m+[m		[32m});[m
+[32m+[m
+[32m+[m		[32m// The first number a gauge is given is where it IS, not a change to it.[m
+[32m+[m		[32mcomponent.update(progressEvent(40));[m
+[32m+[m		[32mconst start = barOf(component);[m
+[32m+[m		[32mexpect(clock.liveCount).toBe(0);[m
+[32m+[m
+[32m+[m		[32mcomponent.update(progressEvent(65));[m
+[32m+[m		[32mexpect(clock.liveCount).toBe(1);[m
+[32m+[m
+[32m+[m		[32mconst states = [start];[m
+[32m+[m		[32m// A bound, not a wait: `MOTION.settle` is well inside 900ms, and a spring[m
+[32m+[m		[32m// that has not settled by then is a hang rather than a slow animation.[m
+[32m+[m		[32mconst bound = Math.ceil(900 / FRAME_MS);[m
+[32m+[m		[32mlet frames = 0;[m
+[32m+[m		[32mfor (; frames < bound && clock.liveCount > 0; frames++) {[m
+[32m+[m			[32mclock.tick((frames + 1) * FRAME_MS);[m
+[32m+[m			[32mconst bar = barOf(component);[m
+[32m+[m			[32mif (bar !== states[states.length - 1]) states.push(bar);[m
+[32m+[m		[32m}[m
+[32m+[m
+[32m+[m		[32mexpect(clock.liveCount).toBe(0);[m
+[32m+[m		[32mexpect(frames).toBeLessThan(bound);[m
+[32m+[m		[32mexpect(renders).toBeGreaterThan(0);[m
+[32m+[m
+[32m+[m		[32m// THE CONTRACT.[m
+[32m+[m		[32mexpect(states.length).toBeGreaterThanOrEqual(6);[m
+[32m+[m		[32m// It ends where it was told to go and started where it was.[m
+[32m+[m		[32mexpect(states[0]).toBe(start);[m
+[32m+[m		[32mexpect(states[states.length - 1]).toBe(barOf(component));[m
+[32m+[m
+[32m+[m		[32m// Every state is one distinct position, in one direction, and the travel is[m
+[32m+[m		[32m// made of sub-cell steps rather than whole cells: a whole-cell bar over this[m
+[32m+[m		[32m// span could show at most seven states, all of them `█`/`░` only.[m
+[32m+[m		[32mexpect(new Set(states).size).toBe(states.length);[m
+[32m+[m		[32mexpect(states.some(bar => /[▏▎▍▌▋▊▉]/.test(bar))).toBe(true);[m
+[32m+[m		[32mfor (const bar of states) expect(bar.length).toBe(start.length);[m
+[32m+[m	[32m});[m
+[32m+[m
+[32m+[m	[32mtest("the fill only ever grows while the value rises", () => {[m
+[32m+[m		[32mconst clock = new MotionClock({ autoTick: false });[m
+[32m+[m		[32mconst component = new TinyTitleDownloadProgressComponent(MODEL_KEY, {[m
+[32m+[m			[32mrequestRender: () => {},[m
+[32m+[m			[32mclock,[m
+[32m+[m		[32m});[m
+[32m+[m		[32mcomponent.update(progressEvent(10));[m
+[32m+[m		[32mcomponent.update(progressEvent(90));[m
+[32m+[m
+[32m+[m		[32m// Eighths read off the rendered bar: whole cells are 8, the partials 1-7,[m
+[32m+[m		[32m// track 0. Reading the string back is the only way to see what a viewer saw.[m
+[32m+[m		[32mconst eighths = (bar: string): number => {[m
+[32m+[m			[32mlet total = 0;[m
+[32m+[m			[32mfor (const glyph of bar) {[m
+[32m+[m				[32mif (glyph === "█") total += 8;[m
+[32m+[m				[32melse if (glyph !== "░") total += "▏▎▍▌▋▊▉".indexOf(glyph) + 1;[m
+[32m+[m			[32m}[m
+[32m+[m			[32mreturn total;[m
+[32m+[m		[32m};[m
+[32m+[m
+[32m+[m		[32mlet previous = eighths(barOf(component));[m
+[32m+[m		[32mfor (let frame = 0; frame < 120 && clock.liveCount > 0; frame++) {[m
+[32m+[m			[32mclock.tick((frame + 1) * FRAME_MS);[m
+[32m+[m			[32mconst next = eighths(barOf(component));[m
+[32m+[m			[32mexpect(next).toBeGreaterThanOrEqual(previous);[m
+[32m+[m			[32mprevious = next;[m
+[32m+[m		[32m}[m
+[32m+[m		[32mexpect(clock.liveCount).toBe(0);[m
+[32m+[m	[32m});[m
+[32m+[m
+[32m+[m	[32mtest("with no repaint hook the bar lands on the reported value with no clock traffic", () => {[m
+[32m+[m		[32mconst clock = new MotionClock({ autoTick: false });[m
+[32m+[m		[32mconst component = new TinyTitleDownloadProgressComponent(MODEL_KEY, { clock });[m
+[32m+[m		[32mcomponent.update(progressEvent(40));[m
+[32m+[m		[32mconst before = barOf(component);[m
+[32m+[m		[32mcomponent.update(progressEvent(65));[m
+[32m+[m
+[32m+[m		[32m// Nothing registered, so nothing to tick: this is byte-for-byte the jump the[m
+[32m+[m		[32m// component had before the settle existed.[m
+[32m+[m		[32mexpect(clock.liveCount).toBe(0);[m
+[32m+[m		[32mexpect(barOf(component)).not.toBe(before);[m
+[32m+[m		[32mconst settled = barOf(component);[m
+[32m+[m		[32mclock.tick(FRAME_MS);[m
+[32m+[m		[32mexpect(barOf(component)).toBe(settled);[m
+[32m+[m	[32m});[m
+[32m+[m
+[32m+[m	[32mtest("a disabled settle lands immediately, so `display.transitions: off` sees the jump", () => {[m
+[32m+[m		[32mconst clock = new MotionClock({ autoTick: false });[m
+[32m+[m		[32mconst animated = new TinyTitleDownloadProgressComponent(MODEL_KEY, { requestRender: () => {}, clock });[m
+[32m+[m		[32mconst still = new TinyTitleDownloadProgressComponent(MODEL_KEY, {[m
+[32m+[m			[32mrequestRender: () => {},[m
+[32m+[m			[32menabled: false,[m
+[32m+[m			[32mclock,[m
+[32m+[m		[32m});[m
+[32m+[m		[32mfor (const component of [animated, still]) component.update(progressEvent(40));[m
+[32m+[m		[32mfor (const component of [animated, still]) component.update(progressEvent(65));[m
+[32m+[m
+[32m+[m		[32m// Same target, and the disabled one is already there while the other is not.[m
+[32m+[m		[32mexpect(barOf(animated)).not.toBe(barOf(still));[m
+[32m+[m		[32m// Monotonic frame times, and a bound rather than "until it stops": a spring[m
+[32m+[m		[32m// that never settles must show up here as a failure, not as a hang.[m
+[32m+[m		[32mlet frames = 0;[m
+[32m+[m		[32mwhile (clock.liveCount > 0 && frames < 240) clock.tick(++frames * FRAME_MS);[m
+[32m+[m		[32mexpect(clock.liveCount).toBe(0);[m
+[32m+[m		[32mexpect(barOf(animated)).toBe(barOf(still));[m
+[32m+[m	[32m});[m
+[32m+[m
+[32m+[m	[32mtest("dispose settles the value so no frame is owed after the row is gone", () => {[m
+[32m+[m		[32mconst clock = new MotionClock({ autoTick: false });[m
+[32m+[m		[32mconst component = new TinyTitleDownloadProgressComponent(MODEL_KEY, { requestRender: () => {}, clock });[m
+[32m+[m		[32mcomponent.update(progressEvent(10));[m
+[32m+[m		[32mcomponent.update(progressEvent(90));[m
+[32m+[m		[32mexpect(clock.liveCount).toBe(1);[m
+[32m+[m
+[32m+[m		[32mcomponent.dispose();[m
+[32m+[m		[32mclock.tick(FRAME_MS);[m
+[32m+[m		[32mexpect(clock.liveCount).toBe(0);[m
+[32m+[m	[32m});[m
+[32m+[m[32m});[m
+[1mdiff --git a/packages/coding-agent/src/modes/components/account-manager-rows.ts b/packages/coding-agent/src/modes/components/account-manager-rows.ts[m
+[1mindex 087dec6ea..4efec40e9 100644[m
+[1m--- a/packages/coding-agent/src/modes/components/account-manager-rows.ts[m
+[1m+++ b/packages/coding-agent/src/modes/components/account-manager-rows.ts[m
+[36m@@ -265,7 +265,7 @@[m [mexport function accountPlanLine(row: AccountRow): string {[m
+ }[m
+ [m
+ /**[m
+[31m- * One line per usage window: `5 Hour   [███░░░░░░░] 34%   resets in 4h`.[m
+[32m+[m[32m * One line per usage window: `5 Hour   [███▍░░░░░░] 34%   resets in 4h`.[m
+  *[m
+  * The label column is sized against THIS account's own labels, so an account whose bars carry a[m
+  * qualifier (`Daily · Anthropic`) still lines its bars up without padding an account whose windows[m
+[1mdiff --git a/packages/coding-agent/src/modes/components/tiny-title-download-progress.ts b/packages/coding-agent/src/modes/components/tiny-title-download-progress.ts[m
+[1mindex 5bc8b4735..739c243e7 100644[m
+[1m--- a/packages/coding-agent/src/modes/components/tiny-title-download-progress.ts[m
+[1m+++ b/packages/coding-agent/src/modes/components/tiny-title-download-progress.ts[m
+[36m@@ -1,4 +1,4 @@[m
+[31m-import type { Component } from "@veyyon/tui";[m
+[32m+[m[32mimport { type Component, type MotionClock, SettleValue, subCellBar } from "@veyyon/tui";[m
+ import { clamp01, clampLow, formatBytes } from "@veyyon/utils";[m
+ import { getTinyTitleModelSpec, type TinyTitleLocalModelKey } from "../../tiny/models";[m
+ import type { TinyTitleProgressEvent } from "../../tiny/title-protocol";[m
+[36m@@ -7,12 +7,22 @@[m [mimport { COMPOSER_INSET_COLS } from "./composer-chrome";[m
+ [m
+ const DEFAULT_BAR_WIDTH = 24;[m
+ [m
+[31m-function progressBar(progress: number | undefined, width: number): string {[m
+[32m+[m[32m/**[m
+[32m+[m[32m * The bar for a ratio already in `[0, 1]`, fill in accent over a muted track.[m
+[32m+[m[32m *[m
+[32m+[m[32m * Eight steps per column through the shared owner: a download that reports 1%[m
+[32m+[m[32m * steps used to move the bar every fourth report and stand still between them.[m
+[32m+[m[32m * `undefined` is "no number yet", which is the whole track and no fill.[m
+[32m+[m[32m */[m
+[32m+[m[32mfunction progressBar(ratio: number | undefined, width: number): string {[m
+ 	const barWidth = clampLow(width, 8, DEFAULT_BAR_WIDTH);[m
+[31m-	if (progress === undefined) return theme.fg("muted", "░".repeat(barWidth));[m
+[31m-	const ratio = clamp01(progress / 100);[m
+[31m-	const filled = Math.round(ratio * barWidth);[m
+[31m-	return `${theme.fg("accent", "█".repeat(filled))}${theme.fg("muted", "░".repeat(barWidth - filled))}`;[m
+[32m+[m	[32mconst ramp = theme.getBarRamp();[m
+[32m+[m	[32mif (ratio === undefined) return theme.fg("muted", ramp.track.repeat(barWidth));[m
+[32m+[m	[32mconst bar = subCellBar(ratio, barWidth, { ramp });[m
+[32m+[m	[32mconst trackAt = bar.indexOf(ramp.track);[m
+[32m+[m	[32mreturn trackAt < 0[m
+[32m+[m		[32m? theme.fg("accent", bar)[m
+[32m+[m		[32m: `${theme.fg("accent", bar.slice(0, trackAt))}${theme.fg("muted", bar.slice(trackAt))}`;[m
+ }[m
+ [m
+ function currentFile(event: TinyTitleProgressEvent | undefined): string | undefined {[m
+[36m@@ -47,16 +57,44 @@[m [mfunction byteLabel(event: TinyTitleProgressEvent | undefined): string | undefine[m
+ 	return `${formatBytes(event.loaded)} / ${formatBytes(event.total)}`;[m
+ }[m
+ [m
+[32m+[m[32mexport interface TinyTitleDownloadProgressOptions {[m
+[32m+[m	[32m/** Repaint hook for the settling frames; without one the bar jumps as before. */[m
+[32m+[m	[32mrequestRender?: () => void;[m
+[32m+[m	[32m/**[m
+[32m+[m	[32m * False lands every reported percentage immediately. The SHOW site decides —[m
+[32m+[m	[32m * `modalRevealEnabled()` — the same way every other motion in the product is[m
+[32m+[m	[32m * gated, so a direct construction stays deterministic.[m
+[32m+[m	[32m */[m
+[32m+[m	[32menabled?: boolean;[m
+[32m+[m	[32m/** The clock to settle on. Tests pass a hand-ticked one. */[m
+[32m+[m	[32mclock?: MotionClock;[m
+[32m+[m[32m}[m
+[32m+[m
+ export class TinyTitleDownloadProgressComponent implements Component {[m
+ 	#modelKey: TinyTitleLocalModelKey;[m
+ 	#event: TinyTitleProgressEvent | undefined;[m
+[32m+[m	[32m/**[m
+[32m+[m	[32m * Where the bar is right now, as opposed to what the last event said.[m
+[32m+[m	[32m *[m
+[32m+[m	[32m * A download reports in ~1% steps, and a cached shard completes in one event[m
+[32m+[m	[32m * that jumps from nothing to done. Walking the value over `MOTION.settle`[m
+[32m+[m	[32m * turns both into travel: the reader sees the bar move rather than find it[m
+[32m+[m	[32m * somewhere else on the next frame. Undefined when the host gave no repaint[m
+[32m+[m	[32m * hook, because a settling value nobody paints is a timer with no picture.[m
+[32m+[m	[32m */[m
+[32m+[m	[32mreadonly #ratio: SettleValue | undefined;[m
+ [m
+[31m-	constructor(modelKey: TinyTitleLocalModelKey) {[m
+[32m+[m	[32mconstructor(modelKey: TinyTitleLocalModelKey, options: TinyTitleDownloadProgressOptions = {}) {[m
+ 		this.#modelKey = modelKey;[m
+[32m+[m		[32mconst requestRender = options.requestRender;[m
+[32m+[m		[32mif (requestRender) {[m
+[32m+[m			[32mthis.#ratio = new SettleValue({ requestRender, enabled: options.enabled, clock: options.clock });[m
+[32m+[m		[32m}[m
+ 	}[m
+ [m
+ 	update(event: TinyTitleProgressEvent): void {[m
+ 		this.#event = event;[m
+[32m+[m		[32mif (event.progress !== undefined) this.#ratio?.set(clamp01(event.progress / 100));[m
+ 	}[m
+ [m
+ 	isComplete(): boolean {[m
+[36m@@ -67,6 +105,11 @@[m [mexport class TinyTitleDownloadProgressComponent implements Component {[m
+ 		// No cached state.[m
+ 	}[m
+ [m
+[32m+[m	[32m/** Stop the settle so no frame is owed after the row leaves the transcript. */[m
+[32m+[m	[32mdispose(): void {[m
+[32m+[m		[32mthis.#ratio?.dispose();[m
+[32m+[m	[32m}[m
+[32m+[m
+ 	/**[m
+ 	 * Two rows on the transcript's rail: what is downloading, then how far.[m
+ 	 *[m
+[36m@@ -91,8 +134,14 @@[m [mexport class TinyTitleDownloadProgressComponent implements Component {[m
+ 		// The bar carries its own colors, so the trailing facts are dimmed one by[m
+ 		// one: wrapping the joined row would end at the bar's own reset and leave[m
+ 		// the numbers on the default foreground.[m
+[32m+[m		[32m//[m
+[32m+[m		[32m// The bar draws where the value HAS GOT TO and the percent prints what was[m

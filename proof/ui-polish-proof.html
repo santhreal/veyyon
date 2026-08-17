@@ -32,7 +32,7 @@ td.sha { font-family: ui-monospace, monospace; color: #e6c08a; white-space: nowr
 </style></head>
 <body>
 <h1>feat/ui-polish — recorded proof</h1>
-<p class="lede">Branch <code>feat/ui-polish</code> at <code>b88806395</code>, 79 commits ahead of
+<p class="lede">Branch <code>feat/ui-polish</code> at <code>38fa0e836</code>, 87 commits ahead of
 <code>main</code> (<code>5ce31890e</code>). Every figure below is a frame of a real terminal running the shipped
 CLI. No component was drawn into a picture for this page, and nothing here is a tmux capture.</p>
 
@@ -132,6 +132,18 @@ afterwards rather than screenshotted mid-motion.</p>
 <h2>A defect this branch fixes, on camera</h2>
 <p>A virtualized transcript spliced out the rows the engine had committed to native scrollback, and the engine kept the pre-splice coordinates. The next frame read the shift as a divergence and, with <code>tui.scrollbackRebuild</code> on, erased native scrollback and replayed a frame whose history the container had already dropped. Both arms below drive the same scene at the same size.</p>
 <div class="pair"><figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/before/transcript-blanking.mp4" type="video/mp4"></video><figcaption><strong>main</strong> — history is erased as the session runs; scrolling back finds nothing</figcaption></figure><figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/after/transcript-blanking.mp4" type="video/mp4"></video><figcaption><strong>branch</strong> — every row survives; scrollback walks the whole session</figcaption></figure></div>
+<h2>A card made of materials, measured in the terminal</h2>
+<p>The animation was landing on a card that was still line art: a frame in one accent colour and text in one grey, on the terminal's own ground. Nothing was in front of anything, so a card arriving had nothing to arrive over. The first attempt at a material was one gradient across the whole card, and that is what the arms below are: it measured <strong>twelve of 255</strong> above the page at the top row and <strong>four</strong> at the foot, on a page of 28 — and the foot mixed toward black, so the lower half of every card sank BELOW the page it was standing on.</p>
+<p>A card is now four materials and the page. Each number here was read off the pixels of the recording beside it, not out of the source: page <code>30,33,39</code>; the category column set into the plate <code>36,39,44</code>; the footer tray under the tip and the chips <code>39,42,48</code>; the plate itself <code>52,54,60</code> at its top row grading to <code>47,49,55</code> at its last; and the title rail <code>64,66,71</code>. The direction is chosen by the ground's own luminance, so a card on a paper-white terminal darkens instead of lifting toward an invisible white, and a terminal that never answered OSC 11 still gets the card it always had.</p>
+<div class="pair"><figure><img src="captures/x11/overlay-motion-settings-settled.png" alt=""><figcaption><strong>main</strong> — one wash: the card and the page measure the same colour</figcaption></figure><figure><img src="captures/x11/ladder/overlay-motion-settings-settled.png" alt=""><figcaption><strong>branch</strong> — four materials: rail, plate, tray, and the category column set into it</figcaption></figure></div>
+<h3>The light crossing the plate, and where it used to die</h3>
+<p>The highlight runs on a 520ms curve, twice the 260ms unfold, because the point of it is that the card is already in place while the light is still travelling across it. It was not doing that. The driver reported a finished sweep the moment the UNFOLD settled, so the light died on the frame the card stopped growing.</p>
+<p>Measured, not asserted. Both recordings below are the same take at 60fps. For each frame, a 660&times;260 window of the plate is averaged down to one row of column means and differenced against the settled frame, so the brightest column of the difference IS the light's position and a zero difference means the card is static. The light's position, in columns of that window, frame by frame:</p>
+<table><tr><th>from the card's arrival</th><th>before</th><th>after</th></tr><tr><td>117ms</td><td>0</td><td>1</td></tr><tr><td>150ms</td><td>142</td><td>175</td></tr><tr><td>200ms</td><td>298</td><td>323</td></tr><tr><td>233ms</td><td>433</td><td>455</td></tr><tr><td>267ms</td><td>531</td><td>557</td></tr><tr><td>300ms</td><td><em>gone</em></td><td>590</td></tr><tr><td>317ms</td><td><em>gone</em></td><td>590</td></tr><tr><td>333ms</td><td><em>gone</em></td><td><em>past the edge</em></td></tr></table>
+<p>Before, the light vanished with its centre at column 531 of 660 — four fifths of the way across a card it never finished crossing, and the whole card static from that frame on. After, it keeps going to 590 and then leaves by the right edge, which is where a highlight is supposed to go: the band's centre travels from off the left edge to off the right, so it exits at about 95% of its curve rather than being switched off mid-plate.</p>
+<figure><div class="strip" style="grid-template-columns: repeat(4, 1fr)"><img src="captures/x11/strips/light-before-f00.png" alt="frame 0"><img src="captures/x11/strips/light-before-f01.png" alt="frame 1"><img src="captures/x11/strips/light-before-f02.png" alt="frame 2"><img src="captures/x11/strips/light-before-f03.png" alt="frame 3"><img src="captures/x11/strips/light-before-f04.png" alt="frame 4"><img src="captures/x11/strips/light-before-f05.png" alt="frame 5"><img src="captures/x11/strips/light-before-f06.png" alt="frame 6"><img src="captures/x11/strips/light-before-f07.png" alt="frame 7"></div><figcaption>BEFORE. Eight frames at 60fps from the moment the card lands. The diagonal band crosses the plate and then simply is not there.</figcaption></figure>
+<figure><div class="strip" style="grid-template-columns: repeat(4, 1fr)"><img src="captures/x11/strips/light-after-f00.png" alt="frame 0"><img src="captures/x11/strips/light-after-f01.png" alt="frame 1"><img src="captures/x11/strips/light-after-f02.png" alt="frame 2"><img src="captures/x11/strips/light-after-f03.png" alt="frame 3"><img src="captures/x11/strips/light-after-f04.png" alt="frame 4"><img src="captures/x11/strips/light-after-f05.png" alt="frame 5"><img src="captures/x11/strips/light-after-f06.png" alt="frame 6"><img src="captures/x11/strips/light-after-f07.png" alt="frame 7"></div><figcaption>AFTER. The same eight-frame window on the same scene, one commit later. The band keeps travelling over a card that has already landed, and leaves by the far edge.</figcaption></figure>
+<figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/sweep/overlay-motion.mp4#t=18" type="video/mp4"></video><figcaption>The same take as the top of this page, recorded again on the material with the light living its whole life: <code>/settings</code>, <code>/hotkeys</code> and <code>/model</code>, each card arriving as a lit surface.</figcaption></figure>
 <h2>Streaming at the tail of a 72-million-token session</h2>
 <p>The session in the left video is a real one of the operator's, resumed inside the container: 289MB of JSONL, 69,727 records, 34,552 messages, 87 earlier compactions. The right video is the same scene with no session at all, so the two differ in exactly one thing — what is above the window. Same keys, same 1.5B model on the container network, same camera, same terminal.</p>
 <p>The app runs under <code>script</code> inside that terminal, so each arm produced a byte capture as well as a picture. <code>ED3</code> is the counter that matters: it is the sequence that erases the terminal's own scroll buffer, and it is what both symptoms this branch chased were made of. A frame that repaints in place writes cursor moves and text; a frame that gives up writes <code>ED3</code>.</p>
@@ -140,7 +152,7 @@ afterwards rather than screenshotted mid-motion.</p>
 <p>The resumed arm carries one cost the control does not, and it is model-side rather than renderer-side: a history that large does not fit a 65k window, so the app compacts before it can ask anything, and says so on screen while it does. That is the 1.5B summarizing on CPU, not a frame being repainted.</p>
 
 <h2>Every commit on the branch, on camera</h2>
-<p>79 of the 79 commits are below, one recording each. Every video is a real terminal in the recording
+<p>87 of the 87 commits are below, one recording each. Every video is a real terminal in the recording
 container: <code>proof/docker/record-commit-arm.sh</code> extracts the commit's tree and its parent's tree with
 <code>git archive</code>, mounts the same <code>node_modules</code> and the same native addon into both, and runs
 the same command in each. A test the commit ADDS is copied into the parent tree first, so the test is
@@ -155,6 +167,14 @@ a video is the text of the same command run again headlessly by
 rather than writing lines to a pipe, and the video is the only place its output exists.</p>
 <table><thead><tr><th>commit</th><th>subject</th></tr></thead>
 <tbody>
+<tr><td class="sha"><a href="#c-38fa0e836">38fa0e836</a></td><td>fix(overlays): the light crosses the whole card, not just the unfold</td></tr>
+<tr><td class="sha"><a href="#c-ad14fca53">ad14fca53</a></td><td>feat(overlays): a card is a ladder of materials, measured on the terminal</td></tr>
+<tr><td class="sha"><a href="#c-a87aa3b99">a87aa3b99</a></td><td>tools(demos): judge a surface from images, and film an entrance frame by frame</td></tr>
+<tr><td class="sha"><a href="#c-5dc1457ad">5dc1457ad</a></td><td>feat: every bar moves in eighths of a cell, from one owner</td></tr>
+<tr><td class="sha"><a href="#c-bb46832f3">bb46832f3</a></td><td>feat(theme): the band under the cursor has a direction</td></tr>
+<tr><td class="sha"><a href="#c-ca29178e8">ca29178e8</a></td><td>feat(overlays): a card is a lit surface, and the light crosses it as it opens</td></tr>
+<tr><td class="sha"><a href="#c-a16b52cc8">a16b52cc8</a></td><td>feat(tui): paint a background per column, and a surface that can be lit</td></tr>
+<tr><td class="sha"><a href="#c-65e3f65e3">65e3f65e3</a></td><td>proof(ui-polish): film the last two commits too, and read the frame rates off the files</td></tr>
 <tr><td class="sha"><a href="#c-b88806395">b88806395</a></td><td>proof(ui-polish): 140 videos, one arm per commit, and the page that plays them</td></tr>
 <tr><td class="sha"><a href="#c-e414827fc">e414827fc</a></td><td>proof(tooling): record every commit on this branch, both arms, in a real terminal</td></tr>
 <tr><td class="sha"><a href="#c-92a895e36">92a895e36</a></td><td>proof(tooling): the vhs capture wrapper and the flicker probes</td></tr>
@@ -236,7 +256,7 @@ rather than writing lines to a pipe, and the video is the only place its output 
 <tr><td class="sha"><a href="#c-766ee5a26">766ee5a26</a></td><td>fix(coding-agent): duplicate of main's compaction-tier and bundle-decoupling fixes</td></tr>
 </tbody></table>
 
-<p><strong>51</strong> of the 59 commits that carry tests fail against their parent's source and pass against their own — the test byte-identical in both trees, so nothing but the commit moved. On 1 more the parent tree cannot load the test at all, which is a harder differential than a failing assertion rather than a softer one. <strong>7</strong> pass on both arms, which is what a commit that only adds a test, or duplicates a fix already on main, is supposed to do. The rest of the branch is 4 renderer rows and 16 rows that ship nothing a terminal can execute.</p>
+<p><strong>51</strong> of the 59 commits that carry tests fail against their parent's source and pass against their own — the test byte-identical in both trees, so nothing but the commit moved. On 1 more the parent tree cannot load the test at all, which is a harder differential than a failing assertion rather than a softer one. <strong>7</strong> pass on both arms, which is what a commit that only adds a test, or duplicates a fix already on main, is supposed to do. The rest of the branch is 4 renderer rows and 24 rows that ship nothing a terminal can execute.</p>
 <h3 id="c-766ee5a26"><code>766ee5a26</code> — fix(coding-agent): duplicate of main's compaction-tier and bundle-decoupling fixes</h3>
 <p class="lede">Same terminal, same command, two source trees: its own tests, <code>packages/coding-agent/test/descriptor-placement-model-switch.test.ts packages/coding-agent/test/model-registry.test.ts</code>.</p>
 <div class="pair"><figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/commits/766ee5a26-before.mp4#t=1" type="video/mp4"></video><figcaption><strong>parent</strong> — 82 pass · 0 fail · 3600 expect() calls · Ran 82 tests across 2 files. [3.65s]</figcaption></figure><figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/commits/766ee5a26-after.mp4#t=1" type="video/mp4"></video><figcaption><strong>this commit</strong> — 82 pass · 0 fail · 3600 expect() calls · Ran 82 tests across 2 files. [3.70s]</figcaption></figure></div>
@@ -474,4 +494,28 @@ rather than writing lines to a pipe, and the video is the only place its output 
 <h3 id="c-b88806395"><code>b88806395</code> — proof(ui-polish): 140 videos, one arm per commit, and the page that plays them</h3>
 <p class="lede">Ships nothing a terminal can run: the video is the diff.</p>
 <figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/commits/b88806395-after.mp4#t=1" type="video/mp4"></video><figcaption>the change itself, paged in the terminal</figcaption></figure>
+<h3 id="c-65e3f65e3"><code>65e3f65e3</code> — proof(ui-polish): film the last two commits too, and read the frame rates off the files</h3>
+<p class="lede">Ships nothing a terminal can run: the video is the diff.</p>
+<figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/commits/65e3f65e3-after.mp4#t=1" type="video/mp4"></video><figcaption>the change itself, paged in the terminal</figcaption></figure>
+<h3 id="c-a16b52cc8"><code>a16b52cc8</code> — feat(tui): paint a background per column, and a surface that can be lit</h3>
+<p class="lede">Ships nothing a terminal can run: the video is the diff.</p>
+<figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/commits/a16b52cc8-after.mp4#t=1" type="video/mp4"></video><figcaption>the change itself, paged in the terminal</figcaption></figure>
+<h3 id="c-ca29178e8"><code>ca29178e8</code> — feat(overlays): a card is a lit surface, and the light crosses it as it opens</h3>
+<p class="lede">Ships nothing a terminal can run: the video is the diff.</p>
+<figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/commits/ca29178e8-after.mp4#t=1" type="video/mp4"></video><figcaption>the change itself, paged in the terminal</figcaption></figure>
+<h3 id="c-bb46832f3"><code>bb46832f3</code> — feat(theme): the band under the cursor has a direction</h3>
+<p class="lede">Ships nothing a terminal can run: the video is the diff.</p>
+<figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/commits/bb46832f3-after.mp4#t=1" type="video/mp4"></video><figcaption>the change itself, paged in the terminal</figcaption></figure>
+<h3 id="c-5dc1457ad"><code>5dc1457ad</code> — feat: every bar moves in eighths of a cell, from one owner</h3>
+<p class="lede">Ships nothing a terminal can run: the video is the diff.</p>
+<figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/commits/5dc1457ad-after.mp4#t=1" type="video/mp4"></video><figcaption>the change itself, paged in the terminal</figcaption></figure>
+<h3 id="c-a87aa3b99"><code>a87aa3b99</code> — tools(demos): judge a surface from images, and film an entrance frame by frame</h3>
+<p class="lede">Ships nothing a terminal can run: the video is the diff.</p>
+<figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/commits/a87aa3b99-after.mp4#t=1" type="video/mp4"></video><figcaption>the change itself, paged in the terminal</figcaption></figure>
+<h3 id="c-ad14fca53"><code>ad14fca53</code> — feat(overlays): a card is a ladder of materials, measured on the terminal</h3>
+<p class="lede">Ships nothing a terminal can run: the video is the diff.</p>
+<figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/commits/ad14fca53-after.mp4#t=1" type="video/mp4"></video><figcaption>the change itself, paged in the terminal</figcaption></figure>
+<h3 id="c-38fa0e836"><code>38fa0e836</code> — fix(overlays): the light crosses the whole card, not just the unfold</h3>
+<p class="lede">Ships nothing a terminal can run: the video is the diff.</p>
+<figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/commits/38fa0e836-after.mp4#t=1" type="video/mp4"></video><figcaption>the change itself, paged in the terminal</figcaption></figure>
 </body></html>

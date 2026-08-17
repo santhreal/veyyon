@@ -41,13 +41,19 @@ const height = Number(flag("height", "26"));
 const groundHex = flag("ground", `#${GREY_GROUND.background.map((c) => c.toString(16).padStart(2, "0")).join("")}`);
 const width = renderWidth();
 
+const flat = hasFlag("flat");
+
 Object.defineProperty(process.stdout, "rows", { configurable: true, value: height });
 await initRender(themeName, { settings: true });
 // Declare the ground the images are rasterized on. In a real terminal this value
 // arrives from the OSC 11 answer, and every fade and fill mixes out of it; a
 // headless script gets no answer, falls back to the theme's DECLARED ground —
 // black for titanium — and would film a black slab sitting on a grey page.
-setDetectedTerminalGround(groundHex);
+//
+// `--flat` withholds it, which is the OFF arm of the differential: with no known
+// ground the card takes no material and no light, and the frames are the bytes the
+// product drew before any of this — not a mock-up of them.
+if (!flat) setDetectedTerminalGround(groundHex);
 
 const selector = new SettingsSelectorComponent(
 	{
