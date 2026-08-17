@@ -85,6 +85,15 @@ describe("the cacheable prefix does not move without somebody saying so", () => 
 		const blockZero = systemPrompt[0] as string;
 
 		expect({ sha: sha(blockZero), length: blockZero.length }).toEqual({
+			// Updated 2026-08-16, deliberately: `562a3940c0412e3a` / 11_160 ->
+			// `3a000fddb2eb6620` / 10_515 (−645).
+			//
+			// WHAT THE −645 IS. `execution-workflow/commit-often` is gone. That
+			// statement told the agent to commit finished work without being asked.
+			// Commit cadence is an operator or project rule, not a harness default,
+			// and the three bullets were 645 bytes at this fixture (bash is granted,
+			// so the row rendered). Ablating it at this fixture is the whole delta.
+			//
 			// Updated 2026-08-07, deliberately: `e9ee4981c4a330e5` / 11_132 ->
 			// `562a3940c0412e3a` / 11_160 (+28).
 			//
@@ -163,8 +172,8 @@ describe("the cacheable prefix does not move without somebody saying so", () => 
 			//
 			// The one-time cost this gate exists to surface is real and was accepted:
 			// every conversation re-reads its prefix once after the release.
-			sha: "562a3940c0412e3a",
-			length: 11_160,
+			sha: "3a000fddb2eb6620",
+			length: 10_515,
 		});
 	});
 
