@@ -438,8 +438,12 @@ describe("editToolRenderer", () => {
 		const widths = new Set(lines.map(visibleWidth));
 		expect(widths.size).toBe(1);
 		expect([...widths][0]).toBeLessThanOrEqual(48);
-		expect(lines[1]).toStartWith("│+1│");
-		expect(lines[1]).not.toStartWith("│ +1│");
+		// The gutter starts immediately after the block's chrome — the rail glyph and
+		// one space — with no inherited pad column between them. It used to be a box
+		// border here (`│+1│`), a shape the product no longer draws.
+		const rail = uiTheme.symbol("block.rail");
+		expect(lines[1]).toStartWith(`${rail} +1│`);
+		expect(lines[1]).not.toStartWith(`${rail}  +1│`);
 	});
 
 	it("does not leak the first file's no-change preview into a multi-file delete result", async () => {
@@ -597,13 +601,20 @@ describe("editToolRenderer diff line wrapping", () => {
 			)
 		).map(row => Bun.stripANSI(row));
 
-		// The tail of the added line lands on continuation rows, which must carry
-		// the spaces-only continuation gutter rather than start as bare prose.
+		// The tail of the added line lands on continuation rows, which must carry the
+		// spaces-only continuation gutter rather than start as bare prose — and carry
+		// it in the SAME column as the gutter it continues. A regex for "whitespace
+		// then a separator" cannot see that: the rail's own space satisfies it, so a
+		// continuation prefix stripped of its padding reads as correct.
+		const rail = (await getUiTheme()).symbol("block.rail");
+		const separatorColumn = (row: string): number => row.indexOf("│");
 		const tailRows = rows.filter(row => row.includes("zephyrQuota") || row.includes("marbledFinale"));
 		expect(tailRows.length).toBeGreaterThanOrEqual(1);
-		for (const row of tailRows) expect(row).toMatch(/^│\s+│/);
-		// Every body row stays inside a code-frame gutter (`-42│`, `   +│`, `    │`).
-		for (const row of rows.slice(1, -1)) expect(row).toMatch(/^│\s*[+-]?\s*\d*│/);
+		for (const row of tailRows) expect(separatorColumn(row)).toBe(separatorColumn(rows[1]!));
+		// Every body row stays inside a code-frame gutter (`-42│`, `   +│`, `    │`),
+		// hung on the rail. There is no bottom border to exclude any more: the last
+		// row of the block is a body row.
+		for (const row of rows.slice(1)) expect(row).toMatch(new RegExp(`^${rail}\\s*[+-]?\\s*\\d*│`));
 	});
 
 	it("closes inverse video at every wrapped row end so frame padding stays uninverted", async () => {
@@ -654,11 +665,14 @@ describe("editToolRenderer diff line wrapping", () => {
 		const rows = await renderErrorResultRows(
 			"| pipe-leading diagnostic output that is quite long and should certainly wrap at the render width because it keeps going on and on with more words than fit in one row of the frame",
 		);
-		const bodyRows = rows.slice(1, -1);
+		// Body rows are everything after the header. The block ends on its last body
+		// row, so there is no trailing border to drop.
+		const rail = (await getUiTheme()).symbol("block.rail");
+		const bodyRows = rows.slice(1);
 		// Precondition: the text actually wrapped, and the `|` lead survived on row one.
 		expect(bodyRows.length).toBeGreaterThanOrEqual(2);
-		expect(bodyRows[0]).toMatch(/^│\| /);
-		for (const row of bodyRows.slice(1)) expect(row).not.toMatch(/^│\s*\|/);
+		expect(bodyRows[0]).toMatch(new RegExp(`^${rail} \\| `));
+		for (const row of bodyRows.slice(1)) expect(row).not.toMatch(new RegExp(`^${rail}\\s*\\|`));
 	});
 
 	it("wraps spaces-then-bare-pipe error text generically instead of minting a gutter", async () => {
@@ -667,11 +681,12 @@ describe("editToolRenderer diff line wrapping", () => {
 		const rows = await renderErrorResultRows(
 			"   | indented bare-pipe diagnostic output that is quite long and should certainly wrap at the render width because it keeps going on and on with more words than fit in one row of the frame",
 		);
-		const bodyRows = rows.slice(1, -1);
+		const rail = (await getUiTheme()).symbol("block.rail");
+		const bodyRows = rows.slice(1);
 		// Precondition: the text actually wrapped, and the pipe lead survived on row one.
 		expect(bodyRows.length).toBeGreaterThanOrEqual(2);
-		expect(bodyRows[0]).toMatch(/^│\s+\| /);
-		for (const row of bodyRows.slice(1)) expect(row).not.toMatch(/^│\s*\|/);
+		expect(bodyRows[0]).toMatch(new RegExp(`^${rail}\\s+\\| `));
+		for (const row of bodyRows.slice(1)) expect(row).not.toMatch(new RegExp(`^${rail}\\s*\\|`));
 	});
 
 	it("wraps digit-leading pipe error text generically when the marker column is missing", async () => {
@@ -680,11 +695,12 @@ describe("editToolRenderer diff line wrapping", () => {
 		const rows = await renderErrorResultRows(
 			"123| numbered pipe-leading diagnostic output that is quite long and should certainly wrap at the render width because it keeps going on and on with more words than fit in one row of the frame",
 		);
-		const bodyRows = rows.slice(1, -1);
+		const rail = (await getUiTheme()).symbol("block.rail");
+		const bodyRows = rows.slice(1);
 		// Precondition: the text actually wrapped, and the numbered lead survived on row one.
 		expect(bodyRows.length).toBeGreaterThanOrEqual(2);
-		expect(bodyRows[0]).toMatch(/^│123\| /);
-		for (const row of bodyRows.slice(1)) expect(row).not.toMatch(/^│\s*\|/);
+		expect(bodyRows[0]).toMatch(new RegExp(`^${rail} 123\\| `));
+		for (const row of bodyRows.slice(1)) expect(row).not.toMatch(new RegExp(`^${rail}\\s*\\|`));
 	});
 
 	it("keeps the numbered ASCII-pipe gutter for canonical rows through the plain fallback", async () => {
@@ -707,10 +723,14 @@ describe("editToolRenderer diff line wrapping", () => {
 		);
 
 		const rows = component.render(100).map(row => Bun.stripANSI(row));
-		const bodyRows = rows.slice(1, -1);
+		const rail = uiTheme.symbol("block.rail");
+		const bodyRows = rows.slice(1);
 		// Precondition: the row actually wrapped past its first visual line.
 		expect(bodyRows.length).toBeGreaterThanOrEqual(2);
-		expect(bodyRows[0]).toMatch(/^│-42\|/);
-		for (const row of bodyRows.slice(1)) expect(row).toMatch(/^│\s+\|/);
+		expect(bodyRows[0]).toMatch(new RegExp(`^${rail} -42\\|`));
+		// Same column as the gutter it continues, not merely "some spaces then a pipe":
+		// the rail contributes a space of its own, so the looser shape is satisfied by a
+		// continuation prefix that lost its padding entirely.
+		for (const row of bodyRows.slice(1)) expect(row.indexOf("|")).toBe(bodyRows[0]!.indexOf("|"));
 	});
 });
