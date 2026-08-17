@@ -1,0 +1,40 @@
+
+- Expected  - 1
++ Received  + 1
+
+      at <anonymous> (/repo/packages/tui/test/a-click-in-the-composer-places-the-caret.test.ts:250:31)
+(fail) a click on the composer text > through the production route > moves the caret from a terminal byte, through the engine and the container [87.26ms]
+
+packages/tui/test/a-click-on-a-suggestion-accepts-the-completion.test.ts:
+(pass) a click on a composer suggestion > accepts the row under the pointer, not the highlighted one [256.78ms]
+(pass) a click on a composer suggestion > subtracts the rows of the container children above the editor [249.96ms]
+(pass) a click on a composer suggestion > accepts through the same path as Tab [500.57ms]
+216 | 		// 3 is the first text cell of the framed variant (border plus padding).
+217 | 		h.term.sendInput(clickAt(h.rowOf("/m"), 3));
+218 | 		await h.term.waitForRender();
+219 | 
+220 | 		expect(h.editor.getText()).toBe("/m");
+221 | 		expect(h.editor.getCursor()).toEqual({ line: 0, col: 0 });
+                                     ^
+error: expect(received).toEqual(expected)
+
+  {
+-   "col": 0,
++   "col": 2,
+    "line": 0,
+  }
+
+- Expected  - 1
++ Received  + 1
+
+      at <anonymous> (/repo/packages/tui/test/a-click-on-a-suggestion-accepts-the-completion.test.ts:221:32)
+(fail) a click on a composer suggestion > places the caret and dismisses the popup when the click lands on the input row [249.01ms]
+(pass) a click on a composer suggestion > ignores a press on a row past the last suggestion [208.24ms]
+(pass) a click on a composer suggestion > accepts on a press and on nothing else [212.72ms]
+(pass) a click on a composer suggestion > cancels without rewriting the buffer when the popup is stale [211.56ms]
+(pass) a click on a composer suggestion > closes the popup when the accepted item opens no second popup [245.18ms]
+
+ 11 pass
+ 9 fail
+ 48 expect() calls
+Ran 20 tests across 2 files. [2.47s]

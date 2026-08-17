@@ -1,0 +1,40 @@
+(pass) every effort surface offers exactly the levels the model declares > /thinking modal · a model that reasons without plain levels [0.30ms]
+(pass) every effort surface offers exactly the levels the model declares > Models hub effort strip · a model that reasons without plain levels [0.84ms]
+(pass) every effort surface offers exactly the levels the model declares > RPC set_thinking_level · a model that reasons without plain levels [0.19ms]
+(pass) every effort surface offers exactly the levels the model declares > /effort argument hint · a model that reasons without plain levels [0.12ms]
+(pass) every effort surface offers exactly the levels the model declares > exercises four genuinely different ladders [0.49ms]
+(pass) a surface that has narrowed to nothing says why > settings row Subagents → Subagent Effort explains its one-row list [0.83ms]
+(pass) a surface that has narrowed to nothing says why > settings row Model → Default Effort, per-model row explains its one-row list [0.92ms]
+(pass) a surface that has narrowed to nothing says why > model selector effort step explains its one-row list [0.32ms]
+(pass) a surface that has narrowed to nothing says why > covers every surface that draws a frame [0.26ms]
+(pass) a surface that has narrowed to nothing says why > says nothing of the kind for a model that has a ladder [0.71ms]
+(pass) a surface that has narrowed to nothing says why > names the row the user can see on each surface [0.21ms]
+(pass) a surface that has narrowed to nothing says why > gates the /thinking modal on exactly the models whose ladder is non-empty [1.16ms]
+(pass) a row with no single model offers the union its catalog declares, and never more > draws a union that is a strict subset of the vocabulary [0.15ms]
+(pass) a row with no single model offers the union its catalog declares, and never more > offers the catalog's union on the subagent effort row with no session model [0.55ms]
+(pass) a row with no single model offers the union its catalog declares, and never more > offers the catalog's union on the any-model default-effort row [0.69ms]
+(pass) a row with no single model offers the union its catalog declares, and never more > offers no level at all when nothing in the catalog declares one [0.56ms]
+(pass) a row with no single model offers the union its catalog declares, and never more > refuses nothing over RPC when there is no model to narrow against [0.19ms]
+(pass) a row with no single model offers the union its catalog declares, and never more > offers no argument hint at all when there is no model [0.10ms]
+
+packages/coding-agent/test/modes/components/any-model-effort-is-settable.test.ts:
+(pass) Settings → Model → Default Effort, any-model row > writes the level the operator picks [1.76ms]
+(pass) Settings → Model → Default Effort, any-model row > reaches a level one model in the catalog declares and the other cannot take [0.78ms]
+(pass) Settings → Model → Default Effort, any-model row > never offers a level nothing in the catalog declares [0.99ms]
+(pass) Settings → Model → Default Effort, any-model row > still removes the row from its first entry [0.71ms]
+
+packages/coding-agent/test/modes/components/every-settings-submenu-answers-the-pointer.test.ts:
+(pass) settings submenus answer the pointer > compaction threshold: hover lights a mode row, click opens its value picker [3.18ms]
+(pass) settings submenus answer the pointer > provider limits: hover lights a provider row, click opens its editor [2.40ms]
+(pass) settings submenus answer the pointer > model roles: hover lights a role row, click opens its picker [2.29ms]
+(pass) settings submenus answer the pointer > subagent agents: hover lights an agent row once discovery reports, click opens its editor [18.76ms]
+(pass) settings submenus answer the pointer > subagent models by depth: hover lights the add row, click opens the depth chain [3.17ms]
+(pass) settings submenus answer the pointer > default effort: hover lights the add row, click opens the model picker [2.25ms]
+(pass) settings submenus answer the pointer > default effort: a click on an effort row picks that level, which is what the picker's hint promises [1.92ms]
+(pass) settings submenus answer the pointer > rules: hover lights a section row once discovery reports, click opens the section [10.27ms]
+(pass) settings submenus answer the pointer > model chain: hover lights a chain entry, click opens the replacement picker [2.97ms]
+
+ 79 pass
+ 0 fail
+ 5167 expect() calls
+Ran 79 tests across 4 files. [702.00ms]

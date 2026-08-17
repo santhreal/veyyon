@@ -1,0 +1,19 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/tui/test/a-scrolled-viewport-travels-through-the-rows-between.test.ts:
+(pass) a scrolled viewport travels through the rows between > walks a page instead of cutting to it, and lands exactly where the key aimed [27.88ms]
+(pass) a scrolled viewport travels through the rows between > paints the rows and the thumb off the same value, so the bar cannot arrive first [1.11ms]
+(pass) a scrolled viewport travels through the rows between > lands a single row, an end, and a jump too far to read on the way past [0.44ms]
+(pass) a scrolled viewport travels through the rows between > keeps travelling across the renders in between, and ends the travel when the content moves under it [0.20ms]
+(pass) a scrolled viewport travels through the rows between > never paints past content that shrank under a travel it did not end [0.34ms]
+(pass) a scrolled viewport travels through the rows between > stops travelling a value its caller took over windowing mid-flight [0.09ms]
+(pass) a scrolled viewport travels through the rows between > is byte-identical to the cut when motion is off, and registers nothing [0.31ms]
+(pass) a scrolled viewport travels through the rows between > asks for a frame per tick, and stops asking the moment it is disposed [0.07ms]
+(pass) a scrolled viewport travels through the rows between > paints a whole row inside the content on every frame of every navigation [1.68ms]
+(pass) a scrolled viewport travels through the rows between > does not travel a thumb a pre-windowed caller cannot follow [0.10ms]
+(pass) a scrolled viewport travels through the rows between > classifies every method that can move the viewport [1.70ms]
+
+ 11 pass
+ 0 fail
+ 271 expect() calls
+Ran 11 tests across 1 file. [115.00ms]

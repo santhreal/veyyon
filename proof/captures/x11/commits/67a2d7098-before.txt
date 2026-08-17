@@ -1,0 +1,40 @@
+
+      at <anonymous> (/repo/packages/tui/test/the-motion-clock-always-stops.test.ts:326:20)
+(fail) the settle deadline is the thing that stops the ones nothing else can > a spring that cannot decay is landed by the deadline, not by settling [0.23ms]
+(pass) the settle deadline is the thing that stops the ones nothing else can > a host that keeps retargeting is never cut off mid-travel by the deadline [0.22ms]
+(pass) the components that own a requestRender > a hover band stops asking for frames once the pointer settles [2.72ms]
+(pass) the components that own a requestRender > a settling value stops asking for frames once the revisions stop [0.44ms]
+(pass) the components that own a requestRender > a settling value refuses a target that is not a number [0.07ms]
+(pass) the components that own a requestRender > a block reveal grows once and then stops asking [0.25ms]
+
+25 tests failed:
+(fail) a spec that cannot settle never becomes an unending repaint > a spring aimed at NaN registers nothing and repaints nothing [0.09ms]
+(fail) a spec that cannot settle never becomes an unending repaint > a spring aimed at Infinity registers nothing and repaints nothing [0.02ms]
+(fail) a spec that cannot settle never becomes an unending repaint > a curve aimed at NaN registers nothing and repaints nothing
+(fail) a spec that cannot settle never becomes an unending repaint > a duration of NaN registers nothing and repaints nothing [0.04ms]
+(fail) a spec that cannot settle never becomes an unending repaint > a duration of Infinity registers nothing and repaints nothing [0.01ms]
+(fail) a spec that cannot settle never becomes an unending repaint > a spring with no damping registers nothing and repaints nothing
+(fail) a spec that cannot settle never becomes an unending repaint > a spring with negative damping registers nothing and repaints nothing
+(fail) a spec that cannot settle never becomes an unending repaint > a spring with no stiffness registers nothing and repaints nothing
+(fail) a spec that cannot settle never becomes an unending repaint > a spring with zero mass registers nothing and repaints nothing
+(fail) a spec that cannot settle never becomes an unending repaint > a spring with infinite mass registers nothing and repaints nothing
+(fail) a spec that cannot settle never becomes an unending repaint > a rest band of zero registers nothing and repaints nothing
+(fail) a spec that cannot settle never becomes an unending repaint > a stiffness the sub-step cannot resolve registers nothing and repaints nothing [0.02ms]
+(fail) a spec that cannot settle never becomes an unending repaint > a duration of NaN cannot be resurrected by a retarget [0.18ms]
+(fail) a spec that cannot settle never becomes an unending repaint > a duration of Infinity cannot be resurrected by a retarget [0.12ms]
+(fail) a spec that cannot settle never becomes an unending repaint > a spring with no damping cannot be resurrected by a retarget [0.13ms]
+(fail) a spec that cannot settle never becomes an unending repaint > a spring with negative damping cannot be resurrected by a retarget [0.10ms]
+(fail) a spec that cannot settle never becomes an unending repaint > a spring with no stiffness cannot be resurrected by a retarget [0.09ms]
+(fail) a spec that cannot settle never becomes an unending repaint > a spring with zero mass cannot be resurrected by a retarget [0.10ms]
+(fail) a spec that cannot settle never becomes an unending repaint > a spring with infinite mass cannot be resurrected by a retarget [0.07ms]
+(fail) a spec that cannot settle never becomes an unending repaint > a rest band of zero cannot be resurrected by a retarget [0.09ms]
+(fail) a spec that cannot settle never becomes an unending repaint > a stiffness the sub-step cannot resolve cannot be resurrected by a retarget [0.07ms]
+(fail) a spec that cannot settle never becomes an unending repaint > MOTION.move started from a value that is not a number still stops [0.23ms]
+(fail) a spec that cannot settle never becomes an unending repaint > MOTION.settle started from a value that is not a number still stops [0.17ms]
+(fail) a spec that cannot settle never becomes an unending repaint > retargeting a live animation to NaN mid-flight does not strand it [0.24ms]
+(fail) the settle deadline is the thing that stops the ones nothing else can > a spring that cannot decay is landed by the deadline, not by settling [0.23ms]
+
+ 28 pass
+ 25 fail
+ 206 expect() calls
+Ran 53 tests across 1 file. [32.00ms]

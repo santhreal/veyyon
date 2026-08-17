@@ -1,0 +1,39 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/modes/components/the-login-card-answers-the-pointer.test.ts:
+(pass) the login card answers the pointer > cancels the pending login when the close glyph is clicked [10.65ms]
+(pass) the login card answers the pointer > cancels the pending login when the cancel chip is clicked [0.48ms]
+(pass) the login card answers the pointer > cancels the pending login when the click lands outside the card [0.24ms]
+(pass) the login card answers the pointer > skips the optional name on a chip click instead of undoing the login [0.36ms]
+(pass) the login card answers the pointer > leaves the login alone for a click inside the card body [0.21ms]
+
+packages/coding-agent/test/modes/components/the-login-screen-is-one-frame.test.ts:
+(pass) the login screen is one frame > names the provider through the one label owner [0.48ms]
+(pass) the login screen is one frame > shows one footer, naming the keys that actually work right now [0.39ms]
+(pass) the login screen is one frame > replaces the status line instead of stacking one line per attempt [0.16ms]
+(pass) the login screen is one frame > replaces a re-asked question, and keeps the input under it [0.72ms]
+(pass) the login screen is one frame > masks a credential and still returns the bytes that were pasted [0.32ms]
+(pass) the login screen is one frame > masks an answer no flow said anything about [0.21ms]
+(pass) the login screen is one frame > leaves a field the flow declared readable [0.23ms]
+(pass) the login screen is one frame > draws one authorization block however many times the flow reports it [0.19ms]
+(pass) the login screen is one frame > offers the local shortcut only when it differs from the URL being copied [0.22ms]
+(pass) the login screen is one frame > cancels the login when Esc answers a credential question [0.14ms]
+(pass) the login screen is one frame > skips the optional name when Esc answers it, without undoing the login [0.32ms]
+(pass) the login screen is one frame > returns a trimmed name and treats a blank one as unnamed [0.14ms]
+
+packages/coding-agent/test/modes/controllers/a-command-login-lands-in-the-account-manager.test.ts:
+(pass) a login started from a command > lands on the account manager for that provider with the new account listed [7.74ms]
+(pass) a login started from a command > names the provider the way the card names it [0.92ms]
+(pass) a login started from a command > stays at the composer when the login failed [0.29ms]
+(pass) a login started from a command > stays at the composer when the login was cancelled [0.34ms]
+(pass) a login started from a command > lands on the same account manager for logout [0.94ms]
+
+packages/coding-agent/test/modes/controllers/selector-controller-login.test.ts:
+(pass) SelectorController login > presents OAuth success as soon as credentials are saved [0.73ms]
+(pass) SelectorController login > Esc during a pending login aborts the flow and takes the overlay down [0.39ms]
+(pass) SelectorController login > routes enhanced paste into a direct API-key prompt [0.12ms]
+
+ 25 pass
+ 0 fail
+ 78 expect() calls
+Ran 25 tests across 4 files. [752.00ms]

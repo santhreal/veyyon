@@ -1,0 +1,25 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/modes/components/subagent-agents-surface.test.ts:
+(pass) subagent.agents settings surface > renders as the dedicated per-agent editor in the Subagents group of the Subagents tab [1.26ms]
+(pass) subagent.agents settings surface > never degrades to the generic record-as-text control [0.54ms]
+(pass) subagent.agents settings surface > appears on exactly one tab [0.71ms]
+(pass) subagent.agents settings surface > fills the Subagents group it declares [0.52ms]
+(pass) subagent.agents settings surface > keeps the blanket spawn ceiling in the roster's own section [0.47ms]
+(pass) subagent.agents settings surface > never calls a subagent an agent in a heading or a row label [0.45ms]
+(pass) subagent.agents settings surface > heads the roster and the per-subagent editor with the word subagent [30.85ms]
+(pass) subagent.agents settings surface > opens the recursion picker on the persisted per-agent override [7.46ms]
+(pass) subagent.agents settings surface > offers the model and the effort every subagent runs above the lanes [1.70ms]
+(pass) subagent.agents settings surface > stores the blanket effort chosen in the roster and reports the path it wrote [3.35ms]
+(pass) subagent.agents settings surface > unsets the blanket effort rather than blanking it when Inherit is chosen [1.65ms]
+(pass) subagent.agents settings surface > edits the blanket model chain through the roster [4.09ms]
+(pass) subagent.agents settings surface > changes what every subagent runs from the per-subagent page too [4.99ms]
+(pass) subagent.agents settings surface > keeps every setting that decides what a subagent runs in the roster's section [0.72ms]
+(pass) subagent enable-state wording > labels both states, distinctly [0.06ms]
+(pass) subagent enable-state wording > says only enabled or disabled, and never that a disabled agent still runs [0.02ms]
+(pass) subagent enable-state wording > toggles between the two states without a third stop [0.04ms]
+
+ 17 pass
+ 0 fail
+ 73 expect() calls
+Ran 17 tests across 1 file. [423.00ms]

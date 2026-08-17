@@ -1,0 +1,30 @@
+label              long-session-fresh
+pty bytes                          171188
+ED3 native-scrollback erases       0
+ED2 screen erases                  1
+synchronized frames                169
+bytes per frame                    1012.9
+frame bytes median                 744
+frame bytes p95                    2197
+frame bytes max                    3147
+session bytes                      0
+session messages                   0
+wall seconds                       368.0
+--- last screen ---
+                                                         
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ›  ask anything · / for commands                                                                                           
+  ~/demo      ✓ 0:03                Qwen2.5 1.5B (local)  ·  Auto  ·  0  ·  This session is about d…  ·  ▰▰▰▰▱▱▱▱ 55% left ∞
+  › In one sentence: what is this session about?                                                                             
+  This session is about optimizing an existing load-bearing change in a Veyyon coding harness project.                       
+ Closing session…                                                                                                            
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ›  ask anything · / for commands                                                                                           
+  ~/demo      ✓ 0:03                Qwen2.5 1.5B (local)  ·  Auto  ·  0  ·  This session is about d…  ·  ▰▰▰▰▱▱▱▱ 55% left ∞[<u
+        ▒             ▒                 
+                  ▒▒▒▒▒▒                
+────────────────────────────────────────
+the sun sets on this session
+Resume this session with veyyon --resume 01a00d49-bf39-7000-9b22-aac45f33b334
+[<u[>4;0m
+Script done on 2026-08-17 01:21:39+00:00 [COMMAND_EXIT_CODE="0"]

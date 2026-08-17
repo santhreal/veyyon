@@ -1,0 +1,40 @@
+126 | 		// Asserting direction rather than exact channels is what keeps this from breaking on a
+127 | 		// theme's palette while still failing on a mix that runs backwards or off the line.
+128 | 		expect(distance(quarter.rgb, quarter.full)).toBeGreaterThan(distance(half.rgb, half.full));
+                                                    ^
+error: expect(received).toBeGreaterThan(expected)
+
+Expected: > 0
+Received: 0
+
+      at <anonymous> (/repo/packages/coding-agent/test/a-fading-hover-band-is-mixed-out-of-the-ground.test.ts:128:47)
+(fail) a fading hover band is mixed out of the ground > mixes a partial band between the ground and the selection background [0.50ms]
+(pass) a fading hover band is mixed out of the ground > resolves out of the light theme's own ground, not a dark one [0.21ms]
+145 | 	it("switches rather than mixes in a color mode that cannot show the mix", async () => {
+146 | 		await useTheme("titanium", "256color");
+147 | 		const band = getSelectListTheme().hovered;
+148 | 		// Under half the band is not painted at all, over half it is the full one: the band still
+149 | 		// tracks the pointer, and no frame shows a color the palette would have to guess at.
+150 | 		expect(band?.("row", 0.4)).toBe("row");
+                                   ^
+error: expect(received).toBe(expected)
+
+Expected: "row"
+Received: "[48;5;234mrow[49m"
+
+      at <anonymous> (/repo/packages/coding-agent/test/a-fading-hover-band-is-mixed-out-of-the-ground.test.ts:150:30)
+(fail) a fading hover band is mixed out of the ground > switches rather than mixes in a color mode that cannot show the mix [0.36ms]
+
+packages/tui/test/a-hover-band-fades-in-instead-of-switching.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+error: Cannot find module '@veyyon/tui/motion-hover' from '/repo/packages/tui/test/a-hover-band-fades-in-instead-of-switching.test.ts'
+-------------------------------
+
+
+ 2 pass
+ 3 fail
+ 1 error
+ 7 expect() calls
+Ran 5 tests across 2 files. [266.00ms]

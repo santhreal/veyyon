@@ -1,0 +1,40 @@
+152 | 			expect(run.plain().some(line => line.includes("1/2"))).toBe(true);
+153 | 			const skip = run.cellOf("→ skip step");
+154 | 			run.component.handleInput(press(skip.row, skip.col));
+155 | 			vi.advanceTimersByTime(500);
+156 | 			expect(run.plain().some(line => line.includes("2/2"))).toBe(true);
+                                                                ^
+error: expect(received).toBe(expected)
+
+Expected: true
+Received: false
+
+      at <anonymous> (/repo/packages/coding-agent/test/the-setup-wizard-footer-chips-answer-the-pointer.test.ts:156:59)
+(fail) the setup wizard footer chips > advances a step when the skip chip is clicked, and goes back when the back chip is [0.51ms]
+175 | 			const chip = run.cellOf("esc leave setup");
+176 | 			expect(run.frame()[chip.row]).not.toContain("48;");
+177 | 
+178 | 			run.component.handleInput(motion(chip.row, chip.col + 1));
+179 | 			const hovered = run.frame()[chip.row] ?? "";
+180 | 			expect(hovered).toContain("48;");
+                         ^
+error: expect(received).toContain(expected)
+
+Expected to contain: "48;"
+Received: "            \u001b[38;5;60m↑↓ select  ·  enter confirm  ·  → skip  ·  esc leave setup\u001b[39m                              \u001b[0m"
+
+      at <anonymous> (/repo/packages/coding-agent/test/the-setup-wizard-footer-chips-answer-the-pointer.test.ts:180:20)
+(fail) the setup wizard footer chips > lights the chip under the pointer and clears it when the pointer leaves [0.45ms]
+(pass) the setup wizard footer chips > does nothing when a scene's own hint is clicked [0.32ms]
+(pass) the setup wizard footer chips > keeps a press on the body away from the chips [0.27ms]
+
+4 tests failed:
+(fail) setup wizard scene footer copy > the real Providers scene, the one users could not get out of, names Tab first [2.17ms]
+(fail) the setup wizard footer chips > leaves setup when the leave chip is clicked, exactly as Esc does [0.75ms]
+(fail) the setup wizard footer chips > advances a step when the skip chip is clicked, and goes back when the back chip is [0.51ms]
+(fail) the setup wizard footer chips > lights the chip under the pointer and clears it when the pointer leaves [0.45ms]
+
+ 33 pass
+ 4 fail
+ 97 expect() calls
+Ran 37 tests across 2 files. [1.92s]

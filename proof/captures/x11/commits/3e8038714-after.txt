@@ -1,0 +1,40 @@
+(pass) an elided thinking fence says how much it hid > leaves a fence-only trailer and inline code alone [0.15ms]
+(pass) an elided thinking fence says how much it hid > never touches raw mode [0.19ms]
+(pass) an elided thinking fence says how much it hid > keeps a marker-only block displayable and puts the marker on screen [10.92ms]
+
+packages/coding-agent/test/modes/components/prose-only-thinking.test.ts:
+(pass) formatThinkingForDisplay > should not format if proseOnly is false [0.63ms]
+(pass) formatThinkingForDisplay > should replace fully enclosed code blocks with an ellipsis [0.06ms]
+(pass) formatThinkingForDisplay > should replace unclosed code blocks with an ellipsis [0.02ms]
+(pass) formatThinkingForDisplay > should preserve trailing one- and two-character fence prefixes as prose [0.04ms]
+(pass) formatThinkingForDisplay > should preserve inline code in prose [0.01ms]
+(pass) formatThinkingForDisplay > should handle tilde code blocks [0.01ms]
+(pass) formatThinkingForDisplay > should return exactly ascii ellipsis for pure-code blocks while remaining displayable [0.02ms]
+
+packages/coding-agent/test/streaming-reveal.test.ts:
+(pass) streaming reveal > slices at grapheme boundaries without mutating the target message [0.35ms]
+(pass) streaming reveal > excludes hidden thinking from the reveal budget and passes it through [0.05ms]
+(pass) streaming reveal > excludes dot-only reasoning placeholders from the reveal budget [0.05ms]
+(pass) streaming reveal > keeps pure-code thinking visible as an ascii ellipsis [0.61ms]
+(pass) streaming reveal > refreshes prose-only setting during unsmoothed streaming updates [0.39ms]
+(pass) streaming reveal > smooths thinking content when thinking is shown [0.04ms]
+(pass) streaming reveal > uses an adaptive catchup step with the configured floor [0.04ms]
+(pass) streaming reveal > reveals cumulative targets to the exact final text with monotonic prefixes [0.26ms]
+(pass) streaming reveal > keeps grapheme counts correct when an append extends the final cluster [0.09ms]
+(pass) streaming reveal > renders full targets immediately when smoothing is disabled [0.08ms]
+(pass) streaming reveal > marks unsmoothed in-flight updates as transient [0.04ms]
+(pass) streaming reveal > keeps smooth catch-up renders transient until the final message_end render [0.07ms]
+(pass) streaming reveal > stop halts pending ticker updates [0.04ms]
+(pass) streaming reveal > snaps to full text when a tool call arrives [0.07ms]
+(pass) streaming reveal > passes the bound component to requestRender on each smooth tick [0.06ms]
+(pass) BlockUnitCounter.slice > matches a pure segmenter reference for fixed-text growing units [0.12ms]
+(pass) BlockUnitCounter.slice > re-segments the boundary cluster when an append extends it (no stale slice) [0.02ms]
+(pass) BlockUnitCounter.slice > keeps separate block indices independent [0.15ms]
+(pass) BlockUnitCounter.slice > matches the reference after a shrink and regrow [0.04ms]
+(pass) BlockUnitCounter.slice > matches the reference when the text is fully replaced [0.02ms]
+(pass) BlockUnitCounter.slice > matches the reference under seeded append + monotonic reveal (fuzz) [6.58ms]
+
+ 36 pass
+ 0 fail
+ 535 expect() calls
+Ran 36 tests across 3 files. [382.00ms]

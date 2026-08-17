@@ -1,0 +1,40 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/no-message-role-reaches-the-provider-uncounted.test.ts:
+(pass) a message role that reaches the provider is counted > puts every role on the wire, so every role has a cost to account for [2.10ms]
+(pass) a message role that reaches the provider is counted > user: the estimate accounts for what the wire carries [0.04ms]
+(pass) a message role that reaches the provider is counted > user: an empty message of the same role costs nothing [0.06ms]
+(pass) a message role that reaches the provider is counted > developer: the estimate accounts for what the wire carries [0.01ms]
+(pass) a message role that reaches the provider is counted > developer: an empty message of the same role costs nothing
+(pass) a message role that reaches the provider is counted > assistant: the estimate accounts for what the wire carries [0.01ms]
+(pass) a message role that reaches the provider is counted > assistant: an empty message of the same role costs nothing
+(pass) a message role that reaches the provider is counted > toolResult: the estimate accounts for what the wire carries [0.01ms]
+(pass) a message role that reaches the provider is counted > toolResult: an empty message of the same role costs nothing
+(pass) a message role that reaches the provider is counted > custom: the estimate accounts for what the wire carries [0.01ms]
+(pass) a message role that reaches the provider is counted > custom: an empty message of the same role costs nothing
+(pass) a message role that reaches the provider is counted > hookMessage: the estimate accounts for what the wire carries
+(pass) a message role that reaches the provider is counted > hookMessage: an empty message of the same role costs nothing
+(pass) a message role that reaches the provider is counted > branchSummary: the estimate accounts for what the wire carries [0.14ms]
+(pass) a message role that reaches the provider is counted > branchSummary: an empty message of the same role costs nothing
+(pass) a message role that reaches the provider is counted > compactionSummary: the estimate accounts for what the wire carries [0.10ms]
+(pass) a message role that reaches the provider is counted > compactionSummary: an empty message of the same role costs nothing
+(pass) a message role that reaches the provider is counted > bashExecution: the estimate accounts for what the wire carries [0.02ms]
+(pass) a message role that reaches the provider is counted > bashExecution: an empty message of the same role costs nothing
+(pass) a message role that reaches the provider is counted > pythonExecution: the estimate accounts for what the wire carries [0.02ms]
+(pass) a message role that reaches the provider is counted > pythonExecution: an empty message of the same role costs nothing
+(pass) a message role that reaches the provider is counted > fileMention: the estimate accounts for what the wire carries [0.01ms]
+(pass) a message role that reaches the provider is counted > fileMention: an empty message of the same role costs nothing [0.01ms]
+(pass) a message role that reaches the provider is counted > scales with content rather than with message count [0.15ms]
+(pass) a file mention costs what it carries > counts a second mentioned file, not just the first [0.02ms]
+(pass) a file mention costs what it carries > charges a mentioned image exactly the image estimate over the same mention without one [0.02ms]
+(pass) a file mention costs what it carries > counts only the path when a collab replica was never sent the body [0.02ms]
+(pass) a file mention costs what it carries > counts the skip notice a too-large file carries instead of its body [0.02ms]
+(pass) a file mention costs what it carries > sees a body that shrank in place, because the shape digest walks the files [0.02ms]
+(pass) a python cell costs its code and its output > counts the code when the cell printed nothing [0.01ms]
+(pass) a python cell costs its code and its output > counts the output on top of the code [0.02ms]
+(pass) a python cell costs its code and its output > still counts a cell excluded from the request, exactly as a bash cell is [0.03ms]
+
+ 32 pass
+ 0 fail
+ 56 expect() calls
+Ran 32 tests across 1 file. [320.00ms]

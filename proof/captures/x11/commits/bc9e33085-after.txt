@@ -1,0 +1,27 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/modes/components/a-transcript-divider-marks-a-point-instead-of-spanning-the-viewport.test.ts:
+(pass) a transcript divider > covers every divider component the two modules export [0.10ms]
+(pass) a transcript divider > CompactionSummaryMessageComponent > opens with a short rule and stops at its label [0.52ms]
+(pass) a transcript divider > CompactionSummaryMessageComponent > does not span the viewport [0.07ms]
+(pass) a transcript divider > CompactionSummaryMessageComponent > drops the rule rather than the words when the viewport cannot hold both [0.03ms]
+(pass) a transcript divider > HandoffSummaryMessageComponent > opens with a short rule and stops at its label [0.09ms]
+(pass) a transcript divider > HandoffSummaryMessageComponent > does not span the viewport [0.01ms]
+(pass) a transcript divider > HandoffSummaryMessageComponent > drops the rule rather than the words when the viewport cannot hold both
+(pass) a transcript divider > BranchSummaryMessageComponent > opens with a short rule and stops at its label [0.05ms]
+(pass) a transcript divider > BranchSummaryMessageComponent > does not span the viewport
+(pass) a transcript divider > BranchSummaryMessageComponent > drops the rule rather than the words when the viewport cannot hold both
+(pass) a transcript divider > CacheInvalidationMarkerComponent > opens with a short rule and stops at its label [0.10ms]
+(pass) a transcript divider > CacheInvalidationMarkerComponent > does not span the viewport
+(pass) a transcript divider > CacheInvalidationMarkerComponent > drops the rule rather than the words when the viewport cannot hold both [0.02ms]
+
+packages/coding-agent/test/modes/components/compaction-divider.test.ts:
+(pass) CompactionSummaryMessageComponent > collapsed: a single short divider carrying the expand affordance [0.20ms]
+(pass) CompactionSummaryMessageComponent > expanded: reveals the summary below the divider [12.62ms]
+(pass) CompactionSummaryMessageComponent > degrades to a bare label when the viewport is too narrow for a framed rule [0.25ms]
+(pass) CompactionSummaryMessageComponent > honors the same-reference render cache and busts it on expansion toggle [0.60ms]
+
+ 17 pass
+ 0 fail
+ 53 expect() calls
+Ran 17 tests across 2 files. [335.00ms]

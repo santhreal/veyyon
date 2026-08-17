@@ -1,0 +1,40 @@
+
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/a-transcript-divider-marks-a-point-instead-of-spanning-the-viewport.test.ts:115:21)
+(fail) a transcript divider > BranchSummaryMessageComponent > opens with a short rule and stops at its label [0.02ms]
+(pass) a transcript divider > BranchSummaryMessageComponent > does not span the viewport
+(pass) a transcript divider > BranchSummaryMessageComponent > drops the rule rather than the words when the viewport cannot hold both [0.02ms]
+101 | 		describe(name, () => {
+102 | 			it("starts on the transcript's rail", () => {
+103 | 				const row = dividerRow(make(), WIDTH);
+104 | 				// Every other transcript block opens at the composer gutter. A divider
+105 | 				// only sat at column zero while it spanned the viewport.
+106 | 				expect(row.slice(0, COMPOSER_INSET_COLS)).toBe(" ".repeat(COMPOSER_INSET_COLS));
+                                                    ^
+error: expect(received).toBe(expected)
+
+Expected: "  "
+Received: "──"
+
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/a-transcript-divider-marks-a-point-instead-of-spanning-the-viewport.test.ts:106:47)
+(fail) a transcript divider > CacheInvalidationMarkerComponent > starts on the transcript's rail [0.14ms]
+110 | 			it("opens with a short rule and stops at its label", () => {
+111 | 				const row = dividerRow(make(), WIDTH).slice(COMPOSER_INSET_COLS);
+112 | 				const rule = theme.tree.horizontal;
+113 | 				const leading = row.length - row.replace(new RegExp(`^${rule}+`), "").length;
+114 | 
+115 | 				expect(leading).toBe(TRANSCRIPT_DIVIDER_RULE_WIDTH);
+                          ^
+error: expect(received).toBe(expected)
+
+Expected: 10
+Received: 8
+
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/a-transcript-divider-marks-a-point-instead-of-spanning-the-viewport.test.ts:115:21)
+(fail) a transcript divider > CacheInvalidationMarkerComponent > opens with a short rule and stops at its label [0.03ms]
+(pass) a transcript divider > CacheInvalidationMarkerComponent > does not span the viewport
+(pass) a transcript divider > CacheInvalidationMarkerComponent > drops the rule rather than the words when the viewport cannot hold both
+
+ 9 pass
+ 8 fail
+ 37 expect() calls
+Ran 17 tests across 1 file. [341.00ms]

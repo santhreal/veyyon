@@ -1,0 +1,28 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/modes/components/a-settings-category-fades-under-the-pointer.test.ts:
+(pass) a settings category fades under the pointer > arrives over frames and lands on the band the sidebar always painted [26.93ms]
+(pass) a settings category fades under the pointer > keeps the category the pointer left banding while the next one arrives [4.07ms]
+(pass) a settings category fades under the pointer > never bands the active category [1.63ms]
+(pass) a settings category fades under the pointer > settles, stops asking for frames, and drops the band when the card is disposed [1.18ms]
+
+packages/coding-agent/test/modes/controllers/a-closed-settings-card-lets-go-of-the-clock.test.ts:
+(pass) a closed settings card lets go of the clock > cancels a travelling sidebar fade when the card is dismissed [6.17ms]
+(pass) a closed settings card lets go of the clock > leaves the clock idle when a card is opened and closed without ever being pointed at [14.56ms]
+
+packages/tui/test/a-category-tab-fades-in-under-the-pointer.test.ts:
+(pass) a category tab fades in under the pointer > arrives over the hover duration rather than on the report's own frame [2.15ms]
+(pass) a category tab fades in under the pointer > paints the tab being left and the tab being entered in the same frame [0.12ms]
+(pass) a category tab fades in under the pointer > hands the horizontal bar the same strength as the sidebar, in the same frame [0.30ms]
+(pass) a category tab fades in under the pointer > keeps the band on the tab rather than on the row it was drawn at [0.35ms]
+(pass) a category tab fades in under the pointer > never bands the active tab, or a muted one [0.09ms]
+(pass) a category tab fades in under the pointer > paints the switched band and registers nothing when motion is off [0.11ms]
+(pass) a category tab fades in under the pointer > ends every fade and keeps no state for a tab the pointer has left [0.29ms]
+(pass) a category tab fades in under the pointer > drops every fade on dispose so a card nobody can see stops asking for frames [0.07ms]
+(pass) a category tab fades in under the pointer > falls back to the inactive style when the theme has no hover style at all [0.10ms]
+(pass) a category tab fades in under the pointer > never bands a muted tab, which is not a pointer target [0.12ms]
+
+ 16 pass
+ 0 fail
+ 75 expect() calls
+Ran 16 tests across 3 files. [885.00ms]

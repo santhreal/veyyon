@@ -1,0 +1,25 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/modes/components/a-transcript-block-sits-on-the-rail.test.ts:
+(pass) a transcript block sits on the rail > paints every /btw state at the rail, with no rule [9.85ms]
+(pass) a transcript block sits on the rail > paints every /omfg state at the rail, with no rule [1.16ms]
+(pass) a transcript block sits on the rail > opens each block with the command that made it [0.15ms]
+(pass) a transcript block sits on the rail > keeps the hint row last, so the block ends on what to press [0.37ms]
+(pass) a transcript block sits on the rail > presents a command's answer at the rail, with no rule [0.14ms]
+(pass) a transcript block sits on the rail > drops the header gap for a block that has no header [0.12ms]
+(pass) a transcript block sits on the rail > pins the error banner to the rail, with no rule [0.35ms]
+(pass) a transcript block sits on the rail > puts the composer loader's hint on the rail, with no rule [0.68ms]
+
+packages/coding-agent/test/modes/components/hook-editor-title-width.test.ts:
+(pass) the chrome around a hook editor title row > consumes exactly two columns, one per side [0.20ms]
+(pass) the chrome around a hook editor title row > pads the row on both sides [0.03ms]
+(pass) bounding a prompt title to the width it will be rendered at > keeps a question that exactly fills the row on one line [0.15ms]
+(pass) bounding a prompt title to the width it will be rendered at > wraps a question one column wider than the row [0.05ms]
+(pass) bounding a prompt title to the width it will be rendered at > tracks the terminal width, prefix included [0.12ms]
+(pass) bounding a prompt title to the width it will be rendered at > never produces a row wider than the rendered row [0.38ms]
+(pass) bounding a prompt title to the width it will be rendered at > falls back to 80 columns when the terminal reports no width [0.04ms]
+
+ 15 pass
+ 0 fail
+ 140 expect() calls
+Ran 15 tests across 2 files. [308.00ms]

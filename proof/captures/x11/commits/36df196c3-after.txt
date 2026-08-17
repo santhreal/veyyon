@@ -1,0 +1,23 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/modes/components/plugin-settings-view-transitions.test.ts:
+(pass) navigating the plugin settings panel > reports the view it is showing at every step of list -> npm detail -> marketplace detail -> back [14.19ms]
+(pass) navigating the plugin settings panel > returns to the same npm detail view after going back to the list [5.09ms]
+(pass) navigating the plugin settings panel > escapes to the list from a detail view and only closes the panel from the list [2.58ms]
+(pass) navigating the plugin settings panel > opens the marketplace detail view directly, without visiting the npm one first [1.44ms]
+(pass) navigating the plugin settings panel > treats two simultaneously rendered views as a failure rather than picking one [0.15ms]
+
+packages/coding-agent/test/modes/components/the-plugins-tab-answers-the-pointer.test.ts:
+(pass) the plugins tab answers the pointer > names the plugin list's keys in the card footer instead of the generic settings keys [7.21ms]
+(pass) the plugins tab answers the pointer > bands the plugin row under the pointer without moving the selection [2.98ms]
+(pass) the plugins tab answers the pointer > opens a plugin's detail view on a click, and the footer follows the view [2.62ms]
+(pass) the plugins tab answers the pointer > steps the plugin list selection on a wheel notch [5.56ms]
+(pass) the plugins tab answers the pointer > toggles a plugin from a click on its value column [3.22ms]
+(pass) the plugins tab answers the pointer > returns to the plugin list from the back chip, exactly as Esc does [4.03ms]
+(pass) the plugins tab answers the pointer > hands the card the sub-pane keys while a config row's picker is open, and answers a click in it [4.79ms]
+(pass) the plugins tab answers the pointer > bands the settings row under the pointer inside a plugin's detail view [5.59ms]
+
+ 13 pass
+ 0 fail
+ 85 expect() calls
+Ran 13 tests across 2 files. [485.00ms]

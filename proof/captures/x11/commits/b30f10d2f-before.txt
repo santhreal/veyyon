@@ -1,0 +1,40 @@
+262 | 		expect(hide).toHaveBeenCalledTimes(1);
+263 | 		expect(dispose).toHaveBeenCalledTimes(1);
+                        ^
+error: expect(received).toHaveBeenCalledTimes(expected)
+
+Expected number of calls: 1
+Received number of calls: 0
+
+      at <anonymous> (/repo/packages/coding-agent/test/modes/controllers/a-dismissed-picker-lets-go-of-the-clock.test.ts:263:19)
+(fail) a dismissed picker lets go of the clock > hands back whatever card the shared show site mounted [0.53ms]
+279 | 			done();
+280 | 			const component = { render: () => [], handleInput: () => false, dispose };
+281 | 			return { component, focus: component };
+282 | 		});
+283 | 		expect(hide).toHaveBeenCalledTimes(1);
+284 | 		expect(dispose).toHaveBeenCalledTimes(1);
+                        ^
+error: expect(received).toHaveBeenCalledTimes(expected)
+
+Expected number of calls: 1
+Received number of calls: 0
+
+      at <anonymous> (/repo/packages/coding-agent/test/modes/controllers/a-dismissed-picker-lets-go-of-the-clock.test.ts:284:19)
+(fail) a dismissed picker lets go of the clock > hands back a card that closed itself before the overlay existed [0.49ms]
+
+9 tests failed:
+(fail) a pointer band fades on a hand-painted list > the copy picker > arrives over frames and lands on the band it always painted [1.11ms]
+(fail) a pointer band fades on a hand-painted list > the copy picker > keeps the row the pointer left banding while the new row arrives [0.37ms]
+(fail) a pointer band fades on a hand-painted list > the copy picker > never bands the selected row [0.33ms]
+(fail) a pointer band fades on a hand-painted list > the copy picker > paints the switched band when no host lends a repaint [0.39ms]
+(fail) a pointer band fades on a hand-painted list > the copy picker > settles, stops asking for frames, and drops the band when disposed [0.28ms]
+(fail) a dismissed picker lets go of the clock > cancels a travelling pointer band when the session tree card is dismissed [8.83ms]
+(fail) a dismissed picker lets go of the clock > cancels a travelling pointer band when the copy picker is dismissed [14.10ms]
+(fail) a dismissed picker lets go of the clock > hands back whatever card the shared show site mounted [0.53ms]
+(fail) a dismissed picker lets go of the clock > hands back a card that closed itself before the overlay existed [0.49ms]
+
+ 28 pass
+ 9 fail
+ 220 expect() calls
+Ran 37 tests across 2 files. [746.00ms]

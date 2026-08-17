@@ -1,0 +1,31 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/tui/test/component-render.test.ts:
+(pass) TUI native scrollback replay > rehydrates virtualized roots before a destructive full paint [9.73ms]
+(pass) TUI.requestComponentRender > re-renders only the requesting subtree on a quiet frame [3.11ms]
+(pass) TUI.requestComponentRender > downgrades to a full compose when a full request shares the frame [4.03ms]
+(pass) TUI.requestComponentRender > falls back to a full compose while an overlay is up [5.55ms]
+(pass) TUI.requestComponentRender > falls back to a full compose when the root child list changed [3.95ms]
+(pass) TUI.requestComponentRender > falls back to a full compose when the component is not in the tree [1.63ms]
+(pass) TUI.requestComponentRender > replays the seam report of a skipped root child across partial frames [2.11ms]
+(pass) TUI.requestDirectWrite > directly rewrites a visible unchanged-size root segment without a full render [1.41ms]
+(pass) TUI.requestDirectWrite > directly rewrites fully live anchored status segments [3.22ms]
+(pass) TUI.requestDirectWrite > falls back to a full render while a visible overlay is up [2.67ms]
+
+packages/tui/test/scroll-isolation-history.test.ts:
+(pass) scroll isolation over dropped history > scrolls back into rows the transcript already dropped instead of doing nothing [3.97ms]
+(pass) scroll isolation over dropped history > walks back to the oldest row the tape still holds and stops there [4.75ms]
+(pass) scroll isolation over dropped history > renders the composer zone byte-identically whether frozen or following [1.89ms]
+(pass) scroll isolation over dropped history > keeps the frozen region still while the transcript keeps dropping rows underneath [1.22ms]
+(pass) scroll isolation over dropped history > keeps the composer live while the history above it is frozen [4.89ms]
+(pass) scroll isolation over dropped history > draws the scroll position on the right edge of the frozen region only [3.42ms]
+(pass) scroll isolation over dropped history > reports how far back the reader is, in rows [0.78ms]
+(pass) scroll isolation over dropped history > resumes following on submit and on a footer click, from deep in history [3.43ms]
+(pass) scroll isolation over dropped history > does not freeze on a wheel-up in a session with nothing above the window [2.51ms]
+(pass) scroll isolation over dropped history > returns the reader to the live tail when a rebuild erases the history behind them [2.03ms]
+(pass) scroll isolation over dropped history > bounds the tape and keeps at least one screen of it [4.75ms]
+
+ 21 pass
+ 0 fail
+ 75 expect() calls
+Ran 21 tests across 2 files. [215.00ms]

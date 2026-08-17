@@ -1,0 +1,24 @@
+[33m23fac74b5[m demo(proof): declare truecolor to the app inside the recording terminal
+
+
+
+ proof/docker/xsession.sh | 6 [32m++++++[m
+ 1 file changed, 6 insertions(+)
+
+[1mdiff --git a/proof/docker/xsession.sh b/proof/docker/xsession.sh[m
+[1mindex 103cd0460..65e2bfcac 100755[m
+[1m--- a/proof/docker/xsession.sh[m
+[1m+++ b/proof/docker/xsession.sh[m
+[36m@@ -33,6 +33,12 @@[m [mxdpyinfo -display "${DISPLAY}" >/dev/null[m
+ cat >/tmp/bootstrap.sh <<'BOOT'[m
+ #!/usr/bin/env bash[m
+ exec 2>/tmp/boot.err[m
+[32m+[m[32m# xterm does not hand COLORTERM to its child, so the app under test resolved[m
+[32m+[m[32m# terminal id "base" and turned every truecolor-gated surface off -- including[m
+[32m+[m[32m# the overlay unfold, which is one of the things these recordings exist to show.[m
+[32m+[m[32m# The terminal is started with directColor, so declaring it here is a statement[m
+[32m+[m[32m# of what the emulator does, not a widening of it.[m
+[32m+[m[32mexport COLORTERM=truecolor[m
+ printf 'stty=%s\n' "$(stty size </dev/tty)" >/tmp/geom[m
+ cd "${SCENE_CWD:-/sandbox/home/demo}"[m
+ exec ${SCENE_COMMAND:?}[m

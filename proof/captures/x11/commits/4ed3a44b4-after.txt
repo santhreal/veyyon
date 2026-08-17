@@ -1,0 +1,29 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/keybindings-selector-navigation.test.ts:
+(pass) selector navigation keybindings > uses tui.select.down in the session selector [7.53ms]
+(pass) selector navigation keybindings > uses tui.select.down in the session tree [1.41ms]
+(pass) selector navigation keybindings > uses tui.select.up in the user message selector [0.44ms]
+(pass) selector navigation keybindings > uses tui.select.down in the extension list [0.55ms]
+(pass) selector navigation keybindings > uses tui.select.down in history search [5.10ms]
+(pass) selector navigation keybindings > supports page and home/end navigation in history search [1.76ms]
+
+packages/coding-agent/test/modes/components/the-session-tree-card-answers-the-pointer.test.ts:
+(pass) the session tree card answers the pointer > bands the row under the pointer without moving the cursor [4.98ms]
+(pass) the session tree card answers the pointer > jumps to the entry under a click, exactly as Enter does [0.60ms]
+(pass) the session tree card answers the pointer > steps the selection on a wheel notch [0.46ms]
+(pass) the session tree card answers the pointer > closes on the close glyph, the close chip, and a click outside the card [1.12ms]
+(pass) the session tree card answers the pointer > leaves the card up when the label editor is closed, and ignores clicks on the rows behind it [1.38ms]
+
+packages/coding-agent/test/modes/components/tree-selector-chain-gutter-2298.test.ts:
+(pass) issue #2298: chain rows under last-sibling branches keep their gutter > draws the inherited `│` for chain descendants of a last-sibling branch [1.11ms]
+(pass) issue #2298: chain rows under last-sibling branches keep their gutter > does not extend the gutter through branched descendants of a last-sibling parent [0.57ms]
+
+packages/coding-agent/test/modes/components/tree-selector-developer.test.ts:
+(pass) TreeSelectorComponent developer message rendering > renders developer messages with their content, not just [developer] [0.63ms]
+(pass) TreeSelectorComponent developer message rendering > matches developer messages in search (content is searchable) [0.29ms]
+
+ 15 pass
+ 0 fail
+ 49 expect() calls
+Ran 15 tests across 4 files. [450.00ms]

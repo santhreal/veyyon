@@ -1,0 +1,40 @@
++ [
++   "minimal",
++   "medium",
++   "xhigh",
++ ]
+
+- Expected  - 1
++ Received  + 5
+
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/any-model-effort-is-settable.test.ts:160:73)
+(fail) Settings → Model → Default Effort, any-model row > never offers a level nothing in the catalog declares [1.14ms]
+(pass) Settings → Model → Default Effort, any-model row > still removes the row from its first entry [0.68ms]
+
+packages/coding-agent/test/modes/components/every-settings-submenu-answers-the-pointer.test.ts:
+(pass) settings submenus answer the pointer > compaction threshold: hover lights a mode row, click opens its value picker [3.17ms]
+(pass) settings submenus answer the pointer > provider limits: hover lights a provider row, click opens its editor [1.54ms]
+(pass) settings submenus answer the pointer > model roles: hover lights a role row, click opens its picker [1.76ms]
+(pass) settings submenus answer the pointer > subagent agents: hover lights an agent row once discovery reports, click opens its editor [14.56ms]
+(pass) settings submenus answer the pointer > subagent models by depth: hover lights the add row, click opens the depth chain [3.54ms]
+(pass) settings submenus answer the pointer > default effort: hover lights the add row, click opens the model picker [2.51ms]
+(pass) settings submenus answer the pointer > default effort: a click on an effort row picks that level, which is what the picker's hint promises [2.17ms]
+(pass) settings submenus answer the pointer > rules: hover lights a section row once discovery reports, click opens the section [9.66ms]
+(pass) settings submenus answer the pointer > model chain: hover lights a chain entry, click opens the replacement picker [3.18ms]
+
+9 tests failed:
+(fail) a surface with no model invents nothing > narrows an absent model to nothing, not to the vocabulary [0.17ms]
+(fail) a surface with no model invents nothing > narrows an empty or absent catalog to nothing [0.06ms]
+(fail) a surface with no model invents nothing > offers exactly the union of what the models in scope declare [0.09ms]
+(fail) a surface with no model invents nothing > offers a K3-only session no minimal and a real max [0.90ms]
+(fail) a surface with no model invents nothing > names no undeclared level in a row description either [0.51ms]
+(fail) the vocabulary owner grows no unswept effort producer > declares every level-producing export, and each is swept above or recorded here [0.33ms]
+(fail) Settings → Model → Default Effort, any-model row > writes the level the operator picks [1.47ms]
+(fail) Settings → Model → Default Effort, any-model row > reaches a level one model in the catalog declares and the other cannot take [0.71ms]
+(fail) Settings → Model → Default Effort, any-model row > never offers a level nothing in the catalog declares [1.14ms]
+
+ 64 pass
+ 9 fail
+ 1 error
+ 827 expect() calls
+Ran 73 tests across 4 files. [720.00ms]

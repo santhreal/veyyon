@@ -1,0 +1,40 @@
+Received: "──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\nAdd MCP Server\n\n                                                                                                              \n Step 3: Command                                                                                              \n                                                                                                              \n\nEnter the command to run:                                                                                     \n\n>                                                                                                             \n\n[Enter to continue, Esc to go back]                                                                           \n\n──────────────────────────────────────────────────────────────────────────────────────────────────────────────"
+
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/the-mcp-add-wizard-card-answers-the-pointer.test.ts:186:41)
+(fail) the mcp add wizard card answers the pointer > steps the selection on a wheel notch [0.84ms]
+120 |  * the two words next to each other.
+121 |  */
+122 | function chip(harness: Harness, label: string): { row: number; col: number } {
+123 | 	const lines = harness.stripped();
+124 | 	const row = lines.findIndex(line => line.includes(label));
+125 | 	expect(row, `footer row carrying ${JSON.stringify(label)}`).toBeGreaterThanOrEqual(0);
+                                                                   ^
+error: footer row carrying "esc back"
+
+Expected: >= 0
+Received: -1
+
+      at chip (/repo/packages/coding-agent/test/modes/components/the-mcp-add-wizard-card-answers-the-pointer.test.ts:125:62)
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/the-mcp-add-wizard-card-answers-the-pointer.test.ts:191:20)
+(fail) the mcp add wizard card answers the pointer > steps back on the esc chip and cancels on the chrome [0.39ms]
+108 | 
+109 | /** 1-based row/col of the close glyph, from the frame the card last painted. */
+110 | function closeGlyph(harness: Harness): { row: number; col: number } {
+111 | 	const lines = harness.stripped();
+112 | 	const row = lines.findIndex(line => line.includes("[x]"));
+113 | 	expect(row, "close glyph row").toBeGreaterThanOrEqual(0);
+                                      ^
+error: close glyph row
+
+Expected: >= 0
+Received: -1
+
+      at closeGlyph (/repo/packages/coding-agent/test/modes/components/the-mcp-add-wizard-card-answers-the-pointer.test.ts:113:33)
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/the-mcp-add-wizard-card-answers-the-pointer.test.ts:219:17)
+(fail) the mcp add wizard card answers the pointer > cancels the whole wizard on the close glyph, not just the step [0.31ms]
+(pass) the mcp add wizard card answers the pointer > keeps what you typed when the pointer moves over an input step [1.33ms]
+
+ 1 pass
+ 7 fail
+ 16 expect() calls
+Ran 8 tests across 1 file. [307.00ms]

@@ -1,0 +1,40 @@
+error: expect(received).toEqual(expected)
+
+  {
+    "arm": "height=40 header=0 hud=80 turns=20",
+-   "erases": 0,
++   "erases": 13,
+    "lost": [],
+  }
+
+- Expected  - 1
++ Received  + 1
+
+      at <anonymous> (/repo/packages/tui/test/chrome-taller-than-the-viewport-never-reaches-native-scrollback.test.ts:219:75)
+(fail) chrome taller than the viewport never reaches native scrollback > height=40 header=0 hud=80 turns=20 [1328.23ms]
+214 | 				arm: label(shape),
+215 | 				overCeiling: false,
+216 | 			});
+217 | 
+218 | 			// The repair that leak triggers, and the history it destroys.
+219 | 			expect({ arm: label(shape), erases: run.erases, lost: run.lostTurns }).toEqual({
+                                                                                ^
+error: expect(received).toEqual(expected)
+
+  {
+    "arm": "height=40 header=2 hud=80 turns=20",
+-   "erases": 0,
++   "erases": 13,
+    "lost": [],
+  }
+
+- Expected  - 1
++ Received  + 1
+
+      at <anonymous> (/repo/packages/tui/test/chrome-taller-than-the-viewport-never-reaches-native-scrollback.test.ts:219:75)
+(fail) chrome taller than the viewport never reaches native scrollback > height=40 header=2 hud=80 turns=20 [1328.55ms]
+
+ 18 pass
+ 12 fail
+ 60 expect() calls
+Ran 30 tests across 1 file. [39.97s]

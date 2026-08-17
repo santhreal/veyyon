@@ -1,0 +1,9 @@
+[33m8981629d1[m Merge branch 'main' into feat/ui-polish
+
+
+
+ CHANGELOG.md                                                   | 1 [32m+[m
+ packages/coding-agent/CHANGELOG.md                             | 4 [32m++++[m
+ packages/coding-agent/test/subagent-settings-migration.test.ts | 1 [32m+[m
+ 3 files changed, 6 insertions(+)
+

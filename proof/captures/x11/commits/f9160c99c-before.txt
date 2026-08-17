@@ -1,0 +1,24 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/modes/components/a-transcript-block-sits-on-the-rail.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+error: Cannot find module '@veyyon/coding-agent/modes/components/composer-loader' from '/repo/packages/coding-agent/test/modes/components/a-transcript-block-sits-on-the-rail.test.ts'
+-------------------------------
+
+
+packages/coding-agent/test/modes/components/hook-editor-title-width.test.ts:
+(pass) the chrome around a hook editor title row > consumes exactly two columns, one per side [5.02ms]
+(pass) the chrome around a hook editor title row > pads the row on both sides [0.07ms]
+(pass) bounding a prompt title to the width it will be rendered at > keeps a question that exactly fills the row on one line [0.23ms]
+(pass) bounding a prompt title to the width it will be rendered at > wraps a question one column wider than the row [0.04ms]
+(pass) bounding a prompt title to the width it will be rendered at > tracks the terminal width, prefix included [0.25ms]
+(pass) bounding a prompt title to the width it will be rendered at > never produces a row wider than the rendered row [0.36ms]
+(pass) bounding a prompt title to the width it will be rendered at > falls back to 80 columns when the terminal reports no width [0.03ms]
+
+ 7 pass
+ 1 fail
+ 1 error
+ 34 expect() calls
+Ran 8 tests across 2 files. [253.00ms]

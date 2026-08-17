@@ -1,0 +1,273 @@
+[33m3508daa38[m proof(ui-polish): context gauge, both arms
+
+
+
+ proof/build-proof.py                               |  49 [32m+++++++++++++++++[m
+ proof/captures/x11/before/context-gauge.gif        | Bin [31m0[m -> [32m462850[m bytes
+ proof/captures/x11/before/context-gauge.mp4        | Bin [31m0[m -> [32m416870[m bytes
+ proof/captures/x11/context-gauge.gif               | Bin [31m0[m -> [32m506709[m bytes
+ proof/captures/x11/context-gauge.mp4               | Bin [31m0[m -> [32m450644[m bytes
+ proof/captures/x11/strips/context-gauge-f00.png    | Bin [31m0[m -> [32m5406[m bytes
+ proof/captures/x11/strips/context-gauge-f01.png    | Bin [31m0[m -> [32m5521[m bytes
+ proof/captures/x11/strips/context-gauge-f02.png    | Bin [31m0[m -> [32m5611[m bytes
+ proof/captures/x11/strips/context-gauge-f03.png    | Bin [31m0[m -> [32m5636[m bytes
+ proof/captures/x11/strips/context-gauge-f04.png    | Bin [31m0[m -> [32m6054[m bytes
+ proof/captures/x11/strips/context-gauge-f05.png    | Bin [31m0[m -> [32m6059[m bytes
+ proof/captures/x11/strips/context-gauge-f06.png    | Bin [31m0[m -> [32m6060[m bytes
+ proof/captures/x11/strips/context-gauge-f07.png    | Bin [31m0[m -> [32m6119[m bytes
+ .../captures/x11/strips/context-gauge-main-f00.png | Bin [31m0[m -> [32m5360[m bytes
+ .../captures/x11/strips/context-gauge-main-f01.png | Bin [31m0[m -> [32m5380[m bytes
+ .../captures/x11/strips/context-gauge-main-f02.png | Bin [31m0[m -> [32m5380[m bytes
+ .../captures/x11/strips/context-gauge-main-f03.png | Bin [31m0[m -> [32m5653[m bytes
+ .../captures/x11/strips/context-gauge-main-f04.png | Bin [31m0[m -> [32m5658[m bytes
+ .../captures/x11/strips/context-gauge-main-f05.png | Bin [31m0[m -> [32m5658[m bytes
+ .../captures/x11/strips/context-gauge-main-f06.png | Bin [31m0[m -> [32m5658[m bytes
+ .../captures/x11/strips/context-gauge-main-f07.png | Bin [31m0[m -> [32m5658[m bytes
+ proof/scenes/context-gauge.sh                      |  60 [32m+++++++++++++++++++++[m
+ proof/ui-polish-proof.html                         |  13 [32m++++[m[31m-[m
+ 23 files changed, 121 insertions(+), 1 deletion(-)
+
+[1mdiff --git a/proof/build-proof.py b/proof/build-proof.py[m
+[1mindex 4ca67c70f..935e1189a 100755[m
+[1m--- a/proof/build-proof.py[m
+[1m+++ b/proof/build-proof.py[m
+[36m@@ -477,6 +477,55 @@[m [mSECTIONS = [[m
+             ),[m
+         ],[m
+     ),[m
+[32m+[m[32m    Section([m
+[32m+[m[32m        "The context gauge walks to its new reading, and now has one to walk to",[m
+[32m+[m[32m        [[m
+[32m+[m[32m            "<p>The footline gauge is eight cells and a percentage, both reporting room LEFT. It used to be written"[m
+[32m+[m[32m            " straight into the next frame: a turn that spent nine points of the window put the new number on screen"[m
+[32m+[m[32m            " with no travel, which says <em>it is 52 now</em> where the same number walking says <em>you just spent"[m
+[32m+[m[32m            " nine</em>. That is the whole reason a spend meter is on screen. It now settles on the shared clock, one"[m
+[32m+[m[32m            " value read three ways — the percentage, the eight-cell bar, and the heat the bar is coloured with — so"[m
+[32m+[m[32m            " the three can never disagree about where the value is.</p>",[m
+[32m+[m[32m            "<p>Recording it found the defect underneath. The scene mentions a 20KB file, which the session reads and"[m
+[32m+[m[32m            " sends; the gauge did not move at all, and the reason was not the animation. Nothing counted the"[m
+[32m+[m[32m            " message: a <code>@file</code> mention reaches the provider as a developer message wrapping every body"[m
+[32m+[m[32m            " it read, and a <code>$</code> cell as a user message wrapping its code and its output, and both roles"[m
+[32m+[m[32m            " fell through the token estimator's default arm at zero. The first attempt at this scene used a 50KB"[m
+[32m+[m[32m            " mention and the endpoint answered <code>400 request (40459 tokens) exceeds the available context size"[m
+[32m+[m[32m            " (32768 tokens)</code> while the footline still read <code>61% left</code>. So the <em>main</em> arm"[m
+[32m+[m[32m            " below is a measurement of two defects at once, and it is the honest one: main's reading is"[m
+[32m+[m[32m            " <code>61% left</code> in every frame of a 37-second take that sends a 5.8k-token file.</p>",[m
+[32m+[m[32m            video_pair([m
+[32m+[m[32m                XB + "context-gauge.mp4",[m
+[32m+[m[32m                X + "context-gauge.mp4",[m
+[32m+[m[32m                "the file is read and sent, and the gauge never moves",[m
+[32m+[m[32m                "the reading walks from 61% to 50% and the bar drops a cell",[m
+[32m+[m[32m                start=17,[m
+[32m+[m[32m            ),[m
+[32m+[m[32m            strip([m
+[32m+[m[32m                S + "context-gauge-main",[m
+[32m+[m[32m                8,[m
+[32m+[m[32m                "<strong>main.</strong> Eight frames at 60fps, one in four across the half second where the branch"[m
+[32m+[m[32m                " travels. The reading is <code>61% left</code> in all eight, and in all 2221 frames of the take:"[m
+[32m+[m[32m                " grouping every frame of the gauge region by its own pixels leaves 23 distinct states, 22 of them"[m
+[32m+[m[32m                " reading 61 and the twenty-third a stretch of 25 frames right after the submit where the footline is"[m
+[32m+[m[32m                " not on that row at all.",[m
+[32m+[m[32m            ),[m
+[32m+[m[32m            strip([m
+[32m+[m[32m                S + "context-gauge",[m
+[32m+[m[32m                8,[m
+[32m+[m[32m                "<strong>branch.</strong> The same eight offsets of the same scene: 61, 60, 57, 56, 53, 51, 51, 50,"[m
+[32m+[m[32m                " and the bar giving up a cell in the middle of it. The travel runs 19.65s to 20.13s of the take —"[m
+[32m+[m[32m                " the spring's own settling time, not a duration the gauge picked.",[m
+[32m+[m[32m            ),[m
+[32m+[m[32m            "<p>What the interrupt does is a measurement too, not a claim. Escape at 25.72s retires the in-flight"[m
+[32m+[m[32m            " estimate and the reading stays at <code>50% left</code>: the file body is in the conversation now and"[m
+[32m+[m[32m            " keeps costing what it costs. The only thing that changes is the bar's tip, which stops pulsing because"[m
+[32m+[m[32m            " the turn is no longer live. Neither arm can cross a heat threshold on this endpoint — the hue steps at"[m
+[32m+[m[32m            " 50% USED, and 50% of the model card's declared 65536 is 32768, which is exactly the prompt"[m
+[32m+[m[32m            " <code>llama.cpp</code> refuses to serve for a model trained at 32768.</p>",[m
+[32m+[m[32m        ],[m
+[32m+[m[32m    ),[m
+     Section([m
+         "A real turn, on a model in the same container",[m
+         [[m
+[1mdiff --git a/proof/captures/x11/before/context-gauge.gif b/proof/captures/x11/before/context-gauge.gif[m
+[1mnew file mode 100644[m
+[1mindex 000000000..9f9a6f6c5[m
+Binary files /dev/null and b/proof/captures/x11/before/context-gauge.gif differ
+[1mdiff --git a/proof/captures/x11/before/context-gauge.mp4 b/proof/captures/x11/before/context-gauge.mp4[m
+[1mnew file mode 100644[m
+[1mindex 000000000..2be049f6d[m
+Binary files /dev/null and b/proof/captures/x11/before/context-gauge.mp4 differ
+[1mdiff --git a/proof/captures/x11/context-gauge.gif b/proof/captures/x11/context-gauge.gif[m
+[1mnew file mode 100644[m
+[1mindex 000000000..f9d327e20[m
+Binary files /dev/null and b/proof/captures/x11/context-gauge.gif differ
+[1mdiff --git a/proof/captures/x11/context-gauge.mp4 b/proof/captures/x11/context-gauge.mp4[m
+[1mnew file mode 100644[m
+[1mindex 000000000..ec4672fcd[m
+Binary files /dev/null and b/proof/captures/x11/context-gauge.mp4 differ
+[1mdiff --git a/proof/captures/x11/strips/context-gauge-f00.png b/proof/captures/x11/strips/context-gauge-f00.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..6f3f1291c[m
+Binary files /dev/null and b/proof/captures/x11/strips/context-gauge-f00.png differ
+[1mdiff --git a/proof/captures/x11/strips/context-gauge-f01.png b/proof/captures/x11/strips/context-gauge-f01.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..e6fbf09b5[m
+Binary files /dev/null and b/proof/captures/x11/strips/context-gauge-f01.png differ
+[1mdiff --git a/proof/captures/x11/strips/context-gauge-f02.png b/proof/captures/x11/strips/context-gauge-f02.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..04d8d3177[m
+Binary files /dev/null and b/proof/captures/x11/strips/context-gauge-f02.png differ
+[1mdiff --git a/proof/captures/x11/strips/context-gauge-f03.png b/proof/captures/x11/strips/context-gauge-f03.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..6dd02157b[m
+Binary files /dev/null and b/proof/captures/x11/strips/context-gauge-f03.png differ
+[1mdiff --git a/proof/captures/x11/strips/context-gauge-f04.png b/proof/captures/x11/strips/context-gauge-f04.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..cc94e83b5[m
+Binary files /dev/null and b/proof/captures/x11/strips/context-gauge-f04.png differ
+[1mdiff --git a/proof/captures/x11/strips/context-gauge-f05.png b/proof/captures/x11/strips/context-gauge-f05.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..93101ec44[m
+Binary files /dev/null and b/proof/captures/x11/strips/context-gauge-f05.png differ
+[1mdiff --git a/proof/captures/x11/strips/context-gauge-f06.png b/proof/captures/x11/strips/context-gauge-f06.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..bab0ba736[m
+Binary files /dev/null and b/proof/captures/x11/strips/context-gauge-f06.png differ
+[1mdiff --git a/proof/captures/x11/strips/context-gauge-f07.png b/proof/captures/x11/strips/context-gauge-f07.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..758280cb9[m
+Binary files /dev/null and b/proof/captures/x11/strips/context-gauge-f07.png differ
+[1mdiff --git a/proof/captures/x11/strips/context-gauge-main-f00.png b/proof/captures/x11/strips/context-gauge-main-f00.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..bc0e668e2[m
+Binary files /dev/null and b/proof/captures/x11/strips/context-gauge-main-f00.png differ
+[1mdiff --git a/proof/captures/x11/strips/context-gauge-main-f01.png b/proof/captures/x11/strips/context-gauge-main-f01.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..9105328ca[m
+Binary files /dev/null and b/proof/captures/x11/strips/context-gauge-main-f01.png differ
+[1mdiff --git a/proof/captures/x11/strips/context-gauge-main-f02.png b/proof/captures/x11/strips/context-gauge-main-f02.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..9105328ca[m
+Binary files /dev/null and b/proof/captures/x11/strips/context-gauge-main-f02.png differ
+[1mdiff --git a/proof/captures/x11/strips/context-gauge-main-f03.png b/proof/captures/x11/strips/context-gauge-main-f03.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..4b28fa89d[m
+Binary files /dev/null and b/proof/captures/x11/strips/context-gauge-main-f03.png differ
+[1mdiff --git a/proof/captures/x11/strips/context-gauge-main-f04.png b/proof/captures/x11/strips/context-gauge-main-f04.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..cfb2beaf8[m
+Binary files /dev/null and b/proof/captures/x11/strips/context-gauge-main-f04.png differ
+[1mdiff --git a/proof/captures/x11/strips/context-gauge-main-f05.png b/proof/captures/x11/strips/context-gauge-main-f05.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..cfb2beaf8[m
+Binary files /dev/null and b/proof/captures/x11/strips/context-gauge-main-f05.png differ
+[1mdiff --git a/proof/captures/x11/strips/context-gauge-main-f06.png b/proof/captures/x11/strips/context-gauge-main-f06.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..cfb2beaf8[m
+Binary files /dev/null and b/proof/captures/x11/strips/context-gauge-main-f06.png differ
+[1mdiff --git a/proof/captures/x11/strips/context-gauge-main-f07.png b/proof/captures/x11/strips/context-gauge-main-f07.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..cfb2beaf8[m
+Binary files /dev/null and b/proof/captures/x11/strips/context-gauge-main-f07.png differ
+[1mdiff --git a/proof/scenes/context-gauge.sh b/proof/scenes/context-gauge.sh[m
+[1mnew file mode 100755[m
+[1mindex 000000000..e8b6b2417[m
+[1m--- /dev/null[m
+[1m+++ b/proof/scenes/context-gauge.sh[m
+[36m@@ -0,0 +1,60 @@[m
+[32m+[m[32m#!/usr/bin/env bash[m
+[32m+[m[32m# The context gauge in the composer footline, moving.[m
+[32m+[m[32m#[m
+[32m+[m[32m# The gauge is the eight-cell bar and the `NN% left` beside it. What moves it is[m
+[32m+[m[32m# a turn: the session sets its in-flight context estimate the moment a prompt is[m
+[32m+[m[32m# sent, so the reading changes on the frame Enter lands rather than when the[m
+[32m+[m[32m# model answers. That is the whole reason this scene never waits for a response[m
+[32m+[m[32m# and interrupts the turn -- the reading has already moved, and the model on this[m
+[32m+[m[32m# network is a 1.5B on CPU that spends about a minute prefilling a prompt this[m
+[32m+[m[32m# size.[m
+[32m+[m[32m#[m
+[32m+[m[32m# One turn, carrying a file mention sized to the server rather than to the card:[m
+[32m+[m[32m#[m
+[32m+[m[32m#   notes.md    20KB, about 5.8k tokens on this tokenizer. The session already[m
+[32m+[m[32m#               holds roughly 25k tokens of system prompt, tools and skills, so[m
+[32m+[m[32m#               the request lands near 31k -- under the 32768 the llama.cpp[m
+[32m+[m[32m#               server actually serves, which is this model's training context[m
+[32m+[m[32m#               and the cap llama.cpp applies whatever `-c` says. A 50KB mention[m
+[32m+[m[32m#               was tried first and the server answered 400 in less than a frame,[m
+[32m+[m[32m#               which drops the in-flight estimate again before any paint can[m
+[32m+[m[32m#               show it: the gauge held its old reading and the recording proved[m
+[32m+[m[32m#               nothing.[m
+[32m+[m[32m#[m
+[32m+[m[32m# The reading travels from 61% left to about 52%, which is nine points of the[m
+[32m+[m[32m# number and a cell of the bar. It cannot cross a heat threshold on this server:[m
+[32m+[m[32m# the hue steps at 50% USED, and 50% of the card's declared 65536 is 32768 --[m
+[32m+[m[32m# exactly the prompt the server refuses.[m
+[32m+[m[32m#[m
+[32m+[m[32m# notes.md is written here rather than by the recorder's bootstrap, because the[m
+[32m+[m[32m# bootstrap's tree is what the popup-grow scene photographs and a new file in it[m
+[32m+[m[32m# would change that page's figures.[m
+[32m+[m[32m#[m
+[32m+[m[32m# No stills -- `import` costs about fifteen seconds a frame on this display and[m
+[32m+[m[32m# would stall the middle of the motion. The page's frames are cut out of the[m
+[32m+[m[32m# recording afterwards.[m
+[32m+[m
+[32m+[m[32mhead -c 20000 /repo/packages/coding-agent/src/modes/components/status-line/component.ts >/sandbox/home/demo/notes.md[m
+[32m+[m
+[32m+[m[32msettle 18[m
+[32m+[m
+[32m+[m[32m# --- the reading travels ---------------------------------------------------[m
+[32m+[m[32m# The trailing words matter: they close the mention token, so the file popup is[m
+[32m+[m[32m# gone before Enter, which would otherwise accept a suggestion instead of[m
+[32m+[m[32m# submitting.[m
+[32m+[m[32mt "summarize @notes.md in one word"[m
+[32m+[m[32mpause 1.2[m
+[32m+[m[32mk Return[m
+[32m+[m[32m# The reading moves here, and the prefill holds it: nothing about this wait is[m
+[32m+[m[32m# waiting for the model to say anything.[m
+[32m+[m[32msleep 6[m
+[32m+[m
+[32m+[m[32m# Interrupt. Whatever the reading does next is a measurement, not a claim: the[m
+[32m+[m[32m# in-flight estimate is dropped, and what is left is whatever the aborted turn[m
+[32m+[m[32m# left in the history.[m
+[32m+[m[32mk Escape[m
+[32m+[m[32msleep 6[m
+[32m+[m
+[32m+[m[32m# The gauge at rest, so the last frames of the take are a settled reading rather[m
+[32m+[m[32m# than a travel cut off by the end of the recording.[m
+[32m+[m[32msettle 4[m
+[1mdiff --git a/proof/ui-polish-proof.html b/proof/ui-polish-proof.html[m
+[1mindex da59eb355..11383180c 100644[m
+[1m--- a/proof/ui-polish-proof.html[m
+[1m+++ b/proof/ui-polish-proof.html[m
+[36m@@ -32,7 +32,7 @@[m [mtd.sha { font-family: ui-monospace, monospace; color: #e6c08a; white-space: nowr[m
+ </style></head>[m
+ <body>[m
+ <h1>feat/ui-polish — recorded proof</h1>[m
+[31m-<p class="lede">Branch <code>feat/ui-polish</code> at <code>05bd9d643</code>, 58 commits ahead of[m
+[32m+[m[32m<p class="lede">Branch <code>feat/ui-polish</code> at <code>e7aaaea3c</code>, 62 commits ahead of[m
+ <code>main</code> (<code>4b9a811b0</code>). Every figure below is a frame of a real terminal running the shipped[m
+ CLI. No component was drawn into a picture for this page, and nothing here is a tmux capture.</p>[m
+ [m
+[36m@@ -109,6 +109,13 @@[m [malways lands after it, so the frames have to be cut from the video afterwards.</[m
+ <div class="pair"><figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/before/popup-grow.mp4#t=19" type="video/mp4"></video><figcaption><strong>main</strong> — the list is at full height in the first frame that has it</figcaption></figure><figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/popup-grow.mp4#t=19" type="video/mp4"></video><figcaption><strong>branch</strong> — the frame grows, and the rows arrive inside it</figcaption></figure></div>[m
+ <figure><div class="strip" style="grid-template-columns: repeat(6, 1fr)"><img src="captures/x11/strips/popup-grow-f00.png" alt="frame 0"><img src="captures/x11/strips/popup-grow-f01.png" alt="frame 1"><img src="captures/x11/strips/popup-grow-f02.png" alt="frame 2"><img src="captures/x11/strips/popup-grow-f03.png" alt="frame 3"><img src="captures/x11/strips/popup-grow-f04.png" alt="frame 4"><img src="captures/x11/strips/popup-grow-f05.png" alt="frame 5"><img src="captures/x11/strips/popup-grow-f06.png" alt="frame 6"><img src="captures/x11/strips/popup-grow-f07.png" alt="frame 7"><img src="captures/x11/strips/popup-grow-f08.png" alt="frame 8"><img src="captures/x11/strips/popup-grow-f09.png" alt="frame 9"><img src="captures/x11/strips/popup-grow-f10.png" alt="frame 10"><img src="captures/x11/strips/popup-grow-f11.png" alt="frame 11"></div><figcaption>Twelve frames from the slash. The border reaches its height over the curve; the dismissal that follows it in the recording takes one frame.</figcaption></figure>[m
+ <div class="pair"><figure><img src="captures/x11/popup-grow-slash-popup.png" alt=""><figcaption>The command list, settled.</figcaption></figure><figure><img src="captures/x11/popup-grow-at-filtered.png" alt=""><figcaption>The file list narrowed to <code>src/</code>, off the working tree the container seeded.</figcaption></figure></div>[m
+[32m+[m[32m<h2>The context gauge walks to its new reading, and now has one to walk to</h2>[m
+[32m+[m[32m<p>The footline gauge is eight cells and a percentage, both reporting room LEFT. It used to be written straight into the next frame: a turn that spent nine points of the window put the new number on screen with no travel, which says <em>it is 52 now</em> where the same number walking says <em>you just spent nine</em>. That is the whole reason a spend meter is on screen. It now settles on the shared clock, one value read three ways — the percentage, the eight-cell bar, and the heat the bar is coloured with — so the three can never disagree about where the value is.</p>[m
+[32m+[m[32m<p>Recording it found the defect underneath. The scene mentions a 20KB file, which the session reads and sends; the gauge did not move at all, and the reason was not the animation. Nothing counted the message: a <code>@file</code> mention reaches the provider as a developer message wrapping every body it read, and a <code>$</code> cell as a user message wrapping its code and its output, and both roles fell through the token estimator's default arm at zero. The first attempt at this scene used a 50KB mention and the endpoint answered <code>400 request (40459 tokens) exceeds the available context size (32768 tokens)</code> while the footline still read <code>61% left</code>. So the <em>main</em> arm below is a measurement of two defects at once, and it is the honest one: main's reading is <code>61% left</code> in every frame of a 37-second take that sends a 5.8k-token file.</p>[m
+[32m+[m[32m<div class="pair"><figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/before/context-gauge.mp4#t=17" type="video/mp4"></video><figcaption><strong>main</strong> — the file is read and sent, and the gauge never moves</figcaption></figure><figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/context-gauge.mp4#t=17" type="video/mp4"></video><figcaption><strong>branch</strong> — the reading walks from 61% to 50% and the bar drops a cell</figcaption></figure></div>[m
+[32m+[m[32m<figure><div class="strip" style="grid-template-columns: repeat(4, 1fr)"><img src="captures/x11/strips/context-gauge-main-f00.png" alt="frame 0"><img src="captures/x11/strips/context-gauge-main-f01.png" alt="frame 1"><img src="captures/x11/strips/context-gauge-main-f02.png" alt="frame 2"><img src="captures/x11/strips/context-gauge-main-f03.png" alt="frame 3"><img src="captures/x11/strips/context-gauge-main-f04.png" alt="frame 4"><img src="captures/x11/strips/context-gauge-main-f05.png" alt="frame 5"><img src="captures/x11/strips/context-gauge-main-f06.png" alt="frame 6"><img src="captures/x11/strips/context-gauge-main-f07.png" alt="frame 7"></div><figcaption><strong>main.</strong> Eight frames at 60fps, one in four across the half second where the branch travels. The reading is <code>61% left</code> in all eight, and in all 2221 frames of the take: grouping every frame of the gauge region by its own pixels leaves 23 distinct states, 22 of them reading 61 and the twenty-third a stretch of 25 frames right after the submit where the footline is not on that row at all.</figcaption></figure>[m
+[32m+[m[32m<figure><div class="strip" style="grid-template-columns: repeat(4, 1fr)"><img src="captures/x11/strips/context-gauge-f00.png" alt="frame 0"><img src="captures/x11/strips/context-gauge-f01.png" alt="frame 1"><img src="captures/x11/strips/context-gauge-f02.png" alt="frame 2"><img src="captures/x11/strips/context-gauge-f03.png" alt="frame 3"><img src="captures/x11/strips/context-gauge-f04.png" alt="frame 4"><img src="captures/x11/strips/context-gauge-f05.png" alt="frame 5"><img src="captures/x11/strips/context-gauge-f06.png" alt="frame 6"><img src="captures/x11/strips/context-gauge-f07.png" alt="frame 7"></div><figcaption><strong>branch.</strong> The same eight offsets of the same scene: 61, 60, 57, 56, 53, 51, 51, 50, and the bar giving up a cell in the middle of it. The travel runs 19.65s to 20.13s of the take — the spring's own settling time, not a duration the gauge picked.</figcaption></figure>[m
+[32m+[m[32m<p>What the interrupt does is a measurement too, not a claim. Escape at 25.72s retires the in-flight estimate and the reading stays at <code>50% left</code>: the file body is in the conversation now and keeps costing what it costs. The only thing that changes is the bar's tip, which stops pulsing because the turn is no longer live. Neither arm can cross a heat threshold on this endpoint — the hue steps at 50% USED, and 50% of the model card's declared 65536 is 32768, which is exactly the prompt <code>llama.cpp</code> refuses to serve for a model trained at 32768.</p>[m
+ <h2>A real turn, on a model in the same container</h2>[m
+ <p>The provider is <code>llama.cpp</code> on the recorder's own docker network holding <code>qwen2.5-1.5b-instruct-q4_k_m</code>. No provider account is reachable from inside, so what streams below is that model or nothing.</p>[m
+ <figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/session-local-llm.mp4" type="video/mp4"></video><figcaption>A turn streams, the pointer crosses the composer chips while it is in flight, and a left click on <code>escape interrupt</code> stops the turn.</figcaption></figure>[m
+[36m@@ -131,6 +138,10 @@[m [malways lands after it, so the frames have to be cut from the video afterwards.</[m
+ <h2>Every commit on the branch</h2>[m
+ <table><thead><tr><th>commit</th><th>subject</th></tr></thead>[m
+ <tbody>[m
+[32m+[m[32m<tr><td class="sha">e7aaaea3c</td><td>fix(agent): count file mentions and python cells in token estimates</td></tr>[m
+[32m+[m[32m<tr><td class="sha">10b6c2dfb</td><td>feat(tui): walk the context gauge to its new reading</td></tr>[m
+[32m+[m[32m<tr><td class="sha">3db717670</td><td>proof(ui-polish): record both arms of the card-band scene and page it</td></tr>[m
+[32m+[m[32m<tr><td class="sha">929eabeac</td><td>fix(tui): mix a band out of the ground the terminal is showing</td></tr>[m
+ <tr><td class="sha">05bd9d643</td><td>polish(ui): fade the pointer band on every remaining hand-painted surface</td></tr>[m
+ <tr><td class="sha">b30f10d2f</td><td>feat(tui): the copy picker fades its band and every picker gives the clock back</td></tr>[m
+ <tr><td class="sha">82630ee6b</td><td>feat(tui): the ask dialog cross-fades its option band</td></tr>[m

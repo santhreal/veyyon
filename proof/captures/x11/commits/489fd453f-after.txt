@@ -1,0 +1,16 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/tui/test/a-click-on-a-suggestion-accepts-the-completion.test.ts:
+(pass) a click on a composer suggestion > accepts the row under the pointer, not the highlighted one [260.47ms]
+(pass) a click on a composer suggestion > subtracts the rows of the container children above the editor [250.52ms]
+(pass) a click on a composer suggestion > accepts through the same path as Tab [499.78ms]
+(pass) a click on a composer suggestion > ignores a click on the input row and leaves the popup open [248.80ms]
+(pass) a click on a composer suggestion > ignores a press on a row past the last suggestion [209.79ms]
+(pass) a click on a composer suggestion > accepts on a press and on nothing else [213.46ms]
+(pass) a click on a composer suggestion > cancels without rewriting the buffer when the popup is stale [210.63ms]
+(pass) a click on a composer suggestion > closes the popup when the accepted item opens no second popup [247.44ms]
+
+ 8 pass
+ 0 fail
+ 25 expect() calls
+Ran 8 tests across 1 file. [2.26s]

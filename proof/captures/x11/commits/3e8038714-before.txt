@@ -1,0 +1,40 @@
+Received: "..."
+
+      at <anonymous> (/repo/packages/coding-agent/test/streaming-reveal.test.ts:160:51)
+(fail) streaming reveal > refreshes prose-only setting during unsmoothed streaming updates [0.35ms]
+(pass) streaming reveal > smooths thinking content when thinking is shown [0.06ms]
+(pass) streaming reveal > uses an adaptive catchup step with the configured floor [0.04ms]
+(pass) streaming reveal > reveals cumulative targets to the exact final text with monotonic prefixes [0.29ms]
+(pass) streaming reveal > keeps grapheme counts correct when an append extends the final cluster [0.06ms]
+(pass) streaming reveal > renders full targets immediately when smoothing is disabled [0.07ms]
+(pass) streaming reveal > marks unsmoothed in-flight updates as transient [0.05ms]
+(pass) streaming reveal > keeps smooth catch-up renders transient until the final message_end render [0.09ms]
+(pass) streaming reveal > stop halts pending ticker updates [0.06ms]
+(pass) streaming reveal > snaps to full text when a tool call arrives [0.10ms]
+(pass) streaming reveal > passes the bound component to requestRender on each smooth tick [0.09ms]
+(pass) BlockUnitCounter.slice > matches a pure segmenter reference for fixed-text growing units [0.18ms]
+(pass) BlockUnitCounter.slice > re-segments the boundary cluster when an append extends it (no stale slice) [0.03ms]
+(pass) BlockUnitCounter.slice > keeps separate block indices independent [0.18ms]
+(pass) BlockUnitCounter.slice > matches the reference after a shrink and regrow [0.05ms]
+(pass) BlockUnitCounter.slice > matches the reference when the text is fully replaced [0.03ms]
+(pass) BlockUnitCounter.slice > matches the reference under seeded append + monotonic reveal (fuzz) [7.01ms]
+
+13 tests failed:
+(fail) an elided thinking fence says how much it hid > names the hidden line count for every fence spelling, and keeps the prose around it [1.59ms]
+(fail) an elided thinking fence says how much it hid > names what an unterminated fence is hiding instead of ending on a truncated sentence [0.44ms]
+(fail) an elided thinking fence says how much it hid > advances on every streamed line while the fence is open [0.60ms]
+(fail) an elided thinking fence says how much it hid > counts the content lines exactly, never the fence delimiters [0.36ms]
+(fail) an elided thinking fence says how much it hid > sums consecutive fences onto one marker rather than stacking ellipses [0.24ms]
+(fail) an elided thinking fence says how much it hid > never touches raw mode [0.24ms]
+(fail) an elided thinking fence says how much it hid > keeps a marker-only block displayable and puts the marker on screen [0.22ms]
+(fail) formatThinkingForDisplay > should replace fully enclosed code blocks with an ellipsis [0.06ms]
+(fail) formatThinkingForDisplay > should replace unclosed code blocks with an ellipsis [0.03ms]
+(fail) formatThinkingForDisplay > should handle tilde code blocks [0.02ms]
+(fail) formatThinkingForDisplay > should return exactly ascii ellipsis for pure-code blocks while remaining displayable [0.03ms]
+(fail) streaming reveal > keeps pure-code thinking visible as an ascii ellipsis [0.08ms]
+(fail) streaming reveal > refreshes prose-only setting during unsmoothed streaming updates [0.35ms]
+
+ 23 pass
+ 13 fail
+ 524 expect() calls
+Ran 36 tests across 3 files. [339.00ms]

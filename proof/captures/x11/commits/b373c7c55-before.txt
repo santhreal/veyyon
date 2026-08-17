@@ -1,0 +1,31 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/modes/components/a-clicked-composer-chip-runs-its-action.test.ts:
+30 | 	return { event: { button: 0, col, row, release: false, wheel: null, motion: false, leftClick: true }, line: row, col };
+31 | }
+32 | 
+33 | function click(bar: ComposerShortcutsBar, col: number, row = 0): void {
+34 | 	const at = clickAt(col, row);
+35 | 	bar.routeMouse(at.event, at.line, at.col);
+          ^
+TypeError: bar.routeMouse is not a function. (In 'bar.routeMouse(at.event, at.line, at.col)', 'bar.routeMouse' is undefined)
+      at click (/repo/packages/coding-agent/test/modes/components/a-clicked-composer-chip-runs-its-action.test.ts:35:6)
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/a-clicked-composer-chip-runs-its-action.test.ts:72:3)
+(fail) composer chip clicks > fires each chip's id when its label is clicked [1.23ms]
+30 | 	return { event: { button: 0, col, row, release: false, wheel: null, motion: false, leftClick: true }, line: row, col };
+31 | }
+32 | 
+33 | function click(bar: ComposerShortcutsBar, col: number, row = 0): void {
+34 | 	const at = clickAt(col, row);
+35 | 	bar.routeMouse(at.event, at.line, at.col);
+          ^
+TypeError: bar.routeMouse is not a function. (In 'bar.routeMouse(at.event, at.line, at.col)', 'bar.routeMouse' is undefined)
+      at click (/repo/packages/coding-agent/test/modes/components/a-clicked-composer-chip-runs-its-action.test.ts:35:6)
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/a-clicked-composer-chip-runs-its-action.test.ts:84:3)
+(fail) composer chip clicks > fires nothing outside a chip span [0.22ms]
+(pass) composer chip clicks > renders only chips whose action is live [0.31ms]
+
+ 1 pass
+ 2 fail
+ 8 expect() calls
+Ran 3 tests across 1 file. [263.00ms]

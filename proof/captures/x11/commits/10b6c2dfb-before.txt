@@ -1,0 +1,14 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/a-context-gauge-travels-to-its-new-reading.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+SyntaxError: Export named 'SettleValue' not found in module '/repo/packages/tui/src/index.ts'.
+-------------------------------
+
+
+ 0 pass
+ 1 fail
+ 1 error
+Ran 1 test across 1 file. [258.00ms]

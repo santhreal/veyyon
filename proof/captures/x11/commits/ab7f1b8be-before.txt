@@ -1,0 +1,40 @@
+195 | 		rows();
+196 | 
+197 | 		click(viewer, 0, 0);
+198 | 
+199 | 		expect(onClose).toHaveBeenCalledTimes(1);
+                        ^
+error: expect(received).toHaveBeenCalledTimes(expected)
+
+Expected number of calls: 1
+Received number of calls: 0
+
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/the-transcript-card-answers-the-pointer.test.ts:199:19)
+(fail) the transcript card answers the pointer > closes when the click lands outside the card [4.73ms]
+206 | 
+207 | 		click(viewer, chip.row, chip.col);
+208 | 		rows();
+209 | 		click(viewer, chip.row, chip.col);
+210 | 
+211 | 		expect(setExpanded.mock.calls.map(c => c[0])).toEqual([true, false]);
+                                                      ^
+error: expect(received).toEqual(expected)
+
+- [
+-   true,
+-   false,
+- ]
++ []
+
+- Expected  - 4
++ Received  + 1
+
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/the-transcript-card-answers-the-pointer.test.ts:211:49)
+(fail) the transcript card answers the pointer > toggles expansion when the expand chip is clicked, and back on a second click [5.39ms]
+(pass) the transcript card answers the pointer > still scrolls the body on the wheel, and does not close [5.94ms]
+(pass) the transcript card answers the pointer > leaves the viewer alone for a click on a transcript row [4.88ms]
+
+ 2 pass
+ 4 fail
+ 7 expect() calls
+Ran 6 tests across 1 file. [725.00ms]

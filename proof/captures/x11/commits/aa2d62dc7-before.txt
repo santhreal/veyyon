@@ -1,0 +1,23 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/modes/components/assistant-prose-carries-the-text-color.test.ts:
+66 | 		);
+67 | 		const textFg = theme.getFgAnsi("text");
+68 | 		expect(textFg.length).toBeGreaterThan(0);
+69 | 		const line = component.render(60).find(l => l.includes("one plain sentence."));
+70 | 		expect(line).toBeDefined();
+71 | 		expect(line).toContain(textFg);
+                    ^
+error: expect(received).toContain(expected)
+
+Expected to contain: "\u001B[38;5;231m"
+Received: "  one plain sentence.                                       "
+
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/assistant-prose-carries-the-text-color.test.ts:71:16)
+(fail) assistant answer text styling > paints plain prose with the theme's text color [15.01ms]
+(pass) assistant answer text styling > keeps the thinking block on the thinking color, not the answer color [2.76ms]
+
+ 1 pass
+ 1 fail
+ 5 expect() calls
+Ran 2 tests across 1 file. [398.00ms]

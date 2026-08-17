@@ -1,0 +1,12 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/modes/components/a-transcript-block-sits-on-the-rail.test.ts:
+(pass) a transcript block sits on the rail > paints every /btw state at the rail, with no rule [9.58ms]
+(pass) a transcript block sits on the rail > paints every /omfg state at the rail, with no rule [0.93ms]
+(pass) a transcript block sits on the rail > opens each block with the command that made it [0.08ms]
+(pass) a transcript block sits on the rail > keeps the hint row last, so the block ends on what to press [0.14ms]
+
+ 4 pass
+ 0 fail
+ 93 expect() calls
+Ran 4 tests across 1 file. [289.00ms]

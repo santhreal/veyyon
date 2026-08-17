@@ -1,0 +1,412 @@
+[33m670d0793b[m demo(ui): build the proof page from the real-terminal captures
+
+
+
+ proof/build-proof.py                               | 302 [32m+++++++++++++++++++++[m
+ .../home-seed/profiles/default/agent/models.yml    |   2 [32m+[m[31m-[m
+ proof/docker/record-before.sh                      |  26 [32m+[m[31m-[m
+ proof/tapes/real/login.tape                        |  31 [32m+++[m
+ proof/tapes/real/mcp.tape                          |   3 [32m+[m
+ proof/tapes/real/plugins.tape                      |  31 [32m+++[m
+ 6 files changed, 389 insertions(+), 6 deletions(-)
+
+[1mdiff --git a/proof/build-proof.py b/proof/build-proof.py[m
+[1mnew file mode 100755[m
+[1mindex 000000000..6fc963154[m
+[1m--- /dev/null[m
+[1m+++ b/proof/build-proof.py[m
+[36m@@ -0,0 +1,302 @@[m
+[32m+[m[32m#!/usr/bin/env python3[m
+[32m+[m[32m"""Assemble proof/ui-polish-proof.html from the captures on disk.[m
+[32m+[m
+[32m+[m[32mEvery figure names a file under proof/. A missing file is an error, not a[m
+[32m+[m[32mskipped row, so the page can never ship a broken reference.[m
+[32m+[m[32m"""[m
+[32m+[m[32mfrom __future__ import annotations[m
+[32m+[m
+[32m+[m[32mimport html[m
+[32m+[m[32mimport subprocess[m
+[32m+[m[32mimport sys[m
+[32m+[m[32mfrom pathlib import Path[m
+[32m+[m
+[32m+[m[32mROOT = Path(__file__).resolve().parent[m
+[32m+[m[32mREPO = ROOT.parent[m
+[32m+[m
+[32m+[m[32mCSS = """[m
+[32m+[m[32m:root { color-scheme: dark; }[m
+[32m+[m[32mbody { margin: 0 auto; padding: 40px 32px 96px; max-width: 1520px; background: #14161b; color: #d8dce4;[m
+[32m+[m[32m  font: 15px/1.6 ui-sans-serif, -apple-system, "Segoe UI", sans-serif; }[m
+[32m+[m[32mh1 { font-size: 26px; margin: 0 0 4px; }[m
+[32m+[m[32mh2 { font-size: 19px; margin: 56px 0 4px; border-top: 1px solid #2a2f39; padding-top: 24px; }[m
+[32m+[m[32mh3 { font-size: 14px; margin: 24px 0 8px; color: #9aa3b2; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }[m
+[32m+[m[32mp { margin: 8px 0; max-width: 105ch; }[m
+[32m+[m[32m.lede { color: #9aa3b2; }[m
+[32m+[m[32mcode { font: 13px/1.5 ui-monospace, "SF Mono", Menlo, monospace; background: #1d2129; padding: 1px 5px; border-radius: 4px; }[m
+[32m+[m[32mfigure { margin: 0 0 20px; }[m
+[32m+[m[32mfigcaption { margin: 6px 0 0; color: #8b93a3; font-size: 13px; }[m
+[32m+[m[32m.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }[m
+[32m+[m[32m.pair img, .single img { width: 100%; display: block; border: 1px solid #2a2f39; border-radius: 6px; }[m
+[32m+[m[32m.tag { display: inline-block; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; padding: 2px 7px; border-radius: 4px; margin-bottom: 6px; }[m
+[32m+[m[32m.before { background: #3a2224; color: #ffb4ae; }[m
+[32m+[m[32m.after { background: #1d3326; color: #9fe0b0; }[m
+[32m+[m[32m.hover { background: #2a2740; color: #c7bcff; }[m
+[32m+[m[32m.motion { background: #23303a; color: #8fd0e8; }[m
+[32m+[m[32mtable { border-collapse: collapse; margin-top: 12px; font-size: 13px; width: 100%; }[m
+[32m+[m[32mth, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #262b34; vertical-align: top; }[m
+[32m+[m[32mth { color: #9aa3b2; font-weight: 600; }[m
+[32m+[m[32mtd.sha { font-family: ui-monospace, Menlo, monospace; color: #e0a05a; white-space: nowrap; }[m
+[32m+[m[32mtd.ev { font-family: ui-monospace, Menlo, monospace; color: #8b93a3; font-size: 12px; }[m
+[32m+[m[32m.note { background: #1a1e26; border-left: 3px solid #e0a05a; padding: 12px 16px; margin: 20px 0; }[m
+[32m+[m[32m"""[m
+[32m+[m
+[32m+[m[32mmissing: list[str] = [][m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef img(rel: str, tag: str, caption: str) -> str:[m
+[32m+[m[32m    if not (ROOT / rel).exists():[m
+[32m+[m[32m        missing.append(rel)[m
+[32m+[m[32m    label = {"before": "on main", "after": "on this branch", "hover": "pointer", "motion": "motion"}[tag][m
+[32m+[m[32m    return ([m
+[32m+[m[32m        f'<figure><span class="tag {tag}">{label}</span>'[m
+[32m+[m[32m        f'<img src="{html.escape(rel)}" alt="{html.escape(caption)}" />'[m
+[32m+[m[32m        f"<figcaption>{caption}</figcaption></figure>"[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef pair(before: str, after: str, cap_before: str, cap_after: str) -> str:[m
+[32m+[m[32m    return ([m
+[32m+[m[32m        '<div class="pair">'[m
+[32m+[m[32m        + img(before, "before", cap_before)[m
+[32m+[m[32m        + img(after, "after", cap_after)[m
+[32m+[m[32m        + "</div>"[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef single(rel: str, tag: str, caption: str) -> str:[m
+[32m+[m[32m    return '<div class="single">' + img(rel, tag, caption) + "</div>"[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef commit_rows(evidence: dict[str, str]) -> str:[m
+[32m+[m[32m    log = subprocess.run([m
+[32m+[m[32m        ["git", "log", "--reverse", "--format=%h\t%s", "main..HEAD"],[m
+[32m+[m[32m        cwd=REPO, capture_output=True, text=True, check=True,[m
+[32m+[m[32m    ).stdout.strip().split("\n")[m
+[32m+[m[32m    rows = [][m
+[32m+[m[32m    for line in log:[m
+[32m+[m[32m        sha, subject = line.split("\t", 1)[m
+[32m+[m[32m        ev = evidence.get(sha, "")[m
+[32m+[m[32m        rows.append([m
+[32m+[m[32m            f'<tr><td class="sha">{sha}</td><td>{html.escape(subject)}</td>'[m
+[32m+[m[32m            f'<td class="ev">{html.escape(ev)}</td></tr>'[m
+[32m+[m[32m        )[m
+[32m+[m[32m    return "\n".join(rows)[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef build(sections: list[str], evidence: dict[str, str], head: str, base: str, ahead: int) -> str:[m
+[32m+[m[32m    body = "\n".join(sections)[m
+[32m+[m[32m    table = commit_rows(evidence)[m
+[32m+[m[32m    return f"""<!doctype html>[m
+[32m+[m[32m<html lang="en">[m
+[32m+[m[32m<head><meta charset="utf-8" /><title>feat/ui-polish — visual proof</title><style>{CSS}</style></head>[m
+[32m+[m[32m<body>[m
+[32m+[m[32m<h1>feat/ui-polish — visual proof</h1>[m
+[32m+[m[32m<p class="lede">Branch <code>feat/ui-polish</code> at <code>{head}</code>, {ahead} commits ahead of[m
+[32m+[m[32m<code>main</code> (<code>{base}</code>). The captures below are real terminal frames: the shipped CLI running[m
+[32m+[m[32munder <a href="https://github.com/charmbracelet/vhs">vhs</a> in a container, driven by a local[m
+[32m+[m[32m<code>llama.cpp</code> server. Nothing is a mock-up and nothing is a tmux dump.</p>[m
+[32m+[m
+[32m+[m[32m<div class="note">[m
+[32m+[m[32m<p><strong>How a capture is taken.</strong> <code>proof/docker/record.sh &lt;tape&gt;</code> runs[m
+[32m+[m[32m<code>veyyon-proof-recorder</code> on a private docker network: the repo is bound read-write at <code>/repo</code>,[m
+[32m+[m[32m<code>HOME</code> is a tmpfs seeded from <code>proof/docker/home-seed</code>, and vhs types into a real ttyd[m
+[32m+[m[32mterminal at 1500x900. The machine's own <code>~/.veyyon</code> is not in the container's mount table and no[m
+[32m+[m[32mprovider account is reachable from it.</p>[m
+[32m+[m[32m<p><strong>Which model answers.</strong> A <code>llama.cpp</code> server holding[m
+[32m+[m[32m<code>qwen2.5-1.5b-instruct-q4_k_m</code>, reachable only on the container network as the custom provider[m
+[32m+[m[32m<code>local</code>. Every model turn in these frames is that model, on CPU, which is why the recordings wait[m
+[32m+[m[32mminutes for one answer.</p>[m
+[32m+[m[32m<p><strong>How "before" is taken.</strong> <code>proof/docker/record-before.sh</code> holds every source file the[m
+[32m+[m[32mbranch changed at its <code>main</code> content (<code>git show main:&lt;file&gt;</code>), writes back the three[m
+[32m+[m[32mfiles the branch deleted, records the same tapes into <code>proof/captures/real/before/</code>, then restores from[m
+[32m+[m[32man in-memory copy and proves the restore by sha256. No git mutation command runs and the working tree ends[m
+[32m+[m[32mbyte-identical.</p>[m
+[32m+[m[32m<p><strong>Pointer proofs are not terminal frames.</strong> vhs cannot move a mouse, so hover evidence comes from[m
+[32m+[m[32minjecting a real SGR motion report into the component's own input path and rasterizing the frame it paints.[m
+[32m+[m[32mThose figures are marked as such.</p>[m
+[32m+[m[32m</div>[m
+[32m+[m
+[32m+[m[32m{body}[m
+[32m+[m
+[32m+[m[32m<h2>Every commit on the branch, and what shows it</h2>[m
+[32m+[m[32m<table><thead><tr><th>commit</th><th>subject</th><th>evidence</th></tr></thead>[m
+[32m+[m[32m<tbody>[m
+[32m+[m[32m{table}[m
+[32m+[m[32m</tbody></table>[m
+[32m+[m[32m</body></html>[m
+[32m+[m[32m"""[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef write(sections: list[str], evidence: dict[str, str]) -> None:[m
+[32m+[m[32m    head = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=REPO,[m
+[32m+[m[32m                          capture_output=True, text=True, check=True).stdout.strip()[m
+[32m+[m[32m    base = subprocess.run(["git", "rev-parse", "--short", "main"], cwd=REPO,[m
+[32m+[m[32m                          capture_output=True, text=True, check=True).stdout.strip()[m
+[32m+[m[32m    ahead = int(subprocess.run(["git", "rev-list", "--count", "main..HEAD"], cwd=REPO,[m
+[32m+[m[32m                               capture_output=True, text=True, check=True).stdout.strip())[m
+[32m+[m[32m    out = ROOT / "ui-polish-proof.html"[m
+[32m+[m[32m    out.write_text(build(sections, evidence, head, base, ahead), encoding="utf-8")[m
+[32m+[m[32m    if missing:[m
+[32m+[m[32m        print("MISSING IMAGES:", *sorted(set(missing)), sep="\n  ", file=sys.stderr)[m
+[32m+[m[32m        raise SystemExit(1)[m
+[32m+[m[32m    print("wrote", out)[m
+[32m+[m
+[32m+[m
+[32m+[m[32mR = "captures/real/"[m
+[32m+[m[32mB = "captures/real/before/"[m
+[32m+[m[32mC = "captures/"[m
+[32m+[m
+[32m+[m[32mSECTIONS = [[m
+[32m+[m[32m    """<h2>1. First run: the wizard footer is a row of chips</h2>[m
+[32m+[m[32m<p>A fresh HOME lands in the setup wizard. The footer used to be a dim sentence of key names; it is now the[m
+[32m+[m[32mhouse chip row a pointer can hit, laid out by <code>layoutShortcutRows</code>, the same function the modal[m
+[32m+[m[32mfooters use.</p>"""[m
+[32m+[m[32m    + pair(B + "wizard-providers.png", R + "wizard-providers.png",[m
+[32m+[m[32m           "main: every footer key dim, in one sentence of a line",[m
+[32m+[m[32m           "branch: each key a chip, bold on the accent, dot-separated")[m
+[32m+[m[32m    + pair(B + "wizard-approvals.png", R + "wizard-approvals.png",[m
+[32m+[m[32m           "main: step 2, approvals", "branch: step 2, approvals")[m
+[32m+[m[32m    + """<h3>Pointer, rasterized</h3>[m
+[32m+[m[32m<p>vhs cannot move a mouse. The hover state comes from injecting a real SGR motion report into the wizard's own[m
+[32m+[m[32minput path and rasterizing the frame it paints.</p>"""[m
+[32m+[m[32m    + pair(C + "wizard-footer-before-grey.png", C + "wizard-footer-after-grey.png",[m
+[32m+[m[32m           "main: dim sentence", "branch: chips")[m
+[32m+[m[32m    + single(C + "wizard-footer-hover-grey.png", "hover", "a chip under the pointer takes the selection wash"),[m
+[32m+[m
+[32m+[m[32m    """<h2>2. The transcript sits on one rail</h2>[m
+[32m+[m[32m<p>Every block that owns a turn now opens at the composer's rail inset and nothing draws a rule across the[m
+[32m+[m[32mviewport. The frames below are one real turn from the local model.</p>"""[m
+[32m+[m[32m    + pair(B + "transcript-answer.png", R + "transcript-answer.png",[m
+[32m+[m[32m           "main: answer prose in the terminal default, blocks at column zero",[m
+[32m+[m[32m           "branch: themed prose, every row on the rail")[m
+[32m+[m[32m    + """<h3>The /btw block</h3>"""[m
+[32m+[m[32m    + pair(B + "transcript-btw.png", R + "transcript-btw.png",[m
+[32m+[m[32m           "main: a full-width dim rule above and below the block",[m
+[32m+[m[32m           "branch: the block sits on the rail with no rules at all")[m
+[32m+[m[32m    + """<h3>Every block type at once, rasterized</h3>[m
+[32m+[m[32m<p>One renderer stacks the prompt gutter, prose, <code>/btw</code>, <code>/omfg</code>, a command answer, the[m
+[32m+[m[32mtiny-model download, the batch ledger and the error banner through the real[m
+[32m+[m[32m<code>UiHelpers.addMessageToChat</code>. Eight full-width rules and 54 rows become none and 33.</p>"""[m
+[32m+[m[32m    + pair(C + "transcript-blocks-before-grey.png", C + "transcript-blocks-after-grey.png",[m
+[32m+[m[32m           "main: 8 rules, 54 rows", "branch: 0 rules, 33 rows")[m
+[32m+[m[32m    + pair(C + "transcript-dividers-before-grey.png", C + "transcript-dividers-after-grey.png",[m
+[32m+[m[32m           "main: a divider spans the viewport", "branch: a divider is a short mark on the rail"),[m
+[32m+[m
+[32m+[m[32m    """<h2>3. The MCP add-server wizard is a card</h2>[m
+[32m+[m[32m<p><code>/mcp add</code> used to be a pair of dim rules with the step text between them. It is a ModalShell card:[m
+[32m+[m[32mtitle on the top rule, <code>[x]</code> close glyph, chips in the footer, and it answers the pointer.</p>"""[m
+[32m+[m[32m    + pair(B + "overlay-mcp.png", R + "overlay-mcp.png",[m
+[32m+[m[32m           "main: DynamicBorder sandwich", "branch: ModalShell card"),[m
+[32m+[m
+[32m+[m[32m    """<h2>4. The session tree is a card</h2>[m
+[32m+[m[32m<p><code>/tree</code> was keyboard-only inside the same dim-rule chrome.</p>"""[m
+[32m+[m[32m    + pair(B + "overlay-tree.png", R + "overlay-tree.png",[m
+[32m+[m[32m           "main: DynamicBorder sandwich", "branch: ModalShell card"),[m
+[32m+[m
+[32m+[m[32m    """<h2>5. Settings: the Subagents tab is about subagents</h2>[m
+[32m+[m[32m<p>The tab used to open on unrelated rows with the spawn ceiling parked in another group. It opens on the[m
+[32m+[m[32msubagent roster, and the ceiling sits directly under it.</p>"""[m
+[32m+[m[32m    + pair(B + "settings-subagents.png", R + "settings-subagents.png",[m
+[32m+[m[32m           "main: the old tab contents", "branch: Subagent Roster, then Max Nested Spawn Depth")[m
+[32m+[m[32m    + pair(C + "settings-subagents-before-grey.png", C + "settings-subagents-after-grey.png",[m
+[32m+[m[32m           "main, rasterized", "branch, rasterized"),[m
+[32m+[m
+[32m+[m[32m    """<h2>6. The plugins tab names its keys as chips</h2>[m
+[32m+[m[32m<p>The container has no plugin installed, so the row list is empty in both frames and the footer is the whole[m
+[32m+[m[32mvisible difference: the tab named its keys in the settings screen's generic footer, and now names its own. The[m
+[32m+[m[32mpointer half of that commit is covered by its suite, not by this frame.</p>"""[m
+[32m+[m[32m    + pair(B + "settings-plugins.png", R + "settings-plugins.png",[m
+[32m+[m[32m           "main: enter change · / search · esc close",[m
+[32m+[m[32m           "branch: enter configure · esc close"),[m
+[32m+[m
+[32m+[m[32m    """<h2>7. The login screen is a card</h2>"""[m
+[32m+[m[32m    + pair(B + "overlay-login-list.png", R + "overlay-login-list.png",[m
+[32m+[m[32m           "main: DynamicBorder sandwich around the provider list",[m
+[32m+[m[32m           "branch: ModalShell card"),[m
+[32m+[m
+[32m+[m[32m    """<h2>8. A click resumes the pause screen</h2>[m
+[32m+[m[32m<p>The resume hint used to list keys only. It names the click, and a click resumes.</p>"""[m
+[32m+[m[32m    + pair(B + "overlay-pause.png", R + "overlay-pause.png",[m
+[32m+[m[32m           "main: esc · enter · space", "branch: esc · enter · space · click"),[m
+[32m+[m
+[32m+[m[32m    """<h2>9. The hook selector, rasterized</h2>[m
+[32m+[m[32m<p>An extension hook cannot be provoked from a recorded terminal without an extension, so this surface is proved[m
+[32m+[m[32mby constructing the shipped component and rasterizing what it paints.</p>"""[m
+[32m+[m[32m    + pair(C + "hook-selector-before-grey.png", C + "hook-selector-after-grey.png",[m
+[32m+[m[32m           "main: dim rules, no chips", "branch: card, chips, countdown")[m
+[32m+[m[32m    + single(C + "hook-selector-hover-grey.png", "hover", "a row under the pointer takes the hover band"),[m
+[32m+[m
+[32m+[m[32m    """<h2>10. The recordings</h2>[m
+[32m+[m[32m<p>Each GIF is the whole tape the screenshots above were cut from.</p>[m
+[32m+[m[32m<div class="pair">[m
+[32m+[m[32m<figure><span class="tag motion">recording</span><img src="captures/real/transcript.gif" alt="a real turn" />[m
+[32m+[m[32m<figcaption>a real turn from the local model, then <code>/btw</code></figcaption></figure>[m
+[32m+[m[32m<figure><span class="tag motion">recording</span><img src="captures/real/settings-subagents.gif" alt="settings" />[m
+[32m+[m[32m<figcaption>opening settings and walking to the Subagents tab</figcaption></figure>[m
+[32m+[m[32m<figure><span class="tag motion">recording</span><img src="captures/real/mcp.gif" alt="mcp wizard" />[m
+[32m+[m[32m<figcaption><code>/mcp add</code></figcaption></figure>[m
+[32m+[m[32m<figure><span class="tag motion">recording</span><img src="captures/real/pause.gif" alt="pause screen" />[m
+[32m+[m[32m<figcaption><code>/pause</code></figcaption></figure>[m
+[32m+[m[32m<figure><span class="tag motion">recording</span><img src="captures/real/wizard.gif" alt="setup wizard" />[m
+[32m+[m[32m<figcaption>the setup wizard, first run</figcaption></figure>[m
+[32m+[m[32m<figure><span class="tag motion">recording</span><img src="captures/real/tree.gif" alt="session tree" />[m
+[32m+[m[32m<figcaption>one turn, then <code>/tree</code></figcaption></figure>[m
+[32m+[m[32m</div>""",[m
+[32m+[m
+[32m+[m[32m    """<h2>What these captures do not cover</h2>[m
+[32m+[m[32m<ul>[m
+[32m+[m[32m<li>Hover and click are keyboard-invisible: vhs types, it does not point. Every pointer claim on the branch is[m
+[32m+[m[32mproved by a test that injects a real SGR report, and three of them are rasterized above.</li>[m
+[32m+[m[32m<li>The agent transcript viewer and the drill-in card need a subagent run. A 1.5B model does not drive one[m
+[32m+[m[32mreliably, so those two are covered by their suites only.</li>[m
+[32m+[m[32m<li><code>c511ae76b</code> (a virtualized root compacting used to blank the transcript) reproduces from a[m
+[32m+[m[32mresize, not from a keystroke, and is covered by its regression suite.</li>[m
+[32m+[m[32m<li><code>4d566d927</code> is a provider fix with no surface.</li>[m
+[32m+[m[32m<li>The model answering in these frames is a 1.5B running on CPU. It is there to make the transcript real, not[m
+[32m+[m[32mto be right.</li>[m
+[32m+[m[32m</ul>""",[m
+[32m+[m[32m][m
+[32m+[m
+[32m+[m[32mEVIDENCE = {[m
+[32m+[m[32m    "766ee5a26": "duplicate of main, no surface",[m
+[32m+[m[32m    "8981629d1": "merge",[m
+[32m+[m[32m    "b6a6bd07b": "every-settings-submenu-answers-the-pointer.test.ts",[m
+[32m+[m[32m    "d0226c921": "selector-overlays-answer-the-pointer.test.ts",[m
+[32m+[m[32m    "aa2d62dc7": "§2 answer prose colour",[m
+[32m+[m[32m    "b852f2543": "§2 ledger marker, rasterized stack",[m
+[32m+[m[32m    "08ade60cb": "selector-overlays-answer-the-pointer.test.ts",[m
+[32m+[m[32m    "c18816b62": "selector-overlays-answer-the-pointer.test.ts",[m
+[32m+[m[32m    "0c36cf201": "selector-overlays-answer-the-pointer.test.ts",[m
+[32m+[m[32m    "b373c7c55": "a-clicked-composer-chip-runs-its-action.test.ts",[m
+[32m+[m[32m    "d4d2a4290": "§7 login card",[m
+[32m+[m[32m    "ab7f1b8be": "the-transcript-card-answers-the-pointer.test.ts",[m
+[32m+[m[32m    "4d566d927": "a-chatgpt-oauth-session-compacts-on-the-codex-backend.test.ts",[m
+[32m+[m[32m    "5afa7ff34": "the-transcript-card-answers-the-pointer.test.ts",[m
+[32m+[m[32m    "4ed3a44b4": "§4 session tree",[m
+[32m+[m[32m    "1f2ea74b3": "§3 MCP wizard",[m
+[32m+[m[32m    "c511ae76b": "a-virtualized-transcript-never-loses-history-to-a-rebuild.test.ts",[m
+[32m+[m[32m    "3f583d196": "§9 hook selector",[m
+[32m+[m[32m    "929469b5f": "§9 hook trio, same chrome",[m
+[32m+[m[32m    "36df196c3": "§6 plugins tab",[m
+[32m+[m[32m    "489fd453f": "a-click-on-a-suggestion-accepts-the-completion.test.ts",[m
+[32m+[m[32m    "7e1aa54cb": "§2 /btw block",[m
+[32m+[m[32m    "b02f7dc2d": "§2 command blocks on the rail",[m
+[32m+[m[32m    "f9160c99c": "§2 no full-width rule",[m
+[32m+[m[32m    "9be29f814": "every-settings-submenu-answers-the-pointer.test.ts",[m
+[32m+[m[32m    "07372af28": "§8 pause screen",[m
+[32m+[m[32m    "e86818539": "§5 subagents tab",[m
+[32m+[m[32m    "db946f360": "a-click-in-the-composer-places-the-caret.test.ts",[m
+[32m+[m[32m    "253111668": "§1 wizard chips",[m
+[32m+[m[32m    "08ec85de5": "§1 pointer render",[m
+[32m+[m[32m    "bc9e33085": "§2 dividers",[m
+[32m+[m[32m    "23504cc4d": "§2 dividers",[m
+[32m+[m[32m    "bfc3ed7b5": "§2 tiny-model download",[m
+[32m+[m[32m    "73b3a350f": "§2 cut-short marker",[m
+[32m+[m[32m    "d12a2639f": "the renderers behind §1, §2, §9",[m
+[32m+[m[32m    "7ef968fa2": "the cache-miss glyph in §2",[m
+[32m+[m[32m    "907edbc2b": "the recorder behind every real frame",[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mif __name__ == "__main__":[m
+[32m+[m[32m    write(SECTIONS, EVIDENCE)[m
+[1mdiff --git a/proof/docker/home-seed/profiles/default/agent/models.yml b/proof/docker/home-seed/profiles/default/agent/models.yml[m
+[1mindex bbb5408a2..5e2eef765 100644[m
+[1m--- a/proof/docker/home-seed/profiles/default/agent/models.yml[m
+[1m+++ b/proof/docker/home-seed/profiles/default/agent/models.yml[m
+[36m@@ -6,5 +6,5 @@[m [mproviders:[m
+     models:[m
+       - id: qwen2.5-1.5b[m
+         name: Qwen2.5 1.5B (local)[m
+[31m-        contextWindow: 32768[m
+[32m+[m[32m        contextWindow: 65536[m
+         maxTokens: 1024[m
+[1mdiff --git a/proof/docker/record-before.sh b/proof/docker/record-before.sh[m
+[1mindex 7d78ae930..ecaabd4db 100755[m
+[1m--- a/proof/docker/record-before.sh[m
+[1m+++ b/proof/docker/record-before.sh[m
+[36m@@ -29,11 +29,17 @@[m [mheld, deleted_by_branch = [], [][m
+ for line in changed:[m
+     if not line.strip():[m
+         continue[m
+[31m-    status, path = line.split("\t")[0], line.split("\t")[-1][m
+[32m+[m[32m    fields = line.split("\t")[m
+[32m+[m[32m    status = fields[0][m
+     if status.startswith("D"):[m
+[31m-        deleted_by_branch.append(path)[m
+[31m-    elif status.startswith("M") or status.startswith("R"):[m
+[31m-        held.append(path)[m
+[32m+[m[32m        # The branch deleted it, so main's copy has to come back for the run.[m
+[32m+[m[32m        deleted_by_branch.append(fields[-1])[m
+[32m+[m[32m    elif status.startswith("R"):[m
+[32m+[m[32m        # A rename is main's old path missing plus a new path main never had.[m
+[32m+[m[32m        # Bringing the old path back is what main's own imports resolve against.[m
+[32m+[m[32m        deleted_by_branch.append(fields[1])[m
+[32m+[m[32m    elif status.startswith("M"):[m
+[32m+[m[32m        held.append(fields[-1])[m
+     # "A" is a file main never had; leaving it in place is harmless because[m
+     # nothing in main's own source imports it.[m
+ [m
+[36m@@ -56,9 +62,19 @@[m [mtry:[m
+             raise SystemExit("no main copy of " + p)[m
+         with open(p, "wb") as fh:[m
+             fh.write(old.stdout)[m
+[32m+[m[32m    os.makedirs("proof/captures/real/before", exist_ok=True)[m
+     for tape in tapes:[m
+[32m+[m[32m        # The tape names its own output paths, so a before run writes into a[m
+[32m+[m[32m        # sibling directory rather than over the after capture of the same name.[m
+[32m+[m[32m        text = open(tape, encoding="utf-8").read().replace('"/out/', '"/out/before/')[m
+[32m+[m[32m        scratch = os.path.join(os.path.dirname(tape), ".before-" + os.path.basename(tape))[m
+[32m+[m[32m        with open(scratch, "w", encoding="utf-8") as fh:[m
+[32m+[m[32m            fh.write(text)[m
+         print("recording", tape, flush=True)[m
+[31m-        subprocess.run(["proof/docker/record.sh", tape], check=True)[m
+[32m+[m[32m        try:[m
+[32m+[m[32m            subprocess.run(["proof/docker/record.sh", scratch], check=True)[m
+[32m+[m[32m        finally:[m
+[32m+[m[32m            os.remove(scratch)[m
+ finally:[m
+     for p, content in kept.items():[m
+         with open(p, "wb") as fh:[m
+[1mdiff --git a/proof/tapes/real/login.tape b/proof/tapes/real/login.tape[m
+[1mnew file mode 100644[m
+[1mindex 000000000..45e922cb3[m
+[1m--- /dev/null[m
+[1m+++ b/proof/tapes/real/login.tape[m
+[36m@@ -0,0 +1,31 @@[m
+[32m+[m[32m# The login card, reached with /login. No account is reachable from the container.[m
+[32m+[m[32mOutput "/out/login.gif"[m
+[32m+[m[32mSet Shell "bash"[m
+[32m+[m[32mSet FontFamily "JetBrains Mono"[m
+[32m+[m[32mSet FontSize 15[m
+[32m+[m[32mSet Width 1500[m
+[32m+[m[32mSet Height 900[m
+[32m+[m[32mSet Padding 14[m
+[32m+[m[32mSet Framerate 24[m
+[32m+[m[32mSet Theme { "background": "#1e2127", "foreground": "#d7dae0" }[m
+[32m+[m
+[32m+[m[32mHide[m
+[32m+[m[32mType "cd /sandbox/home/demo && export LOCAL_LLM_KEY=none"[m
+[32m+[m[32mEnter[m
+[32m+[m[32mType "bun /repo/packages/coding-agent/src/cli.ts --model local/qwen2.5-1.5b"[m
+[32m+[m[32mEnter[m
+[32m+[m[32mSleep 20s[m
+[32m+[m[32mShow[m
+[32m+[m[32mSleep 1s[m
+[32m+[m[32mType "/login"[m
+[32m+[m[32mSleep 1s[m
+[32m+[m[32mEnter[m
+[32m+[m[32mSleep 800ms[m
+[32m+[m[32mEnter[m
+[32m+[m[32mSleep 5s[m
+[32m+[m[32mScreenshot "/out/overlay-login-list.png"[m
+[32m+[m[32mSleep 1s[m
+[32m+[m[32mDown[m

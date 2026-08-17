@@ -1,0 +1,25 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/modes/components/a-transcript-under-a-header-does-not-rebuild-the-screen.test.ts:
+header=0 {"redraws":0,"erases":0,"lost":[]}
+(pass) a transcript under a header does not rebuild the screen > a header of 0 rows costs no rebuild [2333.37ms]
+header=2 {"redraws":0,"erases":0,"lost":[]}
+(pass) a transcript under a header does not rebuild the screen > a header of 2 rows costs no rebuild [2323.92ms]
+header=5 {"redraws":0,"erases":0,"lost":[]}
+(pass) a transcript under a header does not rebuild the screen > a header of 5 rows costs no rebuild [2323.49ms]
+
+packages/coding-agent/test/modes/components/a-virtualized-transcript-never-loses-history-to-a-rebuild.test.ts:
+(pass) a virtualized transcript never loses history to a rebuild > keeps every turn in the terminal (scrollbackRebuild=true virtualized=true header=0) [471.93ms]
+(pass) a virtualized transcript never loses history to a rebuild > keeps every turn in the terminal (scrollbackRebuild=false virtualized=true header=0) [471.20ms]
+(pass) a virtualized transcript never loses history to a rebuild > keeps every turn in the terminal (scrollbackRebuild=true virtualized=false header=0) [471.40ms]
+(pass) a virtualized transcript never loses history to a rebuild > keeps every turn in the terminal (scrollbackRebuild=false virtualized=false header=0) [475.94ms]
+(pass) a virtualized transcript never loses history to a rebuild > keeps every turn in the terminal (scrollbackRebuild=true virtualized=true header=2) [472.80ms]
+(pass) a virtualized transcript never loses history to a rebuild > keeps every turn in the terminal (scrollbackRebuild=false virtualized=true header=2) [476.00ms]
+(pass) a virtualized transcript never loses history to a rebuild > keeps every turn in the terminal (scrollbackRebuild=true virtualized=true header=5) [473.40ms]
+(pass) a virtualized transcript never loses history to a rebuild > is unaffected by the rebuild knob while the transcript only grows [946.65ms]
+(pass) a virtualized transcript never loses history to a rebuild > still erases and replays when committed rows genuinely change, and replays the whole transcript [673.96ms]
+
+ 12 pass
+ 0 fail
+ 140 expect() calls
+Ran 12 tests across 2 files. [12.16s]

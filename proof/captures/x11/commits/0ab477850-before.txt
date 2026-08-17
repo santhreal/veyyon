@@ -1,0 +1,40 @@
+219 | 		tabs.setHoverMotion({ requestRender: () => {}, clock });
+             ^
+TypeError: tabs.setHoverMotion is not a function. (In 'tabs.setHoverMotion({ requestRender: () => {}, clock })', 'tabs.setHoverMotion' is undefined)
+      at <anonymous> (/repo/packages/tui/test/a-category-tab-fades-in-under-the-pointer.test.ts:219:8)
+(fail) a category tab fades in under the pointer > ends every fade and keeps no state for a tab the pointer has left [0.08ms]
+238 | 
+239 | 	it("drops every fade on dispose so a card nobody can see stops asking for frames", () => {
+240 | 		const clock = new MotionClock();
+241 | 		let renders = 0;
+242 | 		const tabs = bar();
+243 | 		tabs.setHoverMotion({ requestRender: () => renders++, clock });
+             ^
+TypeError: tabs.setHoverMotion is not a function. (In 'tabs.setHoverMotion({ requestRender: () => renders++, clock })', 'tabs.setHoverMotion' is undefined)
+      at <anonymous> (/repo/packages/tui/test/a-category-tab-fades-in-under-the-pointer.test.ts:243:8)
+(fail) a category tab fades in under the pointer > drops every fade on dispose so a card nobody can see stops asking for frames [0.04ms]
+258 | 		// A theme predating the pointer band must not start rendering `undefined` through a
+259 | 		// strength-aware call site.
+260 | 		const clock = new MotionClock();
+261 | 		const plain: TabBarTheme = { label: t => t, activeTab: t => `*${t}`, inactiveTab: t => t, hint: t => t };
+262 | 		const tabs = bar(plain);
+263 | 		tabs.setHoverMotion({ requestRender: () => {}, clock });
+             ^
+TypeError: tabs.setHoverMotion is not a function. (In 'tabs.setHoverMotion({ requestRender: () => {}, clock })', 'tabs.setHoverMotion' is undefined)
+      at <anonymous> (/repo/packages/tui/test/a-category-tab-fades-in-under-the-pointer.test.ts:263:8)
+(fail) a category tab fades in under the pointer > falls back to the inactive style when the theme has no hover style at all [0.03ms]
+273 | 		// A muted tab is skipped by navigation and only becomes "active" transiently through a
+274 | 		// `setTabs` swap. Lighting one under the pointer offers a destination that does not exist.
+275 | 		const clock = new MotionClock();
+276 | 		const tabs = bar();
+277 | 		tabs.setTabs([...TABS.slice(0, 3), { id: "plugins", label: "Plugins", muted: true }]);
+278 | 		tabs.setHoverMotion({ requestRender: () => {}, clock });
+             ^
+TypeError: tabs.setHoverMotion is not a function. (In 'tabs.setHoverMotion({ requestRender: () => {}, clock })', 'tabs.setHoverMotion' is undefined)
+      at <anonymous> (/repo/packages/tui/test/a-category-tab-fades-in-under-the-pointer.test.ts:278:8)
+(fail) a category tab fades in under the pointer > never bands a muted tab, which is not a pointer target [0.25ms]
+
+ 1 pass
+ 15 fail
+ 17 expect() calls
+Ran 16 tests across 3 files. [864.00ms]

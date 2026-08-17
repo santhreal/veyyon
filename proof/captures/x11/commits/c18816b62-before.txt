@@ -1,0 +1,40 @@
+(pass) selector overlays answer the pointer > history search: wheel moves the selection like the arrow keys [1.11ms]
+(pass) selector overlays answer the pointer > reset usage: hover bands an account, first click arms, second click spends [1.47ms]
+(pass) selector overlays answer the pointer > user messages: hover bands a message, click branches from it, wheel steps [1.04ms]
+(pass) selector overlays answer the pointer > move overlay: hover bands a directory, click confirms it, wheel steps [1.64ms]
+(pass) selector overlays answer the pointer > copy selector: hover bands a tree row, click picks a content leaf, wheel steps [1.31ms]
+(pass) selector overlays answer the pointer > model picker: hover bands a model row, click selects, second click picks [4.08ms]
+93 | function expectHoverBand(host: RowHost, text: string): void {
+94 | 	const row = rowOf(host, text);
+95 | 	const before = host.render(WIDTH)[row - 1]!;
+96 | 	host.handleInput(motionAt(row));
+97 | 	const after = host.render(WIDTH)[row - 1]!;
+98 | 	expect(after).not.toBe(before);
+                        ^
+error: expect(received).not.toBe(expected)
+
+Expected: not "     \u001b[38;5;250m│\u001b[39m   \u001b[38;5;241m□\u001b[39m \u001b[38;5;231mOption B\u001b[39m                                                                                    \u001b[38;5;250m│\u001b[39m      "
+
+      at expectHoverBand (/repo/packages/coding-agent/test/modes/components/selector-overlays-answer-the-pointer.test.ts:98:20)
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/selector-overlays-answer-the-pointer.test.ts:286:3)
+(fail) selector overlays answer the pointer > ask dialog: hover bands an option, click answers it [4.81ms]
+302 | 		dialog.handleInput(wheelAt("down", rowOf(dialog, "Option A")));
+303 | 		// The selection cursor left Option A's row for Option B's.
+304 | 		const lines = dialog.render(WIDTH);
+305 | 		const optionB = lines.find(line => line.includes("Option B"));
+306 | 		const optionA = lines.find(line => line.includes("Option A"));
+307 | 		expect(optionB).toContain(theme.nav.cursor);
+                        ^
+error: expect(received).toContain(expected)
+
+Expected to contain: "›"
+Received: "     \u001b[38;5;250m│\u001b[39m   \u001b[38;5;241m□\u001b[39m \u001b[38;5;231mOption B\u001b[39m                                                                                    \u001b[38;5;250m│\u001b[39m      "
+
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/selector-overlays-answer-the-pointer.test.ts:307:19)
+(fail) selector overlays answer the pointer > ask dialog: wheel moves the option cursor like the arrow keys [0.73ms]
+(pass) selector overlays answer the pointer > session selector: hover bands a session row [2.48ms]
+
+ 8 pass
+ 2 fail
+ 51 expect() calls
+Ran 10 tests across 1 file. [470.00ms]

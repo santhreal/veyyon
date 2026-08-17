@@ -1,0 +1,448 @@
+[33m3db717670[m proof(ui-polish): record both arms of the card-band scene and page it
+
+
+
+ proof/build-proof.py                               |  58 [32m++++++++++++++[m
+ proof/captures/x11/before/card-bands.gif           | Bin [31m0[m -> [32m890680[m bytes
+ proof/captures/x11/before/card-bands.mp4           | Bin [31m0[m -> [32m808372[m bytes
+ proof/captures/x11/card-bands.gif                  | Bin [31m0[m -> [32m1684334[m bytes
+ proof/captures/x11/card-bands.mp4                  | Bin [31m0[m -> [32m854706[m bytes
+ .../captures/x11/strips/card-bands-picker-f00.png  | Bin [31m0[m -> [32m34912[m bytes
+ .../captures/x11/strips/card-bands-picker-f01.png  | Bin [31m0[m -> [32m34979[m bytes
+ .../captures/x11/strips/card-bands-picker-f02.png  | Bin [31m0[m -> [32m35443[m bytes
+ .../captures/x11/strips/card-bands-picker-f03.png  | Bin [31m0[m -> [32m34895[m bytes
+ .../captures/x11/strips/card-bands-picker-f04.png  | Bin [31m0[m -> [32m35309[m bytes
+ .../captures/x11/strips/card-bands-picker-f05.png  | Bin [31m0[m -> [32m35681[m bytes
+ .../captures/x11/strips/card-bands-picker-f06.png  | Bin [31m0[m -> [32m35675[m bytes
+ .../captures/x11/strips/card-bands-picker-f07.png  | Bin [31m0[m -> [32m35463[m bytes
+ .../x11/strips/card-bands-picker-main-f00.png      | Bin [31m0[m -> [32m27617[m bytes
+ .../x11/strips/card-bands-picker-main-f01.png      | Bin [31m0[m -> [32m27617[m bytes
+ .../x11/strips/card-bands-picker-main-f02.png      | Bin [31m0[m -> [32m27617[m bytes
+ .../x11/strips/card-bands-picker-main-f03.png      | Bin [31m0[m -> [32m27617[m bytes
+ .../x11/strips/card-bands-picker-main-f04.png      | Bin [31m0[m -> [32m27617[m bytes
+ .../x11/strips/card-bands-picker-main-f05.png      | Bin [31m0[m -> [32m27617[m bytes
+ .../x11/strips/card-bands-picker-main-f06.png      | Bin [31m0[m -> [32m27617[m bytes
+ .../x11/strips/card-bands-picker-main-f07.png      | Bin [31m0[m -> [32m27617[m bytes
+ .../captures/x11/strips/card-bands-wizard-f00.png  | Bin [31m0[m -> [32m24974[m bytes
+ .../captures/x11/strips/card-bands-wizard-f01.png  | Bin [31m0[m -> [32m24987[m bytes
+ .../captures/x11/strips/card-bands-wizard-f02.png  | Bin [31m0[m -> [32m28790[m bytes
+ .../captures/x11/strips/card-bands-wizard-f03.png  | Bin [31m0[m -> [32m28755[m bytes
+ .../captures/x11/strips/card-bands-wizard-f04.png  | Bin [31m0[m -> [32m29834[m bytes
+ .../captures/x11/strips/card-bands-wizard-f05.png  | Bin [31m0[m -> [32m30248[m bytes
+ .../captures/x11/strips/card-bands-wizard-f06.png  | Bin [31m0[m -> [32m30694[m bytes
+ .../captures/x11/strips/card-bands-wizard-f07.png  | Bin [31m0[m -> [32m30757[m bytes
+ .../x11/strips/card-bands-wizard-main-f00.png      | Bin [31m0[m -> [32m25088[m bytes
+ .../x11/strips/card-bands-wizard-main-f01.png      | Bin [31m0[m -> [32m25088[m bytes
+ .../x11/strips/card-bands-wizard-main-f02.png      | Bin [31m0[m -> [32m25088[m bytes
+ .../x11/strips/card-bands-wizard-main-f03.png      | Bin [31m0[m -> [32m25088[m bytes
+ .../x11/strips/card-bands-wizard-main-f04.png      | Bin [31m0[m -> [32m25088[m bytes
+ .../x11/strips/card-bands-wizard-main-f05.png      | Bin [31m0[m -> [32m25088[m bytes
+ .../x11/strips/card-bands-wizard-main-f06.png      | Bin [31m0[m -> [32m25088[m bytes
+ .../x11/strips/card-bands-wizard-main-f07.png      | Bin [31m0[m -> [32m25088[m bytes
+ .../home-seed/profiles/default/agent/models.yml    |  21 [32m+++++[m
+ proof/scenes/card-bands.sh                         |  89 [32m+++++++++++++++++++++[m
+ proof/scenes/lib.sh                                |  35 [32m++++++[m[31m--[m
+ proof/scenes/timing-probe.sh                       |  22 [32m+++++[m
+ proof/ui-polish-proof.html                         |  18 [32m++++[m[31m-[m
+ 42 files changed, 236 insertions(+), 7 deletions(-)
+
+[1mdiff --git a/proof/build-proof.py b/proof/build-proof.py[m
+[1mindex 7707b7226..4ca67c70f 100755[m
+[1m--- a/proof/build-proof.py[m
+[1m+++ b/proof/build-proof.py[m
+[36m@@ -391,6 +391,64 @@[m [mSECTIONS = [[m
+             ),[m
+         ],[m
+     ),[m
+[32m+[m[32m    Section([m
+[32m+[m[32m        "Two more cards that band, and the ground a fade mixes out of",[m
+[32m+[m[32m        [[m
+[32m+[m[32m            "<p>The model picker and the <code>/mcp add</code> wizard are the last two surfaces that paint their own"[m
+[32m+[m[32m            " rows. On <code>main</code> the picker answers a pointer with nothing, and the wizard's second step is"[m
+[32m+[m[32m            " not a card at all: it is a plain transcript block starting at column zero, six rows lower down the"[m
+[32m+[m[32m            " screen. That is why the scene below hovers twice in the <em>main</em> arm — once at the branch card's"[m
+[32m+[m[32m            " geometry and once at main's own rows, at the coordinates main actually draws them — so <em>no band"[m
+[32m+[m[32m            " anywhere</em> is a measurement of main's list rather than a pointer that missed a card that moved.</p>",[m
+[32m+[m[32m            video_pair([m
+[32m+[m[32m                XB + "card-bands.mp4",[m
+[32m+[m[32m                X + "card-bands.mp4",[m
+[32m+[m[32m                "the pointer crosses the picker rows and then main's own transport list, and neither answers it",[m
+[32m+[m[32m                "each card bands the row under the pointer and cross-fades to the next",[m
+[32m+[m[32m                start=24,[m
+[32m+[m[32m            ),[m
+[32m+[m[32m            "<h3>The model picker, frame by frame</h3>",[m
+[32m+[m[32m            strip([m
+[32m+[m[32m                S + "card-bands-picker-main",[m
+[32m+[m[32m                8,[m
+[32m+[m[32m                "<strong>main.</strong> Eight consecutive frames at 60fps at 26.50s, across a jump between two model"[m
+[32m+[m[32m                " rows. Only the pointer moves.",[m
+[32m+[m[32m            ),[m
+[32m+[m[32m            strip([m
+[32m+[m[32m                S + "card-bands-picker",[m
+[32m+[m[32m                8,[m
+[32m+[m[32m                "<strong>branch.</strong> The same eight frames of the same jump. The row left goes down while the"[m
+[32m+[m[32m                " row reached comes up, and the keyboard selection under both is untouched.",[m
+[32m+[m[32m            ),[m
+[32m+[m[32m            "<h3>The wizard step, frame by frame</h3>",[m
+[32m+[m[32m            strip([m
+[32m+[m[32m                S + "card-bands-wizard-main",[m
+[32m+[m[32m                8,[m
+[32m+[m[32m                "<strong>main.</strong> The same moment in the same scene, cut wider because there is no card to cut"[m
+[32m+[m[32m                " into: the transport choices are transcript rows at column zero and the pointer passes over them.",[m
+[32m+[m[32m            ),[m
+[32m+[m[32m            strip([m
+[32m+[m[32m                S + "card-bands-wizard",[m
+[32m+[m[32m                8,[m
+[32m+[m[32m                "<strong>branch.</strong> The step is a card, its rows are the card's rows, and they band and"[m
+[32m+[m[32m                " cross-fade on the same clock as every other surface on this page.",[m
+[32m+[m[32m            ),[m
+[32m+[m[32m            "<h3>The ground the mix travels out of</h3>",[m
+[32m+[m[32m            "<p>Recording this at 60fps found a defect the fade itself had been hiding. A band is a blend between"[m
+[32m+[m[32m            " the page under the row and the selection colour, and the blend was reading the ground the <em>theme"[m
+[32m+[m[32m            " declares</em>. Titanium declares black; <code>tui.paintGround</code> defaults to <code>auto</code> and"[m
+[32m+[m[32m            " refuses to paint black onto a terminal that is already grey, so nothing on screen was black and every"[m
+[32m+[m[32m            " mix still started there. A leaving row measured <code>#090401</code> between a <code>#1c1f26</code>"[m
+[32m+[m[32m            " page and a <code>#231310</code> band: darker than the page it sat on and darker than the band it was"[m
+[32m+[m[32m            " leaving, a dip on the way in and again on the way out.</p>",[m
+[32m+[m[32m            "<p>The ground now has one owner and one order — the ground this process painted, else the one the"[m
+[32m+[m[32m            " terminal reported over OSC 11, else the theme's declared ground for a terminal that answered neither"[m
+[32m+[m[32m            " — and the call that paints is the call that records what it painted, so a policy that declines to"[m
+[32m+[m[32m            " paint cannot leave the animations mixing out of a colour nothing put on screen. The frames above are"[m
+[32m+[m[32m            " the fixed build: the leaving row reads <code>(31,30,33)</code>, between the two endpoints rather than"[m
+[32m+[m[32m            " below both.</p>",[m
+[32m+[m[32m        ],[m
+[32m+[m[32m    ),[m
+     Section([m
+         "The composer popup grows out of the composer",[m
+         [[m
+[1mdiff --git a/proof/captures/x11/before/card-bands.gif b/proof/captures/x11/before/card-bands.gif[m
+[1mnew file mode 100644[m
+[1mindex 000000000..b03838faf[m
+Binary files /dev/null and b/proof/captures/x11/before/card-bands.gif differ
+[1mdiff --git a/proof/captures/x11/before/card-bands.mp4 b/proof/captures/x11/before/card-bands.mp4[m
+[1mnew file mode 100644[m
+[1mindex 000000000..95ccc621c[m
+Binary files /dev/null and b/proof/captures/x11/before/card-bands.mp4 differ
+[1mdiff --git a/proof/captures/x11/card-bands.gif b/proof/captures/x11/card-bands.gif[m
+[1mnew file mode 100644[m
+[1mindex 000000000..9bf498925[m
+Binary files /dev/null and b/proof/captures/x11/card-bands.gif differ
+[1mdiff --git a/proof/captures/x11/card-bands.mp4 b/proof/captures/x11/card-bands.mp4[m
+[1mnew file mode 100644[m
+[1mindex 000000000..96872c44d[m
+Binary files /dev/null and b/proof/captures/x11/card-bands.mp4 differ
+[1mdiff --git a/proof/captures/x11/strips/card-bands-picker-f00.png b/proof/captures/x11/strips/card-bands-picker-f00.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..492fc2e5a[m
+Binary files /dev/null and b/proof/captures/x11/strips/card-bands-picker-f00.png differ
+[1mdiff --git a/proof/captures/x11/strips/card-bands-picker-f01.png b/proof/captures/x11/strips/card-bands-picker-f01.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..c60de6d58[m
+Binary files /dev/null and b/proof/captures/x11/strips/card-bands-picker-f01.png differ
+[1mdiff --git a/proof/captures/x11/strips/card-bands-picker-f02.png b/proof/captures/x11/strips/card-bands-picker-f02.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..2730444b9[m
+Binary files /dev/null and b/proof/captures/x11/strips/card-bands-picker-f02.png differ
+[1mdiff --git a/proof/captures/x11/strips/card-bands-picker-f03.png b/proof/captures/x11/strips/card-bands-picker-f03.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..8628cd4ba[m
+Binary files /dev/null and b/proof/captures/x11/strips/card-bands-picker-f03.png differ
+[1mdiff --git a/proof/captures/x11/strips/card-bands-picker-f04.png b/proof/captures/x11/strips/card-bands-picker-f04.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..393dfd7a3[m
+Binary files /dev/null and b/proof/captures/x11/strips/card-bands-picker-f04.png differ
+[1mdiff --git a/proof/captures/x11/strips/card-bands-picker-f05.png b/proof/captures/x11/strips/card-bands-picker-f05.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..7479d7584[m
+Binary files /dev/null and b/proof/captures/x11/strips/card-bands-picker-f05.png differ
+[1mdiff --git a/proof/captures/x11/strips/card-bands-picker-f06.png b/proof/captures/x11/strips/card-bands-picker-f06.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..0ef79da8e[m
+Binary files /dev/null and b/proof/captures/x11/strips/card-bands-picker-f06.png differ
+[1mdiff --git a/proof/captures/x11/strips/card-bands-picker-f07.png b/proof/captures/x11/strips/card-bands-picker-f07.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..bbca22120[m
+Binary files /dev/null and b/proof/captures/x11/strips/card-bands-picker-f07.png differ
+[1mdiff --git a/proof/captures/x11/strips/card-bands-picker-main-f00.png b/proof/captures/x11/strips/card-bands-picker-main-f00.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..ece19b704[m
+Binary files /dev/null and b/proof/captures/x11/strips/card-bands-picker-main-f00.png differ
+[1mdiff --git a/proof/captures/x11/strips/card-bands-picker-main-f01.png b/proof/captures/x11/strips/card-bands-picker-main-f01.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..ece19b704[m
+Binary files /dev/null and b/proof/captures/x11/strips/card-bands-picker-main-f01.png differ
+[1mdiff --git a/proof/captures/x11/strips/card-bands-picker-main-f02.png b/proof/captures/x11/strips/card-bands-picker-main-f02.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..ece19b704[m
+Binary files /dev/null and b/proof/captures/x11/strips/card-bands-picker-main-f02.png differ
+[1mdiff --git a/proof/captures/x11/strips/card-bands-picker-main-f03.png b/proof/captures/x11/strips/card-bands-picker-main-f03.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..ece19b704[m
+Binary files /dev/null and b/proof/captures/x11/strips/card-bands-picker-main-f03.png differ
+[1mdiff --git a/proof/captures/x11/strips/card-bands-picker-main-f04.png b/proof/captures/x11/strips/card-bands-picker-main-f04.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..ece19b704[m
+Binary files /dev/null and b/proof/captures/x11/strips/card-bands-picker-main-f04.png differ
+[1mdiff --git a/proof/captures/x11/strips/card-bands-picker-main-f05.png b/proof/captures/x11/strips/card-bands-picker-main-f05.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..ece19b704[m
+Binary files /dev/null and b/proof/captures/x11/strips/card-bands-picker-main-f05.png differ
+[1mdiff --git a/proof/captures/x11/strips/card-bands-picker-main-f06.png b/proof/captures/x11/strips/card-bands-picker-main-f06.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..ece19b704[m
+Binary files /dev/null and b/proof/captures/x11/strips/card-bands-picker-main-f06.png differ
+[1mdiff --git a/proof/captures/x11/strips/card-bands-picker-main-f07.png b/proof/captures/x11/strips/card-bands-picker-main-f07.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..ece19b704[m
+Binary files /dev/null and b/proof/captures/x11/strips/card-bands-picker-main-f07.png differ
+[1mdiff --git a/proof/captures/x11/strips/card-bands-wizard-f00.png b/proof/captures/x11/strips/card-bands-wizard-f00.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..1f8280167[m
+Binary files /dev/null and b/proof/captures/x11/strips/card-bands-wizard-f00.png differ
+[1mdiff --git a/proof/captures/x11/strips/card-bands-wizard-f01.png b/proof/captures/x11/strips/card-bands-wizard-f01.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..3dfb2f88b[m
+Binary files /dev/null and b/proof/captures/x11/strips/card-bands-wizard-f01.png differ
+[1mdiff --git a/proof/captures/x11/strips/card-bands-wizard-f02.png b/proof/captures/x11/strips/card-bands-wizard-f02.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..758b2fe9c[m
+Binary files /dev/null and b/proof/captures/x11/strips/card-bands-wizard-f02.png differ
+[1mdiff --git a/proof/captures/x11/strips/card-bands-wizard-f03.png b/proof/captures/x11/strips/card-bands-wizard-f03.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..862c06052[m
+Binary files /dev/null and b/proof/captures/x11/strips/card-bands-wizard-f03.png differ
+[1mdiff --git a/proof/captures/x11/strips/card-bands-wizard-f04.png b/proof/captures/x11/strips/card-bands-wizard-f04.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..67b63483b[m
+Binary files /dev/null and b/proof/captures/x11/strips/card-bands-wizard-f04.png differ
+[1mdiff --git a/proof/captures/x11/strips/card-bands-wizard-f05.png b/proof/captures/x11/strips/card-bands-wizard-f05.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..daa578528[m
+Binary files /dev/null and b/proof/captures/x11/strips/card-bands-wizard-f05.png differ
+[1mdiff --git a/proof/captures/x11/strips/card-bands-wizard-f06.png b/proof/captures/x11/strips/card-bands-wizard-f06.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..32c63bc3a[m
+Binary files /dev/null and b/proof/captures/x11/strips/card-bands-wizard-f06.png differ
+[1mdiff --git a/proof/captures/x11/strips/card-bands-wizard-f07.png b/proof/captures/x11/strips/card-bands-wizard-f07.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..5df70edb2[m
+Binary files /dev/null and b/proof/captures/x11/strips/card-bands-wizard-f07.png differ
+[1mdiff --git a/proof/captures/x11/strips/card-bands-wizard-main-f00.png b/proof/captures/x11/strips/card-bands-wizard-main-f00.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..1d4d7fcde[m
+Binary files /dev/null and b/proof/captures/x11/strips/card-bands-wizard-main-f00.png differ
+[1mdiff --git a/proof/captures/x11/strips/card-bands-wizard-main-f01.png b/proof/captures/x11/strips/card-bands-wizard-main-f01.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..1d4d7fcde[m
+Binary files /dev/null and b/proof/captures/x11/strips/card-bands-wizard-main-f01.png differ
+[1mdiff --git a/proof/captures/x11/strips/card-bands-wizard-main-f02.png b/proof/captures/x11/strips/card-bands-wizard-main-f02.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..1d4d7fcde[m
+Binary files /dev/null and b/proof/captures/x11/strips/card-bands-wizard-main-f02.png differ
+[1mdiff --git a/proof/captures/x11/strips/card-bands-wizard-main-f03.png b/proof/captures/x11/strips/card-bands-wizard-main-f03.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..1d4d7fcde[m
+Binary files /dev/null and b/proof/captures/x11/strips/card-bands-wizard-main-f03.png differ
+[1mdiff --git a/proof/captures/x11/strips/card-bands-wizard-main-f04.png b/proof/captures/x11/strips/card-bands-wizard-main-f04.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..1d4d7fcde[m
+Binary files /dev/null and b/proof/captures/x11/strips/card-bands-wizard-main-f04.png differ
+[1mdiff --git a/proof/captures/x11/strips/card-bands-wizard-main-f05.png b/proof/captures/x11/strips/card-bands-wizard-main-f05.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..1d4d7fcde[m
+Binary files /dev/null and b/proof/captures/x11/strips/card-bands-wizard-main-f05.png differ
+[1mdiff --git a/proof/captures/x11/strips/card-bands-wizard-main-f06.png b/proof/captures/x11/strips/card-bands-wizard-main-f06.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..1d4d7fcde[m
+Binary files /dev/null and b/proof/captures/x11/strips/card-bands-wizard-main-f06.png differ
+[1mdiff --git a/proof/captures/x11/strips/card-bands-wizard-main-f07.png b/proof/captures/x11/strips/card-bands-wizard-main-f07.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..1d4d7fcde[m
+Binary files /dev/null and b/proof/captures/x11/strips/card-bands-wizard-main-f07.png differ
+[1mdiff --git a/proof/docker/home-seed/profiles/default/agent/models.yml b/proof/docker/home-seed/profiles/default/agent/models.yml[m
+[1mindex 5e2eef765..452e8f68c 100644[m
+[1m--- a/proof/docker/home-seed/profiles/default/agent/models.yml[m
+[1m+++ b/proof/docker/home-seed/profiles/default/agent/models.yml[m
+[36m@@ -4,7 +4,28 @@[m [mproviders:[m
+     api: openai-completions[m
+     apiKey: LOCAL_LLM_KEY[m
+     models:[m
+[32m+[m[32m      # Every row points at the one llama.cpp server on the recorder's network,[m
+[32m+[m[32m      # which serves whatever weights it was started with and ignores the model[m
+[32m+[m[32m      # name in a request. The rows below the first are catalog entries for the[m
+[32m+[m[32m      # other quantizations of the same weights, so the model picker has a list[m
+[32m+[m[32m      # a pointer can travel over. A turn on any of them is a real turn.[m
+       - id: qwen2.5-1.5b[m
+         name: Qwen2.5 1.5B (local)[m
+         contextWindow: 65536[m
+         maxTokens: 1024[m
+[32m+[m[32m      - id: qwen2.5-1.5b-q8[m
+[32m+[m[32m        name: Qwen2.5 1.5B q8_0 (local)[m
+[32m+[m[32m        contextWindow: 65536[m
+[32m+[m[32m        maxTokens: 1024[m
+[32m+[m[32m      - id: qwen2.5-1.5b-q5[m
+[32m+[m[32m        name: Qwen2.5 1.5B q5_k_m (local)[m
+[32m+[m[32m        contextWindow: 65536[m
+[32m+[m[32m        maxTokens: 1024[m
+[32m+[m[32m      - id: qwen2.5-1.5b-q4[m
+[32m+[m[32m        name: Qwen2.5 1.5B q4_k_m (local)[m
+[32m+[m[32m        contextWindow: 65536[m
+[32m+[m[32m        maxTokens: 1024[m
+[32m+[m[32m      - id: qwen2.5-1.5b-f16[m
+[32m+[m[32m        name: Qwen2.5 1.5B f16 (local)[m
+[32m+[m[32m        contextWindow: 65536[m
+[32m+[m[32m        maxTokens: 1024[m
+[1mdiff --git a/proof/scenes/card-bands.sh b/proof/scenes/card-bands.sh[m
+[1mnew file mode 100755[m
+[1mindex 000000000..d36119e40[m
+[1m--- /dev/null[m
+[1m+++ b/proof/scenes/card-bands.sh[m
+[36m@@ -0,0 +1,89 @@[m
+[32m+[m[32m#!/usr/bin/env bash[m
+[32m+[m[32m# The pointer over the two cards that had no fade at all until this branch.[m
+[32m+[m[32m#[m
+[32m+[m[32m#   /model            the model picker. Its rows are painted by ModelBrowser,[m
+[32m+[m[32m#                     which is an inner list: it owns no repaint of its own, so[m
+[32m+[m[32m#                     its band fades only if the card lends it one, and nobody[m
+[32m+[m[32m#                     did. The same list is what the model hub and every model[m
+[32m+[m[32m#                     panel on the settings screen embed.[m
+[32m+[m[32m#   /mcp add a-server the add wizard's transport step. Its host hands the[m
+[32m+[m[32m#                     repaint to the CONSTRUCTOR rather than to a setter, which[m
+[32m+[m[32m#                     is the seam that was never wired: the card had a fade it[m
+[32m+[m[32m#                     could never build, so the row under the pointer switched.[m
+[32m+[m[32m#[m
+[32m+[m[32m# Jumps, not glides. A glide crosses every row in between and gives each one a[m
+[32m+[m[32m# frame or two, which hides the thing worth seeing: on a jump the row the[m
+[32m+[m[32m# pointer left is still fading out while the row it arrived on comes up. One[m
+[32m+[m[32m# glide at the end of the picker shows the other half, the band tracking a[m
+[32m+[m[32m# pointer that keeps moving.[m
+[32m+[m[32m#[m
+[32m+[m[32m# The rows below are measured off an earlier recording of this scene rather than[m
+[32m+[m[32m# assumed: the pointer helper maps a row through the grid the shell reports,[m
+[32m+[m[32m# which is three pixels a row short of what this terminal actually draws, so a[m
+[32m+[m[32m# row number here is the one that lands on the intended line and not the line's[m
+[32m+[m[32m# own index. The selected row is never hovered: it wears its own accent and is[m
+[32m+[m[32m# never banded, so a jump onto it shows a band leaving against nothing arriving.[m
+[32m+[m[32m#[m
+[32m+[m[32m# No stills -- `import` costs about fifteen seconds a frame on this display and[m
+[32m+[m[32m# would stall the middle of every motion. The page's stills are cut out of the[m
+[32m+[m[32m# recording afterwards.[m
+[32m+[m
+[32m+[m[32msettle 18[m
+[32m+[m
+[32m+[m[32m# --- the model picker ------------------------------------------------------[m
+[32m+[m[32msubmit "/model"[m
+[32m+[m[32msettle 5[m
+[32m+[m
+[32m+[m[32m# Two rows three apart, jumped between, so the cross-fade carries two at once.[m
+[32m+[m[32mpoint 11 45[m
+[32m+[m[32msleep 1.5[m
+[32m+[m[32mpoint 14 45[m
+[32m+[m[32msleep 1.5[m
+[32m+[m[32mpoint 11 45[m
+[32m+[m[32msleep 1.5[m
+[32m+[m[32mpoint 14 45[m
+[32m+[m[32msleep 1.5[m
+[32m+[m[32mpoint 12 45[m
+[32m+[m[32msleep 1.5[m
+[32m+[m
+[32m+[m[32m# Down the list one row at a time: the band tracks the pointer rather than[m
+[32m+[m[32m# appearing under it.[m
+[32m+[m[32mglide 11 45 14 45 12 0.10[m
+[32m+[m[32msleep 1.5[m
+[32m+[m[32mglide 14 45 11 45 12 0.10[m
+[32m+[m[32msleep 1.5[m
+[32m+[m[32mk Escape[m
+[32m+[m[32msettle 3[m
+[32m+[m
+[32m+[m[32m# --- the /mcp add wizard ---------------------------------------------------[m
+[32m+[m[32m# A name on the command line opens the wizard on its transport step. The step[m
+[32m+[m[32m# arrives about eight seconds after the command: the pointer waits for it,[m
+[32m+[m[32m# because a jump onto a card that is still on its name step proves nothing.[m
+[32m+[m[32msubmit "/mcp add a-server"[m
+[32m+[m[32msettle 12[m
+[32m+[m[32mpoint 20 40[m
+[32m+[m[32msleep 1.5[m
+[32m+[m[32mpoint 21 40[m
+[32m+[m[32msleep 1.5[m
+[32m+[m[32mpoint 20 40[m
+[32m+[m[32msleep 1.5[m
+[32m+[m[32mpoint 21 40[m
+[32m+[m[32msleep 1.5[m
+[32m+[m[32mpoint 20 40[m
+[32m+[m[32msleep 1.5[m
+[32m+[m
+[32m+[m[32m# main draws this step as a plain transcript block rather than a card, three rows[m
+[32m+[m[32m# lower and starting at the left edge. The pointer visits those rows as well, so[m
+[32m+[m[32m# the before arm's answer -- no band anywhere on either geometry -- is a[m
+[32m+[m[32m# measurement of main's own list and not a pointer that missed it.[m
+[32m+[m[32mpoint 26 20[m
+[32m+[m[32msleep 1.2[m
+[32m+[m[32mpoint 27 20[m
+[32m+[m[32msleep 1.2[m
+[32m+[m[32mpoint 26 20[m
+[32m+[m[32msleep 1.2[m
+[32m+[m
+[32m+[m[32mk Escape[m
+[32m+[m[32msleep 0.8[m
+[32m+[m[32mk Escape[m
+[32m+[m[32msettle 3[m
+[1mdiff --git a/proof/scenes/lib.sh b/proof/scenes/lib.sh[m
+[1mindex a4d72c89a..597ea9c27 100755[m
+[1m--- a/proof/scenes/lib.sh[m
+[1m+++ b/proof/scenes/lib.sh[m
+[36m@@ -36,18 +36,41 @@[m [mkey_repeat() { # key_repeat <key> <count> [delay][m
+ t() { xdotool type --clearmodifiers --window "${SCENE_WINDOW}" --delay "${TYPE_DELAY:-28}" -- "$1"; }[m
+ submit() { t "$1"; pause 0.4; k Return; }[m
+ [m
+[31m-# Move the real pointer to a cell. The terminal turns that into the same SGR[m
+[32m+[m[32m# Move the real pointer to a pixel. The terminal turns that into the same SGR[m
+ # motion report a hand on a mouse produces, which is the only way a hover state[m
+ # is real evidence.[m
+[31m-point() { xdotool mousemove --sync "$(px_x "$2")" "$(px_y "$1")"; }[m
+[32m+[m[32m#[m
+[32m+[m[32m# A move to the pixel the pointer already occupies is skipped, and that check is[m
+[32m+[m[32m# the difference between a scene that runs and one that does not: `xdotool[m
+[32m+[m[32m# mousemove --sync` waits for a motion event, a move to the current position[m
+[32m+[m[32m# produces none, and it stands there for FIFTEEN SECONDS before giving up. The[m
+[32m+[m[32m# card-bands scene measured 351s against sixty seconds of its own sleeps, all of[m
+[32m+[m[32m# it duplicate moves inside `glide`.[m
+[32m+[m[32mmove_px() {[m
+[32m+[m	[32mlocal x="$1" y="$2" loc cx cy[m
+[32m+[m	[32mloc="$(xdotool getmouselocation --shell)"[m
+[32m+[m	[32mcx="$(printf '%s\n' "${loc}" | sed -n 's/^X=//p')"[m
+[32m+[m	[32mcy="$(printf '%s\n' "${loc}" | sed -n 's/^Y=//p')"[m
+[32m+[m	[32mif [ "${cx}" = "${x}" ] && [ "${cy}" = "${y}" ]; then return 0; fi[m
+[32m+[m	[32mxdotool mousemove --sync "${x}" "${y}"[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m# Move the real pointer to a cell.[m
+[32m+[m[32mpoint() { move_px "$(px_x "$2")" "$(px_y "$1")"; }[m
+[32m+[m
+ # Glide, so the recording shows the pointer travelling and every row it crosses[m
+[31m-# lighting up on the way.[m
+[32m+[m[32m# lighting up on the way. Interpolated in PIXELS: stepping in cells rounds every[m
+[32m+[m[32m# intermediate step onto one of the endpoint rows, which is a teleport with[m
+[32m+[m[32m# extra sleeps rather than a travelling pointer.[m
+ glide() { # glide <row-from> <col-from> <row-to> <col-to> [steps] [delay][m
+ 	local r0="$1" c0="$2" r1="$3" c1="$4" steps="${5:-16}" delay="${6:-0.03}"[m
+[32m+[m	[32mlocal x0 y0 x1 y1 i[m
+[32m+[m	[32mx0="$(px_x "${c0}")"[m
+[32m+[m	[32my0="$(px_y "${r0}")"[m
+[32m+[m	[32mx1="$(px_x "${c1}")"[m
+[32m+[m	[32my1="$(px_y "${r1}")"[m
+ 	for i in $(seq 0 "${steps}"); do[m
+[31m-		xdotool mousemove --sync \[m
+[31m-			"$(px_x $((c0 + (c1 - c0) * i / steps)))" \[m
+[31m-			"$(px_y $((r0 + (r1 - r0) * i / steps)))"[m
+[32m+[m		[32mmove_px "$((x0 + (x1 - x0) * i / steps))" "$((y0 + (y1 - y0) * i / steps))"[m
+ 		sleep "${delay}"[m
+ 	done[m
+ }[m
+[1mdiff --git a/proof/scenes/timing-probe.sh b/proof/scenes/timing-probe.sh[m
+[1mnew file mode 100755[m
+[1mindex 000000000..8c6c252a0[m
+[1m--- /dev/null[m
+[1m+++ b/proof/scenes/timing-probe.sh[m
+[36m@@ -0,0 +1,22 @@[m
+[32m+[m[32m#!/usr/bin/env bash[m

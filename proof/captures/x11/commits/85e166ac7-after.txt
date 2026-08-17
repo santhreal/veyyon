@@ -1,0 +1,17 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/modes/components/every-settings-submenu-answers-the-pointer.test.ts:
+(pass) settings submenus answer the pointer > compaction threshold: hover lights a mode row, click opens its value picker [17.23ms]
+(pass) settings submenus answer the pointer > provider limits: hover lights a provider row, click opens its editor [3.47ms]
+(pass) settings submenus answer the pointer > model roles: hover lights a role row, click opens its picker [5.00ms]
+(pass) settings submenus answer the pointer > subagent agents: hover lights an agent row once discovery reports, click opens its editor [19.80ms]
+(pass) settings submenus answer the pointer > subagent models by depth: hover lights the add row, click opens the depth chain [2.49ms]
+(pass) settings submenus answer the pointer > default effort: hover lights the add row, click opens the model picker [1.65ms]
+(pass) settings submenus answer the pointer > default effort: a click on an effort row picks that level, which is what the picker's hint promises [47.95ms]
+(pass) settings submenus answer the pointer > rules: hover lights a section row once discovery reports, click opens the section [14.78ms]
+(pass) settings submenus answer the pointer > model chain: hover lights a chain entry, click opens the replacement picker [2.80ms]
+
+ 9 pass
+ 0 fail
+ 358 expect() calls
+Ran 9 tests across 1 file. [479.00ms]

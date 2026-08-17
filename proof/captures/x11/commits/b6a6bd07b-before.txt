@@ -1,0 +1,40 @@
+                                ^
+error: expect(received).not.toBe(expected)
+
+Expected: not "            \u001b[38;5;208m│\u001b[39m \u001b[38;5;103m  Memory           \u001b[39m\u001b[38;5;208m│\u001b[39m    Add a model…\u001b[38;5;103m                    pick a model, then its effort\u001b[39m        \u001b[38;5;208m│\u001b[39m            "
+
+      at expectHoverBand (/repo/packages/coding-agent/test/modes/components/every-settings-submenu-answers-the-pointer.test.ts:125:27)
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/every-settings-submenu-answers-the-pointer.test.ts:229:3)
+(fail) settings submenus answer the pointer > default effort: hover lights the add row, click opens the model picker [1.82ms]
+245 | 			// The first section row is the selected one; hover the row under it.
+246 | 			const firstSection = rowIndex(component, "Built-in");
+247 | 			const before2 = component.render(WIDTH);
+248 | 			component.handleInput(motionAt(firstSection + 2));
+249 | 			const after2 = component.render(WIDTH);
+250 | 			expect(after2[firstSection + 1]).not.toBe(before2[firstSection + 1]);
+                                              ^
+error: expect(received).not.toBe(expected)
+
+Expected: not "            \u001b[38;5;208m│\u001b[39m \u001b[1m\u001b[48;5;234m\u001b[39m› Rules            \u001b[39m\u001b[49m\u001b[22m\u001b[38;5;208m│\u001b[39m    Built-in · Go\u001b[38;5;103m            8 rules · \u001b[38;5;108mall on\u001b[39m\u001b[39m                            \u001b[38;5;208m│\u001b[39m            "
+
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/every-settings-submenu-answers-the-pointer.test.ts:250:41)
+(fail) settings submenus answer the pointer > rules: hover lights a section row once discovery reports, click opens the section [7.29ms]
+120 | 
+121 | 	component.handleInput(motionAt(index + 1));
+122 | 
+123 | 	const after = component.render(WIDTH);
+124 | 	expect(strip(after[index] ?? "")).toContain(rowText);
+125 | 	expect(after[index]).not.toBe(before[index]);
+                                ^
+error: expect(received).not.toBe(expected)
+
+Expected: not "            \u001b[38;5;208m│\u001b[39m \u001b[38;5;103m  Rules            \u001b[39m\u001b[38;5;208m│\u001b[39m    Add fallback…\u001b[38;5;103m                   pick a model, then its effort\u001b[39m        \u001b[38;5;208m│\u001b[39m            "
+
+      at expectHoverBand (/repo/packages/coding-agent/test/modes/components/every-settings-submenu-answers-the-pointer.test.ts:125:27)
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/every-settings-submenu-answers-the-pointer.test.ts:267:3)
+(fail) settings submenus answer the pointer > model chain: hover lights a chain entry, click opens the replacement picker [1.21ms]
+
+ 0 pass
+ 8 fail
+ 23 expect() calls
+Ran 8 tests across 1 file. [521.00ms]

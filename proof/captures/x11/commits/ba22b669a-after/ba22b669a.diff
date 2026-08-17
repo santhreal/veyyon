@@ -1,0 +1,383 @@
+[33mba22b669a[m demo(ui): record scenes in an X terminal with a real pointer
+
+
+
+ proof/docker/Dockerfile.recorder |  15 [32m+++++[m
+ proof/docker/record-x11.sh       |  48 [32m++++++++++++++[m
+ proof/docker/xsession.sh         | 133 [32m+++++++++++++++++++++++++++++++++++++++[m
+ proof/scenes/lib.sh              |  71 [32m+++++++++++++++++++++[m
+ proof/scenes/mouse-probe.sh      |   5 [32m++[m
+ proof/scenes/probe-cmd.sh        |  10 [32m+++[m
+ proof/scenes/settings-pointer.sh |  26 [32m++++++++[m
+ proof/scenes/xdiag.sh            |  11 [32m++++[m
+ 8 files changed, 319 insertions(+)
+
+[1mdiff --git a/proof/docker/Dockerfile.recorder b/proof/docker/Dockerfile.recorder[m
+[1mindex 65b81b5a8..822b3334d 100644[m
+[1m--- a/proof/docker/Dockerfile.recorder[m
+[1m+++ b/proof/docker/Dockerfile.recorder[m
+[36m@@ -61,3 +61,18 @@[m [mRUN set -eux; \[m
+ 	rm -rf /var/lib/apt/lists/*; \[m
+ 	chromium --version[m
+ ENV ROD_BROWSER_BIN=/usr/bin/chromium[m
+[32m+[m
+[32m+[m[32m# A second recording path, because vhs cannot move a mouse. Xvfb gives the[m
+[32m+[m[32m# container a real X display, kitty and xterm are real terminal emulators that[m
+[32m+[m[32m# speak SGR 1006 mouse reporting, xdotool moves the pointer and presses keys at[m
+[32m+[m[32m# it, and ffmpeg records the display as video rather than a frame at a time.[m
+[32m+[m[32m# imagemagick's `import` takes the stills.[m
+[32m+[m[32mRUN set -eux; \[m
+[32m+[m	[32mapt-get update; \[m
+[32m+[m	[32mDEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \[m
+[32m+[m		[32mxvfb x11-utils x11-xserver-utils xdotool xterm kitty \[m
+[32m+[m		[32mlibgl1-mesa-dri mesa-utils imagemagick; \[m
+[32m+[m	[32mapt-get clean; \[m
+[32m+[m	[32mrm -rf /var/lib/apt/lists/*; \[m
+[32m+[m	[32mxdotool --version; \[m
+[32m+[m	[32mkitty --version[m
+[1mdiff --git a/proof/docker/record-x11.sh b/proof/docker/record-x11.sh[m
+[1mnew file mode 100755[m
+[1mindex 000000000..eb7acc9eb[m
+[1m--- /dev/null[m
+[1m+++ b/proof/docker/record-x11.sh[m
+[36m@@ -0,0 +1,48 @@[m
+[32m+[m[32m#!/usr/bin/env bash[m
+[32m+[m[32m# Record one scene as video, in a real terminal, with a real pointer.[m
+[32m+[m[32m#[m
+[32m+[m[32m#   proof/docker/record-x11.sh proof/scenes/<name>.sh[m
+[32m+[m[32m#[m
+[32m+[m[32m# The container sees the repo at /repo and writes <name>.mp4 and <name>.gif to[m
+[32m+[m[32m# proof/captures/x11. HOME is a tmpfs seeded from proof/docker/home-seed, so the[m
+[32m+[m[32m# machine's own ~/.veyyon is never in the mount table.[m
+[32m+[m[32mset -euo pipefail[m
+[32m+[m
+[32m+[m[32mREPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"[m
+[32m+[m[32mSCENE="${1:?usage: record-x11.sh <scene.sh>}"[m
+[32m+[m[32mOUT="${OUT_DIR:-${REPO_ROOT}/proof/captures/x11}"[m
+[32m+[m[32mmkdir -p "${OUT}"[m
+[32m+[m
+[32m+[m[32mdocker run --rm \[m
+[32m+[m	[32m--network "${PROOF_NETWORK:-veyyon-proof}" \[m
+[32m+[m	[32m--mount "type=bind,src=${REPO_ROOT},dst=/repo" \[m
+[32m+[m	[32m--mount "type=bind,src=${REPO_ROOT}/proof/docker/home-seed,dst=/seed,readonly" \[m
+[32m+[m	[32m--mount "type=bind,src=${OUT},dst=/out" \[m
+[32m+[m	[32m--tmpfs /sandbox/home:exec,size=1g \[m
+[32m+[m	[32m--tmpfs /tmp:exec,size=2g \[m
+[32m+[m	[32m--shm-size=512m \[m
+[32m+[m	[32m-e HOME=/sandbox/home \[m
+[32m+[m	[32m-e TERM=xterm-kitty \[m
+[32m+[m	[32m-e COLORTERM=truecolor \[m
+[32m+[m	[32m-e LANG=C.UTF-8 \[m
+[32m+[m	[32m-e LC_ALL=C.UTF-8 \[m
+[32m+[m	[32m-e LOCAL_LLM_KEY=none \[m
+[32m+[m	[32m-e DISPLAY=:99 \[m
+[32m+[m	[32m-e "SCENE_COMMAND=${SCENE_COMMAND:-bun /repo/packages/coding-agent/src/cli.ts --model local/qwen2.5-1.5b}" \[m
+[32m+[m	[32m-e "SCENE_WIDTH=${SCENE_WIDTH:-1600}" \[m
+[32m+[m	[32m-e "SCENE_HEIGHT=${SCENE_HEIGHT:-1000}" \[m
+[32m+[m	[32m-e "SCENE_FONT_SIZE=${SCENE_FONT_SIZE:-15}" \[m
+[32m+[m	[32m-e "SCENE_FPS=${SCENE_FPS:-30}" \[m
+[32m+[m	[32m-e "SCENE_TERMINAL=${SCENE_TERMINAL:-kitty}" \[m
+[32m+[m	[32m-e "SCENE_CWD=${SCENE_CWD:-/sandbox/home/demo}" \[m
+[32m+[m	[32m-w /repo \[m
+[32m+[m	[32m"${RECORDER_IMAGE:-veyyon-proof-recorder:2}" \[m
+[32m+[m	[32mbash -lc '[m
+[32m+[m		[32mset -e[m
+[32m+[m		[32mmkdir -p /sandbox/home/.veyyon[m
+[32m+[m		[32mcp -r /seed/. /sandbox/home/.veyyon/[m
+[32m+[m		[32mmkdir -p /sandbox/home/demo/src[m
+[32m+[m		[32mprintf "export function parse(s) {\n\tif (!s) throw new Error(\"empty focus string\");\n\treturn s.trim();\n}\n" > /sandbox/home/demo/src/parser.ts[m
+[32m+[m		[32mprintf "# demo\n\nA tiny project the recording drives.\n" > /sandbox/home/demo/README.md[m
+[32m+[m		[32mexec /repo/proof/docker/xsession.sh "/repo/'"${SCENE}"'"[m
+[32m+[m	[32m'[m
+[1mdiff --git a/proof/docker/xsession.sh b/proof/docker/xsession.sh[m
+[1mnew file mode 100755[m
+[1mindex 000000000..103cd0460[m
+[1m--- /dev/null[m
+[1m+++ b/proof/docker/xsession.sh[m
+[36m@@ -0,0 +1,133 @@[m
+[32m+[m[32m#!/usr/bin/env bash[m
+[32m+[m[32m# Run one scene on a private X display and record it as video.[m
+[32m+[m[32m#[m
+[32m+[m[32m#   xsession.sh <scene.sh>[m
+[32m+[m[32m#[m
+[32m+[m[32m# Started inside the recording container by record-x11.sh. Xvfb gives the[m
+[32m+[m[32m# container its own display, kitty is a real terminal emulator that speaks SGR[m
+[32m+[m[32m# 1006 mouse reporting, xdotool moves a real pointer over it, and ffmpeg records[m
+[32m+[m[32m# the display continuously, so an animation is captured as motion rather than as[m
+[32m+[m[32m# a frame every few seconds.[m
+[32m+[m[32mset -euo pipefail[m
+[32m+[m
+[32m+[m[32mSCENE="${1:?usage: xsession.sh <scene.sh>}"[m
+[32m+[m[32mNAME="$(basename "${SCENE}" .sh)"[m
+[32m+[m[32mexport DISPLAY="${DISPLAY:-:99}"[m
+[32m+[m[32mW="${SCENE_WIDTH:-1600}"[m
+[32m+[m[32mH="${SCENE_HEIGHT:-1000}"[m
+[32m+[m[32mFPS="${SCENE_FPS:-30}"[m
+[32m+[m[32mOUT="/out"[m
+[32m+[m[32mmkdir -p "${OUT}"[m
+[32m+[m
+[32m+[m[32mXvfb "${DISPLAY}" -screen 0 "${W}x${H}x24" -nolisten tcp >/tmp/xvfb.log 2>&1 &[m
+[32m+[m[32mXVFB_PID=$![m
+[32m+[m[32mfor _ in $(seq 1 50); do[m
+[32m+[m	[32mxdpyinfo -display "${DISPLAY}" >/dev/null 2>&1 && break[m
+[32m+[m	[32msleep 0.2[m
+[32m+[m[32mdone[m
+[32m+[m[32mxdpyinfo -display "${DISPLAY}" >/dev/null[m
+[32m+[m
+[32m+[m[32m# The terminal answers CSI 16t with its cell size in pixels and CSI 18t with its[m
+[32m+[m[32m# size in cells. Asking it beats guessing from font metrics, and the scene needs[m
+[32m+[m[32m# both to aim the pointer at a row and column.[m
+[32m+[m[32mcat >/tmp/bootstrap.sh <<'BOOT'[m
+[32m+[m[32m#!/usr/bin/env bash[m
+[32m+[m[32mexec 2>/tmp/boot.err[m
+[32m+[m[32mprintf 'stty=%s\n' "$(stty size </dev/tty)" >/tmp/geom[m
+[32m+[m[32mcd "${SCENE_CWD:-/sandbox/home/demo}"[m
+[32m+[m[32mexec ${SCENE_COMMAND:?}[m
+[32m+[m[32mBOOT[m
+[32m+[m[32mchmod +x /tmp/bootstrap.sh[m
+[32m+[m
+[32m+[m[32mcase "${SCENE_TERMINAL:-kitty}" in[m
+[32m+[m[32mxterm)[m
+[32m+[m	[32m# xterm answers XTEST motion with SGR 1006 reports without a window manager,[m
+[32m+[m	[32m# which is the whole point of this path. directColor keeps 24-bit colour.[m
+[32m+[m	[32mxterm \[m
+[32m+[m		[32m-geometry "$((W / 12))x$((H / 27))+0+0" \[m
+[32m+[m		[32m-fa "JetBrains Mono" -fs "${SCENE_FONT_SIZE:-15}" \[m
+[32m+[m		[32m-bg "#1e2127" -fg "#d7dae0" \[m
+[32m+[m		[32m-b "${SCENE_PADDING:-8}" \[m
+[32m+[m		[32m-u8 \[m
+[32m+[m		[32m-xrm "XTerm*locale: true" \[m
+[32m+[m		[32m-xrm "XTerm*utf8: 2" \[m
+[32m+[m		[32m-xrm "XTerm*directColor: true" \[m
+[32m+[m		[32m-xrm "XTerm*saveLines: 20000" \[m
+[32m+[m		[32m-e /tmp/bootstrap.sh >/tmp/term.log 2>&1 &[m
+[32m+[m	[32m;;[m
+[32m+[m[32m*)[m
+[32m+[m	[32mkitty \[m
+[32m+[m		[32m--override "font_family=JetBrains Mono" \[m
+[32m+[m		[32m--override "font_size=${SCENE_FONT_SIZE:-15}" \[m
+[32m+[m		[32m--override "background=#1e2127" \[m
+[32m+[m		[32m--override "foreground=#d7dae0" \[m
+[32m+[m		[32m--override "cursor_blink_interval=0" \[m
+[32m+[m		[32m--override "window_padding_width=${SCENE_PADDING:-8}" \[m
+[32m+[m		[32m--override "remember_window_size=no" \[m
+[32m+[m		[32m--override "initial_window_width=${W}" \[m
+[32m+[m		[32m--override "initial_window_height=${H}" \[m
+[32m+[m		[32m--override "hide_window_decorations=yes" \[m
+[32m+[m		[32m--override "confirm_os_window_close=0" \[m
+[32m+[m		[32m--override "scrollback_lines=20000" \[m
+[32m+[m		[32m--override "enable_audio_bell=no" \[m
+[32m+[m		[32m--override "focus_follows_mouse=yes" \[m
+[32m+[m		[32m/tmp/bootstrap.sh >/tmp/term.log 2>&1 &[m
+[32m+[m	[32m;;[m
+[32m+[m[32mesac[m
+[32m+[m[32mKITTY_PID=$![m
+[32m+[m
+[32m+[m[32mfor _ in $(seq 1 100); do[m
+[32m+[m	[32mxdotool search --class "kitty|XTerm" >/dev/null 2>&1 && break[m
+[32m+[m	[32msleep 0.2[m
+[32m+[m[32mdone[m
+[32m+[m[32mWINDOW="$(xdotool search --class "kitty|XTerm" | head -1)"[m
+[32m+[m[32mxdotool windowmove "${WINDOW}" 0 0 || true[m
+[32m+[m[32mxdotool windowsize "${WINDOW}" "${W}" "${H}" || true[m
+[32m+[m[32mxdotool windowactivate "${WINDOW}" 2>/dev/null || true[m
+[32m+[m[32m# No window manager runs here, so _NET_ACTIVE_WINDOW is unavailable and[m
+[32m+[m[32m# windowactivate fails. XSetInputFocus is what actually gives kitty the focus[m
+[32m+[m[32m# it needs before it will report a pointer at all.[m
+[32m+[m[32mfor _ in $(seq 1 50); do[m
+[32m+[m	[32mxwininfo -id "${WINDOW}" 2>/dev/null | grep -q "IsViewable" && break[m
+[32m+[m	[32msleep 0.2[m
+[32m+[m[32mdone[m
+[32m+[m[32mfor _ in $(seq 1 25); do[m
+[32m+[m	[32mxdotool windowfocus --sync "${WINDOW}" 2>/dev/null && break[m
+[32m+[m	[32msleep 0.2[m
+[32m+[m[32mdone[m
+[32m+[m[32mxdotool mousemove --sync $((W / 2)) $((H / 2))[m
+[32m+[m[32msleep 1[m
+[32m+[m
+[32m+[m[32mffmpeg -loglevel error -y -f x11grab -draw_mouse 1 -framerate "${FPS}" \[m
+[32m+[m	[32m-video_size "${W}x${H}" -i "${DISPLAY}" \[m
+[32m+[m	[32m-c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p \[m
+[32m+[m	[32m"${OUT}/${NAME}.mp4" >/tmp/ffmpeg.log 2>&1 &[m
+[32m+[m[32mFFMPEG_PID=$![m
+[32m+[m
+[32m+[m[32mcleanup() {[m
+[32m+[m	[32mkill -INT "${FFMPEG_PID}" 2>/dev/null || true[m
+[32m+[m	[32mwait "${FFMPEG_PID}" 2>/dev/null || true[m
+[32m+[m	[32mkill "${KITTY_PID}" 2>/dev/null || true[m
+[32m+[m	[32mkill "${XVFB_PID}" 2>/dev/null || true[m
+[32m+[m[32m}[m
+[32m+[m[32mtrap cleanup EXIT[m
+[32m+[m
+[32m+[m[32mexport SCENE_NAME="${NAME}"[m
+[32m+[m[32mexport SCENE_WINDOW="${WINDOW}"[m
+[32m+[m[32mexport SCENE_OUT="${OUT}"[m
+[32m+[m[32m# shellcheck disable=SC1090[m
+[32m+[m[32msource /repo/proof/scenes/lib.sh[m
+[32m+[m[32m# shellcheck disable=SC1090[m
+[32m+[m[32msource "${SCENE}"[m
+[32m+[m
+[32m+[m[32msleep 1[m
+[32m+[m[32mcleanup[m
+[32m+[m[32mtrap - EXIT[m
+[32m+[m
+[32m+[m[32m# A GIF of the same recording, for a page that has to open in a browser without[m
+[32m+[m[32m# a video codec argument. The palette pass is what keeps the terminal's greys[m
+[32m+[m[32m# from banding.[m
+[32m+[m[32mffmpeg -loglevel error -y -i "${OUT}/${NAME}.mp4" \[m
+[32m+[m	[32m-vf "fps=${SCENE_GIF_FPS:-20},scale=${SCENE_GIF_WIDTH:-1200}:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=192[p];[b][p]paletteuse=dither=bayer:bayer_scale=3" \[m
+[32m+[m	[32m"${OUT}/${NAME}.gif"[m
+[32m+[m[32mls -la "${OUT}/${NAME}.mp4" "${OUT}/${NAME}.gif"[m
+[1mdiff --git a/proof/scenes/lib.sh b/proof/scenes/lib.sh[m
+[1mnew file mode 100755[m
+[1mindex 000000000..a4d72c89a[m
+[1m--- /dev/null[m
+[1m+++ b/proof/scenes/lib.sh[m
+[36m@@ -0,0 +1,71 @@[m
+[32m+[m[32m#!/usr/bin/env bash[m
+[32m+[m[32m# Helpers a scene uses to drive the terminal: keys, text, a real pointer, and[m
+[32m+[m[32m# stills cut out of the same display ffmpeg is recording.[m
+[32m+[m[32m#[m
+[32m+[m[32m# Sourced by proof/docker/xsession.sh with DISPLAY, SCENE_WINDOW, SCENE_NAME and[m
+[32m+[m[32m# SCENE_OUT already exported.[m
+[32m+[m
+[32m+[m[32m# The grid comes from the shell (`stty size`), and the pixel size of a cell from[m
+[32m+[m[32m# the window divided by that grid. Asking the terminal directly (CSI 16t) only[m
+[32m+[m[32m# works where window operations are enabled, which xterm disables by default.[m
+[32m+[m[32mread -r TERM_ROWS TERM_COLS <<<"$(sed -n 's/^stty=//p' /tmp/geom)"[m
+[32m+[m[32mPAD="${SCENE_PADDING:-8}"[m
+[32m+[m[32m: "${TERM_ROWS:=40}" "${TERM_COLS:=150}"[m
+[32m+[m[32m_win_px() { xdotool getwindowgeometry "${SCENE_WINDOW}" | sed -n 's/.*Geometry: \([0-9]*\)x\([0-9]*\)/\1 \2/p'; }[m
+[32m+[m[32mread -r WIN_W WIN_H <<<"$(_win_px)"[m
+[32m+[m[32m: "${WIN_W:=1600}" "${WIN_H:=1000}"[m
+[32m+[m[32mCELL_W=$(((WIN_W - 2 * PAD) / TERM_COLS))[m
+[32m+[m[32mCELL_H=$(((WIN_H - 2 * PAD) / TERM_ROWS))[m
+[32m+[m[32m: "${CELL_W:=9}" "${CELL_H:=18}"[m
+[32m+[m[32mecho "scene ${SCENE_NAME}: ${TERM_COLS}x${TERM_ROWS} cells of ${CELL_W}x${CELL_H}px"[m
+[32m+[m
+[32m+[m[32m# Row and column are 1-based, the way the terminal counts them.[m
+[32m+[m[32mpx_x() { echo $(((${1} - 1) * CELL_W + CELL_W / 2 + PAD)); }[m
+[32m+[m[32mpx_y() { echo $(((${1} - 1) * CELL_H + CELL_H / 2 + PAD)); }[m
+[32m+[m
+[32m+[m[32mpause() { sleep "${1:-0.5}"; }[m
+[32m+[m
+[32m+[m[32mk() { xdotool key --clearmodifiers --window "${SCENE_WINDOW}" "$@"; }[m
+[32m+[m[32mkey_repeat() { # key_repeat <key> <count> [delay][m
+[32m+[m	[32mlocal key="$1" count="$2" delay="${3:-0.12}"[m
+[32m+[m	[32mfor _ in $(seq 1 "${count}"); do[m
+[32m+[m		[32mxdotool key --clearmodifiers --window "${SCENE_WINDOW}" "${key}"[m
+[32m+[m		[32msleep "${delay}"[m
+[32m+[m	[32mdone[m
+[32m+[m[32m}[m
+[32m+[m[32mt() { xdotool type --clearmodifiers --window "${SCENE_WINDOW}" --delay "${TYPE_DELAY:-28}" -- "$1"; }[m
+[32m+[m[32msubmit() { t "$1"; pause 0.4; k Return; }[m
+[32m+[m
+[32m+[m[32m# Move the real pointer to a cell. The terminal turns that into the same SGR[m
+[32m+[m[32m# motion report a hand on a mouse produces, which is the only way a hover state[m
+[32m+[m[32m# is real evidence.[m
+[32m+[m[32mpoint() { xdotool mousemove --sync "$(px_x "$2")" "$(px_y "$1")"; }[m
+[32m+[m[32m# Glide, so the recording shows the pointer travelling and every row it crosses[m
+[32m+[m[32m# lighting up on the way.[m
+[32m+[m[32mglide() { # glide <row-from> <col-from> <row-to> <col-to> [steps] [delay][m
+[32m+[m	[32mlocal r0="$1" c0="$2" r1="$3" c1="$4" steps="${5:-16}" delay="${6:-0.03}"[m
+[32m+[m	[32mfor i in $(seq 0 "${steps}"); do[m
+[32m+[m		[32mxdotool mousemove --sync \[m
+[32m+[m			[32m"$(px_x $((c0 + (c1 - c0) * i / steps)))" \[m
+[32m+[m			[32m"$(px_y $((r0 + (r1 - r0) * i / steps)))"[m
+[32m+[m		[32msleep "${delay}"[m
+[32m+[m	[32mdone[m
+[32m+[m[32m}[m
+[32m+[m[32mclick() { xdotool click 1; }[m
+[32m+[m[32mclick_at() { point "$1" "$2"; pause 0.3; click; }[m
+[32m+[m[32mwheel_up() { key_repeat_button 4 "${1:-3}"; }[m
+[32m+[m[32mwheel_down() { key_repeat_button 5 "${1:-3}"; }[m
+[32m+[m[32mkey_repeat_button() {[m
+[32m+[m	[32mlocal button="$1" count="$2"[m
+[32m+[m	[32mfor _ in $(seq 1 "${count}"); do[m
+[32m+[m		[32mxdotool click "${button}"[m
+[32m+[m		[32msleep 0.12[m
+[32m+[m	[32mdone[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mshot() { import -window root "${SCENE_OUT}/${SCENE_NAME}-$1.png"; }[m
+[32m+[m
+[32m+[m[32m# Wait for text to appear on screen, so a scene never races the model. Reads the[m
+[32m+[m[32m# window's own text through kitty's remote control if it is on, otherwise falls[m
+[32m+[m[32m# back to a fixed wait.[m
+[32m+[m[32msettle() { sleep "${1:-2}"; }[m
+[1mdiff --git a/proof/scenes/mouse-probe.sh b/proof/scenes/mouse-probe.sh[m
+[1mnew file mode 100755[m
+[1mindex 000000000..64a9da310[m
+[1m--- /dev/null[m
+[1m+++ b/proof/scenes/mouse-probe.sh[m
+[36m@@ -0,0 +1,5 @@[m
+[32m+[m[32m#!/usr/bin/env bash[m
+[32m+[m[32msettle 3[m
+[32m+[m[32mglide 5 10 20 60 30 0.05[m
+[32m+[m[32mclick_at 12 40[m
+[32m+[m[32msettle 2[m
+[1mdiff --git a/proof/scenes/probe-cmd.sh b/proof/scenes/probe-cmd.sh[m
+[1mnew file mode 100755[m
+[1mindex 000000000..3133220b2[m
+[1m--- /dev/null[m
+[1m+++ b/proof/scenes/probe-cmd.sh[m
+[36m@@ -0,0 +1,10 @@[m
+[32m+[m[32m#!/usr/bin/env bash[m
+[32m+[m[32mexec 2>/out/probe.err[m
+[32m+[m[32mset -x[m
+[32m+[m[32mtty[m
+[32m+[m[32mstty raw -echo[m
+[32m+[m[32mprintf '\033[?1000h\033[?1002h\033[?1003h\033[?1006h'[m
+[32m+[m[32mtimeout 12 stdbuf -o0 cat -v > /out/mouse-probe.txt[m
+[32m+[m[32mprintf '\033[?1003l\033[?1002l\033[?1000l\033[?1006l'[m
+[32m+[m[32mstty sane[m
+[32m+[m[32msleep 2[m
+[1mdiff --git a/proof/scenes/settings-pointer.sh b/proof/scenes/settings-pointer.sh[m
+[1mnew file mode 100755[m
+[1mindex 000000000..9a57aaa7e[m
+[1m--- /dev/null[m
+[1m+++ b/proof/scenes/settings-pointer.sh[m
+[36m@@ -0,0 +1,26 @@[m
+[32m+[m[32m#!/usr/bin/env bash[m
+[32m+[m[32m# A real pointer over the settings screen. The card is drawn on a 133x37 grid at[m
+[32m+[m[32m# this window size, so the rows below are the sidebar (8 = Appearance, 24 =[m
+[32m+[m[32m# Plugins) and the footer chip row (32).[m
+[32m+[m[32msettle 20[m
+[32m+[m[32msubmit "/settings"[m
+[32m+[m[32msettle 4[m
+[32m+[m[32mshot open[m
+[32m+[m
+[32m+[m[32m# Down the sidebar one row at a time, so the recording shows the band tracking[m
+[32m+[m[32m# the pointer instead of appearing under it.[m
+[32m+[m[32mglide 8 25 18 25 22 0.07[m
+[32m+[m[32mshot sidebar-hover[m
+[32m+[m[32mclick[m
+[32m+[m[32msettle 1[m
+[32m+[m[32mshot sidebar-click[m
+[32m+[m[32mglide 18 25 23 25 12 0.07[m
+[32m+[m[32mshot sidebar-hover-low[m
+[32m+[m
+[32m+[m[32m# Across the footer chips.[m
+[32m+[m[32mpoint 32 40[m
+[32m+[m[32msettle 1[m
+[32m+[m[32mshot chip-hover-1[m
+[32m+[m[32mglide 32 40 32 90 26 0.05[m
+[32m+[m[32mshot chip-hover-2[m
+[32m+[m[32msettle 1[m
+[1mdiff --git a/proof/scenes/xdiag.sh b/proof/scenes/xdiag.sh[m
+[1mnew file mode 100755[m
+[1mindex 000000000..42f945b1d[m
+[1m--- /dev/null[m
+[1m+++ b/proof/scenes/xdiag.sh[m
+[36m@@ -0,0 +1,11 @@[m
+[32m+[m[32m#!/usr/bin/env bash[m
+[32m+[m[32mset +e[m
+[32m+[m[32msettle 3[m
+[32m+[m[32m{[m
+[32m+[m[32m  echo "SCENE_WINDOW=${SCENE_WINDOW}"[m
+[32m+[m[32m  echo "-- ps:"; ps -eo pid,args | grep -E "kitty|xterm|sleep" | grep -v grep | head -5[m
+[32m+[m[32m  echo "-- children:"; xwininfo -root -children 2>&1 | sed -n '4,14p'[m
+[32m+[m[32m  xdotool mousemove --sync 700 400; sleep 0.5[m
+[32m+[m[32m  echo "-- loc: $(xdotool getmouselocation)"[m
+[32m+[m[32m} > /out/xdiag.txt 2>&1[m
+[32m+[m[32msettle 3[m
