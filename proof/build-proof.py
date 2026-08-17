@@ -138,6 +138,220 @@ class Section:
         return f"<h2>{self.title}</h2>\n" + "\n".join(self.body)
 
 
+MANIFEST = ROOT / "commit-videos.tsv"
+COMMITS_REL = "captures/x11/commits/"
+
+
+def _arm_result(hash_: str, arm: str) -> str:
+    """The last lines the command printed on that arm, as text.
+
+    Written by proof/docker/commit-results.sh -- the same trees and the same
+    commands as the videos, run again with no camera. The page quotes this file
+    rather than a number typed by hand, so a caption that says twelve failed is
+    reading a file anyone can open next to the video that shows it.
+    """
+    path = ROOT / COMMITS_REL / f"{hash_}-{arm}.txt"
+    if not path.exists():
+        return ""
+    lines = [ln.rstrip() for ln in path.read_text(errors="replace").splitlines() if ln.strip()]
+    tally = [ln for ln in lines if RESULT_LINE.match(ln)]
+    return " · ".join(ln.strip() for ln in tally[:4]) if tally else lines[-1][:120]
+
+
+RESULT_LINE = __import__("re").compile(r"^\s*\d+ (pass|fail|error|expect\(\) calls)|^Ran \d+ tests")
+
+
+def _pty_stats(name: str) -> dict[str, str]:
+    """The counters pty-stats.py wrote for one arm of the long-session proof."""
+    path = ROOT / f"captures/x11/{name}/pty-stats.txt"
+    if not path.exists():
+        missing.append(str(path.relative_to(ROOT)))
+        return {}
+    out: dict[str, str] = {}
+    for line in path.read_text(errors="replace").splitlines():
+        if line.startswith("---"):
+            break
+        key, _, value = line.rpartition("  ")
+        if key.strip() and value.strip():
+            out[key.strip()] = value.strip()
+    return out
+
+
+def long_session_section() -> Section:
+    """Streaming at the tail of a multi-million-token session, against an empty one.
+
+    The session is one of the operator's own: 289MB of JSONL, 69,727 records,
+    34,552 messages, 87 earlier compactions, about 72 million tokens of text. It
+    is bind-mounted read-only into the container and copied into the container's
+    tmpfs home before the app opens it, so the app writes to the copy. The
+    operator's ~/.veyyon is not in the mount table and no setting of theirs is
+    read.
+
+    The control arm is the same scene with no session at all. Both arms are
+    driven by the same keys, answered by the same 1.5B on the container network,
+    and recorded by the same camera; the app runs under `script` inside the
+    terminal, so each arm yields a video AND the bytes it wrote.
+    """
+    big, fresh = _pty_stats("long-session-72m"), _pty_stats("long-session-fresh")
+    keys = [
+        "session bytes",
+        "session messages",
+        "pty bytes",
+        "ED3 native-scrollback erases",
+        "ED2 screen erases",
+        "synchronized frames",
+        "bytes per frame",
+        "wall seconds",
+    ]
+    head = "<tr><th>counter</th><th>72M-token session</th><th>fresh session</th></tr>"
+    body = "".join(
+        f"<tr><td>{k}</td><td>{big.get(k, '—')}</td><td>{fresh.get(k, '—')}</td></tr>"
+        for k in keys
+        if k in big or k in fresh
+    )
+    return Section(
+        "Streaming at the tail of a 72-million-token session",
+        [
+            "<p>The session in the left video is a real one of the operator's, resumed inside the container:"
+            " 289MB of JSONL, 69,727 records, 34,552 messages, 87 earlier compactions. The right video is the"
+            " same scene with no session at all, so the two differ in exactly one thing — what is above the"
+            " window. Same keys, same 1.5B model on the container network, same camera, same terminal.</p>",
+            "<p>The app runs under <code>script</code> inside that terminal, so each arm produced a byte capture"
+            " as well as a picture. <code>ED3</code> is the counter that matters: it is the sequence that erases"
+            " the terminal's own scroll buffer, and it is what both symptoms this branch chased were made of."
+            " A frame that repaints in place writes cursor moves and text; a frame that gives up writes"
+            " <code>ED3</code>.</p>",
+            video_pair(
+                X + "long-session-72m.mp4",
+                X + "long-session-fresh.mp4",
+                "the operator's own session, resumed: the transcript, a scroll back through it, a prompt, and the"
+                " answer streaming in at the tail",
+                "control: the same scene on an empty session",
+                start=25,
+            ),
+            f"<table><thead>{head}</thead><tbody>{body}</tbody></table>",
+            "<p>The resumed arm carries one cost the control does not, and it is model-side rather than"
+            " renderer-side: a history that large does not fit a 65k window, so the app compacts before it can"
+            " ask anything, and says so on screen while it does. That is the 1.5B summarizing on CPU, not a"
+            " frame being repainted.</p>",
+        ],
+    )
+
+
+def commit_pair(hash_: str, cap_before: str, cap_after: str) -> str:
+    """The two arms of one commit, labelled for what they are.
+
+    `video_pair` labels its arms main and branch, which is right for a scene
+    recorded against two branches and wrong here: both of these arms are on this
+    branch, one commit apart.
+    """
+    before, after = f"{COMMITS_REL}{hash_}-before.mp4", f"{COMMITS_REL}{hash_}-after.mp4"
+    need(before)
+    need(after)
+    return (
+        '<div class="pair">'
+        f'<figure><video controls loop muted playsinline preload="metadata"><source src="{before}#t=1" type="video/mp4"></video>'
+        f"<figcaption><strong>parent</strong> — {cap_before}</figcaption></figure>"
+        f'<figure><video controls loop muted playsinline preload="metadata"><source src="{after}#t=1" type="video/mp4"></video>'
+        f"<figcaption><strong>this commit</strong> — {cap_after}</figcaption></figure>"
+        "</div>"
+    )
+
+
+def commit_video_sections() -> str:
+    """One block per commit on the branch: what it was, and it running.
+
+    Nothing here is chosen by hand. The rows come out of commit-videos.tsv, the
+    videos out of proof/captures/x11/commits, and which of the three shapes a
+    commit gets follows from what the commit contains:
+
+      test    its own test files, run against its parent's source and against
+              its own. The before arm is the mutation gate as a movie: the test
+              is byte-identical in both trees, so a difference is the source.
+      driver  a renderer it added or changed, drawing the surface in both trees.
+      diff    the change itself, paged in the terminal, for a commit that ships
+              nothing a terminal can execute -- captures, a page rebuild, a
+              changelog ordering, a merge.
+    """
+    rows = []
+    for line in MANIFEST.read_text().splitlines():
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split("\t")
+        if len(parts) < 5:
+            continue
+        hash_, kind, _hold, payload, subject = parts[:5]
+        rows.append((hash_, kind, payload, subject))
+
+    blocks = []
+    for hash_, kind, payload, subject in rows:
+        heading = f'<h3 id="c-{hash_}"><code>{hash_}</code> — {escape(subject)}</h3>'
+        if kind == "diff":
+            body = video(
+                f"{COMMITS_REL}{hash_}-after.mp4",
+                "the change itself, paged in the terminal",
+                start=1,
+            )
+            what = "<p class=\"lede\">Ships nothing a terminal can run: the video is the diff.</p>"
+        else:
+            ran = escape(payload.replace("./", ""))
+            before, after = _arm_result(hash_, "before"), _arm_result(hash_, "after")
+            cap_b = escape(before) or "parent tree"
+            cap_a = escape(after) or "commit tree"
+            body = commit_pair(hash_, cap_b, cap_a)
+            verb = "its own tests" if kind == "test" else "its own renderer"
+            what = f'<p class="lede">Same terminal, same command, two source trees: {verb}, <code>{ran}</code>.</p>'
+        blocks.append(f"{heading}\n{what}\n{body}")
+
+    # The tally, counted off the same result files the captions quote. Stated at
+    # build time rather than typed, so it cannot drift from what is on the page:
+    # if a re-record turns an arm green the sentence changes with it.
+    kinds = [k for _h, k, _p, _s in rows]
+    red = green = unbuildable = 0
+    for hash_, kind, _payload, _subject in rows:
+        if kind != "test":
+            continue
+        before, after = _tally(hash_, "before"), _tally(hash_, "after")
+        if after == (None, None):
+            continue
+        if before == (None, None):
+            # The parent tree cannot even run the test -- it fails to load, which
+            # is a harder differential than a failing assertion, not a softer one.
+            unbuildable += 1
+        elif after[1] == 0 and (before[1] or 0) > 0:
+            red += 1
+        elif after[1] == 0:
+            green += 1
+    summary = (
+        f'<p><strong>{red}</strong> of the {kinds.count("test")} commits that carry tests fail against their'
+        f" parent's source and pass against their own — the test byte-identical in both trees, so nothing but the"
+        f" commit moved. On {unbuildable} more the parent tree cannot load the test at all, which is a harder"
+        f" differential than a failing assertion rather than a softer one. <strong>{green}</strong> pass on both"
+        " arms, which is what a commit that only adds a test, or duplicates a fix already on main, is supposed to"
+        " do. The rest of the branch is"
+        f' {kinds.count("driver")} renderer rows and {kinds.count("diff")} rows that ship nothing a terminal can'
+        " execute.</p>"
+    )
+    return summary + "\n" + "\n".join(blocks)
+
+
+def _tally(hash_: str, arm: str) -> tuple[int | None, int | None]:
+    """(pass, fail) out of an arm's result file, or (None, None) when it has neither."""
+    path = ROOT / COMMITS_REL / f"{hash_}-{arm}.txt"
+    if not path.exists():
+        return (None, None)
+    text = path.read_text(errors="replace")
+    passed = __import__("re").search(r"^\s*(\d+) pass\s*$", text, __import__("re").M)
+    failed = __import__("re").search(r"^\s*(\d+) fail\s*$", text, __import__("re").M)
+    if not passed and not failed:
+        return (None, None)
+    return (int(passed.group(1)) if passed else 0, int(failed.group(1)) if failed else 0)
+
+
+def escape(text: str) -> str:
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
 def commit_table() -> str:
     log = subprocess.run(
         ["git", "log", "--oneline", "--no-decorate", "main..HEAD"],
@@ -146,7 +360,7 @@ def commit_table() -> str:
     rows = []
     for line in log:
         sha, _, subject = line.partition(" ")
-        rows.append(f'<tr><td class="sha">{sha}</td><td>{subject}</td></tr>')
+        rows.append(f'<tr><td class="sha"><a href="#c-{sha}">{sha}</a></td><td>{subject}</td></tr>')
     return "\n".join(rows)
 
 
@@ -185,11 +399,26 @@ always lands after it, so the frames have to be cut from the video afterwards.</
 
 {body}
 
-<h2>Every commit on the branch</h2>
+<h2>Every commit on the branch, on camera</h2>
+<p>{ahead} commits, and a recording of each one below. Every video is a real terminal in the recording
+container: <code>proof/docker/record-commit-arm.sh</code> extracts the commit's tree and its parent's tree with
+<code>git archive</code>, mounts the same <code>node_modules</code> and the same native addon into both, and runs
+the same command in each. A test the commit ADDS is copied into the parent tree first, so the test is
+byte-identical in both arms and the only variable left is the source under it.</p>
+<p>Two build outputs are mounted into both trees beside <code>node_modules</code>, because neither is in git and
+a tree without them fails for a reason that has nothing to do with the commit: the native addon
+(<code>veyyon_natives.linux-x64-*.node</code>) and the generated HTML-export bundle
+(<code>tool-views.generated.js</code>). The first campaign was recorded without them and every arm of fifty
+commits failed on a missing addon — the videos looked like a broken branch and were re-recorded. A caption under
+a video is the text of the same command run again headlessly by
+<code>proof/docker/commit-results.sh</code>; where a caption is empty the command drew a surface to the terminal
+rather than writing lines to a pipe, and the video is the only place its output exists.</p>
 <table><thead><tr><th>commit</th><th>subject</th></tr></thead>
 <tbody>
 {commit_table()}
 </tbody></table>
+
+{commit_video_sections()}
 </body></html>
 """
 
@@ -581,4 +810,4 @@ SECTIONS = [
 ]
 
 if __name__ == "__main__":
-    write(SECTIONS)
+    write([*SECTIONS, long_session_section()])

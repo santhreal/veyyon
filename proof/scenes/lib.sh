@@ -25,16 +25,37 @@ px_y() { echo $(((${1} - 1) * CELL_H + CELL_H / 2 + PAD)); }
 
 pause() { sleep "${1:-0.5}"; }
 
-k() { xdotool key --clearmodifiers --window "${SCENE_WINDOW}" "$@"; }
+# Keys go to the window xsession.sh found. That id can go stale: kitty may map a
+# second window during startup and retire the first, and every key after that
+# dies of BadWindow -- which under `set -e` takes the recorder down with it,
+# leaving a video that stops at the first keystroke and no gif and no stats. The
+# whole scene had already run past its load when that happened on the fresh arm
+# of the long-session pair. So a send that fails on the id is retried against
+# whatever holds the focus, and a send that fails both ways is reported and does
+# not abort the run: a scene that loses one key is worth more than no recording.
+_xdo() {
+	local verb="$1"
+	shift
+	xdotool "${verb}" --clearmodifiers --window "${SCENE_WINDOW}" "$@" 2>/dev/null && return 0
+	xdotool "${verb}" --clearmodifiers "$@" 2>/dev/null && return 0
+	echo "scene: ${verb} ${*} reached no window" >&2
+	return 0
+}
+
+k() { _xdo key "$@"; }
 key_repeat() { # key_repeat <key> <count> [delay]
 	local key="$1" count="$2" delay="${3:-0.12}"
 	for _ in $(seq 1 "${count}"); do
-		xdotool key --clearmodifiers --window "${SCENE_WINDOW}" "${key}"
+		_xdo key "${key}"
 		sleep "${delay}"
 	done
 }
-t() { xdotool type --clearmodifiers --window "${SCENE_WINDOW}" --delay "${TYPE_DELAY:-28}" -- "$1"; }
-submit() { t "$1"; pause 0.4; k Return; }
+t() { _xdo type --delay "${TYPE_DELAY:-28}" -- "$1"; }
+submit() {
+	t "$1"
+	pause 0.4
+	k Return
+}
 
 # Move the real pointer to a pixel. The terminal turns that into the same SGR
 # motion report a hand on a mouse produces, which is the only way a hover state

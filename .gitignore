@@ -180,3 +180,20 @@ scratch-docs-lane/
 /release-notes.md
 /release-notes-dryrun.md
 
+# The long-session proof is recorded against one of the operator's REAL sessions,
+# so every frame of it and every byte of its pty capture is that conversation
+# rendered on a screen: prompts, file paths, todo text, tool output. The
+# recording is what the proof page shows locally and it is not committable for
+# the same reason a transcript is not. The fresh-session control arm beside it
+# carries nothing but the welcome screen and a sentence from a 1.5B, so that one
+# is tracked.
+/proof/captures/x11/long-session-72m.mp4
+/proof/captures/x11/long-session-72m.gif
+/proof/captures/x11/long-session-72m/
+/proof/captures/x11/*/pty.raw
+
+# The per-commit recordings are mp4. xsession.sh writes a gif beside every one
+# for a browser with no codec, and for 141 arms that is 27MB of duplicate of the
+# 21MB the page actually plays. The page references the mp4; the gif is a local
+# convenience.
+/proof/captures/x11/commits/*.gif
