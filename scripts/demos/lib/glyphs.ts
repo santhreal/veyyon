@@ -144,6 +144,32 @@ const FONT: Readonly<Record<string, string>> = {
 	"▒": "#.#.#/.#.#./#.#.#/.#.#./#.#.#/.#.#./#.#.#",
 	"▓": "##.##/#####/##.##/#####/##.##/#####/##.##",
 
+	// Eighth blocks, vertical and horizontal. These are how a terminal animates
+	// below one cell: a card that grows by an eighth of a row per frame has eight
+	// times the resolution of one that grows by a row, and that is the difference
+	// between motion a viewer sees and motion a viewer is told about. A proof of
+	// sub-cell motion is a proof about WHICH of these glyphs each frame chose, so
+	// the font has to be able to draw all of them.
+	//
+	// A 5x7 cell cannot hold eight distinct fill levels. Each glyph rounds to the
+	// nearest row (or column), so three pairs land on the same bitmap: ▃ with the
+	// existing ▄, ▆ with ▇, and ▏ with ▎, ▍ with ▌, ▊ with ▉ horizontally. The
+	// collision is in the picture only: an assertion about sub-cell motion reads
+	// the glyph out of the bytes, where all eight levels differ.
+	"▁": "...../...../...../...../...../...../#####",
+	"▂": "...../...../...../...../...../#####/#####",
+	"▃": "...../...../...../...../#####/#####/#####",
+	"▅": "...../...../#####/#####/#####/#####/#####",
+	"▆": "...../#####/#####/#####/#####/#####/#####",
+	"▇": "...../#####/#####/#####/#####/#####/#####",
+	"▏": "#..../#..../#..../#..../#..../#..../#....",
+	"▎": "#..../#..../#..../#..../#..../#..../#....",
+	"▍": "##.../##.../##.../##.../##.../##.../##...",
+	"▌": "##.../##.../##.../##.../##.../##.../##...",
+	"▋": "###../###../###../###../###../###../###..",
+	"▊": "####./####./####./####./####./####./####.",
+	"▉": "####./####./####./####./####./####./####.",
+
 	// The handful of symbols veyyon's status lines and lists actually use.
 	"•": "...../...../.###./.###./.###./...../.....",
 	"·": "...../...../...../..#../...../...../.....",
