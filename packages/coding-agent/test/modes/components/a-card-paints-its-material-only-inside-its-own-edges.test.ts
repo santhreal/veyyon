@@ -29,18 +29,27 @@
  * fallback is pretty.
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { type AnsiPolicy, getAnsiPolicy, motionClock, setAnsiPolicy, TERMINAL, visibleWidth } from "@veyyon/tui";
+import {
+	type AnsiPolicy,
+	getAnsiPolicy,
+	MOTION,
+	MotionClock,
+	motionClock,
+	setAnsiPolicy,
+	TERMINAL,
+	visibleWidth,
+} from "@veyyon/tui";
 import { stripAnsi } from "@veyyon/utils";
 import {
 	applyModalReveal,
 	MODAL_SIZING_SETTINGS,
-	type ModalShellGeometry,
 	ModalRevealDriver,
+	type ModalShellGeometry,
 	type ModalShellResult,
 	renderModalShell,
 } from "../../../src/modes/components/modal-shell";
-import { getThemeByName, initTheme, setThemeInstance } from "../../../src/modes/theme/theme";
 import { resetGroundTintsForTest, setDetectedTerminalGround } from "../../../src/modes/theme/ground-tints";
+import { getThemeByName, initTheme, setThemeInstance } from "../../../src/modes/theme/theme";
 
 const WIDTH = 100;
 const HEIGHT = 30;
@@ -133,7 +142,9 @@ describe("a card paints its material only inside its own edges", () => {
 			const columns = paintedColumns(lines[row] ?? "");
 			painted += columns.size;
 			for (const col of columns) {
-				expect(col, `row ${row} painted column ${col} outside the card`).toBeGreaterThanOrEqual(geometry.cardColStart);
+				expect(col, `row ${row} painted column ${col} outside the card`).toBeGreaterThanOrEqual(
+					geometry.cardColStart,
+				);
 				expect(col, `row ${row} painted column ${col} outside the card`).toBeLessThan(geometry.cardColEnd);
 			}
 		}
@@ -159,7 +170,9 @@ describe("a card paints its material only inside its own edges", () => {
 					expect(col, `sweep ${sweep} row ${row} lit column ${col} outside the card`).toBeGreaterThanOrEqual(
 						geometry.cardColStart,
 					);
-					expect(col, `sweep ${sweep} row ${row} lit column ${col} outside the card`).toBeLessThan(geometry.cardColEnd);
+					expect(col, `sweep ${sweep} row ${row} lit column ${col} outside the card`).toBeLessThan(
+						geometry.cardColEnd,
+					);
 				}
 			}
 			// A sweep that paints nothing anywhere would satisfy every containment
@@ -239,7 +252,10 @@ describe("a card paints its material only inside its own edges", () => {
 		const lifted = [...lit.matchAll(/48;2;(\d+);(\d+);(\d+)/g)].map(m => [Number(m[1]), Number(m[2]), Number(m[3])]);
 		const warm = lifted.filter(([r, g, b]) => r > g && g > b && r > 100);
 		expect(warm.length, "the swept row still carries the band's warm colour").toBeGreaterThan(0);
-		expect(warm.some(([r]) => r > 120), "the sweep lifted the band rather than leaving it flat").toBe(true);
+		expect(
+			warm.some(([r]) => r > 120),
+			"the sweep lifted the band rather than leaving it flat",
+		).toBe(true);
 	});
 });
 
@@ -255,6 +271,62 @@ describe("the entrance hands the clock back", () => {
 		motionClock.tick(now);
 		return motionClock.liveCount;
 	}
+
+	it("keeps the light travelling after the card has landed, and still ends it", () => {
+		// The sweep is twice the unfold on purpose, and a driver that reported a settled
+		// sweep the moment the UNFOLD settled cut every one of them in half: measured on
+		// a real terminal as 250ms of light on a 520ms curve, ending the instant the card
+		// stopped growing. `stop()` is what ends a sweep, not the entrance finishing.
+		const clock = new MotionClock();
+		const driver = new ModalRevealDriver(clock);
+		driver.start(() => {});
+		expect(driver.value, "the unfold is anchored on its first read").toBeLessThan(1);
+		expect(driver.sweep, "and so is the light").toBeLessThan(1);
+
+		// A real terminal delivers frames, not jumps: the clock deliberately advances a
+		// single frame across a gap wider than 100ms rather than replaying a stall in one
+		// lurch, so this walks the timeline the way a paint loop does.
+		let now = performance.now();
+		const step = () => {
+			now += 1000 / 60;
+			clock.tick(now);
+		};
+		const enterFrames = Math.ceil(MOTION.enter.duration / (1000 / 60)) + 2;
+		for (let i = 0; i < enterFrames; i += 1) step();
+		expect(driver.value, "the card has landed").toBe(1);
+		const midTravel = driver.sweep;
+		expect(midTravel, "the light is still crossing it").toBeLessThan(1);
+		expect(midTravel, "and it is well past the start of its own curve").toBeGreaterThan(0.5);
+
+		// It ENDS: a light with no end is a clock that never stops asking for frames.
+		let frames = 0;
+		while (clock.liveCount > 0 && frames < 120) {
+			step();
+			frames += 1;
+		}
+		expect(frames, "the light reaches its end and the clock empties").toBeLessThan(120);
+		expect(driver.sweep, "a finished light is a flat card").toBe(1);
+	});
+
+	it("does not light a card that landed before anyone read the sweep", () => {
+		// The light is anchored on its first read so an overlay whose first paint lags
+		// construction still gets a full sweep. The other end of that rule: a card whose
+		// unfold has already finished by the time something reads the sweep must not start
+		// a 520ms light on a card that has been sitting still — the reveal is over.
+		const clock = new MotionClock();
+		const driver = new ModalRevealDriver(clock);
+		driver.start(() => {});
+		expect(driver.value, "the unfold is anchored on this read").toBeLessThan(1);
+		let now = performance.now();
+		for (let i = 0; i < Math.ceil(MOTION.enter.duration / (1000 / 60)) + 2; i += 1) {
+			now += 1000 / 60;
+			clock.tick(now);
+		}
+		expect(driver.value, "the card landed with nobody reading the light").toBe(1);
+		expect(clock.liveCount, "and nothing is left on the clock").toBe(0);
+		expect(driver.sweep, "a card already in place is lit flat").toBe(1);
+		expect(clock.liveCount, "reading it started no late animation").toBe(0);
+	});
 
 	it("reports a settled sweep before it is armed and after it is stopped", () => {
 		const driver = new ModalRevealDriver();
