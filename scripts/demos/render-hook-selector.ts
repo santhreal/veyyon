@@ -7,6 +7,8 @@
  * shortcut chips and row-level hover, so the before/after pair is a pair of
  * images of this one component:
  *
+ * Run:
+ *
  *     bun scripts/demos/render-hook-selector.ts --width 100 |
  *       bun scripts/demos/render-proof.ts --out /tmp/hook-selector --width 100
  *

@@ -11,6 +11,8 @@
  * Every block is a REAL component driven through its own public API, so the
  * image answers what ships. Pipe into `render-proof.ts` for the pair:
  *
+ * Run:
+ *
  *     bun scripts/demos/render-transcript-blocks.ts --width 100 --ruler |
  *       bun scripts/demos/render-proof.ts --out /tmp/blocks --width 100
  *

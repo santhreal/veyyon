@@ -11,6 +11,8 @@
 // viewport slack off the composed frame). The engine is the real `TUI` writing
 // real escapes to a real tty through `ProcessTerminal`.
 //
+// Run:
+//
 //   bun scripts/demos/blank-band-repro.ts [--turns 24] [--stream 30] [--hud 5]
 //   DIAG_PATH=/tmp/diag.txt bun scripts/demos/blank-band-repro.ts   # + accounting
 //

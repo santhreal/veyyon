@@ -49,6 +49,10 @@ const NOT_A_PROSE_PAGE: readonly RegExp[] = [
 	/(^|\/)builtin-rules\//,
 	/(^|\/)statements\//,
 	/(^|\/)fixtures?\//,
+	// A seeded home directory for the proof recorder: profile, sessions, and
+	// whatever a session wrote inside one. Markdown in there is a session
+	// artifact the recorder replays, the same kind of thing as a fixture.
+	/(^|\/)home-seed\//,
 	/(^|\/)arms\//,
 	/(^|\/)(README|CHANGELOG|LICENSE|CONTRIBUTING|CODE_OF_CONDUCT)\.md$/i,
 	/(^|\/)SKILL\.md$/,

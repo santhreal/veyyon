@@ -1,14 +1,16 @@
 /**
  * A bench for the LOOK, not for a component.
  *
- * The animations were called barely noticeable and the surfaces boring, and both
- * complaints are about the same thing: the product draws line art and text on one
- * flat ground. A terminal with truecolour can do surfaces — a filled panel with a
+ * Barely-noticeable animation and a flat-looking surface are the same defect: the
+ * product draws line art and text on one flat ground. A terminal with truecolour can
+ * do surfaces — a filled panel with a
  * vertical gradient, a hairline lighter at the top edge than the bottom, a shadow
  * under the thing that is in front, a selection that is a filled band rather than
  * a coloured word, and a specular sweep that crosses a surface as it arrives.
  * Every one of those is a per-cell colour, which means it can be judged from a
  * PNG before any of it is wired into the app.
+ *
+ * Run:
  *
  *     env -u NO_COLOR FORCE_COLOR=3 bun scripts/demos/render-settings-tab.ts |
  *       bun scripts/demos/lift-lab.ts --out /tmp/lift/settings --scale 3

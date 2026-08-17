@@ -12,6 +12,8 @@
  * here rather than in the product, which is the only way to put the two side by side
  * once the product has stopped drawing one of them.
  *
+ * Run:
+ *
  *     bun scripts/demos/render-tool-block.ts --width 100 [--box] |
  *       bun scripts/demos/render-proof.ts --out /tmp/block --width 100
  *
