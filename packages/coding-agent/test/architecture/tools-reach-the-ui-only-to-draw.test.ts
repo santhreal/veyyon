@@ -26,7 +26,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as contextUsagePanel from "@veyyon/coding-agent/modes/utils/context-usage";
 import * as contextUsageNumbers from "@veyyon/coding-agent/session/context-usage";
-import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
+import { moduleSpecifiersIn, namedImportsFrom } from "@veyyon/utils/module-reach";
 
 const SRC = path.join(import.meta.dir, "..", "..", "src");
 const TOOLS = path.join(SRC, "tools");
@@ -56,6 +56,22 @@ const ALLOWED = new Map<string, string>([
 		"modes/components/hook-editor",
 		"One layout constant, `HOOK_EDITOR_TEXT_PAD_COLS`, so the ask tool's block lines up with the editor above it. The editor itself is never constructed here.",
 	],
+	[
+		"modes/components/modal-shell",
+		"One width query, `mediumModalContentWidth`, so the ask tool pre-wraps its title to the width of the card the editor draws it in. Wrapping at the terminal width instead hands the card lines it wraps a second time. No card is constructed, rendered or hit-tested here.",
+	],
+]);
+
+/**
+ * Two allowed targets are whole interactive components that also export one thing a tool
+ * legitimately needs. Module-level permission is too coarse for those: the entry reads as
+ * "the ask tool may ask a card how wide it is" and grants "any tool may render a card".
+ * The names below are the ONLY specifiers a tool may take out of each, so widening the
+ * crossing is a decision recorded here rather than an import added upstream.
+ */
+const NARROW = new Map<string, readonly string[]>([
+	["modes/components/hook-editor", ["HOOK_EDITOR_TEXT_PAD_COLS"]],
+	["modes/components/modal-shell", ["mediumModalContentWidth"]],
 ]);
 
 /** Every `.ts` file under `tools/`, recursively. */
@@ -77,6 +93,18 @@ function uiImportsIn(file: string): string[] {
 		const resolved = path.resolve(path.dirname(file), specifier);
 		const rel = path.relative(SRC, resolved).replace(/\\/g, "/");
 		if (rel.startsWith("modes/")) found.push(rel);
+	}
+	return found;
+}
+
+/** Named specifiers a file takes out of one `src`-relative `modes/` module. */
+function namesTakenFrom(file: string, target: string): string[] {
+	const source = fs.readFileSync(file, "utf-8");
+	const found: string[] = [];
+	for (const specifier of moduleSpecifiersIn(source)) {
+		if (!specifier.startsWith(".")) continue;
+		const rel = path.relative(SRC, path.resolve(path.dirname(file), specifier)).replace(/\\/g, "/");
+		if (rel === target) found.push(...namedImportsFrom(source, specifier));
 	}
 	return found;
 }
@@ -110,6 +138,25 @@ describe("tools reach the terminal UI only to draw", () => {
 		}
 
 		expect(violations).toEqual([]);
+	});
+
+	/**
+	 * The narrow entries stay narrow. Asserted by exact equality per module, so a second
+	 * name cannot arrive under a count or a superset match, and a name that stops being
+	 * imported has to be struck from the list rather than left reading as sanctioned.
+	 */
+	it("takes only the sanctioned names out of the two interactive components", () => {
+		const taken = new Map<string, string[]>();
+		for (const [target] of NARROW) {
+			taken.set(target, [...new Set(files.flatMap(file => namesTakenFrom(file, target)))].sort());
+		}
+
+		expect(taken).toEqual(new Map([...NARROW].map(([target, names]) => [target, [...names].sort()])));
+	});
+
+	/** A narrow rule over a module nobody allowed governs nothing, and reads as if it did. */
+	it("narrows only modules the allow-list carries", () => {
+		expect([...NARROW.keys()].filter(target => !ALLOWED.has(target))).toEqual([]);
 	});
 
 	/**
