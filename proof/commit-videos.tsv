@@ -100,3 +100,4 @@ ad14fca53	diff	45		feat(overlays): a card is a ladder of materials, measured on 
 161922a84	test	90	./packages/simulations/src/paint-sim/a-turn-that-ends-short-never-paints-a-blank-band-over-the-conversation.test.ts	fix(tui): a short turn no longer paints a blank band over the conversation
 8baebe34e	test	90	./packages/coding-agent/test/modes/controllers/a-taller-terminal-still-hugs-the-composer-to-the-bottom.test.ts	fix(tui): the frame length is the invariant, not the fill routing
 880794c05	diff	45		demo(band): say what the real-terminal arm actually shows
+782605878	test	90	./packages/coding-agent/test/a-tool-block-hangs-its-output-on-a-rail-not-in-a-box.test.ts	polish(tui): a tool block hangs its output on a rail, not in a box

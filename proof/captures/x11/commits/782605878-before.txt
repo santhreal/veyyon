@@ -1,0 +1,40 @@
+(fail) a tool block hangs its output on a rail, not in a box > wraps its body at the width a renderer budgets rows against [0.10ms]
+(pass) a tool block hangs its output on a rail, not in a box > never reaches past the terminal, even when a line fills every column it was wrapped to [0.06ms]
+(pass) a tool block hangs its output on a rail, not in a box > carries no trailing padding on an unpainted row [0.06ms]
+(pass) a tool block hangs its output on a rail, not in a box > colours the rail from the state, and lets a caller override it [2.67ms]
+(pass) a tool block hangs its output on a rail, not in a box > paints a state background as a plate the size of the block, not a band across the screen [0.63ms]
+(pass) a tool block hangs its output on a rail, not in a box > paints no plate at all when the caller has already painted the ground [0.63ms]
+(pass) a tool block hangs its output on a rail, not in a box > reaches the plate under a header wider than everything below it [0.09ms]
+404 | 		(_name, entry) => {
+405 | 			const lines = entry.build().render(120);
+406 | 			const { railed, ink } = componentFrame(lines);
+407 | 			// Every row of output hangs on the rail; only the tool's own title row, when it
+408 | 			// has one, owns column 0.
+409 | 			expect(ink.length - railed.length, `${ink.length} ink rows, ${railed.length} railed`).toBe(entry.unrailed);
+                                                                                               ^
+error: 5 ink rows, 0 railed
+
+Expected: 0
+Received: 5
+
+      at <anonymous> (/repo/packages/coding-agent/test/a-tool-block-hangs-its-output-on-a-rail-not-in-a-box.test.ts:409:90)
+(fail) a tool block hangs its output on a rail, not in a box > rails a real bash block through the component that owns it [126.62ms]
+404 | 		(_name, entry) => {
+405 | 			const lines = entry.build().render(120);
+406 | 			const { railed, ink } = componentFrame(lines);
+407 | 			// Every row of output hangs on the rail; only the tool's own title row, when it
+408 | 			// has one, owns column 0.
+409 | 			expect(ink.length - railed.length, `${ink.length} ink rows, ${railed.length} railed`).toBe(entry.unrailed);
+                                                                                               ^
+error: 3 ink rows, 0 railed
+
+Expected: 1
+Received: 3
+
+      at <anonymous> (/repo/packages/coding-agent/test/a-tool-block-hangs-its-output-on-a-rail-not-in-a-box.test.ts:409:90)
+(fail) a tool block hangs its output on a rail, not in a box > rails a real read block through the component that owns it [11.35ms]
+
+ 15 pass
+ 25 fail
+ 133 expect() calls
+Ran 40 tests across 1 file. [838.00ms]
