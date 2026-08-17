@@ -60,6 +60,7 @@
  */
 
 import { describe, expect, it, spyOn } from "bun:test";
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { tryReadHeadSha } from "@veyyon/coding-agent/autoresearch/git";
@@ -94,6 +95,11 @@ function importsOf(relative: string): string[] {
 /** The same, for a file in a sibling package. */
 function packageImportsOf(relative: string): string[] {
 	return moduleSpecifiersIn(fs.readFileSync(path.join(PACKAGES, relative), "utf-8"));
+}
+
+/** One git command in `cwd`, output trimmed. Throws with git's own message when it fails. */
+function gitIn(cwd: string, args: string[]): string {
+	return execFileSync("git", args, { cwd, encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 }
 
 describe("canonicalProjectDir", () => {
@@ -246,10 +252,59 @@ describe("tryReadHeadSha", () => {
 		expect(await tryReadHeadSha(dir.path())).toBeNull();
 	});
 
-	it("reads this repository's HEAD as a full hex sha", async () => {
-		const sha = await tryReadHeadSha(path.join(import.meta.dir, "../.."));
+	/**
+	 * A repository the test builds, rather than the one the suite happens to be checked out in. Reading
+	 * the ambient tree asserted the same branch and could not be run at all where the tree is reachable
+	 * but its git directory is not — a linked worktree mounted into a container, which is where this
+	 * arm spent its life reporting `null` and saying nothing about the helper.
+	 */
+	it("reads the HEAD of a repository as a full hex sha", async () => {
+		using dir = TempDir.createSync("@veyyon-head-sha-repo-");
+		const repo = dir.path();
+		gitIn(repo, ["init", "--initial-branch=main"]);
+		gitIn(repo, ["config", "user.email", "test@example.invalid"]);
+		gitIn(repo, ["config", "user.name", "Test"]);
+		fs.writeFileSync(path.join(repo, "file.txt"), "one\n");
+		gitIn(repo, ["add", "file.txt"]);
+		gitIn(repo, ["commit", "-q", "-m", "one"]);
+
+		const sha = await tryReadHeadSha(repo);
 
 		expect(sha).toMatch(/^[0-9a-f]{40}$/);
+		expect(sha).toBe(gitIn(repo, ["rev-parse", "HEAD"]));
+	});
+
+	/**
+	 * The case the ambient read was silently failing on. A linked worktree's `.git` is a FILE pointing at
+	 * `…/worktrees/<name>`, its `HEAD` is a symbolic ref, and the branch it names lives in the common
+	 * directory two levels up — three indirections, each of which the helper has to follow, and none of
+	 * which a repository with a `.git` directory exercises.
+	 *
+	 * The main branch is moved on AFTER the worktree is added, on purpose. Reading the wrong HEAD of the
+	 * two is not an error a reader reports, it is a plausible sha for the wrong checkout, so a fixture
+	 * whose two branches share a commit passes whichever HEAD is read and proves nothing about either.
+	 */
+	it("reads the linked worktree's own HEAD, not the one in the common directory", async () => {
+		using dir = TempDir.createSync("@veyyon-head-sha-worktree-");
+		const repo = path.join(dir.path(), "repo");
+		fs.mkdirSync(repo, { recursive: true });
+		gitIn(repo, ["init", "--initial-branch=main"]);
+		gitIn(repo, ["config", "user.email", "test@example.invalid"]);
+		gitIn(repo, ["config", "user.name", "Test"]);
+		fs.writeFileSync(path.join(repo, "file.txt"), "one\n");
+		gitIn(repo, ["add", "file.txt"]);
+		gitIn(repo, ["commit", "-q", "-m", "one"]);
+		const linked = path.join(dir.path(), "linked");
+		gitIn(repo, ["worktree", "add", "-q", "-b", "side", linked]);
+		fs.writeFileSync(path.join(repo, "file.txt"), "two\n");
+		gitIn(repo, ["commit", "-q", "-a", "-m", "two"]);
+
+		const linkedHead = gitIn(linked, ["rev-parse", "HEAD"]);
+		const mainHead = gitIn(repo, ["rev-parse", "HEAD"]);
+		expect(fs.statSync(path.join(linked, ".git")).isFile()).toBe(true);
+		expect(linkedHead).not.toBe(mainHead);
+		expect(await tryReadHeadSha(linked)).toBe(linkedHead);
+		expect(await tryReadHeadSha(repo)).toBe(mainHead);
 	});
 
 	it("is defined once in autoresearch/git.ts and imported by both experiment tools", () => {
