@@ -1110,7 +1110,7 @@ const BAND_FG_RESET = "\x1b[39m";
 function spliceAtColumns(text: string, inserts: ReadonlyMap<number, string>): string {
 	const columns = [...inserts.keys()].sort((a, b) => a - b);
 	const escapes = new RegExp(BAND_ESCAPE_PATTERN, "g");
-	let escape = escapes.exec(text);
+	let ansi = escapes.exec(text);
 	let out = "";
 	let column = 0;
 	let cursor = 0;
@@ -1122,13 +1122,13 @@ function spliceAtColumns(text: string, inserts: ReadonlyMap<number, string>): st
 			next += 1;
 		}
 		if (cursor >= text.length) break;
-		while (escape !== null && escape.index < cursor) escape = escapes.exec(text);
-		if (escape !== null && escape.index === cursor) {
-			out += escape[0];
-			cursor += escape[0].length;
+		while (ansi !== null && ansi.index < cursor) ansi = escapes.exec(text);
+		if (ansi !== null && ansi.index === cursor) {
+			out += ansi[0];
+			cursor += ansi[0].length;
 			continue;
 		}
-		const runEnd = escape === null ? text.length : escape.index;
+		const runEnd = ansi === null ? text.length : ansi.index;
 		const run = text.slice(cursor, runEnd);
 		const runWidth = visibleWidth(run);
 		// `take` is at least 1: everything due at or before `column` was flushed above.
@@ -1189,10 +1189,7 @@ export function paintBand(text: string, background: ThemeBg, strength: number): 
 	inserts.set(0, bgAnsi(arriving(theme.getAccentColorHex()), mode));
 
 	const bodyWidth = width - 1;
-	const spans = Math.min(
-		bodyWidth,
-		clamp(Math.round(width / BAND_COLUMNS_PER_SPAN), BAND_MIN_SPANS, BAND_MAX_SPANS),
-	);
+	const spans = Math.min(bodyWidth, clamp(Math.round(width / BAND_COLUMNS_PER_SPAN), BAND_MIN_SPANS, BAND_MAX_SPANS));
 	for (let index = 0; index < spans; index++) {
 		const t = spans === 1 ? 0 : index / (spans - 1);
 		// The first span at full strength is the switched band's OWN escape, not a recomputation of

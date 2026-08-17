@@ -39,7 +39,6 @@ import type { FileEntry, SessionMessageEntry } from "../../session/session-entri
 import { parseSessionEntries } from "../../session/session-loader";
 import { replaceTabs, shortenPath, truncateToWidth } from "../../tools/render-utils";
 import type { ObservableSession, SessionObserverRegistry } from "../session-observer-registry";
-import { transitionsEnabled } from "../theme/shimmer";
 import { getEditorTheme, theme } from "../theme/theme";
 import { matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
 import { COMPOSER_INSET_COLS } from "./composer-chrome";

@@ -19,17 +19,19 @@
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { motionClock } from "../../packages/tui/src/motion";
 import type { SettingTab } from "../../packages/coding-agent/src/config/settings-schema";
-import { setDetectedTerminalGround } from "../../packages/coding-agent/src/modes/theme/ground-tints";
 import { SettingsSelectorComponent } from "../../packages/coding-agent/src/modes/components/settings-selector";
+import { setDetectedTerminalGround } from "../../packages/coding-agent/src/modes/theme/ground-tints";
+import { motionClock } from "../../packages/tui/src/motion";
 import { ansiToGrid } from "./lib/ansi-grid";
 import { BLACK_GROUND, GREY_GROUND, type Ground, rasterizeGrid } from "./lib/ansi-raster";
 import { flag, hasFlag, initRender, renderWidth } from "./render-args";
 
 const out = hasFlag("out") ? flag("out", "") : "";
 if (!out) {
-	console.error("usage: bun scripts/demos/render-overlay-entrance.ts --out <prefix> [--frames N] [--step MS] [--scale N] [--tab NAME]");
+	console.error(
+		"usage: bun scripts/demos/render-overlay-entrance.ts --out <prefix> [--frames N] [--step MS] [--scale N] [--tab NAME]",
+	);
 	process.exit(2);
 }
 const frames = Number(flag("frames", "14"));
@@ -38,7 +40,7 @@ const scale = Number(flag("scale", "2"));
 const themeName = flag("theme", "titanium");
 const tab = flag("tab", "subagents") as SettingTab;
 const height = Number(flag("height", "26"));
-const groundHex = flag("ground", `#${GREY_GROUND.background.map((c) => c.toString(16).padStart(2, "0")).join("")}`);
+const groundHex = flag("ground", `#${GREY_GROUND.background.map(c => c.toString(16).padStart(2, "0")).join("")}`);
 const width = renderWidth();
 
 const flat = hasFlag("flat");

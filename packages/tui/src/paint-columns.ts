@@ -77,7 +77,8 @@ function trackBackground(current: string | undefined, params: string): string | 
 				const r = Number(codes[i + 2]);
 				const g = Number(codes[i + 3]);
 				const b = Number(codes[i + 4]);
-				background = Number.isFinite(r) && Number.isFinite(g) && Number.isFinite(b) ? toHexColor(r, g, b) : undefined;
+				background =
+					Number.isFinite(r) && Number.isFinite(g) && Number.isFinite(b) ? toHexColor(r, g, b) : undefined;
 				i += 4;
 			} else if (codes[i + 1] === "5") {
 				background = undefined;
@@ -88,7 +89,8 @@ function trackBackground(current: string | undefined, params: string): string | 
 			const parts = code.split(":").filter(part => part !== "");
 			if (parts[1] === "2" && parts.length >= 5) {
 				const [r, g, b] = parts.slice(-3).map(Number);
-				background = Number.isFinite(r) && Number.isFinite(g) && Number.isFinite(b) ? toHexColor(r, g, b) : undefined;
+				background =
+					Number.isFinite(r) && Number.isFinite(g) && Number.isFinite(b) ? toHexColor(r, g, b) : undefined;
 			} else background = undefined;
 		}
 	}
@@ -134,7 +136,12 @@ function bgSequence(hex: string): string {
  * fill all have to reach the edge of the card. Text, foreground colours and every
  * attribute the component wrote are preserved untouched; only backgrounds move.
  */
-export function paintLineBackground(line: string, width: number, painter: ColumnPainter, window?: ColumnWindow): string {
+export function paintLineBackground(
+	line: string,
+	width: number,
+	painter: ColumnPainter,
+	window?: ColumnWindow,
+): string {
 	// A window bounds the padding as well as the painter. Padding a row out to the
 	// full area so a treatment can reach a card's right edge is correct; doing it
 	// when the treatment stops at that edge writes spaces across the page instead.
