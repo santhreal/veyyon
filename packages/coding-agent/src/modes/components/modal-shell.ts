@@ -955,13 +955,19 @@ export class ModalRevealDriver implements ModalRevealProgress {
 	 * overlay's first paint can arrive long after its construction.
 	 */
 	get sweep(): number {
-		// `#settled` is checked for the same reason `value` checks it: a stopped or
-		// dismounted driver must not START a light on its next read. Without it, a
-		// disposed card's last render put a fresh 520ms animation on the shared clock
-		// and reported a sweep at phase zero, which is a flash of light on a card that
-		// is already gone.
-		if (this.#exit !== null || this.#settled || !this.#armed) return 1;
+		// A card on its way out and one that never played an entrance are lit flat.
+		// `#settled` deliberately does NOT belong in this guard: the unfold finishing is
+		// not the light finishing, and checking it here cut every sweep down to the
+		// length of the unfold (measured on a real terminal as 250ms of a 520ms curve,
+		// the light dying the instant the card stopped growing).
+		if (this.#exit !== null || !this.#armed) return 1;
 		if (this.#sweepAnimation === null) {
+			// Nothing read the light while the entrance played, so there is none to pick up
+			// mid-travel. Starting one now would light a card that is already in place —
+			// and after stop(), which cancels the animation and settles, a disposed card
+			// would put a fresh 520ms animation on the shared clock and report phase zero:
+			// a flash of light on a card that is already gone.
+			if (this.#settled) return 1;
 			this.#sweepAnimation = this.#clock.animate(MOTION.sweep, {
 				from: 0,
 				to: 1,
