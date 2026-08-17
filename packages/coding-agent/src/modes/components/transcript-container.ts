@@ -194,6 +194,10 @@ export class TranscriptContainer
 	// Rows dropped out of the front of #lines since the engine last read the
 	// count. The engine slides its commit index by exactly this much.
 	#droppedRows = 0;
+	// Committed rows the frame must keep so the engine can re-show them when a
+	// frame shrinks below the viewport. Fed by the engine every render; zero
+	// until it is (a container nobody drives compacts as before).
+	#retainRows = 0;
 	// Stable-prefix floor accumulated across renders since the last
 	// getRenderStablePrefixRows() read (see RenderStablePrefix: reading
 	// consumes the report and re-bases the baseline). Out-of-band renders
@@ -229,6 +233,18 @@ export class TranscriptContainer
 		// come back in the same frame. Reporting them would slide the engine's
 		// commit index down against a frame that just grew.
 		this.#droppedRows = 0;
+	}
+
+	/**
+	 * A viewport's worth of committed rows the frame keeps rather than dropping
+	 * (see NativeScrollbackCompaction). Compaction exists so old blocks are not
+	 * re-derived every frame, and it can give the engine back a screen's worth of
+	 * history without giving that up: the rows are already assembled, and a frame
+	 * that keeps them is exactly what the engine re-shows when a shrink would
+	 * otherwise leave the viewport blank.
+	 */
+	setNativeScrollbackRetainRows(rows: number): void {
+		this.#retainRows = Number.isFinite(rows) ? Math.max(0, Math.trunc(rows)) : 0;
 	}
 
 	/**
@@ -544,6 +560,13 @@ export class TranscriptContainer
 
 	#compactCommittedPrefix(): void {
 		if (this.#committedRows <= 0 || this.#compactedChildStart >= this.children.length) return;
+		// Committed rows above this are droppable; the rest is the screen's worth
+		// the engine keeps in hand for a shrink. The ceiling bounds the drop only —
+		// `#committedRows` stays the honest commit claim, which is what block
+		// retraction (`isBlockUncommitted`) reads to refuse deleting rows the
+		// terminal already holds.
+		const dropCeiling = Math.max(0, this.#committedRows - this.#retainRows);
+		if (dropCeiling <= 0) return;
 		const lines = this.#lines;
 		const segments = this.#segments;
 		let dropRows = 0;
@@ -552,13 +575,13 @@ export class TranscriptContainer
 			const segment = segments[i];
 			if (segment === undefined || !segment.compactable) break;
 			const segmentEnd = segment.startRow + segment.rowCount;
-			if (segmentEnd > this.#committedRows) break;
+			if (segmentEnd > dropCeiling) break;
 			dropRows = segmentEnd;
 			dropUntil = i + 1;
 		}
 		const retained = segments[dropUntil];
 		if (retained !== undefined && retained.sep > 0) {
-			const committedSeparatorRows = this.#committedRows - retained.startRow;
+			const committedSeparatorRows = dropCeiling - retained.startRow;
 			if (committedSeparatorRows <= 0) {
 				dropRows = 0;
 				dropUntil = this.#compactedChildStart;
