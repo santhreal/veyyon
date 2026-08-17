@@ -207,15 +207,12 @@ describe("task spawn routing", () => {
 	});
 
 	/**
-	 * Task dispatch reads profile policy at spawn time, so a model or effort change
-	 * applies to the next child without rebuilding the TaskTool. What it must NOT
-	 * read is a `subagent.agents.<name>` row's `model`/`thinkingLevel`: those were
-	 * retired when model and effort got one owner, and a row that still governs a
-	 * spawn is the two-screens-disagree state the retirement removed. This fixture
-	 * has no blanket setting and no active session model, so a retired row honored
-	 * anywhere shows up as a non-empty override here.
+	 * Task dispatch reads policy at spawn time, so a model or effort change applies to the next
+	 * child without rebuilding the TaskTool — and a `subagent.agents.<name>` row is the layer that
+	 * outranks every other one. This fixture has no blanket setting and no active session model, so
+	 * the row is the only thing that can decide: whatever crosses the boundary here came from it.
 	 */
-	it("ignores a retired per-agent model and effort row when routing a spawn", async () => {
+	it("routes a spawn by the per-agent row when nothing else names a model or an effort", async () => {
 		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({
 			agents: [taskAgent],
 			projectAgentsDir: null,
@@ -243,8 +240,9 @@ describe("task spawn routing", () => {
 			task: "Use the configured policy.",
 		} as TaskParams);
 
-		expect(spy.mock.calls[0]?.[0]?.modelOverride).toEqual([]);
-		expect(spy.mock.calls[0]?.[0]?.thinkingLevel).toBeUndefined();
+		expect(spy.mock.calls[0]?.[0]?.modelOverride).toEqual(["openai/gpt-5.2-codex"]);
+		expect(spy.mock.calls[0]?.[0]?.thinkingLevel).toBe(ThinkingLevel.XHigh);
+		// Nothing to inherit: the session names no effort, and the row is not an inheritance source.
 		expect(spy.mock.calls[0]?.[0]?.parentThinkingLevel).toBeUndefined();
 	});
 
