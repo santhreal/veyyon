@@ -25,6 +25,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import type { AgentMessage } from "@veyyon/agent-core";
 import { USER_INTERRUPT_LABEL } from "@veyyon/coding-agent/session/messages";
 import {
+	bulkProse,
 	createSimulation,
 	lastAssistantText,
 	type Simulation,
@@ -388,15 +389,15 @@ describe("interjections mid-turn", () => {
 			model: { contextWindow: 20_000 },
 			script: scriptTurns(
 				turn => {
-					turn.text(`answer one. ${"bulk ".repeat(3500)}`);
+					turn.text(`answer one. ${bulkProse(2325, "one")}`);
 					turn.finish();
 				},
 				turn => {
-					turn.text(`answer two. ${"bulk ".repeat(3500)}`);
+					turn.text(`answer two. ${bulkProse(2325, "two")}`);
 					turn.finish();
 				},
 				turn => {
-					turn.text(`answer three. ${"bulk ".repeat(3500)}`);
+					turn.text(`answer three. ${bulkProse(2325, "three")}`);
 					turn.finish();
 				},
 				async turn => {
@@ -587,15 +588,15 @@ describe("plain multi-turn sessions without interjection", () => {
 			model: { contextWindow: 20_000 },
 			script: scriptTurns(
 				turn => {
-					turn.text(`answer one. ${"bulk ".repeat(3500)}`);
+					turn.text(`answer one. ${bulkProse(2325, "one")}`);
 					turn.finish();
 				},
 				turn => {
-					turn.text(`answer two. ${"bulk ".repeat(3500)}`);
+					turn.text(`answer two. ${bulkProse(2325, "two")}`);
 					turn.finish();
 				},
 				turn => {
-					turn.text(`answer three. ${"bulk ".repeat(3500)}`);
+					turn.text(`answer three. ${bulkProse(2325, "three")}`);
 					turn.finish();
 				},
 				turn => {

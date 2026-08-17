@@ -22,7 +22,7 @@
  */
 
 import { afterEach, expect, it } from "bun:test";
-import { createSimulation, type Simulation, simTool } from "./harness";
+import { bulkProse, createSimulation, type Simulation, simTool } from "./harness";
 
 let sim: Simulation | undefined;
 
@@ -72,7 +72,7 @@ async function growUntilCompacted(
 				return;
 			}
 			turn.usage({ input: TURN_INPUT_TOKENS, output: TURN_OUTPUT_TOKENS });
-			turn.text(`answer ${turn.call} ${"reply chunk. ".repeat(300)}`);
+			turn.text(`answer ${turn.call} ${bulkProse(520, `round${turn.call}`)}`);
 			turn.finish();
 		},
 	});

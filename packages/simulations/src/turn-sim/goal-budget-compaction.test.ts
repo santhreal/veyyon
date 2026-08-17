@@ -29,7 +29,7 @@
  */
 
 import { afterEach, expect, it } from "bun:test";
-import { createSimulation, type Simulation, simTool } from "./harness";
+import { bulkProse, createSimulation, type Simulation, simTool } from "./harness";
 
 let sim: Simulation | undefined;
 
@@ -83,7 +83,7 @@ async function runGoalRounds(rounds: number): Promise<Round[]> {
 				return;
 			}
 			turn.usage({ input: 400, output: 40 });
-			turn.text(`answer ${turn.call} ${"reply chunk. ".repeat(300)}`);
+			turn.text(`answer ${turn.call} ${bulkProse(520, `round${turn.call}`)}`);
 			// Every round asks for one tool and then answers, so each round holds a
 			// step boundary the mid-turn check can compact at.
 			if (!awaitingContinuation) {
