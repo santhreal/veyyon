@@ -1,0 +1,40 @@
+(pass) applyModalReveal — the open unfold (TOUCH-5) > brightens monotonically toward the settled color [0.20ms]
+(pass) applyModalReveal — the open unfold (TOUCH-5) > grows monotonically: a larger reveal never shows fewer card rows [0.41ms]
+(pass) applyModalReveal — the open unfold (TOUCH-5) > leaves rows outside the card region untouched at every phase [0.23ms]
+(pass) ModalRevealDriver — the phase driver on the shared clock > reports 1 before start (a never-animated card renders settled) [0.10ms]
+(pass) ModalRevealDriver — the phase driver on the shared clock > starts collapsed, ticks renders, then settles at exactly 1 and stops ticking [0.40ms]
+(pass) ModalRevealDriver — the phase driver on the shared clock > stop() settles immediately mid-flight and stops asking for renders [0.05ms]
+(pass) minModalChromeRows > counts top border, both vPad bands, divider, footer band, and bottom border [0.02ms]
+(pass) minModalChromeRows > counts top border, both vPad bands, divider, footer band, and bottom border
+(pass) minModalChromeRows > counts top border, both vPad bands, divider, footer band, and bottom border
+(pass) minModalChromeRows > equals the rows the renderer actually spends outside the body [0.19ms]
+(pass) minModalChromeRows > is a minimum, and a search line costs more than it [0.13ms]
+
+packages/tui/test/every-animation-in-the-terminal-shares-one-clock.test.ts:
+(pass) the shared clock > advances every registered animation on one tick and forgets them when they settle [0.19ms]
+(pass) the shared clock > a disabled animation lands on its target without ever registering [0.07ms]
+(pass) the shared clock > finish settles and reports once; cancel settles and never reports [0.08ms]
+(pass) the shared clock > a stalled frame advances by one clamped frame instead of replaying the gap [0.07ms]
+(pass) curves > a curve is monotone, never overshoots, and lands exactly on its target [0.10ms]
+(pass) curves > a curve runs backwards just as exactly [0.03ms]
+(pass) curves > easeOutCubic is normalized at both ends [0.01ms]
+(pass) springs > a retarget keeps the value continuous and carries its velocity [0.14ms]
+(pass) springs > a settled spring can be resumed toward a new target [0.12ms]
+(pass) the MOTION preset table > every preset is one of the two supported shapes [0.05ms]
+(pass) the MOTION preset table > every preset settles, exactly on target, inside 800ms [0.12ms]
+(pass) the MOTION preset table > no preset overshoots enough to read as a bounce [0.14ms]
+(pass) the MOTION preset table > every preset honors the disable switch identically [0.06ms]
+(pass) frame transforms > blendHex hits both endpoints exactly and moves in between [0.12ms]
+(pass) frame transforms > toHexColor clamps rather than wrapping [0.01ms]
+(pass) frame transforms > a full-strength fade is byte-identical and a zero fade is the ground [0.08ms]
+(pass) frame transforms > a fade rewrites foreground and background in one compound sequence [0.02ms]
+(pass) frame transforms > a fade leaves an indexed color alone rather than guessing its palette [0.02ms]
+(pass) frame transforms > a colon-form truecolor sequence fades and stays colon-form [0.01ms]
+(pass) frame transforms > an unparsable ground is a no-op, not a black frame [0.02ms]
+(pass) frame transforms > fading a block fades every line and copies rather than aliasing [0.06ms]
+(pass) frame transforms > revealedRows grows to the full block and never dips under its floor [0.04ms]
+
+ 48 pass
+ 0 fail
+ 260 expect() calls
+Ran 48 tests across 2 files. [293.00ms]

@@ -1,0 +1,40 @@
+error: expect(received).not.toBe(expected)
+
+Expected: not "                      \u001b[38;5;250m│\u001b[39m   \u001b[38;5;231mbeta/\u001b[39m                                                        \u001b[38;5;250m│\u001b[39m                      "
+
+      at expectHoverBand (/repo/packages/coding-agent/test/modes/components/selector-overlays-answer-the-pointer.test.ts:91:20)
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/selector-overlays-answer-the-pointer.test.ts:193:3)
+(fail) selector overlays answer the pointer > move overlay: hover bands a directory, click confirms it, wheel steps [1.85ms]
+86 | function expectHoverBand(host: RowHost, text: string): void {
+87 | 	const row = rowOf(host, text);
+88 | 	const before = host.render(WIDTH)[row - 1]!;
+89 | 	host.handleInput(motionAt(row));
+90 | 	const after = host.render(WIDTH)[row - 1]!;
+91 | 	expect(after).not.toBe(before);
+                        ^
+error: expect(received).not.toBe(expected)
+
+Expected: not "     \u001b[38;5;250m│\u001b[39m   \u001b[38;5;241m\u001b[39mBeta block                                                                           \u001b[38;5;241m1 line\u001b[39m   \u001b[38;5;250m│\u001b[39m      "
+
+      at expectHoverBand (/repo/packages/coding-agent/test/modes/components/selector-overlays-answer-the-pointer.test.ts:91:20)
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/selector-overlays-answer-the-pointer.test.ts:212:3)
+(fail) selector overlays answer the pointer > copy selector: hover bands a tree row, click picks a content leaf, wheel steps [1.33ms]
+86 | function expectHoverBand(host: RowHost, text: string): void {
+87 | 	const row = rowOf(host, text);
+88 | 	const before = host.render(WIDTH)[row - 1]!;
+89 | 	host.handleInput(motionAt(row));
+90 | 	const after = host.render(WIDTH)[row - 1]!;
+91 | 	expect(after).not.toBe(before);
+                        ^
+error: expect(received).not.toBe(expected)
+
+Expected: not "     \u001b[38;5;250m│\u001b[39m   Beta session                                                                                  \u001b[38;5;250m│\u001b[39m      "
+
+      at expectHoverBand (/repo/packages/coding-agent/test/modes/components/selector-overlays-answer-the-pointer.test.ts:91:20)
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/selector-overlays-answer-the-pointer.test.ts:243:3)
+(fail) selector overlays answer the pointer > session selector: hover bands a session row [3.76ms]
+
+ 0 pass
+ 7 fail
+ 15 expect() calls
+Ran 7 tests across 1 file. [390.00ms]

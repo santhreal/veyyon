@@ -1,0 +1,10 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/modes/components/assistant-prose-carries-the-text-color.test.ts:
+(pass) assistant answer text styling > paints plain prose with the theme's text color [13.07ms]
+(pass) assistant answer text styling > keeps the thinking block on the thinking color, not the answer color [1.29ms]
+
+ 2 pass
+ 0 fail
+ 5 expect() calls
+Ran 2 tests across 1 file. [385.00ms]

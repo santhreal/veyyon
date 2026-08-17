@@ -1,0 +1,6 @@
+cd /repo
+bun test ./packages/coding-agent/test/descriptor-placement-model-switch.test.ts ./packages/coding-agent/test/model-registry.test.ts 2>&1 | tail -32
+echo
+echo "--- command finished, arm=before ref=766ee5a26^"
+touch /tmp/scene-done
+sleep 99999

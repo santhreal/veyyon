@@ -1,0 +1,40 @@
++   "SessionSelectorComponent",
++   "SettingsSelectorComponent",
++   "ShowImagesSelectorComponent",
+    "StatusLineComponent",
++   "ThemeSelectorComponent",
++   "ThinkingSelectorComponent",
+    "TinyTitleDownloadProgressComponent",
+    "TodoReminderComponent",
+    "ToolExecutionComponent",
++   "TreeSelectorComponent",
+    "TtsrNotificationComponent",
+    "UserMessageComponent",
++   "UserMessageSelectorComponent",
+    "WelcomeComponent",
+  ]
+
+- Expected  - 0
++ Received  + 14
+
+      at <anonymous> (/repo/packages/coding-agent/test/a-dismissed-overlay-plays-out-before-it-leaves.test.ts:300:19)
+(fail) every modal card exported from the components barrel plays itself out > wires every card that is one, and names every component that is not [0.63ms]
+301 | 	});
+302 | 
+303 | 	/** The capability is a two-argument call. A forwarder that drops `done` strands the card. */
+304 | 	it("takes a repaint callback and a completion callback", () => {
+305 | 		const wired = renderableClasses().filter(([, value]) => typeof value.prototype.beginOverlayExit === "function");
+306 | 		expect(wired.length).toBeGreaterThan(0);
+                             ^
+error: expect(received).toBeGreaterThan(expected)
+
+Expected: > 0
+Received: 0
+
+      at <anonymous> (/repo/packages/coding-agent/test/a-dismissed-overlay-plays-out-before-it-leaves.test.ts:306:24)
+(fail) every modal card exported from the components barrel plays itself out > takes a repaint callback and a completion callback [0.21ms]
+
+ 3 pass
+ 8 fail
+ 14 expect() calls
+Ran 11 tests across 1 file. [822.00ms]

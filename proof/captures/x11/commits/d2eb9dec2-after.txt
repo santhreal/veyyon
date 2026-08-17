@@ -1,0 +1,18 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/tui/test/a-suggestion-popup-grows-instead-of-cutting-in.test.ts:
+(pass) a suggestion popup grows instead of cutting in > arrives a row at a time over the enter curve and ends at the height it would have cut to [14.93ms]
+(pass) a suggestion popup grows instead of cutting in > terminates: the clock empties, the frame stops changing, and no more frames are asked for [0.56ms]
+(pass) a suggestion popup grows instead of cutting in > asks the host for a frame on every animated tick [0.28ms]
+(pass) a suggestion popup grows instead of cutting in > resolves the rows out of the ground it was given, landing on the unfaded bytes [0.43ms]
+(pass) a suggestion popup grows instead of cutting in > grows once per appearance: a keystroke that rebuilds the list keeps every row [1.46ms]
+(pass) a suggestion popup grows instead of cutting in > grows once per appearance in force mode too, where a refresh re-opens the same popup [0.89ms]
+(pass) a suggestion popup grows instead of cutting in > grows again on the next appearance, from nothing, and leaves nothing running when dismissed [0.69ms]
+(pass) a suggestion popup grows instead of cutting in > accepts the suggestion on the row the pointer landed on while it is still growing [0.65ms]
+(pass) a suggestion popup grows instead of cutting in > is byte-identical with the reveal disabled, and registers nothing [0.33ms]
+(pass) a suggestion popup grows instead of cutting in > stops painting once the editor's motion is disposed [0.31ms]
+
+ 10 pass
+ 0 fail
+ 59 expect() calls
+Ran 10 tests across 1 file. [123.00ms]

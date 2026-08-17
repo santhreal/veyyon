@@ -1,0 +1,320 @@
+[33m92a895e36[m proof(tooling): the vhs capture wrapper and the flicker probes
+
+
+
+ capture.sh                                    |  11 [32m+++[m
+ flicker-probe/exiting-overlay-repaint.test.ts |  93 [32m++++++++++++++++++[m
+ flicker-probe/footer-twice.test.ts            | 132 [32m++++++++++++++++++++++++++[m
+ flicker-probe/width-oracle.test.ts            |  50 [32m++++++++++[m
+ 4 files changed, 286 insertions(+)
+
+[1mdiff --git a/capture.sh b/capture.sh[m
+[1mnew file mode 100755[m
+[1mindex 000000000..40992f13a[m
+[1m--- /dev/null[m
+[1m+++ b/capture.sh[m
+[36m@@ -0,0 +1,11 @@[m
+[32m+[m[32m#!/usr/bin/env bash[m
+[32m+[m[32m# capture.sh <tape-file> <out-name>[m
+[32m+[m[32m# Runs a vhs tape, writes proof/captures/<out-name>.gif, and extracts the last[m
+[32m+[m[32m# frame as proof/captures/<out-name>.png. Tapes must already Hide the boot[m
+[32m+[m[32m# sequence and end on the state to capture.[m
+[32m+[m[32mset -euo pipefail[m
+[32m+[m[32mcd "$(dirname "$0")"[m
+[32m+[m[32mtape="$1"; name="$2"[m
+[32m+[m[32mtimeout 220 vhs "$tape" >/dev/null 2>&1[m
+[32m+[m[32mffmpeg -y -loglevel error -i "proof/captures/${name}.gif" -update 1 "proof/captures/${name}.png"[m
+[32m+[m[32mecho "captured ${name}"[m
+[1mdiff --git a/flicker-probe/exiting-overlay-repaint.test.ts b/flicker-probe/exiting-overlay-repaint.test.ts[m
+[1mnew file mode 100644[m
+[1mindex 000000000..a44c49b6f[m
+[1m--- /dev/null[m
+[1m+++ b/flicker-probe/exiting-overlay-repaint.test.ts[m
+[36m@@ -0,0 +1,93 @@[m
+[32m+[m[32m// SCRATCH PROBE: with DEFAULT settings (tui.scrollIsolation off), does an[m
+[32m+[m[32m// overlay that is playing itself out turn every subsequent frame into a[m
+[32m+[m[32m// full-viewport repaint?[m
+[32m+[m[32m//[m
+[32m+[m[32m// Branch-new: `#isOverlayVisible` (tui.ts:2143) now answers true for an entry[m
+[32m+[m[32m// marked `exiting` (tui.ts:2103/2156). `hasVisibleOverlay` (tui.ts:3867) is read[m
+[32m+[m[32m// from it, which freezes commits (tui.ts:3968) and sets[m
+[32m+[m[32m// `repaintVirtualScrollInPlace` (tui.ts:4143) -> `inPlaceRewrite` (tui.ts:5015)[m
+[32m+[m[32m// -> `#fullRedrawCount += 1` and a whole-window rewrite (tui.ts:5017-5041) on[m
+[32m+[m[32m// EVERY frame. If the component never calls `done`, the entry never leaves the[m
+[32m+[m[32m// stack and that never stops.[m
+[32m+[m
+[32m+[m[32mimport { describe, expect, it } from "bun:test";[m
+[32m+[m[32mimport { type Component, TUI } from "@veyyon/tui";[m
+[32m+[m[32mimport { StressRenderScheduler } from "../packages/tui/test/render-stress-scheduler";[m
+[32m+[m[32mimport { VirtualTerminal } from "../packages/tui/test/virtual-terminal";[m
+[32m+[m
+[32m+[m[32mclass Transcript implements Component {[m
+[32m+[m	[32mlines: string[] = [];[m
+[32m+[m	[32minvalidate(): void {}[m
+[32m+[m	[32mrender(_width: number): readonly string[] {[m
+[32m+[m		[32mreturn this.lines;[m
+[32m+[m	[32m}[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mclass Loader implements Component {[m
+[32m+[m	[32mframe = 0;[m
+[32m+[m	[32minvalidate(): void {}[m
+[32m+[m	[32mrender(_width: number): readonly string[] {[m
+[32m+[m		[32mreturn [`${"ABCD"[this.frame % 4]} working`];[m
+[32m+[m	[32m}[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m/** A card that takes the exit callbacks and never finishes. */[m
+[32m+[m[32mclass FadingCard implements Component {[m
+[32m+[m	[32mdone: (() => void) | null = null;[m
+[32m+[m	[32minvalidate(): void {}[m
+[32m+[m	[32mbeginOverlayExit(_requestRender: () => void, done: () => void): boolean {[m
+[32m+[m		[32mthis.done = done;[m
+[32m+[m		[32mreturn true;[m
+[32m+[m	[32m}[m
+[32m+[m	[32mrender(_width: number): readonly string[] {[m
+[32m+[m		[32mreturn ["card"];[m
+[32m+[m	[32m}[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mdescribe("exiting overlay repaint probe", () => {[m
+[32m+[m	[32mit("counts full redraws per frame while a card is playing itself out", async () => {[m
+[32m+[m		[32mconst term = new VirtualTerminal(40, 10, 1_000);[m
+[32m+[m		[32mconst scheduler = new StressRenderScheduler();[m
+[32m+[m		[32mconst tui = new TUI(term, true, { renderScheduler: scheduler });[m
+[32m+[m		[32mconst transcript = new Transcript();[m
+[32m+[m		[32mconst loader = new Loader();[m
+[32m+[m		[32mtui.addChild(transcript);[m
+[32m+[m		[32mtui.addChild(loader);[m
+[32m+[m		[32mtranscript.lines = Array.from({ length: 30 }, (_, i) => `hist-${String(i).padStart(3, "0")}`);[m
+[32m+[m		[32mtui.start();[m
+[32m+[m		[32mawait scheduler.drain(term);[m
+[32m+[m
+[32m+[m		[32mtry {[m
+[32m+[m			[32m// Control: ten spinner ticks with no overlay in the stack.[m
+[32m+[m			[32mlet before = tui.fullRedraws;[m
+[32m+[m			[32mfor (let i = 0; i < 10; i++) {[m
+[32m+[m				[32mloader.frame += 1;[m
+[32m+[m				[32mtui.requestRender();[m
+[32m+[m				[32mawait scheduler.drain(term);[m
+[32m+[m			[32m}[m
+[32m+[m			[32mconst control = tui.fullRedraws - before;[m
+[32m+[m
+[32m+[m			[32mconst card = new FadingCard();[m
+[32m+[m			[32mconst handle = tui.showOverlay(card);[m
+[32m+[m			[32mawait scheduler.drain(term);[m
+[32m+[m			[32mhandle.hide(); // begins the exit; `done` is never called[m
+[32m+[m			[32mawait scheduler.drain(term);[m
+[32m+[m			[32mexpect(tui.hasOverlay()).toBe(false); // non-interactive, still painted[m
+[32m+[m
+[32m+[m			[32mbefore = tui.fullRedraws;[m
+[32m+[m			[32mfor (let i = 0; i < 10; i++) {[m
+[32m+[m				[32mloader.frame += 1;[m
+[32m+[m				[32mtui.requestRender();[m
+[32m+[m				[32mawait scheduler.drain(term);[m
+[32m+[m			[32m}[m
+[32m+[m			[32mconst fading = tui.fullRedraws - before;[m
+[32m+[m
+[32m+[m			[32mconsole.log(`full redraws over 10 frames: control=${control} while-exiting=${fading}`);[m
+[32m+[m			[32mexpect(control).toBe(0);[m
+[32m+[m			[32mexpect(fading).toBe(10);[m
+[32m+[m		[32m} finally {[m
+[32m+[m			[32mtui.stop();[m
+[32m+[m			[32mawait term.flush();[m
+[32m+[m		[32m}[m
+[32m+[m	[32m});[m
+[32m+[m[32m});[m
+[1mdiff --git a/flicker-probe/footer-twice.test.ts b/flicker-probe/footer-twice.test.ts[m
+[1mnew file mode 100644[m
+[1mindex 000000000..df29a8a8f[m
+[1m--- /dev/null[m
+[1m+++ b/flicker-probe/footer-twice.test.ts[m
+[36m@@ -0,0 +1,132 @@[m
+[32m+[m[32m// SCRATCH PROBE (not a shipped test): does the pinned footer ever land on the[m
+[32m+[m[32m// screen twice, with two DIFFERENT spinner frames?[m
+[32m+[m[32m//[m
+[32m+[m[32m// Hypothesis under test: the scroll-isolation composite at tui.ts:4020-4030[m
+[32m+[m[32m// builds `#scrollSnapshot` as `[...scrollTape, ...frame.slice(committedRows)]`,[m
+[32m+[m[32m// which INCLUDES the pinned footer as it looked when the view froze. The frozen[m
+[32m+[m[32m// region reads that array with no exclusion of the footer band, and the only[m
+[32m+[m[32m// guard (tui.ts:3984, `virtualScrollTop >= liveTop` -> resume) measures the LIVE[m
+[32m+[m[32m// scroll space, which grows while the snapshot does not. Grow the frame while[m
+[32m+[m[32m// frozen, walk back down toward the tail, and the stale footer walks into the[m
+[32m+[m[32m// region directly above the live one.[m
+[32m+[m
+[32m+[m[32mimport { describe, expect, it } from "bun:test";[m
+[32m+[m[32mimport { type Component, CURSOR_MARKER, type Focusable, TUI } from "@veyyon/tui";[m
+[32m+[m[32mimport { StressRenderScheduler } from "../packages/tui/test/render-stress-scheduler";[m
+[32m+[m[32mimport { VirtualTerminal } from "../packages/tui/test/virtual-terminal";[m
+[32m+[m
+[32m+[m[32mclass Transcript implements Component {[m
+[32m+[m	[32mlines: string[] = [];[m
+[32m+[m	[32minvalidate(): void {}[m
+[32m+[m	[32mrender(_width: number): readonly string[] {[m
+[32m+[m		[32mreturn this.lines;[m
+[32m+[m	[32m}[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m/** The composer loader row: one spinner glyph, advanced by the caller. */[m
+[32m+[m[32mclass Loader implements Component {[m
+[32m+[m	[32mframe = 0;[m
+[32m+[m	[32mstatic readonly GLYPHS = ["A", "B", "C", "D"];[m
+[32m+[m	[32minvalidate(): void {}[m
+[32m+[m	[32mrender(_width: number): readonly string[] {[m
+[32m+[m		[32mreturn [`${Loader.GLYPHS[this.frame % Loader.GLYPHS.length]} working`];[m
+[32m+[m	[32m}[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mclass Editor implements Component, Focusable {[m
+[32m+[m	[32mfocused = false;[m
+[32m+[m	[32mtext = ">";[m
+[32m+[m	[32minvalidate(): void {}[m
+[32m+[m	[32msetUseTerminalCursor(): void {}[m
+[32m+[m	[32mhandleInput(data: string): void {[m
+[32m+[m		[32mthis.text = `> ${data}`;[m
+[32m+[m	[32m}[m
+[32m+[m	[32mrender(_width: number): readonly string[] {[m
+[32m+[m		[32mreturn [this.text + CURSOR_MARKER];[m
+[32m+[m	[32m}[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mclass Status implements Component {[m
+[32m+[m	[32minvalidate(): void {}[m
+[32m+[m	[32mrender(_width: number): readonly string[] {[m
+[32m+[m		[32mreturn ["status-footline"];[m
+[32m+[m	[32m}[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mconst WHEEL_UP = "\x1b[<64;5;5M";[m
+[32m+[m[32mconst WHEEL_DOWN = "\x1b[<65;5;5M";[m
+[32m+[m
+[32m+[m[32mfunction rows(prefix: string, n: number): string[] {[m
+[32m+[m	[32mreturn Array.from({ length: n }, (_, i) => `${prefix}${String(i).padStart(3, "0")}`);[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunction viewport(term: VirtualTerminal, width = 40): string[] {[m
+[32m+[m	[32mreturn term.getViewport().map(row =>[m
+[32m+[m		[32mBun.stripANSI(row)[m
+[32m+[m			[32m.padEnd(width, " ")[m
+[32m+[m			[32m.slice(0, width - 1)[m
+[32m+[m			[32m.trimEnd(),[m
+[32m+[m	[32m);[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mdescribe("footer double-print probe", () => {[m
+[32m+[m	[32mit("shows the frozen footer above the live footer once the frame grows under a frozen view", async () => {[m
+[32m+[m		[32mconst term = new VirtualTerminal(40, 10, 1_000);[m
+[32m+[m		[32mconst scheduler = new StressRenderScheduler();[m
+[32m+[m		[32mconst tui = new TUI(term, true, { renderScheduler: scheduler });[m
+[32m+[m		[32mconst transcript = new Transcript();[m
+[32m+[m		[32mconst loader = new Loader();[m
+[32m+[m		[32mconst editor = new Editor();[m
+[32m+[m		[32mconst status = new Status();[m
+[32m+[m		[32mtui.addChild(transcript);[m
+[32m+[m		[32mtui.addChild(loader);[m
+[32m+[m		[32mtui.addChild(editor);[m
+[32m+[m		[32mtui.addChild(status);[m
+[32m+[m		[32mtui.setFocus(editor);[m
+[32m+[m		[32mtui.setScrollIsolation(true);[m
+[32m+[m		[32mtui.setPinnedFooterChildCount(3); // loader + composer + status[m
+[32m+[m		[32mtranscript.lines = rows("hist-", 30);[m
+[32m+[m		[32mtui.start();[m
+[32m+[m		[32mawait scheduler.drain(term);[m
+[32m+[m
+[32m+[m		[32mtry {[m
+[32m+[m			[32m// Freeze the view one wheel step above the live tail.[m
+[32m+[m			[32mexpect(tui.scrollByRows(-3)).toBe(true);[m
+[32m+[m			[32mawait scheduler.drain(term);[m
+[32m+[m			[32mexpect(tui.virtualScrollActive).toBe(true);[m
+[32m+[m			[32mconst frozenAt = viewport(term);[m
+[32m+[m
+[32m+[m			[32m// A live turn streams six more transcript rows while the view is[m
+[32m+[m			[32m// frozen, and the spinner advances with it.[m
+[32m+[m			[32mconst redrawsBefore = tui.fullRedraws;[m
+[32m+[m			[32mfor (let i = 0; i < 6; i++) {[m
+[32m+[m				[32mtranscript.lines = [...transcript.lines, `hist-new-${i}`];[m
+[32m+[m				[32mloader.frame += 1;[m
+[32m+[m				[32mtui.requestRender();[m
+[32m+[m				[32mawait scheduler.drain(term);[m
+[32m+[m			[32m}[m
+[32m+[m			[32mconsole.log("newRows behind the tail:", tui.virtualScrollNewRows);[m
+[32m+[m			[32mconsole.log("full redraws over 6 frozen frames:", tui.fullRedraws - redrawsBefore);[m
+[32m+[m
+[32m+[m			[32m// Walk back down toward the tail without reaching it.[m
+[32m+[m			[32mexpect(tui.scrollByRows(3)).toBe(true);[m
+[32m+[m			[32mawait scheduler.drain(term);[m
+[32m+[m			[32mexpect(tui.scrollByRows(3)).toBe(true);[m
+[32m+[m			[32mawait scheduler.drain(term);[m
+[32m+[m			[32mexpect(tui.virtualScrollActive).toBe(true);[m
+[32m+[m
+[32m+[m			[32mconst view = viewport(term);[m
+[32m+[m			[32mconsole.log(`frozen at:\n${frozenAt.map((r, i) => `${i}: ${r}`).join("\n")}`);[m
+[32m+[m			[32mconsole.log(`after growth + wheel down:\n${view.map((r, i) => `${i}: ${r}`).join("\n")}`);[m
+[32m+[m
+[32m+[m			[32mconst loaderRows = view.filter(r => /working$/.test(r));[m
+[32m+[m			[32mconst statusRows = view.filter(r => r === "status-footline");[m
+[32m+[m			[32mconsole.log("loader rows on screen:", loaderRows, "status rows:", statusRows.length);[m
+[32m+[m			[32mexpect(loaderRows.length).toBe(2);[m
+[32m+[m			[32mexpect(statusRows.length).toBe(2);[m
+[32m+[m		[32m} finally {[m
+[32m+[m			[32mtui.stop();[m
+[32m+[m			[32mawait term.flush();[m
+[32m+[m		[32m}[m
+[32m+[m	[32m});[m
+[32m+[m[32m});[m
+[1mdiff --git a/flicker-probe/width-oracle.test.ts b/flicker-probe/width-oracle.test.ts[m
+[1mnew file mode 100644[m
+[1mindex 000000000..c15389a94[m
+[1m--- /dev/null[m
+[1m+++ b/flicker-probe/width-oracle.test.ts[m
+[36m@@ -0,0 +1,50 @@[m
+[32m+[m[32m// SCRATCH PROBE: does any glyph the footer can contain make the TERMINAL count[m
+[32m+[m[32m// more screen cells than `visibleWidth` counts? `#prepareLine`[m
+[32m+[m[32m// (packages/tui/src/tui.ts:4245-4256) is the ONLY thing that keeps one composed[m
+[32m+[m[32m// row on one screen row: it truncates when `visibleWidth(line) > width`. Every[m
+[32m+[m[32m// emitter then counts one `\r\n` per LOGICAL row. A glyph the terminal measures[m
+[32m+[m[32m// wider than `visibleWidth` does soft-wraps, the paint lands one row lower than[m
+[32m+[m[32m// the cursor arithmetic assumes, and the previous frame's rows survive above it.[m
+[32m+[m
+[32m+[m[32mimport { describe, it } from "bun:test";[m
+[32m+[m[32mimport { visibleWidth } from "@veyyon/tui";[m
+[32m+[m[32mimport { VirtualTerminal } from "../packages/tui/test/virtual-terminal";[m
+[32m+[m
+[32m+[m[32mconst CANDIDATES: [string, string][] = [[m
+[32m+[m	[32m["braille spinner", "⠋"],[m
+[32m+[m	[32m["ascii", "abc"],[m
+[32m+[m	[32m["cjk", "界"],[m
+[32m+[m	[32m["emoji vs16", "❤️"],[m
+[32m+[m	[32m["emoji plain", "🙂"],[m
+[32m+[m	[32m["zwj family", "👨‍👩‍👧‍👦"],[m
+[32m+[m	[32m["flag", "🇯🇵"],[m
+[32m+[m	[32m["keycap", "1️⃣"],[m
+[32m+[m	[32m["skin tone", "👍🏽"],[m
+[32m+[m	[32m["nerd font pua", "\uf07b"],[m
+[32m+[m	[32m["powerline", "\ue0b0"],[m
+[32m+[m	[32m["box drawing", "─│╭╮"],[m
+[32m+[m	[32m["combining", "é"],[m
+[32m+[m	[32m["hangul jamo", "한"],[m
+[32m+[m	[32m["arrow", "→"],[m
+[32m+[m	[32m["ellipsis", "…"],[m
+[32m+[m	[32m["osc8 link", "\x1b]8;;https://a.test\x07link\x1b]8;;\x07"],[m
+[32m+[m	[32m["osc66 sized", "\x1b]66;s=2;BIG\x07"],[m
+[32m+[m[32m];[m
+[32m+[m
+[32m+[m[32mdescribe("width oracle", () => {[m
+[32m+[m	[32mit("reports every candidate where the terminal counts more cells than visibleWidth", async () => {[m
+[32m+[m		[32mfor (const [name, sample] of CANDIDATES) {[m
+[32m+[m			[32mconst term = new VirtualTerminal(40, 4, 100);[m
+[32m+[m			[32mterm.write("\x1b[H");[m
+[32m+[m			[32mterm.write(sample);[m
+[32m+[m			[32mawait term.flush();[m
+[32m+[m			[32mconst cursor = term.getCursor();[m
+[32m+[m			[32mconst measured = visibleWidth(sample);[m
+[32m+[m			[32mconst cells = cursor.row > 0 ? cursor.row * 40 + cursor.col : cursor.col;[m
+[32m+[m			[32mconst verdict = cells === measured ? "agree" : cells > measured ? "TERMINAL WIDER" : "engine wider";[m
+[32m+[m			[32mconsole.log([m
+[32m+[m				[32m`${name.padEnd(16)} visibleWidth=${String(measured).padStart(2)} terminalCells=${String(cells).padStart(2)}  ${verdict}`,[m
+[32m+[m			[32m);[m
+[32m+[m		[32m}[m
+[32m+[m	[32m});[m
+[32m+[m[32m});[m

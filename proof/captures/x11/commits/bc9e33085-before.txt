@@ -1,0 +1,34 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/modes/components/a-transcript-divider-marks-a-point-instead-of-spanning-the-viewport.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+error: Cannot find module '@veyyon/coding-agent/modes/components/transcript-divider' from '/repo/packages/coding-agent/test/modes/components/a-transcript-divider-marks-a-point-instead-of-spanning-the-viewport.test.ts'
+-------------------------------
+
+
+packages/coding-agent/test/modes/components/compaction-divider.test.ts:
+46 | 		expect(rule).toContain("ctrl+o");
+47 | 		// The divider stops at its label. It used to pad out to the viewport, which
+48 | 		// put a second full-width horizontal on a transcript that already carries
+49 | 		// one left rail; the shape itself is swept in
+50 | 		// a-transcript-divider-marks-a-point-instead-of-spanning-the-viewport.
+51 | 		expect(Bun.stringWidth(rule)).toBeLessThan(80);
+                                     ^
+error: expect(received).toBeLessThan(expected)
+
+Expected: < 80
+Received: 80
+
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/compaction-divider.test.ts:51:33)
+(fail) CompactionSummaryMessageComponent > collapsed: a single short divider carrying the expand affordance [1.69ms]
+(pass) CompactionSummaryMessageComponent > expanded: reveals the summary below the divider [11.26ms]
+(pass) CompactionSummaryMessageComponent > degrades to a bare label when the viewport is too narrow for a framed rule [0.44ms]
+(pass) CompactionSummaryMessageComponent > honors the same-reference render cache and busts it on expansion toggle [0.74ms]
+
+ 3 pass
+ 2 fail
+ 1 error
+ 11 expect() calls
+Ran 5 tests across 2 files. [375.00ms]

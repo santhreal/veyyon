@@ -1,0 +1,29 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/modes/components/selector-overlays-answer-the-pointer.test.ts:
+(pass) selector overlays answer the pointer > history search: hover bands a result, click recalls it, wheel steps the selection [19.56ms]
+(pass) selector overlays answer the pointer > history search: wheel moves the selection like the arrow keys [1.25ms]
+(pass) selector overlays answer the pointer > reset usage: hover bands an account, first click arms, second click spends [1.68ms]
+(pass) selector overlays answer the pointer > user messages: hover bands a message, click branches from it, wheel steps [1.22ms]
+(pass) selector overlays answer the pointer > move overlay: hover bands a directory, click confirms it, wheel steps [3.49ms]
+(pass) selector overlays answer the pointer > copy selector: hover bands a tree row, click picks a content leaf, wheel steps [2.08ms]
+91 | function expectHoverBand(host: RowHost, text: string): void {
+92 | 	const row = rowOf(host, text);
+93 | 	const before = host.render(WIDTH)[row - 1]!;
+94 | 	host.handleInput(motionAt(row));
+95 | 	const after = host.render(WIDTH)[row - 1]!;
+96 | 	expect(after).not.toBe(before);
+                        ^
+error: expect(received).not.toBe(expected)
+
+Expected: not "                      \u001b[38;5;250m│\u001b[39m   \u001b[38;5;241mollama/\u001b[39mllama-3                                   \u001b[38;5;241m128k \u001b[39m  \u001b[38;5;241m—\u001b[39m    \u001b[38;5;250m│\u001b[39m                      "
+
+      at expectHoverBand (/repo/packages/coding-agent/test/modes/components/selector-overlays-answer-the-pointer.test.ts:96:20)
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/selector-overlays-answer-the-pointer.test.ts:262:3)
+(fail) selector overlays answer the pointer > model picker: hover bands a model row, click selects, second click picks [5.80ms]
+(pass) selector overlays answer the pointer > session selector: hover bands a session row [4.64ms]
+
+ 7 pass
+ 1 fail
+ 42 expect() calls
+Ran 8 tests across 1 file. [436.00ms]

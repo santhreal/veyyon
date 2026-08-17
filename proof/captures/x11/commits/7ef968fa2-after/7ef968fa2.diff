@@ -1,0 +1,23 @@
+[33m7ef968fa2[m demo(proof): draw the cache-miss mark instead of a placeholder box
+
+
+
+ scripts/demos/lib/glyphs.ts | 5 [32m+++++[m
+ 1 file changed, 5 insertions(+)
+
+[1mdiff --git a/scripts/demos/lib/glyphs.ts b/scripts/demos/lib/glyphs.ts[m
+[1mindex c2c7b0b23..e913e3b7e 100644[m
+[1m--- a/scripts/demos/lib/glyphs.ts[m
+[1m+++ b/scripts/demos/lib/glyphs.ts[m
+[36m@@ -204,6 +204,11 @@[m [mconst FONT: Readonly<Record<string, string>> = {[m
+ 	// settings differential is a picture of ONE row and its group heading, so drawing the heading's[m
+ 	// mark as a hollow box makes the shot ambiguous about whether the row is in a group at all.[m
+ 	"◆": "..#../.###./#####/#####/.###./..#../.....",[m
+[32m+[m	[32m// The cache-miss divider's mark. A transcript divider proof is a picture of a short rule and its[m
+[32m+[m	[32m// label, so the mark IS the subject: rastered as a hollow box it says only that the font is[m
+[32m+[m	[32m// missing something. A ring struck by one diagonal, and deliberately not `⊗`'s full cross, since[m
+[32m+[m	[32m// the two mean different things and a proof that confuses them is worse than no proof.[m
+[32m+[m	[32m"⊘": "...../.###./#..##/#.#.#/##..#/.###./.....",[m
+ };[m
+ [m
+ /**[m

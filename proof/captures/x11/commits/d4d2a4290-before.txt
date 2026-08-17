@@ -1,0 +1,40 @@
+packages/coding-agent/test/modes/components/the-login-card-answers-the-pointer.test.ts:
+49 | function closeGlyphAt(rows: string[]): { row: number; col: number } {
+50 | 	for (let row = 0; row < rows.length; row++) {
+51 | 		const col = rows[row]!.replace(/\x1b\[[0-9;]*m/g, "").indexOf("[x]");
+52 | 		if (col !== -1) return { row, col: col + 1 };
+53 | 	}
+54 | 	throw new Error("the card drew no close glyph");
+                ^
+error: the card drew no close glyph
+      at closeGlyphAt (/repo/packages/coding-agent/test/modes/components/the-login-card-answers-the-pointer.test.ts:54:12)
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/the-login-card-answers-the-pointer.test.ts:70:17)
+(fail) the login card answers the pointer > cancels the pending login when the close glyph is clicked [6.30ms]
+81 | 		const answer = dialog.showPrompt({ message: "Paste your Groq API key", secret: true });
+82 | 		const chip = chipAt(rows(), "cancel");
+83 | 
+84 | 		click(dialog, chip.row, chip.col);
+85 | 
+86 | 		expect(dialog.signal.aborted).toBe(true);
+                                     ^
+error: expect(received).toBe(expected)
+
+Expected: true
+Received: false
+
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/the-login-card-answers-the-pointer.test.ts:86:33)
+(fail) the login card answers the pointer > cancels the pending login when the cancel chip is clicked [1.73ms]
+ 95 | 		rows();
+ 96 | 
+ 97 | 		// Top-left corner of the screen: always outside a centered card.
+ 98 | 		click(dialog, 0, 0);
+ 99 | 
+100 | 		expect(dialog.signal.aborted).toBe(true);
+                                      ^
+error: expect(received).toBe(expected)
+
+Expected: true
+Received: false
+
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/the-login-card-answers-the-pointer.test.ts:100:33)
+(fail) the login card answers the pointer > cancels the pending login when the click lands outside the card [0.26ms]

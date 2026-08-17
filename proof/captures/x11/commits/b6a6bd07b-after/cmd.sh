@@ -1,0 +1,6 @@
+cd /repo
+bun test ./packages/coding-agent/test/modes/components/every-settings-submenu-answers-the-pointer.test.ts 2>&1 | tail -32
+echo
+echo "--- command finished, arm=after ref=b6a6bd07b"
+touch /tmp/scene-done
+sleep 99999

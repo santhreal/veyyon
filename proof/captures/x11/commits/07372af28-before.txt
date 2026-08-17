@@ -1,0 +1,40 @@
+77 | 			expect(text).toContain("▌▌ P A U S E D");
+78 | 			expect(text).toContain("paused for 0:03");
+79 | 			expect(text).toContain("esc · click — resume");
+                     ^
+error: expect(received).toContain(expected)
+
+Expected to contain: "esc · click — resume"
+Received: "\n\n\n             ▌▌ P A U S E D             \n\n            paused for 0:03             \n             esc to resume              \n\n\n"
+
+      at <anonymous> (/repo/packages/coding-agent/src/modes/components/__tests__/pause-screen.test.ts:79:17)
+(fail) pause screen > renderPauseScreen > drops to the compact card on small terminals [0.09ms]
+(pass) pause screen > renderPauseScreen > rolls the clock into hours past 60 minutes [0.13ms]
+(pass) pause screen > renderPauseScreen > displays the session name when provided in full mode [0.11ms]
+(pass) pause screen > renderPauseScreen > displays the session name when provided in compact mode [0.06ms]
+(pass) pause screen > runPauseScreen > engages the gate for the screen's lifetime and releases it on escape [6.35ms]
+(pass) pause screen > runPauseScreen > treats ctrl+c as resume, never as abort-and-stay-paused [2.36ms]
+(pass) pause screen > runPauseScreen > is a no-op when the gate is already engaged elsewhere [0.12ms]
+(fail) pause screen > the pointer resumes the same way the keys do > resumes on a left press anywhere on the scene [5000.17ms]
+  ^ this test timed out after 5000ms.
+(fail) pause screen > the pointer resumes the same way the keys do > never resumes on a report that is not a left press [5001.44ms]
+  ^ this test timed out after 5000ms.
+205 | 			await run;
+206 | 			expect(agentPauseGate.paused).toBe(false);
+207 | 		});
+208 | 
+209 | 		it("names the click in both the full scene and the compact card", () => {
+210 | 			expect(stripAnsi(renderPauseScreen(80, 24, 1_000).join("\n"))).toContain("click — resume");
+                                                                        ^
+error: expect(received).toContain(expected)
+
+Expected to contain: "click — resume"
+Received: "\n\n\n\n                                 ░▒▒▒▒    ▒▒▓▒▓                                 \n                                 ▓▓███    ▒▓▒▒▒                                 \n                                 ▒█▓▒▒    ▓▓▒▒▒                                 \n                                 ▒▒█▒▒    ▓▓▒▒█                                 \n                                 ▒▒▒▒▒    ▒▓▒▒▒                                 \n                                 ▒▒▒▒▒    ▓▒▒▒▒                                 \n                                 ▒▓▓▒▒    ▒█▒▓▒                                 \n\n                                  P A U S E D                                   \n\n          Main agent, subagents, and advisor hold at their next step.           \n          In-flight calls finish; nothing new starts until you resume.          \n\n                                paused for 0:01                                 \n\n                          esc · enter · space — resume                          \n\n\n\n"
+
+      at <anonymous> (/repo/packages/coding-agent/src/modes/components/__tests__/pause-screen.test.ts:210:67)
+(fail) pause screen > the pointer resumes the same way the keys do > names the click in both the full scene and the compact card [0.47ms]
+
+ 6 pass
+ 5 fail
+ 40 expect() calls
+Ran 11 tests across 1 file. [10.36s]

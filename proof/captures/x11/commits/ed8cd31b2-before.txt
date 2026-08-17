@@ -1,0 +1,22 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/modal-shell.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+SyntaxError: Export named 'MotionClock' not found in module '/repo/packages/tui/src/index.ts'.
+-------------------------------
+
+
+packages/tui/test/every-animation-in-the-terminal-shares-one-clock.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+error: Cannot find module '../src/motion' from '/repo/packages/tui/test/every-animation-in-the-terminal-shares-one-clock.test.ts'
+-------------------------------
+
+
+ 0 pass
+ 2 fail
+ 2 errors
+Ran 2 tests across 2 files. [202.00ms]

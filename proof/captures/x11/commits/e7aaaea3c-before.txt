@@ -1,0 +1,40 @@
+                     ^
+error: expect(received).toBeGreaterThan(expected)
+
+Expected: > 0
+Received: 0
+
+      at <anonymous> (/repo/packages/coding-agent/test/no-message-role-reaches-the-provider-uncounted.test.ts:220:16)
+(fail) a python cell costs its code and its output > counts the output on top of the code [0.04ms]
+242 | 			cancelled: false,
+243 | 			truncated: false,
+244 | 			excludeFromContext: true,
+245 | 			timestamp: 1,
+246 | 		} as AgentMessage);
+247 | 		expect(excludedPython).toBeGreaterThan(100);
+                               ^
+error: expect(received).toBeGreaterThan(expected)
+
+Expected: > 100
+Received: 0
+
+      at <anonymous> (/repo/packages/coding-agent/test/no-message-role-reaches-the-provider-uncounted.test.ts:247:26)
+(fail) a python cell costs its code and its output > still counts a cell excluded from the request, exactly as a bash cell is [0.04ms]
+
+11 tests failed:
+(fail) a message role that reaches the provider is counted > pythonExecution: the estimate accounts for what the wire carries [0.11ms]
+(fail) a message role that reaches the provider is counted > fileMention: the estimate accounts for what the wire carries [0.03ms]
+(fail) a message role that reaches the provider is counted > scales with content rather than with message count [0.15ms]
+(fail) a file mention costs what it carries > counts a second mentioned file, not just the first [0.03ms]
+(fail) a file mention costs what it carries > charges a mentioned image exactly the image estimate over the same mention without one [0.03ms]
+(fail) a file mention costs what it carries > counts only the path when a collab replica was never sent the body [0.02ms]
+(fail) a file mention costs what it carries > counts the skip notice a too-large file carries instead of its body [0.02ms]
+(fail) a file mention costs what it carries > sees a body that shrank in place, because the shape digest walks the files [0.03ms]
+(fail) a python cell costs its code and its output > counts the code when the cell printed nothing [0.02ms]
+(fail) a python cell costs its code and its output > counts the output on top of the code [0.04ms]
+(fail) a python cell costs its code and its output > still counts a cell excluded from the request, exactly as a bash cell is [0.04ms]
+
+ 21 pass
+ 11 fail
+ 50 expect() calls
+Ran 32 tests across 1 file. [276.00ms]

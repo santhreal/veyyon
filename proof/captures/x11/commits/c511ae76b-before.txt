@@ -1,0 +1,40 @@
+(pass) TUI.requestDirectWrite > falls back to a full render while a visible overlay is up [4.47ms]
+
+packages/tui/test/scroll-isolation-history.test.ts:
+(pass) scroll isolation over dropped history > scrolls back into rows the transcript already dropped instead of doing nothing [2.60ms]
+(pass) scroll isolation over dropped history > walks back to the oldest row the tape still holds and stops there [7.78ms]
+(pass) scroll isolation over dropped history > renders the composer zone byte-identically whether frozen or following [1.35ms]
+(pass) scroll isolation over dropped history > keeps the frozen region still while the transcript keeps dropping rows underneath [2.38ms]
+(pass) scroll isolation over dropped history > keeps the composer live while the history above it is frozen [1.20ms]
+(pass) scroll isolation over dropped history > draws the scroll position on the right edge of the frozen region only [8.47ms]
+(pass) scroll isolation over dropped history > reports how far back the reader is, in rows [1.16ms]
+(pass) scroll isolation over dropped history > resumes following on submit and on a footer click, from deep in history [5.68ms]
+(pass) scroll isolation over dropped history > does not freeze on a wheel-up in a session with nothing above the window [0.60ms]
+423 | 			for (let i = 0; i < 12; i++) {
+424 | 				transcript.all = [...transcript.all, ...row(transcript.all.length, 5)];
+425 | 				tui.requestRender();
+426 | 				await scheduler.drain(term);
+427 | 			}
+428 | 			expect(tui.scrollTapeRows).toBeGreaterThan(HEIGHT);
+                                    ^
+error: expect(received).toBeGreaterThan(expected)
+
+Expected: > 10
+Received: 5
+
+      at <anonymous> (/repo/packages/tui/test/scroll-isolation-history.test.ts:428:31)
+(fail) scroll isolation over dropped history > keeps the reader's history with the rebuild on, instead of erasing it [1.64ms]
+(pass) scroll isolation over dropped history > bounds the tape and keeps at least one screen of it [0.74ms]
+
+6 tests failed:
+(fail) a virtualized transcript never loses history to a rebuild > keeps every turn in the terminal (scrollbackRebuild=true virtualized=true) [480.13ms]
+(fail) a virtualized transcript never loses history to a rebuild > keeps every turn in the terminal (scrollbackRebuild=false virtualized=true) [475.78ms]
+(fail) a virtualized transcript never loses history to a rebuild > is unaffected by the rebuild knob while the transcript only grows [948.96ms]
+(fail) a virtualized transcript never loses history to a rebuild > still erases and replays when committed rows genuinely change, and replays the whole transcript [675.28ms]
+(fail) TUI native scrollback replay > rehydrates a silent virtualized root rather than replaying a frame it emptied [4.17ms]
+(fail) scroll isolation over dropped history > keeps the reader's history with the rebuild on, instead of erasing it [1.64ms]
+
+ 22 pass
+ 6 fail
+ 127 expect() calls
+Ran 28 tests across 3 files. [3.85s]

@@ -1,0 +1,40 @@
+134 | 	let renders = 0;
+135 | 	editor.onAutocompleteUpdate = () => {
+136 | 		renders++;
+137 | 	};
+138 | 	if (options.motion !== false) {
+139 | 		editor.setAutocompleteMotion({
+               ^
+TypeError: editor.setAutocompleteMotion is not a function. (In 'editor.setAutocompleteMotion({
+      requestRender: () => {
+        renders++;
+      },
+      clock: options.clock,
+      enabled: options.enabled,
+      ground: GROUND
+    })', 'editor.setAutocompleteMotion' is undefined)
+      at makePopup (/repo/packages/tui/test/a-suggestion-popup-grows-instead-of-cutting-in.test.ts:139:10)
+      at <anonymous> (/repo/packages/tui/test/a-suggestion-popup-grows-instead-of-cutting-in.test.ts:353:15)
+(fail) a suggestion popup grows instead of cutting in > is byte-identical with the reveal disabled, and registers nothing [0.06ms]
+134 | 	let renders = 0;
+135 | 	editor.onAutocompleteUpdate = () => {
+136 | 		renders++;
+137 | 	};
+138 | 	if (options.motion !== false) {
+139 | 		editor.setAutocompleteMotion({
+               ^
+TypeError: editor.setAutocompleteMotion is not a function. (In 'editor.setAutocompleteMotion({
+      requestRender: () => {
+        renders++;
+      },
+      clock: options.clock,
+      enabled: options.enabled,
+      ground: GROUND
+    })', 'editor.setAutocompleteMotion' is undefined)
+      at makePopup (/repo/packages/tui/test/a-suggestion-popup-grows-instead-of-cutting-in.test.ts:139:10)
+      at <anonymous> (/repo/packages/tui/test/a-suggestion-popup-grows-instead-of-cutting-in.test.ts:369:17)
+(fail) a suggestion popup grows instead of cutting in > stops painting once the editor's motion is disposed [0.06ms]
+
+ 0 pass
+ 10 fail
+Ran 10 tests across 1 file. [125.00ms]

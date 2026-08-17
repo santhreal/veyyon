@@ -1,0 +1,18 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/modes/components/selector-overlays-answer-the-pointer.test.ts:
+(pass) selector overlays answer the pointer > history search: hover bands a result, click recalls it, wheel steps the selection [12.35ms]
+(pass) selector overlays answer the pointer > history search: wheel moves the selection like the arrow keys [1.15ms]
+(pass) selector overlays answer the pointer > reset usage: hover bands an account, first click arms, second click spends [1.02ms]
+(pass) selector overlays answer the pointer > user messages: hover bands a message, click branches from it, wheel steps [0.76ms]
+(pass) selector overlays answer the pointer > move overlay: hover bands a directory, click confirms it, wheel steps [1.42ms]
+(pass) selector overlays answer the pointer > copy selector: hover bands a tree row, click picks a content leaf, wheel steps [1.04ms]
+(pass) selector overlays answer the pointer > model picker: hover bands a model row, click selects, second click picks [3.09ms]
+(pass) selector overlays answer the pointer > ask dialog: hover bands an option, click answers it [4.48ms]
+(pass) selector overlays answer the pointer > ask dialog: wheel moves the option cursor like the arrow keys [0.58ms]
+(pass) selector overlays answer the pointer > session selector: hover bands a session row [2.58ms]
+
+ 10 pass
+ 0 fail
+ 56 expect() calls
+Ran 10 tests across 1 file. [395.00ms]

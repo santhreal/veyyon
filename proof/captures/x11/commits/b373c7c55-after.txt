@@ -1,0 +1,11 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/modes/components/a-clicked-composer-chip-runs-its-action.test.ts:
+(pass) composer chip clicks > fires each chip's id when its label is clicked [11.25ms]
+(pass) composer chip clicks > fires nothing outside a chip span [0.36ms]
+(pass) composer chip clicks > renders only chips whose action is live [0.47ms]
+
+ 3 pass
+ 0 fail
+ 13 expect() calls
+Ran 3 tests across 1 file. [269.00ms]

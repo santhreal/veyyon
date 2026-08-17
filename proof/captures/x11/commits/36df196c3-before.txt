@@ -1,0 +1,40 @@
+            │   Model            │                                                                         │            
+            │   Interaction      │  › ▪ cfg-side              [npm] · v2.0.0                               │            
+            │   Resources        │    ▪ mkt-side@catalog      [marketplace] [user] · v0.4.2                │            
+            │   Context          │                                                                         │            
+            │   Rules            │    Enter to configure · Esc to go back                                  │            
+            │   Memory           │                                                                         │            
+            │   Files            │                                                                         │            
+            │   Shell            │                                                                         │            
+            │   Tools            │                                                                         │            
+            │   Tasks            │                                                                         │            
+            │   Subagents        │                                                                         │            
+            │   Providers        │                                                                         │            
+            │   Experimental     │                                                                         │            
+            │   Global           │                                                                         │            
+            │ › Plugins          │                                                                         │            
+            │                                                                                              │            
+            │                                                                                              │            
+            │                                                                                              │            
+            │                                                                                              │            
+            │                                                                                              │            
+            │                                                                                              │            
+            │                                                                                              │            
+            │                                                                                              │            
+            │                                                                                              │            
+            ├──────────────────────────────────────────────────────────────────────────────────────────────┤            
+            │ Tip · Ask the agent: "change theme to titanium" or "what does compact do?"                   │            
+            │                                                                                              │            
+            │                up/down navigate  ·  enter change  ·  / search  ·  esc close                  │            
+            └──────────────────────────────────────────────────────────────────────────────────────────────┘            
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+      at awaitText (/repo/packages/coding-agent/test/modes/components/the-plugins-tab-answers-the-pointer.test.ts:162:12)
+      at async <anonymous> (/repo/packages/coding-agent/test/modes/components/the-plugins-tab-answers-the-pointer.test.ts:347:10)
+(fail) the plugins tab answers the pointer > bands the settings row under the pointer inside a plugin's detail view [534.43ms]
+
+ 4 pass
+ 9 fail
+ 18 expect() calls
+Ran 13 tests across 2 files. [3.61s]

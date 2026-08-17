@@ -1,0 +1,40 @@
+      at <anonymous> (/repo/packages/tui/test/a-footer-click-target-holds-the-mouse-in-a-session-that-never-scrolls.test.ts:182:23)
+(fail) a footer click target holds the mouse in a session that never scrolls > delivers the click that the grab makes possible [6.37ms]
+(pass) a footer click target holds the mouse in a session that never scrolls > takes nothing from the terminal while no target is on screen [1.79ms]
+(pass) a footer click target holds the mouse in a session that never scrolls > ignores a declared target that is not in the pinned footer [6.17ms]
+215 | 
+216 | 	it("hands the mouse back when the targets clear", async () => {
+217 | 		const bar = new ChipBar();
+218 | 		const { term, tui, scheduler, stop } = await rig([bar]);
+219 | 		try {
+220 | 			expect(term.drainOutput()).toContain(TRACKING_BUTTONS_ON);
+                                    ^
+error: expect(received).toContain(expected)
+
+Expected to contain: "\u001B[?1000h"
+Received: "\u001B[?25l\u001B[?7l\u001B[2J\u001B[Hturn-1\u001B[0m\r\nturn-2\u001B[0m\r\n  escape interrupt\u001B[0m\r\n>\u001B[0m\r\n\u001B[0m\r\n\u001B[0m\r\n\u001B[0m\r\n\u001B[0m\r\n\u001B[0m\r\n\u001B[0m\r\n\u001B[0m\r\n\u001B[0m\u001B[8A\u001B[2G\u001B[?25h\u001B[?7h"
+
+      at <anonymous> (/repo/packages/tui/test/a-footer-click-target-holds-the-mouse-in-a-session-that-never-scrolls.test.ts:220:31)
+(fail) a footer click target holds the mouse in a session that never scrolls > hands the mouse back when the targets clear [0.86ms]
+(pass) a footer click target holds the mouse in a session that never scrolls > keeps the grab while the frame is scrollable even after the targets clear [2.00ms]
+(pass) a footer click target holds the mouse in a session that never scrolls > never takes the mouse on the alt-arrows transport, target or not [18.97ms]
+(pass) a footer click target holds the mouse in a session that never scrolls > never takes the mouse with scroll isolation off, target or not [0.75ms]
+279 | 	it("releases the grab on stop", async () => {
+280 | 		const bar = new ChipBar();
+281 | 		const { term, tui } = await rig([bar]);
+282 | 		term.drainOutput();
+283 | 		tui.stop();
+284 | 		expect(term.drainOutput()).toContain(TRACKING_OFF);
+                                   ^
+error: expect(received).toContain(expected)
+
+Expected to contain: "\u001B[?1006l\u001B[?1000l"
+Received: "\u001B[1B\r"
+
+      at <anonymous> (/repo/packages/tui/test/a-footer-click-target-holds-the-mouse-in-a-session-that-never-scrolls.test.ts:284:30)
+(fail) a footer click target holds the mouse in a session that never scrolls > releases the grab on stop [1.25ms]
+
+ 8 pass
+ 5 fail
+ 25 expect() calls
+Ran 13 tests across 2 files. [348.00ms]

@@ -1,0 +1,40 @@
+-------------------------------
+error: Cannot find module '../../helpers/modal-card' from '/repo/packages/coding-agent/test/modes/components/tree-selector-chain-gutter-2298.test.ts'
+-------------------------------
+
+
+packages/coding-agent/test/modes/components/tree-selector-developer.test.ts:
+41 | 		);
+42 | 		root.children.push(developer);
+43 | 
+44 | 		const rendered = render([root]);
+45 | 
+46 | 		expect(rendered).toContain("developer:");
+                        ^
+error: expect(received).toContain(expected)
+
+Expected to contain: "developer:"
+Received: "\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n   Session Tree                                                                                                         \nUp/Down: move. Left/Right: page. Shift+L: label. Ctrl+O/Shift+Ctrl+O: filter. Alt+D/T/U/L/A: filter. Type to search\n  Search:\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────"
+
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/tree-selector-developer.test.ts:46:20)
+(fail) TreeSelectorComponent developer message rendering > renders developer messages with their content, not just [developer] [0.46ms]
+57 | 			root.entry.id,
+58 | 		);
+59 | 		root.children.push(developer);
+60 | 
+61 | 		const rendered = render([root]);
+62 | 		expect(rendered).toContain("ZZZ_UNIQUE_PLAN_TOKEN");
+                        ^
+error: expect(received).toContain(expected)
+
+Expected to contain: "ZZZ_UNIQUE_PLAN_TOKEN"
+Received: "\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n   Session Tree                                                                                                         \nUp/Down: move. Left/Right: page. Shift+L: label. Ctrl+O/Shift+Ctrl+O: filter. Alt+D/T/U/L/A: filter. Type to search\n  Search:\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────"
+
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/tree-selector-developer.test.ts:62:20)
+(fail) TreeSelectorComponent developer message rendering > matches developer messages in search (content is searchable) [0.21ms]
+
+ 5 pass
+ 9 fail
+ 1 error
+ 13 expect() calls
+Ran 14 tests across 4 files. [378.00ms]

@@ -1,0 +1,461 @@
+[33m6582723f9[m proof(ui-polish): the capture set the page is built from
+
+
+
+ proof/captures/real/before/login.gif               | Bin [31m0[m -> [32m346034[m bytes
+ proof/captures/real/before/mcp.gif                 | Bin [31m0[m -> [32m243332[m bytes
+ proof/captures/real/before/overlay-login-hover.png | Bin [31m0[m -> [32m67984[m bytes
+ proof/captures/real/before/overlay-login-list.png  | Bin [31m0[m -> [32m67984[m bytes
+ proof/captures/real/before/overlay-mcp.png         | Bin [31m0[m -> [32m48651[m bytes
+ proof/captures/real/before/overlay-pause.png       | Bin [31m0[m -> [32m78452[m bytes
+ proof/captures/real/before/overlay-tree.png        | Bin [31m0[m -> [32m115142[m bytes
+ proof/captures/real/before/pause.gif               | Bin [31m0[m -> [32m246883[m bytes
+ proof/captures/real/before/plugins.gif             | Bin [31m0[m -> [32m793151[m bytes
+ proof/captures/real/before/settings-plugins.png    | Bin [31m0[m -> [32m106335[m bytes
+ proof/captures/real/before/settings-subagents.gif  | Bin [31m0[m -> [32m651600[m bytes
+ proof/captures/real/before/settings-subagents.png  | Bin [31m0[m -> [32m210196[m bytes
+ proof/captures/real/before/smoke.gif               | Bin [31m0[m -> [32m1794308[m bytes
+ proof/captures/real/before/smoke.png               | Bin [31m0[m -> [32m77119[m bytes
+ proof/captures/real/before/transcript-answer.png   | Bin [31m0[m -> [32m56987[m bytes
+ proof/captures/real/before/transcript-btw.png      | Bin [31m0[m -> [32m67560[m bytes
+ proof/captures/real/before/transcript.gif          | Bin [31m0[m -> [32m1880272[m bytes
+ proof/captures/real/before/tree.gif                | Bin [31m0[m -> [32m1942144[m bytes
+ proof/captures/real/before/wizard-approvals.png    | Bin [31m0[m -> [32m108272[m bytes
+ proof/captures/real/before/wizard-providers.png    | Bin [31m0[m -> [32m182774[m bytes
+ proof/captures/real/before/wizard-subagents.png    | Bin [31m0[m -> [32m128611[m bytes
+ proof/captures/real/before/wizard.gif              | Bin [31m0[m -> [32m234344[m bytes
+ proof/captures/real/login.gif                      | Bin [31m0[m -> [32m302041[m bytes
+ proof/captures/real/mcp.gif                        | Bin [31m0[m -> [32m240587[m bytes
+ proof/captures/real/overlay-login-hover.png        | Bin [31m0[m -> [32m61545[m bytes
+ proof/captures/real/overlay-login-list.png         | Bin [31m0[m -> [32m61545[m bytes
+ proof/captures/real/overlay-mcp.png                | Bin [31m0[m -> [32m31216[m bytes
+ proof/captures/real/overlay-pause.png              | Bin [31m0[m -> [32m79520[m bytes
+ proof/captures/real/overlay-plugins.png            | Bin [31m0[m -> [32m29111[m bytes
+ proof/captures/real/overlay-tree.png               | Bin [31m0[m -> [32m48183[m bytes
+ proof/captures/real/overlays.gif                   | Bin [31m0[m -> [32m343520[m bytes
+ proof/captures/real/pause.gif                      | Bin [31m0[m -> [32m257807[m bytes
+ proof/captures/real/plugins.gif                    | Bin [31m0[m -> [32m792910[m bytes
+ proof/captures/real/settings-plugins.png           | Bin [31m0[m -> [32m105325[m bytes
+ proof/captures/real/settings-subagents.gif         | Bin [31m0[m -> [32m650752[m bytes
+ proof/captures/real/settings-subagents.png         | Bin [31m0[m -> [32m212460[m bytes
+ proof/captures/real/smoke.gif                      | Bin [31m0[m -> [32m181713[m bytes
+ proof/captures/real/smoke.png                      | Bin [31m0[m -> [32m100868[m bytes
+ proof/captures/real/transcript-answer.png          | Bin [31m0[m -> [32m83903[m bytes
+ proof/captures/real/transcript-btw.png             | Bin [31m0[m -> [32m100982[m bytes
+ proof/captures/real/transcript.gif                 | Bin [31m0[m -> [32m3445417[m bytes
+ proof/captures/real/tree.gif                       | Bin [31m0[m -> [32m1457909[m bytes
+ proof/captures/real/wizard-approvals.png           | Bin [31m0[m -> [32m109377[m bytes
+ proof/captures/real/wizard-providers.png           | Bin [31m0[m -> [32m184010[m bytes
+ proof/captures/real/wizard-subagents.png           | Bin [31m0[m -> [32m130323[m bytes
+ proof/captures/real/wizard.gif                     | Bin [31m0[m -> [32m233933[m bytes
+ proof/captures/settings-open.gif                   | Bin [31m0[m -> [32m548869[m bytes
+ proof/captures/settings-open.png                   | Bin [31m0[m -> [32m90749[m bytes
+ .../x11/after/transcript-blanking-back-to-live.png | Bin [31m0[m -> [32m42324[m bytes
+ .../after/transcript-blanking-conversation-end.png | Bin [31m0[m -> [32m42324[m bytes
+ .../x11/after/transcript-blanking-scrollback-1.png | Bin [31m0[m -> [32m42324[m bytes
+ .../x11/after/transcript-blanking-scrollback-2.png | Bin [31m0[m -> [32m42324[m bytes
+ .../x11/after/transcript-blanking-scrollback-3.png | Bin [31m0[m -> [32m42324[m bytes
+ .../x11/after/transcript-blanking-scrollback-4.png | Bin [31m0[m -> [32m42324[m bytes
+ .../x11/after/transcript-blanking-scrollback-5.png | Bin [31m0[m -> [32m42324[m bytes
+ proof/captures/x11/after/transcript-blanking.gif   | Bin [31m0[m -> [32m332088[m bytes
+
+[1mdiff --git a/proof/captures/real/before/login.gif b/proof/captures/real/before/login.gif[m
+[1mnew file mode 100644[m
+[1mindex 000000000..096deff00[m
+Binary files /dev/null and b/proof/captures/real/before/login.gif differ
+[1mdiff --git a/proof/captures/real/before/mcp.gif b/proof/captures/real/before/mcp.gif[m
+[1mnew file mode 100644[m
+[1mindex 000000000..7a11c5c3f[m
+Binary files /dev/null and b/proof/captures/real/before/mcp.gif differ
+[1mdiff --git a/proof/captures/real/before/overlay-login-hover.png b/proof/captures/real/before/overlay-login-hover.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..8dd662f6f[m
+Binary files /dev/null and b/proof/captures/real/before/overlay-login-hover.png differ
+[1mdiff --git a/proof/captures/real/before/overlay-login-list.png b/proof/captures/real/before/overlay-login-list.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..8dd662f6f[m
+Binary files /dev/null and b/proof/captures/real/before/overlay-login-list.png differ
+[1mdiff --git a/proof/captures/real/before/overlay-mcp.png b/proof/captures/real/before/overlay-mcp.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..f1b3d4cf7[m
+Binary files /dev/null and b/proof/captures/real/before/overlay-mcp.png differ
+[1mdiff --git a/proof/captures/real/before/overlay-pause.png b/proof/captures/real/before/overlay-pause.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..da59a7b65[m
+Binary files /dev/null and b/proof/captures/real/before/overlay-pause.png differ
+[1mdiff --git a/proof/captures/real/before/overlay-tree.png b/proof/captures/real/before/overlay-tree.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..280705e0b[m
+Binary files /dev/null and b/proof/captures/real/before/overlay-tree.png differ
+[1mdiff --git a/proof/captures/real/before/pause.gif b/proof/captures/real/before/pause.gif[m
+[1mnew file mode 100644[m
+[1mindex 000000000..5f678dc94[m
+Binary files /dev/null and b/proof/captures/real/before/pause.gif differ
+[1mdiff --git a/proof/captures/real/before/plugins.gif b/proof/captures/real/before/plugins.gif[m
+[1mnew file mode 100644[m
+[1mindex 000000000..d6b4db5ae[m
+Binary files /dev/null and b/proof/captures/real/before/plugins.gif differ
+[1mdiff --git a/proof/captures/real/before/settings-plugins.png b/proof/captures/real/before/settings-plugins.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..15a11b11c[m
+Binary files /dev/null and b/proof/captures/real/before/settings-plugins.png differ
+[1mdiff --git a/proof/captures/real/before/settings-subagents.gif b/proof/captures/real/before/settings-subagents.gif[m
+[1mnew file mode 100644[m
+[1mindex 000000000..b215e8baf[m
+Binary files /dev/null and b/proof/captures/real/before/settings-subagents.gif differ
+[1mdiff --git a/proof/captures/real/before/settings-subagents.png b/proof/captures/real/before/settings-subagents.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..5bef92c93[m
+Binary files /dev/null and b/proof/captures/real/before/settings-subagents.png differ
+[1mdiff --git a/proof/captures/real/before/smoke.gif b/proof/captures/real/before/smoke.gif[m
+[1mnew file mode 100644[m
+[1mindex 000000000..32e3af57f[m
+Binary files /dev/null and b/proof/captures/real/before/smoke.gif differ
+[1mdiff --git a/proof/captures/real/before/smoke.png b/proof/captures/real/before/smoke.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..f4e3a758b[m
+Binary files /dev/null and b/proof/captures/real/before/smoke.png differ
+[1mdiff --git a/proof/captures/real/before/transcript-answer.png b/proof/captures/real/before/transcript-answer.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..84ebd0fd3[m
+Binary files /dev/null and b/proof/captures/real/before/transcript-answer.png differ
+[1mdiff --git a/proof/captures/real/before/transcript-btw.png b/proof/captures/real/before/transcript-btw.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..b4b9f7918[m
+Binary files /dev/null and b/proof/captures/real/before/transcript-btw.png differ
+[1mdiff --git a/proof/captures/real/before/transcript.gif b/proof/captures/real/before/transcript.gif[m
+[1mnew file mode 100644[m
+[1mindex 000000000..59f73fffa[m
+Binary files /dev/null and b/proof/captures/real/before/transcript.gif differ
+[1mdiff --git a/proof/captures/real/before/tree.gif b/proof/captures/real/before/tree.gif[m
+[1mnew file mode 100644[m
+[1mindex 000000000..4c28ac166[m
+Binary files /dev/null and b/proof/captures/real/before/tree.gif differ
+[1mdiff --git a/proof/captures/real/before/wizard-approvals.png b/proof/captures/real/before/wizard-approvals.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..121b51cb2[m
+Binary files /dev/null and b/proof/captures/real/before/wizard-approvals.png differ
+[1mdiff --git a/proof/captures/real/before/wizard-providers.png b/proof/captures/real/before/wizard-providers.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..9ec5969fd[m
+Binary files /dev/null and b/proof/captures/real/before/wizard-providers.png differ
+[1mdiff --git a/proof/captures/real/before/wizard-subagents.png b/proof/captures/real/before/wizard-subagents.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..14561b5ad[m
+Binary files /dev/null and b/proof/captures/real/before/wizard-subagents.png differ
+[1mdiff --git a/proof/captures/real/before/wizard.gif b/proof/captures/real/before/wizard.gif[m
+[1mnew file mode 100644[m
+[1mindex 000000000..227646e30[m
+Binary files /dev/null and b/proof/captures/real/before/wizard.gif differ
+[1mdiff --git a/proof/captures/real/login.gif b/proof/captures/real/login.gif[m
+[1mnew file mode 100644[m
+[1mindex 000000000..85eedaf16[m
+Binary files /dev/null and b/proof/captures/real/login.gif differ
+[1mdiff --git a/proof/captures/real/mcp.gif b/proof/captures/real/mcp.gif[m
+[1mnew file mode 100644[m
+[1mindex 000000000..fd40db3b3[m
+Binary files /dev/null and b/proof/captures/real/mcp.gif differ
+[1mdiff --git a/proof/captures/real/overlay-login-hover.png b/proof/captures/real/overlay-login-hover.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..3a9b0aec5[m
+Binary files /dev/null and b/proof/captures/real/overlay-login-hover.png differ
+[1mdiff --git a/proof/captures/real/overlay-login-list.png b/proof/captures/real/overlay-login-list.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..3a9b0aec5[m
+Binary files /dev/null and b/proof/captures/real/overlay-login-list.png differ
+[1mdiff --git a/proof/captures/real/overlay-mcp.png b/proof/captures/real/overlay-mcp.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..680317814[m
+Binary files /dev/null and b/proof/captures/real/overlay-mcp.png differ
+[1mdiff --git a/proof/captures/real/overlay-pause.png b/proof/captures/real/overlay-pause.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..817b2de4d[m
+Binary files /dev/null and b/proof/captures/real/overlay-pause.png differ
+[1mdiff --git a/proof/captures/real/overlay-plugins.png b/proof/captures/real/overlay-plugins.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..aaf28f0be[m
+Binary files /dev/null and b/proof/captures/real/overlay-plugins.png differ
+[1mdiff --git a/proof/captures/real/overlay-tree.png b/proof/captures/real/overlay-tree.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..0b2f9c453[m
+Binary files /dev/null and b/proof/captures/real/overlay-tree.png differ
+[1mdiff --git a/proof/captures/real/overlays.gif b/proof/captures/real/overlays.gif[m
+[1mnew file mode 100644[m
+[1mindex 000000000..b03756683[m
+Binary files /dev/null and b/proof/captures/real/overlays.gif differ
+[1mdiff --git a/proof/captures/real/pause.gif b/proof/captures/real/pause.gif[m
+[1mnew file mode 100644[m
+[1mindex 000000000..c50f10f34[m
+Binary files /dev/null and b/proof/captures/real/pause.gif differ
+[1mdiff --git a/proof/captures/real/plugins.gif b/proof/captures/real/plugins.gif[m
+[1mnew file mode 100644[m
+[1mindex 000000000..fc7973f90[m
+Binary files /dev/null and b/proof/captures/real/plugins.gif differ
+[1mdiff --git a/proof/captures/real/settings-plugins.png b/proof/captures/real/settings-plugins.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..6f74b9c72[m
+Binary files /dev/null and b/proof/captures/real/settings-plugins.png differ
+[1mdiff --git a/proof/captures/real/settings-subagents.gif b/proof/captures/real/settings-subagents.gif[m
+[1mnew file mode 100644[m
+[1mindex 000000000..ac08ee646[m
+Binary files /dev/null and b/proof/captures/real/settings-subagents.gif differ
+[1mdiff --git a/proof/captures/real/settings-subagents.png b/proof/captures/real/settings-subagents.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..8a37e5177[m
+Binary files /dev/null and b/proof/captures/real/settings-subagents.png differ
+[1mdiff --git a/proof/captures/real/smoke.gif b/proof/captures/real/smoke.gif[m
+[1mnew file mode 100644[m
+[1mindex 000000000..06bfbcdfb[m
+Binary files /dev/null and b/proof/captures/real/smoke.gif differ
+[1mdiff --git a/proof/captures/real/smoke.png b/proof/captures/real/smoke.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..af3ada4ca[m
+Binary files /dev/null and b/proof/captures/real/smoke.png differ
+[1mdiff --git a/proof/captures/real/transcript-answer.png b/proof/captures/real/transcript-answer.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..5aa28b0fa[m
+Binary files /dev/null and b/proof/captures/real/transcript-answer.png differ
+[1mdiff --git a/proof/captures/real/transcript-btw.png b/proof/captures/real/transcript-btw.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..e00e447aa[m
+Binary files /dev/null and b/proof/captures/real/transcript-btw.png differ
+[1mdiff --git a/proof/captures/real/transcript.gif b/proof/captures/real/transcript.gif[m
+[1mnew file mode 100644[m
+[1mindex 000000000..1647c8267[m
+Binary files /dev/null and b/proof/captures/real/transcript.gif differ
+[1mdiff --git a/proof/captures/real/tree.gif b/proof/captures/real/tree.gif[m
+[1mnew file mode 100644[m
+[1mindex 000000000..b544e39df[m
+Binary files /dev/null and b/proof/captures/real/tree.gif differ
+[1mdiff --git a/proof/captures/real/wizard-approvals.png b/proof/captures/real/wizard-approvals.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..c253fcc17[m
+Binary files /dev/null and b/proof/captures/real/wizard-approvals.png differ
+[1mdiff --git a/proof/captures/real/wizard-providers.png b/proof/captures/real/wizard-providers.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..8e52f750b[m
+Binary files /dev/null and b/proof/captures/real/wizard-providers.png differ
+[1mdiff --git a/proof/captures/real/wizard-subagents.png b/proof/captures/real/wizard-subagents.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..eb71e7b33[m
+Binary files /dev/null and b/proof/captures/real/wizard-subagents.png differ
+[1mdiff --git a/proof/captures/real/wizard.gif b/proof/captures/real/wizard.gif[m
+[1mnew file mode 100644[m
+[1mindex 000000000..79e79dd75[m
+Binary files /dev/null and b/proof/captures/real/wizard.gif differ
+[1mdiff --git a/proof/captures/settings-open.gif b/proof/captures/settings-open.gif[m
+[1mnew file mode 100644[m
+[1mindex 000000000..5b8bdd82e[m
+Binary files /dev/null and b/proof/captures/settings-open.gif differ
+[1mdiff --git a/proof/captures/settings-open.png b/proof/captures/settings-open.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..bfe3de82a[m
+Binary files /dev/null and b/proof/captures/settings-open.png differ
+[1mdiff --git a/proof/captures/x11/after/transcript-blanking-back-to-live.png b/proof/captures/x11/after/transcript-blanking-back-to-live.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..de6a545b2[m
+Binary files /dev/null and b/proof/captures/x11/after/transcript-blanking-back-to-live.png differ
+[1mdiff --git a/proof/captures/x11/after/transcript-blanking-conversation-end.png b/proof/captures/x11/after/transcript-blanking-conversation-end.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..de6a545b2[m
+Binary files /dev/null and b/proof/captures/x11/after/transcript-blanking-conversation-end.png differ
+[1mdiff --git a/proof/captures/x11/after/transcript-blanking-scrollback-1.png b/proof/captures/x11/after/transcript-blanking-scrollback-1.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..de6a545b2[m
+Binary files /dev/null and b/proof/captures/x11/after/transcript-blanking-scrollback-1.png differ
+[1mdiff --git a/proof/captures/x11/after/transcript-blanking-scrollback-2.png b/proof/captures/x11/after/transcript-blanking-scrollback-2.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..de6a545b2[m
+Binary files /dev/null and b/proof/captures/x11/after/transcript-blanking-scrollback-2.png differ
+[1mdiff --git a/proof/captures/x11/after/transcript-blanking-scrollback-3.png b/proof/captures/x11/after/transcript-blanking-scrollback-3.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..de6a545b2[m
+Binary files /dev/null and b/proof/captures/x11/after/transcript-blanking-scrollback-3.png differ
+[1mdiff --git a/proof/captures/x11/after/transcript-blanking-scrollback-4.png b/proof/captures/x11/after/transcript-blanking-scrollback-4.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..de6a545b2[m
+Binary files /dev/null and b/proof/captures/x11/after/transcript-blanking-scrollback-4.png differ
+[1mdiff --git a/proof/captures/x11/after/transcript-blanking-scrollback-5.png b/proof/captures/x11/after/transcript-blanking-scrollback-5.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..de6a545b2[m
+Binary files /dev/null and b/proof/captures/x11/after/transcript-blanking-scrollback-5.png differ
+[1mdiff --git a/proof/captures/x11/after/transcript-blanking.gif b/proof/captures/x11/after/transcript-blanking.gif[m
+[1mnew file mode 100644[m
+[1mindex 000000000..30c3795f4[m
+Binary files /dev/null and b/proof/captures/x11/after/transcript-blanking.gif differ
+[1mdiff --git a/proof/captures/x11/before/overlay-fold-idle.png b/proof/captures/x11/before/overlay-fold-idle.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..8738ec163[m
+Binary files /dev/null and b/proof/captures/x11/before/overlay-fold-idle.png differ
+[1mdiff --git a/proof/captures/x11/before/overlay-fold-model-closed.png b/proof/captures/x11/before/overlay-fold-model-closed.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..9bb0120d1[m
+Binary files /dev/null and b/proof/captures/x11/before/overlay-fold-model-closed.png differ
+[1mdiff --git a/proof/captures/x11/before/overlay-fold-model-open.png b/proof/captures/x11/before/overlay-fold-model-open.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..4d10da406[m
+Binary files /dev/null and b/proof/captures/x11/before/overlay-fold-model-open.png differ
+[1mdiff --git a/proof/captures/x11/before/overlay-fold-settings-open.png b/proof/captures/x11/before/overlay-fold-settings-open.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..67d1962c6[m
+Binary files /dev/null and b/proof/captures/x11/before/overlay-fold-settings-open.png differ
+[1mdiff --git a/proof/captures/x11/before/overlay-fold.gif b/proof/captures/x11/before/overlay-fold.gif[m
+[1mnew file mode 100644[m
+[1mindex 000000000..a50c3e98c[m
+Binary files /dev/null and b/proof/captures/x11/before/overlay-fold.gif differ
+[1mdiff --git a/proof/captures/x11/before/overlay-motion-back-to-transcript.png b/proof/captures/x11/before/overlay-motion-back-to-transcript.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..f67936933[m
+Binary files /dev/null and b/proof/captures/x11/before/overlay-motion-back-to-transcript.png differ
+[1mdiff --git a/proof/captures/x11/before/overlay-motion-idle.png b/proof/captures/x11/before/overlay-motion-idle.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..db28566a4[m
+Binary files /dev/null and b/proof/captures/x11/before/overlay-motion-idle.png differ
+[1mdiff --git a/proof/captures/x11/before/overlay-motion-model-hover.png b/proof/captures/x11/before/overlay-motion-model-hover.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..4d10da406[m
+Binary files /dev/null and b/proof/captures/x11/before/overlay-motion-model-hover.png differ
+[1mdiff --git a/proof/captures/x11/before/overlay-motion-model-settled.png b/proof/captures/x11/before/overlay-motion-model-settled.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..4d10da406[m
+Binary files /dev/null and b/proof/captures/x11/before/overlay-motion-model-settled.png differ
+[1mdiff --git a/proof/captures/x11/before/overlay-motion-settings-closed.png b/proof/captures/x11/before/overlay-motion-settings-closed.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..9bb0120d1[m
+Binary files /dev/null and b/proof/captures/x11/before/overlay-motion-settings-closed.png differ
+[1mdiff --git a/proof/captures/x11/before/overlay-motion-settings-settled.png b/proof/captures/x11/before/overlay-motion-settings-settled.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..67d1962c6[m
+Binary files /dev/null and b/proof/captures/x11/before/overlay-motion-settings-settled.png differ
+[1mdiff --git a/proof/captures/x11/before/overlay-motion.gif b/proof/captures/x11/before/overlay-motion.gif[m
+[1mnew file mode 100644[m
+[1mindex 000000000..22188c248[m
+Binary files /dev/null and b/proof/captures/x11/before/overlay-motion.gif differ
+[1mdiff --git a/proof/captures/x11/before/overlay-motion.mp4 b/proof/captures/x11/before/overlay-motion.mp4[m
+[1mnew file mode 100644[m
+[1mindex 000000000..05161e3ba[m
+Binary files /dev/null and b/proof/captures/x11/before/overlay-motion.mp4 differ
+[1mdiff --git a/proof/captures/x11/before/pane-bands.gif b/proof/captures/x11/before/pane-bands.gif[m
+[1mnew file mode 100644[m
+[1mindex 000000000..ca19ccd59[m
+Binary files /dev/null and b/proof/captures/x11/before/pane-bands.gif differ
+[1mdiff --git a/proof/captures/x11/before/popup-grow-at-dismissed.png b/proof/captures/x11/before/popup-grow-at-dismissed.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..0a48bf514[m
+Binary files /dev/null and b/proof/captures/x11/before/popup-grow-at-dismissed.png differ
+[1mdiff --git a/proof/captures/x11/before/popup-grow-at-filtered.png b/proof/captures/x11/before/popup-grow-at-filtered.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..8d1e5af95[m
+Binary files /dev/null and b/proof/captures/x11/before/popup-grow-at-filtered.png differ
+[1mdiff --git a/proof/captures/x11/before/popup-grow-at-popup.png b/proof/captures/x11/before/popup-grow-at-popup.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..af6424ef7[m
+Binary files /dev/null and b/proof/captures/x11/before/popup-grow-at-popup.png differ
+[1mdiff --git a/proof/captures/x11/before/popup-grow-idle.png b/proof/captures/x11/before/popup-grow-idle.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..a93de9405[m
+Binary files /dev/null and b/proof/captures/x11/before/popup-grow-idle.png differ
+[1mdiff --git a/proof/captures/x11/before/popup-grow-slash-dismissed.png b/proof/captures/x11/before/popup-grow-slash-dismissed.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..9bb0120d1[m
+Binary files /dev/null and b/proof/captures/x11/before/popup-grow-slash-dismissed.png differ
+[1mdiff --git a/proof/captures/x11/before/popup-grow-slash-filtered.png b/proof/captures/x11/before/popup-grow-slash-filtered.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..0a43a5a9f[m
+Binary files /dev/null and b/proof/captures/x11/before/popup-grow-slash-filtered.png differ
+[1mdiff --git a/proof/captures/x11/before/popup-grow-slash-popup.png b/proof/captures/x11/before/popup-grow-slash-popup.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..57a94c422[m
+Binary files /dev/null and b/proof/captures/x11/before/popup-grow-slash-popup.png differ
+[1mdiff --git a/proof/captures/x11/before/popup-grow.gif b/proof/captures/x11/before/popup-grow.gif[m
+[1mnew file mode 100644[m
+[1mindex 000000000..f2d04a56e[m
+Binary files /dev/null and b/proof/captures/x11/before/popup-grow.gif differ
+[1mdiff --git a/proof/captures/x11/before/sidebar-crossfade.gif b/proof/captures/x11/before/sidebar-crossfade.gif[m
+[1mnew file mode 100644[m
+[1mindex 000000000..7a976cb60[m
+Binary files /dev/null and b/proof/captures/x11/before/sidebar-crossfade.gif differ
+[1mdiff --git a/proof/captures/x11/before/subagent-lanes.gif b/proof/captures/x11/before/subagent-lanes.gif[m
+[1mnew file mode 100644[m
+[1mindex 000000000..ac04d9a67[m
+Binary files /dev/null and b/proof/captures/x11/before/subagent-lanes.gif differ
+[1mdiff --git a/proof/captures/x11/before/subagent-lanes.mp4 b/proof/captures/x11/before/subagent-lanes.mp4[m
+[1mnew file mode 100644[m
+[1mindex 000000000..cb2533c0d[m
+Binary files /dev/null and b/proof/captures/x11/before/subagent-lanes.mp4 differ
+[1mdiff --git a/proof/captures/x11/before/transcript-blanking-back-to-live.png b/proof/captures/x11/before/transcript-blanking-back-to-live.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..de6a545b2[m
+Binary files /dev/null and b/proof/captures/x11/before/transcript-blanking-back-to-live.png differ
+[1mdiff --git a/proof/captures/x11/before/transcript-blanking-conversation-end.png b/proof/captures/x11/before/transcript-blanking-conversation-end.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..de6a545b2[m
+Binary files /dev/null and b/proof/captures/x11/before/transcript-blanking-conversation-end.png differ
+[1mdiff --git a/proof/captures/x11/before/transcript-blanking-scrollback-1.png b/proof/captures/x11/before/transcript-blanking-scrollback-1.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..de6a545b2[m
+Binary files /dev/null and b/proof/captures/x11/before/transcript-blanking-scrollback-1.png differ
+[1mdiff --git a/proof/captures/x11/before/transcript-blanking-scrollback-2.png b/proof/captures/x11/before/transcript-blanking-scrollback-2.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..de6a545b2[m
+Binary files /dev/null and b/proof/captures/x11/before/transcript-blanking-scrollback-2.png differ
+[1mdiff --git a/proof/captures/x11/before/transcript-blanking-scrollback-3.png b/proof/captures/x11/before/transcript-blanking-scrollback-3.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..de6a545b2[m
+Binary files /dev/null and b/proof/captures/x11/before/transcript-blanking-scrollback-3.png differ
+[1mdiff --git a/proof/captures/x11/before/transcript-blanking-scrollback-4.png b/proof/captures/x11/before/transcript-blanking-scrollback-4.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..de6a545b2[m
+Binary files /dev/null and b/proof/captures/x11/before/transcript-blanking-scrollback-4.png differ
+[1mdiff --git a/proof/captures/x11/before/transcript-blanking-scrollback-5.png b/proof/captures/x11/before/transcript-blanking-scrollback-5.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..de6a545b2[m
+Binary files /dev/null and b/proof/captures/x11/before/transcript-blanking-scrollback-5.png differ
+[1mdiff --git a/proof/captures/x11/before/transcript-blanking.gif b/proof/captures/x11/before/transcript-blanking.gif[m
+[1mnew file mode 100644[m
+[1mindex 000000000..30c3795f4[m
+Binary files /dev/null and b/proof/captures/x11/before/transcript-blanking.gif differ
+[1mdiff --git a/proof/captures/x11/boot.err b/proof/captures/x11/boot.err[m
+[1mnew file mode 100644[m
+[1mindex 000000000..e69de29bb[m
+[1mdiff --git a/proof/captures/x11/mouse-probe.gif b/proof/captures/x11/mouse-probe.gif[m
+[1mnew file mode 100644[m
+[1mindex 000000000..6adb382e1[m
+Binary files /dev/null and b/proof/captures/x11/mouse-probe.gif differ
+[1mdiff --git a/proof/captures/x11/mouse-probe.mp4 b/proof/captures/x11/mouse-probe.mp4[m
+[1mnew file mode 100644[m
+[1mindex 000000000..c0ad8b74a[m
+Binary files /dev/null and b/proof/captures/x11/mouse-probe.mp4 differ
+[1mdiff --git a/proof/captures/x11/mouse-probe.txt b/proof/captures/x11/mouse-probe.txt[m
+[1mnew file mode 100644[m
+[1mindex 000000000..e69de29bb[m
+[1mdiff --git a/proof/captures/x11/overlay-fold-idle.png b/proof/captures/x11/overlay-fold-idle.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..85fbc30b6[m
+Binary files /dev/null and b/proof/captures/x11/overlay-fold-idle.png differ
+[1mdiff --git a/proof/captures/x11/overlay-fold-model-closed.png b/proof/captures/x11/overlay-fold-model-closed.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..9bb0120d1[m
+Binary files /dev/null and b/proof/captures/x11/overlay-fold-model-closed.png differ
+[1mdiff --git a/proof/captures/x11/overlay-fold-model-open.png b/proof/captures/x11/overlay-fold-model-open.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..4d10da406[m
+Binary files /dev/null and b/proof/captures/x11/overlay-fold-model-open.png differ
+[1mdiff --git a/proof/captures/x11/overlay-fold-settings-open.png b/proof/captures/x11/overlay-fold-settings-open.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..67d1962c6[m
+Binary files /dev/null and b/proof/captures/x11/overlay-fold-settings-open.png differ
+[1mdiff --git a/proof/captures/x11/overlay-fold.gif b/proof/captures/x11/overlay-fold.gif[m
+[1mnew file mode 100644[m
+[1mindex 000000000..cc32256d5[m
+Binary files /dev/null and b/proof/captures/x11/overlay-fold.gif differ
+[1mdiff --git a/proof/captures/x11/overlay-motion-back-to-transcript.png b/proof/captures/x11/overlay-motion-back-to-transcript.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..9066a959e[m
+Binary files /dev/null and b/proof/captures/x11/overlay-motion-back-to-transcript.png differ
+[1mdiff --git a/proof/captures/x11/overlay-motion-hotkeys-open-1.png b/proof/captures/x11/overlay-motion-hotkeys-open-1.png[m
+[1mnew file mode 100644[m
+[1mindex 000000000..e7cb517c8[m
+Binary files /dev/null and b/proof/captures/x11/overlay-motion-hotkeys-open-1.png differ
+[1mdiff --git a/proof/captures/x11/overlay-motion-model-hover.png b/proof/captures/x11/overlay-motion-model-hover.png[m
+[1mnew file mode 100644[m

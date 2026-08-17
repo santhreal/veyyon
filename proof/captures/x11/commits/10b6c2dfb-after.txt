@@ -1,0 +1,20 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/a-context-gauge-travels-to-its-new-reading.test.ts:
+(pass) a context gauge travels to its new reading > reports the raw reading, byte for byte, when no host wired a repaint into it [10.92ms]
+(pass) a context gauge travels to its new reading > lands the first reading instead of sweeping up to it [0.99ms]
+(pass) a context gauge travels to its new reading > walks from the old reading to the new one and stops there [5.13ms]
+(pass) a context gauge travels to its new reading > keeps the bar, the number and the hue on the same value in every frame of the travel [4.03ms]
+(pass) a context gauge travels to its new reading > does not start a spring for a change no reading can show [0.97ms]
+(pass) a context gauge travels to its new reading > reports the raw reading while display.transitions is off, and picks motion back up when it returns [0.89ms]
+(pass) a context gauge travels to its new reading > lands rather than travels when the status line is re-pointed at another session [0.85ms]
+(pass) a context gauge travels to its new reading > has nothing to travel to when the reading is unknown [0.79ms]
+(pass) a context gauge travels to its new reading > travels on every shipped preset that renders the gauge [5.92ms]
+(pass) a context gauge travels to its new reading > stops asking for frames once the host is gone [1.16ms]
+(pass) the value underneath it > keeps its velocity across a retarget instead of restarting the curve [0.24ms]
+(pass) the value underneath it > lands every target immediately when motion is disabled [0.08ms]
+
+ 12 pass
+ 0 fail
+ 240 expect() calls
+Ran 12 tests across 1 file. [353.00ms]

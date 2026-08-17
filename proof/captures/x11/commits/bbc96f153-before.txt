@@ -1,0 +1,40 @@
+error: expect(received).toEqual(expected)
+
+- {
+-   "designer": {
+-     "thinkingLevel": "minimal",
+-   },
+- }
++ {}
+
+- Expected  - 5
++ Received  + 1
+
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/subagent-agents-surface.test.ts:410:43)
+(fail) subagent.agents settings surface > writes the agent's own lane from the per-subagent page, never the blanket [5.22ms]
+(pass) subagent.agents settings surface > keeps every setting that decides what a subagent runs in the roster's section [1.02ms]
+(pass) subagent enable-state wording > labels both states, distinctly [0.11ms]
+(pass) subagent enable-state wording > says only enabled or disabled, and never that a disabled agent still runs [0.05ms]
+(pass) subagent enable-state wording > toggles between the two states without a third stop [0.06ms]
+
+packages/coding-agent/test/subagent-model-and-effort-have-one-owner.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+SyntaxError: Export named 'resetSupersededAgentRowReports' not found in module '/repo/packages/coding-agent/src/task/subagent-settings.ts'.
+-------------------------------
+
+
+packages/coding-agent/test/task/subagent-settings.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+SyntaxError: Export named 'resetSupersededAgentRowReports' not found in module '/repo/packages/coding-agent/src/task/subagent-settings.ts'.
+-------------------------------
+
+
+ 15 pass
+ 5 fail
+ 2 errors
+ 67 expect() calls
+Ran 20 tests across 3 files. [638.00ms]

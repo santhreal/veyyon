@@ -1,0 +1,14 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/modes/components/a-transcript-block-sits-on-the-rail.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+SyntaxError: Export named 'transcriptBlockText' not found in module '/repo/packages/coding-agent/src/modes/components/transcript-block-chrome.ts'.
+-------------------------------
+
+
+ 0 pass
+ 1 fail
+ 1 error
+Ran 1 test across 1 file. [175.00ms]

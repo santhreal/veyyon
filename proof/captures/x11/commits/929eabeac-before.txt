@@ -1,0 +1,14 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/a-band-is-mixed-out-of-the-ground-the-terminal-is-showing.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+SyntaxError: Export named 'getVisibleGround' not found in module '/repo/packages/coding-agent/src/modes/theme/ground-tints.ts'.
+-------------------------------
+
+
+ 0 pass
+ 1 fail
+ 1 error
+Ran 1 test across 1 file. [207.00ms]

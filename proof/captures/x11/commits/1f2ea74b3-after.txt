@@ -1,0 +1,16 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/modes/components/the-mcp-add-wizard-card-answers-the-pointer.test.ts:
+(pass) the mcp add wizard card answers the pointer > paints a titled card with a close glyph [15.84ms]
+(pass) the mcp add wizard card answers the pointer > advertises the keys the step in front of you actually takes [1.29ms]
+(pass) the mcp add wizard card answers the pointer > bands the option under the pointer without taking it [1.22ms]
+(pass) the mcp add wizard card answers the pointer > takes the option under a click, exactly as Enter does [0.72ms]
+(pass) the mcp add wizard card answers the pointer > steps the selection on a wheel notch [0.73ms]
+(pass) the mcp add wizard card answers the pointer > steps back on the esc chip and cancels on the chrome [1.14ms]
+(pass) the mcp add wizard card answers the pointer > cancels the whole wizard on the close glyph, not just the step [0.56ms]
+(pass) the mcp add wizard card answers the pointer > keeps what you typed when the pointer moves over an input step [1.56ms]
+
+ 8 pass
+ 0 fail
+ 40 expect() calls
+Ran 8 tests across 1 file. [316.00ms]

@@ -1,0 +1,40 @@
+(fail) a click on a composer suggestion > ignores a press on a row past the last suggestion [211.03ms]
+243 | 		// injected at the component the engine would route to: a pointer that only
+244 | 		// passes over a suggestion must never rewrite the buffer.
+245 | 		for (const bytes of [motionAt(line, 6), wheelDownAt(line, 6), releaseAt(line, 6)]) {
+246 | 			const event = parseSgrMouse(bytes);
+247 | 			if (!event) throw new Error(`unparsed report ${JSON.stringify(bytes)}`);
+248 | 			h.editor.routeMouse(event, line, 6);
+                  ^
+TypeError: h.editor.routeMouse is not a function. (In 'h.editor.routeMouse(event, line, 6)', 'h.editor.routeMouse' is undefined)
+      at <anonymous> (/repo/packages/tui/test/a-click-on-a-suggestion-accepts-the-completion.test.ts:248:13)
+(fail) a click on a composer suggestion > accepts on a press and on nothing else [212.78ms]
+262 | 		// the debounced refresh run: accepting now would splice the completion
+263 | 		// into a span the user is no longer typing.
+264 | 		h.editor.setText("unrelated text");
+265 | 		const press = parseSgrMouse(clickAt(line, 6));
+266 | 		if (!press) throw new Error("unparsed press");
+267 | 		h.editor.routeMouse(press, line, 6);
+                 ^
+TypeError: h.editor.routeMouse is not a function. (In 'h.editor.routeMouse(press, line, 6)', 'h.editor.routeMouse' is undefined)
+      at <anonymous> (/repo/packages/tui/test/a-click-on-a-suggestion-accepts-the-completion.test.ts:267:12)
+(fail) a click on a composer suggestion > cancels without rewriting the buffer when the popup is stale [210.52ms]
+283 | 		await h.term.waitForRender();
+284 | 
+285 | 		h.term.sendInput(clickAt(h.rowOf("sonnet-4"), 4));
+286 | 		await h.term.waitForRender();
+287 | 
+288 | 		expect(h.editor.getText()).toBe("/model sonnet-4");
+                                   ^
+error: expect(received).toBe(expected)
+
+Expected: "/model sonnet-4"
+Received: "/model s"
+
+      at <anonymous> (/repo/packages/tui/test/a-click-on-a-suggestion-accepts-the-completion.test.ts:288:30)
+(fail) a click on a composer suggestion > closes the popup when the accepted item opens no second popup [246.92ms]
+
+ 1 pass
+ 7 fail
+ 16 expect() calls
+Ran 8 tests across 1 file. [2.28s]

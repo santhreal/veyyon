@@ -1,0 +1,9 @@
+bun test v1.3.14 (0d9b296a)
+The following filters did not match any test files:
+ packages/coding-agent/test/a-context-gauge-travels-to-its-new-reading.test.ts packages/tui/test/a-scrolled-viewport-travels-through-the-rows-between.test.ts
+10605 files were searched [96.00ms]
+
+note: Tests need ".test", "_test_", ".spec" or "_spec_" in the filename (ex: "MyApp.test.ts")
+note: To treat the "packages/coding-agent/test/a-context-gauge-travels-to-its-new-reading.test.ts" filter as a path, run "bun test ./packages/coding-agent/test/a-context-gauge-travels-to-its-new-reading.test.ts"
+
+Learn more about bun test: https://bun.com/docs/cli/test

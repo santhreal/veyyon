@@ -1,0 +1,14 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/modes/components/the-transcript-card-answers-the-pointer.test.ts:
+(pass) the transcript card answers the pointer > closes when the close glyph is clicked [26.34ms]
+(pass) the transcript card answers the pointer > closes when the close chip is clicked [6.76ms]
+(pass) the transcript card answers the pointer > closes when the click lands outside the card [6.55ms]
+(pass) the transcript card answers the pointer > toggles expansion when the expand chip is clicked, and back on a second click [5.95ms]
+(pass) the transcript card answers the pointer > still scrolls the body on the wheel, and does not close [5.58ms]
+(pass) the transcript card answers the pointer > leaves the viewer alone for a click on a transcript row [6.42ms]
+
+ 6 pass
+ 0 fail
+ 9 expect() calls
+Ran 6 tests across 1 file. [730.00ms]

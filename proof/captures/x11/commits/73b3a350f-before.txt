@@ -1,0 +1,11 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/modes/components/a-cut-short-batch-ledger-renders-as-one-marker-line.test.ts:
+(pass) a turn-level batch ledger in the transcript > collapses to a one-line marker on the live path [6.66ms]
+(pass) a turn-level batch ledger in the transcript > collapses to a one-line marker on the rebuild path [0.88ms]
+(pass) a turn-level batch ledger in the transcript > leaves an ordinary synthetic user message rendered in full [6.76ms]
+
+ 3 pass
+ 0 fail
+ 12 expect() calls
+Ran 3 tests across 1 file. [708.00ms]

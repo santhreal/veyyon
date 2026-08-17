@@ -1,0 +1,416 @@
+[33m41840037f[m fix(tui): stop the 60Hz render pump that flickers the screen during a turn
+
+
+
+ CHANGELOG.md                                       |   6 [32m+[m[31m-[m
+ packages/coding-agent/CHANGELOG.md                 |   3 [32m+[m[31m-[m
+ .../modes/components/agent-transcript-viewer.ts    |   2 [31m-[m
+ .../src/modes/components/plan-review-overlay.ts    |   8 [31m-[m
+ .../src/modes/components/status-line/component.ts  |  63 [32m+[m[31m--[m
+ .../coding-agent/src/modes/interactive-mode.ts     |   5 [31m-[m
+ ...ontext-gauge-travels-to-its-new-reading.test.ts | 434 [31m---------------------[m
+ packages/tui/CHANGELOG.md                          |   2 [32m+[m[31m-[m
+ packages/tui/src/components/scroll-view.ts         | 116 [32m+[m[31m-----[m
+ ...ewport-travels-through-the-rows-between.test.ts | 397 [31m-------------------[m
+ 10 files changed, 13 insertions(+), 1023 deletions(-)
+
+[1mdiff --git a/CHANGELOG.md b/CHANGELOG.md[m
+[1mindex 5669581b9..19fafbda0 100644[m
+[1m--- a/CHANGELOG.md[m
+[1m+++ b/CHANGELOG.md[m
+[36m@@ -6,7 +6,6 @@[m
+ [m
+ ### Added[m
+ [m
+[31m-- The two viewports that outlive their own render walk to their new offset instead of cutting to it: the fullscreen agent transcript viewer and the plan-review overlay's body. A wheel notch, an arrow, a page and a jump to a ToC section travel on the shared clock, and the scrollbar thumb travels with the rows rather than arriving ahead of them. Following the tail of a live transcript still lands, so a streaming viewport is pinned to its last row exactly as before, and `display.transitions: off` paints byte for byte what it did before.[m
+ - The composer chips (`interrupt`, `background`, `dequeue`) are click targets. A left click on a chip runs the same action its keybinding runs. Hover paint stays off: the main session holds press/release tracking only, so drag-select in the terminal keeps working.[m
+ - The `/pause` screen resumes on a click. It is a fullscreen overlay, so it already held the whole mouse-tracking set and every report reached it and was dropped: the pointer did nothing on the one screen whose only job is to let you out. A left press anywhere on the scene now resumes exactly as Esc does, motion, drag, release, wheel and the other buttons still do nothing, and both the full scene and the compact card name the click in their hint.[m
+ - Every modal card folds away when it is dismissed, on the same clock and the same curve it opened on, played backwards and shorter. A card dismissed while it is still opening leaves from where it had got to rather than snapping open first. The animation is paint and nothing else: the keyboard, the mouse and the session behind the card are handed back the instant Esc is pressed, so a fading card cannot swallow the next keystroke, and a card disposed halfway through its fade still leaves rather than staying on screen. A terminal that skips the open unfold — non-truecolor, or `display.transitions: off` — skips the close too.[m
+[36m@@ -24,7 +23,6 @@[m
+ - A block appended under a live surface can grow into place instead of cutting in. `BlockReveal` clips a rendered block to the rows it has reached and resolves each visible row out of the ground behind it, on the shared clock: `arm()` when the block appears, `disarm()` when it goes, `apply(rows)` on every frame. It is armed by APPEARANCE rather than by render, so a block whose contents are rebuilt on every keystroke grows once per appearance instead of replaying the animation per character. The composer's suggestion popup rides it through `Editor.setAutocompleteMotion` / `disposeAutocompleteMotion`: rows arrive over the enter curve, a click during the grow lands on the suggestion it looks like it landed on (a row that has not arrived is not in the frame to be clicked), a dismissal is instant because the prefix those rows describe no longer says where the caret is, and an editor with no motion lent paints the popup exactly as before, byte for byte.[m
+ - `TabBar` fades its hover band like every other pointer surface. `setHoverMotion` lends the bar a repaint so the band under the pointer cross-fades on the shared clock, keyed by tab ID rather than by position — a bar re-tabbed under the pointer (settings search rebuilds its tab set on every keystroke) keeps the band on the tab, not on the slot. Both render paths take their style from one owner, so the horizontal bar and the vertical sidebar cannot disagree; `hoverTab` now receives a strength alongside the text; and a bar with no motion lent, or lent it with `enabled: false`, paints the switched band byte for byte. `disposeHoverMotion` gives the clock back.[m
+ - A gauge can walk to its new value instead of teleporting to it. `SettleValue` runs one number on the shared clock under the `settle` spring: the first value it is given lands (a gauge sweeping up from zero on its first paint animates the session starting, which is not a change anyone made), every later value travels, and a value retargeted mid-flight keeps its velocity, so a reading revised every few frames is one continuous travel rather than a stutter. `epsilon` refuses to spend a frame on a change too small for the surface to show, `enabled: false` lands every target immediately and registers nothing, `reset()` makes the next value a first sighting again for a host that swapped what it is measuring, and `dispose()` gives the clock back. `MOTION.settle` had been in the curve table since the clock landed with nothing using it.[m
+[31m-- A viewport can walk to its new offset instead of cutting to it. `ScrollView.setScrollMotion` lends the viewport the host's repaint and runs its offset on the shared clock under `MOTION.move`, the same interruptible travel a selection uses, so a page down walks the rows in between rather than replacing the screen between two frames. What paints is one value read twice — the rows `render` slices and the thumb on the track — so the bar can never report a scroll the content has not made, while `getScrollOffset()` keeps answering with the TARGET, which is where the keyboard is. A scroll travels; everything that is not one lands: both ends (which is also how a viewport follows its own tail), a re-layout that moved the offset because the content changed under it, a change smaller than two rows, a jump further than two screens, and a pre-windowed viewport whose caller slices its own rows. `disposeScrollMotion` gives the clock back, and a viewport never given motion, or given it with `enabled: false`, paints byte for byte what it did before. `MOTION.move` had been in the curve table with nothing using it.[m
+ [m
+ ### Changed[m
+ [m
+[36m@@ -39,7 +37,6 @@[m
+ - Choosing `Inherit` for the subagent effort clears the setting instead of storing an empty string, so an inherited effort reads as unset everywhere rather than as a configured blank.[m
+ - Every overlay card opens on the shared animation clock and resolves out of the theme's ground as it unfolds. The unfold was a clip on a timer the card owned: full-strength chrome from its first frame, so a card opening while anything else animated ran on a second timer that never shared a frame with it. The card now eases on the one clock under the `enter` preset, and each visible row is blended from the ground to full strength as it arrives, which is the difference between a card arriving and a wipe with a moving edge. A theme without a declared page background fades from black or white to match its appearance, and an indexed-color frame is left alone rather than being repainted from a palette the terminal may not be using.[m
+ - The cut-short batch marker takes its indent from `COMPOSER_INSET_COLS` instead of two literal spaces. No visible change: the rail is two columns, so the bytes are the same ones. The rail now has one owner, and the marker's suite asserts it sits on it.[m
+[31m-- The context gauge in the composer footline travels to its new reading instead of replacing it. A turn revises the estimate in one step — a hundred-thousand-character tool result arrives as a single event — so the gauge jumped from `70% left` to `61% left` between two frames and said only "it is 61 now"; walking those nine points says "you just spent nine", which is the reason the gauge is on screen. It rides the shared clock's `settle` spring, which had been declared since the clock landed with nothing using it, so a reading revised again while it is still moving keeps its speed rather than restarting. The percentage, the eight-cell bar and the usage hue read one value through one seam, so no frame can show a bar at the new reading beside a number at the old one; a change too small to move either the whole-number percentage or a cell of the bar starts no animation at all; a reading with no limit to measure against (`? left`) is not travelled to; re-pointing the status line at another session lands rather than sweeps; and `display.transitions: off` reports the raw number, checked per frame so the setting lands on the next paint.[m
+ [m
+ ### Removed[m
+ [m
+[36m@@ -48,6 +45,7 @@[m
+ [m
+ ### Fixed[m
+ [m
+[32m+[m[32m- The screen no longer flickers about ten times a second during a live turn. The composer footline's context gauge rode a spring on the shared 60 Hz motion clock, and a streaming turn revises the token estimate continuously, so the spring was re-targeted on nearly every frame and never settled: the host was asked for a repaint at roughly 60/s for the whole turn (measured 595 requests in 10 seconds), the engine's adaptive throttle turned that into a repaint about every 100 ms, and on a long transcript each repaint erased native scrollback and replayed the transcript, which is the flash. The gauge prints its reading again, and the two travelling viewports (the fullscreen agent transcript viewer, the plan-review body) land on their offset. Hover-band fades and the suggestion-popup grow are unaffected: they are gesture-scoped and settle in a few hundred milliseconds.[m
+ - A fading band and an unfolding card resolve out of the ground that is on screen, instead of the one the theme declares. Titanium declares a black page background and `tui.paintGround` defaults to `auto`, which refuses to paint black onto a grey terminal — so the row sat on the operator's own grey while every mix travelled out of black, and each band flashed DARKER than both the page and the band on its way in and again on its way out. Measured off a real xterm at 60fps: a leaving row read `#090401` between a `#1c1f26` page and a `#231310` band. The ground now comes from one owner and in one order — the ground this process painted, else the one the terminal reported over OSC 11, else the theme's declared ground for a terminal that answered neither — and the paint decision records what it painted in the same call that paints it, so a policy that declines to paint can no longer leave the animations mixing out of a colour nothing put on screen. A theme whose ground the terminal was actually painted with is unaffected, byte for byte.[m
+ - The context gauge, the `/context` panel and the compaction trigger count a `@file` mention and a `$` python cell. Both roles reach the provider — a mention as a `developer` message wrapping every file body it read, a cell as a user message wrapping its code and its output — and both were estimated at zero tokens, so a session that mentioned a file reported a fraction of the prompt it had just sent. Measured against a 32768-token endpoint: the footline read `61% left` while the request in flight was 40459 tokens, and the endpoint refused it. Every role the outbound converter handles is now counted, and the suite derives what each role must cost from what that converter actually puts on the wire, so a role added later cannot be free.[m
+ - An effort picker offers only levels the endpoint declares. A session on Kimi K3 was offered `minimal`, which no K3 row in the catalog declares: `moonshotai/kimi-k3` declares `low, high, max` and `cloudflare-ai-gateway/moonshotai/kimi-k3` declares `max` alone, so the pick stored a value every K3 endpoint then clamped away. Any surface that failed to resolve a model fell through to the configuration vocabulary — the set of spellings a config file accepts, not a claim that an endpoint accepts them — and the same fallback would have read a ladder out of an id like `cursor-grok-4.6-medium`, whose id IS its effort and whose row exposes no effort control at all. No model now means no levels. The two rows that have no model and never will, Subagent Effort with no chain set and Default Effort's any-model row, offer the union of what this session's catalog declares, so every level on them is addressable on a model you can select; a chain naming a model this session cannot resolve says which pattern it cannot read instead of listing a ladder; and `auto`'s own row description names the levels in scope rather than the vocabulary's `low–xhigh`, since a description is as visible as a label.[m
+[36m@@ -79,6 +77,7 @@[m
+ - A `find` whose output pipe closes early no longer panics. `find … | head`, or any consumer that stops reading, closed the pipe underneath a write the code unwrapped, so an ordinary shell idiom aborted the process with a Rust panic instead of the silent exit every other tool in the pipeline performs. Writes now carry their error to the caller, across the printer, the `-printf` formatter, `-delete`, `-exec` and the permission matcher rather than at the one site the crash was first seen.[m
+ - `compactWithProvider` forwards the live session identity (`sessionId`, provider session state, and the codex compaction context, tagged `responses_compact`) to the transport, which is what a host keying request identity to the conversation needs. Server-side compaction now runs for a ChatGPT OAuth (codex) session, where it previously could not resolve a transport at all and every compaction fell through to a local summary.[m
+ - `estimateTokens` counts `fileMention` and `pythonExecution` messages, which both fell through to `default: return 0` and cost a session nothing. A `@file` mention carries up to 50KB of file body per turn and a `$` cell carries its code and its output, all of it sent to the provider and billed, so the compaction trigger, the pruning budgets and the context gauge each read short by the whole payload: one measured session's gauge said "61% left" while the request it had just sent was 40459 tokens against a 32768-token window, and the provider refused it. Host-contributed roles are now counted from one table beside `bashExecution`, and a mentioned image is charged the same fixed estimate as any other inline image.[m
+[32m+[m[32m- The output-loop guard watches every model, not just Gemini and DeepSeek. `isLoopGuardedModel` gated the whole guard on a provider/id regex, so a Claude or GPT stream that repeated one word five hundred times was never inspected at all and the runaway was committed to the transcript. The detectors (verbatim repetition, near-duplicate paragraphs, recycled vocabulary) are model-agnostic and were calibrated to zero false positives across 536k real reasoning blocks, and a false hit costs a re-sample rather than a lost turn, so the carve-out only hid loops. The gate is now `isLoopGuardEnabled(options)` — the only thing that turns it off is `model.loopGuard.enabled` or `VEYYON_NO_THINKING_LOOP_GUARD=1`. The Gemini-specific header-run detector keeps its narrower gate.[m
+ - Google and Vertex requests no longer fail outright for anyone with secrets configured. `streamGoogleGenAI` handed its `onPayload` hook the SDK-shaped params object, whose `config.abortSignal` is a live `AbortSignal`, and the secret redactor behind that hook walks the payload and refuses any value JSON cannot express. Every request died with "the provider request contains a non-JSON object; confidentiality transform failed." The signal never crossed the wire (`paramsToWireBody` drops it) and nothing downstream reads it, so it is stripped before the hook runs.[m
+ - Gateway-routed requests (pi-native transport) no longer fail outright for anyone with secrets configured when the turn offers tools. The client handed the hook the raw `context`, whose `tools[].parameters` are live arktype schemas — function objects the walking redactor refuses. The hook now receives the exact wire shape (the body is JSON by construction), so the redactor sees the serialized tool schemas like every other consumer.[m
+ - The OAuth success page no longer stacks a paragraph and a Close window button under the verdict. The tab closes itself after sign-in, so the success state is the sun, the authenticated badge, "Signed in", and the brand; the failure state keeps its reason and the button, since it does not auto-close.[m
+[36m@@ -93,6 +92,7 @@[m
+ - Antigravity discovery no longer leaves the `-tiered` Gemini flash deployments without an effort surface. The endpoint serves `gemini-3.7-flash-tiered` as the only 3.7 Flash id and `gemini-3.6-flash-tiered` beside the 3.6 family, and both arrived as raw unknowns with no thinking block, so the picker offered no effort levels. `gemini-3.7-flash-tiered` now collapses to a logical `gemini-3.7-flash` row, and `gemini-3.6-flash-tiered` stands alone under its wire id because the `gemini-3.6-flash` logical id already belongs to the per-tier effort family. Both carry the declared low/medium/high ladder on the `google-level` transport, sending the tier as `thinkingLevel` in the request body. The surface is curated per id; an uncurated future `-tiered` id still gets no invented ladder.[m
+ - The ChatGPT Codex backend declares `supportsServerCompaction`, so a codex session compacts server-side instead of paying a second model to paraphrase the span. The flag resolved true only for `api.openai.com` and Azure, on the stated ground that the codex session transport owns history state. It does not: codex-rs posts the span to `chatgpt.com/backend-api/codex/responses/compact` and stores the window it gets back, exactly as the official host does. A new `codexBackend` host class carries the classification, so provider id `openai-codex` and any `chatgpt.com/backend-api` base URL are covered while a repointed proxy row still is not.[m
+ - `find` no longer crashes the worker thread when its output pipe closes early. Every write on both of `find`'s print paths — `-print`/`-print0` and `-printf` — called `.unwrap()`, so an ordinary truncated pipeline like `find . | head -1` arrived as a BrokenPipe panic on a `tokio-rt-worker` rather than as the write error the matcher already knew how to report. Writes now end the entry quietly, and the error reports that used to be issued alongside them can no longer panic either, since stderr is a pipe too and both ends close together.[m
+[32m+[m[32m- A live turn no longer repaints the whole screen about ten times a second. Two surfaces put a spring on the shared 60 Hz clock and re-targeted it continuously while a turn streamed — the status line's context gauge, whose reading is revised on every token, and `ScrollView`'s travelling offset — so the clock never stopped and the host was asked for a frame on 99% of frames (measured: 595 render requests in 10 seconds). The engine's adaptive throttle collapsed that into a repaint roughly every 100 ms, and on a long transcript each one was classified as a destructive rebuild, which is the flicker. Both springs are gone: `ScrollView.setScrollMotion`/`disposeScrollMotion` and `StatusLineComponent.watchContextGauge` no longer exist, and the viewport lands on its offset as it did before. Gesture-scoped motion (hover bands, the popup grow) stays, because it settles and stops.[m
+ - Kept the transcript on screen when a virtualized root compacts its committed rows. A root can now report the rows it dropped, and the engine slides its commit index onto the new frame instead of reading the shift as a committed-prefix divergence, erasing native scrollback and replaying a frame the component had already emptied. A root that drops rows without reporting them is rehydrated before any destructive replay, so it costs an extra full repaint rather than the history.[m
+ - Held mouse button reporting while a pinned-footer component has a click target on screen. A footer target used to be reachable only while the frame overflowed the viewport, since scroll isolation was the sole reason the engine took the mouse, so every footer click in a short session was reported to nobody. A component declares its targets through the new optional `MouseRoutable.wantsPointer()`, and the grab is scanned from the frame-segment ledger after each compose, so it is held exactly while a target exists and the terminal keeps native drag-select the rest of the time. The `alt-arrows` scroll transport and scroll isolation being off both still refuse the grab.[m
+ [m
+[1mdiff --git a/packages/coding-agent/CHANGELOG.md b/packages/coding-agent/CHANGELOG.md[m
+[1mindex 8ad686f2c..d7cbf2466 100644[m
+[1m--- a/packages/coding-agent/CHANGELOG.md[m
+[1m+++ b/packages/coding-agent/CHANGELOG.md[m
+[36m@@ -9,7 +9,6 @@[m
+ [m
+ ### Added[m
+ [m
+[31m-- The two viewports that outlive their own render walk to their new offset instead of cutting to it: the fullscreen agent transcript viewer and the plan-review overlay's body. A wheel notch, an arrow, a page and a jump to a ToC section travel on the shared clock, and the scrollbar thumb travels with the rows rather than arriving ahead of them. Following the tail of a live transcript still lands, so a streaming viewport is pinned to its last row exactly as before, and `display.transitions: off` paints byte for byte what it did before.[m
+ - The composer chips (`interrupt`, `background`, `dequeue`) are click targets. A left click on a chip runs the same action its keybinding runs. Hover paint stays off: the main session holds press/release tracking only, so drag-select in the terminal keeps working.[m
+ - The `/pause` screen resumes on a click. It is a fullscreen overlay, so it already held the whole mouse-tracking set and every report reached it and was dropped: the pointer did nothing on the one screen whose only job is to let you out. A left press anywhere on the scene now resumes exactly as Esc does, motion, drag, release, wheel and the other buttons still do nothing, and both the full scene and the compact card name the click in their hint.[m
+ - Every modal card folds away when it is dismissed, on the same clock and the same curve it opened on, played backwards and shorter. A card dismissed while it is still opening leaves from where it had got to rather than snapping open first. The animation is paint and nothing else: the keyboard, the mouse and the session behind the card are handed back the instant Esc is pressed, so a fading card cannot swallow the next keystroke, and a card disposed halfway through its fade still leaves rather than staying on screen. A terminal that skips the open unfold — non-truecolor, or `display.transitions: off` — skips the close too.[m
+[36m@@ -32,7 +31,6 @@[m
+ - Choosing `Inherit` for the subagent effort clears the setting instead of storing an empty string, so an inherited effort reads as unset everywhere rather than as a configured blank.[m
+ - Every overlay card opens on the shared animation clock and resolves out of the theme's ground as it unfolds. The unfold was a clip on a timer the card owned: full-strength chrome from its first frame, so a card opening while anything else animated ran on a second timer that never shared a frame with it. The card now eases on the one clock under the `enter` preset, and each visible row is blended from the ground to full strength as it arrives, which is the difference between a card arriving and a wipe with a moving edge. A theme without a declared page background fades from black or white to match its appearance, and an indexed-color frame is left alone rather than being repainted from a palette the terminal may not be using.[m
+ - The cut-short batch marker takes its indent from `COMPOSER_INSET_COLS` instead of two literal spaces. No visible change: the rail is two columns, so the bytes are the same ones. The rail now has one owner, and the marker's suite asserts it sits on it.[m
+[31m-- The context gauge in the composer footline travels to its new reading instead of replacing it. A turn revises the estimate in one step — a hundred-thousand-character tool result arrives as a single event — so the gauge jumped from `70% left` to `61% left` between two frames and said only "it is 61 now"; walking those nine points says "you just spent nine", which is the reason the gauge is on screen. It rides the shared clock's `settle` spring, which had been declared since the clock landed with nothing using it, so a reading revised again while it is still moving keeps its speed rather than restarting. The percentage, the eight-cell bar and the usage hue read one value through one seam, so no frame can show a bar at the new reading beside a number at the old one; a change too small to move either the whole-number percentage or a cell of the bar starts no animation at all; a reading with no limit to measure against (`? left`) is not travelled to; re-pointing the status line at another session lands rather than sweeps; and `display.transitions: off` reports the raw number, checked per frame so the setting lands on the next paint.[m
+ [m
+ ### Removed[m
+ [m
+[36m@@ -40,6 +38,7 @@[m
+ [m
+ ### Fixed[m
+ [m
+[32m+[m[32m- The screen no longer flickers about ten times a second during a live turn. The composer footline's context gauge rode a spring on the shared 60 Hz motion clock, and a streaming turn revises the token estimate continuously, so the spring was re-targeted on nearly every frame and never settled: the host was asked for a repaint at roughly 60/s for the whole turn (measured 595 requests in 10 seconds), the engine's adaptive throttle turned that into a repaint about every 100 ms, and on a long transcript each repaint erased native scrollback and replayed the transcript, which is the flash. The gauge prints its reading again, and the two travelling viewports (the fullscreen agent transcript viewer, the plan-review body) land on their offset. Hover-band fades and the suggestion-popup grow are unaffected: they are gesture-scoped and settle in a few hundred milliseconds.[m
+ - A fading band and an unfolding card resolve out of the ground that is on screen, instead of the one the theme declares. Titanium declares a black page background and `tui.paintGround` defaults to `auto`, which refuses to paint black onto a grey terminal — so the row sat on the operator's own grey while every mix travelled out of black, and each band flashed DARKER than both the page and the band on its way in and again on its way out. Measured off a real xterm at 60fps: a leaving row read `#090401` between a `#1c1f26` page and a `#231310` band. The ground now comes from one owner and in one order — the ground this process painted, else the one the terminal reported over OSC 11, else the theme's declared ground for a terminal that answered neither — and the paint decision records what it painted in the same call that paints it, so a policy that declines to paint can no longer leave the animations mixing out of a colour nothing put on screen. A theme whose ground the terminal was actually painted with is unaffected, byte for byte.[m
+ - The context gauge, the `/context` panel and the compaction trigger count a `@file` mention and a `$` python cell. Both roles reach the provider — a mention as a `developer` message wrapping every file body it read, a cell as a user message wrapping its code and its output — and both were estimated at zero tokens, so a session that mentioned a file reported a fraction of the prompt it had just sent. Measured against a 32768-token endpoint: the footline read `61% left` while the request in flight was 40459 tokens, and the endpoint refused it. Every role the outbound converter handles is now counted, and the suite derives what each role must cost from what that converter actually puts on the wire, so a role added later cannot be free.[m
+ - An effort picker offers only levels the endpoint declares. A session on Kimi K3 was offered `minimal`, which no K3 row in the catalog declares: `moonshotai/kimi-k3` declares `low, high, max` and `cloudflare-ai-gateway/moonshotai/kimi-k3` declares `max` alone, so the pick stored a value every K3 endpoint then clamped away. Any surface that failed to resolve a model fell through to the configuration vocabulary — the set of spellings a config file accepts, not a claim that an endpoint accepts them — and the same fallback would have read a ladder out of an id like `cursor-grok-4.6-medium`, whose id IS its effort and whose row exposes no effort control at all. No model now means no levels. The two rows that have no model and never will, Subagent Effort with no chain set and Default Effort's any-model row, offer the union of what this session's catalog declares, so every level on them is addressable on a model you can select; a chain naming a model this session cannot resolve says which pattern it cannot read instead of listing a ladder; and `auto`'s own row description names the levels in scope rather than the vocabulary's `low–xhigh`, since a description is as visible as a label.[m
+[1mdiff --git a/packages/coding-agent/src/modes/components/agent-transcript-viewer.ts b/packages/coding-agent/src/modes/components/agent-transcript-viewer.ts[m
+[1mindex bb3dbe7c3..f64a118ca 100644[m
+[1m--- a/packages/coding-agent/src/modes/components/agent-transcript-viewer.ts[m
+[1m+++ b/packages/coding-agent/src/modes/components/agent-transcript-viewer.ts[m
+[36m@@ -216,7 +216,6 @@[m [mexport class AgentTranscriptViewer implements Component {[m
+ 			scrollbar: "auto",[m
+ 			theme: { track: t => theme.fg("dim", t), thumb: t => theme.fg("accent", t) },[m
+ 		});[m
+[31m-		this.#scrollView.setScrollMotion({ requestRender: deps.requestRender, enabled: transitionsEnabled() });[m
+ 		if (this.#sendable) {[m
+ 			this.#editor = new Editor(getEditorTheme());[m
+ 			this.#editor.setMaxHeight(4);[m
+[36m@@ -239,7 +238,6 @@[m [mexport class AgentTranscriptViewer implements Component {[m
+ 		this.#stopPolling();[m
+ 		this.#remoteToken++;[m
+ 		this.#builder.dispose();[m
+[31m-		this.#scrollView.disposeScrollMotion();[m
+ 	}[m
+ [m
+ 	#stopPolling(): void {[m
+[1mdiff --git a/packages/coding-agent/src/modes/components/plan-review-overlay.ts b/packages/coding-agent/src/modes/components/plan-review-overlay.ts[m
+[1mindex fb13177c3..ef64db56b 100644[m
+[1m--- a/packages/coding-agent/src/modes/components/plan-review-overlay.ts[m
+[1m+++ b/packages/coding-agent/src/modes/components/plan-review-overlay.ts[m
+[36m@@ -140,11 +140,6 @@[m [mexport class PlanReviewOverlay implements Component {[m
+ 	 * it and stops routing input to it the moment this is called.[m
+ 	 */[m
+ 	beginOverlayExit(requestRender: () => void, done: () => void): boolean {[m
+[31m-		// The card is going away whether or not it fades, so the viewport's travel[m
+[31m-		// goes with it: a spring that outlives the card keeps the shared clock[m
+[31m-		// ticking for rows nobody can see. Dropping it lands the offset on the[m
+[31m-		// target, which is where the keyboard already was.[m
+[31m-		this.#scrollView.disposeScrollMotion();[m
+ 		return beginModalExit(this.#reveal, requestRender, done);[m
+ 	}[m
+ [m
+[36m@@ -204,9 +199,6 @@[m [mexport class PlanReviewOverlay implements Component {[m
+ 			ellipsis: Ellipsis.Omit,[m
+ 			theme: { track: t => theme.fg("dim", t), thumb: t => theme.fg("accent", t) },[m
+ 		});[m
+[31m-		if (options.requestRender) {[m
+[31m-			this.#scrollView.setScrollMotion({ requestRender: options.requestRender, enabled: transitionsEnabled() });[m
+[31m-		}[m
+ 		this.#options = options.options;[m
+ 		this.#disabled = new Set([m
+ 			(options.disabledIndices ?? []).filter(i => Number.isInteger(i) && i >= 0 && i < this.#options.length),[m
+[1mdiff --git a/packages/coding-agent/src/modes/components/status-line/component.ts b/packages/coding-agent/src/modes/components/status-line/component.ts[m
+[1mindex 9b0060deb..77fe6885f 100644[m
+[1m--- a/packages/coding-agent/src/modes/components/status-line/component.ts[m
+[1m+++ b/packages/coding-agent/src/modes/components/status-line/component.ts[m
+[36m@@ -2,7 +2,7 @@[m [mimport * as fs from "node:fs";[m
+ import * as path from "node:path";[m
+ import type { AgentMessage } from "@veyyon/agent-core";[m
+ import type { AssistantMessage, UsageLimit, UsageReport } from "@veyyon/ai";[m
+[31m-import { type Component, type MotionClock, padding, SettleValue, truncateToWidth, visibleWidth } from "@veyyon/tui";[m
+[32m+[m[32mimport { type Component, padding, truncateToWidth, visibleWidth } from "@veyyon/tui";[m
+ import { formatClock, getProjectDir, scopedTimeoutSignal, withScopedTimeoutSignal } from "@veyyon/utils";[m
+ import { resolveContextLimit } from "../../../config/compaction-strategy";[m
+ // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.[m
+[36m@@ -15,7 +15,6 @@[m [mimport { type ActiveRepoContext, resolveActiveRepoContextSync } from "../../../u[m
+ import * as git from "../../../utils/git";[m
+ import { sanitizeStatusText } from "../../shared";[m
+ import { withIcon } from "../../theme/icon-label";[m
+[31m-import { transitionsEnabled } from "../../theme/shimmer";[m
+ import { theme } from "../../theme/theme";[m
+ import { canReuseCachedPr, createPrCacheContext, isSamePrCacheContext, type PrCacheContext } from "./git-utils";[m
+ import { getPreset } from "./presets";[m
+[36m@@ -425,18 +424,6 @@[m [mexport class StatusLineComponent implements Component {[m
+ 	// count (matching the provider and the `/context` panel), so a stable[m
+ 	// message list + model window yields a stable result we can return verbatim.[m
+ 	#contextUsageCache: ContextUsageMemo | undefined;[m
+[31m-	/**[m
+[31m-	 * Where the context gauge is right now, which is not always where the number[m
+[31m-	 * behind it is. A turn revises the estimate in one step — a tool result of a[m
+[31m-	 * hundred thousand characters lands as a single event — and the gauge used to[m
+[31m-	 * teleport, which says "it is 61% now" and never says "you just spent nine".[m
+[31m-	 * The percentage, the eight-cell bar and the usage hue all read this one[m
+[31m-	 * value, so the three of them travel together and cannot disagree mid-flight.[m
+[31m-	 *[m
+[31m-	 * Undefined until a host wires a repaint into it: a spring with nowhere to[m
+[31m-	 * ask for a frame would move only when something else happened to redraw.[m
+[31m-	 */[m
+[31m-	#contextGauge: SettleValue | undefined;[m
+ [m
+ 	constructor(private session: AgentSession) {[m
+ 		this.#settings = {[m
+[36m@@ -661,21 +648,6 @@[m [mexport class StatusLineComponent implements Component {[m
+ 		this.#setupGitWatcher();[m
+ 	}[m
+ [m
+[31m-	/**[m
+[31m-	 * Hand the context gauge a repaint, which is what turns it from a number into[m
+[31m-	 * a travelling one. A host that never calls this (a test, `--print`, the RPC[m
+[31m-	 * mode) gets the raw percentage on every frame, unchanged byte for byte.[m
+[31m-	 *[m
+[31m-	 * The resolution of the gauge is the gauge's own business, so the epsilon is[m
+[31m-	 * decided here rather than by the host: a tenth of a point moves neither the[m
+[31m-	 * integer percentage nor a cell of an eight-cell bar, and a spring chasing[m
+[31m-	 * one would keep the process ticking for a frame nobody can see.[m
+[31m-	 */[m
+[31m-	watchContextGauge(options: { requestRender: () => void; clock?: MotionClock }): void {[m
+[31m-		this.#contextGauge?.dispose();[m
+[31m-		this.#contextGauge = new SettleValue({ ...options, epsilon: 0.5 });[m
+[31m-	}[m
+[31m-[m
+ 	#setupGitWatcher(): void {[m
+ 		if (this.#gitWatcher) {[m
+ 			this.#gitWatcher.close();[m
+[36m@@ -716,8 +688,6 @@[m [mexport class StatusLineComponent implements Component {[m
+ 			this.#gitWatcher.close();[m
+ 			this.#gitWatcher = null;[m
+ 		}[m
+[31m-		this.#contextGauge?.dispose();[m
+[31m-		this.#contextGauge = undefined;[m
+ 	}[m
+ [m
+ 	#clearUsageStartTimer(): void {[m
+[36m@@ -737,9 +707,6 @@[m [mexport class StatusLineComponent implements Component {[m
+ 		this.#contextUsageCache = undefined;[m
+ 		this.#lastTokensPerSecond = null;[m
+ 		this.#lastTokensPerSecondTimestamp = null;[m
+[31m-		// A different session's usage is not a change to this one's: the next[m
+[31m-		// percentage is a first sighting and lands where it lands.[m
+[31m-		this.#contextGauge?.reset();[m
+ 	}[m
+ [m
+ 	#invalidateGitCaches(): void {[m
+[36m@@ -1279,11 +1246,6 @@[m [mexport class StatusLineComponent implements Component {[m
+ 			contextLimitKind = "window";[m
+ 		}[m
+ [m
+[31m-		// One seam, after every source of the number has had its say: the host's[m
+[31m-		// frame, this session's own accounting, or neither. Whatever the gauge[m
+[31m-		// ends up reporting is what travels.[m
+[31m-		contextPercent = this.#settleContextPercent(contextPercent, includeContext);[m
+[31m-[m
+ 		const shouldResolveActiveRepo = this.#gitEnabled() && (includePath || includeGit || includePr);[m
+ 		const projectDir = this.session.sessionManager?.getCwd?.() ?? getProjectDir();[m
+ 		const activeRepoCache = shouldResolveActiveRepo[m
+[36m@@ -1328,29 +1290,6 @@[m [mexport class StatusLineComponent implements Component {[m
+ 		};[m
+ 	}[m
+ [m
+[31m-	/**[m
+[31m-	 * Where the gauge is drawn this frame, which lags where the session is by up[m
+[31m-	 * to the length of one spring.[m
+[31m-	 *[m
+[31m-	 * Three cases end the travel rather than continue it. A frame that carries no[m
+[31m-	 * context at all (the segment is off, the preset drops it) forgets the value,[m
+[31m-	 * so switching the gauge back on shows the number rather than sweeping up to[m
+[31m-	 * it. A null percentage — no limit to measure against — is not a position on[m
+[31m-	 * the gauge and cannot be travelled to. And `display.transitions: off` returns[m
+[31m-	 * the raw number, checked per frame so the setting takes effect on the next[m
+[31m-	 * paint instead of the next restart.[m
+[31m-	 */[m
+[31m-	#settleContextPercent(percent: number | null, includeContext: boolean): number | null {[m
+[31m-		const gauge = this.#contextGauge;[m
+[31m-		if (!gauge) return percent;[m
+[31m-		if (!includeContext || percent === null || !transitionsEnabled()) {[m
+[31m-			gauge.reset();[m
+[31m-			return percent;[m
+[31m-		}[m
+[31m-		gauge.set(percent);[m
+[31m-		return gauge.value ?? percent;[m
+[31m-	}[m
+[31m-[m
+ 	#resolveSettings(): EffectiveStatusLineSettings {[m
+ 		if (this.#effectiveSettings === undefined) {[m
+ 			this.#effectiveSettings = this.#computeEffectiveSettings();[m
+[1mdiff --git a/packages/coding-agent/src/modes/interactive-mode.ts b/packages/coding-agent/src/modes/interactive-mode.ts[m
+[1mindex 5bac62d15..fcf0b0466 100644[m
+[1m--- a/packages/coding-agent/src/modes/interactive-mode.ts[m
+[1m+++ b/packages/coding-agent/src/modes/interactive-mode.ts[m
+[36m@@ -1459,11 +1459,6 @@[m [mexport class InteractiveMode implements InteractiveModeContext {[m
+ 		this.statusLine.watchBranch(() => {[m
+ 			this.ui.requestRender();[m
+ 		});[m
+[31m-[m
+[31m-		// The context gauge travels to its new reading rather than jumping to it,[m
+[31m-		// which needs a frame per step: the spring asks the host for one, and the[m
+[31m-		// footline it lives in is repainted by the same render.[m
+[31m-		this.statusLine.watchContextGauge({ requestRender: () => this.ui.requestRender() });[m
+ 	}[m
+ [m
+ 	/** Themes already warned about an unhonored `always`, so the log is not repeated. */[m
+[1mdiff --git a/packages/coding-agent/test/a-context-gauge-travels-to-its-new-reading.test.ts b/packages/coding-agent/test/a-context-gauge-travels-to-its-new-reading.test.ts[m
+[1mdeleted file mode 100644[m
+[1mindex 7867b3e06..000000000[m
+[1m--- a/packages/coding-agent/test/a-context-gauge-travels-to-its-new-reading.test.ts[m
+[1m+++ /dev/null[m
+[36m@@ -1,434 +0,0 @@[m
+[31m-/**[m
+[31m- * WHY THIS SUITE EXISTS[m
+[31m- *[m
+[31m- * The context gauge in the composer footline used to teleport. A turn revises[m
+[31m- * the estimate in one step — a hundred-thousand-character tool result lands as[m
+[31m- * a single event — so the gauge went from `70% left` to `61% left` between two[m
+[31m- * frames and said only "it is 61 now". `MOTION.settle` had named this exact[m
+[31m- * case ("a value being nudged, e.g. a progress or context bar") since the[m
+[31m- * motion clock landed, and nothing in the product used it: it was vocabulary[m
+[31m- * with no speaker.[m
+[31m- *[m
+[31m- * The defect class this closes is wider than "the gauge does not animate": it[m
+[31m- * is TWO READERS OF ONE NUMBER DRIFTING APART. The bar, the percentage and the[m
+[31m- * usage hue are three renderings of one value; animate any one of them from its[m
+[31m- * own copy and the footline shows a bar at the new reading beside a number at[m
+[31m- * the old one. So the seam is single — `#settleContextPercent`, applied after[m
+[31m- * every source of the number has had its say — and the tests below check the[m
+[31m- * three readings against each other, frame by frame, rather than checking that[m
+[31m- * something moved.[m
+[31m- *[m
+[31m- * What it does NOT catch: a fourth reader added downstream of the segment[m
+[31m- * context (a new segment computing its own percentage from `contextTokens` and[m
+[31m- * `contextLimit` rather than reading `contextPercent`) would drift and no test[m
+[31m- * here would see it. The sweep over the shipped presets catches a new PRESET[m
+[31m- * that renders the gauge, not a new SEGMENT that recomputes it.[m
+[31m- *[m
+[31m- * Nor does it catch the wiring itself going away: these tests hand the gauge a[m
+[31m- * repaint of their own, so an `interactive-mode` that stops calling[m
+[31m- * `watchContextGauge` leaves every test here green and the shipped gauge static.[m
+[31m- * That one is held by the recorded before/after arm in `proof/`, not by a test.[m
+[31m- */[m
+[31m-[m
+[31m-import { beforeAll, beforeEach, describe, expect, it } from "bun:test";[m
+[31m-import { MotionClock, SettleValue } from "@veyyon/tui";[m
+[31m-import { Settings } from "../src/config/settings";[m
+[31m-import { settings } from "../src/config/settings-instance";[m
+[31m-import { StatusLineComponent } from "../src/modes/components/status-line/component";[m
+[31m-import {[m
+[31m-	getContextUsageLevel,[m
+[31m-	getContextUsageThemeColor,[m
+[31m-} from "../src/modes/components/status-line/context-thresholds";[m
+[31m-import { STATUS_LINE_PRESETS } from "../src/modes/components/status-line/presets";[m
+[31m-import { renderContextBar } from "../src/modes/components/status-line/segments";[m
+[31m-import { getThemeByName, setThemeInstance, theme } from "../src/modes/theme/theme";[m
+[31m-import type { AgentSession } from "../src/session/agent-session";[m
+[31m-[m
+[31m-const WINDOW = 200_000;[m
+[31m-const WIDTH = 140;[m
+[31m-const FRAME_MS = 1000 / 60;[m
+[31m-/** Long enough for any spring in MOTION to settle; short enough that a hang fails. */[m
+[31m-const TRAVEL_BUDGET_FRAMES = 240;[m
+[31m-[m
+[31m-interface FakeSession {[m
+[31m-	session: AgentSession;[m
+[31m-	/** Move the reading, the way a turn does: new usage plus a revision bump. */[m
+[31m-	spend(tokens: number): void;[m
+[31m-	/** Take the limit away, which is what makes the reading unknown. */[m
+[31m-	forgetWindow(): void;[m
+[31m-}[m
+[31m-[m
+[31m-function makeSession(startTokens: number, startWindow: number = WINDOW): FakeSession {[m
+[31m-	let tokens = startTokens;[m
+[31m-	let window = startWindow;[m
+[31m-	let revision = 0;[m
+[31m-	const session = {[m
+[31m-		messages: [],[m
+[31m-		get model() {[m
+[31m-			return { contextWindow: window };[m
+[31m-		},[m
+[31m-		get contextUsageRevision() {[m
+[31m-			return revision;[m
+[31m-		},[m
+[31m-		systemPrompt: [],[m
+[31m-		agent: { state: { tools: [] } },[m
+[31m-		skills: [],[m
+[31m-		isStreaming: false,[m
+[31m-		getContextUsage: () => (window > 0 ? { tokens, contextWindow: window } : undefined),[m
+[31m-		get state() {[m
+[31m-			return { messages: [], model: { contextWindow: window } };[m
+[31m-		},[m
+[31m-		sessionManager: {[m
+[31m-			getUsageStatistics: () => ({[m
+[31m-				input: 0,[m
+[31m-				output: 0,[m
+[31m-				cacheRead: 0,[m
+[31m-				cacheWrite: 0,[m
+[31m-				totalTokens: 0,[m
+[31m-				orchestrationInput: 0,[m
+[31m-				orchestrationOutput: 0,[m
+[31m-				orchestrationCacheRead: 0,[m
+[31m-				premiumRequests: 0,[m
+[31m-				cost: 0,[m
+[31m-				tokensPerSecond: null,[m
+[31m-			}),[m
+[31m-			getSessionName: () => "gauge-session",[m
+[31m-		},[m
+[31m-		getPrewalkState: () => undefined,[m
+[31m-		getAsyncJobSnapshot: () => undefined,[m
+[31m-		settings: { getGroup: () => ({ enabled: false }) },[m
+[31m-		isAdvisorActive: () => false,[m
+[31m-		isApprovalBypassed: () => false,[m
+[31m-		isFastModeActive: () => false,[m
+[31m-		configuredThinkingLevel: () => undefined,[m
+[31m-		modelRegistry: { isUsingOAuth: () => false },[m
+[31m-	} as unknown as AgentSession;[m
+[31m-	return {[m
+[31m-		session,[m
+[31m-		spend(next: number) {[m
+[31m-			tokens = next;[m
+[31m-			revision++;[m
+[31m-		},[m
+[31m-		forgetWindow() {[m
+[31m-			window = 0;[m
+[31m-			revision++;[m
+[31m-		},[m
+[31m-	};[m
+[31m-}[m
+[31m-[m
+[31m-function tokensFor(usedPercent: number): number {[m
+[31m-	return Math.round((usedPercent / 100) * WINDOW);[m
+[31m-}[m
+[31m-[m
+[31m-/** What the footline says the gauge reads: the whole number in `NN% left`. */[m
+[31m-function percentLeft(line: string | null): number {[m
+[31m-	if (line === null) throw new Error("footline rendered nothing");[m
+[31m-	const match = /(\d+)% left/.exec(line);[m
+[31m-	if (!match) throw new Error(`no gauge in footline: ${JSON.stringify(line)}`);[m
+[31m-	return Number(match[1]);[m
+[31m-}[m

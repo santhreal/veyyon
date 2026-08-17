@@ -1,0 +1,19 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/src/modes/components/__tests__/pause-screen.test.ts:
+(pass) pause screen > renderPauseScreen > paints exactly the requested rows with title, explainer, clock, and hint [0.75ms]
+(pass) pause screen > renderPauseScreen > drops to the compact card on small terminals [0.05ms]
+(pass) pause screen > renderPauseScreen > rolls the clock into hours past 60 minutes [0.12ms]
+(pass) pause screen > renderPauseScreen > displays the session name when provided in full mode [0.09ms]
+(pass) pause screen > renderPauseScreen > displays the session name when provided in compact mode [0.02ms]
+(pass) pause screen > runPauseScreen > engages the gate for the screen's lifetime and releases it on escape [5.62ms]
+(pass) pause screen > runPauseScreen > treats ctrl+c as resume, never as abort-and-stay-paused [1.19ms]
+(pass) pause screen > runPauseScreen > is a no-op when the gate is already engaged elsewhere [0.09ms]
+(pass) pause screen > the pointer resumes the same way the keys do > resumes on a left press anywhere on the scene [0.22ms]
+(pass) pause screen > the pointer resumes the same way the keys do > never resumes on a report that is not a left press [0.18ms]
+(pass) pause screen > the pointer resumes the same way the keys do > names the click in both the full scene and the compact card [0.15ms]
+
+ 11 pass
+ 0 fail
+ 46 expect() calls
+Ran 11 tests across 1 file. [349.00ms]

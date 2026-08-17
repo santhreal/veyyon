@@ -1,0 +1,38 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/tui/test/chrome-taller-than-the-viewport-never-reaches-native-scrollback.test.ts:
+(pass) chrome taller than the viewport never reaches native scrollback > height=16 header=0 hud=2 turns=20 [1330.30ms]
+(pass) chrome taller than the viewport never reaches native scrollback > height=16 header=2 hud=2 turns=20 [1329.60ms]
+(pass) chrome taller than the viewport never reaches native scrollback > height=16 header=0 hud=8 turns=20 [1327.52ms]
+(pass) chrome taller than the viewport never reaches native scrollback > height=16 header=2 hud=8 turns=20 [1329.69ms]
+(pass) chrome taller than the viewport never reaches native scrollback > height=16 header=0 hud=12 turns=20 [1325.07ms]
+(pass) chrome taller than the viewport never reaches native scrollback > height=16 header=2 hud=12 turns=20 [1328.17ms]
+(pass) chrome taller than the viewport never reaches native scrollback > height=16 header=0 hud=16 turns=20 [1330.86ms]
+(pass) chrome taller than the viewport never reaches native scrollback > height=16 header=2 hud=16 turns=20 [1325.20ms]
+(pass) chrome taller than the viewport never reaches native scrollback > height=16 header=0 hud=32 turns=20 [1329.61ms]
+(pass) chrome taller than the viewport never reaches native scrollback > height=16 header=2 hud=32 turns=20 [1328.86ms]
+(pass) chrome taller than the viewport never reaches native scrollback > height=24 header=0 hud=2 turns=20 [1330.29ms]
+(pass) chrome taller than the viewport never reaches native scrollback > height=24 header=2 hud=2 turns=20 [1326.93ms]
+(pass) chrome taller than the viewport never reaches native scrollback > height=24 header=0 hud=8 turns=20 [1328.18ms]
+(pass) chrome taller than the viewport never reaches native scrollback > height=24 header=2 hud=8 turns=20 [1329.55ms]
+(pass) chrome taller than the viewport never reaches native scrollback > height=24 header=0 hud=20 turns=20 [1329.06ms]
+(pass) chrome taller than the viewport never reaches native scrollback > height=24 header=2 hud=20 turns=20 [1328.85ms]
+(pass) chrome taller than the viewport never reaches native scrollback > height=24 header=0 hud=24 turns=20 [1326.02ms]
+(pass) chrome taller than the viewport never reaches native scrollback > height=24 header=2 hud=24 turns=20 [1327.78ms]
+(pass) chrome taller than the viewport never reaches native scrollback > height=24 header=0 hud=48 turns=20 [1331.83ms]
+(pass) chrome taller than the viewport never reaches native scrollback > height=24 header=2 hud=48 turns=20 [1329.95ms]
+(pass) chrome taller than the viewport never reaches native scrollback > height=40 header=0 hud=2 turns=20 [1329.00ms]
+(pass) chrome taller than the viewport never reaches native scrollback > height=40 header=2 hud=2 turns=20 [1330.65ms]
+(pass) chrome taller than the viewport never reaches native scrollback > height=40 header=0 hud=8 turns=20 [1330.33ms]
+(pass) chrome taller than the viewport never reaches native scrollback > height=40 header=2 hud=8 turns=20 [1331.07ms]
+(pass) chrome taller than the viewport never reaches native scrollback > height=40 header=0 hud=36 turns=20 [1328.48ms]
+(pass) chrome taller than the viewport never reaches native scrollback > height=40 header=2 hud=36 turns=20 [1328.55ms]
+(pass) chrome taller than the viewport never reaches native scrollback > height=40 header=0 hud=40 turns=20 [1334.04ms]
+(pass) chrome taller than the viewport never reaches native scrollback > height=40 header=2 hud=40 turns=20 [1330.41ms]
+(pass) chrome taller than the viewport never reaches native scrollback > height=40 header=0 hud=80 turns=20 [1329.03ms]
+(pass) chrome taller than the viewport never reaches native scrollback > height=40 header=2 hud=80 turns=20 [1331.09ms]
+
+ 30 pass
+ 0 fail
+ 60 expect() calls
+Ran 30 tests across 1 file. [40.00s]

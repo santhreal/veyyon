@@ -1,0 +1,19 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/modes/components/subagent-agents-surface.test.ts:
+(pass) subagent.agents settings surface > renders as the dedicated per-agent editor in the Subagents group of the Subagents tab [1.31ms]
+(pass) subagent.agents settings surface > never degrades to the generic record-as-text control [0.67ms]
+(pass) subagent.agents settings surface > appears on exactly one tab [0.85ms]
+(pass) subagent.agents settings surface > fills the Subagents group it declares [0.60ms]
+(pass) subagent.agents settings surface > keeps the blanket spawn ceiling in the roster's own section [0.78ms]
+(pass) subagent.agents settings surface > never calls a subagent an agent in a heading or a row label [0.68ms]
+(pass) subagent.agents settings surface > heads the roster and the per-subagent editor with the word subagent [24.49ms]
+(pass) subagent.agents settings surface > opens the recursion picker on the persisted per-agent override [3.27ms]
+(pass) subagent enable-state wording > labels both states, distinctly [0.07ms]
+(pass) subagent enable-state wording > says only enabled or disabled, and never that a disabled agent still runs [0.02ms]
+(pass) subagent enable-state wording > toggles between the two states without a third stop [0.03ms]
+
+ 11 pass
+ 0 fail
+ 41 expect() calls
+Ran 11 tests across 1 file. [412.00ms]

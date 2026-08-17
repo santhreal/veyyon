@@ -1,0 +1,17 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/a-band-is-mixed-out-of-the-ground-the-terminal-is-showing.test.ts:
+(pass) a band is mixed out of the ground the terminal is showing > mixes out of the reported terminal ground, not the ground the theme declares [0.39ms]
+(pass) a band is mixed out of the ground the terminal is showing > keeps every frame of the fade inside the segment it is travelling [0.14ms]
+(pass) a band is mixed out of the ground the terminal is showing > travels monotonically from the page to the band [0.20ms]
+(pass) a band is mixed out of the ground the terminal is showing > resolves the ground from painted and detected [0.15ms]
+(pass) a band is mixed out of the ground the terminal is showing > resolves the ground from painted, nothing reported [0.02ms]
+(pass) a band is mixed out of the ground the terminal is showing > resolves the ground from nothing painted, reported [0.02ms]
+(pass) a band is mixed out of the ground the terminal is showing > resolves the ground from nothing painted, nothing reported [0.02ms]
+(pass) a band is mixed out of the ground the terminal is showing > records what it painted on the terminal, in the same call that paints it [0.09ms]
+(pass) a band is mixed out of the ground the terminal is showing > notifies the ground listeners when the paint changes, so painted chrome repaints [0.04ms]
+
+ 9 pass
+ 0 fail
+ 93 expect() calls
+Ran 9 tests across 1 file. [282.00ms]

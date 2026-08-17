@@ -1,0 +1,23 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/a-fading-hover-band-is-mixed-out-of-the-ground.test.ts:
+(pass) a fading hover band is mixed out of the ground > paints the switched band, byte for byte, at full strength [5.32ms]
+(pass) a fading hover band is mixed out of the ground > mixes a partial band between the ground and the selection background [0.53ms]
+(pass) a fading hover band is mixed out of the ground > resolves out of the light theme's own ground, not a dark one [0.20ms]
+(pass) a fading hover band is mixed out of the ground > switches rather than mixes in a color mode that cannot show the mix [0.13ms]
+
+packages/tui/test/a-hover-band-fades-in-instead-of-switching.test.ts:
+(pass) a hover band fades in instead of switching > arrives over the hover duration rather than on the report's own frame [5.42ms]
+(pass) a hover band fades in instead of switching > paints the row being left and the row being entered in the same frame [0.33ms]
+(pass) a hover band fades in instead of switching > resumes a re-entered row from where it got to, not from nothing [0.27ms]
+(pass) a hover band fades in instead of switching > ends every fade and keeps no state for a row the pointer has left [0.31ms]
+(pass) a hover band fades in instead of switching > paints the switched band and registers nothing when motion is off [0.20ms]
+(pass) a hover band fades in instead of switching > drops every fade on dispose so a list nobody can see stops asking for frames [0.11ms]
+(pass) a hover band fades in instead of switching > never bands the selected row, and still plays out the row the selection took over [0.19ms]
+(pass) a hover band fades in instead of switching > keeps a settings row's band on the row rather than on the line it was drawn at [1.05ms]
+(pass) a hover band fades in instead of switching > fades a dimmed row too — the split layout's second paint path is not exempt [0.44ms]
+
+ 13 pass
+ 0 fail
+ 58 expect() calls
+Ran 13 tests across 2 files. [273.00ms]

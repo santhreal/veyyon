@@ -1,0 +1,29 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/modes/components/a-pointer-band-fades-on-a-hand-painted-list.test.ts:
+(pass) a pointer band fades on a hand-painted list > full strength is the switched band, byte for byte [10.67ms]
+(pass) a pointer band fades on a hand-painted list > the resume-session picker > arrives over frames and lands on the band it always painted [8.88ms]
+(pass) a pointer band fades on a hand-painted list > the resume-session picker > keeps the row the pointer left banding while the new row arrives [2.53ms]
+(pass) a pointer band fades on a hand-painted list > the resume-session picker > never bands the selected row [1.02ms]
+(pass) a pointer band fades on a hand-painted list > the resume-session picker > paints the switched band when no host lends a repaint [0.81ms]
+(pass) a pointer band fades on a hand-painted list > the resume-session picker > settles, stops asking for frames, and drops the band when disposed [0.51ms]
+(pass) a pointer band fades on a hand-painted list > the session tree card > arrives over frames and lands on the band it always painted [3.26ms]
+(pass) a pointer band fades on a hand-painted list > the session tree card > keeps the row the pointer left banding while the new row arrives [1.10ms]
+(pass) a pointer band fades on a hand-painted list > the session tree card > never bands the selected row [0.46ms]
+(pass) a pointer band fades on a hand-painted list > the session tree card > paints the switched band when no host lends a repaint [0.56ms]
+(pass) a pointer band fades on a hand-painted list > the session tree card > settles, stops asking for frames, and drops the band when disposed [0.57ms]
+(pass) a pointer band fades on a hand-painted list > the branch-from-message card > arrives over frames and lands on the band it always painted [1.39ms]
+(pass) a pointer band fades on a hand-painted list > the branch-from-message card > keeps the row the pointer left banding while the new row arrives [0.84ms]
+(pass) a pointer band fades on a hand-painted list > the branch-from-message card > never bands the selected row [0.35ms]
+(pass) a pointer band fades on a hand-painted list > the branch-from-message card > paints the switched band when no host lends a repaint [0.45ms]
+(pass) a pointer band fades on a hand-painted list > the branch-from-message card > settles, stops asking for frames, and drops the band when disposed [0.26ms]
+(pass) a pointer band fades on a hand-painted list > the history search card > arrives over frames and lands on the band it always painted [1.85ms]
+(pass) a pointer band fades on a hand-painted list > the history search card > keeps the row the pointer left banding while the new row arrives [1.14ms]
+(pass) a pointer band fades on a hand-painted list > the history search card > never bands the selected row [0.44ms]
+(pass) a pointer band fades on a hand-painted list > the history search card > paints the switched band when no host lends a repaint [0.52ms]
+(pass) a pointer band fades on a hand-painted list > the history search card > settles, stops asking for frames, and drops the band when disposed [0.32ms]
+
+ 21 pass
+ 0 fail
+ 150 expect() calls
+Ran 21 tests across 1 file. [432.00ms]

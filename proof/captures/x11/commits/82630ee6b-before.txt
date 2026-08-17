@@ -1,0 +1,40 @@
+(fail) a pointer band fades on a hand-painted list > the extension ask dialog > arrives over frames and lands on the band it always painted [4.76ms]
+384 | 				pane.handleInput(motionAt(arriving));
+385 | 				advance(15);
+386 | 
+387 | 				const outgoing = bandRgb(rowText(pane, leaving));
+388 | 				const incoming = bandRgb(rowText(pane, arriving));
+389 | 				expect(outgoing, "the row the pointer left still bands").not.toBeNull();
+                                                                       ^
+error: the row the pointer left still bands
+
+Received: null
+
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/a-pointer-band-fades-on-a-hand-painted-list.test.ts:389:66)
+(fail) a pointer band fades on a hand-painted list > the extension ask dialog > keeps the row the pointer left banding while the new row arrives [1.70ms]
+(pass) a pointer band fades on a hand-painted list > the extension ask dialog > never bands the selected row [1.06ms]
+(pass) a pointer band fades on a hand-painted list > the extension ask dialog > paints the switched band when no host lends a repaint [1.17ms]
+439 | 				const row = rowOf(pane, paneCase.first);
+440 | 				const bare = rowText(pane, row);
+441 | 
+442 | 				pane.handleInput(motionAt(row));
+443 | 				const frames = settle();
+444 | 				expect(frames).toBeGreaterThan(1);
+                         ^
+error: expect(received).toBeGreaterThan(expected)
+
+Expected: > 1
+Received: 1
+
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/a-pointer-band-fades-on-a-hand-painted-list.test.ts:444:20)
+(fail) a pointer band fades on a hand-painted list > the extension ask dialog > settles, stops asking for frames, and drops the band when disposed [0.59ms]
+
+3 tests failed:
+(fail) a pointer band fades on a hand-painted list > the extension ask dialog > arrives over frames and lands on the band it always painted [4.76ms]
+(fail) a pointer band fades on a hand-painted list > the extension ask dialog > keeps the row the pointer left banding while the new row arrives [1.70ms]
+(fail) a pointer band fades on a hand-painted list > the extension ask dialog > settles, stops asking for frames, and drops the band when disposed [0.59ms]
+
+ 23 pass
+ 3 fail
+ 169 expect() calls
+Ran 26 tests across 1 file. [403.00ms]

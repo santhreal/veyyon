@@ -1,0 +1,40 @@
+(pass) compactWithProvider > a window with no compaction item is rejected, so nothing is stored or replayed [0.21ms]
+(pass) a stored window chains only onto the host that minted it > a window minted by a different provider is dropped, and its span travels as messages [0.16ms]
+(pass) a stored window chains only onto the host that minted it > a window minted by a different api on the same provider is dropped [0.09ms]
+(pass) a stored window chains only onto the host that minted it > a window minted by this same provider and api is chained ahead of its span alone [0.08ms]
+(pass) the local path never carries a stale remote window forward > compact() strips the remote key but keeps unrelated preserve data [1.97ms]
+(pass) entry payload validation > malformed payloads degrade to no payload, never to a bad replay [0.03ms]
+
+packages/catalog/test/server-compaction-capability.test.ts:
+(pass) supportsServerCompaction capability data > the official OpenAI endpoint supports it, including an unset baseUrl [0.12ms]
+(pass) supportsServerCompaction capability data > Azure OpenAI supports it, keyed on the provider id (baseUrl is per-resource) [0.01ms]
+(pass) supportsServerCompaction capability data > an openai row repointed at a proxy does not inherit support [0.01ms]
+38 | 	// unset baseUrl is the normal shape of a bundled codex row.
+39 | 	test("the ChatGPT Codex backend supports it, including an unset baseUrl", () => {
+40 | 		expect(
+41 | 			buildOpenAIResponsesCompat({ provider: "openai-codex", name: "GPT-5.1 Codex", baseUrl: "" })
+42 | 				.supportsServerCompaction,
+43 | 		).toBe(true);
+         ^
+error: expect(received).toBe(expected)
+
+Expected: true
+Received: false
+
+      at <anonymous> (/repo/packages/catalog/test/server-compaction-capability.test.ts:43:5)
+(fail) supportsServerCompaction capability data > the ChatGPT Codex backend supports it, including an unset baseUrl [0.07ms]
+(pass) supportsServerCompaction capability data > routers and unrelated hosts stay off [0.02ms]
+(pass) supportsServerCompaction capability data > a compatible gateway opts in with a sparse compat override alone [0.04ms]
+
+6 tests failed:
+(fail) a ChatGPT OAuth session compacts on the codex backend > the bundled codex row declares the capability and resolves the transport [47.09ms]
+(fail) a ChatGPT OAuth session compacts on the codex backend > posts the span to the codex compact route with the ChatGPT credential and identity [0.91ms]
+(fail) a ChatGPT OAuth session compacts on the codex backend > the body carries the span, the instructions, and the codex turn metadata [0.19ms]
+(fail) a ChatGPT OAuth session compacts on the codex backend > a lite codex row moves the instructions into a developer item, as a turn does [0.15ms]
+(fail) server-side compaction transport resolution is capability data > a codex model resolves a transport [0.08ms]
+(fail) supportsServerCompaction capability data > the ChatGPT Codex backend supports it, including an unset baseUrl [0.07ms]
+
+ 22 pass
+ 6 fail
+ 60 expect() calls
+Ran 28 tests across 3 files. [367.00ms]

@@ -1,0 +1,40 @@
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/the-hook-selector-answers-the-pointer.test.ts:345:27)
+(fail) the embedded hook selector hands its pointer to the host > answers hitTestOption, selectOptionAt, setHoveredOption and handleWheel for the host [0.60ms]
+361 | 
+362 | 	it("refuses a disabled row through the host's click path too", () => {
+363 | 		const harness = embedded(["Yes", "No"], { disabledIndices: [0] });
+364 | 		const yes = harness.stripped().findIndex(line => line.includes("Yes"));
+365 | 
+366 | 		expect(harness.selector.selectOptionAt(yes)).toBe(false);
+                                ^
+TypeError: harness.selector.selectOptionAt is not a function. (In 'harness.selector.selectOptionAt(yes)', 'harness.selector.selectOptionAt' is undefined)
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/the-hook-selector-answers-the-pointer.test.ts:366:27)
+(fail) the embedded hook selector hands its pointer to the host > refuses a disabled row through the host's click path too [0.45ms]
+
+21 tests failed:
+(fail) ExtensionUiController dialog serialization > queues a second selector instead of clobbering the open one [4.39ms]
+(fail) ExtensionUiController dialog serialization > never presents a queued selector whose signal aborts before its turn [0.38ms]
+(fail) HookSelectorComponent > wraps long option text without omitting the tail [2.40ms]
+(fail) HookSelectorComponent > renders option descriptions as separate wrapped rows [2.35ms]
+(fail) HookSelectorComponent > collapses to labels with only the highlighted description when descriptions overflow [0.97ms]
+(fail) SessionSelectorComponent delete confirmation pointer > deletes on a click on Yes and closes the dialog [1.51ms]
+(fail) SessionSelectorComponent delete confirmation pointer > keeps the session on a click on No, and the picker stays open [1.10ms]
+(fail) SessionSelectorComponent delete confirmation pointer > moves the dialog's cursor with the wheel rather than the list under it [0.68ms]
+(fail) SessionSelectorComponent delete confirmation pointer > closes the dialog, not the picker, when the pointer cancels [0.67ms]
+(fail) the hook selector card answers the pointer > paints a titled card with a close glyph and the house list chips [0.84ms]
+(fail) the hook selector card answers the pointer > takes the caller's helpText as the chips, because the caller named its own keys [0.52ms]
+(fail) the hook selector card answers the pointer > bands the option under the pointer without moving the cursor [0.63ms]
+(fail) the hook selector card answers the pointer > clears the band when the pointer leaves the list [0.91ms]
+(fail) the hook selector card answers the pointer > takes the option a click lands on, exactly as Enter would [0.81ms]
+(fail) the hook selector card answers the pointer > answers a click on an option's description row with that same option [1.27ms]
+(fail) the hook selector card answers the pointer > steps the cursor on a wheel notch [0.74ms]
+(fail) the hook selector card answers the pointer > cancels on the close glyph, on a click outside the card, and on the close chip [0.52ms]
+(fail) the hook selector card answers the pointer > confirms the cursor row from the select chip [0.61ms]
+(fail) the hook selector card answers the pointer > repaints a chip as it is hovered and once more as the pointer leaves it [0.56ms]
+(fail) the embedded hook selector hands its pointer to the host > answers hitTestOption, selectOptionAt, setHoveredOption and handleWheel for the host [0.60ms]
+(fail) the embedded hook selector hands its pointer to the host > refuses a disabled row through the host's click path too [0.45ms]
+
+ 45 pass
+ 21 fail
+ 214 expect() calls
+Ran 66 tests across 4 files. [461.00ms]

@@ -1,0 +1,40 @@
+(pass) TUI.requestComponentRender > re-renders only the requesting subtree on a quiet frame [2.98ms]
+(pass) TUI.requestComponentRender > downgrades to a full compose when a full request shares the frame [3.52ms]
+(pass) TUI.requestComponentRender > falls back to a full compose while an overlay is up [7.40ms]
+(pass) TUI.requestComponentRender > falls back to a full compose when the root child list changed [1.33ms]
+(pass) TUI.requestComponentRender > falls back to a full compose when the component is not in the tree [2.74ms]
+(pass) TUI.requestComponentRender > replays the seam report of a skipped root child across partial frames [2.69ms]
+(pass) TUI.requestDirectWrite > directly rewrites a visible unchanged-size root segment without a full render [2.94ms]
+(pass) TUI.requestDirectWrite > directly rewrites fully live anchored status segments [1.53ms]
+(pass) TUI.requestDirectWrite > falls back to a full render while a visible overlay is up [2.07ms]
+
+packages/tui/test/scroll-isolation-history.test.ts:
+(pass) scroll isolation over dropped history > scrolls back into rows the transcript already dropped instead of doing nothing [8.70ms]
+(pass) scroll isolation over dropped history > walks back to the oldest row the tape still holds and stops there [4.44ms]
+(pass) scroll isolation over dropped history > renders the composer zone byte-identically whether frozen or following [2.37ms]
+(pass) scroll isolation over dropped history > keeps the frozen region still while the transcript keeps dropping rows underneath [5.13ms]
+(pass) scroll isolation over dropped history > keeps the composer live while the history above it is frozen [2.43ms]
+(pass) scroll isolation over dropped history > draws the scroll position on the right edge of the frozen region only [11.51ms]
+(pass) scroll isolation over dropped history > reports how far back the reader is, in rows [2.52ms]
+(pass) scroll isolation over dropped history > resumes following on submit and on a footer click, from deep in history [2.45ms]
+(pass) scroll isolation over dropped history > does not freeze on a wheel-up in a session with nothing above the window [1.63ms]
+408 | 				tui.requestRender();
+409 | 				await scheduler.drain(term);
+410 | 			}
+411 | 			// The rebuild path erased and replayed, so nothing older than the
+412 | 			// replayed frame is on the tape and there is nothing to scroll back to.
+413 | 			expect(tui.scrollTapeRows).toBeLessThanOrEqual(HEIGHT);
+                                    ^
+error: expect(received).toBeLessThanOrEqual(expected)
+
+Expected: <= 10
+Received: 59
+
+      at <anonymous> (/repo/packages/tui/test/scroll-isolation-history.test.ts:413:31)
+(fail) scroll isolation over dropped history > returns the reader to the live tail when a rebuild erases the history behind them [4.17ms]
+(pass) scroll isolation over dropped history > bounds the tape and keeps at least one screen of it [1.71ms]
+
+ 19 pass
+ 2 fail
+ 72 expect() calls
+Ran 21 tests across 2 files. [233.00ms]

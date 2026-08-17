@@ -1,0 +1,19 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/a-dismissed-overlay-plays-out-before-it-leaves.test.ts:
+(pass) a dismissed overlay plays out before it leaves > keeps painting the card and stops routing to it the instant it is dismissed [6.38ms]
+(pass) a dismissed overlay plays out before it leaves > removes the card on the frame its exit settles, and not before [0.76ms]
+(pass) a dismissed overlay plays out before it leaves > still leaves when it is disposed in the middle of its exit [0.97ms]
+(pass) a dismissed overlay plays out before it leaves > survives being dismissed twice [1.93ms]
+(pass) a dismissed overlay plays out before it leaves > declines a second exit rather than replaying it [0.83ms]
+(pass) a dismissed overlay plays out before it leaves > removes a card that declines the exit immediately [0.46ms]
+(pass) a dismissed overlay plays out before it leaves > removes a card that has no exit at all immediately [0.56ms]
+(pass) a dismissed overlay plays out before it leaves > leaves from where the entrance had got to [0.55ms]
+(pass) a dismissed overlay plays out before it leaves > does not animate when the ambient motion gate is off [30.43ms]
+(pass) every modal card exported from the components barrel plays itself out > wires every card that is one, and names every component that is not [0.46ms]
+(pass) every modal card exported from the components barrel plays itself out > takes a repaint callback and a completion callback [0.22ms]
+
+ 11 pass
+ 0 fail
+ 29 expect() calls
+Ran 11 tests across 1 file. [758.00ms]

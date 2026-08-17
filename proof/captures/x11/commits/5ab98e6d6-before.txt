@@ -1,0 +1,40 @@
+353 | 		const { component, selectRow } = await openRoster("designer", changed);
+354 | 		selectRow("designer");
+355 | 		component.handleInput("\n");
+356 | 		const editor = paneLines(component);
+357 | 		expect(editor.some(line => line.includes("Change it in"))).toBe(false);
+                                                                   ^
+error: expect(received).toBe(expected)
+
+Expected: false
+Received: true
+
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/subagent-agents-surface.test.ts:357:62)
+(fail) subagent.agents settings surface > changes what every subagent runs from the per-subagent page too [1.61ms]
+374 | 	 * schema at run time, so a run-affecting setting added to this tab in a
+375 | 	 * section of its own fails here instead of quietly reopening the split.
+376 | 	 */
+377 | 	it("keeps every setting that decides what a subagent runs in the roster's section", () => {
+378 | 		invalidateSettingDefsCache();
+379 | 		expect(TAB_GROUPS.subagents.filter(group => /model/i.test(group))).toEqual([]);
+                                                                           ^
+error: expect(received).toEqual(expected)
+
+- []
++ [
++   "Models",
++ ]
+
+- Expected  - 1
++ Received  + 3
+
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/subagent-agents-surface.test.ts:379:70)
+(fail) subagent.agents settings surface > keeps every setting that decides what a subagent runs in the roster's section [0.15ms]
+(pass) subagent enable-state wording > labels both states, distinctly [0.06ms]
+(pass) subagent enable-state wording > says only enabled or disabled, and never that a disabled agent still runs [0.03ms]
+(pass) subagent enable-state wording > toggles between the two states without a third stop [0.03ms]
+
+ 11 pass
+ 6 fail
+ 50 expect() calls
+Ran 17 tests across 1 file. [421.00ms]

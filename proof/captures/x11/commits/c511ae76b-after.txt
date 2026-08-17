@@ -1,0 +1,40 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/modes/components/a-virtualized-transcript-never-loses-history-to-a-rebuild.test.ts:
+(pass) a virtualized transcript never loses history to a rebuild > keeps every turn in the terminal (scrollbackRebuild=true virtualized=true) [476.60ms]
+(pass) a virtualized transcript never loses history to a rebuild > keeps every turn in the terminal (scrollbackRebuild=false virtualized=true) [472.83ms]
+(pass) a virtualized transcript never loses history to a rebuild > keeps every turn in the terminal (scrollbackRebuild=true virtualized=false) [473.08ms]
+(pass) a virtualized transcript never loses history to a rebuild > keeps every turn in the terminal (scrollbackRebuild=false virtualized=false) [478.14ms]
+(pass) a virtualized transcript never loses history to a rebuild > is unaffected by the rebuild knob while the transcript only grows [947.35ms]
+(pass) a virtualized transcript never loses history to a rebuild > still erases and replays when committed rows genuinely change, and replays the whole transcript [672.64ms]
+
+packages/tui/test/component-render.test.ts:
+(pass) TUI native scrollback replay > rehydrates a reporting virtualized root once, for the destructive full paint only [2.59ms]
+(pass) TUI native scrollback replay > rehydrates a silent virtualized root rather than replaying a frame it emptied [4.40ms]
+(pass) TUI.requestComponentRender > re-renders only the requesting subtree on a quiet frame [2.26ms]
+(pass) TUI.requestComponentRender > downgrades to a full compose when a full request shares the frame [3.82ms]
+(pass) TUI.requestComponentRender > falls back to a full compose while an overlay is up [6.22ms]
+(pass) TUI.requestComponentRender > falls back to a full compose when the root child list changed [1.97ms]
+(pass) TUI.requestComponentRender > falls back to a full compose when the component is not in the tree [4.48ms]
+(pass) TUI.requestComponentRender > replays the seam report of a skipped root child across partial frames [5.29ms]
+(pass) TUI.requestDirectWrite > directly rewrites a visible unchanged-size root segment without a full render [1.04ms]
+(pass) TUI.requestDirectWrite > directly rewrites fully live anchored status segments [1.37ms]
+(pass) TUI.requestDirectWrite > falls back to a full render while a visible overlay is up [0.75ms]
+
+packages/tui/test/scroll-isolation-history.test.ts:
+(pass) scroll isolation over dropped history > scrolls back into rows the transcript already dropped instead of doing nothing [10.13ms]
+(pass) scroll isolation over dropped history > walks back to the oldest row the tape still holds and stops there [2.37ms]
+(pass) scroll isolation over dropped history > renders the composer zone byte-identically whether frozen or following [1.97ms]
+(pass) scroll isolation over dropped history > keeps the frozen region still while the transcript keeps dropping rows underneath [5.24ms]
+(pass) scroll isolation over dropped history > keeps the composer live while the history above it is frozen [4.67ms]
+(pass) scroll isolation over dropped history > draws the scroll position on the right edge of the frozen region only [7.02ms]
+(pass) scroll isolation over dropped history > reports how far back the reader is, in rows [0.80ms]
+(pass) scroll isolation over dropped history > resumes following on submit and on a footer click, from deep in history [3.87ms]
+(pass) scroll isolation over dropped history > does not freeze on a wheel-up in a session with nothing above the window [0.66ms]
+(pass) scroll isolation over dropped history > keeps the reader's history with the rebuild on, instead of erasing it [9.60ms]
+(pass) scroll isolation over dropped history > bounds the tape and keeps at least one screen of it [1.00ms]
+
+ 28 pass
+ 0 fail
+ 163 expect() calls
+Ran 28 tests across 3 files. [3.87s]

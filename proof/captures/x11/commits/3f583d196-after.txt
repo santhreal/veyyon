@@ -1,0 +1,40 @@
+(pass) HookSelectorComponent > renders radio markers instead of a cursor arrow for single-choice markable rows [1.03ms]
+(pass) HookSelectorComponent > keeps the cursor arrow on control rows beyond markableCount [0.67ms]
+(pass) HookSelectorComponent > renders checkbox markers reflecting checked state and exempts control rows [0.77ms]
+(pass) HookSelectorComponent > paints a selectedBg focus band across the highlighted checkbox row [0.72ms]
+(pass) HookSelectorComponent > moves the selectedBg band with the cursor and paints control rows too [1.05ms]
+(pass) HookSelectorComponent > highlights the whole selected block including wrapped description rows [0.90ms]
+(pass) HookSelectorComponent > paints the selectedBg band on the non-outlined plain list too [0.35ms]
+
+packages/coding-agent/test/modes/components/session-selector-mouse.test.ts:
+(pass) SessionSelectorComponent mouse > resumes the session under a left click [2.95ms]
+(pass) SessionSelectorComponent mouse > scrolls the selection with the wheel, then resumes it on Enter [0.41ms]
+(pass) SessionSelectorComponent mouse > ignores a click on the pinned footer (never resumes a hidden session) [0.36ms]
+(pass) SessionSelectorComponent fill-height footer > fills the viewport and keeps footer chips stable regardless of scroll [0.47ms]
+(pass) SessionSelectorComponent delete confirmation pointer > deletes on a click on Yes and closes the dialog [2.88ms]
+(pass) SessionSelectorComponent delete confirmation pointer > keeps the session on a click on No, and the picker stays open [0.98ms]
+(pass) SessionSelectorComponent delete confirmation pointer > moves the dialog's cursor with the wheel rather than the list under it [0.56ms]
+(pass) SessionSelectorComponent delete confirmation pointer > closes the dialog, not the picker, when the pointer cancels [0.49ms]
+
+packages/coding-agent/test/modes/components/the-hook-selector-answers-the-pointer.test.ts:
+(pass) the hook selector card answers the pointer > paints a titled card with a close glyph and the house list chips [0.92ms]
+(pass) the hook selector card answers the pointer > takes the caller's helpText as the chips, because the caller named its own keys [0.55ms]
+(pass) the hook selector card answers the pointer > bands the option under the pointer without moving the cursor [0.88ms]
+(pass) the hook selector card answers the pointer > paints one band, not two, when the pointer rests on the cursor row [0.60ms]
+(pass) the hook selector card answers the pointer > clears the band when the pointer leaves the list [0.59ms]
+(pass) the hook selector card answers the pointer > takes the option a click lands on, exactly as Enter would [0.57ms]
+(pass) the hook selector card answers the pointer > answers a click on an option's description row with that same option [0.72ms]
+(pass) the hook selector card answers the pointer > leaves a disabled option inert under the pointer, as it is under the keys [0.52ms]
+(pass) the hook selector card answers the pointer > steps the cursor on a wheel notch [0.66ms]
+(pass) the hook selector card answers the pointer > cancels on the close glyph, on a click outside the card, and on the close chip [0.86ms]
+(pass) the hook selector card answers the pointer > confirms the cursor row from the select chip [0.33ms]
+(pass) the hook selector card answers the pointer > repaints a chip as it is hovered and once more as the pointer leaves it [0.58ms]
+(pass) the embedded hook selector hands its pointer to the host > draws no card frame of its own, so two frames never nest [0.52ms]
+(pass) the embedded hook selector hands its pointer to the host > ignores mouse reports itself, because the host owns the pointer [0.33ms]
+(pass) the embedded hook selector hands its pointer to the host > answers hitTestOption, selectOptionAt, setHoveredOption and handleWheel for the host [0.47ms]
+(pass) the embedded hook selector hands its pointer to the host > refuses a disabled row through the host's click path too [0.28ms]
+
+ 66 pass
+ 0 fail
+ 412 expect() calls
+Ran 66 tests across 4 files. [503.00ms]

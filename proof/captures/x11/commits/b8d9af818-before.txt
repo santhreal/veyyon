@@ -1,0 +1,14 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/ai/test/thinking-loop.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+SyntaxError: Export named 'isLoopGuardEnabled' not found in module '/repo/packages/ai/src/utils/thinking-loop.ts'.
+-------------------------------
+
+
+ 0 pass
+ 1 fail
+ 1 error
+Ran 1 test across 1 file. [157.00ms]

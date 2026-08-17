@@ -1,0 +1,38 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/modes/components/a-transcript-block-sits-on-the-rail.test.ts:
+(pass) a transcript block sits on the rail > paints every /btw state at the rail, with no rule [13.68ms]
+(pass) a transcript block sits on the rail > paints every /omfg state at the rail, with no rule [1.06ms]
+(pass) a transcript block sits on the rail > opens each block with the command that made it [0.09ms]
+(pass) a transcript block sits on the rail > keeps the hint row last, so the block ends on what to press [0.13ms]
+(pass) a transcript block sits on the rail > presents a command's answer at the rail, with no rule [0.10ms]
+(pass) a transcript block sits on the rail > drops the header gap for a block that has no header [0.06ms]
+(pass) a transcript block sits on the rail > pins the error banner to the rail, with no rule [0.17ms]
+(pass) a transcript block sits on the rail > puts the composer loader's hint on the rail, with no rule [0.37ms]
+67 | function assertOnTheRail(rows: string[], label: string): void {
+68 | 	for (const row of rows) {
+69 | 		if (row.trim() === "") continue;
+70 | 		const inset = row.length - row.trimStart().length;
+71 | 		// The row text is carried for a readable failure; `inset` is the claim.
+72 | 		expect({ label, row: row.trim().slice(0, 24), inset }).toEqual({
+                                                              ^
+error: expect(received).toEqual(expected)
+
+  {
+-   "inset": 2,
++   "inset": 0,
+    "label": "tiny-download/initiate",
+    "row": "────────────────────────",
+  }
+
+- Expected  - 1
++ Received  + 1
+
+      at assertOnTheRail (/repo/packages/coding-agent/test/modes/components/a-transcript-block-sits-on-the-rail.test.ts:72:58)
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/a-transcript-block-sits-on-the-rail.test.ts:231:4)
+(fail) a transcript block sits on the rail > paints every tiny-model download status at the rail, with no rule [0.41ms]
+
+ 8 pass
+ 1 fail
+ 107 expect() calls
+Ran 9 tests across 1 file. [282.00ms]

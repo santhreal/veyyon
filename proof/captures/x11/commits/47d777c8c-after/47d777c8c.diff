@@ -1,0 +1,196 @@
+[33m47d777c8c[m proof(scene): plan-review scroll scene, with a seeded resumable session
+
+
+
+ ...000Z_0198ab00-7c31-7000-9d0e-4a1f2b6c8e10.jsonl |  2 [32m+[m
+ .../local/viewport-travel-plan.md                  | 96 [32m++++++++++++++++++++++[m
+ proof/scenes/plan-scroll.sh                        | 71 [32m++++++++++++++++[m
+ 3 files changed, 169 insertions(+)
+
+[1mdiff --git a/proof/docker/home-seed/profiles/default/agent/sessions/-demo/2026-08-16T09-00-00-000Z_0198ab00-7c31-7000-9d0e-4a1f2b6c8e10.jsonl b/proof/docker/home-seed/profiles/default/agent/sessions/-demo/2026-08-16T09-00-00-000Z_0198ab00-7c31-7000-9d0e-4a1f2b6c8e10.jsonl[m
+[1mnew file mode 100644[m
+[1mindex 000000000..97cde0cdc[m
+[1m--- /dev/null[m
+[1m+++ b/proof/docker/home-seed/profiles/default/agent/sessions/-demo/2026-08-16T09-00-00-000Z_0198ab00-7c31-7000-9d0e-4a1f2b6c8e10.jsonl[m
+[36m@@ -0,0 +1,2 @@[m
+[32m+[m[32m{"type":"session","id":"0198ab00-7c31-7000-9d0e-4a1f2b6c8e10","cwd":"/sandbox/home/demo","timestamp":"2026-08-16T09:00:00.000Z","title":"Viewport travel"}[m
+[32m+[m[32m{"type":"mode_change","id":"0198ab00-7c31-7000-9d0e-4a1f2b6c8e11","parentId":null,"timestamp":"2026-08-16T09:00:01.000Z","mode":"plan"}[m
+[1mdiff --git a/proof/docker/home-seed/profiles/default/agent/sessions/-demo/2026-08-16T09-00-00-000Z_0198ab00-7c31-7000-9d0e-4a1f2b6c8e10/local/viewport-travel-plan.md b/proof/docker/home-seed/profiles/default/agent/sessions/-demo/2026-08-16T09-00-00-000Z_0198ab00-7c31-7000-9d0e-4a1f2b6c8e10/local/viewport-travel-plan.md[m
+[1mnew file mode 100644[m
+[1mindex 000000000..86b0d2ebb[m
+[1m--- /dev/null[m
+[1m+++ b/proof/docker/home-seed/profiles/default/agent/sessions/-demo/2026-08-16T09-00-00-000Z_0198ab00-7c31-7000-9d0e-4a1f2b6c8e10/local/viewport-travel-plan.md[m
+[36m@@ -0,0 +1,96 @@[m
+[32m+[m[32m# Viewport travel[m
+[32m+[m
+[32m+[m[32mA scrolled viewport walks to its new offset instead of cutting to it. The plan[m
+[32m+[m[32mbelow is what the recording scrolls: every step is numbered so a frame taken[m
+[32m+[m[32mmid-travel names the rows it is passing.[m
+[32m+[m
+[32m+[m[32m## Why[m
+[32m+[m
+[32m+[m[32mStep 01 — A page down replaced the screen between two frames.[m
+[32m+[m[32mStep 02 — Nothing on screen said which direction the content went.[m
+[32m+[m[32mStep 03 — The scrollbar thumb was the only clue, and it arrived first.[m
+[32m+[m[32mStep 04 — A reader had to re-find their place after every notch.[m
+[32m+[m[32mStep 05 — The rest of the surface already travels: selections, bands, gauges.[m
+[32m+[m
+[32m+[m[32m## The value[m
+[32m+[m
+[32m+[m[32mStep 06 — One number, `SettleValue`, on the shared motion clock.[m
+[32m+[m[32mStep 07 — The curve is `MOTION.move`: spring 260/30/1, the selection curve.[m
+[32m+[m[32mStep 08 — The first offset a viewport is given lands. Nothing animates a mount.[m
+[32m+[m[32mStep 09 — Every later offset travels.[m
+[32m+[m[32mStep 10 — A target changed mid-flight keeps the velocity it already had.[m
+[32m+[m[32mStep 11 — A wheel notch held down is therefore one continuous travel.[m
+[32m+[m
+[32m+[m[32m## One value, two readings[m
+[32m+[m
+[32m+[m[32mStep 12 — `getScrollOffset()` answers with the TARGET.[m
+[32m+[m[32mStep 13 — The keyboard lives at the target: page down twice pages twice.[m
+[32m+[m[32mStep 14 — `render()` slices the rows at the TRAVELLED value, rounded.[m
+[32m+[m[32mStep 15 — The thumb reads the same travelled value.[m
+[32m+[m[32mStep 16 — So the bar can never report a scroll the rows have not made.[m
+[32m+[m[32mStep 17 — A thumb that leads its rows is the bug this ordering forbids.[m
+[32m+[m
+[32m+[m[32m## What travels and what lands[m
+[32m+[m
+[32m+[m[32mStep 18 — A wheel notch travels.[m
+[32m+[m[32mStep 19 — An arrow travels.[m
+[32m+[m[32mStep 20 — A page travels.[m
+[32m+[m[32mStep 21 — A jump to a section of the table of contents travels.[m
+[32m+[m[32mStep 22 — Both ends land: home, end, and the tail of a live transcript.[m
+[32m+[m[32mStep 23 — A viewport following its own tail must never lag behind the tail.[m
+[32m+[m[32mStep 24 — A re-layout lands: the content changed under the offset.[m
+[32m+[m[32mStep 25 — A change smaller than two rows lands: there is nothing to watch.[m
+[32m+[m[32mStep 26 — A jump further than two screens lands: a blur is not a reading.[m
+[32m+[m[32mStep 27 — A pre-windowed viewport lands: the caller slices its own rows.[m
+[32m+[m
+[32m+[m[32m## The hosts[m
+[32m+[m
+[32m+[m[32mStep 28 — The fullscreen agent transcript viewer.[m
+[32m+[m[32mStep 29 — The plan review overlay, which is the surface this file is shown in.[m
+[32m+[m[32mStep 30 — Both are the viewports that outlive a single render.[m
+[32m+[m[32mStep 31 — Each lends the viewport its own repaint and takes it back on dispose.[m
+[32m+[m[32mStep 32 — `display.transitions: off` paints byte for byte what it painted before.[m
+[32m+[m
+[32m+[m[32m## The suite[m
+[32m+[m
+[32m+[m[32mStep 33 — Travel and monotonicity: the offset never goes backwards en route.[m
+[32m+[m[32mStep 34 — Frame count pinned against a reference `MOTION.move` animation.[m
+[32m+[m[32mStep 35 — The thumb never leads the rows, sampled every frame of a travel.[m
+[32m+[m[32mStep 36 — Single row, both ends, and a jump too far all land in one frame.[m
+[32m+[m[32mStep 37 — A travel survives the renders that happen during it.[m
+[32m+[m[32mStep 38 — Content shrinking under a live travel clamps the painted value.[m
+[32m+[m[32mStep 39 — A mode switch mid-travel lands rather than paints a stale row.[m
+[32m+[m[32mStep 40 — Motion off is byte identity, and dispose returns the clock.[m
+[32m+[m
+[32m+[m[32m## The gate[m
+[32m+[m
+[32m+[m[32mStep 41 — Fourteen mutations, fourteen reds.[m
+[32m+[m[32mStep 42 — The rows paint the target again.[m
+[32m+[m[32mStep 43 — The thumb reads the target.[m
+[32m+[m[32mStep 44 — A render lands the travel it finds.[m
+[32m+[m[32mStep 45 — No jump is ever too far.[m
+[32m+[m[32mStep 46 — A pre-windowed viewport travels a value nobody reads.[m
+[32m+[m[32mStep 47 — The travel floor is gone.[m
+[32m+[m[32mStep 48 — The painted value is not clamped.[m
+[32m+[m[32mStep 49 — The offset paints unrounded.[m
+[32m+[m[32mStep 50 — The viewport travels on the gauge's curve.[m
+[32m+[m[32mStep 51 — The curve option is ignored.[m
+[32m+[m[32mStep 52 — Every one of them red, and the restore proven by checksum.[m
+[32m+[m
+[32m+[m[32m## The proof[m
+[32m+[m
+[32m+[m[32mStep 53 — Two arms of the same scene, recorded in a real terminal.[m
+[32m+[m[32mStep 54 — Before: the offset cuts, and consecutive frames share no rows.[m
+[32m+[m[32mStep 55 — After: the offset walks, and the frames between hold the rows between.[m
+[32m+[m[32mStep 56 — The strips below are eight consecutive frames of one page down.[m
+[32m+[m[32mStep 57 — Read them left to right and the rows slide.[m
+[32m+[m[32mStep 58 — Read the before strip and there are two states with nothing between.[m
+[32m+[m
+[32m+[m[32m## Notes[m
+[32m+[m
+[32m+[m[32mStep 59 — `MOTION.move` was in the curve table before anything used it.[m
+[32m+[m[32mStep 60 — `SettleValue` gained a curve option rather than a second spring owner.[m
+[32m+[m[32mStep 61 — One owner for a number that walks, two curves for two speeds.[m
+[32m+[m[32mStep 62 — The gauge keeps `MOTION.settle`, which is slower on purpose.[m
+[32m+[m[32mStep 63 — A scroll is a reading, not a report, so it is the faster of the two.[m
+[32m+[m[32mStep 64 — End of plan.[m
+[1mdiff --git a/proof/scenes/plan-scroll.sh b/proof/scenes/plan-scroll.sh[m
+[1mnew file mode 100755[m
+[1mindex 000000000..f0b09cf34[m
+[1m--- /dev/null[m
+[1m+++ b/proof/scenes/plan-scroll.sh[m
+[36m@@ -0,0 +1,71 @@[m
+[32m+[m[32m#!/usr/bin/env bash[m
+[32m+[m[32m# A scrolled viewport travelling through the rows between.[m
+[32m+[m[32m#[m
+[32m+[m[32m# The surface is the plan review overlay, one of the two viewports in the[m
+[32m+[m[32m# product that outlive a single render (the other is the fullscreen agent[m
+[32m+[m[32m# transcript viewer, which only opens for an advisor or a collab guest and so[m
+[32m+[m[32m# cannot be reached from a local scene at all).[m
+[32m+[m[32m#[m
+[32m+[m[32m# Nothing here waits for a model. The recorder is launched with `--continue`[m
+[32m+[m[32m# against a session seeded into proof/docker/home-seed:[m
+[32m+[m[32m#[m
+[32m+[m[32m#   sessions/-demo/<stamp>_<id>.jsonl          header + a `mode_change` to plan[m
+[32m+[m[32m#   sessions/-demo/<stamp>_<id>/local/…-plan.md  the plan this scene scrolls[m
+[32m+[m[32m#[m
+[32m+[m[32m# so the CLI comes up already in plan mode with a plan on disk, and[m
+[32m+[m[32m# `/plan-review` opens the overlay on it. Every row the recording scrolls is[m
+[32m+[m[32m# numbered in that file, which is what makes a frame taken mid-travel legible:[m
+[32m+[m[32m# the strip either holds the rows between two readings or it does not.[m
+[32m+[m[32m#[m
+[32m+[m[32m#   SCENE_COMMAND="bun /repo/packages/coding-agent/src/cli.ts --continue \[m
+[32m+[m[32m#     --model local/qwen2.5-1.5b" proof/docker/record-x11.sh proof/scenes/plan-scroll.sh[m
+[32m+[m[32m#[m
+[32m+[m[32m# No stills — `import` costs about fifteen seconds a frame on this display and[m
+[32m+[m[32m# would stall the middle of a travel. The page's frames are cut out of the[m
+[32m+[m[32m# recording afterwards.[m
+[32m+[m
+[32m+[m[32msettle 20[m
+[32m+[m
+[32m+[m[32m# --- open the review -------------------------------------------------------[m
+[32m+[m[32m# Escape closes the command popup and leaves the draft alone, so Return submits[m
+[32m+[m[32m# `/plan-review` rather than accepting whatever row the popup had selected.[m
+[32m+[m[32mt "/plan-review"[m
+[32m+[m[32mpause 1.2[m
+[32m+[m[32mk Escape[m
+[32m+[m[32mpause 0.6[m
+[32m+[m[32mk Return[m
+[32m+[m[32msettle 6[m
+[32m+[m
+[32m+[m[32m# --- one page down, alone --------------------------------------------------[m
+[32m+[m[32m# The pointer is parked off the body first: a hover band under it would move[m
+[32m+[m[32m# with the rows and muddy what the strip is measuring.[m
+[32m+[m[32mpoint 2 120[m
+[32m+[m[32mpause 1.5[m
+[32m+[m[32mk Next[m
+[32m+[m[32msleep 4[m
+[32m+[m
+[32m+[m[32m# --- a second page, so the strip has a repeat -------------------------------[m
+[32m+[m[32mk Next[m
+[32m+[m[32msleep 4[m
+[32m+[m
+[32m+[m[32m# --- the wheel, with a real pointer on the body -----------------------------[m
+[32m+[m[32mpoint 18 60[m
+[32m+[m[32mpause 1.0[m
+[32m+[m[32mwheel_down 4[m
+[32m+[m[32msleep 4[m
+[32m+[m
+[32m+[m[32m# --- back up ----------------------------------------------------------------[m
+[32m+[m[32mk Prior[m
+[32m+[m[32msleep 4[m
+[32m+[m[32mk Prior[m
+[32m+[m[32msleep 4[m
+[32m+[m
+[32m+[m[32m# --- home, which lands ------------------------------------------------------[m
+[32m+[m[32m# Both ends land by design: a viewport that follows its own tail must never lag[m
+[32m+[m[32m# behind it, and the same rule takes `g` straight to row one.[m
+[32m+[m[32mt "g"[m
+[32m+[m[32msleep 3[m
+[32m+[m
+[32m+[m[32m# --- out --------------------------------------------------------------------[m
+[32m+[m[32mk Escape[m
+[32m+[m[32msettle 4[m

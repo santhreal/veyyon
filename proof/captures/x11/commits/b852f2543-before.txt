@@ -1,0 +1,37 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/modes/components/a-cut-short-batch-ledger-renders-as-one-marker-line.test.ts:
+69 | 		const { helpers, chatContainer } = makeUiHelpers();
+70 | 		helpers.addMessageToChat(ledgerMessage());
+71 | 		const rows = plainRows(chatContainer);
+72 | 		const body = rows.join("\n");
+73 | 
+74 | 		expect(rows.filter(row => row.includes("batch cut short"))).toHaveLength(1);
+                                                                   ^
+error: expect(received).toHaveLength(expected)
+
+Expected length: 1
+Received length: 0
+
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/a-cut-short-batch-ledger-renders-as-one-marker-line.test.ts:74:63)
+(fail) a turn-level batch ledger in the transcript > collapses to a one-line marker on the live path [12.05ms]
+94 | 			};
+95 | 			builder.rebuild([entry]);
+96 | 			const rows = plainRows(builder.container);
+97 | 			const body = rows.join("\n");
+98 | 
+99 | 			expect(rows.filter(row => row.includes("batch cut short"))).toHaveLength(1);
+                                                                    ^
+error: expect(received).toHaveLength(expected)
+
+Expected length: 1
+Received length: 0
+
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/a-cut-short-batch-ledger-renders-as-one-marker-line.test.ts:99:64)
+(fail) a turn-level batch ledger in the transcript > collapses to a one-line marker on the rebuild path [1.76ms]
+(pass) a turn-level batch ledger in the transcript > leaves an ordinary synthetic user message rendered in full [0.25ms]
+
+ 1 pass
+ 2 fail
+ 3 expect() calls
+Ran 3 tests across 1 file. [773.00ms]

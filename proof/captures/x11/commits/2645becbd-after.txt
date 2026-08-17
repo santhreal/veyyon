@@ -1,0 +1,23 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/coding-agent/test/modes/components/a-clicked-composer-chip-runs-its-action.test.ts:
+(pass) composer chip clicks > fires each chip's id when its label is clicked [1.32ms]
+(pass) composer chip clicks > fires nothing outside a chip span [0.19ms]
+(pass) composer chip clicks > renders only chips whose action is live [0.28ms]
+(pass) composer chip clicks > asks for the pointer exactly while a chip is on screen [0.13ms]
+
+packages/tui/test/a-footer-click-target-holds-the-mouse-in-a-session-that-never-scrolls.test.ts:
+(pass) a footer click target holds the mouse in a session that never scrolls > grabs button reporting for a declared target with nothing scrolled off [4.45ms]
+(pass) a footer click target holds the mouse in a session that never scrolls > delivers the click that the grab makes possible [7.21ms]
+(pass) a footer click target holds the mouse in a session that never scrolls > takes nothing from the terminal while no target is on screen [1.80ms]
+(pass) a footer click target holds the mouse in a session that never scrolls > ignores a declared target that is not in the pinned footer [8.02ms]
+(pass) a footer click target holds the mouse in a session that never scrolls > hands the mouse back when the targets clear [1.81ms]
+(pass) a footer click target holds the mouse in a session that never scrolls > keeps the grab while the frame is scrollable even after the targets clear [1.54ms]
+(pass) a footer click target holds the mouse in a session that never scrolls > never takes the mouse on the alt-arrows transport, target or not [19.80ms]
+(pass) a footer click target holds the mouse in a session that never scrolls > never takes the mouse with scroll isolation off, target or not [0.71ms]
+(pass) a footer click target holds the mouse in a session that never scrolls > releases the grab on stop [1.49ms]
+
+ 13 pass
+ 0 fail
+ 32 expect() calls
+Ran 13 tests across 2 files. [341.00ms]

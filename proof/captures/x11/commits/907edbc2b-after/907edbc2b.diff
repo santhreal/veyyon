@@ -1,0 +1,421 @@
+[33m907edbc2b[m demo(ui): record real-terminal proof captures with vhs and a local model
+
+
+
+ proof/docker/Dockerfile.recorder                   | 63 [32m+++++++++++++++++++[m
+ proof/docker/home-seed/config.yml                  |  7 [32m+++[m
+ .../home-seed/profiles/default/agent/models.yml    | 10 [32m+++[m
+ proof/docker/record-before.sh                      | 73 [32m++++++++++++++++++++++[m
+ proof/docker/record.sh                             | 38 [32m+++++++++++[m
+ proof/docker/run-recorder.sh                       | 29 [32m+++++++++[m
+ proof/tapes/real/mcp.tape                          | 25 [32m++++++++[m
+ proof/tapes/real/overlays.tape                     | 44 [32m+++++++++++++[m
+ proof/tapes/real/pause.tape                        | 25 [32m++++++++[m
+ proof/tapes/real/settings-subagents.tape           | 31 [32m+++++++++[m
+ proof/tapes/real/smoke.tape                        | 25 [32m++++++++[m
+ proof/tapes/real/transcript.tape                   | 32 [32m++++++++++[m
+ proof/tapes/real/tree.tape                         | 29 [32m+++++++++[m
+ proof/tapes/real/wizard.tape                       | 29 [32m+++++++++[m
+ proof/tapes/settings-open.tape                     | 19 [32m++++++[m
+ 15 files changed, 479 insertions(+)
+
+[1mdiff --git a/proof/docker/Dockerfile.recorder b/proof/docker/Dockerfile.recorder[m
+[1mnew file mode 100644[m
+[1mindex 000000000..65b81b5a8[m
+[1m--- /dev/null[m
+[1m+++ b/proof/docker/Dockerfile.recorder[m
+[36m@@ -0,0 +1,63 @@[m
+[32m+[m[32m# The recording guest: the sandbox userland plus a real terminal to record in.[m
+[32m+[m[32m#[m
+[32m+[m[32m# The proof images have to come out of a REAL terminal running the REAL binary,[m
+[32m+[m[32m# so this image carries vhs (the recorder), ttyd (the terminal it drives) and[m
+[32m+[m[32m# ffmpeg (the encoder), on top of the same bun+git userland the test sandbox[m
+[32m+[m[32m# uses. Nothing here reads the operator's home: the container runs with HOME on[m
+[32m+[m[32m# a tmpfs and only the repo is bind-mounted.[m
+[32m+[m[32mARG BASE=veyyon-test-guest:1.3.14[m
+[32m+[m[32mFROM ${BASE}[m
+[32m+[m
+[32m+[m[32mARG VHS_VERSION=0.10.0[m
+[32m+[m[32mARG TTYD_VERSION=1.7.7[m
+[32m+[m
+[32m+[m[32mRUN set -eux; \[m
+[32m+[m	[32mapt-get update; \[m
+[32m+[m	[32mDEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \[m
+[32m+[m		[32mffmpeg fonts-dejavu-core fontconfig libwebsockets-evlib-glib-dev 2>/dev/null \[m
+[32m+[m		[32m|| DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core fontconfig; \[m
+[32m+[m	[32mapt-get clean; \[m
+[32m+[m	[32mrm -rf /var/lib/apt/lists/*[m
+[32m+[m
+[32m+[m[32m# ttyd ships a static x86_64 binary on its releases page; Debian's archive does[m
+[32m+[m[32m# not carry it at all.[m
+[32m+[m[32mRUN set -eux; \[m
+[32m+[m	[32mcurl -fsSL -o /usr/local/bin/ttyd \[m
+[32m+[m		[32m"https://github.com/tsl0922/ttyd/releases/download/${TTYD_VERSION}/ttyd.x86_64"; \[m
+[32m+[m	[32mchmod 0755 /usr/local/bin/ttyd; \[m
+[32m+[m	[32mttyd --version[m
+[32m+[m
+[32m+[m[32mRUN set -eux; \[m
+[32m+[m	[32mcurl -fsSL -o /tmp/vhs.tgz \[m
+[32m+[m		[32m"https://github.com/charmbracelet/vhs/releases/download/v${VHS_VERSION}/vhs_${VHS_VERSION}_Linux_x86_64.tar.gz"; \[m
+[32m+[m	[32mtar -xzf /tmp/vhs.tgz -C /tmp; \[m
+[32m+[m	[32minstall -m 0755 "$(find /tmp -maxdepth 2 -name vhs -type f | head -1)" /usr/local/bin/vhs; \[m
+[32m+[m	[32mrm -rf /tmp/vhs.tgz; \[m
+[32m+[m	[32mvhs --version[m
+[32m+[m
+[32m+[m[32m# The font vhs asks for by default. Without it fontconfig substitutes something[m
+[32m+[m[32m# proportional and every column in the capture drifts.[m
+[32m+[m[32mARG FONT_VERSION=2.304[m
+[32m+[m[32mRUN set -eux; \[m
+[32m+[m	[32mmkdir -p /usr/share/fonts/truetype/jetbrains; \[m
+[32m+[m	[32mcurl -fsSL -o /tmp/jb.zip \[m
+[32m+[m		[32m"https://github.com/JetBrains/JetBrainsMono/releases/download/v${FONT_VERSION}/JetBrainsMono-${FONT_VERSION}.zip"; \[m
+[32m+[m	[32mcd /tmp && python3 -c "import zipfile,sys; zipfile.ZipFile('/tmp/jb.zip').extractall('/tmp/jb')"; \[m
+[32m+[m	[32mfind /tmp/jb -name "*.ttf" -exec cp {} /usr/share/fonts/truetype/jetbrains/ \; ; \[m
+[32m+[m	[32mfc-cache -f; \[m
+[32m+[m	[32mfc-list | grep -i "jetbrains" | head -3; \[m
+[32m+[m	[32mrm -rf /tmp/jb.zip /tmp/jb[m
+[32m+[m
+[32m+[m[32mENV VHS_NO_SANDBOX=true[m
+[32m+[m
+[32m+[m[32m# vhs renders the terminal in a headless browser (go-rod). Without a browser it[m
+[32m+[m[32m# downloads one at run time into HOME, which is a tmpfs here, and that copy is[m
+[32m+[m[32m# missing its shared libraries anyway. Debian's chromium plus ROD_BROWSER_BIN[m
+[32m+[m[32m# makes the render deterministic and keeps the run offline.[m
+[32m+[m[32mRUN set -eux; \[m
+[32m+[m	[32mapt-get update; \[m
+[32m+[m	[32mDEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends chromium; \[m
+[32m+[m	[32mapt-get clean; \[m
+[32m+[m	[32mrm -rf /var/lib/apt/lists/*; \[m
+[32m+[m	[32mchromium --version[m
+[32m+[m[32mENV ROD_BROWSER_BIN=/usr/bin/chromium[m
+[1mdiff --git a/proof/docker/home-seed/config.yml b/proof/docker/home-seed/config.yml[m
+[1mnew file mode 100644[m
+[1mindex 000000000..52c22d89e[m
+[1m--- /dev/null[m
+[1m+++ b/proof/docker/home-seed/config.yml[m
+[36m@@ -0,0 +1,7 @@[m
+[32m+[m[32m# Machine-wide config for the recording container only. The operator's own[m
+[32m+[m[32m# ~/.veyyon is not mounted here; this file exists so a tape does not spend its[m
+[32m+[m[32m# first fifteen seconds in the setup wizard, and so every capture is taken[m
+[32m+[m[32m# against one known theme and one known model.[m
+[32m+[m[32monboardingVersion: 99[m
+[32m+[m[32mtheme: titanium[m
+[32m+[m[32mmodel: local/qwen2.5-1.5b[m
+[1mdiff --git a/proof/docker/home-seed/profiles/default/agent/models.yml b/proof/docker/home-seed/profiles/default/agent/models.yml[m
+[1mnew file mode 100644[m
+[1mindex 000000000..bbb5408a2[m
+[1m--- /dev/null[m
+[1m+++ b/proof/docker/home-seed/profiles/default/agent/models.yml[m
+[36m@@ -0,0 +1,10 @@[m
+[32m+[m[32mproviders:[m
+[32m+[m[32m  local:[m
+[32m+[m[32m    baseUrl: http://veyyon-proof-llm:8080/v1[m
+[32m+[m[32m    api: openai-completions[m
+[32m+[m[32m    apiKey: LOCAL_LLM_KEY[m
+[32m+[m[32m    models:[m
+[32m+[m[32m      - id: qwen2.5-1.5b[m
+[32m+[m[32m        name: Qwen2.5 1.5B (local)[m
+[32m+[m[32m        contextWindow: 32768[m
+[32m+[m[32m        maxTokens: 1024[m
+[1mdiff --git a/proof/docker/record-before.sh b/proof/docker/record-before.sh[m
+[1mnew file mode 100755[m
+[1mindex 000000000..7d78ae930[m
+[1m--- /dev/null[m
+[1m+++ b/proof/docker/record-before.sh[m
+[36m@@ -0,0 +1,73 @@[m
+[32m+[m[32m#!/usr/bin/env bash[m
+[32m+[m[32m# Record tapes against the code that is on `main`, without moving the branch.[m
+[32m+[m[32m#[m
+[32m+[m[32m#   proof/docker/record-before.sh <tape> [<tape>...][m
+[32m+[m[32m#[m
+[32m+[m[32m# Every source file the branch changed is held at its `main` content for the[m
+[32m+[m[32m# length of the run, restored from an in-memory copy afterwards, and the restore[m
+[32m+[m[32m# proved by comparing sha256 before and after. Files the branch DELETED are[m
+[32m+[m[32m# written back for the run and removed again. No git mutation command is used:[m
+[32m+[m[32m# `git show` only reads, and the working tree ends byte-identical.[m
+[32m+[m[32mset -euo pipefail[m
+[32m+[m
+[32m+[m[32mREPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"[m
+[32m+[m[32mcd "${REPO_ROOT}"[m
+[32m+[m
+[32m+[m[32mpython3 - "$@" <<'PY'[m
+[32m+[m[32mimport hashlib, os, subprocess, sys[m
+[32m+[m
+[32m+[m[32mtapes = sys.argv[1:][m
+[32m+[m[32mif not tapes:[m
+[32m+[m[32m    raise SystemExit("usage: record-before.sh <tape> [<tape>...]")[m
+[32m+[m
+[32m+[m[32mchanged = subprocess.run([m
+[32m+[m[32m    ["git", "diff", "--name-status", "main..HEAD", "--", "packages/*/src/*"],[m
+[32m+[m[32m    capture_output=True, text=True, check=True,[m
+[32m+[m[32m).stdout.split("\n")[m
+[32m+[m
+[32m+[m[32mheld, deleted_by_branch = [], [][m
+[32m+[m[32mfor line in changed:[m
+[32m+[m[32m    if not line.strip():[m
+[32m+[m[32m        continue[m
+[32m+[m[32m    status, path = line.split("\t")[0], line.split("\t")[-1][m
+[32m+[m[32m    if status.startswith("D"):[m
+[32m+[m[32m        deleted_by_branch.append(path)[m
+[32m+[m[32m    elif status.startswith("M") or status.startswith("R"):[m
+[32m+[m[32m        held.append(path)[m
+[32m+[m[32m    # "A" is a file main never had; leaving it in place is harmless because[m
+[32m+[m[32m    # nothing in main's own source imports it.[m
+[32m+[m
+[32m+[m[32mdef sha(path):[m
+[32m+[m[32m    with open(path, "rb") as fh:[m
+[32m+[m[32m        return hashlib.sha256(fh.read()).hexdigest()[m
+[32m+[m
+[32m+[m[32mkept = {p: open(p, "rb").read() for p in held}[m
+[32m+[m[32mshas = {p: sha(p) for p in held}[m
+[32m+[m[32mfor p in deleted_by_branch:[m
+[32m+[m[32m    if os.path.exists(p):[m
+[32m+[m[32m        raise SystemExit("file the branch deleted is present again: " + p)[m
+[32m+[m
+[32m+[m[32mprint(f"holding {len(held)} modified files at main, restoring {len(deleted_by_branch)} deleted ones")[m
+[32m+[m
+[32m+[m[32mtry:[m
+[32m+[m[32m    for p in held + deleted_by_branch:[m
+[32m+[m[32m        old = subprocess.run(["git", "show", "main:" + p], capture_output=True)[m
+[32m+[m[32m        if old.returncode != 0:[m
+[32m+[m[32m            raise SystemExit("no main copy of " + p)[m
+[32m+[m[32m        with open(p, "wb") as fh:[m
+[32m+[m[32m            fh.write(old.stdout)[m
+[32m+[m[32m    for tape in tapes:[m
+[32m+[m[32m        print("recording", tape, flush=True)[m
+[32m+[m[32m        subprocess.run(["proof/docker/record.sh", tape], check=True)[m
+[32m+[m[32mfinally:[m
+[32m+[m[32m    for p, content in kept.items():[m
+[32m+[m[32m        with open(p, "wb") as fh:[m
+[32m+[m[32m            fh.write(content)[m
+[32m+[m[32m    for p in deleted_by_branch:[m
+[32m+[m[32m        if os.path.exists(p):[m
+[32m+[m[32m            os.remove(p)[m
+[32m+[m[32m    ok = all(sha(p) == shas[p] for p in held) and not any(os.path.exists(p) for p in deleted_by_branch)[m
+[32m+[m[32m    print("restored:", ok)[m
+[32m+[m[32m    if not ok:[m
+[32m+[m[32m        sys.exit(1)[m
+[32m+[m[32mPY[m
+[1mdiff --git a/proof/docker/record.sh b/proof/docker/record.sh[m
+[1mnew file mode 100755[m
+[1mindex 000000000..0712b2dcb[m
+[1m--- /dev/null[m
+[1m+++ b/proof/docker/record.sh[m
+[36m@@ -0,0 +1,38 @@[m
+[32m+[m[32m#!/usr/bin/env bash[m
+[32m+[m[32m# Record one tape inside the recording container.[m
+[32m+[m[32m#[m
+[32m+[m[32m#   proof/docker/record.sh proof/tapes/real/<name>.tape[m
+[32m+[m[32m#[m
+[32m+[m[32m# The container sees the repo at /repo, writes captures to /out[m
+[32m+[m[32m# (proof/captures/real on this machine), and runs against the local llama.cpp[m
+[32m+[m[32m# server on the proof network. HOME is a tmpfs seeded from proof/docker/home-seed,[m
+[32m+[m[32m# so the operator's ~/.veyyon is never read and never written.[m
+[32m+[m[32mset -euo pipefail[m
+[32m+[m
+[32m+[m[32mREPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"[m
+[32m+[m[32mTAPE="${1:?usage: record.sh <tape>}"[m
+[32m+[m[32mOUT="${REPO_ROOT}/proof/captures/real"[m
+[32m+[m[32mmkdir -p "${OUT}"[m
+[32m+[m
+[32m+[m[32mdocker run --rm \[m
+[32m+[m	[32m--network "${PROOF_NETWORK:-veyyon-proof}" \[m
+[32m+[m	[32m--mount "type=bind,src=${REPO_ROOT},dst=/repo" \[m
+[32m+[m	[32m--mount "type=bind,src=${REPO_ROOT}/proof/docker/home-seed,dst=/seed,readonly" \[m
+[32m+[m	[32m--mount "type=bind,src=${OUT},dst=/out" \[m
+[32m+[m	[32m--tmpfs /sandbox/home:exec,size=1g \[m
+[32m+[m	[32m--tmpfs /tmp:exec,size=1g \[m
+[32m+[m	[32m-e HOME=/sandbox/home \[m
+[32m+[m	[32m-e TERM=xterm-256color \[m
+[32m+[m	[32m-e COLORTERM=truecolor \[m
+[32m+[m	[32m-e LOCAL_LLM_KEY=none \[m
+[32m+[m	[32m-w /repo \[m
+[32m+[m	[32m"${RECORDER_IMAGE:-veyyon-proof-recorder:1}" \[m
+[32m+[m	[32mbash -lc '[m
+[32m+[m		[32mset -e[m
+[32m+[m		[32mmkdir -p /sandbox/home/.veyyon[m
+[32m+[m		[32mcp -r /seed/. /sandbox/home/.veyyon/[m
+[32m+[m		[32mmkdir -p /sandbox/home/demo/src[m
+[32m+[m		[32mprintf "export function parse(s) {\n\tif (!s) throw new Error(\"empty focus string\");\n\treturn s.trim();\n}\n" > /sandbox/home/demo/src/parser.ts[m
+[32m+[m		[32mprintf "# demo\n\nA tiny project the recording drives.\n" > /sandbox/home/demo/README.md[m
+[32m+[m		[32mexec vhs "/repo/'"${TAPE}"'"[m
+[32m+[m	[32m'[m
+[1mdiff --git a/proof/docker/run-recorder.sh b/proof/docker/run-recorder.sh[m
+[1mnew file mode 100755[m
+[1mindex 000000000..d1038a406[m
+[1m--- /dev/null[m
+[1m+++ b/proof/docker/run-recorder.sh[m
+[36m@@ -0,0 +1,29 @@[m
+[32m+[m[32m#!/usr/bin/env bash[m
+[32m+[m[32m# Run a command inside the recording container.[m
+[32m+[m[32m#[m
+[32m+[m[32m#   proof/docker/run-recorder.sh <command...>[m
+[32m+[m[32m#[m
+[32m+[m[32m# The container carries the repo at /repo and NOTHING else from this machine:[m
+[32m+[m[32m# HOME is a tmpfs at /sandbox/home, seeded with a models.yml that points at the[m
+[32m+[m[32m# local llama.cpp server on the proof network. The operator's ~/.veyyon is not in[m
+[32m+[m[32m# the container's mount table at any path.[m
+[32m+[m[32mset -euo pipefail[m
+[32m+[m
+[32m+[m[32mREPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"[m
+[32m+[m[32mIMAGE="${RECORDER_IMAGE:-veyyon-proof-recorder:1}"[m
+[32m+[m[32mNETWORK="${PROOF_NETWORK:-veyyon-proof}"[m
+[32m+[m[32mSEED="${REPO_ROOT}/proof/docker/home-seed"[m
+[32m+[m
+[32m+[m[32mdocker run --rm -i \[m
+[32m+[m	[32m--network "${NETWORK}" \[m
+[32m+[m	[32m--mount "type=bind,src=${REPO_ROOT},dst=/repo" \[m
+[32m+[m	[32m--mount "type=bind,src=${SEED},dst=/seed,readonly" \[m
+[32m+[m	[32m--tmpfs /sandbox/home:exec,size=512m \[m
+[32m+[m	[32m--tmpfs /tmp:exec,size=512m \[m
+[32m+[m	[32m-e HOME=/sandbox/home \[m
+[32m+[m	[32m-e TERM=xterm-256color \[m
+[32m+[m	[32m-e COLORTERM=truecolor \[m
+[32m+[m	[32m-e VEYYON_PROOF=1 \[m
+[32m+[m	[32m-w /repo \[m
+[32m+[m	[32m"${IMAGE}" \[m
+[32m+[m	[32mbash -lc 'mkdir -p /sandbox/home/.veyyon/profiles/default/agent && cp -r /seed/. /sandbox/home/.veyyon/ && exec "$@"' _ "$@"[m
+[1mdiff --git a/proof/tapes/real/mcp.tape b/proof/tapes/real/mcp.tape[m
+[1mnew file mode 100644[m
+[1mindex 000000000..4bbf135de[m
+[1m--- /dev/null[m
+[1m+++ b/proof/tapes/real/mcp.tape[m
+[36m@@ -0,0 +1,25 @@[m
+[32m+[m[32m# The MCP add-server wizard, a ModalShell card in the real binary.[m
+[32m+[m[32mOutput "/out/mcp.gif"[m
+[32m+[m[32mSet Shell "bash"[m
+[32m+[m[32mSet FontFamily "JetBrains Mono"[m
+[32m+[m[32mSet FontSize 15[m
+[32m+[m[32mSet Width 1500[m
+[32m+[m[32mSet Height 900[m
+[32m+[m[32mSet Padding 14[m
+[32m+[m[32mSet Framerate 24[m
+[32m+[m[32mSet Theme { "background": "#1e2127", "foreground": "#d7dae0" }[m
+[32m+[m
+[32m+[m[32mHide[m
+[32m+[m[32mType "cd /sandbox/home/demo && export LOCAL_LLM_KEY=none"[m
+[32m+[m[32mEnter[m
+[32m+[m[32mType "bun /repo/packages/coding-agent/src/cli.ts --model local/qwen2.5-1.5b"[m
+[32m+[m[32mEnter[m
+[32m+[m[32mSleep 20s[m
+[32m+[m[32mShow[m
+[32m+[m[32mSleep 1s[m
+[32m+[m[32mType "/mcp add"[m
+[32m+[m[32mSleep 800ms[m
+[32m+[m[32mEnter[m
+[32m+[m[32mSleep 4s[m
+[32m+[m[32mScreenshot "/out/overlay-mcp.png"[m
+[32m+[m[32mSleep 1s[m
+[1mdiff --git a/proof/tapes/real/overlays.tape b/proof/tapes/real/overlays.tape[m
+[1mnew file mode 100644[m
+[1mindex 000000000..2456bb183[m
+[1m--- /dev/null[m
+[1m+++ b/proof/tapes/real/overlays.tape[m
+[36m@@ -0,0 +1,44 @@[m
+[32m+[m[32m# Three converted overlays in one run: the session tree, the MCP add wizard and[m
+[32m+[m[32m# the pause screen. Real binary, real terminal, no model turn needed — these are[m
+[32m+[m[32m# chrome, and chrome is what the branch changed.[m
+[32m+[m[32mOutput "/out/overlays.gif"[m
+[32m+[m[32mSet Shell "bash"[m
+[32m+[m[32mSet FontFamily "JetBrains Mono"[m
+[32m+[m[32mSet FontSize 15[m
+[32m+[m[32mSet Width 1500[m
+[32m+[m[32mSet Height 900[m
+[32m+[m[32mSet Padding 14[m
+[32m+[m[32mSet Framerate 24[m
+[32m+[m[32mSet Theme { "background": "#1e2127", "foreground": "#d7dae0" }[m
+[32m+[m
+[32m+[m[32mHide[m
+[32m+[m[32mType "cd /sandbox/home/demo && export LOCAL_LLM_KEY=none"[m
+[32m+[m[32mEnter[m
+[32m+[m[32mType "bun /repo/packages/coding-agent/src/cli.ts --model local/qwen2.5-1.5b"[m
+[32m+[m[32mEnter[m
+[32m+[m[32mSleep 18s[m
+[32m+[m[32mShow[m
+[32m+[m[32mSleep 1s[m
+[32m+[m
+[32m+[m[32mType "/mcp add"[m
+[32m+[m[32mSleep 500ms[m
+[32m+[m[32mEnter[m
+[32m+[m[32mSleep 3s[m
+[32m+[m[32mScreenshot "/out/overlay-mcp.png"[m
+[32m+[m[32mEscape[m
+[32m+[m[32mSleep 2s[m
+[32m+[m
+[32m+[m[32mType "/tree"[m
+[32m+[m[32mSleep 500ms[m
+[32m+[m[32mEnter[m
+[32m+[m[32mSleep 3s[m
+[32m+[m[32mScreenshot "/out/overlay-tree.png"[m
+[32m+[m[32mEscape[m
+[32m+[m[32mSleep 2s[m
+[32m+[m
+[32m+[m[32mType "/pause"[m
+[32m+[m[32mSleep 500ms[m
+[32m+[m[32mEnter[m
+[32m+[m[32mSleep 3s[m
+[32m+[m[32mScreenshot "/out/overlay-pause.png"[m
+[32m+[m[32mSleep 2s[m
+[1mdiff --git a/proof/tapes/real/pause.tape b/proof/tapes/real/pause.tape[m
+[1mnew file mode 100644[m
+[1mindex 000000000..eea371058[m
+[1m--- /dev/null[m
+[1m+++ b/proof/tapes/real/pause.tape[m
+[36m@@ -0,0 +1,25 @@[m
+[32m+[m[32m# The /pause screen, which a click now resumes.[m
+[32m+[m[32mOutput "/out/pause.gif"[m
+[32m+[m[32mSet Shell "bash"[m
+[32m+[m[32mSet FontFamily "JetBrains Mono"[m
+[32m+[m[32mSet FontSize 15[m
+[32m+[m[32mSet Width 1500[m
+[32m+[m[32mSet Height 900[m
+[32m+[m[32mSet Padding 14[m
+[32m+[m[32mSet Framerate 24[m
+[32m+[m[32mSet Theme { "background": "#1e2127", "foreground": "#d7dae0" }[m
+[32m+[m
+[32m+[m[32mHide[m
+[32m+[m[32mType "cd /sandbox/home/demo && export LOCAL_LLM_KEY=none"[m
+[32m+[m[32mEnter[m
+[32m+[m[32mType "bun /repo/packages/coding-agent/src/cli.ts --model local/qwen2.5-1.5b"[m
+[32m+[m[32mEnter[m
+[32m+[m[32mSleep 20s[m
+[32m+[m[32mShow[m
+[32m+[m[32mSleep 1s[m
+[32m+[m[32mType "/pause"[m
+[32m+[m[32mSleep 800ms[m
+[32m+[m[32mEnter[m
+[32m+[m[32mSleep 4s[m
+[32m+[m[32mScreenshot "/out/overlay-pause.png"[m
+[32m+[m[32mSleep 1s[m
+[1mdiff --git a/proof/tapes/real/settings-subagents.tape b/proof/tapes/real/settings-subagents.tape[m
+[1mnew file mode 100644[m
+[1mindex 000000000..119395147[m
+[1m--- /dev/null[m
+[1m+++ b/proof/tapes/real/settings-subagents.tape[m
+[36m@@ -0,0 +1,31 @@[m
+[32m+[m[32m# The Subagents settings tab, in a real terminal, in the real binary.[m
+[32m+[m[32mOutput "/out/settings-subagents.gif"[m
+[32m+[m[32mSet Shell "bash"[m
+[32m+[m[32mSet FontFamily "JetBrains Mono"[m
+[32m+[m[32mSet FontSize 15[m
+[32m+[m[32mSet Width 1500[m
+[32m+[m[32mSet Height 900[m
+[32m+[m[32mSet Padding 14[m
+[32m+[m[32mSet Framerate 24[m
+[32m+[m[32mSet Theme { "background": "#1e2127", "foreground": "#d7dae0" }[m
+[32m+[m
+[32m+[m[32mHide[m
+[32m+[m[32mType "cd /sandbox/home/demo && export LOCAL_LLM_KEY=none"[m
+[32m+[m[32mEnter[m
+[32m+[m[32mType "bun /repo/packages/coding-agent/src/cli.ts --model local/qwen2.5-1.5b"[m
+[32m+[m[32mEnter[m
+[32m+[m[32mSleep 18s[m
+[32m+[m[32mType "/settings"[m
+[32m+[m[32mSleep 1s[m
+[32m+[m[32mEnter[m
+[32m+[m[32mSleep 3s[m
+[32m+[m[32mShow[m
+[32m+[m[32m# Left focuses the category sidebar, then walk down to Subagents and enter the pane.[m
+[32m+[m[32mLeft[m
+[32m+[m[32mSleep 500ms[m
+[32m+[m[32mDown@220ms 11[m

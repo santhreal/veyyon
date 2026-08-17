@@ -1,0 +1,40 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/agent/test/a-chatgpt-oauth-session-compacts-on-the-codex-backend.test.ts:
+(pass) a ChatGPT OAuth session compacts on the codex backend > the bundled codex row declares the capability and resolves the transport [38.21ms]
+(pass) a ChatGPT OAuth session compacts on the codex backend > posts the span to the codex compact route with the ChatGPT credential and identity [4.48ms]
+(pass) a ChatGPT OAuth session compacts on the codex backend > the body carries the span, the instructions, and the codex turn metadata [0.45ms]
+(pass) a ChatGPT OAuth session compacts on the codex backend > a lite codex row moves the instructions into a developer item, as a turn does [0.84ms]
+(pass) a ChatGPT OAuth session compacts on the codex backend > opening codex does not open every Responses host [0.17ms]
+
+packages/agent/test/compaction-remote.test.ts:
+(pass) server-side compaction transport resolution is capability data > an official OpenAI Responses model resolves a transport [0.07ms]
+(pass) server-side compaction transport resolution is capability data > a non-Responses api does not: gating is api plus capability data, not a provider-name check [0.02ms]
+(pass) server-side compaction transport resolution is capability data > a codex model resolves a transport [0.02ms]
+(pass) server-side compaction transport resolution is capability data > an Azure Responses model resolves a transport [0.01ms]
+(pass) compactWithProvider > posts the span to /responses/compact exactly per the documented shape [3.10ms]
+(pass) compactWithProvider > stores the provider window verbatim and bills no second model to paraphrase it [0.27ms]
+(pass) compactWithProvider > carries the structural fields the preparation owns [0.11ms]
+(pass) compactWithProvider > forwards the operator's compaction instructions to the provider [0.09ms]
+(pass) compactWithProvider > the stored window rebuilds to a provider payload for replay [0.13ms]
+(pass) compactWithProvider > chains the previous remote window ahead of the new span [0.75ms]
+(pass) compactWithProvider > the fresh window replaces the previous one instead of accumulating [0.12ms]
+(pass) compactWithProvider > a window with no compaction item is rejected, so nothing is stored or replayed [0.23ms]
+(pass) a stored window chains only onto the host that minted it > a window minted by a different provider is dropped, and its span travels as messages [0.17ms]
+(pass) a stored window chains only onto the host that minted it > a window minted by a different api on the same provider is dropped [0.10ms]
+(pass) a stored window chains only onto the host that minted it > a window minted by this same provider and api is chained ahead of its span alone [0.08ms]
+(pass) the local path never carries a stale remote window forward > compact() strips the remote key but keeps unrelated preserve data [2.69ms]
+(pass) entry payload validation > malformed payloads degrade to no payload, never to a bad replay [0.03ms]
+
+packages/catalog/test/server-compaction-capability.test.ts:
+(pass) supportsServerCompaction capability data > the official OpenAI endpoint supports it, including an unset baseUrl [0.14ms]
+(pass) supportsServerCompaction capability data > Azure OpenAI supports it, keyed on the provider id (baseUrl is per-resource) [0.01ms]
+(pass) supportsServerCompaction capability data > an openai row repointed at a proxy does not inherit support [0.01ms]
+(pass) supportsServerCompaction capability data > the ChatGPT Codex backend supports it, including an unset baseUrl [0.02ms]
+(pass) supportsServerCompaction capability data > routers and unrelated hosts stay off [0.01ms]
+(pass) supportsServerCompaction capability data > a compatible gateway opts in with a sparse compat override alone [0.05ms]
+
+ 28 pass
+ 0 fail
+ 81 expect() calls
+Ran 28 tests across 3 files. [399.00ms]

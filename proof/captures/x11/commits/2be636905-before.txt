@@ -1,0 +1,40 @@
+(fail) a scrolled viewport travels through the rows between > does not travel a thumb a pre-windowed caller cannot follow [0.07ms]
+354 | 			invalidate: view => view.invalidate(),
+355 | 			contentWidth: view => view.contentWidth(20),
+356 | 			render: view => view.render(20),
+357 | 		};
+358 | 		const methods = Object.getOwnPropertyNames(ScrollView.prototype).filter(name => name !== "constructor");
+359 | 		expect(Object.keys(PROBES).sort()).toEqual(methods.sort());
+                                           ^
+error: expect(received).toEqual(expected)
+
+  [
+    "contentWidth",
++   "disposeScrollMotion",
+    "getMaxScrollOffset",
+    "getScrollOffset",
+    "handleScrollKey",
+    "invalidate",
+    "page",
+    "render",
+    "scroll",
+    "scrollToBottom",
+    "scrollToTop",
+    "setHeight",
+    "setLines",
++   "setScrollMotion",
+    "setScrollOffset",
+    "setScrollbar",
+    "setTotalRows",
+  ]
+
+- Expected  - 0
++ Received  + 2
+
+      at <anonymous> (/repo/packages/tui/test/a-scrolled-viewport-travels-through-the-rows-between.test.ts:359:38)
+(fail) a scrolled viewport travels through the rows between > classifies every method that can move the viewport [0.17ms]
+
+ 0 pass
+ 11 fail
+ 1 expect() calls
+Ran 11 tests across 1 file. [99.00ms]

@@ -1,0 +1,30 @@
+bun test v1.3.14 (0d9b296a)
+
+packages/tui/test/a-click-in-the-composer-places-the-caret.test.ts:
+(pass) a click on the composer text > puts the caret on the character under the pointer [7.06ms]
+(pass) a click on the composer text > lands at the end of the row when the click is past the last character [0.13ms]
+(pass) a click on the composer text > subtracts the prompt gutter, so the same column means a different character without one [0.09ms]
+(pass) a click on the composer text > resolves the second logical line of a multiline draft [0.19ms]
+(pass) a click on the composer text > maps a click on the continuation row of a wrapped line back into that line [0.36ms]
+(pass) a click on the composer text > counts through the scroll offset when the draft is taller than the box [0.14ms]
+(pass) a click on the composer text > skips the top rule and the left border in the framed variant [0.05ms]
+(pass) a click on the composer text > ignores a press on a row the text does not occupy [0.12ms]
+(pass) a click on the composer text > ignores a press on a line that exists but this paint did not show [0.08ms]
+(pass) a click on the composer text > ignores motion, release, and wheel reports [0.05ms]
+(pass) a click on the composer text > dismisses an open suggestion popup when the click lands on the text instead [123.09ms]
+(pass) a click on the composer text > through the production route > moves the caret from a terminal byte, through the engine and the container [86.50ms]
+
+packages/tui/test/a-click-on-a-suggestion-accepts-the-completion.test.ts:
+(pass) a click on a composer suggestion > accepts the row under the pointer, not the highlighted one [253.17ms]
+(pass) a click on a composer suggestion > subtracts the rows of the container children above the editor [250.44ms]
+(pass) a click on a composer suggestion > accepts through the same path as Tab [503.72ms]
+(pass) a click on a composer suggestion > places the caret and dismisses the popup when the click lands on the input row [248.02ms]
+(pass) a click on a composer suggestion > ignores a press on a row past the last suggestion [209.83ms]
+(pass) a click on a composer suggestion > accepts on a press and on nothing else [210.50ms]
+(pass) a click on a composer suggestion > cancels without rewriting the buffer when the popup is stale [211.15ms]
+(pass) a click on a composer suggestion > closes the popup when the accepted item opens no second popup [247.78ms]
+
+ 20 pass
+ 0 fail
+ 53 expect() calls
+Ran 20 tests across 2 files. [2.48s]

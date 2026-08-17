@@ -1,0 +1,40 @@
+
+- Expected  - 1
++ Received  + 1
+
+      at assertOnTheRail (/repo/packages/coding-agent/test/modes/components/a-transcript-block-sits-on-the-rail.test.ts:54:58)
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/a-transcript-block-sits-on-the-rail.test.ts:121:4)
+(fail) a transcript block sits on the rail > paints every /omfg state at the rail, with no rule [1.12ms]
+123 | 		}
+124 | 	});
+125 | 
+126 | 	it("opens each block with the command that made it", () => {
+127 | 		const btw = new BtwPanelComponent({ question: "what is a focus string?", tui: stubUi() });
+128 | 		expect(paintedRows(btw)[0]?.trimEnd()).toBe(`${" ".repeat(COMPOSER_INSET_COLS)}/btw what is a focus string?`);
+                                               ^
+error: expect(received).toBe(expected)
+
+Expected: "  /btw what is a focus string?"
+Received: "────────────────────────────────────────────────────────────────────────────────────────────────────"
+
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/a-transcript-block-sits-on-the-rail.test.ts:128:42)
+(fail) a transcript block sits on the rail > opens each block with the command that made it [0.24ms]
+136 | 	it("keeps the hint row last, so the block ends on what to press", () => {
+137 | 		const panel = new BtwPanelComponent({ question: "what is a focus string?", tui: stubUi() });
+138 | 		panel.setAnswer("An answer.");
+139 | 		panel.markComplete();
+140 | 		const rows = paintedRows(panel).filter(row => row.trim() !== "");
+141 | 		expect(rows.at(-1)?.trimEnd()).toBe(`${" ".repeat(COMPOSER_INSET_COLS)}c copy · b branch to chat · Esc dismiss`);
+                                       ^
+error: expect(received).toBe(expected)
+
+Expected: "  c copy · b branch to chat · Esc dismiss"
+Received: "────────────────────────────────────────────────────────────────────────────────────────────────────"
+
+      at <anonymous> (/repo/packages/coding-agent/test/modes/components/a-transcript-block-sits-on-the-rail.test.ts:141:34)
+(fail) a transcript block sits on the rail > keeps the hint row last, so the block ends on what to press [0.37ms]
+
+ 0 pass
+ 4 fail
+ 4 expect() calls
+Ran 4 tests across 1 file. [275.00ms]
