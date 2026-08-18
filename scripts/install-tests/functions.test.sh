@@ -2048,6 +2048,30 @@ check "and the interrupted install is refused again once it is gone" \
   fi
   chmod 644 "$_unr/$BIN_NAME" )
 
+# The other half of repairability: uninstall. A machine left in the reported state
+# has a binary described only by the pending record, and if uninstall does not read
+# that record it says "left ... alone (not created by this installer)" over the
+# installer's own ~150MB file — the same dead end the install refusal was, reached
+# from the other direction. Both sidecars go with the binary; a pending record
+# outliving the file it names would be armed for whatever takes the name next.
+( _pu="$SANDBOX/uninstall-pending"
+  mkdir -p "$_pu/bin"
+  printf 'the binary an interrupted install placed\n' > "$_pu/bin/$BIN_NAME"
+  printf '%s\nfile sha256:%s\n' "veyyon-installer-v2" \
+    "0000000000000000000000000000000000000000000000000000000000000000" \
+    > "$_pu/bin/.$BIN_NAME.veyyon-owner"
+  mark_artifact_ownership_pending "$_pu/bin/$BIN_NAME" "$(artifact_identity "$_pu/bin/$BIN_NAME")"
+  out=$( (HOME="$_pu"; VEYYON_INSTALL_DIR="$_pu/bin"; do_uninstall) 2>&1 ); status=$?
+  check "uninstall exits 0 over a binary only the pending record accounts for" "$status" "0"
+  check "and it reclaims that binary rather than leaving it behind" \
+    "$( [ -e "$_pu/bin/$BIN_NAME" ] && echo present || echo gone )" "gone"
+  check "it does not call the installer's own file foreign" \
+    "$(printf '%s' "$out" | grep -c 'not created by this installer')" "0"
+  check "the pending record goes with the file it named" \
+    "$( [ -e "$_pu/bin/.$BIN_NAME.veyyon-owner.pending" ] && echo present || echo absent )" "absent"
+  check "and so does the durable one" \
+    "$( [ -e "$_pu/bin/.$BIN_NAME.veyyon-owner" ] && echo present || echo absent )" "absent" )
+
 # --- install_local: the --local path gets the same cleanup and honesty as --binary ---
 # install_binary traps EXIT/INT/TERM to remove its staging file; install_local
 # had no trap at all, so an interrupted or failed local install left a
