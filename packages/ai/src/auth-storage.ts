@@ -1518,12 +1518,12 @@ export class AuthStorage {
 	/**
 	 * Credential ids whose grant this process watched fail authentication, as opposed to run out of
 	 * quota. Deliberately in memory and deliberately not persisted: the mark exists to stop an
-	 * operator's choice from pinning traffic to an account that cannot authenticate at all, and after
+	 * explicit choice from pinning traffic to an account that cannot authenticate at all, and after
 	 * a restart that account deserves exactly one more attempt — the provider re-marks it in a single
-	 * request if the grant really is gone, and a re-login or an operator lifting the hold retires it.
+	 * request if the grant really is gone, and a re-login or a lifted hold retires it.
 	 *
 	 * A quota hold is never recorded here. That distinction is the whole point: a hold is our own
-	 * prediction about a window and must never displace the account the operator chose, while a dead
+	 * prediction about a window and must never displace an explicitly chosen account, while a dead
 	 * grant is the provider's verdict and has to move the request or the session cannot proceed.
 	 */
 	#authDeadCredentials: Set<number> = new Set();
@@ -2492,11 +2492,11 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Index of the account the operator explicitly chose for this provider, when it is of `type`.
+	 * Index of the account explicitly chosen for this provider, when it is of `type`.
 	 *
 	 * A session pin outranks the global selection: it is the more recent statement of the same kind
 	 * of thing. Both outrank everything automatic, whatever `accounts.loadBalancing` says — the
-	 * setting governs what the product does on its own initiative, never what the operator is
+	 * setting governs what the product does on its own initiative, never what a caller is
 	 * allowed to ask for. Sticky routing is deliberately NOT a choice: it records which account
 	 * happened to serve last, which is the product's doing and not a statement by anybody.
 	 *
@@ -2612,7 +2612,7 @@ export class AuthStorage {
 				pin.index,
 			);
 			if (blockedUntil !== undefined) routing.selectedBlockedUntilMs = blockedUntil;
-			// A hold no longer moves traffic off the account the operator chose, so a held pin IS what
+			// A hold no longer moves traffic off an explicitly chosen account, so a held pin IS what
 			// serves next and says so as an observation, with its deadline alongside. The one exception
 			// is a pin whose grant failed authentication: `#explicitChoiceIndex` drops that one, because
 			// the provider has already refused it, and the cascade below reports the substitute as the
@@ -2680,15 +2680,10 @@ export class AuthStorage {
 				: ((((this.#providerRoundRobinIndex.get(providerKey) ?? -1) + 1) % candidates.length) + candidates.length) %
 					candidates.length;
 			const rotated = candidates.map((_, offset) => candidates[(start + offset) % candidates.length]!);
-			// The prediction must name the same account the resolve would pick, so it reads the
-			// operator's choice through the same exemption: a chosen account on hold still serves next.
-			const ordered = this.#orderByBlockAvailability(
-				provider,
-				providerKey,
-				rotated,
-				undefined,
-				this.#explicitChoiceIndex(provider, sessionId, type),
-			);
+			// No choice promotion here, and none is missing: `sessionCredentialRouting` answers with the
+			// explicit choice (pin, else provider selection) and returns before it ever asks for a
+			// prediction, so every path that reaches this line has no live choice to promote.
+			const ordered = this.#orderByBlockAvailability(provider, providerKey, rotated);
 			const chosen = ordered[0];
 			if (chosen) return chosen.entry.id;
 		}
@@ -2762,11 +2757,12 @@ export class AuthStorage {
 
 		const providerKey = this.#getProviderTypeKey(provider, type);
 		const order = this.#getCredentialOrder(providerKey, sessionId, credentials.length);
-		const ordered = this.#orderByBlockAvailability(
-			provider,
-			providerKey,
-			order.map(idx => credentials[idx]),
-			undefined,
+		const ordered = this.#leadWithChosenAccount(
+			this.#orderByBlockAvailability(
+				provider,
+				providerKey,
+				order.map(idx => credentials[idx]),
+			),
 			this.#explicitChoiceIndex(provider, sessionId, type),
 		);
 		return ordered[0] ?? credentials[order[0]];
@@ -2790,11 +2786,12 @@ export class AuthStorage {
 	 * Unblocked candidates keep their incoming order, so session stickiness and
 	 * round-robin fairness are untouched whenever any account is actually usable.
 	 *
-	 * The account the operator explicitly chose is NOT handled here. Availability ordering has one
-	 * job, deciding among accounts nobody named, and the choice is promoted to the head by the lead
-	 * insert in `#resolveOAuthSelection` (and returned outright by `#selectApiKeyCredential`), which
-	 * runs on every path this ordering feeds. An exemption here as well was a second owner of the
-	 * same rule that no behaviour could distinguish from its absence.
+	 * An explicit choice is NOT handled here. Availability ordering has one job, deciding among
+	 * accounts nobody named, and every path that feeds it promotes the choice afterwards:
+	 * `#leadWithChosenAccount` on the prediction and by-type paths, the lead insert in
+	 * `#resolveOAuthSelection` (which also weighs a session preference and a plan requirement), and
+	 * `#selectApiKeyCredential`, which returns the chosen entry outright. A second exemption inside
+	 * the sort was one more owner of that rule which no behaviour could distinguish from its absence.
 	 */
 	#orderByBlockAvailability<C extends { index: number }>(
 		provider: string,
@@ -2817,6 +2814,23 @@ export class AuthStorage {
 					: left.blockedUntil - right.blockedUntil,
 			)
 			.map(entry => entry.candidate);
+	}
+
+	/**
+	 * Put the explicitly chosen account at the head of an ordered candidate list.
+	 *
+	 * A choice outranks availability: a hold is this library's own prediction of when a provider
+	 * will serve again, and it is not a reason to spend money on an account nobody asked for. So the
+	 * move is unconditional, unlike the session-preference case in `#resolveOAuthSelection`, which
+	 * leads only while it is usable.
+	 */
+	#leadWithChosenAccount<C extends { index: number }>(ordered: C[], chosenIndex: number | undefined): C[] {
+		if (chosenIndex === undefined) return ordered;
+		const at = ordered.findIndex(candidate => candidate.index === chosenIndex);
+		if (at <= 0) return ordered;
+		const [chosen] = ordered.splice(at, 1);
+		if (chosen) ordered.unshift(chosen);
+		return ordered;
 	}
 
 	async #rankApiKeySelections(args: {
@@ -2937,10 +2951,10 @@ export class AuthStorage {
 		const order = this.#getCredentialOrder(providerKey, sessionId, credentials.length);
 		const fallback = credentials[order[0]];
 		const strategy = this.#rankingStrategyResolver?.(provider);
-		// An account the operator chose is not a candidate in a headroom contest, it is the answer.
+		// An explicitly chosen account is not a candidate in a headroom contest, it is the answer.
 		// Ranking exists to choose among accounts nobody named, so it never runs over a live choice —
 		// with account movement on as much as off, since the setting governs the product's own
-		// initiative and not what the operator may ask for.
+		// initiative and not what a caller may ask for.
 		const chosenIndex = this.#explicitChoiceIndex(provider, sessionId, "api_key");
 		const chosen = chosenIndex === undefined ? undefined : credentials.find(entry => entry.index === chosenIndex);
 		if (chosen) return chosen;
@@ -3003,7 +3017,7 @@ export class AuthStorage {
 		this.#store.updateAuthCredential(target.id, credential);
 		// Fresh bytes for this row mean a refresh or a re-login just worked, which retires the
 		// auth-death mark: the grant the mark described is not the grant this row now holds, and the
-		// operator's choice of this account becomes honourable again.
+		// an explicit choice of this account becomes honourable again.
 		this.#authDeadCredentials.delete(target.id);
 		const updated = [...entries];
 		updated[index] = { id: target.id, credential };
@@ -5047,11 +5061,11 @@ export class AuthStorage {
 			// The block above still stands: the window really is exhausted, and recording that is
 			// what lets the account list say when it comes back. What load balancing gates is the
 			// MOVE. With it off the caller waits for this account's own window instead of spending
-			// a sibling the operator did not offer up, so `retryAtMs` is this account's reset —
+			// a sibling that was never offered up, so `retryAtMs` is this account's reset —
 			// never a sibling's, which is exactly the leak the gate exists to prevent.
 			//
-			// Idle siblings make that wait a CHOICE, and the operator cannot revisit a choice
-			// nobody told them about, so the one moment the setting costs something is the one
+			// Idle siblings make that wait a CHOICE, and a choice nobody was told about cannot
+			// be revisited, so the one moment the setting costs something is the one
 			// moment it announces itself. Counted and announced here rather than at the call site
 			// because the block scope and provider type key that decide "blocked" are private to
 			// this class, and because the dedupe key is this window's own end.
@@ -5365,7 +5379,7 @@ export class AuthStorage {
 			sessionPreferredIndex !== undefined &&
 			sessionPreferredCanRefreshOrUse &&
 			!this.#isCredentialBlocked(provider, providerKey, sessionPreferredIndex, blockScope);
-		// The account the operator explicitly chose, which outranks every automatic decision below:
+		// The explicitly chosen account, which outranks every automatic decision below:
 		// ranking may reorder around it, a hold may not displace it, and the strict pass may not skip
 		// it. `sessionPreferredIndex` is not the same thing — it also carries sticky routing, which is
 		// a record of what served last rather than anything anybody asked for.
@@ -5502,9 +5516,9 @@ export class AuthStorage {
 			candidates.some(candidate => getOpenAICodexPlanEligibility(candidate.usage, planRequirement) === true);
 
 		// The strict pass tries a usable account before an exhausted one, which is what makes quota
-		// fallback work. The account the operator chose is exempt from it: a hold is our own prediction
-		// and skipping the chosen account over a prediction is what left an operator with a redeemed
-		// limit reset unable to spend the account they had picked. Every other account still waits for
+		// fallback work. An explicitly chosen account is exempt from it: a hold is our own prediction,
+		// and skipping the chosen account over a prediction is what left a redeemed limit reset
+		// unable to spend the very account it belonged to. Every other account still waits for
 		// the blocked-allowing pass, and a dead grant still falls through to a sibling from either
 		// pass, because auth death is the provider's verdict rather than ours.
 		const passes: Array<{ allowBlocked: boolean; enforcePlanRequirement: boolean }> = [
@@ -6644,10 +6658,10 @@ export class AuthStorage {
 	 * Public because a block is OUR prediction, not a fact the provider is holding us to, and it
 	 * outlives the thing that justified it. Two ways that happens: a saved reset is redeemed (the
 	 * window the block described no longer exists), and the provider lifts a limit by some route
-	 * this process never sees — an operator redeeming a reset on the provider's own site, a plan
+	 * this process never sees — a reset redeemed on the provider's own site, a plan
 	 * change, a support credit. Nothing but time cleared a block in the second case, so an account
 	 * the provider would serve today sat unusable behind a countdown for as long as the stale
-	 * deadline ran, and the operator's own choice of account lost to it.
+	 * deadline ran, and an explicit choice of account lost to it.
 	 *
 	 * The block is keyed by the credential's OWN type. It read `oauth` unconditionally, so a
 	 * blocked API-key row could not be lifted by anything, including the redeem path.
@@ -6658,7 +6672,7 @@ export class AuthStorage {
 		} catch (err) {
 			logger.debug("Failed to clear persisted credential blocks", { err, provider, credentialId });
 		}
-		// The operator lifting a hold is a statement that this account should be tried again, so it
+		// A lifted hold is a statement that this account should be tried again, so it
 		// also retires the auth-death mark: the provider, not a mark this process made, gets to say
 		// whether the grant still works.
 		this.#authDeadCredentials.delete(credentialId);
@@ -6897,7 +6911,7 @@ export class AuthStorage {
 			this.#clearSessionCredential(provider, sessionId);
 		}
 		// Everything from here down is the NON-quota path: the usage-limit case returned above. So the
-		// account failed authentication, and the operator's choice must stop pinning traffic to it —
+		// account failed authentication, and an explicit choice must stop pinning traffic to it —
 		// otherwise a revoked grant would be retried until the turn died instead of failing over.
 		if (target) this.#authDeadCredentials.add(target.id);
 		this.#markCredentialBlocked(
