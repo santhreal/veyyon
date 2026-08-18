@@ -26,6 +26,7 @@ import type {
 import { withAuth } from "@veyyon/ai/auth-retry";
 import { ProviderHttpError } from "@veyyon/ai/error";
 import { createOpenAICodexCompactionRequestContext } from "@veyyon/ai/providers/openai-codex-responses";
+import { detectDegenerateRepetition } from "@veyyon/ai/utils/thinking-loop";
 import { Effort } from "@veyyon/catalog/effort";
 import { preferredDialect } from "@veyyon/catalog/identity";
 import { clampThinkingLevelForModel } from "@veyyon/catalog/model-thinking";
@@ -905,6 +906,21 @@ export async function generateSummary(
 		);
 	}
 
+	// A summary that repeats one sentence until the budget runs out passes the
+	// emptiness check above and still describes nothing. The loop guard on this
+	// very request re-samples a stalled generation three times and then lets it
+	// cook with the guard OFF, handing back the raw degenerate text — right for a
+	// live turn, which is on screen while it happens and can be interrupted, and
+	// wrong for text that REPLACES the span it claims to describe. Fail the same
+	// way an empty one does, so the caller keeps its history.
+	const degeneracy = detectDegenerateRepetition(textContent);
+	if (degeneracy) {
+		throw new Error(
+			`Summarization returned a degenerate summary (${degeneracy}). ` +
+				`The history was NOT compacted. Retry; if it recurs, compact with a different model.`,
+		);
+	}
+
 	return textContent;
 }
 
@@ -1041,6 +1057,20 @@ export async function generateHandoffFromContext(
 	if (document.trim().length === 0) {
 		throw new Error(
 			`Handoff generation returned an empty document (stopReason: ${response.stopReason}). ` +
+				`Retry the handoff, or use the \`summary\` strategy if it keeps recurring.`,
+		);
+	}
+
+	// A document that repeats one sentence until the budget runs out reaches the
+	// same failure by a different road: the `<files>` block still lands on it, the
+	// result is still the size of a real handoff, and the new session opens on a
+	// loop instead of a goal. The floors are the loop guard's own, so a document
+	// the guard would have stopped mid-stream cannot be kept just because the
+	// guard was cooked off on the final attempt.
+	const degeneracy = detectDegenerateRepetition(document);
+	if (degeneracy) {
+		throw new Error(
+			`Handoff generation returned a degenerate document (${degeneracy}). ` +
 				`Retry the handoff, or use the \`summary\` strategy if it keeps recurring.`,
 		);
 	}
@@ -1241,6 +1271,28 @@ export function assertValidCompactionResult(preparation: CompactionPreparation, 
 				claimedRemote
 					? "Compaction failed: the summary is empty and the server-side compaction window stored beside it is malformed, so nothing replaces the discarded history; history was left unchanged."
 					: "Compaction failed: the generated summary is empty and no server-side compaction window was stored, so nothing replaces the discarded history; history was left unchanged.",
+			);
+		}
+	}
+	// A summary that repeats itself is worse than an empty one, and the emptiness
+	// check above cannot see it. Compaction generates through `completeSimple`,
+	// whose thinking-loop guard re-samples a stalled generation three times and
+	// then deliberately lets it cook with the guard OFF, returning the raw
+	// degenerate text (`resolveWithThinkingLoopCook`). That is right for a live
+	// turn, which is on screen while it happens and can be interrupted, and wrong
+	// here: this text REPLACES the span it claims to describe, so the history
+	// that recorded what actually happened is discarded and every later turn
+	// reads the repeat as its own past. Refuse the rewrite instead; the caller
+	// still holds the history and can compact again.
+	for (const [field, text] of [
+		["summary", result.summary],
+		["shortSummary", result.shortSummary],
+	] as const) {
+		if (typeof text !== "string") continue;
+		const degeneracy = detectDegenerateRepetition(text);
+		if (degeneracy) {
+			throw new Error(
+				`Compaction failed: the generated ${field} is degenerate (${degeneracy}), so it describes nothing the discarded history held; history was left unchanged.`,
 			);
 		}
 	}

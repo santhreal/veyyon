@@ -152,6 +152,57 @@ export function isLoopGuardEnabled(options?: StreamOptions): boolean {
 	return options?.loopGuard?.enabled !== false;
 }
 
+/** How the guard names a verbatim repeat. One owner, so the streamed path and the completed-text
+ *  path cannot describe the same shape in two different ways. */
+function describeVerbatimRepeat(unit: string, count: number): string {
+	return `repeated "${unit.trim()}" ${count}× back-to-back`;
+}
+
+/**
+ * Reason `text` is a degenerate sampler run, or null.
+ *
+ * Same predicate {@link ThinkingLoopDetector} applies while streaming — a unit repeated at least
+ * four times with nothing between the repeats, {@link VERBATIM_MIN_REPEATED_CHARS} chars of it, and
+ * a letter or emoji somewhere in the unit — asked of a text that is already complete.
+ *
+ * It needs its own scan rather than a call into the streamed detector, because that one is anchored
+ * to the END of what it has seen: the unit is the last `len` chars, which is exactly right for a
+ * stream that aborts on the first hit and never right for a run buried mid-text behind a tidy
+ * closing paragraph. Re-asking the tail question at every offset would be quadratic (900-char window
+ * × 200 candidate lengths × every position), so the run is found directly: for each unit length,
+ * walk the positions where `text[i]` equals `text[i + len]` and measure how far that agreement
+ * holds. An unbroken agreement of `n` chars means the text is periodic with period `len` across
+ * `n + len` chars, which is `(n + len) / len` back-to-back repeats. The shortest length that clears
+ * the floors wins, so the reported unit is the repeat itself and not a multiple of it.
+ *
+ * Only this verbatim path applies. The segment-similarity and lexical-stall heuristics are
+ * calibrated against reasoning streams, where restating a paragraph is itself the defect; a summary
+ * restates by construction, so those two would reject good summaries.
+ */
+export function detectDegenerateRepetition(text: string): string | null {
+	if (text.length < VERBATIM_MIN_REPEATED_CHARS) return null;
+	for (let len = 2; len <= VERBATIM_MAX_UNIT && text.length >= len * 4; len++) {
+		let runStart = 0;
+		let agreement = 0;
+		for (let i = 0; i + len <= text.length; i++) {
+			if (i + len < text.length && text.charCodeAt(i) === text.charCodeAt(i + len)) {
+				if (agreement === 0) runStart = i;
+				agreement++;
+				continue;
+			}
+			if (agreement > 0) {
+				const count = Math.floor((agreement + len) / len);
+				const unit = text.slice(runStart, runStart + len);
+				if (count >= 4 && count * len >= VERBATIM_MIN_REPEATED_CHARS && VERBATIM_UNIT_CONTENT.test(unit)) {
+					return describeVerbatimRepeat(unit, count);
+				}
+				agreement = 0;
+			}
+		}
+	}
+	return null;
+}
+
 /**
  * Stateful detector fed the streamed thinking deltas. `push` returns a
  * human-readable reason the first time a loop shape is recognized; the caller
@@ -183,10 +234,7 @@ export class ThinkingLoopDetector {
 		this.#tail += delta;
 		if (this.#tail.length > VERBATIM_TAIL_WINDOW) this.#tail = this.#tail.slice(-VERBATIM_TAIL_WINDOW);
 		const verbatim = detectVerbatimRepetition(this.#tail);
-		if (verbatim) {
-			const [unit, times] = verbatim;
-			return `repeated "${unit.trim()}" ${times}× back-to-back`;
-		}
+		if (verbatim) return describeVerbatimRepeat(verbatim[0], verbatim[1]);
 
 		// 2. Near-duplicate paragraph loop. Append, then drain completed segments.
 		this.#pending += delta;
