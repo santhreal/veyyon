@@ -456,16 +456,25 @@ describe("the two usage variants", () => {
 	 * missing from either list is a working command nobody discovers, and a word in a list that the
 	 * parser does not reserve is a word the terminal would store as the start of a credential.
 	 *
-	 * The one asymmetry is `add`, which the terminal spells as the bare value form because the value
-	 * needs no verb there, and which a client with no field can only reach as a verb.
+	 * `add` IS NAMED ON BOTH, and what differs is the operand. The terminal leads with the bare value
+	 * form because the value needs no verb there, and names `add` once more as the escape for a
+	 * credential whose first word is reserved; a client with no field reaches a value only as a verb.
+	 * So the asymmetry worth pinning is `<value>` against `<name>`: the terminal must never advertise
+	 * an inline NAME, which is the spelling that writes a credential into plaintext metadata when the
+	 * two positionals are read the wrong way round.
 	 */
 	it("list every verb on both surfaces, with add spelled per surface", () => {
 		const commandWords = (usage: string) =>
 			[...new Set([...usage.matchAll(/^ {2}\/secret (\w+)/gmu)].map(match => match[1]))].sort();
 
 		const verbs = ["clear", "copy", "discard", "extend", "list", "log", "rename", "rm", "scope", "value"];
-		expect(commandWords(SECRET_COMMAND_USAGE)).toEqual(verbs);
+		expect(commandWords(SECRET_COMMAND_USAGE)).toEqual(["add", ...verbs].sort());
 		expect(commandWords(NONINTERACTIVE_SECRET_COMMAND_USAGE)).toEqual(["add", ...verbs].sort());
+
+		expect(SECRET_COMMAND_USAGE).toContain("  /secret add <value>");
+		expect(SECRET_COMMAND_USAGE).not.toContain("/secret add <name>");
+		expect(NONINTERACTIVE_SECRET_COMMAND_USAGE).toContain("  /secret add <name>");
+		expect(NONINTERACTIVE_SECRET_COMMAND_USAGE).not.toContain("/secret add <value>");
 	});
 
 	/**

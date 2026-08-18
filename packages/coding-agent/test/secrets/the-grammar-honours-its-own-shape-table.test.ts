@@ -190,10 +190,10 @@ describe("a bare word past the count is refused", () => {
 				expect(message).toContain(`/secret ${verb} takes`);
 				expect(message).not.toContain("EXTRA_WORD");
 				// A terminal line one word too long has a second reading: a credential beginning with that
-				// verb. The escape is the only spelling for it, and it is wrong to offer on a surface
-				// where `--` stores nothing.
-				if (surface === "tui") expect(message).toContain("store it with /secret -- <value>.");
-				else expect(message).not.toContain("/secret -- <value>");
+				// verb. The escape is the only spelling for it, and it is wrong to offer on a surface with
+				// no bare-value form to escape into.
+				if (surface === "tui") expect(message).toContain("store it with /secret add <value>.");
+				else expect(message).not.toContain("store it with /secret add <value>.");
 			});
 		}
 	}

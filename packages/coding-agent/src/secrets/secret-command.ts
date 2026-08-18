@@ -12,7 +12,7 @@
  * surfaces disagree about is how a credential is entered, because that is a security property and
  * not a matter of taste. In a terminal the first word decides: a reserved word is a command, and
  * anything else is the credential itself, so stashing a token costs one paste and no verb, while
- * `--` stores a value that happens to begin with a reserved word. A client with no masked field
+ * `add` stores a value that happens to begin with a reserved word. A client with no masked field
  * cannot accept a bare value at all, and reaches one only through `--from-env`.
  *
  * WHY THE TERMINAL FORM DROPPED THE NAME. `/secret add <name> <value>` demanded a label before it
@@ -176,10 +176,17 @@ const USAGE_TUI_FROM_ENV = "/secret --from-env <VAR>              store the valu
 /**
  * The escape for the one input the reserved words cost: a credential whose first word is one.
  *
+ * SPELLED AS THE VERB, not as `--`. A slash command is not a shell command line, and nobody types
+ * `--` into one: the convention it borrowed from means "options are over" to a shell, and here
+ * there were never options to end. `/secret add <value>` already stored such a line verbatim --
+ * `add` hands the rest of the line to the same value reader the bare form uses, reserved first word
+ * and all -- so `--` was a second spelling of a thing the obvious verb did, and the one that had to
+ * be taught. The escape now costs a word the operator would have guessed.
+ *
  * Listed with the entry forms rather than dropped in a footnote, because the operator who needs it
  * is mid-refusal and the refusal points here.
  */
-const USAGE_TUI_ESCAPE = "/secret -- <value>                    store a value starting with a word below";
+const USAGE_TUI_ESCAPE = "/secret add <value>                   store a value starting with a word below";
 const USAGE_ADD_FROM_ENV = "/secret add <name> --from-env <VAR>   store the value of an environment variable";
 
 /**
@@ -363,7 +370,7 @@ const SECRET_COMMAND_OPTIONS: Record<string, true> = Object.fromEntries(
  *
  * WHY RESERVING WORDS IS SAFE. A stored value is arbitrary bytes chosen by an issuer, so nobody's
  * API token is the literal word `list`, and the collision has two escapes: the masked field
- * reached by a bare `/secret` accepts any text at all, and `--` stores the rest of the line
+ * reached by a bare `/secret` accepts any text at all, and `/secret add` stores the rest of the line
  * verbatim. Reserving EVERY verb is what makes that trade safe: a grammar that reserved only some
  * of them would store the string `list` as a credential and switch protection on, and store
  * `rm TOKEN` for `/secret rm TOKEN`, so the two commands an operator reaches for right after
@@ -454,12 +461,23 @@ export const SECRET_TUI_SUBCOMMANDS: readonly { name: SecretSubcommand; usage: s
 		.map(([, subcommand]) => ({ name: subcommand, ...SECRET_TUI_SUBCOMMAND_HELP[subcommand] }));
 
 /**
- * The word that means "everything after me is the credential".
+ * The shell habit this grammar refuses rather than honours.
  *
- * Spelled `--` because that is what it means everywhere else a command line carries both options
- * and data.
+ * `--` used to mean "the rest of the line is the credential". It was removed because a slash
+ * command has no options to end, so the word taught a shell convention to reach a place the verb
+ * `add` already reached.
+ *
+ * IT IS REFUSED, NOT STORED. Dropping the branch alone would have made the value reader below take
+ * `-- sk-live-x` byte for byte, because a bare `--` is not a reserved word: the vault would hold a
+ * credential with `-- ` welded to the front, `#NAME#` would expand to it, and the failure would
+ * surface much later as an authentication error nobody could trace back to a slash command. A
+ * credential is exactly the input whose corruption is invisible until it is spent, so the one
+ * spelling that used to mean something else fails closed and names what to type instead.
+ *
+ * ONLY THE EXACT TOKEN. A value that merely begins with dashes -- `--abc` -- is unreserved and is
+ * still stored verbatim, as it was before.
  */
-const VALUE_ESCAPE = "--";
+const REMOVED_VALUE_ESCAPE = "--";
 
 /** One whitespace-delimited word of an argument line, with the offsets its slice needs. */
 interface SecretToken {
@@ -491,15 +509,13 @@ function parseTuiValue(args: string, tokens: readonly SecretToken[]): SecretComm
 		return { subcommand: "add", fromEnv: variable };
 	}
 
-	if (tokens[0].value === VALUE_ESCAPE) {
-		const rest = tokens.slice(1);
-		if (rest.length === 0) {
-			throw new Error(
-				`${VALUE_ESCAPE} means "the rest of this line is the credential", and nothing followed it. ` +
-					`Type /secret on its own to paste into a hidden field instead.`,
-			);
-		}
-		return { subcommand: "add", value: args.slice(rest[0].start, rest[rest.length - 1].end) };
+	if (tokens[0].value === REMOVED_VALUE_ESCAPE) {
+		throw new Error(
+			`${REMOVED_VALUE_ESCAPE} is not part of /secret, and the rest of the line was not stored in case ` +
+				`the dashes were meant to be dropped from it. The line after /secret is already the credential, ` +
+				`so nothing needs to end the options: write /secret add <value> for a value whose first word is ` +
+				`a reserved word, or /secret on its own to paste into a hidden field.`,
+		);
 	}
 
 	// Sliced from the first token's start to the last one's end, rather than trimmed: that drops
@@ -523,8 +539,8 @@ export function parseSecretCommand(args: string, surface: SecretCommandSurface =
 	}));
 
 	// THE FIRST WORD DECIDES. A reserved word is a command, anything else is the credential, so
-	// stashing one still costs one paste and no verb. `--from-env` and `--` belong to the value
-	// grammar, which both a bare line and `/secret add` reach through the same function.
+	// stashing one still costs one paste and no verb. `--from-env` belongs to the value grammar,
+	// which both a bare line and `/secret add` reach through the same function.
 	if (surface === "tui") {
 		const reserved = tokens.length > 0 ? SECRET_VERB_SPELLINGS[tokens[0].value.toLowerCase()] : undefined;
 		if (reserved === undefined) return parseTuiValue(args, tokens);
@@ -678,8 +694,8 @@ function ambiguousInlineCredential(): Error {
  *
  * IN A TERMINAL IT ALSO NAMES THE ESCAPE, because the second reading of every one of those lines is
  * "this is a credential that starts with a reserved word", and the operator who meant that has to
- * be told the one spelling that expresses it. Not on the noninteractive surface, where `--` is not
- * a value escape and the value arrives as `add <name> --from-env VAR`.
+ * be told the one spelling that expresses it. Not on the noninteractive surface, where the value
+ * arrives as `add <name> --from-env VAR` and there is no bare-value form to escape into.
  */
 function refuseExtraWords(
 	request: SecretCommandRequest,
@@ -699,7 +715,7 @@ function refuseExtraWords(
 	const escapeHint =
 		surface === "tui"
 			? ` If the line is itself a credential that begins with /secret ${request.subcommand}, store it with ` +
-				`/secret ${VALUE_ESCAPE} <value>.`
+				`/secret add <value>.`
 			: "";
 	const position = shape.words === 0 ? "the extra word" : `the word after the ${ordinalWord(shape.words)}`;
 	throw new Error(

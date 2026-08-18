@@ -271,7 +271,7 @@ describe("the verbless /secret grammar in a terminal", () => {
 	 * `/secret log 50` into a credential named after the command the operator was trying to run.
 	 */
 	it("refuses a malformed reserved line rather than storing it", async () => {
-		await expect(secretThroughRealDialog("log 50", { typeName: type("") })).rejects.toThrow(/\/secret -- <value>/u);
+		await expect(secretThroughRealDialog("log 50", { typeName: type("") })).rejects.toThrow(/\/secret add <value>/u);
 
 		expect(await stored()).toEqual([]);
 	});
@@ -282,12 +282,30 @@ describe("the verbless /secret grammar in a terminal", () => {
 	 * credential is long because the vault refuses anything under the obfuscatable-length floor, and
 	 * a six-character escape would have failed here for a reason that has nothing to do with the
 	 * escape.
+	 *
+	 * THE ESCAPE IS THE VERB. `add` hands the rest of the line to the same value reader the bare form
+	 * uses, which is what made the older `--` spelling redundant.
 	 */
 	it("stores an escaped line whose first word is reserved", async () => {
-		await secretThroughRealDialog("-- log ghp_startsWithAReservedWord", { typeName: type("") });
+		await secretThroughRealDialog("add log ghp_startsWithAReservedWord", { typeName: type("") });
 
 		const entries = await stored();
 		expect(entries[0]?.value).toBe("log ghp_startsWithAReservedWord");
+	});
+
+	/**
+	 * AND THE REMOVED SPELLING REACHES THE VAULT WITH NOTHING, which is the half a parser test cannot
+	 * show. Deleting the `--` branch on its own would have stored `-- log ghp_...` verbatim: a live
+	 * credential with two dashes and a space welded to its front, expanding under `#NAME#` into
+	 * requests that fail somewhere unrelated. This asserts the vault stayed empty, not merely that a
+	 * message was thrown.
+	 */
+	it("stores nothing at all for the removed -- escape", async () => {
+		await expect(
+			secretThroughRealDialog("-- log ghp_startsWithAReservedWord", { typeName: type("") }),
+		).rejects.toThrow(/\/secret add <value>/u);
+
+		expect(await stored()).toEqual([]);
 	});
 
 	/**
