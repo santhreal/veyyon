@@ -286,7 +286,7 @@ describe("a vault that is beyond reproach except for its payload", () => {
 		const notice = notices[0] ?? "";
 		expect(notice).toContain(vaultPath);
 		expect(notice).toContain("could not be read");
-		expect(notice).toContain("/secret discard --scope profile");
+		expect(notice).toContain("/secret discard profile");
 		expect(notice).toContain("move the unreadable file aside");
 		// Every command a notice names has to run on the surface reading it, and this one is raised by
 		// the vault loader, which cannot know that surface. `add` is the counter-example held here: in

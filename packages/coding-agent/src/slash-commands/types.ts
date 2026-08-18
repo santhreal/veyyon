@@ -9,7 +9,7 @@ import type { SessionManager } from "../session/session-manager";
 export interface SubcommandDef {
 	name: string;
 	description: string;
-	/** Usage hint shown as dim ghost text, e.g. "<name> [--scope project|user]". */
+	/** Usage hint shown as dim ghost text, e.g. "<name> [project|user]". */
 	usage?: string;
 }
 

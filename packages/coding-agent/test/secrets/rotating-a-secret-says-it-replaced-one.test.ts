@@ -2,7 +2,11 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { parseSecretCommand, runSecretCommand } from "@veyyon/coding-agent/secrets/secret-command";
+import {
+	parseSecretCommand,
+	runSecretCommand,
+	type SecretCommandRequest,
+} from "@veyyon/coding-agent/secrets/secret-command";
 import { SecretVault } from "@veyyon/coding-agent/secrets/vault";
 
 /**
@@ -164,12 +168,22 @@ describe("the same name in a different scope", () => {
 });
 
 /**
- * The confirmation wording, read on the NONINTERACTIVE surface, because that is the only surface
- * whose grammar still has an `add` verb with a leading name: in a terminal the argument line IS
- * the credential, so `add GITHUB_TOKEN <value>` there is one long value and could never collide
- * with an existing name. A rotation is therefore something only a `-p`/ACP caller can express as
- * a command line, and the vault-level rows above cover the write itself for both surfaces.
+ * The confirmation wording, read on the surface a rotation is actually expressed on.
+ *
+ * NO SURFACE SPELLS A ROTATION AS ONE LINE any more. In a terminal the argument line IS the
+ * credential, so `add GITHUB_TOKEN <value>` is one long value; on a client `add` reads no words at
+ * all, because whatever followed it might be the credential and the line is retained in a request
+ * log. A rotation is therefore a value plus a name that arrive from two places -- the value from the
+ * line or a masked field, the name from the field afterwards -- and the REQUEST is what these rows
+ * build, since that is the object both paths converge on before anything is written.
+ *
+ * `runSecretCommand` is exported and takes that request, so building it here is the production shape
+ * and not a shortcut around the parser: the parser's own readings are pinned in the grammar suites.
  */
+const rotating = (value: string): SecretCommandRequest => ({
+	...parseSecretCommand(`add ${value}`, "tui"),
+	name: "GITHUB_TOKEN",
+});
 describe("what the operator is told", () => {
 	/**
 	 * The whole point of the flag: it has to reach the confirmation the operator reads. A correct
@@ -185,11 +199,8 @@ describe("what the operator is told", () => {
 				now: Date.now(),
 				surface: "noninteractive" as const,
 			};
-			await runSecretCommand(parseSecretCommand(`add GITHUB_TOKEN ${FIRST_VALUE}`, "noninteractive"), context);
-			const rotation = await runSecretCommand(
-				parseSecretCommand(`add GITHUB_TOKEN ${SECOND_VALUE}`, "noninteractive"),
-				context,
-			);
+			await runSecretCommand(rotating(FIRST_VALUE), context);
+			const rotation = await runSecretCommand(rotating(SECOND_VALUE), context);
 
 			expect(rotation.message).toContain("Replaced GITHUB_TOKEN");
 			expect(rotation.message).toContain("The previous value is gone");
@@ -206,7 +217,7 @@ describe("what the operator is told", () => {
 	it("says Stored, and never mentions a previous value, on a first store", async () => {
 		const { vault, cleanup } = await freshVault();
 		try {
-			const first = await runSecretCommand(parseSecretCommand(`add GITHUB_TOKEN ${FIRST_VALUE}`, "noninteractive"), {
+			const first = await runSecretCommand(rotating(FIRST_VALUE), {
 				vault,
 				readEnv: () => undefined,
 				defaultTtl: 24 * 60 * 60 * 1000,
@@ -237,11 +248,8 @@ describe("what the operator is told", () => {
 				now: Date.now(),
 				surface: "noninteractive" as const,
 			};
-			await runSecretCommand(parseSecretCommand(`add GITHUB_TOKEN ${FIRST_VALUE}`, "noninteractive"), context);
-			const rotation = await runSecretCommand(
-				parseSecretCommand(`add GITHUB_TOKEN ${SECOND_VALUE}`, "noninteractive"),
-				context,
-			);
+			await runSecretCommand(rotating(FIRST_VALUE), context);
+			const rotation = await runSecretCommand(rotating(SECOND_VALUE), context);
 
 			expect(rotation.message).not.toContain(FIRST_VALUE);
 			expect(rotation.message).not.toContain(SECOND_VALUE);

@@ -129,7 +129,7 @@ describe("a broken vault is repairable without a TUI", () => {
 		it(`repairs the vault from a non-interactive surface when ${label}`, async () => {
 			const { fx, cleanup } = await broken(breakIt);
 			try {
-				const message = await fx.secret("discard --scope project");
+				const message = await fx.secret("discard project");
 
 				expect(message).toContain("Moved the unreadable project vault");
 				expect(await fx.movedAside("project")).toHaveLength(1);
@@ -152,7 +152,7 @@ describe("a broken vault is repairable without a TUI", () => {
 				const message = await fx.secret("list");
 
 				expect(message).toContain("could not be read");
-				expect(message).toContain("/secret discard --scope project");
+				expect(message).toContain("/secret discard project");
 				// The falsehood this replaces. The credential is in a file three lines away.
 				expect(message).not.toContain("No active secrets");
 				expect(message).not.toContain(VALUE);
@@ -227,7 +227,7 @@ describe("a broken vault is repairable without a TUI", () => {
 
 			expect(message).toContain("#PROFILE_TOKEN#");
 			expect(message).toContain("could not be read");
-			expect(message).toContain("/secret discard --scope project");
+			expect(message).toContain("/secret discard project");
 			// The broken scope's own entry cannot appear: it was never decrypted.
 			expect(message).not.toContain(`#${NAME}#`);
 		} finally {

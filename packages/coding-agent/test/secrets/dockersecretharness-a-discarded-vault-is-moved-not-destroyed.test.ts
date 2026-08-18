@@ -14,7 +14,7 @@
  * passes review and silently converts a recoverable fault into a permanent loss.
  *
  * THE OTHER HALF is what it must refuse: a scope that reads normally, a path that is also another
- * scope's vault, and a bare invocation with no scope. That last one is why `--scope` is required
+ * scope's vault, and a bare invocation with no vault word. That last one is why the vault is required
  * here and defaulted everywhere else. Elsewhere it names where to PUT something and a wrong guess
  * costs a secret filed in the wrong place, which `/secret list` shows you. Here it selects a FILE
  * TO MOVE ASIDE, so a default would let `/secret discard` on its own move a WORKING vault out from
@@ -22,7 +22,7 @@
  *
  * THE SURFACE IS NONINTERACTIVE THROUGHOUT, and that is not incidental. `discard` is a verb, and
  * verbs only exist where there is no field and no GUI to replace them: a terminal reads its whole
- * argument line as a credential, so `discard --scope profile` typed there is a value, not a
+ * argument line as a credential, so `discard profile` typed there is a value, not a
  * command. What the rows below pin — the move, the permissions, the refusals, the required scope —
  * is vault semantics reached through the one grammar that can still name it, which is the grammar
  * a `-p` run and an ACP client speak.
@@ -86,7 +86,7 @@ interface Fixture {
 	 *
 	 * DEFAULTS TO `noninteractive`, because that is the surface `discard` lives on. A terminal has
 	 * no verbs at all now — the argument line there IS a credential — so every row below that types
-	 * `discard --scope profile` is describing the text grammar a `-p` run or an ACP client speaks.
+	 * `discard profile` is describing the text grammar a `-p` run or an ACP client speaks.
 	 */
 	secret(args: string, surface?: SecretCommandSurface): Promise<SecretCommandResult>;
 	/** Dispatch a request built by hand, as a client that never goes through the parser does. */
@@ -185,7 +185,7 @@ describe("/secret discard", () => {
 		const broken = await breakScope(f, "profile", DOOMED_NAME, DOOMED_VALUE);
 		const before = await fs.readFile(broken);
 
-		const result = await f.secret("discard --scope profile");
+		const result = await f.secret("discard profile");
 
 		const moved = await f.movedAside("profile");
 		expect(moved.length).toBe(1);
@@ -206,7 +206,7 @@ describe("/secret discard", () => {
 		const f = await fixture();
 		await breakScope(f, "profile", DOOMED_NAME, DOOMED_VALUE);
 
-		await f.secret("discard --scope profile");
+		await f.secret("discard profile");
 
 		const [moved] = await f.movedAside("profile");
 		expect((await fs.stat(moved)).mode & 0o777).toBe(0o600);
@@ -221,7 +221,7 @@ describe("/secret discard", () => {
 		const f = await fixture();
 		await breakScope(f, "profile", DOOMED_NAME, DOOMED_VALUE);
 
-		const result = await f.secret("discard --scope profile");
+		const result = await f.secret("discard profile");
 
 		const [moved] = await f.movedAside("profile");
 		expect(result.message).toContain(moved);
@@ -231,7 +231,7 @@ describe("/secret discard", () => {
 	/**
 	 * Guard against the destructive misfire. The precondition is re-checked inside the vault under
 	 * the lock rather than trusted from an earlier `load()`, so a file repaired between the notice
-	 * and the command is refused instead of moved. Without this, `/secret discard --scope profile`
+	 * and the command is refused instead of moved. Without this, `/secret discard profile`
 	 * typed at the wrong moment is a working vault moved out from under the session.
 	 */
 	it("refuses a scope that reads normally, and leaves that file exactly where it is", async () => {
@@ -240,7 +240,7 @@ describe("/secret discard", () => {
 		const readable = vaultPathFor(f.locations, "profile");
 		const before = await fs.readFile(readable);
 
-		const message = await refusal(f.secret("discard --scope profile"));
+		const message = await refusal(f.secret("discard profile"));
 
 		expect(message).toContain("reads normally");
 		expect(await fs.readFile(readable)).toEqual(before);
@@ -258,7 +258,7 @@ describe("/secret discard", () => {
 		const shared = await breakScope(f, "global", DOOMED_NAME, DOOMED_VALUE);
 		const before = await fs.readFile(shared);
 
-		const message = await refusal(f.secret("discard --scope profile"));
+		const message = await refusal(f.secret("discard profile"));
 
 		expect(message).toContain("global");
 		expect(await fs.readFile(shared)).toEqual(before);
@@ -276,7 +276,7 @@ describe("/secret discard", () => {
 		const stillBroken = await breakScope(f, "project", SECOND_DOOMED_NAME, SECOND_DOOMED_VALUE);
 		const before = await fs.readFile(stillBroken);
 
-		await f.secret("discard --scope profile");
+		await f.secret("discard profile");
 
 		await f.vault.load();
 		expect(f.vault.unreadableScopes()).toEqual(["project"]);
@@ -288,12 +288,12 @@ describe("/secret discard", () => {
 	/**
 	 * The point of the repair is a usable scope, not a tidier directory. A move that left the loader
 	 * still treating the scope as broken, or that left a stale unreadable record behind, would end
-	 * with `/secret add --scope profile` refused for a file that is no longer there.
+	 * with `/secret add profile` refused for a file that is no longer there.
 	 */
 	it("leaves the discarded scope able to store secrets again", async () => {
 		const f = await fixture();
 		await breakScope(f, "profile", DOOMED_NAME, DOOMED_VALUE);
-		await f.secret("discard --scope profile");
+		await f.secret("discard profile");
 
 		await f.vault.add({ name: RE_ADDED_NAME, value: RE_ADDED_VALUE, scope: "profile", ttl: null });
 
@@ -304,13 +304,18 @@ describe("/secret discard", () => {
 
 	/**
 	 * A bare `/secret discard` must refuse rather than default, and must say why, because the default
-	 * everywhere else `--scope` appears is profile. Defaulting here would move a working profile
+	 * everywhere else a vault word appears is profile. Defaulting here would move a working profile
 	 * vault aside on a command the operator typed to repair something else, and the refusal carries
 	 * the usage so the missing flag is learnable from the failure.
 	 */
 	it("refuses a bare invocation rather than defaulting the scope", () => {
-		expect(() => parseSecretCommand("discard", "noninteractive")).toThrow("There is no default");
-		expect(() => parseSecretCommand("discard", "noninteractive")).toThrow("--scope profile|project|global");
+		expect(() => parseSecretCommand("discard", "noninteractive")).toThrow("There is no default, because");
+		// The sentence names the vault's ROLE on this command -- the file to move aside -- because that is
+		// the half that explains the absent default. A generic "still needs a vault" would leave the
+		// operator picking one.
+		expect(() => parseSecretCommand("discard", "noninteractive")).toThrow(
+			"needs the vault whose file you want moved aside",
+		);
 	});
 
 	/**
@@ -324,7 +329,7 @@ describe("/secret discard", () => {
 
 		const message = await refusal(f.run({ subcommand: "discard" }));
 
-		expect(message).toContain("--scope");
+		expect(message).toContain("/secret discard project");
 		expect(await f.movedAside("profile")).toEqual([]);
 	});
 
@@ -343,8 +348,11 @@ describe("/secret discard", () => {
 		const f = await fixture();
 		await breakScope(f, "profile", DOOMED_NAME, DOOMED_VALUE);
 
-		const parse = () => parseSecretCommand(`discard ${SURVIVING_NAME} --scope profile`, "noninteractive");
-		expect(parse).toThrow("no arguments");
+		// The vault is `discard`'s FIRST word, so a secret name there is a word in the vault's place
+		// rather than an extra one: it is refused for not being a vault, and the word is not repeated
+		// because on this command a misplaced word may be the credential.
+		const parse = () => parseSecretCommand(`discard ${SURVIVING_NAME} profile`, "noninteractive");
+		expect(parse).toThrow("Which vault? Write profile, project or global.");
 		expect(messageOf(parse)).not.toContain(SURVIVING_NAME);
 		expect(await f.movedAside("profile")).toEqual([]);
 	});
@@ -367,7 +375,7 @@ describe("/secret discard", () => {
 			const f = await fixture();
 			const broken = await breakScope(f, "profile", DOOMED_NAME, DOOMED_VALUE);
 
-			const result = await f.secret("discard --scope profile", surface);
+			const result = await f.secret("discard profile", surface);
 
 			expect({
 				moved: (await f.movedAside("profile")).length,
@@ -387,7 +395,7 @@ describe("/secret discard", () => {
 		const f = await fixture();
 		await f.vault.add({ name: SURVIVING_NAME, value: SURVIVING_VALUE, scope: "profile", ttl: null });
 
-		const message = await refusal(f.secret("discard --scope project"));
+		const message = await refusal(f.secret("discard project"));
 
 		expect(message).toContain("nothing to discard");
 		expect(await exists(vaultPathFor(f.locations, "project"))).toBe(false);

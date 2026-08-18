@@ -343,13 +343,13 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		// A command comes first, and `add` leads because it is the one an operator arrives to run. The
 		// rest of the grammar is in the dropdown rather than the ghost text: one line cannot carry
 		// twelve commands.
-		inlineHint: "add <value> | add --from-env VAR | list | rm | rename | value | extend | log",
-		acpInputHint: "add <name> --from-env <VAR>",
+		inlineHint: "add <value> | from-env VAR | list | rm | rename | value | extend | log",
+		acpInputHint: "from-env <VAR> <name>",
 		// Bare /secret prints this command's own usage rather than the generic subcommand list, which
 		// is the same text `/secret help` prints and is not a hidden default: it runs no subcommand and
 		// stores nothing. The generic list cannot stand in for it, because a `SubcommandDef.usage` is
 		// one string for every surface and `add`'s shape is not — a terminal is shown `add <value>`
-		// and a client `add <name> --from-env <VAR>`. Printing the declaration's spelling in a terminal
+		// and a client `from-env <VAR> <name>`. Printing the declaration's spelling in a terminal
 		// would advertise typing a NAME where the value goes, which is the exposure this feature exists
 		// to remove.
 		bareAction: "distinct",
@@ -357,18 +357,23 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 			{
 				name: "add",
 				description: "Store a credential, prompting for the value with it hidden as you type",
-				usage: "/secret add <name> [--from-env <VAR>] [--ttl 7d] [--scope profile|project|global]",
+				usage: "/secret add <value>",
+			},
+			{
+				name: "from-env",
+				description: "Store the value of an environment variable, typing the credential nowhere",
+				usage: "/secret from-env <VAR> <name> [7d] [profile|project|global]",
 			},
 			{ name: "list", description: "Show active secrets, never their values", usage: "/secret list" },
 			{
 				name: "rm",
 				description: "Remove a stored secret",
-				usage: "/secret rm <name> [--scope profile|project|global]",
+				usage: "/secret rm <name> [profile|project|global]",
 			},
 			{
 				name: "clear",
 				description: "Remove every secret in one vault, naming what it removed",
-				usage: "/secret clear --scope profile|project|global",
+				usage: "/secret clear profile|project|global",
 			},
 			{
 				name: "rename",
@@ -378,7 +383,7 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 			{
 				name: "value",
 				description: "Replace a stored secret's value, keeping its name and deadline",
-				usage: "/secret value <name> [--from-env <VAR>]",
+				usage: "/secret value <name> [from-env <VAR>]",
 			},
 			{
 				name: "scope",
@@ -393,17 +398,17 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 			{
 				name: "extend",
 				description: "Give a stored secret a fresh lifetime",
-				usage: "/secret extend <name> --ttl 7d",
+				usage: "/secret extend <name> 7d",
 			},
 			{
 				name: "log",
 				description: "Show which secrets were used, in which command, and when",
-				usage: "/secret log [--name <name>] [--limit 50]",
+				usage: "/secret log [<name>] [50]",
 			},
 			{
 				name: "discard",
 				description: "Move a vault file aside that could not be read",
-				usage: "/secret discard --scope profile|project|global",
+				usage: "/secret discard profile|project|global",
 			},
 			{ name: "help", description: "Show every way to store and manage a credential", usage: "/secret help" },
 		],
@@ -601,10 +606,10 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 			{
 				name: "add",
 				description: "Add a new MCP server",
-				usage: "<name> [--scope project|user] [--url <url>] [-- <command...>]",
+				usage: "<name> [http|sse] [url <url>] [token <token>] [run <command...>]",
 			},
 			{ name: "list", description: "List all configured MCP servers" },
-			{ name: "remove", description: "Remove an MCP server", usage: "<name> [--scope project|user]" },
+			{ name: "remove", description: "Remove an MCP server", usage: "<name>" },
 			{ name: "test", description: "Test connection to a server", usage: "<name>" },
 			{ name: "reauth", description: "Reauthorize OAuth for a server", usage: "<name>" },
 			{ name: "unauth", description: "Remove OAuth auth from a server", usage: "<name>" },
@@ -613,7 +618,7 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 			{
 				name: "smithery-search",
 				description: "Search Smithery registry and deploy an MCP server",
-				usage: "<keyword> [--scope project|user] [--limit <1-100>] [--semantic]",
+				usage: "<keyword...> [<limit 1-100>] [semantic]",
 			},
 			{ name: "smithery-login", description: "Login to Smithery and cache API key" },
 			{ name: "smithery-logout", description: "Remove cached Smithery API key" },
@@ -637,10 +642,10 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 			{
 				name: "add",
 				description: "Add an SSH host",
-				usage: "<name> --host <host> [--user <user>] [--port <port>] [--key <keyPath>]",
+				usage: "<name> <host> [user <user>] [<port>] [key <keyPath>]",
 			},
 			{ name: "list", description: "List all configured SSH hosts" },
-			{ name: "remove", description: "Remove an SSH host", usage: "<name> [--scope project|user]" },
+			{ name: "remove", description: "Remove an SSH host", usage: "<name>" },
 			{ name: "help", description: "Show help message" },
 		],
 		allowArgs: true,

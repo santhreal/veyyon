@@ -1,5 +1,6 @@
 import * as stats from "@veyyon/stats";
 import * as openUtils from "../../utils/open";
+import { removedOptionMessage } from "./parse";
 
 export const DEFAULT_STATS_DASHBOARD_PORT = 3847;
 
@@ -19,36 +20,42 @@ export interface StatsDashboardLaunchResult {
 
 let activeStatsServer: StatsDashboardServer | undefined;
 
-const STATS_DASHBOARD_USAGE = "Usage: /stats [--port <port>|-p <port>]";
+const STATS_DASHBOARD_USAGE = "Usage: /stats [<port>]";
 
-function parsePort(value: string | undefined): number | string {
-	if (!value) return `Missing port. ${STATS_DASHBOARD_USAGE}`;
-	if (!/^\d+$/.test(value)) return `Invalid port: ${value}`;
-	const port = Number(value);
-	if (!Number.isInteger(port) || port < 0 || port > 65_535) return `Invalid port: ${value}`;
-	return port;
-}
+/**
+ * The option spellings this grammar no longer has, keyed by bare name. Both used
+ * to introduce the port and both now resolve to the same plain word.
+ */
+const STATS_DASHBOARD_REMOVED_OPTIONS: Record<string, string> = {
+	port: "write the port as a plain word, as in `/stats 8080`",
+	p: "write the port as a plain word, as in `/stats 8080`",
+};
 
+/**
+ * Parse the argument string of `/stats` into a port.
+ *
+ * The port is recognized by PATTERN — a run of digits — and here that detection
+ * is provable rather than a guess: `/stats` reads exactly one thing, so there is
+ * no second token set an integer could also belong to, and no keyword whose shape
+ * an integer could imitate. It follows that a word which is not an integer cannot
+ * be anything this command reads, so it is refused with the usage instead of
+ * being ignored.
+ *
+ * Port 0 is accepted and means "let the OS choose", which is why the lower bound
+ * is the digit test rather than 1.
+ */
 export function parseStatsDashboardArgs(args: string): StatsDashboardArgs | { error: string } {
 	const tokens = args.split(/\s+/).filter(Boolean);
-	let port = DEFAULT_STATS_DASHBOARD_PORT;
+	if (tokens.length === 0) return { port: DEFAULT_STATS_DASHBOARD_PORT };
 
-	for (let i = 0; i < tokens.length; i++) {
-		const token = tokens[i];
-		if (token === "--port" || token === "-p") {
-			const parsed = parsePort(tokens[++i]);
-			if (typeof parsed === "string") return { error: parsed };
-			port = parsed;
-			continue;
-		}
-		if (token.startsWith("--port=")) {
-			const parsed = parsePort(token.slice("--port=".length));
-			if (typeof parsed === "string") return { error: parsed };
-			port = parsed;
-			continue;
-		}
-		return { error: `Unknown option: ${token}. ${STATS_DASHBOARD_USAGE}` };
+	const token = tokens[0]!;
+	if (token.startsWith("-")) {
+		return { error: removedOptionMessage(token, STATS_DASHBOARD_REMOVED_OPTIONS, STATS_DASHBOARD_USAGE) };
 	}
+	if (!/^\d+$/.test(token)) return { error: `Invalid port: ${token}. ${STATS_DASHBOARD_USAGE}` };
+	const port = Number(token);
+	if (port > 65_535) return { error: `Invalid port: ${token}. ${STATS_DASHBOARD_USAGE}` };
+	if (tokens.length > 1) return { error: `Unknown argument: ${tokens[1]}. ${STATS_DASHBOARD_USAGE}` };
 
 	return { port };
 }

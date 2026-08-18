@@ -255,6 +255,28 @@ const TTL_UNITS: Record<string, number> = {
 	w: 7 * 24 * 60 * 60 * 1000,
 };
 
+/**
+ * The SHAPE of a lifetime word, owned here because two callers now depend on it.
+ *
+ * `parseSecretCommand` has to decide whether a trailing word on a `/secret` line IS a lifetime
+ * before it can parse one, now that a lifetime is a plain word rather than the value of a flag.
+ * A second regex over there would drift from this one the moment a unit is added, and the drift is
+ * silent in the worse direction: a `3y` that {@link parseTtl} learned to read would be refused as an
+ * unknown extra word, and the operator would be told the grammar has no lifetime at all.
+ *
+ * SHAPE, NOT VALIDITY, and the distinction is load-bearing. `0d` matches this and is then REFUSED
+ * by {@link parseTtl} for expiring immediately, which is the message that mistake deserves. A
+ * recogniser that answered "valid lifetime" instead would drop `0d` through to the extra-word
+ * refusal and explain nothing.
+ */
+const TTL_WORD = /^([0-9]+)([mhdw])$/;
+
+/** Whether a word is shaped like a lifetime, so a caller can tell one from a name or a vault. */
+export function isTtlWord(spec: string): boolean {
+	const text = spec.trim().toLowerCase();
+	return text === NEVER_TTL || TTL_WORD.test(text);
+}
+
 /** A numeric TTL must survive both arithmetic and JSON without changing meaning. */
 function assertValidNumericTtl(ttl: number): void {
 	if (!Number.isSafeInteger(ttl) || ttl <= 0) {
@@ -289,9 +311,9 @@ export function parseTtl(spec: string): number | null {
 	const text = spec.trim().toLowerCase();
 	if (text === NEVER_TTL) return null;
 
-	const match = /^([0-9]+)([mhdw])$/.exec(text);
+	const match = TTL_WORD.exec(text);
 	// NEITHER refusal repeats the spec back. A lifetime is typed on the same line as a credential,
-	// and the realistic slip puts the credential where the lifetime goes (`--ttl sk-live-...`) or
+	// and the realistic slip puts the credential where the lifetime goes (a lifetime slot holding `sk-live-...`) or
 	// where a verb expects nothing. Echoing it wrote the credential into an error that reaches the
 	// scrollback and the saved transcript. The two cases stay separately worded, because "not a
 	// lifetime" and "expires immediately" are different mistakes with different fixes.
@@ -523,7 +545,7 @@ async function ensureProjectVaultIgnored(scope: VaultScope, directory: string): 
 			noteSecretsCondition(
 				`Could not write ${safeText(ignorePath)} (${safeError(error)}), so the project vault about to be ` +
 					`written is NOT protected from being committed. Add "${VAULT_FILENAME}" to that directory's ` +
-					`.gitignore yourself, or store this secret with --scope profile instead.`,
+					`.gitignore yourself, or store this secret in the profile vault instead.`,
 			);
 			return;
 		}
@@ -542,7 +564,7 @@ async function ensureProjectVaultIgnored(scope: VaultScope, directory: string): 
 		noteSecretsCondition(
 			`Could not check or extend ${safeText(ignorePath)} (${safeError(error)}), so the project vault may not ` +
 				`be protected from being committed. Add "${VAULT_FILENAME}" to that file yourself, or store this ` +
-				`secret with --scope profile instead.`,
+				`secret in the profile vault instead.`,
 		);
 	}
 }
@@ -1458,7 +1480,7 @@ function noteUnreadableVault(scope: VaultScope, vaultPath: string, error: unknow
 		`Your ${scope} vault at ${safeText(vaultPath)} exists but could not be read, so it was skipped ` +
 			`and the secrets stored in it are unavailable for the rest of this session: their placeholders ` +
 			`will NOT expand. Every OTHER scope loaded normally, and masking of known secret values is ` +
-			`unaffected. The vault is encrypted, so a hand edit cannot repair it: run /secret discard --scope ` +
+			`unaffected. The vault is encrypted, so a hand edit cannot repair it: run /secret discard ` +
 			`${scope} to move the unreadable file aside. Then store the secrets it held again. The reason it ` +
 			`could not be read was ` +
 			`${safeError(error)}`,
@@ -1483,7 +1505,7 @@ function noteFailedVaultLoad(locations: VaultLocations, unreadable: readonly Vau
 	const repair =
 		unreadable.length === 0
 			? `No vault file was found to move aside, so this is a fault in the key or the vault directory rather than in a stored file.`
-			: `Run ${unreadable.map(scope => `/secret discard --scope ${scope}`).join(" and ")} to move the ` +
+			: `Run ${unreadable.map(scope => `/secret discard ${scope}`).join(" and ")} to move the ` +
 				`unreadable ${unreadable.length === 1 ? "file" : "files"} aside. Then store the secrets it held again.`;
 	const where = unreadable.map(scope => `${scope} (${safeText(vaultPathFor(locations, scope))})`).join(", ");
 	noteSecretsCondition(
@@ -1707,7 +1729,7 @@ export class SecretVault {
 	 * must be marked alongside the one that threw: their entries are equally absent from the
 	 * obfuscator, and leaving them unmarked is exactly the silent hole this avoids.
 	 *
-	 * Only scopes with a file present are named, so every `/secret discard --scope X` the operator is
+	 * Only scopes with a file present are named, so every `/secret discard X` the operator is
 	 * told to run has a file to move aside. A scope with no vault would refuse that command.
 	 */
 	async noteFailedLoad(error: unknown): Promise<readonly VaultScope[]> {
@@ -1955,7 +1977,7 @@ export class SecretVault {
 			}
 		}
 		// Before anything is sealed into it. A project vault lives in the user's OWN repository, so
-		// without this the first `/secret add --scope project` leaves an encrypted credential store
+		// without this the first project-vault store leaves an encrypted credential store
 		// sitting untracked where `git add -A` sweeps it up. Observed in this repo. Runs on an
 		// existing directory too, since a vault created before this shipped is the case that needs it.
 		await ensureProjectVaultIgnored(scope, directory);

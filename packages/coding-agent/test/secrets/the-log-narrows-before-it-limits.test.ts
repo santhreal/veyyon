@@ -1,11 +1,11 @@
 /**
- * `/secret log --name X --limit N` shows the last N uses OF X, not the uses of X among the last N.
+ * `/secret log X N` shows the last N uses OF X, not the uses of X among the last N.
  *
  * WHY THIS SUITE EXISTS. `--name` is new, and the log is read through `SecretAuditLog.read({ limit })`,
  * which keeps the last N records of the whole file. Filtering after that read is the obvious
  * implementation and it answers a different question from the one asked: on a busy session where one
  * credential is spent constantly and another was spent this morning, `--limit 20` keeps twenty
- * records that are all the busy one, and `/secret log --name THE_OTHER --limit 20` reports that the
+ * records that are all the busy one, and `/secret log THE_OTHER 20` reports that the
  * other credential has never been used.
  *
  * That is the worst possible failure for this command. The log exists to answer "where has this

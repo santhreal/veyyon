@@ -156,7 +156,7 @@ describe("enabling secret protection must not brick the next launch", () => {
 		await enableProtection(root);
 		await secretCommand(
 			root,
-			"/secret add STARTUP_TOKEN --from-env SEED_VALUE",
+			"/secret from-env SEED_VALUE STARTUP_TOKEN",
 			"startup-token-value-not-a-real-credential",
 		);
 
@@ -176,7 +176,7 @@ describe("enabling secret protection must not brick the next launch", () => {
 		await enableProtection(root);
 		await secretCommand(
 			root,
-			"/secret add TRANSIENT_TOKEN --from-env SEED_VALUE",
+			"/secret from-env SEED_VALUE TRANSIENT_TOKEN",
 			"transient-token-value-not-a-real-credential",
 		);
 		await secretCommand(root, "/secret rm TRANSIENT_TOKEN");
@@ -201,11 +201,7 @@ describe("enabling secret protection must not brick the next launch", () => {
 	it("starts with protection on after the vault file is deleted underneath it", async () => {
 		const root = await isolatedMachine("deleted-protected");
 		await enableProtection(root);
-		await secretCommand(
-			root,
-			"/secret add DOOMED_TOKEN --from-env SEED_VALUE",
-			"doomed-token-value-not-a-real-credential",
-		);
+		await secretCommand(root, "/secret from-env SEED_VALUE DOOMED_TOKEN", "doomed-token-value-not-a-real-credential");
 		fs.unlinkSync(vaultPath(root, "profile"));
 
 		const launch = await launchTui(root);

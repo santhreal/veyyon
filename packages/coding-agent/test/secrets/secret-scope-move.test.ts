@@ -133,7 +133,7 @@ describe("planScopeMove refusing a name collision in the destination", () => {
 		expect(refusal).toBe(
 			"The profile vault already holds #GITHUB_TOKEN#, and it is a different credential from the " +
 				"project one. Moving would overwrite it and then delete the copy being moved, losing both. " +
-				"Remove it with /secret rm GITHUB_TOKEN --scope profile first if this one should replace it, " +
+				"Remove it with /secret rm GITHUB_TOKEN profile first if this one should replace it, " +
 				"then move again.",
 		);
 	});
@@ -149,7 +149,7 @@ describe("planScopeMove refusing a name collision in the destination", () => {
 		const { refusal } = planScopeMove(moving, "project", [moving, occupant]);
 		expect(refusal).toContain("The project vault already holds #DEPLOY_KEY#");
 		expect(refusal).toContain("a different credential from the global one");
-		expect(refusal).toContain("Remove it with /secret rm DEPLOY_KEY --scope project first");
+		expect(refusal).toContain("Remove it with /secret rm DEPLOY_KEY project first");
 	});
 
 	/**

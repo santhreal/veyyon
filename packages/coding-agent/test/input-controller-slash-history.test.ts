@@ -120,15 +120,31 @@ describe("input controller — slash command history (#3148)", () => {
 		expect(addToHistory).toHaveBeenCalledWith("/mcp list");
 	});
 
-	it("does NOT record /mcp add with a --token (would leak the bearer token)", async () => {
+	it("does NOT record /mcp add carrying a token as a plain word (would leak the bearer token)", async () => {
+		const { ctx, editor, addToHistory, handleMCPCommand } = makeCtx();
+		controllerFor(ctx);
+
+		await editor.onSubmit?.("/mcp add srv url http://x token sk-secret123");
+
+		// Command still executes...
+		expect(handleMCPCommand).toHaveBeenCalledWith("/mcp add srv url http://x token sk-secret123");
+		// ...but the secret-bearing text is kept out of recallable history.
+		expect(addToHistory).not.toHaveBeenCalled();
+	});
+
+	/**
+	 * The grammars became plain words, and the predicate that decides what may
+	 * become durable matched a credential only by its DASH spelling. This is the
+	 * pairing that proves the widened matcher: the plain-word line above and the
+	 * removed dashed line below are the same credential, and both must be excluded.
+	 */
+	it("does NOT record /mcp add with a --token, the spelling the grammar no longer has", async () => {
 		const { ctx, editor, addToHistory, handleMCPCommand } = makeCtx();
 		controllerFor(ctx);
 
 		await editor.onSubmit?.("/mcp add srv --url http://x --token sk-secret123");
 
-		// Command still executes...
 		expect(handleMCPCommand).toHaveBeenCalledWith("/mcp add srv --url http://x --token sk-secret123");
-		// ...but the secret-bearing text is kept out of recallable history.
 		expect(addToHistory).not.toHaveBeenCalled();
 	});
 
@@ -148,18 +164,27 @@ describe("input controller — slash command history (#3148)", () => {
 		expect(addToHistory).not.toHaveBeenCalled();
 	});
 
-	it("still records a /mcp add whose option merely starts with the token flag's name", async () => {
+	it("records a /mcp add that carries no credential", async () => {
 		const { ctx, editor, addToHistory } = makeCtx();
 		controllerFor(ctx);
 
-		await editor.onSubmit?.("/mcp add srv --url http://x --tokenizer fast");
+		await editor.onSubmit?.("/mcp add srv url http://x");
 
-		expect(addToHistory).toHaveBeenCalledWith("/mcp add srv --url http://x --tokenizer fast");
+		expect(addToHistory).toHaveBeenCalledWith("/mcp add srv url http://x");
+	});
+
+	it("still records a command whose word merely starts with the credential name", async () => {
+		const { ctx, editor, addToHistory } = makeCtx();
+		controllerFor(ctx);
+
+		await editor.onSubmit?.("/mcp smithery-search tokenizer");
+
+		expect(addToHistory).toHaveBeenCalledWith("/mcp smithery-search tokenizer");
 	});
 
 	it.each([
 		["inline plaintext", "/secret add API_TOKEN inline-history-secret"],
-		["environment lookup", "/secret add API_TOKEN --from-env HISTORY_SECRET_ENV"],
+		["environment lookup", "/secret from-env HISTORY_SECRET_ENV API_TOKEN"],
 	] as const)("does NOT record /secret add via %s on normal Enter", async (_case, command) => {
 		vi.spyOn(secretHelper, "runSecretCommandForSurface").mockResolvedValue({ message: "Stored secret" });
 		const { ctx, editor, addToHistory } = makeCtx();

@@ -90,7 +90,7 @@ const MAX_PENDING_BYTES = MAX_PENDING_RECORDS * MAX_RECORD_BYTES;
  *
  * ROTATION, NOT TRUNCATION. Deleting the oldest history to make room for the newest would throw
  * away exactly the records an incident asks about. The previous generation is kept as
- * `secret-audit.jsonl.1` and {@link SecretAuditLog.read} reads through it, so a `--limit 20`
+ * `secret-audit.jsonl.1` and {@link SecretAuditLog.read} reads through it, so a `/secret log 20`
  * issued just after a rotation still answers with twenty records rather than with however few
  * happen to have landed since.
  */

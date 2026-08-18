@@ -67,7 +67,7 @@ export function planScopeMove(
 			refusal:
 				`The ${to} vault already holds ${placeholder}, and it is a different credential from the ` +
 				`${entry.scope} one. Moving would overwrite it and then delete the copy being moved, ` +
-				`losing both. Remove it with /secret rm ${entry.name} --scope ${to} first if this one should ` +
+				`losing both. Remove it with /secret rm ${entry.name} ${to} first if this one should ` +
 				`replace it, then move again.`,
 		};
 	}

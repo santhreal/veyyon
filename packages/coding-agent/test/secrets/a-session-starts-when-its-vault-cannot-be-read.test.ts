@@ -108,7 +108,7 @@ describe("an SDK session over a project whose vault cannot be read", () => {
 				const text = reported[0]?.text ?? "";
 				// Names the scope, the file, and the repair.
 				expect(text).toContain("project");
-				expect(text).toContain("/secret discard --scope project");
+				expect(text).toContain("/secret discard project");
 				// MOVES rather than deletes: the file still holds a real credential under a live key.
 				expect(text).toContain("aside");
 				// Reachable from wherever this is being read, which is the whole point of starting

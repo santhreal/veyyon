@@ -207,7 +207,7 @@ describe("a tool call spending a placeholder while a vault scope cannot be read"
 		// The repair has to be COPY-PASTEABLE, so the scope is interpolated rather than left as a
 		// placeholder for the operator to substitute. `discard` moves the file aside and does not
 		// re-add anything, so naming it alone would leave the operator halfway.
-		expect(refusal).toContain("/secret discard --scope profile");
+		expect(refusal).toContain("/secret discard profile");
 		expect(refusal).toContain("store the secrets it held again");
 		// The refusal cannot know which surface prints it, so every command it names has to run on all
 		// of them. `discard` does, and a screen does not exist to name instead.

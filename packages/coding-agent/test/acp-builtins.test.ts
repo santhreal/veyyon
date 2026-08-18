@@ -7,6 +7,7 @@ import type { ResetCreditAccountStatus, ResetCreditRedeemOutcome, ResetCreditTar
 // from the command the way it did when the wording became "priority tier".
 import { PRIORITY_TIER_COMMAND_LABEL } from "@veyyon/coding-agent/config/service-tier";
 import { Settings } from "@veyyon/coding-agent/config/settings";
+import * as mcpConfigWriter from "@veyyon/coding-agent/mcp/config-writer";
 import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { executeAcpBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/acp-builtins";
@@ -1037,31 +1038,77 @@ describe("wave 5 — adapters and polish", () => {
 	});
 
 	// /mcp add — verify parsing and output message
-	it("/mcp add foo --url https://example.com --token X --scope project: outputs success or propagates write error", async () => {
-		// Uses project scope so it writes to /tmp/project/.veyyon/mcp.json which test infra controls.
-		// We verify the command either reports success or a meaningful error (not a parse error).
-		const mcpModule = await import("@veyyon/coding-agent/mcp/config-writer");
-		const spy = spyOn(mcpModule, "addMCPServer").mockResolvedValue(undefined);
+	it("/mcp add foo url … token X: writes the profile config and names no scope", async () => {
+		const spy = spyOn(mcpConfigWriter, "addMCPServer").mockResolvedValue(undefined);
 		try {
 			const { output, runtime } = createRuntime();
-			const result = await executeAcpBuiltinSlashCommand(
-				"/mcp add foo --url https://example.com --token X --scope project",
-				runtime,
-			);
+			const result = await executeAcpBuiltinSlashCommand("/mcp add foo url https://example.com token X", runtime);
 			expect(result).toEqual({ consumed: true });
-			expect(output[0]).toContain('Added MCP server "foo" (project).');
+			expect(output[0]).toBe('Added MCP server "foo".');
 			expect(spy).toHaveBeenCalledTimes(1);
-			// Lock in the parsed call shape so future regressions in
-			// `--url` / `--token` / `--scope` parsing fail this test instead of
-			// silently writing a different config.
+			// Lock in the parsed call shape so future regressions in the `url` / `token`
+			// keyword fail this test instead of silently writing a different config.
 			const [configPath, serverName, serverConfig] = spy.mock.calls[0]!;
-			expect(configPath).toContain("project");
 			expect(serverName).toBe("foo");
 			expect(serverConfig).toMatchObject({
 				type: "http",
 				url: "https://example.com",
 				headers: { Authorization: "Bearer X" },
 			});
+			// The destination is never anything under the working tree: a project-scoped
+			// write went to `<cwd>/.veyyon/mcp.json`, which `loadAllMCPConfigs` never reads.
+			expect(configPath).not.toContain(`${path.sep}.veyyon${path.sep}mcp.json`);
+			expect(path.basename(configPath)).toBe("mcp.json");
+		} finally {
+			spy.mockRestore();
+		}
+	});
+
+	/**
+	 * The scope words are refused rather than read, on this surface too. It kept a
+	 * `project` scope after the terminal dropped it, DEFAULTED to it, and wrote a
+	 * file `loadAllMCPConfigs` never reads while reporting success.
+	 */
+	it.each(["/mcp add foo url https://example.com project", "/mcp remove foo project"])(
+		"%p is refused and writes no config",
+		async command => {
+			const addSpy = spyOn(mcpConfigWriter, "addMCPServer").mockResolvedValue(undefined);
+			const removeSpy = spyOn(mcpConfigWriter, "removeMCPServer").mockResolvedValue(undefined);
+			try {
+				const { output, runtime } = createRuntime();
+				await executeAcpBuiltinSlashCommand(command, runtime);
+				expect(output[0]).toContain("project is gone");
+				expect(output[0]).toContain("never per repository");
+				expect(addSpy).not.toHaveBeenCalled();
+				expect(removeSpy).not.toHaveBeenCalled();
+			} finally {
+				addSpy.mockRestore();
+				removeSpy.mockRestore();
+			}
+		},
+	);
+
+	/**
+	 * The option spellings `/mcp add` no longer has must be REFUSED, and the refusal
+	 * must reach the operator instead of a config write. Accepting the old spelling
+	 * would keep a grammar nobody can see; dropping it would register a server
+	 * missing the URL or the credential that was asked for, which then fails to
+	 * connect for a reason the operator cannot see either.
+	 */
+	it.each([
+		"/mcp add foo --url https://example.com",
+		"/mcp add foo --token X",
+		"/mcp add foo --scope project",
+		"/mcp add foo -- echo hi",
+	])("%p is refused and writes no config", async command => {
+		const spy = spyOn(mcpConfigWriter, "addMCPServer").mockResolvedValue(undefined);
+		try {
+			const { output, runtime } = createRuntime();
+			const result = await executeAcpBuiltinSlashCommand(command, runtime);
+			expect(result).toEqual({ consumed: true });
+			expect(spy).not.toHaveBeenCalled();
+			expect(output[0]).toContain("is gone");
+			expect(output[0]).toContain("/mcp add");
 		} finally {
 			spy.mockRestore();
 		}
@@ -1076,13 +1123,14 @@ describe("wave 5 — adapters and polish", () => {
 		expect(output[0]).toContain("not found");
 	});
 
-	// /ssh add — spy on addSSHHost. There is no --scope: an SSH host is written to the
-	// operator's own config, and the flag that used to pick a repository-local file is gone.
-	it("/ssh add foo --host x --user y: calls addSSHHost", async () => {
+	// /ssh add — spy on addSSHHost. There is no scope: an SSH host is written to the
+	// operator's own config, and the option that used to pick a repository-local file
+	// is gone. The host is POSITION 2, so a host literally spelled `user` still works.
+	it("/ssh add foo x user y: calls addSSHHost", async () => {
 		const spy = spyOn(sshConfigWriter, "addSSHHost").mockResolvedValue(undefined);
 		try {
 			const { output, runtime } = createRuntime();
-			const result = await executeAcpBuiltinSlashCommand("/ssh add foo --host x --user y", runtime);
+			const result = await executeAcpBuiltinSlashCommand("/ssh add foo x user y", runtime);
 			expect(result).toEqual({ consumed: true });
 			expect(output[0]).toContain('Added SSH host "foo".');
 			// Without this assertion, the command could succeed via a side-effect-free
@@ -1096,6 +1144,37 @@ describe("wave 5 — adapters and polish", () => {
 			spy.mockRestore();
 		}
 	});
+
+	it("/ssh add reads a bare integer as the port and a host named like a keyword", async () => {
+		const spy = spyOn(sshConfigWriter, "addSSHHost").mockResolvedValue(undefined);
+		try {
+			const { runtime } = createRuntime();
+			await executeAcpBuiltinSlashCommand("/ssh add foo user 2222 key /k/id_ed25519", runtime);
+			expect(spy).toHaveBeenCalledTimes(1);
+			const [, name, hostConfig] = spy.mock.calls[0]!;
+			expect(name).toBe("foo");
+			expect(hostConfig).toMatchObject({ host: "user", port: 2222, keyPath: "/k/id_ed25519" });
+		} finally {
+			spy.mockRestore();
+		}
+	});
+
+	it.each(["/ssh add foo --host x", "/ssh add foo x --user y", "/ssh add foo x --port 2222"])(
+		"%p is refused and writes no SSH host",
+		async command => {
+			const spy = spyOn(sshConfigWriter, "addSSHHost").mockResolvedValue(undefined);
+			try {
+				const { output, runtime } = createRuntime();
+				const result = await executeAcpBuiltinSlashCommand(command, runtime);
+				expect(result).toEqual({ consumed: true });
+				expect(spy).not.toHaveBeenCalled();
+				expect(output[0]).toContain("is gone");
+				expect(output[0]).toContain("/ssh add");
+			} finally {
+				spy.mockRestore();
+			}
+		},
+	);
 
 	// /model with unknown id
 	it("/model gpt-fake-9000: returns unknown-model message", async () => {

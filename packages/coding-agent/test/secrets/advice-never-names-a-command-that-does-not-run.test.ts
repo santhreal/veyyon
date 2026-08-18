@@ -103,10 +103,12 @@ describe("advice an operator can act on from where they are", () => {
 			const advice = describeSecretExpiry({ name: "GITHUB_TOKEN", persistedCiphertextRemoved });
 
 			expect(unrunnableWords(advice)).toEqual([]);
-			// The terminal form it names has to be the one the parser now reads: a `/secret --from-env`
-			// with no verb in front of it is refused, so advice that spelled it that way would send the
-			// operator into the refusal while a credential they depend on is already dead.
-			expect(advice).toContain("/secret add --from-env");
+			// The terminal form it names has to be the one the parser now reads: `from-env` is a command
+			// of its own, and the option spelling this advice used to carry is refused, so advice that
+			// kept it would send the operator into a refusal while a credential they depend on is
+			// already dead.
+			expect(advice).toContain("/secret from-env <VAR>");
+			expect(advice).not.toMatch(/(^|\s)--/u);
 		}
 	});
 
@@ -131,7 +133,7 @@ describe("advice an operator can act on from where they are", () => {
 	it("hands the operator the whole command, arguments included", () => {
 		const warning = expiryWarnings([entry({ name: "DEPLOY_KEY" })], CREATED + DAY * 0.95)[0] ?? "";
 
-		expect(warning).toContain("/secret extend DEPLOY_KEY --ttl 7d");
+		expect(warning).toContain("/secret extend DEPLOY_KEY 7d");
 	});
 
 	/**

@@ -67,7 +67,7 @@ describe("the shadow note", () => {
 
 		expect(lines.slice(-2)).toEqual([
 			"  #SHARED_TOKEN# is also stored in the global vault, shadowed by the project one.",
-			"  Only the project copy is spent. Remove it with /secret rm SHARED_TOKEN --scope global.",
+			"  Only the project copy is spent. Remove it with /secret rm SHARED_TOKEN global.",
 		]);
 		// The note owns its own line breaks, like the unreadable-vault footer beside it. As one
 		// sentence it ran past 150 columns and the terminal broke it mid-word.
@@ -117,9 +117,9 @@ describe("the shadow note", () => {
 		// the wrong scope in the second line would leave the operator removing the wrong credential.
 		expect(lines.slice(-4)).toEqual([
 			"  #TRIPLE_TOKEN# is also stored in the profile vault, shadowed by the project one.",
-			"  Only the project copy is spent. Remove it with /secret rm TRIPLE_TOKEN --scope profile.",
+			"  Only the project copy is spent. Remove it with /secret rm TRIPLE_TOKEN profile.",
 			"  #TRIPLE_TOKEN# is also stored in the global vault, shadowed by the project one.",
-			"  Only the project copy is spent. Remove it with /secret rm TRIPLE_TOKEN --scope global.",
+			"  Only the project copy is spent. Remove it with /secret rm TRIPLE_TOKEN global.",
 		]);
 	});
 
@@ -189,7 +189,7 @@ describe("the command the note prints", () => {
 				everywhere: await vault.loadEverywhere(),
 			});
 			const printed = rendered.match(/Remove it with (\/secret [^.]+)\./)?.[1];
-			expect(printed).toBe("/secret rm SHARED_TOKEN --scope global");
+			expect(printed).toBe("/secret rm SHARED_TOKEN global");
 
 			// Run exactly what was printed, through the same parser an operator's typing would reach.
 			await runSecretCommand(parseSecretCommand((printed as string).replace("/secret ", ""), "noninteractive"), {

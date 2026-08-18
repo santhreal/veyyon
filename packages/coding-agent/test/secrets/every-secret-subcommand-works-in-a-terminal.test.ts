@@ -40,16 +40,19 @@ import {
  */
 const WELL_FORMED: Record<SecretSubcommand, string> = {
 	add: "ghp_theCredentialItself",
+	// A variable and nothing else. In a terminal the secret's name is asked in a field afterwards, so
+	// a name here would be refused rather than routed.
+	"from-env": "SOME_VARIABLE",
 	list: "",
 	rm: "TOKEN_NAME",
-	clear: "--scope profile",
+	clear: "profile",
 	rename: "TOKEN_NAME OTHER_NAME",
 	value: "TOKEN_NAME",
 	scope: "TOKEN_NAME global",
 	copy: "TOKEN_NAME",
-	extend: "TOKEN_NAME --ttl 7d",
-	log: "--limit 5",
-	discard: "--scope project",
+	extend: "TOKEN_NAME 7d",
+	log: "5",
+	discard: "project",
 	help: "",
 };
 
@@ -92,16 +95,39 @@ describe("every reserved word is a command in a terminal, not a credential", () 
 	 */
 	it("refuses a malformed reserved line instead of storing it, and names the escape", () => {
 		for (const line of [
-			"log 50",
+			// `log 50` belongs on the other side of this line now: fifty records is what it means, and the
+			// row below asserts it parses. What is malformed is a word no slot can hold.
+			"log A_TOKEN 50 MORE",
 			"list something",
-			"rm A B",
-			"extend TOK 7d",
-			"copy A B",
-			"value A B",
-			"scope TOK",
+			"rm A_TOKEN B_TOKEN",
+			"extend A_TOKEN 7d MORE",
+			"copy A_TOKEN B_TOKEN",
+			"value A_TOKEN B_TOKEN",
+			"scope A_TOKEN global MORE",
 		]) {
 			expect(() => parseSecretCommand(line, "tui")).toThrow(/\/secret add <value>/u);
 		}
+	});
+
+	/**
+	 * AND A WELL-FORMED ONE RUNS, which is what keeps the refusals above from being a wall.
+	 *
+	 * `log 50` is the sharpest case: it is the line whose silent storage started all of this, and a
+	 * grammar that refused it to be safe would have made the fix indistinguishable from the bug for
+	 * anybody trying to read fifty records.
+	 */
+	it("reads a well-formed reserved line as the command it is", () => {
+		expect(parseSecretCommand("log 50", "tui")).toEqual({ subcommand: "log", limit: 50 });
+		expect(parseSecretCommand("extend A_TOKEN 7d", "tui")).toEqual({
+			subcommand: "extend",
+			name: "A_TOKEN",
+			ttl: 7 * 24 * 60 * 60 * 1000,
+		});
+		expect(parseSecretCommand("rm A_TOKEN global", "tui")).toEqual({
+			subcommand: "rm",
+			name: "A_TOKEN",
+			scope: "global",
+		});
 	});
 
 	/**
@@ -109,7 +135,7 @@ describe("every reserved word is a command in a terminal, not a credential", () 
 	 * FILE to move aside, so there is no default and a bare word there would read as a secret name.
 	 */
 	it("still refuses a bare discard, on its own grounds", () => {
-		expect(() => parseSecretCommand("discard", "tui")).toThrow(/no default/u);
+		expect(() => parseSecretCommand("discard", "tui")).toThrow(/There is no default, because/u);
 	});
 });
 
@@ -119,9 +145,13 @@ describe("the escape is the one way a credential wears a reserved word", () => {
 	 * grammar has locked somebody out. The stored value keeps the reserved word: `add list` is the
 	 * credential `list`, not an empty one.
 	 *
-	 * THE ESCAPE IS THE VERB `add`, which used to be spelled `--` as well. Two spellings of one
+	 * THE ESCAPE IS THE COMMAND `add`, which used to be spelled `--` as well. Two spellings of one
 	 * escape is one spelling too many, and the one that went is the one a slash command never had a
 	 * reason to borrow: there are no options here for `--` to end.
+	 *
+	 * `from-env` is exempt: it is a command of its own, so a credential beginning with that word is
+	 * stored by `add` like any other -- but `add from-env …` is the value form and is covered by every
+	 * other row here, while `from-env …` alone is a command and is covered by the routing rows above.
 	 */
 	for (const word of Object.keys(SECRET_VERB_SPELLINGS)) {
 		it(`stores a credential beginning with ${word}`, () => {
@@ -158,7 +188,7 @@ describe("the terminal help and the terminal menu describe the same grammar", ()
 	 * asserted as a set rather than per member.
 	 *
 	 * `add` is exempt from the help half only: the terminal spells its rows `/secret add <value>` and
-	 * `/secret add --from-env <VAR>`, because where the value may come from is the one thing the two
+	 * `/secret from-env <VAR>`, because where the value may come from is the one thing the two
 	 * surfaces disagree about.
 	 */
 	it("names every menu entry in the help, and parses every one", () => {

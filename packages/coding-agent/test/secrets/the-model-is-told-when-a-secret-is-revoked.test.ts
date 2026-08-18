@@ -257,7 +257,7 @@ describe("extending a secret", () => {
 		await store("github-token");
 		const h = harness();
 
-		await runSecretCommandForSurface("extend github-token --ttl 7d", h.port);
+		await runSecretCommandForSurface("extend github-token 7d", h.port);
 
 		const notice = texts(h.agentMessages)[0] ?? "";
 		expect(notice).toContain("#GITHUB_TOKEN#");
@@ -271,7 +271,7 @@ describe("extending a secret", () => {
 		await store("github-token");
 		const h = harness();
 
-		await runSecretCommandForSurface("extend github-token --ttl 7d", h.port);
+		await runSecretCommandForSurface("extend github-token 7d", h.port);
 
 		expect(texts(h.sessionMessages)).toEqual(texts(h.agentMessages));
 		expect(h.agentMessages).toHaveLength(1);
@@ -285,7 +285,7 @@ describe("extending a secret", () => {
 		await store("github-token");
 		const h = harness();
 
-		await runSecretCommandForSurface("extend github-token --ttl 7d", h.port);
+		await runSecretCommandForSurface("extend github-token 7d", h.port);
 
 		const notice = texts(h.agentMessages)[0] ?? "";
 		expect(notice).not.toContain("7d");
@@ -296,7 +296,7 @@ describe("extending a secret", () => {
 	it("says nothing when the secret does not exist", async () => {
 		const h = harness();
 
-		await runSecretCommandForSurface("extend never-stored --ttl 7d", h.port).catch(() => undefined);
+		await runSecretCommandForSurface("extend never-stored 7d", h.port).catch(() => undefined);
 
 		expect(h.agentMessages).toEqual([]);
 		expect(h.sessionMessages).toEqual([]);
@@ -351,10 +351,10 @@ describe("a notice", () => {
 
 		try {
 			const added = await runSecretCommandForSurface(
-				"add other-token --from-env VEYYON_REVOKE_NOTICE_ADD",
+				"from-env VEYYON_REVOKE_NOTICE_ADD other-token",
 				harness().port,
 			);
-			const extended = await runSecretCommandForSurface("extend github-token --ttl 7d", h.port);
+			const extended = await runSecretCommandForSurface("extend github-token 7d", h.port);
 			const removed = await runSecretCommandForSurface("rm github-token", h.port);
 
 			for (const text of [...texts(h.agentMessages), ...texts(h.sessionMessages)]) {
@@ -416,10 +416,7 @@ describe("with secret protection off", () => {
 		process.env.VEYYON_REVOKE_NOTICE_WITHHELD = VALUE;
 
 		try {
-			const outcome = await runSecretCommandForSurface(
-				"add fresh-token --from-env VEYYON_REVOKE_NOTICE_WITHHELD",
-				h.port,
-			);
+			const outcome = await runSecretCommandForSurface("from-env VEYYON_REVOKE_NOTICE_WITHHELD fresh-token", h.port);
 
 			expect(outcome.message).toContain("Secret protection is OFF");
 			expect(h.agentMessages).toEqual([]);
@@ -434,7 +431,7 @@ describe("with secret protection off", () => {
 		await store("github-token");
 		const h = harness({ protection: "off" });
 
-		await runSecretCommandForSurface("extend github-token --ttl 7d", h.port);
+		await runSecretCommandForSurface("extend github-token 7d", h.port);
 
 		expect(h.agentMessages).toEqual([]);
 		expect(h.sessionMessages).toEqual([]);
@@ -473,7 +470,7 @@ describe("with secret protection on", () => {
 		await store("github-token");
 		const h = harness();
 
-		await runSecretCommandForSurface("extend github-token --ttl 7d", h.port);
+		await runSecretCommandForSurface("extend github-token 7d", h.port);
 
 		expect(h.obfuscator?.hasNamedSecret("GITHUB_TOKEN")).toBe(true);
 	});

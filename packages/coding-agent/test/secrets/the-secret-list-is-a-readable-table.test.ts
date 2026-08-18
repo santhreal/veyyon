@@ -215,7 +215,7 @@ describe("a near-expiry row is marked", () => {
 				"  #API_KEY#        profile  6d left",
 				"  #HALFWAY_TOKEN#  global   3d left  past halfway",
 				"  #LAPSING_TOKEN#  project  1d left  expires soon",
-				"Extend one before it lapses: /secret extend <name> --ttl 7d.",
+				"Extend one before it lapses: /secret extend <name> 7d.",
 			].join("\n"),
 		);
 
@@ -362,8 +362,8 @@ describe("a cell is sanitised before it is drawn", () => {
 describe("the empty vault", () => {
 	/**
 	 * THE FIRST THING A NEW USER SEES, on the TUI surface, whose three entry forms all lead with the
-	 * verb: `add` alone opens the hidden field, `add <value>` takes the credential inline, and
-	 * `add --from-env` reads it out of the environment. This surface owns the copy because it is the
+	 * command: `add` alone opens the hidden field, `add <value>` takes the credential inline, and
+	 * `from-env <VAR>` reads it out of the environment. This surface owns the copy because it is the
 	 * only one that HAS a field to offer; the one below owns the same text minus what it cannot do.
 	 *
 	 * The field comes FIRST, because it is the only form that never puts the credential on screen and
@@ -378,14 +378,14 @@ describe("the empty vault", () => {
 				"Store one and the agent can spend it by writing #NAME#, never seeing the value itself:",
 				"  /secret add                           paste into a hidden field",
 				"  /secret add <value>                   store it now, then name it (optional)",
-				"  /secret add --from-env <VAR>          store the value of an environment variable",
+				"  /secret from-env <VAR> [<name>]       store the value of an environment variable",
 			].join("\n"),
 		);
 	});
 
 	/**
 	 * A surface that cannot hide what is typed must not suggest typing a credential. Telling an
-	 * ACP client to run `/secret add <name>` would park the value in its request history.
+	 * ACP client to run `/secret add <value>` would park the value in its request history.
 	 */
 	it("offers only the environment form on a surface that cannot mask input", () => {
 		expect(renderSecretList([], { now: NOW, surface: "noninteractive" })).toBe(
@@ -393,7 +393,7 @@ describe("the empty vault", () => {
 				"No active secrets. Nothing is being substituted right now.",
 				"",
 				"Store one and the agent can spend it by writing #NAME#, never seeing the value itself:",
-				"  /secret add <name> --from-env <VAR>   store the value of an environment variable",
+				"  /secret from-env <VAR> <name>         store the value of an environment variable",
 			].join("\n"),
 		);
 	});
@@ -457,6 +457,10 @@ describe("the two usage variants", () => {
 		// indent so `/secret add <value>` cannot satisfy a bare `/secret <value>` check by suffix.
 		expect(SECRET_COMMAND_USAGE).not.toContain("  /secret <value>");
 		expect(SECRET_COMMAND_USAGE).not.toContain("  /secret --from-env");
+		// And no line anywhere spells an argument as an option, on either variant.
+		for (const usage of [SECRET_COMMAND_USAGE, NONINTERACTIVE_SECRET_COMMAND_USAGE]) {
+			expect(usage).not.toMatch(/(^|\s)--/mu);
+		}
 
 		expect(NONINTERACTIVE_SECRET_COMMAND_USAGE).not.toContain("<value>");
 		expect(NONINTERACTIVE_SECRET_COMMAND_USAGE).not.toContain("hidden field");
@@ -468,24 +472,45 @@ describe("the two usage variants", () => {
 	 * missing from either list is a working command nobody discovers, and a word in a list that the
 	 * parser does not reserve is a word the terminal would store as the start of a credential.
 	 *
-	 * `add` IS NAMED ON BOTH, and what differs is the operand. The terminal leads with the bare value
-	 * form because the value needs no verb there, and names `add` once more as the escape for a
-	 * credential whose first word is reserved; a client with no field reaches a value only as a verb.
-	 * So the asymmetry worth pinning is `<value>` against `<name>`: the terminal must never advertise
+	 * `add` IS NAMED ON BOTH, and what differs is the operand. The terminal shows the value form,
+	 * because a terminal can take a credential without echoing it. The client names `add` too, and
+	 * gives the reason it does not work there instead of an operand: `add` is declared, so a listing
+	 * offers it, and a command a client can see but whose only documentation is the error it returns
+	 * reads as broken rather than as refused on purpose. So the asymmetry worth pinning is `<value>`
+	 * against a sentence, and separately `<value>` against `<name>`: the terminal must never advertise
 	 * an inline NAME, which is the spelling that writes a credential into plaintext metadata when the
 	 * two positionals are read the wrong way round.
+	 *
+	 * The command word is captured WITH its hyphen, so `from-env` is checked as the command it is.
+	 * Matching `\w+` alone read it as `from`, which is not a command and would have gone on passing if
+	 * the hyphen were ever dropped from the grammar.
 	 */
 	it("list every verb on both surfaces, with add spelled per surface", () => {
 		const commandWords = (usage: string) =>
-			[...new Set([...usage.matchAll(/^ {2}\/secret (\w+)/gmu)].map(match => match[1]))].sort();
+			[...new Set([...usage.matchAll(/^ {2}\/secret ([\w-]+)/gmu)].map(match => match[1]))].sort();
 
-		const verbs = ["clear", "copy", "discard", "extend", "list", "log", "rename", "rm", "scope", "value"];
-		expect(commandWords(SECRET_COMMAND_USAGE)).toEqual(["add", ...verbs].sort());
-		expect(commandWords(NONINTERACTIVE_SECRET_COMMAND_USAGE)).toEqual(["add", ...verbs].sort());
+		const commands = [
+			"add",
+			"clear",
+			"copy",
+			"discard",
+			"extend",
+			"from-env",
+			"list",
+			"log",
+			"rename",
+			"rm",
+			"scope",
+			"value",
+		];
+		expect(commandWords(SECRET_COMMAND_USAGE)).toEqual(commands);
+		expect(commandWords(NONINTERACTIVE_SECRET_COMMAND_USAGE)).toEqual(commands);
 
 		expect(SECRET_COMMAND_USAGE).toContain("  /secret add <value>");
 		expect(SECRET_COMMAND_USAGE).not.toContain("/secret add <name>");
-		expect(NONINTERACTIVE_SECRET_COMMAND_USAGE).toContain("  /secret add <name>");
+		expect(NONINTERACTIVE_SECRET_COMMAND_USAGE).toContain("  /secret from-env <VAR> <name>");
+		// Named, with the reason and the way out, and never with an operand a client cannot supply.
+		expect(NONINTERACTIVE_SECRET_COMMAND_USAGE).toContain("use from-env");
 		expect(NONINTERACTIVE_SECRET_COMMAND_USAGE).not.toContain("/secret add <value>");
 	});
 
@@ -514,15 +539,15 @@ describe("the two usage variants", () => {
 			// the claim survives any reflow of the group in front of it.
 			const management = [
 				"  /secret list                          show active secrets, never their values",
-				"  /secret rm <name> [--scope global]    remove a secret",
-				"  /secret clear --scope profile         remove every secret in one vault",
+				"  /secret rm <name> [global]            remove a secret",
+				"  /secret clear profile                 remove every secret in one vault",
 				"  /secret rename <name> <new-name>      give a secret a different name",
 				"  /secret value <name>                  replace a secret's value, keeping its name and lifetime",
 				"  /secret scope <name> global           move a secret to another vault",
 				"  /secret copy <name>                   copy #NAME#, the placeholder, never the value",
-				"  /secret extend <name> --ttl 7d        give a secret a fresh lifetime",
-				"  /secret log [--name X] [--limit 50]   show which secrets were used, and where",
-				"  /secret discard --scope project       move a broken vault file aside",
+				"  /secret extend <name> 7d              give a secret a fresh lifetime",
+				"  /secret log [<name>] [50]             show which secrets were used, and where",
+				"  /secret discard project               move a broken vault file aside",
 			];
 			expect(lines.slice(manage + 1, lines.indexOf("", manage + 1))).toEqual(management);
 		}
@@ -531,29 +556,28 @@ describe("the two usage variants", () => {
 	/**
 	 * ONE FOOTER, ON BOTH SURFACES, ANNOTATION COLUMN AND ALL.
 	 *
-	 * The footer names which subcommands read each option. There were two of them while a terminal
-	 * had no verbs to annotate, because the shared line "on add, rm and discard" pointed an operator
-	 * at commands that surface refused. Every verb parses everywhere now, so a per-surface footer
-	 * would be two answers to "what does --scope apply to", and the one that got edited would be
+	 * The footer names which commands read each word shape. There were two of them while a terminal
+	 * had no commands to annotate, because the shared line "on add, rm and discard" pointed an operator
+	 * at commands that surface refused. Every command parses everywhere now, so a per-surface footer
+	 * would be two answers to "where does a vault word apply", and the one that got edited would be
 	 * whichever the author happened to be reading.
 	 *
 	 * Pinned as an exact tail, in order, on both texts: a footer line added for one surface has to
 	 * be true for the other, and a line that stops applying has to be removed once.
 	 */
-	it("close both surfaces with the same options footer", () => {
+	it("close both surfaces with the same word-shape footer", () => {
 		const footer = [
-			"--ttl 30m|12h|7d|2w|never            on add and extend",
-			"--scope profile|project|global       on add, rm, clear and discard",
-			"--name <name>                        on log, to show only that secret's uses",
+			"30m|12h|7d|2w|never                  a lifetime, on from-env and extend",
+			"profile|project|global               a vault, on from-env, rm, clear, scope and discard",
 			"Lifetimes default to the secrets.defaultTtl setting. Scope defaults to profile; project overrides profile, which overrides global.",
-			"Removal without --scope takes the narrowest match, which is the one currently in effect.",
+			"Removal without a vault takes the narrowest match, which is the one currently in effect.",
 		];
 
 		for (const usage of [SECRET_COMMAND_USAGE, NONINTERACTIVE_SECRET_COMMAND_USAGE]) {
 			const lines = usage.split("\n");
 
 			expect(lines.slice(-footer.length)).toEqual(footer);
-			// The blank line above it, so the options never read as another management command.
+			// The blank line above it, so the footer never reads as another management command.
 			expect(lines[lines.length - footer.length - 1]).toBe("");
 		}
 	});
@@ -567,7 +591,7 @@ describe("/secret list end to end", () => {
 	 * seam is actually wired: run the real command over a real vault and check the noninteractive
 	 * invocation does not come back advertising an entry form it cannot offer.
 	 *
-	 * NONINTERACTIVE THROUGHOUT, because `list` and `add <name> --from-env <VAR>` are verbs and a
+	 * NONINTERACTIVE THROUGHOUT, because `list` and `from-env <VAR> <name>` are verbs and a
 	 * terminal has none: `list` typed there is a credential to store. The table itself is surface
 	 * independent, which is why every row above renders it without naming one.
 	 */
@@ -596,11 +620,11 @@ describe("/secret list end to end", () => {
 			});
 			expect(empty.message).not.toContain("hidden field");
 			expect(empty.message).not.toContain("/secret <value>");
-			expect(empty.message).toContain("  /secret add <name> --from-env <VAR>");
+			expect(empty.message).toContain("  /secret from-env <VAR> <name>");
 
-			await runSecretCommand(parseSecretCommand("add api-key --from-env SOURCE", "noninteractive"), context);
+			await runSecretCommand(parseSecretCommand("from-env SOURCE api-key", "noninteractive"), context);
 			await runSecretCommand(
-				parseSecretCommand("add deployment-service-account --from-env SOURCE --ttl never", "noninteractive"),
+				parseSecretCommand("from-env SOURCE deployment-service-account never", "noninteractive"),
 				context,
 			);
 
