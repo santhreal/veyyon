@@ -22,6 +22,12 @@ function syncStaticBundle(): Plugin {
     name: "veybot-sync-static",
     apply: "build",
     closeBundle() {
+      // `closeBundle` also runs when the build failed before emitting anything,
+      // and copying then reports a missing `dist/` as the build error, hiding the
+      // real one. Absent output means the build did not get that far: leave the
+      // genuine failure as the only thing reported.
+      if (!existsSync(outDir)) return;
+
       if (!existsSync(staticDir)) {
         mkdirSync(staticDir, { recursive: true });
       }

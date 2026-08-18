@@ -83,6 +83,14 @@ python/veybot/.cache/
 python/veybot/src/static/
 python/veybot/web/dist/
 python/veybot/web/verify-out/
+
+# veybot web is TypeScript-only (its tsconfig sets `noEmit`). A tsc emit landing
+# beside a source wins module resolution over the `.ts`/`.tsx` file, so a stale
+# twin silently truncates the bundle and shadows even vite.config.ts.
+python/veybot/web/src/**/*.js
+python/veybot/web/src/**/*.jsx
+python/veybot/web/scripts/**/*.js
+python/veybot/web/vite.config.js
 /verify-out/
 python/veybot/.env
 
