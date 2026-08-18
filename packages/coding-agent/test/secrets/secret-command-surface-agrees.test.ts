@@ -55,6 +55,9 @@ const WELL_FORMED_REMAINDER: Record<SecretSubcommand, string> = {
 	add: "SOME_NAME --from-env VEYYON_SURFACE_AGREES_VALUE",
 	list: "",
 	rm: "SOME_NAME",
+	// A scope, on `discard`'s terms: the verb takes no bare word, and omitting the flag is refused
+	// rather than defaulted, so a well-formed line has to name the vault.
+	clear: "--scope project",
 	rename: "SOME_NAME OTHER_NAME",
 	value: "SOME_NAME",
 	scope: "SOME_NAME global",

@@ -134,6 +134,10 @@ const REQUESTS: Record<SecretSubcommand, SecretCommandRequest> = {
 	add: { subcommand: "add", name: "SECOND_KEY", value: ADDED },
 	list: { subcommand: "list" },
 	rm: { subcommand: "rm", name: "DEPLOY_KEY" },
+	// `profile` deliberately, which is the scope `vaultHolding` seeded: clearing an EMPTY scope would
+	// take the "nothing was removed" branch and prove nothing about what a report names, and naming
+	// is the whole risk here since this verb reports every entry it touched.
+	clear: { subcommand: "clear", scope: "profile" },
 	rename: { subcommand: "rename", name: "DEPLOY_KEY", newName: "RENAMED_KEY" },
 	value: { subcommand: "value", name: "DEPLOY_KEY", value: REPLACEMENT },
 	scope: { subcommand: "scope", name: "DEPLOY_KEY", scope: "global" },

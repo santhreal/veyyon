@@ -61,6 +61,7 @@ export type SecretSubcommand =
 	| "add"
 	| "list"
 	| "rm"
+	| "clear"
 	| "rename"
 	| "value"
 	| "scope"
@@ -192,6 +193,7 @@ const USAGE_LIST = "/secret list                          show active secrets, n
 const USAGE_MANAGE = [
 	USAGE_LIST,
 	"/secret rm <name> [--scope global]    remove a secret",
+	"/secret clear --scope profile         remove every secret in one vault",
 	"/secret rename <name> <new-name>      give a secret a different name",
 	"/secret value <name>                  replace a secret's value, keeping its name and lifetime",
 	"/secret scope <name> global           move a secret to another vault",
@@ -321,6 +323,11 @@ export const SECRET_SUBCOMMAND_SHAPES: Record<SecretSubcommand, { options: reado
 	// rather than a place to store something, so there is no safe default to fall back on, and a
 	// bare word here would read as a secret name, which is the mistake worth refusing outright.
 	discard: { options: ["--scope"], words: 0 },
+	// REQUIRED scope, on `discard`'s terms and for a sharper reason: this one empties a vault that
+	// reads perfectly well. There is no narrowest-wins default to fall back on, because "the vault"
+	// is three files and the operator can only mean one of them, and a bare word after `clear` would
+	// read as a secret name -- which is `rm`, a different and much smaller command.
+	clear: { options: ["--scope"], words: 0 },
 	help: { options: [], words: 0 },
 };
 
@@ -358,6 +365,18 @@ export const SECRET_VERB_SPELLINGS: Record<string, SecretSubcommand> = {
 	rm: "rm",
 	remove: "rm",
 	delete: "rm",
+	// EVERY WORD AN OPERATOR REACHES FOR TO EMPTY THE VAULT, reserved together. Before `clear`
+	// existed, none of these was a verb, so the grammar's fallback stored each one AS A CREDENTIAL:
+	// `/secret clear` filed the six-character string "clear" under a generated name, `/secret clear
+	// --all` filed the literal "clear --all", and because the first successful `add` also turns
+	// `secrets.enabled` on, the command an operator typed to empty the vault filled it and switched
+	// the subsystem on. That is the exact failure the note above predicted for a partially reserved
+	// grammar, arriving through the one verb nobody had written yet.
+	clear: "clear",
+	wipe: "clear",
+	purge: "clear",
+	empty: "clear",
+	reset: "clear",
 	rename: "rename",
 	name: "rename",
 	value: "value",
@@ -391,6 +410,7 @@ const SECRET_TUI_SUBCOMMAND_HELP: Record<SecretSubcommand, { usage: string; desc
 	add: { usage: "<value>", description: "Store a credential; the rest of the line is the value" },
 	list: { usage: "", description: "Show active secrets, never their values" },
 	rm: { usage: "<name> [--scope global]", description: "Remove a stored secret" },
+	clear: { usage: "--scope profile", description: "Remove every secret in one vault, naming what it removed" },
 	rename: { usage: "<name> <new-name>", description: "Give a stored secret a different name" },
 	value: { usage: "<name>", description: "Replace a secret's value, keeping its name and lifetime" },
 	scope: { usage: "<name> global", description: "Move a secret to the profile, project or global vault" },
@@ -694,6 +714,14 @@ function refuseMissingScope(request: SecretCommandRequest, usageText: string): v
 				`\n\n${usageText}`,
 		);
 	}
+	if (request.subcommand === "clear" && request.scope === undefined) {
+		throw new Error(
+			`/secret clear needs the vault to empty, such as /secret clear --scope profile. There is no ` +
+				`default: a credential you can reach is the narrowest copy of it, so a guessing /secret clear ` +
+				`would empty whichever vault happens to be in front and leave the other two full.` +
+				`\n\n${usageText}`,
+		);
+	}
 	if (request.subcommand !== "discard" || request.scope !== undefined) return;
 	throw new Error(
 		`/secret discard needs the scope whose vault file you want moved aside, such as ` +
@@ -749,6 +777,8 @@ export async function runSecretCommand(
 			return await listSecrets(context);
 		case "rm":
 			return await removeSecret(request, context);
+		case "clear":
+			return await clearVaultScope(request, context);
 		case "extend":
 			return await extendSecret(request, context);
 		case "log":
@@ -1175,6 +1205,68 @@ async function removeSecret(
 		message:
 			`Removed ${name} from the ${scope} vault. It was shadowed by the ${spentNow.scope} secret of the ` +
 			`same name, so #${name}# spends what it spent before.`,
+		changed: true,
+	};
+}
+
+/**
+ * Empty one scope's vault and say what that did to every placeholder it held.
+ *
+ * ON `removeSecret`'S TERMS, not a loop over it. A cleared scope can leave a name still spending a
+ * credential, because a wider vault may hold a copy the resolved view was hiding, so the same three
+ * outcomes apply here and get the same treatment: a name with nothing underneath it is revoked and
+ * the model is told to stop writing it; a name with a copy underneath still expands, to a DIFFERENT
+ * credential, and calling that revoked would have the session believe a live credential is dead.
+ * The difference is only that one command decides it for every name at once.
+ *
+ * WHY IT NAMES THEM. `list` is the only other place a name appears, and after this command there is
+ * nothing left to list; an operator who cleared the wrong scope needs to read what went, and a
+ * count cannot answer that. Names are the safe half of an entry -- the placeholder is built from
+ * them and the value is never near this string.
+ */
+async function clearVaultScope(
+	request: SecretCommandRequest,
+	context: { vault: SecretVault },
+): Promise<SecretCommandResult> {
+	// The parser refuses a scopeless `clear`, so this is unreachable from a parsed line. It is here
+	// because `runSecretCommand` is exported and a caller building a request by hand would otherwise
+	// empty whichever vault an `undefined` narrowed to.
+	if (request.scope === undefined) {
+		throw new Error("Which vault? /secret clear --scope profile");
+	}
+	const scope = request.scope;
+	const removed = [...(await context.vault.clear(scope))].sort();
+	if (removed.length === 0) {
+		return { message: `The ${scope} vault holds no secrets, so nothing was removed.`, changed: false };
+	}
+	const live = new Set((await context.vault.load()).map(entry => entry.name));
+	const revoked = removed.filter(name => !live.has(name));
+	const shadowing = removed.filter(name => live.has(name));
+	const count = `${removed.length} ${removed.length === 1 ? "secret" : "secrets"}`;
+	const lines = [`Removed ${count} from the ${scope} vault: ${removed.join(", ")}.`];
+	if (shadowing.length > 0) {
+		lines.push(
+			`${shadowing.join(", ")} ${shadowing.length === 1 ? "is" : "are"} also stored in another vault, so ` +
+				`${shadowing.length === 1 ? "that placeholder" : "those placeholders"} still spend a credential. ` +
+				`Clear that scope too to end ${shadowing.length === 1 ? "it" : "them"}.`,
+		);
+	}
+	if (revoked.length === 0) {
+		// Nothing the model can observe changed: every name it knows still resolves, to a credential
+		// that is still real. A revocation notice here would retire live credentials.
+		return { message: lines.join("\n"), changed: true };
+	}
+	const names = revoked.map(name => `#${name}#`).join(", ");
+	return {
+		message: lines.join("\n"),
+		agentNotice:
+			`The user has cleared the ${scope} secret vault, so ${names} ${revoked.length === 1 ? "is" : "are"} no ` +
+			`longer available and you must stop using ${revoked.length === 1 ? "it" : "them"}. ` +
+			`${revoked.length === 1 ? "It is" : "They are"} no longer replaced with a real value: writing ` +
+			`${revoked.length === 1 ? "it" : "one"} now sends the literal placeholder text rather than a ` +
+			`credential, which will fail instead of authenticating. Do not write ${names} into a command, a file, ` +
+			`or a message, and do not ask for the value.`,
+		agentNoticeIsRevocation: true,
 		changed: true,
 	};
 }
