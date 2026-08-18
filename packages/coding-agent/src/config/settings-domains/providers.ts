@@ -129,6 +129,36 @@ export const PROVIDERS_SETTINGS = {
 		},
 	},
 
+	/**
+	 * Whether a session says anything on its own about a secret approaching its expiry.
+	 *
+	 * ON by default, because the warning exists to stop a credential lapsing mid-task with nothing
+	 * having said it would, and `WARN_AT_FRACTIONS` raises it twice (halfway, then at nine tenths)
+	 * rather than once at the end.
+	 *
+	 * OFF is for the operator who keeps long-lived secrets on purpose. With several stored, every
+	 * session opens with a stack of notices about deadlines that are days away and that the operator
+	 * has already decided about, and a notice nobody reads is worse than none: it teaches the eye to
+	 * skip the region where a real one will appear.
+	 *
+	 * IT SUPPRESSES THE UNPROMPTED NOTICE AND NOTHING ELSE. `/secret list` still draws its STATUS
+	 * column and its footer, and the status-line chip still shows a deadline inside the last hour,
+	 * because both of those were asked for: the operator opened the list or is looking at the line.
+	 * A setting that also blanked those would answer a question the operator asked with silence.
+	 */
+	"secrets.expiryWarnings": {
+		type: "boolean",
+		default: true,
+		ui: {
+			tab: "providers",
+			group: "Privacy",
+			label: "Warn Before A Secret Expires",
+			condition: "secretsEnabled",
+			description:
+				"Say at the start of a session when a stored secret is halfway through its lifetime, and again near the end. Off: /secret list still shows the STATUS column and the status line still shows a deadline in the last hour",
+		},
+	},
+
 	// Foreign-tool config discovery
 	"discovery.importForeignConfig": {
 		type: "boolean",

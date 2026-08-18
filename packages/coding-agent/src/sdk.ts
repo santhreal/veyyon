@@ -1674,8 +1674,19 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				origin: "vault",
 			}));
 
-			for (const warning of expiryWarnings(liveVaultEntries, Date.now())) {
-				operatorNotices.warn("secrets", warning);
+			// Both unprompted expiry warnings answer to this one setting: the startup sweep below and
+			// the obfuscator's mid-session `onExpiry` (gated at its own site further down). Gating one
+			// and not the other would leave the session still interrupting about expiry with the
+			// warnings switched off, which is the same defect under a different trigger.
+			//
+			// `/secret list` and the status-line chip are NOT gated: the operator asked for those by
+			// opening the list or by looking at the line, and answering a question with silence is a
+			// different feature from not interrupting.
+			const warnAboutExpiry = runtimeSettings.get("secrets.expiryWarnings");
+			if (warnAboutExpiry) {
+				for (const warning of expiryWarnings(liveVaultEntries, Date.now())) {
+					operatorNotices.warn("secrets", warning);
+				}
 			}
 
 			let placeholderKey: Buffer;
@@ -1690,7 +1701,11 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			const nextObfuscator = new SecretObfuscator([...envEntries, ...fileEntries, ...vaultEntries], {
 				placeholderKey,
 				onRejection: rejection => operatorNotices.warn("secrets", describeSecretRejection(rejection)),
-				onExpiry: expiry => operatorNotices.warn("secrets", describeSecretExpiry(expiry)),
+				// A notice only. The placeholder is already forgotten by the time this fires, so
+				// silencing it withdraws the interruption and nothing else.
+				onExpiry: warnAboutExpiry
+					? expiry => operatorNotices.warn("secrets", describeSecretExpiry(expiry))
+					: undefined,
 			});
 			return { obfuscator: nextObfuscator, vault, vaultRevision, auditLog };
 		};
