@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-0b8bb752.js";
+            window.path_to_searchindex_js = "../searchindex-ecfe896c.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-79e2ba62.js"></script>
@@ -268,7 +268,7 @@ act on a bare invocation: <code>/yolo</code>, <code>/fast</code>, and <code>/bro
 <tr><td><code>/guided-goal</code></td><td>Guided goal wizard</td></tr>
 <tr><td><code>/loop</code></td><td>Loop mode controls</td></tr>
 <tr><td><code>/prewalk</code></td><td>Prewalk edit path</td></tr>
-<tr><td><code>/secret</code></td><td>Store a credential the agent uses by placeholder and never sees. A command comes first on every surface: <code>/secret add &lt;value&gt;</code> stores it in a terminal, <code>/secret add</code> alone opens a hidden field, and the name is asked afterwards with Enter accepting the generated one. The commands are <code>add</code>, <code>list</code>, <code>rm</code>, <code>clear</code>, <code>rename</code>, <code>value</code>, <code>scope</code>, <code>copy</code>, <code>extend</code>, <code>log</code>, <code>discard</code>, <code>help</code>; a first word that is none of them is refused and nothing is stored. See <a href="../features/secrets.html">Secrets</a></td></tr>
+<tr><td><code>/secret</code></td><td>Store a credential the agent uses by placeholder and never sees. A command comes first on every surface and every argument after it is a plain word: <code>/secret add &lt;value&gt;</code> stores it in a terminal, <code>/secret add</code> alone opens a hidden field, <code>/secret from-env &lt;VAR&gt;</code> reads it out of the environment, and the name is asked afterwards with Enter accepting the generated one. The commands are <code>add</code>, <code>from-env</code>, <code>list</code>, <code>rm</code>, <code>clear</code>, <code>rename</code>, <code>value</code>, <code>scope</code>, <code>copy</code>, <code>extend</code>, <code>log</code>, <code>discard</code>, <code>help</code>; a first word that is none of them is refused and nothing is stored. See <a href="../features/secrets.html">Secrets</a></td></tr>
 <tr><td><code>/settings</code>, <code>/setup</code></td><td>Settings UI; <code>/setup</code> opens first-run provider sign-in</td></tr>
 <tr><td><code>/providers</code>, <code>/account manager</code></td><td>Open the account manager: every stored account per provider, with its email, plan, health, and usage. See <a href="../using/authentication.html">Authentication</a></td></tr>
 <tr><td><code>/account status</code></td><td>Show which account each provider is serving this session with. A bare <code>/account</code> opens the picker</td></tr>
@@ -369,7 +369,7 @@ own page; typing the bare command lists them with their descriptions.</p>
 <tr><td><code>/permissions</code></td><td><code>status</code>, <code>ask</code>, <code>ask-command</code>, <code>auto</code>, <code>yolo</code>, <code>plan</code>, <code>reset</code></td></tr>
 <tr><td><code>/yolo</code></td><td><code>on</code>, <code>off</code>, <code>status</code></td></tr>
 <tr><td><code>/cpu-limit</code></td><td><code>status</code>, <code>remove</code>, <code>reset</code>, <code>kill</code></td></tr>
-<tr><td><code>/secret</code></td><td><code>add</code>, <code>list</code>, <code>rm</code>, <code>clear</code>, <code>rename</code>, <code>value</code>, <code>scope</code>, <code>copy</code>, <code>extend</code>, <code>log</code>, <code>discard</code>, <code>help</code></td></tr>
+<tr><td><code>/secret</code></td><td><code>add</code>, <code>from-env</code>, <code>list</code>, <code>rm</code>, <code>clear</code>, <code>rename</code>, <code>value</code>, <code>scope</code>, <code>copy</code>, <code>extend</code>, <code>log</code>, <code>discard</code>, <code>help</code></td></tr>
 <tr><td><code>/collab</code></td><td><code>start</code>, <code>view</code>, <code>status</code>, <code>stop</code></td></tr>
 <tr><td><code>/browser</code></td><td><code>headless</code>, <code>visible</code></td></tr>
 <tr><td><code>/todo</code></td><td><code>edit</code>, <code>copy</code>, <code>export</code>, <code>import</code>, <code>append</code>, <code>start</code>, <code>done</code>, <code>drop</code>, <code>rm</code></td></tr>

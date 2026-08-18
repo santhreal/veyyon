@@ -106,7 +106,7 @@ There is no `VEYYON_NON_INTERACTIVE` or `VEYYON_INSTALL_URL`; the install script
 ## MCP
 
 An MCP server that needs a bearer token takes it as a literal header in `mcp.json`
-(`mcpServers.<name>.headers.Authorization`) or via `/mcp add --token`, so the secret can live in any
+(`mcpServers.<name>.headers.Authorization`) or via `/mcp add <name> token <token>`, so the secret can live in any
 env var you expand yourself (for example plain `GITHUB_PERSONAL_ACCESS_TOKEN`), not a fixed
 `VEYYON_*` name. There is no `VEYYON_GITHUB_PERSONAL_ACCESS_TOKEN` or `VEYYON_CONNECTORS_TOKEN`
 convention in the current runtime. A `bearer_token_env_var` field is honored only when importing
