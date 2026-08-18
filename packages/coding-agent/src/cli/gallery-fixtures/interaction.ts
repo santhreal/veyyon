@@ -23,7 +23,7 @@ export const interactionFixtures: Record<string, GalleryFixture> = {
 					{
 						name: "Foundation",
 						tasks: [
-							{ content: "Scaffold crate", status: "done" },
+							{ content: "Scaffold crate", status: "completed" },
 							{ content: "Wire workspace", status: "in_progress" },
 						],
 					},
