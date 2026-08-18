@@ -91,6 +91,7 @@ function harness(
 		onShowUsage: row => recorded.usage.push(row.credentialId),
 		onAddAccount: provider => recorded.added.push(provider),
 		onToggleLoadBalancing: () => false,
+		onClearRateLimitBlock: () => {},
 		onCancel: () => {
 			recorded.cancels += 1;
 		},
@@ -200,7 +201,7 @@ describe("AccountManagerComponent rendering", () => {
 		const lines = frame();
 
 		expect(lineWith(lines, "rotated off")).toBe("you chose work, rotated off it onto personal");
-		expect(lineWith(lines, "switches back")).toBe("enter switches back to work · 2h until it unblocks");
+		expect(lineWith(lines, "switches back")).toBe("enter switches back to work · on hold for 2h · c lifts the hold");
 		expect(lineWith(lines, "● personal")).not.toContain("your choice");
 		expect(lineWith(lines, "● personal")).toContain("serving");
 		expect(lineWith(lines, "⊗ work")).toContain("your choice");
@@ -614,7 +615,7 @@ describe("the prose the card writes itself survives a narrow pane", () => {
 		for (const width of WIDTHS) {
 			const pane = paneAt(width);
 			expect(pane, `width ${width}`).toContain("you chose work, rotated off it onto personal");
-			expect(pane, `width ${width}`).toContain("enter switches back to work · 1h until it unblocks");
+			expect(pane, `width ${width}`).toContain("enter switches back to work · on hold for 1h · c lifts the hold");
 		}
 	});
 

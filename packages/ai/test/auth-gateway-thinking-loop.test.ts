@@ -118,7 +118,8 @@ describe("auth-gateway auth retry", () => {
 		registerMockApi();
 		const dir = await fs.mkdtemp(path.join(os.tmpdir(), "gw-quota-rotation-"));
 		const store = await SqliteAuthCredentialStore.open(path.join(dir, "auth.db"));
-		const storage = new AuthStorage(store);
+		// The retry under test moves off an exhausted key onto a sibling, which is opt-in movement.
+		const storage = new AuthStorage(store, { loadBalancing: true });
 		await storage.set("mock", [
 			{ type: "api_key", key: "quota-key" },
 			{ type: "api_key", key: "healthy-key" },

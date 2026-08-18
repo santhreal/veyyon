@@ -198,6 +198,7 @@ const callbacks = {
 		loadBalancing = !loadBalancing;
 		return loadBalancing;
 	},
+	onClearRateLimitBlock: noop,
 	onCancel: noop,
 };
 

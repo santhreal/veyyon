@@ -42,7 +42,9 @@ describe("AuthStorage forceRefresh + rotateSessionCredential", () => {
 	beforeEach(async () => {
 		tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-ai-rotate-"));
 		store = await SqliteAuthCredentialStore.open(path.join(tempDir, "agent.db"));
-		authStorage = new AuthStorage(store);
+		// This suite is about movement among accounts nobody chose, and that movement is opt-in: the
+		// library default decides nothing, so a suite that asserts a rotation has to ask for one.
+		authStorage = new AuthStorage(store, { loadBalancing: true });
 	});
 
 	afterEach(async () => {
@@ -373,6 +375,7 @@ describe("AuthStorage forceRefresh + rotateSessionCredential", () => {
 			windowDefaults: { primaryMs: 60_000, secondaryMs: 60_000 },
 		};
 		concurrentStorage = new AuthStorage(concurrentStore, {
+			loadBalancing: true,
 			usageProviderResolver: provider => (provider === PROVIDER ? usageProvider : undefined),
 			rankingStrategyResolver: provider => (provider === PROVIDER ? rankingStrategy : undefined),
 		});

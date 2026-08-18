@@ -173,7 +173,9 @@ describe("AuthStorage codex oauth ranking", () => {
 		tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-ai-auth-codex-selection-"));
 		dbPath = path.join(tempDir, "agent.db");
 		store = await SqliteAuthCredentialStore.open(dbPath);
+		// Ranking and rotation among accounts nobody chose is opt-in; the default decides nothing.
 		authStorage = new AuthStorage(store, {
+			loadBalancing: true,
 			usageProviderResolver: provider => (provider === "openai-codex" ? usageProvider : undefined),
 		});
 		usageByAccount.clear();
@@ -703,6 +705,7 @@ describe("AuthStorage codex oauth ranking", () => {
 
 		const reopenedStore = await SqliteAuthCredentialStore.open(dbPath);
 		const reopenedAuthStorage = new AuthStorage(reopenedStore, {
+			loadBalancing: true,
 			usageProviderResolver: provider => (provider === "openai-codex" ? usageProvider : undefined),
 		});
 		try {
@@ -788,8 +791,8 @@ describe("AuthStorage codex oauth ranking", () => {
 				initialSnapshot: initialResult.snapshot,
 				streamSnapshots: false,
 			});
-			const clientStorageA = new AuthStorage(remoteStoreA);
-			const clientStorageB = new AuthStorage(remoteStoreB);
+			const clientStorageA = new AuthStorage(remoteStoreA, { loadBalancing: true });
+			const clientStorageB = new AuthStorage(remoteStoreB, { loadBalancing: true });
 			await clientStorageA.reload();
 			await clientStorageB.reload();
 			try {
@@ -936,7 +939,7 @@ describe("AuthStorage codex oauth ranking", () => {
 				initialSnapshot: snapshotWithBlock.snapshot,
 				streamSnapshots: false,
 			});
-			const clientStorageB = new AuthStorage(remoteStoreB);
+			const clientStorageB = new AuthStorage(remoteStoreB, { loadBalancing: true });
 			await clientStorageB.reload();
 			try {
 				expect(remoteStoreB.getCredentialBlock(blockedRow.id, "openai-codex:oauth", "shared")).toBe(blockedUntilMs);
@@ -1043,7 +1046,7 @@ describe("AuthStorage codex oauth ranking", () => {
 				initialSnapshot: clientAInitial.snapshot,
 				streamSnapshots: false,
 			});
-			const clientStorageA = new AuthStorage(remoteStoreA);
+			const clientStorageA = new AuthStorage(remoteStoreA, { loadBalancing: true });
 			await clientStorageA.reload();
 			try {
 				let blockedSessionId: string | undefined;
@@ -1096,7 +1099,7 @@ describe("AuthStorage codex oauth ranking", () => {
 					initialSnapshot: snapshotWithBlock.snapshot,
 					streamSnapshots: false,
 				});
-				const clientStorageB = new AuthStorage(remoteStoreB);
+				const clientStorageB = new AuthStorage(remoteStoreB, { loadBalancing: true });
 				await clientStorageB.reload();
 				try {
 					expect(remoteStoreB.getCredentialBlock(blockedRow.id, "openai-codex:oauth", "shared")).toBeDefined();
@@ -1282,7 +1285,7 @@ describe("AuthStorage codex oauth ranking", () => {
 				initialSnapshot: initialResult.snapshot,
 				streamSnapshots: false,
 			});
-			const clientStorage = new AuthStorage(remoteStore);
+			const clientStorage = new AuthStorage(remoteStore, { loadBalancing: true });
 			await clientStorage.reload();
 			try {
 				expect(remoteStore.getCredentialBlock(blockedRow.id, "openai-codex:oauth", "shared")).toBeDefined();
@@ -1722,6 +1725,7 @@ describe("AuthStorage codex oauth ranking", () => {
 		if (!store) throw new Error("test setup failed");
 
 		const slowAuthStorage = new AuthStorage(store, {
+			loadBalancing: true,
 			usageProviderResolver: provider =>
 				provider === "openai-codex"
 					? ({

@@ -1773,6 +1773,23 @@ export class SelectorController {
 					);
 					return stored;
 				},
+				onClearRateLimitBlock: row => {
+					authStorage.clearCredentialBlocks(row.provider, row.credentialId);
+					// Re-probe the one account, so the row's countdown is replaced by what the provider
+					// says now rather than by an empty space this cleared. Lifting a block that really
+					// is still in force therefore shows it again, which is the honest outcome: the
+					// operator asked whether the provider still refuses, and the provider answered.
+					void this.#probeAccountHealth(
+						() => manager,
+						() => closed,
+						probes,
+						[row.credentialId],
+					);
+					reload();
+					this.ctx.showStatus(
+						`${row.providerLabel}: cleared the rate-limit hold on ${accountDisplayLabel(row)} and re-checked it`,
+					);
+				},
 				onCancel: done,
 			},
 			{
