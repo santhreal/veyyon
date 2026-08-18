@@ -76,13 +76,57 @@ export function outputBlockContentWidth(width: number, contentPaddingLeft?: numb
 	return Math.max(1, width - 2 - normalizeContentPaddingLeft(contentPaddingLeft));
 }
 
+/**
+ * How far apart two `#rrggbb` colours are on their worst channel.
+ */
+function channelDistance(a: string, b: string): number {
+	let worst = 0;
+	for (let i = 0; i < 3; i++) {
+		const ca = Number.parseInt(a.slice(1 + i * 2, 3 + i * 2), 16);
+		const cb = Number.parseInt(b.slice(1 + i * 2, 3 + i * 2), 16);
+		if (Number.isNaN(ca) || Number.isNaN(cb)) return Number.POSITIVE_INFINITY;
+		worst = Math.max(worst, Math.abs(ca - cb));
+	}
+	return worst;
+}
+
+/** Below this the rail and the ground are the same colour to a reader. */
+const RAIL_GROUND_MIN_DISTANCE = 12;
+
+/**
+ * The rail is the only chrome a block has left, so it may not be drawn in a
+ * colour the ground on screen swallows.
+ *
+ * Twelve renderers ask for `borderMuted`, which on the default theme is
+ * `#202329` against the `#1e2127` a real terminal actually had: two levels apart
+ * on the worst channel, measured off a recording. Those blocks — the todo board,
+ * `write`, `ask`, `ast-edit`, the search results — drew their rail and it was not
+ * there, so the panel lost the one glyph that says where it begins while the
+ * block beside it kept its own. The block still gets the colour it asked for
+ * whenever a reader can see it; `dim` is the fallback because that is what every
+ * other settled block already uses, so the repair makes the two agree rather
+ * than inventing a third shade.
+ *
+ * The ground is the one the row VISIBLY sits on, never the theme's declared one.
+ * Titanium declares black and `tui.paintGround: auto` refuses to paint black
+ * onto a grey terminal, so a check against the declared ground clears
+ * `borderMuted` by 41 levels and ships the invisible rail anyway — which is
+ * exactly what the first cut of this function did, and the recording caught it.
+ */
+function visibleRailColor(requested: ThemeColor, theme: Theme): ThemeColor {
+	const ground = theme.visibleGroundHex();
+	const hex = theme.getColorHex(requested);
+	if (channelDistance(hex, ground) >= RAIL_GROUND_MIN_DISTANCE) return requested;
+	return channelDistance(theme.getColorHex("dim"), ground) >= RAIL_GROUND_MIN_DISTANCE ? "dim" : requested;
+}
+
 export function renderOutputBlock(options: OutputBlockOptions, theme: Theme): string[] {
 	const { header, headerMeta, state, sections = [], width, applyBg = true } = options;
 	const h = theme.boxSharp.horizontal;
 	const rail = theme.symbol("block.rail");
 	const lineWidth = Math.max(0, width);
 	// Rail colors: running/pending use accent, success uses dim (gray), error/warning keep their colors
-	const borderColor: ThemeColor =
+	const requestedColor: ThemeColor =
 		options.borderColor ??
 		(state === "error"
 			? "error"
@@ -91,6 +135,7 @@ export function renderOutputBlock(options: OutputBlockOptions, theme: Theme): st
 				: state === "running" || state === "pending"
 					? "accent"
 					: "dim");
+	const borderColor = visibleRailColor(requestedColor, theme);
 	const border = (text: string) => theme.fg(borderColor, text);
 	const bgFn = (() => {
 		if (!state || !applyBg) return undefined;

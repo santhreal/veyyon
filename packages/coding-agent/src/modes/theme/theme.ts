@@ -36,7 +36,6 @@ import {
 	type ThemeColor,
 	type ThemeJson,
 } from "./color";
-import { getVisibleGround } from "./ground-tints";
 import { lavaText } from "./shimmer";
 import { getSymbolTheme } from "./symbol-theme";
 import { normalizeSpinnerFramesOverride, type SymbolPreset } from "./symbols";
@@ -1052,7 +1051,7 @@ export { getSymbolTheme } from "./symbol-theme";
  * pre-detection rendering.
  */
 export function visibleGroundHex(): string {
-	return getVisibleGround() ?? theme.getResolvedGroundHex();
+	return theme.visibleGroundHex();
 }
 
 /**

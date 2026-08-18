@@ -11,6 +11,7 @@ import { colorLuma, relativeLuminance } from "@veyyon/utils/color";
 // Owners, not the `@veyyon/utils` barrel: 2 modules against 74.
 import * as logger from "@veyyon/utils/logger";
 import { bgAnsi, type ColorMode, colorToAnsi, fgAnsi, resolveToHex, type ThemeBg, type ThemeColor } from "./color";
+import { getVisibleGround } from "./ground-tints";
 import {
 	BAR_RAMPS,
 	SPINNER_FRAMES,
@@ -269,6 +270,22 @@ export class Theme {
 	}
 
 	/**
+	 * The ground a row VISIBLY sits on: what this process painted, else what the
+	 * terminal reported, else {@link getResolvedGroundHex}.
+	 *
+	 * Anything asking "can a reader separate this color from the background" has
+	 * to ask this one and not the declared ground, and the difference is not
+	 * academic: titanium declares black, `tui.paintGround: auto` refuses to paint
+	 * black onto a grey terminal, so a check against the declared ground clears a
+	 * color the operator cannot see. Measured off a real recording — `borderMuted`
+	 * `#202329` reads as visible against black and vanishes on the `#1e2127` the
+	 * terminal actually had.
+	 */
+	visibleGroundHex(): string {
+		return getVisibleGround() ?? this.getResolvedGroundHex();
+	}
+
+	/**
 	 * Get all foreground and background theme colors as CSS hex strings.
 	 * Skips colors resolved to the default terminal color (unstyled).
 	 */
@@ -353,6 +370,23 @@ export class Theme {
 	bgHex(hex: string, text: string): string {
 		if (!colorEnabled()) return text;
 		return `${bgAnsi(hex, this.mode)}${text}\x1b[49m`;
+	}
+
+	/**
+	 * The foreground SGR — the opening sequence alone — for a hex an animation
+	 * computed. The {@link bgHex} argument in the foreground: the colour of a
+	 * moving highlight is a mix of a theme colour with white, not a theme colour,
+	 * and the alternative is every animated surface writing its own
+	 * `38;2;r;g;b`.
+	 *
+	 * Only the open, because the one caller replaces the colour of a cell in a row
+	 * that already carries the matching reset. Returns `""` when colour is off, so
+	 * a caller can tell that there is nothing to paint with and leave the row
+	 * alone rather than emit a bare glyph.
+	 */
+	fgHexAnsi(hex: string): string {
+		if (!colorEnabled()) return "";
+		return colorToAnsi(hex, this.mode);
 	}
 
 	// Text attributes emit raw SGR pairs, NEVER chalk: chalk's level
