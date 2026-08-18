@@ -233,6 +233,40 @@ const BANNED: ReadonlyArray<{ readonly name: string; readonly pattern: RegExp }>
 ];
 
 /**
+ * Everything on one line that is NOT inside an HTML preformatted block, plus the depth to carry
+ * into the next line.
+ *
+ * `<pre>` is a document's code block, exactly as a ``` fence is, and the fence rule below already
+ * says a code block in a document is code. The proof pages display captured `git show` output
+ * inside `pre.difftext`, and `.diff` is RECORDED_OUTPUT in the policy table above — so the same
+ * captured bytes were exempt as a file and prose as a figure, which is the only reason a phrase
+ * this suite had already driven out of the source comments still failed it from a rendered diff.
+ *
+ * Returns the OUTSIDE text rather than skipping the whole line, so prose sharing a line with a
+ * closing tag is still scanned and the exemption cannot be widened by writing `</pre>` in front
+ * of an attribution.
+ */
+function outsidePreformatted(line: string, depth: number): { readonly kept: string; readonly depth: number } {
+	const tag = /<pre\b|<\/pre\s*>/gi;
+	let kept = "";
+	let cursor = 0;
+	let open = depth;
+	let match = tag.exec(line);
+	while (match !== null) {
+		if (match[0].startsWith("</")) {
+			if (open > 0) open -= 1;
+		} else {
+			if (open === 0) kept += line.slice(cursor, match.index);
+			open += 1;
+		}
+		cursor = match.index + match[0].length;
+		match = tag.exec(line);
+	}
+	if (open === 0) kept += line.slice(cursor);
+	return { kept, depth: open };
+}
+
+/**
  * Comment and prose lines only: a string literal that is test DATA is not prose about a person.
  *
  * Each entry carries a `window` that appends the NEXT prose line, because at 80 columns an
@@ -249,15 +283,21 @@ function proseLines(
 	source: string,
 ): ReadonlyArray<{ readonly line: number; readonly text: string; readonly window: string }> {
 	// Markup carries its prose outside any comment marker, so every line is prose. The fence rule
-	// still applies: a code block in a document is code.
-	const markdown = MARKUP_EXTENSIONS.has(path.extname(file));
+	// still applies: a code block in a document is code, whether it is fenced or in a `<pre>`.
+	const markup = MARKUP_EXTENSIONS.has(path.extname(file));
 	const raw: { line: number; text: string }[] = [];
 	let inFence = false;
+	let preformatted = 0;
 	source.split("\n").forEach((line, index) => {
 		const trimmed = line.trim();
-		if (markdown) {
-			if (trimmed.startsWith("```")) inFence = !inFence;
-			else if (!inFence && trimmed.length > 0) raw.push({ line: index + 1, text: line });
+		if (markup) {
+			if (trimmed.startsWith("```")) {
+				inFence = !inFence;
+				return;
+			}
+			const { kept, depth } = outsidePreformatted(line, preformatted);
+			preformatted = depth;
+			if (!inFence && kept.trim().length > 0) raw.push({ line: index + 1, text: kept });
 			return;
 		}
 		const isComment =
@@ -402,6 +442,48 @@ describe("no comment or internal doc attributes a change to a person", () => {
 		// per-line scan reports nothing and the wrap is what does the hiding.
 		const perLine = windows.filter(entry => BANNED.some(rule => rule.pattern.test(entry.text)));
 		expect(perLine).toEqual([]);
+	});
+
+	/**
+	 * A rendered diff is a recording, not prose about a person — and the exemption stops at the
+	 * closing tag.
+	 *
+	 * `.diff` and `.patch` are RECORDED_OUTPUT in the policy table, so a captured `git show`
+	 * carrying a phrase from an old comment is exempt as a file. The proof pages display those
+	 * same captures inside `pre.difftext`, and `.html` is markup, where every line outside a ```
+	 * fence was prose: the identical bytes were exempt as a file and a violation as a figure. The
+	 * source comments in that capture had already been rewritten to carry no attribution, so the
+	 * only thing failing was the historical record of having fixed it, which no edit to the tree
+	 * can change.
+	 *
+	 * The three cases below are the whole contract, and the last two are why this is not simply a
+	 * hole: a caption is still prose, and a line that closes the block and then keeps writing is
+	 * still prose, so `</pre>` in front of an attribution silences nothing.
+	 */
+	it("exempts a rendered diff but not the prose around it", () => {
+		const attribution = "the operator's verdict on this build was that the animations are barely noticeable";
+		const source = [
+			"<h2>Selection band</h2>",
+			'<pre class="difftext">',
+			`<span class="green">+</span><span class="green">// ${attribution}</span>`,
+			"</pre>",
+			`<p class="cap">${attribution}</p>`,
+			// A blank line, so the two prose cases are not CONSECUTIVE scanned lines. The window
+			// above joins each entry with the next one, and with the caption and the split line
+			// adjacent, blanking either one left the other's text inside the survivor's window and
+			// both negative controls below stayed green while proving nothing.
+			"",
+			`<pre class="difftext">inside</pre><p>${attribution}</p>`,
+		].join("\n");
+
+		const caught = proseLines("proof/page.html", source).filter(entry =>
+			BANNED.some(rule => rule.pattern.test(entry.window)),
+		);
+
+		// Line 3 is inside the block and exempt; line 5 is a caption and line 7 is prose sharing a
+		// line with the block that closed before it. Exact equality, so widening the exemption to
+		// the rest of a closing line, or to the whole document, fails here.
+		expect(caught.map(entry => entry.line)).toEqual([5, 7]);
 	});
 
 	/**
