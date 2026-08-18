@@ -251,7 +251,14 @@ export class SelectList implements Component, MouseRoutable {
 		return this.#hitRows[line];
 	}
 
-	/** Highlight the item under the pointer (null clears). */
+	/**
+	 * Band the row under the pointer (null clears).
+	 *
+	 * The pointer does not move the cursor: a list you are typing into must not have its selection
+	 * hijacked by a mouse that happened to cross the card. What it does is paint, on EVERY row —
+	 * including the one the cursor already sits on. Suppressing the band there is what made a row
+	 * unreachable with the pointer and made the card feel dead exactly where the eye already was.
+	 */
 	setHoverIndex(index: number | null): void {
 		this.#hoveredIndex = index;
 		this.#hoverFade?.set(index);
@@ -287,14 +294,13 @@ export class SelectList implements Component, MouseRoutable {
 	}
 
 	/**
-	 * Band strength for a filtered-item index: 0 for no band through 1 for the
-	 * full one. The selected row never takes a band — its own selection paint is
-	 * the stronger signal and a band over it reads as two selections — but a row
-	 * that WAS hovered keeps fading out after the selection moves onto it, so the
-	 * suppression is applied here rather than by dropping the fade.
+	 * Band strength for a filtered-item index: 0 for no band through 1 for the full one.
+	 *
+	 * Every row can carry a band, the selected one included: the pointer and the keyboard are one
+	 * highlight, so the row the cursor sits on answers the pointer like any other, and the row the
+	 * selection moves onto keeps playing out the fade it was already in.
 	 */
 	#hoverStrength(index: number): number {
-		if (index === this.#selectedIndex) return 0;
 		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
 		return index === this.#hoveredIndex ? 1 : 0;
 	}

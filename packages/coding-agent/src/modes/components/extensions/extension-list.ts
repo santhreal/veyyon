@@ -159,7 +159,7 @@ export class ExtensionList implements Component {
 					for (let i = startIdx; i < endIdx; i++) {
 						const listItem = this.#listItems[i];
 						const isSelected = this.#focused && i === this.#selectedIndex;
-						const hoverStrength = this.#focused && !isSelected ? this.#hoverStrength(i) : 0;
+						const hoverStrength = this.#focused ? this.#hoverStrength(i) : 0;
 
 						let rowStr: string;
 						if (listItem.type === "master") {
@@ -423,7 +423,12 @@ export class ExtensionList implements Component {
 		}
 	}
 
-	/** Highlight the row under the pointer (null clears). */
+	/**
+	 * Band the row under the pointer (null clears).
+	 *
+	 * The band paints on every row, the cursor row included: the pointer does not move the cursor, so
+	 * suppressing it there left a row nothing could point at.
+	 */
 	setHoverIndex(index: number | null): void {
 		this.#hoveredIndex = index;
 		this.#hoverFade?.set(index);

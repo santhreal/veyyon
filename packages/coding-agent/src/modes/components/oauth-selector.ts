@@ -354,7 +354,9 @@ export class OAuthSelectorComponent implements Component {
 								const text = isAvailable ? `  ${provider.name}` : theme.fg("dim", `  ${provider.name}`);
 								line = text + statusIndicator;
 							}
-							const strength = isSelected ? 0 : this.#hoverStrength(i);
+							// The cursor row answers the pointer like any other: its accent prefix is not a band,
+							// so suppressing the band here left the row the eye was already on feeling dead.
+							const strength = this.#hoverStrength(i);
 							rows.push(strength > 0 ? hoverBandAt(line, rowWidth, strength) : truncateToWidth(line, rowWidth));
 						}
 						return rows;

@@ -136,7 +136,7 @@ export class ResetUsageSelectorComponent implements Component {
 			const account = this.#accounts[i];
 			if (!account) continue;
 			const isSelected = i === this.#selectedIndex;
-			const hoverStrength = isSelected ? 0 : this.#hoverStrength(i);
+			const hoverStrength = this.#hoverStrength(i);
 			const redeemable = account.availableCount > 0;
 			const countLabel = account.error ? account.error : formatCount("saved reset", account.availableCount);
 			const countText = account.error

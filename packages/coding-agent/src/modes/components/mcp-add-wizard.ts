@@ -627,8 +627,9 @@ export class MCPAddWizard implements Component {
 			for (const rendered of child.render(dims.contentWidth)) {
 				if (option !== undefined) {
 					this.#hitRows[body.length] = option;
-					// The selected row owns its own styling; a band over it reads as two selections.
-					const strength = option === this.#selectedIndex ? 0 : this.#hoverStrength(option);
+					// The cursor row answers the pointer like any other: its accent prefix is not a band,
+					// so suppressing the band there left the row the eye was already on feeling dead.
+					const strength = this.#hoverStrength(option);
 					body.push(strength > 0 ? hoverBandAt(rendered, dims.contentWidth, strength) : rendered);
 					continue;
 				}
