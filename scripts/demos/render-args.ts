@@ -57,6 +57,12 @@ export function renderWidth(argv: readonly string[] = process.argv): number {
  * survived, because that path writes truecolor escapes itself.
  *
  * Pass `settings: true` for any component that reads `Settings`.
+ *
+ * `--ground <#rrggbb>` reports a terminal ground, the way a real session learns
+ * one from OSC 11. Chrome that is mixed RELATIVE to the visible ground — a card's
+ * specular sweep, any surface material — is off until something reports one, so a
+ * proof of that chrome taken without this flag renders the no-material fallback
+ * and cannot answer the question it was taken for.
  */
 export async function initRender(themeName: string, options: { settings?: boolean } = {}): Promise<void> {
 	const { initTheme } = await import("../../packages/coding-agent/src/modes/theme/theme");
@@ -68,4 +74,9 @@ export async function initRender(themeName: string, options: { settings?: boolea
 	// AFTER the inits, both of which set the policy from the environment and would
 	// undo this.
 	setAnsiPolicy("full");
+	const ground = flag("ground", "");
+	if (ground !== "") {
+		const { setDetectedTerminalGround } = await import("../../packages/coding-agent/src/modes/theme/ground-tints");
+		setDetectedTerminalGround(ground);
+	}
 }

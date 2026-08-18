@@ -1,9 +1,12 @@
 /**
- * WHY: a card is now MATERIAL — an explicit background on every cell it owns, a
- * per-row cascade while it unfolds, and a specular sweep crossing it — and every
- * one of those writes a colour mixed out of "the ground behind this row". That
- * makes three whole classes of defect possible at once, and this suite closes all
- * three rather than the one that happened to be noticed:
+ * WHY: a card's entrance writes colour — a per-row cascade while it unfolds and a
+ * specular sweep crossing it — and every one of those writes a colour mixed out of
+ * "the ground behind this row". That makes three whole classes of defect possible
+ * at once, and this suite closes all three rather than the one that happened to be
+ * noticed. A settled card paints NOTHING, which is the fourth thing asserted here:
+ * an explicit background on every cell of a rectangle reads as a film over the page
+ * rather than as an object on it, so the elevation ladder that used to fill a card
+ * is gone and its absence is a contract, not an accident.
  *
  *   1. PAINTING OUTSIDE THE CARD. A card row is as wide as the screen; the padding
  *      that centres the card belongs to the page. A treatment handed the whole row
@@ -131,27 +134,22 @@ afterEach(() => {
 });
 
 describe("a card paints its material only inside its own edges", () => {
-	it("keeps the settled surface between the card's own columns", () => {
+	it("gives a settled card no fill of its own, on the terminal that would take one", () => {
+		// A known ground on a truecolor terminal is EXACTLY the configuration that used
+		// to fill every cell of the card with an elevation ladder, so this is the case
+		// where a returning wash would hide. The frame handed in comes back by identity,
+		// which is also what keeps an open overlay off the allocator once it has landed.
 		setDetectedTerminalGround(TERMINAL_GREY);
 		const result = shell();
 		const geometry = geometryOf(result);
 		const lines = applyModalReveal(result, WIDTH, 1);
 
-		let painted = 0;
+		expect(lines, "a settled card is the frame it was handed").toBe(result.lines);
 		for (let row = geometry.cardRowStart; row < geometry.cardRowEnd; row++) {
-			const columns = paintedColumns(lines[row] ?? "");
-			painted += columns.size;
-			for (const col of columns) {
-				expect(col, `row ${row} painted column ${col} outside the card`).toBeGreaterThanOrEqual(
-					geometry.cardColStart,
-				);
-				expect(col, `row ${row} painted column ${col} outside the card`).toBeLessThan(geometry.cardColEnd);
-			}
+			expect(paintedColumns(lines[row] ?? "").size, `settled card row ${row} carries a fill`).toBe(0);
 		}
-		// The material has to actually exist, or containment is trivially true.
-		expect(painted, "a settled card carries a surface").toBeGreaterThan(0);
-
-		// The page rows above and below the card are never touched.
+		// And nothing reached the page either, which the fill used to be the only
+		// candidate for at rest.
 		for (const row of [0, geometry.cardRowStart - 1, geometry.cardRowEnd, HEIGHT - 1]) {
 			if (row < 0 || row >= HEIGHT) continue;
 			expect(paintedColumns(lines[row] ?? "").size, `page row ${row} carries paint`).toBe(0);
