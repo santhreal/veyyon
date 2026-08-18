@@ -1,7 +1,7 @@
 /**
  * WHY THIS EXISTS.
  *
- * An operator chose one account for a provider, the product spent a different one, and there was no
+ * One account was chosen for a provider, the product spent a different one, and there was no
  * way back. Three mechanisms did it, none of which asked whether anybody had chosen anything:
  *
  *  1. `#orderByBlockAvailability` sorted a held account behind an unblocked sibling, and the stored
@@ -11,23 +11,23 @@
  *
  * A hold is OUR prediction, not the provider's ruling. It is written from a 429 we saw, a usage
  * report, or a backoff default, and nothing in it knows about a limit reset redeemed on the
- * provider's own site, a plan change, or a support credit. So an operator with a freshly reset
- * account watched a countdown they could not clear spend a different subscription.
+ * provider's own site, a plan change, or a support credit. So a freshly reset account sat behind a
+ * countdown nothing could clear while a different subscription paid for the work.
  *
  * And the hold could not be lifted: `clearCredentialBlocks` was private, reachable only from the
  * Codex saved-reset path, and keyed `provider:oauth` regardless of the row's real type, so a held
  * API-key account had no clearing path at all.
  *
- * THE CLASS: any mechanism that moves a request off the account the operator explicitly chose, and
+ * THE CLASS: any mechanism that moves a request off the explicitly chosen account, and
  * any hold this product invented that nothing but time can clear. `accounts.loadBalancing` governs
- * what the product does on its OWN initiative; it never governs what the operator may ask for, so
+ * what the product does on its OWN initiative; it never governs what a caller may ask for, so
  * the choice wins with movement on as well as off. Automation among accounts nobody named is
  * untouched, and the arms below pin that too, or "honour the choice" would be indistinguishable
  * from "never move".
  *
  * A choice is not a licence to strand the session, so two boundaries are pinned as well. A grant the
  * provider REFUSED (a hard 401, not a quota hold) stops leading, because that verdict is the
- * provider's and not ours, and lifting the hold on that account is the operator asserting it works
+ * provider's and not ours, and lifting the hold on that account asserts it works
  * again. And the routing report has to distinguish the two: a held choice is what serves next and
  * says so, while an account nobody named is a prediction and must be labelled one.
  *
@@ -60,7 +60,7 @@ function oauthCredential(suffix: string) {
 	};
 }
 
-describe("the account an operator chose", () => {
+describe("the account that was chosen", () => {
 	let tempDir = "";
 	let dbPath = "";
 
@@ -118,7 +118,7 @@ describe("the account an operator chose", () => {
 	});
 
 	it("spends it while a hold is on it even with account movement ON", async () => {
-		// The operator overrides the automation, not the other way round. Movement on means the product
+		// The choice overrides the automation, not the other way round. Movement on means the product
 		// may move among accounts nobody named; it never means a choice can be overruled.
 		const { storage } = await twoAccountsFirstHeld({ loadBalancing: true });
 		try {
@@ -134,6 +134,30 @@ describe("the account an operator chose", () => {
 		const { storage } = await twoAccountsFirstHeld({ loadBalancing: true, choose: false });
 		try {
 			expect(await storage.getApiKey(PROVIDER, "session-1")).toBe("access-sibling");
+		} finally {
+			storage.close();
+		}
+	});
+
+	it("is the account a peek names, so discovery describes what will actually serve", async () => {
+		// `peekApiKey` is the no-refresh path model discovery uses, and it selects by credential type
+		// rather than through the resolve. Availability ordering alone puts the held account last
+		// there, so without the choice leading, discovery would describe a sibling while every real
+		// request went to the account that was chosen.
+		const { storage } = await twoAccountsFirstHeld();
+		try {
+			expect(await storage.peekApiKey(PROVIDER)).toBe("access-chosen");
+		} finally {
+			storage.close();
+		}
+	});
+
+	it("does not colour a peek when nobody chose an account", async () => {
+		// The negative control for the arm above: with no choice, a peek follows availability like
+		// everything else, so the held account is not what discovery reports.
+		const { storage } = await twoAccountsFirstHeld({ choose: false });
+		try {
+			expect(await storage.peekApiKey(PROVIDER)).toBe("access-sibling");
 		} finally {
 			storage.close();
 		}
@@ -174,7 +198,7 @@ describe("the account an operator chose", () => {
 
 	it("spends the held API key too, because a key is an account like any other", async () => {
 		// The same class on the other credential type: the override must live where accounts are
-		// ordered, not in the OAuth path alone, or half the product still overrules the operator.
+		// ordered, not in the OAuth path alone, or half the product still overrules the choice.
 		const store = await SqliteAuthCredentialStore.open(dbPath);
 		const storage = new AuthStorage(store, { loadBalancing: true });
 		await storage.set(PROVIDER, [
@@ -230,7 +254,7 @@ describe("the account an operator chose", () => {
 	it("stops pinning traffic to a grant the provider refused, and leads with it again once revived", async () => {
 		// A hold is our prediction and the choice outranks it; a 401 is the provider's verdict and
 		// outranks the choice, or a revoked grant would be retried until the turn died. Lifting the
-		// hold is the operator asserting the account works, which is what makes the choice honourable
+		// hold asserts the account works, which is what makes the choice honourable
 		// again — so the round trip, not just the drop, is the contract.
 		const { storage, heldId } = await twoAccountsFirstHeld();
 		try {
@@ -250,7 +274,7 @@ describe("the account an operator chose", () => {
 	it("reports a held choice as the account serving next, not as a guess", async () => {
 		// The card reads this. While the hold moved traffic off the choice, reporting the choice as
 		// active would have been a lie; now that the choice is honoured, reporting it as a PREDICTION
-		// is the lie, and the operator cannot tell whether the account they picked is spending.
+		// is the lie, and nothing then says whether the chosen account is spending.
 		const { storage, heldId } = await twoAccountsFirstHeld();
 		try {
 			expect(storage.sessionCredentialRouting(PROVIDER, "session-7")).toEqual({

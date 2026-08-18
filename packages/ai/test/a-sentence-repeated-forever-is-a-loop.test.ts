@@ -73,7 +73,7 @@ interface Run {
 	/** Characters of the runaway that reached the consumer before the guard cut it. */
 	readonly streamedChars: number;
 	readonly errorMessage: string | undefined;
-	readonly errorId: string | undefined;
+	readonly errorId: AssistantMessage["errorId"];
 	readonly content: AssistantMessage["content"];
 }
 
@@ -92,7 +92,7 @@ async function streamRepeats(unit: string, repeats: number, opts?: { toolCallFir
 		const inner = new AssistantMessageEventStream();
 		inner.push({ type: "start", partial });
 		if (opts?.toolCallFirst) {
-			inner.push({ type: "toolcall_start", contentIndex: 0, toolCallId: "call-1", toolName: "bash", partial });
+			inner.push({ type: "toolcall_start", contentIndex: 0, partial });
 		}
 		inner.push({ type: "text_start", contentIndex: 1, partial });
 		for (let i = 0; i < repeats; i++) {
