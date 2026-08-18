@@ -331,7 +331,13 @@ export function divergenceLines(divergence: { chosen: AccountRow; serving: Accou
 	];
 	const until = divergence.chosen.blockedUntilMs;
 	if (until !== undefined && until > nowMs) {
-		lines.push(`enter switches back to ${chosen} · ${formatDurationCoarse(until - nowMs)} until it unblocks`);
+		// The countdown is this product's own estimate of when the provider will serve again, and
+		// the provider can lift a limit by routes this process never sees. Naming only the wait
+		// left the operator with nothing to do about an account the provider would already serve —
+		// which is exactly the state a redeemed reset leaves, since nothing but time cleared a hold.
+		lines.push(
+			`enter switches back to ${chosen} · on hold for ${formatDurationCoarse(until - nowMs)} · c lifts the hold`,
+		);
 	} else {
 		lines.push(`enter switches back to ${chosen}`);
 	}

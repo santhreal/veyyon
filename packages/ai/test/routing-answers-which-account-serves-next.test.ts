@@ -234,11 +234,13 @@ describe("routing answers which account serves next", () => {
 	});
 
 	/**
-	 * A BLOCKED CHOICE predicts the substitute rather than reporting the choice as serving, which is
-	 * what lets the card say "you chose X; it cannot serve, so the next request uses Y" instead of
-	 * silently presenting Y as the operator's own pick.
+	 * A HELD CHOICE still predicts itself, because it still serves: a hold is our prediction about a
+	 * quota window and no longer moves the request off the account the operator named. The card needs
+	 * both facts anyway — the choice, and the deadline we believe it is under — so it can say "you
+	 * chose X; we think it is out of quota until 16:03, `c` lifts the hold" rather than substituting
+	 * an account nobody picked.
 	 */
-	test("a blocked chosen account keeps the choice and predicts the substitute", async () => {
+	test("a held chosen account keeps both the choice and the traffic, and carries its deadline", async () => {
 		if (!authStorage) throw new Error("test setup failed");
 		const storage = authStorage;
 		const ids = await seedThree(storage);
@@ -251,7 +253,26 @@ describe("routing answers which account serves next", () => {
 
 		expect(routing?.selectedCredentialId).toBe(chosen);
 		expect(routing?.selectedBlockedUntilMs).toBeGreaterThan(Date.now());
-		expect(routing?.activeCredentialId).not.toBe(chosen);
+		expect(routing?.activeCredentialId).toBe(chosen);
+		expect(await storage.getApiKey(PROVIDER, SESSION_ID)).toBe(accessOf(storage, chosen));
+	});
+
+	/**
+	 * The prediction machinery itself, on the accounts it is actually for: with no choice recorded,
+	 * a held head is substituted and the answer is marked a prediction, so the card never presents a
+	 * substitute as somebody's pick.
+	 */
+	test("an unchosen held account is substituted, and the substitute is marked a prediction", async () => {
+		if (!authStorage) throw new Error("test setup failed");
+		const storage = authStorage;
+		const ids = await seedThree(storage);
+		const held = ids[0];
+		if (held === undefined) throw new Error("seed produced too few rows");
+		blockFor(storage, held, HOUR_MS);
+
+		const routing = storage.sessionCredentialRouting(PROVIDER, SESSION_ID);
+
+		expect(routing?.activeCredentialId).not.toBe(held);
 		expect(routing?.activeIsPrediction).toBe(true);
 	});
 

@@ -130,7 +130,9 @@ describe("AuthStorage Claude Fable tier fallback", () => {
 
 	beforeEach(async () => {
 		store = makeStore([oauthRow(1, "a@example.com"), oauthRow(2, "b@example.com"), oauthRow(3, "c@example.com")]);
+		// Fable-tier fallback is rotation among accounts nobody chose, which is opt-in.
 		storage = new AuthStorage(store, {
+			loadBalancing: true,
 			usageProviderResolver: provider => (provider === "anthropic" ? claudeUsage.claudeUsageProvider : undefined),
 			rankingStrategyResolver: provider => (provider === "anthropic" ? claudeRankingStrategy : undefined),
 		});

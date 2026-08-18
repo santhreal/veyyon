@@ -105,13 +105,30 @@ describe("exhaustion moves accounts only when load balancing is on", () => {
 	}
 
 	/**
-	 * The library default is ON, and that is not the product default. An SDK embedder holding two
-	 * credentials asked for both to be usable by handing both over; the coding-agent is the caller
-	 * that turns it off, and it does so explicitly.
+	 * The library default is OFF, and it is now the product default too. `AuthStorageOptions` has
+	 * documented it as off since it was added while the field said `true`, so every embedder that
+	 * passed nothing got account movement it never asked for and the one host that passes the option
+	 * masked the disagreement. Which account spends money is the caller's decision, so the default is
+	 * the one that decides nothing: the exhaustion is recorded, the caller is told when this account
+	 * comes back, and nothing moves.
 	 */
-	test("a library embedder that says nothing gets the move", async () => {
+	test("a library embedder that says nothing gets no move", async () => {
 		if (!store) throw new Error("test setup failed");
 		const storage = new AuthStorage(store);
+		const { targetId } = await seed(storage);
+
+		const result = await storage.markUsageLimitReached(PROVIDER, SESSION_ID, {
+			credentialId: targetId,
+			retryAfterMs: 30_000,
+		});
+
+		expect(result).toEqual({ switched: false, retryAtMs: NOW_MS + 30_000 });
+	});
+
+	/** The same embedder opting in gets exactly what it asked for. */
+	test("a library embedder that asks for the move gets it", async () => {
+		if (!store) throw new Error("test setup failed");
+		const storage = new AuthStorage(store, { loadBalancing: true });
 		const { targetId } = await seed(storage);
 
 		const result = await storage.markUsageLimitReached(PROVIDER, SESSION_ID, {

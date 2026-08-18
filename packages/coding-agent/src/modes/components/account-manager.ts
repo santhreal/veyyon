@@ -99,6 +99,7 @@ const SHORTCUT_KEYS: Record<string, string> = {
 	logout: "x",
 	add: "a",
 	balance: "b",
+	clearBlock: "c",
 };
 
 export interface AccountManagerCallbacks {
@@ -130,6 +131,16 @@ export interface AccountManagerCallbacks {
 	 * cannot leave the footer claiming a state the config does not have.
 	 */
 	onToggleLoadBalancing: () => boolean;
+	/**
+	 * Lift the rate-limit block this card is showing on one account, and re-probe it.
+	 *
+	 * The block is this product's own prediction of when a provider will serve again, and the
+	 * provider can lift a limit by routes this process never sees: a reset redeemed on the
+	 * provider's own site, a plan change, a support credit. Nothing but time cleared one, so the
+	 * account the operator chose stayed unusable behind a countdown while the provider would have
+	 * served it, and routing preferred a sibling account over the choice they had made.
+	 */
+	onClearRateLimitBlock: (row: AccountRow) => void;
 	onCancel: () => void;
 }
 
@@ -436,7 +447,27 @@ export class AccountManagerComponent implements Component {
 				// Assuming the flip landed is how a chip ends up claiming a state the config refused.
 				this.#loadBalancing = this.#callbacks.onToggleLoadBalancing();
 				return;
+			case "c": {
+				const blocked = this.#selectedRow();
+				if (blocked && this.#rowIsBlocked(blocked)) this.#callbacks.onClearRateLimitBlock(blocked);
+				return;
+			}
 		}
+	}
+
+	/**
+	 * Whether one row is holding a rate-limit block right now.
+	 *
+	 * `> Date.now()` and not merely "present": a block that has already run out is a row that is
+	 * usable, and offering to lift it would be offering to do nothing.
+	 */
+	#rowIsBlocked(row: AccountRow): boolean {
+		return row.blockedUntilMs !== undefined && row.blockedUntilMs > Date.now();
+	}
+
+	#selectedRowIsBlocked(): boolean {
+		const row = this.#selectedRow();
+		return row !== undefined && this.#rowIsBlocked(row);
 	}
 
 	/** Arrows move within the focused pane; either way an armed logout disarms. */
@@ -923,6 +954,9 @@ export class AccountManagerComponent implements Component {
 							id: "logout",
 						},
 					]),
+			// Only while the row under the cursor is actually holding a block. A chip offering to lift
+			// nothing is a chip that teaches the operator to distrust the footer.
+			...(this.#selectedRowIsBlocked() ? [{ label: "c clear limit", clickable: true, id: "clearBlock" }] : []),
 			{ label: "a add", clickable: true, id: "add" },
 			{ label: `b balancing ${this.#loadBalancing ? "on" : "off"}`, clickable: true, id: "balance" },
 			{ label: "esc close", clickable: true, id: "close" },

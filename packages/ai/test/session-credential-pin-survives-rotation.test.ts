@@ -97,50 +97,74 @@ describe("sessionCredentialRouting reports a pin that rotation moved off", () =>
 	});
 
 	/**
-	 * The anti-silent-fallback contract, and the permanent gate on the bug where
-	 * `activeCredentialId` was read from the pin-preferring resolver: after the pinned
-	 * credential is blocked and a sibling actually serves the request, routing must report
-	 * three separate facts — the pin is still the user's choice, it is blocked until an exact
-	 * deadline, and a DIFFERENT credential is active. Erasing the pin, or echoing it back as
-	 * the active id, both turn an involuntary account switch into something the UI cannot
-	 * distinguish from a deliberate one.
+	 * The anti-silent-fallback contract, half of it now inverted by a product decision.
+	 *
+	 * A quota hold is OUR prediction about a window, so it no longer moves traffic off the account
+	 * the user pinned: the pin keeps serving and the provider gets to be the one that refuses. What
+	 * routing must still do is carry the hold, so the card can say "you chose this, we think it is out
+	 * of quota until 16:03, `c` lifts the hold" instead of silently substituting an account.
 	 */
-	test("a blocked pin keeps its id, carries its unblock deadline, and reports a different active credential", async () => {
+	test("a held pin keeps serving, and routing reports the hold without moving the active account", async () => {
 		if (!authStorage) throw new Error("test setup failed");
 		const storage = authStorage;
-		const [firstId, secondId] = await seedTwoAccounts(storage);
+		const [, secondId] = await seedTwoAccounts(storage);
 		const sessionId = "session-rotated-pin";
 
 		expect(storage.pinSessionCredential(PROVIDER, sessionId, secondId)).toBe(true);
 		expect(await storage.getApiKey(PROVIDER, sessionId)).toBe("access-second");
 
-		const marked = await storage.markUsageLimitReached(PROVIDER, sessionId, {
+		await storage.markUsageLimitReached(PROVIDER, sessionId, {
 			credentialId: secondId,
 			retryAfterMs: BLOCK_FOR_MS,
 		});
-		expect(marked).toEqual({ switched: true });
 
-		// The rotation itself: the next resolve cannot use the pinned account, so a sibling
-		// serves and becomes the last-used record.
-		expect(await storage.getApiKey(PROVIDER, sessionId)).toBe("access-first");
-
+		expect(await storage.getApiKey(PROVIDER, sessionId)).toBe("access-second");
 		expect(storage.sessionCredentialRouting(PROVIDER, sessionId)).toEqual({
 			provider: PROVIDER,
 			selectedCredentialId: secondId,
 			selectedBlockedUntilMs: NOW_MS + BLOCK_FOR_MS,
-			activeCredentialId: firstId,
+			activeCredentialId: secondId,
 		});
 	});
 
 	/**
-	 * The pin is a durable choice, not a one-shot request: once the block lifts, traffic
-	 * returns to the pinned account with no second user action. A rotation that silently
-	 * consumed the pin would strand the session on the substitute account forever.
+	 * The original defect's permanent gate, driven through the substitution that still happens: a
+	 * grant that fails AUTHENTICATION is the provider's verdict, not our prediction, so it moves the
+	 * request off the pinned account. Routing then has to report three separate facts — the pin is
+	 * still the user's choice, and a DIFFERENT credential is active. `activeCredentialId` was once
+	 * read from the pin-preferring resolver, so it was always a copy of `selectedCredentialId` and
+	 * this divergence could not be observed at all.
 	 */
-	test("traffic returns to the pinned account once its block expires", async () => {
+	test("a pin whose grant died reports itself as the choice while a sibling is active", async () => {
 		if (!authStorage) throw new Error("test setup failed");
 		const storage = authStorage;
 		const [firstId, secondId] = await seedTwoAccounts(storage);
+		const sessionId = "session-dead-pin";
+
+		expect(storage.pinSessionCredential(PROVIDER, sessionId, secondId)).toBe(true);
+		expect(await storage.getApiKey(PROVIDER, sessionId)).toBe("access-second");
+
+		const moved = await storage.rotateSessionCredential(PROVIDER, sessionId, {
+			credentialId: secondId,
+			error: Object.assign(new Error("invalid_grant: token revoked"), { status: 401 }),
+		});
+		expect(moved).toBe(true);
+
+		expect(await storage.getApiKey(PROVIDER, sessionId)).toBe("access-first");
+		const routing = storage.sessionCredentialRouting(PROVIDER, sessionId);
+		expect(routing?.selectedCredentialId).toBe(secondId);
+		expect(routing?.activeCredentialId).toBe(firstId);
+	});
+
+	/**
+	 * The pin is a durable choice, not a one-shot request: it serves throughout its own hold, and
+	 * once the hold expires routing stops reporting a deadline. A rotation that silently consumed the
+	 * pin would strand the session on a substitute account forever.
+	 */
+	test("a pin serves through its hold and loses the deadline when the hold expires", async () => {
+		if (!authStorage) throw new Error("test setup failed");
+		const storage = authStorage;
+		const [, secondId] = await seedTwoAccounts(storage);
 		const sessionId = "session-unblocks";
 
 		expect(storage.pinSessionCredential(PROVIDER, sessionId, secondId)).toBe(true);
@@ -148,8 +172,8 @@ describe("sessionCredentialRouting reports a pin that rotation moved off", () =>
 			credentialId: secondId,
 			retryAfterMs: BLOCK_FOR_MS,
 		});
-		expect(await storage.getApiKey(PROVIDER, sessionId)).toBe("access-first");
-		expect(storage.sessionCredentialRouting(PROVIDER, sessionId)?.activeCredentialId).toBe(firstId);
+		expect(await storage.getApiKey(PROVIDER, sessionId)).toBe("access-second");
+		expect(storage.sessionCredentialRouting(PROVIDER, sessionId)?.selectedBlockedUntilMs).toBe(NOW_MS + BLOCK_FOR_MS);
 
 		setSystemTime(new Date(NOW_MS + BLOCK_FOR_MS + 1_000));
 
