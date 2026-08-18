@@ -80,6 +80,7 @@ import { commandConsumed, errorMessage, parseSlashCommand, parseSubcommand, usag
 import { describeRedeemOutcome, type ResetUsageAccount, toResetUsageAccounts } from "./helpers/reset-usage";
 import { interactiveSecretPort, runSecretCommandForSurface } from "./helpers/secret";
 import { handleSshAcp } from "./helpers/ssh";
+import { handleStatsAcp } from "./helpers/stats-dashboard";
 import { handleTodoAcp } from "./helpers/todo";
 import { buildUsageReportText } from "./helpers/usage-report";
 import type { ProfileCommandPort } from "./profile-command";
@@ -2013,6 +2014,9 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			await runtime.ctx.handleSSHCommand(command.text);
 		},
 	},
+	stats: {
+		handle: handleStatsAcp,
+	},
 	"new": {
 		handleTui: async (_command, runtime) => {
 			runtime.ctx.editor.setText("");
@@ -2844,6 +2848,8 @@ export const BUILTIN_SLASH_COMMAND_CATEGORIES: Readonly<Record<string, string>> 
 	agents: "workspace",
 	jobs: "workspace",
 	usage: "workspace",
+	// Beside `/usage`: both answer "what has this cost", one inline and one in a browser.
+	stats: "workspace",
 	todo: "context",
 	context: "context",
 	memory: "context",

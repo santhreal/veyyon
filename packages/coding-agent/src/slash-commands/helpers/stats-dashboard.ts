@@ -1,6 +1,7 @@
 import * as stats from "@veyyon/stats";
 import * as openUtils from "../../utils/open";
-import { removedOptionMessage } from "./parse";
+import type { ParsedSlashCommand, SlashCommandResult, SlashCommandRuntime } from "../types";
+import { commandConsumed, removedOptionMessage, usage } from "./parse";
 
 export const DEFAULT_STATS_DASHBOARD_PORT = 3847;
 
@@ -93,4 +94,25 @@ export function stopStatsDashboard(): void {
 	activeStatsServer.stop();
 	activeStatsServer = undefined;
 	stats.closeDb();
+}
+
+/**
+ * ACP/text-mode `/stats` handler, and the TUI one: this command has no controller
+ * because it has nothing to drive — it starts a server and opens a browser, and
+ * neither needs the composer.
+ *
+ * The parser and the launcher below were written, exported, and then never
+ * reached: nothing in the product called either, so `Usage: /stats [<port>]`
+ * described a command that did not exist and the dashboard was only reachable as
+ * `veyyon stats` from a shell. This is the seam that was missing.
+ */
+export async function handleStatsAcp(
+	command: ParsedSlashCommand,
+	runtime: SlashCommandRuntime,
+): Promise<SlashCommandResult> {
+	const parsed = parseStatsDashboardArgs(command.args);
+	if ("error" in parsed) return usage(parsed.error, runtime);
+	const { message } = await launchStatsDashboard(parsed);
+	await runtime.output(message);
+	return commandConsumed();
 }

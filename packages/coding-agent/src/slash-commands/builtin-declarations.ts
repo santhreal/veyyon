@@ -652,6 +652,17 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 	},
 
 	{
+		name: "stats",
+		textMode: true,
+		description: "Open the usage dashboard in a browser",
+		acpDescription: "Open the usage statistics dashboard",
+		// The port is the only thing this command reads, so it is a plain integer
+		// rather than a keyword and a value.
+		inlineHint: "[<port>]",
+		allowArgs: true,
+	},
+
+	{
 		name: "new",
 		description: "Start a new session",
 	},
