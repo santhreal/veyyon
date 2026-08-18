@@ -264,21 +264,86 @@ def video(rel: str, caption: str, start: float | None = None) -> str:
     )
 
 
-def video_pair(before: str, after: str, cap_before: str, cap_after: str, start: float | None = None) -> str:
+# The labels that CLAIM a cross-tree comparison, and the reason a figure now has
+# to say which axis it is showing. `video_pair` and `still_pair` used to hardcode
+# these two words into both figcaptions, so a figure whose real axis was session
+# SIZE on one tree rendered a bold "main" over a branch recording and a bold
+# "branch" over the other branch recording. Four figures were doing it: the
+# 72M-token pair, the theme-ladder wash, and both slab-vs-card render proofs.
+TREE_ARMS = ("main", "branch")
+
+mislabelled: list[str] = []
+
+
+def tree_of(rel: str) -> str:
+    """Which tree a capture came from, read off where the file sits."""
+    if rel.startswith(XB):
+        return "main"
+    if rel.startswith(X):
+        return "branch"
+    return "no tree at all"
+
+
+def axis(before: str, after: str, arms: tuple[str, str]) -> tuple[str, str]:
+    """Refuse a main-vs-branch claim over two captures from the same tree.
+
+    Mechanical rather than per-figure: `captures/x11/before/` is main and
+    `captures/x11/` is the branch, so the paths already know the answer and a new
+    figure cannot get the labels wrong without failing this build.
+    """
+    if tuple(arms) == TREE_ARMS and tree_of(before) == tree_of(after):
+        mislabelled.append(f"{before} vs {after}: both arms are {tree_of(before)}, captioned main/branch")
+    return arms
+
+
+def video_pair(
+    before: str,
+    after: str,
+    cap_before: str,
+    cap_after: str,
+    start: float | None = None,
+    *,
+    arms: tuple[str, str] = TREE_ARMS,
+) -> str:
+    """Two recordings side by side, each labelled with the arm it IS.
+
+    `arms` defaults to the tree axis because that is what nearly every figure
+    here compares, but `axis()` refuses that default over two captures from one
+    tree, so the default cannot be wrong silently the way it was.
+    """
     sound(before)
     sound(after)
+    left, right = axis(before, after, arms)
     frag = f"#t={start:g}" if start is not None else ""
     return (
         '<div class="pair">'
         f'<figure><video controls loop muted playsinline preload="metadata"><source src="{before}{frag}" type="video/mp4"></video>'
-        f"<figcaption><strong>main</strong> — {cap_before}</figcaption></figure>"
+        f"<figcaption><strong>{left}</strong> — {cap_before}</figcaption></figure>"
         f'<figure><video controls loop muted playsinline preload="metadata"><source src="{after}{frag}" type="video/mp4"></video>'
-        f"<figcaption><strong>branch</strong> — {cap_after}</figcaption></figure>"
+        f"<figcaption><strong>{right}</strong> — {cap_after}</figcaption></figure>"
         "</div>"
     )
 
 
-def strip(prefix: str, frames: int, caption: str) -> str:
+def tree_of_prefix(prefix: str) -> str:
+    """Which tree a strip's frames came from, by the convention its own files follow.
+
+    Strips predate the `captures/x11/before/` split and use a `-main` suffix
+    instead, so one fact has two spellings. Both are read here, in one place,
+    rather than asserted in ten prose captions that nothing could check.
+    """
+    if prefix.startswith(XB) or prefix.endswith("-main"):
+        return "main"
+    return "branch"
+
+
+def strip(prefix: str, frames: int, caption: str, *, arm: str | None = None) -> str:
+    """A filmstrip. `arm` names the tree, and is checked against the frames' own path."""
+    if arm is not None:
+        actual = tree_of_prefix(prefix)
+        if arm != actual:
+            mislabelled.append(f"{prefix}-f*.png: frames are {actual}, captioned {arm}")
+        caption = f"<strong>{arm}.</strong> {caption}"
     imgs = "".join(f'<img src="{need(f"{prefix}-f{i:02d}.png")}" alt="frame {i}">' for i in range(frames))
     # Two rows of equal length, so an eight-frame strip is 4x2 rather than 6+2.
     cols = frames if frames <= 6 else (frames + 1) // 2
@@ -291,13 +356,21 @@ def still(rel: str, caption: str) -> str:
     return f'<figure><img src="{rel}" alt=""><figcaption>{caption}</figcaption></figure>'
 
 
-def still_pair(before: str, after: str, cap_before: str, cap_after: str) -> str:
+def still_pair(
+    before: str,
+    after: str,
+    cap_before: str,
+    cap_after: str,
+    *,
+    arms: tuple[str, str] = TREE_ARMS,
+) -> str:
     need(before)
     need(after)
+    left, right = axis(before, after, arms)
     return (
         '<div class="pair">'
-        f'<figure><img src="{before}" alt=""><figcaption><strong>main</strong> — {cap_before}</figcaption></figure>'
-        f'<figure><img src="{after}" alt=""><figcaption><strong>branch</strong> — {cap_after}</figcaption></figure>'
+        f'<figure><img src="{before}" alt=""><figcaption><strong>{left}</strong> — {cap_before}</figcaption></figure>'
+        f'<figure><img src="{after}" alt=""><figcaption><strong>{right}</strong> — {cap_after}</figcaption></figure>'
         "</div>"
     )
 
@@ -397,10 +470,14 @@ def long_session_section() -> Section:
     return Section(
         "Streaming at the tail of a 72-million-token session",
         [
-            "<p>The session in the left video is a real one of the operator's, resumed inside the container:"
-            " 289MB of JSONL, 69,727 records, 34,552 messages, 87 earlier compactions. The right video is the"
-            " same scene with no session at all, so the two differ in exactly one thing — what is above the"
-            " window. Same keys, same 1.5B model on the container network, same camera, same terminal.</p>",
+            "<p>Both videos are this branch. The axis between them is how much session is above the window, not"
+            " which tree is running: the left is a real session of the operator's resumed inside the container"
+            " (289MB of JSONL, 69,727 records, 34,552 messages, 87 earlier compactions), the right is the same"
+            " scene with no session at all. Same keys, same 1.5B model on the container network, same camera,"
+            " same terminal. They are NOT a parent/commit pair, and nothing below compares them as one: the two"
+            " arms do not even run for the same length of time, and only the resumed arm compacts before it can"
+            " answer. What the pair is for is the counter table underneath, where the cost of a 72-million-token"
+            " history is read off both arms of the same tree.</p>",
             "<p>The app runs under <code>script</code> inside that terminal, so each arm produced a byte capture"
             " as well as a picture. <code>ED3</code> is the counter that matters: it is the sequence that erases"
             " the terminal's own scroll buffer, and it is what both symptoms this branch chased were made of."
@@ -411,11 +488,12 @@ def long_session_section() -> Section:
                 X + "long-session-fresh.mp4",
                 "the operator's own session, resumed: the transcript, a scroll back through it, a prompt, and the"
                 " answer streaming in at the tail",
-                "control: the same scene on an empty session",
+                "no session at all: the load floor the resumed arm is measured against",
                 start=25,
+                arms=("72M-token session", "fresh session"),
             ),
             f"<table><thead>{head}</thead><tbody>{body}</tbody></table>",
-            "<p>The resumed arm carries one cost the control does not, and it is model-side rather than"
+            "<p>The resumed arm carries one cost the fresh arm does not, and it is model-side rather than"
             " renderer-side: a history that large does not fit a 65k window, so the app compacts before it can"
             " ask anything, and says so on screen while it does. That is the 1.5B summarizing on CPU, not a"
             " frame being repainted.</p>",
@@ -693,6 +771,15 @@ def write(sections: list[Section]) -> None:
             file=sys.stderr,
         )
         raise SystemExit(1)
+    if mislabelled:
+        print("PAIRS THAT CLAIM A COMPARISON THEY ARE NOT:", *sorted(set(mislabelled)), sep="\n  ", file=sys.stderr)
+        print(
+            "\nA figure captioned main/branch must hold one capture from captures/x11/before/ and one from"
+            " captures/x11/. Pass arms=(left, right) naming the real axis, or use pair() for two stills that"
+            " are not tree arms.",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
     out = ROOT / "ui-polish-proof.html"
     out.write_text(html, encoding="utf-8")
     print("wrote", out)
@@ -751,15 +838,17 @@ SECTIONS = [
             strip(
                 S + "close-fold-main",
                 12,
-                "<strong>main.</strong> Twelve consecutive frames across the Escape. The card occupies one frame and"
+                "Twelve consecutive frames across the Escape. The card occupies one frame and"
                 " the transcript occupies the next; there are no frames in between to show.",
+                arm="main",
             ),
             strip(
                 S + "close-fold",
                 12,
-                "<strong>branch.</strong> The same twelve frames on the same scene. The bottom border walks back up"
+                "The same twelve frames on the same scene. The bottom border walks back up"
                 " to meet the top, the rows dim into the ground on the way, and the transcript underneath is never"
                 " covered by a card that is no longer there.",
+                arm="branch",
             ),
             still_pair(
                 XB + "overlay-fold-settings-closed.png",
@@ -796,15 +885,17 @@ SECTIONS = [
             strip(
                 S + "band-crossfade-main",
                 8,
-                "<strong>main.</strong> Eight consecutive frames at 60fps across the jump from Interaction to Tools,"
+                "Eight consecutive frames at 60fps across the jump from Interaction to Tools,"
                 " cut at 31.50s. The pointer is the only thing in the strip that moves.",
+                arm="main",
             ),
             strip(
                 S + "band-crossfade",
                 8,
-                "<strong>branch.</strong> The same eight frames of the same jump in the same scene. Tools is banded,"
+                "The same eight frames of the same jump in the same scene. Tools is banded,"
                 " Interaction comes up over the middle four frames while Tools goes down, and neither is at full"
                 " strength while the other is.",
+                arm="branch",
             ),
         ],
     ),
@@ -855,14 +946,16 @@ SECTIONS = [
             strip(
                 S + "pane-crossfade-main",
                 8,
-                "<strong>main.</strong> Eight consecutive frames at 60fps across a jump from the first message to"
+                "Eight consecutive frames at 60fps across a jump from the first message to"
                 " the second. The selection band on the third message is the only band in the strip.",
+                arm="main",
             ),
             strip(
                 S + "pane-crossfade",
                 8,
-                "<strong>branch.</strong> The same jump. The first message is still going down while the second"
+                "The same jump. The first message is still going down while the second"
                 " comes up, and the selection band underneath both is untouched by either.",
+                arm="branch",
             ),
             pair(
                 X + "pane-bands-tree-hover.png",
@@ -900,27 +993,31 @@ SECTIONS = [
             strip(
                 S + "card-bands-picker-main",
                 8,
-                "<strong>main.</strong> Eight consecutive frames at 60fps at 26.50s, across a jump between two model"
+                "Eight consecutive frames at 60fps at 26.50s, across a jump between two model"
                 " rows. Only the pointer moves.",
+                arm="main",
             ),
             strip(
                 S + "card-bands-picker",
                 8,
-                "<strong>branch.</strong> The same eight frames of the same jump. The row left goes down while the"
+                "The same eight frames of the same jump. The row left goes down while the"
                 " row reached comes up, and the keyboard selection under both is untouched.",
+                arm="branch",
             ),
             "<h3>The wizard step, frame by frame</h3>",
             strip(
                 S + "card-bands-wizard-main",
                 8,
-                "<strong>main.</strong> The same moment in the same scene, cut wider because there is no card to cut"
+                "The same moment in the same scene, cut wider because there is no card to cut"
                 " into: the transport choices are transcript rows at column zero and the pointer passes over them.",
+                arm="main",
             ),
             strip(
                 S + "card-bands-wizard",
                 8,
-                "<strong>branch.</strong> The step is a card, its rows are the card's rows, and they band and"
+                "The step is a card, its rows are the card's rows, and they band and"
                 " cross-fade on the same clock as every other surface on this page.",
+                arm="branch",
             ),
             "<h3>The ground the mix travels out of</h3>",
             "<p>Recording this at 60fps found a defect the fade itself had been hiding. A band is a blend between"
@@ -1088,6 +1185,7 @@ SECTIONS = [
                 X + "ladder/overlay-motion-settings-settled.png",
                 "one wash: the card and the page measure the same colour",
                 "four materials: rail, plate, tray, and the category column set into it",
+                arms=("before the material ladder", "after it"),
             ),
             "<h3>The light crossing the plate, and where it used to die</h3>",
             "<p>The highlight runs on a 520ms curve, twice the 260ms unfold, because the point of it is that the"
@@ -1156,6 +1254,7 @@ SECTIONS = [
                 N + "note-card-grey.png",
                 "three full-width inverted slabs, each starting at column 0",
                 "three cards on a rail, each as wide as its text and inset like everything else",
+                arms=("--slab", "default"),
             ),
             "<h3>The same notes on a black terminal</h3>",
             "<p>One ground answers half the question, and this is the case the treatment has to get right: a fill"
@@ -1168,6 +1267,7 @@ SECTIONS = [
                 N + "note-card-onblack-black.png",
                 "the same rectangle whatever it is standing on",
                 "a card that lifts off black by the same step it lifts off grey",
+                arms=("--slab", "default"),
             ),
             "<h3>And with no ground to stand on</h3>",
             still(

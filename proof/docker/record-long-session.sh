@@ -18,8 +18,9 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-# `--fresh` is the control arm: same scene, same model, same terminal, an empty
-# session. Without it there is no baseline to compare the resumed arm's cost to.
+# `--fresh` records the same scene, same model, same terminal, on an empty
+# session. It is the LOAD floor the resumed arm is measured against, not a
+# main-vs-branch control: both arms run whatever tree is mounted at /repo.
 SESSION="${1:?usage: record-long-session.sh <session.jsonl|--fresh> [name]}"
 NAME="${2:-long-session}"
 OUT="${REPO_ROOT}/proof/captures/x11/${NAME}"
