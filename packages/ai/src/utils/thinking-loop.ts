@@ -47,12 +47,27 @@ import { AssistantMessageEventStream } from "./event-stream";
  *  classifiers treat it as a transient (retryable) stop without bespoke rules. */
 export const THINKING_LOOP_ERROR_MARKER = "Thinking loop detected";
 
-/** Rolling tail (chars) inspected for verbatim back-to-back repetition. */
-const VERBATIM_TAIL_WINDOW = 250;
+/**
+ * Rolling tail (chars) inspected for verbatim back-to-back repetition.
+ *
+ * Wide enough to hold four repeats of the longest unit probed, and then some: the detector requires
+ * four, so a window that cannot fit four of a length it claims to probe makes that length dead code.
+ * At 250 it held three repeats of an 80-char sentence, which is exactly the shape a real session
+ * streamed fifty times with nothing stopping it.
+ */
+const VERBATIM_TAIL_WINDOW = 900;
 /** Minimum total repeated chars before a verbatim run counts as a loop. */
 const VERBATIM_MIN_REPEATED_CHARS = 180;
-/** Longest unit length probed for a verbatim repeat. */
-const VERBATIM_MAX_UNIT = 60;
+/**
+ * Longest unit length probed for a verbatim repeat.
+ *
+ * A sentence is the unit a degenerate sampler repeats, and a sentence is longer than the 60 chars
+ * this used to allow, so the cheap detector was blind to the commonest runaway shape and the only
+ * fallback was the segment path, which cannot fire until eight substantial segments (up to 5600
+ * chars, about seventy repeats) have gone past. Raised to two full lines; past that a repeat still
+ * reaches the segment path.
+ */
+const VERBATIM_MAX_UNIT = 200;
 
 /** Char cap for an unterminated segment; forces a flush so a wall-of-text loop
  *  (no blank lines / headings) still segments. */
@@ -489,20 +504,47 @@ function buildThinkingLoopError(model: Model<Api>, detail: string): AssistantMes
 	};
 }
 
+/** A letter or pictographic emoji: a unit without one is a run of digits, whitespace or punctuation,
+ *  which is legitimate in tabular / hex / numeric output. Not stateful, so `test` is safe here. */
+const VERBATIM_UNIT_CONTENT = /[\p{L}\p{Extended_Pictographic}]/u;
+
 /**
- * Detect a short unit repeated back-to-back at the tail (verbatim loop). Only a
- * unit carrying a letter or pictographic emoji counts — runs of digits,
- * whitespace or punctuation are legitimate in tabular / hex / numeric output.
+ * Detect a unit repeated back-to-back at the tail (verbatim loop). Only a unit carrying a letter or
+ * pictographic emoji counts.
+ *
+ * The ladder walks every unit length rather than guessing one, so it costs a comparison per length
+ * per delta. Two things keep that cheap at a 200-char cap: the character test is answered once for
+ * the whole window by measuring how far the nearest letter sits from the end (a unit of length `len`
+ * carries content exactly when it reaches that far back), rather than re-scanning each candidate;
+ * and the repeat walk stops at the first mismatch, which is the common case on the first comparison.
  */
 function detectVerbatimRepetition(text: string): [unit: string, count: number] | null {
 	if (text.length < VERBATIM_MIN_REPEATED_CHARS) return null;
 	const windowSize = Math.min(text.length, VERBATIM_TAIL_WINDOW);
 	const searchSpace = text.slice(-windowSize);
 
-	for (let len = 2; len <= VERBATIM_MAX_UNIT; len++) {
-		if (searchSpace.length < len * 4) continue;
+	// Distance from the end to the nearest letter/emoji, capped at the longest unit probed. Any unit
+	// shorter than this is punctuation, digits or whitespace and is skipped without a regex call.
+	let contentAt = VERBATIM_MAX_UNIT + 1;
+	const scan = Math.min(searchSpace.length, VERBATIM_MAX_UNIT);
+	for (let back = 1; back <= scan; back++) {
+		const at = searchSpace.length - back;
+		const code = searchSpace.charCodeAt(at);
+		// An emoji is two code units and a lone surrogate carries no Unicode property, so a low
+		// surrogate is tested together with the high half in front of it, and a unit has to reach one
+		// char further back to hold the whole pair.
+		const isLowSurrogate = code >= 0xdc00 && code <= 0xdfff && at > 0;
+		const char = isLowSurrogate ? searchSpace.slice(at - 1, at + 1) : (searchSpace[at] as string);
+		if (VERBATIM_UNIT_CONTENT.test(char)) {
+			contentAt = isLowSurrogate ? back + 1 : back;
+			break;
+		}
+	}
+	if (contentAt > VERBATIM_MAX_UNIT) return null;
+
+	for (let len = Math.max(2, contentAt); len <= VERBATIM_MAX_UNIT; len++) {
+		if (searchSpace.length < len * 4) break;
 		const unit = searchSpace.slice(-len);
-		if (!/[\p{L}\p{Extended_Pictographic}]/u.test(unit)) continue;
 
 		let count = 0;
 		let pos = searchSpace.length;
