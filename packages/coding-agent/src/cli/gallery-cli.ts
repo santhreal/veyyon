@@ -184,6 +184,14 @@ export async function renderGalleryState(
 	// for it to settle so the snapshot is deterministic instead of racing a tick.
 	await component.whenPreviewSettled();
 
+	// A settled result animates nothing, so its snapshot must not depend on how
+	// many ticks elapsed while the preview settled. The todo board's entrance is
+	// exactly that hazard: it runs on a frame counter for about a second after a
+	// result lands, and a gallery that rendered before stopping it captured the
+	// board part-written. Stopped FIRST for a terminal state; a streaming or
+	// in-progress state keeps its live frame, which is what those states are for.
+	if (state === "success" || state === "error") component.stopAnimation();
+
 	const lines = component.render(width);
 	component.stopAnimation();
 	return lines;
