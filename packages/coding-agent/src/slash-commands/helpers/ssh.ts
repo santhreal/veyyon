@@ -18,7 +18,7 @@ const SSH_ADD_USAGE = "Usage: /ssh add <name> <host> [user <user>] [<port>] [key
 const SSH_REMOVE_USAGE = "Usage: /ssh remove <name>";
 
 /** The option spellings `/ssh add` no longer has, keyed by bare name. */
-const SSH_ADD_REMOVED_OPTIONS: Record<string, string> = {
+export const SSH_ADD_REMOVED_OPTIONS: Record<string, string> = {
 	host: "write the host as the second word, after the name",
 	user: "write `user <user>`",
 	port: "write the port as a plain integer",
@@ -30,7 +30,7 @@ const SSH_ADD_REMOVED_OPTIONS: Record<string, string> = {
  * a scope, which this parser refused and the interactive path read and then threw
  * away: SSH hosts live in ONE file, so there is nothing for a scope to select.
  */
-const SSH_REMOVE_REMOVED_OPTIONS: Record<string, string> = {
+export const SSH_REMOVE_REMOVED_OPTIONS: Record<string, string> = {
 	scope: "drop it — SSH hosts live in one config file, so there is no scope to choose",
 };
 
@@ -92,6 +92,16 @@ function parseSshAddArgs(rest: string): ParsedSshAddArgs {
 			word = "port";
 			index += 1;
 		} else {
+			// A WORD THE GRAMMAR USED TO READ AS AN OPTION gets the sentence naming what replaced
+			// it, rather than a bare `Unknown argument`, so `/ssh add box example.com host other`
+			// is told the host is the second word instead of only that `host` was not understood.
+			//
+			// Safe to consult the map here even though `user` and `key` are keys in it AND live
+			// keywords: both are consumed by the branch above, so a token reaching this one is
+			// never either of them. Only `host` and `port` can match, and neither is syntax.
+			if (Object.hasOwn(SSH_ADD_REMOVED_OPTIONS, token.toLowerCase())) {
+				return { ...parsed, error: removedOptionMessage(token, SSH_ADD_REMOVED_OPTIONS, SSH_ADD_USAGE) };
+			}
 			return { ...parsed, error: `Unknown argument: ${token}\n${SSH_ADD_USAGE}` };
 		}
 		if (seen.has(word)) return { ...parsed, error: `\`${word}\` given twice.\n${SSH_ADD_USAGE}` };
@@ -137,9 +147,12 @@ async function handleRemoveCommand(rest: string, runtime: SlashCommandRuntime): 
 	}
 	if (tokens.length > 1) {
 		const extra = tokens[1]!;
-		const message = extra.startsWith("-")
-			? removedOptionMessage(extra, SSH_REMOVE_REMOVED_OPTIONS, SSH_REMOVE_USAGE)
-			: `Unknown argument: ${extra}\n${SSH_REMOVE_USAGE}`;
+		// Same rule as `/ssh add`: a plain `scope` is refused with the reason SSH has no scope,
+		// derived from the map rather than from a word written into this condition.
+		const message =
+			extra.startsWith("-") || Object.hasOwn(SSH_REMOVE_REMOVED_OPTIONS, extra.toLowerCase())
+				? removedOptionMessage(extra, SSH_REMOVE_REMOVED_OPTIONS, SSH_REMOVE_USAGE)
+				: `Unknown argument: ${extra}\n${SSH_REMOVE_USAGE}`;
 		return usage(message, runtime);
 	}
 	try {

@@ -66,7 +66,7 @@ const MCP_REMOVE_USAGE = "Usage: /mcp remove <name>";
  * here, and a plain `project` is refused with it instead of being read as
  * something else or quietly dropped.
  */
-const MCP_ADD_REMOVED_OPTIONS: Record<string, string> = {
+export const MCP_ADD_REMOVED_OPTIONS: Record<string, string> = {
 	"": "write `run <command...>`, which takes the whole rest of the line",
 	scope: MCP_SCOPE_REMOVED_REPLACEMENT,
 	project: MCP_SCOPE_REMOVED_REPLACEMENT,
@@ -77,7 +77,7 @@ const MCP_ADD_REMOVED_OPTIONS: Record<string, string> = {
 };
 
 /** The option spellings `/mcp smithery-search` no longer has, keyed by bare name. */
-const MCP_SEARCH_REMOVED_OPTIONS: Record<string, string> = {
+export const MCP_SEARCH_REMOVED_OPTIONS: Record<string, string> = {
 	scope: MCP_SCOPE_REMOVED_REPLACEMENT,
 	project: MCP_SCOPE_REMOVED_REPLACEMENT,
 	user: MCP_SCOPE_REMOVED_REPLACEMENT,
@@ -157,7 +157,16 @@ function parseMcpAddArgs(rest: string): ParsedMcpAddArgs {
 			else parsed.authToken = value;
 			word = token;
 			index += 2;
-		} else if (token === "project" || token === "user") {
+		} else if (Object.hasOwn(MCP_ADD_REMOVED_OPTIONS, token.toLowerCase())) {
+			// A PLAIN WORD THIS COMMAND USED TO READ AS AN OPTION, refused with the sentence
+			// naming what replaced it. Derived from the map rather than from a written-out
+			// `token === "project" || token === "user"`, which had already drifted: it missed
+			// `scope` and `transport`, so both got a bare `Unknown argument` while their dashed
+			// spellings got a reason.
+			//
+			// Safe to consult the map here even though `url` and `token` are keys in it AND
+			// live keywords: both are consumed above, so a token reaching this branch is never
+			// either. `http` and `sse` are not keys, so the transport words still parse.
 			return { ...parsed, error: removedOptionMessage(token, MCP_ADD_REMOVED_OPTIONS, MCP_ADD_USAGE) };
 		} else if (token === "http" || token === "sse") {
 			parsed.transport = token;
@@ -479,7 +488,7 @@ async function handleEnableDisableCommand(
 }
 
 /** The option spellings `/mcp remove` no longer has, keyed by bare name. */
-const MCP_REMOVE_REMOVED_OPTIONS: Record<string, string> = {
+export const MCP_REMOVE_REMOVED_OPTIONS: Record<string, string> = {
 	scope: MCP_SCOPE_REMOVED_REPLACEMENT,
 	project: MCP_SCOPE_REMOVED_REPLACEMENT,
 	user: MCP_SCOPE_REMOVED_REPLACEMENT,
@@ -490,8 +499,13 @@ const MCP_REMOVE_REMOVED_OPTIONS: Record<string, string> = {
  *
  * One word, read by POSITION: token 1 is the name whatever it spells, so a
  * server literally named `project` is removed by name. A second word is refused
- * rather than dropped, and `project` or `user` gets the scope refusal because
- * that is what it used to mean in this position.
+ * rather than dropped, and a word the grammar used to read as an option gets the
+ * sentence naming what replaced it.
+ *
+ * WHICH plain words those are is read from the map rather than written into the
+ * condition. A hand-written `extra === "project" || extra === "user"` beside a
+ * map that already lists both is two lists that drift: a key added to the map
+ * would keep its dashed refusal and silently lose its plain one.
  */
 function parseMcpRemoveArgs(rest: string): ParsedMcpRemoveArgs {
 	const tokens = parseCommandArgs(rest);
@@ -502,7 +516,7 @@ function parseMcpRemoveArgs(rest: string): ParsedMcpRemoveArgs {
 	}
 	const extra = tokens[1];
 	if (extra !== undefined) {
-		if (extra.startsWith("-") || extra === "project" || extra === "user") {
+		if (extra.startsWith("-") || Object.hasOwn(MCP_REMOVE_REMOVED_OPTIONS, extra.toLowerCase())) {
 			return { error: removedOptionMessage(extra, MCP_REMOVE_REMOVED_OPTIONS, MCP_REMOVE_USAGE) };
 		}
 		return { error: `Unknown argument: ${extra}\n${MCP_REMOVE_USAGE}` };
