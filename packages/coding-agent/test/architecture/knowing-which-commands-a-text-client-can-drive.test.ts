@@ -234,10 +234,15 @@ describe("the declared flag and the handler table agree", () => {
 	 * `/cpu-limit` moved both by one, and is text-drivable for the same reason `/permissions` is: a
 	 * headless client whose profile caps CPU has commands refused with an error naming a budget, and
 	 * no way to lift it for the run without editing the profile it shares with every other session.
+	 *
+	 * `/stats` moved both by one, and is text-drivable because the dashboard is a URL: the handler
+	 * prints the address it started on, which a headless client can open itself. It was declared at
+	 * all only after its parser and launcher were found exported, fully tested, and called by
+	 * nothing.
 	 */
-	it("33 of the 71 builtins are text-drivable", () => {
-		expect(DECLARATIONS.length).toBe(71);
-		expect(TEXT_MODE_BUILTIN_DECLARATIONS.length).toBe(33);
+	it("34 of the 72 builtins are text-drivable", () => {
+		expect(DECLARATIONS.length).toBe(72);
+		expect(TEXT_MODE_BUILTIN_DECLARATIONS.length).toBe(34);
 	});
 
 	/**

@@ -164,9 +164,13 @@ describe("the split kept one set of commands", () => {
 	 *   - UP to 71: `/cpu-limit` was added. `session.cpuLimitCores` is a per-profile setting, so a
 	 *     session that needs a different budget than the profile chose had no way to say so, and no
 	 *     way to lift the cap for one piece of work without editing the profile.
+	 *   - UP to 72: `/stats` was added. The dashboard parser and launcher existed, exported and
+	 *     fully tested, and nothing in the product called either — so `Usage: /stats [<port>]`
+	 *     described a command that was not registered, and the dashboard was reachable only as
+	 *     `veyyon stats` from a shell. Declaring it is what makes that usage string true.
 	 */
-	it("there are the 71 builtins the declarations hold", () => {
-		expect(BUILTIN_SLASH_COMMAND_DECLARATIONS.length).toBe(71);
+	it("there are the 72 builtins the declarations hold", () => {
+		expect(BUILTIN_SLASH_COMMAND_DECLARATIONS.length).toBe(72);
 	});
 
 	/**
