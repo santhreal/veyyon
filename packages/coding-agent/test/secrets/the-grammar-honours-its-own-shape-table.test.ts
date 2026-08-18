@@ -76,11 +76,19 @@ function wordsFor(verb: SecretSubcommand): string[] {
 /**
  * A line that parses: the verb, its words, and every option it must be given to be complete.
  *
- * `discard` has no default scope, so a well-formed line names one. Supplying an option twice is its
- * own refusal, so the caller's `--scope` wins when that is the pair under test.
+ * WHICH verbs must name a scope is read from the shape table's `needsScope`, not listed here. It was
+ * listed here, as `verb === "discard"`, and a second verb with the same requirement then failed
+ * these rows for a reason that had nothing to do with the contract they defend -- the line this
+ * helper built was simply incomplete. A verb whose scope arrives as a positional (`scope`) already
+ * has it from `wordsFor`, so only the `--scope` spelling is added here.
+ *
+ * Supplying an option twice is its own refusal, so the caller's `--scope` wins when that is the pair
+ * under test.
  */
 function wellFormedLine(verb: SecretSubcommand, extra: readonly string[] = []): string {
-	const required = verb === "discard" && !extra.includes("--scope") ? ["--scope", "project"] : [];
+	const shape = SECRET_SUBCOMMAND_SHAPES[verb];
+	const required =
+		shape.needsScope && shape.options.includes("--scope") && !extra.includes("--scope") ? ["--scope", "project"] : [];
 	return [verb, ...wordsFor(verb), ...required, ...extra].join(" ");
 }
 

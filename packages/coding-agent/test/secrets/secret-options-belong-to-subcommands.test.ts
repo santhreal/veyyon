@@ -183,7 +183,9 @@ describe("the refusal's shape", () => {
 	 */
 	it("agrees in number with the verbs it names", () => {
 		expect(refusal("list --limit 50")).toContain("/secret log takes it");
-		expect(refusal("list --scope project")).toContain("/secret add, /secret rm and /secret discard take it");
+		expect(refusal("list --scope project")).toContain(
+			"/secret add, /secret rm, /secret clear and /secret discard take it",
+		);
 		expect(refusal("list --ttl 7d")).toContain("/secret add and /secret extend take it");
 	});
 });

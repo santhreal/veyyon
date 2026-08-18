@@ -463,7 +463,7 @@ describe("the two usage variants", () => {
 		const commandWords = (usage: string) =>
 			[...new Set([...usage.matchAll(/^ {2}\/secret (\w+)/gmu)].map(match => match[1]))].sort();
 
-		const verbs = ["copy", "discard", "extend", "list", "log", "rename", "rm", "scope", "value"];
+		const verbs = ["clear", "copy", "discard", "extend", "list", "log", "rename", "rm", "scope", "value"];
 		expect(commandWords(SECRET_COMMAND_USAGE)).toEqual(verbs);
 		expect(commandWords(NONINTERACTIVE_SECRET_COMMAND_USAGE)).toEqual(["add", ...verbs].sort());
 	});
@@ -494,6 +494,7 @@ describe("the two usage variants", () => {
 			const management = [
 				"  /secret list                          show active secrets, never their values",
 				"  /secret rm <name> [--scope global]    remove a secret",
+				"  /secret clear --scope profile         remove every secret in one vault",
 				"  /secret rename <name> <new-name>      give a secret a different name",
 				"  /secret value <name>                  replace a secret's value, keeping its name and lifetime",
 				"  /secret scope <name> global           move a secret to another vault",
@@ -521,7 +522,7 @@ describe("the two usage variants", () => {
 	it("close both surfaces with the same options footer", () => {
 		const footer = [
 			"--ttl 30m|12h|7d|2w|never            on add and extend",
-			"--scope profile|project|global       on add, rm and discard",
+			"--scope profile|project|global       on add, rm, clear and discard",
 			"--name <name>                        on log, to show only that secret's uses",
 			"Lifetimes default to the secrets.defaultTtl setting. Scope defaults to profile; project overrides profile, which overrides global.",
 			"Removal without --scope takes the narrowest match, which is the one currently in effect.",
