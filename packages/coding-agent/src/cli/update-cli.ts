@@ -905,7 +905,15 @@ export const CONSOLE_UPDATE_REPORTER: UpdateReporter = line => {
 export const SILENT_UPDATE_REPORTER: UpdateReporter = () => {};
 
 function printVerifiedVersion(expectedVersion: string, report: UpdateReporter): void {
-	report(chalk.green(`\n${theme.status.success} Updated to ${expectedVersion}`));
+	// `theme` is `export var theme: Theme` and holds `undefined` until `initTheme()`
+	// assigns it, so reading `.status` throws when nothing has loaded a theme. The
+	// shipped CLI always has one; an SDK embedder driving this flow directly does
+	// not, and this line runs AFTER the binary was replaced and verified — a
+	// TypeError here would report a finished update as a failed one and invite a
+	// caller to retry a swap that already happened. Plain `✓` is what every
+	// built-in theme resolves `status.success` to anyway.
+	const mark = typeof theme === "undefined" ? "✓" : theme.status.success;
+	report(chalk.green(`\n${mark} Updated to ${expectedVersion}`));
 }
 
 function formatVerificationFailure(result: InstalledVersionVerification, expectedVersion: string): string {
@@ -2048,7 +2056,7 @@ export async function runUpdateCommand(
 	const comparison = compareSemver(release.version, VERSION);
 
 	if (comparison <= 0 && !opts.force) {
-		console.log(chalk.green(`${theme.status.success} Already up to date`));
+		console.log(chalk.green(`${typeof theme === "undefined" ? "✓" : theme.status.success} Already up to date`));
 		return;
 	}
 
