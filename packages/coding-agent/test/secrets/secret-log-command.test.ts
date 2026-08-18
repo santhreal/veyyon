@@ -27,6 +27,7 @@ import {
 	parseSecretCommand,
 	renderLog,
 	runSecretCommand,
+	type SecretCommandRequest,
 } from "@veyyon/coding-agent/secrets/secret-command";
 import { normaliseSecretName, type SecretVault } from "@veyyon/coding-agent/secrets/vault";
 
@@ -40,9 +41,9 @@ describe("parsing /secret log", () => {
 		expect(parseSecretCommand("audit", "noninteractive").subcommand).toBe("log");
 	});
 
-	/** A limit is read as a number. */
-	it("reads --limit", () => {
-		expect(parseSecretCommand("log --limit 50", "noninteractive").limit).toBe(50);
+	/** A bare number after `log` is the limit, since a secret name may not begin with a digit. */
+	it("reads a bare number as the limit", () => {
+		expect(parseSecretCommand("log 50", "noninteractive").limit).toBe(50);
 	});
 
 	/** No limit means the default, chosen in one place. */
@@ -54,21 +55,26 @@ describe("parsing /secret log", () => {
 	/**
 	 * A nonsense limit is refused rather than silently treated as the default.
 	 *
-	 * `--limit abc` quietly becoming 20 would show the operator a truncated log while they believed
-	 * they had asked for all of it.
+	 * A limit of `0` quietly becoming 20 would show the operator a truncated log while they believed
+	 * they had asked for all of it. `abc` is a different mistake and gets a different answer: a word
+	 * that is not a number is a secret NAME here, which is the only reading that lets `/secret log
+	 * MY_TOKEN` work, so it is not refused at all.
 	 */
 	it("refuses a limit that is not a positive whole number", () => {
-		expect(() => parseSecretCommand("log --limit abc", "noninteractive")).toThrow(/positive whole number/);
-		expect(() => parseSecretCommand("log --limit 0", "noninteractive")).toThrow(/positive whole number/);
-		expect(() => parseSecretCommand("log --limit -3", "noninteractive")).toThrow(/positive whole number/);
-		expect(() => parseSecretCommand("log --limit 2.5", "noninteractive")).toThrow(/positive whole number/);
-		expect(() => parseSecretCommand("log --limit", "noninteractive")).toThrow(/positive whole number/);
+		expect(() => parseSecretCommand("log 0", "noninteractive")).toThrow(/positive whole number/);
+		expect(() => parseSecretCommand("log 99999999999999999999", "noninteractive")).toThrow(/positive whole number/);
+		// `2.5` and `-3` are not digits, so they are not limits. `log` reads a NAME as its other
+		// trailing word, so they are refused as names -- which is the reading that lets `/secret log
+		// GITHUB_TOKEN` work, and is why neither is a "not a number" complaint.
+		expect(() => parseSecretCommand("log 2.5", "noninteractive")).toThrow(/not a usable secret name/);
+		expect(() => parseSecretCommand("log -3", "noninteractive")).toThrow(/not a usable secret name/);
+		expect(parseSecretCommand("log abcde", "noninteractive").name).toBe("ABCDE");
 	});
 
 	/** The noninteractive usage text documents the subcommand, so a bare `/secret` there teaches it. */
 	it("is documented in the usage text", () => {
 		expect(NONINTERACTIVE_SECRET_COMMAND_USAGE).toContain("/secret log");
-		expect(NONINTERACTIVE_SECRET_COMMAND_USAGE).toContain("--limit");
+		expect(NONINTERACTIVE_SECRET_COMMAND_USAGE).toContain("/secret log [<name>] [50]");
 	});
 });
 
@@ -267,9 +273,15 @@ describe("a log shared by several sessions", () => {
 });
 
 describe("deciding whether to prompt for a value", () => {
-	/** An add with a name and nothing else is the case a masked field exists for. */
+	/**
+	 * An add with a name and nothing else is the case a masked field exists for.
+	 *
+	 * Hand-built, because no surface's grammar produces this line any more: a terminal reads what
+	 * follows `add` as the value, and a client takes no words after it at all. `needsValuePrompt` is
+	 * read by the surface layer against a request, so the shape is what matters here, not the line.
+	 */
 	it("prompts for an add with no value and no source", () => {
-		expect(needsValuePrompt(parseSecretCommand("add github-token", "noninteractive"))).toBe(true);
+		expect(needsValuePrompt({ subcommand: "add", name: "GITHUB_TOKEN" })).toBe(true);
 	});
 
 	/** A name is not required: an unnamed add still needs a value. */
@@ -277,30 +289,28 @@ describe("deciding whether to prompt for a value", () => {
 		expect(needsValuePrompt(parseSecretCommand("add", "noninteractive"))).toBe(true);
 	});
 
-	/** `--from-env` already has the value, so prompting would be a pointless extra step. */
+	/** `from-env` already has the value, so prompting would be a pointless extra step. */
 	it("does not prompt when the value comes from the environment", () => {
-		expect(needsValuePrompt(parseSecretCommand("add github-token --from-env GH_TOKEN", "noninteractive"))).toBe(
-			false,
-		);
+		expect(needsValuePrompt(parseSecretCommand("from-env GH_TOKEN github-token", "noninteractive"))).toBe(false);
 	});
 
 	/** An inline value is already supplied, however unwise that was. */
 	it("does not prompt when a value was given inline", () => {
-		expect(needsValuePrompt(parseSecretCommand("add github-token ghp_inlinevalue", "noninteractive"))).toBe(false);
+		expect(needsValuePrompt(parseSecretCommand("add ghp_inlinevalue", "tui"))).toBe(false);
 	});
 
 	/** Only `add` ever prompts. Every other subcommand needs no credential. */
 	it("does not prompt for any other subcommand", () => {
-		for (const line of ["list", "rm github-token", "extend github-token --ttl 7d", "log", "help"]) {
+		for (const line of ["list", "rm github-token", "extend github-token 7d", "log", "help"]) {
 			expect(needsValuePrompt(parseSecretCommand(line, "noninteractive"))).toBe(false);
 		}
 	});
 
-	/** Options do not change the answer: `--ttl` and `--scope` are not a value. */
-	it("still prompts when only options were given", () => {
-		expect(needsValuePrompt(parseSecretCommand("add github-token --ttl 7d --scope project", "noninteractive"))).toBe(
-			true,
-		);
+	/** A lifetime and a vault are not a value, so neither changes the answer. */
+	it("still prompts when only a lifetime and a vault were given", () => {
+		expect(
+			needsValuePrompt({ subcommand: "add", name: "GITHUB_TOKEN", ttl: 7 * 24 * 60 * 60 * 1000, scope: "project" }),
+		).toBe(true);
 	});
 });
 
@@ -330,7 +340,7 @@ describe("the confirmation after a masked entry", () => {
 			},
 		} as unknown as SecretVault;
 
-		const request = parseSecretCommand("add github-token", "noninteractive");
+		const request: SecretCommandRequest = { subcommand: "add", name: "github-token" };
 		request.value = "ghp_typedIntoAMaskedField";
 		request.maskedEntry = true;
 
@@ -362,7 +372,7 @@ describe("the confirmation after a masked entry", () => {
 		} as unknown as SecretVault;
 
 		const result = await runSecretCommand(
-			parseSecretCommand("add github-token ghp_inlineValue123", "noninteractive"),
+			{ ...parseSecretCommand("add ghp_inlineValue123", "tui"), name: "github-token" },
 			{
 				vault,
 				readEnv: () => undefined,
@@ -379,18 +389,21 @@ describe("a client that cannot prompt", () => {
 	/**
 	 * Is told so, and told what to use instead.
 	 *
-	 * ACP and print mode have no terminal to mask. The refusal names `--from-env` rather than
-	 * reading an unmasked value, because a prompt that echoes is the exposure this whole path
-	 * exists to remove.
+	 * ACP and print mode have no terminal to mask. The refusal names `from-env` rather than reading an
+	 * unmasked value, because a prompt that echoes is the exposure this whole path exists to remove.
+	 * Hand-built for the same reason as the prompt rows above: this shape no longer has a line.
 	 */
-	it("refuses an add with no value and points at --from-env", async () => {
+	it("refuses an add with no value and points at the environment form", async () => {
 		await expect(
-			runSecretCommand(parseSecretCommand("add github-token", "noninteractive"), {
-				vault: unusedVault,
-				readEnv: () => undefined,
-				defaultTtl: null,
-				now: 0,
-			}),
+			runSecretCommand(
+				{ subcommand: "add", name: "GITHUB_TOKEN" },
+				{
+					vault: unusedVault,
+					readEnv: () => undefined,
+					defaultTtl: null,
+					now: 0,
+				},
+			),
 		).rejects.toThrow(/cannot prompt for one without showing it/);
 	});
 });

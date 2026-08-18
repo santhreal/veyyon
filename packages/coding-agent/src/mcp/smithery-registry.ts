@@ -130,13 +130,13 @@ async function parseRegistryObject(response: Response, request: string): Promise
 		payload = await response.json();
 	} catch {
 		throw new SmitheryRegistryError(
-			`The Smithery registry answered the ${request} with a body that is not JSON. Fix: this is a registry-side fault, not a bad query. Retry in a moment, and if it persists add the server by hand with \`/mcp add <name> --url <url>\` instead of searching for it.`,
+			`The Smithery registry answered the ${request} with a body that is not JSON. Fix: this is a registry-side fault, not a bad query. Retry in a moment, and if it persists add the server by hand with \`/mcp add <name> url <url>\` instead of searching for it.`,
 			502,
 		);
 	}
 	if (!isRecord(payload)) {
 		throw new SmitheryRegistryError(
-			`The Smithery registry answered the ${request} with JSON that is not an object, so it cannot be read. Fix: this is a registry-side fault, not a bad query. Retry in a moment, and if it persists add the server by hand with \`/mcp add <name> --url <url>\`.`,
+			`The Smithery registry answered the ${request} with JSON that is not an object, so it cannot be read. Fix: this is a registry-side fault, not a bad query. Retry in a moment, and if it persists add the server by hand with \`/mcp add <name> url <url>\`.`,
 			502,
 		);
 	}
@@ -415,7 +415,7 @@ async function fetchServerDetails(
 					? "the registry rejected the API key. Run `/mcp smithery-login` to obtain a new one, or set `SMITHERY_API_KEY` in the environment."
 					: response.status === 429
 						? "the registry is rate limiting. Wait and search again."
-						: "retry in a moment; if it persists, add the server by hand with `/mcp add <name> --url <url>`."
+						: "retry in a moment; if it persists, add the server by hand with `/mcp add <name> url <url>`."
 			}`,
 			response.status,
 		);
@@ -423,7 +423,7 @@ async function fetchServerDetails(
 	const details = await parseRegistryObject(response, "detail request");
 	if (!isServerDetails(details)) {
 		throw new SmitheryRegistryError(
-			`The Smithery registry returned an entry for "${path}" that is missing the fields needed to configure a server. Fix: this listing is unusable as it stands. Open it on smithery.ai and add the server by hand with \`/mcp add <name> --url <url>\`.`,
+			`The Smithery registry returned an entry for "${path}" that is missing the fields needed to configure a server. Fix: this listing is unusable as it stands. Open it on smithery.ai and add the server by hand with \`/mcp add <name> url <url>\`.`,
 			502,
 		);
 	}
@@ -534,7 +534,7 @@ export async function searchSmitheryRegistry(
 			options?.signal?.throwIfAborted();
 			if (isTimeoutError(err)) {
 				throw new SmitheryRegistryError(
-					`The Smithery registry did not answer this search within 10s. Fix: check that smithery.ai is reachable from this network, then search again. To skip the registry entirely, add the server by hand with \`/mcp add <name> --url <url>\`.`,
+					`The Smithery registry did not answer this search within 10s. Fix: check that smithery.ai is reachable from this network, then search again. To skip the registry entirely, add the server by hand with \`/mcp add <name> url <url>\`.`,
 					0,
 				);
 			}
@@ -547,7 +547,7 @@ export async function searchSmitheryRegistry(
 						? "the registry rejected the API key. Run `/mcp smithery-login` to obtain a new one, or set `SMITHERY_API_KEY` in the environment."
 						: response.status === 429
 							? "the registry is rate limiting. Wait and search again."
-							: "retry in a moment; if it persists, add the server by hand with `/mcp add <name> --url <url>`."
+							: "retry in a moment; if it persists, add the server by hand with `/mcp add <name> url <url>`."
 				}`,
 				response.status,
 			);
@@ -556,14 +556,14 @@ export async function searchSmitheryRegistry(
 		const servers = payload.servers;
 		if (servers !== undefined && !Array.isArray(servers)) {
 			throw new SmitheryRegistryError(
-				`The Smithery registry returned a search result whose "servers" field is not a list, so it cannot be read. Fix: this is a registry-side fault, not a bad query. Retry in a moment, and if it persists add the server by hand with \`/mcp add <name> --url <url>\`.`,
+				`The Smithery registry returned a search result whose "servers" field is not a list, so it cannot be read. Fix: this is a registry-side fault, not a bad query. Retry in a moment, and if it persists add the server by hand with \`/mcp add <name> url <url>\`.`,
 				502,
 			);
 		}
 		const pageEntries = servers ?? [];
 		if (!pageEntries.every(isSearchEntry)) {
 			throw new SmitheryRegistryError(
-				`The Smithery registry returned search entries that are missing the fields a listing needs, so this page cannot be shown. Fix: this is a registry-side fault, not a bad query. Retry in a moment, and if it persists add the server by hand with \`/mcp add <name> --url <url>\`.`,
+				`The Smithery registry returned search entries that are missing the fields a listing needs, so this page cannot be shown. Fix: this is a registry-side fault, not a bad query. Retry in a moment, and if it persists add the server by hand with \`/mcp add <name> url <url>\`.`,
 				502,
 			);
 		}

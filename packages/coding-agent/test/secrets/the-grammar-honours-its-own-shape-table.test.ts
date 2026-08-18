@@ -1,30 +1,31 @@
 /**
- * Every `/secret` verb reads exactly the options and the word count its shape table declares, on
+ * Every `/secret` command reads exactly the slots its shape table declares, and nothing else, on
  * both surfaces.
  *
- * WHY THIS SUITE EXISTS. `secret-options-belong-to-subcommands.test.ts` pins the same contract by
- * hand, verb by verb and option by option, and it was written when there were five verbs. There are
- * eleven now, and the four that arrived last (`rename`, `value`, `scope`, `copy`) reached the parser
- * with nothing asserting their shape at all: a hand-written list of cases cannot cover a member that
- * did not exist when it was written, and a list that goes stale is indistinguishable from no test.
+ * WHY THIS SUITE EXISTS. The contract used to be pinned by hand, command by command, in a file
+ * written when there were five commands. There are thirteen now, and the ones that arrived last
+ * reached the parser with nothing asserting their shape at all: a hand-written list of cases cannot
+ * cover a member that did not exist when it was written, and a list that goes stale is
+ * indistinguishable from no test. That file went away with the options it was written about, and this
+ * one replaces it by deriving every case instead of listing it.
  *
  * SO THIS ONE IS DERIVED. Every case below comes out of `SECRET_SUBCOMMAND_SHAPES` at run time, so
- * adding a verb adds its rows, and adding an option to a verb moves that pair from the refusal loop
- * to the acceptance loop without anybody editing this file. A new verb whose positional words are a
- * closed set (the way `scope`'s destination is) fails here rather than passing, because the generic
- * name this suite feeds it is not a member of that set.
+ * adding a command adds its rows, and moving a slot from required to trailing moves that command
+ * between the loops without anybody editing this file. A new slot with no sample fails the guard at
+ * the top rather than being skipped by every loop in silence.
  *
- * WHAT IT CLOSES. The class is "a verb accepts an argument it then ignores", in both its spellings:
- * an option the verb does not read, and a bare word past the count it reads. Ignoring an argument is
- * the worst outcome available, because the operator is told the command ran. It also pins that the
- * refusal stays useful and stays safe: it names the verbs that DO take the option, it names the
- * position of the extra word without repeating the word, and it offers the `--` escape on the
- * terminal and not on a surface where `--` is not a value escape.
+ * WHAT IT CLOSES. The class is "a command accepts an argument it then ignores", which is the worst
+ * outcome available because the operator is told the command ran. Every argument is a plain word now,
+ * so the class has three spellings and all three are swept: a word past the last slot, a required
+ * word that never arrived, and a trailing word written in an unexpected order. It also pins the two
+ * safety properties of the refusals -- they never repeat the word, because on a `/secret` line the
+ * misplaced word is very often the credential, and they never advertise a flag, because there are
+ * none and offering one sends the operator to a line that would be refused.
  *
  * WHAT IT DOES NOT CATCH. It proves the parser honours the table; it cannot prove the table is the
- * right shape for a verb. `rm --scope` being optional while `discard --scope` is required is a
- * judgement, and the suites that own those verbs are where it is asserted. It also says nothing
- * about what the runner does with a parsed request.
+ * right shape for a command. A vault being optional on `rm` and required on `clear` is a judgement,
+ * and the suites that own those commands are where it is asserted. It also says nothing about what
+ * the runner does with a parsed request.
  */
 import { describe, expect, it } from "bun:test";
 import {
@@ -32,76 +33,93 @@ import {
 	SECRET_SUBCOMMAND_SHAPES,
 	type SecretCommandRequest,
 	type SecretCommandSurface,
+	type SecretSlot,
 	type SecretSubcommand,
 } from "@veyyon/coding-agent/secrets/secret-command";
 
-const VERBS = Object.keys(SECRET_SUBCOMMAND_SHAPES) as SecretSubcommand[];
+const COMMANDS = Object.keys(SECRET_SUBCOMMAND_SHAPES) as SecretSubcommand[];
 
-/** Every option any verb reads, derived so a new one cannot be added without reaching these loops. */
-const EVERY_OPTION = [...new Set(VERBS.flatMap(verb => SECRET_SUBCOMMAND_SHAPES[verb].options))].sort();
+/** Every slot any command reads, derived so a new one cannot be added without reaching these loops. */
+const EVERY_SLOT = [
+	...new Set(
+		COMMANDS.flatMap(command => [
+			...SECRET_SUBCOMMAND_SHAPES[command].slots,
+			...SECRET_SUBCOMMAND_SHAPES[command].trailing,
+		]),
+	),
+].sort();
 
 /**
- * A value each option accepts, and the request field it must land in.
+ * A word each slot accepts, and the request field it must land in.
  *
- * Keyed by option rather than derived, because only the parser knows what a lifetime looks like.
- * The guard below is what keeps it honest: a new option with no entry here fails immediately with a
- * message naming it, rather than being skipped by every loop in silence.
+ * Keyed by slot rather than derived, because only the parser knows what a lifetime looks like. The
+ * guard below is what keeps it honest: a new slot with no entry here fails immediately with a message
+ * naming it, rather than being skipped by every loop in silence.
+ *
+ * `variable` is the one slot spelled as two words when it trails, so its sample carries the keyword.
+ * A name sample must be a legal secret name, since the required-slot rule hands whatever arrives
+ * straight to the vault.
  */
-const OPTION_SAMPLE: Record<string, { value: string; field: keyof SecretCommandRequest }> = {
-	"--from-env": { value: "SOME_VARIABLE", field: "fromEnv" },
-	"--ttl": { value: "7d", field: "ttl" },
-	"--scope": { value: "project", field: "scope" },
-	"--limit": { value: "5", field: "limit" },
-	"--name": { value: "OTHER_TOKEN", field: "name" },
+const SLOT_SAMPLE: Record<SecretSlot, { words: readonly string[]; field: keyof SecretCommandRequest }> = {
+	name: { words: ["FIRST_TOKEN"], field: "name" },
+	newName: { words: ["SECOND_TOKEN"], field: "newName" },
+	variable: { words: ["from-env", "SOME_VARIABLE"], field: "fromEnv" },
+	scope: { words: ["project"], field: "scope" },
+	ttl: { words: ["7d"], field: "ttl" },
+	limit: { words: ["5"], field: "limit" },
 };
 
 const SURFACES: readonly SecretCommandSurface[] = ["tui", "noninteractive"];
 
 /**
- * The bare words a verb needs to be well formed, at exactly the count it declares.
+ * How many of a command's slots that surface insists on.
  *
- * `add` is unbounded because its tail is a credential, so it is given a name and nothing else: an
- * option after an inline value is refused as ambiguous, which is a different contract with its own
- * suite. A destination that belongs to a closed set is spelled out, and any future verb with one
- * will fail the acceptance rows until it is spelled out here too.
+ * ONE slot's necessity is per-surface: a terminal asks for the name of a `from-env` in a field
+ * afterwards, so it may be left off the line there, and a client has no field and must write it. The
+ * table cannot say that, because it describes the grammar and this is a fact about the surface -- so
+ * it is stated here once and every loop below reads it, rather than each loop carrying an exception.
  */
-function wordsFor(verb: SecretSubcommand): string[] {
-	const declared = SECRET_SUBCOMMAND_SHAPES[verb].words;
-	const count = Number.isFinite(declared) ? declared : 1;
-	const words: string[] = Array.from({ length: count }, (_, index) => (index === 0 ? "FIRST_TOKEN" : "SECOND_TOKEN"));
-	if (verb === "scope") words[1] = "global";
-	return words;
+function requiredOn(command: SecretSubcommand, surface: SecretCommandSurface): number {
+	if (command === "from-env" && surface === "tui") return 1;
+	return SECRET_SUBCOMMAND_SHAPES[command].required;
+}
+
+/** A required slot takes whatever arrives, so its sample is written without the trailing keyword. */
+function requiredWords(command: SecretSubcommand, surface: SecretCommandSurface): string[] {
+	const shape = SECRET_SUBCOMMAND_SHAPES[command];
+	return shape.slots.slice(0, requiredOn(command, surface)).flatMap(slot => SLOT_SAMPLE[slot].words.at(-1) ?? "");
+}
+
+/** The shortest line the command accepts: its required words and nothing after them. */
+function wellFormedLine(command: SecretSubcommand, surface: SecretCommandSurface): string {
+	return [command, ...requiredWords(command, surface)].join(" ");
 }
 
 /**
- * A line that parses: the verb, its words, and every option it must be given to be complete.
+ * The longest line the command accepts: every DECLARED slot, then every trailing slot filled once.
  *
- * WHICH verbs must name a scope is read from the shape table's `needsScope`, not listed here. It was
- * listed here, as `verb === "discard"`, and a second verb with the same requirement then failed
- * these rows for a reason that had nothing to do with the contract they defend -- the line this
- * helper built was simply incomplete. A verb whose scope arrives as a positional (`scope`) already
- * has it from `wordsFor`, so only the `--scope` spelling is added here.
- *
- * Supplying an option twice is its own refusal, so the caller's `--scope` wins when that is the pair
- * under test.
+ * Declared rather than required, so the terminal's optional `from-env` name is on the line here: a
+ * saturated line is the one with nothing left to add, which is what makes the next word after it a
+ * word too many.
  */
-function wellFormedLine(verb: SecretSubcommand, extra: readonly string[] = []): string {
-	const shape = SECRET_SUBCOMMAND_SHAPES[verb];
-	const required =
-		shape.needsScope && shape.options.includes("--scope") && !extra.includes("--scope") ? ["--scope", "project"] : [];
-	return [verb, ...wordsFor(verb), ...required, ...extra].join(" ");
+function saturatedLine(command: SecretSubcommand): string {
+	const shape = SECRET_SUBCOMMAND_SHAPES[command];
+	const positional = shape.slots.flatMap(slot => SLOT_SAMPLE[slot].words.at(-1) ?? "");
+	const trailing = shape.trailing.flatMap(slot => [...SLOT_SAMPLE[slot].words]);
+	return [command, ...positional, ...trailing].join(" ");
 }
 
 /**
- * `add` on a terminal is the value grammar, not the verb grammar.
+ * The one command a terminal parses as a value grammar rather than through the table.
  *
- * `/secret add <value>` is where a terminal reads a value, so everything after `add` is the
- * credential and the shape table does not apply. That is asserted where it belongs, in
- * `the-masked-prompt-cannot-be-read-as-a-name-prompt.test.ts`; here it is the one exemption, named
- * so that it is a decision rather than a gap.
+ * `/secret add <value>` is where a terminal reads a credential, so everything after `add` is the value
+ * and no slot is consulted. It is asserted where it belongs, in
+ * `the-masked-prompt-cannot-be-read-as-a-name-prompt.test.ts`, and named here so it is a decision
+ * rather than a gap. `from-env` used to be exempt too and no longer is: it reads the same slots on
+ * both surfaces, and only the NECESSITY of its name differs, which `requiredOn` states.
  */
-function appliesTo(verb: SecretSubcommand, surface: SecretCommandSurface): boolean {
-	return !(verb === "add" && surface === "tui");
+function appliesTo(command: SecretSubcommand, surface: SecretCommandSurface): boolean {
+	return !(surface === "tui" && command === "add");
 }
 
 function refusal(args: string, surface: SecretCommandSurface): string {
@@ -113,96 +131,156 @@ function refusal(args: string, surface: SecretCommandSurface): string {
 	throw new Error(`parseSecretCommand("${args}", "${surface}") was accepted, and should have been refused.`);
 }
 
-describe("the option sample covers the grammar", () => {
-	/** The guard that keeps every loop below from silently skipping a newly added option. */
-	it("names a value and a field for every option any verb reads", () => {
-		const missing = EVERY_OPTION.filter(option => OPTION_SAMPLE[option] === undefined);
+describe("the slot sample covers the grammar", () => {
+	/** The guard that keeps every loop below from silently skipping a newly added slot. */
+	it("names words and a field for every slot any command reads", () => {
+		const missing = EVERY_SLOT.filter(slot => SLOT_SAMPLE[slot] === undefined);
 
 		expect(missing).toEqual([]);
 	});
 
-	/** A shape table with no verbs would make every loop below vacuous and every one of them pass. */
-	it("derives at least the eleven verbs the command ships", () => {
-		expect(VERBS.length).toBeGreaterThanOrEqual(11);
-		expect(EVERY_OPTION.length).toBeGreaterThanOrEqual(5);
+	/** A shape table with no commands would make every loop below vacuous and every one of them pass. */
+	it("derives at least the thirteen commands the grammar ships", () => {
+		expect(COMMANDS.length).toBeGreaterThanOrEqual(13);
+		expect(EVERY_SLOT.length).toBeGreaterThanOrEqual(6);
+	});
+
+	/** The table is the grammar, and a flag in it would be a flag in the grammar. */
+	it("declares no slot whose spelling is an option", () => {
+		expect(EVERY_SLOT.filter(slot => slot.startsWith("-"))).toEqual([]);
+		expect(COMMANDS.filter(command => command.startsWith("-"))).toEqual([]);
 	});
 });
 
-describe("an option a verb does not read is refused", () => {
-	for (const verb of VERBS) {
-		const owned = SECRET_SUBCOMMAND_SHAPES[verb].options;
-		const owners = (option: string) =>
-			VERBS.filter(candidate => SECRET_SUBCOMMAND_SHAPES[candidate].options.includes(option));
-		for (const option of EVERY_OPTION) {
-			if (owned.includes(option)) continue;
-			for (const surface of SURFACES) {
-				if (!appliesTo(verb, surface)) continue;
-
-				it(`refuses ${option} on ${verb}, on the ${surface} surface`, () => {
-					const sample = OPTION_SAMPLE[option];
-					const message = refusal(wellFormedLine(verb, [option, sample.value]), surface);
-
-					expect(message).toContain(`/secret ${verb} does not take ${option}`);
-					// The refusal is only useful if it points somewhere, and the owners it points at are
-					// the table's own, so a verb that gains the option changes this expectation with it.
-					for (const owner of owners(option)) expect(message).toContain(`/secret ${owner}`);
-				});
-			}
-		}
-	}
-});
-
-describe("an option a verb declares is read into the request", () => {
-	for (const verb of VERBS) {
-		for (const option of SECRET_SUBCOMMAND_SHAPES[verb].options) {
-			for (const surface of SURFACES) {
-				if (!appliesTo(verb, surface)) continue;
-
-				it(`reads ${option} on ${verb}, on the ${surface} surface`, () => {
-					const sample = OPTION_SAMPLE[option];
-					const request = parseSecretCommand(wellFormedLine(verb, [option, sample.value]), surface);
-
-					expect(request.subcommand).toBe(verb);
-					// Accepting an option and dropping it is the defect this whole suite is about, so the
-					// field has to arrive, not merely fail to throw.
-					expect(request[sample.field]).toBeDefined();
-				});
-			}
-		}
-	}
-});
-
-describe("a bare word past the count is refused", () => {
-	for (const verb of VERBS) {
-		const declared = SECRET_SUBCOMMAND_SHAPES[verb].words;
+describe("a command accepts the words its table declares", () => {
+	for (const command of COMMANDS) {
 		for (const surface of SURFACES) {
-			if (!appliesTo(verb, surface)) continue;
+			if (!appliesTo(command, surface)) continue;
 
-			it(`accepts ${verb} at its declared word count, on the ${surface} surface`, () => {
-				expect(parseSecretCommand(wellFormedLine(verb), surface).subcommand).toBe(verb);
+			it(`accepts ${command} with its required words, on the ${surface} surface`, () => {
+				expect(parseSecretCommand(wellFormedLine(command, surface), surface).subcommand).toBe(command);
 			});
 
-			if (!Number.isFinite(declared)) continue;
+			it(`reads every trailing word ${command} declares, on the ${surface} surface`, () => {
+				const request = parseSecretCommand(saturatedLine(command), surface);
 
-			it(`refuses one word more than ${verb} reads, on the ${surface} surface`, () => {
-				const message = refusal(wellFormedLine(verb, ["EXTRA_WORD"]), surface);
+				expect(request.subcommand).toBe(command);
+				// Accepting a word and dropping it is the defect this whole suite is about, so each field
+				// has to arrive, not merely fail to throw.
+				for (const slot of SECRET_SUBCOMMAND_SHAPES[command].trailing) {
+					expect(request[SLOT_SAMPLE[slot].field]).toBeDefined();
+				}
+			});
+		}
+	}
+});
 
-				expect(message).toContain(`/secret ${verb} takes`);
+describe("trailing words are read in any order", () => {
+	for (const command of COMMANDS) {
+		const trailing = SECRET_SUBCOMMAND_SHAPES[command].trailing;
+		if (trailing.length < 2) continue;
+		for (const surface of SURFACES) {
+			if (!appliesTo(command, surface)) continue;
+
+			it(`reads ${command}'s trailing words reversed, on the ${surface} surface`, () => {
+				const reversed = [...trailing].reverse().flatMap(slot => [...SLOT_SAMPLE[slot].words]);
+				const request = parseSecretCommand(
+					[command, ...requiredWords(command, surface), ...reversed].join(" "),
+					surface,
+				);
+
+				// Order-free is the whole point of recognising a trailing word by its shape: an operator
+				// who writes the vault before the lifetime has not made a mistake.
+				for (const slot of trailing) expect(request[SLOT_SAMPLE[slot].field]).toBeDefined();
+			});
+		}
+	}
+});
+
+describe("a required word that never arrived is refused", () => {
+	for (const command of COMMANDS) {
+		for (const surface of SURFACES) {
+			if (!appliesTo(command, surface)) continue;
+			if (requiredOn(command, surface) === 0) continue;
+
+			it(`refuses ${command} one required word short, on the ${surface} surface`, () => {
+				const short = requiredWords(command, surface).slice(0, -1);
+				const message = refusal([command, ...short].join(" "), surface);
+				const shape = SECRET_SUBCOMMAND_SHAPES[command];
+				// A MISSING VAULT KEEPS ITS OWN SENTENCE, and which commands those are is derived from the
+				// same table rather than listed: `clear`, `discard` and `scope` act on something that
+				// already exists, so their refusals say WHY there is no default instead of only what is
+				// missing. Every other command gets the generic one.
+				const missingVault = shape.needsScope && shape.slots.slice(short.length).includes("scope");
+
+				expect(message).toContain(missingVault ? "There is no default" : `/secret ${command} still needs`);
+				expect(message).toContain(`/secret ${command}`);
+				// The words that DID arrive are not repeated: one of them may be the credential, put on
+				// the line by muscle memory for `add`.
+				for (const word of short) expect(message).not.toContain(word);
+			});
+		}
+	}
+});
+
+describe("a word past the last slot is refused", () => {
+	for (const command of COMMANDS) {
+		for (const surface of SURFACES) {
+			if (!appliesTo(command, surface)) continue;
+
+			it(`refuses one word more than ${command} reads, on the ${surface} surface`, () => {
+				const message = refusal(`${saturatedLine(command)} EXTRA_WORD`, surface);
+
+				// WHICH refusal is derived, not chosen. There are three, and pinning the wrong one per
+				// command is how this row would pass while saying nothing:
+				//
+				//  - a command whose trailing slots include a name has no unreadable shape left, since a
+				//    name is the catch-all, so one word too many is a SECOND name and is refused as a
+				//    repeat;
+				//  - `add` on a client reads no words at all, and whatever arrived may be the credential,
+				//    so it is refused as an inline credential in a request log;
+				//  - everything else has no slot for the word.
+				//
+				// All three are the same contract: the word is not silently ignored.
+				const expected =
+					command === "add"
+						? "refuses an inline credential"
+						: SECRET_SUBCOMMAND_SHAPES[command].trailing.includes("name")
+							? `/secret ${command} reads a secret name once`
+							: `/secret ${command} cannot read`;
+				expect(message).toContain(expected);
 				expect(message).not.toContain("EXTRA_WORD");
-				// A terminal line one word too long has a second reading: a credential beginning with that
-				// verb. The escape is the only spelling for it, and it is wrong to offer on a surface with
-				// no bare-value form to escape into.
+				// A terminal line one word too long has a second reading: a credential beginning with a
+				// command word. The value form is the only spelling for it, and it is wrong to offer on a
+				// surface with no bare-value form to reach for. Asserted for every refusal above, not just
+				// the extra-word one, because the operator's mistake is identical in all of them.
 				if (surface === "tui") expect(message).toContain("store it with /secret add <value>.");
 				else expect(message).not.toContain("store it with /secret add <value>.");
 			});
 		}
 	}
+});
 
-	/** The unbounded verb is unbounded on purpose: its tail is a credential, not a word list. */
-	it("keeps every word of an inline credential on add", () => {
-		const request = parseSecretCommand("add DEPLOY_KEY one two three four", "noninteractive");
+describe("no refusal sends the operator to a flag", () => {
+	for (const command of COMMANDS) {
+		for (const surface of SURFACES) {
+			if (!appliesTo(command, surface)) continue;
 
-		expect(request.name).toBe("DEPLOY_KEY");
-		expect(request.value).toBe("one two three four");
-	});
+			it(`names no option when it refuses ${command}, on the ${surface} surface`, () => {
+				const message = refusal(`${saturatedLine(command)} EXTRA_WORD`, surface);
+
+				// Nothing in this grammar is spelled with a dash, so a refusal that advertises one hands
+				// the operator a line the parser would refuse in turn -- which reads as a bug in the tool
+				// rather than as a rule about the tool.
+				expect(message).not.toMatch(/(^|\s)--?[a-z]/);
+			});
+		}
+	}
+});
+
+/** The value grammar is unbounded on purpose: its tail is a credential, not a word list. */
+it("keeps every word of an inline credential on add", () => {
+	const request = parseSecretCommand("add one two three four", "tui");
+
+	expect(request.value).toBe("one two three four");
 });

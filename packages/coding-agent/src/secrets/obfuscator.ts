@@ -137,8 +137,8 @@ export function describeSecretExpiry(event: SecretExpiryEvent): string {
 		: "Its encrypted value has not yet been deleted from the vault; a successful vault refresh will prune it.";
 	return (
 		`#${event.name}# has expired and its in-memory expansion has been revoked. ${persistedState} ` +
-		`Store it again with /secret add --from-env <VAR> if you still need it, or /secret add ${event.name} ` +
-		`--from-env <VAR> in a client with no terminal.`
+		`Store it again with /secret from-env <VAR> if you still need it, or ` +
+		`/secret from-env <VAR> ${event.name} in a client with no terminal.`
 	);
 }
 
@@ -941,7 +941,7 @@ export class SecretObfuscator {
 	 *
 	 * `undefined` and `null` both mean "does not expire", so an environment or `secrets.yml` entry
 	 * needs no special case at the call sites. An entry that used to expire and no longer does has
-	 * its deadline REMOVED rather than left behind, or `/secret extend NAME --ttl never` would keep
+	 * its deadline REMOVED rather than left behind, or `/secret extend NAME never` would keep
 	 * the old deadline and drop the secret at it.
 	 */
 	#trackExpiry(placeholder: string, expiresAt: number | null | undefined): void {

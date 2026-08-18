@@ -11,17 +11,17 @@ import { SecretVault } from "@veyyon/coding-agent/secrets/vault";
  *
  * THE GAP THIS CLOSES. Scopes shadow each other: project overrides profile, which overrides
  * global. `SecretVault.remove` has always taken an optional scope, but the command refused the
- * `--scope` option outright, so every removal took the narrowest match. A name held in two scopes
+ * vault word outright, so every removal took the narrowest match. A name held in two scopes
  * therefore had its outer copy STRANDED. `/secret list` shows the resolved set, so the shadowed
  * entry was not even visible, and the only way to reach it was to remove the inner one first and
  * remember that the other existed. A credential you cannot see and cannot remove is the opposite
  * of what a vault is for.
  *
- * The usage text made it worse by advertising `--scope profile|project|global` under a heading
+ * The usage text made it worse by advertising `profile|project|global` under a heading
  * that claimed to apply to every subcommand, so the operator was told to pass a flag the parser
  * then rejected, which reads as a bug rather than as a limit.
  *
- * WHAT IS ASSERTED. That the option is accepted and TARGETS the named scope rather than being
+ * WHAT IS ASSERTED. That the vault word is accepted and TARGETS the named scope rather than being
  * parsed and ignored, which is the failure mode a test asserting only "it did not throw" would
  * miss; that the default is unchanged, because narrowest-first is the entry in effect and is what
  * an operator means almost every time; and that a miss names the scope it searched.
@@ -68,10 +68,10 @@ async function remove(h: Harness, line: string): Promise<string> {
 
 describe("removing a secret held in more than one scope", () => {
 	/**
-	 * The stranded-copy case, end to end. Before `--scope` was accepted this line was refused by the
+	 * The stranded-copy case, end to end. Before a vault word was accepted this line was refused by the
 	 * parser, so the global entry could not be removed at all while the project one existed.
 	 *
-	 * Both halves matter. Removing the global copy proves the option is honoured, and the project
+	 * Both halves matter. Removing the global copy proves the word is honoured, and the project
 	 * copy surviving proves it TARGETED rather than merely removing the usual narrowest match and
 	 * reporting the scope it was handed.
 	 */
@@ -80,7 +80,7 @@ describe("removing a secret held in more than one scope", () => {
 		try {
 			await storeInBothScopes(h.vault);
 
-			expect(await remove(h, "rm DUPED_TOKEN --scope global")).toBe(
+			expect(await remove(h, "rm DUPED_TOKEN global")).toBe(
 				"Removed DUPED_TOKEN from the global vault. It was shadowed by the project secret of the same " +
 					"name, so #DUPED_TOKEN# spends what it spent before.",
 			);
@@ -101,7 +101,7 @@ describe("removing a secret held in more than one scope", () => {
 
 	/**
 	 * The default is deliberately unchanged: no scope means the narrowest match, which is the entry
-	 * actually in effect. Adding the option must not have quietly turned removal into something that
+	 * actually in effect. Accepting the word must not have quietly turned removal into something that
 	 * needs a scope, nor changed which copy an unqualified removal takes.
 	 */
 	it("still takes the narrowest match when no scope is named", async () => {
@@ -130,7 +130,7 @@ describe("removing a secret held in more than one scope", () => {
 		try {
 			await h.vault.add({ name: "DUPED_TOKEN", value: VALUE_PROFILE, scope: "profile" });
 
-			await expect(remove(h, "rm DUPED_TOKEN --scope global")).rejects.toThrow(
+			await expect(remove(h, "rm DUPED_TOKEN global")).rejects.toThrow(
 				"No secret named DUPED_TOKEN is stored in the global vault. Run /secret list to see what is.",
 			);
 
@@ -161,7 +161,7 @@ describe("removing a secret held in more than one scope", () => {
 
 describe("the usage text for removal", () => {
 	/**
-	 * The help has to agree with the parser. The footer used to advertise `--scope` as applying to
+	 * The help has to agree with the parser. The footer used to advertise the vault word as applying to
 	 * every subcommand while `rm` refused it, and a flag that is documented and then rejected costs
 	 * more than one that is simply absent: the operator assumes the failure is theirs.
 	 *
@@ -170,7 +170,7 @@ describe("the usage text for removal", () => {
 	 */
 	it("accepts every scope the help offers", async () => {
 		for (const scope of ["profile", "project", "global"] as const) {
-			const parsed = parseSecretCommand(`rm SOME_TOKEN --scope ${scope}`, "noninteractive");
+			const parsed = parseSecretCommand(`rm SOME_TOKEN ${scope}`, "noninteractive");
 			expect(parsed.subcommand).toBe("rm");
 			expect(parsed.scope).toBe(scope);
 			expect(parsed.name).toBe("SOME_TOKEN");
@@ -202,7 +202,7 @@ describe("removing a secret that has another copy underneath it", () => {
 			expect(result.message).toBe(
 				"Removed DUPED_TOKEN from the project vault. A global secret of the same name was underneath it, " +
 					"so #DUPED_TOKEN# still spends a credential, now that one. " +
-					"Run /secret rm DUPED_TOKEN --scope global to remove that one too.",
+					"Run /secret rm DUPED_TOKEN global to remove that one too.",
 			);
 			// The flag is what a session uses to treat a name as dead. Setting it here would have the
 			// runtime refuse a placeholder that still resolves.
@@ -255,7 +255,7 @@ describe("removing a secret that has another copy underneath it", () => {
 			await storeInBothScopes(h.vault);
 
 			const result = await runSecretCommand(
-				parseSecretCommand("rm DUPED_TOKEN --scope global", "noninteractive"),
+				parseSecretCommand("rm DUPED_TOKEN global", "noninteractive"),
 				h.context,
 			);
 

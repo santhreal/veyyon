@@ -106,7 +106,7 @@ describe("what a warning says", () => {
 	it("names the command that prevents the loss", () => {
 		const warning = expiryWarnings([entry({ name: "DEPLOY_KEY" })], CREATED + DAY * 0.95)[0];
 
-		expect(warning).toContain("/secret extend DEPLOY_KEY --ttl 7d");
+		expect(warning).toContain("/secret extend DEPLOY_KEY 7d");
 		expect(warning).toContain("will be deleted");
 	});
 

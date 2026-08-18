@@ -59,8 +59,8 @@ function vaultAt(home: string): SecretVault {
 
 describe("a word that means emptying the vault is never stored as a credential", () => {
 	for (const word of EMPTYING_WORDS) {
-		it(`/secret ${word} --scope profile runs the clear command`, () => {
-			const parsed = parseSecretCommand(`${word} --scope profile`);
+		it(`/secret ${word} profile runs the clear command`, () => {
+			const parsed = parseSecretCommand(`${word} profile`);
 			expect(parsed.subcommand).toBe("clear");
 			expect(parsed.scope).toBe("profile");
 			// The defect was not "wrong subcommand", it was "the word became a value". Assert the
@@ -71,10 +71,10 @@ describe("a word that means emptying the vault is never stored as a credential",
 
 		it(`/secret ${word} on its own refuses instead of storing the word`, () => {
 			// THE ORIGINAL DEFECT, stated as the assertion that would have caught it: before `clear`
-			// was a verb this line parsed to `{subcommand: "add", value: "<word>"}` and filed the word
-			// as a credential. Now it names the flag it needs. Both halves are asserted, because a
-			// refusal for the wrong reason (an unknown verb, say) would leave the class open on the
-			// next synonym.
+			// was a command this line parsed to `{subcommand: "add", value: "<word>"}` and filed the
+			// word as a credential. Now it names the word it still needs. Both halves are asserted,
+			// because a refusal for the wrong reason (an unknown command, say) would leave the class
+			// open on the next synonym.
 			let thrown: Error | undefined;
 			try {
 				parseSecretCommand(word);
@@ -82,7 +82,8 @@ describe("a word that means emptying the vault is never stored as a credential",
 				thrown = error as Error;
 			}
 			expect(thrown).toBeDefined();
-			expect(thrown?.message).toContain("--scope");
+			expect(thrown?.message).toContain("needs the vault to empty");
+			expect(thrown?.message).toContain("There is no default");
 			expect(thrown?.message).toContain("/secret clear");
 		});
 	}
@@ -97,16 +98,22 @@ describe("a word that means emptying the vault is never stored as a credential",
 		expect(reserved).toEqual([...EMPTYING_WORDS].sort());
 	});
 
-	it("takes no bare word, so a name after it cannot be read as one secret to remove", () => {
-		expect(SECRET_SUBCOMMAND_SHAPES.clear.words).toBe(0);
-		expect(SECRET_SUBCOMMAND_SHAPES.clear.options).toEqual(["--scope"]);
-		expect(() => parseSecretCommand("clear MY_TOKEN --scope profile")).toThrow();
+	it("reads one word, the vault, so a name after it cannot be read as one secret to remove", () => {
+		// A vault and nothing else: the word is required, so `clear` can never be given a secret name
+		// and quietly empty the whole vault the name lived in.
+		expect(SECRET_SUBCOMMAND_SHAPES.clear.slots).toEqual(["scope"]);
+		expect(SECRET_SUBCOMMAND_SHAPES.clear.required).toBe(1);
+		expect(SECRET_SUBCOMMAND_SHAPES.clear.trailing).toEqual([]);
+		expect(SECRET_SUBCOMMAND_SHAPES.clear.needsScope).toBe(true);
+		expect(() => parseSecretCommand("clear profile MY_TOKEN")).toThrow();
+		// A name in the vault's own position is refused too, rather than resolving to a default vault.
+		expect(() => parseSecretCommand("clear MY_TOKEN")).toThrow();
 	});
 
 	it("is offered by the completion menu, so it is discoverable without reading source", () => {
 		const offered = SECRET_TUI_SUBCOMMANDS.find(sub => sub.name === "clear");
 		expect(offered).toBeDefined();
-		expect(offered?.usage).toContain("--scope");
+		expect(offered?.usage).toBe("profile");
 	});
 });
 
@@ -173,7 +180,7 @@ describe("clearing one vault reports what it did to every placeholder it held", 
 		// The same name in a wider vault: `load()` resolves narrowest-first, so clearing profile
 		// leaves #ALPHA# expanding to the global copy.
 		await store.add({ name: "ALPHA", value: "global-alpha", scope: "global", ttl: null });
-		const result = await runSecretCommand(parseSecretCommand("clear --scope profile"), {
+		const result = await runSecretCommand(parseSecretCommand("clear profile"), {
 			vault: store,
 			readEnv: () => undefined,
 			defaultTtl: null,
@@ -194,7 +201,7 @@ describe("clearing one vault reports what it did to every placeholder it held", 
 		const store = vaultAt(home);
 		await store.add({ name: "SOLO_KEY", value: "profile-value", scope: "profile", ttl: null });
 		await store.add({ name: "SOLO_KEY", value: "global-value", scope: "global", ttl: null });
-		const result = await runSecretCommand(parseSecretCommand("clear --scope profile"), {
+		const result = await runSecretCommand(parseSecretCommand("clear profile"), {
 			vault: store,
 			readEnv: () => undefined,
 			defaultTtl: null,
@@ -207,7 +214,7 @@ describe("clearing one vault reports what it did to every placeholder it held", 
 	it("reports an empty vault as nothing removed rather than as a change", async () => {
 		const home = tempDir("veyyon-vault-clear-empty-");
 		const store = vaultAt(home);
-		const result = await runSecretCommand(parseSecretCommand("clear --scope project"), {
+		const result = await runSecretCommand(parseSecretCommand("clear project"), {
 			vault: store,
 			readEnv: () => undefined,
 			defaultTtl: null,

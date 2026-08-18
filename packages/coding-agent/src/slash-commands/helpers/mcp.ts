@@ -15,13 +15,17 @@ import { searchSmitheryRegistry } from "../../mcp/smithery-registry";
 import type { MCPServerConfig, MCPServerConnection } from "../../mcp/types";
 import { parseCommandArgs } from "../../utils/command-args";
 import type { ParsedSlashCommand, SlashCommandResult, SlashCommandRuntime } from "../types";
-import { commandConsumed, errorMessage, parseNamedScopeArgs, parseSubcommand, usage } from "./parse";
-
-type AcpMcpScope = "user" | "project";
+import {
+	commandConsumed,
+	errorMessage,
+	MCP_SCOPE_REMOVED_REPLACEMENT,
+	parseSubcommand,
+	removedOptionMessage,
+	usage,
+} from "./parse";
 
 interface ParsedMcpAddArgs {
 	name?: string;
-	scope: AcpMcpScope;
 	url?: string;
 	transport: "http" | "sse";
 	authToken?: string;
@@ -31,72 +35,61 @@ interface ParsedMcpAddArgs {
 
 interface ParsedMcpSearchArgs {
 	keyword: string;
-	scope: AcpMcpScope;
 	limit: number;
 	semantic: boolean;
 	error?: string;
 }
 
-type McpAddOptionParser = (parsed: ParsedMcpAddArgs, value: string | undefined) => string | undefined;
+interface ParsedMcpRemoveArgs {
+	name?: string;
+	error?: string;
+}
 
-const MCP_ADD_USAGE =
-	"Usage: /mcp add <name> [--scope project|user] [--url <url> --transport http|sse] [--token <token>] [-- <command...>]";
+const MCP_ADD_USAGE = "Usage: /mcp add <name> [http|sse] [url <url>] [token <token>] [run <command...>]";
 
-const MCP_SEARCH_USAGE = "Usage: /mcp smithery-search <keyword> [--scope project|user] [--limit <1-100>] [--semantic]";
+const MCP_SEARCH_USAGE = "Usage: /mcp smithery-search <keyword...> [<limit 1-100>] [semantic]";
 
-const MCP_ADD_OPTION_PARSERS = new Map<string, McpAddOptionParser>([
-	[
-		"--scope",
-		(parsed, value) => {
-			if (!value || (value !== "project" && value !== "user")) return "Invalid --scope value. Use project or user.";
-			parsed.scope = value;
-			return undefined;
-		},
-	],
-	[
-		"--url",
-		(parsed, value) => {
-			if (!value) return "Missing value for --url.";
-			parsed.url = value;
-			return undefined;
-		},
-	],
-	[
-		"--transport",
-		(parsed, value) => {
-			if (!value || (value !== "http" && value !== "sse")) return "Invalid --transport value. Use http or sse.";
-			parsed.transport = value;
-			return undefined;
-		},
-	],
-	[
-		"--token",
-		(parsed, value) => {
-			if (!value) return "Missing value for --token.";
-			parsed.authToken = value;
-			return undefined;
-		},
-	],
-]);
+const MCP_REMOVE_USAGE = "Usage: /mcp remove <name>";
 
-async function getMcpConfiguredServers(
-	cwd: string,
-): Promise<Array<{ name: string; config: MCPServerConfig; scope: AcpMcpScope }>> {
-	const userPath = getMCPConfigPath("user", cwd);
-	const projectPath = getMCPConfigPath("project", cwd);
-	const [userConfig, projectConfig] = await Promise.all([readMCPConfigFile(userPath), readMCPConfigFile(projectPath)]);
-	const servers: Array<{ name: string; config: MCPServerConfig; scope: AcpMcpScope }> = [];
-	const seen = new Set<string>();
-	for (const [name, config] of Object.entries(projectConfig.mcpServers ?? {})) {
-		if (config.enabled !== false) {
-			servers.push({ name, config, scope: "project" });
-			seen.add(name);
-		}
-	}
-	for (const [name, config] of Object.entries(userConfig.mcpServers ?? {})) {
-		if (!seen.has(name) && config.enabled !== false) servers.push({ name, config, scope: "user" });
-	}
-	return servers;
+/**
+ * The option spellings `/mcp add` no longer has, keyed by bare name. The empty
+ * key is the separator that used to mean "everything after this is a command to
+ * run", which is exactly what the `run` keyword means now.
+ *
+ * The scope words are keys too, on every `/mcp` map here. This surface used to
+ * have a scope and it wrote `<cwd>/.veyyon/mcp.json` through
+ * `getMCPConfigPath("project", …)`; no MCP provider emits a project-level
+ * source, so nothing ever loaded that file and `/mcp add x project url …`
+ * reported `Added MCP server "x" (project).` while configuring nothing. The TUI
+ * controller had already dropped the word, so the reason is shared with it
+ * verbatim through {@link MCP_SCOPE_REMOVED_REPLACEMENT} rather than reworded
+ * here, and a plain `project` is refused with it instead of being read as
+ * something else or quietly dropped.
+ */
+const MCP_ADD_REMOVED_OPTIONS: Record<string, string> = {
+	"": "write `run <command...>`, which takes the whole rest of the line",
+	scope: MCP_SCOPE_REMOVED_REPLACEMENT,
+	project: MCP_SCOPE_REMOVED_REPLACEMENT,
+	user: MCP_SCOPE_REMOVED_REPLACEMENT,
+	url: "write `url <url>`",
+	transport: "write `http` or `sse` as a plain word",
+	token: "write `token <token>`",
+};
+
+/** The option spellings `/mcp smithery-search` no longer has, keyed by bare name. */
+const MCP_SEARCH_REMOVED_OPTIONS: Record<string, string> = {
+	scope: MCP_SCOPE_REMOVED_REPLACEMENT,
+	project: MCP_SCOPE_REMOVED_REPLACEMENT,
+	user: MCP_SCOPE_REMOVED_REPLACEMENT,
+	limit: "write the limit as a plain integer",
+	semantic: "write `semantic` as a plain word",
+};
+
+async function getMcpConfiguredServers(cwd: string): Promise<Array<{ name: string; config: MCPServerConfig }>> {
+	const config = await readMCPConfigFile(getMCPConfigPath("user", cwd));
+	return Object.entries(config.mcpServers ?? {})
+		.filter(([, server]) => server.enabled !== false)
+		.map(([name, server]) => ({ name, config: server }));
 }
 
 function validateParsedMcpAddArgs(parsed: ParsedMcpAddArgs): ParsedMcpAddArgs {
@@ -105,99 +98,136 @@ function validateParsedMcpAddArgs(parsed: ParsedMcpAddArgs): ParsedMcpAddArgs {
 	if (!hasCommand && !hasUrl) {
 		return {
 			...parsed,
-			error: `Provide --url or -- <command...> for non-interactive add.\n${MCP_ADD_USAGE}`,
+			error: `Provide \`url <url>\` or \`run <command...>\` for non-interactive add.\n${MCP_ADD_USAGE}`,
 		};
 	}
 	if (!parsed.name) return { ...parsed, error: `Server name required.\n${MCP_ADD_USAGE}` };
-	if (hasCommand && hasUrl) return { ...parsed, error: "Use either --url or -- <command...>, not both." };
-	if (parsed.authToken && !hasUrl) return { ...parsed, error: "--token requires --url (HTTP/SSE transport)." };
+	if (hasCommand && hasUrl) return { ...parsed, error: "Use either `url <url>` or `run <command...>`, not both." };
+	if (parsed.authToken && !hasUrl) return { ...parsed, error: "`token` requires `url` (HTTP/SSE transport)." };
 	return parsed;
 }
 
+/**
+ * Parse the argument tail of `/mcp add`.
+ *
+ * Every argument is a plain word, disambiguated two ways and no others. The name
+ * is POSITION: token 1 is the name whatever it spells, so a server called
+ * `token` or `url` is named without ceremony. Everything after it is either a
+ * CLOSED SET word that is its own value (`http|sse` for the transport) or a
+ * leading keyword introducing text no set could describe (`url <url>`,
+ * `token <token>`, `run <command...>`).
+ *
+ * Those token sets cannot overlap, which is what makes reading a word by its own
+ * shape sound here: the closed set and the three keywords are five literal
+ * spellings, all distinct, and a keyword's value is consumed by position rather
+ * than examined. `run` takes the whole remainder, so a command's own arguments —
+ * flags included — are never read as this grammar's words.
+ *
+ * `project` and `user` after the name are REFUSED rather than ignored: they used
+ * to redirect the write, and a scope word that is quietly dropped stores the
+ * server in a config the operator did not name.
+ */
 function parseMcpAddArgs(rest: string): ParsedMcpAddArgs {
 	const tokens = parseCommandArgs(rest);
-	const parsed: ParsedMcpAddArgs = { scope: "project", transport: "http" };
+	const parsed: ParsedMcpAddArgs = { transport: "http" };
 	if (tokens.length === 0) return parsed;
 
-	let index = 0;
-	if (!tokens[0]!.startsWith("-")) {
-		parsed.name = tokens[0];
-		index = 1;
+	const name = tokens[0]!;
+	if (name.startsWith("-")) {
+		return { ...parsed, error: removedOptionMessage(name, MCP_ADD_REMOVED_OPTIONS, MCP_ADD_USAGE) };
 	}
+	parsed.name = name;
 
+	const seen = new Set<string>();
+	let index = 1;
 	while (index < tokens.length) {
-		const arg = tokens[index]!;
-		if (arg === "--") {
-			parsed.commandTokens = tokens.slice(index + 1);
-			break;
+		const token = tokens[index]!;
+		if (token.startsWith("-")) {
+			return { ...parsed, error: removedOptionMessage(token, MCP_ADD_REMOVED_OPTIONS, MCP_ADD_USAGE) };
 		}
-		const parser = MCP_ADD_OPTION_PARSERS.get(arg);
-		if (!parser) return { ...parsed, error: `Unknown option: ${arg}\n${MCP_ADD_USAGE}` };
-		const error = parser(parsed, tokens[index + 1]);
-		if (error) return { ...parsed, error };
-		index += 2;
+		let word: string;
+		if (token === "run") {
+			parsed.commandTokens = tokens.slice(index + 1);
+			word = "run";
+			index = tokens.length;
+		} else if (token === "url" || token === "token") {
+			const value = tokens[index + 1];
+			if (!value) return { ...parsed, error: `Missing value after \`${token}\`.\n${MCP_ADD_USAGE}` };
+			if (token === "url") parsed.url = value;
+			else parsed.authToken = value;
+			word = token;
+			index += 2;
+		} else if (token === "project" || token === "user") {
+			return { ...parsed, error: removedOptionMessage(token, MCP_ADD_REMOVED_OPTIONS, MCP_ADD_USAGE) };
+		} else if (token === "http" || token === "sse") {
+			parsed.transport = token;
+			word = "transport";
+			index += 1;
+		} else {
+			return { ...parsed, error: `Unknown argument: ${token}\n${MCP_ADD_USAGE}` };
+		}
+		if (seen.has(word)) return { ...parsed, error: `\`${word}\` given twice.\n${MCP_ADD_USAGE}` };
+		seen.add(word);
 	}
 
 	return validateParsedMcpAddArgs(parsed);
 }
 
+/**
+ * Parse the argument tail of `/mcp smithery-search`.
+ *
+ * The keyword is arbitrary text and the two options are words, so the keyword is
+ * required FIRST and the options are read from the END. Token 1 is always part of
+ * the keyword, which is what keeps a one-word search for `semantic` or for a
+ * number searching for it; scanning backwards then stops at the first word that
+ * belongs to no option, and everything up to there is the keyword.
+ *
+ * The options cannot be confused with each other: `semantic` is one literal word
+ * and the limit is the only integer the command reads.
+ *
+ * What this does NOT resolve, because no rule can: a multi-word keyword whose
+ * LAST word is `semantic` has that word read as the option. Put it anywhere but
+ * last, or search for the single word alone.
+ */
 function parseMcpSearchArgs(rest: string): ParsedMcpSearchArgs {
 	const tokens = parseCommandArgs(rest);
-	const missingKeyword: ParsedMcpSearchArgs = {
-		keyword: "",
-		scope: "project",
-		limit: 20,
-		semantic: false,
-		error: `Keyword required.\n${MCP_SEARCH_USAGE}`,
-	};
-	if (tokens.length === 0) return missingKeyword;
-
-	const keywordParts: string[] = [];
-	let scope: AcpMcpScope = "project";
-	let limit = 20;
-	let semantic = false;
-
-	for (let index = 0; index < tokens.length; index++) {
-		const token = tokens[index]!;
-		if (token === "--scope") {
-			const value = tokens[index + 1];
-			if (!value || (value !== "project" && value !== "user")) {
-				return { keyword: "", scope, limit, semantic, error: "Invalid --scope value. Use project or user." };
-			}
-			scope = value;
-			index++;
-			continue;
+	const base: ParsedMcpSearchArgs = { keyword: "", limit: 20, semantic: false };
+	if (tokens.length === 0) return { ...base, error: `Keyword required.\n${MCP_SEARCH_USAGE}` };
+	for (const token of tokens) {
+		if (token.startsWith("-")) {
+			return { ...base, error: removedOptionMessage(token, MCP_SEARCH_REMOVED_OPTIONS, MCP_SEARCH_USAGE) };
 		}
-		if (token === "--limit") {
-			const value = tokens[index + 1];
-			if (!value) return { keyword: "", scope, limit, semantic, error: "Missing value for --limit." };
-			const parsed = Number(value);
-			if (!Number.isInteger(parsed) || parsed < 1 || parsed > 100) {
-				return {
-					keyword: "",
-					scope,
-					limit,
-					semantic,
-					error: "Invalid --limit value. Use an integer between 1 and 100.",
-				};
-			}
-			limit = parsed;
-			index++;
-			continue;
-		}
-		if (token === "--semantic") {
-			semantic = true;
-			continue;
-		}
-		if (token.startsWith("--")) {
-			return { keyword: "", scope, limit, semantic, error: `Unknown option: ${token}\n${MCP_SEARCH_USAGE}` };
-		}
-		keywordParts.push(token);
 	}
 
-	const keyword = keywordParts.join(" ").trim();
-	if (!keyword) return { ...missingKeyword, scope, limit, semantic };
-	return { keyword, scope, limit, semantic };
+	let limit = 20;
+	let semantic = false;
+	const seen = new Set<string>();
+	let end = tokens.length;
+	while (end > 1) {
+		const token = tokens[end - 1]!;
+		let word: string;
+		if (token === "semantic") {
+			semantic = true;
+			word = "semantic";
+		} else if (/^\d+$/.test(token)) {
+			const value = Number(token);
+			if (value < 1 || value > 100) {
+				return {
+					...base,
+					error: `Invalid limit: ${token}. Use an integer between 1 and 100.\n${MCP_SEARCH_USAGE}`,
+				};
+			}
+			limit = value;
+			word = "limit";
+		} else {
+			break;
+		}
+		if (seen.has(word)) return { ...base, error: `\`${word}\` given twice.\n${MCP_SEARCH_USAGE}` };
+		seen.add(word);
+		end -= 1;
+	}
+
+	return { keyword: tokens.slice(0, end).join(" "), limit, semantic };
 }
 
 async function withPreparedMcpConnection<T>(
@@ -327,9 +357,9 @@ async function handleAddCommand(rest: string, runtime: SlashCommandRuntime): Pro
 	const config = buildMcpServerConfig(parsed);
 	if (!config) return usage(MCP_ADD_USAGE, runtime);
 	try {
-		const filePath = getMCPConfigPath(parsed.scope, runtime.cwd);
+		const filePath = getMCPConfigPath("user", runtime.cwd);
 		await addMCPServer(filePath, parsed.name, config);
-		await runtime.output(`Added MCP server "${parsed.name}" (${parsed.scope}).`);
+		await runtime.output(`Added MCP server "${parsed.name}".`);
 		return commandConsumed();
 	} catch (err) {
 		return usage(`Failed to add server: ${errorMessage(err)}`, runtime);
@@ -375,18 +405,11 @@ async function handleSmitherySearchCommand(rest: string, runtime: SlashCommandRu
 async function handleListCommand(runtime: SlashCommandRuntime): Promise<SlashCommandResult> {
 	try {
 		const userPath = getMCPConfigPath("user", runtime.cwd);
-		const projectPath = getMCPConfigPath("project", runtime.cwd);
-		const [userConfig, projectConfig] = await Promise.all([
-			readMCPConfigFile(userPath),
-			readMCPConfigFile(projectPath),
-		]);
+		const userConfig = await readMCPConfigFile(userPath);
 		const disabledSet = new Set(await readDisabledServers(userPath));
-		const entries: Array<{ name: string; config: MCPServerConfig; scope: string }> = [];
+		const entries: Array<{ name: string; config: MCPServerConfig }> = [];
 		for (const [name, config] of Object.entries(userConfig.mcpServers ?? {})) {
-			entries.push({ name, config, scope: "user" });
-		}
-		for (const [name, config] of Object.entries(projectConfig.mcpServers ?? {})) {
-			if (!entries.some(entry => entry.name === name)) entries.push({ name, config, scope: "project" });
+			entries.push({ name, config });
 		}
 		if (entries.length === 0) {
 			await runtime.output("No MCP servers configured.");
@@ -394,7 +417,7 @@ async function handleListCommand(runtime: SlashCommandRuntime): Promise<SlashCom
 		}
 		await runtime.output(
 			entries
-				.map(({ name, config, scope }) => {
+				.map(({ name, config }) => {
 					const type = config.type ?? "stdio";
 					const enabled = config.enabled !== false && !disabledSet.has(name) ? "enabled" : "disabled";
 					let location: string | undefined;
@@ -417,7 +440,7 @@ async function handleListCommand(runtime: SlashCommandRuntime): Promise<SlashCom
 					} else {
 						location = (config as { command: string }).command;
 					}
-					return `${name} | ${type} | ${enabled} | ${location ?? "(unknown)"} [${scope}]`;
+					return `${name} | ${type} | ${enabled} | ${location ?? "(unknown)"}`;
 				})
 				.join("\n"),
 		);
@@ -437,19 +460,10 @@ async function handleEnableDisableCommand(
 	const enabled = verb === "enable";
 	try {
 		const userPath = getMCPConfigPath("user", runtime.cwd);
-		const projectPath = getMCPConfigPath("project", runtime.cwd);
-		const [userConfig, projectConfig] = await Promise.all([
-			readMCPConfigFile(userPath),
-			readMCPConfigFile(projectPath),
-		]);
-		if (projectConfig.mcpServers?.[name] !== undefined) {
-			await updateMCPServer(projectPath, name, { ...projectConfig.mcpServers[name], enabled } as MCPServerConfig);
-			await runtime.output(`Server "${name}" ${enabled ? "enabled" : "disabled"} (project config).`);
-			return commandConsumed();
-		}
+		const userConfig = await readMCPConfigFile(userPath);
 		if (userConfig.mcpServers?.[name] !== undefined) {
 			await updateMCPServer(userPath, name, { ...userConfig.mcpServers[name], enabled } as MCPServerConfig);
-			await runtime.output(`Server "${name}" ${enabled ? "enabled" : "disabled"} (user config).`);
+			await runtime.output(`Server "${name}" ${enabled ? "enabled" : "disabled"}.`);
 			return commandConsumed();
 		}
 		const disabledList = await readDisabledServers(userPath);
@@ -458,20 +472,52 @@ async function handleEnableDisableCommand(
 			await runtime.output(`Server "${name}" ${enabled ? "enabled" : "disabled"}.`);
 			return commandConsumed();
 		}
-		return usage(`Server "${name}" not found in user or project config.`, runtime);
+		return usage(`Server "${name}" not found.`, runtime);
 	} catch (err) {
 		return usage(`Failed to ${verb} MCP server: ${errorMessage(err)}`, runtime);
 	}
 }
 
+/** The option spellings `/mcp remove` no longer has, keyed by bare name. */
+const MCP_REMOVE_REMOVED_OPTIONS: Record<string, string> = {
+	scope: MCP_SCOPE_REMOVED_REPLACEMENT,
+	project: MCP_SCOPE_REMOVED_REPLACEMENT,
+	user: MCP_SCOPE_REMOVED_REPLACEMENT,
+};
+
+/**
+ * Parse the argument tail of `/mcp remove`.
+ *
+ * One word, read by POSITION: token 1 is the name whatever it spells, so a
+ * server literally named `project` is removed by name. A second word is refused
+ * rather than dropped, and `project` or `user` gets the scope refusal because
+ * that is what it used to mean in this position.
+ */
+function parseMcpRemoveArgs(rest: string): ParsedMcpRemoveArgs {
+	const tokens = parseCommandArgs(rest);
+	if (tokens.length === 0) return {};
+	const name = tokens[0]!;
+	if (name.startsWith("-")) {
+		return { error: removedOptionMessage(name, MCP_REMOVE_REMOVED_OPTIONS, MCP_REMOVE_USAGE) };
+	}
+	const extra = tokens[1];
+	if (extra !== undefined) {
+		if (extra.startsWith("-") || extra === "project" || extra === "user") {
+			return { error: removedOptionMessage(extra, MCP_REMOVE_REMOVED_OPTIONS, MCP_REMOVE_USAGE) };
+		}
+		return { error: `Unknown argument: ${extra}\n${MCP_REMOVE_USAGE}` };
+	}
+	return { name };
+}
+
 async function handleRemoveCommand(rest: string, runtime: SlashCommandRuntime): Promise<SlashCommandResult> {
-	const parsed = parseNamedScopeArgs(rest, "Invalid --scope value. Use project or user.");
+	const parsed = parseMcpRemoveArgs(rest);
 	if (parsed.error) return usage(parsed.error, runtime);
-	if (!parsed.name) return usage("Usage: /mcp remove <name> [--scope project|user]", runtime);
+	if (!parsed.name) return usage(MCP_REMOVE_USAGE, runtime);
 	try {
-		const filePath = getMCPConfigPath(parsed.scope, runtime.cwd);
+		const filePath = getMCPConfigPath("user", runtime.cwd);
 		await removeMCPServer(filePath, parsed.name);
-		await runtime.output(`Removed server "${parsed.name}" from ${parsed.scope} config.`);
+		await runtime.output(`Removed server "${parsed.name}".`);
 		return commandConsumed();
 	} catch (err) {
 		return usage(`Failed to remove MCP server: ${errorMessage(err)}`, runtime);
@@ -483,14 +529,14 @@ const MCP_HELP_TEXT = [
 	"  /mcp list                                               List configured servers",
 	"  /mcp enable <name>                                      Enable a server",
 	"  /mcp disable <name>                                     Disable a server",
-	"  /mcp remove <name> [--scope project|user]               Remove a server",
+	"  /mcp remove <name>                                      Remove a server",
 	"  /mcp reload                                             Reload MCP runtime",
 	"  /mcp resources                                          List resources from all servers",
 	"  /mcp prompts                                            List prompts from all servers",
 	"  /mcp test <name>                                        Test connection to a server",
-	"  /mcp add <name> [--scope project|user] [--url <url>]    Add a server (non-interactive)",
-	"  /mcp add <name> [-- <command...>]                       Add a stdio server",
-	"  /mcp smithery-search <kw> [--scope project|user]        Search Smithery registry",
+	"  /mcp add <name> [url <url>]                             Add a server (non-interactive)",
+	"  /mcp add <name> run <command...>                        Add a stdio server",
+	"  /mcp smithery-search <keyword...> [<limit>] [semantic]  Search Smithery registry",
 	"  /mcp help                                               Show this help",
 ].join("\n");
 

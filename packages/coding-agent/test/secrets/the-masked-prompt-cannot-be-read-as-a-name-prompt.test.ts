@@ -300,7 +300,18 @@ describe("the terminal grammar leads with a verb", () => {
 	 * `/secret log 50` into a credential named after the command the operator was trying to run.
 	 */
 	it("refuses a malformed reserved line rather than storing it", async () => {
-		await expect(secretThroughRealDialog("log 50", { typeName: type("") })).rejects.toThrow(/\/secret add <value>/u);
+		// THE WELL-FORMED ONE RUNS, which is the half that makes the refusal below mean something: `log
+		// 50` is fifty records, and the defect this row descends from stored the string `log 50` as a
+		// credential because the shape did not fit the grammar of the day.
+		await secretThroughRealDialog("log 50", { typeName: type("") });
+		expect(await stored()).toEqual([]);
+
+		// AND A LINE THAT FITS NO SHAPE IS REFUSED, still without storing: `log` reads a name and a
+		// limit, so a fourth word fits nothing. The refusal names the value form, because the second
+		// reading of this line is a credential that begins with a command word.
+		await expect(
+			secretThroughRealDialog("log GITHUB_TOKEN 50 ghp_wouldHaveBeenStoredOnce", { typeName: type("") }),
+		).rejects.toThrow(/\/secret add <value>/u);
 
 		expect(await stored()).toEqual([]);
 	});
@@ -323,29 +334,49 @@ describe("the terminal grammar leads with a verb", () => {
 	});
 
 	/**
-	 * AND THE REMOVED SPELLING REACHES THE VAULT WITH NOTHING, which is the half a parser test cannot
-	 * show. Deleting the `--` branch on its own would have stored `-- log ghp_...` verbatim: a live
-	 * credential with two dashes and a space welded to its front, expanding under `#NAME#` into
-	 * requests that fail somewhere unrelated. This asserts the vault stayed empty, not merely that a
-	 * message was thrown.
+	 * AND EVERY REMOVED SPELLING REACHES THE VAULT WITH NOTHING, which is the half a parser test cannot
+	 * show. Deleting the guard would have stored `-- log ghp_...` verbatim -- a live credential with two
+	 * dashes and a space welded to its front, expanding under `#NAME#` into requests that fail
+	 * somewhere unrelated -- and it would have stored the literal text `--from-env MY_TOKEN` as
+	 * somebody's token while the confirmation said a secret had been stored. These assert the vault
+	 * stayed empty, not merely that a message was thrown.
+	 *
+	 * DERIVED OVER THE WHOLE SET, so a spelling added to the guard is covered here and one deleted from
+	 * it turns this red. The dashes are the only shape refused: the row below stores a private key,
+	 * whose first bytes are five of them.
 	 */
-	it("stores nothing at all for the removed -- escape", async () => {
-		await expect(
-			secretThroughRealDialog("add -- log ghp_startsWithAReservedWord", { typeName: type("") }),
-		).rejects.toThrow(/\/secret add <value>/u);
+	it("stores nothing at all for any removed option spelling", async () => {
+		for (const removed of ["--", "--from-env", "--ttl", "--scope", "--limit", "--name"]) {
+			await expect(
+				secretThroughRealDialog(`add ${removed} log ghp_startsWithAReservedWord`, { typeName: type("") }),
+			).rejects.toThrow(/\/secret add <value>/u);
 
-		expect(await stored()).toEqual([]);
+			expect(await stored()).toEqual([]);
+		}
 	});
 
 	/**
-	 * `--from-env` survives the grammar change, in leading position only. It is the single entry
-	 * form that never puts the credential on screen at all, so losing it from the terminal would
-	 * have left the safest path available to ACP clients and not to the operator.
+	 * AND A CREDENTIAL THAT MERELY BEGINS WITH DASHES IS STORED, which is the boundary of the guard
+	 * above and the reason it matches exact words rather than a leading dash: a PEM private key opens
+	 * with five of them, and refusing that shape would lock the operator out of the one credential
+	 * format they cannot retype.
+	 */
+	it("stores a value whose first word merely begins with dashes", async () => {
+		await secretThroughRealDialog("add -----BEGIN OPENSSH PRIVATE KEY-----", { typeName: type("") });
+
+		const entries = await stored();
+		expect(entries[0]?.value).toBe("-----BEGIN OPENSSH PRIVATE KEY-----");
+	});
+
+	/**
+	 * Reading a value out of the environment survives the grammar change, as a command of its own. It
+	 * is the single entry form that never puts the credential on screen at all, so losing it from the
+	 * terminal would have left the safest path available to ACP clients and not to the operator.
 	 */
 	it("still reads a credential out of the environment without a field", async () => {
 		process.env.VEYYON_TEST_FROM_ENV_TOKEN = "ghp_fromEnvCredential77";
 		try {
-			await secretThroughRealDialog("add --from-env VEYYON_TEST_FROM_ENV_TOKEN", { typeName: type("") });
+			await secretThroughRealDialog("from-env VEYYON_TEST_FROM_ENV_TOKEN", { typeName: type("") });
 		} finally {
 			delete process.env.VEYYON_TEST_FROM_ENV_TOKEN;
 		}
@@ -356,14 +387,13 @@ describe("the terminal grammar leads with a verb", () => {
 	});
 
 	/**
-	 * A `--from-env` that names nothing is refused rather than stored as the literal text
-	 * `--from-env`. The flag reading and the credential reading of that word are mutually
-	 * exclusive, so the ambiguous case must fail loudly instead of picking one.
+	 * A `from-env` that names nothing is refused rather than stored, and rather than reading the empty
+	 * string out of the environment. It is a command with a required word missing, which is the same
+	 * mistake as a bare `rm`, so it gets the same answer: nothing is stored and the missing word is
+	 * named.
 	 */
-	it("refuses a --from-env with no variable rather than storing the flag", async () => {
-		await expect(secretThroughRealDialog("add --from-env")).rejects.toThrow(
-			/needs the name of an environment variable/,
-		);
+	it("refuses a from-env with no variable rather than storing anything", async () => {
+		await expect(secretThroughRealDialog("from-env")).rejects.toThrow(/still needs an environment variable name/);
 		expect(await stored()).toEqual([]);
 	});
 });

@@ -9,9 +9,11 @@
  * run, or one that works and is absent from the help, and nothing fails until somebody tries it.
  *
  * WHAT THE SURFACES ARE ALLOWED TO DISAGREE ABOUT: ONE THING, WHERE THE CREDENTIAL MAY COME FROM.
- * Both grammars require a verb first. In a terminal `add` takes the value inline or in a masked
- * field, because the terminal can hide what is typed; a client with no field takes a NAME after
- * `add` and reads the value only through `--from-env`.
+ * Both grammars require a command first. In a terminal `add` takes the value inline or in a masked
+ * field, because the terminal can hide what is typed; a client with no field reads no value at all
+ * and reaches a credential only through `from-env`, whose name it must write because it has no field
+ * to ask in. That last difference is a slot's NECESSITY and not its spelling: `from-env VAR NAME 7d
+ * project` is one line read one way on both surfaces.
  *
  * No VERB is surface-only. Every word the parser reserves runs on both, which is what makes a rule
  * proved over this grammar a rule about the whole command rather than about one client.
@@ -52,19 +54,22 @@ const declaration = BUILTIN_SLASH_COMMAND_DECLARATIONS.find(command => command.n
  * for a reason that says nothing about whether the word routed.
  */
 const WELL_FORMED_REMAINDER: Record<SecretSubcommand, string> = {
-	add: "SOME_NAME --from-env VEYYON_SURFACE_AGREES_VALUE",
+	// `add` alone, because the surfaces disagree about what may follow it and this table is shared: a
+	// terminal reads the rest of the line as the credential, and a client refuses an inline one.
+	add: "",
+	"from-env": "VEYYON_SURFACE_AGREES_VALUE SOME_NAME",
 	list: "",
 	rm: "SOME_NAME",
-	// A scope, on `discard`'s terms: the verb takes no bare word, and omitting the flag is refused
-	// rather than defaulted, so a well-formed line has to name the vault.
-	clear: "--scope project",
+	// A vault, on `clear`'s terms: the word is required and omitting it is refused rather than
+	// defaulted, so a well-formed line has to name the vault.
+	clear: "project",
 	rename: "SOME_NAME OTHER_NAME",
 	value: "SOME_NAME",
 	scope: "SOME_NAME global",
 	copy: "SOME_NAME",
-	extend: "SOME_NAME --ttl 7d",
+	extend: "SOME_NAME 7d",
 	log: "",
-	discard: "--scope project",
+	discard: "project",
 	help: "",
 };
 
@@ -220,7 +225,7 @@ describe("the /secret declaration", () => {
 	 */
 	it("hints both the value forms and the verbs in the composer", () => {
 		expect(declaration?.inlineHint).toContain("<value>");
-		expect(declaration?.inlineHint).toContain("--from-env");
+		expect(declaration?.inlineHint).toContain("from-env");
 
 		for (const verb of ["list", "rm", "rename", "extend", "log"]) {
 			expect(declaration?.inlineHint).toMatch(new RegExp(`\\b${verb}\\b`, "u"));
@@ -233,7 +238,7 @@ describe("the /secret declaration", () => {
 	/**
 	 * ACP advertises only the credential source it can accept safely.
 	 *
-	 * The syntax an ACP client puts in front of a user is `input.hint`, and it names `--from-env`
+	 * The syntax an ACP client puts in front of a user is `input.hint`, and it names `from-env`
 	 * and nothing else: that transport would retain an inline value in its request history, and it
 	 * has no field to hide one in. The copy about a hidden field lives on the `add` subcommand
 	 * entry, describing what happens when a person runs it locally, and is pinned here so an edit
@@ -243,7 +248,7 @@ describe("the /secret declaration", () => {
 		const acp = ACP_BUILTIN_SLASH_COMMANDS.find(command => command.name === "secret");
 
 		expect(acp?.description).toContain("environment variables");
-		expect(acp?.input?.hint).toContain("--from-env");
+		expect(acp?.input?.hint).toContain("from-env");
 		expect(acp?.input?.hint).not.toContain("<value>");
 		expect(acp?.description).not.toContain("prompt");
 		expect(declaration?.subcommands?.find(command => command.name === "add")?.description).toContain(
@@ -279,7 +284,22 @@ describe("the noninteractive parser and its usage text", () => {
 			// merely accepted: an emptying verb that is not reserved is read as a credential and
 			// stored, which is the defect `emptying-the-vault-is-a-command-and-not-a-credential`
 			// closes. Unlisted for the same reason as every other alias.
-			["audit", "delete", "empty", "move", "name", "purge", "remove", "renew", "replace", "reset", "wipe"].sort(),
+			[
+				"audit",
+				"delete",
+				"empty",
+				// `env` reaches `from-env`, the one command whose canonical spelling carries a hyphen: it is
+				// the word an operator types when they do not remember the hyphen is there.
+				"env",
+				"move",
+				"name",
+				"purge",
+				"remove",
+				"renew",
+				"replace",
+				"reset",
+				"wipe",
+			].sort(),
 		);
 		for (const [alias, target] of aliases) {
 			// The remainder is the target's own shape: `move` reaches `scope`, which refuses without a
@@ -305,11 +325,24 @@ describe("the noninteractive parser and its usage text", () => {
 		}
 	});
 
-	/** The usage text names every option the parser accepts, so none is undiscoverable. */
-	it("documents every option the parser accepts", () => {
-		for (const option of ["--from-env", "--ttl", "--scope", "--limit"]) {
-			expect(NONINTERACTIVE_SECRET_COMMAND_USAGE).toContain(option);
+	/**
+	 * The usage text shows every word the parser reads, so none is undiscoverable.
+	 *
+	 * These used to be options, and the row used to look for their dashes. What replaced them is a
+	 * plain word in a place, so what is pinned now is the SHAPE of each line -- and, in the opposite
+	 * direction, that no line offers a dash at all, since a usage text that still advertised one would
+	 * be sending the operator at a spelling the parser refuses.
+	 */
+	it("documents every word the parser reads, and offers no option spelling", () => {
+		for (const line of [
+			"/secret from-env <VAR> <name>",
+			"/secret rm <name> [global]",
+			"/secret extend <name> 7d",
+			"/secret log [<name>] [50]",
+		]) {
+			expect(NONINTERACTIVE_SECRET_COMMAND_USAGE).toContain(line);
 		}
+		expect(NONINTERACTIVE_SECRET_COMMAND_USAGE).not.toMatch(/(^|\s)--/mu);
 	});
 });
 
@@ -322,19 +355,21 @@ describe("the noninteractive parser and its usage text", () => {
  */
 describe("what the two surfaces still agree about", () => {
 	/**
-	 * THE SHARED ENTRY FORM, and the sharpest statement of the agreement: `add --from-env VAR` is the
+	 * THE SHARED ENTRY FORM, and the sharpest statement of the agreement: `from-env VAR` is the
 	 * one line both grammars read, and they parse it into the SAME request. Everything downstream
 	 * therefore has to produce the same store, the same confirmation and the same model notice, and
 	 * the defaults it fell back to — profile scope, the configured lifetime — are the same defaults.
 	 *
-	 * The two surfaces now spell it with the SAME BYTES, which they did not while the terminal read a
-	 * leading `--from-env` with no verb in front of it. The line is written once here on purpose: a
+	 * The two surfaces spell it with the SAME BYTES, which they did not while the terminal read a
+	 * leading `--from-env` with no command in front of it. The line is written once here on purpose: a
 	 * regression that reinstates a verbless spelling on one surface cannot make this row pass by
-	 * agreeing with itself.
+	 * agreeing with itself. It carries a NAME, which is the one word a terminal may leave out and a
+	 * client may not -- written here so the row compares two readings of one line rather than two
+	 * lines.
 	 */
 	it("store the same entry from the one entry form both grammars have", async () => {
 		process.env[ENV_VAR] = VALUE;
-		const line = `add --from-env ${ENV_VAR}`;
+		const line = `from-env ${ENV_VAR} SHARED_ENTRY`;
 		const terminalRequest = parseSecretCommand(line, "tui");
 		const clientRequest = parseSecretCommand(line, "noninteractive");
 		expect(terminalRequest).toEqual(clientRequest);
@@ -357,8 +392,8 @@ describe("what the two surfaces still agree about", () => {
 	});
 
 	/**
-	 * A LIFETIME IS A SPAN, not a per-surface convention. `--ttl` is spellable only on the surface
-	 * that has options, but the request it produces is dispatched by code neither surface owns, so
+	 * A LIFETIME IS A SPAN, not a per-surface convention. The word is written in the same place on
+	 * both surfaces, and the request it produces is dispatched by code neither surface owns, so
 	 * both must resolve it to the same instant — and `never` to no instant at all, which is the
 	 * value most likely to be special-cased into a difference.
 	 */
@@ -366,8 +401,8 @@ describe("what the two surfaces still agree about", () => {
 		process.env[ENV_VAR] = VALUE;
 
 		for (const [line, expiresAt] of [
-			[`add --from-env ${ENV_VAR} --ttl 30m`, NOW + 30 * 60 * 1000],
-			[`add --from-env ${ENV_VAR} --ttl never`, null],
+			[`from-env ${ENV_VAR} SPANNED_SECRET 30m`, NOW + 30 * 60 * 1000],
+			[`from-env ${ENV_VAR} SPANNED_SECRET never`, null],
 		] as const) {
 			const request = parseSecretCommand(line, "noninteractive");
 			const terminalVault = await freshVault();
@@ -389,7 +424,7 @@ describe("what the two surfaces still agree about", () => {
 	 */
 	it("read a scope the same way, whichever surface asked for it", async () => {
 		process.env[ENV_VAR] = VALUE;
-		const request = parseSecretCommand(`add --from-env ${ENV_VAR} --scope project`, "noninteractive");
+		const request = parseSecretCommand(`from-env ${ENV_VAR} SCOPED_SECRET project`, "noninteractive");
 		const terminalVault = await freshVault();
 		const clientVault = await freshVault();
 
@@ -412,14 +447,18 @@ describe("what the two surfaces still agree about", () => {
 
 		for (const surface of ["tui", "noninteractive"] as const) {
 			const vault = await freshVault();
-			const added = await run(vault, parseSecretCommand(`add --from-env ${ENV_VAR}`, "noninteractive"), surface);
+			const added = await run(
+				vault,
+				parseSecretCommand(`from-env ${ENV_VAR} QUIET_SECRET`, "noninteractive"),
+				surface,
+			);
 			const listed = await run(vault, parseSecretCommand("list", "noninteractive"), surface);
 
 			for (const text of [added.message, added.agentNotice ?? "", listed.message]) {
 				expect(text).not.toContain(VALUE);
 				expect(text).not.toContain(VALUE.slice(0, 12));
 			}
-			expect(listed.message).toContain("#SECRET_1#");
+			expect(listed.message).toContain("#QUIET_SECRET#");
 		}
 	});
 });
@@ -462,17 +501,48 @@ describe("what the two surfaces deliberately disagree about", () => {
 	});
 
 	/**
-	 * `add` IS the disagreement now, and the difference is where the credential may be. A client with
-	 * no field takes a name and reads a value only from the environment; a terminal takes the value
-	 * itself and asks for the name afterwards. A terminal that read the first word as a name would be
-	 * writing a live credential into plaintext metadata, which is the original bug.
+	 * `add` IS the disagreement now, and the difference is where the credential may be. A terminal
+	 * takes the value itself and asks for the name afterwards; a client that cannot hide typing reads
+	 * NOTHING after `add` and is sent to `from-env`, which is the only credential source it has.
+	 *
+	 * A terminal that read the first word as a name would be writing a live credential into plaintext
+	 * metadata, which is the original bug. A client that read it as a name is the shape that used to
+	 * exist and no longer does: with `from-env` a command of its own, carrying its own name, an `add`
+	 * that took a name and could never take a value was a line with no completion.
 	 */
-	it("read the word after add as a name only where a value cannot be typed", () => {
-		expect(parseSecretCommand("add GITHUB_TOKEN", "noninteractive")).toEqual({
-			subcommand: "add",
-			name: "GITHUB_TOKEN",
-		});
+	it("read the word after add as a value in a terminal, and as nothing at all on a client", () => {
 		expect(parseSecretCommand("add GITHUB_TOKEN", "tui")).toEqual({ subcommand: "add", value: "GITHUB_TOKEN" });
+
+		expect(() => parseSecretCommand("add GITHUB_TOKEN", "noninteractive")).toThrow(/refuses an inline credential/u);
+		// Nor is the word echoed back: on this command the word after `add` is very often the
+		// credential, which is the whole reason the client refuses it.
+		expect(messageOf(() => parseSecretCommand("add GITHUB_TOKEN", "noninteractive"))).not.toContain("GITHUB_TOKEN");
+		expect(parseSecretCommand("add", "noninteractive")).toEqual({ subcommand: "add" });
+	});
+
+	/**
+	 * THE ONE SLOT WHOSE NECESSITY IS PER-SURFACE, and the boundary of the divergence above: a
+	 * terminal may leave the name out of `from-env` because a field asks for it, and a client may not
+	 * because nothing can supply what it does not write.
+	 *
+	 * Both halves are asserted, because either alone is satisfied by the wrong grammar: a client that
+	 * accepted the bare form would store a credential under a name nobody chose, and a terminal that
+	 * refused the full form would make the shared line above unspellable there.
+	 */
+	it("require the name of a from-env only where nothing can ask for it", () => {
+		expect(parseSecretCommand("from-env GITHUB_TOKEN", "tui")).toEqual({
+			subcommand: "from-env",
+			fromEnv: "GITHUB_TOKEN",
+		});
+		expect(() => parseSecretCommand("from-env GITHUB_TOKEN", "noninteractive")).toThrow(/still needs a secret name/u);
+
+		// And the terminal's optional name yields to a word it recognises, so the vault is still
+		// reachable on a line that leaves the naming to the field.
+		expect(parseSecretCommand("from-env GITHUB_TOKEN project", "tui")).toEqual({
+			subcommand: "from-env",
+			fromEnv: "GITHUB_TOKEN",
+			scope: "project",
+		});
 	});
 
 	/**

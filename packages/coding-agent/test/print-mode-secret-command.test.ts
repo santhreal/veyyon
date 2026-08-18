@@ -144,7 +144,7 @@ describe("print-mode builtin secret dispatch", () => {
 
 		await runPrintMode(h.session, {
 			mode: "text",
-			initialMessage: "/secret add PRINT_TOKEN --from-env VEYYON_PRINT_SECRET_ENV",
+			initialMessage: "/secret from-env VEYYON_PRINT_SECRET_ENV PRINT_TOKEN",
 			commandRuntime: h.options,
 		});
 
@@ -185,10 +185,17 @@ describe("print-mode builtin secret dispatch", () => {
 
 			expect(h.prompt).not.toHaveBeenCalled();
 			expect(failure).toBeInstanceOf(Error);
-			expect((failure as Error).message).toBe(
-				"This non-interactive client refuses inline credentials because they would be retained in command history. " +
-					"Use /secret add PRINT_TOKEN --from-env MY_TOKEN instead.",
+			// The refusal names the environment form and the whole usage text, and echoes NEITHER word
+			// after `add`: nothing distinguishes a name followed by a credential from a credential whose
+			// first word looks like a name, so a message that quoted the part it thought was the name
+			// would sooner or later quote the credential.
+			expect((failure as Error).message).toContain(
+				"This client refuses an inline credential, because the line carrying it is retained in the client's own " +
+					"request history. Nothing was stored. Read the value out of the environment instead: " +
+					"/secret from-env MY_TOKEN <name>.",
 			);
+			expect((failure as Error).message).toContain("/secret from-env <VAR> <name>");
+			expect((failure as Error).message).not.toContain("PRINT_TOKEN");
 			expect((failure as Error).message).not.toContain(credential);
 			expect(stdout.join("")).toBe("");
 			expect(stderr.join("")).not.toContain(credential);

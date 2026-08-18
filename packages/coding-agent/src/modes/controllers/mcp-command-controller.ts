@@ -48,6 +48,7 @@ import {
 } from "../../mcp/smithery-registry";
 import { sanitizeMcpStatusError } from "../../mcp/startup-events";
 import type { MCPAuthConfig, MCPServerConfig, MCPServerConnection } from "../../mcp/types";
+import { MCP_SCOPE_REMOVED_REPLACEMENT, removedOptionMessage } from "../../slash-commands/helpers/parse";
 import { shortenPath } from "../../tools/render-utils";
 import { urlHyperlinkAlways } from "../../tui";
 import { copyToClipboard } from "../../utils/clipboard";
@@ -250,18 +251,45 @@ const MCP_OAUTH_USER_CANCEL_REASON = "MCP OAuth flow cancelled by user";
 
 type MCPAddTransport = "http" | "sse";
 
+const MCP_ADD_USAGE = "Usage: /mcp add <name> [http|sse] [url <url>] [token <token>] [run <command...>]";
+
+const MCP_SEARCH_USAGE = "Usage: /mcp smithery-search <keyword...> [<limit 1-100>] [semantic]";
+
+const MCP_REMOVE_USAGE = "Usage: /mcp remove <name>";
+
 /**
- * Where every `/mcp` write lands: the active profile's `<agentDir>/mcp.json`.
- *
- * There used to be a `--scope project|user` choice, and `project` was the
- * DEFAULT. It wrote `<cwd>/.veyyon/mcp.json` and read `<cwd>/mcp.json` and
- * `<cwd>/.mcp.json` alongside it. A repository is content the operator may not
- * have written, so nothing loads those files any more; a `--scope project`
- * write would land in a file no session ever reads, and a repo-supplied entry
- * must never become a server `/mcp test` connects to.
+ * The option spellings `/mcp add` no longer has, keyed by bare name. The empty key
+ * is the separator that used to mean "everything after this is a command to run",
+ * which is what the `run` keyword means now. The scope words are keys too, so a
+ * plain `project` is refused with the reason rather than read as something else;
+ * that reason is {@link MCP_SCOPE_REMOVED_REPLACEMENT}, which the text/ACP
+ * handler delivers word for word from the same constant.
  */
-const MCP_SCOPE_REMOVED_ERROR =
-	"`--scope` is gone: MCP servers are configured per profile, never per repository, because a checked-in file must not name a server Veyyon connects to. Fix: drop the flag; the entry is written to your profile's mcp.json.";
+const MCP_ADD_REMOVED_OPTIONS: Record<string, string> = {
+	"": "write `run <command...>`, which takes the whole rest of the line",
+	scope: MCP_SCOPE_REMOVED_REPLACEMENT,
+	project: MCP_SCOPE_REMOVED_REPLACEMENT,
+	user: MCP_SCOPE_REMOVED_REPLACEMENT,
+	url: "write `url <url>`",
+	transport: "write `http` or `sse` as a plain word",
+	token: "write `token <token>`",
+};
+
+/** The option spellings `/mcp smithery-search` no longer has, keyed by bare name. */
+const MCP_SEARCH_REMOVED_OPTIONS: Record<string, string> = {
+	scope: MCP_SCOPE_REMOVED_REPLACEMENT,
+	project: MCP_SCOPE_REMOVED_REPLACEMENT,
+	user: MCP_SCOPE_REMOVED_REPLACEMENT,
+	limit: "write the limit as a plain integer",
+	semantic: "write `semantic` as a plain word",
+};
+
+/** The option spellings `/mcp remove` no longer has, keyed by bare name. */
+const MCP_REMOVE_REMOVED_OPTIONS: Record<string, string> = {
+	scope: MCP_SCOPE_REMOVED_REPLACEMENT,
+	project: MCP_SCOPE_REMOVED_REPLACEMENT,
+	user: MCP_SCOPE_REMOVED_REPLACEMENT,
+};
 
 type MCPAddParsed = {
 	initialName?: string;
@@ -360,7 +388,7 @@ export class MCPCommandController {
 			"",
 			theme.fg("accent", "Commands:"),
 			"  /mcp add              Add a new MCP server (interactive wizard)",
-			"  /mcp add <name> [--url <url> --transport http|sse] [--token <token>] [-- <command...>]",
+			`  ${MCP_ADD_USAGE.replace("Usage: ", "")}`,
 			"  /mcp list             List all configured MCP servers",
 			"  /mcp remove <name>    Remove an MCP server",
 			"  /mcp test <name>      Test connection to an MCP server",
@@ -368,7 +396,7 @@ export class MCPCommandController {
 			"  /mcp unauth <name>    Remove OAuth auth from an MCP server",
 			"  /mcp enable <name>    Enable an MCP server",
 			"  /mcp disable <name>   Disable an MCP server",
-			"  /mcp smithery-search <keyword> [--limit <1-100>] [--semantic]",
+			`  ${MCP_SEARCH_USAGE.replace("Usage: ", "")}`,
 			"                        Search Smithery registry and deploy from picker",
 			"  /mcp smithery-login   Login to Smithery and cache API key",
 			"  /mcp smithery-logout  Remove cached Smithery API key",
@@ -384,81 +412,74 @@ export class MCPCommandController {
 		this.#showMessage(helpText);
 	}
 
+	/**
+	 * Parse the argument tail of `/mcp add`.
+	 *
+	 * Every argument is a plain word, disambiguated two ways and no others. The
+	 * name is POSITION: token 1 is the name whatever it spells, so a server called
+	 * `url` or `run` is named without ceremony. Everything after it is either a
+	 * CLOSED SET word that is its own value (`http|sse`, the transport) or a
+	 * leading keyword introducing text no set could describe (`url <url>`,
+	 * `token <token>`, `run <command...>`).
+	 *
+	 * Those token sets cannot overlap, which is what makes reading a word by its
+	 * own shape sound here: the closed set and the three keywords are five literal
+	 * spellings, all distinct, and a keyword's value is consumed by position rather
+	 * than examined. `run` takes the whole remainder, so a command's own arguments
+	 * are never read as this grammar's words.
+	 */
 	#parseAddCommand(text: string): MCPAddParsed {
 		const prefixMatch = text.match(/^\/mcp\s+add\b\s*(.*)$/i);
-		const rest = prefixMatch?.[1]?.trim() ?? "";
-		if (!rest) {
-			return {};
-		}
+		const tokens = parseCommandArgs(prefixMatch?.[1]?.trim() ?? "");
+		if (tokens.length === 0) return {};
 
-		const tokens = parseCommandArgs(rest);
-		if (tokens.length === 0) {
-			return {};
-		}
+		const name = tokens[0];
+		if (name.startsWith("-")) return { error: removedOptionMessage(name, MCP_ADD_REMOVED_OPTIONS, MCP_ADD_USAGE) };
 
-		let name: string | undefined;
 		let url: string | undefined;
 		let transport: MCPAddTransport = "http";
 		let authToken: string | undefined;
 		let commandTokens: string[] | undefined;
 
-		let i = 0;
-		if (!tokens[0].startsWith("-")) {
-			name = tokens[0];
-			i = 1;
+		const seen = new Set<string>();
+		let index = 1;
+		while (index < tokens.length) {
+			const token = tokens[index];
+			if (token.startsWith("-") || token === "project" || token === "user") {
+				return { error: removedOptionMessage(token, MCP_ADD_REMOVED_OPTIONS, MCP_ADD_USAGE) };
+			}
+			let word: string;
+			if (token === "run") {
+				commandTokens = tokens.slice(index + 1);
+				word = "run";
+				index = tokens.length;
+			} else if (token === "url" || token === "token") {
+				const value = tokens[index + 1];
+				if (!value) return { error: `Missing value after \`${token}\`.\n${MCP_ADD_USAGE}` };
+				if (token === "url") url = value;
+				else authToken = value;
+				word = token;
+				index += 2;
+			} else if (token === "http" || token === "sse") {
+				transport = token;
+				word = "transport";
+				index += 1;
+			} else {
+				return { error: `Unknown argument: ${token}\n${MCP_ADD_USAGE}` };
+			}
+			if (seen.has(word)) return { error: `\`${word}\` given twice.\n${MCP_ADD_USAGE}` };
+			seen.add(word);
 		}
 
-		while (i < tokens.length) {
-			const argToken = tokens[i];
-			if (argToken === "--") {
-				commandTokens = tokens.slice(i + 1);
-				break;
-			}
-			if (argToken === "--scope") {
-				return { error: MCP_SCOPE_REMOVED_ERROR };
-			}
-			if (argToken === "--url") {
-				const value = tokens[i + 1];
-				if (!value) {
-					return { error: "Missing value for --url." };
-				}
-				url = value;
-				i += 2;
-				continue;
-			}
-			if (argToken === "--transport") {
-				const value = tokens[i + 1];
-				if (!value || (value !== "http" && value !== "sse")) {
-					return { error: "Invalid --transport value. Use http or sse." };
-				}
-				transport = value;
-				i += 2;
-				continue;
-			}
-			if (argToken === "--token") {
-				const value = tokens[i + 1];
-				if (!value) {
-					return { error: "Missing value for --token." };
-				}
-				authToken = value;
-				i += 2;
-				continue;
-			}
-			return { error: `Unknown option: ${argToken}` };
-		}
-
-		const hasQuick = Boolean(url) || Boolean(commandTokens && commandTokens.length > 0);
-		if (!hasQuick) {
+		const hasCommand = Boolean(commandTokens && commandTokens.length > 0);
+		if (!url && !hasCommand) {
 			return { initialName: name };
 		}
-		if (!name) {
-			return { error: "Server name required for quick add. Usage: /mcp add <name> ..." };
-		}
-		if (url && commandTokens && commandTokens.length > 0) {
-			return { error: "Use either --url or -- <command...>, not both." };
+		if (url && hasCommand) {
+			return { error: "Use either `url <url>` or `run <command...>`, not both." };
 		}
 		if (authToken && !url) {
-			return { error: "--token requires --url (HTTP/SSE transport)." };
+			return { error: "`token` requires `url` (HTTP/SSE transport)." };
 		}
 
 		if (commandTokens && commandTokens.length > 0) {
@@ -489,67 +510,67 @@ export class MCPCommandController {
 		};
 	}
 
+	/**
+	 * Parse the argument tail of `/mcp smithery-search`.
+	 *
+	 * The keyword is arbitrary text and the two options are words, so the keyword
+	 * is required FIRST and the options are read from the END. Token 1 is always
+	 * part of the keyword, which is what keeps a one-word search for `semantic` or
+	 * for a number searching for it; scanning backwards then stops at the first
+	 * word that belongs to no option, and everything up to there is the keyword.
+	 *
+	 * The two cannot be confused: `semantic` is one literal word and the limit is
+	 * the only integer the command reads. A trailing scope word is refused there
+	 * rather than joined to the keyword, because a scope is what an operator who
+	 * writes one means, and this surface has none.
+	 *
+	 * What this does NOT resolve, because no rule can: a keyword whose LAST word is
+	 * `semantic` or an integer in range has that word read as the option. Put it
+	 * anywhere but last, or search for the single word alone.
+	 */
 	#parseSearchCommand(text: string): MCPSearchParsed {
 		const prefixMatch = text.match(/^\/mcp\s+smithery-search\b\s*(.*)$/i);
-		const rest = prefixMatch?.[1]?.trim() ?? "";
-		const tokens = parseCommandArgs(rest);
-		if (tokens.length === 0) {
-			return {
-				keyword: "",
-				limit: 20,
-				semantic: false,
-				error: "Keyword required. Usage: /mcp smithery-search <keyword> [--limit <1-100>] [--semantic]",
-			};
+		const tokens = parseCommandArgs(prefixMatch?.[1]?.trim() ?? "");
+		const base: MCPSearchParsed = { keyword: "", limit: 20, semantic: false };
+		if (tokens.length === 0) return { ...base, error: `Keyword required.\n${MCP_SEARCH_USAGE}` };
+		for (const token of tokens) {
+			if (token.startsWith("-")) {
+				return { ...base, error: removedOptionMessage(token, MCP_SEARCH_REMOVED_OPTIONS, MCP_SEARCH_USAGE) };
+			}
 		}
 
-		const keywordParts: string[] = [];
 		let limit = 20;
 		let semantic = false;
-
-		for (let i = 0; i < tokens.length; i++) {
-			const token = tokens[i];
-			if (token === "--scope") {
-				return { keyword: "", limit, semantic, error: MCP_SCOPE_REMOVED_ERROR };
+		const seen = new Set<string>();
+		let end = tokens.length;
+		while (end > 1) {
+			const token = tokens[end - 1];
+			if (token === "project" || token === "user") {
+				return { ...base, error: removedOptionMessage(token, MCP_SEARCH_REMOVED_OPTIONS, MCP_SEARCH_USAGE) };
 			}
-			if (token === "--limit") {
-				const value = tokens[i + 1];
-				if (!value) {
-					return { keyword: "", limit, semantic, error: "Missing value for --limit." };
-				}
-				const parsed = Number(value);
-				if (!Number.isInteger(parsed) || parsed < 1 || parsed > 100) {
+			let word: string;
+			if (token === "semantic") {
+				semantic = true;
+				word = "semantic";
+			} else if (/^\d+$/.test(token)) {
+				const value = Number(token);
+				if (value < 1 || value > 100) {
 					return {
-						keyword: "",
-						limit,
-						semantic,
-						error: "Invalid --limit value. Use an integer between 1 and 100.",
+						...base,
+						error: `Invalid limit: ${token}. Use an integer between 1 and 100.\n${MCP_SEARCH_USAGE}`,
 					};
 				}
-				limit = parsed;
-				i++;
-				continue;
+				limit = value;
+				word = "limit";
+			} else {
+				break;
 			}
-			if (token === "--semantic") {
-				semantic = true;
-				continue;
-			}
-			if (token.startsWith("--")) {
-				return { keyword: "", limit, semantic, error: `Unknown option: ${token}` };
-			}
-			keywordParts.push(token);
+			if (seen.has(word)) return { ...base, error: `\`${word}\` given twice.\n${MCP_SEARCH_USAGE}` };
+			seen.add(word);
+			end -= 1;
 		}
 
-		const keyword = keywordParts.join(" ").trim();
-		if (!keyword) {
-			return {
-				keyword: "",
-				limit,
-				semantic,
-				error: "Keyword required. Usage: /mcp smithery-search <keyword> [--limit <1-100>] [--semantic]",
-			};
-		}
-
-		return { keyword, limit, semantic };
+		return { keyword: tokens.slice(0, end).join(" "), limit, semantic };
 	}
 
 	/**
@@ -1362,23 +1383,19 @@ export class MCPCommandController {
 		const rest = match?.[1]?.trim() ?? "";
 		let name: string | undefined;
 		for (const token of parseCommandArgs(rest)) {
-			if (token === "--scope") {
-				this.ctx.showError(MCP_SCOPE_REMOVED_ERROR);
-				return;
-			}
-			if (token.startsWith("-")) {
-				this.ctx.showError(`Unknown option: ${token}`);
+			if (token.startsWith("-") || (name !== undefined && (token === "project" || token === "user"))) {
+				this.ctx.showError(removedOptionMessage(token, MCP_REMOVE_REMOVED_OPTIONS, MCP_REMOVE_USAGE));
 				return;
 			}
 			if (name !== undefined) {
-				this.ctx.showError(`Unexpected argument: ${token}. Usage: /mcp remove <name>`);
+				this.ctx.showError(`Unknown argument: ${token}\n${MCP_REMOVE_USAGE}`);
 				return;
 			}
 			name = token;
 		}
 
 		if (!name) {
-			this.ctx.showError("Server name required. Usage: /mcp remove <name>");
+			this.ctx.showError(`Server name required.\n${MCP_REMOVE_USAGE}`);
 			return;
 		}
 
@@ -1536,7 +1553,7 @@ export class MCPCommandController {
 						`MCP server "${name}" is not configured, so there is nothing to ${enabled ? "enable" : "disable"}. ` +
 							`Veyyon reads MCP servers from ${shortenPath(userConfigPath)} and from the editor configs ` +
 							`${theme.fg("accent", "/mcp list")} names; a repository's own mcp.json, .mcp.json or .veyyon/mcp.json is never loaded. ` +
-							`Fix: run ${theme.fg("accent", `/mcp add ${name} -- <command...>`)} to configure it for this profile.`,
+							`Fix: run ${theme.fg("accent", `/mcp add ${name} run <command...>`)} to configure it for this profile.`,
 					);
 					return;
 				}

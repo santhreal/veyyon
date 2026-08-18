@@ -19,11 +19,15 @@ import * as path from "node:path";
 import { handleMcpAcp } from "@veyyon/coding-agent/slash-commands/helpers/mcp";
 import { parseSlashCommand } from "@veyyon/coding-agent/slash-commands/helpers/parse";
 import type { SlashCommandRuntime } from "@veyyon/coding-agent/slash-commands/types";
-import { getMCPConfigPath, logger, removeWithRetries } from "@veyyon/utils";
+import { getMCPConfigPath, logger, removeWithRetries, setAgentDir } from "@veyyon/utils";
+import { captureDirOverrides, restoreDirOverrides } from "@veyyon/utils/dirs";
 
 let tempDir = "";
+let agentDir = "";
 let warnings: Array<{ message: string; fields: Record<string, unknown> }>;
 let output: string[];
+
+const dirOverrides = captureDirOverrides();
 
 const resourcesCommand = parseSlashCommand("/mcp resources");
 if (!resourcesCommand) throw new Error("`/mcp resources` must parse as a slash command");
@@ -40,16 +44,22 @@ function makeRuntime(): SlashCommandRuntime {
 
 beforeEach(async () => {
 	tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "mcp-unreachable-"));
+	agentDir = await fs.mkdtemp(path.join(os.tmpdir(), "mcp-unreachable-agent-"));
+	setAgentDir(agentDir);
 	warnings = [];
 	output = [];
 	vi.spyOn(logger, "warn").mockImplementation((message: string, fields?: Record<string, unknown>) => {
 		warnings.push({ message, fields: fields ?? {} });
 	});
 	// A stdio server whose command does not exist, so connecting fails the way a
-	// dead server does rather than by configuration rejection.
-	await fs.mkdir(path.dirname(getMCPConfigPath("project", tempDir)), { recursive: true });
+	// dead server does rather than by configuration rejection. It goes in the
+	// PROFILE's mcp.json, which is the only file `/mcp` reads: a repository must
+	// not name a server the agent connects to, so a working-tree entry would not
+	// be queried at all and there would be nothing to report.
+	const configPath = getMCPConfigPath("user", tempDir, agentDir);
+	await fs.mkdir(path.dirname(configPath), { recursive: true });
 	await fs.writeFile(
-		getMCPConfigPath("project", tempDir),
+		configPath,
 		JSON.stringify({
 			mcpServers: {
 				"dead-server": { command: "veyyon-no-such-binary-38f1c2", args: [] },
@@ -60,7 +70,10 @@ beforeEach(async () => {
 
 afterEach(async () => {
 	vi.restoreAllMocks();
+	restoreDirOverrides(dirOverrides);
+	if (dirOverrides.agentDirEnv === undefined) delete Bun.env.VEYYON_CODING_AGENT_DIR;
 	await removeWithRetries(tempDir);
+	await removeWithRetries(agentDir);
 });
 
 describe("An MCP server that cannot be queried is reported", () => {

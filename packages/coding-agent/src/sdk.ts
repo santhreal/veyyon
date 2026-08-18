@@ -1869,7 +1869,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			// sealed with a key that is still on disk, the damage may be a truncated tail with
 			// recoverable entries behind it, and someone told it was deleted finds out otherwise at
 			// the worst possible moment.
-			const commands = unreadable.map(scope => `/secret discard --scope ${scope}`).join(" and ");
+			const commands = unreadable.map(scope => `/secret discard ${scope}`).join(" and ");
 			return {
 				authority,
 				broken,

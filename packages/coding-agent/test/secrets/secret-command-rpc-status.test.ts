@@ -64,17 +64,26 @@ describe("RPC /secret failure status", () => {
 		await dispatcher.drain();
 
 		expect(commandOutput).toEqual([]);
+		// The refusal carries the client's usage text under it, so the frame is matched by the sentence
+		// it leads with rather than byte for byte: pinning the whole string would make this row a copy of
+		// the help text, which is asserted where the help text lives.
 		expect(frames).toEqual([
 			{
 				id: "secret-refusal-1",
 				type: "response",
 				command: "prompt",
 				success: false,
-				error:
-					"This non-interactive client refuses inline credentials because they would be retained in command history. " +
-					"Use /secret add RPC_TOKEN --from-env MY_TOKEN instead.",
+				error: expect.stringContaining(
+					"This client refuses an inline credential, because the line carrying it is retained in the " +
+						"client's own request history. Nothing was stored. Read the value out of the environment " +
+						"instead: /secret from-env MY_TOKEN <name>.",
+				),
 			},
 		]);
 		expect(JSON.stringify(frames)).not.toContain(CREDENTIAL);
+		// NOR THE NAME. Both words arrived in the same tail on this surface and nothing tells them
+		// apart, so the refusal repeats neither: a name echoed here is a line that may have been
+		// `/secret add <credential>` with no name in it at all.
+		expect(JSON.stringify(frames)).not.toContain("RPC_TOKEN");
 	});
 });

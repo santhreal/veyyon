@@ -19,6 +19,7 @@ import {
 	parseSecretCommand,
 	resolveDefaultTtl,
 	runSecretCommand,
+	SECRET_ENTRY_COMMANDS,
 	type SecretCommandResult,
 } from "../../secrets/secret-command";
 import { normaliseSecretName, resolveVaultLocations, SecretVault, type VaultLocations } from "../../secrets/vault";
@@ -41,7 +42,7 @@ export interface SecretCommandPort {
 	 *
 	 * A surface that cannot mask must NOT substitute an unmasked prompt: that would put the value
 	 * in the scrollback while looking like the safe path. Absent means "tell them to use
-	 * `--from-env`", which is what {@link runSecretCommand} does.
+	 * `from-env`", which is what {@link runSecretCommand} does.
 	 *
 	 * Takes no name, because there is never one to take: the field is what a valueless `/secret add`
 	 * opens, and the name is asked after the value is in hand.
@@ -95,16 +96,20 @@ export async function runSecretCommandForSurface(args: string, port: SecretComma
 	const surface = port.promptForValue === undefined ? "noninteractive" : "tui";
 	const request = parseSecretCommand(args, surface);
 	if (request.name !== undefined) request.name = normaliseSecretName(request.name);
-	// BOTH VERBS THAT CARRY A CREDENTIAL. `value` replaces one, so an inline value on this surface
-	// would be retained in exactly the same command history for exactly the same reason.
+	// A GUARD, NOT GRAMMAR. `parseSecretCommand` refuses an inline credential on this surface before
+	// it can reach here, for both verbs that carry one: `add` takes no words at all on a client, and
+	// `value` reads a name and a `from-env` pair and nothing else. This stays because the function is
+	// exported and a caller may hand it a hand-built request, and because the thing it fails closed on
+	// is a credential in a request log -- the one class of mistake that is invisible until it is spent.
 	if (
 		(request.subcommand === "add" || request.subcommand === "value") &&
 		request.value !== undefined &&
 		port.promptForValue === undefined
 	) {
 		throw new Error(
-			`This non-interactive client refuses inline credentials because they would be retained in command history. ` +
-				`Use /secret ${request.subcommand} ${request.name ?? "<name>"} --from-env MY_TOKEN instead.`,
+			`This client refuses an inline credential, because the line carrying it is retained in the client's ` +
+				`own request history. Nothing was stored. Read the value out of the environment instead: ` +
+				`/secret from-env MY_TOKEN ${request.name ?? "<name>"}.`,
 		);
 	}
 	const needsDefaultTtl =
@@ -188,8 +193,16 @@ export async function runSecretCommandForSurface(args: string, port: SecretComma
 	// it can do is hide more. It is announced in the confirmation rather than done quietly,
 	// because it changes what happens to environment variables and `secrets.yml` too, and a
 	// setting that changes itself without saying so is its own bug.
+	//
+	// EVERY COMMAND THAT STORES ONE, from `SECRET_ENTRY_COMMANDS` rather than a name written here: this
+	// read `request.subcommand === "add"` while `from-env` was a modifier on `add`, and kept reading it
+	// after `from-env` became a command of its own, so a client's first credential -- which can only
+	// arrive through `from-env`, since a client cannot take a value inline -- was stored with protection
+	// left off.
 	const enabledByThisCommand =
-		result.changed && request.subcommand === "add" && port.settings.get("secrets.enabled") !== true;
+		result.changed &&
+		SECRET_ENTRY_COMMANDS.includes(request.subcommand) &&
+		port.settings.get("secrets.enabled") !== true;
 	/**
 	 * WHY THIS FLUSHES RATHER THAN TRUSTING `set`. `Settings.set` only QUEUES a debounced write,
 	 * and nothing on this path called `flush`, so any short-lived surface exited before the timer
@@ -207,7 +220,10 @@ export async function runSecretCommandForSurface(args: string, port: SecretComma
 			await port.settings.flush();
 		} catch (error) {
 			enableSaveFailure = errorMessage(error);
-			logger.warn("secrets: could not persist secrets.enabled after /secret add", { error: enableSaveFailure });
+			logger.warn("secrets: could not persist secrets.enabled after storing a credential", {
+				command: request.subcommand,
+				error: enableSaveFailure,
+			});
 		}
 	}
 

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import { SecretObfuscator } from "@veyyon/coding-agent/secrets/obfuscator";
-import { parseSecretCommand, SECRET_TUI_SUBCOMMANDS } from "@veyyon/coding-agent/secrets/secret-command";
+import {
+	parseSecretCommand,
+	SECRET_TUI_SUBCOMMANDS,
+	type SecretSubcommand,
+} from "@veyyon/coding-agent/secrets/secret-command";
 import { buildTuiBuiltinSlashCommands } from "@veyyon/coding-agent/slash-commands/builtin-registry";
 import type { TuiSlashCommandRuntime } from "@veyyon/coding-agent/slash-commands/types";
 
@@ -95,21 +99,30 @@ describe("the ghost text after /secret", () => {
 
 		expect(hint).toContain("<value>");
 		expect(hint).toContain("list");
-		expect(hint).toContain("--from-env");
+		expect(hint).toContain("from-env");
 		// A word the parser does not reserve would be typed as a command and stored as a credential.
 		expect(hint).not.toContain("manager");
+		// And no option spelling, on the one line that teaches the grammar to somebody who has typed
+		// nothing yet. A hint naming a spelling the parser refuses is worse than the blank field it
+		// replaced: the operator types what it says and gets a refusal with a credential on screen.
+		expect(hint).not.toMatch(/-{2}/u);
 	});
 
 	/**
 	 * Mid-word it completes the verb and states what that verb wants, which is the half a static hint
 	 * cannot do. `ex` is the interesting prefix: unambiguous, and its usage carries both a name and a
-	 * lifetime, so a hint that stopped at the verb would leave the operator to guess the option.
+	 * lifetime, so a hint that stopped at the verb would leave the operator to guess the second word.
+	 *
+	 * The lifetime and the vault are shown as the WORDS the parser reads (`7d`, `global`), not as an
+	 * option with a placeholder. A hint is read as a template to type over, so it can only ever show
+	 * the real thing: `--ttl 7d` taught two tokens where the grammar has one, and the operator who
+	 * typed it back got a refusal.
 	 */
 	it("completes a partially typed verb and names its arguments", () => {
-		expect(hintFor("ex")).toBe("tend <name> --ttl 7d");
+		expect(hintFor("ex")).toBe("tend <name> 7d");
 		expect(hintFor("ren")).toBe("ame <name> <new-name>");
 		expect(hintFor("cop")).toBe("y <name>");
-		expect(hintFor("rm ")).toBe("<name> [--scope global]");
+		expect(hintFor("rm ")).toBe("<name> [global]");
 	});
 
 	/**
@@ -163,26 +176,34 @@ describe("what /secret offers in its argument dropdown", () => {
 	 * fails if the menu is ever widened beyond the grammar, or the grammar narrowed beneath the menu.
 	 */
 	it("offers only words the terminal parser routes as commands", async () => {
-		const arguments_: Record<string, string> = {
+		// A Record over the union, so a subcommand added to the grammar breaks compilation here rather
+		// than reaching the menu with no line proving it parses. The row below still asserts the entry
+		// is defined, because the menu is built at run time and could offer a word that is not a member.
+		const arguments_: Record<SecretSubcommand, string> = {
 			add: "ghp_theCredentialItself",
+			// A variable, and no name: a terminal has a field to ask for the name afterwards.
+			"from-env": "MY_TOKEN",
 			list: "",
 			rm: "TOKEN_NAME",
-			// A scope, because `clear` empties a whole vault and refuses to guess which one.
-			clear: "--scope project",
+			// A vault, because `clear` empties a whole one and refuses to guess which.
+			clear: "project",
 			rename: "TOKEN_NAME OTHER_NAME",
 			value: "TOKEN_NAME",
 			scope: "TOKEN_NAME global",
 			copy: "TOKEN_NAME",
-			extend: "TOKEN_NAME --ttl 7d",
-			log: "--limit 5",
-			discard: "--scope project",
+			extend: "TOKEN_NAME 7d",
+			log: "5",
+			discard: "project",
 			help: "",
 		};
 		const items = (await completionsFor("", threeStoredSecrets())) ?? [];
 		expect(items.length).toBeGreaterThan(1);
 
 		for (const item of items) {
-			const filled = arguments_[item.label];
+			// The label is a run-time string from the menu, so it is looked up as one: a word the menu
+			// offered that is not a member of the union is exactly the defect this row exists to catch,
+			// and indexing the Record by a narrowed type would hide it behind a compile error nobody sees.
+			const filled = (arguments_ as Record<string, string | undefined>)[item.label];
 			// A menu entry with no line here is an untested entry, which is how the last one shipped.
 			expect(filled).toBeDefined();
 			const request = parseSecretCommand([item.label, filled].join(" ").trim(), "tui");

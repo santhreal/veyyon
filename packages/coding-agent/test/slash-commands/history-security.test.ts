@@ -34,12 +34,24 @@ describe("shouldSkipHistory — security filter for slash command history", () =
 		expect(shouldSkipHistory("/join")).toBe(false);
 	});
 
-	it("skips /mcp add with --token flag (contains bearer token)", () => {
+	it("skips /mcp add carrying a token, in the plain-word grammar and the removed dashed one", () => {
+		expect(shouldSkipHistory("/mcp add myserver url http://x token sk-secret123")).toBe(true);
 		expect(shouldSkipHistory("/mcp add myserver --url http://x --token sk-secret123")).toBe(true);
 	});
 
-	it("does not skip /mcp add without --token", () => {
-		expect(shouldSkipHistory("/mcp add myserver --url http://x")).toBe(false);
+	it("does not skip a /mcp add that carries no credential", () => {
+		expect(shouldSkipHistory("/mcp add myserver url http://x")).toBe(false);
+	});
+
+	/**
+	 * The tail of a credential-bearing command is read against that command's own
+	 * word vocabulary, and anything else is treated as a secret. A typo is the case
+	 * a name-matching allowlist cannot see: `tokn sk-secret123` names no credential
+	 * option, so only failing closed keeps it out of history.
+	 */
+	it("skips a /mcp add whose tail is not a shape the grammar reads", () => {
+		expect(shouldSkipHistory("/mcp add myserver url http://x tokn sk-secret123")).toBe(true);
+		expect(shouldSkipHistory("/mcp add myserver --url http://x")).toBe(true);
 	});
 
 	it("does not skip /mcp without add subcommand", () => {

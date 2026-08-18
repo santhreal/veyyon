@@ -21,11 +21,25 @@ import { isSensitiveSlashCommand } from "@veyyon/coding-agent/slash-commands/hel
  *
  * The fix classifies both spellings for a deliberately over-broad set of
  * credential-bearing option names, on the arguments of ANY slash command, plus
- * credential material that sits behind no option name at all. This suite pins the
- * classification: every option in both spellings, quoted and unquoted, a negative
- * control proving the OLD regex really missed the `=` form, and the benign
- * commands that must stay recallable. The durable on-disk half lives with the
- * draft suite that owns that artifact.
+ * credential material that sits behind no option name at all.
+ *
+ * The grammars then became PLAIN WORDS (`token sk-live-…`, not `--token …`), which
+ * would have reopened the same hole from the other side: a matcher keyed to a dash
+ * prefix sees nothing in `/mcp add srv url http://x token sk-live-SECRET123`. So
+ * the dash prefix is optional now, and a second, fail-closed test was added for the
+ * two grammars that HAVE a credential slot: their tail must be a shape the grammar
+ * reads, or the command is treated as secret-bearing. A name list is an allowlist
+ * and an allowlist cannot see a typo.
+ *
+ * This suite pins the classification: every option name in the plain-word and both
+ * dashed spellings, quoted and unquoted, a negative control proving the OLD regex
+ * really missed the `=` form, the fail-closed tail, and the benign commands that
+ * must stay recallable. The durable on-disk half lives with the draft suite that
+ * owns that artifact.
+ *
+ * WHAT IT DOES NOT CATCH: a secret typed into a POSITIONAL slot — `/mcp add
+ * sk-live-SECRET123` names a server after a token — because position 1 is a name
+ * whatever it spells, and there is no way to tell a server name from a secret.
  */
 
 /**
@@ -77,15 +91,21 @@ describe("credential-bearing slash commands never become durable", () => {
 		expect(isSensitiveSlashCommand(`/mcp add srv --url https://example.com --token=${SECRET_BYTES}`)).toBe(true);
 	});
 
-	it.each(CREDENTIAL_OPTIONS)("classifies --%s in both spellings, quoted and unquoted", option => {
+	it.each(CREDENTIAL_OPTIONS)("classifies %s as a plain word and in both dashed spellings", option => {
 		for (const args of [
+			// The spelling the grammars actually have now. A matcher keyed to the dash
+			// prefix reads this line as ordinary text and sends the secret to history.
+			`${option} ${SECRET_BYTES}`,
+			`${option}=${SECRET_BYTES}`,
+			`${option} "${SECRET_BYTES}"`,
 			`--${option} ${SECRET_BYTES}`,
 			`--${option}=${SECRET_BYTES}`,
 			`--${option} "${SECRET_BYTES}"`,
 			`--${option}="${SECRET_BYTES}"`,
 			`--${option}='${SECRET_BYTES}'`,
-			// A bare trailing flag: the value is still being typed, and the next
+			// A bare trailing name: the value is still being typed, and the next
 			// keystroke would make it durable.
+			option,
 			`--${option}`,
 		]) {
 			const command = `/mcp add srv ${args}`;
@@ -93,9 +113,10 @@ describe("credential-bearing slash commands never become durable", () => {
 		}
 	});
 
-	it("classifies an uppercase long spelling, so --Token cannot slip past", () => {
+	it("classifies an uppercase spelling, so TOKEN and --Token cannot slip past", () => {
 		expect(isSensitiveSlashCommand(`/mcp add srv --Token=${SECRET_BYTES}`)).toBe(true);
 		expect(isSensitiveSlashCommand(`/mcp add srv --PASSWORD ${SECRET_BYTES}`)).toBe(true);
+		expect(isSensitiveSlashCommand(`/mcp add srv TOKEN ${SECRET_BYTES}`)).toBe(true);
 	});
 
 	it("classifies the short credential spellings -t and -H", () => {
@@ -106,26 +127,55 @@ describe("credential-bearing slash commands never become durable", () => {
 
 	it("scans every command name, not just /mcp add", () => {
 		// The old predicate hard-coded `name === "mcp" && verb === "add"`.
+		expect(isSensitiveSlashCommand("/ssh add box h key ~/.ssh/id_ed25519")).toBe(true);
 		expect(isSensitiveSlashCommand("/ssh add box --host h --key ~/.ssh/id_ed25519")).toBe(true);
+		expect(isSensitiveSlashCommand(`/mcp remove srv token=${SECRET_BYTES}`)).toBe(true);
 		expect(isSensitiveSlashCommand(`/mcp remove srv --token=${SECRET_BYTES}`)).toBe(true);
+		expect(isSensitiveSlashCommand(`/somefuturecommand password ${SECRET_BYTES}`)).toBe(true);
 		expect(isSensitiveSlashCommand(`/somefuturecommand --password=${SECRET_BYTES}`)).toBe(true);
 		// The colon separator is the same parse, so it must classify identically.
-		expect(isSensitiveSlashCommand(`/mcp:add srv --token=${SECRET_BYTES}`)).toBe(true);
+		expect(isSensitiveSlashCommand(`/mcp:add srv token ${SECRET_BYTES}`)).toBe(true);
 	});
 
-	it("classifies credential material carried in a URL, whatever option holds it", () => {
-		// Userinfo in the endpoint.
+	/**
+	 * The fail-closed half. A name list cannot see a typo, and it cannot see a
+	 * secret pasted where a grammar word belongs, so a `/mcp add` or `/ssh add`
+	 * whose tail is not a shape the grammar reads is treated as secret-bearing.
+	 * Every one of these is also REFUSED by the parser, so nothing recallable is
+	 * lost: the command never ran.
+	 */
+	it.each([
+		// A misspelled keyword: the value is a live token and no name matches.
+		`/mcp add srv url http://x tokn ${SECRET_BYTES}`,
+		`/mcp add srv url http://x TOKEM ${SECRET_BYTES}`,
+		// A secret pasted with no keyword at all.
+		`/mcp add srv url http://x ${SECRET_BYTES}`,
+		// The dashed spellings the grammar no longer has, on a command that can
+		// carry a credential: unrecognised, so unrecallable.
+		"/mcp add srv --url http://x",
+		"/mcp add srv --scope project --transport http",
+		"/ssh add box --host h --user root --port 22",
+		`/ssh add box h keyfile ${SECRET_BYTES}`,
+		`/ssh add box h passphrase ${SECRET_BYTES}`,
+	])("fails closed on %p, whose tail is not a shape the grammar reads", command => {
+		expect(isSensitiveSlashCommand(command), command).toBe(true);
+	});
+
+	it("classifies credential material carried in a URL, whatever argument holds it", () => {
+		// Userinfo in the endpoint. The URL scan is independent of the grammar, so the
+		// plain-word form and both dashed forms must all classify the same.
+		expect(isSensitiveSlashCommand(`/mcp add srv url https://admin:${SECRET_BYTES}@example.com/mcp`)).toBe(true);
 		expect(isSensitiveSlashCommand(`/mcp add srv --url https://admin:${SECRET_BYTES}@example.com/mcp`)).toBe(true);
 		expect(isSensitiveSlashCommand(`/mcp add srv --url=https://admin:${SECRET_BYTES}@example.com/mcp`)).toBe(true);
 		// Secret-shaped query parameter, the shape `redactUrlForLog` already redacts.
-		expect(isSensitiveSlashCommand(`/mcp add srv --url https://example.com/mcp?api_key=${SECRET_BYTES}`)).toBe(true);
-		expect(isSensitiveSlashCommand(`/mcp add srv --url https://example.com/mcp?x=1&token=${SECRET_BYTES}`)).toBe(
+		expect(isSensitiveSlashCommand(`/mcp add srv url https://example.com/mcp?api_key=${SECRET_BYTES}`)).toBe(true);
+		expect(isSensitiveSlashCommand(`/mcp add srv url https://example.com/mcp?x=1&token=${SECRET_BYTES}`)).toBe(true);
+		expect(isSensitiveSlashCommand(`/mcp add srv url https://example.com/mcp?authToken=${SECRET_BYTES}`)).toBe(true);
+		// Behind no keyword at all: a stdio server's trailing command, which `run`
+		// hands to the child process whole.
+		expect(isSensitiveSlashCommand(`/mcp add srv run npx server --endpoint https://u:${SECRET_BYTES}@h/x`)).toBe(
 			true,
 		);
-		expect(isSensitiveSlashCommand(`/mcp add srv --url https://example.com/mcp?authToken=${SECRET_BYTES}`)).toBe(
-			true,
-		);
-		// Behind no known option at all: a stdio server's trailing command.
 		expect(isSensitiveSlashCommand(`/mcp add srv -- npx server --endpoint https://u:${SECRET_BYTES}@h/x`)).toBe(true);
 	});
 
@@ -141,22 +191,32 @@ describe("credential-bearing slash commands never become durable", () => {
 		for (const command of [
 			"/mcp list",
 			"/mcp test srv",
-			"/mcp add srv --scope project --transport http",
-			"/mcp smithery-search filesystem --limit 5 --semantic",
-			"/ssh add box --host h --user root --port 22",
-			// `-p` is the /stats port and `-h` is help: neither may be swept up.
+			// The plain-word grammars, in full, carrying no credential.
+			"/mcp add srv http",
+			"/mcp add srv url http://x",
+			"/mcp add myserver url http://x project",
+			"/mcp add srv sse url https://example.com/mcp",
+			"/mcp add srv run npx some-server",
+			"/mcp smithery-search filesystem 5 semantic",
+			"/mcp remove srv user",
+			"/ssh add box h",
+			"/ssh add box h user root 22",
+			"/ssh add box h 2222 compat",
+			"/stats 8080",
+			// `-p` is the /stats port and `-h` is help: neither may be swept up, and
+			// `/stats` has no credential slot, so a stale spelling stays recallable.
 			"/stats -p 8080",
 			"/stats --port=8080",
 			"/mcp -h",
 			// A URL with no userinfo and no secret-shaped query parameter is not a
 			// credential, and this is the most common /mcp add form.
-			"/mcp add srv --url http://x",
-			"/mcp add myserver --url http://x",
-			"/mcp add srv --url https://example.com/mcp?version=2",
-			// Prefix collisions on both sides of the boundary guards.
-			"/mcp add srv --tokenizer fast",
-			"/mcp add srv --urlencode x",
-			"/mcp add srv --keyspace default",
+			"/mcp add srv url https://example.com/mcp?version=2",
+			// Prefix collisions on both sides of the boundary guards, on commands with
+			// no credential slot so the name matcher alone answers.
+			"/mcp smithery-search tokenizer",
+			"/mcp test keyspace",
+			"/mcp smithery-search urlencode",
+			"/mcp smithery-search passage",
 			"/secretary add meeting",
 			"/hotkeys",
 			"not a slash command at all",

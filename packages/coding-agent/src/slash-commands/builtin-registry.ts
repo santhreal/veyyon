@@ -1475,7 +1475,7 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			return `${base} · protection on, ${stored} stored`;
 		},
 		/**
-		 * Text and ACP: no terminal to hide anything on, so there is no prompt. `--from-env` is the
+		 * Text and ACP: no terminal to hide anything on, so there is no prompt. `/secret from-env` is the
 		 * form that never types the credential at all, and `runSecretCommand` says so when a value
 		 * is missing rather than reading one into the scrollback.
 		 */
