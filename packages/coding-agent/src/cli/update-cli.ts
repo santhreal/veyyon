@@ -960,10 +960,17 @@ async function removeFileBestEffort(filePath: string): Promise<boolean> {
  * Each self-update moves the previous executable to
  * `<binary>.<attempt UUID>.bak` before swapping the new one in. On Windows that
  * backup cannot be deleted while the updating process is alive, so it is left
- * for a later run to reclaim once its owning process has exited. Also matches
- * the legacy fixed `<binary>.bak` and numeric
- * `<binary>.<timestamp>.<pid>.bak` names produced by older releases, so users
- * upgrading from a buggy release get the orphaned file cleaned up.
+ * for a later run to reclaim once its owning process has exited — which is why
+ * {@link updateViaBinaryAt} calls this at the START of its locked section, on
+ * every attempt, rather than only after one succeeds. Also matches the legacy
+ * fixed `<binary>.bak` and numeric `<binary>.<timestamp>.<pid>.bak` names
+ * produced by older releases, so users upgrading from a buggy release get the
+ * orphaned file cleaned up.
+ *
+ * Only `.bak`. The staged `<binary>.<attempt UUID>.new` names are NOT swept
+ * here: downloads run outside the replacement lock, so a `.new` beside the
+ * binary may belong to an update that is still writing it. `--uninstall` sweeps
+ * those, because by then the binary itself is going too.
  */
 export async function sweepStaleBackups(targetPath: string): Promise<void> {
 	const dir = path.dirname(targetPath);
@@ -1032,17 +1039,27 @@ async function sha256OfFile(filePath: string): Promise<string> {
  * Never throws. The swap it follows has already succeeded and verified, and
  * failing an update that produced a working binary would be worse than a stale
  * receipt: a stale one is refused loudly by the installer, with the reason, and
- * is repaired by the next install. Reported rather than swallowed.
+ * the pending receipt {@link markOwnerReceiptPending} left beside the binary is
+ * what lets the next install recognize it anyway and repair the record.
+ * Reported rather than swallowed.
  */
-export async function restampOwnerReceipt(artifactPath: string): Promise<boolean> {
+export async function restampOwnerReceipt(artifactPath: string, knownIdentity?: string): Promise<boolean> {
 	const receiptPath = ownerReceiptPathFor(artifactPath);
 	// Staged then renamed under the same `.<name>.veyyon-owner.<pid>` name the
 	// installers use, so an interrupted write leaves a temp the install suites
 	// already fail on rather than a new shape nothing watches.
 	const staging = `${receiptPath}.${process.pid}`;
 	try {
-		await Bun.write(staging, `veyyon-installer-v2\nfile sha256:${await sha256OfFile(artifactPath)}\n`);
+		// The caller usually already hashed these exact bytes while they were
+		// staged. Re-hashing here would read ~150MB a second time to learn what it
+		// was told, and would do it in the one window where the file has just been
+		// renamed and an antivirus scanner is most likely to hold it open.
+		const identity = knownIdentity ?? `file sha256:${await sha256OfFile(artifactPath)}`;
+		await Bun.write(staging, `veyyon-installer-v2\n${identity}\n`);
 		await fs.promises.rename(staging, receiptPath);
+		// The real receipt now describes the file, so the provisional one has
+		// nothing left to vouch for.
+		await removeFileBestEffort(pendingOwnerReceiptPathFor(artifactPath));
 		return true;
 	} catch (err) {
 		await removeFileBestEffort(staging);
@@ -1056,11 +1073,58 @@ export async function restampOwnerReceipt(artifactPath: string): Promise<boolean
 }
 
 /**
+ * The provisional receipt written BEFORE a binary is swapped in, naming the
+ * bytes that are about to arrive: `.<basename>.veyyon-owner.pending`.
+ *
+ * Mirrors `owner_pending_marker_for` in scripts/install.sh and
+ * `Get-PendingOwnerMarkerPath` in scripts/install.ps1.
+ */
+function pendingOwnerReceiptPathFor(artifactPath: string): string {
+	return `${ownerReceiptPathFor(artifactPath)}.pending`;
+}
+
+/**
+ * Record what is about to be installed at `artifactPath`, before installing it.
+ *
+ * WHY. The real receipt can only be written after the swap, because until then it
+ * describes the binary being retired. That leaves a window — one rename plus one
+ * verification plus one 150MB hash wide — in which the path holds a file no
+ * receipt accounts for. A crash, a kill, or a single antivirus sharing violation
+ * inside it used to be permanent: the installer refused to replace the file, so
+ * the only remedy was deleting it by hand. This sidecar closes the window from
+ * the other side. It is written first, so at every instant the binary on disk is
+ * described by either the real receipt or this one.
+ *
+ * Safe to trust: it can only ever name bytes this updater downloaded and
+ * checksum-verified, so it cannot vouch for a file a stranger put there.
+ *
+ * Throws. It runs before anything on disk has been disturbed, and a directory
+ * this process cannot write a 97-byte sidecar into is not one the update can
+ * finish in anyway; failing here costs the user nothing but the update.
+ */
+async function markOwnerReceiptPending(artifactPath: string, identity: string): Promise<void> {
+	const pendingPath = pendingOwnerReceiptPathFor(artifactPath);
+	const staging = `${pendingPath}.${process.pid}`;
+	try {
+		await Bun.write(staging, `veyyon-installer-v2\n${identity}\n`);
+		await fs.promises.rename(staging, pendingPath);
+	} catch (err) {
+		await removeFileBestEffort(staging);
+		throw new Error(
+			`Could not record the pending ownership of ${artifactPath} at ${pendingPath} (${errorMessage(err)}), ` +
+				`so an interrupted update could leave a binary the installer cannot account for. Not replacing it.`,
+			{ cause: err },
+		);
+	}
+}
+
+/**
  * Atomically replace the installed binary and roll back if version verification fails.
  */
 export async function replaceBinaryForUpdate(options: BinaryReplacementOptions): Promise<InstalledVersionVerification> {
 	let backupReady = false;
 	let replacementInstalled = false;
+	let pendingReceiptWritten = false;
 	try {
 		// Refuse an empty or missing download BEFORE disturbing the live binary.
 		let tempSize: number;
@@ -1082,6 +1146,11 @@ export async function replaceBinaryForUpdate(options: BinaryReplacementOptions):
 			);
 		}
 
+		// Hashed while it is still staged, which is the only moment the bytes are
+		// certainly readable at a pathname nothing else is competing for. The same
+		// identity serves the pending receipt below and the real one after the swap.
+		const incoming = `file sha256:${await sha256OfFile(options.tempPath)}`;
+
 		// Preserve the old inode before the atomic replacement. A hard link is
 		// constant-time and keeps the exact executable bytes without ever removing
 		// the PATH entry. Filesystems that reject hard links fall back to an
@@ -1094,6 +1163,12 @@ export async function replaceBinaryForUpdate(options: BinaryReplacementOptions):
 			await fs.promises.copyFile(options.targetPath, options.backupPath, fs.constants.COPYFILE_EXCL);
 		}
 		backupReady = true;
+
+		// Last thing before the binary moves: from here until the real receipt is
+		// written, this sidecar is the only record that the file at the target path
+		// is one of ours.
+		await markOwnerReceiptPending(options.targetPath, incoming);
+		pendingReceiptWritten = true;
 
 		// rename(temp, target) replaces the directory entry atomically. A hard
 		// kill can leave the old target or the new target, but never no target.
@@ -1109,8 +1184,8 @@ export async function replaceBinaryForUpdate(options: BinaryReplacementOptions):
 
 		// Before the backup goes: the receipt beside the target still describes the
 		// binary that was just replaced, and every ownership decision the installer
-		// makes about this path reads it.
-		await restampOwnerReceipt(options.targetPath);
+		// makes about this path reads it. Clears the pending receipt on success.
+		await restampOwnerReceipt(options.targetPath, incoming);
 
 		backupReady = false;
 		await removeFileBestEffort(options.backupPath);
@@ -1133,13 +1208,20 @@ export async function replaceBinaryForUpdate(options: BinaryReplacementOptions):
 			// The rename succeeded, so the path holds the PREVIOUS binary again and
 			// the receipt has to say so. A rollback that restored the old binary and
 			// left a receipt describing the new one would be the same defect with the
-			// arrow reversed, on the path nobody exercises by hand.
+			// arrow reversed, on the path nobody exercises by hand. No known identity
+			// here: these are the retired binary's bytes, which were never hashed.
 			await restampOwnerReceipt(options.targetPath);
+			pendingReceiptWritten = false;
 		} else if (backupReady) {
 			// The atomic replacement itself failed, so the original target is
 			// still live and this extra recovery link/copy is no longer needed.
 			await removeFileBestEffort(options.backupPath);
 		}
+		// A pending receipt describing bytes that never arrived is harmless — it
+		// matches no file, so it grants nothing — but it is litter, and a later
+		// install reporting a "pending" record for a binary it is not about would
+		// only confuse whoever is reading the directory.
+		if (pendingReceiptWritten) await removeFileBestEffort(pendingOwnerReceiptPathFor(options.targetPath));
 		await removeFileBestEffort(options.tempPath);
 		throw err;
 	}
@@ -1242,6 +1324,18 @@ export async function updateViaBinaryAt(
 		return await withFileLock(
 			targetPath,
 			async () => {
+				// Reclaim backups from earlier updates whose owning process has since
+				// exited. Holding the replacement lock means this can never sweep
+				// another live attempt's rollback copy.
+				//
+				// BEFORE the attempt, not after it. Sweeping only on the success path
+				// meant a machine whose updates keep failing — the exact machine most
+				// likely to be holding orphaned backups — never reclaimed any of them,
+				// and each one is a full copy of a ~150MB executable. This runs on
+				// every attempt, so the next one cleans up after the last regardless
+				// of how the last ended. The current attempt's own backup does not
+				// exist yet, so it cannot sweep itself.
+				await sweepStaleBackups(targetPath);
 				report(chalk.dim("Installing update..."));
 				await replaceBinaryForUpdate({
 					targetPath,
@@ -1251,10 +1345,6 @@ export async function updateViaBinaryAt(
 					// Verify the file this update just wrote, not whatever PATH resolves now.
 					verifyInstalledVersion: version => verifyBinaryUsable(targetPath, version),
 				});
-				// Reclaim backups from earlier updates whose owning process has since exited.
-				// Holding the replacement lock means this can never sweep another live
-				// attempt's rollback copy.
-				await sweepStaleBackups(targetPath);
 				// The completion scripts on disk describe the version we just replaced, so
 				// every subcommand and flag this release adds would be missing from tab
 				// completion until the user re-ran the installer. Regenerate from the binary

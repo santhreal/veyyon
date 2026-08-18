@@ -1891,6 +1891,163 @@ check "without a sha256 tool no receipt is written at all" "$( (
   has() { case "$1" in (sha256sum|shasum) return 1 ;; (*) command -v "$1" >/dev/null 2>&1 ;; esac; }
   mark_artifact_owned "$notool/$BIN_NAME" && echo wrote || echo refused ) )" "refused"
 
+# --- a binary placed but not yet recorded is still repairable ---
+#
+# THE DEFECT, as reported: "refusing to replace .../veyyon.exe because it has
+# changed since this installer wrote it", on a machine where the file at that
+# path was a genuine release binary the installer itself had put there. The
+# installer wrote the binary FIRST and its receipt SECOND, and between those two
+# steps sits a rename plus a ~150MB hash of a file an antivirus scanner has just
+# started reading. Anything that ends the process in that window — a kill, a
+# sharing violation, a lid closing — left a file no receipt described, and from
+# then on every install refused it, uninstall left it, and the only remedy was
+# deleting a 150MB executable by hand.
+#
+# THE CLASS this closes: any interruption between placing an artifact and
+# recording it must leave the artifact recoverable. So the record is now written
+# BEFORE the swap, naming the bytes that are about to arrive, and at every
+# instant the file at the target path is described by either the durable receipt
+# or the pending one. The cases below are the whole window: before the rename,
+# after the rename and before the durable receipt, and the re-run that repairs it.
+#
+# WHAT IT DOES NOT CATCH: a receipt written to a filesystem that acknowledges the
+# write and loses it (the sidecar is renamed into place, so a lost rename leaves
+# no half-file, but a lying filesystem is outside what any of this can observe).
+pend="$SANDBOX/pending-receipt"
+mkdir -p "$pend"
+printf 'the binary that was just installed\n' > "$pend/$BIN_NAME"
+_pend_identity=$(artifact_identity "$pend/$BIN_NAME")
+# The durable receipt still describes the binary this one REPLACED. That is what
+# the reported machine had on disk, and on its own it is a refusal.
+printf 'veyyon-installer-v2\nfile sha256:%s\n' "0000000000000000000000000000000000000000000000000000000000000000" \
+  > "$pend/.$BIN_NAME.veyyon-owner"
+check "a binary whose durable receipt describes the previous one is refused" \
+  "$(binary_artifact_is_ours "$pend/$BIN_NAME" && echo yes || echo no)" "no"
+mark_artifact_ownership_pending "$pend/$BIN_NAME" "$_pend_identity"
+check "the pending receipt names the bytes that were about to be installed" \
+  "$(sed -n 2p "$pend/.$BIN_NAME.veyyon-owner.pending")" "$_pend_identity"
+check "and it is what lets the interrupted install be recognized as ours" \
+  "$(binary_artifact_is_ours "$pend/$BIN_NAME" && echo yes || echo no)" "yes"
+# NEGATIVE CONTROL. The pending receipt is not a licence for the path: it vouches
+# for bytes, so a file that is not those bytes gains nothing from it. Without
+# this, the fix would hand ownership of whatever turns up at the path to the
+# installer, which is the defect the durable receipt exists to prevent.
+printf 'a file somebody else put here\n' > "$pend/$BIN_NAME"
+check "a pending receipt does not vouch for a file it does not name" \
+  "$(binary_artifact_is_ours "$pend/$BIN_NAME" && echo yes || echo no)" "no"
+printf 'the binary that was just installed\n' > "$pend/$BIN_NAME"
+clear_artifact_ownership_pending "$pend/$BIN_NAME"
+check "clearing the pending receipt removes it" \
+  "$( [ -e "$pend/.$BIN_NAME.veyyon-owner.pending" ] && echo present || echo absent )" "absent"
+check "and the interrupted install is refused again once it is gone" \
+  "$(binary_artifact_is_ours "$pend/$BIN_NAME" && echo yes || echo no)" "no"
+
+# finalize_binary is the production path. A successful install leaves the durable
+# receipt and NO pending one: a pending file surviving a completed install would
+# be litter that every "the install dir is clean" assertion has to know about.
+( _fin="$SANDBOX/finalize-clean"
+  mkdir -p "$_fin"
+  printf 'staged bytes\n' > "$_fin/staged"
+  finalize_binary "$_fin/staged" "$_fin/$BIN_NAME" "rebuild it" >/dev/null 2>&1
+  check "a completed install records the binary it placed" \
+    "$(artifact_has_owner_receipt "$_fin/$BIN_NAME" && echo yes || echo no)" "yes"
+  check "and leaves no pending record behind" \
+    "$( [ -e "$_fin/.$BIN_NAME.veyyon-owner.pending" ] && echo present || echo absent )" "absent"
+  check "and the staged file is gone" \
+    "$( [ -e "$_fin/staged" ] && echo present || echo absent )" "absent" )
+
+# THE REPAIR. Re-running the installer over the machine in the reported state —
+# receipt describing the previous binary, pending receipt naming the one on disk —
+# has to install, not refuse. Both directions matter: the same release again (the
+# byte-identical short-circuit) and a newer one (the pending record vouching for
+# the file being replaced).
+( _rep="$SANDBOX/finalize-repair-same"
+  mkdir -p "$_rep"
+  printf 'release 1 bytes\n' > "$_rep/$BIN_NAME"
+  printf 'veyyon-installer-v2\nfile sha256:%s\n' "1111111111111111111111111111111111111111111111111111111111111111" \
+    > "$_rep/.$BIN_NAME.veyyon-owner"
+  mark_artifact_ownership_pending "$_rep/$BIN_NAME" "$(artifact_identity "$_rep/$BIN_NAME")"
+  printf 'release 1 bytes\n' > "$_rep/staged"
+  out=$(finalize_binary "$_rep/staged" "$_rep/$BIN_NAME" "rebuild it" 2>&1); status=$?
+  check "re-installing the same release over an unrecorded binary succeeds" "$status" "0"
+  check "it says the file was already the one being installed" \
+    "$(printf '%s' "$out" | grep -c 'already this exact binary')" "1"
+  check "the binary is untouched" "$(cat "$_rep/$BIN_NAME")" "release 1 bytes"
+  check "the durable receipt is repaired" \
+    "$(artifact_has_owner_receipt "$_rep/$BIN_NAME" && echo yes || echo no)" "yes"
+  check "and the pending record is retired" \
+    "$( [ -e "$_rep/.$BIN_NAME.veyyon-owner.pending" ] && echo present || echo absent )" "absent" )
+( _rep="$SANDBOX/finalize-repair-upgrade"
+  mkdir -p "$_rep"
+  printf 'release 1 bytes\n' > "$_rep/$BIN_NAME"
+  printf 'veyyon-installer-v2\nfile sha256:%s\n' "1111111111111111111111111111111111111111111111111111111111111111" \
+    > "$_rep/.$BIN_NAME.veyyon-owner"
+  mark_artifact_ownership_pending "$_rep/$BIN_NAME" "$(artifact_identity "$_rep/$BIN_NAME")"
+  printf 'release 2 bytes\n' > "$_rep/staged"
+  out=$(finalize_binary "$_rep/staged" "$_rep/$BIN_NAME" "rebuild it" 2>&1); status=$?
+  check "upgrading over an unrecorded binary succeeds" "$status" "0"
+  check "the new release is in place" "$(cat "$_rep/$BIN_NAME")" "release 2 bytes"
+  check "the receipt describes the new release" \
+    "$(artifact_has_owner_receipt "$_rep/$BIN_NAME" && echo yes || echo no)" "yes"
+  check "nothing was displaced" \
+    "$(ls -A "$_rep" | grep -c 'unowned')" "0" )
+
+# The refusal still refuses, and it now says what to do about it. A file the
+# installer genuinely cannot account for is still not its to overwrite; the
+# difference is that the message names the record it consulted and the flag that
+# proceeds, instead of leaving the user to guess at file surgery.
+( _ref="$SANDBOX/finalize-refuses"
+  mkdir -p "$_ref"
+  printf '#!/bin/sh\necho not ours\n' > "$_ref/$BIN_NAME"
+  printf 'staged bytes\n' > "$_ref/staged"
+  out=$( (FORCE=0; finalize_binary "$_ref/staged" "$_ref/$BIN_NAME" "rebuild it") 2>&1 ); status=$?
+  check "a file this installer cannot account for is still refused" "$status" "1"
+  check "the refusal names the ownership record it consulted" \
+    "$(printf '%s' "$out" | grep -c "\.$BIN_NAME\.veyyon-owner")" "1"
+  check "the refusal names the flag that proceeds anyway" \
+    "$(printf '%s' "$out" | grep -c -- '--force')" "1"
+  check "the file it refused to replace is untouched" \
+    "$(cat "$_ref/$BIN_NAME")" "$(printf '#!/bin/sh\necho not ours')"
+  check "and the staged download is not left behind" \
+    "$( [ -e "$_ref/staged" ] && echo present || echo absent )" "absent" )
+
+# --force displaces; it never deletes. A user whose machine is already in the
+# broken state needs a way through that does not require them to hand-delete a
+# file they cannot identify, and the installer must not decide on their behalf
+# that the file was worthless.
+( _frc="$SANDBOX/finalize-force"
+  mkdir -p "$_frc"
+  printf 'a file the installer cannot account for\n' > "$_frc/$BIN_NAME"
+  printf 'staged bytes\n' > "$_frc/staged"
+  out=$( (FORCE=1; finalize_binary "$_frc/staged" "$_frc/$BIN_NAME" "rebuild it") 2>&1 ); status=$?
+  check "--force installs over a file the installer cannot account for" "$status" "0"
+  check "the new binary is in place" "$(cat "$_frc/$BIN_NAME")" "staged bytes"
+  check "the displaced file survives under a name of its own" \
+    "$(cat "$_frc/$BIN_NAME".unowned.*)" "a file the installer cannot account for"
+  check "and its new path is printed rather than left to be discovered" \
+    "$(printf '%s' "$out" | grep -c 'moved it aside to')" "1"
+  check "the displaced name is not one any sweep reclaims" \
+    "$(update_attempt_middle_is_ours ".unowned.4242" && echo swept || echo kept)" "kept" )
+
+# An unreadable file is a different fact from a changed one, and telling the user
+# it changed sends them looking for a file nobody modified.
+( _unr="$SANDBOX/finalize-unreadable"
+  mkdir -p "$_unr"
+  printf 'installed veyyon bytes\n' > "$_unr/$BIN_NAME"
+  mark_artifact_owned "$_unr/$BIN_NAME"
+  chmod 000 "$_unr/$BIN_NAME"
+  if [ -r "$_unr/$BIN_NAME" ]; then
+      # Running as root, where mode 000 is still readable. The branch cannot be
+      # reached, and skipping it silently would report coverage nobody has.
+      check "SKIPPED (running as root): an unreadable binary is not reported as changed" "skipped" "skipped"
+  else
+      check "an unreadable receipted binary is not reported as changed" \
+        "$(binary_refusal_reason "$_unr/$BIN_NAME" | grep -c 'changed since this installer wrote it')" "0"
+      check "the refusal says it could not be read, and what to do" \
+        "$(binary_refusal_reason "$_unr/$BIN_NAME" | grep -c 'could not be read')" "1"
+  fi
+  chmod 644 "$_unr/$BIN_NAME" )
+
 # --- install_local: the --local path gets the same cleanup and honesty as --binary ---
 # install_binary traps EXIT/INT/TERM to remove its staging file; install_local
 # had no trap at all, so an interrupted or failed local install left a
@@ -2716,52 +2873,60 @@ export HOME="$SANDBOX/home"
 unset VEYYON_INSTALL_DIR
 export VEYYON_INSTALL_DIR="$SANDBOX/bin"
 
-# --- uninstall reclaims what an UPDATE left, not only what an install left ---
+# --- uninstall reclaims what an UPDATE left, under every name it writes ---
 #
-# `veyyon update` stages at `<binary>.new` and keeps the binary it replaces as
-# `<binary>.<timestamp>.<pid>.bak` until the new one has proved itself. Windows
-# cannot unlink a running process image, so that backup routinely outlives the
-# update; a killed update leaves the staged file. Neither is dot-prefixed, so
-# `sweep_stale_staging` never matched them and `--uninstall` reported success
-# while leaving a few hundred megabytes named `veyyon.new` in a directory the
-# user was told is now empty. Each of these files is a full copy of the binary.
+# `veyyon update` stages its download beside the binary and keeps the binary it
+# replaces until the new one has proved itself. Windows cannot unlink a running
+# process image, so that backup routinely outlives the update; a killed update
+# leaves the staged file. Neither is dot-prefixed, so `sweep_stale_staging` never
+# matched them and `--uninstall` reported success while leaving a few hundred
+# megabytes in a directory the user was told is now empty. Each of these files is
+# a full copy of the binary.
+#
+# The names have CHANGED across releases and the sweep did not follow: the
+# updater now gives each attempt a UUID (`veyyon.<uuid>.new`,
+# `veyyon.<uuid>.bak`), while the sweep still matched only the fixed and
+# dot-numeric shapes of two releases ago. So this drives ONE uninstall with every
+# shape present at once and asserts the exact set of survivors, rather than
+# checking the shapes someone had in mind: a new name the updater starts writing
+# survives, changes that set, and turns this red.
 ( _h="$SANDBOX/uninstall-update-leftovers"
   export HOME="$_h"
   mkdir -p "$_h/bin"
   export VEYYON_INSTALL_DIR="$_h/bin"
   printf 'binary' > "$_h/bin/veyyon"
   mark_artifact_owned "$_h/bin/veyyon"
+  # Ours: every staging and backup name any shipped updater has written.
   printf 'staged' > "$_h/bin/veyyon.new"
+  printf 'staged' > "$_h/bin/veyyon.6358c750-7c88-4c71-81c0-91c9b27c6c76.new"
+  printf 'previous' > "$_h/bin/veyyon.bak"
   printf 'previous' > "$_h/bin/veyyon.1753660000.4242.bak"
-  printf 'legacy' > "$_h/bin/veyyon.bak"
-  out=$(do_uninstall 2>&1)
-  check "uninstall removes a staged update download" \
-      "$( [ -e "$_h/bin/veyyon.new" ] && echo present || echo absent )" "absent"
-  check "uninstall removes a timestamped update backup" \
-      "$( [ -e "$_h/bin/veyyon.1753660000.4242.bak" ] && echo present || echo absent )" "absent"
-  check "uninstall removes the legacy fixed-name backup" \
-      "$( [ -e "$_h/bin/veyyon.bak" ] && echo present || echo absent )" "absent"
-  check "the install directory is left empty" \
-      "$(ls -A "$_h/bin" | wc -l | tr -d ' ')" "0"
-  # A removal nobody is told about is indistinguishable from files vanishing.
-  check "the staged download is named when it is reclaimed" \
-      "$(printf '%s' "$out" | grep -c 'left by an interrupted update')" "1"
-  check "each backup is named when it is reclaimed" \
-      "$(printf '%s' "$out" | grep -c 'removed update backup')" "2" )
-
-( _h="$SANDBOX/uninstall-foreign-bak"
-  export HOME="$_h"
-  mkdir -p "$_h/bin"
-  export VEYYON_INSTALL_DIR="$_h/bin"
-  # Only the updater's shape is ours: an empty middle, or dot-separated numbers.
-  # A copy somebody saved by hand under a name of their own is not the
-  # installer's to delete, and `rm -f "$d/$BIN_NAME"*.bak` would have taken it.
-  printf 'binary' > "$_h/bin/veyyon"
+  printf 'previous' > "$_h/bin/veyyon.b1f0a2c4-1111-4222-8333-444455556666.bak"
+  # Not ours: a copy somebody saved by hand under a name of their own, and
+  # anything belonging to a different command. `rm -f "$d/$BIN_NAME"*.bak` would
+  # have taken both.
   printf 'mine' > "$_h/bin/veyyon.mine.bak"
+  printf 'mine' > "$_h/bin/veyyon.keep.new"
   printf 'theirs' > "$_h/bin/veyyon-other.bak"
-  do_uninstall >/dev/null 2>&1
-  check "a hand-named backup survives uninstall" "$(cat "$_h/bin/veyyon.mine.bak")" "mine"
-  check "a backup of a different command survives uninstall" "$(cat "$_h/bin/veyyon-other.bak")" "theirs" )
+  printf 'theirs' > "$_h/bin/veyyon-other.new"
+  # A truncated UUID is not a UUID. This is the assertion that keeps the pattern
+  # from degenerating into "anything with a hyphen in it".
+  printf 'mine' > "$_h/bin/veyyon.6358c750-7c88-4c71-81c0-91c9b27c6c7.bak"
+  out=$(do_uninstall 2>&1); status=$?
+  # A successful uninstall exits 0. It used to end on `[ ... ] && wrap_line ...`,
+  # whose left side is false on any machine with no PATH line to take back, so the
+  # last command's status was 1 and the whole script exited 1 after reporting
+  # success — `install.sh --uninstall && echo done` never printed.
+  check "a successful uninstall exits 0" "$status" "0"
+  check "uninstall leaves exactly the files that are not the updater's" \
+      "$(ls -A "$_h/bin" | LC_ALL=C sort | tr '\n' ' ')" \
+      "veyyon-other.bak veyyon-other.new veyyon.6358c750-7c88-4c71-81c0-91c9b27c6c7.bak veyyon.keep.new veyyon.mine.bak "
+  check "a hand-named backup keeps its contents" "$(cat "$_h/bin/veyyon.mine.bak")" "mine"
+  # A removal nobody is told about is indistinguishable from files vanishing.
+  check "each staged download is named when it is reclaimed" \
+      "$(printf '%s' "$out" | grep -c 'left by an interrupted update')" "2"
+  check "each backup is named when it is reclaimed" \
+      "$(printf '%s' "$out" | grep -c 'removed update backup')" "3" )
 export HOME="$SANDBOX/home"
 export VEYYON_INSTALL_DIR="$SANDBOX/bin"
 
