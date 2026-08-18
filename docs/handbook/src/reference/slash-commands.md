@@ -78,7 +78,7 @@ act on a bare invocation: `/yolo`, `/fast`, and `/browser` flip a switch, `/goal
 | `/guided-goal` | Guided goal wizard |
 | `/loop` | Loop mode controls |
 | `/prewalk` | Prewalk edit path |
-| `/secret` | Store a credential the agent uses by placeholder and never sees. In a terminal the argument line is the credential and a bare `/secret` opens a hidden field; the name is asked afterwards and Enter accepts the generated one. Every surface runs the verbs `add`, `list`, `rm`, `clear`, `rename`, `value`, `scope`, `copy`, `extend`, `log`, `discard`, `help`; `/secret add <value>` stores a credential that starts with one of them. See [Secrets](../features/secrets.md) |
+| `/secret` | Store a credential the agent uses by placeholder and never sees. A command comes first on every surface: `/secret add <value>` stores it in a terminal, `/secret add` alone opens a hidden field, and the name is asked afterwards with Enter accepting the generated one. The commands are `add`, `list`, `rm`, `clear`, `rename`, `value`, `scope`, `copy`, `extend`, `log`, `discard`, `help`; a first word that is none of them is refused and nothing is stored. See [Secrets](../features/secrets.md) |
 | `/settings`, `/setup` | Settings UI; `/setup` opens first-run provider sign-in |
 | `/providers`, `/account manager` | Open the account manager: every stored account per provider, with its email, plan, health, and usage. See [Authentication](../using/authentication.md) |
 | `/account status` | Show which account each provider is serving this session with. A bare `/account` opens the picker |
@@ -155,7 +155,7 @@ own page; typing the bare command lists them with their descriptions.
 | `/permissions` | `status`, `ask`, `ask-command`, `auto`, `yolo`, `plan`, `reset` |
 | `/yolo` | `on`, `off`, `status` |
 | `/cpu-limit` | `status`, `remove`, `reset`, `kill` |
-| `/secret` | `add`, `list`, `rm`, `rename`, `value`, `scope`, `copy`, `extend`, `log`, `discard`, `help` |
+| `/secret` | `add`, `list`, `rm`, `clear`, `rename`, `value`, `scope`, `copy`, `extend`, `log`, `discard`, `help` |
 | `/collab` | `start`, `view`, `status`, `stop` |
 | `/browser` | `headless`, `visible` |
 | `/todo` | `edit`, `copy`, `export`, `import`, `append`, `start`, `done`, `drop`, `rm` |

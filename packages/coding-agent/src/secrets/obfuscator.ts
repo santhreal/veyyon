@@ -137,7 +137,7 @@ export function describeSecretExpiry(event: SecretExpiryEvent): string {
 		: "Its encrypted value has not yet been deleted from the vault; a successful vault refresh will prune it.";
 	return (
 		`#${event.name}# has expired and its in-memory expansion has been revoked. ${persistedState} ` +
-		`Store it again with /secret --from-env <VAR> if you still need it, or /secret add ${event.name} ` +
+		`Store it again with /secret add --from-env <VAR> if you still need it, or /secret add ${event.name} ` +
 		`--from-env <VAR> in a client with no terminal.`
 	);
 }

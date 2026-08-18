@@ -43,8 +43,8 @@ export interface SecretCommandPort {
 	 * in the scrollback while looking like the safe path. Absent means "tell them to use
 	 * `--from-env`", which is what {@link runSecretCommand} does.
 	 *
-	 * Takes no name, because there is never one to take: the field is what a bare `/secret` opens,
-	 * and the name is asked after the value is in hand.
+	 * Takes no name, because there is never one to take: the field is what a valueless `/secret add`
+	 * opens, and the name is asked after the value is in hand.
 	 */
 	promptForValue?: () => Promise<string | undefined>;
 	/**
@@ -120,9 +120,9 @@ export async function runSecretCommandForSurface(args: string, port: SecretComma
 		: undefined;
 
 	if (needsValuePrompt(request) && port.promptForValue !== undefined) {
-		// The masked field is the whole of a bare `/secret`: there is no name yet and nothing else
-		// to ask first. Its title has to carry the distinction on its own, which is why
-		// `maskedPromptTitle` says "value, not a name" rather than anything shorter.
+		// The masked field is the whole of `/secret add` with nothing after it: there is no name yet
+		// and nothing else to ask first. Its title has to carry the distinction on its own, which is
+		// why `maskedPromptTitle` says "value, not a name" rather than anything shorter.
 		const typed = await port.promptForValue();
 		if (typed === undefined) return { message: "Cancelled. Nothing was stored.", cancelled: true };
 		if (typed.length === 0) return { message: "Nothing was typed, so nothing was stored.", cancelled: true };
@@ -318,8 +318,8 @@ export function namePromptHint(): string {
 /**
  * Prompt title for the masked field: the imperative, and the promise that the name comes later.
  *
- * TWO SENTENCES, BECAUSE IT IS THE FIRST THING `/secret` DOES. The field is what a bare `/secret`
- * opens, before any name exists, so the only two things worth saying are what to put in it and
+ * TWO SENTENCES, BECAUSE IT IS THE FIRST THING `/secret add` DOES. The field is what a valueless
+ * `/secret add` opens, before any name exists, so the only two things worth saying are what to put in it and
  * that a label is still coming. Without the second sentence an operator who wants to name the
  * secret has no reason to believe they will get the chance, and the pressure to answer a MASKED
  * field with a name comes straight back. This carried four clauses in one accent colour once (the

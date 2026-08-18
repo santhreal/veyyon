@@ -8,10 +8,10 @@
  * another does not break anything loudly. It produces a subcommand a client can list and cannot
  * run, or one that works and is absent from the help, and nothing fails until somebody tries it.
  *
- * WHAT THE SURFACES ARE ALLOWED TO DISAGREE ABOUT: ONE THING, the ENTRY GRAMMAR. In a terminal the
- * argument line can BE the credential, a bare `/secret` opens a masked field, and the first word
- * decides between the two readings. A client with no field cannot accept a typed value at all, so
- * there the first word is always a verb and a credential arrives only through `--from-env`.
+ * WHAT THE SURFACES ARE ALLOWED TO DISAGREE ABOUT: ONE THING, WHERE THE CREDENTIAL MAY COME FROM.
+ * Both grammars require a verb first. In a terminal `add` takes the value inline or in a masked
+ * field, because the terminal can hide what is typed; a client with no field takes a NAME after
+ * `add` and reads the value only through `--from-env`.
  *
  * No VERB is surface-only. Every word the parser reserves runs on both, which is what makes a rule
  * proved over this grammar a rule about the whole command rather than about one client.
@@ -80,6 +80,24 @@ const VALUE = "ghp_surfaceAgreementCredential77";
  * `afterEach` so no other suite can observe it.
  */
 const ENV_VAR = "VEYYON_SURFACE_AGREES_VALUE";
+
+/** Both grammars, so a rule can be stated over the surface rather than repeated per surface. */
+const SURFACES: SecretCommandSurface[] = ["tui", "noninteractive"];
+
+/**
+ * The message of a refusal, so a test can assert what it says as well as that it threw.
+ *
+ * It FAILS rather than returning "" when nothing throws: a silent empty string would let every
+ * `not.toContain` in a refusal test pass against a parser that stored the credential instead.
+ */
+function messageOf(run: () => unknown): string {
+	try {
+		run();
+	} catch (error) {
+		return error instanceof Error ? error.message : String(error);
+	}
+	throw new Error("expected the line to be refused, and nothing was thrown");
+}
 
 const roots: string[] = [];
 
@@ -279,7 +297,7 @@ describe("the noninteractive parser and its usage text", () => {
 
 	/** An unknown verb is refused with the usage attached, so the operator sees the options. */
 	it("refuses an unknown verb and shows the usage", () => {
-		expect(() => parseSecretCommand("frobnicate", "noninteractive")).toThrow(/Unknown \/secret subcommand/);
+		expect(() => parseSecretCommand("frobnicate", "noninteractive")).toThrow(/Unknown \/secret command/);
 		try {
 			parseSecretCommand("frobnicate", "noninteractive");
 		} catch (error) {
@@ -304,15 +322,21 @@ describe("the noninteractive parser and its usage text", () => {
  */
 describe("what the two surfaces still agree about", () => {
 	/**
-	 * THE SHARED ENTRY FORM, and the sharpest statement of the agreement: `--from-env VAR` is the
+	 * THE SHARED ENTRY FORM, and the sharpest statement of the agreement: `add --from-env VAR` is the
 	 * one line both grammars read, and they parse it into the SAME request. Everything downstream
 	 * therefore has to produce the same store, the same confirmation and the same model notice, and
 	 * the defaults it fell back to — profile scope, the configured lifetime — are the same defaults.
+	 *
+	 * The two surfaces now spell it with the SAME BYTES, which they did not while the terminal read a
+	 * leading `--from-env` with no verb in front of it. The line is written once here on purpose: a
+	 * regression that reinstates a verbless spelling on one surface cannot make this row pass by
+	 * agreeing with itself.
 	 */
 	it("store the same entry from the one entry form both grammars have", async () => {
 		process.env[ENV_VAR] = VALUE;
-		const terminalRequest = parseSecretCommand(`--from-env ${ENV_VAR}`, "tui");
-		const clientRequest = parseSecretCommand(`add --from-env ${ENV_VAR}`, "noninteractive");
+		const line = `add --from-env ${ENV_VAR}`;
+		const terminalRequest = parseSecretCommand(line, "tui");
+		const clientRequest = parseSecretCommand(line, "noninteractive");
 		expect(terminalRequest).toEqual(clientRequest);
 
 		const terminalVault = await freshVault();
@@ -452,18 +476,26 @@ describe("what the two surfaces deliberately disagree about", () => {
 	});
 
 	/**
-	 * The inverse, and the reason the divergence is safe in this direction: an inline credential is
-	 * ordinary input in a terminal and an unknown verb to a client that would keep it in its request
-	 * history forever. Neither surface can silently do the other's reading.
+	 * AND A CREDENTIAL WITH NO VERB IN FRONT OF IT IS REFUSED ON BOTH, which is where the two grammars
+	 * stopped disagreeing. The terminal used to read that line as a value, and paid for the
+	 * convenience three times over: every word had to be reserved in advance, a credential that began
+	 * with one of them collided, and the collision needed its own escape spelling. Behind `add` the
+	 * value is read in exactly one place and none of that is needed.
+	 *
+	 * What still differs is the COPY, and only on the surface where the bytes are now on a screen: a
+	 * terminal operator who typed the old gesture has a live credential in their scrollback that the
+	 * vault never saw, so they are told to rotate it. A client's line came from argv, so the sentence
+	 * would be advice about a screen that may not exist. Neither refusal repeats the word.
 	 */
-	it("read an inline credential as a value only in a terminal", () => {
-		expect(parseSecretCommand("ghp_pastedStraightAfterTheCommand", "tui")).toEqual({
-			subcommand: "add",
-			value: "ghp_pastedStraightAfterTheCommand",
-		});
-		expect(() => parseSecretCommand("ghp_pastedStraightAfterTheCommand", "noninteractive")).toThrow(
-			/Unknown \/secret subcommand/,
-		);
+	it("refuse an inline credential on both surfaces, and warn about the screen only in a terminal", () => {
+		const pasted = "ghp_pastedStraightAfterTheCommand";
+		for (const surface of SURFACES) {
+			expect(() => parseSecretCommand(pasted, surface)).toThrow(/Unknown \/secret command/u);
+			expect(messageOf(() => parseSecretCommand(pasted, surface))).not.toContain(pasted);
+		}
+
+		expect(messageOf(() => parseSecretCommand(pasted, "tui"))).toContain("rotate it");
+		expect(messageOf(() => parseSecretCommand(pasted, "noninteractive"))).not.toContain("scrollback");
 	});
 
 	/**
@@ -486,7 +518,7 @@ describe("what the two surfaces deliberately disagree about", () => {
 				} catch (error) {
 					refusal = error instanceof Error ? error.message : String(error);
 				}
-				expect(refusal).not.toContain("Unknown /secret subcommand");
+				expect(refusal).not.toContain("Unknown /secret command");
 			}
 			if (name === "add" || name === "help") continue;
 			expect(SECRET_COMMAND_USAGE).toContain(`/secret ${name}`);

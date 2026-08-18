@@ -1494,13 +1494,13 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			return commandConsumed();
 		},
 		/**
-		 * The TUI, which CAN hide what is typed, so a bare `/secret` opens a masked field.
+		 * The TUI, which CAN hide what is typed, so `/secret add` with nothing after it opens a masked
+		 * field.
 		 *
-		 * THE EDITOR IS CLEARED BEFORE THE VALUE IS READ, not after. That matters far more under
-		 * the verbless grammar than it did before: the argument line IS the credential now, so
-		 * leaving it in the input buffer would park a live token there for as long as the prompt is
-		 * open, and a cancelled prompt would leave it there for good. The prompt is a local dialog,
-		 * never raced against a collab guest, so a masked field cannot be answered from another
+		 * THE EDITOR IS CLEARED BEFORE THE VALUE IS READ, not after. The line after `add` IS the
+		 * credential, so leaving it in the input buffer would park a live token there for as long as the
+		 * prompt is open, and a cancelled prompt would leave it there for good. The prompt is a local
+		 * dialog, never raced against a collab guest, so a masked field cannot be answered from another
 		 * machine.
 		 */
 		handleTui: async (command, runtime) => {
@@ -2639,7 +2639,7 @@ function buildProfileArgumentCompletions(): (prefix: string) => Promise<Autocomp
  * the terminal does not parse is stored as a credential instead of run.
  *
  * NAMES ARE NEVER OFFERED. Completing the names of stored secrets would render part of the vault on
- * a keystroke, and under the verbless grammar it would also store the whole suggestion as a
+ * a keystroke, and under the verbless grammar it once also stored the whole suggestion as a
  * credential when the verb turned out not to parse. `/secret list` is where names are read, on
  * purpose and in one place.
  *

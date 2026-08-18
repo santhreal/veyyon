@@ -68,7 +68,7 @@ not give the agent a readable inventory name. When the agent must choose and
 spend the credential deliberately, store the same value in the vault:
 
 ```text
-/secret --from-env DEPLOY_TOKEN
+/secret add --from-env DEPLOY_TOKEN
 ```
 
 That is the form you type in a terminal. Veyyon asks you for a name afterwards and generates one if you skip it. A client with no terminal, such as `--print` mode or an ACP editor, uses `/secret add deploy-token --from-env DEPLOY_TOKEN` instead; see [On a client with no terminal](#on-a-client-with-no-terminal).
@@ -160,10 +160,10 @@ Environment detection covers credentials that are already in your shell. For any
 
 ### Storing a credential
 
-In a terminal, everything you type after `/secret` is the credential. There is no verb to spell and no name to invent first:
+In a terminal, everything you type after `/secret add` is the credential. There is no name to invent first:
 
 ```text
-/secret ghp_R2d2c3poIHRva2VuIGV4YW1wbGU
+/secret add ghp_R2d2c3poIHRva2VuIGV4YW1wbGU
 ```
 
 Veyyon takes the value off the line and asks what to call it, in a field that shows what you type, because a label is not a secret:
@@ -184,10 +184,10 @@ That order is deliberate. The credential is what you came to store, so nothing s
 
 #### Pasting into a hidden field
 
-A bare `/secret` opens a field that shows nothing as you type:
+`/secret add` with nothing after it opens a field that shows nothing as you type:
 
 ```text
-/secret
+/secret add
 ```
 
 ```text
@@ -203,10 +203,10 @@ Your composer is cleared before the field opens, so the value never enters the i
 If the credential is already an environment variable, read it from there and type nothing:
 
 ```text
-/secret --from-env GITHUB_PAT
+/secret add --from-env GITHUB_PAT
 ```
 
-This is the recommended form, because the value never enters the input buffer and never reaches your scrollback. `--from-env` has to be the first word on the line and the variable name has to be the only thing after it. Anything else on the line is a credential again, so the parser refuses rather than storing something you did not mean:
+This is the recommended form, because the value never enters the input buffer and never reaches your scrollback. `--from-env` has to be the first word after `add` and the variable name has to be the only thing after it. Anything else on the line is a credential again, so the parser refuses rather than storing something you did not mean:
 
 ```text
 --from-env needs the name of an environment variable, and nothing else.
@@ -226,19 +226,24 @@ Every exact `/secret` command shape, including malformed input, is excluded from
 
 The line is kept byte for byte from its first non-space character to its last, so a passphrase may contain spaces and no part of the value is trimmed away. Use the hidden field or `--from-env` when you would rather the value were never on screen at all.
 
-#### The verbs are the reserved words
+#### A command comes first
 
-`/secret` reserves one list of words: `add`, `list`, `rm`, `clear`, `rename`, `value`, `scope`, `copy`, `extend`, `log`, `discard` and `help`, plus the second spellings `remove`, `delete`, `wipe`, `purge`, `empty`, `reset`, `name`, `replace`, `move`, `renew` and `audit`. A line beginning with one of those is that command. A line beginning with anything else is a credential.
+The first word of a `/secret` line is a command or it is nothing. The commands are `add`, `list`, `rm`, `clear`, `rename`, `value`, `scope`, `copy`, `extend`, `log`, `discard` and `help`, plus the second spellings `remove`, `delete`, `wipe`, `purge`, `empty`, `reset`, `name`, `replace`, `move`, `renew` and `audit`.
 
-A reserved word stays a command however much follows it, so a malformed one is refused rather than quietly stored: `/secret log 50` is a `log` with an unreadable argument, not a new secret called `SECRET_1`. If a credential of yours really does begin with one of those words, name the verb:
+A line that begins with anything else is refused, and nothing is stored:
 
 ```text
-/secret add list of words that is really a passphrase
+Unknown /secret command. Nothing was stored. If what followed /secret was a credential, it is now in
+your scrollback and was never protected, so rotate it and store the new one with /secret add.
 ```
 
-Everything after `add` is stored byte for byte, first word included. `add` reads the rest of the line the same way a bare `/secret` does, so the two forms store the same bytes.
+The refusal never repeats the word it refused, because that word is often the credential itself.
 
-Earlier versions spelled that escape `--`. That spelling is refused now, and the refusal names `add`. A slash command carries no options to end, so `--` meant nothing here and had to be looked up. It is refused rather than read as part of the value, because storing `-- ` on the front of a credential produces a secret that expands into requests that fail somewhere else entirely.
+Earlier versions read an unrecognised first word as the credential, so `/secret ghp_...` stored it. That saved one word and cost three mechanisms: every command had to be reserved in advance so it could not be mistaken for a value, a credential beginning with a reserved word collided with the command, and the collision needed an escape spelling of its own. With the value living behind `add` there is one place a value is read and none of that is needed. `/secret add list of words that is really a passphrase` stores that line byte for byte, first word included.
+
+A command stays a command however much follows it, so a malformed one is refused rather than quietly stored: `/secret log 50` is a `log` with an unreadable argument, not a new secret called `SECRET_1`.
+
+The `--` escape earlier versions carried is refused too, and the refusal names `add`. A slash command carries no options to end, so `--` meant nothing here and had to be looked up. It is refused rather than read as part of the value, because storing `-- ` on the front of a credential produces a secret that expands into requests that fail somewhere else entirely.
 
 ### What you are told when it is stored
 
@@ -405,8 +410,8 @@ likely to turn up in a headless run.
 
 Every entry expires. The default is one day, which you can change in `/settings` under Secret Lifetime.
 
-In a terminal that setting is the whole answer at the moment you store something, because the
-argument line is the credential and there is no room on it for an option. To give one entry a
+In a terminal that setting is the whole answer at the moment you store something, because the line
+after `add` is the credential and there is no room on it for an option. To give one entry a
 different lifetime, store it, then run `/secret extend <name> --ttl 30m`. The lifetime you name
 there is measured from now, not from when the credential was stored.
 
@@ -438,7 +443,7 @@ The deadline is enforced when the credential is used, not only when a session st
 ```text
 Warning: secrets: #GITHUB_TOKEN# has expired and its in-memory expansion has been
 revoked. Its encrypted value has not yet been deleted from the vault; a successful
-vault refresh will prune it. Store it again with /secret --from-env <VAR> if you still
+vault refresh will prune it. Store it again with /secret add --from-env <VAR> if you still
 need it, or /secret add GITHUB_TOKEN --from-env <VAR> in a client with no terminal.
 ```
 
@@ -746,7 +751,7 @@ Be clear about the boundary.
 
 **Protection begins when the value is known.** Once you enable protection or store a value, old local transcript text containing that value is sanitized on subsequent provider requests. The local transcript is not rewritten in place.
 
-**A value you type on the command line is visible on screen.** `/secret <value>` puts the credential in your scrollback, and the confirmation says so. It is excluded from persistent editor history, but the obfuscator cannot scrub a terminal after the fact. Use a bare `/secret`, which opens a field that hides what you type, or `/secret --from-env <VAR>`, which types nothing at all.
+**A value you type on the command line is visible on screen.** `/secret add <value>` puts the credential in your scrollback, and the confirmation says so. It is excluded from persistent editor history, but the obfuscator cannot scrub a terminal after the fact. Use `/secret add` on its own, which opens a field that hides what you type, or `/secret add --from-env <VAR>`, which types nothing at all.
 
 **The secret-use log records use, not intent.** It tells you which credential went into which command. It cannot tell you what the command did with it once the process had it.
 

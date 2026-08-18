@@ -2,7 +2,8 @@
  * WHY THIS EXISTS.
  *
  * `/secret` had no way to empty a vault, and every word an operator reaches for to do it was
- * unreserved. The parser's documented fallback is "an unreserved first word is a credential", so
+ * unreserved. The parser's documented fallback was then "an unreserved first word is a credential" —
+ * since replaced by requiring a command first — so
  * `/secret clear` did not fail: it STORED the six-character string `clear` under a generated name,
  * `/secret clear --all` stored the literal `clear --all`, and because the first successful `add`
  * also switches `secrets.enabled` on, the command typed to empty the vault filled it and turned the

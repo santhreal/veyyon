@@ -23,8 +23,8 @@
  *      the halfway warning unreachable.
  *   3. THE SURFACE SPLIT, which is now about verbs as well as entry forms. A client with no way to
  *      hide what is typed must never be told to type a credential, in the usage text or in the
- *      empty-vault help; and a terminal, whose whole argument line is the credential, must never
- *      be shown a verb it would store rather than run. The TABLE itself is surface independent,
+ *      empty-vault help; and a terminal, where the line after `add` is the credential, must never
+ *      be shown a form that puts a name where the value goes. The TABLE itself is surface independent,
  *      so every row that renders one names no surface at all.
  *
  * No value may appear anywhere, so every fixture carries a real-looking credential and every
@@ -361,10 +361,14 @@ describe("a cell is sanitised before it is drawn", () => {
 
 describe("the empty vault", () => {
 	/**
-	 * THE FIRST THING A NEW USER SEES, on the TUI surface, whose three entry forms are the verbless
-	 * grammar: the argument line is the credential, a bare `/secret` opens the hidden field, and
-	 * `--from-env` reads it out of the environment. This surface owns the copy because it is the
+	 * THE FIRST THING A NEW USER SEES, on the TUI surface, whose three entry forms all lead with the
+	 * verb: `add` alone opens the hidden field, `add <value>` takes the credential inline, and
+	 * `add --from-env` reads it out of the environment. This surface owns the copy because it is the
 	 * only one that HAS a field to offer; the one below owns the same text minus what it cannot do.
+	 *
+	 * The field comes FIRST, because it is the only form that never puts the credential on screen and
+	 * this is the one screen a first-time reader is guaranteed to see. The order is asserted as one
+	 * exact string, so a reshuffle that buries it fails here rather than in a reader's habits.
 	 */
 	it("offers every entry form the terminal has, and explains what a secret is", () => {
 		expect(renderSecretList([], { now: NOW })).toBe(
@@ -372,9 +376,9 @@ describe("the empty vault", () => {
 				"No active secrets. Nothing is being substituted right now.",
 				"",
 				"Store one and the agent can spend it by writing #NAME#, never seeing the value itself:",
-				"  /secret <value>                       store it now, then name it (optional)",
-				"  /secret                               paste into a hidden field instead",
-				"  /secret --from-env <VAR>              store the value of an environment variable",
+				"  /secret add                           paste into a hidden field",
+				"  /secret add <value>                   store it now, then name it (optional)",
+				"  /secret add --from-env <VAR>          store the value of an environment variable",
 			].join("\n"),
 		);
 	});
@@ -439,12 +443,20 @@ describe("the two usage variants", () => {
 		expect(NONINTERACTIVE_SECRET_COMMAND_USAGE).not.toBe(SECRET_COMMAND_USAGE);
 	});
 
-	/** The TUI can hide what is typed, so it is the only variant that may advertise doing so. */
+	/**
+	 * The TUI can hide what is typed, so it is the only variant that may advertise doing so. Both
+	 * variants lead with `add`; what differs is where the value may come from, not whether a verb is
+	 * required.
+	 */
 	it("offer masked and inline entry only in the TUI", () => {
 		expect(SECRET_COMMAND_USAGE).toContain(
-			"/secret <value>                       store it now, then name it (optional)",
+			"/secret add <value>                   store it now, then name it (optional)",
 		);
-		expect(SECRET_COMMAND_USAGE).toContain("/secret                               paste into a hidden field instead");
+		expect(SECRET_COMMAND_USAGE).toContain("/secret add                           paste into a hidden field");
+		// And never the verbless forms the parser refuses. Pinned with the two leading spaces of the
+		// indent so `/secret add <value>` cannot satisfy a bare `/secret <value>` check by suffix.
+		expect(SECRET_COMMAND_USAGE).not.toContain("  /secret <value>");
+		expect(SECRET_COMMAND_USAGE).not.toContain("  /secret --from-env");
 
 		expect(NONINTERACTIVE_SECRET_COMMAND_USAGE).not.toContain("<value>");
 		expect(NONINTERACTIVE_SECRET_COMMAND_USAGE).not.toContain("hidden field");

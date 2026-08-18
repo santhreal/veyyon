@@ -155,7 +155,7 @@ describe("a first word that is not a verb is refused without being repeated", ()
 		const message = refusal(SENTINEL, "noninteractive");
 
 		expect(message.toLowerCase()).not.toContain(SENTINEL.toLowerCase());
-		expect(message).toContain("Unknown /secret subcommand.");
+		expect(message).toContain("Unknown /secret command.");
 		// The usage is the actionable half, so the refusal has to carry it rather than only refusing.
 		expect(message).toContain("/secret list");
 	});

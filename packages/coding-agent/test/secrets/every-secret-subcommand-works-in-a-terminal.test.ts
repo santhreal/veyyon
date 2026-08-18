@@ -157,9 +157,9 @@ describe("the terminal help and the terminal menu describe the same grammar", ()
 	 * The defect was one of them disagreeing with the other two, twice over, so the agreement is
 	 * asserted as a set rather than per member.
 	 *
-	 * `add` is exempt from the help half only: the terminal spells it `/secret <value>`, because the
-	 * verb is a synonym there and leading with it would put a word in front of the one action that
-	 * needs none.
+	 * `add` is exempt from the help half only: the terminal spells its rows `/secret add <value>` and
+	 * `/secret add --from-env <VAR>`, because where the value may come from is the one thing the two
+	 * surfaces disagree about.
 	 */
 	it("names every menu entry in the help, and parses every one", () => {
 		const usage = secretCommandUsage("tui");

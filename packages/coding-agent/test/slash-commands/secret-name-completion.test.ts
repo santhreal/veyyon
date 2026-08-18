@@ -167,6 +167,8 @@ describe("what /secret offers in its argument dropdown", () => {
 			add: "ghp_theCredentialItself",
 			list: "",
 			rm: "TOKEN_NAME",
+			// A scope, because `clear` empties a whole vault and refuses to guess which one.
+			clear: "--scope project",
 			rename: "TOKEN_NAME OTHER_NAME",
 			value: "TOKEN_NAME",
 			scope: "TOKEN_NAME global",

@@ -340,14 +340,18 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 		description: "Store a credential the agent can use without ever seeing it",
 		acpDescription: "Manage credentials; new values are accepted only from environment variables",
 		allowArgs: true,
-		// The value form first, then the verbs a new operator reaches for. The rest of the grammar is
-		// in the dropdown rather than the ghost text: one line cannot carry eleven verbs and still
-		// show that a bare value is all `/secret` needs.
-		inlineHint: "<value> | list | rm | rename | value | extend | log | --from-env VAR",
+		// A command comes first, and `add` leads because it is the one an operator arrives to run. The
+		// rest of the grammar is in the dropdown rather than the ghost text: one line cannot carry
+		// twelve commands.
+		inlineHint: "add <value> | add --from-env VAR | list | rm | rename | value | extend | log",
 		acpInputHint: "add <name> --from-env <VAR>",
-		// Bare /secret opens the masked value field rather than a subcommand picker: the value form
-		// needs no verb, so `add` is a synonym rather than a hidden default, and a picker would put a
-		// mandatory verb back in front of the one action that does not need one.
+		// Bare /secret prints this command's own usage rather than the generic subcommand list, which
+		// is the same text `/secret help` prints and is not a hidden default: it runs no subcommand and
+		// stores nothing. The generic list cannot stand in for it, because a `SubcommandDef.usage` is
+		// one string for every surface and `add`'s shape is not — a terminal is shown `add <value>`
+		// and a client `add <name> --from-env <VAR>`. Printing the declaration's spelling in a terminal
+		// would advertise typing a NAME where the value goes, which is the exposure this feature exists
+		// to remove.
 		bareAction: "distinct",
 		subcommands: [
 			{
