@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ecfe896c.js";
+            window.path_to_searchindex_js = "../searchindex-088f9f85.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-79e2ba62.js"></script>
@@ -212,6 +212,43 @@ there that is safe to echo back.</p>
 </code></pre>
 <p>The separator decides. A command name is one segment of letters, digits, underscores and hyphens
 starting with a letter, so anything holding a slash is a path.</p>
+<h2 id="every-argument-is-a-plain-word"><a class="header" href="#every-argument-is-a-plain-word">Every argument is a plain word</a></h2>
+<p>No slash command takes an option. Nothing is spelled with a dash, so there is nothing to look up
+and nothing to get in the wrong order. A word means something for one of two reasons: the POSITION
+it sits in, or a CLOSED SET or SHAPE it belongs to.</p>
+<p>Plenty of commands take a single argument, listed with them in the tables below. These are the ones
+with a grammar to state, and each used to spell part of it with dashes:</p>
+<pre><code class="language-text">/mcp add &lt;name&gt; [http|sse] [url &lt;url&gt;] [token &lt;token&gt;] [run &lt;command...&gt;]
+/mcp remove &lt;name&gt;
+/mcp smithery-search &lt;keyword...&gt; [&lt;limit 1-100&gt;] [semantic]
+/ssh add &lt;name&gt; &lt;host&gt; [user &lt;user&gt;] [&lt;port&gt;] [key &lt;keyPath&gt;]
+/ssh remove &lt;name&gt;
+/stats [&lt;port&gt;]
+</code></pre>
+<p><code>/secret</code> has its own grammar and its own page: see <a href="../features/secrets.html">Secrets</a>.</p>
+<p>Position covers every required word, so <code>/mcp remove project</code> removes a server actually named
+<code>project</code>. Where meaning is taken from a word’s shape instead, the sets provably cannot overlap: on
+<code>/ssh add</code> a port is digits and nothing else the command reads is, and <code>user</code> and <code>key</code> are the only
+two keywords, each taking the word after it. A word the command cannot use is refused rather than
+ignored, because a word that is silently dropped looks like a setting that was applied.</p>
+<h3 id="a-spelling-that-was-an-option"><a class="header" href="#a-spelling-that-was-an-option">A spelling that was an option</a></h3>
+<p>Each of these commands remembers the option spellings it used to have, and refuses them naming the
+plain word that replaced each one:</p>
+<pre><code class="language-text">/ssh add box example.com --port 2222
+--port is gone: write the port as a plain integer.
+Usage: /ssh add &lt;name&gt; &lt;host&gt; [user &lt;user&gt;] [&lt;port&gt;] [key &lt;keyPath&gt;]
+</code></pre>
+<p>The plain word gets the same answer as the dashed one. <code>/stats port 8080</code> is refused the way
+<code>/stats --port 8080</code> is, and <code>/mcp add srv project</code> the way <code>/mcp add srv --scope project</code> is,
+because the operator who types the word an older grammar taught is asking the same question either
+way and wants the same answer. Which words those are is read from the same table the refusal text
+comes from, so the two spellings cannot drift apart.</p>
+<p>A word that never was an option is refused more briefly, since there is no replacement to name:
+<code>Unknown argument: &lt;word&gt;</code>, or <code>Invalid port: &lt;word&gt;</code> where a port was the only thing the command
+reads.</p>
+<p><code>/mcp smithery-search</code> is the exception, and it is one on purpose: its trailing words are search
+terms, arbitrary text with no closed set, so a plain <code>project</code> there is a keyword to search for and
+is searched for. Only the dashed spellings are refused.</p>
 <h2 id="a-bare-command-that-has-subcommands"><a class="header" href="#a-bare-command-that-has-subcommands">A bare command that has subcommands</a></h2>
 <p>Some commands take a subcommand: <code>/account status</code>, <code>/account manager</code>, <code>/usage reset</code>. Typing the
 command on its own opens a picker listing every subcommand it has, with what each one does. Move
@@ -311,6 +348,7 @@ act on a bare invocation: <code>/yolo</code>, <code>/fast</code>, and <code>/bro
 <tr><td><code>/login [provider|url]</code></td><td>OAuth / API key login</td></tr>
 <tr><td><code>/logout [provider]</code></td><td>Log out</td></tr>
 <tr><td><code>/usage show|reset</code></td><td>Provider rate limits</td></tr>
+<tr><td><code>/stats [&lt;port&gt;]</code></td><td>Open the usage dashboard in a browser. The port is a plain integer and defaults to 3847; <code>veyyon stats</code> opens the same dashboard from a shell</td></tr>
 <tr><td><code>/changelog</code></td><td>Open the release notes on the web</td></tr>
 </tbody>
 </table>
@@ -327,7 +365,7 @@ act on a bare invocation: <code>/yolo</code>, <code>/fast</code>, and <code>/bro
 <tr><td><code>/plugins …</code></td><td>Plugin browser</td></tr>
 <tr><td><code>/extensions</code>, <code>/status</code></td><td>Extension Control Center dashboard. <code>/status</code> is an alias for it, not a session-status view</td></tr>
 <tr><td><code>/agents</code> (aliases <code>/cockpit</code>, <code>/hub</code>)</td><td>Open the Agent Control Center: live agent roster and the agent-to-agent comms stream</td></tr>
-<tr><td><code>/ssh …</code></td><td>SSH host setup</td></tr>
+<tr><td><code>/ssh …</code></td><td>SSH host setup. <code>add</code> takes the name and host by position, then <code>user &lt;user&gt;</code>, a plain port, and <code>key &lt;keyPath&gt;</code> in any order: see <a href="#every-argument-is-a-plain-word">Every argument is a plain word</a></td></tr>
 <tr><td><code>/hotkeys</code></td><td>Active keybinding chords</td></tr>
 <tr><td><code>/collab …</code>, <code>/join</code>, <code>/leave</code></td><td>Live collab sessions</td></tr>
 <tr><td><code>/share</code></td><td>Share the session via an encrypted link (share server or secret gist)</td></tr>
