@@ -68,10 +68,10 @@ not give the agent a readable inventory name. When the agent must choose and
 spend the credential deliberately, store the same value in the vault:
 
 ```text
-/secret add --from-env DEPLOY_TOKEN
+/secret from-env DEPLOY_TOKEN
 ```
 
-That is the form you type in a terminal. Veyyon asks you for a name afterwards and generates one if you skip it. A client with no terminal, such as `--print` mode or an ACP editor, uses `/secret add deploy-token --from-env DEPLOY_TOKEN` instead; see [On a client with no terminal](#on-a-client-with-no-terminal).
+That is the form you type in a terminal. Veyyon asks you for a name afterwards and generates one if you skip it. A client with no terminal, such as `--print` mode or an ACP editor, writes the name on the line as `/secret from-env DEPLOY_TOKEN DEPLOY_KEY`, because nothing there can ask; see [On a client with no terminal](#on-a-client-with-no-terminal).
 
 ## What the model sees
 
@@ -203,32 +203,34 @@ Your composer is cleared before the field opens, so the value never enters the i
 If the credential is already an environment variable, read it from there and type nothing:
 
 ```text
-/secret add --from-env GITHUB_PAT
+/secret from-env GITHUB_PAT
 ```
 
-This is the recommended form, because the value never enters the input buffer and never reaches your scrollback. `--from-env` has to be the first word after `add` and the variable name has to be the only thing after it. Anything else on the line is a credential again, so the parser refuses rather than storing something you did not mean:
+This is the recommended form, because the value never enters the input buffer and never reaches your scrollback. `from-env` is a command of its own, alongside `add`, and its first word is the name of the variable. The name field follows here too, so a bare `from-env GITHUB_PAT` is the whole line you need.
+
+You may write the name on the line instead, and a lifetime and a vault after it:
 
 ```text
---from-env needs the name of an environment variable, and nothing else.
+/secret from-env GITHUB_PAT DEPLOY_KEY 7d project
 ```
 
-The name field follows here too.
+The variable comes first and the name second, both by position, which is what lets a secret be called `PROFILE` or `NEVER`. The lifetime and the vault come after in either order, because no word is both: a vault is one of `profile`, `project` and `global`, and a lifetime is `30m`, `12h`, `7d`, `2w`, `never`, or anything else beginning with a digit. `env` is the second spelling of `from-env`.
 
 #### A value on the command line stays in your scrollback
 
 The one-paste form is on screen until you clear the terminal. Veyyon says so rather than leaving you to work it out:
 
 ```text
-The value was typed on screen, so it is in your scrollback. Use --from-env next time to avoid that.
+The value was typed on screen, so it is in your scrollback. Use /secret from-env next time to avoid that.
 ```
 
 Every exact `/secret` command shape, including malformed input, is excluded from persistent editor history. This prevents the command from being recovered with the Up key or written to `history.db`. It cannot erase terminal scrollback that was already rendered.
 
-The line is kept byte for byte from its first non-space character to its last, so a passphrase may contain spaces and no part of the value is trimmed away. Use the hidden field or `--from-env` when you would rather the value were never on screen at all.
+The line is kept byte for byte from its first non-space character to its last, so a passphrase may contain spaces and no part of the value is trimmed away. Use the hidden field or `from-env` when you would rather the value were never on screen at all.
 
 #### A command comes first
 
-The first word of a `/secret` line is a command or it is nothing. The commands are `add`, `list`, `rm`, `clear`, `rename`, `value`, `scope`, `copy`, `extend`, `log`, `discard` and `help`, plus the second spellings `remove`, `delete`, `wipe`, `purge`, `empty`, `reset`, `name`, `replace`, `move`, `renew` and `audit`.
+The first word of a `/secret` line is a command or it is nothing. The commands are `add`, `from-env`, `list`, `rm`, `clear`, `rename`, `value`, `scope`, `copy`, `extend`, `log`, `discard` and `help`, plus the second spellings `env`, `remove`, `delete`, `wipe`, `purge`, `empty`, `reset`, `name`, `replace`, `move`, `renew` and `audit`.
 
 A line that begins with anything else is refused, and nothing is stored:
 
@@ -243,7 +245,26 @@ Earlier versions read an unrecognised first word as the credential, so `/secret 
 
 A command stays a command however much follows it, so a malformed one is refused rather than quietly stored: `/secret log 50` is a `log` with an unreadable argument, not a new secret called `SECRET_1`.
 
-The `--` escape earlier versions carried is refused too, and the refusal names `add`. A slash command carries no options to end, so `--` meant nothing here and had to be looked up. It is refused rather than read as part of the value, because storing `-- ` on the front of a credential produces a secret that expands into requests that fail somewhere else entirely.
+#### Every argument is a plain word
+
+There are no options anywhere in `/secret`. Nothing is spelled with a dash, so there is nothing to look up and nothing to get in the wrong order. A word means something because of where it sits, or because it belongs to a set that cannot be anything else:
+
+| How a word is read | Where |
+| ------------------ | ----- |
+| its position | `rm <name>`, `rename <name> <new-name>`, `scope <name> <vault>`, `extend <name> <lifetime>`, `from-env <VAR> <name>` |
+| a set of three words | a vault: `profile`, `project`, `global` |
+| a lifetime shape | `30m`, `12h`, `7d`, `2w`, `never`, or any word beginning with a digit |
+| a whole number | the record count on `log` |
+
+Position wins wherever the two could disagree, so a secret really called `PROFILE` is removed by `/secret rm PROFILE` and one called `NEVER` has its lifetime extended by `/secret extend NEVER 7d`. Where meaning is taken from a word's shape instead, the sets provably cannot overlap: a secret name may not begin with a digit, so `/secret log 50` is fifty records and `/secret log GITHUB_TOKEN` is one credential's uses; and a name may not contain a hyphen, so the `from-env` in `/secret value <name> from-env <VAR>` is never a name.
+
+The spellings `--`, `--from-env`, `--ttl`, `--scope`, `--limit` and `--name` were the earlier grammar and are refused, naming the plain word that replaced each one. They are refused only as the first word after `add`, so a credential that merely begins with dashes is still stored byte for byte:
+
+```text
+/secret add -----BEGIN OPENSSH PRIVATE KEY-----
+```
+
+`--` was the worst of them. A slash command carries no options to end, so it meant nothing here and had to be looked up, and storing it on the front of a credential produces a secret that expands into requests failing somewhere else entirely.
 
 ### What you are told when it is stored
 
@@ -274,14 +295,14 @@ Every verb below works in a terminal and on a client that has none. The value fo
 | `/secret value <name>` | replace the value, keeping the name and the deadline |
 | `/secret scope <name> project` | move it to another vault |
 | `/secret copy <name>` | put `#NAME#` on the clipboard, never the value |
-| `/secret extend <name> --ttl 7d` | give it a fresh lifetime, measured from now |
-| `/secret rm <name> [--scope global]` | revoke it |
-| `/secret clear --scope profile` | remove every credential in one vault, naming what it removed |
-| `/secret log [--name <name>] [--limit 50]` | which credentials were spent, and where |
-| `/secret discard --scope project` | move aside a vault file that cannot be read |
+| `/secret extend <name> 7d` | give it a fresh lifetime, measured from now |
+| `/secret rm <name> [global]` | revoke it |
+| `/secret clear profile` | remove every credential in one vault, naming what it removed |
+| `/secret log [<name>] [50]` | which credentials were spent, and where |
+| `/secret discard project` | move aside a vault file that cannot be read |
 | `/secret help` | every form, on the surface you are on |
 
-`value` is how you correct a credential. It keeps the name, the scope, the creation time and the expiry, so a token pasted with one character missing does not have to be revoked and stored again: storing it again mints a new name while every prompt in the session still spends the old placeholder, and it re-dates the entry, so a secret with two days left would come back with the default lifetime. The field it opens is hidden as you type, and `--from-env <VAR>` works with it too.
+`value` is how you correct a credential. It keeps the name, the scope, the creation time and the expiry, so a token pasted with one character missing does not have to be revoked and stored again: storing it again mints a new name while every prompt in the session still spends the old placeholder, and it re-dates the entry, so a secret with two days left would come back with the default lifetime. The field it opens is hidden as you type, and `/secret value <name> from-env <VAR>` reads the replacement out of the environment instead.
 
 `copy` copies the placeholder and only the placeholder. `#GITHUB_TOKEN#` is the thing you paste into a prompt; copying the value would be the disclosure you stored the credential to avoid.
 
@@ -297,18 +318,28 @@ Every change reloads the live secret runtime, so a credential you revoke stops b
 
 ### On a client with no terminal
 
-`--print` mode and an ACP editor have no field that can hide what you type, so they cannot accept a credential you type at all. Every verb is the same there. What differs is `add`:
+`--print` mode and an ACP editor have no field that can hide what you type, so they cannot accept a credential you type at all. Every command is the same there, and `from-env` is the way in:
 
 ```text
-/secret add github-token --from-env GITHUB_PAT
+/secret from-env GITHUB_PAT GITHUB_TOKEN
 ```
 
-The name is a positional argument there, because there is no field to ask for one afterwards, and `--from-env` is the only source. An inline value is refused, because that surface keeps its requests in a history you cannot clear:
+The name is required on the line here, because nothing on that surface can ask for it afterwards. `add` is still listed, with the reason it does not work and the command that does, rather than being hidden and answering only with an error:
 
 ```text
-This non-interactive client refuses inline credentials because they would be retained in command
-history. Use /secret add <name> --from-env MY_TOKEN instead.
+/secret from-env <VAR> <name>         store the value of an environment variable
+/secret add                           not here: a client cannot hide typing, so use from-env
 ```
+
+An inline value is refused, because that surface keeps its requests in a history you cannot clear:
+
+```text
+This client refuses an inline credential, because the line carrying it is retained in the client's own
+request history. Nothing was stored. Read the value out of the environment instead:
+/secret from-env MY_TOKEN <name>.
+```
+
+The refusal repeats neither word after `add`. Nothing distinguishes a name followed by a credential from a credential whose first word looks like a name, so a message that quoted the part it took for the name would sooner or later quote the credential.
 
 `list` prints a table:
 
@@ -317,7 +348,7 @@ history. Use /secret add <name> --from-env MY_TOKEN instead.
   PLACEHOLDER         SCOPE    EXPIRES  STATUS
   #GITHUB_TOKEN#      profile  6d left
   #PROD_DB_PASSWORD#  project  1d left  expires soon
-Extend one before it lapses: /secret extend <name> --ttl 7d.
+Extend one before it lapses: /secret extend <name> 7d.
 ```
 
 No part of any value appears there. A prefix of a credential is still a disclosure, and one on screen is one in a screenshot.
@@ -339,8 +370,8 @@ Your profile vault at /home/you/.veyyon/profiles/work/agent/vault.json exists bu
 read, so it was skipped and the secrets stored in it are unavailable for the rest of this session:
 their placeholders will NOT expand. Every OTHER scope loaded normally, and masking of known secret
 values is unaffected. The vault is encrypted, so a hand edit cannot repair it: run /secret discard
---scope profile to move the unreadable file aside. Then store the secrets it held again. The reason
-it could not be read was <what the parser complained about>
+profile to move the unreadable file aside. Then store the secrets it held again. The reason it
+could not be read was <what the parser complained about>
 ```
 
 A vault can also fail in a way Veyyon cannot step around, where nothing in it can be read: the key
@@ -351,9 +382,9 @@ still starts, and says so:
 Your vault could not be read, so this session started WITHOUT it: nothing you have stored is
 available, and every #NAME# placeholder it held will be refused rather than sent as literal text.
 Masking of secrets from your environment and secrets.yml is unaffected and still running.
-Affected: project (/home/you/work/repo/.veyyon/vault.json). Run /secret discard --scope project to
-move the unreadable file aside. Then store the secrets it held again. The reason it could not be
-read was <what the parser complained about>
+Affected: project (/home/you/work/repo/.veyyon/vault.json). Run /secret discard project to move
+the unreadable file aside. Then store the secrets it held again. The reason it could not be read
+was <what the parser complained about>
 ```
 
 Both notices name one command, because a notice raised by the vault loader cannot know which client
@@ -388,10 +419,10 @@ damage is a truncated tail, the entries before the damage are still in there. Ve
 a credential store to make itself usable again, so the cleanup is yours to do once you are sure you
 no longer need it.
 
-**You have to name the scope.** Every other command that takes `--scope` defaults to `profile`,
-because there it chooses where to put something and `/secret list` shows you the result. Here it
-chooses a file to move aside, so a default would let a bare `/secret discard` move a working vault
-out from under the session you are sitting in. A bare invocation is refused and tells you the flag.
+**You have to name the vault.** Every other command that takes one defaults to `profile`, because
+there it chooses where to put something and `/secret list` shows you the result. Here it chooses a
+file to move aside, so a default would let a bare `/secret discard` move a working vault out from
+under the session you are sitting in. A bare invocation is refused and names the word to add.
 
 Two things the repair refuses, both on purpose:
 
@@ -410,25 +441,25 @@ likely to turn up in a headless run.
 
 Every entry expires. The default is one day, which you can change in `/settings` under Secret Lifetime.
 
-In a terminal that setting is the whole answer at the moment you store something, because the line
-after `add` is the credential and there is no room on it for an option. To give one entry a
-different lifetime, store it, then run `/secret extend <name> --ttl 30m`. The lifetime you name
-there is measured from now, not from when the credential was stored.
+That setting is the whole answer for `/secret add`, because the line after `add` is the credential
+and there is no room on it for anything else. To give such an entry a different lifetime, store it,
+then run `/secret extend <name> 30m`. The lifetime you name there is measured from now, not from
+when the credential was stored.
 
-On a client with no terminal the lifetime is an option on `add` as well:
+`from-env` takes one on the line, after the variable and the name:
 
 ```text
-/secret add deploy-key --from-env DEPLOY_KEY --ttl 30m
-/secret add signing-key --from-env SIGNING_KEY --ttl never
+/secret from-env DEPLOY_KEY DEPLOY_TOKEN 30m
+/secret from-env SIGNING_KEY SIGNING_TOKEN never project
 ```
 
-Lifetimes are written the same way in both places: `30m`, `12h`, `7d`, `2w`, or `never`. Weeks are accepted and reported back in days.
+Lifetimes are written the same way everywhere: `30m`, `12h`, `7d`, `2w`, or `never`. Weeks are accepted and reported back in days. A lifetime and a vault may be given in either order, because no word is both.
 
 You are warned before a lifetime runs out, once at the halfway point and again near the end:
 
 ```text
 Warning: secrets: #DEPLOY_KEY# expires soon, 2h left. Extend it with
-/secret extend DEPLOY_KEY --ttl 7d, or it will be deleted.
+/secret extend DEPLOY_KEY 7d, or it will be deleted.
 ```
 
 The remedy is one command, and it runs wherever the warning is read: a notice raised while the vault
@@ -443,8 +474,8 @@ The deadline is enforced when the credential is used, not only when a session st
 ```text
 Warning: secrets: #GITHUB_TOKEN# has expired and its in-memory expansion has been
 revoked. Its encrypted value has not yet been deleted from the vault; a successful
-vault refresh will prune it. Store it again with /secret add --from-env <VAR> if you still
-need it, or /secret add GITHUB_TOKEN --from-env <VAR> in a client with no terminal.
+vault refresh will prune it. Store it again with /secret from-env <VAR> if you still
+need it, or /secret from-env <VAR> GITHUB_TOKEN in a client with no terminal.
 ```
 
 In a terminal the name field that follows is where you type `GITHUB_TOKEN` to get the same
@@ -469,7 +500,7 @@ A credential you store in a terminal goes to the profile vault. Scope is an opti
 A credential already stored can be moved with `/secret scope <name> project`. To file one somewhere else as you store it, name the scope on a client that takes a verb and a value on one line:
 
 ```text
-/secret add scan-token --from-env SCAN_TOKEN --scope project
+/secret from-env SCAN_TOKEN SCAN_TOKEN project
 ```
 
 When the same name exists in more than one scope, `/secret list` says so. The table stays one row
@@ -482,7 +513,7 @@ copies it is not spending:
   #SHARED_TOKEN#  project  24h left
   #SOLO_TOKEN#    profile  24h left
   #SHARED_TOKEN# is also stored in the global vault, shadowed by the project one. Only the project
-  copy is spent. Remove it with /secret rm SHARED_TOKEN --scope global.
+  copy is spent. Remove it with /secret rm SHARED_TOKEN global.
 ```
 
 That copy is inert, not gone. It is still on disk, still decryptable, and it becomes the live one
@@ -490,15 +521,15 @@ the moment the copy in front of it is removed. Before the list mentioned it, the
 out was to remove the copy in effect and read what the removal told you, which is late: you learn
 about a credential at the moment it starts being spent.
 
-The narrowest copy is the one that wins, and a removal without `--scope` takes it. Removing that
+The narrowest copy is the one that wins, and a removal that names no vault takes it. Removing that
 copy uncovers the next one out, and the command tells you that too:
 
 ```text
 /secret rm shared-token
 
 Removed SHARED_TOKEN from the project vault. A profile secret of the same name was underneath it,
-so #SHARED_TOKEN# still spends a credential, now that one. Run /secret rm SHARED_TOKEN --scope
-profile to remove that one too.
+so #SHARED_TOKEN# still spends a credential, now that one. Run /secret rm SHARED_TOKEN profile to
+remove that one too.
 ```
 
 That second sentence is the part that matters, because the placeholder keeps working. Without it
@@ -509,26 +540,30 @@ revoked either.
 To take a particular copy rather than the one in effect, name its scope:
 
 ```text
-/secret rm shared-token --scope profile
+/secret rm SHARED_TOKEN profile
 ```
 
 Naming the scope of a copy that is already shadowed removes it without changing what the
 placeholder spends, and the command says that rather than implying something changed.
 
-`--scope` belongs to `add`, to `rm`, and to the `discard` repair. Each option is refused by the
-subcommands that do not read it, naming the ones that do:
+A vault word belongs to `from-env`, `rm`, `clear`, `scope` and `discard`. On a command that does
+not read one it is a word that fits no slot, and it is refused rather than ignored:
 
 ```text
-/secret extend github-token --scope global
+/secret extend GITHUB_TOKEN global
 
-/secret extend does not take --scope, and ignoring it would look like it had been applied.
-/secret add, /secret rm, /secret clear and /secret discard take it.
+/secret extend cannot read the word in position 2, and a word that would be ignored is refused
+rather than dropped silently.
 ```
 
-That refusal exists because the alternative is worse than an error. An accepted-and-ignored
-`--scope` on `extend` reads as "the global copy was given a fresh lifetime" when what actually
-happened is that the copy in effect was re-dated and the others were left alone. It is a rule of
-the verb grammar, and `--scope` is refused by `extend` wherever you run it.
+That refusal exists because the alternative is worse than an error. An accepted-and-ignored vault
+word on `extend` reads as "the global copy was given a fresh lifetime" when what actually happened
+is that the copy in effect was re-dated and the others were left alone. The same rule covers a
+lifetime handed to `rm` and a number handed to `list`: a word veyyon would drop is a word you meant
+something by.
+
+The refusal names the position and never repeats the word, because the realistic slip is muscle
+memory for `add` under a different command, which puts the credential itself in that position.
 
 ### Encryption, and what it does not do
 
@@ -568,14 +603,14 @@ Hiding a value from the provider tells you what the agent could not see. It does
     {"command":"./release.sh --token #GITHUB_TOKEN# --key #DEPLOY_KEY#"}
 ```
 
-One use is when it happened, which tool received it, which placeholders were substituted, and the command as the model wrote it. The last twenty are shown; `/secret log --limit 50` asks for more.
+One use is when it happened, which tool received it, which placeholders were substituted, and the command as the model wrote it. The last twenty are shown; `/secret log 50` asks for more.
 
 #### Narrowing it to one credential
 
-`--name` answers the question worth asking just before a revoke, which is what stops working:
+A name answers the question worth asking just before a revoke, which is what stops working:
 
 ```text
-/secret log --name GITHUB_TOKEN
+/secret log GITHUB_TOKEN
 
 Uses of #GITHUB_TOKEN#:
 2 most recent use(s), oldest first:
@@ -585,7 +620,7 @@ Uses of #GITHUB_TOKEN#:
     {"command":"./release.sh --token #GITHUB_TOKEN# --key #DEPLOY_KEY#"}
 ```
 
-The whole log is read, then narrowed to that credential, and only then cut to the limit. So `--name X --limit 20` means the last twenty uses OF that credential, not the last twenty records of which some happened to be it. The heading names the credential even when nothing follows it, because an empty log for one secret and an empty log altogether support opposite conclusions: the first says this credential has never been spent, the second says nothing has.
+The whole log is read, then narrowed to that credential, and only then cut to the limit. So `/secret log GITHUB_TOKEN 20` means the last twenty uses OF that credential, not the last twenty records of which some happened to be it. The two words are told apart by shape rather than by position, and may be given in either order: a limit is a whole number and a secret name may never begin with a digit, so no word is both. The heading names the credential even when nothing follows it, because an empty log for one secret and an empty log altogether support opposite conclusions: the first says this credential has never been spent, the second says nothing has.
 
 #### An empty log, and a log that is off
 
@@ -751,7 +786,7 @@ Be clear about the boundary.
 
 **Protection begins when the value is known.** Once you enable protection or store a value, old local transcript text containing that value is sanitized on subsequent provider requests. The local transcript is not rewritten in place.
 
-**A value you type on the command line is visible on screen.** `/secret add <value>` puts the credential in your scrollback, and the confirmation says so. It is excluded from persistent editor history, but the obfuscator cannot scrub a terminal after the fact. Use `/secret add` on its own, which opens a field that hides what you type, or `/secret add --from-env <VAR>`, which types nothing at all.
+**A value you type on the command line is visible on screen.** `/secret add <value>` puts the credential in your scrollback, and the confirmation says so. It is excluded from persistent editor history, but the obfuscator cannot scrub a terminal after the fact. Use `/secret add` on its own, which opens a field that hides what you type, or `/secret from-env <VAR>`, which types nothing at all.
 
 **The secret-use log records use, not intent.** It tells you which credential went into which command. It cannot tell you what the command did with it once the process had it.
 

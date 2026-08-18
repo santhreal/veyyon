@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-0b8bb752.js";
+            window.path_to_searchindex_js = "searchindex-ecfe896c.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-79e2ba62.js"></script>
@@ -2178,9 +2178,9 @@ stopped was killed by the CPU budget, not a crash.
 replaced whenever it appears in provider-bound text. Environment detection does
 not give the agent a readable inventory name. When the agent must choose and
 spend the credential deliberately, store the same value in the vault:</p>
-<pre><code class="language-text">/secret add --from-env DEPLOY_TOKEN
+<pre><code class="language-text">/secret from-env DEPLOY_TOKEN
 </code></pre>
-<p>That is the form you type in a terminal. Veyyon asks you for a name afterwards and generates one if you skip it. A client with no terminal, such as <code>--print</code> mode or an ACP editor, uses <code>/secret add deploy-token --from-env DEPLOY_TOKEN</code> instead; see <a href="#on-a-client-with-no-terminal">On a client with no terminal</a>.</p>
+<p>That is the form you type in a terminal. Veyyon asks you for a name afterwards and generates one if you skip it. A client with no terminal, such as <code>--print</code> mode or an ACP editor, writes the name on the line as <code>/secret from-env DEPLOY_TOKEN DEPLOY_KEY</code>, because nothing there can ask; see <a href="#on-a-client-with-no-terminal">On a client with no terminal</a>.</p>
 <h2 id="what-the-model-sees"><a class="header" href="#what-the-model-sees">What the model sees</a></h2>
 <p>Every occurrence of a known value is replaced before provider dispatch. This boundary covers messages, dynamic system prompts, tool descriptions and schemas, resumed assistant text, replay payloads, and nested model calls such as title generation, image analysis, memory summaries, and speech rewriting.</p>
 <p>The replacement happens from raw text before trimming, truncation, JSON serialization, or other lossy preparation. Veyyon resolves the live profile, project, environment, and vault runtime again for each physical provider attempt. This includes authentication retries, fallback models, delayed queues, compaction, commit analysis, evaluation, benchmarks, memory services, TTS, and image tools. A refresh cannot leave a retry using an old set of secret values.</p>
@@ -2249,20 +2249,21 @@ them after expansion has been disabled.</p>
 <p>Your composer is cleared before the field opens, so the value never enters the input buffer and never reaches your scrollback. Press escape and nothing is stored. Submit an empty field and nothing is stored either, and veyyon says so rather than storing an empty credential. The name field follows, the same one as above.</p>
 <h4 id="reading-it-out-of-the-environment"><a class="header" href="#reading-it-out-of-the-environment">Reading it out of the environment</a></h4>
 <p>If the credential is already an environment variable, read it from there and type nothing:</p>
-<pre><code class="language-text">/secret add --from-env GITHUB_PAT
+<pre><code class="language-text">/secret from-env GITHUB_PAT
 </code></pre>
-<p>This is the recommended form, because the value never enters the input buffer and never reaches your scrollback. <code>--from-env</code> has to be the first word after <code>add</code> and the variable name has to be the only thing after it. Anything else on the line is a credential again, so the parser refuses rather than storing something you did not mean:</p>
-<pre><code class="language-text">--from-env needs the name of an environment variable, and nothing else.
+<p>This is the recommended form, because the value never enters the input buffer and never reaches your scrollback. <code>from-env</code> is a command of its own, alongside <code>add</code>, and its first word is the name of the variable. The name field follows here too, so a bare <code>from-env GITHUB_PAT</code> is the whole line you need.</p>
+<p>You may write the name on the line instead, and a lifetime and a vault after it:</p>
+<pre><code class="language-text">/secret from-env GITHUB_PAT DEPLOY_KEY 7d project
 </code></pre>
-<p>The name field follows here too.</p>
+<p>The variable comes first and the name second, both by position, which is what lets a secret be called <code>PROFILE</code> or <code>NEVER</code>. The lifetime and the vault come after in either order, because no word is both: a vault is one of <code>profile</code>, <code>project</code> and <code>global</code>, and a lifetime is <code>30m</code>, <code>12h</code>, <code>7d</code>, <code>2w</code>, <code>never</code>, or anything else beginning with a digit. <code>env</code> is the second spelling of <code>from-env</code>.</p>
 <h4 id="a-value-on-the-command-line-stays-in-your-scrollback"><a class="header" href="#a-value-on-the-command-line-stays-in-your-scrollback">A value on the command line stays in your scrollback</a></h4>
 <p>The one-paste form is on screen until you clear the terminal. Veyyon says so rather than leaving you to work it out:</p>
-<pre><code class="language-text">The value was typed on screen, so it is in your scrollback. Use --from-env next time to avoid that.
+<pre><code class="language-text">The value was typed on screen, so it is in your scrollback. Use /secret from-env next time to avoid that.
 </code></pre>
 <p>Every exact <code>/secret</code> command shape, including malformed input, is excluded from persistent editor history. This prevents the command from being recovered with the Up key or written to <code>history.db</code>. It cannot erase terminal scrollback that was already rendered.</p>
-<p>The line is kept byte for byte from its first non-space character to its last, so a passphrase may contain spaces and no part of the value is trimmed away. Use the hidden field or <code>--from-env</code> when you would rather the value were never on screen at all.</p>
+<p>The line is kept byte for byte from its first non-space character to its last, so a passphrase may contain spaces and no part of the value is trimmed away. Use the hidden field or <code>from-env</code> when you would rather the value were never on screen at all.</p>
 <h4 id="a-command-comes-first"><a class="header" href="#a-command-comes-first">A command comes first</a></h4>
-<p>The first word of a <code>/secret</code> line is a command or it is nothing. The commands are <code>add</code>, <code>list</code>, <code>rm</code>, <code>clear</code>, <code>rename</code>, <code>value</code>, <code>scope</code>, <code>copy</code>, <code>extend</code>, <code>log</code>, <code>discard</code> and <code>help</code>, plus the second spellings <code>remove</code>, <code>delete</code>, <code>wipe</code>, <code>purge</code>, <code>empty</code>, <code>reset</code>, <code>name</code>, <code>replace</code>, <code>move</code>, <code>renew</code> and <code>audit</code>.</p>
+<p>The first word of a <code>/secret</code> line is a command or it is nothing. The commands are <code>add</code>, <code>from-env</code>, <code>list</code>, <code>rm</code>, <code>clear</code>, <code>rename</code>, <code>value</code>, <code>scope</code>, <code>copy</code>, <code>extend</code>, <code>log</code>, <code>discard</code> and <code>help</code>, plus the second spellings <code>env</code>, <code>remove</code>, <code>delete</code>, <code>wipe</code>, <code>purge</code>, <code>empty</code>, <code>reset</code>, <code>name</code>, <code>replace</code>, <code>move</code>, <code>renew</code> and <code>audit</code>.</p>
 <p>A line that begins with anything else is refused, and nothing is stored:</p>
 <pre><code class="language-text">Unknown /secret command. Nothing was stored. If what followed /secret was a credential, it is now in
 your scrollback and was never protected, so rotate it and store the new one with /secret add.
@@ -2270,7 +2271,26 @@ your scrollback and was never protected, so rotate it and store the new one with
 <p>The refusal never repeats the word it refused, because that word is often the credential itself.</p>
 <p>Earlier versions read an unrecognised first word as the credential, so <code>/secret ghp_...</code> stored it. That saved one word and cost three mechanisms: every command had to be reserved in advance so it could not be mistaken for a value, a credential beginning with a reserved word collided with the command, and the collision needed an escape spelling of its own. With the value living behind <code>add</code> there is one place a value is read and none of that is needed. <code>/secret add list of words that is really a passphrase</code> stores that line byte for byte, first word included.</p>
 <p>A command stays a command however much follows it, so a malformed one is refused rather than quietly stored: <code>/secret log 50</code> is a <code>log</code> with an unreadable argument, not a new secret called <code>SECRET_1</code>.</p>
-<p>The <code>--</code> escape earlier versions carried is refused too, and the refusal names <code>add</code>. A slash command carries no options to end, so <code>--</code> meant nothing here and had to be looked up. It is refused rather than read as part of the value, because storing <code>-- </code> on the front of a credential produces a secret that expands into requests that fail somewhere else entirely.</p>
+<h4 id="every-argument-is-a-plain-word"><a class="header" href="#every-argument-is-a-plain-word">Every argument is a plain word</a></h4>
+<p>There are no options anywhere in <code>/secret</code>. Nothing is spelled with a dash, so there is nothing to look up and nothing to get in the wrong order. A word means something because of where it sits, or because it belongs to a set that cannot be anything else:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>How a word is read</th><th>Where</th></tr>
+</thead>
+<tbody>
+<tr><td>its position</td><td><code>rm &lt;name&gt;</code>, <code>rename &lt;name&gt; &lt;new-name&gt;</code>, <code>scope &lt;name&gt; &lt;vault&gt;</code>, <code>extend &lt;name&gt; &lt;lifetime&gt;</code>, <code>from-env &lt;VAR&gt; &lt;name&gt;</code></td></tr>
+<tr><td>a set of three words</td><td>a vault: <code>profile</code>, <code>project</code>, <code>global</code></td></tr>
+<tr><td>a lifetime shape</td><td><code>30m</code>, <code>12h</code>, <code>7d</code>, <code>2w</code>, <code>never</code>, or any word beginning with a digit</td></tr>
+<tr><td>a whole number</td><td>the record count on <code>log</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>Position wins wherever the two could disagree, so a secret really called <code>PROFILE</code> is removed by <code>/secret rm PROFILE</code> and one called <code>NEVER</code> has its lifetime extended by <code>/secret extend NEVER 7d</code>. Where meaning is taken from a word’s shape instead, the sets provably cannot overlap: a secret name may not begin with a digit, so <code>/secret log 50</code> is fifty records and <code>/secret log GITHUB_TOKEN</code> is one credential’s uses; and a name may not contain a hyphen, so the <code>from-env</code> in <code>/secret value &lt;name&gt; from-env &lt;VAR&gt;</code> is never a name.</p>
+<p>The spellings <code>--</code>, <code>--from-env</code>, <code>--ttl</code>, <code>--scope</code>, <code>--limit</code> and <code>--name</code> were the earlier grammar and are refused, naming the plain word that replaced each one. They are refused only as the first word after <code>add</code>, so a credential that merely begins with dashes is still stored byte for byte:</p>
+<pre><code class="language-text">/secret add -----BEGIN OPENSSH PRIVATE KEY-----
+</code></pre>
+<p><code>--</code> was the worst of them. A slash command carries no options to end, so it meant nothing here and had to be looked up, and storing it on the front of a credential produces a secret that expands into requests failing somewhere else entirely.</p>
 <h3 id="what-you-are-told-when-it-is-stored"><a class="header" href="#what-you-are-told-when-it-is-stored">What you are told when it is stored</a></h3>
 <p>Whichever form you used, veyyon confirms with the name it filed the credential under and the placeholder the model will write:</p>
 <pre><code class="language-text">Stored GITHUB_TOKEN in the profile vault, 1d left.
@@ -2294,16 +2314,16 @@ The previous value is gone. #GITHUB_TOKEN# now spends the credential you just st
 <tr><td><code>/secret value &lt;name&gt;</code></td><td>replace the value, keeping the name and the deadline</td></tr>
 <tr><td><code>/secret scope &lt;name&gt; project</code></td><td>move it to another vault</td></tr>
 <tr><td><code>/secret copy &lt;name&gt;</code></td><td>put <code>#NAME#</code> on the clipboard, never the value</td></tr>
-<tr><td><code>/secret extend &lt;name&gt; --ttl 7d</code></td><td>give it a fresh lifetime, measured from now</td></tr>
-<tr><td><code>/secret rm &lt;name&gt; [--scope global]</code></td><td>revoke it</td></tr>
-<tr><td><code>/secret clear --scope profile</code></td><td>remove every credential in one vault, naming what it removed</td></tr>
-<tr><td><code>/secret log [--name &lt;name&gt;] [--limit 50]</code></td><td>which credentials were spent, and where</td></tr>
-<tr><td><code>/secret discard --scope project</code></td><td>move aside a vault file that cannot be read</td></tr>
+<tr><td><code>/secret extend &lt;name&gt; 7d</code></td><td>give it a fresh lifetime, measured from now</td></tr>
+<tr><td><code>/secret rm &lt;name&gt; [global]</code></td><td>revoke it</td></tr>
+<tr><td><code>/secret clear profile</code></td><td>remove every credential in one vault, naming what it removed</td></tr>
+<tr><td><code>/secret log [&lt;name&gt;] [50]</code></td><td>which credentials were spent, and where</td></tr>
+<tr><td><code>/secret discard project</code></td><td>move aside a vault file that cannot be read</td></tr>
 <tr><td><code>/secret help</code></td><td>every form, on the surface you are on</td></tr>
 </tbody>
 </table>
 </div>
-<p><code>value</code> is how you correct a credential. It keeps the name, the scope, the creation time and the expiry, so a token pasted with one character missing does not have to be revoked and stored again: storing it again mints a new name while every prompt in the session still spends the old placeholder, and it re-dates the entry, so a secret with two days left would come back with the default lifetime. The field it opens is hidden as you type, and <code>--from-env &lt;VAR&gt;</code> works with it too.</p>
+<p><code>value</code> is how you correct a credential. It keeps the name, the scope, the creation time and the expiry, so a token pasted with one character missing does not have to be revoked and stored again: storing it again mints a new name while every prompt in the session still spends the old placeholder, and it re-dates the entry, so a secret with two days left would come back with the default lifetime. The field it opens is hidden as you type, and <code>/secret value &lt;name&gt; from-env &lt;VAR&gt;</code> reads the replacement out of the environment instead.</p>
 <p><code>copy</code> copies the placeholder and only the placeholder. <code>#GITHUB_TOKEN#</code> is the thing you paste into a prompt; copying the value would be the disclosure you stored the credential to avoid.</p>
 <p><code>clear</code> empties one vault. It names the scope because there is no default: the vault is three files, project overriding profile overriding global, and the copy you can reach is the one that gets spent, so a guess would empty whichever happened to be in front and leave the other two full. It reports the placeholders it dropped. A name that a wider vault still holds is reported as removed but not as revoked, because <code>#NAME#</code> goes on expanding to that copy. <code>wipe</code>, <code>purge</code>, <code>empty</code> and <code>reset</code> are the same command.</p>
 <p><code>scope</code> refuses a move onto a name the destination vault already holds, rather than overwriting it. It also carries the time REMAINING rather than the original lifetime, so moving a secret cannot lengthen its life. The copy is written to the destination before the source is removed, so an interrupted move leaves two copies you can see rather than none.</p>
@@ -2311,19 +2331,25 @@ The previous value is gone. #GITHUB_TOKEN# now spends the credential you just st
 <p>Every change reloads the live secret runtime, so a credential you revoke stops being spendable in the session you are sitting in rather than at the next restart. A reload that fails is reported rather than swallowed, because the vault write is already durable and you are the only one who can decide what to do about the gap.</p>
 <p><strong>Names are never completed.</strong> The dropdown after <code>/secret </code> offers verbs and nothing else. Completing a stored name would put part of your vault on screen on a keystroke, and accepting one would type a name onto a line whose first word decides between a command and a credential. <code>/secret list</code> is where names are read.</p>
 <h3 id="on-a-client-with-no-terminal"><a class="header" href="#on-a-client-with-no-terminal">On a client with no terminal</a></h3>
-<p><code>--print</code> mode and an ACP editor have no field that can hide what you type, so they cannot accept a credential you type at all. Every verb is the same there. What differs is <code>add</code>:</p>
-<pre><code class="language-text">/secret add github-token --from-env GITHUB_PAT
+<p><code>--print</code> mode and an ACP editor have no field that can hide what you type, so they cannot accept a credential you type at all. Every command is the same there, and <code>from-env</code> is the way in:</p>
+<pre><code class="language-text">/secret from-env GITHUB_PAT GITHUB_TOKEN
 </code></pre>
-<p>The name is a positional argument there, because there is no field to ask for one afterwards, and <code>--from-env</code> is the only source. An inline value is refused, because that surface keeps its requests in a history you cannot clear:</p>
-<pre><code class="language-text">This non-interactive client refuses inline credentials because they would be retained in command
-history. Use /secret add &lt;name&gt; --from-env MY_TOKEN instead.
+<p>The name is required on the line here, because nothing on that surface can ask for it afterwards. <code>add</code> is still listed, with the reason it does not work and the command that does, rather than being hidden and answering only with an error:</p>
+<pre><code class="language-text">/secret from-env &lt;VAR&gt; &lt;name&gt;         store the value of an environment variable
+/secret add                           not here: a client cannot hide typing, so use from-env
 </code></pre>
+<p>An inline value is refused, because that surface keeps its requests in a history you cannot clear:</p>
+<pre><code class="language-text">This client refuses an inline credential, because the line carrying it is retained in the client's own
+request history. Nothing was stored. Read the value out of the environment instead:
+/secret from-env MY_TOKEN &lt;name&gt;.
+</code></pre>
+<p>The refusal repeats neither word after <code>add</code>. Nothing distinguishes a name followed by a credential from a credential whose first word looks like a name, so a message that quoted the part it took for the name would sooner or later quote the credential.</p>
 <p><code>list</code> prints a table:</p>
 <pre><code class="language-text">2 active secrets. The agent spends one by writing its placeholder; the value is never shown.
   PLACEHOLDER         SCOPE    EXPIRES  STATUS
   #GITHUB_TOKEN#      profile  6d left
   #PROD_DB_PASSWORD#  project  1d left  expires soon
-Extend one before it lapses: /secret extend &lt;name&gt; --ttl 7d.
+Extend one before it lapses: /secret extend &lt;name&gt; 7d.
 </code></pre>
 <p>No part of any value appears there. A prefix of a credential is still a disclosure, and one on screen is one in a screenshot.</p>
 <p>The <code>STATUS</code> column and the closing line appear only when at least one entry has crossed a warning threshold, so a table of healthy entries is one column narrower. A cell reads <code>past halfway</code> or <code>expires soon</code>, and those are the same two thresholds that raise the warnings described under <a href="#lifetimes">Lifetimes</a>. The table and the warnings cannot disagree about which entry is in trouble.</p>
@@ -2337,8 +2363,8 @@ it means, and what to run:</p>
 read, so it was skipped and the secrets stored in it are unavailable for the rest of this session:
 their placeholders will NOT expand. Every OTHER scope loaded normally, and masking of known secret
 values is unaffected. The vault is encrypted, so a hand edit cannot repair it: run /secret discard
---scope profile to move the unreadable file aside. Then store the secrets it held again. The reason
-it could not be read was &lt;what the parser complained about&gt;
+profile to move the unreadable file aside. Then store the secrets it held again. The reason it
+could not be read was &lt;what the parser complained about&gt;
 </code></pre>
 <p>A vault can also fail in a way Veyyon cannot step around, where nothing in it can be read: the key
 is gone, the key is not the one the vault was sealed with, or the file is truncated. The session
@@ -2346,9 +2372,9 @@ still starts, and says so:</p>
 <pre><code class="language-text">Your vault could not be read, so this session started WITHOUT it: nothing you have stored is
 available, and every #NAME# placeholder it held will be refused rather than sent as literal text.
 Masking of secrets from your environment and secrets.yml is unaffected and still running.
-Affected: project (/home/you/work/repo/.veyyon/vault.json). Run /secret discard --scope project to
-move the unreadable file aside. Then store the secrets it held again. The reason it could not be
-read was &lt;what the parser complained about&gt;
+Affected: project (/home/you/work/repo/.veyyon/vault.json). Run /secret discard project to move
+the unreadable file aside. Then store the secrets it held again. The reason it could not be read
+was &lt;what the parser complained about&gt;
 </code></pre>
 <p>Both notices name one command, because a notice raised by the vault loader cannot know which client
 is about to print it, and <code>discard</code> runs on all of them. It moves the file aside rather than deleting
@@ -2374,10 +2400,10 @@ only route back to what it held. It is still encrypted with a key that is still 
 damage is a truncated tail, the entries before the damage are still in there. Veyyon will not destroy
 a credential store to make itself usable again, so the cleanup is yours to do once you are sure you
 no longer need it.</p>
-<p><strong>You have to name the scope.</strong> Every other command that takes <code>--scope</code> defaults to <code>profile</code>,
-because there it chooses where to put something and <code>/secret list</code> shows you the result. Here it
-chooses a file to move aside, so a default would let a bare <code>/secret discard</code> move a working vault
-out from under the session you are sitting in. A bare invocation is refused and tells you the flag.</p>
+<p><strong>You have to name the vault.</strong> Every other command that takes one defaults to <code>profile</code>, because
+there it chooses where to put something and <code>/secret list</code> shows you the result. Here it chooses a
+file to move aside, so a default would let a bare <code>/secret discard</code> move a working vault out from
+under the session you are sitting in. A bare invocation is refused and names the word to add.</p>
 <p>Two things the repair refuses, both on purpose:</p>
 <ul>
 <li><strong>A scope that reads normally.</strong> This is not a second way to delete secrets. Revoke the entry
@@ -2392,18 +2418,18 @@ with it. The refusal names the other scope so you can decide which you meant.</l
 likely to turn up in a headless run.</p>
 <h3 id="lifetimes"><a class="header" href="#lifetimes">Lifetimes</a></h3>
 <p>Every entry expires. The default is one day, which you can change in <code>/settings</code> under Secret Lifetime.</p>
-<p>In a terminal that setting is the whole answer at the moment you store something, because the line
-after <code>add</code> is the credential and there is no room on it for an option. To give one entry a
-different lifetime, store it, then run <code>/secret extend &lt;name&gt; --ttl 30m</code>. The lifetime you name
-there is measured from now, not from when the credential was stored.</p>
-<p>On a client with no terminal the lifetime is an option on <code>add</code> as well:</p>
-<pre><code class="language-text">/secret add deploy-key --from-env DEPLOY_KEY --ttl 30m
-/secret add signing-key --from-env SIGNING_KEY --ttl never
+<p>That setting is the whole answer for <code>/secret add</code>, because the line after <code>add</code> is the credential
+and there is no room on it for anything else. To give such an entry a different lifetime, store it,
+then run <code>/secret extend &lt;name&gt; 30m</code>. The lifetime you name there is measured from now, not from
+when the credential was stored.</p>
+<p><code>from-env</code> takes one on the line, after the variable and the name:</p>
+<pre><code class="language-text">/secret from-env DEPLOY_KEY DEPLOY_TOKEN 30m
+/secret from-env SIGNING_KEY SIGNING_TOKEN never project
 </code></pre>
-<p>Lifetimes are written the same way in both places: <code>30m</code>, <code>12h</code>, <code>7d</code>, <code>2w</code>, or <code>never</code>. Weeks are accepted and reported back in days.</p>
+<p>Lifetimes are written the same way everywhere: <code>30m</code>, <code>12h</code>, <code>7d</code>, <code>2w</code>, or <code>never</code>. Weeks are accepted and reported back in days. A lifetime and a vault may be given in either order, because no word is both.</p>
 <p>You are warned before a lifetime runs out, once at the halfway point and again near the end:</p>
 <pre><code class="language-text">Warning: secrets: #DEPLOY_KEY# expires soon, 2h left. Extend it with
-/secret extend DEPLOY_KEY --ttl 7d, or it will be deleted.
+/secret extend DEPLOY_KEY 7d, or it will be deleted.
 </code></pre>
 <p>The remedy is one command, and it runs wherever the warning is read: a notice raised while the vault
 is loading cannot know which client is about to print it.</p>
@@ -2412,8 +2438,8 @@ is loading cannot know which client is about to print it.</p>
 <p>The deadline is enforced when the credential is used, not only when a session starts. A session left open over a weekend stops substituting a one-day secret on the day it expires and reports both the runtime and persisted state:</p>
 <pre><code class="language-text">Warning: secrets: #GITHUB_TOKEN# has expired and its in-memory expansion has been
 revoked. Its encrypted value has not yet been deleted from the vault; a successful
-vault refresh will prune it. Store it again with /secret add --from-env &lt;VAR&gt; if you still
-need it, or /secret add GITHUB_TOKEN --from-env &lt;VAR&gt; in a client with no terminal.
+vault refresh will prune it. Store it again with /secret from-env &lt;VAR&gt; if you still
+need it, or /secret from-env &lt;VAR&gt; GITHUB_TOKEN in a client with no terminal.
 </code></pre>
 <p>In a terminal the name field that follows is where you type <code>GITHUB_TOKEN</code> to get the same
 placeholder back.</p>
@@ -2435,7 +2461,7 @@ placeholder back.</p>
 </div>
 <p>A credential you store in a terminal goes to the profile vault. Scope is an option, the argument line there is the credential, so there is no place on it to put one. Profile is the default because that is usually the boundary you want: a credential you use for one kind of work should not be reachable from a session you opened in another profile.</p>
 <p>A credential already stored can be moved with <code>/secret scope &lt;name&gt; project</code>. To file one somewhere else as you store it, name the scope on a client that takes a verb and a value on one line:</p>
-<pre><code class="language-text">/secret add scan-token --from-env SCAN_TOKEN --scope project
+<pre><code class="language-text">/secret from-env SCAN_TOKEN SCAN_TOKEN project
 </code></pre>
 <p>When the same name exists in more than one scope, <code>/secret list</code> says so. The table stays one row
 per name, because one row per name is what the agent can spend, and a sentence underneath names the
@@ -2445,40 +2471,43 @@ copies it is not spending:</p>
   #SHARED_TOKEN#  project  24h left
   #SOLO_TOKEN#    profile  24h left
   #SHARED_TOKEN# is also stored in the global vault, shadowed by the project one. Only the project
-  copy is spent. Remove it with /secret rm SHARED_TOKEN --scope global.
+  copy is spent. Remove it with /secret rm SHARED_TOKEN global.
 </code></pre>
 <p>That copy is inert, not gone. It is still on disk, still decryptable, and it becomes the live one
 the moment the copy in front of it is removed. Before the list mentioned it, the only way to find
 out was to remove the copy in effect and read what the removal told you, which is late: you learn
 about a credential at the moment it starts being spent.</p>
-<p>The narrowest copy is the one that wins, and a removal without <code>--scope</code> takes it. Removing that
+<p>The narrowest copy is the one that wins, and a removal that names no vault takes it. Removing that
 copy uncovers the next one out, and the command tells you that too:</p>
 <pre><code class="language-text">/secret rm shared-token
 
 Removed SHARED_TOKEN from the project vault. A profile secret of the same name was underneath it,
-so #SHARED_TOKEN# still spends a credential, now that one. Run /secret rm SHARED_TOKEN --scope
-profile to remove that one too.
+so #SHARED_TOKEN# still spends a credential, now that one. Run /secret rm SHARED_TOKEN profile to
+remove that one too.
 </code></pre>
 <p>That second sentence is the part that matters, because the placeholder keeps working. Without it
 you would read a removal, assume the name was dead, and leave a live credential reachable under a
 name you believe you revoked. The agent is told the same thing, so it does not treat the name as
 revoked either.</p>
 <p>To take a particular copy rather than the one in effect, name its scope:</p>
-<pre><code class="language-text">/secret rm shared-token --scope profile
+<pre><code class="language-text">/secret rm SHARED_TOKEN profile
 </code></pre>
 <p>Naming the scope of a copy that is already shadowed removes it without changing what the
 placeholder spends, and the command says that rather than implying something changed.</p>
-<p><code>--scope</code> belongs to <code>add</code>, to <code>rm</code>, and to the <code>discard</code> repair. Each option is refused by the
-subcommands that do not read it, naming the ones that do:</p>
-<pre><code class="language-text">/secret extend github-token --scope global
+<p>A vault word belongs to <code>from-env</code>, <code>rm</code>, <code>clear</code>, <code>scope</code> and <code>discard</code>. On a command that does
+not read one it is a word that fits no slot, and it is refused rather than ignored:</p>
+<pre><code class="language-text">/secret extend GITHUB_TOKEN global
 
-/secret extend does not take --scope, and ignoring it would look like it had been applied.
-/secret add, /secret rm, /secret clear and /secret discard take it.
+/secret extend cannot read the word in position 2, and a word that would be ignored is refused
+rather than dropped silently.
 </code></pre>
-<p>That refusal exists because the alternative is worse than an error. An accepted-and-ignored
-<code>--scope</code> on <code>extend</code> reads as “the global copy was given a fresh lifetime” when what actually
-happened is that the copy in effect was re-dated and the others were left alone. It is a rule of
-the verb grammar, and <code>--scope</code> is refused by <code>extend</code> wherever you run it.</p>
+<p>That refusal exists because the alternative is worse than an error. An accepted-and-ignored vault
+word on <code>extend</code> reads as “the global copy was given a fresh lifetime” when what actually happened
+is that the copy in effect was re-dated and the others were left alone. The same rule covers a
+lifetime handed to <code>rm</code> and a number handed to <code>list</code>: a word veyyon would drop is a word you meant
+something by.</p>
+<p>The refusal names the position and never repeats the word, because the realistic slip is muscle
+memory for <code>add</code> under a different command, which puts the credential itself in that position.</p>
 <h3 id="encryption-and-what-it-does-not-do"><a class="header" href="#encryption-and-what-it-does-not-do">Encryption, and what it does not do</a></h3>
 <p>Vault files use AES-256-GCM. Each write uses a fresh 12 byte nonce and the full 16 byte authentication tag. The key is a 32 byte file at <code>~/.veyyon/vault.key</code>, created on first use. It never lives inside a project directory.</p>
 <p>On POSIX, the key is mode 0600. Its directory must be owned by you and not writable by another user. On Windows, Veyyon applies and verifies a protected owner-only ACL. Existing vault files receive the same platform permission checks before they are read.</p>
@@ -2504,10 +2533,10 @@ the verb grammar, and <code>--scope</code> is refused by <code>extend</code> whe
   just now  bash  #GITHUB_TOKEN# #DEPLOY_KEY#
     {"command":"./release.sh --token #GITHUB_TOKEN# --key #DEPLOY_KEY#"}
 </code></pre>
-<p>One use is when it happened, which tool received it, which placeholders were substituted, and the command as the model wrote it. The last twenty are shown; <code>/secret log --limit 50</code> asks for more.</p>
+<p>One use is when it happened, which tool received it, which placeholders were substituted, and the command as the model wrote it. The last twenty are shown; <code>/secret log 50</code> asks for more.</p>
 <h4 id="narrowing-it-to-one-credential"><a class="header" href="#narrowing-it-to-one-credential">Narrowing it to one credential</a></h4>
-<p><code>--name</code> answers the question worth asking just before a revoke, which is what stops working:</p>
-<pre><code class="language-text">/secret log --name GITHUB_TOKEN
+<p>A name answers the question worth asking just before a revoke, which is what stops working:</p>
+<pre><code class="language-text">/secret log GITHUB_TOKEN
 
 Uses of #GITHUB_TOKEN#:
 2 most recent use(s), oldest first:
@@ -2516,7 +2545,7 @@ Uses of #GITHUB_TOKEN#:
   just now  bash  #GITHUB_TOKEN# #DEPLOY_KEY#
     {"command":"./release.sh --token #GITHUB_TOKEN# --key #DEPLOY_KEY#"}
 </code></pre>
-<p>The whole log is read, then narrowed to that credential, and only then cut to the limit. So <code>--name X --limit 20</code> means the last twenty uses OF that credential, not the last twenty records of which some happened to be it. The heading names the credential even when nothing follows it, because an empty log for one secret and an empty log altogether support opposite conclusions: the first says this credential has never been spent, the second says nothing has.</p>
+<p>The whole log is read, then narrowed to that credential, and only then cut to the limit. So <code>/secret log GITHUB_TOKEN 20</code> means the last twenty uses OF that credential, not the last twenty records of which some happened to be it. The two words are told apart by shape rather than by position, and may be given in either order: a limit is a whole number and a secret name may never begin with a digit, so no word is both. The heading names the credential even when nothing follows it, because an empty log for one secret and an empty log altogether support opposite conclusions: the first says this credential has never been spent, the second says nothing has.</p>
 <h4 id="an-empty-log-and-a-log-that-is-off"><a class="header" href="#an-empty-log-and-a-log-that-is-off">An empty log, and a log that is off</a></h4>
 <p>An empty log names the file it is empty at, so it reads as “nothing has happened here” rather than “something failed to load”:</p>
 <pre><code class="language-text">No secret has been used yet. The log is ~/.veyyon/profiles/work/secret-audit.jsonl.
@@ -2626,7 +2655,7 @@ Set "minLength" on the entry if short matches are real secrets, or tighten the p
 <p><strong>The two stores differ on disk.</strong> Vault entries added with <code>/secret</code> are encrypted. <code>secrets.yml</code> is a plain file: it holds declarations you wrote, in the clear, and anyone who can read it has those credentials. If a value needs to be encrypted at rest, put it in the vault rather than in <code>secrets.yml</code>.</p>
 <p><strong>A command the agent runs receives the real value.</strong> So a command that prints the credential prints it for real. Its output is obfuscated again before it goes back to the model, but it reached the process, and anything that process wrote elsewhere is outside veyyon’s reach. That output is also saved to the session file as it was printed, so a command that echoes a credential puts it there. The arguments veyyon itself records are redacted, but it cannot redact what a command chose to print.</p>
 <p><strong>Protection begins when the value is known.</strong> Once you enable protection or store a value, old local transcript text containing that value is sanitized on subsequent provider requests. The local transcript is not rewritten in place.</p>
-<p><strong>A value you type on the command line is visible on screen.</strong> <code>/secret add &lt;value&gt;</code> puts the credential in your scrollback, and the confirmation says so. It is excluded from persistent editor history, but the obfuscator cannot scrub a terminal after the fact. Use <code>/secret add</code> on its own, which opens a field that hides what you type, or <code>/secret add --from-env &lt;VAR&gt;</code>, which types nothing at all.</p>
+<p><strong>A value you type on the command line is visible on screen.</strong> <code>/secret add &lt;value&gt;</code> puts the credential in your scrollback, and the confirmation says so. It is excluded from persistent editor history, but the obfuscator cannot scrub a terminal after the fact. Use <code>/secret add</code> on its own, which opens a field that hides what you type, or <code>/secret from-env &lt;VAR&gt;</code>, which types nothing at all.</p>
 <p><strong>The secret-use log records use, not intent.</strong> It tells you which credential went into which command. It cannot tell you what the command did with it once the process had it.</p>
 <h2 id="reference"><a class="header" href="#reference">Reference</a></h2>
 <p>The field-by-field schema, the merge rules between the two files, and the interaction with environment detection are in <code>docs/secrets.md</code>.</p>
@@ -4302,7 +4331,9 @@ transport, authenticate, and fix the most common connection problems.</p>
 </table>
 </div>
 <p>There is no project scope: a repository’s own <code>mcp.json</code>, <code>.mcp.json</code>, or <code>.veyyon/mcp.json</code> is not
-read, because a checked-in file must not name a server the agent connects to.</p>
+read, because a checked-in file must not name a server the agent connects to. No <code>/mcp</code> subcommand
+takes a scope, and writing <code>project</code> or <code>user</code> as an argument is refused with that reason rather than
+accepted, in a terminal and in a client alike.</p>
 <p>Veyyon also discovers MCP entries from other tools’ user-level configs (Claude, Cursor, Codex,
 Gemini, OpenCode, Windsurf). The easiest way to add a server is <code>/mcp add</code> in the TUI, which writes
 to <code>mcp.json</code> for you.</p>
@@ -5830,7 +5861,7 @@ act on a bare invocation: <code>/yolo</code>, <code>/fast</code>, and <code>/bro
 <tr><td><code>/guided-goal</code></td><td>Guided goal wizard</td></tr>
 <tr><td><code>/loop</code></td><td>Loop mode controls</td></tr>
 <tr><td><code>/prewalk</code></td><td>Prewalk edit path</td></tr>
-<tr><td><code>/secret</code></td><td>Store a credential the agent uses by placeholder and never sees. A command comes first on every surface: <code>/secret add &lt;value&gt;</code> stores it in a terminal, <code>/secret add</code> alone opens a hidden field, and the name is asked afterwards with Enter accepting the generated one. The commands are <code>add</code>, <code>list</code>, <code>rm</code>, <code>clear</code>, <code>rename</code>, <code>value</code>, <code>scope</code>, <code>copy</code>, <code>extend</code>, <code>log</code>, <code>discard</code>, <code>help</code>; a first word that is none of them is refused and nothing is stored. See <a href="#secrets">Secrets</a></td></tr>
+<tr><td><code>/secret</code></td><td>Store a credential the agent uses by placeholder and never sees. A command comes first on every surface and every argument after it is a plain word: <code>/secret add &lt;value&gt;</code> stores it in a terminal, <code>/secret add</code> alone opens a hidden field, <code>/secret from-env &lt;VAR&gt;</code> reads it out of the environment, and the name is asked afterwards with Enter accepting the generated one. The commands are <code>add</code>, <code>from-env</code>, <code>list</code>, <code>rm</code>, <code>clear</code>, <code>rename</code>, <code>value</code>, <code>scope</code>, <code>copy</code>, <code>extend</code>, <code>log</code>, <code>discard</code>, <code>help</code>; a first word that is none of them is refused and nothing is stored. See <a href="#secrets">Secrets</a></td></tr>
 <tr><td><code>/settings</code>, <code>/setup</code></td><td>Settings UI; <code>/setup</code> opens first-run provider sign-in</td></tr>
 <tr><td><code>/providers</code>, <code>/account manager</code></td><td>Open the account manager: every stored account per provider, with its email, plan, health, and usage. See <a href="#signing-in">Authentication</a></td></tr>
 <tr><td><code>/account status</code></td><td>Show which account each provider is serving this session with. A bare <code>/account</code> opens the picker</td></tr>
@@ -5931,7 +5962,7 @@ own page; typing the bare command lists them with their descriptions.</p>
 <tr><td><code>/permissions</code></td><td><code>status</code>, <code>ask</code>, <code>ask-command</code>, <code>auto</code>, <code>yolo</code>, <code>plan</code>, <code>reset</code></td></tr>
 <tr><td><code>/yolo</code></td><td><code>on</code>, <code>off</code>, <code>status</code></td></tr>
 <tr><td><code>/cpu-limit</code></td><td><code>status</code>, <code>remove</code>, <code>reset</code>, <code>kill</code></td></tr>
-<tr><td><code>/secret</code></td><td><code>add</code>, <code>list</code>, <code>rm</code>, <code>clear</code>, <code>rename</code>, <code>value</code>, <code>scope</code>, <code>copy</code>, <code>extend</code>, <code>log</code>, <code>discard</code>, <code>help</code></td></tr>
+<tr><td><code>/secret</code></td><td><code>add</code>, <code>from-env</code>, <code>list</code>, <code>rm</code>, <code>clear</code>, <code>rename</code>, <code>value</code>, <code>scope</code>, <code>copy</code>, <code>extend</code>, <code>log</code>, <code>discard</code>, <code>help</code></td></tr>
 <tr><td><code>/collab</code></td><td><code>start</code>, <code>view</code>, <code>status</code>, <code>stop</code></td></tr>
 <tr><td><code>/browser</code></td><td><code>headless</code>, <code>visible</code></td></tr>
 <tr><td><code>/todo</code></td><td><code>edit</code>, <code>copy</code>, <code>export</code>, <code>import</code>, <code>append</code>, <code>start</code>, <code>done</code>, <code>drop</code>, <code>rm</code></td></tr>
@@ -6283,7 +6314,7 @@ into <code>RequestInit.tls.ca</code> itself).</p>
 <code>scripts/install.ps1</code>) do not read those names today.</p>
 <h2 id="mcp-2"><a class="header" href="#mcp-2">MCP</a></h2>
 <p>An MCP server that needs a bearer token takes it as a literal header in <code>mcp.json</code>
-(<code>mcpServers.&lt;name&gt;.headers.Authorization</code>) or via <code>/mcp add --token</code>, so the secret can live in any
+(<code>mcpServers.&lt;name&gt;.headers.Authorization</code>) or via <code>/mcp add &lt;name&gt; token &lt;token&gt;</code>, so the secret can live in any
 env var you expand yourself (for example plain <code>GITHUB_PERSONAL_ACCESS_TOKEN</code>), not a fixed
 <code>VEYYON_*</code> name. There is no <code>VEYYON_GITHUB_PERSONAL_ACCESS_TOKEN</code> or <code>VEYYON_CONNECTORS_TOKEN</code>
 convention in the current runtime. A <code>bearer_token_env_var</code> field is honored only when importing

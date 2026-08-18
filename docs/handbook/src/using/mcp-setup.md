@@ -16,7 +16,9 @@ MCP servers are configured as **JSON** in `mcp.json`, not in `config.yml`:
 | User | `~/.veyyon/profiles/default/agent/mcp.json` (profile: `~/.veyyon/profiles/<name>/agent/mcp.json`) |
 
 There is no project scope: a repository's own `mcp.json`, `.mcp.json`, or `.veyyon/mcp.json` is not
-read, because a checked-in file must not name a server the agent connects to.
+read, because a checked-in file must not name a server the agent connects to. No `/mcp` subcommand
+takes a scope, and writing `project` or `user` as an argument is refused with that reason rather than
+accepted, in a terminal and in a client alike.
 
 Veyyon also discovers MCP entries from other tools' user-level configs (Claude, Cursor, Codex,
 Gemini, OpenCode, Windsurf). The easiest way to add a server is `/mcp add` in the TUI, which writes

@@ -19,11 +19,14 @@ Veyyon-native MCP config lives in exactly one file, the active profile's agent d
 
 The native provider also reads `.mcp.json` beside it for compatibility, but Veyyon writes to `mcp.json`.
 
-There is no project scope. `.veyyon/mcp.json`, a root `mcp.json` and a root `.mcp.json` inside a
-working tree used to be loaded and used to be writable through `/mcp add --scope project`; none of
-them is read now, and `--scope` is gone from every `/mcp` subcommand. A repository is content you
-may not have written, so a checked-in file must not name a server the agent connects to or a command
-it spawns. Veyyon still discovers servers from other tools' user-level configs (`~/.claude.json`,
+There is no project scope, and no `/mcp` subcommand takes a scope at all. `.veyyon/mcp.json`, a root
+`mcp.json` and a root `.mcp.json` inside a working tree used to be loaded and used to be writable
+through `/mcp add --scope project`; none of them is read now, and neither the option spelling nor the
+plain words `project` and `user` are accepted. Both are refused with the reason, on the text surface
+as well as in the terminal: the text handler kept the scope after the terminal dropped it, defaulted
+to it, and wrote a file nothing loads while reporting success. A repository is content you may not
+have written, so a checked-in file must not name a server the agent connects to or a command it
+spawns. Veyyon still discovers servers from other tools' user-level configs (`~/.claude.json`,
 `~/.claude/mcp.json`, `~/.cursor/mcp.json`, `~/.codex/config.toml`, `~/.gemini/settings.json`,
 opencode, windsurf, and more), always from your home directory, never from a working tree, and
 `/mcp list` names the file each server came from.

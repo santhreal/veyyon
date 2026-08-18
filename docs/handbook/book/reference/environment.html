@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-0b8bb752.js";
+            window.path_to_searchindex_js = "../searchindex-ecfe896c.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-79e2ba62.js"></script>
@@ -314,7 +314,7 @@ into <code>RequestInit.tls.ca</code> itself).</p>
 <code>scripts/install.ps1</code>) do not read those names today.</p>
 <h2 id="mcp"><a class="header" href="#mcp">MCP</a></h2>
 <p>An MCP server that needs a bearer token takes it as a literal header in <code>mcp.json</code>
-(<code>mcpServers.&lt;name&gt;.headers.Authorization</code>) or via <code>/mcp add --token</code>, so the secret can live in any
+(<code>mcpServers.&lt;name&gt;.headers.Authorization</code>) or via <code>/mcp add &lt;name&gt; token &lt;token&gt;</code>, so the secret can live in any
 env var you expand yourself (for example plain <code>GITHUB_PERSONAL_ACCESS_TOKEN</code>), not a fixed
 <code>VEYYON_*</code> name. There is no <code>VEYYON_GITHUB_PERSONAL_ACCESS_TOKEN</code> or <code>VEYYON_CONNECTORS_TOKEN</code>
 convention in the current runtime. A <code>bearer_token_env_var</code> field is honored only when importing

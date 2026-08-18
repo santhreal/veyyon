@@ -96,25 +96,7 @@ Compaction uses editable model chains and explicit fallback policy. Before a mod
 
 ### 3. The model spends placeholders, not credentials
 
-Store a credential in one paste. In a terminal everything after `/secret add` is the credential, so there is no name to invent first:
-
-```text
-/secret add ghp_your_token_here
-```
-
-Veyyon asks what to call it afterwards, and generates a name if you skip it. To store it without typing it at all, name the environment variable it is already in:
-
-```text
-/secret add --from-env DEPLOY_TOKEN
-```
-
-A client with no terminal, such as `--print` mode or an ACP editor, has no field to hide typing in, so `add` there takes a name and accepts a value only from the environment:
-
-```text
-/secret add DEPLOY_TOKEN --from-env DEPLOY_TOKEN --scope project
-```
-
-The model sees a named placeholder. Expansion happens at the final outbound tool boundary. The real value stays local, is encrypted at rest, is redacted from later outbound seams, and appears in an operator-visible use log by name rather than value. Scope, expiry, and removal are enforced when the credential is used.
+`/secret` stores a credential Veyyon can spend without the model ever seeing it. The model is given a named placeholder; expansion happens at the final outbound tool boundary. The real value stays local, is encrypted at rest, is redacted from later outbound seams, and appears in an operator-visible use log by name rather than value. Scope, expiry, and removal are enforced when the credential is used.
 
 <p align="center">
   <img src="assets/demo-secret-boundary.gif" width="960" alt="A project secret is listed by placeholder, spent through a bash command, and recorded once in the use log without displaying its value">
