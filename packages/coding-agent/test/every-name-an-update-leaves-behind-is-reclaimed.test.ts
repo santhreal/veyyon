@@ -38,7 +38,6 @@ import { sweepStaleBackups } from "../src/cli/update-cli";
 const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
 const UPDATE_CLI = path.join(REPO_ROOT, "packages/coding-agent/src/cli/update-cli.ts");
 const INSTALL_SH = path.join(REPO_ROOT, "scripts/install.sh");
-const THEME = path.join(REPO_ROOT, "packages/coding-agent/src/modes/theme/theme.ts");
 
 /**
  * A stand-in release binary that answers the three things `verifyBinaryUsable`
@@ -83,12 +82,9 @@ function runRealUpdate(targetPath: string): Attempt {
 import * as fs from "node:fs";
 import * as crypto from "node:crypto";
 import { updateViaBinaryAt } from ${JSON.stringify(UPDATE_CLI)};
-import { initTheme } from ${JSON.stringify(THEME)};
-
-// The success line the update prints reads the active theme, which a bare child
-// has never loaded. Without this the swap completes and the process then dies
-// formatting the message that says so.
-await initTheme();
+// No initTheme(): the update path formats its own success line without one, which
+// the-update-command-says-what-it-did-with-no-theme-loaded.test.ts owns. This child
+// used to load a theme purely to get past that line.
 
 const payload = ${JSON.stringify(standInBinary("2.0.0"))};
 const digest = crypto.createHash("sha256").update(payload).digest("hex");
