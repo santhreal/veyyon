@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-df3032cb.js";
+            window.path_to_searchindex_js = "../searchindex-3e8f0114.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-79e2ba62.js"></script>
@@ -207,7 +207,9 @@
 <li>A real <code>veyyon grep</code> finds a known file, proving the native addon loads on this platform.</li>
 </ol>
 <p>The checksum proves which bytes you received, but it cannot prove that the release uploaded the right version or a usable native build. If any preflight fails, the installer removes the staged file when it can and leaves the active binary and shell files unchanged. After the verified file moves into place, <code>doctor:</code> repeats the version and native checks from the final path. When <code>~/.local/bin</code> is not on your <code>PATH</code> yet, the installer then adds it to your shell profile. A profile is read when a shell starts, and the shell you ran the installer from has already started, so the final message gives you the exact reload command before the normal next steps:</p>
-<p>The installer records a small ownership receipt beside each binary and completion file it creates. A reinstall or uninstall changes only receipt-backed files. An older Veyyon install is adopted when its exact launcher or generated completion signature identifies it. If another executable or completion already occupies a target path, the installer leaves it byte-for-byte unchanged and tells you to move it yourself before retrying.</p>
+<p>The installer records a small ownership receipt beside each binary and completion file it creates. A reinstall or uninstall changes only receipt-backed files. An older Veyyon install is adopted when its exact launcher or generated completion signature identifies it. If another executable or completion already occupies a target path, the installer leaves it byte-for-byte unchanged and tells you to move it yourself before retrying, and names the receipt it consulted so you can see what it was comparing against.</p>
+<p>A receipt is written before the binary it describes, so a reinstall repairs an install that was interrupted mid-swap instead of refusing it. Installing the same release over a byte-identical binary leaves the file untouched and only rewrites the receipt.</p>
+<p>Pass <code>--force</code> (POSIX) or <code>-Force</code> (Windows) to install over a file the installer cannot account for. That file is moved to <code>&lt;name&gt;.unowned.&lt;pid&gt;</code> and its new path printed. Nothing is deleted, and no sweep or uninstall touches that name.</p>
 <pre><code class="language-console">Next steps:
   1. Reload your shell:        exec $SHELL -l
      (or, without a new shell: source /home/you/.bashrc)
@@ -524,10 +526,10 @@ export PATH='/home/you/.local/bin':"$PATH"
 <p>It also reclaims what an UPDATE may have left. An update stages the new binary
 beside the old one and keeps the one it replaces as a backup until the new one
 has proved itself, and on Windows that backup cannot be deleted while the process
-holding it is still running, so a <code>veyyon.new</code> or a <code>veyyon.&lt;numbers&gt;.bak</code> can
+holding it is still running, so a <code>veyyon.&lt;id&gt;.new</code> or a <code>veyyon.&lt;id&gt;.bak</code> can
 outlive the update that made it. Uninstall removes those too, so the install
 directory is left empty rather than holding a few hundred megabytes you have no
-name for.</p>
+name for. A backup you saved yourself under a name of your own is left alone.</p>
 <p>Two things it deliberately leaves behind. If you already had your own <code>vey</code> command, the installer never created that alias in the first place (it says so at install time and tells you to launch with <code>veyyon</code>), so uninstall does not touch it or its completion file. And if a checkout at <code>~/.veyyon/src</code> has uncommitted edits or commits on a local branch that is on no remote, it is moved to <code>~/.veyyon/src.bak-&lt;timestamp&gt;</code> instead of being deleted, so nothing you wrote is lost. Older installers created that tree. The current installer never does, so uninstall only ever cleans up one an older version left behind.</p>
 <pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh -s -- --uninstall
 </code></pre>
