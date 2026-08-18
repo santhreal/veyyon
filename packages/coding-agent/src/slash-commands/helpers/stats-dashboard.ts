@@ -26,7 +26,7 @@ const STATS_DASHBOARD_USAGE = "Usage: /stats [<port>]";
  * The option spellings this grammar no longer has, keyed by bare name. Both used
  * to introduce the port and both now resolve to the same plain word.
  */
-const STATS_DASHBOARD_REMOVED_OPTIONS: Record<string, string> = {
+export const STATS_DASHBOARD_REMOVED_OPTIONS: Record<string, string> = {
 	port: "write the port as a plain word, as in `/stats 8080`",
 	p: "write the port as a plain word, as in `/stats 8080`",
 };
@@ -49,7 +49,11 @@ export function parseStatsDashboardArgs(args: string): StatsDashboardArgs | { er
 	if (tokens.length === 0) return { port: DEFAULT_STATS_DASHBOARD_PORT };
 
 	const token = tokens[0]!;
-	if (token.startsWith("-")) {
+	if (token.startsWith("-") || Object.hasOwn(STATS_DASHBOARD_REMOVED_OPTIONS, token.toLowerCase())) {
+		// A PLAIN `port` GETS THE SAME REASON AS `--port`. It cannot be a port itself,
+		// since a port is digits and these keys are letters, so reading the map here
+		// costs nothing and answers `/stats port 8080` with the spelling that works
+		// instead of `Invalid port: port`.
 		return { error: removedOptionMessage(token, STATS_DASHBOARD_REMOVED_OPTIONS, STATS_DASHBOARD_USAGE) };
 	}
 	if (!/^\d+$/.test(token)) return { error: `Invalid port: ${token}. ${STATS_DASHBOARD_USAGE}` };

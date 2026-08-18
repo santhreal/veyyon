@@ -43,6 +43,10 @@ import {
 	SSH_ADD_REMOVED_OPTIONS,
 	SSH_REMOVE_REMOVED_OPTIONS,
 } from "@veyyon/coding-agent/slash-commands/helpers/ssh";
+import {
+	parseStatsDashboardArgs,
+	STATS_DASHBOARD_REMOVED_OPTIONS,
+} from "@veyyon/coding-agent/slash-commands/helpers/stats-dashboard";
 import type {
 	ParsedSlashCommand,
 	SlashCommandResult,
@@ -77,6 +81,15 @@ function surface(handler: Handler) {
 
 const runMcp = surface(handleMcpAcp as Handler);
 const runSsh = surface(handleSshAcp as Handler);
+/**
+ * `/stats` has no ACP handler to drive: the parser IS the whole grammar, and it
+ * returns the refusal rather than printing it. Driven directly, with the command
+ * word stripped so the table can spell every line the way an operator types it.
+ */
+const runStats = async (text: string): Promise<string> => {
+	const parsed = parseStatsDashboardArgs(text.replace(/^\/stats\s*/, ""));
+	return "error" in parsed ? parsed.error : "";
+};
 
 /**
  * Each command that owns a removed-option map, with the position a trailing word
@@ -97,6 +110,12 @@ interface SweptCommand {
 	line: (word: string) => string;
 	/** Keys that are live syntax here, so their plain spelling is not a refusal. */
 	liveSyntax: readonly string[];
+	/**
+	 * The refusal a word that never was an option gets here. Not the same sentence
+	 * everywhere: `/stats` reads exactly one thing, so a word it cannot use is an
+	 * invalid port rather than an unknown argument.
+	 */
+	fallback: (word: string) => string;
 }
 
 const COMMANDS: readonly SweptCommand[] = [
@@ -109,6 +128,7 @@ const COMMANDS: readonly SweptCommand[] = [
 		// so their plain spelling is syntax. The empty key is the old `--`
 		// separator and has no plain spelling at all: a word cannot be empty.
 		liveSyntax: ["", "token", "url"],
+		fallback: (word: string) => `Unknown argument: ${word}`,
 	},
 	{
 		name: "/mcp remove",
@@ -116,6 +136,7 @@ const COMMANDS: readonly SweptCommand[] = [
 		run: () => runMcp,
 		line: (word: string) => `/mcp remove srv ${word}`,
 		liveSyntax: [],
+		fallback: (word: string) => `Unknown argument: ${word}`,
 	},
 	{
 		name: "/ssh add",
@@ -124,6 +145,7 @@ const COMMANDS: readonly SweptCommand[] = [
 		line: (word: string) => `/ssh add box example.com ${word}`,
 		// `user` and `key` are the keywords that replaced `--user` and `--key`.
 		liveSyntax: ["key", "user"],
+		fallback: (word: string) => `Unknown argument: ${word}`,
 	},
 	{
 		name: "/ssh remove",
@@ -131,6 +153,16 @@ const COMMANDS: readonly SweptCommand[] = [
 		run: () => runSsh,
 		line: (word: string) => `/ssh remove box ${word}`,
 		liveSyntax: [],
+		fallback: (word: string) => `Unknown argument: ${word}`,
+	},
+	{
+		name: "/stats",
+		map: STATS_DASHBOARD_REMOVED_OPTIONS,
+		run: () => runStats,
+		// No leading positionals: the port is the only thing this command reads.
+		line: (word: string) => `/stats ${word}`,
+		liveSyntax: [],
+		fallback: (word: string) => `Invalid port: ${word}`,
 	},
 ];
 
@@ -166,8 +198,8 @@ describe("a removed option spelling and its plain word give the same reason", ()
 					const output = await command.run()(command.line(key));
 					expect(output).toContain(command.map[key]!);
 					// Not the generic fallback. This is the assertion that was red
-					// before the fix: the plain word reached `Unknown argument`.
-					expect(output).not.toContain(`Unknown argument: ${key}`);
+					// before the fix: the plain word reached the fallback refusal.
+					expect(output).not.toContain(command.fallback(key));
 				});
 			}
 		});
@@ -192,7 +224,7 @@ describe("a removed option spelling and its plain word give the same reason", ()
 			test(command.name, async () => {
 				expect(Object.hasOwn(command.map, NEVER)).toBe(false);
 				const output = await command.run()(command.line(NEVER));
-				expect(output).toContain(`Unknown argument: ${NEVER}`);
+				expect(output).toContain(command.fallback(NEVER));
 			});
 		}
 	});
