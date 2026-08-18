@@ -203,13 +203,23 @@ describe("the extensions inventory list fades its band", () => {
 		expect(rowAt(list, SECOND_ROW)).toBe(switchedBandRow(SECOND_ROW));
 	});
 
-	it("never bands the selected row from the pointer", () => {
+	/**
+	 * WHY: the pointer band was suppressed on the selected row, which left the row the keyboard was
+	 * already on unable to answer the pointer at all — the deadzone class. The band now paints on
+	 * every row, the selected one included, and the pointer still never moves the selection.
+	 */
+	it("bands the selected row under the pointer without moving the selection", () => {
 		const list = makeList(true);
-		// Clicking a row selects it; the selection owns its own styling, and a pointer band on top
-		// of it reads as two selections.
 		list.handleClick(FIRST_ROW);
 		const selected = rowAt(list, FIRST_ROW);
 		list.setHoverIndex(list.hitTest(FIRST_ROW));
+		settle();
+		const banded = rowAt(list, FIRST_ROW);
+		expect(banded).not.toBe(selected);
+		expect(banded).toContain("48;2;");
+
+		// The pointer moving on does not drag the selection with it.
+		list.setHoverIndex(list.hitTest(SECOND_ROW));
 		settle();
 		expect(rowAt(list, FIRST_ROW)).toBe(selected);
 	});

@@ -520,17 +520,23 @@ describe("a pointer band fades on a hand-painted list", () => {
 				pane.dispose();
 			});
 
-			it("never bands the selected row", () => {
+			/**
+			 * WHY: the row the keyboard cursor sits on used to answer the pointer with nothing, on every
+			 * one of these cards. That is the deadzone class — the row the eye is already on is the one
+			 * a pointer cannot reach, and reaching its neighbour means pointing at something else first.
+			 * Every card now answers on every row: either the cursor row already carries a band of its
+			 * own (`selectionBand`), or the pointer band paints on it like any other row.
+			 *
+			 * NOT CAUGHT: which of the two bands a given card uses, or how the two compose. This holds
+			 * the card to answering, not to a particular colour.
+			 */
+			it("answers the pointer on the selected row too", () => {
 				const pane = lend(paneCase, () => {});
 				const row = rowOf(pane, paneCase.selected);
-				const before = rowText(pane, row);
 
 				pane.handleInput(motionAt(row));
-				expect(rowText(pane, row)).toBe(before);
-				advance(15);
-				expect(rowText(pane, row)).toBe(before);
-				advance(FRAME * 10);
-				expect(rowText(pane, row)).toBe(before);
+				advance(FRAME * 20);
+				expect(bandRgb(rowText(pane, row)), "the cursor row carries a band under the pointer").not.toBeNull();
 				pane.dispose();
 			});
 

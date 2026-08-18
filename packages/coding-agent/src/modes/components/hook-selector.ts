@@ -830,8 +830,9 @@ export class HookSelectorComponent extends Container {
 							continue;
 						}
 						this.#hitRows[body.length] = option;
-						// The cursor row already carries the selection band; the
-						// pointer band is what the OTHER rows get under the mouse.
+						// The cursor row is already painted with the `selectedBg` band by `paintSelectedRow`,
+						// so it answers the pointer with a band it already has; a second one over the top
+						// would blend to a different colour than every other hovered row.
 						const strength = option === this.#selectedIndex ? 0 : this.#hoverStrength(option);
 						body.push(strength > 0 ? hoverBandAt(rendered, contentWidth, strength) : rendered);
 					}

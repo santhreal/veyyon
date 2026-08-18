@@ -338,7 +338,7 @@ export class MoveOverlay implements Component, Focusable {
 			for (let i = 0; i < shown; i++) {
 				const item = this.#results[i]!;
 				const selected = i === this.#selectedIndex;
-				const hoverStrength = selected ? 0 : this.#hoverStrength(i);
+				const hoverStrength = this.#hoverStrength(i);
 				const marker = selected ? theme.fg("accent", "▶ ") : "  ";
 				const label = selected ? theme.fg("accent", item.label) : theme.fg("text", item.label);
 				const row = `${marker}${label}`;

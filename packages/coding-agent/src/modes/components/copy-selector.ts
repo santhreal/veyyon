@@ -275,7 +275,7 @@ export class CopySelectorComponent implements Component {
 			}
 			const target = node.target;
 			const isSelected = i === cursorIdx;
-			const hoverStrength = isSelected ? 0 : this.#hoverStrength(i);
+			const hoverStrength = this.#hoverStrength(i);
 
 			let prefix = "";
 			for (let l = 0; l < node.depth - 1; l++) prefix += gutterCells(node.ancestorHasNext[l]!);

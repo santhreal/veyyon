@@ -260,25 +260,40 @@ describe("a hover band fades in instead of switching", () => {
 		expect(bands(list.render(40)).size).toBe(0);
 	});
 
-	it("never bands the selected row, and still plays out the row the selection took over", () => {
+	/**
+	 * WHY: the band used to be suppressed on the selected row, and that is what made a list have a
+	 * cell the pointer could not reach — the row the keyboard already sat on answered nothing, so it
+	 * read as dead, and reaching the row above it meant pointing at something else first. The pointer
+	 * and the keyboard are ONE highlight now: every row bands, the selected one included, and the
+	 * pointer never moves the selection (a mouse crossing the card must not change what Enter picks).
+	 *
+	 * NOT CAUGHT: how the band and the selected row's own paint compose visually. This asserts the
+	 * band's strength, not that the blend is legible in a given theme.
+	 */
+	it("bands the selected row too, and never moves the selection to do it", () => {
 		const clock = new MotionClock();
 		const list = new SelectList(ITEMS, 10, bandTheme());
 		list.setHoverMotion({ requestRender: () => {}, clock });
+		list.setSelectedIndex(3);
 
 		list.setHoverIndex(1);
 		const now = advance(clock, MOTION.hover.duration);
 		expect(bands(list.render(40)).get("bravo")).toBe(1);
 
-		// The keyboard moves the selection onto the hovered row: its own accent is the stronger
-		// signal, so the band goes, and it goes at once rather than fading.
+		// The keyboard moves onto the hovered row: the band stays, because the row the pointer is on
+		// is the row the pointer is on whatever the cursor is doing.
 		list.setSelectedIndex(1);
-		expect(bands(list.render(40)).get("bravo")).toBeUndefined();
+		expect(bands(list.render(40)).get("bravo")).toBe(1);
 
-		// Move the selection off again and the band the pointer still owns comes back.
-		list.setSelectedIndex(3);
+		// And pointing at the row the cursor already occupies bands it, rather than nothing.
+		list.setHoverIndex(null);
+		advance(clock, MOTION.hover.duration, now);
+		expect(bands(list.render(40)).get("bravo")).toBeUndefined();
+		list.setHoverIndex(1);
+		const settled = advance(clock, MOTION.hover.duration);
 		expect(bands(list.render(40)).get("bravo")).toBe(1);
-		advance(clock, FRAME, now);
-		expect(bands(list.render(40)).get("bravo")).toBe(1);
+		expect(list.getSelectedItem()?.label).toBe("bravo");
+		advance(clock, FRAME, settled);
 	});
 
 	it("keeps a settings row's band on the row rather than on the line it was drawn at", () => {

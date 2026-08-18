@@ -99,7 +99,12 @@ class UserMessageList implements Component {
 		return this.#hitRows[line];
 	}
 
-	/** Highlight the message under the pointer (null clears). Returns true on change. */
+	/**
+	 * Band the message under the pointer (null clears). Returns true on change.
+	 *
+	 * The band paints on every row, the cursor row included: the pointer does not move the cursor, so
+	 * suppressing it there left a row nothing could point at.
+	 */
 	setHoverIndex(index: number | null): boolean {
 		if (this.#hoveredIndex === index) return false;
 		this.#hoveredIndex = index;
@@ -125,9 +130,11 @@ class UserMessageList implements Component {
 		this.#hoveredIndex = null;
 	}
 
-	/** Band strength for a message: 0 for the selected one, which owns its own styling. */
-	#hoverStrength(index: number, isSelected: boolean): number {
-		if (isSelected) return 0;
+	/**
+	 * Band strength for a message. Every row can carry a band, the cursor row included: suppressing
+	 * it there left the row the keyboard already sat on unable to answer the pointer at all.
+	 */
+	#hoverStrength(index: number): number {
 		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
 		return index === this.#hoveredIndex ? 1 : 0;
 	}
@@ -199,7 +206,7 @@ class UserMessageList implements Component {
 			const message = this.#filteredMessages[i];
 			if (!message) continue;
 			const isSelected = i === this.#selectedIndex;
-			const hoverStrength = this.#hoverStrength(i, isSelected);
+			const hoverStrength = this.#hoverStrength(i);
 
 			// Normalize message to single line
 			const normalizedMessage = message.text.replace(/\n/g, " ").trim();

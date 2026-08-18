@@ -439,6 +439,9 @@ export class AskDialogComponent implements Component {
 	#submitScrollOffset = 0;
 	/** Pointer-highlighted option row on the active question tab (null clears). */
 	#hoveredRowIndex: number | null = null;
+	/** Pointer-highlighted tab id (null clears). Tabs keep hover separate from the active tab: */
+	/** activating on hover would silently change which question is being answered. */
+	#hoveredTabId: string | null = null;
 	/**
 	 * The cross-fade between the row the pointer left and the row it arrived at,
 	 * once the card has a repaint to lend it ({@link setOnRequestRender}). Absent,
@@ -674,6 +677,26 @@ export class AskDialogComponent implements Component {
 				this.#requestRender();
 				return true;
 			}
+			// The tab bar is the first header line inside the card, so its own line numbering starts at
+			// the body row. `tabAt` was already implemented and simply never called from here, which is
+			// what made the tab strip an unreachable affordance.
+			const geometry = this.#shellGeometry;
+			const tabBar = this.#tabBar;
+			const hoveredTab =
+				tabBar && geometry && event.row >= geometry.bodyRowStart
+					? tabBar.tabAt(event.row - geometry.bodyRowStart, event.col - (geometry.leftPad + 2))
+					: undefined;
+			const hoveredTabId = hoveredTab && !hoveredTab.muted ? hoveredTab.id : null;
+			if (hoveredTabId !== this.#hoveredTabId) {
+				this.#hoveredTabId = hoveredTabId;
+				tabBar?.setHoverTab(hoveredTabId);
+				this.#requestRender();
+			}
+			if (event.leftClick && hoveredTab && !hoveredTab.muted) {
+				this.#selectTabId(hoveredTab.id);
+				this.#requestRender();
+				return true;
+			}
 			const map = this.#listPointerMap;
 			const local = map ? event.row - map.frameStart + map.scrollOffset : -1;
 			let rowIndex: number | null = null;
@@ -687,6 +710,8 @@ export class AskDialogComponent implements Component {
 				}
 			}
 			if (event.motion) {
+				// The band paints on every option row, the cursor row included; the pointer never moves
+				// the cursor, so a mouse crossing the card cannot change which option Enter answers.
 				if (rowIndex !== this.#hoveredRowIndex) {
 					this.#hoveredRowIndex = rowIndex;
 					this.#hoverFade?.set(rowIndex);
@@ -750,6 +775,9 @@ export class AskDialogComponent implements Component {
 			];
 			this.#tabBar = new TabBar("", tabs, getTabBarTheme(), this.#activeTabIndex);
 			this.#tabBar.showHint = false;
+			// Hover is applied before the render that produces this frame's bytes, and re-applied every
+			// frame because the bar is rebuilt each render; a band set after render would never paint.
+			if (this.#hoveredTabId !== null) this.#tabBar.setHoverTab(this.#hoveredTabId);
 			lines.push(...this.#tabBar.render(width));
 		}
 		if (this.#isSubmitTab()) {
@@ -856,6 +884,20 @@ export class AskDialogComponent implements Component {
 		this.#activeTabIndex = (this.#activeTabIndex + direction + tabCount) % tabCount;
 		this.#submitScrollOffset = 0;
 		this.#hoveredRowIndex = null;
+	}
+
+	/**
+	 * Activate the tab a pointer clicked. Tab ids are the question index, or `submit` for the review
+	 * tab, which is the last index.
+	 */
+	#selectTabId(id: string): void {
+		const index = id === "submit" ? this.#submitTabIndex() : Number.parseInt(id, 10);
+		if (!Number.isInteger(index) || index < 0 || index > this.#submitTabIndex()) return;
+		if (index === this.#activeTabIndex) return;
+		this.#activeTabIndex = index;
+		this.#submitScrollOffset = 0;
+		this.#hoveredRowIndex = null;
+		this.#hoverFade?.set(null);
 	}
 
 	#advanceAfterQuestion(): void {
@@ -982,13 +1024,11 @@ export class AskDialogComponent implements Component {
 			if (!rowItem) continue;
 			allLines.push(...renderRowLabel(rowItem, question, state, index === state.cursorIndex, mdTheme, width));
 		}
-		// Pointer hover bands the whole row (label + description lines); the
-		// cursor row keeps its own accent styling and never double-bands. Two rows
-		// carry a band on the frames a pointer crosses between them -- the one it
-		// left is still on its way out -- so this walks every row rather than the
-		// single hovered one.
+		// Pointer hover bands the whole row (label + description lines), the cursor row included: the
+		// row the keyboard already sits on has to answer the pointer, or it reads as a dead cell that
+		// cannot be picked. Two rows carry a band on the frames a pointer crosses between them -- the
+		// one it left is still on its way out -- so this walks every row rather than the hovered one.
 		for (let index = 0; index < rowItems.length; index++) {
-			if (index === state.cursorIndex) continue;
 			const strength = this.#hoverStrength(index);
 			if (strength <= 0) continue;
 			const from = lineStartByRow[index] ?? allLines.length;

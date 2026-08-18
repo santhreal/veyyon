@@ -385,9 +385,9 @@ export class HistorySearchComponent implements Component {
 		}
 		const line = event.row - this.#listRowStart;
 		if (event.motion) {
-			if (this.#resultsList.setHoverIndex(this.#resultsList.hitTest(line) ?? null)) {
-				this.#onRequestRender?.();
-			}
+			// The band paints on every row, the cursor row included; the pointer never moves the cursor.
+			const hovered = this.#resultsList.hitTest(line) ?? null;
+			if (this.#resultsList.setHoverIndex(hovered)) this.#onRequestRender?.();
 			return true;
 		}
 		if (event.leftClick) {

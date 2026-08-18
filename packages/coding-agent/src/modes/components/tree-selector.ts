@@ -449,7 +449,12 @@ class TreeList implements Component {
 		return this.#hitRows[line];
 	}
 
-	/** Highlight the entry under the pointer (null clears). Returns true on change. */
+	/**
+	 * Band the entry under the pointer (null clears). Returns true on change.
+	 *
+	 * The band paints on every row, the cursor row included: the pointer does not move the cursor, so
+	 * suppressing it there left a row nothing could point at.
+	 */
 	setHoverIndex(index: number | null): boolean {
 		if (this.#hoveredIndex === index) return false;
 		this.#hoveredIndex = index;

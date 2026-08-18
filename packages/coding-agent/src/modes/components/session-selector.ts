@@ -526,7 +526,12 @@ class SessionList implements Component {
 		return this.#hitRows[line];
 	}
 
-	/** Highlight the session under the pointer (null clears). Returns true on change. */
+	/**
+	 * Band the session under the pointer (null clears). Returns true on change.
+	 *
+	 * The band paints on every row, the cursor row included: the pointer does not move the cursor, so
+	 * suppressing it there left a row nothing could point at.
+	 */
 	setHoverIndex(index: number | null): boolean {
 		if (this.#hoveredIndex === index) return false;
 		this.#hoveredIndex = index;
@@ -554,11 +559,10 @@ class SessionList implements Component {
 	}
 
 	/**
-	 * Band strength for a session block: 0 for the selected one, which owns its
-	 * own styling and must never read as a second selection.
+	 * Band strength for a session block. Every row can carry a band, the cursor row included:
+	 * suppressing it there left the row the keyboard already sat on unable to answer the pointer.
 	 */
-	#hoverStrength(index: number, isSelected: boolean): number {
-		if (isSelected) return 0;
+	#hoverStrength(index: number): number {
 		if (this.#hoverFade !== undefined) return this.#hoverFade.strengthAt(index);
 		return index === this.#hoveredIndex ? 1 : 0;
 	}
@@ -640,7 +644,7 @@ class SessionList implements Component {
 			const blockStart = sessionLines.length;
 			const session = this.#filteredSessions[i];
 			const isSelected = i === this.#selectedIndex;
-			const hoverStrength = this.#hoverStrength(i, isSelected);
+			const hoverStrength = this.#hoverStrength(i);
 
 			// Normalize first message to single line
 			const normalizedMessage = session.firstMessage.replace(/\n/g, " ").trim();
