@@ -6,8 +6,9 @@
  */
 
 import type { Api, ApiKey, AssistantMessage, Context, Model, ServiceTier, SimpleStreamOptions } from "@veyyon/ai";
+import { detectDegenerateRepetition } from "@veyyon/ai/utils/thinking-loop";
 import { preferredDialect } from "@veyyon/catalog/identity";
-import { prompt } from "@veyyon/utils";
+import { logger, prompt } from "@veyyon/utils";
 import { instrumentedCompleteSimple } from "../instrumented-complete";
 import { AGENT_PROMPTS } from "../prompts/registry";
 import type { AgentTelemetry } from "../telemetry";
@@ -678,8 +679,22 @@ export async function generateBranchSummary(
 
 	// A provider can successfully stop without emitting text. Treat whitespace
 	// the same way and do not let the non-empty preamble mask the fallback.
+	//
+	// A generation that repeats one unit until the budget runs out is treated as
+	// no generation for the same reason: it describes nothing about the branch it
+	// stands for, and storing it would make the branch read as that repeat. The
+	// fallback keeps the file lists, which are computed here rather than generated,
+	// so the entry stays useful; a throw would instead block the branch switch on
+	// a provider hiccup, which is why the empty case does not throw either. It is
+	// reported rather than swallowed.
+	const degeneracy = detectDegenerateRepetition(generatedSummary);
+	if (degeneracy) {
+		logger.warn("Branch summary discarded as degenerate", { model: model.id, degeneracy });
+	}
 	let summary =
-		generatedSummary.trim().length > 0 ? BRANCH_SUMMARY_PREAMBLE + generatedSummary : "No summary generated";
+		generatedSummary.trim().length > 0 && !degeneracy
+			? BRANCH_SUMMARY_PREAMBLE + generatedSummary
+			: "No summary generated";
 
 	// Compute file lists and append to summary
 	const { readFiles, modifiedFiles } = computeFileLists(fileOps);
