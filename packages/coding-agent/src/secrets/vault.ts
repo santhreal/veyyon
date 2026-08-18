@@ -2117,6 +2117,35 @@ export class SecretVault {
 	}
 
 	/**
+	 * Empty one scope's vault, returning the names it removed.
+	 *
+	 * WHY THIS EXISTS AS A VAULT OPERATION rather than as `list` piped into `remove`. A loop over
+	 * `remove` takes and releases the scope lock once per entry, so a credential stored between two
+	 * iterations survives a command the operator was told emptied the vault, and a failure halfway
+	 * leaves a vault neither full nor empty with nothing saying which entries went. One locked
+	 * transaction cannot report a partial result as success.
+	 *
+	 * NAMES, NOT A COUNT. The names are already the safe half of an entry -- `list` prints them and
+	 * the placeholder is built from them -- and a count alone cannot tell an operator whether the
+	 * credential they were worried about was in the scope they emptied.
+	 *
+	 * EXPIRED ENTRIES ARE REMOVED AND NOT REPORTED. They cannot expand, so naming them would pad
+	 * the report with credentials the session had already stopped honouring; the write still drops
+	 * them, because leaving them behind is what makes a cleared vault non-empty on disk.
+	 */
+	async clear(scope: VaultScope): Promise<readonly string[]> {
+		const now = this.#now();
+		return await this.#withScopeLocked(scope, (current, exists) => {
+			const live = current.filter(entry => !isExpired(entry, now));
+			return {
+				entries: [],
+				result: live.map(entry => entry.name),
+				write: exists && current.length > 0,
+			};
+		});
+	}
+
+	/**
 	 * Push an entry's expiry out from now.
 	 *
 	 * Measured from now rather than from the old expiry, so extending a secret that is nearly

@@ -362,6 +362,11 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 				usage: "/secret rm <name> [--scope profile|project|global]",
 			},
 			{
+				name: "clear",
+				description: "Remove every secret in one vault, naming what it removed",
+				usage: "/secret clear --scope profile|project|global",
+			},
+			{
 				name: "rename",
 				description: "Give a stored secret a different name, keeping its value and lifetime",
 				usage: "/secret rename <name> <new-name>",
