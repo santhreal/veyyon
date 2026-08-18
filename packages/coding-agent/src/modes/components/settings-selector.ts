@@ -98,7 +98,6 @@ import {
 	type ModalShellGeometry,
 	type ModalShortcut,
 	modalRevealEnabled,
-	paintCardInset,
 	planModalChrome,
 	renderModalShell,
 	SETTINGS_BROWSE_SHORTCUTS,
@@ -3165,14 +3164,11 @@ export class SettingsSelectorComponent implements Component {
 		const paneLines: string[] = [...listLines, ...previewLines];
 		const bar = theme.fg("borderAccent", theme.boxSharp.vertical);
 		const bodyRows = Math.max(sidebarLines.length, paneLines.length);
-		// The category column is a pane set INTO the card, not part of the plate the
-		// settings rows sit on: two materials either side of the hairline is what makes
-		// the split read as a split rather than as one wash with a line drawn on it.
-		// The card's own fill leaves these cells alone, because a cell that already
-		// carries a background is the component saying it is not the surface.
+		// The accented hairline is what makes the split read as a split; the category
+		// column carries no material of its own.
 		const body: string[] = [];
 		for (let r = 0; r < bodyRows; r++) {
-			const side = paintCardInset(sidebarLines[r] ?? padding(sidebarWidth), sidebarWidth);
+			const side = sidebarLines[r] ?? padding(sidebarWidth);
 			body.push(`${side}${bar}  ${paneLines[r] ?? ""}`);
 		}
 

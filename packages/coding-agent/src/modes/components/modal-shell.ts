@@ -18,15 +18,11 @@ import {
 	clamp,
 	clampLow,
 	fadeLineTowards,
-	fillSurface,
 	type Keybinding,
-	liftHex,
 	MOTION,
 	type MotionClock,
 	motionClock,
 	padding,
-	paintLineBackground,
-	type SurfaceBand,
 	sweepSurface,
 	TERMINAL,
 	truncateToWidth,
@@ -1135,71 +1131,18 @@ function modalSurfaceGround(ground: string): string | undefined {
 }
 
 /**
- * The elevation ladder a card is made of, top to bottom.
+ * Play a rendered modal frame's entrance.
  *
- * One wash over the whole card was measured on a real terminal at twelve of 255
- * above the page at its top row and four at its foot: an elevation the eye cannot
- * find, so a settled card still read as line art on the page. Three materials fix
- * that without brightening anything into a slab — a header tray carrying the title
- * and the search line, the body in front of it, and a recessed footer tray under
- * the tip and the chips. The ladder is what gives the eye an edge to catch.
- */
-const CARD_HEADER_LIFT = 0.15;
-const CARD_BODY_LIFT = 0.1;
-const CARD_BODY_BOTTOM_LIFT = 0.07;
-const CARD_TRAY_LIFT = 0.04;
-/** A pane the card sets INTO its own body: a category sidebar, a preview column. */
-const CARD_INSET_LIFT = 0.025;
-
-/**
- * The material a two-pane card sets its side column in, or undefined when this
- * terminal gets no material at all.
+ * Two things happen here, and the order matters:
  *
- * The shell cannot do this one itself: it is handed finished body rows and has no
- * idea where a component split them. So the component paints its own inset, and
- * because {@link applyModalReveal} never overpaints a cell that already carries a
- * background, the inset survives the fill that follows it.
- */
-export function cardInsetHex(): string | undefined {
-	const ground = modalSurfaceGround(modalRevealGround());
-	if (ground === undefined || !TERMINAL.trueColor) return undefined;
-	return liftHex(ground, CARD_INSET_LIFT);
-}
-
-/**
- * Set one pane of a two-pane card INTO the card: the same rendered columns, on the
- * inset material.
- *
- * `width` is the pane's own width, and the paint stops there, so the hairline and
- * the pane beside it keep the plate. A terminal with no material gets the line
- * back unchanged, which is the byte-identity the card suites assert.
- */
-export function paintCardInset(line: string, width: number): string {
-	const inset = cardInsetHex();
-	if (inset === undefined) return line;
-	return paintLineBackground(line, width, ({ background }) => (background === undefined ? inset : undefined), {
-		start: 0,
-		end: width,
-	});
-}
-
-/**
- * Paint a rendered modal frame as a SURFACE, and play its entrance.
- *
- * Three things happen here, and the order matters:
- *
- *   1. The card's rows are filled with an elevation gradient — a few percent off
- *      the ground the terminal is actually showing, lighter at the top edge than
- *      the bottom. This is not part of the animation: a settled card is still a
- *      surface. Cells the component gave their own background keep it.
- *   2. While the entrance runs, the card is clipped to the rows it has grown to
+ *   1. While the entrance runs, the card is clipped to the rows it has grown to
  *      and each row resolves out of the ground on ITS OWN ramp. A single strength
  *      for the whole block gives an animation as many distinct frames as the card
  *      has rows, which is why the unfold read as a cut with a moving edge; a
  *      cascade gives every row a continuous fade and the overlap is what the eye
  *      reads as one smooth motion. The bottom border still slides down with the
  *      body, so the card is never a borderless sliver.
- *   3. One specular highlight crosses the card, on a curve that outlasts the
+ *   2. One specular highlight crosses the card, on a curve that outlasts the
  *      unfold. This is the only motion in the product with a frame for every frame
  *      of the clock: it moves through colour rather than through terminal rows, so
  *      it cannot look stepped.
@@ -1227,33 +1170,19 @@ export function applyModalReveal(
 	const columns: ColumnWindow = { start: cardColStart, end: cardColEnd };
 
 	const strength = clamp(progress.value, 0, 1);
-	// The surface and the sweep are written as `48;2;r;g;b` mixed out of the ground
-	// behind the card, so both need a truecolor terminal AND a ground that is known
-	// rather than assumed (see modalSurfaceGround). Without either, the product is
-	// exactly what it was; the clip and the fade below are colour-agnostic and play.
+	// The sweep is written as `48;2;r;g;b` mixed out of the ground behind the card,
+	// so it needs a truecolor terminal AND a ground that is known rather than assumed
+	// (see modalSurfaceGround). Without either the product is exactly what it was;
+	// the clip and the fade below are colour-agnostic and play regardless.
 	const surface = TERMINAL.trueColor ? modalSurfaceGround(ground) : undefined;
-	// Header tray: the top border, the title rail, and the search line if there is
-	// one — everything above the first body row. Footer tray: the tip, the chips and
-	// the bottom border. Rows are relative to the card block, `end` exclusive.
-	const bands: readonly SurfaceBand[] = [
-		{ start: 0, end: Math.max(1, geometry.bodyRowStart - cardRowStart), lift: CARD_HEADER_LIFT },
-		{ start: Math.max(0, geometry.footerRowStart - cardRowStart), end: cardRows, lift: CARD_TRAY_LIFT },
-	];
-	let treated =
-		surface === undefined
-			? card
-			: fillSurface(
-					card,
-					areaWidth,
-					{
-						ground: surface,
-						lift: CARD_BODY_LIFT,
-						bottomLift: CARD_BODY_BOTTOM_LIFT,
-						bands,
-						columns,
-					},
-					strength,
-				);
+	// A settled card carries NO fill of its own: it is line art on whatever the
+	// terminal is showing. An explicit background on every cell of a rectangle reads
+	// as a film laid over the page rather than as an object standing on it, however
+	// few percent off the ground it is mixed -- which is what the elevation ladder
+	// that used to live here (a header tray, a body plate, a recessed footer tray,
+	// and an inset for a side pane) actually looked like on a real terminal. The
+	// light below still crosses the card: a highlight that moves is not a wash.
+	let treated = card;
 
 	// How many rows of the card are on screen this frame. Everything below is blank
 	// page, and nothing may be painted onto it — a swept blank row is light lying
