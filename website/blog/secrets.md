@@ -12,7 +12,7 @@ You need the agent to call an API now. The API needs a token. You could paste th
 token into chat, but that sends it to the model provider and leaves it in your
 session history and terminal scrollback.
 
-Use `/secret` instead. Veyyon stores the value locally and tells the agent only a
+Use `/secret add` instead. Veyyon stores the value locally and tells the agent only a
 placeholder such as `#SECRET_1#`. The agent writes the placeholder into a tool
 call. Veyyon replaces it with the real value immediately before execution.
 
@@ -21,11 +21,11 @@ when you need it.
 
 ## Store one now
 
-In a terminal, everything you type after `/secret` is the credential. There is no
-verb to spell and no name to invent first. Send the command by itself:
+A `/secret` line leads with a command. `add` is the one that stores something, and
+sending it by itself is the most private way in:
 
 ```text
-/secret
+/secret add
 ```
 
 Veyyon opens a hidden field. Paste the credential and press Enter. Your typing is
@@ -45,18 +45,22 @@ That is enough. The agent can use `#SECRET_1#` immediately, and a later session
 will be told that the placeholder is available.
 
 You can also put the value straight on the line, which is quicker and less
-private:
+private. Everything after `add` is the credential, first word included:
 
 ```text
-/secret sk_test_example_not_a_real_key
+/secret add sk_test_example_not_a_real_key
 ```
 
 Veyyon stores that the same way, and says plainly that the value is now in your
 scrollback.
 
+A first word that is not a command is refused, and nothing is stored. If that word
+was a credential, it is in your scrollback and the vault never saw it, so the
+refusal says to rotate it. It does not repeat the word.
+
 A client with no terminal, such as `--print` mode or an ACP editor, has no field
-to hide typing in. There `/secret` keeps a verb grammar, described under If your
-client has no terminal.
+to hide typing in. There `add` takes a name and reads the value only from the
+environment, described under If your client has no terminal.
 
 ## Use it
 
@@ -116,13 +120,13 @@ provides the credential.
 Make the variable available before Veyyon starts, then run:
 
 ```text
-/secret --from-env STRIPE_TEST_KEY
+/secret add --from-env STRIPE_TEST_KEY
 ```
 
 Veyyon reads the inherited environment variable and asks for a name as usual. The
 value never enters the Veyyon editor or its terminal output.
 
-`--from-env` has to be the first word after `/secret`, and the variable name has
+`--from-env` has to be the first word after `add`, and the variable name has
 to be the only thing after it. Anything else on the line is a credential again,
 so Veyyon refuses rather than storing something you did not mean.
 
@@ -141,8 +145,12 @@ The first word decides: a word from the table below runs that verb, and anything
 else is a value again.
 
 ```text
+/secret add                           paste into a hidden field
+/secret add <value>                   store it now, then name it (optional)
+/secret add --from-env <VAR>          store the value of an environment variable
 /secret list                          show active secrets, never their values
 /secret rm <name> [--scope global]    remove a secret
+/secret clear --scope profile         remove every secret in one vault
 /secret rename <name> <new-name>      give a secret a different name
 /secret value <name>                  replace a secret's value, keeping its name and lifetime
 /secret scope <name> global           move a secret to another vault
@@ -152,9 +160,10 @@ else is a value again.
 /secret discard --scope project       move a broken vault file aside
 ```
 
-Those words are reserved, so a credential that begins with one needs the escape:
-`/secret -- list 8891` stores the text `list 8891`. `/secret help` prints the same
-table with the options footer under it.
+A command stays a command however much follows it, so a credential that begins
+with one of those words goes behind `add`: `/secret add list 8891` stores the text
+`list 8891`. A bare `/secret`, and `/secret help`, print that table with the
+options footer under it.
 
 ## Choose where it is available
 
@@ -193,7 +202,7 @@ Other entries remain available.
 ## Set a lifetime
 
 A new entry lasts one day unless your settings specify another default. A
-terminal entry line carries no lifetime, so set one afterwards with `/secret
+terminal `add` line carries no lifetime, so set one afterwards with `/secret
 extend STRIPE_TEST_KEY --ttl 7d`, taking a form such as `30m`, `12h`, `7d`, `2w`,
 or `never`. The new lifetime is measured from the moment you set it.
 
@@ -262,10 +271,11 @@ management verb is the same one you use at a terminal:
 /secret discard --scope project
 ```
 
-Only the entry line differs between the two surfaces. Every verb above parses at a
-terminal as well, in the same order and with the same options; what a terminal
-adds is the hidden paste, and what those clients add is nothing, because a value
-they cannot hide has to come from somewhere they can read it.
+Only the shape of `add` differs between the two surfaces. Both require a command
+first, and every other command above parses at a terminal in the same order and
+with the same options; what a terminal adds is the inline value and the hidden
+paste, and what those clients add is nothing, because a value they cannot hide has
+to come from somewhere they can read it.
 
 `list` prints a table:
 
@@ -316,7 +326,7 @@ name ends with, or has an underscore before, a credential keyword such as
 `OAUTH`.
 
 This is defensive masking. It does not give the agent a useful name to spend.
-Use `/secret --from-env` when you deliberately want the agent to use that
+Use `/secret add --from-env` when you deliberately want the agent to use that
 credential.
 
 ## What crosses each boundary
