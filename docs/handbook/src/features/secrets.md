@@ -269,6 +269,7 @@ Every verb below works in a terminal and on a client that has none. The value fo
 | `/secret copy <name>` | put `#NAME#` on the clipboard, never the value |
 | `/secret extend <name> --ttl 7d` | give it a fresh lifetime, measured from now |
 | `/secret rm <name> [--scope global]` | revoke it |
+| `/secret clear --scope profile` | remove every credential in one vault, naming what it removed |
 | `/secret log [--name <name>] [--limit 50]` | which credentials were spent, and where |
 | `/secret discard --scope project` | move aside a vault file that cannot be read |
 | `/secret help` | every form, on the surface you are on |
@@ -276,6 +277,8 @@ Every verb below works in a terminal and on a client that has none. The value fo
 `value` is how you correct a credential. It keeps the name, the scope, the creation time and the expiry, so a token pasted with one character missing does not have to be revoked and stored again: storing it again mints a new name while every prompt in the session still spends the old placeholder, and it re-dates the entry, so a secret with two days left would come back with the default lifetime. The field it opens is hidden as you type, and `--from-env <VAR>` works with it too.
 
 `copy` copies the placeholder and only the placeholder. `#GITHUB_TOKEN#` is the thing you paste into a prompt; copying the value would be the disclosure you stored the credential to avoid.
+
+`clear` empties one vault. It names the scope because there is no default: the vault is three files, project overriding profile overriding global, and the copy you can reach is the one that gets spent, so a guess would empty whichever happened to be in front and leave the other two full. It reports the placeholders it dropped. A name that a wider vault still holds is reported as removed but not as revoked, because `#NAME#` goes on expanding to that copy. `wipe`, `purge`, `empty` and `reset` are the same command.
 
 `scope` refuses a move onto a name the destination vault already holds, rather than overwriting it. It also carries the time REMAINING rather than the original lifetime, so moving a secret cannot lengthen its life. The copy is written to the destination before the source is removed, so an interrupted move leaves two copies you can see rather than none.
 
@@ -512,7 +515,7 @@ subcommands that do not read it, naming the ones that do:
 /secret extend github-token --scope global
 
 /secret extend does not take --scope, and ignoring it would look like it had been applied.
-/secret add, /secret rm and /secret discard take it.
+/secret add, /secret rm, /secret clear and /secret discard take it.
 ```
 
 That refusal exists because the alternative is worse than an error. An accepted-and-ignored

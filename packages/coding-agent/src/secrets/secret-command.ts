@@ -183,6 +183,62 @@ const USAGE_TUI_ESCAPE = "/secret -- <value>                    store a value st
 const USAGE_ADD_FROM_ENV = "/secret add <name> --from-env <VAR>   store the value of an environment variable";
 
 /**
+ * What each subcommand actually reads: its options, and how many bare words it takes.
+ *
+ * The ONE owner of that mapping, declared as data rather than checked with a chain of `if`s, so
+ * parsing, error messages and guards cannot describe different sets of rules. `add` has unbounded
+ * words because its second positional is the untouched credential suffix, not a word list.
+ *
+ * EXPORTED so the grammar suites can be derived from it rather than restating it. A hand-written
+ * copy of this table in a test goes stale the moment a verb is added, and a stale copy is the same
+ * thing as no test: the new verb's options and word count are then asserted by nobody.
+ *
+ * `needsScope` is REQUIRED on every entry, and it is data rather than prose for the same reason.
+ * Three verbs refuse a request with no scope instead of defaulting one, that fact was stated only
+ * in a comment and in a chain of `if`s inside the guard, and every suite that builds a well-formed
+ * line therefore had to hardcode which verbs those were. A required field means a new verb cannot
+ * be added without answering the question, and the guard and the suites read the same answer.
+ */
+export const SECRET_SUBCOMMAND_SHAPES: Record<
+	SecretSubcommand,
+	{ options: readonly string[]; words: number; needsScope: boolean }
+> = {
+	add: { options: ["--from-env", "--ttl", "--scope"], words: Number.POSITIVE_INFINITY, needsScope: false },
+	list: { options: [], words: 0, needsScope: false },
+	// OPTIONAL scope, unlike `discard`. Omitted, removal takes the narrowest match, which is the
+	// entry currently in effect and so the one the operator means almost every time. Named, it
+	// removes from that scope only. Without the option a name held in two scopes had its outer
+	// copy stranded: every `rm` took the inner one, and there was no way to reach the other.
+	rm: { options: ["--scope"], words: 1, needsScope: false },
+	// REQUIRED scope, on `discard`'s terms and for a sharper reason: this one empties a vault that
+	// reads perfectly well. There is no narrowest-wins default to fall back on, because "the vault"
+	// is three files and the operator can only mean one of them, and a bare word after `clear` would
+	// read as a secret name -- which is `rm`, a different and much smaller command.
+	clear: { options: ["--scope"], words: 0, needsScope: true },
+	// TWO words: the name, then the new name. The second one is a name and not a credential, so it
+	// is read off the line where `add`'s never is, and a third word is still refused.
+	rename: { options: [], words: 2, needsScope: false },
+	// ONE word, and the replacement arrives the way a credential always does: from a masked field,
+	// or from the environment. Reading it off the line is allowed for the same reason `add` allows
+	// it and no more, and it costs the same scrollback warning.
+	value: { options: ["--from-env"], words: 1, needsScope: false },
+	// TWO words: the name, then the destination vault. The destination is a positional rather than
+	// `--scope`, because on this verb it is the entire point of the line and not an option to it --
+	// which is why this one needs a scope while taking no `--scope` option.
+	scope: { options: [], words: 2, needsScope: true },
+	copy: { options: [], words: 1, needsScope: false },
+	extend: { options: ["--ttl"], words: 1, needsScope: false },
+	// `--name` narrows the log to one secret. Without it the log is every use, which is the right
+	// default for "what has been spent" and the wrong one for "who has been spending this".
+	log: { options: ["--limit", "--name"], words: 0, needsScope: false },
+	// REQUIRED scope, so `words: 0` and the guard below. The scope names a FILE to move aside
+	// rather than a place to store something, so there is no safe default to fall back on, and a
+	// bare word here would read as a secret name, which is the mistake worth refusing outright.
+	discard: { options: ["--scope"], words: 0, needsScope: true },
+	help: { options: [], words: 0, needsScope: false },
+};
+
+/**
  * Everything you only need once a secret exists, shared by both surfaces.
  *
  * ONE LIST, because both surfaces parse all of it. Every capability `/secret` has is a word in this
@@ -219,10 +275,17 @@ const USAGE_MANAGE = [
 const USAGE_FOOTER_SCOPES =
 	"Lifetimes default to the secrets.defaultTtl setting. Scope defaults to profile; project overrides profile, which overrides global.";
 
+/**
+ * The annotation column is padded to a fixed width so the option and its verbs line up. Built
+ * rather than written out, because the verb half is derived: `--scope` gained a fourth reader and
+ * the hand-written sentence went stale in the same commit that added it.
+ */
+const footerOption = (flag: string, tail: string): string => `${flag.padEnd(37)}${tail}`;
+
 const USAGE_FOOTER = [
-	"--ttl 30m|12h|7d|2w|never            on add and extend",
-	"--scope profile|project|global       on add, rm and discard",
-	"--name <name>                        on log, to show only that secret's uses",
+	footerOption("--ttl 30m|12h|7d|2w|never", `on ${joinWithAnd(subcommandsTaking("--ttl"))}`),
+	footerOption("--scope profile|project|global", `on ${joinWithAnd(subcommandsTaking("--scope"))}`),
+	footerOption("--name <name>", `on ${joinWithAnd(subcommandsTaking("--name"))}, to show only that secret's uses`),
 	USAGE_FOOTER_SCOPES,
 	"Removal without --scope takes the narrowest match, which is the one currently in effect.",
 ];
@@ -284,52 +347,6 @@ export const NONINTERACTIVE_SECRET_COMMAND_USAGE = buildUsage([USAGE_ADD_FROM_EN
 export function secretCommandUsage(surface: SecretCommandSurface): string {
 	return surface === "tui" ? SECRET_COMMAND_USAGE : NONINTERACTIVE_SECRET_COMMAND_USAGE;
 }
-
-/**
- * What each subcommand actually reads: its options, and how many bare words it takes.
- *
- * The ONE owner of that mapping, declared as data rather than checked with a chain of `if`s, so
- * parsing, error messages and guards cannot describe different sets of rules. `add` has unbounded
- * words because its second positional is the untouched credential suffix, not a word list.
- *
- * EXPORTED so the grammar suites can be derived from it rather than restating it. A hand-written
- * copy of this table in a test goes stale the moment a verb is added, and a stale copy is the same
- * thing as no test: the new verb's options and word count are then asserted by nobody.
- */
-export const SECRET_SUBCOMMAND_SHAPES: Record<SecretSubcommand, { options: readonly string[]; words: number }> = {
-	add: { options: ["--from-env", "--ttl", "--scope"], words: Number.POSITIVE_INFINITY },
-	list: { options: [], words: 0 },
-	// OPTIONAL scope, unlike `discard`. Omitted, removal takes the narrowest match, which is the
-	// entry currently in effect and so the one the operator means almost every time. Named, it
-	// removes from that scope only. Without the option a name held in two scopes had its outer
-	// copy stranded: every `rm` took the inner one, and there was no way to reach the other.
-	rm: { options: ["--scope"], words: 1 },
-	// TWO words: the name, then the new name. The second one is a name and not a credential, so it
-	// is read off the line where `add`'s never is, and a third word is still refused.
-	rename: { options: [], words: 2 },
-	// ONE word, and the replacement arrives the way a credential always does: from a masked field,
-	// or from the environment. Reading it off the line is allowed for the same reason `add` allows
-	// it and no more, and it costs the same scrollback warning.
-	value: { options: ["--from-env"], words: 1 },
-	// TWO words: the name, then the destination vault. The destination is a positional rather than
-	// `--scope`, because on this verb it is the entire point of the line and not an option to it.
-	scope: { options: [], words: 2 },
-	copy: { options: [], words: 1 },
-	extend: { options: ["--ttl"], words: 1 },
-	// `--name` narrows the log to one secret. Without it the log is every use, which is the right
-	// default for "what has been spent" and the wrong one for "who has been spending this".
-	log: { options: ["--limit", "--name"], words: 0 },
-	// REQUIRED scope, so `words: 0` and the guard below. The scope names a FILE to move aside
-	// rather than a place to store something, so there is no safe default to fall back on, and a
-	// bare word here would read as a secret name, which is the mistake worth refusing outright.
-	discard: { options: ["--scope"], words: 0 },
-	// REQUIRED scope, on `discard`'s terms and for a sharper reason: this one empties a vault that
-	// reads perfectly well. There is no narrowest-wins default to fall back on, because "the vault"
-	// is three files and the operator can only mean one of them, and a bare word after `clear` would
-	// read as a secret name -- which is `rm`, a different and much smaller command.
-	clear: { options: ["--scope"], words: 0 },
-	help: { options: [], words: 0 },
-};
 
 /** Every known option, derived from its subcommand owners so the two cannot drift. */
 const SECRET_COMMAND_OPTIONS: Record<string, true> = Object.fromEntries(
@@ -699,22 +716,28 @@ function ordinalWord(count: number): string {
 }
 
 /**
- * Refuse `/secret discard` with no scope, rather than defaulting it.
+ * Refuse a verb that needs a scope and was given none, rather than defaulting one.
  *
  * EVERY OTHER USE of `--scope` names where to PUT something and defaults to profile, where a wrong
- * guess costs you a secret stored in the wrong place and `/secret list` shows you that. Here the
- * argument selects a FILE TO MOVE ASIDE, so a default would let a bare `/secret discard` move a
- * working vault out from under the session, and the operator asked for a repair rather than that.
+ * guess costs you a secret stored in the wrong place and `/secret list` shows you that. The three
+ * verbs below select something that already exists -- a file to move aside, a vault to empty, a
+ * destination to move a secret into -- so a default acts on whichever one happened to be in front.
+ *
+ * WHICH verbs those are is read from `SECRET_SUBCOMMAND_SHAPES.needsScope` rather than from this
+ * chain, so the grammar suites and this guard cannot hold different lists. The sentences stay
+ * per-verb because the reason differs, and a verb that declares the requirement without one is
+ * still refused rather than quietly allowed.
  */
 function refuseMissingScope(request: SecretCommandRequest, usageText: string): void {
-	if (request.subcommand === "scope" && request.scope === undefined) {
+	if (!SECRET_SUBCOMMAND_SHAPES[request.subcommand].needsScope || request.scope !== undefined) return;
+	if (request.subcommand === "scope") {
 		throw new Error(
 			`/secret scope needs the vault to move the secret INTO, such as /secret scope MY_TOKEN global. ` +
 				`There is no default: the vault it is already in is the one answer that cannot be meant.` +
 				`\n\n${usageText}`,
 		);
 	}
-	if (request.subcommand === "clear" && request.scope === undefined) {
+	if (request.subcommand === "clear") {
 		throw new Error(
 			`/secret clear needs the vault to empty, such as /secret clear --scope profile. There is no ` +
 				`default: a credential you can reach is the narrowest copy of it, so a guessing /secret clear ` +
@@ -722,29 +745,52 @@ function refuseMissingScope(request: SecretCommandRequest, usageText: string): v
 				`\n\n${usageText}`,
 		);
 	}
-	if (request.subcommand !== "discard" || request.scope !== undefined) return;
+	if (request.subcommand === "discard") {
+		throw new Error(
+			`/secret discard needs the scope whose vault file you want moved aside, such as ` +
+				`/secret discard --scope project. There is no default, because discarding a scope you did ` +
+				`not mean would move a working vault out from under this session.\n\n${usageText}`,
+		);
+	}
+	// Declared as needing a scope, with no sentence written for it. Refusing generically is the only
+	// safe reading: accepting the request would act on a vault the operator never named.
 	throw new Error(
-		`/secret discard needs the scope whose vault file you want moved aside, such as ` +
-			`/secret discard --scope project. There is no default, because discarding a scope you did ` +
-			`not mean would move a working vault out from under this session.\n\n${usageText}`,
+		`/secret ${request.subcommand} needs the vault to act on, such as ` +
+			`/secret ${request.subcommand} --scope profile. There is no default.\n\n${usageText}`,
 	);
 }
 
 /**
- * Build the ownership error before parsing an option value the subcommand cannot use.
+ * Which verbs read an option, in table order.
  *
- * The verb list is joined by hand rather than with `join(" and ")`, which was correct only while
- * no option was read by more than two subcommands. `--scope` reaching a third (`rm`) turned the
- * sentence into "/secret add and /secret rm and /secret discard take it". `Intl.ListFormat` would
- * also do this, and is not used because its output moves with locale data: this string is pinned
- * byte for byte by tests and read by an operator who has just been refused, so it is spelled out.
+ * ONE OWNER for a fact that had two: the refusal sentence derived it from the shape table while the
+ * usage footer stated it as prose ("on add, rm and discard"), so a verb that gained `--scope` moved
+ * one and left the other describing a surface that no longer existed. The footer is now built from
+ * this, which is also the reason it takes bare verb names and lets each caller add its own prefix.
  */
-function irrelevantOption(subcommand: SecretSubcommand, option: string, usageText: string): Error {
-	const takenBy = (Object.keys(SECRET_SUBCOMMAND_SHAPES) as SecretSubcommand[]).filter(candidate =>
+function subcommandsTaking(option: string): SecretSubcommand[] {
+	return (Object.keys(SECRET_SUBCOMMAND_SHAPES) as SecretSubcommand[]).filter(candidate =>
 		SECRET_SUBCOMMAND_SHAPES[candidate].options.includes(option),
 	);
-	const verbs = takenBy.map(verb => `/secret ${verb}`);
-	const named = verbs.length <= 2 ? verbs.join(" and ") : `${verbs.slice(0, -1).join(", ")} and ${verbs.at(-1)}`;
+}
+
+/**
+ * "a", "a and b", "a, b and c".
+ *
+ * Joined by hand rather than with `join(" and ")`, which was correct only while no option was read
+ * by more than two subcommands: `--scope` reaching a third turned the sentence into "add and rm and
+ * discard". `Intl.ListFormat` would also do this, and is not used because its output moves with
+ * locale data, while this string is pinned byte for byte and read by an operator who has just been
+ * refused.
+ */
+function joinWithAnd(items: readonly string[]): string {
+	return items.length <= 2 ? items.join(" and ") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
+}
+
+/** Build the ownership error before parsing an option value the subcommand cannot use. */
+function irrelevantOption(subcommand: SecretSubcommand, option: string, usageText: string): Error {
+	const takenBy = subcommandsTaking(option);
+	const named = joinWithAnd(takenBy.map(verb => `/secret ${verb}`));
 	return new Error(
 		`/secret ${subcommand} does not take ${option}, and ignoring it would look like it had ` +
 			`been applied. ${named} take${takenBy.length === 1 ? "s" : ""} it.` +

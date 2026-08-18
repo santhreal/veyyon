@@ -34,6 +34,8 @@ import {
 	parseSecretCommand,
 	resolveDefaultTtl,
 	runSecretCommand,
+	SECRET_SUBCOMMAND_SHAPES,
+	type SecretSubcommand,
 	secretCommandUsage,
 } from "@veyyon/coding-agent/secrets/secret-command";
 import { DEFAULT_TTL_MS, SecretVault } from "@veyyon/coding-agent/secrets/vault";
@@ -866,7 +868,14 @@ describe("usage text", () => {
 		const noninteractive = secretCommandUsage("noninteractive");
 		const tui = secretCommandUsage("tui");
 
-		for (const verb of ["list", "rm", "rename", "value", "scope", "copy", "extend", "log", "discard"]) {
+		// DERIVED from the shape table, not listed. The list here was written out, so `clear` was added
+		// to the grammar and to both help texts while this row went on asserting the nine verbs that
+		// predated it -- green, and blind to the verb it should have been checking.
+		const verbs = (Object.keys(SECRET_SUBCOMMAND_SHAPES) as SecretSubcommand[]).filter(
+			verb => verb !== "add" && verb !== "help",
+		);
+		expect(verbs.length).toBeGreaterThan(9);
+		for (const verb of verbs) {
 			expect(noninteractive).toContain(`/secret ${verb}`);
 			expect(tui).toContain(`/secret ${verb}`);
 		}

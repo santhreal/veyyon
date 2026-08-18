@@ -3,6 +3,7 @@ import {
 	parseSecretCommand,
 	SECRET_TUI_SUBCOMMANDS,
 	SECRET_VERB_SPELLINGS,
+	type SecretSubcommand,
 	secretCommandUsage,
 } from "@veyyon/coding-agent/secrets/secret-command";
 
@@ -29,11 +30,19 @@ import {
  * suites). This file is only about which reading a line gets.
  */
 
-/** A line that satisfies each subcommand's shape, so a refusal here is a routing failure. */
-const WELL_FORMED: Record<string, string> = {
+/**
+ * A line that satisfies each subcommand's shape, so a refusal here is a routing failure.
+ *
+ * Keyed by `SecretSubcommand` and read WITHOUT a fallback on purpose. It was `Record<string, string>`
+ * behind a `?? ""`, which meant a verb missing from this table was swept with an incomplete line and
+ * the row passed or failed on the shape rather than on the routing it exists to check. A new member
+ * now fails to compile here, which is the point of deriving the sweep from the live table at all.
+ */
+const WELL_FORMED: Record<SecretSubcommand, string> = {
 	add: "ghp_theCredentialItself",
 	list: "",
 	rm: "TOKEN_NAME",
+	clear: "--scope profile",
 	rename: "TOKEN_NAME OTHER_NAME",
 	value: "TOKEN_NAME",
 	scope: "TOKEN_NAME global",
@@ -52,7 +61,7 @@ describe("every reserved word is a command in a terminal, not a credential", () 
 		 * every one of these lines used to come back as.
 		 */
 		it(`routes ${word} to ${subcommand}`, () => {
-			const line = [word, WELL_FORMED[subcommand] ?? ""].join(" ").trim();
+			const line = [word, WELL_FORMED[subcommand]].join(" ").trim();
 			const request = parseSecretCommand(line, "tui");
 
 			expect(request.subcommand).toBe(subcommand);
@@ -151,7 +160,7 @@ describe("the terminal help and the terminal menu describe the same grammar", ()
 		const usage = secretCommandUsage("tui");
 
 		for (const sub of SECRET_TUI_SUBCOMMANDS) {
-			expect(parseSecretCommand([sub.name, WELL_FORMED[sub.name] ?? ""].join(" ").trim(), "tui").subcommand).toBe(
+			expect(parseSecretCommand([sub.name, WELL_FORMED[sub.name]].join(" ").trim(), "tui").subcommand).toBe(
 				sub.name,
 			);
 			if (sub.name !== "add" && sub.name !== "help") expect(usage).toContain(`/secret ${sub.name}`);

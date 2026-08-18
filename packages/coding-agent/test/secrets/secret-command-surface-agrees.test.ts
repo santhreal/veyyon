@@ -257,7 +257,11 @@ describe("the noninteractive parser and its usage text", () => {
 		const aliases = Object.entries(SECRET_VERB_SPELLINGS).filter(([word, subcommand]) => word !== subcommand);
 
 		expect(aliases.map(([word]) => word).sort()).toEqual(
-			["audit", "delete", "move", "name", "remove", "renew", "replace"].sort(),
+			// `empty`, `purge`, `reset` and `wipe` all reach `clear`. They are reserved rather than
+			// merely accepted: an emptying verb that is not reserved is read as a credential and
+			// stored, which is the defect `emptying-the-vault-is-a-command-and-not-a-credential`
+			// closes. Unlisted for the same reason as every other alias.
+			["audit", "delete", "empty", "move", "name", "purge", "remove", "renew", "replace", "reset", "wipe"].sort(),
 		);
 		for (const [alias, target] of aliases) {
 			// The remainder is the target's own shape: `move` reaches `scope`, which refuses without a
