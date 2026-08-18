@@ -16,7 +16,11 @@ That installs the `veyyon` binary to `~/.local/bin`, links `vey` beside it, and 
 
 The checksum proves which bytes you received, but it cannot prove that the release uploaded the right version or a usable native build. If any preflight fails, the installer removes the staged file when it can and leaves the active binary and shell files unchanged. After the verified file moves into place, `doctor:` repeats the version and native checks from the final path. When `~/.local/bin` is not on your `PATH` yet, the installer then adds it to your shell profile. A profile is read when a shell starts, and the shell you ran the installer from has already started, so the final message gives you the exact reload command before the normal next steps:
 
-The installer records a small ownership receipt beside each binary and completion file it creates. A reinstall or uninstall changes only receipt-backed files. An older Veyyon install is adopted when its exact launcher or generated completion signature identifies it. If another executable or completion already occupies a target path, the installer leaves it byte-for-byte unchanged and tells you to move it yourself before retrying.
+The installer records a small ownership receipt beside each binary and completion file it creates. A reinstall or uninstall changes only receipt-backed files. An older Veyyon install is adopted when its exact launcher or generated completion signature identifies it. If another executable or completion already occupies a target path, the installer leaves it byte-for-byte unchanged and tells you to move it yourself before retrying, and names the receipt it consulted so you can see what it was comparing against.
+
+A receipt is written before the binary it describes, so a reinstall repairs an install that was interrupted mid-swap instead of refusing it. Installing the same release over a byte-identical binary leaves the file untouched and only rewrites the receipt.
+
+Pass `--force` (POSIX) or `-Force` (Windows) to install over a file the installer cannot account for. That file is moved to `<name>.unowned.<pid>` and its new path printed. Nothing is deleted, and no sweep or uninstall touches that name.
 
 ```console
 Next steps:
@@ -456,10 +460,10 @@ Without that, typing `veyyon` straight after uninstalling answers "No such file 
 It also reclaims what an UPDATE may have left. An update stages the new binary
 beside the old one and keeps the one it replaces as a backup until the new one
 has proved itself, and on Windows that backup cannot be deleted while the process
-holding it is still running, so a `veyyon.new` or a `veyyon.<numbers>.bak` can
+holding it is still running, so a `veyyon.<id>.new` or a `veyyon.<id>.bak` can
 outlive the update that made it. Uninstall removes those too, so the install
 directory is left empty rather than holding a few hundred megabytes you have no
-name for.
+name for. A backup you saved yourself under a name of your own is left alone.
 
 Two things it deliberately leaves behind. If you already had your own `vey` command, the installer never created that alias in the first place (it says so at install time and tells you to launch with `veyyon`), so uninstall does not touch it or its completion file. And if a checkout at `~/.veyyon/src` has uncommitted edits or commits on a local branch that is on no remote, it is moved to `~/.veyyon/src.bak-<timestamp>` instead of being deleted, so nothing you wrote is lost. Older installers created that tree. The current installer never does, so uninstall only ever cleans up one an older version left behind.
 
