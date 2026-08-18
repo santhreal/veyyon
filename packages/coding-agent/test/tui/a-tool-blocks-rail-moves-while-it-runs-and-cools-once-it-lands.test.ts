@@ -31,6 +31,12 @@
  * something an eye judged. And it drives `paintRailMotion` plus the component's
  * own interval; a terminal that reorders SGR runs on the way to the screen is out
  * of reach of any in-process test.
+ *
+ * One half of the finalized-board member is asserted but not mutation-gated: the
+ * board that finalizes draws a static `Text` rather than a per-width render
+ * closure, so no small edit can make it animate, and its byte-stability holds by
+ * construction rather than by a branch a mutation can flip. The finalization half
+ * IS gated: make a phases-less board displaceable and the member goes red.
  */
 
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
@@ -287,21 +293,48 @@ describe("the component that drives the rail", () => {
 		vi.restoreAllMocks();
 	});
 
-	// Both bounded animations a landed tool block can play, so the invariant is
+	// Every bounded animation a landed tool block can play, so the invariant is
 	// pinned for the mechanism rather than for the rail: a `#railSettleFrame` guard
 	// that forgets `#todoBoardInterval` is the same defect.
+	//
+	// The third member is not an animation but the COUPLING the board half of that
+	// guard rests on. A board draws animated frames only from `phases` details, and
+	// exactly those details also make the block displaceable, so an animating board
+	// is never finalized and is already held live by the unfinalized branch. A board
+	// whose details carry no phases is the other side: it finalizes on arrival, and
+	// its rows must then be byte-stable for good, because nothing above the seam
+	// protects them. The member pins both halves of that coupling, so a change that
+	// makes a finalized board animate goes red here and points at the guard rather
+	// than shipping as a screen repaint.
 	type LandedResult = Parameters<ToolExecutionComponent["updateResult"]>[0];
-	const animatedBlocks: Array<[string, string, unknown, LandedResult]> = [
+	const animatedBlocks: Array<[string, string, unknown, LandedResult, boolean, boolean]> = [
 		[
 			"the rail's settling pass",
 			"bash",
 			{ command: COMMAND },
 			{ content: [{ type: "text", text: OUTPUT }], details: { exitCode: 0 } },
+			true,
+			true,
 		],
-		["the todo board's entrance", "todo", interactionFixtures.todo!.args, interactionFixtures.todo!.result!],
+		[
+			"the todo board's entrance",
+			"todo",
+			interactionFixtures.todo!.args,
+			interactionFixtures.todo!.result!,
+			false,
+			true,
+		],
+		[
+			"a board that finalized instead of animating",
+			"todo",
+			{ op: "view" },
+			{ content: [{ type: "text", text: "Remaining items: 3." }], details: { exitCode: 0 } },
+			true,
+			false,
+		],
 	];
 
-	for (const [label, tool, args, result] of animatedBlocks) {
+	for (const [label, tool, args, result, finalized, animates] of animatedBlocks) {
 		it(`never changes a byte while claiming its rows are history, during ${label}`, () => {
 			vi.useFakeTimers();
 			const component = createToolExecution(
@@ -314,14 +347,17 @@ describe("the component that drives the rail", () => {
 			);
 			component.render(WIDTH);
 			component.updateResult(result, false);
+			// Which state this member lands in. Pinned so a change to finalization or
+			// to the details shape cannot quietly move every member onto one branch and
+			// leave the other unswept.
+			expect(component.isTranscriptBlockFinalized()).toBe(finalized);
 			// The engine audits every committed row BELOW the live-region start and
 			// repairs a changed byte there with an erase-and-replay of the whole
 			// screen. So a frame that changes bytes must still be declaring itself
-			// live, whatever the block reports for displacement and sealing. (The two
-			// arms reach that from different states: a landed bash block IS finalized
-			// and is held live by the settle, a todo board is displaceable and was
-			// never final — the invariant is the same and the mechanism must hold it
-			// either way.)
+			// live, whatever the block reports for displacement and sealing. A landed
+			// bash block IS finalized and is held live by the settle; a board with
+			// phases details is displaceable and never final; a board without them
+			// finalizes and must therefore draw nothing at all.
 			let previous = component.render(WIDTH).join("\n");
 			const step = 15;
 			let changes = 0;
@@ -334,8 +370,10 @@ describe("the component that drives the rail", () => {
 				}
 				previous = next;
 			}
-			// The sweep is only evidence if the animation actually ran inside it.
-			expect(changes).toBeGreaterThan(3);
+			// The sweep is only evidence if the animation actually ran inside it — and
+			// for a member that finalized, the evidence is that nothing ran.
+			if (animates) expect(changes).toBeGreaterThan(3);
+			else expect(changes).toBe(0);
 			// And the envelope ends: an animation that outlived its window would keep
 			// rewriting rows the terminal has already scrolled into history.
 			for (let elapsed = 0; elapsed <= 600; elapsed += step) {
