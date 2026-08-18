@@ -96,19 +96,19 @@ Compaction uses editable model chains and explicit fallback policy. Before a mod
 
 ### 3. The model spends placeholders, not credentials
 
-Store a credential in one paste. In a terminal the whole argument line is the credential, so there is no verb and no name to invent first:
+Store a credential in one paste. In a terminal everything after `/secret add` is the credential, so there is no name to invent first:
 
 ```text
-/secret ghp_your_token_here
+/secret add ghp_your_token_here
 ```
 
 Veyyon asks what to call it afterwards, and generates a name if you skip it. To store it without typing it at all, name the environment variable it is already in:
 
 ```text
-/secret --from-env DEPLOY_TOKEN
+/secret add --from-env DEPLOY_TOKEN
 ```
 
-A client with no terminal, such as `--print` mode or an ACP editor, has no field to hide typing in, so it keeps the verb grammar and accepts only that environment-backed form:
+A client with no terminal, such as `--print` mode or an ACP editor, has no field to hide typing in, so `add` there takes a name and accepts a value only from the environment:
 
 ```text
 /secret add DEPLOY_TOKEN --from-env DEPLOY_TOKEN --scope project

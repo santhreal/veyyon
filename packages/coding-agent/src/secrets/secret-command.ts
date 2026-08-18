@@ -7,30 +7,36 @@
  * the 2000-line builtin registry, would make the security-relevant behaviour reachable only
  * through a live TUI.
  *
- * ONE GRAMMAR, TWO ENTRY FORMS. Every subcommand parses on every surface: `add`, `list`, `rm`,
- * `rename`, `value`, `scope`, `copy`, `extend`, `log`, `discard` and `help`. What the
- * surfaces disagree about is how a credential is entered, because that is a security property and
- * not a matter of taste. In a terminal the first word decides: a reserved word is a command, and
- * anything else is the credential itself, so stashing a token costs one paste and no verb, while
- * `add` stores a value that happens to begin with a reserved word. A client with no masked field
- * cannot accept a bare value at all, and reaches one only through `--from-env`.
+ * ONE GRAMMAR: A VERB, THEN WHAT THE VERB TAKES. `/secret <command> [value]`, on every surface.
+ * Every subcommand parses on both: `add`, `list`, `rm`, `clear`, `rename`, `value`, `scope`, `copy`,
+ * `extend`, `log`, `discard` and `help`. What the surfaces disagree about is where a credential may
+ * come from, because that is a security property and not a matter of taste: a client with no way to
+ * hide what is typed reaches a value only through `--from-env`.
+ *
+ * A FIRST WORD THAT IS NOT A COMMAND IS NOTHING, and is refused. The terminal used to read any
+ * unreserved line as the credential itself, so `/secret ghp_x` stored a token with no verb. It cost
+ * one paste, and it cost the grammar three mechanisms to hold itself together: every word the
+ * command might ever need had to be reserved up front, or a mistyped verb became an entry
+ * (`/secret lst` stored the string `lst` and switched protection on); reserving them created a
+ * collision with credentials that begin with such a word; and that collision needed an escape of its
+ * own. Requiring the verb removes all three at once, since a value is only ever read after `add`.
  *
  * WHY THE TERMINAL FORM DROPPED THE NAME. `/secret add <name> <value>` demanded a label before it
  * would accept the thing being labelled, and the two positionals had no unique reading once the
  * value was arbitrary text. Worse, the name came FIRST, so `/secret add ghp_realToken` stored a
- * live credential as a NAME with no value attached. In a terminal `add` is now a synonym for the
- * bare form: it takes no name, the value is the rest of the line, and the name is asked afterwards,
- * optional, with a generated one waiting if the operator declines.
+ * live credential as a NAME with no value attached. In a terminal `add` takes no name: the value is
+ * the rest of the line, and the name is asked afterwards, optional, with a generated one waiting if
+ * the operator declines.
  *
  * WHERE THE VALUE COMES FROM, in order of how much it leaks:
  *   - `--from-env VAR` reads it out of the environment. The credential is never typed, so it
  *     never enters the input buffer or the scrollback. This is the recommended form and the
  *     only one that works in a non-interactive client.
- *   - a masked field, reached by a bare `/secret`, keeps it out of the scrollback but not out
- *     of the input buffer.
- *   - an inline value is accepted, because the whole point is that stashing a token costs one
- *     paste. It is visible on screen until the editor is cleared, so {@link addSecret} says so
- *     in its confirmation rather than leaving the user to assume otherwise.
+ *   - a masked field, reached by `/secret add` with nothing after it, keeps it out of the
+ *     scrollback but not out of the input buffer.
+ *   - an inline value is accepted, because stashing a token should cost one paste and one word.
+ *     It is visible on screen until the editor is cleared, so {@link addSecret} says so in its
+ *     confirmation rather than leaving the user to assume otherwise.
  */
 import { Ellipsis, padding, sanitizeSingleLine, truncateToWidth, visibleWidth } from "@veyyon/tui/utils";
 import { errorMessage, formatCount } from "@veyyon/utils";
@@ -165,28 +171,18 @@ export type SecretCommandSurface = "tui" | "noninteractive";
  * offered a masked prompt it cannot open, or an inline form that would park the credential in
  * its request history forever.
  *
- * The TUI forms describe a grammar where the value needs no verb: `/secret <anything>` IS the
- * credential, so stashing one costs a paste. The verbs are spelled out below it because they work
- * in the terminal too, and an operator told that `list` exists has to be able to type it. The
- * noninteractive forms drop the bare value, because that surface has no way to hide what is typed.
- */
-const USAGE_TUI_INLINE = "/secret <value>                       store it now, then name it (optional)";
-const USAGE_TUI_MASKED = "/secret                               paste into a hidden field instead";
-const USAGE_TUI_FROM_ENV = "/secret --from-env <VAR>              store the value of an environment variable";
-/**
- * The escape for the one input the reserved words cost: a credential whose first word is one.
+ * BOTH SURFACES LEAD WITH THE VERB, and what differs is only where the value may come from. The
+ * terminal can hide what is typed, so it offers the masked field and the inline value; a client
+ * that cannot hide anything is offered the environment variable and a name to file it under.
  *
- * SPELLED AS THE VERB, not as `--`. A slash command is not a shell command line, and nobody types
- * `--` into one: the convention it borrowed from means "options are over" to a shell, and here
- * there were never options to end. `/secret add <value>` already stored such a line verbatim --
- * `add` hands the rest of the line to the same value reader the bare form uses, reserved first word
- * and all -- so `--` was a second spelling of a thing the obvious verb did, and the one that had to
- * be taught. The escape now costs a word the operator would have guessed.
- *
- * Listed with the entry forms rather than dropped in a footnote, because the operator who needs it
- * is mid-refusal and the refusal points here.
+ * THREE LINES, DOWN FROM FOUR. The terminal's list used to open with `/secret <value>`, a form with
+ * no verb at all, which then needed a separate escape line for a value whose first word collided
+ * with a verb. With the value living behind `add`, the escape IS the ordinary form: `/secret add
+ * list` stores the credential `list`, and there is nothing left to explain.
  */
-const USAGE_TUI_ESCAPE = "/secret add <value>                   store a value starting with a word below";
+const USAGE_TUI_MASKED = "/secret add                           paste into a hidden field";
+const USAGE_TUI_INLINE = "/secret add <value>                   store it now, then name it (optional)";
+const USAGE_TUI_FROM_ENV = "/secret add --from-env <VAR>          store the value of an environment variable";
 const USAGE_ADD_FROM_ENV = "/secret add <name> --from-env <VAR>   store the value of an environment variable";
 
 /**
@@ -340,9 +336,9 @@ function buildUsage(
 	return lines.join("\n");
 }
 
-/** TUI help leads with the verbless value forms, then every verb the terminal also parses. */
+/** TUI help leads with the three ways `add` takes a value, then every verb the terminal parses. */
 export const SECRET_COMMAND_USAGE = buildUsage(
-	[USAGE_TUI_INLINE, USAGE_TUI_MASKED, USAGE_TUI_FROM_ENV, USAGE_TUI_ESCAPE],
+	[USAGE_TUI_MASKED, USAGE_TUI_INLINE, USAGE_TUI_FROM_ENV],
 	USAGE_MANAGE,
 	USAGE_FOOTER,
 );
@@ -369,9 +365,9 @@ const SECRET_COMMAND_OPTIONS: Record<string, true> = Object.fromEntries(
  * moment it is parseable.
  *
  * WHY RESERVING WORDS IS SAFE. A stored value is arbitrary bytes chosen by an issuer, so nobody's
- * API token is the literal word `list`, and the collision has two escapes: the masked field
- * reached by a bare `/secret` accepts any text at all, and `/secret add` stores the rest of the line
- * verbatim. Reserving EVERY verb is what makes that trade safe: a grammar that reserved only some
+ * API token is the literal word `list`, and `add` is what resolves the collision: the masked field
+ * reached by `/secret add` accepts any text at all, and `/secret add list` stores the rest of the
+ * line verbatim. Reserving EVERY verb is what makes that trade safe: a grammar that reserved only some
  * of them would store the string `list` as a credential and switch protection on, and store
  * `rm TOKEN` for `/secret rm TOKEN`, so the two commands an operator reaches for right after
  * storing something would fill the vault with garbage while the help text advertised them.
@@ -487,10 +483,11 @@ interface SecretToken {
 }
 
 /**
- * Read a terminal line as a credential, which is what `/secret` does with anything unreserved.
+ * Read what follows `/secret add` in a terminal as the credential.
  *
- * Shared by the bare form and by `/secret add`, so the verb is a synonym rather than a second
- * grammar: whatever `/secret <value>` does, `/secret add <value>` does identically.
+ * The verb is required, so this is reached from exactly one place. It used to be shared with a
+ * verbless form where the whole argument line was the value, which is what made `add` a synonym
+ * rather than the entry point.
  */
 function parseTuiValue(args: string, tokens: readonly SecretToken[]): SecretCommandRequest {
 	if (tokens.length === 0) return { subcommand: "add" };
@@ -512,9 +509,9 @@ function parseTuiValue(args: string, tokens: readonly SecretToken[]): SecretComm
 	if (tokens[0].value === REMOVED_VALUE_ESCAPE) {
 		throw new Error(
 			`${REMOVED_VALUE_ESCAPE} is not part of /secret, and the rest of the line was not stored in case ` +
-				`the dashes were meant to be dropped from it. The line after /secret is already the credential, ` +
+				`the dashes were meant to be dropped from it. Everything after /secret add is already the value, ` +
 				`so nothing needs to end the options: write /secret add <value> for a value whose first word is ` +
-				`a reserved word, or /secret on its own to paste into a hidden field.`,
+				`a reserved word, or /secret add on its own to paste into a hidden field.`,
 		);
 	}
 
@@ -538,29 +535,49 @@ export function parseSecretCommand(args: string, surface: SecretCommandSurface =
 		end: match.index + match[0].length,
 	}));
 
-	// THE FIRST WORD DECIDES. A reserved word is a command, anything else is the credential, so
-	// stashing one still costs one paste and no verb. `--from-env` belongs to the value grammar,
-	// which both a bare line and `/secret add` reach through the same function.
+	// A COMMAND COMES FIRST, ON BOTH SURFACES. `/secret <verb> [value]`, and a first word that is not
+	// a verb is not anything: it is refused, and nothing is stored.
+	//
+	// The terminal used to read any unreserved line as the credential itself, so `/secret ghp_x`
+	// stored a token with no verb at all. It cost one paste, and it cost the grammar everything else:
+	// a typo was a credential (`/secret lst` stored the string `lst` and switched protection on), so
+	// every word the command might ever want had to be reserved in advance to keep a mistyped verb
+	// from becoming an entry, and the collision that reserving created then needed an escape of its
+	// own. One line of grammar, three mechanisms to contain it. Requiring the verb deletes all three:
+	// nothing collides, because a value is only ever read after `add`.
 	if (surface === "tui") {
-		const reserved = tokens.length > 0 ? SECRET_VERB_SPELLINGS[tokens[0].value.toLowerCase()] : undefined;
-		if (reserved === undefined) return parseTuiValue(args, tokens);
-		// `add` is a synonym for the bare form, NOT the noninteractive `add <name> <value>`. The
-		// terminal never takes a name inline: the name is asked afterwards, and a name parsed off
-		// this line would be a credential written to the vault's plaintext metadata and echoed back
-		// on screen, which is the mistake the verbless grammar exists to prevent.
-		if (reserved === "add") return parseTuiValue(args, tokens.slice(1));
+		// `add` is NOT the noninteractive `add <name> <value>`. The terminal never takes a name
+		// inline: the name is asked afterwards, and a name parsed off this line would be a credential
+		// written to the vault's plaintext metadata and echoed back on screen, which is exactly how
+		// `/secret add ghp_realToken` once filed a live token AS a name.
+		if (tokens.length > 0 && SECRET_VERB_SPELLINGS[tokens[0].value.toLowerCase()] === "add") {
+			return parseTuiValue(args, tokens.slice(1));
+		}
 	}
 
 	if (tokens.length === 0) return { subcommand: "help" };
 
 	const subcommand = SECRET_VERB_SPELLINGS[tokens[0].value.toLowerCase()];
 	if (subcommand === undefined) {
-		// THE WORD IS NOT REPEATED. An unknown first token is most often an inline credential: this
-		// surface has no field to hide one in, so a client or a `-p` invocation typing `/secret ghp_…`
-		// lands here, and echoing it would write the credential into the refusal, the scrollback and
-		// the saved transcript. The usage below is the actionable half anyway, because it names every
-		// word this surface does run.
-		throw new Error(`Unknown /secret subcommand.\n\n${usageText}`);
+		// THE WORD IS NOT REPEATED. An unknown first token is most often a credential: someone typed
+		// `/secret ghp_…` from muscle memory, and echoing it would write the credential into the
+		// refusal, the scrollback and the saved transcript. The usage below is the actionable half
+		// anyway, because it names every word this surface does run.
+		//
+		// AND IT SAYS THE LINE IS EXPOSED, on the surface that used to store it. A terminal accepted
+		// exactly this line as a credential once: it stored the value and protected it. Refusing is
+		// the right answer now, but it leaves the operator worse off than either outcome they might
+		// expect -- nothing is stored, AND the credential is sitting in the scrollback of a session
+		// that will not obfuscate it, because the vault never saw it. Silence there is the failure
+		// mode of the whole feature: a credential believed stored, unprotected, and pasted onward. It
+		// does not warn the noninteractive surface, which never had the verbless form to unlearn, and
+		// where the tail of the line is a client's own argv rather than something a person just typed.
+		const exposure =
+			surface === "tui"
+				? ` Nothing was stored. If what followed /secret was a credential, it is now in your ` +
+					`scrollback and was never protected, so rotate it and store the new one with /secret add.`
+				: "";
+		throw new Error(`Unknown /secret command.${exposure}\n\n${usageText}`);
 	}
 
 	const request: SecretCommandRequest = { subcommand };
@@ -686,7 +703,7 @@ function ambiguousInlineCredential(): Error {
  *
  * IT DOES NOT QUOTE THE WORD, because on a `/secret` line the extra word is very often the
  * credential. The realistic slip is muscle memory for `add` with a different verb: `/secret extend
- * TOK sk-live-...`, `/secret rm TOK sk-live-...`, or the value appended to a bare `/secret list`.
+ * TOK sk-live-...`, `/secret rm TOK sk-live-...`, or the value appended to `/secret list`.
  * Quoting it wrote the credential into the error, which lands in the scrollback and in the saved
  * transcript, so the one command whose entire purpose is keeping credentials off the screen put one
  * there permanently. Verified by hand across every verb before this changed. Naming the POSITION
@@ -934,8 +951,8 @@ async function addSecret(
 		throw new Error(
 			`No value given, and this client cannot prompt for one without showing it. ` +
 				`Name an environment variable to read it from:\n` +
-				`  /secret --from-env MY_TOKEN\n` +
-				`or type the value after /secret, keeping in mind it stays visible in your scrollback.`,
+				`  /secret add --from-env MY_TOKEN\n` +
+				`or type the value after /secret add, keeping in mind it stays visible in your scrollback.`,
 		);
 	}
 
@@ -1004,8 +1021,8 @@ const EMPTY_VAULT_PREAMBLE = [
 ];
 const EMPTY_VAULT_HELP = [
 	...EMPTY_VAULT_PREAMBLE,
-	`${OUTPUT_INDENT}${USAGE_TUI_INLINE}`,
 	`${OUTPUT_INDENT}${USAGE_TUI_MASKED}`,
+	`${OUTPUT_INDENT}${USAGE_TUI_INLINE}`,
 	`${OUTPUT_INDENT}${USAGE_TUI_FROM_ENV}`,
 ].join("\n");
 const NONINTERACTIVE_EMPTY_VAULT_HELP = [...EMPTY_VAULT_PREAMBLE, `${OUTPUT_INDENT}${USAGE_ADD_FROM_ENV}`].join("\n");

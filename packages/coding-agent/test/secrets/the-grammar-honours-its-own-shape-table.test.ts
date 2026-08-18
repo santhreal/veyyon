@@ -95,7 +95,7 @@ function wellFormedLine(verb: SecretSubcommand, extra: readonly string[] = []): 
 /**
  * `add` on a terminal is the value grammar, not the verb grammar.
  *
- * `/secret add <value>` is a synonym for a bare `/secret <value>`, so everything after it is the
+ * `/secret add <value>` is where a terminal reads a value, so everything after `add` is the
  * credential and the shape table does not apply. That is asserted where it belongs, in
  * `the-masked-prompt-cannot-be-read-as-a-name-prompt.test.ts`; here it is the one exemption, named
  * so that it is a decision rather than a gap.

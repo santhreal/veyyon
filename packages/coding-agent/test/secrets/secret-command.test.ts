@@ -139,7 +139,7 @@ describe("parsing the noninteractive verb grammar", () => {
 		} catch (error) {
 			message = error instanceof Error ? error.message : String(error);
 		}
-		expect(message).toContain("Unknown /secret subcommand.");
+		expect(message).toContain("Unknown /secret command.");
 		expect(message).not.toContain(candidate);
 	});
 
@@ -880,25 +880,35 @@ describe("usage text", () => {
 			expect(tui).toContain(`/secret ${verb}`);
 		}
 		// `add` is spelled per surface, which is the one asymmetry left: a name and a variable where a
-		// value cannot be typed at all, the bare value form where it can.
+		// value cannot be typed at all, the bare value where it can. Both surfaces NAME the verb, since
+		// both require it.
 		expect(noninteractive).toContain("/secret add <name>");
-		expect(tui).toContain("/secret <value>");
-		// A NAME, not the word. Terminal help names `/secret add <value>` as the reserved-word escape,
-		// so pinning the absence of `/secret add` outright would forbid the escape rather than the
-		// thing worth forbidding: an inline NAME, which writes a credential into plaintext metadata
-		// when the two positionals are read the other way round.
+		expect(tui).toContain("/secret add <value>");
+		// A NAME, not the word: an inline name is what writes a credential into plaintext metadata when
+		// the two positionals are read the other way round, and the terminal must never advertise it.
 		expect(tui).not.toContain("/secret add <name>");
 	});
 
-	/** The terminal help documents the ways in, and never a screen: there is not one to open. */
+	/**
+	 * The terminal help documents the ways in, and never a screen: there is not one to open.
+	 *
+	 * EVERY ENTRY FORM LEADS WITH THE VERB. The old list opened with `/secret <value>`, a form with no
+	 * verb, and a help text that still showed it would be teaching a line the parser now refuses --
+	 * with the operator's credential on screen, which is the one refusal worth never provoking.
+	 */
 	it("documents the entry forms in a terminal", () => {
 		const tui = secretCommandUsage("tui");
 
-		expect(tui).toContain("/secret <value>");
-		expect(tui).toContain("/secret --from-env <VAR>");
-		expect(tui).toContain("paste into a hidden field");
+		expect(tui).toContain("/secret add                           paste into a hidden field");
 		expect(tui).toContain("/secret add <value>");
+		expect(tui).toContain("/secret add --from-env <VAR>");
 		expect(tui).not.toContain("manager");
+		// The verbless forms are gone from the help because they are gone from the grammar. Asserted as
+		// the exact line starts, so `/secret <value>` cannot come back as an entry form while
+		// `/secret add <value>` keeps this row green by containing the same tail.
+		expect(tui).not.toContain("  /secret <value>");
+		expect(tui).not.toContain("  /secret --from-env");
+		expect(tui).not.toContain("  /secret  ");
 	});
 
 	/** Options and their defaults mean the same thing on both surfaces, so both spell them out. */
@@ -914,40 +924,64 @@ describe("usage text", () => {
 });
 
 /**
- * The other branch of the same parser: in a terminal the FIRST WORD decides.
+ * The other branch of the same parser: in a terminal a VERB comes first, and what follows `add` is
+ * the credential.
  *
  * WHY IT IS PINNED HERE TOO. `the-masked-prompt-cannot-be-read-as-a-name-prompt.test.ts` drives
  * this grammar through the real dialogs and the real vault, which is the right place to prove that
  * what an operator types is what gets stored. It cannot show the REQUEST, though, and the request
- * is where the two grammars actually part: whether a line came back as a value, as a verb, or as an
- * escaped value is decided here, before any surface sees it. So these assert the returned object
- * directly and nothing downstream of it.
+ * is where the two grammars actually part: whether a line came back as a value, as a verb, or as a
+ * refusal is decided here, before any surface sees it. So these assert the returned object directly
+ * and nothing downstream of it.
  */
 describe("the terminal grammar", () => {
 	/**
-	 * An `add` with no value and no source is the signal that opens the masked field: it is exactly
-	 * what `needsValuePrompt` looks for. A bare line must not come back as `help`, or the one
-	 * gesture that puts a credential nowhere near the scrollback would print usage instead.
+	 * A BARE LINE IS HELP, on this surface as on the other. It used to come back as a valueless `add`
+	 * so that `/secret` alone opened the masked field, which was the verbless grammar's one good
+	 * affordance and the reason a first word could not be required. With the verb required, the field
+	 * is one word away and a bare line has nothing to do but say what the words are.
 	 */
-	it("returns a valueless add for a bare line", () => {
+	it("returns help for a bare line", () => {
 		for (const line of ["", "   ", "\t "]) {
-			const request = parseSecretCommand(line, "tui");
-
-			expect(request).toEqual({ subcommand: "add" });
-			expect(request.value).toBeUndefined();
-			expect(request.fromEnv).toBeUndefined();
+			expect(parseSecretCommand(line, "tui")).toEqual({ subcommand: "help" });
 		}
 	});
 
 	/**
-	 * THE FIRST WORD DECIDES, and a word the parser does not reserve is a credential. `manager` is
-	 * the test case on purpose: it is the kind of word a stale piece of advice or an old habit puts
-	 * on this line, and the answer has to be storage rather than a command, because a grammar that
-	 * guessed at near-misses would guess at credentials too.
+	 * A FIRST WORD THAT IS NOT A VERB IS REFUSED, and `manager` is the case on purpose: it is the
+	 * word a stale piece of advice or an old habit puts on this line. It used to be STORED — the
+	 * parser read any unreserved first word as the credential — so a mistyped verb became a vault
+	 * entry named `SECRET_1` and switched protection on, and the operator's answer to "what do I
+	 * have" was the word they had mistyped.
+	 *
+	 * `value` is asserted absent on the thrown path by construction: nothing is returned at all.
 	 */
-	it("reads an unreserved word as the credential, whatever it looks like", () => {
-		expect(parseSecretCommand("manager", "tui")).toEqual({ subcommand: "add", value: "manager" });
-		expect(parseSecretCommand("  MANAGER  ", "tui")).toEqual({ subcommand: "add", value: "MANAGER" });
+	it("refuses a word that is not a verb, rather than storing it", () => {
+		for (const line of ["manager", "  MANAGER  ", "ghp_pastedFromMuscleMemory", "lst"]) {
+			expect(() => parseSecretCommand(line, "tui")).toThrow(/Unknown \/secret command/u);
+		}
+	});
+
+	/**
+	 * AND THE REFUSAL SAYS THE LINE IS EXPOSED, without repeating it.
+	 *
+	 * This is the cost of requiring the verb, and it is worth paying explicitly rather than silently.
+	 * The operator who types `/secret ghp_…` is the one who learned the verbless gesture, and the
+	 * refusal leaves them in a state neither outcome prepares them for: nothing was stored, AND the
+	 * credential is in the scrollback of a session that will not obfuscate it, because the vault never
+	 * saw it. A bare "unknown command" would let them believe a credential is protected while it sits
+	 * on screen in plaintext, which is the failure mode of the entire feature.
+	 *
+	 * Both halves are asserted together, because the warning must not be bought by echoing the bytes.
+	 */
+	it("warns that a refused line is exposed, and never repeats it", () => {
+		const message = messageOf(() => parseSecretCommand("ghp_pastedFromMuscleMemory", "tui"));
+
+		expect(message).toContain("Nothing was stored.");
+		expect(message).toContain("in your scrollback and was never protected");
+		expect(message).toContain("rotate it");
+		expect(message).toContain("/secret add");
+		expect(message).not.toContain("ghp_pastedFromMuscleMemory");
 	});
 
 	/**
@@ -956,9 +990,8 @@ describe("the terminal grammar", () => {
 	 * fell back to storage when a verb did not fit its shape would turn `/secret log 50` into a
 	 * credential and report it as a success.
 	 *
-	 * The refusal has to carry the escape, because the operator whose credential really does start
-	 * with a reserved word has exactly one way to say so and no reason to guess it. That way is the
-	 * verb: `--` used to spell it and was removed, since a slash command has no options to end.
+	 * The refusal has to name the escape, because the operator whose credential really does start
+	 * with a reserved word has to be told the one spelling that expresses it.
 	 */
 	it("refuses a malformed reserved line and names the escape", () => {
 		expect(() => parseSecretCommand("log 50", "tui")).toThrow(/\/secret add <value>/u);
@@ -974,30 +1007,38 @@ describe("the terminal grammar", () => {
 	});
 
 	/**
-	 * THE REMOVED SPELLING FAILS CLOSED, because the alternative is a corrupted credential.
+	 * THE REMOVED `--` SPELLING FAILS CLOSED WHERE A VALUE IS READ, because the alternative is a
+	 * corrupted credential. `--` is not a verb, so deleting its branch and nothing else would have
+	 * sent `add -- sk-x` to the value reader, which slices from the first token to the last and would
+	 * have stored the dashes as part of the credential. `#NAME#` then expands to `-- sk-x`, the
+	 * request fails authentication somewhere else entirely, and nothing on screen connects that to a
+	 * slash command. A credential is the one input whose corruption stays invisible until it is spent.
 	 *
-	 * `--` is not a reserved word, so deleting its branch and nothing else would have sent `-- sk-x`
-	 * to the value reader, which slices from the first token to the last and would have stored the
-	 * dashes as part of the credential. `#NAME#` then expands to `-- sk-x`, the request fails
-	 * authentication somewhere else entirely, and nothing on screen connects that to a slash command.
-	 * A credential is the one input whose corruption stays invisible until it is spent, so the old
-	 * spelling refuses and names the new one instead of guessing which half was meant.
+	 * Before `add`, `--` is simply not a command, so it is refused as one. Both refusals store
+	 * nothing, and neither is allowed to become a value.
 	 */
-	it("refuses the removed -- escape rather than storing the dashes", () => {
-		for (const line of ["-- log 50", "-- sk-live-x", "--", "add -- sk-live-x"]) {
-			expect(() => parseSecretCommand(line, "tui")).toThrow(/\/secret add <value>/u);
+	it("refuses -- after add rather than storing the dashes", () => {
+		for (const line of ["add -- sk-live-x", "add --"]) {
 			expect(() => parseSecretCommand(line, "tui")).toThrow(/not part of \/secret/u);
+			expect(() => parseSecretCommand(line, "tui")).toThrow(/\/secret add <value>/u);
+		}
+	});
+
+	/** And as a first word it is refused for the ordinary reason: it is not a command. */
+	it("refuses -- as a first word", () => {
+		for (const line of ["-- log 50", "-- sk-live-x", "--"]) {
+			expect(() => parseSecretCommand(line, "tui")).toThrow(/Unknown \/secret command/u);
 		}
 	});
 
 	/**
-	 * ONLY THE EXACT TOKEN. A credential that merely begins with dashes is unreserved and is stored
-	 * byte for byte, as it was before the escape existed: widening the refusal to any `--` prefix
-	 * would reject real values, which is the opposite failure and a louder one.
+	 * ONLY THE EXACT TOKEN. A credential that merely begins with dashes is stored byte for byte:
+	 * widening the refusal to any `--` prefix would reject real values, which is the opposite failure
+	 * and a louder one.
 	 */
 	it("still stores a value that only begins with dashes", () => {
-		expect(parseSecretCommand("--abc", "tui")).toEqual({ subcommand: "add", value: "--abc" });
-		expect(parseSecretCommand("---", "tui")).toEqual({ subcommand: "add", value: "---" });
+		expect(parseSecretCommand("add --abc", "tui")).toEqual({ subcommand: "add", value: "--abc" });
+		expect(parseSecretCommand("add ---", "tui")).toEqual({ subcommand: "add", value: "---" });
 	});
 
 	/**
@@ -1006,62 +1047,65 @@ describe("the terminal grammar", () => {
 	 * a credential that fails to authenticate with nothing on screen to say why.
 	 */
 	it("keeps whitespace inside the credential and drops only what surrounds it", () => {
-		expect(parseSecretCommand("   correct horse  battery\tstaple   ", "tui")).toEqual({
+		expect(parseSecretCommand("add    correct horse  battery\tstaple   ", "tui")).toEqual({
 			subcommand: "add",
 			value: "correct horse  battery\tstaple",
 		});
 	});
 
 	/**
-	 * `add` IS a verb again in a terminal, and it is a synonym for the bare form rather than the
-	 * noninteractive `add <name> <value>`. The distinction is the security property: a name parsed
-	 * off this line would be a live credential written to the vault's plaintext metadata and echoed
-	 * back on screen, which is how `/secret add ghp_realToken` used to store a token as a NAME.
+	 * `add` in a terminal is NOT the noninteractive `add <name> <value>`. The distinction is the
+	 * security property: a name parsed off this line would be a live credential written to the vault's
+	 * plaintext metadata and echoed back on screen, which is how `/secret add ghp_realToken` used to
+	 * store a token as a NAME.
 	 *
 	 * So the value is the rest of the line and `name` stays absent. A regression that restored
 	 * positional-name parsing on this surface fails on the `name` assertion, not the value one.
 	 */
-	it("reads add as a synonym for the bare value form, with no name", () => {
+	it("reads the line after add as the value, with no name", () => {
 		const request = parseSecretCommand("add GITHUB_TOKEN", "tui");
 
 		expect(request).toEqual({ subcommand: "add", value: "GITHUB_TOKEN" });
 		expect(request.name).toBeUndefined();
 	});
 
-	/** `/secret add` alone is the masked field, exactly as a bare line is. */
+	/** `/secret add` alone is the masked field: a valueless add is what `needsValuePrompt` reads. */
 	it("opens the masked field for a bare add", () => {
 		expect(parseSecretCommand("add", "tui")).toEqual({ subcommand: "add" });
 		expect(parseSecretCommand("add --from-env MY_VAR", "tui")).toEqual({ subcommand: "add", fromEnv: "MY_VAR" });
 	});
 
 	/**
-	 * `--from-env` survives, in leading position only: it is the one entry form that never puts the
-	 * credential on screen at all, so dropping it from the terminal would have left the safest path
-	 * to ACP clients and not to the operator. A trailing extra word is refused rather than guessed
-	 * at, because the flag reading and the credential reading of that line are mutually exclusive.
+	 * `--from-env` survives, in leading position after the verb only: it is the one entry form that
+	 * never puts the credential on screen at all, so dropping it from the terminal would have left the
+	 * safest path to ACP clients and not to the operator. A trailing extra word is refused rather than
+	 * guessed at, because the flag reading and the credential reading of that line are mutually
+	 * exclusive.
 	 */
-	it("reads a leading --from-env and refuses one carrying an extra word", () => {
-		expect(parseSecretCommand("--from-env MY_VAR", "tui")).toEqual({ subcommand: "add", fromEnv: "MY_VAR" });
-		expect(() => parseSecretCommand("--from-env MY_VAR extra", "tui")).toThrow(
+	it("reads --from-env after add and refuses one carrying an extra word", () => {
+		expect(parseSecretCommand("add --from-env MY_VAR", "tui")).toEqual({ subcommand: "add", fromEnv: "MY_VAR" });
+		expect(() => parseSecretCommand("add --from-env MY_VAR extra", "tui")).toThrow(
 			"--from-env needs the name of an environment variable, and nothing else.",
 		);
 	});
 
 	/**
-	 * A WORD THIS SURFACE CANNOT READ AS A CREDENTIAL EITHER. In a terminal an unrecognised first
-	 * word is the value; where a value cannot be typed at all, the same word has no second reading,
-	 * so it is refused. The refusal carries the whole usage rather than the word alone, because the
-	 * caller cannot open a help screen and the list of what it CAN run is the actionable part.
+	 * THE SAME REFUSAL ON THE OTHER SURFACE, minus the exposure warning. A client or a `-p`
+	 * invocation never had the verbless form to unlearn, and the tail of its line is argv rather than
+	 * something a person just typed on screen, so the scrollback sentence would be advice about a
+	 * screen that may not exist. The refusal still carries the whole usage, because the caller cannot
+	 * open a help screen and the list of what it CAN run is the actionable part.
 	 *
-	 * AND IT DOES NOT REPEAT THE WORD. A client, or a `-p` invocation, typing `/secret ghp_…` lands
-	 * exactly here, so the unknown first token is very often the credential itself: echoing it would
-	 * write it into the refusal, the scrollback and the saved transcript.
+	 * AND IT DOES NOT REPEAT THE WORD, on either surface: the unknown first token is very often the
+	 * credential itself, so echoing it would write it into the refusal, the scrollback and the saved
+	 * transcript.
 	 */
-	it("refuses an unreadable word where a value cannot be typed, and prints what can be run", () => {
+	it("refuses an unknown word on the noninteractive surface without the scrollback warning", () => {
 		const message = messageOf(() => parseSecretCommand("ghp_wordThisSurfaceCannotRead", "noninteractive"));
 
-		expect(message).toContain("Unknown /secret subcommand.");
+		expect(message).toContain("Unknown /secret command.");
 		expect(message).toContain(secretCommandUsage("noninteractive"));
+		expect(message).not.toContain("scrollback");
 		expect(message).not.toContain("ghp_wordThisSurfaceCannotRead");
 	});
 });

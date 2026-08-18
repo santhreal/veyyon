@@ -1,5 +1,5 @@
 /**
- * The verbless `/secret` grammar and its two fields, driven the way an operator drives them:
+ * The terminal `/secret` grammar and its two fields, driven the way an operator drives them:
  * real keystrokes into real components.
  *
  * WHY THIS SUITE EXISTS. Every other `/secret` test stubs `showHookInput` and returns a string,
@@ -199,37 +199,66 @@ function type(text: string): Drive {
 }
 
 /**
- * The terminal grammar: the argument line is the credential, and only the verbs are reserved.
+ * The terminal grammar: a verb, then what the verb takes.
  *
  * This is the layer that makes the original bug unreachable rather than merely discouraged. There
  * is no longer a position in the command where a name is expected, so a pasted token cannot land
- * in one.
+ * in one -- and a line with no verb at all is not a credential either, it is a refusal.
  */
-describe("the verbless /secret grammar in a terminal", () => {
+describe("the terminal grammar leads with a verb", () => {
 	/**
-	 * LOCKS OUT the whole class of "which positional was that" mistakes: a token pasted straight
-	 * after `/secret` is the VALUE, byte for byte, and no field opens to ask for it. If a verb or a
-	 * leading name is ever reintroduced, this token would be parsed as a name and the test fails.
+	 * A LINE WITH NO VERB STORES NOTHING, driven through the real dialogs and the real vault.
+	 *
+	 * This row is the inverse of what it asserted before: `/secret ghp_…` used to BE the store
+	 * gesture, and the whole argument line was read as the credential. That cost one paste and it
+	 * cost the grammar three mechanisms to stay safe, because a mistyped verb was indistinguishable
+	 * from a credential. A first word that is not a command is now refused.
+	 *
+	 * The vault is asserted empty, not merely that a message was thrown: the failure worth closing is
+	 * a line that refuses in the transcript and stores something anyway.
 	 */
-	it("stores a pasted token as the value without opening the masked field", async () => {
-		const { fields } = await secretThroughRealDialog("ghp_inlineCredential4242", { typeName: type("") });
+	it("refuses a line with no verb and stores nothing", async () => {
+		await expect(
+			secretThroughRealDialog("ghp_inlineCredential4242", { typeName: mustNotOpen("name") }),
+		).rejects.toThrow(/Unknown \/secret command/u);
 
-		expect(fields).toEqual([{ title: namePromptTitle(), masked: false }]);
-		const entries = await stored();
-		expect(entries).toHaveLength(1);
-		expect(entries[0]?.value).toBe("ghp_inlineCredential4242");
+		expect(await stored()).toEqual([]);
+	});
+
+	/**
+	 * AND IT SAYS THE CREDENTIAL IS EXPOSED. The operator who types this is the one with the old
+	 * gesture in muscle memory, and they are now in the worst of both worlds: nothing was stored, and
+	 * the credential is in the scrollback of a session that will not obfuscate it, because the vault
+	 * never saw it. A refusal that only says "unknown command" leaves them believing a credential is
+	 * protected when it is on screen in plaintext, which is the failure mode of the whole feature.
+	 *
+	 * The word itself must still never be echoed, so both halves are asserted together: the warning
+	 * is present AND the bytes are not.
+	 */
+	it("warns that the refused line is exposed, without repeating it", async () => {
+		const refusal = await secretThroughRealDialog("ghp_inlineCredential4242", {
+			typeName: mustNotOpen("name"),
+		}).then(
+			() => "",
+			(error: unknown) => (error instanceof Error ? error.message : String(error)),
+		);
+
+		expect(refusal).toContain("Nothing was stored.");
+		expect(refusal).toContain("scrollback");
+		expect(refusal).toContain("rotate it");
+		expect(refusal).not.toContain("ghp_inlineCredential4242");
 	});
 
 	/**
 	 * THE EXACT INVERSE OF THE ORIGINAL BUG, driven through the real dialogs: `/secret add <value>`
 	 * stores the VALUE and asks for a name afterwards, so `GITHUB_TOKEN` here is the credential and
-	 * never becomes a name with no value attached. `add` is a synonym for the bare form in a
-	 * terminal, and a regression that restored positional-name parsing would store nothing under
-	 * that value and fail.
+	 * never becomes a name with no value attached. A regression that restored positional-name parsing
+	 * would store nothing under that value and fail.
 	 */
-	it("reads add as a synonym for the bare value form", async () => {
-		await secretThroughRealDialog("add GITHUB_TOKEN", { typeName: type("") });
+	it("reads the word after add as the value, never as a name", async () => {
+		const { fields } = await secretThroughRealDialog("add GITHUB_TOKEN", { typeName: type("") });
 
+		expect(fields).toEqual([{ title: namePromptTitle(), masked: false }]);
 		const entries = await stored();
 		expect(entries).toHaveLength(1);
 		expect(entries[0]?.value).toBe("GITHUB_TOKEN");
@@ -243,7 +272,7 @@ describe("the verbless /secret grammar in a terminal", () => {
 	 * so, which is the worst available failure.
 	 */
 	it("keeps whitespace inside the credential and drops only what surrounds it", async () => {
-		await secretThroughRealDialog("   correct horse  battery staple   ", { typeName: type("") });
+		await secretThroughRealDialog("add    correct horse  battery staple   ", { typeName: type("") });
 
 		const entries = await stored();
 		expect(entries[0]?.value).toBe("correct horse  battery staple");
@@ -302,7 +331,7 @@ describe("the verbless /secret grammar in a terminal", () => {
 	 */
 	it("stores nothing at all for the removed -- escape", async () => {
 		await expect(
-			secretThroughRealDialog("-- log ghp_startsWithAReservedWord", { typeName: type("") }),
+			secretThroughRealDialog("add -- log ghp_startsWithAReservedWord", { typeName: type("") }),
 		).rejects.toThrow(/\/secret add <value>/u);
 
 		expect(await stored()).toEqual([]);
@@ -316,7 +345,7 @@ describe("the verbless /secret grammar in a terminal", () => {
 	it("still reads a credential out of the environment without a field", async () => {
 		process.env.VEYYON_TEST_FROM_ENV_TOKEN = "ghp_fromEnvCredential77";
 		try {
-			await secretThroughRealDialog("--from-env VEYYON_TEST_FROM_ENV_TOKEN", { typeName: type("") });
+			await secretThroughRealDialog("add --from-env VEYYON_TEST_FROM_ENV_TOKEN", { typeName: type("") });
 		} finally {
 			delete process.env.VEYYON_TEST_FROM_ENV_TOKEN;
 		}
@@ -332,7 +361,9 @@ describe("the verbless /secret grammar in a terminal", () => {
 	 * exclusive, so the ambiguous case must fail loudly instead of picking one.
 	 */
 	it("refuses a --from-env with no variable rather than storing the flag", async () => {
-		await expect(secretThroughRealDialog("--from-env")).rejects.toThrow(/needs the name of an environment variable/);
+		await expect(secretThroughRealDialog("add --from-env")).rejects.toThrow(
+			/needs the name of an environment variable/,
+		);
 		expect(await stored()).toEqual([]);
 	});
 });
@@ -488,7 +519,7 @@ describe("a credential entered through the real masked dialog", () => {
 	 * regression anywhere in dialog settlement, masking, or `request.value` assignment fails here.
 	 */
 	it("stores exactly the typed bytes under the name given afterwards", async () => {
-		await secretThroughRealDialog("", {
+		await secretThroughRealDialog("add", {
 			typeValue: type("ghp_typedCredential12345"),
 			typeName: type("github token"),
 		});
@@ -502,7 +533,7 @@ describe("a credential entered through the real masked dialog", () => {
 	 * silently persist a credential that does not authenticate.
 	 */
 	it("stores a bracketed paste as the credential, without its framing", async () => {
-		await secretThroughRealDialog("", {
+		await secretThroughRealDialog("add", {
 			typeValue: feed => {
 				feed(`${PASTE_START}ghp_pastedCredential67890${PASTE_END}`);
 				feed("\r");
@@ -519,7 +550,7 @@ describe("a credential entered through the real masked dialog", () => {
 	 * as the VALUE rather than refusing for want of a name.
 	 */
 	it("stores the typed value under a generated name when no name field exists", async () => {
-		const { fields } = await secretThroughRealDialog("", { typeValue: type("ghp_unnamedCredential999") });
+		const { fields } = await secretThroughRealDialog("add", { typeValue: type("ghp_unnamedCredential999") });
 
 		expect(fields).toEqual([{ title: maskedPromptTitle(), masked: true }]);
 		const entries = await stored();
@@ -534,7 +565,7 @@ describe("a credential entered through the real masked dialog", () => {
 	 * bytes, which is worse than storing nothing at all.
 	 */
 	it("stores nothing when the value field is cancelled", async () => {
-		const { outcome } = await secretThroughRealDialog("", {
+		const { outcome } = await secretThroughRealDialog("add", {
 			typeValue: feed => {
 				for (const character of "ghp_halfTypedCredential") feed(character);
 				feed("\x1b");
@@ -563,7 +594,7 @@ describe("the optional name field shown after the credential", () => {
 	 * credential is back.
 	 */
 	it("asks for the value first, masked, then the name, unmasked", async () => {
-		const { fields } = await secretThroughRealDialog("", {
+		const { fields } = await secretThroughRealDialog("add", {
 			typeValue: type("ghp_twoStepCredential11"),
 			typeName: type("github token"),
 		});
@@ -580,7 +611,7 @@ describe("the optional name field shown after the credential", () => {
 	 * to cost one paste. An empty name keeps the generated one and the value is still stored.
 	 */
 	it("generates a name when the field is left empty", async () => {
-		await secretThroughRealDialog("ghp_generatedNameCred22", { typeName: type("") });
+		await secretThroughRealDialog("add ghp_generatedNameCred22", { typeName: type("") });
 
 		const entries = await stored();
 		expect(entries).toHaveLength(1);
@@ -594,7 +625,7 @@ describe("the optional name field shown after the credential", () => {
 	 * they never saw is the one reading they did not ask for.
 	 */
 	it("stores nothing when the name field is cancelled", async () => {
-		const { outcome } = await secretThroughRealDialog("ghp_abandonedCredential", {
+		const { outcome } = await secretThroughRealDialog("add ghp_abandonedCredential", {
 			typeName: feed => feed("\x1b"),
 		});
 
@@ -608,7 +639,7 @@ describe("the optional name field shown after the credential", () => {
 	 * partial is written under a name the vault could not hold.
 	 */
 	it("refuses an unusable typed name and stores nothing", async () => {
-		await expect(secretThroughRealDialog("ghp_unusableNameCred55", { typeName: type("ab") })).rejects.toThrow(
+		await expect(secretThroughRealDialog("add ghp_unusableNameCred55", { typeName: type("ab") })).rejects.toThrow(
 			/not a usable secret name/,
 		);
 		expect(await stored()).toEqual([]);

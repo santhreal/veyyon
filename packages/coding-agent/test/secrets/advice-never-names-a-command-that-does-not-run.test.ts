@@ -2,12 +2,15 @@
  * Every string that tells an operator how to fix a secrets problem must name a command the surface
  * reading it would RUN, never one it would store as a credential.
  *
- * WHY THIS SUITE EXISTS. `/secret` has one grammar and two entry forms. In a terminal the first
- * word decides: a reserved word is a command, and anything else is the credential itself. So a
- * piece of advice that names `/secret revoke NAME` does not fail loudly. It stores the string
- * `revoke NAME` as a secret under a generated name, reports success, and leaves the real problem
- * exactly where it was. The advice meant to rescue the operator becomes the next entry in their
- * vault.
+ * WHY THIS SUITE EXISTS. `/secret` takes a command first, so advice that names `/secret revoke NAME`
+ * hands the operator a line that does not run: the first word is not a verb, the command refuses,
+ * and the real problem is exactly where it was. The advice meant to rescue them costs them a round
+ * trip and their confidence in the rest of the message.
+ *
+ * IT USED TO BE WORSE, which is why the rule is enforced mechanically rather than by review. A
+ * terminal read any unreserved first word as the credential itself, so this advice did not fail
+ * loudly: it stored the string `revoke NAME` as a secret under a generated name, reported success,
+ * and the sentence written to rescue the operator became the next entry in their vault.
  *
  * These emitters cannot know which surface will print them: they are raised by the vault loader and
  * the obfuscator, below any notion of a UI. So the contract is not "use the terminal form", it is
@@ -58,7 +61,7 @@ function isRunnableWord(word: string, surface: SecretCommandSurface): boolean {
 		// A refusal is fine, and is what a verb missing its arguments does. Being called UNKNOWN is
 		// not: nothing runs at all, and the operator is told the fix they were handed does not exist.
 		const message = error instanceof Error ? error.message : String(error);
-		return !message.includes("Unknown /secret subcommand");
+		return !message.includes("Unknown /secret command");
 	}
 }
 
@@ -100,7 +103,10 @@ describe("advice an operator can act on from where they are", () => {
 			const advice = describeSecretExpiry({ name: "GITHUB_TOKEN", persistedCiphertextRemoved });
 
 			expect(unrunnableWords(advice)).toEqual([]);
-			expect(advice).toContain("/secret --from-env");
+			// The terminal form it names has to be the one the parser now reads: a `/secret --from-env`
+			// with no verb in front of it is refused, so advice that spelled it that way would send the
+			// operator into the refusal while a credential they depend on is already dead.
+			expect(advice).toContain("/secret add --from-env");
 		}
 	});
 

@@ -353,7 +353,8 @@ describe("the distinct-bare-form exception", () => {
 			goal: "bare enters goal mode or opens its menu, which is none of set/show/clear",
 			fast: "bare flips the priority tier",
 			yolo: "bare flips the approval bypass",
-			secret: "bare opens the masked value field; the grammar is deliberately verbless",
+			secret:
+				"bare prints /secret's own usage, whose add row is spelled per surface; the generic list is one string for every surface",
 			browser: "bare flips headless against visible",
 			todo: "bare renders the list; every subcommand mutates it",
 			compact: "bare compacts with the default mode; the subcommands are the other modes",
