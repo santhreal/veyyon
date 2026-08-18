@@ -964,6 +964,252 @@ try {
     Remove-Item -Recurse -Force $ownershipSandbox -ErrorAction SilentlyContinue
 }
 
+# --- a binary placed but not yet recorded is still repairable ---
+#
+# THE DEFECT, as reported: "refusing to replace
+# C:\Users\...\AppData\Local\veyyon\veyyon.exe because it has changed since this
+# installer wrote it", on a machine where that file hashed to the published
+# SHA256 of a real release — a binary the product itself had put there. The
+# receipt beside it still described the binary retired three days earlier. So the
+# swap had completed and the receipt rewrite had not, and between those two steps
+# sits a rename plus a ~150MB Get-FileHash of a file an antivirus scanner has just
+# begun reading. From that moment the install was unrepairable through any shipped
+# command: install refused, uninstall left the file, and the only remedy was
+# deleting a 150MB executable by hand.
+#
+# THE CLASS this closes: any interruption between placing an artifact and
+# recording it must leave the artifact recoverable. The record is now written
+# BEFORE the swap, naming the bytes about to arrive, so at every instant the file
+# at the target path is described by the durable receipt or the pending one.
+#
+# WHAT IT DOES NOT CATCH: a kill between the two writes cannot be staged
+# in-process, so the recovery is asserted from the state such a kill LEAVES rather
+# than by killing PowerShell mid-swap; the kill itself is driven against the
+# updater in
+# packages/coding-agent/test/an-update-interrupted-before-its-receipt-leaves-an-installable-binary.test.ts.
+$pendingSandbox = Join-Path ([System.IO.Path]::GetTempPath()) "veyyon-pending-$PID"
+New-Item -ItemType Directory -Force -Path $pendingSandbox | Out-Null
+try {
+    $interrupted = Join-Path $pendingSandbox "veyyon.exe"
+    Set-Content -LiteralPath $interrupted -Value "the binary that was just installed"
+    $incoming = Get-ArtifactIdentity $interrupted
+    # The durable receipt still describes the binary this one REPLACED. That is
+    # what the reported machine had on disk, and on its own it is a refusal.
+    [System.IO.File]::WriteAllText((Join-Path $pendingSandbox ".veyyon.exe.veyyon-owner"),
+        "veyyon-installer-v2`nfile sha256:0000000000000000000000000000000000000000000000000000000000000000`n")
+    Check "a binary whose durable receipt describes the previous one is refused" `
+        (Test-BinaryArtifactIsOurs $interrupted) "False"
+    Set-ArtifactOwnershipPending -Path $interrupted -Identity $incoming
+    Check "the pending receipt is written beside the durable one" `
+        (Test-Path -LiteralPath (Join-Path $pendingSandbox ".veyyon.exe.veyyon-owner.pending")) "True"
+    Check "and it is what lets the interrupted install be recognized as ours" `
+        (Test-BinaryArtifactIsOurs $interrupted) "True"
+    # NEGATIVE CONTROL. The pending receipt vouches for BYTES, not for a path, so
+    # a file that is not those bytes gains nothing from it. Without this the fix
+    # would hand ownership of whatever turns up at the path to the installer,
+    # which is the defect the durable receipt exists to prevent.
+    Set-Content -LiteralPath $interrupted -Value "a file somebody else put here"
+    Check "a pending receipt does not vouch for a file it does not name" `
+        (Test-BinaryArtifactIsOurs $interrupted) "False"
+    Set-Content -LiteralPath $interrupted -Value "the binary that was just installed"
+    Clear-ArtifactOwnershipPending $interrupted
+    Check "clearing the pending receipt removes it" `
+        (Test-Path -LiteralPath (Join-Path $pendingSandbox ".veyyon.exe.veyyon-owner.pending")) "False"
+    Check "and the interrupted install is refused again once it is gone" `
+        (Test-BinaryArtifactIsOurs $interrupted) "False"
+
+    # Move-StagedBinaryIntoPlace is the production path. A completed install
+    # leaves the durable receipt and NO pending one: a pending file surviving a
+    # successful install is litter every "the install dir is clean" assertion in
+    # e2e.test.ps1 would then have to know about.
+    $cleanDir = Join-Path $pendingSandbox "clean"
+    New-Item -ItemType Directory -Force -Path $cleanDir | Out-Null
+    $cleanTarget = Join-Path $cleanDir "veyyon.exe"
+    Set-Content -LiteralPath (Join-Path $cleanDir "staged") -Value "staged bytes"
+    Move-StagedBinaryIntoPlace -StagingPath (Join-Path $cleanDir "staged") -TargetPath $cleanTarget | Out-Null
+    Check "a completed install records the binary it placed" `
+        (Test-ArtifactHasOwnerReceipt $cleanTarget) "True"
+    Check "and leaves no pending record behind" `
+        (Test-Path -LiteralPath (Join-Path $cleanDir ".veyyon.exe.veyyon-owner.pending")) "False"
+    Check "and the staged file is gone" `
+        (Test-Path -LiteralPath (Join-Path $cleanDir "staged")) "False"
+
+    # THE REPAIR. Re-running the installer over the machine in the reported state
+    # has to install, not refuse. Both directions matter: the same release again
+    # (the byte-identical short-circuit, which also avoids touching a running
+    # image) and a newer one (the pending record vouching for what is replaced).
+    $sameDir = Join-Path $pendingSandbox "repair-same"
+    New-Item -ItemType Directory -Force -Path $sameDir | Out-Null
+    $sameTarget = Join-Path $sameDir "veyyon.exe"
+    Set-Content -LiteralPath $sameTarget -Value "release 1 bytes"
+    [System.IO.File]::WriteAllText((Join-Path $sameDir ".veyyon.exe.veyyon-owner"),
+        "veyyon-installer-v2`nfile sha256:1111111111111111111111111111111111111111111111111111111111111111`n")
+    Set-ArtifactOwnershipPending -Path $sameTarget -Identity (Get-ArtifactIdentity $sameTarget)
+    Set-Content -LiteralPath (Join-Path $sameDir "staged") -Value "release 1 bytes"
+    # The identity of the FILE, not of its contents: a swap that renamed identical
+    # bytes into place would satisfy every content assertion below while still
+    # having replaced a running image, which is the thing the short-circuit exists
+    # to avoid. The write timestamp is what tells the two apart.
+    $sameStamp = (Get-Item -LiteralPath $sameTarget -Force).LastWriteTimeUtc.Ticks
+    Start-Sleep -Milliseconds 20
+    $sameSaid = @(Move-StagedBinaryIntoPlace -StagingPath (Join-Path $sameDir "staged") -TargetPath $sameTarget 6>&1) -join "`n"
+    Check "re-installing the same release over an unrecorded binary leaves it in place" `
+        (Get-Content -LiteralPath $sameTarget -Raw).Trim() "release 1 bytes"
+    Check "the file itself was never replaced" `
+        (Get-Item -LiteralPath $sameTarget -Force).LastWriteTimeUtc.Ticks $sameStamp
+    Check "and it says so rather than reporting an install that did not happen" `
+        ($sameSaid -like "*already this exact binary*") "True"
+    Check "the durable receipt is repaired" (Test-ArtifactHasOwnerReceipt $sameTarget) "True"
+    Check "and the pending record is retired" `
+        (Test-Path -LiteralPath (Join-Path $sameDir ".veyyon.exe.veyyon-owner.pending")) "False"
+
+    $upDir = Join-Path $pendingSandbox "repair-upgrade"
+    New-Item -ItemType Directory -Force -Path $upDir | Out-Null
+    $upTarget = Join-Path $upDir "veyyon.exe"
+    Set-Content -LiteralPath $upTarget -Value "release 1 bytes"
+    [System.IO.File]::WriteAllText((Join-Path $upDir ".veyyon.exe.veyyon-owner"),
+        "veyyon-installer-v2`nfile sha256:1111111111111111111111111111111111111111111111111111111111111111`n")
+    Set-ArtifactOwnershipPending -Path $upTarget -Identity (Get-ArtifactIdentity $upTarget)
+    Set-Content -LiteralPath (Join-Path $upDir "staged") -Value "release 2 bytes"
+    Move-StagedBinaryIntoPlace -StagingPath (Join-Path $upDir "staged") -TargetPath $upTarget | Out-Null
+    Check "upgrading over an unrecorded binary installs the new release" `
+        (Get-Content -LiteralPath $upTarget -Raw).Trim() "release 2 bytes"
+    Check "the receipt describes the new release" (Test-ArtifactHasOwnerReceipt $upTarget) "True"
+    Check "and nothing was displaced" `
+        (@(Get-ChildItem -Path $upDir -Filter "*.unowned.*" -Force).Count) "0"
+
+    # The refusal still refuses, and it now says what to do about it. A file the
+    # installer genuinely cannot account for is still not its to overwrite; the
+    # difference is that the message names the record consulted and the switch
+    # that proceeds, instead of leaving the user to guess at file surgery.
+    $refuseDir = Join-Path $pendingSandbox "refuses"
+    New-Item -ItemType Directory -Force -Path $refuseDir | Out-Null
+    $refuseTarget = Join-Path $refuseDir "veyyon.exe"
+    Set-Content -LiteralPath $refuseTarget -Value "another tool"
+    Set-Content -LiteralPath (Join-Path $refuseDir "staged") -Value "staged bytes"
+    $refusal = ""
+    $script:Force = $false
+    try {
+        Move-StagedBinaryIntoPlace -StagingPath (Join-Path $refuseDir "staged") -TargetPath $refuseTarget | Out-Null
+    } catch { $refusal = "$($_.Exception.Message)" }
+    Check "a file this installer cannot account for is still refused" `
+        ($refusal -like "*refusing to replace*") "True"
+    Check "the refusal names the ownership record it consulted" `
+        ($refusal -like "*.veyyon.exe.veyyon-owner*") "True"
+    Check "the refusal names the switch that proceeds anyway" ($refusal -like "*-Force*") "True"
+    Check "the file it refused to replace is untouched" `
+        (Get-Content -LiteralPath $refuseTarget -Raw).Trim() "another tool"
+    Check "and the staged download is not left behind" `
+        (Test-Path -LiteralPath (Join-Path $refuseDir "staged")) "False"
+
+    # -Force displaces; it never deletes. A machine already in the broken state
+    # needs a way through that does not require hand-deleting a file the user
+    # cannot identify, and the installer must not decide it was worthless.
+    $forceDir = Join-Path $pendingSandbox "forced"
+    New-Item -ItemType Directory -Force -Path $forceDir | Out-Null
+    $forceTarget = Join-Path $forceDir "veyyon.exe"
+    Set-Content -LiteralPath $forceTarget -Value "a file the installer cannot account for"
+    Set-Content -LiteralPath (Join-Path $forceDir "staged") -Value "staged bytes"
+    $script:Force = $true
+    try {
+        Move-StagedBinaryIntoPlace -StagingPath (Join-Path $forceDir "staged") -TargetPath $forceTarget | Out-Null
+    } finally { $script:Force = $false }
+    Check "-Force installs over a file the installer cannot account for" `
+        (Get-Content -LiteralPath $forceTarget -Raw).Trim() "staged bytes"
+    $displacedFiles = @(Get-ChildItem -Path $forceDir -Filter "veyyon.exe.unowned.*" -Force)
+    Check "the displaced file survives under a name of its own" $displacedFiles.Count "1"
+    Check "with its contents intact" `
+        (Get-Content -LiteralPath $displacedFiles[0].FullName -Raw).Trim() "a file the installer cannot account for"
+    Check "and that name is not one any update sweep reclaims" `
+        (Test-UpdateAttemptLeftover -Name $displacedFiles[0].Name -BaseName "veyyon.exe" -Suffix "bak") "False"
+
+    # A TRANSIENT read failure must not become a permanent verdict. On Windows the
+    # 150MB executable this installer has just renamed is exactly what an
+    # antivirus scanner opens, and one sharing violation used to answer "no
+    # identity", which the callers read as "not ours" and recorded forever. The
+    # hash is retried; Get-FileHash is shadowed to fail a fixed number of times,
+    # because a real sharing violation cannot be staged in-process.
+    $retryTarget = Join-Path $pendingSandbox "retry.exe"
+    Set-Content -LiteralPath $retryTarget -Value "bytes that are readable"
+    $trueIdentity = Get-ArtifactIdentity $retryTarget
+    & {
+        $script:hashCalls = 0
+        $script:hashSucceedsAt = 3
+        function Get-FileHash {
+            param([string]$LiteralPath, [string]$Algorithm, [string]$ErrorAction)
+            $script:hashCalls++
+            if ($script:hashCalls -lt $script:hashSucceedsAt) {
+                throw "The process cannot access the file because it is being used by another process."
+            }
+            return [pscustomobject]@{ Hash = "ABC123" }
+        }
+        Check "a hash that fails twice and then succeeds still yields an identity" `
+            (Get-ArtifactIdentity $retryTarget) "file sha256:abc123"
+        Check "and it stopped retrying as soon as it had an answer" $script:hashCalls "3"
+
+        # BOUNDED. The retry has to END: a loop that kept trying would hang the
+        # install on a file that is genuinely unreadable, which is worse than the
+        # refusal it replaced.
+        # 5, not 3: a number no plausible hardcoded loop limit coincides with, so
+        # the assertion proves the CALLER's bound is honoured rather than that some
+        # bound exists.
+        $script:hashCalls = 0
+        $script:hashSucceedsAt = [int]::MaxValue
+        Check "a hash that never succeeds gives up instead of looping" `
+            ($null -eq (Get-ArtifactIdentity $retryTarget -MaxAttempts 5)) "True"
+        Check "and it tried exactly the number of attempts it was given" $script:hashCalls "5"
+    }
+    Check "the shadowed hash did not outlive its scope" (Get-ArtifactIdentity $retryTarget) $trueIdentity
+} finally {
+    Remove-Item -Recurse -Force $pendingSandbox -ErrorAction SilentlyContinue
+}
+
+# --- every name an update attempt leaves behind is recognized as the updater's ---
+#
+# THE DEFECT: a machine held a 147MB `veyyon.exe.6358c750-....bak` from an update
+# three days earlier and no shipped command would remove it. The updater names each
+# attempt's files after a crypto.randomUUID() so two concurrent updates cannot
+# truncate each other's download, while the sweeps that reclaim them were written
+# against the names of two releases earlier — a fixed `veyyon.exe.new` and a
+# dot-numeric `veyyon.exe.<timestamp>.<pid>.bak`. They matched neither shape
+# actually on disk, and `--uninstall` reported success over a directory holding a
+# copy of the binary.
+#
+# THE CLASS: one producer, three recognizers (this one, `update_attempt_middle_is_ours`
+# in install.sh, and `sweepStaleBackups` in update-cli.ts). All three must agree,
+# or a file's fate depends on which command the user happened to run. The corpus
+# below is the same one
+# packages/coding-agent/test/every-name-an-update-leaves-behind-is-reclaimed.test.ts
+# drives against the other two, where it is taken FROM the real updater at run
+# time; keep them in step.
+#
+# WHAT IT DOES NOT CATCH: whether the updater still writes these names. That is
+# observed from the producer in the TypeScript suite named above, which cannot run
+# a PowerShell predicate.
+$attemptNames = @(
+    # Ours: every staging and backup name any shipped updater has written.
+    @{ Name = "veyyon.exe.new"; Suffix = "new"; Ours = "True" },
+    @{ Name = "veyyon.exe.6358c750-7c88-4c71-81c0-91c9b27c6c76.new"; Suffix = "new"; Ours = "True" },
+    @{ Name = "veyyon.exe.bak"; Suffix = "bak"; Ours = "True" },
+    @{ Name = "veyyon.exe.1753660000.4242.bak"; Suffix = "bak"; Ours = "True" },
+    @{ Name = "veyyon.exe.b1f0a2c4-1111-4222-8333-444455556666.bak"; Suffix = "bak"; Ours = "True" },
+    # Not ours: a copy saved by hand, and anything belonging to another command.
+    @{ Name = "veyyon.exe.mine.bak"; Suffix = "bak"; Ours = "False" },
+    @{ Name = "veyyon.exe.keep.new"; Suffix = "new"; Ours = "False" },
+    @{ Name = "veyyon-other.exe.bak"; Suffix = "bak"; Ours = "False" },
+    # One hex digit short of a UUID: the assertion that keeps the pattern from
+    # degenerating into "anything with hyphens in it".
+    @{ Name = "veyyon.exe.6358c750-7c88-4c71-81c0-91c9b27c6c7.bak"; Suffix = "bak"; Ours = "False" },
+    # UUID-shaped, but no version-4 UUID has a 0 version nibble or a c variant.
+    @{ Name = "veyyon.exe.6358c750-7c88-0c71-81c0-91c9b27c6c76.bak"; Suffix = "bak"; Ours = "False" },
+    @{ Name = "veyyon.exe.6358c750-7c88-4c71-c1c0-91c9b27c6c76.bak"; Suffix = "bak"; Ours = "False" }
+)
+foreach ($case in $attemptNames) {
+    Check "$($case.Name) is $(if ($case.Ours -eq 'True') { 'the updater''s' } else { 'not the updater''s' })" `
+        (Test-UpdateAttemptLeftover -Name $case.Name -BaseName "veyyon.exe" -Suffix $case.Suffix) $case.Ours
+}
+
+
 # --- Test-NativeAddon: the phase label, and what it refuses ---
 # The preflight run probes the STAGED download so a release with no build for
 # this architecture never reaches the install dir, the alias, PATH or the
