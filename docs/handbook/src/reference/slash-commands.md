@@ -25,6 +25,57 @@ A message that merely begins with a filesystem path is prose, not a command, and
 The separator decides. A command name is one segment of letters, digits, underscores and hyphens
 starting with a letter, so anything holding a slash is a path.
 
+## Every argument is a plain word
+
+No slash command takes an option. Nothing is spelled with a dash, so there is nothing to look up
+and nothing to get in the wrong order. A word means something for one of two reasons: the POSITION
+it sits in, or a CLOSED SET or SHAPE it belongs to.
+
+Plenty of commands take a single argument, listed with them in the tables below. These are the ones
+with a grammar to state, and each used to spell part of it with dashes:
+
+```text
+/mcp add <name> [http|sse] [url <url>] [token <token>] [run <command...>]
+/mcp remove <name>
+/mcp smithery-search <keyword...> [<limit 1-100>] [semantic]
+/ssh add <name> <host> [user <user>] [<port>] [key <keyPath>]
+/ssh remove <name>
+/stats [<port>]
+```
+
+`/secret` has its own grammar and its own page: see [Secrets](../features/secrets.md).
+
+Position covers every required word, so `/mcp remove project` removes a server actually named
+`project`. Where meaning is taken from a word's shape instead, the sets provably cannot overlap: on
+`/ssh add` a port is digits and nothing else the command reads is, and `user` and `key` are the only
+two keywords, each taking the word after it. A word the command cannot use is refused rather than
+ignored, because a word that is silently dropped looks like a setting that was applied.
+
+### A spelling that was an option
+
+Each of these commands remembers the option spellings it used to have, and refuses them naming the
+plain word that replaced each one:
+
+```text
+/ssh add box example.com --port 2222
+--port is gone: write the port as a plain integer.
+Usage: /ssh add <name> <host> [user <user>] [<port>] [key <keyPath>]
+```
+
+The plain word gets the same answer as the dashed one. `/stats port 8080` is refused the way
+`/stats --port 8080` is, and `/mcp add srv project` the way `/mcp add srv --scope project` is,
+because the operator who types the word an older grammar taught is asking the same question either
+way and wants the same answer. Which words those are is read from the same table the refusal text
+comes from, so the two spellings cannot drift apart.
+
+A word that never was an option is refused more briefly, since there is no replacement to name:
+`Unknown argument: <word>`, or `Invalid port: <word>` where a port was the only thing the command
+reads.
+
+`/mcp smithery-search` is the exception, and it is one on purpose: its trailing words are search
+terms, arbitrary text with no closed set, so a plain `project` there is a keyword to search for and
+is searched for. Only the dashed spellings are refused.
+
 ## A bare command that has subcommands
 
 Some commands take a subcommand: `/account status`, `/account manager`, `/usage reset`. Typing the
@@ -111,6 +162,7 @@ act on a bare invocation: `/yolo`, `/fast`, and `/browser` flip a switch, `/goal
 | `/login [provider\|url]` | OAuth / API key login |
 | `/logout [provider]` | Log out |
 | `/usage show\|reset` | Provider rate limits |
+| `/stats [<port>]` | Open the usage dashboard in a browser. The port is a plain integer and defaults to 3847; `veyyon stats` opens the same dashboard from a shell |
 | `/changelog` | Open the release notes on the web |
 
 ## Extensions
@@ -122,7 +174,7 @@ act on a bare invocation: `/yolo`, `/fast`, and `/browser` flip a switch, `/goal
 | `/plugins …` | Plugin browser |
 | `/extensions`, `/status` | Extension Control Center dashboard. `/status` is an alias for it, not a session-status view |
 | `/agents` (aliases `/cockpit`, `/hub`) | Open the Agent Control Center: live agent roster and the agent-to-agent comms stream |
-| `/ssh …` | SSH host setup |
+| `/ssh …` | SSH host setup. `add` takes the name and host by position, then `user <user>`, a plain port, and `key <keyPath>` in any order: see [Every argument is a plain word](#every-argument-is-a-plain-word) |
 | `/hotkeys` | Active keybinding chords |
 | `/collab …`, `/join`, `/leave` | Live collab sessions |
 | `/share` | Share the session via an encrypted link (share server or secret gist) |
