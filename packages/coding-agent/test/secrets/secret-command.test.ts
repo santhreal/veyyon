@@ -883,7 +883,11 @@ describe("usage text", () => {
 		// value cannot be typed at all, the bare value form where it can.
 		expect(noninteractive).toContain("/secret add <name>");
 		expect(tui).toContain("/secret <value>");
-		expect(tui).not.toContain("/secret add");
+		// A NAME, not the word. Terminal help names `/secret add <value>` as the reserved-word escape,
+		// so pinning the absence of `/secret add` outright would forbid the escape rather than the
+		// thing worth forbidding: an inline NAME, which writes a credential into plaintext metadata
+		// when the two positionals are read the other way round.
+		expect(tui).not.toContain("/secret add <name>");
 	});
 
 	/** The terminal help documents the ways in, and never a screen: there is not one to open. */
@@ -893,7 +897,7 @@ describe("usage text", () => {
 		expect(tui).toContain("/secret <value>");
 		expect(tui).toContain("/secret --from-env <VAR>");
 		expect(tui).toContain("paste into a hidden field");
-		expect(tui).toContain("/secret -- <value>");
+		expect(tui).toContain("/secret add <value>");
 		expect(tui).not.toContain("manager");
 	});
 
@@ -953,19 +957,47 @@ describe("the terminal grammar", () => {
 	 * credential and report it as a success.
 	 *
 	 * The refusal has to carry the escape, because the operator whose credential really does start
-	 * with a reserved word has exactly one way to say so and no reason to guess it.
+	 * with a reserved word has exactly one way to say so and no reason to guess it. That way is the
+	 * verb: `--` used to spell it and was removed, since a slash command has no options to end.
 	 */
 	it("refuses a malformed reserved line and names the escape", () => {
-		expect(() => parseSecretCommand("log 50", "tui")).toThrow(/\/secret -- <value>/u);
-		expect(() => parseSecretCommand("list everything", "tui")).toThrow(/\/secret -- <value>/u);
+		expect(() => parseSecretCommand("log 50", "tui")).toThrow(/\/secret add <value>/u);
+		expect(() => parseSecretCommand("list everything", "tui")).toThrow(/\/secret add <value>/u);
 	});
 
 	/** And the escape stores that same line verbatim, reserved first word and all. */
 	it("stores an escaped line as the credential, byte for byte", () => {
-		expect(parseSecretCommand("-- log 50", "tui")).toEqual({
+		expect(parseSecretCommand("add log 50", "tui")).toEqual({
 			subcommand: "add",
 			value: "log 50",
 		});
+	});
+
+	/**
+	 * THE REMOVED SPELLING FAILS CLOSED, because the alternative is a corrupted credential.
+	 *
+	 * `--` is not a reserved word, so deleting its branch and nothing else would have sent `-- sk-x`
+	 * to the value reader, which slices from the first token to the last and would have stored the
+	 * dashes as part of the credential. `#NAME#` then expands to `-- sk-x`, the request fails
+	 * authentication somewhere else entirely, and nothing on screen connects that to a slash command.
+	 * A credential is the one input whose corruption stays invisible until it is spent, so the old
+	 * spelling refuses and names the new one instead of guessing which half was meant.
+	 */
+	it("refuses the removed -- escape rather than storing the dashes", () => {
+		for (const line of ["-- log 50", "-- sk-live-x", "--", "add -- sk-live-x"]) {
+			expect(() => parseSecretCommand(line, "tui")).toThrow(/\/secret add <value>/u);
+			expect(() => parseSecretCommand(line, "tui")).toThrow(/not part of \/secret/u);
+		}
+	});
+
+	/**
+	 * ONLY THE EXACT TOKEN. A credential that merely begins with dashes is unreserved and is stored
+	 * byte for byte, as it was before the escape existed: widening the refusal to any `--` prefix
+	 * would reject real values, which is the opposite failure and a louder one.
+	 */
+	it("still stores a value that only begins with dashes", () => {
+		expect(parseSecretCommand("--abc", "tui")).toEqual({ subcommand: "add", value: "--abc" });
+		expect(parseSecretCommand("---", "tui")).toEqual({ subcommand: "add", value: "---" });
 	});
 
 	/**

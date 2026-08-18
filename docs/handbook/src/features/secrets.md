@@ -228,15 +228,17 @@ The line is kept byte for byte from its first non-space character to its last, s
 
 #### The verbs are the reserved words
 
-`/secret` reserves one list of words: `add`, `list`, `rm`, `rename`, `value`, `scope`, `copy`, `extend`, `log`, `discard` and `help`, plus the second spellings `remove`, `delete`, `name`, `replace`, `move`, `renew` and `audit`. A line beginning with one of those is that command. A line beginning with anything else is a credential.
+`/secret` reserves one list of words: `add`, `list`, `rm`, `clear`, `rename`, `value`, `scope`, `copy`, `extend`, `log`, `discard` and `help`, plus the second spellings `remove`, `delete`, `wipe`, `purge`, `empty`, `reset`, `name`, `replace`, `move`, `renew` and `audit`. A line beginning with one of those is that command. A line beginning with anything else is a credential.
 
-A reserved word stays a command however much follows it, so a malformed one is refused rather than quietly stored: `/secret log 50` is a `log` with an unreadable argument, not a new secret called `SECRET_1`. If a credential of yours really does begin with one of those words, say so with `--`:
+A reserved word stays a command however much follows it, so a malformed one is refused rather than quietly stored: `/secret log 50` is a `log` with an unreadable argument, not a new secret called `SECRET_1`. If a credential of yours really does begin with one of those words, name the verb:
 
 ```text
-/secret -- list of words that is really a passphrase
+/secret add list of words that is really a passphrase
 ```
 
-Everything after `--` is stored byte for byte, first word included.
+Everything after `add` is stored byte for byte, first word included. `add` reads the rest of the line the same way a bare `/secret` does, so the two forms store the same bytes.
+
+Earlier versions spelled that escape `--`. That spelling is refused now, and the refusal names `add`. A slash command carries no options to end, so `--` meant nothing here and had to be looked up. It is refused rather than read as part of the value, because storing `-- ` on the front of a credential produces a secret that expands into requests that fail somewhere else entirely.
 
 ### What you are told when it is stored
 

@@ -100,7 +100,7 @@ describe("every reserved word is a command in a terminal, not a credential", () 
 			"value A B",
 			"scope TOK",
 		]) {
-			expect(() => parseSecretCommand(line, "tui")).toThrow(/\/secret -- <value>/u);
+			expect(() => parseSecretCommand(line, "tui")).toThrow(/\/secret add <value>/u);
 		}
 	});
 
@@ -116,12 +116,16 @@ describe("every reserved word is a command in a terminal, not a credential", () 
 describe("the escape is the one way a credential wears a reserved word", () => {
 	/**
 	 * Derived over the same table, because the escape has to work for EVERY reserved word or the
-	 * grammar has locked somebody out. The stored value keeps the reserved word: `-- list` is the
+	 * grammar has locked somebody out. The stored value keeps the reserved word: `add list` is the
 	 * credential `list`, not an empty one.
+	 *
+	 * THE ESCAPE IS THE VERB `add`, which used to be spelled `--` as well. Two spellings of one
+	 * escape is one spelling too many, and the one that went is the one a slash command never had a
+	 * reason to borrow: there are no options here for `--` to end.
 	 */
 	for (const word of Object.keys(SECRET_VERB_SPELLINGS)) {
 		it(`stores a credential beginning with ${word}`, () => {
-			expect(parseSecretCommand(`-- ${word} and the rest`, "tui")).toEqual({
+			expect(parseSecretCommand(`add ${word} and the rest`, "tui")).toEqual({
 				subcommand: "add",
 				value: `${word} and the rest`,
 			});
@@ -130,19 +134,20 @@ describe("the escape is the one way a credential wears a reserved word", () => {
 
 	/** Whitespace inside an escaped credential survives, exactly as it does in the bare form. */
 	it("keeps whitespace inside an escaped credential", () => {
-		expect(parseSecretCommand("--   list  two\tthree ", "tui")).toEqual({
+		expect(parseSecretCommand("add   list  two\tthree ", "tui")).toEqual({
 			subcommand: "add",
 			value: "list  two\tthree",
 		});
 	});
 
 	/**
-	 * `--` with nothing after it is a mistake, not an empty credential: storing an empty value would
-	 * create an entry that expands to nothing and protects nothing. The refusal points at the masked
-	 * field, which is where somebody who typed `--` and hesitated actually wanted to be.
+	 * `add` with nothing after it is the masked field, not an empty credential and not a refusal.
+	 * Storing an empty value would create an entry that expands to nothing and protects nothing, and
+	 * refusing would send somebody who typed the verb and hesitated back to the help text instead of
+	 * to the field they were reaching for. `needsValuePrompt` reads exactly this shape.
 	 */
-	it("refuses an escape with nothing after it", () => {
-		expect(() => parseSecretCommand("--", "tui")).toThrow(/hidden field/u);
+	it("opens the masked field for a verb with nothing after it", () => {
+		expect(parseSecretCommand("add", "tui")).toEqual({ subcommand: "add" });
 	});
 });
 
