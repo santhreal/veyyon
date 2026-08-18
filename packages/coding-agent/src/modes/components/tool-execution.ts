@@ -16,6 +16,7 @@ import {
 } from "@veyyon/tui";
 import { clampLow, formatMoreLines, getProjectDir, logger, sanitizeText } from "@veyyon/utils";
 import { EDIT_MODE_STRATEGIES, type EditMode, type PerFileDiffPreview } from "../../edit";
+import { transitionsEnabled } from "../../modes/theme/shimmer";
 import type { Theme } from "../../modes/theme/theme";
 import { getThemeEpoch, theme } from "../../modes/theme/theme";
 import { BASH_DEFAULT_PREVIEW_LINES } from "../../tools/bash";
@@ -41,8 +42,17 @@ import {
 	truncateToWidth,
 } from "../../tools/render-utils";
 import { type FirstResultViewportRepaint, toolRenderers } from "../../tools/renderers";
-import { TODO_STRIKE_TOTAL_FRAMES, type TodoToolDetails } from "../../tools/todo";
+import { TODO_BOARD_TOTAL_FRAMES, type TodoToolDetails } from "../../tools/todo";
 import { renderStatusLine, WidthAwareText } from "../../tui";
+import {
+	hasRailRow,
+	paintRailMotion,
+	RAIL_IDLE_STEP_MS,
+	RAIL_SETTLE_FRAME_MS,
+	RAIL_SETTLE_FRAMES,
+	type RailMotion,
+	railIdleHeadAt,
+} from "../../tui/rail-motion";
 import { sanitizeWithOptionalSixelPassthrough } from "../../utils/sixel";
 import { COMPOSER_INSET_COLS } from "./composer-chrome";
 import { renderDiff } from "./diff";
@@ -381,8 +391,24 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	// Spinner animation for partial task results
 	#spinnerFrame?: number;
 	#spinnerInterval?: NodeJS.Timeout;
-	// Todo write completion strikethrough reveal animation
-	#todoStrikeInterval?: NodeJS.Timeout;
+	// Todo board entrance and completion strikethrough, on one bounded counter
+	#todoBoardInterval?: NodeJS.Timeout;
+	// The rail's own motion, independent of the spinner: a live block breathes
+	// (`#railIdleStep`), and the frame its result lands makes one settling pass
+	// (`#railSettleFrame`). Only one of the two is ever armed. `#railWasLive` gates
+	// the settle to a block whose live rail was actually PAINTED at least once —
+	// set in `render`, never on construction. A transcript rebuild constructs the
+	// block and hands it its result in the same tick, before any paint, so history
+	// does not settle two hundred blocks at once.
+	#railIdleStep?: number;
+	#railIdleInterval?: NodeJS.Timeout;
+	#railSettleFrame?: number;
+	#railSettleInterval?: NodeJS.Timeout;
+	#railWasLive = false;
+	#railSettled = false;
+	// Whether the last render had a rail to paint. `undefined` until one render has
+	// answered, so the first tick still asks.
+	#railRowsPresent?: boolean;
 	// Track if args are still being streamed (for edit/write spinner)
 	#argsComplete = false;
 	// Sealed once the tool reaches a terminal state (result delivered, or the
@@ -469,6 +495,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		this.setIgnoreTight(true);
 
 		this.#updateSpinnerAnimation();
+		this.#updateRailMotion();
 		this.#updateDisplay();
 		this.#schedulePreviewDiff();
 	}
@@ -634,7 +661,8 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			this.#argsComplete = true;
 		}
 		this.#updateSpinnerAnimation();
-		this.#updateTodoStrikeAnimation();
+		this.#updateTodoBoardAnimation();
+		this.#updateRailMotion();
 		this.#updateDisplay();
 		this.#resetDisplayForResultTopologyChange(
 			hadNoResult && firstResultRepaintShapePainted,
@@ -770,9 +798,9 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			clearInterval(this.#spinnerInterval);
 			this.#spinnerInterval = undefined;
 			// Clear the last drawn frame so a non-live renderCall (e.g. a write whose
-			// args just completed) stops showing a frozen spinner glyph. Skip when a
-			// todo strike owns the frame — it sets its own value right after this.
-			if (!this.#todoStrikeInterval) {
+			// args just completed) stops showing a frozen spinner glyph. Skip when the
+			// todo board owns the frame — it sets its own value right after this.
+			if (!this.#todoBoardInterval) {
 				this.#spinnerFrame = undefined;
 				this.#renderState.spinnerFrame = undefined;
 			}
@@ -799,38 +827,44 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		return true;
 	}
 
-	#updateTodoStrikeAnimation(): void {
+	#updateTodoBoardAnimation(): void {
 		if (this.#toolName !== "todo" || this.#isPartial || this.#result?.isError) {
-			this.#stopTodoStrikeAnimation();
+			this.#stopTodoBoardAnimation();
 			return;
 		}
-		const completedTasks = (this.#result?.details as { completedTasks?: unknown[] } | undefined)?.completedTasks;
-		if (!completedTasks || completedTasks.length === 0) {
-			this.#stopTodoStrikeAnimation();
+		// EVERY landed board write animates, not only one that closed a task. The
+		// entrance is what makes an `init`, an `append` or a `start` visible at all:
+		// gated on `completedTasks`, those three landed as a static block and the
+		// board's only motion was the strike-through of a task closing.
+		if (this.#result === undefined) {
+			this.#stopTodoBoardAnimation();
 			return;
 		}
-		if (this.#todoStrikeInterval) return;
+		if (this.#todoBoardInterval) return;
 
-		this.#spinnerFrame = 0;
-		this.#renderState.spinnerFrame = 0;
-		this.#todoStrikeInterval = setInterval(() => {
+		// Frame 1, not 0: the board renders frame 0 as its settled self, so starting
+		// there would paint the finished board for one tick and then rewind into the
+		// entrance. The counter runs 1..TODO_BOARD_TOTAL_FRAMES and then stops.
+		this.#spinnerFrame = 1;
+		this.#renderState.spinnerFrame = 1;
+		this.#todoBoardInterval = setInterval(() => {
 			const nextFrame = (this.#spinnerFrame ?? 0) + 1;
-			if (nextFrame > TODO_STRIKE_TOTAL_FRAMES) {
-				this.#stopTodoStrikeAnimation();
+			if (nextFrame > TODO_BOARD_TOTAL_FRAMES) {
+				this.#stopTodoBoardAnimation();
 			} else {
 				this.#spinnerFrame = nextFrame;
 				this.#renderState.spinnerFrame = nextFrame;
 			}
-			// Component-scoped: strike animation only mutates this tool block's
-			// glyph, so the TUI reuses every other root subtree (issue #4377).
+			// Component-scoped: the board's entrance only mutates this tool block's
+			// own rows, so the TUI reuses every other root subtree (issue #4377).
 			this.#requestScopedRender();
 		}, 65);
 	}
 
-	#stopTodoStrikeAnimation(): void {
-		if (this.#todoStrikeInterval) {
-			clearInterval(this.#todoStrikeInterval);
-			this.#todoStrikeInterval = undefined;
+	#stopTodoBoardAnimation(): void {
+		if (this.#todoBoardInterval) {
+			clearInterval(this.#todoBoardInterval);
+			this.#todoBoardInterval = undefined;
 		}
 		if (!this.#spinnerInterval) {
 			this.#spinnerFrame = undefined;
@@ -839,14 +873,125 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	}
 
 	/**
+	 * Drive the rail's own motion (see `tui/rail-motion.ts`).
+	 *
+	 * The spinner is not a substitute for this and cannot be widened into it: it
+	 * exists only for renderers that declare they DRAW `options.spinnerFrame`, and
+	 * the tools an operator watches longest — bash, ssh's result, read, fetch —
+	 * declare nothing, so their block gets no tick at all and the rail beside a
+	 * four-second command never moves. This is the rail's own repaint, and it is
+	 * bounded on both ends: the idle interval lives exactly as long as the block is
+	 * live, and the settle interval is `RAIL_SETTLE_FRAMES` ticks and then gone.
+	 *
+	 * `display.transitions: off` is the reduced-motion switch for chrome, so with it
+	 * the intervals are never armed and every rail is the flat colour the renderer
+	 * drew.
+	 */
+	#updateRailMotion(): void {
+		if (!transitionsEnabled()) {
+			this.#stopRailMotion();
+			return;
+		}
+		const live = !this.#sealed && !this.#backgroundTaskFrozen && (this.#result === undefined || this.#isPartial);
+		if (live) {
+			this.#stopRailSettle();
+			if (this.#railIdleInterval) return;
+			this.#railIdleStep = 0;
+			this.#railIdleInterval = setInterval(() => {
+				this.#railIdleStep = (this.#railIdleStep ?? 0) + 1;
+				// Only a block whose LAST render actually drew a rail asks for another
+				// paint. A plain-text preview (a bare tool-name label, a github watch
+				// row) has nothing here to move, and a block nobody has rendered yet
+				// cannot know either way — in a live transcript the first paint lands
+				// long before this matters, and a block off screen should not be
+				// spending frames.
+				if (this.#railRowsPresent !== true) return;
+				// Component-scoped: the rail's motion changes this block's first
+				// column and nothing else, so the TUI reuses every other root
+				// subtree (issue #4377).
+				this.#requestScopedRender();
+			}, RAIL_IDLE_STEP_MS);
+			return;
+		}
+		this.#stopRailIdle();
+		if (this.#sealed || this.#backgroundTaskFrozen || this.#result === undefined) {
+			this.#stopRailSettle();
+			return;
+		}
+		// One pass per block, and only for a block that was on screen without its
+		// result: a rebuilt transcript hands every historical block a result in its
+		// constructor, and a settling streak down two hundred blocks of history at
+		// once is not a transition, it is a fireworks display.
+		if (this.#railSettled || !this.#railWasLive) return;
+		this.#railSettled = true;
+		this.#railSettleFrame = 1;
+		this.#railSettleInterval = setInterval(() => {
+			const next = (this.#railSettleFrame ?? 0) + 1;
+			if (next > RAIL_SETTLE_FRAMES) {
+				// The last frame IS the renderer's own bytes, so stopping here leaves
+				// the block exactly as it would have drawn itself with no animation.
+				this.#stopRailSettle();
+			} else {
+				this.#railSettleFrame = next;
+			}
+			this.#requestScopedRender();
+		}, RAIL_SETTLE_FRAME_MS);
+	}
+
+	#stopRailIdle(): void {
+		if (this.#railIdleInterval) {
+			clearInterval(this.#railIdleInterval);
+			this.#railIdleInterval = undefined;
+		}
+		this.#railIdleStep = undefined;
+	}
+
+	#stopRailSettle(): void {
+		if (this.#railSettleInterval) {
+			clearInterval(this.#railSettleInterval);
+			this.#railSettleInterval = undefined;
+		}
+		this.#railSettleFrame = undefined;
+	}
+
+	#stopRailMotion(): void {
+		this.#stopRailIdle();
+		this.#stopRailSettle();
+	}
+
+	/** The frame the rail is on, or `undefined` when it is not animating. */
+	#railMotion(): RailMotion | undefined {
+		if (this.#railSettleFrame !== undefined) return { kind: "settle", frame: this.#railSettleFrame };
+		if (this.#railIdleStep !== undefined) return { kind: "idle", head: railIdleHeadAt(this.#railIdleStep) };
+		return undefined;
+	}
+
+	/**
+	 * Where this block's still-changing rows begin, for the engine's native
+	 * scrollback contract. `undefined` means "every row of mine is history".
+	 *
 	 * Standalone harnesses may mount a tool component directly under `TUI`
 	 * instead of inside `TranscriptContainer`. In that shape the component must
 	 * report its own live-region seam while unfinalized, or the core renderer
 	 * treats it like shell output and commits still-mutating preview rows to
 	 * immutable native scrollback before the result replaces them.
+	 *
+	 * A finalized block reports no live region — except while one of its two
+	 * bounded animations is running. Rows below the live-region start are declared
+	 * FINAL, which puts them in the engine's AUDITED committed prefix: a byte that
+	 * changes there is read as a component re-laying-out history and repaired with
+	 * an erase-and-replay of the whole screen. A result lands, the assistant
+	 * starts streaming under it, the block's rows scroll above the window inside
+	 * the settle's 630 ms or the board's 910 ms, and the next animation frame is a
+	 * full-screen repaint. Reporting those rows as live for the length of the
+	 * envelope keeps them audit-exempt; `isTranscriptBlockFinalized` is
+	 * deliberately NOT touched, because displacement and sealing read it and a
+	 * block that un-finalizes changes what may still be retracted.
 	 */
 	getNativeScrollbackLiveRegionStart(): number | undefined {
-		return this.isTranscriptBlockFinalized() ? undefined : 0;
+		if (!this.isTranscriptBlockFinalized()) return 0;
+		if (this.#railSettleFrame !== undefined || this.#todoBoardInterval !== undefined) return 0;
+		return undefined;
 	}
 
 	/**
@@ -925,7 +1070,8 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			this.#spinnerFrame = undefined;
 			this.#renderState.spinnerFrame = undefined;
 		}
-		this.#stopTodoStrikeAnimation();
+		this.#stopTodoBoardAnimation();
+		this.#stopRailMotion();
 		this.#editDiffAbort?.abort();
 		this.#editDiffAbort = undefined;
 		// Drop any queued rerun so the drain loop exits instead of recomputing a
@@ -1009,7 +1155,16 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		// spurious `resetDisplay()`.
 		this.#firstResultViewportRepaintShapePainted = this.#needsFirstResultViewportRepaintAtRender();
 		this.#partialResultShapePainted = this.#result !== undefined && this.#isPartial;
-		return lines;
+		const motion = this.#railMotion();
+		if (!motion) return lines;
+		this.#railRowsPresent = hasRailRow(lines, theme.symbol("block.rail"));
+		if (!this.#railRowsPresent) return lines;
+		// The settle is owed only to a rail the operator actually watched run.
+		if (motion.kind === "idle") this.#railWasLive = true;
+		// `paintRailMotion` hands back the same array when the frame changes no byte,
+		// so a block whose rail is between passes keeps the identity the render
+		// contract reads as proof its rows did not move.
+		return paintRailMotion(lines, motion, theme);
 	}
 
 	// Viewport-/settings-dependent image sizing folded into the memo key only when
@@ -1023,6 +1178,9 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	}
 
 	#rebuildDisplay(): void {
+		// The shape is about to change, so what the last render learned about the
+		// rail no longer holds.
+		this.#railRowsPresent = undefined;
 		// Sync shared mutable render state for component closures
 		this.#renderState.expanded = this.#expanded;
 		this.#renderState.isPartial = this.#isPartial;
