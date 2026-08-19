@@ -38,3 +38,17 @@ providers:
         name: Qwen3 30B A3B (local)
         contextWindow: 131072
         maxTokens: 4096
+      # The same weights declared with a smaller window, for the compaction scene.
+      # Compaction is driven by pressure on the window the model row declares, and
+      # 131k is more than this tiny project can fill in a recording: the session
+      # reaches 22k and `/compact` correctly refuses with "nothing to compact". The
+      # size is measured rather than picked -- the system prompt and the tool
+      # schemas alone are about 19k of that 22k, so a window under 24k cannot hold
+      # a session at all, and 32k leaves room for two read turns to reach the
+      # autocompact buffer. Nothing here is a trick: the request is truncated to
+      # this window and the report is measured against it, so the recording shows
+      # the product's own behaviour under a window that is genuinely filling.
+      - id: demo-qwen3-30b-32k
+        name: Qwen3 30B A3B 32k (local)
+        contextWindow: 32768
+        maxTokens: 2048

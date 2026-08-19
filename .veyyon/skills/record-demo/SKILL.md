@@ -57,7 +57,7 @@ For a screenshot at an exact moment, use `Screenshot assets/<name>.png` mid-tape
 
 ```console
 $ bash scripts/demos/record.sh                 # every tape in assets/tapes
-$ bash scripts/demos/record.sh ask edit        # only the named tapes
+$ bash scripts/demos/record.sh install lsp-refactor  # only the named tapes
 $ bash scripts/demos/record-argot-settings.sh  # the argot off-vs-on differential
 ```
 

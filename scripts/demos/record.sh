@@ -2,7 +2,7 @@
 # Record the demo gifs from the committed vhs tapes.
 #
 #   scripts/demos/record.sh            # record every tape in assets/tapes/
-#   scripts/demos/record.sh ask edit   # record only the named tapes
+#   scripts/demos/record.sh install lsp-refactor   # only the named tapes
 #
 # Each editing demo starts from a pristine fixture so recordings are
 # reproducible. Live tapes require the demo profile authenticated with Gemini
