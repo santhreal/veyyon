@@ -48,7 +48,7 @@ details.clip summary:hover { color: #d7dae0; }
 </style></head>
 <body>
 <h1>feat/ui-polish — recorded proof</h1>
-<p class="lede">Branch <code>feat/ui-polish</code> at <code>77d01c90e</code>, 178 commits ahead of
+<p class="lede">Branch <code>feat/ui-polish</code> at <code>08362a306</code>, 183 commits ahead of
 <code>main</code> (<code>532d9bb5d</code>). Every figure below is a frame of a real terminal running the shipped
 CLI. No component was drawn into a picture for this page, and nothing here is a tmux capture.</p>
 
@@ -175,6 +175,7 @@ afterwards rather than screenshotted mid-motion.</p>
 <figure><video controls loop muted playsinline preload="metadata"><source src="captures/x11/demo-hd.mp4" type="video/mp4"></video><figcaption>The whole take: a read, an edit, the project's own test run against the change, a three-phase plan written by the todo tool with a task struck through, a credential stored from the environment, that credential spent as a placeholder to sign the work, and the use log naming the spend.</figcaption></figure>
 <h3>The signature is the part a reader can check</h3>
 <p>A demo can assert anything. This one ends on a claim anybody can recompute. One number is exported into the container and stored with <code>/secret from-env</code>, so it is typed nowhere and never enters the transcript. The model is then asked to sign its work, writes a command containing <code>#RELEASE_SIGNATURE#</code>, and veyyon substitutes the real bytes at the outbound boundary — after the model has committed to the command and before the shell sees it. What ends up on screen is a placeholder in the transcript, a sha256 digest in <code>SIGNED.md</code>, and a spend recorded by name in <code>/secret log</code>. The run writes the number and its digest to <code>demo-hd-signature-crosscheck.txt</code> beside the take, outside the recording, so the digest in the frame can be hashed independently rather than believed. The three cannot all be faked at once: a value the model had would show up in the transcript, and a digest that did not come from the number would not match.</p>
+<p><code>proof/verify-signature.py SIGNED.md --number &lt;number&gt;</code> does the comparison. It exists because the digest depends on a byte the model chooses rather than on the credential: <code>printf '%s'</code> hashes the number, <code>echo</code> hashes the number and a newline, and both are fair readings of the instruction it was given. A crosscheck that published one form would call the other a mismatch, so the verifier tries every form a shell pipeline can produce, reports which one the file carries, exits non-zero when none of them match, and prints the number nowhere.</p>
 <h3>The clip the landing page carries</h3>
 <p>The landing-page clip is cut from that take by <code>proof/hero-cut.py</code>, and which moments it keeps is derived from the recording rather than typed in. <code>tighten.py</code> is the wrong instrument for a session: it calls a frame dead when mpdecimate says it duplicates the one before it, and a veyyon session always has a spinner turning and an elapsed clock ticking, so it counts most of a take as distinct while the transcript has not moved. What the cut uses instead is the second of each still the scene takes, so every window in the clip is a moment the scene exists to show rather than the largest repaint, which against a reasoning model is a page of streamed thinking.</p>
 <figure><img src="captures/x11/demo-hd-read-block.png" alt=""><figcaption>The read: the model chose the file, the block carries its rail, and the answer under it is one sentence about what the parser rejects.</figcaption></figure>
@@ -189,7 +190,7 @@ afterwards rather than screenshotted mid-motion.</p>
 <p>The resumed arm carries one cost the fresh arm does not, and it is model-side rather than renderer-side: a history that large does not fit a 65k window, so the app compacts before it can ask anything, and says so on screen while it does. That is the 1.5B summarizing on CPU, not a frame being repainted.</p>
 
 <h2>Every commit on the branch, on camera</h2>
-<p>110 of the 178 commits are below, one recording each. Every video is a real terminal in the recording
+<p>110 of the 183 commits are below, one recording each. Every video is a real terminal in the recording
 container: <code>proof/docker/record-commit-arm.sh</code> extracts the commit's tree and its parent's tree with
 <code>git archive</code>, mounts the same <code>node_modules</code> and the same native addon into both, and runs
 the same command in each. A test the commit ADDS is copied into the parent tree first, so the test is
@@ -204,6 +205,11 @@ a video is the text of the same command run again headlessly by
 rather than writing lines to a pipe, and the video is the only place its output exists.</p>
 <table><thead><tr><th>commit</th><th>subject</th></tr></thead>
 <tbody>
+<tr><td class="sha">08362a306</td><td>proof(signature): a reader checks the recording instead of trusting it <em>— carries this page and its videos; filming it means filming the film</em></td></tr>
+<tr><td class="sha">303fb1492</td><td>proof(page): describe the take that exists, and the signature a reader can check <em>— carries this page and its videos; filming it means filming the film</em></td></tr>
+<tr><td class="sha">a7465c42d</td><td>proof(recorder): publish frames from a scene whose surfaces do not move <em>— carries this page and its videos; filming it means filming the film</em></td></tr>
+<tr><td class="sha">1fe86787f</td><td>proof(scenes): a typed command that types itself twice is not a demo <em>— carries this page and its videos; filming it means filming the film</em></td></tr>
+<tr><td class="sha">2950d52d8</td><td>docs(handbook): point the proof column at frames that exist <em>— carries this page and its videos; filming it means filming the film</em></td></tr>
 <tr><td class="sha">77d01c90e</td><td>proof(demo): one take, and it signs its work with a credential it never sees <em>— carries this page and its videos; filming it means filming the film</em></td></tr>
 <tr><td class="sha">319d1b603</td><td>proof(scenes): the warm-up turn is not part of the demo <em>— carries this page and its videos; filming it means filming the film</em></td></tr>
 <tr><td class="sha">20f355bcd</td><td>proof(recorder): the chrome the file describes, the model that was asked for, and no typing in the clip <em>— carries this page and its videos; filming it means filming the film</em></td></tr>
