@@ -150,7 +150,25 @@ install-binary)
 esac
 
 WORK="$(mktemp -d /tmp/veyyon-hd-demo.XXXXXX)"
-trap 'rm -rf "${WORK}"' EXIT
+# Kept on failure, deleted on success. A twenty-five minute take died here on `magick:
+# command not found` and the unconditional cleanup then removed the fifteen frames it had
+# already taken, so a missing publishing tool cost the whole recording rather than the last
+# step of it. On success there is nothing left worth keeping: every frame has been copied
+# into proof/captures and resampled into assets.
+trap 'if [ "$?" -eq 0 ]; then rm -rf "${WORK}"; else echo "record-hd-demo.sh: kept ${WORK}" >&2; fi' EXIT
+
+# ImageMagick under either of its two names. ImageMagick 7 ships `magick` and 6 ships
+# `convert`, this fleet has 6 on both hosts, and the resampling step assumed 7 -- which is
+# how a take reached its publish step and lost its stills to a PATH difference. Resolved
+# once, loudly, before anything is recorded, rather than at the end of a long take.
+if command -v magick >/dev/null 2>&1; then
+	IM=(magick)
+elif command -v convert >/dev/null 2>&1; then
+	IM=(convert)
+else
+	echo "record-hd-demo.sh: no ImageMagick (magick or convert) on PATH" >&2
+	exit 2
+fi
 
 # The number the session signs with, generated per run so a published frame pins one
 # specific digest and the check is reproducible rather than decorative. It is passed into
@@ -205,7 +223,7 @@ if [[ ${PUBLISH_TAKE} -eq 1 ]]; then
 	for still in "${WORK}/${SCENE}"-*.png; do
 		base="$(basename "${still}" .png)"
 		cp "${still}" "proof/captures/x11/${base}.png"
-		magick "${still}" -resize 1920x -strip "assets/${base}.png"
+		"${IM[@]}" "${still}" -resize 1920x -strip "assets/${base}.png"
 	done
 	if [[ -f "${WORK}/signature-crosscheck.txt" ]]; then
 		cp "${WORK}/signature-crosscheck.txt" "proof/captures/x11/${SCENE}-signature-crosscheck.txt"
@@ -222,7 +240,7 @@ if [[ "${STILL}" == "all" ]]; then
 	for still in "${WORK}/${SCENE}"-*.png; do
 		base="$(basename "${still}" .png)"
 		cp "${still}" "proof/captures/x11/${base}.png"
-		magick "${still}" -resize 1920x -strip "assets/${base}.png"
+		"${IM[@]}" "${still}" -resize 1920x -strip "assets/${base}.png"
 		published=$((published + 1))
 	done
 	[[ ${published} -gt 0 ]] || {
@@ -242,7 +260,7 @@ if [[ -n "${STILL}" ]]; then
 		echo "record-hd-demo.sh: scene '${SCENE}' took no still named '${STILL}'" >&2
 		exit 1
 	}
-	magick "${SRC}" -resize 1920x -strip "${ASSET}"
+	"${IM[@]}" "${SRC}" -resize 1920x -strip "${ASSET}"
 	python3 proof/tighten.py audit --base proof/captures
 	ls -la "${ASSET}"
 	exit 0
