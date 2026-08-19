@@ -27,7 +27,7 @@ bash scripts/demos/setup-profile.sh >/dev/null
 needs_model=false
 for name in "${tapes[@]}"; do
   case "$name" in
-    lsp-refactor|context-compaction)
+    lsp-refactor)
       needs_model=true
       ;;
   esac

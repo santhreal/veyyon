@@ -89,7 +89,7 @@ Compaction uses editable model chains and explicit fallback policy. Before a mod
 </p>
 
 <p align="center">
-  <img src="assets/demo-context-compaction.gif" width="960" alt="A live Gemini 3.6 Flash session grows context, compacts it, and displays the resulting context report">
+  <img src="assets/demo-compaction-hd.webp" width="960" alt="A local 30B session fills its window, compacts it, and shows the message share halved in the context report">
 </p>
 
 [Models and effort](docs/settings.md#models) · [Compaction and memory](docs/handbook/src/context/compaction-memory.md)
@@ -157,7 +157,7 @@ bash scripts/demos/record.sh
 | Language-server refactor | Cross-file symbol rename and four passing fixture tests | [LSP recording](assets/demo-lsp-refactor.gif) | `bash scripts/demos/record.sh lsp-refactor` |
 | File write | A parser with a validated failure mode written into an existing file, then the project's own suite run against it, at 1920x1080 against a local 30B model | [write recording](assets/demo-edit-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh write-and-test` |
 | Plan mode | Read-only inspection under the Plan chip and the Plan Review card it produces, at 1920x1080 against a local 30B model | [plan mode](assets/demo-plan-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh plan-mode` |
-| Context maintenance | Context report, compaction, post-compact report | [compaction](assets/demo-context-compaction.gif) | `bash scripts/demos/record.sh context-compaction` |
+| Context maintenance | A dozen turns filling a 33k window to 76%, then `/compact` halving the message half and the report and footer gauge both moving, at 1920x1080 against a local 30B model | [compaction](assets/demo-compaction-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh context-compaction` |
 | Multi-agent work | Two workers spawned in one turn, the Agent Control Center live, and the same rows idle when they return, at 1920x1080 against a local 30B model | [agents](assets/demo-agents-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh agent-lanes` |
 | Secret boundary | The placeholder listed by name, the approval a secret-bearing call must pass, the byte count of the real value, and the spend recorded by name, at 1920x1080 against a local 30B model | [secrets](assets/demo-secret-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh secret-boundary` |
 | Settings | The settings card under a real pointer: sidebar travel, a category opened by a click, and the Subagents pane it opens on | [settings card](assets/demo-settings-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh settings-pointer` |
