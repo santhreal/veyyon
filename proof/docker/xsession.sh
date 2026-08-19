@@ -45,6 +45,12 @@ exec 2>/tmp/boot.err
 # The terminal is started with directColor, so declaring it here is a statement
 # of what the emulator does, not a widening of it.
 export COLORTERM=truecolor
+# One number in the environment, for a scene that stores a credential with
+# `/secret from-env` and then asks the model to sign with the placeholder. It is exported
+# here rather than typed in the session, which is the point: a credential that reaches the
+# vault through the environment never appears in the transcript at all, so what the
+# recording shows spending is a placeholder and nothing else.
+export RELEASE_SIGNATURE="${SCENE_SIGNING_NUMBER:-}"
 printf 'stty=%s\n' "$(stty size </dev/tty)" >/tmp/geom
 cd "${SCENE_CWD:-/sandbox/home/demo}"
 exec ${SCENE_COMMAND:?}
@@ -99,8 +105,8 @@ if [ "${SCENE_THEME:-plain}" != "plain" ]; then
 	# redirected.
 	picom --backend xrender --no-fading-openclose --config /dev/null \
 		--corner-radius "${SCENE_RADIUS:-26}" \
-		--active-opacity "${SCENE_OPACITY:-0.82}" \
-		--inactive-opacity "${SCENE_OPACITY:-0.82}" \
+		--active-opacity "${SCENE_OPACITY:-0.72}" \
+		--inactive-opacity "${SCENE_OPACITY:-0.72}" \
 		--blur-background --blur-method kernel --blur-kern "${SCENE_BLUR_KERN:-11x11gaussian}" \
 		--shadow --shadow-radius 44 --shadow-opacity 0.55 \
 		--shadow-offset-x -22 --shadow-offset-y -12 \
