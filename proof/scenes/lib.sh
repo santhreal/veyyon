@@ -266,7 +266,17 @@ key_repeat_button() {
 # capturing, so this is an offset into the video and not a wall clock. The
 # arithmetic is shell integer maths because the recorder image carries no `bc`.
 shot() {
-	import -window root "${SCENE_OUT}/${SCENE_NAME}-$1.png"
+	local png="${SCENE_OUT}/${SCENE_NAME}-$1.png"
+	# A CAPTURE THAT FAILED USED TO LOOK LIKE ONE THAT WORKED. `import` writes nothing when the
+	# window it is pointed at has gone, and its exit code was dropped here, so the scene carried
+	# on and wrote a mark for a frame that does not exist. Downstream that is worse than a
+	# missing file: the publish step copies what it finds, so the name keeps whatever an earlier
+	# take left under it. The mark is the record of a frame that landed, so it is only written
+	# when one did, and a failure says so in the log rather than in the gallery.
+	if ! import -window root "${png}" 2>&1 || [ ! -s "${png}" ]; then
+		echo "scene: shot '$1' captured nothing (import failed or wrote an empty file)" >&2
+		return 0
+	fi
 	if [ -n "${SCENE_T0:-}" ]; then
 		local ms=$(($(date +%s%3N) - SCENE_T0))
 		printf '%s\t%d.%d\n' "$1" $((ms / 1000)) $((ms % 1000 / 100)) \

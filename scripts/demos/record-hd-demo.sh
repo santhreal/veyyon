@@ -170,6 +170,40 @@ else
 	exit 2
 fi
 
+# WHAT A MARKS FILE IS FOR HERE. The scene appends one row per frame that landed, so it is an
+# independent record of what the take captured. Both publish paths below copy the PNGs that
+# exist and nothing else, which means a shot that never landed does not fail a run: it leaves
+# the PREVIOUS take's frame under that name in assets/ and proof/captures, freshly timestamped
+# by the copy and indistinguishable from a new one. A gallery whose captions say every frame
+# came from one session cannot be assembled by a step that silently keeps frames from another.
+#
+# A scene with no SCENE_T0 writes no marks at all, and that is legitimate: there is simply no
+# independent record to check it against, so the run says which check it is falling back to
+# rather than reporting a verification it did not perform.
+#
+# WHAT THIS DOES NOT CATCH: a capture that succeeded on the wrong screen. The inspector scene
+# once typed a command the window could not run and published its backdrop twice under two
+# names, and both files were real PNGs of the right size taken at the right instant. Nothing
+# structural sees that. It is caught by looking at the frame against the caption that claims it,
+# which is a review step and not a gate.
+require_every_mark_has_a_frame() {
+	local marks="${WORK}/${SCENE}-marks.tsv"
+	if [[ ! -f ${marks} ]]; then
+		echo "record-hd-demo.sh: scene '${SCENE}' kept no marks; publishing on frame count alone" >&2
+		return 0
+	fi
+	local missing=() mark
+	while IFS=$'\t' read -r mark _; do
+		[[ -n ${mark} ]] || continue
+		[[ -s "${WORK}/${SCENE}-${mark}.png" ]] || missing+=("${mark}")
+	done <"${marks}"
+	if [[ ${#missing[@]} -gt 0 ]]; then
+		echo "record-hd-demo.sh: the scene marked ${#missing[@]} shot(s) it never wrote: ${missing[*]}" >&2
+		echo "record-hd-demo.sh: refusing to publish a set that would keep an older take's frames" >&2
+		exit 1
+	fi
+}
+
 # The number the session signs with, generated per run so a published frame pins one
 # specific digest and the check is reproducible rather than decorative. It is passed into
 # the container as an environment variable and stored there with `/secret from-env`, so it
@@ -220,23 +254,7 @@ if [[ ${PUBLISH_TAKE} -eq 1 ]]; then
 	# landing page carries. This is what makes one take enough. A surface that does not
 	# move needs a frame, not a clip, and the frames come free from the session that was
 	# already running -- so the gallery costs one recording instead of one per feature.
-	# WHAT A MARKS FILE IS FOR HERE. The scene appends one row per shot it takes, so it is an
-	# independent record of what the take believed it captured. The loop below copies whatever
-	# PNGs exist and nothing else, which means a shot that never landed does not fail the run:
-	# it leaves the PREVIOUS take's frame sitting in assets/ and proof/captures, published,
-	# timestamped by the copy, and indistinguishable from a fresh one. A gallery whose caption
-	# says every frame came from one session cannot be assembled by a step that silently keeps
-	# frames from another. So a mark without a frame stops the publish.
-	missing=()
-	while IFS=$'\t' read -r mark _; do
-		[[ -n "${mark}" ]] || continue
-		[[ -f "${WORK}/${SCENE}-${mark}.png" ]] || missing+=("${mark}")
-	done < "${WORK}/${SCENE}-marks.tsv"
-	if [[ ${#missing[@]} -gt 0 ]]; then
-		echo "record-hd-demo.sh: the scene marked ${#missing[@]} shot(s) it never wrote: ${missing[*]}" >&2
-		echo "record-hd-demo.sh: refusing to publish a set that would keep an older take's frames" >&2
-		exit 1
-	fi
+	require_every_mark_has_a_frame
 	for still in "${WORK}/${SCENE}"-*.png; do
 		base="$(basename "${still}" .png)"
 		cp "${still}" "proof/captures/x11/${base}.png"
@@ -254,6 +272,7 @@ if [[ "${STILL}" == "all" ]]; then
 	# shot, so a surface added to the scene arrives as an asset without a recipe change.
 	shopt -s nullglob
 	published=0
+	require_every_mark_has_a_frame
 	for still in "${WORK}/${SCENE}"-*.png; do
 		base="$(basename "${still}" .png)"
 		cp "${still}" "proof/captures/x11/${base}.png"
