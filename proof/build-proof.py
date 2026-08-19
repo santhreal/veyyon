@@ -1317,6 +1317,12 @@ SECTIONS = [
             " the frame can be hashed independently rather than believed. The three cannot all be faked at once:"
             " a value the model had would show up in the transcript, and a digest that did not come from the number"
             " would not match.</p>",
+            "<p><code>proof/verify-signature.py SIGNED.md --number &lt;number&gt;</code> does the comparison. It exists"
+            " because the digest depends on a byte the model chooses rather than on the credential:"
+            " <code>printf '%s'</code> hashes the number, <code>echo</code> hashes the number and a newline, and both"
+            " are fair readings of the instruction it was given. A crosscheck that published one form would call the"
+            " other a mismatch, so the verifier tries every form a shell pipeline can produce, reports which one the"
+            " file carries, exits non-zero when none of them match, and prints the number nowhere.</p>",
             "<h3>The clip the landing page carries</h3>",
             "<p>The landing-page clip is cut from that take by <code>proof/hero-cut.py</code>, and which moments it"
             " keeps is derived from the recording rather than typed in. <code>tighten.py</code> is the wrong"
