@@ -91,3 +91,35 @@ cat >"${DEMO}/README.md" <<'MD'
 A tiny project a recording drives: a token-bucket rate limiter, its tests, and a
 parser the session edits.
 MD
+
+# The two files that make this a project a language server will answer about.
+# veyyon offers a server only when the config's root markers exist in the session's
+# directory and the binary resolves on PATH (`loadConfig`,
+# packages/coding-agent/src/lsp/config.ts), and typescript-language-server's markers
+# are package.json, tsconfig.json and jsconfig.json. Without them the LSP row would
+# record the model being told there is no server for this file.
+#
+# `allowImportingTsExtensions` because the test imports `./rate-limiter.ts` by its
+# real name, which is how bun resolves it and what tsc rejects by default.
+cat >"${DEMO}/package.json" <<'JSON'
+{
+	"name": "demo",
+	"private": true,
+	"type": "module"
+}
+JSON
+
+cat >"${DEMO}/tsconfig.json" <<'JSON'
+{
+	"compilerOptions": {
+		"target": "ES2022",
+		"module": "Preserve",
+		"moduleResolution": "bundler",
+		"strict": true,
+		"noEmit": true,
+		"allowImportingTsExtensions": true,
+		"skipLibCheck": true
+	},
+	"include": ["src"]
+}
+JSON

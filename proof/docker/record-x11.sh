@@ -49,8 +49,9 @@ docker run --rm \
 	-e "SCENE_CWD=${SCENE_CWD:-/sandbox/home/demo}" \
 	-e "SCENE_SETTLE_SCALE=${SCENE_SETTLE_SCALE:-1}" \
 	-e "SCENE_GIF=${SCENE_GIF:-1}" \
+	-e "SCENE_SMALL_CONTEXT=${SCENE_SMALL_CONTEXT:-}" \
 	-w /repo \
-	"${RECORDER_IMAGE:-veyyon-proof-recorder:3}" \
+	"${RECORDER_IMAGE:-veyyon-proof-recorder:4}" \
 	bash -lc '
 		set -e
 		mkdir -p /sandbox/home/.veyyon
@@ -63,11 +64,21 @@ docker run --rm \
 		# A feature row is about the block, the card or the diff, and this model
 		# reasons in pages: a clip of a plan scene with thinking shown is streamed
 		# reasoning with the plan card in two frames of it. `Hide Thinking Blocks` is
-		# a setting the product ships, so a scene that is not ABOUT thinking records
-		# with it on. The hero leaves it off, because a session showcase should show
-		# what the model is doing.
+		# a setting the product ships, so every scene records with it on, the hero
+		# included -- the hero ran once with thinking shown and three quarters of the
+		# clip was rumination.
 		if [ -n "${SCENE_HIDE_THINKING}" ]; then
 			printf "hideThinkingBlock: true\n" >> /sandbox/home/.veyyon/profiles/default/agent/config.yml
+		fi
+		# The compaction row needs a session that actually compacts: a 1200-token
+		# recent budget crosses the cut point in a 33k window whose prefix is 18.6k,
+		# and 95% lets the fill reach a gauge worth photographing before automatic
+		# maintenance takes it. Every other row wants the shipped numbers -- with the
+		# small budget a tool-heavy turn compacts, frees nothing, says so, and loses
+		# the task, which is what the first language-server take recorded.
+		if [ -n "${SCENE_SMALL_CONTEXT}" ]; then
+			printf "compaction.keepRecentTokens: 1200\ncompaction.threshold: \"95%%\"\n" \
+				>> /sandbox/home/.veyyon/profiles/default/agent/config.yml
 		fi
 		bash /repo/proof/docker/seed-demo.sh /sandbox/home/demo
 		exec /repo/proof/docker/xsession.sh "/repo/'"${SCENE}"'"

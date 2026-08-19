@@ -73,9 +73,11 @@ ENV ROD_BROWSER_BIN=/usr/bin/chromium
 # behind the window and picom rounds the window's corners and casts its shadow, so
 # the capture is a terminal on a desktop rather than a slab.
 #
-# Not translucency. A terminal's `background_opacity` needs an ARGB visual, this
-# display's GLX configurations carry no alpha channel, and kitty says so in its own
-# log; rounding and shadows are compositor-side and need nothing from the client.
+# Translucency is the compositor's here, not the client's. A terminal's own
+# `background_opacity` needs an ARGB visual, this display's GLX configurations carry
+# no alpha channel, and kitty says so in its own log. picom's window opacity and
+# kernel blur need nothing from the client, so the lit backdrop bleeds through the
+# window anyway.
 RUN set -eux; \
 	apt-get update; \
 	DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -86,3 +88,27 @@ RUN set -eux; \
 	xdotool --version; \
 	kitty --version; \
 	picom --version
+
+# A language server, because one gallery row is the product driving one: the model
+# asks the server for the references to a symbol and applies the rename the server
+# returns, rather than grepping for a string. veyyon only offers the server it can
+# resolve on PATH against a project whose root markers exist (`loadConfig` in
+# packages/coding-agent/src/lsp/config.ts), so the binary has to be here and the
+# seeded fixture has to carry a tsconfig.
+#
+# node as well as bun: typescript-language-server is a node program with a node
+# shebang, and bun is the runtime for the product, not for every tool it spawns.
+#
+# typescript is pinned to 5.x because the language server drives `tsserver.js` and
+# the 7.x line on npm is the native preview, which has no such file: with
+# typescript 7.0.2 installed the server answered `initialize` with "Could not find
+# a valid TypeScript installation" and no rename was possible.
+RUN set -eux; \
+	apt-get update; \
+	DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nodejs npm; \
+	npm install -g --no-audit --no-fund typescript-language-server "typescript@5"; \
+	apt-get clean; \
+	rm -rf /var/lib/apt/lists/* /root/.npm; \
+	node --version; \
+	typescript-language-server --version; \
+	tsc --version

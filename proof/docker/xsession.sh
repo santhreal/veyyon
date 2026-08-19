@@ -161,24 +161,56 @@ esac
 KITTY_PID=$!
 
 # Wait for a window that can actually be configured, not for the first id the
-# search returns. kitty creates and destroys a window before the one it keeps, and
-# taking the first id raced it: `windowmove` and `getwindowgeometry` both failed
-# with BadWindow on 0x600007, the inset never applied, and the scene helpers read
-# an origin of 0,0 -- a themed capture that silently came out full-screen. A
-# geometry query is the fact this depends on, so that is what it waits for.
-WINDOW=""
-for _ in $(seq 1 100); do
+# search returns, and then check that configuring it WORKED. kitty creates and
+# destroys a window before the one it keeps, and taking the first id raced it:
+# `windowmove` and `getwindowgeometry` both failed with BadWindow on 0x600007, the
+# inset never applied, and the scene helpers read an origin of 0,0 -- a themed
+# capture that silently came out full-screen. Waiting for a geometry was not enough
+# on its own, because the doomed window has a geometry too: the second take of the
+# language-server row lost thirteen minutes to a full-bleed slab with the backdrop
+# nowhere on screen. So the placement is read back, retried against a freshly
+# resolved id, and the run is aborted rather than recorded if the window will not
+# sit where the theme needs it.
+pick_window() {
+	local found="" candidate
 	for candidate in $(xdotool search --class "kitty|XTerm" 2>/dev/null); do
 		if xdotool getwindowgeometry "${candidate}" 2>/dev/null | grep -qE "Geometry: [1-9][0-9]*x[1-9]"; then
-			WINDOW="${candidate}"
+			found="${candidate}"
 		fi
 	done
-	[ -n "${WINDOW}" ] && break
-	sleep 0.2
+	printf '%s' "${found}"
+}
+window_origin() {
+	xdotool getwindowgeometry "${1}" 2>/dev/null | sed -n 's/.*Position: \([0-9]*\),\([0-9]*\).*/\1 \2/p'
+}
+
+WINDOW=""
+PLACED=0
+for _ in $(seq 1 40); do
+	WINDOW="$(pick_window)"
+	[ -n "${WINDOW}" ] || {
+		sleep 0.25
+		continue
+	}
+	# A window that is about to be retired answers a geometry query and then stops
+	# existing, so give it a moment to prove it is the one kitty keeps.
+	sleep 0.4
+	xdotool getwindowgeometry "${WINDOW}" >/dev/null 2>&1 || continue
+	xdotool windowmove "${WINDOW}" "${MARGIN}" "${MARGIN}" 2>/dev/null || continue
+	xdotool windowsize "${WINDOW}" "${TW}" "${TH}" 2>/dev/null || continue
+	sleep 0.3
+	read -r WX WY <<<"$(window_origin "${WINDOW}")"
+	if [ "${WX:-}" = "${MARGIN}" ] && [ "${WY:-}" = "${MARGIN}" ]; then
+		PLACED=1
+		break
+	fi
 done
 : "${WINDOW:?no terminal window with a geometry appeared}"
-xdotool windowmove "${WINDOW}" "${MARGIN}" "${MARGIN}" || true
-xdotool windowsize "${WINDOW}" "${TW}" "${TH}" || true
+[ "${PLACED}" = "1" ] || {
+	echo "terminal window would not move to +${MARGIN}+${MARGIN} (last origin: ${WX:-none},${WY:-none})" >&2
+	tail -20 /tmp/term.log >&2 2>/dev/null
+	exit 1
+}
 xdotool windowactivate "${WINDOW}" 2>/dev/null || true
 # No window manager runs here, so _NET_ACTIVE_WINDOW is unavailable and
 # windowactivate fails. XSetInputFocus is what actually gives kitty the focus

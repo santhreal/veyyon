@@ -10,16 +10,10 @@
 # picker -- the user-message card -- reachable in a scene.
 doubleEscapeAction: branch
 
-# The demo model declares a 33k window and the prefix (system prompt plus tool
-# schemas) is 18.6k of it, so the conversation itself never occupies much: with
-# the shipped 10000-token recent budget the whole message history fits inside the
-# tail compaction must keep, the cut-point search finds no crossing, and `/compact`
-# correctly answers that there is nothing to compact. A small window wants a small
-# tail, which is what this setting is for, and it is what lets the context row
-# record a real before-and-after rather than a refusal.
-compaction.keepRecentTokens: 1200
-# Auto-compaction at the model's window minus the reserve takes this session twice
-# during a fill, so the pair of reports either side of a manual `/compact` differ by
-# about a thousand tokens and demonstrate nothing. At 95% the fill reaches a gauge
-# worth photographing and the manual pass is the one that moves it.
-compaction.threshold: "95%"
+# The compaction row's two settings are NOT here. They used to be, and one row's
+# tuning then distorted every other row: a 1200-token recent budget in a 33k window
+# whose prefix is 18.6k makes a tool-heavy turn compact repeatedly and free nothing,
+# and the language-server row recorded the product saying so ("Compaction freed too
+# little context to make progress") and then losing its task. record-x11.sh appends
+# them when SCENE_SMALL_CONTEXT is set, which the context-compaction recipe sets and
+# nothing else does.
