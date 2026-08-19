@@ -27,7 +27,7 @@ bash scripts/demos/setup-profile.sh >/dev/null
 needs_model=false
 for name in "${tapes[@]}"; do
   case "$name" in
-    ask|edit|plan|lsp-refactor|context-compaction|agent-control-center|secret-boundary)
+    lsp-refactor|context-compaction)
       needs_model=true
       ;;
   esac
@@ -63,9 +63,6 @@ for name in "${tapes[@]}"; do
       ;;
     subagent-recursion-settings)
       bash scripts/demos/record-subagent-recursion-settings.sh
-      ;;
-    secret-boundary)
-      bash scripts/demos/record-secret-boundary.sh
       ;;
     install)
       bash scripts/demos/record-install.sh

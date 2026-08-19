@@ -9,3 +9,17 @@
 # recordings reach with `/tree` anyway. `branch` is what makes the fourth
 # picker -- the user-message card -- reachable in a scene.
 doubleEscapeAction: branch
+
+# The demo model declares a 33k window and the prefix (system prompt plus tool
+# schemas) is 18.6k of it, so the conversation itself never occupies much: with
+# the shipped 10000-token recent budget the whole message history fits inside the
+# tail compaction must keep, the cut-point search finds no crossing, and `/compact`
+# correctly answers that there is nothing to compact. A small window wants a small
+# tail, which is what this setting is for, and it is what lets the context row
+# record a real before-and-after rather than a refusal.
+compaction.keepRecentTokens: 1200
+# Auto-compaction at the model's window minus the reserve takes this session twice
+# during a fill, so the pair of reports either side of a manual `/compact` differ by
+# about a thousand tokens and demonstrate nothing. At 95% the fill reaches a gauge
+# worth photographing and the manual pass is the one that moves it.
+compaction.threshold: "95%"
