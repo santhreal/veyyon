@@ -38,6 +38,9 @@ SCENE_CMD="bun /repo/packages/coding-agent/src/cli.ts --model ${DEMO_MODEL}"
 # as though it could not make up its mind. Thinking is worth watching live; it is
 # not worth 22 seconds of a landing page.
 HIDE_THINKING=1
+# One row asks for a session that compacts; the tuning that produces one is bad for
+# every other row, so it is opt-in per recipe rather than seeded for all of them.
+SMALL_CONTEXT=
 case "${SCENE}" in
 demo-hd)
 	ASSET=assets/demo-hd.webp
@@ -77,6 +80,7 @@ context-compaction)
 	ASSET=assets/demo-compaction-hd.webp
 	PUBLISH_TAKE=0
 	# One window for every row now, and it is the window the server serves.
+	SMALL_CONTEXT=1
 	CUT_ARGS=()
 	;;
 agent-lanes)
@@ -89,6 +93,13 @@ secret-boundary)
 	PUBLISH_TAKE=0
 	CUT_ARGS=()
 	;;
+lsp-refactor)
+	ASSET=assets/demo-lsp-hd.webp
+	PUBLISH_TAKE=0
+	# The language server this row drives lives in recorder image tag 4, which
+	# record-x11.sh defaults to.
+	CUT_ARGS=()
+	;;
 prompt-architecture)
 	ASSET=assets/demo-prompt-hd.webp
 	PUBLISH_TAKE=0
@@ -96,6 +107,14 @@ prompt-architecture)
 	# no streaming to wait through.
 	SCENE_CMD="bash -l"
 	CUT_ARGS=(--speed 1.6)
+	;;
+install-binary)
+	ASSET=assets/demo-install-hd.webp
+	PUBLISH_TAKE=0
+	# A shell, and a network install: the download and the checksum are the row, so
+	# the scene needs the internet the recorder network already has.
+	SCENE_CMD="bash -l"
+	CUT_ARGS=(--speed 1.4)
 	;;
 *)
 	echo "record-hd-demo.sh: no recipe for scene '${SCENE}'" >&2
@@ -117,6 +136,7 @@ PROOF_LLM_BASE_URL="${PROOF_LLM_BASE_URL}" \
 	SCENE_FG="#c0caf5" \
 	SCENE_SETTLE_SCALE="${SETTLE_SCALE:-2}" \
 	SCENE_GIF=0 \
+	SCENE_SMALL_CONTEXT="${SMALL_CONTEXT}" \
 	OUT_DIR="${WORK}" \
 	bash "proof/docker/record-x11.sh" "proof/scenes/${SCENE}.sh"
 
