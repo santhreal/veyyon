@@ -32,9 +32,15 @@ instants to `<name>-marks.tsv` and the cut is the window around each one.
 
     proof/hero-cut.py take.mp4 --marks take-marks.tsv --mp4 row.mp4 --webp row.webp
 
-The published form is an animated WebP, not a GIF: 24 seconds of 900px terminal
-text is 18 MB as a GIF and 5 MB as WebP, at better quality, and every browser
+The published form is an animated WebP, not a GIF: 24 seconds of terminal text is
+18 MB as a GIF and a fraction of that as WebP, at better quality, and every browser
 that renders the README renders it.
+
+It is published at 1280x720 from a 1920x1080 capture, because 900px was not
+readable: a 13px cell downscaled by 2.1 turns a context report into grey texture,
+and the whole point of a feature row is that the numbers on it can be read. The
+same clip is 950 KB at 1280 and 510 KB at 900, so the cost of the readable one is
+half a megabyte.
 """
 
 from __future__ import annotations
@@ -253,7 +259,7 @@ def main() -> int:
 	parser.add_argument("take", type=Path, help="the full session recording")
 	parser.add_argument("--mp4", type=Path, required=True, help="where to write the cut clip")
 	parser.add_argument("--webp", type=Path, help="also write an animated WebP of the cut")
-	parser.add_argument("--width", type=int, default=1000)
+	parser.add_argument("--width", type=int, default=1920)
 	parser.add_argument(
 		"--scene-score",
 		type=float,
@@ -272,7 +278,7 @@ def main() -> int:
 	)
 	parser.add_argument("--fps", type=int, default=15)
 	parser.add_argument("--speed", type=float, default=2.0)
-	parser.add_argument("--webp-width", type=int, default=900)
+	parser.add_argument("--webp-width", type=int, default=1280)
 	parser.add_argument("--webp-fps", type=int, default=12)
 	parser.add_argument("--webp-quality", type=int, default=62)
 	parser.add_argument("--dry-run", action="store_true", help="print the windows, write nothing")

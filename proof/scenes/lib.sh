@@ -147,7 +147,18 @@ shot() {
 	fi
 }
 
-# Wait for text to appear on screen, so a scene never races the model. Reads the
-# window's own text through kitty's remote control if it is on, otherwise falls
-# back to a fixed wait.
-settle() { sleep "${1:-2}"; }
+# Wait out a turn. Every wait in every scene passes through here, so one knob
+# retimes a scene for a slower model: SCENE_SETTLE_SCALE multiplies it.
+#
+# The waits in these scenes were measured against a sparse 30B that generates
+# around 90 tokens a second. A dense model of the same size generates a third of
+# that, and a scene whose wait is too short does not fail -- it records the next
+# question typed into a composer that is still streaming the last answer, which is
+# worse than no recording because it looks like the product dropped a turn. Scaling
+# is done in awk because the recorder image carries no bc and a wait can be
+# fractional.
+settle() {
+	local want="${1:-2}" scale="${SCENE_SETTLE_SCALE:-1}"
+	[ "${scale}" = "1" ] || want="$(awk -v w="${want}" -v s="${scale}" 'BEGIN { printf "%.1f", w * s }')"
+	sleep "${want}"
+}

@@ -21,7 +21,11 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${REPO_ROOT}"
 
 : "${PROOF_LLM_BASE_URL:?set PROOF_LLM_BASE_URL to an OpenAI-compatible endpoint}"
-DEMO_MODEL="${DEMO_MODEL:-local/demo-qwen3-30b}"
+# The dense 32B, in the one window its server serves. It drives a tool turn more
+# directly than the sparse 30B, and a row is read by someone deciding whether this
+# product works, so the slower model is the right trade: the recording is cut down
+# to its moments either way.
+DEMO_MODEL="${DEMO_MODEL:-local/demo-qwen3-32b-32k}"
 SCENE="${1:-demo-hd}"
 
 # The terminal runs the app unless a scene needs a shell, which one of them does.
@@ -69,9 +73,7 @@ plan-mode)
 context-compaction)
 	ASSET=assets/demo-compaction-hd.webp
 	PUBLISH_TAKE=0
-	# Same weights, declared with a 32k window: compaction answers to the window the
-	# model row carries, and the 131k row has nothing to compact in a recording.
-	SCENE_CMD="bun /repo/packages/coding-agent/src/cli.ts --model local/demo-qwen3-30b-32k"
+	# One window for every row now, and it is the window the server serves.
 	CUT_ARGS=()
 	;;
 agent-lanes)
@@ -110,6 +112,7 @@ PROOF_LLM_BASE_URL="${PROOF_LLM_BASE_URL}" \
 	SCENE_FONT_SIZE=16 \
 	SCENE_BG="#1a1b26" \
 	SCENE_FG="#c0caf5" \
+	SCENE_SETTLE_SCALE="${SETTLE_SCALE:-2.5}" \
 	OUT_DIR="${WORK}" \
 	bash "proof/docker/record-x11.sh" "proof/scenes/${SCENE}.sh"
 
