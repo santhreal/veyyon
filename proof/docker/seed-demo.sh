@@ -22,6 +22,25 @@ export function parse(s: string): string {
 }
 TS
 
+# The parser's own test, so a session that changes the parser has something to run against
+# it. Without this file the verification turn is honest and useless: the model looks for a
+# parser test, correctly reports that the only suite in the project covers a different
+# module, and the recording shows nothing being verified. The two cases here are the
+# behaviour BEFORE the change, so the suite passes on the seeded file and keeps passing
+# once whitespace-only input is rejected as well.
+cat >"${DEMO}/src/parser.test.ts" <<'TS'
+import { expect, test } from "bun:test";
+import { parse } from "./parser.ts";
+
+test("trims a focus string", () => {
+	expect(parse("  build the parser  ")).toBe("build the parser");
+});
+
+test("rejects an empty focus string", () => {
+	expect(() => parse("")).toThrow("empty focus string");
+});
+TS
+
 cat >"${DEMO}/src/rate-limiter.ts" <<'TS'
 export class RateLimiter {
 	#tokens: number;

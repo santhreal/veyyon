@@ -110,11 +110,19 @@ lsp-refactor)
 	# turns the shipped setting on. Without it the model correctly reports that the lsp
 	# tool is not in its toolset, which is what the third take recorded.
 	#
-	# Automatic maintenance is off for this row: the window is 32k, the prompt with the
-	# server's statements is about 20k of it, so compaction fires on the first turn and
-	# reports it cannot free enough to help. Two short turns need no maintenance, and
-	# the row that is about maintenance is the compaction row.
+	# Automatic maintenance is off for this row. Two short turns need no maintenance, and
+	# the row that is about maintenance is not this one; with the server's two policy
+	# statements in the prompt an automatic pass has nothing useful to free and says so.
 	SETTINGS=$'lsp.enabled: true\ncompaction.enabled: false'
+	CUT_ARGS=()
+	;;
+stills-extra)
+	# Two surfaces the long take does not reach: the worker roster, and the prompt
+	# inspector, which is a subcommand rather than a session surface. Every frame it
+	# takes is published; there is no clip, because neither surface moves.
+	ASSET=assets/stills-extra-agents.png
+	PUBLISH_TAKE=0
+	STILL=all
 	CUT_ARGS=()
 	;;
 prompt-architecture)
@@ -204,6 +212,26 @@ if [[ ${PUBLISH_TAKE} -eq 1 ]]; then
 		echo "--- the signature anyone can check ---"
 		cat "${WORK}/signature-crosscheck.txt"
 	fi
+fi
+
+if [[ "${STILL}" == "all" ]]; then
+	# Every frame, for a scene that exists to take frames. Named after the scene and the
+	# shot, so a surface added to the scene arrives as an asset without a recipe change.
+	shopt -s nullglob
+	published=0
+	for still in "${WORK}/${SCENE}"-*.png; do
+		base="$(basename "${still}" .png)"
+		cp "${still}" "proof/captures/x11/${base}.png"
+		magick "${still}" -resize 1920x -strip "assets/${base}.png"
+		published=$((published + 1))
+	done
+	[[ ${published} -gt 0 ]] || {
+		echo "record-hd-demo.sh: scene '${SCENE}' took no stills" >&2
+		exit 1
+	}
+	python3 proof/tighten.py audit --base proof/captures
+	ls -la assets/"${SCENE}"-*.png
+	exit 0
 fi
 
 if [[ -n "${STILL}" ]]; then
