@@ -142,3 +142,15 @@ cat >"${DEMO}/tsconfig.json" <<'JSON'
 	"include": ["src"]
 }
 JSON
+
+# A git repository, because the scenes ask the model to commit its work. Without this
+# the commit turn records `fatal: not a git repository` in red and the session's last
+# act is a failed tool call -- which is exactly what the take before this one shot.
+# Identity is set locally rather than globally so nothing here depends on the image's
+# git config, and the initial commit is the seeded state so the model's commit is a
+# diff of the work rather than the whole project arriving at once.
+git -C "${DEMO}" init -q -b main
+git -C "${DEMO}" config user.name "demo"
+git -C "${DEMO}" config user.email "demo@example.invalid"
+git -C "${DEMO}" add -A
+git -C "${DEMO}" -c commit.gpgsign=false commit -q -m "seed the parser and its tests"
