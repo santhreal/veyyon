@@ -112,7 +112,7 @@ PROOF_LLM_BASE_URL="${PROOF_LLM_BASE_URL}" \
 	SCENE_FONT_SIZE=16 \
 	SCENE_BG="#1a1b26" \
 	SCENE_FG="#c0caf5" \
-	SCENE_SETTLE_SCALE="${SETTLE_SCALE:-2.5}" \
+	SCENE_SETTLE_SCALE="${SETTLE_SCALE:-2}" \
 	OUT_DIR="${WORK}" \
 	bash "proof/docker/record-x11.sh" "proof/scenes/${SCENE}.sh"
 
