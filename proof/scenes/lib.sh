@@ -233,29 +233,61 @@ settle() {
 # settled screen too, so digits are dropped before comparing -- what is left is the
 # transcript, the composer and the spinner, none of which move once a turn is done.
 #
+# TWO WAYS TO END, and the difference is the whole correctness of this. A screen that has
+# not moved is not the same as a turn that is over: for the first seconds after a submit the
+# request is in flight and nothing has streamed yet, so a wait that only asked "has the
+# screen stopped changing" returned immediately and the shot caught the screen from before
+# the answer. That is what the take before this one recorded: an edit turn "settled" in 18
+# seconds and published a frame with no diff in it.
+#
+# So a quick return requires having SEEN the screen change at least once -- the turn
+# started, streamed, and stopped. A turn that finished before the floor never provides that
+# evidence, so a longer run of unchanged dumps ends the wait as well. The patient path is
+# what bounds a scene against a turn that was already over; the observed-change path is what
+# stops a shot landing in front of one that had not begun.
+#
 # Bounded on purpose. If the model never finishes, this returns at the ceiling and the
 # scene carries on, which records a slow turn honestly instead of hanging the take.
 settle_idle() {
-	local ceiling="${1:-180}" floor="${2:-4}" quiet="${3:-2}"
+	local ceiling="${1:-180}" floor="${2:-4}" quiet="${3:-2}" patient="${4:-}"
 	local scale="${SCENE_SETTLE_SCALE:-1}"
 	[ "${scale}" = "1" ] || ceiling="$(awk -v w="${ceiling}" -v s="${scale}" 'BEGIN { printf "%.0f", w * s }')"
+	# How long a silence is allowed to end the wait WITHOUT having seen the turn stream.
+	# A shell command answers instantly, so a few polls are plenty; a model can think for
+	# a while before its first token, and a scene that shoots into that silence publishes
+	# the screen from before the answer. Model turns therefore pass their own number.
+	patient="${patient:-$((quiet + 5))}"
 	sleep "${floor}"
-	local prev="" now="" same=0 waited="${floor}"
+	local prev="" now="" same=0 changed=0 waited="${floor}"
 	while [ "${waited}" -lt "${ceiling}" ]; do
-		now="$(kitty @ --to "${KITTY_SOCKET}" get-text 2>/dev/null | tr -d '0-9' || true)"
+		now="$(kitty @ --to "${KITTY_SOCKET}" get-text 2>"${SCENE_OUT:-/tmp}/get-text.err" | tr -d '0-9' || true)"
 		if [ -z "${now}" ]; then
-			# No socket: this is the xdotool fallback world, where there is nothing to
-			# read. Spend the ceiling as a plain sleep rather than returning early.
-			sleep "$((ceiling - waited))"
-			return 0
+			# A WAIT THAT CANNOT SEE IS THE ONE FAILURE THAT MUST NOT BE QUIET. This
+			# branch used to spend the ceiling as a sleep and return without a word, so a
+			# run where the socket answered nothing looked exactly like a run where every
+			# turn settled -- the gate's own late-turn probe sat here for ninety seconds
+			# and the reason was invisible in the log. One retry, because a single dump
+			# can lose a race with a redraw, and then the reason in the log.
+			sleep 2
+			now="$(kitty @ --to "${KITTY_SOCKET}" get-text 2>>"${SCENE_OUT:-/tmp}/get-text.err" | tr -d '0-9' || true)"
+			if [ -z "${now}" ]; then
+				echo "scene: get-text read nothing from ${KITTY_SOCKET}, falling back to a plain sleep: $(tail -1 "${SCENE_OUT:-/tmp}/get-text.err" 2>/dev/null)" >&2
+				sleep "$((ceiling - waited))"
+				return 0
+			fi
 		fi
 		if [ "${now}" = "${prev}" ]; then
 			same=$((same + 1))
-			[ "${same}" -lt "${quiet}" ] || {
-				echo "scene: settled after ${waited}s (ceiling ${ceiling}s)" >&2
+			if [ "${changed}" -eq 1 ] && [ "${same}" -ge "${quiet}" ]; then
+				echo "scene: settled after ${waited}s, having seen the turn stream (ceiling ${ceiling}s)" >&2
 				return 0
-			}
+			fi
+			if [ "${same}" -ge "${patient}" ]; then
+				echo "scene: nothing moved for $((same * 3))s, taking the turn as over (ceiling ${ceiling}s)" >&2
+				return 0
+			fi
 		else
+			[ -z "${prev}" ] || changed=1
 			same=0
 		fi
 		prev="${now}"
