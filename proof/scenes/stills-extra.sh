@@ -11,7 +11,7 @@
 settle 10
 
 submit "use two task agents in parallel: one inspects src/rate-limiter.ts and one inspects src/rate-limiter.test.ts. Each reports one concise observation. Neither edits anything."
-settle 100
+settle_idle 260 8 2 20
 shot agents
 
 slash "/agents"
@@ -20,18 +20,13 @@ shot agent-control
 k Escape
 sleep 1
 
-slash "/exit"
-settle 6
-
-# The app is gone and the shell it was started from is back, which is where the inspector
-# lives.
-# A login shell has no input debounce of its own, so the rate the app tolerates doubles
-# characters here. The two commands below are typed at the shell rate instead.
-TYPE_DELAY=70
-submit "veyyon prompt --sections --cwd ."
-settle 10
-shot prompt-sections
-
-submit "veyyon prompt --statements --cwd . | head -30"
-settle 10
-shot prompt-statements
+# THE INSPECTOR IS NOT HERE ANY MORE. This scene used to type `/exit` and then run
+# `veyyon prompt` in "the shell the app was started from" -- but the app IS the window's
+# process (xsession.sh execs SCENE_COMMAND), so exiting it closed the terminal, and both
+# frames published as a photograph of the empty backdrop. They were byte-identical, which
+# is what finally gave it away. `veyyon` was not on PATH in that container either, so the
+# commands could not have run even with a shell to run them in.
+#
+# proof/scenes/prompt-architecture.sh already covers those two surfaces: it is given a
+# shell as its window process and calls the CLI through `bun`, which is the path that
+# exists in the image.
