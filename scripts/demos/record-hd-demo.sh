@@ -132,7 +132,7 @@ prompt-architecture)
 	# print does not move: the row is the assembled section table, published as the
 	# frame the scene took of it.
 	SCENE_CMD="bash -l"
-	STILL=sections
+	STILL=all
 	CUT_ARGS=()
 	;;
 install-binary)
