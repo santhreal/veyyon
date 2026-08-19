@@ -1,66 +1,111 @@
 #!/usr/bin/env bash
-# The demo the landing page shows: a real session, in a real terminal, doing real
-# work on a real project, against a dense 32B that actually calls tools.
+# The one recording: a single long session that finishes a real piece of work, and signs
+# the result with a credential it is never shown.
 #
-# It exists because the earlier demos were a 1.5B answering questions on a flat
-# black terminal, which shows the transcript and nothing the product does: no
-# file read, no edit, no command, no plan. Every turn below asks for work with a
-# visible result, and the stills are cut at the moment each feature is on screen.
+# It is one take rather than a row per feature. A gallery of one-feature clips costs a
+# live take each and every one of them opens on the same empty composer, so the reader
+# watches the product start up nine times and work once. One session that reads, edits,
+# verifies, plans and then signs its output is the shorter recording and the more honest
+# one: the state each step leaves behind is what the next step starts from. Surfaces that
+# do not move are published as screenshots taken from this same take.
 #
-# Recorded at 1920x1080 through the themed session (`SCENE_THEME=night`), so the
-# capture is the composited terminal a reader would actually have in front of
-# them rather than a black rectangle.
-settle 20
+# THE SIGNATURE IS THE PART A READER CAN CHECK.
+#
+# The container's environment holds one number, exported by seed-demo.sh and never typed
+# into the session. `/secret from-env` stores it without it passing through the transcript,
+# and from then on the model has a placeholder and nothing else. The model is asked to
+# sign the file it just changed: it writes a command containing #RELEASE_SIGNATURE#, and
+# veyyon substitutes the real bytes at the outbound boundary, after the model has
+# committed to the command and before the shell sees it.
+#
+# So the recording shows three things that cannot all be faked at once: the transcript
+# carrying the placeholder, the file on disk carrying the sha256 of the real number, and
+# `/secret log` naming the spend. Anyone with the number can hash it themselves and get
+# the digest in the frame. The number is printed at the end of the run, outside the
+# recording, for exactly that purpose.
+settle 16
 shot idle
 
-# Warm the server: the first turn pays for the prompt evaluation, and a demo
-# should not open on a spinner.
-# The server is warmed by the runner before the recording starts, with a request that
-# never reaches the screen. This scene used to spend its first turn asking the model to
-# say "ready", which paid for prompt evaluation in full view: the published row opened
-# on a question nobody asked and an answer that means nothing.
-
-# Reading. The model has to find the file itself, which is what puts a read
-# block with its rail on screen.
+# Reading. The model finds the file itself, which is what puts a read block with its rail
+# on screen rather than a path someone typed.
 submit "read src/parser.ts and tell me in one sentence what it rejects"
-settle 55
+settle 45
 shot read-block
 
-# Editing. A real diff, applied by the edit tool, on a file the reader can see
-# named in the block header.
+# Editing, with the diff the edit tool applied and the file named in the block header.
 submit "in src/parser.ts, make parse also reject a string that is only whitespace, and keep the existing error message style"
-settle 90
+settle 80
 shot edit-diff
 
-# A command, with output long enough that the block collapses to a preview.
-submit "run a bash command that prints the file and counts its lines"
-settle 60
-shot bash-block
-
-# The plan panel, written by the tool the product ships rather than typed.
-submit "use your todo tool: a three-phase plan for hardening this parser, Foundation with two tasks, Validation with three, Release with one, then start the first task"
+# A command the model chose to check its own work with, and its output.
+submit "run the project's own test for the parser and tell me whether it passes"
 settle 75
+shot verify-command
+
+# The plan panel, written by the shipped todo tool rather than typed into the transcript.
+submit "use your todo tool: a three-phase plan for hardening this parser, Foundation with two tasks, Validation with three, Release with one, then start the first task"
+settle 70
 shot todo-board
 submit "mark the first Foundation task completed"
-settle 60
+settle 50
 shot todo-strike
 
-# The settings card, with a real pointer travelling down it so hover is visible.
+# The credential, taken out of the environment so it is typed nowhere.
+submit "/secret from-env RELEASE_SIGNATURE release-signature"
+settle 10
+shot secret-stored
+
+submit "/secret list"
+settle 8
+shot secret-list
+k Escape
+sleep 1
+
+# Spending it. The model writes the placeholder; veyyon writes the value, and only into
+# the command's arguments at the outbound boundary.
+submit "sign your work: run one bash command that pipes #RELEASE_SIGNATURE# into sha256sum and appends a line 'signature: <digest>' to SIGNED.md. Print the file afterwards. Never print the credential itself."
+settle 110
+shot signature-written
+
+submit "/secret log"
+settle 10
+shot secret-log
+k Escape
+sleep 1
+
+# What the session cost, from the product's own accounting rather than a claim about it.
+submit "/context"
+settle 10
+shot context-report
+k Escape
+sleep 1
+
+# The settings card, opened by a real pointer travelling down the sidebar.
 submit "/settings"
 sleep 2
 shot settings-open
 glide 12 40 24 40 24 0.06
-shot settings-hover
 sleep 0.8
+shot settings-pane
 k Escape
 sleep 1.5
-shot settings-closed
 
-# The session as a whole: scroll back up through everything the turn produced, so
-# the recording ends on the transcript rather than on an empty composer.
-wheel_up 12
+# The session as a whole: scroll back through everything the take produced, so it ends on
+# the work rather than on an empty composer.
+wheel_up 14
 sleep 1
 shot scrolled
-wheel_down 12
+wheel_down 14
 sleep 1
 shot bottom
+
+# Outside the recording: the number, the digest the shell computed, and the file. The
+# frame shows the digest; this is what it is a digest OF, so the claim is checkable rather
+# than asserted.
+{
+	echo "signing number (never on screen): ${RELEASE_SIGNATURE:-<unset>}"
+	printf 'sha256 of that number: '
+	printf '%s' "${RELEASE_SIGNATURE:-}" | sha256sum | cut -d' ' -f1
+	echo "--- SIGNED.md ---"
+	cat "${SCENE_CWD:-/sandbox/home/demo}/SIGNED.md" 2>&1
+} >"${SCENE_OUT}/signature-crosscheck.txt" 2>&1

@@ -144,6 +144,12 @@ esac
 WORK="$(mktemp -d /tmp/veyyon-hd-demo.XXXXXX)"
 trap 'rm -rf "${WORK}"' EXIT
 
+# The number the session signs with, generated per run so a published frame pins one
+# specific digest and the check is reproducible rather than decorative. It is passed into
+# the container as an environment variable and stored there with `/secret from-env`, so it
+# is typed nowhere and reaches the transcript never.
+SIGNING_NUMBER="${SIGNING_NUMBER:-$(printf '%04d-%04d-%04d' $((RANDOM % 10000)) $((RANDOM % 10000)) $((RANDOM % 10000)))}"
+
 # Warm the server before anything is recorded. The first request against a freshly
 # loaded model pays for prompt evaluation, and a scene that pays for it on screen opens
 # on a spinner -- which every row used to do, by spending its first turn asking the model
@@ -162,11 +168,12 @@ PROOF_LLM_BASE_URL="${PROOF_LLM_BASE_URL}" \
 	SCENE_HEIGHT=1440 \
 	SCENE_MARGIN=128 \
 	SCENE_FONT_SIZE=21 \
-	SCENE_BG="#0f1116" \
+	SCENE_BG="#171b22" \
 	SCENE_FG="#d3dae6" \
 	SCENE_SETTLE_SCALE="${SETTLE_SCALE:-2}" \
 	SCENE_GIF=0 \
 	SCENE_SETTINGS="${SETTINGS}" \
+	SCENE_SIGNING_NUMBER="${SIGNING_NUMBER}" \
 	OUT_DIR="${WORK}" \
 	bash "proof/docker/record-x11.sh" "proof/scenes/${SCENE}.sh"
 
@@ -182,9 +189,21 @@ if [[ ${PUBLISH_TAKE} -eq 1 ]]; then
 		-vf "scale=1920:-2:flags=lanczos" \
 		-c:v libx264 -preset slow -crf 30 -pix_fmt yuv420p -an \
 		"proof/captures/x11/${SCENE}.mp4"
+	# Every frame the scene took, published twice: archived at full capture size under
+	# proof/captures for the proof page, and resampled to 1920 as the screenshot the
+	# landing page carries. This is what makes one take enough. A surface that does not
+	# move needs a frame, not a clip, and the frames come free from the session that was
+	# already running -- so the gallery costs one recording instead of one per feature.
 	for still in "${WORK}/${SCENE}"-*.png; do
-		cp "${still}" "proof/captures/x11/$(basename "${still}")"
+		base="$(basename "${still}" .png)"
+		cp "${still}" "proof/captures/x11/${base}.png"
+		magick "${still}" -resize 1920x -strip "assets/${base}.png"
 	done
+	if [[ -f "${WORK}/signature-crosscheck.txt" ]]; then
+		cp "${WORK}/signature-crosscheck.txt" "proof/captures/x11/${SCENE}-signature-crosscheck.txt"
+		echo "--- the signature anyone can check ---"
+		cat "${WORK}/signature-crosscheck.txt"
+	fi
 fi
 
 if [[ -n "${STILL}" ]]; then

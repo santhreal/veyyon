@@ -57,6 +57,7 @@ docker run --rm \
 	-e "SCENE_SETTLE_SCALE=${SCENE_SETTLE_SCALE:-1}" \
 	-e "SCENE_GIF=${SCENE_GIF:-1}" \
 	-e "SCENE_SETTINGS=${SCENE_SETTINGS:-}" \
+	-e "SCENE_SIGNING_NUMBER=${SCENE_SIGNING_NUMBER:-}" \
 	-w /repo \
 	"${RECORDER_IMAGE:-veyyon-proof-recorder:4}" \
 	bash -lc '
