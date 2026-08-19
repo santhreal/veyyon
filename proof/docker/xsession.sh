@@ -188,6 +188,8 @@ xterm)
 		--override "scrollback_lines=20000" \
 		--override "enable_audio_bell=no" \
 		--override "focus_follows_mouse=yes" \
+		--override "allow_remote_control=socket-only" \
+		--listen-on "unix:/tmp/kitty.sock" \
 		/tmp/bootstrap.sh >/tmp/term.log 2>&1 &
 	;;
 esac
