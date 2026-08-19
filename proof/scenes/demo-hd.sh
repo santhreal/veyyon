@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The one recording: a single long session that finishes a real piece of work, and signs
-# the result with a credential it is never shown.
+# the result with a credential it never types.
 #
 # It is one take rather than a row per feature. A gallery of one-feature clips costs a
 # live take each and every one of them opens on the same empty composer, so the reader
@@ -26,8 +26,9 @@
 settle 16
 shot idle
 
-# Reading. The model finds the file itself, which is what puts a read block with its rail
-# on screen rather than a path someone typed.
+# Reading, and the beat exists for the answer rather than the block: the guard in the fixture
+# is `!s`, so a whitespace-only string already passes it, and what makes the next turn worth
+# watching is the model saying so on its own before anything has been edited.
 submit "read src/parser.ts and tell me in one sentence what it rejects"
 settle_idle 90 6 2 20
 shot read-block

@@ -21,10 +21,10 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${REPO_ROOT}"
 
 : "${PROOF_LLM_BASE_URL:?set PROOF_LLM_BASE_URL to an OpenAI-compatible endpoint}"
-# The dense 32B, in the one window its server serves. It drives a tool turn more
-# directly than the sparse 30B, and a row is read by someone deciding whether this
-# product works, so the slower model is the right trade: the recording is cut down
-# to its moments either way.
+# Qwen3.8 27B, served locally with a 64k window. The window is the part that matters
+# to a take: this session runs fifteen turns with tool output in every one, and at 32k
+# it compacted mid-recording, so the footer gauge and the context report were both
+# describing a session that had just lost half its history.
 DEMO_MODEL="${DEMO_MODEL:-local/demo-qwen38-27b-64k}"
 SCENE="${1:-demo-hd}"
 
@@ -220,6 +220,23 @@ if [[ ${PUBLISH_TAKE} -eq 1 ]]; then
 	# landing page carries. This is what makes one take enough. A surface that does not
 	# move needs a frame, not a clip, and the frames come free from the session that was
 	# already running -- so the gallery costs one recording instead of one per feature.
+	# WHAT A MARKS FILE IS FOR HERE. The scene appends one row per shot it takes, so it is an
+	# independent record of what the take believed it captured. The loop below copies whatever
+	# PNGs exist and nothing else, which means a shot that never landed does not fail the run:
+	# it leaves the PREVIOUS take's frame sitting in assets/ and proof/captures, published,
+	# timestamped by the copy, and indistinguishable from a fresh one. A gallery whose caption
+	# says every frame came from one session cannot be assembled by a step that silently keeps
+	# frames from another. So a mark without a frame stops the publish.
+	missing=()
+	while IFS=$'\t' read -r mark _; do
+		[[ -n "${mark}" ]] || continue
+		[[ -f "${WORK}/${SCENE}-${mark}.png" ]] || missing+=("${mark}")
+	done < "${WORK}/${SCENE}-marks.tsv"
+	if [[ ${#missing[@]} -gt 0 ]]; then
+		echo "record-hd-demo.sh: the scene marked ${#missing[@]} shot(s) it never wrote: ${missing[*]}" >&2
+		echo "record-hd-demo.sh: refusing to publish a set that would keep an older take's frames" >&2
+		exit 1
+	fi
 	for still in "${WORK}/${SCENE}"-*.png; do
 		base="$(basename "${still}" .png)"
 		cp "${still}" "proof/captures/x11/${base}.png"
