@@ -1283,33 +1283,32 @@ SECTIONS = [
         [
             "<p>The demos on the landing page were a 1.5B model answering questions in a flat black VHS terminal:"
             " they showed a transcript and nothing the product does. No file read, no edit, no command, no plan."
-            " The take below is one session at 1920x1080 against <strong>Qwen3 30B A3B</strong>, served by ollama on"
-            " the recorder host. The model matters as much as the resolution — a 1.5B answers a question, and a 30B"
-            " calls the tools, so what is on screen is the read block, the edit, the command the model chose to"
-            " verify itself with, and the plan panel, rather than prose about them.</p>",
+            " The take below is one session at 1920x1080 against a dense <strong>Qwen3 32B</strong>, served by ollama"
+            " on the recorder host and published at 1280x720. The model matters as much as the resolution — a 1.5B"
+            " answers a question, and a 32B calls the tools, so what is on screen is the read block, the edit, the"
+            " command the model chose to verify itself with, and the plan panel, rather than prose about them.</p>",
             "<p><strong>What makes it look like a terminal on a desktop.</strong> The session runs under a"
-            " compositor: a generated gradient behind the window, the window inset from the screen edge, and picom"
-            " rounding its corners and casting its shadow. There is no window translucency, and that is a fact"
-            " about the display rather than a choice: this X server exposes no GLX configuration carrying an alpha"
-            " channel, so the terminal cannot pick an ARGB visual to blend into, and it logs exactly that. Rounding"
-            " and shadows are compositor-side and need no alpha from the client, so the look is built out of those."
+            " compositor: two radial lights over a near-black base as the backdrop, the window inset from the screen"
+            " edge, and picom rounding its corners, blurring what shows through it and casting its shadow. The"
+            " translucency is the compositor's, not the terminal's, and that distinction is the whole fix: this X"
+            " server exposes no GLX configuration carrying an alpha channel, so the terminal cannot pick an ARGB"
+            " visual and logs exactly that, while picom applies opacity to a window that knows nothing about it."
             " <code>SCENE_THEME=plain</code> keeps every other scene on this page recording the flat capture it was"
             " recorded against.</p>",
             video(
                 X + "demo-hd.mp4",
-                "The whole take, seven minutes: a read, an edit, a command that verifies the edit, a bash block with"
+                "The whole take, twenty minutes: a read, an edit, a command that verifies the edit, a bash block with"
                 " its wall time, a three-phase plan written by the todo tool, a task struck through, the settings"
                 " card under a real pointer, and the transcript scrolled back through all of it.",
-                start=118,
             ),
             "<h3>The clip the landing page carries</h3>",
             "<p>The landing-page clip is cut from that take by <code>proof/hero-cut.py</code>, and which moments it"
             " keeps is derived from the recording rather than typed in. <code>tighten.py</code> is the wrong"
             " instrument for a session: it calls a frame dead when mpdecimate says it duplicates the one before it,"
-            " and a veyyon session always has a spinner turning and an elapsed clock ticking, so it counts 6,504 of"
-            " this take's 12,844 frames as distinct while the transcript has not moved. Scene magnitude does"
-            " separate a block landing from a screen waiting, so the six windows in the clip are the six times the"
-            " screen changed by more than 6%.</p>",
+            " and a veyyon session always has a spinner turning and an elapsed clock ticking, so it counts most of a"
+            " take as distinct while the transcript has not moved. What the cut uses instead is the second of each"
+            " still the scene takes, so every window in the clip is a moment the scene exists to show rather than the"
+            " largest repaint, which against a reasoning model is a page of streamed thinking.</p>",
             still(
                 X + "demo-hd-read-block.png",
                 "The read: the model chose the file, the block carries its rail, and the answer under it is one"
