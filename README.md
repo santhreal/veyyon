@@ -160,7 +160,7 @@ bash scripts/demos/record.sh
 | Context maintenance | Context report, compaction, post-compact report | [compaction](assets/demo-context-compaction.gif) | `bash scripts/demos/record.sh context-compaction` |
 | Multi-agent work | Parallel worker progress and Agent Control Center live and idle states | [agents](assets/demo-agent-control-center.gif) | `bash scripts/demos/record.sh agent-control-center` |
 | Secret boundary | Placeholder listing, one bash spend, numeric output, and one value-free use-log record | [secrets](assets/demo-secret-boundary.gif) | `bash scripts/demos/record-secret-boundary.sh` |
-| Settings | Category list, category navigation, and filtered default-model rows | [settings tour](assets/demo-settings-tour.gif) | `bash scripts/demos/record.sh settings-tour` |
+| Settings | The settings card under a real pointer: sidebar travel, a category opened by a click, and the Subagents pane it opens on | [settings card](assets/demo-settings-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh settings-pointer` |
 | Model controls | Native effort variants and ordered chains | [model controls](assets/model-effort-controls.gif) | `bash scripts/demos/record.sh model-effort-controls` |
 | Argot gate | Disabled and enabled settings differential | [off](assets/argot-settings-off.png) / [on](assets/argot-settings-on.png) | `bash scripts/demos/record-argot-settings.sh` |
 | Command discovery | Live slash-command filtering | [commands](assets/demo-commands.gif) | `bash scripts/demos/record.sh commands` |
