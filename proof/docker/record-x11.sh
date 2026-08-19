@@ -49,7 +49,7 @@ docker run --rm \
 	-e "SCENE_CWD=${SCENE_CWD:-/sandbox/home/demo}" \
 	-e "SCENE_SETTLE_SCALE=${SCENE_SETTLE_SCALE:-1}" \
 	-e "SCENE_GIF=${SCENE_GIF:-1}" \
-	-e "SCENE_SMALL_CONTEXT=${SCENE_SMALL_CONTEXT:-}" \
+	-e "SCENE_SETTINGS=${SCENE_SETTINGS:-}" \
 	-w /repo \
 	"${RECORDER_IMAGE:-veyyon-proof-recorder:4}" \
 	bash -lc '
@@ -70,14 +70,14 @@ docker run --rm \
 		if [ -n "${SCENE_HIDE_THINKING}" ]; then
 			printf "hideThinkingBlock: true\n" >> /sandbox/home/.veyyon/profiles/default/agent/config.yml
 		fi
-		# The compaction row needs a session that actually compacts: a 1200-token
-		# recent budget crosses the cut point in a 33k window whose prefix is 18.6k,
-		# and 95% lets the fill reach a gauge worth photographing before automatic
-		# maintenance takes it. Every other row wants the shipped numbers -- with the
-		# small budget a tool-heavy turn compacts, frees nothing, says so, and loses
-		# the task, which is what the first language-server take recorded.
-		if [ -n "${SCENE_SMALL_CONTEXT}" ]; then
-			printf "compaction.keepRecentTokens: 1200\ncompaction.threshold: \"95%%\"\n" \
+		# Settings one row needs and the others must not inherit, as the YAML lines the
+		# recipe wants appended. Two rows need different ones -- the compaction row
+		# needs a session that actually compacts, and the language-server row needs the
+		# server enabled at all -- so this is a passthrough rather than a boolean per
+		# setting. Every line here names a setting the product ships and an operator can
+		# set; nothing about a row is faked by it.
+		if [ -n "${SCENE_SETTINGS}" ]; then
+			printf '"'"'%s\n'"'"' "${SCENE_SETTINGS}" \
 				>> /sandbox/home/.veyyon/profiles/default/agent/config.yml
 		fi
 		bash /repo/proof/docker/seed-demo.sh /sandbox/home/demo

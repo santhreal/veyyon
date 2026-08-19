@@ -48,7 +48,7 @@ details.clip summary:hover { color: #d7dae0; }
 </style></head>
 <body>
 <h1>feat/ui-polish — recorded proof</h1>
-<p class="lede">Branch <code>feat/ui-polish</code> at <code>377a4e682</code>, 172 commits ahead of
+<p class="lede">Branch <code>feat/ui-polish</code> at <code>5eb29181c</code>, 174 commits ahead of
 <code>main</code> (<code>532d9bb5d</code>). Every figure below is a frame of a real terminal running the shipped
 CLI. No component was drawn into a picture for this page, and nothing here is a tmux capture.</p>
 
@@ -187,7 +187,7 @@ afterwards rather than screenshotted mid-motion.</p>
 <p>The resumed arm carries one cost the fresh arm does not, and it is model-side rather than renderer-side: a history that large does not fit a 65k window, so the app compacts before it can ask anything, and says so on screen while it does. That is the 1.5B summarizing on CPU, not a frame being repainted.</p>
 
 <h2>Every commit on the branch, on camera</h2>
-<p>110 of the 172 commits are below, one recording each. Every video is a real terminal in the recording
+<p>110 of the 174 commits are below, one recording each. Every video is a real terminal in the recording
 container: <code>proof/docker/record-commit-arm.sh</code> extracts the commit's tree and its parent's tree with
 <code>git archive</code>, mounts the same <code>node_modules</code> and the same native addon into both, and runs
 the same command in each. A test the commit ADDS is copied into the parent tree first, so the test is
@@ -202,6 +202,8 @@ a video is the text of the same command run again headlessly by
 rather than writing lines to a pipe, and the video is the only place its output exists.</p>
 <table><thead><tr><th>commit</th><th>subject</th></tr></thead>
 <tbody>
+<tr><td class="sha">5eb29181c</td><td>proof(recorder): a language server in the image, project markers in the fixture, and placement that is checked <em>— carries this page and its videos; filming it means filming the film</em></td></tr>
+<tr><td class="sha">bba75d08f</td><td>docs(demos): the hero is twenty minutes of work in the lit chrome, published at 720p <em>— carries this page and its videos; filming it means filming the film</em></td></tr>
 <tr><td class="sha">377a4e682</td><td>proof(x11): the hero hides thinking too, because a landing page is not a rumination log <em>— carries this page and its videos; filming it means filming the film</em></td></tr>
 <tr><td class="sha">25cdface8</td><td>docs(demos): the context row is re-recorded in the lit chrome at 720p <em>— carries this page and its videos; filming it means filming the film</em></td></tr>
 <tr><td class="sha">3efbec95b</td><td>proof(x11): a long take does not spend its last minutes encoding a GIF nobody opens <em>— carries this page and its videos; filming it means filming the film</em></td></tr>

@@ -4,10 +4,10 @@
 # against one known theme and one known model.
 onboardingVersion: 99
 theme: titanium
-# The row the gallery records against, so a launch that passes no --model (the
-# install row starts the installed binary the way a person would) shows the same
-# model as every other row rather than the 1.5B this file used to name.
-model: local/demo-qwen3-32b-32k
+# Not the model any row records against: every scene names its model on the command
+# line, and a launch that names none showed this file's value ignored in favour of the
+# first local row anyway. Left as the small model so nothing here implies otherwise.
+model: local/qwen2.5-1.5b
 # `/branch` follows this setting: `tree` sends it to the session tree, which the
 # recordings reach with `/tree` anyway. Seeding `branch` is what makes the
 # fourth picker -- the user-message card -- reachable in a scene.
