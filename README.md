@@ -89,7 +89,7 @@ Compaction uses editable model chains and explicit fallback policy. Before a mod
 </p>
 
 <p align="center">
-  <img src="assets/demo-compaction-hd.webp" width="960" alt="A local 30B session fills its window, compacts it, and shows the message share halved in the context report">
+  <img src="assets/demo-compaction-hd.webp" width="960" alt="A local session fills its context window, compacts it, and shows the message share halved in the context report">
 </p>
 
 [Models and effort](docs/settings.md#models) · [Compaction and memory](docs/handbook/src/context/compaction-memory.md)
@@ -143,28 +143,32 @@ Its token economics remain unproven across workloads. The codec boundary is ship
 
 ## Demo gallery
 
-Every live workflow below uses the isolated `demo` profile with `google-antigravity/gemini-3.6-flash` at `high` effort. `scripts/demos/setup-profile.sh` creates that profile without copying a maintainer's working settings. `scripts/demos/record.sh` verifies the exact model before recording and refuses a fallback.
+Every `*-hd.webp` row below is one real session, captured at 1920x1080 in a
+composited terminal and published at 1280x720, driving a dense Qwen3 32B served
+locally. The two GIF rows are older VHS tapes against `google-antigravity/gemini-3.6-flash`
+at `high` effort in the isolated `demo` profile; `scripts/demos/record.sh` verifies
+the exact model before recording and refuses a fallback.
 
 ```sh
-bash scripts/demos/setup-profile.sh --refresh
-bash scripts/demos/record.sh
+PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh
+bash scripts/demos/setup-profile.sh --refresh && bash scripts/demos/record.sh lsp-refactor
 ```
 
 | Workflow | What the recording proves | Artifact | Regenerate |
 | --- | --- | --- | --- |
-| End-to-end session | A read, an edit, a command that verifies it, a phased plan, and the settings card, at 1920x1080 against a local 30B model | [HD session](assets/demo-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh` |
+| End-to-end session | A read, an edit, a command that verifies it, a phased plan, and the settings card, in one unbroken take | [HD session](assets/demo-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh` |
 | Prompt architecture | Assembled section byte costs with their shares, and the conditional statement registry with the condition each unused statement waits on | [prompt architecture](assets/demo-prompt-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh prompt-architecture` |
 | Language-server refactor | Cross-file symbol rename and four passing fixture tests | [LSP recording](assets/demo-lsp-refactor.gif) | `bash scripts/demos/record.sh lsp-refactor` |
-| File write | A parser with a validated failure mode written into an existing file, then the project's own suite run against it, at 1920x1080 against a local 30B model | [write recording](assets/demo-edit-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh write-and-test` |
-| Plan mode | Read-only inspection under the Plan chip and the Plan Review card it produces, at 1920x1080 against a local 30B model | [plan mode](assets/demo-plan-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh plan-mode` |
-| Context maintenance | A dozen turns filling a 33k window to 76%, then `/compact` halving the message half and the report and footer gauge both moving, at 1920x1080 against a local 30B model | [compaction](assets/demo-compaction-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh context-compaction` |
-| Multi-agent work | Two workers spawned in one turn, the Agent Control Center live, and the same rows idle when they return, at 1920x1080 against a local 30B model | [agents](assets/demo-agents-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh agent-lanes` |
-| Secret boundary | The placeholder listed by name, the approval a secret-bearing call must pass, the byte count of the real value, and the spend recorded by name, at 1920x1080 against a local 30B model | [secrets](assets/demo-secret-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh secret-boundary` |
+| File write | A parser with a validated failure mode written into an existing file, then the project's own suite run against it | [write recording](assets/demo-edit-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh write-and-test` |
+| Plan mode | Read-only inspection under the Plan chip and the Plan Review card it produces | [plan mode](assets/demo-plan-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh plan-mode` |
+| Context maintenance | A dozen turns filling a 33k window to 71%, then `/compact` cutting the message share from 12.8% to 5.2%, with the report and the footer gauge both moving | [compaction](assets/demo-compaction-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh context-compaction` |
+| Multi-agent work | Two workers spawned in one turn, the Agent Control Center live, and the same rows idle when they return | [agents](assets/demo-agents-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh agent-lanes` |
+| Secret boundary | The placeholder listed by name, the approval a secret-bearing call must pass, the byte count of the real value, and the spend recorded by name | [secrets](assets/demo-secret-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh secret-boundary` |
 | Settings | The settings card under a real pointer: sidebar travel, a category opened by a click, and the Subagents pane it opens on | [settings card](assets/demo-settings-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh settings-pointer` |
 | Model controls | Native effort variants and ordered chains, rendered from the shipped components on both grounds | [effort](assets/effort-variants-grey.png) / [chains](assets/model-chain-editor-grey.png) | `env -u NO_COLOR FORCE_COLOR=3 bun scripts/demos/render-effort-variants.ts --width 100 \| bun scripts/demos/render-proof.ts --out assets/effort-variants --width 100 --scale 2` |
 | Argot gate | Disabled and enabled settings differential | [off](assets/argot-settings-off.png) / [on](assets/argot-settings-on.png) | `bash scripts/demos/record-argot-settings.sh` |
 | Command discovery | The slash list arriving, filtering to `/mo`, and the file list off the real working tree | [commands](assets/demo-commands-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh popup-grow` |
-| Project answer | A read of the rate limiter and one paragraph naming who owns its refill boundary, at 1920x1080 against a local 30B model | [answer recording](assets/demo-answer-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh project-answer` |
+| Project answer | A read of the rate limiter and one paragraph naming who owns its refill boundary | [answer recording](assets/demo-answer-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh project-answer` |
 | Installation | Isolated binary install, installed help, and version | [install](assets/install-demo.gif) | `bash scripts/demos/record-install.sh` |
 
 A committed tape must submit the action and finish on its result. A settings proof must show a differential, not one default screenshot. The recording contract lives in [record-demo](.veyyon/skills/record-demo/SKILL.md) and [prove-feature](.veyyon/skills/prove-feature/SKILL.md).
