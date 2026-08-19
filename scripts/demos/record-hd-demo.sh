@@ -39,6 +39,11 @@ settings-pointer)
 	PUBLISH_TAKE=0
 	CUT_ARGS=(--single --scene-score 0.004 --speed 1.4)
 	;;
+popup-grow)
+	ASSET=assets/demo-commands-hd.webp
+	PUBLISH_TAKE=0
+	CUT_ARGS=(--single --scene-score 0.004 --speed 1.2)
+	;;
 *)
 	echo "record-hd-demo.sh: no recipe for scene '${SCENE}'" >&2
 	exit 2

@@ -52,6 +52,11 @@ HOLD = 2.4
 # An event carrying fewer distinct frames than this is a cursor artefact, not a
 # transition worth a segment of its own.
 MIN_FRAMES = 3
+# The floor below which a frame is the same screen as the one before it. A cursor
+# is one 13x29 cell and a hover band repaints one row, and both clear this at the
+# 480px scale the detector works on, so a stretch with nothing above it is a
+# screen nobody is doing anything to.
+NOISE_SCORE = 0.0005
 
 
 def run(cmd: list[str]) -> str:
@@ -78,7 +83,7 @@ def duration(path: Path) -> float:
 		return 0.0
 
 
-def events(path: Path, *, score: float) -> list[tuple[float, float, int]]:
+def events(path: Path, *, score: float, min_frames: int = MIN_FRAMES) -> list[tuple[float, float, int]]:
 	"""Windows where the screen changed a lot, as (start, end, frame count)."""
 	log = run(
 		[
@@ -101,7 +106,7 @@ def events(path: Path, *, score: float) -> list[tuple[float, float, int]]:
 			clustered.append([t])
 		else:
 			clustered[-1].append(t)
-	return [(c[0], c[-1], len(c)) for c in clustered if len(c) >= MIN_FRAMES]
+	return [(c[0], c[-1], len(c)) for c in clustered if len(c) >= min_frames]
 
 
 def segments(path: Path, *, score: float) -> list[tuple[float, float]]:
@@ -118,19 +123,23 @@ def segments(path: Path, *, score: float) -> list[tuple[float, float]]:
 
 
 def single_span(path: Path, *, score: float) -> list[tuple[float, float]]:
-	"""One span: from just before the first change to the end of the take.
+	"""One span: the stretch of the take where the screen is being touched at all.
 
 	For a scene whose subject is a gesture rather than a transition. Cutting such a
 	clip into event windows drops the gesture itself, because the cursor and the
-	row it lands on are too small for a scene score to see. The head of the clip is
-	a different matter: a scene script settles for many seconds before it types
-	anything, and that settle is idle by construction, so the first frame that
-	changes at all marks where the clip starts being about something.
+	row it lands on are too small for a scene score to see. The ends of the clip are
+	a different matter, and both of them are idle by construction: a scene settles
+	for many seconds before it types anything, and it settles again before the
+	recorder stops. So the span runs from the first change at the caller's scale to
+	the last frame that clears the noise floor, which is where the pointer stopped
+	moving rather than where the recording stopped.
 	"""
 	total = duration(path)
 	found = events(path, score=score)
 	first = found[0][0] if found else 0.0
-	return [(max(0.0, first - LEAD), total)]
+	touched = events(path, score=NOISE_SCORE, min_frames=1)
+	last = touched[-1][1] if touched else total
+	return [(max(0.0, first - LEAD), min(total, last + HOLD))]
 
 
 def cut(path: Path, out: Path, spans: list[tuple[float, float]], *, width: int, fps: int, speed: float) -> None:
