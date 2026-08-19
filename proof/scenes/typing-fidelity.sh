@@ -89,6 +89,40 @@ else
 	} >>"${SCENE_OUT}/typing-fidelity.txt"
 fi
 
+# THE IDLE WAIT, in both directions. settle_idle replaced fixed sleeps because a fixed
+# sleep publishes a half-streamed frame when it guesses low and a still screen when it
+# guesses high. Two things have to be true of it, and only one of them is obvious: on a
+# quiet screen it must return well before its ceiling, and on a screen that keeps changing
+# it must return AT the ceiling rather than never. A wait that cannot end is worse than a
+# wait that is too short, because it hangs a take that is otherwise fine.
+idle_start="$(date +%s)"
+settle_idle 30 2 2
+idle_quiet=$(($(date +%s) - idle_start))
+if [ "${idle_quiet}" -lt 20 ]; then
+	PASS=$((PASS + 1))
+	printf 'ok idle: a quiet screen settled in %ds, ceiling 30s\n' "${idle_quiet}" >>"${SCENE_OUT}/typing-fidelity.txt"
+else
+	FAIL=$((FAIL + 1))
+	printf 'FAIL idle: a quiet screen took %ds of a 30s ceiling\n' "${idle_quiet}" >>"${SCENE_OUT}/typing-fidelity.txt"
+fi
+
+# A screen that never stops changing: a shell loop printing a line a second. The wait must
+# come back at the ceiling.
+submit "for i in \$(seq 1 40); do echo busy-\$i; sleep 1; done"
+sleep 1
+busy_start="$(date +%s)"
+settle_idle 12 2 2
+busy_waited=$(($(date +%s) - busy_start))
+k ctrl+c
+sleep 1
+if [ "${busy_waited}" -ge 11 ] && [ "${busy_waited}" -le 24 ]; then
+	PASS=$((PASS + 1))
+	printf 'ok busy: a moving screen returned at the ceiling after %ds\n' "${busy_waited}" >>"${SCENE_OUT}/typing-fidelity.txt"
+else
+	FAIL=$((FAIL + 1))
+	printf 'FAIL busy: a moving screen returned after %ds, ceiling 12s\n' "${busy_waited}" >>"${SCENE_OUT}/typing-fidelity.txt"
+fi
+
 shot typed
 
 # The path matters as much as the count: five green probes through the xdotool fallback

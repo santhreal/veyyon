@@ -29,25 +29,29 @@ shot idle
 # Reading. The model finds the file itself, which is what puts a read block with its rail
 # on screen rather than a path someone typed.
 submit "read src/parser.ts and tell me in one sentence what it rejects"
-settle 45
+settle_idle 90 6
 shot read-block
 
 # Editing, with the diff the edit tool applied and the file named in the block header.
 submit "in src/parser.ts, make parse also reject a string that is only whitespace, and keep the existing error message style"
-settle 80
+settle_idle 260 8
 shot edit-diff
 
 # A command the model chose to check its own work with, and its output.
 submit "run the project's own test for the parser and tell me whether it passes"
-settle 75
+settle_idle 220 8
 shot verify-command
 
 # The plan panel, written by the shipped todo tool rather than typed into the transcript.
-submit "use your todo tool: a three-phase plan for hardening this parser, Foundation with two tasks, Validation with three, Release with one, then start the first task"
-settle 70
+#
+# "Do not start any of them" because the take before this one was asked to start the first
+# task and finished all six before the shot, so what published as the plan board was a
+# board with nothing left on it. The board is the surface; the work is the next beat.
+submit "use your todo tool: write a three-phase plan for hardening this parser, Foundation with two tasks, Validation with three, Release with one. Do not start any of them yet and do not change any files."
+settle_idle 200 8
 shot todo-board
-submit "mark the first Foundation task completed"
-settle 50
+submit "start the first Foundation task, then mark it completed and commit the parser work as one scoped commit"
+settle_idle 240 8
 shot todo-strike
 
 # The credential, taken out of the environment so it is typed nowhere.
@@ -64,7 +68,7 @@ sleep 1
 # Spending it. The model writes the placeholder; veyyon writes the value, and only into
 # the command's arguments at the outbound boundary.
 submit "sign your work: run one bash command that pipes #RELEASE_SIGNATURE# into sha256sum and appends a line 'signature: <digest>' to SIGNED.md. Print the file afterwards. Never print the credential itself."
-settle 110
+settle_idle 300 10
 shot signature-written
 
 slash "/secret log"
@@ -102,10 +106,19 @@ shot bottom
 # Outside the recording: the number, the digest the shell computed, and the file. The
 # frame shows the digest; this is what it is a digest OF, so the claim is checkable rather
 # than asserted.
+#
+# SCENE_SIGNING_NUMBER, not RELEASE_SIGNATURE. xsession.sh exports RELEASE_SIGNATURE into
+# the APP's environment so `/secret from-env` can find it; this block runs in the scene's
+# own shell, which never had it. The take before this one published "signing number
+# (never on screen): <unset>" and the sha256 of the empty string beside a real digest from
+# SIGNED.md, which makes the one checkable claim in the recording uncheckable.
+NUMBER="${SCENE_SIGNING_NUMBER:-${RELEASE_SIGNATURE:-}}"
 {
-	echo "signing number (never on screen): ${RELEASE_SIGNATURE:-<unset>}"
+	echo "signing number (never on screen): ${NUMBER:-<unset>}"
 	printf 'sha256 of that number: '
-	printf '%s' "${RELEASE_SIGNATURE:-}" | sha256sum | cut -d' ' -f1
+	printf '%s' "${NUMBER}" | sha256sum | cut -d' ' -f1
+	printf 'sha256 of that number and a newline: '
+	printf '%s\n' "${NUMBER}" | sha256sum | cut -d' ' -f1
 	echo "--- SIGNED.md ---"
 	cat "${SCENE_CWD:-/sandbox/home/demo}/SIGNED.md" 2>&1
 } >"${SCENE_OUT}/signature-crosscheck.txt" 2>&1
