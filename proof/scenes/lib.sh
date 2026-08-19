@@ -134,6 +134,48 @@ slash() {
 	k Return
 }
 
+# What the terminal is showing, as text, or nothing when the socket cannot answer.
+screen_text() {
+	kitty @ --to "${KITTY_SOCKET}" get-text 2>/dev/null || true
+}
+
+# Whether the screen carries a string right now.
+screen_has() {
+	case "$(screen_text)" in
+	*"$1"*) return 0 ;;
+	*) return 1 ;;
+	esac
+}
+
+# Answer every permission dialog the last turn raised, and say how many there were.
+#
+# WHY A LOOP AND NOT ONE Return. A tool call whose arguments carry a real credential needs
+# explicit approval (secret-use-boundary.ts), and a model does not owe the scene one call:
+# the signing turn asked for a digest and a file, and this one answered with two bash calls,
+# so it raised two dialogs. A single Return approved the first, the second went unanswered,
+# and the file the whole recording is about was never written -- three takes in a row, with
+# the reason on screen each time. The frame named signature-written was in fact a second
+# permission dialog nobody had noticed.
+#
+# Bounded, and it reports the count, because "no dialog appeared" and "six appeared" are
+# different worlds and a scene that cannot tell them apart cannot be trusted about either.
+approve_while_asked() {
+	local rounds="${1:-6}" approved=0
+	while [ "${rounds}" -gt 0 ]; do
+		screen_has "Permission required" || break
+		k Return
+		approved=$((approved + 1))
+		settle_idle 200 6 2 20
+		rounds=$((rounds - 1))
+	done
+	echo "scene: approved ${approved} permission dialog(s)" >&2
+	if screen_has "Permission required"; then
+		echo "scene: a permission dialog is STILL open after ${approved} approvals" >&2
+		return 1
+	fi
+	return 0
+}
+
 # Move the real pointer to a pixel. The terminal turns that into the same SGR
 # motion report a hand on a mouse produces, which is the only way a hover state
 # is real evidence.
