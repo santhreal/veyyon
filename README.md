@@ -73,7 +73,7 @@ veyyon prompt --statement tool-selection --cwd ./my-project
 The outer prompt is a zero-prose scaffold. Registered statements own the actual instructions and their activation conditions. Project context comes from layered `AGENTS.md` files and validated `PROMPT_SECTIONS/` overrides. `/move` reloads cwd-derived context transactionally, so a failed discovery does not leave half of one project mixed with half of another.
 
 <p align="center">
-  <img src="assets/demo-prompt-architecture.gif" width="900" alt="The production prompt inspector lists assembled sections and active or omitted registered statements">
+  <img src="assets/demo-prompt-hd.webp" width="900" alt="The production prompt inspector lists assembled sections and active or omitted registered statements">
 </p>
 
 [Prompt customization](docs/system-prompt-customization.md) · [Context files](docs/context-files.md)
@@ -99,7 +99,7 @@ Compaction uses editable model chains and explicit fallback policy. Before a mod
 `/secret` stores a credential Veyyon can spend without the model ever seeing it. The model is given a named placeholder; expansion happens at the final outbound tool boundary. The real value stays local, is encrypted at rest, is redacted from later outbound seams, and appears in an operator-visible use log by name rather than value. Scope, expiry, and removal are enforced when the credential is used.
 
 <p align="center">
-  <img src="assets/demo-secret-boundary.gif" width="960" alt="A project secret is listed by placeholder, spent through a bash command, and recorded once in the use log without displaying its value">
+  <img src="assets/demo-secret-hd.webp" width="960" alt="A project secret is listed by placeholder, spent through a bash command, and recorded once in the use log without displaying its value">
 </p>
 
 [Secret protection](docs/secrets.md) · [Secret workflow](docs/handbook/src/features/secrets.md)
@@ -109,7 +109,7 @@ Compaction uses editable model chains and explicit fallback policy. Before a mod
 The `task` tool starts typed workers concurrently. Workers can coordinate through `irc`, return schema-validated results, persist their transcripts, and expose those results through `agent://` and `history://` URLs. `/agents` opens the Agent Control Center, where you can inspect each worker's live state, model, effort, and lifecycle controls.
 
 <p align="center">
-  <img src="assets/demo-agent-control-center.gif" width="960" alt="Two workers report on separate concerns and appear as idle beside the running main agent with their models and effort">
+  <img src="assets/demo-agents-hd.webp" width="960" alt="Two workers report on separate concerns and appear as idle beside the running main agent with their models and effort">
 </p>
 
 [Subagents](docs/handbook/src/features/subagents.md) · [IRC](docs/tools/irc.md) · [Internal URL routing](docs/tools/read.md#internal-urls)
@@ -153,18 +153,18 @@ bash scripts/demos/record.sh
 | Workflow | What the recording proves | Artifact | Regenerate |
 | --- | --- | --- | --- |
 | End-to-end session | A read, an edit, a command that verifies it, a phased plan, and the settings card, at 1920x1080 against a local 30B model | [HD session](assets/demo-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh` |
-| Prompt architecture | Assembled section costs and conditional statement registry | [prompt architecture](assets/demo-prompt-architecture.gif) | `bash scripts/demos/record.sh prompt-architecture` |
+| Prompt architecture | Assembled section byte costs with their shares, and the conditional statement registry with the condition each unused statement waits on | [prompt architecture](assets/demo-prompt-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh prompt-architecture` |
 | Language-server refactor | Cross-file symbol rename and four passing fixture tests | [LSP recording](assets/demo-lsp-refactor.gif) | `bash scripts/demos/record.sh lsp-refactor` |
-| File write | A written test file and its passing test output | [write recording](assets/demo-edit.gif) | `bash scripts/demos/record.sh edit` |
-| Plan mode | Two-file read-only inspection and a completed plan review | [plan mode](assets/demo-plan.gif) | `bash scripts/demos/record.sh plan` |
+| File write | A parser with a validated failure mode written into an existing file, then the project's own suite run against it, at 1920x1080 against a local 30B model | [write recording](assets/demo-edit-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh write-and-test` |
+| Plan mode | Read-only inspection under the Plan chip and the Plan Review card it produces, at 1920x1080 against a local 30B model | [plan mode](assets/demo-plan-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh plan-mode` |
 | Context maintenance | Context report, compaction, post-compact report | [compaction](assets/demo-context-compaction.gif) | `bash scripts/demos/record.sh context-compaction` |
-| Multi-agent work | Parallel worker progress and Agent Control Center live and idle states | [agents](assets/demo-agent-control-center.gif) | `bash scripts/demos/record.sh agent-control-center` |
-| Secret boundary | Placeholder listing, one bash spend, numeric output, and one value-free use-log record | [secrets](assets/demo-secret-boundary.gif) | `bash scripts/demos/record-secret-boundary.sh` |
+| Multi-agent work | Two workers spawned in one turn, the Agent Control Center live, and the same rows idle when they return, at 1920x1080 against a local 30B model | [agents](assets/demo-agents-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh agent-lanes` |
+| Secret boundary | The placeholder listed by name, the approval a secret-bearing call must pass, the byte count of the real value, and the spend recorded by name, at 1920x1080 against a local 30B model | [secrets](assets/demo-secret-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh secret-boundary` |
 | Settings | The settings card under a real pointer: sidebar travel, a category opened by a click, and the Subagents pane it opens on | [settings card](assets/demo-settings-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh settings-pointer` |
 | Model controls | Native effort variants and ordered chains, rendered from the shipped components on both grounds | [effort](assets/effort-variants-grey.png) / [chains](assets/model-chain-editor-grey.png) | `env -u NO_COLOR FORCE_COLOR=3 bun scripts/demos/render-effort-variants.ts --width 100 \| bun scripts/demos/render-proof.ts --out assets/effort-variants --width 100 --scale 2` |
 | Argot gate | Disabled and enabled settings differential | [off](assets/argot-settings-off.png) / [on](assets/argot-settings-on.png) | `bash scripts/demos/record-argot-settings.sh` |
 | Command discovery | The slash list arriving, filtering to `/mo`, and the file list off the real working tree | [commands](assets/demo-commands-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh popup-grow` |
-| Project answer | An answer describing `RateLimiter` behavior | [answer recording](assets/demo-ask.gif) | `bash scripts/demos/record.sh ask` |
+| Project answer | A read of the rate limiter and one paragraph naming who owns its refill boundary, at 1920x1080 against a local 30B model | [answer recording](assets/demo-answer-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh project-answer` |
 | Installation | Isolated binary install, installed help, and version | [install](assets/install-demo.gif) | `bash scripts/demos/record-install.sh` |
 
 A committed tape must submit the action and finish on its result. A settings proof must show a differential, not one default screenshot. The recording contract lives in [record-demo](.veyyon/skills/record-demo/SKILL.md) and [prove-feature](.veyyon/skills/prove-feature/SKILL.md).

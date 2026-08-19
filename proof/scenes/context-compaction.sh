@@ -12,6 +12,12 @@
 # What compaction works on is MESSAGES, so the window is not the thing to shrink:
 # the message half has to be the large half. Hence the 32k row and a dozen real
 # turns, which is the only way a small project fills a window with conversation.
+#
+# The recorder profile carries the other half of this: a recent-tail budget the 33k
+# window can hold, and an auto-compaction threshold at 95% so the fill reaches a
+# gauge worth photographing before maintenance takes it. With the shipped auto
+# threshold the session compacted itself twice during the fill, and the pair of
+# reports either side of `/compact` then differed by a thousand tokens.
 settle 20
 shot idle
 
@@ -34,7 +40,7 @@ for question in \
 	"summarise the project in three sentences" \
 	"which file would you change first to add a sliding window, and why?"; do
 	submit "${question}"
-	settle 22
+	settle 30
 done
 shot filled
 

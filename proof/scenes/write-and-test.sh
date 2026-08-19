@@ -11,17 +11,18 @@
 # broken test file. The suite that proves the edit did no harm is the one already in
 # the project, which is also the honest claim: an edit that keeps the suite green.
 #
-# The function asked for carries a real precondition. Asked for a one-expression
-# clamp, the model declined and explained that adding a trivial wrapper was against
-# the guidance it had been given, which is a defensible reading and an empty
-# recording.
+# The function asked for has to be one the shipped rules allow. `ts-no-tiny-functions`
+# is on by default and says not to extract a one-or-two line wrapper around an
+# expression, so a request for a clamp helper is answered by injecting that rule,
+# reverting the edit, and explaining why -- correct behavior, and an empty recording.
+# A parser with a validated failure mode is real work by the same rule's standard.
 settle 20
 shot idle
 
 submit "reply with the single word ready"
 settle 35
 
-submit "add an exported function clampSpan(lo, hi, n) to src/utils.ts, beside clampToWindow and in the same style, that throws when lo is greater than hi and otherwise returns n clamped into that range. Then run bun test src/rate-limiter.test.ts and tell me whether the suite still passes."
+submit "add an exported function parseWindowSpec(spec: string) to src/utils.ts that parses a limit-per-window string like \"5/60s\" or \"120/1m\" into { limit, windowMs }, rejecting a malformed spec, a non-integer limit and a zero window with a thrown Error naming the input. Then run bun test src/rate-limiter.test.ts and tell me whether the suite still passes."
 settle 80
 shot edit-diff
 settle 70
