@@ -8,6 +8,10 @@
 # assembly is deterministic, so the same command prints the same table every time.
 CLI="bun /repo/packages/coding-agent/src/cli.ts"
 
+# A shell scene types at the shell rate: there is no input debounce between xdotool and
+# the line editor, and a doubled character turns the command into a typo.
+TYPE_DELAY=70
+
 settle 6
 shot shell
 
