@@ -38,6 +38,26 @@ FORMS = (
 # asked to append and what `sha256sum` prints.
 DIGEST_RE = re.compile(r"\b([0-9a-f]{64})\b")
 
+# WHERE THE DIGEST MAY BE READ FROM, which is not "anywhere in the file".
+#
+# The crosscheck the take writes prints the digests of the number itself, as the thing
+# the reader is meant to compare against, and then the signed file below a marker. A
+# verifier that scanned the whole file therefore matched its own reference line and
+# reported success for a SIGNED.md whose digest was the other form entirely -- green
+# for a reason other than the one it claimed, which is worth less than no check. Only
+# the section below the marker counts, and within it only a `signature:` line.
+MARKER = "--- SIGNED.md ---"
+SIGNATURE_RE = re.compile(r"^\s*signature:\s*([0-9a-f]{64})\b", re.MULTILINE)
+
+
+def signed_digests(text: str) -> list[str]:
+    body = text.split(MARKER, 1)[1] if MARKER in text else text
+    labelled = SIGNATURE_RE.findall(body)
+    if labelled:
+        return labelled
+    # A bare SIGNED.md passed directly: no marker, no label, just what the model wrote.
+    return [] if MARKER in text else DIGEST_RE.findall(body)
+
 
 def digests(number: str) -> dict[str, str]:
     return {
@@ -73,9 +93,13 @@ def main() -> int:
         print(f"verify-signature: cannot read {args.signed}: {error}", file=sys.stderr)
         return 2
 
-    found = DIGEST_RE.findall(text)
+    found = signed_digests(text)
     if not found:
-        print(f"verify-signature: {args.signed} carries no sha256 digest.", file=sys.stderr)
+        print(
+            f"verify-signature: {args.signed} carries no signature digest. A crosscheck"
+            " file must hold a 'signature:' line under its '--- SIGNED.md ---' marker.",
+            file=sys.stderr,
+        )
         return 1
 
     expected = digests(args.number)
