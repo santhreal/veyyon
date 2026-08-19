@@ -1290,13 +1290,52 @@ SECTIONS = [
             " than prose about them.</p>",
             "<p><strong>What makes it look like a terminal on a desktop.</strong> The session runs under a"
             " compositor: a lit neutral backdrop, the window inset from the screen edge, and picom rounding its"
-            " corners, frosting what shows through it and casting its shadow. The backdrop is deliberately"
-            " colourless. An earlier version lit it violet in one corner and cyan in the other, which put a"
-            " saturated rim on every window edge and competed with the terminal; frosted glass needs a white"
-            " highlight and a near-neutral field behind it, or the frost tints. The translucency is the"
-            " compositor's, not the terminal's, and that distinction is the whole fix: this X server exposes no GLX"
-            " configuration carrying an alpha channel, so the terminal cannot pick an ARGB visual and logs exactly"
-            " that, while picom applies opacity to a window that knows nothing about it."
+            " corners, frosting what shows through it and casting its shadow. The backdrop is neutral but not"
+            " featureless, and both halves of that matter. An earlier version lit it violet in one corner and cyan"
+            " in the other, which put a saturated rim on every window edge and competed with the terminal, so the"
+            " field went colourless; but it was also blurred to <code>0x70</code>, which is past the point where"
+            " anything is left to blur, and a window blur that samples a smooth gradient returns the same smooth"
+            " gradient. Structure survives now, and the glass has something to refract.</p>",
+            still_pair(
+                X + "chrome-backdrop-flat.png",
+                X + "chrome-default.png",
+                "the field blurred to <code>0x70</code>. Nothing is left to blur, so the window's own blur samples a"
+                " flat grey and returns a flat grey: the glass reads as a tint.",
+                "the same window over a field that kept its structure. The sheen crosses behind the window and the"
+                " frost bends it, which is the entire difference between translucent and glass. Cropped to the text"
+                " at full resolution, the interior contrast of the two is indistinguishable; the compositor's opacity"
+                " dominates inside the window, and the change is paid for outside it.",
+                arms=("flat backdrop", "structured backdrop"),
+            ),
+            "<p><strong>The blur backend, and a flag that lies.</strong> The recipe read that this display has no"
+            " accelerated GL and that picom's glx backend therefore fails at initialisation, which left xrender,"
+            " whose only blur method is a fixed convolution kernel capped at the widest built-in preset. That reason"
+            " is false. There is no acceleration and <code>glxinfo</code> answers <code>llvmpipe</code>, but picom"
+            " does not need acceleration, it needs a GL context, and it gets one: on glx it reports"
+            " <code>Screen redirected.</code> and runs <code>dual_kawase</code>, a multi-pass blur with a strength"
+            " knob rather than a fixed 11-pixel kernel. Every signal available without looking says it works.</p>",
+            "<p>It does not. Recorded as a pair through a scene that drives no model turn, so the only difference"
+            " between the two frames is the glass, the glx arm captures a window with <em>no contents</em> - the"
+            " rounded rectangle, the shadow, and a grey smear where the terminal grid belongs - while the xrender arm"
+            " captures the session. picom composites the backdrop on this GL stack and drops the window's own pixels,"
+            " and its log says nothing about it: both arms report the identical successful redirect. So xrender's"
+            " kernel blur remains the default, <code>SCENE_CHROME_BACKEND=glx</code> makes the other path reachable"
+            " for the day this container gets a real GPU, and the run prints which chrome it recorded with"
+            " (<code>chrome: xrender kernel 11x11gaussian redirected the screen</code>) so a take can never be"
+            " published without that being answerable. A compositor cannot be reviewed from its flags; this one"
+            " reported success while producing an empty window.</p>",
+            still_pair(
+                X + "chrome-default.png",
+                X + "chrome-glx-blank.png",
+                "xrender, <code>kernel 11x11gaussian</code>: the session.",
+                "glx, <code>dual_kawase strength 10</code>, same scene and same backdrop, the backend the only"
+                " variable: a rounded rectangle, a shadow, and no terminal. picom logged"
+                " <code>Screen redirected.</code> for this frame.",
+                arms=("shipped", "rejected"),
+            ),
+            "<p>The translucency is the compositor's, not the terminal's, and that distinction is the whole fix: this"
+            " X server exposes no GLX configuration carrying an alpha channel, so the terminal cannot pick an ARGB"
+            " visual and logs exactly that, while picom applies opacity to a window that knows nothing about it."
             " <code>SCENE_THEME=plain</code> keeps every other scene on this page recording the flat capture it was"
             " recorded against.</p>",
             video(
