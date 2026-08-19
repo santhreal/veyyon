@@ -6,13 +6,13 @@
 settle 12
 shot idle
 
-submit "/secret"
+slash "/secret"
 settle 6
 shot secret-surface
 k Escape
 sleep 1
 
-submit "/settings"
+slash "/settings"
 settle 5
 shot settings
 glide 12 40 24 40 24 0.06
