@@ -67,12 +67,22 @@ ENV ROD_BROWSER_BIN=/usr/bin/chromium
 # speak SGR 1006 mouse reporting, xdotool moves the pointer and presses keys at
 # it, and ffmpeg records the display as video rather than a frame at a time.
 # imagemagick's `import` takes the stills.
+#
+# picom and xwallpaper are what make a themed capture possible: a demo recorded on
+# a flat black rectangle says nothing about the product. xwallpaper puts a gradient
+# behind the window and picom rounds the window's corners and casts its shadow, so
+# the capture is a terminal on a desktop rather than a slab.
+#
+# Not translucency. A terminal's `background_opacity` needs an ARGB visual, this
+# display's GLX configurations carry no alpha channel, and kitty says so in its own
+# log; rounding and shadows are compositor-side and need nothing from the client.
 RUN set -eux; \
 	apt-get update; \
 	DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-		xvfb x11-utils x11-xserver-utils xdotool xterm kitty \
+		xvfb x11-utils x11-xserver-utils xdotool xterm kitty picom xwallpaper \
 		libgl1-mesa-dri mesa-utils imagemagick; \
 	apt-get clean; \
 	rm -rf /var/lib/apt/lists/*; \
 	xdotool --version; \
-	kitty --version
+	kitty --version; \
+	picom --version

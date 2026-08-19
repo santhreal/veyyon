@@ -14,14 +14,23 @@ PAD="${SCENE_PADDING:-8}"
 _win_px() { xdotool getwindowgeometry "${SCENE_WINDOW}" | sed -n 's/.*Geometry: \([0-9]*\)x\([0-9]*\)/\1 \2/p'; }
 read -r WIN_W WIN_H <<<"$(_win_px)"
 : "${WIN_W:=1600}" "${WIN_H:=1000}"
+# A themed capture insets the window so the backdrop and the compositor's shadow
+# are visible, so the window's own origin is no longer the screen's. Every
+# pointer target is a pixel on the ROOT window, which is what xdotool moves and
+# what ffmpeg records, so the origin has to be added back. It is 0,0 for a plain
+# full-screen capture, which leaves those scenes aiming at exactly the pixels
+# they did before.
+_win_origin() { xdotool getwindowgeometry "${SCENE_WINDOW}" | sed -n 's/.*Position: \([0-9]*\),\([0-9]*\).*/\1 \2/p'; }
+read -r WIN_X WIN_Y <<<"$(_win_origin)"
+: "${WIN_X:=0}" "${WIN_Y:=0}"
 CELL_W=$(((WIN_W - 2 * PAD) / TERM_COLS))
 CELL_H=$(((WIN_H - 2 * PAD) / TERM_ROWS))
 : "${CELL_W:=9}" "${CELL_H:=18}"
-echo "scene ${SCENE_NAME}: ${TERM_COLS}x${TERM_ROWS} cells of ${CELL_W}x${CELL_H}px"
+echo "scene ${SCENE_NAME}: ${TERM_COLS}x${TERM_ROWS} cells of ${CELL_W}x${CELL_H}px at +${WIN_X}+${WIN_Y}"
 
 # Row and column are 1-based, the way the terminal counts them.
-px_x() { echo $(((${1} - 1) * CELL_W + CELL_W / 2 + PAD)); }
-px_y() { echo $(((${1} - 1) * CELL_H + CELL_H / 2 + PAD)); }
+px_x() { echo $((WIN_X + (${1} - 1) * CELL_W + CELL_W / 2 + PAD)); }
+px_y() { echo $((WIN_Y + (${1} - 1) * CELL_H + CELL_H / 2 + PAD)); }
 
 pause() { sleep "${1:-0.5}"; }
 
