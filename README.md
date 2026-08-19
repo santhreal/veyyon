@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/demo-hd.webp" width="960" alt="Veyyon reads a file, edits it, verifies the edit with a command, and writes a phased plan, in a composited 1920x1080 terminal">
+  <img src="assets/demo-hd.webp" width="960" alt="Veyyon reads a file, edits it, verifies the edit with a command, writes a phased plan, and signs the result with a stored credential, in a composited 1920x1080 terminal">
 </p>
 
 Veyyon uses the same model weights available in other clients. The difference is the workbench around them: a prompt you can inspect, model-native effort controls, explicit state ownership, protected secret spending, typed workers, language-server refactors, durable sessions, and tools that fail before stale state becomes a bad write.
@@ -73,7 +73,7 @@ veyyon prompt --statement tool-selection --cwd ./my-project
 The outer prompt is a zero-prose scaffold. Registered statements own the actual instructions and their activation conditions. Project context comes from layered `AGENTS.md` files and validated `PROMPT_SECTIONS/` overrides. `/move` reloads cwd-derived context transactionally, so a failed discovery does not leave half of one project mixed with half of another.
 
 <p align="center">
-  <img src="assets/demo-prompt-hd.webp" width="900" alt="The production prompt inspector lists assembled sections and active or omitted registered statements">
+  <img src="assets/prompt-architecture-sections.png" width="900" alt="The prompt inspector lists assembled sections with their byte cost and share of the prompt">
 </p>
 
 [Prompt customization](docs/system-prompt-customization.md) · [Context files](docs/context-files.md)
@@ -89,7 +89,7 @@ Compaction uses editable model chains and explicit fallback policy. Before a mod
 </p>
 
 <p align="center">
-  <img src="assets/demo-compaction-hd.webp" width="960" alt="A local session fills its context window, compacts it, and shows the message share halved in the context report">
+  <img src="assets/demo-hd-context-report.png" width="960" alt="The context report accounts for a live session by section, with the window share each one holds">
 </p>
 
 [Models and effort](docs/settings.md#models) · [Compaction and memory](docs/handbook/src/context/compaction-memory.md)
@@ -99,7 +99,7 @@ Compaction uses editable model chains and explicit fallback policy. Before a mod
 `/secret` stores a credential Veyyon can spend without the model ever seeing it. The model is given a named placeholder; expansion happens at the final outbound tool boundary. The real value stays local, is encrypted at rest, is redacted from later outbound seams, and appears in an operator-visible use log by name rather than value. Scope, expiry, and removal are enforced when the credential is used.
 
 <p align="center">
-  <img src="assets/demo-secret-hd.webp" width="960" alt="A project secret is listed by placeholder, spent through a bash command, and recorded once in the use log without displaying its value">
+  <img src="assets/demo-hd-signature-written.png" width="960" alt="A stored credential is spent as a placeholder to sign a file, and the digest lands in the file while the value is never typed and never enters the transcript">
 </p>
 
 [Secret protection](docs/secrets.md) · [Secret workflow](docs/handbook/src/features/secrets.md)
@@ -109,7 +109,7 @@ Compaction uses editable model chains and explicit fallback policy. Before a mod
 The `task` tool starts typed workers concurrently. Workers can coordinate through `irc`, return schema-validated results, persist their transcripts, and expose those results through `agent://` and `history://` URLs. `/agents` opens the Agent Control Center, where you can inspect each worker's live state, model, effort, and lifecycle controls.
 
 <p align="center">
-  <img src="assets/demo-agents-hd.webp" width="960" alt="Two workers report on separate concerns and appear as idle beside the running main agent with their models and effort">
+  <img src="assets/stills-extra-agent-control.png" width="960" alt="The Agent Control Center lists each worker with its model, effort and state beside the main agent">
 </p>
 
 [Subagents](docs/handbook/src/features/subagents.md) · [IRC](docs/tools/irc.md) · [Internal URL routing](docs/tools/read.md#internal-urls)
@@ -143,31 +143,54 @@ Its token economics remain unproven across workloads. The codec boundary is ship
 
 ## Demo gallery
 
-Every row below is one real session, captured at 1920x1080 in a composited terminal
-and published at 1280x720, driving a dense Qwen3 32B served locally.
+One recording, and screenshots. The video is a single long session captured at 2560x1440
+in a composited terminal and published at 1920x1080, driving Qwen3.8 27B served locally at
+67 tokens a second. Every screenshot below is a frame from that same session, so the
+states are consecutive rather than staged: what one image shows is what the previous one
+left behind.
 
 ```sh
-PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh
+PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh demo-hd
 ```
 
-| Workflow | What the recording proves | Artifact | Regenerate |
-| --- | --- | --- | --- |
-| End-to-end session | A read, an edit, a command that verifies it, a phased plan, and the settings card, in one unbroken take | [HD session](assets/demo-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh` |
-| Prompt architecture | Assembled section byte costs with their shares, and the conditional statement registry with the condition each unused statement waits on | [prompt architecture](assets/demo-prompt-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh prompt-architecture` |
-| Language-server refactor | A rename computed by the language server: one edit to the class file, three to its test, and the fixture suite green afterwards | [LSP recording](assets/demo-lsp-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh lsp-refactor` |
-| File write | A parser with a validated failure mode written into an existing file, then the project's own suite run against it | [write recording](assets/demo-edit-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh write-and-test` |
-| Plan mode | Read-only inspection under the Plan chip and the Plan Review card it produces | [plan mode](assets/demo-plan-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh plan-mode` |
-| Context maintenance | A dozen turns filling a 33k window to 71%, then `/compact` cutting the message share from 12.8% to 5.2%, with the report and the footer gauge both moving | [compaction](assets/demo-compaction-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh context-compaction` |
-| Multi-agent work | Two workers spawned in one turn, the Agent Control Center live, and the same rows idle when they return | [agents](assets/demo-agents-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh agent-lanes` |
-| Secret boundary | The placeholder listed by name, the approval a secret-bearing call must pass, the byte count of the real value, and the spend recorded by name | [secrets](assets/demo-secret-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh secret-boundary` |
-| Settings | The settings card under a real pointer: sidebar travel, a category opened by a click, and the Subagents pane it opens on | [settings card](assets/demo-settings-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh settings-pointer` |
-| Model controls | Native effort variants and ordered chains, rendered from the shipped components on both grounds | [effort](assets/effort-variants-grey.png) / [chains](assets/model-chain-editor-grey.png) | `env -u NO_COLOR FORCE_COLOR=3 bun scripts/demos/render-effort-variants.ts --width 100 \| bun scripts/demos/render-proof.ts --out assets/effort-variants --width 100 --scale 2` |
-| Argot gate | Disabled and enabled settings differential | [off](assets/argot-settings-off.png) / [on](assets/argot-settings-on.png) | `bash scripts/demos/record-argot-settings.sh` |
-| Command discovery | The slash list arriving, filtering to `/mo`, and the file list off the real working tree | [commands](assets/demo-commands-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh popup-grow` |
-| Project answer | A read of the rate limiter and one paragraph naming who owns its refill boundary | [answer recording](assets/demo-answer-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh project-answer` |
-| Installation | The published release installed by the documented one-liner, the checksum verified, and the installed binary launched | [install](assets/demo-install-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh install-binary` |
+The session reads the parser and reports back a subtlety the guard hides, edits it, runs the
+project's own test to check itself, writes a phased plan with the todo tool, marks the first
+task done and commits it, and then signs its work with a credential it never typed: a number
+is stored from the environment with `/secret from-env`, the model writes
+`#RELEASE_SIGNATURE#`, and Veyyon substitutes the real bytes at the outbound boundary. The
+placeholder is what the transcript, the session and `/secret log` all keep. The approval
+dialog does show the resolved value, deliberately, because approving a spend you cannot read
+is not consent. `SIGNED.md` ends up carrying the sha256 of that number, so the digest in the
+frame can be recomputed with `proof/verify-signature.py` rather than believed:
 
-A committed tape must submit the action and finish on its result. A settings proof must show a differential, not one default screenshot. The recording contract lives in [record-demo](.veyyon/skills/record-demo/SKILL.md) and [prove-feature](.veyyon/skills/prove-feature/SKILL.md).
+```sh
+python3 proof/verify-signature.py proof/captures/x11/demo-hd-signature-crosscheck.txt --number 4721-8095-3364
+```
+
+| Surface | What the frame shows | Artifact |
+| --- | --- | --- |
+| The session | The whole take: read, edit, verify, plan, sign | [video](assets/demo-hd.webp) |
+| Read | The read the edit is based on, and the subtlety the model reports back: the existing guard lets a whitespace-only string through | [frame](assets/demo-hd-read-block.png) |
+| Edit | The diff the edit tool applied, with the file named in the block header | [frame](assets/demo-hd-edit-diff.png) |
+| Verification | The command the model chose to check its own change, and its output | [frame](assets/demo-hd-verify-command.png) |
+| Plan | A three-phase board with all six tasks open, then the first struck and the work committed as one scoped commit | [board](assets/demo-hd-todo-board.png) / [finished](assets/demo-hd-todo-strike.png) |
+| Secret stored | A credential taken from the environment, so it is typed nowhere | [frame](assets/demo-hd-secret-stored.png) |
+| Secret approval | The call held for approval, naming the credential it would spend | [frame](assets/demo-hd-secret-approval.png) |
+| Secret spent | The signature written from a placeholder the model never resolved | [frame](assets/demo-hd-signature-written.png) |
+| Secret log | The spend recorded by name, with no value anywhere | [frame](assets/demo-hd-secret-log.png) |
+| Context | What the session cost, from the product's own accounting | [report](assets/demo-hd-context-report.png) |
+| Settings | Appearance opened in the settings card, with the footline preview rendering the values live beside it | [frame](assets/demo-hd-settings-pane.png) |
+| Workers | Two task agents settling in one turn, each with its own finding, and the main agent cross-checking one against the other | [frame](assets/stills-extra-agents.png) / [control](assets/stills-extra-agent-control.png) |
+| Prompt inspector | The assembled prompt by section, with the byte cost of each | [sections](assets/prompt-architecture-sections.png) / [statements](assets/prompt-architecture-statements.png) |
+| Model controls | Native effort variants and ordered chains, rendered from the shipped components | [effort](assets/effort-variants-grey.png) / [chains](assets/model-chain-editor-grey.png) |
+| Argot gate | Disabled and enabled settings differential | [off](assets/argot-settings-off.png) / [on](assets/argot-settings-on.png) |
+| Language servers | A rename computed by the language server: one edit to the class file, three to its test, then a green suite | [recording](assets/demo-lsp-hd.webp) |
+| Installation | The published release installed by the documented one-liner, checksum verified | [recording](assets/demo-install-hd.webp) |
+
+A recording must submit the action and finish on its result. A settings proof must show a
+differential, not one default screenshot. The contract lives in
+[record-demo](.veyyon/skills/record-demo/SKILL.md) and
+[prove-feature](.veyyon/skills/prove-feature/SKILL.md).
 
 ## The complete workbench
 
