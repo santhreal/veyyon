@@ -35,9 +35,16 @@ docker run --rm \
 	-e "SCENE_FONT_SIZE=${SCENE_FONT_SIZE:-15}" \
 	-e "SCENE_FPS=${SCENE_FPS:-30}" \
 	-e "SCENE_TERMINAL=${SCENE_TERMINAL:-kitty}" \
+	-e "SCENE_THEME=${SCENE_THEME:-plain}" \
+	-e "SCENE_MARGIN=${SCENE_MARGIN:-48}" \
+	-e "SCENE_RADIUS=${SCENE_RADIUS:-16}" \
+	-e "SCENE_BACKDROP_TOP=${SCENE_BACKDROP_TOP:-#2b3159}" \
+	-e "SCENE_BACKDROP_BOTTOM=${SCENE_BACKDROP_BOTTOM:-#0b0d16}" \
+	-e "SCENE_BG=${SCENE_BG:-#1e2127}" \
+	-e "SCENE_FG=${SCENE_FG:-#d7dae0}" \
 	-e "SCENE_CWD=${SCENE_CWD:-/sandbox/home/demo}" \
 	-w /repo \
-	"${RECORDER_IMAGE:-veyyon-proof-recorder:2}" \
+	"${RECORDER_IMAGE:-veyyon-proof-recorder:3}" \
 	bash -lc '
 		set -e
 		mkdir -p /sandbox/home/.veyyon

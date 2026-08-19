@@ -29,3 +29,12 @@ providers:
         name: Qwen2.5 1.5B f16 (local)
         contextWindow: 65536
         maxTokens: 1024
+      # The HD demo runs against a 30B mixture-of-experts served by ollama on the
+      # recorder host instead of the 1.5B above: a demo has to show real tool use,
+      # and a 1.5B answers a question but does not drive an edit. Ollama DOES honor
+      # the model name in a request, so this id is the tag it serves, aliased with
+      # `ollama cp` to a name with no colon in it.
+      - id: demo-qwen3-30b
+        name: Qwen3 30B A3B (local)
+        contextWindow: 131072
+        maxTokens: 4096
