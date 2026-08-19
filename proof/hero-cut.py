@@ -15,6 +15,14 @@ and the same command produces the same clip from a different take.
 
     proof/hero-cut.py take.mp4 --mp4 hero.mp4 --webp hero.webp
 
+A gesture scene is the other shape, and it needs `--single`. A pointer travelling
+a sidebar is a few pixels of cursor and one repainted row, so its magnitudes sit
+two orders below a tool block landing and no threshold separates the gesture from
+the noise. What magnitude CAN still see in such a clip is where the idle settle at
+its head ends, so `--single` keeps one span from just before the first change to
+the end of the take, and `--scene-score` is what lets a caller point the detector
+at that smaller scale.
+
 The published form is an animated WebP, not a GIF: 24 seconds of 900px terminal
 text is 18 MB as a GIF and 5 MB as WebP, at better quality, and every browser
 that renders the README renders it.
@@ -70,7 +78,7 @@ def duration(path: Path) -> float:
 		return 0.0
 
 
-def events(path: Path) -> list[tuple[float, float, int]]:
+def events(path: Path, *, score: float) -> list[tuple[float, float, int]]:
 	"""Windows where the screen changed a lot, as (start, end, frame count)."""
 	log = run(
 		[
@@ -80,7 +88,7 @@ def events(path: Path) -> list[tuple[float, float, int]]:
 			"-i",
 			str(path),
 			"-vf",
-			f"scale=480:-2,select='gt(scene,{SCENE_SCORE})',metadata=print:file=-",
+			f"scale=480:-2,select='gt(scene,{score})',metadata=print:file=-",
 			"-f",
 			"null",
 			"-",
@@ -96,10 +104,10 @@ def events(path: Path) -> list[tuple[float, float, int]]:
 	return [(c[0], c[-1], len(c)) for c in clustered if len(c) >= MIN_FRAMES]
 
 
-def segments(path: Path) -> list[tuple[float, float]]:
+def segments(path: Path, *, score: float) -> list[tuple[float, float]]:
 	total = duration(path)
 	spans: list[tuple[float, float]] = []
-	for start, end, _frames in events(path):
+	for start, end, _frames in events(path, score=score):
 		lo = max(0.0, start - LEAD)
 		hi = min(total, end + HOLD)
 		if spans and lo <= spans[-1][1]:
@@ -107,6 +115,22 @@ def segments(path: Path) -> list[tuple[float, float]]:
 		else:
 			spans.append((lo, hi))
 	return spans
+
+
+def single_span(path: Path, *, score: float) -> list[tuple[float, float]]:
+	"""One span: from just before the first change to the end of the take.
+
+	For a scene whose subject is a gesture rather than a transition. Cutting such a
+	clip into event windows drops the gesture itself, because the cursor and the
+	row it lands on are too small for a scene score to see. The head of the clip is
+	a different matter: a scene script settles for many seconds before it types
+	anything, and that settle is idle by construction, so the first frame that
+	changes at all marks where the clip starts being about something.
+	"""
+	total = duration(path)
+	found = events(path, score=score)
+	first = found[0][0] if found else 0.0
+	return [(max(0.0, first - LEAD), total)]
 
 
 def cut(path: Path, out: Path, spans: list[tuple[float, float]], *, width: int, fps: int, speed: float) -> None:
@@ -180,6 +204,17 @@ def main() -> int:
 	parser.add_argument("--mp4", type=Path, required=True, help="where to write the cut clip")
 	parser.add_argument("--webp", type=Path, help="also write an animated WebP of the cut")
 	parser.add_argument("--width", type=int, default=1000)
+	parser.add_argument(
+		"--scene-score",
+		type=float,
+		default=SCENE_SCORE,
+		help=f"change magnitude that counts as an event (default {SCENE_SCORE})",
+	)
+	parser.add_argument(
+		"--single",
+		action="store_true",
+		help="keep one span from the first change to the end, for a gesture scene",
+	)
 	parser.add_argument("--fps", type=int, default=15)
 	parser.add_argument("--speed", type=float, default=2.0)
 	parser.add_argument("--webp-width", type=int, default=900)
@@ -188,7 +223,7 @@ def main() -> int:
 	parser.add_argument("--dry-run", action="store_true", help="print the windows, write nothing")
 	args = parser.parse_args()
 
-	spans = segments(args.take)
+	spans = single_span(args.take, score=args.scene_score) if args.single else segments(args.take, score=args.scene_score)
 	if not spans:
 		print(f"{args.take}: no change events found; nothing to cut", file=sys.stderr)
 		return 1
