@@ -59,17 +59,44 @@ key_repeat() { # key_repeat <key> <count> [delay]
 		sleep "${delay}"
 	done
 }
-# Typing is not the demonstration. A published clip that spends its first seconds
-# watching characters appear one at a time shows the recorder's pointer, not the
-# product, so the cut starts near the result and the typing stays off camera.
-# The rate still cannot be zero, and it cannot be small either. At --delay 0 xdotool
-# outran the emulator and doubled characters inside the app, not just in a login shell:
-# a take composed "/sseccret ffrom-env RELEASE_SIGNATURE release-siggnature" and lost its
-# whole signing segment. Autorepeat, which `xsession.sh` now turns off, was most of that
-# mechanism; the residue is the app repainting a streamed turn while it is typed into, and
-# 24ms still produced "commmand" in that state. 60ms has not, and the cut keeps it off
-# camera regardless. A scene driving a login shell raises it further.
-t() { _xdo type --delay "${TYPE_DELAY:-60}" -- "$1"; }
+# TYPED TEXT DOES NOT GO THROUGH X AT ALL, and three lost takes are the reason.
+#
+# `xdotool type` synthesises a key press and release per character. Under load that
+# duplicates characters, and every knob that looks like a fix only moves the failure:
+# --delay 0 composed "/sseccret ffrom-env RELEASE_SIGNATURE release-siggnature", X
+# autorepeat turned out to be most of the mechanism and is now off, 24ms still produced
+# "commmand" while the app repainted a streamed turn, and 60ms produced "src/pparser.tts".
+# A recorder that mistypes one character in a slash command loses the whole segment, and
+# the frame is the only place it shows.
+#
+# kitty's remote control writes the bytes straight into the pty. There are no key events
+# to duplicate, it is instant, which is what the clip wanted anyway, and what the terminal
+# receives is exactly the string the scene asked for. Special keys stay on XTEST below:
+# they carry no payload to corrupt, and Return through the pty would submit before the
+# completion popup could be dismissed.
+#
+# The xdotool path remains as a fallback for a terminal without the socket -- an xterm
+# scene, or an image built before this -- and it keeps the delay that behaved best.
+KITTY_SOCKET="${KITTY_SOCKET:-unix:/tmp/kitty.sock}"
+
+# WHICH PATH A RUN TOOK IS PART OF THE EVIDENCE. A silent fallback would look exactly
+# like a working fix -- green gate, doubled characters in the next take -- so the first
+# send says which one it is and the run's log carries it.
+_typing_path=""
+t() {
+	if kitty @ --to "${KITTY_SOCKET}" send-text -- "$1" 2>/dev/null; then
+		[ -n "${_typing_path}" ] || {
+			_typing_path=injection
+			echo "scene: typing through kitty remote control (${KITTY_SOCKET})" >&2
+		}
+		return 0
+	fi
+	[ -n "${_typing_path}" ] || {
+		_typing_path=xtest
+		echo "scene: typing through xdotool at ${TYPE_DELAY:-60}ms; the socket answered nothing" >&2
+	}
+	_xdo type --delay "${TYPE_DELAY:-60}" -- "$1"
+}
 
 # A submit starts from an empty composer, always.
 #

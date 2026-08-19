@@ -91,7 +91,9 @@ fi
 
 shot typed
 
-printf 'typing fidelity: %d ok, %d failed, delay %sms\n' "${PASS}" "${FAIL}" "${TYPE_DELAY}" \
+# The path matters as much as the count: five green probes through the xdotool fallback
+# would be a different claim from five through the pty.
+printf 'typing fidelity: %d ok, %d failed, path %s\n' "${PASS}" "${FAIL}" "${_typing_path:-unknown}" \
 	>>"${SCENE_OUT}/typing-fidelity.txt"
 cat "${SCENE_OUT}/typing-fidelity.txt"
 
