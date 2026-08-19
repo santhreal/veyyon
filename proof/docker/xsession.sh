@@ -33,6 +33,23 @@ for _ in $(seq 1 50); do
 done
 xdpyinfo -display "${DISPLAY}" >/dev/null
 
+# AUTOREPEAT IS WHY TYPED COMMANDS DOUBLED THEIR CHARACTERS. xdotool synthesises a
+# press and a release per character; when the client is repainting hard -- the composer
+# re-renders the whole prompt plus a completion popup on every keystroke -- the release
+# is processed late, X decides the key is being held, and repeats it. The recording that
+# found this composed "//seccrret frroomm-env RELEASE_SIGNATURE" from a clean submit and
+# lost its signing segment. Slowing the typing only lengthens the window; turning
+# repeat off removes the mechanism, and nothing in a scene needs a held key.
+xset -display "${DISPLAY}" r off || {
+	echo "xset could not turn autorepeat off; typed commands would double characters" >&2
+	exit 1
+}
+# Asked twice, because the two switches are not the same switch: `r off` clears the
+# core-protocol global flag, and XKB carries its own per-key repeat state that a
+# client can put back. A repeat interval longer than any take makes the second one
+# unreachable even if something re-enables the first.
+xset -display "${DISPLAY}" r rate 60000 60000 >/dev/null 2>&1 || true
+
 # The terminal answers CSI 16t with its cell size in pixels and CSI 18t with its
 # size in cells. Asking it beats guessing from font metrics, and the scene needs
 # both to aim the pointer at a row and column.
