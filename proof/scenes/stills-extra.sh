@@ -14,13 +14,13 @@ submit "use two task agents in parallel: one inspects src/rate-limiter.ts and on
 settle 100
 shot agents
 
-submit "/agents"
+slash "/agents"
 settle 8
 shot agent-control
 k Escape
 sleep 1
 
-submit "/exit"
+slash "/exit"
 settle 6
 
 # The app is gone and the shell it was started from is back, which is where the inspector
