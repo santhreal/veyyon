@@ -218,6 +218,36 @@ click() { xdotool click 1; }
 click_at() { point "$1" "$2"; pause 0.3; click; }
 wheel_up() { key_repeat_button 4 "${1:-3}"; }
 wheel_down() { key_repeat_button 5 "${1:-3}"; }
+
+# Scroll back until a string is on screen, then stop. Says whether it got there.
+#
+# WHY A SCENE HAS TO SCROLL FOR A SURFACE. A shot named after a surface is only that shot if
+# the surface is in the frame, and a turn does not end where the scene assumes: this model
+# verifies its own edit unasked, in the same turn, so by the time the screen settled the diff
+# had scrolled off the top and the frame published as the edit diff was an eval block. Asking
+# the model not to verify did not stop it -- twice -- so the scene stops depending on where a
+# turn happens to end and goes to find the surface instead.
+#
+# Bounded, and it returns non-zero when the string never appeared, so a scene can shoot
+# anyway and a reader of the log knows the frame is not what its name says.
+scroll_to() {
+	local needle="$1" steps="${2:-14}" moved=0
+	while [ "${moved}" -lt "${steps}" ]; do
+		if screen_has "${needle}"; then
+			echo "scene: '${needle}' on screen after ${moved} scroll step(s)" >&2
+			return 0
+		fi
+		wheel_up 2
+		pause 0.4
+		moved=$((moved + 1))
+	done
+	if screen_has "${needle}"; then
+		echo "scene: '${needle}' on screen after ${moved} scroll step(s)" >&2
+		return 0
+	fi
+	echo "scene: '${needle}' never came into view after ${moved} scroll step(s)" >&2
+	return 1
+}
 key_repeat_button() {
 	local button="$1" count="$2"
 	for _ in $(seq 1 "${count}"); do

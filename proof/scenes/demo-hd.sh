@@ -34,13 +34,20 @@ shot read-block
 
 # Editing, with the diff the edit tool applied and the file named in the block header.
 #
-# "Do not run anything" because this model verifies its own work unasked, and the take
-# before this one published an edit-diff frame showing a bash block: the edit and its
-# verification arrived in one turn, and the diff had scrolled off the top by the time the
-# screen settled. Verification is the next beat, and it is worth its own frame.
+# The instruction not to run anything is kept, and it is not trusted: this model verifies its
+# own edit unasked, in the same turn, and did so on both takes that carried the instruction.
+# So the scene scrolls back until the edit block's own header is on screen and shoots there.
+# The needle is "Edit: " because that is what the header literally is: renderStatusLine joins
+# the title and the description with ": ", and the description opens with a language badge, so
+# "Edit: src/parser.ts" is not on screen as one string and would have scrolled past the diff
+# looking for it. scroll_to reports into the log either way, and a frame whose name does not
+# match what is in it is worse than a missing frame.
 submit "in src/parser.ts, make parse also reject a string that is only whitespace, and keep the existing error message style. Apply the edit only -- do not run any commands."
 settle_idle 260 8 2 20
+scroll_to "Edit: " 14 || true
 shot edit-diff
+wheel_down 20
+pause 1
 
 # A command the model chose to check its own work with, and its output.
 submit "run the project's own test for the parser and tell me whether it passes"
