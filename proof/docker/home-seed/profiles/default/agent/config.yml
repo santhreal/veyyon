@@ -10,10 +10,10 @@
 # picker -- the user-message card -- reachable in a scene.
 doubleEscapeAction: branch
 
-# The compaction row's two settings are NOT here. They used to be, and one row's
-# tuning then distorted every other row: a 1200-token recent budget in a 33k window
-# whose prefix is 18.6k makes a tool-heavy turn compact repeatedly and free nothing,
-# and the language-server row recorded the product saying so ("Compaction freed too
-# little context to make progress") and then losing its task. record-x11.sh appends
-# them when SCENE_SMALL_CONTEXT is set, which the context-compaction recipe sets and
-# nothing else does.
+# Nothing a single row needs belongs here. The compaction row's two settings used to,
+# and one row's tuning then distorted every other row: a 1200-token recent budget in a
+# 33k window whose prefix is 20k makes a tool-heavy turn compact repeatedly and free
+# nothing, and the language-server row recorded the product saying so ("Compaction
+# freed too little context to make progress") and then losing its task. A recipe in
+# scripts/demos/record-hd-demo.sh passes the lines its row needs as SCENE_SETTINGS and
+# record-x11.sh appends them to this file inside the container.

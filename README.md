@@ -116,10 +116,10 @@ The `task` tool starts typed workers concurrently. Workers can coordinate throug
 
 ### 5. Code intelligence writes through the language server
 
-A rename is a symbol operation, not a text replacement. Veyyon asks the active language server for the workspace edit, applies it, and keeps file renames and references together. The edit tool separately uses content-hash anchors, so a file changed since the model read it fails closed before a patch lands.
+A rename is a symbol operation, not a text replacement. Veyyon asks the active language server for the workspace edit, applies it, and keeps file renames and references together. The edit tool separately uses content-hash anchors, so a file changed since the model read it fails closed before a patch lands. Language-server support is off by default and the recording turns it on.
 
 <p align="center">
-  <img src="assets/demo-lsp-refactor.gif" width="960" alt="A production language-server symbol rename followed by four passing fixture tests">
+  <img src="assets/demo-lsp-hd.webp" width="960" alt="A language-server rename applies one edit to the class file and three to its test, and the fixture suite then passes with two tests">
 </p>
 
 [Language servers](docs/tools/lsp.md) · [Editing and repair](docs/handbook/src/using/editing.md)
@@ -143,22 +143,18 @@ Its token economics remain unproven across workloads. The codec boundary is ship
 
 ## Demo gallery
 
-Every `*-hd.webp` row below is one real session, captured at 1920x1080 in a
-composited terminal and published at 1280x720, driving a dense Qwen3 32B served
-locally. The two GIF rows are older VHS tapes against `google-antigravity/gemini-3.6-flash`
-at `high` effort in the isolated `demo` profile; `scripts/demos/record.sh` verifies
-the exact model before recording and refuses a fallback.
+Every row below is one real session, captured at 1920x1080 in a composited terminal
+and published at 1280x720, driving a dense Qwen3 32B served locally.
 
 ```sh
 PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh
-bash scripts/demos/setup-profile.sh --refresh && bash scripts/demos/record.sh lsp-refactor
 ```
 
 | Workflow | What the recording proves | Artifact | Regenerate |
 | --- | --- | --- | --- |
 | End-to-end session | A read, an edit, a command that verifies it, a phased plan, and the settings card, in one unbroken take | [HD session](assets/demo-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh` |
 | Prompt architecture | Assembled section byte costs with their shares, and the conditional statement registry with the condition each unused statement waits on | [prompt architecture](assets/demo-prompt-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh prompt-architecture` |
-| Language-server refactor | Cross-file symbol rename and four passing fixture tests | [LSP recording](assets/demo-lsp-refactor.gif) | `bash scripts/demos/record.sh lsp-refactor` |
+| Language-server refactor | A rename computed by the language server: one edit to the class file, three to its test, and the fixture suite green afterwards | [LSP recording](assets/demo-lsp-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh lsp-refactor` |
 | File write | A parser with a validated failure mode written into an existing file, then the project's own suite run against it | [write recording](assets/demo-edit-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh write-and-test` |
 | Plan mode | Read-only inspection under the Plan chip and the Plan Review card it produces | [plan mode](assets/demo-plan-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh plan-mode` |
 | Context maintenance | A dozen turns filling a 33k window to 71%, then `/compact` cutting the message share from 12.8% to 5.2%, with the report and the footer gauge both moving | [compaction](assets/demo-compaction-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh context-compaction` |
@@ -169,7 +165,7 @@ bash scripts/demos/setup-profile.sh --refresh && bash scripts/demos/record.sh ls
 | Argot gate | Disabled and enabled settings differential | [off](assets/argot-settings-off.png) / [on](assets/argot-settings-on.png) | `bash scripts/demos/record-argot-settings.sh` |
 | Command discovery | The slash list arriving, filtering to `/mo`, and the file list off the real working tree | [commands](assets/demo-commands-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh popup-grow` |
 | Project answer | A read of the rate limiter and one paragraph naming who owns its refill boundary | [answer recording](assets/demo-answer-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh project-answer` |
-| Installation | Isolated binary install, installed help, and version | [install](assets/install-demo.gif) | `bash scripts/demos/record-install.sh` |
+| Installation | The published release installed by the documented one-liner, the checksum verified, and the installed binary launched | [install](assets/demo-install-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh install-binary` |
 
 A committed tape must submit the action and finish on its result. A settings proof must show a differential, not one default screenshot. The recording contract lives in [record-demo](.veyyon/skills/record-demo/SKILL.md) and [prove-feature](.veyyon/skills/prove-feature/SKILL.md).
 

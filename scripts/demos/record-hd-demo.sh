@@ -38,9 +38,10 @@ SCENE_CMD="bun /repo/packages/coding-agent/src/cli.ts --model ${DEMO_MODEL}"
 # as though it could not make up its mind. Thinking is worth watching live; it is
 # not worth 22 seconds of a landing page.
 HIDE_THINKING=1
-# One row asks for a session that compacts; the tuning that produces one is bad for
-# every other row, so it is opt-in per recipe rather than seeded for all of them.
-SMALL_CONTEXT=
+# Settings a single row needs. They are per recipe because a row's tuning is bad for
+# the others: the compaction row wants a session that compacts, and every other row
+# recorded with that tuning compacted on turn one, freed nothing, and said so.
+SETTINGS=
 case "${SCENE}" in
 demo-hd)
 	ASSET=assets/demo-hd.webp
@@ -79,8 +80,10 @@ plan-mode)
 context-compaction)
 	ASSET=assets/demo-compaction-hd.webp
 	PUBLISH_TAKE=0
-	# One window for every row now, and it is the window the server serves.
-	SMALL_CONTEXT=1
+	# One window for every row now, and it is the window the server serves. The small
+	# recent budget crosses the cut point inside it, and 95% lets the fill reach a
+	# gauge worth photographing before automatic maintenance takes it.
+	SETTINGS=$'compaction.keepRecentTokens: 1200\ncompaction.threshold: "95%"'
 	CUT_ARGS=()
 	;;
 agent-lanes)
@@ -96,8 +99,16 @@ secret-boundary)
 lsp-refactor)
 	ASSET=assets/demo-lsp-hd.webp
 	PUBLISH_TAKE=0
-	# The language server this row drives lives in recorder image tag 4, which
-	# record-x11.sh defaults to.
+	# `lsp.enabled` ships OFF -- a language server per project, plus two policy
+	# statements and a tool description in every prompt -- so a row about the server
+	# turns the shipped setting on. Without it the model correctly reports that the lsp
+	# tool is not in its toolset, which is what the third take recorded.
+	#
+	# Automatic maintenance is off for this row: the window is 32k, the prompt with the
+	# server's statements is about 20k of it, so compaction fires on the first turn and
+	# reports it cannot free enough to help. Two short turns need no maintenance, and
+	# the row that is about maintenance is the compaction row.
+	SETTINGS=$'lsp.enabled: true\ncompaction.enabled: false'
 	CUT_ARGS=()
 	;;
 prompt-architecture)
@@ -136,7 +147,7 @@ PROOF_LLM_BASE_URL="${PROOF_LLM_BASE_URL}" \
 	SCENE_FG="#c0caf5" \
 	SCENE_SETTLE_SCALE="${SETTLE_SCALE:-2}" \
 	SCENE_GIF=0 \
-	SCENE_SMALL_CONTEXT="${SMALL_CONTEXT}" \
+	SCENE_SETTINGS="${SETTINGS}" \
 	OUT_DIR="${WORK}" \
 	bash "proof/docker/record-x11.sh" "proof/scenes/${SCENE}.sh"
 
