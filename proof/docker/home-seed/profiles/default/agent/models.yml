@@ -52,10 +52,13 @@ providers:
         name: Qwen3 30B A3B 32k (local)
         contextWindow: 32768
         maxTokens: 2048
-      # The dense 32B, which is what the gallery records against now. It is the
-      # largest Qwen3 that fits a 24 GB card with its window resident: 23.6 GB in
-      # use with 32k allocated, measured, and a dense model drives a tool turn with
-      # fewer retries than the sparse 30B did.
+      # The dense 32B, which is what the gallery records against now. The quant is
+      # the decision here, and it was measured rather than guessed: q4_K_M is 20 GB
+      # of weights, and with a 32k window allocated the server ran 22% of the layers
+      # on the CPU and generated 8 tokens a second, which is not a session anyone
+      # would watch. IQ4_XS is 17 GB, sits at 22 GB resident with the same window,
+      # reports 100% GPU and generates 48. Serve it as
+      # hf.co/unsloth/Qwen3-32B-GGUF:IQ4_XS with num_ctx 32768.
       #
       # One row, and the window is 32k because that is the window the server was
       # built with. Ollama fixes the context length when it loads the weights and
