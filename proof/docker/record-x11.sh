@@ -58,6 +58,8 @@ docker run --rm \
 	-e "SCENE_GIF=${SCENE_GIF:-1}" \
 	-e "SCENE_SETTINGS=${SCENE_SETTINGS:-}" \
 	-e "SCENE_SIGNING_NUMBER=${SCENE_SIGNING_NUMBER:-}" \
+	-e "TYPE_DELAY" \
+	-e "SCENE_TYPING_REPEAT" \
 	-w /repo \
 	"${RECORDER_IMAGE:-veyyon-proof-recorder:4}" \
 	bash -lc '
