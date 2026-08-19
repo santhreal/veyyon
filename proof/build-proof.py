@@ -1340,23 +1340,31 @@ SECTIONS = [
             " largest repaint, which against a reasoning model is a page of streamed thinking.</p>",
             still(
                 X + "demo-hd-read-block.png",
-                "The read: the model chose the file, the block carries its rail, and the answer under it is one"
-                " sentence about what the parser rejects.",
+                "The read the edit is based on. The answer is not the obvious one: the guard is"
+                " <code>!s</code>, so a whitespace-only string passes it, and the model says so before anything"
+                " has been changed.",
             ),
             still(
-                X + "demo-hd-bash-block.png",
-                "A command and its output, with the wall time and the timeout the tool ran it under.",
+                X + "demo-hd-verify-command.png",
+                "The check the model chose for itself: it globbed for the parser, found the test beside it, ran"
+                " <code>bun test</code>, and read the result back. The block carries the wall time and the timeout"
+                " the tool ran it under.",
             ),
             still(
                 X + "demo-hd-todo-board.png",
-                "The plan panel, written by the todo tool rather than typed: phases, per-phase counts, the task"
-                " being worked struck through, and the rail beside the running tool.",
+                "The plan panel, written by the todo tool rather than typed: three phases, per-phase counts, and"
+                " all six tasks still open.",
             ),
             still(
-                X + "demo-hd-settings-hover.png",
-                "The settings card in the same session, with the pointer's own band on a sidebar row: the window is"
-                " inset by 48px, so a pointer aimed at a cell has to add the window's origin, and this is that"
-                " arithmetic landing on the row it was aimed at.",
+                X + "demo-hd-todo-strike.png",
+                "The same board one turn later. The task is struck, Foundation reads 1/2, and the footer has lost"
+                " its dirty marker, which is the commit landing.",
+            ),
+            still(
+                X + "demo-hd-settings-pane.png",
+                "The settings card in the same session, opened by the pointer: the window is inset by 48px, so a"
+                " pointer aimed at a cell has to add the window's origin, and this is that arithmetic landing on"
+                " the row it was aimed at. The footline preview beside it renders the values live.",
             ),
         ],
     ),
