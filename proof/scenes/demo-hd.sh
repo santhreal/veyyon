@@ -51,11 +51,11 @@ settle 50
 shot todo-strike
 
 # The credential, taken out of the environment so it is typed nowhere.
-submit "/secret from-env RELEASE_SIGNATURE release-signature"
+slash "/secret from-env RELEASE_SIGNATURE release-signature"
 settle 10
 shot secret-stored
 
-submit "/secret list"
+slash "/secret list"
 settle 8
 shot secret-list
 k Escape
@@ -67,21 +67,21 @@ submit "sign your work: run one bash command that pipes #RELEASE_SIGNATURE# into
 settle 110
 shot signature-written
 
-submit "/secret log"
+slash "/secret log"
 settle 10
 shot secret-log
 k Escape
 sleep 1
 
 # What the session cost, from the product's own accounting rather than a claim about it.
-submit "/context"
+slash "/context"
 settle 10
 shot context-report
 k Escape
 sleep 1
 
 # The settings card, opened by a real pointer travelling down the sidebar.
-submit "/settings"
+slash "/settings"
 sleep 2
 shot settings-open
 glide 12 40 24 40 24 0.06
