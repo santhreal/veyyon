@@ -51,34 +51,49 @@ exec ${SCENE_COMMAND:?}
 BOOT
 chmod +x /tmp/bootstrap.sh
 
-# A themed capture: a gradient behind the window, a compositor to round its
-# corners and cast a shadow, and an inset window so both are visible. `plain`
-# keeps the flat full-screen capture every existing scene was recorded against,
-# so a scene that says nothing about a theme records exactly the bytes it did
-# before.
+# A themed capture: a lit backdrop behind the window, a compositor to round its
+# corners, blur what shows through it and cast a shadow, and an inset window so
+# all of that is visible. `plain` keeps the flat full-screen capture every
+# existing scene was recorded against, so a scene that says nothing about a theme
+# records exactly the bytes it did before.
 #
 # The backdrop is generated rather than shipped: an image in the tree would be a
-# binary blob nobody can diff, and a gradient is what the look needs anyway.
+# binary blob nobody can diff, and two lights over a near-black base is what the
+# look needs anyway. A flat gradient behind an opaque window is a rim of colour
+# and nothing else; a tight light in one corner and a colder one in the opposite
+# corner puts the colour where the window edge crosses it, which is the whole
+# effect.
 #
-# There is no window translucency here, and asking for it is how this path wasted
-# an afternoon. Xvfb offers depth-32 visuals, picom redirects the screen, and
-# kitty still logs "Failed to enable transparency": the GLX configs this display
-# exposes carry no alpha channel, so the terminal cannot pick an ARGB visual to
-# blend into. Rounded corners and a shadow are compositor-side and need no alpha
-# from the client, which is why the look is built from those instead.
+# Translucency here is the COMPOSITOR's, not the client's. kitty cannot do it on
+# this display and the reason is worth keeping: Xvfb offers depth-32 visuals,
+# picom redirects the screen, and kitty still logs "Failed to enable
+# transparency", because the GLX configs this display exposes carry no alpha
+# channel, so the terminal cannot pick an ARGB visual to blend into. Window
+# opacity is applied by picom to a window that knows nothing about it, needs no
+# alpha from the client, and blends the same way -- as do the rounding, the blur
+# and the shadow.
 MARGIN=0
 if [ "${SCENE_THEME:-plain}" != "plain" ]; then
-	MARGIN="${SCENE_MARGIN:-48}"
-	convert -size "${W}x${H}" \
-		"gradient:${SCENE_BACKDROP_TOP:-#2b3159}-${SCENE_BACKDROP_BOTTOM:-#0b0d16}" \
-		-swirl 30 -blur 0x30 /tmp/backdrop.png
+	MARGIN="${SCENE_MARGIN:-96}"
+	magick -size "${W}x${H}" xc:"${SCENE_BACKDROP_BASE:-#0b0b12}" \
+		\( -size "${W}x${H}" radial-gradient:"${SCENE_BACKDROP_WARM:-#7c3aed}"-"#000000" \
+		-resize 130% -gravity northwest -crop "${W}x${H}+0+0" -evaluate multiply 0.75 \) \
+		-compose screen -composite \
+		\( -size "${W}x${H}" radial-gradient:"${SCENE_BACKDROP_COOL:-#06b6d4}"-"#000000" \
+		-resize 150% -gravity southeast -crop "${W}x${H}+0+0" -evaluate multiply 0.6 \) \
+		-compose screen -composite \
+		-blur 0x45 /tmp/backdrop.png
 	xwallpaper --stretch /tmp/backdrop.png >/tmp/wallpaper.log 2>&1 || true
 	# xrender, not glx: this display has no accelerated GL, and glx fails at
-	# backend init rather than degrading.
+	# backend init rather than degrading. kernel is the one blur method xrender
+	# implements; the others are backend-gated and picom refuses to start on them.
 	picom --backend xrender --no-fading-openclose --config /dev/null \
-		--corner-radius "${SCENE_RADIUS:-16}" \
-		--shadow --shadow-radius 28 --shadow-opacity 0.55 \
-		--shadow-offset-x -14 --shadow-offset-y -8 \
+		--corner-radius "${SCENE_RADIUS:-22}" \
+		--active-opacity "${SCENE_OPACITY:-0.92}" \
+		--inactive-opacity "${SCENE_OPACITY:-0.92}" \
+		--blur-background --blur-method kernel --blur-kern "11x11gaussian" \
+		--shadow --shadow-radius 36 --shadow-opacity 0.6 \
+		--shadow-offset-x -18 --shadow-offset-y -10 \
 		--log-level=debug --log-file=/tmp/picom.log >/tmp/picom.out 2>&1 &
 	PICOM_PID=$!
 	# `xprop -root _NET_WM_CM_S0` cannot answer this: the compositing manager owns

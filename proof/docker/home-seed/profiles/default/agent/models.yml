@@ -52,3 +52,17 @@ providers:
         name: Qwen3 30B A3B 32k (local)
         contextWindow: 32768
         maxTokens: 2048
+      # The dense 32B, which is what the gallery records against now. It is the
+      # largest Qwen3 that fits a 24 GB card with its window resident: 23.6 GB in
+      # use with 32k allocated, measured, and a dense model drives a tool turn with
+      # fewer retries than the sparse 30B did.
+      #
+      # One row, and the window is 32k because that is the window the server was
+      # built with. Ollama fixes the context length when it loads the weights and
+      # the OpenAI-compatible request cannot raise it, so a row declaring 131k
+      # would be a client accounting against a server that silently truncates to
+      # its own. The number here is the served number.
+      - id: demo-qwen3-32b-32k
+        name: Qwen3 32B (local)
+        contextWindow: 32768
+        maxTokens: 2048
