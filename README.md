@@ -85,7 +85,7 @@ A session effort override wins first. An explicit selector suffix wins next, fol
 Compaction uses editable model chains and explicit fallback policy. Before a model summarizes history, a lossless pass removes contained duplicates. Manual and automatic compaction report what happened instead of silently switching models or discarding context.
 
 <p align="center">
-  <img src="assets/model-effort-controls.gif" width="960" alt="Model-native effort choices and ordered model-chain editing in the shipped settings components">
+  <img src="assets/effort-variants-grey.png" width="960" alt="Model-native effort choices for a two-tier ladder and a five-step ladder, rendered from the shipped effort picker">
 </p>
 
 <p align="center">
@@ -161,7 +161,7 @@ bash scripts/demos/record.sh
 | Multi-agent work | Parallel worker progress and Agent Control Center live and idle states | [agents](assets/demo-agent-control-center.gif) | `bash scripts/demos/record.sh agent-control-center` |
 | Secret boundary | Placeholder listing, one bash spend, numeric output, and one value-free use-log record | [secrets](assets/demo-secret-boundary.gif) | `bash scripts/demos/record-secret-boundary.sh` |
 | Settings | The settings card under a real pointer: sidebar travel, a category opened by a click, and the Subagents pane it opens on | [settings card](assets/demo-settings-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh settings-pointer` |
-| Model controls | Native effort variants and ordered chains | [model controls](assets/model-effort-controls.gif) | `bash scripts/demos/record.sh model-effort-controls` |
+| Model controls | Native effort variants and ordered chains, rendered from the shipped components on both grounds | [effort](assets/effort-variants-grey.png) / [chains](assets/model-chain-editor-grey.png) | `env -u NO_COLOR FORCE_COLOR=3 bun scripts/demos/render-effort-variants.ts --width 100 \| bun scripts/demos/render-proof.ts --out assets/effort-variants --width 100 --scale 2` |
 | Argot gate | Disabled and enabled settings differential | [off](assets/argot-settings-off.png) / [on](assets/argot-settings-on.png) | `bash scripts/demos/record-argot-settings.sh` |
 | Command discovery | The slash list arriving, filtering to `/mo`, and the file list off the real working tree | [commands](assets/demo-commands-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh popup-grow` |
 | Project answer | An answer describing `RateLimiter` behavior | [answer recording](assets/demo-ask.gif) | `bash scripts/demos/record.sh ask` |
