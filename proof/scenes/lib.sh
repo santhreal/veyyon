@@ -217,3 +217,50 @@ settle() {
 	[ "${scale}" = "1" ] || want="$(awk -v w="${want}" -v s="${scale}" 'BEGIN { printf "%.1f", w * s }')"
 	sleep "${want}"
 }
+
+# Wait until the screen stops changing, up to a ceiling.
+#
+# WHY: settle() is a fixed sleep, and a fixed sleep is a guess about how long a model
+# takes. The take that motivated this waited 160 scaled seconds for an edit turn that ran
+# 232, so the frame it published shows a half-streamed answer -- and every later shot in
+# that take was taken during the turn after the one it was named for. A turn that finishes
+# early wastes the remainder of the guess, which is the same mistake in the other
+# direction: twenty minutes of recording where two of them are a still screen.
+#
+# The signal is the terminal's own text, read out of the pty through kitty's socket rather
+# than by looking at pixels: a streaming turn rewrites the transcript continuously, so two
+# dumps taken a few seconds apart differ. The elapsed clock in the footer ticks on a
+# settled screen too, so digits are dropped before comparing -- what is left is the
+# transcript, the composer and the spinner, none of which move once a turn is done.
+#
+# Bounded on purpose. If the model never finishes, this returns at the ceiling and the
+# scene carries on, which records a slow turn honestly instead of hanging the take.
+settle_idle() {
+	local ceiling="${1:-180}" floor="${2:-4}" quiet="${3:-2}"
+	local scale="${SCENE_SETTLE_SCALE:-1}"
+	[ "${scale}" = "1" ] || ceiling="$(awk -v w="${ceiling}" -v s="${scale}" 'BEGIN { printf "%.0f", w * s }')"
+	sleep "${floor}"
+	local prev="" now="" same=0 waited="${floor}"
+	while [ "${waited}" -lt "${ceiling}" ]; do
+		now="$(kitty @ --to "${KITTY_SOCKET}" get-text 2>/dev/null | tr -d '0-9' || true)"
+		if [ -z "${now}" ]; then
+			# No socket: this is the xdotool fallback world, where there is nothing to
+			# read. Spend the ceiling as a plain sleep rather than returning early.
+			sleep "$((ceiling - waited))"
+			return 0
+		fi
+		if [ "${now}" = "${prev}" ]; then
+			same=$((same + 1))
+			[ "${same}" -lt "${quiet}" ] || {
+				echo "scene: settled after ${waited}s (ceiling ${ceiling}s)" >&2
+				return 0
+			}
+		else
+			same=0
+		fi
+		prev="${now}"
+		sleep 3
+		waited=$((waited + 3))
+	done
+	echo "scene: never settled, carrying on at the ${ceiling}s ceiling" >&2
+}
