@@ -21,8 +21,10 @@
 settle 20
 shot idle
 
-submit "reply with the single word ready"
-settle 35
+# The server is warmed by the runner before the recording starts, with a request that
+# never reaches the screen. This scene used to spend its first turn asking the model to
+# say "ready", which paid for prompt evaluation in full view: the published row opened
+# on a question nobody asked and an answer that means nothing.
 
 # A dozen turns against the same small project. Each answer is a paragraph, so the
 # message total climbs while the system half stays where it is.

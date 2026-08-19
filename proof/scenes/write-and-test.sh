@@ -19,8 +19,10 @@
 settle 20
 shot idle
 
-submit "reply with the single word ready"
-settle 35
+# The server is warmed by the runner before the recording starts, with a request that
+# never reaches the screen. This scene used to spend its first turn asking the model to
+# say "ready", which paid for prompt evaluation in full view: the published row opened
+# on a question nobody asked and an answer that means nothing.
 
 submit "add an exported function parseWindowSpec(spec: string) to src/utils.ts that parses a limit-per-window string like \"5/60s\" or \"120/1m\" into { limit, windowMs }, rejecting a malformed spec, a non-integer limit and a zero window with a thrown Error naming the input. Then run bun test src/rate-limiter.test.ts and tell me whether the suite still passes."
 settle 80

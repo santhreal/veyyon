@@ -15,9 +15,10 @@ shot idle
 
 # Warm the server: the first turn pays for the prompt evaluation, and a demo
 # should not open on a spinner.
-submit "reply with the single word ready"
-settle 40
-shot ready
+# The server is warmed by the runner before the recording starts, with a request that
+# never reaches the screen. This scene used to spend its first turn asking the model to
+# say "ready", which paid for prompt evaluation in full view: the published row opened
+# on a question nobody asked and an answer that means nothing.
 
 # Reading. The model has to find the file itself, which is what puts a read
 # block with its rail on screen.

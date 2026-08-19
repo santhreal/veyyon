@@ -9,8 +9,10 @@
 settle 20
 shot idle
 
-submit "reply with the single word ready"
-settle 35
+# The server is warmed by the runner before the recording starts, with a request that
+# never reaches the screen. This scene used to spend its first turn asking the model to
+# say "ready", which paid for prompt evaluation in full view: the published row opened
+# on a question nobody asked and an answer that means nothing.
 
 submit "use two task agents in parallel: one inspects src/rate-limiter.ts and one inspects src/rate-limiter.test.ts. Each reports one concise observation. Neither edits anything."
 settle 25
