@@ -59,10 +59,16 @@ key_repeat() { # key_repeat <key> <count> [delay]
 		sleep "${delay}"
 	done
 }
-t() { _xdo type --delay "${TYPE_DELAY:-28}" -- "$1"; }
+# Typing is not the demonstration. A published clip that spends its first seconds
+# watching characters appear one at a time shows the recorder's pointer, not the
+# product, so the text lands as fast as the emulator will accept it and the clip
+# begins at the result. A scene driving a login shell rather than the app can raise
+# TYPE_DELAY: a shell has no input debounce of its own and xdotool has been observed
+# doubling characters into one, which turns a typed command into a typo.
+t() { _xdo type --delay "${TYPE_DELAY:-0}" -- "$1"; }
 submit() {
 	t "$1"
-	pause 0.4
+	pause 0.2
 	k Return
 }
 

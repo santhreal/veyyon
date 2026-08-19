@@ -50,7 +50,7 @@ shot help
 # launch that names none took the first local row in the catalog rather than the value
 # in the machine config, and an install row carrying a different model chip than the
 # rest of the gallery reads as a different product.
-submit "cd ~/demo && vey --model local/demo-qwen3-32b-32k"
+submit "cd ~/demo && vey --model local/demo-qwen38-27b-64k"
 settle 45
 shot launched
 
