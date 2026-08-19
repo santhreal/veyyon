@@ -21,7 +21,7 @@ The last frame must answer: “Why not just use upstream / a generic agent?” I
 | Compaction / snap that visibly shrinks context | Splash + idle composer |
 | Cockpit / multi-agent inbox during real concurrent work | Fake HTML terminal copy |
 
-Generic ask/edit/hero tapes may still exist as orientation, but a *proof* demo for a differentiator follows this skill.
+Generic ask/edit tapes may still exist as orientation, but a *proof* demo for a differentiator follows this skill.
 
 ## Design the tape
 
