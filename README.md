@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/demo-hero.gif" width="960" alt="Veyyon reads a project, applies an edit, and reports the result">
+  <img src="assets/demo-hd.webp" width="960" alt="Veyyon reads a file, edits it, verifies the edit with a command, and writes a phased plan, in a composited 1920x1080 terminal">
 </p>
 
 Veyyon uses the same model weights available in other clients. The difference is the workbench around them: a prompt you can inspect, model-native effort controls, explicit state ownership, protected secret spending, typed workers, language-server refactors, durable sessions, and tools that fail before stale state becomes a bad write.
@@ -152,7 +152,7 @@ bash scripts/demos/record.sh
 
 | Workflow | What the recording proves | Artifact | Regenerate |
 | --- | --- | --- | --- |
-| End-to-end change | Read, edit, final report | [hero](assets/demo-hero.gif) | `bash scripts/demos/record.sh hero` |
+| End-to-end session | A read, an edit, a command that verifies it, a phased plan, and the settings card, at 1920x1080 against a local 30B model | [HD session](assets/demo-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh` |
 | Prompt architecture | Assembled section costs and conditional statement registry | [prompt architecture](assets/demo-prompt-architecture.gif) | `bash scripts/demos/record.sh prompt-architecture` |
 | Language-server refactor | Cross-file symbol rename and four passing fixture tests | [LSP recording](assets/demo-lsp-refactor.gif) | `bash scripts/demos/record.sh lsp-refactor` |
 | File write | A written test file and its passing test output | [write recording](assets/demo-edit.gif) | `bash scripts/demos/record.sh edit` |
