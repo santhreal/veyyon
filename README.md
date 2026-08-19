@@ -163,7 +163,7 @@ bash scripts/demos/record.sh
 | Settings | The settings card under a real pointer: sidebar travel, a category opened by a click, and the Subagents pane it opens on | [settings card](assets/demo-settings-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh settings-pointer` |
 | Model controls | Native effort variants and ordered chains | [model controls](assets/model-effort-controls.gif) | `bash scripts/demos/record.sh model-effort-controls` |
 | Argot gate | Disabled and enabled settings differential | [off](assets/argot-settings-off.png) / [on](assets/argot-settings-on.png) | `bash scripts/demos/record-argot-settings.sh` |
-| Command discovery | Live slash-command filtering | [commands](assets/demo-commands.gif) | `bash scripts/demos/record.sh commands` |
+| Command discovery | The slash list arriving, filtering to `/mo`, and the file list off the real working tree | [commands](assets/demo-commands-hd.webp) | `PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh popup-grow` |
 | Project answer | An answer describing `RateLimiter` behavior | [answer recording](assets/demo-ask.gif) | `bash scripts/demos/record.sh ask` |
 | Installation | Isolated binary install, installed help, and version | [install](assets/install-demo.gif) | `bash scripts/demos/record-install.sh` |
 
