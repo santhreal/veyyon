@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The demo the landing page shows: a real session, in a real terminal, doing real
-# work on a real project, against a 30B model that actually calls tools.
+# work on a real project, against a dense 32B that actually calls tools.
 #
 # It exists because the earlier demos were a 1.5B answering questions on a flat
 # black terminal, which shows the transcript and nothing the product does: no

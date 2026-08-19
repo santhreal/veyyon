@@ -30,19 +30,22 @@ SCENE="${1:-demo-hd}"
 
 # The terminal runs the app unless a scene needs a shell, which one of them does.
 SCENE_CMD="bun /repo/packages/coding-agent/src/cli.ts --model ${DEMO_MODEL}"
-# A feature row shows the block, the card or the diff. This model reasons in pages,
-# so every scene except the hero records with `Hide Thinking Blocks` on; the hero is
-# a session showcase and shows the model thinking.
+# A row shows the block, the card or the diff, and this model reasons in pages, so
+# every scene records with `Hide Thinking Blocks` on -- the hero included, which is
+# a reversal. The hero ran once with thinking shown, on the theory that a session
+# showcase should show the model working: three quarters of the resulting clip was
+# italic rumination ("Wait, no. Wait, the current code has...") and the product read
+# as though it could not make up its mind. Thinking is worth watching live; it is
+# not worth 22 seconds of a landing page.
 HIDE_THINKING=1
 case "${SCENE}" in
 demo-hd)
 	ASSET=assets/demo-hd.webp
-	# The hero also ships whole. The take runs about seven minutes and the page
-	# gets a 24-second clip out of it -- a demo whose majority is a screen waiting
-	# on a model reads as a broken product -- so both are published and the short
-	# one can be checked against the long one.
+	# The hero also ships whole. The take runs about twenty minutes and the page
+	# gets half a minute out of it -- a demo whose majority is a screen waiting on a
+	# model reads as a broken product -- so both are published and the short one can
+	# be checked against the long one.
 	PUBLISH_TAKE=1
-	HIDE_THINKING=
 	CUT_ARGS=()
 	;;
 settings-pointer)
