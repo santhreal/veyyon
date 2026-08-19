@@ -62,13 +62,31 @@ key_repeat() { # key_repeat <key> <count> [delay]
 # Typing is not the demonstration. A published clip that spends its first seconds
 # watching characters appear one at a time shows the recorder's pointer, not the
 # product, so the cut starts near the result and the typing stays off camera.
-# The rate still cannot be zero. At --delay 0 xdotool outran the emulator's input
-# handling and doubled characters inside the app itself, not just in a login shell:
-# a recorded take composed "/sseccret ffrom-env RELEASE_SIGNATURE release-siggnature"
-# and lost its whole signing segment to a typo. 24ms has never doubled; a scene
-# driving a login shell raises it further, since a shell has no debounce of its own.
-t() { _xdo type --delay "${TYPE_DELAY:-24}" -- "$1"; }
+# The rate still cannot be zero, and it cannot be small either. At --delay 0 xdotool
+# outran the emulator and doubled characters inside the app, not just in a login shell:
+# a take composed "/sseccret ffrom-env RELEASE_SIGNATURE release-siggnature" and lost its
+# whole signing segment. Autorepeat, which `xsession.sh` now turns off, was most of that
+# mechanism; the residue is the app repainting a streamed turn while it is typed into, and
+# 24ms still produced "commmand" in that state. 60ms has not, and the cut keeps it off
+# camera regardless. A scene driving a login shell raises it further.
+t() { _xdo type --delay "${TYPE_DELAY:-60}" -- "$1"; }
+
+# A submit starts from an empty composer, always.
+#
+# NOT DEFENSIVE POLISH: the take that needed it lost its signing turn to leftover text.
+# A slash command whose Return the completion popup swallowed stayed in the composer, and
+# the next prompt was typed onto the end of it, so the model received
+# "/secret listsign your work: run one bash command that pipes ...". One prompt, one
+# unrelated command glued to its front, and nothing on screen says so until a frame is
+# read. ctrl+u is the editor's delete-to-line-start, so an empty composer is unchanged
+# and a stale one is emptied, which makes every submit independent of the one before it.
+clear_composer() {
+	k ctrl+u
+	pause 0.15
+}
+
 submit() {
+	clear_composer
 	t "$1"
 	pause 0.2
 	k Return
@@ -76,10 +94,12 @@ submit() {
 
 # Submit a slash command. The completion popup owns Return while it is open: it
 # takes the highlighted row rather than submitting the line, so a command whose
-# name is a prefix of another one gets the wrong one. The escape dismisses the
-# popup and leaves the typed text, which is what the recorded tapes did and for
+# name is a prefix of another one gets the wrong one, and a command that matches a
+# subcommand row gets accepted into the composer instead of run. The escape dismisses
+# the popup and leaves the typed text, which is what the recorded tapes did and for
 # this reason.
 slash() {
+	clear_composer
 	t "$1"
 	pause 0.7
 	k Escape

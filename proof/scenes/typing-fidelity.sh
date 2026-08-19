@@ -67,6 +67,28 @@ for probe in "${PROBES[@]}"; do
 	fi
 done
 
+# THE STALE-INPUT PROBE, which is a different defect from doubling and cost the same take.
+# A slash command whose Return the completion popup swallowed stayed on the input line, and
+# the next submit was typed onto the end of it. Here the leftover is typed deliberately and
+# never submitted; the following submit must arrive alone, because `submit` clears the line
+# first. Without that clear the shell receives both and the file holds the concatenation.
+t "leftover-that-was-never-submitted "
+sleep 0.5
+submit "printf '%s' 'clean' > /tmp/typed-stale.txt"
+sleep 2
+stale="$(cat /tmp/typed-stale.txt 2>/dev/null || true)"
+if [ "${stale}" = "clean" ]; then
+	PASS=$((PASS + 1))
+	printf 'ok stale: a submit does not inherit unsubmitted text\n' >>"${SCENE_OUT}/typing-fidelity.txt"
+else
+	FAIL=$((FAIL + 1))
+	{
+		printf 'FAIL stale\n'
+		printf '  asked: clean\n'
+		printf '  typed: %s\n' "${stale}"
+	} >>"${SCENE_OUT}/typing-fidelity.txt"
+fi
+
 shot typed
 
 printf 'typing fidelity: %d ok, %d failed, delay %sms\n' "${PASS}" "${FAIL}" "${TYPE_DELAY}" \
