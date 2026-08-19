@@ -13,6 +13,12 @@ SCENE="${1:?usage: record-x11.sh <scene.sh>}"
 OUT="${OUT_DIR:-${REPO_ROOT}/proof/captures/x11}"
 mkdir -p "${OUT}"
 
+# The look belongs to xsession.sh, which is the file that draws it, so the backdrop
+# colours, opacity, radius, blur kernel and inset are forwarded only when a caller sets
+# one. A default repeated here silently wins over the chrome's own, which is how a
+# violet-and-cyan backdrop survived being rewritten as a neutral one: the launcher kept
+# passing the old colours in, and every take came out in the scheme the file no longer
+# contained.
 docker run --rm \
 	--network "${PROOF_NETWORK:-veyyon-proof}" \
 	--mount "type=bind,src=${REPO_ROOT},dst=/repo" \
@@ -38,12 +44,13 @@ docker run --rm \
 	-e "SCENE_FPS=${SCENE_FPS:-30}" \
 	-e "SCENE_TERMINAL=${SCENE_TERMINAL:-kitty}" \
 	-e "SCENE_THEME=${SCENE_THEME:-plain}" \
-	-e "SCENE_MARGIN=${SCENE_MARGIN:-96}" \
-	-e "SCENE_RADIUS=${SCENE_RADIUS:-22}" \
-	-e "SCENE_OPACITY=${SCENE_OPACITY:-0.92}" \
-	-e "SCENE_BACKDROP_BASE=${SCENE_BACKDROP_BASE:-#0b0b12}" \
-	-e "SCENE_BACKDROP_WARM=${SCENE_BACKDROP_WARM:-#7c3aed}" \
-	-e "SCENE_BACKDROP_COOL=${SCENE_BACKDROP_COOL:-#06b6d4}" \
+	-e "SCENE_MARGIN" \
+	-e "SCENE_RADIUS" \
+	-e "SCENE_OPACITY" \
+	-e "SCENE_BLUR_KERN" \
+	-e "SCENE_BACKDROP_BASE" \
+	-e "SCENE_BACKDROP_WARM" \
+	-e "SCENE_BACKDROP_COOL" \
 	-e "SCENE_BG=${SCENE_BG:-#1e2127}" \
 	-e "SCENE_FG=${SCENE_FG:-#d7dae0}" \
 	-e "SCENE_CWD=${SCENE_CWD:-/sandbox/home/demo}" \

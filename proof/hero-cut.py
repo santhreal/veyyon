@@ -67,9 +67,12 @@ HOLD = 2.4
 # An event carrying fewer distinct frames than this is a cursor artefact, not a
 # transition worth a segment of its own.
 MIN_FRAMES = 3
-# What to keep before a mark the scene declared. Longer than an event's lead: the
-# still is taken once the thing it names is on screen, so the arrival is behind it.
-MARK_LEAD = 4.0
+# What to keep before a mark the scene declared. Short on purpose. A four-second
+# lead-in reached back past the arrival of the thing the still names and into the
+# recorder typing the request, so every row opened on characters appearing one at a
+# time. The still is taken once the result is on screen, so the second before it is
+# the result landing, which is the frame the row exists for.
+MARK_LEAD = 1.2
 # The floor below which a frame is the same screen as the one before it. A cursor
 # is one 13x29 cell and a hover band repaints one row, and both clear this at the
 # 480px scale the detector works on, so a stretch with nothing above it is a

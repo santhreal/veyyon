@@ -25,7 +25,7 @@ cd "${REPO_ROOT}"
 # directly than the sparse 30B, and a row is read by someone deciding whether this
 # product works, so the slower model is the right trade: the recording is cut down
 # to its moments either way.
-DEMO_MODEL="${DEMO_MODEL:-local/demo-qwen3-32b-32k}"
+DEMO_MODEL="${DEMO_MODEL:-local/demo-qwen38-27b-64k}"
 SCENE="${1:-demo-hd}"
 
 # The terminal runs the app unless a scene needs a shell, which one of them does.
@@ -42,6 +42,11 @@ HIDE_THINKING=1
 # the others: the compaction row wants a session that compacts, and every other row
 # recorded with that tuning compacted on turn one, freed nothing, and said so.
 SETTINGS=
+# A row publishes a clip only when there is motion worth watching. A surface that just
+# sits there -- the settings card, the prompt inspector -- publishes one frame instead,
+# named here. A clip of a static pane is a still with a file size, and the seconds it
+# spends arriving are seconds of a recorder typing.
+STILL=
 case "${SCENE}" in
 demo-hd)
 	ASSET=assets/demo-hd.webp
@@ -53,9 +58,10 @@ demo-hd)
 	CUT_ARGS=()
 	;;
 settings-pointer)
-	ASSET=assets/demo-settings-hd.webp
+	ASSET=assets/demo-settings-hd.png
 	PUBLISH_TAKE=0
-	CUT_ARGS=(--single --scene-score 0.004 --speed 1.4)
+	STILL=sidebar-click
+	CUT_ARGS=()
 	;;
 popup-grow)
 	ASSET=assets/demo-commands-hd.webp
@@ -112,12 +118,14 @@ lsp-refactor)
 	CUT_ARGS=()
 	;;
 prompt-architecture)
-	ASSET=assets/demo-prompt-hd.webp
+	ASSET=assets/demo-prompt-hd.png
 	PUBLISH_TAKE=0
-	# Two subcommands printing tables, so the terminal runs a shell and the cut has
-	# no streaming to wait through.
+	# Two subcommands printing tables, so the terminal runs a shell, and what they
+	# print does not move: the row is the assembled section table, published as the
+	# frame the scene took of it.
 	SCENE_CMD="bash -l"
-	CUT_ARGS=(--speed 1.6)
+	STILL=sections
+	CUT_ARGS=()
 	;;
 install-binary)
 	ASSET=assets/demo-install-hd.webp
@@ -140,11 +148,12 @@ PROOF_LLM_BASE_URL="${PROOF_LLM_BASE_URL}" \
 	SCENE_HIDE_THINKING="${HIDE_THINKING}" \
 	SCENE_COMMAND="${SCENE_CMD}" \
 	SCENE_THEME=night \
-	SCENE_WIDTH=1920 \
-	SCENE_HEIGHT=1080 \
-	SCENE_FONT_SIZE=16 \
-	SCENE_BG="#1a1b26" \
-	SCENE_FG="#c0caf5" \
+	SCENE_WIDTH=2560 \
+	SCENE_HEIGHT=1440 \
+	SCENE_MARGIN=128 \
+	SCENE_FONT_SIZE=21 \
+	SCENE_BG="#0f1116" \
+	SCENE_FG="#d3dae6" \
 	SCENE_SETTLE_SCALE="${SETTLE_SCALE:-2}" \
 	SCENE_GIF=0 \
 	SCENE_SETTINGS="${SETTINGS}" \
@@ -154,16 +163,32 @@ PROOF_LLM_BASE_URL="${PROOF_LLM_BASE_URL}" \
 mkdir -p assets proof/captures/x11
 
 if [[ ${PUBLISH_TAKE} -eq 1 ]]; then
-	# 1920x1080 at crf 20 is 71 MB for seven minutes, which is not a file to put in
-	# a git history; 1280 at crf 30 is the same seven minutes at a size the page
-	# can serve.
+	# The take is captured at 2560x1440 so the published 1920-wide frame is a
+	# downscale rather than an upscale, and text stays sharp after the resample.
+	# The full-resolution take itself is not a file to put in a git history: 1440p at
+	# crf 20 is hundreds of megabytes for twenty minutes, so the archived copy is
+	# 1920 at crf 30.
 	ffmpeg -loglevel error -y -i "${WORK}/${SCENE}.mp4" \
-		-vf "scale=1280:-2:flags=lanczos" \
+		-vf "scale=1920:-2:flags=lanczos" \
 		-c:v libx264 -preset slow -crf 30 -pix_fmt yuv420p -an \
 		"proof/captures/x11/${SCENE}.mp4"
 	for still in "${WORK}/${SCENE}"-*.png; do
 		cp "${still}" "proof/captures/x11/$(basename "${still}")"
 	done
+fi
+
+if [[ -n "${STILL}" ]]; then
+	# The frame the scene took of the surface, resampled from the 2560-wide capture to
+	# the published 1920. No cut, no WebP: there is nothing moving to cut.
+	SRC="${WORK}/${SCENE}-${STILL}.png"
+	[[ -f "${SRC}" ]] || {
+		echo "record-hd-demo.sh: scene '${SCENE}' took no still named '${STILL}'" >&2
+		exit 1
+	}
+	magick "${SRC}" -resize 1920x -strip "${ASSET}"
+	python3 proof/tighten.py audit --base proof/captures
+	ls -la "${ASSET}"
+	exit 0
 fi
 
 # The published clip carries the moments the scene exists to show. A scene that
@@ -177,7 +202,8 @@ if [[ -f "${MARKS}" && ! " ${CUT_ARGS[*]} " =~ " --single " ]]; then
 	CUT_ARGS+=(--marks "${MARKS}")
 fi
 python3 proof/hero-cut.py "${WORK}/${SCENE}.mp4" \
-	--mp4 "${WORK}/${SCENE}-cut.mp4" --webp "${ASSET}" "${CUT_ARGS[@]}"
+	--mp4 "${WORK}/${SCENE}-cut.mp4" --webp "${ASSET}" \
+	--width 2560 --webp-width 1920 "${CUT_ARGS[@]}"
 
 if [[ "${SCENE}" == "demo-hd" ]]; then
 	# The website band carries the hero and nothing else.

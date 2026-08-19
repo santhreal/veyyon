@@ -11,23 +11,23 @@ providers:
       # a pointer can travel over. A turn on any of them is a real turn.
       - id: qwen2.5-1.5b
         name: Qwen2.5 1.5B (local)
-        contextWindow: 65536
+        contextWindow: 32768
         maxTokens: 1024
       - id: qwen2.5-1.5b-q8
         name: Qwen2.5 1.5B q8_0 (local)
-        contextWindow: 65536
+        contextWindow: 32768
         maxTokens: 1024
       - id: qwen2.5-1.5b-q5
         name: Qwen2.5 1.5B q5_k_m (local)
-        contextWindow: 65536
+        contextWindow: 32768
         maxTokens: 1024
       - id: qwen2.5-1.5b-q4
         name: Qwen2.5 1.5B q4_k_m (local)
-        contextWindow: 65536
+        contextWindow: 32768
         maxTokens: 1024
       - id: qwen2.5-1.5b-f16
         name: Qwen2.5 1.5B f16 (local)
-        contextWindow: 65536
+        contextWindow: 32768
         maxTokens: 1024
       # The HD demo runs against a 30B mixture-of-experts served by ollama on the
       # recorder host instead of the 1.5B above: a demo has to show real tool use,
@@ -52,20 +52,20 @@ providers:
         name: Qwen3 30B A3B 32k (local)
         contextWindow: 32768
         maxTokens: 2048
-      # The dense 32B, which is what the gallery records against now. The quant is
-      # the decision here, and it was measured rather than guessed: q4_K_M is 20 GB
-      # of weights, and with a 32k window allocated the server ran 22% of the layers
-      # on the CPU and generated 8 tokens a second, which is not a session anyone
-      # would watch. IQ4_XS is 17 GB, sits at 22 GB resident with the same window,
-      # reports 100% GPU and generates 48. Serve it as
-      # hf.co/unsloth/Qwen3-32B-GGUF:IQ4_XS with num_ctx 32768.
+      # What the gallery records against: Qwen3.8 27B, served by ollama on the recorder
+      # host as demo-qwen38-27b-64k. It generates 67 tokens a second at 100% GPU and
+      # sits at 22.1 GB of the card's 24.5 GB with this window allocated, measured
+      # rather than assumed.
       #
-      # One row, and the window is 32k because that is the window the server was
-      # built with. Ollama fixes the context length when it loads the weights and
-      # the OpenAI-compatible request cannot raise it, so a row declaring 131k
-      # would be a client accounting against a server that silently truncates to
-      # its own. The number here is the served number.
-      - id: demo-qwen3-32b-32k
-        name: Qwen3 32B (local)
-        contextWindow: 32768
+      # The window is 64k because 32k is not one. The system prompt and the tool schemas
+      # alone are about 20k, so a 32k session crosses the automatic-maintenance
+      # threshold within two turns and the product starts saying, correctly, that
+      # compaction cannot free enough to help -- which is a true statement about a
+      # window that small and a terrible thing to record in every row. Ollama fixes the
+      # context length when it loads the weights and an OpenAI-compatible request cannot
+      # raise it, so this number is the served number: a row declaring more would be a
+      # client accounting against a server that silently truncates.
+      - id: demo-qwen38-27b-64k
+        name: Qwen3.8 27B (local)
+        contextWindow: 65536
         maxTokens: 2048

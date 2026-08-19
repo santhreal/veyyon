@@ -51,49 +51,59 @@ exec ${SCENE_COMMAND:?}
 BOOT
 chmod +x /tmp/bootstrap.sh
 
-# A themed capture: a lit backdrop behind the window, a compositor to round its
-# corners, blur what shows through it and cast a shadow, and an inset window so
-# all of that is visible. `plain` keeps the flat full-screen capture every
-# existing scene was recorded against, so a scene that says nothing about a theme
-# records exactly the bytes it did before.
+# A themed capture: a neutral backdrop behind the window, a compositor to round its
+# corners, frost what shows through it and cast a shadow, and an inset window so all of
+# that is visible. `plain` keeps the flat full-screen capture every existing scene was
+# recorded against, so a scene that says nothing about a theme records exactly the bytes
+# it did before.
 #
-# The backdrop is generated rather than shipped: an image in the tree would be a
-# binary blob nobody can diff, and two lights over a near-black base is what the
-# look needs anyway. A flat gradient behind an opaque window is a rim of colour
-# and nothing else; a tight light in one corner and a colder one in the opposite
-# corner puts the colour where the window edge crosses it, which is the whole
-# effect.
+# The backdrop is generated rather than shipped: an image in the tree would be a binary
+# blob nobody can diff.
 #
-# Translucency here is the COMPOSITOR's, not the client's. kitty cannot do it on
-# this display and the reason is worth keeping: Xvfb offers depth-32 visuals,
-# picom redirects the screen, and kitty still logs "Failed to enable
-# transparency", because the GLX configs this display exposes carry no alpha
-# channel, so the terminal cannot pick an ARGB visual to blend into. Window
-# opacity is applied by picom to a window that knows nothing about it, needs no
-# alpha from the client, and blends the same way -- as do the rounding, the blur
-# and the shadow.
+# It is deliberately colourless. An earlier version lit it with a violet light in one
+# corner and a cyan one in the other, which put a saturated rainbow rim along every
+# window edge and read as decoration competing with the terminal. Frosted glass is not a
+# colour effect: the window edge has to catch a WHITE highlight, and everything the blur
+# picks up behind it has to be near-neutral, or the frost tints and the illusion dies.
+# So the field is near-black slate, one broad white light sits off the top-left corner
+# where the window's upper edge crosses it, and a single faint cool light in the far
+# corner keeps the lower half from going dead flat. Saturation stays under a tenth.
+#
+# Translucency here is the COMPOSITOR's, not the client's. kitty cannot do it on this
+# display and the reason is worth keeping: Xvfb offers depth-32 visuals, picom redirects
+# the screen, and kitty still logs "Failed to enable transparency", because the GLX
+# configs this display exposes carry no alpha channel, so the terminal cannot pick an
+# ARGB visual to blend into. Window opacity is applied by picom to a window that knows
+# nothing about it, needs no alpha from the client, and blends the same way -- as do the
+# rounding, the frost and the shadow.
 MARGIN=0
 if [ "${SCENE_THEME:-plain}" != "plain" ]; then
 	MARGIN="${SCENE_MARGIN:-96}"
-	magick -size "${W}x${H}" xc:"${SCENE_BACKDROP_BASE:-#0b0b12}" \
-		\( -size "${W}x${H}" radial-gradient:"${SCENE_BACKDROP_WARM:-#7c3aed}"-"#000000" \
-		-resize 130% -gravity northwest -crop "${W}x${H}+0+0" -evaluate multiply 0.75 \) \
+	magick -size "${W}x${H}" xc:"${SCENE_BACKDROP_BASE:-#1a1e26}" \
+		\( -size "${W}x${H}" radial-gradient:"${SCENE_BACKDROP_WARM:-#f8fafc}"-"#000000" \
+		-resize 165% -gravity northwest -crop "${W}x${H}+0+0" -evaluate multiply 0.44 \) \
 		-compose screen -composite \
-		\( -size "${W}x${H}" radial-gradient:"${SCENE_BACKDROP_COOL:-#06b6d4}"-"#000000" \
-		-resize 150% -gravity southeast -crop "${W}x${H}+0+0" -evaluate multiply 0.6 \) \
+		\( -size "${W}x${H}" radial-gradient:"${SCENE_BACKDROP_COOL:-#a5c8ff}"-"#000000" \
+		-resize 190% -gravity southeast -crop "${W}x${H}+0+0" -evaluate multiply 0.20 \) \
 		-compose screen -composite \
-		-blur 0x45 /tmp/backdrop.png
+		\( -size "${W}x${H}" gradient:"#00000000"-"#000000" -evaluate multiply 0.22 \) \
+		-compose over -composite \
+		-blur 0x70 -modulate 100,55,100 /tmp/backdrop.png
 	xwallpaper --stretch /tmp/backdrop.png >/tmp/wallpaper.log 2>&1 || true
 	# xrender, not glx: this display has no accelerated GL, and glx fails at
 	# backend init rather than degrading. kernel is the one blur method xrender
 	# implements; the others are backend-gated and picom refuses to start on them.
+	# 11x11gaussian is the widest kernel in picom's built-in table -- a wider one is
+	# not a stronger frost, it is an unknown preset name, and picom exits on it
+	# rather than falling back, which the run reports as a screen that was never
+	# redirected.
 	picom --backend xrender --no-fading-openclose --config /dev/null \
-		--corner-radius "${SCENE_RADIUS:-22}" \
-		--active-opacity "${SCENE_OPACITY:-0.92}" \
-		--inactive-opacity "${SCENE_OPACITY:-0.92}" \
-		--blur-background --blur-method kernel --blur-kern "11x11gaussian" \
-		--shadow --shadow-radius 36 --shadow-opacity 0.6 \
-		--shadow-offset-x -18 --shadow-offset-y -10 \
+		--corner-radius "${SCENE_RADIUS:-26}" \
+		--active-opacity "${SCENE_OPACITY:-0.82}" \
+		--inactive-opacity "${SCENE_OPACITY:-0.82}" \
+		--blur-background --blur-method kernel --blur-kern "${SCENE_BLUR_KERN:-11x11gaussian}" \
+		--shadow --shadow-radius 44 --shadow-opacity 0.55 \
+		--shadow-offset-x -22 --shadow-offset-y -12 \
 		--log-level=debug --log-file=/tmp/picom.log >/tmp/picom.out 2>&1 &
 	PICOM_PID=$!
 	# `xprop -root _NET_WM_CM_S0` cannot answer this: the compositing manager owns

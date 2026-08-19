@@ -1283,16 +1283,20 @@ SECTIONS = [
         [
             "<p>The demos on the landing page were a 1.5B model answering questions in a flat black VHS terminal:"
             " they showed a transcript and nothing the product does. No file read, no edit, no command, no plan."
-            " The take below is one session at 1920x1080 against a dense <strong>Qwen3 32B</strong>, served by ollama"
-            " on the recorder host and published at 1280x720. The model matters as much as the resolution — a 1.5B"
-            " answers a question, and a 32B calls the tools, so what is on screen is the read block, the edit, the"
-            " command the model chose to verify itself with, and the plan panel, rather than prose about them.</p>",
+            " The take below is one session captured at 2560x1440 against <strong>Qwen3.8 27B</strong>, served by"
+            " ollama on the recorder host at 67 tokens a second and published at 1920x1080. The model matters as much"
+            " as the resolution — a 1.5B answers a question, and a 27B calls the tools, so what is on screen is the"
+            " read block, the edit, the command the model chose to verify itself with, and the plan panel, rather"
+            " than prose about them.</p>",
             "<p><strong>What makes it look like a terminal on a desktop.</strong> The session runs under a"
-            " compositor: two radial lights over a near-black base as the backdrop, the window inset from the screen"
-            " edge, and picom rounding its corners, blurring what shows through it and casting its shadow. The"
-            " translucency is the compositor's, not the terminal's, and that distinction is the whole fix: this X"
-            " server exposes no GLX configuration carrying an alpha channel, so the terminal cannot pick an ARGB"
-            " visual and logs exactly that, while picom applies opacity to a window that knows nothing about it."
+            " compositor: a lit neutral backdrop, the window inset from the screen edge, and picom rounding its"
+            " corners, frosting what shows through it and casting its shadow. The backdrop is deliberately"
+            " colourless. An earlier version lit it violet in one corner and cyan in the other, which put a"
+            " saturated rim on every window edge and competed with the terminal; frosted glass needs a white"
+            " highlight and a near-neutral field behind it, or the frost tints. The translucency is the"
+            " compositor's, not the terminal's, and that distinction is the whole fix: this X server exposes no GLX"
+            " configuration carrying an alpha channel, so the terminal cannot pick an ARGB visual and logs exactly"
+            " that, while picom applies opacity to a window that knows nothing about it."
             " <code>SCENE_THEME=plain</code> keeps every other scene on this page recording the flat capture it was"
             " recorded against.</p>",
             video(
