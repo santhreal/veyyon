@@ -29,17 +29,17 @@ shot idle
 # Reading. The model finds the file itself, which is what puts a read block with its rail
 # on screen rather than a path someone typed.
 submit "read src/parser.ts and tell me in one sentence what it rejects"
-settle_idle 90 6
+settle_idle 90 6 2 20
 shot read-block
 
 # Editing, with the diff the edit tool applied and the file named in the block header.
 submit "in src/parser.ts, make parse also reject a string that is only whitespace, and keep the existing error message style"
-settle_idle 260 8
+settle_idle 260 8 2 20
 shot edit-diff
 
 # A command the model chose to check its own work with, and its output.
 submit "run the project's own test for the parser and tell me whether it passes"
-settle_idle 220 8
+settle_idle 220 8 2 20
 shot verify-command
 
 # The plan panel, written by the shipped todo tool rather than typed into the transcript.
@@ -48,10 +48,10 @@ shot verify-command
 # task and finished all six before the shot, so what published as the plan board was a
 # board with nothing left on it. The board is the surface; the work is the next beat.
 submit "use your todo tool: write a three-phase plan for hardening this parser, Foundation with two tasks, Validation with three, Release with one. Do not start any of them yet and do not change any files."
-settle_idle 200 8
+settle_idle 200 8 2 20
 shot todo-board
 submit "start the first Foundation task, then mark it completed and commit the parser work as one scoped commit"
-settle_idle 240 8
+settle_idle 240 8 2 20
 shot todo-strike
 
 # The credential, taken out of the environment so it is typed nowhere.
@@ -68,7 +68,7 @@ sleep 1
 # Spending it. The model writes the placeholder; veyyon writes the value, and only into
 # the command's arguments at the outbound boundary.
 submit "sign your work: run one bash command that pipes #RELEASE_SIGNATURE# into sha256sum and appends a line 'signature: <digest>' to SIGNED.md. Print the file afterwards. Never print the credential itself."
-settle_idle 300 10
+settle_idle 300 10 2 20
 shot signature-written
 
 slash "/secret log"
