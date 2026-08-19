@@ -1330,6 +1330,27 @@ SECTIONS = [
             " are fair readings of the instruction it was given. A crosscheck that published one form would call the"
             " other a mismatch, so the verifier tries every form a shell pipeline can produce, reports which one the"
             " file carries, exits non-zero when none of them match, and prints the number nowhere.</p>",
+            still(
+                X + "demo-hd-secret-list.png",
+                "The vault after <code>/secret from-env</code>: a placeholder, its scope and its expiry. This is the"
+                " whole of what the model is given.",
+            ),
+            still(
+                X + "demo-hd-secret-approval.png",
+                "The call held at the boundary. The dialog names the credential the call would spend and shows the"
+                " resolved value, which is deliberate: approving a spend you cannot read is not consent. This frame"
+                " is the one place in the take the number appears on screen.",
+            ),
+            still(
+                X + "demo-hd-signature-written.png",
+                "The spend. The command the model wrote carries <code>'#RELEASE_SIGNATURE#'</code>, the output is the"
+                " digest, and the line under the block reports which stored secret the call spent.",
+            ),
+            still(
+                X + "demo-hd-secret-log.png",
+                "<code>/secret log</code> afterwards. The recorded command is the placeholder form, so the ledger"
+                " that proves the spend happened is not itself a copy of the credential.",
+            ),
             "<h3>The clip the landing page carries</h3>",
             "<p>The landing-page clip is cut from that take by <code>proof/hero-cut.py</code>, and which moments it"
             " keeps is derived from the recording rather than typed in. <code>tighten.py</code> is the wrong"
