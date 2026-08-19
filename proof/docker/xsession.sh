@@ -225,10 +225,18 @@ sleep 1
 cleanup
 trap - EXIT
 
-# A GIF of the same recording, for a page that has to open in a browser without
-# a video codec argument. The palette pass is what keeps the terminal's greys
-# from banding.
-ffmpeg -loglevel error -y -i "${OUT}/${NAME}.mp4" \
-	-vf "fps=${SCENE_GIF_FPS:-20},scale=${SCENE_GIF_WIDTH:-1200}:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=192[p];[b][p]paletteuse=dither=bayer:bayer_scale=3" \
-	"${OUT}/${NAME}.gif"
-ls -la "${OUT}/${NAME}.mp4" "${OUT}/${NAME}.gif"
+# A GIF of the same recording, for a page that has to open in a browser without a
+# video codec argument. The palette pass is what keeps the terminal's greys from
+# banding.
+#
+# Off for a long take. A 22-minute 1920x1080 session is a two-frame-per-second GIF
+# of several gigabytes that nothing will ever open, and the encode of one took the
+# whole container down with it after the recording had already succeeded: the take
+# was on disk and the run still reported failure. A caller that publishes a WebP
+# and an mp4 does not need it.
+if [ "${SCENE_GIF:-1}" = "1" ]; then
+	ffmpeg -loglevel error -y -i "${OUT}/${NAME}.mp4" \
+		-vf "fps=${SCENE_GIF_FPS:-20},scale=${SCENE_GIF_WIDTH:-1200}:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=192[p];[b][p]paletteuse=dither=bayer:bayer_scale=3" \
+		"${OUT}/${NAME}.gif"
+fi
+ls -la "${OUT}/${NAME}.mp4"

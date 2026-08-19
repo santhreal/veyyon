@@ -48,6 +48,7 @@ docker run --rm \
 	-e "SCENE_FG=${SCENE_FG:-#d7dae0}" \
 	-e "SCENE_CWD=${SCENE_CWD:-/sandbox/home/demo}" \
 	-e "SCENE_SETTLE_SCALE=${SCENE_SETTLE_SCALE:-1}" \
+	-e "SCENE_GIF=${SCENE_GIF:-1}" \
 	-w /repo \
 	"${RECORDER_IMAGE:-veyyon-proof-recorder:3}" \
 	bash -lc '
