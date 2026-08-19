@@ -33,7 +33,12 @@ settle_idle 90 6 2 20
 shot read-block
 
 # Editing, with the diff the edit tool applied and the file named in the block header.
-submit "in src/parser.ts, make parse also reject a string that is only whitespace, and keep the existing error message style"
+#
+# "Do not run anything" because this model verifies its own work unasked, and the take
+# before this one published an edit-diff frame showing a bash block: the edit and its
+# verification arrived in one turn, and the diff had scrolled off the top by the time the
+# screen settled. Verification is the next beat, and it is worth its own frame.
+submit "in src/parser.ts, make parse also reject a string that is only whitespace, and keep the existing error message style. Apply the edit only -- do not run any commands."
 settle_idle 260 8 2 20
 shot edit-diff
 
@@ -67,8 +72,18 @@ sleep 1
 
 # Spending it. The model writes the placeholder; veyyon writes the value, and only into
 # the command's arguments at the outbound boundary.
-submit "sign your work: run one bash command that pipes #RELEASE_SIGNATURE# into sha256sum and appends a line 'signature: <digest>' to SIGNED.md. Print the file afterwards. Never print the credential itself."
+#
+# AND THE PRODUCT ASKS FIRST. A tool call whose arguments carry a real credential needs
+# explicit approval in every non-yolo mode (secret-use-boundary.ts), so the take that did
+# not answer that dialog never wrote the file at all: three runs published a crosscheck
+# whose SIGNED.md was missing, and the reason was on screen the whole time. The dialog is
+# the best frame in the take -- it names the credential the call would spend and what
+# approving means -- so it gets shot, and then approved the way a reader would.
+submit "sign your work: one bash call, chained with && so it is a single call: append the sha256 of #RELEASE_SIGNATURE# to SIGNED.md as a line reading 'signature: <digest>', then cat SIGNED.md. Never print the credential itself."
 settle_idle 300 10 2 20
+shot secret-approval
+approve_while_asked 6
+settle_idle 200 8 2 20
 shot signature-written
 
 slash "/secret log"
@@ -114,11 +129,19 @@ shot bottom
 # SIGNED.md, which makes the one checkable claim in the recording uncheckable.
 NUMBER="${SCENE_SIGNING_NUMBER:-${RELEASE_SIGNATURE:-}}"
 {
-	echo "signing number (never on screen): ${NUMBER:-<unset>}"
+	# "Never typed, never in the transcript" -- not "never on screen". veyyon substitutes the
+	# credential BEFORE asking permission, so the approval dialog shows the operator the exact
+	# command that will run, real value included. That is the point of an approval dialog, and
+	# a crosscheck that claimed otherwise would be describing a product that does not exist.
+	echo "signing number (never typed, never in the transcript; shown in the approval dialog): ${NUMBER:-<unset>}"
 	printf 'sha256 of that number: '
 	printf '%s' "${NUMBER}" | sha256sum | cut -d' ' -f1
 	printf 'sha256 of that number and a newline: '
 	printf '%s\n' "${NUMBER}" | sha256sum | cut -d' ' -f1
 	echo "--- SIGNED.md ---"
-	cat "${SCENE_CWD:-/sandbox/home/demo}/SIGNED.md" 2>&1
+	# Tolerant of the file not being there, because the scene must not die on the way to
+	# publishing fifteen frames. A take whose signing turn was never approved exited here
+	# under set -e and threw away its whole recording; the missing file is now a line in
+	# the crosscheck, which is where a reader would look for it anyway.
+	cat "${SCENE_CWD:-/sandbox/home/demo}/SIGNED.md" 2>&1 || echo "SIGNED.md was never written"
 } >"${SCENE_OUT}/signature-crosscheck.txt" 2>&1
