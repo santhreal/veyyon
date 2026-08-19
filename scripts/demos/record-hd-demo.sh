@@ -144,6 +144,16 @@ esac
 WORK="$(mktemp -d /tmp/veyyon-hd-demo.XXXXXX)"
 trap 'rm -rf "${WORK}"' EXIT
 
+# Warm the server before anything is recorded. The first request against a freshly
+# loaded model pays for prompt evaluation, and a scene that pays for it on screen opens
+# on a spinner -- which every row used to do, by spending its first turn asking the model
+# to reply with the word "ready". That turn was published. This one is not on screen at
+# all: same weights, same window, one throwaway request from the host.
+curl -s --max-time 180 "${PROOF_LLM_BASE_URL%/}/chat/completions" \
+	-H 'content-type: application/json' \
+	-d "{\"model\":\"${DEMO_MODEL#local/}\",\"messages\":[{\"role\":\"user\",\"content\":\"warm\"}],\"max_tokens\":4}" \
+	>/dev/null || echo "record-hd-demo.sh: warm-up request failed; the row may open on a spinner" >&2
+
 PROOF_LLM_BASE_URL="${PROOF_LLM_BASE_URL}" \
 	SCENE_HIDE_THINKING="${HIDE_THINKING}" \
 	SCENE_COMMAND="${SCENE_CMD}" \
