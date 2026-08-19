@@ -28,6 +28,8 @@ docker run --rm \
 	-e LC_ALL=C.UTF-8 \
 	-e LOCAL_LLM_KEY=none \
 	-e "PROOF_LLM_BASE_URL=${PROOF_LLM_BASE_URL:-}" \
+	-e "VEYYON_DEMO_SECRET=${VEYYON_DEMO_SECRET:-veyyon-demo-value-not-a-real-credential}" \
+	-e "SCENE_HIDE_THINKING=${SCENE_HIDE_THINKING:-}" \
 	-e DISPLAY=:99 \
 	-e "SCENE_COMMAND=${SCENE_COMMAND:-bun /repo/packages/coding-agent/src/cli.ts --model local/qwen2.5-1.5b}" \
 	-e "SCENE_WIDTH=${SCENE_WIDTH:-1600}" \
@@ -54,8 +56,15 @@ docker run --rm \
 		if [ -n "${PROOF_LLM_BASE_URL}" ]; then
 			sed -i "s|baseUrl: .*|baseUrl: ${PROOF_LLM_BASE_URL}|" /sandbox/home/.veyyon/profiles/default/agent/models.yml
 		fi
-		mkdir -p /sandbox/home/demo/src
-		printf "export function parse(s) {\n\tif (!s) throw new Error(\"empty focus string\");\n\treturn s.trim();\n}\n" > /sandbox/home/demo/src/parser.ts
-		printf "# demo\n\nA tiny project the recording drives.\n" > /sandbox/home/demo/README.md
+		# A feature row is about the block, the card or the diff, and this model
+		# reasons in pages: a clip of a plan scene with thinking shown is streamed
+		# reasoning with the plan card in two frames of it. `Hide Thinking Blocks` is
+		# a setting the product ships, so a scene that is not ABOUT thinking records
+		# with it on. The hero leaves it off, because a session showcase should show
+		# what the model is doing.
+		if [ -n "${SCENE_HIDE_THINKING}" ]; then
+			printf "hideThinkingBlock: true\n" >> /sandbox/home/.veyyon/profiles/default/agent/config.yml
+		fi
+		bash /repo/proof/docker/seed-demo.sh /sandbox/home/demo
 		exec /repo/proof/docker/xsession.sh "/repo/'"${SCENE}"'"
 	'

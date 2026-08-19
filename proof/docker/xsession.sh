@@ -145,11 +145,23 @@ xterm)
 esac
 KITTY_PID=$!
 
+# Wait for a window that can actually be configured, not for the first id the
+# search returns. kitty creates and destroys a window before the one it keeps, and
+# taking the first id raced it: `windowmove` and `getwindowgeometry` both failed
+# with BadWindow on 0x600007, the inset never applied, and the scene helpers read
+# an origin of 0,0 -- a themed capture that silently came out full-screen. A
+# geometry query is the fact this depends on, so that is what it waits for.
+WINDOW=""
 for _ in $(seq 1 100); do
-	xdotool search --class "kitty|XTerm" >/dev/null 2>&1 && break
+	for candidate in $(xdotool search --class "kitty|XTerm" 2>/dev/null); do
+		if xdotool getwindowgeometry "${candidate}" 2>/dev/null | grep -qE "Geometry: [1-9][0-9]*x[1-9]"; then
+			WINDOW="${candidate}"
+		fi
+	done
+	[ -n "${WINDOW}" ] && break
 	sleep 0.2
 done
-WINDOW="$(xdotool search --class "kitty|XTerm" | head -1)"
+: "${WINDOW:?no terminal window with a geometry appeared}"
 xdotool windowmove "${WINDOW}" "${MARGIN}" "${MARGIN}" || true
 xdotool windowsize "${WINDOW}" "${TW}" "${TH}" || true
 xdotool windowactivate "${WINDOW}" 2>/dev/null || true
@@ -172,6 +184,11 @@ ffmpeg -loglevel error -y -f x11grab -draw_mouse 1 -framerate "${FPS}" \
 	-c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p \
 	"${OUT}/${NAME}.mp4" >/tmp/ffmpeg.log 2>&1 &
 FFMPEG_PID=$!
+# The recording's own zero, in milliseconds, so a still can name the second of the
+# video it belongs to. ffmpeg's first frame lands a moment after the fork, and that
+# moment is smaller than the lead a cut keeps around a mark.
+rm -f "${OUT}/${NAME}-marks.tsv"
+export SCENE_T0="$(date +%s%3N)"
 
 cleanup() {
 	kill -INT "${FFMPEG_PID}" 2>/dev/null || true

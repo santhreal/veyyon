@@ -23,6 +23,15 @@ its head ends, so `--single` keeps one span from just before the first change to
 the end of the take, and `--scene-score` is what lets a caller point the detector
 at that smaller scale.
 
+A feature scene against a reasoning model is the third shape, and it needs
+`--marks`. Magnitude does find the biggest changes there, and they are pages of
+thinking scrolling past: a magnitude cut of the plan scene was thirty seconds of
+streamed reasoning and two frames of the plan card. The scene already knows better,
+because it takes a still at each moment it exists to show, so the run writes those
+instants to `<name>-marks.tsv` and the cut is the window around each one.
+
+    proof/hero-cut.py take.mp4 --marks take-marks.tsv --mp4 row.mp4 --webp row.webp
+
 The published form is an animated WebP, not a GIF: 24 seconds of 900px terminal
 text is 18 MB as a GIF and 5 MB as WebP, at better quality, and every browser
 that renders the README renders it.
@@ -52,6 +61,9 @@ HOLD = 2.4
 # An event carrying fewer distinct frames than this is a cursor artefact, not a
 # transition worth a segment of its own.
 MIN_FRAMES = 3
+# What to keep before a mark the scene declared. Longer than an event's lead: the
+# still is taken once the thing it names is on screen, so the arrival is behind it.
+MARK_LEAD = 4.0
 # The floor below which a frame is the same screen as the one before it. A cursor
 # is one 13x29 cell and a hover band repaints one row, and both clear this at the
 # 480px scale the detector works on, so a stretch with nothing above it is a
@@ -142,6 +154,35 @@ def single_span(path: Path, *, score: float) -> list[tuple[float, float]]:
 	return [(max(0.0, first - LEAD), min(total, last + HOLD))]
 
 
+def mark_spans(path: Path, marks: Path) -> list[tuple[float, float]]:
+	"""Windows around the instants the scene itself declared.
+
+	A scene takes a still at every moment it exists to show, and the run writes each
+	one down with the second it happened, so those timestamps are the cut and they
+	come from the recording rather than from somebody watching it. Change magnitude
+	cannot stand in for them in a session against a reasoning model: the largest
+	changes on screen are pages of thinking scrolling past, so a magnitude cut of a
+	plan scene is thirty seconds of streamed text and two frames of the plan.
+
+	The lead is longer than an event's, because the still is taken once the thing has
+	arrived: the interesting stretch is the seconds BEFORE the mark.
+	"""
+	total = duration(path)
+	spans: list[tuple[float, float]] = []
+	for line in marks.read_text().splitlines():
+		_, _, at = line.partition("\t")
+		if not at.strip():
+			continue
+		mark = float(at)
+		lo = max(0.0, mark - MARK_LEAD)
+		hi = min(total, mark + HOLD)
+		if spans and lo <= spans[-1][1]:
+			spans[-1] = (spans[-1][0], max(spans[-1][1], hi))
+		else:
+			spans.append((lo, hi))
+	return spans
+
+
 def cut(path: Path, out: Path, spans: list[tuple[float, float]], *, width: int, fps: int, speed: float) -> None:
 	inputs: list[str] = []
 	chains: list[str] = []
@@ -224,6 +265,11 @@ def main() -> int:
 		action="store_true",
 		help="keep one span from the first change to the end, for a gesture scene",
 	)
+	parser.add_argument(
+		"--marks",
+		type=Path,
+		help="cut around the marks a scene wrote, instead of by change magnitude",
+	)
 	parser.add_argument("--fps", type=int, default=15)
 	parser.add_argument("--speed", type=float, default=2.0)
 	parser.add_argument("--webp-width", type=int, default=900)
@@ -232,9 +278,14 @@ def main() -> int:
 	parser.add_argument("--dry-run", action="store_true", help="print the windows, write nothing")
 	args = parser.parse_args()
 
-	spans = single_span(args.take, score=args.scene_score) if args.single else segments(args.take, score=args.scene_score)
+	if args.marks:
+		spans = mark_spans(args.take, args.marks)
+	elif args.single:
+		spans = single_span(args.take, score=args.scene_score)
+	else:
+		spans = segments(args.take, score=args.scene_score)
 	if not spans:
-		print(f"{args.take}: no change events found; nothing to cut", file=sys.stderr)
+		print(f"{args.take}: nothing to cut", file=sys.stderr)
 		return 1
 	kept = sum(hi - lo for lo, hi in spans)
 	print(f"{args.take}: {duration(args.take):.1f}s -> {kept / args.speed:.1f}s in {len(spans)} segments")

@@ -66,6 +66,19 @@ submit() {
 	k Return
 }
 
+# Submit a slash command. The completion popup owns Return while it is open: it
+# takes the highlighted row rather than submitting the line, so a command whose
+# name is a prefix of another one gets the wrong one. The escape dismisses the
+# popup and leaves the typed text, which is what the recorded tapes did and for
+# this reason.
+slash() {
+	t "$1"
+	pause 0.7
+	k Escape
+	pause 0.3
+	k Return
+}
+
 # Move the real pointer to a pixel. The terminal turns that into the same SGR
 # motion report a hand on a mouse produces, which is the only way a hover state
 # is real evidence.
@@ -116,7 +129,23 @@ key_repeat_button() {
 	done
 }
 
-shot() { import -window root "${SCENE_OUT}/${SCENE_NAME}-$1.png"; }
+# A still, and the second of the recording it was taken at.
+#
+# The timestamp is what lets a clip be cut around the moments the scene exists to
+# show. Nothing else in the take knows where they are: change magnitude finds the
+# largest repaints, which in a session against a reasoning model are pages of
+# thinking, so a magnitude cut of a feature scene is streamed text with the feature
+# in two frames of it. SCENE_T0 is set in milliseconds when the recorder starts
+# capturing, so this is an offset into the video and not a wall clock. The
+# arithmetic is shell integer maths because the recorder image carries no `bc`.
+shot() {
+	import -window root "${SCENE_OUT}/${SCENE_NAME}-$1.png"
+	if [ -n "${SCENE_T0:-}" ]; then
+		local ms=$(($(date +%s%3N) - SCENE_T0))
+		printf '%s\t%d.%d\n' "$1" $((ms / 1000)) $((ms % 1000 / 100)) \
+			>>"${SCENE_OUT}/${SCENE_NAME}-marks.tsv"
+	fi
+}
 
 # Wait for text to appear on screen, so a scene never races the model. Reads the
 # window's own text through kitty's remote control if it is on, otherwise falls
