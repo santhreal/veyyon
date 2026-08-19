@@ -61,11 +61,13 @@ key_repeat() { # key_repeat <key> <count> [delay]
 }
 # Typing is not the demonstration. A published clip that spends its first seconds
 # watching characters appear one at a time shows the recorder's pointer, not the
-# product, so the text lands as fast as the emulator will accept it and the clip
-# begins at the result. A scene driving a login shell rather than the app can raise
-# TYPE_DELAY: a shell has no input debounce of its own and xdotool has been observed
-# doubling characters into one, which turns a typed command into a typo.
-t() { _xdo type --delay "${TYPE_DELAY:-0}" -- "$1"; }
+# product, so the cut starts near the result and the typing stays off camera.
+# The rate still cannot be zero. At --delay 0 xdotool outran the emulator's input
+# handling and doubled characters inside the app itself, not just in a login shell:
+# a recorded take composed "/sseccret ffrom-env RELEASE_SIGNATURE release-siggnature"
+# and lost its whole signing segment to a typo. 24ms has never doubled; a scene
+# driving a login shell raises it further, since a shell has no debounce of its own.
+t() { _xdo type --delay "${TYPE_DELAY:-24}" -- "$1"; }
 submit() {
 	t "$1"
 	pause 0.2
