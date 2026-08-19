@@ -1301,10 +1301,22 @@ SECTIONS = [
             " recorded against.</p>",
             video(
                 X + "demo-hd.mp4",
-                "The whole take, twenty minutes: a read, an edit, a command that verifies the edit, a bash block with"
-                " its wall time, a three-phase plan written by the todo tool, a task struck through, the settings"
-                " card under a real pointer, and the transcript scrolled back through all of it.",
+                "The whole take: a read, an edit, the project's own test run against the change, a three-phase plan"
+                " written by the todo tool with a task struck through, a credential stored from the environment, that"
+                " credential spent as a placeholder to sign the work, and the use log naming the spend.",
             ),
+            "<h3>The signature is the part a reader can check</h3>",
+            "<p>A demo can assert anything. This one ends on a claim anybody can recompute. One number is exported"
+            " into the container and stored with <code>/secret from-env</code>, so it is typed nowhere and never"
+            " enters the transcript. The model is then asked to sign its work, writes a command containing"
+            " <code>#RELEASE_SIGNATURE#</code>, and veyyon substitutes the real bytes at the outbound boundary —"
+            " after the model has committed to the command and before the shell sees it. What ends up on screen is a"
+            " placeholder in the transcript, a sha256 digest in <code>SIGNED.md</code>, and a spend recorded by name"
+            " in <code>/secret log</code>. The run writes the number and its digest to"
+            " <code>demo-hd-signature-crosscheck.txt</code> beside the take, outside the recording, so the digest in"
+            " the frame can be hashed independently rather than believed. The three cannot all be faked at once:"
+            " a value the model had would show up in the transcript, and a digest that did not come from the number"
+            " would not match.</p>",
             "<h3>The clip the landing page carries</h3>",
             "<p>The landing-page clip is cut from that take by <code>proof/hero-cut.py</code>, and which moments it"
             " keeps is derived from the recording rather than typed in. <code>tighten.py</code> is the wrong"
