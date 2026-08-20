@@ -272,6 +272,13 @@ def video(rel: str, caption: str, start: float | None = None) -> str:
 # 72M-token pair, the theme-ladder wash, and both slab-vs-card render proofs.
 TREE_ARMS = ("main", "branch")
 
+# The labels for a render proof of one surface at two revisions of its own
+# renderer. Nothing under `captures/render/` came off a display, so `tree_of`
+# cannot answer for it and the arm lives in the filename instead. The check in
+# `axis` is what stops a pair being captioned the wrong way round, which on a
+# before/after claim is the whole figure rather than a detail of it.
+RENDER_ARMS = ("before the redesign", "after it")
+
 mislabelled: list[str] = []
 
 
@@ -293,6 +300,8 @@ def axis(before: str, after: str, arms: tuple[str, str]) -> tuple[str, str]:
     """
     if tuple(arms) == TREE_ARMS and tree_of(before) == tree_of(after):
         mislabelled.append(f"{before} vs {after}: both arms are {tree_of(before)}, captioned main/branch")
+    if tuple(arms) == RENDER_ARMS and not ("-before-" in before and "-after-" in after):
+        mislabelled.append(f"{before} vs {after}: a render pair's arms are its filenames, and these do not read before/after")
     return arms
 
 
@@ -795,6 +804,7 @@ XB = "captures/x11/before/"
 S = "captures/x11/strips/"
 W = "captures/wayland/"
 N = "captures/notes/"
+RN = "captures/render/"
 SECTIONS = [
     Section(
         "One animation clock, and a card that unfolds onto it",
@@ -1546,6 +1556,67 @@ SECTIONS = [
                 W + "demo-hd-todo-strike.png",
                 "The same board one turn later. The task is struck, Foundation reads 1/2, and the footer has lost"
                 " its dirty marker, which is the commit landing.",
+            ),
+            "<h3>The same board, rebuilt</h3>",
+            "<p>The board in those two frames is not the board the branch draws now. Everything below is the"
+            " shipped renderer's own output, rasterised off-screen at the same width from the same board — nine"
+            " tasks over three phases with one in flight — so the only variable between the arms is the code that"
+            " drew them. The left arm is the renderer the take above recorded; the right arm reproduces byte for"
+            " byte from the branch tip.</p>",
+            still_pair(
+                RN + "todo-board-before-grey.png",
+                RN + "todo-board-after-grey.png",
+                "four gauges: one in the header and one per phase, each approximating a fraction printed two"
+                " columns to its right, and at twelve cells none of them separates <code>0/2</code> from"
+                " <code>1/4</code>. The completed task is the brightest row on the block and the task in flight is"
+                " quieter than it, so the eye lands on the work already finished.",
+                "one gauge, in the header, where the only global number belongs. A phase row is a marker, a name"
+                " and its count, and the freed column is what the task rows are legible in. Three tiers,"
+                " orderable by eye and by byte — dim <code>86;95;119</code> for closed, bold muted"
+                " <code>139;147;164</code> for a phase not yet started, bold accent <code>198;203;212</code> for"
+                " the one task in flight. Pending tasks are muted without the bold, which is what leaves a phase"
+                " row reading as a heading over them.",
+                arms=RENDER_ARMS,
+            ),
+            "<p>One ground answers half the question, so here is the same pair on black. A panel that leans on a"
+            " dark fill to separate its rows looks correct on grey and dissolves here; this one separates them by"
+            " weight and colour, which survives the ground.</p>",
+            still_pair(
+                RN + "todo-board-before-black.png",
+                RN + "todo-board-after-black.png",
+                "the per-phase gauges keep their fill on black, which is what makes them the loudest thing on a"
+                " panel whose subject is the text beside them.",
+                "the header gauge is the only fill left, and the three tiers still order correctly with nothing"
+                " behind them.",
+                arms=RENDER_ARMS,
+            ),
+            "<h3>The entrance, frame by frame</h3>",
+            "<p>Frames 1, 3, 5 and 7 of the entrance, top to bottom, from the same renderer on each arm. Frame 0"
+            " is the settled board on both, because a gallery, an HTML export and a collab guest each pass a fixed"
+            " frame 0 and must not be handed a half-drawn panel.</p>",
+            still_pair(
+                RN + "todo-entrance-before-grey.png",
+                RN + "todo-entrance-after-grey.png",
+                "the rows were typed in from the left behind a block cursor. Frame 1 is one clipped phase name"
+                " (<code>I. Founda</code>) over eight rows of a lone track cell; frame 5 cuts three rows mid-word"
+                " (<code>Reject a credential who</code>, <code>Fail c</code>); frame 7 is still cutting two. A"
+                " panel whose whole job is to say what the plan is was unreadable for the length of its own"
+                " entrance, and the product's own recordings are not allowed to show typing.",
+                "every frame holds every row, whole, and the row count is constant. What moves is brightness: a"
+                " row ramps dim, muted, its own colour, one frame behind the row above it, so the wave travelling"
+                " down the block is what reads as assembly. A row already at the dimmest never brightens, because"
+                " ramping finished work up and back flashes the eye onto exactly what the weighting above was"
+                " inverted to demote.",
+                arms=RENDER_ARMS,
+            ),
+            still_pair(
+                RN + "todo-entrance-before-black.png",
+                RN + "todo-entrance-after-black.png",
+                "the same four frames on black. The track cells for rows that have not started are the clearest"
+                " thing in frame 1.",
+                "the same four frames on black: the ladder is a brightness ramp rather than a fill, so it reads"
+                " the same with no ground under it.",
+                arms=RENDER_ARMS,
             ),
             still(
                 W + "demo-hd-settings-pane.png",
