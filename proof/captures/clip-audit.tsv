@@ -1,5 +1,6 @@
 clip	bytes	seconds	distinct-frames	last-frame-ink
-wayland/demo-hd.mp4	30431150	1984.07	41310	6401.8
+wayland/demo-hd-cut.mp4	8270675	192.30	2749	6181.4
+wayland/demo-hd.mp4	23483346	1155.97	19928	6170.8
 x11/after/transcript-blanking.mp4	393495	10.07	38	9139.4
 x11/band-after/blank-band.mp4	44538	3.47	10	7659.9
 x11/before/card-bands.mp4	521093	31.72	115	2206.8

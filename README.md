@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/demo-hd.webp" width="960" alt="Veyyon reads a file, edits it, verifies the edit with a command, writes a phased plan, and signs the result with a stored credential, in a composited 1920x1080 terminal">
+  <img src="assets/demo-hd.webp" width="960" alt="Veyyon searches a nine-module tree, finds that a hex string is silently read as a decimal, fans out three subagents to fix it, verifies every default with a command, writes a phased plan, and signs the result with a stored credential it never prints, in a composited terminal at the speed it was recorded">
 </p>
 
 Veyyon uses the same model weights available in other clients. The difference is the workbench around them: a prompt you can inspect, model-native effort controls, explicit state ownership, protected secret spending, typed workers, language-server refactors, durable sessions, and tools that fail before stale state becomes a bad write.
@@ -156,9 +156,9 @@ PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh d
 The session hardens a service tree: nine modules across three directories each read a numeric
 setting straight out of the environment in their own spelling, so it finds every site with a
 search, writes one validating owner, then fans the edits out to three subagents working
-disjoint directories in parallel. It then makes one edit of its own, pinning the trap the
-search turned up — `parseInt` without a radix reads `0x10` as 16 — and runs the suite over the
-result. It writes a phased plan
+disjoint directories in parallel. It then makes one edit of its own, pinning the trap it turned
+up itself — `Number("0x10")` returns 16, so a hex string in an environment variable is read as
+a decimal rather than rejected — and runs the suite over the result. It writes a phased plan
 with the todo tool, marks the first task done and commits it, and then signs its work with a
 credential it never typed: a number
 is stored from the environment with `/secret from-env`, the model writes
@@ -174,13 +174,13 @@ python3 proof/verify-signature.py proof/captures/wayland/demo-hd-signature-cross
 
 | Surface | What the frame shows | Artifact |
 | --- | --- | --- |
-| The session | The whole take: search, fan out, edit, verify, plan, sign | [video](assets/demo-hd.webp) |
+| The session | Search, fan out, edit, verify, plan, sign — at the speed it was recorded, with any stretch where the screen went untouched trimmed to a four-second pause and nothing sped up | [clip](assets/demo-hd.webp) / [full quality](proof/captures/wayland/demo-hd-cut.mp4) / [unedited take](proof/captures/wayland/demo-hd.mp4) |
 | Search | The grep that finds all nine sites, shot while the turn is still running | [frame](assets/demo-hd-search-block.png) |
-| Inventory | Every environment read in the tree in one table, grouped by spelling, with the hex trap in `parseInt` named underneath | [frame](assets/demo-hd-inventory.png) |
+| Inventory | Every environment read in the tree in one table, with the three different coercion spellings in use grouped underneath and the one inconsistency worth flagging named | [frame](assets/demo-hd-inventory.png) |
 | Parallel agents | Three subagents settling in one turn, one per directory, editing disjoint files against an owner the main agent wrote first | [frame](assets/demo-hd-agent-lanes.png) |
-| Edit | The main agent's own diff, pinning the hex value its search flagged, with the file named in the block header | [frame](assets/demo-hd-edit-diff.png) |
+| Edit | The main agent's own diff, adding the guard that rejects the hex, octal and binary literals its search flagged, with the file named in the block header | [frame](assets/demo-hd-edit-diff.png) |
 | Verification | The command the model chose to check its own change, and its output | [frame](assets/demo-hd-verify-command.png) |
-| Plan | A three-phase board with all six tasks open, then the first struck and the work committed as one scoped commit | [board](assets/demo-hd-todo-board.png) / [finished](assets/demo-hd-todo-strike.png) |
+| Plan | A three-phase board with all six tasks open, then five struck and the work landed as two scoped commits | [board](assets/demo-hd-todo-board.png) / [finished](assets/demo-hd-todo-strike.png) |
 | Secret stored | A credential taken from the environment, so it is typed nowhere | [frame](assets/demo-hd-secret-stored.png) |
 | Secret approval | The call held for approval, naming the credential it would spend | [frame](assets/demo-hd-secret-approval.png) |
 | Secret spent | The signature written from a placeholder the model never resolved | [frame](assets/demo-hd-signature-written.png) |
