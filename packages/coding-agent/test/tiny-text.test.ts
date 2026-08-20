@@ -212,6 +212,53 @@ describe("normalizeGeneratedTitle", () => {
 		expect(normalizeGeneratedTitle("   ")).toBeNull();
 		expect(normalizeGeneratedTitle(null)).toBeNull();
 	});
+
+	/**
+	 * WHY: the title role falls back to the session's own model when no tiny model is installed, so
+	 * the titler can be a local Qwen3 -- and one answered the title prompt with `<tools>`. That was
+	 * accepted, written to the session header, painted on the footline and set as the terminal
+	 * title, and it published in a recorded frame as a session called `<tools>`.
+	 *
+	 * THE CLASS: a generated title that is markup rather than prose. Every tag spelling a local
+	 * chat template emits is refused the same way, so the caller defers titling to the next message
+	 * instead of naming the session after a control token.
+	 *
+	 * NOT CAUGHT: a title that is plausible prose but wrong, and a leaked marker that carries no
+	 * angle brackets at all (a bare `tool_call` word reads as prose and is kept).
+	 */
+	it("refuses a title that is only a markup tag, in every spelling a chat template emits", () => {
+		for (const tag of [
+			"<tools>",
+			"</tools>",
+			"<tool_call>",
+			"<think>",
+			"</think>",
+			"<thinking>",
+			"<|channel|>",
+			"<|im_start|>",
+			"<function_call>",
+			"<response>",
+			"<answer/>",
+		]) {
+			expect(normalizeGeneratedTitle(tag), `${tag} is markup, not a title`).toBeNull();
+			expect(normalizeGeneratedTitle(`"${tag}"`), `${tag} quoted is still markup`).toBeNull();
+			expect(normalizeGeneratedTitle(`<title>${tag}</title>`), `${tag} inside the marker`).toBeNull();
+		}
+	});
+
+	it("keeps the prose beside a leaked tag rather than publishing the tag", () => {
+		expect(normalizeGeneratedTitle("<tools> Refactor the env reads")).toBe("Refactor the env reads");
+		expect(normalizeGeneratedTitle("<title><think>Fix login</title>")).toBe("Fix login");
+		// TWO leading tags, so a normalizer that strips only the first one is caught: a chat template
+		// that leaks one marker leaks the pair as often as not.
+		expect(normalizeGeneratedTitle("<tools><think> Fix login")).toBe("Fix login");
+	});
+
+	it("keeps a comparison that only looks like markup", () => {
+		// The refusal is for complete tags. A title with an angle bracket in ordinary use keeps it.
+		expect(normalizeGeneratedTitle("Make retries < 5 fail fast")).toBe("Make retries < 5 fail fast");
+		expect(normalizeGeneratedTitle("Explain a -> b => c")).toBe("Explain a -> b => c");
+	});
 });
 
 describe("normalizeGeneratedTitle source-aware casing", () => {
