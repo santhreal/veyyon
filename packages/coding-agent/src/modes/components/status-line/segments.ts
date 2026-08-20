@@ -864,6 +864,15 @@ const accountSegment: StatusLineSegment = {
  * from the count. A chip that overstates what will expand is worse than no chip, because the
  * operator plans around it.
  *
+ * NAMED CREDENTIALS AND AUTO-DETECTED VALUES ARE COUNTED APART, because adding them up printed a
+ * number the operator could not reconcile with anything: a session protects `secrets.yml`, the
+ * vault, AND every environment variable whose name matches an env keyword, so one stored
+ * credential beside two keyword-matching variables read `3 secrets` here while `/secret list`
+ * answered one active secret. An environment value is registered without a name, so it is masked
+ * on the way out but cannot be spent as `#NAME#` and the list has nothing to call it. `1 secret ·
+ * 2 masked` says both facts, and the leading number now agrees with the list. `·` is the
+ * separator because these are two independent states, per the grammar at `renderGoalMode`.
+ *
  * Silent when nothing is live, on the same terms as the account chip: a user with no vault pays
  * nothing for it, and the decluttered footline stays quiet.
  *
@@ -876,7 +885,11 @@ const secretsSegment: StatusLineSegment = {
 	render(ctx) {
 		const live = ctx.session.obfuscator?.liveSecrets();
 		if (!live || live.count === 0) return { content: "", visible: false };
-		const body = theme.fg("muted", `${live.count} ${live.count === 1 ? "secret" : "secrets"}`);
+		const masked = live.count - live.named;
+		const parts: string[] = [];
+		if (live.named > 0) parts.push(`${live.named} ${live.named === 1 ? "secret" : "secrets"}`);
+		if (masked > 0) parts.push(`${masked} masked`);
+		const body = theme.fg("muted", parts.join(" · "));
 		const left = live.nextExpiryAt === undefined ? undefined : live.nextExpiryAt - Date.now();
 		if (left === undefined || left > SECRET_EXPIRY_CHIP_WINDOW_MS) return { content: body, visible: true };
 		// The parentheses carry the body's colour and the phrase inside carries the warning, so the
