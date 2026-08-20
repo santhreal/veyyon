@@ -7,7 +7,7 @@ Set Padding 12
 Set Framerate 30
 Set Theme { "background": "#1e2127", "foreground": "#d7dae0" }
 Hide
-Type "cd /media/mukund-thiru/SanthData/Santh/worktrees/veyyon-ui-polish && VEYYON_PROFILE=capture bun run dev"
+Type "cd ${VEYYON_REPO:-.} && VEYYON_PROFILE=capture bun run dev"
 Enter
 Sleep 12s
 Show

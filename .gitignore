@@ -205,3 +205,8 @@ scratch-docs-lane/
 # 21MB the page actually plays. The page references the mp4; the gif is a local
 # convenience.
 /proof/captures/x11/commits/*.gif
+
+# One scratch git worktree per commit arm, created by proof/docker/commit-results.sh.
+# It defaults to a directory beside the repository so the script has no path
+# spelled from anybody's home; COMMIT_PROOF_TREES moves it elsewhere.
+/.commit-proof-trees/

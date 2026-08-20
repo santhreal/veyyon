@@ -17,7 +17,11 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 MANIFEST="${REPO_ROOT}/proof/commit-videos.tsv"
 OUT="${REPO_ROOT}/proof/captures/x11/commits"
-TREES="${COMMIT_PROOF_TREES:-/media/mukund-thiru/SanthData/Santh/worktrees/.commit-proof}"
+# One scratch worktree per arm. Kept beside the repository rather than under a
+# path spelled from somebody's home directory: a default naming one machine's
+# account is unrunnable everywhere else and publishes the account. Override
+# COMMIT_PROOF_TREES to put the trees on another filesystem.
+TREES="${COMMIT_PROOF_TREES:-${REPO_ROOT}/.commit-proof-trees}"
 PARALLEL="${PARALLEL:-10}"
 mkdir -p "${OUT}" "${TREES}"
 
@@ -63,7 +67,7 @@ if [[ "${1:-}" == "--one" ]]; then
 		-e HOME=/sandbox/home \
 		-e TERM=dumb \
 		-e VEYYON_TEST_SANDBOX=docker-recorder \
-		-e VEYYON_TEST_HOST_HOME=/home/mukund-thiru \
+		-e "VEYYON_TEST_HOST_HOME=${HOME}" \
 		-w /repo \
 		"${RECORDER_IMAGE:-veyyon-proof-recorder:2}" \
 		bash -lc "cd /repo && ${CMD} 2>&1 | tail -40" >"${OUT}/${HASH}-${ARM}.txt" 2>&1 || true
