@@ -249,21 +249,23 @@ await section("sidebar focused", component => {
 // the `api key` origin badge rather than `login`.
 await section("an api-key provider with no OAuth identity", () => {}, "groq");
 
-// A rate-limit rotation. The pin is Anthropic `work`, its 5h window is exhausted, and the block
-// is live, so the card must report the rotation instead of showing `personal` as a choice.
-if (!only || "a pin rotated off by a rate limit".includes(only)) {
-	// The revoked fixture is deliberately EXPIRED, and the resolve below hands over to a sibling: if it
-	// picked that row it would attempt a real token refresh against a fake grant, fail, and disable the
-	// credential. That polluted this section with a signed-out note it is not proving and moved its
-	// account count, so the proof varied with the network. Removed before the rotation, which also
-	// matches this section's story: two healthy accounts, one of them rate limited.
+// A live rate limit on the account the operator chose. The pin is Anthropic `work`, its 5h window
+// is exhausted and the block is live, so the card must show `work` still serving — an explicit
+// choice outranks this product's own prediction of when a provider will serve again — and name the
+// hold beside it, rather than handing the session to `personal`.
+if (!only || "the chosen account serves through its rate limit".includes(only)) {
+	// The revoked fixture is deliberately EXPIRED, and any resolve that reaches it would attempt a
+	// real token refresh against a fake grant, fail, and disable the credential. That polluted this
+	// section with a signed-out note it is not proving and moved its account count, so the proof
+	// varied with the network. Removed before the hold is written, which also matches this section's
+	// story: two healthy accounts, one of them rate limited.
 	await authStorage.removeCredential("anthropic", staleId);
 	authStorage.pinSessionCredential("anthropic", SESSION, workId);
 	await authStorage.markUsageLimitReached("anthropic", SESSION, { credentialId: workId, retryAfterMs: 2 * HOUR });
-	// Resolve once so a sibling becomes the last-used record; without this there is no rotation to
-	// report, only a blocked pin.
+	// Resolve once through the real selection path, so the card reports what selection did with a
+	// blocked choice rather than what an unexercised pin claims.
 	await authStorage.getApiKey("anthropic", SESSION);
-	await section("a pin rotated off by a rate limit", () => {});
+	await section("the chosen account serves through its rate limit", () => {});
 }
 
 store.close();
