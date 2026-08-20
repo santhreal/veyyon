@@ -712,6 +712,11 @@ machine's own <code>~/.veyyon</code> is not in the container's mount table — <
 from <code>proof/docker/home-seed</code> — so nothing here touches a live session, and the operator's own display
 is never opened. A pointer is only moved where a scene is about a pointer; the commit arms below run a command
 and need neither pointer nor keys.</p>
+<p><strong>And one figure on a second display server.</strong> The picom/swayfx pair further down is the
+exception to the paragraph above: <code>proof/docker/record-wl.sh</code> runs the same scene under
+<code>swayfx</code> on a headless Wayland session, where <code>grim</code> takes the stills and
+<code>wf-recorder</code> takes the video through <code>wlr-screencopy</code> - the same protocol, so a still and
+the video frame at that second are the same pixels. Everything else on this page is the X11 recorder.</p>
 <p><strong>Which model answers.</strong> A <code>llama.cpp</code> server holding
 <code>qwen2.5-1.5b-instruct-q4_k_m</code>, reachable only as the container-network provider <code>local</code>.
 No provider account is reachable from the container, so a streamed answer in these recordings is that model on

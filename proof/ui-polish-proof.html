@@ -48,7 +48,7 @@ details.clip summary:hover { color: #d7dae0; }
 </style></head>
 <body>
 <h1>feat/ui-polish — recorded proof</h1>
-<p class="lede">Branch <code>feat/ui-polish</code> at <code>3acee66ee</code>, 209 commits ahead of
+<p class="lede">Branch <code>feat/ui-polish</code> at <code>ef8bfc5c7</code>, 210 commits ahead of
 <code>main</code> (<code>532d9bb5d</code>). Every figure below is a frame of a real terminal running the shipped
 CLI. No component was drawn into a picture for this page, and nothing here is a tmux capture.</p>
 
@@ -64,6 +64,11 @@ machine's own <code>~/.veyyon</code> is not in the container's mount table — <
 from <code>proof/docker/home-seed</code> — so nothing here touches a live session, and the operator's own display
 is never opened. A pointer is only moved where a scene is about a pointer; the commit arms below run a command
 and need neither pointer nor keys.</p>
+<p><strong>And one figure on a second display server.</strong> The picom/swayfx pair further down is the
+exception to the paragraph above: <code>proof/docker/record-wl.sh</code> runs the same scene under
+<code>swayfx</code> on a headless Wayland session, where <code>grim</code> takes the stills and
+<code>wf-recorder</code> takes the video through <code>wlr-screencopy</code> - the same protocol, so a still and
+the video frame at that second are the same pixels. Everything else on this page is the X11 recorder.</p>
 <p><strong>Which model answers.</strong> A <code>llama.cpp</code> server holding
 <code>qwen2.5-1.5b-instruct-q4_k_m</code>, reachable only as the container-network provider <code>local</code>.
 No provider account is reachable from the container, so a streamed answer in these recordings is that model on
@@ -208,7 +213,7 @@ afterwards rather than screenshotted mid-motion.</p>
 <p>The resumed arm carries one cost the fresh arm does not, and it is model-side rather than renderer-side: a history that large does not fit a 65k window, so the app compacts before it can ask anything, and says so on screen while it does. That is the 1.5B summarizing on CPU, not a frame being repainted.</p>
 
 <h2>Every commit on the branch, on camera</h2>
-<p>110 of the 209 commits are below, one recording each. Every video is a real terminal in the recording
+<p>110 of the 210 commits are below, one recording each. Every video is a real terminal in the recording
 container: <code>proof/docker/record-commit-arm.sh</code> extracts the commit's tree and its parent's tree with
 <code>git archive</code>, mounts the same <code>node_modules</code> and the same native addon into both, and runs
 the same command in each. A test the commit ADDS is copied into the parent tree first, so the test is
@@ -223,6 +228,7 @@ a video is the text of the same command run again headlessly by
 rather than writing lines to a pipe, and the video is the only place its output exists.</p>
 <table><thead><tr><th>commit</th><th>subject</th></tr></thead>
 <tbody>
+<tr><td class="sha">ef8bfc5c7</td><td>proof(chrome): say which primitive the two backends do not share <em>— carries this page and its videos; filming it means filming the film</em></td></tr>
 <tr><td class="sha">3acee66ee</td><td>demos(hd): record a take on either display server, and rehearse without publishing <em>— carries this page and its videos; filming it means filming the film</em></td></tr>
 <tr><td class="sha">7b3b160ad</td><td>proof(scenes): prove the pointer instead of trusting it <em>— carries this page and its videos; filming it means filming the film</em></td></tr>
 <tr><td class="sha">9c965807b</td><td>proof(chrome): publish the picom-vs-swayfx frame pair <em>— carries this page and its videos; filming it means filming the film</em></td></tr>
