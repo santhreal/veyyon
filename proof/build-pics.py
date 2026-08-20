@@ -40,32 +40,56 @@ SECTIONS = [
         "session produced them. Each is a full-resolution composite off the "
         "recorder, not a crop of a video frame.",
         lambda n: n.startswith("demo-hd-"),
+        "demo-hd.sh",
+    ),
+    (
+        "A fourteen-task plan, closed out",
+        "A second session, recorded after the todo board was rebuilt: fourteen "
+        "tasks across five phases written in one call, then closed one call at a "
+        "time. Thirteen frames, in the order the walk reached them.",
+        lambda n: n.startswith("todo-marathon-"),
+        "todo-marathon.sh",
     ),
     (
         "Surfaces the take does not reach",
         "Panes that need a state the single session never enters, captured from "
         "the same scene machinery.",
         lambda n: n.startswith("stills-extra-") or n.startswith("prompt-architecture-"),
+        None,
     ),
     (
         "Settings differentials",
         "One knob, off and on. A single screenshot of a default proves the "
         "setting was declared, not that it reaches behaviour.",
         lambda n: n.endswith(("-off", "-on")) or "settings" in n or n.startswith("accounts-"),
+        None,
     ),
     (
         "Render proofs",
         "The real component rendered off-screen onto both grounds.",
         lambda n: n.endswith(("-grey", "-black")),
+        None,
     ),
 ]
 
-TAKE_ORDER = [
-    "idle", "search-block", "inventory", "agent-lanes", "edit-diff",
-    "verify-command", "todo-board", "todo-strike", "secret-stored",
-    "secret-list", "secret-approval", "signature-written", "secret-log",
-    "context-report", "settings-open", "settings-pane", "scrolled", "bottom",
-]
+
+def scene_shots(scene):
+    """Shot names in the order a scene fires them, read from the scene itself.
+
+    This was a hardcoded list of eighteen surfaces that happened to agree with
+    proof/scenes/demo-hd.sh exactly. A second recorded band would have meant a
+    second copy, and a shot added to either scene sorts alphabetically into the
+    middle of the session until someone reads the page closely enough to notice.
+    """
+    order = []
+    with open(os.path.join(ROOT, "proof", "scenes", scene), encoding="utf8") as fh:
+        for line in fh:
+            fields = line.split()
+            if len(fields) == 2 and fields[0] == "shot":
+                order.append(fields[1])
+    if not order:
+        raise SystemExit(f"error: proof/scenes/{scene} fires no shots")
+    return order
 
 
 def png_size(path):
@@ -119,9 +143,20 @@ def collect():
     return found
 
 
-def take_key(stem):
-    surface = stem[len("demo-hd-"):]
-    return (TAKE_ORDER.index(surface) if surface in TAKE_ORDER else len(TAKE_ORDER), surface)
+def scene_key(scene):
+    """Order a band's frames the way its scene shot them, unknown names last.
+
+    A scene's frames are named after the scene, so the filename carries both the
+    prefix to strip and the shot list to sort by: demo-hd.sh -> demo-hd-idle.
+    """
+    prefix = scene[: -len(".sh")] + "-"
+    order = scene_shots(scene)
+
+    def key(entry):
+        surface = entry[1][len(prefix):]
+        return (order.index(surface) if surface in order else len(order), surface)
+
+    return key
 
 
 def pair_up(entries):
@@ -168,16 +203,18 @@ def main():
     found = [e for e in every if e[5] >= EDGE_FLOOR]
     empty = [e for e in every if e[5] < EDGE_FLOOR]
 
-    buckets = {title: [] for title, _blurb, _match in SECTIONS}
+    buckets = {title: [] for title, _blurb, _match, _scene in SECTIONS}
     other = []
     for entry in found:
-        for title, _blurb, match in SECTIONS:
+        for title, _blurb, match, _scene in SECTIONS:
             if match(entry[1]):
                 buckets[title].append(entry)
                 break
         else:
             other.append(entry)
-    buckets["The take"].sort(key=lambda e: take_key(e[1]))
+    for title, _blurb, _match, scene in SECTIONS:
+        if scene:
+            buckets[title].sort(key=scene_key(scene))
 
     parts = [
         "<!doctype html><meta charset=utf-8>",
@@ -209,7 +246,7 @@ def main():
         f"nothing here points at a file that is gone.</p>",
     ]
 
-    for title, blurb, _match in SECTIONS:
+    for title, blurb, _match, _scene in SECTIONS:
         entries = buckets[title]
         if not entries:
             continue
@@ -243,7 +280,7 @@ def main():
         fh.write(body + "\n")
 
     print(f"wrote {os.path.relpath(OUT, ROOT)}: {os.path.getsize(OUT):,} bytes, {shown} figures")
-    for title, _blurb, _match in SECTIONS:
+    for title, _blurb, _match, _scene in SECTIONS:
         print(f"  {len(buckets[title]):>3}  {title}")
     print(f"  {len(other):>3}  unclaimed")
     for entry in empty:
