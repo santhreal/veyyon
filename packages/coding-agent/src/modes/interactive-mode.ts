@@ -57,7 +57,7 @@ import {
 	postmortem,
 	prompt,
 } from "@veyyon/utils";
-import { isTerminalTodoStatus, isTodoListDone, TODO_DONE_SUMMARY } from "@veyyon/wire";
+import { isTerminalTodoStatus, isTodoListDone } from "@veyyon/wire";
 import chalk from "chalk";
 import type { CollabGuestLink } from "../collab/guest";
 import type { CollabHost } from "../collab/host";
@@ -2242,22 +2242,21 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.todoContainer.clear();
 		const phases = this.todoPhases.filter(phase => phase.tasks.length > 0);
 		if (phases.length === 0) return;
-		// A board with work on it and nothing left open is one line, the same line
-		// the transcript card and the HTML export collapse to, from the same owner
-		// (`isTodoListDone` / `TODO_DONE_SUMMARY` in `@veyyon/wire`). This HUD is
-		// anchored above the composer for the rest of the session, so a finished
-		// plan redrawn here in full is the loudest block on screen saying nothing.
+		// A board with work on it and nothing left open draws NOTHING here.
+		//
+		// It used to collapse to one line, and that line was `▪ Todo list done ·
+		// 6 tasks` — the same sentence, from the same owner, that the transcript
+		// card for the write that closed the list had just printed. Both were on
+		// screen at once, one of them anchored above the composer for the rest of
+		// the session. This region is for work in flight; a finished plan is
+		// history, the card is where history lives, and the region being gone is
+		// how an anchored HUD says there is nothing open.
 		//
 		// Derived from the phases in hand and stored nowhere: `append` puts a
 		// pending task back on the board and the full list returns on the next
 		// frame. The expand toggle does not reopen it, because a finished board is
 		// history on every surface and the two must not disagree on one screen.
-		if (isTodoListDone(phases)) {
-			const doneTasks = phases.reduce((count, phase) => count + phase.tasks.length, 0);
-			const summary = `${theme.checkbox.checked} ${TODO_DONE_SUMMARY} · ${formatCount("task", doneTasks)}`;
-			this.todoContainer.addChild(new Text(`\n${theme.fg("success", summary)}`, 1, 0));
-			return;
-		}
+		if (isTodoListDone(phases)) return;
 		const expanded = this.todoExpanded;
 		const multiPhase = phases.length > 1;
 		const activeIdx = phases.indexOf(this.#getActivePhase(phases) ?? phases[0]);
@@ -2346,10 +2345,13 @@ export class InteractiveMode implements InteractiveModeContext {
 			theme,
 		);
 
-		// Header carries overall stage progression, e.g. "Todos · 1/8".
+		// Header carries the phase the plan is on, e.g. "Todos · phase 1/8". The
+		// unit is named because it used to be a bare `· 1/8` sitting one line above
+		// phase rows ending in `· 0/2`: the same shape, one counting phases and the
+		// other counting tasks, and nothing on screen said which was which.
 		const root =
 			theme.bold(theme.fg("accent", "Todos")) +
-			(multiPhase ? theme.fg("dim", ` · ${activeIdx + 1}/${phases.length}`) : "");
+			(multiPhase ? theme.fg("dim", ` · phase ${activeIdx + 1}/${phases.length}`) : "");
 		const lines = ["", root, ...phaseTreeLines.map(line => ` ${line}`)];
 		this.todoContainer.addChild(new Text(lines.join("\n"), 1, 0));
 	}
