@@ -1,9 +1,18 @@
 #!/usr/bin/env bash
 # Helpers a scene uses to drive the terminal: keys, text, a real pointer, and
-# stills cut out of the same display ffmpeg is recording.
+# stills cut out of the same display the recorder is capturing.
 #
-# Sourced by proof/docker/xsession.sh with DISPLAY, SCENE_WINDOW, SCENE_NAME and
-# SCENE_OUT already exported.
+# Sourced by proof/docker/xsession.sh (X11) or proof/docker/wlsession.sh
+# (Wayland) with SCENE_NAME and SCENE_OUT already exported.
+#
+# Keys, the pointer and the capture go through six primitives a backend file
+# provides, because the two display servers answer them differently and nothing
+# above this line should know which one is running. Everything else here --
+# typing, the composer, the waits, screen reads -- is already server-independent:
+# it goes through kitty's socket into the pty.
+SCENE_SERVER="${SCENE_SERVER:-x11}"
+# shellcheck disable=SC1090
+source "$(dirname "${BASH_SOURCE[0]}")/backend-${SCENE_SERVER}.sh"
 
 # The grid comes from the shell (`stty size`), and the pixel size of a cell from
 # the window divided by that grid. Asking the terminal directly (CSI 16t) only
@@ -11,17 +20,15 @@
 read -r TERM_ROWS TERM_COLS <<<"$(sed -n 's/^stty=//p' /tmp/geom)"
 PAD="${SCENE_PADDING:-8}"
 : "${TERM_ROWS:=40}" "${TERM_COLS:=150}"
-_win_px() { xdotool getwindowgeometry "${SCENE_WINDOW}" | sed -n 's/.*Geometry: \([0-9]*\)x\([0-9]*\)/\1 \2/p'; }
-read -r WIN_W WIN_H <<<"$(_win_px)"
+read -r WIN_W WIN_H <<<"$(_be_window_px)"
 : "${WIN_W:=1600}" "${WIN_H:=1000}"
 # A themed capture insets the window so the backdrop and the compositor's shadow
 # are visible, so the window's own origin is no longer the screen's. Every
-# pointer target is a pixel on the ROOT window, which is what xdotool moves and
-# what ffmpeg records, so the origin has to be added back. It is 0,0 for a plain
-# full-screen capture, which leaves those scenes aiming at exactly the pixels
-# they did before.
-_win_origin() { xdotool getwindowgeometry "${SCENE_WINDOW}" | sed -n 's/.*Position: \([0-9]*\),\([0-9]*\).*/\1 \2/p'; }
-read -r WIN_X WIN_Y <<<"$(_win_origin)"
+# pointer target is a pixel on the whole screen, which is what the pointer
+# primitive moves and what the recorder captures, so the origin has to be added
+# back. It is 0,0 for a plain full-screen capture, which leaves those scenes
+# aiming at exactly the pixels they did before.
+read -r WIN_X WIN_Y <<<"$(_be_window_origin)"
 : "${WIN_X:=0}" "${WIN_Y:=0}"
 CELL_W=$(((WIN_W - 2 * PAD) / TERM_COLS))
 CELL_H=$(((WIN_H - 2 * PAD) / TERM_ROWS))
@@ -34,28 +41,17 @@ px_y() { echo $((WIN_Y + (${1} - 1) * CELL_H + CELL_H / 2 + PAD)); }
 
 pause() { sleep "${1:-0.5}"; }
 
-# Keys go to the window xsession.sh found. That id can go stale: kitty may map a
-# second window during startup and retire the first, and every key after that
-# dies of BadWindow -- which under `set -e` takes the recorder down with it,
-# leaving a video that stops at the first keystroke and no gif and no stats. The
-# whole scene had already run past its load when that happened on the fresh arm
-# of the long-session pair. So a send that fails on the id is retried against
-# whatever holds the focus, and a send that fails both ways is reported and does
-# not abort the run: a scene that loses one key is worth more than no recording.
-_xdo() {
-	local verb="$1"
-	shift
-	xdotool "${verb}" --clearmodifiers --window "${SCENE_WINDOW}" "$@" 2>/dev/null && return 0
-	xdotool "${verb}" --clearmodifiers "$@" 2>/dev/null && return 0
-	echo "scene: ${verb} ${*} reached no window" >&2
-	return 0
-}
-
-k() { _xdo key "$@"; }
+# A key press goes through the backend, which on X11 aims at the window the
+# session found and on Wayland writes the bytes the terminal sends for that key
+# into the pty. Both report a failure and carry on rather than aborting: a scene
+# that loses one key is worth more than no recording, and under `set -e` a stale
+# X11 window id once took the recorder down at the first keystroke, leaving a
+# video that stopped there with no gif and no stats.
+k() { _be_key "$@"; }
 key_repeat() { # key_repeat <key> <count> [delay]
 	local key="$1" count="$2" delay="${3:-0.12}"
 	for _ in $(seq 1 "${count}"); do
-		_xdo key "${key}"
+		_be_key "${key}"
 		sleep "${delay}"
 	done
 }
@@ -187,12 +183,10 @@ approve_while_asked() {
 # card-bands scene measured 351s against sixty seconds of its own sleeps, all of
 # it duplicate moves inside `glide`.
 move_px() {
-	local x="$1" y="$2" loc cx cy
-	loc="$(xdotool getmouselocation --shell)"
-	cx="$(printf '%s\n' "${loc}" | sed -n 's/^X=//p')"
-	cy="$(printf '%s\n' "${loc}" | sed -n 's/^Y=//p')"
+	local x="$1" y="$2" cx cy
+	read -r cx cy <<<"$(_be_pointer_at)"
 	if [ "${cx}" = "${x}" ] && [ "${cy}" = "${y}" ]; then return 0; fi
-	xdotool mousemove --sync "${x}" "${y}"
+	_be_pointer_move "${x}" "${y}"
 }
 
 # Move the real pointer to a cell.
@@ -214,7 +208,7 @@ glide() { # glide <row-from> <col-from> <row-to> <col-to> [steps] [delay]
 		sleep "${delay}"
 	done
 }
-click() { xdotool click 1; }
+click() { _be_click 1; }
 click_at() { point "$1" "$2"; pause 0.3; click; }
 wheel_up() { key_repeat_button 4 "${1:-3}"; }
 wheel_down() { key_repeat_button 5 "${1:-3}"; }
@@ -251,7 +245,7 @@ scroll_to() {
 key_repeat_button() {
 	local button="$1" count="$2"
 	for _ in $(seq 1 "${count}"); do
-		xdotool click "${button}"
+		_be_click "${button}"
 		sleep 0.12
 	done
 }
@@ -273,8 +267,8 @@ shot() {
 	# missing file: the publish step copies what it finds, so the name keeps whatever an earlier
 	# take left under it. The mark is the record of a frame that landed, so it is only written
 	# when one did, and a failure says so in the log rather than in the gallery.
-	if ! import -window root "${png}" 2>&1 || [ ! -s "${png}" ]; then
-		echo "scene: shot '$1' captured nothing (import failed or wrote an empty file)" >&2
+	if ! _be_capture "${png}" 2>&1 || [ ! -s "${png}" ]; then
+		echo "scene: shot '$1' captured nothing (the capture failed or wrote an empty file)" >&2
 		return 0
 	fi
 	if [ -n "${SCENE_T0:-}" ]; then
