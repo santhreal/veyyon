@@ -13,13 +13,11 @@
 import { describe, expect, it } from "bun:test";
 import * as AIError from "@veyyon/ai/error";
 import { TOOL } from "@veyyon/coding-agent/tools/builtin-names";
-import { createSimulation, type ScriptedTurn, type Simulation, simTool } from "./harness";
+import { createSimulation, simTool } from "./harness";
 
 const PLACEHOLDER_MARKER = "was not executed because the provider stream ended";
 
-async function runKindSimulation(options: {
-	kind: AIError.ProviderResponseErrorKind;
-}): Promise<{
+async function runKindSimulation(options: { kind: AIError.ProviderResponseErrorKind }): Promise<{
 	ran: string[];
 	requests: number;
 	toolTexts: string[];

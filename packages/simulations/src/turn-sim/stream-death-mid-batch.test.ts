@@ -44,6 +44,7 @@ import { SUPERSEDED_NOTICE } from "@veyyon/agent-core/compaction/pruning";
 import * as AIError from "@veyyon/ai/error";
 import { TOOL } from "@veyyon/coding-agent/tools/builtin-names";
 import { createSimulation, type ScriptedTurn, type Simulation, simTool } from "./harness";
+
 /** Row 1: the watchdog's own stall message, transient from its prose. */
 const STALL_TEXT = "Provider stream stalled while waiting for the next event";
 /** Row 2: OpenAI's incomplete stream, transient only via its error id. */
