@@ -138,3 +138,30 @@ export function halfWrittenTempsFor(artifact: string): string[] {
 	const receipt = path.basename(ownerReceiptFor(artifact));
 	return fs.readdirSync(dir).filter(name => name.startsWith(`.${path.basename(artifact)}.`) && name !== receipt);
 }
+
+/**
+ * The provisional receipt path the installers and the updater write BEFORE they
+ * move a binary into place: the durable receipt's name plus `.pending`.
+ *
+ * Mirrors `owner_pending_marker_for` in scripts/install.sh,
+ * `Get-PendingOwnerMarkerPath` in scripts/install.ps1, and
+ * `pendingOwnerReceiptPathFor` in packages/coding-agent/src/cli/update-cli.ts.
+ */
+export function pendingOwnerReceiptFor(artifact: string): string {
+	return `${ownerReceiptFor(artifact)}.pending`;
+}
+
+/**
+ * Write a pending receipt naming `identity` beside `artifact`, and return its
+ * path.
+ *
+ * `identity` is the identity of the bytes that were ABOUT to be installed, which
+ * is the whole point of the fixture: a pending receipt naming the file that is
+ * there now models a swap interrupted after the rename, and one naming something
+ * else models a swap interrupted before it.
+ */
+export function writePendingOwnerReceipt(artifact: string, identity: string): string {
+	const receipt = pendingOwnerReceiptFor(artifact);
+	fs.writeFileSync(receipt, `${OWNER_RECEIPT_VERSION}\n${identity}\n`);
+	return receipt;
+}

@@ -89,6 +89,7 @@ MODE=""
 REF=""
 VERIFY=1
 DO_UNINSTALL=0
+FORCE=0
 
 # What the installer can be asked to do. The single owner of the option list:
 # `--help` prints this, and the header of this file points here rather than
@@ -114,6 +115,9 @@ Options:
                     repository and run \`bun run setup\` in that checkout instead.
   -r <ref>          Shorthand for --ref
   --no-verify       Skip the download's checksum verification (NOT recommended)
+  --force           Install over a file at the target path that this installer
+                    cannot account for. That file is moved aside to
+                    <name>.unowned.<pid> and its path printed; nothing is deleted
   --uninstall       Remove veyyon, the \`vey\` alias, completions, and any source
                     checkout an older installer left behind
   -h, --help        Print this and exit
@@ -131,6 +135,7 @@ while [ $# -gt 0 ]; do
         --binary) MODE="binary"; shift ;;
         --uninstall) DO_UNINSTALL=1; shift ;;
         --no-verify) VERIFY=0; shift ;;
+        --force) FORCE=1; shift ;;
         --ref)
             shift
             [ -z "$1" ] && { echo "Missing value for --ref" >&2; exit 1; }
@@ -942,9 +947,84 @@ mark_artifact_owned() {
     mv -f "$_owner_tmp" "$_owner_marker" || { rm -f "$_owner_tmp"; return 1; }
 }
 
+# Both halves of the ownership record, because a pending receipt left behind by a
+# removed artifact is the same orphan hazard the v1 receipt was: it would vouch
+# for a name after the file it described is gone.
 remove_owner_receipt() {
     _owner_marker=$(owner_marker_for "$1")
     rm -f "$_owner_marker" 2>/dev/null || true
+    clear_artifact_ownership_pending "$1"
+}
+
+# ---- the in-flight half of a receipt ----
+#
+# A receipt can only be written AFTER the file it describes is in place, so
+# between the move and the write there is a moment when the binary on disk is
+# ours and nothing on disk says so. Anything that ends the installer in that
+# moment used to be PERMANENT: the sidecar still described the binary just
+# retired, so every later install refused to replace "somebody else's file" and
+# every later uninstall left it behind, with no remedy but hand surgery. A
+# reinstall could not repair it either, which is what made it a dead end rather
+# than a nuisance.
+#
+# The pending receipt is written BEFORE the swap and records the identity of the
+# file about to be installed, so throughout the window one of the two sidecars
+# vouches for whatever is at the path: the real receipt for the outgoing file,
+# the pending one for the incoming file. It is removed once the real receipt
+# lands. A pending receipt that outlives its swap is harmless rather than
+# dangerous — it can only ever vouch for bytes this installer itself staged and
+# verified — which is why removing it is best effort while recovery is not.
+# Mirrors Get-PendingOwnerMarkerPath and its neighbours in install.ps1.
+owner_pending_marker_for() {
+    printf '%s.pending' "$(owner_marker_for "$1")"
+}
+
+pending_owner_receipt_identity() {
+    _pending_receipt=$(owner_pending_marker_for "$1")
+    [ -f "$_pending_receipt" ] || return 1
+    awk '
+        NR == 1 && $0 != "veyyon-installer-v2" { exit 1 }
+        NR == 2 { print; exit }
+    ' "$_pending_receipt" 2>/dev/null
+}
+
+artifact_has_pending_owner_receipt() {
+    _pending_recorded=$(pending_owner_receipt_identity "$1") || return 1
+    [ -n "$_pending_recorded" ] || return 1
+    _pending_actual=$(artifact_identity "$1") || return 1
+    [ "$_pending_recorded" = "$_pending_actual" ]
+}
+
+# Declare the identity about to be installed at $1. $2 is computed from the
+# STAGED file while it is still staged, because once the swap has begun there may
+# be no opportunity left to compute anything.
+mark_artifact_ownership_pending() {
+    _pending_marker=$(owner_pending_marker_for "$1")
+    [ -n "$2" ] || return 1
+    _pending_tmp="$_pending_marker.$$"
+    printf '%s\n%s\n' 'veyyon-installer-v2' "$2" > "$_pending_tmp" || return 1
+    mv -f "$_pending_tmp" "$_pending_marker" || { rm -f "$_pending_tmp"; return 1; }
+}
+
+clear_artifact_ownership_pending() {
+    rm -f "$(owner_pending_marker_for "$1")" 2>/dev/null || true
+}
+
+# Close the window the pending receipt held open: write the real receipt, then
+# drop the pending one.
+#
+# Deliberately does NOT die. It runs only after a swap has already succeeded, and
+# the binary at $1 is installed and runnable whatever happens here, so aborting
+# would deny an on-disk install its PATH line, its alias, its completions and its
+# doctor self-test. When the real receipt cannot be written the pending one is
+# left in place, so ownership is still recorded and the next install repairs it.
+complete_artifact_ownership() {
+    if mark_artifact_owned "$1"; then
+        clear_artifact_ownership_pending "$1"
+        return 0
+    fi
+    warn "installed $1 but could not record its ownership (check permissions, and that a sha256 tool is available)"
+    warn "    $(owner_pending_marker_for "$1") still vouches for it, so a later install or uninstall will recognize it"
 }
 
 legacy_completion_is_ours() {
@@ -974,6 +1054,12 @@ completion_artifact_is_ours() {
 binary_artifact_is_ours() {
     _binary_path="$1"
     artifact_has_owner_receipt "$_binary_path" && return 0
+    # An install or an update cut off between placing the binary and recording it
+    # left the file it staged at this path, and a pending receipt describing it.
+    # Those bytes are ours on the same proof the real receipt carries, and this is
+    # consulted BEFORE the mismatch rule below because in exactly that case the
+    # real receipt still describes the binary that was retired.
+    artifact_has_pending_owner_receipt "$_binary_path" && return 0
     # A v2 receipt that does NOT match is this installer's own record that the
     # file it wrote here is gone, so it settles the question and the structural
     # evidence below is not consulted. Falling through would undo the fix: the
@@ -993,7 +1079,15 @@ binary_refusal_reason() {
     if ! have_sha256_tool; then
         printf 'no sha256 tool (sha256sum/shasum) is available, so its ownership receipt cannot be checked; install coreutils or perl, then re-run'
     elif owner_receipt_identity "$1" >/dev/null 2>&1; then
-        printf 'it has changed since this installer wrote it, so the file there now is not the one it installed'
+        # "it has changed" is a claim about the FILE, and it must not be made when
+        # the file merely could not be read. An unreadable binary is an ownership
+        # question with no answer rather than evidence of tampering, and its remedy
+        # is different.
+        if artifact_identity "$1" >/dev/null 2>&1; then
+            printf 'it has changed since this installer wrote it, so the file there now is not the one it installed'
+        else
+            printf 'it carries this installer'"'"'s ownership receipt but could not be read to check against it; make it readable, then re-run'
+        fi
     elif artifact_has_legacy_owner_receipt "$1"; then
         printf 'its ownership receipt predates recorded file identity and cannot be confirmed against the file that is there now'
     else
@@ -1332,6 +1426,42 @@ pid_is_running() {
     return 0
 }
 
+# Whether the middle of a `<binary><middle>.<new|bak>` name is one `veyyon update`
+# writes. $1 carries its leading dot, or is empty for the undecorated name.
+#
+# The updater gives every attempt its own pathname so two concurrent updates
+# cannot truncate each other's download, so both names carry that attempt's
+# UUID: `veyyon.<uuid>.new` and `veyyon.<uuid>.bak`. The sweeps that reclaim
+# them were written against the names used BEFORE that change — a fixed
+# `veyyon.new` and a dot-separated-numeric `veyyon.<timestamp>.<pid>.bak` — and
+# were never updated, so they matched neither shape actually on disk and an
+# uninstall reported success while leaving ~150MB behind per orphaned attempt.
+# Both spellings are recognized, because the older ones are still on machines
+# that ran an older release. Anything else is not ours, which is what keeps a
+# `veyyon.mine.bak` somebody saved by hand from being swept.
+#
+# Mirrors Test-UpdateAttemptLeftover in install.ps1 and the classification in
+# sweepStaleBackups in packages/coding-agent/src/cli/update-cli.ts. All three have
+# to agree, or a file is reclaimed on one platform and left on another.
+update_attempt_middle_is_ours() {
+    # Case patterns built from unquoted expansions: the brackets have to reach the
+    # pattern matcher as patterns, so these cannot be quoted. The version and
+    # variant nibbles are pinned to what crypto.randomUUID() produces (v4), which
+    # is what keeps this from degenerating into "anything hex with hyphens in it".
+    _uam_h1='[0-9a-fA-F]'
+    _uam_h3="$_uam_h1$_uam_h1$_uam_h1"
+    _uam_h4="$_uam_h3$_uam_h1"
+    _uam_h8="$_uam_h4$_uam_h4"
+    _uam_h12="$_uam_h8$_uam_h4"
+    case "$1" in
+        ("") return 0 ;;
+        (.$_uam_h8-$_uam_h4-[1-8]$_uam_h3-[89abAB]$_uam_h3-$_uam_h12) return 0 ;;
+        (*[!0-9.]*) return 1 ;;
+        (.*) return 0 ;;
+    esac
+    return 1
+}
+
 # ---- place a downloaded binary at its final path, atomically ----
 # Refuses an empty download, makes the file executable BEFORE the move (so it is
 # never visible non-executable at the final path), then moves it into place.
@@ -1345,13 +1475,51 @@ finalize_binary() {
     # which sent a --local user chasing a problem they never had.
     tmp="$1"; dest="$2"; empty_hint="$3"
     [ -s "$tmp" ] || die "the binary staged at $tmp is empty — refusing to install; $empty_hint"
-    if ! binary_path_is_replaceable "$dest"; then
+    # The identity of the file being installed, taken while it is still staged.
+    # Everything below needs it before the move: the pending receipt has to be on
+    # disk BEFORE the binary is, and once the swap has begun there may be no
+    # chance left to compute anything at all.
+    _finalize_incoming=$(artifact_identity "$tmp") || {
         rm -f "$tmp"
-        die "refusing to replace $dest because $(binary_refusal_reason "$dest"); move it aside, then re-run the installer"
+        die "could not compute the sha256 of the binary staged at $tmp, so this install could not be recorded as ours — retry, or $MANUAL_BUILD"
+    }
+    if [ -e "$dest" ] || [ -L "$dest" ]; then
+        # Already byte-identical to what is being installed. There is nothing to
+        # replace, so nothing to refuse: an ownership gate here would be refusing
+        # to install a file that IS the one being installed. Re-stamping is what
+        # repairs an install whose receipt was lost mid-swap.
+        if [ "$(artifact_identity "$dest" 2>/dev/null)" = "$_finalize_incoming" ]; then
+            rm -f "$tmp"
+            ok "$dest is already this exact binary — left it in place"
+            complete_artifact_ownership "$dest"
+            return 0
+        fi
+        if ! binary_artifact_is_ours "$dest"; then
+            if [ "$FORCE" != 1 ]; then
+                rm -f "$tmp"
+                die "refusing to replace $dest because $(binary_refusal_reason "$dest").
+The ownership record consulted is $(owner_marker_for "$dest").
+Move $dest aside and re-run, or re-run with --force to have the installer move it aside for you (nothing is deleted)."
+            fi
+            # --force displaces, it does not destroy. The file goes to a name no
+            # sweep and no uninstall touches, and that name is printed, because
+            # taking a filename away from a file the installer cannot account for
+            # is the user's decision and they have to be able to undo it.
+            _finalize_unowned="$dest.unowned.$$"
+            warn "--force: $dest $(binary_refusal_reason "$dest")"
+            mv -f "$dest" "$_finalize_unowned" || die "could not move $dest aside to $_finalize_unowned"
+            warn "moved it aside to $_finalize_unowned (nothing was deleted)"
+        fi
     fi
     chmod +x "$tmp" || die "could not make $tmp executable"
-    mv -f "$tmp" "$dest" || die "could not move binary into place at $dest"
-    mark_artifact_owned "$dest" || die "installed $dest but could not record its ownership; check permissions and re-run the installer"
+    # The swap begins here, so the incoming identity goes on disk first.
+    mark_artifact_ownership_pending "$dest" "$_finalize_incoming" ||
+        die "could not record the pending ownership of $dest — check permissions and re-run the installer"
+    mv -f "$tmp" "$dest" || {
+        clear_artifact_ownership_pending "$dest"
+        die "could not move binary into place at $dest"
+    }
+    complete_artifact_ownership "$dest"
 }
 
 # ---- checksum verification (fail closed on mismatch) ----
@@ -1606,29 +1774,28 @@ do_uninstall() {
         for n in "$d"/veyyon_natives.*.node; do
             [ -e "$n" ] && rm -f "$n" && { ok "removed $n"; removed=1; }
         done
-        # `veyyon update` stages at `<binary>.new` and keeps the binary it
-        # replaces as `<binary>.<timestamp>.<pid>.bak` until the new one has
-        # proved itself. On Windows that backup cannot be unlinked while the
-        # updating process is alive, and a killed update leaves the staged file,
-        # so either can outlive the update that made it. The sweep below only
-        # matches the INSTALLER's dot-prefixed staging, so an uninstall used to
-        # report success and leave a few hundred megabytes named `veyyon.new`
-        # behind. These are ours; reclaim them.
-        if [ -e "$d/$BIN_NAME.new" ]; then
-            rm -f "$d/$BIN_NAME.new" && { ok "removed $d/$BIN_NAME.new left by an interrupted update"; removed=1; }
-        fi
-        for b in "$d/$BIN_NAME".*.bak "$d/$BIN_NAME.bak"; do
-            # The glob is literal when nothing matches, and the middle must be the
-            # dot-separated numbers the updater writes, so a `veyyon.mine.bak` a
-            # person saved by hand is left alone.
-            [ -e "$b" ] || continue
-            _mid=${b#"$d/$BIN_NAME"}
-            _mid=${_mid%.bak}
-            case "$_mid" in
-                ("") ;;
-                (*[!0-9.]*) continue ;;
-            esac
-            rm -f "$b" && { ok "removed update backup $b"; removed=1; }
+        # `veyyon update` stages its download beside the binary and keeps the
+        # binary it replaces until the new one has proved itself. On Windows that
+        # backup cannot be unlinked while the updating process is alive, and a
+        # killed update leaves the staged file, so either can outlive the update
+        # that made it. Neither is dot-prefixed, so the installer's own staging
+        # sweep never matched them and an uninstall used to report success while
+        # leaving a few hundred megabytes behind. Which names count is
+        # update_attempt_middle_is_ours's decision, and it is the same one
+        # install.ps1's Test-UpdateAttemptLeftover makes.
+        for _suffix in new bak; do
+            for b in "$d/$BIN_NAME".*".$_suffix" "$d/$BIN_NAME.$_suffix"; do
+                # The glob is literal when nothing matches.
+                [ -e "$b" ] || continue
+                _mid=${b#"$d/$BIN_NAME"}
+                _mid=${_mid%".$_suffix"}
+                update_attempt_middle_is_ours "$_mid" || continue
+                if [ "$_suffix" = new ]; then
+                    rm -f "$b" && { ok "removed $b left by an interrupted update"; removed=1; }
+                else
+                    rm -f "$b" && { ok "removed update backup $b"; removed=1; }
+                fi
+            done
         done
     done
     src=$(src_dir)
@@ -1726,8 +1893,13 @@ do_uninstall() {
         # this line, typing `veyyon` right after uninstalling answers "No such
         # file or directory" from a path the user can see is gone, which reads as
         # a half-finished uninstall rather than as a shell that has not caught up.
-        [ "${_rc_line_removed:-0}" = 1 ] && \
+        # `if`, not `[ ... ] && ...`: an `&&` list whose left side is false yields
+        # status 1, and this is the last command in the function, so a successful
+        # uninstall on a machine with no PATH line to take back exited 1 and
+        # `install.sh --uninstall && ...` read it as a failure.
+        if [ "${_rc_line_removed:-0}" = 1 ]; then
             wrap_line "  " "  " 2 "your shell keeps the old PATH entry until it reloads: exec \$SHELL -l"
+        fi
     else
         say "nothing to uninstall."
     fi

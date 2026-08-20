@@ -1287,6 +1287,7 @@ function effortScopeForPattern(
 	return found ? { kind: "model", model: found } : { kind: "unresolved", pattern: head };
 }
 
+/** The blanket scope: what `subagent.model` resolves to for every lane with no override. */
 function subagentEffortScope(
 	models: ReadonlyArray<Model> | undefined,
 	sessionModel: Model | undefined,

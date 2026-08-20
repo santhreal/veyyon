@@ -85,19 +85,22 @@ describe("the cacheable prefix does not move without somebody saying so", () => 
 		const blockZero = systemPrompt[0] as string;
 
 		expect({ sha: sha(blockZero), length: blockZero.length }).toEqual({
-			// Updated 2026-08-16, deliberately: `562a3940c0412e3a` / 11_160 ->
-			// `578c7993c9632da0` / 11_054 (-106).
+			// Updated 2026-08-16, deliberately: `3a000fddb2eb6620` / 10_515 ->
+			// `202098222aec1f01` / 10_413 (−102).
 			//
-			// WHAT THE -106 IS, measured rather than assumed. `execution-workflow/commit-often`
-			// stopped telling the agent that it does NOT need permission to commit its own work and
-			// that it NEVER waits for the user to ask. Landing each green chunk as its own commit is
-			// still the instruction, and the destructive-git prohibition below it is untouched; what
-			// left is the entitlement framing, which states a permission the user never granted and
-			// reads as a licence that generalises past the one command it was written for. The first
-			// bullet is 97 bytes shorter and "additive and safe" became "additive" in the third,
-			// which is the remaining 9. Nothing else in block 0 moved: the same reword in
-			// `prompts/subagent/orchestrate-notice.md` renders in the SUBAGENT prompt, and a registry
-			// `purpose` string never reaches a model at all.
+			// WHAT THE −102 IS. `execution-workflow/verify` is the same four proof
+			// types and the same test-quality bar, worded shorter. Delegation-gates
+			// was rewritten in the same change and does not move this fixture (no
+			// `task` tool). No rule left.
+			//
+			// Updated 2026-08-16, deliberately: `562a3940c0412e3a` / 11_160 ->
+			// `3a000fddb2eb6620` / 10_515 (−645).
+			//
+			// WHAT THE −645 IS. `execution-workflow/commit-often` is gone. That
+			// statement told the agent to commit finished work without being asked.
+			// Commit cadence is an operator or project rule, not a harness default,
+			// and the three bullets were 645 bytes at this fixture (bash is granted,
+			// so the row rendered). Ablating it at this fixture is the whole delta.
 			//
 			// Updated 2026-08-07, deliberately: `e9ee4981c4a330e5` / 11_132 ->
 			// `562a3940c0412e3a` / 11_160 (+28).
@@ -177,8 +180,8 @@ describe("the cacheable prefix does not move without somebody saying so", () => 
 			//
 			// The one-time cost this gate exists to surface is real and was accepted:
 			// every conversation re-reads its prefix once after the release.
-			sha: "578c7993c9632da0",
-			length: 11_054,
+			sha: "202098222aec1f01",
+			length: 10_413,
 		});
 	});
 
