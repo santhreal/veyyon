@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-20
+
 ### Added
 
 - `/stats` now exists. The dashboard's argument parser and its launcher were written, exported and covered by a suite whose first line calls it "the argument string of the `/stats` slash command" — and nothing in the product called either one: there was no `stats` entry in the declarations and none in the registry, so `/stats` answered `Unknown command`, `Usage: /stats [<port>]` named a command that did not exist, and the dashboard was reachable only as `veyyon stats` from a shell. It is declared and dispatched now, with `[<port>]` as its inline hint, and takes the port as a plain integer defaulting to 3847. A parser with a full unit suite and no caller reads exactly like a finished feature, which is how it survived; the new suite drives the real ACP dispatcher instead of the parser, so removing the declaration, the registry entry, or the handler's use of the argument turns it red.
