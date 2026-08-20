@@ -820,6 +820,22 @@ const streamOpenAICompletionsOnce = (
 				if (!block) return Math.max(0, output.content.length - 1);
 				return output.content.indexOf(block);
 			};
+			const hasCompleteToolCallBatch = (): boolean => {
+				const toolCalls = output.content.filter(
+					(block): block is ToolCallStreamBlock => block.type === "toolCall",
+				);
+				if (toolCalls.length === 0) return false;
+				return toolCalls.every(block => {
+					if (!block.id || !block.name) return false;
+					const argumentsValue =
+						block.partialArgs === undefined
+							? block.arguments
+							: typeof block.partialArgs === "string"
+								? tryParseJson(block.partialArgs)
+								: block.partialArgs;
+					return isRecord(argumentsValue);
+				});
+			};
 			const finishToolCallBlock = (block: ToolCallStreamBlock): void => {
 				if (block.partialArgs === undefined) return;
 				const contentIndex = blockIndex(block);
@@ -1091,9 +1107,18 @@ const streamOpenAICompletionsOnce = (
 
 				const choice = Array.isArray(chunk.choices) ? chunk.choices[0] : undefined;
 				if (!choice) {
-					// Trailing usage-only chunk (`stream_options.include_usage`) after
-					// `finish_reason`: the response is complete — stop pulling instead
-					// of waiting for `[DONE]`/close from hosts that never send either.
+					// A trailing usage-only frame is emitted after generation. A few
+					// OpenAI-compatible gateways omit both `finish_reason` and `[DONE]`
+					// after a tool batch, but still send this accounting frame. Accept
+					// that alternate terminal signal only when every streamed call has
+					// an id, a name, and strictly complete JSON-object arguments. Text
+					// and partial-call EOFs remain errors below.
+					if (sawUsagePayload && hasCompleteToolCallBatch()) {
+						output.stopReason = "toolUse";
+						streamFinishedAt ??= Date.now();
+						break;
+					}
+					// Normal compliant path: usage follows an explicit finish reason.
 					if (streamFinishedAt !== undefined && sawUsagePayload) break;
 					continue;
 				}
@@ -1312,7 +1337,8 @@ const streamOpenAICompletionsOnce = (
 			}
 
 			// A completion is authoritative only after the provider emits a
-			// finish_reason. Treat transport EOF before that terminal signal as a
+			// `finish_reason`, or a trailing usage frame proves a structurally
+			// complete tool batch ended. Treat every other transport EOF as a
 			// truncated response, before partial tool arguments can be repaired
 			// and promoted into an apparently successful tool-use turn.
 			if (streamFinishedAt === undefined) {

@@ -1,15 +1,15 @@
-// Regression coverage for providers that deliver a terminal SSE frame but
-// never send `[DONE]` nor close the connection. Before the client-side
-// terminal break (mirroring the Codex websocket loop), the consumer parked on
-// `iterator.next()` until the idle watchdog (120s) converted the
-// already-successful turn into a timeout error.
-//
-// 1. openai-completions: `finish_reason` + trailing usage chunk → break
-//    immediately, well before the post-finish grace window.
-// 2. openai-completions: `finish_reason` with no usage chunk ever → end
-//    cleanly when the grace window elapses instead of erroring.
-// 3. openai-responses: `response.completed` → `processResponsesStream`
-//    breaks immediately; no grace window involved.
+/**
+ * WHY: an OpenAI-compatible stream can end in three materially different ways:
+ * an explicit `finish_reason`, a final accounting frame after a structurally
+ * complete tool batch, or a transport truncation. Conflating the latter two
+ * either strands valid tool calls behind retries or executes partial calls.
+ *
+ * This suite keeps the boundary closed in both directions: terminal usage may
+ * stand in for an omitted finish reason only for complete tool calls; `[DONE]`,
+ * text, incomplete JSON, and usage attached to either remain non-terminal.
+ * It also covers providers that deliver a real terminal frame but never close
+ * the connection.
+ */
 import { describe, expect, it } from "bun:test";
 import * as AIError from "@veyyon/ai/error";
 import { streamOpenAICompletions } from "@veyyon/ai/providers/openai-completions";
@@ -178,6 +178,105 @@ describe("openai-completions terminal finish reason", () => {
 			}),
 		);
 		expect(result.errorMessage).toContain("closed before a terminal finish reason");
+	});
+
+	it("accepts trailing usage as terminal for a structurally complete tool batch", async () => {
+		const { events, result } = await collectClosingCompletion([
+			completionChunk({
+				choices: [
+					{
+						index: 0,
+						delta: {
+							tool_calls: [
+								{
+									index: 0,
+									id: "call_inspect",
+									type: "function",
+									function: { name: "inspect", arguments: "" },
+								},
+							],
+						},
+						finish_reason: null,
+					},
+				],
+			}),
+			completionChunk({
+				choices: [
+					{
+						index: 0,
+						delta: { tool_calls: [{ index: 0, function: { arguments: '{"path":"package.json"}' } }] },
+						finish_reason: null,
+					},
+				],
+			}),
+			completionChunk({
+				choices: [],
+				usage: { prompt_tokens: 541, completion_tokens: 91, total_tokens: 632 },
+			}),
+		]);
+
+		expect(events.at(-1)?.type).toBe("done");
+		expect(events.some(event => event.type === "error")).toBe(false);
+		expect(result.stopReason).toBe("toolUse");
+		expect(result.content).toEqual([
+			expect.objectContaining({
+				type: "toolCall",
+				id: "call_inspect",
+				name: "inspect",
+				arguments: { path: "package.json" },
+			}),
+		]);
+		expect(result.usage.input).toBe(541);
+		expect(result.usage.output).toBe(91);
+	});
+
+	it("rejects trailing usage when tool arguments are incomplete", async () => {
+		const { events, result } = await collectClosingCompletion([
+			completionChunk({
+				choices: [
+					{
+						index: 0,
+						delta: {
+							tool_calls: [
+								{
+									index: 0,
+									id: "call_inspect",
+									type: "function",
+									function: { name: "inspect", arguments: '{"path":"package' },
+								},
+							],
+						},
+						finish_reason: null,
+					},
+				],
+			}),
+			completionChunk({
+				choices: [],
+				usage: { prompt_tokens: 541, completion_tokens: 91, total_tokens: 632 },
+			}),
+		]);
+
+		expect(events.at(-1)?.type).toBe("error");
+		expect(events.some(event => event.type === "done")).toBe(false);
+		expect(result.stopReason).toBe("error");
+		expect(result.errorMessage).toContain("closed before a terminal finish reason");
+	});
+
+	it("rejects trailing usage after text without a finish reason", async () => {
+		const { events, result } = await collectClosingCompletion([
+			completionChunk({
+				choices: [{ index: 0, delta: { content: "Partial answer" }, finish_reason: null }],
+			}),
+			completionChunk({
+				choices: [],
+				usage: { prompt_tokens: 12, completion_tokens: 3, total_tokens: 15 },
+			}),
+		]);
+
+		expect(events.at(-1)?.type).toBe("error");
+		expect(events.some(event => event.type === "done")).toBe(false);
+		expect(result.stopReason).toBe("error");
+		expect(result.content).toEqual([{ type: "text", text: "Partial answer" }]);
 	});
 
 	/**
