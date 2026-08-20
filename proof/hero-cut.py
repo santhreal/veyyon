@@ -73,11 +73,14 @@ MIN_FRAMES = 3
 # time. The still is taken once the result is on screen, so the second before it is
 # the result landing, which is the frame the row exists for.
 MARK_LEAD = 1.2
-# The ceiling on a lead a scene measured for itself. One turn against a slow local
-# model can run minutes, and a clip that gives that turn minutes is not a clip; the
-# cap is what keeps the longest turn from swallowing the take while still showing
-# far more of it than a flat lead ever did.
-MARK_LEAD_MAX = 24.0
+# The ceiling on a lead a scene measured for itself, and it defaults to the flat lead
+# so that a measured one is something a caller ASKS for. Every scene writes the third
+# column now, so a permissive default would silently relengthen nine other recipes --
+# each of which published its clip at a window somebody chose for that surface -- the
+# moment this file changed. The hero raises it, because its subject is work that runs
+# for minutes; a row whose subject is one card opening does not want a minute of the
+# turn that opened it.
+MARK_LEAD_MAX = MARK_LEAD
 # The floor below which a frame is the same screen as the one before it. A cursor
 # is one 13x29 cell and a hover band repaints one row, and both clear this at the
 # 480px scale the detector works on, so a stretch with nothing above it is a
