@@ -6,25 +6,26 @@
  * library-level test in `packages/ai` stays green, and the failure is invisible: the session simply
  * stops using an account, or starts using one, with nothing on screen either way.
  *
- * The product default is ON. Signing an account in is the decision to use it, and the previous
- * default turned an idle credential into a hard stop plus a warning telling the operator to go and
- * enable it. Because it is on, the interesting direction reversed: the value of this file is now
- * mostly that turning it OFF is honoured, which is the setting an operator walling one account off
- * depends on.
+ * The product default is OFF: signing an account in does not hand it the bill, so the account the
+ * operator selected is the one that spends and a quota window is waited out on it. Automation only
+ * ever moves between accounts nobody named. So the rows below pin both directions explicitly —
+ * a fresh install refuses the move, and the setting turned ON performs it — because a gate wired to
+ * a constant of either polarity passes half of them.
  *
  * So this file drives the REAL `discoverAuthStorage` against the REAL `Settings` and pins:
- *   - the product default moves the session to the idle account, and it does so because the
- *     setting's declared default is `true`, not because something forgot to pass a resolver;
- *   - turning the setting off actually reaches the routing decision, so the session waits out the
- *     window it was told to wait out;
+ *   - the product default keeps the session on the account it was spending, and it does so because
+ *     the setting's declared default says so, not because a resolver nobody passed answered a
+ *     hardcoded polarity;
+ *   - turning the setting on actually reaches the routing decision, so the session continues on an
+ *     idle sibling instead of waiting out a window;
  *   - the flip reaches the NEXT decision on a storage that already exists, in BOTH directions,
  *     because the operator flips it from `/settings` mid-session and a snapshot taken at
  *     construction would ignore them until relaunch;
  *   - storage constructed BEFORE `Settings` exists (the boot path, and any embedder that never
- *     initializes settings) resolves to the DECLARED default, read from the schema. This is the one
- *     the flip broke: the resolver used to answer `false` for absent settings by writing that
- *     polarity into the line, so it silently disagreed with the shipped default the moment the
- *     default changed;
+ *     initializes settings) resolves to the DECLARED default, read from the schema, so the resolver
+ *     names no polarity of its own: a line that answered a literal for absent settings
+ *     would be correct only until the shipped default changed, and would then serve the opposite of
+ *     the shipped behaviour on the one path with no operator in it;
  *   - auth death still moves accounts with the gate OFF, since a dead credential is not a spending
  *     decision.
  *
@@ -114,27 +115,27 @@ describe("the load balancing gate reads the operator's setting", () => {
 		});
 	}
 
-	test("a fresh install continues on the account that is idle", async () => {
+	test("a fresh install keeps spending on the account the operator chose", async () => {
 		const { targetId } = await openStorageWithTwoAccounts();
-		// The move must come from the DECLARED default, not from a resolver nobody passed: read the
-		// schema here so this row fails if the shipped default and the behaviour ever disagree, in
-		// either direction, rather than restating `true` and agreeing with itself.
-		expect(getDefault("accounts.loadBalancing")).toBe(true);
-		expect(settingsOrThrow().get("accounts.loadBalancing")).toBe(true);
-
-		const result = await exhaust(targetId);
-
-		expect(result).toEqual({ switched: true });
-	});
-
-	test("turning the setting off makes the session wait out the window", async () => {
-		const { targetId } = await openStorageWithTwoAccounts();
-		settingsOrThrow().set("accounts.loadBalancing", false);
+		// The refusal must come from the DECLARED default, not from a resolver nobody passed: read
+		// the schema here so this row fails if the shipped default and the behaviour ever disagree,
+		// in either direction, rather than restating a polarity and agreeing with itself.
+		expect(getDefault("accounts.loadBalancing")).toBe(false);
+		expect(settingsOrThrow().get("accounts.loadBalancing")).toBe(false);
 
 		const result = await exhaust(targetId);
 
 		expect(result.switched).toBe(false);
 		expect(result.retryAtMs).toBeGreaterThan(Date.now());
+	});
+
+	test("turning the setting on continues the session on the idle sibling", async () => {
+		const { targetId } = await openStorageWithTwoAccounts();
+		settingsOrThrow().set("accounts.loadBalancing", true);
+
+		const result = await exhaust(targetId);
+
+		expect(result).toEqual({ switched: true });
 	});
 
 	/**
