@@ -254,6 +254,35 @@ describe("normalizeGeneratedTitle", () => {
 		expect(normalizeGeneratedTitle("<tools><think> Fix login")).toBe("Fix login");
 	});
 
+	/**
+	 * WHY: the refusal above is about LEAKAGE, and a tag the user typed is not leaked, it is what
+	 * the session is about. "fix title generation for <think> tag parsing" titled "Fix tag parsing"
+	 * reads as a title with a word missing, which is the same class of defect as publishing
+	 * `<tools>`: the header says something the work is not.
+	 *
+	 * THE GATE IS THE SOURCE TEXT, so the exemption cannot be produced by the titler on its own --
+	 * a model that leaks `<think>` into a title for a message that never mentioned it still loses
+	 * it, and so does every caller with no source text to compare against.
+	 *
+	 * NOT CAUGHT: a user who writes about a tag in words rather than brackets ("the think tag"),
+	 * whose title keeps nothing to preserve, and a message quoting one tag while the model leaks a
+	 * different one, which is the ordinary drop.
+	 */
+	it("keeps a tag the user's own message typed, and only that tag", () => {
+		const spoken = "fix title generation for <think> tag parsing";
+		expect(normalizeGeneratedTitle("Fix <think> tag parsing", spoken)).toBe("Fix <think> tag parsing");
+		// Casing is the user's: the message is the source of truth for a token it typed.
+		expect(normalizeGeneratedTitle("Fix <THINK> tag parsing", spoken)).toBe("Fix <THINK> tag parsing");
+		// A DIFFERENT tag in the same title is still leakage and still goes.
+		expect(normalizeGeneratedTitle("<tools>Fix <think> tag parsing", spoken)).toBe("Fix <think> tag parsing");
+		// No source text to compare against -- the worker path -- drops it, unchanged.
+		expect(normalizeGeneratedTitle("Fix <think> tag parsing")).toBe("Fix tag parsing");
+		// A message that never mentioned the tag does not excuse it.
+		expect(normalizeGeneratedTitle("Fix <think> tag parsing", "the login button is broken")).toBe(
+			"Fix tag parsing",
+		);
+	});
+
 	it("keeps a comparison that only looks like markup", () => {
 		// The refusal is for complete tags. A title with an angle bracket in ordinary use keeps it.
 		expect(normalizeGeneratedTitle("Make retries < 5 fail fast")).toBe("Make retries < 5 fail fast");
