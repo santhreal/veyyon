@@ -164,7 +164,12 @@ lsp-refactor)
 	# the row that is about maintenance is not this one; with the server's two policy
 	# statements in the prompt an automatic pass has nothing useful to free and says so.
 	SETTINGS=$'lsp.enabled: true\ncompaction.enabled: false'
-	CUT_ARGS=()
+	# Real speed, like the hero: a row that fast-forwards the thing it is
+	# illustrating is the defect the hero was republished to fix, at a smaller
+	# scale. The lead stays flat because this row's subject is a refactor
+	# ARRIVING rather than the minutes of turn behind it, and the trim keeps the
+	# settle between its two short turns from becoming most of the clip.
+	CUT_ARGS=(--speed 1.0 --still-keep 4 --still-min 4)
 	;;
 stills-extra)
 	# Two surfaces the long take does not reach: the worker roster, and the prompt
@@ -191,7 +196,10 @@ install-binary)
 	# A shell, and a network install: the download and the checksum are the row, so
 	# the scene needs the internet the recorder network already has.
 	SCENE_CMD="bash -l"
-	CUT_ARGS=(--speed 1.4)
+	# A download and a checksum are the row, and both are things whose real duration
+	# is the point: a progress bar at 1.4x is a claim about how fast an install is.
+	# The trim covers the shell sitting idle either side of it.
+	CUT_ARGS=(--speed 1.0 --still-keep 4 --still-min 4)
 	;;
 *)
 	echo "record-hd-demo.sh: no recipe for scene '${SCENE}'" >&2
