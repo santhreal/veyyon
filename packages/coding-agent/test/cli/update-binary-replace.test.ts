@@ -338,14 +338,18 @@ describe("replaceBinaryForUpdate rollback failure", () => {
 		writeFileSync(target, "OLD-BINARY");
 		writeFileSync(temp, "BROKEN-NEW-BINARY");
 
-		// The transaction now preserves the old inode with a hard link before the
-		// atomic temp->target swap. Let that first rename run, then force the second
-		// rename (backup->target rollback) to fail.
+		// Fail the ROLLBACK rename by naming it — `backupPath -> targetPath` — rather than counting
+		// renames and hoping the second one is it. The transaction also renames a staged ownership
+		// receipt into place before the swap, so the ordinal injection silently moved onto the
+		// swap-in itself: the rollback never ran, and the rollback-failure contract this row exists
+		// for went untested while the row still reported a failure of its own.
 		const realRename = fsp.rename.bind(fsp);
-		let renameCalls = 0;
+		let rollbackAttempts = 0;
 		const renameSpy = spyOn(fsp, "rename").mockImplementation(async (from, to) => {
-			renameCalls += 1;
-			if (renameCalls >= 2) throw new Error("simulated rollback rename failure (EACCES)");
+			if (String(from) === backup && String(to) === target) {
+				rollbackAttempts += 1;
+				throw new Error("simulated rollback rename failure (EACCES)");
+			}
 			return realRename(from as string, to as string);
 		});
 
@@ -376,7 +380,7 @@ describe("replaceBinaryForUpdate rollback failure", () => {
 		expect(readFileSync(backup, "utf8")).toBe("OLD-BINARY");
 		// The failed download is cleaned up even on the rollback-failure path.
 		expect(existsSync(temp)).toBe(false);
-		// The rollback was actually attempted (swap-in, then restore).
-		expect(renameCalls).toBe(2);
+		// The rollback was actually attempted, exactly once.
+		expect(rollbackAttempts).toBe(1);
 	});
 });
