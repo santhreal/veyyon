@@ -234,6 +234,27 @@ let altScreenActive = false;
  * the user's terminal background after a crash.
  */
 let osc11BackgroundOverridden = false;
+
+/**
+ * DEC private mode for kitty-style enhanced paste notifications. Named because
+ * three sites have to agree on it: the DECRQM probe, the set, and the reset.
+ * No shipping emulator implements it -- kitty answers a blind set with
+ * `[PARSE ERROR] Unsupported screen mode: 5522 (private)` in its own log --
+ * so the set is written only after a positive report, which today means never.
+ * The OSC 5522 clipboard protocol kitty DOES implement is a different thing
+ * and is unaffected: it needs no mode set at all.
+ */
+export const ENHANCED_PASTE_MODE = 5522;
+
+/**
+ * True once any terminal instance has armed enhanced paste (DEC private mode
+ * 5522). Module level for the same reason as the background override: the blind
+ * emergency-restore path has no live instance, and the reset for this mode must
+ * be written only by a process that actually set it -- kitty logs a parse error
+ * for the mode either way, so an unconditional reset is a line of noise in the
+ * log of every session that never pasted.
+ */
+let enhancedPasteArmed = false;
 let terminalRestoreRegistered = false;
 
 function registerPostmortemTerminalRestore(): void {
@@ -381,7 +402,12 @@ export function emergencyTerminalRestore(): void {
 					FOCUS_REPORTING_DISABLE + // Stop focus reporting (mode 1004)
 					"\x1b[?2031l" + // Disable Mode 2031 appearance notifications
 					"\x1b[?2048l" + // Disable in-band resize notifications
-					"\x1b[?5522l" + // Disable enhanced paste notifications
+					// Enhanced paste (DEC 5522), only when some terminal in this process
+					// armed it. This is the blind restore path -- it has lost the terminal
+					// object, so the module flag is the only record that the mode was ever
+					// set, and a reset for a mode nobody set is just a parse error in the
+					// user's terminal log.
+					(enhancedPasteArmed ? "\x1b[?5522l" : "") +
 					"\x1b[<u" + // Pop kitty keyboard protocol
 					"\x1b[>4;0m" + // Disable modifyOtherKeys fallback
 					"\x1b[?1006l\x1b[?1003l\x1b[?1000l" + // Disable mouse tracking (fullscreen overlays)
@@ -501,6 +527,13 @@ export interface Terminal {
 	 * status resolves. Optional: only real terminals implement capability probing.
 	 */
 	onPrivateModeReport?(callback: (mode: number, supported: boolean) => void): void;
+	/**
+	 * Ask for kitty-style enhanced paste notifications (DEC private mode 5522).
+	 * The set is written only once DECRQM has confirmed the mode, so a terminal
+	 * that does not implement it is never sent the escape. Optional: a Terminal
+	 * with no capability probe can never confirm and therefore never arms.
+	 */
+	requestEnhancedPaste?(): void;
 }
 
 /**
@@ -536,6 +569,24 @@ function parseOsc99KeyValues(section: string): Map<string, string> {
 	return values;
 }
 const XTERM_SCROLL_TO_BOTTOM_MODES = [1010, 1011] as const;
+
+/**
+ * Every DEC private mode probed by DECRQM at startup, in send order. One list
+ * because two things have to agree on it: `start()`, which writes a probe plus a
+ * DA1 sentinel per mode, and anything counting how many sentinels are in flight.
+ * 2026 gates synchronized output, 2048 in-band resize, 2031 appearance
+ * notifications, {@link ENHANCED_PASTE_MODE} the enhanced-paste set, and
+ * 1010/1011 are the xterm scroll-to-bottom modes Veyyon turns off while it owns
+ * the TTY. Exported so a test can derive the sentinel count instead of pinning a
+ * number that goes stale the next time a capability is added.
+ */
+export const STARTUP_PRIVATE_MODE_PROBES: readonly number[] = [
+	2026,
+	2048,
+	2031,
+	ENHANCED_PASTE_MODE,
+	...XTERM_SCROLL_TO_BOTTOM_MODES,
+];
 
 function isXtermScrollToBottomMode(mode: number): boolean {
 	return mode === 1010 || mode === 1011;
@@ -599,6 +650,10 @@ export class ProcessTerminal implements Terminal {
 	#privateModeCallbacks: Array<(mode: number, supported: boolean) => void> = [];
 	/** Whether DEC 2048 in-band resize notifications are currently enabled. */
 	#inBandResizeActive = false;
+	/** Whether the app has asked for enhanced paste; the set waits for the DECRQM answer. */
+	#enhancedPasteRequested = false;
+	/** Whether the enhanced-paste set was actually written, and so needs a reset on stop. */
+	#enhancedPasteArmed = false;
 	/** Reassembly buffer for a DEC 2048 in-band resize report split across stdin reads. */
 	#inBandResizeBuffer = "";
 	#reportedColumns?: number;
@@ -793,15 +848,14 @@ export class ProcessTerminal implements Terminal {
 		// Probe DEC private-mode support via DECRQM. 2026 (synchronized output)
 		// gates the renderer's begin/end markers; 2048 (in-band resize) is enabled
 		// only after the terminal confirms support; 2031 (appearance change
-		// notifications) drives mid-session theme tracking. Xterm ?1010/?1011
+		// notifications) drives mid-session theme tracking; 5522 (enhanced paste) is
+		// asked about rather than set, so a terminal that does not implement it is
+		// never sent the escape. Xterm ?1010/?1011
 		// are disabled while Veyyon owns the TTY so typing in the editor does not
 		// force a reader scrolled into native history back to the tail. Each probe
 		// rides the shared DA1 sentinel, so terminals that ignore DECRQM resolve as
 		// unsupported when the DA1 reply arrives.
-		this.#queryPrivateMode(2026);
-		this.#queryPrivateMode(2048);
-		this.#queryPrivateMode(2031);
-		for (const mode of XTERM_SCROLL_TO_BOTTOM_MODES) {
+		for (const mode of STARTUP_PRIVATE_MODE_PROBES) {
 			this.#queryPrivateMode(mode);
 		}
 	}
@@ -1360,6 +1414,32 @@ export class ProcessTerminal implements Terminal {
 		}
 		if (mode === 2048 && supported) this.#enableInBandResize();
 		if (mode === 2031) this.#syncWindowsTerminalAppearancePolling(supported);
+		if (mode === ENHANCED_PASTE_MODE) this.#armEnhancedPaste();
+	}
+
+	/**
+	 * Ask for enhanced paste. The set is deferred until DECRQM answers, and is
+	 * skipped entirely when the answer is negative or never comes -- the DA1
+	 * sentinel resolves every probe, so "never comes" still reaches
+	 * {@link #resolvePrivateMode} as unsupported.
+	 */
+	requestEnhancedPaste(): void {
+		this.#enhancedPasteRequested = true;
+		this.#armEnhancedPaste();
+	}
+
+	/**
+	 * Write the set exactly when all three facts hold: the app asked, the terminal
+	 * confirmed the mode, and it is not already armed. Both callers -- the request
+	 * and the DECRQM answer -- come through here rather than testing any of it
+	 * themselves, so the decision has one owner and cannot be made two ways.
+	 */
+	#armEnhancedPaste(): void {
+		if (this.#enhancedPasteArmed || !this.#enhancedPasteRequested || this.#dead) return;
+		if (this.#privateModeSupport.get(ENHANCED_PASTE_MODE) !== true) return;
+		this.#enhancedPasteArmed = true;
+		enhancedPasteArmed = true;
+		this.#safeWrite(`\x1b[?${ENHANCED_PASTE_MODE}h`);
 	}
 
 	#syncWindowsTerminalAppearancePolling(mode2031Supported: boolean): void {
@@ -1509,7 +1589,13 @@ export class ProcessTerminal implements Terminal {
 
 		// Disable bracketed paste mode
 		this.#safeWrite("\x1b[?2004l");
-		this.#safeWrite("\x1b[?5522l");
+		// Enhanced paste (DEC 5522) is reset only when this terminal actually armed it.
+		// The mode is not implemented by any shipping emulator, and kitty -- the terminal
+		// the ancillary spec was written for -- answers a blind set OR reset with
+		// `[PARSE ERROR] Unsupported screen mode: 5522 (private)` in its own log, so an
+		// unconditional reset writes an error into the log of every session that never
+		// used the feature.
+		if (this.#enhancedPasteArmed) this.#safeWrite("\x1b[?5522l");
 
 		// Stop focus reporting and forget what it reported: the shell that gets the
 		// terminal back never asked for mode 1004, and a `focused` left behind

@@ -14,8 +14,12 @@ describe("EnhancedPasteController", () => {
 		const writes: string[] = [];
 		const pastedImages: Array<{ data: string; mimeType: string }> = [];
 		const statuses: string[] = [];
+		let modeRequests = 0;
 		const controller = new EnhancedPasteController({
 			write: data => writes.push(data),
+			requestMode: () => {
+				modeRequests++;
+			},
 			pasteText: () => statuses.push("unexpected text paste"),
 			pasteImage: image => {
 				pastedImages.push({ data: image.data, mimeType: image.mimeType });
@@ -23,8 +27,11 @@ describe("EnhancedPasteController", () => {
 			showStatus: message => statuses.push(message),
 		});
 
+		// `enable()` asks the terminal for the mode and writes nothing itself: the
+		// DEC 5522 set is the terminal's, gated on its own DECRQM report.
 		controller.enable();
-		expect(writes).toEqual(["\x1b[?5522h"]);
+		expect(modeRequests).toBe(1);
+		expect(writes).toEqual([]);
 
 		const imageMime = Buffer.from("image/png", "utf8").toString("base64");
 		const textMime = Buffer.from("text/plain", "utf8").toString("base64");
@@ -60,6 +67,7 @@ describe("EnhancedPasteController", () => {
 		const pastedText: string[] = [];
 		const controller = new EnhancedPasteController({
 			write: data => writes.push(data),
+			requestMode: () => {},
 			pasteText: text => pastedText.push(text),
 			pasteImage: () => {
 				throw new Error("unexpected image paste");
@@ -95,6 +103,7 @@ describe("EnhancedPasteController", () => {
 		const statuses: string[] = [];
 		const controller = new EnhancedPasteController({
 			write: () => {},
+			requestMode: () => {},
 			pasteText: () => {},
 			pasteImage: () => {},
 			showStatus: message => statuses.push(message),
@@ -113,6 +122,7 @@ describe("EnhancedPasteController", () => {
 		const pastedText: string[] = [];
 		const controller = new EnhancedPasteController({
 			write: data => writes.push(data),
+			requestMode: () => {},
 			pasteText: text => pastedText.push(text),
 			pasteImage: () => {
 				throw new Error("unexpected image paste");
@@ -155,6 +165,7 @@ describe("EnhancedPasteController", () => {
 		const writes: string[] = [];
 		const controller = new EnhancedPasteController({
 			write: data => writes.push(data),
+			requestMode: () => {},
 			pasteText: () => {
 				throw new Error("unexpected text paste");
 			},

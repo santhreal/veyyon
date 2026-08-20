@@ -1,7 +1,7 @@
 import "./warm-natives"; // load the native addon under the real platform before any process.platform mock
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import { extractPrintableText } from "@veyyon/tui/keys";
-import { ProcessTerminal } from "@veyyon/tui/terminal";
+import { ProcessTerminal, STARTUP_PRIVATE_MODE_PROBES } from "@veyyon/tui/terminal";
 import {
 	type CellDimensions,
 	getCellDimensions,
@@ -401,20 +401,19 @@ describe("ProcessTerminal OSC 11 appearance detection", () => {
 		expect(writes.some(w => w.includes("\x1b[>31u"))).toBe(false);
 		expect(writes).toContain("\x1b[?u\x1b[c");
 
-		// Seven DA1 sentinels are in flight at startup: keyboard probe, OSC 11, and
-		// the DECRQM probes for DEC 2026, 2048, 2031, 1010, and 1011 (each rides the
-		// shared FIFO). Consume them in send-order and verify none leaks to the input
-		// handler.
-		process.stdin.emit("data", "\x1b[?1;2c");
-		process.stdin.emit("data", "\x1b[?1;2c");
-		process.stdin.emit("data", "\x1b[?1;2c");
-		process.stdin.emit("data", "\x1b[?1;2c");
-		process.stdin.emit("data", "\x1b[?1;2c");
-		process.stdin.emit("data", "\x1b[?1;2c");
-		process.stdin.emit("data", "\x1b[?1;2c");
+		// One DA1 sentinel per startup probe is in flight: the keyboard probe, OSC 11,
+		// and one for every mode in STARTUP_PRIVATE_MODE_PROBES (each rides the shared
+		// FIFO). Derived rather than counted by hand, so adding a capability probe
+		// without giving it a sentinel fails here instead of quietly consuming the
+		// stray DA1 this case is about. Consume them in send-order and verify none
+		// leaks to the input handler.
+		const sentinels = 2 + STARTUP_PRIVATE_MODE_PROBES.length;
+		for (let i = 0; i < sentinels; i++) {
+			process.stdin.emit("data", "\x1b[?1;2c");
+		}
 		expect(received).toEqual([]);
 
-		// An eighth stray DA1 has no owner and must reach the input handler — it is
+		// One more DA1 has no owner and must reach the input handler — it is
 		process.stdin.emit("data", "\x1b[?1;2c");
 		expect(received).toEqual(["\x1b[?1;2c"]);
 

@@ -636,6 +636,11 @@ export class InputController {
 
 		this.#enhancedPaste = new EnhancedPasteController({
 			write: data => this.ctx.ui.terminal.write(data),
+			// The mode set is the terminal's to write, and only after DECRQM confirms
+			// it: a blind `CSI ? 5522 h` is a logged parse error on kitty, which is the
+			// terminal the enhanced-paste spec was written for. A Terminal with no
+			// capability probe never confirms and so never arms.
+			requestMode: () => this.ctx.ui.terminal.requestEnhancedPaste?.(),
 			pasteText: text => {
 				// Route enhanced-paste text to the currently focused component when it
 				// exposes a `pasteText` hook (modal Input prompts: OAuth API-key entry,
