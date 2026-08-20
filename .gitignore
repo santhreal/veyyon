@@ -210,3 +210,15 @@ scratch-docs-lane/
 # It defaults to a directory beside the repository so the script has no path
 # spelled from anybody's home; COMMIT_PROOF_TREES moves it elsewhere.
 /.commit-proof-trees/
+
+# Four frames of the demo scene and one bare-terminal shot are rewritten by every
+# take, so they are regenerated rather than reviewed: proof/pics.html enumerates
+# the assets directory from disk and labels each of these "regenerated, untracked"
+# from git itself, so the page stays truthful either way. Ignored so a fresh take
+# does not read as uncommitted work -- the release cut refuses on any dirty path,
+# and a 1.4MB frame that changes on every recording is not one to carry in history.
+/assets/demo-hd-idle.png
+/assets/demo-hd-scrolled.png
+/assets/demo-hd-bottom.png
+/assets/demo-hd-settings-open.png
+/assets/prompt-architecture-shell.png
