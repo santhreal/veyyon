@@ -47,19 +47,28 @@ settle_idle 300 8 2 20
 shot inventory
 
 # THE FAN-OUT. The needle is `Subagents`, the heading the lane list renders under, and the reason
-# it is not a lane's name is that the names are IN THIS INSTRUCTION: a submitted prompt stays on
-# screen, so `ConfigLane` was already there at the moment the wait started and the frame published
-# under that name was the prompt, a `Thinking` line and a one-second spinner. A needle has to be
-# text only the RENDERER can produce. `Subagents` qualifies -- the instruction below says
-# "subagents" in lower case, and the case matters to `screen_has`.
+# it is not a lane's name is that a lane's name is not the scene's to choose: the one take on this
+# rig that fanned out labelled its lanes `UnlikelyDamselfly` and `LikelySeahorse`, generated names
+# with nothing to do with the instruction. Names written here would also match the prompt's own
+# echo, which stays on screen -- that is how a wait for `ConfigLane` returned at 0s and published
+# a frame of the request. A needle has to be text only the RENDERER can produce, and `Subagents`
+# qualifies: the instruction says "subagents" in lower case and `screen_has` is case-sensitive.
+#
+# THE TOOL IS NAMED IN THE INSTRUCTION, because asking for "three subagents in parallel" does not
+# get any. That take's session carried `read`, `grep`, `write`, `glob` and `todo` and no `task`
+# call at all: the model wrote the owner and then did all three directories itself, so the lane
+# list never existed to be shot and the wait burned its whole bound. The take that DID fan out
+# asked for "task agents" in those words.
 #
 # One owner is written by the main agent BEFORE the fan-out, because three agents inventing
 # three helpers is the failure mode this instruction exists to avoid, and because it makes the
 # lanes genuinely parallel: they edit disjoint directories against a file that already exists.
-submit "write service/env.ts first: one exported readNumber(name, fallback) that reads process.env, accepts a missing value as the fallback, and throws naming the variable when the value is not a finite number. Then spawn three subagents in parallel -- ConfigLane for service/config, HandlerLane for service/handlers, StoreLane for service/store -- each replacing every env read in its own directory with readNumber. Nobody edits another lane's directory."
+submit "write service/env.ts first: one exported readNumber(name, fallback) that reads process.env, accepts a missing value as the fallback, and throws naming the variable when the value is not a finite number. Then use your task tool -- one call, three tasks in the same batch -- to run three subagents in parallel, one per directory: service/config, service/handlers, service/store. Each replaces every env read in its own directory with readNumber and edits nothing outside it. Do not do that work yourself."
 # The lane list is LIVE STATE: it exists while the lanes are running and it is gone, far above
 # the bottom of a long report, by the time the turn ends. So it is shot while the lanes are up.
-wait_for_screen "Subagents" 600 || MISSED="${MISSED:-} agent-lanes"
+# The bound is what a missed fan-out COSTS, at SCENE_SETTLE_SCALE, so it is short enough that a
+# take which loses this frame is diagnosed in ten minutes rather than twenty.
+wait_for_screen "Subagents" 360 || MISSED="${MISSED:-} agent-lanes"
 pause 2
 shot agent-lanes
 settle_idle 900 10 3 30
