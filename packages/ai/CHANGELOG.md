@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-20
+
 ### Breaking Changes
 
 - `AuthStorageOptions.loadBalancing` now defaults to **off**, which is what its own documentation had always claimed while the field was initialized to `true`. Every embedder that passed nothing got account movement it never asked for, and the one host that passes the option explicitly masked the disagreement. Which account spends money is the caller's decision; the default is the one that decides nothing. `markUsageLimitReached` on a default-constructed storage now records the exhaustion and returns `{ switched: false, retryAtMs }` instead of rotating. Opt back in with `new AuthStorage(store, { loadBalancing: true })`.

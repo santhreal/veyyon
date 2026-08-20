@@ -153,12 +153,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "arrayref"
-version = "0.3.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "76a2e8124351fda1ef8aaaa3bbd7ebbcb486bbcd4225aca0aa0d84bb2db8fecb"
-
-[[package]]
 name = "arrayvec"
 version = "0.7.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -301,22 +295,20 @@ dependencies = [
 
 [[package]]
 name = "blake2b_simd"
-version = "1.0.4"
+version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b79834656f71332577234b50bfc009996f7449e0c056884e6a02492ded0ca2f3"
+checksum = "3560a7b1951efe814fcd721938313adc56753ca39f4b23847d7e9a2402f5dbff"
 dependencies = [
- "arrayref",
  "arrayvec",
  "constant_time_eq",
 ]
 
 [[package]]
 name = "blake3"
-version = "1.8.6"
+version = "1.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "76ae7bad254120e9e4c63bafc385310756f90c484eac0e36b8317cf09cb92a77"
+checksum = "6d9e454fc11f76977dc803893aff6304ed33d6a26efae8696573bea74baa27ae"
 dependencies = [
- "arrayref",
  "arrayvec",
  "cc",
  "cfg-if",
@@ -1166,9 +1158,9 @@ checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
 
 [[package]]
 name = "either"
-version = "1.17.0"
+version = "1.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e5e8f6c15a24b9a3ee5efec809ccd006d3b30e8b3bb63c39af737c7f87daa1d"
+checksum = "252afb9ae5eaa683babdc6a068b3f5726eb19e05070c731f9b2a23a7c3e8ed34"
 
 [[package]]
 name = "encode_unicode"
@@ -1212,9 +1204,9 @@ dependencies = [
 
 [[package]]
 name = "error-code"
-version = "3.3.2"
+version = "3.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dea2df4cf52843e0452895c455a1a2cfbb842a1e7329671acf418fdc53ed4c59"
+checksum = "0b5343afd4a8365a643ac588dab4cf234a190c7f6c88c9f6dd6ffe00837661b7"
 
 [[package]]
 name = "faccess"
@@ -3595,18 +3587,18 @@ dependencies = [
 
 [[package]]
 name = "ref-cast"
-version = "1.0.26"
+version = "1.0.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "216e8f773d7923bcba9ceb86a86c93cabb3903a11872fc3f138c49630e50b96d"
+checksum = "7e440fb4e4b4147295338efb76001ab9e4efc0e5839df2c47fc5ac2381d365c3"
 dependencies = [
  "ref-cast-impl",
 ]
 
 [[package]]
 name = "ref-cast-impl"
-version = "1.0.26"
+version = "1.0.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2c9283685feec7d69af75fb0e858d5e7378f33fe4fc699383b2916ab9273e03c"
+checksum = "92ecd8964f8453721699a1ed72037b0db49ce2f5a5138486ee89bed6f67cdf3a"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3935,9 +3927,9 @@ checksum = "bbbb5d9659141646ae647b42fe094daf6c6192d1620870b449d9557f748b2daa"
 
 [[package]]
 name = "similar"
-version = "3.1.2"
+version = "3.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85ee016af5d736b69fc89e19254540fa4b5f5492853fb5503920f084011c78b6"
+checksum = "4f66ca1f7aca2474dc10c942eb22feffc897735f54cd1db90138c2fddb490987"
 dependencies = [
  "bstr",
 ]
@@ -5796,9 +5788,9 @@ checksum = "0bb6d972f580f8223cb7052d8580aea2b7061e368cf476de32ea9457b19459ed"
 
 [[package]]
 name = "uuid"
-version = "1.24.0"
+version = "1.24.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf3923a6f5c4c6382e0b653c4117f48d631ea17f38ed86e2a828e6f7412f5239"
+checksum = "2cefc03fd367c0c6d4305de1b312cf00248c4114f4a0418ce6a6af769e3b0bd9"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
@@ -5831,7 +5823,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "veyyon-ast"
-version = "1.0.49"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "ast-grep-core",
@@ -5900,21 +5892,21 @@ dependencies = [
 
 [[package]]
 name = "veyyon-diff-kernel"
-version = "1.0.49"
+version = "1.1.0"
 dependencies = [
- "similar 3.1.2",
+ "similar 3.2.0",
 ]
 
 [[package]]
 name = "veyyon-glob"
-version = "1.0.49"
+version = "1.1.0"
 dependencies = [
  "globset",
 ]
 
 [[package]]
 name = "veyyon-grep-kernel"
-version = "1.0.49"
+version = "1.1.0"
 dependencies = [
  "grep-matcher",
  "grep-pcre2",
@@ -5925,7 +5917,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-iso"
-version = "1.0.49"
+version = "1.1.0"
 dependencies = [
  "async-trait",
  "libc",
@@ -5938,14 +5930,14 @@ dependencies = [
 
 [[package]]
 name = "veyyon-keys"
-version = "1.0.49"
+version = "1.1.0"
 dependencies = [
  "phf 0.13.1",
 ]
 
 [[package]]
 name = "veyyon-natives"
-version = "1.0.49"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "arboard",
@@ -5976,7 +5968,7 @@ dependencies = [
  "rayon",
  "serde",
  "serde_json",
- "similar 3.1.2",
+ "similar 3.2.0",
  "smallvec",
  "syntect",
  "tiktoken-rs",
@@ -6002,7 +5994,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-shell"
-version = "1.0.49"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "brush-builtins",
@@ -6080,11 +6072,11 @@ dependencies = [
 
 [[package]]
 name = "veyyon-test-scratch"
-version = "1.0.49"
+version = "1.1.0"
 
 [[package]]
 name = "veyyon-text"
-version = "1.0.49"
+version = "1.1.0"
 dependencies = [
  "smallvec",
  "unicode-segmentation",
@@ -6093,7 +6085,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-uu-diff"
-version = "1.0.49"
+version = "1.1.0"
 dependencies = [
  "clap",
  "parking_lot",
@@ -6104,7 +6096,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-uu-grep"
-version = "1.0.49"
+version = "1.1.0"
 dependencies = [
  "clap",
  "clap_complete",
@@ -6128,7 +6120,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-uutils-ctx"
-version = "1.0.49"
+version = "1.1.0"
 dependencies = [
  "libc",
  "veyyon-test-scratch",
@@ -6136,7 +6128,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-walker"
-version = "1.0.49"
+version = "1.1.0"
 dependencies = [
  "dashmap",
  "globset",
@@ -6245,9 +6237,9 @@ dependencies = [
 
 [[package]]
 name = "wayland-backend"
-version = "0.3.16"
+version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "016ccf01d1c58b6f8999612813e17c9b2390f7d70671428869913310f83f54b8"
+checksum = "38a91b4eaddff87b1cd1074985e3713da4af2c49742d1b356b2c01670a67a078"
 dependencies = [
  "cc",
  "downcast-rs",
@@ -6922,9 +6914,9 @@ dependencies = [
 
 [[package]]
 name = "zerovec"
-version = "0.11.7"
+version = "0.11.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "94b5c6b5976d66c1d703c4fd17d3f5e43c8cedaacf604961b171adc7130896d8"
+checksum = "bb0464e17806c1d976d5cba29399c7f08e516e279e2ba493f63123b5fca67dd8"
 dependencies = [
  "serde",
  "yoke",
@@ -6934,9 +6926,9 @@ dependencies = [
 
 [[package]]
 name = "zerovec-derive"
-version = "0.11.4"
+version = "0.11.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47402523226a02bfe5230160dc3ccc089aa6f6f19e7fcbb4e6f824bbb1b4aa62"
+checksum = "9f212a141d820099d57ffafb9569be9617a6f27d3dc881fbee8fb56642f917a9"
 dependencies = [
  "proc-macro2",
  "quote",

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-20
+
 ### Changed
 
 - No user-facing change: `provider-models/openai-compat.ts` is reformatted to what the repository formatter prints, so the Biome gate passes on it. Behaviour, descriptors and resolution rules are untouched.

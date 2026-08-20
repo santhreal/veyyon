@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-20
+
 ### Breaking Changes
 
 - `BorderedLoader` is renamed `ComposerLoader` and no longer draws a rule above and below itself. It takes the composer's place while a command runs, and the composer zone has no box. An extension that imports `BorderedLoader` from `@veyyon/coding-agent` must import `ComposerLoader` instead; the constructor and the `signal`, `onAbort`, `handleInput` and `dispose` members are unchanged.

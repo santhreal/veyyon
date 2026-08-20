@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-20
+
 ### Added
 
 - A left click on a composer autocomplete suggestion accepts it, through the same apply path as Tab. Container routes a pointer event to the child under the pointed row, so a click reaches a component mounted inside the pinned footer.

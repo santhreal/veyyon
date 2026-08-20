@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-20
+
 ### Fixed
 
 - A generated summary that repeats itself is refused, and the history it would have replaced survives. Emptiness was already refused in three places, because an empty summary deletes the conversation and reports success; a summary that samples one sentence until the budget runs out is the same loss wearing content, and it passed every check. It is reachable by design: compaction generates through `completeSimple`, whose loop guard re-samples a stalled generation three times and then runs one final pass with the guard DISABLED so a stubborn loop returns raw output instead of a fatal stall — correct for a live turn that is on screen and can be interrupted, wrong for text that replaces the span it describes and is then read by every later turn as its own past. Every artifact a compaction leaves behind is covered, not just the one that was reported: `generateSummary` rejects a degenerate summary the way it rejects an empty one, `assertValidCompactionResult` rejects one from any other source (remote summarizer, compaction hook) in both `summary` and `shortSummary` immediately before history is rewritten, `generateHandoffFromContext` rejects a degenerate document rather than appending the `<files>` block to a loop, and `generateBranchSummary` degrades to its explicit "No summary generated" fallback and logs a warning, since a throw there would block the branch switch on a provider hiccup, which is why its empty case does not throw either. The floors are the loop guard's own, so one text cannot be a loop in the transcript and a compaction in the archive.
