@@ -28,6 +28,7 @@ describe("AuthStorage account rotation", () => {
 	): Promise<{ sessionId: string; stickyKey: string; freshKey: string }> => {
 		const control = await AuthStorage.create(path.join(tempDir, `issue-4982-control-${Snowflake.next()}.db`), {
 			usageProviderResolver: () => undefined,
+			loadBalancing: true,
 		});
 		try {
 			await control.set(provider, finalCredentials);
@@ -86,8 +87,13 @@ describe("AuthStorage account rotation", () => {
 			});
 		}
 
+		// Every row in this describe is about a session MOVING between siblings of one provider, which
+		// is `accounts.loadBalancing`, and that ships off: the account selected is the account that
+		// spends, and a quota window is waited out on it. So the movement is asked for here rather
+		// than inherited, and each row states the policy it measures.
 		authStorage = await AuthStorage.create(path.join(tempDir, "testauth.db"), {
 			usageProviderResolver: provider => (provider === "openai-codex" ? usageProvider : undefined),
+			loadBalancing: true,
 		});
 
 		// Stub the refresh path so AuthStorage doesn't hit a real OAuth endpoint
@@ -372,6 +378,7 @@ describe("AuthStorage account rotation", () => {
 		authStorage.close();
 		authStorage = await AuthStorage.create(path.join(tempDir, "testauth.db"), {
 			usageProviderResolver: provider => (provider === "openai-codex" ? usageProvider : undefined),
+			loadBalancing: true,
 		});
 		await authStorage.reload();
 

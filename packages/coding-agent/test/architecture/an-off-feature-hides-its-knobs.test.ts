@@ -150,13 +150,13 @@ describe("a feature that ships off hides its knobs", () => {
 	 * NON-VACUITY. Every assertion below walks a derived set, and an empty set
 	 * satisfies all of them. These are the numbers as measured, as floors.
 	 *
-	 * A floor moves DOWN when a feature stops shipping off: `accounts.loadBalancing`
-	 * became the product's default, so it is no longer a master this suite holds to
-	 * hiding anything, and the count went 69 -> 68.
+	 * A floor moves with the roster of features that ship off. `accounts.loadBalancing` ships off
+	 * again -- the account chosen is the account that spends -- so it is back among the masters this
+	 * suite holds to hiding nothing it does not own, and the count is 69.
 	 */
 	it("finds the masters and the knobs that hang off them", () => {
 		const pairs = gatedKnobs();
-		expect(offByDefaultMasters().length).toBeGreaterThanOrEqual(68);
+		expect(offByDefaultMasters().length).toBeGreaterThanOrEqual(69);
 		expect(new Set(pairs.map(({ master }) => master)).size).toBeGreaterThanOrEqual(12);
 		expect(pairs.length).toBeGreaterThanOrEqual(31);
 		expect(offByDefaultMasters()).toEqual(
