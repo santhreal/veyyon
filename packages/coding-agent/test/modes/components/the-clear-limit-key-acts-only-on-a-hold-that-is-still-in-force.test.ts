@@ -22,7 +22,10 @@
  */
 import { beforeAll, describe, expect, test } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import { type AccountManagerCallbacks, AccountManagerComponent } from "@veyyon/coding-agent/modes/components/account-manager";
+import {
+	type AccountManagerCallbacks,
+	AccountManagerComponent,
+} from "@veyyon/coding-agent/modes/components/account-manager";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { AccountInventory, AccountRow } from "@veyyon/coding-agent/session/account-inventory";
 
