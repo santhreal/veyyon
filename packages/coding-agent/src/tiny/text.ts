@@ -170,7 +170,16 @@ export function normalizeGeneratedTitle(value: string | null | undefined, source
 	// Prose that survives beside a tag is kept and the tag dropped, because a title carrying one
 	// leaked marker is still a description of the work; a title that is ONLY markup describes
 	// nothing and is refused rather than shown.
-	const detagged = collapseWhitespace(title.replace(MARKUP_TAG_RE, " "));
+	//
+	// A tag the USER typed is not leakage, it is the subject. Someone whose message is "fix title
+	// generation for <think> tag parsing" gets "Fix <think> tag parsing", not "Fix tag parsing",
+	// which reads as a title with a word missing. Matched against the message that started the
+	// session, so the exemption cannot be produced by the model on its own: with no source text --
+	// the worker path, and any caller that has none -- every tag still goes.
+	const spoken = sourceText?.toLowerCase();
+	const detagged = collapseWhitespace(
+		title.replace(MARKUP_TAG_RE, tag => (spoken?.includes(tag.toLowerCase()) ? tag : " ")),
+	);
 	if (!detagged || detagged.toLowerCase() === NO_TITLE_SENTINEL) return null;
 	return sourceText === undefined ? detagged : reconcileTitleCasing(detagged, sourceText);
 }
