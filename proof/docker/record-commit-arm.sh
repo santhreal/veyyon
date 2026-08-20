@@ -41,7 +41,11 @@ after) REF="${HASH}" ;;
 	;;
 esac
 
-TREES="${COMMIT_PROOF_TREES:-/media/mukund-thiru/SanthData/Santh/worktrees/.commit-proof}"
+# One scratch worktree per arm. Kept beside the repository rather than under a
+# path spelled from somebody's home directory: a default naming one machine's
+# account is unrunnable everywhere else and publishes the account. Override
+# COMMIT_PROOF_TREES to put the trees on another filesystem.
+TREES="${COMMIT_PROOF_TREES:-${REPO_ROOT}/.commit-proof-trees}"
 TREE="${TREES}/${HASH}-${ARM}"
 OUT="${REPO_ROOT}/proof/captures/x11/commits/${HASH}-${ARM}"
 
@@ -101,7 +105,7 @@ docker run --rm \
 	-e LC_ALL=C.UTF-8 \
 	-e LOCAL_LLM_KEY=none \
 	-e DISPLAY=:99 \
-	-e VEYYON_TEST_HOST_HOME=/home/mukund-thiru \
+	-e "VEYYON_TEST_HOST_HOME=${HOME}" \
 	-e VEYYON_TEST_SANDBOX=docker-recorder \
 	-e SCENE_LIB=/rig/scenes/lib.sh \
 	-e "SCENE_COMMAND=bash /out/cmd.sh" \

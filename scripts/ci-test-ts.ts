@@ -395,6 +395,10 @@ export const repoScriptTests = [
 	// chat message. It landed on disk unwired, which for a scan-the-whole-tree gate means the scrub it
 	// enforces silently stops being enforced on the next commit.
 	"scripts/no-attribution-in-the-tree.test.ts",
+	// The same privacy contract for paths rather than prose: no tracked file spells out the home
+	// directory of the machine it was written on. Two recording scripts and a tape shipped one as a
+	// default value, which published the account and made the default unrunnable anywhere else.
+	"scripts/no-tracked-file-names-the-authors-home.test.ts",
 	// Seven suites that were on disk, tracked, and in no runner. They are all
 	// release and changelog gates, which is the worst place for a suite to be
 	// silently unrun: the thing they guard is only exercised on the day a release
