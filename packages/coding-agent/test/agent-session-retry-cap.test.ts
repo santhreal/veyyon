@@ -76,6 +76,24 @@ describe("AgentSession retry delay cap", () => {
 		tempDir.removeSync();
 	});
 
+	/**
+	 * Re-create the storage and the registry with account movement ON, and return the storage so a
+	 * test reads the same instance the registry holds.
+	 *
+	 * `AuthStorageOptions.loadBalancing` defaults to OFF, matching the `accounts.loadBalancing`
+	 * setting: off means a session waits out the window of the account it was told to use instead of
+	 * spending a sibling nobody offered. The three tests that call this are ABOUT the move between
+	 * siblings, so they have to ask for it; a rotation assertion resting on an ambient default is
+	 * describing whatever the default happens to be, not the behavior it names.
+	 */
+	async function withAccountMovement(): Promise<AuthStorage> {
+		authStorage.close();
+		authStorage = await AuthStorage.create(path.join(tempDir.path(), "balanced-auth.db"), { loadBalancing: true });
+		authStorage.setRuntimeApiKey("anthropic", "anthropic-test-key");
+		modelRegistry = new ModelRegistry(authStorage, path.join(tempDir.path(), "models.yml"));
+		return authStorage;
+	}
+
 	it("bails immediately when retry-after exceeds retry.maxDelayMs", async () => {
 		const model = getBundledModel("anthropic", "claude-sonnet-4-5");
 		if (!model) {
@@ -210,6 +228,7 @@ describe("AgentSession retry delay cap", () => {
 	});
 
 	it("rolls through four sibling credentials inside one AgentSession prompt before delay-cap retry", async () => {
+		await withAccountMovement();
 		const model = getBundledModel("anthropic", "claude-sonnet-4-5");
 		const fallbackModel = getBundledModel("openai", "gpt-5");
 		if (!model || !fallbackModel) {
@@ -316,6 +335,7 @@ describe("AgentSession retry delay cap", () => {
 	});
 
 	it("switches same-provider credentials before model fallback on ChatGPT usage limits", async () => {
+		await withAccountMovement();
 		const primaryModel = getBundledModel("anthropic", "claude-sonnet-4-5");
 		const fallbackModel = getBundledModel("openai", "gpt-5.5");
 		if (!primaryModel || !fallbackModel) {
@@ -389,6 +409,7 @@ describe("AgentSession retry delay cap", () => {
 	});
 
 	it("waits for the earliest sibling unblock instead of failing the delay cap", async () => {
+		await withAccountMovement();
 		// Regression: with every sibling credential momentarily blocked (e.g. a
 		// short post-401 or usage-probe block), a usage-limit 429 with a
 		// multi-hour retry-after used to adopt the full provider wait and trip
