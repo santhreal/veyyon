@@ -62,14 +62,13 @@ describe("addonIsCurrent", () => {
 		expect(addonIsCurrent(file)).toBe(true);
 	});
 
-	test("rejects a stale addon from the previous release (sentinel mismatch)", () => {
+	test("rejects an addon from a different release (sentinel mismatch)", () => {
 		// The regression this locks out: `veyyon update` advances the checkout
 		// but keeps last release's addon on disk; the boot-time sentinel check
 		// then kills the session. A stale file must read as NOT current so the
 		// updater's ensure step refreshes it.
-		const [major = "1", minor = "0", patch = "0"] = version.split(".");
-		const previous = `${major}.${minor}.${Math.max(0, Number(patch) - 1)}`;
-		const file = tmpFile(Buffer.from(versionSentinelExportFor(previous)));
+		const staleVersion = version === "0.0.0" ? "0.0.1" : "0.0.0";
+		const file = tmpFile(Buffer.from(versionSentinelExportFor(staleVersion)));
 		expect(addonIsCurrent(file)).toBe(false);
 	});
 
