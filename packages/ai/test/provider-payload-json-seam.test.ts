@@ -45,40 +45,29 @@
  * same red but a different defect.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import { type as arkType } from "arktype";
+import { create, toBinary } from "@bufbuild/protobuf";
 import { streamBedrock } from "@veyyon/ai/providers/amazon-bedrock";
 import { streamAnthropic } from "@veyyon/ai/providers/anthropic";
 import { streamAzureOpenAIResponses } from "@veyyon/ai/providers/azure-openai-responses";
 import { streamCursor } from "@veyyon/ai/providers/cursor";
 import { streamDevin } from "@veyyon/ai/providers/devin";
-import {
-	type GitLabDuoWorkflowWebSocketLike,
-	streamGitLabDuoWorkflow,
-} from "@veyyon/ai/providers/gitlab-duo-workflow";
+import { type GitLabDuoWorkflowWebSocketLike, streamGitLabDuoWorkflow } from "@veyyon/ai/providers/gitlab-duo-workflow";
 import { streamGoogle } from "@veyyon/ai/providers/google";
 import { streamGoogleGeminiCli } from "@veyyon/ai/providers/google-gemini-cli";
 import { streamGoogleVertex } from "@veyyon/ai/providers/google-vertex";
 import { streamKimi } from "@veyyon/ai/providers/kimi";
 import { streamOllama } from "@veyyon/ai/providers/ollama";
-import { streamOpenAICompletions } from "@veyyon/ai/providers/openai-completions";
 import { streamOpenAICodexResponses } from "@veyyon/ai/providers/openai-codex-responses";
+import { streamOpenAICompletions } from "@veyyon/ai/providers/openai-completions";
 import { streamOpenAIResponses } from "@veyyon/ai/providers/openai-responses";
 import { streamPiNative } from "@veyyon/ai/providers/pi-native-client";
 import { streamSimple } from "@veyyon/ai/stream";
-import type {
-	AssistantMessage,
-	Context,
-	FetchImpl,
-	Model,
-	ModelSpec,
-	Tool,
-	ToolResultMessage,
-} from "@veyyon/ai/types";
+import type { AssistantMessage, Context, FetchImpl, Model, ModelSpec, Tool, ToolResultMessage } from "@veyyon/ai/types";
 import { buildModel } from "@veyyon/catalog/build";
+import { GetUserJwtResponseSchema } from "@veyyon/catalog/discovery/devin-gen/exa/auth_pb/auth_pb";
 import { emptyUsage, getBundledModel, getBundledModels, getBundledProviders } from "@veyyon/catalog/models";
 import * as piUtils from "@veyyon/utils";
-import { create, toBinary } from "@bufbuild/protobuf";
-import { GetUserJwtResponseSchema } from "@veyyon/catalog/discovery/devin-gen/exa/auth_pb/auth_pb";
+import { type as arkType } from "arktype";
 
 // ---------------------------------------------------------------------------
 // JSON-expressibility walker (test-local mirror of the mapJsonStrings domain)
@@ -130,7 +119,7 @@ function collectJsonOffenders(root: unknown): string[] {
 		active.add(node);
 		try {
 			if (Array.isArray(node)) {
-				node.forEach((entry, index) => walk(entry, `${path}[${index}]`));
+				for (const [index, entry] of node.entries()) walk(entry, `${path}[${index}]`);
 				return;
 			}
 			for (const [key, entry] of Object.entries(node)) walk(entry, path === "$" ? `$.${key}` : `${path}.${key}`);

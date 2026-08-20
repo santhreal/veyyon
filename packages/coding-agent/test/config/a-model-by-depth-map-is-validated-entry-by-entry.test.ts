@@ -33,7 +33,9 @@ const makeMapConfigDir = useTrackedTempDirs("veyyon-model-by-depth-");
 
 describe("the entry validator accepts real depth rows", () => {
 	test("positive-integer keys with either chain spelling", () => {
-		expect(describeSettingTypeMismatch(PATH, { "1": "opus,sonnet", "2": ["opus", "sonnet"], "10": "opus" })).toBeUndefined();
+		expect(
+			describeSettingTypeMismatch(PATH, { "1": "opus,sonnet", "2": ["opus", "sonnet"], "10": "opus" }),
+		).toBeUndefined();
 	});
 
 	test("an empty map and an absent value, the unset states", () => {

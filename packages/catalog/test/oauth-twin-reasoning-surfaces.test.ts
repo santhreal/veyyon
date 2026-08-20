@@ -30,10 +30,10 @@ import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { resolveProviderModels, type ModelsDevFallback } from "@veyyon/catalog/model-manager";
-import { defaultModelsDevFallback, resetModelsDevOverlayState } from "@veyyon/catalog/modelsdev-overlay";
 import { Effort } from "@veyyon/catalog/effort";
+import { type ModelsDevFallback, resolveProviderModels } from "@veyyon/catalog/model-manager";
 import MODELS from "@veyyon/catalog/models.json" with { type: "json" };
+import { defaultModelsDevFallback, resetModelsDevOverlayState } from "@veyyon/catalog/modelsdev-overlay";
 import type { Api, ModelSpec } from "@veyyon/catalog/types";
 
 afterEach(() => {
@@ -157,10 +157,9 @@ describe("enrich-only merge semantics", () => {
 				"online",
 			);
 			const byId = new Map(result.models.map(model => [model.id, model]));
-			expect(
-				byId.get("grok-4.6")?.reasoningOptions,
-				"live row keeps its id and gains the declared surface",
-			).toEqual({ efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh] });
+			expect(byId.get("grok-4.6")?.reasoningOptions, "live row keeps its id and gains the declared surface").toEqual(
+				{ efforts: [Effort.Low, Effort.Medium, Effort.High, Effort.XHigh] },
+			);
 			expect(byId.get("grok-4.3")?.reasoningOptions).toEqual({ efforts: [Effort.Low, Effort.Medium, Effort.High] });
 			expect(byId.has("grok-unserved"), "enrich-only overlay introduced an unserved id").toBe(false);
 		} finally {

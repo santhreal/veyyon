@@ -39,8 +39,8 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { AuthStorage, SqliteAuthCredentialStore } from "@veyyon/ai";
 import type { AuthCredential } from "@veyyon/ai";
+import { AuthStorage, SqliteAuthCredentialStore } from "@veyyon/ai";
 import { removeWithRetries } from "../../utils/src/temp";
 
 const PROVIDER = "anthropic";
@@ -140,7 +140,10 @@ describe("a grant the provider refused", () => {
 
 	it("loses its lead to a stored key when every login of its type is refused", async () => {
 		const { storage } = await storageWithFailingRefresh();
-		await storage.set(PROVIDER, [oauthCredential("revoked", { expired: true }), { type: "api_key", key: "sk-live-key" }]);
+		await storage.set(PROVIDER, [
+			oauthCredential("revoked", { expired: true }),
+			{ type: "api_key", key: "sk-live-key" },
+		]);
 		const stored = storage.listStoredCredentials(PROVIDER);
 		const revokedId = stored.find(row => row.credential.type === "oauth")!.id;
 		const keyId = stored.find(row => row.credential.type === "api_key")!.id;
