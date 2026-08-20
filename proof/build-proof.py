@@ -1384,14 +1384,24 @@ SECTIONS = [
             " fails writes no file. The pointer does not. sway's headless backend gives the seat no pointer"
             " device, so <code>swaymsg seat seat0 cursor set</code> exits 0 while the client receives no enter,"
             " no motion and no button, and the backend was reporting the position back out of the variable it"
-            " had just set. A probe run against both servers is what made that readable: the same click selected"
-            " a settings row on X11 and changed nothing on Wayland, and the row under the pointer measured 3.3"
-            " luminance brighter on X11 against 0.9 <em>darker</em> on Wayland, which is no hover band at all."
-            " So on Wayland the pointer report goes into the pty in SGR 1006 at the cell the pointer stands on,"
-            " the way typed text and keys already do. The application's hit-testing, hover fades and click"
-            " routing run for real; the compositor's input path and the terminal's encoding of a physical button"
-            " are exercised only on X11. A frame of a hover state recorded through the pointer that silently did"
-            " nothing would have been the rest state with a caption claiming otherwise.</p>",
+            " had just set. A probe run against both servers is what made that readable: the same click, aimed"
+            " at a settings sidebar row taken out of the screen rather than hardcoded, selected that row on X11"
+            " and changed nothing at all on Wayland. So on Wayland the pointer report goes into the pty in SGR"
+            " 1006 at the cell the pointer stands on, the way typed text and keys already do. The application's"
+            " hit-testing, hover fades and click routing run for real; the compositor's input path and the"
+            " terminal's encoding of a physical button are exercised only on X11. A frame of a hover state"
+            " recorded through the pointer that silently did nothing would have been the rest state with a"
+            " caption claiming otherwise.</p>",
+            "<p><strong>And the check on that is not the one you would write first.</strong> The obvious test is"
+            " that the row under the pointer gets brighter. It does on X11 and it does <em>not</em> on Wayland,"
+            " from the same product on the same theme: +0.004 against -0.032 mean luminance, because the hover"
+            " wash is a near-opaque dark fill and the sidebar around it is a translucent window over a blurred"
+            " backdrop, so the identical band reads brighter inside an opaque window and darker inside a glass"
+            " one. Written as a threshold on the signed difference, the check called a hover band that is"
+            " plainly in the frame - brighter label, wash, left marker - a pointer that never arrived. The test"
+            " that holds on any compositor is that the row the pointer is on changed and a row four down did"
+            " not: a global brightness shift cancels, and that is what \"the pointer reached the application\""
+            " means.</p>",
             video(
                 X + "demo-hd.mp4",
                 "The whole take: a read, an edit, the project's own test run against the change, a three-phase plan"
