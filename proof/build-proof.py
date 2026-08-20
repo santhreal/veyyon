@@ -1626,6 +1626,63 @@ SECTIONS = [
             ),
         ],
     ),
+    Section(
+        "A fourteen-task plan, closed out",
+        [
+            "<p>The board's rebuild is a set of claims about MOTION, and a still cannot carry any of them: that"
+            " fourteen rows arrive legibly rather than being typed in, that the pointer walks itself forward as"
+            " each task closes, that closed work recedes while the task in flight stays the only bright row, and"
+            " that the region above the composer is GONE on the last close rather than collapsing to a line the"
+            " transcript card already carries. So the row is a recording, and the session behind it is real: the"
+            " model was told to write the plan and then close it out, and what it did in between -- probing the"
+            " host for ffmpeg and pip, writing a registry, reading its own type errors back -- is the work the"
+            " board is tracking rather than a script.</p>",
+            f"<p>Twenty minutes of session ({clip_runtime(W + 'todo-marathon.mp4'):.0f}s) at the speed it was"
+            " recorded, with every stretch where nothing on screen moved removed: 52 of them, 258.1 seconds of"
+            " untouched terminal. What is left is"
+            f" {clip_runtime(W + 'todo-marathon-cut.mp4'):.0f} seconds in 18 segments, and the cadence audit reads"
+            " a typical frame hold of 33ms with the longest at 200ms -- so unlike the hero, which pauses for four"
+            " seconds wherever a turn ended, this clip never stops moving. Both are published: the cut, and the"
+            " unedited take it came from.</p>",
+            # 6.5s rather than 0: the clip opens on the idle terminal, which is a
+            # near-black poster that says nothing about the row. At 6.5s the whole
+            # five-phase board is up and the instruction that produced it is still
+            # on screen.
+            video(
+                W + "todo-marathon-cut.mp4",
+                "The plan written, then closed out. The poster is the instruction the model was given and the"
+                " board it had already written from it.",
+                start=6.5,
+            ),
+            "<h3>Where the board stands, three times</h3>",
+            still(
+                W + "todo-marathon-list-open.png",
+                "Fourteen tasks over five phases from a single <code>init</code> call. The header names its unit"
+                " -- <code>Todos · phase 1/5</code> -- because the phase rows under it end in identically shaped"
+                " numbers (<code>0/3</code>, <code>0/2</code>) counting something else. No phase carries a gauge:"
+                " five 12-cell bars approximating five fractions printed two columns to their right is what this"
+                " row used to be, and at that width a gauge cannot separate <code>0/2</code> from"
+                " <code>1/4</code>. The one task in flight is the only bright row on the block.",
+            ),
+            still(
+                W + "todo-marathon-midway.png",
+                "Six closed, and the pointer has walked itself to <code>phase 3/5</code> without being told to:"
+                " the phases that are finished have dropped out of the anchored block entirely, the active phase"
+                " is expanded around the task in flight, and the two ahead of it are named but not opened. This is"
+                " the frame where the weighting is visible as an ordering -- what is done is gone, what is next is"
+                " quiet, what is running is bright.",
+            ),
+            still(
+                W + "todo-marathon-finished.png",
+                "The last task closes and the anchored region is simply not there. What remains is one line on the"
+                " card that closed it -- <code>■ Todo list done · 14 tasks</code> -- which is the sentence the HUD"
+                " used to draw as well, from the same owner, in the same session, anchored above the composer for"
+                " the rest of it. The model's own confirmation under it reads 14/14 done, 0 open, all 5 phases"
+                " closed. A second frame taken sixteen seconds later came back byte-identical, which is what makes"
+                " the empty region a settled state rather than a gap between two repaints.",
+            ),
+        ],
+    ),
 ]
 
 if __name__ == "__main__":

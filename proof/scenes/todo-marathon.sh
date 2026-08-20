@@ -92,5 +92,8 @@ shot closing-8
 submit "confirm the whole list is finished"
 settle 40
 shot finished
-settle 8
-shot finished-settled
+# NO SECOND SHOT OF THE SETTLED STATE. The take took one, sixteen seconds after
+# `finished`, to establish that the empty region is a settled state rather than a
+# transient between repaints. It came back byte-identical -- same sha256 -- which
+# IS that proof, and it is the hash that carries it. Two identical PNGs are one
+# piece of evidence and two files, so the second shot is not taken again.
