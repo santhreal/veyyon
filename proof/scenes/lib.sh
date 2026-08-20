@@ -35,6 +35,17 @@ CELL_H=$(((WIN_H - 2 * PAD) / TERM_ROWS))
 : "${CELL_W:=9}" "${CELL_H:=18}"
 echo "scene ${SCENE_NAME}: ${TERM_COLS}x${TERM_ROWS} cells of ${CELL_W}x${CELL_H}px at +${WIN_X}+${WIN_Y}"
 
+# A SCENE THAT DIES SAYS WHERE. The session script runs under `set -e`, and the
+# scene is sourced into it, so any command that fails outside a condition ends the
+# take on the spot. Bash prints nothing for that, and a take costs minutes: the
+# first run of pointer-probe.sh died on an assignment whose `grep` matched nothing,
+# between two frames that were never written, and looked exactly like a backend
+# that could not click. The trap turns that into one line naming the file, the
+# line and the status. It reports only what `set -e` was already going to kill --
+# a failure inside `if`, `while`, `&&` or `||` is exempt from ERR the same way it
+# is exempt from `set -e` -- so a helper that returns 1 as an answer stays silent.
+trap 'rc=$?; echo "scene ${SCENE_NAME}: ABORTED at ${BASH_SOURCE[0]}:${LINENO} rc=${rc}" >&2' ERR
+
 # Row and column are 1-based, the way the terminal counts them.
 px_x() { echo $((WIN_X + (${1} - 1) * CELL_W + CELL_W / 2 + PAD)); }
 px_y() { echo $((WIN_Y + (${1} - 1) * CELL_H + CELL_H / 2 + PAD)); }
