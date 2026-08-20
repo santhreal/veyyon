@@ -4,7 +4,7 @@
 #   scripts/demos/record.sh                       # record every tape in assets/tapes/
 #   scripts/demos/record.sh argot-settings        # only the named tapes
 #
-# Every remaining tape drives a settings or onboarding surface, and navigation makes
+# Every remaining tape drives a settings surface, and navigation makes
 # no model call, so all of them record offline. The provider preflight this script
 # used to run went with the one live tape: the workflow rows are recorded by
 # scripts/demos/record-hd-demo.sh against a local model instead.
@@ -33,6 +33,12 @@ for name in "${tapes[@]}"; do
       ;;
     subagent-recursion-settings)
       bash scripts/demos/record-subagent-recursion-settings.sh
+      ;;
+    account-manager)
+      # This tape refuses to be run directly: the driver owns the throwaway HOME and
+      # the seeded credentials, and the seeder aborts rather than write fabricated
+      # logins into a real one. The fallback below would hand it the real HOME.
+      bash scripts/demos/record-account-manager.sh
       ;;
     *)
       bash scripts/demos/reset-fixture.sh >/dev/null
