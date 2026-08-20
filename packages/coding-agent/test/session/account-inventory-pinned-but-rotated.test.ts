@@ -1,15 +1,22 @@
 /**
  * The one condition worth interrupting the user about: the account changed without them.
  *
- * `selectedButRotated` answers "did a rate limit move this session off the account the user
- * picked?" and it must answer with BOTH rows, because the sentence the surfaces render names
- * them together — "pinned to work, rotated off it at 14:03 (usage limit)". Returning only the
- * serving row would present the substitution as the user's own choice, and returning
- * something while the pin is still serving would put a warning on a healthy session.
+ * `selectedButRotated` answers "was this session moved off the account the user picked?" and it
+ * must answer with BOTH rows, because the sentence the surfaces render names them together —
+ * "pinned to work, rotated off it at 14:03". Returning only the serving row would present the
+ * substitution as the user's own choice, and returning something while the pin is still serving
+ * would put a warning on a healthy session.
  *
- * Driven end to end from a real `AuthStorage`: pin, block, resolve, build. The predicate is
+ * WHAT PRODUCES THE STATE. Only a dead grant, now. A pinned account is the account that spends,
+ * hold or no hold: an exhausted window is waited out on it and traffic does not move, whatever
+ * `accounts.loadBalancing` says. A revoked credential is not a spending decision, so it fails over
+ * regardless, and that is the one path that can leave a session serving an account nobody named.
+ * Both are pinned below, because the interesting failure is the first one coming back: a hold that
+ * silently moved a pin would raise this warning on a session the user never lost control of.
+ *
+ * Driven end to end from a real `AuthStorage`: pin, hold, kill, resolve, build. The predicate is
  * three lines, but what makes it correct is the inventory marks underneath it, and those are
- * only real once a genuine rate-limit rotation has happened.
+ * only real once a genuine rotation has happened.
  */
 import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, setSystemTime, test, vi } from "bun:test";
@@ -115,11 +122,12 @@ describe("selectedButRotated", () => {
 	});
 
 	/**
-	 * The reportable case. Both rows come back, each still carrying the name and the block
-	 * deadline the surfaces need to write the sentence, and the pinned row is the one the
-	 * user chose rather than the one now serving.
+	 * A hold does not move a pin, so there is nothing to report: the account the user named keeps
+	 * serving and waits its own window out. This is the row that fails if exhaustion ever starts
+	 * moving traffic off a pinned account again, which would raise the warning on a session nobody
+	 * lost control of.
 	 */
-	test("returns the pinned row and the serving row once a rate limit moves traffic off the pin", async () => {
+	test("reports nothing while a hold leaves the pinned account serving", async () => {
 		if (!authStorage) throw new Error("test setup failed");
 		const storage = authStorage;
 		expect(storage.pinSessionCredential(PROVIDER, SESSION_ID, workId)).toBe(true);
@@ -129,6 +137,32 @@ describe("selectedButRotated", () => {
 			credentialId: workId,
 			retryAfterMs: BLOCK_FOR_MS,
 		});
+		expect(await storage.getApiKey(PROVIDER, SESSION_ID)).toBe("access-work");
+
+		const inventory = buildAccountInventory(storage, { sessionId: SESSION_ID });
+		expect(selectedButRotated(inventory, PROVIDER)).toBeUndefined();
+		const held = (inventory.providers[0]?.rows ?? []).find(row => row.credentialId === workId);
+		expect(held?.blockedUntilMs).toBe(NOW_MS + BLOCK_FOR_MS);
+		expect(held?.activeForSession).toBe(true);
+	});
+
+	/**
+	 * The reportable case, and the only thing that still produces it: the pinned grant is revoked, so
+	 * it fails over regardless of the pin. Both rows come back, each carrying the name the surfaces
+	 * need to write the sentence, and the pinned row is the one the user chose rather than the one
+	 * now serving.
+	 */
+	test("returns the pinned row and the serving row once a revoked grant moves traffic off the pin", async () => {
+		if (!authStorage) throw new Error("test setup failed");
+		const storage = authStorage;
+		expect(storage.pinSessionCredential(PROVIDER, SESSION_ID, workId)).toBe(true);
+		expect(await storage.getApiKey(PROVIDER, SESSION_ID)).toBe("access-work");
+
+		const moved = await storage.rotateSessionCredential(PROVIDER, SESSION_ID, {
+			credentialId: workId,
+			error: Object.assign(new Error("invalid_grant: token revoked"), { status: 401 }),
+		});
+		expect(moved).toBe(true);
 		expect(await storage.getApiKey(PROVIDER, SESSION_ID)).toBe("access-personal");
 
 		const inventory = buildAccountInventory(storage, { sessionId: SESSION_ID });
@@ -139,7 +173,7 @@ describe("selectedButRotated", () => {
 		expect(rotated.chosen.name).toBe("work");
 		expect(rotated.chosen.selectedForProvider).toBe(true);
 		expect(rotated.chosen.activeForSession).toBe(false);
-		expect(rotated.chosen.blockedUntilMs).toBe(NOW_MS + BLOCK_FOR_MS);
+		expect(rotated.chosen.blockedUntilMs).toBeGreaterThan(NOW_MS);
 		expect(rotated.serving.credentialId).toBe(personalId);
 		expect(rotated.serving.name).toBe("personal");
 		expect(rotated.serving.activeForSession).toBe(true);
