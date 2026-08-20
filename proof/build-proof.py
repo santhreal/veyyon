@@ -1403,10 +1403,12 @@ SECTIONS = [
             " not: a global brightness shift cancels, and that is what \"the pointer reached the application\""
             " means.</p>",
             video(
-                X + "demo-hd.mp4",
-                "The whole take: a read, an edit, the project's own test run against the change, a three-phase plan"
-                " written by the todo tool with a task struck through, a credential stored from the environment, that"
-                " credential spent as a placeholder to sign the work, and the use log naming the spend.",
+                W + "demo-hd.mp4",
+                "The whole take: a search across a nine-module tree, one validating owner written by the main agent,"
+                " three subagents editing disjoint directories in parallel, the project's own suite run against the"
+                " result, a three-phase plan written by the todo tool with a task struck through, a credential stored"
+                " from the environment, that credential spent as a placeholder to sign the work, and the use log"
+                " naming the spend.",
             ),
             "<h3>The signature is the part a reader can check</h3>",
             "<p>A demo can assert anything. This one ends on a claim anybody can recompute. One number is exported"
@@ -1434,23 +1436,23 @@ SECTIONS = [
             " other a mismatch, so the verifier tries every form a shell pipeline can produce, reports which one the"
             " file carries, exits non-zero when none of them match, and prints the number nowhere.</p>",
             still(
-                X + "demo-hd-secret-list.png",
+                W + "demo-hd-secret-list.png",
                 "The vault after <code>/secret from-env</code>: a placeholder, its scope and its expiry. This is the"
                 " whole of what the model is given.",
             ),
             still(
-                X + "demo-hd-secret-approval.png",
+                W + "demo-hd-secret-approval.png",
                 "The call held at the boundary. The dialog names the credential the call would spend and shows the"
                 " resolved value, which is deliberate: approving a spend you cannot read is not consent. This frame"
                 " is the one place in the take the number appears on screen.",
             ),
             still(
-                X + "demo-hd-signature-written.png",
+                W + "demo-hd-signature-written.png",
                 "The spend. The command the model wrote carries <code>'#RELEASE_SIGNATURE#'</code>, the output is the"
                 " digest, and the line under the block reports which stored secret the call spent.",
             ),
             still(
-                X + "demo-hd-secret-log.png",
+                W + "demo-hd-secret-log.png",
                 "<code>/secret log</code> afterwards. The recorded command is the placeholder form, so the ledger"
                 " that proves the spend happened is not itself a copy of the credential.",
             ),
@@ -1462,30 +1464,62 @@ SECTIONS = [
             " take as distinct while the transcript has not moved. What the cut uses instead is the second of each"
             " still the scene takes, so every window in the clip is a moment the scene exists to show rather than the"
             " largest repaint, which against a reasoning model is a page of streamed thinking.</p>",
+            "<p><strong>And the cadence is the one the recorder captured.</strong> Both display servers record at 30"
+            " fps, and the publish path used to resample twice — 30 to 15 in the cut, then 15 to 12 in the WebP —"
+            " neither ratio an even division of the 2x speedup. It was invisible to the machine this page is built on:"
+            " <code>ffprobe</code> is not installed there and Pillow answers <code>None</code> for an animated WebP's"
+            " frame duration, so the timing was read straight out of the ANMF chunks, which is where a WebP keeps it."
+            " The old asset held 230 frames over 29.92s at a 7.7 fps average, its typical frame lasting 83ms and its"
+            " longest 1167ms. The clip now carries the source's cadence: 33ms is the typical frame, and the frames that"
+            " hold longer are the encoder merging a screen that is genuinely still, which is compression rather than"
+            " lag. <code>proof/webp-cadence.py --expect-ms 33</code> is that check, and it fails on the old asset and"
+            " passes on this one.</p>",
             still(
-                X + "demo-hd-read-block.png",
-                "The read the edit is based on. The answer is not the obvious one: the guard is"
-                " <code>!s</code>, so a whitespace-only string passes it, and the model says so before anything"
-                " has been changed.",
+                W + "demo-hd-search-block.png",
+                "Where the work starts, and why it is not a read: nine modules across three directories each pull a"
+                " numeric setting out of the environment in their own spelling — <code>Number</code>,"
+                " <code>parseInt</code> with no radix, unary plus — so an invalid value is a silent zero rather"
+                " than a failed boot. One regex finds all nine, and the frame is taken while the turn is still"
+                " running: the block reports nine matches in nine files, grouped by directory, and the spinner"
+                " under it is the next read already going out.",
             ),
             still(
-                X + "demo-hd-verify-command.png",
-                "The check the model chose for itself: it globbed for the parser, found the test beside it, ran"
-                " <code>bun test</code>, and read the result back. The block carries the wall time and the timeout"
-                " the tool ran it under.",
+                W + "demo-hd-inventory.png",
+                "What the search was for. Every site in one table — file and line, variable, environment"
+                " variable, default — grouped by the spelling each one uses, with the note that matters"
+                " underneath: <code>parseInt</code> without a radix reads <code>0x10</code> as 16 rather than"
+                " refusing it. Nothing has been changed at this point in the take.",
             ),
             still(
-                X + "demo-hd-todo-board.png",
+                W + "demo-hd-agent-lanes.png",
+                "The fan-out. The main agent writes the one validating owner first, then three subagents take a"
+                " directory each and edit disjoint files against it, which is why they can run at once. Each row"
+                " carries the id the spawn was given, the assignment it was handed, and a badge naming the model"
+                " that lane is actually running on.",
+            ),
+            still(
+                W + "demo-hd-edit-diff.png",
+                "The main agent's own edit, and the one its search argued for: a case pinning that hex value as"
+                " refused rather than silently read as 16. A lane's diff belongs to that lane's transcript, so this"
+                " is the parent's, with the file named in the block header.",
+            ),
+            still(
+                W + "demo-hd-verify-command.png",
+                "The check the model chose for itself: it ran the project's own suite over the edited tree and read"
+                " the result back. The block carries the wall time and the timeout the tool ran it under.",
+            ),
+            still(
+                W + "demo-hd-todo-board.png",
                 "The plan panel, written by the todo tool rather than typed: three phases, per-phase counts, and"
                 " all six tasks still open.",
             ),
             still(
-                X + "demo-hd-todo-strike.png",
+                W + "demo-hd-todo-strike.png",
                 "The same board one turn later. The task is struck, Foundation reads 1/2, and the footer has lost"
                 " its dirty marker, which is the commit landing.",
             ),
             still(
-                X + "demo-hd-settings-pane.png",
+                W + "demo-hd-settings-pane.png",
                 "The settings card in the same session, opened by the pointer: the window is inset by 48px, so a"
                 " pointer aimed at a cell has to add the window's origin, and this is that arithmetic landing on"
                 " the row it was aimed at. The footline preview beside it renders the values live.",

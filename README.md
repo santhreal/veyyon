@@ -153,9 +153,14 @@ left behind.
 PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh demo-hd
 ```
 
-The session reads the parser and reports back a subtlety the guard hides, edits it, runs the
-project's own test to check itself, writes a phased plan with the todo tool, marks the first
-task done and commits it, and then signs its work with a credential it never typed: a number
+The session hardens a service tree: nine modules across three directories each read a numeric
+setting straight out of the environment in their own spelling, so it finds every site with a
+search, writes one validating owner, then fans the edits out to three subagents working
+disjoint directories in parallel. It then makes one edit of its own, pinning the trap the
+search turned up — `parseInt` without a radix reads `0x10` as 16 — and runs the suite over the
+result. It writes a phased plan
+with the todo tool, marks the first task done and commits it, and then signs its work with a
+credential it never typed: a number
 is stored from the environment with `/secret from-env`, the model writes
 `#RELEASE_SIGNATURE#`, and Veyyon substitutes the real bytes at the outbound boundary. The
 placeholder is what the transcript, the session and `/secret log` all keep. The approval
@@ -164,14 +169,16 @@ is not consent. `SIGNED.md` ends up carrying the sha256 of that number, so the d
 frame can be recomputed with `proof/verify-signature.py` rather than believed:
 
 ```sh
-python3 proof/verify-signature.py proof/captures/x11/demo-hd-signature-crosscheck.txt --number 4721-8095-3364
+python3 proof/verify-signature.py proof/captures/wayland/demo-hd-signature-crosscheck.txt --number 4721-8095-3364
 ```
 
 | Surface | What the frame shows | Artifact |
 | --- | --- | --- |
-| The session | The whole take: read, edit, verify, plan, sign | [video](assets/demo-hd.webp) |
-| Read | The read the edit is based on, and the subtlety the model reports back: the existing guard lets a whitespace-only string through | [frame](assets/demo-hd-read-block.png) |
-| Edit | The diff the edit tool applied, with the file named in the block header | [frame](assets/demo-hd-edit-diff.png) |
+| The session | The whole take: search, fan out, edit, verify, plan, sign | [video](assets/demo-hd.webp) |
+| Search | The grep that finds all nine sites, shot while the turn is still running | [frame](assets/demo-hd-search-block.png) |
+| Inventory | Every environment read in the tree in one table, grouped by spelling, with the hex trap in `parseInt` named underneath | [frame](assets/demo-hd-inventory.png) |
+| Parallel agents | Three subagents settling in one turn, one per directory, editing disjoint files against an owner the main agent wrote first | [frame](assets/demo-hd-agent-lanes.png) |
+| Edit | The main agent's own diff, pinning the hex value its search flagged, with the file named in the block header | [frame](assets/demo-hd-edit-diff.png) |
 | Verification | The command the model chose to check its own change, and its output | [frame](assets/demo-hd-verify-command.png) |
 | Plan | A three-phase board with all six tasks open, then the first struck and the work committed as one scoped commit | [board](assets/demo-hd-todo-board.png) / [finished](assets/demo-hd-todo-strike.png) |
 | Secret stored | A credential taken from the environment, so it is typed nowhere | [frame](assets/demo-hd-secret-stored.png) |
