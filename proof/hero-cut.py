@@ -231,6 +231,18 @@ def still_stretches(path: Path, *, floor: float = NOISE_SCORE, min_still: float)
 	WebP encoder merges only byte-identical frames, so the same freeze read to it
 	as three 8.3s holds instead of one of 25s -- which is why the published
 	cadence looked like a stalling product while every gate on it passed.
+
+	WHAT SEPARATES WAITING FROM WORKING, at this floor, was measured in both
+	directions on a real take rather than assumed. Four seconds of a SETTLED
+	screen -- the turn finished, a check and an elapsed time in the footer -- put
+	0 of its 120 frames above the floor, so it merges into one long stretch and
+	is trimmed. Four seconds of an IN-TURN screen, with a spinner turning and a
+	live status line counting, put 1 to 2 of 120 above it: one change every two
+	to four seconds. So a turn in flight arrives here as a chain of stretches
+	about as long as `min_still`, and since only a stretch LONGER than the
+	caller's keep is cut at all, a keep of four seconds leaves a turn in flight
+	intact and takes only the screens where the turn is over. That is the whole
+	reason the number is four and not a rounder guess.
 	"""
 	total = duration(path)
 	stills: list[tuple[float, float]] = []
