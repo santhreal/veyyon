@@ -1403,12 +1403,41 @@ SECTIONS = [
             " not: a global brightness shift cancels, and that is what \"the pointer reached the application\""
             " means.</p>",
             video(
+                W + "demo-hd-cut.mp4",
+                "The demo, at the speed it was recorded: a search across a nine-module tree, one validating owner"
+                " written by the main agent, three subagents editing disjoint directories in parallel, the project's"
+                " own suite run against the result, a three-phase plan written by the todo tool with a task struck"
+                " through, a credential stored from the environment, that credential spent as a placeholder to sign"
+                " the work, and the use log naming the spend.",
+            ),
+            "<p><strong>Nothing in that clip is sped up, and that took two changes rather than one.</strong> It used"
+            " to be eighteen windows of 1.2 seconds each, played at double speed: about half a second of real time"
+            " before each frame, so what published was a slideshow of outcomes. The session's work — the search"
+            " running, three lanes settling, a suite going green — happens in the minutes BETWEEN those marks and"
+            " was cut out entirely. The fix is not a slower playback rate. The scene now measures how long each"
+            " stretch of work actually took, by stamping when its own typing ended, and the cut reaches back over"
+            " exactly that stretch: as long as the work was, never one frame longer, and free of typing by"
+            " construction rather than by a guess about lead-in length.</p>",
+            "<p><strong>Which exposed the real reason a demo of a local model is boring.</strong> Measured on this"
+            " take, 73% of it is a screen nobody is touching — 847 seconds of 1156. A 27B model on one card spends"
+            " most of a turn with nothing rendering, and the scene settles after each turn on top of that, so"
+            " playing the work back honestly means playing back a still image. The frozen frames say which screens"
+            " they are: the splash before the first keystroke, and finished turns sitting there with a check and an"
+            " elapsed time in the footer. So an untouched stretch is trimmed to a readable pause instead of played"
+            " out. Four seconds, and the number is measured rather than chosen: four seconds of a settled screen"
+            " puts 0 of its 120 frames above the detector's floor, while four seconds of a turn in flight — spinner"
+            " turning, status line counting — puts 1 or 2 above it, so a turn arrives as a chain of roughly"
+            " four-second stretches and a keep of four leaves it alone while collapsing the screens where the turn"
+            " is over.</p>",
+            "<p><strong>The result is checkable in the file itself.</strong> 192.3 seconds carrying every one of the"
+            " 85 seconds the screen actually moved in, at 33ms per frame, and a longest hold of exactly 4000ms —"
+            " where the same take cut without the trim holds a single frame for 8300ms and spends 202 of its 379"
+            " seconds frozen. Every retained second plays at the rate it was captured; what left the clip is time"
+            " in which nothing was drawn.</p>",
+            video(
                 W + "demo-hd.mp4",
-                "The whole take: a search across a nine-module tree, one validating owner written by the main agent,"
-                " three subagents editing disjoint directories in parallel, the project's own suite run against the"
-                " result, a three-phase plan written by the todo tool with a task struck through, a credential stored"
-                " from the environment, that credential spent as a placeholder to sign the work, and the use log"
-                " naming the spend.",
+                "The same session unedited, all nineteen minutes of it, including every second the trim above"
+                " removed: the archived take the clip is cut from, so the two can be checked against each other.",
             ),
             "<h3>The signature is the part a reader can check</h3>",
             "<p>A demo can assert anything. This one ends on a claim anybody can recompute. One number is exported"
