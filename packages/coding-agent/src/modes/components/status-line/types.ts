@@ -107,7 +107,6 @@ export interface SegmentContext {
 	 * auto-compaction on those differ.
 	 */
 	contextPercent: number | null;
-	contextTokens: number;
 	/** The model's real context window. Always the window, never the trigger. */
 	contextWindow: number;
 	/**

@@ -199,10 +199,13 @@ describe("StatusLineComponent context breakdown", () => {
 		expect(breakdown.contextWindow).toBe(272_000);
 	});
 
-	it("falls back to the model window with 0 tokens when usage is unavailable", () => {
+	// Not zero: zero is a real count and the gauge spends it as `100% left`. An
+	// unavailable usage means there is no anchor yet, which the breakdown reports as
+	// `null` so the footline can say `? left` instead of inventing a full context.
+	it("reports an unknown token count as unknown, keeping the model window", () => {
 		const { session } = makeSession({ messages: [userMessage("hi")], usage: undefined, contextWindow: 128_000 });
 		const breakdown = new StatusLineComponent(session).getCachedContextBreakdown();
-		expect(breakdown.usedTokens).toBe(0);
+		expect(breakdown.usedTokens).toBeNull();
 		expect(breakdown.contextWindow).toBe(128_000);
 	});
 

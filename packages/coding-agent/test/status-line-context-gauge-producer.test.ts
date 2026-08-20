@@ -222,6 +222,19 @@ describe("a collab guest's gauge", () => {
 
 		expect(plain).toContain("30% left");
 	});
+
+	it("says the count is unknown when the host says it does not know", () => {
+		// `ContextUsage` is nullable on the wire so a host with no anchor -- right after a
+		// compaction, before the next response -- can say so. A guest that fell back to a
+		// locally computed number here would paint `100% left` from an accounting it does
+		// not do, which is the same lie the host stopped telling.
+		const plain = render(makeSession({ usedTokens: 0 }), ["context_pct"], {
+			guestUsage: { tokens: null, contextWindow: 300_000, percent: null } as unknown as ContextUsage,
+		});
+
+		expect(plain).toContain("? left");
+		expect(plain).not.toContain("100% left");
+	});
 });
 
 describe("the gauge reports room left, not room used", () => {

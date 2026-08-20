@@ -247,7 +247,7 @@ interface ContextUsageMemo {
 	lastFingerprint: string | undefined;
 	modelContextWindow: number;
 	contextUsageRevision: number;
-	usedTokens: number;
+	usedTokens: number | null;
 	contextWindow: number;
 	systemPromptRef: readonly string[] | undefined;
 	toolsRef: readonly any[] | undefined;
@@ -1126,7 +1126,7 @@ export class StatusLineComponent implements Component {
 	 * (right after compaction, before the next response). Exposed (non-private)
 	 * for unit tests and the collab host's state broadcast.
 	 */
-	getCachedContextBreakdown(): { usedTokens: number; contextWindow: number } {
+	getCachedContextBreakdown(): { usedTokens: number | null; contextWindow: number } {
 		const messages = this.session.messages ?? EMPTY_MESSAGES;
 		const modelContextWindow = this.session.model?.contextWindow ?? 0;
 		const length = messages.length;
@@ -1156,7 +1156,9 @@ export class StatusLineComponent implements Component {
 		}
 
 		const usage = this.session.getContextUsage();
-		const usedTokens = usage?.tokens ?? 0;
+		// `undefined` from the session means "no anchor yet", which is a different fact
+		// from zero tokens and is carried as `null` rather than flattened into a number.
+		const usedTokens = usage?.tokens ?? null;
 		const contextWindow = usage?.contextWindow ?? modelContextWindow;
 		this.#contextUsageCache = {
 			messagesRef: messages,
@@ -1208,10 +1210,8 @@ export class StatusLineComponent implements Component {
 		let contextLimit = contextWindow;
 		let contextLimitKind: "window" | "compaction" = "window";
 		let contextPercent: number | null = 0;
-		let contextTokens = 0;
 		if (includeContext) {
 			const breakdown = this.getCachedContextBreakdown();
-			contextTokens = breakdown.usedTokens;
 			contextWindow = breakdown.contextWindow || contextWindow;
 			contextLimit = contextWindow;
 			// Measure against the auto-compact fire point, not the raw model
@@ -1229,7 +1229,19 @@ export class StatusLineComponent implements Component {
 				contextLimit = limit.tokens;
 				contextLimitKind = limit.kind;
 			}
-			contextPercent = contextLimit > 0 ? (breakdown.usedTokens / contextLimit) * 100 : null;
+			// A used-token count of `null` is the session saying it does not know yet --
+			// the anchor is the last assistant's real prompt-token count, and right after
+			// a compaction there is no last assistant to anchor on. Substituting 0 here
+			// is what made the gauge answer `100% left` in the one moment it knew least,
+			// while `/context` said usage was unavailable: two surfaces, one fact, two
+			// answers. `null` reaches the segment as the `? left` the grammar already
+			// spells, and the next response replaces it with a real number.
+			contextPercent =
+				breakdown.usedTokens === null
+					? null
+					: contextLimit > 0
+						? (breakdown.usedTokens / contextLimit) * 100
+						: null;
 		}
 
 		// Collab guest: context comes from the host's state frames — the local
@@ -1237,8 +1249,10 @@ export class StatusLineComponent implements Component {
 		const collabState = this.#collabStatus?.stateOverride;
 		if (collabState?.contextUsage) {
 			contextWindow = collabState.contextUsage.contextWindow || contextWindow;
-			contextTokens = collabState.contextUsage.tokens ?? contextTokens;
-			contextPercent = collabState.contextUsage.percent ?? contextPercent;
+			// The host's frame is authoritative, null included: a guest that fell back to
+			// its own number here would paint a percentage the host never sent, and the
+			// local replica does no accounting to base one on.
+			contextPercent = collabState.contextUsage.percent;
 			// The host frame carries a window and a percent, not the host's
 			// compaction trigger, so the guest's limit is the window it was told
 			// about — never a trigger resolved from the guest's own settings.
@@ -1272,7 +1286,6 @@ export class StatusLineComponent implements Component {
 			collab: this.#collabStatus,
 			usageStats,
 			contextPercent,
-			contextTokens,
 			contextWindow,
 			contextLimit,
 			contextLimitKind,
