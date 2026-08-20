@@ -87,7 +87,6 @@ function gaugeContext(overrides: GaugeOverrides = {}): SegmentContext {
 				: contextLimit > 0
 					? (contextTokens / contextLimit) * 100
 					: null,
-		contextTokens,
 		contextWindow,
 		contextLimit,
 		contextLimitKind: overrides.contextLimitKind ?? "window",

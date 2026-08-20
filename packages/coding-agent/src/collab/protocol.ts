@@ -20,6 +20,10 @@ import type {
 	AgentEvent as WireAgentEvent,
 	AgentSnapshot as WireAgentSnapshot,
 	WireAssistantMessage,
+	// The nullable wire shape, not the extension API's `ContextUsage`: a host with no
+	// anchor yet (right after a compaction) has to be able to say "unknown" to a
+	// guest, and the browser client already reads these three fields as nullable.
+	ContextUsage as WireContextUsage,
 	WireMessage,
 	WireModel,
 	WireSessionEntry,
@@ -33,7 +37,7 @@ import {
 	ROOM_KEY_BYTES,
 	WRITE_TOKEN_BYTES,
 } from "@veyyon/wire";
-import type { ContextUsage } from "../extensibility/extensions/types";
+
 import type { AgentSessionEvent } from "../session/agent-session";
 import type { SessionEntry, SessionHeader, SessionMessageEntry } from "../session/session-entries";
 
@@ -526,8 +530,29 @@ export type CollabSessionState = SessionState & {
 	 */
 	model?: WireModel;
 	/** Host status-line context numbers (guest system prompt/tools differ, so local estimates drift). */
-	contextUsage?: ContextUsage;
+	contextUsage?: WireContextUsage;
 };
+
+/**
+ * Project the status line's context breakdown into the wire shape a guest reads.
+ *
+ * One owner, because the host and the host's own footline have to agree about a
+ * fact with three states: a real count, a real zero, and no anchor yet. The last
+ * one is why every field here is nullable — right after a compaction the session
+ * has no last assistant to anchor on, and a host that flattened that to zero told
+ * every guest `100% left` at the moment it knew least.
+ */
+export function contextUsageFrame(breakdown: { usedTokens: number | null; contextWindow: number }): WireContextUsage {
+	const { usedTokens, contextWindow } = breakdown;
+	return {
+		tokens: usedTokens,
+		contextWindow,
+		// A zero window is a model whose window the host does not know either; the
+		// percentage is 0 rather than null because the tokens ARE known and the guest's
+		// own limit resolution takes over from the window it was handed.
+		percent: usedTokens === null ? null : contextWindow > 0 ? (usedTokens / contextWindow) * 100 : 0,
+	};
+}
 
 /**
  * Encrypted payload frames (inside AES-GCM, JSON). The wire package pins the
