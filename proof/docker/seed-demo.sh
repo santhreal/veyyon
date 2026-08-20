@@ -137,11 +137,47 @@ cat >"${DEMO}/tsconfig.json" <<'JSON'
 		"strict": true,
 		"noEmit": true,
 		"allowImportingTsExtensions": true,
-		"skipLibCheck": true
+		"skipLibCheck": true,
+		"types": ["node", "bun"]
 	},
 	"include": ["src", "service"]
 }
 JSON
+
+# THE TYPES THE FIXTURE'S OWN CODE NEEDS.
+#
+# Every one of the nine seeded modules reads its setting straight out of the
+# environment -- that is the defect the hero take is about -- and the tests import
+# `bun:test`, so without declarations the fixture does not typecheck as seeded. The
+# LSP row answered every frame of the last take with `Cannot find name 'process'. Do
+# you need to install type definitions for node?`, which is the fixture's diagnostic
+# and not the model's: it was there before the session started and it stayed on screen
+# through the fan-out, so the hero frame shipped an error the work had not caused.
+#
+# The container cannot reach a registry, but the repo is bind-mounted at /repo with its
+# own node_modules, so the real declarations are already on disk. Copying them in is
+# offline and gives the language server genuine types rather than a hand-written stub
+# that would drift. bun-types comes along because @types/bun is a shim that depends on
+# it, and `types` is listed EXPLICITLY: with `moduleResolution: bundler` the automatic
+# sweep of node_modules/@types did not fire, and the naming both packages here is what
+# takes `tsc -p` on the seeded tree from eleven errors to zero.
+#
+# If a source directory is missing the take still records -- the fixture simply carries
+# the diagnostic again -- so this copies what is there rather than gating on it.
+mkdir -p "${DEMO}/node_modules/@types"
+for pkg in @types/node @types/bun bun-types; do
+	if [ -d "/repo/node_modules/${pkg}" ]; then
+		mkdir -p "$(dirname "${DEMO}/node_modules/${pkg}")"
+		cp -R "/repo/node_modules/${pkg}" "${DEMO}/node_modules/${pkg}"
+	fi
+done
+
+# ... and node_modules stays out of the demo repository, so the seeded commit below is
+# the nine modules rather than 6M of declarations, and the model's `git status` is not
+# a wall of vendored files.
+cat >"${DEMO}/.gitignore" <<'GI'
+node_modules/
+GI
 
 # THE SERVICE TREE, and why it is not four files.
 #
