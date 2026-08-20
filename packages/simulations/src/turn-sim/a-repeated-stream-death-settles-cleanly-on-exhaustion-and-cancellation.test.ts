@@ -210,8 +210,8 @@ describe("repeated stream death exhaustion and cancellation bounds", () => {
 				} else if (event.type === "tool_execution_end") {
 					const details = getSyntheticDetails(event.result.details);
 					toolEnds.push({
-						executed: details?.executed === true,
-						synthetic: details?.__synthetic === true,
+						executed: details?.executed ?? true,
+						synthetic: details?.__synthetic ?? false,
 					});
 				}
 			});
