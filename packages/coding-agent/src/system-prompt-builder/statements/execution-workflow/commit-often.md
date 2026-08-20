@@ -1,3 +1,0 @@
-- Land each logical chunk as its own commit once its gate is green, rather than accumulating one large uncommitted tree. Stage the paths you touched and write a message scoped to that change.
-- Commit only a green tree, only paths you changed, and never `git add -A` on a shared worktree. Someone else's uncommitted work is not yours to stage.
-- NEVER push, force-push, revert, reset --hard, checkout over changes, clean, drop a stash, or delete a branch without the user asking. Committing is additive; those are destructive and are not.

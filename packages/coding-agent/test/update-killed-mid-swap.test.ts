@@ -174,6 +174,14 @@ describe("an update killed mid-swap", () => {
 	 * ran. That is litter rather than damage, and it is the reason
 	 * `sweepStaleBackups` exists: this asserts the pair actually works together,
 	 * rather than each being correct on its own.
+	 *
+	 * The provisional ownership receipt survives too, and unlike the backup it is
+	 * not litter: it is the only thing on disk that says the new binary at the
+	 * target path is one of ours, so the next install repairs the record instead of
+	 * refusing the file. Deliberately NOT swept — see
+	 * `an-update-interrupted-before-its-receipt-leaves-an-installable-binary.test.ts`
+	 * for what depends on it. It is retired by the next successful update or by
+	 * `--uninstall`.
 	 */
 	it("leaves the backup, and the sweep reclaims it without touching the binary", async () => {
 		const layout = await makeLayout();
@@ -185,7 +193,7 @@ describe("an update killed mid-swap", () => {
 
 			expect(await read(layout.backup)).toBeNull();
 			expect(await read(layout.target)).toBe(NEW_BINARY);
-			expect(await fs.readdir(layout.dir)).toEqual(["veyyon"]);
+			expect((await fs.readdir(layout.dir)).sort()).toEqual([".veyyon.veyyon-owner.pending", "veyyon"]);
 		} finally {
 			await fs.rm(layout.dir, { recursive: true, force: true });
 		}
@@ -193,9 +201,11 @@ describe("an update killed mid-swap", () => {
 
 	/**
 	 * A second kill on the next attempt must not compound: the directory after two
-	 * killed updates holds one binary and backups the sweep can name, never a
-	 * growing pile of files a user has to identify themselves. Each backup path is
-	 * unique per attempt, so this is the assertion that keeps them sweepable.
+	 * killed updates holds one binary, one provisional receipt, and backups the
+	 * sweep can name — never a growing pile of files a user has to identify
+	 * themselves. Each backup path is unique per attempt, so this is the assertion
+	 * that keeps them sweepable; the provisional receipt has ONE name, so a
+	 * hundred killed updates still leave exactly one.
 	 */
 	it("does not accumulate unsweepable files across repeated kills", async () => {
 		const layout = await makeLayout();
@@ -208,7 +218,7 @@ describe("an update killed mid-swap", () => {
 
 			expect(await read(layout.target)).toBe(NEW_BINARY);
 			await sweepStaleBackups(layout.target);
-			expect(await fs.readdir(layout.dir)).toEqual(["veyyon"]);
+			expect((await fs.readdir(layout.dir)).sort()).toEqual([".veyyon.veyyon-owner.pending", "veyyon"]);
 		} finally {
 			await fs.rm(layout.dir, { recursive: true, force: true });
 		}

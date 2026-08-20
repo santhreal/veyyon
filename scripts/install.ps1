@@ -28,6 +28,7 @@ param(
     [switch]$Local,
     [string]$Ref,
     [switch]$NoVerify,
+    [switch]$Force,
     [switch]$Uninstall,
     [switch]$Help
 )
@@ -102,24 +103,43 @@ function Get-OwnerMarkerPath {
 # identified by its bytes. Returns $null rather than guessing when the hash
 # cannot be computed, and every caller reads $null as "not ours", so an
 # ownership question this cannot answer is answered NO.
+#
+# The hash is RETRIED, for the same reason Move-InstallItemWithRetry retries a
+# rename. The file this hashes is routinely one the installer executed as its
+# preflight moments earlier and then renamed into place, and Windows keeps such a
+# file briefly unreadable while it tears down the last worker process or an
+# antivirus scan finishes with a freshly written 150MB executable. A single
+# sharing violation used to be permanent damage rather than a delay: the receipt
+# was never written, the binary was already installed, and every later install
+# and uninstall then read the mismatch as "somebody replaced our file" and
+# refused to touch it. Only the read is retried — a path that does not exist, or
+# is a directory, is answered immediately, because no amount of waiting changes
+# either one.
 function Get-ArtifactIdentity {
-    param([string]$Path)
-    try {
-        $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
-        if ($item.LinkType) {
-            $target = @($item.Target)[0]
-            if (-not $target) { return $null }
-            $bytes = [System.Text.Encoding]::UTF8.GetBytes([string]$target)
-            $sha = [System.Security.Cryptography.SHA256]::Create()
-            try { $hash = [System.BitConverter]::ToString($sha.ComputeHash($bytes)).Replace("-", "").ToLower() }
-            finally { $sha.Dispose() }
-            return "link sha256:$hash"
-        }
-        if ($item.PSIsContainer) { return $null }
-        return "file sha256:$((Get-FileHash -LiteralPath $Path -Algorithm SHA256 -ErrorAction Stop).Hash.ToLower())"
-    } catch {
-        return $null
+    param([string]$Path, [int]$MaxAttempts = 8)
+    $item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+    if (-not $item) { return $null }
+    if ($item.LinkType) {
+        $target = @($item.Target)[0]
+        if (-not $target) { return $null }
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes([string]$target)
+        $sha = [System.Security.Cryptography.SHA256]::Create()
+        try { $hash = [System.BitConverter]::ToString($sha.ComputeHash($bytes)).Replace("-", "").ToLower() }
+        finally { $sha.Dispose() }
+        return "link sha256:$hash"
     }
+    if ($item.PSIsContainer) { return $null }
+    $delayMs = 50
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        try {
+            return "file sha256:$((Get-FileHash -LiteralPath $Path -Algorithm SHA256 -ErrorAction Stop).Hash.ToLower())"
+        } catch {
+            if ($attempt -eq $MaxAttempts) { return $null }
+            Start-Sleep -Milliseconds $delayMs
+            $delayMs = [Math]::Min($delayMs * 2, 500)
+        }
+    }
+    return $null
 }
 
 # The identity a v2 receipt records for $Path. $null when there is no sidecar, or
@@ -180,9 +200,100 @@ function Set-ArtifactOwned {
     }
 }
 
+# Both halves of the ownership record, because a pending receipt left behind by a
+# removed artifact is the same orphan hazard the v1 receipt was: it would vouch
+# for a name after the file it described is gone.
 function Remove-ArtifactOwnerReceipt {
     param([string]$Path)
     Remove-Item -LiteralPath (Get-OwnerMarkerPath $Path) -Force -ErrorAction SilentlyContinue
+    Clear-ArtifactOwnershipPending $Path
+}
+
+# ---- the in-flight half of a receipt ----
+#
+# A receipt can only be written AFTER the file it describes is in place, so
+# between the move and the write there is a moment when the binary on disk is
+# ours and nothing on disk says so. Anything that ends the installer in that
+# moment used to be PERMANENT: the sidecar still described the binary just
+# retired, so every later install refused to replace "somebody else's file" and
+# every later uninstall left it behind, with no remedy but hand surgery. A
+# reinstall could not repair it either, which is the part that made it a dead
+# end rather than a nuisance.
+#
+# The pending receipt is written BEFORE the swap and records the identity of the
+# file about to be installed, so throughout the window one of the two sidecars
+# vouches for whatever is at the path: the real receipt for the outgoing file,
+# the pending one for the incoming file. It is removed once the real receipt
+# lands. A pending receipt that outlives its swap is harmless rather than
+# dangerous — it can only ever vouch for bytes this installer itself staged and
+# verified — which is why removing it is best effort while recovery is not.
+function Get-PendingOwnerMarkerPath {
+    param([string]$Path)
+    return "$(Get-OwnerMarkerPath $Path).pending"
+}
+
+function Get-PendingOwnerReceiptIdentity {
+    param([string]$Path)
+    $marker = Get-PendingOwnerMarkerPath $Path
+    if (-not (Test-Path -LiteralPath $marker -PathType Leaf)) { return $null }
+    $lines = @(Get-Content -LiteralPath $marker -TotalCount 2 -ErrorAction SilentlyContinue)
+    if ($lines.Count -lt 2) { return $null }
+    if ("$($lines[0])".Trim() -ne "veyyon-installer-v2") { return $null }
+    $identity = "$($lines[1])".Trim()
+    if (-not $identity) { return $null }
+    return $identity
+}
+
+function Test-ArtifactHasPendingOwnerReceipt {
+    param([string]$Path)
+    $recorded = Get-PendingOwnerReceiptIdentity $Path
+    if (-not $recorded) { return $false }
+    $actual = Get-ArtifactIdentity $Path
+    if (-not $actual) { return $false }
+    return $recorded -eq $actual
+}
+
+# Declare the identity about to be installed at $Path. $Identity is computed from
+# the STAGED file while it is still staged, because once the swap has begun there
+# may be no opportunity left to compute anything.
+function Set-ArtifactOwnershipPending {
+    param([string]$Path, [string]$Identity)
+    if (-not $Identity) { throw "cannot record a pending ownership for $Path without an identity" }
+    $marker = Get-PendingOwnerMarkerPath $Path
+    $staging = "$marker.$PID"
+    try {
+        [System.IO.File]::WriteAllText($staging, "veyyon-installer-v2`n$Identity`n")
+        Move-Item -LiteralPath $staging -Destination $marker -Force
+    } catch {
+        Remove-Item -LiteralPath $staging -Force -ErrorAction SilentlyContinue
+        throw "could not record pending installer ownership for $Path ($($_.Exception.Message))"
+    }
+}
+
+function Clear-ArtifactOwnershipPending {
+    param([string]$Path)
+    Remove-Item -LiteralPath (Get-PendingOwnerMarkerPath $Path) -Force -ErrorAction SilentlyContinue
+}
+
+# Close the window the pending receipt held open: write the real receipt, then
+# drop the pending one.
+#
+# Deliberately does NOT throw. It runs only after a swap has already succeeded,
+# and the binary at $Path is installed and runnable whatever happens here, so
+# aborting would deny an on-disk install its PATH entry, its alias, its
+# completions and its doctor self-test. When the real receipt cannot be written
+# the pending one is left in place, so ownership is still recorded and the next
+# install repairs it.
+function Complete-ArtifactOwnership {
+    param([string]$Path)
+    try {
+        Set-ArtifactOwned $Path
+    } catch {
+        Write-Host "!!  installed $Path but could not record its ownership ($($_.Exception.Message))" -ForegroundColor Yellow
+        Write-Host "    $(Get-PendingOwnerMarkerPath $Path) still vouches for it, so a later install or uninstall will recognize it" -ForegroundColor Yellow
+        return
+    }
+    Clear-ArtifactOwnershipPending $Path
 }
 
 # A completion script needs no authoritative-mismatch rule, because its fallback
@@ -201,6 +312,12 @@ function Test-CompletionArtifactIsOurs {
 function Test-BinaryArtifactIsOurs {
     param([string]$Path)
     if (Test-ArtifactHasOwnerReceipt $Path) { return $true }
+    # An install or an update cut off between placing the binary and recording it
+    # left the file it staged at this path, and a pending receipt describing it.
+    # Those bytes are ours on the same proof the real receipt carries, and this is
+    # consulted BEFORE the mismatch rule below because in exactly that case the
+    # real receipt still describes the binary that was retired.
+    if (Test-ArtifactHasPendingOwnerReceipt $Path) { return $true }
     # A v2 receipt that does NOT match is this installer's own record that the
     # file it wrote here is gone, so it settles the question and the shim
     # evidence below is not consulted. Falling through would undo the fix: the
@@ -218,6 +335,13 @@ function Test-BinaryArtifactIsOurs {
 function Get-BinaryRefusalReason {
     param([string]$Path)
     if (Get-OwnerReceiptIdentity $Path) {
+        # "it has changed" is a claim about the FILE, and it must not be made when
+        # the file merely could not be read. A binary held open by a running
+        # process, or one this user cannot read, is an ownership question with no
+        # answer rather than evidence of tampering, and its remedy is different.
+        if (-not (Get-ArtifactIdentity $Path)) {
+            return "it carries this installer's ownership receipt but could not be read to check against it (a running process may be holding it open); close any running $BinName and re-run"
+        }
         return "it has changed since this installer wrote it, so the file there now is not the one it installed"
     }
     if (Test-ArtifactHasLegacyOwnerReceipt $Path) {
@@ -262,7 +386,7 @@ function Move-InstallItemWithRetry {
 }
 
 # Put a verified download in place of the installed binary, without ever leaving
-# the user with neither.
+# the user with neither, and without ever leaving the installation unrecordable.
 #
 # Windows keeps a running executable's image locked, so overwriting or deleting
 # it fails while a session is open. Renaming it is permitted, so the previous
@@ -278,18 +402,57 @@ function Move-StagedBinaryIntoPlace {
     # installed cleanly and the user got a veyyon that could not start. The
     # staged file is removed rather than left for the caller to sweep, because
     # this function owns it from here on.
-    $staged = Get-Item -LiteralPath $StagingPath -ErrorAction SilentlyContinue
+    $staged = Get-Item -LiteralPath $StagingPath -Force -ErrorAction SilentlyContinue
     if (-not $staged -or $staged.Length -eq 0) {
-        Remove-Item $StagingPath -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $StagingPath -Force -ErrorAction SilentlyContinue
         throw "the binary staged at $StagingPath is empty - refusing to install; the download did not complete. Retry, or $ManualBuild"
     }
-    if ((Test-Path -LiteralPath $TargetPath) -and -not (Test-BinaryArtifactIsOurs $TargetPath)) {
-        Remove-Item $StagingPath -Force -ErrorAction SilentlyContinue
-        throw "refusing to replace $TargetPath because $(Get-BinaryRefusalReason $TargetPath); move it aside, then re-run the installer"
+    # The identity of the file being installed, taken while it is still staged.
+    # Everything below needs it before the move: the pending receipt has to be on
+    # disk BEFORE the binary is, and once the swap has begun there may be no
+    # chance left to compute anything at all.
+    $incoming = Get-ArtifactIdentity $StagingPath
+    if (-not $incoming) {
+        Remove-Item -LiteralPath $StagingPath -Force -ErrorAction SilentlyContinue
+        throw "could not compute the SHA256 of the binary staged at $StagingPath, so this install could not be recorded as ours - retry, or $ManualBuild"
     }
-    if (-not (Test-Path $TargetPath)) {
+
+    $targetExists = Test-Path -LiteralPath $TargetPath
+    if ($targetExists) {
+        # Already byte-identical to what is being installed. There is nothing to
+        # replace, so nothing to refuse: an ownership gate here would be refusing
+        # to install a file that IS the one being installed. Re-stamping is what
+        # repairs an install whose receipt was lost mid-swap, and skipping the
+        # rename also keeps a same-version reinstall from touching a running
+        # image at all.
+        if ((Get-ArtifactIdentity $TargetPath) -eq $incoming) {
+            Remove-Item -LiteralPath $StagingPath -Force -ErrorAction SilentlyContinue
+            Write-Host "OK  $TargetPath is already this exact binary - left it in place" -ForegroundColor Green
+            Complete-ArtifactOwnership $TargetPath
+            return
+        }
+        if (-not (Test-BinaryArtifactIsOurs $TargetPath)) {
+            if (-not $Force) {
+                Remove-Item -LiteralPath $StagingPath -Force -ErrorAction SilentlyContinue
+                throw "refusing to replace $TargetPath because $(Get-BinaryRefusalReason $TargetPath).`nThe ownership record consulted is $(Get-OwnerMarkerPath $TargetPath).`nMove $TargetPath aside and re-run, or re-run with -Force to have the installer move it aside for you (nothing is deleted)."
+            }
+            # -Force displaces, it does not destroy. The file goes to a name no
+            # sweep and no uninstall touches, and that name is printed, because
+            # taking a filename away from a file the installer cannot account for
+            # is the user's decision and they have to be able to undo it.
+            $displaced = Join-Path ([System.IO.Path]::GetDirectoryName($TargetPath)) "$([System.IO.Path]::GetFileName($TargetPath)).unowned.$PID"
+            Write-Host "!!  -Force: $TargetPath $(Get-BinaryRefusalReason $TargetPath)" -ForegroundColor Yellow
+            Move-InstallItemWithRetry -SourcePath $TargetPath -DestinationPath $displaced
+            Write-Host "!!  moved it aside to $displaced (nothing was deleted)" -ForegroundColor Yellow
+            $targetExists = $false
+        }
+    }
+
+    # The swap begins here, so the incoming identity goes on disk first.
+    Set-ArtifactOwnershipPending -Path $TargetPath -Identity $incoming
+    if (-not $targetExists) {
         Move-InstallItemWithRetry -SourcePath $StagingPath -DestinationPath $TargetPath
-        Set-ArtifactOwned $TargetPath
+        Complete-ArtifactOwnership $TargetPath
         return
     }
     $asideName = "$([System.IO.Path]::GetFileName($TargetPath)).$PID.old"
@@ -301,11 +464,14 @@ function Move-StagedBinaryIntoPlace {
         # Put the working binary back before reporting; a failed install must
         # not be an uninstall.
         Move-InstallItemWithRetry -SourcePath $aside -DestinationPath $TargetPath
-        Remove-Item $StagingPath -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $StagingPath -ErrorAction SilentlyContinue
+        # The path holds the PREVIOUS binary again, which is what its real receipt
+        # already describes, so the pending one has nothing left to vouch for.
+        Clear-ArtifactOwnershipPending $TargetPath
         throw "could not replace $TargetPath ($($_.Exception.Message)); your previous $BinName is untouched"
     }
-    Remove-Item $aside -ErrorAction SilentlyContinue
-    Set-ArtifactOwned $TargetPath
+    Remove-Item -LiteralPath $aside -ErrorAction SilentlyContinue
+    Complete-ArtifactOwnership $TargetPath
 }
 
 # PowerShell decides whether a command path is executable from its final
@@ -362,6 +528,26 @@ function Clear-StaleInstallArtifacts {
             Write-Host "OK  removed $($leftover.FullName) left by an interrupted install (pid $ownerPid)" -ForegroundColor Green
         }
     }
+}
+
+# Whether $Name is a leftover from a `veyyon update` attempt on $BaseName: the
+# download it staged, or the binary it moved aside while proving the new one.
+#
+# The updater gives every attempt its own pathname so one forced update cannot
+# truncate another's download, so both names carry that attempt's UUID:
+# `veyyon.exe.<uuid>.new` and `veyyon.exe.<uuid>.bak`. The sweeps that reclaim
+# them were written against the names used BEFORE that change — a fixed
+# `veyyon.exe.new` and a dot-separated-numeric `veyyon.exe.<timestamp>.<pid>.bak`
+# — and were never updated, so they matched neither shape actually on disk and an
+# uninstall reported success while leaving ~150MB behind per orphaned attempt.
+# Both spellings are recognized: the older ones are still on machines that ran an
+# older release. Anything else is not ours, which is what keeps a
+# `veyyon.exe.mine.bak` somebody saved by hand from being swept.
+function Test-UpdateAttemptLeftover {
+    param([string]$Name, [string]$BaseName, [string]$Suffix)
+    $uuid = "[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"
+    $pattern = "^" + [regex]::Escape($BaseName) + "(?:\.(?:\d+(?:\.\d+)*|$uuid))?\." + [regex]::Escape($Suffix) + "$"
+    return $Name -match $pattern
 }
 
 # The comparable form of one PATH entry. Single owner: every place that asks
@@ -1628,26 +1814,25 @@ function Uninstall-Veyyon {
             $removed = $true
         }
     }
-    # `veyyon update` stages at `<binary>.new` and keeps the binary it replaces as
-    # `<binary>.<timestamp>.<pid>.bak` until the new one has proved itself. Windows
-    # cannot unlink a running process image, so that backup routinely outlives the
-    # update, and a killed update leaves the staged file. Neither matches the two
-    # patterns above (those are the INSTALLER's own staging), so an uninstall used
-    # to report success and leave a few hundred megabytes named `veyyon.exe.new`
-    # behind. Mirrors the same sweep in install.sh. The `\d`-only middle is what
-    # keeps a `veyyon.exe.mine.bak` somebody saved by hand out of it.
+    # `veyyon update` stages its download beside the binary and keeps the binary
+    # it replaces until the new one has proved itself. Windows cannot unlink a
+    # running process image, so that backup routinely outlives the update, and a
+    # killed update leaves the staged file. Neither matches the installer's own
+    # dot-prefixed staging swept above, so an uninstall used to report success and
+    # leave a few hundred megabytes behind. Which names count is
+    # Test-UpdateAttemptLeftover's decision, and it is the same one install.sh
+    # makes.
     foreach ($f in @("$BinName.exe", "$BinName.cmd")) {
-        $staged = Join-Path $InstallDir "$f.new"
-        if (Test-Path $staged) {
-            Remove-Item -Force $staged -ErrorAction SilentlyContinue
-            if (-not (Test-Path $staged)) {
-                Write-Host "OK  removed $staged left by an interrupted update" -ForegroundColor Green
+        foreach ($staged in @(Get-ChildItem -Path $InstallDir -Filter "$f*.new" -File -ErrorAction SilentlyContinue)) {
+            if (-not (Test-UpdateAttemptLeftover -Name $staged.Name -BaseName $f -Suffix "new")) { continue }
+            Remove-Item -Force $staged.FullName -ErrorAction SilentlyContinue
+            if (-not (Test-Path $staged.FullName)) {
+                Write-Host "OK  removed $($staged.FullName) left by an interrupted update" -ForegroundColor Green
                 $removed = $true
             }
         }
-        $backupPattern = "^" + [regex]::Escape($f) + "(\.\d+)*\.bak$"
         foreach ($b in @(Get-ChildItem -Path $InstallDir -Filter "$f*.bak" -File -ErrorAction SilentlyContinue)) {
-            if ($b.Name -notmatch $backupPattern) { continue }
+            if (-not (Test-UpdateAttemptLeftover -Name $b.Name -BaseName $f -Suffix "bak")) { continue }
             Remove-Item -Force $b.FullName -ErrorAction SilentlyContinue
             if (-not (Test-Path $b.FullName)) {
                 Write-Host "OK  removed update backup $($b.FullName)" -ForegroundColor Green
@@ -1773,6 +1958,9 @@ Options:
                     same release. Branches and commits are not installable: clone
                     the repository and run ``bun run setup`` in that checkout.
   -NoVerify         Skip the download's checksum verification (NOT recommended)
+  -Force            Install over a file at the target path that this installer
+                    cannot account for. That file is moved aside to
+                    <name>.unowned.<pid> and its path printed; nothing is deleted
   -Uninstall        Remove veyyon, the vey shim, completions, and any source
                     checkout an older installer left behind
   -Help             Print this and exit
