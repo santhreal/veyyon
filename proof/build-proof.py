@@ -788,6 +788,7 @@ def write(sections: list[Section]) -> None:
 X = "captures/x11/"
 XB = "captures/x11/before/"
 S = "captures/x11/strips/"
+W = "captures/wayland/"
 N = "captures/notes/"
 SECTIONS = [
     Section(
@@ -1338,6 +1339,41 @@ SECTIONS = [
             " visual and logs exactly that, while picom applies opacity to a window that knows nothing about it."
             " <code>SCENE_THEME=plain</code> keeps every other scene on this page recording the flat capture it was"
             " recorded against.</p>",
+            "<h3>The ceiling, and what got past it</h3>",
+            "<p><strong>Why the frost above is a backdrop and not the window.</strong> Everything in this section"
+            " so far blurs the field <em>behind</em> an opaque terminal, because on this X server that is the only"
+            " blur available: picom's one working backend convolves with a fixed kernel, and the backend that can"
+            " blur the window itself drops the window's contents. The limit is structural rather than a setting."
+            " picom reads the window's pixels back out of the X server through texture-from-pixmap, and a"
+            " software GL stack has nothing to hand it, so the compositor keeps the geometry and loses the"
+            " contents. No amount of tuning reaches past that.</p>",
+            "<p><strong>A Wayland compositor cannot fail that way.</strong> There is no pixmap to scrape: the"
+            " client hands its own buffer to the compositor, so blur, a corner radius and a shadow apply to the"
+            " terminal itself. Of the compositors that are actually obtainable here, exactly one has all three"
+            " natively - kwin-wayland's blur needs <code>org_kde_kwin_blur</code> and the terminal never asks for"
+            " it, sway, weston and labwc have no blur at all, and wayfire has kawase blur but keeps its rounded"
+            " corners in an unpackaged plugin and drew no measurable shadow. So the recorder builds swayfx from"
+            " source, with the pins read out of each project's own <code>meson.build</code> rather than guessed:"
+            " wlroots 0.19.1, scenefx 0.4.1, swayfx 0.5.2. No swayfx release wants the wlroots this base image"
+            " ships, which is why the chain is built rather than installed.</p>",
+            still_pair(
+                X + "chrome-default.png",
+                W + "chrome-swayfx.png",
+                "picom on X11: the field behind the window is frosted, the window's own edge is a hard flat"
+                " rectangle, and the interior is an opacity applied to pixels the terminal drew for an opaque"
+                " visual.",
+                "swayfx on Wayland, same scene, same product, same 134x31 grid: the corner radius, the drop"
+                " shadow and the blur are on the terminal's own buffer. The window refracts what is behind it"
+                " and the text on top stays sharp.",
+                arms=("X11 / picom", "Wayland / swayfx"),
+            ),
+            "<p>The scene is the same file on both. Six primitives - a key, a pointer move, a pointer read, a"
+            " click, a window rectangle, a capture - moved behind a backend the scene never names, and the X11"
+            " calls are unchanged byte for byte, because every other frame on this page was recorded through"
+            " them. Both arms resolve the identical grid from the same scene"
+            " (<code>134x31 cells of 17x37px at +128+128</code>), which is the check that the abstraction did not"
+            " quietly move the surface being photographed. The Wayland arm prints its own chrome the same way"
+            " (<code>chrome: swayfx radius 26 blur 3x5 shadow 44 composited the output</code>).</p>",
             video(
                 X + "demo-hd.mp4",
                 "The whole take: a read, an edit, the project's own test run against the change, a three-phase plan"
