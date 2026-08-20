@@ -36,6 +36,7 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript-container";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { type Component, Container, CURSOR_MARKER, type Focusable, TUI } from "@veyyon/tui";
+import { countDestructivePaints } from "../../../../tui/test/helpers/destructive-paints";
 import { settleFrames } from "../../../../tui/test/helpers/settle-frames";
 import { VirtualTerminal } from "../../../../tui/test/virtual-terminal";
 
@@ -113,12 +114,7 @@ async function conversation(options: {
 	header?: number;
 }): Promise<Rig> {
 	const term = new VirtualTerminal(WIDTH, HEIGHT, 5_000);
-	let erases = 0;
-	const write = term.write.bind(term);
-	term.write = (data: string) => {
-		if (data.includes("\x1b[3J")) erases++;
-		write(data);
-	};
+	const paints = countDestructivePaints(term);
 	const tui = new TUI(term, true);
 	tui.setScrollbackRebuild(options.rebuild);
 	if (options.header) {
@@ -141,7 +137,7 @@ async function conversation(options: {
 		tui,
 		transcript,
 		settle,
-		erases: () => erases,
+		erases: () => paints.erases(),
 		history: () =>
 			term
 				.getScrollBuffer()
