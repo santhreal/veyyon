@@ -6,6 +6,67 @@
 # uses. Nothing here reads the operator's home: the container runs with HOME on
 # a tmpfs and only the repo is bind-mounted.
 ARG BASE=veyyon-test-guest:1.3.14
+
+# A Wayland compositor with blur, rounded corners and shadows, built because no
+# packaged one has all three. This stage is why the recorder can record glass at
+# all, and the version pins below are the only combination that resolves.
+#
+# picom on X11 gets rounding, a shadow and a kernel blur, but its blur is a fixed
+# convolution and its glx backend -- the one with dual_kawase -- composites a
+# window with NO CONTENTS on this GL stack, because texture-from-pixmap never
+# hands it the terminal's surface. A Wayland compositor has no pixmap to scrape:
+# the client's buffer is what it composites, so that failure cannot happen.
+#
+# What was rejected, with the reason:
+#   * hyprland -- not in trixie, and its chain (aquamarine, hyprutils, hyprlang,
+#     hyprcursor, hyprwayland-scanner) is a longer build than this one.
+#   * kwin-wayland 6.3.6 -- packaged, and its blur only applies to windows that
+#     ask through org_kde_kwin_blur. kitty never asks, so the terminal gets none.
+#   * wayfire 0.9 -- packaged, kawase blur works here and is genuinely good, but
+#     rounded corners live in wayfire-plugins-extra, which trixie does not ship,
+#     and its winshadows plugin drew no measurable shadow (the field next to the
+#     window edge came out BRIGHTER than the field further out).
+#   * sway, weston, labwc -- no blur at all.
+#
+# The pins: trixie ships libwlroots-0.18-dev, and no swayfx tag wants 0.18.
+# swayfx 0.4 wants wlroots <0.18; swayfx 0.5.2 needs scenefx-0.4, which needs
+# wlroots >=0.19. Neither repo carries a meson wrap, so nothing resolves
+# implicitly and wlroots 0.19 is built here. Everything lands in /opt/glass
+# rather than /usr/local, because the final stage already keeps tools there.
+FROM ${BASE} AS glass
+RUN set -eux; \
+	apt-get update; \
+	DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+		build-essential meson ninja-build pkg-config git ca-certificates \
+		wayland-protocols libwayland-dev libdrm-dev libgbm-dev libinput-dev \
+		libxkbcommon-dev libpixman-1-dev libseat-dev libdisplay-info-dev \
+		libliftoff-dev libjson-c-dev libpcre2-dev libcairo2-dev libpango1.0-dev \
+		libgdk-pixbuf-2.0-dev libevdev-dev libudev-dev libegl1-mesa-dev \
+		libgles2-mesa-dev libxcb1-dev libxcb-composite0-dev libxcb-icccm4-dev \
+		libxcb-res0-dev libxcb-ewmh-dev libxcb-errors-dev libx11-xcb-dev \
+		libvulkan-dev glslang-tools scdoc libsystemd-dev hwdata; \
+	rm -rf /var/lib/apt/lists/*
+# meson prints its errors on STDOUT, so nothing in this stage is quietened: the
+# first two attempts at this build were silenced into a bare exit 1.
+RUN set -eux; \
+	export PKG_CONFIG_PATH=/opt/glass/lib/x86_64-linux-gnu/pkgconfig; \
+	export LD_LIBRARY_PATH=/opt/glass/lib/x86_64-linux-gnu; \
+	mkdir -p /build; cd /build; \
+	git clone --depth 1 -b 0.19.1 https://gitlab.freedesktop.org/wlroots/wlroots.git; \
+	cd wlroots; \
+	meson setup build --prefix=/opt/glass -Dexamples=false -Dwerror=false; \
+	ninja -C build; ninja -C build install; \
+	cd /build; \
+	git clone --depth 1 -b 0.4.1 https://github.com/wlrfx/scenefx.git; \
+	cd scenefx; \
+	meson setup build --prefix=/opt/glass -Dexamples=false -Dwerror=false; \
+	ninja -C build; ninja -C build install; \
+	cd /build; \
+	git clone --depth 1 -b 0.5.2 https://github.com/WillPower3309/swayfx.git; \
+	cd swayfx; \
+	meson setup build --prefix=/opt/glass -Dwerror=false -Dsd-bus-provider=libsystemd; \
+	ninja -C build; ninja -C build install; \
+	rm -rf /build
 FROM ${BASE}
 
 ARG VHS_VERSION=0.10.0
@@ -112,3 +173,32 @@ RUN set -eux; \
 	node --version; \
 	typescript-language-server --version; \
 	tsc --version
+
+# The glass session: swayfx from the builder stage, plus the runtime libraries it
+# links and the Wayland capture tools. grim replaces `import` for stills and
+# wf-recorder replaces ffmpeg's x11grab for video, because both take their pixels
+# through wlr-screencopy rather than off an X screen. swaybg draws the backdrop,
+# which xwallpaper did on X11.
+#
+# One thing this image cannot fix, recorded here because it costs a container to
+# rediscover: swayfx refuses to run as root and exits at main.cpp:59, so the
+# session script runs it as an unprivileged user. wlroots also refuses to start
+# its gles2 renderer without a DRM render node, even headless, so the container
+# needs `--device /dev/dri/renderD128` and the render group. The software
+# renderer (WLR_RENDERER=pixman) needs no node and cannot run the blur shader,
+# which makes the node a requirement rather than an optimisation.
+COPY --from=glass /opt/glass /opt/glass
+RUN set -eux; \
+	apt-get update; \
+	DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+		swaybg grim slurp wf-recorder wl-clipboard \
+		libwlroots-0.18 libseat1 libinput10 libdisplay-info2 libliftoff0 \
+		libjson-c5 libpcre2-8-0 libcairo2 libpango-1.0-0 libpangocairo-1.0-0 \
+		libgdk-pixbuf-2.0-0 libevdev2 libvulkan1 libxkbcommon0 libpixman-1-0 \
+		libgbm1 libegl1 libgles2 xwayland; \
+	apt-get clean; \
+	rm -rf /var/lib/apt/lists/*; \
+	printf '%s\n' /opt/glass/lib/x86_64-linux-gnu >/etc/ld.so.conf.d/glass.conf; \
+	ldconfig; \
+	PATH=/opt/glass/bin:"${PATH}" sway --version
+ENV PATH=/opt/glass/bin:$PATH
