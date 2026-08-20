@@ -1,4 +1,4 @@
-import { ALNUM_WORD_RE } from "@veyyon/utils";
+import { ALNUM_WORD_RE, collapseWhitespace } from "@veyyon/utils";
 import { cleanTinyMessage, isPreformattedChatContext, stripChatScaffolding } from "./message-preproc";
 
 /**
@@ -170,7 +170,7 @@ export function normalizeGeneratedTitle(value: string | null | undefined, source
 	// Prose that survives beside a tag is kept and the tag dropped, because a title carrying one
 	// leaked marker is still a description of the work; a title that is ONLY markup describes
 	// nothing and is refused rather than shown.
-	const detagged = title.replace(MARKUP_TAG_RE, " ").replace(/\s+/g, " ").trim();
+	const detagged = collapseWhitespace(title.replace(MARKUP_TAG_RE, " "));
 	if (!detagged || detagged.toLowerCase() === NO_TITLE_SENTINEL) return null;
 	return sourceText === undefined ? detagged : reconcileTitleCasing(detagged, sourceText);
 }
