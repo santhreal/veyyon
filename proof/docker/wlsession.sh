@@ -143,6 +143,14 @@ fi
 # a crash has to be readable once the container is gone.
 cat >/tmp/bootstrap.sh <<'BOOT'
 #!/usr/bin/env bash
+# One number in the environment, for a scene that stores a credential with `/secret
+# from-env` and then asks the model to sign with the placeholder. Exported here rather
+# than typed in the session, which is the point: a credential that reaches the vault
+# through the environment never appears in the transcript, so what the recording shows
+# being spent is a placeholder. xsession.sh has always done this and this file did not,
+# which cost a full rehearsal: every turn ran, and the one the take exists for reported
+# "the environment variable RELEASE_SIGNATURE is not set in this process".
+export RELEASE_SIGNATURE="${SCENE_SIGNING_NUMBER:-}"
 printf 'stty=%s\n' "$(stty size)" >/tmp/geom
 cd "${SCENE_CWD:-/sandbox/home/demo}" || cd /
 exec script -q -f -c "${SCENE_COMMAND}" /tmp/app-out.raw 2>/tmp/app-stderr.log
