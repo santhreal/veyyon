@@ -33,8 +33,8 @@ import type {
 	ThinkingConfig,
 } from "../types";
 import { discoveryFetch, isAnthropicOAuthToken, isRecord, toBoolean, toNumber, toPositiveNumber } from "../utils";
-import { coreWeaveProjectHeaders } from "../wire/coreweave";
 import { CODEX_BASE_URL } from "../wire/codex";
+import { coreWeaveProjectHeaders } from "../wire/coreweave";
 import {
 	COPILOT_API_HEADERS,
 	getGitHubCopilotBaseUrl,
@@ -4798,9 +4798,15 @@ const MODELS_DEV_PROVIDER_DESCRIPTORS_CORE: readonly ModelsDevProviderDescriptor
 	// wire/gemini-headers.ts profiles) and differ from the Google API's — e.g.
 	// Gemini 3.1 Pro is low/high only there. Its surfaces stay curated from
 	// those captures.
-	simpleModelsDevDescriptor("google", "google-gemini-cli", "google-gemini-cli", "https://cloudcode-pa.googleapis.com", {
-		enrichOnly: true,
-	}),
+	simpleModelsDevDescriptor(
+		"google",
+		"google-gemini-cli",
+		"google-gemini-cli",
+		"https://cloudcode-pa.googleapis.com",
+		{
+			enrichOnly: true,
+		},
+	),
 	// --- DeepSeek ---
 	openAiCompletionsDescriptor("deepseek", "deepseek", "https://api.deepseek.com", {
 		// Only ship the v4 family as built-ins; older deepseek-chat / deepseek-reasoner

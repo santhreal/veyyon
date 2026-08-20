@@ -70,7 +70,7 @@ function usesInstallComposite(step: WorkflowStep): boolean {
 }
 
 function generatesToolViews(step: WorkflowStep): boolean {
-	return step.run !== undefined && step.run.includes("gen:tool-views");
+	return step.run?.includes("gen:tool-views") ?? false;
 }
 
 describe("workflow jobs that run repository TypeScript reach the source codegen", () => {

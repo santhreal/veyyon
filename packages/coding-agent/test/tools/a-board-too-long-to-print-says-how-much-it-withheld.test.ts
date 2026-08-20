@@ -61,7 +61,7 @@ function plan(phaseCount: number, perPhase: number): TodoPhase[] {
 	}));
 }
 
-function boardRows(phases: TodoPhase[], options: { expanded?: boolean; frame?: number } = {}): string[] {
+function boardRows(phases: TodoPhase[], options: { expanded?: boolean; frame?: number } = {}): readonly string[] {
 	const component = todoToolRenderer.renderResult(
 		{ content: [{ type: "text", text: "Todo updated" }], details: { op: "done", phases, storage: "session" } },
 		{ expanded: options.expanded ?? false, isPartial: false, spinnerFrame: options.frame },

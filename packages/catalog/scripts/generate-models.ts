@@ -9,8 +9,8 @@ const COPILOT_PREMIUM_MULTIPLIERS: Record<string, number> = {
 	"github-copilot/grok-code-fast-1": 0.25,
 };
 
-import * as path from "node:path";
 import { Database } from "bun:sqlite";
+import * as path from "node:path";
 import { discoverAuthStorage } from "@veyyon/ai/auth-broker/discover";
 import type { OAuthAccess } from "@veyyon/ai/auth-storage";
 import type { OAuthProvider } from "@veyyon/ai/oauth/types";
@@ -158,9 +158,7 @@ async function loadModelsDevData(): Promise<ModelSpec[]> {
 		// curated seed and endpoint discovery — mapping them in would replace
 		// curated rows (compat, wire effort maps) and list models the
 		// subscription-gated endpoint does not serve.
-		const bundleDescriptors = MODELS_DEV_PROVIDER_DESCRIPTORS.filter(
-			descriptor => descriptor.enrichOnly !== true,
-		);
+		const bundleDescriptors = MODELS_DEV_PROVIDER_DESCRIPTORS.filter(descriptor => descriptor.enrichOnly !== true);
 		const models = mapModelsDevToModels(data as Record<string, unknown>, bundleDescriptors);
 		models.sort((a, b) => a.id.localeCompare(b.id));
 		console.log(`Loaded ${models.length} tool-capable models from models.dev`);
@@ -497,8 +495,8 @@ function readSharedStoreOAuthAccess(provider: OAuthProvider): OAuthAccess | null
 		const db = new Database(path.join(getSharedAuthDir(), "agent.db"), { readonly: true });
 		try {
 			const row = db
-			.query("SELECT data FROM auth_credentials WHERE provider = ? AND credential_type = 'oauth'")
-			.get(provider) as { data: string } | null;
+				.query("SELECT data FROM auth_credentials WHERE provider = ? AND credential_type = 'oauth'")
+				.get(provider) as { data: string } | null;
 			if (!row) return null;
 			const data = JSON.parse(row.data) as {
 				access?: string;

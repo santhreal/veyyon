@@ -55,11 +55,7 @@ describe("the models.dev provider key map is total and injective", () => {
 			d => `${d.modelsDevKey} -> ${d.providerId}`,
 		);
 		const nonTwin = MODELS_DEV_PROVIDER_DESCRIPTORS.filter(d => d.enrichOnly !== true);
-		expect(twins.sort()).toEqual([
-			"google -> google-gemini-cli",
-			"openai -> openai-codex",
-			"xai -> xai-oauth",
-		]);
+		expect(twins.sort()).toEqual(["google -> google-gemini-cli", "openai -> openai-codex", "xai -> xai-oauth"]);
 		expect(duplicates(nonTwin.map(d => d.modelsDevKey))).toEqual([]);
 	});
 

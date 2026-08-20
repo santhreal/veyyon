@@ -863,7 +863,6 @@ export const PROMPT_STATEMENTS = [
 			"forbids destructive commands outright when there is no way to ask; the else arm of the same block, so it is `not` rather than a second variable",
 	},
 	{
-
 		id: "execution-workflow/verify",
 		section: "execution-workflow",
 		condition: { kind: "always" },

@@ -27,8 +27,8 @@
  * below land on "No default" and the row disappears.
  */
 
-import { stripVTControlCharacters } from "node:util";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
+import { stripVTControlCharacters } from "node:util";
 import type { Model } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
 import { Effort } from "@veyyon/catalog/effort";
