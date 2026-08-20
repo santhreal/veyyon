@@ -107,6 +107,28 @@ demo-hd)
 	WEBP_WIDTH=1280
 	CUT_ARGS=(--speed 1.0 --mark-lead-max 24 --hold 4 --crf 26 --still-keep 4 --still-min 4)
 	;;
+todo-marathon)
+	ASSET=assets/demo-todo-hd.webp
+	# The take ships whole as well as cut. A row whose subject is a list being
+	# worked through is a claim about duration, and the cut is the only thing
+	# standing between a reader and that claim -- so the uncut take is published
+	# beside it and the two can be checked against each other.
+	PUBLISH_TAKE=1
+	# Automatic maintenance is off. Fourteen tasks over about a dozen turns is a
+	# session that grows steadily, and a compaction pass landing mid-walk repaints
+	# the transcript and takes the board's own history with it -- which reads, on
+	# screen, exactly like the board losing its rows.
+	SETTINGS=$'compaction.enabled: false'
+	# The hero's recipe, for the hero's reason: real speed, leads taken from the
+	# recording rather than a constant, and dead air trimmed to a readable pause.
+	# A row about a list being closed out one task at a time cannot be sped up
+	# without destroying the thing it is showing -- at 1.4x the pointer walk is a
+	# flicker -- and cannot be played out untrimmed either, because a local 27B
+	# spends most of each turn with nothing on screen moving.
+	CUT_WIDTH=1920
+	WEBP_WIDTH=1280
+	CUT_ARGS=(--speed 1.0 --mark-lead-max 24 --hold 4 --crf 26 --still-keep 4 --still-min 4)
+	;;
 settings-pointer)
 	ASSET=assets/demo-settings-hd.png
 	PUBLISH_TAKE=0
