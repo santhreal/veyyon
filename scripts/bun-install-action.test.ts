@@ -72,7 +72,7 @@ fi
 	const cygpathPath = path.join(root, "cygpath");
 	await Bun.write(
 		cygpathPath,
-		'#!/bin/sh\n[ "$*" = "-w /home/runner/.bun/bin" ] || exit 9\nprintf \'C:\\\\Users\\\\runner\\\\.bun\\\\bin\\n\'\n',
+		'#!/bin/sh\n[ "$*" = "-w /home/test-agent/.bun/bin" ] || exit 9\nprintf \'C:\\\\Users\\\\runner\\\\.bun\\\\bin\\n\'\n',
 	);
 	fs.chmodSync(cygpathPath, 0o755);
 
@@ -80,7 +80,7 @@ fi
 		env: {
 			...process.env,
 			PATH: `${root}:${process.env.PATH ?? ""}`,
-			HOME: "/home/runner",
+			HOME: "/home/test-agent",
 			RUNNER_OS: runnerOs,
 			GITHUB_PATH: outputPath,
 			FAKE_CURL_COUNT: countPath,
@@ -118,7 +118,7 @@ describe("bun-install composite action PATH serialization", () => {
 		const result = await runInstallStep("Linux");
 		expect(result.exitCode).toBe(0);
 		expect(result.attempts).toBe(1);
-		expect(result.pathOutput).toBe("/home/runner/.bun/bin");
+		expect(result.pathOutput).toBe("/home/test-agent/.bun/bin");
 	});
 
 	/** A transient GitHub asset failure must not discard an otherwise healthy Windows CI job. */
