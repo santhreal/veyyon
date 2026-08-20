@@ -69,4 +69,4 @@ if [[ "$degenerate" -ne 0 ]]; then
 	exit 1
 fi
 
-printf 'wrote assets/demo-account-manager.{gif,mp4} and the account-manager screenshots under a throwaway home\n'
+printf 'wrote the account-manager screenshots under a throwaway home; the animation went to /tmp\n'
