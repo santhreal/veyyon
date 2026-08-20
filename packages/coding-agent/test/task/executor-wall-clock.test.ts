@@ -65,7 +65,7 @@ describe("runSubprocess wall clock (task.maxRuntimeMs)", () => {
 	};
 
 	it("aborts a stalled subagent and surfaces a runtime-limit reason", async () => {
-		const settings = Settings.isolated({ "subagent.maxRuntimeMs": 50 });
+		const settings = Settings.isolated({ "subagent.maxRuntimeMs": 1_000 });
 		const handle = createMockSessionHandle(() => {}, { hangUntilAbort: true });
 		mockCreateAgentSession(handle.session);
 
@@ -77,10 +77,11 @@ describe("runSubprocess wall clock (task.maxRuntimeMs)", () => {
 		});
 		const elapsedMs = Date.now() - startedAt;
 
+		expect(handle.prompts).toHaveLength(1);
 		expect(result.aborted).toBe(true);
 		expect(result.exitCode).toBe(1);
 		expect(result.abortReason).toContain("runtime limit exceeded");
-		expect(result.abortReason).toContain("task.maxRuntimeMs=50");
+		expect(result.abortReason).toContain("task.maxRuntimeMs=1000");
 		expect(handle.abortCalls()).toBeGreaterThanOrEqual(1);
 		// Sanity: must finish in roughly the configured window (allow generous slack
 		// for CI; the contract is "doesn't hang for hours", not "exactly 50 ms").
