@@ -17,9 +17,15 @@
  * interrupt caught mid-flight (`entered: true`), whose side effects are real
  * and partial and which therefore still warns.
  *
+ * WHAT ELSE IS PINNED HERE. The warning is ONE LINE. A failed todo result
+ * carries the error, the plan's standing and the open work, and inlining all of
+ * it into a notice produced an amber block — eleven lines in the reported case —
+ * sitting above the card that draws the same ledger properly. A notice carries
+ * the news; the card carries the report.
+ *
  * WHAT IT DOES NOT CATCH. Whether the batch ledger and error card are
  * themselves rendered; those are their own rows. This is only about the one
- * warning line that used to repeat.
+ * warning line that used to repeat, and about how much of a result it may carry.
  */
 import { afterEach, beforeAll, beforeEach, expect, it, vi } from "bun:test";
 import { toolResultNeverRan } from "@veyyon/agent-core";
@@ -136,6 +142,29 @@ it("still warns when a todo call actually failed", async () => {
 
 	expect(showWarning).toHaveBeenCalledTimes(1);
 	expect(showWarning.mock.calls[0]?.[0]).toBe("Todo update failed: phase not found");
+});
+
+it("keeps the warning to one line when the result carries a whole ledger", async () => {
+	// The operator's reported case, in the shape the tool actually returns it: the
+	// headline is the only news, and everything under it is the report the card
+	// below the notice already draws.
+	const { ctx, showWarning } = createContext();
+	const controller = new EventController(ctx);
+	const ledger = [
+		'Errors: Task "Release" not found',
+		"5/6 done · 1 open · phase 2/3 Validation (2/3)",
+		"- [/] Run the focused auth suites (Validation)",
+	].join("\n");
+
+	await controller.handleEvent(todoEnd("call-1", { isError: true, text: ledger, details: { phases: undefined } }));
+
+	expect(showWarning).toHaveBeenCalledTimes(1);
+	const warned = showWarning.mock.calls[0]?.[0] as string;
+	expect(warned).toBe('Todo update failed: Errors: Task "Release" not found');
+	expect(warned).not.toContain("\n");
+	// Specifically not the lines the card owns.
+	expect(warned).not.toContain("5/6 done");
+	expect(warned).not.toContain("- [/]");
 });
 
 it("still warns when a todo failure carries no details at all", async () => {

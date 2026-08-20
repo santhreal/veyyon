@@ -1371,8 +1371,14 @@ export class EventController {
 			const textContent = event.result.content.find(
 				(content): content is TextContent => content.type === "text",
 			)?.text;
+			// A warning is a notice, not a place to paste a report. The result text
+			// carries the error, the plan's standing and the open work, and the card
+			// under this line draws all three properly — inlined here it was an
+			// eleven-line amber block whose FIRST line was the only news in it. The
+			// notice takes that line and leaves the ledger to the card.
+			const headline = textContent?.split("\n", 1)[0]?.trim();
 			this.ctx.showWarning(
-				`Todo update failed${textContent ? `: ${textContent}` : ". Progress may be stale until todo succeeds."}`,
+				`Todo update failed${headline ? `: ${headline}` : ". Progress may be stale until todo succeeds."}`,
 			);
 		}
 		if (event.toolName === "resolve" && !event.isError) {
