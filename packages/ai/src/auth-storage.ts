@@ -2669,6 +2669,10 @@ export class AuthStorage {
 	#predictNextCredentialId(provider: string, sessionId: string | undefined): number | undefined {
 		const stored = this.#getStoredCredentials(provider);
 		if (stored.length === 0) return undefined;
+		// The answer when every account of every type has been refused. A surface asking this question
+		// needs a name for the next request whatever state the accounts are in, and reporting nothing
+		// would read as "no accounts" on a provider that has several.
+		let refused: number | undefined;
 		for (const type of ["oauth", "api_key"] as const) {
 			const candidates = stored
 				.map((entry, index) => ({ entry, index }))
@@ -2684,10 +2688,19 @@ export class AuthStorage {
 			// explicit choice (pin, else provider selection) and returns before it ever asks for a
 			// prediction, so every path that reaches this line has no live choice to promote.
 			const ordered = this.#orderByBlockAvailability(provider, providerKey, rotated);
-			const chosen = ordered[0];
+			// A grant the provider REFUSED is not a candidate, and a block is not the same fact: a hold
+			// is this product's prediction about a working account, while a refusal is the provider's
+			// verdict about the grant itself. Availability ordering only knows about holds, so a dead
+			// account sorted first and every surface reading this answered with it — the account card
+			// naming a revoked grant as what serves next, and the first request of a session going to
+			// the one account already known to refuse it. A type whose every candidate was refused is
+			// skipped in favour of the next type, which is what the real cascade does when an OAuth
+			// resolve fails and a stored key is sitting behind it.
+			const chosen = ordered.find(candidate => !this.#authDeadCredentials.has(candidate.entry.id));
 			if (chosen) return chosen.entry.id;
+			refused ??= ordered[0]?.entry.id;
 		}
-		return undefined;
+		return refused;
 	}
 
 	/**
@@ -4877,6 +4890,13 @@ export class AuthStorage {
 				probeTimeout.cancel();
 				base.ok = false;
 				base.reason = refreshError;
+				// The provider refused this grant, and that is the same verdict the request path records
+				// when a turn dies on one. The mark belongs here too, because a probe is how a surface
+				// learns of the refusal BEFORE any request is sent: without it the account card could
+				// label a revoked grant as what serves next on the very row that printed the refusal,
+				// and the session's first request was then guaranteed to fail on an account the product
+				// had already been told about.
+				this.#authDeadCredentials.add(row.id);
 				// Refresh failed → the access token is unusable. Skip both probes;
 				// they would only re-surface the same upstream failure.
 				results.push(base);
