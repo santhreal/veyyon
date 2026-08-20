@@ -14,8 +14,10 @@
 # Do not run this tape directly. The driver owns the throwaway HOME and the seeded credentials, and
 # it fails the recording when a screenshot comes out byte-identical to the one before it.
 
-Output assets/demo-account-manager.gif
-Output assets/demo-account-manager.mp4
+# The animation is a byproduct nothing in the tree cites, and a recording of this chrome is not
+# something the repository should carry, so it lands outside the worktree. The screenshots below
+# are what the tape is for.
+Output /tmp/veyyon-account-manager.gif
 
 Set Shell "bash"
 Set FontSize 22
