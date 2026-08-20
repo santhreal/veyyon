@@ -56,6 +56,7 @@ import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/components
 import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript-container";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { type Component, CURSOR_MARKER, type Focusable, isInsideTerminalMultiplexer, TUI } from "@veyyon/tui";
+import { countDestructivePaints } from "../../../../tui/test/helpers/destructive-paints";
 import { settleFrames } from "../../../../tui/test/helpers/settle-frames";
 import { VirtualTerminal } from "../../../../tui/test/virtual-terminal";
 import { createToolExecution } from "../../helpers/tool-execution";
@@ -101,12 +102,7 @@ class Composer implements Component, Focusable {
 
 async function run(header: number, height: number, turns: number, frames: number) {
 	const term = new VirtualTerminal(WIDTH, height, 20_000);
-	let erases = 0;
-	const write = term.write.bind(term);
-	term.write = (data: string) => {
-		if (data.includes("\x1b[3J")) erases++;
-		write(data);
-	};
+	const paints = countDestructivePaints(term);
 	const tui = new TUI(term, true);
 	tui.setScrollbackRebuild(true);
 	if (header > 0) tui.addChild(new Block(Array.from({ length: header }, (_, r) => `header ${r}`)));
@@ -122,7 +118,7 @@ async function run(header: number, height: number, turns: number, frames: number
 		await settleFrames(term, tui);
 	}
 	const before = tui.fullRedraws;
-	const erasesBefore = erases;
+	const erasesBefore = paints.erases();
 	const live = new LiveBlock();
 	transcript.addChild(live);
 	for (let frame = 0; frame < frames; frame++) {
@@ -138,7 +134,7 @@ async function run(header: number, height: number, turns: number, frames: number
 	for (let turn = 0; turn < turns; turn++) {
 		if (!history.some(row => row.includes(`turn ${turn}`))) lost.push(turn);
 	}
-	return { redraws: tui.fullRedraws - before, erases: erases - erasesBefore, lost };
+	return { redraws: tui.fullRedraws - before, erases: paints.erases() - erasesBefore, lost };
 }
 
 describe("a transcript under a header does not rebuild the screen", () => {
@@ -189,14 +185,7 @@ interface PaintCounts {
 
 async function runBusyTurn(height: number, steps: number): Promise<{ busy: PaintCounts; control: PaintCounts }> {
 	const term = new VirtualTerminal(WIDTH, height, 20_000);
-	let clears = 0;
-	let erases = 0;
-	const write = term.write.bind(term);
-	term.write = (data: string) => {
-		clears += data.split("\x1b[2J").length - 1;
-		erases += data.split("\x1b[3J").length - 1;
-		write(data);
-	};
+	const paints = countDestructivePaints(term);
 	const tui = new TUI(term, true);
 	tui.setScrollbackRebuild(true);
 	const transcript = new TranscriptContainer();
@@ -222,8 +211,8 @@ async function runBusyTurn(height: number, steps: number): Promise<{ busy: Paint
 		tui.start();
 		await settleFrames(term, tui);
 		const redrawsBefore = tui.fullRedraws;
-		const clearsBefore = clears;
-		const erasesBefore = erases;
+		const clearsBefore = paints.clears();
+		const erasesBefore = paints.erases();
 		for (let step = 1; step <= steps; step++) {
 			assistant.updateContent(assistantText(`reasoning step ${step} ${"word ".repeat(step % 12)}`), {
 				transient: true,
@@ -248,18 +237,18 @@ async function runBusyTurn(height: number, steps: number): Promise<{ busy: Paint
 		}
 		const busy: PaintCounts = {
 			redraws: tui.fullRedraws - redrawsBefore,
-			clears: clears - clearsBefore,
-			erases: erases - erasesBefore,
+			clears: paints.clears() - clearsBefore,
+			erases: paints.erases() - erasesBefore,
 		};
-		const controlFrom = { redraws: tui.fullRedraws, clears, erases };
+		const controlFrom = { redraws: tui.fullRedraws, clears: paints.clears(), erases: paints.erases() };
 		tui.requestRender(true, { clearScrollback: true });
 		await settleFrames(term, tui);
 		return {
 			busy,
 			control: {
 				redraws: tui.fullRedraws - controlFrom.redraws,
-				clears: clears - controlFrom.clears,
-				erases: erases - controlFrom.erases,
+				clears: paints.clears() - controlFrom.clears,
+				erases: paints.erases() - controlFrom.erases,
 			},
 		};
 	} finally {

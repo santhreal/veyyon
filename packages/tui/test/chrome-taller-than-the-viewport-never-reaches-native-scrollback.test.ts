@@ -29,6 +29,7 @@
  */
 import { describe, expect, test } from "bun:test";
 import { type Component, Container, CURSOR_MARKER, type Focusable, TUI } from "../src/index";
+import { countDestructivePaints } from "./helpers/destructive-paints";
 import { settleFrames } from "./helpers/settle-frames";
 import { VirtualTerminal } from "./virtual-terminal";
 
@@ -145,12 +146,7 @@ const label = (shape: Shape): string =>
 
 async function drive(shape: Shape): Promise<Run> {
 	const term = new VirtualTerminal(100, shape.height, 20_000);
-	let erases = 0;
-	const write = term.write.bind(term);
-	term.write = (data: string) => {
-		if (data.includes("\x1b[3J")) erases++;
-		write(data);
-	};
+	const paints = countDestructivePaints(term);
 	const tui = new TUI(term, true);
 	// The shipped default. A destructive repair is exactly what must not happen.
 	tui.setScrollbackRebuild(true);
@@ -174,7 +170,7 @@ async function drive(shape: Shape): Promise<Run> {
 		await settleFrames(term, tui);
 	}
 
-	const erasesAtOpen = erases;
+	const erasesAtOpen = paints.erases();
 	const paintedAtOpen = term.getScrollBuffer().map(row => Bun.stripANSI(row));
 	const paintedTurns: number[] = [];
 	for (let turn = 0; turn < shape.turns; turn++) {
@@ -216,7 +212,7 @@ async function drive(shape: Shape): Promise<Run> {
 	// that over-subscribed the screen. What the engine owes is that a row it DID
 	// paint stays painted.
 	const lostTurns = paintedTurns.filter(turn => !history.some(row => row.includes(`turn ${turn}:`)));
-	return { history, erases: erases - erasesAtOpen, lostTurns, rowsOnScreen, peakInBuffer };
+	return { history, erases: paints.erases() - erasesAtOpen, lostTurns, rowsOnScreen, peakInBuffer };
 }
 
 describe("chrome taller than the viewport never reaches native scrollback", () => {

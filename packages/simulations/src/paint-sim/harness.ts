@@ -34,6 +34,7 @@ import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/trans
 import { HomeAnchorLayout } from "@veyyon/coding-agent/modes/controllers/home-anchor-layout";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { type Component, Container, CURSOR_MARKER, type Focusable, TUI } from "@veyyon/tui";
+import { countDestructivePaints } from "../../../tui/test/helpers/destructive-paints";
 import { settleFrames } from "../../../tui/test/helpers/settle-frames";
 import { VirtualTerminal } from "../../../tui/test/virtual-terminal";
 
@@ -262,14 +263,7 @@ const turnText = (turn: number): string[] => [
 export async function paintSim(shape: PaintShape): Promise<PaintReport> {
 	await theme();
 	const term = new VirtualTerminal(shape.width, shape.height, 20_000);
-	let erases = 0;
-	let bytes = 0;
-	const write = term.write.bind(term);
-	term.write = (data: string) => {
-		if (data.includes("\x1b[3J")) erases++;
-		bytes += data.length;
-		write(data);
-	};
+	const paints = countDestructivePaints(term);
 	const tui = new TUI(term, true);
 	tui.setScrollbackRebuild(shape.scrollbackRebuild);
 
@@ -309,14 +303,14 @@ export async function paintSim(shape: PaintShape): Promise<PaintReport> {
 
 	// The window opens here: everything above is the session getting long.
 	const redrawsAtOpen = tui.fullRedraws;
-	const erasesAtOpen = erases;
-	const bytesAtOpen = bytes;
+	const erasesAtOpen = paints.erases();
+	const bytesAtOpen = paints.bytes();
 	const frames: PaintFrame[] = [];
 	let hudShrinks = 0;
 	const live = new LiveBlock();
 	if (shape.streamFrames > 0) transcript.addChild(live);
 	for (let frame = 0; frame < shape.streamFrames; frame++) {
-		const before = { redraws: tui.fullRedraws, erases, bytes };
+		const before = { redraws: tui.fullRedraws, erases: paints.erases(), bytes: paints.bytes() };
 		live.grow();
 		// A HUD that appears and disappears is the other thing that moves every
 		// row under it, and it is what a running job or a todo list does.
@@ -329,14 +323,14 @@ export async function paintSim(shape: PaintShape): Promise<PaintReport> {
 		await settleFrames(term, tui);
 		frames.push({
 			fullRedraws: tui.fullRedraws - before.redraws,
-			erases: erases - before.erases,
-			bytes: bytes - before.bytes,
+			erases: paints.erases() - before.erases,
+			bytes: paints.bytes() - before.bytes,
 		});
 	}
 
 	// The turn ends. Whatever the shape names shrinks the frame, and the screen is
 	// then measured where a reader looks: the viewport.
-	const beforeShrink = { redraws: tui.fullRedraws, erases };
+	const beforeShrink = { redraws: tui.fullRedraws, erases: paints.erases() };
 	switch (shape.shrink) {
 		case "answer-collapse":
 			live.settle();
@@ -372,8 +366,8 @@ export async function paintSim(shape: PaintShape): Promise<PaintReport> {
 	return {
 		frames,
 		fullRedraws: tui.fullRedraws - redrawsAtOpen,
-		erases: erases - erasesAtOpen,
-		bytes: bytes - bytesAtOpen,
+		erases: paints.erases() - erasesAtOpen,
+		bytes: paints.bytes() - bytesAtOpen,
 		lostTurns,
 		scrollTapeRows: tui.scrollTapeRows,
 		hudShrinks,
@@ -382,7 +376,7 @@ export async function paintSim(shape: PaintShape): Promise<PaintReport> {
 		contentBlankRun: blankRun(scrolledOff),
 		historyRowsOnScreen,
 		shrinkRedraws: tui.fullRedraws - beforeShrink.redraws,
-		shrinkErases: erases - beforeShrink.erases,
+		shrinkErases: paints.erases() - beforeShrink.erases,
 		topFillRows: anchor ? anchor.topFill.render(shape.width).length : 0,
 		bottomFillRows: anchor ? anchor.bottomFill.render(shape.width).length : 0,
 	};
