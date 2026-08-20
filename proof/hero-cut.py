@@ -279,10 +279,17 @@ def main() -> int:
 		type=Path,
 		help="cut around the marks a scene wrote, instead of by change magnitude",
 	)
-	parser.add_argument("--fps", type=int, default=15)
+	# THE SOURCE IS 30 FPS, on both display servers (`SCENE_FPS` for wf-recorder, `FPS` for x11grab),
+	# and every number below used to throw part of it away twice: the cut resampled 30 to 15 and the
+	# WebP then resampled 15 to 12. Neither ratio is an integer division of a 2x speedup, so frames
+	# landed unevenly — a scroll advanced 2 rows, then 3, then 2 — and the published animation read as
+	# a laggy product rather than a fast one. It is one cadence now, the source's own, and the WebP
+	# never resamples the clip it is made from: `--webp-fps` exists so a gesture row can be lighter,
+	# not so the hero can be choppy.
+	parser.add_argument("--fps", type=int, default=30)
 	parser.add_argument("--speed", type=float, default=2.0)
 	parser.add_argument("--webp-width", type=int, default=1280)
-	parser.add_argument("--webp-fps", type=int, default=12)
+	parser.add_argument("--webp-fps", type=int, default=30)
 	parser.add_argument("--webp-quality", type=int, default=62)
 	parser.add_argument("--dry-run", action="store_true", help="print the windows, write nothing")
 	args = parser.parse_args()
