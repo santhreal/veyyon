@@ -184,8 +184,8 @@ skip() { printf '[test-sandbox] rung %-8s unavailable: %s\n' "$1" "$2" >&2; }
 # under /repo it labelled everything "repo").
 #
 # But mirroring is wrong when the checkout lives UNDER the home being hidden, which
-# is exactly the CI case: a GitHub runner checks out to /home/runner/work/<repo>,
-# so binding that path verbatim recreates /home/runner inside the sandbox and the
+# is exactly the CI case: a GitHub runner checks out beneath its home directory,
+# so binding that path verbatim recreates the hidden home inside the sandbox and the
 # gate correctly refuses, because a directory named as removed is readable again.
 # In that case the repo goes somewhere outside every home instead. /srv is chosen
 # because it is not a home root, not /tmp, and not short enough to collide.
