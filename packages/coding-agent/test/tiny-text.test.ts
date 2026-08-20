@@ -278,9 +278,7 @@ describe("normalizeGeneratedTitle", () => {
 		// No source text to compare against -- the worker path -- drops it, unchanged.
 		expect(normalizeGeneratedTitle("Fix <think> tag parsing")).toBe("Fix tag parsing");
 		// A message that never mentioned the tag does not excuse it.
-		expect(normalizeGeneratedTitle("Fix <think> tag parsing", "the login button is broken")).toBe(
-			"Fix tag parsing",
-		);
+		expect(normalizeGeneratedTitle("Fix <think> tag parsing", "the login button is broken")).toBe("Fix tag parsing");
 	});
 
 	it("keeps a comparison that only looks like markup", () => {
