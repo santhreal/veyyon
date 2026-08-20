@@ -46,9 +46,12 @@ shot search-block
 settle_idle 300 8 2 20
 shot inventory
 
-# THE FAN-OUT. The lanes are NAMED in the instruction, so the guard below has a needle that is
-# the product's own rendering rather than a word the model might paraphrase: `render.ts` prints
-# each lane as `<id>: <description>` with an agent badge, and the id is what was asked for.
+# THE FAN-OUT. The needle is `Subagents`, the heading the lane list renders under, and the reason
+# it is not a lane's name is that the names are IN THIS INSTRUCTION: a submitted prompt stays on
+# screen, so `ConfigLane` was already there at the moment the wait started and the frame published
+# under that name was the prompt, a `Thinking` line and a one-second spinner. A needle has to be
+# text only the RENDERER can produce. `Subagents` qualifies -- the instruction below says
+# "subagents" in lower case, and the case matters to `screen_has`.
 #
 # One owner is written by the main agent BEFORE the fan-out, because three agents inventing
 # three helpers is the failure mode this instruction exists to avoid, and because it makes the
@@ -56,7 +59,7 @@ shot inventory
 submit "write service/env.ts first: one exported readNumber(name, fallback) that reads process.env, accepts a missing value as the fallback, and throws naming the variable when the value is not a finite number. Then spawn three subagents in parallel -- ConfigLane for service/config, HandlerLane for service/handlers, StoreLane for service/store -- each replacing every env read in its own directory with readNumber. Nobody edits another lane's directory."
 # The lane list is LIVE STATE: it exists while the lanes are running and it is gone, far above
 # the bottom of a long report, by the time the turn ends. So it is shot while the lanes are up.
-wait_for_screen "ConfigLane" 600 || MISSED="${MISSED:-} agent-lanes"
+wait_for_screen "Subagents" 600 || MISSED="${MISSED:-} agent-lanes"
 pause 2
 shot agent-lanes
 settle_idle 900 10 3 30
