@@ -12,6 +12,7 @@ import {
 	isSecretPlaceholder,
 	isValidSecretName,
 	PLACEHOLDER_RE,
+	placeholderSecretName,
 } from "./placeholder";
 import { canObfuscatePlainValue, MIN_OBFUSCATABLE_LENGTH, type SecretRejection, secretCharacterLength } from "./policy";
 import { compileSecretRegex } from "./regex";
@@ -26,8 +27,15 @@ import { compileSecretRegex } from "./regex";
  * An enum rather than a boolean because a boolean invites a default and reads as an afterthought,
  * while a name forces the construction site to state a fact. A fourth source added later has to
  * declare itself here instead of quietly inheriting somebody else's meaning.
+ *
+ * ENUMERABLE AT RUN TIME, because the suites that have to hold for EVERY source cannot sweep a
+ * type. A fourth source appended here turns those suites red until somebody records what it does,
+ * which is the only mechanism that makes the paragraph above true rather than aspirational.
  */
-export type SecretOrigin = "vault" | "environment" | "config";
+export const SECRET_ORIGINS = ["vault", "environment", "config"] as const;
+
+/** @see SECRET_ORIGINS */
+export type SecretOrigin = (typeof SECRET_ORIGINS)[number];
 
 /**
  * Whether a secret may be restored into text that is DRAWN ON SCREEN.
@@ -1061,8 +1069,8 @@ export class SecretObfuscator {
 	}
 
 	/**
-	 * What is spendable HERE, RIGHT NOW: how many placeholders would expand, and when the first of
-	 * them stops.
+	 * What is spendable HERE, RIGHT NOW: how many values would expand, how many of those carry a
+	 * name a caller can spend by, and when the first deadline lands.
 	 *
 	 * A surface that reports "3 secrets" has to be counting the same thing the tool boundary
 	 * expands, or it becomes the least trustworthy thing on the screen: a count read off the vault
@@ -1074,14 +1082,27 @@ export class SecretObfuscator {
 	 * opaque alias is one credential the operator stored once and would otherwise be reported
 	 * twice. `nextExpiryAt` is absent when nothing expires, which is the ordinary shape for
 	 * `secrets.yml` and environment entries.
+	 *
+	 * `named` IS SPLIT OUT BECAUSE THE TOTAL IS NOT WHAT `/secret list` SHOWS, and a footer that
+	 * said `3 secrets` beside a list saying one active secret was read as a broken count. Neither
+	 * number was wrong: a session builds its protection from `secrets.yml`, the vault, AND every
+	 * environment variable whose name matches an env keyword, and an auto-detected environment
+	 * value is registered without a name ({@link collectEnvSecrets} sets none), so it is masked
+	 * on the way out but cannot be spent as `#NAME#` and has nothing for the list to name. The
+	 * two facts are counted apart here so a caller can say both instead of adding them up.
 	 */
-	liveSecrets(): { count: number; nextExpiryAt: number | undefined } {
-		if (!this.#hasAny) return { count: 0, nextExpiryAt: undefined };
+	liveSecrets(): { count: number; named: number; nextExpiryAt: number | undefined } {
+		if (!this.#hasAny) return { count: 0, named: 0, nextExpiryAt: undefined };
 		this.#forgetExpired();
 		const values = new Set<string>();
-		for (const value of this.#deobfuscateMap.values()) values.add(value);
+		const named = new Set<string>();
+		for (const [placeholder, value] of this.#deobfuscateMap) {
+			values.add(value);
+			if (placeholderSecretName(placeholder) !== undefined) named.add(value);
+		}
 		return {
 			count: values.size,
+			named: named.size,
 			nextExpiryAt: Number.isFinite(this.#nextExpiryAt) ? this.#nextExpiryAt : undefined,
 		};
 	}
@@ -1106,8 +1127,8 @@ export class SecretObfuscator {
 		this.#forgetExpired();
 		const names: string[] = [];
 		for (const placeholder of this.#deobfuscateMap.keys()) {
-			const body = placeholder.slice(1, -1);
-			if (isValidSecretName(body)) names.push(body);
+			const name = placeholderSecretName(placeholder);
+			if (name !== undefined) names.push(name);
 		}
 		return names.sort();
 	}

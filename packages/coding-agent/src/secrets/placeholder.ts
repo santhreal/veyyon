@@ -94,6 +94,21 @@ export function buildNamePlaceholder(name: string): string {
 	return `#${name}#`;
 }
 
+/**
+ * The name inside a placeholder, or nothing when it carries none.
+ *
+ * The inverse of {@link buildNamePlaceholder}, and the ONE place that decides whether a live
+ * placeholder is a named credential or an opaque value form. Two callers ask -- the inventory the
+ * model is shown and the count the footer prints -- and they were each slicing the token and
+ * testing the body themselves, which is how the footer came to count auto-detected environment
+ * values under the same word as stored credentials while the list could name only the stored ones.
+ */
+export function placeholderSecretName(placeholder: string): string | undefined {
+	if (!placeholder.startsWith("#") || !placeholder.endsWith("#")) return undefined;
+	const body = placeholder.slice(1, -1);
+	return isValidSecretName(body) ? body : undefined;
+}
+
 /** Whether a string is a usable vault name. */
 export function isValidSecretName(name: string): boolean {
 	if (!NAME_RE.test(name)) return false;
