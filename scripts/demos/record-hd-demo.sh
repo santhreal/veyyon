@@ -85,11 +85,27 @@ demo-hd)
 	# So speed is 1.0, and each mark's lead comes from the recording rather than
 	# from a constant: `shot` writes the stretch between the end of the request and
 	# the frame, which is the work and contains no typing by construction, and the
-	# cut keeps it up to the cap. A clip several minutes long at 1920 with a
-	# slightly cheaper quantizer is roughly the byte budget the old 2x clip had at
-	# 2560, and the page displays it in a figure a good deal narrower than either.
+	# cut keeps it up to the cap.
+	#
+	# THE TRIM IS WHAT MAKES THAT WATCHABLE. Measured on a real take: 73% of it is
+	# a screen nobody is touching, because a local 27B model spends most of a turn
+	# with nothing rendering and the scene settles after each one. Playing that out
+	# is a video of a still image, which reads as a product that has hung -- so
+	# `--still-keep 4` trims any untouched stretch to a readable pause. Four
+	# seconds is measured, not chosen: a settled screen puts 0 of 120 frames above
+	# the detector's floor while a turn in flight puts 1 to 2, so a turn arrives as
+	# a chain of roughly four-second stretches and a keep of four leaves it alone
+	# while collapsing the screens where the turn is over.
+	#
+	# What that yields here: 3:11 of clip carrying every one of the 85s the screen
+	# actually moved in, no freeze longer than four seconds, at the speed it was
+	# recorded. The cap stays at 24 because the WebP is inlined by the README and
+	# its bytes are all motion -- the trim buys density, not size, so a wider cap
+	# is a heavier landing page rather than a better one. 1280 is the WebP's own
+	# width for the same reason; the README displays it at 960.
 	CUT_WIDTH=1920
-	CUT_ARGS=(--speed 1.0 --mark-lead-max 24 --hold 4 --crf 26)
+	WEBP_WIDTH=1280
+	CUT_ARGS=(--speed 1.0 --mark-lead-max 24 --hold 4 --crf 26 --still-keep 4 --still-min 4)
 	;;
 settings-pointer)
 	ASSET=assets/demo-settings-hd.png
@@ -372,7 +388,7 @@ fi
 CUT_WEBP="${WORK}/$(basename "${ASSET}")"
 python3 proof/hero-cut.py "${WORK}/${SCENE}.mp4" \
 	--mp4 "${WORK}/${SCENE}-cut.mp4" --webp "${CUT_WEBP}" \
-	--width "${CUT_WIDTH:-2560}" --webp-width 1920 "${CUT_ARGS[@]}"
+	--width "${CUT_WIDTH:-2560}" --webp-width "${WEBP_WIDTH:-1920}" "${CUT_ARGS[@]}"
 
 # THE CADENCE IS PART OF THE PUBLISH CONTRACT, not a thing to notice afterwards. Both
 # display servers record at 30 fps, so the typical frame of anything published from a take
@@ -390,3 +406,14 @@ if [[ ${REHEARSAL} -eq 1 ]]; then
 fi
 cp "${CUT_WEBP}" "${ASSET}"
 ls -la "${ASSET}"
+# THE CUT MP4 IS THE DEMO, and it used to be deleted with the work directory. What
+# survived a run was an animated WebP small enough for a README to inline, plus the
+# whole twenty-minute take, and neither is the thing to hand somebody who asks to see
+# the product work: the WebP is short because a landing page cannot carry minutes of
+# 1280-wide animation, and the take is mostly a screen waiting on a model. The clip
+# between them -- every stretch where something happened, at the speed it happened --
+# had no published form at all. It has one now.
+if [[ ${PUBLISH_TAKE} -eq 1 && -s "${WORK}/${SCENE}-cut.mp4" ]]; then
+	cp "${WORK}/${SCENE}-cut.mp4" "${CAPTURES}/${SCENE}-cut.mp4"
+	ls -la "${CAPTURES}/${SCENE}-cut.mp4"
+fi
