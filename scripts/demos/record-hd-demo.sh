@@ -28,6 +28,27 @@ cd "${REPO_ROOT}"
 DEMO_MODEL="${DEMO_MODEL:-local/demo-qwen38-27b-64k}"
 SCENE="${1:-demo-hd}"
 
+# WHICH DISPLAY SERVER RECORDS THE TAKE. `x11` is picom's frosted backdrop behind an
+# opaque window, which is every frame published so far; `wayland` is swayfx, where the
+# corner radius, the shadow and the blur are on the terminal's own buffer. The scene is
+# the same file either way -- the difference lives entirely in the six primitives
+# proof/scenes/backend-${SCENE_SERVER}.sh provides -- so this picks a recorder and a
+# capture directory and changes nothing else.
+#
+# It defaults to x11 on purpose. Every published still and the hero video were recorded
+# through that path, and a default that silently moved them to a different compositor
+# would make the next re-record of one frame inconsistent with the eleven beside it.
+DEMO_SERVER="${DEMO_SERVER:-x11}"
+case "${DEMO_SERVER}" in
+x11) RECORDER="proof/docker/record-x11.sh" ;;
+wayland) RECORDER="proof/docker/record-wl.sh" ;;
+*)
+	echo "record-hd-demo.sh: DEMO_SERVER must be x11 or wayland, not '${DEMO_SERVER}'" >&2
+	exit 2
+	;;
+esac
+CAPTURES="proof/captures/${DEMO_SERVER}"
+
 # The terminal runs the app unless a scene needs a shell, which one of them does.
 SCENE_CMD="bun /repo/packages/coding-agent/src/cli.ts --model ${DEMO_MODEL}"
 # A row shows the block, the card or the diff, and this model reasons in pages, so
@@ -149,13 +170,28 @@ install-binary)
 	;;
 esac
 
+# A REHEARSAL RECORDS AND PUBLISHES NOTHING. `PUBLISH=0` runs the take exactly as a real
+# one -- same scene, same chrome, same settings, same signing number -- and then leaves
+# every frame in the work directory instead of copying it into assets/ and
+# proof/captures/. That is what a chrome change needs: the published gallery is eleven
+# frames and a hero video that all claim to come from ONE session, so a take recorded to
+# look at is not allowed to replace three of them and leave the other eight recorded
+# under the compositor it replaced.
+if [[ "${PUBLISH:-1}" != "1" ]]; then
+	PUBLISH_TAKE=0
+	STILL=
+	REHEARSAL=1
+else
+	REHEARSAL=0
+fi
+
 WORK="$(mktemp -d /tmp/veyyon-hd-demo.XXXXXX)"
 # Kept on failure, deleted on success. A twenty-five minute take died here on `magick:
 # command not found` and the unconditional cleanup then removed the fifteen frames it had
 # already taken, so a missing publishing tool cost the whole recording rather than the last
 # step of it. On success there is nothing left worth keeping: every frame has been copied
 # into proof/captures and resampled into assets.
-trap 'if [ "$?" -eq 0 ]; then rm -rf "${WORK}"; else echo "record-hd-demo.sh: kept ${WORK}" >&2; fi' EXIT
+trap 'if [ "$?" -eq 0 ] && [ "${REHEARSAL}" -eq 0 ]; then rm -rf "${WORK}"; else echo "record-hd-demo.sh: kept ${WORK}" >&2; fi' EXIT
 
 # ImageMagick under either of its two names. ImageMagick 7 ships `magick` and 6 ships
 # `convert`, this fleet has 6 on both hosts, and the resampling step assumed 7 -- which is
@@ -235,9 +271,9 @@ PROOF_LLM_BASE_URL="${PROOF_LLM_BASE_URL}" \
 	SCENE_SETTINGS="${SETTINGS}" \
 	SCENE_SIGNING_NUMBER="${SIGNING_NUMBER}" \
 	OUT_DIR="${WORK}" \
-	bash "proof/docker/record-x11.sh" "proof/scenes/${SCENE}.sh"
+	bash "${RECORDER}" "proof/scenes/${SCENE}.sh"
 
-mkdir -p assets proof/captures/x11
+mkdir -p assets "${CAPTURES}"
 
 if [[ ${PUBLISH_TAKE} -eq 1 ]]; then
 	# The take is captured at 2560x1440 so the published 1920-wide frame is a
@@ -248,7 +284,7 @@ if [[ ${PUBLISH_TAKE} -eq 1 ]]; then
 	ffmpeg -loglevel error -y -i "${WORK}/${SCENE}.mp4" \
 		-vf "scale=1920:-2:flags=lanczos" \
 		-c:v libx264 -preset slow -crf 30 -pix_fmt yuv420p -an \
-		"proof/captures/x11/${SCENE}.mp4"
+		"${CAPTURES}/${SCENE}.mp4"
 	# Every frame the scene took, published twice: archived at full capture size under
 	# proof/captures for the proof page, and resampled to 1920 as the screenshot the
 	# landing page carries. This is what makes one take enough. A surface that does not
@@ -257,11 +293,11 @@ if [[ ${PUBLISH_TAKE} -eq 1 ]]; then
 	require_every_mark_has_a_frame
 	for still in "${WORK}/${SCENE}"-*.png; do
 		base="$(basename "${still}" .png)"
-		cp "${still}" "proof/captures/x11/${base}.png"
+		cp "${still}" "${CAPTURES}/${base}.png"
 		"${IM[@]}" "${still}" -resize 1920x -strip "assets/${base}.png"
 	done
 	if [[ -f "${WORK}/signature-crosscheck.txt" ]]; then
-		cp "${WORK}/signature-crosscheck.txt" "proof/captures/x11/${SCENE}-signature-crosscheck.txt"
+		cp "${WORK}/signature-crosscheck.txt" "${CAPTURES}/${SCENE}-signature-crosscheck.txt"
 		echo "--- the signature anyone can check ---"
 		cat "${WORK}/signature-crosscheck.txt"
 	fi
@@ -275,7 +311,7 @@ if [[ "${STILL}" == "all" ]]; then
 	require_every_mark_has_a_frame
 	for still in "${WORK}/${SCENE}"-*.png; do
 		base="$(basename "${still}" .png)"
-		cp "${still}" "proof/captures/x11/${base}.png"
+		cp "${still}" "${CAPTURES}/${base}.png"
 		"${IM[@]}" "${still}" -resize 1920x -strip "assets/${base}.png"
 		published=$((published + 1))
 	done
@@ -302,6 +338,10 @@ if [[ -n "${STILL}" ]]; then
 	exit 0
 fi
 
+# A rehearsal cuts THE SAME WAY and lands the result in the work directory instead of
+# over the published asset, so what gets judged is the clip the real run would have
+# published rather than an approximation of it.
+
 # The published clip carries the moments the scene exists to show. A scene that
 # takes stills writes down the second of each one, and those marks are the cut: in a
 # session against a reasoning model the largest changes on screen are pages of
@@ -312,14 +352,14 @@ MARKS="${WORK}/${SCENE}-marks.tsv"
 if [[ -f "${MARKS}" && ! " ${CUT_ARGS[*]} " =~ " --single " ]]; then
 	CUT_ARGS+=(--marks "${MARKS}")
 fi
+CUT_WEBP="${ASSET}"
+if [[ ${REHEARSAL} -eq 1 ]]; then CUT_WEBP="${WORK}/$(basename "${ASSET}")"; fi
 python3 proof/hero-cut.py "${WORK}/${SCENE}.mp4" \
-	--mp4 "${WORK}/${SCENE}-cut.mp4" --webp "${ASSET}" \
+	--mp4 "${WORK}/${SCENE}-cut.mp4" --webp "${CUT_WEBP}" \
 	--width 2560 --webp-width 1920 "${CUT_ARGS[@]}"
 
-if [[ "${SCENE}" == "demo-hd" ]]; then
-	# The website band carries the hero and nothing else.
-	cp assets/demo-hd.webp website/demo-hd.webp
+if [[ ${REHEARSAL} -eq 1 ]]; then
+	echo "record-hd-demo.sh: rehearsal on ${DEMO_SERVER}, published nothing"
+	ls -la "${WORK}"
+	exit 0
 fi
-
-python3 proof/tighten.py audit --base proof/captures
-ls -la "${ASSET}"
