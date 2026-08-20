@@ -47,6 +47,7 @@ describe("issue #2127 — enhanced-paste text must follow focus", () => {
 		// test — drift here means the bug is back.
 		return new EnhancedPasteController({
 			write: () => {},
+			requestMode: () => {},
 			pasteText: text => {
 				const target = focused && focused !== editor && typeof focused.pasteText === "function" ? focused : editor;
 				target.pasteText(text);

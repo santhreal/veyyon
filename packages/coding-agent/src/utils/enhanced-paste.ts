@@ -35,6 +35,10 @@ type PasteState = PasteListingState | PasteReadState;
 
 export interface EnhancedPasteHandlers {
 	write(data: string): void;
+	/** Ask the terminal to arm enhanced paste. Separate from {@link write} because
+	 *  the mode set is gated on a capability report the terminal owns, while the
+	 *  OSC 5522 clipboard replies below are plain writes. */
+	requestMode(): void;
 	pasteText(text: string): void;
 	pasteImage(image: ImageContent): void | Promise<void>;
 	showStatus(message: string): void;
@@ -90,12 +94,21 @@ export class EnhancedPasteController {
 		this.#handlers = handlers;
 	}
 
+	/**
+	 * Ask the terminal for enhanced-paste notifications. The escape itself is the
+	 * terminal's to write, and it writes it only after DECRQM confirms DEC private
+	 * mode 5522: this controller used to write `CSI ? 5522 h` at startup on every
+	 * host, which kitty -- the terminal the ancillary spec was written for -- logs
+	 * as `[PARSE ERROR] Unsupported screen mode: 5522 (private)`. A terminal with
+	 * no capability probe never confirms, so the mode is never set there.
+	 */
 	enable(): void {
-		this.#handlers.write("\x1b[?5522h");
+		this.#handlers.requestMode();
 	}
 
+	/** Forget any in-flight read. The mode reset belongs to the terminal's teardown,
+	 *  which writes it only if it armed the mode in the first place. */
 	disable(): void {
-		this.#handlers.write("\x1b[?5522l");
 		this.#state = undefined;
 	}
 
