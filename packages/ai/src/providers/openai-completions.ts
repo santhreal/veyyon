@@ -821,9 +821,7 @@ const streamOpenAICompletionsOnce = (
 				return output.content.indexOf(block);
 			};
 			const hasCompleteToolCallBatch = (): boolean => {
-				const toolCalls = output.content.filter(
-					(block): block is ToolCallStreamBlock => block.type === "toolCall",
-				);
+				const toolCalls = output.content.filter((block): block is ToolCallStreamBlock => block.type === "toolCall");
 				if (toolCalls.length === 0) return false;
 				return toolCalls.every(block => {
 					if (!block.id || !block.name) return false;
