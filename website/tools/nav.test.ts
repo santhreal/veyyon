@@ -139,6 +139,40 @@ describe("built pages", () => {
 	});
 });
 
+/**
+ * The pixel dimensions recorded in an image file's own header: webp (all three
+ * chunk layouts), gif and png, which is every raster format this site serves.
+ * An unknown container throws rather than returning a guess, so a hero in a
+ * fourth format fails the contract below instead of passing it vacuously.
+ */
+function intrinsicSize(file: string): { width: number; height: number } {
+	const bytes = readFileSync(file);
+	if (bytes.subarray(0, 4).toString("latin1") === "RIFF" && bytes.subarray(8, 12).toString("latin1") === "WEBP") {
+		const chunk = bytes.subarray(12, 16).toString("latin1");
+		// VP8X: 24-bit canvas width-1 / height-1, little endian, after the 9-byte header.
+		if (chunk === "VP8X") {
+			return { width: bytes.readUIntLE(24, 3) + 1, height: bytes.readUIntLE(27, 3) + 1 };
+		}
+		// VP8 (lossy): 14-bit dimensions in the keyframe header, after the 3-byte start code.
+		if (chunk === "VP8 ") {
+			return { width: bytes.readUInt16LE(26) & 0x3fff, height: bytes.readUInt16LE(28) & 0x3fff };
+		}
+		// VP8L (lossless): 14 bits width-1 then 14 bits height-1, packed from bit 0.
+		if (chunk === "VP8L") {
+			const packed = bytes.readUInt32LE(21);
+			return { width: (packed & 0x3fff) + 1, height: ((packed >> 14) & 0x3fff) + 1 };
+		}
+		throw new Error(`${file}: unsupported webp chunk ${chunk}`);
+	}
+	if (bytes.subarray(0, 3).toString("latin1") === "GIF") {
+		return { width: bytes.readUInt16LE(6), height: bytes.readUInt16LE(8) };
+	}
+	if (bytes.readUInt32BE(0) === 0x89504e47) {
+		return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+	}
+	throw new Error(`${file}: unrecognized image container`);
+}
+
 describe("page head contracts", () => {
 	const CANONICAL: Record<string, string> = {
 		"index.html": "https://veyyon.dev/",
@@ -181,13 +215,23 @@ describe("page head contracts", () => {
 		}
 	});
 
-	/** The hero capture is a 1.7MB gif. Without intrinsic dimensions the browser
-	 *  cannot reserve its box, and everything below it jumps when the gif lands. */
-	it("the hero capture declares intrinsic dimensions so the page cannot shift", () => {
+	/** The hero capture is a multi-megabyte animation. Without intrinsic dimensions the
+	 *  browser cannot reserve its box, and everything below it jumps when the capture
+	 *  lands.
+	 *
+	 *  The numbers are READ OFF THE ASSET rather than pinned here, because the pinned
+	 *  pair is what went stale: the hero moved from a 1400x800 gif to a 1920x1080 webp
+	 *  and the page kept declaring a box the file does not have. Deriving them means any
+	 *  future swap either declares the new size or turns this red. An asset in a format
+	 *  `intrinsicSize` cannot read is also red, not skipped. */
+	it("the hero capture declares the intrinsic dimensions of the file it points at", () => {
 		const html = readFileSync(join(WEBSITE, "index.html"), "utf8");
 		const img = /<img class="capture"[^>]*>/.exec(html)?.[0] ?? "";
-		expect(img).toContain('width="1400"');
-		expect(img).toContain('height="800"');
+		const src = /src="([^"]+)"/.exec(img)?.[1];
+		expect(src).toBeString();
+		const { width, height } = intrinsicSize(join(WEBSITE, src!.replace(/^\.\//, "")));
+		expect(img).toContain(`width="${width}"`);
+		expect(img).toContain(`height="${height}"`);
 		expect(img).toContain('decoding="async"');
 		expect(img).toMatch(/alt="[^"]{20,}"/);
 	});
