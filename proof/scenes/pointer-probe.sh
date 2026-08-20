@@ -72,9 +72,51 @@ if [ -z "${ROW}" ] || [ -z "${COL}" ]; then
 fi
 echo "probe: aiming at 'Providers' at row ${ROW} col ${COL}" >&2
 
+# HOVER IS JUDGED HERE, not by whoever remembers to measure the frames later. The
+# hover band is pixels rather than text, so `get-text` cannot see it: the row under
+# the pointer is washed with `selectedBg` and its label brightens.
+#
+# WHAT IS NOT THE TEST: that the row got brighter. It does on X11 and it does not on
+# Wayland, from the same product on the same theme -- +0.004 against -0.032 -- because
+# the wash is a near-opaque dark fill and the sidebar around it is a translucent
+# window over a blurred backdrop, so the same band reads brighter inside an opaque
+# window and darker inside a glass one. A direction is a fact about the compositor.
+# Measured with a threshold on the signed difference, this probe called a hover band
+# that is plainly there -- brighter label, wash, left marker -- "motion is not
+# reaching the application", which is the failure mode of a check that encodes what
+# the author expected to see.
+#
+# THE TEST is that the row the pointer is on changed, and that a row it is not on did
+# not. That holds on any compositor and in any theme, it cannot be satisfied by a
+# global brightness shift (the control row cancels it), and it is what "the pointer
+# reached the application" actually means.
+point 28 100
+pause 0.8
+shot pointer-away
 point "${ROW}" "$((COL + 3))"
 pause 0.8
 shot pointer-hover
+
+band_mean() { # band_mean <frame> <row> -> mean luminance 0..1 of that row's band
+	local y=$(($(px_y "$2") - CELL_H / 2))
+	magick "${SCENE_OUT}/${SCENE_NAME}-$1.png" \
+		-crop "$((18 * CELL_W))x${CELL_H}+$(($(px_x "${COL}") - CELL_W / 2))+${y}" +repage \
+		-colorspace Gray -format '%[fx:mean]' info: 2>/dev/null || echo 0
+}
+# The control is four rows down: the same sidebar, the same glass, the same blur, and
+# no pointer on it. A neighbour would be inside the hover fade's cross-band.
+CONTROL_ROW=$((ROW + 4))
+TARGET_DELTA="$(awk -v a="$(band_mean pointer-away "${ROW}")" -v h="$(band_mean pointer-hover "${ROW}")" \
+	'BEGIN { d = h - a; print (d < 0 ? -d : d) }')"
+CONTROL_DELTA="$(awk -v a="$(band_mean pointer-away "${CONTROL_ROW}")" -v h="$(band_mean pointer-hover "${CONTROL_ROW}")" \
+	'BEGIN { d = h - a; print (d < 0 ? -d : d) }')"
+echo "probe: row ${ROW} moved ${TARGET_DELTA}, control row ${CONTROL_ROW} moved ${CONTROL_DELTA}" >&2
+if ! awk -v t="${TARGET_DELTA}" -v c="${CONTROL_DELTA}" 'BEGIN { exit !(t > 0.0025 && t > 3 * c) }'; then
+	echo "probe: NO HOVER BAND -- the row under the pointer did not change, or the whole frame did" >&2
+	exit 1
+fi
+echo "probe: the row under the pointer changed and the control row did not" >&2
+
 click
 settle_idle 200 6 2 30
 shot pointer-clicked
