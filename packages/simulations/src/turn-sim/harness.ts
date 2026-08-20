@@ -136,9 +136,9 @@ export interface ScriptedTurn {
 	/** Emit `thinking_start` + a delta and never close it: reasoning cut short. */
 	openThinking(partialValue: string): void;
 	/** Emit a complete tool call block. */
-	toolCall(name: string, args: Record<string, unknown>, id?: string): void;
+	toolCall(name: string, args: Record<string, unknown>, id?: string, intent?: string): void;
 	/** Emit `toolcall_start` + a partial argument delta and never close it. */
-	openToolCall(name: string, partialArgs: string, id?: string): void;
+	openToolCall(name: string, partialArgs: string, id?: string, intent?: string): void;
 	/**
 	 * Emit a tool call block a provider's own exec channel already dispatched.
 	 *
@@ -150,7 +150,7 @@ export interface ScriptedTurn {
 	 * genuinely unsafe to replay. Stamping it here is what lets a scenario reach
 	 * that decision without a Cursor transport.
 	 */
-	execResolvedToolCall(name: string, args: Record<string, unknown>, id?: string): void;
+	execResolvedToolCall(name: string, args: Record<string, unknown>, id?: string, intent?: string): void;
 	/**
 	 * Report what this request cost. Providers stream usage and the turn's stored
 	 * assistant message carries it; a simulation that never sets it leaves every
@@ -344,6 +344,7 @@ async function runScript(
 		args: Record<string, unknown>,
 		id: string | undefined,
 		execResolved: boolean,
+		intent?: string,
 	): void => {
 		toolCallSeq += 1;
 		const block: ToolCall = {
@@ -351,6 +352,7 @@ async function runScript(
 			id: id ?? `sim-call-${call}-${toolCallSeq}`,
 			name,
 			arguments: args,
+			...(intent !== undefined ? { intent } : {}),
 		};
 		// The one marker that makes a batch replay-unsafe. Set on the block the
 		// stream carries, so it travels the same route a Cursor exec-channel call
@@ -402,15 +404,21 @@ async function runScript(
 			stream.push({ type: "thinking_start", contentIndex: index, partial });
 			stream.push({ type: "thinking_delta", contentIndex: index, delta: partialValue, partial });
 		},
-		toolCall(name, args, id) {
-			emitToolCall(name, args, id, false);
+		toolCall(name, args, id, intent) {
+			emitToolCall(name, args, id, false, intent);
 		},
-		execResolvedToolCall(name, args, id) {
-			emitToolCall(name, args, id, true);
+		execResolvedToolCall(name, args, id, intent) {
+			emitToolCall(name, args, id, true, intent);
 		},
-		openToolCall(name, partialArgs, id) {
+		openToolCall(name, partialArgs, id, intent) {
 			toolCallSeq += 1;
-			const block: ToolCall = { type: "toolCall", id: id ?? `sim-open-${call}-${toolCallSeq}`, name, arguments: {} };
+			const block: ToolCall = {
+				type: "toolCall",
+				id: id ?? `sim-open-${call}-${toolCallSeq}`,
+				name,
+				arguments: {},
+				...(intent !== undefined ? { intent } : {}),
+			};
 			const index = content.length;
 			content.push(block);
 			stream.push({ type: "toolcall_start", contentIndex: index, partial });
@@ -827,6 +835,7 @@ function buildSimulation(scope: SimulationScope, ownsScope: boolean): Simulation
 }
 
 export async function createSimulation(options: SimulationOptions): Promise<Simulation> {
+	resetScript();
 	installScript(options.script);
 	const tempDir = TempDir.createSync("@pi-simulation-");
 	const authStorage = await AuthStorage.create(`${tempDir.path()}/auth.db`);
