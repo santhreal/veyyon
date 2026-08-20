@@ -212,6 +212,73 @@ def mark_spans(
 	return spans
 
 
+def still_stretches(path: Path, *, floor: float = NOISE_SCORE, min_still: float) -> list[tuple[float, float]]:
+	"""Stretches where nothing above the noise floor happened at all.
+
+	A clip that plays at real speed and reaches back over the work is the right
+	shape, and measuring one found the other half of the problem: 79% of a 379s
+	hero was a still image, 299 seconds of it. Looking at the frozen frames said
+	why. Every freeze is a FINISHED screen -- the splash before the first
+	keystroke, or a completed turn sitting there with a check and an elapsed time
+	in the footer and no spinner. A scene settles after each turn, twice as long
+	under SETTLE_SCALE, and it takes the still at the END of that settle, so the
+	settle tail lands inside the mark's measured lead. Nothing rendered there.
+
+	The floor is the one this file already calibrated, and it is the right
+	instrument by measurement rather than by preference: across one such freeze
+	two frames 8.5s apart differ by 251 pixels, every one of them below 6%
+	intensity, which is h264 quantization and not a screen doing something. A
+	WebP encoder merges only byte-identical frames, so the same freeze read to it
+	as three 8.3s holds instead of one of 25s -- which is why the published
+	cadence looked like a stalling product while every gate on it passed.
+	"""
+	total = duration(path)
+	stills: list[tuple[float, float]] = []
+	at = 0.0
+	for start, end, _frames in events(path, score=floor, min_frames=1):
+		if start - at >= min_still:
+			stills.append((at, start))
+		at = max(at, end)
+	if total - at >= min_still:
+		stills.append((at, total))
+	return stills
+
+
+def squeeze(
+	spans: list[tuple[float, float]], stills: list[tuple[float, float]], *, keep: float
+) -> list[tuple[float, float]]:
+	"""Every span, with the part of any still stretch past `keep` seconds removed.
+
+	The head that is kept is what makes a result readable: the screen stops
+	changing exactly when the thing a frame exists for has arrived, so the seconds
+	right after a change are the ones worth holding. What follows them is a
+	recorder waiting. A span that OPENS inside a freeze skips to where the screen
+	changes next, because its readable pause was already shown by whatever span
+	covered the change.
+
+	This is not a speed-up. Every retained second plays at the rate it was
+	recorded; what leaves is time in which nothing was drawn.
+	"""
+	cuts = [(lo + keep, hi) for lo, hi in stills if hi - lo > keep]
+	out: list[tuple[float, float]] = []
+	for lo, hi in spans:
+		pieces = [(lo, hi)]
+		for clo, chi in cuts:
+			narrowed: list[tuple[float, float]] = []
+			for plo, phi in pieces:
+				if chi <= plo or clo >= phi:
+					narrowed.append((plo, phi))
+					continue
+				if plo < clo:
+					narrowed.append((plo, min(clo, phi)))
+				if phi > chi:
+					narrowed.append((max(chi, plo), phi))
+			pieces = narrowed
+		# A remnant shorter than a frame is not a cut, it is a rounding artefact.
+		out.extend(p for p in pieces if p[1] - p[0] > 0.05)
+	return out
+
+
 def cut(
 	path: Path, out: Path, spans: list[tuple[float, float]], *, width: int, fps: int, speed: float, crf: int = 22
 ) -> None:
@@ -324,6 +391,22 @@ def main() -> int:
 	)
 	parser.add_argument("--hold", type=float, default=HOLD, help="seconds kept after a mark or event")
 	parser.add_argument("--crf", type=int, default=22, help="x264 quality; higher is smaller")
+	# OFF unless a caller asks for it. A stretch of screen nobody is touching is dead
+	# air in a hero that runs at real speed, and it is the whole clip in a gesture row
+	# whose subject is a pointer barely clearing the noise floor, so the trim cannot be
+	# a default without deciding for every caller at once.
+	parser.add_argument(
+		"--still-keep",
+		type=float,
+		default=0.0,
+		help="seconds of an untouched stretch to keep; 0 keeps all of it",
+	)
+	parser.add_argument(
+		"--still-min",
+		type=float,
+		default=4.0,
+		help="an untouched stretch shorter than this is left alone",
+	)
 	parser.add_argument("--webp-width", type=int, default=1280)
 	parser.add_argument("--webp-fps", type=int, default=30)
 	parser.add_argument("--webp-quality", type=int, default=62)
@@ -341,6 +424,18 @@ def main() -> int:
 	if not spans:
 		print(f"{args.take}: nothing to cut", file=sys.stderr)
 		return 1
+	if args.still_keep > 0:
+		stills = still_stretches(args.take, min_still=args.still_min)
+		before = sum(hi - lo for lo, hi in spans)
+		spans = squeeze(spans, stills, keep=args.still_keep)
+		after = sum(hi - lo for lo, hi in spans)
+		print(
+			f"  {len(stills)} untouched stretches of {args.still_min}s or more:"
+			f" removed {before - after:.1f}s of screen nobody was touching"
+		)
+		if not spans:
+			print(f"{args.take}: the whole cut was untouched screen", file=sys.stderr)
+			return 1
 	kept = sum(hi - lo for lo, hi in spans)
 	print(f"{args.take}: {duration(args.take):.1f}s -> {kept / args.speed:.1f}s in {len(spans)} segments")
 	for lo, hi in spans:
