@@ -95,6 +95,19 @@ for (const name of ["install.sh", "install.ps1"]) {
 	console.log(`staged ${name}`);
 }
 
+// 3a. The hero clip has ONE source: `assets/demo-hd.webp`, the file the recorder
+// publishes and the README links. The site held a second copy that nothing but a
+// human remembering to copy it could update, and the drift that kind of copy
+// invites had already happened to the text beside it: the alt attribute described
+// a session two takes old. Staging the clip here means the site cannot serve one
+// the repo does not have, and a dirty `website/demo-hd.webp` after a build is the
+// signal that the committed copy is behind.
+{
+	const src = join(REPO, "assets", "demo-hd.webp");
+	copyFileSync(src, join(HERE, "demo-hd.webp"));
+	console.log("staged demo-hd.webp");
+}
+
 // 3b. get.veyyon.dev is the `curl -fsSL https://get.veyyon.dev | sh` endpoint. It
 // deploys to a SEPARATE Pages project (veyyon-get) from a SEPARATE tree so its
 // root can serve install.sh while veyyon.dev's root serves the marketing site.
