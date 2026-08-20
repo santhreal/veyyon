@@ -94,9 +94,16 @@ describe("no tracked file names the home directory of the machine it was written
 	});
 
 	it("does not fire on the variable or the tilde that belong there instead", () => {
-		const correct = ['-e "VEYYON_TEST_HOST_HOME=${HOME}"', 'TREES="${COMMIT_PROOF_TREES:-${REPO_ROOT}/.trees}"', "cd ~/veyyon"].join(
-			"\n",
-		);
+		// biome-ignore-start lint/suspicious/noTemplateCurlyInString: the `${...}` are SHELL parameter
+		// expansions quoted from the recorder scripts -- `$HOME` and a `:-` default -- which is the
+		// exact spelling this gate wants in place of a literal home. A JS template literal here would
+		// interpolate them away and the row would stop asserting anything.
+		const correct = [
+			'-e "VEYYON_TEST_HOST_HOME=${HOME}"',
+			'TREES="${COMMIT_PROOF_TREES:-${REPO_ROOT}/.trees}"',
+			"cd ~/veyyon",
+		].join("\n");
+		// biome-ignore-end lint/suspicious/noTemplateCurlyInString: end of the quoted shell specimens
 
 		expect(homeOccurrences(correct, home)).toEqual([]);
 	});
