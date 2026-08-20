@@ -352,14 +352,28 @@ MARKS="${WORK}/${SCENE}-marks.tsv"
 if [[ -f "${MARKS}" && ! " ${CUT_ARGS[*]} " =~ " --single " ]]; then
 	CUT_ARGS+=(--marks "${MARKS}")
 fi
-CUT_WEBP="${ASSET}"
-if [[ ${REHEARSAL} -eq 1 ]]; then CUT_WEBP="${WORK}/$(basename "${ASSET}")"; fi
+# EVERY run cuts into the work directory, and a real one copies out of it afterwards. The
+# cut used to write straight over the published asset, so a clip that had been resampled
+# on the way through replaced a good one and was only discovered later, by reading the
+# file's own frame durations. What is published now is a file that passed the gate below.
+CUT_WEBP="${WORK}/$(basename "${ASSET}")"
 python3 proof/hero-cut.py "${WORK}/${SCENE}.mp4" \
 	--mp4 "${WORK}/${SCENE}-cut.mp4" --webp "${CUT_WEBP}" \
 	--width 2560 --webp-width 1920 "${CUT_ARGS[@]}"
+
+# THE CADENCE IS PART OF THE PUBLISH CONTRACT, not a thing to notice afterwards. Both
+# display servers record at 30 fps, so the typical frame of anything published from a take
+# holds 33ms. The hero shipped at a 7.7 fps average because the path resampled it twice and
+# nothing here was looking: it read as a laggy product rather than as a resampled file.
+python3 proof/webp-cadence.py "${CUT_WEBP}" --expect-ms 33 || {
+	echo "record-hd-demo.sh: refusing to publish a clip that is not the cadence the recorder captured" >&2
+	exit 1
+}
 
 if [[ ${REHEARSAL} -eq 1 ]]; then
 	echo "record-hd-demo.sh: rehearsal on ${DEMO_SERVER}, published nothing"
 	ls -la "${WORK}"
 	exit 0
 fi
+cp "${CUT_WEBP}" "${ASSET}"
+ls -la "${ASSET}"

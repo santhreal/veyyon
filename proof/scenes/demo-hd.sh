@@ -26,41 +26,59 @@
 settle 16
 shot idle
 
-# Reading, and the beat exists for the answer rather than the block: the guard in the fixture
-# is `!s`, so a whitespace-only string already passes it, and what makes the next turn worth
-# watching is the model saying so on its own before anything has been edited.
-submit "read src/parser.ts and tell me in one sentence what it rejects"
-settle_idle 90 6 2 20
-shot read-block
+# THE SUBJECT IS A TREE, NOT A FILE.
+#
+# What this take used to record was a model reading one short file and editing it, and that is
+# not the work this product is for. Nine modules across three directories read a numeric
+# setting straight out of the environment, each in its own spelling (`Number`, `parseInt`
+# without a radix, unary plus), so a typo in a deploy is a silent zero rather than a failed
+# boot. Finding every site is a search rather than a read, fixing them is one new owner plus
+# nine call sites, and knowing you are done takes the suite. That is a session worth watching.
+#
+# The search first, and nothing changed yet. Two frames come out of this one turn, and the order
+# is the order they exist in: the tool block is shot WHILE the search is running, and the answer
+# once the turn is over. Scrolling back for the block is what the two takes before this one did,
+# and against a model that writes a page about what it found it does not reach.
+submit "use your search tool across service/ and list every place a numeric setting is read from the environment: file, variable, env var, default, and which spelling it uses. Do not change anything yet."
+wait_for_screen "Grep" 240 || MISSED="${MISSED:-} search-block"
+pause 1.5
+shot search-block
+settle_idle 300 8 2 20
+shot inventory
 
-# Editing, with the diff the edit tool applied and the file named in the block header.
+# THE FAN-OUT. The lanes are NAMED in the instruction, so the guard below has a needle that is
+# the product's own rendering rather than a word the model might paraphrase: `render.ts` prints
+# each lane as `<id>: <description>` with an agent badge, and the id is what was asked for.
 #
-# The instruction not to run anything is kept, and it is not trusted: this model verifies its
-# own edit unasked, in the same turn, and did so on both takes that carried the instruction.
-# So the scene scrolls back until the edit block's own header is on screen and shoots there.
-# The needle is "Edit: " because that is what the header literally is: renderStatusLine joins
-# the title and the description with ": ", and the description opens with a language badge, so
-# "Edit: src/parser.ts" is not on screen as one string and would have scrolled past the diff
-# looking for it. The budget is what failed on the glass rehearsal, not the needle: this model
-# answered the edit with a page of unasked verification, so the block header was further back
-# than fourteen steps and the frame published under the name `edit-diff` held prose about the
-# edit instead of the diff.
+# One owner is written by the main agent BEFORE the fan-out, because three agents inventing
+# three helpers is the failure mode this instruction exists to avoid, and because it makes the
+# lanes genuinely parallel: they edit disjoint directories against a file that already exists.
+submit "write service/env.ts first: one exported readNumber(name, fallback) that reads process.env, accepts a missing value as the fallback, and throws naming the variable when the value is not a finite number. Then spawn three subagents in parallel -- ConfigLane for service/config, HandlerLane for service/handlers, StoreLane for service/store -- each replacing every env read in its own directory with readNumber. Nobody edits another lane's directory."
+# The lane list is LIVE STATE: it exists while the lanes are running and it is gone, far above
+# the bottom of a long report, by the time the turn ends. So it is shot while the lanes are up.
+wait_for_screen "ConfigLane" 600 || MISSED="${MISSED:-} agent-lanes"
+pause 2
+shot agent-lanes
+settle_idle 900 10 3 30
+
+# THE PARENT'S OWN EDIT, AND WHY THE FAN-OUT CANNOT SUPPLY IT.
 #
-# A miss is now FATAL to the take rather than a line in the log. The publish step copies the
-# frames that exist, so a missing one silently leaves the PREVIOUS take's frame in assets/
-# under that name, freshly timestamped and indistinguishable -- and a gallery whose captions
-# say every frame came from one session cannot be assembled that way. The scene records
-# everything else first and fails at the end, so the whole take is still on disk to look at.
-submit "in src/parser.ts, make parse also reject a string that is only whitespace, and keep the existing error message style. Apply the edit only -- do not run any commands."
-settle_idle 260 8 2 20
-scroll_to "Edit: " 30 || MISSED="${MISSED:-} edit-diff"
+# A lane's diff belongs to that lane's transcript. The parent screen after a fan-out carries lane
+# summaries and no diff at all, so the guard for this frame refused in two takes running -- and it
+# was right both times: `Edit: ` is exactly what the header is (`renderStatusLine` joins title and
+# description with ": "), there was simply no edit of the parent's own to find. The main agent
+# is asked for one, and for the edit its own search argued for: `parseInt` without a radix reads
+# `0x10` as 16, which is the trap it flagged while it was still only looking.
+submit "now edit service/settings.test.ts yourself -- do not spawn anyone for this, and use your edit tool rather than rewriting the file -- adding one case that proves readNumber refuses a hex value like 0x10 instead of silently reading 16."
+wait_for_screen "Edit: " 400 || MISSED="${MISSED:-} edit-diff"
+pause 2
 shot edit-diff
-wheel_down 20
-pause 1
+settle_idle 400 8 2 20
 
-# A command the model chose to check its own work with, and its output.
-submit "run the project's own test for the parser and tell me whether it passes"
-settle_idle 220 8 2 20
+# The suite, which is the only thing that answers whether nine edits across three directories
+# actually hold together.
+submit "run the service suite and tell me whether every module still resolves its default"
+settle_idle 300 8 2 20
 shot verify-command
 
 # The plan panel, written by the shipped todo tool rather than typed into the transcript.
@@ -68,10 +86,10 @@ shot verify-command
 # "Do not start any of them" because the take before this one was asked to start the first
 # task and finished all six before the shot, so what published as the plan board was a
 # board with nothing left on it. The board is the surface; the work is the next beat.
-submit "use your todo tool: write a three-phase plan for hardening this parser, Foundation with two tasks, Validation with three, Release with one. Do not start any of them yet and do not change any files."
+submit "use your todo tool: write a three-phase plan for finishing this hardening, Foundation with two tasks, Validation with three, Release with one. Do not start any of them yet and do not change any files."
 settle_idle 200 8 2 20
 shot todo-board
-submit "start the first Foundation task, then mark it completed and commit the parser work as one scoped commit"
+submit "start the first Foundation task, then mark it completed and commit the whole service hardening as one scoped commit"
 settle_idle 240 8 2 20
 shot todo-strike
 
@@ -164,7 +182,7 @@ NUMBER="${SCENE_SIGNING_NUMBER:-${RELEASE_SIGNATURE:-}}"
 
 # A FRAME THAT DOES NOT CONTAIN ITS SURFACE FAILS THE TAKE. Last, so everything above is on
 # disk and the crosscheck is written before anything gives up: the publish step is what must
-# not run, not the recording. Reported by name, because "a scroll_to missed" in a log nobody
+# not run, not the recording. Reported by name, because "a needle missed" in a log nobody
 # reads is how a frame of prose got published as a diff.
 if [ -n "${MISSED:-}" ]; then
 	echo "scene: these frames do not contain the surface they are named after:${MISSED}" >&2
