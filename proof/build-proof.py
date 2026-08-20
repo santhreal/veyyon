@@ -1374,6 +1374,19 @@ SECTIONS = [
             " (<code>134x31 cells of 17x37px at +128+128</code>), which is the check that the abstraction did not"
             " quietly move the surface being photographed. The Wayland arm prints its own chrome the same way"
             " (<code>chrome: swayfx radius 26 blur 3x5 shadow 44 composited the output</code>).</p>",
+            "<p><strong>One of the six is not the same, and saying so is the point.</strong> Five primitives"
+            " announce their own failure - a key that never arrives leaves the composer empty, a capture that"
+            " fails writes no file. The pointer does not. sway's headless backend gives the seat no pointer"
+            " device, so <code>swaymsg seat seat0 cursor set</code> exits 0 while the client receives no enter,"
+            " no motion and no button, and the backend was reporting the position back out of the variable it"
+            " had just set. A probe run against both servers is what made that readable: the same click selected"
+            " a settings row on X11 and changed nothing on Wayland, and the row under the pointer measured 3.3"
+            " luminance brighter on X11 against 0.9 <em>darker</em> on Wayland, which is no hover band at all."
+            " So on Wayland the pointer report goes into the pty in SGR 1006 at the cell the pointer stands on,"
+            " the way typed text and keys already do. The application's hit-testing, hover fades and click"
+            " routing run for real; the compositor's input path and the terminal's encoding of a physical button"
+            " are exercised only on X11. A frame of a hover state recorded through the pointer that silently did"
+            " nothing would have been the rest state with a caption claiming otherwise.</p>",
             video(
                 X + "demo-hd.mp4",
                 "The whole take: a read, an edit, the project's own test run against the change, a three-phase plan"
