@@ -41,11 +41,19 @@ shot read-block
 # The needle is "Edit: " because that is what the header literally is: renderStatusLine joins
 # the title and the description with ": ", and the description opens with a language badge, so
 # "Edit: src/parser.ts" is not on screen as one string and would have scrolled past the diff
-# looking for it. scroll_to reports into the log either way, and a frame whose name does not
-# match what is in it is worse than a missing frame.
+# looking for it. The budget is what failed on the glass rehearsal, not the needle: this model
+# answered the edit with a page of unasked verification, so the block header was further back
+# than fourteen steps and the frame published under the name `edit-diff` held prose about the
+# edit instead of the diff.
+#
+# A miss is now FATAL to the take rather than a line in the log. The publish step copies the
+# frames that exist, so a missing one silently leaves the PREVIOUS take's frame in assets/
+# under that name, freshly timestamped and indistinguishable -- and a gallery whose captions
+# say every frame came from one session cannot be assembled that way. The scene records
+# everything else first and fails at the end, so the whole take is still on disk to look at.
 submit "in src/parser.ts, make parse also reject a string that is only whitespace, and keep the existing error message style. Apply the edit only -- do not run any commands."
 settle_idle 260 8 2 20
-scroll_to "Edit: " 14 || true
+scroll_to "Edit: " 30 || MISSED="${MISSED:-} edit-diff"
 shot edit-diff
 wheel_down 20
 pause 1
@@ -153,3 +161,13 @@ NUMBER="${SCENE_SIGNING_NUMBER:-${RELEASE_SIGNATURE:-}}"
 	# the crosscheck, which is where a reader would look for it anyway.
 	cat "${SCENE_CWD:-/sandbox/home/demo}/SIGNED.md" 2>&1 || echo "SIGNED.md was never written"
 } >"${SCENE_OUT}/signature-crosscheck.txt" 2>&1
+
+# A FRAME THAT DOES NOT CONTAIN ITS SURFACE FAILS THE TAKE. Last, so everything above is on
+# disk and the crosscheck is written before anything gives up: the publish step is what must
+# not run, not the recording. Reported by name, because "a scroll_to missed" in a log nobody
+# reads is how a frame of prose got published as a diff.
+if [ -n "${MISSED:-}" ]; then
+	echo "scene: these frames do not contain the surface they are named after:${MISSED}" >&2
+	echo "scene: nothing may be published from this take" >&2
+	exit 1
+fi
