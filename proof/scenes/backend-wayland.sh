@@ -69,37 +69,62 @@ _be_key() {
 	done
 }
 
-# The compositor owns the cursor position and will not report it back, so the
-# session tracks it. That is what lets move_px skip a move to the pixel the
-# pointer already occupies -- the check that keeps `glide` from standing still for
-# fifteen seconds per duplicate step.
+# THE POINTER GOES THROUGH THE PTY, AND THIS IS WHY. sway's headless backend gives
+# the seat no pointer device, so `swaymsg seat seat0 cursor set` moves a cursor
+# nothing is listening to: it exits 0, the compositor is happy, and the client
+# receives no enter, no motion and no button. Measured rather than assumed --
+# pointer-probe.sh drove the same file on both servers, and the settings sidebar
+# row under the pointer came out 3.3 luminance brighter on X11 and 0.9 DARKER on
+# Wayland, which is no hover band at all. A pointer that reports its own position
+# back out of a variable it just set will pass any check that trusts it.
+#
+# So the report the terminal would have sent is written straight into the pty, in
+# the SGR 1006 encoding the product already reads -- the same move the typed text
+# and the keys made after xdotool's corruption cost three takes, for the same
+# reason: the byte carries no ambiguity. The app's hit-testing, hover fades and
+# click routing all run for real. What this does NOT exercise is the compositor's
+# own input path and the terminal's encoding of a physical button, and the X11 arm
+# is where those are still tested; a claim about the pointer on this backend is a
+# claim about the application, not about libinput.
+#
+# The compositor's cursor is still moved, because wf-recorder draws it into the
+# video and a scene about a pointer should show one travelling.
 _be_pointer_at() { printf '%s %s' "${_WL_PTR_X:-0}" "${_WL_PTR_Y:-0}"; }
-_be_pointer_move() {
-	swaymsg -- seat "${SCENE_SEAT:-seat0}" cursor set "$1" "$2" >/dev/null 2>&1 || {
-		echo "scene: pointer move to ${1},${2} was refused by the compositor" >&2
+
+# Screen pixel -> terminal cell, inverting lib.sh's px_x/px_y exactly. A report at
+# the wrong cell is worse than no report: it lands on a neighbouring row and the
+# scene photographs the wrong thing while every check passes.
+_wl_cell_col() { echo $(((${1} - WIN_X - PAD) / (CELL_W > 0 ? CELL_W : 9) + 1)); }
+_wl_cell_row() { echo $(((${1} - WIN_Y - PAD) / (CELL_H > 0 ? CELL_H : 18) + 1)); }
+
+_wl_report() { # _wl_report <cb> <M|m>
+	printf '\033[<%d;%d;%d%s' "$1" "$(_wl_cell_col "${_WL_PTR_X:-0}")" \
+		"$(_wl_cell_row "${_WL_PTR_Y:-0}")" "$2" |
+		kitty @ --to "${KITTY_SOCKET}" send-text --stdin 2>/dev/null || {
+		echo "scene: pointer report reached no terminal" >&2
 		return 0
 	}
+}
+
+_be_pointer_move() {
 	_WL_PTR_X="$1"
 	_WL_PTR_Y="$2"
+	swaymsg -- seat "${SCENE_SEAT:-seat0}" cursor set "$1" "$2" >/dev/null 2>&1 || true
+	# 32 marks a motion report and 3 means no button held: what a hand moving a
+	# mouse across the window produces, which is what a hover state is made of.
+	_wl_report 35 M
 }
+
 _be_click() {
 	local button="${1:-1}"
 	case "${button}" in
-	# A wheel is an axis event on Wayland, not a button, and sway's cursor command
-	# has no axis verb. The terminal's own report is what the product reads, so the
-	# scroll is written into the pty as the SGR 1006 sequence a wheel produces --
-	# button 64 up, 65 down -- at the pointer's current cell.
-	4 | 5)
-		local code=$((button == 4 ? 64 : 65))
-		local col=$(((_WL_PTR_X - SCENE_WIN_X) / (CELL_W > 0 ? CELL_W : 9) + 1))
-		local row=$(((_WL_PTR_Y - SCENE_WIN_Y) / (CELL_H > 0 ? CELL_H : 18) + 1))
-		printf '\033[<%d;%d;%dM' "${code}" "${col}" "${row}" |
-			kitty @ --to "${KITTY_SOCKET}" send-text --stdin 2>/dev/null || true
-		;;
+	# A wheel is an axis event on Wayland rather than a button, and it is the same
+	# report either way: 64 up, 65 down, at the cell the pointer is on.
+	4 | 5) _wl_report $((button == 4 ? 64 : 65)) M ;;
 	*)
-		swaymsg -- seat "${SCENE_SEAT:-seat0}" cursor press "button${button}" >/dev/null 2>&1 || true
+		_wl_report $((button - 1)) M
 		sleep 0.05
-		swaymsg -- seat "${SCENE_SEAT:-seat0}" cursor release "button${button}" >/dev/null 2>&1 || true
+		_wl_report $((button - 1)) m
 		;;
 	esac
 }
