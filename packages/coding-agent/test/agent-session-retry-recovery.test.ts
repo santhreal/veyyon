@@ -151,6 +151,14 @@ describe("AgentSession retry recovery", () => {
 			throw new Error("Expected bundled Anthropic test model to exist");
 		}
 
+		// This run is ABOUT moving between two credentials of one provider, which is
+		// `accounts.loadBalancing`, and that ships OFF: the account selected is the account that
+		// spends. So the movement is opted into explicitly, on a storage rebuilt for it, rather than
+		// inherited from a default this suite neither sets nor controls.
+		authStorage.close();
+		authStorage = await AuthStorage.create(path.join(tempDir.path(), "balanced-auth.db"), { loadBalancing: true });
+		modelRegistry = new ModelRegistry(authStorage, path.join(tempDir.path(), "models.yml"));
+
 		authStorage.removeRuntimeApiKey("anthropic");
 		await authStorage.set("anthropic", [
 			{ type: "api_key", key: "anthropic-key-1" },
