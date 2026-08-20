@@ -296,3 +296,11 @@ priority = 0
 [lints.rustdoc.all]
 level = "deny"
 priority = -1
+
+# Vendored and consumed by path through [patch.crates-io], and deliberately
+# excluded from this repository's workspace. Without its own [workspace] table
+# cargo walks the filesystem upward looking for one, so a checkout that happens
+# to sit inside another cargo workspace (a git worktree under one, a vendored
+# subtree) fails `cargo metadata` with "believes it is in a workspace when it is
+# not". An empty table makes this manifest its own root wherever it lands.
+[workspace]
