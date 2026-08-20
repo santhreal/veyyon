@@ -58,7 +58,19 @@ pause() { sleep "${1:-0.5}"; }
 # that loses one key is worth more than no recording, and under `set -e` a stale
 # X11 window id once took the recorder down at the first keystroke, leaving a
 # video that stopped there with no gif and no stats.
-k() { _be_key "$@"; }
+k() {
+	_be_key "$@"
+	# WHERE A CLIP MAY REACH BACK TO. A cut that shows the work has to start
+	# before the surface it is cutting to, and the one thing it must never reach
+	# is the request being entered: a four-second lead-in once opened every row on
+	# characters appearing one at a time. Every path that enters text ends here --
+	# `submit` and `slash` both finish on `k Return`, and `key_repeat` and the
+	# wheel are `k` in a loop -- so stamping it here is stamping the end of input,
+	# whatever spelling reached it. `glide` deliberately does not pass through:
+	# a travelling pointer is a thing a frame exists to show, not input to hide.
+	[ -n "${SCENE_T0:-}" ] && SCENE_LAST_INPUT_MS=$(($(date +%s%3N) - SCENE_T0))
+	return 0
+}
 key_repeat() { # key_repeat <key> <count> [delay]
 	local key="$1" count="$2" delay="${3:-0.12}"
 	for _ in $(seq 1 "${count}"); do
@@ -313,7 +325,28 @@ shot() {
 	fi
 	if [ -n "${SCENE_T0:-}" ]; then
 		local ms=$(($(date +%s%3N) - SCENE_T0))
-		printf '%s\t%d.%d\n' "$1" $((ms / 1000)) $((ms % 1000 / 100)) \
+		# THE THIRD COLUMN IS HOW MUCH WORK THIS FRAME MAY SHOW. The clip used to
+		# keep a flat 1.2s before every mark, which at 2x is about half a second of
+		# real time: the session's actual work -- the search running, three lanes
+		# settling, a suite going green -- happened in the minutes between marks and
+		# was cut out entirely, so the take read as a slideshow of results with the
+		# work fast-forwarded. The whole work period IS available: it is exactly the
+		# stretch between the end of the request and this frame, and it contains no
+		# input by construction. So the scene measures that stretch and the cut uses
+		# it, which means the lead is as long as the work was and never one frame
+		# longer. Floored at MARK_LEAD_MIN so a shot taken right after a keystroke
+		# still gets the readable run-in it always had.
+		# BEFORE THE FIRST KEYSTROKE THERE IS NO WORK, only a session sitting
+		# there. Reaching back over that is how a clip opens on twenty seconds of
+		# an idle screen, which is the dead air this change exists to remove, so an
+		# unstamped input means the floor and nothing more.
+		local lead_ms="${SCENE_MARK_LEAD_MIN_MS:-1200}"
+		if [ -n "${SCENE_LAST_INPUT_MS:-}" ]; then
+			lead_ms=$((ms - SCENE_LAST_INPUT_MS))
+			[ "${lead_ms}" -lt "${SCENE_MARK_LEAD_MIN_MS:-1200}" ] && lead_ms="${SCENE_MARK_LEAD_MIN_MS:-1200}"
+		fi
+		printf '%s\t%d.%d\t%d.%d\n' "$1" $((ms / 1000)) $((ms % 1000 / 100)) \
+			$((lead_ms / 1000)) $((lead_ms % 1000 / 100)) \
 			>>"${SCENE_OUT}/${SCENE_NAME}-marks.tsv"
 	fi
 }

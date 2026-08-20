@@ -72,11 +72,24 @@ case "${SCENE}" in
 demo-hd)
 	ASSET=assets/demo-hd.webp
 	# The hero also ships whole. The take runs about twenty minutes and the page
-	# gets half a minute out of it -- a demo whose majority is a screen waiting on a
-	# model reads as a broken product -- so both are published and the short one can
-	# be checked against the long one.
+	# gets a few of them, so both are published and the short one can be checked
+	# against the long one.
 	PUBLISH_TAKE=1
-	CUT_ARGS=()
+	# THE HERO IS NOT SPED UP, AND IT SHOWS THE WORK. Every window used to be 1.2s
+	# of lead played at 2x -- about half a second of real time before each frame --
+	# so what published was a slideshow of outcomes with the session's actual work
+	# fast-forwarded out: the search running across nine modules, three lanes
+	# settling, a suite going green. Those stretches are minutes long in the take
+	# and they are the demo.
+	#
+	# So speed is 1.0, and each mark's lead comes from the recording rather than
+	# from a constant: `shot` writes the stretch between the end of the request and
+	# the frame, which is the work and contains no typing by construction, and the
+	# cut keeps it up to the cap. A clip several minutes long at 1920 with a
+	# slightly cheaper quantizer is roughly the byte budget the old 2x clip had at
+	# 2560, and the page displays it in a figure a good deal narrower than either.
+	CUT_WIDTH=1920
+	CUT_ARGS=(--speed 1.0 --mark-lead-max 24 --hold 4 --crf 26)
 	;;
 settings-pointer)
 	ASSET=assets/demo-settings-hd.png
@@ -359,7 +372,7 @@ fi
 CUT_WEBP="${WORK}/$(basename "${ASSET}")"
 python3 proof/hero-cut.py "${WORK}/${SCENE}.mp4" \
 	--mp4 "${WORK}/${SCENE}-cut.mp4" --webp "${CUT_WEBP}" \
-	--width 2560 --webp-width 1920 "${CUT_ARGS[@]}"
+	--width "${CUT_WIDTH:-2560}" --webp-width 1920 "${CUT_ARGS[@]}"
 
 # THE CADENCE IS PART OF THE PUBLISH CONTRACT, not a thing to notice afterwards. Both
 # display servers record at 30 fps, so the typical frame of anything published from a take

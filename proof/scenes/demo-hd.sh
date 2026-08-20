@@ -81,7 +81,15 @@ settle_idle 900 10 3 30
 # description with ": "), there was simply no edit of the parent's own to find. The main agent
 # is asked for one, and for the edit its own search argued for: `parseInt` without a radix reads
 # `0x10` as 16, which is the trap it flagged while it was still only looking.
-submit "now edit service/settings.test.ts yourself -- do not spawn anyone for this, and use your edit tool rather than rewriting the file -- adding one case that proves readNumber refuses a hex value like 0x10 instead of silently reading 16."
+# AND IT IS ASKED FOR BY THE TOOL'S NAME, POSITIVELY. This beat used to end with "use your
+# edit tool rather than rewriting the file", and the take that followed called `write` twice
+# and `edit` not once: a 27B model reads the noun it recognises and drops the "rather than".
+# The guard was right to refuse -- there was no diff of the parent's own to shoot -- but a
+# frame that depends on which of two tools the model happens to reach for is a coin flip, and
+# the fan-out beat above already learned this lesson once: a tool is asked for by its name.
+# So the name is the instruction, the alternative is named and forbidden, and the reason is
+# given, because a reason is what survives paraphrase.
+submit "now add one case to service/settings.test.ts yourself -- do not spawn anyone for this. Use the edit tool: the file already has cases that must stay exactly as they are, so do not use your write tool and do not rewrite the file. The case proves readNumber refuses a hex value like 0x10 instead of silently reading 16."
 wait_for_screen "Edit: " 400 || MISSED="${MISSED:-} edit-diff"
 pause 2
 shot edit-diff

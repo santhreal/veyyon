@@ -73,6 +73,11 @@ MIN_FRAMES = 3
 # time. The still is taken once the result is on screen, so the second before it is
 # the result landing, which is the frame the row exists for.
 MARK_LEAD = 1.2
+# The ceiling on a lead a scene measured for itself. One turn against a slow local
+# model can run minutes, and a clip that gives that turn minutes is not a clip; the
+# cap is what keeps the longest turn from swallowing the take while still showing
+# far more of it than a flat lead ever did.
+MARK_LEAD_MAX = 24.0
 # The floor below which a frame is the same screen as the one before it. A cursor
 # is one 13x29 cell and a hover band repaints one row, and both clear this at the
 # 480px scale the detector works on, so a stretch with nothing above it is a
@@ -163,7 +168,9 @@ def single_span(path: Path, *, score: float) -> list[tuple[float, float]]:
 	return [(max(0.0, first - LEAD), min(total, last + HOLD))]
 
 
-def mark_spans(path: Path, marks: Path) -> list[tuple[float, float]]:
+def mark_spans(
+	path: Path, marks: Path, *, lead: float = MARK_LEAD, lead_max: float = MARK_LEAD_MAX, hold: float = HOLD
+) -> list[tuple[float, float]]:
 	"""Windows around the instants the scene itself declared.
 
 	A scene takes a still at every moment it exists to show, and the run writes each
@@ -175,16 +182,29 @@ def mark_spans(path: Path, marks: Path) -> list[tuple[float, float]]:
 
 	The lead is longer than an event's, because the still is taken once the thing has
 	arrived: the interesting stretch is the seconds BEFORE the mark.
+
+	HOW LONG THAT STRETCH IS COMES FROM THE RECORDING TOO. A flat lead is a guess,
+	and at 1.2s it was the wrong one: it kept the result and cut the work that
+	produced it, so a take whose session spent two minutes searching, fanning out
+	and running a suite published as a slideshow of outcomes. A scene that writes a
+	third column has measured the stretch between the end of the request and the
+	frame -- the work, and nothing but the work, since input ends where it starts --
+	and that becomes this mark's lead, capped by `lead_max` so one very long turn
+	cannot dominate the clip. Two columns still mean the flat lead, so an older
+	marks file cuts exactly as it did.
 	"""
 	total = duration(path)
 	spans: list[tuple[float, float]] = []
 	for line in marks.read_text().splitlines():
-		_, _, at = line.partition("\t")
-		if not at.strip():
+		fields = line.split("\t")
+		if len(fields) < 2 or not fields[1].strip():
 			continue
-		mark = float(at)
-		lo = max(0.0, mark - MARK_LEAD)
-		hi = min(total, mark + HOLD)
+		mark = float(fields[1])
+		own = lead
+		if len(fields) > 2 and fields[2].strip():
+			own = min(float(fields[2]), lead_max)
+		lo = max(0.0, mark - max(own, lead))
+		hi = min(total, mark + hold)
 		if spans and lo <= spans[-1][1]:
 			spans[-1] = (spans[-1][0], max(spans[-1][1], hi))
 		else:
@@ -192,7 +212,9 @@ def mark_spans(path: Path, marks: Path) -> list[tuple[float, float]]:
 	return spans
 
 
-def cut(path: Path, out: Path, spans: list[tuple[float, float]], *, width: int, fps: int, speed: float) -> None:
+def cut(
+	path: Path, out: Path, spans: list[tuple[float, float]], *, width: int, fps: int, speed: float, crf: int = 22
+) -> None:
 	inputs: list[str] = []
 	chains: list[str] = []
 	labels = ""
@@ -219,7 +241,7 @@ def cut(path: Path, out: Path, spans: list[tuple[float, float]], *, width: int, 
 			"-preset",
 			"slow",
 			"-crf",
-			"22",
+			str(crf),
 			"-pix_fmt",
 			"yuv420p",
 			"-an",
@@ -288,6 +310,20 @@ def main() -> int:
 	# not so the hero can be choppy.
 	parser.add_argument("--fps", type=int, default=30)
 	parser.add_argument("--speed", type=float, default=2.0)
+	parser.add_argument(
+		"--mark-lead",
+		type=float,
+		default=MARK_LEAD,
+		help="seconds kept before a mark that carries no measured lead, and the floor for one that does",
+	)
+	parser.add_argument(
+		"--mark-lead-max",
+		type=float,
+		default=MARK_LEAD_MAX,
+		help="ceiling on a lead the scene measured for itself",
+	)
+	parser.add_argument("--hold", type=float, default=HOLD, help="seconds kept after a mark or event")
+	parser.add_argument("--crf", type=int, default=22, help="x264 quality; higher is smaller")
 	parser.add_argument("--webp-width", type=int, default=1280)
 	parser.add_argument("--webp-fps", type=int, default=30)
 	parser.add_argument("--webp-quality", type=int, default=62)
@@ -295,7 +331,9 @@ def main() -> int:
 	args = parser.parse_args()
 
 	if args.marks:
-		spans = mark_spans(args.take, args.marks)
+		spans = mark_spans(
+			args.take, args.marks, lead=args.mark_lead, lead_max=args.mark_lead_max, hold=args.hold
+		)
 	elif args.single:
 		spans = single_span(args.take, score=args.scene_score)
 	else:
@@ -310,7 +348,7 @@ def main() -> int:
 	if args.dry_run:
 		return 0
 
-	cut(args.take, args.mp4, spans, width=args.width, fps=args.fps, speed=args.speed)
+	cut(args.take, args.mp4, spans, width=args.width, fps=args.fps, speed=args.speed, crf=args.crf)
 	print(f"wrote {args.mp4} ({args.mp4.stat().st_size} bytes, {duration(args.mp4):.1f}s)")
 	if args.webp:
 		webp(args.mp4, args.webp, width=args.webp_width, fps=args.webp_fps, quality=args.webp_quality)
