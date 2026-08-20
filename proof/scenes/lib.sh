@@ -224,6 +224,35 @@ click_at() { point "$1" "$2"; pause 0.3; click; }
 wheel_up() { key_repeat_button 4 "${1:-3}"; }
 wheel_down() { key_repeat_button 5 "${1:-3}"; }
 
+# Wait for a string to APPEAR while the turn is still running, and return as soon as it does.
+#
+# WHY THIS EXISTS AND WHY IT IS NOT `scroll_to`. Some surfaces are only on screen while the
+# work is happening: the subagent lane list is live state, and the tool block of a search is
+# followed by whatever the model writes about it. `scroll_to` was the answer to that and it
+# is the wrong one against a model that reports at length -- one fan-out turn ended with a
+# verification table, a smoke-test summary and two flagged risks, which put the lane list
+# several hundred lines above the bottom. Ninety scroll steps did not reach it, and worse,
+# the failed search left the viewport parked mid-history, so the next two needles were
+# looking at a screen the session had stopped writing to. One missed needle became three.
+#
+# So a live surface is waited for, not scrolled back to, and the frame is taken while it is
+# genuinely on screen. Bounded like everything else here: returns non-zero when the string
+# never arrived, and the scene decides what that means.
+wait_for_screen() {
+	local needle="$1" ceiling="${2:-300}" waited=0 scale="${SCENE_SETTLE_SCALE:-1}"
+	[ "${scale}" = "1" ] || ceiling="$(awk -v w="${ceiling}" -v s="${scale}" 'BEGIN { printf "%.0f", w * s }')"
+	while [ "${waited}" -lt "${ceiling}" ]; do
+		if screen_has "${needle}"; then
+			echo "scene: '${needle}' appeared after ${waited}s" >&2
+			return 0
+		fi
+		sleep 2
+		waited=$((waited + 2))
+	done
+	echo "scene: '${needle}' never appeared in ${ceiling}s" >&2
+	return 1
+}
+
 # Scroll back until a string is on screen, then stop. Says whether it got there.
 #
 # WHY A SCENE HAS TO SCROLL FOR A SURFACE. A shot named after a surface is only that shot if

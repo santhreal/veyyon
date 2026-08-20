@@ -139,9 +139,78 @@ cat >"${DEMO}/tsconfig.json" <<'JSON'
 		"allowImportingTsExtensions": true,
 		"skipLibCheck": true
 	},
-	"include": ["src"]
+	"include": ["src", "service"]
 }
 JSON
+
+# THE SERVICE TREE, and why it is not four files.
+#
+# The hero take used to work on the parser above, and what it recorded was a model reading
+# one short file and editing it. That is not what this product is for and it is not what a
+# reader wants to see: the work that justifies an agent is work spread across a tree, where
+# finding every site is most of the job and no single file tells you whether you are done.
+#
+# So the hero's subject is a service with ONE defect class repeated across nine modules in
+# three directories: every numeric setting is read straight out of the environment with no
+# owner and no validation, each in a slightly different spelling, so `Number("")` is 0,
+# `parseInt` without a radix is whatever the string starts with, and a typo in a deploy is a
+# silent zero rather than a failed boot. Finding all nine takes a search rather than a read;
+# fixing them is one owner plus nine call sites; proving it takes the suite. It is the shape
+# of a real refactor, small enough that a 30B finishes it in one session.
+#
+# The spellings differ ON PURPOSE. A single pattern would be one grep and the fan-out would
+# be theatre; three spellings mean the agents have to agree on what counts.
+mkdir -p "${DEMO}/service/config" "${DEMO}/service/handlers" "${DEMO}/service/store"
+
+seed_numeric_module() {
+	local path="$1" name="$2" var="$3" fallback="$4" spelling="$5" doc="$6"
+	local read_expr
+	case "${spelling}" in
+	number) read_expr="Number(process.env.${var} ?? \"${fallback}\")" ;;
+	parseint) read_expr="parseInt(process.env.${var} ?? \"${fallback}\")" ;;
+	unary) read_expr="+(process.env.${var} ?? \"${fallback}\")" ;;
+	*) read_expr="Number(process.env.${var} ?? \"${fallback}\")" ;;
+	esac
+	cat >"${DEMO}/${path}" <<TS
+// ${doc}
+export const ${name} = ${read_expr};
+
+export function describe${name^}(): string {
+	return \`${var}=\${${name}}\`;
+}
+TS
+}
+
+seed_numeric_module service/config/limits.ts maxBatch MAX_BATCH 100 number "How many records one flush may carry."
+seed_numeric_module service/config/timeouts.ts requestTimeoutMs REQUEST_TIMEOUT_MS 30000 parseint "How long one upstream call may take."
+seed_numeric_module service/config/retries.ts maxRetries MAX_RETRIES 3 unary "How many times a failed call is retried."
+seed_numeric_module service/handlers/ingest.ts ingestConcurrency INGEST_CONCURRENCY 4 number "How many ingest workers run at once."
+seed_numeric_module service/handlers/export.ts exportPageSize EXPORT_PAGE_SIZE 500 parseint "How many rows one export page holds."
+seed_numeric_module service/handlers/webhook.ts webhookBackoffMs WEBHOOK_BACKOFF_MS 250 unary "How long a webhook waits before retrying."
+seed_numeric_module service/store/pool.ts poolSize POOL_SIZE 8 number "How many connections the pool keeps open."
+seed_numeric_module service/store/cache.ts cacheTtlSeconds CACHE_TTL_SECONDS 60 parseint "How long a cached row stays fresh."
+seed_numeric_module service/store/vacuum.ts vacuumIntervalMs VACUUM_INTERVAL_MS 900000 unary "How often the store compacts itself."
+
+# The suite passes on the seeded tree, and it pins the behaviour for values that ARE valid, so
+# the session's own additions are about invalid ones. A suite that started red would record a
+# model fixing a broken project rather than hardening a working one.
+cat >"${DEMO}/service/settings.test.ts" <<'TS'
+import { expect, test } from "bun:test";
+import { maxBatch } from "./config/limits.ts";
+import { maxRetries } from "./config/retries.ts";
+import { requestTimeoutMs } from "./config/timeouts.ts";
+
+test("a numeric setting falls back to its documented default", () => {
+	expect([maxBatch, requestTimeoutMs, maxRetries]).toEqual([100, 30000, 3]);
+});
+TS
+
+cat >"${DEMO}/service/README.md" <<'MD'
+# service
+
+Nine numeric settings, three directories, no owner: every module reads its own
+environment variable in its own spelling and trusts whatever comes back.
+MD
 
 # A git repository, because the scenes ask the model to commit its work. Without this
 # the commit turn records `fatal: not a git repository` in red and the session's last
