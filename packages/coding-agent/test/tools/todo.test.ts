@@ -195,9 +195,10 @@ describe("nextActionableTask", () => {
 // an HTML export, a collab guest. If frame 0 drew the first step of the entrance,
 // every one of them would show a column of empty cells and no tasks, permanently.
 //
-// THE TWO ANIMATIONS ARE SEQUENCED. A row types itself in, settles checked, and
-// only then crosses out. A strike drawn over a half-written row reads as neither.
-it("settles at frame zero, then writes in, holds checked, and strikes through", async () => {
+// THE TWO ANIMATIONS ARE SEQUENCED. A row arrives whole and brightens, settles
+// checked, and only then crosses out. A strike drawn over a row that is still
+// dim reads as neither.
+it("settles at frame zero, then reveals, holds checked, and strikes through", async () => {
 	const tool = new TodoTool(createSession());
 	await tool.execute("call-1", { op: "init", list: [{ phase: "Execution", items: ["finish", "carry on"] }] });
 	const result = await tool.execute("call-2", { op: "done", task: "finish" });
@@ -209,10 +210,24 @@ it("settles at frame zero, then writes in, holds checked, and strikes through", 
 	expect(Bun.stripANSI(staticFrame)).toContain("finish");
 	expect(staticFrame).toContain("\x1b[9m");
 
-	// Frame 1 opens the entrance: the row has barely been written, so its text is
-	// not on the board yet.
+	// Frame 1 opens the entrance, and the row's TEXT IS ALREADY THERE. The board
+	// used to type each row in behind a block cursor: rows were cut mid-word, rows
+	// that had not started drew a lone track cell, and the panel was unreadable for
+	// the whole envelope. What moves now is the colour, not the text.
 	options.spinnerFrame = 1;
-	expect(Bun.stripANSI(component.render(120).join("\n"))).not.toContain("finish");
+	const openingFrame = component.render(120).join("\n");
+	expect(Bun.stripANSI(openingFrame)).toContain("finish");
+	// Still an entrance, though: frame 1 is not the settled board.
+	expect(openingFrame).not.toBe(staticFrame);
+
+	// Legible at EVERY frame of the envelope. This is the property a typing pass
+	// cannot have, so it is the assertion that goes red if anyone brings one back.
+	for (let frame = 1; frame <= TODO_BOARD_TOTAL_FRAMES; frame++) {
+		options.spinnerFrame = frame;
+		const text = Bun.stripANSI(component.render(120).join("\n"));
+		expect(text).toContain("finish");
+		expect(text).toContain("carry on");
+	}
 
 	// The hold frame: written, checked, and not yet struck.
 	options.spinnerFrame = TODO_STRIKE_HOLD_FRAMES;
@@ -416,10 +431,10 @@ describe("TodoTool model-facing mutation feedback", () => {
 		expect(viewed.details?.phases[0]?.tasks).toHaveLength(40);
 		expect(summary.text).toContain("- [/] Task 1 (Execution)");
 		expect(summary.text).toContain("- [ ] Task 5 (Execution)");
-		expect(summary.text).toContain("- … 35 more item(s) retained in machine todo state.");
+		expect(summary.text).toContain("- … 35 more open");
 		expect(summary.text).not.toContain("Task 6");
 		expect(summary.text).not.toContain("Task 40");
-		expect(summary.text).toContain("Overall: 0/40 done, 40 open.");
+		expect(summary.text).toContain("0/40 done · 40 open");
 		expect(new TextEncoder().encode(summary.text).byteLength).toBeLessThanOrEqual(1_024);
 	});
 
@@ -462,8 +477,8 @@ describe("TodoTool model-facing mutation feedback", () => {
 		const viewed = await tool.execute("call-view", { op: "view" });
 		const summary = viewed.content.find(part => part.type === "text");
 		if (summary?.type !== "text") throw new Error("Expected text summary");
-		expect(summary.text).toContain("Active phase: none (all 2 phases are closed).");
-		expect(summary.text).not.toContain("Active phase 2/2");
+		expect(summary.text).toContain("all 2 phases closed");
+		expect(summary.text).not.toContain("phase 2/2");
 	});
 
 	it("describes removal of the last named task rather than a list-wide clear", async () => {

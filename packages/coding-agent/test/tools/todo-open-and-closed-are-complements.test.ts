@@ -7,11 +7,10 @@
  * complement writes `status === "pending" || status === "in_progress"`. The fix
  * that put a `Todo list done` line on the card moved the CARD onto one owner in
  * `@veyyon/wire` and left six of those pairs behind in the model-facing text the
- * same tool returns: the "Overall: X/Y done, Z open" line, the remaining-items
- * count, the active-phase progress, the worked-ahead note, the preview markers
- * and the next-task pointer. A fifth status would have been counted as neither
- * done nor open, so `X + Z < Y`, on a line the model reads to decide what to do
- * next.
+ * same tool returns: the counts line, the remaining-items count, the
+ * active-phase progress, the worked-ahead note, the preview markers and the
+ * next-task pointer. A fifth status would have been counted as neither done nor
+ * open, so `X + Z < Y`, on a line the model reads to decide what to do next.
  *
  * THE INVARIANT, at the choke point every board crosses: closed and open are
  * COMPLEMENTS of one decision. For any board, whatever statuses it holds:
@@ -24,9 +23,13 @@
  * editing this file, and the compile-time `satisfies never` guards in the tool
  * stop the build until it has a tally, a marker and a glyph.
  *
- * WHAT IT DOES NOT CATCH. The wording of these lines. The assertions are on the
- * arithmetic and on which task is named next, not on the prose around them, so a
- * reworded summary passes here and is caught by the tool's own summary tests.
+ * WHAT IT DOES NOT CATCH. Whether the summary is worth reading. The assertions
+ * are on the arithmetic, on which task is named next, and on which tasks get a
+ * row at all — not on the prose around them. The two parsers below are coupled
+ * to the wording by necessity and are the one thing here a rewording breaks;
+ * they are separate because a mutation and a view build their lines in different
+ * functions, and fixing one while leaving the other behind is this file's
+ * defect class.
  */
 
 import { beforeAll, describe, expect, it } from "bun:test";
@@ -87,10 +90,17 @@ async function summaryFor(phases: TodoPhase[]): Promise<string> {
 	return result.content.find(entry => entry.type === "text")?.text ?? "";
 }
 
-/** `Overall: <done>/<total> done, <open> open.` parsed back out of the summary. */
+/** `Overall: <done>/<total> done, <open> open.` — the line a MUTATION returns. */
 function overall(summary: string): { done: number; total: number; open: number } {
 	const match = summary.match(/Overall: (\d+)\/(\d+) done, (\d+) open\./);
 	if (!match) throw new Error(`summary has no Overall line:\n${summary}`);
+	return { done: Number(match[1]), total: Number(match[2]), open: Number(match[3]) };
+}
+
+/** `<done>/<total> done · <open> open · …` — the standing line a `view` returns. */
+function standing(summary: string): { done: number; total: number; open: number } {
+	const match = summary.match(/^(\d+)\/(\d+) done · (\d+) open\b/m);
+	if (!match) throw new Error(`summary has no standing line:\n${summary}`);
 	return { done: Number(match[1]), total: Number(match[2]), open: Number(match[3]) };
 }
 
@@ -147,7 +157,7 @@ describe("the model-facing todo summary partitions every status", () => {
 			for (const second of TODO_STATUSES) {
 				const expectedDone = [first, second].filter(status => isTerminalTodoStatus(status)).length;
 				for (const phases of [board([first, second]), board([first], [second])]) {
-					const counts = overall(await summaryFor(phases));
+					const counts = standing(await summaryFor(phases));
 
 					expect(counts.total).toBe(2);
 					expect(counts.done).toBe(expectedDone);
@@ -163,7 +173,7 @@ describe("the model-facing todo summary partitions every status", () => {
 
 	/** A board of one task of each status, so every member is counted at once. */
 	it("counts a board holding every status exactly once", async () => {
-		const counts = overall(await summaryFor(board([...TODO_STATUSES])));
+		const counts = standing(await summaryFor(board([...TODO_STATUSES])));
 
 		expect(counts.total).toBe(TODO_STATUSES.length);
 		expect(counts.done).toBe(TODO_STATUSES.filter(status => isTerminalTodoStatus(status)).length);
@@ -171,28 +181,31 @@ describe("the model-facing todo summary partitions every status", () => {
 	});
 
 	/**
-	 * The remaining-items line and the Overall open count are the same number
-	 * read twice. They were computed by two different hand-written status lists,
-	 * which is how they could disagree.
+	 * The open count and the rows printed under it are the same decision read
+	 * twice: the count is arithmetic over the board, the rows are filtered from
+	 * it. The summary used to carry the number twice in PROSE instead
+	 * ("Remaining items: 1." directly above "Overall: 5/6 done, 1 open."), which
+	 * is a duplicate rather than a cross-check — it agreed with itself by saying
+	 * the same thing twice. This compares the count against the rows the model
+	 * actually reads, and against the tail that stands for the ones it does not.
 	 */
-	it("agrees with itself about how much work is left", async () => {
+	it("accounts for every open task in the rows it prints", async () => {
 		for (const first of TODO_STATUSES) {
 			for (const second of TODO_STATUSES) {
 				const summary = await summaryFor(board([first], [second]));
-				const counts = overall(summary);
-				const remaining = summary.match(/Remaining items: (none|\d+)\./);
+				const counts = standing(summary);
+				const rows = summary.split("\n").filter(line => /^- \[.] /.test(line)).length;
+				const hidden = summary.match(/^- … (\d+) more open$/m);
 
-				expect(remaining).not.toBeNull();
-				const reported = remaining?.[1] === "none" ? 0 : Number(remaining?.[1]);
-				expect(reported).toBe(counts.open);
+				expect(rows + (hidden ? Number(hidden[1]) : 0)).toBe(counts.open);
 			}
 		}
 	});
 
 	/**
 	 * The per-phase progress count is the same decision applied to one phase, and
-	 * "Active phase: none" claims every phase is closed. Both must follow from the
-	 * same owner, or a board reports an active phase with nothing open in it.
+	 * "all N phases closed" claims every phase is closed. Both must follow from
+	 * the same owner, or a board reports an active phase with nothing open in it.
 	 */
 	it("names an active phase exactly when open work remains", async () => {
 		for (const first of TODO_STATUSES) {
@@ -203,10 +216,11 @@ describe("the model-facing todo summary partitions every status", () => {
 
 				if (anyOpen) {
 					const expectedPhase = isTerminalTodoStatus(first) ? 2 : 1;
-					expect(summary).toContain(`Active phase ${expectedPhase}/2`);
-					expect(summary).not.toContain("Active phase: none");
+					expect(summary).toContain(`phase ${expectedPhase}/2`);
+					expect(summary).not.toContain("phases closed");
 				} else {
-					expect(summary).toContain("Active phase: none (all 2 phases are closed).");
+					expect(summary).toContain("all 2 phases closed");
+					expect(summary).not.toMatch(/phase \d+\/2/);
 				}
 			}
 		}
@@ -218,9 +232,15 @@ describe("the model-facing todo summary partitions every status", () => {
 	 * one across the phases after it, and both were hand-written status lists.
 	 * A phase reading "(1/2)" when two of its tasks are closed is the same defect
 	 * as the board that would not collapse, one scope down.
+	 *
+	 * The note is two words now. It used to be a 200-character explanation of the
+	 * pointer's auto-advance rule, which is standing policy stated in the tool
+	 * description; what survives is the part that is specific to THIS board, and
+	 * it is asserted inside the same string as the fraction so neither can be
+	 * fixed without the other.
 	 */
 	it("reports the active phase progress and the worked-ahead note from the same decision", async () => {
-		const WORKED_AHEAD = "earliest phase with open tasks";
+		const WORKED_AHEAD = "worked ahead";
 		for (const first of TODO_STATUSES) {
 			for (const second of TODO_STATUSES) {
 				for (const third of TODO_STATUSES) {
@@ -231,18 +251,18 @@ describe("the model-facing todo summary partitions every status", () => {
 					);
 
 					if (activeIdx === -1) {
-						expect(summary).toContain("Active phase: none (all 2 phases are closed).");
+						expect(summary).toContain("all 2 phases closed");
 						expect(summary).not.toContain(WORKED_AHEAD);
 						continue;
 					}
 					const active = phases[activeIdx];
 					const done = active.tasks.filter(task => isTerminalTodoStatus(task.status)).length;
-					expect(summary).toContain(
-						`Active phase ${activeIdx + 1}/2 "${active.name}" (${done}/${active.tasks.length})`,
-					);
-
 					const workedAhead = phases.some(
 						(phase, idx) => idx > activeIdx && phase.tasks.some(task => isTerminalTodoStatus(task.status)),
+					);
+					const note = workedAhead ? `, ${WORKED_AHEAD}` : "";
+					expect(summary).toContain(
+						`phase ${activeIdx + 1}/2 ${active.name} (${done}/${active.tasks.length}${note})`,
 					);
 					expect(summary.includes(WORKED_AHEAD)).toBe(workedAhead);
 				}
@@ -319,8 +339,13 @@ describe("the model-facing todo summary partitions every status", () => {
 	 * The markers are pinned by exact equality rather than read back from the
 	 * tool, so a status added to the vocabulary has to be given one here before
 	 * this passes, and a marker quietly changed to an existing one fails.
+	 *
+	 * The rows list OPEN work only: a result that re-printed closed tasks was
+	 * spending its rows on what the board above it had already drawn. So the
+	 * complement is pinned too — a closed task gets no row, under any marker —
+	 * which is what stops that filter regressing while the markers stay distinct.
 	 */
-	it("prints a distinct pinned marker for every status in the preview rows", async () => {
+	it("prints a distinct pinned marker for every open status and no row for a closed one", async () => {
 		const PINNED_PREVIEW_MARKERS: Record<string, string> = {
 			pending: "[ ]",
 			in_progress: "[/]",
@@ -334,9 +359,20 @@ describe("the model-facing todo summary partitions every status", () => {
 		const phases = board([...TODO_STATUSES]);
 		const summary = await summaryFor(phases);
 
+		let openRows = 0;
 		for (const [index, status] of TODO_STATUSES.entries()) {
-			expect(summary).toContain(`- ${PINNED_PREVIEW_MARKERS[status]} p0-t${index}-${status} (Phase 1)`);
+			const task = `p0-t${index}-${status}`;
+			if (isTerminalTodoStatus(status)) {
+				// Absent, not relabelled: asserted on the task's name rather than on
+				// the row, so a closed task listed under an open marker fails here.
+				expect(summary).not.toContain(task);
+				continue;
+			}
+			expect(summary).toContain(`- ${PINNED_PREVIEW_MARKERS[status]} ${task} (Phase 1)`);
+			openRows++;
 		}
+		expect(openRows).toBe(TODO_STATUSES.filter(status => !isTerminalTodoStatus(status)).length);
+		expect(openRows).toBeGreaterThan(0);
 	});
 
 	/**
