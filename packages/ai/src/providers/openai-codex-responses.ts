@@ -65,6 +65,7 @@ import {
 import { clearStreamingPartialJson, kStreamingLastParseLen, kStreamingPartialJson } from "../utils/block-symbols";
 import { withEmptyCompletionRetry } from "../utils/empty-completion-retry";
 import { AssistantMessageEventStream } from "../utils/event-stream";
+import { type FirstEventBudget, isPreResponseStall, openFirstEventBudget } from "../utils/first-event-budget";
 import type { RawHttpRequestDump } from "../utils/http-inspector";
 import {
 	armPreResponseTimeout,
@@ -733,6 +734,13 @@ interface CodexRequestSetup {
 	wrapCodexSseStream: (source: AsyncGenerator<Record<string, unknown>>) => AsyncGenerator<Record<string, unknown>>;
 	requestAbortController: AbortController;
 	firstEventTimeoutMs: number | undefined;
+	/**
+	 * The declared first-event budget for this whole turn, shared by every
+	 * transport attempt and every reopen. Per-attempt fences cannot see each
+	 * other, so without this the SSE retry ladder spent the caller's budget
+	 * once per attempt.
+	 */
+	firstEventBudget: FirstEventBudget;
 	websocketIdleTimeoutMs: number | undefined;
 	websocketFirstEventTimeoutMs: number | undefined;
 }
@@ -1275,6 +1283,7 @@ function createRequestSetup(options: OpenAICodexResponsesOptions | undefined): C
 		requestSignal,
 		wrapCodexSseStream,
 		firstEventTimeoutMs,
+		firstEventBudget: openFirstEventBudget(firstEventTimeoutMs),
 		websocketIdleTimeoutMs,
 		websocketFirstEventTimeoutMs,
 	};
@@ -1642,6 +1651,7 @@ async function openCodexSseTransport(
 		requestContext.requestMetadata,
 		requestSetup.requestSignal,
 		requestSetup.firstEventTimeoutMs,
+		requestSetup.firstEventBudget,
 		event => options?.onSseEvent?.(event, model),
 		options?.fetch,
 		prepareBody,
@@ -2437,10 +2447,15 @@ class CodexStreamProcessor {
 	}
 
 	async #tryRetryProviderError(error: unknown): Promise<boolean> {
+		// A stall that has already used the turn's declared first-event budget is
+		// not retried: nothing streamed, the endpoint said nothing, and another
+		// attempt can only push the caller further past the number it declared.
+		const stallOutlivedBudget = isPreResponseStall(error) && this.requestSetup.firstEventBudget.spent();
 		if (
 			!(error instanceof CodexProviderStreamError && error.retryable) ||
 			this.output.content.length > 0 ||
 			this.runtime.providerRetryAttempt >= CODEX_MAX_RETRIES ||
+			stallOutlivedBudget ||
 			this.options?.signal?.aborted
 		) {
 			return false;
@@ -3887,6 +3902,7 @@ async function openCodexSseEventStream(
 	requestMetadata: CodexRequestMetadata | undefined,
 	signal: AbortSignal | undefined,
 	firstEventTimeoutMs: number | undefined,
+	firstEventBudget: FirstEventBudget,
 	onSseEvent?: OpenAICodexResponsesOptions["onSseEvent"],
 	fetchOverride?: FetchImpl,
 	prepareBody: () => RequestBody | Promise<RequestBody> = () => structuredCloneJSON(body),
@@ -3914,6 +3930,12 @@ async function openCodexSseEventStream(
 	// fetch resolves. Each transport attempt needs its own pre-response timer:
 	// the retry loop's base signal remains reserved for caller cancellation, so
 	// an internal timeout stays retryable while an explicit abort fails fast.
+	//
+	// Retryable is not unbounded. A per-attempt fence knows nothing about the
+	// attempts before it, so a silent endpoint used to cost the caller's whole
+	// first-event budget once per attempt, plus the ladder's backoff between
+	// them. `firstEventBudget` is the turn's single clock: once it is spent, a
+	// stall stops being retryable and the failure surfaces.
 	let clearPreResponseTimeout: (() => void) | undefined;
 	const fetchAttempt: FetchImpl = async (input, init) => {
 		try {
@@ -3939,6 +3961,7 @@ async function openCodexSseEventStream(
 			maxAttempts: CODEX_MAX_RETRIES + 1,
 			defaultDelayMs: attempt => CODEX_RETRY_DELAY_MS * (attempt + 1),
 			maxDelayMs: CODEX_RATE_LIMIT_BUDGET_MS,
+			shouldRetryError: error => !(isPreResponseStall(error) && firstEventBudget.spent()),
 			fetch: fetchAttempt,
 			timeout: false,
 		});

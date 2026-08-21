@@ -293,6 +293,14 @@ export interface FetchWithRetryOptions extends RequestInit {
 	 */
 	shouldRetryResponse?: (response: Response, bodyText: string, attempt: number) => boolean | Promise<boolean>;
 	/**
+	 * Optional retry gate for a THROWN transport failure — no response arrived.
+	 * Returning `false` re-throws instead of retrying. The loop's own bounds
+	 * (`maxAttempts`, the HTTP/2 verdict) cannot see a budget the caller is
+	 * keeping, and a stall retried to the attempt ceiling multiplies whatever
+	 * deadline the caller declared by the ladder plus its backoff.
+	 */
+	shouldRetryError?: (error: Error, attempt: number) => boolean | Promise<boolean>;
+	/**
 	 * Bun extension forwarded verbatim to the underlying `fetch` call. `false`
 	 * disables Bun's native ~300s pre-response timeout (callers that own a
 	 * configurable first-event/idle watchdog or an external `AbortSignal`
@@ -324,6 +332,7 @@ export async function fetchWithRetry(
 		defaultDelayMs,
 		prepareInit,
 		shouldRetryResponse,
+		shouldRetryError,
 		fetch: fetchImpl = fetch,
 		timeout = false,
 		...baseInit
@@ -360,6 +369,7 @@ export async function fetchWithRetry(
 			// full four more times to reach the same answer.
 			if (http2RetryVerdict(wrapped.message) === false) throw wrapped;
 			if (attempt + 1 >= maxAttempts) throw wrapped;
+			if (shouldRetryError && !(await shouldRetryError(wrapped, attempt))) throw wrapped;
 			await scheduler.wait(resolveDefaultDelay(defaultDelayMs, attempt, maxDelayMs), { signal });
 			continue;
 		}

@@ -16,7 +16,13 @@ import type {
 	StreamOptions,
 } from "./types";
 
-const BUILTIN_API_IDS = [
+/**
+ * Every API a built-in provider implements, and the only run-time authority on
+ * that question: the `_CheckBuiltinApis` assertion below makes the compiler
+ * reject a `KnownApi` member that is missing here, so a sweep enumerating this
+ * array is enumerating the whole union rather than a hand-kept copy of it.
+ */
+export const BUILTIN_API_IDS = [
 	"openai-completions",
 	"openai-responses",
 	"openrouter",

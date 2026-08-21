@@ -70,6 +70,7 @@ import {
 } from "../utils/block-symbols";
 import { withEmptyCompletionRetry } from "../utils/empty-completion-retry";
 import { AssistantMessageEventStream } from "../utils/event-stream";
+import { isPreResponseStall, openFirstEventBudget } from "../utils/first-event-budget";
 import { isFoundryEnabled } from "../utils/foundry";
 import { finalizeErrorMessage, type RawHttpRequestDump } from "../utils/http-inspector";
 import { getStreamFirstEventTimeoutMs, getStreamIdleTimeoutMs, iterateWithIdleTimeout } from "../utils/idle-iterator";
@@ -2133,6 +2134,12 @@ const streamAnthropicOnce = (
 			// Provider-level transport/rate-limit failures: only before any streamed content starts.
 			// Malformed envelopes/JSON: only before replay-unsafe text/tool events are visible on this stream.
 			let providerRetryAttempt = 0;
+			// The declared first-event budget bounds the WHOLE pre-first-event
+			// phase, not one attempt inside it. A stall retried
+			// PROVIDER_MAX_RETRIES times used to multiply the caller's number by
+			// the ladder plus its backoff, so a dead endpoint held a turn for
+			// minutes under a budget that said one hundred seconds.
+			const firstEventBudget = openFirstEventBudget(firstEventTimeoutMs);
 			const firstEventTimeoutAbortError = new AIError.StreamTimeoutError(
 				"Anthropic stream timed out while waiting for the first event",
 			);
@@ -2753,9 +2760,16 @@ const streamAnthropicOnce = (
 						firstTokenTime === undefined &&
 						!streamedReplayUnsafeContent &&
 						isProviderRetryableError(streamFailure, model.provider);
+					// A stall — no response at all — may not outlive the declared
+					// first-event budget. The server never answered, so another
+					// attempt cannot produce an event any sooner than this one did,
+					// and the caller's number is the whole point of asking.
+					const stallOutlivedBudget =
+						firstTokenTime === undefined && isPreResponseStall(streamFailure) && firstEventBudget.spent();
 					if (
 						activeAbortTracker.wasCallerAbort() ||
 						providerRetryAttempt >= PROVIDER_MAX_RETRIES ||
+						stallOutlivedBudget ||
 						(!canRetryTransientEnvelopeFailure && !canRetryProviderFailure)
 					) {
 						throw streamFailure;
