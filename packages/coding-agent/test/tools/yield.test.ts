@@ -1174,14 +1174,12 @@ describe("YieldTool", () => {
 
 		// Structural errors (missing result wrapper) still throw even after override.
 		await expect(tool.execute("call-struct-missing", {} as never)).rejects.toThrow(
-			"result must be an object containing either data or error",
+			"result was nothing, not an object",
 		);
 	});
 	it("rejects submissions without a result object", async () => {
 		const tool = new YieldTool(createSession());
-		await expect(tool.execute("call-3", {} as never)).rejects.toThrow(
-			"result must be an object containing either data or error",
-		);
+		await expect(tool.execute("call-3", {} as never)).rejects.toThrow("result was nothing, not an object");
 	});
 	it("sets lenientArgValidation so agent-loop bypasses validation errors", () => {
 		const tool = new YieldTool(createSession());

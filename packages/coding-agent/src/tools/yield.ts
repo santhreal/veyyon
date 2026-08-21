@@ -13,7 +13,7 @@ import {
 	sanitizeSchemaForStrictMode,
 	tryEnforceStrictSchema,
 } from "@veyyon/ai/utils/schema";
-import { errorMessage, isRecord } from "@veyyon/utils";
+import { errorMessage, isRecord, parseJsonWithRepair } from "@veyyon/utils";
 import { subprocessToolRegistry, YIELD_TOOL_NAME } from "../task/subprocess-tool-registry";
 import type { ToolSession } from ".";
 import { buildOutputValidator, formatAllValidationIssues } from "./output-schema-validator";
@@ -208,6 +208,40 @@ const MAX_SCHEMA_RETRIES = 3;
  */
 const MAX_EMPTY_RESULT_RETRIES = 3;
 
+/** Both shapes the tool accepts, in the words its description uses. */
+const RESULT_SHAPES =
+	'Send success as `{ "result": { "data": <your output> } }` or failure as `{ "result": { "error": "message" } }`.';
+
+/**
+ * The `result` a caller meant, when it can be recovered.
+ *
+ * A weak tool caller sends the whole wrapper as a JSON string —
+ * `result: "{\"data\": {...}}"` — which is the same mistake the argument
+ * repair pass recovers for a stringified argument object. `yield` sets
+ * `lenientArgValidation`, so it never reaches that pass and used to refuse the
+ * string outright: one recorded child re-sent the identical stringified payload
+ * five times, rewording the prose around it, and its parent got nothing.
+ */
+function coerceResultObject(value: unknown): unknown {
+	if (typeof value !== "string") return value;
+	const text = value.trim();
+	if (!text.startsWith("{")) return value;
+	try {
+		return parseJsonWithRepair<unknown>(text);
+	} catch {
+		return value;
+	}
+}
+
+/** What arrived instead of a result object, for a message the caller can act on. */
+function describeResultShape(value: unknown): string {
+	if (value === undefined) return "nothing";
+	if (value === null) return "null";
+	if (Array.isArray(value)) return "an array";
+	if (typeof value === "string") return "a string";
+	return `a ${typeof value}`;
+}
+
 export class YieldTool implements AgentTool<TSchema, YieldDetails> {
 	readonly name = YIELD_TOOL_NAME;
 	readonly approval = "read" as const;
@@ -314,11 +348,28 @@ export class YieldTool implements AgentTool<TSchema, YieldDetails> {
 		_context?: AgentToolContext,
 	): Promise<AgentToolResult<YieldDetails>> {
 		const raw = params as Record<string, unknown>;
-		const rawResult = raw.result;
+		const rawResult = coerceResultObject(raw.result);
 		if (!isRecord(rawResult)) {
-			throw new Error("result must be an object containing either data or error");
+			this.#emptyResultFailures++;
+			const shape = describeResultShape(raw.result);
+			if (this.#emptyResultFailures > MAX_EMPTY_RESULT_RETRIES) {
+				const attemptCount = this.#emptyResultFailures;
+				this.#emptyResultFailures = 0;
+				const error =
+					`yield received ${shape} instead of a result object after ${attemptCount} consecutive attempt(s); ` +
+					"aborting child instead of retrying forever. " +
+					RESULT_SHAPES;
+				return {
+					content: [{ type: "text", text: `Task aborted: ${error}` }],
+					details: { data: undefined, status: "aborted", error, type: parseYieldType(raw.type) },
+				};
+			}
+			const remaining = MAX_EMPTY_RESULT_RETRIES - this.#emptyResultFailures + 1;
+			throw new Error(
+				`result was ${shape}, not an object. ${RESULT_SHAPES} ` + `Attempts remaining before abort: ${remaining}.`,
+			);
 		}
-		const resultRecord = rawResult as Record<string, unknown>;
+		const resultRecord = rawResult;
 		const errorMessage = typeof resultRecord.error === "string" ? resultRecord.error : undefined;
 		const data = resultRecord.data;
 		const yieldType = parseYieldType(raw.type);
