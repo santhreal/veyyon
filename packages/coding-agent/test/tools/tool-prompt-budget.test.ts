@@ -71,12 +71,21 @@ const TOOL_PROMPT_CEILINGS: Record<string, number> = {
 	glob: 1600,
 	grep: 900,
 	write: 700,
+	goal: 700,
 	resolve: 480,
 	web_search: 340,
 };
 
-/** Total the whole active set may ship, description + examples. */
-const TOTAL_PROMPT_CEILING = 46_800;
+/**
+ * Total the whole active set may ship, description + examples.
+ *
+ * Chosen independently of the rows above, and deliberately tighter than their sum: the rows say
+ * what each tool may cost on its own, this says what the block may cost together, so a paragraph
+ * added inside one tool's slack still has to come out of somewhere. `goal` joining the default
+ * boot moved it from 46,800 to 47,000 — 645 bytes of new prose against 200 bytes of headroom,
+ * which is the trade being recorded here rather than absorbed.
+ */
+const TOTAL_PROMPT_CEILING = 47_000;
 
 /**
  * How far under its ceiling a tool may sit before the row is stale.

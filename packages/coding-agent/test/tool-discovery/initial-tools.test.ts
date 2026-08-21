@@ -203,6 +203,13 @@ describe("loadMode against the shipped default configuration", () => {
 		// The other half of the claim: the filter is not broken, it is simply never
 		// reached by the default. Feeding the default slate through it leaves the
 		// essential tools and nothing that merely declared itself discoverable.
+		//
+		// `resolve` and `goal` are in the kept list without being in
+		// `DEFAULT_ESSENTIAL_TOOL_NAMES`: they are hidden lifecycle tools that declare no
+		// loadMode at all, so the filter has nothing to drop them on. That is deliberate —
+		// a model cannot be asked to search for the call that resolves a pending action or
+		// resumes its own goal — and it is also why this list is pinned by exact equality.
+		// A new hidden tool joins it only by editing this line.
 		const tools = await defaultSessionTools();
 		const loadModes = new Map(tools.map(tool => [tool.name, tool.loadMode as BuiltinToolLoadMode | undefined]));
 		const settings = Settings.isolated({});
@@ -218,7 +225,7 @@ describe("loadMode against the shipped default configuration", () => {
 			},
 		).sort();
 
-		expect(kept).toEqual(["bash", "edit", "eval", "glob", "launch", "read", "resolve", "write"]);
+		expect(kept).toEqual(["bash", "edit", "eval", "glob", "goal", "launch", "read", "resolve", "write"]);
 		// Every discoverable tool is gone, and nothing essential went with it.
 		for (const tool of tools) {
 			if (tool.loadMode === "discoverable") expect(kept).not.toContain(tool.name);
