@@ -15,12 +15,16 @@
 </p>
 
 <p align="center">
-  <img src="assets/demo-hd.webp" width="960" alt="Veyyon opens a four-phase todo plan, audits a nine-module service tree, writes one validating owner, fans out three subagents, applies a hash-anchored edit, runs the suite, advances the plan, signs the result through a stored secret placeholder, and opens context and settings operator surfaces in one continuous session">
+  <img src="assets/demo-hd.webp" width="960" alt="Veyyon creates a long-running goal from one task prompt, opens an eight-task plan, launches three parallel workers, builds and verifies a terminal 3D ship simulator, signs the compiled binary through a protected secret placeholder, completes the goal, and presents the running simulator">
 </p>
 
-Veyyon uses the same model weights available in other clients. The difference is the workbench around them: a prompt you can inspect, model-native effort controls, explicit state ownership, protected secret spending, typed workers, language-server refactors, durable sessions, and tools that fail before stale state becomes a bad write.
+<p align="center">
+  <a href="docs/handbook/src/using/examples.md#recorded-end-to-end-workflow">Follow the complete task and inspect its proof frames</a>
+</p>
 
-Veyyon is a source fork of [oh-my-pi](https://github.com/can1357/oh-my-pi). It is not a clean-room rewrite. [UPSTREAM.md](UPSTREAM.md) records the inherited foundation and the contracts Veyyon changed.
+Veyyon is a terminal coding agent for work that outlives one prompt. It keeps context, goals, plans, workers, permissions, and verification visible while the model reads, edits, runs, and finishes the task.
+
+Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi). Thanks to its maintainers and contributors for the project Veyyon builds on. [UPSTREAM.md](UPSTREAM.md) preserves the history and notices.
 
 ## Install
 
@@ -38,47 +42,16 @@ irm https://veyyon.dev/install.ps1 | iex
 
 The installer verifies the release checksum and binary before replacing an existing installation. See [Install Veyyon](docs/handbook/src/using/install.md) for supported platforms, pinned releases, source checkouts, updates, rollback, and uninstall.
 
-## What Veyyon changes
+## Documentation
 
-- **Inspectable context.** Prompt statements, layered project context, and context moves are visible before they affect a run. [Prompt customization](docs/system-prompt-customization.md) · [Context files](docs/context-files.md)
-- **Deliberate model control.** Effort, roles, provider routing, and compaction remain explicit operator choices. [Models and effort](docs/settings.md#models) · [Roles and profiles](docs/handbook/src/using/roles-and-profiles.md)
-- **Protected secret spending.** Models use named placeholders while credentials remain local, encrypted, scoped, and auditable. [Secret workflow](docs/handbook/src/features/secrets.md)
-- **Visible workers.** Typed subagents, IRC, persistent transcripts, and the Agent Control Center keep parallel work inspectable. [Subagents](docs/handbook/src/features/subagents.md)
-- **State-aware edits.** Language-server refactors and hash-anchored patches fail before stale state becomes a bad write. [Editing and repair](docs/handbook/src/using/editing.md)
-
-The [Veyyon handbook](docs/handbook/src/introduction.md) explains the complete runtime and its contracts.
-
-## Explore
-
-- [Recorded end-to-end workflow and proof gallery](docs/handbook/src/using/examples.md#recorded-end-to-end-workflow)
-- [Quickstart](docs/handbook/src/using/quickstart.md)
-- [Configuration](docs/handbook/src/using/configuration.md)
-- [Models, providers, and routing](docs/handbook/src/using/roles-and-profiles.md)
-- [CLI modes and commands](docs/handbook/src/reference/cli.md)
-- [Tools reference](docs/handbook/src/reference/tools.md)
-
-## Provenance
-
-### Inherited foundation
-
-Veyyon retains the Bun and TypeScript agent loop, terminal UI, provider catalog, role routing, hashline edit engine, mnemopi memory, and the original native grep, PTY, and tree-sitter hot-path foundations from oh-my-pi. These remain important product capabilities. They are not presented as Veyyon inventions.
-
-### Veyyon-owned contracts
-
-Veyyon owns the statement-based prompt architecture, transactional context moves, model-native effort and explicit effort precedence, current compaction strategy and chains, provider-bound secret protection, profile/session durability rules, LSP write-through, capability and tool registry, typed worker and IRC operations, Agent Control Center, internal agent URLs, and post-fork reusable Rust crate boundaries and their current contracts.
-
-This boundary describes this repository. It does not claim that current upstream has stood still. Read [UPSTREAM.md](UPSTREAM.md), the [mechanisms chapter](docs/handbook/src/why/innovations.md), and the [intentional divergence ledger](docs/internal/porting-from-pi-mono.md#15-intentional-divergences) for the detailed record.
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) and [packages/coding-agent/DEVELOPMENT.md](packages/coding-agent/DEVELOPMENT.md) for source setup, development commands, verification gates, and runtime conventions.
+| Area | Guides |
+| --- | --- |
+| Start | [Quickstart](docs/handbook/src/using/quickstart.md) · [Install and update](docs/handbook/src/using/install.md) |
+| Configure | [Configuration](docs/handbook/src/using/configuration.md) · [Models, providers, and roles](docs/handbook/src/using/roles-and-profiles.md) |
+| Operate | [CLI modes](docs/handbook/src/reference/cli.md) · [Tools](docs/handbook/src/reference/tools.md) · [Long-running goals](docs/handbook/src/context/goal-state.md) |
+| Inspect | [Recorded end-to-end workflow](docs/handbook/src/using/examples.md#recorded-end-to-end-workflow) · [Testing and verification](docs/handbook/src/foundations/verification.md) |
+| Develop | [Contributing](CONTRIBUTING.md) · [Coding-agent development](packages/coding-agent/DEVELOPMENT.md) |
 
 ## License
 
-Veyyon is licensed under MIT. See [LICENSE](LICENSE).
-
-Run `veyyon licenses` to print the complete notice bundle embedded in every
-release binary. The same bundle is available as
-[`THIRD_PARTY_LICENSES.txt`](THIRD_PARTY_LICENSES.txt) in a source checkout.
-
-The project is derived from oh-my-pi. Upstream copyright and license notices are preserved in [UPSTREAM.md](UPSTREAM.md) and the source tree.
+Veyyon is licensed under MIT. See [LICENSE](LICENSE). Upstream and third-party notices are preserved in [UPSTREAM.md](UPSTREAM.md) and [`THIRD_PARTY_LICENSES.txt`](THIRD_PARTY_LICENSES.txt).

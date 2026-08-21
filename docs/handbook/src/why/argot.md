@@ -136,4 +136,4 @@ page](../using/configuration.md#choose-how-subagents-start).
 ## Related
 
 - [Save tokens with project shorthand](../using/configuration.md#save-tokens-with-project-shorthand-argot-experimental): the settings and how to enable it
-- [Mechanisms](./innovations.md): the provenance boundary and the other Veyyon-owned contracts
+- [Mechanisms](./innovations.md): the current product contracts and shared mechanisms

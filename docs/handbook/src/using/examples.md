@@ -76,24 +76,26 @@ See [Model contract](../concepts/model-contract.md) and [Providers](../models/pr
 
 ## Recorded end-to-end workflow
 
-The main recording is one continuous session through the shipped CLI. It opens a four-phase plan, audits nine environment reads, writes one validating owner, fans three migrations out to parallel workers, applies a hash-anchored edit, runs the suite, advances the plan, spends a protected secret placeholder, and inspects the resulting context and settings.
+The landing-page recording is one operator task from objective to running artifact. Before submission, `/secret from-env` stores a synthetic release key. The model creates its own persistent goal from the single task prompt, then idle goal continuation carries the work across model turns without another user prompt.
 
-The scenario deliberately catches a coercion boundary: `Number("0x10")` returns 16, so a hexadecimal environment value must be rejected rather than read as decimal configuration. The session records the search, inventory, parallel edits, verification, and final operator state rather than staging those surfaces separately.
+The task creates an eight-item, four-phase todo list, launches three workers together for flight dynamics, terminal rendering, and autopilot behavior, and integrates their modules into **Nebula Drift**, a deterministic terminal 3D ship simulator. The project must pass its tests and TypeScript check, compile to `dist/nebula-drift`, and render a perspective-projected ship, star field, navigation gate, and telemetry HUD.
+
+After the build passes, the model signs the compiled binary with HMAC-SHA256 through `#RELEASE_SIGNATURE#`. Veyyon resolves the placeholder only at the outbound tool boundary and asks for explicit approval before the command runs. The model then closes all eight tasks, completes the persistent goal itself, and presents the compiled simulator.
 
 | Surface | Evidence |
 | --- | --- |
-| Complete session | [Published clip](../../../../assets/demo-hd.webp) · [full-quality cut](../../../../proof/captures/wayland/demo-hd-cut.mp4) · [unedited take](../../../../proof/captures/wayland/demo-hd.mp4) |
-| Search | [All nine configuration reads found by the completed audit](../../../../assets/demo-hd-search-block.png) |
-| Inventory | [The nine reads classified by file, variable, environment key, default, and coercion](../../../../assets/demo-hd-inventory.png) |
-| Parallel workers | [Three workers editing disjoint directories](../../../../assets/demo-hd-agent-lanes.png) |
-| Hash-anchored edit | [The main agent adds the numeric-format guard](../../../../assets/demo-hd-edit-diff.png) |
-| Verification | [The selected verification command and its result](../../../../assets/demo-hd-verify-command.png) |
-| Plan | [Plan opened before editing](../../../../assets/demo-hd-todo-board.png) · [plan advanced after verification](../../../../assets/demo-hd-todo-strike.png) |
-| Protected secret | [stored](../../../../assets/demo-hd-secret-stored.png) · [approval](../../../../assets/demo-hd-secret-approval.png) · [spent](../../../../assets/demo-hd-signature-written.png) · [value-free audit log](../../../../assets/demo-hd-secret-log.png) |
-| Context | [Live session accounting](../../../../assets/demo-hd-context-report.png) |
-| Settings | [Appearance and footline preview](../../../../assets/demo-hd-settings-pane.png) |
-| Worker control | [Parallel findings](../../../../assets/stills-extra-agents.png) · [Agent Control Center](../../../../assets/stills-extra-agent-control.png) |
-| Language server | [Workspace rename and green suite](../../../../assets/demo-lsp-hd.webp) |
-| Installation | [Published installer and checksum verification](../../../../assets/demo-install-hd.webp) |
+| Complete task | [Published clip](../../../../assets/demo-hd.webp) · [full-quality cut](../../../../proof/captures/x11/demo-hd-cut.mp4) · [unedited take](../../../../proof/captures/x11/demo-hd.mp4) |
+| Secret setup | [Release key stored from the environment](../../../../assets/demo-hd-secret-stored.png) |
+| Persistent objective | [Goal created by the model from the task prompt](../../../../assets/demo-hd-goal-created.png) |
+| Plan | [Four phases and eight open tasks](../../../../assets/demo-hd-todo-board.png) · [all eight tasks complete](../../../../assets/demo-hd-todo-finished.png) |
+| Parallel implementation | [Dynamics, rendering, and flight workers live together](../../../../assets/demo-hd-agent-lanes.png) |
+| Integration | [Parent-agent CLI and signing integration](../../../../assets/demo-hd-integration-edit.png) |
+| Verification | [Tests, typecheck, and compiled binary green](../../../../assets/demo-hd-build-verified.png) |
+| Compiled simulator | [Deterministic 3D flight display](../../../../assets/demo-hd-simulator-preview.png) |
+| Protected signing | [permission boundary](../../../../assets/demo-hd-secret-approval.png) · [signature artifact](../../../../assets/demo-hd-signature-written.png) |
+| Goal completion | [Model-completed persistent objective](../../../../assets/demo-hd-goal-complete.png) |
+| Presentation | [Signed Nebula Drift binary running](../../../../assets/demo-hd-presentation.png) |
 
-See [Testing and verification](../foundations/verification.md#recording-terminal-proofs) for the recording environment, regeneration commands, and before-and-after proof requirements.
+The opening and release play at capture speed. Visible implementation work between the worker launch and verified build plays at 1.25×; untouched screens are trimmed rather than accelerated. Every frame and both clips come from the same guarded take.
+
+See [Testing and verification](../foundations/verification.md#recording-terminal-proofs) for the recording environment, regeneration command, and before-and-after proof requirements. Verify the archived binary signature with `proof/verify-binary-signature.py`.

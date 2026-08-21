@@ -56,7 +56,7 @@ Each vector:
 - `expectedError` (string): a substring the thrown error's message must
   contain. Exactly one of `expected` / `expectedError` is required; both or
   neither is a fatal error.
-- `meta` (object, optional): provenance and notes. Never affects the verdict.
+- `meta` (object, optional): source notes. Never affects the verdict.
 
 ## Canonical comparison
 

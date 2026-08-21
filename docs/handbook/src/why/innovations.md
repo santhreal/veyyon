@@ -1,14 +1,10 @@
 # Mechanisms
 
-This chapter maps the mechanisms that shape Veyyon's behavior. It separates source provenance from the current product contract. The operator how-tos live under [Using](../using/getting-started.md) and [Features](../features/sandbox.md).
-
-## Provenance boundary
-
-Veyyon is a source fork of oh-my-pi. It retains the Bun and TypeScript agent loop, terminal UI, provider catalog, role routing, hashline edit engine, mnemopi memory, and the original native grep, PTY, and tree-sitter hot-path foundations. After the fork, Veyyon extracted reusable Rust crates for glob matching, grep orchestration, key normalization, text indexing, diffing, and directory walking. Those crate boundaries and their current contracts are post-fork work. The underlying grep and tree-sitter mechanisms are not Veyyon inventions.
+This chapter maps the mechanisms that shape Veyyon's behavior. Operator how-tos live under [Using](../using/getting-started.md) and [Features](../features/sandbox.md).
 
 ## Current contracts and proof entry points
 
-The table names the current product contract. A link in the **Recorded proof** column demonstrates only its link text, not every mechanism in that row. The provenance boundary above still applies to inherited mechanisms.
+The table names the current product contract. A link in the **Recorded proof** column demonstrates only its link text, not every mechanism in that row.
 
 | Area | Current Veyyon contract | Recorded proof |
 | --- | --- | --- |
@@ -16,10 +12,10 @@ The table names the current product contract. A link in the **Recorded proof** c
 | Models and compaction | Model-native effort variants, explicit effort precedence, editable subsystem fallback chains, and a lossless first compaction pass | [Model-specific effort menus](../../../../assets/effort-variants-grey.png), [before-and-after chain editing](../../../../assets/model-chain-editor-grey.png), and [the context report accounting for a filled window by share](../../../../assets/demo-hd-context-report.png) |
 | Credentials and sessions | Shared SQLite credentials, multi-credential selection, encrypted working secrets, final outbound obfuscation, atomic session writes, and non-destructive corruption handling | [A project secret taken from the environment, listed by placeholder, spent through bash, and recorded in the value-free use log](../../../../assets/demo-hd-secret-log.png) |
 | Tools and workers | One capability and tool registry, LSP write-through, destructive-shell interception, schema-validated workers, IRC, internal agent URLs, and the Agent Control Center | [A language-server rename applying one edit to a class file and three to its test, then a green suite](../../../../assets/demo-lsp-hd.webp) and [two workers spawned in one turn with live and idle Agent Control Center rows](../../../../assets/stills-extra-agent-control.png) |
-| Native runtime | Inherited native grep and tree-sitter foundations, plus post-fork reusable Rust crates for glob matching, grep orchestration, key normalization, text indexing, diffing, and directory walking | No recording. See the [architecture and provenance reference](performance.md). |
+| Native runtime | Native grep, PTY, tree-sitter support, and reusable Rust crates for glob matching, grep orchestration, key normalization, text indexing, diffing, and directory walking | No recording. See the [architecture reference](performance.md). |
 | Argot | Lossless per-project shorthand that expands before a tool, transcript, parent agent, or display receives it | [One disabled Argot setting](../../../../assets/argot-settings-off.png) and [six enabled Argot settings](../../../../assets/argot-settings-on.png) |
 
-The README section [What Veyyon changes](../../../../README.md#what-veyyon-changes) shows these contracts first. The repository's [upstream provenance](../../../../UPSTREAM.md) explains the fork boundary, and the [intentional-divergence ledger](../../../internal/porting-from-pi-mono.md#15-intentional-divergences) records port-sensitive implementation differences.
+See [Acknowledgements](../acknowledgements.md) for project credits. The [intentional-divergence ledger](../../../internal/porting-from-pi-mono.md#15-intentional-divergences) records port-sensitive implementation differences.
 
 ## Shared and evolved mechanisms
 

@@ -24,7 +24,7 @@
  *
  * The upstream (pre-fork) entries are written in oh-my-pi's voice — `omp`
  * commands and links to can1357/oh-my-pi issues. Those are rebranded / stripped
- * here so the public page speaks as Veyyon; provenance stays on the History
+ * here so the public page speaks as Veyyon; credits stay in the History
  * section and the full CHANGELOG on GitHub.
  */
 import { execFileSync } from "node:child_process";
@@ -51,8 +51,8 @@ export const FORK_POINT_VERSION = "16.5.2";
 export const DEFAULT_REPO = "santhreal/veyyon";
 
 /**
- * The upstream project's identifying facts, in ONE place. Both provenance notes
- * (the HTML {@link upstreamNote} on the website and the markdown
+ * The upstream project's identifying facts, in ONE place. Both credit notes
+ * (the HTML {@link upstreamNote} on the website and the Markdown
  * {@link upstreamNoteMarkdown} on the repo-root CHANGELOG) read from these, so
  * the credit line can never drift between the two surfaces.
  */
@@ -77,7 +77,7 @@ export function tagFor(section) {
 export function rebrand(text) {
 	return (
 		text
-			// Drop trailing "([#1234](…oh-my-pi…) follow-up)" style provenance notes.
+			// Drop trailing "([#1234](…oh-my-pi…) follow-up)" style source notes.
 			.replace(/\s*\(\[#\d+\]\(https?:\/\/[^)]*oh-my-pi[^)]*\)[^)]*\)/g, "")
 			// Drop bare upstream issue/PR links, keeping nothing.
 			.replace(/\[#\d+\]\(https?:\/\/[^)]*oh-my-pi[^)]*\)/g, "")
@@ -376,7 +376,7 @@ export function renderUnreleased(unreleased) {
 }
 
 /**
- * Provenance note for the pre-fork history. Veyyon forked oh-my-pi at the fork
+ * Credit note for the pre-fork history. Veyyon forked oh-my-pi at the fork
  * point; earlier versions are upstream's, not veyyon releases, so the page links
  * to them instead of replaying them as veyyon changelog cards.
  */
@@ -389,7 +389,7 @@ export function upstreamNote(forkPointVersion = FORK_POINT_VERSION) {
 }
 
 /**
- * The same provenance credit as {@link upstreamNote}, rendered as a Markdown
+ * The same source credit as {@link upstreamNote}, rendered as a Markdown
  * section for the repo-root CHANGELOG. Same wording, same fork facts; the HTML
  * page and the GitHub-rendered markdown therefore say exactly the same thing
  * about what is upstream and where to read it.
@@ -583,7 +583,7 @@ export function renderRootChangelog(sources, { forkPointVersion = FORK_POINT_VER
  * Build the inner changelog HTML from reconciled releases. The page shows ONLY
  * veyyon's own releases (never upstream oh-my-pi release cards): the fork point
  * splits the list, veyyon's line renders as cards, and everything at/below the
- * fork point is collapsed into a single provenance note (`upstreamNote`) that
+ * fork point is collapsed into a single credit note (`upstreamNote`) that
  * links to oh-my-pi for the pre-fork history. The `[Unreleased]` block renders
  * first as an "Unreleased" card so there is real veyyon news before 1.0.0 is
  * cut. The "latest" pill goes to the newest *published* veyyon release (or, when

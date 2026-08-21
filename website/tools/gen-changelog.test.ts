@@ -186,7 +186,7 @@ describe("buildChangelogHtml", () => {
 		expect(html).not.toContain('id="v16-5-2"');
 		expect(html).not.toContain('id="v16-5-1"');
 		expect(html).not.toContain("Inherited from oh-my-pi");
-		// Instead, a single provenance note links upstream for the pre-fork history.
+		// Instead, a single credit note links upstream for the pre-fork history.
 		expect(html).toContain('class="upstream-note"');
 		expect(html).toContain("fork of");
 		expect(html).toContain("https://github.com/can1357/oh-my-pi/releases");
@@ -404,7 +404,7 @@ describe("renderRootChangelog", () => {
 
 	it("keeps the whole file when there is no fork heading (all-veyyon history)", () => {
 		// Defensive: a source with no upstream merge is entirely veyyon's, so nothing
-		// is dropped; the credit note is still appended for provenance.
+		// is dropped; the credit note is still appended for source history.
 		const preFork = "# Changelog\n\n## [1.0.0] - 2026-08-01\n\n### Added\n\n- First veyyon release.\n";
 		const root = gen.renderRootChangelog(preFork);
 		expect(root).toContain("## [1.0.0] - 2026-08-01");

@@ -468,7 +468,7 @@ Flags:
 
 - `--tasks <file>` — newline list of task names (comments with `#`). Omit to
   run every task under the tasks root (full DeepSWE, 113 tasks). Declare the set's
-  provenance in the header so a biased subset is never read as a headline: a first
+  selection basis in the header so a biased subset is never read as a headline: a first
   comment line `# @headline` marks an unbiased, representative set whose numbers can
   be reported as a headline, and `# @biased: <reason>` marks a set curated to favour
   the feature under test (for example `tasks/argot-10.txt`, the repos with the most
@@ -517,7 +517,7 @@ Flags:
   for a zero-IV collision, matches every encode arm's allowlist against
   `--model`, confirms the task files and the agent binary exist, and performs the
   auth preflight against the staged DB. Then it prints the queue, each arm's
-  resolved inputs, the task set's `@headline`/`@biased` provenance, and how many
+  resolved inputs, the task set's `@headline`/`@biased` status, and how many
   trials of real quota the run would cost, and exits 0 writing no report.
 
   It answers every question that does not need the model itself, in seconds

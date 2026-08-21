@@ -39,6 +39,10 @@ PUBLISH=0 DEMO_SERVER=x11 \
 
 The recorder keeps rehearsal output in the temporary directory it prints. Inspect the video and named frames there. Set `PUBLISH=1` only for a complete take whose frame guards all passed.
 
+The hero task prompt is static at `proof/prompts/demo-hd.md`. The scene sets the secret and submits that prompt once. The model creates its own persistent goal before planning, and goal continuation carries later model turns. The scene does not send phase-by-phase operator prompts.
+
+The archived take remains at capture speed. The landing-page cut keeps goal, todo, worker setup, verification, signing, goal completion, and presentation at 1×. Visible implementation between the worker launch and verified build plays at 1.25×. Named marks in the take select those boundaries; untouched screens are shortened to four seconds rather than accelerated.
+
 ### VHS settings captures
 
 Use the same baseline for settings differentials:
