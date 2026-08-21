@@ -1856,9 +1856,9 @@ checksum = "dc00caaa3fb3201ff7a18aa458e8c3ab042b9da154cfdf948bdde3936c31c36e"
 
 [[package]]
 name = "icu_collator"
-version = "2.3.0"
+version = "2.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "59eea194d189ca897bcb960fd2130f9e7d53998460d4d32e85a60b10d5507cf4"
+checksum = "08984ed58ac439ebf3e13d2cf26b0c46a60afcd21721c1d14087c0b240344dda"
 dependencies = [
  "icu_collator_data",
  "icu_collections",
@@ -1947,9 +1947,9 @@ checksum = "e4c887fc7d4c297cf3f9436864af9e3dba7f8be9415a6c2a7f392f3b1636298c"
 
 [[package]]
 name = "icu_locale"
-version = "2.3.0"
+version = "2.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "250ec6d4ac288584d1d0ba29dbfad7737635b7b0e822441f4026a523e3fdb147"
+checksum = "785f595c61ef57169a467eeed7b4b6936a66f6cacbb116a96ee86da983251bf4"
 dependencies = [
  "icu_collections",
  "icu_locale_core",
@@ -2078,9 +2078,9 @@ checksum = "e590f038c1464a96894fd6d10127e90a8be4509f56ff7ecef851b15cee0b7caa"
 
 [[package]]
 name = "icu_provider"
-version = "2.3.0"
+version = "2.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92a7ed671a6aad807a8651a2e1782a6598fda9ce5185dd8158549e95a91c6428"
+checksum = "d27bbb9d3abbefac45d55f647c9de1d44aafcd1186eb91879afef17c396c3e73"
 dependencies = [
  "displaydoc",
  "icu_locale_core",
@@ -5823,7 +5823,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "veyyon-ast"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "anyhow",
  "ast-grep-core",
@@ -5892,21 +5892,21 @@ dependencies = [
 
 [[package]]
 name = "veyyon-diff-kernel"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "similar 3.2.0",
 ]
 
 [[package]]
 name = "veyyon-glob"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "globset",
 ]
 
 [[package]]
 name = "veyyon-grep-kernel"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "grep-matcher",
  "grep-pcre2",
@@ -5917,7 +5917,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-iso"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "async-trait",
  "libc",
@@ -5930,14 +5930,14 @@ dependencies = [
 
 [[package]]
 name = "veyyon-keys"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "phf 0.13.1",
 ]
 
 [[package]]
 name = "veyyon-natives"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "anyhow",
  "arboard",
@@ -5994,7 +5994,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-shell"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "anyhow",
  "brush-builtins",
@@ -6072,11 +6072,11 @@ dependencies = [
 
 [[package]]
 name = "veyyon-test-scratch"
-version = "1.1.0"
+version = "1.1.1"
 
 [[package]]
 name = "veyyon-text"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "smallvec",
  "unicode-segmentation",
@@ -6085,7 +6085,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-uu-diff"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "clap",
  "parking_lot",
@@ -6096,7 +6096,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-uu-grep"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "clap",
  "clap_complete",
@@ -6120,7 +6120,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-uutils-ctx"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "libc",
  "veyyon-test-scratch",
@@ -6128,7 +6128,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-walker"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "dashmap",
  "globset",
@@ -6926,9 +6926,9 @@ dependencies = [
 
 [[package]]
 name = "zerovec-derive"
-version = "0.11.5"
+version = "0.11.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9f212a141d820099d57ffafb9569be9617a6f27d3dc881fbee8fb56642f917a9"
+checksum = "34df6fc39dbd26ddc9c10e6a2984476e13acce22e64e4487636ef494369225da"
 dependencies = [
  "proc-macro2",
  "quote",
