@@ -26,7 +26,7 @@
  * (`~/tmp`). A repository file is not a substitute for the operator's own, and a suite that runs
  * inside a repo would not notice if it had become one.
  */
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, setDefaultTimeout } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { create, fromBinary } from "@bufbuild/protobuf";
@@ -51,6 +51,12 @@ import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import type { ContextFileEntry } from "@veyyon/coding-agent/tools";
 import { GLOBAL_BODY, PROFILE_BODY, useContextScopeFixture } from "./helpers/context-scope-fixture";
+
+// The last arm walks every api a bundled model can select and renders the
+// operator's bytes for each, which is 2.5s on an idle box and past Bun's 5s
+// default in a full bucket run: chunk 27 of `ci:test:coding-agent:runtime`
+// failed on the clock while the same file passed on its own.
+setDefaultTimeout(60_000);
 
 /**
  * How an api carries the operator's instruction files to the model.

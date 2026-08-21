@@ -58,8 +58,9 @@ import type { Message } from "@veyyon/ai";
 import { createMockModel } from "@veyyon/ai/providers/mock";
 import type { TSchema } from "@veyyon/ai/types";
 import { toolWireSchema } from "@veyyon/ai/utils/schema/wire";
+import { Settings } from "@veyyon/coding-agent/config/settings";
 import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
-import { repairToolCallArguments } from "@veyyon/coding-agent/repair/schema-repair";
+import { createRepairToolCallArgumentsHook } from "@veyyon/coding-agent/repair/agent-hook";
 import { BUILTIN_TOOLS, HIDDEN_TOOLS } from "@veyyon/coding-agent/tools/index";
 import { TempDir } from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
@@ -117,10 +118,10 @@ function identityConverter(messages: AgentMessage[]): Message[] {
 /**
  * One turn of the real loop: the provider answers with a single tool call
  * carrying `args`, the loop dispatches it, and the tool result text is what the
- * model would read next. `repairToolCallArguments` is the product's own, so the
+ * model would read next. The repair hook is the very one `sdk.ts` wires, so the
  * alias and ambiguity paths are exercised rather than bypassed.
  */
-async function dispatch(tool: AgentTool, args: unknown): Promise<string> {
+async function dispatch(tool: AgentTool, args: Record<string, unknown>): Promise<string> {
 	const context: AgentContext = { systemPrompt: [""], messages: [], tools: [tool] };
 	const mock = createMockModel({
 		responses: [
@@ -132,7 +133,11 @@ async function dispatch(tool: AgentTool, args: unknown): Promise<string> {
 	const stream = agentLoop(
 		[{ role: "user", content: "call it" } as AgentMessage],
 		context,
-		{ model: mock.model, convertToLlm: identityConverter, repairToolCallArguments },
+		{
+			model: mock.model,
+			convertToLlm: identityConverter,
+			repairToolCallArguments: createRepairToolCallArgumentsHook(Settings.isolated(), () => mock.model),
+		},
 		undefined,
 		mock.stream,
 	);
