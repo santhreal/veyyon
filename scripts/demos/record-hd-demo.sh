@@ -23,8 +23,8 @@ cd "${REPO_ROOT}"
 : "${PROOF_LLM_BASE_URL:?set PROOF_LLM_BASE_URL to an OpenAI-compatible endpoint}"
 # Qwen3.8 27B, served locally through the distinct 96k model row. The window is
 # part of the proof: this session carries a plan, three subagent results, edits,
-# verification, and operator reports in one transcript. At 64k it reached the
-# final turns with too little context to keep the task coherent.
+# verification, and the summary that closes each phase in one transcript. At 64k
+# it reached the final turns with too little context to keep the task coherent.
 DEMO_MODEL="${DEMO_MODEL:-local/demo-qwen38-27b-96k}"
 SCENE="${1:-demo-hd}"
 
@@ -106,9 +106,11 @@ demo-hd)
 	# actually moved in, no freeze longer than four seconds, at the speed it was
 	# recorded. The cap stays at 24 because the WebP is inlined by the README and
 	# its bytes are all motion -- the trim buys density, not size, so a wider cap
-	# is a heavier landing page rather than a better one. The WebP stays 1920 wide:
-	# that is the website's declared intrinsic size and gives the README's
-	# 960-pixel presentation two source pixels per CSS pixel without an upscale.
+	# is a heavier landing page rather than a better one. The WebP is published at
+	# 1920 so the README's 960-pixel presentation gets two source pixels per CSS
+	# pixel without an upscale. `website/index.html` declares the intrinsic size of
+	# the file it points at and a test pins the two together, so publishing at a
+	# new width means editing that `width`/`height` pair in the same change.
 	CUT_WIDTH=1920
 	WEBP_WIDTH=1920
 	CUT_ARGS=(--speed 1.0 --mark-lead-max 24 --hold 4 --crf 26 --still-keep 4 --still-min 4)
