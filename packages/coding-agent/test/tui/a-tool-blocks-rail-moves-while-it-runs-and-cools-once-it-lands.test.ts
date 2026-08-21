@@ -293,19 +293,20 @@ describe("the component that drives the rail", () => {
 		vi.restoreAllMocks();
 	});
 
-	// Every bounded animation a landed tool block can play, so the invariant is
-	// pinned for the mechanism rather than for the rail: a `#railSettleFrame` guard
-	// that forgets `#todoBoardInterval` is the same defect.
+	// Every landed tool block that could play a bounded animation, so the invariant
+	// is pinned for the mechanism rather than for the rail: a `#railSettleFrame`
+	// guard that forgets a second interval is the same defect.
 	//
-	// The third member is not an animation but the COUPLING the board half of that
-	// guard rests on. A board draws animated frames only from `phases` details, and
-	// exactly those details also make the block displaceable, so an animating board
-	// is never finalized and is already held live by the unfinalized branch. A board
-	// whose details carry no phases is the other side: it finalizes on arrival, and
-	// its rows must then be byte-stable for good, because nothing above the seam
-	// protects them. The member pins both halves of that coupling, so a change that
-	// makes a finalized board animate goes red here and points at the guard rather
-	// than shipping as a screen repaint.
+	// The rail's settling pass is the ONLY animation a landed block plays. The todo
+	// board had a fourteen-frame entrance for one release and no longer has one:
+	// the board is drawn once when the result lands and never repaints. Both board
+	// members are here because they finalize DIFFERENTLY and byte-stability is
+	// protected differently on each side. A board carrying `phases` details is
+	// displaceable and never final, so the engine holds its rows live; a board
+	// without them finalizes on arrival, and its rows must then be byte-stable for
+	// good, because nothing above the seam protects them. Either one drawing a
+	// second frame goes red here, which is what a re-added board animation would
+	// do, and points at the block instead of shipping as a screen repaint.
 	type LandedResult = Parameters<ToolExecutionComponent["updateResult"]>[0];
 	const animatedBlocks: Array<[string, string, unknown, LandedResult, boolean, boolean]> = [
 		[
@@ -317,15 +318,15 @@ describe("the component that drives the rail", () => {
 			true,
 		],
 		[
-			"the todo board's entrance",
+			"a board the engine still holds live",
 			"todo",
 			interactionFixtures.todo!.args,
 			interactionFixtures.todo!.result!,
 			false,
-			true,
+			false,
 		],
 		[
-			"a board that finalized instead of animating",
+			"a board that finalized on arrival",
 			"todo",
 			{ op: "view" },
 			{ content: [{ type: "text", text: "Remaining items: 3." }], details: { exitCode: 0 } },
@@ -371,7 +372,7 @@ describe("the component that drives the rail", () => {
 				previous = next;
 			}
 			// The sweep is only evidence if the animation actually ran inside it — and
-			// for a member that finalized, the evidence is that nothing ran.
+			// for a member that plays none, the evidence is that nothing ran at all.
 			if (animates) expect(changes).toBeGreaterThan(3);
 			else expect(changes).toBe(0);
 			// And the envelope ends: an animation that outlived its window would keep
