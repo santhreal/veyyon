@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# Seed the tiny project a recorded session works on.
+# Seed the isolated projects used by recorded sessions.
 #
-# The scenes ask the model to read, edit and test real files, so the files have to
-# be real: a rate limiter with a boundary worth explaining, a test that pins that
-# boundary, and a utils module with a gap an edit can fill. Small on purpose -- a
-# 30B model reading four short files answers in seconds, and a recording of a
-# model reading a large tree is a recording of a spinner.
+# Every scene reads, edits, and verifies real files. Short feature scenes use the
+# parser, rate limiter, and service fixtures. The landing-page hero starts inside
+# ship-sim/, where a specification and executable tests define a larger greenfield
+# build without pre-writing the implementation the model is meant to produce.
 #
 # Seeded rather than committed as a fixture directory because the recorder's HOME
 # is a tmpfs: nothing here survives the container, and a scene that depends on
@@ -172,30 +171,21 @@ for pkg in @types/node @types/bun bun-types; do
 	fi
 done
 
-# ... and node_modules stays out of the demo repository, so the seeded commit below is
-# the nine modules rather than 6M of declarations, and the model's `git status` is not
-# a wall of vendored files.
+# ... and node_modules plus the compiled ship binary stay out of the demo repository,
+# so git status shows only work the recorded session actually produced.
 cat >"${DEMO}/.gitignore" <<'GI'
 node_modules/
+ship-sim/dist/
 GI
 
-# THE SERVICE TREE, and why it is not four files.
+# THE SERVICE REFACTOR FIXTURE.
 #
-# The hero take used to work on the parser above, and what it recorded was a model reading
-# one short file and editing it. That is not what this product is for and it is not what a
-# reader wants to see: the work that justifies an agent is work spread across a tree, where
-# finding every site is most of the job and no single file tells you whether you are done.
-#
-# So the hero's subject is a service with ONE defect class repeated across nine modules in
-# three directories: every numeric setting is read straight out of the environment with no
-# owner and no validation, each in a slightly different spelling, so `Number("")` is 0,
-# `parseInt` without a radix is whatever the string starts with, and a typo in a deploy is a
-# silent zero rather than a failed boot. Finding all nine takes a search rather than a read;
-# fixing them is one owner plus nine call sites; proving it takes the suite. It is the shape
-# of a real refactor, small enough that a 30B finishes it in one session.
-#
-# The spellings differ ON PURPOSE. A single pattern would be one grep and the fan-out would
-# be theatre; three spellings mean the agents have to agree on what counts.
+# One defect class repeats across nine modules in three directories: every
+# numeric setting is read straight out of the environment with no owner and no
+# validation, each in a slightly different spelling. Finding every site takes a
+# search rather than a read; fixing them takes one owner plus nine call sites;
+# proving the change takes the suite. The spellings differ so a single pattern
+# cannot stand in for the audit.
 mkdir -p "${DEMO}/service/config" "${DEMO}/service/handlers" "${DEMO}/service/store"
 
 seed_numeric_module() {
@@ -248,6 +238,249 @@ Nine numeric settings, three directories, no owner: every module reads its own
 environment variable in its own spelling and trusts whatever comes back.
 MD
 
+
+# THE LONG-RUNNING HERO PROJECT.
+#
+# The landing-page session starts inside this directory. It is a real greenfield
+# build rather than another repair of the small fixtures above: the specification,
+# interfaces, and executable acceptance tests exist, while the 3D math, flight
+# dynamics, renderer, autopilot, signing module, and integrated CLI are the work the
+# agent must create. The tests make three parallel lanes independent and deterministic.
+mkdir -p "${DEMO}/ship-sim/src" "${DEMO}/ship-sim/test"
+
+cat >"${DEMO}/ship-sim/package.json" <<'JSON'
+{
+	"name": "nebula-drift",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"test": "bun test",
+		"typecheck": "tsc --noEmit -p tsconfig.json",
+		"build": "bun build src/cli.ts --compile --outfile dist/nebula-drift",
+		"demo": "./dist/nebula-drift --frames 1 --seed 42 --width 72 --height 24",
+		"sign": "bun src/sign.ts dist/nebula-drift dist/nebula-drift.sig"
+	}
+}
+JSON
+
+cat >"${DEMO}/ship-sim/tsconfig.json" <<'JSON'
+{
+	"compilerOptions": {
+		"target": "ES2022",
+		"module": "Preserve",
+		"moduleResolution": "bundler",
+		"strict": true,
+		"noEmit": true,
+		"allowImportingTsExtensions": true,
+		"skipLibCheck": true,
+		"types": ["node", "bun"]
+	},
+	"include": ["src", "test"]
+}
+JSON
+
+cat >"${DEMO}/ship-sim/SPEC.md" <<'MD'
+# Nebula Drift
+
+Build a deterministic terminal 3D ship simulator with no third-party dependencies.
+
+## Product
+
+- Compile `src/cli.ts` into `dist/nebula-drift` with `bun build --compile`.
+- Render a perspective-projected wireframe ship, seeded star field, flight vector,
+  mission gate, and telemetry HUD in a 72×24 terminal frame.
+- Simulate thrust, drag, yaw, pitch, roll, fuel consumption, and a deterministic
+  autopilot that approaches a 3D navigation gate.
+- Accept `--frames`, `--seed`, `--width`, and `--height`. A one-frame run prints no
+  cursor-control bytes. Multi-frame runs animate in place and terminate at the
+  requested bound.
+- Keep every simulation deterministic for the same arguments.
+
+## Architecture
+
+- `src/math.ts`: immutable vector operations, rotations, and perspective projection.
+- `src/physics.ts`: immutable ship stepping with bounded controls and finite state.
+- `src/autopilot.ts`: control decisions that reduce distance to a mission gate.
+- `src/renderer.ts`: bounded ASCII frame buffer, star field, wireframe hull, gate, and HUD.
+- `src/sign.ts`: HMAC-SHA256 release signing. Read the key only from
+  `SHIP_RELEASE_KEY`; never print it. Write `<hex>  <binary-name>` to the signature file.
+- `src/cli.ts`: argument parsing, simulation loop, rendering, animation, and honest errors.
+
+The seeded tests are the acceptance contract. Do not weaken them.
+MD
+
+cat >"${DEMO}/ship-sim/src/contracts.ts" <<'TS'
+export interface Vec3 {
+	x: number;
+	y: number;
+	z: number;
+}
+
+export interface ShipState {
+	position: Vec3;
+	velocity: Vec3;
+	yaw: number;
+	pitch: number;
+	roll: number;
+	fuel: number;
+	elapsed: number;
+}
+
+export interface ControlInput {
+	throttle: number;
+	yaw: number;
+	pitch: number;
+	roll: number;
+}
+
+export interface Projection {
+	x: number;
+	y: number;
+	visible: boolean;
+	depth: number;
+}
+
+export interface RenderOptions {
+	width: number;
+	height: number;
+	seed: number;
+	target: Vec3;
+}
+TS
+
+cat >"${DEMO}/ship-sim/src/cli.ts" <<'TS'
+const args = new Set(process.argv.slice(2));
+
+if (args.has("--help")) {
+	process.stdout.write("Nebula Drift terminal ship simulator\n");
+} else {
+	process.stdout.write("Nebula Drift flight computer online\n");
+}
+TS
+
+cat >"${DEMO}/ship-sim/test/math.test.ts" <<'TS'
+import { expect, test } from "bun:test";
+import { projectPoint, rotateY } from "../src/math.ts";
+
+test("rotation and perspective projection preserve the 3D contract", () => {
+	const rotated = rotateY({ x: 1, y: 0, z: 0 }, Math.PI / 2);
+	expect(rotated.x).toBeCloseTo(0, 8);
+	expect(rotated.z).toBeCloseTo(-1, 8);
+
+	expect(projectPoint({ x: 0, y: 0, z: 5 }, 80, 24, 60)).toEqual({
+		x: 40,
+		y: 12,
+		visible: true,
+		depth: 5,
+	});
+	expect(projectPoint({ x: 0, y: 0, z: -1 }, 80, 24, 60).visible).toBe(false);
+});
+TS
+
+cat >"${DEMO}/ship-sim/test/physics.test.ts" <<'TS'
+import { expect, test } from "bun:test";
+import { createInitialShip, stepShip } from "../src/physics.ts";
+
+test("thrust advances an immutable finite ship state", () => {
+	const initial = createInitialShip();
+	const next = stepShip(initial, { throttle: 1, yaw: 0.25, pitch: 0, roll: 0 }, 1);
+
+	expect(initial.position).toEqual({ x: 0, y: 0, z: 0 });
+	expect(next).not.toBe(initial);
+	expect(next.position.z).toBeGreaterThan(0);
+	expect(next.velocity.z).toBeGreaterThan(0);
+	expect(next.yaw).toBeGreaterThan(0);
+	expect(next.fuel).toBeLessThan(initial.fuel);
+	for (const value of [
+		next.position.x,
+		next.position.y,
+		next.position.z,
+		next.velocity.x,
+		next.velocity.y,
+		next.velocity.z,
+		next.fuel,
+	]) {
+		expect(Number.isFinite(value)).toBe(true);
+	}
+});
+TS
+
+cat >"${DEMO}/ship-sim/test/autopilot.test.ts" <<'TS'
+import { expect, test } from "bun:test";
+import { autopilotControl } from "../src/autopilot.ts";
+import { createInitialShip, stepShip } from "../src/physics.ts";
+
+test("autopilot closes distance to a navigation gate with bounded controls", () => {
+	const target = { x: 4, y: 2, z: 30 };
+	let ship = createInitialShip();
+	const startDistance = Math.hypot(
+		target.x - ship.position.x,
+		target.y - ship.position.y,
+		target.z - ship.position.z,
+	);
+
+	for (let frame = 0; frame < 120; frame += 1) {
+		const control = autopilotControl(ship, target);
+		expect(control.throttle).toBeGreaterThanOrEqual(0);
+		expect(control.throttle).toBeLessThanOrEqual(1);
+		expect(control.yaw).toBeGreaterThanOrEqual(-1);
+		expect(control.yaw).toBeLessThanOrEqual(1);
+		expect(control.pitch).toBeGreaterThanOrEqual(-1);
+		expect(control.pitch).toBeLessThanOrEqual(1);
+		expect(control.roll).toBeGreaterThanOrEqual(-1);
+		expect(control.roll).toBeLessThanOrEqual(1);
+		ship = stepShip(ship, control, 1 / 30);
+	}
+
+	const endDistance = Math.hypot(
+		target.x - ship.position.x,
+		target.y - ship.position.y,
+		target.z - ship.position.z,
+	);
+	expect(endDistance).toBeLessThan(startDistance);
+});
+TS
+
+cat >"${DEMO}/ship-sim/test/renderer.test.ts" <<'TS'
+import { expect, test } from "bun:test";
+import { createInitialShip } from "../src/physics.ts";
+import { renderFrame } from "../src/renderer.ts";
+
+test("renderer produces a deterministic bounded 3D flight display", () => {
+	const ship = createInitialShip();
+	const options = {
+		width: 72,
+		height: 24,
+		seed: 42,
+		target: { x: 4, y: 2, z: 30 },
+	};
+	const first = renderFrame(ship, options);
+	const second = renderFrame(ship, options);
+	const lines = first.split("\n");
+
+	expect(first).toBe(second);
+	expect(lines).toHaveLength(24);
+	expect(lines.every(line => line.length === 72)).toBe(true);
+	expect(first).toContain("NEBULA DRIFT");
+	expect(first).toContain("AUTOPILOT");
+	expect(first).toContain("FUEL");
+	expect(first).toContain("GATE");
+	expect(first).toMatch(/[+\\/|<>]/);
+});
+TS
+
+cat >"${DEMO}/ship-sim/test/sign.test.ts" <<'TS'
+import { expect, test } from "bun:test";
+import { createHmac } from "node:crypto";
+import { signBytes } from "../src/sign.ts";
+
+test("release signatures bind the binary bytes without exposing the key", () => {
+	const bytes = new Uint8Array([0, 1, 2, 3, 255]);
+	const expected = createHmac("sha256", "fixture-key").update(bytes).digest("hex");
+	expect(signBytes(bytes, "fixture-key")).toBe(expected);
+	expect(signBytes(new Uint8Array([0, 1, 2, 4, 255]), "fixture-key")).not.toBe(expected);
+});
+TS
 # A git repository, because the scenes ask the model to commit its work. Without this
 # the commit turn records `fatal: not a git repository` in red and the session's last
 # act is a failed tool call -- which is exactly what the take before this one shot.
@@ -258,4 +491,4 @@ git -C "${DEMO}" init -q -b main
 git -C "${DEMO}" config user.name "demo"
 git -C "${DEMO}" config user.email "demo@example.invalid"
 git -C "${DEMO}" add -A
-git -C "${DEMO}" -c commit.gpgsign=false commit -q -m "seed the parser and its tests"
+git -C "${DEMO}" -c commit.gpgsign=false commit -q -m "seed the demo projects"

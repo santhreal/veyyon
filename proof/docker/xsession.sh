@@ -277,7 +277,12 @@ for _ in $(seq 1 40); do
 		break
 	fi
 done
-: "${WINDOW:?no terminal window with a geometry appeared}"
+if [ -z "${WINDOW}" ]; then
+	echo "no terminal window with a geometry appeared" >&2
+	tail -40 /tmp/term.log >&2 2>/dev/null || true
+	tail -40 /tmp/boot.err >&2 2>/dev/null || true
+	exit 1
+fi
 [ "${PLACED}" = "1" ] || {
 	echo "terminal window would not move to +${MARGIN}+${MARGIN} (last origin: ${WX:-none},${WY:-none})" >&2
 	tail -20 /tmp/term.log >&2 2>/dev/null

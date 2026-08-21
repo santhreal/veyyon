@@ -18,7 +18,7 @@ This chapter is a one-page map of what the harness does. Each row links to the c
 
 ## Lineage
 
-Veyyon is built from [oh-my-pi](https://github.com/can1357/oh-my-pi) and [Pi](https://github.com/badlogic/pi-mono). The [Acknowledgements](../acknowledgements.md) page records the full provenance.
+Veyyon is built from [oh-my-pi](https://github.com/can1357/oh-my-pi) and [Pi](https://github.com/badlogic/pi-mono). See [Acknowledgements](../acknowledgements.md) for credits.
 
 ## Next
 

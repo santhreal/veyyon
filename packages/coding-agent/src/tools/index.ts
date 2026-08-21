@@ -537,14 +537,13 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 	const taskDepth = session.taskDepth ?? 0;
 	const memoryBackend = session.settings.get("memory.backend") ?? "";
 	const goalEnabled = session.settings.get("goal.enabled");
-	const goalModeActive = goalEnabled && session.getGoalModeState?.()?.enabled === true;
 	// An EXPLICIT whitelist gets widened with the tools its entries imply (see
 	// `./loading/policy`). With no whitelist there is nothing to widen: the default path below
 	// enumerates every built-in and filters it by permission instead.
 	let requestedTools =
 		toolNames && toolNames.length > 0
 			? augmentRequestedToolNames(normalizeToolNames(toolNames), {
-					goalModeActive,
+					goalEnabled,
 					astGrepEnabled: session.settings.get("astGrep.enabled"),
 					astEditEnabled: session.settings.get("astEdit.enabled"),
 					memoryBackend,
@@ -626,7 +625,6 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 	// settings and session shape into its arguments.
 	const permissionInputs: BuiltinToolPermissionInputs = {
 		goalEnabled,
-		goalModeActive,
 		enableLsp,
 		lspEnabled: session.settings.get("lsp.enabled"),
 		bashEnabled: session.settings.get("bash.enabled"),
@@ -668,7 +666,7 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 		isAllowed: isToolAllowed,
 		builtinToolNames: Object.keys(BUILTIN_TOOLS),
 		requireYieldTool: includeYield,
-		goalModeActive,
+		goalEnabled,
 	}).map(name => [name, allTools[name]] as const);
 
 	const activeToolNames = new Set(baseEntries.map(([name]) => name));

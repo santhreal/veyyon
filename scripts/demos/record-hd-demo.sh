@@ -22,9 +22,9 @@ cd "${REPO_ROOT}"
 
 : "${PROOF_LLM_BASE_URL:?set PROOF_LLM_BASE_URL to an OpenAI-compatible endpoint}"
 # Qwen3.8 27B, served locally through the distinct 96k model row. The window is
-# part of the proof: this session carries a plan, three subagent results, edits,
-# verification, and the summary that closes each phase in one transcript. At 64k
-# it reached the final turns with too little context to keep the task coherent.
+# part of the proof: one goal carries the plan, parallel implementation, tests,
+# compiled binary, protected signing, and final simulator presentation without
+# an operator prompt restarting the task.
 DEMO_MODEL="${DEMO_MODEL:-local/demo-qwen38-27b-96k}"
 SCENE="${1:-demo-hd}"
 
@@ -50,6 +50,7 @@ esac
 CAPTURES="proof/captures/${DEMO_SERVER}"
 
 # The terminal runs the app unless a scene needs a shell, which one of them does.
+SCENE_WORKDIR="${SCENE_CWD:-/sandbox/home/demo}"
 SCENE_CMD="bun /repo/packages/coding-agent/src/cli.ts --model ${DEMO_MODEL}"
 # A row shows the block, the card or the diff, and this model reasons in pages, so
 # every scene records with `Hide Thinking Blocks` on -- the hero included, which is
@@ -71,49 +72,39 @@ STILL=
 case "${SCENE}" in
 demo-hd)
 	ASSET=assets/demo-hd.webp
-	# The hero also ships whole. The take runs about twenty minutes and the page
-	# gets a few of them, so both are published and the short one can be checked
-	# against the long one.
+	# The hero also ships whole. The task runs for many minutes and the landing
+	# page gets a dense cut, so both are published and the cut can be checked
+	# against the complete autonomous goal session.
 	PUBLISH_TAKE=1
-	# The scene owns each continuation explicitly so its named frames land before
-	# the next phase begins. The default todo reminder fires as the turn settles,
-	# racing the inventory capture and sometimes starting Migration before the
-	# recorder can interrupt it.
+	SCENE_WORKDIR=/sandbox/home/demo/ship-sim
+	# Goal continuation owns the long run. Todo reminders would add a second
+	# continuation mechanism and can race the goal timer, so the demo uses one
+	# explicit owner for autonomous progress.
 	SETTINGS="todo.reminders: false"
-	# THE HERO IS NOT SPED UP, AND IT SHOWS THE WORK. Every window used to be 1.2s
-	# of lead played at 2x -- about half a second of real time before each frame --
-	# so what published was a slideshow of outcomes with the session's actual work
-	# fast-forwarded out: the search running across nine modules, three lanes
-	# settling, a suite going green. Those stretches are minutes long in the take
-	# and they are the demo.
 	#
-	# So speed is 1.0, and each mark's lead comes from the recording rather than
-	# from a constant: `shot` writes the stretch between the end of the request and
-	# the frame, which is the work and contains no typing by construction, and the
-	# cut keeps it up to the cap.
+	# SETUP AND RELEASE STAY AT REAL SPEED. The goal, secret, todo board, and
+	# parallel worker launch establish what the operator asked for; the compiled
+	# simulator, permission boundary, signature, completed plan, and final flight
+	# display prove what finished. The implementation between those edges is
+	# accelerated only 1.25x. Untouched stretches are still trimmed, so the speed
+	# change applies to visible work rather than hiding time behind a jump cut.
 	#
-	# THE TRIM IS WHAT MAKES THAT WATCHABLE. Measured on a real take: 73% of it is
-	# a screen nobody is touching, because a local 27B model spends most of a turn
-	# with nothing rendering and the scene settles after each one. Playing that out
-	# is a video of a still image, which reads as a product that has hung -- so
-	# `--still-keep 4` trims any untouched stretch to a readable pause. Four
-	# seconds is measured, not chosen: a settled screen puts 0 of 120 frames above
-	# the detector's floor while a turn in flight puts 1 to 2, so a turn arrives as
-	# a chain of roughly four-second stretches and a keep of four leaves it alone
-	# while collapsing the screens where the turn is over.
-	#
-	# What that yields here: 3:11 of clip carrying every one of the 85s the screen
-	# actually moved in, no freeze longer than four seconds, at the speed it was
-	# recorded. The cap stays at 24 because the WebP is inlined by the README and
-	# its bytes are all motion -- the trim buys density, not size, so a wider cap
-	# is a heavier landing page rather than a better one. The WebP is published at
-	# 1920 so the README's 960-pixel presentation gets two source pixels per CSS
-	# pixel without an upscale. `website/index.html` declares the intrinsic size of
-	# the file it points at and a test pins the two together, so publishing at a
-	# new width means editing that `width`/`height` pair in the same change.
+	# The two named marks are source-derived boundaries. hero-cut splits a span at
+	# them if necessary, which keeps pointer and permission motion at 1.0x even
+	# when one measured lead overlaps the accelerated middle.
 	CUT_WIDTH=1920
 	WEBP_WIDTH=1920
-	CUT_ARGS=(--speed 1.0 --mark-lead-max 24 --hold 4 --crf 26 --still-keep 4 --still-min 4)
+	CUT_ARGS=(
+		--speed 1.25
+		--edge-speed 1.0
+		--real-through-mark agent-lanes
+		--real-from-mark build-verified
+		--mark-lead-max 90
+		--hold 4
+		--crf 26
+		--still-keep 4
+		--still-min 4
+	)
 	;;
 todo-marathon)
 	ASSET=assets/demo-todo-hd.webp
@@ -333,6 +324,7 @@ PROOF_LLM_BASE_URL="${PROOF_LLM_BASE_URL}" \
 	SCENE_FONT_SIZE=21 \
 	SCENE_BG="#171b22" \
 	SCENE_FG="#d3dae6" \
+	SCENE_CWD="${SCENE_WORKDIR}" \
 	SCENE_SETTLE_SCALE="${SETTLE_SCALE:-2}" \
 	SCENE_GIF=0 \
 	SCENE_SETTINGS="${SETTINGS}" \

@@ -509,7 +509,7 @@ One setting grades how densely a run records. Each level includes the previous l
 | `off` | No added telemetry. Normal conversation and tool history is still stored and remains fully resumable. | none |
 | `basic` | Lifecycle sequence, running/ended state and checkpoints; task-state transitions; tool timing/status; model request timing. | cheap timestamps and counters |
 | `rich` | Context attribution; sent/received agent-message weight and outcomes; tool scheduling and result weight; model token throughput; richer session rollups. | bounded result tokenization and structured counters |
-| `ultra` | Tool argument fingerprints and collision-resistant digests, abort state, context-to-compaction links, directional agent routes, per-task transitions, cache/reasoning detail, and provider provenance. | bounded hashing and provenance fields |
+| `ultra` | Tool argument fingerprints and collision-resistant digests, abort state, context-to-compaction links, directional agent routes, per-task transitions, cache/reasoning detail, and provider source details. | bounded hashing and source fields |
 
 The category policy is explicit: lifecycle, tool spans, and goal/task telemetry begin at `basic`; context breakdown, agent communication, and analytics rollups begin at `rich`. `ultra` permits the complete structured payload for every category. Unknown levels fail closed as `off`.
 

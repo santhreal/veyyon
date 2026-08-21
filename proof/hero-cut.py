@@ -215,6 +215,43 @@ def mark_spans(
 	return spans
 
 
+def mark_window(
+	marks: Path, name: str, *, lead: float = MARK_LEAD, lead_max: float = MARK_LEAD_MAX, hold: float = HOLD
+) -> tuple[float, float]:
+	"""Return the source-time window owned by one named mark."""
+	for line in marks.read_text().splitlines():
+		fields = line.split("\t")
+		if len(fields) < 2 or fields[0] != name:
+			continue
+		mark = float(fields[1])
+		own = lead
+		if len(fields) > 2 and fields[2].strip():
+			own = min(float(fields[2]), lead_max)
+		return (max(0.0, mark - max(own, lead)), mark + hold)
+	raise ValueError(f"mark {name!r} is not present in {marks}")
+
+
+def apply_edge_speed(
+	spans: list[tuple[float, float]],
+	*,
+	middle_speed: float,
+	edge_speed: float,
+	real_through: float | None,
+	real_from: float | None,
+) -> list[tuple[float, float, float]]:
+	"""Split source spans where the normal-speed opening or finale begins."""
+	boundaries = [point for point in (real_through, real_from) if point is not None]
+	rated: list[tuple[float, float, float]] = []
+	for lo, hi in spans:
+		points = [lo, *(point for point in boundaries if lo < point < hi), hi]
+		for start, end in zip(points, points[1:], strict=True):
+			at_edge = (real_through is not None and end <= real_through) or (
+				real_from is not None and start >= real_from
+			)
+			rated.append((start, end, edge_speed if at_edge else middle_speed))
+	return rated
+
+
 def still_stretches(path: Path, *, floor: float = NOISE_SCORE, min_still: float) -> list[tuple[float, float]]:
 	"""Stretches where nothing above the noise floor happened at all.
 
@@ -295,12 +332,18 @@ def squeeze(
 
 
 def cut(
-	path: Path, out: Path, spans: list[tuple[float, float]], *, width: int, fps: int, speed: float, crf: int = 22
+	path: Path,
+	out: Path,
+	spans: list[tuple[float, float, float]],
+	*,
+	width: int,
+	fps: int,
+	crf: int = 22,
 ) -> None:
 	inputs: list[str] = []
 	chains: list[str] = []
 	labels = ""
-	for i, (lo, hi) in enumerate(spans):
+	for i, (lo, hi, speed) in enumerate(spans):
 		inputs += ["-ss", f"{lo:.3f}", "-t", f"{hi - lo:.3f}", "-i", str(path)]
 		chains.append(
 			f"[{i}:v]setpts=PTS/{speed},scale={width}:-2:flags=lanczos,fps={fps},setpts=N/{fps}/TB[v{i}]"
@@ -393,6 +436,19 @@ def main() -> int:
 	parser.add_argument("--fps", type=int, default=30)
 	parser.add_argument("--speed", type=float, default=2.0)
 	parser.add_argument(
+		"--edge-speed",
+		type=float,
+		help="speed for the opening and finale selected by named marks; defaults to --speed",
+	)
+	parser.add_argument(
+		"--real-through-mark",
+		help="keep normal speed through this named mark's hold window",
+	)
+	parser.add_argument(
+		"--real-from-mark",
+		help="resume normal speed at the start of this named mark's measured window",
+	)
+	parser.add_argument(
 		"--mark-lead",
 		type=float,
 		default=MARK_LEAD,
@@ -428,6 +484,11 @@ def main() -> int:
 	parser.add_argument("--dry-run", action="store_true", help="print the windows, write nothing")
 	args = parser.parse_args()
 
+	if (args.real_through_mark or args.real_from_mark) and not args.marks:
+		parser.error("--real-through-mark and --real-from-mark require --marks")
+	if args.speed <= 0 or (args.edge_speed is not None and args.edge_speed <= 0):
+		parser.error("speeds must be greater than zero")
+
 	if args.marks:
 		spans = mark_spans(
 			args.take, args.marks, lead=args.mark_lead, lead_max=args.mark_lead_max, hold=args.hold
@@ -451,14 +512,49 @@ def main() -> int:
 		if not spans:
 			print(f"{args.take}: the whole cut was untouched screen", file=sys.stderr)
 			return 1
-	kept = sum(hi - lo for lo, hi in spans)
-	print(f"{args.take}: {duration(args.take):.1f}s -> {kept / args.speed:.1f}s in {len(spans)} segments")
-	for lo, hi in spans:
-		print(f"  {lo:8.1f} -> {hi:8.1f}  ({hi - lo:.1f}s)")
+
+	edge_speed = args.edge_speed if args.edge_speed is not None else args.speed
+	try:
+		real_through = (
+			mark_window(
+				args.marks,
+				args.real_through_mark,
+				lead=args.mark_lead,
+				lead_max=args.mark_lead_max,
+				hold=args.hold,
+			)[1]
+			if args.marks and args.real_through_mark
+			else None
+		)
+		real_from = (
+			mark_window(
+				args.marks,
+				args.real_from_mark,
+				lead=args.mark_lead,
+				lead_max=args.mark_lead_max,
+				hold=args.hold,
+			)[0]
+			if args.marks and args.real_from_mark
+			else None
+		)
+	except ValueError as error:
+		print(str(error), file=sys.stderr)
+		return 2
+	rated_spans = apply_edge_speed(
+		spans,
+		middle_speed=args.speed,
+		edge_speed=edge_speed,
+		real_through=real_through,
+		real_from=real_from,
+	)
+	kept = sum((hi - lo) / speed for lo, hi, speed in rated_spans)
+	print(f"{args.take}: {duration(args.take):.1f}s -> {kept:.1f}s in {len(rated_spans)} segments")
+	for lo, hi, speed in rated_spans:
+		print(f"  {lo:8.1f} -> {hi:8.1f}  ({hi - lo:.1f}s at {speed:.2f}x)")
 	if args.dry_run:
 		return 0
 
-	cut(args.take, args.mp4, spans, width=args.width, fps=args.fps, speed=args.speed, crf=args.crf)
+	cut(args.take, args.mp4, rated_spans, width=args.width, fps=args.fps, crf=args.crf)
 	print(f"wrote {args.mp4} ({args.mp4.stat().st_size} bytes, {duration(args.mp4):.1f}s)")
 	if args.webp:
 		webp(args.mp4, args.webp, width=args.webp_width, fps=args.webp_fps, quality=args.webp_quality)

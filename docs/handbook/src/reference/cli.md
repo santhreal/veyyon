@@ -101,7 +101,7 @@ The `session.instrumentation` setting controls the stored detail:
 - `off` stores the normal resumable conversation and tool history without extra telemetry. Stats still use normal assistant usage and messages.
 - `basic` adds lifecycle and checkpoints, task-state transitions, tool wall-clock and status, and model request timing.
 - `rich` adds context attribution, agent-message delivery, tool scheduling and result weight, model token throughput, and richer rollups.
-- `ultra` adds argument fingerprints, abort state, compaction links, directional agent routes, per-task transitions, cache and reasoning detail, and upstream-provider provenance.
+- `ultra` adds argument fingerprints, abort state, compaction links, directional agent routes, per-task transitions, cache and reasoning detail, and upstream-provider details.
 
 The setting applies immediately. A new level starts a new measured lifecycle interval. A turn already in flight keeps the lower of its dispatch level and the current level when it is stored. If you turn instrumentation off before that turn finishes, its added study fields are omitted. Normal conversation and tool history remain resumable.
 

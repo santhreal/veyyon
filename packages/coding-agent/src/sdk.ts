@@ -3795,10 +3795,10 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			...registeredTools.filter(t => !t.definition.defaultInactive).map(t => t.definition.name),
 		];
 		// Everything above is INPUT GATHERING. The six stages that turn it into an active set —
-		// dropping `goal`, dropping `defaultInactive`, merging the MCP selection, appending
-		// `alwaysInclude`, hiding discoverables under `all`, and the harness allowlist — all live in
-		// `resolveInitialActiveToolNames` (`tools/loading/policy.ts`), together with every other
-		// tool-loading rule. Note `explicitToolNames` is the RAW `options.toolNames`, NOT
+		// ensuring `goal`, dropping `defaultInactive`, merging the MCP selection, appending
+		// `alwaysInclude`, hiding discoverables under `all`, and applying the harness allowlist —
+		// live in `resolveInitialActiveToolNames` (`tools/loading/policy.ts`).
+		// `explicitToolNames` is the RAW `options.toolNames`, NOT
 		// `explicitlyRequestedToolNames`: the yield / auto-learn names forced into the latter are
 		// activations, not user requests, and must not exempt a tool from discovery-all hiding.
 		const {
@@ -3809,6 +3809,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		} = resolveInitialActiveToolNames({
 			explicitToolNames: options.toolNames ? normalizeToolNames(options.toolNames) : undefined,
 			requestedToolNames: normalizedRequested,
+			goalEnabled: settings.get("goal.enabled"),
 			defaultInactiveToolNames,
 			hasRegistryTool: name => toolRegistry.has(name),
 			mcpDiscoveryEnabled,

@@ -24,7 +24,7 @@
 
 | Field | Type | Required | Description |
 |---|---|---:|---|
-| `items` | `Array<{ content: string; context?: string }>` | Yes | One or more memories to store. `minItems: 1`. Each item must be self-contained; `context` is optional per-item provenance. |
+| `items` | `Array<{ content: string; context?: string }>` | Yes | One or more memories to store. `minItems: 1`. Each item must be self-contained; `context` is optional source context. |
 
 ## Outputs
 The output depends on the active `memory.backend`.
@@ -103,7 +103,7 @@ Mnemopi:
 - Hindsight auto-retain settings:
   - `hindsight.retainEveryNTurns` default `3`
   - `hindsight.retainOverlapTurns` default `2`
-  - `hindsight.retainContext` default `"veyyon"` (provenance tag sent with each retain; not a recall filter: memories tagged `"omp"` under the prior default remain fully recallable)
+  - `hindsight.retainContext` default `"veyyon"` (source tag sent with each retain; not a recall filter: memories tagged `"omp"` under the prior default remain fully recallable)
   - `hindsight.retainMode` default `"full-session"`
 - Mnemopi retain settings:
   - `mnemopi.retainEveryNTurns` default `4`

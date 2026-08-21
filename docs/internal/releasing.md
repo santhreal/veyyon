@@ -193,8 +193,8 @@ hang off the draft and run in parallel.
    `releases/latest` on Linux x64, Linux arm64, macOS x64, macOS arm64, and
    Windows x64. Each run requires the installed binary to report the new tag.
 
-Nothing is code-signed, notarized, or attested, and no workflow claims
-provenance. The checksum sidecar is the whole integrity story.
+Nothing is code-signed, notarized, or attested, and no workflow claims a verified
+build origin. The checksum sidecar is the whole integrity story.
 
 Any failed, cancelled, or skipped required job files or updates one pinned
 `release-train` issue. Only a run where every required artifact succeeded closes

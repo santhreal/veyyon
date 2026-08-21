@@ -13,8 +13,8 @@ so conversion output matches the upstream package.
 
 The PDF grid and rendering modules also identify `@oharato/pdf2md-ts` v0.1.4
 as a source. That published package does not declare or include a license.
-This notice preserves the known provenance; it does not assert a license grant
-for that package.
+This notice records the known source; it does not assert a license grant for
+that package.
 
 MIT License
 

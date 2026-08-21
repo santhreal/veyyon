@@ -1,7 +1,7 @@
-Manage the active goal-mode objective.
+Create and manage the session's long-running goal.
 
 Use a single `op` field:
-- `create` starts a goal. Requires `objective`. Use only when no goal exists and no goal is paused.
+- `create` starts a goal from the user's objective. Requires `objective`. Use only when the user asks for persistent goal-mode work and no goal exists.
 - `get` returns the current goal (active or paused).
 - `resume` re-activates a paused goal so work can continue.
 - `complete` marks the goal complete after you have verified every deliverable against current evidence.
