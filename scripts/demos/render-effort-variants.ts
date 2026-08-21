@@ -7,15 +7,14 @@
  * comparable in a single image.
  *
  * Flags: `--width`, plus `--two-tier-only` or `--wide-only` to drop the other
- * model when you want a proof of one ladder alone.
+ * model when you want one ladder alone.
  *
  * Run:
  *     env -u NO_COLOR FORCE_COLOR=3 bun scripts/demos/render-effort-variants.ts --width 100 |
- *       bun scripts/demos/render-proof.ts --out assets/effort-variants --width 100 --scale 2
+ *       bun scripts/demos/render-proof.ts --out /tmp/effort-variants --width 100 --scale 2
  *
- * The committed single-model pairs come from the same command with
- * `--two-tier-only` and `--out assets/model-effort-two-tier`, or `--wide-only`
- * and `--out assets/model-effort-wide-ladder`.
+ * The output is a debugging aid and not a proof: it never enters `assets/`, a
+ * README, or a handbook page. See docs/handbook/src/foundations/verification.md.
  */
 import { buildModel } from "@veyyon/catalog/build";
 import { Effort } from "@veyyon/catalog/effort";

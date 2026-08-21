@@ -89,6 +89,16 @@ positioned, sized and clipped the way a session draws it. Write the file to a
 temporary path. A rasterized image never enters `assets/`, a README, or a handbook
 page as before-and-after evidence.
 
+Seventeen raster pairs are already committed under `assets/`. They were produced
+under an earlier rule that sanctioned them, they are not evidence, and no handbook
+page or README cites them; `proof/pics.html` enumerates the directory from disk and
+still lists them. Each is replaced by a real capture of its screen when that feature
+is next touched. `scripts/an-off-screen-raster-never-enters-assets.test.ts` pins the
+set by exact equality and fails on any addition, so the list only shrinks, and it
+fails as well on a demo driver that writes a render into `assets/`. Drivers write to
+a temporary directory; `scripts/demos/record-argot-settings.sh` is the shape a real
+settings differential takes.
+
 ## Related
 
 - [The repair cascade](../repair/cascade.md)
