@@ -168,6 +168,7 @@ export class ToolLoadRunner {
 export const TOOL_LOAD_CASES: readonly ToolLoadCase[] = [
 	{ name: "discovery-auto-under-threshold" },
 	{ name: "discovery-off", settings: { "tools.discoveryMode": "off" } },
+	{ name: "goal-disabled", settings: { "goal.enabled": false } },
 	{ name: "discovery-mcp-only", settings: { "tools.discoveryMode": "mcp-only" } },
 	{ name: "discovery-all", settings: { "tools.discoveryMode": "all" } },
 	{
