@@ -222,3 +222,8 @@ scratch-docs-lane/
 /assets/demo-hd-bottom.png
 /assets/demo-hd-settings-open.png
 /assets/prompt-architecture-shell.png
+
+# Working notes about how the work gets produced: handoffs, lane protocol,
+# requirement ledgers. Never published. README, CONTRIBUTING and RELEASING are
+# the contributor-facing surface; this is the scratch beside them.
+/.internal/
