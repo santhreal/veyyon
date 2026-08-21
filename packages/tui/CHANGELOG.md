@@ -5,6 +5,7 @@
 ### Fixed
 
 - A pinned footer's rows are excluded from the history ceiling even when no root child claims the native-scrollback replay contract. The ceiling was derived from the last replay-capable child alone, so a host that declares a pinned footer over a plain container — no transcript implementing replay — had no ceiling at all: growth that pushed the viewport top past the footer's first row committed that chrome into immutable native scrollback and, in the tallest cases, took a destructive erase-and-replay of the whole screen to repair the prefix it had just violated. A host whose transcript does implement replay was already bounded and is unaffected.
+- Kept the transcript on screen when a virtualized root compacts its committed rows. A root can now report the rows it dropped, and the engine slides its commit index onto the new frame instead of reading the shift as a committed-prefix divergence, erasing native scrollback and replaying a frame the component had already emptied. A root that drops rows without reporting them is rehydrated before any destructive replay, so it costs an extra full repaint rather than the history.
 
 ## [16.5.2] - 2026-07-14
 
