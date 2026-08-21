@@ -58,6 +58,14 @@ SECTIONS = [
         None,
     ),
     (
+        "Rebuilt surfaces, before and after",
+        "One surface recorded twice, on the tree without the rebuild and on the "
+        "tree with it. The same scene at the same width and the same second of "
+        "the same script, so the only difference on the row is the change.",
+        lambda n: n.endswith(("-before", "-after")),
+        None,
+    ),
+    (
         "Settings differentials",
         "One knob, off and on. A single screenshot of a default proves the "
         "setting was declared, not that it reaches behaviour.",
@@ -159,8 +167,15 @@ def scene_key(scene):
     return key
 
 
+# Suffix pairs that belong on one row, in the order they should be read. A
+# comparison split across two rows is half an answer: the dark fill that reads
+# as a slab on grey and vanishes on black is the same class of finding as a
+# header that lost its count, and both are only visible side by side.
+PAIR_SUFFIXES = (("-grey", "-black"), ("-before", "-after"))
+
+
 def pair_up(entries):
-    """Fold -grey/-black siblings into one row, leaving everything else alone.
+    """Fold paired siblings into one row, leaving everything else alone.
 
     Pairs on the base stem rather than on whichever suffix arrives first. A
     directory listing sorts -black ahead of -grey, so keying off the grey half
@@ -170,15 +185,19 @@ def pair_up(entries):
     rows, emitted = [], set()
     for entry in entries:
         stem = entry[1]
-        base = stem[:-5] if stem.endswith("-grey") else (
-            stem[:-6] if stem.endswith("-black") else None)
-        if base is None:
+        for left, right in PAIR_SUFFIXES:
+            if stem.endswith(left):
+                base = stem[: -len(left)]
+                break
+            if stem.endswith(right):
+                base = stem[: -len(right)]
+                break
+        else:
             rows.append((stem, [entry]))
             continue
         if base in emitted:
             continue
-        pair = [by_stem.get(base + "-grey"), by_stem.get(base + "-black")]
-        pair = [e for e in pair if e]
+        pair = [e for e in (by_stem.get(base + left), by_stem.get(base + right)) if e]
         emitted.add(base)
         rows.append((base, pair))
     return rows
