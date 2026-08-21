@@ -46,6 +46,7 @@ import {
 	waitForBrowserRun,
 } from "./run-cancellation";
 import { cloneSafe, RunOutput } from "./run-output";
+import { guardTabApi } from "./tab-api-guard";
 import type {
 	Observation,
 	ObservationEntry,
@@ -203,7 +204,7 @@ interface ScreenshotOptions {
 	silent?: boolean;
 }
 
-interface TabApi {
+export interface TabApi {
 	readonly name: string;
 	readonly page: Page;
 	readonly signal?: AbortSignal;
@@ -869,7 +870,9 @@ export class WorkerCore {
 			throwIfAborted(signal);
 			const page = this.#requirePage();
 			const browser = this.#requireBrowser();
-			const tabApi = this.#createTabApi(msg.name, msg.timeoutMs, signal, msg.session, output, screenshots, active);
+			const tabApi = guardTabApi(
+				this.#createTabApi(msg.name, msg.timeoutMs, signal, msg.session, output, screenshots, active),
+			);
 			const runtime = this.#ensureRuntime(msg.session);
 			runtime.setCwd(msg.session.cwd);
 			runtime.setRunScope({
