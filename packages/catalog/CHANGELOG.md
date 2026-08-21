@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- The GitLab Duo Workflow discovery reader accepts a `signal` and passes it to every request of the handshake, and stops the walk when it fires. The runtime entry point runs on a turn's critical path — a namespace lookup, a project lookup, a paginated group walk and two GraphQL queries in series — with no deadline of any kind, so an endpoint that accepted the connection and answered nothing held the turn open for as long as the platform's socket timeout allowed. Worse, each step reported a stall as "this candidate produced nothing usable" and the reader concluded with "Set GITLAB_DUO_NAMESPACE_ID to a root namespace": a configuration remedy for a network fault. An abort now ends the handshake and surfaces as the deadline it was. A catalog refresh that passes no signal is unchanged, and one that passes a signal still degrades to `null` rather than throwing, because `fetchGitLabDuoWorkflowModels` catches.
+
 ## [16.5.2] - 2026-07-14
 
 ### Fixed
