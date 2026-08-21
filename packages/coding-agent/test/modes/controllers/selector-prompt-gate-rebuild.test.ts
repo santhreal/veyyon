@@ -1,21 +1,24 @@
 /**
- * Flipping a setting the prompt gates on rebuilds the prompt, and flipping a frozen one says so.
+ * The settings screen applies a prompt gate by WRITING it, and says so when a flip cannot land.
  *
- * WHY THIS SUITE EXISTS. `prompt-gate-registry.test.ts` proves the registry is one complete
- * list and that the controller reads it. That is a check on the source text, and a check on
- * source text cannot tell you the rebuild actually fires: the call could be inside a branch
- * that never runs, or after an early `return` for a settings prefix.
+ * WHY THIS SUITE EXISTS. The controller carried a `case` per setting deciding which flips
+ * rebuild the system prompt, and it had two of the nine. Flipping `subagent.batch` or
+ * `tools.format` changed the setting and left the model reading a prompt that described the
+ * previous configuration, with nothing logged, until an unrelated rebuild happened to fire.
  *
- * The bug this locks out was exactly a wiring failure, not a bad list. The controller carried
- * a `case` per setting deciding which flips rebuild the system prompt, and it had two of the
- * nine. Flipping `subagent.batch` or `tools.format` changed the setting and left the model
- * reading a prompt that described the previous configuration, with nothing logged, until an
- * unrelated rebuild happened to fire. So these tests drive the real
- * `SelectorController.handleSettingChange` and assert what reached the session.
+ * WHERE THE REBUILD LIVES NOW, AND WHY NOT HERE. Reading the registry fixed the list but left
+ * the trigger beside ONE writer. `AgentSession` also rebuilt, off the settings store, for a
+ * second list of eight paths — the trigger every other writer reaches (a slash command, an SDK
+ * or ACP host, a plugin). Five paths were in both, so a flip through this screen rebuilt twice;
+ * six live gates were in the session's list not at all, so writing one anywhere but here did
+ * nothing. The session's listener is the single trigger now, asking the same registry, and this
+ * controller must NOT rebuild: `test/a-settings-write-rebuilds-the-prompt-it-changes.test.ts`
+ * drives real writes at a real session and owns that half.
  *
- * The frozen half matters for the same reason. A gate this session captured at startup cannot
- * follow a flip, and the settings screen shows the new value either way, so an operator had no
- * way to distinguish an applied change from one that did nothing at all.
+ * What is still this screen's own contract is the frozen half. A gate this session captured at
+ * startup cannot follow a flip, and the settings screen shows the new value either way, so
+ * without the notice an operator has no way to distinguish an applied change from one that did
+ * nothing at all. Nothing outside a UI can say that, so nothing outside a UI can test it.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import { Settings } from "@veyyon/coding-agent/config/settings";
@@ -69,35 +72,25 @@ function harness(): Harness {
 }
 
 describe("flipping a live prompt gate", () => {
-	it.each([...LIVE_PROMPT_GATE_SETTINGS])("rebuilds the system prompt for %s", setting => {
-		// Every live gate, driven individually. The seven that used to be missing are in here,
-		// and so are the two that worked, so a change that fixes one by breaking another fails.
+	it.each([...LIVE_PROMPT_GATE_SETTINGS])("does not rebuild the prompt itself for %s", setting => {
+		// The WRITE rebuilds, in the session's effective-setting listener. A rebuild here as well
+		// would be the second owner back: two rebuilds for one flip, and a trigger that still only
+		// covers flips arriving through this screen.
 		const { controller, refreshBaseSystemPrompt } = harness();
 
 		controller.handleSettingChange(setting, Settings.instance.get(setting as never));
 
-		expect(refreshBaseSystemPrompt, `${setting} did not rebuild the prompt`).toHaveBeenCalledTimes(1);
+		expect(refreshBaseSystemPrompt, `${setting} rebuilt from the UI as well as the write`).not.toHaveBeenCalled();
 	});
 
-	it("names the setting in the rebuild reason, so a prompt rebuild can be traced to a flip", () => {
-		// The reason string reaches the session's rebuild log. "unspecified" would leave an
-		// operator debugging a prompt change with no way to tell what caused it.
-		const { controller, refreshBaseSystemPrompt } = harness();
+	it("says nothing about a live gate, which needs no notice", () => {
+		// The warning is reserved for a flip that cannot land. Warning on one that did is how the
+		// real notice gets ignored.
+		const { controller, showWarning } = harness();
 
 		controller.handleSettingChange("subagent.batch", true);
 
-		expect(refreshBaseSystemPrompt).toHaveBeenCalledWith("setting:subagent.batch");
-	});
-
-	it("rebuilds exactly once, not once per owner of the setting", () => {
-		// `tui.renderMermaid` also has TUI side effects in the switch below the gate check, and
-		// it used to do its own rebuild there. Two rebuilds would mean the hand-written list is
-		// back alongside the registry.
-		const { controller, refreshBaseSystemPrompt } = harness();
-
-		controller.handleSettingChange("tui.renderMermaid", false);
-
-		expect(refreshBaseSystemPrompt).toHaveBeenCalledTimes(1);
+		expect(showWarning).not.toHaveBeenCalled();
 	});
 
 	it("still performs the setting's other side effects", () => {
@@ -118,29 +111,6 @@ describe("flipping a live prompt gate", () => {
 
 		expect(rebuildChatFromMessages).toHaveBeenCalledTimes(1);
 		expect(resetDisplay).toHaveBeenCalledTimes(1);
-	});
-
-	it("surfaces a failed rebuild instead of dropping the rejection", () => {
-		// The rebuild is fire-and-forget. Without the catch a failure would be an unhandled
-		// rejection and the operator would see a saved setting and an unchanged prompt.
-		const refreshBaseSystemPrompt = vi.fn(() => Promise.reject(new Error("template unreadable")));
-		const showError = vi.fn();
-		const controller = new SelectorController({
-			session: { refreshBaseSystemPrompt },
-			showWarning: vi.fn(),
-			showError,
-			ui: { invalidate: vi.fn(), requestRender: vi.fn(), resetDisplay: vi.fn() },
-			rebuildChatFromMessages: vi.fn(),
-			statusLine: { invalidate: vi.fn(), updateSettings: vi.fn() },
-		} as unknown as InteractiveModeContext);
-
-		controller.handleSettingChange("personality", "none");
-
-		return Bun.sleep(0).then(() => {
-			expect(showError).toHaveBeenCalledTimes(1);
-			expect(String(showError.mock.calls[0][0])).toContain("personality");
-			expect(String(showError.mock.calls[0][0])).toContain("template unreadable");
-		});
 	});
 });
 

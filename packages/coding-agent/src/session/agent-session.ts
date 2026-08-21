@@ -367,6 +367,7 @@ import {
 	unresolvedSlashCommandName,
 } from "../slash-commands/helpers/parse";
 import { invalidateHostMetadata } from "../ssh/connection-manager";
+import { isLivePromptGate } from "../system-prompt-builder/gate-registry";
 import { usesCodexTaskPrompt } from "../task/prompt-policy";
 import { enabledSubagentNames, preferredSubagentName, resolveDelegation } from "../task/subagent-settings";
 import {
@@ -822,16 +823,35 @@ function createCodexCompactionContext(options: {
 	};
 }
 
-const PROMPT_AFFECTING_SETTING_PATHS: Readonly<Record<string, true>> = {
+/**
+ * Settings that change the SHAPE OF THE TOOLS the model is handed, rather than
+ * any text in the system prompt.
+ *
+ * WHY THIS IS NOT A LIST OF PROMPT GATES. Which settings rewrite the prompt is
+ * answered in one place, `system-prompt-builder/gate-registry.ts`, and the
+ * listener below reads it through {@link isLivePromptGate}. This table used to
+ * restate five of those rows and omit the other five, which is the same
+ * two-lists-that-must-agree failure the registry exists to end: writing
+ * `personality`, `tools.format`, `inlineToolDescriptors`, `includeModelInPrompt`,
+ * `tui.renderMermaid` or `tools.intentTracing` from anything other than the
+ * settings selector (a slash command, an SDK or ACP host, a plugin) changed the
+ * configuration and left the prompt describing the previous one.
+ *
+ * These three are genuinely not prompt gates: they gate no template variable and
+ * no runtime section, they decide the `task` tool's own description and schema
+ * (`tools/task/index.ts` reads all three per rebuild), and nothing else notices
+ * when one is written. A rebuild is how the model is told.
+ */
+export const TOOL_SHAPE_SETTING_PATHS: Readonly<Record<string, true>> = {
 	"async.enabled": true,
-	"subagent.enabled": true,
-	"subagent.batch": true,
-	"subagent.agents": true,
-	"subagent.delegation": true,
 	"subagent.isolation.mode": true,
-	"subagent.maxConcurrency": true,
 	"subagent.maxNestedSpawnDepth": true,
 };
+
+/** Whether writing `path` must rebuild the prompt the model is holding. */
+function rebuildsThePrompt(path: string): boolean {
+	return isLivePromptGate(path) || TOOL_SHAPE_SETTING_PATHS[path] === true;
+}
 
 /**
  * Per-turn prune cache window. A tool result whose all-message suffix exceeds
@@ -3412,7 +3432,7 @@ export class AgentSession {
 			if (this.#advisors.length > 0 && !this.#advisorRuntimeMatchesCurrentConfig()) this.#stopAdvisorRuntime();
 			this.#buildAdvisorRuntime(true);
 		});
-		this.#unsubscribePromptSettings = this.settings.onEffectiveSettingChanged?.((path, value) => {
+		this.#unsubscribePromptSettings = this.settings.onEffectiveSettingChanged((path, value) => {
 			if (this.#isDisposed) return;
 			// Disabling either half of the todo-reminder feature is an explicit
 			// lifecycle boundary. Reset synchronously with the effective setting
@@ -3438,13 +3458,17 @@ export class AgentSession {
 					?.update(this.settings.get("session.cpuLimitCores"), this.settings.get("session.cpuLimitKill"))
 					.catch(error => logger.warn("CPU limit update failed", { error: errorMessage(error) }));
 			}
-			if (PROMPT_AFFECTING_SETTING_PATHS[path] !== true) return;
+			if (!rebuildsThePrompt(path)) return;
 			this.#promptRefresh = this.#promptRefresh
 				.then(async () => {
 					if (!this.#isDisposed) await this.refreshBaseSystemPrompt(`setting:${path}`);
 				})
 				.catch(error => {
-					logger.debug("System prompt refresh after setting change failed", {
+					// `warn`, not `debug`: this is the only report a failed rebuild gets
+					// now that the trigger lives here rather than in the settings UI, and
+					// the session it leaves behind is describing a configuration the
+					// operator has already changed.
+					logger.warn("System prompt refresh after setting change failed", {
 						path,
 						error: errorMessage(error),
 					});

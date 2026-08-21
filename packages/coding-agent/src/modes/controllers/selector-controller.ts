@@ -49,7 +49,7 @@ import {
 	toResetUsageAccounts,
 } from "../../slash-commands/helpers/reset-usage";
 import type { SubcommandDef } from "../../slash-commands/types";
-import { frozenGateNotice, isLivePromptGate } from "../../system-prompt-builder/gate-registry";
+import { frozenGateNotice } from "../../system-prompt-builder/gate-registry";
 import { type ConfiguredThinkingLevel, hasConfigurableThinkingEffort } from "../../thinking";
 import { isImageProviderPreference, setPreferredImageProvider } from "../../tools/image-gen";
 import { shortenPath } from "../../tools/render-utils";
@@ -594,24 +594,22 @@ export class SelectorController {
 			});
 		}
 
-		// Any setting the prompt gates on rebuilds the prompt, read off the ONE registry that
-		// records which those are (`system-prompt-builder/gate-registry.ts`). This used to be a
-		// `case` per setting and carried two of the nine: flipping `subagent.batch`,
-		// `subagent.delegation`, `subagent.maxConcurrency`, `subagent.agents`,
-		// `includeModelInPrompt` or `tools.format` changed the setting and
-		// left the prompt describing the previous configuration, with nothing logged. The
-		// switch below still runs, for the UI side effects a flip also needs.
-		if (isLivePromptGate(id)) {
-			this.ctx.session.refreshBaseSystemPrompt(`setting:${id}`).catch(err => {
-				this.ctx.showError(`Failed to apply "${id}" to the system prompt: ${errorMessage(err)}`);
-			});
-		} else {
-			// A prompt gate this session captured at startup cannot follow the flip. Saying so is
-			// the point: the settings UI shows the new value either way, so without this the
-			// operator has no way to tell an applied change from one that did nothing.
-			const frozen = frozenGateNotice(id);
-			if (frozen !== undefined) this.ctx.showWarning(frozen);
-		}
+		// A prompt gate this session captured at startup cannot follow the flip. Saying so is
+		// the point: the settings UI shows the new value either way, so without this the
+		// operator has no way to tell an applied change from one that did nothing.
+		//
+		// THE REBUILD ITSELF IS NOT TRIGGERED HERE. It follows the WRITE, in
+		// `AgentSession`'s effective-setting listener, which asks the same registry
+		// (`system-prompt-builder/gate-registry.ts`). This handler carried the trigger
+		// while the session's own table listed five of the ten live gates, so the two
+		// disagreed in both directions: a flip through this UI rebuilt twice, and a write
+		// from anywhere else — a slash command, an SDK or ACP host, a plugin — rebuilt for
+		// five of the settings and silently did not for `personality`, `tools.format`,
+		// `inlineToolDescriptors`, `includeModelInPrompt`, `tui.renderMermaid` and
+		// `tools.intentTracing`. One owner reached by every writer is the fix; the switch
+		// below still runs, for the UI side effects a flip also needs.
+		const frozen = frozenGateNotice(id);
+		if (frozen !== undefined) this.ctx.showWarning(frozen);
 
 		// Secret settings own live process state, not only persisted configuration.
 		// Return the coordinator-backed transition rather than dropping its
