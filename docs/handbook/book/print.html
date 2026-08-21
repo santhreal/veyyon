@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-50763d13.js";
+            window.path_to_searchindex_js = "searchindex-0c15bee8.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-79e2ba62.js"></script>
@@ -6904,8 +6904,8 @@ publish        Lanczos downsample to 1920x1080
   bash scripts/demos/record-hd-demo.sh demo-hd
 </code></pre>
 <p>The recorder keeps rehearsal output in the temporary directory it prints. Inspect the video and named frames there. Set <code>PUBLISH=1</code> only for a complete take whose frame guards all passed.</p>
-<p>The hero task prompt is static at <code>proof/prompts/demo-hd.md</code>. The scene sets the secret and submits that prompt once. The model creates its own persistent goal before planning, and goal continuation carries later model turns. The scene does not send phase-by-phase operator prompts.</p>
-<p>The archived take remains at capture speed. The landing-page cut keeps goal, todo, worker setup, verification, signing, goal completion, and presentation at 1×. Visible implementation between the worker launch and verified build plays at 1.25×. Named marks in the take select those boundaries; untouched screens are shortened to four seconds rather than accelerated.</p>
+<p>The scene’s task prompt is static at <code>proof/prompts/demo-hd.md</code>. The scene stores the secret, submits that prompt once, and sends no phase-by-phase operator prompts; every later turn is the model’s own. A take is published only when every named frame guard passed, so a scene whose model does not reach a guarded surface produces a rehearsal and nothing else. The frames and clip published today come from an earlier session of this scene, described in <a href="#recorded-end-to-end-workflow">Examples</a>.</p>
+<p>The archived take remains at capture speed. The landing-page cut keeps the plan, the worker setup, verification and signing at 1×. Visible implementation between the worker launch and the verified build plays at 1.25×. Named marks in the take select those boundaries; untouched screens are shortened to four seconds rather than accelerated.</p>
 <h3 id="vhs-settings-captures"><a class="header" href="#vhs-settings-captures">VHS settings captures</a></h3>
 <p>Use the same baseline for settings differentials:</p>
 <pre><code class="language-tape">Set Shell bash
