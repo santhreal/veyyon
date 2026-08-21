@@ -8,6 +8,7 @@
 
 - Dropping a `todo` task is no longer counted as doing it. The closing tally counted every TERMINAL status as done, so `op: "drop"` on one of six tasks answered `Dropped: Add error handling. Next: … Overall: 2/6 done, 4 open.` on one line, claiming two completions where the board held one completion and one abandonment. The arithmetic was right — closed and open are complements — but the word was not, and a model reading its own board back could not tell work it finished from work it gave up on. A tally now reads `Overall: 1/6 done, 1 dropped, 4 open.`, says nothing about dropped work when there is none, and admits only `completed` to the done side, so a terminal status added later lands in `dropped` rather than being absorbed into `done`.
 - Accepted clean OpenAI-compatible stream EOF after complete text or tool output and recovered reasoning-only completions as incomplete turns, preventing false missing-finish failures from DeepSeek V4 Flash and Muse Spark providers.
+- No user-facing change; normalized the semantic EOF implementation to the repository formatter.
 
 ## [1.1.1] - 2026-08-21
 

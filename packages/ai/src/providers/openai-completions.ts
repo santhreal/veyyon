@@ -1345,9 +1345,7 @@ const streamOpenAICompletionsOnce = (
 			// accompanying text or reasoning and remains retryable.
 			if (streamFinishedAt === undefined) {
 				const hasToolCalls = output.content.some(block => block.type === "toolCall");
-				const hasVisibleText = output.content.some(
-					block => block.type === "text" && block.text.trim().length > 0,
-				);
+				const hasVisibleText = output.content.some(block => block.type === "text" && block.text.trim().length > 0);
 				const hasThinking = output.content.some(
 					block => block.type === "thinking" && block.thinking.trim().length > 0,
 				);
