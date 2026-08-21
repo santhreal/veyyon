@@ -127,7 +127,19 @@ const FROZEN_OUTCOMES: Record<string, ToolLoadOutcome> = {
 		discoverable: [],
 	},
 	"discovery-all": {
-		active: ["read", "bash", "launch", "edit", "eval", "glob", "task", "search_tool_bm25", "write", "goal", "resolve"],
+		active: [
+			"read",
+			"bash",
+			"launch",
+			"edit",
+			"eval",
+			"glob",
+			"task",
+			"search_tool_bm25",
+			"write",
+			"goal",
+			"resolve",
+		],
 		discoverable: [
 			"builtin:ast_grep",
 			"builtin:ast_edit",
@@ -191,7 +203,19 @@ const FROZEN_OUTCOMES: Record<string, ToolLoadOutcome> = {
 		discoverable: [],
 	},
 	"browser-disabled-discovery-all": {
-		active: ["read", "bash", "launch", "edit", "eval", "glob", "task", "search_tool_bm25", "write", "goal", "resolve"],
+		active: [
+			"read",
+			"bash",
+			"launch",
+			"edit",
+			"eval",
+			"glob",
+			"task",
+			"search_tool_bm25",
+			"write",
+			"goal",
+			"resolve",
+		],
 		discoverable: [
 			"builtin:ast_grep",
 			"builtin:ast_edit",

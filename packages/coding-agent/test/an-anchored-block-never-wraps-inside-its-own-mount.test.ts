@@ -159,8 +159,8 @@ const NOT_A_CLAMPED_BLOCK: Record<string, string> = {
 	errorBannerContainer: "the error banner, which is a bordered component and not a row list",
 };
 
-beforeAll(() => {
-	initTheme("titanium");
+beforeAll(async () => {
+	await initTheme();
 });
 
 describe("an anchored block never wraps inside its own mount", () => {
