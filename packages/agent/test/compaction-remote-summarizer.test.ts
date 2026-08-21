@@ -7,7 +7,7 @@ import { requestRemoteCompaction } from "@veyyon/agent-core/compaction/remote-su
  *
  * - A non-2xx body that is not a summarizer error envelope (proxy page, captive
  *   portal, plain web server). Uncapped, the whole page was written to
- *   `~/.veyyon/logs` on every compaction attempt of every turn.
+ *   `~/.veyyon/profiles/<name>/logs` on every compaction attempt of every turn.
  * - A 200 response whose summary is blank. The summary REPLACES the history it
  *   summarizes, so accepting one deletes the conversation and reports success.
  *   The local summarizer in `generateSummary` already refuses; the remote

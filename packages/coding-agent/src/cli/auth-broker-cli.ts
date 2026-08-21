@@ -86,7 +86,7 @@ const TOKEN_FILE = new AuthTokenFile("auth-broker.token");
 async function runServe(flags: AuthBrokerCommandArgs["flags"]): Promise<void> {
 	// The broker is a long-running headless service: route structured logs to
 	// stdout so a process supervisor (pm2, journald, k8s) captures them, and
-	// skip the rotating ~/.veyyon/logs/ file the TUI default would have used.
+	// skip the rotating ~/.veyyon/profiles/<name>/logs/ file the TUI default would have used.
 	setLoggerTransports({ console: true, file: false });
 
 	const bind = flags.bind ?? DEFAULT_AUTH_BROKER_BIND;

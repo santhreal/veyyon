@@ -11,7 +11,7 @@
  * after `onExit`, it drains the pipe, keeps the last 16 KiB in a bounded ring,
  * and appends that tail to the `Error` surfaced to `onError` handlers. These
  * tests pin that contract so the exit-code-7 crash (and the next one) actually
- * shows up in `~/.veyyon/logs/veyyon.log` without regressing idle-worker shutdown.
+ * shows up in `~/.veyyon/profiles/<name>/logs/veyyon.log` without regressing idle-worker shutdown.
  */
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";

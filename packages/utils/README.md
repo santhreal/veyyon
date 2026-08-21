@@ -6,7 +6,7 @@ Shared utilities for [veyyon](https://github.com/santhreal/veyyon) packages. Bun
 
 | Module | Purpose |
 | --- | --- |
-| `logger` | Centralized logger writing to `~/.veyyon/logs/` with rotation (TUI-safe — never stdout) |
+| `logger` | Centralized logger writing to `~/.veyyon/profiles/<name>/logs/` with rotation (TUI-safe — never stdout) |
 | `prompt` | Handlebars-based prompt templating and formatting helpers |
 | `dirs` | Path helpers for veyyon config directories (`~/.veyyon`, XDG-aware on Linux) |
 | `stream` | `readLines` / `readJsonl` / `readSseEvents` helpers over `ReadableStream` |

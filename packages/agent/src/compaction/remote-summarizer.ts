@@ -43,7 +43,7 @@ export const REMOTE_COMPACTION_TIMEOUT_MS = 180_000;
  * `compaction.remoteEndpoint` points at whatever the operator configured, and a
  * misconfigured one is the common case: a corporate proxy, a captive portal, or
  * a plain web server in front of the intended summarizer answers with a whole
- * HTML page. Uncapped, that page was written to `~/.veyyon/logs` in full on
+ * HTML page. Uncapped, that page was written to `~/.veyyon/profiles/<name>/logs` in full on
  * every compaction attempt of every turn. Matches the 4096-char cap the Google
  * provider path uses for the same hazard.
  */

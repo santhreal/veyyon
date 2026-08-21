@@ -238,7 +238,7 @@ logger.warn("Theme file invalid, using fallback", { path });
 logger.debug("LSP fallback triggered", { reason });
 ```
 
-Logs go to `~/.veyyon/logs/veyyon.YYYY-MM-DD.log` with automatic rotation.
+Logs go to `~/.veyyon/profiles/<name>/logs/veyyon.YYYY-MM-DD.log` with automatic rotation.
 
 ## TUI Sanitization
 

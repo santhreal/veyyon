@@ -22,7 +22,7 @@ export async function runAcpMode(createSession: AcpSessionFactory, initialSessio
 		process.stderr.write(
 			"veyyon acp: ACP server speaking JSON-RPC over stdio.\n" +
 				'This command is meant to be spawned by an ACP client (e.g. Zed\'s "agent_servers" config), not run directly.\n' +
-				"Waiting for protocol frames on stdin; logs: ~/.veyyon/logs/\n",
+				"Waiting for protocol frames on stdin; logs: ~/.veyyon/profiles/<name>/logs/\n",
 		);
 	}
 	const input = stream.Writable.toWeb(process.stdout);
