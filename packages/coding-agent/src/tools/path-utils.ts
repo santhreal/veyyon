@@ -45,6 +45,7 @@ const INTERNAL_URL_SELECTOR_PART_RE = new RegExp(
 const INTERNAL_SCHEMES_WITH_SELECTORS: Record<string, true> = {
 	agent: true,
 	artifact: true,
+	history: true,
 	issue: true,
 	local: true,
 	memory: true,
@@ -67,15 +68,26 @@ const NARROW_NO_BREAK_SPACE = "\u202F";
 // measurably expensive on the hot path, so it is read once rather than as a
 // default argument evaluated on every `resolveToCwd`.
 const CURRENT_PLATFORM: NodeJS.Platform = process.platform;
+// Every scheme the internal-URL router registers. A scheme missing here is read
+// as a filesystem path: it escapes `assertNotInternalUrl`, gets its backslashes
+// rewritten, and is measured against the cwd boundary as though it named a file.
+// `internal-url-schemes-are-classified.test.ts` enumerates the router and fails
+// when this list and the router disagree, because five schemes had drifted out of
+// it (`history`, `issue`, `memory`, `pr`, `veyyon`) and nothing noticed.
 const TOP_LEVEL_INTERNAL_URL_PREFIXES = [
 	"agent://",
 	"artifact://",
-	"skill://",
-	"rule://",
+	"history://",
+	"issue://",
 	"local://",
 	"mcp://",
+	"memory://",
+	"pr://",
+	"rule://",
+	"skill://",
 	"ssh://",
 	"vault://",
+	"veyyon://",
 ] as const;
 
 function normalizeUnicodeSpaces(str: string): string {
