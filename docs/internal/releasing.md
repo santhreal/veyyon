@@ -574,4 +574,4 @@ the checked-in state. All three copies are gitignored and the assets are declare
 in `types/assets/index.d.ts`, so the generated state still type checks and cannot
 be committed by accident.
 
-*Verified against `bb79b0574` on 2026-08-11.*
+*Verified against `61c974a6c` on 2026-08-21.*

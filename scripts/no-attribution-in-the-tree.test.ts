@@ -396,7 +396,7 @@ describe("no comment or internal doc attributes a change to a person", () => {
 			// Present tense describes what someone MAY type, which is product behavior, not a record
 			// of anyone having typed it.
 			' * how the model learns WHERE to write when the operator says "remember this".',
-			// A provenance label that is itself quoted: the quotation opens before the verb, so it
+			// An origin label that is itself quoted: the quotation opens before the verb, so it
 			// names a category of origin rather than reproducing anything anybody said.
 			' * alone does not separate "the operator wrote this" from "the binary shipped this".',
 			// What somebody typed at the CLI is product behavior, and the quote inside it belongs to

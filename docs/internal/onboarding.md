@@ -137,7 +137,8 @@ format). Match the surrounding code.
 Pull requests are open to everyone, see [CONTRIBUTING.md](../../CONTRIBUTING.md).
 Open the PR against `main`. Put your change under the affected package's
 `## [Unreleased]` changelog section, keep the PR description short (what broke, the
-fix), and make sure `bun run check` and the tests pass. After pushing the PR,
-request the AI review by commenting `/devin review`; a maintainer makes the final call.
+fix), and make sure `bun run check` and the tests pass. Opening the PR runs
+`Checks` and `CI` against it; a maintainer makes the final call and decides
+whether an automated review is requested.
 
-*Verified against `7e4c6374` on 2026-08-06.*
+*Verified against `61c974a6c` on 2026-08-21.*
