@@ -5896,8 +5896,12 @@ version = "1.1.1"
 dependencies = [
  "anyhow",
  "blake3",
+ "bytes",
  "serde",
  "serde_json",
+ "tokio",
+ "unicode-segmentation",
+ "unicode-width 0.2.2",
 ]
 
 [[package]]

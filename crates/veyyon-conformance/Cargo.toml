@@ -1,3 +1,6 @@
+# The whole-product conformance corpus and its harness (issue #877). Test
+# infrastructure: it verifies the product and is never part of it, so it never
+# leaves this workspace. See src/lib.rs.
 [package]
 name = "veyyon-conformance"
 version.workspace = true
@@ -5,6 +8,7 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
+publish = false
 
 [lints]
 workspace = true
@@ -12,5 +16,9 @@ workspace = true
 [dependencies]
 anyhow.workspace = true
 blake3.workspace = true
+bytes.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+tokio.workspace = true
+unicode-segmentation.workspace = true
+unicode-width.workspace = true
