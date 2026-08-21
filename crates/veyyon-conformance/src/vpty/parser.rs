@@ -226,6 +226,7 @@ pub struct Parser {
 	cursor_visible:      bool,
 	alternate_screen:    bool,
 	malformed_sequences: Vec<MalformedSequence>,
+	responses:           Vec<String>,
 }
 
 impl Default for Parser {
@@ -250,6 +251,7 @@ impl Parser {
 			cursor_visible:      true,
 			alternate_screen:    false,
 			malformed_sequences: Vec::new(),
+			responses:           Vec::new(),
 		}
 	}
 
@@ -293,6 +295,17 @@ impl Parser {
 	#[must_use]
 	pub fn malformed_sequences(&self) -> &[MalformedSequence] {
 		&self.malformed_sequences
+	}
+
+	/// Returns slice of emitted response sequences (e.g. DSR / CPR replies).
+	#[must_use]
+	pub fn responses(&self) -> &[String] {
+		&self.responses
+	}
+
+	/// Drains and returns all recorded response sequences.
+	pub fn take_responses(&mut self) -> Vec<String> {
+		std::mem::take(&mut self.responses)
 	}
 
 	/// Clears the recorded malformed sequences.
@@ -702,7 +715,25 @@ impl Parser {
 				}
 			},
 			Some(CsiAction::DeviceStatusReport) => {
-				// No-op in headless consumer
+				let param = params.first().copied().unwrap_or(0);
+				match param {
+					5 => {
+						// Device status report -> OK: ESC [ 0 n
+						self.responses.push("\x1b[0n".to_string());
+					},
+					6 => {
+						// Cursor position report (CPR) -> ESC [ <row> ; <col> R (1-based)
+						let row = grid.cursor().row + 1;
+						let col = grid.cursor().col + 1;
+						self.responses.push(format!("\x1b[{row};{col}R"));
+					},
+					_ => {
+						self.malformed_sequences.push(MalformedSequence {
+							sequence: format!("\x1b[{params_str}n").into_bytes(),
+							reason:   format!("unknown DSR param {param}"),
+						});
+					},
+				}
 			},
 			None => {
 				self.malformed_sequences.push(MalformedSequence {
