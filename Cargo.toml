@@ -266,6 +266,23 @@ xxhash-rust = { version = "0.8", features = ["xxh64"] }
 # carry an identity that a committed corpus is keyed by.
 blake3 = "1"
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Wire Protocols
+# ──────────────────────────────────────────────────────────────────────────────
+# The Cursor provider does not speak HTTP/1.1. It calls `http2.connect()` on a
+# plain `http:` URL, which is h2c with prior knowledge: a client preface and a
+# SETTINGS exchange before any request. A mock that only parses request lines
+# cannot answer it, so every Cursor case would be unverifiable, including the
+# GOAWAY and RST_STREAM paths that `http2RetryVerdict` in packages/ai maps to
+# retry decisions and that nothing currently exercises against a real h2 peer.
+# `h2` is the framing layer under hyper, needs no TLS for h2c, and is used only
+# by the conformance harness, which is `publish = false`.
+h2 = "0.4"
+# `h2` speaks in `http` types and re-exports none of them, so a server that sets
+# a status or a header name has to name `http::Response`, `HeaderName` and
+# `HeaderValue` itself. It is already in the lock file under `h2`.
+http = "1"
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # System & Platform

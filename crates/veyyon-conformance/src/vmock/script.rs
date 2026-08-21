@@ -19,6 +19,11 @@ pub enum WireChunk {
 	HardClose,
 	/// Stall the connection indefinitely without writing further bytes.
 	IdleStall,
+	/// Emit an HTTP/2 `RST_STREAM` frame carrying the given error reason.
+	H2ResetStream(h2::Reason),
+	/// Emit an HTTP/2 `GOAWAY` frame carrying the given error reason and close
+	/// the connection.
+	H2GoAway(h2::Reason),
 }
 
 /// A scripted response programme for a route.
@@ -197,6 +202,22 @@ impl ResponseScript {
 	pub fn stall(mut self) -> Self {
 		self.chunks.push(WireChunk::IdleStall);
 		self
+	}
+
+	/// Create an HTTP/2 `RST_STREAM` response script with the given reason.
+	#[must_use]
+	pub fn h2_reset(reason: h2::Reason) -> Self {
+		let mut script = Self::new(200);
+		script.chunks.push(WireChunk::H2ResetStream(reason));
+		script
+	}
+
+	/// Create an HTTP/2 `GOAWAY` response script with the given reason.
+	#[must_use]
+	pub fn h2_goaway(reason: h2::Reason) -> Self {
+		let mut script = Self::new(200);
+		script.chunks.push(WireChunk::H2GoAway(reason));
+		script
 	}
 }
 
