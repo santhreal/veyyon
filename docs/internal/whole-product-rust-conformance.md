@@ -68,12 +68,12 @@ The materialized conformance corpus contains exactly 250,000 distinct JSONL test
 
 | ID | Subsystem | Scope | Total Cases | Exact Error Contracts |
 |---|---|---|---|---|
-| 01 | Rendering & Terminal UI | Cell-grid layouts, ANSI sanitization, dual-ground raster proofs, streaming HUD, transcript rebuilds, wide/combining glyphs | 22,000 | 384 |
+| 01 | Rendering & Terminal UI | Cell-grid layouts, ANSI sanitization, dual-ground raster proofs, streaming HUD, transcript rebuilds, wide/combining glyphs | 20,000 | 384 |
 | 02 | AI Providers & Streaming | SSE parser, token accumulator, chunk streaming, error boundaries, auth retry, backoff jitter, thinking blocks | 24,000 | 480 |
-| 03 | Tool Execution Runtime | Tool dispatch, parameter validation, schema checks, process lifecycles, streaming preview decoders, timeout traps | 28,000 | 512 |
+| 03 | Tool Execution Runtime | Tool dispatch, parameter validation, schema checks, process lifecycles, streaming preview decoders, timeout traps | 26,000 | 512 |
 | 04 | Session & Tree Engine | Fork, resume, branch switching, history serialization, compaction checkpoints, export/share formats, tree merges | 20,000 | 320 |
-| 05 | Persistence & Mnemopi | SQLite storage, WAL lifecycle, schema migrations, triple index, vector recall, cache coherence, crash recovery | 18,000 | 256 |
-| 06 | Concurrency & Agent Mesh | Swarm mesh, IRC bus routing, subagent spawning, task worker pools, deadlock avoidance, lock hierarchies | 16,000 | 256 |
+| 05 | Persistence & Mnemopi | SQLite storage, WAL lifecycle, schema migrations, triple index, vector recall, cache coherence, crash recovery | 16,000 | 256 |
+| 06 | Concurrency & Agent Mesh | Swarm mesh, IRC bus routing, subagent spawning, task worker pools, deadlock avoidance, lock hierarchies | 14,000 | 256 |
 | 07 | Security & Sandbox | Path traversal guards, credential boundary isolation, secret redaction, prompt injection fences, environment isolation | 14,000 | 384 |
 | 08 | CLI Engine & Modes | Argv parser, flag resolution, command dispatch, pipe mode, headless execution, TUI bootstrap, worker selectors | 16,000 | 256 |
 | 09 | Installers & Distribution | POSIX `install.sh`, Windows `install.ps1`, GitHub release asset verification, SHA-256 sidecars, self-updater | 10,000 | 192 |
@@ -81,7 +81,7 @@ The materialized conformance corpus contains exactly 250,000 distinct JSONL test
 | 11 | Configuration & Settings | Domain schema validation, cascade resolution (Home -> Profile -> Project), conditions, env overrides, flag bindings | 12,000 | 192 |
 | 12 | Context & Compaction | Token budget accounting, sliding-window truncation, message compaction, TTSR injection, handoff generation | 14,000 | 224 |
 | 13 | Memory Engine & Vectors | Fact extraction, embedding vector math, similarity recall, query ranking, SQLite store, cache eviction | 12,000 | 160 |
-| 14 | Editing & Hashline Engine | Hashline syntax parsing, snapshot tag verification, hunk application, conflict resolution, AST rewrites, undo/redo | 18,000 | 288 |
+| 14 | Editing & Hashline Engine | Hashline syntax parsing, snapshot tag verification, hunk application, conflict resolution, AST rewrites, undo/redo | 16,000 | 288 |
 | 15 | LSP Client & Diagnostics | JSON-RPC transport, protocol framing, document synchronization, diagnostic parsing, symbol resolution, crash restart | 10,000 | 160 |
 | 16 | Wire Protocol & Argot | Collab wire messages, guest client relay, Argot shorthand codec, token boundary expansion, handle streaming | 14,000 | 240 |
 | **Total** | | | **250,000** | **4,496** |
