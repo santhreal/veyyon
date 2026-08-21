@@ -47,10 +47,10 @@ The `crates/veyyon-conformance` crate is partitioned into targeted modules:
 - `src/corpus/`: Schema definitions, deterministic serialization, materialization, and canonical BLAKE3 deduplication.
 - `src/generator/`: Combinatorial, grammar-based, and property-based case generators using reproducible PRNG seeds.
 - `src/oracle/`: Independent reference models, algebraic invariants, state-transition assertions, and schema validators.
-- `src/vfs/`: In-memory copy-on-write virtual filesystem with configurable POSIX fault injection (`EIO`, `ENOSPC`, `EACCES`, partial reads/writes, race windows).
-- `src/vpty/`: VT100/xterm pseudoterminal emulator capturing ANSI escape streams, terminal resize events, raw input feeds, and 2D cell-grid states.
-- `src/vclock/`: Virtual monotonic time provider controlling timers, tick schedules, timeout expirations, and deadline accelerations without wall-clock sleeps.
-- `src/vmock/`: HTTP/1.1 and HTTP/2 mock engine serving deterministically chunked Server-Sent Events (SSE), protocol jitter, token streaming, and simulated upstream outages.
+- `src/vfs/`: Trait-backed copy-on-write filesystem and POSIX fault injector for in-process Rust targets; real-workspace fixture materialization for compiled-product targets.
+- `src/vpty/`: Cross-platform PTY/ConPTY driver plus VT100/xterm parser capturing ANSI streams, resize events, raw input, and 2D cell-grid states.
+- `src/vclock/`: Virtual monotonic time and deterministic scheduling for in-process Rust targets; bounded real-time assertions for compiled-product targets.
+- `src/vmock/`: Cross-platform loopback HTTP/1.1 and HTTP/2 engine serving deterministically chunked Server-Sent Events (SSE), protocol jitter, token streaming, and simulated upstream outages.
 - `src/render/`: Dual-ground rasterizer and cell-grid comparator rendering ANSI output to pixel grids on `#1e2127` (grey) and `#000000` (black) grounds.
 - `src/fuzz/`: libFuzzer and AFL++ harnesses for raw parser inputs, wire formats, Argot codec tokens, and hashline patches.
 - `src/model_check/`: State-machine model checker verifying session tree invariants, state transitions, tool execution lifecycles, and lock acquisition graphs.
@@ -84,7 +84,7 @@ schema is versioned independently from production persistence formats:
   },
   "environment": {
     "platform": "linux-x64",
-    "clock": "virtual",
+    "clock": "real-bounded",
     "filesystemFixture": "blake3:...",
     "providerFixture": "blake3:..."
   },
@@ -117,6 +117,15 @@ fixture digest, rejects an unknown `schemaVersion`, and writes the corpus only
 after the unique-case and exact-error counts match their allocations. Execution
 results live in separate replay/report artifacts; a run never rewrites the
 committed oracle.
+
+The corpus has exactly 245,000 `direct-rust` cases and 5,000
+`compiled-product` cases. Direct cases exhaust parser, state-machine, scheduling,
+and fault combinations against migrated production crates. Compiled cases launch
+the unmodified release artifact and prove process wiring, configuration,
+persistence, PTY, provider transport, worker, installer, and distribution
+contracts. The manifest computes both target totals, requires compiled coverage
+for all sixteen subsystems and every source-enumerated boundary family, and
+rejects drift. A case executes only the target declared in its record.
 
 ---
 
@@ -188,33 +197,27 @@ The execution harness provides complete isolation and determinism without requir
 - Emulates standard terminal dimensions (configurable cols/rows from 20x5 to 400x120).
 - Implements full ANSI X3.64 / VT100 / xterm escape code parsing.
 - Maintains a real-time 2D cell grid containing character codepoints, foreground/background 24-bit RGB colors, bold, dim, italic, underline, inverse, and strikethrough attributes.
-- Simulates arbitrary terminal resize events (`SIGWINCH`) at designated clock ticks.
-- Injects raw byte sequences (keystrokes, bracketed paste, mouse events, signal keys `Ctrl+C`, `Ctrl+D`) with microsecond-accurate virtual timestamps.
+- Drives terminal resizes through `SIGWINCH` on POSIX and ConPTY resize calls on Windows.
+- Injects ordered raw byte sequences (keystrokes, bracketed paste, mouse events, signal keys `Ctrl+C`, `Ctrl+D`) and records the resulting ANSI stream.
 
 ### 2. Virtual Filesystem (`vfs`)
 
-- In-memory hierarchical filesystem implementing POSIX file semantics.
-- Provides copy-on-write isolation per test shard to eliminate test crosstalk.
-- Programmable Fault Injection Engine:
-  - `InjectFault::Eio(path_glob, operation_mask)`
-  - `InjectFault::Enospc(path_glob, threshold_bytes)`
-  - `InjectFault::Eacces(path_glob, permission_bits)`
-  - `InjectFault::PartialWrite(path_glob, max_bytes_per_call)`
-  - `InjectFault::Latency(path_glob, virtual_delay_micros)`
-  - `InjectFault::TornWrite(path_glob, crash_at_byte)`
-- Tracks all path operations (reads, writes, stats, readdirs, unlinks) for post-run invariant assertions.
+- Implements an in-memory filesystem behind the same narrow Rust I/O traits used by migrated production crates. Production builds bind those traits to the operating-system filesystem.
+- Provides copy-on-write isolation per direct-Rust shard.
+- Injects `EIO`, `ENOSPC`, `EACCES`, partial writes, latency, and torn writes at that trait boundary and logs every operation for invariant checks.
+- Never claims to interpose operating-system syscalls in an unmodified binary.
+- Compiled-product cases instead launch in a unique real temporary workspace populated from the same content-addressed fixture. They use real permissions, quotas where portable, and crash boundaries; fault variants that cannot be induced portably remain direct-Rust cases.
 
 ### 3. Virtual Clock and Deterministic Scheduler (`vclock`)
 
-- Intercepts time query syscalls (`clock_gettime`, `gettimeofday`) and runtime APIs.
-- Replaces wall-clock sleeps with instant discrete-event simulation ticks.
-- Guarantees identical execution ordering across varying CPU architectures and core counts.
-- Enforces deadline expiration and watchdog triggers deterministically.
+- Direct-Rust cases bind production timer interfaces to virtual monotonic time and a deterministic discrete-event scheduler.
+- Compiled-product cases use the production system clock. The harness controls external event delivery, uses short real deadlines, asserts termination plus an upper bound, and never asserts exact elapsed time.
+- No compiled-product case depends on `clock_gettime`/`gettimeofday` interposition, dynamic-library injection, or privileged clock control.
 
 ### 4. Virtual Mock Provider Engine (`vmock`)
 
-- Embedded HTTP/1.1 and HTTP/2 loopback server bound to ephemeral UNIX domain sockets.
-- Intercepts all outgoing LLM provider API requests (`OpenAI`, `Anthropic`, `Gemini`, `Ollama`, custom endpoints).
+- Embedded HTTP/1.1 and HTTP/2 server bound to ephemeral TCP loopback ports on every supported platform.
+- Routes provider traffic through production-configurable base URLs. A network-deny guard fails any unexpected non-loopback connection rather than replacing a provider module after parsing.
 - Delivers chunked Server-Sent Events (SSE) token by token, supporting:
   - Custom streaming chunk sizes (1 byte to 1024 bytes per chunk).
   - Mid-stream network drops (`ECONNRESET`, `ETIMEDOUT`).
@@ -421,15 +424,20 @@ The rendering engine verifies frame-by-frame equivalence between:
 Corpus records are generated via deterministic pseudorandom property engines:
 
 ```rust
-pub struct ConformanceTestCase {
-    pub case_id: [u8; 32],
-    pub subsystem_id: u16,
-    pub contract_id: u32,
-    pub input_vector: serde_json::Value,
-    pub env_config: VirtualEnvironmentConfig,
-    pub fault_plan: Option<FaultPlan>,
-    pub oracle_spec: OracleSpecification,
-    pub expected_outcome: ExpectedOutcome,
+#[serde(rename_all = "camelCase")]
+pub struct ConformanceCase {
+    pub schema_version: u16,
+    pub case_id: CaseId,
+    pub generator: GeneratorMetadata,
+    pub subsystem: SubsystemRef,
+    pub contract: ContractRef,
+    pub target: TargetSpec,
+    pub dimensions: BTreeMap<String, serde_json::Value>,
+    pub environment: EnvironmentSpec,
+    pub stimulus: Vec<Stimulus>,
+    pub oracle: OracleSpec,
+    pub coverage: CoverageSpec,
+    pub provenance: Provenance,
 }
 ```
 
@@ -439,13 +447,15 @@ pub struct ConformanceTestCase {
 
 ### 2. Deduplication and Collision Rejection
 
-Every test case is identified by a canonical BLAKE3 content digest calculated over its normalized semantic payload:
+Every test case is identified by a canonical BLAKE3 content digest:
 
-$$\text{Digest} = \text{BLAKE3}\left(\text{subsystem} \parallel \text{contract} \parallel \text{canonical\_json}(\text{input}) \parallel \text{fault\_plan} \parallel \text{oracle\_spec}\right)$$
+$$\text{Digest} = \text{BLAKE3}\left(\text{canonical\_json}\left(\{\text{subsystem},\text{contract},\text{target.kind},\text{dimensions},\text{environment},\text{stimulus},\text{oracle}\}\right)\right)$$
 
-- The corpus builder indexes all 250,000 cases in a lock-free hash set.
-- Duplicate case detection during generation immediately aborts the build with a duplicate key error.
-- All 250,000 cases in the committed corpus are mathematically unique.
+This is the same field set defined by the canonical record above. It excludes
+`caseId`, generator metadata, `target.entry`, `target.artifactDigest`, coverage
+labels, provenance, and execution observations. The corpus builder indexes all
+250,000 digests, rejects the first duplicate semantic identity, and writes rows
+in digest order.
 
 ### 3. Independent Oracles
 
@@ -556,7 +566,7 @@ The mutation engine injects the following structural defects into compiled crate
 
 - The engine evaluates a minimum of **1,200 distinct mutations** across critical production paths.
 - **Pass Requirement**: The test suite must kill at least **1,000 mutations** (minimum mutation score of **83.3%**).
-- Any mutant on security boundaries, path traversal guards, or hash verifiers that survives execution constitutes an immediate gate failure.
+- Mutants on credentials, authorization, path traversal, checksum verification, tool-call completeness, or persisted-version rejection have a zero-survivor requirement. One survivor fails the gate regardless of the aggregate score.
 
 ---
 
@@ -570,15 +580,15 @@ The migration from TypeScript test suites and `packages/simulations` to `crates/
 +-----------------------------------------------------------------------------------+
 | [Wave 0: Infrastructure]  --> Scaffold crates/veyyon-conformance, VFS, VPTY, vmock |
 |           |                                                                       |
-| [Wave 1: Stateless Core]  --> Migrate Argot, Hashline, Wire, Utils, Catalog      |
+| [Wave 1: Stateless Core]  --> Subsystems 11 Configuration, 14 Editing, 16 Wire |
 |           |                                                                       |
-| [Wave 2: Native & State]  --> Migrate Natives, Persistence, Memory, AI Providers  |
-|           |                                                                       |
-| [Wave 3: Agent & Runtime] --> Migrate Coding Agent, Tools, Sessions, Compaction   |
-|           |                                                                       |
-| [Wave 4: UI & CLI Binary] --> Migrate TUI, Renderers, Workers, CLI Subcommands    |
-|           |                                                                       |
-| [Wave 5: Decommission]   --> Delete TS tests, Delete packages/simulations, CI Cut |
+| [Wave 2: State & Protocol] --> Subsystems 02 Providers, 05 Persistence,          |
+|           |                13 Memory, 15 LSP                                      |
+| [Wave 3: Agent & Safety]   --> Subsystems 03 Tools, 04 Sessions, 06 Concurrency, |
+|           |                07 Security, 12 Context                                |
+| [Wave 4: Product Surfaces] --> Subsystems 01 Rendering, 08 CLI, 09 Distribution,|
+|           |                10 Workers                                             |
+| [Wave 5: Decommission]     --> Delete superseded TS tests and simulations; cut CI |
 +-----------------------------------------------------------------------------------+
 ```
 
@@ -589,56 +599,57 @@ The migration from TypeScript test suites and `packages/simulations` to `crates/
 - Build the 250,000-case generator, deduplication validator, and JSONL materializer.
 - Establish baseline JUnit and SARIF reporting.
 
-### Wave 1: Stateless Core, Parsers, Wire Protocols, and Argot
+### Wave 1: Stateless Core, Configuration, Wire Protocols, and Argot
 
-- Migrate each production implementation before claiming direct Rust coverage:
+- Migrate Subsystems 11, 14, and 16 before claiming direct Rust coverage:
   - `packages/argot` -> a production `veyyon-argot` crate
   - `packages/hashline` -> a production `veyyon-hashline` crate
   - `packages/wire` -> a production `veyyon-wire` crate
-  - `packages/catalog` -> production Rust catalog crates
+  - Catalog classification and configuration schema logic -> production Rust crates
 - Keep independent conformance oracles declarative: they describe invariants and expected records but never reimplement the production algorithm.
-- Materialize 35,000 cases and 560 error contracts.
-- **Gate**: 100% pass on the Wave 1 corpus through the migrated production crates and compiled product; delete each corresponding TypeScript test only after the generated migration inventory proves one-for-one contract coverage.
+- Materialize exactly 42,000 cases and 720 error contracts.
+- **Gate**: 100% pass on the Wave 1 corpus through the migrated production crates and designated compiled-product cases; delete each corresponding TypeScript test only after the generated migration inventory proves one-for-one contract coverage.
 
-### Wave 2: Native Subsystems, Persistence, Memory, and AI Providers
+### Wave 2: Providers, Persistence, Memory, Native Support, and LSP
 
-- Port and verify contracts for:
+- Port and verify Subsystems 02, 05, 13, and 15:
   - `packages/natives` & `crates/veyyon-natives`
   - `packages/mnemopi` & SQLite persistence
   - `packages/ai` streaming and token accumulation
-- Materialize 60,000 cases and 1,024 error contracts.
-- **Gate**: 100% pass on Wave 2 corpus; delete tests in `packages/natives/test`, `packages/mnemopi/test`, `packages/ai/test`.
+  - LSP JSON-RPC transport and diagnostics
+- Materialize exactly 62,000 cases and 1,056 error contracts.
+- **Gate**: 100% pass on the Wave 2 corpus; delete superseded tests in `packages/natives/test`, `packages/mnemopi/test`, and `packages/ai/test` only after inventory parity.
 
-### Wave 3: Agent Runtime, Tool Execution, Sessions, and Compaction
+### Wave 3: Agent Runtime, Tools, Sessions, Concurrency, Security, and Context
 
-- Port and verify contracts for:
-  - `packages/agent` core runtime
+- Port and verify Subsystems 03, 04, 06, 07, and 12:
+  - `packages/agent` core runtime and concurrency
   - `packages/coding-agent` tool execution pipeline, enumerated from the live registry so every current or newly added tool requires coverage
-  - Session branching, resume, checkpoints, compaction, TTSR
-- Materialize 75,000 cases and 1,408 error contracts.
-- **Gate**: 100% pass on Wave 3 corpus; delete tests in `packages/agent/test`, `packages/coding-agent/src/tools/**/test`.
+  - Session branching, resume, checkpoints, compaction, TTSR, and security boundaries
+- Materialize exactly 88,000 cases and 1,696 error contracts.
+- **Gate**: 100% pass on the Wave 3 corpus; delete superseded tests in `packages/agent/test` and `packages/coding-agent` only after inventory parity.
 
-### Wave 4: TUI Rendering, CLI Modes, Workers, and Installers
+### Wave 4: TUI Rendering, CLI Modes, Workers, and Distribution
 
-- Port and verify contracts for:
+- Port and verify Subsystems 01, 08, 09, and 10:
   - Terminal UI rendering across all viewports and dual grounds
   - Worker subprocess lifecycles (`stats`, `js_eval`, `tiny_inference`, `tab`)
   - CLI flag parsing, dispatch, and error output
   - Distribution installers (`install.sh`, `install.ps1`)
-- Materialize 80,000 cases and 1,504 error contracts.
-- **Gate**: 100% pass on Wave 4 corpus; delete tests in `packages/tui/test`, `packages/coding-agent/src/modes/**/test`, `scripts/install-tests`.
+- Materialize exactly 58,000 cases and 1,024 error contracts.
+- **Gate**: 100% pass on the Wave 4 corpus; delete superseded package tests and executable installer scenarios. Retain repository-policy and release-safety checks under `scripts/` unless they move to Rust repository-linter tooling with contract parity.
 
 ### Wave 5: Parity Certification, Simulation Deletion, and Final Cutover
 
-1. **Parity Certification**: Run complete 250,000-case suite against release binary; assert zero failures.
-2. **Mutation Gate Run**: Execute mutation engine; certify >= 1,000 killed mutants.
+1. **Parity Certification**: Run all 250,000 cases through the target declared by each canonical record; assert zero failures. The 5,000 compiled-product cases use the release artifact.
+2. **Mutation Gate Run**: Execute at least 1,200 mutations; certify at least 1,000 killed and zero critical-path survivors.
 3. **Simulation Package Fold & Deletion**:
    - Transfer any remaining non-redundant scenario definitions from `packages/simulations` into `crates/veyyon-conformance`.
    - Delete `packages/simulations` directory and remove workspace entries from `package.json` and `tsconfig.json`.
-4. **Final TS Test Elimination**: Delete all remaining `.test.ts` files across the workspace.
+4. **Final Product-Test Elimination**: Delete all superseded `.test.ts` files under `packages/`. Retain or explicitly port repository-governance checks under `scripts/`.
 5. **CI Pipeline Migration**:
-   - Update `.github/workflows/ci.yml` and `checks.yml` to remove `bun test` jobs.
-   - Wire `cargo test -p veyyon-conformance` with parallel sharding into the primary CI gate.
+   - Remove superseded package `bun test` jobs while preserving repository-governance script gates.
+   - Wire `cargo test -p veyyon-conformance` with bounded parallel sharding into the primary CI gate.
 
 ---
 
@@ -646,12 +657,19 @@ The migration from TypeScript test suites and `packages/simulations` to `crates/
 
 ### 1. Parallel Sharding Strategy
 
-The 250,000-case corpus is sharded across $N$ parallel CI runners (default $N=16$ or $N=32$):
+The corpus is sharded across exactly eight CI runners, leaving capacity under the
+repository's account-wide job ceiling:
 
-$$\text{Shard}(c) = \text{BLAKE3}(c.\text{case\_id}) \pmod N$$
+$$\text{Shard}(c) = \text{BLAKE3}(c.\text{case\_id}) \pmod 8$$
 
-- Deterministic hashing guarantees even distribution across shards without dynamic scheduling overhead.
-- Shards run concurrently with an execution budget ceiling of **< 3 minutes per shard** on standard 4-core runners.
+Each shard runs direct-Rust cases in-process and permits at most four concurrent
+compiled-product launches. Wave 0 must benchmark release-artifact startup and
+record a p95 no greater than 200 ms before the three-minute target becomes
+binding. At that bound, each shard receives about 625 compiled launches and
+31,250 total cases; four process slots consume at most 31.25 seconds of startup
+budget. The remaining direct-Rust budget is 148.75 seconds, or about 0.6 ms per
+case. The gate rejects a manifest whose target allocation or shard balance makes
+that budget impossible. No claim depends on 250,000 independent process starts.
 
 ### 2. Deterministic Reporting Artifacts
 
@@ -695,10 +713,11 @@ The conformance migration is complete when all the following quantitative criter
 
 - [ ] **Corpus Integrity**: Exactly 250,000 unique JSONL cases are materialized and checked in, one executable case per line, with a pinned generator seed and a canonical digest proving no duplicate semantic payloads.
 - [ ] **Error Coverage**: Exactly 4,496 specific expected-error contracts tested and verified across the 16 subsystems.
-- [ ] **No Parallel Fakes**: 100% of end-to-end conformance tests drive the compiled production binary or un-instrumented Rust crates.
+- [ ] **Production Boundaries**: Every case drives either a migrated production Rust crate through its production boundary or the unmodified compiled release artifact. Test doubles exist only for external I/O.
+- [ ] **Target Allocation**: Exactly 245,000 cases execute in-process against production Rust and exactly 5,000 launch the compiled product; every subsystem and source-enumerated boundary family has compiled coverage.
 - [ ] **UI Dual-Ground Verification**: All TUI components verified on both `#1e2127` and `#000000` grounds across all 6 terminal dimension profiles.
-- [ ] **Mutation Proof**: Mutation engine executes >= 1,200 mutants and successfully kills at least 1,000 mutants (mutation score >= 83.3%).
+- [ ] **Mutation Proof**: Mutation engine executes >= 1,200 mutants, kills at least 1,000, and leaves zero survivors on credentials, authorization, path traversal, checksum verification, tool-call completeness, and persisted-version rejection.
 - [ ] **Simulations Deletion**: `packages/simulations` is deleted from disk and removed from workspace manifests.
-- [ ] **TypeScript Test Deletion**: Zero `*.test.ts` files remain in `packages/` and `scripts/`.
-- [ ] **CI Performance**: Complete 250,000-case suite passes in < 3 minutes wall-clock time across 16 parallel CI shards.
+- [ ] **TypeScript Product-Test Deletion**: Zero superseded `*.test.ts` files remain in `packages/`; repository-governance checks under `scripts/` are retained or ported with parity.
+- [ ] **CI Performance**: Complete 250,000-case suite passes in < 3 minutes wall-clock time across eight CI shards after the Wave 0 p95 feasibility gate passes.
 - [ ] **Zero Unresolved Mismatches**: Every corpus mismatch is fixed or represented by an explicit reviewed contract change across Linux x86_64, Linux aarch64, macOS x86_64, macOS aarch64, and Windows x86_64.
