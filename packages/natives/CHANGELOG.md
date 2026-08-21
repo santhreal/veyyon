@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- `xargs` in replace mode (`-I`, `-i`, `--replace`) matches GNU on a line with nothing to substitute: leading blanks are stripped from the substituted line, a blanks-only line runs the command zero times instead of once, and whitespace-only input no longer appends an empty argument in ordinary mode. The empty batch this produced is what used to reach `CommandBuilder::execute` and panic with `index out of bounds: the len is 0 but the index is 0` (recorded nine times in the crash logs); the panic itself was fixed earlier without a test, and that suite now exists.
+
 ## [16.5.2] - 2026-07-14
 
 ### Fixed
