@@ -1412,150 +1412,92 @@ SECTIONS = [
             " that holds on any compositor is that the row the pointer is on changed and a row four down did"
             " not: a global brightness shift cancels, and that is what \"the pointer reached the application\""
             " means.</p>",
+            "<h3>One objective, one autonomous build</h3>",
             video(
-                W + "demo-hd-cut.mp4",
-                "The demo, at the speed it was recorded: a search across a nine-module tree, one validating owner"
-                " written by the main agent, three subagents editing disjoint directories in parallel, the project's"
-                " own suite run against the result, a three-phase plan written by the todo tool with a task struck"
-                " through, a credential stored from the environment, that credential spent as a placeholder to sign"
-                " the work, and the use log naming the spend.",
+                X + "demo-hd-cut.mp4",
+                "One operator task builds Nebula Drift end to end: the model creates its persistent objective from"
+                " the prompt, opens an eight-task plan, launches three implementation workers, integrates their"
+                " modules, passes tests and typecheck, compiles a standalone terminal 3D ship simulator, signs that"
+                " binary through a protected secret placeholder, completes the goal, and presents the running"
+                " simulator.",
             ),
-            "<p><strong>Nothing in that clip is sped up, and that took two changes rather than one.</strong> It used"
-            " to be eighteen windows of 1.2 seconds each, played at double speed: about half a second of real time"
-            " before each frame, so what published was a slideshow of outcomes. The session's work — the search"
-            " running, three lanes settling, a suite going green — happens in the minutes BETWEEN those marks and"
-            " was cut out entirely. The fix is not a slower playback rate. The scene now measures how long each"
-            " stretch of work actually took, by stamping when its own typing ended, and the cut reaches back over"
-            " exactly that stretch: as long as the work was, never one frame longer, and free of typing by"
-            " construction rather than by a guess about lead-in length.</p>",
-            "<p><strong>Which exposed the real reason a demo of a local model is boring.</strong> Measured on this"
-            " take, 73% of it is a screen nobody is touching — 847 seconds of 1156. A 27B model on one card spends"
-            " most of a turn with nothing rendering, and the scene settles after each turn on top of that, so"
-            " playing the work back honestly means playing back a still image. The frozen frames say which screens"
-            " they are: the splash before the first keystroke, and finished turns sitting there with a check and an"
-            " elapsed time in the footer. So an untouched stretch is trimmed to a readable pause instead of played"
-            " out. Four seconds, and the number is measured rather than chosen: four seconds of a settled screen"
-            " puts 0 of its 120 frames above the detector's floor, while four seconds of a turn in flight — spinner"
-            " turning, status line counting — puts 1 or 2 above it, so a turn arrives as a chain of roughly"
-            " four-second stretches and a keep of four leaves it alone while collapsing the screens where the turn"
-            " is over.</p>",
-            "<p><strong>The result is checkable in the file itself.</strong> 192.3 seconds carrying every one of the"
-            " 85 seconds the screen actually moved in, at 33ms per frame, and a longest hold of exactly 4000ms —"
-            " where the same take cut without the trim holds a single frame for 8300ms and spends 202 of its 379"
-            " seconds frozen. Every retained second plays at the rate it was captured; what left the clip is time"
-            " in which nothing was drawn.</p>",
+            "<p>Before submitting the task, the operator uses <code>/secret from-env</code> to store a synthetic"
+            " release key without typing it into the transcript. The single user prompt then tells the model what"
+            " done means. The model creates its own persistent goal, and goal continuation owns every later model"
+            " turn; no follow-up prompt restates the work or pushes it into the next phase.</p>",
+            "<p>The opening stays at the recorder's real speed through the goal, todo board, and concurrent worker"
+            " launch. The implementation middle plays at 1.25x, with untouched screens trimmed to four seconds."
+            " Playback returns to real speed before the verification, compiled simulator, permission dialog, binary"
+            " signature, completed plan, completed goal, and final presentation. The boundaries come from named"
+            " scene marks in the same take rather than timestamps chosen after watching it.</p>",
             video(
-                W + "demo-hd.mp4",
-                "The same session unedited, all nineteen minutes of it, including every second the trim above"
-                " removed: the archived take the clip is cut from, so the two can be checked against each other.",
-            ),
-            "<h3>The signature is the part a reader can check</h3>",
-            "<p>A demo can assert anything. This one ends on a claim anybody can recompute. One number is exported"
-            " into the container and stored with <code>/secret from-env</code>, so it is typed nowhere and never"
-            " enters the transcript. The model is then asked to sign its work, writes a command containing"
-            " <code>#RELEASE_SIGNATURE#</code>, and veyyon substitutes the real bytes at the outbound boundary —"
-            " after the model has committed to the command and before the shell sees it.</p>",
-            "<p><strong>And then the product asks first.</strong> A call whose arguments carry a real credential"
-            " needs explicit approval in every non-yolo mode, so the take stops on a permission dialog that names"
-            " the credential the call would spend — and shows the operator the exact command, real value included."
-            " That is what an approval dialog is for, and it is why the claim here is that the number is never"
-            " typed and never enters the transcript, rather than that it never appears on screen. Approving it is"
-            " part of the recording, and a model that answers with two calls raises two dialogs: three takes wrote"
-            " no signed file at all because one Return was sent and the second dialog sat unanswered, in frame.</p>",
-            "<p>What is left on disk is a placeholder in the transcript, a sha256 digest in <code>SIGNED.md</code>,"
-            " and a spend recorded by name in <code>/secret log</code>. The run writes the number and its digest to"
-            " <code>demo-hd-signature-crosscheck.txt</code> beside the take, outside the recording, so the digest in"
-            " the frame can be hashed independently rather than believed. The three cannot all be faked at once:"
-            " a value the model had would show up in the transcript, and a digest that did not come from the number"
-            " would not match.</p>",
-            "<p><code>proof/verify-signature.py SIGNED.md --number &lt;number&gt;</code> does the comparison. It exists"
-            " because the digest depends on a byte the model chooses rather than on the credential:"
-            " <code>printf '%s'</code> hashes the number, <code>echo</code> hashes the number and a newline, and both"
-            " are fair readings of the instruction it was given. A crosscheck that published one form would call the"
-            " other a mismatch, so the verifier tries every form a shell pipeline can produce, reports which one the"
-            " file carries, exits non-zero when none of them match, and prints the number nowhere.</p>",
-            still(
-                W + "demo-hd-secret-list.png",
-                "The vault after <code>/secret from-env</code>: a placeholder, its scope and its expiry. This is the"
-                " whole of what the model is given.",
+                X + "demo-hd.mp4",
+                "The complete unedited session from which the landing-page cut and every frame below are derived.",
             ),
             still(
-                W + "demo-hd-secret-approval.png",
-                "The call held at the boundary. The dialog names the credential the call would spend and shows the"
-                " resolved value, which is deliberate: approving a spend you cannot read is not consent. This frame"
-                " is the one place in the take the number appears on screen.",
+                X + "demo-hd-secret-stored.png",
+                "The synthetic release key enters the vault from the environment. The transcript receives a name and"
+                " placeholder, not the key.",
             ),
             still(
-                W + "demo-hd-signature-written.png",
-                "The spend. The command the model wrote carries <code>'#RELEASE_SIGNATURE#'</code>, the output is the"
-                " digest, and the line under the block reports which stored secret the call spent.",
+                X + "demo-hd-goal-created.png",
+                "The model-created Nebula Drift objective before implementation starts. Goal mode keeps this card"
+                " separate from the transcript tail and carries the task across turns.",
             ),
             still(
-                W + "demo-hd-secret-log.png",
-                "<code>/secret log</code> afterwards. The recorded command is the placeholder form, so the ledger"
-                " that proves the spend happened is not itself a copy of the credential.",
-            ),
-            "<h3>The clip the landing page carries</h3>",
-            "<p>The landing-page clip is cut from that take by <code>proof/hero-cut.py</code>, and which moments it"
-            " keeps is derived from the recording rather than typed in. <code>tighten.py</code> is the wrong"
-            " instrument for a session: it calls a frame dead when mpdecimate says it duplicates the one before it,"
-            " and a veyyon session always has a spinner turning and an elapsed clock ticking, so it counts most of a"
-            " take as distinct while the transcript has not moved. What the cut uses instead is the second of each"
-            " still the scene takes, so every window in the clip is a moment the scene exists to show rather than the"
-            " largest repaint, which against a reasoning model is a page of streamed thinking.</p>",
-            "<p><strong>And the cadence is the one the recorder captured.</strong> Both display servers record at 30"
-            " fps, and the publish path used to resample twice — 30 to 15 in the cut, then 15 to 12 in the WebP —"
-            " neither ratio an even division of the 2x speedup. It was invisible to the machine this page is built on:"
-            " <code>ffprobe</code> is not installed there and Pillow answers <code>None</code> for an animated WebP's"
-            " frame duration, so the timing was read straight out of the ANMF chunks, which is where a WebP keeps it."
-            " The old asset held 230 frames over 29.92s at a 7.7 fps average, its typical frame lasting 83ms and its"
-            " longest 1167ms. The clip now carries the source's cadence: 33ms is the typical frame, and the frames that"
-            " hold longer are the encoder merging a screen that is genuinely still, which is compression rather than"
-            " lag. <code>proof/webp-cadence.py --expect-ms 33</code> is that check, and it fails on the old asset and"
-            " passes on this one.</p>",
-            still(
-                W + "demo-hd-search-block.png",
-                "Where the work starts, and why it is not a read: nine modules across three directories each pull a"
-                " numeric setting out of the environment in their own spelling — <code>Number</code>,"
-                " <code>parseInt</code> with no radix, unary plus — so an invalid value is a silent zero rather"
-                " than a failed boot. One regex finds all nine, and the frame is taken while the turn is still"
-                " running: the block reports nine matches in nine files, grouped by directory, and the spinner"
-                " under it is the next read already going out.",
+                X + "demo-hd-todo-board.png",
+                "The model-authored four-phase, eight-task board: flight plan, three parallel modules, integration,"
+                " verification, signing, and presentation. Every task is still open.",
             ),
             still(
-                W + "demo-hd-inventory.png",
-                "What the search was for. Every site in one table — file and line, variable, environment"
-                " variable, default — grouped by the spelling each one uses, with the note that matters"
-                " underneath: <code>parseInt</code> without a radix reads <code>0x10</code> as 16 rather than"
-                " refusing it. Nothing has been changed at this point in the take.",
+                X + "demo-hd-agent-lanes.png",
+                "DynamicsAgent, RenderAgent, and FlightAgent live together, each owning disjoint simulator modules"
+                " under one goal turn.",
             ),
             still(
-                W + "demo-hd-agent-lanes.png",
-                "The fan-out. The main agent writes the one validating owner first, then three subagents take a"
-                " directory each and edit disjoint files against it, which is why they can run at once. Each row"
-                " carries the id the spawn was given, the assignment it was handed, and a badge naming the model"
-                " that lane is actually running on.",
+                X + "demo-hd-integration-edit.png",
+                "The parent agent integrates the seeded CLI through a hash-anchored edit while the workers implement"
+                " vector math, flight physics, autopilot behavior, and the terminal renderer.",
             ),
             still(
-                W + "demo-hd-edit-diff.png",
-                "The main agent's own edit, and the one its search argued for: a case pinning that hex value as"
-                " refused rather than silently read as 16. A lane's diff belongs to that lane's transcript, so this"
-                " is the parent's, with the file named in the block header.",
+                X + "demo-hd-build-verified.png",
+                "The generated project's tests, TypeScript check, and standalone binary build all pass before the"
+                " release phase begins.",
             ),
             still(
-                W + "demo-hd-verify-command.png",
-                "The check the model chose for itself: it ran the project's own suite over the edited tree and read"
-                " the result back. The block carries the wall time and the timeout the tool ran it under.",
+                X + "demo-hd-simulator-preview.png",
+                "The compiled binary running its deterministic perspective-projected ship, star field, navigation"
+                " gate, autopilot state, and flight telemetry.",
+            ),
+            "<h3>The binary is signed at the secret boundary</h3>",
+            "<p>The model writes <code>#RELEASE_SIGNATURE#</code> in the signing command. Veyyon substitutes the key"
+            " only at the outbound bash boundary and stops on a permission dialog that shows the operator the"
+            " resolved command. The project writes an HMAC-SHA256 over the compiled binary to"
+            " <code>dist/nebula-drift.sig</code>; it never prints the key.</p>",
+            "<p><code>proof/verify-binary-signature.py</code> recomputes the HMAC from the archived binary, signature,"
+            " and synthetic key recorded outside the transcript. A changed binary, changed key, malformed signature,"
+            " or placeholder that never expanded fails the check.</p>",
+            still(
+                X + "demo-hd-secret-approval.png",
+                "The binary-signing command held for explicit operator approval after placeholder expansion.",
             ),
             still(
-                W + "demo-hd-todo-board.png",
-                "The plan panel, written by the todo tool rather than typed: three phases, per-phase counts, and"
-                " all six tasks still open.",
+                X + "demo-hd-signature-written.png",
+                "The signature file beside the compiled binary and the stable SIGNED BINARY completion marker.",
             ),
             still(
-                W + "demo-hd-todo-strike.png",
-                "The same board one turn later. The task is struck, Foundation reads 1/2, and the footer has lost"
-                " its dirty marker, which is the commit landing.",
+                X + "demo-hd-todo-finished.png",
+                "The same eight-task board closed after implementation, verification, and signing.",
+            ),
+            still(
+                X + "demo-hd-goal-complete.png",
+                "The model calls the goal tool itself. The persisted objective reports Status: complete before the"
+                " final simulator run.",
+            ),
+            still(
+                X + "demo-hd-presentation.png",
+                "The final frame: the signed Nebula Drift binary running after the goal and all eight tasks are"
+                " complete.",
             ),
             "<h3>The same board, rebuilt</h3>",
             "<p>The board in those two frames is not the board the branch draws now. Everything below is the"
@@ -1617,12 +1559,6 @@ SECTIONS = [
                 "the same four frames on black: the ladder is a brightness ramp rather than a fill, so it reads"
                 " the same with no ground under it.",
                 arms=RENDER_ARMS,
-            ),
-            still(
-                W + "demo-hd-settings-pane.png",
-                "The settings card in the same session, opened by the pointer: the window is inset by 48px, so a"
-                " pointer aimed at a cell has to add the window's origin, and this is that arithmetic landing on"
-                " the row it was aimed at. The footline preview beside it renders the values live.",
             ),
         ],
     ),
