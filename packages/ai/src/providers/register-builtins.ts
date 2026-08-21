@@ -53,7 +53,7 @@ interface LazyProviderModule<TApi extends Api> {
 	stream: (model: Model<TApi>, context: Context, options: OptionsForApi<TApi>) => AsyncIterable<AssistantMessageEvent>;
 }
 
-export interface AnthropicProviderModule {
+interface AnthropicProviderModule {
 	streamAnthropic: (
 		model: Model<"anthropic-messages">,
 		context: Context,
@@ -61,7 +61,7 @@ export interface AnthropicProviderModule {
 	) => AssistantMessageEventStream;
 }
 
-export interface AzureOpenAIResponsesProviderModule {
+interface AzureOpenAIResponsesProviderModule {
 	streamAzureOpenAIResponses: (
 		model: Model<"azure-openai-responses">,
 		context: Context,
@@ -69,7 +69,7 @@ export interface AzureOpenAIResponsesProviderModule {
 	) => AssistantMessageEventStream;
 }
 
-export interface GoogleProviderModule {
+interface GoogleProviderModule {
 	streamGoogle: (
 		model: Model<"google-generative-ai">,
 		context: Context,
@@ -77,7 +77,7 @@ export interface GoogleProviderModule {
 	) => AssistantMessageEventStream;
 }
 
-export interface GoogleGeminiCliProviderModule {
+interface GoogleGeminiCliProviderModule {
 	streamGoogleGeminiCli: (
 		model: Model<"google-gemini-cli">,
 		context: Context,
@@ -85,7 +85,7 @@ export interface GoogleGeminiCliProviderModule {
 	) => AssistantMessageEventStream;
 }
 
-export interface GoogleVertexProviderModule {
+interface GoogleVertexProviderModule {
 	streamGoogleVertex: (
 		model: Model<"google-vertex">,
 		context: Context,
@@ -93,7 +93,7 @@ export interface GoogleVertexProviderModule {
 	) => AssistantMessageEventStream;
 }
 
-export interface OpenAICodexResponsesProviderModule {
+interface OpenAICodexResponsesProviderModule {
 	streamOpenAICodexResponses: (
 		model: Model<"openai-codex-responses">,
 		context: Context,
@@ -101,7 +101,7 @@ export interface OpenAICodexResponsesProviderModule {
 	) => AssistantMessageEventStream;
 }
 
-export interface OpenAICompletionsProviderModule {
+interface OpenAICompletionsProviderModule {
 	streamOpenAICompletions: (
 		model: Model<"openai-completions">,
 		context: Context,
@@ -109,7 +109,7 @@ export interface OpenAICompletionsProviderModule {
 	) => AssistantMessageEventStream;
 }
 
-export interface OpenAIResponsesProviderModule {
+interface OpenAIResponsesProviderModule {
 	streamOpenAIResponses: (
 		model: Model<"openai-responses">,
 		context: Context,
@@ -117,7 +117,7 @@ export interface OpenAIResponsesProviderModule {
 	) => AssistantMessageEventStream;
 }
 
-export interface OllamaProviderModule {
+interface OllamaProviderModule {
 	streamOllama: (
 		model: Model<"ollama-chat">,
 		context: Context,
@@ -125,7 +125,7 @@ export interface OllamaProviderModule {
 	) => AssistantMessageEventStream;
 }
 
-export interface CursorProviderModule {
+interface CursorProviderModule {
 	streamCursor: (
 		model: Model<"cursor-agent">,
 		context: Context,
@@ -133,11 +133,11 @@ export interface CursorProviderModule {
 	) => AssistantMessageEventStream;
 }
 
-export interface DevinProviderModule {
+interface DevinProviderModule {
 	streamDevin: (model: Model<"devin-agent">, context: Context, options: DevinOptions) => AssistantMessageEventStream;
 }
 
-export interface BedrockProviderModule {
+interface BedrockProviderModule {
 	streamBedrock: (
 		model: Model<"bedrock-converse-stream">,
 		context: Context,
