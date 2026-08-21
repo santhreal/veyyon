@@ -1,28 +1,48 @@
 # Development Rules
 
-## NEVER verify UI with tmux (BINDING — the user's explicit, repeated order)
+## Visual evidence comes from the official capture config, and nothing else (BINDING)
 
-Do not use tmux captures to judge, verify, or "live-verify" any visual change. Ever. The user has said this repeatedly and it keeps being violated. Why it fails: tmux renders on a pure-black default ground, strips or distorts styling in `capture-pane`, and hides exactly the class of bugs that matter (explicit dark background fills looked invisible in tmux and shipped as black slabs on the user's grey terminal — 2026-07-22). A tmux dump is not evidence; treating it as evidence has caused shipped regressions.
+The capture configuration is
+[`docs/handbook/src/foundations/verification.md`](docs/handbook/src/foundations/verification.md).
+It is the single authority: the HD recorder for a real interactive session, and the
+VHS baseline block for a settings or screen capture. Read it and use it verbatim.
+**There are no fallbacks.** A screenshot or an animation captured any other way is
+not evidence, does not satisfy any gate in this file, and cannot be called done.
 
-What counts as visual evidence instead:
-1. **Real-render image proofs**: render the actual shipped component off-screen and rasterize to PNG on BOTH a grey ground (`#1e2127`-class) and a black ground, then look at the image. The tool is `scripts/demos/render-proof.ts`: it takes any renderer's ANSI on stdin and writes `<out>-grey.png` and `<out>-black.png`.
+None of the following is evidence, and none may be substituted for a capture:
 
-   ```sh
-   bun scripts/demos/render-transcript-rail.ts --width 100 --ruler |
-     bun scripts/demos/render-proof.ts --out /tmp/rail-after --width 100 --scale 3
-   ```
+- A tmux capture, of anything, ever. It renders on a pure-black default ground,
+  strips or distorts styling in `capture-pane`, and hides exactly the class of bug
+  that matters: explicit dark background fills looked invisible in tmux and shipped
+  as black slabs on the operator's grey terminal (2026-07-22).
+- An off-screen raster of a component's ANSI. `scripts/demos/render-proof.ts` is a
+  debugging aid for looking at bytes and grounds while you work. It renders a
+  fixture you wrote, at a width you chose, through a call you constructed, so it
+  shows what your fixture does and not what the product does — it cannot show that
+  the surface is reachable, that the state is real, or that the block is positioned,
+  sized and clipped the way a session draws it. It is not a proof, it is not a
+  README pair, and "those are the component's own bytes" is not an argument for
+  admitting it.
+- A mock-up, a hand-built frame, a snippet in a comment, or one unpaired image.
 
-   Write a small renderer under `scripts/demos/` for the surface you are changing (see `render-transcript-rail.ts` and `render-status-footline.ts`), constructing the REAL components rather than mock-ups. Take the pair BEFORE your change and again after, and compare all four images: an explicit dark fill is invisible on black and reads as a slab on grey, so one ground answers half the question. The tool reports any character it has no glyph for; add it to `scripts/demos/lib/glyphs.ts` when it matters to what you are proving, rather than reading the placeholder boxes as a rendering bug.
-2. **String/ANSI assertions** in tests that pin exact bytes, colors, and widths.
-3. **The user's own screenshots** are ground truth; when they contradict any other signal, they win.
-
-Any background fill, color, spacing, or motion change verified only through tmux is UNVERIFIED and must not be called done.
+Two things stand beside a capture, and neither replaces one: **string/ANSI
+assertions** in tests that pin exact bytes, colours and widths, and **the operator's
+own screenshots**, which are ground truth and win against every other signal.
 
 ## UI changes require README before-and-after evidence (BINDING)
 
-Any pull request that changes visible UI MUST add a labeled **Before** and **After** pair to the relevant `README.md` feature or demo section before it can merge. Both images must show the same surface, dimensions, terminal configuration, and state apart from the intended change. Store the pair under `assets/` and link the exact regeneration command from the README or its owning handbook page.
+Any pull request that changes visible UI MUST add a labeled **Before** and **After**
+pair to the relevant `README.md` feature or demo section before it can merge. Both
+images must show the same surface, dimensions, terminal configuration, and state
+apart from the intended change. Store the pair under `assets/`, and link the exact
+regeneration command from the README or its owning handbook page.
 
-The pair must be real visual evidence under the rules above: a private-display recording, off-screen raster of the shipped component on both grey and black grounds, or screenshots supplied by the operator. A tmux capture, a mock-up, one unpaired image, or two frames whose state differs for unrelated reasons does not satisfy the merge requirement.
+Both images MUST come from the official capture config above: an HD-recorder
+recording, a VHS tape on the documented baseline, or screenshots supplied by the
+operator. A static change proves with a PNG pair, an animation with a GIF pair, and
+an animation is never proved by a still. A tmux capture, an off-screen raster, a
+mock-up, one unpaired image, or two frames whose state differs for unrelated reasons
+does not satisfy the merge requirement.
 
 ## Default Context
 
