@@ -272,6 +272,13 @@ def video(rel: str, caption: str, start: float | None = None) -> str:
 # 72M-token pair, the theme-ladder wash, and both slab-vs-card render proofs.
 TREE_ARMS = ("main", "branch")
 
+# What a reader sees. The tokens above name where the bytes came from AT THE TIME
+# OF RECORDING, when `main` was the tree without this work, and every check below
+# still keys off them. The work is on `main` now, so a caption reading "main" over
+# the old design is false to anyone reading the page today: the arms are before
+# and after, and only the mechanism note says which git ref supplied each.
+ARM_LABELS = {"main": "before", "branch": "after"}
+
 mislabelled: list[str] = []
 
 
@@ -318,9 +325,9 @@ def video_pair(
     return (
         '<div class="pair">'
         f'<figure><video controls loop muted playsinline preload="metadata"><source src="{before}{frag}" type="video/mp4"></video>'
-        f"<figcaption><strong>{left}</strong> — {cap_before}</figcaption></figure>"
+        f"<figcaption><strong>{ARM_LABELS.get(left, left)}</strong> — {cap_before}</figcaption></figure>"
         f'<figure><video controls loop muted playsinline preload="metadata"><source src="{after}{frag}" type="video/mp4"></video>'
-        f"<figcaption><strong>{right}</strong> — {cap_after}</figcaption></figure>"
+        f"<figcaption><strong>{ARM_LABELS.get(right, right)}</strong> — {cap_after}</figcaption></figure>"
         "</div>"
     )
 
@@ -343,7 +350,7 @@ def strip(prefix: str, frames: int, caption: str, *, arm: str | None = None) -> 
         actual = tree_of_prefix(prefix)
         if arm != actual:
             mislabelled.append(f"{prefix}-f*.png: frames are {actual}, captioned {arm}")
-        caption = f"<strong>{arm}.</strong> {caption}"
+        caption = f"<strong>{ARM_LABELS.get(arm, arm)}.</strong> {caption}"
     imgs = "".join(f'<img src="{need(f"{prefix}-f{i:02d}.png")}" alt="frame {i}">' for i in range(frames))
     # Two rows of equal length, so an eight-frame strip is 4x2 rather than 6+2.
     cols = frames if frames <= 6 else (frames + 1) // 2
@@ -369,8 +376,8 @@ def still_pair(
     left, right = axis(before, after, arms)
     return (
         '<div class="pair">'
-        f'<figure><img src="{before}" alt=""><figcaption><strong>{left}</strong> — {cap_before}</figcaption></figure>'
-        f'<figure><img src="{after}" alt=""><figcaption><strong>{right}</strong> — {cap_after}</figcaption></figure>'
+        f'<figure><img src="{before}" alt=""><figcaption><strong>{ARM_LABELS.get(left, left)}</strong> — {cap_before}</figcaption></figure>'
+        f'<figure><img src="{after}" alt=""><figcaption><strong>{ARM_LABELS.get(right, right)}</strong> — {cap_after}</figcaption></figure>'
         "</div>"
     )
 
@@ -721,7 +728,7 @@ the video frame at that second are the same pixels. Everything else on this page
 <code>qwen2.5-1.5b-instruct-q4_k_m</code>, reachable only as the container-network provider <code>local</code>.
 No provider account is reachable from the container, so a streamed answer in these recordings is that model on
 CPU or it is nothing.</p>
-<p><strong>How the <em>main</em> arm is taken.</strong> <code>proof/docker/record-x11-before.sh</code> holds every
+<p><strong>How the <em>before</em> arm is taken.</strong> <code>proof/docker/record-x11-before.sh</code> holds every
 source file the branch changed at its <code>main</code> content (<code>git show main:&lt;file&gt;</code>), records
 the same scene into <code>proof/captures/x11/before/</code>, then restores from an in-memory copy and proves the
 restore by sha256. No git mutation command runs and the working tree ends byte-identical.</p>
@@ -840,7 +847,7 @@ nothing else. No provider account is reachable from the container, so a streamed
 that model or it is nothing. It is also why the two arms of a pair are the same scene rather than the same
 session: the script is fixed, the model's replies are not, and a caption here never claims more than the frames
 hold.</p>
-<p><strong>How the <em>main</em> arm is taken.</strong> <code>proof/docker/record-x11-before.sh</code> holds every
+<p><strong>How the <em>before</em> arm is taken.</strong> <code>proof/docker/record-x11-before.sh</code> holds every
 source file the branch changed at its <code>main</code> content (<code>git show main:&lt;file&gt;</code>), records
 the same scene into <code>proof/captures/x11/before/</code>, then restores from an in-memory copy and proves the
 restore by sha256. No git mutation command runs and the working tree ends byte-identical.</p>
@@ -1570,9 +1577,9 @@ SECTIONS = [
     Section(
         "The board, rebuilt",
         [
-            "<p>The board the hero take recorded is not the board the branch draws now. The pair below is one scene,"
+            "<p>The board the hero take recorded is not the board the product draws now. The pair below is one scene,"
             " <code>proof/scenes/rail-and-todo.sh</code>, recorded twice at 131 columns by the same container --"
-            " once against <code>main</code> and once against the branch -- and sampled at the same second of the"
+            " once against the tree without this work and once against the tree with it -- and sampled at the same second of the"
             " same script, so both arms hold the same three-phase board with the same task in flight and the same"
             " one closed behind it.</p>",
             still_pair(
@@ -1612,7 +1619,7 @@ SECTIONS = [
             " wide and its tail landed on a line of its own at the left margin, outside the rail. Nothing in the"
             " suite could see it, because the blocks were obeying the number they were given.</p>",
             "<p>The recording below is what saw it. Same scene, same container, same 131 columns, two live subagent"
-            " lanes: <code>proof/scenes/agent-lanes.sh</code> against the branch before the fix and after it. The"
+            " lanes: <code>proof/scenes/agent-lanes.sh</code> against the tree before the wrap fix and after it. The"
             " model badge is the row's right-aligned tail, which is exactly the part a two-cell overflow takes"
             " away.</p>",
             video_pair(
@@ -1652,7 +1659,7 @@ SECTIONS = [
             " write a five-phase plan for a transcription service and then close it out, and it was told to hold off"
             " starting the work, so what the board tracks is the plan and nothing else.</p>",
             f"<p>The take is {clip_runtime(XA + 'todo-marathon.mp4'):.0f} seconds of session at the speed it was"
-            " recorded, unedited, on the branch. The same scene against <code>main</code> is not on this page,"
+            " recorded, unedited, on the tree with this work. The same scene against the tree without it is not on this page,"
             " because the pair that carries the design change is the one above: same recorder, same scene, same"
             " second of the same script. This row is here for the motion, and for the two states a still of a"
             " settled board cannot reach.</p>",
