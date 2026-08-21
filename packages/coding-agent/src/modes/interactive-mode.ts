@@ -28,6 +28,7 @@ import type {
 import {
 	Container,
 	clearRenderCache,
+	getPaddingX,
 	Loader,
 	matchesKey,
 	ProcessTerminal,
@@ -387,6 +388,14 @@ class AnchoredLiveContainer extends Container implements NativeScrollbackLiveReg
 const MODEL_CYCLE_TRACK_CLEAR_MS = 4000;
 
 const SUBAGENT_OBSERVER_UI_COALESCE_MS = 100;
+
+/**
+ * Horizontal margin the two anchored blocks are mounted with, and the number
+ * their width budget is derived from. One constant because a mount and a budget
+ * that disagree is a soft wrap, and a soft wrap in an anchored region is a row
+ * outside the block's own rail.
+ */
+export const ANCHORED_BLOCK_PADDING_X = 1;
 
 export class InteractiveMode implements InteractiveModeContext {
 	session: AgentSession;
@@ -2150,7 +2159,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		const owners = this.#todoOwners();
 		this.#todoBoardLive = todoBoardIsLive(phases, owners);
 		const lines = renderTodoBoardLines(phases, {
-			columns: this.ui.terminal.columns || 80,
+			columns: this.#anchoredColumns(),
 			// The two anchored blocks share one budget rather than each capping
 			// itself: collapsed, the board ran to fourteen rows and the lane block to
 			// ten, and on a short terminal the pair owned the screen. A third of the
@@ -2167,7 +2176,27 @@ export class InteractiveMode implements InteractiveModeContext {
 		if (lines.length === 0) return;
 		const motion = this.#todoRailMotion();
 		const painted = motion ? paintRailMotion(lines, motion, theme) : lines;
-		this.todoContainer.addChild(new Text(painted.join("\n"), 1, 0));
+		this.todoContainer.addChild(new Text(painted.join("\n"), ANCHORED_BLOCK_PADDING_X, 0));
+	}
+
+	/**
+	 * Cells an anchored block actually gets to draw in.
+	 *
+	 * NOT the terminal width. Both blocks are mounted in a `Text` carrying
+	 * `ANCHORED_BLOCK_PADDING_X` on each side, and `Text` SOFT-WRAPS its content
+	 * to `width - paddingX * 2` before it ever reaches the terminal. A row built
+	 * against the raw column count is therefore two cells too wide and the tail
+	 * of it lands on a row of its own, at the margin, outside the block's rail —
+	 * which is what a real capture of two live lanes showed: every lane's model
+	 * badge on its own line at column zero. The width sweep in
+	 * `test/subagent-hud-render.test.ts` could not see it, because the blocks were
+	 * obeying the bound they were given and the bound was wrong.
+	 *
+	 * `getPaddingX` is the same function the mount resolves its padding through,
+	 * so tight layout (which spends the margin) is followed rather than guessed.
+	 */
+	#anchoredColumns(): number {
+		return Math.max(1, (this.ui.terminal.columns || 80) - getPaddingX(ANCHORED_BLOCK_PADDING_X) * 2);
 	}
 
 	/**
@@ -2268,7 +2297,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.subagentContainer.clear();
 		const sessions = this.#observerRegistry.getSessionsSpawnedBy(this.#focusController.focusedAgentId);
 		const block = renderSubagentLaneLines(sessions, {
-			columns: this.ui.terminal.columns,
+			columns: this.#anchoredColumns(),
 			showModelBadge: settings.get("subagent.showResolvedModelBadge"),
 			nowMs: Date.now(),
 		});
@@ -2280,7 +2309,7 @@ export class InteractiveMode implements InteractiveModeContext {
 						lit: index => block.lit[index] === true,
 					})
 				: block.lines;
-		this.subagentContainer.addChild(new Text(painted.join("\n"), 1, 0));
+		this.subagentContainer.addChild(new Text(painted.join("\n"), ANCHORED_BLOCK_PADDING_X, 0));
 	}
 
 	/**
