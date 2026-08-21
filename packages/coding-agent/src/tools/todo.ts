@@ -1512,6 +1512,28 @@ function strikeRevealCount(text: string, frame: number | undefined): number | un
 	return Math.ceil((chars.length * revealFrame) / TODO_STRIKE_REVEAL_FRAMES);
 }
 
+/**
+ * A task's text with the completion strike swept across it, `frame` frames in.
+ *
+ * The sweep is the one gesture that says a task closed, and both surfaces that
+ * draw a closed task run it: the transcript card and the anchored board above
+ * the composer. It lives here because it is a property of the TASK rather than
+ * of either renderer, and because the board's copy of it drifted the moment
+ * there were two — the board slammed the whole strike on in one frame while the
+ * card swept it, so the same completion looked like two different events
+ * depending on which surface the eye was on.
+ *
+ * `undefined` is the settled state: fully struck, no animation owed. A frame
+ * past {@link TODO_STRIKE_TOTAL_FRAMES} is the same thing, so a caller that
+ * keeps counting past the window converges on the static bytes instead of
+ * wrapping back to the start of the sweep.
+ */
+export function todoStrikeReveal(text: string, frame: number | undefined): string {
+	const revealCount = strikeRevealCount(text, frame);
+	if (revealCount === undefined) return strikethroughText(text);
+	return partialStrikethrough(text, revealCount);
+}
+
 function formatTodoLine(
 	item: TodoItem,
 	uiTheme: Theme,
@@ -1523,10 +1545,8 @@ function formatTodoLine(
 	const checkbox = uiTheme.checkbox;
 	switch (item.status) {
 		case "completed": {
-			const revealCount = completionKeys.has(item.content) ? strikeRevealCount(safeContent, frame) : undefined;
-			const content =
-				revealCount === undefined ? strikethroughText(safeContent) : partialStrikethrough(safeContent, revealCount);
-			return uiTheme.fg("success", `${prefix}${checkbox.checked} ${content}`);
+			const strikeFrame = completionKeys.has(item.content) ? frame : undefined;
+			return uiTheme.fg("success", `${prefix}${checkbox.checked} ${todoStrikeReveal(safeContent, strikeFrame)}`);
 		}
 		case "in_progress":
 			// Its own glyph, not the pending box in a different colour, and the
