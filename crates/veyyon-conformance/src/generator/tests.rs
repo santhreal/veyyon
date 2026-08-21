@@ -17,7 +17,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::{
-	Family, Generation, boundary,
+	Family, Generation, boundary, plan, subsystem,
 	sweep::{self, Axis, Row},
 };
 use crate::{
@@ -318,4 +318,242 @@ fn two_families_that_produce_one_meaning_collide_across_families() {
 	assert_eq!(generation.corpus.len(), 1);
 	assert_eq!(generation.report["one"].admitted, 1);
 	assert_eq!(generation.report["two"].collided, 1);
+}
+
+// The materialization suite below defends the three numbers issue #877 states
+// exactly: 250,000 cases, 4,496 expected-error contracts, and the 245,000 /
+// 5,000 target split with its platform allocation. The class it closes is a
+// corpus that shrinks silently — a dropped family, a collapsed axis, a bucket
+// whose arithmetic drifted — because every one of those leaves a corpus that
+// still materializes and still passes a "it ran" check.
+//
+// WHAT IT DOES NOT CATCH: whether a row can execute. A row names the entry it
+// requires, and nothing here calls one; `plan::migration_debt` is the honest
+// count of how much of the corpus is waiting on the production migration.
+
+/// Seal every case of `family` and hand back the sealed rows.
+fn materialize(family: subsystem::SubsystemFamily, seed: u64) -> Vec<ConformanceCase> {
+	family
+		.cases(seed)
+		.into_iter()
+		.map(ConformanceCase::seal)
+		.collect()
+}
+
+#[test]
+fn every_subsystem_has_a_plan_with_room_to_sweep() {
+	// Fail closed: a seventeenth subsystem cannot compile without a plan, and a
+	// plan whose axes shrank below its allocation would reach its count by
+	// repeating a tuple, which is a duplicate case wearing a different id.
+	let mut names = BTreeSet::new();
+	for subsystem in crate::corpus::manifest::subsystems() {
+		let family = subsystem::SubsystemFamily::new(subsystem);
+		let plan = family.plan();
+		let allocation = plan.allocation();
+
+		assert!(
+			plan.tuple_space() >= allocation.cases,
+			"{subsystem}: {} tuples cannot fill {} cases",
+			plan.tuple_space(),
+			allocation.cases
+		);
+		assert!(!plan.axes.is_empty(), "{subsystem} has no axes");
+		for axis in plan.axes {
+			assert!(!axis.is_empty(), "{subsystem} axis {} is empty", axis.name);
+		}
+		assert!(!plan.contracts.is_empty(), "{subsystem} discharges no contract");
+		assert!(!plan.errors.is_empty(), "{subsystem} has no error contracts");
+		assert!(!plan.requirements.is_empty(), "{subsystem} covers no requirement");
+		assert_eq!(
+			allocation.cases % 250,
+			0,
+			"{subsystem}: an allocation that is not a multiple of 250 cannot split evenly across \
+			 five platforms and two target kinds"
+		);
+		assert!(names.insert(plan.family), "{} is used by two subsystems", plan.family);
+	}
+	assert_eq!(names.len(), 16);
+}
+
+#[test]
+fn each_family_fills_its_allocation_exactly() {
+	for subsystem in crate::corpus::manifest::subsystems() {
+		let family = subsystem::SubsystemFamily::new(subsystem);
+		let allocation = family.plan().allocation();
+		let cases = materialize(family, subsystem::PINNED_SEED);
+
+		assert_eq!(cases.len(), allocation.cases, "{subsystem} case count");
+		assert_eq!(
+			cases.iter().filter(|case| case.is_expected_error()).count(),
+			allocation.expected_errors,
+			"{subsystem} expected-error count"
+		);
+
+		let compiled = cases
+			.iter()
+			.filter(|case| case.target.kind == TargetKind::CompiledProduct)
+			.count();
+		assert_eq!(compiled, allocation.cases / 50, "{subsystem} compiled share");
+
+		let per_platform = allocation.cases / 250;
+		for platform in subsystem::named_platforms() {
+			for kind in [TargetKind::DirectRust, TargetKind::CompiledProduct] {
+				let count = cases
+					.iter()
+					.filter(|case| case.environment.platform == platform && case.target.kind == kind)
+					.count();
+				assert_eq!(count, per_platform, "{subsystem}: {platform:?} {kind:?}");
+			}
+		}
+
+		let ids: BTreeSet<&str> = cases.iter().map(|case| case.case_id.as_str()).collect();
+		assert_eq!(ids.len(), cases.len(), "{subsystem} produced two rows with one identity");
+		for case in &cases {
+			assert_eq!(case.violations(), Vec::<String>::new(), "{subsystem}: {case:?}");
+		}
+	}
+}
+
+#[test]
+fn the_whole_corpus_materializes_to_the_manifest() {
+	// Streamed rather than held: the point is the counts, and 250,000 rows in
+	// memory at once buys nothing the tally does not already say.
+	let mut tally = crate::corpus::manifest::Tally::default();
+	let mut ids: BTreeSet<String> = BTreeSet::new();
+	for family in subsystem::families() {
+		for case in materialize(family, subsystem::PINNED_SEED) {
+			tally.record(&case);
+			assert!(ids.insert(case.case_id.clone()), "two rows share {}", case.case_id);
+		}
+	}
+
+	assert_eq!(crate::corpus::manifest::drift(&tally), Vec::<String>::new());
+	assert_eq!(tally.total, 250_000);
+	assert_eq!(ids.len(), 250_000, "every case is semantically distinct");
+	assert_eq!(
+		tally.expected_errors_by_subsystem.values().sum::<usize>(),
+		crate::corpus::manifest::total_expected_errors()
+	);
+	assert_eq!(crate::corpus::manifest::total_expected_errors(), 4_496);
+	assert_eq!(tally.cases_by_target[&TargetKind::DirectRust], 245_000);
+	assert_eq!(tally.cases_by_target[&TargetKind::CompiledProduct], 5_000);
+}
+
+#[test]
+fn the_corpus_is_reproducible_and_the_pinned_seed_is_load_bearing() {
+	let family = subsystem::SubsystemFamily::new(Subsystem::LspClientDiagnostics);
+
+	let first = materialize(family, subsystem::PINNED_SEED);
+	let again = materialize(family, subsystem::PINNED_SEED);
+	assert_eq!(first, again, "the same seed must produce the same rows");
+
+	let elsewhere = materialize(family, subsystem::PINNED_SEED + 1);
+	assert_ne!(
+		first
+			.iter()
+			.map(|case| case.case_id.as_str())
+			.collect::<Vec<_>>(),
+		elsewhere
+			.iter()
+			.map(|case| case.case_id.as_str())
+			.collect::<Vec<_>>(),
+		"a seed that changes nothing is a seed the corpus does not depend on"
+	);
+}
+
+#[test]
+fn a_materialized_shard_round_trips_through_jsonl() {
+	let family = subsystem::SubsystemFamily::new(Subsystem::WireProtocolArgot);
+	let mut corpus = crate::corpus::Corpus::new();
+	for case in materialize(family, subsystem::PINNED_SEED)
+		.into_iter()
+		.take(200)
+	{
+		corpus.insert(case).expect("a fresh row is admissible");
+	}
+
+	let text = corpus.to_jsonl();
+	let reloaded = crate::corpus::Corpus::from_jsonl(&text).expect("its own output reloads");
+	assert_eq!(reloaded.len(), 200);
+	assert_eq!(reloaded.cases(), corpus.cases());
+}
+
+#[test]
+fn error_contracts_reach_every_target_and_platform_bucket() {
+	// A prefix of error rows would satisfy the count and leave the compiled
+	// bucket with no diagnostic coverage at all, which is the half of
+	// conformance that rots first.
+	let family = subsystem::SubsystemFamily::new(Subsystem::AiProvidersStreaming);
+	let cases = materialize(family, subsystem::PINNED_SEED);
+
+	let errors: Vec<&ConformanceCase> = cases
+		.iter()
+		.filter(|case| case.is_expected_error())
+		.collect();
+	assert!(
+		errors
+			.iter()
+			.any(|case| case.environment.platform == Platform::Any)
+	);
+	assert!(
+		errors
+			.iter()
+			.any(|case| case.target.kind == TargetKind::CompiledProduct)
+	);
+	for platform in subsystem::named_platforms() {
+		assert!(
+			errors
+				.iter()
+				.any(|case| case.environment.platform == platform),
+			"{platform:?} has no error contract"
+		);
+	}
+	for case in errors {
+		assert_eq!(case.contract.expected_error_id, case.oracle.error_id);
+		assert_eq!(case.oracle.exit_code, Some(1));
+	}
+}
+
+#[test]
+fn every_case_states_a_bound_and_a_clock_its_target_can_keep() {
+	// A case that cannot observe a hang is a case that reports the wrong
+	// failure, so the bound is required rather than optional, and the clock is
+	// the one the target kind can actually be given.
+	let family = subsystem::SubsystemFamily::new(Subsystem::ConcurrencyAgentMesh);
+	for case in materialize(family, subsystem::PINNED_SEED) {
+		let bound = case.oracle.max_ms.expect("every case states a bound");
+		match case.target.kind {
+			TargetKind::DirectRust => {
+				assert_eq!(bound, subsystem::DIRECT_BOUND_MS);
+				assert_eq!(case.environment.clock, ClockMode::Virtual);
+			},
+			TargetKind::CompiledProduct => {
+				assert_eq!(bound, subsystem::COMPILED_BOUND_MS);
+				assert_eq!(case.environment.clock, ClockMode::RealBounded);
+				assert_ne!(case.environment.platform, Platform::Any);
+			},
+		}
+	}
+}
+
+#[test]
+fn migration_debt_accounts_for_every_direct_case() {
+	// The corpus declares 245,000 direct cases and the driver can call none of
+	// their entry points yet. Stating that as a number is what stops a
+	// materialized corpus from reading as executable coverage, and pinning the
+	// resolved set by exact equality makes resolving one a decision.
+	assert_eq!(plan::RESOLVED_ENTRIES, [""; 0], "an entry joins this set with its driver call");
+	assert_eq!(plan::migration_debt(), crate::corpus::manifest::DIRECT_RUST_CASES);
+	assert_eq!(plan::migration_debt(), 245_000);
+
+	let declared: usize = plan::PLANS
+		.iter()
+		.map(|plan| plan::direct_cases(plan.allocation().cases))
+		.sum();
+	assert_eq!(declared, 245_000, "the per-plan split sums to the manifest's direct total");
+	let compiled: usize = plan::PLANS
+		.iter()
+		.map(|plan| plan::compiled_cases(plan.allocation().cases))
+		.sum();
+	assert_eq!(compiled, crate::corpus::manifest::COMPILED_PRODUCT_CASES);
 }

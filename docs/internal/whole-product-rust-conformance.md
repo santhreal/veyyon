@@ -14,7 +14,7 @@ The conformance engine is an out-of-process verification and differential testin
 +-----------------------------------------------------------------------------------+
 |  +---------------------+  +----------------------+  +--------------------------+  |
 |  |  Corpus Generator   |  | Materialized Corpus  |  |   Independent Oracles    |  |
-|  | (proptest/grammar)  |  |  (250,000 JSONL)     |  | (Differential/Algebraic) |  |
+|  | (plans and sweeps)  |  |  (250,000 JSONL)     |  | (Differential/Algebraic) |  |
 |  +----------+----------+  +----------+-----------+  +------------+-------------+  |
 |             |                        |                           |                |
 |             +------------------------v---------------------------+                |
@@ -45,7 +45,7 @@ The conformance engine is an out-of-process verification and differential testin
 The `crates/veyyon-conformance` crate is partitioned into targeted modules:
 
 - `src/corpus/`: Schema definitions, deterministic serialization, materialization, and canonical BLAKE3 deduplication.
-- `src/generator/`: Combinatorial, grammar-based, and property-based case generators using reproducible PRNG seeds.
+- `src/generator/`: Sixteen per-subsystem plans, the family that walks their axis product to fill each allocation exactly, greedy covering arrays, and the boundary-value tables.
 - `src/oracle/`: Independent reference models, algebraic invariants, state-transition assertions, and schema validators.
 - `src/vfs/`: Trait-backed copy-on-write filesystem and POSIX fault injector for in-process Rust targets; real-workspace fixture materialization for compiled-product targets.
 - `src/vpty/`: Cross-platform PTY/ConPTY driver plus VT100/xterm parser capturing ANSI streams, resize events, raw input, and 2D cell-grid states.
@@ -187,6 +187,14 @@ platform-applicable source-enumerated boundary family.
 ## Corpus Allocation and Subsystem Contracts
 
 The materialized conformance corpus contains exactly 250,000 distinct JSONL test vectors. It enforces 4,496 exact expected-error contracts across all sixteen production subsystems.
+
+Materializing a row is not a claim that the row can execute. Each row names the
+entry point it requires; `plan::RESOLVED_ENTRIES` names the entry points a driver
+can call today and is empty, so `plan::migration_debt()` is 245,000 — every direct
+case in the corpus. The number is asserted against the manifest rather than
+narrated, and it falls only as a subsystem's production code migrates. Fixtures
+are absent rather than invented for the same reason: a content-addressed digest of
+a string nothing will produce is a reference to a fixture that does not exist.
 
 ### Subsystem Allocation Matrix
 
@@ -497,9 +505,27 @@ pub struct ConformanceCase {
 }
 ```
 
-- **Combinatorial Parameter Sweeps**: Systematic coverage of enum states, configuration flags, boundary values (`0`, `1`, `u32::MAX - 1`, `u32::MAX`, empty strings, 64KB strings, non-UTF8 buffers).
-- **Grammar-Based Fuzzing**: Structural generators producing syntactically valid and invalid ASTs, JSONL traces, tool calls, and Argot shorthand scripts.
-- **State-Machine Exploration**: Random walk and exhaustive transition matrix traversal across valid and invalid session lifecycles.
+- **Per-subsystem sweeps** (`generator/plan.rs`, `generator/subsystem.rs`): sixteen
+  plans, one per allocated subsystem, each naming six axes, its contract ids, its
+  error ids and the requirements it covers. One family walks the axis product by
+  mixed-radix decomposition of a running index, so a tuple never repeats and the
+  axis product is asserted to exceed the allocation. The walk is seed-independent
+  apart from which contract a row discharges; `PINNED_SEED` is the seed the
+  committed corpus carries. Expected-error rows are spread by Bresenham rather
+  than taken as a prefix, so every target and platform bucket carries diagnostics.
+- **Covering arrays** (`generator/sweep.rs`): greedy pairwise selection for
+  noninteracting dimensions, with pair coverage derived from the axes at run time.
+- **Boundary values** (`generator/boundary.rs`): `0`, `1`, `u32::MAX - 1`,
+  `u32::MAX`, empty strings, 64 KB strings, non-UTF-8 buffers.
+- **Grammar-based generation is not implemented.** Argot scripts, hashline patch
+  bodies and JSONL traces are swept as named axis values, not produced from a
+  grammar. A grammar arrives with the migrated parser it would generate against;
+  written now it would generate against a Rust reimplementation, which is what
+  the production-boundary rule forbids.
+- **State-machine exploration is exhaustive, not a random walk** (`model_check/`):
+  breadth-first enumeration under a state budget, with safety invariants and a
+  minimal counterexample trace. Random walks are absent by choice; a budgeted BFS
+  reports the shortest witness and a walk reports the one it happened to find.
 
 ### 2. Deduplication and Collision Rejection
 
