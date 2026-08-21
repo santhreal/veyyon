@@ -1105,6 +1105,29 @@ export function markdownToPhases(md: string): { phases: TodoPhase[]; errors: str
 	return { phases, errors };
 }
 
+/**
+ * The tally every summary ends with. `done` is the COMPLETED count and nothing
+ * else. A dropped task is closed, so it leaves the open count — but reporting it
+ * as done claims work happened that did not, and `drop` on one of six tasks read
+ * `Dropped: Add error handling. … Overall: 2/6 done, 4 open.` on one line, where
+ * the only 2 the board could show was one completion and one abandonment.
+ *
+ * `done + dropped + open === total` for any status the vocabulary grows: open is
+ * the complement of terminal, and dropped is terminal minus completed. A new
+ * terminal status therefore lands in `dropped` rather than being absorbed into
+ * `done`, which is the direction that cannot lie about progress.
+ */
+function formatOverall(tasks: readonly TodoItem[]): string {
+	let done = 0;
+	let dropped = 0;
+	for (const task of tasks) {
+		if (task.status === "completed") done++;
+		else if (isTerminalTodoStatus(task.status)) dropped++;
+	}
+	const open = tasks.length - done - dropped;
+	return `Overall: ${done}/${tasks.length} done, ${dropped > 0 ? `${dropped} dropped, ` : ""}${open} open.`;
+}
+
 function formatMutationSummary(phases: TodoPhase[], params: TodoParams): string {
 	const tasks = phases.flatMap(phase => phase.tasks);
 	const task = params.task ? boundedTodoPreviewText(params.task, TODO_ITEM_PREVIEW_WIDTH) : undefined;
@@ -1128,19 +1151,18 @@ function formatMutationSummary(phases: TodoPhase[], params: TodoParams): string 
 			changed = `Added ${params.items?.length ?? 0} ${(params.items?.length ?? 0) === 1 ? "task" : "tasks"} to ${phase}.`;
 			break;
 		case "rm":
-			if (!task && !phase) return "Todo list cleared. Overall: 0/0 done, 0 open.";
+			if (!task && !phase) return `Todo list cleared. ${formatOverall([])}`;
 			changed = task ? `Removed: ${task}.` : `Removed phase: ${phase}.`;
 			break;
 		case "view":
 			throw new Error("view operations require the full todo summary");
 	}
 
-	const closed = tasks.filter(item => isTerminalTodoStatus(item.status)).length;
 	const next = nextActionableEntry(phases);
 	const nextText = next
 		? ` Next: ${boundedTodoPreviewText(`${next.task.content} (${next.phase.name})`, TODO_ITEM_PREVIEW_WIDTH)}.`
 		: " Next: none.";
-	return `${changed}${nextText} Overall: ${closed}/${tasks.length} done, ${tasks.length - closed} open.`;
+	return `${changed}${nextText} ${formatOverall(tasks)}`;
 }
 
 /**
@@ -1195,10 +1217,7 @@ function formatSummaryBody(phases: TodoPhase[], errors: string[], readOnly: bool
 	const lines: string[] = [];
 	if (errorSummary) lines.push(errorSummary);
 	lines.push(remainingTasks.length === 0 ? "Remaining items: none." : `Remaining items: ${remainingTasks.length}.`);
-	// Open and closed are complements of one owner's decision, so
-	// `closed + open === total` holds for any status the vocabulary grows.
-	const closedAll = tasks.filter(task => isTerminalTodoStatus(task.status)).length;
-	lines.push(`Overall: ${closedAll}/${tasks.length} done, ${remainingTasks.length} open.`);
+	lines.push(formatOverall(tasks));
 	if (currentIdx === -1) {
 		lines.push(
 			`Active phase: none (all ${phases.length} ${phases.length === 1 ? "phase is" : "phases are"} closed).`,
