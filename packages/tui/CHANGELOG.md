@@ -4,7 +4,8 @@
 
 ### Fixed
 
-- Fixed pinned footer and anchored live-region chrome rows leaking into native scrollback when frame growth or scrolling advanced the viewport top.
+- A pinned footer's rows are excluded from the history ceiling even when no root child claims the native-scrollback replay contract. The ceiling was derived from the last replay-capable child alone, so a host that declares a pinned footer over a plain container — no transcript implementing replay — had no ceiling at all: growth that pushed the viewport top past the footer's first row committed that chrome into immutable native scrollback and, in the tallest cases, took a destructive erase-and-replay of the whole screen to repair the prefix it had just violated. A host whose transcript does implement replay was already bounded and is unaffected.
+
 ## [16.5.2] - 2026-07-14
 
 ### Fixed

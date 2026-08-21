@@ -4,26 +4,32 @@
  * height, chrome height, transcript height, frame growth rate, or combination of seams.
  *
  * WHY THIS CLOSES THE DEFECT.
- * When a transient chrome row (such as a working loader displaying `[esc]` with a task clock)
- * sits in an anchored live region or pinned footer below the transcript, tall tool output or
- * rapid frame growth advances `windowTop`. In previous versions, the engine's `#historyEndRow`
- * calculation did not clamp to `pinnedFooterChildCount` unless a child implemented
- * `canPrepareNativeScrollbackReplay`. When `pinnedFooterChildCount` was used alone or when
- * live-region boundaries were merged with topmost seams, frame scrolling allowed chrome rows
- * to commit into immutable native scrollback as if they were history. Once in scrollback,
- * the chrome row became permanent, wedged between settled transcript blocks.
+ * A transient chrome row — a working loader with its clock and `[esc]` hint, a todo or subagent
+ * HUD, the composer — is rewritten every frame, so a copy of it stranded in the terminal's own
+ * scrollback is permanent and cannot be repaired without erasing and replaying the screen. The
+ * engine keeps chrome out of the commit by deriving a history ceiling from the last root child
+ * that claims the native-scrollback replay contract. A host that declares a pinned footer over a
+ * plain container claims that contract nowhere, so the ceiling fell back to the whole frame and
+ * there was no ceiling at all: growth that advanced `windowTop` past the footer's first row
+ * committed the chrome as history, and the tallest members additionally took a destructive erase
+ * to repair the prefix they had just violated.
  *
  * THE CLASS, not the incident.
- * The invariant defended here is that no row belonging to an anchored live-region container
- * (`NativeScrollbackLiveRegion`, seam at 0), pinned footer child, or component mounted after
- * the history container may ever appear in the terminal's native scroll buffer — across all
- * viewport heights, chrome heights, transcript growth rates, and presence or absence of
- * transcript streaming seams. A frame whose visible tail cannot commit without taking live
- * rows must take a bounded in-place repaint rather than an illegal scrollback commit.
+ * The invariant is that no row of an anchored live region, a pinned footer, or anything mounted
+ * after the history container may appear in the native scroll buffer, and that keeping it out is
+ * never paid for with a destructive repaint — for every protection a host can declare, at every
+ * viewport height, chrome height, growth rate and transcript seam position. The sweep runs the
+ * real `TUI` against a real `VirtualTerminal`; the containers are the host shape, which is the
+ * boundary under test. Every member ends with a block taller than the viewport, so a member that
+ * never scrolled is a failure rather than a silent pass.
  *
  * WHAT IT DOES NOT CATCH.
- * Single-screen terminal models without Kitty graphics or multiplexer pane wrapping differences.
- * Image transmit buffers and OSC escape sequences are tested in their dedicated suites.
+ * The pre-fix engine bounded transcript-replay hosts correctly, so those members of this sweep
+ * were green before the fix and cannot witness a regression in the clamp — the pinned-footer
+ * members are what go red. It also says nothing about a chrome component that stops updating and
+ * stays mounted: such a row is byte-identical frame after frame, which is exactly what the
+ * renderer treats as settled content, and no engine-side ceiling can distinguish it. That is a
+ * host defect and is defended where the host unmounts it.
  */
 import { describe, expect, test } from "bun:test";
 import {
@@ -86,17 +92,35 @@ class ComposerComponent implements Component, Focusable {
 	}
 }
 
+/**
+ * The protections a host can declare over its chrome. This table is the union:
+ * {@link SweepVariant} derives its type from it, so a protection added later is
+ * swept without anyone remembering to add a case, and `expect(swept)` below
+ * pins the set so one cannot be dropped either.
+ */
+const CHROME_PROTECTIONS = ["transcript-replay", "pinned-footer", "both"] as const;
+type ChromeProtection = (typeof CHROME_PROTECTIONS)[number];
+
+const SEAM_KINDS = ["none", "zero", "middle"] as const;
+type SeamKind = (typeof SEAM_KINDS)[number];
+
 interface SweepVariant {
 	height: number;
 	chromeRows: number;
 	appendSize: number;
-	chromeProtection: "transcript-replay" | "pinned-footer" | "both";
-	transcriptSeamKind: "none" | "zero" | "middle";
+	chromeProtection: ChromeProtection;
+	transcriptSeamKind: SeamKind;
 }
 
 interface RunOutcome {
 	leakedMarkers: string[];
 	erases: number;
+	/**
+	 * Rows the terminal moved into its own scrollback. Zero means the viewport
+	 * never scrolled, so the variant never reached the condition the defect
+	 * needs and proves nothing — asserted, not reported, because a sweep that
+	 * silently skips its hardest members is indistinguishable from a passing one.
+	 */
 	historyRowCount: number;
 }
 
@@ -127,12 +151,7 @@ async function executeVariant(variant: SweepVariant): Promise<RunOutcome> {
 
 	// Initial settled content
 	transcript.addChild(
-		new SettledBlock([
-			"$ tool step 0",
-			"output line 0.1",
-			"output line 0.2",
-			"[Wall: 0.01s | Artifact: 1]",
-		]),
+		new SettledBlock(["$ tool step 0", "output line 0.1", "output line 0.2", "[Wall: 0.01s | Artifact: 1]"]),
 	);
 
 	// Chrome: loader + optional HUD lines
@@ -180,11 +199,14 @@ async function executeVariant(variant: SweepVariant): Promise<RunOutcome> {
 	tui.requestRender();
 	await settleFrames(term, tui);
 
-	// Burst append 3: final settled summary
+	// Burst append 4: a block taller than the viewport, so EVERY variant ends with
+	// the chrome above `windowTop`. Without it the tall-viewport/small-append
+	// members never scroll and pass without exercising anything.
 	transcript.seam = undefined;
 	transcript.addChild(
 		new SettledBlock([
 			"$ final step summary",
+			...Array.from({ length: variant.height + 4 }, (_, i) => `summary row ${i + 1}`),
 			"completed successfully",
 		]),
 	);
@@ -195,9 +217,7 @@ async function executeVariant(variant: SweepVariant): Promise<RunOutcome> {
 	const allRows = term.getScrollBuffer().map(r => Bun.stripANSI(r));
 	const history = allRows.slice(0, scrollbackLength);
 
-	const leakedMarkers = CHROME_MARKERS.filter(marker =>
-		history.some(row => row.includes(marker)),
-	);
+	const leakedMarkers = CHROME_MARKERS.filter(marker => history.some(row => row.includes(marker)));
 
 	tui.stop();
 
@@ -208,24 +228,13 @@ async function executeVariant(variant: SweepVariant): Promise<RunOutcome> {
 	};
 }
 
-function generateVariantsForProtection(protection: "transcript-replay" | "pinned-footer" | "both"): SweepVariant[] {
-	const heights = [8, 12, 24];
-	const chromeRowCounts = [1, 4, 10];
-	const appendSizes = [2, 8, 20];
-	const seamKinds: Array<"none" | "zero" | "middle"> = ["none", "zero", "middle"];
-
+function sweepVariants(protection: ChromeProtection): SweepVariant[] {
 	const list: SweepVariant[] = [];
-	for (const height of heights) {
-		for (const chromeRows of chromeRowCounts) {
-			for (const appendSize of appendSizes) {
-				for (const transcriptSeamKind of seamKinds) {
-					list.push({
-						height,
-						chromeRows,
-						appendSize,
-						chromeProtection: protection,
-						transcriptSeamKind,
-					});
+	for (const height of [8, 12, 24]) {
+		for (const chromeRows of [1, 4, 10]) {
+			for (const appendSize of [2, 8, 20]) {
+				for (const transcriptSeamKind of SEAM_KINDS) {
+					list.push({ height, chromeRows, appendSize, chromeProtection: protection, transcriptSeamKind });
 				}
 			}
 		}
@@ -234,60 +243,22 @@ function generateVariantsForProtection(protection: "transcript-replay" | "pinned
 }
 
 describe("a live-region row never enters the tape", () => {
-	test("pinned-footer protects chrome across heights, chrome rows, burst sizes, and seams", async () => {
-		const variants = generateVariantsForProtection("pinned-footer");
-		const failures: Array<{ variant: string; leaked: string[]; erases: number }> = [];
+	test("no chrome row reaches native scrollback, under every protection a host can declare", async () => {
+		const swept: string[] = [];
+		const failures: string[] = [];
 
-		for (const variant of variants) {
-			const label = `h=${variant.height} chr=${variant.chromeRows} app=${variant.appendSize} seam=${variant.transcriptSeamKind}`;
-			const outcome = await executeVariant(variant);
-			if (outcome.leakedMarkers.length > 0 || outcome.erases > 0) {
-				failures.push({
-					variant: label,
-					leaked: outcome.leakedMarkers,
-					erases: outcome.erases,
-				});
+		for (const protection of CHROME_PROTECTIONS) {
+			swept.push(protection);
+			for (const variant of sweepVariants(protection)) {
+				const label = `${protection} h=${variant.height} chr=${variant.chromeRows} app=${variant.appendSize} seam=${variant.transcriptSeamKind}`;
+				const outcome = await executeVariant(variant);
+				if (outcome.historyRowCount === 0) failures.push(`${label}: never scrolled`);
+				if (outcome.leakedMarkers.length > 0) failures.push(`${label}: leaked ${outcome.leakedMarkers.join(", ")}`);
+				if (outcome.erases > 0) failures.push(`${label}: ${outcome.erases} destructive erases`);
 			}
 		}
 
 		expect(failures).toEqual([]);
-	}, 60_000);
-
-	test("transcript-replay protects chrome across heights, chrome rows, burst sizes, and seams", async () => {
-		const variants = generateVariantsForProtection("transcript-replay");
-		const failures: Array<{ variant: string; leaked: string[]; erases: number }> = [];
-
-		for (const variant of variants) {
-			const label = `h=${variant.height} chr=${variant.chromeRows} app=${variant.appendSize} seam=${variant.transcriptSeamKind}`;
-			const outcome = await executeVariant(variant);
-			if (outcome.leakedMarkers.length > 0 || outcome.erases > 0) {
-				failures.push({
-					variant: label,
-					leaked: outcome.leakedMarkers,
-					erases: outcome.erases,
-				});
-			}
-		}
-
-		expect(failures).toEqual([]);
-	}, 60_000);
-
-	test("both protections combined (interactive-mode shape) protect chrome across heights, chrome rows, burst sizes, and seams", async () => {
-		const variants = generateVariantsForProtection("both");
-		const failures: Array<{ variant: string; leaked: string[]; erases: number }> = [];
-
-		for (const variant of variants) {
-			const label = `h=${variant.height} chr=${variant.chromeRows} app=${variant.appendSize} seam=${variant.transcriptSeamKind}`;
-			const outcome = await executeVariant(variant);
-			if (outcome.leakedMarkers.length > 0 || outcome.erases > 0) {
-				failures.push({
-					variant: label,
-					leaked: outcome.leakedMarkers,
-					erases: outcome.erases,
-				});
-			}
-		}
-
-		expect(failures).toEqual([]);
-	}, 60_000);
+		expect(swept).toEqual(["transcript-replay", "pinned-footer", "both"]);
+	}, 180_000);
 });

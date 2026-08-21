@@ -4274,7 +4274,11 @@ export class TUI extends Container {
 	 *
 	 * Falls back to the whole frame when no child claims history, which is every
 	 * plain-container host (a dialog, a one-shot command): there is no chrome to
-	 * separate and the old ceiling is the right one.
+	 * separate and the old ceiling is the right one. A declared pinned footer is
+	 * the exception — it IS chrome, named as such by the host — so its first row
+	 * caps the ceiling whether or not anything above it claims the replay
+	 * contract. Without that cap a pinned footer over a plain container had no
+	 * ceiling at all.
 	 */
 	#historyEndRow(frameLength: number): number {
 		const segments = this.#frameSegments;
