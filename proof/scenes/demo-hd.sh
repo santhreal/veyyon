@@ -4,10 +4,11 @@
 #
 # It is one take rather than a row per feature. A gallery of one-feature clips costs a
 # live take each and every one of them opens on the same empty composer, so the reader
-# watches the product start up nine times and work once. One session that reads, edits,
-# verifies, plans and then signs its output is the shorter recording and the more honest
-# one: the state each step leaves behind is what the next step starts from. Surfaces that
-# do not move are published as screenshots taken from this same take.
+# watches the product start up nine times and work once. One session that plans, reads,
+# edits, verifies, advances its todo board, and then signs its output is the shorter
+# recording and the more honest one: the state each step leaves behind is what the next
+# step starts from. Surfaces that do not move are published as screenshots taken from this
+# same take.
 #
 # THE SIGNATURE IS THE PART A READER CAN CHECK.
 #
@@ -24,152 +25,210 @@
 # the digest in the frame. The number is printed at the end of the run, outside the
 # recording, for exactly that purpose.
 settle 16
+screen_has "model:" || screen_has "demo" || screen_has "veyyon" || MISSED="${MISSED:-} idle"
 shot idle
 
-# THE SUBJECT IS A TREE, NOT A FILE.
+# PLAN-FIRST: THE BOARD OPENS BEFORE THE WORK BEGINS.
 #
-# What this take used to record was a model reading one short file and editing it, and that is
-# not the work this product is for. Nine modules across three directories read a numeric
-# setting straight out of the environment, each in its own spelling (`Number`, `parseInt`
-# without a radix, unary plus), so a typo in a deploy is a silent zero rather than a failed
-# boot. Finding every site is a search rather than a read, fixing them is one new owner plus
-# nine call sites, and knowing you are done takes the suite. That is a session worth watching.
-#
-# The search first, and nothing changed yet. Two frames come out of this one turn, and the order
-# is the order they exist in: the tool block is shot WHILE the search is running, and the answer
-# once the turn is over. Scrolling back for the block is what the two takes before this one did,
-# and against a model that writes a page about what it found it does not reach.
-submit "use your search tool across service/ and list every place a numeric setting is read from the environment: file, variable, env var, default, and which spelling it uses. Do not change anything yet."
-wait_for_screen "Grep" 240 || MISSED="${MISSED:-} search-block"
-pause 1.5
-shot search-block
-settle_idle 300 8 2 20
-shot inventory
+# A plan written after the work is done is a retrospective disguised as planning.
+# The session opens with the plan panel: a structured four-phase hardening roadmap
+# written by the shipped todo tool, establishing the contract and the phased steps
+# before a single file is touched.
+submit "use your todo tool: initialize a four-phase plan for hardening environment variable handling across service/: Foundation with two tasks ('Audit unvalidated numeric env reads across service/' and 'Create service/env.ts with validating readNumber helper'), Migration with one task ('Migrate service/config, handlers, and store via parallel subagents'), Validation with two tasks ('Add hex rejection test to service/settings.test.ts' and 'Run service test suite to verify defaults'), and Release with one task ('Sign hardened release artifact with release signature'). Call the todo tool with op init once and stop immediately after the tool result -- do not call any other tools and do not read, search, or edit any files."
+wait_for_screen "Todo" 240 || MISSED="${MISSED:-} todo-board"
+if screen_has "Todo 0/6 tasks" && screen_has "Foundation"; then
+	echo "scene: plan-first todo board visible" >&2
+else
+	MISSED="${MISSED:-} todo-board"
+fi
+shot todo-board
+# The todo mutation has landed. Stop this turn before the model can execute ahead;
+# the next request owns the first task.
+k Escape
+settle 3
 
-# THE FAN-OUT. The needle is `Subagents`, the heading the lane list renders under, and the reason
-# it is not a lane's name is that a lane's name is not the scene's to choose: the one take on this
-# rig that fanned out labelled its lanes `UnlikelyDamselfly` and `LikelySeahorse`, generated names
-# with nothing to do with the instruction. Names written here would also match the prompt's own
-# echo, which stays on screen -- that is how a wait for `ConfigLane` returned at 0s and published
-# a frame of the request. A needle has to be text only the RENDERER can produce, and `Subagents`
-# qualifies: the instruction says "subagents" in lower case and `screen_has` is case-sensitive.
+# THE AUDIT & DISCOVERY.
 #
-# THE TOOL IS NAMED IN THE INSTRUCTION, because asking for "three subagents in parallel" does not
-# get any. That take's session carried `read`, `grep`, `write`, `glob` and `todo` and no `task`
-# call at all: the model wrote the owner and then did all three directories itself, so the lane
-# list never existed to be shot and the wait burned its whole bound. The take that DID fan out
-# asked for "task agents" in those words.
+# The first Foundation task is executed: finding every unvalidated numeric environment
+# read across the nine modules in service/. The finished turn is the stable signal; its
+# real search block is then brought back into view before the inventory is captured.
+submit "now execute only the first Foundation task. Use your search tool across service/ and find all nine numeric environment reads in the seeded codebase. Mark only the audit task completed in your todo list, then print a compact nine-row inventory with file, variable, env var, default, and raw spelling (Number, parseInt, or unary +). Its final line must be exactly 'AUDIT COMPLETE: 9 reads; Number 3; parseInt 3; unary 3.' Stop at that line. Do not edit or write files, do not call the task tool, and do not begin the helper or migration."
+wait_for_screen "AUDIT COMPLETE: 9 reads" 300 || MISSED="${MISSED:-} inventory"
+# The inventory is now complete and the todo mutation has landed. Stop before a
+# model that ignored the final instruction can execute the next phase ahead.
+k Escape
+settle 3
+if screen_has "AUDIT COMPLETE: 9 reads" && screen_has "Number 3" && screen_has "parseInt 3" && screen_has "unary 3" && screen_has "service/"; then
+	echo "scene: inventory audit table visible" >&2
+else
+	MISSED="${MISSED:-} inventory"
+fi
+# Search output can leave the viewport before a fast model finishes the table.
+# Capture the real tool block from this same turn rather than racing its redraw.
+wheel_up 7
+settle 1
+if screen_has "Grep" && screen_has "process.env"; then
+	echo "scene: raw environment search visible" >&2
+else
+	MISSED="${MISSED:-} search-block"
+fi
+shot search-block
+wheel_down 20
+settle 1
+screen_has "AUDIT COMPLETE: 9 reads" || MISSED="${MISSED:-} inventory"
+shot inventory
+# The audit is evidence only if the tree is still the nine raw reads the search
+# inspected. A model that starts the helper or migration ahead can still print a
+# plausible table, so check the seeded source state before asking for the write.
+demo_dir="${SCENE_CWD:-/sandbox/home/demo}"
+raw_reads="$(
+	grep -hE 'Number\(process\.env|parseInt\(process\.env|= \+\(process\.env' \
+		"${demo_dir}"/service/config/*.ts \
+		"${demo_dir}"/service/handlers/*.ts \
+		"${demo_dir}"/service/store/*.ts |
+		wc -l |
+		tr -d '[:space:]'
+)"
+if [ "${raw_reads}" = "9" ] && [ ! -e "${demo_dir}/service/env.ts" ]; then
+	echo "scene: audit left all nine raw reads untouched" >&2
+else
+	MISSED="${MISSED:-} inventory-preedit"
+fi
+
+# THE FAN-OUT & PARALLEL MIGRATION.
 #
-# One owner is written by the main agent BEFORE the fan-out, because three agents inventing
-# three helpers is the failure mode this instruction exists to avoid, and because it makes the
-# lanes genuinely parallel: they edit disjoint directories against a file that already exists.
-submit "write service/env.ts first: one exported readNumber(name, fallback) that reads process.env, accepts a missing value as the fallback, and throws naming the variable when the value is not a finite number. Then use your task tool -- one call, three tasks in the same batch -- to run three subagents in parallel, one per directory: service/config, service/handlers, service/store. Each replaces every env read in its own directory with readNumber and edits nothing outside it. Do not do that work yourself."
-# The lane list is LIVE STATE: it exists while the lanes are running and it is gone, far above
-# the bottom of a long report, by the time the turn ends. So it is shot while the lanes are up.
-# The bound is what a missed fan-out COSTS, at SCENE_SETTLE_SCALE, so it is short enough that a
-# take which loses this frame is diagnosed in ten minutes rather than twenty.
+# The main agent writes the one validating owner first (service/env.ts), then uses the task tool
+# to fan out three subagents in parallel across service/config, service/handlers, and service/store.
+# The helper contract is explicit: readNumber(name, fallback) returns fallback when process.env[name]
+# is missing or blank, accepts only finite decimal numbers, rejects hex/octal/binary/non-numeric strings
+# with an Error naming the variable, and adds no range checks.
+submit "now execute the second Foundation task and dispatch the Migration phase: write service/env.ts first: one exported readNumber(name: string, fallback: number): number that reads process.env[name], returns fallback when missing or empty/blank, accepts only valid finite decimal numbers, and throws an Error naming the variable when given invalid non-decimal or non-numeric strings like hex (0x10), octal, or garbage. Do not edit test files or add range checks. Then dispatch the migration without waiting between calls: call your task tool first with only ConfigMigrate for service/config, then immediately call it again with HandlersMigrate for service/handlers and StoreMigrate for service/store in the same batch. All three must remain in flight together. Each replaces every env read in its own directory with readNumber and edits nothing outside it. Do not do that work yourself. After the second task call, stop immediately: do not wait for results, verify files, update todos, begin Validation, inspect Release, or ask questions."
 wait_for_screen "Subagents" 360 || MISSED="${MISSED:-} agent-lanes"
+# The request itself names the workers, so bare names are not readiness. The
+# colon is emitted by the live Subagents renderer once each worker exists.
+wait_for_screen "StoreMigrate:" 360 || MISSED="${MISSED:-} agent-lanes"
 pause 2
+if screen_has "ConfigMigrate:" && screen_has "HandlersMigrate:" && screen_has "StoreMigrate:" && ! screen_has "Error:"; then
+	echo "scene: all three migration agents visible" >&2
+else
+	MISSED="${MISSED:-} agent-lanes"
+fi
 shot agent-lanes
 settle_idle 900 10 3 30
 
-# THE PARENT'S OWN EDIT, AND WHY THE FAN-OUT CANNOT SUPPLY IT.
+# THE HASH-ANCHORED EDIT.
 #
-# A lane's diff belongs to that lane's transcript. The parent screen after a fan-out carries lane
-# summaries and no diff at all, so the guard for this frame refused in two takes running -- and it
-# was right both times: `Edit: ` is exactly what the header is (`renderStatusLine` joins title and
-# description with ": "), there was simply no edit of the parent's own to find. The main agent
-# is asked for one, and for the edit its own search argued for: `parseInt` without a radix reads
-# `0x10` as 16, which is the trap it flagged while it was still only looking.
-# AND IT IS ASKED FOR BY THE TOOL'S NAME, POSITIVELY. This beat used to end with "use your
-# edit tool rather than rewriting the file", and the take that followed called `write` twice
-# and `edit` not once: a 27B model reads the noun it recognises and drops the "rather than".
-# The guard was right to refuse -- there was no diff of the parent's own to shoot -- but a
-# frame that depends on which of two tools the model happens to reach for is a coin flip, and
-# the fan-out beat above already learned this lesson once: a tool is asked for by its name.
-# So the name is the instruction, the alternative is named and forbidden, and the reason is
-# given, because a reason is what survives paraphrase.
-submit "now add one case to service/settings.test.ts yourself -- do not spawn anyone for this. Use the edit tool: the file already has cases that must stay exactly as they are, so do not use your write tool and do not rewrite the file. The case proves readNumber refuses a hex value like 0x10 instead of silently reading 16."
+# The main agent applies a hash-anchored patch to service/settings.test.ts using the edit tool,
+# adding a test case verifying that readNumber refuses invalid hex inputs (like '0x10') rather
+# than silently reading 16.
+submit "now add only the first Validation case to service/settings.test.ts yourself -- do not spawn anyone for this. Use the edit tool: the file already has cases that must stay exactly as they are, so do not use your write tool and do not rewrite the file. The case proves readNumber refuses a hex value like 0x10 instead of silently reading 16. Stop immediately after the edit tool result: do not run tests, update todos, commit, inspect Release, or ask questions."
 wait_for_screen "Edit: " 400 || MISSED="${MISSED:-} edit-diff"
 pause 2
 shot edit-diff
 settle_idle 400 8 2 20
 
-# The suite, which is the only thing that answers whether nine edits across three directories
-# actually hold together.
-submit "run the service suite and tell me whether every module still resolves its default"
+# THE TEST SUITE EXECUTION.
+#
+# The verification command proves the entire hardened service holds together: all 9 call sites
+# resolve defaults correctly and the new validation case passes with 0 failures.
+submit "run the service suite with bun test and tell me whether every module still resolves its default and the new hex validation passes. Stop immediately after reporting the result: do not update todos, commit, inspect Release, sign anything, or ask questions."
 settle_idle 300 8 2 20
+if screen_has "2 pass" && screen_has "0 fail"; then
+	echo "scene: service test suite passed with 0 failures" >&2
+else
+	MISSED="${MISSED:-} verify-command"
+fi
 shot verify-command
 
-# The plan panel, written by the shipped todo tool rather than typed into the transcript.
+# ADVANCING THE PLAN & COMMITTING.
 #
-# "Do not start any of them" because the take before this one was asked to start the first
-# task and finished all six before the shot, so what published as the plan board was a
-# board with nothing left on it. The board is the surface; the work is the next beat.
-submit "use your todo tool: write a three-phase plan for finishing this hardening, Foundation with two tasks, Validation with three, Release with one. Do not start any of them yet and do not change any files."
-settle_idle 200 8 2 20
-shot todo-board
-submit "start the first Foundation task, then mark it completed and commit the whole service hardening as one scoped commit"
+# The todo board closes Foundation and advances Migration and Validation; the whole
+# service hardening is committed as one scoped commit.
+submit "use your todo tool to mark the Create service/env.ts helper task completed, mark the Migration task completed, and mark the Validation tasks completed, then commit the whole service hardening as one scoped commit. Stop immediately after the commit: do not inspect Release, sign anything, or ask questions."
+wait_for_screen "Todo" 240 || MISSED="${MISSED:-} todo-strike"
 settle_idle 240 8 2 20
+if screen_has "Migration" && screen_has "Validation"; then
+	echo "scene: todo-strike board visible" >&2
+else
+	MISSED="${MISSED:-} todo-strike"
+fi
 shot todo-strike
 
-# The credential, taken out of the environment so it is typed nowhere.
+# THE VAULT: STORING A CREDENTIAL FROM THE ENVIRONMENT.
+#
+# Stored without passing through the transcript.
 slash "/secret from-env RELEASE_SIGNATURE release-signature"
 settle 10
+screen_has "release-signature" || screen_has "Stored" || screen_has "secret" || MISSED="${MISSED:-} secret-stored"
 shot secret-stored
 
 slash "/secret list"
 settle 8
+screen_has "SECRET" || screen_has "release-signature" || screen_has "RELEASE_SIGNATURE" || screen_has "Vault" || screen_has "Scope" || MISSED="${MISSED:-} secret-list"
 shot secret-list
 k Escape
 sleep 1
 
-# Spending it. The model writes the placeholder; veyyon writes the value, and only into
-# the command's arguments at the outbound boundary.
+# SPENDING THE CREDENTIAL WITH EXPLICIT PERMISSION APPROVAL.
 #
-# AND THE PRODUCT ASKS FIRST. A tool call whose arguments carry a real credential needs
-# explicit approval in every non-yolo mode (secret-use-boundary.ts), so the take that did
-# not answer that dialog never wrote the file at all: three runs published a crosscheck
-# whose SIGNED.md was missing, and the reason was on screen the whole time. The dialog is
-# the best frame in the take -- it names the credential the call would spend and what
-# approving means -- so it gets shot, and then approved the way a reader would.
-submit "sign your work: one bash call, chained with && so it is a single call: append the sha256 of #RELEASE_SIGNATURE# to SIGNED.md as a line reading 'signature: <digest>', then cat SIGNED.md. Never print the credential itself."
-settle_idle 300 10 2 20
+# The model writes the placeholder #RELEASE_SIGNATURE#; veyyon intercepts at the outbound
+# boundary, prompts with the permission dialog, and upon approval substitutes the real value.
+submit "sign your work: one bash call, chained with && so it is a single call: append the sha256 of #RELEASE_SIGNATURE# to SIGNED.md as a line reading 'signature: <digest>', then cat SIGNED.md. Never print the credential itself. Stop immediately after reporting the command result: do not update todos or open any operator surface."
+wait_for_screen "Permission required" 300 || MISSED="${MISSED:-} secret-approval"
 shot secret-approval
 approve_while_asked 6
 settle_idle 200 8 2 20
+screen_has "signature:" || screen_has "SIGNED.md" || MISSED="${MISSED:-} signature-written"
 shot signature-written
 
 slash "/secret log"
 settle 10
+screen_has "most recent use" || screen_has "release-signature" || screen_has "Spent" || screen_has "bash" || screen_has "Log" || MISSED="${MISSED:-} secret-log"
 shot secret-log
 k Escape
 sleep 1
 
-# What the session cost, from the product's own accounting rather than a claim about it.
+# CLOSING THE RELEASE PHASE ON THE TODO BOARD.
+#
+# A complete plan is closed out once its final release artifact is signed.
+submit "use your todo tool to mark the Release task completed and confirm all phases are finished. Stop immediately after that confirmation: do not open any operator surface."
+wait_for_screen "Todo" 240 || MISSED="${MISSED:-} todo-finished"
+settle_idle 200 8 2 20
+if screen_has "Todo list done" && screen_has "6 tasks"; then
+	echo "scene: todo-finished board closed" >&2
+else
+	MISSED="${MISSED:-} todo-finished"
+fi
+shot todo-finished
+
+# THE CONTEXT ACCOUNTING REPORT.
 slash "/context"
 settle 10
+screen_has "Context" || screen_has "Tokens" || screen_has "Session" || MISSED="${MISSED:-} context-report"
 shot context-report
 k Escape
 sleep 1
 
-# The settings card, opened by a real pointer travelling down the sidebar.
+# OPERATOR SURFACE: SETTINGS CARD & POINTER NAVIGATION.
 slash "/settings"
 sleep 2
+screen_has "Settings" || screen_has "General" || MISSED="${MISSED:-} settings-open"
 shot settings-open
 glide 12 40 24 40 24 0.06
 sleep 0.8
+screen_has "Settings" || screen_has "General" || MISSED="${MISSED:-} settings-pane"
 shot settings-pane
 k Escape
 sleep 1.5
 
-# The session as a whole: scroll back through everything the take produced, so it ends on
-# the work rather than on an empty composer.
+# FULL SESSION SCROLLBACK.
 wheel_up 14
 sleep 1
+screen_has "service/" || screen_has "Todo" || screen_has "signature" || screen_has "readNumber" || MISSED="${MISSED:-} scrolled"
 shot scrolled
 wheel_down 14
 sleep 1
+screen_has "Context" || screen_has "Settings" || screen_has "demo" || screen_has "model:" || MISSED="${MISSED:-} bottom"
 shot bottom
 
 # Outside the recording: the number, the digest the shell computed, and the file. The

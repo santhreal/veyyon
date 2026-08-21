@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Check a recorded signature against the number the session never displayed.
+"""Check a recorded signature against the number stored outside the transcript.
 
 The take stores a number in the vault straight out of the environment, and the model
-signs a file with the placeholder that stands in for it. What lands on disk is a
-digest, so a reader can confirm the recording rather than trust it: hash the number
-yourself and compare.
+signs a file with the placeholder that stands in for it. The resolved command is shown
+to the operator in the approval dialog, but the number is never typed into the
+transcript or exposed to the model. What lands on disk is a digest, so a reader can
+confirm the recording rather than trust it: hash the number yourself and compare.
 
 WHY THIS IS A SCRIPT AND NOT ONE `sha256sum` CALL. The digest depends on a byte the
 model chooses, not on the credential: `printf '%s'` hashes the number, `echo` hashes
