@@ -175,7 +175,7 @@ python3 proof/verify-signature.py proof/captures/wayland/demo-hd-signature-cross
 | Parallel agents | Three subagents settling in one turn, one per directory, editing disjoint files against an owner the main agent wrote first | [frame](assets/demo-hd-agent-lanes.png) |
 | Edit | The main agent's own diff, adding the guard that rejects the hex, octal and binary literals its search flagged, with the file named in the block header | [frame](assets/demo-hd-edit-diff.png) |
 | Verification | The command the model chose to check its own change, and its output | [frame](assets/demo-hd-verify-command.png) |
-| Plan | A four-phase hardening plan opens before any file changes, advances through Migration and Validation, then closes after signing | [opened](assets/demo-hd-todo-board.png) / [advanced](assets/demo-hd-todo-strike.png) |
+| Plan | A four-phase hardening plan opens before any file changes and advances through Migration and Validation | [opened](assets/demo-hd-todo-board.png) / [advanced](assets/demo-hd-todo-strike.png) |
 | Secret stored | A credential taken from the environment, so it is typed nowhere | [frame](assets/demo-hd-secret-stored.png) |
 | Secret approval | The call held for approval, naming the credential it would spend | [frame](assets/demo-hd-secret-approval.png) |
 | Secret spent | The signature written from a placeholder the model never resolved | [frame](assets/demo-hd-signature-written.png) |
