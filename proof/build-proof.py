@@ -1485,92 +1485,85 @@ SECTIONS = [
             " that holds on any compositor is that the row the pointer is on changed and a row four down did"
             " not: a global brightness shift cancels, and that is what \"the pointer reached the application\""
             " means.</p>",
-            "<h3>One objective, one autonomous build</h3>",
+            "<h3>One task, carried to a signed artifact</h3>",
             video(
-                X + "demo-hd-cut.mp4",
-                "One operator task builds Nebula Drift end to end: the model creates its persistent objective from"
-                " the prompt, opens an eight-task plan, launches three implementation workers, integrates their"
-                " modules, passes tests and typecheck, compiles a standalone terminal 3D ship simulator, signs that"
-                " binary through a protected secret placeholder, completes the goal, and presents the running"
-                " simulator.",
+                W + "demo-hd-cut.mp4",
+                "One operator task audits the numeric environment defaults of a small service: the model writes a"
+                " three-phase, six-task plan and holds it, fans three directory-scoped refactors out to parallel"
+                " workers, applies the one-guard edits itself, proves that all nine documented defaults resolve in"
+                " an environment stripped of every one of those variables, and signs the result through a protected"
+                " secret placeholder.",
             ),
             "<p>Before submitting the task, the operator uses <code>/secret from-env</code> to store a synthetic"
-            " release key without typing it into the transcript. The single user prompt then tells the model what"
-            " done means. The model creates its own persistent goal, and goal continuation owns every later model"
-            " turn; no follow-up prompt restates the work or pushes it into the next phase.</p>",
-            "<p>The opening stays at the recorder's real speed through the goal, todo board, and concurrent worker"
-            " launch. The implementation middle plays at 1.25x, with untouched screens trimmed to four seconds."
-            " Playback returns to real speed before the verification, compiled simulator, permission dialog, binary"
-            " signature, completed plan, completed goal, and final presentation. The boundaries come from named"
-            " scene marks in the same take rather than timestamps chosen after watching it.</p>",
+            " release key without typing it into the transcript. One prompt then tells the model what done means."
+            " No follow-up prompt restates the work or pushes it into the next phase; the model asks for a go-ahead"
+            " once, and every later turn is its own.</p>",
+            "<p>The opening stays at the recorder's real speed through the plan and the concurrent worker launch."
+            " The implementation middle plays at 1.25x, with untouched screens trimmed to four seconds. Playback"
+            " returns to real speed before the verification table, the permission dialog, the written signature and"
+            " the closed board. The boundaries come from named scene marks in the same take rather than timestamps"
+            " chosen after watching it.</p>",
             video(
-                X + "demo-hd.mp4",
-                "The complete unedited session from which the landing-page cut and every frame below are derived.",
+                W + "demo-hd.mp4",
+                "The complete unedited session from which the landing-page cut and every frame below are derived."
+                " A second take of the same scene on the X11 recorder is archived at"
+                " <code>captures/x11/demo-hd.mp4</code>; its model chose a different task, and no frame here comes"
+                " from it.",
             ),
             still(
-                X + "demo-hd-secret-stored.png",
+                W + "demo-hd-secret-stored.png",
                 "The synthetic release key enters the vault from the environment. The transcript receives a name and"
                 " placeholder, not the key.",
             ),
             still(
-                X + "demo-hd-goal-created.png",
-                "The model-created Nebula Drift objective before implementation starts. Goal mode keeps this card"
-                " separate from the transcript tail and carries the task across turns.",
+                W + "demo-hd-todo-board.png",
+                "The model-authored three-phase, six-task board: two foundation tasks, three validation tasks, one"
+                " release task. Nothing is started and no file has been touched; the plan is parked on an explicit"
+                " instruction not to begin.",
             ),
             still(
-                X + "demo-hd-todo-board.png",
-                "The model-authored four-phase, eight-task board: flight plan, three parallel modules, integration,"
-                " verification, signing, and presentation. Every task is still open.",
+                W + "demo-hd-agent-lanes.png",
+                "Three directory-scoped workers live together under one turn, each owning a disjoint directory of"
+                " the service so no two can edit the same file.",
             ),
             still(
-                X + "demo-hd-agent-lanes.png",
-                "DynamicsAgent, RenderAgent, and FlightAgent live together, each owning disjoint simulator modules"
-                " under one goal turn.",
+                W + "demo-hd-edit-diff.png",
+                "The parent agent applies the guard itself, as a hash-anchored edit shown in place.",
             ),
             still(
-                X + "demo-hd-integration-edit.png",
-                "The parent agent integrates the seeded CLI through a hash-anchored edit while the workers implement"
-                " vector math, flight physics, autopilot behavior, and the terminal renderer.",
+                W + "demo-hd-verify-command.png",
+                "All nine documented defaults resolve to the documented value, and to a number rather than a string,"
+                " in an environment where <code>env -i</code> has stripped every one of those variables.",
+            ),
+            "<h3>The artifact is signed at the secret boundary</h3>",
+            "<p>The model writes <code>#RELEASE_SIGNATURE#</code> inside one <code>bash</code> call. Veyyon"
+            " substitutes the stored value only at the outbound tool boundary and stops on a permission dialog"
+            " naming the tool, the scope and the secret the call would spend. The call appends the SHA-256 of that"
+            " value to <code>SIGNED.md</code> as a single line; the value itself is never echoed, and the spend log"
+            " keeps the placeholder rather than the resolved command.</p>",
+            "<p><code>captures/wayland/demo-hd-signature-crosscheck.txt</code> records the signing number, which was"
+            " never typed and never entered the transcript, beside the digest that reached"
+            " <code>SIGNED.md</code>. Recomputing SHA-256 over that number reproduces the published digest exactly,"
+            " so the line in the file is the credential's digest and not an invention of the model.</p>",
+            still(
+                W + "demo-hd-secret-approval.png",
+                "The signing command held for explicit approval. The card names the tool, the scope of the grant and"
+                " the stored secret the call would spend.",
             ),
             still(
-                X + "demo-hd-build-verified.png",
-                "The generated project's tests, TypeScript check, and standalone binary build all pass before the"
-                " release phase begins.",
+                W + "demo-hd-signature-written.png",
+                "The digest appended to SIGNED.md and read back, with the credential absent from both the command"
+                " and the output.",
             ),
             still(
-                X + "demo-hd-simulator-preview.png",
-                "The compiled binary running its deterministic perspective-projected ship, star field, navigation"
-                " gate, autopilot state, and flight telemetry.",
-            ),
-            "<h3>The binary is signed at the secret boundary</h3>",
-            "<p>The model writes <code>#RELEASE_SIGNATURE#</code> in the signing command. Veyyon substitutes the key"
-            " only at the outbound bash boundary and stops on a permission dialog that shows the operator the"
-            " resolved command. The project writes an HMAC-SHA256 over the compiled binary to"
-            " <code>dist/nebula-drift.sig</code>; it never prints the key.</p>",
-            "<p><code>proof/verify-binary-signature.py</code> recomputes the HMAC from the archived binary, signature,"
-            " and synthetic key recorded outside the transcript. A changed binary, changed key, malformed signature,"
-            " or placeholder that never expanded fails the check.</p>",
-            still(
-                X + "demo-hd-secret-approval.png",
-                "The binary-signing command held for explicit operator approval after placeholder expansion.",
+                W + "demo-hd-secret-log.png",
+                "The spend log after the call: one use, the placeholder intact in the recorded command, and the"
+                " status bar counting one secret and two masked values.",
             ),
             still(
-                X + "demo-hd-signature-written.png",
-                "The signature file beside the compiled binary and the stable SIGNED BINARY completion marker.",
-            ),
-            still(
-                X + "demo-hd-todo-finished.png",
-                "The same eight-task board closed after implementation, verification, and signing.",
-            ),
-            still(
-                X + "demo-hd-goal-complete.png",
-                "The model calls the goal tool itself. The persisted objective reports Status: complete before the"
-                " final simulator run.",
-            ),
-            still(
-                X + "demo-hd-presentation.png",
-                "The final frame: the signed Nebula Drift binary running after the goal and all eight tasks are"
-                " complete.",
+                W + "demo-hd-todo-strike.png",
+                "The board closing out. Completed tasks are struck through in place rather than disappearing, so the"
+                " plan stays readable as it empties.",
             ),
         ],
     ),

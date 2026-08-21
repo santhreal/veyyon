@@ -90,7 +90,7 @@ never printed and never reaches the transcript. The board closes 6/6.
 
 | Surface | Evidence |
 | --- | --- |
-| Complete task | [Published clip](../../../../assets/demo-hd.webp) · [unedited take](../../../../proof/captures/x11/demo-hd.mp4) |
+| Complete task | [Published clip](../../../../assets/demo-hd.webp) · [unedited take](../../../../proof/captures/wayland/demo-hd.mp4) |
 | Secret setup | [Release key stored from the environment](../../../../assets/demo-hd-secret-stored.png) |
 | Plan | [Three phases, six tasks, parked before the first edit](../../../../assets/demo-hd-todo-board.png) · [tasks closing on the board](../../../../assets/demo-hd-todo-strike.png) |
 | Parallel implementation | [Three directory refactors fanned out at once](../../../../assets/demo-hd-agent-lanes.png) |
@@ -99,8 +99,11 @@ never printed and never reaches the transcript. The board closes 6/6.
 | Protected signing | [The approval card names the tool, the scope and the secret the call would spend](../../../../assets/demo-hd-secret-approval.png) · [the digest appended to SIGNED.md, the credential never echoed](../../../../assets/demo-hd-signature-written.png) |
 | Stored secrets | [The placeholder inventory](../../../../assets/demo-hd-secret-list.png) · [the call that spent it, placeholder intact in the log](../../../../assets/demo-hd-secret-log.png) |
 
-Every frame and the clip come from the same guarded take. Untouched screens are shortened rather than
-accelerated, and no frame is composited from a second session.
+Every frame and the clip come from one guarded take, recorded on the Wayland recorder. Untouched
+screens are shortened rather than accelerated, and no frame is composited from a second session.
+A second, separate take of the same scene on the X11 recorder is archived at
+`proof/captures/x11/demo-hd.mp4`; its model chose a different task, so none of its frames are mixed
+in here.
 
 See [Testing and verification](../foundations/verification.md#recording-terminal-proofs) for the
 recording environment, the regeneration command, and the before-and-after proof requirements.
