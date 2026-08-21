@@ -278,6 +278,7 @@ export const workspaceTestPackages = [
 export const repoScriptTests = [
 	"scripts/a-local-action-is-called-with-everything-it-requires.test.ts",
 	"scripts/ci-concurrency.test.ts",
+	"scripts/ci-test-partitioning-preserves-global-state-isolation.test.ts",
 	"scripts/every-workflow-job-has-a-deadline.test.ts",
 	"scripts/every-workflow-pipeline-sets-pipefail.test.ts",
 	"scripts/every-workflow-runs-bun-test-in-the-sandbox.test.ts",
@@ -464,7 +465,7 @@ const codingAgentNativePathPatterns = [
 
 const codingAgentSingletonPathPatterns = [
 	/^test\/(settings|config|fast-mode-scope|autocomplete-max-visible)[^/]*\.test\.ts$/,
-	/^test\/[^/]*(singleton|global-state|fake-timer)[^/]*\.test\.ts$/,
+	/^test\/(?:.*\/)?[^/]*(singleton|global-state|fake-timer)[^/]*\.test\.ts$/,
 ];
 
 const codingAgentUiPathPatterns = [
@@ -488,7 +489,6 @@ const codingAgentRuntimePathPatterns = [
 const codingAgentNativeContentMarkers = [
 	"@veyyon/natives",
 	"veyyon-natives",
-	"native",
 	"readImageMetadata",
 	"Bun.spawn",
 	"Bun.spawnSync",
@@ -626,24 +626,27 @@ function matchesAnyPath(testFile: string, patterns: RegExp[]): boolean {
 function matchesAnyContentPattern(content: string, patterns: RegExp[]): boolean {
 	return patterns.some(pattern => pattern.test(content));
 }
-// Native/tooling tests are classified first because they need the lowest
-// concurrency; all coding-agent buckets run with the native addon available in CI.
-function classifyCodingAgentTest(testFile: string, content: string): CodingAgentBucket {
-	if (
-		matchesAnyPath(testFile, codingAgentNativePathPatterns) ||
-		hasAnyMarker(content, codingAgentNativeContentMarkers)
-	) {
-		return "native";
-	}
-	if (matchesAnyPath(testFile, codingAgentUiPathPatterns) || hasAnyMarker(content, codingAgentUiContentMarkers)) {
-		return "ui";
-	}
+// Isolation is semantic, so singleton/global-state tests win every collision:
+// batching one beside another test can leak process-wide state. UI follows
+// because its five-file heap bound is stricter than the ten-file native and
+// runtime buckets. All buckets have the native addon in CI, so needing the
+// addon never justifies weakening either stronger constraint.
+export function classifyCodingAgentTest(testFile: string, content: string): CodingAgentBucket {
 	if (
 		matchesAnyPath(testFile, codingAgentSingletonPathPatterns) ||
 		hasAnyMarker(content, codingAgentSingletonContentMarkers) ||
 		matchesAnyContentPattern(content, codingAgentSingletonContentPatterns)
 	) {
 		return "singleton";
+	}
+	if (matchesAnyPath(testFile, codingAgentUiPathPatterns) || hasAnyMarker(content, codingAgentUiContentMarkers)) {
+		return "ui";
+	}
+	if (
+		matchesAnyPath(testFile, codingAgentNativePathPatterns) ||
+		hasAnyMarker(content, codingAgentNativeContentMarkers)
+	) {
+		return "native";
 	}
 	if (
 		matchesAnyPath(testFile, codingAgentRuntimePathPatterns) ||
