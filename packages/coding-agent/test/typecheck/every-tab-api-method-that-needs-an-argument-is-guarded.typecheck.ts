@@ -8,6 +8,10 @@ import type { TabApi } from "@veyyon/coding-agent/tools/browser/tab-worker";
 // missing. This pairing is what makes the guard fail by default: adding such a
 // method without a row in the table fails `bun check` here, at the declaration,
 // rather than in a session months later.
+//
+// It forces the checker through src/tools/browser/tab-api-guard.ts (the
+// TAB_REQUIRED_ARGUMENTS table) against src/tools/browser/tab-worker.ts (the
+// TabApi surface those rows have to cover), so the two stay in step.
 
 /** True when the call cannot be made with no arguments at all. */
 type NeedsAnArgument<F> = F extends (...args: infer A) => unknown ? ([] extends A ? false : true) : false;
