@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- `setAnthropicProviderModule`, `setOpenAICompletionsProviderModule`, `setOpenAIResponsesProviderModule`, `setGoogleProviderModule`, `setGoogleGeminiCliProviderModule`, `setGoogleVertexProviderModule`, `setOllamaProviderModule`, and `setDevinProviderModule` are exported from `@veyyon/ai/providers/register-builtins` to allow deterministic provider stream simulation across production provider API routing and lazy watchdog wrappers.
+
+### Changed
+
+- The todo board is back to the tree list it was before 1.1.0: one status glyph per task, open work first, the phase in parentheses after the content, and the withheld count on the last row. The panel form shipped in 1.1.0 is reverted — Roman-numeral phase headings, per-phase fractions, the header progress gauge, the indented rail body and the fourteen-frame entrance are all gone. The board is static again: it is drawn once when the result lands and never repaints, so nothing on it moves after a write and no interval is armed for it.
+
 ## [1.1.0] - 2026-08-20
 
 ### Added
