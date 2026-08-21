@@ -172,8 +172,8 @@ describe("InteractiveMode goal mode integration", () => {
 		await harness.cleanup();
 	});
 
-	it("toggles goal tool exposure when goal mode enters and pauses", async () => {
-		expect(await toolNamesFor(harness)).not.toContain("goal");
+	it("keeps the goal tool available before entry and while a goal is paused", async () => {
+		expect(await toolNamesFor(harness)).toContain("goal");
 
 		await harness.mode.handleGoalModeCommand("Ship the release");
 
@@ -187,7 +187,62 @@ describe("InteractiveMode goal mode integration", () => {
 		expect(harness.mode.goalModeEnabled).toBe(false);
 		expect(harness.mode.goalModePaused).toBe(true);
 		expect(harness.session.getGoalModeState()?.goal.status).toBe("paused");
-		expect(await toolNamesFor(harness)).not.toContain("goal");
+		expect(await toolNamesFor(harness)).toContain("goal");
+	});
+
+	it("removes goal from plan mode and restores it after exit", async () => {
+		expect(harness.session.getActiveToolNames()).toContain("goal");
+
+		await harness.mode.handlePlanModeCommand();
+		expect(harness.mode.planModeEnabled).toBe(true);
+		expect(harness.session.getActiveToolNames()).not.toContain("goal");
+
+		await harness.mode.handlePlanModeCommand();
+		expect(harness.mode.planModeEnabled).toBe(false);
+		expect(harness.session.getActiveToolNames()).toContain("goal");
+	});
+
+	it("lets the model create the initial persistent goal from an ordinary session", async () => {
+		await harness.mode.init({ suppressWelcomeIntro: true });
+		harness.session.agent.emitExternalEvent({
+			type: "message_start",
+			message: {
+				role: "user",
+				content: [{ type: "text", text: "Build Nebula Drift" }],
+				timestamp: Date.now(),
+			},
+		});
+		await waitForMicrotasks();
+		const appendModeChange = vi.spyOn(harness.session.sessionManager, "appendModeChange");
+		const goalTool = (await createTools(harness.toolSession, harness.session.getActiveToolNames())).find(
+			tool => tool.name === "goal",
+		);
+		if (!goalTool) throw new Error("Expected goal tool in the ordinary session tool set");
+
+		await goalTool.execute("create-goal", {
+			op: "create",
+			objective: "Build Nebula Drift",
+		});
+
+		expect(harness.session.getGoalModeState()).toMatchObject({
+			enabled: true,
+			mode: "active",
+			goal: { objective: "Build Nebula Drift", status: "active" },
+		});
+		expect(harness.mode.goalModeEnabled).toBe(true);
+		expect(harness.mode.goalModePaused).toBe(false);
+		expect(harness.session.getActiveToolNames()).toContain("goal");
+		expect(appendModeChange).toHaveBeenCalledWith(
+			"goal",
+			expect.objectContaining({
+				goal: expect.objectContaining({ objective: "Build Nebula Drift", status: "active" }),
+			}),
+		);
+		const buildContinuation = vi.spyOn(harness.session.goalRuntime, "buildContinuationPrompt");
+		const continuationInput = await armInputWaiter(harness.mode);
+		expect(buildContinuation).toHaveBeenCalledTimes(1);
+		harness.mode.onInputCallback?.(harness.mode.startPendingSubmission({ text: "cleanup" }));
+		await continuationInput.inputPromise;
 	});
 
 	it("replaces the active goal via /goal set", async () => {
@@ -623,12 +678,10 @@ describe("InteractiveMode goal mode integration", () => {
 		);
 		expect(completionText).toContain("Goal achieved. Report final budget usage to the user: tokens used: 0 of 50.");
 		expect(harness.session.getGoalModeState()?.mode).toBe("exiting");
-		// Per fix #1: completeGoalFromTool clears state.enabled so subsequent createTools
-		// calls (e.g. mid-turn refreshes) no longer advertise the goal tool. The model's
-		// existing toolset for the in-flight turn is unaffected — what we care about here
-		// is that the next createTools observation reflects the deactivation.
+		// Goal completion deactivates continuation, but the lifecycle tool remains
+		// available for a later model-created goal.
 		expect(harness.session.getGoalModeState()?.enabled).toBe(false);
-		expect(await toolNamesFor(harness)).not.toContain("goal");
+		expect(await toolNamesFor(harness)).toContain("goal");
 
 		const nextTurn = harness.mode.getUserInput();
 		// getUserInput observes mode === "exiting" and awaits #exitGoalMode before
@@ -639,7 +692,7 @@ describe("InteractiveMode goal mode integration", () => {
 		expect(harness.mode.goalModeEnabled).toBe(false);
 		expect(harness.mode.goalModePaused).toBe(false);
 		expect(harness.session.getGoalModeState()).toBeUndefined();
-		expect(await toolNamesFor(harness)).not.toContain("goal");
+		expect(await toolNamesFor(harness)).toContain("goal");
 		expect(appendCustomEntry).toHaveBeenCalledWith(
 			"goal-completed",
 			expect.objectContaining({

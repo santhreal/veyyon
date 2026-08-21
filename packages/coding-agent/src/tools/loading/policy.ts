@@ -36,7 +36,7 @@ import { type BuiltinToolName, normalizeToolName, normalizeToolNames, TOOL } fro
  * build the discoverable index.
  *
  * CHANGING ANYTHING HERE. `test/tools/tool-loading-differential.test.ts` boots the real
- * `createAgentSession` and freezes the ordered active tool list plus discoverable index for 17
+ * `createAgentSession` and freezes the ordered active tool list plus discoverable index for 18
  * settings combinations. It is the guard that made this consolidation provably behavior-
  * preserving, and it is mutation-tested: 16 deliberate rule breaks were injected here and all
  * 16 were caught. A rule added below without a matrix cell is an unprotected rule.
@@ -252,8 +252,6 @@ export function resolveEvalToolAvailability(inputs: EvalToolAvailabilityInputs):
 export interface BuiltinToolPermissionInputs {
 	/** `goal.enabled`. */
 	goalEnabled: boolean;
-	/** `goal.enabled` AND live goal-mode state is enabled. */
-	goalModeActive: boolean;
 	/** Session-level LSP switch (`ToolSession.enableLsp`, defaulting to true). */
 	enableLsp: boolean;
 	/** `lsp.enabled`. */
@@ -330,7 +328,7 @@ export function learnToolBackendEnabled(memoryBackend: string): boolean {
  * needs a switch has to say so here.
  */
 export function isBuiltinToolAllowed(name: string, inputs: BuiltinToolPermissionInputs): boolean {
-	if (name === TOOL.goal) return inputs.goalEnabled && inputs.goalModeActive;
+	if (name === TOOL.goal) return inputs.goalEnabled;
 	if (name === TOOL.lsp) return inputs.enableLsp && inputs.lspEnabled;
 	if (name === TOOL.bash) return inputs.bashEnabled;
 	if (name === TOOL.launch) return inputs.launchEnabled;
@@ -375,8 +373,8 @@ export function isBuiltinToolAllowed(name: string, inputs: BuiltinToolPermission
 }
 
 export interface RequestedToolNamesInputs {
-	/** `goal.enabled` AND live goal-mode state is enabled. */
-	goalModeActive: boolean;
+	/** `goal.enabled`; the model may create the initial goal or resume a paused one. */
+	goalEnabled: boolean;
 	/** `astGrep.enabled`. */
 	astGrepEnabled: boolean;
 	/** `astEdit.enabled`. */
@@ -395,10 +393,10 @@ export interface RequestedToolNamesInputs {
  * Only ever applied to a caller-supplied list. With no list, `createTools` enumerates every
  * built-in and filters by {@link isBuiltinToolAllowed} instead, so there is nothing to widen.
  *
- * The `goal` entry used to be pushed separately, before the eval-backend preflight. It is
- * folded in here because the preflight reads only `includes("eval")` and no push below adds or
- * removes `eval` — the two orderings are indistinguishable. `yield` is NOT folded in; see
- * {@link withYieldToolAppended} for why its position is load-bearing.
+ * `goal` is folded in here because an explicit tool whitelist still has to
+ * expose the model-owned create/resume lifecycle when goal support is enabled.
+ * `yield` is NOT folded in; see {@link withYieldToolAppended} for why its
+ * position is load-bearing.
  *
  * Append order is part of the contract: it becomes tool order, which becomes prompt order.
  *
@@ -412,7 +410,7 @@ export function augmentRequestedToolNames(
 	const push = (name: string): void => {
 		if (!requested.includes(name)) requested.push(name);
 	};
-	if (inputs.goalModeActive) push(TOOL.goal);
+	if (inputs.goalEnabled) push(TOOL.goal);
 	// Auto-include AST counterparts when their text-based sibling is present
 	if (requested.includes(TOOL.grep) && inputs.astGrepEnabled) push(TOOL.ast_grep);
 	if (requested.includes(TOOL.edit) && inputs.astEditEnabled) push(TOOL.ast_edit);
@@ -458,8 +456,8 @@ export interface BaseToolSelectionInputs {
 	builtinToolNames: readonly string[];
 	/** `ToolSession.requireYieldTool`. */
 	requireYieldTool: boolean;
-	/** `goal.enabled` AND live goal-mode state is enabled. */
-	goalModeActive: boolean;
+	/** `goal.enabled`; the model may create the initial goal or resume a paused one. */
+	goalEnabled: boolean;
 }
 
 /**
@@ -483,7 +481,7 @@ export function selectBaseToolNames(inputs: BaseToolSelectionInputs): string[] {
 	}
 	const names = inputs.builtinToolNames.filter(inputs.isAllowed);
 	if (inputs.requireYieldTool) names.push(TOOL.yield);
-	if (inputs.goalModeActive) names.push(TOOL.goal);
+	if (inputs.goalEnabled) names.push(TOOL.goal);
 	return names;
 }
 
@@ -496,6 +494,8 @@ export interface InitialActiveToolNamesInputs {
 	explicitToolNames: readonly string[] | undefined;
 	/** The requested names filtered to those the completed registry actually holds. */
 	requestedToolNames: readonly string[];
+	/** `goal.enabled`; appends the goal lifecycle tool when its registry entry exists. */
+	goalEnabled: boolean;
 	/** Extension tools whose definition sets `defaultInactive`. */
 	defaultInactiveToolNames: ReadonlySet<string>;
 	/** Membership test against the COMPLETED registry (built-ins + MCP + custom + extension). */
@@ -549,7 +549,7 @@ export function applyHarnessToolAllowlist(
  * Six stages, applied in this order. The order is the behavior; each stage can only be read
  * against the set the previous one produced.
  *
- *   1. DROP `goal`. It is hidden and mode-owned: goal mode activates it, a tool list never does.
+ *   1. APPEND `goal` when goal support is enabled and the completed registry contains it.
  *   2. DROP `defaultInactive` extension tools — unless the caller passed an explicit whitelist,
  *      in which case naming one IS the opt-in.
  *   3. MERGE the MCP selection (only when discovery is on): non-MCP requests keep their order,
@@ -564,7 +564,10 @@ export function resolveInitialActiveToolNames(inputs: InitialActiveToolNamesInpu
 	const hasExplicitToolNames = inputs.explicitToolNames !== undefined;
 
 	// 1 + 2.
-	const requestedActiveToolNames = inputs.requestedToolNames.filter(name => name !== TOOL.goal);
+	const requestedActiveToolNames = [...inputs.requestedToolNames];
+	if (inputs.goalEnabled && inputs.hasRegistryTool(TOOL.goal) && !requestedActiveToolNames.includes(TOOL.goal)) {
+		requestedActiveToolNames.push(TOOL.goal);
+	}
 	const initialRequestedActiveToolNames = hasExplicitToolNames
 		? requestedActiveToolNames
 		: requestedActiveToolNames.filter(name => !inputs.defaultInactiveToolNames.has(name));
