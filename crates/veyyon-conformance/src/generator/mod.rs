@@ -22,6 +22,8 @@
 //!   producing the same semantic case collide instead of both being counted.
 
 pub mod boundary;
+pub mod plan;
+pub mod subsystem;
 pub mod sweep;
 
 #[cfg(test)]
