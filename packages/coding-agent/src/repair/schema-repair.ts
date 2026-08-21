@@ -98,6 +98,12 @@ const COMMON_KEY_ALIASES: ReadonlyMap<string, string> = new Map([
 	["folder", "directory"],
 	["q", "query"],
 	["searchquery", "query"],
+	// `op` is the declared name on the tools that take one (`todo`, `goal`), and
+	// a model reaching for it writes the whole word. An undeclared key is not
+	// refused for an ArkType-authored tool, so without these the value sat in the
+	// call untouched and the tool answered that the field was missing.
+	["operation", "op"],
+	["action", "op"],
 ]);
 
 /** Case/separator-insensitive normalization used to match typo'd key names. */

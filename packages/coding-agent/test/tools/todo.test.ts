@@ -69,63 +69,6 @@ describe("TodoTool auto-start behavior", () => {
 		expect(summary.text).toBe("Initialized 2 tasks in 1 phase. Next: status (Execution). Overall: 0/2 done, 2 open.");
 	});
 
-	/**
-	 * Provider repair sometimes drops only the operation discriminator while
-	 * preserving the complete init list. The tool infers init from that
-	 * unambiguous shape instead of rejecting the whole plan before execution.
-	 */
-	it("infers init when op is missing but a phased list is present", async () => {
-		const tool = new TodoTool(createSession());
-		const parsed = tool.parameters({
-			list: [
-				{ phase: "Parallel", items: ["S1 package"] },
-				{ phase: "Parallel", items: ["S2 engine"] },
-			],
-		});
-		expect(parsed instanceof type.errors).toBe(false);
-
-		const result = await tool.execute("call-missing-op", {
-			list: [
-				{ phase: "Parallel", items: ["S1 package"] },
-				{ phase: "Parallel", items: ["S2 engine"] },
-			],
-		});
-
-		expect(result.isError).toBeUndefined();
-		expect(result.details?.op).toBe("init");
-		expect(result.details?.phases).toEqual([
-			{
-				name: "Parallel",
-				tasks: [
-					{ content: "S1 package", status: "in_progress" },
-					{ content: "S2 engine", status: "pending" },
-				],
-			},
-		]);
-	});
-
-	/**
-	 * A missing discriminator is inferred only for safe unambiguous shapes.
-	 * Task-targeting input remains an error so the tool cannot guess a mutation.
-	 */
-	it("rejects ambiguous missing-op mutations without changing state", async () => {
-		const initial: TodoPhase[] = [
-			{
-				name: "Work",
-				tasks: [{ content: "Keep this task", status: "in_progress" }],
-			},
-		];
-		const tool = new TodoTool(createSession(initial));
-
-		const result = await tool.execute("call-ambiguous-op", { task: "Keep this task" });
-
-		expect(result.isError).toBe(true);
-		expect(result.details?.op).toBeUndefined();
-		expect(result.details?.phases).toEqual(initial);
-		const summary = result.content.find(part => part.type === "text");
-		expect(summary?.type === "text" ? summary.text : "").toContain("Missing op");
-	});
-
 	it("auto-promotes the next pending task when current task is completed", async () => {
 		const tool = new TodoTool(createSession());
 		await tool.execute("call-1", {
@@ -482,20 +425,18 @@ describe("TodoTool lenient init shapes", () => {
 
 	/**
 	 * A repaired or truncated payload can lose its discriminator. An empty list
-	 * without `op` must fail closed instead of becoming a destructive init.
+	 * without `op` must fail closed instead of becoming a destructive init — and
+	 * it now fails at the schema, so the call never reaches the board at all.
 	 */
-	it("rejects an implicit empty init without clearing existing state", async () => {
+	it("rejects an implicit empty init at the schema, so state cannot change", async () => {
 		const session = createSession();
 		const tool = new TodoTool(session);
 		await tool.execute("call-1", { op: "init", items: ["Keep this task"] });
 
-		const result = await tool.execute("call-2", { list: [] });
-
-		expect(result.isError).toBe(true);
-		expect(result.details?.phases[0]?.tasks).toEqual([{ content: "Keep this task", status: "in_progress" }]);
-		const summary = result.content.find(part => part.type === "text");
-		if (summary?.type !== "text") throw new Error("Expected text summary");
-		expect(summary.text).toContain("an empty list cannot initialize or clear todos");
+		const refused = tool.parameters({ list: [] });
+		expect(refused instanceof type.errors).toBe(true);
+		expect(String(refused)).toContain("op");
+		expect(session.getTodoPhases?.()?.[0]?.tasks).toEqual([{ content: "Keep this task", status: "in_progress" }]);
 	});
 });
 
