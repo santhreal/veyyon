@@ -1,6 +1,7 @@
-import { Container, Spacer, wrapTextWithAnsi } from "@veyyon/tui";
+import { Container, fillSurface, Spacer, TERMINAL, visibleWidth, wrapTextWithAnsi } from "@veyyon/tui";
 import { WidthAwareText } from "../../tui";
 import type { ThemeColor } from "../theme/color";
+import { getVisibleGround } from "../theme/ground-tints";
 import { theme } from "../theme/theme";
 import { COMPOSER_INSET_COLS } from "./composer-chrome";
 
@@ -18,20 +19,13 @@ import { COMPOSER_INSET_COLS } from "./composer-chrome";
  * limited to bold and italic" — so the block could not use colour to say anything.
  *
  * WHAT THEY ARE. The hue moves to a rail glyph down the left edge, where it names
- * the note's kind in one column instead of three hundred, and the text keeps its
- * own colours. Nothing behind the text is painted, so the note sits on whatever the
- * terminal's page already is, and it sits on the transcript's one left rail because
+ * the note's kind in one column instead of three hundred. The elevation comes from
+ * the same ground-derived surface a card's plate is made of, so the note stands off
+ * the page by a measured step rather than by inverting it, and a terminal that never
+ * answered OSC 11 simply gets the rail and the colours. The note is as wide as its
+ * text: a box stretched to the terminal edge reads as a wall rather than as a card
+ * (see `Box.setHugContent`), and it sits on the transcript's one left rail, because
  * nothing in the transcript starts at column 0.
- *
- * NO BACKGROUND. The step between the slab and this was a raised surface: a fill a
- * few percent off the detected ground, hugging the text. It is gone, and the reason
- * it is gone is that it was the LAST painted background in the inline TUI. Every
- * other block gives up its fill (`statusLine.transparent`, the unpainted composer,
- * the message cards), so a note carrying one was the single lighter rectangle on the
- * page, which is precisely the "sticks out" the fill was supposed to avoid at a
- * gentler amplitude. Elevation only reads as elevation among surfaces; alone on a
- * flat page it reads as a highlight. A note is emphasised by its rail and its hue,
- * and by nothing else.
  */
 export interface TranscriptNote {
 	/** Theme colour for the rail and the headline (`warning`, `accent`, …). */
@@ -45,6 +39,13 @@ export interface TranscriptNote {
 	 */
 	rows: readonly string[];
 }
+
+/**
+ * How far a note stands off the page, as a fraction of the distance from the ground
+ * to its contrast pole. A card's plate is 0.1 and its footer tray 0.04; a note in
+ * the transcript is a raised thing rather than a card, so it sits between them.
+ */
+const NOTE_LIFT = 0.075;
 
 /** The rail glyph, the space after it, and one column of air at the end. */
 const NOTE_CHROME_COLS = 4;
@@ -64,14 +65,20 @@ export function renderTranscriptNote(note: TranscriptNote, contentWidth: number)
 		rows.push(...wrapTextWithAnsi(row, textWidth));
 	}
 
-	// No background, on any terminal, whatever it answered for its ground: the rail
-	// and the foregrounds are the whole treatment, and they are the same bytes on a
-	// truecolor terminal and on one that cannot take a 24-bit fill.
-	return [
+	const lines = [
 		...headline.map(line => `${rail} ${theme.bold(theme.fg(note.tone, line))}`),
 		...(rows.length > 0 ? [rail] : []),
 		...rows.map(row => (row === "" ? rail : `${rail} ${row}`)),
 	];
+
+	// A surface is only painted onto a ground that is actually on screen, and only
+	// where 24-bit colour can express the step. Everything else keeps the rail and
+	// the colours, which is a readable note on any terminal.
+	const ground = TERMINAL.trueColor ? getVisibleGround() : undefined;
+	if (ground === undefined) return lines;
+	const widest = Math.max(...headline.map(visibleWidth), ...rows.map(visibleWidth));
+	const noteWidth = Math.min(contentWidth, widest + NOTE_CHROME_COLS);
+	return fillSurface(lines, noteWidth, { ground, lift: NOTE_LIFT });
 }
 
 /**
