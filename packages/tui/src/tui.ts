@@ -326,7 +326,6 @@ function takeNativeScrollbackDroppedRows(component: Component): number {
 function setNativeScrollbackRetainRows(component: Component, rows: number): void {
 	(component as Component & Partial<NativeScrollbackCompaction>).setNativeScrollbackRetainRows?.(rows);
 }
-
 function canPrepareNativeScrollbackReplay(component: Component): boolean {
 	return (
 		typeof (component as Component & Partial<NativeScrollbackReplay>).prepareNativeScrollbackReplay === "function"
