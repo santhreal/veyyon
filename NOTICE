@@ -73,13 +73,13 @@ carries forward here because no Codex source is present in this tree.
 - `packages/ai/src/error/rate-limit.ts` contains code adapted from
   `NoeFabris/opencode-antigravity-auth` (Copyright (c) 2025 Jens, MIT).
 
-## Source provenance without a declared upstream license
+## Source credits without a declared upstream license
 
 - `packages/coding-agent/src/markit/converters/pdf/grid.ts` and
   `packages/coding-agent/src/markit/converters/pdf/render.ts` identify
   `@oharato/pdf2md-ts` as a source. Its published v0.1.4 package does not
-  declare or include a license. This notice preserves the known provenance;
-  it does not assert a license grant for that package.
+  declare or include a license. This notice records the known source; it does
+  not assert a license grant for that package.
 
 ## Fonts and other assets
 

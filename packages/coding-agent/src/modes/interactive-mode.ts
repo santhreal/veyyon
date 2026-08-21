@@ -1281,18 +1281,9 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#subscribeToAgent();
 
 		this.#eventBusUnsubscribers.push(
+			// Return the async handler so AgentSession can attach its rejection
+			// guard; a detached goal bookkeeping failure must not crash the TUI.
 			this.session.subscribe(event => {
-				// RETURNED, never `void`-ed. `AgentSession#emit` already contains a
-				// listener that hands back a promise: it attaches a `.catch` and logs.
-				// A bare `void someAsync()` opts out of exactly that guard, because the
-				// listener then returns undefined and `#emit` sees no promise — and the
-				// rejection reaches postmortem, which prints a crash report and calls
-				// `process.exit(1)`. A goal-mode bookkeeping failure (a tool-set
-				// restore, a session-log append) must not take the whole TUI down at a
-				// turn boundary. The local catch owns the operator-visible half that
-				// `#emit`'s file-only warning cannot give; returning it keeps the
-				// framework guard underneath as the backstop if this handler itself
-				// throws.
 				return this.#handleGoalSessionEvent(event).catch(error => {
 					logger.warn("Goal mode session event handler failed", {
 						event: event.type,
@@ -2535,10 +2526,14 @@ export class InteractiveMode implements InteractiveModeContext {
 		}
 		if (event.type === "goal_updated") {
 			// Handle drop before clearing goalModeEnabled so #exitGoalMode can
-			// still restore the previous tool set while the flag is true.
+			// restore the pre-goal tool set while the flag is still true.
 			if (event.state?.goal?.status === "dropped") {
 				await this.#exitGoalMode({ reason: "dropped", silent: true });
 				return;
+			}
+			const activating = !this.goalModeEnabled && event.state?.enabled === true;
+			if (activating) {
+				this.#resetGoalContinuationSuppression();
 			}
 			this.goalModeEnabled = event.state?.enabled === true;
 			this.goalModePaused = event.state?.enabled !== true && event.state?.goal?.status === "paused";
@@ -2674,10 +2669,10 @@ export class InteractiveMode implements InteractiveModeContext {
 			});
 			this.goalModeEnabled = restored?.enabled === true;
 			this.goalModePaused = restored?.enabled !== true && restored?.goal.status === "paused";
-			// sdk.ts excludes "goal" from the initial active tool set unconditionally.
-			// Re-add it now so the agent can call resume, complete, or drop on this goal.
+			// The goal tool is part of the normal enabled tool set. Retain the
+			// pre-goal set so leaving or dropping the restored goal preserves it.
 			if (restored?.goal) {
-				const previousTools = this.session.getActiveToolNames().filter(name => name !== "goal");
+				const previousTools = this.session.getActiveToolNames();
 				this.#goalModePreviousTools = previousTools;
 				await this.session.setActiveToolsByName([...new Set([...previousTools, "goal"])]);
 			}
@@ -2738,7 +2733,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		if (this.session.hasBuiltInTool("write")) {
 			planAugmentations.push("write");
 		}
-		const uniquePlanTools = [...new Set([...previousTools, ...planAugmentations])];
+		const uniquePlanTools = [...new Set([...previousTools.filter(name => name !== "goal"), ...planAugmentations])];
 
 		this.#planModePreviousTools = previousTools;
 		this.planModePlanFilePath = planFilePath;
@@ -2890,7 +2885,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.showWarning("Exit vibe mode first.");
 			return;
 		}
-		const previousTools = this.session.getActiveToolNames().filter(name => name !== "goal");
+		const previousTools = this.session.getActiveToolNames();
 		const goalTools = [...new Set([...previousTools, "goal"])];
 		this.#goalModePreviousTools = previousTools;
 		this.goalModePaused = false;

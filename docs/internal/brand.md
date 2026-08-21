@@ -13,11 +13,11 @@ This page is the identity contract for the Veyyon harness (CLI, TUI, packages, c
 | Config home | `~/.veyyon` (`VEYYON_CONFIG_DIR`) |
 | Profile env | `VEYYON_PROFILE` |
 
-Veyyon forks [oh-my-pi](https://github.com/can1357/oh-my-pi) (MIT): TypeScript/Bun agent loop and TUI, Rust natives for hot paths (grep, PTY, hashline). Upstream provenance is license and history, not a tagline to paste into Veyyon UI or docs.
+Veyyon forks [oh-my-pi](https://github.com/can1357/oh-my-pi) (MIT): TypeScript/Bun agent loop and TUI, Rust natives for hot paths (grep, PTY, hashline). Upstream credits belong in the acknowledgements and legal history, not in product taglines.
 
 Features marked `> **Spec — not shipped:**` are target design, not current behavior.
 
-Legal provenance: `LICENSE`, `NOTICE`, `UPSTREAM.md`, [Acknowledgements](../handbook/src/acknowledgements.md). OpenAI-compatible wire formats are protocol facts, not product branding.
+Legal credits: `LICENSE`, `NOTICE`, `UPSTREAM.md`, [Acknowledgements](../handbook/src/acknowledgements.md). OpenAI-compatible wire formats are protocol facts, not product branding.
 
 ## Voice
 

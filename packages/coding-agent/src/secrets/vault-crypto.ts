@@ -986,7 +986,7 @@ export function openVault(key: Buffer, sealed: SealedVault, binding?: string): s
 	if (sealed.v === 1) {
 		throw new Error(
 			"Legacy vault format version 1 has no authenticated scope or path. " +
-				"Refusing to guess its provenance; re-add its credentials into the intended scope.",
+				"Refusing to guess its origin; re-add its credentials into the intended scope.",
 		);
 	}
 	if (sealed.v !== ENVELOPE_VERSION) {

@@ -20,6 +20,4 @@ private research notes.
 - **command-code**, by Langbase. command-code is proprietary. Veyyon only studies observable mechanisms
   clean-room, copying no code or bundled implementation text.
 
-The ideas here are reimplemented in Veyyon's own design, tested to Veyyon's own bar, and extended past
-where we found them. Legal provenance and upstream notices live in the repository `LICENSE`, `NOTICE`,
-and `UPSTREAM.md`.
+Legal credits and upstream notices live in the repository `LICENSE`, `NOTICE`, and `UPSTREAM.md`.

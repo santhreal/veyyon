@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-3832f7d2.js";
+            window.path_to_searchindex_js = "../searchindex-77235389.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-79e2ba62.js"></script>
@@ -196,11 +196,9 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="mechanisms"><a class="header" href="#mechanisms">Mechanisms</a></h1>
-<p>This chapter maps the mechanisms that shape Veyyon’s behavior. It separates source provenance from the current product contract. The operator how-tos live under <a href="../using/getting-started.html">Using</a> and <a href="../features/sandbox.html">Features</a>.</p>
-<h2 id="provenance-boundary"><a class="header" href="#provenance-boundary">Provenance boundary</a></h2>
-<p>Veyyon is a source fork of oh-my-pi. It retains the Bun and TypeScript agent loop, terminal UI, provider catalog, role routing, hashline edit engine, mnemopi memory, and the original native grep, PTY, and tree-sitter hot-path foundations. After the fork, Veyyon extracted reusable Rust crates for glob matching, grep orchestration, key normalization, text indexing, diffing, and directory walking. Those crate boundaries and their current contracts are post-fork work. The underlying grep and tree-sitter mechanisms are not Veyyon inventions.</p>
+<p>This chapter maps the mechanisms that shape Veyyon’s behavior. Operator how-tos live under <a href="../using/getting-started.html">Using</a> and <a href="../features/sandbox.html">Features</a>.</p>
 <h2 id="current-contracts-and-proof-entry-points"><a class="header" href="#current-contracts-and-proof-entry-points">Current contracts and proof entry points</a></h2>
-<p>The table names the current product contract. A link in the <strong>Recorded proof</strong> column demonstrates only its link text, not every mechanism in that row. The provenance boundary above still applies to inherited mechanisms.</p>
+<p>The table names the current product contract. A link in the <strong>Recorded proof</strong> column demonstrates only its link text, not every mechanism in that row.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -211,12 +209,12 @@
 <tr><td>Models and compaction</td><td>Model-native effort variants, explicit effort precedence, editable subsystem fallback chains, and a lossless first compaction pass</td><td><a href="../../../../assets/effort-variants-grey.png">Model-specific effort menus</a>, <a href="../../../../assets/model-chain-editor-grey.png">before-and-after chain editing</a>, and <a href="../../../../assets/demo-hd-context-report.png">the context report accounting for a filled window by share</a></td></tr>
 <tr><td>Credentials and sessions</td><td>Shared SQLite credentials, multi-credential selection, encrypted working secrets, final outbound obfuscation, atomic session writes, and non-destructive corruption handling</td><td><a href="../../../../assets/demo-hd-secret-log.png">A project secret taken from the environment, listed by placeholder, spent through bash, and recorded in the value-free use log</a></td></tr>
 <tr><td>Tools and workers</td><td>One capability and tool registry, LSP write-through, destructive-shell interception, schema-validated workers, IRC, internal agent URLs, and the Agent Control Center</td><td><a href="../../../../assets/demo-lsp-hd.webp">A language-server rename applying one edit to a class file and three to its test, then a green suite</a> and <a href="../../../../assets/stills-extra-agent-control.png">two workers spawned in one turn with live and idle Agent Control Center rows</a></td></tr>
-<tr><td>Native runtime</td><td>Inherited native grep and tree-sitter foundations, plus post-fork reusable Rust crates for glob matching, grep orchestration, key normalization, text indexing, diffing, and directory walking</td><td>No recording. See the <a href="performance.html">architecture and provenance reference</a>.</td></tr>
+<tr><td>Native runtime</td><td>Native grep, PTY, tree-sitter support, and reusable Rust crates for glob matching, grep orchestration, key normalization, text indexing, diffing, and directory walking</td><td>No recording. See the <a href="performance.html">architecture reference</a>.</td></tr>
 <tr><td>Argot</td><td>Lossless per-project shorthand that expands before a tool, transcript, parent agent, or display receives it</td><td><a href="../../../../assets/argot-settings-off.png">One disabled Argot setting</a> and <a href="../../../../assets/argot-settings-on.png">six enabled Argot settings</a></td></tr>
 </tbody>
 </table>
 </div>
-<p>The README section <a href="../../../../README.html#what-veyyon-changes">What Veyyon changes</a> shows these contracts first. The repository’s <a href="../../../../UPSTREAM.html">upstream provenance</a> explains the fork boundary, and the <a href="../../../internal/porting-from-pi-mono.html#15-intentional-divergences">intentional-divergence ledger</a> records port-sensitive implementation differences.</p>
+<p>See <a href="../acknowledgements.html">Acknowledgements</a> for project credits. The <a href="../../../internal/porting-from-pi-mono.html#15-intentional-divergences">intentional-divergence ledger</a> records port-sensitive implementation differences.</p>
 <h2 id="shared-and-evolved-mechanisms"><a class="header" href="#shared-and-evolved-mechanisms">Shared and evolved mechanisms</a></h2>
 <p>The sections below describe the current product. Some mechanisms began in the fork baseline, and some have changed since. Their behavior here is authoritative for Veyyon.</p>
 <h2 id="hashline-edits"><a class="header" href="#hashline-edits">Hashline edits</a></h2>

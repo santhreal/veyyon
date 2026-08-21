@@ -640,7 +640,7 @@ export const CONTEXT_SETTINGS = {
 					value: "ultra",
 					label: "Ultra",
 					description:
-						"Adds full provenance: tool argument fingerprints, abort state, context-to-compaction links, directional agent routes, per-task transitions, cache/reasoning detail, and upstream provider.",
+						"Adds full source detail: tool argument fingerprints, abort state, context-to-compaction links, directional agent routes, per-task transitions, cache/reasoning detail, and upstream provider.",
 				},
 			],
 		},

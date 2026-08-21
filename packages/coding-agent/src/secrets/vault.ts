@@ -1931,7 +1931,7 @@ export class SecretVault {
 		if (parsed.v === 1) {
 			throw new Error(
 				`The ${scope} vault at ${safeText(vaultPath)} uses legacy format version 1, which has no authenticated ` +
-					`scope or path. Refusing to guess its provenance. Re-add its credentials into the intended scope.`,
+					`scope or path. Refusing to guess its origin. Re-add its credentials into the intended scope.`,
 			);
 		}
 

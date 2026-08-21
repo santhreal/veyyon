@@ -49,11 +49,36 @@ const FROZEN_OUTCOMES: Record<string, ToolLoadOutcome> = {
 			"web_search",
 			"set_cwd",
 			"write",
+			"goal",
 			"resolve",
 		],
 		discoverable: [],
 	},
 	"discovery-off": {
+		active: [
+			"read",
+			"bash",
+			"launch",
+			"edit",
+			"ast_grep",
+			"ast_edit",
+			"debug",
+			"eval",
+			"glob",
+			"grep",
+			"task",
+			"job",
+			"irc",
+			"todo",
+			"web_search",
+			"set_cwd",
+			"write",
+			"goal",
+			"resolve",
+		],
+		discoverable: [],
+	},
+	"goal-disabled": {
 		active: [
 			"read",
 			"bash",
@@ -96,12 +121,13 @@ const FROZEN_OUTCOMES: Record<string, ToolLoadOutcome> = {
 			"search_tool_bm25",
 			"set_cwd",
 			"write",
+			"goal",
 			"resolve",
 		],
 		discoverable: [],
 	},
 	"discovery-all": {
-		active: ["read", "bash", "launch", "edit", "eval", "glob", "task", "search_tool_bm25", "write", "resolve"],
+		active: ["read", "bash", "launch", "edit", "eval", "glob", "task", "search_tool_bm25", "write", "goal", "resolve"],
 		discoverable: [
 			"builtin:ast_grep",
 			"builtin:ast_edit",
@@ -126,6 +152,7 @@ const FROZEN_OUTCOMES: Record<string, ToolLoadOutcome> = {
 			"task",
 			"search_tool_bm25",
 			"write",
+			"goal",
 			"resolve",
 		],
 		discoverable: [
@@ -158,12 +185,13 @@ const FROZEN_OUTCOMES: Record<string, ToolLoadOutcome> = {
 			"web_search",
 			"set_cwd",
 			"write",
+			"goal",
 			"resolve",
 		],
 		discoverable: [],
 	},
 	"browser-disabled-discovery-all": {
-		active: ["read", "bash", "launch", "edit", "eval", "glob", "task", "search_tool_bm25", "write", "resolve"],
+		active: ["read", "bash", "launch", "edit", "eval", "glob", "task", "search_tool_bm25", "write", "goal", "resolve"],
 		discoverable: [
 			"builtin:ast_grep",
 			"builtin:ast_edit",
@@ -177,11 +205,11 @@ const FROZEN_OUTCOMES: Record<string, ToolLoadOutcome> = {
 		],
 	},
 	"explicit-tool-names": {
-		active: ["read", "grep", "glob"],
+		active: ["read", "grep", "glob", "goal"],
 		discoverable: [],
 	},
 	"explicit-tool-names-discovery-all": {
-		active: ["read", "grep", "glob"],
+		active: ["read", "grep", "glob", "goal"],
 		discoverable: ["builtin:ast_grep"],
 	},
 	"eval-backends-disabled": {
@@ -202,6 +230,7 @@ const FROZEN_OUTCOMES: Record<string, ToolLoadOutcome> = {
 			"web_search",
 			"set_cwd",
 			"write",
+			"goal",
 			"resolve",
 		],
 		discoverable: [],
@@ -222,6 +251,7 @@ const FROZEN_OUTCOMES: Record<string, ToolLoadOutcome> = {
 			"todo",
 			"search_tool_bm25",
 			"write",
+			"goal",
 			"resolve",
 		],
 		discoverable: [
@@ -247,6 +277,7 @@ const FROZEN_OUTCOMES: Record<string, ToolLoadOutcome> = {
 			"todo",
 			"search_tool_bm25",
 			"write",
+			"goal",
 			"resolve",
 		],
 		discoverable: [
@@ -261,7 +292,7 @@ const FROZEN_OUTCOMES: Record<string, ToolLoadOutcome> = {
 		],
 	},
 	"delegation-off-discovery-all": {
-		active: ["read", "bash", "launch", "edit", "eval", "glob", "search_tool_bm25", "write", "resolve"],
+		active: ["read", "bash", "launch", "edit", "eval", "glob", "search_tool_bm25", "write", "goal", "resolve"],
 		discoverable: [
 			"builtin:ast_grep",
 			"builtin:ast_edit",
@@ -292,6 +323,7 @@ const FROZEN_OUTCOMES: Record<string, ToolLoadOutcome> = {
 			"web_search",
 			"set_cwd",
 			"write",
+			"goal",
 			"resolve",
 			"bulk_0",
 			"bulk_1",
@@ -332,6 +364,7 @@ const FROZEN_OUTCOMES: Record<string, ToolLoadOutcome> = {
 			"web_search",
 			"set_cwd",
 			"write",
+			"goal",
 			"resolve",
 			"bulk_0",
 			"bulk_1",
