@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-1f5e7da2.js";
+            window.path_to_searchindex_js = "searchindex-6ac826d6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-79e2ba62.js"></script>
@@ -6916,6 +6916,26 @@ Set CursorBlink false
 Set Theme { "name": "veyyon", "black": "#000000", "background": "#000000", "foreground": "#C6CBD4", "cursor": "#F0862E" }
 </code></pre>
 <p>Drive both states from one script. Seed each setting explicitly before capture. Restore the default after the pair is written.</p>
+<h3 id="before-and-after-pairs-for-a-ui-change"><a class="header" href="#before-and-after-pairs-for-a-ui-change">Before-and-after pairs for a UI change</a></h3>
+<p>A change to a visible surface proves with two frames of the same scene, one on the
+tree without the change and one on the tree with it.</p>
+<pre><code class="language-sh">proof/docker/record-x11.sh proof/scenes/&lt;name&gt;.sh        # the after arm
+proof/docker/record-x11-before.sh proof/scenes/&lt;name&gt;.sh # the before arm
+</code></pre>
+<p>The after arm writes to <code>proof/captures/x11/</code>. The before arm writes to
+<code>proof/captures/x11/before/</code>, holding every source file the change touched at the
+content of the base commit for the length of the run, restoring from an in-memory
+copy and proving the restore by sha256. No git mutation command runs and the working
+tree ends byte-identical. Once the change is on <code>main</code>, reproducing the before arm
+means pointing that hold at the commit before it.</p>
+<p>Both arms record the same scene at the same width and are sampled at the same second
+of the same script, so the only difference between them is the change. Publish the
+pair under <code>assets/</code> as <code>&lt;surface&gt;-before.png</code> and <code>&lt;surface&gt;-after.png</code>;
+<code>proof/pics.html</code> folds a <code>-before</code>/<code>-after</code> stem onto one row, because a comparison
+split across two rows is half an answer.</p>
+<p>A pair whose two arms differ for an unrelated reason is a failed proof. An arm that
+does not show the surface at all is a failed proof: a lane block is not evidence
+about lanes in a frame where no agent is running.</p>
 <h3 id="off-screen-component-renders-are-a-debugging-aid-not-a-proof"><a class="header" href="#off-screen-component-renders-are-a-debugging-aid-not-a-proof">Off-screen component renders are a debugging aid, not a proof</a></h3>
 <p>Rasterizing a component’s ANSI answers one narrow question quickly and without a
 display: whether a fill, colour or spacing reads correctly on a grey and a black

@@ -67,6 +67,33 @@ Set Theme { "name": "veyyon", "black": "#000000", "background": "#000000", "fore
 
 Drive both states from one script. Seed each setting explicitly before capture. Restore the default after the pair is written.
 
+### Before-and-after pairs for a UI change
+
+A change to a visible surface proves with two frames of the same scene, one on the
+tree without the change and one on the tree with it.
+
+```sh
+proof/docker/record-x11.sh proof/scenes/<name>.sh        # the after arm
+proof/docker/record-x11-before.sh proof/scenes/<name>.sh # the before arm
+```
+
+The after arm writes to `proof/captures/x11/`. The before arm writes to
+`proof/captures/x11/before/`, holding every source file the change touched at the
+content of the base commit for the length of the run, restoring from an in-memory
+copy and proving the restore by sha256. No git mutation command runs and the working
+tree ends byte-identical. Once the change is on `main`, reproducing the before arm
+means pointing that hold at the commit before it.
+
+Both arms record the same scene at the same width and are sampled at the same second
+of the same script, so the only difference between them is the change. Publish the
+pair under `assets/` as `<surface>-before.png` and `<surface>-after.png`;
+`proof/pics.html` folds a `-before`/`-after` stem onto one row, because a comparison
+split across two rows is half an answer.
+
+A pair whose two arms differ for an unrelated reason is a failed proof. An arm that
+does not show the surface at all is a failed proof: a lane block is not evidence
+about lanes in a frame where no agent is running.
+
 ### Off-screen component renders are a debugging aid, not a proof
 
 Rasterizing a component's ANSI answers one narrow question quickly and without a
