@@ -125,6 +125,16 @@ impl Operator {
 			Self::ParserAcceptanceBroadening => &PARSER_ACCEPTANCE_BROADENING,
 		}
 	}
+
+	/// The operator `id` names.
+	///
+	/// The ledger a campaign appends to is a persisted shape, so an id it
+	/// wrote has to resolve back to an operator or the row is refused rather
+	/// than silently attributed to the wrong class.
+	#[must_use]
+	pub fn from_id(id: &str) -> Option<Self> {
+		Self::all().into_iter().find(|operator| operator.id() == id)
+	}
 }
 
 /// Off-by-one in both directions. The widening rewrites refuse to fire inside
