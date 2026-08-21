@@ -143,8 +143,12 @@ export function rasterizeGrid(grid: Grid, ground: Ground, options: RasterOptions
 			const originX = margin + col * cellW;
 			const originY = margin + row * cellH;
 			fillRect(originX, originY, cellW, cellH, bg);
+			// A strike crosses the cell whether or not it holds a glyph, so a struck
+			// run reads as one continuous line rather than as dashes over the letters.
+			const strikeY = originY + Math.floor(cellH / 2) - Math.floor(scale / 2);
 			if (cell.continuation || cell.char === " ") {
 				if (cell.underline) fillRect(originX, originY + cellH - scale, cellW, scale, fg);
+				if (cell.strike) fillRect(originX, strikeY, cellW, scale, fg);
 				continue;
 			}
 			// A grapheme cluster draws from its base character; the marks it carries
@@ -163,6 +167,7 @@ export function rasterizeGrid(grid: Grid, ground: Ground, options: RasterOptions
 				}
 			}
 			if (cell.underline) fillRect(originX, originY + cellH - scale, cellW, scale, fg);
+			if (cell.strike) fillRect(originX, strikeY, cellW, scale, fg);
 		}
 	}
 

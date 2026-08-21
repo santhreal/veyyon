@@ -81,6 +81,7 @@ function blank(overrides: Partial<Cell> = {}): Cell {
 		dim: false,
 		italic: false,
 		underline: false,
+		strike: false,
 		reverse: false,
 		continuation: false,
 		...overrides,
@@ -278,6 +279,22 @@ describe("glyphs", () => {
 		// Reported once, not twice, and the second cell carries the fill.
 		expect(unmapped).toEqual(["漢"]);
 		expect(image.at(2 + CELL_W, 2 + 4)).toEqual([40, 44, 52]);
+	});
+
+	/**
+	 * A strike must be drawn, and it must be drawn across the SPACES between words
+	 * too. The todo board's completion sweep is a struck prefix of a sentence, so a
+	 * strike that stopped at each glyph box would raster as a row of dashes and the
+	 * proof would not show the one gesture it was pointed at.
+	 */
+	it("draws a strike across a struck run, spaces included", () => {
+		const struck = render("\x1b[9ma b", 4).image;
+		const plain = render("a b", 4).image;
+		const midY = 2 + Math.floor(CELL_H / 2);
+		// The gap between the two letters carries the line.
+		expect(String(struck.at(2 + CELL_W, midY))).not.toBe(String(plain.at(2 + CELL_W, midY)));
+		// And the run ends where the text does: the padding cell past it is ground.
+		expect(String(struck.at(2 + 3 * CELL_W + 1, midY))).toBe(String(plain.at(2 + 3 * CELL_W + 1, midY)));
 	});
 });
 
