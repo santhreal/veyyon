@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/demo-hd.webp" width="960" alt="Veyyon creates a long-running goal from one task prompt, opens an eight-task plan, launches three parallel workers, builds and verifies a terminal 3D ship simulator, signs the compiled binary through a protected secret placeholder, completes the goal, and presents the running simulator">
+  <img src="assets/demo-hd.webp" width="960" alt="Veyyon stores a release key as a protected placeholder, writes a three-phase six-task plan, fans three directory refactors out to parallel workers, applies the edits, verifies that nine environment defaults resolve in a stripped environment, and signs the result through the placeholder after an explicit approval">
 </p>
 
 <p align="center">
