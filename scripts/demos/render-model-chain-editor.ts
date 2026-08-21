@@ -13,10 +13,10 @@
  *
  * Run:
  *     env -u NO_COLOR FORCE_COLOR=3 bun scripts/demos/render-model-chain-editor.ts --width 100 |
- *       bun scripts/demos/render-proof.ts --out assets/model-chain-editor --width 100 --scale 2
+ *       bun scripts/demos/render-proof.ts --out /tmp/model-chain-editor --width 100 --scale 2
  *
- * That regenerates the committed pair `assets/model-chain-editor-grey.png` and
- * `assets/model-chain-editor-black.png`.
+ * The output is a debugging aid and not a proof: it never enters `assets/`, a
+ * README, or a handbook page. See docs/handbook/src/foundations/verification.md.
  */
 import type { Model } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";

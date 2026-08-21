@@ -272,13 +272,6 @@ def video(rel: str, caption: str, start: float | None = None) -> str:
 # 72M-token pair, the theme-ladder wash, and both slab-vs-card render proofs.
 TREE_ARMS = ("main", "branch")
 
-# The labels for a render proof of one surface at two revisions of its own
-# renderer. Nothing under `captures/render/` came off a display, so `tree_of`
-# cannot answer for it and the arm lives in the filename instead. The check in
-# `axis` is what stops a pair being captioned the wrong way round, which on a
-# before/after claim is the whole figure rather than a detail of it.
-RENDER_ARMS = ("before the redesign", "after it")
-
 mislabelled: list[str] = []
 
 
@@ -300,8 +293,6 @@ def axis(before: str, after: str, arms: tuple[str, str]) -> tuple[str, str]:
     """
     if tuple(arms) == TREE_ARMS and tree_of(before) == tree_of(after):
         mislabelled.append(f"{before} vs {after}: both arms are {tree_of(before)}, captioned main/branch")
-    if tuple(arms) == RENDER_ARMS and not ("-before-" in before and "-after-" in after):
-        mislabelled.append(f"{before} vs {after}: a render pair's arms are its filenames, and these do not read before/after")
     return arms
 
 
@@ -799,12 +790,87 @@ def write(sections: list[Section]) -> None:
     print("wrote", out)
 
 
+# The anchored-HUD page carries three of the sections above and nothing else, and
+# it exists because the campaign page cannot be built from a fresh checkout: it
+# cites a 289MB recording of one of the operator's own sessions, which .gitignore
+# refuses by design, and a hero take whose stills are not in git either. A reader
+# who wants to see what the anchored blocks now draw should not need either one.
+#
+# The figure check here reads the page it just rendered rather than the global
+# `need()` ledger, because that ledger is filled while every section is
+# CONSTRUCTED and so fails a focused page over a figure the focused page does not
+# have. Scanning the html is also the stronger check: it answers exactly the
+# claim the docstring makes, which is that every figure ON the page resolves.
+ANCHORED_HUD_PAGE = ("The board, rebuilt", "A badge on a line of its own, found by the camera", "A fourteen-task plan, closed out")
+
+
+def write_anchored_hud(sections: list[Section]) -> None:
+    def git(*args: str) -> str:
+        return subprocess.run(["git", *args], cwd=REPO, capture_output=True, text=True, check=True).stdout.strip()
+
+    chosen = [s for s in sections if s.title in ANCHORED_HUD_PAGE]
+    if len(chosen) != len(ANCHORED_HUD_PAGE):
+        have = {s.title for s in chosen}
+        raise SystemExit("no section titled: " + ", ".join(t for t in ANCHORED_HUD_PAGE if t not in have))
+    head = git("rev-parse", "--short", "HEAD")
+    branch = git("rev-parse", "--abbrev-ref", "HEAD")
+    body = "\n".join(section.html() for section in chosen)
+    html = f"""<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>The anchored blocks, rebuilt — recorded proof</title><style>{CSS}</style></head>
+<body>
+<h1>The anchored blocks, rebuilt</h1>
+<p class="lede">Branch <code>{branch}</code> at <code>{head}</code>. The two blocks anchored above the composer —
+the subagent lanes and the todo board — were rebuilt in the product's own vocabulary, and one defect neither
+block's unit suite could see was found by pointing the camera at them. Every figure below is a frame of a real
+terminal running the shipped CLI. No component was drawn into a picture for this page, and nothing here is a tmux
+capture.</p>
+
+<div class="note">
+<p><strong>Where the recording happens.</strong> <code>proof/docker/record-x11.sh &lt;scene&gt;</code> runs
+<code>veyyon-proof-recorder</code> on a private docker network. Inside it, <code>Xvfb</code> owns display
+<code>:99</code>, <code>kitty</code> is the terminal — a real emulator — <code>xdotool</code> presses real keys
+through XTEST, and <code>ffmpeg</code> grabs the display continuously. Every take on this page is 131x36 cells of
+12x27px. The machine's own <code>~/.veyyon</code> is not in the container's mount table — <code>HOME</code> is a
+tmpfs seeded from <code>proof/docker/home-seed</code> — so nothing here touches a live session, and the operator's
+own display is never opened.</p>
+<p><strong>Which model answers.</strong> <code>demo-qwen38-27b-64k</code>, served to the container network and to
+nothing else. No provider account is reachable from the container, so a streamed answer in these recordings is
+that model or it is nothing. It is also why the two arms of a pair are the same scene rather than the same
+session: the script is fixed, the model's replies are not, and a caption here never claims more than the frames
+hold.</p>
+<p><strong>How the <em>main</em> arm is taken.</strong> <code>proof/docker/record-x11-before.sh</code> holds every
+source file the branch changed at its <code>main</code> content (<code>git show main:&lt;file&gt;</code>), records
+the same scene into <code>proof/captures/x11/before/</code>, then restores from an in-memory copy and proves the
+restore by sha256. No git mutation command runs and the working tree ends byte-identical.</p>
+</div>
+
+{body}
+</body></html>
+"""
+    gone = sorted({src for src in re.findall(r'src="([^"#]+)"', html) if not (ROOT / src).exists()})
+    if gone:
+        print("MISSING FILES:", *gone, sep="\n  ", file=sys.stderr)
+        raise SystemExit(1)
+    if mislabelled:
+        print("PAIRS THAT CLAIM A COMPARISON THEY ARE NOT:", *sorted(set(mislabelled)), sep="\n  ", file=sys.stderr)
+        raise SystemExit(1)
+    out = ROOT / "anchored-hud-proof.html"
+    out.write_text(html, encoding="utf-8")
+    print("wrote", out)
+
+
 X = "captures/x11/"
 XB = "captures/x11/before/"
 S = "captures/x11/strips/"
 W = "captures/wayland/"
 N = "captures/notes/"
-RN = "captures/render/"
+# The two arms of the HUD rebuild, both on the branch: `hud-before/` was recorded
+# before the wrap fix and `hud-after/` after it, so `tree_of` correctly reads both
+# as branch and a figure comparing them names its own axis instead.
+XA = "captures/x11/hud-after/"
+XH = "captures/x11/hud-before/"
 SECTIONS = [
     Section(
         "One animation clock, and a card that unfolds onto it",
@@ -1499,127 +1565,142 @@ SECTIONS = [
                 "The final frame: the signed Nebula Drift binary running after the goal and all eight tasks are"
                 " complete.",
             ),
-            "<h3>The same board, rebuilt</h3>",
-            "<p>The board in those two frames is not the board the branch draws now. Everything below is the"
-            " shipped renderer's own output, rasterised off-screen at the same width from the same board — nine"
-            " tasks over three phases with one in flight — so the only variable between the arms is the code that"
-            " drew them. The left arm is the renderer the take above recorded; the right arm reproduces byte for"
-            " byte from the branch tip.</p>",
+        ],
+    ),
+    Section(
+        "The board, rebuilt",
+        [
+            "<p>The board the hero take recorded is not the board the branch draws now. The pair below is one scene,"
+            " <code>proof/scenes/rail-and-todo.sh</code>, recorded twice at 131 columns by the same container --"
+            " once against <code>main</code> and once against the branch -- and sampled at the same second of the"
+            " same script, so both arms hold the same three-phase board with the same task in flight and the same"
+            " one closed behind it.</p>",
             still_pair(
-                RN + "todo-board-before-grey.png",
-                RN + "todo-board-after-grey.png",
-                "four gauges: one in the header and one per phase, each approximating a fraction printed two"
-                " columns to its right, and at twelve cells none of them separates <code>0/2</code> from"
-                " <code>1/4</code>. The completed task is the brightest row on the block and the task in flight is"
-                " quieter than it, so the eye lands on the work already finished.",
-                "one gauge, in the header, where the only global number belongs. A phase row is a marker, a name"
-                " and its count, and the freed column is what the task rows are legible in. Three tiers,"
-                " orderable by eye and by byte — dim <code>86;95;119</code> for closed, bold muted"
-                " <code>139;147;164</code> for a phase not yet started, bold accent <code>198;203;212</code> for"
-                " the one task in flight. Pending tasks are muted without the bold, which is what leaves a phase"
-                " row reading as a heading over them.",
-                arms=RENDER_ARMS,
+                XB + "rail-and-todo-todo-board-live.png",
+                XA + "rail-and-todo-todo-board-live.png",
+                "the header carries a count of its own, <code>Todos · phase 1/3</code>, over phase rows ending in"
+                " identically shaped numbers counting something else. Box-drawing connectors bracket every row, each"
+                " phase prints its count inline beside its name, and a phase nobody has started yet is collapsed to"
+                " that name -- so the block says how far along the plan is and not what the plan is.",
+                "the header is bare. The only counts left are per phase, right-aligned at the far margin where they"
+                " form a column instead of trailing three different names at three different offsets. The rail"
+                " replaces the connectors and carries the block's liveness: lit beside the phase being worked, flat"
+                " when nothing is in flight. Square cells modulated by density replace the mixed marker set -- an"
+                " empty box waiting, a breathing pixel on the row in flight, a small filled square on closed work,"
+                " struck and dimmest -- and every phase keeps its tasks on screen, because a plan the block will not"
+                " show you is a progress bar.",
             ),
-            "<p>One ground answers half the question, so here is the same pair on black. A panel that leans on a"
-            " dark fill to separate its rows looks correct on grey and dissolves here; this one separates them by"
-            " weight and colour, which survives the ground.</p>",
+            "<p>Later in the same take, with two of the three phases closed out, every phase still keeps a row. The"
+            " trim drops finished work off the top when the block runs out of height; it never drops a phase to make"
+            " room for its own arithmetic.</p>",
+            still(
+                XA + "rail-and-todo-todo-board-closed.png",
+                "Two phases closed and one still open at <code>1/2</code>. The card above the block carries the"
+                " sentence once -- <code>■ Todo list done · 6 tasks</code> -- and the block underneath keeps all"
+                " three phase rows with their counts in the same column.",
+            ),
+        ],
+    ),
+    Section(
+        "A badge on a line of its own, found by the camera",
+        [
+            "<p>The lane block and the board each clamp every row to one cell inside the width they are handed, and"
+            " every unit test of both agreed: a sweep of every column count from 1 to 220 came back with no row over"
+            " its bound. The bound was not the width they get. Both blocks are mounted in a container carrying a"
+            " one-cell margin on each side, and that container soft-wraps its content to"
+            " <code>width - padding * 2</code> before anything reaches the terminal, so every row was two cells too"
+            " wide and its tail landed on a line of its own at the left margin, outside the rail. Nothing in the"
+            " suite could see it, because the blocks were obeying the number they were given.</p>",
+            "<p>The recording below is what saw it. Same scene, same container, same 131 columns, two live subagent"
+            " lanes: <code>proof/scenes/agent-lanes.sh</code> against the branch before the fix and after it. The"
+            " model badge is the row's right-aligned tail, which is exactly the part a two-cell overflow takes"
+            " away.</p>",
+            video_pair(
+                XH + "agent-lanes.mp4",
+                XA + "agent-lanes.mp4",
+                "the badge is wrapped: read the block from the top and the name of the model each lane is running"
+                " arrives underneath its lane, at column zero, outside the rail that is supposed to contain it.",
+                "the badge sits on its lane, right-aligned at the far margin, and the block is the four rows it"
+                " emitted.",
+                start=68,
+                arms=("before the fix", "after it"),
+            ),
             still_pair(
-                RN + "todo-board-before-black.png",
-                RN + "todo-board-after-black.png",
-                "the per-phase gauges keep their fill on black, which is what makes them the loudest thing on a"
-                " panel whose subject is the text beside them.",
-                "the header gauge is the only fill left, and the three tiers still order correctly with nothing"
-                " behind them.",
-                arms=RENDER_ARMS,
+                XH + "agent-lanes-lanes-two-live.png",
+                XA + "agent-lanes-lanes-two-live.png",
+                "one frame of it, held: <code>demo-qwen38-27b-64k</code> on its own line above and below the lane"
+                " row it belongs to, breaking the block into six rows where the renderer emitted four.",
+                "the same frame of the same scene, four rows: header, two lanes each ending in its own badge, and"
+                " nothing at column zero that the block did not put there.",
+                arms=("before the fix", "after it"),
             ),
-            "<h3>The entrance, frame by frame</h3>",
-            "<p>Frames 1, 3, 5 and 7 of the entrance, top to bottom, from the same renderer on each arm. Frame 0"
-            " is the settled board on both, because a gallery, an HTML export and a collab guest each pass a fixed"
-            " frame 0 and must not be handed a half-drawn panel.</p>",
-            still_pair(
-                RN + "todo-entrance-before-grey.png",
-                RN + "todo-entrance-after-grey.png",
-                "the rows were typed in from the left behind a block cursor. Frame 1 is one clipped phase name"
-                " (<code>I. Founda</code>) over eight rows of a lone track cell; frame 5 cuts three rows mid-word"
-                " (<code>Reject a credential who</code>, <code>Fail c</code>); frame 7 is still cutting two. A"
-                " panel whose whole job is to say what the plan is was unreadable for the length of its own"
-                " entrance, and the product's own recordings are not allowed to show typing.",
-                "every frame holds every row, whole, and the row count is constant. What moves is brightness: a"
-                " row ramps dim, muted, its own colour, one frame behind the row above it, so the wave travelling"
-                " down the block is what reads as assembly. A row already at the dimmest never brightens, because"
-                " ramping finished work up and back flashes the eye onto exactly what the weighting above was"
-                " inverted to demote.",
-                arms=RENDER_ARMS,
-            ),
-            still_pair(
-                RN + "todo-entrance-before-black.png",
-                RN + "todo-entrance-after-black.png",
-                "the same four frames on black. The track cells for rows that have not started are the clearest"
-                " thing in frame 1.",
-                "the same four frames on black: the ladder is a brightness ramp rather than a fill, so it reads"
-                " the same with no ground under it.",
-                arms=RENDER_ARMS,
-            ),
+            "<p>The regression suite that closes this asserts the invariant those width bounds were serving rather"
+            " than another width bound -- a mounted block renders exactly the rows it emitted -- and drives the real"
+            " interactive mode at 80 and 131 columns. Re-injecting the defect turns both live cases red at six rows"
+            " against four. It sweeps the mode's anchored containers at run time and pins the set by exact equality,"
+            " so a seventh anchored surface cannot be added without someone deciding whether it may wrap.</p>",
         ],
     ),
     Section(
         "A fourteen-task plan, closed out",
         [
             "<p>The board's rebuild is a set of claims about MOTION, and a still cannot carry any of them: that"
-            " fourteen rows arrive legibly rather than being typed in, that the pointer walks itself forward as"
-            " each task closes, that closed work recedes while the task in flight stays the only bright row, and"
-            " that the region above the composer is GONE on the last close rather than collapsing to a line the"
-            " transcript card already carries. So the row is a recording, and the session behind it is real: the"
-            " model was told to write the plan and then close it out, and what it did in between -- probing the"
-            " host for ffmpeg and pip, writing a registry, reading its own type errors back -- is the work the"
-            " board is tracking rather than a script.</p>",
-            f"<p>Twenty minutes of session ({clip_runtime(W + 'todo-marathon.mp4'):.0f}s) at the speed it was"
-            " recorded, with every stretch where nothing on screen moved removed: 52 of them, 258.1 seconds of"
-            " untouched terminal. What is left is"
-            f" {clip_runtime(W + 'todo-marathon-cut.mp4'):.0f} seconds in 18 segments, and the cadence audit reads"
-            " a typical frame hold of 33ms with the longest at 200ms -- so unlike the hero, which pauses for four"
-            " seconds wherever a turn ended, this clip never stops moving. Both are published: the cut, and the"
-            " unedited take it came from.</p>",
-            # 6.5s rather than 0: the clip opens on the idle terminal, which is a
-            # near-black poster that says nothing about the row. At 6.5s the whole
-            # five-phase board is up and the instruction that produced it is still
-            # on screen.
+            " fourteen rows arrive whole rather than being typed in, that the block walks itself forward as each"
+            " task closes, that closed work recedes while the task in flight stays the only bright row, and that the"
+            " region above the composer is GONE on the last close rather than collapsing to a line the transcript"
+            " card already carries. So the row is a recording. The session behind it is real: the model was told to"
+            " write a five-phase plan for a transcription service and then close it out, and it was told to hold off"
+            " starting the work, so what the board tracks is the plan and nothing else.</p>",
+            f"<p>The take is {clip_runtime(XA + 'todo-marathon.mp4'):.0f} seconds of session at the speed it was"
+            " recorded, unedited, on the branch. The same scene against <code>main</code> is not on this page,"
+            " because the pair that carries the design change is the one above: same recorder, same scene, same"
+            " second of the same script. This row is here for the motion, and for the two states a still of a"
+            " settled board cannot reach.</p>",
             video(
-                W + "todo-marathon-cut.mp4",
-                "The plan written, then closed out. The poster is the instruction the model was given and the"
-                " board it had already written from it.",
-                start=6.5,
+                XA + "todo-marathon.mp4",
+                "Fourteen tasks over five phases written in one call, then closed out. The board is the block above"
+                " the composer throughout.",
+                start=112,
             ),
-            "<h3>Where the board stands, three times</h3>",
+            "<h3>Where the board stands, four times</h3>",
             still(
-                W + "todo-marathon-list-open.png",
-                "Fourteen tasks over five phases from a single <code>init</code> call. The header names its unit"
-                " -- <code>Todos · phase 1/5</code> -- because the phase rows under it end in identically shaped"
-                " numbers (<code>0/3</code>, <code>0/2</code>) counting something else. No phase carries a gauge:"
-                " five 12-cell bars approximating five fractions printed two columns to their right is what this"
-                " row used to be, and at that width a gauge cannot separate <code>0/2</code> from"
-                " <code>1/4</code>. The one task in flight is the only bright row on the block.",
-            ),
-            still(
-                W + "todo-marathon-midway.png",
-                "Six closed, and the pointer has walked itself to <code>phase 3/5</code> without being told to:"
-                " the phases that are finished have dropped out of the anchored block entirely, the active phase"
-                " is expanded around the task in flight, and the two ahead of it are named but not opened. This is"
-                " the frame where the weighting is visible as an ordering -- what is done is gone, what is next is"
-                " quiet, what is running is bright.",
+                XA + "todo-marathon-list-open.png",
+                "Fourteen tasks over five phases from a single <code>init</code> call, and the header is just"
+                " <code>Todos</code>. Every count on the block is a phase's own, right-aligned in one column at the"
+                " far margin; the only global number is on the overflow row, <code>… 9 more</code>, which is the"
+                " row that exists because the plan is longer than the space. No phase carries a gauge: five 12-cell"
+                " bars approximating five fractions printed two columns to their right is what this row used to be,"
+                " and at that width a gauge cannot separate <code>0/2</code> from <code>1/4</code>.",
             ),
             still(
-                W + "todo-marathon-finished.png",
+                XA + "todo-marathon-walk-early.png",
+                "One task closed inside the working phase. The three tiers are all on screen at once: the closed row"
+                " struck and dimmest, the row in flight carrying the ink with the breathing cell beside it, the"
+                " waiting rows quiet. <code>I. Foundation</code> reads <code>2/3</code> and the rail is lit beside"
+                " it.",
+            ),
+            still(
+                XA + "todo-marathon-walk-late.png",
+                "Three phases closed and the block has walked itself to <code>IV. Verification</code> without being"
+                " told to. The finished phases each keep a row -- <code>3/3</code>, dim, with a small filled square"
+                " -- because a plan that deletes its own history to make room for arithmetic is a progress bar. The"
+                " working phase is expanded around the task in flight and <code>V. Release</code> is named but not"
+                " opened.",
+            ),
+            still(
+                XA + "todo-marathon-finished.png",
                 "The last task closes and the anchored region is simply not there. What remains is one line on the"
-                " card that closed it -- <code>■ Todo list done · 14 tasks</code> -- which is the sentence the HUD"
+                " card that closed it -- <code>■ Todo list done · 14 tasks</code> -- which is the sentence the block"
                 " used to draw as well, from the same owner, in the same session, anchored above the composer for"
-                " the rest of it. The model's own confirmation under it reads 14/14 done, 0 open, all 5 phases"
-                " closed. A second frame taken sixteen seconds later came back byte-identical, which is what makes"
-                " the empty region a settled state rather than a gap between two repaints.",
+                " the rest of it. The model's own confirmation under it reads 14/14 done, 0 open, all five phases"
+                " closed.",
             ),
         ],
     ),
 ]
 
 if __name__ == "__main__":
-    write([*SECTIONS, long_session_section()])
+    if "--anchored-hud" in sys.argv[1:]:
+        write_anchored_hud(SECTIONS)
+    else:
+        write([*SECTIONS, long_session_section()])
