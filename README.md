@@ -36,202 +36,26 @@ curl -fsSL https://get.veyyon.dev | sh
 irm https://veyyon.dev/install.ps1 | iex
 ```
 
-The release installer stages one self-contained binary, then checks its SHA-256 sidecar, exact release version, and native search support before it replaces an active install or changes your shell. Prebuilt releases are Linux x64 and arm64 (glibc), macOS x64 and arm64, and Windows x64 only. Windows arm64 runs the x64 build under emulation.
-
-Self-updates use the same preflight. They preserve the previous binary and atomically switch the live path, so a hard kill leaves either the old or new binary available, never a missing command. If an installed completion file cannot be refreshed, the automatic-update notice in the TUI tells you to re-run the installer. Veyyon ships two ways: the release binary the installer downloads, or a checkout you clone and build yourself. There is no npm, Homebrew, or crates.io distribution for the application.
-
-Install and uninstall operations use sidecar ownership receipts. They refuse to overwrite or remove an unrelated executable or completion file that already occupies a Veyyon target path. Updating an install that runs out of a git checkout also verifies the checkout remote and restores the previous clean revision if post-merge provisioning or runtime verification fails.
-
-The installer downloads a verified release binary. It never clones this repository and never builds it. To run an unreleased ref, or to work on Veyyon, clone it yourself into a directory you choose:
-
-```sh
-git clone https://github.com/santhreal/veyyon.git
-cd veyyon
-git checkout v1.1.0   # optional: pin a ref
-bun run setup
-bun dev
-```
-
-That checkout is yours. You picked the directory and you decide when it moves or goes away.
-
-To install a binary you built in that checkout, pass `--local` to the installer.
-
-See [Install Veyyon](docs/handbook/src/using/install.md) for pinned releases, developer checkouts, updates, rollback, and uninstall commands.
+The installer verifies the release checksum and binary before replacing an existing installation. See [Install Veyyon](docs/handbook/src/using/install.md) for supported platforms, pinned releases, source checkouts, updates, rollback, and uninstall.
 
 ## What Veyyon changes
 
-### 1. The prompt is an inspectable program
+- **Inspectable context.** Prompt statements, layered project context, and context moves are visible before they affect a run. [Prompt customization](docs/system-prompt-customization.md) · [Context files](docs/context-files.md)
+- **Deliberate model control.** Effort, roles, provider routing, and compaction remain explicit operator choices. [Models and effort](docs/settings.md#models) · [Roles and profiles](docs/handbook/src/using/roles-and-profiles.md)
+- **Protected secret spending.** Models use named placeholders while credentials remain local, encrypted, scoped, and auditable. [Secret workflow](docs/handbook/src/features/secrets.md)
+- **Visible workers.** Typed subagents, IRC, persistent transcripts, and the Agent Control Center keep parallel work inspectable. [Subagents](docs/handbook/src/features/subagents.md)
+- **State-aware edits.** Language-server refactors and hash-anchored patches fail before stale state becomes a bad write. [Editing and repair](docs/handbook/src/using/editing.md)
 
-You can ask Veyyon what the model receives before you spend a token:
+The [Veyyon handbook](docs/handbook/src/introduction.md) explains the complete runtime and its contracts.
 
-```sh
-veyyon prompt --sections --cwd ./my-project
-veyyon prompt --statements --cwd ./my-project
-veyyon prompt --statement tool-selection --cwd ./my-project
-```
+## Explore
 
-The outer prompt is a zero-prose scaffold. Registered statements own the actual instructions and their activation conditions. Project context comes from layered `AGENTS.md` files and validated `PROMPT_SECTIONS/` overrides. `/move` reloads cwd-derived context transactionally, so a failed discovery does not leave half of one project mixed with half of another.
-
-[Prompt customization](docs/system-prompt-customization.md) · [Context files](docs/context-files.md)
-
-### 2. Effort belongs to the model, and compaction is visible
-
-A session effort override wins first. An explicit selector suffix wins next, followed by the saved `defaultEffort[model]` row, the saved `defaultEffort["*"]` row, and finally the model default. `Default` removes the session override. The picker shows only effort variants the selected model supports, so Veyyon does not offer a choice that it will silently clamp into something else.
-
-Compaction uses editable model chains and explicit fallback policy. Before a model summarizes history, a lossless pass removes contained duplicates. Manual and automatic compaction report what happened instead of silently switching models or discarding context.
-
-<p align="center">
-  <img src="assets/demo-hd-context-report.png" width="960" alt="The context report accounts for a live session by section, with the window share each one holds">
-</p>
-
-[Models and effort](docs/settings.md#models) · [Compaction and memory](docs/handbook/src/context/compaction-memory.md)
-
-### 3. The model spends placeholders, not credentials
-
-`/secret` stores a credential Veyyon can spend without the model ever seeing it. The model is given a named placeholder; expansion happens at the final outbound tool boundary. The real value stays local, is encrypted at rest, is redacted from later outbound seams, and appears in an operator-visible use log by name rather than value. Scope, expiry, and removal are enforced when the credential is used.
-
-<p align="center">
-  <img src="assets/demo-hd-signature-written.png" width="960" alt="A stored credential is spent as a placeholder to sign a file, and the digest lands in the file while the value is never typed and never enters the transcript">
-</p>
-
-[Secret protection](docs/secrets.md) · [Secret workflow](docs/handbook/src/features/secrets.md)
-
-### 4. Workers are an operator surface, not hidden subprocesses
-
-The `task` tool starts typed workers concurrently. Workers can coordinate through `irc`, return schema-validated results, persist their transcripts, and expose those results through `agent://` and `history://` URLs. `/agents` opens the Agent Control Center, where you can inspect each worker's live state, model, effort, and lifecycle controls.
-
-<p align="center">
-  <img src="assets/stills-extra-agent-control.png" width="960" alt="The Agent Control Center lists each worker with its model, effort and state beside the main agent">
-</p>
-
-[Subagents](docs/handbook/src/features/subagents.md) · [IRC](docs/tools/irc.md) · [Internal URL routing](docs/tools/read.md#internal-urls)
-
-### 5. Code intelligence writes through the language server
-
-A rename is a symbol operation, not a text replacement. Veyyon asks the active language server for the workspace edit, applies it, and keeps file renames and references together. The edit tool separately uses content-hash anchors, so a file changed since the model read it fails closed before a patch lands. Language-server support is off by default and the recording turns it on.
-
-<p align="center">
-  <img src="assets/demo-lsp-hd.webp" width="960" alt="A language-server rename applies one edit to the class file and three to its test, and the fixture suite then passes with two tests">
-</p>
-
-[Language servers](docs/tools/lsp.md) · [Editing and repair](docs/handbook/src/using/editing.md)
-
-## Demo gallery
-
-The hero is one continuous long-running session captured at 2560x1440 in a
-composited terminal and published at 1920x1080. It drives the shipped CLI, real
-tools, a local Qwen3.8 27B model, parallel workers, the todo board, verification,
-and protected secret spending without staging intermediate states.
-
-Preview a take without replacing tracked assets:
-
-```sh
-PUBLISH=0 DEMO_SERVER=x11 \
-  PROOF_LLM_BASE_URL=http://<host>:11434/v1 \
-  bash scripts/demos/record-hd-demo.sh demo-hd
-```
-
-The HD recorder uses this terminal configuration:
-
-```text
-terminal       kitty
-font           JetBrains Mono 21
-canvas         2560x1440 at 30 fps
-window inset   128 px
-background     #171b22
-foreground     #d3dae6
-publish        Lanczos downsample to 1920x1080
-```
-
-See [Recording terminal proofs](docs/handbook/src/foundations/verification.md#recording-terminal-proofs)
-for the reusable compositor, VHS, and ANSI raster settings.
-
-### Scenario
-
-The session starts by writing and beginning a four-phase plan with the todo tool. It then
-hardens a service tree: nine modules across three directories each read a numeric setting
-straight out of the environment in their own spelling, so it finds every site with a search,
-writes one validating owner, then fans the edits out to three subagents working disjoint
-directories in parallel. It makes one hash-anchored edit of its own, pinning the trap the audit
-turned up — `Number("0x10")` returns 16, so a hex string in an environment variable is read as
-a decimal rather than rejected — runs the suite, and visibly advances the plan before committing.
-It then signs its work with a credential it never typed: a number is stored from the environment
-with `/secret from-env`, the model writes `#RELEASE_SIGNATURE#`, and Veyyon substitutes the
-real bytes at the outbound boundary. The placeholder is what the transcript, the session,
-and `/secret log` all keep. The approval
-dialog does show the resolved value, deliberately, because approving a spend you cannot read
-is not consent. `SIGNED.md` ends up carrying the sha256 of that number, so the digest in the
-frame can be recomputed with `proof/verify-signature.py` rather than believed:
-
-```sh
-python3 proof/verify-signature.py proof/captures/wayland/demo-hd-signature-crosscheck.txt --number 4721-8095-3364
-```
-
-| Surface | What the frame shows | Artifact |
-| --- | --- | --- |
-| The session | Plan, search, fan out, edit, verify, advance, sign, and inspect operator state — at the speed it was recorded, with any stretch where the screen went untouched trimmed to a four-second pause and nothing sped up | [clip](assets/demo-hd.webp) / [full quality](proof/captures/wayland/demo-hd-cut.mp4) / [unedited take](proof/captures/wayland/demo-hd.mp4) |
-| Search | The real grep that finds all nine sites, brought back into view from the same completed audit turn | [frame](assets/demo-hd-search-block.png) |
-| Inventory | All nine environment reads in one table with file, variable, env var, default, and raw coercion spelling, closed by the exact 3/3/3 count | [frame](assets/demo-hd-inventory.png) |
-| Parallel agents | Three subagents settling in one turn, one per directory, editing disjoint files against an owner the main agent wrote first | [frame](assets/demo-hd-agent-lanes.png) |
-| Edit | The main agent's own diff, adding the guard that rejects the hex, octal and binary literals its search flagged, with the file named in the block header | [frame](assets/demo-hd-edit-diff.png) |
-| Verification | The command the model chose to check its own change, and its output | [frame](assets/demo-hd-verify-command.png) |
-| Plan | A four-phase hardening plan opens before any file changes, advances through Migration and Validation, then closes after signing | [opened](assets/demo-hd-todo-board.png) / [advanced](assets/demo-hd-todo-strike.png) / [finished](assets/demo-hd-todo-finished.png) |
-| Secret stored | A credential taken from the environment, so it is typed nowhere | [frame](assets/demo-hd-secret-stored.png) |
-| Secret approval | The call held for approval, naming the credential it would spend | [frame](assets/demo-hd-secret-approval.png) |
-| Secret spent | The signature written from a placeholder the model never resolved | [frame](assets/demo-hd-signature-written.png) |
-| Secret log | The spend recorded by name, with no value anywhere | [frame](assets/demo-hd-secret-log.png) |
-| Context | What the session cost, from the product's own accounting | [report](assets/demo-hd-context-report.png) |
-| Settings | Appearance opened in the settings card, with the footline preview rendering the values live beside it | [frame](assets/demo-hd-settings-pane.png) |
-| Workers | Two task agents settling in one turn, each with its own finding, and the main agent cross-checking one against the other | [frame](assets/stills-extra-agents.png) / [control](assets/stills-extra-agent-control.png) |
-| Language servers | A rename computed by the language server: one edit to the class file, three to its test, then a green suite | [recording](assets/demo-lsp-hd.webp) |
-| Installation | The published release installed by the documented one-liner, checksum verified | [recording](assets/demo-install-hd.webp) |
-
-A recording must submit the action and finish on its result. A settings proof must show a
-differential, not one default screenshot. The contract lives in
-[record-demo](.veyyon/skills/record-demo/SKILL.md) and
-[prove-feature](.veyyon/skills/prove-feature/SKILL.md).
-
-## The complete workbench
-
-The gallery leads with Veyyon-owned contracts. The rest of the product is still available when the task needs it.
-
-| Area | Production surface |
-| --- | --- |
-| Files and data | Files, directories, archives, SQLite, PDFs, notebooks, URLs, and internal resources through `read`; exact creation through `write`; hash-anchored patches through `edit` |
-| Search and structure | Native `grep` and `glob`; tree-sitter summaries; `ast_grep` discovery; previewed and resolved `ast_edit` rewrites |
-| Runtime | Persistent shell sessions, supervised processes, persistent Python and Bun kernels, SSH, and DAP debugging |
-| Code intelligence | Diagnostics, navigation, references, implementations, code actions, symbol rename, and rename-file through `lsp` |
-| Browser and research | Chromium/CDP control, web search provider routing, URL extraction, images, and speech tools when enabled |
-| Coordination | Tasks, IRC, background jobs, todos, interactive questions, checkpoints, rewind, and agent URLs |
-| Sessions | Resume, branch, fork, export, compaction, goal continuation, plan mode, review, and project-scoped memory |
-| Integrations | MCP, extensions, hooks, skills, custom commands, ACP, RPC, SDK embedding, and encrypted collaboration |
-
-Use `/` to search commands and `/settings` to search configuration. The generated references stay closer to the registries than a hand-maintained README list:
-
-- [Slash commands](docs/handbook/src/reference/slash-commands.md)
-- [Settings reference](docs/settings-reference.md)
-- [Tool guides](docs/tools/)
-- [Environment variables](docs/environment-variables.md)
-- [File locations](docs/handbook/src/reference/file-locations.md)
-
-## Models, providers, and routing
-
-Use `/model` or `--model` for the interactive model. Assign `smol`, `slow`, `plan`, `designer`, `commit`, `advisor`, and custom roles independently. Compaction and subagents own separate ordered model chains. Retry fallback chains, path-scoped model filters, several credentials per provider, session affinity, and per-credential cooldown are explicit configuration.
-
-Veyyon supports direct APIs, OAuth coding subscriptions, gateways, and local OpenAI-compatible servers. The catalog changes more often than this README. Run `veyyon models` for the active catalog and see [Models, roles, and profiles](docs/handbook/src/using/roles-and-profiles.md) for routing.
-
-## Four ways to run the engine
-
-```sh
-veyyon                         # interactive TUI
-veyyon -p "inspect this repo"  # one-shot output
-veyyon --mode rpc             # NDJSON RPC over stdio
-veyyon acp                    # Agent Client Protocol for editors
-```
-
-TypeScript hosts can also use the session SDK. All four surfaces share the model registry, session runtime, tool policy, and approval semantics.
-
-[ACP and CLI modes](docs/handbook/src/reference/cli.md) · [Extensions](docs/extensions.md) · [Custom tools](docs/custom-tools.md)
+- [Recorded end-to-end workflow and proof gallery](docs/handbook/src/using/examples.md#recorded-end-to-end-workflow)
+- [Quickstart](docs/handbook/src/using/quickstart.md)
+- [Configuration](docs/handbook/src/using/configuration.md)
+- [Models, providers, and routing](docs/handbook/src/using/roles-and-profiles.md)
+- [CLI modes and commands](docs/handbook/src/reference/cli.md)
+- [Tools reference](docs/handbook/src/reference/tools.md)
 
 ## Provenance
 
@@ -245,15 +69,9 @@ Veyyon owns the statement-based prompt architecture, transactional context moves
 
 This boundary describes this repository. It does not claim that current upstream has stood still. Read [UPSTREAM.md](UPSTREAM.md), the [mechanisms chapter](docs/handbook/src/why/innovations.md), and the [intentional divergence ledger](docs/internal/porting-from-pi-mono.md#15-intentional-divergences) for the detailed record.
 
-## Development
+## Contributing
 
-```sh
-bun setup
-bun dev
-bun run check
-```
-
-`bun setup` installs workspace dependencies and builds the local Rust/N-API addon. See [CONTRIBUTING.md](CONTRIBUTING.md) and [packages/coding-agent/DEVELOPMENT.md](packages/coding-agent/DEVELOPMENT.md) before changing the runtime.
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [packages/coding-agent/DEVELOPMENT.md](packages/coding-agent/DEVELOPMENT.md) for source setup, development commands, verification gates, and runtime conventions.
 
 ## License
 

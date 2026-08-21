@@ -142,7 +142,7 @@ Every observation arrives through something. Know what it does to the bytes.
 | Raw `Bun.spawn` pipes | Exact bytes, exit codes | Nothing. This is the ground truth for text |
 | A tool result in this harness | Rough shape | Test output is trimmed to failures, and the trimming also applies to shell redirects, so `cmd > file` can leave a file that is not what the process wrote |
 | A real PTY (`launch` with `pty: true`) | Interactive behavior, keys, layout | Control sequences interleave; read it as a terminal, not as a log |
-| `render-proof.ts` images | Colors, fills, spacing | Nothing that matters. Use both grounds |
+| `render-proof.ts` images | Debugging colours, fills and spacing in a fixture you wrote | Everything about the product. Not a proof: no reachability, no real state, no session geometry |
 | tmux | Nothing | Banned. Black ground, stripped styling |
 
 So when exact output matters, capture it in-process and check the exit code as well as the text:
@@ -186,7 +186,7 @@ What to exercise once you are in there:
 
 A readiness pattern that never matches is usually your regex, not a hang. The wordmark is letter-spaced, so `veyyon` does not appear in the output as one word. Read the first frame before concluding the process is stuck.
 
-For appearance, the transcript is not enough. Render the real component and rasterize on both a grey and a black ground with `scripts/demos/render-proof.ts`, and look at the images. An explicit dark fill is invisible on black and reads as a slab on grey, so one ground answers half the question.
+For appearance, the transcript is not enough and neither is a raster of your own fixture. A proof is a capture through the official config, [verification.md](../../../docs/handbook/src/foundations/verification.md) — the HD recorder for a real session, the VHS baseline for a screen capture — and there are no fallbacks. `scripts/demos/render-proof.ts` rasterizes a component's ANSI on a grey and a black ground and is worth reaching for WHILE you work, because an explicit dark fill is invisible on black and reads as a slab on grey; it answers that in seconds and answers nothing about what a session draws.
 
 ## The compiled binary is a different program
 

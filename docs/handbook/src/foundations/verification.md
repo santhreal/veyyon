@@ -11,7 +11,10 @@ Product behavior is covered by tests that assert concrete outcomes, not only non
 
 ## Recording terminal proofs
 
-Record interactive proofs on the repository's private display. Do not record a logged-in desktop or use a terminal multiplexer capture as visual evidence.
+This section is the capture configuration. It is the only source of visual proof.
+Record interactive proofs on the repository's private display. Do not record a
+logged-in desktop, and do not use a terminal multiplexer capture as visual
+evidence. There are no other capture paths and no fallbacks.
 
 ### Real interactive sessions
 
@@ -60,16 +63,27 @@ Set Theme { "name": "veyyon", "black": "#000000", "background": "#000000", "fore
 
 Drive both states from one script. Seed each setting explicitly before capture. Restore the default after the pair is written.
 
-### Off-screen component renders
+### Off-screen component renders are a debugging aid, not a proof
 
-Render the shipped component's ANSI and rasterize it on both grey and black grounds:
+Rasterizing a component's ANSI answers one narrow question quickly and without a
+display: whether a fill, colour or spacing reads correctly on a grey and a black
+ground.
 
 ```sh
 env -u NO_COLOR FORCE_COLOR=3 bun scripts/demos/render-<surface>.ts [args] |
   bun scripts/demos/render-proof.ts --out /tmp/<surface> --width 100 --scale 2
 ```
 
-`render-proof.ts` writes `<surface>-grey.png` with background `#1e2127` and `<surface>-black.png` with background `#000000`. Inspect both. A background fill can disappear on black while remaining visible as a slab on grey.
+`render-proof.ts` writes `<surface>-grey.png` with background `#1e2127` and
+`<surface>-black.png` with background `#000000`. Inspect both. A background fill
+can disappear on black while remaining visible as a slab on grey.
+
+The output is not a proof and does not satisfy any evidence requirement. It draws a
+fixture written by hand, at a chosen width, through a constructed call. It cannot
+show that the surface is reachable, that the state is real, or that the block is
+positioned, sized and clipped the way a session draws it. Write the file to a
+temporary path. A rasterized image never enters `assets/`, a README, or a handbook
+page as before-and-after evidence.
 
 ## Related
 

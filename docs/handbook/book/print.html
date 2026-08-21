@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b1e48f00.js";
+            window.path_to_searchindex_js = "searchindex-3832f7d2.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-79e2ba62.js"></script>
@@ -3708,6 +3708,32 @@ enabled. See <a href="#compaction-and-project-memory">Compaction and memory</a>.
 <pre><code class="language-text">Point Veyyon at a provider model and rely on the same harness contract every provider path must satisfy.
 </code></pre>
 <p>See <a href="#model-contract">Model contract</a> and <a href="#the-provider-stack-and-bring-your-own-key">Providers</a>.</p>
+<h2 id="recorded-end-to-end-workflow"><a class="header" href="#recorded-end-to-end-workflow">Recorded end-to-end workflow</a></h2>
+<p>The main recording is one continuous session through the shipped CLI. It opens a four-phase plan, audits nine environment reads, writes one validating owner, fans three migrations out to parallel workers, applies a hash-anchored edit, runs the suite, advances the plan, spends a protected secret placeholder, and inspects the resulting context and settings.</p>
+<p>The scenario deliberately catches a coercion boundary: <code>Number("0x10")</code> returns 16, so a hexadecimal environment value must be rejected rather than read as decimal configuration. The session records the search, inventory, parallel edits, verification, and final operator state rather than staging those surfaces separately.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Surface</th><th>Evidence</th></tr>
+</thead>
+<tbody>
+<tr><td>Complete session</td><td><a href="../../../assets/demo-hd.webp">Published clip</a> · <a href="../../../proof/captures/wayland/demo-hd-cut.mp4">full-quality cut</a> · <a href="../../../proof/captures/wayland/demo-hd.mp4">unedited take</a></td></tr>
+<tr><td>Search</td><td><a href="../../../assets/demo-hd-search-block.png">All nine configuration reads found by the completed audit</a></td></tr>
+<tr><td>Inventory</td><td><a href="../../../assets/demo-hd-inventory.png">The nine reads classified by file, variable, environment key, default, and coercion</a></td></tr>
+<tr><td>Parallel workers</td><td><a href="../../../assets/demo-hd-agent-lanes.png">Three workers editing disjoint directories</a></td></tr>
+<tr><td>Hash-anchored edit</td><td><a href="../../../assets/demo-hd-edit-diff.png">The main agent adds the numeric-format guard</a></td></tr>
+<tr><td>Verification</td><td><a href="../../../assets/demo-hd-verify-command.png">The selected verification command and its result</a></td></tr>
+<tr><td>Plan</td><td><a href="../../../assets/demo-hd-todo-board.png">Plan opened before editing</a> · <a href="../../../assets/demo-hd-todo-strike.png">plan advanced after verification</a></td></tr>
+<tr><td>Protected secret</td><td><a href="../../../assets/demo-hd-secret-stored.png">stored</a> · <a href="../../../assets/demo-hd-secret-approval.png">approval</a> · <a href="../../../assets/demo-hd-signature-written.png">spent</a> · <a href="../../../assets/demo-hd-secret-log.png">value-free audit log</a></td></tr>
+<tr><td>Context</td><td><a href="../../../assets/demo-hd-context-report.png">Live session accounting</a></td></tr>
+<tr><td>Settings</td><td><a href="../../../assets/demo-hd-settings-pane.png">Appearance and footline preview</a></td></tr>
+<tr><td>Worker control</td><td><a href="../../../assets/stills-extra-agents.png">Parallel findings</a> · <a href="../../../assets/stills-extra-agent-control.png">Agent Control Center</a></td></tr>
+<tr><td>Language server</td><td><a href="../../../assets/demo-lsp-hd.webp">Workspace rename and green suite</a></td></tr>
+<tr><td>Installation</td><td><a href="../../../assets/demo-install-hd.webp">Published installer and checksum verification</a></td></tr>
+</tbody>
+</table>
+</div>
+<p>See <a href="#recording-terminal-proofs">Testing and verification</a> for the recording environment, regeneration commands, and before-and-after proof requirements.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="plan-mode-and-goals"><a class="header" href="#plan-mode-and-goals">Plan mode and goals</a></h1>
 <p>Plan mode and goal mode are separate engine modes with different tools and continuation behavior. They cannot be active together (and each conflicts with vibe mode).</p>

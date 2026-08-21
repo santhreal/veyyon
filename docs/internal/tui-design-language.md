@@ -44,7 +44,7 @@ The rules:
 - In-terminal background tokens default to `""` (transparent, inherit the real ground). Titanium ships this way.
 - A raised surface or hairline must be a RELATIVE tint derived from the detected terminal background, never an absolute hex. The ONE owner is `modes/theme/ground-tints.ts`: it takes the OSC 11 hex (`terminal.backgroundColor` / `onBackgroundColorChange`) and offsets it a fixed contrast step toward the pole: 12% for hairlines and card outlines (`groundHairlineHex()`), 5% for raised grounds (`groundRaisedHex()`, which has no consumer today, because the raised composer ground was deleted). Two surfaces derive from it: the composer hairline (`ComposerHairline` in `composer-chrome.ts`) and `cardOutlineColor()` in `message-frame.ts`, which is what every `Box.setBorder` in `modes/components` passes (`message-frame.ts:91`, `skill-message.ts:48`). `BorderedLoader`'s full-width `DynamicBorder` rules are not outlines and still paint the static `border` token. Without detection, the static token is the exact fallback; do not paint what you cannot derive.
 - A background fill must close before the row ends. A bg attribute left open at end-of-line paints the remainder of the row on clear-to-EOL: that is the "leaking everywhere" bug class.
-- Never validate a background change in tmux. tmux panes sit on a pure-black default ground, so an absolute dark fill is invisible there and a transparent regression looks identical to a fix. Evidence for any visual change is a real-render PNG of the shipped component on BOTH a grey (`#1e2127`-class) and a black ground, plus exact-byte test assertions. The user's own screenshots outrank everything.
+- Never validate a background change in tmux. tmux panes sit on a pure-black default ground, so an absolute dark fill is invisible there and a transparent regression looks identical to a fix. Evidence for any visual change is a capture taken through the official config in [verification.md](../handbook/src/foundations/verification.md) — the HD recorder for a real session, the VHS baseline for a screen capture — plus exact-byte test assertions. There are no fallbacks: an off-screen raster of a component's ANSI (`scripts/demos/render-proof.ts`) is a debugging aid for looking at fills on a grey and a black ground while you work, never a proof. The user's own screenshots outrank everything.
 
 ## Gauges
 
@@ -292,4 +292,3 @@ When touching TUI polish, name the token (spacing, theme color, motion budget). 
 sequence in an ordinary widget is a design-system bug. Keep any required raw sequence in one named
 component or terminal-protocol owner.
 
-*Verified against `19234e94d39e` on 2026-08-07.*
