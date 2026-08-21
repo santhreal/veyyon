@@ -215,12 +215,17 @@ decides anything with. The question both were reached for — is this one stuck 
 answered by the recovery column as a fact. `/agents` carries the roster with the
 numbers.
 
-The lanes were rebuilt in this shape: [before](../../../../assets/subagent-lanes-before.png) and
-[after](../../../../assets/subagent-lanes-after.png), one scene recorded twice at 131 columns and
-sampled at the same second of the same script. The after arm comes from `proof/docker/record-x11.sh
-proof/scenes/agent-lanes.sh`. The before arm comes from `proof/docker/record-x11-before.sh
-proof/scenes/agent-lanes.sh`, which holds every changed source file at the content of the commit
-before the rebuild, `f1390cf3c`.
+A lane keeps its badge on its own row. It did not always: both anchored blocks clamped every row
+to the width they were handed, and that width was the terminal's rather than the two-cells-narrower
+one their mount wraps to, so each row's right-aligned tail arrived on a line of its own at column
+zero, outside the block. Every unit test agreed the rows were in bounds, because they were in the
+bound they were given. The recording is what saw it:
+[before](../../../../assets/subagent-lanes-before.png), the badge wrapped below its lane, and
+[after](../../../../assets/subagent-lanes-after.png), two lanes each ending in its badge at the far
+margin. One scene recorded twice at 131 columns, sampled at the same second of the same script: the
+after arm from `proof/docker/record-x11.sh proof/scenes/agent-lanes.sh`, the before arm from
+`proof/docker/record-x11-before.sh proof/scenes/agent-lanes.sh`, which holds every changed source
+file at the content of the commit before the fix, `f1390cf3c`.
 
 Narrow the terminal and the model badge comes off first, then the columns shrink to
 what is left. Nothing wraps: the block draws no row it cannot fit, and draws nothing

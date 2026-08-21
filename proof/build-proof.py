@@ -1635,8 +1635,8 @@ SECTIONS = [
             still_pair(
                 XH + "agent-lanes-lanes-two-live.png",
                 XA + "agent-lanes-lanes-two-live.png",
-                "one frame of it, held: <code>demo-qwen38-27b-64k</code> on its own line above and below the lane"
-                " row it belongs to, breaking the block into six rows where the renderer emitted four.",
+                "one frame of it, held: the lane still running carries <code>demo-qwen38-27b-64k</code> on a line"
+                " of its own at column zero, under the row it belongs to, so a two-row block occupies three.",
                 "the same frame of the same scene, four rows: header, two lanes each ending in its own badge, and"
                 " nothing at column zero that the block did not put there.",
                 arms=("before the fix", "after it"),
