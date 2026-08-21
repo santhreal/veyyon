@@ -13,7 +13,8 @@ is MIT-licensed and already implements this surface well.
 ## Decision
 
 Fork oh-my-pi as veyyon's source base. Rebrand and diverge from there, preserving the
-MIT attribution and fork provenance (`LICENSE`, `NOTICE`, `UPSTREAM.md`).
+MIT attribution and the record of where the code came from (`LICENSE`, `NOTICE`,
+`UPSTREAM.md`).
 
 ## Consequences
 
