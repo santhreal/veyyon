@@ -6,6 +6,9 @@
 
 pub mod matchers;
 
+#[cfg(test)]
+pub mod test_fixtures;
+
 use std::{
 	cell::{Cell, RefCell},
 	error::Error,
@@ -204,6 +207,31 @@ fn walker_follow_links(follow: Follow) -> veyyon_walker::FollowLinks {
 	}
 }
 
+/// Whether an I/O error is a symlink loop.
+fn is_loop(error: &io::Error) -> bool {
+	#[cfg(unix)]
+	return error.raw_os_error() == Some(uucore::libc::ELOOP);
+
+	#[cfg(not(unix))]
+	return false;
+}
+
+/// Whether the path itself is a symlink, without resolving it.
+fn is_symlink(path: &Path) -> bool {
+	path
+		.symlink_metadata()
+		.is_ok_and(|meta| meta.file_type().is_symlink())
+}
+
+/// Depth of `path` below `root`, counted the way the walker counts it: the root
+/// is 0 and its direct children are 1.
+fn path_depth_below(path: &Path, root: &Path) -> usize {
+	path
+		.components()
+		.count()
+		.saturating_sub(root.components().count())
+}
+
 fn build_find_walk_request(config: &Config, root: &Path) -> veyyon_walker::WalkRequest {
 	veyyon_walker::WalkRequest::new(root)
 		.hidden(true)
@@ -267,8 +295,48 @@ fn process_dir_walk_request(
 			}
 		},
 		|error| {
-			ret.set(1);
-			let _ = writeln!(&mut stderr(), "Error: {}: {}", error.path.display(), error.error);
+			// A symlink whose target cannot be resolved is still an entry. Under
+			// `-L` the walker reports resolving it as an error and does not
+			// deliver it, so a broken link used to be diagnosed and then dropped
+			// from the listing. GNU findutils 4.9.0 draws three distinct lines
+			// here, and each one is a case below:
+			//
+			//   ENOENT  the target does not exist: list the link, say nothing,
+			//           exit 0. A dangling link is ordinary, not a fault.
+			//   ENOTDIR the target sits under a file: list the link and
+			//           diagnose it, exit 1.
+			//   ELOOP   the link resolves onto itself: diagnose it, list
+			//           nothing, exit 1.
+			//
+			// Anything that is not a symlink — an unreadable directory, a path
+			// that vanished mid-walk — keeps the diagnostic alone and gains no
+			// entry.
+			let symlink = is_symlink(error.path);
+			let dangling = symlink && error.error.kind() == io::ErrorKind::NotFound;
+			if !dangling {
+				ret.set(1);
+				let _ = writeln!(&mut stderr(), "Error: {}: {}", error.path.display(), error.error);
+			}
+			let depth = path_depth_below(error.path, resolved_root);
+			if symlink
+				&& !is_loop(error.error)
+				&& depth >= config.min_depth
+				&& depth <= config.max_depth
+			{
+				let walk_entry = WalkEntry::new(error.path.to_path_buf(), depth, config.follow);
+				let mut current_dir = current_dir.borrow_mut();
+				let mut ret_value = ret.get();
+				apply_find_entry(
+					walk_entry,
+					operand,
+					resolved_root,
+					deps,
+					matcher,
+					&mut current_dir,
+					&mut ret_value,
+				);
+				ret.set(ret_value);
+			}
 			Ok(veyyon_walker::WalkDecision::Include)
 		},
 	);
@@ -497,6 +565,23 @@ mod tests {
 		path.to_string()
 	}
 
+	/// The exact bytes `-print` writes for a list of paths.
+	///
+	/// Written as a list rather than as one long literal on purpose. This
+	/// repo formats with `format_strings = true`, which rewraps a literal
+	/// wider than `max_width`, and when the wrap lands inside a `\n` escape it
+	/// splits the escape: the file ends up holding a literal backslash, a real
+	/// newline, and the letter `n`. That is how the expectations in
+	/// `find_main_depth_first` and `test_l_flag` came to assert a string no run
+	/// of find could ever produce, which is why both tests were dead. A list of
+	/// short strings has nothing for the formatter to break.
+	fn printed(paths: &[&str]) -> String {
+		paths
+			.iter()
+			.map(|path| format!("{}\n", fix_up_slashes(path)))
+			.collect()
+	}
+
 	/// A struct that implements Dependencies, but uses faked implementations,
 	/// allowing us to check output, set the time returned by clocks etc.
 	pub struct FakeDependencies {
@@ -506,6 +591,9 @@ mod tests {
 
 	impl<'a> FakeDependencies {
 		pub fn new() -> Self {
+			// Every test that reads a fixture builds one of these or a
+			// [WalkEntry]; both entry points provision the tree.
+			crate::find::test_fixtures::ensure_test_data();
 			Self { output: RefCell::new(Cursor::new(Vec::<u8>::new())), now: SystemTime::now() }
 		}
 
@@ -627,11 +715,12 @@ mod tests {
 		assert_eq!(rc, 0);
 		assert_eq!(
 			deps.get_output_as_string(),
-			fix_up_slashes(
-				"./test_data/simple/abbbc\n./test_data/simple/subdir/ABBBC\n./test_data/simple/subdir\\
-				 \
-				 n./test_data/simple\n"
-			)
+			printed(&[
+				"./test_data/simple/abbbc",
+				"./test_data/simple/subdir/ABBBC",
+				"./test_data/simple/subdir",
+				"./test_data/simple",
+			])
 		);
 	}
 
@@ -1409,13 +1498,17 @@ mod tests {
 		assert_eq!(rc, 1);
 		assert_eq!(
 			deps.get_output_as_string(),
-			fix_up_slashes(
-				"./test_data/links\n./test_data/links/abbbc\n./test_data/links/link-d\n./test_data/\
-				 links/link-d/test\n./test_data/links/link-f\n./test_data/links/link-missing\n./\
-				 test_data/links/link-notdir\n./test_data/links/subdir\n./test_data/links/subdir/test\\
-				 \
-				 n"
-			)
+			printed(&[
+				"./test_data/links",
+				"./test_data/links/abbbc",
+				"./test_data/links/link-d",
+				"./test_data/links/link-d/test",
+				"./test_data/links/link-f",
+				"./test_data/links/link-missing",
+				"./test_data/links/link-notdir",
+				"./test_data/links/subdir",
+				"./test_data/links/subdir/test",
+			])
 		);
 	}
 

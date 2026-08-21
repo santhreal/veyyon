@@ -633,9 +633,7 @@ impl Matcher for Printf {
 #[cfg(test)]
 mod tests {
 	#[cfg(unix)]
-	use std::os::unix::fs::{PermissionsExt, symlink};
-	#[cfg(windows)]
-	use std::os::windows::fs::{symlink_dir, symlink_file};
+	use std::os::unix::fs::PermissionsExt;
 	use std::{fs::File, io::ErrorKind};
 
 	use chrono::{Duration, TimeZone};
@@ -898,47 +896,15 @@ mod tests {
 
 	#[test]
 	fn test_printf_symlinks() {
-		#[cfg(unix)]
-		{
-			if let Err(e) = symlink("abbbc", "test_data/links/link-f") {
-				assert!(e.kind() == ErrorKind::AlreadyExists, "Failed to create sym link: {e:?}");
-			}
-			if let Err(e) = symlink("subdir", "test_data/links/link-d") {
-				assert!(e.kind() == ErrorKind::AlreadyExists, "Failed to create sym link: {e:?}");
-			}
-			if let Err(e) = symlink("missing", "test_data/links/link-missing") {
-				assert!(e.kind() == ErrorKind::AlreadyExists, "Failed to create sym link: {e:?}");
-			}
-			if let Err(e) = symlink("abbbc/x", "test_data/links/link-notdir") {
-				assert!(e.kind() == ErrorKind::AlreadyExists, "Failed to create sym link: {e:?}");
-			}
-			if let Err(e) = symlink("link-loop", "test_data/links/link-loop") {
-				assert!(e.kind() == ErrorKind::AlreadyExists, "Failed to create sym link: {e:?}");
-			}
-		}
-		#[cfg(windows)]
-		{
-			if let Err(e) = symlink_file("abbbc", "test_data/links/link-f") {
-				assert!(e.kind() == ErrorKind::AlreadyExists, "Failed to create sym link: {:?}", e);
-			}
-			if let Err(e) = symlink_dir("subdir", "test_data/links/link-d") {
-				assert!(e.kind() == ErrorKind::AlreadyExists, "Failed to create sym link: {:?}", e);
-			}
-			if let Err(e) = symlink_file("missing", "test_data/links/link-missing") {
-				assert!(e.kind() == ErrorKind::AlreadyExists, "Failed to create sym link: {:?}", e);
-			}
-			if let Err(e) = symlink_file("abbbc/x", "test_data/links/link-notdir") {
-				assert!(e.kind() == ErrorKind::AlreadyExists, "Failed to create sym link: {:?}", e);
-			}
-		}
-
 		let regular_file = get_dir_entry_for("test_data/simple", "abbbc");
 		let link_f = get_dir_entry_for("test_data/links", "link-f");
 		let link_d = get_dir_entry_for("test_data/links", "link-d");
 		let link_missing = get_dir_entry_for("test_data/links", "link-missing");
 		let link_notdir = get_dir_entry_for("test_data/links", "link-notdir");
+		// The loop lives outside `test_data/links` so that a `-L` walk of that
+		// directory, which asserts its exact contents, never meets it.
 		#[cfg(unix)]
-		let link_loop = get_dir_entry_for("test_data/links", "link-loop");
+		let link_loop = get_dir_entry_for("test_data/loop", "link-loop");
 
 		let deps = FakeDependencies::new();
 

@@ -209,7 +209,7 @@ mod tests {
 	#[test]
 	fn xtype_loop() {
 		let matcher = XtypeMatcher::new("l").unwrap();
-		let entry = get_dir_entry_for("test_data/links", "link-loop");
+		let entry = get_dir_entry_for("test_data/loop", "link-loop");
 		let deps = FakeDependencies::new();
 		assert!(matcher.matches(&entry, &mut deps.new_matcher_io()));
 	}
