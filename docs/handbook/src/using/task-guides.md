@@ -161,10 +161,26 @@ user says `continue` or after an unrelated tool call. A real todo change makes t
 for one reminder, up to the configured limit.
 
 Model-facing todo output and the collapsed TUI use the same sanitized, width-bounded, active-first
-projection of at most five items. The complete phases, tasks, and statuses remain in machine state,
-and expanded TUI output still shows the complete plan. To clear that state intentionally, run
-`/todo rm` without a task or phase; completing or dropping items keeps their closed history until it
-is explicitly removed.
+projection of at most five items. The complete phases, tasks, and statuses remain in machine state.
+To clear that state intentionally, run `/todo rm` without a task or phase; completing or dropping
+items keeps their closed history until it is explicitly removed.
+
+The anchored `Todos` block above the composer is a railed list. Every phase gets one row with its
+tally, so a stage that just closed three tasks does not look like one that has done nothing, and
+task rows are drawn for the phase being worked and the few after it. The block is bounded by the
+viewport: it never grows past a third of the terminal's height, it drops finished phases from the
+top before it drops work in flight, and it says how many rows it withheld. Expanding it shows every
+task of the phases it draws, not an unbounded list — an anchored region that outgrows the screen
+cannot be scrolled away from.
+
+Each row's glyph is its state, before any colour: `□` waiting, a breathing cell in flight, `▪` done,
+`∎` abandoned. A task a detached subagent picked up breathes in that agent's own accent and names
+the agent at the right, which is the same hue its lane carries in the `Subagents` block. Light
+travels down the rail while anything on the board is in flight and the rail is flat while nothing
+is, so a board waiting on you is distinguishable from a board being worked. A task closing sweeps a
+strike across its text, exhales its glyph and cools from green to grey; when the last task closes,
+the whole block makes one pass down its rail and clears. Where `display.transitions` is off, all of
+that is still and the glyphs are static.
 
 Configure the behavior under **Settings → Tools → Todos**:
 

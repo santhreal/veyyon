@@ -178,6 +178,51 @@ falling through is indistinguishable from your setting having no effect. Both ag
 surfaces show, for the selected agent, the pattern, the model it resolves to, and
 which of the four layers decided.
 
+## Watching a run
+
+While a spawn is in flight, the `Subagents` block sits above the composer with one
+lane per agent. A lane reads left to right: a rail, the agent's id, what it is doing,
+and the model it resolved to.
+
+```text
+Subagents
+ ▏ DockerSecretHarness    bash cargo test --workspace --all-targets         claude-opus-5 high
+ ▏ SecretModeFlowUX       read modes/interactive-mode.ts                    claude-opus-5 high
+ ▏ SecretModularityAudit  Audit secrets subsystem modularity, wiring, and…  claude-opus-5 med
+ ▏ RateLimitedWorker      Retrying (2/5) in 38s · 429 rate limit exceeded   claude-opus-5 high
+```
+
+The id is painted in that agent's own accent, the same hue the status line gives its
+name and the same one a delegated todo row uses to point back at it.
+
+The middle column holds the most urgent fact the agent has. An agent asleep between
+provider attempts shows the recovery, its attempt count and the reason, counting down.
+An agent running a tool shows the tool and its argument. An agent waiting on the model
+has nothing to report, so it shows the work it was given instead, dimmed. That order
+matters: every lower rank is still true when a higher one is, and a lane that printed
+the description while the agent was asleep on a rate limit was byte-identical to one
+thinking.
+
+Light travels down the rail while agents are working, and a lane is lit only while it
+has a tool in flight. The head crosses the whole block — the cycle belongs to the
+block, not the row — and arrives cold on a lane that is waiting or recovering, so the
+motion says which agents are moving. Where `display.transitions` is off, the block is
+still.
+
+There is no elapsed clock and no context gauge. Total age ranks agents by seniority,
+which nothing acts on, and a subagent's remaining window is not something its parent
+decides anything with. The question both were reached for — is this one stuck — is
+answered by the recovery column as a fact. `/agents` carries the roster with the
+numbers.
+
+Narrow the terminal and the model badge comes off first, then the columns shrink to
+what is left. Nothing wraps: the block draws no row it cannot fit, and draws nothing
+at all rather than overflow.
+
+Eight lanes are drawn. Past that the block says how many more are running and points
+at `/agents`, which is the full roster. That row is the only place a count appears —
+the header is bare, because a number next to the rows that are the agents is not news.
+
 ## Limits and isolation
 
 The remaining groups in the tab are operational: how many subagents run at once
