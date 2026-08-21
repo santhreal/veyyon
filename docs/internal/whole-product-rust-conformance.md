@@ -167,7 +167,7 @@ The materialized conformance corpus contains exactly 250,000 distinct JSONL test
 | 07 | Security & Sandbox | Path traversal guards, credential boundary isolation, secret redaction, prompt injection fences, environment isolation | 14,000 | 384 |
 | 08 | CLI Engine & Modes | Argv parser, flag resolution, command dispatch, pipe mode, headless execution, TUI bootstrap, worker selectors | 16,000 | 256 |
 | 09 | Installers & Distribution | POSIX `install.sh`, Windows `install.ps1`, GitHub release asset verification, SHA-256 sidecars, self-updater | 10,000 | 192 |
-| 10 | Workers & Subprocesses | Tiny inference worker, JS eval worker, stats sync worker, tab worker, host entrypoint dispatch, IPC channels | 12,000 | 192 |
+| 10 | Native Services, Workers & Subprocesses | Native text/image/search bindings, tiny inference worker, JS eval worker, stats sync worker, tab worker, host dispatch, IPC channels | 12,000 | 192 |
 | 11 | Configuration & Settings | Domain schema validation, cascade resolution (Home -> Profile -> Project), conditions, env overrides, flag bindings | 12,000 | 192 |
 | 12 | Context & Compaction | Token budget accounting, sliding-window truncation, message compaction, TTSR injection, handoff generation | 14,000 | 224 |
 | 13 | Memory Engine & Vectors | Fact extraction, embedding vector math, similarity recall, query ranking, SQLite store, cache eviction | 12,000 | 160 |
@@ -609,7 +609,7 @@ The migration from TypeScript test suites and `packages/simulations` to `crates/
 | [Wave 3: Agent & Safety]   --> Subsystems 03 Tools, 04 Sessions, 06 Concurrency, |
 |           |                07 Security, 12 Context                                |
 | [Wave 4: Product Surfaces] --> Subsystems 01 Rendering, 08 CLI, 09 Distribution,|
-|           |                10 Workers                                             |
+|           |                10 Native Services & Workers                           |
 | [Wave 5: Decommission]     --> Delete superseded TS tests and simulations; cut CI |
 +-----------------------------------------------------------------------------------+
 ```
@@ -633,15 +633,14 @@ The migration from TypeScript test suites and `packages/simulations` to `crates/
 - Materialize exactly 42,000 cases and 720 error contracts.
 - **Gate**: 100% pass on the Wave 1 corpus through the migrated production crates and designated compiled-product cases; delete each corresponding TypeScript test only after the generated migration inventory proves one-for-one contract coverage.
 
-### Wave 2: Providers, Persistence, Memory, Native Support, and LSP
+### Wave 2: Providers, Persistence, Memory, and LSP
 
 - Port and verify Subsystems 02, 05, 13, and 15:
-  - `packages/natives` & `crates/veyyon-natives`
   - `packages/mnemopi` & SQLite persistence
   - `packages/ai` streaming and token accumulation
   - LSP JSON-RPC transport and diagnostics
 - Materialize exactly 62,000 cases and 1,056 error contracts.
-- **Gate**: 100% pass on the Wave 2 corpus; delete superseded tests in `packages/natives/test`, `packages/mnemopi/test`, and `packages/ai/test` only after inventory parity.
+- **Gate**: 100% pass on the Wave 2 corpus; delete superseded tests in `packages/mnemopi/test` and `packages/ai/test` only after inventory parity.
 
 ### Wave 3: Agent Runtime, Tools, Sessions, Concurrency, Security, and Context
 
@@ -652,15 +651,16 @@ The migration from TypeScript test suites and `packages/simulations` to `crates/
 - Materialize exactly 88,000 cases and 1,696 error contracts.
 - **Gate**: 100% pass on the Wave 3 corpus; delete superseded tests in `packages/agent/test` and `packages/coding-agent` only after inventory parity.
 
-### Wave 4: TUI Rendering, CLI Modes, Workers, and Distribution
+### Wave 4: TUI Rendering, Native Services, CLI Modes, Workers, and Distribution
 
 - Port and verify Subsystems 01, 08, 09, and 10:
   - Terminal UI rendering across all viewports and dual grounds
+  - `packages/natives` and `crates/veyyon-natives` text, image, search, and filesystem services
   - Worker subprocess lifecycles (`stats`, `js_eval`, `tiny_inference`, `tab`)
   - CLI flag parsing, dispatch, and error output
   - Distribution installers (`install.sh`, `install.ps1`)
 - Materialize exactly 58,000 cases and 1,024 error contracts.
-- **Gate**: 100% pass on the Wave 4 corpus; delete superseded package tests and executable installer scenarios. Retain repository-policy and release-safety checks under `scripts/` unless they move to Rust repository-linter tooling with contract parity.
+- **Gate**: 100% pass on the Wave 4 corpus; delete superseded native/package tests and executable installer scenarios after inventory parity. Retain repository-policy and release-safety checks under `scripts/` unless they move to Rust repository-linter tooling with contract parity.
 
 ### Wave 5: Parity Certification, Simulation Deletion, and Final Cutover
 
