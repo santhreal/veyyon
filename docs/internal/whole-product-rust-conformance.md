@@ -127,6 +127,27 @@ contracts. The manifest computes both target totals, requires compiled coverage
 for all sixteen subsystems and every source-enumerated boundary family, and
 rejects drift. A case executes only the target declared in its record.
 
+The target/platform allocation is also exact:
+
+| Target | Platform | Cases |
+|---|---|---:|
+| `direct-rust` | platform-independent (`any`) | 240,000 |
+| `direct-rust` | Linux x86_64 | 1,000 |
+| `direct-rust` | Linux aarch64 | 1,000 |
+| `direct-rust` | macOS x86_64 | 1,000 |
+| `direct-rust` | macOS aarch64 | 1,000 |
+| `direct-rust` | Windows x86_64 | 1,000 |
+| `compiled-product` | Linux x86_64 | 1,000 |
+| `compiled-product` | Linux aarch64 | 1,000 |
+| `compiled-product` | macOS x86_64 | 1,000 |
+| `compiled-product` | macOS aarch64 | 1,000 |
+| `compiled-product` | Windows x86_64 | 1,000 |
+
+Platform-independent direct cases run once, not once per operating system.
+Platform-specific cases execute only on a matching runner. Each platform's
+compiled allocation must cover all sixteen subsystems and every
+platform-applicable source-enumerated boundary family.
+
 ---
 
 ## Corpus Allocation and Subsystem Contracts
@@ -163,17 +184,17 @@ The manifest generator computes both total columns from the sixteen allocations 
 
 To eliminate self-fulfilling tests and mock drift, the test harness adheres to strict execution invariants:
 
-1. **Zero Production Logic in Fakes**: No shadow reimplementations of TypeScript or Rust production logic exist in test helpers. All production code paths run from compiled binaries or un-instrumented native crates.
-2. **Migration Precedence**: Production logic must be ported to Rust crates (`crates/veyyon-*`) before Rust unit tests claim to cover it directly. TypeScript production logic is exercised strictly by driving the compiled CLI binary through virtual PTY, VFS, and virtual network interfaces.
-3. **Black-Box Process Boundaries**: The conformance harness drives `target/release/veyyon` via standard POSIX streams (`stdin`, `stdout`, `stderr`), pseudo-terminal devices, and injected virtual filesystem environments.
+1. **Zero Production Logic in Fakes**: No shadow reimplementations of TypeScript or Rust production logic exist in test helpers. Cases execute the compiled release artifact or migrated production crates through their production interfaces.
+2. **Migration Precedence**: Production logic must be ported to Rust crates (`crates/veyyon-*`) before direct-Rust cases claim to cover it. Remaining TypeScript behavior is exercised by driving the compiled CLI through external PTY/ConPTY, real isolated workspaces, and TCP loopback endpoints.
+3. **Black-Box Process Boundaries**: The conformance harness drives `target/release/veyyon` through standard streams, PTY/ConPTY devices, isolated profile/workspace directories, and configured loopback services. It does not inject code or virtual I/O implementations into the process.
 4. **Observable Contract Verification**: Assertions check observable output streams, filesystem state changes, exit codes, PTY cell grids, and wire packets. Internal function pointers, private variables, and memory layouts are not asserted.
-5. **No Mock Libraries**: Production code paths cannot link against mock-injecting libraries. All environment manipulation occurs outside the process boundary via interception at the operating system interface.
+5. **No Mock Libraries**: Production paths do not link against mock-injecting libraries. Direct-Rust cases substitute only external I/O traits; compiled-product cases manipulate the environment strictly outside the process and never interpose syscalls or dynamic libraries.
 
 ---
 
 ## Virtual Environment Subsystems
 
-The execution harness provides complete isolation and determinism without requiring root privileges or external containers.
+The harness provides target-appropriate isolation without root privileges or external containers. Direct-Rust cases are deterministically virtualized; compiled-product cases use black-box operating-system resources with deterministic external scripts and bounded real time.
 
 ```
 +-----------------------------------------------------------------------------------+
@@ -207,6 +228,7 @@ The execution harness provides complete isolation and determinism without requir
 - Injects `EIO`, `ENOSPC`, `EACCES`, partial writes, latency, and torn writes at that trait boundary and logs every operation for invariant checks.
 - Never claims to interpose operating-system syscalls in an unmodified binary.
 - Compiled-product cases instead launch in a unique real temporary workspace populated from the same content-addressed fixture. They use real permissions, quotas where portable, and crash boundaries; fault variants that cannot be induced portably remain direct-Rust cases.
+- The harness waits for child exit and PTY/ConPTY closure before workspace cleanup. On Windows it retries only `ERROR_ACCESS_DENIED` and sharing violations with bounded exponential backoff capped at five seconds per workspace; other cleanup errors fail immediately. A shard does not pass until its cleanup queue drains.
 
 ### 3. Virtual Clock and Deterministic Scheduler (`vclock`)
 
@@ -598,6 +620,7 @@ The migration from TypeScript test suites and `packages/simulations` to `crates/
 - Implement `vfs`, `vpty`, `vclock`, and `vmock` engines.
 - Build the 250,000-case generator, deduplication validator, and JSONL materializer.
 - Establish baseline JUnit and SARIF reporting.
+- Benchmark a complete compiled-product case on every supported platform; the p95 must be no greater than 600 ms before the three-minute CI target becomes binding.
 
 ### Wave 1: Stateless Core, Configuration, Wire Protocols, and Argot
 
@@ -657,19 +680,36 @@ The migration from TypeScript test suites and `packages/simulations` to `crates/
 
 ### 1. Parallel Sharding Strategy
 
-The corpus is sharded across exactly eight CI runners, leaving capacity under the
-repository's account-wide job ceiling:
+The corpus uses eight CI runners, leaving capacity under the repository's
+account-wide job ceiling:
 
-$$\text{Shard}(c) = \text{BLAKE3}(c.\text{case\_id}) \pmod 8$$
+| Runner pool | Runners | Eligible cases |
+|---|---:|---|
+| Linux x86_64 | 4 | `platform:any` plus Linux x86_64 |
+| Linux aarch64 | 1 | Linux aarch64 |
+| macOS x86_64 | 1 | macOS x86_64 |
+| macOS aarch64 | 1 | macOS aarch64 |
+| Windows x86_64 | 1 | Windows x86_64 |
 
-Each shard runs direct-Rust cases in-process and permits at most four concurrent
-compiled-product launches. Wave 0 must benchmark release-artifact startup and
-record a p95 no greater than 200 ms before the three-minute target becomes
-binding. At that bound, each shard receives about 625 compiled launches and
-31,250 total cases; four process slots consume at most 31.25 seconds of startup
-budget. The remaining direct-Rust budget is 148.75 seconds, or about 0.6 ms per
-case. The gate rejects a manifest whose target allocation or shard balance makes
-that budget impossible. No claim depends on 250,000 independent process starts.
+The dispatcher maps `platform:any` to the Linux x86_64 pool, maps every other
+case to its exact platform pool, then assigns:
+
+$$\text{slot}(c) = \text{BLAKE3}(c.\text{case\_id}) \pmod \text{runners\_in\_pool}(c)$$
+
+Each runner enforces a fixed four-slot compiled-product worker queue. A
+“complete compiled case” spans process launch, case execution, child exit,
+PTY/ConPTY closure, and normal workspace deletion or handoff to the bounded
+Windows cleanup queue. Wave 0 must record that complete-case p95 at no greater
+than 600 ms on every platform before the three-minute target becomes binding.
+A non-Linux pool runs 1,000 direct and 1,000 compiled cases; four process slots
+consume at most 150 seconds at the bound, leaving 29.4 seconds for queue drain
+and runner overhead. Each Linux runner receives about 60,250 direct cases and
+250 compiled cases; at 0.6 ms per direct case and 600 ms per compiled case, its
+budget is 73.65 seconds. The manifest rejects target/platform drift, missing
+runner eligibility, or shard skew that invalidates those bounds. The runner
+fails if its cleanup queue has not drained by the 180-second shard deadline. No
+claim depends on running the 250,000-case corpus once per platform or on 250,000
+independent process starts.
 
 ### 2. Deterministic Reporting Artifacts
 
@@ -715,6 +755,7 @@ The conformance migration is complete when all the following quantitative criter
 - [ ] **Error Coverage**: Exactly 4,496 specific expected-error contracts tested and verified across the 16 subsystems.
 - [ ] **Production Boundaries**: Every case drives either a migrated production Rust crate through its production boundary or the unmodified compiled release artifact. Test doubles exist only for external I/O.
 - [ ] **Target Allocation**: Exactly 245,000 cases execute in-process against production Rust and exactly 5,000 launch the compiled product; every subsystem and source-enumerated boundary family has compiled coverage.
+- [ ] **Platform Allocation**: Exactly 240,000 platform-independent direct cases plus 1,000 direct and 1,000 compiled cases for each of the five supported platform/architecture pairs execute on matching runners.
 - [ ] **UI Dual-Ground Verification**: All TUI components verified on both `#1e2127` and `#000000` grounds across all 6 terminal dimension profiles.
 - [ ] **Mutation Proof**: Mutation engine executes >= 1,200 mutants, kills at least 1,000, and leaves zero survivors on credentials, authorization, path traversal, checksum verification, tool-call completeness, and persisted-version rejection.
 - [ ] **Simulations Deletion**: `packages/simulations` is deleted from disk and removed from workspace manifests.
