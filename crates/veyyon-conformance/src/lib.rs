@@ -22,7 +22,10 @@
 //! none of them substitutes for the code under test.
 
 pub mod corpus;
+pub mod fuzz;
 pub mod generator;
+pub mod model_check;
+pub mod mutation;
 pub mod oracle;
 pub mod render;
 pub mod report;
