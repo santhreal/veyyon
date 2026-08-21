@@ -27,6 +27,7 @@ New here? Read [onboarding](onboarding.md) and [testing](testing.md) first.
 | [onboarding.md](onboarding.md) | Clone, run from source (`bun setup` / `bun dev`), and the gate. |
 | [testing.md](testing.md) | How the suites are organized and what to run. |
 | [fuzzing.md](fuzzing.md) | The cargo-fuzz suite in `fuzz/`: running it, the targets, and what to do with a finding. |
+| [whole-product-rust-conformance.md](whole-product-rust-conformance.md) | Planned Rust conformance, fuzzing, mutation, and compiled-product test migration. |
 | [releasing.md](releasing.md) | The only release page: cut, what runs, what it produces, verify, recover, roll back. |
 | [deployment.md](deployment.md) | Website (Cloudflare Pages) and install-script deployment. |
 | [agent-workflow.md](agent-workflow.md) | How an autonomous agent works this repo and ships updates. |
@@ -150,4 +151,4 @@ Per-model tool-call wire-format notes live in [toolconv/](toolconv/) (Anthropic,
 
 Step-by-step runbooks for when something breaks live in [runbooks/](runbooks/).
 
-*Verified against `27538ffb` on 2026-08-05.*
+*Verified against `bc781f478` on 2026-08-20.*
