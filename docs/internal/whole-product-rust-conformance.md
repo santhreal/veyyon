@@ -569,23 +569,61 @@ The resulting minimal reproducer is serialized as a standalone JSONL record with
 
 ### 1. State-Machine Model Checking
 
-- Models the complete lifecycle of sessions, tasks, subagents, and tools as formal state graphs.
-- Generates exhaustive sequences up to depth $k=12$ to detect unreachable states, unhandled events, and unexpected terminal deadlocks.
-- Validates that state persistence (SQLite snapshots) correctly resumes into equivalent in-memory state models.
+`src/model_check/` explores a machine's reachable states breadth-first and
+checks every named invariant at every one of them. Breadth-first is what makes
+a counterexample usable: the first violating state found is at minimal depth,
+so its trace is the shortest action sequence that reaches it. Exploration is
+bounded by a state budget, and hitting the budget reports exhaustion rather
+than a pass.
+
+Three machines ship:
+
+- `lifecycle`: one tool call from arrival to settlement. Invariants: no side
+  effect before validation, exactly one settlement, a finished call has settled.
+- `session`: fork, append, switch and compact over a four-node tree.
+  Invariants: the root is its own parent, the active node exists, every node
+  reaches the root, a compaction leaves a turn behind.
+- `locks`: workers taking ordered sets of locks. A wedged state is a state with
+  no successor that the model does not declare terminal, so a deadlock is
+  reported with the shortest acquisition sequence that reaches it.
+  `order_inversions` answers the same question from the plans alone, and the
+  suite asserts the two agree over every pair of two-lock plans.
+
+Each machine carries switches that inject its own defect, and the suite asserts
+each switch produces one named outcome. The properties are safety properties:
+an invariant is a predicate over a single state, so bounded termination is
+asserted by the executing case instead. Persistence resume equivalence arrives
+with the persistence migration in Wave 2.
 
 ### 2. Concurrency Stress and Lock Discovery
 
-- Uses Loom and ThreadSanitizer (TSAN) harnesses to explore all thread preemption interleavings in worker pools, swarm routers, and native caches.
-- Detects data races, double-checked locking defects, lock inversion deadlocks, and missed channel wakeups.
-- Injects microsecond scheduling delays around atomic compare-and-swap operations.
+The lock machine above is the deterministic half of this: it enumerates the
+interleavings of a set of acquisition plans without threads, so a wedge is
+found by exhaustion rather than by luck. Loom and ThreadSanitizer coverage
+instruments migrated production synchronization, so it arrives with the code it
+instruments in Wave 3. Nothing instruments the TypeScript worker pools; those
+are reached through compiled-product cases.
 
 ### 3. Fuzzing Harnesses (AFL++ and libFuzzer)
 
-- Integrated continuous fuzzing targets:
-  - `fuzz_hashline`: Validates patch parsing against adversarial and corrupted patch strings.
-  - `fuzz_argot_codec`: Fuzzes handle expansion against pathological byte sequences and boundary splits.
-  - `fuzz_wire_proto`: Fuzzes collab-web guest protocol deserialization.
-  - `fuzz_catalog_resolver`: Fuzzes model-thinking and provider catalog matching against unstructured JSON dictionaries.
+`src/fuzz/` owns the target bodies and the registry. A libFuzzer or AFL++
+binary is a three-line wrapper that hands its bytes to one target, and those
+three lines need nightly and a linker flag, so they live outside the library.
+The property a target exists for is checkable without a fuzzer, and `drive`
+asserts it over a deterministic seed corpus during `cargo test`: no input
+panics, and every target both accepts and rejects something.
+
+Registered targets:
+
+- `vt-sequence-parser`: escape sequences into a 20x5 grid through the VT parser.
+- `corpus-row-reader`: JSONL bytes back through `Corpus::from_jsonl`.
+
+`Surface` enumerates the raw-byte entry points, and a surface with neither a
+target nor a row in `AWAITING_MIGRATION` fails the crate. Four surfaces are
+named gaps today: SSE wire framing, hashline patches and Argot tokens are still
+TypeScript parsers, and HTTP/2 frame framing belongs to `h2`, which is fuzzed
+upstream. A target written against a Rust reimplementation of a TypeScript
+parser would test the reimplementation, which this design forbids.
 
 ---
 
@@ -600,29 +638,62 @@ To ensure test effectiveness, the conformance suite is validated against a compr
 |  +---------------------+  +----------------------+  +--------------------------+  |
 |  | AST Mutation Engine |  | Sandboxed Execution  |  | Sensitivity Verification |  |
 |  | - 1,200+ Mutants    |  | - Sharded Conformance|  | - Assert >= 1,000 Killed |  |
-|  | - 8 Mutation Kinds  |  | - Early-Exit on Red  |  | - Zero Surviving Critical|  |
+|  | - 6 Ops, 4 AST Gaps |  | - Early-Exit on Red  |  | - Zero Surviving Critical|  |
 |  +---------------------+  +----------------------+  +--------------------------+  |
 +-----------------------------------------------------------------------------------+
 ```
 
 ### Mutation Operators
 
-The mutation engine injects the following structural defects into compiled crates and native modules:
+`src/mutation/` plans mutants, applies one to a text buffer, and accounts for
+the campaign. It compiles nothing and runs nothing: a build and a shard run are
+the driver's resources to spend.
 
-1. **Boundary Mutation**: Modifying comparison operators (`<` to `<=`, `>` to `>=`, `==` to `!=`).
-2. **Conditional Inversion**: Inverting branch conditions (`if cond` to `if !cond`).
-3. **Arithmetic Substitution**: Swapping arithmetic operators (`+` to `-`, `*` to `/`, bitwise shifts).
-4. **Statement Deletion**: Removing authorization checks, cache invalidations, and flush calls.
-5. **Constant Replacement**: Mutating numeric constants (`0` to `1`, `timeout_ms` to `0` or `u64::MAX`).
-6. **Error Suppression**: Replacing `Err(e)` with `Ok(default)` or dropping propagated `?` operators.
-7. **Lock Bypassing**: Removing lock acquisition guards around shared memory structures.
-8. **String / Identifier Corruption**: Mutating configuration keys, SQL queries, and prompt template strings.
+Six operators are token substitutions in Rust source:
+
+1. `comparison-boundary`: `<=` for `<` and the rest of the off-by-one family.
+2. `conditional-inversion`: an equality or a guard that means the opposite.
+3. `terminal-state-deletion`: a loop that never leaves, a rejection that
+   becomes an acceptance.
+4. `validation-deletion`: an error that stops propagating, a permission that
+   defaults open.
+5. `timeout-relaxation`: a deadline three orders of magnitude further away.
+6. `parser-acceptance-broadening`: a parser that takes more than its format
+   allows.
+
+Four classes the issue requires have no operator, because none of them is a
+substitution of bytes: `retry-backoff-change` changes a numeric policy whose
+literal is not identifiable by its bytes, `persistence-version-bypass` deletes
+a guard expression rather than a token inside one,
+`tool-execution-before-validation` reorders two statements, and
+`sanitizer-removal` deletes a call and rebinds its argument. Each is listed in
+`AWAITING_AST` with that reason, and the suite asserts by exact equality that
+every class the issue names is either an operator or a listed gap. A class with
+neither turns the crate red.
+
+A short operator refuses to fire inside a longer one, so `<` never matches the
+`<` of `<=` and no build is spent proving that `<==` does not compile. A mutant
+identity is a BLAKE3 digest over operator, file, offset and rewrite, so two
+campaigns agree on what a mutant is. Applying a mutant to bytes that no longer
+match its plan is refused rather than relocated to the nearest match: a
+relocated mutant makes the survivor triage read a line the report does not
+name.
 
 ### Mutation Gate Requirement
 
-- The engine evaluates a minimum of **1,200 distinct mutations** across critical production paths.
-- **Pass Requirement**: The test suite must kill at least **1,000 mutations** (minimum mutation score of **83.3%**).
-- Mutants on credentials, authorization, path traversal, checksum verification, tool-call completeness, or persisted-version rejection have a zero-survivor requirement. One survivor fails the gate regardless of the aggregate score.
+- At least **1,200 mutants built and ran**. A mutant that did not build is
+  `NotViable`, is counted separately, and satisfies nothing: counting it is the
+  cheapest way to reach the floor without testing anything.
+- At least **1,000 killed**, a mutation score of 83.3% of the floor.
+- Every critical path has at least one executed mutant, and none of them
+  survives. Zero survivors on a path nobody mutated is vacuous, so an uncovered
+  path is its own named shortfall rather than a clean sheet.
+- One mutant is recorded once. A duplicate id is refused, because a duplicate
+  inflates the executed count and the kill ratio together.
+
+The critical paths are credentials, path traversal, checksum verification,
+authorization, tool completeness, and persisted-version rejection. A seventh
+added to the enum is demanded of every campaign from that moment on.
 
 ---
 
