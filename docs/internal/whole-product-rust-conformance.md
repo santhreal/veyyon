@@ -620,7 +620,7 @@ The migration from TypeScript test suites and `packages/simulations` to `crates/
 - Implement `vfs`, `vpty`, `vclock`, and `vmock` engines.
 - Build the 250,000-case generator, deduplication validator, and JSONL materializer.
 - Establish baseline JUnit and SARIF reporting.
-- Benchmark a complete compiled-product case on every supported platform; the p95 must be no greater than 600 ms before the three-minute CI target becomes binding.
+- Benchmark complete direct-Rust and compiled-product cases on every applicable platform. Before any wave joins the three-minute CI gate, direct-Rust p95 must be <= 1.5 ms, compiled-product p95 must be <= 500 ms, and three consecutive cold runs of every exact shard manifest must each finish in <= 144 seconds.
 
 ### Wave 1: Stateless Core, Configuration, Wire Protocols, and Argot
 
@@ -699,17 +699,21 @@ $$\text{slot}(c) = \text{BLAKE3}(c.\text{case\_id}) \pmod \text{runners\_in\_poo
 Each runner enforces a fixed four-slot compiled-product worker queue. A
 “complete compiled case” spans process launch, case execution, child exit,
 PTY/ConPTY closure, and normal workspace deletion or handoff to the bounded
-Windows cleanup queue. Wave 0 must record that complete-case p95 at no greater
-than 600 ms on every platform before the three-minute target becomes binding.
-A non-Linux pool runs 1,000 direct and 1,000 compiled cases; four process slots
-consume at most 150 seconds at the bound, leaving 29.4 seconds for queue drain
-and runner overhead. Each Linux runner receives about 60,250 direct cases and
-250 compiled cases; at 0.6 ms per direct case and 600 ms per compiled case, its
-budget is 73.65 seconds. The manifest rejects target/platform drift, missing
-runner eligibility, or shard skew that invalidates those bounds. The runner
-fails if its cleanup queue has not drained by the 180-second shard deadline. No
-claim depends on running the 250,000-case corpus once per platform or on 250,000
-independent process starts.
+Windows cleanup queue. A complete direct-Rust case includes fixture reset and
+oracle evaluation. Wave 0 establishes p95 limits of 1.5 ms for direct-Rust and
+500 ms for compiled-product cases on every applicable platform. Before each
+wave's exact manifest enters CI, three consecutive cold calibration runs of
+every shard must each finish in <= 144 seconds, preserving a 20% reserve below
+the hard deadline.
+
+A non-Linux runner's nominal p95 work is 1.5 seconds for 1,000 direct cases plus
+125 seconds for 1,000 compiled cases across four slots: 126.5 seconds. A Linux
+runner's nominal p95 work is 90.375 seconds for about 60,250 direct cases plus
+31.25 seconds for 250 compiled cases: 121.625 seconds. The manifest rejects
+target/platform drift, missing runner eligibility, shard skew, or calibration
+failure. A runner fails if its cleanup queue has not drained by the 180-second
+shard deadline. No claim depends on running the corpus once per platform or on
+250,000 independent process starts.
 
 ### 2. Deterministic Reporting Artifacts
 
@@ -760,5 +764,5 @@ The conformance migration is complete when all the following quantitative criter
 - [ ] **Mutation Proof**: Mutation engine executes >= 1,200 mutants, kills at least 1,000, and leaves zero survivors on credentials, authorization, path traversal, checksum verification, tool-call completeness, and persisted-version rejection.
 - [ ] **Simulations Deletion**: `packages/simulations` is deleted from disk and removed from workspace manifests.
 - [ ] **TypeScript Product-Test Deletion**: Zero superseded `*.test.ts` files remain in `packages/`; repository-governance checks under `scripts/` are retained or ported with parity.
-- [ ] **CI Performance**: Complete 250,000-case suite passes in < 3 minutes wall-clock time across eight CI shards after the Wave 0 p95 feasibility gate passes.
+- [ ] **CI Performance**: Direct-Rust p95 is <= 1.5 ms, compiled-product p95 is <= 500 ms, three cold calibrations of every exact shard finish in <= 144 seconds, and the complete 250,000-case CI run finishes in < 180 seconds across eight runners.
 - [ ] **Zero Unresolved Mismatches**: Every corpus mismatch is fixed or represented by an explicit reviewed contract change across Linux x86_64, Linux aarch64, macOS x86_64, macOS aarch64, and Windows x86_64.
