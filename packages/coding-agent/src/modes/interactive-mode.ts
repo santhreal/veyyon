@@ -387,7 +387,11 @@ class AnchoredLiveContainer extends Container implements NativeScrollbackLiveReg
  *  before it auto-clears, mirroring the todo HUD's auto-clear timer. */
 const MODEL_CYCLE_TRACK_CLEAR_MS = 4000;
 
-const SUBAGENT_OBSERVER_UI_COALESCE_MS = 100;
+/** How long a burst of subagent observer changes is coalesced before the block
+ *  is rebuilt once. Exported because a test that drives the burst has to
+ *  advance exactly this window: the block arms a repeating rail-motion interval
+ *  as soon as it has lanes, so draining every pending timer never returns. */
+export const SUBAGENT_OBSERVER_UI_COALESCE_MS = 100;
 
 /**
  * Horizontal margin the two anchored blocks are mounted with, and the number
