@@ -40,7 +40,7 @@ use crate::{
 	},
 	generator::{
 		Family,
-		plan::{Plan, compiled_cases, per_platform_cases, plan_for},
+		plan::{CLEAN, Plan, compiled_cases, per_platform_cases, plan_for},
 	},
 };
 
@@ -76,14 +76,26 @@ impl SubsystemFamily {
 		self.plan
 	}
 
-	/// The dimension tuple at `index`, as a mixed-radix decomposition of the
-	/// axis lengths. Axis order is the plan's order, so the tuple is stable.
-	fn dimensions(self, index: usize) -> std::collections::BTreeMap<String, String> {
+	/// The dimension tuple for a row, as a mixed-radix decomposition of `index`
+	/// over the axes with the fault axis removed. The fault axis takes `fault`:
+	/// the clean value for a success row, the injected failure for an error row.
+	///
+	/// The fault axis is held out of the decomposition rather than walked with
+	/// the others because the corpus needs the two populations counted
+	/// separately: exactly `expected_errors` rows inject a failure and the rest
+	/// must complete, and a single walk over the whole product would set that
+	/// ratio from the axis length instead of from the manifest.
+	fn dimensions(self, index: usize, fault: &str) -> std::collections::BTreeMap<String, String> {
 		let mut dimensions = std::collections::BTreeMap::new();
+		let fault_axis = self.plan.fault_axis_index();
 		let mut radix = 1;
-		for axis in self.plan.axes {
-			let position = (index / radix) % axis.len();
-			dimensions.insert((*axis.name).to_owned(), (*axis.values[position]).to_owned());
+		for (position, axis) in self.plan.axes.iter().enumerate() {
+			if position == fault_axis {
+				dimensions.insert((*axis.name).to_owned(), fault.to_owned());
+				continue;
+			}
+			let value = (index / radix) % axis.len();
+			dimensions.insert((*axis.name).to_owned(), (*axis.values[value]).to_owned());
 			radix *= axis.len();
 		}
 		dimensions
@@ -110,19 +122,40 @@ impl SubsystemFamily {
 		(TargetKind::CompiledProduct, platform, ClockMode::RealBounded)
 	}
 
-	/// The case at `index`, unsealed. The driver seals it, so a family cannot
-	/// name its own id.
-	fn case(self, index: usize, seed: u64) -> ConformanceCase {
+	/// Whether the row at output position `index` injects a failure.
+	const fn carries_error_at(self, index: usize) -> bool {
 		let allocation = self.plan.allocation();
+		carries_error(index, allocation.cases, allocation.expected_errors)
+	}
+
+	/// The case at output position `index`, unsealed. The driver seals it, so a
+	/// family cannot name its own id.
+	///
+	/// `rank` is the row's position within its own population: which success
+	/// tuple, or which error case. Two counters rather than one, because the
+	/// error rows are interleaved into the sequence by [`carries_error`] and a
+	/// shared counter would leave gaps in the success walk.
+	fn case(self, index: usize, rank: usize, seed: u64) -> ConformanceCase {
 		let (kind, platform, clock) = self.placement(index);
-		let dimensions = self.dimensions(index);
+		let faults = self.plan.errors.len();
+		let carries = self.carries_error_at(index);
+
+		// An error row's fault value is chosen round-robin so every declared
+		// error id is reached, and its tuple walks that value's own subspace.
+		let (fault, tuple) = if carries {
+			(self.plan.fault_axis().values[rank % faults + 1], rank / faults)
+		} else {
+			(CLEAN, rank)
+		};
+		let dimensions = self.dimensions(tuple, fault);
 		let slug = dimensions.values().cloned().collect::<Vec<_>>().join("/");
 
 		let rotation = (seed % self.plan.contracts.len() as u64) as usize;
 		let contract_id = self.plan.contracts[(index + rotation) % self.plan.contracts.len()];
-		let error_id = if carries_error(index, allocation.cases, allocation.expected_errors) {
-			let rotation = (seed % self.plan.errors.len() as u64) as usize;
-			Some((*self.plan.errors[(index + rotation) % self.plan.errors.len()]).to_owned())
+		// The error a case expects is the one its fault dimension injects. A
+		// counter would name a diagnostic the stimulus has no way to produce.
+		let error_id = if carries {
+			Some(self.plan.error_at(rank % faults).to_owned())
 		} else {
 			None
 		};
@@ -208,7 +241,17 @@ impl Family for SubsystemFamily {
 
 	fn cases(&self, seed: u64) -> Vec<ConformanceCase> {
 		let total = self.plan.allocation().cases;
-		(0..total).map(|index| self.case(index, seed)).collect()
+		let mut clean = 0;
+		let mut failing = 0;
+		(0..total)
+			.map(|index| {
+				let carries = self.carries_error_at(index);
+				let rank = if carries { &mut failing } else { &mut clean };
+				let case = self.case(index, *rank, seed);
+				*rank += 1;
+				case
+			})
+			.collect()
 	}
 }
 

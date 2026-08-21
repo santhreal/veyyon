@@ -557,3 +557,108 @@ fn migration_debt_accounts_for_every_direct_case() {
 		.sum();
 	assert_eq!(compiled, crate::corpus::manifest::COMPILED_PRODUCT_CASES);
 }
+
+// The three tests below defend the expected-error contracts. The class they
+// close is an expected error that no stimulus in its own case could produce:
+// before this, the id came off a rotating counter, so a row could inject a
+// disk-full fault and demand a stale-schema diagnostic, and every count check
+// in this file still passed. The contract now is that the fault dimension
+// decides, and these assert it at the choke point every row goes through.
+//
+// WHAT THEY DO NOT CATCH: whether the id is the one production actually
+// returns. Only running the migrated code says that, and `RESOLVED_ENTRIES` is
+// still empty.
+
+#[test]
+fn every_error_id_is_the_diagnostic_of_exactly_one_fault_value() {
+	for subsystem in crate::corpus::manifest::subsystems() {
+		let plan = plan::plan_for(subsystem);
+		let allocation = plan.allocation();
+		let fault = plan.fault_axis();
+
+		assert_eq!(
+			fault.len(),
+			plan.errors.len() + 1,
+			"{subsystem}: the fault axis is the clean value plus one value per error id"
+		);
+		assert_eq!(fault.values[0], plan::CLEAN, "{subsystem}: the clean value comes first");
+		let distinct: BTreeSet<&str> = fault.values.iter().copied().collect();
+		assert_eq!(distinct.len(), fault.len(), "{subsystem}: a fault value is declared twice");
+
+		for (slot, id) in plan.errors.iter().enumerate() {
+			let suffix = id
+				.rsplit('.')
+				.next()
+				.expect("an error id has a last segment");
+			assert_eq!(
+				fault.values[slot + 1],
+				suffix,
+				"{subsystem}: fault value {} does not name the error it injects",
+				fault.values[slot + 1]
+			);
+		}
+
+		// Capacity, not style: the success rows all hold the fault axis clean,
+		// so the rest of the product is the only space they have.
+		assert!(
+			plan.clean_space() >= allocation.cases - allocation.expected_errors,
+			"{subsystem}: {} clean tuples cannot fill {} success cases",
+			plan.clean_space(),
+			allocation.cases - allocation.expected_errors
+		);
+		let per_fault = allocation.expected_errors.div_ceil(plan.errors.len());
+		assert!(
+			plan.clean_space() >= per_fault,
+			"{subsystem}: each fault value needs {per_fault} tuples of its own"
+		);
+	}
+}
+
+#[test]
+fn an_expected_error_is_the_one_its_fault_dimension_injects() {
+	for family in subsystem::families() {
+		let plan = family.plan();
+		let fault_values = plan.fault_axis().values;
+		for case in materialize(family, subsystem::PINNED_SEED) {
+			let injected = &case.dimensions[plan::FAULT_AXIS];
+			let slot = fault_values
+				.iter()
+				.position(|value| value == injected)
+				.unwrap_or_else(|| panic!("{injected} is not a value of the fault axis"));
+
+			if slot == 0 {
+				assert_eq!(injected, plan::CLEAN);
+				assert_eq!(case.contract.expected_error_id, None, "a clean row expects no error");
+				assert_eq!(case.oracle.exit_code, Some(0));
+				assert_eq!(case.oracle.stop_reason.as_deref(), Some("complete"));
+			} else {
+				assert_eq!(
+					case.contract.expected_error_id.as_deref(),
+					Some(plan.error_at(slot - 1)),
+					"{} injects {injected} and must expect its diagnostic",
+					plan.subsystem
+				);
+				assert_eq!(case.oracle.error_id, case.contract.expected_error_id);
+				assert_eq!(case.oracle.exit_code, Some(1));
+				assert_eq!(case.oracle.stop_reason.as_deref(), Some("error"));
+			}
+		}
+	}
+}
+
+#[test]
+fn every_declared_error_id_is_reached_by_some_case() {
+	// Pinned by exact equality in both directions: an id nothing reaches is a
+	// contract nobody tests, and an id no plan declares is a diagnostic the
+	// corpus invented.
+	for family in subsystem::families() {
+		let plan = family.plan();
+		let declared: BTreeSet<&str> = plan.errors.iter().copied().collect();
+		let reached: BTreeSet<String> = materialize(family, subsystem::PINNED_SEED)
+			.into_iter()
+			.filter_map(|case| case.contract.expected_error_id)
+			.collect();
+		let reached: BTreeSet<&str> = reached.iter().map(String::as_str).collect();
+		assert_eq!(reached, declared, "{}", plan.subsystem);
+	}
+}
