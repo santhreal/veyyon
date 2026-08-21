@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Accepted clean OpenAI-compatible stream EOF after complete text or tool output and recovered reasoning-only completions as incomplete turns, preventing false missing-finish failures from DeepSeek V4 Flash and Muse Spark providers.
+
 ## [1.1.1] - 2026-08-21
 
 ### Added
