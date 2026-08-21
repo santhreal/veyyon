@@ -31,13 +31,28 @@ import { Agent } from "@veyyon/agent-core";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { InteractiveMode } from "@veyyon/coding-agent/modes/interactive-mode";
-import { initTheme, stopThemeWatcher } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme, stopThemeWatcher, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { TUI } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
 import { VirtualTerminal } from "../../../tui/test/virtual-terminal";
+
+/**
+ * Whether the anchored board drew a phase row for `Phase One` carrying `tally`.
+ * The board's rows open on its rail and right-align the tally, so the row is not
+ * one string a whole-viewport `toContain` can match, and matching the tally
+ * alone would accept it from the transcript card below.
+ */
+function hudPhaseRow(screen: string, tally: string): boolean {
+	const rail = theme.symbol("block.rail");
+	return screen
+		.split("\n")
+		.some(
+			row => row.trimStart().startsWith(`${rail} `) && row.includes("Phase One") && row.trimEnd().endsWith(tally),
+		);
+}
 
 function todoResult(statuses: Array<[string, string]>) {
 	return {
@@ -170,7 +185,7 @@ describe("a mid-turn todo result reaches the screen before the turn ends", () =>
 		await terminal.waitForRender();
 
 		const first = viewport();
-		expect(first).toContain("Phase One · 0/2");
+		expect(hudPhaseRow(first, "0/2")).toBe(true);
 		expect(first).toContain("alpha task");
 		expect(first).toContain("beta task");
 
@@ -230,9 +245,9 @@ describe("a mid-turn todo result reaches the screen before the turn ends", () =>
 
 		// Still mid-turn: no agent_end has been delivered.
 		const second = viewport();
-		// HUD: the progress counter advanced and the finished task left the
-		// collapsed open-task list.
-		expect(second).toContain("Phase One · 1/2");
+		// HUD: the tally advanced. The closed task stays on the board — the board
+		// keeps the few most recent — so the tally is what says work moved.
+		expect(hudPhaseRow(second, "1/2")).toBe(true);
 		// Transcript card: the completed task carries the checked marker.
 		expect(second).toContain("■ alpha task");
 		expect(second).toContain("beta task");
