@@ -2,6 +2,8 @@
 
 Technical architecture and implementation plan for replacing the TypeScript test surface and the simulations package (`packages/simulations`) with a unified Rust conformance crate (`crates/veyyon-conformance`).
 
+Tracking issue: [#877](https://github.com/santhreal/veyyon/issues/877).
+
 ## System Architecture
 
 The conformance engine is an out-of-process verification and differential testing harness located at `crates/veyyon-conformance`. It validates observable product behavior against formal specifications, deterministic state machines, and independent reference oracles.
@@ -156,6 +158,133 @@ The execution harness provides complete isolation and determinism without requir
   - Mid-stream network drops (`ECONNRESET`, `ETIMEDOUT`).
   - Injected upstream HTTP errors (`401 Unauthorized`, `429 Rate Limit Exceeded` with `Retry-After`, `500 Internal Server Error`, `503 Service Unavailable`).
   - Malformed SSE payloads (truncated JSON, invalid utf-8, unexpected thinking block structures).
+
+### 5. Source-Derived Provider Conformance Matrix
+
+Provider conformance begins at raw HTTP bytes and ends after session persistence
+and tool execution. Replacing a provider module with normalized events is not a
+provider conformance test because it bypasses framing, decoding, accumulation,
+terminal classification, and transport error handling.
+
+The corpus generator derives its provider population from production data:
+
+1. Enumerate every registered provider descriptor and bundled/custom model.
+2. Resolve each model's production API and compatibility policy.
+3. Group models by the parser and policy that execute them.
+4. Require every group to name a conformance policy and corpus allocation.
+5. Reject an unclassified provider, API, compatibility flag, or terminal policy.
+
+Provider names are metadata on cases, not a hardcoded test list. Adding a
+provider that resolves to `openai-completions`, for example, automatically
+places it in that wire matrix and makes the corpus count/digest gate red until
+the materialized cases are regenerated and reviewed.
+
+#### Raw framing dimensions
+
+For each applicable API and policy, `vmock` emits:
+
+- LF and CRLF SSE records;
+- comments, blank events, multiple `data:` fields, and unknown fields;
+- one SSE event per transport chunk;
+- several SSE events in one transport chunk;
+- every meaningful JSON token split boundary;
+- every UTF-8 code-point split boundary;
+- terminal and usage events in separate or combined transport chunks;
+- HTTP/1.1 chunked bodies and HTTP/2 data frames;
+- a socket that remains open after an authoritative terminal event.
+
+#### Semantic output dimensions
+
+The framing dimensions cross with:
+
+- no output and whitespace-only output;
+- text;
+- reasoning only;
+- reasoning followed by text;
+- one and several complete tool calls;
+- interleaved parallel tool-call deltas;
+- tool calls missing an id or name;
+- empty, truncated, malformed, primitive, array, and object arguments;
+- text plus complete or incomplete tool calls;
+- reasoning plus complete or incomplete tool calls.
+
+#### Terminal and failure dimensions
+
+The output shapes cross with:
+
+- `finish_reason` values `stop`, `tool_calls`, `length`, and content filtering;
+- provider refusal records;
+- usage before, with, and after the terminal event;
+- usage without an explicit finish reason;
+- `[DONE]` with and without semantic terminal output;
+- clean HTTP body EOF;
+- empty EOF;
+- `ECONNRESET`, `ETIMEDOUT`, DNS failure, TLS failure, and caller cancellation;
+- first-event and next-event timeouts;
+- malformed SSE, truncated JSON, and invalid UTF-8;
+- HTTP 401, 403, 408, 409, 429, 500, 502, 503, and 504;
+- `Retry-After` seconds and dates;
+- retry exhaustion and replay-unsafe partial batches.
+
+The generator uses pairwise/covering-array selection for noninteracting
+dimensions and exhaustive multiplication where dimensions interact, such as
+terminal signal by output completeness and transport fault by retry safety. The
+24,000 provider cases are fixed after semantic deduplication, not by truncating
+an oversized generated list.
+
+#### Required provider invariants
+
+Every matching case asserts all applicable invariants:
+
+- Clean EOF succeeds only for semantically self-contained output.
+- Reasoning-only clean EOF becomes bounded incomplete-output recovery, not a
+  successful empty answer.
+- Empty EOF remains a retryable incomplete-stream failure.
+- A transport exception never becomes clean EOF.
+- No incomplete tool call reaches execution.
+- A partial structured call wins over accompanying text or reasoning.
+- Complete parallel tool batches preserve ids, ordering, arguments, and replay
+  safety.
+- An authoritative terminal event settles within its deadline even when the
+  provider keeps the socket open.
+- Retry policy preserves the structured failure and never duplicates committed
+  output.
+- Persisted history contains the delivered attempt and excludes discarded retry
+  fragments.
+- Every retry, backoff, and timeout path terminates within its asserted bound.
+
+Each case records the exact emitted event sequence, final stop reason,
+structured content, error identity, retryability, recovery decision, persisted
+messages, tool side effects, and virtual-clock duration.
+
+#### Production incident intake
+
+Fleet incidents enter the corpus as synthetic structural fixtures. Raw sessions,
+prompts, assistant content, credentials, paths, and logs never enter the
+repository. A reducer maps each incident to:
+
+`API + compatibility policy + terminal signal + output shape + framing + fault + expected outcome`
+
+The canonical value is hashed before insertion. An existing hash links the
+incident to established coverage; a new hash creates a minimized generated case
+and mutation target. This closes a defect class without publishing conversation
+content or accumulating one fixture per model report.
+
+#### Compiled-product proof
+
+The direct parser corpus is necessary but insufficient. A compiled-product arm:
+
+1. Creates an isolated profile with generated provider/model configuration.
+2. Launches the release-mode Veyyon binary in noninteractive mode.
+3. Routes the selected model to `vmock`.
+4. Drives the raw wire case through model resolution, provider dispatch,
+   parsing, session policy, persistence, and tool execution.
+5. Asserts stdout/stderr, exit status, bounded termination, provider requests,
+   persisted session state, and filesystem side effects.
+
+The compiled arm samples every semantic family for every production provider
+policy. The direct parser arm performs exhaustive framing fragmentation. A
+generated coverage manifest proves that every provider policy appears in both.
 
 ---
 
