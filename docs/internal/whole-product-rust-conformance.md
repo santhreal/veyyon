@@ -740,6 +740,35 @@ The critical paths are credentials, path traversal, checksum verification,
 authorization, tool completeness, and persisted-version rejection. A seventh
 added to the enum is demanded of every campaign from that moment on.
 
+### The campaign runner
+
+`src/bin/campaign.rs` is what spends the CPU. It enumerates the Rust sources of
+`veyyon-conformance` and `veyyon-natives`, plans every mutant the six operators
+can produce (4,012 today), interleaves them round-robin across file and operator
+so a truncated run is not one hot file, then for each mutant writes the byte,
+runs the owning package's library suite, and restores the file — on a panic too,
+through a `Drop` guard, because an aborted campaign must not leave broken source
+behind.
+
+Results append to a resumable JSONL ledger under `.internal/`, one row per
+mutant, carrying a schema version. A row is read back by re-planning the file it
+names and matching the mutant id, so the sites come from the `'static` rewrite
+tables; a row whose site no longer exists is refused rather than attributed to
+whatever now sits at that offset. `--report` prints the verdict over the ledger
+without running anything.
+
+Inline `#[cfg(test)]` modules are excluded from planning. A mutant inside a test
+mutates the oracle, and a suite that kills it has proved nothing.
+
+**Five of the six critical paths have no Rust owner yet.** Credentials, path
+containment, artifact checksums, authorization and tool completeness are all
+still TypeScript, so no mutant can land on them and the gate reports each as
+uncovered. Only persisted-version rejection has a Rust owner: the corpus refuses
+a record from another schema version. The gate is therefore red for the same
+reason `RESOLVED_ENTRIES` is empty, and it clears as the migration lands rather
+than by mutating a Rust reimplementation of TypeScript, which the
+production-boundary rule forbids.
+
 ---
 
 ## Migration Waves and Decommissioning Plan
