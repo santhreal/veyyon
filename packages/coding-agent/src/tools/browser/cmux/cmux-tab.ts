@@ -20,6 +20,7 @@ import {
 	waitForBrowserRun,
 } from "../run-cancellation";
 import { cloneSafe, RunOutput } from "../run-output";
+import { guardTabApi } from "../tab-api-guard";
 import type {
 	BrowserRunError,
 	Observation,
@@ -1482,7 +1483,7 @@ export async function runCmuxCode(tab: CmuxTab, opts: RunCmuxCodeOptions): Promi
 		// Keep both inside try so a concurrent in-process eval/browser run surfaces as
 		// a rejected promise the supervisor can report, never an unhandled rejection.
 		runtime.setCwd(opts.snapshot.cwd);
-		const runTab = bindBrowserRunFacade(tab, signal);
+		const runTab = guardTabApi(bindBrowserRunFacade(tab, signal));
 		runtime.setRunScope({
 			page: bindBrowserRunFacade(tab.page, signal),
 			browser: bindBrowserRunFacade(tab.browser, signal),

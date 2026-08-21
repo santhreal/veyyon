@@ -107,7 +107,7 @@ describe("internal URL schemes are classified", () => {
 		});
 
 		const tool = new ReadTool(makeToolSession());
-		const result = await tool.execute("r1", { path: "history://Scout:1-5", i: "reading a transcript range" });
+		const result = await tool.execute("r1", { path: "history://Scout:1-5" });
 
 		const text = textOf(result);
 		expect(text).not.toContain("Unknown agent");
