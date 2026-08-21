@@ -151,8 +151,17 @@ const validModes: Record<Mode, true> = {
 // separate `bun test` child process. A fresh process per chunk resets Bun's
 // heap and reaps any dangling spawned children between groups, keeping peak RSS
 // under the CI runner's OOM ceiling (a single 170–370-file invocation gets
-// SIGKILLed at 137). The singleton/global-state bucket is left whole: its suites
-// co-locate in one process to exercise process-wide state, so they must not split.
+// SIGKILLed at 137). EVERY bucket is chunked, including singleton/global-state,
+// which is why `chunkSize` has no unchunked spelling: it was left whole on the
+// theory that its suites have to co-locate in one process to exercise
+// process-wide state, and that theory is wrong. The isolation a global-state
+// suite needs is that NOTHING runs beside it, which is `parallel: 1`; a chunk
+// boundary is a stronger guarantee than a shared heap, not a weaker one, and
+// chunks are contiguous slices of the sorted file list run in order, so relative
+// order is unchanged. Left whole the bucket reached 555 files, far past the
+// ceiling the previous sentence names, and was SIGKILLed at 137 on every run —
+// taking main red and reporting it as a handful of unrelated TUI and MCP suites
+// timing out under memory pressure at 30-40s apiece, all of which pass alone.
 //
 // The UI/TUI bucket uses a smaller chunk (5) than the others: its suites build up
 // native ghostty-vt cells, and bun 1.3.14's GC aborts (SIGTRAP/SIGABRT, exit
@@ -161,8 +170,15 @@ const validModes: Record<Mode, true> = {
 // fault — the crash is cumulative heap volume. Under a 256MB-forced heap, a
 // 10-file chunk aborts ~50% of runs while either 5-file half is 0/20; halving the
 // chunk keeps each process under the threshold.
-const codingAgentBucketPlans: Record<CodingAgentBucket, { label: string; parallel: number; chunkSize?: number }> = {
-	singleton: { label: "singleton/global-state bucket", parallel: 1 },
+interface CodingAgentBucketPlan {
+	label: string;
+	parallel: number;
+	// Required, with no unchunked spelling: see the comment above.
+	chunkSize: number;
+}
+
+export const codingAgentBucketPlans: Record<CodingAgentBucket, CodingAgentBucketPlan> = {
+	singleton: { label: "singleton/global-state bucket", parallel: 1, chunkSize: 10 },
 	ui: { label: "UI/TUI bucket", parallel: 1, chunkSize: 5 },
 	runtime: { label: "runtime/session bucket", parallel: 1, chunkSize: 10 },
 	native: { label: "native/tooling/browser/unit bucket", parallel: 1, chunkSize: 10 },
@@ -316,6 +332,7 @@ export const repoScriptTests = [
 	"scripts/workspace-catalog-pins.test.ts",
 	"scripts/workspace-manifests.test.ts",
 	"scripts/chunk-composition.test.ts",
+	"scripts/no-coding-agent-bucket-runs-as-one-process.test.ts",
 	"scripts/package-map-coverage.test.ts",
 	"scripts/root-layout.test.ts",
 	"scripts/sync-root-changelog.test.ts",
@@ -697,7 +714,7 @@ async function codingAgentTestCommands(bucket: CodingAgentBucket): Promise<TestC
 		throw new Error(`No coding-agent ${bucket} tests matched`);
 	}
 	const plan = codingAgentBucketPlans[bucket];
-	const chunkSize = plan.chunkSize ?? testFiles.length;
+	const chunkSize = plan.chunkSize;
 	const chunkCount = Math.ceil(testFiles.length / chunkSize);
 	const commands: TestCommand[] = [];
 	for (let i = 0; i < testFiles.length; i += chunkSize) {
