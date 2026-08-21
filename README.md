@@ -22,6 +22,22 @@
   <a href="docs/handbook/src/using/examples.md#recorded-end-to-end-workflow">Follow the complete task and inspect its proof frames</a>
 </p>
 
+<table align="center">
+  <tr><td align="center"><strong>Before</strong></td><td align="center"><strong>After</strong></td></tr>
+  <tr>
+    <td><img src="assets/todos-block-before.png" width="440" alt="The todo block with a count in its header, box-drawing connectors on every row, and a phase collapsed to its name"></td>
+    <td><img src="assets/todos-block-after.png" width="440" alt="The todo block with a bare header, per-phase counts right-aligned in one column, a rail in place of the connectors, and every phase keeping its tasks on screen"></td>
+  </tr>
+  <tr>
+    <td><img src="assets/subagent-lanes-before.png" width="440" alt="The subagents block with a count in its header and one lane per agent"></td>
+    <td><img src="assets/subagent-lanes-after.png" width="440" alt="The subagents block with a bare header, a rail carrying the block's liveness, and the agent id, its current work, and its resolved model in three columns"></td>
+  </tr>
+</table>
+
+<p align="center">
+  The two blocks anchored above the composer, before and after the redesign. One scene, recorded twice by the same container at 131 columns, sampled at the same second of the same script. <a href="docs/handbook/src/using/task-guides.md#track-long-work-without-repeated-reminder-walls">How the todo block reads</a> · <a href="docs/handbook/src/features/subagents.md#watching-a-run">how a lane reads</a>
+</p>
+
 Veyyon is a terminal coding agent for work that outlives one prompt. It keeps context, goals, plans, workers, permissions, and verification visible while the model reads, edits, runs, and finishes the task.
 
 Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi). Thanks to its maintainers and contributors for the project Veyyon builds on. [UPSTREAM.md](UPSTREAM.md) preserves the history and notices.

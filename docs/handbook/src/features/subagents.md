@@ -215,6 +215,13 @@ decides anything with. The question both were reached for — is this one stuck 
 answered by the recovery column as a fact. `/agents` carries the roster with the
 numbers.
 
+The lanes were rebuilt in this shape: [before](../../../../assets/subagent-lanes-before.png) and
+[after](../../../../assets/subagent-lanes-after.png), one scene recorded twice at 131 columns and
+sampled at the same second of the same script. The after arm comes from `proof/docker/record-x11.sh
+proof/scenes/agent-lanes.sh`. The before arm comes from `proof/docker/record-x11-before.sh
+proof/scenes/agent-lanes.sh`, which holds every changed source file at the content of the commit
+before the rebuild, `f1390cf3c`.
+
 Narrow the terminal and the model badge comes off first, then the columns shrink to
 what is left. Nothing wraps: the block draws no row it cannot fit, and draws nothing
 at all rather than overflow.
