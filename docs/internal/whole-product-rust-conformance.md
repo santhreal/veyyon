@@ -58,6 +58,66 @@ The `crates/veyyon-conformance` crate is partitioned into targeted modules:
 - `src/shrink/`: Hierarchical delta-debugging engine that minimizes failing input sequences, environment sizes, and VFS trees into minimal reproducing test cases.
 - `src/report/`: Deterministic JUnit, SARIF, and JSON artifact reporter recording complete failure bundles with seed, VFS state, PTY log, and shrink traces.
 
+### Canonical Case Record
+
+Every materialized JSONL line is one self-contained `ConformanceCase`. The
+schema is versioned independently from production persistence formats:
+
+```json
+{
+  "schemaVersion": 1,
+  "caseId": "blake3:...",
+  "generator": { "version": "git:...", "seed": 1592639215 },
+  "subsystem": { "id": 2, "name": "ai-providers-streaming" },
+  "contract": { "id": "provider.clean-eof.complete-tool-batch", "expectedErrorId": null },
+  "target": {
+    "kind": "compiled-product",
+    "entry": "veyyon",
+    "artifactDigest": "sha256:..."
+  },
+  "dimensions": {
+    "api": "openai-completions",
+    "terminal": "clean-eof",
+    "outputShape": "complete-tool-batch",
+    "framing": "utf8-split",
+    "fault": "none"
+  },
+  "environment": {
+    "platform": "linux-x64",
+    "clock": "virtual",
+    "filesystemFixture": "blake3:...",
+    "providerFixture": "blake3:..."
+  },
+  "stimulus": [{ "kind": "prompt", "value": "fixture:provider/basic-tool-turn" }],
+  "oracle": {
+    "exitCode": 0,
+    "stopReason": "toolUse",
+    "errorId": null,
+    "maxVirtualMs": 2500,
+    "toolExecutions": [{ "name": "inspect", "count": 1 }],
+    "stdoutFixture": "blake3:...",
+    "persistedStateFixture": "blake3:..."
+  },
+  "coverage": {
+    "registryMembers": ["api:openai-completions", "provider:fixture"],
+    "requirements": ["provider-terminal-completeness", "tool-arguments-complete"]
+  },
+  "provenance": { "kind": "generated", "source": "provider-terminal-matrix" }
+}
+```
+
+`caseId` is the BLAKE3 digest of canonical JSON containing `subsystem`,
+`contract`, `target.kind`, `dimensions`, `environment`, `stimulus`, and
+`oracle`. It excludes `caseId`, generator metadata, execution observations, and
+provenance, so two generators cannot claim distinct coverage for the same
+semantic case. Fixture values are content-addressed and secrets are forbidden.
+
+The materializer writes rows sorted by `caseId`, validates every referenced
+fixture digest, rejects an unknown `schemaVersion`, and writes the corpus only
+after the unique-case and exact-error counts match their allocations. Execution
+results live in separate replay/report artifacts; a run never rewrites the
+committed oracle.
+
 ---
 
 ## Corpus Allocation and Subsystem Contracts
