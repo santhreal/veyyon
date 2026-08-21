@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-77235389.js";
+            window.path_to_searchindex_js = "../searchindex-28e8a531.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-79e2ba62.js"></script>
@@ -323,10 +323,24 @@ open items, and reports how many more remain hidden. It does not replay an uncha
 user says <code>continue</code> or after an unrelated tool call. A real todo change makes the new state eligible
 for one reminder, up to the configured limit.</p>
 <p>Model-facing todo output and the collapsed TUI use the same sanitized, width-bounded, active-first
-projection of at most five items. The complete phases, tasks, and statuses remain in machine state,
-and expanded TUI output still shows the complete plan. To clear that state intentionally, run
-<code>/todo rm</code> without a task or phase; completing or dropping items keeps their closed history until it
-is explicitly removed.</p>
+projection of at most five items. The complete phases, tasks, and statuses remain in machine state.
+To clear that state intentionally, run <code>/todo rm</code> without a task or phase; completing or dropping
+items keeps their closed history until it is explicitly removed.</p>
+<p>The anchored <code>Todos</code> block above the composer is a railed list. Every phase gets one row with its
+tally, so a stage that just closed three tasks does not look like one that has done nothing, and
+task rows are drawn for the phase being worked and the few after it. The block is bounded by the
+viewport: it never grows past a third of the terminal’s height, it drops finished phases from the
+top before it drops work in flight, and it says how many rows it withheld. Expanding it shows every
+task of the phases it draws, not an unbounded list — an anchored region that outgrows the screen
+cannot be scrolled away from.</p>
+<p>Each row’s glyph is its state, before any colour: <code>□</code> waiting, a breathing cell in flight, <code>▪</code> done,
+<code>∎</code> abandoned. A task a detached subagent picked up breathes in that agent’s own accent and names
+the agent at the right, which is the same hue its lane carries in the <code>Subagents</code> block. Light
+travels down the rail while anything on the board is in flight and the rail is flat while nothing
+is, so a board waiting on you is distinguishable from a board being worked. A task closing sweeps a
+strike across its text, exhales its glyph and cools from green to grey; when the last task closes,
+the whole block makes one pass down its rail and clears. Where <code>display.transitions</code> is off, all of
+that is still and the glyphs are static.</p>
 <p>Configure the behavior under <strong>Settings → Tools → Todos</strong>:</p>
 <ul>
 <li><strong>Todo Reminders</strong> enables continuation instructions for unfinished plans.</li>

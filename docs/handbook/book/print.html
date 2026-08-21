@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-77235389.js";
+            window.path_to_searchindex_js = "searchindex-28e8a531.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-79e2ba62.js"></script>
@@ -313,7 +313,7 @@ points you at.</p>
 </thead>
 <tbody>
 <tr><td>Prompt and context</td><td>Statement-owned prompt assembly, layered <code>AGENTS.md</code>, validated <code>PROMPT_SECTIONS/</code>, and transactional context reload when the working directory moves</td><td><a href="../../../assets/prompt-architecture-sections.png">Section byte costs and the conditional statement registry</a></td></tr>
-<tr><td>Models and compaction</td><td>Model-native effort variants, explicit effort precedence, editable subsystem fallback chains, and a lossless first compaction pass</td><td><a href="../../../assets/effort-variants-grey.png">Model-specific effort menus</a>, <a href="../../../assets/model-chain-editor-grey.png">before-and-after chain editing</a>, and <a href="../../../assets/demo-hd-context-report.png">the context report accounting for a filled window by share</a></td></tr>
+<tr><td>Models and compaction</td><td>Model-native effort variants, explicit effort precedence, editable subsystem fallback chains, and a lossless first compaction pass</td><td><a href="../../../assets/demo-hd-context-report.png">The context report accounting for a filled window by share</a>. Effort menus and chain editing have no recording.</td></tr>
 <tr><td>Credentials and sessions</td><td>Shared SQLite credentials, multi-credential selection, encrypted working secrets, final outbound obfuscation, atomic session writes, and non-destructive corruption handling</td><td><a href="../../../assets/demo-hd-secret-log.png">A project secret taken from the environment, listed by placeholder, spent through bash, and recorded in the value-free use log</a></td></tr>
 <tr><td>Tools and workers</td><td>One capability and tool registry, LSP write-through, destructive-shell interception, schema-validated workers, IRC, internal agent URLs, and the Agent Control Center</td><td><a href="../../../assets/demo-lsp-hd.webp">A language-server rename applying one edit to a class file and three to its test, then a green suite</a> and <a href="../../../assets/stills-extra-agent-control.png">two workers spawned in one turn with live and idle Agent Control Center rows</a></td></tr>
 <tr><td>Native runtime</td><td>Native grep, PTY, tree-sitter support, and reusable Rust crates for glob matching, grep orchestration, key normalization, text indexing, diffing, and directory walking</td><td>No recording. See the <a href="#performance">architecture reference</a>.</td></tr>
@@ -3101,6 +3101,41 @@ the next layer. The spawn is refused and the message names the setting to fix, b
 falling through is indistinguishable from your setting having no effect. Both agent
 surfaces show, for the selected agent, the pattern, the model it resolves to, and
 which of the four layers decided.</p>
+<h2 id="watching-a-run"><a class="header" href="#watching-a-run">Watching a run</a></h2>
+<p>While a spawn is in flight, the <code>Subagents</code> block sits above the composer with one
+lane per agent. A lane reads left to right: a rail, the agent’s id, what it is doing,
+and the model it resolved to.</p>
+<pre><code class="language-text">Subagents
+ ▏ DockerSecretHarness    bash cargo test --workspace --all-targets         claude-opus-5 high
+ ▏ SecretModeFlowUX       read modes/interactive-mode.ts                    claude-opus-5 high
+ ▏ SecretModularityAudit  Audit secrets subsystem modularity, wiring, and…  claude-opus-5 med
+ ▏ RateLimitedWorker      Retrying (2/5) in 38s · 429 rate limit exceeded   claude-opus-5 high
+</code></pre>
+<p>The id is painted in that agent’s own accent, the same hue the status line gives its
+name and the same one a delegated todo row uses to point back at it.</p>
+<p>The middle column holds the most urgent fact the agent has. An agent asleep between
+provider attempts shows the recovery, its attempt count and the reason, counting down.
+An agent running a tool shows the tool and its argument. An agent waiting on the model
+has nothing to report, so it shows the work it was given instead, dimmed. That order
+matters: every lower rank is still true when a higher one is, and a lane that printed
+the description while the agent was asleep on a rate limit was byte-identical to one
+thinking.</p>
+<p>Light travels down the rail while agents are working, and a lane is lit only while it
+has a tool in flight. The head crosses the whole block — the cycle belongs to the
+block, not the row — and arrives cold on a lane that is waiting or recovering, so the
+motion says which agents are moving. Where <code>display.transitions</code> is off, the block is
+still.</p>
+<p>There is no elapsed clock and no context gauge. Total age ranks agents by seniority,
+which nothing acts on, and a subagent’s remaining window is not something its parent
+decides anything with. The question both were reached for — is this one stuck — is
+answered by the recovery column as a fact. <code>/agents</code> carries the roster with the
+numbers.</p>
+<p>Narrow the terminal and the model badge comes off first, then the columns shrink to
+what is left. Nothing wraps: the block draws no row it cannot fit, and draws nothing
+at all rather than overflow.</p>
+<p>Eight lanes are drawn. Past that the block says how many more are running and points
+at <code>/agents</code>, which is the full roster. That row is the only place a count appears —
+the header is bare, because a number next to the rows that are the agents is not news.</p>
 <h2 id="limits-and-isolation"><a class="header" href="#limits-and-isolation">Limits and isolation</a></h2>
 <p>The remaining groups in the tab are operational: how many subagents run at once
 (<code>subagent.maxConcurrency</code>), how deeply they may nest (<code>subagent.maxNestedSpawnDepth</code>),
@@ -3648,10 +3683,24 @@ open items, and reports how many more remain hidden. It does not replay an uncha
 user says <code>continue</code> or after an unrelated tool call. A real todo change makes the new state eligible
 for one reminder, up to the configured limit.</p>
 <p>Model-facing todo output and the collapsed TUI use the same sanitized, width-bounded, active-first
-projection of at most five items. The complete phases, tasks, and statuses remain in machine state,
-and expanded TUI output still shows the complete plan. To clear that state intentionally, run
-<code>/todo rm</code> without a task or phase; completing or dropping items keeps their closed history until it
-is explicitly removed.</p>
+projection of at most five items. The complete phases, tasks, and statuses remain in machine state.
+To clear that state intentionally, run <code>/todo rm</code> without a task or phase; completing or dropping
+items keeps their closed history until it is explicitly removed.</p>
+<p>The anchored <code>Todos</code> block above the composer is a railed list. Every phase gets one row with its
+tally, so a stage that just closed three tasks does not look like one that has done nothing, and
+task rows are drawn for the phase being worked and the few after it. The block is bounded by the
+viewport: it never grows past a third of the terminal’s height, it drops finished phases from the
+top before it drops work in flight, and it says how many rows it withheld. Expanding it shows every
+task of the phases it draws, not an unbounded list — an anchored region that outgrows the screen
+cannot be scrolled away from.</p>
+<p>Each row’s glyph is its state, before any colour: <code>□</code> waiting, a breathing cell in flight, <code>▪</code> done,
+<code>∎</code> abandoned. A task a detached subagent picked up breathes in that agent’s own accent and names
+the agent at the right, which is the same hue its lane carries in the <code>Subagents</code> block. Light
+travels down the rail while anything on the board is in flight and the rail is flat while nothing
+is, so a board waiting on you is distinguishable from a board being worked. A task closing sweeps a
+strike across its text, exhales its glyph and cools from green to grey; when the last task closes,
+the whole block makes one pass down its rail and clears. Where <code>display.transitions</code> is off, all of
+that is still and the glyphs are static.</p>
 <p>Configure the behavior under <strong>Settings → Tools → Todos</strong>:</p>
 <ul>
 <li><strong>Todo Reminders</strong> enables continuation instructions for unfinished plans.</li>
@@ -6813,7 +6862,10 @@ including the breakpoint budget and what invalidates what, is
 <li><strong>Architecture gates</strong>: layering, import cycles, and module-reach checks in <code>packages/coding-agent/test/architecture/</code>.</li>
 </ul>
 <h2 id="recording-terminal-proofs"><a class="header" href="#recording-terminal-proofs">Recording terminal proofs</a></h2>
-<p>Record interactive proofs on the repository’s private display. Do not record a logged-in desktop or use a terminal multiplexer capture as visual evidence.</p>
+<p>This section is the capture configuration. It is the only source of visual proof.
+Record interactive proofs on the repository’s private display. Do not record a
+logged-in desktop, and do not use a terminal multiplexer capture as visual
+evidence. There are no other capture paths and no fallbacks.</p>
 <h3 id="real-interactive-sessions"><a class="header" href="#real-interactive-sessions">Real interactive sessions</a></h3>
 <p>The HD recorder starts Xvfb, picom, and kitty inside the recorder container. It drives the shipped CLI with real keyboard and pointer events and records the private display at 30 frames per second.</p>
 <p>The landing-page terminal uses:</p>
@@ -6849,12 +6901,31 @@ Set CursorBlink false
 Set Theme { "name": "veyyon", "black": "#000000", "background": "#000000", "foreground": "#C6CBD4", "cursor": "#F0862E" }
 </code></pre>
 <p>Drive both states from one script. Seed each setting explicitly before capture. Restore the default after the pair is written.</p>
-<h3 id="off-screen-component-renders"><a class="header" href="#off-screen-component-renders">Off-screen component renders</a></h3>
-<p>Render the shipped component’s ANSI and rasterize it on both grey and black grounds:</p>
+<h3 id="off-screen-component-renders-are-a-debugging-aid-not-a-proof"><a class="header" href="#off-screen-component-renders-are-a-debugging-aid-not-a-proof">Off-screen component renders are a debugging aid, not a proof</a></h3>
+<p>Rasterizing a component’s ANSI answers one narrow question quickly and without a
+display: whether a fill, colour or spacing reads correctly on a grey and a black
+ground.</p>
 <pre><code class="language-sh">env -u NO_COLOR FORCE_COLOR=3 bun scripts/demos/render-&lt;surface&gt;.ts [args] |
   bun scripts/demos/render-proof.ts --out /tmp/&lt;surface&gt; --width 100 --scale 2
 </code></pre>
-<p><code>render-proof.ts</code> writes <code>&lt;surface&gt;-grey.png</code> with background <code>#1e2127</code> and <code>&lt;surface&gt;-black.png</code> with background <code>#000000</code>. Inspect both. A background fill can disappear on black while remaining visible as a slab on grey.</p>
+<p><code>render-proof.ts</code> writes <code>&lt;surface&gt;-grey.png</code> with background <code>#1e2127</code> and
+<code>&lt;surface&gt;-black.png</code> with background <code>#000000</code>. Inspect both. A background fill
+can disappear on black while remaining visible as a slab on grey.</p>
+<p>The output is not a proof and does not satisfy any evidence requirement. It draws a
+fixture written by hand, at a chosen width, through a constructed call. It cannot
+show that the surface is reachable, that the state is real, or that the block is
+positioned, sized and clipped the way a session draws it. Write the file to a
+temporary path. A rasterized image never enters <code>assets/</code>, a README, or a handbook
+page as before-and-after evidence.</p>
+<p>Seventeen raster pairs are already committed under <code>assets/</code>. They were produced
+under an earlier rule that sanctioned them, they are not evidence, and no handbook
+page or README cites them; <code>proof/pics.html</code> enumerates the directory from disk and
+still lists them. Each is replaced by a real capture of its screen when that feature
+is next touched. <code>scripts/an-off-screen-raster-never-enters-assets.test.ts</code> pins the
+set by exact equality and fails on any addition, so the list only shrinks, and it
+fails as well on a demo driver that writes a render into <code>assets/</code>. Drivers write to
+a temporary directory; <code>scripts/demos/record-argot-settings.sh</code> is the shape a real
+settings differential takes.</p>
 <h2 id="related-16"><a class="header" href="#related-16">Related</a></h2>
 <ul>
 <li><a href="#the-repair-cascade">The repair cascade</a></li>

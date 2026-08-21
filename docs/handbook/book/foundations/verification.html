@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-77235389.js";
+            window.path_to_searchindex_js = "../searchindex-28e8a531.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-79e2ba62.js"></script>
@@ -205,7 +205,10 @@
 <li><strong>Architecture gates</strong>: layering, import cycles, and module-reach checks in <code>packages/coding-agent/test/architecture/</code>.</li>
 </ul>
 <h2 id="recording-terminal-proofs"><a class="header" href="#recording-terminal-proofs">Recording terminal proofs</a></h2>
-<p>Record interactive proofs on the repository’s private display. Do not record a logged-in desktop or use a terminal multiplexer capture as visual evidence.</p>
+<p>This section is the capture configuration. It is the only source of visual proof.
+Record interactive proofs on the repository’s private display. Do not record a
+logged-in desktop, and do not use a terminal multiplexer capture as visual
+evidence. There are no other capture paths and no fallbacks.</p>
 <h3 id="real-interactive-sessions"><a class="header" href="#real-interactive-sessions">Real interactive sessions</a></h3>
 <p>The HD recorder starts Xvfb, picom, and kitty inside the recorder container. It drives the shipped CLI with real keyboard and pointer events and records the private display at 30 frames per second.</p>
 <p>The landing-page terminal uses:</p>
@@ -241,12 +244,31 @@ Set CursorBlink false
 Set Theme { "name": "veyyon", "black": "#000000", "background": "#000000", "foreground": "#C6CBD4", "cursor": "#F0862E" }
 </code></pre>
 <p>Drive both states from one script. Seed each setting explicitly before capture. Restore the default after the pair is written.</p>
-<h3 id="off-screen-component-renders"><a class="header" href="#off-screen-component-renders">Off-screen component renders</a></h3>
-<p>Render the shipped component’s ANSI and rasterize it on both grey and black grounds:</p>
+<h3 id="off-screen-component-renders-are-a-debugging-aid-not-a-proof"><a class="header" href="#off-screen-component-renders-are-a-debugging-aid-not-a-proof">Off-screen component renders are a debugging aid, not a proof</a></h3>
+<p>Rasterizing a component’s ANSI answers one narrow question quickly and without a
+display: whether a fill, colour or spacing reads correctly on a grey and a black
+ground.</p>
 <pre><code class="language-sh">env -u NO_COLOR FORCE_COLOR=3 bun scripts/demos/render-&lt;surface&gt;.ts [args] |
   bun scripts/demos/render-proof.ts --out /tmp/&lt;surface&gt; --width 100 --scale 2
 </code></pre>
-<p><code>render-proof.ts</code> writes <code>&lt;surface&gt;-grey.png</code> with background <code>#1e2127</code> and <code>&lt;surface&gt;-black.png</code> with background <code>#000000</code>. Inspect both. A background fill can disappear on black while remaining visible as a slab on grey.</p>
+<p><code>render-proof.ts</code> writes <code>&lt;surface&gt;-grey.png</code> with background <code>#1e2127</code> and
+<code>&lt;surface&gt;-black.png</code> with background <code>#000000</code>. Inspect both. A background fill
+can disappear on black while remaining visible as a slab on grey.</p>
+<p>The output is not a proof and does not satisfy any evidence requirement. It draws a
+fixture written by hand, at a chosen width, through a constructed call. It cannot
+show that the surface is reachable, that the state is real, or that the block is
+positioned, sized and clipped the way a session draws it. Write the file to a
+temporary path. A rasterized image never enters <code>assets/</code>, a README, or a handbook
+page as before-and-after evidence.</p>
+<p>Seventeen raster pairs are already committed under <code>assets/</code>. They were produced
+under an earlier rule that sanctioned them, they are not evidence, and no handbook
+page or README cites them; <code>proof/pics.html</code> enumerates the directory from disk and
+still lists them. Each is replaced by a real capture of its screen when that feature
+is next touched. <code>scripts/an-off-screen-raster-never-enters-assets.test.ts</code> pins the
+set by exact equality and fails on any addition, so the list only shrinks, and it
+fails as well on a demo driver that writes a render into <code>assets/</code>. Drivers write to
+a temporary directory; <code>scripts/demos/record-argot-settings.sh</code> is the shape a real
+settings differential takes.</p>
 <h2 id="related"><a class="header" href="#related">Related</a></h2>
 <ul>
 <li><a href="../repair/cascade.html">The repair cascade</a></li>
