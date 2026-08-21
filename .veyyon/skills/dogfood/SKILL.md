@@ -155,7 +155,7 @@ const code = await p.exited;
 
 A command that prints an error and exits 0 is broken in a way no reader of the transcript will notice.
 
-Then read the log file. This package cannot use `console.log`, so a swallowed error goes to `~/.veyyon/logs/veyyon.YYYY-MM-DD.log` under whatever home you sandboxed to. A feature that works while quietly logging a failure every turn is not working.
+Then read the log file. This package cannot use `console.log`, so a swallowed error goes to `~/.veyyon/profiles/<name>/logs/veyyon.YYYY-MM-DD.log` under whatever home you sandboxed to. A feature that works while quietly logging a failure every turn is not working.
 
 ## Run a manual negative control
 

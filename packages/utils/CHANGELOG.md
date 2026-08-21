@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- The logger's own documentation names the directory it actually writes to. Logs have been profile-scoped since the default profile moved out of the bare config root, but `logger`, `stderr-guard` and the package README all still named `~/.veyyon/logs/`, which is a path that only exists on a profile that has not been migrated — so a maintainer following the comment looked in an empty directory for the log a swallowed error went to. The path is `~/.veyyon/profiles/<name>/logs/`. No behaviour change; `getLogsDir()` was already correct.
+
 ## [16.5.2] - 2026-07-14
 
 ### Fixed
