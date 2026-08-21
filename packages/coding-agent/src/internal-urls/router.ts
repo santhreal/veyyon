@@ -65,6 +65,15 @@ export class InternalUrlRouter {
 		return this.#handlers.delete(scheme.toLowerCase());
 	}
 
+	/**
+	 * Every registered scheme, aliases included. Read by the classification gate,
+	 * which is the only way a new handler can be caught missing from the tables in
+	 * `tools/path-utils.ts` that decide selector peeling and filesystem-vs-URL.
+	 */
+	schemes(): string[] {
+		return [...this.#handlers.keys()];
+	}
+
 	getHandler(scheme: string): ProtocolHandler | undefined {
 		return this.#handlers.get(scheme.toLowerCase());
 	}
