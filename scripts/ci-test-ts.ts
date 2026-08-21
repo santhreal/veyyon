@@ -209,9 +209,9 @@ export const fastWorkspacePackages = [
 	// needing the real model fails by name, here and locally, rather than pulling
 	// 270MB into a runner and turning this bucket slow and flaky.
 	"packages/mnemopi",
-	// Simulations. Offline and deterministic, but they drive a real AgentSession
-	// per scenario, so they belong with the fast workspace suites rather than the
-	// native bucket.
+	// Simulations drive a real AgentSession but need no native artifact, so they
+	// stay in the fast workspace job. Their 300ms watchdogs run sequentially
+	// inside the package through `workspaceTestParallelism` below.
 	"packages/simulations",
 ];
 
@@ -279,6 +279,7 @@ export const repoScriptTests = [
 	"scripts/a-local-action-is-called-with-everything-it-requires.test.ts",
 	"scripts/ci-concurrency.test.ts",
 	"scripts/ci-test-partitioning-preserves-global-state-isolation.test.ts",
+	"scripts/simulation-watchdogs-do-not-run-under-test-fanout.test.ts",
 	"scripts/every-workflow-job-has-a-deadline.test.ts",
 	"scripts/every-workflow-pipeline-sets-pipefail.test.ts",
 	"scripts/every-workflow-runs-bun-test-in-the-sandbox.test.ts",
@@ -561,6 +562,14 @@ const workspacePackageExtraArgs: Record<string, string[]> = {
 	"packages/ai": ["--timeout", "20000"],
 };
 
+const workspacePackageParallelism: Readonly<Record<string, number>> = {
+	"packages/simulations": 1,
+};
+
+export function workspaceTestParallelism(pkg: string, requested: number): number {
+	return workspacePackageParallelism[pkg] ?? requested;
+}
+
 function workspaceTestCommand(
 	pkg: string,
 	parallel: number,
@@ -579,7 +588,7 @@ function workspaceTestCommand(
 			"test",
 			...preloadArgs,
 			...(smol ? ["--smol"] : []),
-			`--parallel=${parallel}`,
+			`--parallel=${workspaceTestParallelism(pkg, parallel)}`,
 			...perPackageArgs,
 			...extraArgs,
 		],
