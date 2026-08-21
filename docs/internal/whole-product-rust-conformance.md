@@ -502,11 +502,11 @@ The mutation engine injects the following structural defects into compiled crate
 
 ## Migration Waves and Decommissioning Plan
 
-The migration from TypeScript test suites and `packages/simulations` to `crates/veyyon-conformance` proceeds in five sequential waves.
+The migration from TypeScript test suites and `packages/simulations` to `crates/veyyon-conformance` proceeds in six sequential waves, numbered 0 through 5.
 
 ```
 +-----------------------------------------------------------------------------------+
-|                            Five-Wave Migration Plan                               |
+|                             Six-Wave Migration Plan                              |
 +-----------------------------------------------------------------------------------+
 | [Wave 0: Infrastructure]  --> Scaffold crates/veyyon-conformance, VFS, VPTY, vmock |
 |           |                                                                       |
