@@ -192,3 +192,174 @@ fn arg_file_resolves_against_scope_cwd() {
 	assert_eq!(code, 0);
 	assert_eq!(out, "a b\n", "-a file opens relative to the scope cwd");
 }
+
+/// An empty batch in replace mode: the recorded panic, and its whole class.
+///
+/// THE DEFECT. `CommandBuilder::execute` read `self.extra_args[0]` to build the
+/// substitution, and `process_input` runs the command once on empty input for
+/// GNU compatibility unless `-r` is given. In replace mode that batch carries
+/// no arguments, so the index panicked: `index out of bounds: the len is 0 but
+/// the index is 0`, seven times in the recorded crash logs, on a tokio worker
+/// inside the host shell. The fix returns without spawning, because GNU xargs
+/// runs the command zero times when there is nothing to substitute.
+///
+/// THE CLASS. Every spelling of replace mode, and every way the input can
+/// produce no arguments. The fix landed without a test, so nothing held the
+/// other spellings: `-I R`, `-i`, `--replace=R`, with whitespace-only input,
+/// with a NUL delimiter, with an empty `-a` file, and with `-r` also given.
+/// Each asserts the command ran ZERO times by its side effect on the
+/// filesystem, not only that the exit code was 0 — an exit code cannot tell
+/// "ran once and did nothing" from "did not run".
+///
+/// WHAT THIS DOES NOT CATCH. It fixes the batch at zero arguments. A batch of
+/// one is the case upstream always ran, and a limiter that hands `execute` a
+/// batch it did not build is out of reach from here.
+#[cfg(test)]
+mod empty_batch_in_replace_mode {
+	use super::{run_simple, run_xargs};
+
+	/// Argv that would create `ran.txt` if the child ran even once.
+	fn touching(replace_flag: &[&str], token: &str) -> Vec<String> {
+		let mut argv: Vec<String> = replace_flag.iter().map(|s| (*s).to_string()).collect();
+		argv.extend(
+			["sh", "-c", "touch ran.txt; echo \"$1\"", "_", token]
+				.iter()
+				.map(|s| (*s).to_string()),
+		);
+		argv
+	}
+
+	/// Runs `argv` in a fresh temp dir; returns `(code, stdout, stderr, ran)`.
+	fn run_in_tempdir(argv: &[String], stdin: &[u8]) -> (i32, String, String, bool) {
+		let dir = tempfile::TempDir::new().expect("tempdir");
+		let borrowed: Vec<&str> = argv.iter().map(String::as_str).collect();
+		let (code, out, err) = run_xargs(&borrowed, stdin, dir.path(), &[]);
+		(code, out, err, dir.path().join("ran.txt").exists())
+	}
+
+	#[test]
+	fn every_replace_spelling_runs_zero_commands_on_empty_input() {
+		// `-i` and `--replace` take their value with `=`; `-I` takes it positionally.
+		let spellings: [&[&str]; 4] = [&["-I", "{}"], &["-i"], &["--replace=@"], &["-I", "REPL"]];
+		for spelling in spellings {
+			let token = match spelling {
+				["--replace=@"] => "@",
+				["-I", "REPL"] => "REPL",
+				_ => "{}",
+			};
+			let (code, out, err, ran) = run_in_tempdir(&touching(spelling, token), b"");
+			assert_eq!(code, 0, "{spelling:?} on empty input should succeed, stderr: {err:?}");
+			assert_eq!(out, "", "{spelling:?} should produce no output");
+			assert!(!ran, "{spelling:?} ran the command on an empty batch");
+		}
+	}
+
+	#[test]
+	fn input_that_yields_no_arguments_runs_zero_commands() {
+		// Every one of these was checked against GNU findutils 4.9.0, which runs the
+		// command zero times for all of them. `"   "` is the one that used to reach
+		// the command: the whitespace reader hit EOF with an empty item and returned
+		// it as an argument instead of ending the stream.
+		//
+		// NOT COVERED: a line of literal quote characters. GNU quote-processes the
+		// line it substitutes, so `printf '""'` yields an empty line and runs
+		// nothing, while this xargs substitutes the two quote bytes verbatim.
+		// Replace mode here does not quote-process at all, which is a wider gap than
+		// this defect, and half-implementing it would be worse than naming it.
+		for stdin in [&b"   "[..], &b"\n"[..], &b" \t\n \n"[..], &b""[..]] {
+			let (code, out, err, ran) = run_in_tempdir(&touching(&["-I", "{}"], "{}"), stdin);
+			assert_eq!(code, 0, "input {stdin:?} should succeed, stderr: {err:?}");
+			assert_eq!(out, "", "input {stdin:?} should produce no output");
+			assert!(!ran, "input {stdin:?} ran the command");
+		}
+		let mut null_argv = vec!["-0".to_string()];
+		null_argv.extend(touching(&["-I", "{}"], "{}"));
+		let (code, out, _, ran) = run_in_tempdir(&null_argv, b"");
+		assert_eq!(code, 0, "-0 with empty input should succeed");
+		assert_eq!(out, "", "-0 with empty input should produce no output");
+		assert!(!ran, "-0 with empty input ran the command");
+	}
+
+	/// The same hole outside replace mode: a spurious empty argument.
+	///
+	/// GNU runs `echo BEGIN` for whitespace-only input, and prints `BEGIN`. This
+	/// used to print `BEGIN ` — one empty argument appended, from the same EOF
+	/// branch — so the defect was never only about replace mode.
+	#[test]
+	fn whitespace_only_input_appends_no_empty_argument() {
+		for stdin in [&b"   "[..], &b"\t"[..], &b"\n"[..]] {
+			let (code, out, err) = run_simple(&["echo", "BEGIN"], stdin);
+			assert_eq!(code, 0, "stderr: {err:?}");
+			assert_eq!(out, "BEGIN\n", "input {stdin:?} appended an empty argument");
+		}
+		// A real trailing item with no terminator is still an item.
+		let (code, out, _) = run_simple(&["echo", "BEGIN"], b"tail");
+		assert_eq!(code, 0);
+		assert_eq!(out, "BEGIN tail\n", "an unterminated real item must survive");
+	}
+
+	/// Replace mode's line rule, checked against GNU findutils 4.9.0 case by
+	/// case.
+	///
+	/// GNU strips the LEADING blanks off the line it substitutes, keeps the
+	/// trailing ones, and runs nothing for a line that is blanks only. An
+	/// explicit delimiter means the item is the item: `-0` keeps both sides.
+	#[test]
+	fn replace_mode_strips_leading_blanks_and_skips_blank_lines() {
+		let echoing = ["-I", "{}", "sh", "-c", "echo \"[$1]\"", "_", "{}"];
+		for stdin in [&b"   \n"[..], &b"  \t \n"[..], &b"\t"[..], &b"   "[..]] {
+			let (code, out, err) = run_simple(&echoing, stdin);
+			assert_eq!(code, 0, "stderr: {err:?}");
+			assert_eq!(out, "", "a blanks-only line ran the command: {stdin:?}");
+		}
+		let (code, out, _) = run_simple(&echoing, b" a \n");
+		assert_eq!(code, 0);
+		assert_eq!(out, "[a ]\n", "leading blanks are stripped, trailing blanks are kept");
+
+		let (code, out, _) = run_simple(&echoing, b"\ta\nb\n\n c\n");
+		assert_eq!(code, 0);
+		assert_eq!(out, "[a]\n[b]\n[c]\n", "a blank line between items is skipped, not substituted");
+
+		// An explicit delimiter names the terminator, so the item keeps its blanks.
+		let (code, out, _) =
+			run_simple(&["-0", "-I", "{}", "sh", "-c", "echo \"[$1]\"", "_", "{}"], b" a \0");
+		assert_eq!(code, 0);
+		assert_eq!(out, "[ a ]\n", "-0 must not strip the item's blanks");
+	}
+
+	#[test]
+	fn no_run_if_empty_and_an_empty_arg_file_agree_with_it() {
+		let mut with_r = vec!["-r".to_string()];
+		with_r.extend(touching(&["-I", "{}"], "{}"));
+		let (code, out, _, ran) = run_in_tempdir(&with_r, b"");
+		assert_eq!(code, 0, "-r with replace mode should succeed");
+		assert_eq!(out, "", "-r should produce no output");
+		assert!(!ran, "-r ran the command on empty input");
+
+		let dir = tempfile::TempDir::new().expect("tempdir");
+		std::fs::write(dir.path().join("empty.txt"), b"").expect("write items");
+		let (code, out, err) = run_xargs(
+			&["-a", "empty.txt", "-I", "{}", "sh", "-c", "touch ran.txt; echo \"$1\"", "_", "{}"],
+			b"",
+			dir.path(),
+			&[],
+		);
+		assert_eq!(code, 0, "an empty -a file should succeed, stderr: {err:?}");
+		assert_eq!(out, "", "an empty -a file should produce no output");
+		assert!(!dir.path().join("ran.txt").exists(), "an empty -a file ran the command");
+	}
+
+	/// The positive control: replace mode is not simply refusing to run.
+	#[test]
+	fn one_argument_still_runs_exactly_once() {
+		let (code, out, err, ran) = run_in_tempdir(&touching(&["-I", "{}"], "{}"), b"item\n");
+		assert_eq!(code, 0, "stderr: {err:?}");
+		assert_eq!(out, "item\n", "the substituted item reaches the child");
+		assert!(ran, "a one-argument batch must still run the command");
+		// And the non-replace path on the same empty input keeps its GNU behavior,
+		// so the guard did not widen into a general no-run.
+		let (code, out, _) = run_simple(&[], b"");
+		assert_eq!(code, 0);
+		assert_eq!(out, "\n", "default echo still runs once on empty input");
+	}
+}

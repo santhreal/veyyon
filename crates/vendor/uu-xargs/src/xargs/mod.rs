@@ -557,7 +557,12 @@ where
 							format!("Unterminated quote: {q}"),
 						));
 					}
-					if i == 0 {
+					// EOF having consumed only separators (or a quoted empty item)
+					// yields no argument. Upstream broke out with an empty `result`
+					// and returned it as an argument, so `printf '   '` passed a
+					// spurious `""` to the command, and in replace mode ran the
+					// command that GNU xargs runs zero times.
+					if i == 0 || result.is_empty() {
 						return Ok(None);
 					}
 					pending.clear();
@@ -646,6 +651,46 @@ where
 			}
 			break None;
 		})
+	}
+}
+
+/// Replace mode reads one LINE per invocation, and GNU xargs strips the leading
+/// blanks off that line before substituting it. A line that is nothing but
+/// blanks therefore has nothing to substitute, and GNU runs the command zero
+/// times for it — the case that reached `CommandBuilder::execute` with an empty
+/// batch and panicked on `extra_args[0]`.
+///
+/// This wraps the delimited reader only when the delimiter is replace mode's
+/// own default newline. An explicit `-d` or `-0` names the terminator itself,
+/// and GNU keeps the blanks there: `printf ' a \0' | xargs -0 -I{} …`
+/// substitutes ` a `.
+struct ReplaceLineArgumentReader<R: ArgumentReader> {
+	inner: R,
+}
+
+impl<R: ArgumentReader> ArgumentReader for ReplaceLineArgumentReader<R> {
+	fn next(&mut self) -> io::Result<Option<Argument>> {
+		loop {
+			let Some(argument) = self.inner.next()? else {
+				return Ok(None);
+			};
+			let bytes = argument.arg.as_encoded_bytes();
+			let start = bytes
+				.iter()
+				.position(|byte| *byte != b' ' && *byte != b'\t')
+				.unwrap_or(bytes.len());
+			if start == bytes.len() {
+				// Blanks only: no item, and the next line gets its turn.
+				continue;
+			}
+			if start == 0 {
+				return Ok(Some(argument));
+			}
+			// SAFETY: `start` indexes past ASCII blanks only, so it cannot land
+			// inside a multi-byte sequence of the platform's encoding.
+			let trimmed = unsafe { OsStr::from_encoded_bytes_unchecked(&bytes[start..]) };
+			return Ok(Some(Argument { arg: trimmed.to_os_string(), kind: argument.kind }));
+		}
 	}
 }
 
@@ -1050,8 +1095,16 @@ fn do_xargs(args: &[&str]) -> Result<CommandResult, XargsError> {
 		Box::new(veyyon_uutils_ctx::stdin())
 	};
 
+	// Replace mode with no explicit delimiter reads lines, and those lines carry
+	// GNU's leading-blank rule. Any explicit `-d`/`-0` keeps the raw item.
+	let replace_lines = replace.is_some() && options.delimiter.is_none() && !options.null;
 	let args: Box<dyn ArgumentReader> = if let Some(delimiter) = delimiter {
-		Box::new(ByteDelimitedArgumentReader::new(args_file, delimiter))
+		let reader = ByteDelimitedArgumentReader::new(args_file, delimiter);
+		if replace_lines {
+			Box::new(ReplaceLineArgumentReader { inner: reader })
+		} else {
+			Box::new(reader)
+		}
 	} else {
 		Box::new(WhitespaceDelimitedArgumentReader::new(args_file))
 	};
