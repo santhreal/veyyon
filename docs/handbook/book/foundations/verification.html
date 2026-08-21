@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-b2fda31d.js";
+            window.path_to_searchindex_js = "../searchindex-b1e48f00.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-79e2ba62.js"></script>
@@ -204,6 +204,47 @@
 <li><strong>Tool-output bounds</strong>: truncation limits behave as configured and remain visible to the model.</li>
 <li><strong>Architecture gates</strong>: layering, import cycles, and module-reach checks in <code>packages/coding-agent/test/architecture/</code>.</li>
 </ul>
+<h2 id="recording-terminal-proofs"><a class="header" href="#recording-terminal-proofs">Recording terminal proofs</a></h2>
+<p>Record interactive proofs on the repository’s private display. Do not record a logged-in desktop or use a terminal multiplexer capture as visual evidence.</p>
+<h3 id="real-interactive-sessions"><a class="header" href="#real-interactive-sessions">Real interactive sessions</a></h3>
+<p>The HD recorder starts Xvfb, picom, and kitty inside the recorder container. It drives the shipped CLI with real keyboard and pointer events and records the private display at 30 frames per second.</p>
+<p>The landing-page terminal uses:</p>
+<pre><code class="language-text">terminal       kitty
+font           JetBrains Mono 21
+canvas         2560x1440 at 30 fps
+window inset   128 px
+background     #171b22
+foreground     #d3dae6
+publish        Lanczos downsample to 1920x1080
+</code></pre>
+<p>Preview a scene without replacing tracked proof assets:</p>
+<pre><code class="language-sh">PUBLISH=0 DEMO_SERVER=x11 \
+  PROOF_LLM_BASE_URL=http://&lt;host&gt;:11434/v1 \
+  bash scripts/demos/record-hd-demo.sh demo-hd
+</code></pre>
+<p>The recorder keeps rehearsal output in the temporary directory it prints. Inspect the video and named frames there. Set <code>PUBLISH=1</code> only for a complete take whose frame guards all passed.</p>
+<h3 id="vhs-settings-captures"><a class="header" href="#vhs-settings-captures">VHS settings captures</a></h3>
+<p>Use the same baseline for settings differentials:</p>
+<pre><code class="language-tape">Set Shell bash
+Set FontSize 22
+Set Width 1400
+Set Height 720
+Set Padding 30
+Set Margin 40
+Set MarginFill "#000000"
+Set BorderRadius 0
+Set Framerate 30
+Set TypingSpeed 55ms
+Set CursorBlink false
+Set Theme { "name": "veyyon", "black": "#000000", "background": "#000000", "foreground": "#C6CBD4", "cursor": "#F0862E" }
+</code></pre>
+<p>Drive both states from one script. Seed each setting explicitly before capture. Restore the default after the pair is written.</p>
+<h3 id="off-screen-component-renders"><a class="header" href="#off-screen-component-renders">Off-screen component renders</a></h3>
+<p>Render the shipped component’s ANSI and rasterize it on both grey and black grounds:</p>
+<pre><code class="language-sh">env -u NO_COLOR FORCE_COLOR=3 bun scripts/demos/render-&lt;surface&gt;.ts [args] |
+  bun scripts/demos/render-proof.ts --out /tmp/&lt;surface&gt; --width 100 --scale 2
+</code></pre>
+<p><code>render-proof.ts</code> writes <code>&lt;surface&gt;-grey.png</code> with background <code>#1e2127</code> and <code>&lt;surface&gt;-black.png</code> with background <code>#000000</code>. Inspect both. A background fill can disappear on black while remaining visible as a slab on grey.</p>
 <h2 id="related"><a class="header" href="#related">Related</a></h2>
 <ul>
 <li><a href="../repair/cascade.html">The repair cascade</a></li>

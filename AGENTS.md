@@ -18,6 +18,12 @@ What counts as visual evidence instead:
 
 Any background fill, color, spacing, or motion change verified only through tmux is UNVERIFIED and must not be called done.
 
+## UI changes require README before-and-after evidence (BINDING)
+
+Any pull request that changes visible UI MUST add a labeled **Before** and **After** pair to the relevant `README.md` feature or demo section before it can merge. Both images must show the same surface, dimensions, terminal configuration, and state apart from the intended change. Store the pair under `assets/` and link the exact regeneration command from the README or its owning handbook page.
+
+The pair must be real visual evidence under the rules above: a private-display recording, off-screen raster of the shipped component on both grey and black grounds, or screenshots supplied by the operator. A tmux capture, a mock-up, one unpaired image, or two frames whose state differs for unrelated reasons does not satisfy the merge requirement.
+
 ## Default Context
 
 This repo contains multiple packages, but **`packages/coding-agent/`** is the primary focus. Unless otherwise specified, assume work refers to this package.
