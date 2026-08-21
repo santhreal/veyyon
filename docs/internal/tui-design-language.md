@@ -292,4 +292,3 @@ When touching TUI polish, name the token (spacing, theme color, motion budget). 
 sequence in an ordinary widget is a design-system bug. Keep any required raw sequence in one named
 component or terminal-protocol owner.
 
-*Verified against `19234e94d39e` on 2026-08-07.*
