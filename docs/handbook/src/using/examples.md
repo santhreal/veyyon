@@ -76,26 +76,31 @@ See [Model contract](../concepts/model-contract.md) and [Providers](../models/pr
 
 ## Recorded end-to-end workflow
 
-The landing-page recording is one operator task from objective to running artifact. Before submission, `/secret from-env` stores a synthetic release key. The model creates its own persistent goal from the single task prompt, then idle goal continuation carries the work across model turns without another user prompt.
+The landing-page recording is one operator task carried to a signed artifact, in a single unbroken
+session. The task audits the numeric environment defaults of a small service. Before submission,
+`/secret from-env` stores a synthetic release key as the placeholder `#RELEASE_SIGNATURE#`.
 
-The task creates an eight-item, four-phase todo list, launches three workers together for flight dynamics, terminal rendering, and autopilot behavior, and integrates their modules into **Nebula Drift**, a deterministic terminal 3D ship simulator. The project must pass its tests and TypeScript check, compile to `dist/nebula-drift`, and render a perspective-projected ship, star field, navigation gate, and telemetry HUD.
-
-After the build passes, the model signs the compiled binary with HMAC-SHA256 through `#RELEASE_SIGNATURE#`. Veyyon resolves the placeholder only at the outbound tool boundary and asks for explicit approval before the command runs. The model then closes all eight tasks, completes the persistent goal itself, and presents the compiled simulator.
+The model writes a three-phase, six-task plan and holds it until told to start. It fans three
+directory-scoped refactors out to parallel workers, one per directory, applies the edits itself where
+the change is one guard, and verifies that all nine documented defaults resolve in an environment
+stripped of every one of those variables. It then signs its work in one `bash` call: the sha256 of
+`#RELEASE_SIGNATURE#` appended to `SIGNED.md` as a single line. Veyyon resolves the placeholder only
+at the outbound tool boundary and asks for approval before the call runs, so the credential itself is
+never printed and never reaches the transcript. The board closes 6/6.
 
 | Surface | Evidence |
 | --- | --- |
-| Complete task | [Published clip](../../../../assets/demo-hd.webp) · [full-quality cut](../../../../proof/captures/x11/demo-hd-cut.mp4) · [unedited take](../../../../proof/captures/x11/demo-hd.mp4) |
+| Complete task | [Published clip](../../../../assets/demo-hd.webp) · [unedited take](../../../../proof/captures/x11/demo-hd.mp4) |
 | Secret setup | [Release key stored from the environment](../../../../assets/demo-hd-secret-stored.png) |
-| Persistent objective | [Goal created by the model from the task prompt](../../../../assets/demo-hd-goal-created.png) |
-| Plan | [Four phases and eight open tasks](../../../../assets/demo-hd-todo-board.png) · [all eight tasks complete](../../../../assets/demo-hd-todo-finished.png) |
-| Parallel implementation | [Dynamics, rendering, and flight workers live together](../../../../assets/demo-hd-agent-lanes.png) |
-| Integration | [Parent-agent CLI and signing integration](../../../../assets/demo-hd-integration-edit.png) |
-| Verification | [Tests, typecheck, and compiled binary green](../../../../assets/demo-hd-build-verified.png) |
-| Compiled simulator | [Deterministic 3D flight display](../../../../assets/demo-hd-simulator-preview.png) |
-| Protected signing | [permission boundary](../../../../assets/demo-hd-secret-approval.png) · [signature artifact](../../../../assets/demo-hd-signature-written.png) |
-| Goal completion | [Model-completed persistent objective](../../../../assets/demo-hd-goal-complete.png) |
-| Presentation | [Signed Nebula Drift binary running](../../../../assets/demo-hd-presentation.png) |
+| Plan | [Three phases, six tasks, nothing started](../../../../assets/demo-hd-todo-board.png) · [tasks closing on the board](../../../../assets/demo-hd-todo-strike.png) |
+| Parallel implementation | [Three directory refactors fanned out at once](../../../../assets/demo-hd-agent-lanes.png) |
+| Integration | [The applied guard, as a diff](../../../../assets/demo-hd-edit-diff.png) |
+| Verification | [Nine defaults resolved in a stripped environment](../../../../assets/demo-hd-verify-command.png) |
+| Protected signing | [The approval card names the tool, the scope and the secret the call would spend](../../../../assets/demo-hd-secret-approval.png) · [the digest appended to SIGNED.md, the credential never echoed](../../../../assets/demo-hd-signature-written.png) |
+| Stored secrets | [The placeholder inventory](../../../../assets/demo-hd-secret-list.png) · [the spend log](../../../../assets/demo-hd-secret-log.png) |
 
-The opening and release play at capture speed. Visible implementation work between the worker launch and verified build plays at 1.25×; untouched screens are trimmed rather than accelerated. Every frame and both clips come from the same guarded take.
+Every frame and the clip come from the same guarded take. Untouched screens are shortened rather than
+accelerated, and no frame is composited from a second session.
 
-See [Testing and verification](../foundations/verification.md#recording-terminal-proofs) for the recording environment, regeneration command, and before-and-after proof requirements. Verify the archived binary signature with `proof/verify-binary-signature.py`.
+See [Testing and verification](../foundations/verification.md#recording-terminal-proofs) for the
+recording environment, the regeneration command, and the before-and-after proof requirements.

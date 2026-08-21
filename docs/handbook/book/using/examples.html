@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-6ac826d6.js";
+            window.path_to_searchindex_js = "../searchindex-50763d13.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-79e2ba62.js"></script>
@@ -238,31 +238,37 @@ enabled. See <a href="../context/compaction-memory.html">Compaction and memory</
 </code></pre>
 <p>See <a href="../concepts/model-contract.html">Model contract</a> and <a href="../models/providers.html">Providers</a>.</p>
 <h2 id="recorded-end-to-end-workflow"><a class="header" href="#recorded-end-to-end-workflow">Recorded end-to-end workflow</a></h2>
-<p>The landing-page recording is one operator task from objective to running artifact. Before submission, <code>/secret from-env</code> stores a synthetic release key. The model creates its own persistent goal from the single task prompt, then idle goal continuation carries the work across model turns without another user prompt.</p>
-<p>The task creates an eight-item, four-phase todo list, launches three workers together for flight dynamics, terminal rendering, and autopilot behavior, and integrates their modules into <strong>Nebula Drift</strong>, a deterministic terminal 3D ship simulator. The project must pass its tests and TypeScript check, compile to <code>dist/nebula-drift</code>, and render a perspective-projected ship, star field, navigation gate, and telemetry HUD.</p>
-<p>After the build passes, the model signs the compiled binary with HMAC-SHA256 through <code>#RELEASE_SIGNATURE#</code>. Veyyon resolves the placeholder only at the outbound tool boundary and asks for explicit approval before the command runs. The model then closes all eight tasks, completes the persistent goal itself, and presents the compiled simulator.</p>
+<p>The landing-page recording is one operator task carried to a signed artifact, in a single unbroken
+session. The task audits the numeric environment defaults of a small service. Before submission,
+<code>/secret from-env</code> stores a synthetic release key as the placeholder <code>#RELEASE_SIGNATURE#</code>.</p>
+<p>The model writes a three-phase, six-task plan and holds it until told to start. It fans three
+directory-scoped refactors out to parallel workers, one per directory, applies the edits itself where
+the change is one guard, and verifies that all nine documented defaults resolve in an environment
+stripped of every one of those variables. It then signs its work in one <code>bash</code> call: the sha256 of
+<code>#RELEASE_SIGNATURE#</code> appended to <code>SIGNED.md</code> as a single line. Veyyon resolves the placeholder only
+at the outbound tool boundary and asks for approval before the call runs, so the credential itself is
+never printed and never reaches the transcript. The board closes 6/6.</p>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Surface</th><th>Evidence</th></tr>
 </thead>
 <tbody>
-<tr><td>Complete task</td><td><a href="../../../../assets/demo-hd.webp">Published clip</a> · <a href="../../../../proof/captures/x11/demo-hd-cut.mp4">full-quality cut</a> · <a href="../../../../proof/captures/x11/demo-hd.mp4">unedited take</a></td></tr>
+<tr><td>Complete task</td><td><a href="../../../../assets/demo-hd.webp">Published clip</a> · <a href="../../../../proof/captures/x11/demo-hd.mp4">unedited take</a></td></tr>
 <tr><td>Secret setup</td><td><a href="../../../../assets/demo-hd-secret-stored.png">Release key stored from the environment</a></td></tr>
-<tr><td>Persistent objective</td><td><a href="../../../../assets/demo-hd-goal-created.png">Goal created by the model from the task prompt</a></td></tr>
-<tr><td>Plan</td><td><a href="../../../../assets/demo-hd-todo-board.png">Four phases and eight open tasks</a> · <a href="../../../../assets/demo-hd-todo-finished.png">all eight tasks complete</a></td></tr>
-<tr><td>Parallel implementation</td><td><a href="../../../../assets/demo-hd-agent-lanes.png">Dynamics, rendering, and flight workers live together</a></td></tr>
-<tr><td>Integration</td><td><a href="../../../../assets/demo-hd-integration-edit.png">Parent-agent CLI and signing integration</a></td></tr>
-<tr><td>Verification</td><td><a href="../../../../assets/demo-hd-build-verified.png">Tests, typecheck, and compiled binary green</a></td></tr>
-<tr><td>Compiled simulator</td><td><a href="../../../../assets/demo-hd-simulator-preview.png">Deterministic 3D flight display</a></td></tr>
-<tr><td>Protected signing</td><td><a href="../../../../assets/demo-hd-secret-approval.png">permission boundary</a> · <a href="../../../../assets/demo-hd-signature-written.png">signature artifact</a></td></tr>
-<tr><td>Goal completion</td><td><a href="../../../../assets/demo-hd-goal-complete.png">Model-completed persistent objective</a></td></tr>
-<tr><td>Presentation</td><td><a href="../../../../assets/demo-hd-presentation.png">Signed Nebula Drift binary running</a></td></tr>
+<tr><td>Plan</td><td><a href="../../../../assets/demo-hd-todo-board.png">Three phases, six tasks, nothing started</a> · <a href="../../../../assets/demo-hd-todo-strike.png">tasks closing on the board</a></td></tr>
+<tr><td>Parallel implementation</td><td><a href="../../../../assets/demo-hd-agent-lanes.png">Three directory refactors fanned out at once</a></td></tr>
+<tr><td>Integration</td><td><a href="../../../../assets/demo-hd-edit-diff.png">The applied guard, as a diff</a></td></tr>
+<tr><td>Verification</td><td><a href="../../../../assets/demo-hd-verify-command.png">Nine defaults resolved in a stripped environment</a></td></tr>
+<tr><td>Protected signing</td><td><a href="../../../../assets/demo-hd-secret-approval.png">The approval card names the tool, the scope and the secret the call would spend</a> · <a href="../../../../assets/demo-hd-signature-written.png">the digest appended to SIGNED.md, the credential never echoed</a></td></tr>
+<tr><td>Stored secrets</td><td><a href="../../../../assets/demo-hd-secret-list.png">The placeholder inventory</a> · <a href="../../../../assets/demo-hd-secret-log.png">the spend log</a></td></tr>
 </tbody>
 </table>
 </div>
-<p>The opening and release play at capture speed. Visible implementation work between the worker launch and verified build plays at 1.25×; untouched screens are trimmed rather than accelerated. Every frame and both clips come from the same guarded take.</p>
-<p>See <a href="../foundations/verification.html#recording-terminal-proofs">Testing and verification</a> for the recording environment, regeneration command, and before-and-after proof requirements. Verify the archived binary signature with <code>proof/verify-binary-signature.py</code>.</p>
+<p>Every frame and the clip come from the same guarded take. Untouched screens are shortened rather than
+accelerated, and no frame is composited from a second session.</p>
+<p>See <a href="../foundations/verification.html#recording-terminal-proofs">Testing and verification</a> for the
+recording environment, the regeneration command, and the before-and-after proof requirements.</p>
 
                     </main>
 
