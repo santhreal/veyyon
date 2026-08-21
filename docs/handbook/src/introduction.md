@@ -42,4 +42,4 @@ Each of these has its own chapter later. This list is a map, not the full explan
 - **Approvals.** The `tools.approvalMode` setting gates the read, write, and exec tiers. Veyyon does not add an operating-system command sandbox. It does not use Landlock, seccomp, Seatbelt, or bubblewrap, so approvals are your control point.
 - **Engine modes.** Plan mode, goal mode, vibe mode, compaction, and task subagents live in the agent loop itself, not only in prompt text.
 
-For credits and provenance, see [Acknowledgements](./acknowledgements.md).
+For credits, see [Acknowledgements](./acknowledgements.md).

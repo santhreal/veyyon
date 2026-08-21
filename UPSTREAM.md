@@ -1,10 +1,9 @@
-# Upstream and fork provenance
+# Upstream and fork credits
 
 Veyyon is a source fork of **oh-my-pi** (`can1357/oh-my-pi`), MIT licensed.
-This document explains what "fork" means in practice for this repository,
-what changed, and where the legal notices live. It is a provenance map, not
-a license grant — see `LICENSE` for the license text and `NOTICE` for
-third-party attribution.
+This document records what was forked, what changed, and where the legal
+notices live. See `LICENSE` for the license text and `NOTICE` for third-party
+attribution.
 
 ## What was forked
 
@@ -36,8 +35,7 @@ directory, package scope, splash and theme, emoji removal, and settings
 simplification. Since the fork, this repository has changed the prompt and
 context contract, model effort and subsystem routing, compaction, credential
 and session storage, tool and extension architecture, worker operations,
-native kernels, and documentation. The README [Provenance](README.md#provenance)
-section separates the inherited foundation from those Veyyon-owned contracts.
+native kernels, and documentation.
 
 Veyyon is not a drop-in resync target. Changes here are not assumed to belong
 upstream, and upstream changes are not pulled automatically.
@@ -61,9 +59,8 @@ markers and intentional divergences.
   root file so it stays next to the code it describes.
 - `crates/vendor/*/LICENSE` — per-crate upstream license files for vendored
   Rust dependencies; authoritative for that code.
-- `docs/handbook/src/acknowledgements.md` — the human-readable, prose
-  version of this provenance for handbook readers; kept reconciled with
-  this file and `NOTICE`.
+- `docs/handbook/src/acknowledgements.md` — the human-readable credits for
+  handbook readers; kept reconciled with this file and `NOTICE`.
 
 ## Staying current: the port pipeline
 

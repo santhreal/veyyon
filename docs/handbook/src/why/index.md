@@ -1,7 +1,7 @@
 # Design and mechanisms
 
 - [Overview](./value.md): what the product is and what the harness does
-- [Mechanisms](./innovations.md): the fork provenance boundary, Veyyon-owned contracts, and the current shared and evolved mechanisms
+- [Mechanisms](./innovations.md): current product contracts and shared mechanisms
 - [Argot](./argot.md): the per-project shorthand the model writes in
 - [Performance](./performance.md): retries, edit format, and tool bounds
 - [Edit path and tool arguments](../benefits/first-attempt-edits.md)
