@@ -23,6 +23,7 @@ const RESET = {
 	dim: false,
 	italic: false,
 	underline: false,
+	strike: false,
 	reverse: false,
 } as const;
 
@@ -75,6 +76,21 @@ describe("attributes", () => {
 		expect(cell("\x1b[3mX").italic).toBe(true);
 		expect(cell("\x1b[4mX").underline).toBe(true);
 		expect(cell("\x1b[7mX").reverse).toBe(true);
+		expect(cell("\x1b[9mX").strike).toBe(true);
+	});
+
+	/**
+	 * The todo board's completion sweep is a partial strike: a struck prefix, then
+	 * SGR 29, then the rest of the row unstruck. A decoder that honoured 9 and
+	 * ignored 29 would draw the whole row struck and the proof would show the
+	 * gesture already finished on every frame of it.
+	 */
+	it("ends a struck run on 29 and leaves the rest of the row clear", () => {
+		const line = "\x1b[9mdone\x1b[29m rest";
+		expect(cell(line, 0, 12).strike).toBe(true);
+		expect(cell(line, 3, 12).strike).toBe(true);
+		expect(cell(line, 4, 12).strike).toBe(false);
+		expect(cell(line, 5, 12).strike).toBe(false);
 	});
 
 	it("clears bold and dim together on 22, as a terminal does", () => {

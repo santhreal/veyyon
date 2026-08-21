@@ -29,6 +29,12 @@ export interface Cell {
 	italic: boolean;
 	underline: boolean;
 	/**
+	 * Set by SGR 9. A proof of the todo board's completion sweep is a proof of
+	 * exactly this attribute travelling across a row, so a rasterizer that dropped
+	 * it could not show the gesture it was pointed at.
+	 */
+	strike: boolean;
+	/**
 	 * Set by SGR 7. Left as a flag rather than applied here because swapping
 	 * foreground and background needs the DEFAULT colours, which belong to the
 	 * ground the proof is drawn against, not to the stream.
@@ -90,11 +96,21 @@ interface Style {
 	dim: boolean;
 	italic: boolean;
 	underline: boolean;
+	strike: boolean;
 	reverse: boolean;
 }
 
 function resetStyle(): Style {
-	return { fg: undefined, bg: undefined, bold: false, dim: false, italic: false, underline: false, reverse: false };
+	return {
+		fg: undefined,
+		bg: undefined,
+		bold: false,
+		dim: false,
+		italic: false,
+		underline: false,
+		strike: false,
+		reverse: false,
+	};
 }
 
 /**
@@ -126,6 +142,9 @@ export function applySgr(style: Style, params: number[]): Style {
 			case 7:
 				next.reverse = true;
 				break;
+			case 9:
+				next.strike = true;
+				break;
 			case 22:
 				next.bold = false;
 				next.dim = false;
@@ -138,6 +157,9 @@ export function applySgr(style: Style, params: number[]): Style {
 				break;
 			case 27:
 				next.reverse = false;
+				break;
+			case 29:
+				next.strike = false;
 				break;
 			case 39:
 				next.fg = undefined;
@@ -177,6 +199,7 @@ function blankCell(style: Style): Cell {
 		dim: style.dim,
 		italic: style.italic,
 		underline: style.underline,
+		strike: style.strike,
 		reverse: style.reverse,
 		continuation: false,
 	};

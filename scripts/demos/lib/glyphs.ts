@@ -181,6 +181,10 @@ const FONT: Readonly<Record<string, string>> = {
 	"↓": "..#../..#../..#../#.#.#/.###./..#../.....",
 	// Reply arrow: the Comms stream marks a message that answers another with it.
 	"↩": "....#/....#/..#.#/.#..#/#####/.#.../..#..",
+	// The rewind mark an injected-rule note carries in its headline. The note's whole
+	// claim is "a rule matched and the stream is going back", so a proof of that block
+	// with this drawn as an anonymous box has lost half of what it went to show.
+	"↶": "...../.###./#...#/#...#/#..../##.../.....",
 	"⌕": "...../.###./#...#/#...#/.###./...#./....#",
 	"…": "...../...../...../...../...../#.#.#/.....",
 	"▶": ".#.../.##../.###./.####/.###./.##../.#...",
