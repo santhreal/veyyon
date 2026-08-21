@@ -137,6 +137,40 @@ pub enum Subsystem {
 	WireProtocolArgot,
 }
 
+impl Subsystem {
+	/// The kebab-case id, which is the same token `serde` writes into a row and
+	/// the same one the manifest and a report group by. An exhaustive match
+	/// rather than a derive so a new subsystem fails to compile here instead of
+	/// reaching a report as `Debug` output.
+	#[must_use]
+	pub const fn as_str(self) -> &'static str {
+		match self {
+			Self::RenderingTerminalUi => "rendering-terminal-ui",
+			Self::AiProvidersStreaming => "ai-providers-streaming",
+			Self::ToolExecutionRuntime => "tool-execution-runtime",
+			Self::SessionTreeEngine => "session-tree-engine",
+			Self::PersistenceMnemopi => "persistence-mnemopi",
+			Self::ConcurrencyAgentMesh => "concurrency-agent-mesh",
+			Self::SecuritySandbox => "security-sandbox",
+			Self::CliEngineModes => "cli-engine-modes",
+			Self::InstallersDistribution => "installers-distribution",
+			Self::NativeServicesWorkers => "native-services-workers",
+			Self::ConfigurationSettings => "configuration-settings",
+			Self::ContextCompaction => "context-compaction",
+			Self::MemoryEngineVectors => "memory-engine-vectors",
+			Self::EditingHashlineEngine => "editing-hashline-engine",
+			Self::LspClientDiagnostics => "lsp-client-diagnostics",
+			Self::WireProtocolArgot => "wire-protocol-argot",
+		}
+	}
+}
+
+impl fmt::Display for Subsystem {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.write_str(self.as_str())
+	}
+}
+
 /// Where a case came from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -186,6 +220,11 @@ impl FixtureRef {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+// Every nested record carries the same renaming as [`ConformanceCase`], not just
+// the ones that have a multi-word field today: the record's serialized form is
+// the documented schema AND the identity payload, so a field added later in
+// snake_case would both break the documented shape and move every case id.
+#[serde(rename_all = "camelCase")]
 pub struct GeneratorInfo {
 	/// The generator family that produced the row, for triage and for
 	/// regenerating one family without touching the rest.
@@ -195,6 +234,7 @@ pub struct GeneratorInfo {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Contract {
 	/// Stable dotted id, e.g. `provider.clean-eof.complete-tool-batch`.
 	pub id:                String,
@@ -205,6 +245,7 @@ pub struct Contract {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Target {
 	pub kind:  TargetKind,
 	/// The production entry point: a migrated Rust path, or the artifact name.
@@ -212,6 +253,7 @@ pub struct Target {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Environment {
 	pub platform:           Platform,
 	pub clock:              ClockMode,
@@ -223,6 +265,7 @@ pub struct Environment {
 
 /// One thing done to the product, in order.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Stimulus {
 	pub kind:  String,
 	pub value: String,
@@ -232,6 +275,7 @@ pub struct Stimulus {
 /// rather than defaulted, so an oracle cannot silently accept a wider outcome
 /// than the one it was written for.
 #[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Oracle {
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub exit_code:               Option<i32>,
@@ -255,6 +299,7 @@ pub struct Oracle {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Coverage {
 	/// Registry members this case claims, enumerated from production at
 	/// generation time (`api:openai-completions`, `tool:bash`).
@@ -539,6 +584,42 @@ mod tests {
 			oracle:         Oracle { exit_code: Some(0), ..Oracle::default() },
 			coverage:       Coverage::default(),
 			provenance:     Provenance::Generated,
+		}
+		.seal()
+	}
+
+	/// A case with every optional field present, so a check that reads the
+	/// serialized shape sees every key the record can carry.
+	/// `skip_serializing_if` means the minimal fixture above serializes to a
+	/// subset, and a subset is exactly how a missing key goes unnoticed.
+	pub(super) fn fully_populated() -> ConformanceCase {
+		ConformanceCase {
+			contract: Contract {
+				id:                "provider.clean-eof.complete-tool-batch".to_owned(),
+				expected_error_id: Some("provider.stream.truncated".to_owned()),
+			},
+			target: Target { kind: TargetKind::CompiledProduct, entry: "veyyon".to_owned() },
+			environment: Environment {
+				platform:           Platform::LinuxX64,
+				clock:              ClockMode::RealBounded,
+				filesystem_fixture: Some(FixtureRef::of(b"workspace")),
+				provider_fixture:   Some(FixtureRef::of(b"sse")),
+			},
+			oracle: Oracle {
+				exit_code:               Some(0),
+				stop_reason:             Some("toolUse".to_owned()),
+				error_id:                Some("provider.stream.truncated".to_owned()),
+				max_ms:                  Some(2_500),
+				stdout_fixture:          Some(FixtureRef::of(b"stdout")),
+				persisted_state_fixture: Some(FixtureRef::of(b"state")),
+				tool_executions:         BTreeMap::from([("inspect".to_owned(), 1)]),
+			},
+			coverage: Coverage {
+				registry_members: vec!["api:openai-completions".to_owned()],
+				requirements:     vec!["provider-terminal-completeness".to_owned()],
+			},
+			provenance: Provenance::IncidentDerived,
+			..admissible()
 		}
 		.seal()
 	}
@@ -903,5 +984,93 @@ mod tests {
 				.any(|cause| cause.contains("duplicate semantic case")),
 			"{chain:?}"
 		);
+	}
+}
+
+/// WHY: the record's serialized form is load-bearing twice over — it is the
+/// documented corpus schema, and it is the byte string every case id is taken
+/// over. `rename_all` on the outer record renames only the outer record, so
+/// `Oracle`, `Environment`, `Contract` and `Coverage` each shipped their fields
+/// in `snake_case` while the design document claimed `exitCode`, `maxMs`,
+/// `filesystemFixture` and `registryMembers`. Nothing failed: the corpus
+/// round-trips through its own serde either way, and a reader who trusted the
+/// document wrote a consumer against keys that did not exist.
+///
+/// The gate walks the serialized case and refuses ANY key with an underscore,
+/// at any depth, so a nested record added later cannot reintroduce the class.
+/// It does not check that a key is spelled the way the document spells it — a
+/// renamed field is a schema change and moves the ids, which the id assertions
+/// above already catch.
+#[cfg(test)]
+mod serialized_shape {
+	use serde_json::Value;
+
+	use super::tests::fully_populated;
+
+	/// Every object key in `value`, at every depth, with the path that reached
+	/// it. Dimension maps are keyed by generator-chosen axis names rather than
+	/// by field names, so they are excluded by their path.
+	fn keys(value: &Value, path: &str, found: &mut Vec<(String, String)>) {
+		match value {
+			Value::Object(fields) => {
+				for (key, nested) in fields {
+					let child = if path.is_empty() {
+						key.clone()
+					} else {
+						format!("{path}.{key}")
+					};
+					found.push((child.clone(), key.clone()));
+					keys(nested, &child, found);
+				}
+			},
+			Value::Array(items) => {
+				for item in items {
+					keys(item, path, found);
+				}
+			},
+			_ => {},
+		}
+	}
+
+	#[test]
+	fn every_key_at_every_depth_is_camel_case() {
+		let case = fully_populated();
+		let value = serde_json::to_value(&case).expect("a case serializes");
+		let mut found = Vec::new();
+		keys(&value, "", &mut found);
+		// A free-form map's keys belong to whoever filled it, not to the schema.
+		let free_form = ["dimensions", "oracle.toolExecutions"];
+		let offenders: Vec<&(String, String)> = found
+			.iter()
+			.filter(|(path, key)| {
+				key.contains('_')
+					&& !free_form
+						.iter()
+						.any(|prefix| path.starts_with(&format!("{prefix}.")))
+			})
+			.collect();
+		assert!(offenders.is_empty(), "snake_case keys reached the record: {offenders:?}");
+	}
+
+	#[test]
+	fn the_nested_records_serialize_the_keys_the_schema_documents() {
+		// The four that actually regressed, pinned by name. The sweep above
+		// closes the class; this says which spelling the document promised.
+		let value = serde_json::to_value(fully_populated()).expect("a case serializes");
+		for (path, key) in [
+			("environment", "filesystemFixture"),
+			("environment", "providerFixture"),
+			("oracle", "exitCode"),
+			("oracle", "stopReason"),
+			("oracle", "errorId"),
+			("oracle", "maxMs"),
+			("oracle", "stdoutFixture"),
+			("oracle", "persistedStateFixture"),
+			("oracle", "toolExecutions"),
+			("contract", "expectedErrorId"),
+			("coverage", "registryMembers"),
+		] {
+			assert!(value[path].get(key).is_some(), "{path}.{key} is missing from {}", value[path]);
+		}
 	}
 }
