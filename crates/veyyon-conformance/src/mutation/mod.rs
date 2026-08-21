@@ -193,6 +193,12 @@ impl CriticalPath {
 			Self::PersistedVersionRejection => "persisted-version-rejection",
 		}
 	}
+
+	/// The path `id` names, for reading a ledger row back.
+	#[must_use]
+	pub fn from_id(id: &str) -> Option<Self> {
+		Self::all().into_iter().find(|path| path.id() == id)
+	}
 }
 
 impl fmt::Display for CriticalPath {
