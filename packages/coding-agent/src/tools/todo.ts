@@ -2,8 +2,7 @@ import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallb
 import type { ToolExample } from "@veyyon/ai";
 import { type SessionTelemetryDetail, sessionTelemetryDetail } from "@veyyon/ai/instrumentation";
 import type { Component } from "@veyyon/tui";
-import { padding, Text, truncateToWidth, visibleWidth } from "@veyyon/tui";
-import { subCellBar } from "@veyyon/tui/sub-cell-bar";
+import { Text, truncateToWidth, visibleWidth } from "@veyyon/tui";
 import { formatCount, NON_ALNUM_RUN_RE, prompt } from "@veyyon/utils";
 import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
 import { sanitizeText } from "@veyyon/utils/sanitize-text";
@@ -15,9 +14,9 @@ import type { Theme } from "../modes/theme/theme";
 import { toolsPrompts } from "../prompts/tools/rows";
 import type { ToolSession } from "../sdk";
 import type { SessionEntry } from "../session/session-entries";
-import { framedBlock, renderStatusLine } from "../tui";
+import { framedBlock, renderStatusLine, renderTreeList } from "../tui";
 import { normalizePathLikeInput, resolveToCwd } from "./path-utils";
-import { formatErrorDetail, formatMoreItems } from "./render-utils";
+import { formatErrorDetail } from "./render-utils";
 
 // =============================================================================
 // Types
@@ -1149,54 +1148,55 @@ function formatSummaryBody(phases: TodoPhase[], errors: string[], readOnly: bool
 		return formatMutationSummary(phases, params);
 	}
 
-	const open = phases.flatMap(phase =>
-		phase.tasks.filter(task => !isTerminalTodoStatus(task.status)).map(task => ({ ...task, phase: phase.name })),
-	);
-	const closed = tasks.length - open.length;
+	const remainingByPhase = phases
+		.map(phase => ({
+			name: phase.name,
+			tasks: phase.tasks.filter(task => !isTerminalTodoStatus(task.status)),
+		}))
+		.filter(phase => phase.tasks.length > 0);
+	const remainingTasks = remainingByPhase.flatMap(phase => phase.tasks.map(task => ({ ...task, phase: phase.name })));
+
 	const currentIdx = phases.findIndex(phase => phase.tasks.some(task => !isTerminalTodoStatus(task.status)));
 
 	const lines: string[] = [];
 	if (errorSummary) lines.push(errorSummary);
-	// One line of arithmetic rather than three. `open` and `closed` are complements
-	// of one decision, so the "Remaining items" line was restating the number the
-	// line under it already carried, and both sat above a board that carried it a
-	// third time.
-	const standing = [`${closed}/${tasks.length} done`, `${open.length} open`];
-	if (currentIdx < 0) {
-		standing.push(`all ${phases.length} ${phases.length === 1 ? "phase" : "phases"} closed`);
+	lines.push(remainingTasks.length === 0 ? "Remaining items: none." : `Remaining items: ${remainingTasks.length}.`);
+	// Open and closed are complements of one owner's decision, so
+	// `closed + open === total` holds for any status the vocabulary grows.
+	const closedAll = tasks.filter(task => isTerminalTodoStatus(task.status)).length;
+	lines.push(`Overall: ${closedAll}/${tasks.length} done, ${remainingTasks.length} open.`);
+	if (currentIdx === -1) {
+		lines.push(
+			`Active phase: none (all ${phases.length} ${phases.length === 1 ? "phase is" : "phases are"} closed).`,
+		);
 	} else {
-		const current = phases[currentIdx]!;
+		const current = phases[currentIdx];
 		const done = current.tasks.filter(task => isTerminalTodoStatus(task.status)).length;
-		const name = boundedTodoPreviewText(current.name, TODO_ITEM_PREVIEW_WIDTH);
-		// The pointer's auto-advance RULE used to be explained here, on every result,
-		// in a sentence longer than the rest of the report put together. It is
-		// standing policy, the tool description states it, and the model therefore
-		// reads it on every turn whether or not a result repeats it.
-		//
-		// The one thing that sentence carried which the rule does not is the CASE:
-		// the active phase is the earliest holding open work, so the pointer can sit
-		// in a phase whose successors already have closed tasks, and a reader could
-		// take that for work being un-completed. That is two words, and only on the
-		// results where it is true.
+		// The active phase is the EARLIEST one still holding open work, so the
+		// in-progress pointer can sit in a phase whose successors already have
+		// completed tasks. Explain that worked-ahead case explicitly.
 		const workedAhead = phases.some(
 			(phase, idx) => idx > currentIdx && phase.tasks.some(task => isTerminalTodoStatus(task.status)),
 		);
-		const note = workedAhead ? ", worked ahead" : "";
-		standing.push(`phase ${currentIdx + 1}/${phases.length} ${name} (${done}/${current.tasks.length}${note})`);
+		lines.push(
+			`Active phase ${currentIdx + 1}/${phases.length} "${boundedTodoPreviewText(current.name, TODO_ITEM_PREVIEW_WIDTH)}" (${done}/${current.tasks.length})${
+				workedAhead
+					? " — earliest phase with open tasks; the in-progress pointer auto-advances to the earliest open task on each completion, so it can sit behind out-of-order work (nothing was un-completed)."
+					: "."
+			}`,
+		);
 	}
-	lines.push(standing.join(" · "));
-
-	// Only OPEN work is listed. Re-printing closed tasks spends the report's rows
-	// telling the caller what it already did: four completed rows were carrying
-	// one open task between them, and the closed ones are in the board above.
+	const previewItems = prioritizeTodoItems(
+		phases.flatMap(phase => phase.tasks.map(task => ({ ...task, phase: phase.name }))),
+	);
 	const preview = createBoundedTodoPreview();
-	for (const item of prioritizeTodoItems(open).slice(0, TODO_REMINDER_PREVIEW_LIMIT)) {
+	for (const item of previewItems.slice(0, TODO_REMINDER_PREVIEW_LIMIT)) {
 		const marker = TODO_PREVIEW_MARKERS[item.status];
 		if (!preview.push(`- ${marker} `, `${item.content} (${item.phase})`)) break;
 	}
 	lines.push(...preview.lines);
-	const hidden = open.length - preview.lines.length;
-	if (hidden > 0) lines.push(`- … ${hidden} more open`);
+	const hidden = tasks.length - preview.lines.length;
+	if (hidden > 0) lines.push(`- … ${hidden} more item(s) retained in machine todo state.`);
 	return lines.join("\n");
 }
 
@@ -1415,55 +1415,9 @@ export function formatPhaseDisplayName(name: string, oneBasedIndex: number): str
 	return `${phaseRomanNumeral(oneBasedIndex)}. ${name}`;
 }
 
-/**
- * Frames one row spends coming up to full brightness.
- *
- * The board used to TYPE itself in: each row was truncated mid-word behind a
- * block cursor, and rows that had not started yet drew a lone track cell, so the
- * entrance was a stray column of blocks over three rows of half-words. A panel
- * whose only job is to say what the plan is cannot be unreadable while it
- * arrives, and the product's own recordings are not allowed to show typing.
- *
- * So a row arrives whole and lights up instead: dim, then muted, then its own
- * colour, one frame behind the row above it. Every frame of the entrance is
- * legible, and the wave travelling down the block is what reads as assembly.
- */
-export const TODO_ENTRANCE_REVEAL_FRAMES = 3;
-/** Frames a row waits behind the row above it, so the board assembles top down. */
-export const TODO_ENTRANCE_STAGGER_FRAMES = 1;
-/**
- * Rows past this one start together.
- *
- * The envelope is what keeps a settled board from repainting indefinitely: a tool
- * block with a final result is committed to native scrollback, and an animation
- * that outlives the commit freezes a half-drawn frame into history. So a long
- * board lands in the same number of frames a short one does — the stagger stops
- * accumulating here rather than growing with the row count.
- */
-const TODO_ENTRANCE_MAX_STAGGERED_ROWS = 8;
-
-/**
- * A closing task is written and checked for this long before its strike starts.
- *
- * Derived from the entrance rather than chosen: a strike drawn over a row that is
- * still dim reads as neither, so the hold outlasts the row's own reveal. It
- * covers the first two task rows, which is where a closing task actually is — it
- * leads its phase.
- */
-export const TODO_STRIKE_HOLD_FRAMES = TODO_ENTRANCE_REVEAL_FRAMES + 2 * TODO_ENTRANCE_STAGGER_FRAMES;
-export const TODO_STRIKE_REVEAL_FRAMES = 8;
+export const TODO_STRIKE_HOLD_FRAMES = 2;
+export const TODO_STRIKE_REVEAL_FRAMES = 12;
 export const TODO_STRIKE_TOTAL_FRAMES = TODO_STRIKE_HOLD_FRAMES + TODO_STRIKE_REVEAL_FRAMES;
-
-/**
- * The board's whole animation envelope: by this frame nothing is still moving.
- *
- * The entrance and the strike-through run on ONE counter, so the driver has one
- * number to stop at and the two cannot disagree about when the board settled.
- */
-export const TODO_BOARD_TOTAL_FRAMES = Math.max(
-	TODO_STRIKE_TOTAL_FRAMES,
-	TODO_ENTRANCE_MAX_STAGGERED_ROWS * TODO_ENTRANCE_STAGGER_FRAMES + TODO_ENTRANCE_REVEAL_FRAMES,
-);
 const EMPTY_COMPLETION_KEYS = new Set<string>();
 const STRIKE_START = "\x1b[9m";
 const STRIKE_END = "\x1b[29m";
@@ -1488,262 +1442,37 @@ function strikeRevealCount(text: string, frame: number | undefined): number | un
 	return Math.ceil((chars.length * revealFrame) / TODO_STRIKE_REVEAL_FRAMES);
 }
 
-/** Where a row is in its entrance: dim, then muted, then its own colour. */
-type TodoRevealStage = "arriving" | "settling" | "settled";
-
-/** The colour a row draws in before it reaches its own. */
-const TODO_REVEAL_TINT: Record<Exclude<TodoRevealStage, "settled">, "dim" | "muted"> = {
-	arriving: "dim",
-	settling: "muted",
-};
-
-function todoRevealStage(rowIndex: number, frame: number | undefined): TodoRevealStage {
-	if (frame === undefined) return "settled";
-	const start = Math.min(rowIndex, TODO_ENTRANCE_MAX_STAGGERED_ROWS) * TODO_ENTRANCE_STAGGER_FRAMES;
-	const elapsed = frame - start;
-	if (elapsed <= 0) return "arriving";
-	if (elapsed >= TODO_ENTRANCE_REVEAL_FRAMES) return "settled";
-	return "settling";
-}
-
 function formatTodoLine(
 	item: TodoItem,
 	uiTheme: Theme,
 	prefix: string,
 	completionKeys: Set<string>,
 	frame: number | undefined,
-	stage: TodoRevealStage = "settled",
 ): string {
 	const safeContent = boundedTodoPreviewText(item.content, TODO_ITEM_PREVIEW_WIDTH);
 	const checkbox = uiTheme.checkbox;
-	// A row still arriving draws in the reveal's tint whatever its status, so the
-	// wave down the block is one gradient and no row reads as having been skipped.
-	//
-	// The ladder only ever RAMPS UP TO a row's own colour, though. A completed row
-	// is already the dimmest thing on the board, so tinting it would brighten it at
-	// `settling` and fade it back at `settled` — the entrance would flash the eye
-	// onto finished work, which is the exact weighting this board was fixed to
-	// stop. A row with nowhere brighter to go simply arrives.
-	const tint = stage === "settled" ? undefined : TODO_REVEAL_TINT[stage];
 	switch (item.status) {
 		case "completed": {
 			const revealCount = completionKeys.has(item.content) ? strikeRevealCount(safeContent, frame) : undefined;
 			const content =
 				revealCount === undefined ? strikethroughText(safeContent) : partialStrikethrough(safeContent, revealCount);
-			// Closed work RECEDES. It was the most saturated thing on the board while
-			// the task actually in flight was quieter, which put the eye on what had
-			// already been finished.
-			return uiTheme.fg("dim", `${prefix}${checkbox.checked} ${content}`);
+			return uiTheme.fg("success", `${prefix}${checkbox.checked} ${content}`);
 		}
-		case "in_progress": {
-			// The one row worth finding, so it is the only one that is bold. Its own
-			// glyph, and the same one the HUD above the composer draws for this state.
-			const row = `${prefix}${checkbox.progress} ${safeContent}`;
-			return tint ? uiTheme.fg(tint, row) : uiTheme.fg("accent", chalk.bold(row));
-		}
+		case "in_progress":
+			// Its own glyph, not the pending box in a different colour, and the
+			// same one the HUD above the composer draws for this state.
+			return uiTheme.fg("accent", `${prefix}${checkbox.progress} ${safeContent}`);
 		case "abandoned":
-			return uiTheme.fg(tint ?? "error", `${prefix}${checkbox.unchecked} ${strikethroughText(safeContent)}`);
+			return uiTheme.fg("error", `${prefix}${checkbox.unchecked} ${strikethroughText(safeContent)}`);
 		case "pending":
-			// Muted rather than dim: open work outranks closed work, and the two used
-			// to draw in the same colour with only the glyph between them.
-			return uiTheme.fg(tint ?? "muted", `${prefix}${checkbox.unchecked} ${safeContent}`);
+			return uiTheme.fg("dim", `${prefix}${checkbox.unchecked} ${safeContent}`);
 		default:
 			// A new status needs its own glyph and colour before the card can draw
 			// it. Falling through to the pending box would paint closed work as
 			// open, which is the collapse defect wearing a per-row disguise.
 			item.status satisfies never;
-			return uiTheme.fg(tint ?? "muted", `${prefix}${checkbox.unchecked} ${safeContent}`);
+			return uiTheme.fg("dim", `${prefix}${checkbox.unchecked} ${safeContent}`);
 	}
-}
-
-// =============================================================================
-// The board's chrome
-// =============================================================================
-
-/**
- * Cells of the board's one gauge, in the header.
- *
- * There used to be one of these per phase row as well, which is where the
- * duplication was: a 12-cell bar cannot separate `0/2` from `1/4`, and the
- * fraction it approximated was printed beside it in full.
- */
-const TODO_GAUGE_CELLS = 12;
-
-/** Columns a task row is indented under the phase row that names it. */
-const TODO_PHASE_INDENT = 2;
-
-/**
- * `████▊░░░░░░░` for `done` of `total`, fill in success, track in dim.
- *
- * The board's only count of itself used to be the total, so a plan four tasks
- * into nine and a plan nobody had started read the same. This is the product's
- * one bar owner at eight steps per cell, so one task closing moves the fill
- * instead of waiting for a whole column's worth of them. `charge` is required
- * rather than defaulted: the header is the only caller, it always animates, and
- * a default of 1 would be a still gauge nobody asks for.
- */
-function todoGauge(done: number, total: number, uiTheme: Theme, charge: number): string {
-	const ramp = uiTheme.getBarRamp();
-	const bar = subCellBar(total <= 0 ? 0 : (done / total) * charge, TODO_GAUGE_CELLS, { ramp });
-	// One slice at the first track cell: the fill and the track cannot disagree
-	// about the boundary the way two independently counted runs could.
-	const trackAt = bar.indexOf(ramp.track);
-	return trackAt < 0
-		? uiTheme.fg("success", bar)
-		: `${uiTheme.fg("success", bar.slice(0, trackAt))}${uiTheme.fg("dim", bar.slice(trackAt))}`;
-}
-
-/**
- * How far through its entrance the board is, eased out, at `frame`.
- *
- * An absent frame is a settled board: every value is drawn final, which is also
- * what a transcript rebuilt from session entries has to produce.
- */
-function todoEntranceCharge(frame: number | undefined): number {
-	if (frame === undefined) return 1;
-	const t = Math.min(1, Math.max(0, frame / TODO_BOARD_TOTAL_FRAMES));
-	return 1 - (1 - t) * (1 - t);
-}
-
-/** Tasks of `phase` that are closed, and the count of them that were not dropped. */
-function todoPhaseProgress(phase: TodoPhase): { done: number; closed: number } {
-	let done = 0;
-	let closed = 0;
-	for (const task of phase.tasks) {
-		if (!isTerminalTodoStatus(task.status)) continue;
-		closed++;
-		if (task.status === "completed") done++;
-	}
-	return { done, closed };
-}
-
-/**
- * One phase's row: `◐ II. Validation   2/3`.
- *
- * A phase used to carry a 12-cell gauge of its own, and the fraction it stands
- * for was printed two columns to its right. Four phases spent 48 cells saying
- * what four fractions already said, and at that width a gauge cannot tell `0/2`
- * from `1/4` anyway — both round to an empty first cell. So the phase row is a
- * marker, a name and its count, the header keeps the board's one gauge, and the
- * gauge column that is gone is what the task rows now have room to be legible
- * in. A phase with every task closed is ONE of these rows with nothing under it,
- * which is where the wall of struck-through history went.
- */
-function todoPhaseRow(
-	phase: TodoPhase,
-	nameWidth: number,
-	oneBasedIndex: number,
-	uiTheme: Theme,
-	options: { active: boolean; stage: TodoRevealStage },
-): string {
-	const name = boundedTodoPreviewText(formatPhaseDisplayName(phase.name, oneBasedIndex), TODO_ITEM_PREVIEW_WIDTH);
-	const { done, closed } = todoPhaseProgress(phase);
-	const checkbox = uiTheme.checkbox;
-	// Marker by standing, from the same three glyphs the task rows draw, so a
-	// phase and a task agree about what "closed" and "in flight" look like.
-	// `closed`, not `done`: a phase whose last task was dropped is finished with,
-	// even though its count will never reach its total.
-	const settled = closed === phase.tasks.length;
-	const marker = settled ? checkbox.checked : closed > 0 || options.active ? checkbox.progress : checkbox.unchecked;
-	const pad = padding(Math.max(0, nameWidth - visibleWidth(name)));
-	const row = `${marker} ${name}${pad}  ${done}/${phase.tasks.length}`;
-	const tint = options.stage === "settled" ? undefined : TODO_REVEAL_TINT[options.stage];
-	// Never brighter than the row's own colour: a CLOSED phase is dim already, so
-	// tinting it would brighten it mid-entrance and fade it back. It arrives.
-	if (tint && !settled) return uiTheme.fg(tint, row);
-	// One colour for the whole row. The name and its count used to disagree — an
-	// accent name beside a dim fraction — which made the count read as chrome
-	// belonging to the gauge rather than as the phase's own standing.
-	if (options.active) return uiTheme.fg("accent", chalk.bold(row));
-	// A phase that has not started is BOLD muted, because its pending tasks are
-	// plain muted and the two were otherwise the same colour: the row that names a
-	// phase has to read as a heading over the rows it owns. Three tiers, and the
-	// eye can order them: dim closed, bold muted ahead, bold accent in flight.
-	return settled ? uiTheme.fg("dim", row) : uiTheme.fg("muted", chalk.bold(row));
-}
-
-/**
- * Every row under the header, for one board.
- *
- * Collapsed, a phase lists the work still open plus anything that closed on THIS
- * write — the task whose strike-through is playing right now, which is the one
- * closed row worth a row. Expanded lists every task the phase holds. So the two
- * modes differ in what a phase lists and in nothing else: no second layout and
- * no flat-versus-nested switch.
- *
- * There are no tree branches. A board is one level deep under its phase and the
- * block already draws a rail down the left, so a `├─` per row drew a hierarchy
- * that was not there, twice.
- */
-function renderTodoBoardBody(
-	phases: readonly TodoPhase[],
-	uiTheme: Theme,
-	options: {
-		expanded: boolean;
-		spinnerFrame: number | undefined;
-		completionKeysByPhase: ReadonlyMap<string, Set<string>>;
-		multiPhase: boolean;
-	},
-): string[] {
-	const { expanded, spinnerFrame, completionKeysByPhase, multiPhase } = options;
-	let nameWidth = 0;
-	if (multiPhase) {
-		for (let index = 0; index < phases.length; index++) {
-			const label = boundedTodoPreviewText(
-				formatPhaseDisplayName(phases[index]!.name, index + 1),
-				TODO_ITEM_PREVIEW_WIDTH,
-			);
-			nameWidth = Math.max(nameWidth, visibleWidth(label));
-		}
-	}
-	const indent = multiPhase ? padding(TODO_PHASE_INDENT) : "";
-	const lines: string[] = [];
-	let budget = expanded ? Number.POSITIVE_INFINITY : TODO_REMINDER_PREVIEW_LIMIT;
-	let withheld = 0;
-	// The phase the board is answering for is the earliest one with open work,
-	// which is the same phase the tool's result text names. Computed the same way
-	// from the same state, so the card and the text cannot disagree about where
-	// the plan stands.
-	const activeIndex = phases.findIndex(phase => phase.tasks.some(task => !isTerminalTodoStatus(task.status)));
-	for (let index = 0; index < phases.length; index++) {
-		const phase = phases[index]!;
-		const completionKeys = completionKeysByPhase.get(phase.name) ?? EMPTY_COMPLETION_KEYS;
-		// The task that closed on THIS write leads its phase: its strike-through is
-		// playing, so it is the one thing on the board that is moving, and it used
-		// to sort to the bottom of the list behind every pending row.
-		const listed = expanded
-			? phase.tasks
-			: [
-					...phase.tasks.filter(task => isTerminalTodoStatus(task.status) && completionKeys.has(task.content)),
-					...prioritizeTodoItems(phase.tasks.filter(task => !isTerminalTodoStatus(task.status))),
-				];
-		if (multiPhase) {
-			// Staged on the row's position in the BLOCK, not in its phase: the wave
-			// travels down the panel the reader is looking at, and `lines.length` is
-			// the index of the row about to be pushed.
-			const stage = todoRevealStage(lines.length, spinnerFrame);
-			lines.push(todoPhaseRow(phase, nameWidth, index + 1, uiTheme, { active: index === activeIndex, stage }));
-		}
-		for (const task of listed) {
-			if (budget <= 0) {
-				withheld++;
-				continue;
-			}
-			budget--;
-			const stage = todoRevealStage(lines.length, spinnerFrame);
-			lines.push(`${indent}${formatTodoLine(task, uiTheme, "", completionKeys, spinnerFrame, stage)}`);
-		}
-	}
-	if (withheld > 0) {
-		const stage = todoRevealStage(lines.length, spinnerFrame);
-		const tint = stage === "settled" ? "muted" : TODO_REVEAL_TINT[stage];
-		lines.push(`${indent}${uiTheme.fg(tint, formatMoreItems(withheld, "todo"))}`);
-	}
-	// The ROW COUNT never varies with the frame. Every row is emitted at every
-	// frame and the reveal only changes its colour, because a block whose height
-	// changes per frame is the blank-band and tearing class, and this one is
-	// redrawn inside the live region.
-	return lines;
 }
 
 export const todoToolRenderer = {
@@ -1821,49 +1550,71 @@ export const todoToolRenderer = {
 			keys.add(task.content);
 		}
 		const allTasks = phases.flatMap(phase => phase.tasks);
-		const doneTasks = allTasks.reduce((count, task) => count + (task.status === "completed" ? 1 : 0), 0);
-		// The gauge is appended AFTER the status line rather than passed as `meta`:
-		// meta is wrapped in one dim span, and the gauge is deliberately two-toned,
-		// so its inner colour reset would end the dim for everything after it.
-		//
-		// Built per frame, inside the render closure below, because the gauge charges
-		// up to its value as the rows write themselves in. A header composed once at
-		// `renderResult` time would hold whichever frame happened to be current then.
-		const buildHeader = (charge: number): string =>
-			renderStatusLine(
-				{
-					iconOverride: uiTheme.styledSymbol("tool.todo", "accent"),
-					title: "Todo",
-					meta: [`${doneTasks}/${formatCount("task", allTasks.length)}`],
-				},
-				uiTheme,
-			) + (allTasks.length > 0 ? ` ${todoGauge(doneTasks, allTasks.length, uiTheme, charge)}` : "");
+		const header = renderStatusLine(
+			{
+				iconOverride: uiTheme.styledSymbol("tool.todo", "accent"),
+				title: "Todo",
+				meta: [formatCount("task", allTasks.length)],
+			},
+			uiTheme,
+		);
 		if (allTasks.length === 0) {
 			const fallback = boundedTodoPreviewText(
 				result.content?.find(content => content.type === "text")?.text ?? "No todos",
 				TODO_TOTAL_PREVIEW_WIDTH,
 			);
-			return new Text(`${buildHeader(1)}\n  ${uiTheme.fg("dim", fallback)}`, 0, 0);
+			return new Text(`${header}\n  ${uiTheme.fg("dim", fallback)}`, 0, 0);
 		}
 
 		return framedBlock(uiTheme, width => {
-			// Frame 0 is the SETTLED board, and the animation runs 1..TOTAL.
-			//
-			// `spinnerFrame` is a shared field: surfaces that do not animate at all
-			// pass a fixed 0 — `veyyon gallery`, the HTML export, the collab guest —
-			// and whatever frame 0 draws is what they draw forever. An entrance whose
-			// first frame is an unwritten board would leave every one of them showing
-			// a column of empty track cells and no tasks. One normalization here, so
-			// no helper below has to know the rule.
-			const spinnerFrame = (options.spinnerFrame ?? 0) > 0 ? options.spinnerFrame : undefined;
-			const bodyLines = renderTodoBoardBody(phases, uiTheme, {
-				expanded: options.expanded,
-				spinnerFrame,
-				completionKeysByPhase,
-				multiPhase: phases.length > 1,
-			});
+			const { expanded, spinnerFrame } = options;
+			const multiPhase = phases.length > 1;
+			let bodyLines: string[];
+			if (!expanded && multiPhase) {
+				const collapsed = prioritizeTodoItems(
+					phases.flatMap(phase => phase.tasks.map(task => ({ ...task, phase: phase.name }))),
+				);
+				bodyLines = renderTreeList(
+					{
+						items: collapsed,
+						expanded: false,
+						maxCollapsed: TODO_REMINDER_PREVIEW_LIMIT,
+						itemType: "todo",
+						truncateFrom: "end",
+						renderItem: todo => {
+							const completionKeys = completionKeysByPhase.get(todo.phase) ?? EMPTY_COMPLETION_KEYS;
+							const line = formatTodoLine(todo, uiTheme, "", completionKeys, spinnerFrame);
+							const phase = boundedTodoPreviewText(todo.phase, TODO_ITEM_PREVIEW_WIDTH);
+							return `${line} ${uiTheme.fg("dim", `(${phase})`)}`;
+						},
+					},
+					uiTheme,
+				);
+			} else {
+				bodyLines = [];
+				for (let p = 0; p < phases.length; p++) {
+					const phase = phases[p];
+					if (multiPhase) {
+						const name = boundedTodoPreviewText(phase.name, TODO_ITEM_PREVIEW_WIDTH);
+						bodyLines.push(uiTheme.fg("accent", chalk.bold(formatPhaseDisplayName(name, p + 1))));
+					}
+					const completionKeys = completionKeysByPhase.get(phase.name) ?? EMPTY_COMPLETION_KEYS;
+					const treeLines = renderTreeList(
+						{
+							items: expanded ? phase.tasks : prioritizeTodoItems(phase.tasks),
+							expanded,
+							maxCollapsed: TODO_REMINDER_PREVIEW_LIMIT,
+							itemType: "todo",
+							truncateFrom: "end",
+							renderItem: todo => formatTodoLine(todo, uiTheme, "", completionKeys, spinnerFrame),
+						},
+						uiTheme,
+					);
+					bodyLines.push(...treeLines);
+				}
+			}
 			return {
-				header: buildHeader(todoEntranceCharge(spinnerFrame)),
+				header,
 				sections: bodyLines.length > 0 ? [{ lines: bodyLines }] : [],
 				state: options.isPartial ? "pending" : "success",
 				borderColor: "borderMuted",

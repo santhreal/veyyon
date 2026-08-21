@@ -1,13 +1,11 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import {
 	nextActionableTask,
 	resolveTodoMarkdownPath,
-	TODO_BOARD_TOTAL_FRAMES,
 	TODO_STRIKE_HOLD_FRAMES,
 	type TodoPhase,
 	TodoTool,
@@ -187,64 +185,21 @@ describe("nextActionableTask", () => {
 // The board keeps a second task so it is still OPEN: a board whose every task
 // has closed collapses to the one-line "Todo list done" summary and has no rows
 // left to strike through (see todo-done-collapse.test.ts).
-//
-// Two things are pinned here, and both are about a shared field.
-//
-// FRAME 0 IS THE SETTLED BOARD. `spinnerFrame` is not owned by this renderer:
-// surfaces that animate nothing pass a fixed 0 and render once — `veyyon gallery`,
-// an HTML export, a collab guest. If frame 0 drew the first step of the entrance,
-// every one of them would show a column of empty cells and no tasks, permanently.
-//
-// THE TWO ANIMATIONS ARE SEQUENCED. A row arrives whole and brightens, settles
-// checked, and only then crosses out. A strike drawn over a row that is still
-// dim reads as neither.
-it("settles at frame zero, then reveals, holds checked, and strikes through", async () => {
+it("renders completed tasks as checked before revealing strikethrough", async () => {
 	const tool = new TodoTool(createSession());
 	await tool.execute("call-1", { op: "init", list: [{ phase: "Execution", items: ["finish", "carry on"] }] });
 	const result = await tool.execute("call-2", { op: "done", task: "finish" });
-	const options: RenderResultOptions = { expanded: true, isPartial: false, spinnerFrame: 0 };
+	const options = { expanded: true, isPartial: false, spinnerFrame: 0 };
 	const component = todoToolRenderer.renderResult(result, options, theme);
 
-	// Frame 0: the finished board, struck through, exactly as a still consumer sees it.
-	const staticFrame = component.render(120).join("\n");
-	expect(Bun.stripANSI(staticFrame)).toContain("finish");
-	expect(staticFrame).toContain("\x1b[9m");
-
-	// Frame 1 opens the entrance, and the row's TEXT IS ALREADY THERE. The board
-	// used to type each row in behind a block cursor: rows were cut mid-word, rows
-	// that had not started drew a lone track cell, and the panel was unreadable for
-	// the whole envelope. What moves now is the colour, not the text.
-	options.spinnerFrame = 1;
-	const openingFrame = component.render(120).join("\n");
-	expect(Bun.stripANSI(openingFrame)).toContain("finish");
-	// Still an entrance, though: frame 1 is not the settled board.
-	expect(openingFrame).not.toBe(staticFrame);
-
-	// Legible at EVERY frame of the envelope. This is the property a typing pass
-	// cannot have, so it is the assertion that goes red if anyone brings one back.
-	for (let frame = 1; frame <= TODO_BOARD_TOTAL_FRAMES; frame++) {
-		options.spinnerFrame = frame;
-		const text = Bun.stripANSI(component.render(120).join("\n"));
-		expect(text).toContain("finish");
-		expect(text).toContain("carry on");
-	}
-
-	// The hold frame: written, checked, and not yet struck.
-	options.spinnerFrame = TODO_STRIKE_HOLD_FRAMES;
-	const heldFrame = component.render(120).join("\n");
-	expect(Bun.stripANSI(heldFrame)).toContain("finish");
-	expect(heldFrame).not.toContain("\x1b[9m");
+	const firstFrame = component.render(120).join("\n");
+	expect(Bun.stripANSI(firstFrame)).toContain("finish");
+	expect(firstFrame).not.toContain("\x1b[9m");
 
 	options.spinnerFrame = TODO_STRIKE_HOLD_FRAMES + 1;
 	const revealFrame = component.render(120).join("\n");
 	expect(Bun.stripANSI(revealFrame)).toContain("finish");
 	expect(revealFrame).toContain("\x1b[9m");
-
-	// Past the envelope, and with no frame at all, the board is settled either way.
-	options.spinnerFrame = TODO_BOARD_TOTAL_FRAMES;
-	expect(component.render(120).join("\n")).toBe(staticFrame);
-	options.spinnerFrame = undefined;
-	expect(component.render(120).join("\n")).toBe(staticFrame);
 });
 
 describe("TodoTool operations", () => {
@@ -431,10 +386,10 @@ describe("TodoTool model-facing mutation feedback", () => {
 		expect(viewed.details?.phases[0]?.tasks).toHaveLength(40);
 		expect(summary.text).toContain("- [/] Task 1 (Execution)");
 		expect(summary.text).toContain("- [ ] Task 5 (Execution)");
-		expect(summary.text).toContain("- … 35 more open");
+		expect(summary.text).toContain("- … 35 more item(s) retained in machine todo state.");
 		expect(summary.text).not.toContain("Task 6");
 		expect(summary.text).not.toContain("Task 40");
-		expect(summary.text).toContain("0/40 done · 40 open");
+		expect(summary.text).toContain("Overall: 0/40 done, 40 open.");
 		expect(new TextEncoder().encode(summary.text).byteLength).toBeLessThanOrEqual(1_024);
 	});
 
@@ -477,8 +432,8 @@ describe("TodoTool model-facing mutation feedback", () => {
 		const viewed = await tool.execute("call-view", { op: "view" });
 		const summary = viewed.content.find(part => part.type === "text");
 		if (summary?.type !== "text") throw new Error("Expected text summary");
-		expect(summary.text).toContain("all 2 phases closed");
-		expect(summary.text).not.toContain("phase 2/2");
+		expect(summary.text).toContain("Active phase: none (all 2 phases are closed).");
+		expect(summary.text).not.toContain("Active phase 2/2");
 	});
 
 	it("describes removal of the last named task rather than a list-wide clear", async () => {
@@ -642,16 +597,11 @@ describe("todoToolRenderer.renderResult phase collapsing", () => {
 		return lines.slice(1, -1).map(line => line.replace(/^│/, "").replace(/│\s*$/, "").trim());
 	}
 	/**
-	 * Collapsed multi-phase output is one global actionable preview: every phase is
-	 * NAMED ONCE, on its own row, carrying its own standing, and the open work of
-	 * every phase competes for one shared row budget.
-	 *
-	 * The phase used to be a dim `(Alpha)` suffix repeated on every row, which is
-	 * what the negative control here pins out. Closed history is off the board apart
-	 * from the task that closed on THIS write, which is the row whose strikethrough
-	 * is playing.
+	 * Collapsed multi-phase output is one global actionable preview. The active
+	 * item stays first, closed history falls behind open work, and phase context
+	 * survives without one unbounded block per phase.
 	 */
-	it("names each phase once, with its own standing, over one shared row budget", async () => {
+	it("bounds all phases through one active-first preview", async () => {
 		const result = await buildThreePhaseAfterDone();
 		const component = todoToolRenderer.renderResult(result, { expanded: false, isPartial: false }, theme, {
 			op: "done",
@@ -659,47 +609,26 @@ describe("todoToolRenderer.renderResult phase collapsing", () => {
 		});
 		const rendered = Bun.stripANSI(component.render(100).join("\n"));
 
-		// One row per phase, never a per-row tag.
-		expect(rendered.match(/Alpha/g)).toHaveLength(1);
-		expect(rendered.match(/Beta/g)).toHaveLength(1);
-		expect(rendered.match(/Gamma/g)).toHaveLength(1);
-		expect(rendered).not.toContain("(Alpha)");
-		expect(rendered).not.toContain("(Beta)");
-		expect(rendered).not.toContain("(Gamma)");
-
-		// Each phase states where it stands, and the header states the whole board.
-		expect(rendered).toContain("1/2");
-		expect(rendered).toContain("0/2");
-		expect(rendered).toContain("1/6 tasks");
-
-		// Open work from every phase, plus the task that just closed.
 		expect(rendered).toContain("a2");
+		expect(rendered).toContain("(Alpha)");
 		expect(rendered).toContain("b1");
+		expect(rendered).toContain("(Beta)");
 		expect(rendered).toContain("c1");
-		expect(rendered).toContain("a1");
+		expect(rendered).toContain("(Gamma)");
+		expect(rendered).not.toContain("a1");
 		expect(rendered).toContain("1 more todo");
 	});
 
-	/**
-	 * A transcript rebuilt from session entries has no call arguments, and must
-	 * produce the SAME board — not a similar one. Byte equality is the assertion
-	 * because the contract is that the fourth parameter changes nothing at all;
-	 * naming particular rows would let a layout change hide a divergence.
-	 */
-	it("renders byte-identically with and without call args", async () => {
+	/** Transcript rebuilds without call arguments must use the same bounded projection. */
+	it("keeps collapsed output stable when call args are unavailable", async () => {
 		const result = await buildThreePhaseAfterDone();
-		const withArgs = todoToolRenderer
-			.renderResult(result, { expanded: false, isPartial: false }, theme, { op: "done", task: "a1" })
-			.render(100)
-			.join("\n");
-		const withoutArgs = todoToolRenderer
-			.renderResult(result, { expanded: false, isPartial: false }, theme)
-			.render(100)
-			.join("\n");
+		const component = todoToolRenderer.renderResult(result, { expanded: false, isPartial: false }, theme);
+		const rendered = Bun.stripANSI(component.render(100).join("\n"));
 
-		expect(withoutArgs).toBe(withArgs);
-		expect(Bun.stripANSI(withoutArgs)).toContain("a2");
-		expect(Bun.stripANSI(withoutArgs)).toContain("1 more todo");
+		expect(rendered).toContain("a2");
+		expect(rendered).toContain("b1");
+		expect(rendered).not.toContain("a1");
+		expect(rendered).toContain("1 more todo");
 	});
 
 	/** Phase count must not multiply the collapsed line budget. */

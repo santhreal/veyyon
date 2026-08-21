@@ -42,7 +42,7 @@ import {
 	truncateToWidth,
 } from "../../tools/render-utils";
 import { type FirstResultViewportRepaint, toolRenderers } from "../../tools/renderers";
-import { TODO_BOARD_TOTAL_FRAMES, type TodoToolDetails } from "../../tools/todo";
+import type { TodoToolDetails } from "../../tools/todo";
 import { renderStatusLine, WidthAwareText } from "../../tui";
 import {
 	hasRailRow,
@@ -391,8 +391,6 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	// Spinner animation for partial task results
 	#spinnerFrame?: number;
 	#spinnerInterval?: NodeJS.Timeout;
-	// Todo board entrance and completion strikethrough, on one bounded counter
-	#todoBoardInterval?: NodeJS.Timeout;
 	// The rail's own motion, independent of the spinner: a live block breathes
 	// (`#railIdleStep`), and the frame its result lands makes one settling pass
 	// (`#railSettleFrame`). Only one of the two is ever armed. `#railWasLive` gates
@@ -661,7 +659,6 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			this.#argsComplete = true;
 		}
 		this.#updateSpinnerAnimation();
-		this.#updateTodoBoardAnimation();
 		this.#updateRailMotion();
 		this.#updateDisplay();
 		this.#resetDisplayForResultTopologyChange(
@@ -798,12 +795,9 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			clearInterval(this.#spinnerInterval);
 			this.#spinnerInterval = undefined;
 			// Clear the last drawn frame so a non-live renderCall (e.g. a write whose
-			// args just completed) stops showing a frozen spinner glyph. Skip when the
-			// todo board owns the frame — it sets its own value right after this.
-			if (!this.#todoBoardInterval) {
-				this.#spinnerFrame = undefined;
-				this.#renderState.spinnerFrame = undefined;
-			}
+			// args just completed) stops showing a frozen spinner glyph.
+			this.#spinnerFrame = undefined;
+			this.#renderState.spinnerFrame = undefined;
 		}
 	}
 
@@ -825,51 +819,6 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		this.#updateDisplay();
 		this.#requestScopedRender();
 		return true;
-	}
-
-	#updateTodoBoardAnimation(): void {
-		if (this.#toolName !== "todo" || this.#isPartial || this.#result?.isError) {
-			this.#stopTodoBoardAnimation();
-			return;
-		}
-		// EVERY landed board write animates, not only one that closed a task. The
-		// entrance is what makes an `init`, an `append` or a `start` visible at all:
-		// gated on `completedTasks`, those three landed as a static block and the
-		// board's only motion was the strike-through of a task closing.
-		if (this.#result === undefined) {
-			this.#stopTodoBoardAnimation();
-			return;
-		}
-		if (this.#todoBoardInterval) return;
-
-		// Frame 1, not 0: the board renders frame 0 as its settled self, so starting
-		// there would paint the finished board for one tick and then rewind into the
-		// entrance. The counter runs 1..TODO_BOARD_TOTAL_FRAMES and then stops.
-		this.#spinnerFrame = 1;
-		this.#renderState.spinnerFrame = 1;
-		this.#todoBoardInterval = setInterval(() => {
-			const nextFrame = (this.#spinnerFrame ?? 0) + 1;
-			if (nextFrame > TODO_BOARD_TOTAL_FRAMES) {
-				this.#stopTodoBoardAnimation();
-			} else {
-				this.#spinnerFrame = nextFrame;
-				this.#renderState.spinnerFrame = nextFrame;
-			}
-			// Component-scoped: the board's entrance only mutates this tool block's
-			// own rows, so the TUI reuses every other root subtree (issue #4377).
-			this.#requestScopedRender();
-		}, 65);
-	}
-
-	#stopTodoBoardAnimation(): void {
-		if (this.#todoBoardInterval) {
-			clearInterval(this.#todoBoardInterval);
-			this.#todoBoardInterval = undefined;
-		}
-		if (!this.#spinnerInterval) {
-			this.#spinnerFrame = undefined;
-			this.#renderState.spinnerFrame = undefined;
-		}
 	}
 
 	/**
@@ -990,7 +939,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	 */
 	getNativeScrollbackLiveRegionStart(): number | undefined {
 		if (!this.isTranscriptBlockFinalized()) return 0;
-		if (this.#railSettleFrame !== undefined || this.#todoBoardInterval !== undefined) return 0;
+		if (this.#railSettleFrame !== undefined) return 0;
 		return undefined;
 	}
 
@@ -1070,7 +1019,6 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			this.#spinnerFrame = undefined;
 			this.#renderState.spinnerFrame = undefined;
 		}
-		this.#stopTodoBoardAnimation();
 		this.#stopRailMotion();
 		this.#editDiffAbort?.abort();
 		this.#editDiffAbort = undefined;
