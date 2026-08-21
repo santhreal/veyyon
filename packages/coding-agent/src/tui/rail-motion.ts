@@ -281,13 +281,35 @@ function railMotionColor(motion: RailMotion, railIndex: number, railRows: number
 	return blendHex(palette.settled, palette.live, (1 - t) ** 2);
 }
 
+/** Per-block adjustments to one frame of rail motion. */
+export interface RailMotionOptions {
+	/**
+	 * Whether the head may light the railed row at `index`, counted over the
+	 * railed rows only. A row this refuses keeps the colour its renderer gave it
+	 * while the head travels past it.
+	 *
+	 * A tool block is one unit of work and needs none of this: every row of it is
+	 * as live as every other. The subagent block is not — its rows are separate
+	 * agents, and lighting a lane whose agent is waiting on the model would make
+	 * the sweep say the one thing about that block that is not true. The head
+	 * still travels the full height, because the cycle is the block's and not the
+	 * row's; it just arrives cold.
+	 */
+	lit?: (index: number) => boolean;
+}
+
 /**
  * Repaint the rail cell of every railed row in `lines` for one frame of
  * `motion`. Returns `lines` itself when the frame changes nothing, so an
  * unchanged block keeps the array identity the render contract treats as proof
  * its bytes did not move.
  */
-export function paintRailMotion(lines: readonly string[], motion: RailMotion, theme: Theme): readonly string[] {
+export function paintRailMotion(
+	lines: readonly string[],
+	motion: RailMotion,
+	theme: Theme,
+	options: RailMotionOptions = {},
+): readonly string[] {
 	const rail = theme.symbol("block.rail");
 	const cells: Array<{ line: number; cell: RailCell }> = [];
 	for (let i = 0; i < lines.length; i++) {
@@ -300,6 +322,7 @@ export function paintRailMotion(lines: readonly string[], motion: RailMotion, th
 	let out: string[] | undefined;
 	for (let index = 0; index < cells.length; index++) {
 		const { line, cell } = cells[index]!;
+		if (options.lit?.(index) === false) continue;
 		const hex = railMotionColor(motion, index, cells.length, {
 			settled: cell.hex,
 			live,
