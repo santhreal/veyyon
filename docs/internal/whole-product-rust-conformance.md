@@ -67,20 +67,16 @@ schema is versioned independently from production persistence formats:
 {
   "schemaVersion": 1,
   "caseId": "blake3:...",
-  "generator": { "version": "git:...", "seed": 1592639215 },
-  "subsystem": { "id": 2, "name": "ai-providers-streaming" },
-  "contract": { "id": "provider.clean-eof.complete-tool-batch", "expectedErrorId": null },
-  "target": {
-    "kind": "compiled-product",
-    "entry": "veyyon",
-    "artifactDigest": "sha256:..."
-  },
+  "generator": { "family": "provider-terminal-matrix", "seed": 1592639215 },
+  "subsystem": "ai-providers-streaming",
+  "contract": { "id": "provider.clean-eof.complete-tool-batch" },
+  "target": { "kind": "compiled-product", "entry": "veyyon" },
   "dimensions": {
     "api": "openai-completions",
-    "terminal": "clean-eof",
-    "outputShape": "complete-tool-batch",
+    "fault": "none",
     "framing": "utf8-split",
-    "fault": "none"
+    "outputShape": "complete-tool-batch",
+    "terminal": "clean-eof"
   },
   "environment": {
     "platform": "linux-x64",
@@ -92,9 +88,8 @@ schema is versioned independently from production persistence formats:
   "oracle": {
     "exitCode": 0,
     "stopReason": "toolUse",
-    "errorId": null,
-    "maxVirtualMs": 2500,
-    "toolExecutions": [{ "name": "inspect", "count": 1 }],
+    "maxMs": 2500,
+    "toolExecutions": { "inspect": 1 },
     "stdoutFixture": "blake3:...",
     "persistedStateFixture": "blake3:..."
   },
@@ -102,21 +97,60 @@ schema is versioned independently from production persistence formats:
     "registryMembers": ["api:openai-completions", "provider:fixture"],
     "requirements": ["provider-terminal-completeness", "tool-arguments-complete"]
   },
-  "provenance": { "kind": "generated", "source": "provider-terminal-matrix" }
+  "provenance": "generated"
 }
 ```
 
-`caseId` is the BLAKE3 digest of canonical JSON containing `subsystem`,
-`contract`, `target.kind`, `dimensions`, `environment`, `stimulus`, and
-`oracle`. It excludes `caseId`, generator metadata, execution observations, and
-provenance, so two generators cannot claim distinct coverage for the same
-semantic case. Fixture values are content-addressed and secrets are forbidden.
+`crates/veyyon-conformance/src/corpus/mod.rs` is the authority for this shape;
+the JSON above is what it serializes. An absent optional field is absent rather
+than null, so an oracle constrains exactly what its contract names and cannot
+silently accept a wider outcome than it was written for.
+
+`caseId` is the BLAKE3 digest of `schemaVersion`, `subsystem`, `contract`,
+`target.kind`, `dimensions`, `environment`, `stimulus`, and `oracle`. Those
+fields are declared as their own `IdentityPayload` struct rather than derived
+from the record, so adding a field to `ConformanceCase` cannot move an id unless
+someone names it there. Excluded: `caseId` itself, generator metadata,
+`target.entry`, coverage labels, provenance, and every execution observation, so
+two generators cannot claim distinct coverage for one semantic case and
+re-seeding cannot inflate the corpus. `schemaVersion` IS included, because a
+schema change is a change of meaning and the ids should move with it. Fixture
+values are content-addressed and secrets are forbidden.
+
+Six field shapes are deliberate, and each of them is the fix for a way the
+obvious spelling breaks the identity:
+
+- **`dimensions` values are strings, not `serde_json::Value`.** This workspace
+  builds `serde_json` with `preserve_order`, which makes a `Value` object
+  insertion-ordered. A dimension map of `Value` would therefore serialize
+  differently depending on which generator inserted which axis first, giving one
+  case two ids. The map itself is a `BTreeMap` for the same reason.
+- **`subsystem` is one kebab-case token, not `{id, name}`.** A numeric id beside
+  a name is two spellings of one fact, and renaming the name would move every id
+  in the subsystem.
+- **`generator` names the family, not a git revision.** The family is what
+  triage needs and what lets one family be regenerated without touching the
+  rest. A revision would date the corpus without identifying anything in it.
+- **`target.artifactDigest` does not exist.** Which binary a case ran against
+  belongs to the run report: the digest changes with every release, so
+  committing it into a case would invalidate the corpus on every version bump.
+- **`oracle.maxMs`, not `maxVirtualMs`.** `environment.clock` already says
+  whether time is virtual or real, and a compiled-product case is bounded in
+  real milliseconds, so a field named for virtual time would be a lie on 5,000
+  rows.
+- **`oracle.toolExecutions` is a map, not a list.** A list is order-dependent
+  and can name one tool twice; a map cannot, and the expectation is about counts
+  rather than sequence.
 
 The materializer writes rows sorted by `caseId`, validates every referenced
-fixture digest, rejects an unknown `schemaVersion`, and writes the corpus only
-after the unique-case and exact-error counts match their allocations. Execution
-results live in separate replay/report artifacts; a run never rewrites the
-committed oracle.
+fixture digest, rejects an unknown `schemaVersion`, refuses a row whose id does
+not match its own semantics, and writes the corpus only after the unique-case
+and exact-error counts match their allocations. It also cross-checks target kind
+against clock mode: a compiled-product case can never run on virtual time,
+because the harness is outside the process and cannot advance a clock it does
+not own, and a direct-rust case can never run on real bounded time, because that
+would be flaky by construction. Execution results live in separate replay/report
+artifacts; a run never rewrites the committed oracle.
 
 The corpus has exactly 245,000 `direct-rust` cases and 5,000
 `compiled-product` cases. Direct cases exhaust parser, state-machine, scheduling,
