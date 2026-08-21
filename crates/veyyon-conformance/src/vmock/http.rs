@@ -391,6 +391,9 @@ where
 				// Stall indefinitely until caller cancels or times out
 				std::future::pending::<()>().await;
 			},
+			WireChunk::H2ResetStream(_) | WireChunk::H2GoAway(_) => {
+				return Ok(ConnectionAction::Close);
+			},
 		}
 	}
 

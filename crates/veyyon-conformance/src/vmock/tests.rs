@@ -3,6 +3,7 @@
 use std::{net::SocketAddr, time::Duration};
 
 use bytes::Bytes;
+use http::{HeaderName, HeaderValue, Method};
 use tokio::{
 	io::{AsyncReadExt, AsyncWriteExt},
 	net::TcpStream,
@@ -11,12 +12,39 @@ use tokio::{
 
 use crate::vmock::{
 	engine::Engine,
-	fault::FaultKind,
+	fault::{FaultKind, H2FaultInstall, H2FaultKind, H2Reason, MID_DATA_CHUNK},
 	guard::NetworkDenyGuard,
+	h2c::CONNECTION_SPECIFIC_HEADERS,
 	script::{ResponseScript, WireChunk},
 };
 
 const TEST_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Build a client request on named `http` types.
+///
+/// Every value here is a test-authored literal, so a name or a value that does
+/// not parse is a broken test rather than a condition to tolerate: the previous
+/// spelling inferred `http::Request` through a generic that existed only to
+/// avoid naming it, and silently dropped any header it could not parse.
+fn build_test_h2_request(
+	client: &mut h2::client::SendRequest<Bytes>,
+	uri: &str,
+	method: &str,
+	headers: &[(&str, &str)],
+	end_of_stream: bool,
+) -> Result<(h2::client::ResponseFuture, h2::SendStream<Bytes>), h2::Error> {
+	let mut request = http::Request::new(());
+	*request.uri_mut() = uri.parse().expect("test request uri must parse");
+	*request.method_mut() =
+		Method::from_bytes(method.as_bytes()).expect("test request method must parse");
+	for &(name, value) in headers {
+		let header_name =
+			HeaderName::from_bytes(name.as_bytes()).expect("test header name must parse");
+		let header_value = HeaderValue::from_str(value).expect("test header value must parse");
+		request.headers_mut().append(header_name, header_value);
+	}
+	client.send_request(request, end_of_stream)
+}
 
 /// WHY: A streaming provider reassembler must survive extreme transport
 /// packetization without dropping or corrupting bytes. This test proves that
@@ -500,6 +528,627 @@ async fn engine_shuts_down_cleanly_on_drop() {
 		tokio::time::sleep(Duration::from_millis(50)).await;
 		let conn = TcpStream::connect(addr).await;
 		assert!(conn.is_err(), "connecting to dropped engine should fail");
+	})
+	.await
+	.expect("test must terminate within bounded deadline");
+}
+
+/// WHY: An HTTP/2 client sending prior-knowledge preface must complete the
+/// handshake, perform SETTINGS exchange, and receive exact scripted status,
+/// headers, and body bytes.
+///
+/// What it does not catch: Protobuf message schema decoding errors.
+#[tokio::test]
+async fn h2_client_completes_handshake_and_receives_scripted_response() {
+	timeout(TEST_TIMEOUT, async {
+		let engine = Engine::bind().await.expect("bind loopback engine");
+		let script = ResponseScript::new(200)
+			.header("x-custom-header", "custom-val")
+			.header("content-type", "application/json")
+			.chunk(Bytes::from_static(b"{\"id\":\"resp-123\",\"model\":\"cursor-fast\"}"));
+
+		engine.route_method("POST", "/v1/chat/completions", script);
+
+		let stream = TcpStream::connect(engine.addr())
+			.await
+			.expect("connect to engine");
+		let (mut client, connection) = h2::client::handshake(stream).await.expect("h2 handshake");
+		tokio::spawn(async move {
+			let _ = connection.await;
+		});
+
+		let (response_fut, mut send_stream) = build_test_h2_request(
+			&mut client,
+			&format!("{}/v1/chat/completions", engine.base_url()),
+			"POST",
+			&[("content-type", "application/json")],
+			false,
+		)
+		.expect("send request");
+		send_stream
+			.send_data(Bytes::from_static(b"{\"prompt\":\"hello\"}"), true)
+			.expect("send body");
+
+		let response = response_fut.await.expect("receive response");
+		let (parts, mut body) = response.into_parts();
+
+		assert_eq!(parts.status.as_u16(), 200);
+		assert_eq!(
+			parts
+				.headers
+				.get("x-custom-header")
+				.and_then(|v| v.to_str().ok()),
+			Some("custom-val")
+		);
+
+		let mut body_bytes = Vec::new();
+		while let Some(chunk) = body.data().await {
+			let data = chunk.expect("valid chunk");
+			body_bytes.extend_from_slice(&data);
+			body
+				.flow_control()
+				.release_capacity(data.len())
+				.expect("release capacity");
+		}
+
+		assert_eq!(body_bytes, b"{\"id\":\"resp-123\",\"model\":\"cursor-fast\"}");
+
+		let recorded = engine.recorded_requests();
+		assert_eq!(recorded.len(), 1);
+		assert_eq!(recorded[0].method, "POST");
+		assert_eq!(recorded[0].path, "/v1/chat/completions");
+		assert_eq!(recorded[0].version, "HTTP/2.0");
+		assert_eq!(recorded[0].body_str().unwrap(), "{\"prompt\":\"hello\"}");
+	})
+	.await
+	.expect("test must terminate within bounded deadline");
+}
+
+/// WHY: Incremental response assembly requires that multi-chunk response
+/// scripts arrive as multiple discrete HTTP/2 DATA frames rather than being
+/// coalesced into a single frame.
+///
+/// What it does not catch: Dynamic HPACK table size updates.
+#[tokio::test]
+async fn h2_multi_chunk_script_arrives_as_multiple_data_frames_without_coalescing() {
+	timeout(TEST_TIMEOUT, async {
+		let engine = Engine::bind().await.expect("bind loopback engine");
+		let script = ResponseScript::new(200)
+			.chunk(Bytes::from_static(b"data: frame1\n\n"))
+			.chunk(Bytes::from_static(b"data: frame2\n\n"))
+			.chunk(Bytes::from_static(b"data: frame3\n\n"));
+
+		engine.route("/stream", script);
+
+		let stream = TcpStream::connect(engine.addr())
+			.await
+			.expect("connect to engine");
+		let (mut client, connection) = h2::client::handshake(stream).await.expect("h2 handshake");
+		tokio::spawn(async move {
+			let _ = connection.await;
+		});
+
+		let (response_fut, _) = build_test_h2_request(
+			&mut client,
+			&format!("{}/stream", engine.base_url()),
+			"GET",
+			&[],
+			true,
+		)
+		.expect("send request");
+		let (parts, mut body) = response_fut.await.expect("receive response").into_parts();
+		assert_eq!(parts.status.as_u16(), 200);
+
+		let mut frames: Vec<Bytes> = Vec::new();
+		while let Some(chunk) = body.data().await {
+			let data = chunk.expect("valid chunk");
+			frames.push(data.clone());
+			body
+				.flow_control()
+				.release_capacity(data.len())
+				.expect("release capacity");
+		}
+
+		assert_eq!(frames.len(), 3, "must arrive as 3 discrete DATA frames without coalescing");
+		assert_eq!(frames[0], Bytes::from_static(b"data: frame1\n\n"));
+		assert_eq!(frames[1], Bytes::from_static(b"data: frame2\n\n"));
+		assert_eq!(frames[2], Bytes::from_static(b"data: frame3\n\n"));
+
+		let concatenated: Vec<u8> = frames.into_iter().flatten().collect();
+		assert_eq!(concatenated, b"data: frame1\n\ndata: frame2\n\ndata: frame3\n\n");
+	})
+	.await
+	.expect("test must terminate within bounded deadline");
+}
+
+/// WHY: Sniffing must not consume or corrupt bytes for HTTP/1.1 traffic on the
+/// same engine instance, ensuring both HTTP/1.1 and HTTP/2 clients are served
+/// concurrently on the single allocated port.
+///
+/// What it does not catch: Automatic protocol upgrades via 101 Switching
+/// Protocols.
+#[tokio::test]
+async fn http1_and_http2_against_same_engine_both_succeed_and_record_in_order() {
+	timeout(TEST_TIMEOUT, async {
+		let engine = Engine::bind().await.expect("bind loopback engine");
+		engine.route("/h1-endpoint", ResponseScript::new(200).raw_body("hello-from-http1"));
+		engine.route(
+			"/h2-endpoint",
+			ResponseScript::new(200).chunk(Bytes::from_static(b"hello-from-http2")),
+		);
+
+		// 1. Send HTTP/1.1 request
+		let mut h1_stream = TcpStream::connect(engine.addr()).await.expect("connect h1");
+		let h1_req = format!(
+			"GET /h1-endpoint HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",
+			engine.addr()
+		);
+		h1_stream
+			.write_all(h1_req.as_bytes())
+			.await
+			.expect("write h1 request");
+
+		let mut h1_resp_bytes = Vec::new();
+		h1_stream
+			.read_to_end(&mut h1_resp_bytes)
+			.await
+			.expect("read h1 response");
+		let h1_resp = String::from_utf8_lossy(&h1_resp_bytes);
+		assert!(h1_resp.starts_with("HTTP/1.1 200 OK\r\n"));
+		assert!(h1_resp.contains("hello-from-http1"));
+
+		// 2. Send HTTP/2 request against the same engine
+		let h2_stream = TcpStream::connect(engine.addr()).await.expect("connect h2");
+		let (mut client, connection) = h2::client::handshake(h2_stream)
+			.await
+			.expect("h2 handshake");
+		tokio::spawn(async move {
+			let _ = connection.await;
+		});
+
+		let (response_fut, _) = build_test_h2_request(
+			&mut client,
+			&format!("{}/h2-endpoint", engine.base_url()),
+			"GET",
+			&[],
+			true,
+		)
+		.expect("send h2 request");
+		let (parts, mut body) = response_fut
+			.await
+			.expect("receive h2 response")
+			.into_parts();
+		assert_eq!(parts.status.as_u16(), 200);
+
+		let mut h2_body = Vec::new();
+		while let Some(chunk) = body.data().await {
+			let data = chunk.expect("valid h2 chunk");
+			h2_body.extend_from_slice(&data);
+			body
+				.flow_control()
+				.release_capacity(data.len())
+				.expect("release capacity");
+		}
+		assert_eq!(h2_body, b"hello-from-http2");
+
+		// 3. Verify recorded requests order and versions
+		let recorded = engine.recorded_requests();
+		assert_eq!(recorded.len(), 2);
+		assert_eq!(recorded[0].path, "/h1-endpoint");
+		assert_eq!(recorded[0].version, "HTTP/1.1");
+		assert_eq!(recorded[1].path, "/h2-endpoint");
+		assert_eq!(recorded[1].version, "HTTP/2.0");
+	})
+	.await
+	.expect("test must terminate within bounded deadline");
+}
+
+/// The sweep runs 31 engines, each with its own handshake and bounded waits, so
+/// it does not fit the budget a single-behaviour test uses.
+const H2_SWEEP_TIMEOUT: Duration = Duration::from_secs(45);
+
+/// How long a connection-level fault has to reach the client.
+const H2_FAULT_DEADLINE: Duration = Duration::from_millis(500);
+
+/// WHY: a retry classifier decides from the HTTP/2 error code and from which
+/// layer failed — a stream reset, a connection `GOAWAY`, or a socket that
+/// simply died. Each of those distinctions is somewhere a harness can collapse
+/// two faults into one and make the classifier untestable, which is exactly
+/// what happened here: `H2GoAway` and `H2ResetStream` both reset the stream,
+/// and `HardClose` and `IdleStall` both stalled forever.
+///
+/// This sweep enumerates `H2FaultKind::all()` — a fixed-size array, so a new
+/// variant does not compile until it is listed and matched — installs each one
+/// through `install()`, which is the one place that decides whether a fault is
+/// a route script or a connection fault, and asserts the exact code the client
+/// observes. The reason is the point: 14 of the 31 variants are a `GOAWAY`
+/// that differ only in their error code, and an arm that asserts `is_err()`
+/// cannot tell them apart. Each arm also pins how many requests reached the
+/// engine, which is what separates a fault that precedes the request from one
+/// that answers it.
+///
+/// What it does not catch: kernel-level TCP `RST` shaping, and TLS or ALPN
+/// negotiation (this is cleartext h2c with prior knowledge).
+#[tokio::test]
+async fn sweep_all_h2_fault_kinds_from_source_exercises_concrete_failures() {
+	timeout(H2_SWEEP_TIMEOUT, async {
+		let all_faults = H2FaultKind::all();
+		assert_eq!(all_faults.len(), 31, "must cover exactly 31 variants in fixed-size array");
+
+		for &fault in all_faults {
+			let engine = Engine::bind().await.expect("bind engine for fault test");
+			// One install site for all 31. A fault says where it belongs, so a
+			// fault that precedes any stream cannot be registered as a response to
+			// a request it never saw.
+			match fault.install() {
+				H2FaultInstall::Script(script) => engine.route("/fault", script),
+				H2FaultInstall::Connection(connection_fault) => {
+					engine.set_h2_connection_fault(connection_fault);
+				},
+			}
+
+			match fault {
+				H2FaultKind::StreamReset(reason) => {
+					let stream = TcpStream::connect(engine.addr()).await.expect("connect");
+					let (mut client, connection) =
+						h2::client::handshake(stream).await.expect("handshake");
+					tokio::spawn(async move {
+						let _ = connection.await;
+					});
+
+					let (response_fut, _) = build_test_h2_request(
+						&mut client,
+						&format!("{}/fault", engine.base_url()),
+						"POST",
+						&[],
+						true,
+					)
+					.expect("send request");
+					match response_fut.await {
+						Ok(resp) => {
+							let (_, mut body) = resp.into_parts();
+							let mut chunk_err = None;
+							while let Some(c) = body.data().await {
+								if let Err(e) = c {
+									chunk_err = Some(e);
+									break;
+								}
+							}
+							let err = chunk_err.expect("must error with reset reason");
+							assert_eq!(
+								err.reason(),
+								Some(reason.as_h2_reason()),
+								"stream error must report exact reason for {}",
+								fault.as_str()
+							);
+						},
+						Err(err) => {
+							assert_eq!(
+								err.reason(),
+								Some(reason.as_h2_reason()),
+								"stream error must report exact reason for {}",
+								fault.as_str()
+							);
+						},
+					}
+					assert_eq!(
+						engine.request_count(),
+						1,
+						"a stream reset answers a request, so the request is recorded for {}",
+						fault.as_str()
+					);
+				},
+				H2FaultKind::ConnectionGoaway(reason) => {
+					let stream = TcpStream::connect(engine.addr()).await.expect("connect");
+					let (mut client, connection) =
+						h2::client::handshake(stream).await.expect("handshake");
+					let driver = tokio::spawn(connection);
+
+					let (response_fut, _) = build_test_h2_request(
+						&mut client,
+						&format!("{}/fault", engine.base_url()),
+						"POST",
+						&[],
+						true,
+					)
+					.expect("send request");
+					// The GOAWAY follows the response head, so the client has to
+					// still be there to receive it: a client that drops its last
+					// stream and its handle first sends its OWN graceful GOAWAY,
+					// and the connection then ends clean with the server's frame
+					// never read. Reading the body to its failure is what keeps
+					// the stream open until the frame arrives.
+					if let Ok(response) = response_fut.await {
+						let (_, mut body) = response.into_parts();
+						while let Some(chunk) = body.data().await {
+							if chunk.is_err() {
+								break;
+							}
+						}
+					}
+					drop(client);
+
+					let outcome = timeout(H2_FAULT_DEADLINE, driver)
+						.await
+						.expect("connection must finish after a GOAWAY")
+						.expect("connection driver must not panic");
+
+					if reason == H2Reason::NoError {
+						assert!(
+							outcome.is_ok(),
+							"a GOAWAY carrying NO_ERROR is a graceful close, got {outcome:?}"
+						);
+					} else {
+						let err =
+							outcome.expect_err("a GOAWAY carrying an error code must fail the connection");
+						assert_eq!(
+							err.reason(),
+							Some(reason.as_h2_reason()),
+							"connection error must report the exact GOAWAY reason for {}",
+							fault.as_str()
+						);
+						assert!(
+							err.is_remote(),
+							"the GOAWAY came from the server, not from the client, for {}",
+							fault.as_str()
+						);
+					}
+					assert_eq!(
+						engine.request_count(),
+						1,
+						"a connection GOAWAY follows the request it answers for {}",
+						fault.as_str()
+					);
+				},
+				H2FaultKind::PreStreamGoaway => {
+					let stream = TcpStream::connect(engine.addr()).await.expect("connect");
+					let (mut client, connection) =
+						h2::client::handshake(stream).await.expect("handshake");
+					tokio::spawn(async move {
+						let _ = connection.await;
+					});
+
+					tokio::time::sleep(Duration::from_millis(50)).await;
+					let send_res = build_test_h2_request(
+						&mut client,
+						&format!("{}/anything", engine.base_url()),
+						"GET",
+						&[],
+						true,
+					);
+					assert!(
+						send_res.is_err() || client.ready().await.is_err(),
+						"new streams cannot be created after pre-stream GOAWAY"
+					);
+					assert!(
+						engine.recorded_requests().is_empty(),
+						"a pre-stream GOAWAY lands before any request exists"
+					);
+				},
+				H2FaultKind::SettingsTimeout => {
+					let stream = TcpStream::connect(engine.addr()).await.expect("connect");
+					let (_client, connection) =
+						h2::client::handshake(stream).await.expect("handshake init");
+					let driver_task = tokio::spawn(async move {
+						let _ = connection.await;
+					});
+
+					let wait_res = timeout(Duration::from_millis(150), driver_task).await;
+					assert!(
+						wait_res.is_err(),
+						"connection driver must time out on bounded wait when server stalls initial \
+						 SETTINGS"
+					);
+					assert!(
+						engine.recorded_requests().is_empty(),
+						"a withheld SETTINGS frame lands before any request exists"
+					);
+				},
+				H2FaultKind::MidDataDrop => {
+					let stream = TcpStream::connect(engine.addr()).await.expect("connect");
+					let (mut client, connection) =
+						h2::client::handshake(stream).await.expect("handshake");
+					tokio::spawn(async move {
+						let _ = connection.await;
+					});
+
+					let (response_fut, _) = build_test_h2_request(
+						&mut client,
+						&format!("{}/fault", engine.base_url()),
+						"GET",
+						&[],
+						true,
+					)
+					.expect("send request");
+
+					let (parts, mut body) = response_fut
+						.await
+						.expect("receive response headers")
+						.into_parts();
+					assert_eq!(parts.status.as_u16(), 200);
+
+					let first_chunk = body
+						.data()
+						.await
+						.expect("chunk exists")
+						.expect("first chunk ok");
+					assert_eq!(first_chunk, Bytes::from_static(MID_DATA_CHUNK));
+
+					// A clean end-of-stream is the one answer this fault must never
+					// produce: the socket died with the response still open, so the
+					// client either errors or hears nothing more.
+					let next_read = timeout(Duration::from_millis(200), body.data()).await;
+					match next_read {
+						Err(_) => {},
+						Ok(Some(Err(_))) => {},
+						Ok(other) => panic!(
+							"client must observe a truncated stream, got {}",
+							if other.is_none() {
+								"clean end-of-stream"
+							} else {
+								"more data"
+							}
+						),
+					}
+					assert_eq!(
+						engine.request_count(),
+						1,
+						"the request is recorded before the socket dies"
+					);
+				},
+			}
+		}
+	})
+	.await
+	.expect("test must terminate within bounded deadline");
+}
+
+/// WHY: a `ResponseScript` is written once and served over both transports, and
+/// every SSE script starts from `sse()`, which sets `Connection: keep-alive`
+/// because that is correct for HTTP/1.1. RFC 9113 forbids that field in
+/// HTTP/2, and h2 refuses the whole response rather than the one field, so the
+/// handler gave up before writing a byte and the client observed
+/// `RST_STREAM(CANCEL)`: a cancelled stream with nothing said about the header
+/// that caused it. Every h2 fault whose script starts from `sse()` — the
+/// mid-stream drop among them — was unobservable for that reason.
+///
+/// The forbidden set is read from the transport at run time, so a name added
+/// there without the stripping behaviour turns this red.
+///
+/// What it does not catch: request-side connection-specific headers (h2 refuses
+/// those before the engine sees them) and `TE: trailers`, which HTTP/2 permits.
+#[tokio::test]
+async fn a_script_written_for_http1_serves_over_h2_without_its_connection_specific_headers() {
+	timeout(TEST_TIMEOUT, async {
+		for forbidden in CONNECTION_SPECIFIC_HEADERS {
+			let engine = Engine::bind().await.expect("bind engine");
+			engine.route(
+				"/sse",
+				ResponseScript::sse()
+					.header(forbidden, "value-that-must-not-travel")
+					.header("x-keeper", "kept")
+					.chunk(Bytes::from_static(b"data: hi\n\n")),
+			);
+
+			let stream = TcpStream::connect(engine.addr()).await.expect("connect");
+			let (mut client, connection) = h2::client::handshake(stream).await.expect("handshake");
+			tokio::spawn(async move {
+				let _ = connection.await;
+			});
+
+			let (response_fut, _) = build_test_h2_request(
+				&mut client,
+				&format!("{}/sse", engine.base_url()),
+				"GET",
+				&[],
+				true,
+			)
+			.expect("send request");
+
+			let (parts, mut body) = response_fut
+				.await
+				.expect("the response must arrive rather than the stream being cancelled")
+				.into_parts();
+			assert_eq!(parts.status.as_u16(), 200);
+			assert!(
+				parts.headers.get(forbidden).is_none(),
+				"{forbidden} must not reach an HTTP/2 client"
+			);
+			assert_eq!(
+				parts.headers.get("x-keeper").map(HeaderValue::as_bytes),
+				Some(b"kept".as_slice()),
+				"a header HTTP/2 allows survives the strip for {forbidden}"
+			);
+
+			let mut received = Vec::new();
+			while let Some(chunk) = body.data().await {
+				received.extend_from_slice(&chunk.expect("body chunk"));
+			}
+			assert_eq!(received.as_slice(), b"data: hi\n\n", "the body is delivered in full");
+		}
+	})
+	.await
+	.expect("test must terminate within bounded deadline");
+}
+
+/// WHY: Malformed or truncated connection prefaces must not crash the engine
+/// and must not fall through to the HTTP/1.1 parser as recorded garbage
+/// requests.
+///
+/// What it does not catch: Invalid TCP checksum handling by network interface.
+#[tokio::test]
+async fn malformed_or_truncated_preface_does_not_crash_engine_and_preserves_next_connection() {
+	timeout(TEST_TIMEOUT, async {
+		let engine = Engine::bind().await.expect("bind loopback engine");
+		engine.route("/healthy", ResponseScript::new(200).raw_body("ok"));
+
+		// 1. Wrong preface: byte 18 is wrong ('X' instead of 'S' in SM\r\n\r\n)
+		// Literal: b"PRI * HTTP/2.0\r\n\r\nXM\r\n\r\n" - byte 18 (0-indexed 18) is 'X'
+		// (0x58), violates RFC 7540 SM sequence
+		let mut bad_stream = TcpStream::connect(engine.addr()).await.expect("connect");
+		bad_stream
+			.write_all(b"PRI * HTTP/2.0\r\n\r\nXM\r\n\r\n")
+			.await
+			.expect("write bad preface");
+		tokio::time::sleep(Duration::from_millis(50)).await;
+
+		// 2. Truncated preface: only 10 bytes sent before connection reset
+		// Literal: b"PRI * HTTP" - truncated after 10 bytes, client abruptly closes
+		let mut trunc_stream = TcpStream::connect(engine.addr()).await.expect("connect");
+		trunc_stream
+			.write_all(b"PRI * HTTP")
+			.await
+			.expect("write truncated preface");
+		drop(trunc_stream);
+		tokio::time::sleep(Duration::from_millis(50)).await;
+
+		// Ensure neither malformed preface landed as a valid HTTP/1.1 garbage request
+		assert_eq!(
+			engine.request_count(),
+			0,
+			"malformed prefaces must not fall through to recorded HTTP/1.1 requests"
+		);
+
+		// 3. Engine is still running and serves subsequent HTTP/2 connection correctly
+		let valid_h2_stream = TcpStream::connect(engine.addr())
+			.await
+			.expect("connect valid h2");
+		let (mut client, connection) = h2::client::handshake(valid_h2_stream)
+			.await
+			.expect("valid h2 handshake");
+		tokio::spawn(async move {
+			let _ = connection.await;
+		});
+
+		let (response_fut, _) = build_test_h2_request(
+			&mut client,
+			&format!("{}/healthy", engine.base_url()),
+			"GET",
+			&[],
+			true,
+		)
+		.expect("send request");
+		let (parts, _) = response_fut.await.expect("receive response").into_parts();
+		assert_eq!(parts.status.as_u16(), 200);
+
+		// 4. Engine still serves subsequent HTTP/1.1 connection correctly
+		let mut valid_h1_stream = TcpStream::connect(engine.addr())
+			.await
+			.expect("connect valid h1");
+		let h1_req =
+			format!("GET /healthy HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n", engine.addr());
+		valid_h1_stream
+			.write_all(h1_req.as_bytes())
+			.await
+			.expect("write h1");
+		let mut h1_resp = Vec::new();
+		valid_h1_stream
+			.read_to_end(&mut h1_resp)
+			.await
+			.expect("read h1");
+		assert!(String::from_utf8_lossy(&h1_resp).starts_with("HTTP/1.1 200 OK\r\n"));
+
+		assert_eq!(engine.request_count(), 2);
 	})
 	.await
 	.expect("test must terminate within bounded deadline");

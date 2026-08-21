@@ -67,3 +67,7 @@ impl FaultKind {
 		}
 	}
 }
+
+pub use crate::vmock::h2c::{
+	H2ConnectionFault, H2FaultInstall, H2FaultKind, H2Reason, MID_DATA_CHUNK,
+};
