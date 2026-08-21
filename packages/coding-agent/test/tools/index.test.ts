@@ -26,24 +26,6 @@ function createSettingsWithOverrides(overrides: Partial<Record<SettingPath, unkn
 	});
 }
 
-function createActiveGoalState() {
-	return {
-		enabled: true,
-		mode: "active" as const,
-		goal: {
-			id: "goal-1",
-			objective: "Ship the release",
-			status: "active" as const,
-			tokenBudget: 25,
-			tokensUsed: 5,
-			timeUsedSeconds: 0,
-			turnsCompleted: 0,
-			createdAt: 1,
-			updatedAt: 1,
-		},
-	};
-}
-
 function createDiscoverySessionHooks(): Partial<ToolSession> {
 	const selected: string[] = [];
 	return {
