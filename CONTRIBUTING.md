@@ -36,10 +36,10 @@ Every PR runs the full CI suite before a human looks at it:
 | **Checks** (`checks.yml`) | Biome lint + type check, TypeScript workspace tests |
 | **CI** (`ci.yml`) | Native addon builds, Rust + TS test matrix, install-method smoke tests |
 | **Site** (`site.yml`) | Builds the website when a PR touches `website/**`, so a blog post or report with bad frontmatter fails here; deploys on merge to `main` |
-| **Autoreview** (`autoreview.yml`) | santh-bot (qodo pr-agent) posts an AI review, description, and improvement pass |
+| **Devin review** | A maintainer requests an AI review by commenting `/devin review` on the PR |
 | **veybot** | The in-repo review bot posts a deeper contextual review |
 
-Green CI plus the automated review is the entry point to human review — it is
-not a merge gate on its own. A maintainer makes the final call.
+Green CI plus the requested Devin review is the entry point to human review. A
+maintainer makes the final call.
 
 Pushing more commits to an open PR re-runs the pipeline; that's expected.

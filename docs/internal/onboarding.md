@@ -137,7 +137,7 @@ format). Match the surrounding code.
 Pull requests are open to everyone, see [CONTRIBUTING.md](../../CONTRIBUTING.md).
 Open the PR against `main`. Put your change under the affected package's
 `## [Unreleased]` changelog section, keep the PR description short (what broke, the
-fix), and make sure `bun run check` and the tests pass. CI and the automated review
-(`.github/workflows/autoreview.yml`) run before a maintainer reviews it.
+fix), and make sure `bun run check` and the tests pass. After pushing the PR,
+request the AI review by commenting `/devin review`; a maintainer makes the final call.
 
 *Verified against `7e4c6374` on 2026-08-06.*
