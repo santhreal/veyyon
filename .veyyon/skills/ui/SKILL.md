@@ -16,15 +16,22 @@ terminal you edited in.
 Two rules are binding, and a UI change that skips either does not land:
 
 1. **Every UI change is made on its own worktree**, never on `main`.
-2. **Every UI change ships a before/after visual proof**, captured with VHS,
-   for each theme and each ground the change can affect. A static change proves
-   with a PNG pair (before, after). An animation proves with a GIF pair.
+2. **Every UI change ships a before/after visual proof, captured through the
+   official config**, for each theme and each ground the change can affect. A
+   static change proves with a PNG pair (before, after). An animation proves with
+   a GIF pair. The config is
+   [verification.md](../../../docs/handbook/src/foundations/verification.md): the
+   HD recorder for a real interactive session, the VHS baseline block for a screen
+   capture. That file is the authority for every setting; this skill only says
+   which pairs you owe.
 
-Never judge a visual change from a `tmux` dump. `tmux` renders on its own black
-ground, strips styling, and hides the entire class of fill, spacing, and
-contrast bugs this skill is here to catch. The only evidence is a real VHS
-render you look at, an exact-byte ANSI assertion in a test, or the user's own
-screenshot.
+**There are no fallbacks.** Not a `tmux` dump — it renders on its own black
+ground, strips styling, and hides the entire class of fill, spacing and contrast
+bug this skill exists to catch. Not an off-screen raster of a component's ANSI
+either: `scripts/demos/render-proof.ts` draws a fixture you wrote at a width you
+chose, so it shows what your fixture does, not what a session draws, and it is a
+debugging aid rather than a proof. Beside a capture stand only an exact-byte ANSI
+assertion in a test and the operator's own screenshot.
 
 ## When this applies
 
@@ -60,9 +67,11 @@ The before shot is the surface as it renders **without your change**. Capture it
 first, from the clean worktree base, before you edit anything.
 
 Drive the exact surface with a VHS tape under `assets/tapes/`, or, for a
-built-in tool renderer, with the gallery. Reuse the shared capture block and the
-determinism rules from [record-demo](../record-demo/SKILL.md) and
-[screenshots](../screenshots/SKILL.md); do not fork a second capture block here.
+built-in tool renderer, with the gallery. The baseline every tape starts from is
+the block in
+[verification.md](../../../docs/handbook/src/foundations/verification.md), verbatim;
+[record-demo](../record-demo/SKILL.md) and [screenshots](../screenshots/SKILL.md)
+carry the determinism rules. Do not fork a capture block, here or anywhere.
 
 - A live surface (composer, dialog, status line, transcript): write or extend a
   tape that navigates to it, and end on a `Screenshot proof/<slug>/before-<theme>.png`.
@@ -112,11 +121,13 @@ $ bun packages/coding-agent/src/cli.ts --profile demo config set theme.dark tita
 $ bun packages/coding-agent/src/cli.ts --profile demo config set theme.light light
 ```
 
-In the tape, vary only the `Set Theme` background to move between grounds
-(`"#000000"`, `"#1e2127"`, `"#FFFFFF"`); everything else stays on the shared
-capture block. This is the one place the pure-black brand block is deliberately
-set aside: a brand demo GIF keeps pure black, but a UI regression proof must
-exercise the grounds a user actually runs, because that is where the bugs live.
+In the tape, the ONE line you vary off that baseline is the `Set Theme` background,
+to move between grounds (`"#000000"`, `"#1e2127"`, `"#FFFFFF"`). Everything else —
+shell, font size, dimensions, padding, margin, framerate, typing speed, cursor
+blink — stays exactly as verification.md writes it. This is the one place the
+pure-black brand block is deliberately set aside: a brand demo GIF keeps pure black,
+but a UI regression proof must exercise the grounds a user actually runs, because
+that is where the bugs live.
 `brand-conformance.test.ts` and [brand.md](../../../docs/internal/brand.md)
 own the palette; this matrix proves your change respects it on every ground.
 

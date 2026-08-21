@@ -1137,16 +1137,22 @@ glyph the terminal font does not have, a count that contradicts the list under
 it, a card with eighteen empty rows: each of those renders as a perfectly valid
 string, and each is obvious the moment you look at a picture of the frame.
 
-**Never judge a visual change from a `tmux capture-pane` dump.** tmux renders on
-a pure-black default ground, `capture-pane` strips and distorts styling, and the
-whole class of background-fill and contrast bugs is invisible in it. A dump that
-looks fine there has shipped black slabs onto a grey terminal.
+**The evidence is a capture taken through the official config**, which is
+[verification.md](../handbook/src/foundations/verification.md): the HD recorder for
+a real interactive session, the VHS baseline block for a screen capture. There are
+no fallbacks. Never judge a visual change from a `tmux capture-pane` dump — tmux
+renders on a pure-black default ground, `capture-pane` strips and distorts styling,
+and the whole class of background-fill and contrast bug is invisible in it; a dump
+that looked fine there has shipped black slabs onto a grey terminal.
 
-The evidence is a RENDERED IMAGE of the real component, on both a grey
-(`#1e2127`-class) and a black ground, looked at by a human or by whoever is doing
-the work. There is one tool for this, `scripts/demos/render-proof.ts`: it reads a
-render's ANSI on stdin and writes `<out>-grey.png` and `<out>-black.png`. The
-components render off-screen without a terminal, so producing the pair takes two
+An off-screen raster is not a capture and is not a proof. `scripts/demos/render-proof.ts`
+reads a render's ANSI on stdin and writes `<out>-grey.png` and `<out>-black.png`,
+which is a good way to look at bytes, fills and grounds WHILE YOU WORK: it needs no
+display, it is deterministic, and it answers "does this fill reach the edge" in
+seconds. What it cannot answer is anything about the product, because it draws a
+fixture you wrote at a width you chose — not that the surface is reachable, not that
+the state is real, not that the block is positioned, sized and clipped the way a
+session draws it. Use it to debug; capture to prove. Producing a pair takes two
 steps and no display:
 
 1. Write a small renderer under `scripts/demos/` that builds the REAL component the
