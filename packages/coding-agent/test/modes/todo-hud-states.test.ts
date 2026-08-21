@@ -25,7 +25,7 @@ import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { InteractiveMode } from "@veyyon/coding-agent/modes/interactive-mode";
 import { ASCII_SYMBOLS, NERD_SYMBOLS, UNICODE_SYMBOLS } from "@veyyon/coding-agent/modes/theme/symbols";
-import { initTheme, stopThemeWatcher } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme, stopThemeWatcher, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
@@ -35,9 +35,12 @@ import { VirtualTerminal } from "../../../tui/test/virtual-terminal";
 
 const COLUMNS = 100;
 
-/** Glyph column of a HUD task row: `Text` left pad (1) + the phase shift (1) + the phase
- *  connector (3) + the task connector (3). Pinned because the width budget is derived from it. */
-const TASK_GLYPH_COLUMN = 8;
+/**
+ * Glyph column of a HUD task row: `Text` left pad (1) + the rail (1) + the space
+ * after it (1) + the task indent (2). Pinned because the width budget is derived
+ * from it, and because a task's state is READ from this column.
+ */
+const TASK_GLYPH_COLUMN = 5;
 
 function todoResult(statuses: Array<[string, string]>) {
 	return {
@@ -84,7 +87,12 @@ describe("the collapsed Todos HUD distinguishes every task state without colour"
 	beforeEach(async () => {
 		resetSettingsForTest();
 		tempDir = TempDir.createSync("@pi-todo-hud-");
-		await Settings.init({ inMemory: true, cwd: tempDir.path() });
+		// Motion off, because this suite reads state off a glyph: with transitions
+		// on, a running task's cell is whatever frame of the breathing ramp the
+		// anchored clock happens to be on, which is a different byte every 250ms.
+		// The ramp itself is owned by
+		// `test/a-worked-todo-board-moves-and-a-waiting-one-does-not.test.ts`.
+		await Settings.init({ inMemory: true, cwd: tempDir.path(), overrides: { "display.transitions": "off" } });
 		authStorage = await AuthStorage.create(path.join(tempDir.path(), "testauth.db"));
 		const modelRegistry = new ModelRegistry(authStorage);
 		const model = modelRegistry.find("anthropic", "claude-sonnet-4-5");
@@ -92,7 +100,7 @@ describe("the collapsed Todos HUD distinguishes every task state without colour"
 		session = new AgentSession({
 			agent: new Agent({ initialState: { model, systemPrompt: ["Test"], tools: [], messages: [] } }),
 			sessionManager: SessionManager.create(tempDir.path(), tempDir.path()),
-			settings: Settings.isolated({ "startup.quiet": true }),
+			settings: Settings.isolated({ "startup.quiet": true, "display.transitions": "off" }),
 			modelRegistry,
 		});
 		mode = new InteractiveMode(session, "test");
@@ -120,10 +128,15 @@ describe("the collapsed Todos HUD distinguishes every task state without colour"
 	 * this row" from "the card mentioned it". Rows are taken verbatim, including
 	 * any the terminal wrapped, because a wrap is exactly what the width budget
 	 * has to rule out.
+	 *
+	 * The header is found by the rail glyph in front of it, which is what makes it
+	 * the HUD's header and not the word appearing in a transcript row: the block's
+	 * only chrome is that rail, on every row it draws.
 	 */
 	const hudRows = (): string[] => {
 		const rows = terminal.getViewport();
-		const header = rows.findLastIndex(row => /^\s*Todos(\s|$)/.test(row.trimEnd()));
+		const rail = theme.symbol("block.rail");
+		const header = rows.findLastIndex(row => row.trimEnd().trimStart().startsWith(`${rail} Todos`));
 		expect(header).toBeGreaterThanOrEqual(0);
 		const block: string[] = [];
 		for (let i = header + 1; i < rows.length; i++) {
@@ -172,12 +185,17 @@ describe("the collapsed Todos HUD distinguishes every task state without colour"
 		await terminal.waitForRender();
 
 		// The whole point: the closed task is still on the board, showing what
-		// moved, rather than leaving only the two rows that have not.
-		expect(hudRows()).toEqual([
-			"  └─ Phase One · 1/3",
-			"     ├─ ■ wire the parser",
-			"     ├─ ◧ backfill the tests",
-			"     └─ □ update the docs",
+		// moved, rather than leaving only the two rows that have not. The rail is
+		// the block's only chrome — the tree connectors are gone — and the tally is
+		// right-aligned, so the phase row is asserted at both ends.
+		const rows = hudRows().map(row => row.trim());
+		expect(rows).toHaveLength(4);
+		expect(rows[0]!.startsWith(`${theme.symbol("block.rail")} ◧ Phase One`)).toBe(true);
+		expect(rows[0]!.endsWith("1/3")).toBe(true);
+		expect(rows.slice(1)).toEqual([
+			`${theme.symbol("block.rail")}   ▪ wire the parser`,
+			`${theme.symbol("block.rail")}   ◧ backfill the tests`,
+			`${theme.symbol("block.rail")}   □ update the docs`,
 		]);
 	});
 
@@ -209,14 +227,17 @@ describe("the collapsed Todos HUD distinguishes every task state without colour"
 		]);
 		await terminal.waitForRender();
 
-		// Two most recent finished tasks, then the open work. The stage header's
-		// `4/6` implies the two that are not listed.
-		expect(hudRows()).toEqual([
-			"  └─ Phase One · 4/6",
-			"     ├─ ■ third done",
-			"     ├─ ■ fourth done",
-			"     ├─ ◧ still going",
-			"     └─ □ not started",
+		// Two most recent finished tasks, then the open work. The stage tally's
+		// `4/6` is what says two more are finished and not listed.
+		const rows = hudRows().map(row => row.trim());
+		expect(rows).toHaveLength(5);
+		expect(rows[0]!.startsWith(`${theme.symbol("block.rail")} ◧ Phase One`)).toBe(true);
+		expect(rows[0]!.endsWith("4/6")).toBe(true);
+		expect(rows.slice(1)).toEqual([
+			`${theme.symbol("block.rail")}   ▪ third done`,
+			`${theme.symbol("block.rail")}   ▪ fourth done`,
+			`${theme.symbol("block.rail")}   ◧ still going`,
+			`${theme.symbol("block.rail")}   □ not started`,
 		]);
 	});
 

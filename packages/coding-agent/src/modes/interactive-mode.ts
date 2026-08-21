@@ -2417,10 +2417,16 @@ export class InteractiveMode implements InteractiveModeContext {
 		}
 		const nonEmptyBefore = before.filter(phase => phase.tasks.length > 0);
 		const nonEmptyAfter = after.filter(phase => phase.tasks.length > 0);
+		// A board that arrives ALREADY finished never had rows on screen, so there is
+		// nothing to sweep away: it draws nothing at all, which is how the anchored
+		// region says there is no open work. Arming the exit from an empty `before`
+		// made a resumed session, and every caller that hands the HUD a closed plan
+		// in one shot, play an exit for a board it never showed.
 		const closedNow =
 			nonEmptyAfter.length > 0 &&
 			isTodoListDone(nonEmptyAfter) &&
-			(nonEmptyBefore.length === 0 || !isTodoListDone(nonEmptyBefore));
+			nonEmptyBefore.length > 0 &&
+			!isTodoListDone(nonEmptyBefore);
 		if (closedNow && transitionsEnabled()) {
 			this.#todoSettlePhases = nonEmptyAfter;
 			this.#todoSettleFrame = 1;

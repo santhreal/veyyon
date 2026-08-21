@@ -97,7 +97,13 @@ describe("the anchored todo HUD clears a finished board", () => {
 	async function boot(overrides: Record<string, unknown> = {}): Promise<void> {
 		resetSettingsForTest();
 		tempDir = TempDir.createSync("@pi-todo-hud-done-");
-		await Settings.init({ inMemory: true, cwd: tempDir.path(), overrides });
+		// Motion off. A plan that closes while its rows are on screen plays a bounded
+		// exit sweep before the region empties, so with transitions on every arm here
+		// would be asserting the first frame of an animation rather than whether the
+		// board is drawn at all. The sweep and its termination are owned by
+		// `todo-mid-turn-render.test.ts`; this file owns the verdict.
+		const boardSettings = { "display.transitions": "off", ...overrides };
+		await Settings.init({ inMemory: true, cwd: tempDir.path(), overrides: boardSettings });
 		authStorage = await AuthStorage.create(path.join(tempDir.path(), "testauth.db"));
 		const modelRegistry = new ModelRegistry(authStorage);
 		const model = modelRegistry.find("anthropic", "claude-sonnet-4-5");
@@ -105,7 +111,7 @@ describe("the anchored todo HUD clears a finished board", () => {
 		session = new AgentSession({
 			agent: new Agent({ initialState: { model, systemPrompt: ["Test"], tools: [], messages: [] } }),
 			sessionManager: SessionManager.create(tempDir.path(), tempDir.path()),
-			settings: Settings.isolated(overrides),
+			settings: Settings.isolated(boardSettings),
 			modelRegistry,
 		});
 		mode = new InteractiveMode(session, "test");
@@ -221,8 +227,20 @@ describe("the anchored todo HUD clears a finished board", () => {
 		expect(mode.todoExpanded).toBe(true);
 		expect(hudLines()).toEqual([]);
 
-		// Control: an open board is not indifferent to the toggle.
-		show(board(["pending"], ["pending"], ["pending"], ["pending"], ["pending"], ["pending"], ["pending"]));
+		// Control: an open board is not indifferent to the toggle. One phase with
+		// more open tasks than the collapsed preview keeps, because seven phases of
+		// one task each render the same rows either way once the anchored budget has
+		// trimmed them — a control that cannot move is not a control.
+		show([
+			{
+				name: "Long phase",
+				tasks: Array.from({ length: 12 }, (_, index) => ({
+					content: `open-${index}`,
+					status: "pending" as TodoStatus,
+				})),
+			},
+		]);
+		// Measured while the toggle is still ON, from the line above.
 		const expandedRows = hudLines().length;
 		mode.toggleTodoExpansion();
 		expect(mode.todoExpanded).toBe(false);
