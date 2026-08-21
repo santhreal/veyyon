@@ -994,6 +994,8 @@ mod tests {
 
 	/// Get a [WalkEntry] with an explicit [Follow] flag.
 	pub fn get_dir_entry_follow(root: &str, path: &str, follow: Follow) -> WalkEntry {
+		crate::find::test_fixtures::ensure_test_data();
+
 		let root = fix_up_slashes(root);
 		let root = Path::new(&root);
 
