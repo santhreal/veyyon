@@ -402,27 +402,21 @@ describe("telling the operator when a flip did nothing", () => {
 	});
 });
 
-describe("the controller no longer keeps its own list", () => {
-	it("drives the rebuild from the registry", async () => {
-		const source = await Bun.file(SELECTOR_CONTROLLER).text();
-
-		expect(source).toContain("isLivePromptGate(id)");
-	});
-
-	it("tells the operator about a frozen gate instead of letting the flip go unremarked", async () => {
-		const source = await Bun.file(SELECTOR_CONTROLLER).text();
-
-		expect(source).toContain("frozenGateNotice(id)");
-	});
-
-	it("carries no per-setting rebuild case, which is the list that drifted", async () => {
-		// The failure was two lists that had to agree. One `refreshBaseSystemPrompt` call driven
-		// by `isLivePromptGate` is the whole point; a second call in a `case` arm would mean the
-		// hand-written list is back, and it would be the one that goes stale again.
+describe("the rebuild has one owner, and it is not the settings screen", () => {
+	it("carries no rebuild site in the controller at all", async () => {
+		// The trigger moved to `AgentSession`'s effective-setting listener, which every writer
+		// reaches — a slash command, an SDK or ACP host, a plugin — and not only this screen. A
+		// call here again would be the second owner back: two rebuilds for one UI flip, and a
+		// trigger that covers no other writer.
+		//
+		// Absence of a call site is the one claim only a source read can make. That the trigger
+		// WORKS is proven where it lives, against real writes and a real session, in
+		// `test/a-settings-write-rebuilds-the-prompt-it-changes.test.ts`, and that this screen
+		// stays out of it is proven in `test/modes/controllers/selector-prompt-gate-rebuild.test.ts`.
 		const source = await Bun.file(SELECTOR_CONTROLLER).text();
 		const calls = [...source.matchAll(/refreshBaseSystemPrompt\(/g)];
 
-		expect(calls.length, "more than one rebuild site means the registry is not the only owner").toBe(1);
+		expect(calls.length, "the settings screen rebuilds the prompt again").toBe(0);
 	});
 });
 
