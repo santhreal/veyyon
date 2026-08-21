@@ -4042,7 +4042,7 @@ export class TUI extends Container {
 			// inside the live band. Freeze commits for such a frame — the window
 			// still paints in place, and the only rows that miss native scrollback
 			// are chrome rows, which were never history to begin with.
-			const commitWouldTakeLiveRows = windowTop > this.#historyEndRow(frameLength);
+			const commitWouldTakeLiveRows = windowTop > historyEnd;
 			chunkTo = hasVisibleOverlay || geometryChanged || commitWouldTakeLiveRows ? this.#committedRows : windowTop;
 			if (geometryChanged) {
 				committedPrefixResliced = true;
@@ -4278,11 +4278,18 @@ export class TUI extends Container {
 	 */
 	#historyEndRow(frameLength: number): number {
 		const segments = this.#frameSegments;
+		let end = frameLength;
 		for (let i = segments.length - 1; i >= 0; i--) {
 			const segment = segments[i]!;
-			if (canPrepareNativeScrollbackReplay(segment.component)) return segment.start + segment.rowCount;
+			if (canPrepareNativeScrollbackReplay(segment.component)) {
+				end = segment.start + segment.rowCount;
+				break;
+			}
 		}
-		return frameLength;
+		if (this.#pinnedFooterChildCount > 0 && segments.length >= this.#pinnedFooterChildCount) {
+			end = Math.min(end, segments[segments.length - this.#pinnedFooterChildCount]!.start);
+		}
+		return end;
 	}
 
 	/**

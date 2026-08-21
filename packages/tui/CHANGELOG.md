@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed pinned footer and anchored live-region chrome rows leaking into native scrollback when frame growth or scrolling advanced the viewport top.
 ## [16.5.2] - 2026-07-14
 
 ### Fixed
