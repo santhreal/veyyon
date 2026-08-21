@@ -86,6 +86,8 @@ The materialized conformance corpus contains exactly 250,000 distinct JSONL test
 | 16 | Wire Protocol & Argot | Collab wire messages, guest client relay, Argot shorthand codec, token boundary expansion, handle streaming | 14,000 | 240 |
 | **Total** | | | **250,000** | **4,496** |
 
+The manifest generator computes both total columns from the sixteen allocations and rejects the manifest unless they equal 250,000 and 4,496. The rendered total row is generated from those computed values; it is never an independently maintained literal.
+
 ---
 
 ## Production-Path Execution Rules
