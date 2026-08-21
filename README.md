@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/demo-hd.webp" width="960" alt="Veyyon searches a nine-module tree, finds that a hex string is silently read as a decimal, fans out three subagents to fix it, verifies every default with a command, writes a phased plan, and signs the result with a stored credential it never prints, in a composited terminal at the speed it was recorded">
+  <img src="assets/demo-hd.webp" width="960" alt="Veyyon opens a four-phase todo plan, audits a nine-module service tree, writes one validating owner, fans out three subagents, applies a hash-anchored edit, runs the suite, advances the plan, signs the result through a stored secret placeholder, and opens context and settings operator surfaces in one continuous session">
 </p>
 
 Veyyon uses the same model weights available in other clients. The difference is the workbench around them: a prompt you can inspect, model-native effort controls, explicit state ownership, protected secret spending, typed workers, language-server refactors, durable sessions, and tools that fail before stale state becomes a bad write.
@@ -47,7 +47,7 @@ The installer downloads a verified release binary. It never clones this reposito
 ```sh
 git clone https://github.com/santhreal/veyyon.git
 cd veyyon
-git checkout v1.0.46   # optional: pin a ref
+git checkout v1.1.0   # optional: pin a ref
 bun run setup
 bun dev
 ```
@@ -72,10 +72,6 @@ veyyon prompt --statement tool-selection --cwd ./my-project
 
 The outer prompt is a zero-prose scaffold. Registered statements own the actual instructions and their activation conditions. Project context comes from layered `AGENTS.md` files and validated `PROMPT_SECTIONS/` overrides. `/move` reloads cwd-derived context transactionally, so a failed discovery does not leave half of one project mixed with half of another.
 
-<p align="center">
-  <img src="assets/prompt-architecture-sections.png" width="900" alt="The prompt inspector lists assembled sections with their byte cost and share of the prompt">
-</p>
-
 [Prompt customization](docs/system-prompt-customization.md) · [Context files](docs/context-files.md)
 
 ### 2. Effort belongs to the model, and compaction is visible
@@ -83,10 +79,6 @@ The outer prompt is a zero-prose scaffold. Registered statements own the actual 
 A session effort override wins first. An explicit selector suffix wins next, followed by the saved `defaultEffort[model]` row, the saved `defaultEffort["*"]` row, and finally the model default. `Default` removes the session override. The picker shows only effort variants the selected model supports, so Veyyon does not offer a choice that it will silently clamp into something else.
 
 Compaction uses editable model chains and explicit fallback policy. Before a model summarizes history, a lossless pass removes contained duplicates. Manual and automatic compaction report what happened instead of silently switching models or discarding context.
-
-<p align="center">
-  <img src="assets/effort-variants-grey.png" width="960" alt="Model-native effort choices for a two-tier ladder and a five-step ladder, rendered from the shipped effort picker">
-</p>
 
 <p align="center">
   <img src="assets/demo-hd-context-report.png" width="960" alt="The context report accounts for a live session by section, with the window share each one holds">
@@ -124,46 +116,49 @@ A rename is a symbol operation, not a text replacement. Veyyon asks the active l
 
 [Language servers](docs/tools/lsp.md) · [Editing and repair](docs/handbook/src/using/editing.md)
 
-### 6. Argot shortens repeated project vocabulary without leaking handles
-
-Argot is experimental and off by default. A project dictionary maps repeated paths and phrases to short handles in the model's history. Handles expand before a tool, transcript, child result, parent result, or live display receives them. Disabling teaching does not disable decoding, so an old handle cannot leak after the feature is turned off.
-
-The dependent controls are hidden while Argot is disabled:
-
-<table>
-  <tr>
-    <td align="center"><img src="assets/argot-settings-off.png" width="440" alt="Argot disabled with only the master toggle visible"><br><strong>Off</strong></td>
-    <td align="center"><img src="assets/argot-settings-on.png" width="440" alt="Argot enabled with its dependent controls visible"><br><strong>On</strong></td>
-  </tr>
-</table>
-
-Its token economics remain unproven across workloads. The codec boundary is shipped; the performance claim is not assumed.
-
-[Argot design and limits](docs/handbook/src/why/argot.md)
-
 ## Demo gallery
 
-One recording, and screenshots. The video is a single long session captured at 2560x1440
-in a composited terminal and published at 1920x1080, driving Qwen3.8 27B served locally at
-67 tokens a second. Every screenshot below is a frame from that same session, so the
-states are consecutive rather than staged: what one image shows is what the previous one
-left behind.
+The hero is one continuous long-running session captured at 2560x1440 in a
+composited terminal and published at 1920x1080. It drives the shipped CLI, real
+tools, a local Qwen3.8 27B model, parallel workers, the todo board, verification,
+and protected secret spending without staging intermediate states.
+
+Preview a take without replacing tracked assets:
 
 ```sh
-PROOF_LLM_BASE_URL=http://<host>:11434/v1 bash scripts/demos/record-hd-demo.sh demo-hd
+PUBLISH=0 DEMO_SERVER=x11 \
+  PROOF_LLM_BASE_URL=http://<host>:11434/v1 \
+  bash scripts/demos/record-hd-demo.sh demo-hd
 ```
 
-The session hardens a service tree: nine modules across three directories each read a numeric
-setting straight out of the environment in their own spelling, so it finds every site with a
-search, writes one validating owner, then fans the edits out to three subagents working
-disjoint directories in parallel. It then makes one edit of its own, pinning the trap it turned
-up itself — `Number("0x10")` returns 16, so a hex string in an environment variable is read as
-a decimal rather than rejected — and runs the suite over the result. It writes a phased plan
-with the todo tool, marks the first task done and commits it, and then signs its work with a
-credential it never typed: a number
-is stored from the environment with `/secret from-env`, the model writes
-`#RELEASE_SIGNATURE#`, and Veyyon substitutes the real bytes at the outbound boundary. The
-placeholder is what the transcript, the session and `/secret log` all keep. The approval
+The HD recorder uses this terminal configuration:
+
+```text
+terminal       kitty
+font           JetBrains Mono 21
+canvas         2560x1440 at 30 fps
+window inset   128 px
+background     #171b22
+foreground     #d3dae6
+publish        Lanczos downsample to 1920x1080
+```
+
+See [Recording terminal proofs](docs/handbook/src/foundations/verification.md#recording-terminal-proofs)
+for the reusable compositor, VHS, and ANSI raster settings.
+
+### Scenario
+
+The session starts by writing and beginning a four-phase plan with the todo tool. It then
+hardens a service tree: nine modules across three directories each read a numeric setting
+straight out of the environment in their own spelling, so it finds every site with a search,
+writes one validating owner, then fans the edits out to three subagents working disjoint
+directories in parallel. It makes one hash-anchored edit of its own, pinning the trap the audit
+turned up — `Number("0x10")` returns 16, so a hex string in an environment variable is read as
+a decimal rather than rejected — runs the suite, and visibly advances the plan before committing.
+It then signs its work with a credential it never typed: a number is stored from the environment
+with `/secret from-env`, the model writes `#RELEASE_SIGNATURE#`, and Veyyon substitutes the
+real bytes at the outbound boundary. The placeholder is what the transcript, the session,
+and `/secret log` all keep. The approval
 dialog does show the resolved value, deliberately, because approving a spend you cannot read
 is not consent. `SIGNED.md` ends up carrying the sha256 of that number, so the digest in the
 frame can be recomputed with `proof/verify-signature.py` rather than believed:
@@ -174,13 +169,13 @@ python3 proof/verify-signature.py proof/captures/wayland/demo-hd-signature-cross
 
 | Surface | What the frame shows | Artifact |
 | --- | --- | --- |
-| The session | Search, fan out, edit, verify, plan, sign — at the speed it was recorded, with any stretch where the screen went untouched trimmed to a four-second pause and nothing sped up | [clip](assets/demo-hd.webp) / [full quality](proof/captures/wayland/demo-hd-cut.mp4) / [unedited take](proof/captures/wayland/demo-hd.mp4) |
-| Search | The grep that finds all nine sites, shot while the turn is still running | [frame](assets/demo-hd-search-block.png) |
-| Inventory | Every environment read in the tree in one table, with the three different coercion spellings in use grouped underneath and the one inconsistency worth flagging named | [frame](assets/demo-hd-inventory.png) |
+| The session | Plan, search, fan out, edit, verify, advance, sign, and inspect operator state — at the speed it was recorded, with any stretch where the screen went untouched trimmed to a four-second pause and nothing sped up | [clip](assets/demo-hd.webp) / [full quality](proof/captures/wayland/demo-hd-cut.mp4) / [unedited take](proof/captures/wayland/demo-hd.mp4) |
+| Search | The real grep that finds all nine sites, brought back into view from the same completed audit turn | [frame](assets/demo-hd-search-block.png) |
+| Inventory | All nine environment reads in one table with file, variable, env var, default, and raw coercion spelling, closed by the exact 3/3/3 count | [frame](assets/demo-hd-inventory.png) |
 | Parallel agents | Three subagents settling in one turn, one per directory, editing disjoint files against an owner the main agent wrote first | [frame](assets/demo-hd-agent-lanes.png) |
 | Edit | The main agent's own diff, adding the guard that rejects the hex, octal and binary literals its search flagged, with the file named in the block header | [frame](assets/demo-hd-edit-diff.png) |
 | Verification | The command the model chose to check its own change, and its output | [frame](assets/demo-hd-verify-command.png) |
-| Plan | A fourteen-task plan over five phases, written in one call, then closed out as the work landed — the board tracking the phase above the composer the whole way, and that region gone the moment the last task closes | [recording](assets/demo-todo-hd.webp) / [written](assets/todo-marathon-list-open.png) / [midway](assets/todo-marathon-midway.png) / [finished](assets/todo-marathon-finished.png) / [full quality](proof/captures/wayland/todo-marathon-cut.mp4) / [unedited take](proof/captures/wayland/todo-marathon.mp4) |
+| Plan | A four-phase hardening plan opens before any file changes, advances through Migration and Validation, then closes after signing | [opened](assets/demo-hd-todo-board.png) / [advanced](assets/demo-hd-todo-strike.png) / [finished](assets/demo-hd-todo-finished.png) |
 | Secret stored | A credential taken from the environment, so it is typed nowhere | [frame](assets/demo-hd-secret-stored.png) |
 | Secret approval | The call held for approval, naming the credential it would spend | [frame](assets/demo-hd-secret-approval.png) |
 | Secret spent | The signature written from a placeholder the model never resolved | [frame](assets/demo-hd-signature-written.png) |
@@ -188,9 +183,6 @@ python3 proof/verify-signature.py proof/captures/wayland/demo-hd-signature-cross
 | Context | What the session cost, from the product's own accounting | [report](assets/demo-hd-context-report.png) |
 | Settings | Appearance opened in the settings card, with the footline preview rendering the values live beside it | [frame](assets/demo-hd-settings-pane.png) |
 | Workers | Two task agents settling in one turn, each with its own finding, and the main agent cross-checking one against the other | [frame](assets/stills-extra-agents.png) / [control](assets/stills-extra-agent-control.png) |
-| Prompt inspector | The assembled prompt by section, with the byte cost of each | [sections](assets/prompt-architecture-sections.png) / [statements](assets/prompt-architecture-statements.png) |
-| Model controls | Native effort variants and ordered chains, rendered from the shipped components | [effort](assets/effort-variants-grey.png) / [chains](assets/model-chain-editor-grey.png) |
-| Argot gate | Disabled and enabled settings differential | [off](assets/argot-settings-off.png) / [on](assets/argot-settings-on.png) |
 | Language servers | A rename computed by the language server: one edit to the class file, three to its test, then a green suite | [recording](assets/demo-lsp-hd.webp) |
 | Installation | The published release installed by the documented one-liner, checksum verified | [recording](assets/demo-install-hd.webp) |
 
@@ -249,7 +241,7 @@ Veyyon retains the Bun and TypeScript agent loop, terminal UI, provider catalog,
 
 ### Veyyon-owned contracts
 
-Veyyon owns the statement-based prompt architecture, transactional context moves, model-native effort and explicit effort precedence, current compaction strategy and chains, provider-bound secret protection, profile/session durability rules, LSP write-through, capability and tool registry, typed worker and IRC operations, Agent Control Center, internal agent URLs, post-fork reusable Rust crate boundaries and their current contracts, and Argot integration boundaries described above.
+Veyyon owns the statement-based prompt architecture, transactional context moves, model-native effort and explicit effort precedence, current compaction strategy and chains, provider-bound secret protection, profile/session durability rules, LSP write-through, capability and tool registry, typed worker and IRC operations, Agent Control Center, internal agent URLs, and post-fork reusable Rust crate boundaries and their current contracts.
 
 This boundary describes this repository. It does not claim that current upstream has stood still. Read [UPSTREAM.md](UPSTREAM.md), the [mechanisms chapter](docs/handbook/src/why/innovations.md), and the [intentional divergence ledger](docs/internal/porting-from-pi-mono.md#15-intentional-divergences) for the detailed record.
 

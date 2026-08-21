@@ -69,3 +69,9 @@ providers:
         name: Qwen3.8 27B (local)
         contextWindow: 65536
         maxTokens: 2048
+      # The long hero uses a distinct server model loaded with a 96k window. This
+      # is not a client-side request to enlarge the 64k row above.
+      - id: demo-qwen38-27b-96k
+        name: Qwen3.8 27B 96k (local)
+        contextWindow: 98304
+        maxTokens: 2048

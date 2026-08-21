@@ -21,11 +21,11 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${REPO_ROOT}"
 
 : "${PROOF_LLM_BASE_URL:?set PROOF_LLM_BASE_URL to an OpenAI-compatible endpoint}"
-# Qwen3.8 27B, served locally with a 64k window. The window is the part that matters
-# to a take: this session runs fifteen turns with tool output in every one, and at 32k
-# it compacted mid-recording, so the footer gauge and the context report were both
-# describing a session that had just lost half its history.
-DEMO_MODEL="${DEMO_MODEL:-local/demo-qwen38-27b-64k}"
+# Qwen3.8 27B, served locally through the distinct 96k model row. The window is
+# part of the proof: this session carries a plan, three subagent results, edits,
+# verification, and operator reports in one transcript. At 64k it reached the
+# final turns with too little context to keep the task coherent.
+DEMO_MODEL="${DEMO_MODEL:-local/demo-qwen38-27b-96k}"
 SCENE="${1:-demo-hd}"
 
 # WHICH DISPLAY SERVER RECORDS THE TAKE. `x11` is picom's frosted backdrop behind an
@@ -75,6 +75,11 @@ demo-hd)
 	# gets a few of them, so both are published and the short one can be checked
 	# against the long one.
 	PUBLISH_TAKE=1
+	# The scene owns each continuation explicitly so its named frames land before
+	# the next phase begins. The default todo reminder fires as the turn settles,
+	# racing the inventory capture and sometimes starting Migration before the
+	# recorder can interrupt it.
+	SETTINGS="todo.reminders: false"
 	# THE HERO IS NOT SPED UP, AND IT SHOWS THE WORK. Every window used to be 1.2s
 	# of lead played at 2x -- about half a second of real time before each frame --
 	# so what published was a slideshow of outcomes with the session's actual work
@@ -101,10 +106,11 @@ demo-hd)
 	# actually moved in, no freeze longer than four seconds, at the speed it was
 	# recorded. The cap stays at 24 because the WebP is inlined by the README and
 	# its bytes are all motion -- the trim buys density, not size, so a wider cap
-	# is a heavier landing page rather than a better one. 1280 is the WebP's own
-	# width for the same reason; the README displays it at 960.
+	# is a heavier landing page rather than a better one. The WebP stays 1920 wide:
+	# that is the website's declared intrinsic size and gives the README's
+	# 960-pixel presentation two source pixels per CSS pixel without an upscale.
 	CUT_WIDTH=1920
-	WEBP_WIDTH=1280
+	WEBP_WIDTH=1920
 	CUT_ARGS=(--speed 1.0 --mark-lead-max 24 --hold 4 --crf 26 --still-keep 4 --still-min 4)
 	;;
 todo-marathon)
