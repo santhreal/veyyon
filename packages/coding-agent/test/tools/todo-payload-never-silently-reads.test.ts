@@ -3,6 +3,7 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { type TodoPhase, TodoTool } from "@veyyon/coding-agent/tools/todo";
+import { type } from "arktype";
 
 /**
  * THE BUG THIS LOCKS OUT.
@@ -182,10 +183,14 @@ describe("a todo payload carrying items never silently reads", () => {
 	 * The discriminator. Without a payload that legitimately IS a read, every assertion
 	 * above could be satisfied by a tool that never returns `view` at all, and the suite
 	 * would be pinning nothing about item-carrying calls specifically.
+	 *
+	 * The read is spelled `op: "view"`. A BARE `{}` used to resolve to one, which is the
+	 * inference this whole file exists to distrust: the same fall-through that turned an
+	 * eight-item board write into a read is what turned an empty object into one.
 	 */
-	it("still resolves a genuinely empty payload to a read", async () => {
+	it("still resolves an explicit view to a read", async () => {
 		const { session, phases } = createSession(structuredClone(EXISTING));
-		const result = await new TodoTool(session).execute("call", {} as never);
+		const result = await new TodoTool(session).execute("call", { op: "view" });
 
 		expect(result.details?.op).toBe("view");
 		expect(result.isError).toBeUndefined();
@@ -193,16 +198,40 @@ describe("a todo payload carrying items never silently reads", () => {
 	});
 
 	/**
+	 * A payload that names no operation is refused by the SCHEMA, so it cannot reach the
+	 * board at all — not as a read, not as anything. This is the layer the old inference
+	 * bypassed: `{}` and `{task}` validated clean and the executor then contradicted
+	 * itself, which is how a model came to retry the same call against an error naming a
+	 * field it had been told it could omit.
+	 */
+	it("refuses a payload that names no operation, at the schema", () => {
+		const parameters = new TodoTool(createSession().session).parameters;
+		for (const params of [{}, { task: "Fix the bug." }, { phase: "Auth" }, { merge: true }]) {
+			expect(String(parameters(params))).toContain("op");
+		}
+	});
+
+	/**
 	 * An EMPTY item container is not the same as no container: the caller named a field
 	 * and sent nothing in it, which is either "clear the board" or a mistake, never a
-	 * read. `list: []` is already refused by name; the sibling containers must not
-	 * quietly resolve to `view` behind it.
+	 * read. Two of these are refused by the schema (no operation named); `todos: []` is
+	 * admitted by it, because a `todos` payload legitimately carries no `op`, and is
+	 * refused by the executor instead. Either way the board is untouched and something
+	 * says so.
 	 */
 	it("refuses an empty item container instead of treating it as a read", async () => {
 		for (const params of [{ list: [] }, { items: [] }, { merge: false, todos: [] }]) {
 			const { session, phases } = createSession(structuredClone(EXISTING));
-			const result = await new TodoTool(session).execute("call", params as never);
+			const tool = new TodoTool(session);
 			const key = Object.keys(params).filter(k => k !== "merge")[0];
+			const validated = tool.parameters(params);
+			if (validated instanceof type.errors) {
+				// Refused before execution: the board cannot have changed.
+				expect(String(validated)).toContain("op");
+				expect(phases()).toEqual(EXISTING);
+				continue;
+			}
+			const result = await tool.execute("call", validated as never);
 			const text = result.content.map(part => (part.type === "text" ? part.text : "")).join("\n");
 			const changed = JSON.stringify(phases()) !== JSON.stringify(EXISTING);
 			const reported = result.isError === true;

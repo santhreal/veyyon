@@ -232,6 +232,25 @@ const TodoWriteEntry = type({
 	status: type('"pending" | "in_progress" | "completed" | "cancelled"').describe("desired task status"),
 });
 
+/**
+ * `op` names the operation and is required for every call EXCEPT the
+ * compatibility whole-board write, which carries `todos` and no `op` at all.
+ *
+ * The requirement is a `.narrow()` rather than a required property because the
+ * two shapes have to live in ONE object: a top-level ArkType union converts to
+ * `anyOf`, and `buildAnthropicBaseToolInputSchema` reads `properties` off the
+ * root, so a union would advertise the tool as an object with no fields at all.
+ *
+ * Declaring `op` plainly optional and leaving the requirement to the executor is
+ * what shipped in 1.1.0, and it made the schema lie: `{"task":"Scaffold"}`
+ * validated clean, because a missing optional field is legal and an undeclared
+ * key is not refused for an ArkType-authored tool, and the executor then
+ * answered `Missing op` — naming a field the call had just been told it could
+ * leave out, with the repair layer reporting the same call `clean`. Three layers
+ * declined to act and the model retried the identical payload. The refusal
+ * belongs at validation, which is the layer the repair loop and the model-facing
+ * error path are built around.
+ */
 const todoSchema = type({
 	"op?": TodoOp,
 	"list?": InitListEntry.array().describe("phased task list (init)"),
@@ -243,7 +262,16 @@ const todoSchema = type({
 	"items?": type("string").describe("task content").array().describe("tasks to append"),
 	"todos?": TodoWriteEntry.array().describe("compatibility whole-board write; prefer op"),
 	"merge?": type("boolean").describe("compatibility: false replaces the board, true or omitted merges by content"),
-}).describe("apply a single todo operation");
+})
+	.narrow((params, ctx) => {
+		if (params.op !== undefined || params.todos !== undefined) return true;
+		return ctx.reject({
+			expected: 'an "op" naming the operation: init, start, done, rm, drop, append or view',
+			actual: "no op",
+			path: ["op"],
+		});
+	})
+	.describe("apply a single todo operation");
 
 type TodoSchema = typeof todoSchema.infer;
 type TodoParams = TodoSchema & { op: TodoOperation };
@@ -832,32 +860,38 @@ function applyEntry(phases: TodoPhase[], entry: TodoOpEntryValue, report: TodoOp
 			return appendItems(phases, entry, report.errors);
 		case "view":
 			return phases;
+		default:
+			// Unreachable for a validated tool call: the schema requires `op` and
+			// pins it to the seven names above. Reachable for the OTHER callers of
+			// `applyOpsToPhases` — the `/todo` slash command and any extension that
+			// builds ops itself — and falling off the switch returned `undefined`
+			// there, which crashed the next read of the board rather than reporting
+			// a bad op. The board is returned untouched with the op named.
+			entry.op satisfies never;
+			report.errors.push(
+				`Unknown op ${JSON.stringify(entry.op)}; expected init, start, done, rm, drop, append or view`,
+			);
+			return phases;
 	}
 }
 
-function normalizeTodoParams(params: TodoSchema, errors: string[]): TodoParams | undefined {
-	if (params.op) return params as TodoParams;
-	if ((params.list && params.list.length > 0) || (params.items && params.items.length > 0)) {
-		return { ...params, op: "init" };
-	}
-	if (params.list) {
-		errors.push("Missing op; an empty list cannot initialize or clear todos. Use op explicitly");
-		return undefined;
-	}
-	if (params.todos) {
-		// Same door as the empty `list` above. `{ merge: false, todos: [] }` is
-		// "replace my board with nothing", and the compat branch in `execute`
-		// only fires on a non-empty `todos`, so without this arm the call fell
-		// through to `view` and the clear was silently read instead of applied.
-		errors.push("Missing op; an empty todos list cannot initialize or clear todos. Use op explicitly");
-		return undefined;
-	}
-	if (!params.task && !params.phase && !params.items) {
-		return { ...params, op: "view" };
-	}
-	errors.push("Missing op; pass op explicitly unless a non-empty list/items payload makes this an init");
-	return undefined;
-}
+/**
+ * `op` is REQUIRED by the schema, so there is nothing to normalize: a call that
+ * omits it, or names it something the schema does not declare, is refused by
+ * `validateToolArguments` before `execute` runs.
+ *
+ * It was optional for one release, to let a Claude/Cursor `TodoWrite` payload
+ * (which carries `todos` and no `op`) validate. That traded one accepted shape
+ * for a schema that lied about every other one: `{"task":"Scaffold"}` and
+ * `{"operation":"start","task":"Scaffold"}` both validated clean, because a
+ * missing optional field is legal and an undeclared key is not refused for an
+ * ArkType-authored tool, and then the executor answered `Missing op` — a
+ * contradiction of the shape the model had just been told was valid, with no
+ * field named that the model could correct. The repair layer could not help
+ * either: it reported `clean` on a payload that could not execute. A required
+ * `op` puts the refusal back where the model can act on it, and
+ * `COMMON_KEY_ALIASES` renames `operation`/`action` onto it.
+ */
 
 /**
  * Translate a Claude/Cursor `TodoWrite` whole-board write into the ordered
@@ -1251,19 +1285,36 @@ export class TodoTool implements AgentTool<typeof todoSchema, TodoToolDetails> {
 		if (params.todos && params.todos.length > 0) {
 			return this.#executeCompatBatch(params, previousPhases);
 		}
-		const normalizationErrors: string[] = [];
-		const normalized = normalizeTodoParams(params, normalizationErrors);
-		if (!normalized) {
+		// `todos: []` is the one shape the schema's narrow admits without an `op`
+		// that cannot be carried out: an EMPTY container is not a read. With
+		// `merge: false` it says "replace my board with nothing", which is
+		// destructive, and with `merge: true` it says nothing at all.
+		if (params.todos) {
 			const storage = this.session.getSessionFile() ? "session" : "memory";
 			return {
 				content: [
-					{ type: "text", text: formatSummary(previousPhases, { errors: normalizationErrors, notes: [] }, true) },
+					{
+						type: "text",
+						text: formatSummary(
+							previousPhases,
+							{
+								errors: [
+									'An empty "todos" list cannot initialize or clear todos. Pass op explicitly: op "rm" clears the board',
+								],
+								notes: [],
+							},
+							true,
+						),
+					},
 				],
 				details: { phases: previousPhases, storage },
 				isError: true,
 			};
 		}
-		// Pure-view calls are reads: no normalization, no state write.
+		// The narrow admits an absent `op` only alongside `todos`, which both
+		// branches above consumed. Everything from here carries one.
+		const normalized = params as TodoParams;
+		// Pure-view calls are reads: no state write.
 		const readOnly = normalized.op === "view";
 		const {
 			phases: updated,
