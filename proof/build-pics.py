@@ -33,10 +33,16 @@ OUT = os.path.join(ROOT, "proof", "pics.html")
 
 # Ordered: the first pattern that matches a name owns the frame, so the take-7
 # sequence claims its frames before the generic settings rule can.
+#
+# A blurb may be a callable taking the number of frames the section emitted. A
+# count typed into the sentence drifts the moment a take is re-recorded with a
+# different shot list: this page said "Eighteen frames from one unbroken
+# 19-minute session" over fourteen frames of an eight-minute one. A number the
+# page cannot disagree with is worth more than a number someone remembered.
 SECTIONS = [
     (
         "The take",
-        "Eighteen frames from one unbroken 19-minute session, in the order the "
+        lambda n: f"{n} frames from one unbroken session, in the order the "
         "session produced them. Each is a full-resolution composite off the "
         "recorder, not a crop of a video frame.",
         lambda n: n.startswith("demo-hd-"),
@@ -44,9 +50,9 @@ SECTIONS = [
     ),
     (
         "A fourteen-task plan, closed out",
-        "A second session, recorded after the todo board was rebuilt: fourteen "
-        "tasks across five phases written in one call, then closed one call at a "
-        "time. Thirteen frames, in the order the walk reached them.",
+        lambda n: "A second session, recorded after the todo board was rebuilt: "
+        "fourteen tasks across five phases written in one call, then closed one "
+        f"call at a time. {n} frames, in the order the walk reached them.",
         lambda n: n.startswith("todo-marathon-"),
         "todo-marathon.sh",
     ),
@@ -271,7 +277,8 @@ def main():
             continue
         parts.append(f"<h2>{html.escape(title)} "
                      f'<span class="count">&mdash; {len(entries)}</span></h2>')
-        parts.append(f"<p>{html.escape(blurb)}</p>")
+        text = blurb(len(entries)) if callable(blurb) else blurb
+        parts.append(f"<p>{html.escape(text)}</p>")
         for _stem, row in pair_up(entries):
             if len(row) == 2:
                 parts.append('<div class="pair">' + "".join(figure(e) for e in row) + "</div>")
