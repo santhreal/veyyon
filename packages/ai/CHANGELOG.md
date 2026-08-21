@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `setAnthropicProviderModule`, `setOpenAICompletionsProviderModule`, `setOpenAIResponsesProviderModule`, `setGoogleProviderModule`, `setGoogleGeminiCliProviderModule`, `setGoogleVertexProviderModule`, `setOllamaProviderModule`, and `setDevinProviderModule` are exported from `@veyyon/ai/providers/register-builtins` to allow deterministic provider stream simulation across production provider API routing and lazy watchdog wrappers.
+
 ## [1.1.0] - 2026-08-20
 
 ### Breaking Changes

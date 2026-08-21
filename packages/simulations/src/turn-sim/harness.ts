@@ -11,15 +11,15 @@
  * This harness drives the real path instead:
  *
  *   AgentSession -> Agent -> createSettingsAwareStreamFn(settings)
- *     -> streamSimple -> stream() -> loop guard -> streamBedrock
- *     -> createLazyStream/forwardStream (idle watchdog)
+ *     -> streamSimple -> stream() -> loop guard -> stream<Provider>
+ *     -> createLazyStream/forwardStream (idle watchdog, abort tracker, limits)
  *     -> the scripted module installed here
  *
- * `bedrock-converse-stream` is the seam because it is the only builtin lazy
- * provider that (a) exposes a module override for tests
- * (`setBedrockProviderModule`) and (b) takes the no-API-key branch of
- * `streamSimple`, so nothing reaches for a credential or the network.
- *
+ * Builtin lazy provider modules expose module overrides for tests (e.g.
+ * `setBedrockProviderModule`, `setAnthropicProviderModule`,
+ * `setOpenAICompletionsProviderModule`, `setGoogleProviderModule`, etc.),
+ * which route through the real production streaming pipeline and lazy
+ * watchdogs without making external network calls.
  * Determinism rules this file exists to enforce:
  *  - No wall-clock sleeps anywhere. Scripts advance on promises the test
  *    resolves, and the only real timers are the product's own watchdogs.
@@ -43,7 +43,20 @@ import type {
 	ToolCall,
 	ToolChoice,
 } from "@veyyon/ai";
-import { setBedrockProviderModule } from "@veyyon/ai/providers/register-builtins";
+import {
+	setAnthropicProviderModule,
+	setAzureOpenAIResponsesProviderModule,
+	setBedrockProviderModule,
+	setCursorProviderModule,
+	setDevinProviderModule,
+	setGoogleGeminiCliProviderModule,
+	setGoogleProviderModule,
+	setGoogleVertexProviderModule,
+	setOllamaProviderModule,
+	setOpenAICodexResponsesProviderModule,
+	setOpenAICompletionsProviderModule,
+	setOpenAIResponsesProviderModule,
+} from "@veyyon/ai/providers/register-builtins";
 import { type CursorExecResolvedCarrier, kCursorExecResolved } from "@veyyon/ai/utils/block-symbols";
 import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { ThinkingLoopDetector } from "@veyyon/ai/utils/thinking-loop";
@@ -213,22 +226,38 @@ class SimulatedProviderStream extends AssistantMessageEventStream {
 let activeScript: ProviderScript | undefined;
 let callCount = 0;
 
-// Installed once at module load. The override is a stable dispatcher: tests
-// swap the script, never the module, so nothing races the lazy loader's cache.
-setBedrockProviderModule({
-	streamBedrock: (model, context, options) => {
-		const script = activeScript;
-		callCount += 1;
-		const call = callCount;
-		const stream = new SimulatedProviderStream();
-		if (!script) {
-			queueMicrotask(() => stream.fail(new Error("simulation: no provider script installed")));
-			return stream;
-		}
-		void runScript(script, stream, model, context, options as SimpleStreamOptions, call);
+function createSimulatedStream<TApi extends Api>(
+	model: Model<TApi>,
+	context: Context,
+	options: unknown,
+): SimulatedProviderStream {
+	const script = activeScript;
+	callCount += 1;
+	const call = callCount;
+	const stream = new SimulatedProviderStream();
+	if (!script) {
+		queueMicrotask(() => stream.fail(new Error("simulation: no provider script installed")));
 		return stream;
-	},
-});
+	}
+	void runScript(script, stream, model as Model<Api>, context, options as SimpleStreamOptions, call);
+	return stream;
+}
+
+// Installed once at module load. The overrides are stable dispatchers across
+// all builtin lazy providers: tests swap the script, never the module, so nothing
+// races the lazy loader's cache.
+setBedrockProviderModule({ streamBedrock: (m, c, o) => createSimulatedStream(m, c, o) });
+setAnthropicProviderModule({ streamAnthropic: (m, c, o) => createSimulatedStream(m, c, o) });
+setOpenAICompletionsProviderModule({ streamOpenAICompletions: (m, c, o) => createSimulatedStream(m, c, o) });
+setOpenAIResponsesProviderModule({ streamOpenAIResponses: (m, c, o) => createSimulatedStream(m, c, o) });
+setGoogleProviderModule({ streamGoogle: (m, c, o) => createSimulatedStream(m, c, o) });
+setGoogleGeminiCliProviderModule({ streamGoogleGeminiCli: (m, c, o) => createSimulatedStream(m, c, o) });
+setGoogleVertexProviderModule({ streamGoogleVertex: (m, c, o) => createSimulatedStream(m, c, o) });
+setOllamaProviderModule({ streamOllama: (m, c, o) => createSimulatedStream(m, c, o) });
+setCursorProviderModule({ streamCursor: (m, c, o) => createSimulatedStream(m, c, o) });
+setDevinProviderModule({ streamDevin: (m, c, o) => createSimulatedStream(m, c, o) });
+setAzureOpenAIResponsesProviderModule({ streamAzureOpenAIResponses: (m, c, o) => createSimulatedStream(m, c, o) });
+setOpenAICodexResponsesProviderModule({ streamOpenAICodexResponses: (m, c, o) => createSimulatedStream(m, c, o) });
 
 /**
  * The shipped output-loop guard sits between this harness and `AgentSession`
@@ -504,11 +533,11 @@ export function scriptTurns(...turns: ProviderScript[]): ProviderScript {
 }
 
 /** Build a simulated model. `id` matters: the loop guard keys off it. */
-export function simulatedModel(id = "sim-model", options?: SimulatedModelOptions): Model<typeof SIM_API> {
+export function simulatedModel(id = "sim-model", options?: SimulatedModelOptions): Model<Api> {
 	return buildModel({
 		id,
 		name: id,
-		api: SIM_API,
+		api: options?.api ?? SIM_API,
 		provider: options?.provider ?? "amazon-bedrock",
 		baseUrl: "https://simulation.invalid",
 		reasoning: options?.reasoning ?? false,
@@ -521,6 +550,8 @@ export function simulatedModel(id = "sim-model", options?: SimulatedModelOptions
 }
 
 export interface SimulatedModelOptions {
+	/** API family for real adapter path routing (e.g. "openai-completions", "anthropic-messages", etc.) */
+	api?: Api;
 	/**
 	 * Provider id. Keep the bedrock default unless a scenario needs another
 	 * provider's settings surface (e.g. `ollama-cloud` is the one provider with
