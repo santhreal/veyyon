@@ -259,6 +259,12 @@ smallvec = { version = "1.15.1", features = [
 # Hashing
 # ──────────────────────────────────────────────────────────────────────────────
 xxhash-rust = { version = "0.8", features = ["xxh64"] }
+# BLAKE3 is the corpus's identity function, not a speed choice: a conformance
+# case is named by the digest of its own semantics, so the digest has to be
+# stable across platforms and cheap enough to compute for 250,000 rows on every
+# materialization. xxh64 above is a non-cryptographic bucket hash and cannot
+# carry an identity that a committed corpus is keyed by.
+blake3 = "1"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
