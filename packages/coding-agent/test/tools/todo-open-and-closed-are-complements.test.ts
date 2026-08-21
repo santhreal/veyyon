@@ -87,11 +87,20 @@ async function summaryFor(phases: TodoPhase[]): Promise<string> {
 	return result.content.find(entry => entry.type === "text")?.text ?? "";
 }
 
-/** `Overall: <done>/<total> done, <open> open.` parsed back out of the summary. */
-function overall(summary: string): { done: number; total: number; open: number } {
-	const match = summary.match(/Overall: (\d+)\/(\d+) done, (\d+) open\./);
+/** `Overall: <done>/<total> done, [<dropped> dropped, ]<open> open.` parsed back out of the summary. */
+function overall(summary: string): { done: number; total: number; dropped: number; open: number } {
+	const match = summary.match(/Overall: (\d+)\/(\d+) done, (?:(\d+) dropped, )?(\d+) open\./);
 	if (!match) throw new Error(`summary has no Overall line:\n${summary}`);
-	return { done: Number(match[1]), total: Number(match[2]), open: Number(match[3]) };
+	const dropped = match[3] !== undefined ? Number(match[3]) : 0;
+	if (dropped === 0 && summary.includes("0 dropped")) {
+		throw new Error(`summary should omit dropped fragment when zero:\n${summary}`);
+	}
+	return {
+		done: Number(match[1]),
+		total: Number(match[2]),
+		dropped,
+		open: Number(match[4]),
+	};
 }
 
 /**
@@ -141,18 +150,29 @@ describe("the model-facing todo summary partitions every status", () => {
 	 * partition that is right for `completed` + `pending` and wrong for
 	 * `abandoned` + `in_progress` is the defect, not a near miss.
 	 */
-	it("reports done + open === total for every board of two tasks", async () => {
+	it("reports done + dropped + open === total for every board of two tasks", async () => {
 		let checked = 0;
 		for (const first of TODO_STATUSES) {
 			for (const second of TODO_STATUSES) {
-				const expectedDone = [first, second].filter(status => isTerminalTodoStatus(status)).length;
+				const expectedDone = [first, second].filter(status => status === "completed").length;
+				const expectedDropped = [first, second].filter(
+					status => isTerminalTodoStatus(status) && status !== "completed",
+				).length;
+				const expectedOpen = [first, second].filter(status => !isTerminalTodoStatus(status)).length;
 				for (const phases of [board([first, second]), board([first], [second])]) {
-					const counts = overall(await summaryFor(phases));
+					const summary = await summaryFor(phases);
+					const counts = overall(summary);
 
 					expect(counts.total).toBe(2);
 					expect(counts.done).toBe(expectedDone);
-					expect(counts.open).toBe(2 - expectedDone);
-					expect(counts.done + counts.open).toBe(counts.total);
+					expect(counts.dropped).toBe(expectedDropped);
+					expect(counts.open).toBe(expectedOpen);
+					expect(counts.done + counts.dropped + counts.open).toBe(counts.total);
+					if (expectedDropped === 0) {
+						expect(summary).not.toContain("dropped");
+					} else {
+						expect(summary).toContain(`${expectedDropped} dropped, `);
+					}
 					checked++;
 				}
 			}
@@ -163,11 +183,22 @@ describe("the model-facing todo summary partitions every status", () => {
 
 	/** A board of one task of each status, so every member is counted at once. */
 	it("counts a board holding every status exactly once", async () => {
-		const counts = overall(await summaryFor(board([...TODO_STATUSES])));
+		const summary = await summaryFor(board([...TODO_STATUSES]));
+		const counts = overall(summary);
+		const expectedDone = TODO_STATUSES.filter(status => status === "completed").length;
+		const expectedDropped = TODO_STATUSES.filter(
+			status => isTerminalTodoStatus(status) && status !== "completed",
+		).length;
+		const expectedOpen = TODO_STATUSES.filter(status => !isTerminalTodoStatus(status)).length;
 
 		expect(counts.total).toBe(TODO_STATUSES.length);
-		expect(counts.done).toBe(TODO_STATUSES.filter(status => isTerminalTodoStatus(status)).length);
-		expect(counts.open).toBe(TODO_STATUSES.filter(status => !isTerminalTodoStatus(status)).length);
+		expect(counts.done).toBe(expectedDone);
+		expect(counts.dropped).toBe(expectedDropped);
+		expect(counts.open).toBe(expectedOpen);
+		expect(counts.done + counts.dropped + counts.open).toBe(counts.total);
+		if (expectedDropped > 0) {
+			expect(summary).toContain(`${expectedDropped} dropped, `);
+		}
 	});
 
 	/**
@@ -269,10 +300,22 @@ describe("the model-facing todo summary partitions every status", () => {
 				const text = result.content.find(entry => entry.type === "text")?.text ?? "";
 				const stored = harness.stored().flatMap(phase => phase.tasks);
 				const counts = overall(text);
+				const expectedDone = stored.filter(task => task.status === "completed").length;
+				const expectedDropped = stored.filter(
+					task => isTerminalTodoStatus(task.status) && task.status !== "completed",
+				).length;
+				const expectedOpen = stored.filter(task => !isTerminalTodoStatus(task.status)).length;
 
 				expect(counts.total).toBe(stored.length);
-				expect(counts.done).toBe(stored.filter(task => isTerminalTodoStatus(task.status)).length);
-				expect(counts.open).toBe(counts.total - counts.done);
+				expect(counts.done).toBe(expectedDone);
+				expect(counts.dropped).toBe(expectedDropped);
+				expect(counts.open).toBe(expectedOpen);
+				expect(counts.done + counts.dropped + counts.open).toBe(counts.total);
+				if (expectedDropped === 0) {
+					expect(text).not.toContain("dropped");
+				} else {
+					expect(text).toContain(`${expectedDropped} dropped, `);
+				}
 			}
 		}
 	});
