@@ -220,6 +220,25 @@ a string nothing will produce is a reference to a fixture that does not exist.
 
 The manifest generator computes both total columns from the sixteen allocations and rejects the manifest unless they equal 250,000 and 4,496. The rendered total row is generated from those computed values; it is never an independently maintained literal.
 
+### How an expected-error contract is chosen
+
+Every plan declares one axis named `fault`. Its first value is `none` and each
+remaining value names one failure, paired positionally with one entry of the
+plan's error list; the value is the error id's last segment, so the pairing is
+readable at the call site and asserted by exact equality.
+
+A row's expected error is therefore a function of the failure the row injects.
+A row holding `fault = none` must complete and declares no expected error; every
+other row expects exactly the diagnostic its fault value names. The count still
+comes from the manifest: the fault-bearing rows are the ones the Bresenham
+spread selects, so a subsystem carries exactly its allocated number of error
+contracts and they land in every target and platform bucket.
+
+The success rows all hold the fault axis clean, so their dimension space is the
+axis product with that axis removed. Each plan's clean space is asserted to be
+at least `cases - expected_errors`, which is what stops a subsystem from
+reaching its count by repeating a tuple.
+
 ---
 
 ## Production-Path Execution Rules

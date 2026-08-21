@@ -59,11 +59,23 @@ pub struct Plan {
 	pub axes:           &'static [Axis],
 	/// Contract ids, cycled across the subsystem's cases.
 	pub contracts:      &'static [&'static str],
-	/// Structured error ids, cycled across the subsystem's error cases.
+	/// Structured error ids, one per non-clean value of the [`FAULT_AXIS`], in
+	/// that axis's order. The pairing is positional and asserted, so a case's
+	/// expected error is a function of the failure its dimensions inject and
+	/// never of a counter.
 	pub errors:         &'static [&'static str],
 	/// Requirement ids every case of this subsystem discharges.
 	pub requirements:   &'static [&'static str],
 }
+
+/// The axis whose value decides whether a row is an expected-error case.
+pub const FAULT_AXIS: &str = "fault";
+
+/// The one value of the fault axis that injects nothing.
+///
+/// A row holding this value must complete; every other value names the failure
+/// the row injects and pins the diagnostic the product must answer with.
+pub const CLEAN: &str = "none";
 
 impl Plan {
 	/// How many distinct dimension tuples the axes can produce.
@@ -79,6 +91,51 @@ impl Plan {
 	#[must_use]
 	pub const fn allocation(&self) -> manifest::SubsystemAllocation {
 		manifest::allocation_of(self.subsystem)
+	}
+
+	/// Position of the fault axis in [`Self::axes`].
+	///
+	/// # Panics
+	///
+	/// When the plan declares no fault axis. Every plan must: it is the axis
+	/// that decides whether a row is an expected-error case, and a plan without
+	/// one could only pick its errors arbitrarily.
+	#[must_use]
+	pub fn fault_axis_index(&self) -> usize {
+		self
+			.axes
+			.iter()
+			.position(|axis| axis.name == FAULT_AXIS)
+			.expect("every plan declares a fault axis")
+	}
+
+	/// The fault axis itself.
+	#[must_use]
+	pub fn fault_axis(&self) -> Axis {
+		self.axes[self.fault_axis_index()]
+	}
+
+	/// The error id the fault value at `slot` injects, counting from the first
+	/// non-clean value.
+	#[must_use]
+	pub fn error_at(&self, slot: usize) -> &'static str {
+		self.errors[slot % self.errors.len()]
+	}
+
+	/// How many distinct tuples exist with the fault axis held at [`CLEAN`].
+	///
+	/// The bound a subsystem's success cases are drawn from: they all hold the
+	/// fault axis clean, so the rest of the product is the whole space they
+	/// have, and it has to be at least `cases - expected_errors`.
+	#[must_use]
+	pub fn clean_space(&self) -> usize {
+		let fault = self.fault_axis_index();
+		self
+			.axes
+			.iter()
+			.enumerate()
+			.filter(|(index, _)| *index != fault)
+			.fold(1, |product, (_, axis)| product.saturating_mul(axis.len()))
 	}
 }
 
@@ -178,6 +235,17 @@ pub static PLANS: [Plan; 16] = [
 			Axis::new("motion", &["enabled", "reduced", "disabled"]),
 			Axis::new("path", &["stream", "rebuild", "resize", "scrollback", "overflow"]),
 			Axis::new("ground", &["grey", "black"]),
+			Axis::new("fault", &[
+				"none",
+				"dimension-rejected",
+				"invisible-fill",
+				"illegible-text",
+				"grid-overflow",
+				"invalid-sequence",
+				"zero-width-cell",
+				"scroll-region-invalid",
+				"raster-mismatch",
+			]),
 		],
 		contracts:      &[
 			"render.cell-grid.exact",
@@ -257,24 +325,18 @@ pub static PLANS: [Plan; 16] = [
 			]),
 			Axis::new("fault", &[
 				"none",
-				"econnreset",
-				"etimedout",
-				"dns",
-				"tls",
-				"caller-cancel",
+				"incomplete-stream",
+				"malformed-event",
+				"invalid-utf8",
+				"tool-call-incomplete",
+				"rate-limited",
+				"unauthorized",
+				"upstream-unavailable",
 				"first-event-timeout",
 				"next-event-timeout",
-				"malformed-sse",
-				"truncated-json",
-				"invalid-utf8",
-				"http-401",
-				"http-429",
-				"http-500",
-				"http-503",
-				"retry-after-seconds",
-				"retry-after-date",
 				"retry-exhausted",
 			]),
+			Axis::new("transport", &["http1", "http1-chunked", "h2c", "h2-tls"]),
 		],
 		contracts:      &[
 			"provider.clean-eof.self-contained",
@@ -348,6 +410,17 @@ pub static PLANS: [Plan; 16] = [
 			]),
 			Axis::new("workspace", &["clean", "dirty", "read-only", "missing"]),
 			Axis::new("concurrency", &["serial", "parallel-2", "parallel-8"]),
+			Axis::new("fault", &[
+				"none",
+				"arguments-invalid",
+				"permission-denied",
+				"timeout",
+				"cancelled",
+				"not-found",
+				"workspace-escape",
+				"output-too-large",
+				"already-settled",
+			]),
 		],
 		contracts:      &[
 			"tool.schema-rejection.before-side-effect",
@@ -394,6 +467,17 @@ pub static PLANS: [Plan; 16] = [
 			Axis::new("persistence", &["fresh", "resumed", "migrated", "corrupted", "truncated"]),
 			Axis::new("state", &["idle", "streaming", "tool-pending", "compacting"]),
 			Axis::new("version", &["current", "previous", "unknown"]),
+			Axis::new("fault", &[
+				"none",
+				"stale-schema",
+				"corrupt-record",
+				"missing-parent",
+				"branch-not-found",
+				"compaction-empty",
+				"retry-conflict",
+				"truncated-log",
+				"cycle-detected",
+			]),
 		],
 		contracts:      &[
 			"session.fork.parent-preserved",
@@ -446,16 +530,19 @@ pub static PLANS: [Plan; 16] = [
 			Axis::new("size", &["empty", "one", "small", "large", "huge"]),
 			Axis::new("fault", &[
 				"none",
+				"stale-schema",
 				"disk-full",
-				"readonly",
+				"read-only",
 				"locked",
-				"busy-timeout",
-				"interrupted",
-				"io-error",
 				"checksum-mismatch",
+				"constraint-violation",
+				"corrupt-page",
+				"migration-failed",
 			]),
 			Axis::new("concurrency", &["single", "two-writers", "reader-writer"]),
 			Axis::new("durability", &["wal", "truncate", "memory"]),
+			Axis::new("transaction", &["none", "single", "batched", "nested"]),
+			Axis::new("index", &["fresh", "stale", "absent"]),
 		],
 		contracts:      &[
 			"persistence.version.rejects-stale",
@@ -502,6 +589,17 @@ pub static PLANS: [Plan; 16] = [
 			Axis::new("ordering", &["fifo", "reordered", "duplicated", "dropped"]),
 			Axis::new("lock", &["uncontended", "contended", "inverted", "held-across-await"]),
 			Axis::new("deadline", &["none", "short", "long", "elapsed"]),
+			Axis::new("fault", &[
+				"none",
+				"queue-overflow",
+				"peer-gone",
+				"deadline-exceeded",
+				"deadlock-detected",
+				"worker-crashed",
+				"cancelled",
+				"duplicate-delivery",
+				"spawn-refused",
+			]),
 		],
 		contracts:      &[
 			"mesh.message.ordered-per-peer",
@@ -554,6 +652,17 @@ pub static PLANS: [Plan; 16] = [
 			]),
 			Axis::new("mount", &["workspace", "temp", "home", "system", "readonly"]),
 			Axis::new("platform-shape", &["posix", "windows", "macos-case-insensitive"]),
+			Axis::new("fault", &[
+				"none",
+				"path-escape",
+				"symlink-escape",
+				"credential-leak",
+				"approval-missing",
+				"checksum-mismatch",
+				"archive-malformed",
+				"permission-denied",
+				"payload-too-large",
+			]),
 		],
 		contracts:      &[
 			"security.path.contained",
@@ -600,6 +709,17 @@ pub static PLANS: [Plan; 16] = [
 			Axis::new("mode", &["interactive", "print", "json", "quiet"]),
 			Axis::new("signal", &["none", "sigint", "sigterm", "eof", "resize"]),
 			Axis::new("exit-shape", &["success", "usage-error", "runtime-error", "interrupted"]),
+			Axis::new("fault", &[
+				"none",
+				"usage-invalid",
+				"unknown-command",
+				"missing-argument",
+				"conflicting-flags",
+				"interrupted",
+				"not-a-tty",
+				"config-invalid",
+				"command-failed",
+			]),
 		],
 		contracts:      &[
 			"cli.argv.usage-error-exits-two",
@@ -654,15 +774,17 @@ pub static PLANS: [Plan; 16] = [
 			Axis::new("fault", &[
 				"none",
 				"checksum-mismatch",
-				"truncated-download",
-				"network-timeout",
-				"http-404",
+				"asset-missing",
+				"unsupported-platform",
+				"network-failed",
 				"disk-full",
-				"interrupted",
 				"permission-denied",
+				"interrupted",
+				"stale-metadata",
 			]),
 			Axis::new("state", &["fresh", "upgrade", "same-version", "downgrade", "reinstall"]),
 			Axis::new("link", &["path-linked", "path-absent", "conflicting-binary"]),
+			Axis::new("shell", &["sh", "bash", "dash", "zsh", "powershell"]),
 		],
 		contracts:      &[
 			"install.checksum.fails-closed",
@@ -707,8 +829,25 @@ pub static PLANS: [Plan; 16] = [
 			]),
 			Axis::new("host", &["source", "bundle", "compiled-binary", "embedded"]),
 			Axis::new("payload", &["small", "large", "binary", "invalid-utf8", "empty"]),
-			Axis::new("fault", &["none", "spawn-failed", "no-handshake", "killed", "timeout"]),
+			Axis::new("fault", &[
+				"none",
+				"spawn-failed",
+				"handshake-timeout",
+				"killed",
+				"protocol-invalid",
+				"orphaned",
+				"payload-too-large",
+				"selector-unknown",
+				"restart-exhausted",
+			]),
 			Axis::new("platform-shape", &["posix", "windows"]),
+			Axis::new("transport", &[
+				"argv-selector",
+				"module-fallback",
+				"ipc",
+				"shared-buffer",
+				"stdio",
+			]),
 		],
 		contracts:      &[
 			"worker.spawn.reenters-entrypoint",
@@ -771,6 +910,17 @@ pub static PLANS: [Plan; 16] = [
 				"reloaded",
 			]),
 			Axis::new("scope", &["global", "profile", "project", "session"]),
+			Axis::new("fault", &[
+				"none",
+				"value-invalid",
+				"unknown-path",
+				"type-mismatch",
+				"out-of-range",
+				"enum-unknown",
+				"write-failed",
+				"file-malformed",
+				"condition-missing",
+			]),
 		],
 		contracts:      &[
 			"settings.precedence.cli-over-project",
@@ -817,6 +967,17 @@ pub static PLANS: [Plan; 16] = [
 			Axis::new("strategy", &["summarize", "drop-oldest", "drop-tool-output", "spill-artifact"]),
 			Axis::new("boundary", &["mid-turn", "turn-end", "mid-tool-batch", "after-error"]),
 			Axis::new("outcome", &["fits", "still-over", "nothing-to-drop", "refused"]),
+			Axis::new("fault", &[
+				"none",
+				"budget-exceeded",
+				"nothing-to-compact",
+				"summary-failed",
+				"spill-failed",
+				"batch-split",
+				"attachment-too-large",
+				"history-corrupt",
+				"refused",
+			]),
 		],
 		contracts:      &[
 			"context.compaction.preserves-last-turn",
@@ -851,7 +1012,18 @@ pub static PLANS: [Plan; 16] = [
 			Axis::new("query", &["exact", "fuzzy", "empty", "oversized", "invalid-utf8", "unicode"]),
 			Axis::new("embedding", &["present", "absent", "stale", "wrong-dimension"]),
 			Axis::new("ranking", &["cosine", "dot", "hybrid", "recency"]),
-			Axis::new("fault", &["none", "index-corrupt", "model-missing", "timeout", "disk-full"]),
+			Axis::new("fault", &[
+				"none",
+				"index-corrupt",
+				"model-missing",
+				"dimension-mismatch",
+				"query-invalid",
+				"timeout",
+				"disk-full",
+				"stale-schema",
+				"not-found",
+			]),
+			Axis::new("store", &["sqlite", "memory", "sharded", "readonly", "migrating"]),
 		],
 		contracts:      &[
 			"memory.recall.deterministic-order",
@@ -917,6 +1089,17 @@ pub static PLANS: [Plan; 16] = [
 			Axis::new("range", &["single", "multi", "whole-file", "overlapping", "inverted"]),
 			Axis::new("body", &["plain", "blank-lines", "leading-plus", "leading-minus", "empty"]),
 			Axis::new("language", &["rust", "typescript", "markdown", "json", "plain"]),
+			Axis::new("fault", &[
+				"none",
+				"stale-tag",
+				"range-out-of-bounds",
+				"overlapping-hunks",
+				"block-not-resolvable",
+				"body-malformed",
+				"file-missing",
+				"destination-exists",
+				"inverted-range",
+			]),
 		],
 		contracts:      &[
 			"hashline.stale-tag.refused",
@@ -967,14 +1150,18 @@ pub static PLANS: [Plan; 16] = [
 			]),
 			Axis::new("fault", &[
 				"none",
-				"crash",
-				"hang",
+				"framing-invalid",
+				"server-crashed",
+				"timeout",
 				"malformed-json",
 				"unknown-method",
-				"timeout",
+				"not-initialized",
+				"server-missing",
+				"restart-exhausted",
 			]),
 			Axis::new("state", &["uninitialized", "initialized", "shutting-down", "restarted"]),
 			Axis::new("workspace", &["single-root", "multi-root", "no-root"]),
+			Axis::new("transport", &["stdio", "pipe", "socket", "node-ipc"]),
 		],
 		contracts:      &[
 			"lsp.framing.content-length-exact",
@@ -1025,7 +1212,18 @@ pub static PLANS: [Plan; 16] = [
 			Axis::new("argot", &["disabled", "handle", "handle-split", "unknown-handle", "nested"]),
 			Axis::new("seam", &["tool-args", "display", "stream", "transcript", "subagent-return"]),
 			Axis::new("version", &["current", "older", "newer", "unknown"]),
-			Axis::new("fault", &["none", "reordered", "duplicated", "dropped", "malformed"]),
+			Axis::new("fault", &[
+				"none",
+				"malformed-frame",
+				"unknown-version",
+				"invalid-utf8",
+				"too-large",
+				"out-of-order",
+				"duplicate-message",
+				"handle-unresolved",
+				"dictionary-missing",
+			]),
+			Axis::new("role", &["host", "guest", "relay"]),
 		],
 		contracts:      &[
 			"wire.decode.round-trips",
