@@ -10,6 +10,8 @@
  * docs/handbook/src/foundations/verification.md says. Output goes to a temporary
  * path and never into assets/, a README, or a handbook page.
  *
+ * Run:
+ *
  *     bun scripts/demos/render-todo-board.ts --width 100 |
  *       bun scripts/demos/render-proof.ts --out /tmp/todo --width 100 --scale 3
  *

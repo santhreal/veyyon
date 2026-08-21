@@ -14,6 +14,8 @@
  * a long command, one that just opened a file, one waiting on the model, and one
  * asleep on a rate limit.
  *
+ * Run:
+ *
  *     bun scripts/demos/render-subagent-lanes.ts --width 100 |
  *       bun scripts/demos/render-proof.ts --out /tmp/lanes --width 100 --scale 3
  *

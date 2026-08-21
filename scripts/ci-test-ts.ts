@@ -433,6 +433,11 @@ export const repoScriptTests = [
 	// Runs in whatever rung the harness picked, and asserts that rung can execute
 	// a file a suite just wrote. Docker's tmpfs defaults could not.
 	"scripts/test-sandbox/the-guest-tmpdir-can-execute.test.ts",
+	// The admissibility gate for visual evidence: an off-screen raster may be a
+	// debugging aid and may never reach `assets/`, a README, or the handbook. It
+	// landed on disk unwired, which for a scan-the-whole-tree gate means the rule
+	// it enforces stops being enforced the moment nobody reruns it by hand.
+	"scripts/an-off-screen-raster-never-enters-assets.test.ts",
 ];
 
 /**
