@@ -605,7 +605,30 @@ fn sgr_parameter_table_and_csi_dispatch_table_sweep() {
 				assert!(term.grid().cell(0, 0).unwrap().attrs.bold);
 			},
 			CsiAction::DeviceStatusReport => {
+				// Status report query: CSI 5 n -> ESC [ 0 n
+				term.write_str(&format!("\x1b[5{ch}"));
+				assert_eq!(term.responses(), &["\x1b[0n".to_string()]);
+				term.take_responses();
+
+				// Cursor position report query: CSI 6 n -> ESC [ <row> ; <col> R (1-based)
+				// Cursor at 0-based (row 3, col 7) -> 1-based (4, 8) -> "\x1b[4;8R"
+				term.grid_mut().set_cursor(7, 3);
 				term.write_str(&format!("\x1b[6{ch}"));
+				assert_eq!(
+					term.responses(),
+					&["\x1b[4;8R".to_string()],
+					"CPR response for cursor (3, 7) must be exact 1-based \\x1b[4;8R"
+				);
+				term.take_responses();
+
+				// Move cursor and query again: prove reply tracks cursor dynamically
+				term.grid_mut().set_cursor(19, 9);
+				term.write_str(&format!("\x1b[6{ch}"));
+				assert_eq!(
+					term.responses(),
+					&["\x1b[10;20R".to_string()],
+					"CPR response for cursor (9, 19) must track to \\x1b[10;20R"
+				);
 				assert!(term.parser().malformed_sequences().is_empty());
 			},
 		}

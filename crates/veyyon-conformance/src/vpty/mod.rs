@@ -89,6 +89,18 @@ impl Terminal {
 		&mut self.parser
 	}
 
+	/// Returns slice of response sequences emitted by the parser (e.g. CPR
+	/// replies).
+	#[must_use]
+	pub fn responses(&self) -> &[String] {
+		self.parser.responses()
+	}
+
+	/// Drains and returns all recorded response sequences.
+	pub fn take_responses(&mut self) -> Vec<String> {
+		self.parser.take_responses()
+	}
+
 	/// Feeds terminal output text into the parser and updates the grid.
 	pub fn write_str(&mut self, text: &str) {
 		self.parser.parse_str(text, &mut self.grid);
