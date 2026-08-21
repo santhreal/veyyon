@@ -3794,6 +3794,15 @@ export class TUI extends Container {
 				this.#committedPrefix.splice(at, dropped);
 				this.#windowTopRow = Math.max(0, this.#windowTopRow - dropped);
 				this.#previousFrameLength = Math.max(0, this.#previousFrameLength - dropped);
+				// The tracked cursor is a frame-space absolute row too, and every
+				// incremental paint is cursor-relative (`#emitUpdate` derives
+				// `currentScreenRow` from it and moves the cursor up by that many
+				// rows). Left unslid it is `dropped` rows too large for the rest
+				// of the session, so the paint lands above where it belongs: the
+				// new rows overwrite live output and the previous paint's tail
+				// stays visible underneath.
+				this.#hardwareCursorRow =
+					this.#hardwareCursorRow > at ? Math.max(at, this.#hardwareCursorRow - dropped) : this.#hardwareCursorRow;
 			}
 		}
 		// Ghostty initial-image deferral must run before any render state is
