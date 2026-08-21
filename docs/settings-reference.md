@@ -64,7 +64,7 @@ veyyon config get compaction.threshold
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
 | `display.collapseCompacted` | Collapse Compacted History | boolean | `true` | Collapse pre-compaction history behind the summary divider on the live transcript; disable to keep the full transcript inline with dividers at each compaction point. |
-| `compaction.remote` | Remote Compaction | boolean | `true` | Applies only when the session model is a supported OpenAI Responses model, which includes Azure OpenAI Responses deployments; every other model, OpenAI Codex included, ignores this setting and compacts locally. On, veyyon calls the OpenAI compaction endpoint and keeps the window it returns, which preserves reasoning state across the cut. That window is the whole compacted context, so the entry stores no summary text and the compaction model chain does not apply. There is no second local summary on purpose: it would pay a model to re-summarize a span the provider already compacted and leave two versions of one range that can disagree. Off, compaction runs locally on the usual summary path and stores readable summary text. |
+| `compaction.remote` | Remote Compaction | boolean | `true` | Applies only when the session model is a supported OpenAI Responses model, which includes Azure OpenAI Responses deployments and a ChatGPT Codex session; every other model ignores this setting and compacts locally. On, veyyon calls the OpenAI compaction endpoint and keeps the window it returns, which preserves reasoning state across the cut. That window is the whole compacted context, so the entry stores no summary text and the compaction model chain does not apply. There is no second local summary on purpose: it would pay a model to re-summarize a span the provider already compacted and leave two versions of one range that can disagree. Off, compaction runs locally on the usual summary path and stores readable summary text. |
 | `compaction.strategy` | Compaction Type | enum | `summary` | Summary condenses history in place and continues the same session. Values: `summary`. |
 | `compaction.threshold` | Auto-Compaction Threshold | string | `auto` | When auto-compaction triggers. Auto uses the model's window minus the reserve; a percent scales with each model's window; a token amount is the same trigger on every model that can reach it, and a smaller model compacts at its own maximum. |
 | `compaction.model` | Compaction Model | modelChain | _(unset)_ | Models used for in-place summary compaction, tried in order. Default: inherit — follows the main model live. Add fallbacks for when the first is unauthenticated or its window is too small. |
@@ -617,7 +617,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `accounts.loadBalancing` | Account Load Balancing | boolean | `true` | When one account hits its quota or rate limit, continue on another account of the same provider and say so. Off: the session waits out that account's window instead. A revoked account always fails over regardless, with a notice. |
+| `accounts.loadBalancing` | Account Load Balancing | boolean | `false` | Off: only the account you chose is used, and a session waits out its quota window. On: when that account hits its quota or rate limit, continue on another account of the same provider and say so. A revoked account always fails over regardless, with a notice. |
 
 ### Services
 
@@ -693,6 +693,7 @@ veyyon config get compaction.threshold
 | `secrets.enabled` | Hide Secrets | boolean | `false` | Obfuscate secrets before sending to AI providers. Storing a credential with /secret turns this on for you. |
 | `secrets.defaultTtl` | Secret Lifetime | string | `1d` | How long a /secret lasts when the command does not say. Default 1d; also accepts forms like 30m, 12h, 7d, 2w, or "never". |
 | `secrets.auditLog` | Record Secret Use | boolean | `true` | Append which secret was used in which command to the profile's log. Never records values. |
+| `secrets.expiryWarnings` | Warn Before A Secret Expires | boolean | `true` | Say at the start of a session when a stored secret is halfway through its lifetime, and again near the end. Off: /secret list still shows the STATUS column and the status line still shows a deadline in the last hour. |
 
 ## Experimental
 
@@ -868,4 +869,4 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `tui.maxInlineImageRows` | number | `20` |  |
 | `tui.maxInlineImages` | number | `8` |  |
 
-344 settings in /settings, 119 configuration-file keys, 463 in all.
+345 settings in /settings, 119 configuration-file keys, 464 in all.
