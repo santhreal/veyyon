@@ -27,7 +27,10 @@ import { Agent } from "@veyyon/agent-core";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import { renderSubagentLaneLines } from "@veyyon/coding-agent/modes/components/subagent-lanes";
-import { InteractiveMode } from "@veyyon/coding-agent/modes/interactive-mode";
+import {
+	InteractiveMode,
+	SUBAGENT_OBSERVER_UI_COALESCE_MS,
+} from "@veyyon/coding-agent/modes/interactive-mode";
 import { type ObservableSession, SessionObserverRegistry } from "@veyyon/coding-agent/modes/session-observer-registry";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
@@ -718,12 +721,17 @@ describe("InteractiveMode subagent observer UI sync", () => {
 		}
 
 		await Promise.resolve();
-		vi.runAllTimers();
+		// Exactly the coalescing window, not `runAllTimers`: the block arms a
+		// repeating rail-motion interval as soon as it has lanes, and draining
+		// every timer of a self-rearming interval never returns.
+		vi.advanceTimersByTime(SUBAGENT_OBSERVER_UI_COALESCE_MS);
 		await Promise.resolve();
 
-		const hud = Bun.stripANSI(mode.subagentContainer.render(120).join("\n"));
-		expect(hud).toContain("BurstAgent0: Burst job 0");
-		expect(hud).toContain("BurstAgent5: Burst job 5");
+		const rows = Bun.stripANSI(mode.subagentContainer.render(120).join("\n")).split("\n");
+		const lane = (id: string, activity: string): boolean =>
+			rows.some(row => row.trimStart().startsWith("▏ ") && row.includes(id) && row.includes(activity));
+		expect(lane("BurstAgent0", "Burst job 0")).toBe(true);
+		expect(lane("BurstAgent5", "Burst job 5")).toBe(true);
 		expect(rebuildHud).toHaveBeenCalledTimes(1);
 		expect(requestRender).toHaveBeenCalledTimes(1);
 	});

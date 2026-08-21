@@ -50,6 +50,19 @@ function dumpFrame(title: string, lines: string[]): void {
 	console.log(`===== end ${title} =====\n`);
 }
 
+/**
+ * Whether the lane block drew a lane for `id` carrying `description`.
+ *
+ * A lane opens on the block's rail and gives the id and the middle column their
+ * own cells, so `"<id>: <description>"` is not a substring of any row: matching
+ * the description alone would also accept it from a transcript card.
+ */
+function laneRow(hud: string, id: string, description: string): boolean {
+	return hud
+		.split("\n")
+		.some(row => row.trimStart().startsWith("▏ ") && row.includes(id) && row.includes(description));
+}
+
 function makeLifecycle(id: string, index: number, description: string): SubagentLifecyclePayload {
 	return {
 		id,
@@ -171,8 +184,8 @@ describe("the subagent HUD while the view is focused on an agent", () => {
 		dumpFrame("MAIN VIEW HUD (two detached subagents running)", mainHud.split("\n"));
 		dumpFrame("MAIN VIEWPORT", mainFrame.split("\n"));
 		expect(mainHud).toContain("Subagents");
-		expect(mainHud).toContain("AuthLoader: Refactoring the auth flow");
-		expect(mainHud).toContain("SchemaMigrator: Migrating the users table");
+		expect(laneRow(mainHud, "AuthLoader", "Refactoring the auth flow")).toBe(true);
+		expect(laneRow(mainHud, "SchemaMigrator", "Migrating the users table")).toBe(true);
 		// The main view carries no focus badge.
 		expect(mainFrame).not.toContain("esc to go back");
 
@@ -200,7 +213,7 @@ describe("the subagent HUD while the view is focused on an agent", () => {
 		// parent's agents must not appear in its view.
 		expect(focusedHud).not.toContain("Subagents");
 		expect(focusedHud).not.toContain("SchemaMigrator");
-		expect(focusedHud).not.toContain("AuthLoader: Refactoring the auth flow");
+		expect(laneRow(focusedHud, "AuthLoader", "Refactoring the auth flow")).toBe(false);
 
 		// Requirement 2: a persistent indicator names the agent you are inside.
 		// The badge rides the pinned composer footline, so it is in the viewport
@@ -220,8 +233,8 @@ describe("the subagent HUD while the view is focused on an agent", () => {
 		const restoredFrame = viewportText();
 		dumpFrame("MAIN VIEW HUD RESTORED (after esc)", restoredHud.split("\n"));
 		expect(restoredHud).toContain("Subagents");
-		expect(restoredHud).toContain("AuthLoader: Refactoring the auth flow");
-		expect(restoredHud).toContain("SchemaMigrator: Migrating the users table");
+		expect(laneRow(restoredHud, "AuthLoader", "Refactoring the auth flow")).toBe(true);
+		expect(laneRow(restoredHud, "SchemaMigrator", "Migrating the users table")).toBe(true);
 		expect(restoredFrame).not.toContain("esc to go back");
 	});
 });
