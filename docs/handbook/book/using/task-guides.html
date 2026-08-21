@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-28e8a531.js";
+            window.path_to_searchindex_js = "../searchindex-1afcc1c4.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-79e2ba62.js"></script>
@@ -341,6 +341,10 @@ is, so a board waiting on you is distinguishable from a board being worked. A ta
 strike across its text, exhales its glyph and cools from green to grey; when the last task closes,
 the whole block makes one pass down its rail and clears. Where <code>display.transitions</code> is off, all of
 that is still and the glyphs are static.</p>
+<p>The block was rebuilt in this shape: <a href="../../../../assets/todos-block-before.png">before</a> and
+<a href="../../../../assets/todos-block-after.png">after</a>, one scene recorded twice at 131 columns and
+sampled at the same second of the same script. The after arm comes from <code>proof/docker/record-x11.sh proof/scenes/rail-and-todo.sh</code>. The before arm comes from <code>proof/docker/record-x11-before.sh proof/scenes/rail-and-todo.sh</code>, which holds every changed source file at the content of the commit
+before the rebuild, <code>f1390cf3c</code>.</p>
 <p>Configure the behavior under <strong>Settings → Tools → Todos</strong>:</p>
 <ul>
 <li><strong>Todo Reminders</strong> enables continuation instructions for unfinished plans.</li>
