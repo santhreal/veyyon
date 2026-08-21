@@ -67,13 +67,15 @@ markers and intentional divergences.
 
 ## Staying current: the port pipeline
 
-Upstream keeps merging fixes after the fork point, so the repo runs an
-automated port pipeline. It has two halves:
+Upstream keeps merging fixes after the fork point, so the repo keeps a port
+pipeline. It has two halves:
 
-1. The radar (`.github/workflows/upstream-radar.yml`, every 30 minutes)
-   mirrors newly merged upstream fixes and performance corrections. It also
-   mirrors feature additions whose touched files avoid every architecture-owned
-   surface in `scripts/upstream-port-policy.json`. This is a conservative
+1. The radar (`scripts/upstream-radar.ts`) mirrors newly merged upstream fixes
+   and performance corrections into `upstream-port` issues. It is run on demand:
+   it was on a 30-minute schedule and no longer is, because mirroring every
+   merged pull request produced a queue nobody read. It also mirrors feature
+   additions whose touched files avoid every architecture-owned surface in
+   `scripts/upstream-port-policy.json`. This is a conservative
    candidate screen, not an assertion that the feature belongs in veyyon.
    Refactors, chores, and upstream product or infrastructure direction remain
    excluded. Documentation-only feature diffs are excluded; documentation
