@@ -1,7 +1,14 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, setDefaultTimeout } from "bun:test";
 import { type Component, CURSOR_MARKER, type Focusable, type OverlayFocusOwner, TUI } from "@veyyon/tui";
 import { settleFrames } from "./helpers/settle-frames";
 import { VirtualTerminal } from "./virtual-terminal";
+
+// Several arms here drive dozens of full render passes over 180-row content and awaited frame
+// settles, which is a few hundred milliseconds idle and past Bun's 5s default when the bucket runs
+// it under `--parallel=4 --smol` alongside the rest of packages/tui. The work is bounded — every
+// loop is a fixed iteration count — so a timeout here is the runner's clock, not a hang, and the
+// bound that matters is asserted inside each test rather than by the deadline.
+setDefaultTimeout(60_000);
 
 class LineComponent implements Component {
 	constructor(
