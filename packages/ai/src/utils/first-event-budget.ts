@@ -23,6 +23,7 @@
  * arrives, `streamIdleTimeoutMs` owns the rest of the turn.
  */
 
+import { isTimeoutError } from "@veyyon/utils/abortable";
 import { scopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
 
 /**
@@ -33,15 +34,24 @@ import { scopedTimeoutSignal } from "@veyyon/utils/scoped-timeout";
  */
 const PRE_RESPONSE_STALL_PATTERN = /\btimed?\s*out\b|\btimeout\b|\bstream stall\b/i;
 
+/**
+ * The one provider-specific name in the set. Anthropic's SDK raises it for a
+ * connect timeout, and its message ("Request timed out.") already matches the
+ * pattern below; the name is checked first so a future message change cannot
+ * quietly drop it out of the set.
+ */
+const ANTHROPIC_CONNECT_TIMEOUT_NAME = "AnthropicConnectionTimeoutError";
+
 /** True when `error` means no byte of a response ever arrived. */
 export function isPreResponseStall(error: unknown): boolean {
+	// `isTimeoutError` owns the TimeoutError spelling for the whole repo,
+	// including a DOMException in a runtime where it does not extend Error.
+	if (isTimeoutError(error)) return true;
 	if (error instanceof Error) {
-		if (error.name === "TimeoutError" || error.name === "AnthropicConnectionTimeoutError") return true;
+		if (error.name === ANTHROPIC_CONNECT_TIMEOUT_NAME) return true;
 		return PRE_RESPONSE_STALL_PATTERN.test(error.message);
 	}
-	// A DOMException in a runtime where it does not extend Error still carries a name.
-	const name = (error as { name?: unknown } | null)?.name;
-	return name === "TimeoutError";
+	return false;
 }
 
 /**
