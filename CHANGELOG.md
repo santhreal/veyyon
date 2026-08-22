@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+### Added
+
+- An opt-in `tools.unifiedRuntime` experiment replaces the model-facing `eval` and `launch` tools with one `runtime` tool while preserving their existing kernel and process implementations.
+- An opt-in `eval.pyWorkspace` experiment teaches the agent to keep large tool results and repeated repository operations inside the persistent Python kernel, reducing intermediate transcript output without changing kernel execution.
+- An opt-in `tools.unifiedSearch` experiment replaces the model-facing `glob`, `grep`, and `ast_grep` tools with one capability-aware `search` tool while delegating execution to the existing implementations.
+
 ### Changed
 
 - Image generation is disabled by default. Enable **Generate Image** in the Tools settings to expose `generate_image`.
@@ -17,6 +23,7 @@
 
 ### Fixed
 
+- Bundled edit and write guidance now uses TTSR's deferred reminder path instead of inheriting the global interrupt policy and aborting the active model response. Every bundled tool-scoped rule must now declare its interrupt policy explicitly.
 - A setting the system prompt depends on rebuilds that prompt whoever writes it. Two owners decided that: the settings screen asked the prompt-gate registry, and the session asked a private table of eight paths that never restated six of the registry's live gates. So writing `personality`, `tools.format`, `inlineToolDescriptors`, `includeModelInPrompt`, `tui.renderMermaid` or `tools.intentTracing` from anywhere but the settings screen — a slash command, an SDK or ACP host, a plugin — changed the configuration and left the model reading a prompt that described the previous one, with nothing logged; and flipping one of the five paths both lists held rebuilt the prompt twice for one change. The trigger now lives once, with the prompt, in the session's effective-setting listener, and reads the registry for which settings reach the model. The session's own table keeps only the three that gate no prompt text at all (`async.enabled`, `subagent.isolation.mode`, `subagent.maxNestedSpawnDepth`, which decide the `task` tool's description and schema), and a failed rebuild is logged as a warning rather than at debug, because the settings screen is no longer there to report it.
 - A session now subscribes to settings changes unconditionally. The subscription was an optional call on a method `Settings` always has, left behind from a week when two suites built a session around a stand-in that lacked it: a real gap would have taken the prompt rebuild, the todo-reminder reset on disable and every live CPU-limit change with it, and said nothing. Those suites hand over a real `Settings`, so the only thing the optional call could still do was hide the next one.
 - `read` accepts a line selector on `history://`, so `history://Scout:120-160` pages a transcript instead of answering `Unknown agent: Scout:120-160` while listing Scout among the known agents. `history` was missing from the selector allowlist, so the whole `<id>:<selector>` string reached the protocol handler as an agent id; the error then pointed at the agent rather than at the selector, which reads as a lost transcript. `history`, `issue`, `memory`, `pr` and `veyyon` were also missing from the internal-URL prefix list, so those five were measured against the cwd boundary as filenames and had their backslashes rewritten as path separators. Both tables are now checked against the router itself.
