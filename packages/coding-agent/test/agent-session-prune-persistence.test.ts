@@ -17,7 +17,7 @@ import { TempDir } from "@veyyon/utils";
  * ("feat(cache): make blocking on a rejected cache an opt-in setting") deleted
  * both methods and both call sites as collateral while touching an unrelated
  * setting, which left `compaction.supersedeReads` and `compaction.dropUseless`
- * defaulting to true and controlling nothing, and left docs/compaction.md
+ * defaulting to true and controlling nothing, and left docs/handbook/src/architecture/compaction.md
  * describing two passes that never ran. These tests observe the passes firing
  * end to end through the real session, and pin both settings in both positions
  * so an accidental unwiring goes red again instead of silently degrading.

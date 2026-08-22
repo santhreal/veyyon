@@ -26,12 +26,12 @@ export const EDITING_SETTINGS = {
 	// outranking `edit.mode` for any model whose id contains the pattern.
 	//
 	// Declared here and not only read: it is an operator-facing knob that
-	// production consults on every edit and that docs/environment-variables.md
+	// production consults on every edit and that docs/handbook/src/reference/environment-complete.md
 	// tells operators outranks `edit.mode`, yet it was absent from the schema,
 	// so it had no type, no validated shape, no default, and no row in the
 	// generated reference. No `ui` block, because a pattern-to-mode table is not
 	// something the settings selector can edit; it lives in the
-	// configuration-file section of docs/settings-reference.md.
+	// configuration-file section of docs/handbook/src/reference/settings-reference.md.
 	"edit.modelVariants": { type: "record", default: EMPTY_STRING_RECORD },
 
 	"edit.fuzzyMatch": {

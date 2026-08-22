@@ -44,7 +44,7 @@ With `memory.backend: local`, a background pipeline at startup extracts durable 
 session JSONL files, then consolidates into `MEMORY.md`, `memory_summary.md`, and optional
 `skills/`. The agent reads artifacts via `memory://` URLs on the `read` tool.
 
-Engineering detail: [`docs/memory.md`](../../../memory.md).
+Engineering detail: [`docs/handbook/src/architecture/memory.md`](../../../memory.md).
 
 ## Compaction (primary knobs)
 

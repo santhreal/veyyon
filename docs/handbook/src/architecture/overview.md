@@ -30,7 +30,7 @@ as `commit`, `grep`, and `models`.
 | Approvals | Approval-mode gating on tool tiers | [Approvals](./sandbox.md) |
 | Config | Layered `config.yml`, profiles | [Config](./config.md) |
 | MCP | External tool servers | [MCP](./mcp.md) |
-| Providers | Model registry + auth | [Providers](./providers.md) |
+| Providers | Model registry + auth | [Providers](../reference/providers.md) |
 | Memory | off / local / mnemopi / hindsight | [Memory](../features/memory.md) |
 
 Not part of the product surface: a standalone exec-server process or a separate backends.toml catalog. The table above is the subsystem map.

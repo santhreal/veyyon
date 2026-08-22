@@ -1,6 +1,6 @@
 # Plugin manager and installer plumbing
 
-This document describes how `veyyon plugin` npm/git/link operations mutate plugin state on disk and how installed npm/git/link plugins become runtime capabilities (tools and extensions today, hooks/commands path resolution available). Marketplace installs use separate marketplace registries and cache plumbing; see `docs/marketplace.md`.
+This document describes how `veyyon plugin` npm/git/link operations mutate plugin state on disk and how installed npm/git/link plugins become runtime capabilities (tools and extensions today, hooks/commands path resolution available). Marketplace installs use separate marketplace registries and cache plumbing; see `docs/handbook/src/features/marketplace.md`.
 
 ## Scope and architecture
 

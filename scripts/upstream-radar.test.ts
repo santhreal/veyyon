@@ -98,11 +98,11 @@ describe("port candidate policy", () => {
 		expect(
 			isPortWorthy(
 				"feat(ai): expose retry delay",
-				["packages/ai/src/providers/anthropic.ts", "docs/providers.md"],
+				["packages/ai/src/providers/anthropic.ts", "docs/handbook/src/reference/providers.md"],
 				policy,
 			),
 		).toBe(true);
-		expect(cleanFeatureBlockers(["docs/providers.md"], policy)).toEqual([]);
+		expect(cleanFeatureBlockers(["docs/handbook/src/reference/providers.md"], policy)).toEqual([]);
 	});
 
 	/** Features whose entire diff is prose must not consume a porting lane. */

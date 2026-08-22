@@ -1297,7 +1297,7 @@ async function main(): Promise<void> {
 					unknown.map(p => `  ${p}`).join("\n") +
 					`\nAn unknown key is merged and never read, so the arm would run as the\n` +
 					`control while claiming a treatment. Check the spelling against\n` +
-					`docs/settings-reference.md, or remove the key.`,
+					`docs/handbook/src/reference/settings-reference.md, or remove the key.`,
 			);
 			process.exit(1);
 		}

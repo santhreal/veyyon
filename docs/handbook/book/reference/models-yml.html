@@ -1,0 +1,898 @@
+<!DOCTYPE HTML>
+<html lang="en" class="navy sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>models.yml - The Veyyon Harness Handbook</title>
+
+
+        <!-- Custom HTML head -->
+        <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
+        <meta name="theme-color" content="#050505">
+        <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+        <style>
+          /* Paint the near-black surface before CSS/JS resolve the theme, so there is
+             no light flash on load. Kept in sync with theme/veyyon.css. */
+          html { background: #050505; }
+          /* Tighten the base box model for the premium layout. */
+          *, *::before, *::after { box-sizing: border-box; }
+        </style>
+
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="../favicon-8114d1fc.png">
+        <link rel="stylesheet" href="../css/variables-8adf115d.css">
+        <link rel="stylesheet" href="../css/general-2459343d.css">
+        <link rel="stylesheet" href="../css/chrome-ae938929.css">
+        <link rel="stylesheet" href="../css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="../highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="../tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "navy";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "../searchindex-360535cc.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc-093df7ff.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('navy')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">The Veyyon Harness Handbook</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/santhreal/veyyon" title="Git repository" aria-label="Git repository">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/santhreal/veyyon/edit/main/docs/handbook/src/reference/models-yml.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                            <span class=fa-svg id="git-edit-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M421.7 220.3l-11.3 11.3-22.6 22.6-205 205c-6.6 6.6-14.8 11.5-23.8 14.1L30.8 511c-8.4 2.5-17.5 .2-23.7-6.1S-1.5 489.7 1 481.2L38.7 353.1c2.6-9 7.5-17.2 14.1-23.8l205-205 22.6-22.6 11.3-11.3 33.9 33.9 62.1 62.1 33.9 33.9zM96 353.9l-9.3 9.3c-.9 .9-1.6 2.1-2 3.4l-25.3 86 86-25.3c1.3-.4 2.5-1.1 3.4-2l9.3-9.3H112c-8.8 0-16-7.2-16-16V353.9zM453.3 19.3l39.4 39.4c25 25 25 65.5 0 90.5l-14.5 14.5-22.6 22.6-11.3 11.3-33.9-33.9-62.1-62.1L314.3 67.7l11.3-11.3 22.6-22.6 14.5-14.5c25-25 65.5-25 90.5 0z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="model-and-provider-configuration-modelsyml--modelsyaml"><a class="header" href="#model-and-provider-configuration-modelsyml--modelsyaml">Model and Provider Configuration (<code>models.yml</code> / <code>models.yaml</code>)</a></h1>
+<p>This document describes how the coding agent loads models, applies overrides, resolves credentials, and chooses models at runtime.</p>
+<h2 id="what-controls-model-behavior"><a class="header" href="#what-controls-model-behavior">What controls model behavior</a></h2>
+<p>Primary implementation files:</p>
+<ul>
+<li><code>src/config/model-registry.ts</code>: loads built-in + custom models, provider overrides, runtime discovery, auth integration</li>
+<li><code>src/config/model-resolver.ts</code>: parses model patterns and selects initial/smol/slow models</li>
+<li><code>src/config/settings-schema.ts</code>: model-related settings (<code>modelRoles</code>, provider transport preferences)</li>
+<li><code>src/session/auth-storage.ts</code>: re-exports <code>AuthStorage</code> from <code>@veyyon/ai</code> (<code>packages/ai/src/auth-storage.ts</code>); API key + OAuth resolution order</li>
+<li><code>packages/catalog/src/models.ts</code> and <code>packages/catalog/src/types.ts</code>: built-in providers/models (<code>getBundledModels</code> / <code>getBundledProviders</code>) and <code>Model</code>/<code>compat</code> types</li>
+</ul>
+<h2 id="config-file-location-and-legacy-behavior"><a class="header" href="#config-file-location-and-legacy-behavior">Config file location and legacy behavior</a></h2>
+<p>Default config paths, in precedence order:</p>
+<ul>
+<li><code>~/.veyyon/profiles/default/agent/models.yml</code></li>
+<li><code>~/.veyyon/profiles/default/agent/models.yaml</code></li>
+</ul>
+<p>Legacy behavior still present:</p>
+<ul>
+<li>If both YAML files are missing and <code>models.json</code> exists at the same location, it is migrated to <code>models.yml</code>.</li>
+<li>Explicit <code>.json</code> / <code>.jsonc</code> config paths are still supported when passed programmatically to <code>ModelRegistry</code>.</li>
+</ul>
+<h2 id="modelsyml--modelsyaml-shape"><a class="header" href="#modelsyml--modelsyaml-shape"><code>models.yml</code> / <code>models.yaml</code> shape</a></h2>
+<pre><code class="language-yaml">providers:
+  &lt;provider-id&gt;:
+    # provider-level config
+equivalence:
+  overrides:
+    &lt;provider-id&gt;/&lt;model-id&gt;: &lt;canonical-model-id&gt;
+  exclude:
+    - &lt;provider-id&gt;/&lt;model-id&gt;
+</code></pre>
+<p><code>provider-id</code> is the canonical provider key used across selection and auth lookup.</p>
+<p><code>equivalence</code> is optional and configures canonical model grouping on top of concrete provider models:</p>
+<ul>
+<li><code>overrides</code> maps an exact concrete selector (<code>provider/modelId</code>) to an official upstream canonical id</li>
+<li><code>exclude</code> opts a concrete selector out of canonical grouping</li>
+</ul>
+<h2 id="provider-level-fields"><a class="header" href="#provider-level-fields">Provider-level fields</a></h2>
+<pre><code class="language-yaml">providers:
+  my-provider:
+    baseUrl: https://api.example.com/v1
+    apiKey: MY_PROVIDER_API_KEY
+    api: openai-completions
+    headers:
+      X-Team: platform
+    authHeader: true
+    auth: apiKey
+    disableStrictTools: false # set true for Anthropic-compatible endpoints that reject the strict field
+    discovery:
+      type: ollama
+    modelOverrides:
+      some-model-id:
+        name: Renamed model
+    models:
+      - id: some-model-id
+        name: Some Model
+        api: openai-completions
+        reasoning: false
+        input: [text]
+        cost:
+          input: 0
+          output: 0
+          cacheRead: 0
+          cacheWrite: 0
+        contextWindow: 128000
+        maxTokens: 16384
+        headers:
+          X-Model: value
+        compat:
+          supportsStore: true
+          supportsDeveloperRole: true
+          supportsReasoningEffort: true
+          maxTokensField: max_completion_tokens
+          openRouterRouting:
+            only: [anthropic]
+          vercelGatewayRouting:
+            order: [anthropic, openai]
+          extraBody:
+            gateway: m1-01
+            controller: mlx
+</code></pre>
+<p><code>baseUrl</code> must be an absolute URL that begins with <code>http://</code> or <code>https://</code>, at both provider and model level. A scheme-less value like <code>localhost:11434</code> or <code>192.168.1.5:8080</code> is rejected when the config loads, because it is not a usable endpoint: it either fails to parse or parses with an empty host, so requests go nowhere and prefix cache reuse for a local server never turns on. Write <code>http://localhost:11434</code> for a local server, or <code>https://…</code> for a remote one. The config is not normalised for you, so that a public host you meant to reach over <code>https</code> is never quietly downgraded to plaintext.</p>
+<h3 id="allowed-providermodel-api-values"><a class="header" href="#allowed-providermodel-api-values">Allowed provider/model <code>api</code> values</a></h3>
+<ul>
+<li><code>openai-completions</code></li>
+<li><code>openai-responses</code></li>
+<li><code>openai-codex-responses</code></li>
+<li><code>azure-openai-responses</code></li>
+<li><code>anthropic-messages</code></li>
+<li><code>google-generative-ai</code></li>
+<li><code>google-gemini-cli</code></li>
+<li><code>google-vertex</code></li>
+</ul>
+<h3 id="allowed-authdiscovery-values"><a class="header" href="#allowed-authdiscovery-values">Allowed auth/discovery values</a></h3>
+<ul>
+<li><code>auth</code>: <code>apiKey</code> (default), <code>none</code>, or <code>oauth</code>; for <code>models.yml</code> custom models, <code>oauth</code> is accepted by schema but does not waive the <code>apiKey</code> requirement</li>
+<li><code>discovery.type</code>: <code>ollama</code>, <code>llama.cpp</code>, <code>lm-studio</code>, <code>openai-models-list</code>, <code>proxy</code>, or <code>litellm</code></li>
+<li><code>transport</code>: <code>pi-native</code> only. When set, every model under that provider is sent to an <code>veyyon auth-gateway</code> compatible <code>baseUrl</code> via <code>POST /v1/pi/stream</code>; <code>apiKey</code> is the gateway bearer.</li>
+</ul>
+<h2 id="validation-rules-current"><a class="header" href="#validation-rules-current">Validation rules (current)</a></h2>
+<h3 id="full-custom-provider-models-is-non-empty"><a class="header" href="#full-custom-provider-models-is-non-empty">Full custom provider (<code>models</code> is non-empty)</a></h3>
+<p>Required:</p>
+<ul>
+<li><code>baseUrl</code></li>
+<li><code>apiKey</code> unless <code>auth: none</code></li>
+<li><code>api</code> at provider level or each model</li>
+</ul>
+<h3 id="override-only-provider-models-missing-or-empty"><a class="header" href="#override-only-provider-models-missing-or-empty">Override-only provider (<code>models</code> missing or empty)</a></h3>
+<p>Must define at least one of:</p>
+<ul>
+<li><code>baseUrl</code></li>
+<li><code>apiKey</code></li>
+<li><code>auth: none</code></li>
+<li><code>headers</code></li>
+<li><code>compat</code></li>
+<li><code>disableStrictTools</code></li>
+<li><code>modelOverrides</code></li>
+<li><code>discovery</code></li>
+</ul>
+<h3 id="discovery"><a class="header" href="#discovery">Discovery</a></h3>
+<ul>
+<li><code>discovery</code> requires provider-level <code>api</code>, except <code>discovery.type: proxy</code> (per-model wire auto-detected).</li>
+</ul>
+<h3 id="model-value-checks"><a class="header" href="#model-value-checks">Model value checks</a></h3>
+<ul>
+<li><code>id</code> required</li>
+<li><code>contextWindow</code> and <code>maxTokens</code> must be positive if provided</li>
+</ul>
+<h3 id="command-resolved-secrets"><a class="header" href="#command-resolved-secrets">Command-resolved secrets</a></h3>
+<p>Provider <code>apiKey</code> values and provider/model <code>headers</code> values may start with <code>!</code> to read a secret from command stdout. The command is run with a 10 s timeout, stdout is trimmed, and empty/failing commands are omitted:</p>
+<pre><code class="language-yaml">providers:
+  openai:
+    apiKey: "!op read op://dev/openai/api-key"
+    headers:
+      X-Team-Key: "!bw get password veyyon-team-key"
+</code></pre>
+<p>Successful command outputs are cached for the process lifetime so the command is not re-run for every model.</p>
+<h2 id="merge-and-override-order"><a class="header" href="#merge-and-override-order">Merge and override order</a></h2>
+<p>ModelRegistry pipeline (on refresh):</p>
+<ol>
+<li>Load built-in providers/models from <code>@veyyon/catalog</code> (<code>getBundledProviders</code> / <code>getBundledModels</code>).</li>
+<li>Load <code>models.yml</code> / <code>models.yaml</code> custom config.</li>
+<li>Apply provider overrides (<code>baseUrl</code>, <code>headers</code>, <code>disableStrictTools</code>) to built-in models.</li>
+<li>Apply <code>modelOverrides</code> (per provider + model id).</li>
+<li>Merge custom <code>models</code>:
+<ul>
+<li>same <code>provider + id</code> replaces existing</li>
+<li>otherwise append</li>
+</ul>
+</li>
+<li>Load cached/runtime-discovered models (Ollama, llama.cpp, LM Studio, plus built-in provider managers), then re-apply model overrides.</li>
+</ol>
+<h3 id="provider-model-cache-and-static-fingerprint"><a class="header" href="#provider-model-cache-and-static-fingerprint">Provider-model cache and static fingerprint</a></h3>
+<p>Cached per-provider model lists are persisted in the model-cache SQLite
+database (current schema version 8) with a <code>static_fingerprint</code> column that
+hashes the static catalog slice merged into the row. When <code>resolveProviderModels</code>
+skips the network fetch and the fingerprint of the in-memory static
+catalog matches the cached one, the cached rows are returned verbatim,
+the static + dynamic merge is bypassed entirely. The fingerprint is
+memoized per process by tagging the static-models array with a symbol
+property, so repeated cold-start calls do not re-hash.</p>
+<h2 id="canonical-model-equivalence-and-coalescing"><a class="header" href="#canonical-model-equivalence-and-coalescing">Canonical model equivalence and coalescing</a></h2>
+<p>The registry keeps every concrete provider model and then builds a canonical layer above them.</p>
+<p>Canonical ids are official upstream ids only, for example:</p>
+<ul>
+<li><code>claude-opus-4-6</code></li>
+<li><code>claude-haiku-4-5</code></li>
+<li><code>gpt-5.3-codex</code></li>
+</ul>
+<h3 id="modelsyml-equivalence-config"><a class="header" href="#modelsyml-equivalence-config"><code>models.yml</code> equivalence config</a></h3>
+<p>Example:</p>
+<pre><code class="language-yaml">providers:
+  zenmux:
+    baseUrl: https://api.zenmux.example/v1
+    apiKey: ZENMUX_API_KEY
+    api: openai-codex-responses
+    models:
+      - id: codex
+        name: Zenmux Codex
+        reasoning: true
+        input: [text]
+        cost:
+          input: 0
+          output: 0
+          cacheRead: 0
+          cacheWrite: 0
+        contextWindow: 200000
+        maxTokens: 32768
+
+equivalence:
+  overrides:
+    zenmux/codex: gpt-5.3-codex
+    p-codex/codex: gpt-5.3-codex
+  exclude:
+    - demo/codex-preview
+</code></pre>
+<p>Build order for canonical grouping:</p>
+<ol>
+<li>exact user override from <code>equivalence.overrides</code></li>
+<li>bundled official-id matches from built-in model metadata</li>
+<li>conservative heuristic normalization for gateway/provider variants</li>
+<li>fallback to the concrete model’s own id</li>
+</ol>
+<p>Current heuristics are intentionally narrow:</p>
+<ul>
+<li>embedded upstream prefixes can be stripped when present, for example <code>anthropic/...</code> or <code>openai/...</code></li>
+<li>dotted and dashed version variants can normalize only when they map to an existing official id, for example <code>4.6 -&gt; 4-6</code></li>
+<li>ambiguous families or versions are not merged without a bundled match or explicit override</li>
+</ul>
+<h3 id="canonical-resolution-behavior"><a class="header" href="#canonical-resolution-behavior">Canonical resolution behavior</a></h3>
+<p>When multiple concrete variants share a canonical id, resolution uses:</p>
+<ol>
+<li>availability and auth</li>
+<li><code>config.yml</code> <code>modelProviderOrder</code></li>
+<li>existing registry/provider order if <code>modelProviderOrder</code> is unset</li>
+</ol>
+<p>Disabled or unauthenticated providers are skipped.</p>
+<p>Session state and transcripts continue to record the concrete provider/model that actually executed the turn.</p>
+<p>Provider defaults vs per-model overrides:</p>
+<ul>
+<li>Provider <code>headers</code> are baseline.</li>
+<li>Model <code>headers</code> override provider header keys.</li>
+<li><code>modelOverrides</code> can override model metadata (<code>name</code>, <code>reasoning</code>, <code>thinking</code>, <code>input</code>, <code>supportsTools</code>, <code>cost</code>, <code>premiumMultiplier</code>, <code>contextWindow</code>, <code>maxTokens</code>, <code>omitMaxOutputTokens</code>, <code>headers</code>, <code>compat</code>, <code>contextPromotionTarget</code>).</li>
+<li><code>compat</code> is deep-merged for nested routing blocks (<code>openRouterRouting</code>, <code>vercelGatewayRouting</code>, <code>extraBody</code>).</li>
+</ul>
+<h2 id="runtime-discovery-integration"><a class="header" href="#runtime-discovery-integration">Runtime discovery integration</a></h2>
+<h3 id="implicit-ollama-discovery"><a class="header" href="#implicit-ollama-discovery">Implicit Ollama discovery</a></h3>
+<p>If <code>ollama</code> is not explicitly configured, registry adds an implicit discoverable provider:</p>
+<ul>
+<li>provider: <code>ollama</code></li>
+<li>api: <code>openai-responses</code></li>
+<li>base URL: <code>OLLAMA_BASE_URL</code>, or <code>OLLAMA_HOST</code>, or <code>http://127.0.0.1:11434</code></li>
+<li>context window: <code>OLLAMA_CONTEXT_LENGTH</code> if set, otherwise Ollama <code>/api/show</code> metadata, otherwise <code>128000</code></li>
+<li>auth mode: keyless (<code>auth: none</code> behavior)</li>
+</ul>
+<p>Runtime discovery calls Ollama endpoints and normalizes discovered OpenAI-compatible models to <code>openai-responses</code>.</p>
+<p><code>OLLAMA_CONTEXT_LENGTH</code> does not configure Ollama’s runtime <code>num_ctx</code>; set that in Ollama/model configuration separately.</p>
+<h3 id="implicit-llamacpp-discovery"><a class="header" href="#implicit-llamacpp-discovery">Implicit llama.cpp discovery</a></h3>
+<p>If <code>llama.cpp</code> is not explicitly configured, registry adds an implicit discoverable provider:</p>
+<ul>
+<li>provider: <code>llama.cpp</code></li>
+<li>api: <code>openai-responses</code></li>
+<li>base URL: <code>LLAMA_CPP_BASE_URL</code> or <code>http://127.0.0.1:8080</code></li>
+<li>auth mode: keyless (<code>auth: none</code> behavior)</li>
+</ul>
+<p>Runtime discovery calls llama.cpp model endpoints and synthesizes model entries with local defaults.</p>
+<h3 id="implicit-lm-studio-discovery"><a class="header" href="#implicit-lm-studio-discovery">Implicit LM Studio discovery</a></h3>
+<p>If <code>lm-studio</code> is not explicitly configured, registry adds an implicit discoverable provider:</p>
+<ul>
+<li>provider: <code>lm-studio</code></li>
+<li>api: <code>openai-completions</code></li>
+<li>base URL: <code>LM_STUDIO_BASE_URL</code> or <code>http://127.0.0.1:1234/v1</code></li>
+<li>auth mode: keyless (<code>auth: none</code> behavior)</li>
+</ul>
+<p>Runtime discovery fetches models (<code>GET /models</code>) and synthesizes model entries with local defaults.</p>
+<p>This path also works for local OpenAI-compatible servers that are not LM Studio. For example, if oMLX is bound to Ollama’s usual port, set <code>LM_STUDIO_BASE_URL=http://127.0.0.1:11434/v1</code> to discover it through the existing <code>/v1/models</code> flow. Running oMLX and Ollama side by side requires assigning a different port to one of them. Do not configure oMLX as <code>ollama</code>: Ollama discovery uses native <code>/api/tags</code> and <code>/api/show</code> endpoints, not OpenAI <code>/v1/models</code>.</p>
+<h3 id="litellm-provider-discovery"><a class="header" href="#litellm-provider-discovery">LiteLLM provider discovery</a></h3>
+<p>When <code>litellm</code> is active (for example through <code>LITELLM_API_KEY</code> or stored auth), runtime discovery uses the LiteLLM proxy:</p>
+<ul>
+<li>provider: <code>litellm</code></li>
+<li>api: <code>openai-completions</code></li>
+<li>base URL: explicit provider <code>baseUrl</code> / <code>models.yml</code> config, otherwise <code>LITELLM_BASE_URL</code>, otherwise <code>http://localhost:4000/v1</code></li>
+<li>auth mode: <code>LITELLM_API_KEY</code> or stored LiteLLM auth when the proxy requires a key</li>
+</ul>
+<p>Runtime discovery probes LiteLLM management metadata first: <code>GET /model_group/info</code>, then <code>GET /v2/model/info</code>, then falls back to the OpenAI-compatible <code>GET /models</code> list. Rich metadata maps <code>max_input_tokens</code>, <code>max_output_tokens</code>, <code>supports_vision</code>, and <code>supports_reasoning</code>; bare fallback ids are enriched against bundled reference metadata when available.</p>
+<h3 id="explicit-provider-discovery"><a class="header" href="#explicit-provider-discovery">Explicit provider discovery</a></h3>
+<p>You can configure discovery yourself:</p>
+<pre><code class="language-yaml">providers:
+  ollama:
+    baseUrl: http://127.0.0.1:11434
+    api: openai-responses
+    auth: none
+    discovery:
+      type: ollama
+
+  llama.cpp:
+    baseUrl: http://127.0.0.1:8080
+    api: openai-responses
+    auth: none
+    discovery:
+      type: llama.cpp
+</code></pre>
+<p>Custom LiteLLM gateways can use the same rich discovery path:</p>
+<pre><code class="language-yaml">providers:
+  litellm-gateway:
+    baseUrl: http://gateway.example:4000/v1
+    apiKey: LITELLM_API_KEY
+    api: openai-completions
+    discovery:
+      type: litellm
+</code></pre>
+<p>LiteLLM metadata endpoints use the configured base URL with a trailing <code>/v1</code> stripped for discovery only, preserving any preceding proxy path. Runtime model calls keep the configured OpenAI-compatible <code>/v1</code> base URL.</p>
+<h3 id="proxy-discovery-discoverytype-proxy"><a class="header" href="#proxy-discovery-discoverytype-proxy">Proxy discovery (<code>discovery.type: proxy</code>)</a></h3>
+<p>For Anthropic+OpenAI-compatible proxies (new-api / one-api / similar)
+that expose both <code>/v1/messages</code> and <code>/v1/chat/completions</code> behind the same
+host. Discovery hits <code>GET /v1/models</code> (10s timeout, OpenAI-style payload) and
+derives each model’s <code>api</code> from the entry’s <code>supported_endpoint_types</code>:</p>
+<ul>
+<li>contains <code>"anthropic"</code> -&gt; <code>api: anthropic-messages</code> (routes via <code>/v1/messages</code>)</li>
+<li>contains <code>"openai"</code> -&gt; <code>api: openai-completions</code> (routes via <code>/v1/chat/completions</code>)</li>
+<li>otherwise -&gt; falls back to provider-level <code>api</code> if set, else dropped</li>
+</ul>
+<p>Provider-level <code>api</code> is <strong>optional</strong> with <code>discovery.type: proxy</code> because the
+per-model wire is auto-detected. The Anthropic SDK strips a trailing <code>/v1</code>
+from <code>baseUrl</code> before appending <code>/v1/messages</code>, so a single discovery <code>baseUrl</code>
+(ending in <code>/v1</code>) round-trips correctly to both wires.</p>
+<pre><code class="language-yaml">providers:
+  newapi-reseller:
+    baseUrl: https://api.example.com/v1
+    apiKey: xxxx
+    authHeader: true # injects Authorization: Bearer for openai models
+    disableStrictTools: true # most anthropic-fronted proxies reject `strict`
+    discovery:
+      type: proxy
+</code></pre>
+<h3 id="extension-provider-registration"><a class="header" href="#extension-provider-registration">Extension provider registration</a></h3>
+<p>Extensions can register providers at runtime (<code>pi.registerProvider(...)</code>), including:</p>
+<ul>
+<li>model replacement/append for a provider</li>
+<li>custom stream handler registration for new API IDs</li>
+<li>custom OAuth provider registration</li>
+</ul>
+<h2 id="auth-and-api-key-resolution-order"><a class="header" href="#auth-and-api-key-resolution-order">Auth and API key resolution order</a></h2>
+<p>When requesting a key for a provider, effective order is:</p>
+<ol>
+<li>Runtime override (CLI <code>--api-key</code>)</li>
+<li>Stored API key credential in <code>agent.db</code></li>
+<li>Stored OAuth credential in <code>agent.db</code> (with refresh)</li>
+<li>Environment variable mapping (<code>OPENAI_API_KEY</code>, <code>ANTHROPIC_API_KEY</code>, etc.)</li>
+<li>ModelRegistry fallback resolver (provider <code>apiKey</code> from <code>models.yml</code>, env-name-or-literal semantics)</li>
+</ol>
+<p><code>models.yml</code> <code>apiKey</code> behavior:</p>
+<ul>
+<li>Value is first treated as an environment variable name.</li>
+<li>If no env var exists, the literal string is used as the token.</li>
+</ul>
+<p>If <code>authHeader: true</code> and provider <code>apiKey</code> is set, models get:</p>
+<ul>
+<li><code>Authorization: Bearer &lt;resolved-key&gt;</code> header injected.</li>
+</ul>
+<p>Keyless providers:</p>
+<ul>
+<li>Providers marked <code>auth: none</code> are treated as available without credentials.</li>
+<li><code>getApiKey*</code> returns <code>kNoAuth</code> for them.</li>
+</ul>
+<h3 id="broker-mode"><a class="header" href="#broker-mode">Broker mode</a></h3>
+<p>When <code>VEYYON_AUTH_BROKER_URL</code> (or <code>auth.broker.url</code>) is set, the local SQLite credential store is replaced by <code>RemoteAuthCredentialStore</code>. Layers 2 and 3 above (stored API key / OAuth in <code>agent.db</code>) are served from a broker-supplied snapshot whose <code>refresh</code> tokens are redacted; expiry triggers <code>POST /v1/credential/:id/refresh</code> on the broker rather than a local refresh.</p>
+<p><code>AuthStorage.setConfigApiKey</code> lets a <code>models.yml</code> <code>apiKey</code> win over a broker-resolved OAuth token without overriding a runtime <code>--api-key</code>. See <a href="./internal/auth-broker-gateway.html"><code>auth-broker-gateway.md</code></a> for the full broker / gateway design and env surface (<code>VEYYON_AUTH_BROKER_URL</code>, <code>VEYYON_AUTH_BROKER_TOKEN</code>, <code>auth.broker.url</code>, <code>auth.broker.token</code>).</p>
+<h2 id="model-availability-vs-all-models"><a class="header" href="#model-availability-vs-all-models">Model availability vs all models</a></h2>
+<ul>
+<li><code>getAll()</code> returns the loaded model registry (built-in + merged custom + discovered).</li>
+<li><code>getAvailable()</code> filters to models that are keyless or have resolvable auth.</li>
+</ul>
+<p>So a model can exist in registry but not be selectable until auth is available.</p>
+<h2 id="runtime-model-resolution"><a class="header" href="#runtime-model-resolution">Runtime model resolution</a></h2>
+<h3 id="cli-and-pattern-parsing"><a class="header" href="#cli-and-pattern-parsing">CLI and pattern parsing</a></h3>
+<p><code>model-resolver.ts</code> supports:</p>
+<ul>
+<li>exact <code>provider/modelId</code></li>
+<li>exact canonical model id</li>
+<li>exact model id (provider inferred)</li>
+<li>fuzzy/substring matching</li>
+<li>glob scope patterns in <code>--models</code> (e.g. <code>openai/*</code>, <code>*sonnet*</code>)</li>
+<li>optional <code>:thinkingLevel</code> suffix (<code>off|minimal|low|medium|high|xhigh|max</code>)</li>
+</ul>
+<p><code>--provider</code> is legacy; <code>--model</code> is preferred.</p>
+<p>Resolution precedence for exact selectors:</p>
+<ol>
+<li>exact <code>provider/modelId</code> bypasses coalescing</li>
+<li>exact canonical id resolves through the canonical index</li>
+<li>exact bare concrete id still works</li>
+<li>fuzzy and glob matching run after the exact paths</li>
+</ol>
+<h3 id="initial-model-selection-priority"><a class="header" href="#initial-model-selection-priority">Initial model selection priority</a></h3>
+<p><code>buildSessionOptions(...)</code> in <code>main.ts</code> decides the model a session starts on, in this order:</p>
+<ol>
+<li>an explicit <code>--model</code> (or the legacy <code>--provider</code> pair). A pattern that matches nothing is fatal, except for a bare id with no provider and no <code>:</code> suffix, which is carried as <code>options.modelPattern</code> and resolved again after extensions load, since an extension may register the provider it names.</li>
+<li>the scoped set from <code>--models</code>, when this is not a <code>--continue</code> or <code>--resume</code>. Inside that set the remembered <code>modelRoles.default</code> wins if it is there; if it is configured but unavailable, <code>fallbackForUnavailableDefault</code> substitutes and prints the reason; otherwise the first scoped model is used.</li>
+<li>otherwise nothing is pinned here, and the session resolves <code>modelRoles.default</code> through <code>resolveModelRoleValue</code> against the models that have a usable credential.</li>
+</ol>
+<p>A resumed session restores its own model rather than taking a CLI default, which is why step 2 is skipped under <code>--continue</code>/<code>--resume</code>.</p>
+<p>This used to name <code>findInitialModel(...)</code>, a function in <code>config/model-resolver.ts</code> with a different precedence. Nothing called it: <code>main.ts</code> had grown its own resolution and the two had drifted, so the documented order was one no session ever took. The dead copy is gone.</p>
+<h3 id="role-aliases-and-settings"><a class="header" href="#role-aliases-and-settings">Role aliases and settings</a></h3>
+<p>Built-in role ids (see <code>model-roles.ts</code>):</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Role</th><th>Selectable in UI</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><code>default</code></td><td>No (hidden)</td><td>Storage key for the <strong>interactive</strong> model (<code>/model</code> persist / “set as default”)</td></tr>
+<tr><td><code>smol</code></td><td>Yes</td><td>Fast / cheap (<code>--smol</code>)</td></tr>
+<tr><td><code>slow</code></td><td>Yes</td><td>Thinking (<code>--slow</code>)</td></tr>
+<tr><td><code>vision</code></td><td>Yes</td><td>Multimodal</td></tr>
+<tr><td><code>plan</code></td><td>Yes</td><td>Plan mode (<code>--plan</code>)</td></tr>
+<tr><td><code>designer</code></td><td>Yes</td><td>Design-oriented work</td></tr>
+<tr><td><code>commit</code></td><td>Yes</td><td>Commit / changelog</td></tr>
+<tr><td><code>tiny</code></td><td>Yes</td><td>Lightweight background (titles, classifiers); else <code>@smol</code></td></tr>
+<tr><td><code>advisor</code></td><td>Yes</td><td>Advisor runtime</td></tr>
+</tbody>
+</table>
+</div>
+<p>There is no <code>task</code> model role. Profile-wide and per-agent subagent model policy lives under <code>subagent</code> instead of the role table.</p>
+<p><code>cycleOrder</code> defaults to <code>["smol","slow"]</code>; the entry <code>default</code> is stripped on load. Role aliases like <code>@smol</code> expand through <code>settings.modelRoles</code>; <code>*</code> selects <code>@default</code> (interactive). Quote <code>@</code> aliases in YAML values (<code>fable: "@slow"</code>). Each role value can append a thinking selector (<code>:minimal</code>, <code>:low</code>, <code>:medium</code>, <code>:high</code>, <code>:xhigh</code>, <code>:max</code>).</p>
+<p>If a role points at another role, the target model still inherits normally and any explicit suffix on the referring role wins for that role-specific use.</p>
+<p>Related settings:</p>
+<ul>
+<li><code>modelRoles</code> (record)</li>
+<li><code>enabledModels</code> (scoped pattern list)</li>
+<li><code>modelProviderOrder</code> (global canonical-provider precedence)</li>
+<li><code>providers.kimiApiFormat</code> (<code>openai</code> or <code>anthropic</code> request format)</li>
+<li><code>providers.openaiWebsockets</code> (<code>auto|off|on</code> websocket preference for OpenAI Codex transport)</li>
+</ul>
+<p><code>modelRoles</code> may store either:</p>
+<ul>
+<li><code>provider/modelId</code> to pin a concrete provider variant</li>
+<li>a canonical id such as <code>gpt-5.3-codex</code> to allow provider coalescing</li>
+</ul>
+<p>For <code>enabledModels</code> and CLI <code>--models</code>:</p>
+<ul>
+<li>exact canonical ids expand to all concrete variants in that canonical group</li>
+<li>explicit <code>provider/modelId</code> entries stay exact</li>
+<li>globs and fuzzy matches still operate on concrete models</li>
+</ul>
+<p>Global <code>enabledModels</code> and <code>disabledProviders</code> entries may also be scoped to a path prefix:</p>
+<pre><code class="language-yaml">enabledModels:
+  - claude-sonnet-4-5
+  - path: ~/work
+    models:
+      - anthropic/claude-opus-4-5
+disabledProviders:
+  - ollama
+  - path: ~/private
+    providers:
+      - anthropic
+</code></pre>
+<p>String entries apply everywhere. Scoped entries apply when the current working directory is the configured path or one of its subdirectories. Use <code>path</code>, <code>paths</code>, <code>pathPrefix</code>, or <code>pathPrefixes</code>; use <code>models</code> for <code>enabledModels</code>, <code>providers</code> for <code>disabledProviders</code>, or <code>values</code> for either.</p>
+<h2 id="model-and-veyyon-models"><a class="header" href="#model-and-veyyon-models"><code>/model</code> and <code>veyyon models</code></a></h2>
+<pre><code class="language-console">$ veyyon models refresh google-antigravity --json
+</code></pre>
+<p>This command bypasses the cache for <code>google-antigravity</code> only, then prints that provider’s refreshed models. Omit the provider to refresh every authenticated or local provider.</p>
+<p>Both surfaces keep provider-prefixed models visible and selectable.</p>
+<p>They now also expose canonical/coalesced models:</p>
+<ul>
+<li><code>/model</code> includes a canonical view alongside provider tabs</li>
+<li><code>veyyon models</code> prints provider-grouped tables of every concrete model (<code>ls</code>, <code>find</code>, and <code>refresh</code> actions)</li>
+</ul>
+<p>Selecting a canonical entry stores the canonical selector. Selecting a provider row stores the explicit <code>provider/modelId</code>.</p>
+<h2 id="context-promotion-model-level-fallback-chains"><a class="header" href="#context-promotion-model-level-fallback-chains">Context promotion (model-level fallback chains)</a></h2>
+<p>Context promotion is an overflow recovery mechanism for small-context variants (for example <code>*-spark</code>) that automatically promotes to a larger-context sibling when the API rejects a request with a context length error.</p>
+<h3 id="trigger-and-order"><a class="header" href="#trigger-and-order">Trigger and order</a></h3>
+<p>When a turn fails with a context overflow error (e.g. <code>context_length_exceeded</code>), <code>AgentSession</code> attempts promotion <strong>before</strong> falling back to compaction:</p>
+<ol>
+<li>If <code>contextPromotion.enabled</code> is true, resolve a promotion target (see below).</li>
+<li>If a target is found, switch to it and retry the request: no compaction needed.</li>
+<li>If no target is available, fall through to auto-compaction on the current model.</li>
+</ol>
+<h3 id="target-selection"><a class="header" href="#target-selection">Target selection</a></h3>
+<p>Selection is explicit and model-driven:</p>
+<ol>
+<li><code>currentModel.contextPromotionTarget</code> (if configured)</li>
+</ol>
+<p>Only the configured target is considered; context promotion does not automatically choose a larger same-provider/API sibling. Configured targets are ignored unless credentials resolve (<code>ModelRegistry.getApiKey(...)</code>).</p>
+<h3 id="openai-codex-websocket-handoff"><a class="header" href="#openai-codex-websocket-handoff">OpenAI Codex websocket handoff</a></h3>
+<p>If switching from/to <code>openai-codex-responses</code>, session provider state key <code>openai-codex-responses</code> is closed before model switch. This drops websocket transport state so the next turn starts clean on the promoted model.</p>
+<h3 id="persistence-behavior"><a class="header" href="#persistence-behavior">Persistence behavior</a></h3>
+<p>Promotion uses temporary switching (<code>setModelTemporary</code>):</p>
+<ul>
+<li>recorded as a temporary <code>model_change</code> in session history</li>
+<li>does not rewrite saved role mapping</li>
+</ul>
+<h3 id="configuring-explicit-fallback-chains"><a class="header" href="#configuring-explicit-fallback-chains">Configuring explicit fallback chains</a></h3>
+<p>Configure fallback directly in model metadata via <code>contextPromotionTarget</code>.</p>
+<p><code>contextPromotionTarget</code> accepts either:</p>
+<ul>
+<li><code>provider/model-id</code> (explicit)</li>
+<li><code>model-id</code> (resolved within current provider)</li>
+</ul>
+<p>Example (<code>models.yml</code>) for an explicit OpenAI fallback:</p>
+<pre><code class="language-yaml">providers:
+  openai-codex:
+    modelOverrides:
+      gpt-5.5:
+        contextPromotionTarget: openai-codex/gpt-5.4
+</code></pre>
+<p>The built-in model policy currently links OpenAI <code>codex-spark</code> variants to <code>gpt-5.5</code>, and <code>gpt-5.5</code> to <code>gpt-5.4</code>, when that target exists on the same provider/API.</p>
+<h2 id="compatibility-and-routing-fields"><a class="header" href="#compatibility-and-routing-fields">Compatibility and routing fields</a></h2>
+<p>The <code>compat</code> block on a provider or model overrides the URL-based auto-detection in <code>packages/catalog/src/compat/openai.ts</code> (<code>buildOpenAICompat</code>). It is validated by <code>OpenAICompatSchema</code> in <code>packages/coding-agent/src/config/models-config-schema.ts</code> and consumed by every <code>openai-completions</code> transport (<code>packages/ai/src/providers/openai-completions.ts</code>). The canonical type is <code>OpenAICompat</code> in <code>packages/catalog/src/types.ts</code>.</p>
+<p>Endpoint-specific exceptions that interact with these fields are cataloged in <a href="./internal/provider-endpoint-constraints.html">Provider endpoint constraints</a>.</p>
+<p><code>models.yml</code> accepts the following keys (all optional; unset falls back to URL detection):</p>
+<p>Request shaping:</p>
+<ul>
+<li><code>supportsStore</code>: emit <code>store: false</code> on requests. Default: auto (off for non-standard endpoints).</li>
+<li><code>supportsDeveloperRole</code>: use the <code>developer</code> system role for reasoning models instead of <code>system</code>. Default: auto.</li>
+<li><code>supportsMultipleSystemMessages</code>: preserve separate leading system/developer messages instead of coalescing them. Default: auto (known OpenAI-compatible hosted APIs preserve; strict-template/local hosts coalesce).</li>
+<li><code>supportsUsageInStreaming</code>: send <code>stream_options: { include_usage: true }</code> to receive token usage on streaming responses. Default: <code>true</code>.</li>
+<li><code>maxTokensField</code>: <code>"max_completion_tokens"</code> or <code>"max_tokens"</code>. Default: auto.</li>
+<li><code>supportsToolChoice</code>: emit the <code>tool_choice</code> parameter when the caller forces a specific tool. Default: <code>true</code>. Set <code>false</code> for endpoints that 400 on <code>tool_choice</code> (e.g. DeepSeek when reasoning is on).</li>
+<li><code>supportsForcedToolChoice</code>: accept a forced <code>tool_choice</code> that requires a specific tool. Default: <code>true</code>. When <code>false</code>, a forced selector is downgraded to <code>auto</code> so the tool stays available for endpoints that reject forced tool calls (e.g. some thinking-required OpenAI-compatible models).</li>
+<li><code>disableReasoningOnForcedToolChoice</code>: drop <code>reasoning_effort</code> / OpenRouter <code>reasoning</code> whenever <code>tool_choice</code> forces a call. Default: auto (Kimi/Anthropic-fronted endpoints).</li>
+<li><code>disableReasoningOnToolChoice</code>: drop reasoning fields whenever any <code>tool_choice</code> is sent. Default: auto (DeepSeek reasoning models).</li>
+<li><code>alwaysSendMaxTokens</code>: always send a max-token field when the caller did not provide one. Default: auto (Kimi-family models derive TPM limits from <code>max_tokens</code>).</li>
+<li><code>strictResponsesPairing</code>: Responses-API tool-call/result history must be strictly paired. Default: auto (Azure OpenAI, GitHub Copilot).</li>
+<li><code>streamIdleTimeoutMs</code>: stream-watchdog idle-timeout floor in ms for slow reasoning hosts. Default: auto (GLM coding-plan hosts, direct DeepSeek reasoning).</li>
+<li><code>cacheControlFormat</code>: <code>"anthropic"</code> to include Anthropic-style prompt-cache markers in chat-completions payloads. Default: auto (OpenRouter <code>anthropic/*</code> models).</li>
+<li><code>supportsLongPromptCacheRetention</code>: host honors <code>prompt_cache_retention: "24h"</code> on the Responses API. Default: auto (api.openai.com).</li>
+<li><code>extraBody</code>: extra top-level fields merged into every request body (gateway hints, controller selectors, etc.).</li>
+</ul>
+<p>Reasoning / thinking:</p>
+<ul>
+<li><code>supportsReasoningEffort</code>: accept <code>reasoning_effort</code>. Default: auto (off for Grok, Z.ai/Zhipu, and Xiaomi MiMo).</li>
+<li><code>supportsReasoningParams</code>: whether request shaping may send reasoning params at all. Default: auto (off for GitHub Copilot chat-completions).</li>
+<li><code>reasoningEffortMap</code>: partial map from internal effort levels (<code>minimal|low|medium|high|xhigh|max</code>) to provider-specific strings (e.g. Fireworks GLM maps <code>minimal -&gt; "none"</code>). Every key must name a level; a key that does not, such as a misspelled <code>hihg</code>, fails config validation and is reported by name. It used to be accepted and then never matched, so the remap silently did not happen and the level went to the provider unchanged.</li>
+<li><code>thinkingFormat</code>: request shape for thinking: <code>"openai"</code> (<code>reasoning_effort</code>), <code>"openrouter"</code> (<code>reasoning: { effort }</code>), <code>"zai"</code> (<code>thinking: { type: "enabled" }</code>), <code>"qwen"</code> (top-level <code>enable_thinking</code>), or <code>"qwen-chat-template"</code> (<code>chat_template_kwargs.enable_thinking</code>). Default: <code>"openai"</code>.</li>
+<li><code>reasoningContentField</code>: assistant field carrying chain-of-thought: <code>"reasoning_content"</code>, <code>"reasoning"</code>, or <code>"reasoning_text"</code>. Default: auto.</li>
+<li><code>requiresReasoningContentForToolCalls</code>: assistant tool-call turns must round-trip the reasoning field (DeepSeek-R1, Kimi, OpenRouter when reasoning is on). Default: <code>false</code>.</li>
+<li><code>allowsSyntheticReasoningContentForToolCalls</code>: allow a placeholder reasoning field when a prior assistant tool-call turn lacks provider reasoning content. Default: <code>true</code>; set <code>false</code> for providers that validate the exact reasoning value.</li>
+<li><code>requiresAssistantContentForToolCalls</code>: assistant tool-call turns must include non-empty text content (Kimi). Default: <code>false</code>.</li>
+<li><code>whenThinking</code>: partial compat overrides applied only when a request actually engages thinking mode (deep-merged over the baseline compat).</li>
+</ul>
+<p>Tool / message normalization:</p>
+<ul>
+<li><code>requiresToolResultName</code>: tool-result messages need a <code>name</code> field (Mistral). Default: auto.</li>
+<li><code>requiresAssistantAfterToolResult</code>: a user message after a tool result needs an assistant turn in between. Default: auto.</li>
+<li><code>requiresThinkingAsText</code>: convert thinking blocks to text wrapped in <code>&lt;thinking&gt;</code> delimiters (Mistral). Default: auto.</li>
+<li><code>requiresMistralToolIds</code>: normalize tool-call ids to exactly 9 alphanumeric chars. Default: auto.</li>
+<li><code>supportsStrictMode</code>: accept the per-tool <code>strict</code> field on tool schemas. Default: conservative auto-detect per provider/baseUrl.</li>
+<li><code>toolStrictMode</code>: <code>"all_strict"</code> forces strict on every tool, <code>"none"</code> forces it off; unset keeps the existing per-tool mixed behavior.</li>
+</ul>
+<p>Gateway routing (only applied when <code>baseUrl</code> matches the gateway):</p>
+<ul>
+<li><code>openRouterRouting.only</code> / <code>openRouterRouting.order</code>: provider routing on <code>openrouter.ai</code> (see <a href="https://openrouter.ai/docs/provider-routing">https://openrouter.ai/docs/provider-routing</a>).</li>
+<li><code>vercelGatewayRouting.only</code> / <code>vercelGatewayRouting.order</code>: provider routing on <code>ai-gateway.vercel.sh</code> (see <a href="https://vercel.com/docs/ai-gateway/models-and-providers/provider-options">https://vercel.com/docs/ai-gateway/models-and-providers/provider-options</a>).</li>
+</ul>
+<p>Provider-level <code>compat</code> is the baseline; per-model <code>compat</code> is deep-merged on top, with <code>openRouterRouting</code>, <code>vercelGatewayRouting</code>, and <code>extraBody</code> merged as nested objects.</p>
+<h3 id="anthropic-compatibility-anthropic-messages"><a class="header" href="#anthropic-compatibility-anthropic-messages">Anthropic compatibility (<code>anthropic-messages</code>)</a></h3>
+<p>For <code>anthropic-messages</code> models the runtime uses a separate <code>AnthropicCompat</code> shape (<code>packages/catalog/src/types.ts</code>). The <code>models.yml</code> schema exposes the strict-tools opt-out as a top-level provider field (see below) plus two Anthropic-side flags in the same <code>compat</code> slot, <code>requiresToolResultId</code> (non-standard <code>id</code> alias on <code>tool_result</code> blocks for Z.AI-style proxies) and <code>replayUnsignedThinking</code> (replay unsigned thinking blocks as native thinking instead of demoting them to text); the remaining Anthropic-side knobs (<code>disableAdaptiveThinking</code>, <code>supportsEagerToolInputStreaming</code>, <code>supportsLongCacheRetention</code>, <code>supportsMidConversationSystem</code>, <code>supportsForcedToolChoice</code>, <code>supportsSamplingParams</code>, <code>escapeBuiltinToolNames</code>) are set by built-in catalog metadata and are not user-configurable from <code>models.yml</code>.</p>
+<h3 id="strict-tool-schemas-disablestricttools"><a class="header" href="#strict-tool-schemas-disablestricttools">Strict tool schemas (<code>disableStrictTools</code>)</a></h3>
+<p>Anthropic’s API supports a <code>strict</code> field on tool definitions that forces the model to always follow the provided schema exactly. Veyyon enables it by default for a small allowlist of high-frequency built-in <code>anthropic-messages</code> tools (<code>bash</code>, <code>python</code>, <code>edit</code>, and <code>find</code>) whose schemas fit Anthropic’s strict grammar limits; other tools still send normalized schemas but omit <code>strict</code>.</p>
+<p>Third-party providers that front the Anthropic API (AWS Bedrock, Azure, self-hosted proxies) do not always implement this field and will reject requests that include it. Set <code>disableStrictTools: true</code> at the provider level to opt out of strict mode for the allowlisted tools:</p>
+<pre><code class="language-yaml">providers:
+  bedrock-anthropic:
+    baseUrl: https://bedrock-runtime.us-east-1.amazonaws.com/anthropic
+    apiKey: AWS_BEARER_TOKEN
+    api: anthropic-messages
+    disableStrictTools: true
+    models:
+      - id: claude-sonnet-4-20250514
+        name: Claude Sonnet 4 (Bedrock)
+        input: [text, image]
+        contextWindow: 200000
+        maxTokens: 16384
+        cost:
+          input: 3.00
+          output: 15.00
+          cacheRead: 0.30
+          cacheWrite: 3.75
+</code></pre>
+<p><code>disableStrictTools</code> is a provider-level flag that applies to all models in the provider. It disables the Anthropic <code>strict</code> marker only for tools that Veyyon would otherwise mark strict; it does not change runtime tool argument validation. Veyyon can automatically retry without strict tools after Anthropic reports a strict-grammar-too-large error before the first streamed token, but proxies that reject the <code>strict</code> field for other reasons should set this flag explicitly.</p>
+<p>Tool schemas going on the wire are normalized by the unified flow in
+<code>packages/ai/src/utils/schema/normalize.ts</code> (Google/CCA/MCP dispatchers
+plus the OpenAI strict-mode sanitize+enforce pipeline). See
+<a href="./internal/ai-schema-normalize.html"><code>ai-schema-normalize.md</code></a> for the strict-mode
+edge cases (local <code>$ref</code> inlining, single-item <code>allOf</code> collapse,
+<code>anyOf</code>-wrapper description hoist, enum/const primitive-type inference)
+and the per-provider dispatcher mapping.</p>
+<h2 id="practical-examples"><a class="header" href="#practical-examples">Practical examples</a></h2>
+<h3 id="local-openai-compatible-endpoint-no-auth"><a class="header" href="#local-openai-compatible-endpoint-no-auth">Local OpenAI-compatible endpoint (no auth)</a></h3>
+<pre><code class="language-yaml">providers:
+  local-openai:
+    baseUrl: http://127.0.0.1:8000/v1
+    auth: none
+    api: openai-completions
+    models:
+      - id: Qwen/Qwen2.5-Coder-32B-Instruct
+        name: Qwen 2.5 Coder 32B (local)
+</code></pre>
+<p>For oMLX or another local OpenAI-compatible server with a discoverable <code>/v1/models</code> endpoint, prefer discovery instead of listing models by hand. Set <code>api</code> to the endpoint family your server actually exposes: <code>openai-completions</code> uses <code>/v1/chat/completions</code>; servers that expose <code>/v1/responses</code> need <code>openai-responses</code> instead.</p>
+<pre><code class="language-yaml">providers:
+  omlx:
+    baseUrl: http://127.0.0.1:11434/v1
+    auth: none
+    api: openai-completions
+    discovery:
+      type: openai-models-list
+</code></pre>
+<p>The built-in vLLM provider can be pointed at a non-default endpoint without declaring a custom discovery type. Veyyon uses vLLM’s <code>/v1/models</code> metadata and preserves vLLM’s <code>max_model_len</code> field as the discovered context window.</p>
+<pre><code class="language-yaml">providers:
+  vllm:
+    baseUrl: http://192.168.5.3:8085/v1
+    auth: none
+</code></pre>
+<p>For multiple vLLM endpoints, use arbitrary provider IDs with the generic OpenAI-compatible discovery path. Set <code>auth: none</code> for local no-auth servers or <code>apiKey</code> for authenticated ones. Generic discovery reads <code>max_model_len</code> first and then <code>context_length</code> as a generic OpenAI-compatible fallback.</p>
+<pre><code class="language-yaml">providers:
+  vllm-fast:
+    baseUrl: http://host-a:8000/v1
+    auth: none
+    api: openai-completions
+    discovery:
+      type: openai-models-list
+  vllm-long:
+    baseUrl: http://host-b:8000/v1
+    auth: none
+    api: openai-completions
+    discovery:
+      type: openai-models-list
+</code></pre>
+<h3 id="hosted-proxy-with-env-based-key"><a class="header" href="#hosted-proxy-with-env-based-key">Hosted proxy with env-based key</a></h3>
+<pre><code class="language-yaml">providers:
+  anthropic-proxy:
+    baseUrl: https://proxy.example.com/anthropic
+    apiKey: ANTHROPIC_PROXY_API_KEY
+    api: anthropic-messages
+    authHeader: true
+    disableStrictTools: true # if the proxy doesn't support strict tool schemas
+    models:
+      - id: claude-sonnet-4-20250514
+        name: Claude Sonnet 4 (Proxy)
+        reasoning: true
+        input: [text, image]
+</code></pre>
+<h3 id="override-built-in-provider-route--model-metadata"><a class="header" href="#override-built-in-provider-route--model-metadata">Override built-in provider route + model metadata</a></h3>
+<pre><code class="language-yaml">providers:
+  openrouter:
+    baseUrl: https://my-proxy.example.com/v1
+    headers:
+      X-Team: platform
+    modelOverrides:
+      anthropic/claude-sonnet-4:
+        name: Sonnet 4 (Corp)
+        compat:
+          openRouterRouting:
+            only: [anthropic]
+</code></pre>
+<h2 id="legacy-consumer-caveat"><a class="header" href="#legacy-consumer-caveat">Legacy consumer caveat</a></h2>
+<p>Most model configuration now flows through <code>models.yml</code> / <code>models.yaml</code> via <code>ModelRegistry</code>. Explicit <code>.json</code> / <code>.jsonc</code> paths remain supported only when passed programmatically to <code>ModelRegistry</code>; the default user config prefers <code>~/.veyyon/profiles/default/agent/models.yml</code>, then falls back to <code>~/.veyyon/profiles/default/agent/models.yaml</code>.</p>
+<h2 id="failure-mode"><a class="header" href="#failure-mode">Failure mode</a></h2>
+<p>If <code>models.yml</code> / <code>models.yaml</code> fails schema or validation checks:</p>
+<ul>
+<li>registry keeps operating with built-in models</li>
+<li>error is exposed via <code>ModelRegistry.getError()</code> and surfaced in UI/notifications</li>
+</ul>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../reference/settings-reference.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="../reference/providers.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../reference/settings-reference.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="../reference/providers.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr-ef4e11c1.min.js"></script>
+        <script src="../mark-09e88c2c.min.js"></script>
+        <script src="../searcher-c2a407aa.js"></script>
+
+        <script src="../clipboard-1626706a.min.js"></script>
+        <script src="../highlight-abc7f01d.js"></script>
+        <script src="../book-a0b12cfe.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>

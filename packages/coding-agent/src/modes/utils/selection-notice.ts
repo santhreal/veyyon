@@ -17,7 +17,7 @@
  * earlier version released the mouse after a few seconds of quiet, which unpinned the composer
  * at random and made selection depend on timing, so it was removed. The hint must not promise
  * a handback that never comes.
- * Named as the single owner of this wording; `docs/settings.md` and the `tui.scrollIsolation`
+ * Named as the single owner of this wording; `docs/handbook/src/reference/settings.md` and the `tui.scrollIsolation`
  * setting description state the same tradeoff for someone reading settings.
  */
 export const SELECTION_HELD_HINT =

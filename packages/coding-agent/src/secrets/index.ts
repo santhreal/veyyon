@@ -244,7 +244,7 @@ async function loadSecretsFile(filePath: string): Promise<SecretEntry[]> {
 	if (!Array.isArray(raw)) {
 		throw new Error(
 			`Refusing to start: ${filePath} must be a YAML array of secret entries, ` +
-				`and is ${raw === null ? "null" : typeof raw}. See docs/secrets.md for the schema.`,
+				`and is ${raw === null ? "null" : typeof raw}. See docs/handbook/src/architecture/secrets.md for the schema.`,
 		);
 	}
 

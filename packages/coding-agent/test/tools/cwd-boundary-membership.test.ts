@@ -13,7 +13,7 @@
  * it here fails, which is the prompt to ask whether it should be gated. Removing
  * one fails too, which is the prompt to ask what regressed.
  *
- * The second half checks `docs/approval-mode.md`, because a list of gated tools
+ * The second half checks `docs/handbook/src/reference/approval-mode.md`, because a list of gated tools
  * that lives in prose drifts from the code silently and a reader has no way to
  * tell. If the doc is wrong about which tools are gated, it is worse than absent.
  */
@@ -107,7 +107,7 @@ describe("boundary membership", () => {
 	});
 });
 
-describe("docs/approval-mode.md agrees with the code", () => {
+describe("docs/handbook/src/reference/approval-mode.md agrees with the code", () => {
 	const doc = fs.readFileSync(path.join(REPO_ROOT, "docs", "approval-mode.md"), "utf8");
 
 	/**

@@ -2,7 +2,7 @@
  * Every declared setting is read by something that is not a test.
  *
  * WHY THIS EXISTS. A setting is a promise to the operator: it appears in the settings UI
- * and in `docs/settings-reference.md`, so turning it on is supposed to change what the
+ * and in `docs/handbook/src/reference/settings-reference.md`, so turning it on is supposed to change what the
  * agent does. A key that nothing reads is a control wired to nothing, and it fails in the
  * worst way: silently, and only for the person who trusted it. There is no compiler error
  * for a key whose reader was deleted or renamed, because the schema and the reader are

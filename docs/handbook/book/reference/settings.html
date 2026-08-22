@@ -1,0 +1,1316 @@
+<!DOCTYPE HTML>
+<html lang="en" class="navy sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Settings - The Veyyon Harness Handbook</title>
+
+
+        <!-- Custom HTML head -->
+        <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
+        <meta name="theme-color" content="#050505">
+        <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+        <style>
+          /* Paint the near-black surface before CSS/JS resolve the theme, so there is
+             no light flash on load. Kept in sync with theme/veyyon.css. */
+          html { background: #050505; }
+          /* Tighten the base box model for the premium layout. */
+          *, *::before, *::after { box-sizing: border-box; }
+        </style>
+
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="../favicon-8114d1fc.png">
+        <link rel="stylesheet" href="../css/variables-8adf115d.css">
+        <link rel="stylesheet" href="../css/general-2459343d.css">
+        <link rel="stylesheet" href="../css/chrome-ae938929.css">
+        <link rel="stylesheet" href="../css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="../highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="../tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "navy";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "../searchindex-360535cc.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc-093df7ff.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('navy')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">The Veyyon Harness Handbook</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/santhreal/veyyon" title="Git repository" aria-label="Git repository">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/santhreal/veyyon/edit/main/docs/handbook/src/reference/settings.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                            <span class=fa-svg id="git-edit-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M421.7 220.3l-11.3 11.3-22.6 22.6-205 205c-6.6 6.6-14.8 11.5-23.8 14.1L30.8 511c-8.4 2.5-17.5 .2-23.7-6.1S-1.5 489.7 1 481.2L38.7 353.1c2.6-9 7.5-17.2 14.1-23.8l205-205 22.6-22.6 11.3-11.3 33.9 33.9 62.1 62.1 33.9 33.9zM96 353.9l-9.3 9.3c-.9 .9-1.6 2.1-2 3.4l-25.3 86 86-25.3c1.3-.4 2.5-1.1 3.4-2l9.3-9.3H112c-8.8 0-16-7.2-16-16V353.9zM453.3 19.3l39.4 39.4c25 25 25 65.5 0 90.5l-14.5 14.5-22.6 22.6-11.3 11.3-33.9-33.9-62.1-62.1L314.3 67.7l11.3-11.3 22.6-22.6 14.5-14.5c25-25 65.5-25 90.5 0z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="settings"><a class="header" href="#settings">Settings</a></h1>
+<p><code>veyyon</code> resolves settings from built-in defaults, a persistent profile config file, a small machine-global file, one-shot CLI overlays, and in-memory runtime overrides. When one repository needs a different provider set, model role, tool policy, or UI behavior than your profile defaults, use a <code>--config</code> overlay or a path-scoped array (see <a href="#path-scoped-arrays">Path-scoped arrays</a>); both are covered below.</p>
+<p>A repository never configures the agent. A checked-in <code>.veyyon/config.yml</code> or <code>.veyyon/settings.json</code> in a working tree is not read, because a repository is content you may not have written. The only files a project contributes are context files (<code>AGENTS.md</code> / <code>CLAUDE.md</code>), which are prose the model reads, not settings; see <a href="../context/context-files.html">Context files</a>.</p>
+<p>Settings are stored as plain YAML mappings. Every key, its type, default, and enum values come from the settings schema, and you can inspect or change any of them with <code>veyyon config</code> or the interactive <code>/settings</code> panel.</p>
+<ul>
+<li>For model/provider credentials, <code>.env</code> files, and the env-var table that resolves API keys, see <a href="./providers.html">Providers</a>.</li>
+<li>For custom model definitions in <code>models.yml</code>, see <a href="./models-yml.html">Models</a>.</li>
+<li>For instruction files discovered into the agent context (<code>AGENTS.md</code>, <code>.veyyon/</code>, etc.), see <a href="../context/context-files.html">Context files</a>.</li>
+<li>For the full catalog of environment variables, see <a href="./environment-complete.html">Environment variables</a>.</li>
+</ul>
+<h2 id="where-settings-live"><a class="header" href="#where-settings-live">Where settings live</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Scope</th><th>Path</th><th>Read behavior</th><th>Write behavior</th></tr>
+</thead>
+<tbody>
+<tr><td>Profile</td><td><code>~/.veyyon/profiles/&lt;name&gt;/agent/config.yml</code></td><td>The main persistent settings file for the active profile. Always loaded.</td><td><code>/settings</code>, <code>veyyon config set</code>, and <code>veyyon config reset</code> write here.</td></tr>
+<tr><td>Profile legacy</td><td><code>~/.veyyon/profiles/&lt;name&gt;/agent/settings.json</code></td><td>Migrated into <code>config.yml</code> once, only when <code>config.yml</code> does not yet exist.</td><td>Not written after migration; the original is renamed to <code>settings.json.bak</code>.</td></tr>
+<tr><td>Machine-global (all profiles)</td><td><code>~/.veyyon/config.yml</code></td><td>A small set of values shared by every profile: <code>defaultProfile</code> (which profile a bare <code>vey</code> launches), <code>profileSharing</code> (whether provider credentials are shared across profiles), and the auth-broker keys <code>authBrokerUrl</code> / <code>authBrokerToken</code>. Read live.</td><td>The <strong>Global</strong> tab of <code>/settings</code>, or <code>veyyon profile default</code> for <code>defaultProfile</code>. These keys never land in a profile’s own <code>config.yml</code>.</td></tr>
+<tr><td>CLI overlay</td><td>Any file passed with <code>--config &lt;file&gt;</code></td><td>Loaded after the profile config, for that one process. Repeatable.</td><td>Never persisted.</td></tr>
+<tr><td>Runtime overrides</td><td>In-memory only</td><td>Set by dedicated CLI flags (<code>--model</code>, <code>--approval-mode</code>, …) and feature env vars.</td><td>Never persisted.</td></tr>
+</tbody>
+</table>
+</div>
+<p><code>VEYYON_CODING_AGENT_DIR</code> relocates the <code>~/.veyyon/profiles/default/agent</code> base directory. When it is set, the global <code>config.yml</code>, the auth store (<code>agent.db</code>), and everything else under the agent directory move with it. Use <code>veyyon config path</code> to print the active agent directory.</p>
+<p>There is no project layer. Settings discovery reads home directories only: the active profile’s agent directory and the machine-global <code>~/.veyyon/config.yml</code>. A <code>.veyyon/</code> directory inside a working tree is never consulted for settings, whatever it contains.</p>
+<h2 id="config-file-formats"><a class="header" href="#config-file-formats">Config file formats</a></h2>
+<p>The global <code>config.yml</code> is always YAML. The generic config loader used for other files (for example <code>models.yml</code>) accepts <code>.yml</code>, <code>.yaml</code>, <code>.json</code>, and <code>.jsonc</code>:</p>
+<ul>
+<li>When a <code>.yml</code>/<code>.yaml</code> path is requested and only a sibling <code>.json</code> exists, it is migrated to YAML automatically (idempotent, once per process).</li>
+<li><code>.json</code> and <code>.jsonc</code> configs are read as-is, with no migration.</li>
+<li>A file whose top level is not a mapping (a bare array or scalar) is treated as empty for persistent settings, and is a hard error for <code>--config</code> overlays.</li>
+</ul>
+<h3 id="nested-and-flat-keys"><a class="header" href="#nested-and-flat-keys">Nested and flat keys</a></h3>
+<p>A setting can be written either way, and the two mean the same thing:</p>
+<pre><code class="language-yaml">subagent:
+  model: openai/gpt-5
+
+subagent.model: openai/gpt-5   # the same setting
+</code></pre>
+<p>The nested form is the one this documentation uses and the one every write from
+<code>/settings</code> and <code>veyyon config set</code> produces. A flat key is expanded into the nested
+form when the file is read, so you can type it either way.</p>
+<p>Two rules cover the corners:</p>
+<ul>
+<li>If a setting is written <strong>both</strong> ways, the nested value wins, the flat key is
+dropped from the file the next time it is written, and a warning names both values.</li>
+<li>A key this build does not know is left exactly as written, whether or not it has
+dots in it. That keeps a config usable across versions and alongside other tools.</li>
+</ul>
+<h2 id="reading-and-writing-settings"><a class="header" href="#reading-and-writing-settings">Reading and writing settings</a></h2>
+<p>Use the interactive <code>/settings</code> panel inside a session, or the <code>veyyon config</code> command from a shell. Both operate on the merged effective settings, and every persistent write lands in the <strong>global</strong> profile file, with one exception: the machine-global values on the <strong>Global</strong> tab (<code>defaultProfile</code>, <code>profileSharing</code>) write to <code>~/.veyyon/config.yml</code> so they apply to every profile.</p>
+<pre><code class="language-bash">veyyon config list                 # all settings with current effective values
+veyyon config list --json          # same, machine-readable
+veyyon config get theme.dark       # one value
+veyyon config get theme.dark --json
+veyyon config set compaction.enabled false
+veyyon config set compaction.model anthropic/claude-haiku-4-5
+veyyon config reset steeringMode   # restore a key to its schema default
+veyyon config path                 # print the active agent directory
+</code></pre>
+<p>For users who want the full first-run animation on normal launches, set <code>startup.showSplash</code>:</p>
+<pre><code class="language-bash">veyyon config set startup.showSplash true
+</code></pre>
+<p>This only controls the startup splash animation. It does not rerun setup or change setup state, and <code>startup.quiet: true</code> still suppresses all startup chrome including the splash.</p>
+<h3 id="subcommands"><a class="header" href="#subcommands">Subcommands</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Command</th><th>Effect</th></tr>
+</thead>
+<tbody>
+<tr><td><code>veyyon config list</code></td><td>Print every setting grouped by tab, with its current value and type. <code>--json</code> emits an object keyed by setting path with <code>{ value, type, description }</code>.</td></tr>
+<tr><td><code>veyyon config get &lt;key&gt;</code></td><td>Print the effective value of one key. Unknown keys exit non-zero. <code>--json</code> emits <code>{ key, value, type, description }</code>.</td></tr>
+<tr><td><code>veyyon config set &lt;key&gt; &lt;value&gt;</code></td><td>Parse <code>&lt;value&gt;</code> against the key’s schema type and write it to the global <code>config.yml</code>.</td></tr>
+<tr><td><code>veyyon config reset &lt;key&gt;</code></td><td>Remove the key from the profile <code>config.yml</code>, so the schema default (or an overlay or runtime value) applies again. Reset deletes the key; it does not write the default into the file.</td></tr>
+<tr><td><code>veyyon config path</code></td><td>Print the active agent directory (honors <code>VEYYON_CODING_AGENT_DIR</code>).</td></tr>
+<tr><td><code>veyyon config init-xdg</code></td><td>Create the XDG data/state/cache directories Veyyon uses on Linux/macOS.</td></tr>
+</tbody>
+</table>
+</div>
+<p>A setting that has been replaced by another is <strong>retired</strong>: it stays readable and settable so an existing config keeps working, and the migration on load can read it, but <code>veyyon config list</code> leaves it out and <code>veyyon config get</code>/<code>set</code> name the key that governs the behavior now. The retired keys today are <code>compaction.thresholdTokens</code> and <code>compaction.thresholdPercent</code> (replaced by <code>compaction.threshold</code>) and <code>defaultThinkingLevel</code> (replaced by <code>defaultEffort</code>).</p>
+<p><code>veyyon config</code> with no subcommand is an alias for <code>veyyon config list</code>; <code>--help</code> prints the help. The <code>--json</code> flag is accepted by <code>list</code>, <code>get</code>, <code>set</code>, and <code>reset</code>.</p>
+<h3 id="value-parsing"><a class="header" href="#value-parsing">Value parsing</a></h3>
+<p><code>veyyon config set</code> parses the value string according to the target key’s schema type. The string is trimmed first.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Type</th><th>Accepted input</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr><td>boolean</td><td><code>true</code>, <code>false</code>, <code>yes</code>, <code>no</code>, <code>on</code>, <code>off</code>, <code>1</code>, <code>0</code></td><td>Case-insensitive. Anything else is rejected.</td></tr>
+<tr><td>number</td><td>Any finite JavaScript number</td><td><code>Infinity</code>/<code>NaN</code> are rejected.</td></tr>
+<tr><td>enum</td><td>One of the key’s allowed values</td><td>Must match exactly; the error lists the valid values.</td></tr>
+<tr><td>array</td><td>A JSON array</td><td>e.g. <code>'["anthropic","openai"]'</code>. Must parse and be an array.</td></tr>
+<tr><td>record</td><td>A JSON object</td><td>e.g. <code>'{"bash":"prompt"}'</code>. Must parse and be a non-array object.</td></tr>
+<tr><td>string</td><td>Stored as given (trimmed)</td><td>Multi-word values are joined with spaces.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Keys must match a real schema path exactly. There is no shorthand, set <code>theme.dark</code>, not <code>theme</code>.</p>
+<h3 id="where-writes-go"><a class="header" href="#where-writes-go">Where writes go</a></h3>
+<p><code>veyyon config set</code>, <code>veyyon config reset</code>, <code>/settings</code>, and any runtime settings change all write to the <code>config.yml</code> under the active agent directory. To vary behavior per repository, use a <code>--config</code> overlay or a path-scoped array (see <a href="#path-scoped-arrays">Path-scoped arrays</a>); a <code>.veyyon/config.yml</code> inside a repository is never read. Saves are debounced and re-read the file under a lock, so external edits made while a session is open are preserved. The machine-global keys on the <strong>Global</strong> tab (<code>defaultProfile</code>, <code>profileSharing</code>) are the exception: they write to <code>~/.veyyon/config.yml</code> instead of the active agent directory, and are read live so an external edit to that file is reflected without a restart.</p>
+<p><code>/settings</code> shows the effective value from the full precedence chain. A row
+supplied by a <code>--config</code> file or a runtime override names that source beside
+the value and is read-only. Change the owning source instead.
+This prevents an accepted-looking profile edit from remaining hidden until the
+higher layer disappears.</p>
+<p><strong>Default Model</strong> is intentionally profile-owned. If <code>--model</code> or another
+higher layer selects a different active model, the row shows both the saved
+profile model and the active override. Editing the row changes the model used
+by the next session; it does not replace the current session override.</p>
+<p>Within one open panel, each category remembers its last selected row. Switch to
+another sidebar category and back to resume where you left off. If a condition
+hides that row, the panel selects the nearest available setting instead.</p>
+<h2 id="precedence"><a class="header" href="#precedence">Precedence</a></h2>
+<p>From lowest to highest priority, the effective value of a setting is built as:</p>
+<pre><code class="language-text">built-in defaults  &lt;-  profile config  &lt;-  CLI overlays  &lt;-  runtime overrides
+</code></pre>
+<p>From highest to lowest:</p>
+<ol>
+<li><strong>Runtime overrides</strong>: dedicated CLI flags and feature env vars applied in memory for the current process: <code>--model</code>, <code>--smol</code>, <code>--slow</code>, <code>--plan</code>, <code>--approval-mode</code>, <code>--auto-approve</code>/<code>--yolo</code>, <code>--hide-thinking</code>, <code>--advisor</code>, <code>--no-pty</code>, <code>--api-key</code>, and protocol-mode defaults. Never persisted.</li>
+<li><strong>CLI config overlays</strong>: each <code>--config &lt;file&gt;</code>; later overlay files override earlier ones.</li>
+<li><strong>Profile settings</strong>: <code>~/.veyyon/profiles/&lt;name&gt;/agent/config.yml</code>.</li>
+<li><strong>Built-in defaults</strong>: from the settings schema.</li>
+</ol>
+<p>A key that is unset at every layer resolves to its schema default at read time.</p>
+<h3 id="environment-overrides"><a class="header" href="#environment-overrides">Environment overrides</a></h3>
+<p>Environment variables are <strong>not</strong> a single settings layer. Each is read by the feature that owns the value, usually as a per-machine override or fallback, and is never written back to <code>config.yml</code>. The ones that map directly onto a setting:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Env var</th><th>Overrides setting</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>VEYYON_SMOL_MODEL</code></td><td><code>modelRoles.smol</code></td><td>Also exposed as <code>--smol</code>.</td></tr>
+<tr><td><code>VEYYON_SLOW_MODEL</code></td><td><code>modelRoles.slow</code></td><td>Also exposed as <code>--slow</code>.</td></tr>
+<tr><td><code>VEYYON_PLAN_MODEL</code></td><td><code>modelRoles.plan</code></td><td>Also exposed as <code>--plan</code>.</td></tr>
+<tr><td><code>VEYYON_NO_PTY=1</code></td><td>(disables PTY bash)</td><td>Equivalent to <code>--no-pty</code> for the process.</td></tr>
+<tr><td><code>VEYYON_PY</code></td><td><code>eval.py</code></td><td><code>VEYYON_PY=0</code> disables the Python eval backend.</td></tr>
+<tr><td><code>VEYYON_JS</code></td><td><code>eval.js</code></td><td><code>VEYYON_JS=0</code> disables the JavaScript eval backend.</td></tr>
+<tr><td><code>VEYYON_TINY_DEVICE</code></td><td><code>providers.tinyModelDevice</code></td><td>ONNX execution provider for local tiny models.</td></tr>
+<tr><td><code>VEYYON_TINY_DTYPE</code></td><td><code>providers.tinyModelDtype</code></td><td>ONNX precision for local tiny models.</td></tr>
+<tr><td><code>VEYYON_AUTH_BROKER_URL</code></td><td><code>auth.broker.url</code></td><td>Env value takes precedence over config.</td></tr>
+<tr><td><code>VEYYON_AUTH_BROKER_TOKEN</code></td><td><code>auth.broker.token</code></td><td>Env value takes precedence over config.</td></tr>
+<tr><td><code>VEYYON_CODING_AGENT_DIR</code></td><td>(relocates agent dir)</td><td>Moves <code>config.yml</code>, <code>agent.db</code>, and the whole agent base.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Provider API keys are resolved separately (stored auth, OAuth, <code>models.yml</code>, environment, and <code>.env</code> files); see <a href="./providers.html">Providers</a> and the full <a href="./environment-complete.html">Environment variables</a> reference.</p>
+<h2 id="merge-rules"><a class="header" href="#merge-rules">Merge rules</a></h2>
+<p>Layers are combined with a deep merge:</p>
+<ul>
+<li><strong>Objects are deep-merged</strong>: keys present only in a lower layer are kept; keys present in a higher layer override.</li>
+<li><strong>Scalars and arrays are replaced wholesale</strong> by the higher-precedence layer. A higher layer’s array does not append to a lower layer’s array.</li>
+</ul>
+<p>Use nested YAML mappings for dotted setting paths:</p>
+<pre><code class="language-yaml">theme:
+  dark: titanium
+  light: light
+
+tools:
+  approvalMode: ask-command
+  approval:
+    bash: prompt
+    read: allow
+</code></pre>
+<h3 id="worked-example-profile-vs-overlay"><a class="header" href="#worked-example-profile-vs-overlay">Worked example: profile vs. overlay</a></h3>
+<pre><code class="language-yaml"># ~/.veyyon/profiles/default/agent/config.yml
+tools:
+  approvalMode: ask-command
+  approval:
+    bash: prompt
+    read: allow
+disabledProviders:
+  - anthropic
+  - openai
+  - gemini
+
+# ./ci-overrides.yml, passed with --config
+tools:
+  approval:
+    bash: allow
+disabledProviders:
+  - groq
+</code></pre>
+<p>Effective settings for that process:</p>
+<pre><code class="language-yaml">tools:
+  approvalMode: ask-command   # kept from the profile (object deep-merge)
+  approval:
+    bash: allow         # overridden by the overlay
+    read: allow         # kept from the profile
+disabledProviders:
+  - groq                # the overlay array REPLACES the profile array
+</code></pre>
+<p>Array replacement is the most common surprise: the overlay’s <code>disabledProviders</code> does not extend the profile list, it becomes the entire list for that process. The same applies to <code>enabledModels</code>, <code>cycleOrder</code>, <code>extensions</code>, and every other array-typed setting.</p>
+<h2 id="per-repository-settings"><a class="header" href="#per-repository-settings">Per-repository settings</a></h2>
+<p>A repository cannot carry its own settings: a checked-in <code>.veyyon/config.yml</code> is not read, because a working tree is content you may not have written. Two mechanisms cover what project config used to do:</p>
+<ul>
+<li><strong><code>--config</code> overlays</strong> apply a file you choose to one process, so a per-repo launcher or alias can pass the repo’s overlay explicitly:</li>
+</ul>
+<pre><code class="language-bash">veyyon --config ./local/repo-settings.yml "check this failure"
+veyyon --config ./base.yml --config ./experiment.yml "try this model"
+</code></pre>
+<p>Overlay paths are resolved relative to the process working directory (and <code>~</code> is expanded). Each overlay must parse as a YAML mapping; a missing file, invalid YAML, or a top-level array/scalar is a hard error, it does <strong>not</strong> silently fall back to lower-precedence settings. Keep the overlay file out of commits if it holds anything private.</p>
+<ul>
+<li><strong>Path-scoped arrays</strong> let one profile config behave differently per directory; see below.</li>
+</ul>
+<h2 id="path-scoped-arrays"><a class="header" href="#path-scoped-arrays">Path-scoped arrays</a></h2>
+<p>Two array settings, <code>enabledModels</code> and <code>disabledProviders</code>, accept path-scoped entries in addition to bare strings, so a single global config can behave differently per directory:</p>
+<pre><code class="language-yaml">enabledModels:
+  - claude-sonnet-4-5            # applies everywhere
+  - path: ~/work/high-context
+    models:
+      - anthropic/claude-opus-4-5
+
+disabledProviders:
+  - ollama                       # applies everywhere
+  - paths:
+      - ~/projects/sensitive
+      - ~/clients/acme
+    providers:
+      - anthropic
+      - openai
+</code></pre>
+<p>Bare string entries apply everywhere. A scoped entry applies when the current working directory <strong>is</strong> the configured path or is <strong>under</strong> it. <code>~</code> expands to your home directory and relative paths are resolved before matching.</p>
+<p>Accepted <strong>path</strong> keys (any of them, combined): <code>path</code>, <code>paths</code>, <code>pathPrefix</code>, <code>pathPrefixes</code>.</p>
+<p>Accepted <strong>value</strong> keys:</p>
+<ul>
+<li><code>models</code> (for <code>enabledModels</code>) or <code>providers</code> (for <code>disabledProviders</code>)</li>
+<li><code>values</code> or <code>items</code> (for either setting)</li>
+</ul>
+<p>Only string values are kept; malformed scoped entries are ignored. Path scoping is resolved <strong>after</strong> the layer merge, so it reads the final effective array.</p>
+<h2 id="provider-and-source-disabling"><a class="header" href="#provider-and-source-disabling">Provider and source disabling</a></h2>
+<p><code>disabledProviders</code> is a single shared id namespace that gates two different subsystems, before any credential check:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Entry kind</th><th>Example ids</th><th>Effect</th></tr>
+</thead>
+<tbody>
+<tr><td>Model providers</td><td><code>anthropic</code>, <code>openai</code>, <code>google</code>, <code>groq</code>, <code>ollama</code>, <code>openrouter</code></td><td>Removes those backends from model selection, even when credentials are available. See <a href="./providers.html">Providers</a>.</td></tr>
+<tr><td>Discovery sources</td><td><code>native</code>, <code>claude</code>, <code>codex</code>, <code>gemini</code>, <code>github</code>, <code>opencode</code>, <code>cursor</code>, <code>agents</code>, <code>agents-md</code></td><td>Stops that source from contributing context files, MCP servers, commands, skills, hooks, tools, prompts, or settings. See <a href="../context/context-files.html">Context files</a>.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Most provider-control use cases list model provider ids. Disabling the <code>claude</code> discovery source is different from disabling the <code>anthropic</code> model provider, one stops Claude-format config discovery, the other stops the Anthropic model backend.</p>
+<p>Because arrays replace rather than append, an overlay that sets <code>disabledProviders</code> must list the complete desired set:</p>
+<pre><code class="language-yaml"># ~/.veyyon/profiles/default/agent/config.yml
+disabledProviders:
+  - anthropic
+  - openai
+
+# ./ci-overrides.yml, passed with --config: for that process ONLY groq is disabled
+disabledProviders:
+  - groq
+</code></pre>
+<p>The default is an empty array (nothing disabled). For the two subsystems’ provider ids and ordering, see <a href="./providers.html">Providers</a> and <a href="../context/context-files.html">Context files</a>.</p>
+<h2 id="settings-catalog"><a class="header" href="#settings-catalog">Settings catalog</a></h2>
+<p>Every key below is defined in the settings schema; <code>veyyon config list</code> shows the full set with current values. Defaults and enum values are taken from the schema. Settings that accept an env or flag override are noted; those overrides are process-local and not persisted.</p>
+<h3 id="models"><a class="header" href="#models">Models</a></h3>
+<p><code>modelRoles</code>, <code>modelTags</code>, and <code>cycleOrder</code> work together. Role values may carry a thinking suffix (<code>:off</code>, <code>:auto</code>, <code>:minimal</code>, <code>:low</code>, <code>:medium</code>, <code>:high</code>, <code>:xhigh</code>, <code>:max</code>). The same suffix works on <code>subagent.model</code> and <code>compaction.model</code>, so any model slot can run at a chosen effort.</p>
+<p>A suffix on a role use overrides the role’s stored suffix. For example, if <code>modelRoles.slow</code> is <code>anthropic/claude-opus-5:low</code>, then <code>@slow:high</code> resolves to <code>anthropic/claude-opus-5:high</code>, not a double-suffixed model id.</p>
+<p>When you pick a role, subagent, or compaction model in <code>/settings</code>, Veyyon opens a separate effort step only if that model exposes configurable effort. The first row, <strong>Model default</strong>, stores no suffix. The remaining rows contain <code>auto</code>, <code>off</code> when the model permits it, and only the model’s catalog-defined effort variants. For example, a low/high Gemini model does not show medium or xhigh. A fixed-reasoning model skips the effort step. The <strong>Default Model</strong> picker is deliberately model-only: it stores a bare selector, and <strong>Default Effort</strong> is the one UI surface for its saved effort. Providers sometimes publish effort tiers as separate upstream model IDs. Veyyon collapses effort-only siblings into one logical model and routes the selected effort to the correct upstream ID.</p>
+<p><code>compaction.model</code> and <code>subagent.model</code> are ordered chains. The first entry is the primary model and later entries are fallbacks. Enter edits the highlighted position, <strong>Add fallback</strong> appends a position, and Delete removes only the highlighted position. The settings rows show a stored effort as <code> · high</code> instead of the raw <code>:high</code> suffix.</p>
+<p>The model you are working with (the main conversation) is persisted as <strong><code>modelRoles.default</code></strong>. That slot is not a selectable role: it is hidden from role pickers and stripped from <code>cycleOrder</code> on load. In the code it has one name, <code>DEFAULT_MODEL_SLOT</code>, and <code>interactive</code> is accepted as an alias for it wherever a role is passed. Selectable built-in roles: <code>smol</code>, <code>slow</code>, <code>vision</code>, <code>plan</code>, <code>designer</code>, <code>commit</code>, <code>tiny</code>, <code>advisor</code>. There is no <code>task</code> role: the model your subagents run lives in <a href="#subagents">Subagents</a>, which is its one owner.</p>
+<pre><code class="language-yaml">modelRoles:
+  default: anthropic/claude-sonnet-4-5   # interactive model (persisted default)
+  smol: openai/gpt-4.1-mini
+  slow: anthropic/claude-opus-4-5:high
+  vision: gemini/gemini-3-pro-preview
+  plan: anthropic/claude-opus-4-5
+  advisor: anthropic/claude-sonnet-4-5:medium
+
+cycleOrder:
+  - smol
+  - slow
+
+subagent:
+  model: deepseek/deepseek-chat:high     # optional; unset means subagents inherit your model; :effort optional
+
+compaction:
+  model: openai/gpt-5-mini               # optional; else inherits your current model; may carry :effort
+
+modelProviderOrder:
+  - anthropic
+  - openai
+
+enabledModels:
+  - claude-sonnet-4-5
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Type</th><th>Default</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>modelRoles</code></td><td>record</td><td><code>{}</code></td><td>Role name → model id. Interactive model uses key <code>default</code> (hidden in UI). Selectable built-ins: <code>smol</code>, <code>slow</code>, <code>vision</code>, <code>plan</code>, <code>designer</code>, <code>commit</code>, <code>tiny</code>, <code>advisor</code>. <code>tiny</code> is used for lightweight background tasks when set, else <code>@smol</code>. Launch: <code>--model</code> (interactive), <code>--smol</code>, <code>--slow</code>, <code>--plan</code>; advisor via <code>modelRoles.advisor</code> + <code>advisor.enabled</code> / <code>--advisor</code>.</td></tr>
+<tr><td><code>modelTags</code></td><td>record</td><td><code>{}</code></td><td>Custom role/tag metadata; can introduce additional roles.</td></tr>
+<tr><td><code>modelProviderOrder</code></td><td>array</td><td><code>[]</code></td><td>Preferred provider order when a model id is ambiguous.</td></tr>
+<tr><td><code>cycleOrder</code></td><td>array</td><td><code>["smol","slow"]</code></td><td>Roles cycled by the model switcher (<code>app.model.cycleForward</code>, often Ctrl+P). The entry <code>default</code> is dropped on load.</td></tr>
+<tr><td><code>enabledModels</code></td><td>array</td><td><code>[]</code></td><td>Allow-list of models; supports <a href="#path-scoped-arrays">path-scoped entries</a>. Empty means all available models.</td></tr>
+<tr><td><code>disabledProviders</code></td><td>array</td><td><code>[]</code></td><td>Disabled model/discovery providers; supports path-scoped entries. See <a href="#provider-and-source-disabling">above</a>.</td></tr>
+<tr><td><code>includeModelInPrompt</code></td><td>boolean</td><td><code>false</code></td><td>Include the active model name in the system prompt. Off by default: the name sits in the cached prefix, so switching models re-prefills the whole block.</td></tr>
+</tbody>
+</table>
+</div>
+<p>See <a href="./models-yml.html">Models</a> for the <code>models.yml</code> schema and custom-provider definitions. Handbook: <a href="./handbook/src/using/roles-and-profiles.html">Models, roles, and profiles</a> (under <code>docs/handbook/src/using/</code>).</p>
+<h3 id="advisor"><a class="header" href="#advisor">Advisor</a></h3>
+<p>The advisor is a second model that reviews each completed turn and can inject advice into the primary session. Assign a model with <code>modelRoles.advisor</code>, then enable it with <code>advisor.enabled</code>, <code>/advisor on</code>, or by launching with the <code>--advisor</code> flag.</p>
+<p>See <a href="../features/advisor.html">Advisor and WATCHDOG.md</a> for runtime behavior, <code>WATCHDOG.md</code> discovery, and bounded catch-up semantics.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Type</th><th>Default</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>advisor.enabled</code></td><td>boolean</td><td><code>false</code></td><td>Enable the advisor runtime when <code>modelRoles.advisor</code> resolves to an available model.</td></tr>
+<tr><td><code>advisor.subagents</code></td><td>boolean</td><td><code>false</code></td><td>Also enable advisor runtimes for spawned task/eval subagents.</td></tr>
+<tr><td><code>advisor.syncBacklog</code></td><td>enum</td><td><code>off</code></td><td>Bounded advisor catch-up delay: <code>off</code>, <code>1</code>, <code>3</code>, or <code>5</code>. The primary waits up to 30 seconds only while advisor backlog is at or above the threshold.</td></tr>
+<tr><td><code>advisor.immuneTurns</code></td><td>number</td><td><code>3</code></td><td>After a <code>concern</code>/<code>blocker</code> interrupts, route further concerns/blockers as non-interrupting asides for this many completed primary turns.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="thinking"><a class="header" href="#thinking">Thinking</a></h3>
+<p>Effort has one persisted home: the <code>defaultEffort</code> list, per profile. A row keyed
+by a model selector applies to that model; the <code>*</code> row applies to every model
+without its own. <code>/effort</code> (and its <code>/thinking</code> alias) changes only the current
+session and prints where the saved default lives, so trying an effort never
+rewrites your default.</p>
+<p>The retired <code>defaultThinkingLevel</code> is consulted only when the <code>defaultEffort</code> key is absent. Once <code>defaultEffort</code> is present, its object is authoritative, including <code>{}</code> and a set of model-specific rows with no <code>*</code> fallback. Removing the <strong>Any Model</strong> row therefore keeps every unmatched model on its native default instead of resurrecting a legacy profile-wide value.</p>
+<p>Choose <strong>Default</strong> in the session effort picker to clear the temporary override.
+Veyyon then applies an explicit <code>:level</code> on the active selector, the active
+model’s saved row, the <code>*</code> row, or the model default according to the precedence
+below. Switching models re-evaluates these sources. A temporary session choice
+remains in force until you clear it.</p>
+<p>Effort is resolved in this order, highest first:</p>
+<ol>
+<li>the current session’s choice, from <code>/effort</code>, <code>/thinking</code>, or the cycle keybinding</li>
+<li>an explicit <code>:level</code> on the selector a role resolved through, e.g. <code>modelRoles.plan: anthropic/claude-opus-5:xhigh</code></li>
+<li>the <code>defaultEffort</code> row for the model about to run</li>
+<li>the <code>defaultEffort</code> <code>*</code> row</li>
+<li>the model’s own default, when nothing above is set</li>
+</ol>
+<pre><code class="language-yaml">defaultEffort:
+  "*": high
+  anthropic/claude-haiku-4-5: low
+hideThinkingBlock: false
+thinkingBudgets:
+  minimal: 1024
+  low: 2048
+  medium: 8192
+  high: 16384
+  xhigh: 32768
+  max: 32768
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Type</th><th>Default</th><th>Values</th></tr>
+</thead>
+<tbody>
+<tr><td><code>defaultEffort</code></td><td>record</td><td><code>{}</code></td><td>Effort per model, applied when a run does not ask for one. Keys are model selectors (<code>anthropic/claude-opus-5</code>) or <code>*</code> for any model; values are <code>minimal</code>, <code>low</code>, <code>medium</code>, <code>high</code>, <code>xhigh</code>, <code>max</code>, <code>auto</code>, or <code>off</code>. Edit it in <code>/settings</code> → Model → Default Effort.</td></tr>
+<tr><td><code>defaultThinkingLevel</code></td><td>enum</td><td><code>high</code></td><td>Retired in favour of <code>defaultEffort</code>’s <code>*</code> row. It is read only when the replacement <code>defaultEffort</code> key is absent, so an existing profile migrates without overriding an explicitly empty or model-only list. No settings row of its own.</td></tr>
+<tr><td><code>hideThinkingBlock</code></td><td>boolean</td><td><code>false</code></td><td>Hide thinking blocks in output. <code>--hide-thinking</code> sets it for the run (display only).</td></tr>
+<tr><td><code>thinkingBudgets.minimal</code></td><td>number</td><td><code>1024</code></td><td>Token budget for the <code>minimal</code> level.</td></tr>
+<tr><td><code>thinkingBudgets.low</code></td><td>number</td><td><code>2048</code></td><td>Token budget for <code>low</code>.</td></tr>
+<tr><td><code>thinkingBudgets.medium</code></td><td>number</td><td><code>8192</code></td><td>Token budget for <code>medium</code>.</td></tr>
+<tr><td><code>thinkingBudgets.high</code></td><td>number</td><td><code>16384</code></td><td>Token budget for <code>high</code>.</td></tr>
+<tr><td><code>thinkingBudgets.xhigh</code></td><td>number</td><td><code>32768</code></td><td>Token budget for <code>xhigh</code>.</td></tr>
+<tr><td><code>thinkingBudgets.max</code></td><td>number</td><td><code>32768</code></td><td>Token budget for <code>max</code>.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="sampling"><a class="header" href="#sampling">Sampling</a></h3>
+<p>These settings are unset by default, and unset means the key is absent from <code>config.yml</code>: <code>veyyon</code> then does not send that parameter and the provider uses its own default. Every number you write is sent as written, including negatives: <code>presencePenalty: -1</code> and <code>repetitionPenalty: -0.5</code> both reach the provider. In <code>/settings</code> the unset state is the row labelled <code>Default</code>, and choosing it removes the key rather than storing a value.</p>
+<p>Earlier versions stored <code>-1</code> to mean unset, which made <code>-1</code> itself impossible to configure. Your global config is migrated once: a <code>-1</code> on one of these keys is dropped, and the config records that the migration ran (<code>settingsMigrationVersion</code>), so a <code>-1</code> you set afterwards is kept. A <code>--config</code> overlay is never rewritten and is read as written, so a <code>-1</code> there is the value <code>-1</code>.</p>
+<p>Set a negative value from the command line the way you would any other:</p>
+<pre><code class="language-bash">veyyon config set presencePenalty -1
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Type</th><th>Default</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>temperature</code></td><td>number</td><td><em>(unset)</em></td><td>Sampling temperature. <code>0</code> is deterministic.</td></tr>
+<tr><td><code>topP</code></td><td>number</td><td><em>(unset)</em></td><td>Nucleus sampling.</td></tr>
+<tr><td><code>topK</code></td><td>number</td><td><em>(unset)</em></td><td>Top-K sampling.</td></tr>
+<tr><td><code>minP</code></td><td>number</td><td><em>(unset)</em></td><td>Minimum-probability cutoff.</td></tr>
+<tr><td><code>presencePenalty</code></td><td>number</td><td><em>(unset)</em></td><td>Presence penalty. Negative values, including <code>-1</code>, are sent as written.</td></tr>
+<tr><td><code>repetitionPenalty</code></td><td>number</td><td><em>(unset)</em></td><td>Repetition penalty. Values below <code>1</code> encourage repetition and are sent as written.</td></tr>
+<tr><td><code>tier.openai</code></td><td>enum</td><td><code>none</code></td><td><code>none</code>, <code>auto</code>, <code>default</code>, <code>flex</code>, <code>scale</code>, <code>priority</code>. Sent as <code>service_tier</code> for OpenAI / OpenAI-Codex and OpenAI-family OpenRouter models.</td></tr>
+<tr><td><code>tier.anthropic</code></td><td>enum</td><td><code>none</code></td><td><code>none</code>, <code>priority</code>. <code>priority</code> realizes fast mode on supported direct Claude models (ignored on Bedrock/Vertex and via OpenRouter).</td></tr>
+<tr><td><code>tier.google</code></td><td>enum</td><td><code>none</code></td><td><code>none</code>, <code>flex</code>, <code>priority</code>. Gemini API sends it in the body; Vertex sends <code>priority</code> via header (<code>flex</code> is a no-op on Vertex).</td></tr>
+<tr><td><code>tier.subagent</code></td><td>enum</td><td><code>inherit</code></td><td><code>inherit</code>, <code>none</code>, <code>auto</code>, <code>default</code>, <code>flex</code>, <code>scale</code>, <code>priority</code>. Applied to the spawned model’s family; <code>inherit</code> tracks the main agent.</td></tr>
+<tr><td><code>tier.advisor</code></td><td>enum</td><td><code>none</code></td><td><code>inherit</code>, <code>none</code>, <code>auto</code>, <code>default</code>, <code>flex</code>, <code>scale</code>, <code>priority</code>. Applied to the advisor model’s family.</td></tr>
+<tr><td><code>personality</code></td><td>string</td><td><code>default</code></td><td>Communication style rendered into the system prompt. Built in: <code>default</code>, <code>friendly</code>, <code>pragmatic</code>, <code>none</code>. Not a closed set: add your own with <code>~/.veyyon/personalities/&lt;name&gt;.md</code>, or <code>.veyyon/personalities/&lt;name&gt;.md</code> in a project.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="retry-and-fallback"><a class="header" href="#retry-and-fallback">Retry and fallback</a></h3>
+<pre><code class="language-yaml">retry:
+  enabled: true
+  maxRetries: 10
+  baseDelayMs: 500
+  maxDelayMs: 300000
+  modelFallback: true
+  fallbackRevertPolicy: cooldown-expiry
+  fallbackChains:
+    # Any role without an explicit chain inherits the "default" chain.
+    default:
+      - anthropic/claude-opus-4-5
+      - openai/gpt-5.5
+      - google/gemini-3-pro
+    # Per-role chains override the default (roles from `modelRoles`,
+    # including custom roles). Selectors accept an optional thinking
+    # suffix, e.g. openai/gpt-5.5:low.
+    smol:
+      - openai/gpt-5.5-mini
+      - anthropic/claude-haiku-4-5
+    # Model-selector keys (any key containing "/") attach the chain to the
+    # model itself: it applies whenever that model is active, no matter
+    # which role it is assigned to, and survives role reassignment.
+    google/gemini-3-pro:
+      - google-vertex/gemini-3-pro
+    # A `provider/*` KEY covers every model of a provider: current or
+    # future. A `provider/*` ENTRY keeps the failing model's id and swaps
+    # the provider: google-antigravity/x -&gt; google/x -&gt; google-vertex/x.
+    # Ids missing on the target provider are skipped (near-miss ids resolve
+    # fuzzily); exact model keys override the wildcard for a specific model.
+    google-antigravity/*:
+      - google/*
+      - google-vertex/*
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Type</th><th>Default</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>retry.enabled</code></td><td>boolean</td><td><code>true</code></td><td>Retry transient provider errors.</td></tr>
+<tr><td><code>retry.maxRetries</code></td><td>number</td><td><code>10</code></td><td>Max retries per request.</td></tr>
+<tr><td><code>retry.baseDelayMs</code></td><td>number</td><td><code>500</code></td><td>Initial backoff.</td></tr>
+<tr><td><code>retry.maxDelayMs</code></td><td>number</td><td><code>300000</code></td><td>Backoff ceiling (5 min).</td></tr>
+<tr><td><code>retry.modelFallback</code></td><td>boolean</td><td><code>true</code></td><td>Fall back to another model when one is unavailable.</td></tr>
+<tr><td><code>retry.fallbackChains</code></td><td>record</td><td><code>{}</code></td><td>Maps roles, model selectors, or <code>provider/*</code> wildcards to ordered fallback selectors. Keys containing <code>/</code> are model-oriented and win over roles: <code>provider/model-id</code> matches that exact model, <code>provider/*</code> matches every model of the provider. A <code>provider/*</code> <em>entry</em> keeps the failing model’s id and swaps the provider. The <code>default</code> chain covers every assigned role without its own chain. Unknown models/providers or malformed chains are reported as config warnings at startup.</td></tr>
+<tr><td><code>retry.fallbackRevertPolicy</code></td><td>enum</td><td><code>cooldown-expiry</code></td><td><code>cooldown-expiry</code> returns to the primary model once its suppression window ends; <code>never</code> stays on the fallback until switched manually.</td></tr>
+</tbody>
+</table>
+</div>
+<p>When the active model keeps failing (429s, quota walls, provider outages) and <code>retry.modelFallback</code> is on, the session picks the chain that owns the failing model, by specificity: an exact <code>provider/model-id</code> key, then a <code>provider/*</code> wildcard, then the current role’s chain, then <code>default</code>. It skips models whose selectors are still cooling down and switches for the rest of the turn. Subagents get their own per-spawn chains when their agent definition lists multiple model patterns, the first resolvable pattern is primary and the rest become its fallbacks; there is no <code>agent:&lt;name&gt;</code> key in <code>fallbackChains</code>.</p>
+<h3 id="tools-and-approvals"><a class="header" href="#tools-and-approvals">Tools and approvals</a></h3>
+<pre><code class="language-yaml">tools:
+  approvalMode: auto          # default
+  approval:
+    bash: prompt
+    edit: allow
+  discoveryMode: auto
+  maxTimeout: 0
+  intentTracing: true
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Type</th><th>Default</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>tools.approvalMode</code></td><td>enum</td><td><code>auto</code></td><td>Canonical: <code>plan</code> (read auto; write asks with an active plan-mode session, otherwise write/exec denied), <code>ask</code> (nothing auto; every tier asks, reads included), <code>ask-command</code> (read+write auto; exec ask), <code>auto</code> (all tiers auto, with the per-tool, working-directory, credential and critical-call guards still asking), <code>yolo</code> (all tiers auto). Legacy aliases still accepted: <code>always-ask</code> → <code>ask</code>, <code>write</code> and <code>auto-edit</code> → <code>ask-command</code>. Override per run with <code>--approval-mode</code> / <code>--auto-approve</code> / <code>--yolo</code>.</td></tr>
+<tr><td><code>tools.approval</code></td><td>record</td><td><code>{}</code></td><td>Per-tool policy keyed by tool name; each value is <code>allow</code>, <code>deny</code>, or <code>prompt</code>. e.g. <code>veyyon config set tools.approval '{"bash":"prompt"}'</code>.</td></tr>
+<tr><td><code>tools.discoveryMode</code></td><td>enum</td><td><code>auto</code></td><td><code>auto</code>, <code>off</code>, <code>mcp-only</code>, <code>all</code>. <code>all</code> hides non-essential built-ins and first-party heavyweight tools such as <code>generate_image</code> until the discovery search activates them.</td></tr>
+<tr><td><code>tools.essentialOverride</code></td><td>array</td><td><code>[]</code></td><td>Tool names kept available even when tools are narrowed.</td></tr>
+<tr><td><code>tools.maxTimeout</code></td><td>number</td><td><code>0</code></td><td>Max tool runtime in seconds; <code>0</code> = no cap.</td></tr>
+<tr><td><code>tools.intentTracing</code></td><td>boolean</td><td><code>true</code></td><td>Record per-call intent strings.</td></tr>
+<tr><td><code>tools.outputMaxColumns</code></td><td>number</td><td><code>768</code></td><td>Per-line byte cap for streaming output; <code>0</code> disables.</td></tr>
+<tr><td><code>tools.artifactSpillThreshold</code></td><td>number</td><td><code>50</code></td><td>KB of tool output above which output spills to an artifact, for every tool including the streaming ones (bash, eval, ssh, interactive shell). The result keeps a window plus the <code>artifact://</code> id that reads the full text back.</td></tr>
+<tr><td><code>tools.artifactHeadBytes</code></td><td>number</td><td><code>20</code></td><td>KB of head kept inline on spill; <code>0</code> = tail-only.</td></tr>
+<tr><td><code>tools.artifactTailBytes</code></td><td>number</td><td><code>20</code></td><td>KB of tail kept inline on spill.</td></tr>
+<tr><td><code>tools.artifactTailLines</code></td><td>number</td><td><code>500</code></td><td>Max tail lines kept inline on spill.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Individual built-in tools are toggled by their own keys, e.g. <code>bash.enabled</code>, <code>launch.enabled</code>, <code>eval.py</code>, <code>eval.js</code>, <code>glob.enabled</code>, <code>grep.enabled</code>, <code>fetch.enabled</code>, <code>browser.enabled</code>, <code>astEdit.enabled</code>, <code>astGrep.enabled</code>, <code>web_search.enabled</code>, <code>inspect_image.enabled</code>.</p>
+<h3 id="subagents"><a class="header" href="#subagents">Subagents</a></h3>
+<p>Everything about spawned agents lives here, under <code>subagent.</code>: whether this session
+delegates at all, which agent types it may use, what model and effort they run, and
+the limits and isolation they run under. In <code>/settings</code> it is the <strong>Subagents</strong> tab.</p>
+<h4 id="three-settings-three-different-questions"><a class="header" href="#three-settings-three-different-questions">Three settings, three different questions</a></h4>
+<p>Subagents are governed by three settings, and mixing them up is the usual source of
+confusion, so read this table before you change anything. Each one answers a question
+the other two cannot.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Setting</th><th>The question it answers</th><th>Default</th></tr>
+</thead>
+<tbody>
+<tr><td><code>subagent.enabled</code></td><td>May this session use subagents <strong>at all</strong>?</td><td><code>true</code></td></tr>
+<tr><td><code>subagent.delegation</code></td><td>Is the model <strong>encouraged</strong> to fan work out, and how hard?</td><td><code>preferred</code></td></tr>
+<tr><td><code>subagent.agents</code></td><td><strong>Which</strong> agents may it use?</td><td><code>task</code> only</td></tr>
+</tbody>
+</table>
+</div>
+<p>Read them top to bottom. <code>subagent.enabled</code> is the master switch: turn it off and
+there are no subagents, the <code>task</code> tool is not built, and the other two settings stop
+mattering. Leave it on and <code>subagent.delegation</code> decides how much the prompt pushes,
+while <code>subagent.agents</code> decides what there is to push work to.</p>
+<p><strong>Turning delegation down does not forbid delegation.</strong> This is the distinction that
+matters most. <code>subagent.delegation: allowed</code> means the model still has the <code>task</code>
+tool and will still spawn a subagent when that is the sensible move; it simply is not
+asked to. The only setting that takes the ability away is <code>subagent.enabled</code>. If you
+want subagents gone, set that one, not this one.</p>
+<pre><code class="language-yaml">subagent:
+  enabled: true                # master switch; false removes subagents entirely
+  delegation: preferred        # allowed | preferred | required
+  model: openai/gpt-5:high     # optional; unset means inherit your model
+  thinkingLevel: medium        # optional; unset means inherit your effort
+  agents:
+    scout:
+      enabled: true            # let the model choose the scout
+    reviewer:
+      enabled: true
+      model: anthropic/claude-opus-4-5   # this agent only
+  maxConcurrency: 32
+  isolation:
+    mode: none
+</code></pre>
+<p>Out of the box you get one agent type, the general-purpose worker, and the prompt
+encourages fanning work out to it. The bundled specialists (<code>scout</code>, <code>reviewer</code>,
+<code>designer</code>, <code>librarian</code>, <code>sonic</code>) ship disabled: each one you enable adds its
+description to every request, so you pay for the ones you actually use and nothing
+else. They stay listed while disabled, each with a line saying what it is for, so you
+can see what is available before you turn anything on.</p>
+<h4 id="subagents-on-or-off"><a class="header" href="#subagents-on-or-off">Subagents on or off</a></h4>
+<p><code>subagent.enabled</code> is a boolean and it is the only kill switch. When it is <code>false</code>:</p>
+<ul>
+<li>the <code>task</code> tool is not built, so the model cannot spawn anything;</li>
+<li>every delegation instruction leaves the system prompt;</li>
+<li><code>subagent.delegation</code> and <code>subagent.agents</code> are still stored, still editable, and
+take effect again the moment you turn this back on.</li>
+</ul>
+<p>Earlier releases spelled this as <code>subagent.delegation: off</code>, which made one setting
+answer two questions: whether subagents existed, and how hard to push them. An
+existing <code>delegation: off</code> is migrated to <code>enabled: false</code> with <code>delegation</code> left at
+its default, because “off” was how you turned subagents off.</p>
+<h4 id="delegation"><a class="header" href="#delegation">Delegation</a></h4>
+<p><code>subagent.delegation</code> sets how hard this session pushes work out. It never removes
+the ability to delegate; for that, see <code>subagent.enabled</code> above.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Value</th><th>Behavior</th></tr>
+</thead>
+<tbody>
+<tr><td><code>allowed</code></td><td>The tool is offered and nothing asks for it. The model delegates when it judges that delegation helps.</td></tr>
+<tr><td><code>preferred</code></td><td>The default. The prompt asks the model to fan substantial work out rather than doing it alone.</td></tr>
+<tr><td><code>required</code></td><td>The same, plus a first-turn reminder that delegation is the default here.</td></tr>
+</tbody>
+</table>
+</div>
+<h4 id="what-the-model-is-told-to-delegate"><a class="header" href="#what-the-model-is-told-to-delegate">What the model is told to delegate</a></h4>
+<p>The prompt does not carry a fixed list of delegable work. <strong>The agents you enable are
+the instruction.</strong> That is the whole mechanism, and it is why the Agents table is a
+delegation setting rather than a cosmetic one.</p>
+<p>With only the worker enabled, the guidance is about splitting execution across
+parallel workers and keeping bulk reading out of your session’s context. Nothing tells
+the model to send research to a <code>scout</code> it cannot spawn, and nothing tells it to send
+a review to a <code>reviewer</code> that does not exist. Enable the <code>reviewer</code> and you have said
+reviews are delegable here; the prompt then names it. Enable the <code>scout</code> and bulk
+exploration becomes something it is told to route away from its own context.</p>
+<p>This is also the answer to “why did it delegate my audit?”. If a specialist for that
+work is enabled, the model has been told the work is delegable. If none is, and it
+still fans out, that is a prompt bug rather than a settings question: file it.</p>
+<p><strong>Context preservation, not a cheaper model.</strong> A subagent usually runs the same model
+you are on (see <a href="#which-model-a-subagent-runs">Which model a subagent runs</a>). What
+delegation buys is a separate context window: bulk reading, wide searches, and long
+tool output stay out of your session and come back as a summary. Nothing about
+delegation implies the subagent is less capable than you.</p>
+<h4 id="when-the-two-settings-disagree"><a class="header" href="#when-the-two-settings-disagree">When the two settings disagree</a></h4>
+<p><code>subagent.delegation</code> and the Agents table are one question with two answers, and one
+resolver reads both. If you disable every agent there is nothing to delegate to, so
+the strength you pick has no effect until you enable at least one: the prompt stops
+asking for delegation, the first-turn reminder is not injected, and both agent
+surfaces say so in a line above the table. If <code>subagent.enabled</code> is off, the same line
+says that instead, because turning agents on would change nothing until you turn
+subagents back on. Neither setting is hidden behind the other: you need all three
+while setting up a session, but none pretends the others do not exist.</p>
+<h4 id="agents"><a class="header" href="#agents">Agents</a></h4>
+<p><code>subagent.agents</code> holds one row per agent, keyed by agent name. One surface edits it
+rather than hand-written config: the <strong>Agents</strong> row in <code>/settings</code> → Subagents, which
+lists every discovered agent with the model it resolves to and opens one agent at a
+time to set its state. <code>/agents</code> used to carry a second copy of the same table, so the
+same two facts had two homes that had to be kept in step; it is the live picture now
+and configures nothing.</p>
+<p>An agent is either enabled or disabled. There is no third state:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th><code>enabled</code></th><th>Meaning</th></tr>
+</thead>
+<tbody>
+<tr><td>absent</td><td>The shipped default: the worker and every agent you wrote yourself are enabled, the bundled specialists are disabled.</td></tr>
+<tr><td><code>true</code></td><td>Enabled. The agent is listed in the <code>task</code> tool description, and the model may choose it.</td></tr>
+<tr><td><code>false</code></td><td>Disabled. The model may not choose it, and a spawn that tries is refused with the setting named.</td></tr>
+</tbody>
+</table>
+</div>
+<h4 id="what-disabled-governs-and-what-it-does-not"><a class="header" href="#what-disabled-governs-and-what-it-does-not">What “disabled” governs, and what it does not</a></h4>
+<p>Disabling an agent stops <strong>the model</strong> from choosing it. It does not stop <strong>you</strong>.</p>
+<p>That distinction is the whole rule, and it is worth stating plainly because an earlier
+version of veyyon got it wrong. There used to be a middle state, shown as “not offered
+but still runs when named”, which meant a row could read as off while the agent went on
+running. Nobody could tell what the switch did. Enabled now means the model may pick the
+agent on its own initiative, disabled means it may not, and that is all it means.</p>
+<p>Slash commands are you asking, so they are unaffected. Running <code>/review</code> is a request
+for a review, not a suggestion that the model consider reviewing, so <code>/review</code> spawns
+its <code>reviewer</code> even though <code>reviewer</code> ships disabled. A command declares the agents its
+prompt names, and that declaration is granted for that one turn only:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Command</th><th>Agent it names</th><th>Works with the agent disabled</th></tr>
+</thead>
+<tbody>
+<tr><td><code>/review</code></td><td><code>reviewer</code></td><td>yes</td></tr>
+</tbody>
+</table>
+</div>
+<p>Two limits keep this narrow. The grant lasts for the turn the command starts and no
+longer, so the model cannot reach a disabled agent on the next turn. And it comes from
+the command’s own definition, not from anything computed while the command runs, so the
+list above is the complete list. If you ask for an agent in plain prose instead of
+through a command (“use the scout agent”), that is the model choosing, and a disabled
+scout is refused.</p>
+<p>A row carries whether the agent is enabled and how deep it may nest its own spawns. It
+does <strong>not</strong> carry a model or an effort: those have one owner, described next.</p>
+<h4 id="which-model-a-subagent-runs"><a class="header" href="#which-model-a-subagent-runs">Which model a subagent runs</a></h4>
+<p>Three things can name the model a subagent runs. The first one that names a model wins:</p>
+<ol>
+<li><code>subagent.model</code>: the blanket model for every subagent.</li>
+<li>the agent definition’s own <code>model:</code> frontmatter, for an agent you wrote.</li>
+<li>otherwise the subagent inherits the model you are working with.</li>
+</ol>
+<p>There is no per-agent model row. There was one, above the blanket setting, and it is
+the reason this section used to have four layers: the agent editor showed a Model row
+and an Effort row for one agent while <code>subagent.model</code> and <code>subagent.thinkingLevel</code>
+showed the same two facts for all of them, and the two screens could disagree on
+screen. A <code>subagent.agents.&lt;name&gt;.model</code> or <code>.thinkingLevel</code> still sitting in a config
+is ignored, and named once in the log with the setting that replaced it, rather than
+being honored invisibly or dropped in silence.</p>
+<p>None of the bundled agents pin a model, so on a fresh install every subagent runs the
+model you are looking at. Change <code>subagent.model</code> and they all move together. To give
+one agent its own model, write it in that agent’s own <code>model:</code> frontmatter, which is
+where an agent’s identity already lives.</p>
+<p>A configured value that matches no available model does <strong>not</strong> fall through to the
+next layer. The spawn is refused and the message names the setting to fix, because a
+silent fall-through is indistinguishable from your setting having no effect.</p>
+<p>Effort works the same way, through <code>subagent.thinkingLevel</code>. The levels offered are the
+ones the model in scope actually exposes, so a model that routes effort through
+separate model ids offers <strong>Inherit</strong> alone and says so, rather than listing levels it
+would reject. A value that names no level (from a hand-written config) is reported with
+the setting and the accepted levels, then ignored. It is never rounded to a
+neighbouring effort: running at an effort you did not choose costs money and would not
+show up anywhere.</p>
+<p>The Agents table names, for the selected agent, the model it will run on and the
+setting that decided, and the agent editor repeats it as a read-only line pointing at
+<strong>Subagent Model</strong> and <strong>Subagent Effort</strong>. What decided is visible, in one place, so
+an agent running something you did not expect is a question you can answer.</p>
+<h4 id="the-two-views-in-agents"><a class="header" href="#the-two-views-in-agents">The two views in <code>/agents</code></a></h4>
+<p><code>/agents</code> opens the Agent Control Center, which is about a run in progress and
+configures nothing. Move between its two views with the left and right arrows, with
+<code>tab</code>, or by clicking a name in the strip at the top of the card:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>View</th><th>What it answers</th></tr>
+</thead>
+<tbody>
+<tr><td>Live</td><td>Which agents exist right now, what type each one is (<code>reviewer</code>, <code>scout</code>, the definition it was spawned from), and what it is doing. Agents from earlier runs of the session appear too, marked <code>parked</code>. Press <code>enter</code> on a row, or click it, to open that agent’s session in the main view: you read its transcript and can type to it, and <code>esc</code> returns you to your own session. Press <code>x</code> to stop an agent.</td></tr>
+<tr><td>Comms</td><td>The agent-to-agent messages, streaming as they are sent, including the ones that failed to reach their recipient and why. Long messages are folded to their first few lines with a count of what was hidden; <code>ctrl+o</code> unfolds them.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Live only ever lists agents that exist in this session, so a disabled specialist
+cannot appear there: it was never spawned. Which agents the model may choose, and
+what each one runs on, is configured in the Agents row of this tab.</p>
+<p><code>/cockpit</code> and <code>/hub</code> are aliases of <code>/agents</code>, as are the <code>app.agents.hub</code> and
+<code>app.session.observe</code> keys and a double-tap of the left arrow on an empty composer.
+They used to open a separate screen with its own roster, which meant two answers to
+“which agents are running” that could disagree.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Type</th><th>Default</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>subagent.enabled</code></td><td>boolean</td><td><code>true</code></td><td>The master switch. <code>false</code> removes subagents entirely: no <code>task</code> tool, no delegation guidance. See above.</td></tr>
+<tr><td><code>subagent.delegation</code></td><td>enum</td><td><code>preferred</code></td><td><code>allowed</code>, <code>preferred</code>, <code>required</code>. How hard the prompt pushes; it never removes the ability to delegate. See above.</td></tr>
+<tr><td><code>subagent.agents</code></td><td>record</td><td><code>{}</code></td><td>One row per agent: <code>enabled</code>, <code>maxNestedSpawnDepth</code>. Edit in the Agents row of the Subagents tab. Model and effort are not per-agent; see <code>subagent.model</code>.</td></tr>
+<tr><td><code>subagent.model</code></td><td>modelChain</td><td>unset</td><td>Models for every subagent that has no model of its own, tried in order, written as a comma-separated string or as a YAML list: the later entries are used when a run errors on the one in use. Unset means inherit: subagents follow the model you are working with. May carry a <code>:effort</code> suffix, and an explicit suffix wins over the agent’s own default. A pattern that matches no model refuses the spawn rather than falling through to the next entry.</td></tr>
+<tr><td><code>subagent.modelByDepth</code></td><td>record</td><td><code>{}</code></td><td>One row per spawn depth (<code>"1"</code> is a direct child, <code>"2"</code> a grandchild), each a chain in the same shape as <code>subagent.model</code>. A row outranks <code>subagent.model</code> for a spawn at exactly that depth; depths without a row follow <code>subagent.model</code>. A row whose chain matches no model refuses the spawn and names the row. Edit in the Models by Depth row of the Subagents tab.</td></tr>
+<tr><td><code>subagent.thinkingLevel</code></td><td>string</td><td>unset</td><td>Blanket subagent effort, picked from the levels the model in scope exposes. Unset or <strong>Inherit</strong> passes the current session’s effective effort into the child. It does not ask the provider to choose <code>auto</code>.</td></tr>
+<tr><td><code>subagent.batch</code></td><td>boolean</td><td><code>true</code></td><td>Batch shape for the <code>task</code> tool: one call, many items.</td></tr>
+<tr><td><code>subagent.maxConcurrency</code></td><td>number</td><td><code>32</code></td><td>Subagents running at once.</td></tr>
+<tr><td><code>subagent.maxNestedSpawnDepth</code></td><td>number</td><td><code>0</code></td><td>Nested levels that subagents may spawn. Direct children receive no <code>task</code> tool at <code>0</code>; an agent-specific override may raise the limit.</td></tr>
+<tr><td><code>subagent.maxRuntimeMs</code></td><td>number</td><td><code>0</code></td><td>Hard per-subagent wall-clock limit in ms; <code>0</code> disables it.</td></tr>
+<tr><td><code>subagent.idleTtlMs</code></td><td>number</td><td><code>300000</code></td><td>How long a finished subagent stays live before parking. The default is 5 minutes for every model and provider. Set a positive millisecond value to override it. <code>0</code> keeps idle agents live until exit. Parking closes the live session but retains its transcript for revival.</td></tr>
+<tr><td><code>subagent.softRequestBudget</code></td><td>number</td><td><code>200</code></td><td>Requests after which a subagent is asked to wrap up; <code>0</code> disables the guard.</td></tr>
+<tr><td><code>subagent.softRequestBudgetNotice</code></td><td>boolean</td><td><code>true</code></td><td>Inject that wrap-up notice once.</td></tr>
+<tr><td><code>subagent.showResolvedModelBadge</code></td><td>boolean</td><td><code>true</code></td><td>Show each subagent’s resolved model, and what decided it, on the task widget and the agent surfaces.</td></tr>
+<tr><td><code>subagent.enableLsp</code></td><td>boolean</td><td><code>false</code></td><td>Let subagents use the <code>lsp</code> tool.</td></tr>
+<tr><td><code>subagent.isolation.mode</code></td><td>enum</td><td><code>none</code></td><td>Filesystem isolation backend for subagents. See <a href="./handbook/src/using/safety.html">Safety</a>.</td></tr>
+<tr><td><code>subagent.isolation.merge</code></td><td>enum</td><td><code>patch</code></td><td>How isolated changes come back: <code>patch</code> or <code>branch</code>.</td></tr>
+<tr><td><code>subagent.isolation.commits</code></td><td>enum</td><td><code>generic</code></td><td>Commit message style for nested repo changes.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="shell-eval-and-lsp"><a class="header" href="#shell-eval-and-lsp">Shell, eval, and LSP</a></h3>
+<pre><code class="language-yaml">bash:
+  enabled: true
+  autoBackground:
+    enabled: false
+    thresholdMs: 60000
+  stallDetection:
+    enabled: false
+    stallMs: 30000
+
+eval:
+  py: true
+  js: true
+
+python:
+  kernelMode: session       # session, per-call
+  interpreter: ""
+
+ruby:
+  kernelMode: session       # session, per-call
+
+julia:
+  kernelMode: session       # session, per-call
+
+lsp:
+  enabled: true
+  lazy: true
+  diagnosticsOnWrite: true
+  diagnosticsOnEdit: false
+  formatOnWrite: false
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Type</th><th>Default</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>bash.enabled</code></td><td>boolean</td><td><code>true</code></td><td>Enable the bash tool.</td></tr>
+<tr><td><code>launch.enabled</code></td><td>boolean</td><td><code>true</code></td><td>Enable the launch tool for shared long-running project processes.</td></tr>
+<tr><td><code>bash.autoBackground.enabled</code></td><td>boolean</td><td><code>true</code></td><td>Auto-background long-running commands. You can also background the running command yourself with the composer’s background key, whatever this is set to.</td></tr>
+<tr><td><code>bash.autoBackground.thresholdMs</code></td><td>number</td><td><code>300000</code></td><td>Max wall-clock time a bash call runs in the foreground before it is moved to a background job. Frees the model and protects the prompt cache. Fires on elapsed time even while output streams. <code>0</code> backgrounds immediately.</td></tr>
+<tr><td><code>bash.stallDetection.enabled</code></td><td>boolean</td><td><code>false</code></td><td>Watch for a bash call that stops producing output; background it and tell the model it may be stuck so it can cancel a truly hung command. Recommends, never force-kills.</td></tr>
+<tr><td><code>bash.stallDetection.stallMs</code></td><td>number</td><td><code>30000</code></td><td>Idle time (no new output) before a bash call is treated as possibly stuck. Measures quiet output, not total run time.</td></tr>
+<tr><td><code>eval.py</code></td><td>boolean</td><td><code>true</code></td><td>Python eval backend. <code>VEYYON_PY=0</code> disables for the process.</td></tr>
+<tr><td><code>eval.js</code></td><td>boolean</td><td><code>true</code></td><td>JavaScript eval backend. <code>VEYYON_JS=0</code> disables for the process.</td></tr>
+<tr><td><code>python.kernelMode</code></td><td>enum</td><td><code>session</code></td><td><code>session</code> (persistent kernel) or <code>per-call</code>.</td></tr>
+<tr><td><code>ruby.kernelMode</code></td><td>enum</td><td><code>session</code></td><td>Same choice for Ruby cells: keep one kernel per session, or start and shut down a kernel for each cell.</td></tr>
+<tr><td><code>julia.kernelMode</code></td><td>enum</td><td><code>session</code></td><td>Same choice for Julia cells. A fresh Julia kernel recompiles, so <code>per-call</code> trades startup time for a clean slate.</td></tr>
+<tr><td><code>python.interpreter</code></td><td>string</td><td><code>""</code></td><td>Path to a Python interpreter; empty = auto-detect.</td></tr>
+<tr><td><code>lsp.enabled</code></td><td>boolean</td><td><code>false</code></td><td>Language-server integration. Opt in; <code>--no-lsp</code> disables it for a run where config turned it on.</td></tr>
+<tr><td><code>lsp.lazy</code></td><td>boolean</td><td><code>true</code></td><td>Start servers on demand.</td></tr>
+<tr><td><code>lsp.diagnosticsOnWrite</code></td><td>boolean</td><td><code>true</code></td><td>Run diagnostics after a write.</td></tr>
+<tr><td><code>lsp.diagnosticsOnEdit</code></td><td>boolean</td><td><code>false</code></td><td>Run diagnostics after an edit.</td></tr>
+<tr><td><code>lsp.formatOnWrite</code></td><td>boolean</td><td><code>false</code></td><td>Format files on write.</td></tr>
+<tr><td><code>lsp.diagnosticsDeduplicate</code></td><td>boolean</td><td><code>true</code></td><td>Collapse duplicate diagnostics.</td></tr>
+<tr><td><code>shellPath</code></td><td>string</td><td><em>(unset)</em></td><td>Override the shell binary used by bash.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="files-editing-and-reading"><a class="header" href="#files-editing-and-reading">Files: editing and reading</a></h3>
+<pre><code class="language-yaml">edit:
+  mode: hashline            # apply_patch, hashline, patch, replace
+  fuzzyMatch: true
+  fuzzyThreshold: 0.95
+  blockAutoGenerated: true
+
+read:
+  defaultLimit: 300
+  toolResultPreview: false
+  summarize:
+    enabled: true
+    prose: false
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Type</th><th>Default</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>edit.mode</code></td><td>enum</td><td><code>hashline</code></td><td><code>apply_patch</code>, <code>hashline</code>, <code>patch</code>, <code>replace</code>.</td></tr>
+<tr><td><code>edit.fuzzyMatch</code></td><td>boolean</td><td><code>true</code></td><td>Allow fuzzy anchor matching.</td></tr>
+<tr><td><code>edit.fuzzyThreshold</code></td><td>number</td><td><code>0.95</code></td><td>Similarity threshold for fuzzy matching.</td></tr>
+<tr><td><code>edit.blockAutoGenerated</code></td><td>boolean</td><td><code>true</code></td><td>Refuse to edit generated/lockfile-like files.</td></tr>
+<tr><td><code>edit.streamingAbort</code></td><td>boolean</td><td><code>false</code></td><td>Abort on streaming edit mismatch.</td></tr>
+<tr><td><code>read.defaultLimit</code></td><td>number</td><td><code>300</code></td><td>Default line count for <code>read</code> without a selector.</td></tr>
+<tr><td><code>read.summarize.enabled</code></td><td>boolean</td><td><code>true</code></td><td>Structural summaries for code reads.</td></tr>
+<tr><td><code>read.summarize.prose</code></td><td>boolean</td><td><code>false</code></td><td>Summarize prose files too.</td></tr>
+<tr><td><code>read.toolResultPreview</code></td><td>boolean</td><td><code>false</code></td><td>Inline preview of tool results.</td></tr>
+<tr><td><code>readLineNumbers</code></td><td>boolean</td><td><code>false</code></td><td>Show plain line numbers.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="automatic-tool-issue-reports"><a class="header" href="#automatic-tool-issue-reports">Automatic tool issue reports</a></h3>
+<p>Auto QA records a model’s report when a built-in tool behaves differently from its contract. Recording
+is local to the active profile. Automatic upload is a separate setting and is off by default.</p>
+<pre><code class="language-yaml">dev:
+  autoqa: true
+  autoqaPush:
+    enabled: false
+    endpoint: https://veyyon.dev/api/grievances
+</code></pre>
+<p>Turn on <strong>Auto QA</strong> to create reports in the profile’s <code>autoqa.db</code>. Turn on
+<strong>Auto-upload Grievances</strong> to send new and queued reports to the collector at <code>veyyon.dev</code>. You can
+leave automatic upload off and inspect the queue with <code>veyyon grievances</code>. Running
+<code>veyyon grievances push</code> is an explicit one-time upload and does not change the profile toggle.</p>
+<p>Each profile owns its own recording and upload settings. The install identifier in an uploaded batch
+is shared across profiles so the collector can make a retried local row idempotent. It contains no
+hostname or username.</p>
+<h3 id="context-compaction-and-memory"><a class="header" href="#context-compaction-and-memory">Context, compaction, and memory</a></h3>
+<pre><code class="language-yaml">contextPromotion:
+  enabled: false
+
+compaction:
+  enabled: true
+  strategy: summary           # the sole compaction strategy
+  midTurnEnabled: true        # check thresholds between tool-loop provider requests
+  threshold: auto             # auto | 85% (of the model's window) | 170000 (tokens, any model)
+
+memory:
+  backend: off                # off, local, hindsight, mnemopi
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Type</th><th>Default</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>contextPromotion.enabled</code></td><td>boolean</td><td><code>false</code></td><td>Promote to a larger-context model on overflow instead of compacting.</td></tr>
+<tr><td><code>compaction.enabled</code></td><td>boolean</td><td><code>true</code></td><td>Automatic conversation compaction.</td></tr>
+<tr><td><code>compaction.midTurnEnabled</code></td><td>boolean</td><td><code>true</code></td><td>Check thresholds at safe mid-turn tool-loop boundaries before the next provider request.</td></tr>
+<tr><td><code>compaction.strategy</code></td><td>enum</td><td><code>summary</code></td><td>The sole strategy. It rewrites old history into an in-place LLM summary. Stored legacy values migrate to <code>summary</code>; use <code>/handoff</code> for an explicit new-session transfer.</td></tr>
+<tr><td><code>compaction.model</code></td><td>modelChain</td><td>unset</td><td>Models for LLM compaction, tried in order, written as a comma-separated string or as a YAML list; unset inherits the model you are working with (<code>modelRoles.default</code>). Each may carry a <code>:effort</code> suffix, applied on every compaction pass. A candidate that is unauthenticated, or whose window cannot hold the summary, is skipped and the next one runs.</td></tr>
+<tr><td><code>compaction.modelFallbackStrategy</code></td><td>enum</td><td><code>auto</code></td><td>What to try after <code>compaction.model</code> runs out. <code>auto</code> stays on models you named: the main model, its same-provider compaction sibling, then each model role. <code>any-model</code> goes further, to the largest-window model on any provider you hold credentials for, which can bill an account you were not using for this session. <code>configured-only</code> stops at the models you listed and fails with the reason. Compacting on anything but your first choice is reported in the session, once per reason.</td></tr>
+<tr><td><code>compaction.threshold</code></td><td>string</td><td><code>auto</code></td><td>When auto-compaction triggers, with the unit in the value: <code>auto</code> uses <code>contextWindow - max(15% of contextWindow, reserveTokens)</code>; <code>85%</code> is a percent of the current model’s window, so the trigger moves with the model; <code>170000</code> is an absolute token amount, the same trigger on every model. An absolute amount larger than the current model’s window is honored up to <code>contextWindow - 1</code> and you get a one-time warning. Set it in <code>/settings</code> -&gt; Model -&gt; Auto-Compaction Threshold.</td></tr>
+<tr><td><code>compaction.thresholdTokens</code></td><td>number</td><td><code>-1</code></td><td>Retired, replaced by <code>compaction.threshold</code>. A value <code>&gt; 0</code> in your global config is rewritten to <code>threshold: &lt;amount&gt;</code> on load and this key is dropped, so your trigger point does not change. Write an absolute amount as <code>threshold: 170000</code>.</td></tr>
+<tr><td><code>compaction.thresholdPercent</code></td><td>number</td><td><code>-1</code></td><td>Retired, replaced by <code>compaction.threshold</code>. A value <code>&gt; 0</code> is rewritten to <code>threshold: &lt;percent&gt;%</code> on load (the token amount above wins when both are set) and this key is dropped. Write a percent as <code>threshold: 85%</code>.</td></tr>
+<tr><td><code>compaction.remoteEndpoint</code></td><td>string</td><td>unset</td><td>Optional summarizer endpoint for the <code>summary</code> strategy. It must return summary text, which is stored exactly like a locally generated summary. It is a transport, not a third strategy.</td></tr>
+<tr><td><code>memory.backend</code></td><td>enum</td><td><code>off</code></td><td><code>off</code>, <code>local</code>, <code>hindsight</code>, <code>mnemopi</code>. Each backend has its own <code>hindsight.*</code> / <code>mnemopi.*</code> / <code>memories.*</code> tuning keys.</td></tr>
+<tr><td><code>autolearn.enabled</code></td><td>boolean</td><td><code>false</code></td><td>Experimental: after the agent stops, nudge it to capture lessons to memory and create/enhance isolated managed skills under <code>~/.veyyon/profiles/default/agent/managed-skills</code>. Enables the <code>manage_skill</code> tool (and <code>learn</code> when a memory backend is active).</td></tr>
+<tr><td><code>autolearn.autoContinue</code></td><td>boolean</td><td><code>false</code></td><td>When <code>autolearn.enabled</code>, auto-run one capture turn at stop (uses extra tokens). Off = a passive reminder rides your next turn.</td></tr>
+<tr><td><code>autolearn.minToolCalls</code></td><td>number</td><td><code>5</code></td><td>Only nudge after a turn that used at least this many tools.</td></tr>
+<tr><td><code>session.instrumentation</code></td><td>enum</td><td><code>off</code></td><td>How densely a run records study records on the session file, for after-the-fact analysis and backtesting. Graded: <code>off</code> stores nothing extra; <code>basic</code> adds wall-clock (start, end, duration, and time-to-first-token for model turns); <code>rich</code> adds output weight (result bytes/tokens) and per-turn throughput (tokens/sec); <code>ultra</code> adds an arguments fingerprint, cache read/write tokens, reasoning tokens, and upstream provider. It records BOTH per-tool-call metrics (<code>message.metrics</code>) AND per-model-turn metrics and the exact request params sent (<code>message.turnMetrics</code> / <code>message.request</code>). The <code>dev</code> profile preset (<code>veyyon profile new dev --from dev</code>) sets this to <code>ultra</code>. See <a href="./internal/session.html#session-instrumentation-structured-analysis">the session instrumentation reference</a> for the on-disk field tables and jq recipes.</td></tr>
+</tbody>
+</table>
+</div>
+<p><code>compaction</code> has additional tuning keys (idle compaction, supersede/drop heuristics) visible in <code>veyyon config list</code>. See <a href="../architecture/compaction.html">Compaction</a> for the full strategy reference.</p>
+<h3 id="appearance-and-terminal"><a class="header" href="#appearance-and-terminal">Appearance and terminal</a></h3>
+<pre><code class="language-yaml">theme:
+  dark: titanium
+  light: light
+symbolPreset: unicode        # unicode, nerd, ascii
+colorBlindMode: false
+
+statusLine:
+  preset: default            # default, minimal, compact, full, nerd, ascii, custom
+  separator: powerline-thin
+  transparent: false
+  showHookStatus: true
+
+terminal:
+  showImages: true
+images:
+  autoResize: true
+  blockImages: false
+tui:
+  hyperlinks: auto           # off, auto, always
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Type</th><th>Default</th><th>Values</th></tr>
+</thead>
+<tbody>
+<tr><td><code>theme.dark</code></td><td>string</td><td><code>titanium</code></td><td>Theme used on a dark terminal background.</td></tr>
+<tr><td><code>theme.light</code></td><td>string</td><td><code>light</code></td><td>Theme used on a light terminal background.</td></tr>
+<tr><td><code>symbolPreset</code></td><td>enum</td><td><code>unicode</code></td><td><code>unicode</code>, <code>nerd</code>, <code>ascii</code>.</td></tr>
+<tr><td><code>colorBlindMode</code></td><td>boolean</td><td><code>false</code></td><td>Use blue instead of green for diff additions.</td></tr>
+<tr><td><code>showHardwareCursor</code></td><td>boolean</td><td><code>true</code></td><td>Show the terminal hardware cursor.</td></tr>
+<tr><td><code>statusLine.enabled</code></td><td>boolean</td><td><code>true</code></td><td>Show the composer footline, the quiet metadata row under the composer (profile, model, account, secrets, mode, path, git, context gauge, MCP boot health, draft token count). Off hides the row and skips the work behind it.</td></tr>
+<tr><td><code>statusLine.preset</code></td><td>enum</td><td><code>default</code></td><td><code>default</code>, <code>minimal</code>, <code>compact</code>, <code>full</code>, <code>nerd</code>, <code>ascii</code>, <code>custom</code>.</td></tr>
+<tr><td><code>statusLine.separator</code></td><td>enum</td><td><code>pipe</code></td><td>Retired. It styled the powerline status bar that the composer footline replaced, and the footline joins its segments with a fixed <code> · </code> of its own. The key still loads so an existing config file is accepted, no value changes anything on screen, and it has no settings row.</td></tr>
+<tr><td><code>statusLine.sessionAccent</code></td><td>boolean</td><td><code>true</code></td><td>Tint the editor border with the session color.</td></tr>
+<tr><td><code>statusLine.transparent</code></td><td>boolean</td><td><code>true</code></td><td>Retired, with <code>statusLine.separator</code>. It governed the theme background fill and the powerline end caps of the deleted status bar; the footline paints no background at all.</td></tr>
+<tr><td><code>statusLine.showHookStatus</code></td><td>boolean</td><td><code>true</code></td><td>Show hook status messages.</td></tr>
+<tr><td><code>statusLine.showAccount</code></td><td>boolean</td><td><code>false</code></td><td>Name the account serving the next request on the footline, when the active provider stores more than one credential. Off by default; <code>/account</code> answers the same question on demand. Hidden while the footline is off.</td></tr>
+<tr><td><code>terminal.showImages</code></td><td>boolean</td><td><code>true</code></td><td>Render images inline (when the terminal supports it).</td></tr>
+<tr><td><code>images.autoResize</code></td><td>boolean</td><td><code>true</code></td><td>Resize large images for model compatibility.</td></tr>
+<tr><td><code>images.blockImages</code></td><td>boolean</td><td><code>false</code></td><td>Never send images to providers.</td></tr>
+<tr><td><code>tui.hyperlinks</code></td><td>enum</td><td><code>auto</code></td><td><code>off</code>, <code>auto</code>, <code>always</code>.</td></tr>
+<tr><td><code>tui.scrollIsolation</code></td><td>boolean</td><td><code>false</code></td><td>Mouse wheel scrolls the transcript while the prompt stays pinned at the bottom of the window, with the scroll position drawn on the right edge of the transcript (<code>/settings</code> → Appearance → Display, Advanced). Scrolling back reaches the whole session, not just what is on screen. Off by default: turning it on means veyyon holds the mouse to read wheel events, and your terminal’s own drag-to-select stops working while it does. With it on you select using shift+drag, or with <code>/copy</code>, which picks text or code from the conversation without the mouse. With it off the wheel drives the terminal’s native scrollback, the whole window scrolls with it including the prompt, and selection behaves as it does in any other program.</td></tr>
+</tbody>
+</table>
+</div>
+<p>For a custom status line, set <code>statusLine.preset: custom</code> and configure <code>statusLine.leftSegments</code>, <code>statusLine.rightSegments</code>, and <code>statusLine.segmentOptions</code>. See the <a href="./handbook/src/features/cockpit.html#status-line">status line reference</a> for the full list of segment IDs.</p>
+<p>One segment is worth calling out: <code>profile</code> shows the active profile name (<code>work</code>, <code>rec</code>, a client sandbox) so you always know which profile’s config, sessions, and keys are live. It hides on the built-in <code>default</code> profile, so a vanilla status line is unchanged, and every built-in preset already includes it.</p>
+<h3 id="interaction"><a class="header" href="#interaction">Interaction</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Type</th><th>Default</th><th>Values</th></tr>
+</thead>
+<tbody>
+<tr><td><code>steeringMode</code></td><td>enum</td><td><code>one-at-a-time</code></td><td><code>all</code>, <code>one-at-a-time</code>. How queued steering messages are delivered.</td></tr>
+<tr><td><code>followUpMode</code></td><td>enum</td><td><code>one-at-a-time</code></td><td><code>all</code>, <code>one-at-a-time</code>.</td></tr>
+<tr><td><code>interruptMode</code></td><td>enum</td><td><code>immediate</code></td><td><code>immediate</code>, <code>wait</code>.</td></tr>
+<tr><td><code>doubleEscapeAction</code></td><td>enum</td><td><code>tree</code></td><td><code>branch</code>, <code>tree</code>, <code>none</code>.</td></tr>
+<tr><td><code>autoResume</code></td><td>boolean</td><td><code>false</code></td><td>Auto-resume the most recent session in the cwd.</td></tr>
+<tr><td><code>ask.timeout</code></td><td>number</td><td><code>0</code></td><td>Seconds before an <code>ask</code> prompt times out; <code>0</code> = no timeout. Values above <code>1000</code> are read as milliseconds from an older config and divided by 1000, so <code>1000</code> seconds is the longest timeout you can set. A rewrite is reported in the log with both values.</td></tr>
+<tr><td><code>ask.notify</code></td><td>enum</td><td><code>on</code></td><td><code>on</code>, <code>off</code>.</td></tr>
+<tr><td><code>session.workdir</code></td><td>string</td><td>unset</td><td>Per-profile default working directory. When you launch without an explicit <code>--cwd</code>, the session starts here. Precedence: an explicit <code>--cwd</code> wins, then this setting, then the directory you launched from. Use an absolute or <code>~</code>-relative path; a relative path or a missing directory makes launch fail loudly (no silent fallback). Set it in <code>/settings</code> (<strong>Interaction</strong> tab, <strong>Profile</strong> group, “Default Working Directory”) or with <code>veyyon config set session.workdir /path/to/project</code>; clear it with <code>veyyon config set session.workdir ""</code>. This is a per-profile default that persists across sessions. It is distinct from <code>/cwd set</code> (and the agent’s <code>set_cwd</code> tool), which re-root the live working directory for the current session only and write nothing to your profile. Note: if you launch from your bare home directory with no <code>--cwd</code>, no <code>--allow-home</code>, and this setting unset, veyyon relocates the session to a scratch directory (<code>~/tmp</code>, then <code>/tmp</code>) and prints a one-line notice saying so; set <code>session.workdir</code> to a real project directory to land there instead.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="providers-and-services"><a class="header" href="#providers-and-services">Providers and services</a></h3>
+<pre><code class="language-yaml">providers:
+  webSearch: auto
+  image: auto
+  fetch: auto
+  webSearchGeminiModel: gemini-2.5-flash
+  tinyModel: online
+  tinyModelDevice: default
+  tinyModelDtype: default
+  openaiWebsockets: auto
+  openrouterVariant: default
+  kimiApiFormat: anthropic
+
+provider:
+  appendOnlyContext: auto    # auto, on, off
+
+exa:
+  enabled: true
+  enableSearch: true
+  enableResearcher: false
+  enableWebsets: false
+
+searxng:
+  endpoint: https://search.example.com
+  token: SEARXNG_TOKEN
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Type</th><th>Default</th><th>Values / notes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>providers.webSearch</code></td><td>enum</td><td><code>auto</code></td><td><code>auto</code> plus the configured search providers (<code>perplexity</code>, <code>gemini</code>, <code>anthropic</code>, <code>codex</code>, <code>xai</code>, <code>zai</code>, <code>exa</code>, <code>tinyfish</code>, <code>jina</code>, <code>kagi</code>, <code>tavily</code>, <code>firecrawl</code>, <code>brave</code>, <code>kimi</code>, <code>parallel</code>, <code>synthetic</code>, <code>searxng</code>, <code>startpage</code>, <code>duckduckgo</code>, <code>ecosia</code>, <code>google</code>, <code>mojeek</code>, <code>public</code>).</td></tr>
+<tr><td><code>providers.webSearchGeminiModel</code></td><td>string</td><td><em>(unset)</em></td><td>Gemini model ID for Google Search grounding when <code>web_search</code> uses Gemini; defaults to <code>gemini-2.5-flash</code>, overridden by <code>GEMINI_SEARCH_MODEL</code>.</td></tr>
+<tr><td><code>providers.image</code></td><td>enum</td><td><code>auto</code></td><td><code>auto</code>, <code>openai</code>, <code>antigravity</code>, <code>xai</code>, <code>gemini</code>, <code>openrouter</code>.</td></tr>
+<tr><td><code>providers.fetch</code></td><td>enum</td><td><code>auto</code></td><td><code>auto</code>, <code>native</code>, <code>trafilatura</code>, <code>lynx</code>, <code>parallel</code>, <code>jina</code>.</td></tr>
+<tr><td><code>providers.tinyModel</code></td><td>enum</td><td><code>online</code></td><td><code>online</code> or a local model (<code>lfm2-350m</code>, <code>qwen3-0.6b</code>, <code>gemma-270m</code>, <code>qwen2.5-0.5b</code>, <code>lfm2-700m</code>).</td></tr>
+<tr><td><code>providers.tinyModelDevice</code></td><td>enum</td><td><code>default</code></td><td>ONNX execution provider for local tiny models. Overridden by <code>VEYYON_TINY_DEVICE</code>.</td></tr>
+<tr><td><code>providers.tinyModelDtype</code></td><td>enum</td><td><code>default</code></td><td>ONNX precision for local tiny models. Overridden by <code>VEYYON_TINY_DTYPE</code>.</td></tr>
+<tr><td><code>providers.openaiWebsockets</code></td><td>enum</td><td><code>auto</code></td><td><code>auto</code>, <code>off</code>, <code>on</code>.</td></tr>
+<tr><td><code>providers.openrouterVariant</code></td><td>enum</td><td><code>default</code></td><td><code>default</code>, <code>nitro</code>, <code>floor</code>, <code>online</code>, <code>exacto</code>.</td></tr>
+<tr><td><code>providers.kimiApiFormat</code></td><td>enum</td><td><code>anthropic</code></td><td><code>openai</code>, <code>anthropic</code>.</td></tr>
+<tr><td><code>provider.appendOnlyContext</code></td><td>enum</td><td><code>auto</code></td><td><code>auto</code>, <code>on</code>, <code>off</code>.</td></tr>
+<tr><td><code>exa.enabled</code></td><td>boolean</td><td><code>true</code></td><td>Enable Exa integration.</td></tr>
+<tr><td><code>exa.enableSearch</code></td><td>boolean</td><td><code>true</code></td><td>Exa search.</td></tr>
+<tr><td><code>exa.enableResearcher</code></td><td>boolean</td><td><code>false</code></td><td>Exa researcher.</td></tr>
+<tr><td><code>exa.enableWebsets</code></td><td>boolean</td><td><code>false</code></td><td>Exa websets.</td></tr>
+<tr><td><code>searxng.endpoint</code></td><td>string</td><td><em>(unset)</em></td><td>SearXNG instance URL.</td></tr>
+<tr><td><code>searxng.token</code></td><td>string</td><td><em>(unset)</em></td><td>SearXNG token; also <code>searxng.basicUsername</code>/<code>searxng.basicPassword</code>/<code>searxng.categories</code>/<code>searxng.language</code>.</td></tr>
+</tbody>
+</table>
+</div>
+<p>The auth-broker keys (<code>auth.broker.url</code> / <code>auth.broker.token</code>) live in the machine-wide global config, not a profile’s own file; see <a href="#global-all-profiles">Global (all profiles)</a>.</p>
+<p>Provider credentials and custom model definitions are configured separately, see <a href="./providers.html">Providers</a> and <a href="./models-yml.html">Models</a>.</p>
+<h3 id="global-all-profiles"><a class="header" href="#global-all-profiles">Global (all profiles)</a></h3>
+<p>These keys live in the machine-wide <code>~/.veyyon/config.yml</code>, not a profile’s own config, and are edited on the <strong>Global</strong> tab of <code>/settings</code>. They are read live, so an external edit to that file takes effect without a restart.</p>
+<p>Two of these have a different name depending on how you reach them: <code>config set</code> and <code>/settings</code> take the schema path, and the value is stored under a nested key in the file. Both names are given below.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Setting key (<code>config set</code>)</th><th>Stored as</th><th>Type</th><th>Default</th><th>Values / notes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>defaultProfile</code></td><td><code>defaultProfile</code></td><td>string</td><td><code>default</code></td><td>Which profile a bare <code>vey</code> launches when <code>--profile</code> and <code>VEYYON_PROFILE</code> are unset. Also settable with <code>veyyon profile default [name]</code>; setting it back to <code>default</code> clears the override.</td></tr>
+<tr><td><code>profileSharing</code></td><td><code>profileSharing</code></td><td>boolean</td><td><code>true</code></td><td>When <code>true</code>, every profile reads one machine-wide provider credential store (<code>~/.veyyon/shared-auth/agent.db</code>). Set <code>false</code> to give each profile its own private credentials. See <a href="./providers.html">Providers</a>.</td></tr>
+<tr><td><code>authBrokerUrl</code></td><td><code>auth: { broker: { url } }</code></td><td>string</td><td><em>(empty)</em></td><td>Auth-broker base URL, shown as <strong>Auth Broker URL</strong> on the Global tab. The legacy flat <code>"auth.broker.url"</code> key is still read and is rewritten to the nested form on the next save. <code>VEYYON_AUTH_BROKER_URL</code> still wins over config.</td></tr>
+<tr><td><code>authBrokerToken</code></td><td><code>auth: { broker: { token } }</code></td><td>string</td><td><em>(empty)</em></td><td>Auth-broker bearer token, shown as <strong>Auth Broker Token</strong>. Write-only in <code>/settings</code>: a stored token renders as a mask and is never echoed; enter a new value to replace it, leave the mask to keep it, or clear the field to delete it. <code>VEYYON_AUTH_BROKER_TOKEN</code> still wins over config.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="every-other-setting"><a class="header" href="#every-other-setting">Every other setting</a></h3>
+<p>The sections above are the settings worth explaining at length. For the complete list, see the <a href="./settings-reference.html">settings reference</a>: every setting that appears in <code>/settings</code>, with its key, type, default, and what it does, grouped exactly as the tabs are, followed by every key that exists only in a configuration file. That page is generated from the schema, so it cannot fall behind the code; the narrative here is the part written by hand.</p>
+<p><code>veyyon config list</code> shows the same set with your current values.</p>
+<h2 id="legacy-migration"><a class="header" href="#legacy-migration">Legacy migration</a></h2>
+<p><code>veyyon</code> migrates older config shapes automatically. None of these require action; they are listed so you know what changes you may see in <code>config.yml</code>.</p>
+<h3 id="startup-migration-to-configyml"><a class="header" href="#startup-migration-to-configyml">Startup migration to <code>config.yml</code></a></h3>
+<p>When <code>~/.veyyon/profiles/default/agent/config.yml</code> does not exist, startup builds it once from legacy sources, then writes the result:</p>
+<ol>
+<li><code>~/.veyyon/profiles/default/agent/settings.json</code> (renamed to <code>settings.json.bak</code> after a successful migration).</li>
+<li>Settings persisted in <code>agent.db</code>.</li>
+</ol>
+<p>After <code>config.yml</code> exists, these legacy sources are no longer consulted. The generic config loader also performs <code>.json</code> -&gt; <code>.yml</code> migration for other config files when only the <code>.json</code> form is present.</p>
+<h3 id="field-level-migrations"><a class="header" href="#field-level-migrations">Field-level migrations</a></h3>
+<p>Applied whenever raw settings are loaded (profile config, <code>--config</code> overlays, and runtime overrides):</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Old</th><th>New</th></tr>
+</thead>
+<tbody>
+<tr><td><code>queueMode</code></td><td><code>steeringMode</code></td></tr>
+<tr><td><code>ask.timeout</code> in milliseconds (value <code>&gt; 1000</code>)</td><td>seconds (divided by 1000), and the rewrite is logged with both values</td></tr>
+<tr><td>flat <code>theme: "&lt;name&gt;"</code> string</td><td><code>theme.dark</code> / <code>theme.light</code> (slot chosen by luminance; built-in <code>light</code>/<code>dark</code> are dropped to use defaults)</td></tr>
+<tr><td><code>task.isolation.enabled: true/false</code></td><td><code>subagent.isolation.mode: auto/none</code></td></tr>
+<tr><td><code>task.simple</code></td><td>removed</td></tr>
+<tr><td>legacy <code>task.isolation.mode</code> (<code>worktree</code>, <code>fuse-overlay</code>, <code>fuse-projfs</code>)</td><td><code>rcopy</code>, <code>overlayfs</code>, <code>projfs</code></td></tr>
+<tr><td><code>task.eager</code> (<code>default</code> / <code>preferred</code> / <code>always</code>, or a boolean)</td><td><code>subagent.delegation</code> (<code>allowed</code> / <code>preferred</code> / <code>required</code>)</td></tr>
+<tr><td><code>task.batch</code>, <code>task.maxConcurrency</code>, <code>task.maxRecursionDepth</code>, <code>task.maxRuntimeMs</code>, <code>task.softRequestBudget</code>, <code>task.softRequestBudgetNotice</code>, <code>task.showResolvedModelBadge</code>, <code>task.enableLsp</code></td><td>the same names under <code>subagent.</code></td></tr>
+<tr><td><code>task.agentIdleTtlMs</code></td><td><code>subagent.idleTtlMs</code></td></tr>
+<tr><td><code>task.isolation.*</code></td><td><code>subagent.isolation.*</code></td></tr>
+<tr><td><code>task.disabledAgents</code></td><td>one row per agent in <code>subagent.agents</code></td></tr>
+<tr><td><code>task.agentModelOverrides</code></td><td>dropped, and each override is named in the log. Per-agent models no longer exist: <code>subagent.model</code> (with <code>subagent.thinkingLevel</code>) is the one owner, and an agent that needs its own model says so in its own <code>model:</code> frontmatter. A <code>subagent.agents.&lt;name&gt;.model</code> or <code>.thinkingLevel</code> left in a config is ignored and reported the same way.</td></tr>
+<tr><td><code>modelRoles.task</code></td><td><code>subagent.model</code> (the <code>task</code> role is retired)</td></tr>
+<tr><td><code>lastChangelogVersion</code></td><td>moved to a marker file and stripped from <code>config.yml</code></td></tr>
+<tr><td><code>collapseChangelog</code></td><td>removed; startup no longer prints release notes, so there is nothing to collapse. Use <code>startup.updateNotice</code> to control the one-line notice that replaced it.</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h2>
+<h3 id="a-veyyonconfigyml-in-a-repository-is-ignored"><a class="header" href="#a-veyyonconfigyml-in-a-repository-is-ignored">A <code>.veyyon/config.yml</code> in a repository is ignored</a></h3>
+<p>That is the rule, not a malfunction: a working tree never configures the agent, so a checked-in settings file is not read. Move the values into your profile config, pass them for one run with <code>--config &lt;file&gt;</code>, or use a path-scoped array for <code>enabledModels</code> / <code>disabledProviders</code>.</p>
+<h3 id="an-array-from-my-profile-disappeared-under-an-overlay"><a class="header" href="#an-array-from-my-profile-disappeared-under-an-overlay">An array from my profile disappeared under an overlay</a></h3>
+<p>Arrays replace; they do not append. If an overlay sets <code>disabledProviders</code>, <code>enabledModels</code>, <code>cycleOrder</code>, <code>extensions</code>, or any other array, include the <strong>complete</strong> desired value in the overlay, the profile array is fully replaced.</p>
+<h3 id="a-provider-is-still-available-after-editing-config"><a class="header" href="#a-provider-is-still-available-after-editing-config">A provider is still available after editing config</a></h3>
+<ul>
+<li>Check whether you disabled the model provider id (e.g. <code>anthropic</code>) or a discovery source id (e.g. <code>claude</code>): they are different namespaces with different effects.</li>
+<li>Check for an overlay <code>disabledProviders</code> array replacing your profile one.</li>
+<li>Credentials can still come from environment variables, <code>.env</code>, OAuth, stored auth, or <code>models.yml</code>; disabling a provider blocks selection regardless, but verify you edited the right layer. See <a href="./providers.html">Providers</a>.</li>
+<li>Restart the session if the model list was already initialized.</li>
+</ul>
+<h3 id="veyyon-config-set-changed-the-wrong-file"><a class="header" href="#veyyon-config-set-changed-the-wrong-file"><code>veyyon config set</code> changed the wrong file</a></h3>
+<p><code>veyyon config set</code> and <code>veyyon config reset</code> always write the <code>config.yml</code> under the active agent directory. Run <code>veyyon config path</code> to print it.</p>
+<h3 id="veyyon-config-reset-removed-my-global-override"><a class="header" href="#veyyon-config-reset-removed-my-global-override"><code>veyyon config reset</code> removed my global override</a></h3>
+<p>That is what reset does: it deletes the key from the profile <code>config.yml</code> so the schema default (or an overlay or runtime value) applies. To keep a custom value, run <code>veyyon config set &lt;key&gt; &lt;value&gt;</code> again.</p>
+<h3 id="a---config-overlay-fails-at-startup"><a class="header" href="#a---config-overlay-fails-at-startup">A <code>--config</code> overlay fails at startup</a></h3>
+<p><code>--config</code> files are process-local YAML mappings. A missing file, invalid YAML, or a top-level array/scalar is a hard error, it does not silently fall back to lower-precedence settings. Fix the path or contents.</p>
+<h3 id="an-environment-variable-beats-my-config"><a class="header" href="#an-environment-variable-beats-my-config">An environment variable beats my config</a></h3>
+<p>Some settings (model roles, eval backends, tiny-model device/precision, auth broker, PTY) are overridable by env vars or CLI flags for per-machine convenience, and those take precedence over <code>config.yml</code>. Unset the variable or drop the flag to let the persisted value win. See <a href="#environment-overrides">Environment overrides</a> and <a href="./environment-complete.html">Environment variables</a>.</p>
+<h3 id="veyyon-config-set-key-says-unknown-setting"><a class="header" href="#veyyon-config-set-key-says-unknown-setting"><code>veyyon config set &lt;key&gt;</code> says “Unknown setting”</a></h3>
+<p>Keys must match a schema path exactly, with no shorthand. Use <code>theme.dark</code>, not <code>theme</code>. Run <code>veyyon config list</code> to see every valid key.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../reference/environment-complete.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="../reference/settings-reference.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../reference/environment-complete.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="../reference/settings-reference.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr-ef4e11c1.min.js"></script>
+        <script src="../mark-09e88c2c.min.js"></script>
+        <script src="../searcher-c2a407aa.js"></script>
+
+        <script src="../clipboard-1626706a.min.js"></script>
+        <script src="../highlight-abc7f01d.js"></script>
+        <script src="../book-a0b12cfe.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>

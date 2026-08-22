@@ -114,7 +114,7 @@ $ veyyon auth-broker list
 $ veyyon auth-broker logout
 ```
 
-`import` and `migrate` are also available. See [Providers](../models/providers.md) and `docs/secrets.md`
+`import` and `migrate` are also available. See [Providers](../models/providers.md) and `docs/handbook/src/architecture/secrets.md`
 for the broker model.
 
 ## Using an environment variable instead
@@ -176,6 +176,6 @@ setting.
 Provider identity (display name, env var, OAuth parameters) and endpoints (base URL, API kind) come
 from the bundled model catalog plus your `~/.veyyon/profiles/default/agent/models.yml`. A new BYOK provider becomes
 selectable by adding a `providers:` entry, not by changing code. See
-[Configuring providers](./configuring-providers.md) and `docs/providers.md`.
+[Configuring providers](./configuring-providers.md) and `docs/handbook/src/reference/providers.md`.
 
-See also: [Models and providers](./models.md) and the [CLI reference](../reference/cli.md).
+See also: [Models and providers](../reference/models-yml.md) and the [CLI reference](../reference/cli.md).

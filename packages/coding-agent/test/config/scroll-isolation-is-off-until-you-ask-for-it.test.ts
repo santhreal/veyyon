@@ -13,7 +13,7 @@
  * copy, and the grab is strictly opt-in.
  *
  * This suite exists because that promise silently broke. The docs
- * (`docs/settings.md`, `docs/settings-reference.md`, `docs/internal/tui-core-renderer.md`)
+ * (`docs/handbook/src/reference/settings.md`, `docs/handbook/src/reference/settings-reference.md`, `docs/internal/tui-core-renderer.md`)
  * were all updated to say the setting is off by default, while the schema kept
  * shipping `default: true`. Nothing failed, because no test asserted the default
  * at all, so the shipped behaviour and every document describing it disagreed.

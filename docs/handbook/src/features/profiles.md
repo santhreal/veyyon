@@ -51,7 +51,7 @@ That resolution is uniform across settings, sessions, blobs, slash commands, sti
 
 Project-level dirs (`<cwd>/.veyyon`, `.claude`, etc.) are **not** profile-scoped; they follow the working directory.
 
-**Other tools' config** (skills and `CLAUDE.md`/`AGENTS.md` written for Claude, Codex, and similar) is **off by default** and controlled per profile by `discovery.importForeignConfig`, so each profile decides on its own whether to ambiently read foreign files or run native-only. Another tool's own global dir (`~/.claude/skills`, …) cannot be relocated into a profile, see [Skills › Profiles isolate skills](./skills.md#profiles-isolate-skills).
+**Other tools' config** (skills and `CLAUDE.md`/`AGENTS.md` written for Claude, Codex, and similar) is **off by default** and controlled per profile by `discovery.importForeignConfig`, so each profile decides on its own whether to ambiently read foreign files or run native-only. Another tool's own global dir (`~/.claude/skills`, …) cannot be relocated into a profile, see [Skills › Profiles isolate skills](../reference/skills.md#profiles-isolate-skills).
 
 ## Activating a profile
 

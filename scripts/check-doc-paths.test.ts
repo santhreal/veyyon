@@ -2,7 +2,7 @@
  * The source-path gate for documentation.
  *
  * The gate exists because `prompt-blocks.ts` was split into two modules and
- * `docs/system-prompt-customization.md` went on naming the old file in three
+ * `docs/handbook/src/models/system-prompt.md` went on naming the old file in three
  * places, one of them the line telling a contributor which file to edit. No gate
  * in the repo could see it: doc-links strips inline code spans on purpose,
  * doc-imports only reads `import` statements, and doc-freshness only knows

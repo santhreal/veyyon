@@ -1,0 +1,839 @@
+<!DOCTYPE HTML>
+<html lang="en" class="navy sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Environment variables, complete - The Veyyon Harness Handbook</title>
+
+
+        <!-- Custom HTML head -->
+        <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
+        <meta name="theme-color" content="#050505">
+        <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+        <style>
+          /* Paint the near-black surface before CSS/JS resolve the theme, so there is
+             no light flash on load. Kept in sync with theme/veyyon.css. */
+          html { background: #050505; }
+          /* Tighten the base box model for the premium layout. */
+          *, *::before, *::after { box-sizing: border-box; }
+        </style>
+
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="../favicon-8114d1fc.png">
+        <link rel="stylesheet" href="../css/variables-8adf115d.css">
+        <link rel="stylesheet" href="../css/general-2459343d.css">
+        <link rel="stylesheet" href="../css/chrome-ae938929.css">
+        <link rel="stylesheet" href="../css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="../highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="../tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "navy";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "../searchindex-360535cc.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc-093df7ff.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('navy')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">The Veyyon Harness Handbook</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/santhreal/veyyon" title="Git repository" aria-label="Git repository">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/santhreal/veyyon/edit/main/docs/handbook/src/reference/environment-complete.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                            <span class=fa-svg id="git-edit-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M421.7 220.3l-11.3 11.3-22.6 22.6-205 205c-6.6 6.6-14.8 11.5-23.8 14.1L30.8 511c-8.4 2.5-17.5 .2-23.7-6.1S-1.5 489.7 1 481.2L38.7 353.1c2.6-9 7.5-17.2 14.1-23.8l205-205 22.6-22.6 11.3-11.3 33.9 33.9 62.1 62.1 33.9 33.9zM96 353.9l-9.3 9.3c-.9 .9-1.6 2.1-2 3.4l-25.3 86 86-25.3c1.3-.4 2.5-1.1 3.4-2l9.3-9.3H112c-8.8 0-16-7.2-16-16V353.9zM453.3 19.3l39.4 39.4c25 25 25 65.5 0 90.5l-14.5 14.5-22.6 22.6-11.3 11.3-33.9-33.9-62.1-62.1L314.3 67.7l11.3-11.3 22.6-22.6 14.5-14.5c25-25 65.5-25 90.5 0z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="environment-variables-complete"><a class="header" href="#environment-variables-complete">Environment variables, complete</a></h1>
+<p>Every variable the runtime reads, grouped by subsystem. The dozen an operator actually sets are on
+<a href="./environment.html">Environment variables</a>; this page is the exhaustive list, derived from current
+code paths in:</p>
+<ul>
+<li><code>packages/coding-agent/src/**</code></li>
+<li><code>packages/ai/src/**</code> (provider/auth resolution used by coding-agent)</li>
+<li><code>packages/utils/src/**</code> and <code>packages/tui/src/**</code> where those vars directly affect coding-agent runtime</li>
+</ul>
+<p>It documents only active behavior.</p>
+<h2 id="resolution-model-and-precedence"><a class="header" href="#resolution-model-and-precedence">Resolution model and precedence</a></h2>
+<p>Most runtime lookups use <code>$env</code> from <code>@veyyon/utils</code> (<code>packages/utils/src/env.ts</code>).</p>
+<p><code>$env</code> precedence, high to low:</p>
+<ol>
+<li>Existing process environment (<code>Bun.env</code>)</li>
+<li>Project <code>.env</code> (<code>$PWD/.env</code>) for keys not already set</li>
+<li>Agent <code>.env</code> (<code>~/.veyyon/profiles/default/agent/.env</code>, respecting <code>VEYYON_CONFIG_DIR</code> / <code>VEYYON_CODING_AGENT_DIR</code>) for keys not already set</li>
+<li>Config-root <code>.env</code> (<code>~/.veyyon/profiles/default/.env</code>, respecting <code>VEYYON_CONFIG_DIR</code> and the active profile) for keys not already set</li>
+<li>Home <code>.env</code> (<code>~/.env</code>) for keys not already set</li>
+</ol>
+<p>Precedence is not the same as load order, and the difference matters if you are reading the source. Part of the home <code>.env</code> is applied FIRST, by <code>packages/utils/src/dotenv-home.ts</code>, because a <code>VEYYON_CODING_AGENT_DIR</code> or <code>XDG_CONFIG_HOME</code> set there decides where layers 3 and 4 are. <code>packages/utils/src/dirs.ts</code> imports that module before it resolves anything, so a directory is never computed from a pre-<code>.env</code> environment. <code>env.ts</code> then applies all four layers in full, overriding the values home contributed and nothing else, and refreshes the directory resolver. The result is the precedence listed above, whichever module a program imported.</p>
+<p>That early phase applies only the variables that decide where a directory is: <code>VEYYON_CODING_AGENT_DIR</code>, <code>VEYYON_CONFIG_DIR</code>, and the four <code>XDG_*</code> bases. Everything else in your home <code>.env</code>, including every API key, waits for <code>env.ts</code>. The reason is that whatever is in the environment that early is inherited by every process veyyon spawns, and the sandboxed evaluator that runs your <code>eval</code> code is one of them: it should not receive your credentials.</p>
+<p>Two variables are deliberately not read from a <code>.env</code> file at all. <code>VEYYON_PROFILE</code> selects the profile, and the profile decides where layers 3 and 4 are, so reading it out of one of them would be circular; set it in your shell or pass <code>--profile</code>. <code>PATH</code> is read only after <code>env.ts</code> has run, which is when binary lookup happens anyway, so extending <code>PATH</code> in a <code>.env</code> works as it always has.</p>
+<hr>
+<h2 id="1-modelprovider-authentication"><a class="header" href="#1-modelprovider-authentication">1) Model/provider authentication</a></h2>
+<p>These are consumed via <code>getEnvApiKey()</code> (<code>packages/ai/src/env-api-key.ts</code>) unless noted otherwise.</p>
+<h3 id="core-provider-credentials"><a class="header" href="#core-provider-credentials">Core provider credentials</a></h3>
+<p>The provider-first projection of this map lives in <a href="./providers.html#environment-variables-and-env-files">Providers</a>; the two tables are two views of one source.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variable</th><th>Used for</th><th>Required when</th><th>Notes / precedence</th></tr>
+</thead>
+<tbody>
+<tr><td><code>OPENAI_CODEX_OAUTH_TOKEN</code></td><td>OpenAI Codex OAuth auth</td><td>Using <code>openai-codex</code> provider</td><td></td></tr>
+<tr><td><code>BASETEN_API_KEY</code></td><td>Baseten auth</td><td>Using <code>baseten</code> provider</td><td></td></tr>
+<tr><td><code>COREWEAVE_API_KEY</code></td><td>CoreWeave auth</td><td>Using <code>coreweave</code> provider</td><td>Takes precedence over <code>WANDB_API_KEY</code></td></tr>
+<tr><td><code>WANDB_API_KEY</code></td><td>CoreWeave auth</td><td>Using <code>coreweave</code> provider</td><td>Fallback after <code>COREWEAVE_API_KEY</code></td></tr>
+<tr><td><code>DEVIN_API_KEY</code></td><td>Devin auth</td><td>Using <code>devin</code> provider</td><td></td></tr>
+<tr><td><code>SAKANA_API_KEY</code></td><td>Sakana auth</td><td>Using <code>sakana</code> provider</td><td>Takes precedence over <code>FUGU_API_KEY</code></td></tr>
+<tr><td><code>FUGU_API_KEY</code></td><td>Sakana auth</td><td>Using <code>sakana</code> provider</td><td>Fallback after <code>SAKANA_API_KEY</code></td></tr>
+<tr><td><code>ANTHROPIC_OAUTH_TOKEN</code></td><td>Anthropic API auth</td><td>Using Anthropic with OAuth token auth</td><td>Takes precedence over <code>ANTHROPIC_API_KEY</code> for provider auth resolution</td></tr>
+<tr><td><code>ANTHROPIC_API_KEY</code></td><td>Anthropic API auth</td><td>Using Anthropic without OAuth token</td><td>Fallback after <code>ANTHROPIC_OAUTH_TOKEN</code></td></tr>
+<tr><td><code>ANTHROPIC_FOUNDRY_API_KEY</code></td><td>Anthropic via Azure Foundry / enterprise gateway</td><td><code>CLAUDE_CODE_USE_FOUNDRY</code> enabled</td><td>Takes precedence over <code>ANTHROPIC_OAUTH_TOKEN</code> and <code>ANTHROPIC_API_KEY</code> when Foundry mode is enabled</td></tr>
+<tr><td><code>OPENAI_API_KEY</code></td><td>OpenAI auth</td><td>Using OpenAI-family providers without explicit apiKey argument</td><td>Used by OpenAI Completions/Responses providers</td></tr>
+<tr><td><code>GEMINI_API_KEY</code></td><td>Google Gemini auth</td><td>Using <code>google</code> provider models</td><td>Primary key for Gemini provider mapping</td></tr>
+<tr><td><code>GOOGLE_API_KEY</code></td><td>Gemini image tool auth fallback</td><td>Using <code>gemini_image</code> tool without <code>GEMINI_API_KEY</code></td><td>Used by coding-agent image tool fallback path</td></tr>
+<tr><td><code>GROQ_API_KEY</code></td><td>Groq auth</td><td>Using Groq models</td><td></td></tr>
+<tr><td><code>CEREBRAS_API_KEY</code></td><td>Cerebras auth</td><td>Using Cerebras models</td><td></td></tr>
+<tr><td><code>FIREWORKS_API_KEY</code></td><td>Fireworks auth</td><td>Using Fireworks models</td><td></td></tr>
+<tr><td><code>FIREPASS_API_KEY</code></td><td>Fire Pass auth</td><td>Using Fire Pass models</td><td></td></tr>
+<tr><td><code>TOGETHER_API_KEY</code></td><td>Together auth</td><td>Using <code>together</code> provider</td><td></td></tr>
+<tr><td><code>AIMLAPI_API_KEY</code></td><td>AIML API auth</td><td>Using <code>aimlapi</code> provider</td><td>OpenAI-compatible AIML API endpoint at <code>https://api.aimlapi.com/v1</code></td></tr>
+<tr><td><code>HUGGINGFACE_HUB_TOKEN</code></td><td>Hugging Face auth</td><td>Using <code>huggingface</code> provider</td><td>Primary Hugging Face token env var</td></tr>
+<tr><td><code>HF_TOKEN</code></td><td>Hugging Face auth</td><td>Using <code>huggingface</code> provider</td><td>Fallback when <code>HUGGINGFACE_HUB_TOKEN</code> is unset</td></tr>
+<tr><td><code>SYNTHETIC_API_KEY</code></td><td>Synthetic auth</td><td>Using Synthetic models</td><td></td></tr>
+<tr><td><code>NVIDIA_API_KEY</code></td><td>NVIDIA auth</td><td>Using <code>nvidia</code> provider</td><td></td></tr>
+<tr><td><code>NANO_GPT_API_KEY</code></td><td>NanoGPT auth</td><td>Using <code>nanogpt</code> provider</td><td></td></tr>
+<tr><td><code>NOVITA_API_KEY</code></td><td>Novita auth</td><td>Using <code>novita</code> provider</td><td></td></tr>
+<tr><td><code>VENICE_API_KEY</code></td><td>Venice auth</td><td>Using <code>venice</code> provider</td><td></td></tr>
+<tr><td><code>LITELLM_API_KEY</code></td><td>LiteLLM auth</td><td>Using <code>litellm</code> provider</td><td>OpenAI-compatible LiteLLM proxy key</td></tr>
+<tr><td><code>LM_STUDIO_API_KEY</code></td><td>LM Studio auth (optional)</td><td>Using <code>lm-studio</code> provider with authenticated hosts</td><td>Local LM Studio usually runs without auth; any non-empty token works when a key is required</td></tr>
+<tr><td><code>OLLAMA_API_KEY</code></td><td>Ollama auth (optional)</td><td>Using <code>ollama</code> provider with authenticated hosts</td><td>Local Ollama usually runs without auth; any non-empty token works when a key is required</td></tr>
+<tr><td><code>LLAMA_CPP_API_KEY</code></td><td>llama.cpp auth (optional)</td><td>Using <code>llama.cpp</code> provider with authenticated hosts</td><td>Local llama.cpp usually runs without auth; any non-empty token works when a key is configured</td></tr>
+<tr><td><code>XIAOMI_API_KEY</code></td><td>Xiaomi MiMo auth</td><td>Using <code>xiaomi</code> provider</td><td></td></tr>
+<tr><td><code>XIAOMI_TOKEN_PLAN_AMS_API_KEY</code></td><td>Xiaomi MiMo Token Plan auth (AMS)</td><td>Using <code>xiaomi-token-plan-ams</code> provider</td><td></td></tr>
+<tr><td><code>XIAOMI_TOKEN_PLAN_CN_API_KEY</code></td><td>Xiaomi MiMo Token Plan auth (CN)</td><td>Using <code>xiaomi-token-plan-cn</code> provider</td><td></td></tr>
+<tr><td><code>XIAOMI_TOKEN_PLAN_SGP_API_KEY</code></td><td>Xiaomi MiMo Token Plan auth (SGP)</td><td>Using <code>xiaomi-token-plan-sgp</code> provider</td><td></td></tr>
+<tr><td><code>MOONSHOT_API_KEY</code></td><td>Moonshot auth</td><td>Using <code>moonshot</code> provider</td><td></td></tr>
+<tr><td><code>XAI_API_KEY</code></td><td>xAI auth</td><td>Using xAI models or as fallback for <code>xai-oauth</code></td><td></td></tr>
+<tr><td><code>XAI_OAUTH_TOKEN</code></td><td>xAI OAuth/SuperGrok auth</td><td>Using <code>xai-oauth</code> provider</td><td>Takes precedence over <code>XAI_API_KEY</code> for <code>xai-oauth</code></td></tr>
+<tr><td><code>OPENROUTER_API_KEY</code></td><td>OpenRouter auth</td><td>Using OpenRouter models</td><td>Also used by image tool when preferred/auto provider is OpenRouter</td></tr>
+<tr><td><code>MISTRAL_API_KEY</code></td><td>Mistral auth</td><td>Using Mistral models</td><td></td></tr>
+<tr><td><code>ZAI_API_KEY</code></td><td>z.ai auth</td><td>Using z.ai models</td><td>Also used by z.ai web search provider</td></tr>
+<tr><td><code>ZHIPU_API_KEY</code></td><td>Zhipu Coding Plan auth</td><td>Using <code>zhipu-coding-plan</code> provider</td><td></td></tr>
+<tr><td><code>UMANS_AI_CODING_PLAN_API_KEY</code></td><td>Umans AI Coding Plan auth</td><td>Using <code>umans</code> provider</td><td></td></tr>
+<tr><td><code>MINIMAX_API_KEY</code></td><td>MiniMax auth</td><td>Using <code>minimax</code> provider</td><td></td></tr>
+<tr><td><code>MINIMAX_CODE_API_KEY</code></td><td>MiniMax Code auth</td><td>Using <code>minimax-code</code> provider</td><td></td></tr>
+<tr><td><code>MINIMAX_CODE_CN_API_KEY</code></td><td>MiniMax Code CN auth</td><td>Using <code>minimax-code-cn</code> provider</td><td></td></tr>
+<tr><td><code>OPENCODE_API_KEY</code></td><td>OpenCode auth</td><td>Using <code>opencode-go</code> / <code>opencode-zen</code> models</td><td></td></tr>
+<tr><td><code>QIANFAN_API_KEY</code></td><td>Qianfan auth</td><td>Using <code>qianfan</code> provider</td><td></td></tr>
+<tr><td><code>QWEN_OAUTH_TOKEN</code></td><td>Qwen Portal auth</td><td>Using <code>qwen-portal</code> with OAuth token</td><td>Takes precedence over <code>QWEN_PORTAL_API_KEY</code></td></tr>
+<tr><td><code>QWEN_PORTAL_API_KEY</code></td><td>Qwen Portal auth</td><td>Using <code>qwen-portal</code> with API key</td><td>Fallback after <code>QWEN_OAUTH_TOKEN</code></td></tr>
+<tr><td><code>ZENMUX_API_KEY</code></td><td>ZenMux auth</td><td>Using <code>zenmux</code> provider</td><td>Used for ZenMux OpenAI and Anthropic-compatible routes</td></tr>
+<tr><td><code>VLLM_API_KEY</code></td><td>vLLM auth/discovery opt-in</td><td>Using <code>vllm</code> provider (local OpenAI-compatible servers)</td><td>Any non-empty value works for no-auth local servers</td></tr>
+<tr><td><code>CURSOR_ACCESS_TOKEN</code></td><td>Cursor provider auth</td><td>Using Cursor provider</td><td></td></tr>
+<tr><td><code>AI_GATEWAY_API_KEY</code></td><td>Vercel AI Gateway auth</td><td>Using <code>vercel-ai-gateway</code> provider</td><td></td></tr>
+<tr><td><code>CLOUDFLARE_AI_GATEWAY_API_KEY</code></td><td>Cloudflare AI Gateway auth</td><td>Using <code>cloudflare-ai-gateway</code> provider</td><td>Base URL must be configured as <code>https://gateway.ai.cloudflare.com/v1/&lt;account&gt;/&lt;gateway&gt;/anthropic</code></td></tr>
+<tr><td><code>ALIBABA_CODING_PLAN_API_KEY</code></td><td>Alibaba Coding Plan auth</td><td>Using <code>alibaba-coding-plan</code> provider</td><td></td></tr>
+<tr><td><code>DEEPSEEK_API_KEY</code></td><td>DeepSeek auth</td><td>Using DeepSeek models</td><td></td></tr>
+<tr><td><code>KILO_API_KEY</code></td><td>Kilo auth</td><td>Using Kilo models</td><td></td></tr>
+<tr><td><code>OLLAMA_CLOUD_API_KEY</code></td><td>Ollama Cloud auth</td><td>Using <code>ollama-cloud</code> provider</td><td></td></tr>
+<tr><td><code>WAFER_SERVERLESS_API_KEY</code></td><td>Wafer Serverless auth</td><td>Using <code>wafer-serverless</code> provider</td><td>Pay-as-you-go Wafer SKU; validated against <code>https://pass.wafer.ai/v1/models</code></td></tr>
+<tr><td><code>GITLAB_TOKEN</code></td><td>GitLab Duo auth</td><td>Using <code>gitlab-duo</code> provider</td><td></td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="githubcopilot-tokens"><a class="header" href="#githubcopilot-tokens">GitHub/Copilot tokens</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variable</th><th>Used for</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>COPILOT_GITHUB_TOKEN</code></td><td>GitHub Copilot provider auth</td><td>Generic GitHub tokens are not used here</td></tr>
+<tr><td><code>GH_TOKEN</code></td><td>GitHub API auth in web scraper</td><td>Web scraper fallback after <code>GITHUB_TOKEN</code></td></tr>
+<tr><td><code>GITHUB_TOKEN</code></td><td>GitHub API auth in web scraper</td><td>Web scraper checks this before <code>GH_TOKEN</code></td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="auth-broker--auth-gateway-remote-credential-vault"><a class="header" href="#auth-broker--auth-gateway-remote-credential-vault">Auth broker / auth gateway (remote credential vault)</a></h3>
+<p>When the broker is enabled, the local SQLite credential store is bypassed and all OAuth refresh / access tokens live on the broker host. See <a href="./internal/auth-broker-gateway.html"><code>auth-broker-gateway.md</code></a> for the full protocol, CLI surface, and 5-min/15-s usage cache layering.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variable</th><th>Used for</th><th>Required when</th><th>Notes / precedence</th></tr>
+</thead>
+<tbody>
+<tr><td><code>VEYYON_AUTH_BROKER_URL</code></td><td>Base URL of the remote auth-broker (e.g. <code>https://broker.tailnet:8765</code>); selects broker mode</td><td>Resolving credentials through a broker; also required by <code>veyyon auth-gateway serve</code> (the gateway is itself a broker client)</td><td>Wins over <code>auth.broker.url</code> in <code>config.yml</code>. When set with no resolvable token, <code>resolveAuthBrokerConfig()</code> hard-errors instead of falling back to local SQLite.</td></tr>
+<tr><td><code>VEYYON_AUTH_BROKER_TOKEN</code></td><td>Bearer token sent on every broker endpoint except <code>/v1/healthz</code></td><td><code>VEYYON_AUTH_BROKER_URL</code> is set and no token is available from <code>auth.broker.token</code> or <code>&lt;config-dir&gt;/auth-broker.token</code></td><td>Resolution: this env → <code>auth.broker.token</code> (<code>$ENV_NAME</code> indirection supported) → <code>&lt;config-dir&gt;/auth-broker.token</code> (mode <code>0600</code>). <code>&lt;config-dir&gt;</code> is <code>~/.veyyon/</code> (respecting <code>VEYYON_CONFIG_DIR</code>).</td></tr>
+<tr><td><code>VEYYON_AUTH_BROKER_SNAPSHOT_TTL_MS</code></td><td>Freshness window for the encrypted local broker snapshot cache</td><td>Optional in broker mode</td><td>Default <code>3600000</code> (1 h). Freshness is based on broker <code>snapshot.generatedAt</code>; <code>0</code> disables cache reads/writes and forces the old blocking fetch every startup.</td></tr>
+<tr><td><code>VEYYON_AUTH_BROKER_SNAPSHOT_CACHE</code></td><td>Path to the encrypted local broker snapshot cache</td><td>Optional in broker mode</td><td>Defaults to <code>~/.veyyon/profiles/&lt;profile&gt;/cache/auth-broker-snapshot.enc</code> (or XDG cache equivalent). Useful for tests, ephemeral hosts, or relocating the <code>0600</code> cache file.</td></tr>
+</tbody>
+</table>
+</div>
+<p>The gateway has no dedicated env vars, it inherits <code>VEYYON_AUTH_BROKER_*</code>. Its own inbound bearer token lives at <code>&lt;config-dir&gt;/auth-gateway.token</code> and is managed via <code>veyyon auth-gateway token</code>.</p>
+<hr>
+<h2 id="2-provider-specific-runtime-configuration"><a class="header" href="#2-provider-specific-runtime-configuration">2) Provider-specific runtime configuration</a></h2>
+<h3 id="anthropic-foundry-gateway-azure--enterprise-proxy"><a class="header" href="#anthropic-foundry-gateway-azure--enterprise-proxy">Anthropic Foundry Gateway (Azure / enterprise proxy)</a></h3>
+<p>When <code>CLAUDE_CODE_USE_FOUNDRY</code> is enabled, Anthropic requests switch to Foundry mode:</p>
+<ul>
+<li>
+<p>Base URL resolves from <code>FOUNDRY_BASE_URL</code> (fallback remains model/default base URL if unset).</p>
+</li>
+<li>
+<p>API key resolution for provider <code>anthropic</code> becomes:
+<code>ANTHROPIC_FOUNDRY_API_KEY</code> → <code>ANTHROPIC_OAUTH_TOKEN</code> → <code>ANTHROPIC_API_KEY</code>.</p>
+</li>
+<li>
+<p><code>ANTHROPIC_CUSTOM_HEADERS</code> is parsed as comma/newline-separated <code>key: value</code>
+pairs and merged into request headers. They are also forwarded when
+<code>ANTHROPIC_BASE_URL</code> points to a non-Anthropic host (e.g. a corporate API
+gateway), so enterprise gateways requiring proprietary auth headers work
+without enabling Foundry mode.</p>
+</li>
+<li>
+<p>TLS client/server material can be injected from env values:
+<code>NODE_EXTRA_CA_CERTS</code>, <code>CLAUDE_CODE_CLIENT_CERT</code>, <code>CLAUDE_CODE_CLIENT_KEY</code>.
+Each accepts either:</p>
+<ul>
+<li>a filesystem path to PEM content, or</li>
+<li>inline PEM (including escaped <code>\n</code> sequences).</li>
+</ul>
+<p><code>NODE_EXTRA_CA_CERTS</code> is honoured for every provider fetch (OpenAI-compatible,
+Codex, Ollama, Azure Responses, Google, Anthropic), not just Foundry, Bun’s
+<code>fetch</code> does not consume the env var natively, so the bundle is merged into
+<code>RequestInit.tls.ca</code> alongside the system root store. The <code>CLAUDE_CODE_*</code> mTLS
+material remains Anthropic-Foundry-specific.</p>
+</li>
+</ul>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variable</th><th>Value type</th><th>Behavior</th></tr>
+</thead>
+<tbody>
+<tr><td><code>CLAUDE_CODE_USE_FOUNDRY</code></td><td>Boolean-like string (<code>1</code>, <code>true</code>, <code>yes</code>, <code>on</code>)</td><td>Enables Foundry mode for Anthropic provider</td></tr>
+<tr><td><code>FOUNDRY_BASE_URL</code></td><td>URL string</td><td>Anthropic endpoint base URL in Foundry mode</td></tr>
+<tr><td><code>ANTHROPIC_FOUNDRY_API_KEY</code></td><td>Token string</td><td>Used for <code>Authorization: Bearer &lt;token&gt;</code></td></tr>
+<tr><td><code>ANTHROPIC_CUSTOM_HEADERS</code></td><td>Header list string</td><td>Extra headers; format <code>header-a: value, header-b: value</code> or newline-separated. Also forwarded outside Foundry whenever <code>ANTHROPIC_BASE_URL</code> is non-Anthropic.</td></tr>
+<tr><td><code>NODE_EXTRA_CA_CERTS</code></td><td>PEM path or inline PEM</td><td>Extra CA chain for server certificate validation</td></tr>
+<tr><td><code>CLAUDE_CODE_CLIENT_CERT</code></td><td>PEM path or inline PEM</td><td>mTLS client certificate</td></tr>
+<tr><td><code>CLAUDE_CODE_CLIENT_KEY</code></td><td>PEM path or inline PEM</td><td>mTLS client private key (must be paired with cert)</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="amazon-bedrock"><a class="header" href="#amazon-bedrock">Amazon Bedrock</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variable</th><th>Default / behavior</th></tr>
+</thead>
+<tbody>
+<tr><td><code>AWS_REGION</code></td><td>Primary region source</td></tr>
+<tr><td><code>AWS_DEFAULT_REGION</code></td><td>Fallback if <code>AWS_REGION</code> unset</td></tr>
+<tr><td><code>AWS_PROFILE</code></td><td>Enables named profile auth path</td></tr>
+<tr><td><code>AWS_ACCESS_KEY_ID</code> + <code>AWS_SECRET_ACCESS_KEY</code></td><td>Enables IAM key auth path</td></tr>
+<tr><td><code>AWS_BEARER_TOKEN_BEDROCK</code></td><td>Highest-precedence bearer token auth path; skips AWS profile/credential-chain lookup when set</td></tr>
+<tr><td><code>AWS_CONTAINER_CREDENTIALS_RELATIVE_URI</code> / <code>AWS_CONTAINER_CREDENTIALS_FULL_URI</code></td><td>Marks Bedrock as available in provider detection (credential resolution itself covers env keys, profiles/SSO/<code>credential_process</code>, then IMDSv2)</td></tr>
+<tr><td><code>AWS_WEB_IDENTITY_TOKEN_FILE</code> + <code>AWS_ROLE_ARN</code></td><td>Marks Bedrock as available in provider detection (same caveat as the ECS variables above)</td></tr>
+<tr><td><code>AWS_BEDROCK_SKIP_AUTH</code></td><td>If <code>1</code>, injects dummy credentials (proxy/non-auth scenarios)</td></tr>
+<tr><td><code>HTTPS_PROXY</code> / <code>HTTP_PROXY</code></td><td>Honored via Bun’s native fetch proxy support (the provider no longer ships an AWS SDK / proxy-agent transport)</td></tr>
+<tr><td><code>NO_PROXY</code></td><td>Excludes matching hosts from Bun’s native proxy routing</td></tr>
+</tbody>
+</table>
+</div>
+<p>Region fallback in provider code: <code>options.region</code> → <code>AWS_REGION</code> → <code>AWS_DEFAULT_REGION</code> → <code>us-east-1</code>.</p>
+<h3 id="azure-openai-responses"><a class="header" href="#azure-openai-responses">Azure OpenAI Responses</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variable</th><th>Default / behavior</th></tr>
+</thead>
+<tbody>
+<tr><td><code>AZURE_OPENAI_API_KEY</code></td><td>Required unless API key passed as option</td></tr>
+<tr><td><code>AZURE_OPENAI_API_VERSION</code></td><td>Default <code>v1</code></td></tr>
+<tr><td><code>AZURE_OPENAI_BASE_URL</code></td><td>Direct base URL override</td></tr>
+<tr><td><code>AZURE_OPENAI_RESOURCE_NAME</code></td><td>Used to construct base URL: <code>https://&lt;resource&gt;.openai.azure.com/openai/v1</code></td></tr>
+<tr><td><code>AZURE_OPENAI_DEPLOYMENT_NAME_MAP</code></td><td>Optional mapping string: <code>modelId=deploymentName,model2=deployment2</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>Base URL resolution: option <code>azureBaseUrl</code> → env <code>AZURE_OPENAI_BASE_URL</code> → option/env resource name → <code>model.baseUrl</code>.</p>
+<h3 id="google-vertex-ai"><a class="header" href="#google-vertex-ai">Google Vertex AI</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variable</th><th>Required?</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>GOOGLE_CLOUD_PROJECT</code></td><td>Yes (unless passed in options)</td><td>Primary project ID source</td></tr>
+<tr><td><code>GCP_PROJECT</code></td><td>Fallback</td><td>Alternate project ID source</td></tr>
+<tr><td><code>GCLOUD_PROJECT</code></td><td>Fallback</td><td>Alternate project ID source</td></tr>
+<tr><td><code>GOOGLE_CLOUD_PROJECT_ID</code></td><td>OAuth login helper only</td><td>Used by Gemini CLI OAuth project discovery</td></tr>
+<tr><td><code>GOOGLE_VERTEX_LOCATION</code></td><td>Yes (unless passed in options)</td><td>Primary Vertex location source</td></tr>
+<tr><td><code>GOOGLE_CLOUD_LOCATION</code></td><td>Fallback</td><td>Alternate Vertex location source</td></tr>
+<tr><td><code>VERTEX_LOCATION</code></td><td>Fallback</td><td>Alternate Vertex location source</td></tr>
+<tr><td><code>GOOGLE_CLOUD_API_KEY</code></td><td>Conditional</td><td>Direct Vertex API-key auth; otherwise ADC fallback can authenticate when project and location are set</td></tr>
+<tr><td><code>GOOGLE_APPLICATION_CREDENTIALS</code></td><td>Conditional</td><td>If set, file must exist; otherwise ADC fallback path is checked (<code>~/.config/gcloud/application_default_credentials.json</code>)</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="kimi"><a class="header" href="#kimi">Kimi</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variable</th><th>Default / behavior</th></tr>
+</thead>
+<tbody>
+<tr><td><code>KIMI_CODE_OAUTH_HOST</code></td><td>Primary OAuth host override</td></tr>
+<tr><td><code>KIMI_OAUTH_HOST</code></td><td>Fallback OAuth host override</td></tr>
+<tr><td><code>KIMI_CODE_BASE_URL</code></td><td>Overrides Kimi usage endpoint base URL (<code>usage/kimi.ts</code>)</td></tr>
+</tbody>
+</table>
+</div>
+<p>OAuth host chain: <code>KIMI_CODE_OAUTH_HOST</code> → <code>KIMI_OAUTH_HOST</code> → <code>https://auth.kimi.com</code>.</p>
+<h3 id="gemini-cli-compatibility"><a class="header" href="#gemini-cli-compatibility">Gemini CLI compatibility</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variable</th><th>Default / behavior</th></tr>
+</thead>
+<tbody>
+<tr><td><code>VEYYON_AI_GEMINI_CLI_VERSION</code></td><td>Overrides the Gemini CLI user-agent version tag (<code>0.46.0</code> if unset)</td></tr>
+<tr><td><code>VEYYON_AI_ANTIGRAVITY_VERSION</code></td><td>Overrides the Antigravity / Cloud Code Assist user-agent version tag (<code>2.1.4</code> if unset)</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="openai-codex-responses-featuredebug-controls"><a class="header" href="#openai-codex-responses-featuredebug-controls">OpenAI Codex responses (feature/debug controls)</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variable</th><th>Behavior</th></tr>
+</thead>
+<tbody>
+<tr><td><code>VEYYON_CODEX_DEBUG</code></td><td><code>1</code>/<code>true</code> enables Codex provider debug logging</td></tr>
+<tr><td><code>VEYYON_CODEX_WEBSOCKET</code></td><td><code>1</code>/<code>true</code> enables websocket transport preference</td></tr>
+<tr><td><code>VEYYON_OPENAI_STATEFUL</code></td><td>Overrides the stateful-chaining default for the platform OpenAI Responses API (<code>previous_response_id</code>, forces <code>store: true</code>): on by default against api.openai.com, off elsewhere</td></tr>
+<tr><td><code>VEYYON_CODEX_WEBSOCKET_IDLE_TIMEOUT_MS</code></td><td>Positive integer override (default 300000)</td></tr>
+<tr><td><code>VEYYON_CODEX_WEBSOCKET_RETRY_BUDGET</code></td><td>Non-negative integer override (default 5)</td></tr>
+<tr><td><code>VEYYON_CODEX_WEBSOCKET_RETRY_DELAY_MS</code></td><td>Positive integer base backoff override (default 500)</td></tr>
+<tr><td><code>VEYYON_CODEX_WEBSOCKET_FIRST_EVENT_TIMEOUT_MS</code></td><td>Positive integer wait for the first websocket event before falling back to SSE (default 60000). Switches transport rather than failing the request</td></tr>
+<tr><td><code>VEYYON_CODEX_WEBSOCKET_MAX_IDLE_REUSE_MS</code></td><td>Longest quiet period a reused socket is trusted for before a fresh handshake (default 30000); <code>0</code> disables the ceiling</td></tr>
+<tr><td><code>VEYYON_CODEX_WEBSOCKET_PING_INTERVAL_MS</code></td><td>Positive integer keepalive ping interval (default 10000)</td></tr>
+<tr><td><code>VEYYON_CODEX_WEBSOCKET_PONG_TIMEOUT_MS</code></td><td>Positive integer wait for a pong before the socket is treated as dead (default 60000)</td></tr>
+<tr><td><code>VEYYON_CODEX_WEBSOCKET_MESSAGE_QUEUE_CAPACITY</code></td><td>Positive integer inbound frame queue capacity (default 4096)</td></tr>
+<tr><td><code>VEYYON_OPENAI_STREAM_FIRST_EVENT_TIMEOUT_MS</code></td><td>Positive integer OpenAI first-event timeout override; <code>0</code> disables. <code>veyyon config set providers.streamFirstEventTimeoutSeconds &lt;seconds&gt;</code> provides the persisted config equivalent</td></tr>
+<tr><td><code>VEYYON_OPENAI_STREAM_IDLE_TIMEOUT_MS</code></td><td>Positive integer OpenAI stream idle timeout override; <code>0</code> disables. <code>veyyon config set providers.streamIdleTimeoutSeconds &lt;seconds&gt;</code> provides the persisted config equivalent</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="cursor-provider-debug"><a class="header" href="#cursor-provider-debug">Cursor provider debug</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variable</th><th>Behavior</th></tr>
+</thead>
+<tbody>
+<tr><td><code>DEBUG_CURSOR</code></td><td>Enables provider debug logs; <code>2</code>/<code>verbose</code> for detailed payload snippets</td></tr>
+<tr><td><code>DEBUG_CURSOR_LOG</code></td><td>Optional file path for JSONL debug log output</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="transport-selection-openrouter-perplexity"><a class="header" href="#transport-selection-openrouter-perplexity">Transport selection (OpenRouter, Perplexity)</a></h3>
+<p>Both providers can be reached over two different HTTP APIs, and these pick which one.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variable</th><th>Behavior</th></tr>
+</thead>
+<tbody>
+<tr><td><code>VEYYON_OPENROUTER_RESPONSES</code></td><td>OpenRouter uses the Responses API unless this is exactly <code>0</code>, which selects chat completions. Any other value leaves the default in place</td></tr>
+<tr><td><code>VEYYON_PERPLEXITY_RESPONSES</code></td><td>Perplexity web search uses the Responses API only when this is exactly <code>1</code></td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="prompt-cache-controls"><a class="header" href="#prompt-cache-controls">Prompt cache controls</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variable</th><th>Behavior</th></tr>
+</thead>
+<tbody>
+<tr><td><code>VEYYON_CACHE_RETENTION</code></td><td>If <code>long</code>, enables long retention where supported (<code>anthropic</code>, <code>openai-responses</code>, Bedrock retention resolution)</td></tr>
+<tr><td><code>VEYYON_CACHE_ENFORCEMENT</code></td><td>What happens when a request’s cache markers demonstrably did not take effect: <code>off</code>, <code>warn</code> (default), or <code>error</code>. <code>error</code> aborts the turn. Anthropic only. Overridden by an explicit per-request level, and the <code>cache.blockOnRejection</code> setting selects <code>error</code> through the same resolver. See <a href="./internal/prompt-caching.html">prompt caching</a>.</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="3-web-search-subsystem"><a class="header" href="#3-web-search-subsystem">3) Web search subsystem</a></h2>
+<h3 id="search-provider-credentials"><a class="header" href="#search-provider-credentials">Search provider credentials</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variable</th><th>Used by</th></tr>
+</thead>
+<tbody>
+<tr><td><code>EXA_API_KEY</code></td><td>Exa search provider and Exa MCP tools</td></tr>
+<tr><td><code>BRAVE_API_KEY</code></td><td>Brave search provider</td></tr>
+<tr><td><code>PERPLEXITY_API_KEY</code></td><td>Perplexity search provider API-key mode</td></tr>
+<tr><td><code>PERPLEXITY_COOKIES</code></td><td>Perplexity cookie-auth search mode</td></tr>
+<tr><td><code>TAVILY_API_KEY</code></td><td>Tavily search provider</td></tr>
+<tr><td><code>ZAI_API_KEY</code></td><td>z.ai search provider (also checks stored OAuth in <code>agent.db</code>)</td></tr>
+<tr><td><code>OPENAI_API_KEY</code> / Codex OAuth in DB</td><td>Codex search provider availability/auth</td></tr>
+<tr><td><code>VEYYON_CODEX_WEB_SEARCH_MODEL</code></td><td>Codex search provider model override</td></tr>
+<tr><td><code>MOONSHOT_SEARCH_API_KEY</code> / <code>KIMI_SEARCH_API_KEY</code></td><td>Kimi/Moonshot search provider env auth</td></tr>
+<tr><td><code>MOONSHOT_SEARCH_BASE_URL</code> / <code>KIMI_SEARCH_BASE_URL</code></td><td>Kimi/Moonshot search endpoint override</td></tr>
+<tr><td><code>KAGI_API_KEY</code></td><td>Kagi search provider</td></tr>
+<tr><td><code>JINA_API_KEY</code></td><td>Jina search provider</td></tr>
+<tr><td><code>PARALLEL_API_KEY</code></td><td>Parallel search provider</td></tr>
+<tr><td><code>SEARXNG_ENDPOINT</code>, <code>SEARXNG_TOKEN</code></td><td>SearXNG endpoint and optional bearer token</td></tr>
+<tr><td><code>SEARXNG_BASIC_USERNAME</code>, <code>SEARXNG_BASIC_PASSWORD</code></td><td>SearXNG HTTP Basic Auth credentials</td></tr>
+</tbody>
+</table>
+</div>
+<p>SearXNG also reads the equivalent <code>searxng.endpoint</code>, <code>searxng.token</code>, <code>searxng.basicUsername</code>, and <code>searxng.basicPassword</code> settings from <code>~/.veyyon/profiles/default/agent/config.yml</code>; environment variables are fallbacks.</p>
+<h3 id="anthropic-web-search-auth-chain"><a class="header" href="#anthropic-web-search-auth-chain">Anthropic web search auth chain</a></h3>
+<p><code>searchAnthropic()</code> resolves credentials in this order:</p>
+<ol>
+<li><code>ANTHROPIC_SEARCH_API_KEY</code></li>
+<li><code>authStorage.getApiKey("anthropic")</code> fallback credentials (runtime/config overrides, stored API-key credentials, stored OAuth credentials, then generic Anthropic env fallback: <code>ANTHROPIC_FOUNDRY_API_KEY</code> in Foundry mode, otherwise <code>ANTHROPIC_OAUTH_TOKEN</code> / <code>ANTHROPIC_API_KEY</code>)</li>
+</ol>
+<p>For either credential path, base URL resolution is:</p>
+<ol>
+<li><code>ANTHROPIC_SEARCH_BASE_URL</code></li>
+<li><code>FOUNDRY_BASE_URL</code> when <code>CLAUDE_CODE_USE_FOUNDRY</code> is enabled</li>
+<li><code>ANTHROPIC_BASE_URL</code></li>
+<li><code>https://api.anthropic.com</code></li>
+</ol>
+<p>Related vars:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variable</th><th>Default / behavior</th></tr>
+</thead>
+<tbody>
+<tr><td><code>ANTHROPIC_SEARCH_API_KEY</code></td><td>API key used exclusively for the Anthropic web search provider. Highest-priority search auth; overrides <code>ANTHROPIC_API_KEY</code> / OAuth / Foundry for search calls without affecting chat completions.</td></tr>
+<tr><td><code>ANTHROPIC_SEARCH_BASE_URL</code></td><td>Base URL used exclusively for the Anthropic web search provider. Applied to either <code>ANTHROPIC_SEARCH_API_KEY</code> or fallback Anthropic credentials; overrides <code>ANTHROPIC_BASE_URL</code> (and <code>FOUNDRY_BASE_URL</code> in Foundry mode) for search calls.</td></tr>
+<tr><td><code>ANTHROPIC_SEARCH_MODEL</code></td><td>Search model override. Defaults to <code>claude-haiku-4-5</code>.</td></tr>
+<tr><td><code>ANTHROPIC_BASE_URL</code></td><td>Generic fallback base URL for Anthropic requests when no search-specific base URL is set.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Use <code>ANTHROPIC_SEARCH_BASE_URL</code> (optionally with <code>ANTHROPIC_SEARCH_API_KEY</code>) to keep chat routed through an enterprise gateway (<code>ANTHROPIC_BASE_URL</code> or <code>CLAUDE_CODE_USE_FOUNDRY=true</code>) while pointing web search at a direct Anthropic endpoint, or vice versa.</p>
+<h3 id="perplexity-oauth-flow-behavior-flag"><a class="header" href="#perplexity-oauth-flow-behavior-flag">Perplexity OAuth flow behavior flag</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variable</th><th>Behavior</th></tr>
+</thead>
+<tbody>
+<tr><td><code>VEYYON_AUTH_NO_BORROW</code></td><td>If set, disables macOS native-app token borrowing path in Perplexity login flow</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="4-python-tooling-and-kernel-runtime"><a class="header" href="#4-python-tooling-and-kernel-runtime">4) Python tooling and kernel runtime</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variable</th><th>Default / behavior</th></tr>
+</thead>
+<tbody>
+<tr><td><code>VEYYON_PY</code></td><td>Boolean-like override for the Python eval backend: truthy (<code>1</code>/<code>true</code>/<code>yes</code>/<code>on</code>) enables, any other value disables; unset defers to the <code>eval.py</code> setting (default enabled)</td></tr>
+<tr><td><code>VEYYON_JS</code></td><td>Same boolean-like override for the JavaScript eval backend; unset defers to the <code>eval.js</code> setting (default enabled)</td></tr>
+<tr><td><code>VEYYON_PYTHON_SKIP_CHECK</code></td><td>If <code>1</code>, skips Python interpreter availability checks (subprocess runner still starts on demand)</td></tr>
+<tr><td><code>VEYYON_PYTHON_INTEGRATION</code></td><td>If <code>1</code>, opts gated integration tests in (e.g. <code>python-runner-integration.test.ts</code>) into running against real Python</td></tr>
+<tr><td><code>VEYYON_PYTHON_IPC_TRACE</code></td><td>If <code>1</code>, logs NDJSON frames exchanged with the Python runner subprocess</td></tr>
+<tr><td><code>VEYYON_RUBY_IPC_TRACE</code></td><td>Same, for the Ruby runner subprocess</td></tr>
+<tr><td><code>VEYYON_JULIA_IPC_TRACE</code></td><td>Same, for the Julia runner subprocess</td></tr>
+<tr><td><code>VIRTUAL_ENV</code></td><td>Highest-priority venv path for Python runtime resolution</td></tr>
+</tbody>
+</table>
+</div>
+<p>Extra conditional behavior:</p>
+<ul>
+<li>If <code>BUN_ENV=test</code> or <code>NODE_ENV=test</code>, Python availability checks are treated as OK and warming is skipped.</li>
+<li>Python env filtering denies common API keys and allows safe base vars + <code>LC_</code>, <code>XDG_</code>, <code>VEYYON_</code> prefixes.</li>
+<li>Every eval kernel names its IPC trace variable <code>VEYYON_&lt;LANGUAGE&gt;_IPC_TRACE</code>, with the language spelled out
+in full (<code>PYTHON</code>, <code>RUBY</code>, <code>JULIA</code>), not abbreviated the way the source directories are. A language added
+later follows the same convention: it comes from one helper in <code>packages/coding-agent/src/eval/kernel-base.ts</code>
+rather than from each kernel formatting its own name.</li>
+</ul>
+<hr>
+<h2 id="5-agentruntime-behavior-toggles"><a class="header" href="#5-agentruntime-behavior-toggles">5) Agent/runtime behavior toggles</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variable</th><th>Default / behavior</th></tr>
+</thead>
+<tbody>
+<tr><td><code>VEYYON_SMOL_MODEL</code></td><td>Ephemeral model-role override for <code>smol</code> (CLI <code>--smol</code> takes precedence)</td></tr>
+<tr><td><code>VEYYON_SLOW_MODEL</code></td><td>Ephemeral model-role override for <code>slow</code> (CLI <code>--slow</code> takes precedence)</td></tr>
+<tr><td><code>VEYYON_PLAN_MODEL</code></td><td>Ephemeral model-role override for <code>plan</code> (CLI <code>--plan</code> takes precedence)</td></tr>
+<tr><td><code>VEYYON_NO_TITLE</code></td><td>If set (any non-empty value), disables auto session title generation on first user message</td></tr>
+<tr><td><code>VEYYON_SKIP_SETUP</code></td><td>If set to any value other than empty/<code>0</code>/<code>false</code>/<code>no</code> (case-insensitive), skips the first-run setup wizard (no setup scenes are shown).</td></tr>
+<tr><td><code>VEYYON_TINY_DEVICE</code></td><td>ONNX execution provider for local tiny models; overrides the <code>providers.tinyModelDevice</code> setting (default: CPU; supports <code>cpu</code>, <code>gpu</code>, <code>metal</code>/<code>webgpu</code>, <code>auto</code>, <code>cuda</code>, <code>dml</code>, <code>coreml</code>, <code>wasm</code>, <code>webnn</code>, <code>webnn-gpu</code>, <code>webnn-cpu</code>, <code>webnn-npu</code>)</td></tr>
+<tr><td><code>VEYYON_TINY_DTYPE</code></td><td>ONNX quantization/precision for local tiny models; overrides the <code>providers.tinyModelDtype</code> setting (default: each model’s shipped dtype, currently <code>q4</code>; supports <code>auto</code>, <code>fp32</code>, <code>fp16</code>, <code>q8</code>, <code>int8</code>, <code>uint8</code>, <code>q4</code>, <code>bnb4</code>, <code>q4f16</code>, <code>q2</code>, <code>q2f16</code>, <code>q1</code>, <code>q1f16</code>)</td></tr>
+<tr><td><code>VEYYON_NO_INTERLEAVED_THINKING</code></td><td>If <code>1</code>, disables Anthropic interleaved thinking budget behavior and uses output-token inflation for older thinking mode</td></tr>
+<tr><td><code>VEYYON_NO_INTENT</code></td><td>If <code>1</code>, tool schemas ship without the injected <code>i</code> intent parameter, so the model stops stating what each call is for. Tools that already opt out are unaffected</td></tr>
+<tr><td><code>NULL_PROMPT</code></td><td>If <code>true</code>, system prompt builder returns empty string</td></tr>
+<tr><td><code>VEYYON_BLOCKED_AGENT</code></td><td>Self-recursion prevention: read once from the process env when the <code>task</code> tool is constructed, and any spawn whose agent type equals it is refused with <code>Cannot spawn &lt;name&gt; agent from within itself (recursion prevention).</code> The comparison is against the name the caller wrote, before retired-name resolution, so it must be spelled the way the spawn spells it (<code>deep</code>, not the retired <code>task</code>, unless the caller itself writes <code>task</code>). Nothing in the product sets it; it is a harness/debug knob.</td></tr>
+<tr><td><code>VEYYON_SUBPROCESS_CMD</code></td><td>Overrides subagent spawn command (<code>veyyon</code> / <code>veyyon.cmd</code> resolution bypass)</td></tr>
+<tr><td><code>VEYYON_TASK_MAX_OUTPUT_BYTES</code></td><td>Max captured output bytes per subagent (default <code>500000</code>)</td></tr>
+<tr><td><code>VEYYON_TASK_MAX_OUTPUT_LINES</code></td><td>Max captured output lines per subagent (default <code>5000</code>)</td></tr>
+<tr><td><code>VEYYON_TIMING</code></td><td>If set (any non-empty value), prints a hierarchical timing-span tree to <strong>stderr</strong> via <code>logger.printTimings()</code>. In interactive mode the tree prints once the agent is ready (before the TUI starts); in print mode it prints after the whole prompt batch completes. Print-mode prompts are wrapped in <code>print:prompt:initial</code> / <code>print:prompt:next</code> spans so each user message shows up as its own row. <code>VEYYON_TIMING=x</code> exits the process with code 0 right after printing in interactive mode (use to measure cold startup only). <code>VEYYON_TIMING=full</code> lists every module-load entry instead of just the top N.</td></tr>
+<tr><td><code>VEYYON_DEBUG_STARTUP</code></td><td>If set (any non-empty value), streams one synchronous <code>[startup] &lt;phase&gt;:start</code> / <code>:done</code> marker line to <strong>stderr</strong> as each startup phase begins/ends, including command-module imports (<code>cli:load:&lt;name&gt;</code>) and the native addon extraction/<code>dlopen</code> (<code>native:*</code>). Unlike <code>VEYYON_TIMING</code> (which prints only once startup completes), the markers survive a hard hang: the last line on stderr names the phase the process is stuck in. Combine with <code>VEYYON_TIMING</code> freely; markers and the span tree share the same phase names.</td></tr>
+<tr><td><code>VEYYON_PACKAGE_DIR</code></td><td>Overrides package asset base dir resolution (docs, examples, and CHANGELOG assets)</td></tr>
+<tr><td><code>VEYYON_REPAIR_DISABLE</code></td><td>If <code>1</code>/<code>true</code>/<code>yes</code>, disables malformed-tool-call schema repair (calls fail instead of being repaired)</td></tr>
+<tr><td><code>VEYYON_DISABLE_LSPMUX</code></td><td>If <code>1</code>, disables lspmux detection/integration and forces direct LSP server spawning</td></tr>
+<tr><td><code>VEYYON_RPC_EMIT_TITLE</code></td><td>Boolean-like flag enabling title events in RPC mode</td></tr>
+<tr><td><code>SMITHERY_URL</code></td><td>Smithery web URL override (default <code>https://smithery.ai</code>)</td></tr>
+<tr><td><code>SMITHERY_API_URL</code></td><td>Smithery API base URL override (default <code>https://api.smithery.ai</code>)</td></tr>
+<tr><td><code>SMITHERY_API_KEY</code></td><td>Smithery API key for managed MCP auth lookup</td></tr>
+<tr><td><code>PUPPETEER_EXECUTABLE_PATH</code></td><td>Browser tool Chromium executable override</td></tr>
+<tr><td><code>LITELLM_BASE_URL</code></td><td>LiteLLM proxy base URL fallback (<code>http://localhost:4000/v1</code> if unset); explicit <code>providers.litellm.baseUrl</code> / <code>models.yml</code> config wins</td></tr>
+<tr><td><code>LM_STUDIO_BASE_URL</code></td><td>Default implicit LM Studio discovery base URL override (<code>http://127.0.0.1:1234/v1</code> if unset)</td></tr>
+<tr><td><code>OLLAMA_BASE_URL</code></td><td>Default implicit Ollama discovery base URL override (<code>OLLAMA_HOST</code> if unset, then <code>http://127.0.0.1:11434</code>)</td></tr>
+<tr><td><code>OLLAMA_HOST</code></td><td>Ollama host used for implicit Ollama discovery when <code>OLLAMA_BASE_URL</code> is unset; accepts Ollama-style values such as <code>127.0.0.1:11434</code> or <code>http://host:11434</code></td></tr>
+<tr><td><code>OLLAMA_CONTEXT_LENGTH</code></td><td>Positive integer context-window override for implicit Ollama discovery; affects Veyyon context budgeting only and does not change Ollama’s runtime <code>num_ctx</code></td></tr>
+<tr><td><code>LLAMA_CPP_BASE_URL</code></td><td>Default implicit Llama.cpp discovery base URL override (<code>http://127.0.0.1:8080</code> if unset)</td></tr>
+<tr><td><code>VEYYON_EDIT_VARIANT</code></td><td>Forces edit tool variant when valid (<code>patch</code>, <code>replace</code>, <code>hashline</code>, <code>apply_patch</code>)</td></tr>
+<tr><td><code>VEYYON_STRICT_EDIT_MODE</code></td><td>If <code>1</code>, suppresses the built-in per-model fallback that turns a <code>hashline</code> default into another mode for models known to do badly with it (today: any model id containing <code>kimi</code> falls back to <code>replace</code>). It does not affect the two overrides that outrank <code>edit.mode</code> anyway: an <code>edit.modelVariants</code> pattern that matches the active model wins first, then <code>VEYYON_EDIT_VARIANT</code>, then <code>edit.mode</code></td></tr>
+<tr><td><code>VEYYON_FORCE_IMAGE_PROTOCOL</code></td><td>Forces supported image protocol (<code>kitty</code>, <code>iterm2</code>/<code>iterm</code>, <code>sixel</code>, <code>none</code>) where used</td></tr>
+<tr><td><code>VEYYON_ALLOW_SIXEL_PASSTHROUGH</code></td><td>Allows SIXEL passthrough when <code>VEYYON_FORCE_IMAGE_PROTOCOL=sixel</code></td></tr>
+<tr><td><code>VEYYON_NO_WEBP</code></td><td>If <code>1</code> or <code>true</code> (case-insensitive), excludes WebP from image encoding so images are sent as PNG/JPEG only (llama.cpp/Ollama STB decoders cannot read WebP). Read per call, so it takes effect at runtime.</td></tr>
+<tr><td><code>VEYYON_NO_PTY</code></td><td>If <code>1</code>, disables interactive PTY path for bash tool</td></tr>
+<tr><td><code>VEYYON_DIALECT</code></td><td>Force-enables owned (in-band) tool calling with the named dialect when no configured dialect wins: <code>glm</code>, <code>hermes</code>, <code>kimi</code>, <code>xml</code>, <code>anthropic</code>, <code>deepseek</code>, <code>harmony</code>, <code>qwen3</code>, <code>gemini</code>, <code>gemma</code>, <code>minimax</code>, <code>pi-native</code>; <code>1</code>/<code>true</code> mean <code>glm</code>. Unrecognized values are ignored. Same set as the <code>tools.format</code> setting.</td></tr>
+<tr><td><code>VEYYON_HARMONY_DEBUG</code></td><td>Debug. If <code>1</code>, includes the full removed text as <code>removedBlob</code> in each harmony-leak audit event (the <code>onHarmonyLeak</code> hook); otherwise only a redacted length/hash/preview is emitted. Use to inspect what harmony-leak scrubbing removed.</td></tr>
+<tr><td><code>VEYYON_MCP_TIMEOUT_MS</code></td><td>Overrides MCP client request timeout (ms) for every MCP server. <code>0</code> disables client-side timeouts (<code>AbortSignal</code> never fires). Invalid (negative or non-numeric) values are ignored with a warning and the per-server config or default (<code>30000</code>) is used</td></tr>
+<tr><td><code>VEYYON_PIPED_STDIN_WAIT_MS</code></td><td>How long <code>veyyon -p "prompt"</code> waits for the FIRST byte of piped stdin when the prompt is already on the command line (default <code>10000</code>). It bounds only the wait before anything arrives, so a slow or large piped document is still read in full; <code>0</code> waits indefinitely, which is what happens when the pipe is your only input. It exists because a parent process that spawns Veyyon with an inherited pipe it never writes to and never closes sends no EOF, and the run would otherwise block forever.</td></tr>
+<tr><td><code>VEYYON_STACK</code></td><td>If <code>1</code>, fatal CLI errors print the full inspected error (stack + source context) instead of the default concise <code>message + cause chain</code> report</td></tr>
+<tr><td><code>VEYYON_EDIT_FUZZY</code></td><td><code>true</code>/<code>1</code> or <code>false</code>/<code>0</code> forces fuzzy matching in the edit tool on or off; <code>auto</code> (the default) reads the <code>edit.fuzzyMatch</code> setting. Any other value fails the call</td></tr>
+<tr><td><code>VEYYON_EDIT_FUZZY_THRESHOLD</code></td><td>Similarity floor for fuzzy matching, <code>0</code>-<code>1</code>. <code>auto</code> (the default) reads the <code>edit.fuzzyThreshold</code> setting. A value outside the range, or not a number, fails the call</td></tr>
+<tr><td><code>VEYYON_STREAM_FIRST_EVENT_TIMEOUT_MS</code></td><td>Cross-provider first-event watchdog in ms; <code>0</code> disables it. A per-request <code>streamFirstEventTimeoutMs</code> wins, and OpenAI-family transports prefer <code>VEYYON_OPENAI_STREAM_FIRST_EVENT_TIMEOUT_MS</code>. Default 100000</td></tr>
+<tr><td><code>VEYYON_STREAM_IDLE_TIMEOUT_MS</code></td><td>Cross-provider maximum idle gap between streamed events in ms, applied once the first event has arrived; <code>0</code> disables it. A per-request <code>streamIdleTimeoutMs</code> wins, and <code>VEYYON_OPENAI_STREAM_IDLE_TIMEOUT_MS</code> is the OpenAI-family alias. Default 120000</td></tr>
+<tr><td><code>VEYYON_NO_THINKING_LOOP_GUARD</code></td><td>If <code>1</code>, disables the repeated-thinking-block loop detector for the models it normally guards</td></tr>
+<tr><td><code>VEYYON_MAX_AST_FILES</code></td><td>Positive integer cap on how many files one <code>ast_edit</code> call may rewrite (default <code>1000</code>)</td></tr>
+<tr><td><code>VEYYON_TOKENIZER_ACCURATE</code></td><td>If <code>1</code>, uses the accurate tokenizer instead of the fast estimate. Ignored under <code>NODE_ENV=test</code></td></tr>
+<tr><td><code>VEYYON_REQ_DEBUG</code></td><td>If <code>1</code>, dumps every provider HTTP request and its response stream to <code>rr-session-&lt;n&gt;.json</code> and <code>rr-session-&lt;n&gt;.res.log</code> in the process working directory, mode <code>0600</code>. <strong>The dumps include request headers, so they contain credentials.</strong> A dump that cannot be written is logged and the request proceeds</td></tr>
+<tr><td><code>VEYYON_PROXY</code></td><td>Egress proxy URL for every provider request. <code>VEYYON_PROXY_&lt;PROVIDER&gt;</code> (the provider id uppercased with non-alphanumerics as <code>_</code>, e.g. <code>VEYYON_PROXY_GITHUB_COPILOT</code>) overrides it for one provider. Localhost, RFC1918, link-local and cloud metadata hosts always bypass the proxy, as do <code>NO_PROXY</code>/<code>no_proxy</code> matches</td></tr>
+<tr><td><code>VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS</code></td><td><strong>Benchmark instrumentation, not an operator knob.</strong> A JSON object of section name to replacement text. When set, the benchmark payload becomes the only source of prompt sections and the run logs that the override is active. Invalid JSON fails the build</td></tr>
+<tr><td><code>VEYYON_EVAL_SYSTEM_PROMPT_STATEMENTS</code></td><td>The statement-level counterpart to the section override, same benchmark-only status. See <a href="./internal/system-prompt-architecture.html#the-two-escape-hatches-and-why-they-are-env-vars">system prompt architecture</a></td></tr>
+</tbody>
+</table>
+</div>
+<p><code>VEYYON_NO_PTY</code> is also set internally when CLI <code>--no-pty</code> is used.</p>
+<hr>
+<h2 id="6-storage-and-config-root-paths"><a class="header" href="#6-storage-and-config-root-paths">6) Storage and config root paths</a></h2>
+<p>These are consumed via <code>@veyyon/utils/dirs</code> and affect where coding-agent stores data.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variable</th><th>Default / behavior</th></tr>
+</thead>
+<tbody>
+<tr><td><code>VEYYON_CONFIG_DIR</code></td><td>Config root dirname under home (default <code>.veyyon</code>). A name, not a path: an absolute value is refused at startup.</td></tr>
+<tr><td><code>VEYYON_PROFILE</code></td><td>Activate a named profile (relocates the user base to <code>~/.veyyon/profiles/&lt;name&gt;</code>)</td></tr>
+<tr><td><code>VEYYON_WORKTREE_DIR</code></td><td>Base directory for task-isolation worktrees (default <code>~/.veyyon/profiles/&lt;name&gt;/wt</code>)</td></tr>
+<tr><td><code>VEYYON_GITHUB_CACHE_DB</code></td><td>Path override for the GitHub tool cache database</td></tr>
+<tr><td><code>VEYYON_AUTORESEARCH_DB_DIR</code></td><td>Directory override for the autoresearch database</td></tr>
+<tr><td><code>VEYYON_CODING_AGENT_DIR</code></td><td>Full override for the agent directory (default <code>~/&lt;config dir&gt;/profiles/&lt;active-or-default&gt;/agent</code>)</td></tr>
+<tr><td><code>PWD</code></td><td>Used when matching canonical current working directory in path helpers</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="7-shelltool-execution-environment"><a class="header" href="#7-shelltool-execution-environment">7) Shell/tool execution environment</a></h2>
+<p>(From <code>packages/utils/src/procmgr.ts</code> and coding-agent bash tool integration.)</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variable</th><th>Behavior</th></tr>
+</thead>
+<tbody>
+<tr><td><code>VEYYON_BASH_NO_CI</code></td><td>Suppresses automatic <code>CI=true</code> injection into spawned shell env</td></tr>
+<tr><td><code>CLAUDE_BASH_NO_CI</code></td><td>Legacy alias fallback for <code>VEYYON_BASH_NO_CI</code></td></tr>
+<tr><td><code>VEYYON_BASH_NO_LOGIN</code></td><td>Disables login-shell mode; shell args become <code>['-c']</code> instead of <code>['-l','-c']</code></td></tr>
+<tr><td><code>CLAUDE_BASH_NO_LOGIN</code></td><td>Legacy alias fallback for <code>VEYYON_BASH_NO_LOGIN</code></td></tr>
+<tr><td><code>VEYYON_SHELL_PREFIX</code></td><td>Optional command prefix wrapper</td></tr>
+<tr><td><code>CLAUDE_CODE_SHELL_PREFIX</code></td><td>Legacy alias fallback for <code>VEYYON_SHELL_PREFIX</code></td></tr>
+<tr><td><code>VISUAL</code></td><td>Preferred external editor command</td></tr>
+<tr><td><code>EDITOR</code></td><td>Fallback external editor command</td></tr>
+</tbody>
+</table>
+</div>
+<p>Current implementation: <code>VEYYON_BASH_NO_LOGIN</code>/<code>CLAUDE_BASH_NO_LOGIN</code> are active; when either is set, <code>getShellArgs()</code> returns <code>['-c']</code>.</p>
+<hr>
+<h2 id="8-uithemesession-detection-auto-detected-env"><a class="header" href="#8-uithemesession-detection-auto-detected-env">8) UI/theme/session detection (auto-detected env)</a></h2>
+<p>These are read as runtime signals; they are usually set by the terminal/OS rather than manually configured.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variable</th><th>Used for</th></tr>
+</thead>
+<tbody>
+<tr><td><code>COLORTERM</code>, <code>TERM</code>, <code>WT_SESSION</code></td><td>Color capability detection (theme color mode)</td></tr>
+<tr><td><code>COLORFGBG</code></td><td>Terminal background light/dark auto-detection</td></tr>
+<tr><td><code>TERM_PROGRAM</code>, <code>TERM_PROGRAM_VERSION</code>, <code>TERMINAL_EMULATOR</code></td><td>Terminal identity in system prompt/context</td></tr>
+<tr><td><code>TMUX_PANE</code>, <code>CMUX_SURFACE_ID</code>, <code>KITTY_WINDOW_ID</code>, <code>TERM_SESSION_ID</code>, <code>WT_SESSION</code></td><td>Stable per-terminal session breadcrumb IDs</td></tr>
+<tr><td><code>SHELL</code>, <code>ComSpec</code>, <code>TERM_PROGRAM</code>, <code>TERM</code></td><td>System info diagnostics</td></tr>
+<tr><td><code>APPDATA</code>, <code>XDG_CONFIG_HOME</code></td><td>lspmux config path resolution</td></tr>
+<tr><td><code>HOME</code></td><td>Path shortening in MCP command UI</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="9-tui-runtime-flags-shared-package-affects-coding-agent-ux"><a class="header" href="#9-tui-runtime-flags-shared-package-affects-coding-agent-ux">9) TUI runtime flags (shared package, affects coding-agent UX)</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variable</th><th>Behavior</th></tr>
+</thead>
+<tbody>
+<tr><td><code>VEYYON_NOTIFICATIONS</code></td><td><code>off</code> / <code>0</code> / <code>false</code> suppress desktop notifications</td></tr>
+<tr><td><code>VEYYON_TUI_WRITE_LOG</code></td><td>If set, logs TUI writes to file</td></tr>
+<tr><td><code>VEYYON_HARDWARE_CURSOR</code></td><td>If <code>1</code>, enables hardware cursor mode</td></tr>
+<tr><td><code>VEYYON_NO_SYNC_OUTPUT</code></td><td>If set (any non-empty value), disables DEC 2026 synchronized-output wrappers while keeping TUI autowrap guards</td></tr>
+<tr><td><code>VEYYON_TUI_SYNC_OUTPUT</code></td><td><code>0</code> disables synchronized output, <code>1</code> forces it on. It shares one override tier with <code>VEYYON_NO_SYNC_OUTPUT</code> and <code>VEYYON_FORCE_SYNC_OUTPUT</code>, and an opt-out always beats a force-on. With no override the default comes from <code>TERM_FEATURES</code>, <code>WT_SESSION</code>, a terminal allowlist, and then a runtime DECRQM probe</td></tr>
+<tr><td><code>VEYYON_FORCE_SYNC_OUTPUT</code></td><td><code>1</code> forces synchronized output on, unless an opt-out is also set</td></tr>
+<tr><td><code>VEYYON_TUI_SCROLL_TRANSPORT</code></td><td><code>alt-arrows</code> releases the mouse grab and moves the transcript to the alternate screen with Alternate Scroll Mode, so the terminal keeps native selection and sends wheel ticks as cursor keys. Any other value keeps the default <code>mouse</code> transport</td></tr>
+<tr><td><code>VEYYON_NO_DECCARA</code></td><td>If set (truthy), disables Kitty DECCARA rectangular-SGR background fills (forces padded-string rendering)</td></tr>
+<tr><td><code>VEYYON_DEBUG_REDRAW</code></td><td>If <code>1</code>, enables redraw debug logging</td></tr>
+<tr><td><code>VEYYON_FORCE_IMAGE_PROTOCOL</code></td><td>Forces terminal image protocol detection (<code>kitty</code>, <code>iterm2</code>/<code>iterm</code>, <code>sixel</code>, <code>none</code>)</td></tr>
+<tr><td><code>VEYYON_TUI_RESIZE_IN_PLACE</code></td><td><code>1</code>/<code>true</code> force in-place resize (no alt-screen borrow, no ED3 rewrap); <code>0</code>/<code>false</code> force the alt-screen fast path. Default-on for Warp, which re-reports its size on alt-screen toggles</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="10-commit-generation-controls"><a class="header" href="#10-commit-generation-controls">10) Commit generation controls</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variable</th><th>Behavior</th></tr>
+</thead>
+<tbody>
+<tr><td><code>VEYYON_COMMIT_TEST_FALLBACK</code></td><td>If <code>true</code> (case-insensitive), force commit fallback generation path</td></tr>
+<tr><td><code>VEYYON_COMMIT_NO_FALLBACK</code></td><td>If <code>true</code>, disables fallback when agent returns no proposal</td></tr>
+<tr><td><code>VEYYON_COMMIT_MAP_REDUCE</code></td><td>If <code>false</code>, disables map-reduce commit analysis path</td></tr>
+<tr><td><code>DEBUG</code></td><td>If set, commit agent error stack traces are printed</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="security-sensitive-variables"><a class="header" href="#security-sensitive-variables">Security-sensitive variables</a></h2>
+<p>Treat these as secrets; do not log or commit them:</p>
+<ul>
+<li>Provider/API keys and OAuth/bearer credentials (all <code>*_API_KEY</code>, <code>*_TOKEN</code>, OAuth access/refresh tokens)</li>
+<li>Cloud credentials (<code>AWS_*</code>, <code>GOOGLE_APPLICATION_CREDENTIALS</code> path may expose service-account material)</li>
+<li>Search/provider auth vars (<code>EXA_API_KEY</code>, <code>BRAVE_API_KEY</code>, <code>PERPLEXITY_API_KEY</code>, Anthropic search keys)</li>
+<li>Foundry mTLS material (<code>CLAUDE_CODE_CLIENT_CERT</code>, <code>CLAUDE_CODE_CLIENT_KEY</code>, <code>NODE_EXTRA_CA_CERTS</code> when it points to private CA bundles)</li>
+<li><code>VEYYON_REQ_DEBUG</code> is not a secret itself, but the <code>rr-session-*.json</code> dumps it writes into the working directory record request headers verbatim, so a dump carries whatever credential authenticated the request. Delete the files or keep them out of the repository</li>
+</ul>
+<p>Python runtime also explicitly strips many common key vars before spawning kernel subprocesses (<code>packages/coding-agent/src/eval/py/runtime.ts</code>).</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../reference/environment.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="../reference/settings.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../reference/environment.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="../reference/settings.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr-ef4e11c1.min.js"></script>
+        <script src="../mark-09e88c2c.min.js"></script>
+        <script src="../searcher-c2a407aa.js"></script>
+
+        <script src="../clipboard-1626706a.min.js"></script>
+        <script src="../highlight-abc7f01d.js"></script>
+        <script src="../book-a0b12cfe.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>

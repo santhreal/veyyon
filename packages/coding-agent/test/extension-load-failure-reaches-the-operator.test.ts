@@ -329,7 +329,7 @@ describe("an extensions: entry pointing nowhere is reported", () => {
  *
  * THE BUG. Every hook provider discovers ANY file under `hooks/{pre,post}/`: the native provider
  * takes each directory entry, and the claude and codex providers strip `.sh`/`.bash`/`.zsh`/`.fish`
- * off the tool name, so a shell hook is a shape they explicitly expect. `docs/config-usage.md`
+ * off the tool name, so a shell hook is a shape they explicitly expect. `docs/handbook/src/architecture/config.md`
  * documents the pattern as `hooks/pre/*`, and the plugins page promises "hooks from executable
  * files". But `discoverExtensionPaths` is the only production consumer of `hookCapability`, and it
  * filtered the discovered set down to `.ts`/`.js` and dropped the rest without a word.

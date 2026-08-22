@@ -24,7 +24,7 @@ Then, in your own project:
 bun link @veyyon/agent-core
 ```
 
-See [the SDK guide](../../docs/sdk.md#installation) for the same steps in full.
+See [the SDK guide](../../docs/handbook/src/reference/sdk.md#installation) for the same steps in full.
 
 ## Quick Start
 

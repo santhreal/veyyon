@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-987e4cde.js";
+            window.path_to_searchindex_js = "../searchindex-360535cc.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-13566cf4.js"></script>
+        <script src="../toc-093df7ff.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -207,9 +207,9 @@
 <p>For how sessions are stored and resumed, see <a href="./sessions.html">Sessions</a>.</p>
 <h2 id="model-authentication"><a class="header" href="#model-authentication">Model authentication</a></h2>
 <h3 id="invalid-api-key-or-authentication-failed"><a class="header" href="#invalid-api-key-or-authentication-failed">“Invalid API key” or “Authentication failed”</a></h3>
-<p>The process calls the configured provider endpoint with the configured key. Check env var / auth store / <code>models.yml</code> for that provider, key validity, and scopes. See <a href="./models.html">Models and providers</a>.</p>
+<p>The process calls the configured provider endpoint with the configured key. Check env var / auth store / <code>models.yml</code> for that provider, key validity, and scopes. See <a href="../reference/models-yml.html">Models and providers</a>.</p>
 <h3 id="unsupported-region-or-endpoint-errors"><a class="header" href="#unsupported-region-or-endpoint-errors">“Unsupported region” or endpoint errors</a></h3>
-<p>The base URL you configured must match the provider region and product endpoint. A model id that exists in one region may not exist in another, and the same hostname may host different model catalogs. Verify the endpoint URL in your provider dashboard and compare it with the <code>base_url</code> in your config. <a href="./models.html">Models and providers</a> explains how provider configuration is resolved.</p>
+<p>The base URL you configured must match the provider region and product endpoint. A model id that exists in one region may not exist in another, and the same hostname may host different model catalogs. Verify the endpoint URL in your provider dashboard and compare it with the <code>base_url</code> in your config. <a href="../reference/models-yml.html">Models and providers</a> explains how provider configuration is resolved.</p>
 <h3 id="why-is-my-model-not-listed"><a class="header" href="#why-is-my-model-not-listed">Why is my model not listed?</a></h3>
 <p>Veyyon lists models from a bundled catalog plus live discovery from providers that expose a <code>/models</code> endpoint. If a model is not listed, the provider endpoint may not expose it, or your key may not have access to it. Check the provider catalog and your key scopes first.</p>
 <h2 id="workflow"><a class="header" href="#workflow">Workflow</a></h2>
@@ -224,7 +224,7 @@
 <h2 id="where-to-go-next"><a class="header" href="#where-to-go-next">Where to go next</a></h2>
 <ul>
 <li><a href="./troubleshooting.html">Troubleshooting</a> for the guided diagnostic path.</li>
-<li><a href="./models.html">Models and providers</a> for provider keys, endpoints, and model selection.</li>
+<li><a href="../reference/models-yml.html">Models and providers</a> for provider keys, endpoints, and model selection.</li>
 <li><a href="../features/sandbox.html">Approvals</a> for the approval modes.</li>
 <li><a href="./sessions.html">Sessions</a> for resume, fork, branch, and export.</li>
 </ul>

@@ -1,84 +1,51 @@
 # Veyyon documentation
 
-Documentation is split by audience. Keep the split when adding pages.
+There is one manual: the handbook under [`handbook/`](handbook/). Everything an operator or an
+integrator needs is a page in it, from install to the generated settings table. Built output lands in
+`handbook/book/`, which the website serves.
 
-- **`docs/handbook/`**: the user handbook (mdBook). Start here as an operator: install, quickstart, features, settings, reference. Built output lands in `docs/handbook/book/`.
-- **`docs/*.md`**: user- and integrator-facing reference pages that go deeper than the handbook: per-feature configuration (`settings.md`, `mcp-config.md`, `keybindings.md`, …), authoring guides (`custom-tools.md`, `extensions.md`, `skills.md`), and integration surfaces (`sdk.md`, `rpc.md`).
-- **`docs/tools/`**: per-tool implementation reference, one page per tool, indexed at [`docs/tools/README.md`](tools/README.md).
-- **`docs/skills/`**: authoring skill guides shipped with the repo.
-- **`docs/internal/`**: contributor and implementation docs: architecture notes, runtime internals, native-crate plumbing, porting notes, errata, the operations docs, and the design/brand docs. Start at the grouped index [`docs/internal/README.md`](internal/README.md); incident procedures are in [`docs/internal/runbooks/`](internal/runbooks/). Nothing in here is published to the website or needed to *use* Veyyon; it documents how the code works, ships, and looks for the people changing it. `packages/coding-agent/DEVELOPMENT.md` maps `src/` subsystems to their doc, and [`docs/adr/`](adr/) records the load-bearing decisions.
+Everything else in this directory exists for a reason a reader can check:
 
-## Index of `docs/*.md`
-
-Every page at this level, grouped by what you are trying to do. The handbook covers the
-same ground more gently; these pages are the exhaustive version.
-
-**Configuring a session**
-
-| Page | Covers |
+| Directory | Who reads it |
 | --- | --- |
-| [`settings.md`](settings.md) | Where settings come from, which layers a repository cannot write, and how a value is resolved |
-| [`settings-reference.md`](settings-reference.md) | Every setting in `/settings`, generated from the schema |
-| [`config-usage.md`](config-usage.md) | Which roots are scanned for configuration, in what precedence, and which subsystem reads each one |
-| [`environment-variables.md`](environment-variables.md) | Every environment variable the code reads, with its default and the module that reads it |
-| [`context-files.md`](context-files.md) | The Markdown instruction files discovered before a session starts and injected into the prompt |
-| [`keybindings.md`](keybindings.md) | Default chords and how to remap them |
-| [`theme.md`](theme.md) | Theme schema, loading order, runtime behavior, failure modes |
+| [`handbook/`](handbook/) | Operators and integrators. The manual. One page per topic. |
+| [`tools/`](tools/README.md) | The model, at run time. One page per built-in tool, served by name over `veyyon://`, so a page here is a product surface and not prose about one. |
+| [`internal/`](internal/README.md) | Contributors changing the code: runtime internals, native-crate plumbing, porting notes, operations, brand. Not published, not needed to use Veyyon. |
+| [`adr/`](adr/README.md) | The load-bearing decisions, dated, with the alternative that was rejected. |
+| [`migration/`](migration/) | The three contracts a port has to satisfy: conformance format, hashline, mnemopi. |
 
-**Models and providers**
+## Adding a page
 
-| Page | Covers |
-| --- | --- |
-| [`models.md`](models.md) | `models.yml`: loading, overrides, credential resolution, runtime model choice |
-| [`providers.md`](providers.md) | The backends requests can route to, and what each one needs |
-| [`system-prompt-customization.md`](system-prompt-customization.md) | How the system prompt is assembled and which parts you can change |
-| [`advisor-watchdog.md`](advisor-watchdog.md) | The optional second model that reviews the transcript, and its `WATCHDOG.yml` rules |
-| [`compaction.md`](compaction.md) | Compaction and branch summaries: what keeps a long session usable |
-| [`memory.md`](memory.md) | Autonomous memory: extraction from past sessions and injection into the prompt |
+Add it to the handbook, and add its row to [`handbook/src/SUMMARY.md`](handbook/src/SUMMARY.md). A
+page that is not in `SUMMARY.md` is not built and cannot be reached.
 
-**Tools and execution**
+The handbook is organized by what the reader is doing, and the parts are not interchangeable:
 
-| Page | Covers |
-| --- | --- |
-| [`approval-mode.md`](approval-mode.md) | The two independent inputs to a tool-approval decision |
-| [`custom-tools.md`](custom-tools.md) | Writing a model-callable function that joins the built-in execution pipeline |
-| [`python-repl.md`](python-repl.md) | The Python backend behind the `eval` tool |
-| [`lsp-config.md`](lsp-config.md) | Configuring language servers |
-| [`mcp-config.md`](mcp-config.md) | Adding, editing and validating MCP servers |
-| [`secrets.md`](secrets.md) | Secret obfuscation: keeping credentials out of provider requests |
+- **Everyday use** and **Extend and customize** are guides. They answer "how do I", in order, with
+  the shortest path first.
+- **Reference** is exhaustive. Every setting, every variable, every field of a config file. A
+  reference page is allowed to be long and is not allowed to be selective.
+- **Under the hood** is implementation: what the modules are, what invariant each one holds, and
+  which file to open. It names symbols and paths.
 
-**Extending Veyyon**
+A topic that needs both a guide and a reference gets one page in each part, and they link to each
+other. `features/secrets.md` and `architecture/secrets.md` are that pair; so are
+`using/configuration.md`, `reference/settings.md` and `reference/settings-reference.md`.
 
-| Page | Covers |
-| --- | --- |
-| [`extensions.md`](extensions.md) | Authoring a runtime extension |
-| [`hooks.md`](hooks.md) | The hook subsystem and how the extension runner loads it |
-| [`skills.md`](skills.md) | File-backed capability packs, discovered at startup |
-| [`marketplace.md`](marketplace.md) | Discovering and installing plugins from Git, local paths, or a catalog |
-| [`tui.md`](tui.md) | The TUI contract available to extensions and custom tools |
+One page per topic. Extend the page that owns the topic rather than adding a second one beside it.
 
-**Integrating**
-
-| Page | Covers |
-| --- | --- |
-| [`sdk.md`](sdk.md) | The in-process integration surface |
-| [`rpc.md`](rpc.md) | Newline-delimited JSON protocol over stdio |
-| [`collab.md`](collab.md) | Live session sharing |
-
-**Sessions**
-
-| Page | Covers |
-| --- | --- |
-| [`tree.md`](tree.md) | `/tree`: moving the active leaf inside a session file |
-
-Subdirectory indexes: [`tools/`](tools/README.md), [`internal/`](internal/README.md),
-[`adr/`](adr/README.md). [`skills/`](skills/) holds three authoring guides
-(extensions, hooks, marketplaces) and [`migration/`](migration/) holds the three contracts
-a port has to satisfy (conformance format, hashline, mnemopi).
+A page generated from code says so in its first paragraph and is regenerated in the change that
+alters the code. [`handbook/src/reference/settings-reference.md`](handbook/src/reference/settings-reference.md)
+is rendered from the settings schema by `scripts/gen-settings-reference.ts`, and a test fails when the
+committed file and the generator disagree.
 
 ## Prose that lives outside `docs/`
 
-A handful of first-party pages sit next to the thing they describe rather than under `docs/`, and each one has a reason. The list is exhaustive and `scripts/first-party-docs-are-indexed.test.ts` fails when a page outside `docs/` is not on it, so a new stray doc has to be either moved here or added below with its reason. Prompt text, discovery rules, test fixtures, per-package `README.md` and `CHANGELOG.md`, `.veyyon/` skills and commands, and vendored trees are not prose pages and are not listed.
+A handful of first-party pages sit next to the thing they describe. The list is exhaustive and
+`scripts/first-party-docs-are-indexed.test.ts` fails when a page outside `docs/` is not on it, so a
+new stray doc has to be either moved into the handbook or added below with its reason. Prompt text,
+discovery rules, test fixtures, per-package `README.md` and `CHANGELOG.md`, `.veyyon/` skills and
+commands, and vendored trees are not prose pages and are not listed.
 
 | Page | Why it lives there |
 | --- | --- |
@@ -95,9 +62,5 @@ A handful of first-party pages sit next to the thing they describe rather than u
 | [`scripts/rewrite-system-prompt.style.md`](../scripts/rewrite-system-prompt.style.md), [`scripts/session-stats/audit-prompt.md`](../scripts/session-stats/audit-prompt.md), [`scripts/upstream-port-issue.md`](../scripts/upstream-port-issue.md) | Prompt text a script feeds to a model. Markdown because the model reads markdown, not because a human does. |
 | [`website/blog/argot.md`](../website/blog/argot.md), [`website/blog/secrets.md`](../website/blog/secrets.md) | Published and draft blog posts. Their home is the website's content tree. |
 
-Rules of thumb:
-
-- If a page explains behavior an operator can observe or configure, it belongs at `docs/` top level (or the handbook).
-- If a page explains how a subsystem is implemented, pipelines, lifecycles, binding contracts, migration/porting notes, it belongs in `docs/internal/`.
-- One page per topic. Extend the existing page instead of adding a second one on the same subject.
-- A page generated from code says so at the top and is regenerated in the same change as the code. [`settings-reference.md`](settings-reference.md) is rendered from the settings schema by `scripts/gen-settings-reference.ts`; a test fails when the committed file and the generator disagree. Prefer generating an exhaustive reference over hand-maintaining one, and keep the prose that explains it in the hand-written page next to it.
+Runnable examples are code, not prose: they live in `packages/coding-agent/examples/` beside the
+package they extend.

@@ -1,12 +1,12 @@
 #!/usr/bin/env bun
-// Generates docs/settings-reference.md from SETTINGS_SCHEMA.
+// Generates docs/handbook/src/reference/settings-reference.md from SETTINGS_SCHEMA.
 //
 // Why generated: 201 of the 313 settings that a user can see and change in
 // `/settings` had no documentation anywhere, because the reference table in
-// docs/settings.md is written by hand and nothing failed when a new setting
+// docs/handbook/src/reference/settings.md is written by hand and nothing failed when a new setting
 // shipped undocumented. A hand-written table of 313 rows would drift the week
 // after it was backfilled, so the complete reference has ONE owner — the schema
-// — and this script renders it. docs/settings.md keeps the curated narrative
+// — and this script renders it. docs/handbook/src/reference/settings.md keeps the curated narrative
 // (precedence, merge rules, worked examples) and links here for the full list.
 //
 // Run `bun scripts/gen-settings-reference.ts --write` after changing any `ui`
@@ -30,7 +30,7 @@ import {
 	TAB_METADATA,
 } from "../packages/coding-agent/src/config/settings-schema";
 
-export const REFERENCE_DOC_PATH = "docs/settings-reference.md";
+export const REFERENCE_DOC_PATH = "docs/handbook/src/reference/settings-reference.md";
 
 /** The header every `/settings` table carries; the row parser keys off its first cell. */
 export const UI_TABLE_HEADER = "| Key | Setting | Type | Default | What it does |";
@@ -50,9 +50,18 @@ export function formatDefault(path: SettingPath): string {
 	return keys.length === 0 ? "`{}`" : `\`${JSON.stringify(value)}\``;
 }
 
-/** Escape the cell separator so a description with a pipe cannot break the table. */
+/**
+ * Escape what GFM would read as structure so a cell renders as written.
+ *
+ * A code span protects neither character. GFM splits cells before it parses inline
+ * code, so a default such as the `bashInterceptor.patterns` JSON — which carries
+ * `(cat|head|tail)` — used to render as a dozen stray columns with most of its text
+ * lost, and a placeholder such as `<name>` in a schema description was read as an
+ * HTML tag and dropped, leaving `~/.veyyon/personalities/.md`. `\|` and `\<` are the
+ * escapes, and both render as the literal character.
+ */
 function cell(text: string): string {
-	return text.replaceAll("|", "\\|").replaceAll("\n", " ").trim();
+	return text.replaceAll("|", "\\|").replaceAll("<", "\\<").replaceAll("\n", " ").trim();
 }
 
 function describe(pathId: SettingPath): string {
@@ -94,7 +103,7 @@ function rowsForGroup(paths: SettingPath[], group: string | undefined): Row[] {
 function renderTable(rows: Row[]): string[] {
 	const lines = [UI_TABLE_HEADER, "|---|---|---|---|---|"];
 	for (const row of rows) {
-		lines.push(`| \`${row.path}\` | ${cell(row.label)} | ${row.type} | ${row.default} | ${row.notes} |`);
+		lines.push(`| \`${row.path}\` | ${cell(row.label)} | ${row.type} | ${cell(row.default)} | ${row.notes} |`);
 	}
 	return lines;
 }
@@ -123,7 +132,9 @@ function renderConfigOnlyTable(paths: SettingPath[]): string[] {
 		]
 			.filter(part => part.length > 0)
 			.join(" ");
-		lines.push(`| \`${settingPath}\` | ${getType(settingPath)} | ${formatDefault(settingPath)} | ${cell(notes)} |`);
+		lines.push(
+			`| \`${settingPath}\` | ${getType(settingPath)} | ${cell(formatDefault(settingPath))} | ${cell(notes)} |`,
+		);
 	}
 	return lines;
 }

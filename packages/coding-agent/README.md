@@ -8,7 +8,7 @@ For installation, setup, provider configuration, model roles, slash commands, an
 
 Package-specific references:
 - [CHANGELOG](./CHANGELOG.md)
-- [MCP configuration guide](../../docs/mcp-config.md)
+- [MCP configuration guide](../../docs/handbook/src/reference/mcp-config.md)
 - [MCP runtime lifecycle](../../docs/internal/mcp-runtime-lifecycle.md)
 - [MCP server/tool authoring](../../docs/internal/mcp-server-tool-authoring.md)
 - [DEVELOPMENT](./DEVELOPMENT.md)
@@ -33,6 +33,6 @@ Memory backends are selected via `memory.backend` (Settings → Memory, or the a
    - `HINDSIGHT_RECALL_BUDGET`, `HINDSIGHT_RECALL_MAX_TOKENS`: recall sizing
    - `HINDSIGHT_BANK_MISSION`, `HINDSIGHT_DEBUG`
 
-   The full override list, including recall/retain/reflect timeouts and sizing knobs, is in `packages/coding-agent/src/hindsight/config.ts`; the `hindsight.*` settings keys are in [docs/settings-reference.md](../../docs/settings-reference.md).
+   The full override list, including recall/retain/reflect timeouts and sizing knobs, is in `packages/coding-agent/src/hindsight/config.ts`; the `hindsight.*` settings keys are in [docs/handbook/src/reference/settings-reference.md](../../docs/handbook/src/reference/settings-reference.md).
 
 Switching backends mid-session takes effect on the next system prompt rebuild and the next `/memory` command.

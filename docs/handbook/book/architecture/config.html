@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-987e4cde.js";
+            window.path_to_searchindex_js = "../searchindex-360535cc.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-13566cf4.js"></script>
+        <script src="../toc-093df7ff.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -200,6 +200,8 @@
 layered YAML/JSON from the user agent directories. A working tree never supplies configuration:
 a checked-in <code>.veyyon/config.yml</code> is not read, because a repository is content you may not have
 written.</p>
+<p>Operator guide: <a href="../using/configuration.html">Configuration</a>. Every setting, by name:
+<a href="../reference/settings.html">Settings</a>, <a href="../reference/settings-reference.html">Settings reference</a>.</p>
 <h2 id="responsibility"><a class="header" href="#responsibility">Responsibility</a></h2>
 <ul>
 <li>Resolve config roots (the active profile’s agent dir, plus Claude/Codex/Gemini compatibility paths at user level)</li>
@@ -212,10 +214,270 @@ written.</p>
 <li>Primary user file: <code>~/.veyyon/profiles/default/agent/config.yml</code> (or profile path under <code>~/.veyyon/profiles/</code>)</li>
 <li>CLI: <code>veyyon config list|get|set</code>, <code>/settings</code>, <code>/reload-plugins</code> (re-read without restart)</li>
 </ul>
-<p>Config loading is part of the harness.</p>
-<p>Operator guide: <a href="../using/configuration.html">Configuration</a>.</p>
-<p>Engineering detail: <a href="../../../config-usage.html"><code>docs/config-usage.md</code></a>,
-<a href="../../../settings.html"><code>docs/settings.md</code></a>.</p>
+<h2 id="how-configuration-resolves"><a class="header" href="#how-configuration-resolves">How configuration resolves</a></h2>
+<p>Roots scanned, precedence, and consumption by settings, skills, hooks, tools, and extensions.</p>
+<h2 id="scope"><a class="header" href="#scope">Scope</a></h2>
+<p>Primary implementation:</p>
+<ul>
+<li><code>packages/coding-agent/src/config.ts</code></li>
+<li><code>packages/coding-agent/src/config/config-file.ts</code> (re-exported from <code>config.ts</code>)</li>
+<li><code>packages/coding-agent/src/config/settings.ts</code></li>
+<li><code>packages/coding-agent/src/config/settings-schema.ts</code></li>
+<li><code>packages/coding-agent/src/discovery/builtin.ts</code></li>
+<li><code>packages/coding-agent/src/discovery/helpers.ts</code></li>
+</ul>
+<p>Key integration points:</p>
+<ul>
+<li><code>packages/coding-agent/src/capability/index.ts</code></li>
+<li><code>packages/coding-agent/src/discovery/index.ts</code></li>
+<li><code>packages/coding-agent/src/extensibility/skills.ts</code></li>
+<li><code>packages/coding-agent/src/extensibility/hooks/loader.ts</code></li>
+<li><code>packages/coding-agent/src/extensibility/custom-tools/loader.ts</code></li>
+<li><code>packages/coding-agent/src/extensibility/extensions/loader.ts</code></li>
+</ul>
+<hr>
+<h2 id="resolution-flow-visual"><a class="header" href="#resolution-flow-visual">Resolution flow (visual)</a></h2>
+<pre><code class="language-text">         Generic helper order (`config.ts`)
+┌───────────────────────────────────────┐
+│ 1) ~/.veyyon/profiles/default/agent, ~/.claude, ...       │
+│ 2) &lt;cwd&gt;/.veyyon, &lt;cwd&gt;/.claude, ...     │
+└───────────────────────────────────────┘
+                    │
+                    ▼
+        capability providers enumerate items
+ (capability discovery reads HOME only: a working tree is
+  untrusted input and contributes nothing but context files;
+  the project bases above survive only in the generic helper
+  for the callers that still use it, such as TITLE_SYSTEM.md)
+                    │
+                    ▼
+      provider priority sort + capability dedup
+                    │
+                    ▼
+          subsystem-specific consumption
+   (settings, skills, hooks, tools, extensions)
+</code></pre>
+<h2 id="1-config-roots-and-source-order"><a class="header" href="#1-config-roots-and-source-order">1) Config roots and source order</a></h2>
+<h2 id="canonical-roots"><a class="header" href="#canonical-roots">Canonical roots</a></h2>
+<p><code>src/config.ts</code> defines a fixed source priority list:</p>
+<ol>
+<li><code>.veyyon</code> (native)</li>
+<li><code>.claude</code></li>
+<li><code>.codex</code></li>
+<li><code>.gemini</code></li>
+</ol>
+<p>User-level bases:</p>
+<ul>
+<li><code>~/.veyyon/profiles/default/agent</code></li>
+<li><code>~/.claude</code></li>
+<li><code>~/.codex</code></li>
+<li><code>~/.gemini</code></li>
+</ul>
+<p>Project-level bases:</p>
+<ul>
+<li><code>&lt;cwd&gt;/.veyyon</code></li>
+<li><code>&lt;cwd&gt;/.claude</code></li>
+<li><code>&lt;cwd&gt;/.codex</code></li>
+<li><code>&lt;cwd&gt;/.gemini</code></li>
+</ul>
+<p>The project bases exist in the generic helper, but capability discovery no longer uses them: a checked-out working tree is untrusted input, so a repository contributes context files (<code>AGENTS.md</code> / <code>CLAUDE.md</code>) and nothing else. The remaining caller of the project bases is <code>TITLE_SYSTEM.md</code> discovery (see <a href="#session-title-prompt-override">Session title prompt override</a>).</p>
+<p><code>CONFIG_DIR_NAME</code> is <code>.veyyon</code> (<code>packages/utils/src/dirs.ts</code>).</p>
+<h2 id="profiles"><a class="header" href="#profiles">Profiles</a></h2>
+<p>A named profile (<code>veyyon --profile &lt;name&gt;</code>, <code>/profile &lt;name&gt;</code> in the TUI, or <code>VEYYON_PROFILE</code>) selects which profile agent dir is active. The default profile is <code>~/.veyyon/profiles/default/agent/</code>; profile <code>&lt;name&gt;</code> is <code>~/.veyyon/profiles/&lt;name&gt;/agent/</code>. Paths written in this document as <code>~/.veyyon/profiles/default/agent/...</code> mean the <strong>active</strong> profile’s agent directory.</p>
+<p>The relocation is uniform across the native provider (<code>builtin.ts</code>) and the generic <code>config.ts</code> helpers. It covers slash commands, sticky rules, prompts, instructions, hooks, tools, extensions, settings, skills, MCP, the top-level <code>RULES.md</code> and <code>AGENTS.md</code> files, <code>PROMPT_SECTIONS/</code>, and runtime state (sessions, blobs, <code>agent.db</code>). A profile sees only its own Veyyon config, never the default profile’s <code>~/.veyyon/profiles/default/agent</code>.</p>
+<p>Keybindings get a one-time seed rather than a live merge: a new named profile copies the default profile’s <code>~/.veyyon/profiles/default/agent/keybindings.*</code> once (at <code>profile new</code>, or on first launch of an older profile that has no keybindings file). After that the profile’s own file is the only one read, later edits to the default profile’s keybindings do not flow into other profiles.</p>
+<p>The other source bases are not profile-scoped and load identically under every profile: the external-tool bases (<code>~/.claude</code>, <code>~/.codex</code>, <code>~/.gemini</code>) belong to those tools. Throughout this document, read <code>~/.veyyon/profiles/default/agent</code> as shorthand for the active profile’s agent directory.</p>
+<h2 id="important-constraint"><a class="header" href="#important-constraint">Important constraint</a></h2>
+<p>The generic helpers in <code>src/config.ts</code> do <strong>not</strong> include <code>.pi</code> in source discovery order.</p>
+<hr>
+<h2 id="2-core-discovery-helpers-srcconfigts"><a class="header" href="#2-core-discovery-helpers-srcconfigts">2) Core discovery helpers (<code>src/config.ts</code>)</a></h2>
+<h2 id="getconfigdirssubpath-options"><a class="header" href="#getconfigdirssubpath-options"><code>getConfigDirs(subpath, options)</code></a></h2>
+<p>Returns ordered entries:</p>
+<ul>
+<li>User-level entries first (by source priority)</li>
+<li>Then project-level entries (by same source priority)</li>
+</ul>
+<p>Options:</p>
+<ul>
+<li><code>user</code> (default <code>true</code>)</li>
+<li><code>project</code> (default <code>true</code>)</li>
+<li><code>cwd</code> (default <code>getProjectDir()</code>)</li>
+<li><code>existingOnly</code> (default <code>false</code>)</li>
+</ul>
+<p>This API is used for directory-based config lookups (commands, hooks, tools, agents, etc.).</p>
+<h2 id="findconfigfilesubpath-options--findconfigfilewithmeta"><a class="header" href="#findconfigfilesubpath-options--findconfigfilewithmeta"><code>findConfigFile(subpath, options)</code> / <code>findConfigFileWithMeta(...)</code></a></h2>
+<p>Searches for the first existing file across ordered bases, returns first match (path-only or path+metadata).</p>
+<h2 id="findallnearestprojectconfigdirssubpath-cwd"><a class="header" href="#findallnearestprojectconfigdirssubpath-cwd"><code>findAllNearestProjectConfigDirs(subpath, cwd)</code></a></h2>
+<p>Walks parent directories upward and returns the <strong>nearest existing directory per source base</strong> (<code>.veyyon</code>, <code>.claude</code>, <code>.codex</code>, <code>.gemini</code>), then sorts results by source priority.</p>
+<p>This helper predates the untrusted-working-tree rule and survives for the callers that legitimately key on the working directory (plugin install scopes). It is not a path for a repository to configure the agent.</p>
+<hr>
+<h2 id="3-file-config-wrapper-configfilet-in-srcconfigconfig-filets-re-exported-from-srcconfigts"><a class="header" href="#3-file-config-wrapper-configfilet-in-srcconfigconfig-filets-re-exported-from-srcconfigts">3) File config wrapper (<code>ConfigFile&lt;T&gt;</code> in <code>src/config/config-file.ts</code>, re-exported from <code>src/config.ts</code>)</a></h2>
+<p><code>ConfigFile&lt;T&gt;</code> is the schema-validated loader for single config files.</p>
+<p>Supported formats:</p>
+<ul>
+<li><code>.yml</code> / <code>.yaml</code></li>
+<li><code>.json</code> / <code>.jsonc</code></li>
+</ul>
+<p>Behavior:</p>
+<ul>
+<li>Validates parsed data against a provided Zod schema.</li>
+<li>Caches load result until <code>invalidate()</code>.</li>
+<li>Returns tri-state result via <code>tryLoad()</code>:
+<ul>
+<li><code>ok</code></li>
+<li><code>not-found</code></li>
+<li><code>error</code> (<code>ConfigError</code> with schema/parse context)</li>
+</ul>
+</li>
+</ul>
+<p>Legacy migration still supported:</p>
+<ul>
+<li>If target path is <code>.yml</code>/<code>.yaml</code>, a sibling <code>.json</code> is auto-migrated once (<code>migrateJsonToYml</code>).</li>
+</ul>
+<hr>
+<h2 id="4-settings-resolution-model-srcconfigsettingsts"><a class="header" href="#4-settings-resolution-model-srcconfigsettingsts">4) Settings resolution model (<code>src/config/settings.ts</code>)</a></h2>
+<p>The runtime settings model is layered:</p>
+<ol>
+<li>Profile settings: <code>~/.veyyon/profiles/&lt;name&gt;/agent/config.yml</code></li>
+<li>CLI config overlays: <code>veyyon --config &lt;path&gt;</code> / repeated <code>--config</code> files, loaded as <code>config.yml</code>-style YAML for this process only</li>
+<li>Runtime overrides: in-memory, non-persistent</li>
+<li>Schema defaults: from <code>SETTINGS_SCHEMA</code></li>
+</ol>
+<p>There is no project layer. A <code>.veyyon/config.yml</code> or <code>.veyyon/settings.json</code> inside a working tree is never read, because a checked-in file would let any cloned repository configure the agent (the measured escalation was <code>tools.approvalMode: yolo</code> shipped in a repo’s <code>settings.json</code>).</p>
+<p>Effective precedence:</p>
+<p><code>defaults &lt;- profile &lt;- CLI config overlays &lt;- overrides</code></p>
+<p>Write behavior:</p>
+<ul>
+<li><code>settings.set(...)</code> writes to the <strong>profile</strong> layer (<code>config.yml</code>) and queues background save.</li>
+</ul>
+<h2 id="migration-behavior-still-active"><a class="header" href="#migration-behavior-still-active">Migration behavior still active</a></h2>
+<p>On startup, if <code>config.yml</code> is missing:</p>
+<ol>
+<li>Migrate from <code>~/.veyyon/profiles/default/agent/settings.json</code> (renamed to <code>.bak</code> on success)</li>
+<li>Merge with legacy DB settings from <code>agent.db</code></li>
+<li>Write merged result to <code>config.yml</code></li>
+</ol>
+<p>Field-level migrations in <code>#migrateRawSettings</code>:</p>
+<ul>
+<li><code>queueMode</code> -&gt; <code>steeringMode</code></li>
+<li><code>ask.timeout</code> milliseconds -&gt; seconds when the old value looks like ms (<code>&gt; 1000</code>). The threshold is a guess, because nothing on disk says which format a file uses, so the rewrite is logged with both values. Every other migration here is a fixed point; this one is not, which is why <code>packages/coding-agent/test/settings-migration-idempotence.test.ts</code> pins the property.</li>
+<li>Legacy flat <code>theme: "..."</code> -&gt; <code>theme.dark/theme.light</code> structure</li>
+</ul>
+<hr>
+<h2 id="5-capabilitydiscovery-integration"><a class="header" href="#5-capabilitydiscovery-integration">5) Capability/discovery integration</a></h2>
+<p>Most non-core config loading flows through the capability registry (<code>src/capability/index.ts</code> + <code>src/discovery/index.ts</code>).</p>
+<h2 id="provider-ordering"><a class="header" href="#provider-ordering">Provider ordering</a></h2>
+<p>Providers are sorted by numeric priority (higher first). Example priorities:</p>
+<ul>
+<li>Native Veyyon (<code>builtin.ts</code>): <code>100</code></li>
+<li>Claude: <code>80</code></li>
+<li>Codex / agents / Claude marketplace: <code>70</code></li>
+<li>Gemini: <code>60</code></li>
+</ul>
+<pre><code class="language-text">Provider precedence (higher wins)
+
+native (.veyyon)          priority 100
+claude                 priority  80
+codex / agents / ...   priority  70
+gemini                 priority  60
+</code></pre>
+<h2 id="dedup-semantics"><a class="header" href="#dedup-semantics">Dedup semantics</a></h2>
+<p>Capabilities define a <code>key(item)</code>:</p>
+<ul>
+<li>same key =&gt; first item wins (higher-priority/earlier-loaded item)</li>
+<li>no key (<code>undefined</code>) =&gt; no dedup, all items retained</li>
+</ul>
+<p>Relevant keys:</p>
+<ul>
+<li>skills: <code>name</code></li>
+<li>tools: <code>name</code></li>
+<li>hooks: <code>${type}:${tool}:${name}</code></li>
+<li>extension modules: <code>name</code></li>
+<li>extensions: <code>name</code></li>
+<li>settings: no dedup (all items preserved)</li>
+</ul>
+<hr>
+<h2 id="6-native-veyyon-provider-behavior-packagescoding-agentsrcdiscoverybuiltints"><a class="header" href="#6-native-veyyon-provider-behavior-packagescoding-agentsrcdiscoverybuiltints">6) Native <code>.veyyon</code> provider behavior (<code>packages/coding-agent/src/discovery/builtin.ts</code>)</a></h2>
+<p>Native provider (<code>id: native</code>) reads native config from one place: the active profile’s agent directory, <code>~/.veyyon/profiles/&lt;name&gt;/agent/...</code>. The provider’s config-dir helper resolves HOME only. <code>&lt;cwd&gt;/.veyyon</code> used to be pushed at level <code>"project"</code>, and six capabilities read it through that one helper (slash commands, rules, prompts, instructions, hooks, tools) plus extension modules and settings; that is gone, because one line in a cloned repo configured the agent. The only thing a repository still contributes is the context-file walk.</p>
+<h3 id="directory-admission-rules"><a class="header" href="#directory-admission-rules">Directory admission rules</a></h3>
+<ul>
+<li>The profile agent directory is used only when it exists and is non-empty.</li>
+<li>Skills are loaded only from the active profile’s agent dir (<code>~/.veyyon/profiles/&lt;name&gt;/agent/skills</code>). Project-local <code>.veyyon/skills</code> directories are deliberately not scanned, so no repository can inject skills into a session by ambient autodiscovery.</li>
+<li><code>AGENTS.md</code> has three scopes: the global cross-profile <code>~/.veyyon/AGENTS.md</code>, the active profile’s first matching instruction file, and the project walk from the working directory to the repository root (one file per directory level: <code>.veyyon/AGENTS.md</code> at the nearest non-empty <code>.veyyon/</code> claims its level, bare <code>AGENTS.md</code> next, bare <code>CLAUDE.md</code> last). <code>RULES.md</code> is the active profile’s file only; a repository’s <code>.veyyon/RULES.md</code> is not read. Persistent system-prompt changes use <code>PROMPT_SECTIONS/</code> under the active profile’s agent dir. See <a href="../models/system-prompt.html"><code>docs/handbook/src/models/system-prompt.md</code></a>.</li>
+</ul>
+<h3 id="scope-specific-loading"><a class="header" href="#scope-specific-loading">Scope-specific loading</a></h3>
+<p>All under the active profile’s agent dir:</p>
+<ul>
+<li>Skills: <code>skills/*/SKILL.md</code></li>
+<li>Slash commands: <code>commands/*.md</code></li>
+<li>Rules: <code>rules/*.{md,mdc}</code></li>
+<li>Prompts: <code>prompts/*.md</code></li>
+<li>Instructions: <code>instructions/*.md</code></li>
+<li>Hooks: <code>hooks/pre/*</code>, <code>hooks/post/*</code> are scanned in full, but only <code>.ts</code> and <code>.js</code> entries load; anything else is reported as skipped</li>
+<li>Tools: <code>tools/*.{json,md,ts,js,sh,bash,py}</code> and <code>tools/&lt;name&gt;/index.ts</code></li>
+<li>Extension modules: discovered under <code>extensions/</code> (+ legacy <code>settings.json.extensions</code> string array)</li>
+<li>Extensions: <code>extensions/&lt;name&gt;/gemini-extension.json</code></li>
+<li>Settings: <code>config.yml</code> (plus the one-time <code>settings.json</code> migration)</li>
+</ul>
+<h3 id="project-context-file-walk"><a class="header" href="#project-context-file-walk">Project context-file walk</a></h3>
+<p>The native provider’s only project-scope read is the context-file walk: the nearest non-empty <code>.veyyon/</code> directory’s <code>AGENTS.md</code> claims its own directory level, and every level from the repository root down to the cwd contributes at most one file (<code>.veyyon/AGENTS.md</code>, else bare <code>AGENTS.md</code>, else bare <code>CLAUDE.md</code>).</p>
+<h2 id="7-how-major-subsystems-consume-config"><a class="header" href="#7-how-major-subsystems-consume-config">7) How major subsystems consume config</a></h2>
+<h2 id="settings-subsystem"><a class="header" href="#settings-subsystem">Settings subsystem</a></h2>
+<ul>
+<li><code>Settings.init()</code> loads the profile <code>config.yml</code>, the machine-global bindings, CLI <code>--config</code> overlays, and runtime overrides. Nothing is read from the working tree.</li>
+</ul>
+<h3 id="session-title-prompt-override"><a class="header" href="#session-title-prompt-override">Session title prompt override</a></h3>
+<p>Create <code>TITLE_SYSTEM.md</code> in a supported config base:</p>
+<pre><code class="language-text"># ~/.veyyon/profiles/default/agent/TITLE_SYSTEM.md
+Generate a session name using lowercase `&lt;type&gt;:&lt;primary-objective&gt;`.
+</code></pre>
+<ul>
+<li>Missing <code>TITLE_SYSTEM.md</code> keeps the bundled title prompts.</li>
+<li>Discovery checks project config bases first, including <code>.veyyon/TITLE_SYSTEM.md</code>, then the active profile’s <code>agent/TITLE_SYSTEM.md</code> and the supported external-tool config bases.</li>
+<li>The file replaces only the automatic session-title generation system prompt. The agent’s own base prompt is assembled. Use <code>--system-prompt</code> or <code>--append-system-prompt</code> for a one-run override, or <code>PROMPT_SECTIONS/</code> for persistent section changes.</li>
+<li>The online path asks the title model to wrap the title in <code>&lt;title&gt;...&lt;/title&gt;</code> and parses it leniently from text (a plain sentence, a truncated/unclosed tag, or a stray <code>{"title": "..."}</code> JSON echo all still work). A <code>TITLE_SYSTEM.md</code> override gets the wrap-in-<code>&lt;title&gt;</code> instruction appended after it. The local tiny-title path keeps the <code>&lt;title&gt;...&lt;/title&gt;</code> prefill/stop wrapper and uses this file as its system turn.</li>
+</ul>
+<h2 id="skills-subsystem"><a class="header" href="#skills-subsystem">Skills subsystem</a></h2>
+<ul>
+<li><code>extensibility/skills.ts</code> loads via <code>loadCapability(skillCapability.id, { cwd, providers: profileSkillProviderIds() })</code>.</li>
+<li>The allowlist (<code>native</code>, <code>veyyon-managed</code>, <code>veyyon-plugins</code>) scopes discovery to the active profile; foreign-tool skill providers are never scanned ambiently (they feed the import scan only).</li>
+<li>Applies name-based filters only: <code>disabledExtensions</code>, <code>ignoredSkills</code>, <code>includeSkills</code>. There are no per-source toggles and no custom directories.</li>
+</ul>
+<h2 id="hooks-subsystem"><a class="header" href="#hooks-subsystem">Hooks subsystem</a></h2>
+<ul>
+<li><code>discoverAndLoadHooks()</code> resolves hook paths from hook capability + explicit configured paths.</li>
+<li>Then loads modules via Bun import.</li>
+</ul>
+<h2 id="tools-subsystem"><a class="header" href="#tools-subsystem">Tools subsystem</a></h2>
+<ul>
+<li><code>discoverAndLoadCustomTools()</code> resolves tool paths from tool capability + plugin tool paths + explicit configured paths.</li>
+<li>Declarative <code>.md/.json</code> tool files are metadata only; executable loading expects code modules.</li>
+</ul>
+<h2 id="extensions-subsystem"><a class="header" href="#extensions-subsystem">Extensions subsystem</a></h2>
+<ul>
+<li><code>discoverAndLoadExtensions()</code> resolves extension modules from extension-module capability plus explicit paths.</li>
+<li>Current implementation intentionally keeps only capability items with <code>_source.provider === "native"</code> before loading.</li>
+</ul>
+<hr>
+<h2 id="8-precedence-rules-to-rely-on"><a class="header" href="#8-precedence-rules-to-rely-on">8) Precedence rules to rely on</a></h2>
+<p>Use this mental model:</p>
+<ol>
+<li>Source directory ordering from <code>config.ts</code> determines candidate path order.</li>
+<li>Capability provider priority determines cross-provider precedence.</li>
+<li>Capability key dedup determines collision behavior (first wins for keyed capabilities).</li>
+<li>Subsystem-specific merge logic can further change effective precedence (especially settings).</li>
+</ol>
+<h3 id="settings-specific-caveat"><a class="header" href="#settings-specific-caveat">Settings-specific caveat</a></h3>
+<p>The settings layers deep-merge in a fixed order (profile, then <code>--config</code> overlays, then runtime overrides). Because merge applies later layer values over earlier values, an overlay’s array replaces the profile array rather than appending to it.</p>
+<hr>
+<h2 id="9-legacycompatibility-behaviors-still-present"><a class="header" href="#9-legacycompatibility-behaviors-still-present">9) Legacy/compatibility behaviors still present</a></h2>
+<ul>
+<li><code>ConfigFile</code> JSON -&gt; YAML migration for YAML-targeted files.</li>
+<li>Settings migration from <code>settings.json</code> and <code>agent.db</code> to <code>config.yml</code>.</li>
+<li>Settings key migrations include <code>queueMode</code>, <code>ask.timeout</code>, flat <code>theme</code>, <code>task.isolation.enabled</code>, legacy <code>task.isolation.mode</code> values, the whole <code>task.*</code> group plus <code>modelRoles.task</code> moving to <code>subagent.*</code>, removed edit modes, <code>statusLine.plan_mode</code>, <code>memories.enabled</code>, and hindsight scoping/name fields.</li>
+<li>The removed per-source skill toggles (<code>skills.enableCodexUser</code>, <code>skills.enableClaudeUser</code>, <code>skills.enableClaudeProject</code>, <code>skills.enablePiUser</code>, <code>skills.enablePiProject</code>, <code>skills.enableAgentsUser</code>, <code>skills.enableAgentsProject</code>) and <code>skills.customDirectories</code> are no longer read. Skills load only from the active profile. A stale key in an old <code>config.yml</code> is ignored, not an error.</li>
+</ul>
+<p>If these compatibility paths are removed in code, update this document immediately; several runtime behaviors still depend on them today.</p>
 
                     </main>
 

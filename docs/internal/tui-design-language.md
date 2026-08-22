@@ -60,7 +60,7 @@ Motion in a gauge follows the spinner's contract, motion means the model is work
 
 Locked by `status-line-context-bar.test.ts` (bans any glyph outside `▰▱` across every ratio, level, live state, and wall time).
 
-Theme JSON is validated via `getThemeJsonSchema()` (`color.ts`, applied on load in `theme.ts`; built-in themes bypass validation). User overrides live under `~/.veyyon/profiles/default/agent/themes/` (`getCustomThemesDir()`). See [Themes and identity](../handbook/src/using/themes.md) and engine doc `docs/theme.md`.
+Theme JSON is validated via `getThemeJsonSchema()` (`color.ts`, applied on load in `theme.ts`; built-in themes bypass validation). User overrides live under `~/.veyyon/profiles/default/agent/themes/` (`getCustomThemesDir()`). See [Themes and identity](../handbook/src/using/themes.md) and engine doc `docs/handbook/src/reference/theme.md`.
 
 ## Layout and width
 

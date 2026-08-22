@@ -80,13 +80,42 @@ function foldPunctuation(text: string): string {
 /** How many words ordinary prose needs before a coincidental match stops being plausible. */
 const RUN_WORDS = 8;
 
-/** Fold source presentation and punctuation into browser-visible word sequences. */
+/**
+ * Drop from SOURCE text what the renderer reads as an HTML tag.
+ *
+ * A tag-shaped token is markup outside a code span and text inside one: `<br>` in a
+ * table cell emits a line break and contributes no word, while `` `<profile>` `` is
+ * printed. Splitting on the backtick and only stripping the even chunks keeps that
+ * distinction, which is the one mdbook itself makes. It runs on the source alone:
+ * `readableText` has already removed the rendered page's tags, so anything
+ * tag-shaped still standing there is text the reader sees.
+ */
+function stripSourceHtmlTags(text: string): string {
+	return text
+		.split("`")
+		.map((chunk, index) =>
+			index % 2 === 1
+				? chunk
+				: // `\<` is an escaped literal, which the renderer prints instead of reading
+					// as markup, so a generated cell's `\<name\>` placeholder stays a word.
+					chunk.replace(/(?<!\\)<\/?[A-Za-z][A-Za-z0-9-]*(?:\s[^>]*)?\/?>/g, " "),
+		)
+		.join(" ");
+}
+
+/**
+ * Fold source presentation and punctuation into browser-visible word sequences.
+ *
+ * A presentation marker becomes a SPACE, matching `readableText`: the browser shows
+ * `` `AgentSession` ``'s closing span and the `'s` after it as two runs of glyphs, so
+ * gluing them into one source word made a page that renders correctly look stale.
+ */
 function visibleMarkdownText(text: string): string {
 	return text
 		.replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
 		.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
-		.replace(/[`*_~{}]/g, "")
-		.replace(/\\([\\`*_[\]{}()#+\-.!|>])/g, "$1")
+		.replace(/[`*_~{}]/g, " ")
+		.replace(/\\([\\`*_[\]{}()#+\-.!|<>])/g, "$1")
 		.replace(/[^\p{L}\p{N}']+/gu, " ")
 		.replace(/\s+/g, " ")
 		.trim();
@@ -117,14 +146,17 @@ export function sourceTextRuns(markdown: string): string[] {
 			.replace(/^#{1,6}\s+/, "")
 			.replace(/^>\s?/, "")
 			.replace(/^(?:[-*+]|\d+\.)\s+/, "");
-		const pieces = trimmed.includes("|")
+		// `\|` is the GFM escape for a literal pipe, so it is content and not a cell
+		// boundary. Splitting on it broke a generated default such as the
+		// `bashInterceptor.patterns` JSON into fragments that match nothing.
+		const pieces = /(?<!\\)\|/.test(trimmed)
 			? withoutPrefix
-					.split("|")
+					.split(/(?<!\\)\|/)
 					.map(part => part.trim())
 					.filter(Boolean)
 			: [withoutPrefix];
 		for (const piece of pieces) {
-			const visible = visibleMarkdownText(piece);
+			const visible = visibleMarkdownText(stripSourceHtmlTags(piece));
 			const words = visible.split(/\s+/).filter(Boolean);
 			if (visible && (structural || words.length >= RUN_WORDS)) runs.push(visible);
 		}
@@ -292,6 +324,40 @@ describe("the source contract extractor follows visible Markdown semantics", () 
 		expect(sourceTextRuns(source)[0]).toContain("project's");
 		expect(foldPunctuation("project’s")).toBe("project's");
 		expect(foldPunctuation("gated on – your personality")).toBe("gated on - your personality");
+	});
+
+	/**
+	 * A tag-shaped token is markup outside a code span and a printed word inside one.
+	 * `<br>` contributed the word "br" to the source side of the comparison, which
+	 * reported a correctly rendered table cell as stale text.
+	 */
+	it("reads a bare tag as markup and a code-spanned one as text", () => {
+		const source = "| `~/.veyyon/profiles/<profile>/AGENTS.md` | First line.<br>Second line. |";
+
+		expect(sourceTextRuns(source)).toEqual(["veyyon profiles profile AGENTS md", "First line Second line"]);
+	});
+
+	/**
+	 * The two GFM escapes a generated table cell needs. `\|` is content, not a cell
+	 * boundary, and `\<` is a literal the renderer prints instead of reading as a tag,
+	 * so a `<name>` placeholder survives to be compared.
+	 */
+	it("keeps an escaped pipe and an escaped angle bracket inside one cell", () => {
+		const source = "| `setting` | `(cat\\|head\\|tail)` | Extend via `~/.veyyon/personalities/\\<name\\>.md`. |";
+
+		expect(sourceTextRuns(source)).toEqual(["setting", "cat head tail", "Extend via veyyon personalities name md"]);
+	});
+
+	/**
+	 * A code span ends a word for the reader, so it ends one here: the rendered page
+	 * shows `AgentSession` and the `'s` after it as separate glyph runs.
+	 */
+	it("ends a word where a code span ends", () => {
+		const source = "Reads of the plan file are added via `AgentSession`'s plan protection at startup.";
+
+		expect(sourceTextRuns(source)).toEqual([
+			"Reads of the plan file are added via AgentSession 's plan protection at startup",
+		]);
 	});
 
 	/**

@@ -5,7 +5,7 @@ sources become available to the agent. Register a server, choose a
 transport, authenticate, and fix the most common connection problems.
 
 For an overview of what MCP does in Veyyon, see [MCP](../features/mcp.md). Engineering reference:
-[`docs/mcp-config.md`](../../../mcp-config.md).
+[`docs/handbook/src/reference/mcp-config.md`](../../../mcp-config.md).
 
 ## Where servers are configured
 

@@ -434,7 +434,7 @@ nothing.
 - Do not add a `cache_control` or `cachePoint` in a new place without counting the budget. On
   Anthropic the budget is 4 including markers you did not place, and going over means
   `enforceCacheControlLimit` silently strips one of yours.
-- Do not iterate a `Map` into a prompt section. `secrets.md` records why the secret inventory is
+- Do not iterate a `Map` into a prompt section. `../handbook/src/architecture/secrets.md` records why the secret inventory is
   sorted: insertion order shuffles between refreshes and invalidates the prefix without changing
   anything the section says.
 - Do not mix TTLs and rely on the request surviving. Longer must precede shorter, and the

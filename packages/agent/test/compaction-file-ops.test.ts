@@ -64,13 +64,13 @@ describe("extractFileOpsFromMessage", () => {
 	it("dedupes the same file read through different selectors to one entry", () => {
 		const fileOps = createFileOps();
 		const message = createAssistantMessage([
-			readCall("r1", "docs/compaction.md:100-170:raw"),
-			readCall("r2", "docs/compaction.md:8-16,128-139,384-388"),
-			readCall("r3", "docs/compaction.md:raw"),
-			readCall("r4", "docs/compaction.md"),
+			readCall("r1", "docs/handbook/src/architecture/compaction.md:100-170:raw"),
+			readCall("r2", "docs/handbook/src/architecture/compaction.md:8-16,128-139,384-388"),
+			readCall("r3", "docs/handbook/src/architecture/compaction.md:raw"),
+			readCall("r4", "docs/handbook/src/architecture/compaction.md"),
 		]);
 		extractFileOpsFromMessage(message, fileOps);
-		expect([...fileOps.read]).toEqual(["docs/compaction.md"]);
+		expect([...fileOps.read]).toEqual(["docs/handbook/src/architecture/compaction.md"]);
 	});
 
 	it("matches selector-suffixed reads against modified paths", () => {
@@ -250,6 +250,6 @@ describe("isUrlSchemePath", () => {
 		expect(isUrlSchemePath("C:/Users/me/file.ts")).toBe(false);
 		expect(isUrlSchemePath("db.sqlite:users")).toBe(false);
 		expect(isUrlSchemePath("archive.zip:dir/file.ts")).toBe(false);
-		expect(isUrlSchemePath("docs/compaction.md:100-170:raw")).toBe(false);
+		expect(isUrlSchemePath("docs/handbook/src/architecture/compaction.md:100-170:raw")).toBe(false);
 	});
 });

@@ -51,7 +51,7 @@ Opens the debug tools selector in the interactive session.
 /memory stats
 ```
 
-Run diagnostics and statistics on the configured memory backend (`memory.backend`: mnemopi, hindsight, local) from the TUI. See [Memory](./memory.md).
+Run diagnostics and statistics on the configured memory backend (`memory.backend`: mnemopi, hindsight, local) from the TUI. See [Memory](../architecture/memory.md).
 
 ## Which one to reach for
 

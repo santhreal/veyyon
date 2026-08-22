@@ -1,13 +1,13 @@
 # Configuring providers
 
 Copy-paste setups for bring-your-own-key (BYOK) and local providers.
-Once a provider works, see [Models and providers](./models.md) to choose and switch models.
+Once a provider works, see [Models and providers](../reference/models-yml.md) to choose and switch models.
 For what the harness owns versus what the provider owns, see
 [Model contract](../concepts/model-contract.md).
 
 Custom providers live under `providers:` in `~/.veyyon/profiles/default/agent/models.yml`. Keys are resolved from the
 environment, stored auth, OAuth, or a `models.yml` `apiKey` (see [Providers](../models/providers.md)
-and `docs/providers.md`).
+and `docs/handbook/src/reference/providers.md`).
 
 ## Anatomy of a provider entry
 
@@ -178,7 +178,7 @@ fix that rather than retrying with a different silent default.
 
 ## See also
 
-- [Models and providers](./models.md)
+- [Models and providers](../reference/models-yml.md)
 - [Model contract](../concepts/model-contract.md)
 - [Provider stack](../models/providers.md)
 - [Authentication](./authentication.md)
