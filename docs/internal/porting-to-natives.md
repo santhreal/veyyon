@@ -187,4 +187,4 @@ case, and say in the script why.
 - If native is slower, do not switch callsites. Keep or remove the export based on whether it has a near-term owner.
 - If native is faster and behavior-compatible, switch callsites and keep a benchmark to catch regressions.
 
-*Verified against `7e4c6374` on 2026-08-06.*
+*Verified against `63eb2284` on 2026-08-22.*

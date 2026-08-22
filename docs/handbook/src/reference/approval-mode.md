@@ -111,11 +111,17 @@ tools:
 Resolution per tool call:
 
 1. Compute the tool's approval decision from `tool.approval(args)`; omitted means `exec`.
-2. Normalize `tools.approval.<tool>` if present; invalid values are ignored.
+2. Normalize `tools.approval.<tool>` if the key is present. `allow`, `deny` and `prompt` are accepted in any case, with surrounding spaces trimmed. Any other value present under that key denies the tool, and a warning at startup names the setting, the value found and the accepted values. An absent key is unconfigured.
 3. In `yolo` mode, the user policy is used when present. Otherwise a `critical` decision prompts and everything else is allowed: plain `override` reasons do not force a prompt in `yolo`, but `critical` ones do.
 4. In non-yolo modes, if the tool sets `override: true`, `deny` is blocked and all other cases prompt, even if user policy says `allow`.
 5. Otherwise, a valid user policy wins.
 6. Otherwise, the active mode auto-approves or prompts by tier.
+
+A misspelled policy blocks the tool it names rather than being dropped. `deny` and not `prompt`,
+because `/yolo` lifts a prompt: a typo would otherwise run the call in the mode where the policy
+matters most. Only the named tool is affected; the rest of the record still applies. A
+`tools.approval` that is not a per-tool record names no tool, so it configures no policy at all
+and the startup warning is the only sign of it.
 
 ## Safety overrides
 

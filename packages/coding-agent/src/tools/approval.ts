@@ -55,7 +55,17 @@ export interface ResolvedApproval {
 	critical?: boolean;
 }
 
-const POLICY_VALUES: ReadonlySet<ApprovalPolicy> = new Set(["allow", "deny", "prompt"]);
+/**
+ * Every value `tools.approval.<tool>` accepts, in one place.
+ *
+ * Exported because a policy is a security control and its member list is what a
+ * sweep has to enumerate: a test that hardcodes three strings goes stale in
+ * silence the day a fourth is added, and the new member is exactly the one whose
+ * handling nobody checked.
+ */
+export const APPROVAL_POLICY_VALUES: readonly ApprovalPolicy[] = ["allow", "deny", "prompt"];
+
+const POLICY_VALUES: ReadonlySet<ApprovalPolicy> = new Set(APPROVAL_POLICY_VALUES);
 const TIER_VALUES: ReadonlySet<ToolTier> = new Set(["read", "write", "exec"]);
 
 const TIER_RANK: Record<ToolTier, number> = {
@@ -145,11 +155,58 @@ export function validateApprovalModeSetting(configured: unknown): string | undef
 	);
 }
 
-/** Best-effort conversion of an arbitrary user-supplied value to a policy. */
+/**
+ * Convert a stored `tools.approval.<tool>` value to a policy.
+ *
+ * An ABSENT key is unconfigured and returns `undefined`, which is what lets the rung decide.
+ * A key that is PRESENT and not a recognized policy is a malformed security control, and it
+ * fails closed to `deny`. It used to return `undefined`, which is the dangerous direction: a
+ * hand-edited `tools.approval.bash: denyy` removed the block the operator wrote and, on the
+ * `yolo` rung, auto-approved the tool the typo was meant to stop.
+ *
+ * `deny` and not `prompt`, unlike `normalizeApprovalMode`'s fail-closed `ask`: `prompt` is
+ * liftable — the `/yolo` bypass turns a non-critical prompt into `allow` — so a typo would
+ * still run the call in the configuration where that matters most. Nothing lifts a `deny`.
+ * Which direction the operator meant is unknowable from a misspelling, and only one direction
+ * is safe to guess. The value is named loudly at startup by
+ * {@link validateApprovalPolicySettings}, so this is a fail-closed default, not a silent one.
+ */
 function normalizePolicy(value: unknown): ApprovalPolicy | undefined {
-	if (typeof value !== "string") return undefined;
-	const lowered = value.trim().toLowerCase();
-	return POLICY_VALUES.has(lowered as ApprovalPolicy) ? (lowered as ApprovalPolicy) : undefined;
+	if (value === undefined) return undefined;
+	if (typeof value === "string") {
+		const lowered = value.trim().toLowerCase();
+		if (POLICY_VALUES.has(lowered as ApprovalPolicy)) return lowered as ApprovalPolicy;
+	}
+	return "deny";
+}
+
+/**
+ * Validate a stored `tools.approval` record, one diagnostic per malformed entry.
+ *
+ * Returns the warnings the caller surfaces at startup (`configWarnings`, and the log), so a
+ * typo is visible rather than merely safe. Each names the full setting path, the value found
+ * and the values accepted, because "bash is blocked and I did not block it" is otherwise a
+ * silent config bug. A record that is not a record at all gets one diagnostic for the record.
+ */
+export function validateApprovalPolicySettings(configured: unknown): string[] {
+	if (configured === undefined || configured === null) return [];
+	const allowed = `Valid values: ${[...POLICY_VALUES].join(", ")}.`;
+	if (!isRecord(configured)) {
+		return [
+			`tools.approval is set to ${JSON.stringify(configured)}, which is not a per-tool record; ` +
+				`every tool policy in it is ignored. Expected { "<tool>": "allow" | "deny" | "prompt" }.`,
+		];
+	}
+	const warnings: string[] = [];
+	for (const [tool, value] of Object.entries(configured)) {
+		if (value === undefined) continue;
+		if (typeof value === "string" && POLICY_VALUES.has(value.trim().toLowerCase() as ApprovalPolicy)) continue;
+		warnings.push(
+			`tools.approval.${tool} is set to an unrecognized value (${JSON.stringify(value)}); ` +
+				`the tool is DENIED until it is fixed (fail closed). ${allowed}`,
+		);
+	}
+	return warnings;
 }
 
 function isToolTier(value: unknown): value is ToolTier {

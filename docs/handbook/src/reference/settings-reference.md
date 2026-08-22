@@ -172,7 +172,7 @@ veyyon config get compaction.threshold
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `tools.approval` | Tool Approval Policies | record | `{}` | Per-tool approval policies. Set to 'allow' to auto-approve, 'prompt' to require confirmation, or 'deny' to block. Overrides are honored in every approval mode. |
+| `tools.approval` | Tool Approval Policies | record | `{}` | Per-tool approval policies. Set to 'allow' to auto-approve, 'prompt' to require confirmation, or 'deny' to block. Overrides are honored in every approval mode. Any other value denies that tool and is reported at startup. |
 | `tools.protectedPaths` | Extra Protected Paths | array | `[]` | Additional absolute paths (a leading ~ is expanded) that a recursive delete must never target without approval. Adds to the built-in set; it cannot remove from it. |
 | `tools.approvalMode` | Tool Approval | enum | `auto` | How much the agent may do without asking. Defaults to Auto: every tier runs, with the per-tool policies, working-directory boundary, credential and critical-call guards still asking. This is the persisted default; override it for one session with /permissions. Values: `plan`, `ask`, `ask-command`, `auto`, `yolo`, `always-ask`, `write`, `auto-edit`. |
 

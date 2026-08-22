@@ -505,7 +505,7 @@ tools:
 | Key | Type | Default | Notes |
 |---|---|---|---|
 | `tools.approvalMode` | enum | `auto` | Canonical: `plan` (read auto; write asks with an active plan-mode session, otherwise write/exec denied), `ask` (nothing auto; every tier asks, reads included), `ask-command` (read+write auto; exec ask), `auto` (all tiers auto, with the per-tool, working-directory, credential and critical-call guards still asking), `yolo` (all tiers auto). Legacy aliases still accepted: `always-ask` → `ask`, `write` and `auto-edit` → `ask-command`. Override per run with `--approval-mode` / `--auto-approve` / `--yolo`. |
-| `tools.approval` | record | `{}` | Per-tool policy keyed by tool name; each value is `allow`, `deny`, or `prompt`. e.g. `veyyon config set tools.approval '{"bash":"prompt"}'`. |
+| `tools.approval` | record | `{}` | Per-tool policy keyed by tool name; each value is `allow`, `deny`, or `prompt`. Any other value denies that tool and is named in a startup warning. e.g. `veyyon config set tools.approval '{"bash":"prompt"}'`. |
 | `tools.discoveryMode` | enum | `auto` | `auto`, `off`, `mcp-only`, `all`. `all` hides non-essential built-ins and first-party heavyweight tools such as `generate_image` until the discovery search activates them. |
 | `tools.essentialOverride` | array | `[]` | Tool names kept available even when tools are narrowed. |
 | `tools.maxTimeout` | number | `0` | Max tool runtime in seconds; `0` = no cap. |
