@@ -299,6 +299,37 @@ require_every_mark_has_a_frame() {
 	fi
 }
 
+# GUARDS BEFORE WEIGHTS. Every string the scene waits for has to be produced by something --
+# the prompt, the product's own source, or the sandbox seed -- and a needle nothing produces
+# does not fail fast: it waits out its whole timeout, marks the shot missed, and the publish
+# step then leaves the PREVIOUS take's frame under that name. Two guards in this scene were in
+# that state (a board header that dropped its count, a status line that lives in a details
+# panel), which is minutes of a take spent proving nothing.
+bun scripts/verify-scene.ts "${SCENE}" >&2
+
+# WHICH MODEL, AND WHERE IT IS. The take is recorded on the host serving the weights, so the
+# endpoint is a loopback address; a base URL pointing at another machine means the session's
+# every token crosses a network the recording then blames for its pauses. Naming it here is
+# cheap and refusing it is the point -- `ALLOW_REMOTE_MODEL=1` records anyway, and says so.
+MODEL_HOST="$(printf '%s' "${PROOF_LLM_BASE_URL}" | sed -E 's#^[a-z]+://([^:/]+).*#\1#')"
+case "${MODEL_HOST}" in
+	localhost | 127.0.0.1 | ::1 | 0.0.0.0) MODEL_IS_LOCAL=1 ;;
+	*) MODEL_IS_LOCAL=0 ;;
+esac
+if [[ ${MODEL_IS_LOCAL} -eq 0 && "${ALLOW_REMOTE_MODEL:-0}" != "1" ]]; then
+	echo "record-hd-demo.sh: ${PROOF_LLM_BASE_URL} is not on this host. Record on the machine serving ${DEMO_MODEL}, or set ALLOW_REMOTE_MODEL=1." >&2
+	exit 1
+fi
+
+# The row has to exist on that server before a take starts. A model name the server does not
+# hold answers every request with an error the session renders as a red block, and the first
+# time anyone sees that is on the recording.
+SERVED_MODELS="$(curl -s --max-time 30 "${PROOF_LLM_BASE_URL%/}/models" || true)"
+if [[ -n "${SERVED_MODELS}" ]] && ! printf '%s' "${SERVED_MODELS}" | grep -qF "${DEMO_MODEL#local/}"; then
+	echo "record-hd-demo.sh: ${PROOF_LLM_BASE_URL} does not serve ${DEMO_MODEL#local/}. Load it, or set DEMO_MODEL to a row it has." >&2
+	exit 1
+fi
+
 # The number the session signs with, generated per run so a published frame pins one
 # specific digest and the check is reproducible rather than decorative. It is passed into
 # the container as an environment variable and stored there with `/secret from-env`, so it
@@ -314,6 +345,19 @@ curl -s --max-time 180 "${PROOF_LLM_BASE_URL%/}/chat/completions" \
 	-H 'content-type: application/json' \
 	-d "{\"model\":\"${DEMO_MODEL#local/}\",\"messages\":[{\"role\":\"user\",\"content\":\"warm\"}],\"max_tokens\":4}" \
 	>/dev/null || echo "record-hd-demo.sh: warm-up request failed; the row may open on a spinner" >&2
+
+# WHAT DROVE THE TAKE, written beside it. A published frame is a claim about a model, and the
+# only record of which row and which endpoint produced it used to be whatever the operator
+# remembered. This file is copied out with the frames, so a take can be traced to its weights.
+{
+	echo "scene: ${SCENE}"
+	echo "model: ${DEMO_MODEL}"
+	echo "endpoint: ${PROOF_LLM_BASE_URL}"
+	echo "endpoint-is-local: ${MODEL_IS_LOCAL}"
+	echo "recorded-on: $(uname -sr) $(hostname)"
+	echo "display-server: ${DEMO_SERVER}"
+	echo "recorded-at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+} >"${WORK}/${SCENE}-model.txt"
 
 PROOF_LLM_BASE_URL="${PROOF_LLM_BASE_URL}" \
 	SCENE_HIDE_THINKING="${HIDE_THINKING}" \
@@ -356,6 +400,7 @@ if [[ ${PUBLISH_TAKE} -eq 1 ]]; then
 		cp "${still}" "${CAPTURES}/${base}.png"
 		"${IM[@]}" "${still}" -resize 1920x -strip "assets/${base}.png"
 	done
+	cp "${WORK}/${SCENE}-model.txt" "${CAPTURES}/${SCENE}-model.txt"
 	if [[ -f "${WORK}/signature-crosscheck.txt" ]]; then
 		cp "${WORK}/signature-crosscheck.txt" "${CAPTURES}/${SCENE}-signature-crosscheck.txt"
 		echo "--- the signature anyone can check ---"

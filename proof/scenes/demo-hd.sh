@@ -44,7 +44,12 @@ fi
 shot goal-created
 # The model must plan before mutation and keep the board alive through the whole
 # task. Capture it while the same turn continues into implementation.
-wait_for_screen "Todo 0/8 tasks" 420 || wait_for_screen "Todo 0/8" 60 || MISSED="${MISSED:-} todo-board"
+#
+# The guard waits for the board's header, which is the word alone: the board used to print
+# "Todo 0/8 tasks" and now carries no count, so a scene pinned to the count waited out its whole
+# timeout and published the previous take's frame under this name. The phase names below are what
+# prove the board is the one this prompt asked for.
+wait_for_screen "Todos" 420 || MISSED="${MISSED:-} todo-board"
 if screen_has "Flight plan" && screen_has "Parallel build" && screen_has "Release"; then
 	echo "scene: four-phase todo board visible before implementation" >&2
 else
@@ -128,8 +133,10 @@ else
 fi
 shot todo-finished
 
-wait_for_screen "Status: complete" 420 || MISSED="${MISSED:-} goal-complete"
-if screen_has "Goal:" && screen_has "Status: complete"; then
+# "Status: complete" is only ever drawn inside the goal details panel, which this scene never
+# opens. What a completing session prints is the notice below, so that is what the shot waits for.
+wait_for_screen "Goal mode completed." 420 || MISSED="${MISSED:-} goal-complete"
+if screen_has "Goal mode completed."; then
 	echo "scene: model completed the persistent goal" >&2
 else
 	MISSED="${MISSED:-} goal-complete"

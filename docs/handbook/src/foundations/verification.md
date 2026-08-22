@@ -44,6 +44,31 @@ The recorder keeps rehearsal output in the temporary directory it prints. Inspec
 
 The scene's task prompt is static at `proof/prompts/demo-hd.md`. The scene stores the secret, submits that prompt once, and sends no phase-by-phase operator prompts; every later turn is the model's own. A take is published only when every named frame guard passed, so a scene whose model does not reach a guarded surface produces a rehearsal and nothing else.
 
+Record on the machine that serves the weights. The endpoint must be a loopback address, or the
+recorder refuses to start; `ALLOW_REMOTE_MODEL=1` records against another host and says so. A
+session driven across a network pauses for reasons the recording cannot separate from the product.
+
+Before anything is recorded the driver checks three things and exits on any of them:
+
+```sh
+bun scripts/verify-scene.ts demo-hd   # the same check, run on its own
+bun scripts/verify-scene.ts --all
+```
+
+Every string the scene waits for must be produced by the submitted prompt, the product's own
+source, the sandbox seed, or a line the scene types. A guard nothing produces does not fail fast:
+it waits out its timeout, marks the shot missed, and the publish step leaves the previous take's
+frame under that name. A needle that comes from somewhere else is declared in the scene:
+
+```sh
+# needle-source: WARP CORE -- printed by the compiled binary's banner
+```
+
+The driver also requires the model row to exist on that server, and writes `<scene>-model.txt`
+beside the frames naming the row, the endpoint, the host and the display server the take was
+recorded on.
+
+
 The archived take remains at capture speed. The landing-page cut keeps the plan, the worker setup, verification and signing at 1×. Visible implementation between the worker launch and the verified build plays at 1.25×. Named marks in the take select those boundaries; untouched screens are shortened to four seconds rather than accelerated.
 
 ### Settings differentials
