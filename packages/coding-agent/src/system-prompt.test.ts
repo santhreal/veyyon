@@ -6,12 +6,17 @@ import { APP_NAME, DIR_OVERRIDE_ENV_KEYS } from "@veyyon/utils";
 import { buildSystemPrompt } from "./system-prompt";
 
 interface ProbeRunResult {
+	/** Wall time of the prompt build(s) alone. The build no longer waits for the probe. */
 	elapsedMs: number;
+	/** Wall time spent waiting for the background probe to finish writing the cache. */
+	probeMs: number;
 	childElapsedMs: number;
 	cached: unknown;
 	count: number;
 	/** Everything the child logged, so a warning can be asserted by its bytes. */
 	log: string;
+	/** Whether each successive build carried a `GPU:` row. */
+	gpuRows: boolean[];
 }
 
 async function runProbeScenario(options: {
@@ -45,6 +50,7 @@ async function runProbeScenario(options: {
 		await Bun.write(
 			scenarioPath,
 			`import { getGpuCachePath, logger, refreshDirsFromEnv } from ${JSON.stringify(path.resolve(import.meta.dir, "../../utils/src/index.ts"))};
+import { awaitGpuProbe } from ${JSON.stringify(path.join(import.meta.dir, "utils/host-environment.ts"))};
 import { mkdirSync, chmodSync, existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { buildSystemPrompt } from ${JSON.stringify(path.join(import.meta.dir, "system-prompt.ts"))};
@@ -77,9 +83,20 @@ const buildOptions = {
 	activeRepoContext: null,
 };
 const startedAt = performance.now();
+// One entry per build: whether that prompt carried a GPU row. A probe landing mid-process must not
+// change this between builds, because the row lives in the cached prompt prefix.
+const gpuRows: boolean[] = [];
 for (let index = 0; index < Number(process.env.VEYYON_GPU_PROBE_RUNS ?? "1"); index += 1) {
-	await buildSystemPrompt(buildOptions);
+	const built = await buildSystemPrompt(buildOptions);
+	gpuRows.push(built.systemPrompt.some(block => block.includes("GPU:")));
 }
+const elapsedMs = Math.round(performance.now() - startedAt);
+// The probe no longer blocks the build: it runs unwaited and writes the cache for the next launch.
+// A scenario asserting what lands on disk therefore has to wait for it, and the wait is timed
+// separately so the deadline bounds below still measure the probe rather than the build.
+const probeStartedAt = performance.now();
+await awaitGpuProbe();
+const probeMs = Math.round(performance.now() - probeStartedAt);
 const cacheFile = Bun.file(getGpuCachePath());
 // A damaged entry may still be damaged if repair failed, so read it as TEXT and
 // let the parent decide: parsing here would turn "not repaired" into a crash.
@@ -88,7 +105,6 @@ let cached: unknown = null;
 try { cached = cachedText === null ? null : JSON.parse(cachedText); } catch { cached = { unparseable: cachedText }; }
 const countFile = Bun.file(process.env.VEYYON_GPU_PROBE_COUNT ?? "");
 const count = await countFile.exists() ? (await countFile.text()).length : 0;
-const elapsedMs = Math.round(performance.now() - startedAt);
 // Restore permissions so the parent's rm() can clean up a read-only dir.
 if (process.env.VEYYON_GPU_READONLY_CACHE_DIR === "true") chmodSync(dirname(seededPath), 0o700);
 // The file transport is a daily-rotate DIRECTORY, and its writes are buffered,
@@ -100,7 +116,7 @@ let log = "";
 // The transport creates the directory lazily, so a run that logged nothing
 // leaves no directory at all; that is an empty log, not a failure.
 if (existsSync(logDir)) for (const name of readdirSync(logDir)) log += readFileSync(join(logDir, name), "utf8");
-console.log(JSON.stringify({ elapsedMs, cached, count, log }));
+console.log(JSON.stringify({ elapsedMs, probeMs, cached, count, log, gpuRows }));
 `,
 		);
 
@@ -170,6 +186,17 @@ console.log(JSON.stringify({ elapsedMs, cached, count, log }));
 	}
 }
 
+/**
+ * The probe is bounded, and the prompt build does not wait for it.
+ *
+ * WHAT FLIPPED (2026-08-22): `getCachedGpu` used to await the probe, so the deadline bounds below
+ * were measured over the BUILD. `lspci`/`nvidia-smi` cost 224-557ms on a cold cache and the build
+ * runs before the first frame, so install day paid that in blank terminal for a prompt line no
+ * frame shows (docs/internal/startup-budget.md). The probe now runs unwaited and writes the cache
+ * for the next launch, which splits one number into two: `elapsedMs` is the build, which must stay
+ * small no matter how slow the probe is, and `probeMs` is the wait the scenario adds on purpose,
+ * which is where the deadline and drain bounds still belong.
+ */
 describe.skipIf(process.platform !== "linux")("system prompt GPU probe", () => {
 	it("caches empty GPU probe results", async () => {
 		const result = await runProbeScenario({ runs: 2 });
@@ -178,14 +205,46 @@ describe.skipIf(process.platform !== "linux")("system prompt GPU probe", () => {
 		expect(result.count).toBe(1);
 	}, 15_000);
 
+	it("builds the prompt without waiting for a probe that never answers", async () => {
+		// The whole point of the change: a probe pinned at its deadline costs the build nothing.
+		// 12s of sleep against a 4.5s SIGKILL, and the build must not see either.
+		const result = await runProbeScenario({ runs: 1, sleepSeconds: 12, holdStdoutOpen: true });
+
+		expect(result.elapsedMs).toBeLessThan(1500);
+		// And the probe really was the slow thing, so the bound above is not a probe that skipped.
+		expect(result.probeMs).toBeGreaterThan(1500);
+	}, 20_000);
+
+	it("keeps the GPU row out of every build in the launch that filled the cache", async () => {
+		// The probe answers a real name here, and the cache holds it afterwards — but neither build
+		// in THIS process may show it. A row appearing between two builds of one session re-anchors
+		// the cached prompt prefix, which costs a cache write of the whole prefix for one line of
+		// hardware trivia. The next launch reads the cache and carries the row from its first build.
+		const result = await runProbeScenario({
+			runs: 2,
+			validOutput: "00:02.0 VGA compatible controller: NVIDIA TestGPU",
+		});
+
+		expect(result.cached).toEqual({ gpu: "NVIDIA TestGPU" });
+		expect(result.gpuRows).toEqual([false, false]);
+	}, 20_000);
+
+	it("carries the GPU row from the first build when the cache is warm", async () => {
+		// The other side of the same rule: a launch that starts with an answer never omits it, so the
+		// row is missing for exactly one launch per machine and never flickers after that.
+		const result = await runProbeScenario({ runs: 1, seedCache: '{"gpu": "NVIDIA CachedGPU"}' });
+
+		expect(result.count).toBe(0);
+		expect(result.gpuRows).toEqual([true]);
+	}, 15_000);
+
 	it("kills the GPU probe at the prep deadline", async () => {
 		const result = await runProbeScenario({ runs: 1, sleepSeconds: 12, holdStdoutOpen: true });
 
 		expect(result.cached).toEqual({ gpu: null });
-		// Probe is SIGKILLed at ~4.5s and the drain wait is bounded, so in-child
-		// time sits near the deadline; waiting on the descendant would push it
-		// past the 12s sleep.
-		expect(result.elapsedMs).toBeLessThan(6500);
+		// Probe is SIGKILLed at ~4.5s and the drain wait is bounded, so the wait sits near the
+		// deadline; waiting on the descendant would push it past the 12s sleep.
+		expect(result.probeMs).toBeLessThan(6500);
 		// Codex#3838: the child process MUST exit shortly after the deadline, not
 		// linger until a descendant holding stdout (sleep 12) exits on its own.
 		// The bound over in-child time budgets bun spawn/startup on loaded runners
@@ -199,7 +258,7 @@ describe.skipIf(process.platform !== "linux")("system prompt GPU probe", () => {
 		expect(result.cached).toEqual({ gpu: null });
 		// Probe exits 0 immediately but leaves a backgrounded sleep holding the stdout
 		// pipe. The success path MUST bound the drain wait, not block until sleep exits.
-		expect(result.elapsedMs).toBeLessThan(2000);
+		expect(result.probeMs).toBeLessThan(2000);
 		// Budgets bun spawn/startup overhead; blocking on the descendant would
 		// take at least the 8s sleep.
 		expect(result.childElapsedMs).toBeLessThan(5000);
@@ -218,7 +277,7 @@ describe.skipIf(process.platform !== "linux")("system prompt GPU probe", () => {
 		// selectGpuFromLspci strips the "<slot> <class>: " prefix (GPU-1), so the
 		// cached value is the clean device name, not the raw lspci line.
 		expect(result.cached).toEqual({ gpu: "NVIDIA TestGPU" });
-		expect(result.elapsedMs).toBeLessThan(2000);
+		expect(result.probeMs).toBeLessThan(2000);
 		// Budgets bun spawn/startup overhead; blocking on the descendant would
 		// take at least the 8s sleep.
 		expect(result.childElapsedMs).toBeLessThan(5000);

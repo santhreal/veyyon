@@ -59,8 +59,10 @@ From the tree, binary, warm, in order of cost:
   templates, slash commands, skills, tools, and the system prompt. Most children run in parallel;
   `buildSystemPrompt` dominates.
 - **`getCachedGpu:getGpuModel`, 224-557ms cold, 0.6ms warm.** A hardware probe inside
-  `buildSystemPrompt`, cached to disk after the first run. Install day pays it in full, before the
-  first frame, for a line of prompt text no frame displays.
+  `buildSystemPrompt`, cached to disk after the first run. It used to be paid in full before the
+  first frame; it now runs unwaited and writes the cache for the next launch, so one launch per
+  machine omits the GPU row and none of them waits for it. The baseline table above was measured
+  before that change, so a cold `ready:boot` re-measured today is lower than the number it records.
 - **`modelRegistry:init` 43ms, `discoverAuthStorage` 35ms, `initTheme:final` 33ms.** Fixed cost, warm
   or cold.
 - **`discoverAndLoadMCPTools`, 0.00ms** with no servers configured. A configured server moves this
