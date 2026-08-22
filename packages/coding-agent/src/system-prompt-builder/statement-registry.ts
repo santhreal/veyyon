@@ -177,6 +177,7 @@ import statementToolPolicyParallelMeansSubagents from "./statements/tool-policy/
 	type: "text",
 };
 import statementToolPolicyReportToolIssue from "./statements/tool-policy/report-tool-issue.md" with { type: "text" };
+import statementToolPolicySearch from "./statements/tool-policy/search.md" with { type: "text" };
 import statementToolPolicySecretsRedaction from "./statements/tool-policy/secrets-redaction.md" with { type: "text" };
 import statementToolPolicySpecializedBash from "./statements/tool-policy/specialized-bash.md" with { type: "text" };
 import statementToolPolicySpecializedBashLitmus from "./statements/tool-policy/specialized-bash-litmus.md" with {
@@ -597,6 +598,14 @@ export const PROMPT_STATEMENTS = [
 		condition: contains("tools", "read"),
 		text: statementToolPolicyExplorationRead,
 		purpose: "asks for offset and limit reads rather than whole files, which only means something when read exists",
+	},
+	{
+		id: "tool-policy/search",
+		section: "tool-policy",
+		condition: contains("tools", "search"),
+		text: statementToolPolicySearch,
+		purpose:
+			"routes each unified search mode by semantic target, so structural questions do not collapse into regex chains",
 	},
 	{
 		id: "tool-policy/lsp",
