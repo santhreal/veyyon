@@ -119,6 +119,31 @@ export function isMcpAuthRequiredError(error: unknown): error is MCPAuthRequired
 }
 
 /**
+ * A configured MCP value names an environment variable that is unset or empty.
+ *
+ * The connection is refused instead of attempted. The old resolution fell back
+ * to the variable's own NAME, so a typo in an auth header sent the string
+ * `GITHUB_TOKN` to the server as a bearer token: a request that cannot succeed,
+ * carrying a value that means nothing, answered with the server's opinion of a
+ * bad credential rather than the truth, which is that the variable is not set
+ * here.
+ *
+ * The variable's name and the setting it belongs to are the entire message. No
+ * value is quoted: the values in reach are credentials.
+ */
+export class MCPUnresolvedEnvReferenceError extends Error {
+	readonly variable: string;
+
+	constructor(details: { variable: string; empty: boolean; describedAs: string; target: string }) {
+		super(
+			`The ${details.describedAs} for ${details.target} refers to the environment variable ${details.variable}, which is ${details.empty ? "set but empty" : "not set"}, so the connection was not attempted rather than sent with the variable's own name as the value. Fix: export ${details.variable} with the value, or write the value in the config as literal:<value>.`,
+		);
+		this.name = "MCPUnresolvedEnvReferenceError";
+		this.variable = details.variable;
+	}
+}
+
+/**
  * What to do with a credential whose refresh threw.
  *
  * `credential` means connect with what is on disk; `failure` means refuse to

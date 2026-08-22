@@ -142,9 +142,18 @@ Must define at least one of:
 - `id` required
 - `contextWindow` and `maxTokens` must be positive if provided
 
-### Command-resolved secrets
+### Secret values
 
-Provider `apiKey` values and provider/model `headers` values may start with `!` to read a secret from command stdout. The command is run with a 10 s timeout, stdout is trimmed, and empty/failing commands are omitted:
+Provider `apiKey` values and provider/model `headers` values are resolved in this order:
+
+1. A value starting with `!` runs as a shell command with a 10 s timeout and its trimmed stdout is
+   used. Empty or failing commands are omitted. Successful outputs are cached for the process
+   lifetime, so the command is not re-run for every model.
+2. `${NAME}` or `$NAME` reads the environment variable `NAME`.
+3. A bare value shaped like an environment variable name (`DEEPSEEK_API_KEY`, upper case, digits and
+   underscores) reads that variable too.
+4. `literal:<text>` is `<text>`, verbatim, with no lookup.
+5. Any other value is itself, which is how a key such as `sk-...` or `sk_live_...` works.
 
 ```yaml
 providers:
@@ -152,9 +161,17 @@ providers:
     apiKey: "!op read op://dev/openai/api-key"
     headers:
       X-Team-Key: "!bw get password veyyon-team-key"
+  gateway:
+    apiKey: ${GATEWAY_API_KEY}
+    headers:
+      X-Tenant: literal:ACME_TENANT
 ```
 
-Successful command outputs are cached for the process lifetime so the command is not re-run for every model.
+A variable named in cases 2 or 3 that is unset, or set to an empty string, resolves to nothing: the
+key is not installed, no request carries it, and a warning names the variable and the setting.
+Earlier versions used the variable's own name as the value, so `apiKey: DEEPSEK_API_KEY` was sent to
+the provider as the key. A key that is genuinely upper case text rather than a variable name is
+written `literal:MY_KEY`.
 
 ## Merge and override order
 

@@ -62,9 +62,11 @@ import type { ConfigError, ConfigFile } from "./config-file";
 import {
 	commandFailureReason,
 	configCommandPolicy,
+	describeConfigEnvReference,
 	isConfigValueCommand,
 	parseConfigValueCommand,
-	resolveEnvOrLiteral,
+	reportUnresolvedEnvReference,
+	resolveConfigEnvReference,
 } from "./config-value-resolution";
 import {
 	DISCOVERY_DEFAULT_MAX_TOKENS,
@@ -390,13 +392,23 @@ interface CommandApiKeyResolution {
 }
 /**
  * Resolve a models.yml/models.yaml secret/config value to an actual value.
- * `!cmd` runs a shell command and returns trimmed stdout, otherwise env vars are
- * checked first and the input falls back to a literal value.
+ * `!cmd` runs a shell command and returns trimmed stdout; `${NAME}` / `$NAME`
+ * and a bare environment name resolve from the environment and produce nothing
+ * when the variable is unset or empty; `literal:<text>` and any other bare value
+ * are the value itself.
  */
-function resolveConfigValue(valueConfig: string): string | undefined {
+function resolveConfigValue(valueConfig: string, describedAs?: string): string | undefined {
 	const command = parseConfigValueCommand(valueConfig);
-	if (command === null) return resolveEnvOrLiteral(valueConfig);
-	return resolveCommandConfig(command);
+	if (command !== null) return resolveCommandConfig(command);
+	const outcome = resolveConfigEnvReference(valueConfig);
+	if (outcome.ok) return outcome.value;
+	reportUnresolvedEnvReference({
+		variable: outcome.variable,
+		explicit: outcome.explicit,
+		empty: outcome.empty,
+		describedAs,
+	});
+	return undefined;
 }
 
 type HeaderSource = Record<string, string> | undefined;
@@ -414,12 +426,12 @@ function materializeConfigHeaderSources(
 	for (const source of sources) {
 		if (!source) continue;
 		for (const [key, value] of Object.entries(source)) {
-			const next = resolveConfigValue(value);
+			const next = resolveConfigValue(value, `header "${key}"`);
 			if (next) resolved[key] = next;
 		}
 	}
 	if (options?.authHeader && options.apiKeyConfig) {
-		const resolvedKey = resolveConfigValue(options.apiKeyConfig);
+		const resolvedKey = resolveConfigValue(options.apiKeyConfig, "provider API key");
 		if (resolvedKey) resolved.Authorization = `Bearer ${resolvedKey}`;
 	}
 	return Object.keys(resolved).length > 0 ? resolved : undefined;
@@ -831,7 +843,7 @@ export class ModelRegistry {
 	#resolveCommandBackedApiKey(provider: string): CommandApiKeyResolution {
 		const keyConfig = this.#customProviderApiKeys.get(provider);
 		if (!isConfigValueCommand(keyConfig)) return { configured: false };
-		const value = resolveConfigValue(keyConfig);
+		const value = resolveConfigValue(keyConfig, `API key for provider "${provider}"`);
 		if (value) {
 			this.authStorage.setConfigApiKey(provider, value);
 			return { configured: true, value };
@@ -842,10 +854,13 @@ export class ModelRegistry {
 
 	#installProviderApiKey(provider: string, keyConfig: string): void {
 		this.#customProviderApiKeys.set(provider, keyConfig);
-		const resolved = resolveConfigValue(keyConfig);
+		const resolved = resolveConfigValue(keyConfig, `API key for provider "${provider}"`);
 		if (resolved) {
 			this.authStorage.setConfigApiKey(provider, resolved);
-		} else if (isConfigValueCommand(keyConfig)) {
+		} else if (isConfigValueCommand(keyConfig) || describeConfigEnvReference(keyConfig)) {
+			// The config names a source that produced nothing — a failing command or an
+			// unset variable. Whatever was installed for this provider before is not what
+			// the config says now, so it is dropped rather than kept and sent.
 			this.authStorage.removeConfigApiKey(provider);
 		}
 	}
@@ -875,7 +890,7 @@ export class ModelRegistry {
 		this.authStorage.setFallbackResolver(provider => {
 			const keyConfig = this.#customProviderApiKeys.get(provider);
 			if (!keyConfig) return undefined;
-			return resolveConfigValue(keyConfig);
+			return resolveConfigValue(keyConfig, `API key for provider "${provider}"`);
 		});
 		// Load models synchronously in constructor.
 		this.#loadModels();

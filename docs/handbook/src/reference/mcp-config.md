@@ -422,19 +422,35 @@ Example:
 
 ### Pre-connect env/header resolution
 
-Before Veyyon launches a stdio server or makes an HTTP/SSE request, it resolves stdio `env` values and HTTP/SSE `headers` values like this:
+Before Veyyon launches a stdio server or makes an HTTP/SSE request, it resolves stdio `env` values
+and HTTP/SSE `headers` values like this:
 
-1. If a value starts with `!`, Veyyon runs the rest as a shell command with a 10s timeout and uses trimmed stdout.
-2. If the command fails, times out, or prints only whitespace, that `env`/`headers` entry is omitted.
-3. Otherwise Veyyon checks whether the value names an environment variable.
-4. If that environment variable is set to a non-empty value, Veyyon uses the environment value; otherwise it uses the string literally.
+1. A value starting with `!` runs as a shell command with a 10s timeout and its trimmed stdout is
+   used. A command that fails, times out, or prints only whitespace omits that entry.
+2. `${NAME}` or `$NAME` reads the environment variable `NAME`.
+3. A bare value shaped like an environment variable name (`GITHUB_TOKEN`, upper case, digits and
+   underscores) reads that variable too.
+4. `literal:<text>` is `<text>`, verbatim, with no lookup.
+5. Any other value is itself.
+
+A variable that is unset, or set to an empty string, resolves to nothing. The connection is not
+attempted and the error names the variable:
+
+```console
+The header "Authorization" for https://api.example.com/mcp refers to the environment variable
+GITHUB_TOKN, which is not set, so the connection was not attempted rather than sent with the
+variable's own name as the value.
+```
+
+Earlier versions used the variable's own name as the value in that case, so a typo was sent to the
+server as the credential and came back as the server's opinion of a bad token.
 
 Examples:
 
 ```json
 {
   "env": {
-    "GITHUB_PERSONAL_ACCESS_TOKEN": "GITHUB_PERSONAL_ACCESS_TOKEN"
+    "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"
   },
   "headers": {
     "X-MCP-Insiders": "true"
@@ -442,10 +458,10 @@ Examples:
 }
 ```
 
-That means this is valid and convenient for local secrets:
-
-- `"GITHUB_PERSONAL_ACCESS_TOKEN": "GITHUB_PERSONAL_ACCESS_TOKEN"` → copy from the current shell environment
+- `"GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"` → copy from the current shell
+  environment, and refuse to connect when it is missing
 - `"Authorization": "Bearer hardcoded-token"` → use the literal value
+- `"X-Api-Key": "literal:PROJECT_KEY"` → send `PROJECT_KEY` as the value, without looking it up
 - `"Authorization": "!printf 'Bearer %s' \"$GITHUB_TOKEN\""` → build the header from a command
 
 ### When a command runs again

@@ -178,7 +178,13 @@ describe("ModelRegistry runtime provider registration", () => {
 		const providerName = "anthropic";
 
 		expect(getProviderModels(registry, providerName).length).toBeGreaterThan(1);
-		registry.registerProvider(providerName, { apiKey: "RUNTIME_AUTH_KEY", authHeader: true }, "ext://runtime");
+		// `literal:` because this is a key, not a variable name: a bare environment-name
+		// shape now resolves from the environment and fails closed when it is unset.
+		registry.registerProvider(
+			providerName,
+			{ apiKey: "literal:RUNTIME_AUTH_KEY", authHeader: true },
+			"ext://runtime",
+		);
 		await expectProviderHeaderAcrossRefresh(registry, providerName, "Authorization", "Bearer RUNTIME_AUTH_KEY");
 
 		registry.clearSourceRegistrations("ext://runtime");
