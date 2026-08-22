@@ -394,7 +394,11 @@ import {
 	isMCPToolName,
 	selectDiscoverableToolNamesByServer,
 } from "../tool-discovery/tool-index";
-import { resolveEffectiveApprovalMode, validateApprovalModeSetting } from "../tools/approval";
+import {
+	resolveEffectiveApprovalMode,
+	validateApprovalModeSetting,
+	validateApprovalPolicySettings,
+} from "../tools/approval";
 import type { ApprovalMode, SessionToolApprovals } from "../tools/approval-modes";
 import { assertEditableFile } from "../tools/auto-generated-guard";
 import { normalizeToolNames, TOOL } from "../tools/builtin-names";
@@ -3164,6 +3168,7 @@ export class AgentSession {
 				: () => config.pruneToolDescriptions === true;
 		this.#validateRetryFallbackChains();
 		this.#validateApprovalModeSetting();
+		this.#validateApprovalPolicySettings();
 		this.#toolRegistry = config.toolRegistry ?? new Map();
 		this.#createVibeTools = config.createVibeTools;
 		this.#builtInToolNames = new Set(config.builtInToolNames ?? []);
@@ -17273,6 +17278,20 @@ export class AgentSession {
 		if (!this.settings.isConfigured("tools.approvalMode")) return;
 		const warning = validateApprovalModeSetting(this.settings.get("tools.approvalMode"));
 		if (warning) {
+			logger.warn(warning);
+			this.configWarnings.push(warning);
+		}
+	}
+
+	/**
+	 * Surface a hand-edited `tools.approval.<tool>` typo loudly, for the same reason as the mode
+	 * above and with the opposite fallback: a malformed per-tool policy DENIES the tool (see
+	 * `normalizePolicy`), so the operator has to be told which entry did it and what the accepted
+	 * values are. Without this, "bash stopped working" is a config typo with no diagnostic.
+	 */
+	#validateApprovalPolicySettings(): void {
+		if (!this.settings.isConfigured("tools.approval")) return;
+		for (const warning of validateApprovalPolicySettings(this.settings.get("tools.approval"))) {
 			logger.warn(warning);
 			this.configWarnings.push(warning);
 		}
