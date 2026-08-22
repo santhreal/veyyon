@@ -147,6 +147,16 @@ bun run.ts \
 - `--binary <path>`: Use an existing compiled `vey` binary instead of rebuilding.
 - `--merge <runA,runB>`: Pool results across runs with matching arms, models, and binaries.
 
+System comparison (`--systems`) replaces `--arms` and runs the other agents beside Veyyon on the
+same tasks. The two are mutually exclusive, and every path below is required in that mode:
+
+- `--systems <a,b,c>`: Comma-separated system names to compare instead of arm overlays.
+- `--replay-root <dir>`: Directory holding one validated `<task>.json` real-session manifest per task.
+- `--factory-binary <path>`: Factory CLI binary. Defaults to `droid` on `PATH`.
+- `--factory-auth <file>`: Non-empty file holding the Factory API key.
+- `--factory-settings <file>`: Factory settings file. Optional.
+- `--hermes-auth <file>`: Non-empty `.env` file holding the Hermes credentials.
+
 ### Output structure
 
 A run directory contains:
@@ -173,15 +183,16 @@ A run directory contains:
 To override a single prompt section, create `arms/<arm>.sections.yml` alongside `arms/<arm>.yml`:
 
 ```yaml
-# arms/candidate-lean-workflow.sections.yml
-executionWorkflow: |
-  Verify the requested behavior before you report completion.
+# arms/candidate-delivery-terse.sections.yml
+deliveryContract: |
+  Report the outcome and nothing else. State what changed, in which files, and
+  whether it is verified.
 ```
 
 Run with:
 
 ```bash
-bun run.ts --arms baseline,candidate-lean-workflow \
+bun run.ts --arms baseline,candidate-delivery-terse \
   --tasks tasks/pilot-10.txt \
   --model google-antigravity/gemini-3.5-flash \
   --jobs 2 --repeats 3
