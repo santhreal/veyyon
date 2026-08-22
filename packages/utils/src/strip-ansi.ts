@@ -17,7 +17,7 @@
  */
 
 /**
- * One well-formed sequence of either kind.
+ * One well-formed sequence of any kind.
  *
  * CSI is `ESC [`, then parameter bytes, then intermediate bytes, then one final
  * byte. The parameter class is the spec's full `0x30-0x3f` rather than
@@ -31,21 +31,35 @@
  * byte among the parameter or intermediate bytes it gave back.
  *
  * OSC is `ESC ]`, then a body holding neither BEL nor ESC, then either BEL or ST
- * (`ESC \`). Terminals accept both terminators and real programs use both.
+ * (`ESC \`). Terminals accept both terminators and real programs use both. DCS
+ * (`ESC P`), SOS (`ESC X`), PM (`ESC ^`) and APC (`ESC _`) frame their payloads
+ * the same way, so they share that body rule: `ESC P tmux; … ST` is tmux
+ * passthrough, `ESC P q …` a sixel image, `ESC _ G … ST` a kitty graphic, and
+ * with the grammar missing the whole payload was published as visible text.
+ *
+ * The last two alternatives are the short sequences, which are the ones a
+ * capture holds most of: nF is `ESC` plus intermediates plus a final byte
+ * (`ESC ( B`, the ASCII charset select every editor sends on the way out), and
+ * the single-byte class is Fp, Fe and Fs — `ESC 7` and `ESC 8` park and reclaim
+ * the cursor for every progress bar, `ESC =` and `ESC >` bracket an ncurses
+ * run, `ESC c` is `reset`. That class is `0x30-0x7e` minus the six introducers
+ * `[ ] P X ^ _`, which belong to the alternatives above; matching one here
+ * would eat the introducer and publish its parameters as text.
  */
-const CSI_OR_OSC = /\x1b(?:\[[\x30-\x3f]*[\x20-\x2f]*[\x40-\x7e]|\][^\x07\x1b]*(?:\x07|\x1b\\))/g;
+const ESCAPE_SEQUENCE =
+	/\x1b(?:\[[\x30-\x3f]*[\x20-\x2f]*[\x40-\x7e]|[\]PX^_][^\x07\x1b]*(?:\x07|\x1b\\)|[\x20-\x2f]+[\x30-\x7e]|[\x30-\x4f\x51-\x57\x59-\x5a\x5c\x60-\x7e])/g;
 
 export function stripAnsi(s: string): string {
 	if (!s.includes("\x1b")) return s;
-	// An escape that opened neither sequence is dropped, and only the escape
-	// byte: whatever follows it is text and is kept, which is what a capture cut
-	// at a buffer boundary mid-escape looks like. Dropping it is also what makes
-	// this a fixed point, by construction rather than by inspection: no escape
-	// survives a pass, so a second pass takes the fast path above and cannot
+	// An escape that opened no sequence of any of those kinds is dropped, and only
+	// the escape byte: whatever follows it is text and is kept, which is what a
+	// capture cut at a buffer boundary mid-escape looks like. Dropping it is also
+	// what makes this a fixed point, by construction rather than by inspection: no
+	// escape survives a pass, so a second pass takes the fast path above and cannot
 	// change anything. Keeping it as text does not hold up, because removing a
 	// sequence can push a stray escape against a following `[` and MAKE a
 	// sequence that was not there before, so the same string strips to two
 	// different results depending on how many times it has been through. Found by
 	// the Rust half's fuzzer, `fuzz/fuzz_targets/minimizer_filters.rs`.
-	return s.replace(CSI_OR_OSC, "").replaceAll("\x1b", "");
+	return s.replace(ESCAPE_SEQUENCE, "").replaceAll("\x1b", "");
 }
