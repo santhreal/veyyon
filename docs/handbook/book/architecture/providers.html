@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-64684766.js";
+            window.path_to_searchindex_js = "../searchindex-7474cc36.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-79e2ba62.js"></script>
@@ -268,7 +268,7 @@ silence.</p>
 </tbody>
 </table>
 </div>
-<p>Three rules keep this narrow.</p>
+<p>Four rules keep this narrow.</p>
 <p><strong>A stall is bounded by the budget; a server-directed wait is bounded by the
 cap.</strong> A 429 or 503 carrying <code>retry-after</code> means the server answered and asked
 for a later attempt. Honoring that is what makes a rate limit survivable, so
@@ -295,6 +295,20 @@ refusal arrived as “stream ended without a turn_ended update”), and a handsh
 that treats a refusal as one candidate’s silence and concludes with the remedy
 for having found nothing (GitLab Duo’s namespace walk did this with a rejected
 token).</p>
+<p><strong>A stream that stopped is not a stream that finished.</strong> Every dialect ends a
+turn with a marker of its own — <code>finish_reason</code> and <code>[DONE]</code>,
+<code>response.completed</code>, <code>message_stop</code>, <code>finishReason</code>, <code>done: true</code>,
+<code>messageStop</code>, <code>turn_ended</code> — and reaching the end of the body without one is a
+transport-clean EOF that says nothing about the turn. Reporting a normal stop
+there persists whatever arrived as an answer, and the model reads it back as
+history on the next turn; rejecting every such EOF fails turns that were
+complete, because several compatible servers simply do not send the marker.
+<code>stopReasonForTerminallessEof</code> in <code>utils/terminalless-eof</code> owns the judgement
+for every dialect: visible text is a stop, reasoning with no answer is a
+<code>length</code> the session can recover, a tool batch counts only when every call
+parsed, and anything else is an <code>incomplete-stream</code> failure. A provider that
+seeds <code>stopReason: "stop"</code> before the first byte and never consults this rule
+writes a blank turn into the session, which is what Bedrock and Ollama did.</p>
 <h3 id="where-each-providers-deadline-sits"><a class="header" href="#where-each-providers-deadline-sits">Where each provider’s deadline sits</a></h3>
 <div class="table-wrapper">
 <table>
@@ -317,6 +331,10 @@ API, so a provider that stops honoring the number turns that suite red.</p>
 drives the same fourteen against a refusing transport — <code>401</code>, <code>404</code>, <code>429</code> with
 a two-minute <code>retry-after</code>, and <code>400</code> — and pins the class each one surfaces,
 plus the invariant that no refusal echoes the api key back into its message.</p>
+<p><code>packages/ai/test/a-stream-that-stops-mid-turn-is-never-reported-as-a-finished-one.test.ts</code>
+drives all fourteen against a <code>200</code> that closes without a terminal marker and
+pins each verdict, so a dialect that starts accepting an empty stream as an
+answer turns red rather than shipping a blank turn.</p>
 
                     </main>
 

@@ -675,3 +675,21 @@ export function isStreamEnvelopeError(error: unknown): boolean {
 export function isRetryableStreamEnvelopeError(error: unknown): boolean {
 	return error instanceof Error && STREAM_EVENT_ORDER_PATTERN.test(error.message);
 }
+
+/**
+ * A stream that ended before it said anything at all.
+ *
+ * This is the envelope shape of "nothing arrived", and it belongs to the same
+ * class as a first-event stall rather than to the class of failures a server
+ * answered with. That distinction is what the declared first-event budget is
+ * allowed to end: another attempt against an endpoint that returned an empty
+ * body cannot produce an event sooner than this one did, while a 429 the server
+ * DID answer with keeps its own retry entitlement.
+ */
+export function isEmptyStreamEnvelopeError(error: unknown): boolean {
+	return (
+		error instanceof Error &&
+		error.message.includes(STREAM_ENVELOPE_ERROR_PREFIX) &&
+		TRANSIENT_ENVELOPE_BEFORE_START_PATTERN.test(error.message)
+	);
+}

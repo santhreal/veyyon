@@ -2762,16 +2762,25 @@ const streamAnthropicOnce = (
 						firstTokenTime === undefined &&
 						!streamedReplayUnsafeContent &&
 						isProviderRetryableError(streamFailure, model.provider);
-					// A stall — no response at all — may not outlive the declared
+					// A failure where NOTHING came back may not outlive the declared
 					// first-event budget. The server never answered, so another
 					// attempt cannot produce an event any sooner than this one did,
-					// and the caller's number is the whole point of asking.
-					const stallOutlivedBudget =
-						firstTokenTime === undefined && isPreResponseStall(streamFailure) && firstEventBudget.spent();
+					// and the caller's number is the whole point of asking. Two
+					// shapes qualify: a stall, and an envelope that ended before
+					// `message_start`. The second is retryable and was retried the
+					// full ten times with exponential backoff, which spent 49s of a
+					// declared 5s budget on an endpoint that answered `200` with an
+					// empty body. A 429 is deliberately NOT in this set: the server
+					// answered, and its retry entitlement is bounded by the caller's
+					// `maxRetryDelayMs` below rather than by this fence.
+					const nothingArrivedOutlivedBudget =
+						firstTokenTime === undefined &&
+						(isPreResponseStall(streamFailure) || AIError.isEmptyStreamEnvelopeError(streamFailure)) &&
+						firstEventBudget.spent();
 					if (
 						activeAbortTracker.wasCallerAbort() ||
 						providerRetryAttempt >= PROVIDER_MAX_RETRIES ||
-						stallOutlivedBudget ||
+						nothingArrivedOutlivedBudget ||
 						(!canRetryTransientEnvelopeFailure && !canRetryProviderFailure)
 					) {
 						throw streamFailure;
