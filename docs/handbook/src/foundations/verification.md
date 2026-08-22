@@ -11,7 +11,7 @@ Product behavior is covered by tests that assert concrete outcomes, not only non
 
 ## Recording terminal proofs
 
-This section is the capture configuration. It is the only source of visual proof.
+The capture configuration below is the only source of visual proof.
 Record interactive proofs on the repository's private display. Do not record a
 logged-in desktop, and do not use a terminal multiplexer capture as visual
 evidence. There are no other capture paths and no fallbacks.

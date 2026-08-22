@@ -6,7 +6,7 @@ Seatbelt, or bubblewrap). Shell commands and file writes run as your user, bound
 this policy, per-tool `tools.approval` overrides, and the hard-coded flagged bash patterns
 below.
 
-This page is the operator reference. For the model behind it, see
+Operator reference. For the model behind it, see
 [Permission model](../concepts/permission-model.md). For the wider boundary, see
 [Safety](../using/safety.md).
 

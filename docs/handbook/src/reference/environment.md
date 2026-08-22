@@ -1,6 +1,6 @@
 # Environment variables
 
-This page covers the common operator surface: identity/profile selection, provider auth, and the
+The common operator surface: identity and profile selection, provider auth, and the
 handful of `VEYYON_*` variables that are actually read by the runtime today. Veyyon also reads a large
 number of `VEYYON_*` debug/behavior-toggle variables (timing, startup tracing, TUI flags, eval-runtime
 toggles, and more) that are less common configuration. For the complete, code-grounded reference,

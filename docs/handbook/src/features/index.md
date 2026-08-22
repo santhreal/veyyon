@@ -1,6 +1,6 @@
 # Features
 
-This chapter is the hub for Veyyon's features: the surfaces you touch every session, then what you add on top to extend and customize the agent. For worked examples, see the recipes at the end.
+Features, in two groups: the surfaces of an everyday session, then what extends and customizes the agent. Worked examples are at the end.
 
 ## Interactive surfaces
 

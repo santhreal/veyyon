@@ -1,7 +1,7 @@
 # MCP server setup
 
 Veyyon can connect to third-party Model Context Protocol (MCP) servers so external tools and data
-sources become available to the agent. This guide explains how to register those servers, choose a
+sources become available to the agent. Register a server, choose a
 transport, authenticate, and fix the most common connection problems.
 
 For an overview of what MCP does in Veyyon, see [MCP](../features/mcp.md). Engineering reference:

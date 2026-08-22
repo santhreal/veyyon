@@ -1,6 +1,6 @@
 # Architecture at a glance
 
-Veyyon ships as the **`veyyon`** CLI (Bun + TypeScript, Rust helpers). This chapter maps subsystems;
+Veyyon ships as the **`veyyon`** CLI (Bun + TypeScript, Rust helpers). Subsystems map
 each has a handbook page and matching engineering notes under `docs/`.
 
 ## The request path

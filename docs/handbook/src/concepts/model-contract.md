@@ -5,7 +5,7 @@ endpoint exposes model choice, provide the key, and Veyyon calls that API direct
 a local server (Ollama, LM Studio), a direct provider API (OpenAI, Anthropic, Google), or any
 OpenAI-compatible gateway.
 
-This page is the contract between the harness and the model. For copy-paste provider setup, see
+The contract between the harness and the model. For copy-paste provider setup, see
 [Configuring providers](../using/configuring-providers.md). For model switching, see
 [Models and providers](../using/models.md).
 

@@ -21,9 +21,8 @@ Policy is **`tools.approvalMode`** and `tools.approval`, plus the working-direct
 
 ## Truncated tool output
 
-Tool results truncate at configured budgets; the result text should state that truncation occurred and how to continue (limit, offset, narrower query). See [Context size and retries](../benefits/lower-cost.md), [Bounded reads and search](../context/reads-search.md).
+Tool results truncate at configured budgets; the result text should state that truncation occurred and how to continue (limit, offset, narrower query). See [Bounded reads and search](../context/reads-search.md).
 
 ## Related
 
-- [Approvals and errors](../benefits/safety-errors.md)
 - [Observability](../observability/overview.md)

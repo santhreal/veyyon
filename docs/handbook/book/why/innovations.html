@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-d4c36522.js";
+            window.path_to_searchindex_js = "../searchindex-46c8c618.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-79e2ba62.js"></script>
+        <script src="../toc-13566cf4.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -196,29 +196,25 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="mechanisms"><a class="header" href="#mechanisms">Mechanisms</a></h1>
-<h2 id="subsystem-contracts"><a class="header" href="#subsystem-contracts">Subsystem contracts</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Area</th><th>Mechanism</th></tr>
-</thead>
-<tbody>
-<tr><td>Prompt and context</td><td>Statement-owned prompt assembly, layered <code>AGENTS.md</code>, validated <code>PROMPT_SECTIONS/</code>, and transactional context reload when the working directory moves.</td></tr>
-<tr><td>Models and compaction</td><td>Model-native effort variants, explicit effort precedence, editable subsystem fallback chains, and a lossless first compaction pass.</td></tr>
-<tr><td>Credentials and sessions</td><td>Shared SQLite credentials, multi-credential selection, encrypted working secrets, outbound secret obfuscation, atomic session writes, and non-destructive corruption recovery.</td></tr>
-<tr><td>Tools and workers</td><td>Unified tool registry, LSP write-through, destructive-shell interception, schema-checked workers, IRC bus, internal agent URLs, and the Agent Control Center.</td></tr>
-<tr><td>Native runtime</td><td>Native grep, PTY handling, tree-sitter integration, and Rust crates for glob matching, grep orchestration, key normalization, text indexing, diffing, and directory walking.</td></tr>
-<tr><td>Argot</td><td>Lossless per-project shorthand codec expanding before tools, transcripts, parent agents, or displays receive text.</td></tr>
-</tbody>
-</table>
-</div>
-<p>See <a href="../acknowledgements.html">Acknowledgements</a> for project credits.</p>
 <h2 id="hashline-edits"><a class="header" href="#hashline-edits">Hashline edits</a></h2>
 <p>The <code>edit</code> and <code>write</code> tools accept hashline patches, which are addressed by content rather than by line number. Before writing, the native layer checks the patch against the current file. If they do not match, the tool fails and returns recovery context to the model instead of writing a corrupted file.</p>
 <p>See <a href="../using/editing.html">Editing and repair</a> and <a href="../edit/engine.html">The hashline edit engine</a>.</p>
 <h2 id="tool-approval-tiers"><a class="header" href="#tool-approval-tiers">Tool approval tiers</a></h2>
-<p>The <code>tools.approvalMode</code> setting is one of <code>plan</code>, <code>ask</code>, <code>ask-command</code>, <code>auto</code>, or <code>yolo</code>, and <code>auto</code> is the default. The older aliases still map onto those: <code>always-ask</code> → <code>ask</code>, <code>write</code> and <code>auto-edit</code> → <code>ask-command</code>. The three tiers are read, write, and exec. On top of the mode sit the guards the mode does not lift: per-tool <code>tools.approval</code> overrides, the working-directory boundary, the secret-use boundary, and a built-in bash guard (<code>bash-guard.ts</code>) that forces a prompt on destructive commands such as a recursive delete of the home directory. That guard is always on and even <code>yolo</code> does not lift it. The separate bash interceptor (<code>bashInterceptor.enabled</code>, off by default, <code>bashInterceptor.patterns</code>) is an additional user-configured layer.</p>
-<p>See <a href="../features/sandbox.html">Approvals</a> and <code>/settings</code> → Interaction → Approvals.</p>
+<p><code>tools.approvalMode</code> is one of <code>plan</code>, <code>ask</code>, <code>ask-command</code>, <code>auto</code>, or <code>yolo</code>.
+<code>auto</code> is the default. Older names map onto those: <code>always-ask</code> to <code>ask</code>, <code>write</code>
+and <code>auto-edit</code> to <code>ask-command</code>. The tiers are read, write, and exec.</p>
+<p>Four guards sit above the mode and no mode lifts them:</p>
+<ul>
+<li>Per-tool overrides in <code>tools.approval</code>.</li>
+<li>The working-directory boundary.</li>
+<li>The secret-use boundary.</li>
+<li><code>bash-guard.ts</code>, which forces a prompt on a destructive command such as a
+recursive delete of the home directory. <code>yolo</code> does not lift it.</li>
+</ul>
+<p><code>bashInterceptor.enabled</code> adds a user-configured layer on top, off by default,
+matching <code>bashInterceptor.patterns</code>.</p>
+<p>See <a href="../features/sandbox.html">Approvals</a> and <code>/settings</code> -&gt; Interaction -&gt;
+Approvals.</p>
 <h2 id="model-slots-and-roles"><a class="header" href="#model-slots-and-roles">Model slots and roles</a></h2>
 <p>Model configuration separates model selection from subsystem roles:</p>
 <ul>
