@@ -208,14 +208,33 @@ export async function connectProxiedSocket(
 		}
 		options?.signal?.removeEventListener("abort", onAbort);
 		rawSocket?.off("error", onRawError);
+		rawSocket?.off("close", onRawClose);
 		rawSocket?.off(readyEvent, onProxyReady);
 		rawSocket?.off("data", onProxyData);
 		tunnelSocket?.off("secureConnect", onTunnelReady);
 		tunnelSocket?.off("error", onTunnelError);
+		tunnelSocket?.off("close", onTunnelClose);
 	};
+	// Calling `socket.destroy()` or `socket.end()` leaves unread CONNECT request
+	// bytes in the proxy server's TCP receive buffer. When unread data is pending,
+	// TCP FIN teardown does not close the peer socket stream on Node or Bun.
+	// `socket.resetAndDestroy()` sends a TCP RST packet that tears down the
+	// connection immediately at both OS and stream levels on the peer.
 	const destroyInProgress = (): void => {
-		tunnelSocket?.destroy();
-		rawSocket?.destroy();
+		if (tunnelSocket) {
+			if (typeof tunnelSocket.resetAndDestroy === "function") {
+				tunnelSocket.resetAndDestroy();
+			} else {
+				tunnelSocket.destroy();
+			}
+		}
+		if (rawSocket) {
+			if (typeof rawSocket.resetAndDestroy === "function") {
+				rawSocket.resetAndDestroy();
+			} else {
+				rawSocket.destroy();
+			}
+		}
 	};
 	const rejectOnce = (error: Error): void => {
 		if (settled) return;
@@ -233,9 +252,17 @@ export async function connectProxiedSocket(
 	const onAbort = (): void => rejectOnce(new AIError.RequestAbortError("Proxy tunnel aborted"));
 	const onRawError = (error: Error): void => rejectOnce(error);
 	const onTunnelError = (error: Error): void => rejectOnce(error);
+	const onTunnelClose = (): void => {
+		if (settled) return;
+		rejectOnce(new AIError.ValidationError("Proxy tunnel closed before handshake established"));
+	};
 	const onTunnelReady = (): void => {
 		if (!tunnelSocket) return;
 		resolveOnce(tunnelSocket);
+	};
+	const onRawClose = (): void => {
+		if (settled) return;
+		rejectOnce(new AIError.ValidationError("Proxy connection closed before tunnel established"));
 	};
 	const onProxyData = (chunk: Buffer): void => {
 		if (!rawSocket) return;
@@ -244,6 +271,7 @@ export async function connectProxiedSocket(
 
 		rawSocket.off("data", onProxyData);
 		rawSocket.off("error", onRawError);
+		rawSocket.off("close", onRawClose);
 
 		const firstLine = responseData.split("\r\n")[0];
 		if (!firstLine.includes(" 200 ")) {
@@ -262,6 +290,7 @@ export async function connectProxiedSocket(
 		tunnelSocket = socket;
 		socket.once("secureConnect", onTunnelReady);
 		socket.once("error", onTunnelError);
+		socket.once("close", onTunnelClose);
 	};
 	const onProxyReady = (): void => {
 		if (!rawSocket) return;
@@ -301,6 +330,7 @@ export async function connectProxiedSocket(
 			});
 	rawSocket = socket;
 	socket.once("error", onRawError);
+	socket.once("close", onRawClose);
 	socket.once(readyEvent, onProxyReady);
 
 	return promise;

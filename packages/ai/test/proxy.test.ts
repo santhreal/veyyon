@@ -13,18 +13,44 @@ import {
 
 const PROXY = "http://127.0.0.1:24560";
 
-interface SilentProxyServer {
+// Real wall-clock timers and real loopback sockets are required here because
+// this test verifies OS/runtime TCP socket teardown, RST propagation, and
+// deadline termination across Node/Bun stream boundaries.
+
+/**
+ * WHY THIS TEST SUITE EXISTS, AND WHAT IT CLOSES.
+ *
+ * Defect: When connectProxiedSocket timed out, aborted, encountered a non-200
+ * CONNECT response, or suffered a raw connection drop, calling destroy() on the
+ * client socket sent a TCP FIN that left unread request bytes in the proxy's
+ * receive buffer. When unread data is buffered, standard FIN teardown does not
+ * close the peer stream on Node or Bun, leaking file descriptors and proxy sessions.
+ *
+ * Class: Every terminal failure path of connectProxiedSocket must both reject
+ * with the expected error type and actively tear down the underlying connection
+ * so the peer observes closure (destroyed/closed) within a bounded wait.
+ *
+ * What it does not catch: Post-handshake HTTP/2 stream errors inside the established
+ * TLS tunnel (governed by caller's http2 session lifecycle), or proxy servers with
+ * explicit allowHalfOpen TCP configurations.
+ */
+
+interface ProxyServerFixture {
 	url: string;
 	accepted: Promise<net.Socket>;
 	close(): Promise<void>;
 }
 
-async function createSilentProxyServer(): Promise<SilentProxyServer> {
+type SocketHandler = (socket: net.Socket) => void;
+
+async function createProxyServerFixture(onSocket?: SocketHandler): Promise<ProxyServerFixture> {
 	const sockets = new Set<net.Socket>();
 	const accepted = Promise.withResolvers<net.Socket>();
 	const server = net.createServer(socket => {
 		sockets.add(socket);
+		socket.on("error", () => {});
 		socket.once("close", () => sockets.delete(socket));
+		onSocket?.(socket);
 		accepted.resolve(socket);
 	});
 
@@ -44,7 +70,13 @@ async function createSilentProxyServer(): Promise<SilentProxyServer> {
 		url: `http://127.0.0.1:${address.port}`,
 		accepted: accepted.promise,
 		async close() {
-			for (const socket of sockets) socket.destroy();
+			for (const socket of sockets) {
+				if (typeof socket.resetAndDestroy === "function") {
+					socket.resetAndDestroy();
+				} else {
+					socket.destroy();
+				}
+			}
 			const closed = Promise.withResolvers<void>();
 			server.close(error => {
 				if (error) closed.reject(error);
@@ -55,12 +87,24 @@ async function createSilentProxyServer(): Promise<SilentProxyServer> {
 	};
 }
 
-async function waitForSocketClose(socket: net.Socket): Promise<void> {
-	if (socket.destroyed) return;
+async function waitForSocketClose(socket: net.Socket, timeoutMs = 1_000): Promise<void> {
+	if (socket.destroyed || socket.closed) return;
 	const closed = Promise.withResolvers<void>();
-	socket.once("close", () => closed.resolve());
+	const onClose = (): void => {
+		clearTimeout(timer);
+		closed.resolve();
+	};
+	socket.once("close", onClose);
+	// Real timer bounds wait so a hung teardown test terminates instead of timing out the runner.
+	const timer = setTimeout(() => {
+		socket.off("close", onClose);
+		closed.resolve();
+	}, timeoutMs);
+	timer.unref?.();
 	await closed.promise;
 }
+
+const createSilentProxyServer = (): Promise<ProxyServerFixture> => createProxyServerFixture();
 
 const isProxyEnvKey = (k: string): boolean => k.startsWith("VEYYON_PROXY") || k === "NO_PROXY" || k === "no_proxy";
 
@@ -285,4 +329,86 @@ describe("connectProxiedSocket", () => {
 			await proxy.close();
 		}
 	});
+
+	interface TerminalPathScenario {
+		readonly name: string;
+		readonly onSocket?: (socket: net.Socket) => void;
+		readonly drive: (url: string, accepted: Promise<net.Socket>) => Promise<unknown>;
+		readonly expectedErrorType:
+			| typeof AIError.StreamTimeoutError
+			| typeof AIError.RequestAbortError
+			| typeof AIError.ValidationError;
+	}
+
+	const TERMINAL_PATHS: readonly TerminalPathScenario[] = [
+		{
+			name: "timeout before any CONNECT response",
+			drive: async url =>
+				connectProxiedSocket(url, "https://cursor.example", { timeoutMs: 20 }).then(
+					() => "resolved",
+					error => error,
+				),
+			expectedErrorType: AIError.StreamTimeoutError,
+		},
+		{
+			name: "caller abort mid-handshake",
+			drive: async (url, accepted) => {
+				const controller = new AbortController();
+				const pending = connectProxiedSocket(url, "https://cursor.example", {
+					signal: controller.signal,
+					timeoutMs: 1_000,
+				}).then(
+					() => "resolved",
+					error => error,
+				);
+				await accepted;
+				controller.abort();
+				return pending;
+			},
+			expectedErrorType: AIError.RequestAbortError,
+		},
+		{
+			name: "proxy replying a non-200 CONNECT status",
+			onSocket: socket => {
+				socket.on("data", () => {
+					socket.write("HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n");
+				});
+			},
+			drive: async url =>
+				connectProxiedSocket(url, "https://cursor.example", { timeoutMs: 1_000 }).then(
+					() => "resolved",
+					error => error,
+				),
+			expectedErrorType: AIError.ValidationError,
+		},
+		{
+			name: "proxy closing the connection itself",
+			onSocket: socket => {
+				socket.on("data", () => {
+					socket.destroy();
+				});
+			},
+			drive: async url =>
+				connectProxiedSocket(url, "https://cursor.example", { timeoutMs: 1_000 }).then(
+					() => "resolved",
+					error => error,
+				),
+			expectedErrorType: AIError.ValidationError,
+		},
+	];
+
+	for (const scenario of TERMINAL_PATHS) {
+		it(`enumerated terminal path: rejects and closes peer socket on ${scenario.name}`, async () => {
+			const proxy = await createProxyServerFixture(scenario.onSocket);
+			try {
+				const result = await scenario.drive(proxy.url, proxy.accepted);
+				expect(result).toBeInstanceOf(scenario.expectedErrorType);
+				const socket = await proxy.accepted;
+				await waitForSocketClose(socket);
+				expect(socket.destroyed).toBe(true);
+			} finally {
+				await proxy.close();
+			}
+		});
+	}
 });
