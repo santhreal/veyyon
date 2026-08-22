@@ -29,6 +29,33 @@ Six arms:
 `VEYYON_TIMING=x veyyon` prints the phase tree on its own, without the bench, and exits. `full`
 adds every module-load span.
 
+## Guard a change against a regression
+
+`scripts/bench-startup.ts` answers what the boot costs.
+`packages/coding-agent/scripts/bench-guard.ts` answers whether a change made it worse, on one
+machine, against a baseline captured on that machine.
+
+```sh
+bun packages/coding-agent/scripts/bench-guard.ts --update   # capture the baseline for this host
+bun packages/coding-agent/scripts/bench-guard.ts            # measure again and compare
+```
+
+It needs `hyperfine` and `script` on `PATH`. Each arm is 3 warmup launches and at least 20 measured
+ones, each with its own `HOME` and `XDG_CONFIG_HOME`, so a populated profile, a session history or
+an MCP config cannot move the median. The launch runs under a pty: the interactive command refuses
+a stdin that is not a terminal, and it refuses before it reaches the `VEYYON_TIMING=x` exit, so
+without one the guard would time the refusal.
+
+The exit code is the answer. `0` is within the 5% median budget, `1` is a regression, `2` is a
+refusal to compare at all. A refusal names what differed: platform, arch, CPU model, host, Bun
+version, the benchmark command, whether `HOME` was isolated, or a median taken over fewer than 20
+runs. The revision and a dirty tree travel with the baseline and are printed, but they do not
+refuse — the candidate arm is expected to be other code.
+
+The baseline lands in `packages/coding-agent/bench/` as `boot-baseline.json`, which is gitignored.
+Boot wall time is a fact about a machine, so a baseline committed to the repository would be a
+number from someone else's laptop; recapture it where you measure.
+
 ## Baseline
 
 Linux x64, AMD Ryzen 9 9950X, medians of 3, measured at `96175566f`.
