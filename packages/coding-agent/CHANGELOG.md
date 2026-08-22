@@ -6,6 +6,10 @@
 
 - Veyyon source checkouts, Docker images, and published packages now require Bun 1.4.0 or newer.
 
+### Added
+
+- An opt-in `tools.unifiedRuntime` experiment replaces the model-facing `eval` and `launch` tools with one `runtime` tool while preserving their existing kernel and process implementations.
+
 ### Changed
 
 - Image generation is disabled by default. Enable **Generate Image** in the Tools settings to expose `generate_image`.

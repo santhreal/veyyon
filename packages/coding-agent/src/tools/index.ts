@@ -54,6 +54,7 @@ import {
 import { wrapToolWithMetaNotice } from "./output-meta";
 import { RerootDetector, wrapToolWithRerootHint } from "./reroot-hint";
 import type { TodoPhase } from "./todo";
+import { RuntimeTool } from "./runtime";
 
 // NOTE: tool implementation modules are intentionally NOT imported eagerly
 // here. Each factory in BUILTIN_TOOLS / HIDDEN_TOOLS dynamic-imports its
@@ -501,6 +502,7 @@ export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = {
 	reflect: async s => (await import("./memory-reflect")).MemoryReflectTool.createIf(s),
 	learn: async s => (await import("./learn")).LearnTool.createIf(s),
 	manage_skill: async s => (await import("./manage-skill")).ManageSkillTool.createIf(s),
+	runtime: async s => RuntimeTool.create(s),
 	// The two Argot folder tools exist only when the session holds a codec; with
 	// the feature off, or for a subagent under `argot.subagents: off`, there is no
 	// session to load into, so the factory returns null and the tool is absent.
@@ -630,6 +632,7 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 		bashEnabled: session.settings.get("bash.enabled"),
 		launchEnabled: session.settings.get("launch.enabled"),
 		evalAllowed: allowEval,
+		unifiedRuntime: session.settings.get("tools.unifiedRuntime"),
 		debugEnabled: session.settings.get("debug.enabled"),
 		requireYieldTool: includeYield,
 		todoEnabled: session.settings.get("todo.enabled"),

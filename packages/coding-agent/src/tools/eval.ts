@@ -30,7 +30,7 @@ import { clampTimeout, describeTimeoutParam, formatTimeoutClampNotice, TOOL_TIME
 
 /** Language tokens the eval tool accepts, in stable display order. */
 export type EvalLanguageToken = "py" | "js" | "rb" | "jl";
-const EVAL_LANGUAGE_ORDER: readonly EvalLanguageToken[] = ["py", "js", "rb", "jl"];
+export const EVAL_LANGUAGE_ORDER: readonly EvalLanguageToken[] = ["py", "js", "rb", "jl"];
 const EVAL_LANGUAGE_RUNTIME: Record<EvalLanguageToken, string> = {
 	py: '"py" for the IPython kernel',
 	js: '"js" for the persistent JS VM',
@@ -51,11 +51,11 @@ function joinWithOr(items: readonly string[]): string {
 	return `${items.slice(0, -1).join(", ")}, or ${items[items.length - 1]}`;
 }
 
-function describeLanguageField(langs: readonly EvalLanguageToken[]): string {
+export function describeLanguageField(langs: readonly EvalLanguageToken[]): string {
 	return `runtime: ${langs.map(lang => EVAL_LANGUAGE_RUNTIME[lang]).join(", ")}`;
 }
 
-function describeCodeField(langs: readonly EvalLanguageToken[]): string {
+export function describeCodeField(langs: readonly EvalLanguageToken[]): string {
 	const replLangs = langs.filter(lang => lang === "rb" || lang === "jl");
 	// No persistent REPL backends → keep the original py/js phrasing verbatim so the
 	// default (rb/jl off) wire schema stays byte-identical to the pre-feature one.
@@ -68,7 +68,7 @@ function describeCodeField(langs: readonly EvalLanguageToken[]): string {
 }
 
 /** One-line discovery summary listing the runtimes available this session. */
-function summarizeEvalLanguages(langs: readonly EvalLanguageToken[]): string {
+export function summarizeEvalLanguages(langs: readonly EvalLanguageToken[]): string {
 	const names = langs.map(lang => EVAL_LANGUAGE_NAME[lang]);
 	const list = names.length > 0 ? joinWithOr(names) : "Python or JavaScript";
 	// "in-process" matches the historical py/js summary; persistent kernels (rb/jl) switch wording.
@@ -77,7 +77,7 @@ function summarizeEvalLanguages(langs: readonly EvalLanguageToken[]): string {
 }
 
 /** Resolved-allowance → enabled language tokens, preserving display order. */
-function enabledEvalLanguages(backends: EvalBackendsAllowance): EvalLanguageToken[] {
+export function enabledEvalLanguages(backends: EvalBackendsAllowance): EvalLanguageToken[] {
 	const allowed: Record<EvalLanguageToken, boolean> = {
 		py: backends.python,
 		js: backends.js,
@@ -87,7 +87,7 @@ function enabledEvalLanguages(backends: EvalBackendsAllowance): EvalLanguageToke
 	return EVAL_LANGUAGE_ORDER.filter(lang => allowed[lang]);
 }
 
-const evalCellCommonFields = {
+export const evalCellCommonFields = {
 	"title?": type("string").describe('short label shown in transcript (e.g. "imports", "load config")'),
 	"timeout?": type("number").describe(describeTimeoutParam("eval", { zeroDisablesNoun: "cell timeout" })),
 	"reset?": type("boolean").describe("wipe this language's kernel before running. Other languages are untouched."),
