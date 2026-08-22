@@ -91,7 +91,6 @@ import {
 	writeArmAttachmentManifest,
 } from "./arm-attachments";
 import {
-	type ArmInputs,
 	armNamesIn,
 	armSelectionError,
 	computeArmFingerprint,
