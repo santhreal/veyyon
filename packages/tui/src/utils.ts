@@ -428,9 +428,12 @@ const OSC_STRIP_MARKER = "\x1b\\";
  *    introducer and leave the payload as text.
  * 2. nF SEQUENCES, `ESC` then one or more bytes in `0x20..0x2f` then a final:
  *    character-set designators such as `ESC ( B`, and `ESC # 8`.
- * 3. TWO-BYTE Fe AND Fs SEQUENCES, `ESC` then a single byte in `0x40..0x7e`. The
- *    class excludes `[` and `]`, whose sequences Bun already strips, and the four
- *    string introducers, which family 1 owns.
+ * 3. TWO-BYTE Fp, Fe AND Fs SEQUENCES, `ESC` then a single byte in `0x30..0x7e`.
+ *    The class excludes `[` and `]`, whose sequences Bun already strips, and the
+ *    four string introducers, which family 1 owns. Fp (`0x30..0x3f`) is `ESC 7`,
+ *    `ESC 8`, `ESC =` and `ESC >`; Bun strips those itself from 1.4.0 on, and
+ *    matching them here keeps this side's answer independent of which Bun is
+ *    under it.
  *
  * NOT INCLUDED: an UNTERMINATED introducer. Bun scores `"\x1b[3"` and `"\x1b]8;;"`
  * at zero, which is what a terminal does with a sequence it is still waiting to
@@ -439,7 +442,7 @@ const OSC_STRIP_MARKER = "\x1b\\";
  * would mean teaching this side to draw characters the terminal does not.
  */
 const UNRECOGNIZED_ESCAPE_SEQUENCE =
-	/\x1b[PX^_][\s\S]*?(?:\x1b\\|\x07)|\x1b[\x20-\x2f]+[\x30-\x7e]|\x1b[\x40-\x4f\x51-\x57\x59-\x5a\x5c\x60-\x7e]/g;
+	/\x1b[PX^_][\s\S]*?(?:\x1b\\|\x07)|\x1b[\x20-\x2f]+[\x30-\x7e]|\x1b[\x30-\x4f\x51-\x57\x59-\x5a\x5c\x60-\x7e]/g;
 const TAB = "\t";
 const LONG_WIDTH_FAST_PATH_MIN = 128;
 
