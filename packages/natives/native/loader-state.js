@@ -228,6 +228,33 @@ export function resolveLoaderCandidates({
 const VERSION_CACHE_DIR_RE = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
 
 /**
+ * Every per-version cache under `nativesDir` that is not the loaded package's own.
+ *
+ * The single owner of the question "which directory is dead", so the synchronous
+ * install-time prune and the deferred runtime one cannot disagree about what they
+ * are allowed to delete. A root that does not exist yet (first install, or
+ * `$XDG_DATA_HOME` pointing elsewhere) is "nothing to prune", not a failure.
+ *
+ * @param {{ nativesDir: string; currentVersion: string }} input
+ * @returns {string[]}
+ */
+export function staleNativeVersionDirs({ nativesDir, currentVersion }) {
+	let entries;
+	try {
+		entries = fs.readdirSync(nativesDir, { withFileTypes: true });
+	} catch {
+		return [];
+	}
+	const stale = [];
+	for (const entry of entries) {
+		if (!entry.isDirectory() || entry.name === currentVersion) continue;
+		if (!VERSION_CACHE_DIR_RE.test(entry.name)) continue;
+		stale.push(path.join(nativesDir, entry.name));
+	}
+	return stale;
+}
+
+/**
  * Remove every per-version native cache except the loaded package's own.
  *
  * Each cache holds the platform's addon variants, on the order of 150MB, and an
@@ -236,8 +263,14 @@ const VERSION_CACHE_DIR_RE = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
  * physically cannot expose. It is dead weight from the moment the new one is
  * staged.
  *
- * Never throws: this runs after the native addon has already loaded
- * successfully, and reclaiming disk must not abort a startup that has otherwise
+ * SYNCHRONOUS, and therefore for install time only -- `scripts/ensure-native.ts`
+ * has just written the new cache and is the natural owner of retiring the old
+ * one. A launch uses {@link scheduleStaleNativeCleanup} instead: measured on this
+ * host, deleting one 150MiB cache costs 7ms, three cost 24ms, three that also
+ * hold 5000 small files cost 105ms, and all of it landed between `dlopen` and the
+ * first native call, which is before the first frame.
+ *
+ * Never throws: reclaiming disk must not abort a startup that has otherwise
  * worked. Failures are RETURNED rather than swallowed, so the caller can say
  * which directory is stuck instead of leaving the user with disk that quietly
  * never comes back.
@@ -248,19 +281,7 @@ const VERSION_CACHE_DIR_RE = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
 export function cleanupStaleNativeVersions({ nativesDir, currentVersion }) {
 	/** @type {{ removed: string[], failed: { dir: string, reason: string }[] }} */
 	const result = { removed: [], failed: [] };
-	let entries;
-	try {
-		entries = fs.readdirSync(nativesDir, { withFileTypes: true });
-	} catch {
-		// No cache root yet (a first install, or XDG points elsewhere). That is
-		// "nothing to prune", not a failure worth reporting.
-		return result;
-	}
-
-	for (const entry of entries) {
-		if (!entry.isDirectory() || entry.name === currentVersion) continue;
-		if (!VERSION_CACHE_DIR_RE.test(entry.name)) continue;
-		const targetPath = path.join(nativesDir, entry.name);
+	for (const targetPath of staleNativeVersionDirs({ nativesDir, currentVersion })) {
 		try {
 			fs.rmSync(targetPath, { recursive: true, force: true });
 			result.removed.push(targetPath);
@@ -269,6 +290,76 @@ export function cleanupStaleNativeVersions({ nativesDir, currentVersion }) {
 		}
 	}
 	return result;
+}
+
+/**
+ * The same prune, with the unlink work on libuv's threadpool instead of the
+ * thread that is trying to draw a frame. Same selection, same report shape.
+ *
+ * @param {{ nativesDir: string; currentVersion: string }} input
+ * @returns {Promise<{ removed: string[], failed: { dir: string, reason: string }[] }>}
+ */
+export async function reclaimStaleNativeVersions({ nativesDir, currentVersion }) {
+	/** @type {{ removed: string[], failed: { dir: string, reason: string }[] }} */
+	const result = { removed: [], failed: [] };
+	for (const targetPath of staleNativeVersionDirs({ nativesDir, currentVersion })) {
+		try {
+			await fs.promises.rm(targetPath, { recursive: true, force: true });
+			result.removed.push(targetPath);
+		} catch (err) {
+			result.failed.push({ dir: targetPath, reason: err instanceof Error ? err.message : String(err) });
+		}
+	}
+	return result;
+}
+
+/**
+ * Hand the prune to the event loop and return immediately.
+ *
+ * A launch reaches this the moment the addon has loaded, which is before the
+ * first frame, so the deletion is not allowed to happen there: 150MiB of dead
+ * cache is not a reason for a session to open later. The timer is unref'd, so a
+ * process that is already finishing does not stay alive to reclaim disk -- the
+ * next launch, and every install, prunes again.
+ *
+ * `schedule`, `reclaim` and `report` are injectable so the deferral itself can be
+ * asserted without waiting on a clock, and `settled` resolves once the prune has
+ * reported, so a caller that needs to observe the outcome awaits a real signal
+ * rather than a sleep.
+ *
+ * @param {{
+ *   nativesDir: string;
+ *   currentVersion: string;
+ *   schedule?: (callback: () => void, delayMs: number) => unknown;
+ *   reclaim?: (input: { nativesDir: string; currentVersion: string }) => Promise<{ removed: string[], failed: { dir: string, reason: string }[] }>;
+ *   report?: (message: string) => void;
+ * }} input
+ * @returns {{ handle: unknown, settled: Promise<{ removed: string[], failed: { dir: string, reason: string }[] }> }}
+ */
+export function scheduleStaleNativeCleanup({
+	nativesDir,
+	currentVersion,
+	schedule = setTimeout,
+	reclaim = reclaimStaleNativeVersions,
+	report = message => console.error(message),
+}) {
+	/** @type {PromiseWithResolvers<{ removed: string[], failed: { dir: string, reason: string }[] }>} */
+	const settled = Promise.withResolvers();
+	const handle = schedule(() => {
+		void reclaim({ nativesDir, currentVersion }).then(pruned => {
+			if (pruned.removed.length > 0) startupMarker(`native:cleanupStaleVersions:removed:${pruned.removed.length}`);
+			// A cache that cannot be removed never comes back on its own, and the user is the only one
+			// who can fix it. Saying nothing is how ~150MB per past version went missing without a word.
+			for (const failure of pruned.failed) {
+				report(`veyyon natives: could not remove the stale addon cache at ${failure.dir}: ${failure.reason}`);
+			}
+			settled.resolve(pruned);
+		});
+	}, 0);
+	if (handle !== null && typeof handle === "object" && "unref" in handle && typeof handle.unref === "function") {
+		handle.unref();
+	}
+	return { handle, settled: settled.promise };
 }
 
 /** The natives cache root, `<data home>/veyyon/natives`. */
@@ -1236,13 +1327,9 @@ export function loadNative() {
 	});
 	if (bindings !== undefined) {
 		installNativeTokioRuntime(bindings);
-		const pruned = cleanupStaleNativeVersions({ nativesDir: ctx.nativesDir, currentVersion: ctx.packageVersion });
-		if (pruned.removed.length > 0) startupMarker(`native:cleanupStaleVersions:removed:${pruned.removed.length}`);
-		// A cache that cannot be removed never comes back on its own, and the user is the only one who
-		// can fix it. Saying nothing is how ~150MB per past version went missing without a word.
-		for (const failure of pruned.failed) {
-			console.error(`veyyon natives: could not remove the stale addon cache at ${failure.dir}: ${failure.reason}`);
-		}
+		// Disk housekeeping is not a reason for a launch to wait. The prune is handed to the event
+		// loop and the caller gets its bindings now; see scheduleStaleNativeCleanup.
+		scheduleStaleNativeCleanup({ nativesDir: ctx.nativesDir, currentVersion: ctx.packageVersion });
 		startupMarker("native:loadNative:done");
 		return bindings;
 	}
