@@ -36,6 +36,7 @@ export const BUILTIN_TOOL_NAMES = [
 	"reflect",
 	"learn",
 	"manage_skill",
+	"runtime",
 	ARGOT_LOAD_TOOL,
 	ARGOT_UNLOAD_TOOL,
 ] as const;

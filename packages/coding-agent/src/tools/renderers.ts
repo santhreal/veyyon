@@ -4,6 +4,7 @@
  * These provide rich visualization for tool calls and results in the TUI.
  */
 import type { Component } from "@veyyon/tui";
+import { isRecord } from "@veyyon/utils/type-guards";
 import { editToolRenderer } from "../edit/renderer";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { goalToolRenderer } from "../goals/tools/goal-tool";
@@ -90,6 +91,51 @@ export type ToolRenderer = {
 	forceResultViewportRepaintOnSettle?: boolean;
 };
 
+export const runtimeToolRenderer: ToolRenderer = {
+	renderCall(args: unknown, options: RenderResultOptions, theme: Theme): Component {
+		if (isRecord(args) && args.op === "exec") {
+			return evalToolRenderer.renderCall(args as Parameters<typeof evalToolRenderer.renderCall>[0], options, theme);
+		}
+		return launchToolRenderer.renderCall(args, options, theme);
+	},
+	renderResult(
+		result: { content: Array<{ type: string; text?: string }>; details?: unknown; isError?: boolean },
+		options: RenderResultOptions & { renderContext?: Record<string, unknown> },
+		theme: Theme,
+		args?: unknown,
+	): Component {
+		const isEval =
+			(isRecord(result.details) && (result.details.target === "eval" || result.details.op === "exec")) ||
+			(isRecord(args) && args.op === "exec");
+		if (isEval) {
+			const evalDetails =
+				isRecord(result.details) && "details" in result.details
+					? result.details.details
+					: isRecord(result.details) && "eval" in result.details
+						? result.details.eval
+						: result.details;
+			return evalToolRenderer.renderResult(
+				{ ...result, details: evalDetails },
+				options,
+				theme,
+				args,
+			);
+		}
+		const launchDetails =
+			isRecord(result.details) && "details" in result.details
+				? result.details.details
+				: isRecord(result.details) && "launch" in result.details
+					? result.details.launch
+					: result.details;
+		return launchToolRenderer.renderResult(
+			{ ...result, details: launchDetails },
+			options,
+			theme,
+			args,
+		);
+	},
+};
+
 export const toolRenderers: Record<string, ToolRenderer> = {
 	ask: askToolRenderer as ToolRenderer,
 	ast_grep: astGrepToolRenderer as ToolRenderer,
@@ -106,6 +152,7 @@ export const toolRenderers: Record<string, ToolRenderer> = {
 	inspect_image: inspectImageToolRenderer as ToolRenderer,
 	irc: ircToolRenderer as ToolRenderer,
 	launch: launchToolRenderer as ToolRenderer,
+	runtime: runtimeToolRenderer,
 	read: readToolRenderer as ToolRenderer,
 	job: jobToolRenderer as ToolRenderer,
 	resolve: resolveToolRenderer as ToolRenderer,

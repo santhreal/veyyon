@@ -37,6 +37,7 @@ these pages:
 | `bash` | [bash.md](bash.md) |
 | `launch` | [launch.md](launch.md) |
 | `eval` | [eval.md](eval.md) |
+| `runtime` | [runtime.md](runtime.md) (experimental: replaces `eval` and `launch`) |
 | `debug` | [debug.md](debug.md) |
 | `ssh` | [ssh.md](ssh.md) |
 | `job` | [job.md](job.md) |

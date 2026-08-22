@@ -75,7 +75,7 @@ const launchSchema = type({
 	"timeout?": type("number > 0").describe("logs/wait/stop: max seconds; default 30 (stop: 5)"),
 });
 
-type LaunchParams = typeof launchSchema.infer;
+export type LaunchParams = typeof launchSchema.infer;
 
 const KEY_INPUT: Record<string, string> = {
 	ENTER: "\r",
