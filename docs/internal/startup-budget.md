@@ -65,8 +65,37 @@ From the tree, binary, warm, in order of cost:
   before that change, so a cold `ready:boot` re-measured today is lower than the number it records.
 - **`modelRegistry:init` 43ms, `discoverAuthStorage` 35ms, `initTheme:final` 33ms.** Fixed cost, warm
   or cold.
-- **`discoverAndLoadMCPTools`, 0.00ms** with no servers configured. A configured server moves this
-  number onto the pre-paint path.
+- **`discoverAndLoadMCPTools`, 0.00ms** with no servers configured, because there is nothing to
+  spawn. `discoverAndConnect` is awaited on the boot path, so a configured stdio server pays its
+  spawn and its `initialize` handshake before the first frame.
+
+## Measured deltas
+
+Bun source, cold home, medians of 3, same machine.
+
+| Arm | Before | After the GPU probe stopped blocking | Change |
+| --- | --- | --- | --- |
+| `ready:boot` | 680ms | 532ms | -148ms |
+| `ready` | 1292ms | 1168ms | -124ms |
+| `first-frame` | 1397ms | 1122ms | -275ms |
+
+`version` and `ready:load` are unchanged within noise, which is the expected shape: the probe was
+inside a boot phase, not in module load.
+
+## What codex did
+
+Techniques taken from openai/codex's own startup work, each with what it maps onto here.
+
+- **Do not scan a growing store to answer a bounded question.** codex issue #38373 recorded a full
+  session-database scan costing about 1.87s at startup on a large history; codex v0.147 took resume
+  and fork from 3.58s to 0.23s. veyyon's boot tree shows no session-store read before the first
+  frame — the recent list is built when it is asked for — so this is a property to keep rather than
+  a cost to remove. Anything added to the pre-paint path that reads the session directory reopens it.
+- **Start a subprocess when it is first used, not when it is configured.** codex#3726 made MCP
+  servers start lazily. veyyon still connects every configured server before the first frame, which
+  is the largest remaining pre-paint cost for anyone who configures one.
+- **Keep hardware and network out of the pre-paint path.** The GPU probe above is this technique
+  applied: the answer is computed for the next launch instead of waited for by this one.
 
 ## Budget
 
@@ -78,4 +107,4 @@ The current binary misses the first target by 4.5x and the second by 4x, so the 
 and not yet a gate. Wiring it to CI needs a runner whose timings are stable enough that a red build
 means a regression; the numbers above vary by 30% across repetitions on an idle workstation.
 
-*Verified against `96175566f` on 2026-08-22.*
+*Verified against `c6a52deb0` on 2026-08-22.*
