@@ -27,8 +27,8 @@ import { isolatedAuthStorage } from "../helpers/isolated-auth-storage";
  *
  * - `github.enabled` is already false by default, but `GithubTool.createIf` additionally
  *   probes for the `gh` CLI; pinning the setting keeps the tool absent either way.
- * - `generate_image.enabled` defaults TRUE and builds its tools from the live model registry,
- *   so leaving it on would make the outcome depend on which models happen to be cached.
+ * - `generate_image.enabled` builds tools from the live model registry; pinning its default-off state
+ *   keeps the outcome independent of whichever image models happen to be cached on the host.
  * - `speechgen`, `exa` and `checkpoint`/`inspect_image` are pinned to their off state so a
  *   future default flip is caught here as an explicit edit rather than a silent diff.
  */
