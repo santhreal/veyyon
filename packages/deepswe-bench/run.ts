@@ -99,6 +99,7 @@ import {
 } from "./auth-preflight";
 import { decideAuthSeed, probeCredentialStore, snapshotCredentialStore } from "./auth-seed";
 import { resolveBinaryPin } from "./binary-pin";
+import { parseArgs } from "./cli-args";
 import { conversationCollapsed, measureRunPrefix, PREFIX_CATEGORIES, prefixShares } from "./prefix-composition";
 import { type LoadedReplayManifest, loadReplayManifest } from "./replay-manifest";
 import {
@@ -142,18 +143,6 @@ const VEY_BINARY = path.join(CODING_AGENT_DIR, "dist", "vey");
 // kept forever.
 const AUTH_DB = path.join(BENCH_DIR, "assets", "auth-agent.db");
 
-function parseArgs(argv: string[]): Record<string, string> {
-	const out: Record<string, string> = {};
-	for (let i = 0; i < argv.length; i++) {
-		const arg = argv[i]!;
-		if (arg.startsWith("--")) {
-			const eq = arg.indexOf("=");
-			if (eq !== -1) out[arg.slice(2, eq)] = arg.slice(eq + 1);
-			else out[arg.slice(2)] = argv[++i] ?? "";
-		}
-	}
-	return out;
-}
 
 function requireFile(p: string, hint: string): void {
 	if (!fs.existsSync(p)) {
