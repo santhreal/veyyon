@@ -625,7 +625,7 @@ veyyon config get compaction.threshold
 |---|---|---|---|---|
 | `providers.maxInFlightRequests` | Max In-Flight Requests | record | `{}` | Maximum concurrent LLM requests per provider id (for example "openai" or "anthropic"), shared across local veyyon processes with this config root. Omitted providers are unlimited. |
 | `providers.ollama-cloud.maxConcurrency` | Ollama Cloud Max Concurrency | number | `3` | Maximum concurrent Ollama Cloud subagent runs per process; 0 disables the provider-specific limit. |
-| `providers.webSearch` | Web Search Provider | enum | `auto` | Preferred provider for the web_search tool. Values: `auto`, `perplexity`, `gemini`, `anthropic`, `codex`, `xai`, `zai`, `exa`, `tinyfish`, `jina`, `kagi`, `tavily`, `firecrawl`, `brave`, `kimi`, `parallel`, `synthetic`, `searxng`, `startpage`, `duckduckgo`, `ecosia`, `google`, `mojeek`, `public`. |
+| `providers.webSearch` | Web Search Provider | enum | `auto` | The provider web_search uses; auto tries each in turn. Values: `auto`, `perplexity`, `gemini`, `anthropic`, `codex`, `xai`, `zai`, `exa`, `tinyfish`, `jina`, `kagi`, `tavily`, `firecrawl`, `brave`, `kimi`, `parallel`, `synthetic`, `searxng`, `startpage`, `duckduckgo`, `ecosia`, `google`, `mojeek`, `public`. |
 | `providers.webSearchExclude` | Excluded Web Search Providers | array | `[]` | Providers that web_search should never use, even as fallbacks. |
 | `providers.webSearchGeminiModel` | Gemini web_search model | string | _(unset)_ | Model ID for Gemini Google Search grounding. Defaults to gemini-2.5-flash. |
 | `providers.antigravityEndpoint` | Antigravity Endpoint Mode | enum | `auto` | Endpoint routing strategy for google-antigravity providers (chat, search, image, discovery). Values: `auto`, `production`, `sandbox`. |
