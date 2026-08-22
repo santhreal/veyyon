@@ -50,10 +50,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-12bd7fa0.js";
+            window.path_to_searchindex_js = "searchindex-46c8c618.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-79e2ba62.js"></script>
+        <script src="toc-13566cf4.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -196,51 +196,59 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="the-veyyon-handbook"><a class="header" href="#the-veyyon-handbook">The Veyyon handbook</a></h1>
-<p>Welcome. Veyyon is a coding agent that runs in your terminal. You give it credentials for a model provider, and it works inside your project: it reads files, runs tools, and edits your code in place, one reviewable step at a time. You stay in the loop, and you approve the work that touches your tree.</p>
-<p>This handbook teaches Veyyon from the ground up. It begins with installation and your first session, then explains the ideas the rest of the tool is built on, and finally covers each feature and the internals a contributor needs. You do not have to read it front to back. The early chapters assume less than the later ones, so if Veyyon is new to you, following the order will save you time.</p>
-<h2 id="who-this-book-is-for"><a class="header" href="#who-this-book-is-for">Who this book is for</a></h2>
-<p>You are comfortable at a command line, and you want a coding agent you can watch and steer rather than one that changes your files out of sight. You do not need to know Rust or TypeScript to use Veyyon. You do need a working terminal and an API key or a sign-in for at least one provider. The Architecture chapters go deeper, for readers who want to contribute to Veyyon itself.</p>
-<h2 id="how-to-read-this-book"><a class="header" href="#how-to-read-this-book">How to read this book</a></h2>
-<p>The book is arranged in the order you tend to need it.</p>
+<p>Veyyon is a coding agent that runs in a terminal. Give it credentials for a model
+provider and it works inside a project: it reads files, runs tools, and edits code in
+place. Every step that touches the tree goes through an approval tier.</p>
+<h2 id="install"><a class="header" href="#install">Install</a></h2>
+<pre><code class="language-sh">curl -fsSL https://get.veyyon.dev | sh
+</code></pre>
+<p>On Windows:</p>
+<pre><code class="language-powershell">irm https://veyyon.dev/install.ps1 | iex
+</code></pre>
+<p>The installer downloads a release binary and verifies its checksum. To build from
+source, clone the repository and run <code>bun run setup &amp;&amp; bun dev</code> in that checkout. See
+<a href="./using/install.html">Install</a> for platforms, pinned releases, updates, and uninstall.</p>
+<p>The binary is <code>veyyon</code>, aliased to <code>vey</code>. Configuration lives under <code>~/.veyyon</code>; the
+default profile keeps its state in <code>~/.veyyon/profiles/default/agent/</code>.</p>
+<h2 id="where-things-are"><a class="header" href="#where-things-are">Where things are</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Section</th><th>What it covers</th></tr>
+<tr><th>Section</th><th>Contents</th></tr>
 </thead>
 <tbody>
-<tr><td><a href="./why/value.html">Why</a></td><td>The design goals and the main mechanisms, so the rest makes sense</td></tr>
-<tr><td><a href="./using/getting-started.html">Using</a></td><td>Install, sign in, run your first task, configure providers</td></tr>
+<tr><td><a href="./why/index.html">Design and mechanisms</a></td><td>Design goals and the main subsystems</td></tr>
+<tr><td><a href="./using/install.html">Get started</a></td><td>Install, sign in, first task, providers</td></tr>
 <tr><td><a href="./features/sandbox.html">Features</a></td><td>Editing, approvals, models, sessions, plan and goal modes, MCP, plugins, memory, profiles</td></tr>
-<tr><td><a href="./foundations/architecture.html">Architecture</a></td><td>The internals, for contributors</td></tr>
+<tr><td><a href="./foundations/architecture.html">Architecture</a></td><td>Internals</td></tr>
 </tbody>
 </table>
 </div>
-<p>If you only want to get to work, read <a href="./using/install.html">Install</a>, sign in, and go to <a href="./using/getting-started.html">Getting started</a>. Come back to the concept chapters when something surprises you. They explain why Veyyon behaves the way it does, which is usually faster than guessing.</p>
-<h2 id="what-veyyon-is"><a class="header" href="#what-veyyon-is">What Veyyon is</a></h2>
-<p>Veyyon is a fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a>. The CLI, the TUI, the tools, the providers, and the session loop are TypeScript running on Bun. The hot paths, meaning grep, glob, PTY, and tree-sitter parsing, are Rust natives in <code>@veyyon/natives</code>. The hashline edit engine itself is TypeScript in <code>@veyyon/hashline</code>, with native helpers for block resolution.</p>
-<p>A few facts you will reach for often:</p>
+<h2 id="implementation"><a class="header" href="#implementation">Implementation</a></h2>
+<p>The CLI, TUI, tools, providers, and session loop are TypeScript on Bun. Grep, glob,
+PTY, and tree-sitter parsing are Rust natives in <code>@veyyon/natives</code>. The hashline edit
+engine is TypeScript in <code>@veyyon/hashline</code>, with native helpers for block resolution.</p>
 <ul>
-<li>Install with <code>curl -fsSL https://get.veyyon.dev | sh</code> (or <code>irm https://veyyon.dev/install.ps1 | iex</code> on Windows), which downloads a verified release binary. To build instead, clone the repository yourself and run <code>bun run setup &amp;&amp; bun dev</code> in that checkout.</li>
-<li>The binary is <code>veyyon</code>, with the shorter alias <code>vey</code>.</li>
-<li>Configuration lives under <code>~/.veyyon</code>. The default profile keeps its agent state in <code>~/.veyyon/profiles/default/agent/</code>, and other profiles use <code>~/.veyyon/profiles/&lt;name&gt;/agent/</code>.</li>
+<li><strong>Hashline edits.</strong> <code>edit</code> and <code>write</code> apply content-addressed patches and verify
+them before anything reaches disk. A failed patch returns a structured error to the
+model instead of a half-written file.</li>
+<li><strong>Model slots.</strong> The interactive model (<code>/model</code>), the subagent model, and the
+compaction model are separate settings. Named roles pin a model to a kind of work.</li>
+<li><strong>Approvals.</strong> <code>tools.approvalMode</code> gates the read, write, and exec tiers. There is
+no operating-system sandbox: no Landlock, no seccomp, no Seatbelt, no bubblewrap.
+Approvals are the control point.</li>
+<li><strong>Engine modes.</strong> Plan mode, goal mode, vibe mode, compaction, and task subagents
+live in the agent loop, not in prompt text.</li>
 </ul>
-<p>The surfaces you will meet in the rest of the book are hashline edits, the tool loop (read, grep, glob, edit, bash, LSP, MCP, and more), optional memory backends, model slots and roles, session trees, skills, plan mode, goal mode, and task isolation for subagents.</p>
-<h2 id="mechanisms-at-a-glance"><a class="header" href="#mechanisms-at-a-glance">Mechanisms at a glance</a></h2>
-<p>Each of these has its own chapter later. This list is a map, not the full explanation.</p>
-<ul>
-<li><strong>Hashline edits.</strong> The <code>edit</code> and <code>write</code> tools apply content-addressed patches and verify them before anything reaches disk. A failed patch returns a structured error to the model instead of a half-written file.</li>
-<li><strong>Model slots.</strong> The interactive model (<code>/model</code>), the subagent model, and the compaction model are separate settings. Named roles can pin a model to a specific kind of work.</li>
-<li><strong>Approvals.</strong> The <code>tools.approvalMode</code> setting gates the read, write, and exec tiers. Veyyon does not add an operating-system command sandbox. It does not use Landlock, seccomp, Seatbelt, or bubblewrap, so approvals are your control point.</li>
-<li><strong>Engine modes.</strong> Plan mode, goal mode, vibe mode, compaction, and task subagents live in the agent loop itself, not only in prompt text.</li>
-</ul>
-<p>For credits, see <a href="./acknowledgements.html">Acknowledgements</a>.</p>
+<p>Veyyon is a fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a>. See
+<a href="./acknowledgements.html">Acknowledgements</a> for credits.</p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
 
-                            <a rel="next prefetch" href="foundations/how-to-read.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="why/index.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -251,7 +259,7 @@
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
 
-                    <a rel="next prefetch" href="foundations/how-to-read.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="why/index.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-12bd7fa0.js";
+            window.path_to_searchindex_js = "../searchindex-46c8c618.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-79e2ba62.js"></script>
+        <script src="../toc-13566cf4.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -205,7 +205,7 @@
 <li><strong>Architecture gates</strong>: layering, import cycles, and module-reach checks in <code>packages/coding-agent/test/architecture/</code>.</li>
 </ul>
 <h2 id="recording-terminal-proofs"><a class="header" href="#recording-terminal-proofs">Recording terminal proofs</a></h2>
-<p>This section is the capture configuration. It is the only source of visual proof.
+<p>The capture configuration below is the only source of visual proof.
 Record interactive proofs on the repository’s private display. Do not record a
 logged-in desktop, and do not use a terminal multiplexer capture as visual
 evidence. There are no other capture paths and no fallbacks.</p>
@@ -226,7 +226,7 @@ publish        Lanczos downsample to 1920x1080
   bash scripts/demos/record-hd-demo.sh demo-hd
 </code></pre>
 <p>The recorder keeps rehearsal output in the temporary directory it prints. Inspect the video and named frames there. Set <code>PUBLISH=1</code> only for a complete take whose frame guards all passed.</p>
-<p>The scene’s task prompt is static at <code>proof/prompts/demo-hd.md</code>. The scene stores the secret, submits that prompt once, and sends no phase-by-phase operator prompts; every later turn is the model’s own. A take is published only when every named frame guard passed, so a scene whose model does not reach a guarded surface produces a rehearsal and nothing else. The frames and clip published today come from an earlier session of this scene, described in <a href="../using/examples.html#recorded-end-to-end-workflow">Examples</a>.</p>
+<p>The scene’s task prompt is static at <code>proof/prompts/demo-hd.md</code>. The scene stores the secret, submits that prompt once, and sends no phase-by-phase operator prompts; every later turn is the model’s own. A take is published only when every named frame guard passed, so a scene whose model does not reach a guarded surface produces a rehearsal and nothing else.</p>
 <p>The archived take remains at capture speed. The landing-page cut keeps the plan, the worker setup, verification and signing at 1×. Visible implementation between the worker launch and the verified build plays at 1.25×. Named marks in the take select those boundaries; untouched screens are shortened to four seconds rather than accelerated.</p>
 <h3 id="vhs-settings-captures"><a class="header" href="#vhs-settings-captures">VHS settings captures</a></h3>
 <p>Use the same baseline for settings differentials:</p>
@@ -257,10 +257,9 @@ copy and proving the restore by sha256. No git mutation command runs and the wor
 tree ends byte-identical. Once the change is on <code>main</code>, reproducing the before arm
 means pointing that hold at the commit before it.</p>
 <p>Both arms record the same scene at the same width and are sampled at the same second
-of the same script, so the only difference between them is the change. Publish the
-pair under <code>assets/</code> as <code>&lt;surface&gt;-before.png</code> and <code>&lt;surface&gt;-after.png</code>;
-<code>proof/pics.html</code> folds a <code>-before</code>/<code>-after</code> stem onto one row, because a comparison
-split across two rows is half an answer.</p>
+of the same script, so the only difference between them is the change. Attach the
+labeled Before and After pair to the pull request body. It is never committed: not to
+<code>assets/</code>, not to a README, not to a handbook page, not to the website.</p>
 <p>A pair whose two arms differ for an unrelated reason is a failed proof. An arm that
 does not show the surface at all is a failed proof: a lane block is not evidence
 about lanes in a frame where no agent is running.</p>
@@ -274,21 +273,14 @@ ground.</p>
 <p><code>render-proof.ts</code> writes <code>&lt;surface&gt;-grey.png</code> with background <code>#1e2127</code> and
 <code>&lt;surface&gt;-black.png</code> with background <code>#000000</code>. Inspect both. A background fill
 can disappear on black while remaining visible as a slab on grey.</p>
-<p>The output is not a proof and does not satisfy any evidence requirement. It draws a
-fixture written by hand, at a chosen width, through a constructed call. It cannot
-show that the surface is reachable, that the state is real, or that the block is
-positioned, sized and clipped the way a session draws it. Write the file to a
-temporary path. A rasterized image never enters <code>assets/</code>, a README, or a handbook
-page as before-and-after evidence.</p>
-<p>Seventeen raster pairs are already committed under <code>assets/</code>. They were produced
-under an earlier rule that sanctioned them, they are not evidence, and no handbook
-page or README cites them; <code>proof/pics.html</code> enumerates the directory from disk and
-still lists them. Each is replaced by a real capture of its screen when that feature
-is next touched. <code>scripts/an-off-screen-raster-never-enters-assets.test.ts</code> pins the
-set by exact equality and fails on any addition, so the list only shrinks, and it
-fails as well on a demo driver that writes a render into <code>assets/</code>. Drivers write to
-a temporary directory; <code>scripts/demos/record-argot-settings.sh</code> is the shape a real
-settings differential takes.</p>
+<p>The output draws a fixture written by hand, at a chosen width, through a constructed
+call, so it cannot show that the surface is reachable, that the state is real, or
+that the block is positioned, sized and clipped the way a session draws it. It does
+not satisfy an evidence requirement. Write the file to a temporary path.</p>
+<p><code>scripts/an-off-screen-raster-never-enters-assets.test.ts</code> pins the raster set under
+<code>assets/</code> by exact equality, so the list only shrinks, and fails on a demo driver
+that writes a render into <code>assets/</code>. Drivers write outside the tracked tree;
+<code>scripts/demos/record-argot-settings.sh</code> is the shape a settings differential takes.</p>
 <h2 id="related"><a class="header" href="#related">Related</a></h2>
 <ul>
 <li><a href="../repair/cascade.html">The repair cascade</a></li>

@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-12bd7fa0.js";
+            window.path_to_searchindex_js = "../searchindex-46c8c618.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-79e2ba62.js"></script>
+        <script src="../toc-13566cf4.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -369,18 +369,8 @@ which nothing acts on, and a subagent’s remaining window is not something its 
 decides anything with. The question both were reached for — is this one stuck — is
 answered by the recovery column as a fact. <code>/agents</code> carries the roster with the
 numbers.</p>
-<p>A lane keeps its badge on its own row. It did not always: both anchored blocks clamped every row
-to the width they were handed, and that width was the terminal’s rather than the two-cells-narrower
-one their mount wraps to, so each row’s right-aligned tail arrived on a line of its own at column
-zero, outside the block. Every unit test agreed the rows were in bounds, because they were in the
-bound they were given. The recording is what saw it:
-<a href="../../../../assets/subagent-lanes-before.png">before</a>, the badge wrapped below its lane, and
-<a href="../../../../assets/subagent-lanes-after.png">after</a>, two lanes each ending in its badge at the far
-margin. One scene recorded twice at 131 columns, sampled at the same second of the same script: the
-after arm from <code>proof/docker/record-x11.sh proof/scenes/agent-lanes.sh</code>, the before arm from
-<code>proof/docker/record-x11-before.sh proof/scenes/agent-lanes.sh</code>, which holds every changed source
-file at the content of the commit before the fix, <code>f1390cf3c</code>.</p>
-<p>Narrow the terminal and the model badge comes off first, then the columns shrink to
+<p>A lane keeps its badge on its own row.
+Narrow the terminal and the model badge comes off first, then the columns shrink to
 what is left. Nothing wraps: the block draws no row it cannot fit, and draws nothing
 at all rather than overflow.</p>
 <p>Eight lanes are drawn. Past that the block says how many more are running and points
