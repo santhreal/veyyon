@@ -7,16 +7,21 @@ import {
 import { SEARCH_PROVIDER_ORDER, type SearchProviderId } from "@veyyon/coding-agent/web/search/types";
 
 /**
- * resolveProviderCandidates builds the web-search fallback order WITHOUT loading any provider module,
- * and getSearchProviderLabel maps a provider id to its display label. Neither had a direct test. The
- * candidate ordering carries real product logic the search loop depends on:
- *   - "auto" yields every provider in SEARCH_PROVIDER_ORDER, each marked explicit:false (no user pick);
- *   - a concrete preferred provider is hoisted to the front as explicit:true and appears exactly once
- *     (it is skipped in the tail so it is never tried twice);
- *   - the module-global excluded set removes a provider everywhere, including a preferred one that is
- *     excluded (it is not hoisted AND not in the tail), so a disabled provider is never reached.
- * The excluded set is module state, so each test resets it. The tests assert against the exported
- * SEARCH_PROVIDER_ORDER rather than a hardcoded list, since the provider roster changes over time.
+ * resolveProviderCandidates builds the web-search candidate list WITHOUT loading any provider
+ * module, and getSearchProviderLabel maps a provider id to its display label.
+ *
+ * WHAT FLIPPED, AND WHY. This suite used to assert that a concrete preferred provider was
+ * HOISTED to the front of the full chain and that the list still held every other provider
+ * ("the total count still equals the roster size"). That was the defect, stated as a
+ * requirement: a chosen engine that answered with nothing handed the query to a different
+ * engine, and an operator who picked the credential-free engines had keyed ones reached on
+ * their behalf. A choice is now the whole list. `auto` is the value that ranges over the
+ * chain, which is the only behaviour of the old list that survives, and it is asserted here.
+ * The per-provider, per-route sweep of the new contract lives in
+ * `a-chosen-web-search-provider-is-the-only-provider.test.ts`.
+ *
+ * The excluded set is module state, so each test resets it. The tests assert against the
+ * exported SEARCH_PROVIDER_ORDER rather than a hardcoded list, since the roster changes.
  */
 describe("resolveProviderCandidates", () => {
 	// The excluded set lives in module scope; keep tests independent of each other and the host config.
@@ -29,24 +34,26 @@ describe("resolveProviderCandidates", () => {
 		expect(candidates.every(candidate => candidate.explicit === false)).toBe(true);
 	});
 
-	it("hoists a concrete preferred provider to the front as explicit and keeps it unique", () => {
-		const candidates = resolveProviderCandidates("exa");
-		expect(candidates[0]).toEqual({ id: "exa", explicit: true });
-		expect(candidates.filter(candidate => candidate.id === "exa")).toHaveLength(1);
-		// Preferred is hoisted out of the tail, so the total count still equals the roster size.
-		expect(candidates).toHaveLength(SEARCH_PROVIDER_ORDER.length);
-		expect(candidates.slice(1).every(candidate => candidate.explicit === false)).toBe(true);
+	it("returns a concrete preferred provider and nothing else", () => {
+		expect(resolveProviderCandidates("exa")).toEqual([{ id: "exa", explicit: true }]);
 	});
 
-	it("omits every excluded provider, including a preferred one that is excluded", () => {
+	it("returns nothing for a preferred provider that is excluded", () => {
 		setExcludedSearchProviders(["exa", "gemini"]);
-		const candidates = resolveProviderCandidates("exa");
-		const ids = candidates.map(candidate => candidate.id);
-		expect(ids).not.toContain("exa");
-		expect(ids).not.toContain("gemini");
-		// With the preferred excluded, the front of the chain is just the first non-excluded provider.
-		expect(candidates[0].explicit).toBe(false);
-		expect(candidates).toHaveLength(SEARCH_PROVIDER_ORDER.length - 2);
+
+		// Not "the chain minus the exclusions": the two settings contradict each other, and
+		// the caller is told so rather than served results from an engine it did not choose.
+		expect(resolveProviderCandidates("exa")).toEqual([]);
+	});
+
+	it("omits every excluded provider from the auto chain", () => {
+		setExcludedSearchProviders(["exa", "gemini"]);
+
+		const candidates = resolveProviderCandidates("auto");
+
+		expect(candidates.map(candidate => candidate.id)).toEqual(
+			SEARCH_PROVIDER_ORDER.filter(id => id !== "exa" && id !== "gemini"),
+		);
 	});
 });
 

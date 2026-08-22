@@ -194,7 +194,7 @@ export const PROVIDERS_SETTINGS = {
 			tab: "providers",
 			group: "Services",
 			label: "Web Search Provider",
-			description: "Preferred provider for the web_search tool",
+			description: "The provider web_search uses; auto tries each in turn",
 			options: SEARCH_PROVIDER_OPTIONS,
 		},
 	},
