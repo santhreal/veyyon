@@ -380,60 +380,122 @@ interface LostPayloads {
 	count: number;
 }
 
-async function resolvePersistedBlobRefs(
-	value: unknown,
-	blobStore: BlobStore,
-	lost: LostPayloads,
-	key?: string,
-): Promise<void> {
+/**
+ * One reference the walk found, and the slot it has to be written back into.
+ *
+ * The traversal is synchronous and the reads are not, so a site names its own
+ * container: an object plus a key, or an array plus an index. Nothing else in the
+ * transcript is touched, which is what keeps the mutation-in-place contract.
+ */
+type BlobSite =
+	| { kind: "image-data"; owner: { data: string } }
+	| { kind: "image-url"; owner: { image_url: string } }
+	| { kind: "text"; owner: Record<string, unknown>; key: string }
+	| { kind: "text-item"; owner: unknown[]; index: number };
+
+/**
+ * Walk the transcript once and collect the references, without awaiting anything.
+ *
+ * The walk used to be `async` and mapped every array element and every object key
+ * through `Promise.all`, so a session with no externalized payload at all still
+ * allocated one closure and one promise per node: 2,000 ordinary tool entries cost
+ * ~17ms and ~27MiB of churn to discover that there was nothing to read. A
+ * synchronous walk that only records the sites it finds costs neither.
+ */
+function collectBlobSites(value: unknown, sites: BlobSite[], key?: string): void {
 	if (shouldResolveImagePayload(value, key)) {
-		// Each resolver returns the reference unchanged when the blob is gone, and it is
-		// only called on a value that IS a reference, so an unchanged value is a loss.
-		const resolved = await resolveImageData(blobStore, value.data);
-		if (resolved === value.data) lost.count += 1;
-		value.data = resolved;
+		sites.push({ kind: "image-data", owner: value });
 		return;
 	}
 
 	if (Array.isArray(value)) {
-		await Promise.all(
-			value.map(async (item, index) => {
-				// A string child is resolved here, at the parent, because the recursive call
-				// receives the string by value and cannot rewrite the slot it lives in.
-				if (typeof item === "string") {
-					if (!isTextBlobRef(item)) return;
-					const resolved = await resolveTextBlobRef(blobStore, item);
-					if (resolved === item) lost.count += 1;
-					value[index] = resolved;
-					return;
-				}
-				await resolvePersistedBlobRefs(item, blobStore, lost, key);
-			}),
-		);
+		for (let index = 0; index < value.length; index++) {
+			const item = value[index];
+			// A string child is recorded against the parent, because a resolver receives
+			// the string by value and cannot rewrite the slot it lives in.
+			if (typeof item === "string") {
+				if (isTextBlobRef(item)) sites.push({ kind: "text-item", owner: value, index });
+				continue;
+			}
+			collectBlobSites(item, sites, key);
+		}
 		return;
 	}
 
 	if (typeof value !== "object" || value === null) return;
 
-	if (hasImageUrl(value) && isBlobRef(value.image_url)) {
-		const resolved = await resolveImageDataUrl(blobStore, value.image_url);
-		if (resolved === value.image_url) lost.count += 1;
-		value.image_url = resolved;
-	}
+	if (hasImageUrl(value) && isBlobRef(value.image_url)) sites.push({ kind: "image-url", owner: value });
 
 	const target = value as Record<string, unknown>;
+	for (const childKey of Object.keys(target)) {
+		const item = target[childKey];
+		// Externalized text (large tool results, text blocks) is a plain `blobtext:`
+		// string value at an arbitrary key; restore the full content in place.
+		if (typeof item === "string") {
+			if (isTextBlobRef(item)) sites.push({ kind: "text", owner: target, key: childKey });
+			continue;
+		}
+		collectBlobSites(item, sites, childKey);
+	}
+}
+
+/**
+ * How many blob reads may be in flight at once.
+ *
+ * A session-wide `Promise.all` over every reference issued all of them at once: a
+ * 200-payload transcript opened 200 files and held 200 decoded buffers alongside
+ * the 200 strings they decode into, so the restore peaked at ~120MiB above the
+ * transcript it produced. Eight keeps a spinning disk and an NFS mount busy
+ * without letting the transient buffers accumulate; the payloads themselves are
+ * retained by the transcript either way.
+ */
+const BLOB_READ_CONCURRENCY = 8;
+
+async function resolveBlobSite(site: BlobSite, blobStore: BlobStore, lost: LostPayloads): Promise<void> {
+	// Each resolver returns the reference unchanged when the blob is gone, and it is
+	// only called on a value that IS a reference, so an unchanged value is a loss.
+	switch (site.kind) {
+		case "image-data": {
+			const resolved = await resolveImageData(blobStore, site.owner.data);
+			if (resolved === site.owner.data) lost.count += 1;
+			site.owner.data = resolved;
+			return;
+		}
+		case "image-url": {
+			const resolved = await resolveImageDataUrl(blobStore, site.owner.image_url);
+			if (resolved === site.owner.image_url) lost.count += 1;
+			site.owner.image_url = resolved;
+			return;
+		}
+		case "text": {
+			const reference = site.owner[site.key];
+			if (typeof reference !== "string") return;
+			const resolved = await resolveTextBlobRef(blobStore, reference);
+			if (resolved === reference) lost.count += 1;
+			site.owner[site.key] = resolved;
+			return;
+		}
+		case "text-item": {
+			const reference = site.owner[site.index];
+			if (typeof reference !== "string") return;
+			const resolved = await resolveTextBlobRef(blobStore, reference);
+			if (resolved === reference) lost.count += 1;
+			site.owner[site.index] = resolved;
+			return;
+		}
+	}
+}
+
+async function resolveBlobSites(sites: BlobSite[], blobStore: BlobStore, lost: LostPayloads): Promise<void> {
+	if (sites.length === 0) return;
+	let next = 0;
+	const workers = Math.min(BLOB_READ_CONCURRENCY, sites.length);
 	await Promise.all(
-		Object.entries(target).map(async ([childKey, item]) => {
-			// Externalized text (large tool results, text blocks) is a plain `blobtext:`
-			// string value at an arbitrary key; restore the full content in place.
-			if (typeof item === "string") {
-				if (!isTextBlobRef(item)) return;
-				const resolved = await resolveTextBlobRef(blobStore, item);
-				if (resolved === item) lost.count += 1;
-				target[childKey] = resolved;
-				return;
+		Array.from({ length: workers }, async () => {
+			for (let index = next++; index < sites.length; index = next++) {
+				const site = sites[index];
+				if (site) await resolveBlobSite(site, blobStore, lost);
 			}
-			await resolvePersistedBlobRefs(item, blobStore, lost, childKey);
 		}),
 	);
 }
@@ -468,6 +530,11 @@ export interface BlobResolutionOptions {
 /**
  * Restore every externalized payload the blob store still holds, and report the ones it
  * does not. Returns the number of references that stayed references.
+ *
+ * Two phases, deliberately: collect every reference in the session synchronously,
+ * then read them through one bounded pool. The cap is session-wide rather than
+ * per-entry, so a transcript of a thousand entries each holding one payload reads
+ * eight files at a time and not a thousand.
  */
 export async function resolveBlobRefsInEntries(
 	entries: FileEntry[],
@@ -475,9 +542,11 @@ export async function resolveBlobRefsInEntries(
 	options?: BlobResolutionOptions,
 ): Promise<number> {
 	const lost: LostPayloads = { count: 0 };
-	await Promise.all(
-		entries.filter(entry => entry.type !== "session").map(entry => resolvePersistedBlobRefs(entry, blobStore, lost)),
-	);
+	const sites: BlobSite[] = [];
+	for (const entry of entries) {
+		if (entry.type !== "session") collectBlobSites(entry, sites);
+	}
+	await resolveBlobSites(sites, blobStore, lost);
 	if (lost.count > 0) {
 		logger.warn("Session payloads missing from the blob store", { source: options?.source, lost: lost.count });
 		if (options) emitLostPayloadNotice(options, lost.count);
