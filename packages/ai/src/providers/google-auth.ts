@@ -212,8 +212,10 @@ async function postForToken(
 	});
 	if (!response.ok) {
 		// The STATUS is the failure and it is in the thrown message; the body is Google's explanation of it. An
-		// unreadable body must not replace "token exchange failed (400)" with a read error.
-		const detail = await response.text().catch(() => "");
+		// unreadable body must not replace "token exchange failed (400)" with a read error. A token endpoint's
+		// error body is also the likeliest place to find a credential echoed back, so it goes through the
+		// shared bounded reader and its redactor.
+		const detail = await AIError.readProviderErrorDetail(response);
 		throw new AIError.OAuthError(`Google OAuth token exchange failed (${response.status}): ${detail}`, {
 			kind: "token-exchange",
 			provider: "google-vertex",
@@ -265,7 +267,7 @@ async function resolveAccessTokenUncached(
 			if (!response.ok) {
 				// Same as the token exchange above: the status is the failure, the body is its detail, and an
 				// unreadable body degrades to empty rather than masking the status.
-				const detail = await response.text().catch(() => "");
+				const detail = await AIError.readProviderErrorDetail(response);
 				throw new AIError.OAuthError(`Google Impersonation token exchange failed (${response.status}): ${detail}`, {
 					kind: "token-exchange",
 					provider: "google-vertex",

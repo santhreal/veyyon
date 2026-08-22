@@ -453,15 +453,12 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 					invalidateAwsCredentialCache({ profile: options.profile, region });
 				}
 				// The STATUS is the failure; the body is Bedrock's explanation of it. Losing an unreadable body still
-				// leaves the status, which is what the error below is built from.
-				const errBody = await response.text().catch(() => "");
-				throw new AIError.BedrockApiError(
-					`Bedrock HTTP ${response.status}: ${errBody.slice(0, 1000)}`,
-					response.status,
-					{
-						headers: response.headers,
-					},
-				);
+				// leaves the status, which is what the error below is built from. The shared reader replaces a local
+				// 1000-character slice, so the read is bounded too and truncation says so.
+				const detail = await AIError.readProviderErrorDetail(response);
+				throw new AIError.BedrockApiError(`Bedrock HTTP ${response.status}: ${detail}`, response.status, {
+					headers: response.headers,
+				});
 			}
 			if (!response.body) throw new AIError.BedrockApiError("Bedrock response has no body", response.status);
 

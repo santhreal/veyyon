@@ -91,7 +91,7 @@ class GitLabDuoWorkflowOAuthFlow extends OAuthCallbackFlow {
 
 		if (!response.ok) {
 			throw new AIError.OAuthError(
-				`GitLab Duo Workflow OAuth token exchange failed: ${response.status} ${await response.text()}`,
+				`GitLab Duo Workflow OAuth token exchange failed: ${response.status} ${await AIError.readProviderErrorDetail(response)}`,
 				{ kind: "token-exchange", provider: "gitlab-duo-workflow", status: response.status },
 			);
 		}
@@ -130,7 +130,7 @@ export async function refreshGitLabDuoWorkflowToken(
 
 	if (!response.ok) {
 		throw new AIError.OAuthError(
-			`GitLab Duo Workflow OAuth refresh failed: ${response.status} ${await response.text()}`,
+			`GitLab Duo Workflow OAuth refresh failed: ${response.status} ${await AIError.readProviderErrorDetail(response)}`,
 			{
 				kind: "token-refresh",
 				provider: "gitlab-duo-workflow",

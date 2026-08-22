@@ -91,7 +91,9 @@ export async function exchangeDevinCliToken(
 	});
 
 	if (!response.ok) {
-		const error = await response.text();
+		// A token endpoint's error body can echo the credential it refused, so it is read
+		// through the shared bounded reader and its redactor.
+		const error = await AIError.readProviderErrorDetail(response);
 		throw new AIError.OAuthError(`Devin CLI token exchange failed: ${response.status} ${error}`.trim(), {
 			kind: "token-exchange",
 			provider: "devin",

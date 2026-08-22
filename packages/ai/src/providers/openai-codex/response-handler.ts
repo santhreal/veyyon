@@ -1,5 +1,5 @@
 import { toNumber } from "@veyyon/catalog/utils";
-import { boundProviderErrorDetail, ProviderHttpError } from "../../error";
+import { boundProviderErrorDetail, ProviderHttpError, readProviderErrorBody } from "../../error";
 
 export type CodexRateLimit = {
 	used_percent?: number;
@@ -38,8 +38,12 @@ export class CodexApiError extends ProviderHttpError {
 }
 
 export async function parseCodexError(response: Response): Promise<CodexErrorInfo> {
-	const raw = await response.text();
-	let message = raw || response.statusText || "Request failed";
+	const body = await readProviderErrorBody(response);
+	const raw = body.text;
+	// Until a Codex envelope supplies a better one, the body IS the message — which is
+	// the proxy-HTML case, so the operator-facing form is what is kept: capped, control
+	// bytes stripped, credentials redacted, and carrying the note when the read stopped.
+	let message = raw ? body.detail : response.statusText || "Request failed";
 	let friendlyMessage: string | undefined;
 	let rateLimits: CodexRateLimits | undefined;
 	let errorCode: string | undefined;
@@ -80,17 +84,17 @@ export async function parseCodexError(response: Response): Promise<CodexErrorInf
 		}
 
 		const errMessage = (err as { message?: string }).message;
-		message = errMessage || friendlyMessage || message;
+		message = errMessage ? boundProviderErrorDetail(errMessage) : friendlyMessage || message;
 	} catch {
 		// raw body not JSON
 	}
 
 	return {
-		// Bounded here rather than at each assignment above: `message` starts as
-		// the raw body and stays raw whenever the body is not a Codex JSON
-		// envelope, which is exactly the proxy-HTML case. `raw` is left intact
-		// because it feeds classification, not a rendered message.
-		message: boundProviderErrorDetail(message),
+		// Both routes above are already bounded: the envelope's own message through
+		// `boundProviderErrorDetail`, and a non-envelope body through the bounded read.
+		// `raw` is the sanitized body, which feeds classification rather than a rendered
+		// message.
+		message,
 		status: response.status,
 		code: errorCode,
 		friendlyMessage,

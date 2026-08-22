@@ -119,7 +119,9 @@ export async function refreshCursorToken(apiKeyOrRefreshToken: string): Promise<
 	});
 
 	if (!response.ok) {
-		const error = await response.text();
+		// A refresh endpoint's error body can echo the credential it refused, so it is read
+		// through the shared bounded reader and its redactor.
+		const error = await AIError.readProviderErrorDetail(response);
 		throw new AIError.OAuthError(`Cursor token refresh failed: ${error}`, {
 			kind: "token-refresh",
 			provider: "cursor",

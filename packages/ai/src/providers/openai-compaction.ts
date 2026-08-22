@@ -32,7 +32,7 @@
 import type { ResolvedOpenAIResponsesCompat } from "@veyyon/catalog/types";
 import { $env, logger, scopedTimeoutSignal, stringifyJson } from "@veyyon/utils";
 import { trimTrailingSlashes } from "@veyyon/utils/url";
-import { ProviderHttpError } from "../error";
+import { boundProviderErrorDetail, ProviderHttpError, readProviderErrorDetail } from "../error";
 import type { Api, CodexCompactionRequestContext, FetchImpl, Message, Model, ProviderSessionState } from "../types";
 import { applyCodexResponsesLiteShape } from "./openai-codex/request-transformer";
 import { createOpenAICodexDirectRequest } from "./openai-codex-responses";
@@ -113,9 +113,6 @@ export function resolveServerCompactionTransport(model: Model<Api>): ServerCompa
 	if (compat.supportsServerCompaction !== true) return undefined;
 	return openAIResponsesServerCompaction;
 }
-
-/** Bound the non-2xx body written into logs and error messages. */
-const MAX_ERROR_DETAIL_CHARS = 4096;
 
 interface CompactedResponseWire {
 	id?: string;
@@ -267,19 +264,16 @@ export const openAIResponsesServerCompaction: ServerCompactionTransport = {
 			if (model.useResponsesLite === true) applyCodexResponsesLiteShape(body);
 		}
 
-		const sanitize = (text: string): string => {
-			const capped =
-				text.length <= MAX_ERROR_DETAIL_CHARS
-					? text
-					: `${text.slice(0, MAX_ERROR_DETAIL_CHARS)} [truncated, ${text.length} chars total]`;
-			if (!request.sanitizeErrorText) return capped;
+		const applyCallerSanitizer = (text: string): string => {
+			if (!request.sanitizeErrorText) return text;
 			try {
-				const sanitized = request.sanitizeErrorText(capped);
+				const sanitized = request.sanitizeErrorText(text);
 				return typeof sanitized === "string" ? sanitized : "[redacted]";
 			} catch {
 				return "[redacted]";
 			}
 		};
+		const sanitize = (text: string): string => applyCallerSanitizer(boundProviderErrorDetail(text));
 
 		// The fence spans the body read too; a middlebox can drop the connection
 		// after headers and only the armed signal interrupts response.json().
@@ -294,7 +288,9 @@ export const openAIResponsesServerCompaction: ServerCompactionTransport = {
 			});
 
 			if (!response.ok) {
-				const errorText = sanitize(await response.text().catch(() => ""));
+				// The body is read under the shared byte ceiling, so an enormous error page is
+				// never allocated whole just to be capped afterwards.
+				const errorText = applyCallerSanitizer(await readProviderErrorDetail(response));
 				const statusText = sanitize(response.statusText);
 				logger.warn("Server-side compaction failed", {
 					url,
