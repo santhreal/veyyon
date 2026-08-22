@@ -6,7 +6,7 @@ import type { Tool as AiTool } from "@veyyon/ai";
 import { normalizeSchemaForCCA, toolWireSchema } from "@veyyon/ai/utils/schema";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { SettingPath } from "@veyyon/coding-agent/config/settings-schema";
-import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { createTools, type ToolSession } from "@veyyon/coding-agent/tools";
 import { SearchTool } from "@veyyon/coding-agent/tools/search";
 import { removeWithRetries } from "@veyyon/utils";
 import { makeToolSession } from "../helpers/tool-session";
@@ -122,6 +122,7 @@ describe("SearchTool", () => {
 			const tool = new SearchTool(makeSession(process.cwd(), { [capability.setting]: false }));
 			const purposes = extractWirePurposes(tool);
 			expect(purposes).not.toContain(capability.purpose);
+			expect(tool.description).not.toContain(`purpose: "${capability.purpose}"`);
 			expect(tool.examples.some(example => "call" in example && example.call.purpose === capability.purpose)).toBe(
 				false,
 			);
@@ -136,6 +137,15 @@ describe("SearchTool", () => {
 		);
 		expect(extractWirePurposes(disabled)).toEqual(["disabled"]);
 		expect(disabled.examples).toEqual([]);
+	});
+
+	it("replaces every explicitly requested primitive search tool", async () => {
+		for (const primitive of ["glob", "grep", "ast_grep"]) {
+			const tools = await createTools(makeSession(process.cwd(), { "tools.unifiedSearch": true }), [primitive]);
+			const names = tools.map(tool => tool.name);
+			expect(names, `${primitive} did not activate unified search`).toContain("search");
+			expect(names, `${primitive} remained model-facing`).not.toContain(primitive);
+		}
 	});
 
 	it("rejects every purpose whose underlying capability is disabled", async () => {

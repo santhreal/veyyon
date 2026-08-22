@@ -7,6 +7,11 @@
  */
 import { type BashInterceptorRule, DEFAULT_BASH_INTERCEPTOR_RULES } from "../config/settings-schema";
 
+const UNIFIED_SEARCH_REDIRECTS: Record<string, string> = {
+	glob: 'Use `search` with `purpose: "locate"` instead of find/fd.',
+	grep: 'Use `search` with `purpose: "match"` instead of grep/rg.',
+};
+
 export interface InterceptionResult {
 	/** If true, the bash command should be blocked */
 	block: boolean;
@@ -49,16 +54,20 @@ export function checkBashInterception(
 	const compiled = compileRules(rules);
 
 	for (const { rule, regex } of compiled) {
-		// Only block if the suggested tool is actually available
-		if (!availableTools.includes(rule.tool)) {
-			continue;
+		let suggestedTool = rule.tool;
+		let message = rule.message;
+		if (!availableTools.includes(suggestedTool)) {
+			const unifiedMessage = availableTools.includes("search") ? UNIFIED_SEARCH_REDIRECTS[suggestedTool] : undefined;
+			if (unifiedMessage === undefined) continue;
+			suggestedTool = "search";
+			message = unifiedMessage;
 		}
 
 		if (regex.test(normalizedCommand)) {
 			return {
 				block: true,
-				message: `Blocked: ${rule.message}\n\nOriginal command: ${command}`,
-				suggestedTool: rule.tool,
+				message: `Blocked: ${message}\n\nOriginal command: ${command}`,
+				suggestedTool,
 			};
 		}
 	}
