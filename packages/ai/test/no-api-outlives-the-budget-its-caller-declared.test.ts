@@ -37,11 +37,18 @@
  */
 import { afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { BUILTIN_API_IDS } from "@veyyon/ai/api-registry";
-import { stream } from "@veyyon/ai/stream";
-import type { Api, AssistantMessageEventStream, Context, Model, StreamOptions } from "@veyyon/ai/types";
-import { buildModel } from "@veyyon/catalog/build";
+import type { StreamOptions } from "@veyyon/ai/types";
 import { getBundledModels, getBundledProviders } from "@veyyon/catalog/models";
-import { $env } from "@veyyon/utils/env";
+import {
+	API_PROBES,
+	callStream,
+	DEAD_ENDPOINT_URL,
+	DEFAULT_PROBE_API_KEY,
+	modelFor,
+	pinProbeEnv,
+	probeContext,
+	restoreProbeEnv,
+} from "./helpers/api-probes";
 import {
 	type CountingFetch,
 	fetchThatNeverAnswers,
@@ -67,13 +74,6 @@ const SLACK_MS = 4_500;
 
 const BOUND_MS = DECLARED_BUDGET_MS + SLACK_MS;
 
-/**
- * Where the `fetch`-based probes point. Port 9 (discard) is reserved and nothing
- * on it can answer, so a provider that ignores `options.fetch` and reaches the
- * network is a hang rather than a silent pass against a real endpoint.
- */
-const DEAD_ENDPOINT_URL = "http://127.0.0.1:9/v1";
-
 /** What a probe observed when the turn ended. The pinned value per API. */
 type Outcome =
 	| "first-event-timeout"
@@ -83,108 +83,6 @@ type Outcome =
 	| "transport"
 	| "unclassified"
 	| "completed";
-
-interface Probe {
-	/** Catalog provider id, which providers read for routing and env keys. */
-	provider: string;
-	/** Model id, which several providers read for per-family behaviour. */
-	modelId: string;
-	/** True when the provider speaks HTTP/2 directly and ignores `options.fetch`. */
-	http2: boolean;
-	/**
-	 * API key for providers that read structure out of it. Without one the probe
-	 * stops at credential parsing and never reaches the transport, which is a
-	 * hole in the sweep rather than a pass.
-	 */
-	apiKey?: string;
-}
-
-/**
- * One probe per API. Pinned by exact equality against `BUILTIN_API_IDS` below,
- * so adding an API to the union turns this suite red until someone decides how
- * its transport is reached.
- */
-const PROBES: Record<string, Probe> = {
-	"openai-completions": { provider: "openai", modelId: "gpt-4o-mini", http2: false },
-	"openai-responses": { provider: "openai", modelId: "gpt-5-mini", http2: false },
-	openrouter: { provider: "openrouter", modelId: "anthropic/claude-sonnet-4.6", http2: false },
-	"openai-codex-responses": { provider: "openai-codex", modelId: "gpt-5.1-codex", http2: false },
-	"azure-openai-responses": { provider: "azure", modelId: "gpt-5.1", http2: false },
-	"anthropic-messages": { provider: "anthropic", modelId: "claude-sonnet-4-6", http2: false },
-	"bedrock-converse-stream": { provider: "amazon-bedrock", modelId: "us.anthropic.claude-sonnet-4-6", http2: false },
-	"google-generative-ai": { provider: "google", modelId: "gemini-3-flash", http2: false },
-	"google-gemini-cli": {
-		provider: "google-gemini-cli",
-		modelId: "gemini-3.1-pro-preview",
-		http2: false,
-		// Cloud Code Assist credentials arrive AS the api key, as JSON.
-		apiKey: JSON.stringify({ token: "probe-token", projectId: "probe-project", expiresAt: 4_000_000_000_000 }),
-	},
-	"google-vertex": { provider: "google-vertex", modelId: "gemini-3.1-pro-preview", http2: false },
-	"ollama-chat": { provider: "ollama", modelId: "qwen3-coder", http2: false },
-	"cursor-agent": { provider: "cursor", modelId: "claude-4.6-opus", http2: true },
-	"gitlab-duo-agent": { provider: "gitlab-duo-agent", modelId: "claude_sonnet_4_6_vertex", http2: false },
-	"devin-agent": { provider: "devin", modelId: "swe-1-6", http2: false },
-};
-
-/** Environment the probes pin so no provider reads an operator's real setup. */
-const PINNED_ENV: Record<string, string> = {
-	// Bedrock resolves credentials before it streams; env is the first link of
-	// the AWS chain, so pinning it keeps the probe off ~/.aws and off IMDS.
-	AWS_ACCESS_KEY_ID: "AKIAPROBEPROBEPROBE",
-	AWS_SECRET_ACCESS_KEY: "probe-secret",
-	AWS_REGION: "us-east-1",
-	// Vertex takes an explicit access token ahead of every ADC path.
-	GOOGLE_CLOUD_ACCESS_TOKEN: "probe-token",
-	// Gemini CLI reads its OAuth identity out of the api key, not the env.
-};
-
-/**
- * Watchdog knobs an operator may legitimately set. The contract under test is
- * what the CALLER's option does, so the probes run with the env layer cleared.
- */
-const CLEARED_ENV = [
-	"VEYYON_STREAM_IDLE_TIMEOUT_MS",
-	"VEYYON_STREAM_FIRST_EVENT_TIMEOUT_MS",
-	"VEYYON_OPENAI_STREAM_IDLE_TIMEOUT_MS",
-	"VEYYON_OPENAI_STREAM_FIRST_EVENT_TIMEOUT_MS",
-	"HTTP_PROXY",
-	"HTTPS_PROXY",
-	"ALL_PROXY",
-] as const;
-
-const savedEnv = new Map<string, string | undefined>();
-
-function pinEnv(key: string, value: string | undefined): void {
-	if (!savedEnv.has(key)) savedEnv.set(key, $env[key]);
-	if (value === undefined) delete ($env as Record<string, string | undefined>)[key];
-	else $env[key] = value;
-}
-
-const context: Context = { messages: [{ role: "user", content: "probe", timestamp: 1 }] };
-
-/**
- * `stream()` is generic over the API, and these probes deliberately hold the
- * whole union at once. One cast at one site, rather than fourteen call sites
- * that each re-narrow the same options object.
- */
-type StreamCall = (model: Model<Api>, context: Context, options: StreamOptions) => AssistantMessageEventStream;
-const callStream = stream as unknown as StreamCall;
-
-function modelFor(api: string, probe: Probe, baseUrl: string): Model<Api> {
-	return buildModel({
-		id: probe.modelId,
-		name: probe.modelId,
-		api: api as Api,
-		provider: probe.provider,
-		baseUrl,
-		reasoning: false,
-		input: ["text"],
-		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-		contextWindow: 200_000,
-		maxTokens: 32_000,
-	}) as Model<Api>;
-}
 
 function classify(text: string): Outcome {
 	if (/first event|first_event/i.test(text)) return "first-event-timeout";
@@ -211,7 +109,7 @@ interface ProbeResult {
 async function probeOnce(api: string, transport: CountingFetch, baseUrl: string): Promise<ProbeResult> {
 	const started = Date.now();
 	const options: StreamOptions = {
-		apiKey: PROBES[api].apiKey ?? "probe-key",
+		apiKey: API_PROBES[api].apiKey ?? DEFAULT_PROBE_API_KEY,
 		fetch: transport,
 		streamFirstEventTimeoutMs: DECLARED_BUDGET_MS,
 		streamIdleTimeoutMs: DECLARED_BUDGET_MS,
@@ -219,7 +117,7 @@ async function probeOnce(api: string, transport: CountingFetch, baseUrl: string)
 
 	const settle = async (): Promise<string> => {
 		try {
-			const events = callStream(modelFor(api, PROBES[api], baseUrl), context, options);
+			const events = callStream(modelFor(api, baseUrl), probeContext, options);
 			let seen = 0;
 			for await (const _event of events) seen += 1;
 			void seen;
@@ -262,17 +160,8 @@ beforeAll(async () => {
 });
 
 afterEach(() => {
-	for (const [key, value] of savedEnv) {
-		if (value === undefined) delete ($env as Record<string, string | undefined>)[key];
-		else $env[key] = value;
-	}
-	savedEnv.clear();
+	restoreProbeEnv();
 });
-
-function pinProbeEnv(): void {
-	for (const [key, value] of Object.entries(PINNED_ENV)) pinEnv(key, value);
-	for (const key of CLEARED_ENV) pinEnv(key, undefined);
-}
 
 /**
  * The failure class each API surfaces when the endpoint accepts and never
@@ -322,12 +211,14 @@ interface ArmObservation {
 
 describe("no API outlives the budget its caller declared", () => {
 	it("has a probe for every API in the union", () => {
-		expect(Object.keys(PROBES).sort()).toEqual([...BUILTIN_API_IDS].sort());
+		expect(Object.keys(API_PROBES).sort()).toEqual([...BUILTIN_API_IDS].sort());
 	});
 
 	it("sweeps every api the shipped catalog can reach", () => {
-		// The union above is the *registry's* list. A provider is what an
-		// operator selects, and the catalog is where providers come from: 59 of
+		// The union above is the *registry's* list, and `API_PROBES` (owned by
+		// `helpers/api-probes.ts`) is how this sweep reaches each member. A
+		// provider is what an operator selects, and the catalog is where
+		// providers come from: 59 of
 		// them ship in `models.json`, each model naming the api it dispatches to.
 		// If a provider arrives carrying an api this sweep does not probe, the
 		// suite above stays green while a reachable path is unmeasured — the
@@ -340,7 +231,7 @@ describe("no API outlives the budget its caller declared", () => {
 		for (const provider of getBundledProviders()) {
 			for (const model of getBundledModels(provider)) reachable.add(model.api);
 		}
-		const unswept = [...reachable].filter(api => !(api in PROBES)).sort();
+		const unswept = [...reachable].filter(api => !(api in API_PROBES)).sort();
 		expect(unswept).toEqual([]);
 	});
 
@@ -349,7 +240,7 @@ describe("no API outlives the budget its caller declared", () => {
 		const observed: Record<string, ArmObservation> = {};
 		const expected: Record<string, ArmObservation> = {};
 		for (const api of BUILTIN_API_IDS) {
-			const probe = PROBES[api];
+			const probe = API_PROBES[api];
 			const transport = fetchThatNeverAnswers();
 			const acceptedBefore = silentHttp2.accepted;
 			const result = await probeOnce(api, transport, probe.http2 ? silentHttp2.baseUrl : DEAD_ENDPOINT_URL);
@@ -368,7 +259,7 @@ describe("no API outlives the budget its caller declared", () => {
 		const observed: Record<string, ArmObservation> = {};
 		const expected: Record<string, ArmObservation> = {};
 		for (const api of BUILTIN_API_IDS) {
-			const probe = PROBES[api];
+			const probe = API_PROBES[api];
 			const transport = fetchThatStallsMidStream();
 			const acceptedBefore = respondingHttp2.accepted;
 			const result = await probeOnce(api, transport, probe.http2 ? respondingHttp2.baseUrl : DEAD_ENDPOINT_URL);

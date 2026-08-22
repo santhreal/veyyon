@@ -310,7 +310,14 @@ export interface FetchWithRetryOptions extends RequestInit {
 	timeout?: number | false;
 }
 
-const DEFAULT_MAX_DELAY_MS = 60_000;
+/**
+ * The longest single server-directed wait a retry will sit on when the caller
+ * declared no cap of its own. Exported because a provider that runs its own
+ * retry ladder outside this helper (the Anthropic client honors
+ * `retry-after-ms` itself) has to bound it by the same number, or the same
+ * `retry-after` means one minute on one path and an unbounded sleep on another.
+ */
+export const DEFAULT_MAX_DELAY_MS = 60_000;
 const DEFAULT_MAX_ATTEMPTS = 5;
 
 /**

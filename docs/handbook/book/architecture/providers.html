@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-12bd7fa0.js";
+            window.path_to_searchindex_js = "../searchindex-64684766.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-79e2ba62.js"></script>
@@ -268,18 +268,33 @@ silence.</p>
 </tbody>
 </table>
 </div>
-<p>Two rules keep this narrow.</p>
-<p><strong>A stall is bounded; a server-directed retry is not.</strong> A 429 or 503 carrying
-<code>retry-after</code> means the server answered and asked for a later attempt. Honoring
-that is what makes a rate limit survivable, so those failures keep their own
-budget (<code>CODEX_RATE_LIMIT_BUDGET_MS</code>, and the Anthropic header hint). Only a
-failure where nothing arrived at all is refused once the budget is gone, which
-is why the guard is a veto predicate rather than a fence around a retry loop.</p>
+<p>Three rules keep this narrow.</p>
+<p><strong>A stall is bounded by the budget; a server-directed wait is bounded by the
+cap.</strong> A 429 or 503 carrying <code>retry-after</code> means the server answered and asked
+for a later attempt. Honoring that is what makes a rate limit survivable, so
+those failures are not refused when the first-event budget is gone — only a
+failure where nothing arrived at all is, which is why the guard is a veto
+predicate rather than a fence around a retry loop. The wait itself is bounded
+separately: <code>maxRetryDelayMs</code> is the longest single server-directed wait a
+caller will sit on, <code>DEFAULT_MAX_DELAY_MS</code> (60s) when it declares none, and a
+hint above it surfaces the refusal instead of sleeping on it. Every retrying
+path reads the caller’s number — <code>fetchWithRetry</code> for the OpenAI-compatible
+family, Bedrock, Ollama and Codex, and the Anthropic client and provider ladder
+for their own <code>retry-after-ms</code> handling.</p>
 <p><strong>A deadline that fires ends the phase.</strong> A helper that degrades on its own
 timeout — GitLab Duo’s settings PUT, its project lookup, its model list, and the
 catalog namespace reader behind them — must rethrow when the caller’s deadline is
 what fired. Reporting it as “nothing found” and continuing spends time nobody
 granted, and it reaches the user as a configuration remedy for a network fault.</p>
+<p><strong>A refusal names its remedy.</strong> <code>401</code>, <code>404</code>, <code>429</code> and <code>400</code> have four
+different answers — fix the credential, fix the route or the model id, wait, fix
+the request — and a provider that renders all four as one wording has reported
+the failure and told nobody anything. Two shapes cause it: a status that is read
+for a debug log and then discarded (Cursor’s Connect stream did this, so every
+refusal arrived as “stream ended without a turn_ended update”), and a handshake
+that treats a refusal as one candidate’s silence and concludes with the remedy
+for having found nothing (GitLab Duo’s namespace walk did this with a rejected
+token).</p>
 <h3 id="where-each-providers-deadline-sits"><a class="header" href="#where-each-providers-deadline-sits">Where each provider’s deadline sits</a></h3>
 <div class="table-wrapper">
 <table>
@@ -298,6 +313,10 @@ granted, and it reaches the user as a configuration remedy for a network fault.<
 <p><code>packages/ai/test/no-api-outlives-the-budget-its-caller-declared.test.ts</code> drives
 every API in the union against a silent endpoint and pins the observed class per
 API, so a provider that stops honoring the number turns that suite red.</p>
+<p><code>packages/ai/test/every-provider-refusal-names-what-to-do-about-it.test.ts</code>
+drives the same fourteen against a refusing transport — <code>401</code>, <code>404</code>, <code>429</code> with
+a two-minute <code>retry-after</code>, and <code>400</code> — and pins the class each one surfaces,
+plus the invariant that no refusal echoes the api key back into its message.</p>
 
                     </main>
 

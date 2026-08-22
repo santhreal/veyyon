@@ -568,6 +568,7 @@ const streamOllamaOnce = (
 					body: JSON.stringify(body),
 					signal: watchdog.signal,
 					defaultDelayMs: OLLAMA_RETRY_DELAYS_MS,
+					maxDelayMs: options.maxRetryDelayMs,
 					shouldRetryResponse: shouldRetryOllamaResponse,
 					fetch: options.fetch,
 					timeout: false,
