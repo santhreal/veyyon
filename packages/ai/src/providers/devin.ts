@@ -468,8 +468,19 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 				if (!stream.done) stream.end(carrySpend(await retried.result()));
 				return;
 			}
-			logger.error("devin: stream failed", { error: String(error) });
+			// Finalized BEFORE the record is written, because the outcome is what decides how loud
+			// it should be: a caller abort is the operator pressing stop, not a provider failure.
 			const result = await AIError.finalize(error, { api: model.api, signal: options?.signal });
+			// Chosen at call time from a static access, not from a table built at module load: a
+			// captured function detaches any spy a test installs on the logger namespace.
+			const record = result.logLevel === "debug" ? logger.debug : logger.error;
+			record("devin: stream failed", {
+				model: model.id,
+				stopReason: result.stopReason,
+				status: result.status,
+				errorId: result.id,
+				error: String(error),
+			});
 			output.stopReason = result.stopReason;
 			output.errorStatus = result.status;
 			output.errorId = result.id;
