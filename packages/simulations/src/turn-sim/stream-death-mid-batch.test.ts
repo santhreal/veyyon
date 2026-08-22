@@ -60,24 +60,33 @@ interface ContextShape {
 	texts: string[];
 }
 
+/**
+ * WHAT FLIPPED. The date and the working directory left the cached system prompt and now ride a
+ * hidden `session-state` block the session unshifts onto every request, so a served context opens
+ * with one extra `developer` message. Pinning and stripping it here keeps every sequence below
+ * written as the conversation reads, and makes each of them also assert the block still leads.
+ */
 function contextShape(turn: ScriptedTurn): ContextShape {
 	const roles: string[] = [];
 	const texts: string[] = [];
 	for (const message of turn.context.messages) {
 		roles.push(message.role);
-		const content = (message as { content?: unknown }).content;
-		if (typeof content === "string") texts.push(content);
-		else if (Array.isArray(content)) {
-			for (const block of content) {
-				if (typeof block === "object" && block !== null && (block as { type?: string }).type === "text") {
-					texts.push(String((block as { text?: unknown }).text ?? ""));
+		if ("content" in message) {
+			const content = message.content;
+			if (typeof content === "string") texts.push(content);
+			else if (Array.isArray(content)) {
+				for (const block of content) {
+					if (block.type === "text") texts.push(block.text);
 				}
 			}
 		}
-		const errorMessage = (message as { errorMessage?: unknown }).errorMessage;
-		if (typeof errorMessage === "string") texts.push(`errorMessage:${errorMessage}`);
+		if ("errorMessage" in message && typeof message.errorMessage === "string") {
+			texts.push(`errorMessage:${message.errorMessage}`);
+		}
 	}
-	return { roles, texts };
+	expect(roles[0]).toBe("developer");
+	expect(texts[0]).toContain("<session-state>");
+	return { roles: roles.slice(1), texts: texts.slice(1) };
 }
 
 /**

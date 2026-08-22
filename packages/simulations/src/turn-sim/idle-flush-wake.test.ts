@@ -121,6 +121,28 @@ function carried(messages: readonly unknown[]): string {
 	return marks.length === 0 ? "plain" : marks.join("+");
 }
 
+/**
+ * WHAT FLIPPED. The date and the working directory left the cached system prompt for a hidden
+ * `session-state` custom block the session keeps at the head of the transcript, so a bare sweep
+ * for `custom` messages now finds it beside a job completion. Both helpers pin that block by its
+ * persisted type and then read the conversation these rows are about, which makes every sequence
+ * below also assert the block still leads.
+ */
+function conversationRoles(messages: readonly AgentMessage[]): string[] {
+	const head = messages[0];
+	expect(head?.role).toBe("custom");
+	expect(head && "customType" in head ? head.customType : undefined).toBe("session-state");
+	return messages.slice(1).map(message => message.role);
+}
+
+/** The text of every delivered custom message, session state excluded. */
+function deliveredCustoms(messages: readonly AgentMessage[]): string[] {
+	return messages
+		.slice(1)
+		.filter(message => message.role === "custom")
+		.map(message => (typeof message.content === "string" ? message.content : JSON.stringify(message.content)));
+}
+
 let sim: Simulation | undefined;
 
 afterEach(async () => {
@@ -154,7 +176,7 @@ describe("a finished job wakes the agent when nothing else is running", () => {
 		expect(served).toEqual(["plain", "job"]);
 		// The completion is a message in the conversation, between the two answers,
 		// rather than something the transcript only mentions.
-		expect(sim.session.messages.map(message => message.role)).toEqual(["user", "assistant", "custom", "assistant"]);
+		expect(conversationRoles(sim.session.messages)).toEqual(["user", "assistant", "custom", "assistant"]);
 		// A wake that opened a fresh cache identity would re-read the whole
 		// conversation at full input price on every job completion.
 		expect(routing[1]).toBe(routing[0]);
@@ -180,10 +202,7 @@ describe("a finished job wakes the agent when nothing else is running", () => {
 		await whenSessionEvent(sim.session, event => event.type === "agent_end");
 
 		expect(served).toEqual(["plain", "job"]);
-		const customs = sim.session.messages
-			.filter(message => message.role === "custom")
-			.map(message => (message as { content?: string }).content);
-		expect(customs).toEqual([`${JOBS} job-a+job-b`]);
+		expect(deliveredCustoms(sim.session.messages)).toEqual([`${JOBS} job-a+job-b`]);
 	});
 
 	it("never wakes the agent for a delivery that was suppressed", async () => {
@@ -207,7 +226,7 @@ describe("a finished job wakes the agent when nothing else is running", () => {
 		expect(served).toEqual(["plain"]);
 		// The entry is consumed rather than left behind to surface on a later turn.
 		expect(sim.session.yieldQueue.has("async-result")).toBe(false);
-		expect(sim.session.messages.some(message => message.role === "custom")).toBe(false);
+		expect(conversationRoles(sim.session.messages)).not.toContain("custom");
 	});
 });
 
