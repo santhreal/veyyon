@@ -750,14 +750,21 @@ fn to_grep_match(path: String, matched: CollectedMatch) -> GrepMatch {
 	}
 }
 
-fn push_content_matches(
-	matches: &mut Vec<GrepMatch>,
-	path: String,
-	collected_matches: Vec<CollectedMatch>,
-) {
-	let last_index = collected_matches.len().saturating_sub(1);
+/// Push one row per selected match, spending one path allocation per row.
+///
+/// The caller's `path` is moved into the last row rather than cloned for it, so
+/// a single-match file costs the one `String` the row itself needs. Taking an
+/// iterator rather than a `Vec` is what lets the aggregator select a file's
+/// matches without first collecting them: a broad content query matches in tens
+/// of thousands of files, and that intermediate vector was one allocation per
+/// matching file for nothing.
+fn push_content_matches<I>(matches: &mut Vec<GrepMatch>, path: String, selected: I)
+where
+	I: ExactSizeIterator<Item = CollectedMatch>,
+{
+	let last_index = selected.len().saturating_sub(1);
 	let mut path = Some(path);
-	for (index, matched) in collected_matches.into_iter().enumerate() {
+	for (index, matched) in selected.enumerate() {
 		let match_path = if index == last_index {
 			path.take().expect("path is available for final match")
 		} else {
@@ -1736,13 +1743,36 @@ fn push_file_match(matches: &mut Vec<GrepMatch>, path: String) {
 	});
 }
 
+/// How many rows the aggregate will push, so its vector is allocated once.
+///
+/// A broad content query returns one row per match, and growing that vector by
+/// doubling copies every row already in it: 50,000 rows of `GrepMatch` is
+/// ~6MiB, so the doubling alone moved about twice that. Counting first is one
+/// pass over the file results with no allocation. Content mode is exact; the
+/// other two modes push at most one row per file.
+fn planned_row_count(
+	results: &[FileSearchResult],
+	mode: OutputMode,
+	max_count: Option<u64>,
+) -> usize {
+	let rows: u64 = match mode {
+		OutputMode::Content => results
+			.iter()
+			.map(|result| result.matches.len() as u64)
+			.sum(),
+		OutputMode::Count | OutputMode::FilesWithMatches => results.len() as u64,
+	};
+	let bounded = max_count.map_or(rows, |max| rows.min(max));
+	usize::try_from(bounded).unwrap_or(usize::MAX)
+}
+
 fn aggregate_parallel_results(
 	results: Vec<FileSearchResult>,
 	params: SearchParams,
 	files_searched: u64,
 ) -> (Vec<GrepMatch>, u64, u32, u32, bool) {
 	let SearchParams { mode, max_count, offset, .. } = params;
-	let mut matches = Vec::new();
+	let mut matches = Vec::with_capacity(planned_row_count(&results, mode, max_count));
 	let mut total_matches = 0u64;
 	let mut files_with_matches = 0u32;
 	let files_searched = crate::utils::clamp_u32(files_searched);
@@ -1762,23 +1792,32 @@ fn aggregate_parallel_results(
 
 		match mode {
 			OutputMode::Content => {
-				let mut selected_matches = Vec::new();
-				for matched in result.matches {
-					if skipped < offset {
-						skipped += 1;
-						continue;
-					}
-					if let Some(max) = max_count
-						&& emitted >= max
-					{
-						limit_reached = true;
-						break;
-					}
-					selected_matches.push(matched);
-					emitted += 1;
+				// Selection is arithmetic on counts, not a collected vector: a broad
+				// query matches in as many files as it searches, and one intermediate
+				// vector per matching file measured 10ms of a 91ms four-worker pass at
+				// fifty thousand matching files.
+				let available = result.matches.len() as u64;
+				let skip_here = offset.saturating_sub(skipped).min(available);
+				skipped = skipped.saturating_add(skip_here);
+				let selectable = available - skip_here;
+				let take_here = match max_count {
+					Some(max) => selectable.min(max.saturating_sub(emitted)),
+					None => selectable,
+				};
+				if take_here < selectable {
+					// The loop this replaces stopped at the first match it could not
+					// emit, which is exactly the case where something was left.
+					limit_reached = true;
 				}
-				if !selected_matches.is_empty() {
-					push_content_matches(&mut matches, result.relative_path, selected_matches);
+				if take_here > 0 {
+					let skip_here = usize::try_from(skip_here).unwrap_or(usize::MAX);
+					let take_here = usize::try_from(take_here).unwrap_or(usize::MAX);
+					push_content_matches(
+						&mut matches,
+						result.relative_path,
+						result.matches.into_iter().skip(skip_here).take(take_here),
+					);
+					emitted = emitted.saturating_add(take_here as u64);
 				}
 				if result.limit_reached && skipped >= offset {
 					limit_reached = true;
@@ -2006,7 +2045,7 @@ fn grep_sync_with_matcher<M: Matcher + Sync>(
 		let mut matches = Vec::new();
 		match output_mode {
 			OutputMode::Content => {
-				push_content_matches(&mut matches, path_string, search.matches);
+				push_content_matches(&mut matches, path_string, search.matches.into_iter());
 			},
 			OutputMode::Count => {
 				matches.push(GrepMatch {
@@ -3280,5 +3319,303 @@ mod tests {
 		assert_eq!(result.total_matches, 1);
 		assert_eq!(result.files_searched, 1);
 		assert_eq!(result.skipped_oversized, None);
+	}
+
+	// WHY: the aggregator used to select a file's matches by collecting them into a
+	// vector and pushing that vector, which cost one allocation per matching file —
+	// 10ms of a 91ms four-worker pass over 50,010 matching files. Selection is
+	// arithmetic on counts now, and arithmetic is exactly where an off-by-one
+	// hides: an offset that straddles a file boundary, a limit that lands on the
+	// last match of a file, a per-file limit already reached, a file whose match
+	// count exceeds the matches it carried. The sweep below runs the collecting
+	// algorithm as an oracle over every combination of those, in all three output
+	// modes, and requires identical rows and identical counters. It does not cover
+	// the search that produced the matches, or the N-API conversion of the rows it
+	// returns.
+	mod selection_is_arithmetic {
+		use smallvec::SmallVec;
+
+		use super::super::{
+			CollectedMatch, ContextLine, FileSearchResult, GrepMatch, OutputMode, SearchParams,
+			aggregate_parallel_results, push_content_matches, push_count_match, push_file_match,
+		};
+
+		/// One file's shape: path, matches it carried, reported count, per-file
+		/// limit.
+		struct FileShape {
+			path:          &'static str,
+			carried:       u64,
+			reported:      u64,
+			limit_reached: bool,
+		}
+
+		fn shape(path: &'static str, carried: u64, reported: u64, limit_reached: bool) -> FileShape {
+			FileShape { path, carried, reported, limit_reached }
+		}
+
+		fn results(shapes: &[FileShape]) -> Vec<FileSearchResult> {
+			shapes
+				.iter()
+				.map(|file| FileSearchResult {
+					relative_path: file.path.to_owned(),
+					matches:       (0..file.carried)
+						.map(|index| CollectedMatch {
+							line_number:    index + 1,
+							line:           format!("{} line {index}", file.path),
+							context_before: SmallVec::from_vec(vec![ContextLine {
+								line_number: 1,
+								line:        format!("{} before {index}", file.path),
+							}]),
+							context_after:  SmallVec::new(),
+							truncated:      index % 2 == 0,
+						})
+						.collect(),
+					match_count:   file.reported,
+					limit_reached: file.limit_reached,
+				})
+				.collect()
+		}
+
+		/// The pre-fix algorithm: collect a file's selected matches, then push
+		/// them.
+		fn aggregate_by_collecting(
+			results: Vec<FileSearchResult>,
+			params: SearchParams,
+			files_searched: u64,
+		) -> (Vec<GrepMatch>, u64, u32, u32, bool) {
+			let SearchParams { mode, max_count, offset, .. } = params;
+			let mut matches = Vec::new();
+			let mut total_matches = 0u64;
+			let mut files_with_matches = 0u32;
+			let files_searched = crate::utils::clamp_u32(files_searched);
+			let mut skipped = 0u64;
+			let mut emitted = 0u64;
+			let mut limit_reached = false;
+
+			for result in results {
+				if result.match_count == 0 {
+					continue;
+				}
+				let file_match_start = total_matches;
+				let file_match_count = result.match_count;
+				files_with_matches = files_with_matches.saturating_add(1);
+				total_matches = total_matches.saturating_add(file_match_count);
+
+				match mode {
+					OutputMode::Content => {
+						let mut selected_matches = Vec::new();
+						for matched in result.matches {
+							if skipped < offset {
+								skipped += 1;
+								continue;
+							}
+							if let Some(max) = max_count
+								&& emitted >= max
+							{
+								limit_reached = true;
+								break;
+							}
+							selected_matches.push(matched);
+							emitted += 1;
+						}
+						if !selected_matches.is_empty() {
+							push_content_matches(
+								&mut matches,
+								result.relative_path,
+								selected_matches.into_iter(),
+							);
+						}
+						if result.limit_reached && skipped >= offset {
+							limit_reached = true;
+						}
+					},
+					OutputMode::Count => {
+						let skipped_in_file = offset
+							.saturating_sub(file_match_start)
+							.min(file_match_count);
+						let available = file_match_count.saturating_sub(skipped_in_file);
+						if available == 0 {
+							continue;
+						}
+						if let Some(max) = max_count
+							&& emitted >= max
+						{
+							limit_reached = true;
+							continue;
+						}
+						let remaining = max_count.map_or(available, |max| max.saturating_sub(emitted));
+						if remaining == 0 {
+							limit_reached = true;
+							continue;
+						}
+						push_count_match(&mut matches, result.relative_path, result.match_count);
+						let selected = available.min(remaining);
+						emitted = emitted.saturating_add(selected);
+						if selected < available {
+							limit_reached = true;
+						}
+					},
+					OutputMode::FilesWithMatches => {
+						if skipped < offset {
+							skipped += 1;
+							continue;
+						}
+						if let Some(max) = max_count
+							&& emitted >= max
+						{
+							limit_reached = true;
+							continue;
+						}
+						push_file_match(&mut matches, result.relative_path);
+						emitted += 1;
+					},
+				}
+			}
+
+			if let Some(max) = max_count
+				&& emitted >= max
+			{
+				limit_reached = true;
+			}
+
+			if max_count == Some(0) {
+				limit_reached = files_with_matches > 0;
+			}
+			(matches, total_matches, files_with_matches, files_searched, limit_reached)
+		}
+
+		#[derive(Debug, PartialEq, Eq)]
+		struct Row {
+			path:           String,
+			line_number:    u32,
+			line:           String,
+			context_before: Vec<(u32, String)>,
+			context_after:  Vec<(u32, String)>,
+			truncated:      Option<bool>,
+			match_count:    Option<u32>,
+		}
+
+		fn rows(matches: &[GrepMatch]) -> Vec<Row> {
+			matches
+				.iter()
+				.map(|matched| Row {
+					path:           matched.path.clone(),
+					line_number:    matched.line_number,
+					line:           matched.line.clone(),
+					context_before: matched
+						.context_before
+						.iter()
+						.flatten()
+						.map(|line| (line.line_number, line.line.clone()))
+						.collect(),
+					context_after:  matched
+						.context_after
+						.iter()
+						.flatten()
+						.map(|line| (line.line_number, line.line.clone()))
+						.collect(),
+					truncated:      matched.truncated,
+					match_count:    matched.match_count,
+				})
+				.collect()
+		}
+
+		fn params(mode: OutputMode, offset: u64, max_count: Option<u64>) -> SearchParams {
+			SearchParams {
+				context_before: 1,
+				context_after: 0,
+				max_columns: None,
+				mode,
+				max_count,
+				max_count_per_file: None,
+				offset,
+				multiline: false,
+			}
+		}
+
+		fn shapes() -> Vec<Vec<FileShape>> {
+			vec![
+				vec![],
+				vec![shape("a.txt", 1, 1, false)],
+				vec![shape("a.txt", 3, 3, false)],
+				// A file the searcher stopped early in: it carries fewer matches than it
+				// counted, and says so.
+				vec![shape("a.txt", 2, 7, true)],
+				// A file with no match at all sits in the list and must be skipped
+				// without consuming offset or limit.
+				vec![shape("a.txt", 0, 0, false), shape("b.txt", 2, 2, false)],
+				vec![
+					shape("a.txt", 1, 1, false),
+					shape("b.txt", 4, 4, false),
+					shape("c.txt", 2, 2, true),
+					shape("d.txt", 3, 3, false),
+				],
+			]
+		}
+
+		#[test]
+		fn selecting_by_arithmetic_returns_what_collecting_returned() {
+			let modes = [OutputMode::Content, OutputMode::Count, OutputMode::FilesWithMatches];
+			let limits = [None, Some(0), Some(1), Some(2), Some(3), Some(5), Some(10), Some(100)];
+			let mut cases = 0_usize;
+			for shapes in shapes() {
+				// One offset past the end of every shape, so an exhausted offset is a
+				// case rather than a gap.
+				for offset in 0..=12u64 {
+					for mode in modes {
+						for max_count in limits {
+							let params = params(mode, offset, max_count);
+							let actual = aggregate_parallel_results(results(&shapes), params, 41);
+							let expected = aggregate_by_collecting(results(&shapes), params, 41);
+							let case = format!(
+								"files={} offset={offset} max_count={max_count:?} mode={mode:?}",
+								shapes.len()
+							);
+							assert_eq!(rows(&actual.0), rows(&expected.0), "rows for {case}");
+							assert_eq!(actual.1, expected.1, "total_matches for {case}");
+							assert_eq!(actual.2, expected.2, "files_with_matches for {case}");
+							assert_eq!(actual.3, expected.3, "files_searched for {case}");
+							assert_eq!(actual.4, expected.4, "limit_reached for {case}");
+							cases += 1;
+						}
+					}
+				}
+			}
+			// The sweep is derived from the shape/limit/mode lists rather than pinned by
+			// hand, and this is the count those lists produce: a list that silently
+			// shrinks fails here instead of passing with less coverage.
+			assert_eq!(cases, shapes().len() * 13 * 3 * 8);
+			assert_eq!(cases, 1872);
+		}
+
+		#[test]
+		fn the_row_vector_is_allocated_once_at_its_final_length() {
+			// Content mode returns one row per selected match, and the planner is what
+			// keeps the vector from doubling through that: 50,000 rows is ~6MiB, so the
+			// growth copies were larger than the rows.
+			let shapes = vec![
+				shape("a.txt", 4, 4, false),
+				shape("b.txt", 0, 0, false),
+				shape("c.txt", 6, 6, false),
+			];
+			let (matches, ..) =
+				aggregate_parallel_results(results(&shapes), params(OutputMode::Content, 0, None), 3);
+			assert_eq!(matches.len(), 10);
+			assert_eq!(matches.capacity(), 10, "the vector grew instead of being planned");
+
+			let (limited, ..) = aggregate_parallel_results(
+				results(&shapes),
+				params(OutputMode::Content, 0, Some(4)),
+				3,
+			);
+			assert_eq!(limited.len(), 4);
+			assert_eq!(limited.capacity(), 4, "a limited query plans for the limit");
+
+			// One row per file that matched, in the other two modes.
+			let (counted, ..) =
+				aggregate_parallel_results(results(&shapes), params(OutputMode::Count, 0, None), 3);
+			assert_eq!(counted.len(), 2, "b.txt reported no match");
+			assert_eq!(counted.capacity(), 3, "the planner bounds by files, not by matches");
+		}
 	}
 }
