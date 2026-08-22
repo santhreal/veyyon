@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-bfe6d971.js";
+            window.path_to_searchindex_js = "../searchindex-7ec6582c.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-093df7ff.js"></script>
@@ -243,6 +243,12 @@ frame under that name. A needle that comes from somewhere else is declared in th
 <p>The driver also requires the model row to exist on that server, and writes <code>&lt;scene&gt;-model.txt</code>
 beside the frames naming the row, the endpoint, the host and the display server the take was
 recorded on.</p>
+<p>Every binary the run will use is resolved before the first frame: <code>docker</code>, <code>bun</code> for the scene
+check, and <code>ffmpeg</code> and <code>python3</code> for the publish chain. ImageMagick answers to <code>magick</code> on 7 and
+<code>convert</code> on 6, and either is accepted. Bun is looked for at <code>~/.bun/bin/bun</code> when it is not on
+<code>PATH</code>, because a recording is driven over ssh and a non-login shell there does not carry the
+installer’s entry. A publish tool first called after the recording is a take lost to a <code>PATH</code>
+difference, which is why a rehearsal needs only <code>docker</code>.</p>
 <p>The archived take remains at capture speed. The landing-page cut keeps the plan, the worker setup, verification and signing at 1×. Visible implementation between the worker launch and the verified build plays at 1.25×. Named marks in the take select those boundaries; untouched screens are shortened to four seconds rather than accelerated.</p>
 <h3 id="settings-differentials"><a class="header" href="#settings-differentials">Settings differentials</a></h3>
 <p>A settings change proves with two frames of the settings screen recorded from the
