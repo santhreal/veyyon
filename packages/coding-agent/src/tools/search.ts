@@ -16,8 +16,8 @@ import { GlobTool, type GlobToolDetails } from "./glob";
 import { GrepTool, type GrepToolDetails } from "./grep";
 import { ToolError } from "./tool-errors";
 
-const fileSearchSchema = type({
-	mode: "'files'",
+const locateSearchSchema = type({
+	purpose: "'locate'",
 	"path?": type("string").describe(
 		'glob, file, or directory to search — a single path or a semicolon-delimited list ("src/**/*.ts; test/**/*.ts"). Omitted -> searches the workspace root (".")',
 	),
@@ -26,8 +26,8 @@ const fileSearchSchema = type({
 	"limit?": type("number").describe("max results"),
 });
 
-const textSearchSchema = type({
-	mode: "'text'",
+const matchSearchSchema = type({
+	purpose: "'match'",
 	pattern: type("string").describe("regex pattern"),
 	"path?": type("string").describe(
 		'file, directory, glob, internal URL, or "<file>:<lines>" selector to search; pass several as a semicolon-delimited list ("src; tests"). Omitted -> searches the workspace root (".")',
@@ -39,8 +39,8 @@ const textSearchSchema = type({
 		.describe("files to skip before collecting results — use to paginate when the prior call hit the file limit"),
 });
 
-const astSearchSchema = type({
-	mode: "'ast'",
+const analyzeSearchSchema = type({
+	purpose: "'analyze'",
 	pattern: type("string").describe("AST pattern"),
 	"path?": type("string").describe(
 		'file, directory, glob, or internal URL to search; pass several as a semicolon-delimited list ("src; tests"). Omitted -> searches the workspace root (".")',
@@ -48,17 +48,17 @@ const astSearchSchema = type({
 	"skip?": type("number").describe("matches to skip"),
 });
 
-const fileAndTextSearchSchema = fileSearchSchema.or(textSearchSchema);
-const fileAndAstSearchSchema = fileSearchSchema.or(astSearchSchema);
-const textAndAstSearchSchema = textSearchSchema.or(astSearchSchema);
-const searchDisabledSchema = type({ mode: "'disabled'" });
-export const searchSchema = fileAndTextSearchSchema.or(astSearchSchema);
+const locateAndMatchSearchSchema = locateSearchSchema.or(matchSearchSchema);
+const locateAndAnalyzeSearchSchema = locateSearchSchema.or(analyzeSearchSchema);
+const matchAndAnalyzeSearchSchema = matchSearchSchema.or(analyzeSearchSchema);
+const searchDisabledSchema = type({ purpose: "'disabled'" });
+export const searchSchema = locateAndMatchSearchSchema.or(analyzeSearchSchema);
 export type UnifiedSearchToolParams = typeof searchSchema.infer;
 
-type SearchMode = UnifiedSearchToolParams["mode"];
+type SearchPurpose = UnifiedSearchToolParams["purpose"];
 
 export interface SearchToolDetails {
-	mode: SearchMode;
+	purpose: SearchPurpose;
 	details?: GlobToolDetails | GrepToolDetails | AstGrepToolDetails;
 }
 
@@ -74,11 +74,11 @@ export class SearchTool implements AgentTool<typeof searchSchema, SearchToolDeta
 	get summary(): string {
 		const capabilities = this.#capabilities();
 		const enabled = [
-			capabilities.files ? "files" : undefined,
-			capabilities.text ? "source text" : undefined,
-			capabilities.ast ? "AST structure" : undefined,
+			capabilities.files ? "locate paths" : undefined,
+			capabilities.text ? "match exact content" : undefined,
+			capabilities.ast ? "analyze code structure" : undefined,
 		].filter((value): value is string => value !== undefined);
-		return enabled.length > 0 ? `Search ${enabled.join(", ")}` : "Search is disabled";
+		return enabled.length > 0 ? `Workspace search: ${enabled.join(", ")}` : "Workspace search is disabled";
 	}
 
 	get description(): string {
@@ -93,17 +93,17 @@ export class SearchTool implements AgentTool<typeof searchSchema, SearchToolDeta
 	get parameters(): typeof searchSchema {
 		const capabilities = this.#capabilities();
 		if (capabilities.files && capabilities.text && capabilities.ast) return searchSchema;
-		if (capabilities.files && capabilities.text) return fileAndTextSearchSchema as unknown as typeof searchSchema;
-		if (capabilities.files && capabilities.ast) return fileAndAstSearchSchema as unknown as typeof searchSchema;
-		if (capabilities.text && capabilities.ast) return textAndAstSearchSchema as unknown as typeof searchSchema;
-		if (capabilities.files) return fileSearchSchema as unknown as typeof searchSchema;
-		if (capabilities.text) return textSearchSchema as unknown as typeof searchSchema;
-		if (capabilities.ast) return astSearchSchema as unknown as typeof searchSchema;
+		if (capabilities.files && capabilities.text) return locateAndMatchSearchSchema as unknown as typeof searchSchema;
+		if (capabilities.files && capabilities.ast) return locateAndAnalyzeSearchSchema as unknown as typeof searchSchema;
+		if (capabilities.text && capabilities.ast) return matchAndAnalyzeSearchSchema as unknown as typeof searchSchema;
+		if (capabilities.files) return locateSearchSchema as unknown as typeof searchSchema;
+		if (capabilities.text) return matchSearchSchema as unknown as typeof searchSchema;
+		if (capabilities.ast) return analyzeSearchSchema as unknown as typeof searchSchema;
 		return searchDisabledSchema as unknown as typeof searchSchema;
 	}
 
 	readonly approval = (args: unknown): ToolApprovalDecision => {
-		if (!isRecord(args) || args.mode !== "text") return "read";
+		if (!isRecord(args) || args.purpose !== "match") return "read";
 		return this.#grep.approval({ path: typeof args.path === "string" ? args.path : undefined });
 	};
 
@@ -114,20 +114,20 @@ export class SearchTool implements AgentTool<typeof searchSchema, SearchToolDeta
 		const examples: ToolExample<UnifiedSearchToolParams>[] = [];
 		if (capabilities.files) {
 			examples.push({
-				caption: "Find TypeScript files",
-				call: { mode: "files", path: "src/**/*.ts" },
+				caption: "Locate TypeScript files",
+				call: { purpose: "locate", path: "src/**/*.ts" },
 			});
 		}
 		if (capabilities.text) {
 			examples.push({
-				caption: "Search text with a regular expression",
-				call: { mode: "text", pattern: "TODO|FIXME", path: "src" },
+				caption: "Find exact text with a regular expression",
+				call: { purpose: "match", pattern: "TODO|FIXME", path: "src" },
 			});
 		}
 		if (capabilities.ast) {
 			examples.push({
-				caption: "Search TypeScript syntax",
-				call: { mode: "ast", pattern: "console.log($$$)", path: "src/**/*.ts" },
+				caption: "Analyze TypeScript call structure",
+				call: { purpose: "analyze", pattern: "console.log($$$)", path: "src/**/*.ts" },
 			});
 		}
 		return examples;
@@ -154,8 +154,8 @@ export class SearchTool implements AgentTool<typeof searchSchema, SearchToolDeta
 		onUpdate?: AgentToolUpdateCallback<SearchToolDetails, typeof searchSchema>,
 		context?: AgentToolContext,
 	): Promise<AgentToolResult<SearchToolDetails>> {
-		if (params.mode === "files") {
-			if (!this.#capabilities().files) throw new ToolError("File search is disabled in this session");
+		if (params.purpose === "locate") {
+			if (!this.#capabilities().files) throw new ToolError("Path location is disabled in this session");
 			const delegated = {
 				path: params.path,
 				hidden: params.hidden,
@@ -163,13 +163,13 @@ export class SearchTool implements AgentTool<typeof searchSchema, SearchToolDeta
 				limit: params.limit,
 			};
 			const updates: AgentToolUpdateCallback<GlobToolDetails> | undefined = onUpdate
-				? update => onUpdate({ content: update.content, details: { mode: "files", details: update.details } })
+				? update => onUpdate({ content: update.content, details: { purpose: "locate", details: update.details } })
 				: undefined;
 			const result = await this.#glob.execute(toolCallId, delegated, signal, updates, context);
-			return { content: result.content, details: { mode: "files", details: result.details } };
+			return { content: result.content, details: { purpose: "locate", details: result.details } };
 		}
-		if (params.mode === "text") {
-			if (!this.#capabilities().text) throw new ToolError("Text search is disabled in this session");
+		if (params.purpose === "match") {
+			if (!this.#capabilities().text) throw new ToolError("Content matching is disabled in this session");
 			const delegated = {
 				pattern: params.pattern,
 				path: params.path,
@@ -178,20 +178,20 @@ export class SearchTool implements AgentTool<typeof searchSchema, SearchToolDeta
 				skip: params.skip,
 			};
 			const updates: AgentToolUpdateCallback<GrepToolDetails> | undefined = onUpdate
-				? update => onUpdate({ content: update.content, details: { mode: "text", details: update.details } })
+				? update => onUpdate({ content: update.content, details: { purpose: "match", details: update.details } })
 				: undefined;
 			const result = await this.#grep.execute(toolCallId, delegated, signal, updates, context);
-			return { content: result.content, details: { mode: "text", details: result.details } };
+			return { content: result.content, details: { purpose: "match", details: result.details } };
 		}
-		if (params.mode === "ast") {
-			if (!this.#capabilities().ast) throw new ToolError("AST search is disabled in this session");
+		if (params.purpose === "analyze") {
+			if (!this.#capabilities().ast) throw new ToolError("Structural code analysis is disabled in this session");
 			const delegated = { pat: params.pattern, path: params.path, skip: params.skip };
 			const updates: AgentToolUpdateCallback<AstGrepToolDetails> | undefined = onUpdate
-				? update => onUpdate({ content: update.content, details: { mode: "ast", details: update.details } })
+				? update => onUpdate({ content: update.content, details: { purpose: "analyze", details: update.details } })
 				: undefined;
 			const result = await this.#astGrep.execute(toolCallId, delegated, signal, updates, context);
-			return { content: result.content, details: { mode: "ast", details: result.details } };
+			return { content: result.content, details: { purpose: "analyze", details: result.details } };
 		}
-		throw new ToolError("Unsupported search mode");
+		throw new ToolError("Unsupported search purpose");
 	}
 }

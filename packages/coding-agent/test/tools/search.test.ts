@@ -21,30 +21,30 @@ function makeSession(cwd: string, overrides: Partial<Record<SettingPath, unknown
 	});
 }
 
-function extractWireModes(tool: SearchTool): string[] {
+function extractWirePurposes(tool: SearchTool): string[] {
 	const wire = toolWireSchema(tool as unknown as AiTool) as {
-		anyOf?: Array<{ properties?: { mode?: { const?: string; enum?: string[] } } }>;
-		oneOf?: Array<{ properties?: { mode?: { const?: string; enum?: string[] } } }>;
-		properties?: { mode?: { const?: string; enum?: string[] } };
+		anyOf?: Array<{ properties?: { purpose?: { const?: string; enum?: string[] } } }>;
+		oneOf?: Array<{ properties?: { purpose?: { const?: string; enum?: string[] } } }>;
+		properties?: { purpose?: { const?: string; enum?: string[] } };
 	};
 	const variants = wire.anyOf ?? wire.oneOf;
 	if (variants) {
-		const modes: string[] = [];
+		const purposes: string[] = [];
 		for (const variant of variants) {
-			const mode = variant.properties?.mode;
-			if (mode?.const) modes.push(mode.const);
-			else if (mode?.enum) modes.push(...mode.enum);
+			const purpose = variant.properties?.purpose;
+			if (purpose?.const) purposes.push(purpose.const);
+			else if (purpose?.enum) purposes.push(...purpose.enum);
 		}
-		return modes;
+		return purposes;
 	}
-	const mode = wire.properties?.mode;
-	if (mode?.const) return [mode.const];
-	if (mode?.enum) return [...mode.enum];
+	const purpose = wire.properties?.purpose;
+	if (purpose?.const) return [purpose.const];
+	if (purpose?.enum) return [...purpose.enum];
 	return [];
 }
 
 describe("SearchTool", () => {
-	it("delegates every advertised search mode through the production tools", async () => {
+	it("delegates every advertised search purpose through the production tools", async () => {
 		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "unified-search-"));
 		try {
 			await fs.mkdir(path.join(tempDir, "src"), { recursive: true });
@@ -52,26 +52,26 @@ describe("SearchTool", () => {
 			await fs.writeFile(path.join(tempDir, "src", "ignore.js"), "export const value = other();\n", "utf8");
 			const tool = new SearchTool(makeSession(tempDir));
 
-			const files = await tool.execute("files", { mode: "files", path: "src/**/*.ts" });
-			expect(files.details?.mode).toBe("files");
+			const files = await tool.execute("locate", { purpose: "locate", path: "src/**/*.ts" });
+			expect(files.details?.purpose).toBe("locate");
 			expect(files.content.find(item => item.type === "text")?.text).toContain("match.ts");
 			expect(files.content.find(item => item.type === "text")?.text).not.toContain("ignore.js");
 
-			const sourceText = await tool.execute("text", {
-				mode: "text",
+			const sourceText = await tool.execute("match", {
+				purpose: "match",
 				pattern: "needle",
 				path: "src",
 			});
-			expect(sourceText.details?.mode).toBe("text");
+			expect(sourceText.details?.purpose).toBe("match");
 			expect(sourceText.content.find(item => item.type === "text")?.text).toContain("needle()");
 			expect(sourceText.content.find(item => item.type === "text")?.text).not.toContain("other()");
 
-			const ast = await tool.execute("ast", {
-				mode: "ast",
+			const ast = await tool.execute("analyze", {
+				purpose: "analyze",
 				pattern: "needle()",
 				path: "src/**/*.ts",
 			});
-			expect(ast.details?.mode).toBe("ast");
+			expect(ast.details?.purpose).toBe("analyze");
 			expect(ast.content.find(item => item.type === "text")?.text).toContain("needle()");
 			expect(ast.content.find(item => item.type === "text")?.text).not.toContain("other()");
 		} finally {
@@ -81,19 +81,21 @@ describe("SearchTool", () => {
 
 	it("advertises exactly the enabled primitive capabilities", () => {
 		const capabilities = [
-			{ setting: "glob.enabled", mode: "files" },
-			{ setting: "grep.enabled", mode: "text" },
-			{ setting: "astGrep.enabled", mode: "ast" },
-		] as const satisfies ReadonlyArray<{ setting: SettingPath; mode: string }>;
+			{ setting: "glob.enabled", purpose: "locate" },
+			{ setting: "grep.enabled", purpose: "match" },
+			{ setting: "astGrep.enabled", purpose: "analyze" },
+		] as const satisfies ReadonlyArray<{ setting: SettingPath; purpose: string }>;
 
 		const defaultTool = new SearchTool(makeSession(process.cwd()));
-		expect(extractWireModes(defaultTool).sort()).toEqual(capabilities.map(item => item.mode).sort());
+		expect(extractWirePurposes(defaultTool).sort()).toEqual(capabilities.map(item => item.purpose).sort());
 
 		for (const capability of capabilities) {
 			const tool = new SearchTool(makeSession(process.cwd(), { [capability.setting]: false }));
-			const modes = extractWireModes(tool);
-			expect(modes).not.toContain(capability.mode);
-			expect(tool.examples.some(example => "call" in example && example.call.mode === capability.mode)).toBe(false);
+			const purposes = extractWirePurposes(tool);
+			expect(purposes).not.toContain(capability.purpose);
+			expect(tool.examples.some(example => "call" in example && example.call.purpose === capability.purpose)).toBe(
+				false,
+			);
 		}
 
 		const disabled = new SearchTool(
@@ -103,26 +105,26 @@ describe("SearchTool", () => {
 				"astGrep.enabled": false,
 			}),
 		);
-		expect(extractWireModes(disabled)).toEqual(["disabled"]);
+		expect(extractWirePurposes(disabled)).toEqual(["disabled"]);
 		expect(disabled.examples).toEqual([]);
 	});
 
-	it("rejects every mode whose underlying capability is disabled", async () => {
+	it("rejects every purpose whose underlying capability is disabled", async () => {
 		const cases = [
 			{
 				settings: { "glob.enabled": false },
-				call: { mode: "files", path: "src" } as const,
-				error: "File search is disabled",
+				call: { purpose: "locate", path: "src" } as const,
+				error: "Path location is disabled",
 			},
 			{
 				settings: { "grep.enabled": false },
-				call: { mode: "text", pattern: "value", path: "src" } as const,
-				error: "Text search is disabled",
+				call: { purpose: "match", pattern: "value", path: "src" } as const,
+				error: "Content matching is disabled",
 			},
 			{
 				settings: { "astGrep.enabled": false },
-				call: { mode: "ast", pattern: "value", path: "src" } as const,
-				error: "AST search is disabled",
+				call: { purpose: "analyze", pattern: "value", path: "src" } as const,
+				error: "Structural code analysis is disabled",
 			},
 		];
 

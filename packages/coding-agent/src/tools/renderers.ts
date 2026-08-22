@@ -136,21 +136,26 @@ export const runtimeToolRenderer: ToolRenderer = {
 	},
 };
 
-function unifiedSearchMode(args: unknown, details?: unknown): "files" | "text" | "ast" {
-	if (isRecord(args) && (args.mode === "files" || args.mode === "text" || args.mode === "ast")) return args.mode;
-	if (isRecord(details) && (details.mode === "files" || details.mode === "text" || details.mode === "ast")) {
-		return details.mode;
+function unifiedSearchPurpose(args: unknown, details?: unknown): "locate" | "match" | "analyze" {
+	if (isRecord(args) && (args.purpose === "locate" || args.purpose === "match" || args.purpose === "analyze")) {
+		return args.purpose;
 	}
-	return "text";
+	if (
+		isRecord(details) &&
+		(details.purpose === "locate" || details.purpose === "match" || details.purpose === "analyze")
+	) {
+		return details.purpose;
+	}
+	return "match";
 }
 
 export const unifiedSearchToolRenderer: ToolRenderer = {
 	renderCall(args: unknown, options: RenderResultOptions, theme: Theme): Component {
-		const mode = unifiedSearchMode(args);
-		if (mode === "files") {
+		const purpose = unifiedSearchPurpose(args);
+		if (purpose === "locate") {
 			return globToolRenderer.renderCall(args as Parameters<typeof globToolRenderer.renderCall>[0], options, theme);
 		}
-		if (mode === "ast") {
+		if (purpose === "analyze") {
 			const delegatedArgs = isRecord(args) ? { ...args, pat: args.pattern } : args;
 			return astGrepToolRenderer.renderCall(
 				delegatedArgs as Parameters<typeof astGrepToolRenderer.renderCall>[0],
@@ -166,9 +171,9 @@ export const unifiedSearchToolRenderer: ToolRenderer = {
 		theme: Theme,
 		args?: unknown,
 	): Component {
-		const mode = unifiedSearchMode(args, result.details);
+		const purpose = unifiedSearchPurpose(args, result.details);
 		const details = isRecord(result.details) && "details" in result.details ? result.details.details : result.details;
-		if (mode === "files") {
+		if (purpose === "locate") {
 			return globToolRenderer.renderResult(
 				{ ...result, details } as Parameters<typeof globToolRenderer.renderResult>[0],
 				options,
@@ -176,7 +181,7 @@ export const unifiedSearchToolRenderer: ToolRenderer = {
 				args as Parameters<typeof globToolRenderer.renderResult>[3],
 			);
 		}
-		if (mode === "ast") {
+		if (purpose === "analyze") {
 			const delegatedArgs = isRecord(args) ? { ...args, pat: args.pattern } : args;
 			return astGrepToolRenderer.renderResult(
 				{ ...result, details } as Parameters<typeof astGrepToolRenderer.renderResult>[0],

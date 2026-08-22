@@ -1,7 +1,9 @@
-# Search
-Use `{{toolRefs.search}}` modes by the property being investigated, not by whichever query is easiest to type:
-- `ast` is the default for calls, declarations, methods, types, imports, operators, and relationships between code nodes. A text hit on a symbol does not establish whether it is a definition, call, field, or unrelated spelling.
-- `text` is for exact identifiers, literals, comments, documentation, configuration, and genuine regular-expression discovery.
-- `files` is for names, paths, extensions, and repository layout.
+# Workspace discovery
+`{{toolRefs.search}}` owns workspace discovery. Do not look for or call separate `glob`, `grep`, or `ast_grep` tools, and never substitute shell commands such as `grep`, `rg`, `find`, `git grep`, or `awk`.
 
-When the question is structural, start with `ast`; do not build a chain of regex searches that approximates syntax. Make the path identify one language. If an AST pattern fails to parse, fix its syntax or language scope before falling back to text.
+Choose the search purpose by the question being answered:
+- `analyze` is the default for understanding definitions, calls, methods, types, imports, operators, and relationships between code nodes. A text occurrence cannot establish whether a spelling is a definition, call, field, or unrelated symbol.
+- `match` finds exact identifiers, literals, comments, documentation, configuration, and genuine regular-expression matches.
+- `locate` finds names, paths, extensions, directories, and repository layout.
+
+For a structural question, start with `analyze`; do not build a chain of text matches that approximates syntax. Make the path identify one language. If a structural pattern fails to parse, fix its syntax or language scope before falling back to `match`.
