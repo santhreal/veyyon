@@ -125,15 +125,19 @@ describe("createAgentSession cwd after /move", () => {
 		});
 
 		try {
+			// The rules are what the prompt still carries per directory. It carried the
+			// path too, and both assertions lived here, until the working directory
+			// moved out of the cached prefix and into a turn message; the marker files
+			// are the stronger half of the pair anyway, because they are what a stale
+			// prompt makes the model obey.
 			const before = session.agent.state.systemPrompt.join("\n\n");
-			expect(before).toContain(`the current working directory is '${cwdA}'`);
 			expect(before).toContain("ORIGIN_AGENTS_MARKER");
 			expect(before).not.toContain("DESTINATION_AGENTS_MARKER");
+			expect(before).not.toContain(cwdB);
 
 			await session.setCwd(cwdB);
 
 			const after = session.agent.state.systemPrompt.join("\n\n");
-			expect(after).toContain(`the current working directory is '${cwdB}'`);
 			expect(after).toContain("DESTINATION_AGENTS_MARKER");
 			expect(after).not.toContain("ORIGIN_AGENTS_MARKER");
 			expect(after).not.toBe(before);

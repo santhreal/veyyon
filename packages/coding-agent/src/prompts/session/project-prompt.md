@@ -31,7 +31,7 @@ The rules above were found by walking up from the working directory, so they des
 - The working directory is a home, temp, or launch directory rather than the project you were asked about.
 Re-rooting loads the destination's `AGENTS.md` and makes tool headers relative instead of absolute. Do not re-root to pass through a file or two, and do not re-root to a parent of the current directory to reach one file.
 {{#if nonProjectCwd}}
-The third case is already confirmed for this session: `{{cwd}}` is not a project root, because {{nonProjectCwd}}. No project `AGENTS.md` has loaded and every path you touch will be absolute. As soon as you know which project the work is in, `set_cwd` to its root before doing anything else.
+The third case is already confirmed for this session: the working directory is not a project root, because {{nonProjectCwd}}. No project `AGENTS.md` has loaded and every path you touch will be absolute. As soon as you know which project the work is in, `set_cwd` to its root before doing anything else.
 {{/if}}
 {{#unless (includes tools "set_cwd")}}
 `set_cwd` is not in your active toolset right now, so find and activate it with `search_tool_bm25` before calling it.
@@ -49,8 +49,6 @@ Working directory layout (sorted by mtime, recent first; depth ≤ 3):
 </workspace-tree>
 {{/if}}
 {{/if}}
-
-Today is {{date}}, and the current working directory is '{{cwd}}'.
 
 {{!--
   Volatile-last, and it must stay that way. `<workstation>` carries `Model:` and

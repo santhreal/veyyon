@@ -402,6 +402,7 @@ import type { CheckpointState, CompletedRewindState } from "../tools/checkpoint"
 import { reportLostOutputArtifact } from "../tools/output-artifact";
 import { outputMeta, wrapToolWithMetaNotice } from "../tools/output-meta";
 import { normalizeLocalScheme, resolveToCwd } from "../tools/path-utils";
+import { shortenPath } from "../tools/render-utils";
 import { isAutoQaEnabled } from "../tools/report-tool-issue";
 import { buildResolveReminderMessage, type ResolveToolDetails, runResolveInvocation } from "../tools/resolve";
 import {
@@ -422,6 +423,7 @@ import { extractFileMentions, generateFileMentionMessages } from "../utils/file-
 import { normalizeModelContextImages } from "../utils/image-loading";
 import { describeAttachedImagesForTextModel } from "../utils/image-vision-fallback";
 import { formatLocalCalendarDate } from "../utils/local-date";
+import { normalizePromptPath } from "../utils/prompt-path";
 import { generateSessionTitle } from "../utils/title-generator";
 import { buildNamedToolChoice, isToolChoiceActive } from "../utils/tool-choice";
 import type { VibeModeState } from "../vibe/state";
@@ -564,6 +566,25 @@ const MID_RUN_TODO_NUDGE_MESSAGE_TYPE = "mid-run-todo-nudge";
  * model's reading order, no prefix invalidation.
  */
 const MEMORY_CONTEXT_MESSAGE_TYPE = "memory-context";
+/**
+ * Custom-message type carrying the two facts that describe NOW rather than the
+ * project: the calendar date and the working directory.
+ *
+ * They used to be one sentence inside the project block of the system prompt,
+ * which is the provider's cache prefix, and the working directory is the one
+ * thing in that prefix a session routinely changes. Measured on this repository,
+ * a re-root from the root to `packages/utils` altered exactly one line of a
+ * 92,921-character prompt — that sentence — and threw away the cached prefix for
+ * the entire conversation behind it. Across 19 local log files, 210 of 232
+ * recorded prefix invalidations were a `cwd-change`, averaging about 85,000
+ * characters re-read each time for a path that had moved a directory down.
+ *
+ * The rebuild on re-root stays: the rules, skills and workspace tree really are
+ * cwd-derived and a cross-project move must change them. What changes is that a
+ * move which alters nothing but the path now rebuilds to BYTE-IDENTICAL bytes, so
+ * there is no invalidation to record.
+ */
+const SESSION_STATE_MESSAGE_TYPE = "session-state";
 /** Hidden plan nudge injected by prewalk; scrubbed from the LLM context
  *  when the switch happens. */
 const PREWALK_PLAN_MESSAGE_TYPE = "prewalk-plan";
@@ -8314,13 +8335,25 @@ export class AgentSession {
 		this.#resetHindsightConversationTrackingIfHindsight();
 		this.#resetMnemopiConversationTrackingIfMnemopi();
 		this.#pendingVolatileMemoryContext = undefined;
-		this.#deliveredVolatileMemoryContext = this.#memoryContextAlreadyInTranscript();
+		this.#deliveredVolatileMemoryContext = this.#lastDeliveredBlock(MEMORY_CONTEXT_MESSAGE_TYPE);
+		// Same question, same answer, for the date and working directory: a fork or a
+		// switch lands on a transcript that already states them, `/new` does not.
+		this.#deliveredSessionState = this.#lastDeliveredBlock(SESSION_STATE_MESSAGE_TYPE);
 	}
 
-	/** The last memory block the current transcript carries, or undefined if it carries none. */
-	#memoryContextAlreadyInTranscript(): string | undefined {
+	/**
+	 * The last block of `customType` the current transcript carries, or undefined if
+	 * it carries none.
+	 *
+	 * Two subsystems dedupe a delivered-once block against the conversation rather
+	 * than against a flag per caller, because the messages answer "will the model
+	 * read this already?" exactly and the caller cannot. A compaction that dropped
+	 * the block is covered for free: gone from the messages, gone from the cache,
+	 * sent again.
+	 */
+	#lastDeliveredBlock(customType: string): string | undefined {
 		for (const message of [...this.agent.state.messages].reverse()) {
-			if (message.role !== "custom" || message.customType !== MEMORY_CONTEXT_MESSAGE_TYPE) continue;
+			if (message.role !== "custom" || message.customType !== customType) continue;
 			return typeof message.content === "string" ? message.content : undefined;
 		}
 		return undefined;
@@ -9466,6 +9499,11 @@ export class AgentSession {
 	#deliveredVolatileMemoryContext: string | undefined;
 	/** Volatile memory context waiting for the next step boundary to carry it in. */
 	#pendingVolatileMemoryContext: string | undefined;
+	/**
+	 * The session-state block already delivered, so the same date and working
+	 * directory are never stated twice. Undefined until the first delivery.
+	 */
+	#deliveredSessionState: string | undefined;
 
 	/**
 	 * Collect the memory backend's volatile context for a turn that is about to
@@ -10418,6 +10456,34 @@ export class AgentSession {
 		};
 	}
 
+	/**
+	 * The date and working directory as they stand now, or null when the model has
+	 * already been told exactly this.
+	 *
+	 * Deduped against the last block delivered, so a session that never re-roots
+	 * states them once and a session that re-roots restates them on the next turn.
+	 * Re-sending an unchanged block would grow the context every turn for no new
+	 * information, which is the cost this whole arrangement exists to avoid.
+	 */
+	#buildSessionStateMessage(): CustomMessage | null {
+		const content = prompt
+			.render(sessionPrompts["session/session-state"].text, {
+				date: formatLocalCalendarDate(),
+				cwd: shortenPath(normalizePromptPath(this.sessionManager.getCwd())),
+			})
+			.trim();
+		if (content === this.#deliveredSessionState) return null;
+		this.#deliveredSessionState = content;
+		return {
+			role: "custom",
+			customType: SESSION_STATE_MESSAGE_TYPE,
+			content,
+			display: false,
+			attribution: "agent",
+			timestamp: Date.now(),
+		};
+	}
+
 	#buildVibeModeMessage(): CustomMessage | null {
 		if (!this.#vibeModeState?.enabled) return null;
 		return {
@@ -10967,6 +11033,11 @@ export class AgentSession {
 			// cache prefix ends before all of it.
 			const memoryContextMessage = await this.#collectVolatileMemoryContext(expandedText);
 			if (memoryContextMessage) messages.unshift(memoryContextMessage);
+			// Ahead of the memories for the same reason the memories are ahead of the
+			// question: the date and the working directory are what the model should
+			// already know when it reads either.
+			const sessionStateMessage = this.#buildSessionStateMessage();
+			if (sessionStateMessage) messages.unshift(sessionStateMessage);
 			const beforeAgentStartSystemPrompt = this.#baseSystemPrompt;
 
 			// Emit before_agent_start extension event
