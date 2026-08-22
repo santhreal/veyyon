@@ -584,6 +584,22 @@ async function requestGitLabJson(
 			url: reportedUrl,
 			detail: `HTTP ${response.status} ${response.statusText}`.trim(),
 		});
+		// A status about the CALLER ends the phase, for the same reason an abort
+		// does: no other candidate improves it, and walking the rest concluded with
+		// "set GITLAB_DUO_NAMESPACE_ID" — a configuration remedy for a credential
+		// the server refused, or for a rate limit that asked the caller to wait.
+		// A 403 or a 404 is about the CANDIDATE: that namespace is not one this
+		// token can see, and the next one may well be.
+		if (response.status === 401) {
+			throw new Error(
+				`GitLab refused the token: HTTP 401 ${response.statusText || "Unauthorized"}. The token is missing, expired, or lacks the api scope.`,
+			);
+		}
+		if (response.status === 429) {
+			throw new Error(
+				`GitLab rate-limited the request: HTTP 429 ${response.statusText || "Too Many Requests"}. Retry after the window the server states.`,
+			);
+		}
 		return null;
 	}
 	try {
