@@ -10,7 +10,9 @@
 
 ### Added
 
-- `definePromptRegistry` honors eval-only id-keyed prompt overrides from `VEYYON_EVAL_PROMPTS`, allowing benchmark harnesses to vary tool descriptions and prompt registry entries across arms without mutating prompt files in the shared repository tree. Unrecognized prompt ids fail loudly with suggestions, and active overrides announce themselves once per process.
+- `definePromptRows` declares a directory's prompt rows and is the seam where an eval-only prompt override applies. A module that sends one prompt imports its row table directly, so replacing text in the aggregate registry alone reached the inspection commands and nothing a model is sent. Costs nothing when `VEYYON_EVAL_PROMPTS` is unset: the table is returned by identity.
+- `VEYYON_EVAL_PROMPTS` (JSON of prompt id to replacement text) varies any registered prompt for one benchmark arm, so a tool description or a subagent prompt can be measured without editing a file both arms share. An active override announces itself once per id, naming the registry it altered. `eval-prompt-overrides.ts` owns the parse, the substitution and the announcement, and `unclaimedEvalPromptOverrideIds` reports ids no registry took, for a caller that knows the complete registry set.
+- A registry no longer refuses an override id it does not hold. Four packages ship registries and they are constructed in import order, so `@veyyon/ai`'s — which holds no tool descriptions — was built first and refused a valid `tools/bash` override on every read, killing the process at startup. An id belonging to a sibling is left for that sibling to claim.
 
 ### Fixed
 

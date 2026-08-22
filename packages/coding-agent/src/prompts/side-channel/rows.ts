@@ -18,7 +18,7 @@
  * for these ids, and the coverage suite fails on a second importer.
  */
 
-import type { PromptEntry } from "@veyyon/utils/prompt-registry";
+import { definePromptRows, type PromptEntry } from "@veyyon/utils/prompt-registry";
 
 import sideChannelBackgroundTanDispatch from "./background-tan-dispatch.md" with { type: "text" };
 import sideChannelBtwUser from "./btw-user.md" with { type: "text" };
@@ -31,7 +31,7 @@ import sideChannelSpeechRewrite from "./speech-rewrite.md" with { type: "text" }
 import sideChannelTanContextSwitch from "./tan-context-switch.md" with { type: "text" };
 
 /** Every prompt under `src/prompts/side-channel/`, keyed by its id (the path under `src/prompts/`). */
-export const sideChannelPrompts = {
+export const sideChannelPrompts = definePromptRows({
 	"side-channel/background-tan-dispatch": {
 		text: sideChannelBackgroundTanDispatch,
 		purpose: "notifies the agent that a tangential task moved to a background agent",
@@ -65,4 +65,4 @@ export const sideChannelPrompts = {
 		text: sideChannelTanContextSwitch,
 		purpose: "tells a forked session it owns only the new request",
 	},
-} satisfies Record<string, PromptEntry>;
+} satisfies Record<string, PromptEntry>);

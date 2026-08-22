@@ -18,7 +18,7 @@
  * for these ids, and the coverage suite fails on a second importer.
  */
 
-import type { PromptEntry } from "@veyyon/utils/prompt-registry";
+import { definePromptRows, type PromptEntry } from "@veyyon/utils/prompt-registry";
 import memoriesConsolidation from "./consolidation.md" with { type: "text" };
 import memoriesConsolidationSystem from "./consolidation_system.md" with { type: "text" };
 import memoriesConsolidationShort from "./consolidation-short.md" with { type: "text" };
@@ -28,7 +28,7 @@ import memoriesStageOneInput from "./stage_one_input.md" with { type: "text" };
 import memoriesStageOneSystem from "./stage_one_system.md" with { type: "text" };
 
 /** Every prompt under `src/prompts/memories/`, keyed by its id (the path under `src/prompts/`). */
-export const memoriesPrompts = {
+export const memoriesPrompts = definePromptRows({
 	"memories/consolidation": {
 		text: memoriesConsolidation,
 		purpose: "the stage-two consolidation task, with the raw corpus inlined",
@@ -51,4 +51,4 @@ export const memoriesPrompts = {
 		purpose: "the stage-one extraction task, with the rollout items inlined",
 	},
 	"memories/stage_one_system": { text: memoriesStageOneSystem, purpose: "extracts candidate memories from a session" },
-} satisfies Record<string, PromptEntry>;
+} satisfies Record<string, PromptEntry>);

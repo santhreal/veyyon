@@ -18,13 +18,13 @@
  * for these ids, and the coverage suite fails on a second importer.
  */
 
-import type { PromptEntry } from "@veyyon/utils/prompt-registry";
+import { definePromptRows, type PromptEntry } from "@veyyon/utils/prompt-registry";
 import autolearnGuidance from "./guidance.md" with { type: "text" };
 import autolearnGuidanceLearn from "./guidance-learn.md" with { type: "text" };
 import autolearnNudgeAutocontinue from "./nudge-autocontinue.md" with { type: "text" };
 
 /** Every prompt under `src/prompts/autolearn/`, keyed by its id (the path under `src/prompts/`). */
-export const autolearnPrompts = {
+export const autolearnPrompts = definePromptRows({
 	"autolearn/guidance": { text: autolearnGuidance, purpose: "explains managed skills and when to mint one" },
 	"autolearn/guidance-learn": {
 		text: autolearnGuidanceLearn,
@@ -34,4 +34,4 @@ export const autolearnPrompts = {
 		text: autolearnNudgeAutocontinue,
 		purpose: "an automated capture turn that must not be read as a user reply",
 	},
-} satisfies Record<string, PromptEntry>;
+} satisfies Record<string, PromptEntry>);

@@ -12,13 +12,10 @@
  * imagined tool list is a prompt nobody will ever be sent. `createTools` is the
  * same call the session makes, on a session shape built from the same settings.
  */
-import { agentCorePrompts } from "@veyyon/agent-core/prompts/registry";
-import { aiPrompts } from "@veyyon/ai/prompts/registry";
 import { toolWireSchema } from "@veyyon/ai/utils/schema/wire";
-import { hashlinePrompts } from "@veyyon/hashline/prompts/registry";
 import { estimateTokensFromText, type PromptEntry, type PromptRegistryView, type PromptSection } from "@veyyon/utils";
 import { Settings } from "../config/settings";
-import { codingAgentPrompts } from "../prompts/registry";
+import { PROMPT_REGISTRIES as REGISTRIES } from "../prompts/all-registries";
 import { resolveGateInputs } from "../system-prompt-builder/gate-inputs";
 import {
 	formatInspectionTable,
@@ -223,24 +220,6 @@ function formatToolCostTable(tools: readonly Tool[], promptTokens: number): Prom
 	);
 	return { output: lines.join("\n"), exitCode: 0 };
 }
-
-/**
- * Every registry this command can read, and where each one's prompts live.
- *
- * WHY FOUR AND NOT ONE. A package owns its own prompts, so there is one registry per
- * package that ships them, and this command is the operator-facing view ACROSS them.
- * It listed the coding agent's alone, which meant `veyyon prompt --prompts` answered
- * "which prompts does veyyon send" with a subset and looked complete doing it: the
- * compaction prompts that rewrite a session's whole history were absent, so was every
- * dialect format guide that tells a model how to write a tool call, and so was the
- * hashline patch language, which is the edit tool's description and the only tool
- * description missing from a list that held every other one.
- *
- * `@veyyon/metaharness`'s benchmark prompts are deliberately NOT here. They are asked
- * by a measurement harness, not by the agent, and the agent must not depend on the
- * harness that scores it.
- */
-const REGISTRIES: readonly PromptRegistryView[] = [codingAgentPrompts, agentCorePrompts, aiPrompts, hashlinePrompts];
 
 /**
  * The registry that holds an id, or the coding agent's as the place to complain from.

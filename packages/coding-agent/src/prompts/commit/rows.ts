@@ -18,7 +18,7 @@
  * for these ids, and the coverage suite fails on a second importer.
  */
 
-import type { PromptEntry } from "@veyyon/utils/prompt-registry";
+import { definePromptRows, type PromptEntry } from "@veyyon/utils/prompt-registry";
 
 import commitAnalysisSystem from "./analysis-system.md" with { type: "text" };
 import commitAnalysisUser from "./analysis-user.md" with { type: "text" };
@@ -35,7 +35,7 @@ import commitSummaryUser from "./summary-user.md" with { type: "text" };
 import commitTypesDescription from "./types-description.md" with { type: "text" };
 
 /** Every prompt under `src/prompts/commit/`, keyed by its id (the path under `src/prompts/`). */
-export const commitPrompts = {
+export const commitPrompts = definePromptRows({
 	"commit/analysis-system": {
 		text: commitAnalysisSystem,
 		purpose: "classifies a diff into conventional-commit terms",
@@ -79,4 +79,4 @@ export const commitPrompts = {
 		text: commitTypesDescription,
 		purpose: "the conventional-commit type list shared by the commit prompts",
 	},
-} satisfies Record<string, PromptEntry>;
+} satisfies Record<string, PromptEntry>);

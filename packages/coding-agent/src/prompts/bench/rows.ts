@@ -18,13 +18,13 @@
  * for these ids, and the coverage suite fails on a second importer.
  */
 
-import type { PromptEntry } from "@veyyon/utils/prompt-registry";
+import { definePromptRows, type PromptEntry } from "@veyyon/utils/prompt-registry";
 
 import benchBalance from "./balance.md" with { type: "text" };
 import benchThroughput from "./throughput.md" with { type: "text" };
 
 /** Every prompt under `src/prompts/bench/`, keyed by its id (the path under `src/prompts/`). */
-export const benchPrompts = {
+export const benchPrompts = definePromptRows({
 	"bench/balance": {
 		text: benchBalance,
 		purpose: "a fixed short generation request used to warm and compare provider balance",
@@ -33,4 +33,4 @@ export const benchPrompts = {
 		text: benchThroughput,
 		purpose: "a fixed long-form generation request used to benchmark throughput",
 	},
-} satisfies Record<string, PromptEntry>;
+} satisfies Record<string, PromptEntry>);

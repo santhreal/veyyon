@@ -18,7 +18,7 @@
  * for these ids, and the coverage suite fails on a second importer.
  */
 
-import type { PromptEntry } from "@veyyon/utils/prompt-registry";
+import { definePromptRows, type PromptEntry } from "@veyyon/utils/prompt-registry";
 
 import toolsApplyPatch from "./apply-patch.md" with { type: "text" };
 import toolsAsk from "./ask.md" with { type: "text" };
@@ -72,7 +72,7 @@ import toolsWebSearchSystem from "./web-search-system.md" with { type: "text" };
 import toolsWrite from "./write.md" with { type: "text" };
 
 /** Every prompt under `src/prompts/tools/`, keyed by its id (the path under `src/prompts/`). */
-export const toolsPrompts = {
+export const toolsPrompts = definePromptRows({
 	"tools/apply-patch": { text: toolsApplyPatch, purpose: "the apply_patch tool description" },
 	"tools/ask": { text: toolsAsk, purpose: "the ask tool description" },
 	"tools/ast-edit": { text: toolsAstEdit, purpose: "the ast_edit tool description" },
@@ -141,4 +141,4 @@ export const toolsPrompts = {
 	"tools/web-search": { text: toolsWebSearch, purpose: "the web_search tool description" },
 	"tools/web-search-system": { text: toolsWebSearchSystem, purpose: "instructions for the web-search sub-model" },
 	"tools/write": { text: toolsWrite, purpose: "the write tool description" },
-} satisfies Record<string, PromptEntry>;
+} satisfies Record<string, PromptEntry>);

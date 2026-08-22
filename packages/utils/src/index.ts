@@ -13,6 +13,7 @@ export * from "./conformance";
 export * from "./content-text";
 export * from "./dirs";
 export * from "./env";
+export * from "./eval-prompt-overrides";
 export * from "./fault-sink";
 export * from "./fetch-retry";
 export * from "./file-lock";

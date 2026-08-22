@@ -18,16 +18,16 @@
  * for these ids, and the coverage suite fails on a second importer.
  */
 
-import type { PromptEntry } from "@veyyon/utils/prompt-registry";
+import { definePromptRows, type PromptEntry } from "@veyyon/utils/prompt-registry";
 
 import titlesMarkerInstruction from "./marker-instruction.md" with { type: "text" };
 import titlesSystem from "./system.md" with { type: "text" };
 
 /** Every prompt under `src/prompts/titles/`, keyed by its id (the path under `src/prompts/`). */
-export const titlesPrompts = {
+export const titlesPrompts = definePromptRows({
 	"titles/marker-instruction": {
 		text: titlesMarkerInstruction,
 		purpose: "the shared output contract for title generation",
 	},
 	"titles/system": { text: titlesSystem, purpose: "names a new session from its opening turn" },
-} satisfies Record<string, PromptEntry>;
+} satisfies Record<string, PromptEntry>);

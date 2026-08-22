@@ -18,7 +18,7 @@
  * for these ids, and the coverage suite fails on a second importer.
  */
 
-import type { PromptEntry } from "@veyyon/utils/prompt-registry";
+import { definePromptRows, type PromptEntry } from "@veyyon/utils/prompt-registry";
 
 import autoresearchCommandResume from "./command-resume.md" with { type: "text" };
 import autoresearchPrompt from "./prompt.md" with { type: "text" };
@@ -26,7 +26,7 @@ import autoresearchPromptSetup from "./prompt-setup.md" with { type: "text" };
 import autoresearchResumeMessage from "./resume-message.md" with { type: "text" };
 
 /** Every prompt under `src/prompts/autoresearch/`, keyed by its id (the path under `src/prompts/`). */
-export const autoresearchPrompts = {
+export const autoresearchPrompts = definePromptRows({
 	"autoresearch/command-resume": {
 		text: autoresearchCommandResume,
 		purpose: "resumes autoresearch on the active session",
@@ -43,4 +43,4 @@ export const autoresearchPrompts = {
 		text: autoresearchResumeMessage,
 		purpose: "the steer that continues the autoresearch loop",
 	},
-} satisfies Record<string, PromptEntry>;
+} satisfies Record<string, PromptEntry>);

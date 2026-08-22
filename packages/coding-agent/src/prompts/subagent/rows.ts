@@ -18,7 +18,7 @@
  * for these ids, and the coverage suite fails on a second importer.
  */
 
-import type { PromptEntry } from "@veyyon/utils/prompt-registry";
+import { definePromptRows, type PromptEntry } from "@veyyon/utils/prompt-registry";
 
 import subagentAgentCreationArchitect from "./agent-creation-architect.md" with { type: "text" };
 import subagentAgentCreationUser from "./agent-creation-user.md" with { type: "text" };
@@ -31,7 +31,7 @@ import subagentYieldReminder from "./yield-reminder.md" with { type: "text" };
 import subagentYieldSchemaRepair from "./yield-schema-repair.md" with { type: "text" };
 
 /** Every prompt under `src/prompts/subagent/`, keyed by its id (the path under `src/prompts/`). */
-export const subagentPrompts = {
+export const subagentPrompts = definePromptRows({
 	"subagent/agent-creation-architect": {
 		text: subagentAgentCreationArchitect,
 		purpose: "designs a new agent definition from a description",
@@ -87,4 +87,4 @@ export const subagentPrompts = {
 		text: subagentYieldReminder,
 		purpose: "forces a subagent to yield when its budget or turn limit is spent",
 	},
-} satisfies Record<string, PromptEntry>;
+} satisfies Record<string, PromptEntry>);
