@@ -1,8 +1,8 @@
 # Core concepts
 
-This chapter gives you the vocabulary for how Veyyon runs: sessions, permissions, and the boundary between the harness and your model provider. If you want operator commands instead, see [Using Veyyon](../using/getting-started.md), and for feature guides see [Features](../features/index.md).
+The vocabulary for how Veyyon runs: sessions, permissions, and the boundary between the harness and the model provider. For operator commands see [Using Veyyon](../using/getting-started.md); for feature guides see [Features](../features/index.md).
 
-## What this chapter covers
+## Pages
 
 The CLI is `veyyon`. It calls a configured model endpoint with your credentials and runs a tool loop: read, edit, verify, stop. The pages below define the units and contracts of that loop, so that later chapters can assume you know them.
 
@@ -14,7 +14,7 @@ The CLI is `veyyon`. It calls a configured model endpoint with your credentials 
 
 ## Foundations that pair with these pages
 
-The foundations pages give the design spine without repeating the operator workflow. Read them before or after this chapter, whichever suits you.
+The foundations pages give the design spine without repeating the operator workflow.
 
 - [Architecture at a glance](../foundations/architecture.md) maps the subsystems to their responsibilities.
 - For provider and model configuration, see [Providers](../models/providers.md) and [`docs/providers.md`](../../../providers.md).

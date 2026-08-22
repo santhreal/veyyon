@@ -1,6 +1,6 @@
 # Skills authoring
 
-A skill is a folder that adds a reusable capability to Veyyon. This page explains how to write one from scratch. For background on how skills are discovered and loaded, see [Skills](skills.md).
+A skill is a folder that adds a reusable capability to Veyyon. For how skills are discovered and loaded, see [Skills](skills.md).
 
 ## Directory structure
 

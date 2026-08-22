@@ -2,7 +2,7 @@
 
 You often need the agent to run a command that requires a credential. A deploy needs a token. A database query needs a password. If you paste the value into chat without protection, it can reach the model provider and any session export you create.
 
-Veyyon can keep the value away from the provider while the command still works. This page shows you how, including which local surfaces can still contain it.
+Veyyon can keep the value away from the provider while the command still works. Some local surfaces can still contain it; those are named below.
 
 ## Turning it on
 

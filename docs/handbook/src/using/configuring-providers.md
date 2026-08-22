@@ -1,6 +1,6 @@
 # Configuring providers
 
-This page gives you copy-paste setups for bring-your-own-key (BYOK) and local providers.
+Copy-paste setups for bring-your-own-key (BYOK) and local providers.
 Once a provider works, see [Models and providers](./models.md) to choose and switch models.
 For what the harness owns versus what the provider owns, see
 [Model contract](../concepts/model-contract.md).

@@ -2,7 +2,7 @@
 
 Editing reliably is the core of a coding agent, so it is worth understanding how Veyyon does it. The default edit surface is hashline. In practice that means three things work together: numbered lines that come back from `read` and `grep`, snapshot tags that identify a known state of a file, and the `edit` tool with its `SWAP`, `DEL`, and `INS` operations.
 
-For the design behind the edit and repair path, see [Edit path and tool arguments](../benefits/first-attempt-edits.md) and [The hashline edit engine](../edit/engine.md).
+For the design behind the edit and repair path, see [The hashline edit engine](../edit/engine.md).
 
 ## Failure modes
 

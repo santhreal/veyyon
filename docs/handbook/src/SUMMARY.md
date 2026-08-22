@@ -4,7 +4,6 @@
 
 # Understand Veyyon
 
-- [How to read this book](./foundations/how-to-read.md)
 - [Design and mechanisms](./why/index.md)
   - [Overview](./why/value.md)
   - [Mechanisms](./why/innovations.md)
@@ -12,10 +11,6 @@
 - [Harness design goals](./foundations/thesis.md)
 - [Architecture at a glance](./foundations/architecture.md)
 - [Performance](./why/performance.md)
-- [Why it helps](./benefits/first-attempt-edits.md)
-  - [Context size and retries](./benefits/lower-cost.md)
-  - [Model and provider selection](./benefits/model-choice.md)
-  - [Approvals and errors](./benefits/safety-errors.md)
 
 # Get started
 

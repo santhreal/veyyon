@@ -1,6 +1,6 @@
 # Getting started
 
-This chapter takes you from nothing installed to a first real change in your own project. It has four steps: install Veyyon, run the first-time setup, sign in to a provider, and hand Veyyon a small task.
+Four steps take a fresh machine to a first change in a project: install, run the first-time setup, sign in to a provider, hand Veyyon a task.
 
 ## 1. Install
 
