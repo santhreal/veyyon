@@ -40,6 +40,7 @@ import { BUILTIN_API_IDS } from "@veyyon/ai/api-registry";
 import { stream } from "@veyyon/ai/stream";
 import type { Api, AssistantMessageEventStream, Context, Model, StreamOptions } from "@veyyon/ai/types";
 import { buildModel } from "@veyyon/catalog/build";
+import { getBundledModels, getBundledProviders } from "@veyyon/catalog/models";
 import { $env } from "@veyyon/utils/env";
 import {
 	type CountingFetch,
@@ -322,6 +323,25 @@ interface ArmObservation {
 describe("no API outlives the budget its caller declared", () => {
 	it("has a probe for every API in the union", () => {
 		expect(Object.keys(PROBES).sort()).toEqual([...BUILTIN_API_IDS].sort());
+	});
+
+	it("sweeps every api the shipped catalog can reach", () => {
+		// The union above is the *registry's* list. A provider is what an
+		// operator selects, and the catalog is where providers come from: 59 of
+		// them ship in `models.json`, each model naming the api it dispatches to.
+		// If a provider arrives carrying an api this sweep does not probe, the
+		// suite above stays green while a reachable path is unmeasured — the
+		// exact hole that let `gitlab-duo-agent` run an unbounded setup phase.
+		// Read from the bundle at run time so a regenerated catalog is what
+		// decides, not a list somebody remembered to update.
+		// Today the catalog's apis are a subset of the union, so this agrees with
+		// the test above; its value is the day they diverge, in either direction.
+		const reachable = new Set<string>();
+		for (const provider of getBundledProviders()) {
+			for (const model of getBundledModels(provider)) reachable.add(model.api);
+		}
+		const unswept = [...reachable].filter(api => !(api in PROBES)).sort();
+		expect(unswept).toEqual([]);
 	});
 
 	it("ends every turn when the endpoint never answers", async () => {
