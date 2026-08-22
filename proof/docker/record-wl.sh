@@ -10,9 +10,19 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# The tag carries the bun the image was built with; proof/docker/recorder-image.sh
+# owns it, and a bump makes a stale image a missing one.
+# shellcheck source=proof/docker/recorder-image.sh
+source "${REPO_ROOT}/proof/docker/recorder-image.sh"
 SCENE="${1:?usage: record-wl.sh <scene.sh>}"
 OUT="${OUT_DIR:-${REPO_ROOT}/proof/captures/wl}"
 mkdir -p "${OUT}"
+
+# A model served by this host answers on loopback here and on the gateway alias in
+# there. proof/docker/host-endpoint.sh owns the substitution.
+# shellcheck source=proof/docker/host-endpoint.sh
+source "${REPO_ROOT}/proof/docker/host-endpoint.sh"
+CONTAINER_LLM_BASE_URL="$(container_endpoint "${PROOF_LLM_BASE_URL:-}")"
 
 # wlroots will not start its gles2 renderer without a DRM render node, and the
 # blur shader is the whole reason this path exists, so a missing node is a hard
@@ -26,6 +36,7 @@ RENDER_GID="$(stat -c %g "${RENDER_NODE}")"
 
 docker run --rm \
 	--network "${PROOF_NETWORK:-veyyon-proof}" \
+	--add-host "${CONTAINER_HOST_ALIAS}:host-gateway" \
 	--device "${RENDER_NODE}" \
 	--group-add "${RENDER_GID}" \
 	--mount "type=bind,src=${REPO_ROOT},dst=/repo" \
@@ -40,7 +51,7 @@ docker run --rm \
 	-e LANG=C.UTF-8 \
 	-e LC_ALL=C.UTF-8 \
 	-e LOCAL_LLM_KEY=none \
-	-e "PROOF_LLM_BASE_URL=${PROOF_LLM_BASE_URL:-}" \
+	-e "PROOF_LLM_BASE_URL=${CONTAINER_LLM_BASE_URL}" \
 	-e "VEYYON_DEMO_SECRET=${VEYYON_DEMO_SECRET:-veyyon-demo-value-not-a-real-credential}" \
 	-e "SCENE_HIDE_THINKING=${SCENE_HIDE_THINKING:-}" \
 	-e "SCENE_RENDER_NODE=${RENDER_NODE}" \
@@ -72,7 +83,7 @@ docker run --rm \
 	-e "SCENE_SETTINGS=${SCENE_SETTINGS:-}" \
 	-e "SCENE_SIGNING_NUMBER=${SCENE_SIGNING_NUMBER:-}" \
 	-w /repo \
-	"${RECORDER_IMAGE:-veyyon-proof-recorder:5}" \
+	"${RECORDER_IMAGE}" \
 	bash -lc '
 		set -e
 		mkdir -p /sandbox/home/.veyyon

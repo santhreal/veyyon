@@ -42,10 +42,15 @@ apart from the intended change.
 
 Both images MUST come from the official capture config above: a recording made by
 the HD recorder driving a scene under `proof/scenes/`, or screenshots supplied by
-the operator. A static change proves with a PNG pair, an animation with a GIF pair, and
-an animation is never proved by a still. A tmux capture, an off-screen raster, a
-mock-up, one unpaired image, or two frames whose state differs for unrelated reasons
-does not satisfy the merge requirement.
+the operator. The config owns which artifact proves which change, and the rule is
+short: a static surface proves with a PNG pair, an animation or a timing change
+proves with an animated pair (the recorder publishes WebP; a GIF is the same clip
+in an older container), and an animation is never proved by a still. Build the
+recorder with `proof/docker/build-recorder.sh` — its tag tracks the bun the repo
+declares, so a stale image is a missing image rather than a take that dies inside
+the container. A tmux capture, an off-screen raster, a mock-up, one unpaired image,
+or two frames whose state differs for unrelated reasons does not satisfy the merge
+requirement.
 
 ## Default Context
 
