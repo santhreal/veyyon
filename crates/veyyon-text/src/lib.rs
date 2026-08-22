@@ -384,8 +384,14 @@ fn write_u32_u16(out: &mut Vec<u16>, mut val: u32) {
 ///   which is what a terminal does with one.
 /// - `ESC` plus an intermediate `0x20..=0x2f`: further intermediates, then one
 ///   final `0x30..=0x7e`.
-/// - `ESC` plus a single byte `0x40..=0x7e`: a two-byte sequence, complete on
-///   its own.
+/// - `ESC` plus a single byte `0x30..=0x7e`: a two-byte sequence, complete on
+///   its own. `0x40..=0x7e` is the Fe/Fs class; `0x30..=0x3f` is Fp, which is
+///   `ESC 7` and `ESC 8` (save and restore cursor) and `ESC =` and `ESC >`
+///   (keypad mode). A terminal consumes all of them and draws nothing, and
+///   `Bun.stringWidth` strips them from 1.4.0 on, so counting the second byte
+///   here made the oracle that CUTS a span disagree with the one that MEASURES
+///   it: a row cut to fit W re-measured narrower than W and the padding
+///   computed from the cut came out short.
 #[inline]
 fn ansi_seq_len_u16(data: &[u16], pos: usize) -> Option<usize> {
 	if pos >= data.len() || data[pos] != ESC {
@@ -414,7 +420,7 @@ fn ansi_seq_len_u16(data: &[u16], pos: usize) -> Option<usize> {
 			}
 			matches!(data.get(i), Some(0x30..=0x7e)).then(|| i - pos + 1)
 		},
-		0x40..=0x7e => Some(2),
+		0x30..=0x7e => Some(2),
 		_ => None,
 	}
 }
