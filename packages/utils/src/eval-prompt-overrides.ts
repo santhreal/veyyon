@@ -32,6 +32,7 @@
  * {@link unclaimedEvalPromptOverrideIds} is what those layers read.
  */
 import { $env } from "./env";
+import { nearestNames } from "./levenshtein";
 
 /** One prompt id to the text that replaces it for this arm. */
 export type EvalPromptOverrides = Readonly<Record<string, string>>;
@@ -160,4 +161,33 @@ export function announceEvalPromptOverrides(appliedIds: readonly string[]): void
  */
 export function unclaimedEvalPromptOverrideIds(): readonly string[] {
 	return Object.keys(evalPromptOverrides()).filter(id => !claimedIds.has(id));
+}
+
+/**
+ * What a prompt id is, in the words every refusal uses.
+ *
+ * One sentence, one owner. Two refusals ask the operator the same question — the runner
+ * before a container starts, the app at prompt assembly — and an operator who reads a
+ * different explanation from each has to work out whether they are the same rule. The
+ * example is deliberate: the two mistakes actually made are a `.md` left on the end and
+ * a bare filename with its directory dropped.
+ */
+export const PROMPT_ID_SHAPE_HINT =
+	"An id is the path under a registry's directory without .md (for example tools/bash, not tools/bash.md and not bash).";
+
+/**
+ * One line per unknown id, each with the closest ids that do exist.
+ *
+ * EVERY unknown id, never just the first: a hand-written override usually gets a whole
+ * family of ids wrong the same way, and fixing them one run at a time is the cost this
+ * avoids. The suggestion is what makes the refusal actionable, so it is part of the
+ * shared vocabulary rather than something each caller formats to taste.
+ */
+export function describeUnknownPromptIds(unknown: readonly string[], known: readonly string[]): string {
+	return unknown
+		.map(id => {
+			const near = nearestNames(id, known, 3);
+			return `  ${id}${near.length > 0 ? ` — did you mean ${near.join(", ")}?` : ""}`;
+		})
+		.join("\n");
 }

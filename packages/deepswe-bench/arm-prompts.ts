@@ -15,7 +15,7 @@
  * worse than no check.
  */
 import { allPromptIds } from "@veyyon/coding-agent/prompts/all-registries";
-import { nearestNames } from "@veyyon/utils";
+import { describeUnknownPromptIds, PROMPT_ID_SHAPE_HINT } from "@veyyon/utils";
 
 /**
  * Every prompt id this tree can serve, sorted.
@@ -30,10 +30,9 @@ export function knownPromptIds(): readonly string[] {
 /**
  * What is wrong with an arm's prompt override, or `null` when nothing is.
  *
- * Reports EVERY unknown id rather than the first. A `.prompts.yml` written by hand
- * usually gets a whole family of ids wrong the same way (a `tools/` prefix that is not
- * there, a `.md` left on the end), and fixing them one run at a time is the failure this
- * check exists to prevent.
+ * Reports EVERY unknown id rather than the first, with the nearest real ids, in the same
+ * words the app's own refusal uses: both answer one question, and an operator should not
+ * have to work out whether two differently worded refusals are the same rule.
  *
  * @param overrides the parsed `arms/<arm>.prompts.yml` mapping
  * @param known the id space to check against, defaulting to this build's
@@ -46,17 +45,10 @@ export function promptOverrideIdError(
 	const unknownIds = Object.keys(overrides).filter(id => !known.includes(id));
 	if (unknownIds.length === 0) return null;
 
-	const detail = unknownIds
-		.map(id => {
-			const near = nearestNames(id, known, 3);
-			return `  ${id}${near.length > 0 ? ` — did you mean ${near.join(", ")}?` : ""}`;
-		})
-		.join("\n");
 	return (
 		`arm "${arm}" arms/${arm}.prompts.yml names ${unknownIds.length} prompt id(s) that no registry holds:\n` +
-		`${detail}\n` +
-		`An id is the path under a registry's directory without .md (for example tools/bash, ` +
-		`not tools/bash.md and not bash).\n` +
+		`${describeUnknownPromptIds(unknownIds, known)}\n` +
+		`${PROMPT_ID_SHAPE_HINT}\n` +
 		`Fix: run \`veyyon prompt --prompts\` to list all ${known.length} ids, or drop the key.`
 	);
 }

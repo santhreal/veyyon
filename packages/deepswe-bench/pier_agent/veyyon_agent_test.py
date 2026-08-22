@@ -368,13 +368,36 @@ def _load_agent_module():
     return importlib.import_module("veyyon_agent")
 
 
+# What run.ts stages for an arm carrying both deliveries. Named here, and only here, so
+# the agent-side assertions below quantify over the manifest instead of over kind names.
+ATTACHMENTS = [
+    {
+        "kind": "prompts",
+        "file": "prompts/default.json",
+        "delivery": "env-json",
+        "envVar": "VEYYON_EVAL_PROMPTS",
+    },
+    {"kind": "rule", "file": "rules/default.md", "delivery": "rules-dir"},
+]
+
+
 class VeyyonAgentReplayModeTest(unittest.TestCase):
-    def _assets_and_manifest(self, root: Path) -> tuple[Path, Path]:
+    def _assets_and_manifest(
+        self, root: Path, attachments: list[dict] | None = None
+    ) -> tuple[Path, Path]:
         assets = root / "assets"
         (assets / "arms").mkdir(parents=True)
         (assets / "vey").write_text("binary", encoding="utf-8")
         (assets / "auth-agent.db").write_text("auth", encoding="utf-8")
         (assets / "arms" / "default.yml").write_text("{}\n", encoding="utf-8")
+        entries = ATTACHMENTS if attachments is None else attachments
+        for entry in entries:
+            staged = assets / entry["file"]
+            staged.parent.mkdir(parents=True, exist_ok=True)
+            staged.write_text("{}", encoding="utf-8")
+        (assets / "attachments.json").write_text(
+            json.dumps({"version": 1, "arms": {"default": entries}}), encoding="utf-8"
+        )
         source = root / "source.jsonl"
         source.write_text("{}\n", encoding="utf-8")
         checkpoint = root / "checkpoint"
@@ -402,6 +425,73 @@ class VeyyonAgentReplayModeTest(unittest.TestCase):
             encoding="utf-8",
         )
         return assets, manifest
+
+    def test_every_attachment_the_manifest_names_is_uploaded_and_delivered(self) -> None:
+        # The class this closes: an attachment staged by the runner and never delivered by
+        # this agent, which runs the shipped prompt under a treatment's name. Sweeping the
+        # manifest rather than naming kinds means a kind added to ARM_ATTACHMENT_KINDS is
+        # covered here the moment run.ts stages it.
+        module = _load_agent_module()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            assets, manifest = self._assets_and_manifest(root)
+            environment = _Environment()
+            agent = module.VeyyonAgent(
+                assets_dir=str(assets), replay_path=str(manifest), model_name=EXACT_MODEL
+            )
+            asyncio.run(agent.run("ignored", environment, SimpleNamespace()))
+            destinations = [destination for _, destination in environment.uploads]
+            command = agent.commands[0]
+            for entry in ATTACHMENTS:
+                staged = f"/opt/veyyon-assets/{entry['file']}"
+                self.assertIn(staged, destinations, f"{entry['kind']} was never uploaded")
+                self.assertIn(staged, command, f"{entry['kind']} never reached the command")
+                if entry["delivery"] == "env-json":
+                    self.assertIn(f'{entry["envVar"]}="$(cat {staged})"', command)
+                else:
+                    self.assertIn(f"cp {staged} ~/.veyyon/rules/", command)
+
+    def test_an_arm_carrying_nothing_adds_no_override_to_the_command(self) -> None:
+        module = _load_agent_module()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            assets, manifest = self._assets_and_manifest(root, attachments=[])
+            environment = _Environment()
+            agent = module.VeyyonAgent(
+                assets_dir=str(assets), replay_path=str(manifest), model_name=EXACT_MODEL
+            )
+            asyncio.run(agent.run("ignored", environment, SimpleNamespace()))
+            command = agent.commands[0]
+            self.assertNotIn("VEYYON_EVAL", command)
+            self.assertNotIn("~/.veyyon/rules", command)
+
+    def test_a_stale_assets_directory_refuses_before_anything_is_uploaded(self) -> None:
+        module = _load_agent_module()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            assets, manifest = self._assets_and_manifest(root)
+            (assets / "attachments.json").unlink()
+            environment = _Environment()
+            agent = module.VeyyonAgent(
+                assets_dir=str(assets), replay_path=str(manifest), model_name=EXACT_MODEL
+            )
+            with self.assertRaisesRegex(ValueError, "stale"):
+                asyncio.run(agent.run("ignored", environment, SimpleNamespace()))
+            self.assertEqual(agent.commands, [])
+
+    def test_a_manifest_promising_a_file_the_host_lacks_refuses(self) -> None:
+        module = _load_agent_module()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            assets, manifest = self._assets_and_manifest(root)
+            (assets / ATTACHMENTS[0]["file"]).unlink()
+            environment = _Environment()
+            agent = module.VeyyonAgent(
+                assets_dir=str(assets), replay_path=str(manifest), model_name=EXACT_MODEL
+            )
+            with self.assertRaisesRegex(ValueError, "missing on host"):
+                asyncio.run(agent.run("ignored", environment, SimpleNamespace()))
+            self.assertEqual(agent.commands, [])
 
     def test_replay_kwarg_preflights_and_uploads_exact_manifest_and_driver(self) -> None:
         module = _load_agent_module()

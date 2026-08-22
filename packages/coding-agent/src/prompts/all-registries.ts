@@ -17,7 +17,12 @@
 import { agentCorePrompts } from "@veyyon/agent-core/prompts/registry";
 import { aiPrompts } from "@veyyon/ai/prompts/registry";
 import { hashlinePrompts } from "@veyyon/hashline/prompts/registry";
-import { nearestNames, type PromptRegistryView, unclaimedEvalPromptOverrideIds } from "@veyyon/utils";
+import {
+	describeUnknownPromptIds,
+	PROMPT_ID_SHAPE_HINT,
+	type PromptRegistryView,
+	unclaimedEvalPromptOverrideIds,
+} from "@veyyon/utils";
 import { codingAgentPrompts } from "./registry";
 
 /**
@@ -60,16 +65,10 @@ export function allPromptIds(): readonly string[] {
 export function assertEvalPromptOverridesClaimed(): void {
 	const unclaimed = unclaimedEvalPromptOverrideIds();
 	if (unclaimed.length === 0) return;
-	const known = allPromptIds();
-	const detail = unclaimed
-		.map(id => {
-			const near = nearestNames(id, known, 3);
-			return near.length > 0 ? `"${id}" (did you mean ${near.map(name => `"${name}"`).join(", ")}?)` : `"${id}"`;
-		})
-		.join(", ");
 	throw new Error(
-		`VEYYON_EVAL_PROMPTS names ${unclaimed.length} prompt id(s) no registry holds: ${detail}. ` +
-			`An id is the path under a registry's directory without .md; ` +
+		`VEYYON_EVAL_PROMPTS names ${unclaimed.length} prompt id(s) no registry holds:\n` +
+			`${describeUnknownPromptIds(unclaimed, allPromptIds())}\n` +
+			`${PROMPT_ID_SHAPE_HINT}\n` +
 			`\`veyyon prompt --prompts\` lists every id in ${PROMPT_REGISTRIES.length} registries.`,
 	);
 }

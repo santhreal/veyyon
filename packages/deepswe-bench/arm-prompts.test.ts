@@ -17,6 +17,7 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { PROMPT_ID_SHAPE_HINT } from "@veyyon/utils";
 import YAML from "yaml";
 import { knownPromptIds, promptOverrideIdError } from "./arm-prompts";
 
@@ -52,6 +53,15 @@ describe("promptOverrideIdError", () => {
 
 	it("accepts an empty mapping, which is an arm that overrides nothing", () => {
 		expect(promptOverrideIdError("candidate", {})).toBeNull();
+	});
+
+	it("explains what an id is in the same words the app's own refusal uses", () => {
+		// One owner for the sentence, because both refusals answer one operator question:
+		// this one before a container starts, the app's at prompt assembly. Two hand-written
+		// explanations of the same rule make a reader work out whether they are the same rule.
+		const message = promptOverrideIdError("candidate", { "tools/bash.md": "text" });
+
+		expect(message).toContain(PROMPT_ID_SHAPE_HINT);
 	});
 
 	it("names the unknown id, the arm, and the id that exists", () => {

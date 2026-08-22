@@ -20,12 +20,13 @@
  * bench sets it around a container, because every registry is constructed at import.
  *
  * What it does not catch: delivery of the variable into a Docker container (deepswe-bench
- * stages the JSON and `pier_agent/veyyon_agent.py` exports it), and the per-accessor
- * agreement inside one registry (`@veyyon/utils`
- * `eval-prompts-override-replaces-registry-text.test.ts`).
+ * stages the JSON, records it in `attachments.json`, and `pier_agent/arm_attachments.py`
+ * turns that into the command prefix), and the per-accessor agreement inside one registry
+ * (`@veyyon/utils` `eval-prompts-override-replaces-registry-text.test.ts`).
  */
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
+import { PROMPT_ID_SHAPE_HINT } from "@veyyon/utils";
 import { hermeticSpawnEnv } from "../helpers/hermetic-spawn-env";
 
 const cliPath = path.resolve(import.meta.dir, "../../src/cli.ts");
@@ -128,9 +129,12 @@ describe("an override no registry can claim", () => {
 
 			expect(result.exitCode).not.toBe(0);
 			const message = `${result.stdout}${result.stderr}`;
-			expect(message).toContain('"tools/bsh"');
-			expect(message).toContain("tools/bash");
+			expect(message).toContain("tools/bsh");
+			expect(message).toContain("did you mean tools/bash");
 			expect(message).toContain("no registry holds");
+			// The same sentence the bench runner prints for the same mistake, from one owner:
+			// an operator who hits this before a run and again inside one reads one rule.
+			expect(message).toContain(PROMPT_ID_SHAPE_HINT);
 		},
 		SPAWN_TIMEOUT_MS,
 	);
