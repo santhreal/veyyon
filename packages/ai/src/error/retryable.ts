@@ -1,4 +1,5 @@
 import { isRetryableError, isUnexpectedSocketCloseMessage } from "@veyyon/utils/fetch-retry";
+import { isStreamFrameLimitError } from "@veyyon/utils/stream-frame-limit";
 import {
 	classify,
 	Flag,
@@ -64,6 +65,11 @@ export interface ProviderRetryableHooks {
  */
 export function isProviderRetryableError(error: unknown, hooks: ProviderRetryableHooks = {}): boolean {
 	if (!(error instanceof Error)) return false;
+	// A peer that never delimited its frame will not delimit it on the second attempt, so
+	// a retry is a second helping of the same exhaustion attempt. First, ahead of the
+	// provider hook and the prose rules: those read the OUTERMOST message, which a
+	// provider is free to compose around the cause it wrapped.
+	if (isStreamFrameLimitError(error)) return false;
 	if (hooks.isProviderTransient?.(error)) return true;
 	if (isUsageLimit(error)) return false;
 	const httpStatus = status(error);

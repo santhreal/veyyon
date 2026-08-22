@@ -62,8 +62,14 @@ const reachable = moduleReach(BARREL);
  * override seam directly, because `definePromptRows` applies it. Measured both ways: deleting
  * `export * from "./eval-prompt-overrides"` from the barrel leaves the reach at 83, and
  * `moduleReach("prompt-registry.ts")` reaches it in 27.
+ *
+ * RE-MEASURED 2026-08-22 at 84. The new module is `stream-frame-limit.ts`, which owns the frame
+ * bound the streaming readers enforce and the error they throw. `stream.ts` is on the barrel and
+ * re-exports it, so a subpath cannot move it off the graph, and it is deliberately a zero-import
+ * leaf: `@veyyon/ai`'s error classifier keys off the error class structurally and must not pull the
+ * reader stack in to do it. `moduleReach("stream-frame-limit.ts")` is 1.
  */
-const BARREL_CEILING = 83;
+const BARREL_CEILING = 84;
 
 describe("the @veyyon/utils barrel", () => {
 	/** The number that multiplies by six hundred realms. */
