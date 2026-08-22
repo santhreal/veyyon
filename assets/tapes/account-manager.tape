@@ -46,35 +46,35 @@ Type "/providers"
 Sleep 700ms
 Enter
 Sleep 3s
-Screenshot assets/account-manager-01-card.png
+Screenshot /tmp/account-manager-01-card.png
 Sleep 900ms
 
 # Walk the accounts: the identity, the plan and the health line change per row.
 Down
 Sleep 1s
-Screenshot assets/account-manager-02-second-account.png
+Screenshot /tmp/account-manager-02-second-account.png
 Sleep 900ms
 
 # `enter` switches THIS PROVIDER to the selected account. It is per provider on purpose: Codex and
 # Gemini stay where they are, and the choice is durable rather than a session pin.
 Enter
 Sleep 1500ms
-Screenshot assets/account-manager-03-switched.png
+Screenshot /tmp/account-manager-03-switched.png
 Sleep 900ms
 
 Down
 Sleep 1200ms
-Screenshot assets/account-manager-04-expired-account.png
+Screenshot /tmp/account-manager-04-expired-account.png
 Sleep 900ms
 
 # ── The two panes ───────────────────────────────────────────────────────────────────────────────
 Left
 Sleep 1s
-Screenshot assets/account-manager-05-sidebar.png
+Screenshot /tmp/account-manager-05-sidebar.png
 Sleep 900ms
 Down
 Sleep 1200ms
-Screenshot assets/account-manager-06-codex.png
+Screenshot /tmp/account-manager-06-codex.png
 Sleep 900ms
 Up
 Sleep 600ms
@@ -86,7 +86,7 @@ Sleep 800ms
 # three rows of the same email.
 Type "n"
 Sleep 1s
-Screenshot assets/account-manager-07-rename-open.png
+Screenshot /tmp/account-manager-07-rename-open.png
 Sleep 900ms
 # The field opens PRE-FILLED with the current name, so this is an edit rather than a fresh entry:
 # clearing it first is what the operator does, and typing straight into it appends.
@@ -96,7 +96,7 @@ Type "billing"
 Sleep 800ms
 Enter
 Sleep 1500ms
-Screenshot assets/account-manager-08-renamed.png
+Screenshot /tmp/account-manager-08-renamed.png
 Sleep 900ms
 
 # ── Re-probing ──────────────────────────────────────────────────────────────────────────────────
@@ -105,7 +105,7 @@ Sleep 900ms
 # upstream reason verbatim instead of a generic badge.
 Type "r"
 Sleep 4500ms
-Screenshot assets/account-manager-09-reprobed.png
+Screenshot /tmp/account-manager-09-reprobed.png
 Sleep 900ms
 
 # ── The add row, and the footer that follows the selection ──────────────────────────────────────
@@ -115,11 +115,11 @@ Down
 Down
 Down
 Sleep 1200ms
-Screenshot assets/account-manager-10-add-row.png
+Screenshot /tmp/account-manager-10-add-row.png
 Sleep 900ms
 Up
 Sleep 1200ms
-Screenshot assets/account-manager-11-account-row.png
+Screenshot /tmp/account-manager-11-account-row.png
 Sleep 900ms
 
 # ── The logout confirm ──────────────────────────────────────────────────────────────────────────
@@ -127,11 +127,11 @@ Sleep 900ms
 # takes the arm away, so the two halves of the confirmation stay adjacent.
 Type "x"
 Sleep 1500ms
-Screenshot assets/account-manager-12-logout-armed.png
+Screenshot /tmp/account-manager-12-logout-armed.png
 Sleep 900ms
 Down
 Sleep 1200ms
-Screenshot assets/account-manager-13-logout-disarmed.png
+Screenshot /tmp/account-manager-13-logout-disarmed.png
 Sleep 900ms
 
 # ── The load-balancing gate ─────────────────────────────────────────────────────────────────────
@@ -140,16 +140,16 @@ Sleep 900ms
 # press states what the new state does and that it was saved.
 Type "b"
 Sleep 1500ms
-Screenshot assets/account-manager-14-balancing-on.png
+Screenshot /tmp/account-manager-14-balancing-on.png
 Sleep 900ms
 Type "b"
 Sleep 1500ms
-Screenshot assets/account-manager-15-balancing-off.png
+Screenshot /tmp/account-manager-15-balancing-off.png
 Sleep 900ms
 
 Escape
 Sleep 2s
-Screenshot assets/account-manager-16-after-close.png
+Screenshot /tmp/account-manager-16-after-close.png
 Sleep 900ms
 
 # ── `/login`: the command answers the name you typed ────────────────────────────────────────────
@@ -160,7 +160,7 @@ Type "/login gpt-9-turbo-max"
 Sleep 700ms
 Enter
 Sleep 2s
-Screenshot assets/account-manager-17-login-unknown.png
+Screenshot /tmp/account-manager-17-login-unknown.png
 Sleep 900ms
 
 # A provider whose credential is one pasted key opens the same login screen as a browser provider,
@@ -172,7 +172,7 @@ Type "/login groq"
 Sleep 700ms
 Enter
 Sleep 2s
-Screenshot assets/account-manager-18-login-api-key.png
+Screenshot /tmp/account-manager-18-login-api-key.png
 Sleep 900ms
 # Dismissed before the next command is typed. This step opens a DIALOG now rather than printing a
 # one-line warning, and a dialog holds the keystrokes: without this the `/login Anthropic` below is
@@ -188,7 +188,7 @@ Type "/login Anthropic"
 Sleep 700ms
 Enter
 Sleep 1200ms
-Screenshot assets/account-manager-19-login-dialog.png
+Screenshot /tmp/account-manager-19-login-dialog.png
 Sleep 2s
 Escape
 Sleep 1500ms
@@ -198,7 +198,7 @@ Type "/login"
 Sleep 900ms
 Enter
 Sleep 2500ms
-Screenshot assets/account-manager-20-login-picker.png
+Screenshot /tmp/account-manager-20-login-picker.png
 Sleep 900ms
 Escape
 Sleep 1500ms
@@ -211,5 +211,5 @@ Type "/logout groq"
 Sleep 700ms
 Enter
 Sleep 2500ms
-Screenshot assets/account-manager-21-logout-stored-key.png
+Screenshot /tmp/account-manager-21-logout-stored-key.png
 Sleep 1500ms

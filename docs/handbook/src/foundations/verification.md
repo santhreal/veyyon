@@ -42,7 +42,7 @@ PUBLISH=0 DEMO_SERVER=x11 \
 
 The recorder keeps rehearsal output in the temporary directory it prints. Inspect the video and named frames there. Set `PUBLISH=1` only for a complete take whose frame guards all passed.
 
-The scene's task prompt is static at `proof/prompts/demo-hd.md`. The scene stores the secret, submits that prompt once, and sends no phase-by-phase operator prompts; every later turn is the model's own. A take is published only when every named frame guard passed, so a scene whose model does not reach a guarded surface produces a rehearsal and nothing else. The frames and clip published today come from an earlier session of this scene, described in [Examples](../using/examples.md#recorded-end-to-end-workflow).
+The scene's task prompt is static at `proof/prompts/demo-hd.md`. The scene stores the secret, submits that prompt once, and sends no phase-by-phase operator prompts; every later turn is the model's own. A take is published only when every named frame guard passed, so a scene whose model does not reach a guarded surface produces a rehearsal and nothing else.
 
 The archived take remains at capture speed. The landing-page cut keeps the plan, the worker setup, verification and signing at 1×. Visible implementation between the worker launch and the verified build plays at 1.25×. Named marks in the take select those boundaries; untouched screens are shortened to four seconds rather than accelerated.
 
@@ -85,10 +85,9 @@ tree ends byte-identical. Once the change is on `main`, reproducing the before a
 means pointing that hold at the commit before it.
 
 Both arms record the same scene at the same width and are sampled at the same second
-of the same script, so the only difference between them is the change. Publish the
-pair under `assets/` as `<surface>-before.png` and `<surface>-after.png`;
-`proof/pics.html` folds a `-before`/`-after` stem onto one row, because a comparison
-split across two rows is half an answer.
+of the same script, so the only difference between them is the change. Attach the
+labeled Before and After pair to the pull request body. It is never committed: not to
+`assets/`, not to a README, not to a handbook page, not to the website.
 
 A pair whose two arms differ for an unrelated reason is a failed proof. An arm that
 does not show the surface at all is a failed proof: a lane block is not evidence
@@ -109,22 +108,15 @@ env -u NO_COLOR FORCE_COLOR=3 bun scripts/demos/render-<surface>.ts [args] |
 `<surface>-black.png` with background `#000000`. Inspect both. A background fill
 can disappear on black while remaining visible as a slab on grey.
 
-The output is not a proof and does not satisfy any evidence requirement. It draws a
-fixture written by hand, at a chosen width, through a constructed call. It cannot
-show that the surface is reachable, that the state is real, or that the block is
-positioned, sized and clipped the way a session draws it. Write the file to a
-temporary path. A rasterized image never enters `assets/`, a README, or a handbook
-page as before-and-after evidence.
+The output draws a fixture written by hand, at a chosen width, through a constructed
+call, so it cannot show that the surface is reachable, that the state is real, or
+that the block is positioned, sized and clipped the way a session draws it. It does
+not satisfy an evidence requirement. Write the file to a temporary path.
 
-Seventeen raster pairs are already committed under `assets/`. They were produced
-under an earlier rule that sanctioned them, they are not evidence, and no handbook
-page or README cites them; `proof/pics.html` enumerates the directory from disk and
-still lists them. Each is replaced by a real capture of its screen when that feature
-is next touched. `scripts/an-off-screen-raster-never-enters-assets.test.ts` pins the
-set by exact equality and fails on any addition, so the list only shrinks, and it
-fails as well on a demo driver that writes a render into `assets/`. Drivers write to
-a temporary directory; `scripts/demos/record-argot-settings.sh` is the shape a real
-settings differential takes.
+`scripts/an-off-screen-raster-never-enters-assets.test.ts` pins the raster set under
+`assets/` by exact equality, so the list only shrinks, and fails on a demo driver
+that writes a render into `assets/`. Drivers write outside the tracked tree;
+`scripts/demos/record-argot-settings.sh` is the shape a settings differential takes.
 
 ## Related
 

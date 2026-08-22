@@ -7,7 +7,7 @@
 # would show an error rather than a picker on an offline machine. Neither is a
 # repeatable image.
 
-Output proof/rollback-picker/picker-titanium-black.png
+Output /tmp/picker-titanium-black.png
 
 Set Shell "bash"
 Set FontSize 22
@@ -29,4 +29,4 @@ Type "bun scripts/demos/render-rollback-picker.ts --theme titanium --width 100" 
 Sleep 4s
 Show
 Sleep 500ms
-Screenshot proof/rollback-picker/picker-titanium-black.png
+Screenshot /tmp/picker-titanium-black.png

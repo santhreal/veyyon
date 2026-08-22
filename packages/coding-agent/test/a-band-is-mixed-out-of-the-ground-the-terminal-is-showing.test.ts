@@ -4,8 +4,8 @@
 // theme's DECLARED ground, which on the default setup is not the ground the operator is looking
 // at. Titanium declares `#000000`; `tui.paintGround` defaults to `auto`, which refuses to paint a
 // ground that far from the terminal's own; so the row sits on the terminal's grey while the mix
-// travelled out of black. Recorded off a real xterm at 60fps (`proof/captures/x11/card-bands.mp4`,
-// the model picker at 26.5s), the row being left read `#090401` between a `#1c1f26` ground and a
+// travelled out of black. Recorded off a real xterm at 60fps (the model picker at 26.5s),
+// the row being left read `#090401` between a `#1c1f26` ground and a
 // `#231310` band: every band flashed darker than both of its endpoints on the way in and on the
 // way out. Same class as the 2026-07-22 slabs — a color computed against a ground nobody painted.
 //

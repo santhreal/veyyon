@@ -181,14 +181,6 @@ is, so a board waiting on you is distinguishable from a board being worked. A ta
 strike across its text, exhales its glyph and cools from green to grey; when the last task closes,
 the whole block makes one pass down its rail and clears. Where `display.transitions` is off, all of
 that is still and the glyphs are static.
-
-The block was rebuilt in this shape: [before](../../../../assets/todos-block-before.png) and
-[after](../../../../assets/todos-block-after.png), one scene recorded twice at 131 columns and
-sampled at the same second of the same script. The after arm comes from `proof/docker/record-x11.sh
-proof/scenes/rail-and-todo.sh`. The before arm comes from `proof/docker/record-x11-before.sh
-proof/scenes/rail-and-todo.sh`, which holds every changed source file at the content of the commit
-before the rebuild, `f1390cf3c`.
-
 Configure the behavior under **Settings → Tools → Todos**:
 
 - **Todo Reminders** enables continuation instructions for unfinished plans.

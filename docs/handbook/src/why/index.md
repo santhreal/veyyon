@@ -1,9 +1,9 @@
 # Design and mechanisms
 
-- [Overview](./value.md): what the product is and what the harness does
-- [Mechanisms](./innovations.md): current product contracts and shared mechanisms
-- [Argot](./argot.md): the per-project shorthand the model writes in
-- [Performance](./performance.md): retries, edit format, and tool bounds
+- [Overview](./value.md): product capabilities and harness structure
+- [Mechanisms](./innovations.md): subsystem contracts and runtime behavior
+- [Argot](./argot.md): per-project token shorthand codec
+- [Performance](./performance.md): execution bounds, native paths, and repair
 - [Edit path and tool arguments](../benefits/first-attempt-edits.md)
 - [Context size and retries](../benefits/lower-cost.md)
 - [Model and provider selection](../benefits/model-choice.md)

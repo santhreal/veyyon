@@ -291,7 +291,7 @@ describe("every numeric limit on the tab survives the UI adapter", () => {
 	 * All four limits sit in ONE viewport, so a row that calls zero `Unlimited` while its
 	 * neighbours call it `Off` reads as a different KIND of state rather than the same one.
 	 * The memory row shipped exactly that way, and what caught it was looking at the proof
-	 * shot (assets/resources-write-budget-off.png), which no assertion in this file was in a
+	 * shot, which no assertion in this file was in a
 	 * position to notice. Derived from the rendered ladders rather than from the four keys
 	 * that exist today, so a fifth limit spelling it `None` turns this RED instead of quietly
 	 * landing beside them. `Off` is the spelling because the CPU row shipped it first.

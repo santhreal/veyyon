@@ -1,37 +1,38 @@
 # @veyyon/collab-web
 
-Web client for [veyyon collab sessions](../../docs/collab.md). Opens a `/collab` link in the browser: streaming transcript, tool-call cards, subagent panel, and a composer that prompts or interrupts the host agent.
+Browser client for Veyyon collab live sessions. Displays streaming transcripts, tool-call cards, and subagent panels, with an input composer for interacting with the host agent.
+
+Documentation: [`docs/collab.md`](../../docs/collab.md)
 
 ## Quick start
 
 ```sh
-# dev server (Bun HTML dev server with HMR) — http://localhost:3000
+# Development server (http://localhost:3000):
 bun run dev
 
-# offline demo: local relay + scripted mock host; prints a ws://localhost link
+# Offline mock host:
 bun run mock-host
 ```
 
-Host a session from any veyyon instance (`/collab`, or `/collab ws://localhost:7466` to use the mock relay), then paste the printed link into the connect screen. Deep links work too: `http://localhost:3000/#<roomId>.<key>` auto-connects on load.
+Connect using a generated session URL or deep link (`http://localhost:3000/#<roomId>.<key>`).
 
-## Build & deploy
+## Build and deployment
 
 ```sh
-bun run build   # static site in dist/
+bun run build   # outputs static assets to dist/
 ```
 
-`dist/` is a fully static SPA — host it anywhere. JS/CSS bundles are content-hashed; favicons, `manifest.webmanifest`, `robots.txt`, `sitemap.xml`, and `og-image.png` come from `public/` and are emitted at the site root under stable names (canonical URL: `https://share.veyyon.dev/`). Two runtime requirements:
+Runtime requirements:
+- **Secure context:** WebCrypto APIs (`crypto.subtle`) require an `https://` origin or `localhost`.
+- **Relay connection:** WebSocket connection to relay server (`wss://share.veyyon.dev` by default).
 
-- **Secure context**: room keys are unwrapped with WebCrypto (`crypto.subtle`), which browsers expose only on `https://` or `localhost`.
-- **Relay reachability**: the client connects straight to the relay over WebSocket (`wss://` for anything that isn't localhost). The default relay is `wss://share.veyyon.dev`; bare `<roomId>.<key>` links resolve against it (legacy `<roomId>#<key>` and `%23`-mangled links still parse).
-
-The room key never leaves the URL fragment — it is not sent to the relay or any server.
+Room keys remain in the URL fragment and are not transmitted to relay servers.
 
 ## Architecture
 
-- `src/lib/` — wire codec bindings over `@veyyon/wire` (`codec.ts` AES-256-GCM seal/open, `link.ts` envelope + link grammar), `socket.ts` reconnecting relay socket, `client.ts` guest session store (`GuestClient` + immutable snapshots for `useSyncExternalStore`). Shared protocol shapes come from `@veyyon/wire`.
-- `src/components/` — `transcript/` (entries, markdown, tool cards), `agents/` (panel + transcript drawer), `shell/` (connect screen, header, composer, banners, toasts).
-- `src/tool-render/` — local host shells: a re-export barrel, the `<vey-tool-view>` web component, and `standalone.tsx`. The per-tool renderers, `ToolView` chrome, `tv-` design tokens, and `ToolRenderHost` seam live in `@veyyon/tool-render`; hosts wire agent-id chips to a sub-session view (drawer here, overlay in exports).
-- `scripts/` — `local-relay.ts` (content-blind relay on `Bun.serve`), `mock-host.ts` + `fixture.ts` (scripted host for offline dev), `build-tool-views.ts` (bundles `@veyyon/tool-render` + the local `<vey-tool-view>` web component (`src/tool-render/standalone.tsx`) + React into `packages/coding-agent/src/export/html/tool-views.generated.js` for self-contained exports).
+- `src/lib/`: Wire protocol bindings over `@veyyon/wire` (`codec.ts` for AES-256-GCM encryption, `link.ts` for link parsing, `socket.ts` for relay connection management, `client.ts` for session state).
+- `src/components/`: UI components (`transcript/`, `agents/`, `shell/`).
+- `src/tool-render/`: Local tool rendering integrations and web component implementation (`<vey-tool-view>`).
+- `scripts/`: Dev relay server (`local-relay.ts`) and mock host runner (`mock-host.ts`).
 
-The package is intentionally standalone — no dependency on `@veyyon/coding-agent` at runtime or type level. Wire-shape drift is prevented by consuming the same `@veyyon/wire` contracts as the host, with sealed-frame interop still covered by `test/codec.test.ts`.
+The package depends on `@veyyon/wire` contracts and has no runtime dependency on `@veyyon/coding-agent`.

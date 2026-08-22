@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Record the per-agent nested spawn depth inherit-vs-override differential.
+# Record the per-agent nested spawn depth inherit-vs-override differential for a PR.
+# Attach the resulting pair to the pull request body; evidence pairs are never committed.
+#
+# VEYYON_DEMO_OUT overrides the output directory (defaults to .captures/subagent-recursion-settings).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -9,6 +12,8 @@ BUN="${VEYYON_DEMO_BUN:-$HOME/.bun/bin/bun}"
 PROFILE="${VEYYON_DEMO_PROFILE:-demo}"
 TAPE="assets/tapes/subagent-recursion-settings.tape"
 SHOT="assets/.subagent-recursion-settings-shot.png"
+OUT="${VEYYON_DEMO_OUT:-.captures/subagent-recursion-settings}"
+mkdir -p "$OUT"
 
 bash scripts/demos/setup-profile.sh >/dev/null
 
@@ -29,8 +34,8 @@ shoot() {
 	echo "wrote $out ($label)"
 }
 
-shoot '{}' assets/subagent-recursion-settings-inherit.png "designer inherits blanket depth"
-shoot '{"designer":{"maxNestedSpawnDepth":2}}' assets/subagent-recursion-settings-override.png "designer override=2"
+shoot '{}' "$OUT/subagent-recursion-settings-inherit.png" "designer inherits blanket depth"
+shoot '{"designer":{"maxNestedSpawnDepth":2}}' "$OUT/subagent-recursion-settings-override.png" "designer override=2"
 set_agents '{}'
 rm -f assets/.subagent-recursion-settings-shot.gif
 echo "done: differential recorded, subagent agent table restored"

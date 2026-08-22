@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Record the per-profile Auto QA upload disabled-vs-enabled settings differential.
+# Record the per-profile Auto QA upload disabled-vs-enabled settings differential for a PR.
+# Attach the resulting pair to the pull request body; evidence pairs are never committed.
+#
+# VEYYON_DEMO_OUT overrides the output directory (defaults to .captures/autoqa-upload-settings).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -9,6 +12,8 @@ BUN="${VEYYON_DEMO_BUN:-$HOME/.bun/bin/bun}"
 PROFILE="${VEYYON_DEMO_PROFILE:-demo}"
 TAPE="assets/tapes/autoqa-upload-settings.tape"
 SHOT="assets/.autoqa-upload-settings-shot.png"
+OUT="${VEYYON_DEMO_OUT:-.captures/autoqa-upload-settings}"
+mkdir -p "$OUT"
 
 bash scripts/demos/setup-profile.sh >/dev/null
 
@@ -29,8 +34,8 @@ shoot() {
 	echo "wrote $out (dev.autoqa=$enabled)"
 }
 
-shoot false assets/autoqa-upload-settings-off.png
-shoot true assets/autoqa-upload-settings-on.png
+shoot false "$OUT/autoqa-upload-settings-off.png"
+shoot true "$OUT/autoqa-upload-settings-on.png"
 set_autoqa false
 rm -f assets/.autoqa-upload-settings-shot.gif
 echo "done: differential recorded, Auto QA restored to off"

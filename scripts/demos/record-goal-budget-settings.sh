@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Record the default-off versus enabled Model Goal Budgets settings differential.
+# Record the default-off versus enabled Model Goal Budgets settings differential for a PR.
+# Attach the resulting pair to the pull request body; evidence pairs are never committed.
+#
+# VEYYON_DEMO_OUT overrides the output directory (defaults to .captures/goal-budget-settings).
 #
 # Run from the repository root:
 #   bash scripts/demos/record-goal-budget-settings.sh
@@ -12,6 +15,8 @@ BUN="${VEYYON_DEMO_BUN:-$HOME/.bun/bin/bun}"
 PROFILE="${VEYYON_DEMO_PROFILE:-work}"
 TAPE="assets/tapes/goal-budget-settings.tape"
 SHOT="assets/.goal-budget-settings-shot.png"
+OUT="${VEYYON_DEMO_OUT:-.captures/goal-budget-settings}"
+mkdir -p "$OUT"
 
 set_goal_budgets() {
 	( cd packages/coding-agent && "$BUN" src/cli.ts --profile "$PROFILE" config set goal.modelBudgetsEnabled "$1" >/dev/null )
@@ -30,8 +35,8 @@ shoot() {
 	echo "wrote $out (goal.modelBudgetsEnabled=$enabled)"
 }
 
-shoot false assets/goal-budget-settings-off.png
-shoot true assets/goal-budget-settings-on.png
+shoot false "$OUT/goal-budget-settings-off.png"
+shoot true "$OUT/goal-budget-settings-on.png"
 set_goal_budgets false
 rm -f assets/.goal-budget-settings-shot.gif
 echo "done: differential recorded, Model Goal Budgets restored to off"

@@ -15,8 +15,8 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-DEMO_HOME="$(mktemp -d /tmp/veyyon-account-manager-home.XXXXXX)"
-DEMO_CWD="$(mktemp -d /tmp/veyyon-account-manager-demo.XXXXXX)"
+DEMO_HOME="$(mktemp -d .captures/veyyon-account-manager-home.XXXXXX)"
+DEMO_CWD="$(mktemp -d .captures/veyyon-account-manager-demo.XXXXXX)"
 trap 'rm -rf "$DEMO_HOME" "$DEMO_CWD"' EXIT
 
 mkdir -p "$DEMO_CWD/src"
@@ -40,7 +40,7 @@ export VEYYON_DEMO_BUN="$BUN"
 
 # Cleared first, so a step that stops taking its screenshot leaves a MISSING file rather than a
 # stale one from the last run that still looks like evidence.
-rm -f "$REPO_ROOT"/assets/account-manager-*.png
+rm -f .captures/account-manager-*.png
 
 vhs assets/tapes/account-manager.tape
 
@@ -64,7 +64,7 @@ while read -r sum name; do
 	fi
 	prev_sum="$sum"
 	prev_name="$name"
-done < <(md5sum "$REPO_ROOT"/assets/account-manager-*.png)
+done < <(md5sum .captures/account-manager-*.png)
 if [[ "$degenerate" -ne 0 ]]; then
 	exit 1
 fi

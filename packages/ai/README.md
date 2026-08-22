@@ -995,12 +995,10 @@ For Anthropic Foundry routing, set `CLAUDE_CODE_USE_FOUNDRY=true` plus:
 `FOUNDRY_BASE_URL`, `ANTHROPIC_FOUNDRY_API_KEY`, optional `ANTHROPIC_CUSTOM_HEADERS`,
 and optional mTLS material (`CLAUDE_CODE_CLIENT_CERT`, `CLAUDE_CODE_CLIENT_KEY`).
 
-`NODE_EXTRA_CA_CERTS` (PEM file path or inline PEM, mirroring Node's contract)
-is honoured on every provider fetch — OpenAI-compatible, Codex, Ollama, Azure
-Responses, Google, and Anthropic alike — for corporate relays or private CA
-bundles. Bun's `fetch` does not consume the env var natively, so veyyon injects
-the bundle into `RequestInit.tls.ca` and seeds the system root store
-alongside it.
+`NODE_EXTRA_CA_CERTS` (PEM file path or inline PEM) is honored across provider
+fetches (OpenAI-compatible, Codex, Ollama, Azure Responses, Google, Anthropic)
+for custom CA bundles. Veyyon injects the bundle into `RequestInit.tls.ca` and
+seeds the system root store alongside it.
 
 Provider endpoint defaults for the current OpenAI-compatible integrations:
 
@@ -1105,7 +1103,7 @@ veyyon auth-broker login              # interactive provider selection
 veyyon auth-broker login anthropic    # login to a specific provider
 veyyon auth-broker login vllm         # store vLLM API key (or placeholder for local no-auth)
 veyyon auth-broker list               # list supported providers
-veyyon auth-broker logout             # interactive — pick a stored credential to remove
+veyyon auth-broker logout             # interactive removal of stored credentials
 ```
 
 Credentials are saved to `agent.db` in the agent directory. `/login qianfan` opens the Qianfan console and stores the pasted API key.
@@ -1236,19 +1234,12 @@ import "@veyyon/ai/usage/defaults";
 import { AuthStorage } from "@veyyon/ai/auth-storage";
 ```
 
-Forgetting it is reported rather than silent. `AuthStorage` reads the backends through a registry,
-and a registry nothing has filled warns once, naming this import. It has to say something: an empty
-table answers "no backend" for every provider, which is indistinguishable from a provider that
-genuinely reports no quota, so every number would disappear from your UI with nothing to explain it.
+`AuthStorage` reads usage backends through a registry. If the registry is empty,
+it logs a single warning referencing `@veyyon/ai/usage/defaults`.
 
-It warns rather than refusing because the same registry holds the credential-ranking strategies, and
-`getApiKey` reads those. Refusing there would stop a process selecting a credential over a feature it
-never asked for.
-
-The split also keeps the credential store light. Storing a token and reading a quota are different
-jobs, and the backends pull in provider transports the store has no use for, so `auth-storage.ts`
-imports the registry interface and `usage/defaults.ts` imports the backends.
-
+The split isolates credential storage from provider-specific usage quota
+transports: `auth-storage.ts` imports the registry interface and
+`usage/defaults.ts` imports the backends.
 To report no usage at all in a process, pass the resolvers explicitly rather than leaving the
 registry unfilled:
 

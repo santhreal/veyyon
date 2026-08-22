@@ -74,8 +74,8 @@ the block in
 carry the determinism rules. Do not fork a capture block, here or anywhere.
 
 - A live surface (composer, dialog, status line, transcript): write or extend a
-  tape that navigates to it, and end on a `Screenshot proof/<slug>/before-<theme>.png`.
-- A tool renderer: `veyyon gallery --tool <name> --state <state> --screenshot --theme titanium --theme light --out proof/<slug>/before.png`.
+  tape that navigates to it, and end on a `Screenshot /tmp/<slug>/before-<theme>.png`.
+- A tool renderer: `veyyon gallery --tool <name> --state <state> --screenshot --theme titanium --theme light --out /tmp/<slug>/before.png`.
   The repeatable `--theme` flag renders the whole theme set in one invocation and
   suffixes each file (`before-titanium.png`, `before-light.png`), so a tool
   renderer covers its matrix without seeding themes by hand. An unknown theme
@@ -135,7 +135,7 @@ own the palette; this matrix proves your change respects it on every ground.
 
 If the change is animated (a spinner, a stream cadence, a transition, a
 shimmer), a still cannot prove it. Capture a before/after **GIF** pair instead,
-one per theme, with VHS `Output proof/<slug>/before-<theme>.gif` and a `Sleep`
+one per theme, with VHS `Output /tmp/<slug>/before-<theme>.gif` and a `Sleep`
 long enough to hold the full motion. The same rules apply: same tape, same seed,
 same dimensions, only your change moves. Watch both GIFs; a motion change that
 looks identical frame to frame is either not wired or not visible, and either
@@ -151,9 +151,7 @@ way is a failed proof.
 - You looked at every pair, and each one genuinely differs (bytes and pixels),
   in the direction you intended, with no regression on any ground.
 - No pair was judged from `tmux`.
-- The before/after pairs are attached to the PR so a reviewer sees the visible
-  change without checking out the branch. If a shot also documents a shipped
-  surface, commit it to `assets/` and wire it into the page that embeds it, per
-  [screenshots](../screenshots/SKILL.md).
+- The before/after pairs are attached to the pull request body and do not
+  appear in any README, handbook page, or website.
 - If the surface has an exact-byte ANSI test, it is updated in the same change,
   so the render is locked in code as well as in pixels.

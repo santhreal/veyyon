@@ -1,6 +1,6 @@
 ---
 name: screenshots
-description: Capture and refresh Veyyon UI screenshots that prove a surface exists and works, not decorative stills. Use when a settings screen, tool renderer, or README image needs a new or updated shot, or when a feature needs its off-vs-on settings differential. Covers deterministic seeding, the differential rule, and the gallery screenshot path.
+description: Capture and refresh Veyyon UI screenshots that prove a surface exists and works, not decorative stills. Use when a settings screen, tool renderer, or PR body image needs a new or updated shot, or when a feature needs its off-vs-on settings differential. Covers deterministic seeding, the differential rule, and the gallery screenshot path.
 ---
 
 # Screenshots
@@ -15,7 +15,7 @@ Every screenshot regenerates from a command. None is hand-cropped or taken with 
 | --- | --- | --- |
 | Settings differential | A feature off, then on, so the pair proves the knob is wired | A single-state tape recorded twice, seeded off then on with `config set` |
 | Tool renderer gallery | A built-in tool's renderer across its states | `veyyon gallery --screenshot` |
-| README still | A framed moment of the live TUI | A VHS `Screenshot` line in the demo tape, or a frame of the demo gif |
+| PR body still | A framed moment of the live TUI | A VHS `Screenshot` line in the demo tape, or a frame of the demo gif |
 
 ## The differential rule
 
@@ -32,7 +32,7 @@ $ bun packages/coding-agent/src/cli.ts --profile demo config set <path> on    # 
 
 A TUI toggle can land on the wrong key and give you two identical or wrong frames. Seeding with `config set` before launch is the only reliable way to fix the state a frame captures.
 
-`scripts/demos/record-argot-settings.sh` is the reference driver. It seeds `argot.enabled` off, records `assets/tapes/argot-settings.tape` to `assets/argot-settings-off.png`, seeds it on, records again to `assets/argot-settings-on.png`. The off shot shows only the master toggle; the on shot shows the toggle plus its four dependent knobs. Copy this driver for a new feature: one single-state tape, recorded twice, one shot per state.
+`scripts/demos/record-argot-settings.sh` is the reference driver. It seeds `argot.enabled` off, records `assets/tapes/argot-settings.tape` to `/tmp/argot-settings/argot-settings-off.png`, seeds it on, records again to `/tmp/argot-settings/argot-settings-on.png`. The off shot shows only the master toggle; the on shot shows the toggle plus its four dependent knobs. Copy this driver for a new feature: one single-state tape, recorded twice, one shot per state.
 
 ## The gallery path
 
@@ -58,9 +58,9 @@ Every shot must record the same each time.
 
 Use the shared capture block from the [record-demo](../record-demo/SKILL.md) skill. It is the one place the black, sharp, crisp window settings live, so a still matches a gif. Do not fork a second capture block here: read it there and reuse it. A cramped, low-resolution shot reads as amateur next to a sharp, edge-to-edge black one, and pixel quality is a finding, not a detail.
 
-## Wire the shot into what it documents
+## Attach the evidence to the pull request body
 
-A new screenshot is only half the change. If the README or a handbook page embeds it, update that reference in the same edit, and confirm the alt text describes what the new shot shows. A shot in `assets/` that no page references is dead weight; either embed it or do not add it.
+Evidence pairs are PR-body only, never user-facing. They must not appear in any README, in any handbook page, on the website, or anywhere a user of the product reads. A reader of the product documentation is not a reviewer. Attach the labeled Before/After pair, settings differential, or proof stills to the pull request body, and nowhere else.
 
 ## Before you commit the shot
 
@@ -68,4 +68,4 @@ A new screenshot is only half the change. If the README or a handbook page embed
 - A feature shot is an off-vs-on differential whose two frames genuinely differ in bytes and in values.
 - It was seeded from the shell with `config set`, not by pressing a toggle.
 - It uses the shared capture block: pure black, sharp corners, crisp.
-- Every page that embeds it points at the new shot, with alt text that matches it.
+- The evidence pair or proof stills are attached to the pull request body and do not appear in any README, handbook page, or website.
