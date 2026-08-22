@@ -124,13 +124,15 @@ bun measure-retype-likelihood.ts --json
 ```bash
 cd packages/deepswe-bench
 bun run.ts \
-  --tasks tasks/pilot-10.txt \
+  --tasks tasks/smoke.txt \
   --arms baseline,decode,full \
   --model google-antigravity/gemini-2.5-flash \
   --jobs 2 \
-  --repeats 3 \
-  --out ../../runs/deepswe/argot-pilot
+  --repeats 1 \
+  --out ../../runs/deepswe/argot-smoke
 ```
+
+Start with `--dry-run`. The first paid run uses `tasks/smoke.txt` and one repeat. Increase the task set or repeat count only after reviewing the exact trial count printed by the dry run.
 
 ### Options
 
@@ -195,7 +197,7 @@ Run with:
 bun run.ts --arms baseline,candidate-delivery-terse \
   --tasks tasks/pilot-10.txt \
   --model google-antigravity/gemini-3.5-flash \
-  --jobs 2 --repeats 3
+  --jobs 2 --repeats 1
 ```
 
 Available section names: `conventions`, `role`, `runtime`, `toolPolicy`, `executionWorkflow`, `deliveryContract`.
