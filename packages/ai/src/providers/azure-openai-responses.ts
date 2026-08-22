@@ -175,6 +175,7 @@ const streamAzureOpenAIResponsesOnce = (
 						signal: requestSignal,
 						fetch: options?.fetch,
 						prepareInit: prepareRequest,
+						maxRetryDelayMs: options?.maxRetryDelayMs,
 						// Transient 408/429/5xx get Retry-After-aware transport retries;
 						// the first-event watchdog aborts `requestSignal`, so retries
 						// cannot extend the caller's deadline.

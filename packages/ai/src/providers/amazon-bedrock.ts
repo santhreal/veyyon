@@ -436,6 +436,7 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 					fetch: observedFetch,
 					timeout: false,
 					prepareInit: prepareRequest,
+					maxDelayMs: options?.maxRetryDelayMs,
 				});
 				if (responseHookFailed) throw responseHookError;
 			} finally {

@@ -11,6 +11,7 @@ import { ANTHROPIC_WEB_SEARCH_TOOL, CLAUDE_CODE_VERSION as claudeCodeVersion } f
 import { parseGitHubCopilotApiKey } from "@veyyon/catalog/wire/github-copilot";
 import { getInstallId } from "@veyyon/utils/dirs";
 import { $env } from "@veyyon/utils/env";
+import { DEFAULT_MAX_DELAY_MS } from "@veyyon/utils/fetch-retry";
 import { isEnoent } from "@veyyon/utils/fs-error";
 import { parseJsonWithRepair, parseStreamingJsonThrottled } from "@veyyon/utils/json-parse";
 import * as logger from "@veyyon/utils/logger";
@@ -2779,11 +2780,19 @@ const streamAnthropicOnce = (
 					const backoffDelayMs = calculateAnthropicRetryDelayMs(providerRetryAttempt - 1);
 					// Honor the server's retry hint (`retry-after-ms`/`retry-after`) on
 					// 429/529-style failures: retrying sooner than the server asked is a
-					// guaranteed failure that just burns the retry budget.
+					// guaranteed failure that just burns the retry budget. Honor it up to
+					// the longest wait the caller will tolerate, and no further: the hint
+					// was taken verbatim, so a `retry-after: 86400` slept for a day, ten
+					// times over, with nothing armed to interrupt it — the caller's
+					// first-event watchdog covers a request, not the gap between two.
+					// Past the cap the refusal is the answer, which is the rule
+					// `fetchWithRetry` already states for every other provider.
 					const headerDelayMs =
 						streamFailure instanceof Error && streamFailure instanceof AnthropicApiError
 							? retryDelayFromHeaders(streamFailure.headers)
 							: undefined;
+					const maxRetryDelayMs = options?.maxRetryDelayMs ?? DEFAULT_MAX_DELAY_MS;
+					if (headerDelayMs !== undefined && headerDelayMs > maxRetryDelayMs) throw streamFailure;
 					const delayMs = headerDelayMs !== undefined ? Math.max(headerDelayMs, backoffDelayMs) : backoffDelayMs;
 					if (options?.providerRetryWait) {
 						await options.providerRetryWait(delayMs, options.signal);

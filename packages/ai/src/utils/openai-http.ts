@@ -45,6 +45,12 @@ export interface OpenAIStreamRequestInit {
 	prepareInit?: (attempt: number) => RequestInit | Promise<RequestInit>;
 	signal: AbortSignal;
 	fetch?: FetchImpl;
+	/**
+	 * The longest single retry wait the caller will tolerate. A server hint above
+	 * it returns the refusal immediately instead of sleeping on it. Omitted, the
+	 * retry helper's own 60s cap applies.
+	 */
+	maxRetryDelayMs?: number;
 	/** Raw wire-frame observer (`onSseEvent` debug pipeline). */
 	onSseEvent?: SseEventObserver;
 }
@@ -73,6 +79,7 @@ export async function postOpenAIStream<TEvent>(init: OpenAIStreamRequestInit): P
 		fetch: init.fetch,
 		prepareInit: init.prepareInit,
 		maxAttempts: DEFAULT_MAX_ATTEMPTS,
+		maxDelayMs: init.maxRetryDelayMs,
 		// Bun's native fetch enforces a hard ~300s pre-response timeout (issue #2422).
 		// Cold large-context streams legitimately exceed it; the caller's
 		// `firstEventTimeoutMs`/`AbortSignal` already govern stuck requests.

@@ -1652,6 +1652,7 @@ async function openCodexSseTransport(
 		requestSetup.requestSignal,
 		requestSetup.firstEventTimeoutMs,
 		requestSetup.firstEventBudget,
+		options?.maxRetryDelayMs,
 		event => options?.onSseEvent?.(event, model),
 		options?.fetch,
 		prepareBody,
@@ -3903,6 +3904,8 @@ async function openCodexSseEventStream(
 	signal: AbortSignal | undefined,
 	firstEventTimeoutMs: number | undefined,
 	firstEventBudget: FirstEventBudget,
+	/** The longest single retry wait the caller will tolerate, if it declared one. */
+	maxRetryDelayMs: number | undefined,
 	onSseEvent?: OpenAICodexResponsesOptions["onSseEvent"],
 	fetchOverride?: FetchImpl,
 	prepareBody: () => RequestBody | Promise<RequestBody> = () => structuredCloneJSON(body),
@@ -3960,7 +3963,13 @@ async function openCodexSseEventStream(
 			},
 			maxAttempts: CODEX_MAX_RETRIES + 1,
 			defaultDelayMs: attempt => CODEX_RETRY_DELAY_MS * (attempt + 1),
-			maxDelayMs: CODEX_RATE_LIMIT_BUDGET_MS,
+			// The caller's declared cap wins. Codex's own five-minute budget is
+			// what a ChatGPT-plan rate limit needs when nobody said otherwise,
+			// but a caller that declares `maxRetryDelayMs` has named the longest
+			// wait it will tolerate, and a hardcoded ceiling above it turned a
+			// `retry-after: 120` into two minutes of silence the caller had
+			// forbidden.
+			maxDelayMs: maxRetryDelayMs ?? CODEX_RATE_LIMIT_BUDGET_MS,
 			shouldRetryError: error => !(isPreResponseStall(error) && firstEventBudget.spent()),
 			fetch: fetchAttempt,
 			timeout: false,
