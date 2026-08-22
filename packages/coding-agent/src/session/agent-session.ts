@@ -311,7 +311,7 @@ import type { RecoveredRetryError } from "../extensibility/shared-events";
 import type { Skill } from "../extensibility/skills";
 import { expandSlashCommand, type FileSlashCommand } from "../extensibility/slash-commands";
 import { GoalRuntime } from "../goals/runtime";
-import type { Goal, GoalModeState } from "../goals/state";
+import type { Goal, GoalAbortReason, GoalModeState } from "../goals/state";
 import type { HindsightSessionState } from "../hindsight/state";
 // The owning module, not the `../internal-urls` barrel: the barrel re-exports every protocol
 // handler and reaches several hundred modules, and all three of these live in `local-protocol`,
@@ -11999,7 +11999,7 @@ export class AgentSession {
 	 * abort. Omit it for internal/lifecycle aborts.
 	 */
 	async abort(options?: {
-		goalReason?: "interrupted" | "internal";
+		goalReason?: GoalAbortReason;
 		reason?: string;
 		/** Internal `/compact` startup keeps the manual-compaction marker alive while aborting the active turn. */
 		preserveCompaction?: boolean;

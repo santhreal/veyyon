@@ -1,6 +1,13 @@
 import { escapeXmlText, prompt, Snowflake } from "@veyyon/utils";
 import { goalsPrompts } from "../prompts/goals/rows";
-import type { Goal, GoalBudgetSteering, GoalModeState, GoalRuntimeEvent, GoalTokenUsage } from "./state";
+import type {
+	Goal,
+	GoalAbortReason,
+	GoalBudgetSteering,
+	GoalModeState,
+	GoalRuntimeEvent,
+	GoalTokenUsage,
+} from "./state";
 
 export interface GoalRuntimeHost {
 	getState(): GoalModeState | undefined;
@@ -253,11 +260,12 @@ export class GoalRuntime {
 		});
 	}
 
-	async onTaskAborted(options?: { reason?: "interrupted" | "internal" }): Promise<void> {
+	async onTaskAborted(options?: { reason?: GoalAbortReason }): Promise<void> {
 		const state = this.#host.getState();
-		const needsAccounting = state?.enabled && isAccountingStatus(state.goal);
-		const needsPause = options?.reason === "interrupted" && state?.enabled && state.goal.status === "active";
-		if (!needsAccounting && !needsPause) {
+		// An active goal is always an accounting goal (`isAccountingStatus` covers active and
+		// budget-limited), so this one question gates both the usage flush and the pause. Which
+		// reason actually pauses is decided in one place, below.
+		if (!state?.enabled || !isAccountingStatus(state.goal)) {
 			this.#turnSnapshot = undefined;
 			return;
 		}
