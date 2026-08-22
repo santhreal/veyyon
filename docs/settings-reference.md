@@ -457,7 +457,7 @@ veyyon config get compaction.threshold
 | `debug.enabled` | Debug | boolean | `true` | Enable the debug tool for DAP-based debugging. |
 | `launch.enabled` | Launch | boolean | `true` | Enable the launch tool for supervising shared long-running project processes. |
 | `speechgen.enabled` | Speech Generation | boolean | `false` | Enable the tts tool for on-device (Kokoro) or xAI Grok Voice speech-file synthesis. |
-| `generate_image.enabled` | Generate Image | boolean | `true` | Enable the generate_image tool for text-to-image generation and editing. |
+| `generate_image.enabled` | Generate Image | boolean | `false` | Enable the generate_image tool for text-to-image generation and editing. |
 | `inspect_image.enabled` | Inspect Image | boolean | `false` | Enable the inspect_image tool, delegating image understanding to a vision-capable model. |
 | `checkpoint.enabled` | Checkpoint/Rewind | boolean | `false` | Enable the checkpoint and rewind tools for context checkpointing. |
 | `fetch.enabled` | Read URLs | boolean | `true` | Allow the read tool to fetch and process URLs. |

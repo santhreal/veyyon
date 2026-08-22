@@ -94,17 +94,18 @@ describe("generate_image tool gating", () => {
 	});
 
 	it("includes generate_image when explicitly requested and enabled", async () => {
-		const names = await activeToolNames(Settings.isolated({}), ["read", "generate_image"]);
+		const names = await activeToolNames(Settings.isolated({ "generate_image.enabled": true }), [
+			"read",
+			"generate_image",
+		]);
 		expect(names).toContain("generate_image");
 	});
 
-	/**
-	 * Default/off discovery must retain the first-party tool's eager exposure;
-	 * adding discovery metadata must not turn it into an always-lazy tool.
-	 */
-	it("keeps generate_image active under default discovery settings", async () => {
+	it("does not register generate_image under default settings", async () => {
 		const session = await makeSession(Settings.isolated({}));
-		expect(session.getActiveToolNames()).toContain("generate_image");
+		expect(session.getAllToolNames()).not.toContain("generate_image");
+		expect(session.getActiveToolNames()).not.toContain("generate_image");
+		expect(session.getDiscoverableTools().map(tool => tool.name)).not.toContain("generate_image");
 	});
 
 	/**
@@ -113,7 +114,9 @@ describe("generate_image tool gating", () => {
 	 * in the same searchable inventory used by every discoverable tool.
 	 */
 	it("hides generate_image initially in discovery-all and indexes it for search", async () => {
-		const session = await makeSession(Settings.isolated({ "tools.discoveryMode": "all" }));
+		const session = await makeSession(
+			Settings.isolated({ "generate_image.enabled": true, "tools.discoveryMode": "all" }),
+		);
 
 		expect(session.getActiveToolNames()).not.toContain("generate_image");
 		expect(session.getDiscoverableTools()).toContainEqual(
@@ -130,10 +133,10 @@ describe("generate_image tool gating", () => {
 	 * A requested generate_image tool must survive initial discovery filtering.
 	 */
 	it("keeps explicitly requested generate_image active in discovery-all", async () => {
-		const session = await makeSession(Settings.isolated({ "tools.discoveryMode": "all" }), [
-			"read",
-			"generate_image",
-		]);
+		const session = await makeSession(
+			Settings.isolated({ "generate_image.enabled": true, "tools.discoveryMode": "all" }),
+			["read", "generate_image"],
+		);
 
 		expect(session.getActiveToolNames()).toContain("generate_image");
 		expect(session.getDiscoverableTools().map(tool => tool.name)).not.toContain("generate_image");
@@ -145,7 +148,9 @@ describe("generate_image tool gating", () => {
 	 * transient even though the search response reported it as activated.
 	 */
 	it("persists searched generate_image activation in the live session", async () => {
-		const session = await makeSession(Settings.isolated({ "tools.discoveryMode": "all" }));
+		const session = await makeSession(
+			Settings.isolated({ "generate_image.enabled": true, "tools.discoveryMode": "all" }),
+		);
 		const searchTool = session.getToolByName("search_tool_bm25");
 		if (!searchTool) throw new Error("Expected search_tool_bm25 to be registered");
 
@@ -184,7 +189,7 @@ describe("generate_image tool gating", () => {
 				baseUrl: `${server.url.origin}/v1`,
 			};
 			const session = await makeSession(
-				Settings.isolated({ "tools.discoveryMode": "all" }),
+				Settings.isolated({ "generate_image.enabled": true, "tools.discoveryMode": "all" }),
 				undefined,
 				undefined,
 				model,

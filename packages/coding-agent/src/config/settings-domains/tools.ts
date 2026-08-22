@@ -308,7 +308,7 @@ export const TOOLS_SETTINGS = {
 	},
 	"generate_image.enabled": {
 		type: "boolean",
-		default: true,
+		default: false,
 		ui: {
 			tab: "tools",
 			group: "Available Tools",
