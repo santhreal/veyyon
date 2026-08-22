@@ -35,7 +35,7 @@
     "@veyyon/utils": "catalog:"
   },
   "engines": {
-    "bun": ">=1.3.14"
+    "bun": ">=1.4.0"
   },
   "files": [
     "src",

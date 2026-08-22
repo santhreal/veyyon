@@ -6,7 +6,7 @@ is the map of the code; this is the path through it.
 ## Prerequisites
 
 - **Bun** (the version in `package.json` `packageManager` and the
-  `oven-sh/setup-bun` pin, currently 1.3.14). veyyon is Bun-first; do not
+  `oven-sh/setup-bun` pin, currently 1.4.0). veyyon is Bun-first; do not
   substitute Node.
 - **Rust** (the pinned `nightly-2026-04-29` toolchain in
   `rust-toolchain.toml`). It is required by `bun run check` and by the fuller

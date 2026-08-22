@@ -145,7 +145,7 @@ describe("the catalog versions the migration was verified against", () => {
 		"react-dom": "19.2.7",
 		"@types/react": "^19.2.17",
 		"@types/react-dom": "^19.2.3",
-		"@types/bun": "^1.3.14",
+		"@types/bun": "^1.4.0",
 		"fast-check": "4.9.0",
 		// Moved 1.26.0 -> 1.21.0 deliberately, which is the review this table exists to force.
 		// `fastembed@2.1.0` declares an exact `onnxruntime-node: 1.21.0` and its native addon links

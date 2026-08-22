@@ -54,6 +54,11 @@
 - The logger's own documentation names the directory it actually writes to. Logs have been profile-scoped since the default profile moved out of the bare config root, but `logger`, `stderr-guard` and the package README all still named `~/.veyyon/logs/`, which is a path that only exists on a profile that has not been migrated — so a maintainer following the comment looked in an empty directory for the log a swallowed error went to. The path is `~/.veyyon/profiles/<name>/logs/`. No behaviour change; `getLogsDir()` was already correct.
 - `DEFAULT_MAX_DELAY_MS` is exported from `fetch-retry`. It is the longest single server-directed wait a retry sits on when the caller declared no cap, and a provider that runs its own retry ladder outside this helper — the Anthropic client honors `retry-after-ms` itself — has to bound it by the same number, or one `retry-after` means a minute on one path and an unbounded sleep on another.
 
+### Breaking Changes
+
+- Veyyon source checkouts, Docker images, and published packages now require Bun 1.4.0 or newer.
+- The minimum supported Bun runtime is now 1.4.0.
+
 ## [1.1.1] - 2026-08-21
 
 ### Added

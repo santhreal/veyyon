@@ -92,7 +92,7 @@ bun link @veyyon/catalog
 
 See [the SDK guide](../../docs/sdk.md#installation) for the same steps in full.
 
-Ships TypeScript source directly (no build step); requires Bun ≥ 1.3.14.
+Ships TypeScript source directly (no build step); requires Bun ≥ 1.4.0.
 
 ## References
 
