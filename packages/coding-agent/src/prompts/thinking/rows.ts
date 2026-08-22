@@ -18,15 +18,15 @@
  * for these ids, and the coverage suite fails on a second importer.
  */
 
-import type { PromptEntry } from "@veyyon/utils/prompt-registry";
+import { definePromptRows, type PromptEntry } from "@veyyon/utils/prompt-registry";
 import thinkingDifficulty from "./difficulty.md" with { type: "text" };
 import thinkingDifficultyLocal from "./difficulty-local.md" with { type: "text" };
 
 /** Every prompt under `src/prompts/thinking/`, keyed by its id (the path under `src/prompts/`). */
-export const thinkingPrompts = {
+export const thinkingPrompts = definePromptRows({
 	"thinking/difficulty": { text: thinkingDifficulty, purpose: "classifies how much thinking a turn needs" },
 	"thinking/difficulty-local": {
 		text: thinkingDifficultyLocal,
 		purpose: "classifies request difficulty for a local classifier model",
 	},
-} satisfies Record<string, PromptEntry>;
+} satisfies Record<string, PromptEntry>);

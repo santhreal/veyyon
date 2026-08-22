@@ -31,6 +31,7 @@ import {
 	type ResolvedPersonality,
 	resolvePersonality,
 } from "./personality/resolver";
+import { assertEvalPromptOverridesClaimed } from "./prompts/all-registries";
 import { sessionPrompts } from "./prompts/session/rows";
 import {
 	assembleDefaultTemplate,
@@ -1055,6 +1056,13 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		includeWorkspaceTree,
 		renderMermaid,
 	};
+	// A `VEYYON_EVAL_PROMPTS` id no registry holds is refused here, where every
+	// registry in the build is known. The registries themselves cannot answer it: one
+	// registry does not know whether an unclaimed id belongs to a sibling. Assembly is
+	// the earliest point at which the whole set is loaded and still before the first
+	// model call, so a typo costs one hard error instead of an arm's worth of trials
+	// that quietly ran the shipped prompt under a treatment's name.
+	assertEvalPromptOverridesClaimed();
 	const evalSectionOverrides = resolveEvalSectionOverrides();
 	const evalStatementOverrides = resolveEvalStatementOverrides();
 	const overriddenStatementIds = Object.keys(evalStatementOverrides);

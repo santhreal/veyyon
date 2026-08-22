@@ -21,8 +21,7 @@
  * concern and lives with the parser that reads it. This file describes what a row
  * claims; the grammar decides what the bytes look like.
  */
-import { $env } from "./env";
-
+import { announceEvalPromptOverrides, applyEvalPromptOverrides } from "./eval-prompt-overrides";
 import { nearestNames } from "./levenshtein";
 
 /**
@@ -69,6 +68,31 @@ export interface PromptEntry {
 	readonly purpose: string;
 	/** Present only where a prompt has addressable regions; absent means one undivided body. */
 	readonly sections?: readonly PromptSection[];
+}
+
+/**
+ * Declare a directory's prompt rows — the seam where prompt text enters the program.
+ *
+ * WHY THE ROWS AND NOT ONLY THE REGISTRY. A module that sends one prompt imports its
+ * row table directly (`toolsPrompts["tools/bash"].text`) rather than the aggregate,
+ * which is the documented convention and is what 190 call sites do. The registry is
+ * built from the same rows, so replacing text there alone reaches the inspection
+ * commands and nothing a model is sent: an eval-only override announced itself
+ * loudly, `veyyon prompt --tools` reported the bash description unchanged at 971
+ * bytes, and the arm would have measured its own control while the results table
+ * called it a treatment. Text is substituted where it is READ, so every consumer of a
+ * row sees one prompt.
+ *
+ * Takes no directory, deliberately: the directory a row's id is relative to is stated
+ * once, in the `definePromptRegistry` call that owns it, and a rows file that restated
+ * it would be a second copy of that fact in 21 more places.
+ *
+ * Costs nothing when no override is set: the table is returned by identity.
+ */
+export function definePromptRows<const T extends Record<string, PromptEntry>>(rows: T): T {
+	const { prompts, appliedIds } = applyEvalPromptOverrides(rows);
+	announceEvalPromptOverrides(appliedIds);
+	return prompts as T;
 }
 
 /**
@@ -176,71 +200,6 @@ export interface PromptRegistry<T extends Record<string, PromptEntry> = Record<s
 	text(id: keyof T & string): string;
 }
 
-let cachedRawEvalPrompts: string | undefined;
-let cachedEvalPromptOverrides: Record<string, string> | null = null;
-const CLAIMED_OVERRIDE_IDS = new Set<string>();
-const ANNOUNCED_OVERRIDE_IDS = new Set<string>();
-const REGISTERED_REGISTRIES = new Map<string, Record<string, PromptEntry>>();
-/**
- * Parse and validate the eval-only prompt override payload carried by `VEYYON_EVAL_PROMPTS`.
- *
- * Malformed JSON, non-object payloads, and non-string replacement values fail loudly.
- * Empty input is the quiet case and means standard registered prompts.
- */
-export function parseEvalPromptOverridesJson(raw: string | undefined): Record<string, string> {
-	if (raw === undefined || raw.trim() === "") return {};
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(raw);
-	} catch (err) {
-		throw new Error(`VEYYON_EVAL_PROMPTS is set but is not valid JSON: ${err}`);
-	}
-	if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-		throw new Error(
-			`VEYYON_EVAL_PROMPTS must be a JSON object of prompt id -> replacement text, ` +
-				`got ${Array.isArray(parsed) ? "an array" : parsed === null ? "null" : typeof parsed}`,
-		);
-	}
-	for (const [id, value] of Object.entries(parsed as Record<string, unknown>)) {
-		if (typeof value !== "string") {
-			throw new Error(`VEYYON_EVAL_PROMPTS value for "${id}" must be a string, got ${typeof value}`);
-		}
-	}
-	return parsed as Record<string, string>;
-}
-
-function getEvalPromptOverrides(): Record<string, string> {
-	const raw = $env.VEYYON_EVAL_PROMPTS;
-	if (raw !== cachedRawEvalPrompts) {
-		cachedRawEvalPrompts = raw;
-		cachedEvalPromptOverrides = parseEvalPromptOverridesJson(raw);
-		CLAIMED_OVERRIDE_IDS.clear();
-		ANNOUNCED_OVERRIDE_IDS.clear();
-	}
-	return cachedEvalPromptOverrides ?? {};
-}
-
-function assertAllOverridesClaimed(fallbackDir: string, fallbackPrompts: Record<string, PromptEntry>): void {
-	const overrides = getEvalPromptOverrides();
-	const keys = Object.keys(overrides);
-	if (keys.length === 0) return;
-	for (const key of keys) {
-		if (!CLAIMED_OVERRIDE_IDS.has(key)) {
-			let bestDir = fallbackDir;
-			let bestPrompts = fallbackPrompts;
-			for (const [dir, table] of REGISTERED_REGISTRIES) {
-				const near = nearestNames(key, Object.keys(table), 1);
-				if (near.length > 0) {
-					bestDir = dir;
-					bestPrompts = table;
-					break;
-				}
-			}
-			requirePromptFrom(bestPrompts, key, bestDir);
-		}
-	}
-}
-
 /**
  * Build a package's prompt registry from its rows.
  *
@@ -251,6 +210,12 @@ function assertAllOverridesClaimed(fallbackDir: string, fallbackPrompts: Record<
  * union with no members to derive, which is the same widening an explicit
  * `readonly PromptEntry[]` annotation causes on a section list.
  *
+ * An eval-only override (`VEYYON_EVAL_PROMPTS`, see `eval-prompt-overrides.ts`) may
+ * replace the text of rows this registry owns. That is the ONLY thing it may do here:
+ * the id list, the file paths and every other field stay the shipped ones, and an id
+ * this package does not hold is left alone rather than refused, because a sibling
+ * registry may own it.
+ *
  * @param dir repository-relative directory holding the `.md` files, without a trailing slash
  * @param prompts every row, keyed by the file's path under `dir` without `.md`
  */
@@ -258,70 +223,21 @@ export function definePromptRegistry<const T extends Record<string, PromptEntry>
 	dir: string,
 	prompts: T,
 ): PromptRegistry<T> {
-	REGISTERED_REGISTRIES.set(dir, prompts as Record<string, PromptEntry>);
-	const overrides = getEvalPromptOverrides();
-	// No override set is the production path, and it takes none of the work below: the
-	// rows are returned by identity and every accessor is the plain one it was before
-	// this seam existed. A registry is read once per tool per turn, so an unconditional
-	// spread and a claimed-id sweep on each read would be paid by every session to
-	// serve a benchmark that is not running.
-	if (Object.keys(overrides).length === 0) {
-		const plainIds = Object.keys(prompts) as (keyof T & string)[];
-		return {
-			dir,
-			prompts,
-			ids: plainIds,
-			text: id => prompts[id].text,
-			require: id => requirePromptFrom(prompts as Record<string, PromptEntry>, id, dir),
-			has: id => Object.hasOwn(prompts, id),
-			fileFor: id => `${dir}/${id}.md`,
-		};
-	}
-	const effectivePrompts: Record<string, PromptEntry> = { ...prompts };
-	const newlyAppliedIds: string[] = [];
-
-	for (const [id, replacementText] of Object.entries(overrides)) {
-		if (Object.hasOwn(prompts, id)) {
-			CLAIMED_OVERRIDE_IDS.add(id);
-			effectivePrompts[id] = {
-				...prompts[id],
-				text: replacementText,
-			};
-			if (!ANNOUNCED_OVERRIDE_IDS.has(id)) {
-				ANNOUNCED_OVERRIDE_IDS.add(id);
-				newlyAppliedIds.push(id);
-			}
-		}
-	}
-
-	// WHY console.warn AND NOT logger.warn: `prompt-registry.ts` is imported by
-	// browser-bundled packages (collab-web, tool-render), so importing `@veyyon/utils/logger`
-	// would pull in `node:fs` and `winston` and break browser bundles. `console.warn` is a
-	// portable standard global across browser, Node and Bun runtimes, needing no imports.
-	if (newlyAppliedIds.length > 0) {
-		console.warn(
-			`EVAL-ONLY prompt override is ACTIVE (VEYYON_EVAL_PROMPTS): replacing prompt(s) [${newlyAppliedIds.join(", ")}]. ` +
-				`This is NOT the production prompt — expected only inside a benchmark arm.`,
-		);
-	}
-
+	// The production path is the identity path. A registry is read once per tool per
+	// turn, so an unconditional spread or a per-read sweep would be paid by every
+	// session to serve a benchmark that is not running; with no override set,
+	// `applyEvalPromptOverrides` hands back this very table and the accessors below
+	// close over it directly.
+	const { prompts: effective, appliedIds } = applyEvalPromptOverrides(prompts);
+	announceEvalPromptOverrides(appliedIds);
 	const ids = Object.keys(prompts) as (keyof T & string)[];
 	return {
 		dir,
-		get prompts(): T {
-			assertAllOverridesClaimed(dir, effectivePrompts);
-			return effectivePrompts as T;
-		},
+		prompts: effective as T,
 		ids,
-		text: id => {
-			assertAllOverridesClaimed(dir, effectivePrompts);
-			return effectivePrompts[id].text;
-		},
-		require: id => {
-			assertAllOverridesClaimed(dir, effectivePrompts);
-			return requirePromptFrom(effectivePrompts, id, dir);
-		},
-		has: id => Object.hasOwn(effectivePrompts, id),
+		text: id => effective[id].text,
+		require: id => requirePromptFrom(effective, id, dir),
+		has: id => Object.hasOwn(effective, id),
 		fileFor: id => `${dir}/${id}.md`,
 	};
 }

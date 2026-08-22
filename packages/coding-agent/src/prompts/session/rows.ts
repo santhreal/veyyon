@@ -18,7 +18,7 @@
  * for these ids, and the coverage suite fails on a second importer.
  */
 
-import type { PromptEntry } from "@veyyon/utils/prompt-registry";
+import { definePromptRows, type PromptEntry } from "@veyyon/utils/prompt-registry";
 
 import sessionContextFileAuthority from "./context-file-authority.md" with { type: "text" };
 import sessionCustomSystemPrompt from "./custom-system-prompt.md" with { type: "text" };
@@ -33,7 +33,7 @@ import sessionVerificationEvidenceReminder from "./verification-evidence-reminde
 import sessionVibeModeActive from "./vibe-mode-active.md" with { type: "text" };
 
 /** Every prompt under `src/prompts/session/`, keyed by its id (the path under `src/prompts/`). */
-export const sessionPrompts = {
+export const sessionPrompts = definePromptRows({
 	"session/context-file-authority": {
 		text: sessionContextFileAuthority,
 		purpose:
@@ -71,4 +71,4 @@ export const sessionPrompts = {
 		purpose: "the one-turn reminder to verify a successful mutation before finalizing",
 	},
 	"session/vibe-mode-active": { text: sessionVibeModeActive, purpose: "the director contract while vibe mode is on" },
-} satisfies Record<string, PromptEntry>;
+} satisfies Record<string, PromptEntry>);

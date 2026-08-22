@@ -18,7 +18,7 @@
  * for these ids, and the coverage suite fails on a second importer.
  */
 
-import type { PromptEntry } from "@veyyon/utils/prompt-registry";
+import { definePromptRows, type PromptEntry } from "@veyyon/utils/prompt-registry";
 
 import turnControlAutoContinue from "./auto-continue.md" with { type: "text" };
 import turnControlEagerTask from "./eager-task.md" with { type: "text" };
@@ -39,7 +39,7 @@ import turnControlUnexpectedStopClassifier from "./unexpected-stop-classifier.md
 import turnControlUnexpectedStopRetry from "./unexpected-stop-retry.md" with { type: "text" };
 
 /** Every prompt under `src/prompts/turn-control/`, keyed by its id (the path under `src/prompts/`). */
-export const turnControlPrompts = {
+export const turnControlPrompts = definePromptRows({
 	"turn-control/auto-continue": {
 		text: turnControlAutoContinue,
 		purpose: "resumes the user's most recent intent after compaction",
@@ -99,4 +99,4 @@ export const turnControlPrompts = {
 		text: turnControlUnexpectedStopRetry,
 		purpose: "restarts a turn that promised an action and stopped",
 	},
-} satisfies Record<string, PromptEntry>;
+} satisfies Record<string, PromptEntry>);

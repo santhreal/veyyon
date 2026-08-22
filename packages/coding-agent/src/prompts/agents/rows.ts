@@ -18,7 +18,7 @@
  * for these ids, and the coverage suite fails on a second importer.
  */
 
-import type { PromptEntry } from "@veyyon/utils/prompt-registry";
+import { definePromptRows, type PromptEntry } from "@veyyon/utils/prompt-registry";
 
 import agentsDeep from "./deep.md" with { type: "text" };
 import agentsDesigner from "./designer.md" with { type: "text" };
@@ -30,7 +30,7 @@ import agentsScout from "./scout.md" with { type: "text" };
 import agentsSonic from "./sonic.md" with { type: "text" };
 
 /** Every prompt under `src/prompts/agents/`, keyed by its id (the path under `src/prompts/`). */
-export const agentsPrompts = {
+export const agentsPrompts = definePromptRows({
 	"agents/deep": { text: agentsDeep, purpose: "the bundled end-to-end worker agent definition" },
 	"agents/designer": { text: agentsDesigner, purpose: "the bundled designer agent definition" },
 	"agents/frontmatter": { text: agentsFrontmatter, purpose: "renders an agent definition back out as frontmatter" },
@@ -39,4 +39,4 @@ export const agentsPrompts = {
 	"agents/reviewer": { text: agentsReviewer, purpose: "the bundled reviewer agent definition" },
 	"agents/scout": { text: agentsScout, purpose: "the bundled scout agent definition" },
 	"agents/sonic": { text: agentsSonic, purpose: "the bundled contained-change worker agent definition" },
-} satisfies Record<string, PromptEntry>;
+} satisfies Record<string, PromptEntry>);
