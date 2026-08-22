@@ -19,10 +19,17 @@ export interface LineSpan {
 	endLine: number;
 }
 
-/** Where the source came from, so tree-sitter can pick a grammar. */
+/**
+ * Where the source came from, so tree-sitter can pick a grammar.
+ *
+ * `text` is the same source `fullLines` was split from, when the caller still has it. The
+ * native side needs one string, and rebuilding it with `join` allocates the whole file a
+ * second time -- 3.5MiB per read on a 100k-line file whose caller had just read it.
+ */
 export interface BlockContextSource {
 	path?: string;
 	lang?: string;
+	text?: string;
 }
 
 export type LineEntry = { kind: "line"; lineNumber: number; text: string; context: boolean } | { kind: "ellipsis" };
@@ -106,7 +113,7 @@ function nativeBlockContext(
 	let boundaries: number[] | null;
 	try {
 		boundaries = enclosingBlockBoundaries({
-			code: fullLines.join("\n"),
+			code: source.text ?? fullLines.join("\n"),
 			path: source.path,
 			lang: source.lang,
 			ranges,
