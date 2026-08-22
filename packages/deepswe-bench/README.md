@@ -182,18 +182,38 @@ A run directory contains:
 - **Tool call distribution**: Mean calls per completed run by tool.
 - **Errors**: Breakdown of failed trials by category (timeout, exit code, missing verifier result).
 
-## Prompt section arms
+## Arm attachments
 
-To override a single prompt section, create `arms/<arm>.sections.yml` alongside `arms/<arm>.yml`:
+An arm's configuration is `arms/<name>.yml`. Prompt text is not configuration and no
+setting reaches it, so a prompt variant rides a second file named after the arm:
 
-```yaml
-# arms/candidate-delivery-terse.sections.yml
-deliveryContract: |
-  Report the outcome and nothing else. State what changed, in which files, and
-  whether it is verified.
-```
+| File | What it replaces | How it arrives |
+|---|---|---|
+| `arms/<arm>.sections.yml` | one banner-delimited region of the system prompt | `VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS` |
+| `arms/<arm>.statements.yml` | one rule inside a region; `null` removes the rule | `VEYYON_EVAL_SYSTEM_PROMPT_STATEMENTS` |
+| `arms/<arm>.prompts.yml` | one registered prompt: a tool description, a subagent prompt, an agent prompt | `VEYYON_EVAL_PROMPTS` |
+| `arms/<arm>.rule.md` | nothing; adds an always-apply rule the session loads | `~/.veyyon/rules/<arm>.md` |
 
-Run with:
+The kinds are declared in `arm-attachments.ts`. The runner stages each file it finds
+beside the binary, records it in `<out>/assets/attachments.json`, and folds it into the
+arm fingerprint. `pier_agent/arm_attachments.py` reads that manifest inside the
+container and delivers whatever it names. Adding a kind is one row in the table.
+
+Four rules hold for every kind:
+
+- A prompt experiment cannot be run by editing a prompt file in the tree. Both arms
+  execute one built binary, so an edited file applies to every arm and leaves a measured
+  delta with no cause.
+- An attachment needs its config half. `arms/<arm>.yml` must exist, or `--arms <arm>`
+  selects nothing.
+- An id no registry or builder holds is fatal, twice: in the runner before a container
+  starts, and in the agent at prompt assembly. An ignored override runs the shipped text
+  while the results table names the arm a treatment.
+- A single registry never judges an id it does not hold. Four packages ship registries
+  and they are constructed in import order, so an id belonging to a later one is not yet
+  claimed when an earlier one is built.
+
+Run an attachment arm the same way as any other arm:
 
 ```bash
 bun run.ts --arms baseline,candidate-delivery-terse \
@@ -202,28 +222,32 @@ bun run.ts --arms baseline,candidate-delivery-terse \
   --jobs 2 --repeats 1
 ```
 
-Available section names: `conventions`, `role`, `runtime`, `toolPolicy`, `executionWorkflow`, `deliveryContract`.
+### Sections
 
-## Prompt statement arms
+```yaml
+# arms/candidate-delivery-terse.sections.yml
+deliveryContract: |
+  Report the outcome and nothing else. State what changed, in which files, and
+  whether it is verified.
+```
 
-To ablate or override a specific statement, create `arms/<arm>.statements.yml`:
+Section names: `conventions`, `role`, `runtime`, `toolPolicy`, `executionWorkflow`,
+`deliveryContract`.
+
+### Statements
 
 ```yaml
 # arms/candidate-ablate-lsp-preference.statements.yml
 tool-policy/lsp: null
 ```
 
-List statement identifiers using:
+A section override answers "is this region worth its tokens"; TOOL POLICY is one region
+and 34 rules, so a score change across it has no attributable cause. A statement
+override is the finer instrument, and `null` is what removes a rule rather than
+rewording it. List the ids with `veyyon prompt --statements` and read one with
+`veyyon prompt --statement <id>`.
 
-```bash
-veyyon prompt --statements
-veyyon prompt --statement <id>
-```
-
-
-## Prompt registry arms
-
-To override a prompt from the prompt registry (such as a tool description, subagent prompt, or agent prompt), create `arms/<arm>.prompts.yml` alongside `arms/<arm>.yml`:
+### Registered prompts
 
 ```yaml
 # arms/candidate-bash-trim.prompts.yml
@@ -231,24 +255,8 @@ tools/bash: |
   Runs commands in the embedded shell — terminal ops: git, bun, cargo, python.
 ```
 
-A prompt experiment cannot be run by editing prompt files directly in the repository. Both arms of a benchmark run execute against a single built binary, so modifying a file in the tree applies the change to all arms simultaneously and leaves any measured delta without an identifiable cause.
-
-List prompt identifiers using:
-
-```bash
-veyyon prompt --prompts
-veyyon prompt --prompt <id>
-```
-
-The runner reads the id space from the registries of the tree it is building and refuses
-an unknown key before it starts a container, naming the nearest registered id. The agent
-refuses one again at prompt assembly, where every registry in the build is known. An
-unknown id is fatal in both places on purpose: an ignored override runs the shipped
-prompt while the results table names the arm a treatment.
-
-A single registry never judges an id it does not hold. Four packages ship registries and
-they are constructed in import order, so an id belonging to a later one is not yet
-claimed when an earlier one is built.
+List the ids with `veyyon prompt --prompts` and read one with `veyyon prompt --prompt
+<id>`. An id is the path under a registry's directory without `.md`.
 
 The override is applied where prompt text is read, which is the row table each module
 imports, not only the aggregate registry. Confirm an arm's override reaches a request
@@ -262,3 +270,14 @@ VEYYON_EVAL_PROMPTS='{"tools/bash":"run a command"}' veyyon prompt --tools
 The `desc` column of the `bash` row falls from 971 tokens to 4, and the total from 13724
 to 12757. A run of the same pair that reports no change means the override reached
 nothing and the arm measures its own control.
+
+### Rules
+
+```markdown
+<!-- arms/candidate-argot-nudge.rule.md -->
+Prefer the shorthand handles the dictionary defines over their expansions.
+```
+
+The file is copied to `~/.veyyon/rules/<arm>.md` in the container, where the session
+loads it as an always-apply rule. Its bytes are fingerprinted verbatim, so whitespace is
+part of the treatment.

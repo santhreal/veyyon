@@ -82,10 +82,13 @@ import {
 } from "./aggregate";
 import {
 	ARM_ATTACHMENT_KINDS,
-	type ArmAttachmentKind,
+	type ArmAttachmentManifestEntry,
+	type ArmAttachmentValues,
 	isArmAttachmentError,
+	mappingOf,
 	readArmAttachment,
 	stageArmAttachment,
+	writeArmAttachmentManifest,
 } from "./arm-attachments";
 import {
 	type ArmInputs,
@@ -1241,10 +1244,16 @@ async function main(): Promise<void> {
 	// model, or it silently degraded to decode-only and measured the wrong condition
 	// (the pre-run allowlist guard cannot catch a post-resolution model mismatch).
 	const encodeArms = new Set<string>();
+	// What each arm actually carries, in the shape the container reads it.
+	const stagedAttachments = new Map<string, readonly ArmAttachmentManifestEntry[]>();
 	for (const arm of arms) {
 		if (comparisonMode && arm !== "veyyon") {
 			armTemperature.set(arm, PINNED_TEMPERATURE);
 			armFingerprints.set(arm, createHash("sha256").update(`system-adapter:${arm}`).digest("hex"));
+			// A system adapter carries no attachment, but it still gets a manifest entry: an
+			// arm the manifest does not name at all is a runner that never staged for it,
+			// which the container refuses rather than running as an unlabelled control.
+			stagedAttachments.set(arm, []);
 			continue;
 		}
 		const configArm = comparisonMode ? "baseline" : arm;
@@ -1324,11 +1333,12 @@ async function main(): Promise<void> {
 		}
 		// One loop over ARM_ATTACHMENT_KINDS, not one block per kind: the parse, the
 		// mapping check, the value check and the staged bytes are the same work for a
-		// section, a statement and a prompt, and the three hand-written copies are how a
-		// fourth kind would arrive half-wired. Each read result is keyed by the kind's
+		// section, a statement, a prompt and a rule, and the hand-written copies are how a
+		// fifth kind would arrive half-wired. Each read result is keyed by the kind's
 		// ArmInputs field, so an attachment that exists on disk is necessarily in the
 		// fingerprint below and cannot collide with its own control as zero-IV.
-		const attachments: Partial<Record<ArmAttachmentKind["field"], unknown>> = {};
+		const attachments: ArmAttachmentValues = {};
+		const staged: ArmAttachmentManifestEntry[] = [];
 		for (const kind of ARM_ATTACHMENT_KINDS) {
 			const read = readArmAttachment(kind, path.join(BENCH_DIR, "arms"), arm, configArm);
 			if (isArmAttachmentError(read)) {
@@ -1340,29 +1350,23 @@ async function main(): Promise<void> {
 			// would run the shipped prompt while this table calls it a treatment. The agent
 			// refuses it too, but only once a container is running and quota is committed.
 			if (kind.field === "prompts") {
-				const problem = promptOverrideIdError(arm, read.value);
+				const problem = promptOverrideIdError(arm, mappingOf(read.payload) ?? {});
 				if (problem !== null) {
 					console.error(`error: ${problem}`);
 					process.exit(1);
 				}
 			}
-			attachments[kind.field] = read.value;
-			stageArmAttachment(kind, assetsDir, arm, read.value);
+			attachments[kind.field] = ("mapping" in read.payload ? read.payload.mapping : read.payload.bytes) as never;
+			staged.push(stageArmAttachment(kind, assetsDir, arm, read.payload));
 		}
-		let rule: Uint8Array | undefined;
-		const rulePath = path.join(BENCH_DIR, "arms", `${configArm}.rule.md`);
-		if (fs.existsSync(rulePath)) {
-			rule = fs.readFileSync(rulePath);
-			fs.mkdirSync(path.join(assetsDir, "rules"), { recursive: true });
-			fs.writeFileSync(path.join(assetsDir, "rules", `${arm}.md`), rule);
-		}
-		const mod: ArmInputs = {
-			config,
-			...attachments,
-			...(rule !== undefined ? { rule } : {}),
-		};
-		armFingerprints.set(arm, computeArmFingerprint(mod));
+		stagedAttachments.set(arm, staged);
+		armFingerprints.set(arm, computeArmFingerprint({ config, ...attachments }));
 	}
+	// The manifest is written for every run, including one whose arms carry nothing: the
+	// container side has to tell an empty manifest (this arm is a plain config overlay)
+	// from an absent one (a stale assets directory written by a runner too old to have
+	// this file), and only the second is a refusal.
+	writeArmAttachmentManifest(assetsDir, stagedAttachments);
 	// Single-IV floor: a controlled comparison must vary exactly one independent
 	// variable (README, "Single Independent Variable Rule"). Byte-identical arms
 	// vary ZERO, so every delta between them is noise — the silent no-op arm
