@@ -3,8 +3,62 @@ const trailingEvents = new WeakSet<ServerSentEvent>();
 import { abortableSource } from "./abortable";
 import { parseStreamingJson } from "./json-parse";
 import type { JsonlSkip } from "./jsonl-incremental";
+import { DEFAULT_MAX_STREAM_FRAME_BYTES, type StreamFrameKind, StreamFrameLimitError } from "./stream-frame-limit";
 
 const LF = 0x0a;
+
+/**
+ * How many bytes one frame may occupy before the reader stops trusting the peer.
+ *
+ * A reader with no bound is a reader that hands a hostile peer the heap: an SSE event
+ * with no blank line, a JSON-RPC message with no newline, and a `data:` field repeated
+ * forever all grow one buffer until the process dies, while the connection looks alive.
+ * Every reader here bounds the frame it is assembling and stops reading the source the
+ * moment the bound is crossed.
+ */
+export interface StreamFrameLimits {
+	/** Bytes allowed in one line or record before its delimiter. Defaults to 64 MiB. */
+	maxFrameBytes?: number;
+	/** Bytes allowed in one SSE event before its blank-line dispatch. Defaults to `maxFrameBytes`. */
+	maxEventBytes?: number;
+}
+
+/** Environment override for the default frame bound, in bytes. */
+export const STREAM_FRAME_MAX_BYTES_ENV = "VEYYON_STREAM_FRAME_MAX_BYTES";
+
+/**
+ * The default bound, after the environment has had its say.
+ *
+ * A caller that knows its protocol passes a limit; everything else — a provider stream, an
+ * MCP server's stdout, a session file — takes this one, and 64 MiB is the only number
+ * anyone would want to change from outside. A value that is not a positive integer falls
+ * back to the compiled default rather than to no bound, so a typo in the knob cannot undo
+ * the protection the knob exists to tune.
+ */
+function envCeiling(): number {
+	const raw = process.env[STREAM_FRAME_MAX_BYTES_ENV];
+	if (raw === undefined) return DEFAULT_MAX_STREAM_FRAME_BYTES;
+	const parsed = Number(raw.trim());
+	return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : DEFAULT_MAX_STREAM_FRAME_BYTES;
+}
+
+/**
+ * The frame bound a reader would use for these limits: the caller's number when it declared
+ * a usable one, otherwise the environment's, otherwise the compiled default. Exported so
+ * the policy can be asserted for what it is, rather than inferred from how much a reader
+ * happened to swallow.
+ */
+export function streamFrameCeiling(limits?: StreamFrameLimits): number {
+	const declared = limits?.maxFrameBytes;
+	return declared !== undefined && declared > 0 ? declared : envCeiling();
+}
+
+/** The bound on one SSE event: its own declared number, else whatever bounds a frame. */
+export function streamEventCeiling(limits?: StreamFrameLimits): number {
+	const declared = limits?.maxEventBytes;
+	return declared !== undefined && declared > 0 ? declared : streamFrameCeiling(limits);
+}
+
 type JsonlChunkResult = {
 	values: unknown[];
 	error: unknown;
@@ -25,8 +79,12 @@ function parseJsonlChunkCompat(input: Uint8Array | string, beg?: number, end?: n
 	return { values, error, read, done };
 }
 
-export async function* readLines(stream: ReadableStream<Uint8Array>, signal?: AbortSignal): AsyncGenerator<Uint8Array> {
-	const buffer = new ConcatSink();
+export async function* readLines(
+	stream: ReadableStream<Uint8Array>,
+	signal?: AbortSignal,
+	limits?: StreamFrameLimits,
+): AsyncGenerator<Uint8Array> {
+	const buffer = new ConcatSink(streamFrameCeiling(limits), "line");
 	const source = abortableSource(stream, signal);
 	try {
 		for await (const chunk of source) {
@@ -48,8 +106,12 @@ export async function* readLines(stream: ReadableStream<Uint8Array>, signal?: Ab
 	}
 }
 
-export async function* readJsonl<T>(stream: ReadableStream<Uint8Array>, signal?: AbortSignal): AsyncGenerator<T> {
-	const buffer = new ConcatSink();
+export async function* readJsonl<T>(
+	stream: ReadableStream<Uint8Array>,
+	signal?: AbortSignal,
+	limits?: StreamFrameLimits,
+): AsyncGenerator<T> {
+	const buffer = new ConcatSink(streamFrameCeiling(limits), "jsonl-record");
 	const source = abortableSource(stream, signal);
 	try {
 		for await (const chunk of source) {
@@ -83,6 +145,24 @@ export async function* readJsonl<T>(stream: ReadableStream<Uint8Array>, signal?:
 class ConcatSink {
 	#space?: Buffer;
 	#length = 0;
+	readonly #limit: number;
+	readonly #frame: StreamFrameKind;
+
+	constructor(limit: number, frame: StreamFrameKind) {
+		this.#limit = limit;
+		this.#frame = frame;
+	}
+
+	/**
+	 * Refuse a frame the peer never delimited.
+	 *
+	 * Called before the allocation, so the buffer never reaches the size being refused:
+	 * bounding the yielded frame alone would still let `#ensureCapacity` double its way
+	 * to the heap ceiling first.
+	 */
+	#guard(size: number): void {
+		if (size > this.#limit) throw new StreamFrameLimitError(this.#frame, size, this.#limit);
+	}
 
 	#ensureCapacity(size: number): Buffer {
 		const space = this.#space;
@@ -100,6 +180,7 @@ class ConcatSink {
 		const n = chunk.length;
 		if (!n) return;
 		const offset = this.#length;
+		this.#guard(offset + n);
 		const space = this.#ensureCapacity(offset + n);
 		space.set(chunk, offset);
 		this.#length += n;
@@ -111,6 +192,7 @@ class ConcatSink {
 			this.#length = 0;
 			return;
 		}
+		this.#guard(n);
 		const space = this.#ensureCapacity(n);
 		space.set(chunk, 0);
 		this.#length = n;
@@ -140,6 +222,11 @@ class ConcatSink {
 			const suffix = chunk.subarray(pos, nl);
 			pos = nl + 1;
 			if (this.isEmpty) {
+				// A complete line inside one chunk skips the buffer, so it skips `append`'s
+				// guard with it. Bound it here too: one delivered chunk is as large as the
+				// transport chose to make it, and a peer that sends its whole hostile frame
+				// in a single chunk is the same attack arriving faster.
+				this.#guard(suffix.length);
 				yield suffix;
 			} else {
 				this.append(suffix);
@@ -166,6 +253,11 @@ class ConcatSink {
 		const offset = this.#length;
 		const n = end - beg;
 		const total = offset + n;
+		// What we are about to own, not what the transport handed us: the empty-buffer
+		// branch above parses a delivered chunk in place and only the undelimited
+		// remainder reaches `reset`, which guards it. This branch copies, so the copy is
+		// what has to be bounded, and it is bounded before it is allocated.
+		this.#guard(total);
 		const space = this.#ensureCapacity(total);
 		space.set(chunk.subarray(beg, end), offset);
 		this.#length = total;
@@ -230,8 +322,9 @@ export async function* readSseJson<T>(
 	stream: ReadableStream<Uint8Array>,
 	signal?: AbortSignal,
 	onEvent?: SseEventObserver,
+	limits?: StreamFrameLimits,
 ): AsyncGenerator<T> {
-	for await (const sse of readSseEvents(stream, signal)) {
+	for await (const sse of readSseEvents(stream, signal, limits)) {
 		const isTrailing = trailingEvents.has(sse);
 		notifySseEventObserver(onEvent, sse);
 		const data = sse.data;
@@ -274,6 +367,12 @@ interface SseEventState {
 	// seen yet" (distinct from a `data:` field with an empty value).
 	data: string | null;
 	raw: string[];
+	// Bytes this event has taken off the wire since the last dispatch, counting
+	// every line including comments. Each individual line can be well inside the
+	// line bound while the event they build is not: `data: x` repeated forever, or
+	// a `: keepalive` comment per millisecond, grows `data` and `raw` with no
+	// blank line ever arriving to release them.
+	bytes: number;
 }
 
 // Single decoder reused for all line decodes. Safe because lines are split on
@@ -286,6 +385,7 @@ function decodeSseLineBytes(line: Uint8Array, end: number): string {
 }
 
 function flushSseEvent(state: SseEventState): ServerSentEvent | null {
+	state.bytes = 0;
 	if (state.event === null && state.data === null) {
 		state.raw = [];
 		return null;
@@ -301,12 +401,18 @@ function flushSseEvent(state: SseEventState): ServerSentEvent | null {
 	return event;
 }
 
-function pushSseLine(line: Uint8Array, state: SseEventState): ServerSentEvent | null {
+function pushSseLine(line: Uint8Array, state: SseEventState, maxEventBytes: number): ServerSentEvent | null {
 	// `appendAndFlushLines` splits on LF only; strip a trailing CR so CRLF sources
 	// don't leak `\r` into field values.
 	let end = line.length;
 	if (end > 0 && line[end - 1] === 0x0d /* '\r' */) end--;
 	if (end === 0) return flushSseEvent(state);
+
+	// The line's own bytes plus the LF that delimited it: what the peer spent on this
+	// event so far. Checked before the line is retained, so the refusal happens instead
+	// of the growth rather than after it.
+	state.bytes += line.length + 1;
+	if (state.bytes > maxEventBytes) throw new StreamFrameLimitError("sse-event", state.bytes, maxEventBytes);
 
 	// Comment line: keep in `raw` for diagnostic context, skip parsing.
 	if (line[0] === 0x3a /* ':' */) {
@@ -360,14 +466,16 @@ function pushSseLine(line: Uint8Array, state: SseEventState): ServerSentEvent | 
 export async function* readSseEvents(
 	stream: ReadableStream<Uint8Array>,
 	signal?: AbortSignal,
+	limits?: StreamFrameLimits,
 ): AsyncGenerator<ServerSentEvent> {
-	const lineBuffer = new ConcatSink();
-	const state: SseEventState = { event: null, data: null, raw: [] };
+	const lineBuffer = new ConcatSink(streamFrameCeiling(limits), "sse-line");
+	const maxEventBytes = streamEventCeiling(limits);
+	const state: SseEventState = { event: null, data: null, raw: [], bytes: 0 };
 	const source = abortableSource(stream, signal);
 	try {
 		for await (const chunk of source) {
 			for (const line of lineBuffer.appendAndFlushLines(chunk)) {
-				const event = pushSseLine(line, state);
+				const event = pushSseLine(line, state, maxEventBytes);
 				if (event) yield event;
 			}
 		}
@@ -376,7 +484,7 @@ export async function* readSseEvents(
 			const tail = lineBuffer.flush();
 			if (tail) {
 				lineBuffer.clear();
-				const event = pushSseLine(tail, state);
+				const event = pushSseLine(tail, state, maxEventBytes);
 				if (event) {
 					trailingEvents.add(event);
 					yield event;
@@ -400,6 +508,10 @@ export async function* readSseEvents(
 // long-standing `@veyyon/utils/stream` import path keeps working. One shape for
 // "a record was dropped", whichever reader dropped it.
 export type { JsonlSkip } from "./jsonl-incremental";
+// The bound and its error live in a zero-import leaf so the retry classifier can key off
+// the class without pulling the reader stack in; `@veyyon/utils/stream` stays the one
+// import path a consumer of these readers needs.
+export * from "./stream-frame-limit";
 
 export interface ParseJsonlLenientOptions {
 	/**

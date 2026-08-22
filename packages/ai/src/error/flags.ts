@@ -1,4 +1,5 @@
 import { http2RetryVerdict, isUnexpectedSocketCloseMessage } from "@veyyon/utils/fetch-retry";
+import { STREAM_FRAME_LIMIT_ERROR_NAME } from "@veyyon/utils/stream-frame-limit";
 import type { Api, AssistantMessage } from "../types";
 import { AwsCredentialsError } from "./aws";
 import {
@@ -496,6 +497,7 @@ function classifyText(errorMessage: string | undefined, errorStatus: number | un
 
 export function classify(error: unknown, api?: Api): number {
 	let kinds = 0;
+	let framingViolation = false;
 	const seen = new Set<object>();
 	let link: unknown = error;
 	while (link !== undefined && link !== null) {
@@ -548,8 +550,21 @@ export function classify(error: unknown, api?: Api): number {
 			kinds |= linkKinds;
 		}
 
+		// A framing violation is the peer's protocol breach, and it decides transience for
+		// the whole chain: whatever a wrapper's sentence says, and whatever else the chain
+		// mentions, the stream ended because the peer would not delimit its frame and the
+		// next attempt reaches the same peer. Its own prose is kept out of the text rules
+		// as well — "a line arrived with no line feed" names no transport and carries no
+		// status, yet an earlier wording matched TRANSIENT_TRANSPORT_PATTERN's /terminated/
+		// through the word "unterminated" and came back retryable.
+		const isFramingViolation =
+			typeof link === "object" && (link as { name?: unknown }).name === STREAM_FRAME_LIMIT_ERROR_NAME;
+		if (isFramingViolation) framingViolation = true;
+
 		let linkMessage: string | undefined;
-		if (link instanceof Error) {
+		if (isFramingViolation) {
+			linkMessage = undefined;
+		} else if (link instanceof Error) {
 			linkMessage = link.message;
 		} else if (typeof link === "string") {
 			linkMessage = link;
@@ -566,6 +581,10 @@ export function classify(error: unknown, api?: Api): number {
 
 		link = typeof link === "object" && "cause" in link ? (link as { cause: unknown }).cause : undefined;
 	}
+
+	// Cleared after the walk, not skipped during it: a wrapper's own prose is classified
+	// before the cause carrying the breach is even reached.
+	if (framingViolation) kinds &= ~Flag.Transient;
 
 	return kinds !== 0 ? create(kinds) : (status(error) ?? 0);
 }
