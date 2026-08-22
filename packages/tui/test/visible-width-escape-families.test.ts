@@ -54,19 +54,25 @@ describe("two-byte Fe and Fs escapes", () => {
 	});
 
 	/**
-	 * `ESC` plus a byte BELOW `0x40` is left alone, because the native leaves it alone.
+	 * `ESC` plus a byte in `0x30..0x3f` is the Fp class, and it draws nothing either.
 	 *
-	 * `ESC 7` (save cursor) and `ESC =` (keypad mode) are real sequences that a
-	 * terminal consumes, and the native still counts their second byte. Matching the
-	 * oracle that does the cutting matters more here than matching the terminal: if
-	 * this side went to zero while the native stayed at one, a cut span would
-	 * re-measure NARROWER than the cut, and the padding computed from it would come
-	 * out short. Recorded as a known limit of the pair rather than fixed on one side.
+	 * `ESC 7` and `ESC 8` save and restore the cursor and `ESC =` sets keypad mode;
+	 * a terminal consumes all three. Both oracles used to charge one cell for the
+	 * second byte, which was wrong in the same direction on both sides and therefore
+	 * invisible. Bun 1.4.0 started stripping the class, which split the pair — the
+	 * measurer answered zero while the native still cut as though it were a cell, so
+	 * a span cut to fit W re-measured NARROWER than W and padding computed from the
+	 * cut came out short. The native strips it now too, and this side matches the
+	 * class explicitly rather than relying on which Bun is underneath.
 	 */
-	it("leaves the Fp range to the native model", () => {
-		for (const sequence of ["\x1b7", "\x1b8", "\x1b="]) {
+	it("costs nothing for the Fp range, on both oracles", () => {
+		for (const sequence of ["\x1b7", "\x1b8", "\x1b=", "\x1b>"]) {
+			expect(visibleWidth(sequence)).toBe(0);
 			expect(visibleWidth(sequence)).toBe(nativeWidth(sequence));
 		}
+		// Two bytes, and only two: the text around the sequence still counts.
+		expect(visibleWidth("a\x1b7b")).toBe(2);
+		expect(visibleWidth("a\x1b7b")).toBe(nativeWidth("a\x1b7b"));
 	});
 });
 
