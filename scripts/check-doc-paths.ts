@@ -252,19 +252,22 @@ function resolvesFor(rootDir: string, relFile: string, target: string): boolean 
  *    `scripts/foo.js` in a prompt teaching skill invocation), which by definition
  *    does not exist yet;
  *  - a path in the USER'S project rather than this one
- *    (`.github/copilot-instructions.md`, the illustrative
- *    `packages/server/src/database/connection.ts` that argot's docs use as a
- *    stand-in for "some long path in your repo").
+ *    (`.github/copilot-instructions.md`).
  *
- * An entry here is a promise to remove it, and two have been kept. The list used
- * to carry `docs/internal/natives-architecture.md:77`, which named a generator
- * script for the per-platform natives leaf packages. The script did not move, it
- * was deleted when the npm publish channel was removed, and the doc had gone on
- * describing it. The doc now describes what actually ships, so the path is gone
- * and the entry with it. It also carried `docs/context-files.md:151:docs/setup.md`,
- * which was only the filler path in an example of trailing-punctuation trimming;
- * the example now uses `notes/setup.md`, which names no source root, so it needs
- * no entry at all. Every remaining entry is one of the three kinds above.
+ * An entry here is a promise to remove it, and four have been kept. The list
+ * used to carry `docs/internal/natives-architecture.md:77`, which named a
+ * generator script for the per-platform natives leaf packages. The script did not
+ * move, it was deleted when the npm publish channel was removed, and the doc had
+ * gone on describing it. The doc now describes what actually ships, so the path is
+ * gone and the entry with it. It also carried
+ * `docs/context-files.md:151:docs/setup.md`, which was only the filler path in an
+ * example of trailing-punctuation trimming; the example now uses
+ * `notes/setup.md`, which names no source root, so it needs no entry at all. The
+ * last two to go were the illustrative
+ * `packages/server/src/database/connection.ts` in the argot blog post, which the
+ * post now shows only inside its TOML dictionary example, and a fenced block is
+ * not where this gate reads. Every remaining entry is one of the three kinds
+ * above.
  *
  * Adding to this list is deliberately awkward: the exact line number is part of
  * the key, so an entry stops matching the moment the doc is edited around it, and
@@ -278,8 +281,6 @@ export const DEAD_PATH_BASELINE: readonly string[] = Object.freeze([
 	"docs/context-files.md:243:.github/copilot-instructions.md",
 	"docs/internal/toolconv/deepseek.md:101:assets/search_tool_trajectory.html",
 	"packages/coding-agent/src/prompts/skills/user-invocation.md:8:scripts/foo.js",
-	"website/blog/argot.md:12:packages/server/src/database/connection.ts",
-	"website/blog/argot.md:43:packages/server/src/database/connection.ts",
 ]);
 
 /** The baseline key for a finding: file, line, and the span exactly as written. */
