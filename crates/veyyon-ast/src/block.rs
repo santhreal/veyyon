@@ -824,6 +824,36 @@ mod tests {
 	}
 
 	#[test]
+	fn an_edited_source_answers_the_same_in_every_language() {
+		// WHY: the parse cache serves a near miss by editing the tree it holds
+		// and reparsing against it, which tree-sitter guarantees produces the
+		// tree a fresh parse would. The guarantee is per grammar, so the sweep
+		// runs every language in the table rather than the two the reuse path
+		// was written against. The edit is a line inserted after the first
+		// line: no grammar needs it to be syntactically meaningful, because
+		// what is asserted is that both routes to the same bytes agree.
+		for (lang, code) in language_fixtures() {
+			let first_break = code.find('\n').map_or(code.len(), |index| index + 1);
+			let edited = format!("{}\n{}", &code[..first_break], &code[first_break..]);
+			let lines = edited.lines().count() as u32;
+			for line in 1..=lines {
+				let window = vec![(line, (line + 1).min(lines))];
+				crate::parse_cache::clear();
+				let fresh = boundaries_for_lang(&edited, lang, &window);
+
+				crate::parse_cache::clear();
+				boundaries_for_lang(code, lang, &window);
+				assert_eq!(
+					boundaries_for_lang(&edited, lang, &window),
+					fresh,
+					"{} reused a tree that answers differently at {window:?}",
+					lang.canonical_name()
+				);
+			}
+		}
+	}
+
+	#[test]
 	fn intersects_visible_answers_at_the_edges() {
 		let merged = normalize_ranges(vec![LineRange { start_line: 10, end_line: 20 }, LineRange {
 			start_line: 40,

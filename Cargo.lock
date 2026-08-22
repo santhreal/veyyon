@@ -5864,6 +5864,7 @@ dependencies = [
  "ast-grep-core",
  "globset",
  "ignore",
+ "memchr",
  "phf 0.13.1",
  "serde",
  "tree-sitter",
