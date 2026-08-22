@@ -616,6 +616,13 @@ function renderedLinesCacheSize(lines: readonly string[]): number {
 // over-matching is safe (it only costs the fast path), under-matching is not.
 const HAS_REF_DEF = /^ {0,3}\[(?:\\.|[^\]\\])+\]:/m;
 
+// Can this text be lexed as an appended tail? A reference definition resolves
+// across the whole document and CR is normalized by marked, so either one in the
+// scanned span forces a full lex.
+function canStreamLex(text: string): boolean {
+	return !HAS_REF_DEF.test(text) && !text.includes("\r");
+}
+
 // Untrusted model output can over-nest markdown structure: a blockquote nests
 // once per leading `>` (`>>>>…`), a list once per indentation step. marked's
 // block lexer recurses per nesting level and is super-linear on list indent, so
@@ -1051,6 +1058,13 @@ export class Markdown implements Component {
 	#streamPrefixText?: string;
 	#streamPrefixTokens?: Token[];
 	#streamPrefixLineCache?: StreamPrefixLineCache;
+	// The text the frozen prefix above was cut from. Held by reference so a frame
+	// re-deriving the same string knows the prefix still is one without comparing
+	// the whole transcript again.
+	#streamPrefixSource?: string;
+	// Leading whole lines of #text that need no render normalization, so a frame
+	// scans only what arrived after them (see #normalizeForRender).
+	#normalizedCleanHead?: string;
 	// Rows of the most recent render() that are settled — top padding plus the
 	// rendered frozen token prefix — exposed via getLastRenderSettledRows()
 	// for native-scrollback commit gating.
@@ -1110,6 +1124,7 @@ export class Markdown implements Component {
 			this.#streamPrefixText = undefined;
 			this.#streamPrefixTokens = undefined;
 			this.#streamPrefixLineCache = undefined;
+			this.#streamPrefixSource = undefined;
 			this.#settledExposedText = undefined;
 		}
 		this.invalidate();
@@ -1145,35 +1160,70 @@ export class Markdown implements Component {
 		return this.#lastRenderSettledRows;
 	}
 
+	// Tab expansion and the nesting caps for render. Both are line-local — tabs
+	// are replaced one character at a time and each cap is anchored at a line
+	// start — so a span of whole lines that needed no transform cannot need one
+	// because text arrived after it. Only the arrived tail is scanned, and text
+	// that needs no transform is returned by reference rather than copied: the
+	// nesting scan alone was 0.030ms of a 0.053ms frame at 10,000 streamed
+	// tokens, spent on bytes that had already been scanned on every earlier
+	// frame. A tail that does need transforming falls back to normalizing the
+	// whole text, which is what every frame did before.
+	#normalizeForRender(raw: string): string {
+		const clean = this.#normalizedCleanHead;
+		const from = clean !== undefined && raw.length >= clean.length && raw.startsWith(clean) ? clean.length : 0;
+		const tail = from === 0 ? raw : raw.slice(from);
+		if (tail.includes("\t") || OVER_NESTED.test(tail)) {
+			this.#normalizedCleanHead = undefined;
+			return capMarkdownNesting(replaceTabs(raw));
+		}
+		const boundary = raw.lastIndexOf("\n") + 1;
+		if (boundary > from) this.#normalizedCleanHead = raw.slice(0, boundary);
+		return raw;
+	}
+
 	// Lex `text` into block tokens, reusing the frozen stable prefix when the text
 	// only grew (the streaming path). Falls back to a full lex whenever the prefix
 	// is no longer a prefix (non-append edit), the text carries reference-link
 	// definitions, or it contains CR (marked normalizes CRLF, which would desync
 	// raw-span offsets). Every fallback is correctness-preserving — only speed
 	// differs; the render loop sees the identical token list either way.
+	//
+	// On the streaming path the two refusals are read off the arrived tail alone.
+	// A prefix is frozen only after the whole text passed this check, so neither
+	// shape can be inside it, and re-reading the transcript for them was the
+	// largest cost a long stream paid per frame: 0.032ms of a 0.082ms frame at
+	// 10,000 streamed tokens, spent again on every token.
 	#lexTokens(text: string): Token[] {
-		const canStream = !HAS_REF_DEF.test(text) && !text.includes("\r");
 		const prefix = this.#streamPrefixText;
 		const prefixTokens = this.#streamPrefixTokens;
 		if (
-			canStream &&
 			prefix !== undefined &&
 			prefixTokens !== undefined &&
 			text.length > prefix.length &&
 			text.startsWith(prefix)
 		) {
-			const tailTokens = markdownParser.lexer(text.slice(prefix.length));
-			const tokens = [...prefixTokens, ...tailTokens];
-			this.#freezeStablePrefix(text, tokens, { preserveExisting: true });
-			return tokens;
+			const tail = text.slice(prefix.length);
+			if (canStreamLex(tail)) {
+				const tailTokens = markdownParser.lexer(tail);
+				const tokens = [...prefixTokens, ...tailTokens];
+				this.#freezeStablePrefix(text, tokens, { preserveExisting: true });
+				// `text` extends the prefix, proven just above, and the freeze only
+				// ever advances the boundary within it. Recording which string that
+				// was is what lets the render path skip proving it again.
+				this.#streamPrefixSource = text;
+				return tokens;
+			}
 		}
 		const tokens = markdownParser.lexer(text);
-		if (canStream) {
+		if (canStreamLex(text)) {
 			this.#freezeStablePrefix(text, tokens, { preserveExisting: false });
+			if (this.#streamPrefixText !== undefined) this.#streamPrefixSource = text;
 		} else {
 			this.#streamPrefixText = undefined;
 			this.#streamPrefixTokens = undefined;
 			this.#streamPrefixLineCache = undefined;
+			this.#streamPrefixSource = undefined;
 		}
 		return tokens;
 	}
@@ -1183,11 +1233,17 @@ export class Markdown implements Component {
 	// render re-lexes only the unfrozen tail. Caller guarantees no CR / no
 	// reference definitions, so each token's `raw` is a verbatim slice of `text`
 	// and the summed offsets address `text` exactly.
+	//
+	// A boundary already frozen stays frozen under append-only growth, so the
+	// scan resumes there instead of re-summing every token's raw and re-slicing
+	// the whole frozen prefix on every frame.
 	#freezeStablePrefix(text: string, tokens: Token[], opts: { preserveExisting: boolean }): void {
-		let pos = 0;
-		let frozenEnd = 0;
-		let frozenCount = 0;
-		for (let i = 0; i < tokens.length; i++) {
+		const existingText = opts.preserveExisting ? this.#streamPrefixText : undefined;
+		const existingTokens = existingText === undefined ? undefined : this.#streamPrefixTokens;
+		let pos = existingText === undefined ? 0 : existingText.length;
+		let frozenEnd = pos;
+		let frozenCount = existingTokens?.length ?? 0;
+		for (let i = frozenCount; i < tokens.length; i++) {
 			const raw = tokens[i].raw;
 			const end = pos + raw.length;
 			// A `space` token ending in "\n\n" closes the preceding block, but a
@@ -1210,8 +1266,10 @@ export class Markdown implements Component {
 		if (frozenCount > 0 && frozenEnd < text.length) {
 			const next = text.charCodeAt(frozenEnd);
 			if (next !== 0x20 /* space */ && next !== 0x0a /* \n */) {
-				this.#streamPrefixText = text.slice(0, frozenEnd);
-				this.#streamPrefixTokens = tokens.slice(0, frozenCount);
+				if (existingText === undefined || frozenEnd > existingText.length) {
+					this.#streamPrefixText = text.slice(0, frozenEnd);
+					this.#streamPrefixTokens = tokens.slice(0, frozenCount);
+				}
 				return;
 			}
 		}
@@ -1220,6 +1278,7 @@ export class Markdown implements Component {
 			this.#streamPrefixText = undefined;
 			this.#streamPrefixTokens = undefined;
 			this.#streamPrefixLineCache = undefined;
+			this.#streamPrefixSource = undefined;
 		}
 	}
 
@@ -1250,7 +1309,7 @@ export class Markdown implements Component {
 
 		// Replace tabs with 3 spaces for consistent rendering, then bound structural
 		// nesting depth so pathological model output can't overflow or hang the lexer.
-		const normalizedText = capMarkdownNesting(replaceTabs(this.#text));
+		const normalizedText = this.#normalizeForRender(this.#text);
 		const signature = this.#renderSignature(width, paddingX);
 
 		// L2: module-level LRU — survives component disposal/recreation across
@@ -1291,8 +1350,10 @@ export class Markdown implements Component {
 		}
 		const emptyLines = this.#renderEmptyPaddingLines(signature);
 
-		// Combine top padding, content, and bottom padding
-		const rawResult = [...emptyLines, ...contentLines, ...emptyLines];
+		// Combine top padding, content, and bottom padding. The content array is
+		// this render's own, so with no padding it is handed out as it stands
+		// rather than spread into a third copy of every row.
+		const rawResult = emptyLines.length === 0 ? contentLines : emptyLines.concat(contentLines, emptyLines);
 		const result = rawResult.length > 0 ? rawResult : [""];
 
 		// Update caches and hand the array out by reference. Callers must not
@@ -1341,59 +1402,72 @@ export class Markdown implements Component {
 	): string[] {
 		const frozenText = this.#streamPrefixText;
 		const frozenTokenCount = this.#streamPrefixTokens?.length ?? 0;
-		if (frozenText === undefined || frozenTokenCount === 0 || !normalizedText.startsWith(frozenText)) {
+		// #lexTokens records the string it left this prefix in place for, and it
+		// runs on every uncached render, so identity answers whether the prefix is
+		// still a prefix. Comparing the two strings instead re-read the whole
+		// settled transcript on every frame to reach the same answer. Anything
+		// else renders in full, which is correct and only slower.
+		if (frozenText === undefined || frozenTokenCount === 0 || this.#streamPrefixSource !== normalizedText) {
 			return this.#renderContentLines(tokens, 0, tokens.length, contentWidth, signature);
 		}
 
-		const contentLines: string[] = [];
+		// The frozen rows are held as one immutable array and reused by reference
+		// while nothing new freezes, so a frame copies them exactly once — into
+		// the array it returns. Spreading them into an accumulator and slicing
+		// that accumulator back into the cache copied every settled row twice per
+		// frame, and `push(...rows)` puts one argument on the stack per row,
+		// which a long transcript is eventually large enough to overflow.
 		const reusablePrefix = this.#matchingStreamPrefixLineCache(normalizedText, frozenText, signature);
-		let renderedUntil = 0;
-		if (reusablePrefix && reusablePrefix.tokenCount <= frozenTokenCount) {
-			contentLines.push(...reusablePrefix.lines);
-			renderedUntil = reusablePrefix.tokenCount;
-		}
-
-		if (renderedUntil < frozenTokenCount) {
+		let frozenLines: readonly string[];
+		if (reusablePrefix && reusablePrefix.tokenCount === frozenTokenCount) {
+			frozenLines = reusablePrefix.lines;
+		} else {
+			const reusedUntil =
+				reusablePrefix && reusablePrefix.tokenCount < frozenTokenCount ? reusablePrefix.tokenCount : 0;
 			// Frozen tokens render with full fidelity (syntax highlighting on)
 			// so these cached rows byte-match the finalized render.
 			this.#renderingFrozenPrefix = true;
+			let rendered: string[];
 			try {
-				contentLines.push(
-					...this.#renderContentLines(tokens, renderedUntil, frozenTokenCount, contentWidth, signature),
-				);
+				rendered = this.#renderContentLines(tokens, reusedUntil, frozenTokenCount, contentWidth, signature);
 			} finally {
 				this.#renderingFrozenPrefix = false;
 			}
-			renderedUntil = frozenTokenCount;
+			frozenLines = reusedUntil > 0 && reusablePrefix ? reusablePrefix.lines.concat(rendered) : rendered;
+			this.#streamPrefixLineCache = {
+				...signature,
+				text: frozenText,
+				tokenCount: frozenTokenCount,
+				lines: frozenLines,
+			};
 		}
-
-		this.#streamPrefixLineCache = {
-			...signature,
-			text: frozenText,
-			tokenCount: frozenTokenCount,
-			lines: contentLines.slice(),
-		};
 
 		// Settled exposure (hard-monotone): these rows are declared final to
 		// the host, so expose them only while the frozen text still extends
 		// the previously exposed prefix; a rewind resets to 0 and re-earns on
 		// the rewritten lineage.
-		if (contentLines.length > 0) {
-			if (this.#settledExposedText === undefined || frozenText.startsWith(this.#settledExposedText)) {
+		if (frozenLines.length > 0) {
+			const exposed = this.#settledExposedText;
+			if (exposed === undefined || exposed === frozenText || frozenText.startsWith(exposed)) {
 				this.#settledExposedText = frozenText;
-				this.#lastRenderSettledRows = signature.paddingY + contentLines.length;
+				this.#lastRenderSettledRows = signature.paddingY + frozenLines.length;
 			} else {
 				this.#settledExposedText = undefined;
 			}
 		}
 
-		if (renderedUntil < tokens.length) {
-			contentLines.push(...this.#renderContentLines(tokens, renderedUntil, tokens.length, contentWidth, signature));
+		if (frozenTokenCount < tokens.length) {
+			const tail = this.#renderContentLines(tokens, frozenTokenCount, tokens.length, contentWidth, signature);
+			return frozenLines.concat(tail);
 		}
-
-		return contentLines;
+		return frozenLines.slice();
 	}
 
+	// `frozenText` is already known to be a prefix of `normalizedText`. When the
+	// entry was written for that same string — the common case, since the frozen
+	// text is reused by reference while nothing new freezes — both prefix
+	// questions are already answered and comparing the transcript again answers
+	// nothing.
 	#matchingStreamPrefixLineCache(
 		normalizedText: string,
 		frozenText: string,
@@ -1401,7 +1475,9 @@ export class Markdown implements Component {
 	): StreamPrefixLineCache | undefined {
 		const cache = this.#streamPrefixLineCache;
 		if (!cache) return undefined;
-		if (!normalizedText.startsWith(cache.text) || !frozenText.startsWith(cache.text)) return undefined;
+		if (cache.text !== frozenText && (!normalizedText.startsWith(cache.text) || !frozenText.startsWith(cache.text))) {
+			return undefined;
+		}
 		if (cache.width !== signature.width) return undefined;
 		if (cache.paddingX !== signature.paddingX) return undefined;
 		if (cache.paddingY !== signature.paddingY) return undefined;
