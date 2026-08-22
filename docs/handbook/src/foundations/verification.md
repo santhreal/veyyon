@@ -68,6 +68,13 @@ The driver also requires the model row to exist on that server, and writes `<sce
 beside the frames naming the row, the endpoint, the host and the display server the take was
 recorded on.
 
+Every binary the run will use is resolved before the first frame: `docker`, `bun` for the scene
+check, and `ffmpeg` and `python3` for the publish chain. ImageMagick answers to `magick` on 7 and
+`convert` on 6, and either is accepted. Bun is looked for at `~/.bun/bin/bun` when it is not on
+`PATH`, because a recording is driven over ssh and a non-login shell there does not carry the
+installer's entry. A publish tool first called after the recording is a take lost to a `PATH`
+difference, which is why a rehearsal needs only `docker`.
+
 
 The archived take remains at capture speed. The landing-page cut keeps the plan, the worker setup, verification and signing at 1×. Visible implementation between the worker launch and the verified build plays at 1.25×. Named marks in the take select those boundaries; untouched screens are shortened to four seconds rather than accelerated.
 

@@ -252,16 +252,41 @@ WORK="$(mktemp -d .captures/veyyon-hd-demo.XXXXXX)"
 # into proof/captures and resampled into assets.
 trap 'if [ "$?" -eq 0 ] && [ "${REHEARSAL}" -eq 0 ]; then rm -rf "${WORK}"; else echo "record-hd-demo.sh: kept ${WORK}" >&2; fi' EXIT
 
-# ImageMagick under either of its two names. ImageMagick 7 ships `magick` and 6 ships
-# `convert`, this fleet has 6 on both hosts, and the resampling step assumed 7 -- which is
-# how a take reached its publish step and lost its stills to a PATH difference. Resolved
-# once, loudly, before anything is recorded, rather than at the end of a long take.
+# EVERY EXTERNAL BINARY THIS RUN WILL NEED, RESOLVED BEFORE ANY WEIGHTS ARE TOUCHED.
+# ImageMagick 7 ships `magick` and 6 ships `convert`, this fleet has 6, and the resampling
+# step assumed 7 -- which is how a take reached its publish step and lost its stills to a
+# PATH difference. The same argument covers the rest of the publish chain: ffmpeg and
+# python3 are first called after the recording is over, so a host without them loses the
+# take rather than the last step of it.
 if command -v magick >/dev/null 2>&1; then
 	IM=(magick)
 elif command -v convert >/dev/null 2>&1; then
 	IM=(convert)
 else
 	echo "record-hd-demo.sh: no ImageMagick (magick or convert) on PATH" >&2
+	exit 2
+fi
+
+REQUIRED_TOOLS=(docker)
+if [[ "${REHEARSAL}" -eq 0 ]]; then
+	REQUIRED_TOOLS+=(ffmpeg python3)
+fi
+for tool in "${REQUIRED_TOOLS[@]}"; do
+	if ! command -v "${tool}" >/dev/null 2>&1; then
+		echo "record-hd-demo.sh: ${tool} is not on PATH. The take needs it, so it is resolved now rather than after the recording." >&2
+		exit 2
+	fi
+done
+
+# The scene checker below runs under bun. A recording is driven on the machine serving the
+# weights, which means over ssh, and a non-login shell there does not carry the installer's
+# PATH entry -- so the default install location is tried before giving up.
+if command -v bun >/dev/null 2>&1; then
+	BUN=bun
+elif [[ -x "${HOME}/.bun/bin/bun" ]]; then
+	BUN="${HOME}/.bun/bin/bun"
+else
+	echo "record-hd-demo.sh: no bun on PATH or at ~/.bun/bin/bun. The scene checker needs it." >&2
 	exit 2
 fi
 
@@ -305,7 +330,7 @@ require_every_mark_has_a_frame() {
 # step then leaves the PREVIOUS take's frame under that name. Two guards in this scene were in
 # that state (a board header that dropped its count, a status line that lives in a details
 # panel), which is minutes of a take spent proving nothing.
-bun scripts/verify-scene.ts "${SCENE}" >&2
+"${BUN}" scripts/verify-scene.ts "${SCENE}" >&2
 
 # WHICH MODEL, AND WHERE IT IS. The take is recorded on the host serving the weights, so the
 # endpoint is a loopback address; a base URL pointing at another machine means the session's
