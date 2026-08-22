@@ -119,6 +119,23 @@ impl Drop for Restore {
 	}
 }
 
+/// One mutant run's output file, removed when the run's verdict returns.
+///
+/// The file lives beside the ledger rather than in the system temp directory:
+/// a campaign attempts thousands of mutants, and a per-run file nobody deletes
+/// is thousands of files in a directory shared with every other process on the
+/// machine. `Drop` covers the early returns too — a spawn that fails, a
+/// non-viable build, a suite killed at the cap.
+struct RunLog {
+	path: PathBuf,
+}
+
+impl Drop for RunLog {
+	fn drop(&mut self) {
+		let _ = fs::remove_file(&self.path);
+	}
+}
+
 /// Put back a mutation whose runner was killed before its guard could run.
 ///
 /// Returns the file it repaired. A record naming a file that already holds the
@@ -296,9 +313,13 @@ const RUN_CAP: Duration = Duration::from_mins(4);
 /// killed counts as killed, the same as one whose suite went red.
 fn verdict(root: &Path, package: &str, cap: Duration) -> Outcome {
 	// Child output goes to a file rather than a pipe: a pipe that fills while
-	// nothing reads it deadlocks the very hang this cap exists to break.
-	let log = env::temp_dir().join(format!("veyyon-campaign-{}.log", std::process::id()));
-	let Ok(sink) = fs::File::create(&log) else {
+	// nothing reads it deadlocks the very hang this cap exists to break. The
+	// file belongs to this run and is removed when the verdict returns, so a
+	// campaign of four thousand mutants leaves four thousand nothing behind.
+	let logs = root.join(".internal");
+	let _ = fs::create_dir_all(&logs);
+	let log = RunLog { path: logs.join(format!("campaign-run-{}.log", std::process::id())) };
+	let Ok(sink) = fs::File::create(&log.path) else {
 		return Outcome::NotViable;
 	};
 	let Ok(errors) = sink.try_clone() else {
@@ -324,7 +345,7 @@ fn verdict(root: &Path, package: &str, cap: Duration) -> Outcome {
 	if status.success() {
 		return Outcome::Survived;
 	}
-	let text = fs::read_to_string(&log).unwrap_or_default();
+	let text = fs::read_to_string(&log.path).unwrap_or_default();
 	// A mutant that did not build was not executed. The distinction is the
 	// whole reason `NotViable` exists: counting it would clear the floor
 	// without testing anything.
