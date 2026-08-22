@@ -81,6 +81,8 @@ bun test packages/coding-agent/src/system-prompt-settings-parity.test.ts
 
 ## 3. Running an A/B Benchmark Evaluation
 
+**BINDING COST RULE:** The first paid run uses `tasks/smoke.txt` with `--repeats 1`. Run `--dry-run` first and show its exact trial count. Do not select a larger task set or raise repeats without explicit operator approval for that run.
+
 Navigate to `packages/deepswe-bench` and run:
 
 ```bash
@@ -89,10 +91,10 @@ cd packages/deepswe-bench
 # Run baseline vs candidate arm comparison
 bun run.ts \
   --arms baseline,candidate-argot-nudge \
-  --tasks tasks/pilot-10.txt \
+  --tasks tasks/smoke.txt \
   --model google-antigravity/gemini-3.5-flash \
   --jobs 2 \
-  --repeats 3 \
+  --repeats 1 \
   --out runs/prompt-tuning-01
 ```
 
@@ -101,7 +103,7 @@ bun run.ts \
 - `--tasks <file>`: Task list (e.g. `tasks/smoke.txt` for 1 task, `tasks/pilot-10.txt` for 10 pilot tasks, `tasks/argot-10.txt`, or omit for full 113 DeepSWE tasks). Each list declares its selection basis in a header directive: `# @headline` for an unbiased, representative set whose numbers you can report as a headline, `# @biased: <reason>` for a set curated to favour the feature (a best-case upper bound only). The report prints a loud banner from it. Report a headline argot efficiency number ONLY from `tasks/diverse-20.txt` (`@headline`); `tasks/argot-10.txt` is `@biased` (repos with the most compressible token mass), so it measures the codec's best case, never the real-world average, and `tasks/pilot-10.txt` is `@biased` (hardest tasks, pessimistic pass rate). Reading a big saving on `argot-10` as "argot saves X%" is the exact selection-bias error the banner exists to stop.
 - `--model <id>`: Provider & model under test (default: `google-antigravity/gemini-3.5-flash`; requested==resolved is required for the argot encode allowlist to match — see criterion 5).
 - `--jobs N`: Number of parallel task containers (default: `2`).
-- `--repeats K`: Samples per (arm, task) cell (default `1`). LLM agents are stochastic; a single sample cannot tell a real arm effect from noise. With `K > 1` the report shows each cell's pass RATE with a 95% Wilson confidence interval, printed as `0.67 [0.30–0.90] (4/6)`. The interval is Wilson, not `rate ± standard error`, because the normal-approximation error collapses to a misleading `±0.00` at an all-pass or all-fail cell (`3/3` reads as certainty when it is not); the Wilson interval stays honestly wide there (`3/3` → `1.00 [0.44–1.00]`). Raise `K` to tighten the interval (width shrinks roughly as `1/sqrt(K)`), and treat two arms whose intervals overlap as not yet distinguishable at that sample count.
+- `--repeats K`: Samples per (arm, task) cell (default `1`). Keep the first paid run at `1`; increase it only after the operator approves the dry-run's exact trial count. More repeats tighten confidence intervals but multiply quota use directly.
 - `--limit N`: Sample `N` tasks for a smoke run, spread evenly across the sorted task list (an even stride), not the first `N`. Task names are repo-prefixed, so the first `N` would cluster on one repo and bias the pass rate; the even stride keeps the subset representative while staying deterministic. A limited run's pass rate is an estimate over that subset, not the full suite — `results.json` records `tasks`, `limit`, and `totalTasksAvailable` so a smoke run is never mistaken for a full one. Use it to shake out plumbing, not to report a headline number.
 - `--dry-run`: Run every pre-run guard and STOP before the first container. Always do this first. It validates each arm's YAML, stages any sections file, pins temperature, computes arm fingerprints and checks for a zero-IV collision, matches every encode arm's allowlist against `--model`, confirms the task files and agent binary exist, and runs the auth preflight; then it prints the queue, each arm's resolved inputs, the task set's `@headline`/`@biased` status, and how many trials of real quota the run would cost, and exits 0 writing no report. Seconds instead of the hours a real run takes, since one DeepSWE task can hold a container for 90 minutes and a one-line YAML typo is otherwise discovered only afterwards.
 - `--tasks-root <dir>`: Directory holding the DeepSWE task definitions. Defaults to `deep-swe/tasks` inside the bench package, then `$DEEPSWE_TASKS_ROOT`. Point it elsewhere if you keep the task corpus outside the repo; the runner fails before any container if no task root resolves.
