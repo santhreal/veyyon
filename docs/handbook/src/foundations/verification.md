@@ -16,6 +16,23 @@ Record interactive proofs on the repository's private display. Do not record a
 logged-in desktop, and do not use a terminal multiplexer capture as visual
 evidence. There are no other capture paths and no fallbacks.
 
+### Which artifact proves which change
+
+The artifact class follows the change class, and a mismatch is a failed proof.
+
+```text
+static surface changed     two PNG frames, before and after
+animation or timing changed  two animated clips, before and after
+setting added or changed   two PNG frames, off and on
+```
+
+A still never proves an animation: a frame cannot show a cadence, a transition, or a
+spinner. An animated clip never substitutes for a frame pair either, because a reader
+comparing two clips cannot hold both states side by side. The recorder publishes
+animation as WebP at 33 ms per frame; a GIF is the same clip in an older container and
+proves the same thing. Both arms of a pair are the same class, produced by one driver
+run, and attached to the pull request body.
+
 ### Real interactive sessions
 
 The HD recorder starts Xvfb, picom, and kitty inside the recorder container. It drives the shipped CLI with real keyboard and pointer events and records the private display at 30 frames per second.
@@ -75,6 +92,21 @@ check, and `ffmpeg` and `python3` for the publish chain. ImageMagick answers to 
 installer's entry. A publish tool first called after the recording is a take lost to a `PATH`
 difference, which is why a rehearsal needs only `docker`.
 
+The container is built by one script and tagged from one declaration:
+
+```sh
+bash proof/docker/build-recorder.sh
+```
+
+The tag carries the bun version in the root `package.json` `packageManager` field,
+because the image carries a bun and the product refuses to start on a runtime older
+than the one it is built for. A bump therefore makes a stale image a missing image,
+which docker reports before a display server starts. Recording with an image built
+on an older bun ends the take from inside the container after the whole rig is up.
+
+The recorder reaches a model served on the host through the docker host gateway; the
+loopback address the driver requires is rewritten for the container by
+`proof/docker/host-endpoint.sh`, so no scene needs to name a network address.
 
 The archived take remains at capture speed. The landing-page cut keeps the plan, the worker setup, verification and signing at 1×. Visible implementation between the worker launch and the verified build plays at 1.25×. Named marks in the take select those boundaries; untouched screens are shortened to four seconds rather than accelerated.
 

@@ -5,7 +5,10 @@
 # ffmpeg to encode what it draws, on top of the same bun+git userland the test
 # sandbox uses. Nothing here reads the operator's home: the container runs with
 # HOME on a tmpfs and only the repo is bind-mounted.
-ARG BASE=veyyon-test-guest:1.3.14
+# No default: proof/docker/build-recorder.sh passes the guest tag derived from the
+# repo's declared bun version, and a build that forgets it must fail rather than
+# silently produce an image on whatever guest generation is lying around.
+ARG BASE
 
 # A Wayland compositor with blur, rounded corners and shadows, built because no
 # packaged one has all three. This stage is why the recorder can record glass at

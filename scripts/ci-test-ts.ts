@@ -383,6 +383,8 @@ export const repoScriptTests = [
 	"scripts/demos/lib/ansi-raster.test.ts",
 	"scripts/every-script-has-an-owner.test.ts",
 	"scripts/there-is-only-one-capture-path.test.ts",
+	"scripts/a-recorder-container-can-reach-a-model-served-by-its-host.test.ts",
+	"scripts/a-capture-runs-on-the-bun-the-product-requires.test.ts",
 	"scripts/first-party-docs-are-indexed.test.ts",
 	"scripts/script-tests-coverage.test.ts",
 	"scripts/stray-output-path.test.ts",

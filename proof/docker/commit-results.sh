@@ -15,6 +15,10 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# The tag carries the bun the image was built with; proof/docker/recorder-image.sh
+# owns it, and a bump makes a stale image a missing one.
+# shellcheck source=proof/docker/recorder-image.sh
+source "${REPO_ROOT}/proof/docker/recorder-image.sh"
 MANIFEST="${REPO_ROOT}/proof/commit-videos.tsv"
 OUT="${REPO_ROOT}/proof/captures/x11/commits"
 # One scratch worktree per arm. Kept beside the repository rather than under a
@@ -69,7 +73,7 @@ if [[ "${1:-}" == "--one" ]]; then
 		-e VEYYON_TEST_SANDBOX=docker-recorder \
 		-e "VEYYON_TEST_HOST_HOME=${HOME}" \
 		-w /repo \
-		"${RECORDER_IMAGE:-veyyon-proof-recorder:2}" \
+		"${RECORDER_IMAGE}" \
 		bash -lc "cd /repo && ${CMD} 2>&1 | tail -40" >"${OUT}/${HASH}-${ARM}.txt" 2>&1 || true
 	rm -rf "${TREE}"
 	echo "measured ${HASH}-${ARM}"

@@ -55,8 +55,8 @@ GUEST_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && /bin/pwd -P)"
 REPO_ROOT="$(cd -- "${GUEST_DIR}/../../.." && /bin/pwd -P)"
 BUILD_DIR="${GUEST_DIR}/.build"
 
-BUN_VERSION="$(sed -n 's/.*"packageManager"[[:space:]]*:[[:space:]]*"bun@\([^"]*\)".*/\1/p' "${REPO_ROOT}/package.json" | head -n1)"
-: "${BUN_VERSION:=1.4.0}"
+# shellcheck source=scripts/bun-version.sh
+source "${REPO_ROOT}/scripts/bun-version.sh"
 GUEST_IMAGE="veyyon-test-guest:${BUN_VERSION}"
 KERNEL_IMAGE="veyyon-test-kernel:alpine3.21"
 

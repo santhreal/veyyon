@@ -14,6 +14,10 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# The tag carries the bun the image was built with; proof/docker/recorder-image.sh
+# owns it, and a bump makes a stale image a missing one.
+# shellcheck source=proof/docker/recorder-image.sh
+source "${REPO_ROOT}/proof/docker/recorder-image.sh"
 SESSION="${1:?usage: resume-probe.sh <session.jsonl> [seconds]}"
 SECS="${2:-120}"
 SIZE="$(stat -c %s "${SESSION}")"
@@ -31,7 +35,7 @@ docker run --rm -i -t \
 	-e "PROBE_SECS=${SECS}" \
 	-e "PROBE_SIZE=${SIZE}" \
 	-w /repo \
-	"${RECORDER_IMAGE:-veyyon-proof-recorder:2}" \
+	"${RECORDER_IMAGE}" \
 	bash -lc '
 		set -e
 		mkdir -p /sandbox/home/.veyyon
