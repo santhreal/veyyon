@@ -170,13 +170,52 @@ const MAX_ARTIFACT_RAW_INLINE_BYTES = DEFAULT_MAX_BYTES;
  */
 const PROSE_SUMMARY_EXTENSIONS = new Set([".md", ".txt"]);
 
-async function readBracketContextFullLines(absolutePath: string, fileSize: number): Promise<string[] | undefined> {
+/**
+ * The one materialization of a file a read is allowed to make.
+ *
+ * A bounded range read used to touch the same file three times: the streamer scanned it for
+ * the window and the total line count, bracket context read and split all of it, and the
+ * snapshot read and normalized all of it again. Measured on a 3.5MiB, 100k-line source,
+ * `read path:50000-50019` read 3.08x the file's bytes and cost 463ms.
+ *
+ * `windowLines` is the same split the streamer produces, and is present only when the file
+ * has no CR: byte accounting (`outputBytes`, `totalBytes`, the byte-limit decisions) counts
+ * source bytes, and a CRLF file's raw lines carry a byte the normalized ones do not. A file
+ * with CRLF therefore keeps the streaming path for its window and shares only the text.
+ */
+interface MaterializedFile {
+	/** Every line ending normalized to LF; what the snapshot tag fingerprints. */
+	text: string;
+	/** `text` split on LF. Bracket context and the multi-range display slice this. */
+	lines: string[];
+	/** `lines` again when the file's bytes are already LF-only, else undefined. */
+	windowLines: string[] | undefined;
+}
+
+/** Preserves a leading BOM, which `Bun.file().text()` silently drops. */
+const BOM_PRESERVING_DECODER = new TextDecoder("utf-8", { ignoreBOM: true });
+
+async function materializeFile(absolutePath: string, fileSize: number): Promise<MaterializedFile | undefined> {
 	if (fileSize > SNAPSHOT_MAX_BYTES) return undefined;
 	try {
-		return normalizeToLF(await Bun.file(absolutePath).text()).split("\n");
+		// Decoded with the BOM intact because the line streamer keeps it on line 1: a decode that
+		// drops it reports a file whose first line differs from the one the reader is shown.
+		const raw = BOM_PRESERVING_DECODER.decode(await Bun.file(absolutePath).bytes());
+		const hasBom = raw.startsWith("\uFEFF");
+		// The snapshot tag and the bracket context both fingerprint the file the way every other
+		// reader of it does, BOM stripped, so a tag minted here still matches one minted by a
+		// plain read of the same bytes.
+		const text = normalizeToLF(hasBom ? raw.slice(1) : raw);
+		const lines = text.split("\n");
+		// A lone CR normalizes to LF without changing the string's length, so length equality is
+		// not the test; and a BOM is a character the streamer displays and `text` does not. Either
+		// one makes the raw and normalized splits different files to display.
+		const sharesTheSplit = !raw.includes("\r") && !hasBom;
+		return { text, lines, windowLines: sharesTheSplit ? lines : undefined };
 	} catch {
-		// Bracket context is extra: the read of this same file is about to happen on the caller's main
-		// path, which reports the failure with the path. Undefined here only means no context lines.
+		// Reading the whole file here is an optimization and a source of extras (bracket context,
+		// the snapshot tag). The caller's own read of the same file reports the failure with the
+		// path; undefined only means no context lines and no tag.
 		return undefined;
 	}
 }
@@ -488,6 +527,93 @@ function formatContextPaddingNotice(options: {
 	if (leading > 0) padding.push(`${formatCount("line", leading)} of leading context`);
 	if (trailing > 0) padding.push(`${formatCount("line", trailing)} of trailing context`);
 	return `[Showing lines ${options.displayedFirstLine}-${options.displayedLastLine}: you requested ${requested}, plus ${padding.join(" and ")}]`;
+}
+
+/** What a bounded window of a file's lines came to, however the lines were obtained. */
+interface CollectedWindow {
+	lines: string[];
+	totalFileLines: number;
+	collectedBytes: number;
+	stoppedByByteLimit: boolean;
+	firstLinePreview?: { text: string; bytes: number };
+	firstLineByteLength?: number;
+	reachedEof: boolean;
+}
+
+/**
+ * The same window {@link streamLinesFromFile} collects, taken from lines already in memory.
+ *
+ * The byte accounting is deliberately the streamer's, rule for rule: a line is dropped when it
+ * alone exceeds the budget, the separator counts as one byte from the second line on, and the
+ * first line's length is recorded whether or not it was kept. It is written twice because the
+ * two sources are different shapes -- one decodes byte segments as it goes, the other has every
+ * line already -- and a caller cannot tell which one answered it.
+ */
+function collectWindowFromLines(
+	lines: readonly string[],
+	startLine: number,
+	maxLinesToCollect: number,
+	maxBytes: number,
+	selectedLineLimit: number | null,
+): CollectedWindow {
+	const collected: string[] = [];
+	let collectedBytes = 0;
+	let stoppedByByteLimit = false;
+	let doneCollecting = false;
+	let firstLineByteLength: number | undefined;
+	let selectedLinesSeen = 0;
+	let firstLinePreview: { text: string; bytes: number } | undefined;
+
+	for (let index = startLine; index < lines.length; index++) {
+		const line = lines[index] ?? "";
+		const lineBytes = Buffer.byteLength(line, "utf-8");
+
+		if (selectedLineLimit !== null && selectedLinesSeen < selectedLineLimit) selectedLinesSeen++;
+		if (doneCollecting) {
+			// The streamer records the first selected line's length even when collection had already
+			// stopped, which is reachable with a zero-line window: the caller still reports how long
+			// the line it refused to show was.
+			firstLineByteLength ??= lineBytes;
+			if (selectedLineLimit !== null && selectedLinesSeen >= selectedLineLimit) break;
+			continue;
+		}
+
+		const separatorBytes = collected.length > 0 ? 1 : 0;
+		if (collected.length >= maxLinesToCollect) {
+			doneCollecting = true;
+		} else if (collected.length === 0 && lineBytes > maxBytes) {
+			// The streamer captures the head of an over-long first line for the preview, capped at
+			// the same budget, and reports the line's full length so the caller can say how far over.
+			stoppedByByteLimit = true;
+			doneCollecting = true;
+			firstLineByteLength ??= lineBytes;
+			firstLinePreview = truncateHeadBytes(Buffer.from(line, "utf-8").subarray(0, maxBytes), maxBytes);
+		} else if (collected.length > 0 && collectedBytes + separatorBytes + lineBytes > maxBytes) {
+			stoppedByByteLimit = true;
+			doneCollecting = true;
+		} else {
+			collected.push(line);
+			collectedBytes += separatorBytes + lineBytes;
+			firstLineByteLength ??= lineBytes;
+			if (collectedBytes > maxBytes) {
+				stoppedByByteLimit = true;
+				doneCollecting = true;
+			} else if (collected.length >= maxLinesToCollect) {
+				doneCollecting = true;
+			}
+		}
+		if (doneCollecting && selectedLineLimit !== null && selectedLinesSeen >= selectedLineLimit) break;
+	}
+
+	return {
+		lines: collected,
+		totalFileLines: lines.length,
+		collectedBytes,
+		stoppedByByteLimit,
+		firstLinePreview,
+		firstLineByteLength,
+		reachedEof: true,
+	};
 }
 
 async function streamLinesFromFile(
@@ -1720,7 +1846,8 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		const notices: string[] = [];
 		const visibleSpans: Array<{ startLine: number; endLine: number }> = [];
 		const displayLineByNumber = new Map<number, string>();
-		const fullLines = rawSelector ? undefined : await readBracketContextFullLines(absolutePath, fileSize);
+		const materialized = rawSelector ? undefined : await materializeFile(absolutePath, fileSize);
+		const fullLines = materialized?.lines;
 		let columnTruncated = 0;
 		const clippedLines = new Set<number>();
 		let displayContent: { text: string; startLine: number; lineNumbers?: Array<number | null> } | undefined;
@@ -1793,7 +1920,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			const entries = buildLineEntriesWithBlockContext(
 				fullLines,
 				visibleSpans,
-				{ path: absolutePath },
+				{ path: absolutePath, text: materialized?.text },
 				{
 					lineText: (lineNumber, sourceText) => {
 						const visibleText = displayLineByNumber.get(lineNumber);
@@ -1819,7 +1946,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			outputText = blocks.join("\n\n…\n\n");
 		}
 		if (shouldAddHashLines && outputText) {
-			const tag = await recordFileSnapshot(this.session, absolutePath);
+			const tag = await recordFileSnapshot(this.session, absolutePath, undefined, materialized?.text);
 			if (tag) {
 				recordSeenLinesFromBody(this.session, absolutePath, tag, outputText, clippedLines);
 				outputText = `${formatReadHashlineHeader(formatPathRelativeToCwd(absolutePath, this.session.cwd), tag)}\n${outputText}`;
@@ -2661,15 +2788,27 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 					// Assume ~512 bytes/line average; never go below the shared default.
 					const maxBytesForRead = Math.max(DEFAULT_MAX_BYTES, maxLinesToCollect * 512);
 
-					const streamResult = await streamLinesFromFile(
-						absolutePath,
-						startLine,
-						maxLinesToCollect,
-						maxBytesForRead,
-						selectedLineLimit,
-						undefined, // plain-file read: deterministic and fast, never abort mid-read
-						fileSize > SNAPSHOT_MAX_BYTES, // giant file: don't scan to EOF just for an exact line count
-					);
+					// One materialization, three consumers: this window, the bracket context below, and
+					// the snapshot tag. A file over the snapshot cap, or one whose raw bytes and
+					// normalized text split differently, still streams -- see materializeFile.
+					const materialized = rawSelector ? undefined : await materializeFile(absolutePath, fileSize);
+					const streamResult = materialized?.windowLines
+						? collectWindowFromLines(
+								materialized.windowLines,
+								startLine,
+								maxLinesToCollect,
+								maxBytesForRead,
+								selectedLineLimit,
+							)
+						: await streamLinesFromFile(
+								absolutePath,
+								startLine,
+								maxLinesToCollect,
+								maxBytesForRead,
+								selectedLineLimit,
+								undefined, // plain-file read: deterministic and fast, never abort mid-read
+								fileSize > SNAPSHOT_MAX_BYTES, // giant file: don't scan to EOF just for an exact line count
+							);
 
 					const {
 						lines: collectedLines,
@@ -2724,9 +2863,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 					for (let i = 0; i < displayLines.length; i++) {
 						displayLineByNumber.set(startLineDisplay + i, displayLines[i] ?? "");
 					}
-					const bracketContextFullLines = rawSelector
-						? undefined
-						: await readBracketContextFullLines(absolutePath, fileSize);
+					const bracketContextFullLines = materialized?.lines;
 					const displayedEndLine = startLineDisplay + Math.max(0, displayLines.length - 1);
 
 					const selectedContent = displayLines.join("\n");
@@ -2763,7 +2900,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 									canonicalSnapshotKey(absolutePath),
 									normalizeToLF(collectedLines.join("\n")),
 								)
-							: await recordFileSnapshot(this.session, absolutePath);
+							: await recordFileSnapshot(this.session, absolutePath, undefined, materialized?.text);
 						if (tag) {
 							hashContext = hashlineHeaderContext(formatPathRelativeToCwd(absolutePath, this.session.cwd), tag);
 						}
@@ -2790,7 +2927,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 						const entries = buildLineEntriesWithBlockContext(
 							bracketContextFullLines,
 							[{ startLine: startLineDisplay, endLine: displayedEndLine }],
-							{ path: absolutePath },
+							{ path: absolutePath, text: materialized?.text },
 							{
 								lineText: (lineNumber, sourceText) => {
 									const visibleText = displayLineByNumber.get(lineNumber);

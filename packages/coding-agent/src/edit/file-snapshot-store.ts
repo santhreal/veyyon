@@ -111,13 +111,25 @@ export function allLineNumbers(normalizedText: string): number[] {
  * validates whenever the live file is byte-identical to what was read. Raw
  * reads pass `seenLines` even though they do not emit a header, letting a prior
  * or later same-content hashline tag inherit the raw range's provenance.
+ *
+ * `normalizedText` is the file's text a caller has ALREADY read and normalized in
+ * this same operation. Passing it makes the tag fingerprint the bytes the caller
+ * displayed rather than whatever a second read finds, and saves that read: a
+ * bounded range read of a 3.5MiB file used to touch it three times, once here.
  */
 export async function recordFileSnapshot(
 	session: FileSnapshotStoreOwner,
 	absolutePath: string,
 	seenLines?: Iterable<number>,
+	normalizedText?: string,
 ): Promise<string | undefined> {
 	try {
+		if (normalizedText !== undefined) {
+			// The cap is one rule, not one per path: a caller that read the file itself is held to the
+			// same ceiling as the read below, so an over-size file yields no tag either way.
+			if (Buffer.byteLength(normalizedText) > SNAPSHOT_MAX_BYTES) return undefined;
+			return getFileSnapshotStore(session).record(canonicalSnapshotKey(absolutePath), normalizedText, seenLines);
+		}
 		const file = Bun.file(absolutePath);
 		if (file.size > SNAPSHOT_MAX_BYTES) return undefined;
 		const normalized = normalizeToLF(await file.text());
