@@ -31,6 +31,7 @@ New here? Read [onboarding](onboarding.md) and [testing](testing.md) first.
 | [releasing.md](releasing.md) | The only release page: cut, what runs, what it produces, verify, recover, roll back. |
 | [deployment.md](deployment.md) | Website (Cloudflare Pages) and install-script deployment. |
 | [agent-workflow.md](agent-workflow.md) | How an autonomous agent works this repo and ships updates. |
+| [startup-budget.md](startup-budget.md) | What runs before the first frame, the measured baseline, and how to measure it again. |
 
 ## Design and brand
 
