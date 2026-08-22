@@ -150,6 +150,8 @@ The runner additionally receives `PYTHONUNBUFFERED=1` and `PYTHONIOENCODING=utf-
 
 `VEYYON_PY` and `VEYYON_JS` use normal boolean flag parsing. Each flag, when set, overrides only its own setting; an unset flag falls back to its setting (`eval.py` / `eval.js`, both default `true`).
 
+`eval.pyWorkspace` defaults to `false`. When enabled, the model-facing `eval` description tells the agent to retain large `tool.*` results in Python variables, transform them in the kernel, reuse helper functions, and display only compact conclusions. It adds guidance only; it does not add Python APIs or change cell execution.
+
 If Python preflight fails and `eval.js` is enabled, `eval` remains available for `js` cells; `py` cells fail with a Python-backend availability error.
 
 Python prelude helpers include `agent(prompt, *, agent="deep", model=None, label=None, schema=None, handle=False, isolated=None, apply=None, merge=None)`. It synchronously calls the host bridge, runs one subagent through the task executor, and returns the final text. When `schema` is supplied, the helper parses the subagent's JSON output and returns the object. When `handle=True`, it instead returns a DAG node dict (`{"text", "output", "handle", "id", "agent"}`) whose `handle` is the spawned agent's recoverable `agent://<id>` URI (the parsed object lands under `"data"` when `schema` is also set), so a downstream `pipeline`/`parallel` stage can reference the transcript by handle instead of re-inlining it.

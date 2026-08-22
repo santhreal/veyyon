@@ -523,6 +523,12 @@ export const TOOLS_SETTINGS = {
 		default: false,
 	},
 
+	// Optional Python eval workspace guidance
+	"eval.pyWorkspace": {
+		type: "boolean",
+		default: false,
+	},
+
 	"tools.maxTimeout": {
 		type: "number",
 		default: 0,

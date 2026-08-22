@@ -9,6 +9,7 @@
 ### Added
 
 - An opt-in `tools.unifiedRuntime` experiment replaces the model-facing `eval` and `launch` tools with one `runtime` tool while preserving their existing kernel and process implementations.
+- An opt-in `eval.pyWorkspace` experiment teaches the agent to keep large tool results and repeated repository operations inside the persistent Python kernel, reducing intermediate transcript output without changing kernel execution.
 
 ### Changed
 

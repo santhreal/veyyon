@@ -168,6 +168,7 @@ export interface EvalToolDescriptionOptions {
 	js?: boolean;
 	rb?: boolean;
 	jl?: boolean;
+	pyWorkspace?: boolean;
 	/**
 	 * Parent spawn policy (`getSessionSpawns`). `true`/omitted means unrestricted,
 	 * `false`/`""` hides `agent()`, and a comma list drives the advertised default.
@@ -192,6 +193,7 @@ export function getEvalToolDescription(options: EvalToolDescriptionOptions = {})
 	const spawnAllowedAgentsText = hasEffectiveCatalog
 		? effectiveAgents.map(agent => `\`${agent}\``).join(", ")
 		: spawnPolicy.allowedPromptText;
+	const pyWorkspace = (options.pyWorkspace ?? false) && py;
 	return prompt.render(toolsPrompts["tools/eval"].text, {
 		py,
 		js,
@@ -202,6 +204,7 @@ export function getEvalToolDescription(options: EvalToolDescriptionOptions = {})
 		hasSpawnDefaultAgent: spawnDefaultAgent !== undefined,
 		spawnAllowedAgentsText,
 		spawnAgentListLabel: hasEffectiveCatalog ? "Enabled agents" : "Allowed agents",
+		pyWorkspace,
 	});
 }
 
@@ -371,6 +374,7 @@ export class EvalTool implements AgentTool<typeof evalSchema> {
 			js: backends.js,
 			rb: backends.ruby,
 			jl: backends.julia,
+			pyWorkspace: this.session.settings.get("eval.pyWorkspace"),
 			effectiveAgents: catalog.agents.map(agent => agent.name),
 			effectiveDefaultAgent: catalog.defaultAgent,
 		});
