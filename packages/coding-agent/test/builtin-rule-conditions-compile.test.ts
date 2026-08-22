@@ -1,7 +1,8 @@
 /**
- * Every bundled rule's condition compiles, and `irc-signal` fires on the traffic it exists for.
+ * Every bundled rule's condition compiles, tool-scoped rules choose an interrupt policy, and
+ * `irc-signal` fires on the traffic it exists for.
  *
- * WHY THIS SUITE EXISTS. A bundled rule is inert in two different ways, and neither one is loud.
+ * WHY THIS SUITE EXISTS. A bundled rule can fail in three quiet ways.
  *
  * It can be UNREGISTERED. `builtin-rules/index.ts` imports each markdown file by name and lists it
  * in `BUILTIN_RULE_SOURCES`, because the compiled binary ships no loose rule files. Dropping a new
@@ -12,7 +13,11 @@
  * where the rule is evaluated rather than where it is declared, so the rule that never fires looks
  * like a rule whose pattern simply did not match.
  *
- * The first test closes both for every bundled rule at once, so a future rule cannot land dead.
+ * The first test closes both dead-rule cases for every bundled rule at once.
+ *
+ * A tool-scoped rule that inherits the global interrupt mode can silently turn post-tool guidance
+ * into a stream abort and retry. Requiring every bundled tool rule to choose a policy closes that
+ * omission; ordinary edit/write guidance selects the cache-preserving deferred-reminder path.
  * The remaining tests pin `irc-signal`'s behavior, which exists because subagents wake each other
  * with acknowledgements and progress reports: a message stops an idle peer, costs it a full turn,
  * and changes nothing it does, which is also how a two-agent loop sustains itself.
@@ -56,6 +61,15 @@ describe("bundled rule conditions", () => {
 	it("gives every registered rule a body a model can act on", () => {
 		const empty = BUILTIN_RULE_SOURCES.filter(source => ruleNamed(source.name).content.trim().length === 0);
 		expect(empty.map(source => source.name)).toEqual([]);
+	});
+
+	it("makes every tool-scoped rule choose whether to interrupt", () => {
+		const missingPolicy = BUILTIN_RULE_SOURCES.flatMap(source => {
+			const rule = ruleNamed(source.name);
+			const isToolScoped = (rule.scope ?? []).some(scope => scope.startsWith("tool:"));
+			return isToolScoped && rule.interruptMode === undefined ? [source.name] : [];
+		});
+		expect(missingPolicy).toEqual([]);
 	});
 });
 
