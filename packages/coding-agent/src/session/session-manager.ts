@@ -194,6 +194,32 @@ function isDraftOnlyMetadataEntry(entry: SessionEntry): boolean {
 	}
 }
 
+/**
+ * Whether this journal holds nothing worth resuming, so the file it materialized
+ * for a draft may be dropped once the draft is gone.
+ *
+ * A GOAL IS NOT SELECTOR STATE, which is why this is a question about the list
+ * and not about one entry. The `mode_change` that records a goal carries the
+ * objective text, and it is the whole record of the goal: dropping the file
+ * dropped the objective, so a goal set before the first turn — the ordinary way
+ * one is set — came back unset with nothing saying why. A goal the operator
+ * dropped leaves `mode_change("none")` behind it and is selector state again, so
+ * the test is whether the LAST mode change still holds one. Plan mode keeps the
+ * old ruling either way: its entry can be written by a startup default nobody
+ * chose.
+ */
+function holdsOnlyDraftMetadata(entries: readonly SessionEntry[]): boolean {
+	let goalIsLive = false;
+	for (const entry of entries) {
+		if (entry.type === "mode_change") {
+			goalIsLive = entry.mode === "goal" || entry.mode === "goal_paused";
+			continue;
+		}
+		if (!isDraftOnlyMetadataEntry(entry)) return false;
+	}
+	return !goalIsLive;
+}
+
 function isSessionIncarnationTelemetry(entry: SessionEntry): boolean {
 	return entry.type === "session_lifecycle" || entry.type === "session_checkpoint";
 }
@@ -1789,7 +1815,7 @@ export class SessionManager {
 		// is to keep the session rather than to throw out of a close path.
 		const draftPath = this.#draftPath();
 		if (draftPath && this.#storage.existsStateSync(draftPath) !== "absent") return;
-		if (!this.#entries.every(isDraftOnlyMetadataEntry)) {
+		if (!holdsOnlyDraftMetadata(this.#entries)) {
 			await this.#clearDraftOnlySessionMarker();
 			this.#draftOnlySessionCleanupArmed = false;
 			return;
@@ -2087,7 +2113,7 @@ export class SessionManager {
 		const draftWillMaterializeMetadataOnlyFile =
 			sessionFile !== undefined &&
 			this.#storage.existsStateSync(sessionFile) === "absent" &&
-			this.#entries.every(isDraftOnlyMetadataEntry);
+			holdsOnlyDraftMetadata(this.#entries);
 		// Force the header onto disk so resume can find the file this draft attaches to.
 		await this.ensureOnDisk();
 		if (draftWillMaterializeMetadataOnlyFile) {
@@ -2114,7 +2140,7 @@ export class SessionManager {
 		} catch (err) {
 			if (!isEnoent(err)) throw err;
 		}
-		if (this.#entries.every(isDraftOnlyMetadataEntry) && this.#hasDraftOnlySessionMarker())
+		if (holdsOnlyDraftMetadata(this.#entries) && this.#hasDraftOnlySessionMarker())
 			this.#draftOnlySessionCleanupArmed = true;
 
 		return draft;
