@@ -10,12 +10,14 @@
 
 use std::collections::BTreeSet;
 
-use anyhow::{Result, anyhow};
-use ast_grep_core::tree_sitter::LanguageExt;
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use tree_sitter::{Parser, Point, TreeCursor};
+use tree_sitter::{Point, TreeCursor};
 
-use crate::summary::{node_content_end_line, node_start_line, resolve_language};
+use crate::{
+	parse_cache::with_parsed_tree,
+	summary::{node_content_end_line, node_start_line, resolve_language},
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BlockRangeOptions {
@@ -68,61 +70,55 @@ pub fn block_range_at(options: BlockRangeOptions) -> Result<Option<BlockRange>> 
 		return Ok(None);
 	};
 
-	let mut parser = Parser::new();
-	parser
-		.set_language(&language.get_ts_language())
-		.map_err(|err| anyhow!("Failed to load tree-sitter language: {err}"))?;
-	let Some(tree) = parser.parse(&code, None) else {
-		return Ok(None);
-	};
-	let root = tree.root_node();
+	let resolved = with_parsed_tree(code, language, |tree, _code| {
+		let root = tree.root_node();
 
-	// Query a one-column-wide range over the first content character rather
-	// than a zero-width point. Some grammars (e.g. tree-sitter-swift) insert a
-	// zero-width separator node at the start of a statement that follows a
-	// blank line. An empty point range at that node's start gets absorbed into
-	// the invisible node, which has no children and is not "relevant", so
-	// `named_descendant_for_point_range` bubbles back up to the last visible
-	// ancestor (the enclosing body, or the file root). That made `replace
-	// block` on a line like `var body: some View {` preceded by a blank line
-	// resolve to the whole enclosing type body and then fail. Spanning the
-	// first character skips the zero-width node (its end is < the range end)
-	// and forces the descent into the node that begins on `row`.
-	let point = Point::new(row, col);
-	let point_end = Point::new(row, col + 1);
-	let Some(leaf) = root.named_descendant_for_point_range(point, point_end) else {
-		return Ok(None);
-	};
-	// A leaf whose own start row is earlier than `row` means `point` landed on
-	// a continuation line or a closing delimiter of a block that opened earlier
-	// — there is no block *beginning* on line N.
-	if leaf.start_position().row != row {
-		return Ok(None);
-	}
-	// Climb to the outermost named ancestor that still begins on `row`,
-	// excluding the whole-file root. Ancestors can only begin on an earlier
-	// row, so the first parent that starts before `row` stops the climb.
-	let mut node = leaf;
-	while let Some(parent) = node.parent() {
-		if parent.id() == root.id() {
-			break;
+		// Query a one-column-wide range over the first content character rather
+		// than a zero-width point. Some grammars (e.g. tree-sitter-swift) insert a
+		// zero-width separator node at the start of a statement that follows a
+		// blank line. An empty point range at that node's start gets absorbed into
+		// the invisible node, which has no children and is not "relevant", so
+		// `named_descendant_for_point_range` bubbles back up to the last visible
+		// ancestor (the enclosing body, or the file root). That made `replace
+		// block` on a line like `var body: some View {` preceded by a blank line
+		// resolve to the whole enclosing type body and then fail. Spanning the
+		// first character skips the zero-width node (its end is < the range end)
+		// and forces the descent into the node that begins on `row`.
+		let point = Point::new(row, col);
+		let point_end = Point::new(row, col + 1);
+		let leaf = root.named_descendant_for_point_range(point, point_end)?;
+		// A leaf whose own start row is earlier than `row` means `point` landed on
+		// a continuation line or a closing delimiter of a block that opened earlier
+		// — there is no block *beginning* on line N.
+		if leaf.start_position().row != row {
+			return None;
 		}
-		if parent.start_position().row != row {
-			break;
+		// Climb to the outermost named ancestor that still begins on `row`,
+		// excluding the whole-file root. Ancestors can only begin on an earlier
+		// row, so the first parent that starts before `row` stops the climb.
+		let mut node = leaf;
+		while let Some(parent) = node.parent() {
+			if parent.id() == root.id() {
+				break;
+			}
+			if parent.start_position().row != row {
+				break;
+			}
+			node = parent;
 		}
-		node = parent;
-	}
-	// Refuse degenerate error-recovery spans: a missing brace can make
-	// tree-sitter wrap a huge region in an ERROR node. Checking only the
-	// resolved node's subtree (not the whole file) keeps an unrelated syntax
-	// error elsewhere from disabling the feature.
-	if node.has_error() {
-		return Ok(None);
-	}
-	Ok(Some(BlockRange {
-		start_line: node_start_line(node),
-		end_line:   node_content_end_line(node),
-	}))
+		// Refuse degenerate error-recovery spans: a missing brace can make
+		// tree-sitter wrap a huge region in an ERROR node. Checking only the
+		// resolved node's subtree (not the whole file) keeps an unrelated syntax
+		// error elsewhere from disabling the feature.
+		if node.has_error() {
+			return None;
+		}
+		Some(BlockRange {
+			start_line: node_start_line(node),
+			end_line:   node_content_end_line(node),
+		})
+	})?;
+	Ok(resolved.flatten())
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -279,28 +275,26 @@ pub fn enclosing_block_boundaries(options: EnclosingBoundaryOptions) -> Result<O
 	let Some(language) = resolve_language(lang.as_deref(), path.as_deref()) else {
 		return Ok(None);
 	};
-	let mut parser = Parser::new();
-	parser
-		.set_language(&language.get_ts_language())
-		.map_err(|err| anyhow!("Failed to load tree-sitter language: {err}"))?;
-	let Some(tree) = parser.parse(&code, None) else {
-		return Ok(None);
-	};
-	let root = tree.root_node();
-	// A file-level syntax error makes error-recovery spans unreliable; defer to
-	// the lexical scanner rather than emit boundaries off a broken tree.
-	if root.has_error() {
-		return Ok(None);
-	}
-
-	let mut boundaries = BTreeSet::new();
-	let mut cursor = root.walk();
-	collect_boundaries(&mut cursor, &merged, &mut boundaries);
-	Ok(Some(boundaries.into_iter().collect()))
+	let walked = with_parsed_tree(code, language, |tree, _code| {
+		let root = tree.root_node();
+		// A file-level syntax error makes error-recovery spans unreliable; defer to
+		// the lexical scanner rather than emit boundaries off a broken tree.
+		if root.has_error() {
+			return None;
+		}
+		let mut boundaries = BTreeSet::new();
+		let mut cursor = root.walk();
+		collect_boundaries(&mut cursor, &merged, &mut boundaries);
+		Some(boundaries.into_iter().collect::<Vec<u32>>())
+	})?;
+	Ok(walked.flatten())
 }
 
 #[cfg(test)]
 mod tests {
+	use ast_grep_core::tree_sitter::LanguageExt;
+	use tree_sitter::Parser;
+
 	use super::*;
 	use crate::SupportLang;
 
@@ -852,7 +846,9 @@ mod tests {
 		// one line, so it is the floor any boundary call sits on. The unpruned
 		// walk cost about as much again as that floor (287ms on top of 216ms
 		// for a 3.5MB file), so a walk still proportional to the file cannot
-		// come in under 1.6x of it.
+		// come in under 1.6x of it. Both arms start from a cleared parse cache,
+		// or the second would be reading the first one's tree and the walk
+		// would be all that is left to measure.
 		let unit = "export function unit$N() {\n  const a = $N;\n  return a;\n}\n";
 		let mut code = String::with_capacity(400_000);
 		for index in 0..4_000 {
@@ -861,6 +857,7 @@ mod tests {
 		let lines = code.lines().count() as u32;
 		let window = [(lines / 2, lines / 2 + 19)];
 
+		crate::parse_cache::clear();
 		let floor_start = std::time::Instant::now();
 		block_range_at(BlockRangeOptions {
 			code: code.clone(),
@@ -871,6 +868,7 @@ mod tests {
 		.expect("block resolution succeeds");
 		let floor = floor_start.elapsed();
 
+		crate::parse_cache::clear();
 		let walk_start = std::time::Instant::now();
 		let pruned = boundaries_for_lang(&code, SupportLang::TypeScript, &window);
 		let walked = walk_start.elapsed();
