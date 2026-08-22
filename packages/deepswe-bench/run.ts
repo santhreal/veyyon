@@ -124,6 +124,7 @@ import {
 	mistypedArmSettings,
 	unknownArmSettings,
 } from "./treatment-guard";
+import { drainTrialQueueInPairedWaves } from "./trial-scheduler";
 import {
 	parseTaskTimeBudget,
 	parseTrialTimeoutFlag,
@@ -142,7 +143,6 @@ const VEY_BINARY = path.join(CODING_AGENT_DIR, "dist", "vey");
 // checked as well as dated because a copy that is newer but damaged used to be
 // kept forever.
 const AUTH_DB = path.join(BENCH_DIR, "assets", "auth-agent.db");
-
 
 function requireFile(p: string, hint: string): void {
 	if (!fs.existsSync(p)) {
@@ -1413,6 +1413,7 @@ async function main(): Promise<void> {
 	}
 	const results: ComparisonArmResult[] = [];
 	const queue = trialQueue(arms, tasks, repeats);
+	const pairedWaveScheduling = jobParallel === arms.length;
 	// Fail-fast canary state (see runOne). The canary window is the first wave of
 	// completed jobs — the smaller of the worker-pool width and the total queue —
 	// so a systematic config failure trips as soon as one full concurrent batch has
@@ -1432,6 +1433,11 @@ async function main(): Promise<void> {
 			(overrides.length > 0
 				? `; arm(s) with an explicit override: ${overrides.map(a => `${a}=${armTemperature.get(a)}`).join(", ")}`
 				: ""),
+	);
+	console.log(
+		pairedWaveScheduling
+			? `scheduling: paired waves (${arms.length} concurrent, one per arm; next task waits for the full pair)`
+			: `scheduling: generic ${jobParallel}-worker pool`,
 	);
 
 	// `--dry-run`: validate everything, run nothing.
@@ -1730,16 +1736,24 @@ async function main(): Promise<void> {
 		}
 	}
 
-	// Small bounded pool: task containers take 2 cpu / 8 GB each.
-	const workers = Array.from({ length: Math.max(1, jobParallel) }, async () => {
-		for (;;) {
-			if (canaryTripped) return;
-			const next = queue.shift();
-			if (!next) return;
-			await runOne(next.arm, next.task, next.repeat);
-		}
-	});
-	await Promise.all(workers);
+	if (pairedWaveScheduling) {
+		await drainTrialQueueInPairedWaves(queue, {
+			armsPerWave: arms.length,
+			shouldStop: () => canaryTripped,
+			run: next => runOne(next.arm, next.task, next.repeat),
+		});
+	} else {
+		// Small bounded pool: task containers take 2 cpu / 8 GB each.
+		const workers = Array.from({ length: Math.max(1, jobParallel) }, async () => {
+			for (;;) {
+				if (canaryTripped) return;
+				const next = queue.shift();
+				if (!next) return;
+				await runOne(next.arm, next.task, next.repeat);
+			}
+		});
+		await Promise.all(workers);
+	}
 
 	// If the fail-fast canary tripped, every completed trial was a hard error: no
 	// arm produced usable output, so any report would be a page of red with no
