@@ -24,7 +24,7 @@ sits on the loop that builds the array (`system-prompt.ts:1176-1181`):
 This page is about that boundary: what goes in which tier, why, what the ordering rules are,
 and how to decide where a new section belongs. For how an operator *changes* the prompt
 (`--system-prompt`, `PROMPT_SECTIONS/`, gates, statements), read
-[System prompt customization](../system-prompt-customization.md), which owns that surface.
+[System prompt customization](../handbook/src/models/system-prompt.md), which owns that surface.
 
 ## The two tiers
 
@@ -203,7 +203,7 @@ Work down this list and stop at the first match.
 1. **Is it an instruction that is true for the whole configuration?** Then it is not a
    section at all. It is a **statement** inside one of the six static sections. Add a row to
    `statement-registry.ts` with its condition and put the text in a statement module. This is
-   the common case, and [System prompt customization](../system-prompt-customization.md#13-statements-the-prompt-is-a-list-not-a-document)
+   the common case, and [System prompt customization](../handbook/src/models/system-prompt.md#13-statements-the-prompt-is-a-list-not-a-document)
    is the procedure.
 2. **Does its text change during a session?** Then it is a runtime section. It must be its own
    block, or it invalidates block 0 every time it changes.

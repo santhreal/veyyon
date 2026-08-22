@@ -49,7 +49,7 @@ Unset selectable roles, `advisor` included, **inherit the live interactive model
 
 A caller may still ask for several roles in order. Title generation, for example, asks for `tiny`, then `commit`, then `smol`, and takes the first one you have set. That order belongs to the caller, not to the role: `tiny` does not fall back to `smol`, the title generator prefers `tiny` and accepts `smol`. If you have set none of them, the whole list is unset and the caller inherits the interactive model like any other unset role.
 
-There is no `task` role. The model your subagents run is set in the Subagents settings area, which owns that decision on its own; see [Settings: Subagents](../../../settings.md#subagents).
+There is no `task` role. The model your subagents run is set in the Subagents settings area, which owns that decision on its own; see [Settings: Subagents](../reference/settings.md#subagents).
 
 To return an assigned role or model policy to its unset state, open its picker in `/settings` and choose the first row, `(inherit main model)` (the default model's picker reads `(auto-select on launch)`). Del or Backspace with an empty search does the same.
 
@@ -126,5 +126,5 @@ See [Approvals](../features/sandbox.md).
 ## Related
 
 - [Models and providers](../reference/models-yml.md)
-- [Settings: models](../../../settings.md) (repo `docs/handbook/src/reference/settings.md`)
+- [Settings: models](../reference/settings.md) (repo `docs/handbook/src/reference/settings.md`)
 - [Compaction](../context/compaction-memory.md)

@@ -104,6 +104,6 @@ marker files, so inspecting the prompt cannot change what the next session does.
 
 The system prompt is not one string. It is an ordered list of parts, and the boundary between the
 first part and the rest is a provider-caching contract rather than a stylistic choice. To change
-what a part says, read [System prompt customization](../../../system-prompt-customization.md). To
+what a part says, read [System prompt customization](system-prompt.md). To
 understand why the parts are split where they are, and where a new part would belong, read
 [`docs/internal/system-prompt-architecture.md`](../../../internal/system-prompt-architecture.md).

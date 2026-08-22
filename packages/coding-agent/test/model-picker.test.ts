@@ -194,7 +194,7 @@ describe("open reveal (TOUCH-5)", () => {
 	// Why this suite exists: the open unfold's clock must anchor at FIRST PAINT,
 	// not construction — an overlay's first paint can lag construction by more
 	// than the whole animation (alt-screen switch, session work), and a
-	// construction-anchored clock played the unfold to nobody (VHS capture
+	// construction-anchored clock played the unfold to nobody (a recording on
 	// 2026-07-24 showed a hard cut). The reveal option must also stay opt-in so
 	// direct constructions render settled frames deterministically.
 	test("without the reveal option, the first render is the settled card", () => {

@@ -68,7 +68,7 @@ Veyyon adapts to that surface through the provider's `api` kind:
   allowlist for BYOK providers, and discovery returns an error; it does not invent an empty catalog on failure.
 
 Everything beyond the built-in catalog is data in `models.yml`, see
-[Providers](../models/providers.md) and [`docs/handbook/src/reference/providers.md`](../../../providers.md).
+[Providers](../models/providers.md) and [`docs/handbook/src/reference/providers.md`](../reference/providers.md).
 
 ## System prompts and tool schemas
 
@@ -148,7 +148,7 @@ name one, highest first: that agent's row in `subagent.agents`, the blanket `sub
 agent definition's own `model:`, otherwise the conversation model. There is no silent blend, and a
 configured value that matches no available model refuses the spawn instead of quietly handing the
 decision to the next layer. `/agents` shows the resolved model and which of the four decided.
-See [Settings: Subagents](../../../settings.md#subagents) and
+See [Settings: Subagents](../reference/settings.md#subagents) and
 [Models, roles, and profiles](../using/roles-and-profiles.md).
 
 ## Automation note

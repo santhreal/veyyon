@@ -33,7 +33,7 @@ Native `extension-module` discovery comes from one place:
 - User directory: `~/.veyyon/profiles/default/agent/extensions`
 - Native legacy/settings JSON entries: `~/.veyyon/profiles/default/agent/settings.json#extensions`
 
-The user root is the active profile's agent directory via `getAgentDir()`, so under `veyyon --profile <name>` it becomes `~/.veyyon/profiles/<name>/agent/extensions` (and it honors `VEYYON_CODING_AGENT_DIR`). See [Profiles](../config-usage.md#profiles). There is no project root: `<cwd>/.veyyon/extensions` and `<cwd>/.veyyon/settings.json#extensions` used to be read, and are not any more, because a checked-in file must not hand the agent executable modules.
+The user root is the active profile's agent directory via `getAgentDir()`, so under `veyyon --profile <name>` it becomes `~/.veyyon/profiles/<name>/agent/extensions` (and it honors `VEYYON_CODING_AGENT_DIR`). See [Profiles](../handbook/src/architecture/config.md#profiles). There is no project root: `<cwd>/.veyyon/extensions` and `<cwd>/.veyyon/settings.json#extensions` used to be read, and are not any more, because a checked-in file must not hand the agent executable modules.
 
 Notes:
 

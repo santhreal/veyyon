@@ -10,7 +10,7 @@ When a memory backend is enabled, the agent automatically extracts durable knowl
 | --- | --- |
 | `off` | No memory subsystem runs. |
 | `local` | Local rollout-summarisation pipeline described on this page (`MEMORY.md` / `memory_summary.md` / generated skills). |
-| `mnemopi` | Local SQLite recall/retain backend with optional embeddings; the agent uses the [`recall`](tools/recall.md), [`retain`](tools/retain.md), and [`reflect`](tools/reflect.md) tools. `mnemopi.*` settings tune it. |
+| `mnemopi` | Local SQLite recall/retain backend with optional embeddings; the agent uses the [`recall`](../../../tools/recall.md), [`retain`](../../../tools/retain.md), and [`reflect`](../../../tools/reflect.md) tools. `mnemopi.*` settings tune it. |
 | `hindsight` | Vectorize Hindsight remote memory service. |
 
 The rest of this page documents the **local** pipeline. Enable it via `/settings` or `config.yml`:

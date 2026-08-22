@@ -65,7 +65,6 @@
 				"docs/internal/",
 				".github/workflows/",
 				"packages/deepswe-bench/dicts/",
-				".veyyon/skills/",
 				"python/veybot/"
 			],
 			"exact": [

@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-360535cc.js";
+            window.path_to_searchindex_js = "searchindex-c9fd14eb.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-093df7ff.js"></script>
@@ -1222,7 +1222,7 @@ fix that rather than retrying with a different silent default.</p>
 <p>The foundations pages give the design spine without repeating the operator workflow.</p>
 <ul>
 <li><a href="#architecture-at-a-glance">Architecture at a glance</a> maps the subsystems to their responsibilities.</li>
-<li>For provider and model configuration, see <a href="#the-provider-stack-and-bring-your-own-key">Providers</a> and <a href="../../providers.html"><code>docs/handbook/src/reference/providers.md</code></a>.</li>
+<li>For provider and model configuration, see <a href="#the-provider-stack-and-bring-your-own-key">Providers</a> and <a href="#providers-1"><code>docs/handbook/src/reference/providers.md</code></a>.</li>
 </ul>
 <h2 id="how-the-pieces-fit"><a class="header" href="#how-the-pieces-fit">How the pieces fit</a></h2>
 <pre><code class="language-text">  you ──► veyyon (TUI or a one-shot prompt)
@@ -1530,7 +1530,7 @@ Veyyon adapts to that surface through the provider’s <code>api</code> kind:</p
 allowlist for BYOK providers, and discovery returns an error; it does not invent an empty catalog on failure.</li>
 </ul>
 <p>Everything beyond the built-in catalog is data in <code>models.yml</code>, see
-<a href="#the-provider-stack-and-bring-your-own-key">Providers</a> and <a href="../../providers.html"><code>docs/handbook/src/reference/providers.md</code></a>.</p>
+<a href="#the-provider-stack-and-bring-your-own-key">Providers</a> and <a href="#providers-1"><code>docs/handbook/src/reference/providers.md</code></a>.</p>
 <h2 id="system-prompts-and-tool-schemas"><a class="header" href="#system-prompts-and-tool-schemas">System prompts and tool schemas</a></h2>
 <p>Each turn the harness builds a request that includes:</p>
 <ol>
@@ -1604,7 +1604,7 @@ name one, highest first: that agent’s row in <code>subagent.agents</code>, the
 agent definition’s own <code>model:</code>, otherwise the conversation model. There is no silent blend, and a
 configured value that matches no available model refuses the spawn instead of quietly handing the
 decision to the next layer. <code>/agents</code> shows the resolved model and which of the four decided.
-See <a href="../../settings.html#subagents">Settings: Subagents</a> and
+See <a href="#subagents-2">Settings: Subagents</a> and
 <a href="#models-roles-and-profiles">Models, roles, and profiles</a>.</p>
 <h2 id="automation-note"><a class="header" href="#automation-note">Automation note</a></h2>
 <p>For non-interactive runs, pass the prompt and pick an approval mode that matches your trust
@@ -1948,7 +1948,7 @@ stopped was killed by the CPU budget, not a crash.
 <ul>
 <li><a href="#approvals">Approvals</a></li>
 <li><a href="#non-interactive-mode-veyyon---print">Non-interactive mode</a></li>
-<li><a href="../../settings-reference.html">Settings reference</a></li>
+<li><a href="#settings-reference">Settings reference</a></li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="secrets"><a class="header" href="#secrets">Secrets</a></h1>
@@ -2544,7 +2544,7 @@ selectable when it is not in <code>disabledProviders</code> <strong>and</strong>
 <tr><th>Provider id</th><th>Notes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>anthropic</code>, <code>openai</code>, <code>google</code>, <code>groq</code>, …</td><td>Cloud providers; set the env var. Some (for example <code>anthropic</code>) also support <code>/login &lt;id&gt;</code>; see <a href="../../providers.html">providers</a>.</td></tr>
+<tr><td><code>anthropic</code>, <code>openai</code>, <code>google</code>, <code>groq</code>, …</td><td>Cloud providers; set the env var. Some (for example <code>anthropic</code>) also support <code>/login &lt;id&gt;</code>; see <a href="#providers-1">providers</a>.</td></tr>
 <tr><td><code>amazon-bedrock</code></td><td>Uses the AWS credential chain (<code>AWS_PROFILE</code>, instance role, …).</td></tr>
 <tr><td><code>ollama</code>, <code>lm-studio</code>, <code>llama.cpp</code></td><td>Local engines, discovered automatically and keyless by default.</td></tr>
 </tbody>
@@ -3060,7 +3060,7 @@ running in the wrong repository with nothing on screen to explain it.</p>
 settings, capabilities or plugins, because those are read once for the process. Give a
 subagent a task in another project only when the work is self-contained, and re-root
 your own session instead when you want that project’s configuration to apply.</p>
-<p>The full key list is in the <a href="../../settings.html#subagents">settings reference</a>.</p>
+<p>The full key list is in the <a href="#subagents-2">settings reference</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="multi-agent-monitoring"><a class="header" href="#multi-agent-monitoring">Multi-agent monitoring</a></h1>
 <p>The interactive TUI is the main surface for one session. Status line, session tree, background jobs, the Agent Control Center, and optional swarm orchestration cover multi-agent work.</p>
@@ -3174,7 +3174,7 @@ app.interrupt: ctrl+x
 <code>app.history.search</code>, <code>app.tools.expand</code>, <code>app.thinking.toggle</code>, <code>app.thinking.cycle</code> (<code>Shift+Tab</code>),
 <code>app.editor.external</code> (<code>Ctrl+G</code>), <code>app.message.followUp</code>, <code>app.retry</code>, <code>app.display.reset</code>, and
 <code>app.clipboard.pasteImage</code>.</p>
-<p>Engineering detail: <a href="../../keybindings.html"><code>docs/handbook/src/reference/keybindings-config.md</code></a>.</p>
+<p>Engineering detail: <a href="#keybindings-1"><code>docs/handbook/src/reference/keybindings-config.md</code></a>.</p>
 <h2 id="slash-commands"><a class="header" href="#slash-commands">Slash commands</a></h2>
 <div class="table-wrapper">
 <table>
@@ -3826,7 +3826,7 @@ computer: another tool’s skill directory (<code>$HOME/.claude/skills</code>,
 never scanned, and a project-local <code>.veyyon/skills</code> directory next to your code is
 not read either. Skills belong to your profile, so switching profiles switches
 the whole skill set, and no repository you open can inject a skill into a session.</p>
-<p>Full provider list and dedup rules: <a href="../../skills.html"><code>docs/handbook/src/reference/skills.md</code></a>.</p>
+<p>Full provider list and dedup rules: <a href="#skills-2"><code>docs/handbook/src/reference/skills.md</code></a>.</p>
 <h2 id="importing-another-tools-skills"><a class="header" href="#importing-another-tools-skills">Importing another tool’s skills</a></h2>
 <p>Because foreign skills never load on their own, you bring one into Veyyon by
 importing it. The onboarding import scan finds user-level skills and instruction
@@ -3958,7 +3958,7 @@ import it into your profile.</p>
 <h2 id="related-recipes"><a class="header" href="#related-recipes">Related recipes</a></h2>
 <p>For goal-shaped “give the agent a new capability” flows that stitch skills with MCP and
 plugins, see <a href="#task-guides">Task guides</a>.</p>
-<p>Engineering detail: <a href="../../skills.html"><code>docs/handbook/src/reference/skills.md</code></a>.</p>
+<p>Engineering detail: <a href="#skills-2"><code>docs/handbook/src/reference/skills.md</code></a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="skills-authoring"><a class="header" href="#skills-authoring">Skills authoring</a></h1>
 <p>A skill is a folder that adds a reusable capability to Veyyon. For how skills are discovered and loaded, see <a href="#skills-2">Skills</a>.</p>
@@ -3976,7 +3976,7 @@ plugins, see <a href="#task-guides">Task guides</a>.</p>
 </tbody>
 </table>
 </div>
-<p>Nothing else contributes skills. A project-local <code>.veyyon/skills</code> directory and another tool’s skill directory (<code>$HOME/.claude/skills</code>, <code>$HOME/.codex/skills</code>, <code>$HOME/.agents/skills</code>, and the rest) are never scanned. To use a skill from another tool, import it into your profile, see <a href="#importing-another-tools-skills">Skills</a>. For the full provider list and dedup rules, see <a href="#skill-locations">Skills</a>.</p>
+<p>Nothing else contributes skills. A project-local <code>.veyyon/skills</code> directory and another tool’s skill directory (<code>$HOME/.claude/skills</code>, <code>$HOME/.codex/skills</code>, <code>$HOME/.agents/skills</code>, and the rest) are never scanned. To use a skill from another tool, import it into your profile, see <a href="#foreign-providers-are-import-only">Skills</a>. For the full provider list and dedup rules, see <a href="#discovery-pipeline">Skills</a>.</p>
 <p>Create a new skill by making a directory inside the profile’s <code>skills</code> dir and adding a <code>SKILL.md</code> file. The name of the directory is the default name of the skill.</p>
 <p>A skill directory may contain additional files:</p>
 <pre><code>my-skill/
@@ -4265,8 +4265,8 @@ skills, see <a href="#task-guides">Task guides</a>.</p>
 <li><code>src/extensibility/extensions/index.ts</code></li>
 <li><code>src/modes/controllers/extension-ui-controller.ts</code></li>
 </ul>
-<p>For discovery paths and filesystem loading rules, see <a href="features/internal/extension-loading.html"><code>extension-loading.md</code></a>.</p>
-<p>For packaged user-facing extension CLIs/features such as <code>packages/swarm-extension</code>, see <a href="features/internal/user-facing-packages.html"><code>user-facing-packages.md</code></a>.</p>
+<p>For discovery paths and filesystem loading rules, see <a href="../../internal/extension-loading.html"><code>extension-loading.md</code></a>.</p>
+<p>For packaged user-facing extension CLIs/features such as <code>packages/swarm-extension</code>, see <a href="../../internal/user-facing-packages.html"><code>user-facing-packages.md</code></a>.</p>
 <h2 id="what-an-extension-is"><a class="header" href="#what-an-extension-is">What an extension is</a></h2>
 <p>An extension is a TS/JS module exporting a default factory:</p>
 <pre><code class="language-ts">import type { ExtensionAPI } from "@veyyon/coding-agent";
@@ -4813,7 +4813,7 @@ pi.on("session_stop", async (event) =&gt; {
   return { continue: true, additionalContext: `Review final status after turn ${event.turn_id}.` };
 });
 </code></pre>
-<p>Full event catalog: see <a href="extensions.html">extension authoring guide</a>.</p>
+<p>Full event catalog: see <a href="#extensions">extension authoring guide</a>.</p>
 <h2 id="extension-vs-hook-when-to-use-which"><a class="header" href="#extension-vs-hook-when-to-use-which">Extension vs hook: when to use which</a></h2>
 <div class="table-wrapper">
 <table>
@@ -5781,7 +5781,7 @@ export default function contextFilter(veyyon: HookAPI): void {
 <li>The project directory contains at least one of the server’s <code>rootMarkers</code>.</li>
 <li>The server binary is available: checked in project-local bin directories first (e.g., <code>node_modules/.bin/</code>, <code>.venv/bin/</code>), then <code>$PATH</code>.</li>
 </ol>
-<p>No configuration is required for common setups. The built-in server list covers most popular languages; see <a href="packages/coding-agent/src/lsp/defaults.json"><code>defaults.json</code></a> for the full set.</p>
+<p>No configuration is required for common setups. The built-in server list covers most popular languages; see <a href="../../../packages/coding-agent/src/lsp/defaults.json"><code>defaults.json</code></a> for the full set.</p>
 <h2 id="config-file-locations"><a class="header" href="#config-file-locations">Config file locations</a></h2>
 <p>Veyyon merges LSP config from multiple files, lowest to highest priority:</p>
 <div class="table-wrapper">
@@ -5988,16 +5988,16 @@ export default function contextFilter(veyyon: HookAPI): void {
 <p>The advisor is not a second executor: it cannot approve actions or change primary session state directly. Its default toolset is read-only (<code>read</code>, <code>grep</code>, <code>glob</code>) plus <code>advise</code>, but a <code>WATCHDOG.yml</code> roster entry may broaden <code>tools:</code> to any built-in, including mutating tools such as <code>edit</code>, <code>write</code>, <code>bash</code>, <code>eval</code>, and <code>browser</code>, so grant those tools only when the advisor model and workspace are trusted (see <a href="#tools-and-isolation">Tools and isolation</a>).</p>
 <h2 id="implementation-files"><a class="header" href="#implementation-files">Implementation files</a></h2>
 <ul>
-<li><a href="packages/coding-agent/src/advisor/runtime.ts"><code>src/advisor/runtime.ts</code></a></li>
-<li><a href="packages/coding-agent/src/advisor/advise-tool.ts"><code>src/advisor/advise-tool.ts</code></a></li>
-<li><a href="packages/coding-agent/src/advisor/emission-guard.ts"><code>src/advisor/emission-guard.ts</code></a></li>
-<li><a href="packages/coding-agent/src/advisor/watchdog.ts"><code>src/advisor/watchdog.ts</code></a></li>
-<li><a href="packages/coding-agent/src/advisor/transcript-recorder.ts"><code>src/advisor/transcript-recorder.ts</code></a></li>
-<li><a href="packages/coding-agent/src/prompts/advisor/system.html"><code>src/prompts/advisor/system.md</code></a></li>
-<li><a href="packages/coding-agent/src/prompts/advisor/advise-tool.html"><code>src/prompts/advisor/advise-tool.md</code></a></li>
-<li><a href="packages/coding-agent/src/session/agent-session.ts"><code>src/session/agent-session.ts</code></a></li>
-<li><a href="packages/coding-agent/src/slash-commands/builtin-registry.ts"><code>src/slash-commands/builtin-registry.ts</code></a></li>
-<li><a href="packages/coding-agent/src/config/settings-schema.ts"><code>src/config/settings-schema.ts</code></a></li>
+<li><a href="../../../packages/coding-agent/src/advisor/runtime.ts"><code>src/advisor/runtime.ts</code></a></li>
+<li><a href="../../../packages/coding-agent/src/advisor/advise-tool.ts"><code>src/advisor/advise-tool.ts</code></a></li>
+<li><a href="../../../packages/coding-agent/src/advisor/emission-guard.ts"><code>src/advisor/emission-guard.ts</code></a></li>
+<li><a href="../../../packages/coding-agent/src/advisor/watchdog.ts"><code>src/advisor/watchdog.ts</code></a></li>
+<li><a href="../../../packages/coding-agent/src/advisor/transcript-recorder.ts"><code>src/advisor/transcript-recorder.ts</code></a></li>
+<li><a href="../../../packages/coding-agent/src/prompts/advisor/system.html"><code>src/prompts/advisor/system.md</code></a></li>
+<li><a href="../../../packages/coding-agent/src/prompts/advisor/advise-tool.html"><code>src/prompts/advisor/advise-tool.md</code></a></li>
+<li><a href="../../../packages/coding-agent/src/session/agent-session.ts"><code>src/session/agent-session.ts</code></a></li>
+<li><a href="../../../packages/coding-agent/src/slash-commands/builtin-registry.ts"><code>src/slash-commands/builtin-registry.ts</code></a></li>
+<li><a href="../../../packages/coding-agent/src/config/settings-schema.ts"><code>src/config/settings-schema.ts</code></a></li>
 </ul>
 <hr>
 <h2 id="enabling-the-advisor"><a class="header" href="#enabling-the-advisor">Enabling the advisor</a></h2>
@@ -6049,7 +6049,7 @@ advisor:
 <li><code>grep</code></li>
 <li><code>glob</code></li>
 </ul>
-<p>A <code>WATCHDOG.yml</code> roster entry may broaden this with <code>tools: [...]</code>, selecting any subset of the built-in pool the session actually built (a factory that returned <code>null</code>, e.g. <code>lsp</code> with no matching servers, is absent). Grantable tools include mutating ones: <code>edit</code>, <code>write</code>, <code>bash</code>, <code>eval</code>, <code>browser</code>, <code>debug</code>, <code>ast_edit</code>, <code>task</code>, <code>job</code>, and the memory tools. Tool names outside <a href="packages/coding-agent/src/tools/builtin-names.ts"><code>BUILTIN_TOOL_NAMES</code></a> are dropped with a warning.</p>
+<p>A <code>WATCHDOG.yml</code> roster entry may broaden this with <code>tools: [...]</code>, selecting any subset of the built-in pool the session actually built (a factory that returned <code>null</code>, e.g. <code>lsp</code> with no matching servers, is absent). Grantable tools include mutating ones: <code>edit</code>, <code>write</code>, <code>bash</code>, <code>eval</code>, <code>browser</code>, <code>debug</code>, <code>ast_edit</code>, <code>task</code>, <code>job</code>, and the memory tools. Tool names outside <a href="../../../packages/coding-agent/src/tools/builtin-names.ts"><code>BUILTIN_TOOL_NAMES</code></a> are dropped with a warning.</p>
 <p>Advisor grants are not routed through the primary agent’s approval wrapper. The advisor pool is built from the built-in tool factories against its own <code>-advisor</code> <code>ToolSession</code> and then filtered by <code>WATCHDOG.yml</code>; it is not the primary <code>toolRegistry</code> wrapped with <code>ExtensionToolWrapper</code>. Granting write- or exec-tier tools therefore lets the advisor invoke those tools directly, subject to the tool’s own runtime guards but not to <code>tools.approvalMode</code> / <code>tools.approval.&lt;tool&gt;</code> prompts. Keep mutating grants narrow and trusted.</p>
 <p>The <code>advise</code> tool accepts one note and an optional severity:</p>
 <div class="table-wrapper">
@@ -6177,7 +6177,7 @@ advisors:
 <li><code>instructions</code> (top level): shared prompt prepended to every advisor’s system prompt alongside <code>WATCHDOG.md</code>. Concatenated across all discovered <code>WATCHDOG.yml</code> files.</li>
 <li><code>advisors[].name</code>: human label; slugified for the session id and the <code>&lt;session&gt;/__advisor.jsonl</code> filename. Duplicate slugs across files are resolved by the same specificity rule as <code>WATCHDOG.md</code> discovery (project leaf &gt; project ancestor &gt; user).</li>
 <li><code>advisors[].model</code>: optional model selector with optional <code>:level</code> thinking suffix (e.g. <code>x-ai/grok-code-fast:high</code>). Omitted → the advisor uses <code>modelRoles.advisor</code>.</li>
-<li><code>advisors[].tools</code>: optional list of built-in tool names to grant. Omitted or empty → the default <code>read</code>/<code>grep</code>/<code>glob</code> subset. Any name in <a href="packages/coding-agent/src/tools/builtin-names.ts"><code>BUILTIN_TOOL_NAMES</code></a> is accepted, including mutating tools (<code>edit</code>, <code>write</code>, <code>bash</code>, <code>eval</code>, <code>browser</code>, <code>debug</code>, <code>ast_edit</code>, <code>task</code>, <code>job</code>, and the memory tools). Legacy aliases (<code>search</code>→<code>grep</code>, <code>find</code>→<code>glob</code>) are normalized. Unknown names are dropped with a warning. See <a href="#tools-and-isolation">Tools and isolation</a> for the safety implications of granting mutating tools.</li>
+<li><code>advisors[].tools</code>: optional list of built-in tool names to grant. Omitted or empty → the default <code>read</code>/<code>grep</code>/<code>glob</code> subset. Any name in <a href="../../../packages/coding-agent/src/tools/builtin-names.ts"><code>BUILTIN_TOOL_NAMES</code></a> is accepted, including mutating tools (<code>edit</code>, <code>write</code>, <code>bash</code>, <code>eval</code>, <code>browser</code>, <code>debug</code>, <code>ast_edit</code>, <code>task</code>, <code>job</code>, and the memory tools). Legacy aliases (<code>search</code>→<code>grep</code>, <code>find</code>→<code>glob</code>) are normalized. Unknown names are dropped with a warning. See <a href="#tools-and-isolation">Tools and isolation</a> for the safety implications of granting mutating tools.</li>
 <li><code>advisors[].instructions</code>: this advisor’s specialization, appended after the shared baseline. Both instruction fields expand <code>@path</code> imports like <code>WATCHDOG.md</code>.</li>
 </ul>
 <h3 id="discovery-locations-1"><a class="header" href="#discovery-locations-1">Discovery locations</a></h3>
@@ -6464,7 +6464,7 @@ Veyyon the agent an editor talks to; MCP makes Veyyon the client that talks to t
 <ul>
 <li><a href="#mcp-server-setup">MCP server setup</a>: the configuration and troubleshooting guide</li>
 <li><a href="#mcp-3">MCP internals</a>: how the client is built</li>
-<li><a href="../../mcp-config.html"><code>docs/handbook/src/reference/mcp-config.md</code></a>: the engineering reference</li>
+<li><a href="#mcp-configuration-in-veyyon"><code>docs/handbook/src/reference/mcp-config.md</code></a>: the engineering reference</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="mcp-server-setup"><a class="header" href="#mcp-server-setup">MCP server setup</a></h1>
@@ -6472,7 +6472,7 @@ Veyyon the agent an editor talks to; MCP makes Veyyon the client that talks to t
 sources become available to the agent. Register a server, choose a
 transport, authenticate, and fix the most common connection problems.</p>
 <p>For an overview of what MCP does in Veyyon, see <a href="#mcp">MCP</a>. Engineering reference:
-<a href="../../mcp-config.html"><code>docs/handbook/src/reference/mcp-config.md</code></a>.</p>
+<a href="#mcp-configuration-in-veyyon"><code>docs/handbook/src/reference/mcp-config.md</code></a>.</p>
 <h2 id="where-servers-are-configured"><a class="header" href="#where-servers-are-configured">Where servers are configured</a></h2>
 <p>MCP servers are configured as <strong>JSON</strong> in <code>mcp.json</code>, not in <code>config.yml</code>:</p>
 <div class="table-wrapper">
@@ -6770,7 +6770,7 @@ The <code>/memory</code> slash command exposes <code>view</code>, <code>stats</c
 <p>With <code>memory.backend: local</code>, a background pipeline at startup extracts durable signal from past
 session JSONL files, then consolidates into <code>MEMORY.md</code>, <code>memory_summary.md</code>, and optional
 <code>skills/</code>. The agent reads artifacts via <code>memory://</code> URLs on the <code>read</code> tool.</p>
-<p>Engineering detail: <a href="../../memory.html"><code>docs/handbook/src/architecture/memory.md</code></a>.</p>
+<p>Engineering detail: <a href="#autonomous-memory"><code>docs/handbook/src/architecture/memory.md</code></a>.</p>
 <h2 id="compaction-primary-knobs"><a class="header" href="#compaction-primary-knobs">Compaction (primary knobs)</a></h2>
 <p>Context compaction is separate from durable memory. Settings → Compaction (or <code>config.yml</code>) exposes
 these primary fields:</p>
@@ -6844,7 +6844,7 @@ one-time migration from the legacy bare-root layout.</p>
 <p><strong>Provider credentials are the one exception:</strong> by default they live in a machine-wide store (<code>~/.veyyon/shared-auth/agent.db</code>) that every profile reads, so you sign in once. Set <code>profileSharing: false</code> in the global <code>~/.veyyon/config.yml</code> (or toggle it on the <strong>Global</strong> tab of <code>/settings</code>) to give each profile its own private credential store instead. See <a href="#credentials-are-shared-across-profiles">Signing in › Credentials are shared across profiles</a>.</p>
 <p><strong>Keybindings:</strong> each profile owns <code>agent/keybindings.*</code>. New profiles seeded with <code>veyyon profile new --from default</code> copy the default profile’s keybindings once. On first launch of an older named profile that has no keybindings file, Veyyon performs the same one-time seed and logs it. There is no live merge from the default profile after that.</p>
 <p>Project-level dirs (<code>&lt;cwd&gt;/.veyyon</code>, <code>.claude</code>, etc.) are <strong>not</strong> profile-scoped; they follow the working directory.</p>
-<p><strong>Other tools’ config</strong> (skills and <code>CLAUDE.md</code>/<code>AGENTS.md</code> written for Claude, Codex, and similar) is <strong>off by default</strong> and controlled per profile by <code>discovery.importForeignConfig</code>, so each profile decides on its own whether to ambiently read foreign files or run native-only. Another tool’s own global dir (<code>~/.claude/skills</code>, …) cannot be relocated into a profile, see <a href="#profiles-isolate-skills">Skills › Profiles isolate skills</a>.</p>
+<p><strong>Other tools’ config</strong> (skills and <code>CLAUDE.md</code>/<code>AGENTS.md</code> written for Claude, Codex, and similar) is <strong>off by default</strong> and controlled per profile by <code>discovery.importForeignConfig</code>, so each profile decides on its own whether to ambiently read foreign files or run native-only. Another tool’s own global dir (<code>~/.claude/skills</code>, …) cannot be relocated into a profile, see <a href="#discovery-pipeline">Skills › Profiles isolate skills</a>.</p>
 <h2 id="activating-a-profile"><a class="header" href="#activating-a-profile">Activating a profile</a></h2>
 <ul>
 <li><strong>CLI:</strong> <code>veyyon --profile &lt;name&gt;</code> (no short form; <code>-p</code> is <code>--print</code>).</li>
@@ -6997,7 +6997,7 @@ modelRoles:
 <p>Custom role names can appear via <code>modelRoles</code>, <code>modelTags</code>, or <code>cycleOrder</code> entries.</p>
 <p>Unset selectable roles, <code>advisor</code> included, <strong>inherit the live interactive model</strong> at use time. No role carries a built-in model chain: a role you have not set names no model of its own, so nothing you did not choose ends up running.</p>
 <p>A caller may still ask for several roles in order. Title generation, for example, asks for <code>tiny</code>, then <code>commit</code>, then <code>smol</code>, and takes the first one you have set. That order belongs to the caller, not to the role: <code>tiny</code> does not fall back to <code>smol</code>, the title generator prefers <code>tiny</code> and accepts <code>smol</code>. If you have set none of them, the whole list is unset and the caller inherits the interactive model like any other unset role.</p>
-<p>There is no <code>task</code> role. The model your subagents run is set in the Subagents settings area, which owns that decision on its own; see <a href="../../settings.html#subagents">Settings: Subagents</a>.</p>
+<p>There is no <code>task</code> role. The model your subagents run is set in the Subagents settings area, which owns that decision on its own; see <a href="#subagents-2">Settings: Subagents</a>.</p>
 <p>To return an assigned role or model policy to its unset state, open its picker in <code>/settings</code> and choose the first row, <code>(inherit main model)</code> (the default model’s picker reads <code>(auto-select on launch)</code>). Del or Backspace with an empty search does the same.</p>
 <h2 id="subagent-policy-and-compaction-overrides"><a class="header" href="#subagent-policy-and-compaction-overrides">Subagent policy and compaction overrides</a></h2>
 <div class="table-wrapper">
@@ -7065,7 +7065,7 @@ See <a href="#approvals">Approvals</a>.</p>
 <h2 id="related-13"><a class="header" href="#related-13">Related</a></h2>
 <ul>
 <li><a href="#model-and-provider-configuration-modelsyml--modelsyaml">Models and providers</a></li>
-<li><a href="../../settings.html">Settings: models</a> (repo <code>docs/handbook/src/reference/settings.md</code>)</li>
+<li><a href="#settings-1">Settings: models</a> (repo <code>docs/handbook/src/reference/settings.md</code>)</li>
 <li><a href="#compaction-and-project-memory">Compaction</a></li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -8386,7 +8386,7 @@ app.clipboard.copyLine: [Ctrl+C, Alt+C]
 flat legacy names and <code>keybindings.json</code> files migrate automatically to the namespaced <code>.yml</code> form on
 load. Run <strong><code>/hotkeys</code></strong> in a session to see active chords.</p>
 <p>Full action-ID list and status-line gestures: <a href="#keybindings">Keybindings and Vim mode</a>
-and repository <a href="../../keybindings.html"><code>docs/handbook/src/reference/keybindings-config.md</code></a>.</p>
+and repository <a href="#keybindings-1"><code>docs/handbook/src/reference/keybindings-config.md</code></a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="keybindings-1"><a class="header" href="#keybindings-1">Keybindings</a></h1>
 <p>Run <code>/hotkeys</code> inside an <code>veyyon</code> session to see the active chords for your current build. The list reflects any remaps loaded from disk and any bindings added by extensions.</p>
@@ -8452,7 +8452,7 @@ handful of <code>VEYYON_*</code> variables that are actually read by the runtime
 number of <code>VEYYON_*</code> debug/behavior-toggle variables (timing, startup tracing, TUI flags, eval-runtime
 toggles, and more) that are less common configuration. For the complete, code-grounded reference,
 including every provider credential var, precedence chains, and internal toggles, see
-<a href="../../environment-variables.html"><code>docs/handbook/src/reference/environment-complete.md</code></a>.</p>
+<a href="#environment-variables-complete"><code>docs/handbook/src/reference/environment-complete.md</code></a>.</p>
 <h2 id="location-and-identity"><a class="header" href="#location-and-identity">Location and identity</a></h2>
 <p>There is no <code>VEYYON_HOME</code>. The config directory <strong>name</strong> (not a full path) is overridable, and the
 active profile is selected by its own variable:</p>
@@ -8485,7 +8485,7 @@ token (a <code>VEYYON_API_KEY</code>/<code>VEYYON_ACCESS_TOKEN</code> legacy ali
 When a provider’s key variable is set, it is used without an interactive sign-in. For providers with
 OAuth (Anthropic, xAI, Qwen, Cursor, and others), the OAuth token variable takes precedence over the
 plain API key, see the provider tables below and
-<a href="../../environment-variables.html#1-modelprovider-authentication"><code>docs/handbook/src/reference/environment-complete.md</code></a>.</p>
+<a href="#1-modelprovider-authentication"><code>docs/handbook/src/reference/environment-complete.md</code></a>.</p>
 <p>OAuth sign-in itself is interactive: run <code>/login</code> inside the TUI (or <code>--provider &lt;id&gt;</code> at startup) to
 open the OAuth selector. There is no <code>veyyon login --with-api-key</code>/<code>--with-access-token</code> CLI subcommand;
 piping a key into a login command is not part of the shipped CLI surface.</p>
@@ -8515,7 +8515,7 @@ sign-in and wins over a stored key.</p>
 </div>
 <p>A custom provider uses whatever variable its <code>[model_providers.&lt;id&gt;].env_key</code> names. See
 <a href="#configuration-4">Configuration</a> and the full provider table in
-<a href="../../environment-variables.html#1-modelprovider-authentication"><code>docs/handbook/src/reference/environment-complete.md</code></a>
+<a href="#1-modelprovider-authentication"><code>docs/handbook/src/reference/environment-complete.md</code></a>
 (30+ providers, cloud auth chains for Bedrock/Vertex/Azure, and web-search provider keys).</p>
 <h2 id="local-and-self-hosted-providers"><a class="header" href="#local-and-self-hosted-providers">Local and self-hosted providers</a></h2>
 <div class="table-wrapper">
@@ -8627,7 +8627,7 @@ broker host:</p>
 </div>
 <p>There is no <code>VEYYON_TUI_DISABLE_KEYBOARD_ENHANCEMENT</code>, <code>VEYYON_TUI_RECORD_SESSION</code>, or
 <code>VEYYON_TUI_SESSION_LOG_PATH</code>; see
-<a href="../../environment-variables.html#9-tui-runtime-flags-shared-package-affects-coding-agent-ux"><code>docs/handbook/src/reference/environment-complete.md</code></a>
+<a href="#9-tui-runtime-flags-shared-package-affects-coding-agent-ux"><code>docs/handbook/src/reference/environment-complete.md</code></a>
 for the real <code>VEYYON_*</code>-prefixed TUI flags.</p>
 <h2 id="removed--does-not-exist"><a class="header" href="#removed--does-not-exist">Removed / does not exist</a></h2>
 <div class="table-wrapper">
@@ -8760,7 +8760,7 @@ code paths in:</p>
 </table>
 </div>
 <h3 id="auth-broker--auth-gateway-remote-credential-vault"><a class="header" href="#auth-broker--auth-gateway-remote-credential-vault">Auth broker / auth gateway (remote credential vault)</a></h3>
-<p>When the broker is enabled, the local SQLite credential store is bypassed and all OAuth refresh / access tokens live on the broker host. See <a href="reference/internal/auth-broker-gateway.html"><code>auth-broker-gateway.md</code></a> for the full protocol, CLI surface, and 5-min/15-s usage cache layering.</p>
+<p>When the broker is enabled, the local SQLite credential store is bypassed and all OAuth refresh / access tokens live on the broker host. See <a href="../../internal/auth-broker-gateway.html"><code>auth-broker-gateway.md</code></a> for the full protocol, CLI surface, and 5-min/15-s usage cache layering.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -8963,7 +8963,7 @@ material remains Anthropic-Foundry-specific.</p>
 </thead>
 <tbody>
 <tr><td><code>VEYYON_CACHE_RETENTION</code></td><td>If <code>long</code>, enables long retention where supported (<code>anthropic</code>, <code>openai-responses</code>, Bedrock retention resolution)</td></tr>
-<tr><td><code>VEYYON_CACHE_ENFORCEMENT</code></td><td>What happens when a request’s cache markers demonstrably did not take effect: <code>off</code>, <code>warn</code> (default), or <code>error</code>. <code>error</code> aborts the turn. Anthropic only. Overridden by an explicit per-request level, and the <code>cache.blockOnRejection</code> setting selects <code>error</code> through the same resolver. See <a href="reference/internal/prompt-caching.html">prompt caching</a>.</td></tr>
+<tr><td><code>VEYYON_CACHE_ENFORCEMENT</code></td><td>What happens when a request’s cache markers demonstrably did not take effect: <code>off</code>, <code>warn</code> (default), or <code>error</code>. <code>error</code> aborts the turn. Anthropic only. Overridden by an explicit per-request level, and the <code>cache.blockOnRejection</code> setting selects <code>error</code> through the same resolver. See <a href="../../internal/prompt-caching.html">prompt caching</a>.</td></tr>
 </tbody>
 </table>
 </div>
@@ -9121,7 +9121,7 @@ rather than from each kernel formatting its own name.</li>
 <tr><td><code>VEYYON_REQ_DEBUG</code></td><td>If <code>1</code>, dumps every provider HTTP request and its response stream to <code>rr-session-&lt;n&gt;.json</code> and <code>rr-session-&lt;n&gt;.res.log</code> in the process working directory, mode <code>0600</code>. <strong>The dumps include request headers, so they contain credentials.</strong> A dump that cannot be written is logged and the request proceeds</td></tr>
 <tr><td><code>VEYYON_PROXY</code></td><td>Egress proxy URL for every provider request. <code>VEYYON_PROXY_&lt;PROVIDER&gt;</code> (the provider id uppercased with non-alphanumerics as <code>_</code>, e.g. <code>VEYYON_PROXY_GITHUB_COPILOT</code>) overrides it for one provider. Localhost, RFC1918, link-local and cloud metadata hosts always bypass the proxy, as do <code>NO_PROXY</code>/<code>no_proxy</code> matches</td></tr>
 <tr><td><code>VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS</code></td><td><strong>Benchmark instrumentation, not an operator knob.</strong> A JSON object of section name to replacement text. When set, the benchmark payload becomes the only source of prompt sections and the run logs that the override is active. Invalid JSON fails the build</td></tr>
-<tr><td><code>VEYYON_EVAL_SYSTEM_PROMPT_STATEMENTS</code></td><td>The statement-level counterpart to the section override, same benchmark-only status. See <a href="reference/internal/system-prompt-architecture.html#the-two-escape-hatches-and-why-they-are-env-vars">system prompt architecture</a></td></tr>
+<tr><td><code>VEYYON_EVAL_SYSTEM_PROMPT_STATEMENTS</code></td><td>The statement-level counterpart to the section override, same benchmark-only status. See <a href="../../internal/system-prompt-architecture.html#the-two-escape-hatches-and-why-they-are-env-vars">system prompt architecture</a></td></tr>
 </tbody>
 </table>
 </div>
@@ -9542,7 +9542,7 @@ enabledModels:
 </tbody>
 </table>
 </div>
-<p>See <a href="#model-and-provider-configuration-modelsyml--modelsyaml">Models</a> for the <code>models.yml</code> schema and custom-provider definitions. Handbook: <a href="reference/handbook/src/using/roles-and-profiles.html">Models, roles, and profiles</a> (under <code>docs/handbook/src/using/</code>).</p>
+<p>See <a href="#model-and-provider-configuration-modelsyml--modelsyaml">Models</a> for the <code>models.yml</code> schema and custom-provider definitions. Handbook: <a href="#models-roles-and-profiles">Models, roles, and profiles</a> (under <code>docs/handbook/src/using/</code>).</p>
 <h3 id="advisor-1"><a class="header" href="#advisor-1">Advisor</a></h3>
 <p>The advisor is a second model that reviews each completed turn and can inject advice into the primary session. Assign a model with <code>modelRoles.advisor</code>, then enable it with <code>advisor.enabled</code>, <code>/advisor on</code>, or by launching with the <code>--advisor</code> flag.</p>
 <p>See <a href="#advisor-watchdogmd-and-watchdogyml">Advisor and WATCHDOG.md</a> for runtime behavior, <code>WATCHDOG.md</code> discovery, and bounded catch-up semantics.</p>
@@ -9946,7 +9946,7 @@ They used to open a separate screen with its own roster, which meant two answers
 <tr><td><code>subagent.softRequestBudgetNotice</code></td><td>boolean</td><td><code>true</code></td><td>Inject that wrap-up notice once.</td></tr>
 <tr><td><code>subagent.showResolvedModelBadge</code></td><td>boolean</td><td><code>true</code></td><td>Show each subagent’s resolved model, and what decided it, on the task widget and the agent surfaces.</td></tr>
 <tr><td><code>subagent.enableLsp</code></td><td>boolean</td><td><code>false</code></td><td>Let subagents use the <code>lsp</code> tool.</td></tr>
-<tr><td><code>subagent.isolation.mode</code></td><td>enum</td><td><code>none</code></td><td>Filesystem isolation backend for subagents. See <a href="reference/handbook/src/using/safety.html">Safety</a>.</td></tr>
+<tr><td><code>subagent.isolation.mode</code></td><td>enum</td><td><code>none</code></td><td>Filesystem isolation backend for subagents. See <a href="#safety-1">Safety</a>.</td></tr>
 <tr><td><code>subagent.isolation.merge</code></td><td>enum</td><td><code>patch</code></td><td>How isolated changes come back: <code>patch</code> or <code>branch</code>.</td></tr>
 <tr><td><code>subagent.isolation.commits</code></td><td>enum</td><td><code>generic</code></td><td>Commit message style for nested repo changes.</td></tr>
 </tbody>
@@ -10093,7 +10093,7 @@ memory:
 <tr><td><code>autolearn.enabled</code></td><td>boolean</td><td><code>false</code></td><td>Experimental: after the agent stops, nudge it to capture lessons to memory and create/enhance isolated managed skills under <code>~/.veyyon/profiles/default/agent/managed-skills</code>. Enables the <code>manage_skill</code> tool (and <code>learn</code> when a memory backend is active).</td></tr>
 <tr><td><code>autolearn.autoContinue</code></td><td>boolean</td><td><code>false</code></td><td>When <code>autolearn.enabled</code>, auto-run one capture turn at stop (uses extra tokens). Off = a passive reminder rides your next turn.</td></tr>
 <tr><td><code>autolearn.minToolCalls</code></td><td>number</td><td><code>5</code></td><td>Only nudge after a turn that used at least this many tools.</td></tr>
-<tr><td><code>session.instrumentation</code></td><td>enum</td><td><code>off</code></td><td>How densely a run records study records on the session file, for after-the-fact analysis and backtesting. Graded: <code>off</code> stores nothing extra; <code>basic</code> adds wall-clock (start, end, duration, and time-to-first-token for model turns); <code>rich</code> adds output weight (result bytes/tokens) and per-turn throughput (tokens/sec); <code>ultra</code> adds an arguments fingerprint, cache read/write tokens, reasoning tokens, and upstream provider. It records BOTH per-tool-call metrics (<code>message.metrics</code>) AND per-model-turn metrics and the exact request params sent (<code>message.turnMetrics</code> / <code>message.request</code>). The <code>dev</code> profile preset (<code>veyyon profile new dev --from dev</code>) sets this to <code>ultra</code>. See <a href="reference/internal/session.html#session-instrumentation-structured-analysis">the session instrumentation reference</a> for the on-disk field tables and jq recipes.</td></tr>
+<tr><td><code>session.instrumentation</code></td><td>enum</td><td><code>off</code></td><td>How densely a run records study records on the session file, for after-the-fact analysis and backtesting. Graded: <code>off</code> stores nothing extra; <code>basic</code> adds wall-clock (start, end, duration, and time-to-first-token for model turns); <code>rich</code> adds output weight (result bytes/tokens) and per-turn throughput (tokens/sec); <code>ultra</code> adds an arguments fingerprint, cache read/write tokens, reasoning tokens, and upstream provider. It records BOTH per-tool-call metrics (<code>message.metrics</code>) AND per-model-turn metrics and the exact request params sent (<code>message.turnMetrics</code> / <code>message.request</code>). The <code>dev</code> profile preset (<code>veyyon profile new dev --from dev</code>) sets this to <code>ultra</code>. See <a href="../../internal/session.html#session-instrumentation-structured-analysis">the session instrumentation reference</a> for the on-disk field tables and jq recipes.</td></tr>
 </tbody>
 </table>
 </div>
@@ -10145,7 +10145,7 @@ tui:
 </tbody>
 </table>
 </div>
-<p>For a custom status line, set <code>statusLine.preset: custom</code> and configure <code>statusLine.leftSegments</code>, <code>statusLine.rightSegments</code>, and <code>statusLine.segmentOptions</code>. See the <a href="reference/handbook/src/features/cockpit.html#status-line">status line reference</a> for the full list of segment IDs.</p>
+<p>For a custom status line, set <code>statusLine.preset: custom</code> and configure <code>statusLine.leftSegments</code>, <code>statusLine.rightSegments</code>, and <code>statusLine.segmentOptions</code>. See the <a href="#status-line">status line reference</a> for the full list of segment IDs.</p>
 <p>One segment is worth calling out: <code>profile</code> shows the active profile name (<code>work</code>, <code>rec</code>, a client sandbox) so you always know which profile’s config, sessions, and keys are live. It hides on the built-in <code>default</code> profile, so a vanilla status line is unchanged, and every built-in preset already includes it.</p>
 <h3 id="interaction"><a class="header" href="#interaction">Interaction</a></h3>
 <div class="table-wrapper">
@@ -11854,7 +11854,7 @@ from <code>baseUrl</code> before appending <code>/v1/messages</code>, so a singl
 </ul>
 <h3 id="broker-mode"><a class="header" href="#broker-mode">Broker mode</a></h3>
 <p>When <code>VEYYON_AUTH_BROKER_URL</code> (or <code>auth.broker.url</code>) is set, the local SQLite credential store is replaced by <code>RemoteAuthCredentialStore</code>. Layers 2 and 3 above (stored API key / OAuth in <code>agent.db</code>) are served from a broker-supplied snapshot whose <code>refresh</code> tokens are redacted; expiry triggers <code>POST /v1/credential/:id/refresh</code> on the broker rather than a local refresh.</p>
-<p><code>AuthStorage.setConfigApiKey</code> lets a <code>models.yml</code> <code>apiKey</code> win over a broker-resolved OAuth token without overriding a runtime <code>--api-key</code>. See <a href="reference/internal/auth-broker-gateway.html"><code>auth-broker-gateway.md</code></a> for the full broker / gateway design and env surface (<code>VEYYON_AUTH_BROKER_URL</code>, <code>VEYYON_AUTH_BROKER_TOKEN</code>, <code>auth.broker.url</code>, <code>auth.broker.token</code>).</p>
+<p><code>AuthStorage.setConfigApiKey</code> lets a <code>models.yml</code> <code>apiKey</code> win over a broker-resolved OAuth token without overriding a runtime <code>--api-key</code>. See <a href="../../internal/auth-broker-gateway.html"><code>auth-broker-gateway.md</code></a> for the full broker / gateway design and env surface (<code>VEYYON_AUTH_BROKER_URL</code>, <code>VEYYON_AUTH_BROKER_TOKEN</code>, <code>auth.broker.url</code>, <code>auth.broker.token</code>).</p>
 <h2 id="model-availability-vs-all-models"><a class="header" href="#model-availability-vs-all-models">Model availability vs all models</a></h2>
 <ul>
 <li><code>getAll()</code> returns the loaded model registry (built-in + merged custom + discovered).</li>
@@ -11995,7 +11995,7 @@ disabledProviders:
 <p>The built-in model policy currently links OpenAI <code>codex-spark</code> variants to <code>gpt-5.5</code>, and <code>gpt-5.5</code> to <code>gpt-5.4</code>, when that target exists on the same provider/API.</p>
 <h2 id="compatibility-and-routing-fields"><a class="header" href="#compatibility-and-routing-fields">Compatibility and routing fields</a></h2>
 <p>The <code>compat</code> block on a provider or model overrides the URL-based auto-detection in <code>packages/catalog/src/compat/openai.ts</code> (<code>buildOpenAICompat</code>). It is validated by <code>OpenAICompatSchema</code> in <code>packages/coding-agent/src/config/models-config-schema.ts</code> and consumed by every <code>openai-completions</code> transport (<code>packages/ai/src/providers/openai-completions.ts</code>). The canonical type is <code>OpenAICompat</code> in <code>packages/catalog/src/types.ts</code>.</p>
-<p>Endpoint-specific exceptions that interact with these fields are cataloged in <a href="reference/internal/provider-endpoint-constraints.html">Provider endpoint constraints</a>.</p>
+<p>Endpoint-specific exceptions that interact with these fields are cataloged in <a href="../../internal/provider-endpoint-constraints.html">Provider endpoint constraints</a>.</p>
 <p><code>models.yml</code> accepts the following keys (all optional; unset falls back to URL detection):</p>
 <p>Request shaping:</p>
 <ul>
@@ -12069,7 +12069,7 @@ disabledProviders:
 <p>Tool schemas going on the wire are normalized by the unified flow in
 <code>packages/ai/src/utils/schema/normalize.ts</code> (Google/CCA/MCP dispatchers
 plus the OpenAI strict-mode sanitize+enforce pipeline). See
-<a href="reference/internal/ai-schema-normalize.html"><code>ai-schema-normalize.md</code></a> for the strict-mode
+<a href="../../internal/ai-schema-normalize.html"><code>ai-schema-normalize.md</code></a> for the strict-mode
 edge cases (local <code>$ref</code> inlining, single-item <code>allOf</code> collapse,
 <code>anyOf</code>-wrapper description hoist, enum/const primitive-type inference)
 and the per-provider dispatcher mapping.</p>
@@ -12153,7 +12153,7 @@ and the per-provider dispatcher mapping.</p>
 <h1 id="providers-1"><a class="header" href="#providers-1">Providers</a></h1>
 <p>Providers are the model backends <code>veyyon</code> can route requests to: Anthropic, OpenAI, Google Gemini, Groq, OpenRouter, Mistral, xAI, local engines like Ollama, hosted gateways, custom <code>models.yml</code> providers, and providers registered by extensions.</p>
 <p>A <strong>provider</strong> is the account or backend namespace, such as <code>anthropic</code>, <code>openai</code>, <code>google</code>, or <code>ollama</code>. A <strong>model</strong> is a concrete model under that provider, selected as <code>provider/model-id</code>, such as <code>anthropic/claude-opus-4-6</code>. Disabling a provider removes every model under it from selection; if you only want to narrow individual models, use model settings instead.</p>
-<p>This page covers how providers become available, how credentials are resolved, the provider/environment-variable map, local engines, disabling providers, and custom providers. For endpoint-specific request, reasoning, tool, stream, usage, and retry constraints, see <a href="reference/internal/provider-endpoint-constraints.html">Provider endpoint constraints</a>. For model selection and the full <code>models.yml</code> schema, see <a href="#model-and-provider-configuration-modelsyml--modelsyaml">Model and Provider Configuration</a>. For config-file locations and merge precedence, see <a href="#settings-1">Settings</a>. For credential storage and login flows in depth, see <a href="#secrets-internals">Secrets and credentials</a>. For the complete environment-variable reference, see <a href="#environment-variables-complete">Environment variables</a>. For the embedded tiny-model engineering record (title/memory/auto-thinking local models), see <a href="reference/internal/local-tiny-models.html">Local tiny models</a>. For context-file discovery providers, see <a href="#context-files">Context files</a>.</p>
+<p>This page covers how providers become available, how credentials are resolved, the provider/environment-variable map, local engines, disabling providers, and custom providers. For endpoint-specific request, reasoning, tool, stream, usage, and retry constraints, see <a href="../../internal/provider-endpoint-constraints.html">Provider endpoint constraints</a>. For model selection and the full <code>models.yml</code> schema, see <a href="#model-and-provider-configuration-modelsyml--modelsyaml">Model and Provider Configuration</a>. For config-file locations and merge precedence, see <a href="#settings-1">Settings</a>. For credential storage and login flows in depth, see <a href="#secrets-internals">Secrets and credentials</a>. For the complete environment-variable reference, see <a href="#environment-variables-complete">Environment variables</a>. For the embedded tiny-model engineering record (title/memory/auto-thinking local models), see <a href="../../internal/local-tiny-models.html">Local tiny models</a>. For context-file discovery providers, see <a href="#context-files">Context files</a>.</p>
 <h2 id="how-veyyon-decides-a-provider-is-available"><a class="header" href="#how-veyyon-decides-a-provider-is-available">How <code>veyyon</code> decides a provider is available</a></h2>
 <p>At startup the model registry assembles its catalog from four sources, in order:</p>
 <ol>
@@ -15571,7 +15571,7 @@ and <code>/mcp list</code> and the boot health zone render. Before that, a misty
 anywhere saying why.</p>
 <p>User guide: <a href="#mcp">MCP</a>, <a href="#mcp-server-setup">MCP setup</a>.</p>
 <p>Engineering detail:
-<a href="../../mcp-config.html"><code>docs/handbook/src/reference/mcp-config.md</code></a>,
+<a href="#mcp-configuration-in-veyyon"><code>docs/handbook/src/reference/mcp-config.md</code></a>,
 <a href="../../internal/mcp-runtime-lifecycle.html"><code>docs/internal/mcp-runtime-lifecycle.md</code></a>,
 <a href="../../internal/mcp-protocol-transports.html"><code>docs/internal/mcp-protocol-transports.md</code></a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -15891,11 +15891,11 @@ chose to print.</p>
 <p>Names are 5 to 64 characters of <code>A-Z</code>, <code>0-9</code> and <code>_</code>, starting with a letter. Unnamed HMAC placeholders start with the reserved digit <code>0</code>, so a name can never collide with one. <code>normaliseSecretName</code> accepts what people type (<code>github-token</code>, <code>github token</code>, lowercase) and uppercases it. It rejects non-ASCII input before uppercasing, so Unicode case expansion cannot alias an existing name.</p>
 <p>Entries without a name get a generated name (<code>SECRET_1</code>), so every vault entry has a placeholder the model can reference. Plain environment and <code>secrets.yml</code> values use the machine-keyed unnamed form.</p>
 <h3 id="completing-secret"><a class="header" href="#completing-secret">Completing <code>/secret</code></a></h3>
-<p>Argument completion offers the subcommands and nothing else, derived from <code>SECRET_TUI_SUBCOMMANDS</code>, which the parser builds from the same table it routes with. A verb cannot be typeable and unoffered, and a word cannot be offered and unparseable. The operator-facing account is <a href="architecture/handbook/src/features/secrets.html#managing-what-you-stored">Managing what you stored</a>.</p>
+<p>Argument completion offers the subcommands and nothing else, derived from <code>SECRET_TUI_SUBCOMMANDS</code>, which the parser builds from the same table it routes with. A verb cannot be typeable and unoffered, and a word cannot be offered and unparseable. The operator-facing account is <a href="#managing-what-you-stored">Managing what you stored</a>.</p>
 <p>No stored NAME is ever offered. Completing one from <code>session.obfuscator.namedSecretNames()</code> renders part of the vault on a keystroke, and accepting a suggestion writes it onto a line whose first word decides between a command and a credential, so a fumbled verb would store the suggestion instead of running it. <code>/secret list</code> is where names are read.</p>
 <p>The prefix filter is what keeps the menu out of a paste. A pasted credential arrives as one insert, so the prefix is the whole token and matches nothing; only a hand-typed word that is genuinely the start of a subcommand opens the dropdown. Nothing about the vault is read to build it either, so completion does not fall silent when secret protection is off, which is exactly the state a new operator meets it in.</p>
 <h3 id="what-the-model-is-told-about-a-stored-secret"><a class="header" href="#what-the-model-is-told-about-a-stored-secret">What the model is told about a stored secret</a></h3>
-<p>The operator-facing account is <a href="architecture/handbook/src/features/secrets.html#what-the-agent-knows-and-when">What the agent knows, and when</a>. Two mechanisms carry it, with different jobs.</p>
+<p>The operator-facing account is <a href="#what-the-agent-knows-and-when">What the agent knows, and when</a>. Two mechanisms carry it, with different jobs.</p>
 <p><strong>The inventory</strong> is a system-prompt section. <code>SecretObfuscator.namedSecretNames()</code> returns every readable name the live runtime can expand, sorted, and never a value. It calls <code>#forgetExpired()</code> first, so a name stops being answered at the moment it stops working. That list becomes an optional option-backed runtime section registered in <code>RUNTIME_SECTIONS</code> (<code>system-prompt-builder/section-registry.ts</code>) and supplied where <code>sdk.ts</code> calls the system-prompt builder, beside <code>secretsEnabled</code>. <code>AgentSession.refreshSecrets()</code> reloads the runtime and rebuilds the base prompt, which is what makes a removed or expired name stop appearing.</p>
 <p>Sorted because the section sits in the cached prompt prefix. Map insertion order would shuffle between refreshes and invalidate the provider’s prompt cache without changing anything the section says.</p>
 <p>An optional section renders only when its option is present, so protection being off, or nothing being spendable, produces no section rather than an empty heading. Names are listed in placeholder form, which is the form the model has to write. Index-form secrets are absent, having no name to list.</p>
@@ -16102,7 +16102,7 @@ chose to print.</p>
 </ul>
 <h2 id="see-also-6"><a class="header" href="#see-also-6">See also</a></h2>
 <ul>
-<li><a href="architecture/internal/auth-broker-gateway.html"><code>auth-broker-gateway.md</code></a> – remote credential vault and forward-proxy that keep provider OAuth refresh tokens and access tokens off developer hosts entirely (complementary to in-process obfuscation).</li>
+<li><a href="../../internal/auth-broker-gateway.html"><code>auth-broker-gateway.md</code></a> – remote credential vault and forward-proxy that keep provider OAuth refresh tokens and access tokens off developer hosts entirely (complementary to in-process obfuscation).</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="autonomous-memory"><a class="header" href="#autonomous-memory">Autonomous Memory</a></h1>
@@ -16117,7 +16117,7 @@ chose to print.</p>
 <tbody>
 <tr><td><code>off</code></td><td>No memory subsystem runs.</td></tr>
 <tr><td><code>local</code></td><td>Local rollout-summarisation pipeline described on this page (<code>MEMORY.md</code> / <code>memory_summary.md</code> / generated skills).</td></tr>
-<tr><td><code>mnemopi</code></td><td>Local SQLite recall/retain backend with optional embeddings; the agent uses the <a href="architecture/tools/recall.html"><code>recall</code></a>, <a href="architecture/tools/retain.html"><code>retain</code></a>, and <a href="architecture/tools/reflect.html"><code>reflect</code></a> tools. <code>mnemopi.*</code> settings tune it.</td></tr>
+<tr><td><code>mnemopi</code></td><td>Local SQLite recall/retain backend with optional embeddings; the agent uses the <a href="../../tools/recall.html"><code>recall</code></a>, <a href="../../tools/retain.html"><code>retain</code></a>, and <a href="../../tools/reflect.html"><code>reflect</code></a> tools. <code>mnemopi.*</code> settings tune it.</td></tr>
 <tr><td><code>hindsight</code></td><td>Vectorize Hindsight remote memory service.</td></tr>
 </tbody>
 </table>
@@ -17011,22 +17011,20 @@ publish        Lanczos downsample to 1920x1080
 <p>The recorder keeps rehearsal output in the temporary directory it prints. Inspect the video and named frames there. Set <code>PUBLISH=1</code> only for a complete take whose frame guards all passed.</p>
 <p>The scene’s task prompt is static at <code>proof/prompts/demo-hd.md</code>. The scene stores the secret, submits that prompt once, and sends no phase-by-phase operator prompts; every later turn is the model’s own. A take is published only when every named frame guard passed, so a scene whose model does not reach a guarded surface produces a rehearsal and nothing else.</p>
 <p>The archived take remains at capture speed. The landing-page cut keeps the plan, the worker setup, verification and signing at 1×. Visible implementation between the worker launch and the verified build plays at 1.25×. Named marks in the take select those boundaries; untouched screens are shortened to four seconds rather than accelerated.</p>
-<h3 id="vhs-settings-captures"><a class="header" href="#vhs-settings-captures">VHS settings captures</a></h3>
-<p>Use the same baseline for settings differentials:</p>
-<pre><code class="language-tape">Set Shell bash
-Set FontSize 22
-Set Width 1400
-Set Height 720
-Set Padding 30
-Set Margin 40
-Set MarginFill "#000000"
-Set BorderRadius 0
-Set Framerate 30
-Set TypingSpeed 55ms
-Set CursorBlink false
-Set Theme { "name": "veyyon", "black": "#000000", "background": "#000000", "foreground": "#C6CBD4", "cursor": "#F0862E" }
+<h3 id="settings-differentials"><a class="header" href="#settings-differentials">Settings differentials</a></h3>
+<p>A settings change proves with two frames of the settings screen recorded from the
+same scene, one with the setting at its default and one with the operator’s value.
+<code>SCENE_SETTINGS</code> appends config-file lines to the seeded home before the session
+starts, so each arm is seeded rather than toggled by a keybinding that may not land:</p>
+<pre><code class="language-sh">OUT_DIR=proof/captures/x11/off \
+  proof/docker/record-x11.sh proof/scenes/settings-pointer.sh
+
+OUT_DIR=proof/captures/x11/on SCENE_SETTINGS='argot.enabled: true' \
+  proof/docker/record-x11.sh proof/scenes/settings-pointer.sh
 </code></pre>
-<p>Drive both states from one script. Seed each setting explicitly before capture. Restore the default after the pair is written.</p>
+<p>Both arms run the same scene at the same window size, so the only difference between
+them is the setting. A pair whose two frames are byte-identical, or whose “on” arm
+does not show the value in effect, is a failed proof.</p>
 <h3 id="before-and-after-pairs-for-a-ui-change"><a class="header" href="#before-and-after-pairs-for-a-ui-change">Before-and-after pairs for a UI change</a></h3>
 <p>A change to a visible surface proves with two frames of the same scene, one on the
 tree without the change and one on the tree with it.</p>
@@ -17062,8 +17060,7 @@ that the block is positioned, sized and clipped the way a session draws it. It d
 not satisfy an evidence requirement. Write the file to a temporary path.</p>
 <p><code>scripts/an-off-screen-raster-never-enters-assets.test.ts</code> pins the raster set under
 <code>assets/</code> by exact equality, so the list only shrinks, and fails on a demo driver
-that writes a render into <code>assets/</code>. Drivers write outside the tracked tree;
-<code>scripts/demos/record-argot-settings.sh</code> is the shape a settings differential takes.</p>
+that writes a render into <code>assets/</code>. Drivers write outside the tracked tree.</p>
 <h2 id="related-17"><a class="header" href="#related-17">Related</a></h2>
 <ul>
 <li><a href="#the-repair-cascade">The repair cascade</a></li>
@@ -17198,7 +17195,7 @@ headers for the next edit.</li>
 <li>User guide: <a href="#editing-and-repair">Editing and repair</a></li>
 <li>Tool contract: <a href="../../tools/edit.html"><code>docs/tools/edit.md</code></a></li>
 <li>Read/grep anchors: <a href="../../tools/read.html"><code>docs/tools/read.md</code></a>, <a href="../../tools/grep.html"><code>docs/tools/grep.md</code></a></li>
-<li>Settings: <code>edit.mode</code> in <a href="../../settings.html"><code>docs/handbook/src/reference/settings.md</code></a></li>
+<li>Settings: <code>edit.mode</code> in <a href="#settings-1"><code>docs/handbook/src/reference/settings.md</code></a></li>
 </ul>
 <p>There is no <code>veyyon-edit</code> Rust crate, no V4A-only write path, and no <code>make_update_patch</code> envelope
 routing. General schema-based tool-call repair <strong>is</strong> shipped, see
@@ -17246,7 +17243,7 @@ is keyless/local).</p>
 <li>CLI <code>--api-key</code> (ephemeral)</li>
 <li><code>models.yml</code> <code>apiKey</code> on a custom provider</li>
 <li>Stored API key / OAuth in the agent auth store (<code>~/.veyyon/profiles/default/agent/agent.db</code>)</li>
-<li>Provider environment variables (see <a href="../../providers.html"><code>docs/handbook/src/reference/providers.md</code></a>)</li>
+<li>Provider environment variables (see <a href="#providers-1"><code>docs/handbook/src/reference/providers.md</code></a>)</li>
 <li>Custom fallback resolvers in <code>models.yml</code></li>
 </ol>
 <p>Use <code>/login</code>, <code>/logout</code>, or <code>veyyon</code> OAuth flows in setup. Provider-scoped logins do not cross
@@ -17348,14 +17345,14 @@ marker files, so inspecting the prompt cannot change what the next session does.
 <h2 id="going-deeper"><a class="header" href="#going-deeper">Going deeper</a></h2>
 <p>The system prompt is not one string. It is an ordered list of parts, and the boundary between the
 first part and the rest is a provider-caching contract rather than a stylistic choice. To change
-what a part says, read <a href="../../system-prompt-customization.html">System prompt customization</a>. To
+what a part says, read <a href="#system-prompt-customization">System prompt customization</a>. To
 understand why the parts are split where they are, and where a new part would belong, read
 <a href="../../internal/system-prompt-architecture.html"><code>docs/internal/system-prompt-architecture.md</code></a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="system-prompt-customization"><a class="header" href="#system-prompt-customization">System Prompt Customization</a></h1>
 <p>How the coding-agent assembles the system prompt sent to the model, and what you can control.</p>
 <p>The system prompt is ASSEMBLED. It is composed from the section registry and from statements gated on your settings; there is no file on disk holding its text for you to edit. <code>PROMPT_SECTIONS/</code> is how you change what a section says, per statement and validated. <code>--system-prompt</code> remains for a caller that supplies its own prompt for one invocation (the SDK, an eval harness).</p>
-<p>This page is the operator-facing surface: the inputs, the override mechanisms, and the gates. For the implementation side of the same subsystem, the block/tier model, the ordering rules, and how to decide where a new section belongs, see <a href="models/internal/system-prompt-architecture.html">System prompt architecture</a>, and for how the cached prefix is marked on the wire see <a href="models/internal/prompt-caching.html">Prompt caching</a>.</p>
+<p>This page is the operator-facing surface: the inputs, the override mechanisms, and the gates. For the implementation side of the same subsystem, the block/tier model, the ordering rules, and how to decide where a new section belongs, see <a href="../../internal/system-prompt-architecture.html">System prompt architecture</a>, and for how the cached prefix is marked on the wire see <a href="../../internal/prompt-caching.html">Prompt caching</a>.</p>
 <p>Veyyon no longer reads a <code>SYSTEM.md</code> or <code>APPEND_SYSTEM.md</code> file from disk.</p>
 <p><code>SYSTEM.md</code> replaced the whole assembled prompt with hand-written text. <code>APPEND_SYSTEM.md</code> added text to the end of it, which is what <code>AGENTS.md</code> already does, at more scopes and with a directory walk-up that <code>APPEND_SYSTEM.md</code> never had. Both were discovered out of any repository you entered, and a new profile copied them along under a checkbox labelled <code>AGENTS.md</code>.</p>
 <p>To add instructions, write them in <code>AGENTS.md</code>. To change what a section of the prompt says, use <code>PROMPT_SECTIONS/</code>. If either removed file is still on disk, veyyon names it at launch and points at the replacement rather than ignoring it in silence.</p>
@@ -17580,7 +17577,7 @@ delivery-contract   template      0     4053     1014   10.9%
 <pre><code>1 REQUIRED section did not render (role). This prompt is incomplete, not minimal.
 </code></pre>
 <p>Every other exit is 0, so <code>veyyon prompt --sections</code> works as a check in a script. <code>--json</code> carries the same information in a <code>missing</code> array, present even when empty.</p>
-<p>The <code>block</code> column is the index of the part in the ordered array <code>buildSystemPrompt</code> returns. Block 0 is the static prefix that providers cache; later blocks hold text that changes often. Each provider serializes those parts its own way (Anthropic sends them as separate <code>system</code> text blocks, most OpenAI-wire paths as separate system or developer messages, Gemini as separate <code>systemInstruction</code> parts), so a block is a separate <em>part</em>, not necessarily a separate message. Moving content from a later block into block 0 would break the cache, which is why the breakdown reports the boundary rather than hiding it. See <a href="models/internal/system-prompt-architecture.html">System prompt architecture</a> for the per-provider mapping.</p>
+<p>The <code>block</code> column is the index of the part in the ordered array <code>buildSystemPrompt</code> returns. Block 0 is the static prefix that providers cache; later blocks hold text that changes often. Each provider serializes those parts its own way (Anthropic sends them as separate <code>system</code> text blocks, most OpenAI-wire paths as separate system or developer messages, Gemini as separate <code>systemInstruction</code> parts), so a block is a separate <em>part</em>, not necessarily a separate message. Moving content from a later block into block 0 would break the cache, which is why the breakdown reports the boundary rather than hiding it. See <a href="../../internal/system-prompt-architecture.html">System prompt architecture</a> for the per-provider mapping.</p>
 <p><code>--no-tools</code> is useful for finding tool-gated text: run it, diff against the normal output, and every line that disappeared was behind a tool being available.</p>
 <p>Use <code>--json</code> to compare two configurations mechanically, for example to check that a settings change altered only the section you expected.</p>
 <h3 id="the-other-prompts"><a class="header" href="#the-other-prompts">The other prompts</a></h3>

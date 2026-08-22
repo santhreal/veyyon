@@ -193,8 +193,8 @@ The broker only owns OAuth credentials and provider-API-key credentials that wer
 
 ## See also
 
-- [`../handbook/src/architecture/secrets.md`](../secrets.md): secret obfuscation around tokens that _do_ leak through (e.g. `VEYYON_AUTH_BROKER_TOKEN` in shell output).
-- [`../handbook/src/reference/models-yml.md`](../models.md): provider auth resolution order; the broker plugs in at layers 2–3 (stored credentials).
-- [`../handbook/src/reference/environment-complete.md`](../environment-variables.md): full env reference including `VEYYON_AUTH_BROKER_URL` / `VEYYON_AUTH_BROKER_TOKEN`.
+- [`../handbook/src/architecture/secrets.md`](../handbook/src/architecture/secrets.md): secret obfuscation around tokens that _do_ leak through (e.g. `VEYYON_AUTH_BROKER_TOKEN` in shell output).
+- [`../handbook/src/reference/models-yml.md`](../handbook/src/reference/models-yml.md): provider auth resolution order; the broker plugs in at layers 2–3 (stored credentials).
+- [`../handbook/src/reference/environment-complete.md`](../handbook/src/reference/environment-complete.md): full env reference including `VEYYON_AUTH_BROKER_URL` / `VEYYON_AUTH_BROKER_TOKEN`.
 
 *Verified against `d3e3db30` on 2026-07-23.*

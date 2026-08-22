@@ -7,7 +7,6 @@
  * rendered output to stdout. It exists for visual QA of tool renderers without
  * having to provoke each state through a live agent session.
  */
-import * as path from "node:path";
 import type { AgentTool } from "@veyyon/agent-core";
 import type { TUI } from "@veyyon/tui";
 import { clampLow, errorMessage, getProjectDir } from "@veyyon/utils";
@@ -18,7 +17,6 @@ import { getAvailableThemes, initTheme, setTheme, theme } from "../modes/theme/t
 import { toolRenderers } from "../tools/renderers";
 import { EXIT_USAGE } from "./exit-codes";
 import { type GalleryFixture, type GalleryResult, galleryFixtures } from "./gallery-fixtures";
-import { captureGalleryScreenshots } from "./gallery-screenshot";
 
 /** Lifecycle states the gallery renders, in display order. */
 export const GALLERY_STATES = ["streaming", "progress", "success", "error"] as const;
@@ -79,14 +77,6 @@ export interface GalleryCommandArgs {
 	expanded?: boolean;
 	/** Strip ANSI styling from the output (useful when redirecting to a file). */
 	plain?: boolean;
-	/** Capture the rendered gallery as PNG screenshot(s) via VHS instead of printing ANSI. */
-	screenshot?: boolean;
-	/** Screenshot output path (single image) or base path (suffixed when split across images). */
-	out?: string;
-	/** Font family for screenshots (must be installed; Nerd Font recommended for icon glyphs). */
-	font?: string;
-	/** Font size in points for screenshots. */
-	fontSize?: number;
 }
 
 /** One tool's rendered lifecycle, as ANSI lines: a leading blank, the section rule, then each state. */
@@ -212,7 +202,7 @@ function sectionRule(label: string, width: number): string {
 /**
  * Render each requested tool's lifecycle into ANSI section blocks. The block
  * layout (leading blank, section rule, then a blank + dim label + body per
- * state) is shared by the stdout and screenshot paths so both stay identical.
+ * state) is the one every path prints.
  */
 async function renderGallerySections(
 	names: string[],
@@ -276,30 +266,11 @@ export async function renderGalleryForThemes(
 }
 
 /**
- * Insert a `-<theme>` tag before the extension of a screenshot output path so a
- * theme matrix writes distinct files: `shot.png` + theme `light` → `shot-light.png`,
- * and a path with no extension simply appends (`shot` → `shot-light`). The theme
- * name is slugified (non-alphanumerics to `-`) so a custom theme name can never
- * inject a path separator or an unexpected extension boundary.
- */
-export function themedOutPath(out: string, themeName: string): string {
-	const slug = themeName.replace(/[^A-Za-z0-9._-]+/g, "-");
-	const ext = path.extname(out);
-	if (ext === "") return `${out}-${slug}`;
-	return `${out.slice(0, -ext.length)}-${slug}${ext}`;
-}
-
-/**
  * Render the gallery. Iterates the renderer registry (or a single tool),
- * printing each requested lifecycle state under a labeled section — or, with
- * `screenshot`, capturing the rendered output as PNG(s) via VHS.
+ * printing each requested lifecycle state under a labeled section.
  */
 export async function runGalleryCommand(args: GalleryCommandArgs): Promise<void> {
 	const settingsInstance = await Settings.init();
-	// Screenshots must carry exact theme RGB regardless of how the invoking
-	// terminal advertises its color support, so force truecolor before the theme
-	// (and therefore every SGR escape it emits) is built.
-	if (args.screenshot) process.env.COLORTERM = "truecolor";
 	await initTheme(
 		false,
 		settingsInstance.get("symbolPreset"),
@@ -325,8 +296,8 @@ export async function runGalleryCommand(args: GalleryCommandArgs): Promise<void>
 
 	const plain = args.plain || chalk.level === 0;
 
-	// Theme-matrix path: render (and capture/print) once per named theme, each to
-	// its own suffixed output. Unknown names fail the whole run before any output.
+	// Theme-matrix path: render and print once per named theme. Unknown names fail
+	// the whole run before any output.
 	if (args.themes && args.themes.length > 0) {
 		let rendered: ThemedGallery[];
 		try {
@@ -337,34 +308,13 @@ export async function runGalleryCommand(args: GalleryCommandArgs): Promise<void>
 			return;
 		}
 		for (const { theme: themeName, sections } of rendered) {
-			if (args.screenshot) {
-				const paths = await captureGalleryScreenshots(sections, {
-					width,
-					font: args.font,
-					fontSize: args.fontSize,
-					out: args.out ? themedOutPath(args.out, themeName) : undefined,
-				});
-				process.stdout.write(`${paths.join("\n")}\n`);
-			} else {
-				const lines = [`# theme: ${themeName}`, ...sections.flatMap(section => section.lines), ""];
-				process.stdout.write(`${lines.map(line => (plain ? Bun.stripANSI(line) : line)).join("\n")}\n`);
-			}
+			const lines = [`# theme: ${themeName}`, ...sections.flatMap(section => section.lines), ""];
+			process.stdout.write(`${lines.map(line => (plain ? Bun.stripANSI(line) : line)).join("\n")}\n`);
 		}
 		return;
 	}
 
 	const sections = await renderGallerySections(names, states, width, expanded);
-
-	if (args.screenshot) {
-		const paths = await captureGalleryScreenshots(sections, {
-			width,
-			font: args.font,
-			fontSize: args.fontSize,
-			out: args.out,
-		});
-		process.stdout.write(`${paths.join("\n")}\n`);
-		return;
-	}
 
 	const lines = sections.flatMap(section => section.lines);
 	lines.push("");

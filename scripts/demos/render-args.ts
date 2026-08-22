@@ -2,7 +2,7 @@
  * Argument reading shared by the proof-render scripts.
  *
  * The renderers under `scripts/demos/render-*.ts` exist to put a real component
- * on screen for a VHS capture, so they all take the same shape of argument: a
+ * on screen off-display, so they all take the same shape of argument: a
  * theme, a width, and a variant or two. Each one hand-rolled the same
  * `indexOf("--name")` lookup, and copies of an argument reader drift in exactly
  * the way that ruins a proof — one script defaulting to a different width than

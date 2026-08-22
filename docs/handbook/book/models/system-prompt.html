@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-360535cc.js";
+            window.path_to_searchindex_js = "../searchindex-c9fd14eb.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-093df7ff.js"></script>
@@ -198,7 +198,7 @@
                         <h1 id="system-prompt-customization"><a class="header" href="#system-prompt-customization">System Prompt Customization</a></h1>
 <p>How the coding-agent assembles the system prompt sent to the model, and what you can control.</p>
 <p>The system prompt is ASSEMBLED. It is composed from the section registry and from statements gated on your settings; there is no file on disk holding its text for you to edit. <code>PROMPT_SECTIONS/</code> is how you change what a section says, per statement and validated. <code>--system-prompt</code> remains for a caller that supplies its own prompt for one invocation (the SDK, an eval harness).</p>
-<p>This page is the operator-facing surface: the inputs, the override mechanisms, and the gates. For the implementation side of the same subsystem, the block/tier model, the ordering rules, and how to decide where a new section belongs, see <a href="internal/system-prompt-architecture.html">System prompt architecture</a>, and for how the cached prefix is marked on the wire see <a href="internal/prompt-caching.html">Prompt caching</a>.</p>
+<p>This page is the operator-facing surface: the inputs, the override mechanisms, and the gates. For the implementation side of the same subsystem, the block/tier model, the ordering rules, and how to decide where a new section belongs, see <a href="../../../internal/system-prompt-architecture.html">System prompt architecture</a>, and for how the cached prefix is marked on the wire see <a href="../../../internal/prompt-caching.html">Prompt caching</a>.</p>
 <p>Veyyon no longer reads a <code>SYSTEM.md</code> or <code>APPEND_SYSTEM.md</code> file from disk.</p>
 <p><code>SYSTEM.md</code> replaced the whole assembled prompt with hand-written text. <code>APPEND_SYSTEM.md</code> added text to the end of it, which is what <code>AGENTS.md</code> already does, at more scopes and with a directory walk-up that <code>APPEND_SYSTEM.md</code> never had. Both were discovered out of any repository you entered, and a new profile copied them along under a checkbox labelled <code>AGENTS.md</code>.</p>
 <p>To add instructions, write them in <code>AGENTS.md</code>. To change what a section of the prompt says, use <code>PROMPT_SECTIONS/</code>. If either removed file is still on disk, veyyon names it at launch and points at the replacement rather than ignoring it in silence.</p>
@@ -423,7 +423,7 @@ delivery-contract   template      0     4053     1014   10.9%
 <pre><code>1 REQUIRED section did not render (role). This prompt is incomplete, not minimal.
 </code></pre>
 <p>Every other exit is 0, so <code>veyyon prompt --sections</code> works as a check in a script. <code>--json</code> carries the same information in a <code>missing</code> array, present even when empty.</p>
-<p>The <code>block</code> column is the index of the part in the ordered array <code>buildSystemPrompt</code> returns. Block 0 is the static prefix that providers cache; later blocks hold text that changes often. Each provider serializes those parts its own way (Anthropic sends them as separate <code>system</code> text blocks, most OpenAI-wire paths as separate system or developer messages, Gemini as separate <code>systemInstruction</code> parts), so a block is a separate <em>part</em>, not necessarily a separate message. Moving content from a later block into block 0 would break the cache, which is why the breakdown reports the boundary rather than hiding it. See <a href="internal/system-prompt-architecture.html">System prompt architecture</a> for the per-provider mapping.</p>
+<p>The <code>block</code> column is the index of the part in the ordered array <code>buildSystemPrompt</code> returns. Block 0 is the static prefix that providers cache; later blocks hold text that changes often. Each provider serializes those parts its own way (Anthropic sends them as separate <code>system</code> text blocks, most OpenAI-wire paths as separate system or developer messages, Gemini as separate <code>systemInstruction</code> parts), so a block is a separate <em>part</em>, not necessarily a separate message. Moving content from a later block into block 0 would break the cache, which is why the breakdown reports the boundary rather than hiding it. See <a href="../../../internal/system-prompt-architecture.html">System prompt architecture</a> for the per-provider mapping.</p>
 <p><code>--no-tools</code> is useful for finding tool-gated text: run it, diff against the normal output, and every line that disappeared was behind a tool being available.</p>
 <p>Use <code>--json</code> to compare two configurations mechanically, for example to check that a settings change altered only the section you expected.</p>
 <h3 id="the-other-prompts"><a class="header" href="#the-other-prompts">The other prompts</a></h3>

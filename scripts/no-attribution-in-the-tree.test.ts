@@ -92,7 +92,6 @@ const EXTENSION_POLICY: Readonly<Record<string, ExtensionDecision>> = {
 	".proto": "scan",
 	".lark": "scan",
 	".sublime-syntax": "scan",
-	".tape": "scan",
 	".dockerfile": "scan",
 	".dockerignore": "scan",
 	".veybot": "scan",
@@ -508,7 +507,7 @@ describe("no comment or internal doc attributes a change to a person", () => {
 		// prefixes are exempt and an ordinary document is not.
 		expect(isProductMarkdown("packages/coding-agent/src/prompts/system.md")).toBe(true);
 		expect(isProductMarkdown("agents/deep.md")).toBe(true);
-		expect(isProductMarkdown(".veyyon/skills/record-demo/SKILL.md")).toBe(true);
+		expect(isProductMarkdown(".veyyon/commands/triage.md")).toBe(true);
 		expect(isProductMarkdown("docs/internal/releasing.md")).toBe(false);
 		expect(isProductMarkdown("packages/coding-agent/src/eval/prelude.py")).toBe(false);
 	});
@@ -563,7 +562,6 @@ describe("no comment or internal doc attributes a change to a person", () => {
 			".proto": line => `// ${line}`,
 			".lark": line => `// ${line}`,
 			".sublime-syntax": line => `# ${line}`,
-			".tape": line => `# ${line}`,
 			".dockerfile": line => `# ${line}`,
 			".recorder": line => `# ${line}`,
 			".dockerignore": line => `# ${line}`,

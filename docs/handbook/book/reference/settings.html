@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-360535cc.js";
+            window.path_to_searchindex_js = "../searchindex-c9fd14eb.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-093df7ff.js"></script>
@@ -503,7 +503,7 @@ enabledModels:
 </tbody>
 </table>
 </div>
-<p>See <a href="./models-yml.html">Models</a> for the <code>models.yml</code> schema and custom-provider definitions. Handbook: <a href="./handbook/src/using/roles-and-profiles.html">Models, roles, and profiles</a> (under <code>docs/handbook/src/using/</code>).</p>
+<p>See <a href="./models-yml.html">Models</a> for the <code>models.yml</code> schema and custom-provider definitions. Handbook: <a href="../using/roles-and-profiles.html">Models, roles, and profiles</a> (under <code>docs/handbook/src/using/</code>).</p>
 <h3 id="advisor"><a class="header" href="#advisor">Advisor</a></h3>
 <p>The advisor is a second model that reviews each completed turn and can inject advice into the primary session. Assign a model with <code>modelRoles.advisor</code>, then enable it with <code>advisor.enabled</code>, <code>/advisor on</code>, or by launching with the <code>--advisor</code> flag.</p>
 <p>See <a href="../features/advisor.html">Advisor and WATCHDOG.md</a> for runtime behavior, <code>WATCHDOG.md</code> discovery, and bounded catch-up semantics.</p>
@@ -907,7 +907,7 @@ They used to open a separate screen with its own roster, which meant two answers
 <tr><td><code>subagent.softRequestBudgetNotice</code></td><td>boolean</td><td><code>true</code></td><td>Inject that wrap-up notice once.</td></tr>
 <tr><td><code>subagent.showResolvedModelBadge</code></td><td>boolean</td><td><code>true</code></td><td>Show each subagent’s resolved model, and what decided it, on the task widget and the agent surfaces.</td></tr>
 <tr><td><code>subagent.enableLsp</code></td><td>boolean</td><td><code>false</code></td><td>Let subagents use the <code>lsp</code> tool.</td></tr>
-<tr><td><code>subagent.isolation.mode</code></td><td>enum</td><td><code>none</code></td><td>Filesystem isolation backend for subagents. See <a href="./handbook/src/using/safety.html">Safety</a>.</td></tr>
+<tr><td><code>subagent.isolation.mode</code></td><td>enum</td><td><code>none</code></td><td>Filesystem isolation backend for subagents. See <a href="../using/safety.html">Safety</a>.</td></tr>
 <tr><td><code>subagent.isolation.merge</code></td><td>enum</td><td><code>patch</code></td><td>How isolated changes come back: <code>patch</code> or <code>branch</code>.</td></tr>
 <tr><td><code>subagent.isolation.commits</code></td><td>enum</td><td><code>generic</code></td><td>Commit message style for nested repo changes.</td></tr>
 </tbody>
@@ -1054,7 +1054,7 @@ memory:
 <tr><td><code>autolearn.enabled</code></td><td>boolean</td><td><code>false</code></td><td>Experimental: after the agent stops, nudge it to capture lessons to memory and create/enhance isolated managed skills under <code>~/.veyyon/profiles/default/agent/managed-skills</code>. Enables the <code>manage_skill</code> tool (and <code>learn</code> when a memory backend is active).</td></tr>
 <tr><td><code>autolearn.autoContinue</code></td><td>boolean</td><td><code>false</code></td><td>When <code>autolearn.enabled</code>, auto-run one capture turn at stop (uses extra tokens). Off = a passive reminder rides your next turn.</td></tr>
 <tr><td><code>autolearn.minToolCalls</code></td><td>number</td><td><code>5</code></td><td>Only nudge after a turn that used at least this many tools.</td></tr>
-<tr><td><code>session.instrumentation</code></td><td>enum</td><td><code>off</code></td><td>How densely a run records study records on the session file, for after-the-fact analysis and backtesting. Graded: <code>off</code> stores nothing extra; <code>basic</code> adds wall-clock (start, end, duration, and time-to-first-token for model turns); <code>rich</code> adds output weight (result bytes/tokens) and per-turn throughput (tokens/sec); <code>ultra</code> adds an arguments fingerprint, cache read/write tokens, reasoning tokens, and upstream provider. It records BOTH per-tool-call metrics (<code>message.metrics</code>) AND per-model-turn metrics and the exact request params sent (<code>message.turnMetrics</code> / <code>message.request</code>). The <code>dev</code> profile preset (<code>veyyon profile new dev --from dev</code>) sets this to <code>ultra</code>. See <a href="./internal/session.html#session-instrumentation-structured-analysis">the session instrumentation reference</a> for the on-disk field tables and jq recipes.</td></tr>
+<tr><td><code>session.instrumentation</code></td><td>enum</td><td><code>off</code></td><td>How densely a run records study records on the session file, for after-the-fact analysis and backtesting. Graded: <code>off</code> stores nothing extra; <code>basic</code> adds wall-clock (start, end, duration, and time-to-first-token for model turns); <code>rich</code> adds output weight (result bytes/tokens) and per-turn throughput (tokens/sec); <code>ultra</code> adds an arguments fingerprint, cache read/write tokens, reasoning tokens, and upstream provider. It records BOTH per-tool-call metrics (<code>message.metrics</code>) AND per-model-turn metrics and the exact request params sent (<code>message.turnMetrics</code> / <code>message.request</code>). The <code>dev</code> profile preset (<code>veyyon profile new dev --from dev</code>) sets this to <code>ultra</code>. See <a href="../../../internal/session.html#session-instrumentation-structured-analysis">the session instrumentation reference</a> for the on-disk field tables and jq recipes.</td></tr>
 </tbody>
 </table>
 </div>
@@ -1106,7 +1106,7 @@ tui:
 </tbody>
 </table>
 </div>
-<p>For a custom status line, set <code>statusLine.preset: custom</code> and configure <code>statusLine.leftSegments</code>, <code>statusLine.rightSegments</code>, and <code>statusLine.segmentOptions</code>. See the <a href="./handbook/src/features/cockpit.html#status-line">status line reference</a> for the full list of segment IDs.</p>
+<p>For a custom status line, set <code>statusLine.preset: custom</code> and configure <code>statusLine.leftSegments</code>, <code>statusLine.rightSegments</code>, and <code>statusLine.segmentOptions</code>. See the <a href="../features/cockpit.html#status-line">status line reference</a> for the full list of segment IDs.</p>
 <p>One segment is worth calling out: <code>profile</code> shows the active profile name (<code>work</code>, <code>rec</code>, a client sandbox) so you always know which profile’s config, sessions, and keys are live. It hides on the built-in <code>default</code> profile, so a vanilla status line is unchanged, and every built-in preset already includes it.</p>
 <h3 id="interaction"><a class="header" href="#interaction">Interaction</a></h3>
 <div class="table-wrapper">
