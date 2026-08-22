@@ -155,7 +155,19 @@
             },
             "env": {
               "$ref": "#/$defs/stringMap",
-              "description": "Environment variables passed to the stdio process."
+              "description": "Environment variables set for the stdio process. A stdio server sees only these plus a baseline of variables a program needs in order to run, so a secret it needs is either written here or named in envPassthrough."
+            },
+            "envPassthrough": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": "Ambient environment variables to forward to this server, by name."
+            },
+            "inheritEnv": {
+              "type": "boolean",
+              "description": "Hand this server the whole ambient environment, including every credential in it. Per server; a warning is logged on every spawn. Prefer envPassthrough."
             },
             "cwd": {
               "type": "string",

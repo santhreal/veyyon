@@ -102,6 +102,21 @@ export interface MCPStdioServerConfig extends MCPServerConfigBase {
 	command: string;
 	args?: string[];
 	env?: Record<string, string>;
+	/**
+	 * Ambient variables to forward to this server, by name.
+	 *
+	 * A stdio server sees only what a program needs in order to run (see
+	 * `mcp/child-environment.ts`); a secret it legitimately needs is either written into `env` or
+	 * named here. Naming one is the operator saying this server may read it.
+	 */
+	envPassthrough?: string[];
+	/**
+	 * Hand this server the WHOLE ambient environment, including every credential in it.
+	 *
+	 * Per server, never global, and the transport warns on every spawn that uses it. Prefer
+	 * `envPassthrough`.
+	 */
+	inheritEnv?: boolean;
 	cwd?: string;
 }
 

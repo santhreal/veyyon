@@ -86,6 +86,39 @@ Local stdio servers often need environment variables:
 }
 ```
 
+A stdio server does not inherit the shell environment. It receives a baseline of variables a
+program needs in order to run — `PATH`, `HOME`, temp and locale settings, certificate and proxy
+settings, and the directories version managers use to resolve a command — plus whatever `env`
+sets. Every other ambient variable, including provider keys and CI tokens, is withheld. On
+Windows the baseline also carries `PATHEXT`, `SystemRoot`, `ComSpec` and the `ProgramFiles`
+variants, and names match without regard to case.
+
+To forward an ambient variable, name it:
+
+```json
+{
+  "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "envPassthrough": ["GITHUB_TOKEN"]
+    }
+  }
+}
+```
+
+`inheritEnv: true` hands one server the whole environment, including every credential in it. Use
+it when a server needs a variable you cannot name in advance. It is set per server, and each
+spawn logs a warning naming the command.
+
+```json
+{
+  "mcpServers": {
+    "legacy": { "command": "/opt/legacy/mcp", "inheritEnv": true }
+  }
+}
+```
+
 For HTTP servers, pass credentials or account ids as headers:
 
 ```json
