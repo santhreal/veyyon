@@ -86,6 +86,7 @@ function createController() {
 	const present = vi.fn();
 	const mcpManager = {
 		disconnectAll: vi.fn(async () => {}),
+		invalidateCommandCredentials: vi.fn(() => 0),
 		discoverAndConnect: vi.fn(async () => ({ errors: new Map<string, string>() })),
 		disconnectServer: vi.fn(async () => {}),
 		connectServers: vi.fn(async () => ({

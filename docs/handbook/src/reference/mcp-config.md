@@ -427,6 +427,23 @@ That means this is valid and convenient for local secrets:
 - `"Authorization": "Bearer hardcoded-token"` → use the literal value
 - `"Authorization": "!printf 'Bearer %s' \"$GITHUB_TOKEN\""` → build the header from a command
 
+### When a command runs again
+
+A command's output is cached under the command text, so the same command is executed once per
+session however many servers and headers use it. Three events drop that cached output and run the
+command again:
+
+- A request answered with 401 or 403. The retry carries the new value.
+- `/mcp reconnect <name>`, which re-reads the credentials of that server only.
+- `/mcp reload`, which re-reads the credentials of every configured MCP server. Commands used
+  outside MCP config, such as a provider `apiKey`, keep their cached value.
+
+An automatic reconnect after a dropped connection reuses the cached value. A lost connection says
+nothing about the credential, and re-running a password-manager command on every reconnect means
+an unlock prompt for each one.
+
+A command that fails is not retried for 30 seconds, and an invalidation does not shorten that.
+
 ## `disabledServers`
 
 `disabledServers` is read from the user config file (`~/.veyyon/profiles/default/agent/mcp.json`) when a server is discovered from any source and you want Veyyon to ignore it without editing that other tool's config.

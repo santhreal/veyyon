@@ -124,18 +124,24 @@ describe("a stdio MCP server sees only the environment it was given", () => {
 		expect(seen.HOME).toBe(ambient("HOME"));
 	});
 
-	it("forwards every name the baseline claims, enumerated from source so a new one cannot slip in untested", async () => {
-		// Fails by default: add a name to a baseline group without it reaching the child and this
-		// goes red, rather than the addition being believed because it is written down.
+	it("forwards every name the baseline claims, enumerated from source so a new one cannot slip in untested", () => {
+		// Fails by default: add a name to a baseline group without it being forwarded and this goes
+		// red, rather than the addition being believed because it is written down.
+		//
+		// The ambient environment is synthetic rather than seeded into this process. The baseline
+		// includes `http_proxy` and the CA-bundle variables, and setting those to marker strings
+		// pointed every later HTTP test in the same process at a host that does not resolve — a
+		// suite that passes and breaks its neighbours is a broken suite.
 		const baseline = mcpBaselineEnvNames(process.platform);
 		expect(baseline.length).toBeGreaterThan(20);
-		const marked = baseline.filter(name => Bun.env[name] === undefined);
-		for (const name of marked) seed(name, `baseline-marker-${name}`);
+		const ambient: Record<string, string> = { ANTHROPIC_API_KEY: "sk-ant-not-in-the-baseline" };
+		for (const name of baseline) ambient[name] = `baseline-value-${name}`;
 
-		const seen = await environmentSeenBy({});
+		const built = buildMcpChildEnv({}, ambient, process.platform);
 
-		const missing = baseline.filter(name => seen[name] !== Bun.env[name]);
+		const missing = baseline.filter(name => built.env[name] !== ambient[name]);
 		expect(missing).toEqual([]);
+		expect(built.withheld).toEqual(["ANTHROPIC_API_KEY"]);
 	});
 
 	it("withholds TERM, so a server does not decide it is talking to a terminal", () => {

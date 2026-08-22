@@ -13,7 +13,7 @@ import { isDefinitiveOAuthFailure } from "@veyyon/ai/error/auth-classify";
 import { errorMessage, logger } from "@veyyon/utils";
 import { FOREIGN_PROVIDER_IDS } from "../capability/index";
 import type { SourceMeta } from "../capability/types";
-import { resolveConfigValue } from "../config/resolve-config-value";
+import { invalidateConfigValue, resolveConfigValue } from "../config/resolve-config-value";
 import type { CustomTool } from "../extensibility/custom-tools/types";
 import { type AuthStorage, REMOTE_REFRESH_SENTINEL } from "../session/auth-storage";
 import {
@@ -32,6 +32,7 @@ import {
 	unsubscribeFromResources,
 } from "./client";
 import { type LoadMCPConfigsResult, loadAllMCPConfigs, validateServerConfig } from "./config";
+import { hasMcpConfigCommands, mcpConfigCommandValues } from "./config-commands";
 import { mcpManagerInstance, setMcpManagerInstance } from "./manager-instance";
 import {
 	lookupMcpOAuthCredential,
@@ -475,16 +476,22 @@ export class MCPManager {
 						this.#connections.set(name, connection);
 					}
 
-					// Wire auth refresh for HTTP-like transports so 401s trigger token refresh.
-					// Gate on a resolvable managed credential, not on the auth block:
-					// definition-only configs (url-keyed fallback) get Bearer injection
-					// too and need the same mid-session refresh hook.
+					// Wire auth refresh for HTTP-like transports so 401s trigger a fresh credential.
+					// Two kinds qualify, and the second used to be missed entirely: a resolvable
+					// managed OAuth credential (definition-only configs get Bearer injection too and
+					// need the same mid-session refresh), and a `!command` header, which is a server
+					// whose token is minted or read on demand. Without the hook, a rotated token
+					// meant 401s until the process restarted, because nothing ever re-ran the
+					// command.
 					if (
 						isAuthRefreshableMCPTransport(connection.transport) &&
-						lookupMcpOAuthCredential(this.#authStorage, config)
+						(lookupMcpOAuthCredential(this.#authStorage, config) || hasMcpConfigCommands(config))
 					) {
 						connection.transport.onAuthError = async () => {
-							const refreshed = await this.#resolveAuthConfig(config, { forceRefresh: true });
+							const refreshed = await this.#resolveAuthConfig(config, {
+								forceRefresh: true,
+								refreshCommands: true,
+							});
 							if (refreshed.type === "http" || refreshed.type === "sse") {
 								return refreshed.headers ?? null;
 							}
@@ -897,6 +904,12 @@ export class MCPManager {
 	async reconnectServer(name: string, options?: { manual?: boolean }): Promise<MCPServerConnection | null> {
 		if (options?.manual) {
 			this.#reconnectHistory.delete(name);
+			// An operator-driven reconnect is the recovery step after rotating a secret, so this
+			// server's `!command` credentials are re-read rather than re-sent. An automatic
+			// reconnect deliberately does not: a dropped transport says nothing about the
+			// credential, and re-running a password-manager command per reconnect turns a
+			// restarting server into a stream of unlock prompts.
+			this.invalidateCommandCredentials(name);
 		}
 
 		const pending = this.#pendingReconnections.get(name);
@@ -909,6 +922,30 @@ export class MCPManager {
 		const attempt = this.#doReconnect(name);
 		this.#pendingReconnections.set(name, attempt);
 		return attempt.finally(() => this.#pendingReconnections.delete(name));
+	}
+
+	/**
+	 * Drop the cached output of the `!command` credentials of one server, or of every configured
+	 * server when no name is given, and report how many commands were dropped.
+	 *
+	 * The whole-manager form is what `/mcp reload` needs: the operator re-read the config files
+	 * precisely because something about them changed, and a credential minted by a command is
+	 * exactly what a reload cannot see has rotated. It is scoped to MCP configs, so a `!command`
+	 * that resolves a provider API key elsewhere keeps its cached value.
+	 */
+	invalidateCommandCredentials(name?: string): number {
+		const configs =
+			name === undefined
+				? [...this.#serverConfigs.values()]
+				: [this.#connections.get(name)?.config ?? this.#serverConfigs.get(name)].filter(
+						(config): config is MCPServerConfig => config !== undefined,
+					);
+		const commands = new Set<string>();
+		for (const config of configs) {
+			for (const value of mcpConfigCommandValues(config)) commands.add(value);
+		}
+		for (const command of commands) invalidateConfigValue(command);
+		return commands.size;
 	}
 
 	/**
@@ -1052,10 +1089,14 @@ export class MCPManager {
 		this.#connections.set(name, connection);
 
 		// Wire auth refresh for HTTP-like transports, and reconnect for any transport.
-		// Same gate as connectServers: any resolvable managed credential.
-		if (isAuthRefreshableMCPTransport(connection.transport) && lookupMcpOAuthCredential(this.#authStorage, config)) {
+		// Same gate as connectServers: a resolvable managed credential, or a `!command` this
+		// path can re-run.
+		if (
+			isAuthRefreshableMCPTransport(connection.transport) &&
+			(lookupMcpOAuthCredential(this.#authStorage, config) || hasMcpConfigCommands(config))
+		) {
 			connection.transport.onAuthError = async () => {
-				const refreshed = await this.#resolveAuthConfig(config, { forceRefresh: true });
+				const refreshed = await this.#resolveAuthConfig(config, { forceRefresh: true, refreshCommands: true });
 				if (refreshed.type === "http" || refreshed.type === "sse") {
 					return refreshed.headers ?? null;
 				}
@@ -1298,12 +1339,19 @@ export class MCPManager {
 	/**
 	 * Resolve OAuth credentials and shell commands in config.
 	 * `oauth: false` skips credential injection (reauth's unauthenticated probe);
-	 * `forceRefresh` bypasses the expiry buffer (401/403 auth-error hook).
+	 * `forceRefresh` bypasses the expiry buffer (401/403 auth-error hook);
+	 * `refreshCommands` drops the cached output of this server's `!command` values first, so a
+	 * rotated or revoked credential is re-read instead of re-sent. That is the difference between
+	 * a 401 the operator can recover from without restarting and one that repeats forever: the
+	 * cache key is the command text, which does not change when the secret behind it does.
 	 */
 	async #resolveAuthConfig(
 		config: MCPServerConfig,
-		opts?: { forceRefresh?: boolean; oauth?: boolean },
+		opts?: { forceRefresh?: boolean; oauth?: boolean; refreshCommands?: boolean },
 	): Promise<MCPServerConfig> {
+		if (opts?.refreshCommands) {
+			for (const value of mcpConfigCommandValues(config)) invalidateConfigValue(value);
+		}
 		let resolved: MCPServerConfig = { ...config };
 
 		const auth = config.auth;
