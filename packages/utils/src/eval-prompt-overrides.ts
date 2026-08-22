@@ -33,6 +33,7 @@
  */
 import { $env } from "./env";
 import { nearestNames } from "./levenshtein";
+import { isRecord } from "./type-guards";
 
 /** One prompt id to the text that replaces it for this arm. */
 export type EvalPromptOverrides = Readonly<Record<string, string>>;
@@ -62,13 +63,13 @@ export function parseEvalPromptOverridesJson(raw: string | undefined): EvalPromp
 	} catch (err) {
 		throw new Error(`VEYYON_EVAL_PROMPTS is set but is not valid JSON: ${err}`);
 	}
-	if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+	if (!isRecord(parsed)) {
 		throw new Error(
 			`VEYYON_EVAL_PROMPTS must be a JSON object of prompt id -> replacement text, ` +
 				`got ${Array.isArray(parsed) ? "an array" : parsed === null ? "null" : typeof parsed}`,
 		);
 	}
-	for (const [id, value] of Object.entries(parsed as Record<string, unknown>)) {
+	for (const [id, value] of Object.entries(parsed)) {
 		if (typeof value !== "string") {
 			throw new Error(`VEYYON_EVAL_PROMPTS value for "${id}" must be a string, got ${typeof value}`);
 		}
