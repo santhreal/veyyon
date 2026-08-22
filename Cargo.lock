@@ -5939,6 +5939,7 @@ dependencies = [
  "tokio",
  "unicode-segmentation",
  "unicode-width 0.2.2",
+ "veyyon-test-scratch",
 ]
 
 [[package]]
