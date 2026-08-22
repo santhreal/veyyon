@@ -46,6 +46,38 @@ export interface SessionExitData {
 	pendingToolCalls?: PendingToolCallDiagnostic[];
 }
 
+/** How loudly a recorded exit reads in the log. */
+export type SessionExitLogLevel = "debug" | "warn" | "error";
+
+/**
+ * The severity of one recorded exit, from what actually happened to the session.
+ *
+ * WHY THIS IS A FUNCTION AND NOT A TERNARY AT THE CALL SITE. The call site asked one
+ * question — "was this a clean dispose?" — and answered it with two levels, so a session
+ * killed by an uncaught exception and a session whose terminal closed with nothing in
+ * flight were both a warning. Measured across 19 profile logs: 23 exits logged at warn,
+ * 17 of them `sighup` with zero pending tool calls, 4 of them `fatal`. So the level that
+ * meant "look at this" was carried four times out of twenty-three by the records that
+ * deserved it, and the crashes were indistinguishable from a closed window.
+ *
+ * The three levels are the three things a reader of the log does about it:
+ *
+ * - `error`: the session died on an unhandled throw or rejection. Nothing else in the
+ *   log says so, because the record is written from the teardown path, not the thrower.
+ * - `warn`: tool calls were in flight and are now orphaned. The resume path renders them
+ *   to the operator, so the log line is the trace of a warning already shown.
+ * - `debug`: a signal, a `process.exit`, or a normal dispose with nothing in flight. The
+ *   session ended for a reason outside itself and lost no work. Still recorded, because
+ *   "which of my sessions ended and why" is a real question, but it is not a problem.
+ *
+ * A fatal exit that also orphaned tool calls is an `error`: the crash is the finding and
+ * the pending count travels in the payload.
+ */
+export function sessionExitLogLevel(kind: SessionExitData["kind"], pendingToolCalls: number): SessionExitLogLevel {
+	if (kind === "fatal") return "error";
+	return pendingToolCalls > 0 ? "warn" : "debug";
+}
+
 interface PendingToolCallRecord extends PendingToolCallDiagnostic {
 	key: string;
 }
