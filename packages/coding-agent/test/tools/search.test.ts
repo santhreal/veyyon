@@ -3,7 +3,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { Tool as AiTool } from "@veyyon/ai";
-import { toolWireSchema } from "@veyyon/ai/utils/schema";
+import { normalizeSchemaForCCA, toolWireSchema } from "@veyyon/ai/utils/schema";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type { SettingPath } from "@veyyon/coding-agent/config/settings-schema";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
@@ -77,6 +77,35 @@ describe("SearchTool", () => {
 		} finally {
 			await removeWithRetries(tempDir);
 		}
+	});
+
+	it("preserves every purpose through the Antigravity schema adapter", () => {
+		const normalized = normalizeSchemaForCCA(
+			toolWireSchema(new SearchTool(makeSession(process.cwd())) as unknown as AiTool),
+		) as {
+			anyOf?: unknown;
+			properties?: {
+				pattern?: { description?: string };
+				purpose?: { enum?: string[] };
+			};
+			required?: string[];
+		};
+
+		expect(normalized.anyOf).toBeUndefined();
+		expect(normalized.properties?.purpose?.enum?.toSorted()).toEqual(["analyze", "locate", "match"]);
+		expect(normalized.properties?.pattern?.description).toContain("match: a literal or regular expression");
+		expect(normalized.properties?.pattern?.description).toContain("analyze: one valid AST node");
+		expect(normalized.required).toEqual(["purpose"]);
+	});
+
+	it("rejects purposes that omit their required pattern", async () => {
+		const tool = new SearchTool(makeSession(process.cwd()));
+		await expect(tool.execute("missing-match", { purpose: "match" })).rejects.toThrow(
+			"Content matching requires a pattern",
+		);
+		await expect(tool.execute("missing-analyze", { purpose: "analyze" })).rejects.toThrow(
+			"Structural code analysis requires a pattern",
+		);
 	});
 
 	it("advertises exactly the enabled primitive capabilities", () => {

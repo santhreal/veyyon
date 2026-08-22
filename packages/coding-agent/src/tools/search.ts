@@ -16,43 +16,91 @@ import { GlobTool, type GlobToolDetails } from "./glob";
 import { GrepTool, type GrepToolDetails } from "./grep";
 import { ToolError } from "./tool-errors";
 
+const searchPathSchema = type("string").describe(
+	'file, directory, glob, internal URL, or semicolon-delimited set to search. Omitted -> searches the workspace root (".")',
+);
+const searchPatternSchema = type("string").describe(
+	'required for match and analyze; match: a literal or regular expression; analyze: one valid AST node such as "console.log($$$)"',
+);
+const locateSearchFields = {
+	"hidden?": type("boolean").describe("locate only: include hidden files"),
+	"limit?": type("number").describe("locate only: max results"),
+} as const;
+const matchSearchFields = {
+	"case?": type("boolean").describe("match only: case-sensitive search"),
+} as const;
+const gitignoreSearchField = type("boolean").describe("locate or match: respect gitignore");
+const skipSearchField = type("number").describe("match or analyze: matches to skip");
+const pathSearchFields = {
+	"path?": searchPathSchema,
+} as const;
+const patternedSearchFields = {
+	"pattern?": searchPatternSchema,
+} as const;
+
 const locateSearchSchema = type({
-	purpose: "'locate'",
-	"path?": type("string").describe(
-		'glob, file, or directory to search — a single path or a semicolon-delimited list ("src/**/*.ts; test/**/*.ts"). Omitted -> searches the workspace root (".")',
-	),
-	"hidden?": type("boolean").describe("include hidden files"),
-	"gitignore?": type("boolean").describe("respect gitignore"),
-	"limit?": type("number").describe("max results"),
+	purpose: type.enumerated("locate").describe("locate paths, files, directories, extensions, or repository layout"),
+	...pathSearchFields,
+	...locateSearchFields,
+	"gitignore?": gitignoreSearchField,
 });
-
 const matchSearchSchema = type({
-	purpose: "'match'",
-	pattern: type("string").describe("regex pattern"),
-	"path?": type("string").describe(
-		'file, directory, glob, internal URL, or "<file>:<lines>" selector to search; pass several as a semicolon-delimited list ("src; tests"). Omitted -> searches the workspace root (".")',
-	),
-	"case?": type("boolean").describe("case-sensitive search"),
-	"gitignore?": type("boolean").describe("respect gitignore"),
-	"skip?": type("number")
-		.or("null")
-		.describe("files to skip before collecting results — use to paginate when the prior call hit the file limit"),
+	purpose: type
+		.enumerated("match")
+		.describe("match text whose syntax role is irrelevant: literals, documentation, configuration, or regex"),
+	...pathSearchFields,
+	...patternedSearchFields,
+	...matchSearchFields,
+	"gitignore?": gitignoreSearchField,
+	"skip?": skipSearchField,
 });
-
 const analyzeSearchSchema = type({
-	purpose: "'analyze'",
-	pattern: type("string").describe("AST pattern"),
-	"path?": type("string").describe(
-		'file, directory, glob, or internal URL to search; pass several as a semicolon-delimited list ("src; tests"). Omitted -> searches the workspace root (".")',
-	),
-	"skip?": type("number").describe("matches to skip"),
+	purpose: type
+		.enumerated("analyze")
+		.describe(
+			"analyze code structure: definitions, calls, methods, types, imports, operators, or node relationships",
+		),
+	...pathSearchFields,
+	...patternedSearchFields,
+	"skip?": skipSearchField,
 });
-
-const locateAndMatchSearchSchema = locateSearchSchema.or(matchSearchSchema);
-const locateAndAnalyzeSearchSchema = locateSearchSchema.or(analyzeSearchSchema);
-const matchAndAnalyzeSearchSchema = matchSearchSchema.or(analyzeSearchSchema);
+const locateAndMatchSearchSchema = type({
+	purpose: type.enumerated("locate", "match").describe("locate paths or match syntax-irrelevant text"),
+	...pathSearchFields,
+	...patternedSearchFields,
+	...locateSearchFields,
+	...matchSearchFields,
+	"gitignore?": gitignoreSearchField,
+	"skip?": skipSearchField,
+});
+const locateAndAnalyzeSearchSchema = type({
+	purpose: type.enumerated("locate", "analyze").describe("locate paths or analyze code structure"),
+	...pathSearchFields,
+	...patternedSearchFields,
+	...locateSearchFields,
+	"gitignore?": gitignoreSearchField,
+	"skip?": skipSearchField,
+});
+const matchAndAnalyzeSearchSchema = type({
+	purpose: type.enumerated("match", "analyze").describe("match syntax-irrelevant text or analyze code structure"),
+	...pathSearchFields,
+	...patternedSearchFields,
+	...matchSearchFields,
+	"gitignore?": gitignoreSearchField,
+	"skip?": skipSearchField,
+});
 const searchDisabledSchema = type({ purpose: "'disabled'" });
-export const searchSchema = locateAndMatchSearchSchema.or(analyzeSearchSchema);
+export const searchSchema = type({
+	purpose: type
+		.enumerated("locate", "match", "analyze")
+		.describe("locate paths, match syntax-irrelevant text, or analyze code structure"),
+	...pathSearchFields,
+	...patternedSearchFields,
+	...locateSearchFields,
+	...matchSearchFields,
+	"gitignore?": gitignoreSearchField,
+	"skip?": skipSearchField,
+});
 export type UnifiedSearchToolParams = typeof searchSchema.infer;
 
 type SearchPurpose = UnifiedSearchToolParams["purpose"];
@@ -170,6 +218,7 @@ export class SearchTool implements AgentTool<typeof searchSchema, SearchToolDeta
 		}
 		if (params.purpose === "match") {
 			if (!this.#capabilities().text) throw new ToolError("Content matching is disabled in this session");
+			if (params.pattern === undefined) throw new ToolError("Content matching requires a pattern");
 			const delegated = {
 				pattern: params.pattern,
 				path: params.path,
@@ -185,6 +234,7 @@ export class SearchTool implements AgentTool<typeof searchSchema, SearchToolDeta
 		}
 		if (params.purpose === "analyze") {
 			if (!this.#capabilities().ast) throw new ToolError("Structural code analysis is disabled in this session");
+			if (params.pattern === undefined) throw new ToolError("Structural code analysis requires a pattern");
 			const delegated = { pat: params.pattern, path: params.path, skip: params.skip };
 			const updates: AgentToolUpdateCallback<AstGrepToolDetails> | undefined = onUpdate
 				? update => onUpdate({ content: update.content, details: { purpose: "analyze", details: update.details } })
