@@ -14,7 +14,26 @@
  * Dependency-free by design: imported both from Node/Bun contexts and from
  * browser-bundled renderers (`@veyyon/tool-render`, via its `src/util.ts`), so
  * this file must never pull in Node built-ins.
+ *
+ * 8-bit C1 control characters (0x90 DCS, 0x98 SOS, 0x9B CSI, 0x9C ST, 0x9D OSC,
+ * 0x9E PM, 0x9F APC) canonicalize to their two-byte 7-bit equivalents (`ESC P`,
+ * `ESC X`, `ESC [`, `ESC \`, `ESC ]`, `ESC ^`, `ESC _`) before the grammar
+ * runs. This covers both representations without duplicating the sequence
+ * parser. Non-introducer C1 controls are not escape sequences and are left
+ * untouched for downstream handling.
  */
+
+const HAS_ESCAPE_OR_C1 = /[\x1b\x90\x98\x9b-\x9f]/;
+const C1_INTRODUCERS = /[\x90\x98\x9b-\x9f]/g;
+const C1_MAP: Record<string, string> = {
+	"\x90": "\x1bP",
+	"\x98": "\x1bX",
+	"\x9b": "\x1b[",
+	"\x9c": "\x1b\\",
+	"\x9d": "\x1b]",
+	"\x9e": "\x1b^",
+	"\x9f": "\x1b_",
+};
 
 /**
  * One well-formed sequence of any kind.
@@ -50,7 +69,8 @@ const ESCAPE_SEQUENCE =
 	/\x1b(?:\[[\x30-\x3f]*[\x20-\x2f]*[\x40-\x7e]|[\]PX^_][^\x07\x1b]*(?:\x07|\x1b\\)|[\x20-\x2f]+[\x30-\x7e]|[\x30-\x4f\x51-\x57\x59-\x5a\x5c\x60-\x7e])/g;
 
 export function stripAnsi(s: string): string {
-	if (!s.includes("\x1b")) return s;
+	if (!HAS_ESCAPE_OR_C1.test(s)) return s;
+	const normalized = s.replace(C1_INTRODUCERS, ch => C1_MAP[ch] ?? ch);
 	// An escape that opened no sequence of any of those kinds is dropped, and only
 	// the escape byte: whatever follows it is text and is kept, which is what a
 	// capture cut at a buffer boundary mid-escape looks like. Dropping it is also
@@ -61,5 +81,5 @@ export function stripAnsi(s: string): string {
 	// sequence that was not there before, so the same string strips to two
 	// different results depending on how many times it has been through. Found by
 	// the Rust half's fuzzer, `fuzz/fuzz_targets/minimizer_filters.rs`.
-	return s.replace(ESCAPE_SEQUENCE, "").replaceAll("\x1b", "");
+	return normalized.replace(ESCAPE_SEQUENCE, "").replaceAll("\x1b", "");
 }

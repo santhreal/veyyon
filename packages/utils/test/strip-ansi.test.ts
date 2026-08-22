@@ -89,6 +89,19 @@ describe("stripAnsi", () => {
 	});
 
 	/**
+	 * 8-bit C1 control sequences (0x90-0x9f) canonicalize to their 7-bit ESC equivalents.
+	 * 0x9b (CSI) carries colors and styles; 0x90 (DCS), 0x9e (PM), 0x9f (APC), 0x9d (OSC)
+	 * and 0x9c (ST) frame strings; non-introducer C1 bytes remain for caller handling.
+	 */
+	it("canonicalizes and strips 8-bit C1 escape sequences while preserving non-introducers", () => {
+		expect(stripAnsi("\x9b31mred\x9b0m")).toBe("red");
+		expect(stripAnsi("\x90tmux;\x9cafter")).toBe("after");
+		expect(stripAnsi("\x9fGa=T,f=100;PAYLOAD\x9cafter")).toBe("after");
+		expect(stripAnsi("before\x9cafter")).toBe("beforeafter");
+		expect(stripAnsi("before\x95after")).toBe("before\x95after");
+	});
+
+	/**
 	 * Stripping twice is stripping once.
 	 *
 	 * The case below is from the Rust half's fuzzer. Keeping a stray escape let a

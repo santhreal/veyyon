@@ -1,14 +1,23 @@
-import { stripVTControlCharacters } from "node:util";
 import type { TabBarTheme } from "@veyyon/tui";
+import { stripAnsi } from "@veyyon/utils";
 import { hoverBand, theme } from "./theme/theme";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Text Sanitization
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** Sanitize text for display in a single-line status. Strips ANSI/VT escape sequences, maps remaining C0/C1 control characters to spaces, collapses whitespace, trims. */
+/**
+ * Sanitize text for display in a single-line status indicator. Strips all
+ * 7-bit and 8-bit ANSI escape sequences via `@veyyon/utils`, maps remaining
+ * C0 and C1 control characters to spaces, collapses consecutive spaces into a
+ * single space, and trims leading and trailing whitespace.
+ *
+ * The escape grammar is owned directly rather than delegated to the runtime
+ * environment to ensure consistent stripping across platforms and runtime
+ * versions.
+ */
 export function sanitizeStatusText(text: string): string {
-	return stripVTControlCharacters(text)
+	return stripAnsi(text)
 		.replace(/[\u0000-\u001f\u007f-\u009f]/g, " ")
 		.replace(/ +/g, " ")
 		.trim();

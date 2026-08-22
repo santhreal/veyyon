@@ -1,6 +1,6 @@
 //! Reusable text transforms shared by minimizer filters.
 
-use std::collections::BTreeMap;
+use std::{borrow::Cow, collections::BTreeMap};
 
 use crate::minimizer::filters::git::DIFF_CHANGES_HEADER;
 
@@ -495,11 +495,36 @@ pub fn normalize_carriage_returns(text: &str) -> String {
 /// fast path and cannot change anything. Keeping the stray escape as text was
 /// tried first and does not hold up, because removing a sequence can push a
 /// stray escape against a following `[` and MAKE a sequence: see the comment on
-/// the drop below.
+///
+/// 8-bit C1 control characters (0x90 DCS, 0x98 SOS, 0x9B CSI, 0x9C ST, 0x9D
+/// OSC, 0x9E PM, 0x9F APC) are canonicalized to their 7-bit `ESC` counterparts
+/// before scanning, matching the TypeScript contract. Non-introducer C1
+/// controls are left untouched.
+fn canonicalize_c1(input: &str) -> Cow<'_, str> {
+	if !input.contains(['\u{90}', '\u{98}', '\u{9b}', '\u{9c}', '\u{9d}', '\u{9e}', '\u{9f}']) {
+		return Cow::Borrowed(input);
+	}
+	let mut out = String::with_capacity(input.len());
+	for ch in input.chars() {
+		match ch {
+			'\u{90}' => out.push_str("\x1bP"),
+			'\u{98}' => out.push_str("\x1bX"),
+			'\u{9b}' => out.push_str("\x1b["),
+			'\u{9c}' => out.push_str("\x1b\\"),
+			'\u{9d}' => out.push_str("\x1b]"),
+			'\u{9e}' => out.push_str("\x1b^"),
+			'\u{9f}' => out.push_str("\x1b_"),
+			_ => out.push(ch),
+		}
+	}
+	Cow::Owned(out)
+}
+
 #[must_use]
 pub fn strip_ansi(input: &str) -> String {
+	let input = canonicalize_c1(input);
 	if !input.contains('\x1b') {
-		return input.to_string();
+		return input.into_owned();
 	}
 	let bytes = input.as_bytes();
 	let mut out = String::with_capacity(input.len());
