@@ -56,12 +56,18 @@ describe("handbook SUMMARY coverage", () => {
 	 *
 	 * Without this the rule below passes when the tree fails to load, which is the
 	 * failure mode of every scan-based gate: zero pages are trivially all covered.
+	 *
+	 * The floor is a lower bound on "a tree loaded", not a page budget. It sat at
+	 * 90 while the tree held 93 pages, and deleting the four-page `benefits`
+	 * chapter and `foundations/how-to-read.md` took the tree to 88 and turned this
+	 * red for the one reason it is not meant to catch. 80 keeps it an order of
+	 * magnitude away from a broken walk while leaving room to retire a chapter.
 	 */
 	it("finds the handbook tree and the SUMMARY entries", () => {
-		expect(pages().length).toBeGreaterThanOrEqual(90);
+		expect(pages().length).toBeGreaterThanOrEqual(80);
 		expect(pages()).toContain("SUMMARY.md");
 		expect(pages()).toContain("introduction.md");
-		expect(summaryTargets().length).toBeGreaterThanOrEqual(90);
+		expect(summaryTargets().length).toBeGreaterThanOrEqual(80);
 		expect(summaryTargets()).toContain("introduction.md");
 	});
 

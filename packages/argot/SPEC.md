@@ -587,7 +587,7 @@ per-turn inputs a harness measures (`model`, `contextTokens`). It governs only
 encoding (whether the harness teaches the notation this turn) and never
 decoding, which stays unconditional. The remaining levers (scope, budget,
 sub-agent slices) act on the loaded vocabulary and compose with it. See
-[README: Controlling when the model encodes](./README.md#controlling-when-the-model-encodes).
+[README: Controlling model encoding](./README.md#controlling-model-encoding).
 
 - **Gate the codec by model.** A dictionary is only as useful as the model's
   recall. Teach the notation to a model you trust with it and not to one you have
