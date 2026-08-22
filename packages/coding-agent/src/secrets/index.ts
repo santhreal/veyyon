@@ -199,7 +199,10 @@ export function collectEnvSecrets(pattern: RegExp = BUNDLED_ENV_SECRET_PATTERN):
 		if (!nameMatches) continue;
 		if (seen.has(value)) continue;
 		seen.add(value);
-		entries.push({ type: "plain", content: value, mode: "obfuscate", origin: "environment" });
+		// NO `name`, and that is deliberate: nothing declared this value, so nothing may spend it as
+		// `#NAME#`. `source` is the label a person needs to find it, which is the half that was
+		// missing — the footer counted these and no command could say what they were.
+		entries.push({ type: "plain", content: value, mode: "obfuscate", origin: "environment", source: name });
 	}
 	return entries;
 }
@@ -259,6 +262,10 @@ async function loadSecretsFile(filePath: string): Promise<SecretEntry[]> {
 			minLength: entry.minLength,
 			// Supplied here, never read from the file. See `validateEntry`.
 			origin: "config",
+			// The file it was declared in, so a masked value with no name is still findable. A
+			// declared entry carries no name either (the schema has no such field), so without this
+			// the only report a person could get was a count.
+			source: filePath,
 		});
 	}
 	if (problems.length > 0) {

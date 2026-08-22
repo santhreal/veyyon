@@ -31,6 +31,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { PROVIDERS_SETTINGS } from "@veyyon/coding-agent/config/settings-domains/providers";
 import {
+	EVERY_VAULT_WORDS,
 	parseSecretCommand,
 	resolveDefaultTtl,
 	runSecretCommand,
@@ -296,14 +297,40 @@ describe("parsing the noninteractive command grammar", () => {
 		}
 	});
 
-	/** A word in a vault's own position that is not a vault refuses, naming the three that exist. */
+	/**
+	 * A word in a vault's own position that is not a vault refuses, naming the three that exist.
+	 *
+	 * SPLIT WHEN `clear everywhere` BECAME A COMMAND. Both lines were refusals here, because there was
+	 * no way to empty every vault and `everywhere` was simply not a word. It is one now, on `clear`
+	 * alone, so the second line moved to the case below and this one keeps the property that matters:
+	 * a vault word is a closed set, and being a real word somewhere else does not make it one here.
+	 */
 	it("refuses an unknown vault", () => {
 		expect(() => parseSecretCommand("scope TOKEN_A everywhere", "noninteractive")).toThrow(
 			/Write profile, project or global/,
 		);
-		expect(() => parseSecretCommand("clear everywhere", "noninteractive")).toThrow(
+		expect(() => parseSecretCommand("scope TOKEN_A elsewhere", "noninteractive")).toThrow(
 			/Write profile, project or global/,
 		);
+	});
+
+	/**
+	 * Emptying every vault is one command, and every spelling of "all of them" reaches it.
+	 *
+	 * `scope` stays undefined: the request names no single vault, so a caller reading `scope` cannot
+	 * act on one by accident. Read from `EVERY_VAULT_WORDS` at run time, so a word added to that list
+	 * is covered here without anyone remembering to add a case.
+	 */
+	it("reads every spelling of all vaults on clear", () => {
+		for (const word of EVERY_VAULT_WORDS) {
+			for (const surface of ["tui", "noninteractive"] as const) {
+				const request = parseSecretCommand(`clear ${word}`, surface);
+
+				expect(request.subcommand).toBe("clear");
+				expect(request.allScopes).toBe(true);
+				expect(request.scope).toBeUndefined();
+			}
+		}
 	});
 
 	/**

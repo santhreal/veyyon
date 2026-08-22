@@ -432,7 +432,16 @@ describe("the two usage variants", () => {
 		expect(structure(SECRET_COMMAND_USAGE)).toEqual([
 			"Store a credential the agent can use without ever seeing it:",
 			"",
-			"Manage what is already stored:",
+			// THREE MANAGEMENT GROUPS, not one. The single "Manage what is already stored" block put
+			// eleven verbs in declaration order, and three of them remove something: which of a secret,
+			// a vault, or an unreadable file each removed could only be worked out by reading all of
+			// them. The heading is what answers the operator's question now, so the headings are what
+			// this row pins.
+			"See what you have:",
+			"",
+			"Change one secret:",
+			"",
+			"Remove secrets:",
 			"",
 		]);
 		for (const usage of [SECRET_COMMAND_USAGE, NONINTERACTIVE_SECRET_COMMAND_USAGE]) {
@@ -515,41 +524,75 @@ describe("the two usage variants", () => {
 	});
 
 	/**
-	 * THE GROUPING. A flat list of seven gave `rm`, `extend` and `log` the same weight as `add`,
-	 * so the one line a new operator needs was the fourth of seven with nothing separating them.
+	 * THE GROUPING. A flat list of seven gave `rm`, `extend` and `log` the same weight as `add`, so
+	 * the one line a new operator needs was the fourth of seven with nothing separating them. The
+	 * management half then had the same problem at eleven lines, and worse: three of its verbs remove
+	 * something, and which of a secret, a vault, or a file that cannot be read each one removes was
+	 * decidable only by reading all of them.
 	 *
-	 * Asserted structurally: two headings, every command line indented under one of them, and a
-	 * blank line between the groups. Not by counting lines, which any reflow would break. The
-	 * management BODY is then asserted per surface, since that is exactly where the two diverge.
+	 * Asserted structurally: the entry group is first, each management group follows under its own
+	 * heading, every line in every group is an indented command, and each group ends with a blank
+	 * line. Bodies are pinned per group, so a verb moving between groups fails here -- that is the
+	 * whole claim, since the heading is what the operator reads to decide.
 	 */
 	it("separate the everyday path from management, on both surfaces", () => {
+		const GROUPS: ReadonlyArray<readonly [string, readonly string[]]> = [
+			[
+				"See what you have:",
+				[
+					"  /secret list                          show active secrets, never their values",
+					"  /secret log [<name>] [50]             show which secrets were used, and where",
+					"  /secret copy <name>                   copy #NAME#, the placeholder, never the value",
+				],
+			],
+			[
+				"Change one secret:",
+				[
+					"  /secret value <name>                  replace a secret's value, keeping its name and lifetime",
+					"  /secret rename <name> <new-name>      give a secret a different name",
+					"  /secret extend <name> 7d              give a secret a fresh lifetime",
+					"  /secret scope <name> global           move a secret to another vault",
+				],
+			],
+			[
+				"Remove secrets:",
+				[
+					"  /secret rm <name> [global]            remove one secret",
+					"  /secret clear profile                 remove every secret in one vault",
+					// Its own row rather than a bracketed alternative on the line above, because it is the
+					// answer to a different question: one vault is a place, all three is "get rid of
+					// everything", and an operator scanning for the second must not have to read the first
+					// closely enough to spot a `[…]`.
+					"  /secret clear everywhere              remove every secret, in all three vaults",
+					"  /secret discard project               move a vault file aside when it cannot be read",
+				],
+			],
+		];
+
 		for (const usage of [SECRET_COMMAND_USAGE, NONINTERACTIVE_SECRET_COMMAND_USAGE]) {
 			const lines = usage.split("\n");
 			const store = lines.indexOf("Store a credential the agent can use without ever seeing it:");
-			const manage = lines.indexOf("Manage what is already stored:");
 
 			expect(store).toBe(0);
-			expect(manage).toBeGreaterThan(store);
-			expect(lines[manage - 1]).toBe("");
-			expect(lines.slice(store + 1, manage - 1).every(line => line.startsWith("  /secret "))).toBe(true);
+			// The entry group: every line indented, terminated by the blank line before the next heading.
+			const entryEnd = lines.indexOf("", store + 1);
+			expect(entryEnd).toBeGreaterThan(store + 1);
+			expect(lines.slice(store + 1, entryEnd).every(line => line.startsWith("  /secret "))).toBe(true);
 
-			// The management body itself, exactly, and identical on both surfaces: every verb parses in
-			// both places, so a body that differed would mean one surface hiding a working command.
-			// Bounded by the heading above and the blank line below rather than by fixed offsets, so
-			// the claim survives any reflow of the group in front of it.
-			const management = [
-				"  /secret list                          show active secrets, never their values",
-				"  /secret rm <name> [global]            remove a secret",
-				"  /secret clear profile                 remove every secret in one vault",
-				"  /secret rename <name> <new-name>      give a secret a different name",
-				"  /secret value <name>                  replace a secret's value, keeping its name and lifetime",
-				"  /secret scope <name> global           move a secret to another vault",
-				"  /secret copy <name>                   copy #NAME#, the placeholder, never the value",
-				"  /secret extend <name> 7d              give a secret a fresh lifetime",
-				"  /secret log [<name>] [50]             show which secrets were used, and where",
-				"  /secret discard project               move a broken vault file aside",
-			];
-			expect(lines.slice(manage + 1, lines.indexOf("", manage + 1))).toEqual(management);
+			// Every management group, in order, with its exact body. Identical on both surfaces: every
+			// verb parses in both places, so a body that differed would mean one surface hiding a
+			// working command.
+			let previousHeading = store;
+			for (const [heading, body] of GROUPS) {
+				const at = lines.indexOf(heading);
+
+				expect(at, `${heading} is missing`).toBeGreaterThan(previousHeading);
+				expect(lines[at - 1]).toBe("");
+				expect(lines.slice(at + 1, lines.indexOf("", at + 1))).toEqual([...body]);
+				previousHeading = at;
+			}
+			// The old single heading is gone rather than kept beside the new ones.
+			expect(usage).not.toContain("Manage what is already stored:");
 		}
 	});
 
