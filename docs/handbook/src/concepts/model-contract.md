@@ -68,7 +68,7 @@ Veyyon adapts to that surface through the provider's `api` kind:
   allowlist for BYOK providers, and discovery returns an error; it does not invent an empty catalog on failure.
 
 Everything beyond the built-in catalog is data in `models.yml`, see
-[Providers](../models/providers.md) and [`docs/providers.md`](../../../providers.md).
+[Providers](../models/providers.md) and [`docs/handbook/src/reference/providers.md`](../../../providers.md).
 
 ## System prompts and tool schemas
 

@@ -22,11 +22,11 @@ For how sessions are stored and resumed, see [Sessions](./sessions.md).
 
 ### "Invalid API key" or "Authentication failed"
 
-The process calls the configured provider endpoint with the configured key. Check env var / auth store / `models.yml` for that provider, key validity, and scopes. See [Models and providers](./models.md).
+The process calls the configured provider endpoint with the configured key. Check env var / auth store / `models.yml` for that provider, key validity, and scopes. See [Models and providers](../reference/models-yml.md).
 
 ### "Unsupported region" or endpoint errors
 
-The base URL you configured must match the provider region and product endpoint. A model id that exists in one region may not exist in another, and the same hostname may host different model catalogs. Verify the endpoint URL in your provider dashboard and compare it with the `base_url` in your config. [Models and providers](./models.md) explains how provider configuration is resolved.
+The base URL you configured must match the provider region and product endpoint. A model id that exists in one region may not exist in another, and the same hostname may host different model catalogs. Verify the endpoint URL in your provider dashboard and compare it with the `base_url` in your config. [Models and providers](../reference/models-yml.md) explains how provider configuration is resolved.
 
 ### Why is my model not listed?
 
@@ -53,6 +53,6 @@ Output is intentionally truncated when it exceeds a tool budget. The truncation 
 ## Where to go next
 
 - [Troubleshooting](./troubleshooting.md) for the guided diagnostic path.
-- [Models and providers](./models.md) for provider keys, endpoints, and model selection.
+- [Models and providers](../reference/models-yml.md) for provider keys, endpoints, and model selection.
 - [Approvals](../features/sandbox.md) for the approval modes.
 - [Sessions](./sessions.md) for resume, fork, branch, and export.

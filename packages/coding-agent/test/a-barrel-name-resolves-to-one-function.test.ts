@@ -8,7 +8,7 @@
  * resolves to whichever line happened to be explicit.
  *
  * `discoverSlashCommands` was the case in the tree. `sdk.ts` defines it, and
- * `docs/sdk.md` and `examples/sdk/README.md` both name it as the discovery
+ * `docs/handbook/src/reference/sdk.md` and `examples/sdk/README.md` both name it as the discovery
  * helper to import from the package root. The barrel also carried
  * `export { loadSlashCommands as discoverSlashCommands }`, which is a DIFFERENT
  * function with a different signature, and the alias won. Every reader

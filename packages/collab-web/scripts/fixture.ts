@@ -244,7 +244,7 @@ export const fixtureEntries: WireSessionEntry[] = [
 					type: "toolCall",
 					id: "legacy-search-01",
 					name: "search",
-					arguments: { pattern: "relay", paths: ["docs/collab.md"] },
+					arguments: { pattern: "relay", paths: ["docs/handbook/src/features/collab.md"] },
 					intent: "Legacy search alias sample",
 				},
 				{
@@ -271,7 +271,7 @@ export const fixtureEntries: WireSessionEntry[] = [
 			role: "toolResult",
 			toolCallId: "legacy-search-01",
 			toolName: "search",
-			content: [{ type: "text", text: "docs/collab.md:12:relay reconnect notes" }],
+			content: [{ type: "text", text: "docs/handbook/src/features/collab.md:12:relay reconnect notes" }],
 			isError: false,
 			timestamp: NOW - 19 * MIN + 1_000,
 		},
@@ -285,7 +285,7 @@ export const fixtureEntries: WireSessionEntry[] = [
 			role: "toolResult",
 			toolCallId: "legacy-find-01",
 			toolName: "find",
-			content: [{ type: "text", text: "docs/collab.md\ndocs/collab-protocol.md" }],
+			content: [{ type: "text", text: "docs/handbook/src/features/collab.md\ndocs/collab-protocol.md" }],
 			isError: false,
 			timestamp: NOW - 19 * MIN + 1_500,
 		},
@@ -443,7 +443,7 @@ const subagentTranscriptLines: unknown[] = [
 		type: "message",
 		message: {
 			role: "user",
-			content: "Sweep docs/collab.md for stale close-code references and report mismatches.",
+			content: "Sweep docs/handbook/src/features/collab.md for stale close-code references and report mismatches.",
 			timestamp: SUB_T0 + 2_000,
 		},
 	},
@@ -456,12 +456,12 @@ const subagentTranscriptLines: unknown[] = [
 			role: "assistant",
 			content: [
 				{ type: "thinking", thinking: "Grep the doc for 4xxx codes, then diff against protocol.ts." },
-				{ type: "text", text: "Scanning `docs/collab.md` for close-code mentions." },
+				{ type: "text", text: "Scanning `docs/handbook/src/features/collab.md` for close-code mentions." },
 				{
 					type: "toolCall",
 					id: "sub-call-01",
 					name: "grep",
-					arguments: { pattern: "40\\d\\d", paths: ["docs/collab.md"] },
+					arguments: { pattern: "40\\d\\d", paths: ["docs/handbook/src/features/collab.md"] },
 					intent: "Finding close codes",
 				},
 			],
@@ -484,7 +484,7 @@ const subagentTranscriptLines: unknown[] = [
 			content: [
 				{
 					type: "text",
-					text: "docs/collab.md:41: 4001 room closed\ndocs/collab.md:42: 4004 no such room\ndocs/collab.md:43: 4009 host conflict\ndocs/collab.md:44: 4029 room full",
+					text: "docs/handbook/src/features/collab.md:41: 4001 room closed\ndocs/handbook/src/features/collab.md:42: 4004 no such room\ndocs/handbook/src/features/collab.md:43: 4009 host conflict\ndocs/handbook/src/features/collab.md:44: 4029 room full",
 				},
 			],
 			isError: false,
@@ -543,7 +543,7 @@ const subagentTranscriptLines: unknown[] = [
 			content: [
 				{
 					type: "text",
-					text: "All four close codes in `docs/collab.md` match `FATAL_CLOSE_REASONS` — no stale references. The doc could additionally mention that decrypt failures are fatal; flagged as a suggestion, not a mismatch.",
+					text: "All four close codes in `docs/handbook/src/features/collab.md` match `FATAL_CLOSE_REASONS` — no stale references. The doc could additionally mention that decrypt failures are fatal; flagged as a suggestion, not a mismatch.",
 				},
 			],
 			model: fixtureModel.id,

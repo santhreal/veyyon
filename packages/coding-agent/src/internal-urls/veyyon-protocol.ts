@@ -72,7 +72,7 @@ export class VeyyonProtocolHandler implements ProtocolHandler {
 			return this.#listDocs(url);
 		}
 
-		const content = await getEmbeddedDoc(docPath);
+		const content = (await getEmbeddedDoc(docPath)) ?? (await this.#readByBasename(docPath));
 		if (content === undefined) {
 			const lookup = docPath.replace(/\.md$/, "");
 			const suggestions = getDocFilenames()
@@ -91,5 +91,23 @@ export class VeyyonProtocolHandler implements ProtocolHandler {
 			contentType: "text/markdown",
 			size: Buffer.byteLength(content, "utf-8"),
 		};
+	}
+
+	/**
+	 * Second chance for a path that names the right page in the wrong directory.
+	 *
+	 * Documentation is reorganized, and every reference to it does not move in the same commit: a
+	 * prompt, a comment, a changelog entry and an operator's memory all carry the old path. A page
+	 * that still exists under one name in the tree is served under it, so `veyyon://docs/secrets.md`
+	 * keeps working after the page becomes `handbook/src/architecture/secrets.md`.
+	 *
+	 * AMBIGUITY IS A MISS, not a guess. Two pages with the same basename are two different pages,
+	 * and picking either one silently answers a question that was not asked; the caller falls
+	 * through to the suggestion list, which names both.
+	 */
+	async #readByBasename(docPath: string): Promise<string | undefined> {
+		const wanted = docPath.split("/").at(-1);
+		const matches = getDocFilenames().filter(f => f.split("/").at(-1) === wanted);
+		return matches.length === 1 && matches[0] !== docPath ? await getEmbeddedDoc(matches[0]) : undefined;
 	}
 }

@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-987e4cde.js";
+            window.path_to_searchindex_js = "../searchindex-360535cc.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-13566cf4.js"></script>
+        <script src="../toc-093df7ff.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -196,7 +196,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="skills-authoring"><a class="header" href="#skills-authoring">Skills authoring</a></h1>
-<p>A skill is a folder that adds a reusable capability to Veyyon. For how skills are discovered and loaded, see <a href="skills.html">Skills</a>.</p>
+<p>A skill is a folder that adds a reusable capability to Veyyon. For how skills are discovered and loaded, see <a href="../reference/skills.html">Skills</a>.</p>
 <h2 id="directory-structure"><a class="header" href="#directory-structure">Directory structure</a></h2>
 <p>Skills load only from the active profile. Veyyon reads these locations, all under the profile’s agent dir (<code>profiles/default/</code> when you have not selected a profile):</p>
 <div class="table-wrapper">
@@ -211,7 +211,7 @@
 </tbody>
 </table>
 </div>
-<p>Nothing else contributes skills. A project-local <code>.veyyon/skills</code> directory and another tool’s skill directory (<code>$HOME/.claude/skills</code>, <code>$HOME/.codex/skills</code>, <code>$HOME/.agents/skills</code>, and the rest) are never scanned. To use a skill from another tool, import it into your profile, see <a href="skills.html#importing-another-tools-skills">Skills</a>. For the full provider list and dedup rules, see <a href="skills.html#skill-locations">Skills</a>.</p>
+<p>Nothing else contributes skills. A project-local <code>.veyyon/skills</code> directory and another tool’s skill directory (<code>$HOME/.claude/skills</code>, <code>$HOME/.codex/skills</code>, <code>$HOME/.agents/skills</code>, and the rest) are never scanned. To use a skill from another tool, import it into your profile, see <a href="../reference/skills.html#importing-another-tools-skills">Skills</a>. For the full provider list and dedup rules, see <a href="../reference/skills.html#skill-locations">Skills</a>.</p>
 <p>Create a new skill by making a directory inside the profile’s <code>skills</code> dir and adding a <code>SKILL.md</code> file. The name of the directory is the default name of the skill.</p>
 <p>A skill directory may contain additional files:</p>
 <pre><code>my-skill/
@@ -259,7 +259,7 @@ Do not leave comments on external platforms unless the user explicitly asks for 
 </code></pre>
 <h2 id="configuring-in-configyml"><a class="header" href="#configuring-in-configyml">Configuring in config.yml</a></h2>
 <p>There is no registration step: a skill placed in any discovered directory (see
-<a href="./skills.html">Skills</a>) loads automatically. The <code>skills</code> section of <code>config.yml</code> controls
+<a href="../reference/skills.html">Skills</a>) loads automatically. The <code>skills</code> section of <code>config.yml</code> controls
 which discovered skills are active.</p>
 <p>Turn skill discovery off entirely:</p>
 <pre><code class="language-yaml">skills:

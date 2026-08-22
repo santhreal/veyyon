@@ -70,7 +70,7 @@ $ veyyon
 
 Open `/model` and choose an `ollama/...` entry from the discovered list.
 
-For the full picture, see [Models and providers](./models.md) and [Configuring providers](./configuring-providers.md).
+For the full picture, see [Models and providers](../reference/models-yml.md) and [Configuring providers](./configuring-providers.md).
 
 ## 4. Run your first task
 

@@ -260,7 +260,7 @@ function resolvesFor(rootDir: string, relFile: string, target: string): boolean 
  * move, it was deleted when the npm publish channel was removed, and the doc had
  * gone on describing it. The doc now describes what actually ships, so the path is
  * gone and the entry with it. It also carried
- * `docs/context-files.md:151:docs/setup.md`, which was only the filler path in an
+ * `docs/handbook/src/context/context-files.md:151:docs/setup.md`, which was only the filler path in an
  * example of trailing-punctuation trimming; the example now uses
  * `notes/setup.md`, which names no source root, so it needs no entry at all. The
  * last two to go were the illustrative
@@ -276,9 +276,9 @@ function resolvesFor(rootDir: string, relFile: string, target: string): boolean 
 export const DEAD_PATH_BASELINE: readonly string[] = Object.freeze([
 	".veyyon/skills/tool-prompt-optimization/SKILL.md:14:scripts/probe.ts",
 	".veyyon/skills/tool-prompt-optimization/SKILL.md:28:scripts/probe-builtin.ts",
-	"docs/context-files.md:64:.github/copilot-instructions.md",
-	"docs/context-files.md:67:.github/instructions/",
-	"docs/context-files.md:243:.github/copilot-instructions.md",
+	"docs/handbook/src/context/context-files.md:64:.github/copilot-instructions.md",
+	"docs/handbook/src/context/context-files.md:67:.github/instructions/",
+	"docs/handbook/src/context/context-files.md:243:.github/copilot-instructions.md",
 	"docs/internal/toolconv/deepseek.md:101:assets/search_tool_trajectory.html",
 	"packages/coding-agent/src/prompts/skills/user-invocation.md:8:scripts/foo.js",
 ]);

@@ -2,7 +2,7 @@
  * The keyword list in the docs is the keyword list in the data file.
  *
  * WHY THIS SUITE EXISTS, and it is not hypothetical: the drift had already happened. `PASSPHRASE`
- * was added to `env-keywords.yml` and to `docs/secrets.md`, and the handbook page kept a
+ * was added to `env-keywords.yml` and to `docs/handbook/src/architecture/secrets.md`, and the handbook page kept a
  * nine-keyword prose list that omitted it. The same page's own worked-example table said
  * `GPG_PASSPHRASE` was detected three lines below the sentence implying it was not, so the
  * document contradicted itself and nothing failed.
@@ -24,7 +24,7 @@ import { BUNDLED_ENV_KEYWORDS } from "@veyyon/coding-agent/secrets/env-keywords"
 
 const REPO_ROOT = path.resolve(import.meta.dir, "../../../..");
 const HANDBOOK_PAGE = path.join(REPO_ROOT, "docs/handbook/src/features/secrets.md");
-const REFERENCE_PAGE = path.join(REPO_ROOT, "docs/secrets.md");
+const REFERENCE_PAGE = path.join(REPO_ROOT, "docs/handbook/src/architecture/secrets.md");
 
 /**
  * Pull the backtick-quoted keywords out of the one sentence that lists them.
@@ -75,7 +75,7 @@ describe("the handbook's keyword sentence", () => {
 });
 
 describe("the reference page's keyword list", () => {
-	/** The same comparison against `docs/secrets.md`, which is the other place the list appears. */
+	/** The same comparison against `docs/handbook/src/architecture/secrets.md`, which is the other place the list appears. */
 	it("lists every bundled keyword, in order", () => {
 		const documented = documentedKeywords(REFERENCE_PAGE, "whose names match a keyword from");
 

@@ -1,0 +1,624 @@
+<!DOCTYPE HTML>
+<html lang="en" class="navy sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Extensions - The Veyyon Harness Handbook</title>
+
+
+        <!-- Custom HTML head -->
+        <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
+        <meta name="theme-color" content="#050505">
+        <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+        <style>
+          /* Paint the near-black surface before CSS/JS resolve the theme, so there is
+             no light flash on load. Kept in sync with theme/veyyon.css. */
+          html { background: #050505; }
+          /* Tighten the base box model for the premium layout. */
+          *, *::before, *::after { box-sizing: border-box; }
+        </style>
+
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="../favicon-8114d1fc.png">
+        <link rel="stylesheet" href="../css/variables-8adf115d.css">
+        <link rel="stylesheet" href="../css/general-2459343d.css">
+        <link rel="stylesheet" href="../css/chrome-ae938929.css">
+        <link rel="stylesheet" href="../css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="../highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="../tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "navy";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "../searchindex-360535cc.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc-093df7ff.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('navy')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">The Veyyon Harness Handbook</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/santhreal/veyyon" title="Git repository" aria-label="Git repository">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/santhreal/veyyon/edit/main/docs/handbook/src/features/extensions.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                            <span class=fa-svg id="git-edit-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M421.7 220.3l-11.3 11.3-22.6 22.6-205 205c-6.6 6.6-14.8 11.5-23.8 14.1L30.8 511c-8.4 2.5-17.5 .2-23.7-6.1S-1.5 489.7 1 481.2L38.7 353.1c2.6-9 7.5-17.2 14.1-23.8l205-205 22.6-22.6 11.3-11.3 33.9 33.9 62.1 62.1 33.9 33.9zM96 353.9l-9.3 9.3c-.9 .9-1.6 2.1-2 3.4l-25.3 86 86-25.3c1.3-.4 2.5-1.1 3.4-2l9.3-9.3H112c-8.8 0-16-7.2-16-16V353.9zM453.3 19.3l39.4 39.4c25 25 25 65.5 0 90.5l-14.5 14.5-22.6 22.6-11.3 11.3-33.9-33.9-62.1-62.1L314.3 67.7l11.3-11.3 22.6-22.6 14.5-14.5c25-25 65.5-25 90.5 0z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="extensions"><a class="header" href="#extensions">Extensions</a></h1>
+<p>Primary guide for authoring runtime extensions in <code>packages/coding-agent</code>.</p>
+<p>Extension runtime modules:</p>
+<ul>
+<li><code>src/extensibility/extensions/types.ts</code></li>
+<li><code>src/extensibility/extensions/runner.ts</code></li>
+<li><code>src/extensibility/extensions/wrapper.ts</code></li>
+<li><code>src/extensibility/extensions/index.ts</code></li>
+<li><code>src/modes/controllers/extension-ui-controller.ts</code></li>
+</ul>
+<p>For discovery paths and filesystem loading rules, see <a href="./internal/extension-loading.html"><code>extension-loading.md</code></a>.</p>
+<p>For packaged user-facing extension CLIs/features such as <code>packages/swarm-extension</code>, see <a href="./internal/user-facing-packages.html"><code>user-facing-packages.md</code></a>.</p>
+<h2 id="what-an-extension-is"><a class="header" href="#what-an-extension-is">What an extension is</a></h2>
+<p>An extension is a TS/JS module exporting a default factory:</p>
+<pre><code class="language-ts">import type { ExtensionAPI } from "@veyyon/coding-agent";
+
+export default function myExtension(pi: ExtensionAPI) {
+  // register handlers/tools/commands/renderers
+}
+</code></pre>
+<p>Extensions can combine all of the following in one module:</p>
+<ul>
+<li>event handlers (<code>pi.on(...)</code>)</li>
+<li>LLM-callable tools (<code>pi.registerTool(...)</code>)</li>
+<li>slash commands (<code>pi.registerCommand(...)</code>)</li>
+<li>keyboard shortcuts and flags</li>
+<li>custom message rendering</li>
+<li>session/message injection APIs (<code>sendMessage</code>, <code>sendUserMessage</code>, <code>appendEntry</code>)</li>
+</ul>
+<h2 id="runtime-model"><a class="header" href="#runtime-model">Runtime model</a></h2>
+<ol>
+<li>Extensions are imported and their factory functions run.</li>
+<li>During that load phase, registration methods are valid; runtime action methods are not yet initialized.</li>
+<li><code>ExtensionRunner.initialize(...)</code> wires live actions/contexts for the active mode.</li>
+<li>Session/agent/tool lifecycle events are emitted to handlers.</li>
+<li>Every tool execution is wrapped with extension interception (<code>tool_call</code> / <code>tool_result</code>).</li>
+</ol>
+<pre><code class="language-text">Extension lifecycle (simplified)
+
+load paths
+   │
+   ▼
+import module + run factory (registration only)
+   │
+   ▼
+ExtensionRunner.initialize(mode/session/tool registry)
+   │
+   ├─ emit session/agent events to handlers
+   ├─ wrap tool execution (tool_call/tool_result)
+   └─ expose runtime actions (sendMessage, setActiveTools, ...)
+</code></pre>
+<p>Important constraint from <code>loader.ts</code>:</p>
+<ul>
+<li>calling action methods like <code>pi.sendMessage()</code> during extension load throws <code>ExtensionRuntimeNotInitializedError</code></li>
+<li>register first; perform runtime behavior from events/commands/tools</li>
+</ul>
+<h2 id="quick-start"><a class="header" href="#quick-start">Quick start</a></h2>
+<pre><code class="language-ts">import type { ExtensionAPI } from "@veyyon/coding-agent";
+
+export default function (pi: ExtensionAPI) {
+  const { z } = pi.zod;
+
+  pi.setLabel("Safety + Utilities");
+
+  pi.on("session_start", async (_event, ctx) =&gt; {
+    ctx.ui.notify(`Extension loaded in ${ctx.cwd}`, "info");
+  });
+
+  pi.on("tool_call", async (event) =&gt; {
+    if (event.toolName === "bash" &amp;&amp; event.input.command?.includes("rm -rf")) {
+      return { block: true, reason: "Blocked by extension policy" };
+    }
+  });
+
+  pi.registerTool({
+    name: "hello_extension",
+    label: "Hello Extension",
+    description: "Return a greeting",
+    parameters: z.object({ name: z.string() }),
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      return {
+        content: [{ type: "text", text: `Hello, ${params.name}` }],
+        details: { greeted: params.name },
+      };
+    },
+  });
+
+  pi.registerCommand("hello-ext", {
+    description: "Show queue state",
+    handler: async (_args, ctx) =&gt; {
+      ctx.ui.notify(`pending=${ctx.hasPendingMessages()}`, "info");
+    },
+  });
+}
+</code></pre>
+<h2 id="extension-api-surfaces"><a class="header" href="#extension-api-surfaces">Extension API surfaces</a></h2>
+<h2 id="1-registration-and-actions-extensionapi"><a class="header" href="#1-registration-and-actions-extensionapi">1) Registration and actions (<code>ExtensionAPI</code>)</a></h2>
+<p>Core methods:</p>
+<ul>
+<li><code>on(event, handler)</code></li>
+<li><code>registerTool</code>, <code>registerCommand</code>, <code>registerShortcut</code>, <code>registerFlag</code></li>
+<li><code>registerMessageRenderer</code>, <code>registerAssistantThinkingRenderer</code></li>
+<li><code>setLabel</code>, <code>getFlag</code></li>
+<li><code>sendMessage</code>, <code>sendUserMessage</code>, <code>appendEntry</code>, <code>exec</code></li>
+<li><code>getActiveTools</code>, <code>getAllTools</code>, <code>setActiveTools</code></li>
+<li><code>getCommands</code></li>
+<li><code>getSessionName</code>, <code>setSessionName</code></li>
+<li><code>setModel</code>, <code>getThinkingLevel</code>, <code>setThinkingLevel</code></li>
+<li><code>registerProvider</code></li>
+<li><code>events</code> (shared event bus)</li>
+</ul>
+<p>In interactive mode, <code>input</code> handlers run before the built-in first-message auto-title check. Extensions that call <code>await pi.setSessionName(...)</code> from <code>input</code> can set the persisted session name and prevent the default auto-generated title from running for that session.</p>
+<p>Also exposed:</p>
+<ul>
+<li><code>pi.logger</code></li>
+<li><code>pi.typebox</code> (zod-backed compatibility shim for legacy TypeBox-style schemas)</li>
+<li><code>pi.zod</code> (injected <code>zod/v4</code> module: canonical for tool parameter schemas)</li>
+<li><code>pi.pi</code> (package exports)</li>
+</ul>
+<h3 id="message-delivery-semantics"><a class="header" href="#message-delivery-semantics">Message delivery semantics</a></h3>
+<p><code>pi.sendMessage(message, options)</code> supports:</p>
+<ul>
+<li><code>deliverAs: "steer"</code> (default): interrupts current run</li>
+<li><code>deliverAs: "followUp"</code>: queued to run after current run</li>
+<li><code>deliverAs: "nextTurn"</code>: stored and injected on the next user prompt</li>
+<li><code>triggerTurn: true</code>: starts a turn when idle (also honored with <code>deliverAs: "nextTurn"</code>: idle prompts immediately; while streaming the queued message schedules an internal continuation)</li>
+</ul>
+<p><code>pi.sendUserMessage(content, { deliverAs })</code> always goes through prompt flow. Omit <code>deliverAs</code> to start a normal prompt when idle; while streaming, omitted <code>deliverAs</code> queues the message as a steer. Set <code>deliverAs: "followUp"</code> to wait until the current run finishes.</p>
+<h2 id="2-handler-context-extensioncontext"><a class="header" href="#2-handler-context-extensioncontext">2) Handler context (<code>ExtensionContext</code>)</a></h2>
+<p>Handlers and tool <code>execute</code> receive <code>ctx</code> with:</p>
+<ul>
+<li><code>ui</code></li>
+<li><code>hasUI</code></li>
+<li><code>cwd</code></li>
+<li><code>sessionManager</code> (read-only)</li>
+<li><code>modelRegistry</code>, <code>model</code></li>
+<li><code>models</code> (read-only model query: see below)</li>
+<li><code>getContextUsage()</code></li>
+<li><code>compact(...)</code></li>
+<li><code>isIdle()</code>, <code>hasPendingMessages()</code>, <code>abort()</code></li>
+<li><code>shutdown()</code></li>
+<li><code>getSystemPrompt()</code></li>
+<li><code>memory</code> (optional structured memory runtime: status/search/save across the configured backend)</li>
+</ul>
+<h3 id="model-selection-ctxmodels"><a class="header" href="#model-selection-ctxmodels">Model selection (<code>ctx.models</code>)</a></h3>
+<p><code>ctx.models</code> is a read-only facade for picking and comparing models the same way core does:</p>
+<ul>
+<li><code>list()</code>: authenticated models available this session.</li>
+<li><code>current()</code>: the live session model (read lazily, so it reflects <code>/model</code> switches).</li>
+<li><code>resolve(spec)</code>: a model string (<code>provider/id</code>, bare id) or role alias (<code>@slow</code>, a configured role) → <code>Model</code>, honoring the same settings-backed aliases and match preferences as <code>--model</code>. Returns <code>undefined</code> when nothing matches.</li>
+<li><code>family(model)</code>: an opaque lineage token for “same family?” checks (Claude point releases share a token; Claude and GPT differ). Compare it; don’t persist it (the vocabulary tracks new releases).</li>
+</ul>
+<pre><code class="language-ts">// Pick a model from a different family than the current one (e.g. a cross-family reviewer).
+const current = ctx.models.current();
+const contrasting = ctx.models
+  .list()
+  .find(m =&gt; current &amp;&amp; ctx.models.family(m) !== ctx.models.family(current));
+</code></pre>
+<h2 id="3-command-context-extensioncommandcontext"><a class="header" href="#3-command-context-extensioncommandcontext">3) Command context (<code>ExtensionCommandContext</code>)</a></h2>
+<p>Command handlers additionally get:</p>
+<ul>
+<li><code>waitForIdle()</code></li>
+<li><code>newSession(...)</code></li>
+<li><code>switchSession(...)</code></li>
+<li><code>branch(entryId)</code></li>
+<li><code>navigateTree(targetId, { summarize })</code></li>
+<li><code>reload()</code></li>
+</ul>
+<p>Use command context for session-control flows; these methods are intentionally separated from general event handlers.</p>
+<h2 id="event-surface-current-names-and-behavior"><a class="header" href="#event-surface-current-names-and-behavior">Event surface (current names and behavior)</a></h2>
+<p>Canonical event unions and payload types are in <code>types.ts</code>.</p>
+<h3 id="session-lifecycle"><a class="header" href="#session-lifecycle">Session lifecycle</a></h3>
+<ul>
+<li><code>session_start</code></li>
+<li><code>session_before_switch</code> / <code>session_switch</code></li>
+<li><code>session_before_branch</code> / <code>session_branch</code></li>
+<li><code>session_before_compact</code> / <code>session.compacting</code> / <code>session_compact</code></li>
+<li><code>session_before_tree</code> / <code>session_tree</code></li>
+<li><code>session_shutdown</code></li>
+</ul>
+<p>Cancelable pre-events:</p>
+<ul>
+<li><code>session_before_switch</code> → <code>{ cancel?: boolean }</code></li>
+<li><code>session_before_branch</code> → <code>{ cancel?: boolean; skipConversationRestore?: boolean }</code></li>
+<li><code>session_before_compact</code> → <code>{ cancel?: boolean; compaction?: CompactionResult }</code></li>
+<li><code>session_before_tree</code> → <code>{ cancel?: boolean; summary?: { summary: string; details?: unknown } }</code></li>
+</ul>
+<h3 id="prompt-and-turn-lifecycle"><a class="header" href="#prompt-and-turn-lifecycle">Prompt and turn lifecycle</a></h3>
+<ul>
+<li><code>input</code></li>
+<li><code>before_agent_start</code>: receives the base system prompt. Memory context (recalled memories, mental models) is not part of it: that content is delivered as a message on the turn instead, because changing the system prompt mid-session throws away the provider’s cache prefix.</li>
+<li><code>before_provider_request</code> (may replace provider request payload)</li>
+<li><code>after_provider_response</code></li>
+<li><code>context</code></li>
+<li><code>agent_start</code> / <code>agent_end</code>: agent loop lifecycle notification; <code>agent_end</code> remains notification-only</li>
+<li><code>session_stop</code>: main-session stop hook, awaited before settle; may continue with <code>{ continue: true, additionalContext }</code> or <code>{ decision: "block", reason }</code>; capped at 8 consecutive continuations and never fires for task/subagent sessions</li>
+<li><code>turn_start</code> / <code>turn_end</code></li>
+<li><code>message_start</code> / <code>message_update</code> / <code>message_end</code></li>
+</ul>
+<h3 id="tool-lifecycle"><a class="header" href="#tool-lifecycle">Tool lifecycle</a></h3>
+<ul>
+<li><code>tool_call</code> (pre-exec, may block)</li>
+<li><code>tool_result</code> (post-exec, may patch content/details/isError)</li>
+<li><code>tool_execution_start</code> / <code>tool_execution_update</code> / <code>tool_execution_end</code> (observability)</li>
+<li><code>tool_approval_requested</code> / <code>tool_approval_resolved</code> (observability; emitted by <code>wrapper.ts</code> only when a tool requires approval and an approval handler is registered)</li>
+</ul>
+<p><code>tool_result</code> is middleware-style: handlers run in extension order and each sees prior modifications.</p>
+<h3 id="reliabilityruntime-signals"><a class="header" href="#reliabilityruntime-signals">Reliability/runtime signals</a></h3>
+<ul>
+<li><code>auto_compaction_start</code> / <code>auto_compaction_end</code></li>
+<li><code>auto_retry_start</code> / <code>auto_retry_end</code></li>
+<li><code>ttsr_triggered</code></li>
+<li><code>todo_reminder</code></li>
+<li><code>goal_updated</code></li>
+<li><code>credential_disabled</code></li>
+</ul>
+<h3 id="user-command-interception"><a class="header" href="#user-command-interception">User command interception</a></h3>
+<ul>
+<li><code>user_bash</code> (override with <code>{ result }</code>)</li>
+<li><code>user_python</code> (override with <code>{ result }</code>)</li>
+</ul>
+<h3 id="resources_discover"><a class="header" href="#resources_discover"><code>resources_discover</code></a></h3>
+<p><code>resources_discover</code> exists in extension types and <code>ExtensionRunner</code>.
+Current runtime note: <code>ExtensionRunner.emitResourcesDiscover(...)</code> is implemented, but there are no <code>AgentSession</code> callsites invoking it in the current codebase.</p>
+<h2 id="tool-authoring-details"><a class="header" href="#tool-authoring-details">Tool authoring details</a></h2>
+<p><code>registerTool</code> uses <code>ToolDefinition</code> from <code>types.ts</code>.</p>
+<p>Current <code>execute</code> signature:</p>
+<pre><code class="language-ts">execute(
+	toolCallId,
+	params,
+	signal,
+	onUpdate,
+	ctx,
+): Promise&lt;AgentToolResult&gt;
+</code></pre>
+<p>A custom tool (a file under <code>tools/</code>, documented in <code>../using/custom-tools.md</code>) takes the
+same five arguments in a different order, with the signal last:
+<code>execute(toolCallId, params, onUpdate, ctx, signal)</code>. Copying one into the other
+place raises no error at the call site and none at runtime either: the arguments
+still arrive, so <code>ctx</code> is the update callback and the first <code>ctx.sessionManager</code>
+you touch is undefined.</p>
+<p>Template:</p>
+<pre><code class="language-ts">const { z } = pi.zod;
+
+pi.registerTool({
+  name: "my_tool",
+  label: "My Tool",
+  description: "...",
+  parameters: z.object({}),
+  hidden: false,
+  defaultInactive: false,
+  deferrable: false,
+  async execute(_id, _params, signal, onUpdate, ctx) {
+    if (signal?.aborted) {
+      return { content: [{ type: "text", text: "Cancelled" }] };
+    }
+    onUpdate?.({ content: [{ type: "text", text: "Working..." }] });
+    return { content: [{ type: "text", text: "Done" }], details: {} };
+  },
+  onSession(event, ctx) {
+    // reason: start|switch|branch|tree|shutdown
+  },
+  renderCall(args, options, theme) {
+    // optional TUI render
+  },
+  renderResult(result, options, theme, args) {
+    // optional TUI render
+  },
+});
+</code></pre>
+<p><code>tool_call</code>/<code>tool_result</code> intercept all tools once the registry is wrapped in <code>sdk.ts</code>, including built-ins and extension/custom tools. <code>ToolDefinition</code> also supports optional <code>hidden</code>, <code>defaultInactive</code>, <code>deferrable</code>, <code>approval</code>, <code>mcpServerName</code>, <code>mcpToolName</code>, <code>renderCall</code>, and <code>renderResult</code> fields.</p>
+<h2 id="ui-integration-points"><a class="header" href="#ui-integration-points">UI integration points</a></h2>
+<p><code>ctx.ui</code> implements the <code>ExtensionUIContext</code> interface. Support differs by mode.</p>
+<h3 id="interactive-mode-extension-ui-controllerts"><a class="header" href="#interactive-mode-extension-ui-controllerts">Interactive mode (<code>extension-ui-controller.ts</code>)</a></h3>
+<p>Supported:</p>
+<ul>
+<li>dialogs: <code>select</code>, <code>confirm</code>, <code>input</code>, <code>editor</code></li>
+<li>input editing: <code>setEditorText</code>, <code>getEditorText</code>, <code>pasteToEditor</code>, <code>editor</code></li>
+<li>autocomplete stacking: <code>addAutocompleteProvider(factory)</code> wraps the built-in editor provider (factories apply in registration order and re-apply on every slash-command refresh)</li>
+<li>terminal title and working message (<code>setTitle</code>, <code>setWorkingMessage</code>)</li>
+<li>notifications/status/editor text/terminal input/custom overlays</li>
+<li>theme listing/loading by name (<code>setTheme</code> supports string names)</li>
+<li>tools expanded toggle</li>
+</ul>
+<p>Current no-op methods in this controller:</p>
+<ul>
+<li><code>setFooter</code></li>
+<li><code>setHeader</code></li>
+</ul>
+<p><code>setEditorComponent</code> is wired to the live editor (<code>ctx.setEditorComponent(factory)</code>). <code>setWidget</code> renders real widget components above or below the editor via <code>setHookWidget(...)</code> (<code>placement: "aboveEditor" | "belowEditor"</code>; string-array content capped at 10 lines).</p>
+<h3 id="rpc-mode-rpc-modets"><a class="header" href="#rpc-mode-rpc-modets">RPC mode (<code>rpc-mode.ts</code>)</a></h3>
+<p><code>ctx.ui</code> is backed by RPC <code>extension_ui_request</code> events:</p>
+<ul>
+<li>dialog methods (<code>select</code>, <code>confirm</code>, <code>input</code>, <code>editor</code>) round-trip to client responses</li>
+<li>fire-and-forget methods emit requests (<code>notify</code>, <code>setStatus</code>, <code>setWidget</code> for string arrays, <code>setEditorText</code>; <code>setTitle</code> emits only when <code>VEYYON_RPC_EMIT_TITLE=1</code>)</li>
+</ul>
+<p>Unsupported/no-op in RPC implementation:</p>
+<ul>
+<li><code>onTerminalInput</code></li>
+<li><code>custom</code></li>
+<li><code>setFooter</code>, <code>setHeader</code>, <code>setEditorComponent</code>, <code>addAutocompleteProvider</code></li>
+<li><code>setWorkingMessage</code></li>
+<li>theme switching/loading (<code>setTheme</code> returns failure)</li>
+<li>tool expansion controls are inert</li>
+</ul>
+<h3 id="printheadlesssubagent-paths"><a class="header" href="#printheadlesssubagent-paths">Print/headless/subagent paths</a></h3>
+<p>When no UI context is supplied to runner init, <code>ctx.hasUI</code> is <code>false</code> and methods are no-op/default-returning.</p>
+<h3 id="acp-mode"><a class="header" href="#acp-mode">ACP mode</a></h3>
+<p>ACP installs an elicitation-bridged UI context (<code>createAcpExtensionUiContext</code> in <code>acp-agent.ts</code>). <code>ctx.hasUI</code> is <code>true</code> while only <code>select</code>/<code>confirm</code>/<code>input</code> round-trip (as ACP elicitations; defaults are returned when the client lacks the <code>elicitation.form</code> capability). The non-elicitation surface (widgets, editor, theming, terminal input, autocomplete stacking) is stubbed no-op.</p>
+<h2 id="session-and-state-patterns"><a class="header" href="#session-and-state-patterns">Session and state patterns</a></h2>
+<p>For durable extension state:</p>
+<ol>
+<li>Persist with <code>pi.appendEntry(customType, data)</code>.</li>
+<li>Rebuild state from <code>ctx.sessionManager.getBranch()</code> on <code>session_start</code>, <code>session_branch</code>, <code>session_tree</code>.</li>
+<li>Keep tool result <code>details</code> structured when state should be visible/reconstructible from tool result history.</li>
+</ol>
+<p>Example reconstruction pattern:</p>
+<pre><code class="language-ts">pi.on("session_start", async (_event, ctx) =&gt; {
+  let latest;
+  for (const entry of ctx.sessionManager.getBranch()) {
+    if (entry.type === "custom" &amp;&amp; entry.customType === "my-state") {
+      latest = entry.data;
+    }
+  }
+  // restore from latest
+});
+</code></pre>
+<h2 id="rendering-extension-points"><a class="header" href="#rendering-extension-points">Rendering extension points</a></h2>
+<h2 id="custom-message-renderer"><a class="header" href="#custom-message-renderer">Custom message renderer</a></h2>
+<pre><code class="language-ts">pi.registerMessageRenderer("my-type", (message, { expanded }, theme) =&gt; {
+  // return pi-tui Component
+});
+</code></pre>
+<p>Used by interactive rendering when custom messages are displayed.</p>
+<p>Return <code>undefined</code> to decline and let veyyon draw its built-in card for that
+message. If your renderer throws instead, veyyon draws the built-in card and adds
+a notice row to it:</p>
+<pre><code>✗ custom message "my-type" renderer threw: cannot read properties of undefined — showing the default card; fix or remove the renderer
+</code></pre>
+<p>The failure is also written to the log, so a renderer that breaks only on certain
+payloads is visible in the transcript rather than silently replaced.</p>
+<h2 id="assistant-thinking-renderer"><a class="header" href="#assistant-thinking-renderer">Assistant thinking renderer</a></h2>
+<pre><code class="language-ts">import { Container, Text } from "@veyyon/tui";
+
+pi.registerAssistantThinkingRenderer((context, theme) =&gt; {
+  const container = new Container();
+  container.addChild(new Text(theme.fg("dim", `thinking chars: ${context.text.length}`), 1, 0));
+  return container;
+});
+</code></pre>
+<p>Used by interactive rendering to add display-only supplemental UI below each visible assistant thinking block. The renderer receives the already-visible thinking text, content/thinking indexes, theme, and a <code>requestRender()</code> callback for async renderers. All registered renderers that return a component are appended in registration order. Renderers must not mutate messages; the original thinking block remains the provider/session source of truth.</p>
+<h2 id="tool-callresult-renderer"><a class="header" href="#tool-callresult-renderer">Tool call/result renderer</a></h2>
+<p>Provide <code>renderCall</code> / <code>renderResult</code> on <code>registerTool</code> definitions for custom tool visualization in TUI.</p>
+<h2 id="constraints-and-pitfalls"><a class="header" href="#constraints-and-pitfalls">Constraints and pitfalls</a></h2>
+<ul>
+<li>Runtime actions are unavailable during extension load.</li>
+<li><code>tool_call</code> errors block execution (fail-closed).</li>
+<li>Command name conflicts with built-ins are skipped with diagnostics.</li>
+<li>Reserved shortcuts are ignored (<code>ctrl+c</code>, <code>ctrl+d</code>, <code>ctrl+z</code>, <code>ctrl+k</code>, <code>ctrl+p</code>, <code>ctrl+l</code>, <code>ctrl+o</code>, <code>ctrl+t</code>, <code>ctrl+g</code>, <code>ctrl+q</code>, <code>alt+m</code>, <code>shift+tab</code>, <code>shift+ctrl+p</code>, <code>alt+enter</code>, <code>escape</code>, <code>enter</code>).</li>
+<li>Treat <code>ctx.reload()</code> as terminal for the current command handler frame.</li>
+</ul>
+<h2 id="extensions-vs-hooks-vs-custom-tools"><a class="header" href="#extensions-vs-hooks-vs-custom-tools">Extensions vs hooks vs custom-tools</a></h2>
+<p>Use the right surface:</p>
+<ul>
+<li><strong>Extensions</strong> (<code>src/extensibility/extensions/*</code>): unified system (events + tools + commands + renderers + provider registration).</li>
+<li><strong>Hooks</strong> (<code>src/extensibility/hooks/*</code>): separate legacy event API.</li>
+<li><strong>Custom-tools</strong> (<code>src/extensibility/custom-tools/*</code>): tool-focused modules; when loaded alongside extensions they are adapted and still pass through extension interception wrappers.</li>
+</ul>
+<p>If you need one package that owns policy, tools, command UX, and rendering together, use extensions.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../features/plugins.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="../features/extensions-authoring.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../features/plugins.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="../features/extensions-authoring.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr-ef4e11c1.min.js"></script>
+        <script src="../mark-09e88c2c.min.js"></script>
+        <script src="../searcher-c2a407aa.js"></script>
+
+        <script src="../clipboard-1626706a.min.js"></script>
+        <script src="../highlight-abc7f01d.js"></script>
+        <script src="../book-a0b12cfe.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>

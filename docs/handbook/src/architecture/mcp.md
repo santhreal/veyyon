@@ -39,6 +39,6 @@ anywhere saying why.
 User guide: [MCP](../features/mcp.md), [MCP setup](../using/mcp-setup.md).
 
 Engineering detail:
-[`docs/mcp-config.md`](../../../mcp-config.md),
+[`docs/handbook/src/reference/mcp-config.md`](../../../mcp-config.md),
 [`docs/internal/mcp-runtime-lifecycle.md`](../../../internal/mcp-runtime-lifecycle.md),
 [`docs/internal/mcp-protocol-transports.md`](../../../internal/mcp-protocol-transports.md).

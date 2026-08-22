@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-987e4cde.js";
+            window.path_to_searchindex_js = "../searchindex-360535cc.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-13566cf4.js"></script>
+        <script src="../toc-093df7ff.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -201,7 +201,7 @@ handful of <code>VEYYON_*</code> variables that are actually read by the runtime
 number of <code>VEYYON_*</code> debug/behavior-toggle variables (timing, startup tracing, TUI flags, eval-runtime
 toggles, and more) that are less common configuration. For the complete, code-grounded reference,
 including every provider credential var, precedence chains, and internal toggles, see
-<a href="../../../environment-variables.html"><code>docs/environment-variables.md</code></a>.</p>
+<a href="../../../environment-variables.html"><code>docs/handbook/src/reference/environment-complete.md</code></a>.</p>
 <h2 id="location-and-identity"><a class="header" href="#location-and-identity">Location and identity</a></h2>
 <p>There is no <code>VEYYON_HOME</code>. The config directory <strong>name</strong> (not a full path) is overridable, and the
 active profile is selected by its own variable:</p>
@@ -234,7 +234,7 @@ token (a <code>VEYYON_API_KEY</code>/<code>VEYYON_ACCESS_TOKEN</code> legacy ali
 When a provider’s key variable is set, it is used without an interactive sign-in. For providers with
 OAuth (Anthropic, xAI, Qwen, Cursor, and others), the OAuth token variable takes precedence over the
 plain API key, see the provider tables below and
-<a href="../../../environment-variables.html#1-modelprovider-authentication"><code>docs/environment-variables.md</code></a>.</p>
+<a href="../../../environment-variables.html#1-modelprovider-authentication"><code>docs/handbook/src/reference/environment-complete.md</code></a>.</p>
 <p>OAuth sign-in itself is interactive: run <code>/login</code> inside the TUI (or <code>--provider &lt;id&gt;</code> at startup) to
 open the OAuth selector. There is no <code>veyyon login --with-api-key</code>/<code>--with-access-token</code> CLI subcommand;
 piping a key into a login command is not part of the shipped CLI surface.</p>
@@ -264,7 +264,7 @@ sign-in and wins over a stored key.</p>
 </div>
 <p>A custom provider uses whatever variable its <code>[model_providers.&lt;id&gt;].env_key</code> names. See
 <a href="../using/configuration.html">Configuration</a> and the full provider table in
-<a href="../../../environment-variables.html#1-modelprovider-authentication"><code>docs/environment-variables.md</code></a>
+<a href="../../../environment-variables.html#1-modelprovider-authentication"><code>docs/handbook/src/reference/environment-complete.md</code></a>
 (30+ providers, cloud auth chains for Bedrock/Vertex/Azure, and web-search provider keys).</p>
 <h2 id="local-and-self-hosted-providers"><a class="header" href="#local-and-self-hosted-providers">Local and self-hosted providers</a></h2>
 <div class="table-wrapper">
@@ -376,7 +376,7 @@ broker host:</p>
 </div>
 <p>There is no <code>VEYYON_TUI_DISABLE_KEYBOARD_ENHANCEMENT</code>, <code>VEYYON_TUI_RECORD_SESSION</code>, or
 <code>VEYYON_TUI_SESSION_LOG_PATH</code>; see
-<a href="../../../environment-variables.html#9-tui-runtime-flags-shared-package-affects-coding-agent-ux"><code>docs/environment-variables.md</code></a>
+<a href="../../../environment-variables.html#9-tui-runtime-flags-shared-package-affects-coding-agent-ux"><code>docs/handbook/src/reference/environment-complete.md</code></a>
 for the real <code>VEYYON_*</code>-prefixed TUI flags.</p>
 <h2 id="removed--does-not-exist"><a class="header" href="#removed--does-not-exist">Removed / does not exist</a></h2>
 <div class="table-wrapper">
@@ -402,11 +402,11 @@ never persisted); see the <a href="./cli.html">CLI reference</a>.</p>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../reference/keybindings-ref.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../reference/keybindings-config.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="../reference/exit-codes.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../reference/environment-complete.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -416,11 +416,11 @@ never persisted); see the <a href="./cli.html">CLI reference</a>.</p>
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../reference/keybindings-ref.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../reference/keybindings-config.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="../reference/exit-codes.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../reference/environment-complete.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

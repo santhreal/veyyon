@@ -25,7 +25,7 @@ classifiers = [
 [project.urls]
 Homepage = "https://veyyon.dev/"
 Repository = "https://github.com/santhreal/veyyon"
-Documentation = "https://github.com/santhreal/veyyon/blob/main/docs/rpc.md"
+Documentation = "https://github.com/santhreal/veyyon/blob/main/docs/handbook/src/reference/rpc.md"
 
 [tool.setuptools]
 package-dir = { "" = "src" }

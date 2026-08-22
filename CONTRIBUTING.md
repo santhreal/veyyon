@@ -43,3 +43,18 @@ Green CI plus the requested Devin review is the entry point to human review. A
 maintainer makes the final call.
 
 Pushing more commits to an open PR re-runs the pipeline; that's expected.
+
+## Finding your way around
+
+Four files, in the order a first change needs them:
+
+| Read | For |
+| --- | --- |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | What the packages are and which one owns the thing you are changing. |
+| [`packages/coding-agent/DEVELOPMENT.md`](packages/coding-agent/DEVELOPMENT.md) | The `src/` map: subsystem to directory to the page that documents it. |
+| [`docs/README.md`](docs/README.md) | Which documentation tree a page belongs in, and where a new page goes. |
+| [`AGENTS.md`](AGENTS.md) | The rules this repository enforces in CI: changelog, tests, class privacy, capture requirements. |
+
+The manual itself is the handbook under [`docs/handbook/`](docs/handbook/). It is the only
+user-facing documentation tree: a behavior change updates the page that owns the behavior, in the
+same commit. `docs/internal/` is for contributors and is not published.

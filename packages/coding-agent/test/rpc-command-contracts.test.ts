@@ -7,7 +7,7 @@ import {
 import type { RpcCommand, RpcResponse } from "@veyyon/coding-agent/modes/rpc/rpc-types";
 
 /**
- * RPC frame contracts from docs/rpc.md:
+ * RPC frame contracts from docs/handbook/src/reference/rpc.md:
  * - Unknown command responses emit with id: undefined even when the request had an id.
  * - Parse/handler exceptions emit command: "parse" with id: undefined.
  * - Ready is process-level (covered by spawn suites); here we lock dispatcher behavior.

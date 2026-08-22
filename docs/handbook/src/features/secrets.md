@@ -810,6 +810,6 @@ Be clear about the boundary.
 
 ## Reference
 
-The field-by-field schema, the merge rules between the two files, and the interaction with environment detection are in `docs/secrets.md`.
+The field-by-field schema, the merge rules between the two files, and the interaction with environment detection are in `docs/handbook/src/architecture/secrets.md`.
 
 For provider credentials specifically, `veyyon` keeps OAuth tokens and API keys in its own credential store rather than in your context. See [Signing in](../using/authentication.md).

@@ -20,7 +20,7 @@ export default class Acp extends Command {
 	// declares no `static flags`, so the generated FLAGS block is empty. It is not
 	// that acp takes no flags: it takes EVERY launch flag, because it runs the
 	// launch parser. A USAGE line reading `$ veyyon acp` with nothing under it
-	// says the opposite, and `docs/approval-mode.md` documents four acp flags
+	// says the opposite, and `docs/handbook/src/reference/approval-mode.md` documents four acp flags
 	// this help never mentioned, so the examples say it instead.
 	static strict = false;
 

@@ -2,7 +2,7 @@
 
 Browser client for Veyyon collab live sessions. Displays streaming transcripts, tool-call cards, and subagent panels, with an input composer for interacting with the host agent.
 
-Documentation: [`docs/collab.md`](../../docs/collab.md)
+Documentation: [`docs/handbook/src/features/collab.md`](../../docs/handbook/src/features/collab.md)
 
 ## Quick start
 

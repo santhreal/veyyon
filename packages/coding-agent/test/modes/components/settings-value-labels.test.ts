@@ -219,7 +219,7 @@ describe("the Auto Close group follows its own switch", () => {
  *
  * WHY THIS EXISTS. `subagent.idleTtlMs` decides when a finished subagent releases
  * its session, it carries a `ui` block with a tab, a group, a label and a
- * description, and `docs/settings-reference.md` lists it as a setting. It rendered
+ * description, and `docs/handbook/src/reference/settings-reference.md` lists it as a setting. It rendered
  * nowhere. `pathToSettingDef` drops a numeric setting that declares no `ui.options`,
  * treating an optionless number as deliberately schema-only, so the row was
  * documented, defaulted and honored while being unreachable from `/settings`. The

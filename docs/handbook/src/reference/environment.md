@@ -5,7 +5,7 @@ handful of `VEYYON_*` variables that are actually read by the runtime today. Vey
 number of `VEYYON_*` debug/behavior-toggle variables (timing, startup tracing, TUI flags, eval-runtime
 toggles, and more) that are less common configuration. For the complete, code-grounded reference,
 including every provider credential var, precedence chains, and internal toggles, see
-[`docs/environment-variables.md`](../../../environment-variables.md).
+[`docs/handbook/src/reference/environment-complete.md`](../../../environment-variables.md).
 
 ## Location and identity
 
@@ -38,7 +38,7 @@ token (a `VEYYON_API_KEY`/`VEYYON_ACCESS_TOKEN` legacy alias does not exist in t
 When a provider's key variable is set, it is used without an interactive sign-in. For providers with
 OAuth (Anthropic, xAI, Qwen, Cursor, and others), the OAuth token variable takes precedence over the
 plain API key, see the provider tables below and
-[`docs/environment-variables.md`](../../../environment-variables.md#1-modelprovider-authentication).
+[`docs/handbook/src/reference/environment-complete.md`](../../../environment-variables.md#1-modelprovider-authentication).
 
 OAuth sign-in itself is interactive: run `/login` inside the TUI (or `--provider <id>` at startup) to
 open the OAuth selector. There is no `veyyon login --with-api-key`/`--with-access-token` CLI subcommand;
@@ -66,7 +66,7 @@ sign-in and wins over a stored key.
 
 A custom provider uses whatever variable its `[model_providers.<id>].env_key` names. See
 [Configuration](../using/configuration.md) and the full provider table in
-[`docs/environment-variables.md`](../../../environment-variables.md#1-modelprovider-authentication)
+[`docs/handbook/src/reference/environment-complete.md`](../../../environment-variables.md#1-modelprovider-authentication)
 (30+ providers, cloud auth chains for Bedrock/Vertex/Azure, and web-search provider keys).
 
 ## Local and self-hosted providers
@@ -151,7 +151,7 @@ There is no `VEYYON_REPAIR_LOG`, and Veyyon does not emit per-`(model,tool,shape
 
 There is no `VEYYON_TUI_DISABLE_KEYBOARD_ENHANCEMENT`, `VEYYON_TUI_RECORD_SESSION`, or
 `VEYYON_TUI_SESSION_LOG_PATH`; see
-[`docs/environment-variables.md`](../../../environment-variables.md#9-tui-runtime-flags-shared-package-affects-coding-agent-ux)
+[`docs/handbook/src/reference/environment-complete.md`](../../../environment-variables.md#9-tui-runtime-flags-shared-package-affects-coding-agent-ux)
 for the real `VEYYON_*`-prefixed TUI flags.
 
 ## Removed / does not exist

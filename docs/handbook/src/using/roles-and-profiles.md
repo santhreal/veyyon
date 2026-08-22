@@ -125,6 +125,6 @@ See [Approvals](../features/sandbox.md).
 
 ## Related
 
-- [Models and providers](./models.md)
-- [Settings: models](../../../settings.md) (repo `docs/settings.md`)
+- [Models and providers](../reference/models-yml.md)
+- [Settings: models](../../../settings.md) (repo `docs/handbook/src/reference/settings.md`)
 - [Compaction](../context/compaction-memory.md)

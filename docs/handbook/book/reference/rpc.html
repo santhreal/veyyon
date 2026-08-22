@@ -1,0 +1,808 @@
+<!DOCTYPE HTML>
+<html lang="en" class="navy sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>The RPC surface - The Veyyon Harness Handbook</title>
+
+
+        <!-- Custom HTML head -->
+        <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
+        <meta name="theme-color" content="#050505">
+        <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+        <style>
+          /* Paint the near-black surface before CSS/JS resolve the theme, so there is
+             no light flash on load. Kept in sync with theme/veyyon.css. */
+          html { background: #050505; }
+          /* Tighten the base box model for the premium layout. */
+          *, *::before, *::after { box-sizing: border-box; }
+        </style>
+
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="../favicon-8114d1fc.png">
+        <link rel="stylesheet" href="../css/variables-8adf115d.css">
+        <link rel="stylesheet" href="../css/general-2459343d.css">
+        <link rel="stylesheet" href="../css/chrome-ae938929.css">
+        <link rel="stylesheet" href="../css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="../highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="../tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "navy";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "../searchindex-360535cc.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc-093df7ff.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('navy')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">The Veyyon Harness Handbook</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/santhreal/veyyon" title="Git repository" aria-label="Git repository">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/santhreal/veyyon/edit/main/docs/handbook/src/reference/rpc.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                            <span class=fa-svg id="git-edit-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M421.7 220.3l-11.3 11.3-22.6 22.6-205 205c-6.6 6.6-14.8 11.5-23.8 14.1L30.8 511c-8.4 2.5-17.5 .2-23.7-6.1S-1.5 489.7 1 481.2L38.7 353.1c2.6-9 7.5-17.2 14.1-23.8l205-205 22.6-22.6 11.3-11.3 33.9 33.9 62.1 62.1 33.9 33.9zM96 353.9l-9.3 9.3c-.9 .9-1.6 2.1-2 3.4l-25.3 86 86-25.3c1.3-.4 2.5-1.1 3.4-2l9.3-9.3H112c-8.8 0-16-7.2-16-16V353.9zM453.3 19.3l39.4 39.4c25 25 25 65.5 0 90.5l-14.5 14.5-22.6 22.6-11.3 11.3-33.9-33.9-62.1-62.1L314.3 67.7l11.3-11.3 22.6-22.6 14.5-14.5c25-25 65.5-25 90.5 0z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="rpc-protocol-reference"><a class="header" href="#rpc-protocol-reference">RPC Protocol Reference</a></h1>
+<p>RPC mode runs the coding agent as a newline-delimited JSON protocol over stdio.</p>
+<ul>
+<li><strong>stdin</strong>: commands (<code>RpcCommand</code>), extension UI responses, and host-tool updates/results</li>
+<li><strong>stdout</strong>: a ready frame, command responses (<code>RpcResponse</code>), session/agent events, extension UI requests, host-tool requests/cancellations</li>
+</ul>
+<p>Primary implementation:</p>
+<ul>
+<li><code>src/modes/rpc/rpc-mode.ts</code></li>
+<li><code>src/modes/rpc/rpc-types.ts</code></li>
+<li><code>src/session/agent-session.ts</code></li>
+<li><code>packages/agent/src/agent.ts</code></li>
+<li><code>packages/agent/src/agent-loop.ts</code></li>
+</ul>
+<h2 id="startup"><a class="header" href="#startup">Startup</a></h2>
+<pre><code class="language-bash">veyyon --mode rpc [regular CLI options]
+</code></pre>
+<p>Behavior notes:</p>
+<ul>
+<li><code>@file</code> CLI arguments are rejected in RPC mode.</li>
+<li>RPC mode disables automatic session title generation by default to avoid an extra model call.</li>
+<li>RPC mode host-defaults a small set of settings so embedders inherit Veyyon’s neutral defaults: <code>subagent.isolation.mode</code>/<code>merge</code>/<code>commits</code>, <code>subagent.delegation</code>, <code>subagent.batch</code>, <code>subagent.maxConcurrency</code>, <code>subagent.maxNestedSpawnDepth</code>, <code>subagent.agents</code>, <code>memory.backend</code>, and <code>memories.enabled</code>, plus <code>async.enabled</code>, <code>async.maxJobs</code>, <code>bash.autoBackground.enabled</code>, and <code>bash.autoBackground.thresholdMs</code>. The default is only applied when the path is unset: any explicit configuration (caller overrides, <code>--config</code> overlays, or the profile <code>config.yml</code>) is preserved. <code>todo.*</code> settings are always caller-controlled in protocol modes.</li>
+<li>The process reads stdin as JSONL (<code>readJsonl(Bun.stdin.stream())</code>).</li>
+<li>At startup it writes <code>{ "type": "ready" }</code> before processing commands.</li>
+<li>When stdin closes, pending host-tool calls and host-URI requests are rejected and the process exits with code <code>0</code>.</li>
+<li>Responses/events are written as one JSON object per line.</li>
+</ul>
+<h2 id="transport-and-framing"><a class="header" href="#transport-and-framing">Transport and Framing</a></h2>
+<p>Each frame is a single JSON object followed by <code>\n</code>.</p>
+<p>There is no envelope beyond the object shape itself.</p>
+<h3 id="outbound-frame-categories-stdout"><a class="header" href="#outbound-frame-categories-stdout">Outbound frame categories (stdout)</a></h3>
+<ol>
+<li>Ready frame (<code>{ type: "ready" }</code>)</li>
+<li><code>RpcResponse</code> (<code>{ type: "response", ... }</code>)</li>
+<li><code>AgentSessionEvent</code> objects (<code>agent_start</code>, <code>message_update</code>, etc.)</li>
+<li><code>RpcExtensionUIRequest</code> (<code>{ type: "extension_ui_request", ... }</code>)</li>
+<li>Host tool requests/cancellations (<code>host_tool_call</code>, <code>host_tool_cancel</code>)</li>
+<li>Host URI requests/cancellations (<code>host_uri_request</code>, <code>host_uri_cancel</code>)</li>
+<li>Extension errors (<code>{ type: "extension_error", extensionPath, event, error }</code>)</li>
+<li>Available-commands updates (<code>{ type: "available_commands_update", commands }</code>), emitted at startup and whenever command metadata changes</li>
+<li>Prompt lifecycle hints (<code>{ type: "prompt_result", id?, agentInvoked }</code>) for scheduled prompts that later resolve without invoking the agent</li>
+<li>Subagent frames (<code>subagent_lifecycle</code>, <code>subagent_progress</code>, <code>subagent_event</code>), gated by <code>set_subagent_subscription</code></li>
+<li>Builtin slash-command side channels (<code>command_output</code>, <code>session_info_update</code>, <code>config_update</code>)</li>
+</ol>
+<h3 id="inbound-frame-categories-stdin"><a class="header" href="#inbound-frame-categories-stdin">Inbound frame categories (stdin)</a></h3>
+<ol>
+<li><code>RpcCommand</code></li>
+<li><code>RpcExtensionUIResponse</code> (<code>{ type: "extension_ui_response", ... }</code>)</li>
+<li>Host tool updates/results (<code>host_tool_update</code>, <code>host_tool_result</code>)</li>
+<li>Host URI results (<code>host_uri_result</code>)</li>
+</ol>
+<h2 id="requestresponse-correlation"><a class="header" href="#requestresponse-correlation">Request/Response Correlation</a></h2>
+<p>All commands accept optional <code>id?: string</code>.</p>
+<ul>
+<li>If provided, normal command responses echo the same <code>id</code>.</li>
+<li><code>RpcClient</code> relies on this for pending-request resolution.</li>
+</ul>
+<p>Important edge behavior from runtime:</p>
+<ul>
+<li>Unknown command responses are emitted with <code>id: undefined</code> (even if the request had an <code>id</code>).</li>
+<li>Parse/handler exceptions in the input loop emit <code>command: "parse"</code> with <code>id: undefined</code>.</li>
+<li><code>prompt</code> and <code>abort_and_prompt</code> return immediate success, then may emit a later error response with the <strong>same</strong> id if async prompt scheduling fails.</li>
+<li><code>prompt</code> success responses may include <code>data.agentInvoked</code>. <code>false</code> means the prompt completed locally without an agent turn; <code>true</code> means the prompt produced agent lifecycle events; omitted means the host must rely on session events for completion.</li>
+<li><code>abort_and_prompt</code> does not currently emit <code>data.agentInvoked</code> or <code>prompt_result</code>; hosts should treat it as the legacy abort-then-schedule path and rely on session events or same-id scheduling errors.</li>
+</ul>
+<h2 id="command-schema-canonical"><a class="header" href="#command-schema-canonical">Command Schema (canonical)</a></h2>
+<p><code>RpcCommand</code> is defined in <code>src/modes/rpc/rpc-types.ts</code>:</p>
+<h3 id="prompting"><a class="header" href="#prompting">Prompting</a></h3>
+<ul>
+<li><code>{ id?, type: "prompt", message: string, images?: ImageContent[], streamingBehavior?: "steer" | "followUp" }</code></li>
+<li><code>{ id?, type: "steer", message: string, images?: ImageContent[] }</code></li>
+<li><code>{ id?, type: "follow_up", message: string, images?: ImageContent[] }</code></li>
+<li><code>{ id?, type: "abort" }</code></li>
+<li><code>{ id?, type: "abort_and_prompt", message: string, images?: ImageContent[] }</code></li>
+<li><code>{ id?, type: "new_session", parentSession?: string }</code></li>
+</ul>
+<h3 id="state"><a class="header" href="#state">State</a></h3>
+<ul>
+<li><code>{ id?, type: "get_state" }</code></li>
+<li><code>{ id?, type: "get_available_commands" }</code></li>
+<li><code>{ id?, type: "set_todos", phases: TodoPhase[] }</code></li>
+<li><code>{ id?, type: "set_host_tools", tools: RpcHostToolDefinition[] }</code></li>
+<li><code>{ id?, type: "set_host_uri_schemes", schemes: RpcHostUriSchemeDefinition[] }</code></li>
+<li><code>{ id?, type: "set_subagent_subscription", level: "off" | "progress" | "events" }</code></li>
+<li><code>{ id?, type: "get_subagents" }</code></li>
+<li><code>{ id?, type: "get_subagent_messages", subagentId?: string, sessionFile?: string, fromByte?: number }</code></li>
+</ul>
+<h3 id="model"><a class="header" href="#model">Model</a></h3>
+<ul>
+<li><code>{ id?, type: "set_model", provider: string, modelId: string }</code></li>
+<li><code>{ id?, type: "cycle_model" }</code></li>
+<li><code>{ id?, type: "get_available_models" }</code></li>
+</ul>
+<h3 id="thinking"><a class="header" href="#thinking">Thinking</a></h3>
+<ul>
+<li><code>{ id?, type: "set_thinking_level", level: ThinkingLevel }</code></li>
+<li><code>{ id?, type: "cycle_thinking_level" }</code></li>
+</ul>
+<h3 id="queue-modes"><a class="header" href="#queue-modes">Queue modes</a></h3>
+<ul>
+<li><code>{ id?, type: "set_steering_mode", mode: "all" | "one-at-a-time" }</code></li>
+<li><code>{ id?, type: "set_follow_up_mode", mode: "all" | "one-at-a-time" }</code></li>
+<li><code>{ id?, type: "set_interrupt_mode", mode: "immediate" | "wait" }</code></li>
+</ul>
+<h3 id="compaction"><a class="header" href="#compaction">Compaction</a></h3>
+<ul>
+<li><code>{ id?, type: "compact", customInstructions?: string }</code></li>
+<li><code>{ id?, type: "set_auto_compaction", enabled: boolean }</code></li>
+</ul>
+<h3 id="retry"><a class="header" href="#retry">Retry</a></h3>
+<ul>
+<li><code>{ id?, type: "set_auto_retry", enabled: boolean }</code></li>
+<li><code>{ id?, type: "abort_retry" }</code></li>
+</ul>
+<h3 id="bash"><a class="header" href="#bash">Bash</a></h3>
+<ul>
+<li><code>{ id?, type: "bash", command: string }</code></li>
+<li><code>{ id?, type: "abort_bash" }</code></li>
+</ul>
+<p><code>bash</code> is dispatched concurrently: the RPC server continues reading commands
+while the shell command runs, so <code>abort_bash</code> (or any other command) sent
+during a long-running <code>bash</code> is handled without waiting for it to finish on
+its own. The <code>bash</code> response is emitted when the command completes; hosts
+correlate it via <code>id</code>. Ordering across concurrent commands is not guaranteed
+, clients MUST match responses on <code>id</code>, not on emission order.</p>
+<h3 id="session"><a class="header" href="#session">Session</a></h3>
+<ul>
+<li><code>{ id?, type: "get_session_stats" }</code></li>
+<li><code>{ id?, type: "export_html", outputPath?: string }</code></li>
+<li><code>{ id?, type: "switch_session", sessionPath: string }</code></li>
+<li><code>{ id?, type: "branch", entryId: string }</code></li>
+<li><code>{ id?, type: "get_branch_messages" }</code></li>
+<li><code>{ id?, type: "get_last_assistant_text" }</code></li>
+<li><code>{ id?, type: "set_session_name", name: string }</code></li>
+<li><code>{ id?, type: "handoff", customInstructions?: string }</code></li>
+</ul>
+<h3 id="messages"><a class="header" href="#messages">Messages</a></h3>
+<ul>
+<li><code>{ id?, type: "get_messages" }</code></li>
+</ul>
+<h3 id="login"><a class="header" href="#login">Login</a></h3>
+<ul>
+<li><code>{ id?, type: "get_login_providers" }</code></li>
+<li><code>{ id?, type: "login", providerId: string }</code></li>
+</ul>
+<h2 id="response-schema"><a class="header" href="#response-schema">Response Schema</a></h2>
+<p>All command results use <code>RpcResponse</code>:</p>
+<ul>
+<li>Success: <code>{ id?, type: "response", command: &lt;command&gt;, success: true, data?: ... }</code></li>
+<li>Failure: <code>{ id?, type: "response", command: string, success: false, error: string }</code></li>
+</ul>
+<p>Data payloads are command-specific and defined in <code>rpc-types.ts</code>.</p>
+<h3 id="prompt-payload"><a class="header" href="#prompt-payload"><code>prompt</code> payload</a></h3>
+<p><code>prompt</code> is acknowledged after the command is accepted, not after a model turn finishes:</p>
+<pre><code class="language-json">{
+  "id": "req_1",
+  "type": "response",
+  "command": "prompt",
+  "success": true,
+  "data": { "agentInvoked": false }
+}
+</code></pre>
+<p><code>data.agentInvoked: false</code> is a completion signal for local-only prompts, including slash commands that produce output without starting an agent turn. <code>data.agentInvoked: true</code> means the prompt produced agent lifecycle events; those events can be emitted before or after the prompt response depending on the command path. Older runtimes may omit <code>data</code>; hosts should then rely on <code>agent_end</code>, custom message completion, or <code>prompt_result</code>.</p>
+<p><code>prompt_result</code> is emitted when a prompt was accepted immediately but later resolves as local-only:</p>
+<pre><code class="language-json">{ "type": "prompt_result", "id": "req_1", "agentInvoked": false }
+</code></pre>
+<p>Local-only slash commands may emit <code>command_output</code> frames before completing via <code>data.agentInvoked: false</code> or a later <code>prompt_result</code>. They do not emit <code>agent_end</code>.</p>
+<h3 id="get_state-payload"><a class="header" href="#get_state-payload"><code>get_state</code> payload</a></h3>
+<pre><code class="language-json">{
+  "model": { "provider": "...", "id": "..." },
+  "thinkingLevel": "off|minimal|low|medium|high|xhigh|max",
+  "isStreaming": false,
+  "isCompacting": false,
+  "steeringMode": "all|one-at-a-time",
+  "followUpMode": "all|one-at-a-time",
+  "interruptMode": "immediate|wait",
+  "sessionFile": "...",
+  "sessionId": "...",
+  "sessionName": "...",
+  "autoCompactionEnabled": true,
+  "messageCount": 0,
+  "queuedMessageCount": 0,
+  "todoPhases": [
+    {
+      "id": "phase-1",
+      "name": "Todos",
+      "tasks": [
+        {
+          "id": "task-1",
+          "content": "Map the tool surface",
+          "status": "in_progress"
+        }
+      ]
+    }
+  ],
+  "systemPrompt": ["..."],
+  "dumpTools": [
+    {
+      "name": "read",
+      "description": "Read files and URLs",
+      "parameters": {}
+    }
+  ],
+  "contextUsage": {
+    "tokens": 1100,
+    "contextWindow": 200000,
+    "percent": 0.55
+  }
+}
+</code></pre>
+<h3 id="set_todos-payload"><a class="header" href="#set_todos-payload"><code>set_todos</code> payload</a></h3>
+<p>Replaces the in-memory todo state for the current session and returns the normalized phase list:</p>
+<pre><code class="language-json">{
+  "id": "req_2",
+  "type": "set_todos",
+  "phases": [
+    {
+      "id": "phase-1",
+      "name": "Evaluation",
+      "tasks": [
+        {
+          "id": "task-1",
+          "content": "Map the read tool surface",
+          "status": "in_progress"
+        },
+        {
+          "id": "task-2",
+          "content": "Exercise edit operations",
+          "status": "pending"
+        }
+      ]
+    }
+  ]
+}
+</code></pre>
+<p>This is useful for hosts that want to pre-seed a plan before the first prompt.</p>
+<h3 id="set_host_tools-payload"><a class="header" href="#set_host_tools-payload"><code>set_host_tools</code> payload</a></h3>
+<p>Replaces the current set of host-owned tools that the RPC server may call back
+into over stdio:</p>
+<pre><code class="language-json">{
+  "id": "req_3",
+  "type": "set_host_tools",
+  "tools": [
+    {
+      "name": "echo_host",
+      "label": "Echo Host",
+      "description": "Echo a value from the embedding host",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "message": { "type": "string" }
+        },
+        "required": ["message"],
+        "additionalProperties": false
+      }
+    }
+  ]
+}
+</code></pre>
+<p>The response payload is:</p>
+<pre><code class="language-json">{
+  "toolNames": ["echo_host"]
+}
+</code></pre>
+<p>These tools are added to the active session tool registry before the next model
+call. Re-sending <code>set_host_tools</code> replaces the previous host-owned set.</p>
+<h3 id="set_host_uri_schemes-payload"><a class="header" href="#set_host_uri_schemes-payload"><code>set_host_uri_schemes</code> payload</a></h3>
+<p>Replaces the current set of host-owned URL schemes the RPC server should
+dispatch reads/writes through:</p>
+<pre><code class="language-json">{
+  "id": "req_4",
+  "type": "set_host_uri_schemes",
+  "schemes": [
+    {
+      "scheme": "db",
+      "description": "Virtual db row files",
+      "writable": true,
+      "immutable": false
+    }
+  ]
+}
+</code></pre>
+<p>The response payload is:</p>
+<pre><code class="language-json">{
+  "schemes": ["db"]
+}
+</code></pre>
+<p>Schemes are case-insensitive on the wire and normalized to lowercase before
+the response is sent. Re-sending <code>set_host_uri_schemes</code> replaces the entire
+previous set, schemes missing from the new list are unregistered.</p>
+<h2 id="event-stream-schema"><a class="header" href="#event-stream-schema">Event Stream Schema</a></h2>
+<p>RPC mode forwards <code>AgentSessionEvent</code> objects from <code>AgentSession.subscribe(...)</code>.</p>
+<p>Common event types:</p>
+<ul>
+<li><code>agent_start</code>, <code>agent_end</code></li>
+<li><code>turn_start</code>, <code>turn_end</code></li>
+<li><code>message_start</code>, <code>message_update</code>, <code>message_end</code></li>
+<li><code>tool_execution_start</code>, <code>tool_execution_update</code>, <code>tool_execution_end</code></li>
+<li><code>auto_compaction_start</code>, <code>auto_compaction_end</code></li>
+<li><code>auto_retry_start</code>, <code>auto_retry_end</code></li>
+<li><code>ttsr_triggered</code></li>
+<li><code>todo_reminder</code></li>
+<li><code>todo_auto_clear</code></li>
+</ul>
+<p>Extension runner errors are emitted separately as:</p>
+<pre><code class="language-json">{
+  "type": "extension_error",
+  "extensionPath": "...",
+  "event": "...",
+  "error": "..."
+}
+</code></pre>
+<p><code>message_update</code> includes streaming deltas in <code>assistantMessageEvent</code> (text/thinking/toolcall deltas).</p>
+<h2 id="promptqueue-concurrency-and-ordering"><a class="header" href="#promptqueue-concurrency-and-ordering">Prompt/Queue Concurrency and Ordering</a></h2>
+<p>This is the most important operational behavior.</p>
+<h3 id="immediate-ack-vs-completion"><a class="header" href="#immediate-ack-vs-completion">Immediate ack vs completion</a></h3>
+<p><code>prompt</code> and <code>abort_and_prompt</code> are <strong>acknowledged immediately</strong>:</p>
+<pre><code class="language-json">{ "id": "req_1", "type": "response", "command": "prompt", "success": true }
+</code></pre>
+<p>That means:</p>
+<ul>
+<li>command acceptance != run completion</li>
+<li>agent turns complete via <code>agent_end</code></li>
+<li>local-only prompts complete via <code>data.agentInvoked: false</code> on the response or via a later <code>prompt_result</code></li>
+</ul>
+<h3 id="while-streaming"><a class="header" href="#while-streaming">While streaming</a></h3>
+<p><code>AgentSession.prompt()</code> requires <code>streamingBehavior</code> during active streaming:</p>
+<ul>
+<li><code>"steer"</code> =&gt; queued steering message (interrupt path)</li>
+<li><code>"followUp"</code> =&gt; queued follow-up message (post-turn path)</li>
+</ul>
+<p>If omitted during streaming, prompt fails.</p>
+<h3 id="queue-defaults"><a class="header" href="#queue-defaults">Queue defaults</a></h3>
+<p>From <code>packages/agent/src/agent.ts</code> defaults:</p>
+<ul>
+<li><code>steeringMode</code>: <code>"one-at-a-time"</code></li>
+<li><code>followUpMode</code>: <code>"one-at-a-time"</code></li>
+<li><code>interruptMode</code>: <code>"immediate"</code></li>
+</ul>
+<h3 id="mode-semantics"><a class="header" href="#mode-semantics">Mode semantics</a></h3>
+<ul>
+<li><code>set_steering_mode</code> / <code>set_follow_up_mode</code>
+<ul>
+<li><code>"one-at-a-time"</code>: dequeue one queued message per turn</li>
+<li><code>"all"</code>: dequeue entire queue at once</li>
+</ul>
+</li>
+<li><code>set_interrupt_mode</code>
+<ul>
+<li><code>"immediate"</code>: tool execution checks steering between tool calls; pending steering can abort remaining tool calls in the turn</li>
+<li><code>"wait"</code>: defer steering until turn completion</li>
+</ul>
+</li>
+</ul>
+<h2 id="extension-ui-sub-protocol"><a class="header" href="#extension-ui-sub-protocol">Extension UI Sub-Protocol</a></h2>
+<p>Extensions in RPC mode use request/response UI frames.</p>
+<h3 id="outbound-request"><a class="header" href="#outbound-request">Outbound request</a></h3>
+<p><code>RpcExtensionUIRequest</code> (<code>type: "extension_ui_request"</code>) methods:</p>
+<ul>
+<li><code>select</code>, <code>confirm</code>, <code>input</code>, <code>editor</code>, <code>cancel</code></li>
+<li><code>notify</code>, <code>setStatus</code>, <code>setWidget</code>, <code>setTitle</code>, <code>set_editor_text</code></li>
+<li><code>open_url</code> (emitted by RPC login flows)</li>
+</ul>
+<p>Runtime note:</p>
+<ul>
+<li>Automatic session title generation is disabled in RPC mode, and <code>setTitle</code> UI
+requests are also suppressed by default because most hosts do not have a
+meaningful terminal-title surface. Set <code>VEYYON_RPC_EMIT_TITLE=1</code> to opt back in to
+the UI event only.</li>
+</ul>
+<p>Example:</p>
+<pre><code class="language-json">{
+  "type": "extension_ui_request",
+  "id": "123",
+  "method": "confirm",
+  "title": "Confirm",
+  "message": "Continue?",
+  "timeout": 30000
+}
+</code></pre>
+<h3 id="inbound-response"><a class="header" href="#inbound-response">Inbound response</a></h3>
+<p><code>RpcExtensionUIResponse</code> (<code>type: "extension_ui_response"</code>):</p>
+<ul>
+<li><code>{ type: "extension_ui_response", id: string, value: string }</code></li>
+<li><code>{ type: "extension_ui_response", id: string, confirmed: boolean }</code></li>
+<li><code>{ type: "extension_ui_response", id: string, cancelled: true, timedOut?: boolean }</code></li>
+</ul>
+<p>If a dialog has a timeout, RPC mode resolves to a default value when timeout/abort fires.</p>
+<h2 id="host-tool-sub-protocol"><a class="header" href="#host-tool-sub-protocol">Host Tool Sub-Protocol</a></h2>
+<p>RPC hosts can expose custom tools to the agent by sending <code>set_host_tools</code>, then
+serving execution requests over the same transport.</p>
+<h3 id="outbound-request-1"><a class="header" href="#outbound-request-1">Outbound request</a></h3>
+<p>When the agent wants the host to execute one of those tools, RPC mode emits:</p>
+<pre><code class="language-json">{
+  "type": "host_tool_call",
+  "id": "host_1",
+  "toolCallId": "toolu_123",
+  "toolName": "echo_host",
+  "arguments": { "message": "hello" }
+}
+</code></pre>
+<p>If the tool execution is later aborted, RPC mode emits:</p>
+<pre><code class="language-json">{
+  "type": "host_tool_cancel",
+  "id": "host_cancel_1",
+  "targetId": "host_1"
+}
+</code></pre>
+<h3 id="inbound-updates-and-completion"><a class="header" href="#inbound-updates-and-completion">Inbound updates and completion</a></h3>
+<p>Hosts can optionally stream progress:</p>
+<pre><code class="language-json">{
+  "type": "host_tool_update",
+  "id": "host_1",
+  "partialResult": {
+    "content": [{ "type": "text", "text": "working" }]
+  }
+}
+</code></pre>
+<p>Completion uses:</p>
+<pre><code class="language-json">{
+  "type": "host_tool_result",
+  "id": "host_1",
+  "result": {
+    "content": [{ "type": "text", "text": "done" }]
+  }
+}
+</code></pre>
+<p>Set top-level <code>isError: true</code> on <code>host_tool_result</code> to reject the pending host tool call and surface the returned text content as a tool error.</p>
+<h2 id="host-uri-sub-protocol"><a class="header" href="#host-uri-sub-protocol">Host URI Sub-Protocol</a></h2>
+<p>RPC hosts can also own custom URL schemes (virtual files). After
+<code>set_host_uri_schemes</code>, every read of <code>&lt;scheme&gt;://…</code> and write of
+<code>&lt;scheme&gt;://…</code> (when registered as <code>writable</code>) is bounced back to the host
+over the same transport.</p>
+<h3 id="outbound-request-2"><a class="header" href="#outbound-request-2">Outbound request</a></h3>
+<p>When a session tool resolves a host-owned URL, RPC mode emits:</p>
+<pre><code class="language-json">{
+  "type": "host_uri_request",
+  "id": "uri_1",
+  "operation": "read",
+  "url": "db://users/42"
+}
+</code></pre>
+<p>Writes look the same with <code>"operation": "write"</code> and an additional
+<code>"content": "..."</code> field carrying the full replacement bytes.</p>
+<p>If the request is later aborted (caller cancels, session ends), RPC mode
+emits:</p>
+<pre><code class="language-json">{
+  "type": "host_uri_cancel",
+  "id": "uri_cancel_1",
+  "targetId": "uri_1"
+}
+</code></pre>
+<h3 id="inbound-result"><a class="header" href="#inbound-result">Inbound result</a></h3>
+<p>For successful reads:</p>
+<pre><code class="language-json">{
+  "type": "host_uri_result",
+  "id": "uri_1",
+  "content": "id=42\nname=Alice\n",
+  "contentType": "text/plain",
+  "notes": ["fresh from cache"],
+  "immutable": false
+}
+</code></pre>
+<p>For successful writes, omit content:</p>
+<pre><code class="language-json">{ "type": "host_uri_result", "id": "uri_1" }
+</code></pre>
+<p>To reject the request, set <code>isError: true</code> and either populate <code>error</code> with
+a message or fall back to <code>content</code> for textual error surfacing:</p>
+<pre><code class="language-json">{
+  "type": "host_uri_result",
+  "id": "uri_1",
+  "isError": true,
+  "error": "row 42 not found"
+}
+</code></pre>
+<h3 id="constraints"><a class="header" href="#constraints">Constraints</a></h3>
+<ul>
+<li>The agent’s <code>edit</code> tool does not target host URIs. Hosts that want to
+mutate virtual files expose <code>write</code> and let the model use the <code>write</code> tool
+with replacement content.</li>
+<li>Schemes are global to the process; <code>set_host_uri_schemes</code> replaces the
+previous set, unregistering anything not in the new list.</li>
+<li>Schemes are normalized to lowercase before registration.</li>
+</ul>
+<h2 id="error-model-and-recoverability"><a class="header" href="#error-model-and-recoverability">Error Model and Recoverability</a></h2>
+<h3 id="command-level-failures"><a class="header" href="#command-level-failures">Command-level failures</a></h3>
+<p>Failures are <code>success: false</code> with string <code>error</code>.</p>
+<pre><code class="language-json">{
+  "id": "req_2",
+  "type": "response",
+  "command": "set_model",
+  "success": false,
+  "error": "Model not found: provider/model"
+}
+</code></pre>
+<h3 id="recoverability-expectations"><a class="header" href="#recoverability-expectations">Recoverability expectations</a></h3>
+<ul>
+<li>Most command failures are recoverable; process remains alive.</li>
+<li>Malformed JSONL / parse-loop exceptions emit a <code>parse</code> error response and continue reading subsequent lines.</li>
+<li>Empty <code>set_session_name</code> is rejected (<code>Session name cannot be empty</code>).</li>
+<li>Extension UI responses with unknown <code>id</code> are ignored.</li>
+<li>Process termination conditions are stdin close or explicit extension-triggered shutdown after the current command.</li>
+</ul>
+<h2 id="compact-command-flows"><a class="header" href="#compact-command-flows">Compact Command Flows</a></h2>
+<h3 id="1-prompt-and-stream"><a class="header" href="#1-prompt-and-stream">1) Prompt and stream</a></h3>
+<p>stdin:</p>
+<pre><code class="language-json">{ "id": "req_1", "type": "prompt", "message": "Summarize this repo" }
+</code></pre>
+<p>stdout sequence (typical):</p>
+<pre><code class="language-json">{ "id": "req_1", "type": "response", "command": "prompt", "success": true }
+{ "type": "agent_start" }
+{ "type": "message_update", "assistantMessageEvent": { "type": "text_delta", "delta": "..." }, "message": { "role": "assistant", "content": [] } }
+{ "type": "agent_end", "messages": [] }
+</code></pre>
+<h3 id="2-prompt-during-streaming-with-explicit-queue-policy"><a class="header" href="#2-prompt-during-streaming-with-explicit-queue-policy">2) Prompt during streaming with explicit queue policy</a></h3>
+<p>stdin:</p>
+<pre><code class="language-json">{
+  "id": "req_2",
+  "type": "prompt",
+  "message": "Also include risks",
+  "streamingBehavior": "followUp"
+}
+</code></pre>
+<h3 id="3-inspect-and-tune-queue-behavior"><a class="header" href="#3-inspect-and-tune-queue-behavior">3) Inspect and tune queue behavior</a></h3>
+<p>stdin:</p>
+<pre><code class="language-json">{ "id": "q1", "type": "get_state" }
+{ "id": "q2", "type": "set_steering_mode", "mode": "all" }
+{ "id": "q3", "type": "set_interrupt_mode", "mode": "wait" }
+</code></pre>
+<h3 id="4-extension-ui-round-trip"><a class="header" href="#4-extension-ui-round-trip">4) Extension UI round trip</a></h3>
+<p>stdout:</p>
+<pre><code class="language-json">{
+  "type": "extension_ui_request",
+  "id": "ui_7",
+  "method": "input",
+  "title": "Branch name",
+  "placeholder": "feature/..."
+}
+</code></pre>
+<p>stdin:</p>
+<pre><code class="language-json">{ "type": "extension_ui_response", "id": "ui_7", "value": "feature/rpc-host" }
+</code></pre>
+<h2 id="notes-on-rpcclient-helper"><a class="header" href="#notes-on-rpcclient-helper">Notes on <code>RpcClient</code> helper</a></h2>
+<p><code>src/modes/rpc/rpc-client.ts</code> is a convenience wrapper, not the protocol definition.</p>
+<p>Current helper characteristics:</p>
+<ul>
+<li>Spawns <code>bun &lt;cliPath&gt; --mode rpc</code></li>
+<li>Correlates responses by generated <code>req_&lt;n&gt;</code> ids</li>
+<li>Dispatches recognized core <code>AgentEvent</code> types to listeners</li>
+<li>Supports host-owned custom tools via <code>setCustomTools()</code> and automatic handling of <code>host_tool_call</code> / <code>host_tool_cancel</code></li>
+<li>Wraps common protocol commands including OAuth <code>getLoginProviders()</code> / <code>login(...)</code>; use raw protocol frames for any surface not wrapped by the helper.</li>
+</ul>
+<p>Use raw protocol frames if you need complete surface coverage.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../reference/tree-command.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="../reference/sdk.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../reference/tree-command.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="../reference/sdk.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr-ef4e11c1.min.js"></script>
+        <script src="../mark-09e88c2c.min.js"></script>
+        <script src="../searcher-c2a407aa.js"></script>
+
+        <script src="../clipboard-1626706a.min.js"></script>
+        <script src="../highlight-abc7f01d.js"></script>
+        <script src="../book-a0b12cfe.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>

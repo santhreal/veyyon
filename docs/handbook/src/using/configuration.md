@@ -1,6 +1,6 @@
 # Configuration
 
-This page groups settings by what you are trying to do. For provider and sign-in setup, see [Models and providers](./models.md) and [Authentication](./authentication.md). For the full list of every key, see the repository's `docs/settings.md`.
+This page groups settings by what you are trying to do. For provider and sign-in setup, see [Models and providers](../reference/models-yml.md) and [Authentication](./authentication.md). For the full list of every key, see the repository's `docs/handbook/src/reference/settings.md`.
 
 ## Where settings live
 
@@ -163,7 +163,7 @@ Configure the interactive model, subagent policy, compaction model, and optional
 | Customize one subagent | `subagent.agents.<name>` or Settings → Subagents → Agents |
 | Choose the model for context compaction | `compaction.model` |
 | Add named model assignments | `modelRoles`, per profile (Settings → Model → Roles) |
-| Add a local or BYOK provider | a `providers:` entry in `models.yml` (see [Models](./models.md)) |
+| Add a local or BYOK provider | a `providers:` entry in `models.yml` (see [Models](../reference/models-yml.md)) |
 
 ```yaml
 # ~/.veyyon/profiles/default/agent/config.yml

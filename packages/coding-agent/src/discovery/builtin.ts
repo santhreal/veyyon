@@ -798,7 +798,7 @@ registerProvider<DiscoveredCustomTool>(toolCapability.id, {
  * PROJECT CONTEXT PRECEDENCE, ONE DIRECTORY LEVEL AT A TIME.
  *
  * This comment is the single owner of the rule. Everything else in this file,
- * in `capability/context-file.ts`, and in `docs/context-files.md` points here
+ * in `capability/context-file.ts`, and in `docs/handbook/src/context/context-files.md` points here
  * instead of restating it: precedence prose that lives in four places is how the
  * resolution-order axis and the prominence axis got confused before.
  *

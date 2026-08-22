@@ -13,7 +13,7 @@ veyyon plugin doctor
 
 ## Provider errors
 
-Check API key / auth store / `models.yml` for that provider id, base URL, and scopes. See [Models and providers](./models.md).
+Check API key / auth store / `models.yml` for that provider id, base URL, and scopes. See [Models and providers](../reference/models-yml.md).
 
 ## Command or edit blocked or prompting
 
