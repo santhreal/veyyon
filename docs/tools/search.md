@@ -1,6 +1,6 @@
 # search
 
-> Search paths, text, or syntax through one model-facing tool.
+> Locate paths, find exact occurrences, or analyze code through one model-facing tool.
 
 ## Source
 
@@ -14,12 +14,12 @@ Set `tools.unifiedSearch: true`. The default `false` keeps the separate `glob`, 
 
 The unified tool exposes only capabilities enabled by `glob.enabled`, `grep.enabled`, and `astGrep.enabled`. If all three are disabled, `search` is not loaded.
 
-## Modes
+## Purposes
 
-| Mode | Operation | Delegated tool |
+| Purpose | Question answered | Delegated implementation |
 | --- | --- | --- |
-| `files` | Find files and directories by path pattern. | `glob` |
-| `text` | Search file contents with a regular expression. | `grep` |
-| `ast` | Search source by syntax shape. | `ast_grep` |
+| `locate` | Where are the relevant files or directories? | `glob` |
+| `match` | Where does this exact identifier, literal, configuration value, or regex occur? | `grep` |
+| `analyze` | Which definitions, calls, methods, types, imports, or syntax relationships match? | `ast_grep` |
 
-Each mode preserves the delegated tool's output, limits, cancellation behavior, and filesystem boundary checks. The result details include the selected mode and the delegated tool details.
+Each purpose preserves the delegated implementation's output, limits, cancellation behavior, and filesystem boundary checks. The result details include the selected purpose and delegated details. When unified search is enabled, `search` owns workspace discovery; the separate model-facing search tools are absent.
