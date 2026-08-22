@@ -341,18 +341,47 @@ fn osc_sequence_len(bytes: &[u8], start: usize) -> Option<usize> {
 	if bytes.get(start) != Some(&0x1b) || bytes.get(start + 1) != Some(&b']') {
 		return None;
 	}
-	let mut idx = start + 2;
+	string_body_end(bytes, start + 2).map(|end| end - start)
+}
+
+/// Length in bytes of the string sequence starting at `bytes[start]`, if there
+/// is one.
+///
+/// DCS (`ESC P`), SOS (`ESC X`), PM (`ESC ^`) and APC (`ESC _`) frame a payload
+/// exactly as OSC does, so they share the body scan. They are not exotic:
+/// `ESC P tmux; ... ST` is tmux passthrough, `ESC P q ...` is a sixel image and
+/// `ESC _ G ... ST` is a kitty graphic. With this grammar missing, the escape
+/// was dropped alone and the ENTIRE PAYLOAD was published as text, which is the
+/// OSC-hyperlink defect with a body thousands of characters long: an image
+/// arrived in a capture the model reads as a wall of noise.
+fn string_sequence_len(bytes: &[u8], start: usize) -> Option<usize> {
+	if bytes.get(start) != Some(&0x1b)
+		|| !matches!(bytes.get(start + 1), Some(b'P' | b'X' | b'^' | b'_'))
+	{
+		return None;
+	}
+	string_body_end(bytes, start + 2).map(|end| end - start)
+}
+
+/// Index just past the terminator of a string body starting at `body_start`.
+///
+/// THE ONE OWNER of "where does a string sequence end". A body may hold neither
+/// BEL nor ESC, which is what makes the scan bounded: the first of either byte
+/// ends the sequence or proves there isn't one. Terminals accept both BEL and
+/// ST (`ESC \\`) and real programs use both.
+fn string_body_end(bytes: &[u8], body_start: usize) -> Option<usize> {
+	let mut idx = body_start;
 	loop {
 		match bytes.get(idx) {
 			// BEL terminates the sequence.
-			Some(0x07) => return Some(idx + 1 - start),
+			Some(0x07) => return Some(idx + 1),
 			// ESC terminates it only as part of ST (`ESC \`). An ESC followed by
 			// anything else means this run was never a complete sequence, so the
 			// answer is `None` and the caller keeps the text: the same rule the CSI
 			// half applies to a capture truncated mid-escape.
 			Some(0x1b) => {
 				return if bytes.get(idx + 1) == Some(&b'\\') {
-					Some(idx + 2 - start)
+					Some(idx + 2)
 				} else {
 					None
 				};
@@ -361,6 +390,42 @@ fn osc_sequence_len(bytes: &[u8], start: usize) -> Option<usize> {
 			// Ran off the end: a truncated capture, not a sequence.
 			None => return None,
 		}
+	}
+}
+
+/// Length in bytes of the escape sequence that is neither a CSI, an OSC nor a
+/// string sequence: `ESC` plus intermediates and a final byte (nF), or `ESC`
+/// plus a single byte (Fp, Fe, Fs).
+///
+/// These are the shortest sequences and the most common ones in a capture.
+/// `ESC 7` and `ESC 8` park and reclaim the cursor for every progress bar,
+/// `ESC =` and `ESC >` bracket every ncurses run, `ESC c` is what `reset`
+/// sends, and `ESC ( B` selects the ASCII charset on the way out of vim or
+/// less. All of them used to reach the drop below, which takes the escape and
+/// leaves the FINAL BYTE as text: a captured spinner read `7done8` and a reset
+/// line began `(B`, which looks like a typo in the program's own output rather
+/// than like terminal control.
+///
+/// The single-byte class is `0x30..=0x7e` MINUS the four introducers `[`, `]`,
+/// `P`, `X`, `^`, `_`, which belong to the grammars above. Matching one here
+/// would consume the introducer and publish its parameters as text, so the
+/// exclusion is what keeps this arm from breaking the other three.
+fn short_sequence_len(bytes: &[u8], start: usize) -> Option<usize> {
+	if bytes.get(start) != Some(&0x1b) {
+		return None;
+	}
+	let mut idx = start + 1;
+	while matches!(bytes.get(idx), Some(0x20..=0x2f)) {
+		idx += 1;
+	}
+	if idx > start + 1 {
+		// nF: at least one intermediate byte, then any final byte.
+		return matches!(bytes.get(idx), Some(0x30..=0x7e)).then(|| idx + 1 - start);
+	}
+	match bytes.get(idx) {
+		Some(b'[' | b']' | b'P' | b'X' | b'^' | b'_') => None,
+		Some(0x30..=0x7e) => Some(2),
+		_ => None,
 	}
 }
 
@@ -440,7 +505,11 @@ pub fn strip_ansi(input: &str) -> String {
 	let mut out = String::with_capacity(input.len());
 	let mut idx = 0usize;
 	while idx < bytes.len() {
-		if let Some(len) = csi_sequence_len(bytes, idx).or_else(|| osc_sequence_len(bytes, idx)) {
+		if let Some(len) = csi_sequence_len(bytes, idx)
+			.or_else(|| osc_sequence_len(bytes, idx))
+			.or_else(|| string_sequence_len(bytes, idx))
+			.or_else(|| short_sequence_len(bytes, idx))
+		{
 			idx += len;
 			continue;
 		}

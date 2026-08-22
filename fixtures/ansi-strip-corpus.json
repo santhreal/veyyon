@@ -2,7 +2,7 @@
 	"$doc": [
 		"Cases shared by the two strip-ansi implementations: crates/veyyon-shell/src/minimizer/primitives.rs (strip_ansi) and packages/utils/src/strip-ansi.ts (stripAnsi).",
 		"One corpus because the two used to disagree, and each disagreement was a real defect rather than a stylistic difference: the Rust half stripped CSI only, so an OSC hyperlink kept its body as visible text in minimized shell output; the TypeScript half read parameter bytes as [0-9;?] rather than the spec's 0x30-0x3f, so a colon-subparameter SGR survived; and the TypeScript half kept a stray escape, which is not a fixed point (see escape_run_settles_in_one_pass).",
-		"The contract: remove every well-formed CSI (ESC [, parameter bytes 0x30-0x3f, intermediate bytes 0x20-0x2f, one final byte 0x40-0x7e) and every well-formed OSC (ESC ], a body holding neither BEL nor ESC, terminated by BEL or by ST which is ESC backslash). An escape that opens neither is dropped, alone, and the text after it is kept. Nothing else changes, line endings included.",
+		"The contract: remove every well-formed sequence, in four grammars. CSI is ESC [, parameter bytes 0x30-0x3f, intermediate bytes 0x20-0x2f, one final byte 0x40-0x7e. A string sequence is ESC and one of ] P X ^ _, a body holding neither BEL nor ESC, then BEL or ST (which is ESC backslash). nF is ESC, one or more intermediate bytes 0x20-0x2f, one final byte 0x30-0x7e. The short class is ESC and one byte in 0x30-0x7e that is not one of those six introducers, which covers Fp, Fe and Fs. An escape that opens none of them is dropped, alone, and the text after it is kept. Nothing else changes, line endings included.",
 		"Both test suites read this file and assert exact equality plus idempotence for every case. Add a case here, not in one language."
 	],
 	"cases": [
@@ -73,10 +73,22 @@
 			"expected": "error: [3"
 		},
 		{
-			"name": "lone_escape_is_dropped",
-			"why": "A stray escape renders as nothing, so dropping the one byte costs the operator nothing, and it is what makes a pass a fixed point.",
-			"input": "a\u001bb",
-			"expected": "ab"
+			"name": "fs_independent_control_is_a_sequence",
+			"why": "ESC b is EMI, one of the independent controls in the Fs class (0x60-0x7e), so a terminal consumes both bytes and draws nothing. This case used to expect 'ab' -- the two-byte grammar was missing, so the letter looked like text that a stray escape happened to precede. The width engine in crates/veyyon-text has always charged zero columns for it, and one of the two had to be wrong.",
+			"input": "a\u001bbc",
+			"expected": "ac"
+		},
+		{
+			"name": "lone_escape_at_end_of_input_is_dropped",
+			"why": "An escape with nothing after it is the buffer-boundary cut, and it is the case the dropped-escape rule exists for: it renders as nothing, so dropping the one byte costs the operator nothing, and it is what makes a pass a fixed point.",
+			"input": "a\u001b",
+			"expected": "a"
+		},
+		{
+			"name": "escape_before_a_control_byte_is_dropped_alone",
+			"why": "A newline is outside every introducer and every final-byte class, so this opens no sequence at all: the escape drops alone and the newline survives. Consuming two bytes here would eat a line ending, which is the one thing this function must never change.",
+			"input": "a\u001b\nb",
+			"expected": "a\nb"
 		},
 		{
 			"name": "escape_run_settles_in_one_pass",
@@ -113,6 +125,66 @@
 			"why": "The fast path. Most captured lines hold no escape at all, and they must come back byte for byte.",
 			"input": "plain text, no escapes",
 			"expected": "plain text, no escapes"
+		},
+		{
+			"name": "fp_cursor_save_and_restore",
+			"why": "ESC 7 and ESC 8 are the two-byte private (Fp) sequences every progress bar uses to park and reclaim the cursor. Neither implementation knew the class, so the escape was dropped alone and the FINAL BYTE stayed as text: a captured spinner handed the model '7done8'.",
+			"input": "\u001b7done\u001b8",
+			"expected": "done"
+		},
+		{
+			"name": "fp_keypad_mode",
+			"why": "ESC = and ESC > bracket every ncurses application's run, so they arrive on either side of the output an operator actually wanted. Same class as the two above; they left '=' and '>' behind.",
+			"input": "\u001b=menu\u001b>",
+			"expected": "menu"
+		},
+		{
+			"name": "fs_full_reset",
+			"why": "ESC c is RIS, which `reset` and `tput reset` emit, and ESC M is reverse index. Both are two-byte Fe/Fs sequences and both used to leave their letter in the text, which reads as a typo in a word rather than as terminal control.",
+			"input": "\u001bcfresh\u001bMstart",
+			"expected": "freshstart"
+		},
+		{
+			"name": "nf_charset_selection",
+			"why": "ESC ( B selects the ASCII charset and is emitted by vim, less and reset. It is ESC plus an intermediate byte plus a final byte, a third grammar again, and it used to leave '(B' in front of the first real word of the output.",
+			"input": "\u001b(Btext",
+			"expected": "text"
+		},
+		{
+			"name": "dcs_payload_is_not_text",
+			"why": "A DCS string (ESC P, body, ST) carries tmux passthrough and sixel image data. Dropping the escape alone published the whole payload as visible text, which is the OSC-hyperlink defect again with a larger body: an image is thousands of characters of noise in a capture the model reads.",
+			"input": "\u001bPtmux;\u001b\\after",
+			"expected": "after"
+		},
+		{
+			"name": "apc_payload_is_not_text",
+			"why": "APC (ESC _, body, ST) is how kitty ships graphics. Same failure as the DCS case, and it is the other string introducer, so the pair proves the family rather than one member of it.",
+			"input": "\u001b_Ga=T,f=100;PAYLOAD\u001b\\after",
+			"expected": "after"
+		},
+		{
+			"name": "string_sequence_terminated_by_bel",
+			"why": "Terminals accept BEL as well as ST for a string sequence, and programs use both, exactly as they do for OSC.",
+			"input": "\u001bPq#0;2;0;0;0\u0007rest",
+			"expected": "rest"
+		},
+		{
+			"name": "unterminated_string_sequence_keeps_its_tail",
+			"why": "The truncation rule the CSI and OSC halves already follow: a capture cut inside a DCS has no terminator, so this is not a sequence, the escape is dropped alone and every byte after it survives. Deleting to end of input would silently eat real output at a buffer boundary.",
+			"input": "\u001bPqcut here",
+			"expected": "Pqcut here"
+		},
+		{
+			"name": "csi_and_osc_introducers_are_not_two_byte_sequences",
+			"why": "The two-byte class covers 0x30-0x7e, which contains '[' and ']'. Matching them there would consume the introducer of a CSI or an OSC and publish its parameters as text, so the class must exclude them and the string introducers. A well-formed CSI directly against a well-formed OSC proves the exclusion holds.",
+			"input": "\u001b[1m\u001b]0;title\u0007bold",
+			"expected": "bold"
+		},
+		{
+			"name": "two_byte_sequence_run_settles_in_one_pass",
+			"why": "Idempotence for the new families. ESC ESC 7 is a stray escape followed by a complete Fp sequence: the stray drops, the sequence goes whole, and a second pass cannot find an escape to make a different answer out of.",
+			"input": "\u001b\u001b7\u001b(B\u001b8x",
+			"expected": "x"
 		}
 	]
 }
