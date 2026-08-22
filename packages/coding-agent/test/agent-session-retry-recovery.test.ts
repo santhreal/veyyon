@@ -256,7 +256,8 @@ describe("AgentSession retry recovery", () => {
 		expect(Date.parse(recoveredEntry.message.retryRecovery?.recoveredAt ?? "")).not.toBeNaN();
 
 		const modelContext = sessionManager.buildSessionContext();
-		expect(modelContext.messages.map(message => message.role)).toEqual(["user", "assistant"]);
+		// See the reload case below for why a `custom` message leads the turn.
+		expect(modelContext.messages.map(message => message.role)).toEqual(["custom", "user", "assistant"]);
 		expect(
 			modelContext.messages.some(message => message.role === "assistant" && message.stopReason === "error"),
 		).toBe(false);
@@ -266,7 +267,12 @@ describe("AgentSession retry recovery", () => {
 		});
 
 		const transcriptContext = sessionManager.buildSessionContext({ transcript: true });
-		expect(transcriptContext.messages.map(message => message.role)).toEqual(["user", "assistant", "assistant"]);
+		expect(transcriptContext.messages.map(message => message.role)).toEqual([
+			"custom",
+			"user",
+			"assistant",
+			"assistant",
+		]);
 		expect(
 			transcriptContext.messages.some(
 				message => message.role === "assistant" && message.retryRecovery?.status === "recovered",
@@ -398,7 +404,12 @@ describe("AgentSession retry recovery", () => {
 		});
 
 		const modelContext = reloadedManager.buildSessionContext();
-		expect(modelContext.messages.map(message => message.role)).toEqual(["user", "assistant"]);
+		// The leading `custom` message is the per-turn session-state line (date and
+		// working directory). It became part of the conversation when the working
+		// directory left the cached prompt prefix, so the model context of any real
+		// turn carries one ahead of the question. What this case is about is the
+		// recovered error assistant, which is still absent.
+		expect(modelContext.messages.map(message => message.role)).toEqual(["custom", "user", "assistant"]);
 		expect(
 			modelContext.messages.some(message => message.role === "assistant" && message.stopReason === "error"),
 		).toBe(false);

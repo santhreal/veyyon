@@ -547,7 +547,17 @@ const MID_RUN_TODO_NUDGE_MUTATING_TOOLS: Record<string, true> = {
 interface PendingContextSnapshot {
 	promptTokens: number;
 	nonMessageTokens: number;
+	/**
+	 * How many messages existed BEFORE this turn: the index in `messages` where the turn begins.
+	 *
+	 * Not "how many messages this prompt accounts for". A turn submits messages that never join the
+	 * conversation -- the session-state line carrying the date and directory, recalled memories --
+	 * so a count of what was submitted overshoots the boundary by however many of those there were,
+	 * and the anchor test below then rejects every provider count the turn produces.
+	 */
 	cutoffCount: number;
+	/** The submitted messages, by identity: each is already inside `promptTokens`. */
+	submitted: ReadonlySet<AgentMessage>;
 	detail: SessionTelemetryDetail;
 	storedMessagesTokens?: number;
 	tailTokens?: number;
@@ -11119,7 +11129,8 @@ export class AgentSession {
 			const pendingContextSnapshot: PendingContextSnapshot = {
 				promptTokens,
 				nonMessageTokens,
-				cutoffCount: this.messages.length + messages.length,
+				cutoffCount: this.messages.length,
+				submitted: new Set(messages),
 				detail: contextDetail,
 			};
 			if (contextDetail === "rich" || contextDetail === "ultra") {
@@ -19825,10 +19836,12 @@ export class AgentSession {
 		} else if (pending) {
 			anchored = true;
 			let tailTokens = 0;
-			if (resolvedActiveMessages.length > pending.cutoffCount) {
-				for (let i = pending.cutoffCount; i < resolvedActiveMessages.length; i++) {
-					tailTokens += estimateTokens(resolvedActiveMessages[i]);
-				}
+			for (let i = pending.cutoffCount; i < resolvedActiveMessages.length; i++) {
+				const message = resolvedActiveMessages[i];
+				// A submitted message is already inside `promptTokens`; anything else standing
+				// after the turn boundary arrived since and is estimated.
+				if (pending.submitted.has(message)) continue;
+				tailTokens += estimateTokens(message);
 			}
 			usedTokens =
 				pending.promptTokens +
@@ -19944,6 +19957,9 @@ export class AgentSession {
 			promptTokens,
 			nonMessageTokens,
 			cutoffCount: this.messages.length,
+			// A rewrite recomputed the prompt over the whole current history, so nothing
+			// standing in `messages` is outside `promptTokens` any more.
+			submitted: new Set<AgentMessage>(),
 			detail: this.#pendingContextSnapshot.detail,
 		};
 		if (this.#pendingContextSnapshot.detail === "rich" || this.#pendingContextSnapshot.detail === "ultra") {
