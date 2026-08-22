@@ -10,7 +10,7 @@ Choose `purpose` by the question being answered:
 - `analyze`: understand definitions, calls, methods, types, imports, operators, or relationships between code nodes. Use this first for structural questions; a text occurrence cannot establish a syntax role.
 {{/if}}
 {{#if TEXT_ENABLED}}
-- `match`: find exact identifiers, literals, comments, documentation, configuration, or genuine regular-expression matches.
+- `match`: find literals, comments, documentation, configuration, or genuine regular-expression matches when syntax role is irrelevant. Do not use it to find definitions, calls, methods, types, or imports.
 {{/if}}
 {{#if FILES_ENABLED}}
 - `locate`: find names, paths, extensions, directories, or repository layout.
@@ -29,6 +29,7 @@ Choose `purpose` by the question being answered:
 ## `purpose: "match"`
 
 - `pattern` supports Rust regular expressions and PCRE2 syntax; a literal `\n` crosses lines.
+- An identifier match answers only where those bytes occur. Use `analyze` when the result must distinguish a definition, call, method, type, import, field, or unrelated spelling.
 - Scope `path` whenever the likely directory or file is known. It also accepts globs, internal URLs, semicolon-delimited sets, and single-file line selectors.
 - Results carry snapshot tags and numbered context lines for anchored edits. Use `skip` to paginate after a file-limit result.
 {{/if}}

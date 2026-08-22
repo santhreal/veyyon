@@ -641,7 +641,10 @@ export const PROMPT_STATEMENTS = [
 	{
 		id: "tool-policy/ast-plain-text",
 		section: "tool-policy",
-		condition: anyOf(contains("tools", "ast_grep"), contains("tools", "ast_edit")),
+		condition: allOf(
+			anyOf(contains("tools", "ast_grep"), contains("tools", "ast_edit")),
+			not(contains("tools", "search")),
+		),
 		text: statementToolPolicyAstPlainText,
 		purpose:
 			"confines plain grep to cases where structure is irrelevant, which only needs saying when a structural tool exists",

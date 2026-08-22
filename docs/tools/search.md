@@ -19,7 +19,7 @@ The unified tool exposes only capabilities enabled by `glob.enabled`, `grep.enab
 | Purpose | Question answered | Delegated implementation |
 | --- | --- | --- |
 | `locate` | Where are the relevant files or directories? | `glob` |
-| `match` | Where does this exact identifier, literal, configuration value, or regex occur? | `grep` |
+| `match` | Where does this literal, documentation text, configuration value, or regex occur when syntax role is irrelevant? | `grep` |
 | `analyze` | Which definitions, calls, methods, types, imports, or syntax relationships match? | `ast_grep` |
 
 Each purpose preserves the delegated implementation's output, limits, cancellation behavior, and filesystem boundary checks. The result details include the selected purpose and delegated details. When unified search is enabled, `search` owns workspace discovery; the separate model-facing search tools are absent.
