@@ -29,7 +29,11 @@
  * (`lazy-stream-budget.test.ts` for the agentic floors, and the per-provider
  * timeout suites). Transports that neither use `fetch` nor HTTP/2 (the GitLab
  * Duo WebSocket, once its REST setup succeeds) are exercised only up to the
- * point where they leave `fetch`.
+ * point where they leave `fetch`. The credential phase is deliberately skipped
+ * here — `PINNED_ENV` below hands every probe working credentials so the sweep
+ * reaches a transport at all — and is covered instead by
+ * `a-credential-handshake-cannot-outlive-the-declared-budget.test.ts`, which
+ * stalls the ADC token exchange and the AWS credential process.
  */
 import { afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { BUILTIN_API_IDS } from "@veyyon/ai/api-registry";
