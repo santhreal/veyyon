@@ -8,18 +8,21 @@ import { StringEnum } from "@veyyon/coding-agent/extensibility/legacy-pi-ai-shim
  * reaches the model. It previously injected that form via a NON-enumerable `toJSON`.
  *
  * The bug this suite locks out (BUG-STRINGENUM-TOJSON-NONENUMERABLE-DEAD-UNDER-BUN):
- * Bun's JSON.stringify deviates from the ECMAScript spec and ignores a non-enumerable
+ * Bun up to 1.3 deviated from the ECMAScript spec and ignored a non-enumerable
  * `toJSON` (Node honors it). So under Bun -- the runtime veyyon ships on -- the override
  * never fired and JSON.stringify produced the bare TypeBox form: `{ enum: [...] }` with
  * NO `type`, `{ const: x }` for a single value, and `{ not: {} }` for an empty set. The
  * `.toJSON()` method and JSON.stringify silently disagreed. The typebox shim's own
  * contract is that a schema serializes through its ENUMERABLE keywords, so the fix
- * rewrites the schema's own enumerable keywords to the legacy form.
+ * rewrites the schema's own enumerable keywords to the legacy form. Bun 1.4.0 honors a
+ * non-enumerable `toJSON`, which retires the deviation but not the fix: enumerable
+ * keywords serialize the same on every runtime, and the canary at the bottom records
+ * which mechanism the runtime under this suite supports.
  *
  * These assert the legacy wire form on every serialization boundary (top-level, nested,
- * array), that JSON.stringify and .toJSON() now AGREE, that runtime validation still
- * works, and -- as the root-cause control -- that Bun really does drop a non-enumerable
- * toJSON, so this test fails loudly if the mechanism regresses.
+ * array), that JSON.stringify and .toJSON() AGREE, that runtime validation still works,
+ * and -- as the root-cause control -- what the runtime does with a non-enumerable
+ * toJSON, so a flip in either direction fails loudly.
  */
 
 describe("StringEnum legacy wire schema", () => {
@@ -74,15 +77,23 @@ describe("StringEnum runtime validation still works", () => {
 	});
 });
 
-describe("Bun non-enumerable toJSON control (root cause)", () => {
-	it("confirms Bun's JSON.stringify ignores a non-enumerable toJSON", () => {
-		// This is why the old StringEnum override was dead: it set toJSON with
-		// enumerable:false. If a future Bun starts honoring it (matching Node), this
-		// canary flips and we can simplify the fix.
+describe("the runtime's non-enumerable toJSON behavior (root cause)", () => {
+	/**
+	 * WHY THIS IS STILL HERE, NOW THAT IT PASSES THE OTHER WAY.
+	 *
+	 * Bun ignored a non-enumerable `toJSON` up to 1.3, which is what killed the old
+	 * override. Bun 1.4.0 honors it, matching Node and the ECMAScript spec, so this
+	 * canary records the runtime's answer rather than a deviation: the fix above does
+	 * not depend on it either way, because rewriting the schema's own enumerable
+	 * keywords serializes identically on both runtimes. The canary is what tells a
+	 * later reader which mechanism the runtime under them actually supports, and it
+	 * goes red on the next flip in either direction.
+	 */
+	it("honors a non-enumerable toJSON, as the spec requires", () => {
 		const obj: Record<string, unknown> = {};
 		Object.defineProperty(obj, "toJSON", { value: () => ({ ok: 1 }), enumerable: false });
-		expect(JSON.stringify(obj)).toBe("{}");
-		// An enumerable toJSON IS honored, proving enumerability is the deciding factor.
+		expect(JSON.stringify(obj)).toBe('{"ok":1}');
+		// And an enumerable one, which every runtime has always honored.
 		const enumerable: Record<string, unknown> = {};
 		Object.defineProperty(enumerable, "toJSON", { value: () => ({ ok: 2 }), enumerable: true });
 		expect(JSON.stringify(enumerable)).toBe('{"ok":2}');

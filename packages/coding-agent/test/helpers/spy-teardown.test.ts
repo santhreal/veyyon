@@ -15,12 +15,12 @@
  * The fixture is written outside the package tree on purpose: a `*.test.ts` file inside it would be
  * collected by an ordinary `bun test` run and would contribute a failing row to the real suite.
  *
- * IF YOU EXTEND THIS TO TWO STAGED FILES, KEEP THEM SYMBOL-INDEPENDENT. A second staged file that
- * imports anything from the first makes bun register both files' rows under one heading, collapsing
- * them into a single module graph — so what looks like a spy escaping across files is the ordinary
- * within-file cascade, and the experiment looks like it passed. Duplicate the constant instead of
- * sharing it. Each row here stages ONE file in its own child, which is why the trap does not apply
- * yet. FailClosedGuardHunt hit it, and it inverted their result until they found it.
+ * A TWO-FILE ROW MUST KEEP ITS STAGED FILES SYMBOL-INDEPENDENT. A second staged file that imports
+ * anything from the first makes bun register both files' rows under one heading, collapsing them into
+ * a single module graph — so what looks like a spy escaping across files is the ordinary within-file
+ * cascade, and the experiment reads as a confirmed leak either way. Duplicate the constant instead of
+ * sharing it. One row here stages two files and shares nothing between them; every other row stages
+ * one. FailClosedGuardHunt hit the trap, and it inverted their result until they found it.
  */
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
@@ -87,12 +87,12 @@ describe("staged strand", () => {
  * A file that leaks a MODULE-OBJECT spy from a killed row, registering no undo of any kind.
  *
  * This pair measures bun rather than this helper, which is why it does not use `useSpyTeardown`. It
- * pins the SCOPE the doc claims: the poison survives into the next row of the SAME file, which is the
- * cascade the backstop exists for, and does not reach the next file. The second row is what makes the
- * pair non-vacuous \u2014 without it, the clean result in `b.test.ts` would equally be explained by the
- * poison never outliving the killed row at all.
+ * pins the SCOPE of an unrestored spy: the poison survives into the next row of the SAME file, which
+ * is the cascade the backstop exists for, and under bun 1.4 it also reaches the NEXT FILE of the same
+ * run. The second row is what makes the pair non-vacuous — without it, a poisoned `b.test.ts` would
+ * equally be explained by the spy being installed twice rather than by one spy outliving its file.
  */
-const LEAKS_WITHIN_FILE = `import { describe, expect, it } from "bun:test";
+const LEAKS_A_MODULE_SPY = `import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import { spyOn } from "bun:test";
 
@@ -112,7 +112,7 @@ describe("leaking file", () => {
 `;
 
 /** The next file, sharing NO symbol with the leaking one, so the two graphs stay separate. */
-const NEXT_FILE_IS_CLEAN = `import { describe, expect, it } from "bun:test";
+const NEXT_FILE_READS_THE_FILESYSTEM = `import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 
 describe("next file", () => {
@@ -202,22 +202,31 @@ describe("a spy registered for teardown", () => {
 	}, 30_000);
 
 	/**
-	 * The scope the doc claims, measured rather than reasoned: an unrestored spy survives into the next
-	 * ROW of its own file and does NOT reach the next FILE. Both halves matter. The surviving-row half is
-	 * the cascade this helper exists to stop, and it is the reason a killed row is not harmless. The
-	 * clean-next-file half is why the doc refuses to call this process-global, a claim an earlier version
-	 * of that comment made on reasoning alone and which three separate measurements then contradicted.
+	 * The scope of an unrestored spy, measured rather than reasoned: it survives into the next ROW of
+	 * its own file, and under bun 1.4 into the next FILE of the same run. Both halves matter. The
+	 * surviving-row half is the cascade this helper exists to stop, and it is the reason a killed row is
+	 * not harmless. The next-file half is the boundary bun 1.4 moved: through bun 1.3 `b.test.ts` read a
+	 * clean `fs` and printed its marker, so the helper's doc refused to call the leak process-global.
+	 * It is process-global now, which is why the helper is load-bearing for the whole run and not only
+	 * for the file that installed the spy. The version that flipped it is named because the assertion
+	 * inverts with the runtime, and the next reader needs to know that before calling it a regression.
+	 *
+	 * `POISONED_LSTAT` in the child output is the positive half of the next-file claim: `b.test.ts`
+	 * shares no symbol with `a.test.ts` and installs no spy, so the only `lstat` that can throw that
+	 * message is the one `a.test.ts` left installed. The absent marker alone would be satisfied by
+	 * `b.test.ts` never running.
 	 *
 	 * Uses `spyOn` directly, not `teardown.spy`, because the subject here is bun's own restore boundary.
 	 */
-	it("leaks into the next row of its own file but not into the next file", async () => {
-		const output = await runStaged({ "a.test.ts": LEAKS_WITHIN_FILE, "b.test.ts": NEXT_FILE_IS_CLEAN });
+	it("leaks into the next row of its own file and, since bun 1.4, into the next file", async () => {
+		const output = await runStaged({
+			"a.test.ts": LEAKS_A_MODULE_SPY,
+			"b.test.ts": NEXT_FILE_READS_THE_FILESYSTEM,
+		});
 
-		// Both markers must appear: the first says the poison outlived the killed row INSIDE its file,
-		// the second says it did not reach the next file. A count could not distinguish those pairings,
-		// and distinguishing them is the whole point of this row.
 		expect(output).toContain("POISON_STILL_PRESENT");
-		expect(output).toContain("NEXT_FILE_CLEAN");
+		expect(output).toContain("POISONED_LSTAT");
+		expect(output).not.toContain("NEXT_FILE_CLEAN");
 		expect(output).toContain("Ran 3 tests across 2 files");
 		expect(output).toContain("timed out after 300ms");
 	}, 30_000);
