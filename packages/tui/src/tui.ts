@@ -20,6 +20,7 @@ import { performance } from "node:perf_hooks";
 import { getDebugLogPath } from "@veyyon/utils/dirs";
 import { $flag } from "@veyyon/utils/env";
 import * as logger from "@veyyon/utils/logger";
+import { popLoopPhase, pushLoopPhase } from "@veyyon/utils/loop-phase";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { SGR_RESET, sgrSequence } from "./ansi";
 import { DEFAULT_MAX_INLINE_IMAGES, ImageBudget } from "./components/image";
@@ -3049,12 +3050,23 @@ export class TUI extends Container {
 	 * Wrap `#doRender()` so every path records the wall-clock frame cost that
 	 * feeds adaptive backpressure. Set `#lastRenderAt` first (some render code
 	 * reads it re-entrantly) and compute the cost once the paint returns.
+	 *
+	 * The phase is what a blocked frame is reported as. A compose walks every
+	 * component, wraps every line of the transcript and diffs the frame, and it
+	 * is the longest synchronous span in an interactive session by a wide margin,
+	 * so a `ui.loop-blocked` line with no phase was nearly always this. Two array
+	 * operations per frame buys the watchdog a cause it can name.
 	 */
 	#executeRender(): void {
 		const start = this.#renderScheduler.now();
 		this.#lastRenderAt = start;
-		this.#doRender();
-		this.#lastFrameCostMs = this.#renderScheduler.now() - start;
+		pushLoopPhase("ui.render");
+		try {
+			this.#doRender();
+		} finally {
+			popLoopPhase();
+			this.#lastFrameCostMs = this.#renderScheduler.now() - start;
+		}
 	}
 
 	/** Wheel step for scroll isolation: freeze/walk the transcript region.
@@ -3138,7 +3150,27 @@ export class TUI extends Container {
 		return true;
 	}
 
+	/**
+	 * Every byte the terminal delivers enters here, so this is the second of the
+	 * two spans an interactive session spends its synchronous time in. A keystroke
+	 * runs the focused component's handler, and that handler can filter a large
+	 * list, rebuild a completion set or reflow the composer; without the phase all
+	 * of it was reported as a block with no cause.
+	 *
+	 * The dispatch is a separate method because it returns from a dozen places and
+	 * a `finally` around the whole body is the only way to pop the phase on each
+	 * one.
+	 */
 	#handleInput(data: string): void {
+		pushLoopPhase("ui.input");
+		try {
+			this.#dispatchInput(data);
+		} finally {
+			popLoopPhase();
+		}
+	}
+
+	#dispatchInput(data: string): void {
 		// Ctrl+C/Esc use app-level double-press windows. Give those gestures one
 		// frame to drain queued input before an ordinary repaint; delaying every
 		// key would make idle navigation pay a full frame of latency.
