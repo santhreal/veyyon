@@ -201,9 +201,22 @@ describe("AgentSession checkpoint rewind branch context", () => {
 			finalCall.context.messages.some(message => message.role === "toolResult" && message.toolName === "rewind"),
 		).toBe(false);
 
-		const activeRoles = session.messages.map(message => message.role);
+		// WHAT FLIPPED. The date and the working directory left the cached system prompt for a
+		// hidden `session-state` custom block unshifted at the head of every transcript, so the
+		// active history carries one extra leading `custom` message. Pin that block by its
+		// persisted type rather than letting a bare "custom" in the sequence absorb it, then
+		// assert the rebuilt order exactly as before.
+		const head = session.messages[0];
+		expect(head?.role).toBe("custom");
+		expect(head && "customType" in head ? head.customType : undefined).toBe("session-state");
+		const activeRoles = session.messages.slice(1).map(message => message.role);
 		expect(activeRoles).toEqual(["user", "assistant", "toolResult", "branchSummary", "custom", "assistant"]);
-		expect(activeRoles).toEqual(session.sessionManager.buildSessionContext().messages.map(message => message.role));
+		expect(activeRoles).toEqual(
+			session.sessionManager
+				.buildSessionContext()
+				.messages.slice(1)
+				.map(message => message.role),
+		);
 
 		const finalAssistant = expectLastAssistant(session.messages);
 		const finalThinking = finalAssistant.content.find((block): block is ThinkingContent => block.type === "thinking");

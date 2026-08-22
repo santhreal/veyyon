@@ -220,7 +220,13 @@ it("hands a user turn back to the editor and drops everything below it", async (
 	// carries the new prompt and nothing else.
 	const navRoot = await sim.session.navigateTree(users[0]!.id);
 	expect(navRoot.editorText).toBe("first");
-	expect(sim.session.messages).toEqual([]);
+	// WHAT FLIPPED. The date and the working directory left the cached system prompt for a hidden
+	// `session-state` block the session keeps at the head of the transcript, so a rewind to the
+	// root leaves that block behind rather than nothing at all. The claim is unchanged: no
+	// conversation turn survives below the root.
+	expect(sim.session.messages.map(message => message.role)).toEqual(["custom"]);
+	expect(injectedText(sim.session.messages)).toContain("<session-state>");
+	expect(injectedText(sim.session.messages)).not.toContain("first");
 
 	const beforeRoot = calls.length;
 	await sim.session.prompt("fourth");
