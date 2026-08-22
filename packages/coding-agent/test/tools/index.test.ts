@@ -79,17 +79,16 @@ describe("createTools", () => {
 		expect(names).not.toContain("vim");
 	});
 
-	it("normalizes legacy explicit tool names", async () => {
+	it("normalizes the legacy find tool name", async () => {
 		const session = createTestSession({
 			settings: createSettingsWithOverrides({ "astGrep.enabled": false }),
 		});
-		const tools = await createTools(session, ["search", "find", "grep"]);
+		const tools = await createTools(session, ["find", "grep"]);
 		const names = tools.map(t => t.name);
 
 		expect(names.filter(name => name === "grep")).toHaveLength(1);
 		expect(names).toContain("glob");
 		expect(names).toContain("resolve");
-		expect(names).not.toContain("search");
 		expect(names).not.toContain("find");
 	});
 
@@ -452,6 +451,87 @@ describe("createTools", () => {
 			});
 			const disabledRuntime = (await createTools(disabledCandidateSession, ["runtime", "read"])).map(t => t.name);
 			expect(disabledRuntime).toEqual(["read", "goal", "resolve"]);
+		});
+	});
+
+	describe("unified search (tools.unifiedSearch)", () => {
+		it("keeps the default-off tool list byte-for-byte equivalent", async () => {
+			const baselineSession = createTestSession({
+				settings: Settings.isolated({ "tools.unifiedSearch": false }),
+			});
+			const defaultSession = createTestSession({ settings: Settings.isolated({}) });
+
+			const baselineNames = (await createTools(baselineSession)).map(tool => tool.name);
+			const defaultNames = (await createTools(defaultSession)).map(tool => tool.name);
+
+			expect(baselineNames).toEqual(defaultNames);
+			expect(baselineNames).toContain("glob");
+			expect(baselineNames).toContain("grep");
+			expect(baselineNames).toContain("ast_grep");
+			expect(baselineNames).not.toContain("search");
+		});
+
+		it("replaces exactly the enabled primitive search capabilities", async () => {
+			const variants = [true, false].flatMap(globEnabled =>
+				[true, false].flatMap(grepEnabled =>
+					[true, false].map(astGrepEnabled => ({
+						globEnabled,
+						grepEnabled,
+						astGrepEnabled,
+					})),
+				),
+			);
+
+			for (const variant of variants) {
+				const capabilitySettings = {
+					"glob.enabled": variant.globEnabled,
+					"grep.enabled": variant.grepEnabled,
+					"astGrep.enabled": variant.astGrepEnabled,
+				};
+				const baseline = await createTools(
+					createTestSession({
+						settings: Settings.isolated({
+							"tools.unifiedSearch": false,
+							...capabilitySettings,
+						}),
+					}),
+				);
+				const baselineNames = baseline.map(tool => tool.name);
+				expect(baselineNames.includes("glob")).toBe(variant.globEnabled);
+				expect(baselineNames.includes("grep")).toBe(variant.grepEnabled);
+				expect(baselineNames.includes("ast_grep")).toBe(variant.astGrepEnabled);
+				expect(baselineNames).not.toContain("search");
+
+				const candidate = await createTools(
+					createTestSession({
+						settings: Settings.isolated({
+							"tools.unifiedSearch": true,
+							...capabilitySettings,
+						}),
+					}),
+				);
+				const candidateNames = candidate.map(tool => tool.name);
+				expect(candidateNames).not.toContain("glob");
+				expect(candidateNames).not.toContain("grep");
+				expect(candidateNames).not.toContain("ast_grep");
+				expect(candidateNames.includes("search")).toBe(
+					variant.globEnabled || variant.grepEnabled || variant.astGrepEnabled,
+				);
+			}
+		});
+
+		it("selects the baseline or unified implementation for an explicit search request", async () => {
+			const baseline = await createTools(
+				createTestSession({ settings: Settings.isolated({ "tools.unifiedSearch": false }) }),
+				["search", "grep"],
+			);
+			expect(baseline.map(tool => tool.name)).toEqual(["grep", "goal", "ast_grep", "resolve"]);
+
+			const candidate = await createTools(
+				createTestSession({ settings: Settings.isolated({ "tools.unifiedSearch": true }) }),
+				["search", "grep"],
+			);
+			expect(candidate.map(tool => tool.name)).toEqual(["search", "goal", "resolve"]);
 		});
 	});
 });

@@ -17,6 +17,7 @@ export const BUILTIN_TOOL_NAMES = [
 	"github",
 	"glob",
 	"grep",
+	"search",
 	"lsp",
 	"inspect_image",
 	"browser",
@@ -110,8 +111,8 @@ const KNOWN_TOOL_NAME_SET: ReadonlySet<string> = new Set<string>([...BUILTIN_TOO
  * an agent can DO has to treat an unknown name as unknown rather than as harmless. `task/agent-role.ts`
  * uses it for exactly that.
  *
- * Alias-tolerant for the same reason as its neighbours: `search` and `find` are legacy spellings of
- * tools this build still ships, and reading them as unknown third-party tools would be wrong.
+ * Alias-tolerant for the same reason as its neighbours: `find` is a legacy spelling of a tool this
+ * build still ships, and reading it as an unknown third-party tool would be wrong.
  */
 export function isKnownToolName(name: string): boolean {
 	return KNOWN_TOOL_NAME_SET.has(normalizeToolNames([name])[0] ?? name);
@@ -138,10 +139,7 @@ export const TOOL = Object.fromEntries([...BUILTIN_TOOL_NAMES, ...HIDDEN_TOOL_NA
 	[K in ToolNameLiteral]: K;
 };
 
-const LEGACY_BUILTIN_TOOL_NAME_ALIASES: ReadonlyMap<string, BuiltinToolName> = new Map([
-	["search", "grep"],
-	["find", "glob"],
-]);
+const LEGACY_BUILTIN_TOOL_NAME_ALIASES: ReadonlyMap<string, BuiltinToolName> = new Map([["find", "glob"]]);
 
 /** Return the canonical tool name for current and legacy built-in tool IDs. */
 export function normalizeToolName(name: string): string {

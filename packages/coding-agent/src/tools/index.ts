@@ -53,8 +53,8 @@ import {
 } from "./loading";
 import { wrapToolWithMetaNotice } from "./output-meta";
 import { RerootDetector, wrapToolWithRerootHint } from "./reroot-hint";
-import type { TodoPhase } from "./todo";
 import { RuntimeTool } from "./runtime";
+import type { TodoPhase } from "./todo";
 
 // NOTE: tool implementation modules are intentionally NOT imported eagerly
 // here. Each factory in BUILTIN_TOOLS / HIDDEN_TOOLS dynamic-imports its
@@ -483,6 +483,7 @@ export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = {
 	github: async s => (await import("./gh")).GithubTool.createIf(s),
 	glob: async s => new (await import("./glob")).GlobTool(s, { rootPathAlias: true }),
 	grep: async s => new (await import("./grep")).GrepTool(s),
+	search: async s => new (await import("./search")).SearchTool(s),
 	lsp: async s => (await import("../lsp")).LspTool.createIf(s),
 	inspect_image: async s => new (await import("./inspect-image")).InspectImageTool(s),
 	browser: async s => new (await import("./browser")).BrowserTool(s),
@@ -633,6 +634,7 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 		launchEnabled: session.settings.get("launch.enabled"),
 		evalAllowed: allowEval,
 		unifiedRuntime: session.settings.get("tools.unifiedRuntime"),
+		unifiedSearch: session.settings.get("tools.unifiedSearch"),
 		debugEnabled: session.settings.get("debug.enabled"),
 		requireYieldTool: includeYield,
 		todoEnabled: session.settings.get("todo.enabled"),

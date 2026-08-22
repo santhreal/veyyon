@@ -326,8 +326,8 @@ Those stay literals and carry a `// not-a-tool-name:` comment saying which they 
 `test/tools/tool-name-literals-have-one-owner.test.ts` reads the selection sites and fails on any
 unmarked tool-name literal.
 
-As a caller of the SDK you keep passing plain strings: `toolNames` takes the names as text, and
-legacy spellings (`search` for `grep`, `find` for `glob`) are still normalized for you.
+As a caller of the SDK you keep passing plain strings: `toolNames` takes the names as text. The
+legacy spelling `find` for `glob` is normalized. `search` selects the unified-search tool when `tools.unifiedSearch` is enabled.
 
 ### Extensions
 

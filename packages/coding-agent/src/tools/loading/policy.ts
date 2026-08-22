@@ -264,6 +264,8 @@ export interface BuiltinToolPermissionInputs {
 	evalAllowed: boolean;
 	/** `tools.unifiedRuntime` — suppresses eval and launch, activates runtime. */
 	unifiedRuntime: boolean;
+	/** `tools.unifiedSearch` — suppresses glob, grep, and ast_grep, then activates search. */
+	unifiedSearch: boolean;
 	/** `debug.enabled`. */
 	debugEnabled: boolean;
 	/** `ToolSession.requireYieldTool` — a session that must `yield` never gets `todo`. */
@@ -338,10 +340,13 @@ export function isBuiltinToolAllowed(name: string, inputs: BuiltinToolPermission
 	if (name === TOOL.runtime) return inputs.unifiedRuntime && (inputs.evalAllowed || inputs.launchEnabled);
 	if (name === TOOL.debug) return inputs.debugEnabled;
 	if (name === TOOL.todo) return !inputs.requireYieldTool && inputs.todoEnabled;
-	if (name === TOOL.glob) return inputs.globEnabled;
-	if (name === TOOL.grep) return inputs.grepEnabled;
+	if (name === TOOL.glob) return !inputs.unifiedSearch && inputs.globEnabled;
+	if (name === TOOL.grep) return !inputs.unifiedSearch && inputs.grepEnabled;
+	if (name === TOOL.search) {
+		return inputs.unifiedSearch && (inputs.globEnabled || inputs.grepEnabled || inputs.astGrepEnabled);
+	}
 	if (name === TOOL.github) return inputs.githubEnabled;
-	if (name === TOOL.ast_grep) return inputs.astGrepEnabled;
+	if (name === TOOL.ast_grep) return !inputs.unifiedSearch && inputs.astGrepEnabled;
 	if (name === TOOL.ast_edit) return inputs.astEditEnabled;
 	if (name === TOOL.inspect_image) return inputs.inspectImageEnabled;
 	if (name === TOOL.web_search) return inputs.webSearchEnabled;

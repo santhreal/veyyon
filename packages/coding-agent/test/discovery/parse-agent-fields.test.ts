@@ -9,7 +9,7 @@ import { parseConfiguredThinkingLevel } from "@veyyon/coding-agent/thinking";
  * load-bearing yet were previously unasserted:
  *   - a missing or non-string `name`/`description` makes the whole definition invalid (returns null), so
  *     the loader rejects it instead of registering a half-formed agent;
- *   - tool names are lower-cased, legacy-aliased (search->grep, find->glob) and de-duplicated, and an
+ *   - tool names are lower-cased, legacy-aliased (find->glob) and de-duplicated, and an
  *     explicit tool list always gains `yield` (a subagent with a fixed toolset must still be able to
  *     return control);
  *   - `spawns` accepts the literal "*", a CSV string, or an array, and is inferred to "*" when the tools
@@ -46,9 +46,9 @@ describe("parseAgentFields identity validation", () => {
 });
 
 describe("parseAgentFields tools normalization", () => {
-	it("lower-cases, applies legacy aliases (search->grep, find->glob), and always appends yield", () => {
+	it("lower-cases, applies the legacy find->glob alias, and always appends yield", () => {
 		const fields = parseAgentFields({ name: "n", description: "d", tools: "Read, search, find" });
-		expect(fields?.tools).toEqual(["read", "grep", "glob", "yield"]);
+		expect(fields?.tools).toEqual(["read", "search", "glob", "yield"]);
 	});
 
 	it("de-duplicates case-insensitively while preserving first-seen order and keeps a single yield", () => {

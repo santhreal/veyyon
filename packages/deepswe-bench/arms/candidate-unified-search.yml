@@ -1,0 +1,5 @@
+# Unified search candidate arm: replace glob, grep, and ast_grep with search
+argot:
+  enabled: false
+tools:
+  unifiedSearch: true

@@ -112,6 +112,7 @@ export * from "./tools/read";
 export * from "./tools/report-tool-issue";
 export * from "./tools/resolve";
 export * from "./tools/review";
+export * from "./tools/search";
 export * from "./tools/search-tool-bm25";
 export * from "./tools/ssh";
 export * from "./tools/todo";
