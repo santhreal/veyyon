@@ -444,6 +444,24 @@ an unlock prompt for each one.
 
 A command that fails is not retried for 30 seconds, and an invalidation does not shorten that.
 
+### When a stored credential cannot be presented
+
+A server authorized with OAuth keeps its credential in the profile's credential store. When that
+credential exists but cannot be used, Veyyon does not connect without it. The connection fails,
+`/mcp list` shows the failure, and the message names the state and the command that fixes it:
+
+- The credential was rejected and cleared. Run `/mcp reauth <name>`.
+- The access token expired and the refresh token is held by the auth broker, which this process
+  cannot use. Run `/mcp reauth <name>` to authorize again through the broker.
+- The credential store could not be read or renewed. Run `/mcp reconnect <name>` to retry; the
+  credential is left alone, because a store failure says nothing about it.
+
+A refresh that fails while the access token is still valid keeps connecting with that token: the
+refresh runs up to five minutes before expiry, so the session still works.
+
+A server with no stored credential connects as configured. Nothing was authorized, so an
+unauthenticated request is what the server sees, and its own answer is what Veyyon reports.
+
 ## `disabledServers`
 
 `disabledServers` is read from the user config file (`~/.veyyon/profiles/default/agent/mcp.json`) when a server is discovered from any source and you want Veyyon to ignore it without editing that other tool's config.

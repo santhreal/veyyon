@@ -17,6 +17,12 @@ import { invalidateConfigValue, resolveConfigValue } from "../config/resolve-con
 import type { CustomTool } from "../extensibility/custom-tools/types";
 import { type AuthStorage, REMOTE_REFRESH_SENTINEL } from "../session/auth-storage";
 import {
+	classifyMcpAuthFailure,
+	MCPAuthRequiredError,
+	type MCPAuthResolution,
+	MCPBrokerRedactedRefreshError,
+} from "./auth-failure";
+import {
 	closeTransportDetached,
 	connectToServer,
 	disconnectServer,
@@ -1344,6 +1350,12 @@ export class MCPManager {
 	 * rotated or revoked credential is re-read instead of re-sent. That is the difference between
 	 * a 401 the operator can recover from without restarting and one that repeats forever: the
 	 * cache key is the command text, which does not change when the secret behind it does.
+	 *
+	 * Throws `MCPAuthRequiredError` when a stored credential was found and could not be
+	 * presented — revoked, broker-held and expired, or unreadable. The connection is not
+	 * attempted at all in that state: an anonymous request earns the server's 401 instead
+	 * of the credential's own diagnosis, and enough of them earn a lockout. See
+	 * `auth-failure.ts`.
 	 */
 	async #resolveAuthConfig(
 		config: MCPServerConfig,
@@ -1359,13 +1371,17 @@ export class MCPManager {
 			opts?.oauth !== false ? lookupMcpOAuthCredential(this.#authStorage, config) : undefined;
 		if (lookup && this.#authStorage) {
 			const { credentialId } = lookup;
+			const observed: MCPStoredOAuthCredential = lookup.credential;
+			// A credential that cannot be presented is not a reason to send an anonymous
+			// request. `outcome` carries either the credential to inject or the reason the
+			// connection is refused; see `auth-failure.ts` for why each reason differs.
+			let outcome: MCPAuthResolution;
 			try {
-				let credential: MCPStoredOAuthCredential | undefined = lookup.credential;
 				const REFRESH_BUFFER_MS = 5 * 60_000;
 				const refreshResult = await this.#authStorage.refreshStoredOAuthCredential<MCPStoredOAuthCredential>(
 					credentialId,
 					{
-						observedCredential: credential,
+						observedCredential: observed,
 						credentialFromRow: row => row,
 						forceRefresh: opts?.forceRefresh,
 						refreshSkewMs: REFRESH_BUFFER_MS,
@@ -1375,9 +1391,7 @@ export class MCPManager {
 						},
 						refresh: (current, signal) => {
 							if (current.refresh === REMOTE_REFRESH_SENTINEL) {
-								throw new Error(
-									`The OAuth refresh token for ${describeMCPServerTarget(config)} is held by the auth broker and redacted locally, so this process cannot refresh it. Fix: run \`/mcp reauth <name>\` to authorize again through the broker; \`/mcp list\` gives the server's name.`,
-								);
+								throw new MCPBrokerRedactedRefreshError(describeMCPServerTarget(config));
 							}
 							const material = selectMcpOAuthRefreshMaterial(current, auth);
 							const tokenUrl = material?.tokenUrl;
@@ -1421,10 +1435,9 @@ export class MCPManager {
 						},
 						isDefinitiveFailure: error => isDefinitiveOAuthFailure(errorMessage(error)),
 						disabledCause: error => `oauth refresh failed: ${errorMessage(error)}`,
-						keepCredentialOnRefreshFailure: error =>
-							!(error instanceof Error && error.message.includes("broker-redacted")),
+						keepCredentialOnRefreshFailure: error => !(error instanceof MCPBrokerRedactedRefreshError),
 						onRefreshFailure: refreshError => {
-							if (refreshError instanceof Error && refreshError.message.includes("broker-redacted")) return;
+							if (refreshError instanceof MCPBrokerRedactedRefreshError) return;
 							logger.warn("MCP OAuth refresh failed, using existing token", {
 								credentialId,
 								error: refreshError,
@@ -1435,29 +1448,43 @@ export class MCPManager {
 				if (refreshResult.removed) {
 					logger.warn("MCP OAuth refresh failed definitively; cleared credential", { credentialId });
 				}
-				credential = refreshResult.credential;
-
-				if (credential) {
-					if (resolved.type === "http" || resolved.type === "sse") {
-						resolved = {
-							...resolved,
-							headers: {
-								...resolved.headers,
-								Authorization: `Bearer ${credential.access}`,
-							},
-						};
-					} else {
-						resolved = {
-							...resolved,
-							env: {
-								...resolved.env,
-								OAUTH_ACCESS_TOKEN: credential.access,
-							},
-						};
-					}
-				}
+				outcome = refreshResult.credential
+					? { kind: "credential", credential: refreshResult.credential, brokerRedacted: false }
+					: { kind: "failure", reason: "revoked" };
 			} catch (error) {
 				logger.warn("Failed to resolve OAuth credential", { credentialId, error });
+				outcome = classifyMcpAuthFailure(error, observed, Date.now());
+			}
+
+			if (outcome.kind === "failure") {
+				throw new MCPAuthRequiredError(outcome.reason, describeMCPServerTarget(config), {
+					cause: outcome.cause,
+				});
+			}
+			if (outcome.brokerRedacted) {
+				// The access token still works, so the session continues; the operator is
+				// told once, here, rather than at the 401 this will become when it expires.
+				logger.warn("MCP OAuth refresh token is broker-held; using the unexpired access token", {
+					credentialId,
+				});
+			}
+			const credential = outcome.credential;
+			if (resolved.type === "http" || resolved.type === "sse") {
+				resolved = {
+					...resolved,
+					headers: {
+						...resolved.headers,
+						Authorization: `Bearer ${credential.access}`,
+					},
+				};
+			} else {
+				resolved = {
+					...resolved,
+					env: {
+						...resolved.env,
+						OAUTH_ACCESS_TOKEN: credential.access,
+					},
+				};
 			}
 		}
 

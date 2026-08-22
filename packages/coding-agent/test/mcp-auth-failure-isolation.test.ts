@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
 import { AuthStorage, SqliteAuthCredentialStore } from "@veyyon/ai";
+import { MCPAuthRequiredError } from "@veyyon/coding-agent/mcp/auth-failure";
 import { MCPManager } from "@veyyon/coding-agent/mcp/manager";
 import * as oauthFlow from "@veyyon/coding-agent/mcp/oauth-flow";
 import type { MCPServerConfig } from "@veyyon/coding-agent/mcp/types";
@@ -101,7 +102,7 @@ describe("an MCP auth failure leaves model-provider credentials alone", () => {
 			new Error('MCP OAuth refresh failed: 400 {"error":"invalid_grant","error_description":"revoked"}'),
 		);
 
-		await manager.prepareConfig(serverConfig);
+		await expect(manager.prepareConfig(serverConfig)).rejects.toThrow(MCPAuthRequiredError);
 
 		// The deletion really happened; without this the isolation check below
 		// would pass against a build that deleted nothing.
@@ -116,7 +117,7 @@ describe("an MCP auth failure leaves model-provider credentials alone", () => {
 			new Error("MCP OAuth refresh failed: 401 Unauthorized"),
 		);
 
-		await manager.prepareConfig(serverConfig);
+		await expect(manager.prepareConfig(serverConfig)).rejects.toThrow(MCPAuthRequiredError);
 
 		expect(authStorage.get(MCP_CREDENTIAL_ID)).toBeUndefined();
 		expect(bystanders()).toEqual(before);
@@ -143,6 +144,12 @@ describe("an MCP auth failure leaves model-provider credentials alone", () => {
 	 * Repeated failures must not escalate. A retry loop against a permanently
 	 * broken server is the realistic way a narrow deletion turns into a wide one,
 	 * so the same call is made three times and the bystanders are re-checked.
+	 *
+	 * Only the FIRST attempt refuses. The rejection deleted the row, so from the
+	 * second attempt on there is no stored credential to present and the server is
+	 * one nothing was authorized for — which is the never-authorized case, and its
+	 * 401 is what drives the authorize prompt. What must not change across the
+	 * three attempts is the store around it.
 	 */
 	test("does not widen its blast radius across repeated failures", async () => {
 		const before = bystanders();
@@ -150,10 +157,11 @@ describe("an MCP auth failure leaves model-provider credentials alone", () => {
 			new Error('MCP OAuth refresh failed: 400 {"error":"invalid_grant"}'),
 		);
 
-		await manager.prepareConfig(serverConfig);
+		await expect(manager.prepareConfig(serverConfig)).rejects.toThrow(MCPAuthRequiredError);
 		await manager.prepareConfig(serverConfig);
 		await manager.prepareConfig(serverConfig);
 
+		expect(authStorage.get(MCP_CREDENTIAL_ID)).toBeUndefined();
 		expect(bystanders()).toEqual(before);
 	});
 
@@ -177,7 +185,7 @@ describe("an MCP auth failure leaves model-provider credentials alone", () => {
 			new Error('MCP OAuth refresh failed: 400 {"error":"invalid_grant"}'),
 		);
 
-		await manager.prepareConfig(serverConfig);
+		await expect(manager.prepareConfig(serverConfig)).rejects.toThrow(MCPAuthRequiredError);
 
 		expect(authStorage.get(MCP_CREDENTIAL_ID)).toBeUndefined();
 		expect(authStorage.get(otherId)).toEqual(otherBefore);
