@@ -129,6 +129,21 @@ export interface SecretEntry {
 	 * inherit a default silently, and the default is exactly the thing that must be a decision.
 	 */
 	origin: SecretOrigin;
+	/**
+	 * What to CALL this secret in a report, when it has no name to be spent by.
+	 *
+	 * A NAME AND A SOURCE ARE DIFFERENT POWERS. {@link SecretEntry.name} grants an expansion
+	 * right: the model writes `#NAME#` and the boundary substitutes a credential. A source grants
+	 * nothing; it is the label a human needs in order to find the thing being masked. An
+	 * auto-detected environment value has no name on purpose — nothing declared it, so nothing may
+	 * spend it — and before this field it also had no label, which made it unfindable: the footer
+	 * counted ten masked values while `/secret list` answered "No active secrets. Nothing is being
+	 * substituted right now.", and no command in the product could say which ten.
+	 *
+	 * Set it to the variable name, the file, or whatever a person would search for. Never a value,
+	 * and never anything a placeholder is built from.
+	 */
+	source?: string;
 }
 
 /** State reported when a live runtime revokes one expired credential. */
@@ -183,6 +198,23 @@ export interface SecretObfuscatorOptions {
 	 * process-local key, which keeps tokens opaque and stable for that process.
 	 */
 	placeholderKey?: Uint8Array;
+}
+
+/**
+ * What is masked in this session that nothing can name, as {@link SecretObfuscator.maskedInventory}
+ * reports it.
+ *
+ * Named rather than restated at each reader, because the three counts relate in ways a caller must
+ * not re-derive: `count` is values, `sources` is labels and may be longer or shorter than `count`,
+ * and `unlabelled` is the only honest source of "how many of these can I not identify".
+ */
+export interface MaskedInventory {
+	/** Distinct masked values with no name, counted the way the composer chip counts. */
+	count: number;
+	/** Where those values were found: an environment variable name, or a file path. Sorted. */
+	sources: readonly string[];
+	/** How many of `count` arrived with no label at all, and so can only be counted. */
+	unlabelled: number;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -472,6 +504,21 @@ export class SecretObfuscator {
 	#deobfuscateMap = new Map<string, string>();
 
 	/**
+	 * Placeholder → every place the value it hides came from, for values with no name.
+	 *
+	 * A parallel map rather than a field on the reverse lookup, because it must be impossible for a
+	 * label to be mistaken for an expansion right: nothing in the spend path reads this, and the only
+	 * consumer is {@link maskedInventory}.
+	 *
+	 * A SET, NOT A STRING, because an unnamed placeholder is a function of the VALUE
+	 * ({@link #buildValuePlaceholder}), so two entries carrying the same bytes share one. That is the
+	 * ordinary shape for a credential declared in `secrets.yml` and also exported into the
+	 * environment, and a single field made the second registration erase the first label: the
+	 * operator was shown one place to look when there were two.
+	 */
+	#sourcesByPlaceholder = new Map<string, Set<string>>();
+
+	/**
 	 * Placeholders that this process used to expand and must now refuse at the tool boundary.
 	 *
 	 * Names stay only in memory. They cross refreshes through {@link retainRedactionsFrom}, but
@@ -744,6 +791,16 @@ export class SecretObfuscator {
 							: buildNamePlaceholder(entry.name);
 					// Display is decided by origin AND type together; see mayRestoreForDisplay.
 					this.#registerReversible(entry.content, placeholder, entry.expiresAt, mayRestoreForDisplay(entry));
+					// Recorded against the PLACEHOLDER, so the inventory below reports exactly the
+					// values still being masked rather than every entry that was ever handed in. Added
+					// rather than assigned: one value has one placeholder, so a credential declared in
+					// two places arrives twice and both labels are true answers to "where is this
+					// coming from".
+					if (entry.name === undefined && entry.source !== undefined) {
+						const sources = this.#sourcesByPlaceholder.get(placeholder);
+						if (sources === undefined) this.#sourcesByPlaceholder.set(placeholder, new Set([entry.source]));
+						else sources.add(entry.source);
+					}
 				} else {
 					const alias = resolveSafeReplacement(
 						entry.content,
@@ -1131,6 +1188,49 @@ export class SecretObfuscator {
 			if (name !== undefined) names.push(name);
 		}
 		return names.sort();
+	}
+
+	/**
+	 * What is being masked that nothing can name: how many values, and what to call them.
+	 *
+	 * THE COUNT IS THE ONE THE FOOTER PRINTS, counted the same way — by distinct VALUE, after the
+	 * expiry sweep — because two surfaces reporting the same protection through two counters is how
+	 * `10 masked` came to sit beside "No active secrets. Nothing is being substituted right now."
+	 * `sources` is what a person searches for (an environment variable name), and it is not required
+	 * to match `count` in either direction: a value protected by a source-less entry is masked and
+	 * counted with nothing to name it, and one value declared both in `secrets.yml` and in the
+	 * environment is one masked value with two places to look. Sorted, for a stable report.
+	 *
+	 * NEVER RETURNS A VALUE, and never a name: a named secret belongs to `/secret list`, which
+	 * reads the vault.
+	 */
+	maskedInventory(): MaskedInventory {
+		this.#forgetExpired();
+		// TWO PASSES, because one credential can be registered twice: stored in the vault under a name
+		// AND detected in the environment under the same bytes. It is spendable, `/secret list` names
+		// it, and reporting it here as well would tell the operator they have one secret and one
+		// unnameable masked value when they have one credential. The value, not the placeholder,
+		// decides -- that is what `liveSecrets` counts, and the two must not disagree.
+		const nameable = new Set<string>();
+		for (const [placeholder, value] of this.#deobfuscateMap) {
+			if (placeholderSecretName(placeholder) !== undefined) nameable.add(value);
+		}
+		const values = new Set<string>();
+		const sources = new Set<string>();
+		let unlabelled = 0;
+		for (const [placeholder, value] of this.#deobfuscateMap) {
+			if (placeholderSecretName(placeholder) !== undefined || nameable.has(value)) continue;
+			values.add(value);
+			// One value has one unnamed placeholder, so this arm runs once per masked value and
+			// `unlabelled` counts values rather than registrations. It is reported separately because
+			// `sources.length` cannot stand in for it in either direction: a value declared twice
+			// contributes two labels, so comparing the two counts would hide a nameless value behind
+			// a well-labelled neighbour.
+			const labels = this.#sourcesByPlaceholder.get(placeholder);
+			if (labels === undefined || labels.size === 0) unlabelled += 1;
+			else for (const source of labels) sources.add(source);
+		}
+		return { count: values.size, sources: [...sources].sort(), unlabelled };
 	}
 
 	/**

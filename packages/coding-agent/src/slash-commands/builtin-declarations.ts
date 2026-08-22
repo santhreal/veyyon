@@ -372,8 +372,8 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 			},
 			{
 				name: "clear",
-				description: "Remove every secret in one vault, naming what it removed",
-				usage: "/secret clear profile|project|global",
+				description: "Remove every secret in one vault, or in all three, naming what it removed",
+				usage: "/secret clear profile|project|global|everywhere",
 			},
 			{
 				name: "rename",

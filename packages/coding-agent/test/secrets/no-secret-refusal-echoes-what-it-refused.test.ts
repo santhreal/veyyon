@@ -65,7 +65,12 @@ const EVERY_SLOT = [
  */
 const VALIDATED_SLOT: Record<string, { bad: string; sentence: string }> = {
 	ttl: { bad: SENTINEL, sentence: "That is not a lifetime." },
-	scope: { bad: SENTINEL, sentence: "Which vault? Write profile, project or global." },
+	// THE SHARED PREFIX, not the whole sentence. `clear` alone offers a fourth answer -- `everywhere`,
+	// which empties all three vaults -- so its refusal continues past this point where every other
+	// scope-taking command's stops. Pinning the full stop here would have made this row a test of
+	// which commands exist rather than of what the refusal says, and the sweep below pins the offer
+	// itself in both directions.
+	scope: { bad: SENTINEL, sentence: "Which vault? Write profile, project or global" },
 	limit: { bad: "999999999999999999999", sentence: "How many records? Write a positive whole number" },
 };
 
@@ -185,6 +190,13 @@ describe("a validated word that cannot be read is refused without being repeated
 
 					expect(message.toLowerCase()).not.toContain(validated.bad.toLowerCase());
 					expect(message).toContain(validated.sentence);
+					// The everywhere offer belongs to `clear` and to nothing else: it is the only command for
+					// which "all of them" is a coherent instruction. Asserted in BOTH directions, so the
+					// sentence cannot start advertising it on `scope` or `discard`, where it would promise a
+					// destination or a file that does not exist.
+					if (slot === "scope") {
+						expect(message.includes("or everywhere for all three")).toBe(command === "clear");
+					}
 				});
 			}
 		}

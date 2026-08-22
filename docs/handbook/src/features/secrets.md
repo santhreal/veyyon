@@ -298,6 +298,7 @@ Every verb below works in a terminal and on a client that has none. The value fo
 | `/secret extend <name> 7d` | give it a fresh lifetime, measured from now |
 | `/secret rm <name> [global]` | revoke it |
 | `/secret clear profile` | remove every credential in one vault, naming what it removed |
+| `/secret clear everywhere` | remove every credential in all three vaults |
 | `/secret log [<name>] [50]` | which credentials were spent, and where |
 | `/secret discard project` | move aside a vault file that cannot be read |
 | `/secret help` | every form, on the surface you are on |
@@ -308,6 +309,8 @@ Every verb below works in a terminal and on a client that has none. The value fo
 
 `clear` empties one vault. It names the scope because there is no default: the vault is three files, project overriding profile overriding global, and the copy you can reach is the one that gets spent, so a guess would empty whichever happened to be in front and leave the other two full. It reports the placeholders it dropped. A name that a wider vault still holds is reported as removed but not as revoked, because `#NAME#` goes on expanding to that copy. `wipe`, `purge`, `empty` and `reset` are the same command.
 
+`clear everywhere` empties all three. It names every scope in one report, including a scope that held nothing, because the question it answers is whether anything is still stored. `all`, `everything` and `every` are the same word. No other verb takes it: "all of them" is not a place to store a secret, not a destination to move one to, and not a vault file to set aside.
+
 `scope` refuses a move onto a name the destination vault already holds, rather than overwriting it. It also carries the time REMAINING rather than the original lifetime, so moving a secret cannot lengthen its life. The copy is written to the destination before the source is removed, so an interrupted move leaves two copies you can see rather than none.
 
 No verb prints a value: not on a row, not truncated onto one, not behind a key. A value put into the vault has stopped being visible, and the surface most likely to end up in a screenshot is the one that must not break that.
@@ -315,6 +318,21 @@ No verb prints a value: not on a row, not truncated onto one, not behind a key. 
 Every change reloads the live secret runtime, so a credential you revoke stops being spendable in the session you are sitting in rather than at the next restart. A reload that fails is reported rather than swallowed, because the vault write is already durable and you are the only one who can decide what to do about the gap.
 
 **Names are never completed.** The dropdown after `/secret ` offers verbs and nothing else. Completing a stored name would put part of your vault on screen on a keystroke, and accepting one would type a name onto a line whose first word decides between a command and a credential. `/secret list` is where names are read.
+
+### Finding what is masked and not stored
+
+`/secret list` ends with what the session is masking that no name can reach. This is the counterpart to the composer's `N masked` chip: both read one counter, so the number below the table and the number above the prompt are the same number.
+
+```text
+  2 values masked in what is sent, detected rather than declared.
+  The agent cannot spend them: only a stored secret has a placeholder.
+  From: /home/dev/project/.veyyon/secrets.yml, DEPLOY_TOKEN.
+  To stop masking one, unset the variable or narrow the keywords in env-keywords.yml.
+```
+
+Each of these values reached the session through the environment or through `secrets.yml`, so it has no name and no placeholder the agent can write. What it has is a place it came from: the variable name, or the path of the file that declared it. That label is not a name. It makes the value findable and grants no `#NAME#` expansion.
+
+One credential exported into the environment and also declared in a file is one masked value with two places to look, and both are named. A value handed in by an SDK caller with no label at all is counted, and the count of those is stated rather than left as the difference between two numbers.
 
 ### On a client with no terminal
 
