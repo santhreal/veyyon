@@ -80,26 +80,13 @@ migr   = &quot;packages/server/src/database/migrations&quot;</code></pre>
 <p>Handle names must match <code class="inline">^[a-z0-9_]+$</code>. Expansions must be non-empty strings and cannot contain the sigil character.</p>
 <h2>Codec execution</h2>
 <p>Argot operates at two boundaries:</p>
-<ol>
-<li><strong>Model input</strong>: System prompts provide the active handle mapping in prompt context.</li>
-<li><strong>Model output</strong>: Generated text passes through the Argot decoder before reaching tool execution, TUI rendering, session transcripts, or subagent message channels.</li>
-</ol>
+<ol><li><strong>Model input</strong>: System prompts provide the active handle mapping in prompt context.</li><li><strong>Model output</strong>: Generated text passes through the Argot decoder before reaching tool execution, TUI rendering, session transcripts, or subagent message channels.</li></ol>
 <p>The decoder replaces handles with their expansions:</p>
-<ul>
-<li><strong>Longest match</strong>: Given both <code class="inline">§db</code> and <code class="inline">§dbconn</code>, <code class="inline">§dbconn</code> matches first.</li>
-<li><strong>Identifier boundaries</strong>: A match triggers only when not immediately followed by identifier characters (<code class="inline">[a-z0-9_]</code>). For example, <code class="inline">§dbextra</code> is not matched if <code class="inline">dbextra</code> is undefined, and <code class="inline">§db</code> is not expanded out of it.</li>
-<li><strong>Passthrough</strong>: Unrecognized handle patterns pass through unchanged.</li>
-</ul>
+<ul><li><strong>Longest match</strong>: Given both <code class="inline">§db</code> and <code class="inline">§dbconn</code>, <code class="inline">§dbconn</code> matches first.</li><li><strong>Identifier boundaries</strong>: A match triggers only when not immediately followed by identifier characters (<code class="inline">[a-z0-9_]</code>). For example, <code class="inline">§dbextra</code> is not matched if <code class="inline">dbextra</code> is undefined, and <code class="inline">§db</code> is not expanded out of it.</li><li><strong>Passthrough</strong>: Unrecognized handle patterns pass through unchanged.</li></ul>
 <p>Decoded text is the only form stored in session transcripts or passed to system tools.</p>
 <h2>Discovery and caching</h2>
 <p>Project dictionaries are generated dynamically rather than committed to repositories:</p>
-<ol>
-<li>The agent invokes the <code class="inline">argot_load</code> tool with a target directory path.</li>
-<li>The runtime resolves the repository root by locating <code class="inline">.git</code> or a <code class="inline">.argot</code> marker file.</li>
-<li>The runtime scans tracked files, identifies repeated string candidates, ranks them by potential token reduction, and generates the active dictionary.</li>
-<li>Generated dictionaries are cached locally in the profile directory. Cache keys derive from the git commit SHA or the file listing signature.</li>
-<li>The <code class="inline">argot_unload</code> tool clears active handles from the current session context.</li>
-</ol>
+<ol><li>The agent invokes the <code class="inline">argot_load</code> tool with a target directory path.</li><li>The runtime resolves the repository root by locating <code class="inline">.git</code> or a <code class="inline">.argot</code> marker file.</li><li>The runtime scans tracked files, identifies repeated string candidates, ranks them by potential token reduction, and generates the active dictionary.</li><li>Generated dictionaries are cached locally in the profile directory. Cache keys derive from the git commit SHA or the file listing signature.</li><li>The <code class="inline">argot_unload</code> tool clears active handles from the current session context.</li></ol>
 <h2>Scoping and configuration</h2>
 <p>Dictionary entries can be scoped to specific subtrees using the <code class="inline">[meta]</code> table:</p>
 <pre class="code"><code class="language-toml">[meta.dbconn]
@@ -107,10 +94,7 @@ note  = &quot;Database connection module&quot;
 scope = &quot;packages/server/**&quot;</code></pre>
 <p>When a scope glob is specified, the runtime activates the handle only when operations occur within matching paths.</p>
 <p>Settings controls:</p>
-<ul>
-<li><code class="inline">argot.enabled</code>: Master toggle for Argot functionality (default <code class="inline">false</code>).</li>
-<li><code class="inline">argot.models</code>: List of model IDs permitted to receive handle dictionaries.</li>
-</ul>
+<ul><li><code class="inline">argot.enabled</code>: Master toggle for Argot functionality (default <code class="inline">false</code>).</li><li><code class="inline">argot.models</code>: List of model IDs permitted to receive handle dictionaries.</li></ul>
     </div>
     <div class="post-foot"><a href="../blog/">← All posts</a></div>
   </article>
@@ -133,7 +117,6 @@ scope = &quot;packages/server/**&quot;</code></pre>
       <a href="../blog/" aria-current="page">Blog</a>
       <a href="../docs/">Docs</a>
       <a href="https://github.com/santhreal/veyyon">GitHub</a>
-      <a href="../install.html" class="btn">Get started</a>
     <!--NAV:END-->
     </nav>
   </div>
