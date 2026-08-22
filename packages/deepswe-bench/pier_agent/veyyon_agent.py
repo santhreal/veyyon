@@ -181,6 +181,17 @@ class VeyyonAgent(BaseInstalledAgent):
                 host_assets / "statements" / f"{self._arm_name}.json",
                 f"{CONTAINER_ASSETS_DIR}/statements/{self._arm_name}.json",
             )
+        # An arm MAY carry a per-PROMPT override, staged by run.ts as
+        # prompts/<arm>.json, reaching the agent only through the eval-only
+        # VEYYON_EVAL_PROMPTS env var. This is the vehicle for overriding a
+        # prompt from the registry (tool description, subagent prompt, agent prompt).
+        has_prompts = (host_assets / "prompts" / f"{self._arm_name}.json").is_file()
+        if has_prompts:
+            await environment.exec(command=f"mkdir -p {CONTAINER_ASSETS_DIR}/prompts", user="root")
+            await environment.upload_file(
+                host_assets / "prompts" / f"{self._arm_name}.json",
+                f"{CONTAINER_ASSETS_DIR}/prompts/{self._arm_name}.json",
+            )
         await environment.exec(
             command=f"chmod +x {CONTAINER_ASSETS_DIR}/vey", user="root"
         )
@@ -211,6 +222,11 @@ class VeyyonAgent(BaseInstalledAgent):
             if has_statements
             else ""
         )
+        prompts_env = (
+            f'VEYYON_EVAL_PROMPTS="$(cat {CONTAINER_ASSETS_DIR}/prompts/{self._arm_name}.json)" '
+            if has_prompts
+            else ""
+        )
         catalog_refresh = build_model_catalog_refresh_command(
             f"{CONTAINER_ASSETS_DIR}/vey",
             self.model_name,
@@ -219,7 +235,7 @@ class VeyyonAgent(BaseInstalledAgent):
         )
         if replay_path is not None:
             driver_command = (
-                f"{sections_env}{statements_env}python3 "
+                f"{sections_env}{statements_env}{prompts_env}python3 "
                 f"{CONTAINER_ASSETS_DIR}/veyyon_replay_driver.py "
                 f"--binary {CONTAINER_ASSETS_DIR}/vey "
                 f"--config $HOME/.veyyon/arm.yml "
@@ -234,7 +250,7 @@ class VeyyonAgent(BaseInstalledAgent):
             )
         else:
             agent_command = (
-                f"{sections_env}{statements_env}{CONTAINER_ASSETS_DIR}/vey "
+                f"{sections_env}{statements_env}{prompts_env}{CONTAINER_ASSETS_DIR}/vey "
                 f"--model {shlex.quote(self.model_name)} "
                 f"--auto-approve --config $HOME/.veyyon/arm.yml "
                 f"--print {shlex.quote(instruction)} </dev/null 2>&1"

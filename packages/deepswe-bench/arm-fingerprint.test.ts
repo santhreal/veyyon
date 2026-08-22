@@ -14,6 +14,24 @@ import {
 } from "./arm-fingerprint";
 
 const bytes = (s: string): Uint8Array => new TextEncoder().encode(s);
+const ARMS_DIR = path.join(import.meta.dir, "arms");
+
+function shippedArmInputs(arm: string): ArmInputs {
+	const config = YAML.parse(fs.readFileSync(path.join(ARMS_DIR, `${arm}.yml`), "utf8")) ?? {};
+	const sectionsPath = path.join(ARMS_DIR, `${arm}.sections.yml`);
+	const statementsPath = path.join(ARMS_DIR, `${arm}.statements.yml`);
+	const promptsPath = path.join(ARMS_DIR, `${arm}.prompts.yml`);
+	const rulePath = path.join(ARMS_DIR, `${arm}.rule.md`);
+	return {
+		config,
+		...(fs.existsSync(sectionsPath) ? { sections: YAML.parse(fs.readFileSync(sectionsPath, "utf8")) ?? {} } : {}),
+		...(fs.existsSync(statementsPath)
+			? { statements: YAML.parse(fs.readFileSync(statementsPath, "utf8")) ?? {} }
+			: {}),
+		...(fs.existsSync(promptsPath) ? { prompts: YAML.parse(fs.readFileSync(promptsPath, "utf8")) ?? {} } : {}),
+		...(fs.existsSync(rulePath) ? { rule: fs.readFileSync(rulePath) } : {}),
+	};
+}
 
 /**
  * These tests lock the single-independent-variable guard: the bench must never
@@ -186,28 +204,6 @@ describe("shipped arms are pairwise distinct (single-IV coherence)", () => {
 	// This checks the arms ON DISK, so the mistake fails in the test suite instead.
 	// It deliberately reuses computeArmFingerprint and the same input assembly as
 	// run.ts, so it cannot drift from the guard that runs for real.
-
-	const ARMS_DIR = path.join(import.meta.dir, "arms");
-
-	function shippedArmInputs(arm: string): ArmInputs {
-		const config = YAML.parse(fs.readFileSync(path.join(ARMS_DIR, `${arm}.yml`), "utf8")) ?? {};
-		const sectionsPath = path.join(ARMS_DIR, `${arm}.sections.yml`);
-		// Every attachment run.ts stages has to be read here too, and the statements file is the newest
-		// one. When it was added and this reader was not updated, the shipped ablation arm fingerprinted
-		// identically to `baseline` (same config, no attachment seen) and the pairwise check below failed
-		// by name, which is the guard working: an attachment the fingerprint cannot see is an arm the
-		// single-IV floor cannot distinguish.
-		const statementsPath = path.join(ARMS_DIR, `${arm}.statements.yml`);
-		const rulePath = path.join(ARMS_DIR, `${arm}.rule.md`);
-		return {
-			config,
-			...(fs.existsSync(sectionsPath) ? { sections: YAML.parse(fs.readFileSync(sectionsPath, "utf8")) ?? {} } : {}),
-			...(fs.existsSync(statementsPath)
-				? { statements: YAML.parse(fs.readFileSync(statementsPath, "utf8")) ?? {} }
-				: {}),
-			...(fs.existsSync(rulePath) ? { rule: fs.readFileSync(rulePath) } : {}),
-		};
-	}
 
 	const shippedArms = fs
 		.readdirSync(ARMS_DIR)
@@ -429,5 +425,81 @@ describe("the per-statement override in the fingerprint", () => {
 		const asSections = computeArmFingerprint({ config, sections: { "role/mermaid-diagrams": "x" } });
 
 		expect(asStatements).not.toBe(asSections);
+	});
+});
+
+/**
+ * THE PER-PROMPT REGISTRY OVERRIDE IS PART OF WHAT AN ARM IS, and an empty one is not.
+ *
+ * Parity with the statements and sections mechanisms:
+ * 1. An arm carrying a `.prompts.yml` file must not fingerprint as its control.
+ * 2. An empty override `{}` must count as absent.
+ * 3. An arm with no `.prompts.yml` file preserves its pre-existing fingerprint.
+ */
+describe("the per-prompt override in the fingerprint", () => {
+	const config = { argot: { enabled: false } };
+
+	it("distinguishes an arm with a prompt override from its control", () => {
+		const control = computeArmFingerprint({ config });
+		const overridden = computeArmFingerprint({ config, prompts: { "tools/bash": "Trimming..." } });
+
+		expect(overridden).not.toBe(control);
+	});
+
+	it("distinguishes overriding one prompt from overriding another", () => {
+		const first = computeArmFingerprint({ config, prompts: { "tools/bash": "Trim A" } });
+		const second = computeArmFingerprint({ config, prompts: { "tools/read": "Trim A" } });
+
+		expect(first).not.toBe(second);
+	});
+
+	it("distinguishes different replacement texts for the same prompt", () => {
+		const first = computeArmFingerprint({ config, prompts: { "tools/bash": "Trim A" } });
+		const second = computeArmFingerprint({ config, prompts: { "tools/bash": "Trim B" } });
+
+		expect(first).not.toBe(second);
+	});
+
+	it("treats an empty override as absent, so an empty file cannot smuggle a no-op arm past the guard", () => {
+		expect(computeArmFingerprint({ config, prompts: {} })).toBe(computeArmFingerprint({ config }));
+	});
+
+	it("treats an absent override and an explicitly undefined one identically", () => {
+		expect(computeArmFingerprint({ config, prompts: undefined })).toBe(computeArmFingerprint({ config }));
+	});
+
+	it("still fingerprints a plain arm to the recorded backwards-compatible value", () => {
+		expect(computeArmFingerprint({ config })).toBe(
+			"cac97fc4ffb83a5f73b413c5c8999bfc125ceaa8545da1c29d279b68d4f1b39f",
+		);
+	});
+
+	it("ignores key order in the override map", () => {
+		const one = computeArmFingerprint({
+			config,
+			prompts: { "tools/bash": "X", "tools/read": "Y" },
+		});
+		const other = computeArmFingerprint({
+			config,
+			prompts: { "tools/read": "Y", "tools/bash": "X" },
+		});
+
+		expect(one).toBe(other);
+	});
+
+	it("does not confuse a prompts override with statements or sections carrying identical keys and text", () => {
+		const asPrompts = computeArmFingerprint({ config, prompts: { "tools/bash": "Trim" } });
+		const asStatements = computeArmFingerprint({ config, statements: { "tools/bash": "Trim" } });
+		const asSections = computeArmFingerprint({ config, sections: { "tools/bash": "Trim" } });
+
+		expect(asPrompts).not.toBe(asStatements);
+		expect(asPrompts).not.toBe(asSections);
+		expect(asStatements).not.toBe(asSections);
+	});
+
+	it("distinguishes candidate-bash-trim from baseline", () => {
+		const baselineFp = computeArmFingerprint(shippedArmInputs("baseline"));
+		const candidateFp = computeArmFingerprint(shippedArmInputs("candidate-bash-trim"));
+		expect(candidateFp).not.toBe(baselineFp);
 	});
 });

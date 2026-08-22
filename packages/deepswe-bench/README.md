@@ -12,6 +12,7 @@ Arm comparisons evaluate one variable at a time:
 
 - **Prompt section:** Override one section via `arms/<arm>.sections.yml`. The runner passes this through `VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS`.
 - **Prompt statement:** Override or ablate one statement via `arms/<arm>.statements.yml` (set `<statement-id>: null` to ablate). Passed via `VEYYON_EVAL_SYSTEM_PROMPT_STATEMENTS`.
+- **Prompt registry item:** Override one registry prompt (tool description, subagent prompt, agent prompt) via `arms/<arm>.prompts.yml`. Passed via `VEYYON_EVAL_PROMPTS`.
 - **Feature flag:** Toggle one configuration key in `arms/<arm>.yml`.
 - **Model:** Change `--model <id>`.
 
@@ -28,6 +29,7 @@ Validation checks before and during execution:
 |---|---|---|
 | Feature flag | `baseline` ↔ `argot-setting-only` | `argot.enabled` |
 | Behavioral rule | `argot-setting-only` ↔ `candidate-argot-nudge` | `arms/candidate-argot-nudge.rule.md` |
+| Tool description | `baseline` ↔ `candidate-bash-trim` | `arms/candidate-bash-trim.prompts.yml` (`tools/bash`) |
 | Encoding | `decode` ↔ `full` | Model allowlist and preamble |
 | Dictionary budget | `full` ↔ `full-budget16k` | `argot.tokenBudget` (1000 vs 16000) |
 | Tool discovery | `baseline` ↔ `discovery-all` | `tools.discoveryMode` |
@@ -216,4 +218,24 @@ List statement identifiers using:
 ```bash
 veyyon prompt --statements
 veyyon prompt --statement <id>
+```
+
+
+## Prompt registry arms
+
+To override a prompt from the prompt registry (such as a tool description, subagent prompt, or agent prompt), create `arms/<arm>.prompts.yml` alongside `arms/<arm>.yml`:
+
+```yaml
+# arms/candidate-bash-trim.prompts.yml
+tools/bash: |
+  Runs commands in the embedded shell — terminal ops: git, bun, cargo, python.
+```
+
+A prompt experiment cannot be run by editing prompt files directly in the repository. Both arms of a benchmark run execute against a single built binary, so modifying a file in the tree applies the change to all arms simultaneously and leaves any measured delta without an identifiable cause.
+
+List prompt identifiers using:
+
+```bash
+veyyon prompt --prompts
+veyyon prompt --prompt <id>
 ```
