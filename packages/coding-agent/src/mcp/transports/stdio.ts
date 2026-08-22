@@ -24,6 +24,7 @@ import { toJsonRpcError } from "../../mcp/types";
 import { buildMcpChildEnv } from "../child-environment";
 import { isMCPTimeoutEnabled, resolveMCPTimeoutMs } from "../timeout";
 import { describeJsonRpcError, isUnattributableError, rejectAllPending } from "../unattributable-error";
+import { terminateMcpServerTree } from "./process-tree";
 import { mcpNotConnectedMessage, mcpTimeoutMessage } from "./transport-failure";
 
 /** Subprocess argv and platform-derived spawn flags for an MCP stdio server. */
@@ -813,8 +814,21 @@ export class StdioTransport implements MCPTransport {
 		}
 
 		if (this.#process) {
-			this.#process.kill();
+			const child = this.#process;
+			// Cleared before the await so a concurrent or repeat close is a no-op rather
+			// than a second teardown of the same tree.
 			this.#process = null;
+			// A wrapper (`npx`, `uvx`, `docker run`, a shell script) is what veyyon
+			// spawned; the server itself is usually its grandchild. `child.kill()` alone
+			// left that grandchild running with the environment it was handed.
+			const reaped = await terminateMcpServerTree(child.pid);
+			if (!reaped) {
+				child.kill();
+				logger.debug("MCP server tree was not confirmed gone; signalled the child directly", {
+					server: this.config.command,
+					pid: child.pid,
+				});
+			}
 		}
 
 		if (this.#readLoop) {

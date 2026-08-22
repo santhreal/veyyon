@@ -199,6 +199,27 @@ Example:
 
 `sse` is still supported for compatibility, but the MCP spec now prefers Streamable HTTP (`type: "http"`) for new servers.
 
+## Stopping a stdio server
+
+A stdio server is usually started through a wrapper: `npx`, `uvx`, `docker run`, or a script
+in a repository. The wrapper starts the real server as a child of its own, so the process
+Veyyon spawned is not the process serving tools.
+
+Ending a server ends the whole tree. Veyyon signals every live descendant and then the
+process it spawned, waits 500 ms, and repeats the wave with a hard kill if anything is still
+running. The second wave re-walks the tree, so a process started during the wait is included.
+The wait after the hard kill is bounded at 1.5 s, so `/mcp reload`, a disconnect, and session
+shutdown always return. The same teardown runs when a handshake fails, including a server that
+never answers `initialize`.
+
+The process group is signalled only when the server leads a group of its own. On Linux the
+server starts in a new session, so its group holds nothing else. On macOS it stays attached so
+the system can prompt for file access, and Windows has no process groups; there the group is
+Veyyon's own and is left alone.
+
+A server that daemonizes — double-forks into its own session — is outside this. It outlives the
+session that started it and has to be stopped by hand.
+
 ## Auth fields
 
 Veyyon understands two auth-related objects.
