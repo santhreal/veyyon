@@ -10,7 +10,7 @@
 
 - An opt-in `tools.unifiedRuntime` experiment replaces the model-facing `eval` and `launch` tools with one `runtime` tool while preserving their existing kernel and process implementations.
 - An opt-in `eval.pyWorkspace` experiment teaches the agent to keep large tool results and repeated repository operations inside the persistent Python kernel, reducing intermediate transcript output without changing kernel execution.
-- An opt-in `tools.unifiedSearch` experiment replaces the model-facing `glob`, `grep`, and `ast_grep` tools with one capability-aware `search` tool while delegating execution to the existing implementations.
+- An opt-in `tools.unifiedSearch` experiment replaces the model-facing `glob`, `grep`, and `ast_grep` tools with one capability-aware `search` tool, routes calls and declarations toward structural search instead of regex approximation, and delegates execution to the existing implementations.
 
 ### Changed
 
