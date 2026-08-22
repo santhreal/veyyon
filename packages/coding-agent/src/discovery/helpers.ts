@@ -21,6 +21,12 @@ import { parseRuleConditionAndScope, type Rule, type RuleFrontmatter } from "../
 import type { DiscoveredSkill, SkillFrontmatter } from "../capability/skill";
 import type { LoadContext, LoadResult, SourceMeta } from "../capability/types";
 import { type ManifestHolder, manifestFromPackageJson } from "../extensibility/manifest-key";
+import {
+	canonicalProjectRoot,
+	describeProjectExecutable,
+	describeRefusal,
+	ProjectTrust,
+} from "../security/project-trust";
 import { type ConfiguredThinkingLevel, parseConfiguredThinkingLevel } from "../thinking";
 import { normalizeToolNames, TOOL } from "../tools/builtin-names";
 
@@ -1009,6 +1015,28 @@ export function pluginsRootFor(agentDir: string): string | undefined {
 }
 
 /**
+ * Whether the project-scoped plugin registry at `registryPath` may be read at all.
+ *
+ * The registry itself is the trusted unit, not the plugins it names: its `installPath` entries
+ * are arbitrary absolute paths, so filtering by location would let a project point at a payload
+ * anywhere on disk. A registry that lives outside the canonical project root is not
+ * project-controlled and is left alone, which is what keeps a profile-level registry working.
+ */
+export async function projectRegistryIsTrusted(
+	registryPath: string,
+	cwd: string,
+	agentDir?: string,
+): Promise<{ allowed: true } | { allowed: false; reason: string }> {
+	const canonicalRoot = await canonicalProjectRoot(cwd);
+	const executable = await describeProjectExecutable(registryPath, canonicalRoot);
+	if (!executable) return { allowed: true };
+	const trust = await ProjectTrust.load(agentDir ?? getAgentDir());
+	const verdict = trust.evaluate(canonicalRoot, executable);
+	if (verdict === "trusted") return { allowed: true };
+	return { allowed: false, reason: describeRefusal("plugins", executable.relativePath, verdict) };
+}
+
+/**
  * List all installed Claude Code plugin roots from the plugin cache.
  * Reads ~/.claude/plugins/installed_plugins.json and profile plugins/installed_plugins.json,
  * and optionally the nearest project-scoped registry resolved from `cwd`.
@@ -1027,10 +1055,14 @@ export async function listClaudePluginRoots(
 	home: string,
 	cwd?: string,
 	pluginsRoot?: string,
+	agentDir?: string,
 ): Promise<{ roots: ClaudePluginRoot[]; warnings: string[] }> {
 	const resolvedProjectPath = cwd ? await resolveActiveProjectRegistryPath(cwd) : null;
 	const resolvedPluginsRoot = pluginsRoot ?? getPluginsDir(home);
-	const cacheKey = `${home}:${resolvedProjectPath ?? ""}:${resolvedPluginsRoot}`;
+	const resolvedAgentDir = agentDir ?? getAgentDir();
+	// The agent dir is part of the key because the project-trust decision is per profile: without
+	// it, one profile's refusal would be served to a profile that had approved the same repository.
+	const cacheKey = `${home}:${resolvedProjectPath ?? ""}:${resolvedPluginsRoot}:${resolvedAgentDir}`;
 	const cached = pluginRootsCache.get(cacheKey);
 	if (cached) return cached;
 
@@ -1135,40 +1167,57 @@ export async function listClaudePluginRoots(
 	}
 
 	// ── Project-scoped veyyon registry ────────────────────────────────────────
-	// Loaded from the nearest .veyyon/plugins/installed_plugins.json relative to cwd.
-	// Project entries take precedence over user entries for the same plugin ID.
-	if (resolvedProjectPath) {
-		const projectContent = await readFile(resolvedProjectPath);
-		if (projectContent) {
-			const projectRegistry = parseClaudePluginsRegistry(projectContent);
-			if (projectRegistry) {
-				for (const [pluginId, entries] of Object.entries(projectRegistry.plugins)) {
-					if (!Array.isArray(entries) || entries.length === 0) continue;
-					const atIndex = pluginId.lastIndexOf("@");
-					if (atIndex === -1) {
-						warnings.push(`Invalid plugin ID format (missing @marketplace): ${pluginId}`);
-						continue;
-					}
-					const pluginName = pluginId.slice(0, atIndex);
-					const marketplace = pluginId.slice(atIndex + 1);
-					for (const entry of entries) {
-						if (!entry.installPath || typeof entry.installPath !== "string") {
-							warnings.push(`Plugin ${pluginId} entry has no installPath`);
+	// Loaded from the nearest .veyyon/plugins/installed_plugins.json relative to cwd, and ONLY
+	// once the operator has trusted that file's exact bytes.
+	//
+	// This registry is repository-controlled content that names `installPath` directories, and
+	// those directories then supply extensions, hooks, custom tools, slash commands and MCP
+	// servers — code and spawn commands, loaded during startup, before any tool approval can
+	// apply. `installPath` is arbitrary, so the danger is not that the plugin lives in the
+	// project: a project registry pointing at `/tmp/anything` is the same exploit with the
+	// payload moved. Trusting the REGISTRY FILE is therefore the gate, because it is the one
+	// thing the repository must author to reach any of it.
+	//
+	// Failing closed here is silent by design at this layer — this is a cached discovery helper
+	// with no operator channel — so the refusal is reported as a warning, which every capability
+	// load already surfaces.
+	if (resolvedProjectPath && cwd) {
+		const trusted = await projectRegistryIsTrusted(resolvedProjectPath, cwd, resolvedAgentDir);
+		if (!trusted.allowed) {
+			warnings.push(trusted.reason);
+		} else {
+			const projectContent = await readFile(resolvedProjectPath);
+			if (projectContent) {
+				const projectRegistry = parseClaudePluginsRegistry(projectContent);
+				if (projectRegistry) {
+					for (const [pluginId, entries] of Object.entries(projectRegistry.plugins)) {
+						if (!Array.isArray(entries) || entries.length === 0) continue;
+						const atIndex = pluginId.lastIndexOf("@");
+						if (atIndex === -1) {
+							warnings.push(`Invalid plugin ID format (missing @marketplace): ${pluginId}`);
 							continue;
 						}
-						if (entry.enabled === false) continue;
-						projectRoots.push({
-							id: pluginId,
-							marketplace,
-							plugin: pluginName,
-							version: entry.version || "unknown",
-							path: entry.installPath,
-							scope: "project",
-						});
+						const pluginName = pluginId.slice(0, atIndex);
+						const marketplace = pluginId.slice(atIndex + 1);
+						for (const entry of entries) {
+							if (!entry.installPath || typeof entry.installPath !== "string") {
+								warnings.push(`Plugin ${pluginId} entry has no installPath`);
+								continue;
+							}
+							if (entry.enabled === false) continue;
+							projectRoots.push({
+								id: pluginId,
+								marketplace,
+								plugin: pluginName,
+								version: entry.version || "unknown",
+								path: entry.installPath,
+								scope: "project",
+							});
+						}
 					}
+				} else {
+					warnings.push(`Failed to parse project plugin registry: ${resolvedProjectPath}`);
 				}
-			} else {
-				warnings.push(`Failed to parse project plugin registry: ${resolvedProjectPath}`);
 			}
 		}
 	}

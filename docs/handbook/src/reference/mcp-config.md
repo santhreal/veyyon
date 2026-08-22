@@ -31,6 +31,11 @@ spawns. Veyyon still discovers servers from other tools' user-level configs (`~/
 opencode, windsurf, and more), always from your home directory, never from a working tree, and
 `/mcp list` names the file each server came from.
 
+One project-controlled route to an MCP server remains, and it is gated rather than removed: a
+project plugin registry (`.veyyon/plugins/installed_plugins.json`) names plugin directories, and a
+plugin may ship a `.mcp.json`. The registry is withheld until you approve it. See
+[Project trust](./project-trust.md).
+
 ### Profiles
 
 Named profiles (`veyyon --profile <name>`, the `--alias` shortcut, or `VEYYON_PROFILE` still work) isolate MCP config. When a profile is active, `mcp.json` resolves to that profile's agent directory:

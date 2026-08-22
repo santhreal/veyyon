@@ -168,9 +168,13 @@ describe("the split kept one set of commands", () => {
 	 *     fully tested, and nothing in the product called either — so `Usage: /stats [<port>]`
 	 *     described a command that was not registered, and the dashboard was reachable only as
 	 *     `veyyon stats` from a shell. Declaring it is what makes that usage string true.
+	 *   - UP to 73: `/trust` was added. Project code (a plugin registry, an extension, a hook, an
+	 *     MCP server it names) is withheld until the operator decides, and a refusal with no way to
+	 *     answer it inside the session is a dead end: the CLI `veyyon trust` needs a shell, which a
+	 *     running TUI does not have.
 	 */
-	it("there are the 72 builtins the declarations hold", () => {
-		expect(BUILTIN_SLASH_COMMAND_DECLARATIONS.length).toBe(72);
+	it("there are the 73 builtins the declarations hold", () => {
+		expect(BUILTIN_SLASH_COMMAND_DECLARATIONS.length).toBe(73);
 	});
 
 	/**

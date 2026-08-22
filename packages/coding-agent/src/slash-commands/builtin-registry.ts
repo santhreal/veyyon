@@ -18,6 +18,7 @@ import {
 	nearestNames,
 	truncate,
 } from "@veyyon/utils";
+import { runTrustSlashCommand } from "../cli/trust-cli";
 import { COLLAB_GUEST_ALLOWED_COMMANDS, CollabGuestLink } from "../collab/guest";
 import { CollabHost } from "../collab/host";
 import { DEFAULT_EFFORT_POINTER } from "../config/effort-resolver";
@@ -2443,6 +2444,21 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 			runtime.ctx.editor.setText("");
 		},
 	},
+	trust: {
+		handle: async (command, runtime) => {
+			await runtime.output(await runTrustSlashCommand(command.args, runtime.settings.getAgentDir(), runtime.cwd));
+			return commandConsumed();
+		},
+		handleTui: async (command, runtime) => {
+			runtime.ctx.editor.setText("");
+			const report = await runTrustSlashCommand(
+				command.args,
+				runtime.ctx.settings.getAgentDir(),
+				runtime.ctx.sessionManager.getCwd(),
+			);
+			runtime.ctx.showStatus(report);
+		},
+	},
 	force: {
 		getTuiAutocompleteDescription: runtime => {
 			const count = runtime.ctx.session.getActiveToolNames().length;
@@ -2817,6 +2833,7 @@ export const BUILTIN_SLASH_COMMAND_CATEGORIES: Readonly<Record<string, string>> 
 	extensions: "setup",
 	plugins: "setup",
 	"reload-plugins": "setup",
+	trust: "setup",
 	plan: "modes",
 	"plan-review": "modes",
 	vibe: "modes",

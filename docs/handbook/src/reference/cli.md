@@ -66,6 +66,7 @@ Unknown first tokens route to `launch` as a prompt:
 | `tiny-models` | | On-device tiny model utilities |
 | `token` | | Print a provider's API key or OAuth token |
 | `ttsr` | | Time-traveling stream rules test |
+| `trust` | | Decide whether this project's code may run ([Project trust](./project-trust.md)) |
 | `update` | | Self-update |
 | `usage` | | Provider usage limits |
 | `worktree` | `wt` | Git worktree helpers |
