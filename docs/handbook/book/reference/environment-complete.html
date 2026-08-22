@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-360535cc.js";
+            window.path_to_searchindex_js = "../searchindex-c9fd14eb.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-093df7ff.js"></script>
@@ -306,7 +306,7 @@ code paths in:</p>
 </table>
 </div>
 <h3 id="auth-broker--auth-gateway-remote-credential-vault"><a class="header" href="#auth-broker--auth-gateway-remote-credential-vault">Auth broker / auth gateway (remote credential vault)</a></h3>
-<p>When the broker is enabled, the local SQLite credential store is bypassed and all OAuth refresh / access tokens live on the broker host. See <a href="./internal/auth-broker-gateway.html"><code>auth-broker-gateway.md</code></a> for the full protocol, CLI surface, and 5-min/15-s usage cache layering.</p>
+<p>When the broker is enabled, the local SQLite credential store is bypassed and all OAuth refresh / access tokens live on the broker host. See <a href="../../../internal/auth-broker-gateway.html"><code>auth-broker-gateway.md</code></a> for the full protocol, CLI surface, and 5-min/15-s usage cache layering.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -509,7 +509,7 @@ material remains Anthropic-Foundry-specific.</p>
 </thead>
 <tbody>
 <tr><td><code>VEYYON_CACHE_RETENTION</code></td><td>If <code>long</code>, enables long retention where supported (<code>anthropic</code>, <code>openai-responses</code>, Bedrock retention resolution)</td></tr>
-<tr><td><code>VEYYON_CACHE_ENFORCEMENT</code></td><td>What happens when a request’s cache markers demonstrably did not take effect: <code>off</code>, <code>warn</code> (default), or <code>error</code>. <code>error</code> aborts the turn. Anthropic only. Overridden by an explicit per-request level, and the <code>cache.blockOnRejection</code> setting selects <code>error</code> through the same resolver. See <a href="./internal/prompt-caching.html">prompt caching</a>.</td></tr>
+<tr><td><code>VEYYON_CACHE_ENFORCEMENT</code></td><td>What happens when a request’s cache markers demonstrably did not take effect: <code>off</code>, <code>warn</code> (default), or <code>error</code>. <code>error</code> aborts the turn. Anthropic only. Overridden by an explicit per-request level, and the <code>cache.blockOnRejection</code> setting selects <code>error</code> through the same resolver. See <a href="../../../internal/prompt-caching.html">prompt caching</a>.</td></tr>
 </tbody>
 </table>
 </div>
@@ -667,7 +667,7 @@ rather than from each kernel formatting its own name.</li>
 <tr><td><code>VEYYON_REQ_DEBUG</code></td><td>If <code>1</code>, dumps every provider HTTP request and its response stream to <code>rr-session-&lt;n&gt;.json</code> and <code>rr-session-&lt;n&gt;.res.log</code> in the process working directory, mode <code>0600</code>. <strong>The dumps include request headers, so they contain credentials.</strong> A dump that cannot be written is logged and the request proceeds</td></tr>
 <tr><td><code>VEYYON_PROXY</code></td><td>Egress proxy URL for every provider request. <code>VEYYON_PROXY_&lt;PROVIDER&gt;</code> (the provider id uppercased with non-alphanumerics as <code>_</code>, e.g. <code>VEYYON_PROXY_GITHUB_COPILOT</code>) overrides it for one provider. Localhost, RFC1918, link-local and cloud metadata hosts always bypass the proxy, as do <code>NO_PROXY</code>/<code>no_proxy</code> matches</td></tr>
 <tr><td><code>VEYYON_EVAL_SYSTEM_PROMPT_SECTIONS</code></td><td><strong>Benchmark instrumentation, not an operator knob.</strong> A JSON object of section name to replacement text. When set, the benchmark payload becomes the only source of prompt sections and the run logs that the override is active. Invalid JSON fails the build</td></tr>
-<tr><td><code>VEYYON_EVAL_SYSTEM_PROMPT_STATEMENTS</code></td><td>The statement-level counterpart to the section override, same benchmark-only status. See <a href="./internal/system-prompt-architecture.html#the-two-escape-hatches-and-why-they-are-env-vars">system prompt architecture</a></td></tr>
+<tr><td><code>VEYYON_EVAL_SYSTEM_PROMPT_STATEMENTS</code></td><td>The statement-level counterpart to the section override, same benchmark-only status. See <a href="../../../internal/system-prompt-architecture.html#the-two-escape-hatches-and-why-they-are-env-vars">system prompt architecture</a></td></tr>
 </tbody>
 </table>
 </div>

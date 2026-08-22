@@ -1,7 +1,7 @@
 /**
  * No file this repository tracks spells out the home directory of the machine it was written on.
  *
- * WHY THIS SUITE EXISTS. Two recording scripts and one VHS tape shipped with an author's real home
+ * WHY THIS SUITE EXISTS. Three recording scripts shipped with an author's real home
  * path as a DEFAULT value (`TREES="${COMMIT_PROOF_TREES:-/media/<account>/.../worktrees/...}"`, an
  * `-e VEYYON_TEST_HOST_HOME=/home/<account>` argument, and a `Type "cd /media/<account>/..."` line).
  * This repository is public, so each one published the account name, and each one was also a broken
@@ -10,7 +10,7 @@
  *
  * THE CLASS, not the incident. The failure is a personal absolute path used where a variable, a
  * repository-relative path, or `$HOME` belongs. It reappears every time somebody pastes a working
- * command into a script, a tape, a fixture or a doc, which is a normal thing to do and is why a
+ * command into a script, a scene, a fixture or a doc, which is a normal thing to do and is why a
  * reviewer catching it once does not close it.
  *
  * HOW IT IS CHECKED, and why there is no account name in this file. The home directory is read at

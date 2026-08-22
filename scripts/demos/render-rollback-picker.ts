@@ -10,7 +10,7 @@
  * `RollbackPickerComponent` with the real theme, not a mock of it: the point of
  * a visual proof is that the pixels come from the code that ships.
  *
- * Usage, from a VHS tape or by hand:
+ * Usage:
  *
  *     bun scripts/demos/render-rollback-picker.ts [--theme titanium|light] [--width 100] [--filtered]
  *

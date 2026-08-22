@@ -57,11 +57,10 @@ export interface PathCheckResult {
  * `~/.veyyon/config.yml`, `and/or`, other projects' trees. Anchoring on real
  * top-level directories is what keeps the gate's failures worth reading.
  *
- * `.veyyon/` is deliberately absent, even though it is a real tracked directory.
- * It names two different things in this repo's docs and only one of them is a
- * file here: `.veyyon/skills/ui` is tracked, while `.veyyon/mcp.json`,
- * `.veyyon/settings.json` and `.veyyon/RULES.md` are files a USER creates in
- * THEIR project. Every page that teaches project configuration writes the second
+ * `.veyyon/` is deliberately absent. In this repo's docs it names files a USER
+ * creates in THEIR project — `.veyyon/mcp.json`, `.veyyon/settings.json`,
+ * `.veyyon/RULES.md` — not files that exist here. Every page that teaches project
+ * configuration writes that
  * kind, so anchoring on the prefix produces a screenful of failures that are all
  * the documentation working correctly, and a gate whose failures are usually
  * wrong is a gate people turn off.
@@ -274,8 +273,6 @@ function resolvesFor(rootDir: string, relFile: string, target: string): boolean 
  * a stale entry is caught by `check-doc-paths.test.ts`.
  */
 export const DEAD_PATH_BASELINE: readonly string[] = Object.freeze([
-	".veyyon/skills/tool-prompt-optimization/SKILL.md:14:scripts/probe.ts",
-	".veyyon/skills/tool-prompt-optimization/SKILL.md:28:scripts/probe-builtin.ts",
 	"docs/handbook/src/context/context-files.md:64:.github/copilot-instructions.md",
 	"docs/handbook/src/context/context-files.md:67:.github/instructions/",
 	"docs/handbook/src/context/context-files.md:243:.github/copilot-instructions.md",

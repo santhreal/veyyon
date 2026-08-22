@@ -108,4 +108,4 @@ stopped was killed by the CPU budget, not a crash.
 
 - [Approvals](./sandbox.md)
 - [Non-interactive mode](./exec.md)
-- [Settings reference](../../../settings-reference.md)
+- [Settings reference](../reference/settings-reference.md)

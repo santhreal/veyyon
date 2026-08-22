@@ -350,7 +350,7 @@ Prefix caching is positional, so an edit invalidates everything **after** it, no
 | More than 5 minutes idle (`short`) or 1 hour (`long`) | the entry expires; the next turn is a cold write |
 
 Compaction is written to preserve the prefix rather than to minimize tokens for its own sake.
-[Compaction](../compaction.md) records the rule directly: a divergent prefix cold-misses the
+[Compaction](../handbook/src/architecture/compaction.md) records the rule directly: a divergent prefix cold-misses the
 provider prompt cache, so entries are rewritten through `rewriteEntries()` and a sub-floor tool
 result is never blanked, because the `[Output truncated - N tokens]` placeholder costs about 8
 tokens and pruning below that would grow the context and churn the cache for nothing.

@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-360535cc.js";
+            window.path_to_searchindex_js = "../searchindex-c9fd14eb.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-093df7ff.js"></script>
@@ -228,22 +228,20 @@ publish        Lanczos downsample to 1920x1080
 <p>The recorder keeps rehearsal output in the temporary directory it prints. Inspect the video and named frames there. Set <code>PUBLISH=1</code> only for a complete take whose frame guards all passed.</p>
 <p>The scene’s task prompt is static at <code>proof/prompts/demo-hd.md</code>. The scene stores the secret, submits that prompt once, and sends no phase-by-phase operator prompts; every later turn is the model’s own. A take is published only when every named frame guard passed, so a scene whose model does not reach a guarded surface produces a rehearsal and nothing else.</p>
 <p>The archived take remains at capture speed. The landing-page cut keeps the plan, the worker setup, verification and signing at 1×. Visible implementation between the worker launch and the verified build plays at 1.25×. Named marks in the take select those boundaries; untouched screens are shortened to four seconds rather than accelerated.</p>
-<h3 id="vhs-settings-captures"><a class="header" href="#vhs-settings-captures">VHS settings captures</a></h3>
-<p>Use the same baseline for settings differentials:</p>
-<pre><code class="language-tape">Set Shell bash
-Set FontSize 22
-Set Width 1400
-Set Height 720
-Set Padding 30
-Set Margin 40
-Set MarginFill "#000000"
-Set BorderRadius 0
-Set Framerate 30
-Set TypingSpeed 55ms
-Set CursorBlink false
-Set Theme { "name": "veyyon", "black": "#000000", "background": "#000000", "foreground": "#C6CBD4", "cursor": "#F0862E" }
+<h3 id="settings-differentials"><a class="header" href="#settings-differentials">Settings differentials</a></h3>
+<p>A settings change proves with two frames of the settings screen recorded from the
+same scene, one with the setting at its default and one with the operator’s value.
+<code>SCENE_SETTINGS</code> appends config-file lines to the seeded home before the session
+starts, so each arm is seeded rather than toggled by a keybinding that may not land:</p>
+<pre><code class="language-sh">OUT_DIR=proof/captures/x11/off \
+  proof/docker/record-x11.sh proof/scenes/settings-pointer.sh
+
+OUT_DIR=proof/captures/x11/on SCENE_SETTINGS='argot.enabled: true' \
+  proof/docker/record-x11.sh proof/scenes/settings-pointer.sh
 </code></pre>
-<p>Drive both states from one script. Seed each setting explicitly before capture. Restore the default after the pair is written.</p>
+<p>Both arms run the same scene at the same window size, so the only difference between
+them is the setting. A pair whose two frames are byte-identical, or whose “on” arm
+does not show the value in effect, is a failed proof.</p>
 <h3 id="before-and-after-pairs-for-a-ui-change"><a class="header" href="#before-and-after-pairs-for-a-ui-change">Before-and-after pairs for a UI change</a></h3>
 <p>A change to a visible surface proves with two frames of the same scene, one on the
 tree without the change and one on the tree with it.</p>
@@ -279,8 +277,7 @@ that the block is positioned, sized and clipped the way a session draws it. It d
 not satisfy an evidence requirement. Write the file to a temporary path.</p>
 <p><code>scripts/an-off-screen-raster-never-enters-assets.test.ts</code> pins the raster set under
 <code>assets/</code> by exact equality, so the list only shrinks, and fails on a demo driver
-that writes a render into <code>assets/</code>. Drivers write outside the tracked tree;
-<code>scripts/demos/record-argot-settings.sh</code> is the shape a settings differential takes.</p>
+that writes a render into <code>assets/</code>. Drivers write outside the tracked tree.</p>
 <h2 id="related"><a class="header" href="#related">Related</a></h2>
 <ul>
 <li><a href="../repair/cascade.html">The repair cascade</a></li>

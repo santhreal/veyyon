@@ -17,7 +17,7 @@ The CLI is `veyyon`. It calls a configured model endpoint with your credentials 
 The foundations pages give the design spine without repeating the operator workflow.
 
 - [Architecture at a glance](../foundations/architecture.md) maps the subsystems to their responsibilities.
-- For provider and model configuration, see [Providers](../models/providers.md) and [`docs/handbook/src/reference/providers.md`](../../../providers.md).
+- For provider and model configuration, see [Providers](../models/providers.md) and [`docs/handbook/src/reference/providers.md`](../reference/providers.md).
 
 ## How the pieces fit
 

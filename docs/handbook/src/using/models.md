@@ -48,7 +48,7 @@ selectable when it is not in `disabledProviders` **and** it is keyless or has re
 
 | Provider id | Notes |
 | --- | --- |
-| `anthropic`, `openai`, `google`, `groq`, … | Cloud providers; set the env var. Some (for example `anthropic`) also support `/login <id>`; see [providers](../../../providers.md). |
+| `anthropic`, `openai`, `google`, `groq`, … | Cloud providers; set the env var. Some (for example `anthropic`) also support `/login <id>`; see [providers](../reference/providers.md). |
 | `amazon-bedrock` | Uses the AWS credential chain (`AWS_PROFILE`, instance role, …). |
 | `ollama`, `lm-studio`, `llama.cpp` | Local engines, discovered automatically and keyless by default. |
 

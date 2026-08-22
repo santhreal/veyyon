@@ -4,8 +4,10 @@
 
 The capture configuration is
 [`docs/handbook/src/foundations/verification.md`](docs/handbook/src/foundations/verification.md).
-It is the single authority: the HD recorder for a real interactive session, and the
-VHS baseline block for a settings or screen capture. Read it and use it verbatim.
+It is the single authority: one capture path, the HD recorder driving a scene under
+`proof/scenes/`, for a session, a screen and a settings differential alike, and it
+carries the terminal, font, canvas and colour configuration every capture uses.
+Read it and use it verbatim.
 **There are no fallbacks.** A screenshot or an animation captured any other way is
 not evidence, does not satisfy any gate in this file, and cannot be called done.
 
@@ -38,9 +40,9 @@ are not wanted. The regeneration command belongs in the handbook page that owns 
 Both images must show the same surface, dimensions, terminal configuration, and state
 apart from the intended change.
 
-Both images MUST come from the official capture config above: an HD-recorder
-recording, a VHS tape on the documented baseline, or screenshots supplied by the
-operator. A static change proves with a PNG pair, an animation with a GIF pair, and
+Both images MUST come from the official capture config above: a recording made by
+the HD recorder driving a scene under `proof/scenes/`, or screenshots supplied by
+the operator. A static change proves with a PNG pair, an animation with a GIF pair, and
 an animation is never proved by a still. A tmux capture, an off-screen raster, a
 mock-up, one unpaired image, or two frames whose state differs for unrelated reasons
 does not satisfy the merge requirement.
@@ -97,8 +99,15 @@ A feature is not done when the code compiles. It is done when you can prove it w
 
 Every user-facing feature update lands with committed runnable artifacts and pull request proof:
 
-1. **A demo under `assets/tapes/` (see [`.veyyon/skills/INDEX.md`](.veyyon/skills/INDEX.md)) (committed).** A VHS tape or recording that drives the real feature end to end, the way a user would reach it. Not a unit test, not a snippet in a comment. Use [record-demo](.veyyon/skills/record-demo/SKILL.md) for mechanics and [prove-feature](.veyyon/skills/prove-feature/SKILL.md) when the demo must show a Veyyon-unique capability. Someone should be able to run it and watch the feature do its job, and watch it behave differently with the feature off vs on.
-2. **A settings differential: two screenshots, off and on (attached to the pull request body).** Capture the settings screen with the feature off, then with it on, so the pair shows the knob is wired, not just declared in a defaults table. Seed each state deterministically (`veyyon config set <path> <value>` before recording) rather than by pressing a toggle whose keybinding may not land; drive both from one tape run through a small driver so the pair regenerates together. Attach the pair to the pull request body. Proof screenshots are not committed into `assets/` and never appear in documentation. **A degenerate pair — the two shots identical, or the "on" shot not actually on — is a failed proof; check the bytes differ and the values changed.**
+1. **A scene under `proof/scenes/` (committed).** A script the HD recorder drives that
+   reaches the real feature end to end, the way a user would reach it. Not a unit test,
+   not a snippet in a comment. The environment every recording and screenshot runs in is
+   the capture configuration in
+   [`docs/handbook/src/foundations/verification.md`](docs/handbook/src/foundations/verification.md);
+   a UI pull request uses it and nothing else. Someone should be able to run the scene
+   and watch the feature do its job, and watch it behave differently with the feature
+   off vs on.
+2. **A settings differential: two frames, off and on (attached to the pull request body).** Capture the settings screen with the feature off, then with it on, so the pair shows the knob is wired, not just declared in a defaults table. Seed each state deterministically (`SCENE_SETTINGS` appends the config lines the arm needs) rather than by pressing a toggle whose keybinding may not land; record both arms from one scene so the pair regenerates together. Attach the pair to the pull request body. Proof frames are not committed into `assets/` and never appear in documentation. **A degenerate pair — the two shots identical, or the "on" shot not actually on — is a failed proof; check the bytes differ and the values changed.**
 3. **A bench with exact parity (committed).** Measure the feature on and off against the same corpus, same inputs, same seed. Report the exact numbers. "Exact parity" means the off-arm reproduces the pre-feature baseline to the token or the millisecond, so any delta is attributable to the feature and nothing else. A bench that cannot reproduce its own baseline proves nothing.
 
 Beyond these requirements, **assert every setting the feature adds actually works end to end** — the default is honored, each non-default value changes observable behavior, and an invalid value fails loud. A setting that appears in the defaults but never reaches behavior is a defect, the same class as a dead flag.
@@ -275,7 +284,7 @@ Argot is the codec that lets the model write short `§handle` tokens; veyyon exp
 - **The contract is absolute: a user NEVER sees a raw `§handle`.** That includes the live subagent HUD preview (`progress.recentOutput` in `task/executor.ts`), which decodes streamed deltas through `createSubagentStreamDecoder`. A raw handle reaching any display, tool, transcript, or the parent is a defect, not a cosmetic issue.
 - **Adding a new place the model's text crosses out of its history is adding a seam.** Route it through an `argot-wire.ts` function; if none fits, add one there (a thin delegate to `argot`), never a new codec call site scattered elsewhere.
 - Tests: `test/argot-subagent-*.test.ts` drive the real executor and prove each seam with a negative control (revert the expand → the handle leaks). Any new seam gets the same treatment.
-- **Argot meets the [10-minute proof rule](#proving-a-feature-the-10-minute-rule).** Its artifacts: the settings differential produced by `scripts/demos/record-argot-settings.sh` and carried in the pull request (the driver seeds `argot.enabled` off then on with `config set` and records the single-state tape `assets/tapes/argot-settings.tape` twice) — off shows only the "Argot Shorthand" master toggle, on shows it plus the four dependent knobs (Models, Dictionary Budget, Context Cutoff, Subagents), proving the `argotEnabled` condition hides them while off; and the live bench `packages/typescript-edit-benchmark/src/argot-bench.ts` (runs the edit tasks with encoding on and off and certifies the token delta). Every Argot setting is asserted end to end in `test/argot-settings-e2e.test.ts` (the operator's value binds through the real `Settings` into the gate and the codec, and a disabled-vs-enabled test asserts the knobs are hidden while off). Keep all of these current when you touch Argot.
+- **Argot meets the [10-minute proof rule](#proving-a-feature-the-10-minute-rule).** Its artifacts: the settings differential recorded from `proof/scenes/settings-pointer.sh` and carried in the pull request (the off arm runs with the default and the on arm with `SCENE_SETTINGS='argot.enabled: true'`) — off shows only the "Argot Shorthand" master toggle, on shows it plus the four dependent knobs (Models, Dictionary Budget, Context Cutoff, Subagents), proving the `argotEnabled` condition hides them while off; and the live bench `packages/typescript-edit-benchmark/src/argot-bench.ts` (runs the edit tasks with encoding on and off and certifies the token delta). Every Argot setting is asserted end to end in `test/argot-settings-e2e.test.ts` (the operator's value binds through the real `Settings` into the gate and the codec, and a disabled-vs-enabled test asserts the knobs are hidden while off). Keep all of these current when you touch Argot.
 
 ## Commands
 

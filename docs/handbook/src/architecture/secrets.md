@@ -200,7 +200,7 @@ Entries without a name get a generated name (`SECRET_1`), so every vault entry h
 
 ### Completing `/secret`
 
-Argument completion offers the subcommands and nothing else, derived from `SECRET_TUI_SUBCOMMANDS`, which the parser builds from the same table it routes with. A verb cannot be typeable and unoffered, and a word cannot be offered and unparseable. The operator-facing account is [Managing what you stored](./handbook/src/features/secrets.md#managing-what-you-stored).
+Argument completion offers the subcommands and nothing else, derived from `SECRET_TUI_SUBCOMMANDS`, which the parser builds from the same table it routes with. A verb cannot be typeable and unoffered, and a word cannot be offered and unparseable. The operator-facing account is [Managing what you stored](../features/secrets.md#managing-what-you-stored).
 
 No stored NAME is ever offered. Completing one from `session.obfuscator.namedSecretNames()` renders part of the vault on a keystroke, and accepting a suggestion writes it onto a line whose first word decides between a command and a credential, so a fumbled verb would store the suggestion instead of running it. `/secret list` is where names are read.
 
@@ -208,7 +208,7 @@ The prefix filter is what keeps the menu out of a paste. A pasted credential arr
 
 ### What the model is told about a stored secret
 
-The operator-facing account is [What the agent knows, and when](./handbook/src/features/secrets.md#what-the-agent-knows-and-when). Two mechanisms carry it, with different jobs.
+The operator-facing account is [What the agent knows, and when](../features/secrets.md#what-the-agent-knows-and-when). Two mechanisms carry it, with different jobs.
 
 **The inventory** is a system-prompt section. `SecretObfuscator.namedSecretNames()` returns every readable name the live runtime can expand, sorted, and never a value. It calls `#forgetExpired()` first, so a name stops being answered at the moment it stops working. That list becomes an optional option-backed runtime section registered in `RUNTIME_SECTIONS` (`system-prompt-builder/section-registry.ts`) and supplied where `sdk.ts` calls the system-prompt builder, beside `secretsEnabled`. `AgentSession.refreshSecrets()` reloads the runtime and rebuilds the base prompt, which is what makes a removed or expired name stop appearing.
 
@@ -436,4 +436,4 @@ Environment variables are collected first, then file-defined entries are appende
 
 ## See also
 
-- [`auth-broker-gateway.md`](./internal/auth-broker-gateway.md) -- remote credential vault and forward-proxy that keep provider OAuth refresh tokens and access tokens off developer hosts entirely (complementary to in-process obfuscation).
+- [`auth-broker-gateway.md`](../../../internal/auth-broker-gateway.md) -- remote credential vault and forward-proxy that keep provider OAuth refresh tokens and access tokens off developer hosts entirely (complementary to in-process obfuscation).

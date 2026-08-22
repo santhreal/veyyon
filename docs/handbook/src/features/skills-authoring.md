@@ -12,7 +12,7 @@ Skills load only from the active profile. Veyyon reads these locations, all unde
 | Managed | `$HOME/.veyyon/profiles/<profile>/agent/managed-skills` | Auto-learn skills Veyyon writes itself. A same-named user skill always wins. |
 | Plugins | plugins installed into the active profile | Skills bundled with a plugin you added to this profile. |
 
-Nothing else contributes skills. A project-local `.veyyon/skills` directory and another tool's skill directory (`$HOME/.claude/skills`, `$HOME/.codex/skills`, `$HOME/.agents/skills`, and the rest) are never scanned. To use a skill from another tool, import it into your profile, see [Skills](../reference/skills.md#importing-another-tools-skills). For the full provider list and dedup rules, see [Skills](../reference/skills.md#skill-locations).
+Nothing else contributes skills. A project-local `.veyyon/skills` directory and another tool's skill directory (`$HOME/.claude/skills`, `$HOME/.codex/skills`, `$HOME/.agents/skills`, and the rest) are never scanned. To use a skill from another tool, import it into your profile, see [Skills](../reference/skills.md#foreign-providers-are-import-only). For the full provider list and dedup rules, see [Skills](../reference/skills.md#discovery-pipeline).
 
 Create a new skill by making a directory inside the profile's `skills` dir and adding a `SKILL.md` file. The name of the directory is the default name of the skill.
 

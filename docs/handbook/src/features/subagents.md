@@ -333,4 +333,4 @@ settings, capabilities or plugins, because those are read once for the process. 
 subagent a task in another project only when the work is self-contained, and re-root
 your own session instead when you want that project's configuration to apply.
 
-The full key list is in the [settings reference](../../../settings.md#subagents).
+The full key list is in the [settings reference](../reference/settings.md#subagents).

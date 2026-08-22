@@ -15,7 +15,7 @@ When no LSP config file is present, Veyyon auto-detects servers by intersecting 
 1. The project directory contains at least one of the server's `rootMarkers`.
 2. The server binary is available: checked in project-local bin directories first (e.g., `node_modules/.bin/`, `.venv/bin/`), then `$PATH`.
 
-No configuration is required for common setups. The built-in server list covers most popular languages; see [`defaults.json`](../packages/coding-agent/src/lsp/defaults.json) for the full set.
+No configuration is required for common setups. The built-in server list covers most popular languages; see [`defaults.json`](../../../../packages/coding-agent/src/lsp/defaults.json) for the full set.
 
 ## Config file locations
 

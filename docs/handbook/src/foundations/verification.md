@@ -46,26 +46,24 @@ The scene's task prompt is static at `proof/prompts/demo-hd.md`. The scene store
 
 The archived take remains at capture speed. The landing-page cut keeps the plan, the worker setup, verification and signing at 1×. Visible implementation between the worker launch and the verified build plays at 1.25×. Named marks in the take select those boundaries; untouched screens are shortened to four seconds rather than accelerated.
 
-### VHS settings captures
+### Settings differentials
 
-Use the same baseline for settings differentials:
+A settings change proves with two frames of the settings screen recorded from the
+same scene, one with the setting at its default and one with the operator's value.
+`SCENE_SETTINGS` appends config-file lines to the seeded home before the session
+starts, so each arm is seeded rather than toggled by a keybinding that may not land:
 
-```tape
-Set Shell bash
-Set FontSize 22
-Set Width 1400
-Set Height 720
-Set Padding 30
-Set Margin 40
-Set MarginFill "#000000"
-Set BorderRadius 0
-Set Framerate 30
-Set TypingSpeed 55ms
-Set CursorBlink false
-Set Theme { "name": "veyyon", "black": "#000000", "background": "#000000", "foreground": "#C6CBD4", "cursor": "#F0862E" }
+```sh
+OUT_DIR=proof/captures/x11/off \
+  proof/docker/record-x11.sh proof/scenes/settings-pointer.sh
+
+OUT_DIR=proof/captures/x11/on SCENE_SETTINGS='argot.enabled: true' \
+  proof/docker/record-x11.sh proof/scenes/settings-pointer.sh
 ```
 
-Drive both states from one script. Seed each setting explicitly before capture. Restore the default after the pair is written.
+Both arms run the same scene at the same window size, so the only difference between
+them is the setting. A pair whose two frames are byte-identical, or whose "on" arm
+does not show the value in effect, is a failed proof.
 
 ### Before-and-after pairs for a UI change
 
@@ -115,8 +113,7 @@ not satisfy an evidence requirement. Write the file to a temporary path.
 
 `scripts/an-off-screen-raster-never-enters-assets.test.ts` pins the raster set under
 `assets/` by exact equality, so the list only shrinks, and fails on a demo driver
-that writes a render into `assets/`. Drivers write outside the tracked tree;
-`scripts/demos/record-argot-settings.sh` is the shape a settings differential takes.
+that writes a render into `assets/`. Drivers write outside the tracked tree.
 
 ## Related
 

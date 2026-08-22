@@ -3,8 +3,8 @@
 #
 #   proof/docker/record-x11-before.sh proof/scenes/<name>.sh
 #
-# Same hold-and-restore as record-before.sh, driving the video recorder instead
-# of the vhs one: every source file the branch changed is held at its `main`
+# The before arm holds the branch's changes back: every source file the branch
+# changed is held at its `main`
 # content for the length of the run, restored from an in-memory copy afterwards,
 # and the restore proved by comparing sha256 before and after. No git mutation
 # command is used — `git show` only reads — and the working tree ends

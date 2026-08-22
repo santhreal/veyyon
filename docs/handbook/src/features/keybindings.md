@@ -37,7 +37,7 @@ Common action IDs include `app.model.cycleForward`, `app.model.select`, `app.pla
 `app.editor.external` (`Ctrl+G`), `app.message.followUp`, `app.retry`, `app.display.reset`, and
 `app.clipboard.pasteImage`.
 
-Engineering detail: [`docs/handbook/src/reference/keybindings-config.md`](../../../keybindings.md).
+Engineering detail: [`docs/handbook/src/reference/keybindings-config.md`](../reference/keybindings-config.md).
 
 ## Slash commands
 

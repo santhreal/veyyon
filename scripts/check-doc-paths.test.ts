@@ -74,15 +74,15 @@ describe("looksLikeSourcePath", () => {
 	});
 
 	/**
-	 * `.veyyon/` is deliberately not a source root. It names a tracked directory
-	 * (`.veyyon/skills/`) AND the config a USER writes in their own project
-	 * (`.veyyon/mcp.json`), and every configuration doc teaches the second. Treating
-	 * the prefix as a repo path turns a whole page of correct documentation red.
+	 * `.veyyon/` is deliberately not a source root. In this repo's docs it names the
+	 * config a USER writes in their own project (`.veyyon/mcp.json`,
+	 * `.veyyon/RULES.md`), and every configuration doc teaches that. Treating the
+	 * prefix as a repo path turns a whole page of correct documentation red.
 	 */
 	it("does not treat project-config paths as repo paths", () => {
 		expect(looksLikeSourcePath(".veyyon/mcp.json")).toBe(false);
 		expect(looksLikeSourcePath(".veyyon/settings.json")).toBe(false);
-		expect(looksLikeSourcePath(".veyyon/skills/ui/SKILL.md")).toBe(false);
+		expect(looksLikeSourcePath(".veyyon/RULES.md")).toBe(false);
 	});
 });
 

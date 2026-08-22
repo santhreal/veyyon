@@ -402,7 +402,7 @@ Keyless providers:
 
 When `VEYYON_AUTH_BROKER_URL` (or `auth.broker.url`) is set, the local SQLite credential store is replaced by `RemoteAuthCredentialStore`. Layers 2 and 3 above (stored API key / OAuth in `agent.db`) are served from a broker-supplied snapshot whose `refresh` tokens are redacted; expiry triggers `POST /v1/credential/:id/refresh` on the broker rather than a local refresh.
 
-`AuthStorage.setConfigApiKey` lets a `models.yml` `apiKey` win over a broker-resolved OAuth token without overriding a runtime `--api-key`. See [`auth-broker-gateway.md`](./internal/auth-broker-gateway.md) for the full broker / gateway design and env surface (`VEYYON_AUTH_BROKER_URL`, `VEYYON_AUTH_BROKER_TOKEN`, `auth.broker.url`, `auth.broker.token`).
+`AuthStorage.setConfigApiKey` lets a `models.yml` `apiKey` win over a broker-resolved OAuth token without overriding a runtime `--api-key`. See [`auth-broker-gateway.md`](../../../internal/auth-broker-gateway.md) for the full broker / gateway design and env surface (`VEYYON_AUTH_BROKER_URL`, `VEYYON_AUTH_BROKER_TOKEN`, `auth.broker.url`, `auth.broker.token`).
 
 ## Model availability vs all models
 
@@ -576,7 +576,7 @@ The built-in model policy currently links OpenAI `codex-spark` variants to `gpt-
 
 The `compat` block on a provider or model overrides the URL-based auto-detection in `packages/catalog/src/compat/openai.ts` (`buildOpenAICompat`). It is validated by `OpenAICompatSchema` in `packages/coding-agent/src/config/models-config-schema.ts` and consumed by every `openai-completions` transport (`packages/ai/src/providers/openai-completions.ts`). The canonical type is `OpenAICompat` in `packages/catalog/src/types.ts`.
 
-Endpoint-specific exceptions that interact with these fields are cataloged in [Provider endpoint constraints](./internal/provider-endpoint-constraints.md).
+Endpoint-specific exceptions that interact with these fields are cataloged in [Provider endpoint constraints](../../../internal/provider-endpoint-constraints.md).
 
 `models.yml` accepts the following keys (all optional; unset falls back to URL detection):
 
@@ -661,7 +661,7 @@ providers:
 Tool schemas going on the wire are normalized by the unified flow in
 `packages/ai/src/utils/schema/normalize.ts` (Google/CCA/MCP dispatchers
 plus the OpenAI strict-mode sanitize+enforce pipeline). See
-[`ai-schema-normalize.md`](./internal/ai-schema-normalize.md) for the strict-mode
+[`ai-schema-normalize.md`](../../../internal/ai-schema-normalize.md) for the strict-mode
 edge cases (local `$ref` inlining, single-item `allOf` collapse,
 `anyOf`-wrapper description hoist, enum/const primitive-type inference)
 and the per-provider dispatcher mapping.

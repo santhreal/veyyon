@@ -347,7 +347,7 @@ enabledModels:
 | `disabledProviders` | array | `[]` | Disabled model/discovery providers; supports path-scoped entries. See [above](#provider-and-source-disabling). |
 | `includeModelInPrompt` | boolean | `false` | Include the active model name in the system prompt. Off by default: the name sits in the cached prefix, so switching models re-prefills the whole block. |
 
-See [Models](./models-yml.md) for the `models.yml` schema and custom-provider definitions. Handbook: [Models, roles, and profiles](./handbook/src/using/roles-and-profiles.md) (under `docs/handbook/src/using/`).
+See [Models](./models-yml.md) for the `models.yml` schema and custom-provider definitions. Handbook: [Models, roles, and profiles](../using/roles-and-profiles.md) (under `docs/handbook/src/using/`).
 
 ### Advisor
 
@@ -751,7 +751,7 @@ They used to open a separate screen with its own roster, which meant two answers
 | `subagent.softRequestBudgetNotice` | boolean | `true` | Inject that wrap-up notice once. |
 | `subagent.showResolvedModelBadge` | boolean | `true` | Show each subagent's resolved model, and what decided it, on the task widget and the agent surfaces. |
 | `subagent.enableLsp` | boolean | `false` | Let subagents use the `lsp` tool. |
-| `subagent.isolation.mode` | enum | `none` | Filesystem isolation backend for subagents. See [Safety](./handbook/src/using/safety.md). |
+| `subagent.isolation.mode` | enum | `none` | Filesystem isolation backend for subagents. See [Safety](../using/safety.md). |
 | `subagent.isolation.merge` | enum | `patch` | How isolated changes come back: `patch` or `branch`. |
 | `subagent.isolation.commits` | enum | `generic` | Commit message style for nested repo changes. |
 
@@ -896,7 +896,7 @@ memory:
 | `autolearn.enabled` | boolean | `false` | Experimental: after the agent stops, nudge it to capture lessons to memory and create/enhance isolated managed skills under `~/.veyyon/profiles/default/agent/managed-skills`. Enables the `manage_skill` tool (and `learn` when a memory backend is active). |
 | `autolearn.autoContinue` | boolean | `false` | When `autolearn.enabled`, auto-run one capture turn at stop (uses extra tokens). Off = a passive reminder rides your next turn. |
 | `autolearn.minToolCalls` | number | `5` | Only nudge after a turn that used at least this many tools. |
-| `session.instrumentation` | enum | `off` | How densely a run records study records on the session file, for after-the-fact analysis and backtesting. Graded: `off` stores nothing extra; `basic` adds wall-clock (start, end, duration, and time-to-first-token for model turns); `rich` adds output weight (result bytes/tokens) and per-turn throughput (tokens/sec); `ultra` adds an arguments fingerprint, cache read/write tokens, reasoning tokens, and upstream provider. It records BOTH per-tool-call metrics (`message.metrics`) AND per-model-turn metrics and the exact request params sent (`message.turnMetrics` / `message.request`). The `dev` profile preset (`veyyon profile new dev --from dev`) sets this to `ultra`. See [the session instrumentation reference](./internal/session.md#session-instrumentation-structured-analysis) for the on-disk field tables and jq recipes. |
+| `session.instrumentation` | enum | `off` | How densely a run records study records on the session file, for after-the-fact analysis and backtesting. Graded: `off` stores nothing extra; `basic` adds wall-clock (start, end, duration, and time-to-first-token for model turns); `rich` adds output weight (result bytes/tokens) and per-turn throughput (tokens/sec); `ultra` adds an arguments fingerprint, cache read/write tokens, reasoning tokens, and upstream provider. It records BOTH per-tool-call metrics (`message.metrics`) AND per-model-turn metrics and the exact request params sent (`message.turnMetrics` / `message.request`). The `dev` profile preset (`veyyon profile new dev --from dev`) sets this to `ultra`. See [the session instrumentation reference](../../../internal/session.md#session-instrumentation-structured-analysis) for the on-disk field tables and jq recipes. |
 
 `compaction` has additional tuning keys (idle compaction, supersede/drop heuristics) visible in `veyyon config list`. See [Compaction](../architecture/compaction.md) for the full strategy reference.
 
@@ -944,7 +944,7 @@ tui:
 | `tui.hyperlinks` | enum | `auto` | `off`, `auto`, `always`. |
 | `tui.scrollIsolation` | boolean | `false` | Mouse wheel scrolls the transcript while the prompt stays pinned at the bottom of the window, with the scroll position drawn on the right edge of the transcript (`/settings` → Appearance → Display, Advanced). Scrolling back reaches the whole session, not just what is on screen. Off by default: turning it on means veyyon holds the mouse to read wheel events, and your terminal's own drag-to-select stops working while it does. With it on you select using shift+drag, or with `/copy`, which picks text or code from the conversation without the mouse. With it off the wheel drives the terminal's native scrollback, the whole window scrolls with it including the prompt, and selection behaves as it does in any other program. |
 
-For a custom status line, set `statusLine.preset: custom` and configure `statusLine.leftSegments`, `statusLine.rightSegments`, and `statusLine.segmentOptions`. See the [status line reference](./handbook/src/features/cockpit.md#status-line) for the full list of segment IDs.
+For a custom status line, set `statusLine.preset: custom` and configure `statusLine.leftSegments`, `statusLine.rightSegments`, and `statusLine.segmentOptions`. See the [status line reference](../features/cockpit.md#status-line) for the full list of segment IDs.
 
 One segment is worth calling out: `profile` shows the active profile name (`work`, `rec`, a client sandbox) so you always know which profile's config, sessions, and keys are live. It hides on the built-in `default` profile, so a vanilla status line is unchanged, and every built-in preset already includes it.
 

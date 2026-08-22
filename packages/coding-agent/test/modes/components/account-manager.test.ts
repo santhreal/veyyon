@@ -545,7 +545,7 @@ describe("a long warning is clipped once, not twice", () => {
 /**
  * WHY: the card's own prose used to be truncated to the pane width, and the pane is the NARROW half
  * of the split - the sidebar takes up to 30 columns plus its separator - so on a real terminal every
- * sentence the card writes itself lost its end. A VHS recording read
+ * sentence the card writes itself lost its end. A terminal recording read
  * `press x again to log out of Groq cr…`, which drops both which credential is about to go and that
  * `esc` backs out; `shared by every profile and session on thi…`, which drops the load-balancing
  * state the sentence exists to deliver; and `Anthropic · 3 accounts · 1 needs attenti…`, which cuts

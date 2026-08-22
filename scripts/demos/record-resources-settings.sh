@@ -16,7 +16,7 @@
 # The state is seeded through the real settings store inside the renderer, never by pressing the row,
 # so a broken keybinding cannot produce a passing capture. The capture path is the real component
 # rasterized off-screen (scripts/demos/render-proof.ts) rather than a terminal recording: it needs no
-# it needs no display and no ttyd, and it renders on BOTH a grey ground and a black one. Attach the
+# it needs no display, and it renders on BOTH a grey ground and a black one. Attach the
 # resulting pair to the pull request body; evidence pairs are never committed.
 #
 # VEYYON_DEMO_OUT overrides the output directory (defaults to .captures/resources-settings).

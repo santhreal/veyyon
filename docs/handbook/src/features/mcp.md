@@ -45,4 +45,4 @@ common connection errors, see [MCP server setup](../using/mcp-setup.md).
 
 - [MCP server setup](../using/mcp-setup.md): the configuration and troubleshooting guide
 - [MCP internals](../architecture/mcp.md): how the client is built
-- [`docs/handbook/src/reference/mcp-config.md`](../../../mcp-config.md): the engineering reference
+- [`docs/handbook/src/reference/mcp-config.md`](../reference/mcp-config.md): the engineering reference

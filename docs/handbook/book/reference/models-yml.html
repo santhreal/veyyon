@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-360535cc.js";
+            window.path_to_searchindex_js = "../searchindex-c9fd14eb.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-093df7ff.js"></script>
@@ -543,7 +543,7 @@ from <code>baseUrl</code> before appending <code>/v1/messages</code>, so a singl
 </ul>
 <h3 id="broker-mode"><a class="header" href="#broker-mode">Broker mode</a></h3>
 <p>When <code>VEYYON_AUTH_BROKER_URL</code> (or <code>auth.broker.url</code>) is set, the local SQLite credential store is replaced by <code>RemoteAuthCredentialStore</code>. Layers 2 and 3 above (stored API key / OAuth in <code>agent.db</code>) are served from a broker-supplied snapshot whose <code>refresh</code> tokens are redacted; expiry triggers <code>POST /v1/credential/:id/refresh</code> on the broker rather than a local refresh.</p>
-<p><code>AuthStorage.setConfigApiKey</code> lets a <code>models.yml</code> <code>apiKey</code> win over a broker-resolved OAuth token without overriding a runtime <code>--api-key</code>. See <a href="./internal/auth-broker-gateway.html"><code>auth-broker-gateway.md</code></a> for the full broker / gateway design and env surface (<code>VEYYON_AUTH_BROKER_URL</code>, <code>VEYYON_AUTH_BROKER_TOKEN</code>, <code>auth.broker.url</code>, <code>auth.broker.token</code>).</p>
+<p><code>AuthStorage.setConfigApiKey</code> lets a <code>models.yml</code> <code>apiKey</code> win over a broker-resolved OAuth token without overriding a runtime <code>--api-key</code>. See <a href="../../../internal/auth-broker-gateway.html"><code>auth-broker-gateway.md</code></a> for the full broker / gateway design and env surface (<code>VEYYON_AUTH_BROKER_URL</code>, <code>VEYYON_AUTH_BROKER_TOKEN</code>, <code>auth.broker.url</code>, <code>auth.broker.token</code>).</p>
 <h2 id="model-availability-vs-all-models"><a class="header" href="#model-availability-vs-all-models">Model availability vs all models</a></h2>
 <ul>
 <li><code>getAll()</code> returns the loaded model registry (built-in + merged custom + discovered).</li>
@@ -684,7 +684,7 @@ disabledProviders:
 <p>The built-in model policy currently links OpenAI <code>codex-spark</code> variants to <code>gpt-5.5</code>, and <code>gpt-5.5</code> to <code>gpt-5.4</code>, when that target exists on the same provider/API.</p>
 <h2 id="compatibility-and-routing-fields"><a class="header" href="#compatibility-and-routing-fields">Compatibility and routing fields</a></h2>
 <p>The <code>compat</code> block on a provider or model overrides the URL-based auto-detection in <code>packages/catalog/src/compat/openai.ts</code> (<code>buildOpenAICompat</code>). It is validated by <code>OpenAICompatSchema</code> in <code>packages/coding-agent/src/config/models-config-schema.ts</code> and consumed by every <code>openai-completions</code> transport (<code>packages/ai/src/providers/openai-completions.ts</code>). The canonical type is <code>OpenAICompat</code> in <code>packages/catalog/src/types.ts</code>.</p>
-<p>Endpoint-specific exceptions that interact with these fields are cataloged in <a href="./internal/provider-endpoint-constraints.html">Provider endpoint constraints</a>.</p>
+<p>Endpoint-specific exceptions that interact with these fields are cataloged in <a href="../../../internal/provider-endpoint-constraints.html">Provider endpoint constraints</a>.</p>
 <p><code>models.yml</code> accepts the following keys (all optional; unset falls back to URL detection):</p>
 <p>Request shaping:</p>
 <ul>
@@ -758,7 +758,7 @@ disabledProviders:
 <p>Tool schemas going on the wire are normalized by the unified flow in
 <code>packages/ai/src/utils/schema/normalize.ts</code> (Google/CCA/MCP dispatchers
 plus the OpenAI strict-mode sanitize+enforce pipeline). See
-<a href="./internal/ai-schema-normalize.html"><code>ai-schema-normalize.md</code></a> for the strict-mode
+<a href="../../../internal/ai-schema-normalize.html"><code>ai-schema-normalize.md</code></a> for the strict-mode
 edge cases (local <code>$ref</code> inlining, single-item <code>allOf</code> collapse,
 <code>anyOf</code>-wrapper description hoist, enum/const primitive-type inference)
 and the per-provider dispatcher mapping.</p>

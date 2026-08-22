@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-360535cc.js";
+            window.path_to_searchindex_js = "../searchindex-c9fd14eb.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-093df7ff.js"></script>
@@ -200,16 +200,16 @@
 <p>The advisor is not a second executor: it cannot approve actions or change primary session state directly. Its default toolset is read-only (<code>read</code>, <code>grep</code>, <code>glob</code>) plus <code>advise</code>, but a <code>WATCHDOG.yml</code> roster entry may broaden <code>tools:</code> to any built-in, including mutating tools such as <code>edit</code>, <code>write</code>, <code>bash</code>, <code>eval</code>, and <code>browser</code>, so grant those tools only when the advisor model and workspace are trusted (see <a href="#tools-and-isolation">Tools and isolation</a>).</p>
 <h2 id="implementation-files"><a class="header" href="#implementation-files">Implementation files</a></h2>
 <ul>
-<li><a href="../packages/coding-agent/src/advisor/runtime.ts"><code>src/advisor/runtime.ts</code></a></li>
-<li><a href="../packages/coding-agent/src/advisor/advise-tool.ts"><code>src/advisor/advise-tool.ts</code></a></li>
-<li><a href="../packages/coding-agent/src/advisor/emission-guard.ts"><code>src/advisor/emission-guard.ts</code></a></li>
-<li><a href="../packages/coding-agent/src/advisor/watchdog.ts"><code>src/advisor/watchdog.ts</code></a></li>
-<li><a href="../packages/coding-agent/src/advisor/transcript-recorder.ts"><code>src/advisor/transcript-recorder.ts</code></a></li>
-<li><a href="../packages/coding-agent/src/prompts/advisor/system.html"><code>src/prompts/advisor/system.md</code></a></li>
-<li><a href="../packages/coding-agent/src/prompts/advisor/advise-tool.html"><code>src/prompts/advisor/advise-tool.md</code></a></li>
-<li><a href="../packages/coding-agent/src/session/agent-session.ts"><code>src/session/agent-session.ts</code></a></li>
-<li><a href="../packages/coding-agent/src/slash-commands/builtin-registry.ts"><code>src/slash-commands/builtin-registry.ts</code></a></li>
-<li><a href="../packages/coding-agent/src/config/settings-schema.ts"><code>src/config/settings-schema.ts</code></a></li>
+<li><a href="../../../../packages/coding-agent/src/advisor/runtime.ts"><code>src/advisor/runtime.ts</code></a></li>
+<li><a href="../../../../packages/coding-agent/src/advisor/advise-tool.ts"><code>src/advisor/advise-tool.ts</code></a></li>
+<li><a href="../../../../packages/coding-agent/src/advisor/emission-guard.ts"><code>src/advisor/emission-guard.ts</code></a></li>
+<li><a href="../../../../packages/coding-agent/src/advisor/watchdog.ts"><code>src/advisor/watchdog.ts</code></a></li>
+<li><a href="../../../../packages/coding-agent/src/advisor/transcript-recorder.ts"><code>src/advisor/transcript-recorder.ts</code></a></li>
+<li><a href="../../../../packages/coding-agent/src/prompts/advisor/system.html"><code>src/prompts/advisor/system.md</code></a></li>
+<li><a href="../../../../packages/coding-agent/src/prompts/advisor/advise-tool.html"><code>src/prompts/advisor/advise-tool.md</code></a></li>
+<li><a href="../../../../packages/coding-agent/src/session/agent-session.ts"><code>src/session/agent-session.ts</code></a></li>
+<li><a href="../../../../packages/coding-agent/src/slash-commands/builtin-registry.ts"><code>src/slash-commands/builtin-registry.ts</code></a></li>
+<li><a href="../../../../packages/coding-agent/src/config/settings-schema.ts"><code>src/config/settings-schema.ts</code></a></li>
 </ul>
 <hr>
 <h2 id="enabling-the-advisor"><a class="header" href="#enabling-the-advisor">Enabling the advisor</a></h2>
@@ -261,7 +261,7 @@ advisor:
 <li><code>grep</code></li>
 <li><code>glob</code></li>
 </ul>
-<p>A <code>WATCHDOG.yml</code> roster entry may broaden this with <code>tools: [...]</code>, selecting any subset of the built-in pool the session actually built (a factory that returned <code>null</code>, e.g. <code>lsp</code> with no matching servers, is absent). Grantable tools include mutating ones: <code>edit</code>, <code>write</code>, <code>bash</code>, <code>eval</code>, <code>browser</code>, <code>debug</code>, <code>ast_edit</code>, <code>task</code>, <code>job</code>, and the memory tools. Tool names outside <a href="../packages/coding-agent/src/tools/builtin-names.ts"><code>BUILTIN_TOOL_NAMES</code></a> are dropped with a warning.</p>
+<p>A <code>WATCHDOG.yml</code> roster entry may broaden this with <code>tools: [...]</code>, selecting any subset of the built-in pool the session actually built (a factory that returned <code>null</code>, e.g. <code>lsp</code> with no matching servers, is absent). Grantable tools include mutating ones: <code>edit</code>, <code>write</code>, <code>bash</code>, <code>eval</code>, <code>browser</code>, <code>debug</code>, <code>ast_edit</code>, <code>task</code>, <code>job</code>, and the memory tools. Tool names outside <a href="../../../../packages/coding-agent/src/tools/builtin-names.ts"><code>BUILTIN_TOOL_NAMES</code></a> are dropped with a warning.</p>
 <p>Advisor grants are not routed through the primary agent’s approval wrapper. The advisor pool is built from the built-in tool factories against its own <code>-advisor</code> <code>ToolSession</code> and then filtered by <code>WATCHDOG.yml</code>; it is not the primary <code>toolRegistry</code> wrapped with <code>ExtensionToolWrapper</code>. Granting write- or exec-tier tools therefore lets the advisor invoke those tools directly, subject to the tool’s own runtime guards but not to <code>tools.approvalMode</code> / <code>tools.approval.&lt;tool&gt;</code> prompts. Keep mutating grants narrow and trusted.</p>
 <p>The <code>advise</code> tool accepts one note and an optional severity:</p>
 <div class="table-wrapper">
@@ -389,7 +389,7 @@ advisors:
 <li><code>instructions</code> (top level): shared prompt prepended to every advisor’s system prompt alongside <code>WATCHDOG.md</code>. Concatenated across all discovered <code>WATCHDOG.yml</code> files.</li>
 <li><code>advisors[].name</code>: human label; slugified for the session id and the <code>&lt;session&gt;/__advisor.jsonl</code> filename. Duplicate slugs across files are resolved by the same specificity rule as <code>WATCHDOG.md</code> discovery (project leaf &gt; project ancestor &gt; user).</li>
 <li><code>advisors[].model</code>: optional model selector with optional <code>:level</code> thinking suffix (e.g. <code>x-ai/grok-code-fast:high</code>). Omitted → the advisor uses <code>modelRoles.advisor</code>.</li>
-<li><code>advisors[].tools</code>: optional list of built-in tool names to grant. Omitted or empty → the default <code>read</code>/<code>grep</code>/<code>glob</code> subset. Any name in <a href="../packages/coding-agent/src/tools/builtin-names.ts"><code>BUILTIN_TOOL_NAMES</code></a> is accepted, including mutating tools (<code>edit</code>, <code>write</code>, <code>bash</code>, <code>eval</code>, <code>browser</code>, <code>debug</code>, <code>ast_edit</code>, <code>task</code>, <code>job</code>, and the memory tools). Legacy aliases (<code>search</code>→<code>grep</code>, <code>find</code>→<code>glob</code>) are normalized. Unknown names are dropped with a warning. See <a href="#tools-and-isolation">Tools and isolation</a> for the safety implications of granting mutating tools.</li>
+<li><code>advisors[].tools</code>: optional list of built-in tool names to grant. Omitted or empty → the default <code>read</code>/<code>grep</code>/<code>glob</code> subset. Any name in <a href="../../../../packages/coding-agent/src/tools/builtin-names.ts"><code>BUILTIN_TOOL_NAMES</code></a> is accepted, including mutating tools (<code>edit</code>, <code>write</code>, <code>bash</code>, <code>eval</code>, <code>browser</code>, <code>debug</code>, <code>ast_edit</code>, <code>task</code>, <code>job</code>, and the memory tools). Legacy aliases (<code>search</code>→<code>grep</code>, <code>find</code>→<code>glob</code>) are normalized. Unknown names are dropped with a warning. See <a href="#tools-and-isolation">Tools and isolation</a> for the safety implications of granting mutating tools.</li>
 <li><code>advisors[].instructions</code>: this advisor’s specialization, appended after the shared baseline. Both instruction fields expand <code>@path</code> imports like <code>WATCHDOG.md</code>.</li>
 </ul>
 <h3 id="discovery-locations-1"><a class="header" href="#discovery-locations-1">Discovery locations</a></h3>

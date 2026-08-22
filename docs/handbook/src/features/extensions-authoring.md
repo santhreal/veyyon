@@ -209,7 +209,7 @@ pi.on("session_stop", async (event) => {
 });
 ```
 
-Full event catalog: see [extension authoring guide](../extensions.md).
+Full event catalog: see [extension authoring guide](extensions.md).
 
 ## Extension vs hook: when to use which
 

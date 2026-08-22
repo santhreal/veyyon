@@ -1138,9 +1138,10 @@ it, a card with eighteen empty rows: each of those renders as a perfectly valid
 string, and each is obvious the moment you look at a picture of the frame.
 
 **The evidence is a capture taken through the official config**, which is
-[verification.md](../handbook/src/foundations/verification.md): the HD recorder for
-a real interactive session, the VHS baseline block for a screen capture. There are
-no fallbacks. Never judge a visual change from a `tmux capture-pane` dump — tmux
+[verification.md](../handbook/src/foundations/verification.md): one capture path, the
+HD recorder driving a scene under `proof/scenes/`, for a session, a screen and a
+settings differential alike. There are no fallbacks. Never judge a visual change
+from a `tmux capture-pane` dump — tmux
 renders on a pure-black default ground, `capture-pane` strips and distorts styling,
 and the whole class of background-fill and contrast bug is invisible in it; a dump
 that looked fine there has shipped black slabs onto a grey terminal.
