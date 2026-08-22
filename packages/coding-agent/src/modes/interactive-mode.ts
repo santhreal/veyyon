@@ -2335,12 +2335,15 @@ export class InteractiveMode implements InteractiveModeContext {
 	 * clock.
 	 */
 	#syncAnchoredMotionTimer(): void {
-		const wanted = transitionsEnabled() && (this.#anchoredMotionOwed() || this.#todoSettleFrame !== undefined);
+		// `unref()` keeps the interval from holding the process open, which is not the same as
+		// being gone: a frozen mode that still owns one goes on stepping, rendering, and reading
+		// the settings singleton, and inside one test process that outlives the mode entirely.
+		const wanted =
+			!this.#frameProductionFrozen &&
+			transitionsEnabled() &&
+			(this.#anchoredMotionOwed() || this.#todoSettleFrame !== undefined);
 		if (!wanted) {
-			if (this.#anchoredMotionInterval) {
-				clearInterval(this.#anchoredMotionInterval);
-				this.#anchoredMotionInterval = undefined;
-			}
+			this.#cancelAnchoredMotionTimer();
 			return;
 		}
 		if (this.#anchoredMotionInterval) return;
@@ -2354,6 +2357,13 @@ export class InteractiveMode implements InteractiveModeContext {
 		}, RAIL_IDLE_STEP_MS);
 		// A chrome animation must never be the reason the process stays alive.
 		this.#anchoredMotionInterval.unref?.();
+	}
+
+	/** Disarms the anchored motion frame. Idempotent, so both the disarm path and the freeze call it. */
+	#cancelAnchoredMotionTimer(): void {
+		if (!this.#anchoredMotionInterval) return;
+		clearInterval(this.#anchoredMotionInterval);
+		this.#anchoredMotionInterval = undefined;
 	}
 
 	/**
@@ -4022,8 +4032,8 @@ export class InteractiveMode implements InteractiveModeContext {
 
 	/**
 	 * Disconnect everything that can still turn session state into a frame or
-	 * turn a keystroke into session work: the loading/mic/clock animations,
-	 * the todo/observer/goal timers, voice input, extension terminal input
+	 * turn a keystroke into session work: the loading/mic/clock animations, the
+	 * anchored motion frame, the todo/observer/goal timers, voice input, extension terminal input
 	 * listeners and hook widgets, the event bus, the agent/bash subscriptions,
 	 * the event controller, the status line, the resize hook, and the session
 	 * event subscription. Everything here is idempotent, and the method itself
@@ -4049,6 +4059,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.#clockTimer = undefined;
 		}
 		this.#cancelTodoAutoClearTimer();
+		this.#cancelAnchoredMotionTimer();
 		this.#cancelObserverUiSyncTimer();
 		this.#cancelGoalContinuation();
 		if (this.#sttController) {

@@ -454,6 +454,7 @@ import {
 	createInterruptedTurnAbortMessage,
 	SESSION_EXIT_CUSTOM_TYPE,
 	type SessionExitData,
+	sessionExitLogLevel,
 	summarizeToolArguments,
 	TOOL_EXECUTION_START_CUSTOM_TYPE,
 	type ToolExecutionStartData,
@@ -4841,10 +4842,9 @@ export class AgentSession {
 		try {
 			this.sessionManager.appendCustomEntry(SESSION_EXIT_CUSTOM_TYPE, data);
 			this.sessionManager.flushSync();
-			// Only pending tool calls or an abnormal teardown are noteworthy; a
-			// clean dispose logs at debug so routine exits don't read as problems.
-			const exitLog = pendingToolCalls.length > 0 || kind !== "normal" ? logger.warn : logger.debug;
-			exitLog("Session exit recorded", {
+			// Looked up on `logger` at call time, not captured in a table: the level is the
+			// method name, and a captured function would also detach the spy a test installs.
+			logger[sessionExitLogLevel(kind, pendingToolCalls.length)]("Session exit recorded", {
 				sessionId: this.sessionManager.getSessionId(),
 				sessionFile: this.sessionManager.getSessionFile(),
 				reason,
