@@ -100,9 +100,12 @@ async function runTurn(transport: CountingFetch, budgetMs: number): Promise<Turn
 
 describe("a retryable provider error cannot outlive the declared budget", () => {
 	it("stops reopening once the declared first-event budget is spent", async () => {
-		// Each attempt burns roughly two thirds of the budget, so the budget is
-		// gone partway through the second one and the ladder must stop there. The
-		// unguarded ladder runs six attempts plus 7.5s of backoff.
+		// The declared number is one attempt's deadline and the phase is twice it
+		// (`PRE_RESPONSE_STALL_ATTEMPTS`), so 800ms here. Each attempt burns
+		// 280ms and the ladder waits 500ms between them, so the third reopen
+		// would start at ~1060ms with the phase already gone, and the ladder must
+		// stop at two. The unguarded ladder runs six attempts plus 7.5s of
+		// backoff.
 		const transport = fetchThatFailsRetryablyAfter(Math.round(DECLARED_BUDGET_MS * 0.7));
 		const outcome = await runTurn(transport, DECLARED_BUDGET_MS);
 		expect(outcome.failed).toBe(true);

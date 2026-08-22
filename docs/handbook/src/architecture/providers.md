@@ -45,20 +45,25 @@ including the breakpoint budget and what invalidates what, is
 
 ## The first-event budget
 
-A caller declares `streamFirstEventTimeoutMs`. It bounds the whole phase before
-the first event of a turn, not each request inside that phase. Every retry
-attempt, every setup call, and every credential exchange spends the same budget.
+A caller declares `streamFirstEventTimeoutMs`. It is one attempt's deadline, and
+it also bounds how many stalled attempts a turn may pay for: the phase before
+the first event ends after two of them. The first stall is retried, because a
+single connect that never produces an event is common and recovering it is what
+makes a provider feel smooth. A second consecutive stall is a dead endpoint, and
+re-spending the deadline there is what turned a declared 100s into minutes of
+silence.
 
 The phase ends at the first of these:
 
 - the first event arrives, after which `streamIdleTimeoutMs` owns the turn;
-- the budget is spent and the turn fails with the deadline as its reason.
+- the phase budget is spent and the turn fails with the deadline as its reason.
 
 `utils/first-event-budget.ts` in `@veyyon/ai` owns the shape:
 
 | Function | Use |
 | --- | --- |
 | `openFirstEventBudget(totalMs)` | Open a budget for the declared number. A non-positive or absent total is unbounded, matching `streamFirstEventTimeoutMs: 0`. |
+| `openStallLadderBudget(perAttemptMs)` | A phase budget for a retry ladder: the per-attempt deadline times `PRE_RESPONSE_STALL_ATTEMPTS` (two). What Anthropic and Codex open. |
 | `openBoundedFirstEventBudget(declaredMs, ceilingMs)` | The smaller of the caller's number and a provider's own ceiling. It can only tighten a deadline. |
 | `budget.spent()` | True once nothing is left. A retry ladder asks before retrying a stall. |
 | `budget.fence(callerSignal)` | A signal covering what remains, plus the `cancel()` that clears its timer. A setup chain fences once and passes that signal to every call. |
@@ -84,7 +89,7 @@ granted, and it reaches the user as a configuration remedy for a network fault.
 | Provider | Bound before the first event |
 | --- | --- |
 | OpenAI completions, Responses, OpenRouter, Azure | Pre-response fence plus the stream watchdog. |
-| Anthropic | The same, and the retry ladder refuses a stall once the budget is spent. |
+| Anthropic | The same, and the retry ladder retries one stall and refuses the next once the phase budget is spent. |
 | Codex | The same, on both ladders: `fetchWithRetry` (no response) and the provider-error reopen (a retryable envelope that is itself a stall). |
 | GitLab Duo | One setup deadline over the whole REST chain: the caller's number, or 90s (three REST timeouts), whichever is smaller. |
 | Bedrock, Google, Vertex, Gemini CLI, Ollama, Cursor, Devin | The registered lazy-stream limits and each transport's own abort. |

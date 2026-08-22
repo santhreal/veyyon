@@ -21,6 +21,16 @@
  * not a stall and keeps its own retry budget: the server said "come back", and
  * honoring that is what makes rate limits survivable. Once the first event
  * arrives, `streamIdleTimeoutMs` owns the rest of the turn.
+ *
+ * PER ATTEMPT, BOUNDED LADDER. The declared number keeps the meaning every
+ * provider already gave it: the deadline for ONE attempt. What it now also
+ * fixes is how many stalled attempts a turn may pay for. A single connect that
+ * never produces a first event is common and retrying it once is what makes a
+ * provider feel smooth; a second consecutive stall is a dead endpoint, and
+ * re-spending the deadline there is what turned a declared 100s into minutes.
+ * So the phase is bounded at `declared * PRE_RESPONSE_STALL_ATTEMPTS`
+ * ({@link openStallLadderBudget}): the first stall may be retried, the second
+ * ends the phase, and no caller waits an unbounded multiple of its own number.
  */
 
 import { isTimeoutError } from "@veyyon/utils/abortable";
@@ -106,6 +116,28 @@ export function openFirstEventBudget(totalMs: number | undefined, now: () => num
 			return scopedTimeoutSignal(Math.max(1, remaining), callerSignal);
 		},
 	};
+}
+
+/**
+ * How many stalled attempts one turn may spend before the pre-first-event
+ * phase is over. Two: the attempt that stalled, and the one retry that
+ * recovers a flaky connect. A third would be the ladder this module exists to
+ * bound.
+ */
+export const PRE_RESPONSE_STALL_ATTEMPTS = 2;
+
+/**
+ * The budget for a retry ladder whose per-attempt deadline is `perAttemptMs`:
+ * that deadline times {@link PRE_RESPONSE_STALL_ATTEMPTS}. An absent or
+ * non-positive per-attempt deadline stays unbounded, since the caller turned
+ * the watchdog off and multiplying nothing yields nothing.
+ */
+export function openStallLadderBudget(
+	perAttemptMs: number | undefined,
+	now: () => number = Date.now,
+): FirstEventBudget {
+	const perAttempt = perAttemptMs !== undefined && perAttemptMs > 0 ? perAttemptMs : undefined;
+	return openFirstEventBudget(perAttempt === undefined ? undefined : perAttempt * PRE_RESPONSE_STALL_ATTEMPTS, now);
 }
 
 /**

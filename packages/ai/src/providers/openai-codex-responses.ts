@@ -65,7 +65,7 @@ import {
 import { clearStreamingPartialJson, kStreamingLastParseLen, kStreamingPartialJson } from "../utils/block-symbols";
 import { withEmptyCompletionRetry } from "../utils/empty-completion-retry";
 import { AssistantMessageEventStream } from "../utils/event-stream";
-import { type FirstEventBudget, isPreResponseStall, openFirstEventBudget } from "../utils/first-event-budget";
+import { type FirstEventBudget, isPreResponseStall, openStallLadderBudget } from "../utils/first-event-budget";
 import type { RawHttpRequestDump } from "../utils/http-inspector";
 import {
 	armPreResponseTimeout,
@@ -1283,7 +1283,7 @@ function createRequestSetup(options: OpenAICodexResponsesOptions | undefined): C
 		requestSignal,
 		wrapCodexSseStream,
 		firstEventTimeoutMs,
-		firstEventBudget: openFirstEventBudget(firstEventTimeoutMs),
+		firstEventBudget: openStallLadderBudget(firstEventTimeoutMs),
 		websocketIdleTimeoutMs,
 		websocketFirstEventTimeoutMs,
 	};
