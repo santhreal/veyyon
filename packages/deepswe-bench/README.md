@@ -239,3 +239,26 @@ List prompt identifiers using:
 veyyon prompt --prompts
 veyyon prompt --prompt <id>
 ```
+
+The runner reads the id space from the registries of the tree it is building and refuses
+an unknown key before it starts a container, naming the nearest registered id. The agent
+refuses one again at prompt assembly, where every registry in the build is known. An
+unknown id is fatal in both places on purpose: an ignored override runs the shipped
+prompt while the results table names the arm a treatment.
+
+A single registry never judges an id it does not hold. Four packages ship registries and
+they are constructed in import order, so an id belonging to a later one is not yet
+claimed when an earlier one is built.
+
+The override is applied where prompt text is read, which is the row table each module
+imports, not only the aggregate registry. Confirm an arm's override reaches a request
+with the per-tool cost table:
+
+```bash
+veyyon prompt --tools
+VEYYON_EVAL_PROMPTS='{"tools/bash":"run a command"}' veyyon prompt --tools
+```
+
+The `desc` column of the `bash` row falls from 971 tokens to 4, and the total from 13724
+to 12757. A run of the same pair that reports no change means the override reached
+nothing and the arm measures its own control.

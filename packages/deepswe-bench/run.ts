@@ -81,6 +81,13 @@ import {
 	trialQueue,
 } from "./aggregate";
 import {
+	ARM_ATTACHMENT_KINDS,
+	type ArmAttachmentKind,
+	isArmAttachmentError,
+	readArmAttachment,
+	stageArmAttachment,
+} from "./arm-attachments";
+import {
 	type ArmInputs,
 	armNamesIn,
 	armSelectionError,
@@ -88,6 +95,7 @@ import {
 	findZeroIvCollisions,
 } from "./arm-fingerprint";
 import { formatArmPrediction, predictArmSaving } from "./arm-prediction";
+import { promptOverrideIdError } from "./arm-prompts";
 import {
 	type CredentialProbe,
 	decideAuthPreflight,
@@ -1314,90 +1322,32 @@ async function main(): Promise<void> {
 			);
 			process.exit(1);
 		}
-		let sections: unknown;
-		const sectionsPath = path.join(BENCH_DIR, "arms", `${configArm}.sections.yml`);
-		if (fs.existsSync(sectionsPath)) {
-			try {
-				sections = YAML.parse(fs.readFileSync(sectionsPath, "utf8")) ?? {};
-			} catch (err) {
-				console.error(`error: arm "${arm}" has invalid YAML in arms/${arm}.sections.yml:\n${err}`);
+		// One loop over ARM_ATTACHMENT_KINDS, not one block per kind: the parse, the
+		// mapping check, the value check and the staged bytes are the same work for a
+		// section, a statement and a prompt, and the three hand-written copies are how a
+		// fourth kind would arrive half-wired. Each read result is keyed by the kind's
+		// ArmInputs field, so an attachment that exists on disk is necessarily in the
+		// fingerprint below and cannot collide with its own control as zero-IV.
+		const attachments: Partial<Record<ArmAttachmentKind["field"], unknown>> = {};
+		for (const kind of ARM_ATTACHMENT_KINDS) {
+			const read = readArmAttachment(kind, path.join(BENCH_DIR, "arms"), arm, configArm);
+			if (isArmAttachmentError(read)) {
+				console.error(`error: ${read.error}`);
 				process.exit(1);
 			}
-			if (sections === null || typeof sections !== "object" || Array.isArray(sections)) {
-				console.error(
-					`error: arm "${arm}" arms/${arm}.sections.yml must be a mapping of section -> replacement text, ` +
-						`got ${Array.isArray(sections) ? "a sequence" : typeof sections}.`,
-				);
-				process.exit(1);
-			}
-			fs.mkdirSync(path.join(assetsDir, "sections"), { recursive: true });
-			// Stage the exact JSON the env var will carry (compact, deterministic).
-			fs.writeFileSync(path.join(assetsDir, "sections", `${arm}.json`), JSON.stringify(sections));
-		}
-		// A per-STATEMENT override, the finer vehicle: `statement id -> replacement text, or null to
-		// ablate the rule`. A section override is the wrong instrument for an ablation, since TOOL POLICY
-		// is 34 rules in one region and a score change across it cannot be attributed to a cause.
-		let statements: unknown;
-		const statementsPath = path.join(BENCH_DIR, "arms", `${configArm}.statements.yml`);
-		if (fs.existsSync(statementsPath)) {
-			try {
-				statements = YAML.parse(fs.readFileSync(statementsPath, "utf8")) ?? {};
-			} catch (err) {
-				console.error(`error: arm "${arm}" has invalid YAML in arms/${arm}.statements.yml:\n${err}`);
-				process.exit(1);
-			}
-			if (statements === null || typeof statements !== "object" || Array.isArray(statements)) {
-				console.error(
-					`error: arm "${arm}" arms/${arm}.statements.yml must be a mapping of statement id -> ` +
-						`replacement text (or null to ablate the statement), got ` +
-						`${Array.isArray(statements) ? "a sequence" : typeof statements}.`,
-				);
-				process.exit(1);
-			}
-			// Values are checked here as well as in the agent, because a bad value is cheap to catch now
-			// and expensive to discover after paying for a run: the prompt builder refuses the payload,
-			// so every trial in the arm would hard-error identically.
-			for (const [id, value] of Object.entries(statements as Record<string, unknown>)) {
-				if (value !== null && typeof value !== "string") {
-					console.error(
-						`error: arm "${arm}" arms/${arm}.statements.yml value for "${id}" must be text, or null to ` +
-							`ablate the statement, got ${typeof value}.`,
-					);
+			if (!read.present) continue;
+			// A prompt id no registry holds is a silent no-op inside the container: the arm
+			// would run the shipped prompt while this table calls it a treatment. The agent
+			// refuses it too, but only once a container is running and quota is committed.
+			if (kind.field === "prompts") {
+				const problem = promptOverrideIdError(arm, read.value);
+				if (problem !== null) {
+					console.error(`error: ${problem}`);
 					process.exit(1);
 				}
 			}
-			fs.mkdirSync(path.join(assetsDir, "statements"), { recursive: true });
-			// The exact JSON the env var will carry. `null` survives JSON, which is what makes ablation
-			// expressible: an empty string would mean "this rule says nothing but is still here".
-			fs.writeFileSync(path.join(assetsDir, "statements", `${arm}.json`), JSON.stringify(statements));
-		}
-		let prompts: unknown;
-		const promptsPath = path.join(BENCH_DIR, "arms", `${configArm}.prompts.yml`);
-		if (fs.existsSync(promptsPath)) {
-			try {
-				prompts = YAML.parse(fs.readFileSync(promptsPath, "utf8")) ?? {};
-			} catch (err) {
-				console.error(`error: arm "${arm}" has invalid YAML in arms/${arm}.prompts.yml:\n${err}`);
-				process.exit(1);
-			}
-			if (prompts === null || typeof prompts !== "object" || Array.isArray(prompts)) {
-				console.error(
-					`error: arm "${arm}" arms/${arm}.prompts.yml must be a mapping of prompt id -> replacement text, ` +
-						`got ${Array.isArray(prompts) ? "a sequence" : typeof prompts}.`,
-				);
-				process.exit(1);
-			}
-			for (const [id, value] of Object.entries(prompts as Record<string, unknown>)) {
-				if (typeof value !== "string") {
-					console.error(
-						`error: arm "${arm}" arms/${arm}.prompts.yml value for "${id}" must be text, got ${typeof value}.`,
-					);
-					process.exit(1);
-				}
-			}
-			fs.mkdirSync(path.join(assetsDir, "prompts"), { recursive: true });
-			// Stage the exact JSON the env var will carry (compact, deterministic).
-			fs.writeFileSync(path.join(assetsDir, "prompts", `${arm}.json`), JSON.stringify(prompts));
+			attachments[kind.field] = read.value;
+			stageArmAttachment(kind, assetsDir, arm, read.value);
 		}
 		let rule: Uint8Array | undefined;
 		const rulePath = path.join(BENCH_DIR, "arms", `${configArm}.rule.md`);
@@ -1408,9 +1358,7 @@ async function main(): Promise<void> {
 		}
 		const mod: ArmInputs = {
 			config,
-			...(sections !== undefined ? { sections } : {}),
-			...(statements !== undefined ? { statements } : {}),
-			...(prompts !== undefined ? { prompts } : {}),
+			...attachments,
 			...(rule !== undefined ? { rule } : {}),
 		};
 		armFingerprints.set(arm, computeArmFingerprint(mod));
