@@ -3,8 +3,8 @@
 # Do not run this tape directly. Regenerate the disabled-vs-enabled pair with:
 #   bash scripts/demos/record-goal-budget-settings.sh
 #
-# The driver writes assets/goal-budget-settings-off.png and
-# assets/goal-budget-settings-on.png, then restores the default-off setting.
+# The driver writes the off and on shots to an output directory outside the
+# tracked tree, then restores the default-off setting.
 # Settings navigation is offline and makes no model call.
 
 Output assets/.goal-budget-settings-shot.gif

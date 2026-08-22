@@ -2,8 +2,7 @@
 
 Local SQLite memory engine for Veyyon agents.
 
-This package is the Bun/TypeScript port of the Mnemosyne memory engine, originally built for
-[veyyon](https://github.com/santhreal/veyyon). It provides:
+Provides local memory storage with vector embeddings, full-text search, and SQLite persistence.
 
 - `Mnemopi`, a small facade for remember/recall/stats/sleep workflows.
 - `BeamMemory`, the lower-level working/episodic memory engine.
@@ -73,14 +72,13 @@ const dynamicLlm = new Mnemopi({
 
 `Mnemopi` itself exposes banks directly through constructor options such as `bank`; it does not hard-code coding-agent project scoping.
 
-The Veyyon coding-agent wrapper adds `mnemopi.scoping` on top of those constructor options:
+The coding agent configures `mnemopi.scoping` over constructor options:
 
 - `global`: one shared bank
 - `per-project`: isolated project memory
 - `per-project-tagged`: project-local writes plus global recall visibility
 
-In `per-project-tagged`, the wrapper is responsible for combining project-local retention with global recall visibility. The package still just exposes banks plus constructor-level LLM and embedding options.
-
+In `per-project-tagged` mode, project-local retention is combined with global recall visibility.
 Common environment fallbacks:
 
 - `MNEMOPI_DATA_DIR` / `MNEMOPI_DB_PATH`: default storage location.

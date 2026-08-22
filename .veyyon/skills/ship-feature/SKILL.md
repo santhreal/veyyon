@@ -38,11 +38,11 @@ If you changed an observable surface, update every place that documents it in th
 
 ### 3. Settings differential
 
-If the feature adds or changes a setting, capture the settings screen off and on, seeded from the shell with `config set`, so the pair proves the knob is wired. A gated feature that is off must hide its dependent knobs, and the off-vs-on pair is what proves that. The [screenshots](../screenshots/SKILL.md) skill owns the differential rule and the driver to copy.
+If the feature adds or changes a setting, capture the settings screen off and on, seeded from the shell with `config set`, so the pair proves the knob is wired. A gated feature that is off must hide its dependent knobs, and the off-vs-on pair is what proves that. Attach the differential to the pull request body. The [screenshots](../screenshots/SKILL.md) skill owns the differential rule and the driver to copy.
 
 ### 4. Demo
 
-If the change is a user-facing flow, record or refresh its demo. A demo submits a real prompt and ends on the finished result, driven by `scripts/demos/launch.sh` (isolated `demo` profile, Gemini 3.6 Flash with thinking high). The [record-demo](../record-demo/SKILL.md) skill owns the real-task rule, seeding, and the shared capture block. If the flow is a Veyyon differentiator, raise the bar with [prove-feature](../prove-feature/SKILL.md) so the gif shows something upstream cannot. Refresh any existing demo whose flow your change altered, or its gif now lies about the product.
+If the change is a user-facing flow, record or refresh its demo. A demo submits a real prompt and ends on the finished result, driven by `scripts/demos/launch.sh` (isolated `demo` profile, Gemini 3.6 Flash with thinking high). The [record-demo](../record-demo/SKILL.md) skill owns the real-task rule, seeding, and the shared capture block. If the flow is a Veyyon differentiator, raise the bar with [prove-feature](../prove-feature/SKILL.md) so the gif shows something upstream cannot. Refresh any existing demo whose flow your change altered, or its gif now lies about the product. Attach the demo to the pull request body; evidence pairs and proof demos do not appear in any README, handbook page, or website.
 
 ### 5. Gates
 
@@ -76,6 +76,6 @@ The change is tracked and shippable when:
 
 - The changed package has a `## [Unreleased]` bullet, and `bun run changelog:root:check` passes.
 - Every observable thing you changed is documented with its new behavior, in every place that documents it, and the book rebuilds clean.
-- Every setting or gated feature you touched has an off-vs-on differential whose frames genuinely differ.
+- Every setting or gated feature you touched has an off-vs-on differential attached to the PR body, with frames that genuinely differ.
 - Every user-facing flow you changed has a current demo that shows real work finishing.
 - `bun run check` is green.

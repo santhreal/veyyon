@@ -34,6 +34,9 @@ for name in "${tapes[@]}"; do
     subagent-recursion-settings)
       bash scripts/demos/record-subagent-recursion-settings.sh
       ;;
+    goal-budget-settings)
+      bash scripts/demos/record-goal-budget-settings.sh
+      ;;
     account-manager)
       # This tape refuses to be run directly: the driver owns the throwaway HOME and
       # the seeded credentials, and the seeder aborts rather than write fabricated

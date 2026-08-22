@@ -8,8 +8,8 @@
 # Do not run this tape directly. Run its driver, which seeds each state and
 # moves the shot into place, producing the disabled-vs-enabled differential:
 # Regenerate: `bash scripts/demos/record-argot-settings.sh`.
-# The driver writes assets/argot-settings-off.png (only the master toggle) and
-# assets/argot-settings-on.png (the master toggle plus its five dependent
+# The driver writes the off shot (only the master toggle) and
+# the on shot (the master toggle plus its five dependent
 # knobs), and restores argot to off. The contrast is the proof: an experimental
 # feature that is off hides its knobs completely.
 #

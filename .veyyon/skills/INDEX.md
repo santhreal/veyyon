@@ -12,7 +12,7 @@ Every skill in this directory is listed below, in one of the two tables. The shi
 | Any change to what the TUI renders (component, layout, color, theme, animation) | [ui](ui/SKILL.md) |
 | A feature or fix just landed and needs to be tracked | [ship-feature](ship-feature/SKILL.md) |
 | Handbook, README, `--help`, SPEC, or CHANGELOG | [docs](docs/SKILL.md) |
-| Settings off/on proof, gallery, or README still | [screenshots](screenshots/SKILL.md) |
+| Settings off/on proof, gallery, or PR body still | [screenshots](screenshots/SKILL.md) |
 | Any workflow GIF / VHS tape | [record-demo](record-demo/SKILL.md) |
 | A demo that must show a Veyyon-unique capability | [prove-feature](prove-feature/SKILL.md) |
 | System prompt tuning, flag overlays, and A/B benchmarks | [evals](evals/SKILL.md) |

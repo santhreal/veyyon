@@ -1,36 +1,20 @@
 # @veyyon/simulations
 
-Simulations, not unit tests.
-
-A unit test simulates a component that behaves. The failures that reach users are
-the ones where a component wedges: a stream that stops sending bytes, a tool that
-never returns, an interrupt that is consumed twice. Those are hangs, and a mocked
-seam cannot produce one. This package drives real subsystems end to end against
-scripted, fully offline inputs, and awaits every scenario to completion, so a
-missing bound shows up as a suite that times out.
+Deterministic offline simulations for Veyyon agent subsystems. Drives production subsystems against scripted inputs to test lifecycle transitions, stream handling, and execution bounds without network calls.
 
 ## Layout
 
-Each directory under `src/` is one family: a harness plus the scenarios that use
-it, kept together.
+Each directory under `src/` implements a simulation suite:
 
-| Family | What it drives |
+| Suite | Scope |
 |---|---|
-| `src/turn-sim/` | One agent turn: a real `AgentSession` against a scripted provider |
-| `src/cache-sim/` | Prompt-cache economics on both surfaces: real request builders, a modelled provider cache, priced counterfactuals |
-
-Adding a family means adding a directory with its own `index.ts` and re-exporting
-it from `src/index.ts`. Nothing else moves.
+| `src/turn-sim/` | Single agent turn execution with `AgentSession` against scripted provider responses |
+| `src/cache-sim/` | Prompt-cache accounting, request generation, and provider cache simulations |
 
 ## Rules
 
-- **Offline and deterministic.** No network, no API keys, no live models, no
-  wall-clock sleeps. A scenario that needs time to pass drives the code's own
-  configured budget.
-- **No product edits.** This package reads other packages; it never patches them.
-- **Every scenario is mutation-gated.** Re-inject the defect it claims to catch,
-  watch it go red, restore. A scenario that stays green under its own mutation is
-  a broken scenario, not a passing one.
+- **Offline:** No network access, live model endpoints, or wall-clock sleeps.
+- **Read-only:** Simulations test existing package contracts without modifying product code.
 
 ## Running
 

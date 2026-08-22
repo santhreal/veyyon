@@ -31,7 +31,7 @@ Generic ask/edit tapes may still exist as orientation, but a *proof* demo for a 
 4. **Keep the fixture honest.** Prefer a small real shape that forces the mechanism (repeated long strings for Argot, multi-hunk edit for hashline). Do not rely on `~/orbit`’s two toy files if they cannot surface the win.
 5. **Reuse launch defaults.** `scripts/demos/launch.sh` (isolated `demo` profile, Gemini 3.6 Flash high). No second pin.
 
-## Record and embed
+## Record and attach
 
 ```console
 $ bash scripts/demos/record.sh <name>
@@ -39,12 +39,12 @@ $ bash scripts/demos/record.sh <name>
 $ bash scripts/demos/record-argot-settings.sh
 ```
 
-Then wire the artifact into README and/or the website in the same change. An untracked gif or a capture no page embeds is not a proof. Replace hand-coded fake terminals when a real capture exists.
+Attach the resulting artifact to the pull request body. Evidence pairs and proof demos are PR-body only. Do not embed them in any README, handbook page, or website.
 
 ## Before you commit
 
 - The mechanism named in the header is visible in the final frames.
 - record-demo’s one rule holds: submit, real work, end on the result.
 - Off/on proofs differ in bytes and in values.
-- README or site embeds the artifact with accurate alt text.
+- The artifact is attached to the pull request body and does not appear in any README, handbook page, or website.
 - You viewed the rendered gif, not only the tape source.

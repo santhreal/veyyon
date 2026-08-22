@@ -6,11 +6,11 @@ Shared utilities for [veyyon](https://github.com/santhreal/veyyon) packages. Bun
 
 | Module | Purpose |
 | --- | --- |
-| `logger` | Centralized logger writing to `~/.veyyon/profiles/<name>/logs/` with rotation (TUI-safe — never stdout) |
+| `logger` | Centralized logger writing to `~/.veyyon/profiles/<name>/logs/` with rotation (TUI-safe; does not write to stdout) |
 | `prompt` | Handlebars-based prompt templating and formatting helpers |
 | `dirs` | Path helpers for veyyon config directories (`~/.veyyon`, XDG-aware on Linux) |
 | `stream` | `readLines` / `readJsonl` / `readSseEvents` helpers over `ReadableStream` |
-| `ptree` / `procmgr` | Process trees, `ChildProcess` wrapper, process lifecycle management |
+| `ptree` / `procmgr` | Process trees, child process supervisor, and process lifecycle management |
 | `postmortem` | Cleanup callbacks on exit, signals, and fatal exceptions |
 | `which` | `$which()` binary lookup with caching |
 | `fetch-retry` | `fetch` with retry/backoff policies |

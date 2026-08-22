@@ -21,7 +21,7 @@ None of the following is evidence, and none may be substituted for a capture:
   shows what your fixture does and not what the product does — it cannot show that
   the surface is reachable, that the state is real, or that the block is positioned,
   sized and clipped the way a session draws it. It is not a proof, it is not a
-  README pair, and "those are the component's own bytes" is not an argument for
+  pull request pair, and "those are the component's own bytes" is not an argument for
   admitting it.
 - A mock-up, a hand-built frame, a snippet in a comment, or one unpaired image.
 
@@ -29,13 +29,14 @@ Two things stand beside a capture, and neither replaces one: **string/ANSI
 assertions** in tests that pin exact bytes, colours and widths, and **the operator's
 own screenshots**, which are ground truth and win against every other signal.
 
-## UI changes require README before-and-after evidence (BINDING)
+## UI changes require pull request before-and-after evidence (BINDING)
 
-Any pull request that changes visible UI MUST add a labeled **Before** and **After**
-pair to the relevant `README.md` feature or demo section before it can merge. Both
-images must show the same surface, dimensions, terminal configuration, and state
-apart from the intended change. Store the pair under `assets/`, and link the exact
-regeneration command from the README or its owning handbook page.
+Any pull request that changes visible UI MUST attach a labeled **Before** and **After**
+pair to the pull request body before it can merge. A README, a handbook page, and the
+website never carry one. Proof frames committed into `assets/` to display to a reader
+are not wanted. The regeneration command belongs in the handbook page that owns the surface.
+Both images must show the same surface, dimensions, terminal configuration, and state
+apart from the intended change.
 
 Both images MUST come from the official capture config above: an HD-recorder
 recording, a VHS tape on the documented baseline, or screenshots supplied by the
@@ -94,15 +95,15 @@ A feature is not done when the code compiles. It is done when you can prove it w
 
 **A settings change is permanent; an in-session change is ephemeral.** Know which one your feature is before you prove it. An ephemeral change is session-only and reverts (a theme hover-preview, a one-shot preview toggle): its differential is the live-vs-reverted view. A settings change is written to config and persists across restarts: its differential is off-vs-on across two launches, and the proof must show the value actually persisted, not just flashed on screen. Do not prove a permanent setting with an ephemeral snapshot, or the other way round.
 
-Every user-facing feature update lands with three artifacts, all committed:
+Every user-facing feature update lands with committed runnable artifacts and pull request proof:
 
-1. **A demo under `assets/tapes/` (see [`.veyyon/skills/INDEX.md`](.veyyon/skills/INDEX.md)).** A VHS tape or recording that drives the real feature end to end, the way a user would reach it. Not a unit test, not a snippet in a comment. Use [record-demo](.veyyon/skills/record-demo/SKILL.md) for mechanics and [prove-feature](.veyyon/skills/prove-feature/SKILL.md) when the demo must show a Veyyon-unique capability. Someone should be able to run it and watch the feature do its job, and watch it behave differently with the feature off vs on.
-2. **A settings differential: two screenshots, off and on.** Capture the settings screen with the feature off, then with it on, so the pair shows the knob is wired, not just declared in a defaults table. Seed each state deterministically (`veyyon config set <path> <value>` before recording) rather than by pressing a toggle whose keybinding may not land; drive both from one tape run through a small driver so the pair regenerates together. Store both next to the demo. **A degenerate pair — the two shots identical, or the "on" shot not actually on — is a failed proof; check the bytes differ and the values changed.**
-3. **A bench with exact parity.** Measure the feature on and off against the same corpus, same inputs, same seed. Report the exact numbers. "Exact parity" means the off-arm reproduces the pre-feature baseline to the token or the millisecond, so any delta is attributable to the feature and nothing else. A bench that cannot reproduce its own baseline proves nothing.
+1. **A demo under `assets/tapes/` (see [`.veyyon/skills/INDEX.md`](.veyyon/skills/INDEX.md)) (committed).** A VHS tape or recording that drives the real feature end to end, the way a user would reach it. Not a unit test, not a snippet in a comment. Use [record-demo](.veyyon/skills/record-demo/SKILL.md) for mechanics and [prove-feature](.veyyon/skills/prove-feature/SKILL.md) when the demo must show a Veyyon-unique capability. Someone should be able to run it and watch the feature do its job, and watch it behave differently with the feature off vs on.
+2. **A settings differential: two screenshots, off and on (attached to the pull request body).** Capture the settings screen with the feature off, then with it on, so the pair shows the knob is wired, not just declared in a defaults table. Seed each state deterministically (`veyyon config set <path> <value>` before recording) rather than by pressing a toggle whose keybinding may not land; drive both from one tape run through a small driver so the pair regenerates together. Attach the pair to the pull request body. Proof screenshots are not committed into `assets/` and never appear in documentation. **A degenerate pair — the two shots identical, or the "on" shot not actually on — is a failed proof; check the bytes differ and the values changed.**
+3. **A bench with exact parity (committed).** Measure the feature on and off against the same corpus, same inputs, same seed. Report the exact numbers. "Exact parity" means the off-arm reproduces the pre-feature baseline to the token or the millisecond, so any delta is attributable to the feature and nothing else. A bench that cannot reproduce its own baseline proves nothing.
 
-Beyond the three artifacts, **assert every setting the feature adds actually works end to end** — the default is honored, each non-default value changes observable behavior, and an invalid value fails loud. A setting that appears in the defaults but never reaches behavior is a defect, the same class as a dead flag.
+Beyond these requirements, **assert every setting the feature adds actually works end to end** — the default is honored, each non-default value changes observable behavior, and an invalid value fails loud. A setting that appears in the defaults but never reaches behavior is a defect, the same class as a dead flag.
 
-**An experimental feature that is off hides its dependent knobs completely.** When a feature is gated behind a master toggle and that toggle is off, the knobs that only matter when it is on must not appear in the settings screen at all — not greyed out, not inert, gone. Wire each dependent setting to a `ui.condition` that reads the master toggle; the setting itself is declared in `packages/coding-agent/src/config/settings-domains/<domain>.ts`, and the predicate it names is registered in `CONDITIONS` in `packages/coding-agent/src/modes/components/settings-defs.ts`. The selector hides any setting whose condition returns false. The off-vs-on screenshot pair is exactly what proves this: off shows only the master toggle, on shows the toggle plus its dependents. A dependent knob visible while the feature is off is a defect.
+**An experimental feature that is off hides its dependent knobs completely.** When a feature is gated behind a master toggle and that toggle is off, the knobs that only matter when it is on must not appear in the settings screen at all — not greyed out, not inert, gone. Wire each dependent setting to a `ui.condition` that reads the master toggle; the setting itself is declared in `packages/coding-agent/src/config/settings-domains/<domain>.ts`, and the predicate it names is registered in `CONDITIONS` in `packages/coding-agent/src/modes/components/settings-defs.ts`. The selector hides any setting whose condition returns false. The off-vs-on screenshot pair attached to the pull request is exactly what proves this: off shows only the master toggle, on shows the toggle plus its dependents. A dependent knob visible while the feature is off is a defect.
 
 If a feature cannot meet this bar, it is experimental and must say so in its settings group, stay off by default, hide its dependent knobs while off, and carry a backlog row for the missing proof. Do not ship it as done.
 
@@ -274,7 +275,7 @@ Argot is the codec that lets the model write short `§handle` tokens; veyyon exp
 - **The contract is absolute: a user NEVER sees a raw `§handle`.** That includes the live subagent HUD preview (`progress.recentOutput` in `task/executor.ts`), which decodes streamed deltas through `createSubagentStreamDecoder`. A raw handle reaching any display, tool, transcript, or the parent is a defect, not a cosmetic issue.
 - **Adding a new place the model's text crosses out of its history is adding a seam.** Route it through an `argot-wire.ts` function; if none fits, add one there (a thin delegate to `argot`), never a new codec call site scattered elsewhere.
 - Tests: `test/argot-subagent-*.test.ts` drive the real executor and prove each seam with a negative control (revert the expand → the handle leaks). Any new seam gets the same treatment.
-- **Argot meets the [10-minute proof rule](#proving-a-feature-the-10-minute-rule).** Its artifacts: the settings differential `assets/argot-settings-off.png` and `assets/argot-settings-on.png` (regenerated together by `scripts/demos/record-argot-settings.sh`, which seeds `argot.enabled` off then on with `config set` and records the single-state tape `assets/tapes/argot-settings.tape` twice) — off shows only the "Argot Shorthand" master toggle, on shows it plus the four dependent knobs (Models, Dictionary Budget, Context Cutoff, Subagents), proving the `argotEnabled` condition hides them while off; and the live bench `packages/typescript-edit-benchmark/src/argot-bench.ts` (runs the edit tasks with encoding on and off and certifies the token delta). Every Argot setting is asserted end to end in `test/argot-settings-e2e.test.ts` (the operator's value binds through the real `Settings` into the gate and the codec, and a disabled-vs-enabled test asserts the knobs are hidden while off). Keep all of these current when you touch Argot.
+- **Argot meets the [10-minute proof rule](#proving-a-feature-the-10-minute-rule).** Its artifacts: the settings differential produced by `scripts/demos/record-argot-settings.sh` and carried in the pull request (the driver seeds `argot.enabled` off then on with `config set` and records the single-state tape `assets/tapes/argot-settings.tape` twice) — off shows only the "Argot Shorthand" master toggle, on shows it plus the four dependent knobs (Models, Dictionary Budget, Context Cutoff, Subagents), proving the `argotEnabled` condition hides them while off; and the live bench `packages/typescript-edit-benchmark/src/argot-bench.ts` (runs the edit tasks with encoding on and off and certifies the token delta). Every Argot setting is asserted end to end in `test/argot-settings-e2e.test.ts` (the operator's value binds through the real `Settings` into the gate and the codec, and a disabled-vs-enabled test asserts the knobs are hidden while off). Keep all of these current when you touch Argot.
 
 ## Commands
 

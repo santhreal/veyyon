@@ -71,3 +71,4 @@ Outputs land in `assets/` (`assets/demo-<name>.gif`, screenshots beside them). T
 - It uses the shared capture block: pure black, sharp corners, crisp.
 - A feature/settings demo is an off-vs-on differential whose frames genuinely differ.
 - The tape has a header comment saying what it shows and the exact command to regenerate it.
+- Attach the demo GIF or differential pair to the pull request body; evidence pairs and proof frames do not appear in any README, handbook page, or website.

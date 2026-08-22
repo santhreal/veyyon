@@ -243,7 +243,8 @@ else
 	REHEARSAL=0
 fi
 
-WORK="$(mktemp -d /tmp/veyyon-hd-demo.XXXXXX)"
+mkdir -p .captures
+WORK="$(mktemp -d .captures/veyyon-hd-demo.XXXXXX)"
 # Kept on failure, deleted on success. A twenty-five minute take died here on `magick:
 # command not found` and the unconditional cleanup then removed the fifteen frames it had
 # already taken, so a missing publishing tool cost the whole recording rather than the last
