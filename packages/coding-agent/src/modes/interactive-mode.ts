@@ -3524,7 +3524,12 @@ export class InteractiveMode implements InteractiveModeContext {
 	async #abortPlanApprovalTurnSilently(): Promise<void> {
 		this.session.markPlanInternalAbortPending();
 		try {
-			await this.session.abort();
+			// Machinery closing its own turn, not the operator stopping the work: an
+			// abort that defaults to `interrupted` would pause an active goal for a
+			// reason the operator never gave. Plan mode and goal mode are mutually
+			// exclusive today, so this classifies the abort rather than fixing a live
+			// stall — the vocabulary is only worth having if every site uses it.
+			await this.session.abort({ goalReason: "internal" });
 		} finally {
 			this.session.clearPlanInternalAbortPending();
 		}
