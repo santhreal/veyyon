@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-46c8c618.js";
+            window.path_to_searchindex_js = "../searchindex-0c15bee8.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-13566cf4.js"></script>
+        <script src="../toc-79e2ba62.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -248,10 +248,27 @@ stripped of every one of those variables. It then signs its work in one <code>ba
 <code>#RELEASE_SIGNATURE#</code> appended to <code>SIGNED.md</code> as a single line. Veyyon resolves the placeholder only
 at the outbound tool boundary and asks for approval before the call runs, so the credential itself is
 never printed and never reaches the transcript. The board closes 6/6.</p>
-<p>The <a href="../../../../assets/demo-hd.webp">recorded clip</a> runs the whole task. Untouched screens are
-shortened rather than accelerated.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Surface</th><th>Evidence</th></tr>
+</thead>
+<tbody>
+<tr><td>Complete task</td><td><a href="../../../../assets/demo-hd.webp">Published clip</a> · <a href="../../../../proof/captures/x11/demo-hd.mp4">unedited take</a></td></tr>
+<tr><td>Secret setup</td><td><a href="../../../../assets/demo-hd-secret-stored.png">Release key stored from the environment</a></td></tr>
+<tr><td>Plan</td><td><a href="../../../../assets/demo-hd-todo-board.png">Three phases, six tasks, nothing started</a> · <a href="../../../../assets/demo-hd-todo-strike.png">tasks closing on the board</a></td></tr>
+<tr><td>Parallel implementation</td><td><a href="../../../../assets/demo-hd-agent-lanes.png">Three directory refactors fanned out at once</a></td></tr>
+<tr><td>Integration</td><td><a href="../../../../assets/demo-hd-edit-diff.png">The applied guard, as a diff</a></td></tr>
+<tr><td>Verification</td><td><a href="../../../../assets/demo-hd-verify-command.png">Nine defaults resolved in a stripped environment</a></td></tr>
+<tr><td>Protected signing</td><td><a href="../../../../assets/demo-hd-secret-approval.png">The approval card names the tool, the scope and the secret the call would spend</a> · <a href="../../../../assets/demo-hd-signature-written.png">the digest appended to SIGNED.md, the credential never echoed</a></td></tr>
+<tr><td>Stored secrets</td><td><a href="../../../../assets/demo-hd-secret-list.png">The placeholder inventory</a> · <a href="../../../../assets/demo-hd-secret-log.png">the spend log</a></td></tr>
+</tbody>
+</table>
+</div>
+<p>Every frame and the clip come from the same guarded take. Untouched screens are shortened rather than
+accelerated, and no frame is composited from a second session.</p>
 <p>See <a href="../foundations/verification.html#recording-terminal-proofs">Testing and verification</a> for the
-recording environment and the regeneration command.</p>
+recording environment, the regeneration command, and the before-and-after proof requirements.</p>
 
                     </main>
 

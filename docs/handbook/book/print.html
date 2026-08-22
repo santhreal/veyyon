@@ -51,10 +51,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-46c8c618.js";
+            window.path_to_searchindex_js = "searchindex-0c15bee8.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-13566cf4.js"></script>
+        <script src="toc-79e2ba62.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -194,125 +194,158 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="the-veyyon-handbook"><a class="header" href="#the-veyyon-handbook">The Veyyon handbook</a></h1>
-<p>Veyyon is a coding agent that runs in a terminal. Give it credentials for a model
-provider and it works inside a project: it reads files, runs tools, and edits code in
-place. Every step that touches the tree goes through an approval tier.</p>
-<h2 id="install"><a class="header" href="#install">Install</a></h2>
-<pre><code class="language-sh">curl -fsSL https://get.veyyon.dev | sh
-</code></pre>
-<p>On Windows:</p>
-<pre><code class="language-powershell">irm https://veyyon.dev/install.ps1 | iex
-</code></pre>
-<p>The installer downloads a release binary and verifies its checksum. To build from
-source, clone the repository and run <code>bun run setup &amp;&amp; bun dev</code> in that checkout. See
-<a href="#install-1">Install</a> for platforms, pinned releases, updates, and uninstall.</p>
-<p>The binary is <code>veyyon</code>, aliased to <code>vey</code>. Configuration lives under <code>~/.veyyon</code>; the
-default profile keeps its state in <code>~/.veyyon/profiles/default/agent/</code>.</p>
-<h2 id="where-things-are"><a class="header" href="#where-things-are">Where things are</a></h2>
+<p>Welcome. Veyyon is a coding agent that runs in your terminal. You give it credentials for a model provider, and it works inside your project: it reads files, runs tools, and edits your code in place, one reviewable step at a time. You stay in the loop, and you approve the work that touches your tree.</p>
+<p>This handbook teaches Veyyon from the ground up. It begins with installation and your first session, then explains the ideas the rest of the tool is built on, and finally covers each feature and the internals a contributor needs. You do not have to read it front to back. The early chapters assume less than the later ones, so if Veyyon is new to you, following the order will save you time.</p>
+<h2 id="who-this-book-is-for"><a class="header" href="#who-this-book-is-for">Who this book is for</a></h2>
+<p>You are comfortable at a command line, and you want a coding agent you can watch and steer rather than one that changes your files out of sight. You do not need to know Rust or TypeScript to use Veyyon. You do need a working terminal and an API key or a sign-in for at least one provider. The Architecture chapters go deeper, for readers who want to contribute to Veyyon itself.</p>
+<h2 id="how-to-read-this-book"><a class="header" href="#how-to-read-this-book">How to read this book</a></h2>
+<p>The book is arranged in the order you tend to need it.</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Section</th><th>Contents</th></tr>
+<tr><th>Section</th><th>What it covers</th></tr>
 </thead>
 <tbody>
-<tr><td><a href="#design-and-mechanisms">Design and mechanisms</a></td><td>Design goals and the main subsystems</td></tr>
-<tr><td><a href="#install-1">Get started</a></td><td>Install, sign in, first task, providers</td></tr>
+<tr><td><a href="#overview">Why</a></td><td>The design goals and the main mechanisms, so the rest makes sense</td></tr>
+<tr><td><a href="#getting-started">Using</a></td><td>Install, sign in, run your first task, configure providers</td></tr>
 <tr><td><a href="#approvals">Features</a></td><td>Editing, approvals, models, sessions, plan and goal modes, MCP, plugins, memory, profiles</td></tr>
-<tr><td><a href="#architecture-at-a-glance">Architecture</a></td><td>Internals</td></tr>
+<tr><td><a href="#architecture-at-a-glance">Architecture</a></td><td>The internals, for contributors</td></tr>
 </tbody>
 </table>
 </div>
-<h2 id="implementation"><a class="header" href="#implementation">Implementation</a></h2>
-<p>The CLI, TUI, tools, providers, and session loop are TypeScript on Bun. Grep, glob,
-PTY, and tree-sitter parsing are Rust natives in <code>@veyyon/natives</code>. The hashline edit
-engine is TypeScript in <code>@veyyon/hashline</code>, with native helpers for block resolution.</p>
+<p>If you only want to get to work, read <a href="#install">Install</a>, sign in, and go to <a href="#getting-started">Getting started</a>. Come back to the concept chapters when something surprises you. They explain why Veyyon behaves the way it does, which is usually faster than guessing.</p>
+<h2 id="what-veyyon-is"><a class="header" href="#what-veyyon-is">What Veyyon is</a></h2>
+<p>Veyyon is a fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a>. The CLI, the TUI, the tools, the providers, and the session loop are TypeScript running on Bun. The hot paths, meaning grep, glob, PTY, and tree-sitter parsing, are Rust natives in <code>@veyyon/natives</code>. The hashline edit engine itself is TypeScript in <code>@veyyon/hashline</code>, with native helpers for block resolution.</p>
+<p>A few facts you will reach for often:</p>
 <ul>
-<li><strong>Hashline edits.</strong> <code>edit</code> and <code>write</code> apply content-addressed patches and verify
-them before anything reaches disk. A failed patch returns a structured error to the
-model instead of a half-written file.</li>
-<li><strong>Model slots.</strong> The interactive model (<code>/model</code>), the subagent model, and the
-compaction model are separate settings. Named roles pin a model to a kind of work.</li>
-<li><strong>Approvals.</strong> <code>tools.approvalMode</code> gates the read, write, and exec tiers. There is
-no operating-system sandbox: no Landlock, no seccomp, no Seatbelt, no bubblewrap.
-Approvals are the control point.</li>
-<li><strong>Engine modes.</strong> Plan mode, goal mode, vibe mode, compaction, and task subagents
-live in the agent loop, not in prompt text.</li>
+<li>Install with <code>curl -fsSL https://get.veyyon.dev | sh</code> (or <code>irm https://veyyon.dev/install.ps1 | iex</code> on Windows), which downloads a verified release binary. To build instead, clone the repository yourself and run <code>bun run setup &amp;&amp; bun dev</code> in that checkout.</li>
+<li>The binary is <code>veyyon</code>, with the shorter alias <code>vey</code>.</li>
+<li>Configuration lives under <code>~/.veyyon</code>. The default profile keeps its agent state in <code>~/.veyyon/profiles/default/agent/</code>, and other profiles use <code>~/.veyyon/profiles/&lt;name&gt;/agent/</code>.</li>
 </ul>
-<p>Veyyon is a fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a>. See
-<a href="#acknowledgements">Acknowledgements</a> for credits.</p>
+<p>The surfaces you will meet in the rest of the book are hashline edits, the tool loop (read, grep, glob, edit, bash, LSP, MCP, and more), optional memory backends, model slots and roles, session trees, skills, plan mode, goal mode, and task isolation for subagents.</p>
+<h2 id="mechanisms-at-a-glance"><a class="header" href="#mechanisms-at-a-glance">Mechanisms at a glance</a></h2>
+<p>Each of these has its own chapter later. This list is a map, not the full explanation.</p>
+<ul>
+<li><strong>Hashline edits.</strong> The <code>edit</code> and <code>write</code> tools apply content-addressed patches and verify them before anything reaches disk. A failed patch returns a structured error to the model instead of a half-written file.</li>
+<li><strong>Model slots.</strong> The interactive model (<code>/model</code>), the subagent model, and the compaction model are separate settings. Named roles can pin a model to a specific kind of work.</li>
+<li><strong>Approvals.</strong> The <code>tools.approvalMode</code> setting gates the read, write, and exec tiers. Veyyon does not add an operating-system command sandbox. It does not use Landlock, seccomp, Seatbelt, or bubblewrap, so approvals are your control point.</li>
+<li><strong>Engine modes.</strong> Plan mode, goal mode, vibe mode, compaction, and task subagents live in the agent loop itself, not only in prompt text.</li>
+</ul>
+<p>For credits, see <a href="#acknowledgements">Acknowledgements</a>.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="how-to-read-this-book-1"><a class="header" href="#how-to-read-this-book-1">How to read this book</a></h1>
+<h2 id="structure"><a class="header" href="#structure">Structure</a></h2>
+<p>The book runs from what Veyyon is to how it works inside, in this order:</p>
+<ul>
+<li><strong>Understand Veyyon</strong>: what it is, where its fork foundation ends, what Veyyon owns, and how its
+main mechanisms work.</li>
+<li><strong>Get started</strong>: install, sign in, and run your first task.</li>
+<li><strong>Core concepts</strong>: the few ideas the rest of the book builds on (sessions and turns, the permission
+model, the model contract).</li>
+<li><strong>Everyday use</strong>: the operator workflows (editing, approvals, models, sessions, and the interface).</li>
+<li><strong>Extend and customize</strong>: skills, plugins, hooks, MCP, profiles, and configuration.</li>
+<li><strong>Reference</strong>: the exhaustive lists (CLI flags, slash commands, tools, keybindings, environment
+variables, exit codes, file locations).</li>
+<li><strong>Under the hood</strong>: how the harness implements those surfaces (architecture, repair, the edit
+engine, the provider stack, context, observability).</li>
+<li><strong>Troubleshooting</strong>: when something is wrong, plus the FAQ and the doctor self-check.</li>
+</ul>
+<p>Each concept has one page that owns it, and other pages cross-link to that page rather than repeat the
+full contract. Read top to bottom the first time; after that, jump to the owning page a cross-link
+points you at.</p>
+<h2 id="conventions"><a class="header" href="#conventions">Conventions</a></h2>
+<ul>
+<li><strong>Paths and keys</strong> are written as the product uses them (<code>~/.veyyon/profiles/default/agent/config.yml</code>, <code>tools.approvalMode</code>).</li>
+<li><strong>Prior art</strong> is named with license when a technique is adapted; see <a href="#acknowledgements">Acknowledgements</a>.</li>
+<li><strong>Measurements</strong> state the source (this project’s benchmarks vs third-party). If a number has no method, it does not belong in reference material.</li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="design-and-mechanisms"><a class="header" href="#design-and-mechanisms">Design and mechanisms</a></h1>
 <ul>
-<li><a href="#overview">Overview</a>: product capabilities and harness structure</li>
-<li><a href="#mechanisms">Mechanisms</a>: subsystem contracts and runtime behavior</li>
-<li><a href="#argot">Argot</a>: per-project token shorthand codec</li>
-<li><a href="#performance">Performance</a>: execution bounds, native paths, and repair</li>
+<li><a href="#overview">Overview</a>: what the product is and what the harness does</li>
+<li><a href="#mechanisms">Mechanisms</a>: current product contracts and shared mechanisms</li>
+<li><a href="#argot">Argot</a>: the per-project shorthand the model writes in</li>
+<li><a href="#performance">Performance</a>: retries, edit format, and tool bounds</li>
+<li><a href="#why-it-helps">Edit path and tool arguments</a></li>
+<li><a href="#context-size-and-retries">Context size and retries</a></li>
+<li><a href="#model-and-provider-selection">Model and provider selection</a></li>
+<li><a href="#approvals-and-errors">Approvals and errors</a></li>
 </ul>
-<p>Install: <a href="#install-1">Install</a>. Concepts: <a href="#core-concepts">Core concepts</a>.</p>
+<p>Install: <a href="#install">Install</a>. Concepts: <a href="#core-concepts">Core concepts</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="overview"><a class="header" href="#overview">Overview</a></h1>
-<p>Veyyon is a local terminal coding agent. The loop, tools, and credentials run locally on the host machine. Model selection uses the bundled provider catalog via subscription sign-in or API keys.</p>
-<h2 id="subsystem-summary"><a class="header" href="#subsystem-summary">Subsystem summary</a></h2>
+<p>Veyyon is a local terminal coding agent. The loop, the tools, and your credentials all stay on your machine. You choose which model to use from the bundled provider catalog, either by signing in to a subscription or by bringing your own key.</p>
+<p>This chapter is a one-page map of what the harness does. Each row links to the chapter that explains it in full, so you can skim now and follow up later.</p>
+<h2 id="what-the-harness-does"><a class="header" href="#what-the-harness-does">What the harness does</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Area</th><th>Capability</th></tr>
+<tr><th>Area</th><th>What you get</th></tr>
 </thead>
 <tbody>
-<tr><td>Edits</td><td>Hashline <code>edit</code> and <code>write</code>, checked against file contents before writing to disk</td></tr>
-<tr><td>Tools</td><td><code>read</code>, <code>grep</code>, <code>glob</code>, <code>bash</code>, LSP, DAP, browser, MCP, task subagents, and extensions</td></tr>
-<tr><td>Approvals</td><td><code>tools.approvalMode</code> gates read, write, and exec tiers</td></tr>
-<tr><td>Models</td><td>Separate slots for interactive, subagent, and compaction models, with role mappings per profile</td></tr>
-<tr><td>Sessions</td><td>Branchable session trees with resume and fork support</td></tr>
-<tr><td>Memory</td><td>Local SQLite memory backends, active when <code>memory.backend</code> is not <code>off</code></td></tr>
-<tr><td>Config</td><td><code>~/.veyyon</code> or profile-specific agent directories; repository trees contribute <code>AGENTS.md</code> instructions</td></tr>
+<tr><td>Edits</td><td>Hashline <code>edit</code> and <code>write</code>, verified before anything is written to disk</td></tr>
+<tr><td>Tools</td><td>read, grep, glob, bash, LSP, DAP, browser, MCP, task subagents, and more</td></tr>
+<tr><td>Approvals</td><td><code>tools.approvalMode</code> gates the read, write, and exec tiers (there is no operating-system process sandbox)</td></tr>
+<tr><td>Models</td><td>Separate slots for the interactive, subagent, and compaction models, plus optional roles per profile</td></tr>
+<tr><td>Sessions</td><td>Branchable session trees that you can resume and fork</td></tr>
+<tr><td>Memory</td><td>Memory backends, active whenever <code>memory.backend</code> is not <code>off</code></td></tr>
+<tr><td>Config</td><td><code>~/.veyyon</code>, or a relocated agent directory per profile; a working tree contributes <code>AGENTS.md</code> instructions and nothing else</td></tr>
 </tbody>
 </table>
 </div>
 <h2 id="lineage"><a class="header" href="#lineage">Lineage</a></h2>
 <p>Veyyon is built from <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a> and <a href="https://github.com/badlogic/pi-mono">Pi</a>. See <a href="#acknowledgements">Acknowledgements</a> for credits.</p>
-<h2 id="related"><a class="header" href="#related">Related</a></h2>
+<h2 id="next"><a class="header" href="#next">Next</a></h2>
 <ul>
-<li><a href="#mechanisms">Mechanisms</a></li>
-<li><a href="#getting-started">Getting started</a></li>
-<li><a href="#editing-and-repair">Editing and repair</a></li>
+<li><a href="#mechanisms">Mechanisms</a> explains how the harness works.</li>
+<li><a href="#getting-started">Getting started</a> walks through your first session.</li>
+<li><a href="#editing-and-repair">Editing and repair</a> covers the edit path in depth.</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="mechanisms"><a class="header" href="#mechanisms">Mechanisms</a></h1>
+<p>This chapter maps the mechanisms that shape Veyyon’s behavior. Operator how-tos live under <a href="#getting-started">Using</a> and <a href="#approvals">Features</a>.</p>
+<h2 id="current-contracts-and-proof-entry-points"><a class="header" href="#current-contracts-and-proof-entry-points">Current contracts and proof entry points</a></h2>
+<p>The table names the current product contract. A link in the <strong>Recorded proof</strong> column demonstrates only its link text, not every mechanism in that row.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Area</th><th>Current Veyyon contract</th><th>Recorded proof</th></tr>
+</thead>
+<tbody>
+<tr><td>Prompt and context</td><td>Statement-owned prompt assembly, layered <code>AGENTS.md</code>, validated <code>PROMPT_SECTIONS/</code>, and transactional context reload when the working directory moves</td><td><a href="../../../assets/prompt-architecture-sections.png">Section byte costs and the conditional statement registry</a></td></tr>
+<tr><td>Models and compaction</td><td>Model-native effort variants, explicit effort precedence, editable subsystem fallback chains, and a lossless first compaction pass</td><td><a href="../../../assets/demo-hd-context-report.png">The context report accounting for a filled window by share</a>. Effort menus and chain editing have no recording.</td></tr>
+<tr><td>Credentials and sessions</td><td>Shared SQLite credentials, multi-credential selection, encrypted working secrets, final outbound obfuscation, atomic session writes, and non-destructive corruption handling</td><td><a href="../../../assets/demo-hd-secret-log.png">A project secret taken from the environment, listed by placeholder, spent through bash, and recorded in the value-free use log</a></td></tr>
+<tr><td>Tools and workers</td><td>One capability and tool registry, LSP write-through, destructive-shell interception, schema-validated workers, IRC, internal agent URLs, and the Agent Control Center</td><td><a href="../../../assets/demo-lsp-hd.webp">A language-server rename applying one edit to a class file and three to its test, then a green suite</a> and <a href="../../../assets/stills-extra-agent-control.png">two workers spawned in one turn with live and idle Agent Control Center rows</a></td></tr>
+<tr><td>Native runtime</td><td>Native grep, PTY, tree-sitter support, and reusable Rust crates for glob matching, grep orchestration, key normalization, text indexing, diffing, and directory walking</td><td>No recording. See the <a href="#performance">architecture reference</a>.</td></tr>
+<tr><td>Argot</td><td>Lossless per-project shorthand that expands before a tool, transcript, parent agent, or display receives it</td><td><a href="../../../assets/argot-settings-off.png">One disabled Argot setting</a> and <a href="../../../assets/argot-settings-on.png">six enabled Argot settings</a></td></tr>
+</tbody>
+</table>
+</div>
+<p>See <a href="#acknowledgements">Acknowledgements</a> for project credits. The <a href="../../internal/porting-from-pi-mono.html#15-intentional-divergences">intentional-divergence ledger</a> records port-sensitive implementation differences.</p>
+<h2 id="shared-and-evolved-mechanisms"><a class="header" href="#shared-and-evolved-mechanisms">Shared and evolved mechanisms</a></h2>
+<p>The sections below describe the current product. Some mechanisms began in the fork baseline, and some have changed since. Their behavior here is authoritative for Veyyon.</p>
 <h2 id="hashline-edits"><a class="header" href="#hashline-edits">Hashline edits</a></h2>
-<p>The <code>edit</code> and <code>write</code> tools accept hashline patches, which are addressed by content rather than by line number. Before writing, the native layer checks the patch against the current file. If they do not match, the tool fails and returns recovery context to the model instead of writing a corrupted file.</p>
+<p>The <code>edit</code> and <code>write</code> tools accept hashline patches, which are addressed by content rather than by line number. Before writing, the natives layer verifies the patch against the current file. If they do not match, the tool fails and returns recovery context to the model instead of writing a corrupted file.</p>
 <p>See <a href="#editing-and-repair">Editing and repair</a> and <a href="#the-hashline-edit-engine">The hashline edit engine</a>.</p>
 <h2 id="tool-approval-tiers"><a class="header" href="#tool-approval-tiers">Tool approval tiers</a></h2>
-<p><code>tools.approvalMode</code> is one of <code>plan</code>, <code>ask</code>, <code>ask-command</code>, <code>auto</code>, or <code>yolo</code>.
-<code>auto</code> is the default. Older names map onto those: <code>always-ask</code> to <code>ask</code>, <code>write</code>
-and <code>auto-edit</code> to <code>ask-command</code>. The tiers are read, write, and exec.</p>
-<p>Four guards sit above the mode and no mode lifts them:</p>
-<ul>
-<li>Per-tool overrides in <code>tools.approval</code>.</li>
-<li>The working-directory boundary.</li>
-<li>The secret-use boundary.</li>
-<li><code>bash-guard.ts</code>, which forces a prompt on a destructive command such as a
-recursive delete of the home directory. <code>yolo</code> does not lift it.</li>
-</ul>
-<p><code>bashInterceptor.enabled</code> adds a user-configured layer on top, off by default,
-matching <code>bashInterceptor.patterns</code>.</p>
-<p>See <a href="#approvals">Approvals</a> and <code>/settings</code> -&gt; Interaction -&gt;
-Approvals.</p>
+<p>The <code>tools.approvalMode</code> setting is one of <code>plan</code>, <code>ask</code>, <code>ask-command</code>, <code>auto</code>, or <code>yolo</code>, and <code>auto</code> is the default. The older aliases still map onto those: <code>always-ask</code> → <code>ask</code>, <code>write</code> and <code>auto-edit</code> → <code>ask-command</code>. The three tiers are read, write, and exec. On top of the mode sit the guards the mode does not lift: per-tool <code>tools.approval</code> overrides, the working-directory boundary, the secret-use boundary, and a built-in bash guard (<code>bash-guard.ts</code>) that forces a prompt on destructive commands such as a recursive delete of the home directory. That guard is always on and even <code>yolo</code> does not lift it. The separate bash interceptor (<code>bashInterceptor.enabled</code>, off by default, <code>bashInterceptor.patterns</code>) is an additional user-configured layer.</p>
+<p>See <a href="#approvals">Approvals</a> and <code>/settings</code> → Interaction → Approvals.</p>
 <h2 id="model-slots-and-roles"><a class="header" href="#model-slots-and-roles">Model slots and roles</a></h2>
-<p>Model configuration separates model selection from subsystem roles:</p>
+<p>Veyyon separates the model you use from the job it does:</p>
 <ul>
-<li><strong>The interactive model</strong> is set with <code>/model</code> or <code>--model</code> and persists as <code>modelRoles.default</code>.</li>
-<li><strong>Roles</strong> pin a model to specific workloads, such as <code>smol</code> for lightweight operations or <code>advisor</code> for review. Custom roles are defined in <code>modelRoles</code>. See <a href="#models-roles-and-profiles">Models, roles, and profiles</a>.</li>
-<li><strong>Overrides</strong> are explicit subsystem policies. <code>compaction.model</code> overrides the interactive model for compaction, otherwise compaction inherits it. Subagent models are configured via subagent policies in settings.</li>
-<li><strong>Cycling</strong> rotates through <code>cycleOrder</code> (defaulting to <code>smol</code> then <code>slow</code>), bound to <code>app.model.cycleForward</code>.</li>
+<li><strong>The interactive model</strong> is what you set with <code>/model</code> or <code>--model</code>, and it persists as <code>modelRoles.default</code>.</li>
+<li><strong>Roles</strong> pin a model to a kind of work, such as <code>smol</code> for cheap fast work or <code>advisor</code> for the reviewing advisor, and you can add your own in <code>modelRoles</code>. The full built-in set is listed in <a href="#models-roles-and-profiles">Models, roles, and profiles</a>.</li>
+<li><strong>Overrides</strong> are explicit subsystem policies. <code>compaction.model</code> overrides the interactive model for compaction, otherwise compaction inherits it. Subagent models are not roles: profile-wide and per-agent policy in the Subagents settings area decides what they run.</li>
+<li><strong>Cycling</strong> rotates through <code>cycleOrder</code> (which defaults to <code>smol</code> then <code>slow</code>), bound to <code>app.model.cycleForward</code>, often Ctrl+P.</li>
 </ul>
+<p>The full contract is in <a href="#models-roles-and-profiles">Models, roles, and profiles</a>.</p>
 <h2 id="provider-neutral-loop"><a class="header" href="#provider-neutral-loop">Provider-neutral loop</a></h2>
-<p>The agent loop, TUI, session format, MCP, skills, hooks, and extensions operate independently of specific model providers. Providers are configured in the active profile agent directory through <code>config.yml</code> or <code>/setup</code>, with account management via <code>/providers</code>.</p>
+<p>The agent loop, the TUI, the session format, MCP, skills, hooks, and extensions do not hard-code a single vendor. You configure providers in the active profile’s agent directory, through <code>config.yml</code> or <code>/setup</code>, and manage their accounts with <code>/providers</code>.</p>
 <h2 id="engine-modes"><a class="header" href="#engine-modes">Engine modes</a></h2>
 <p>Compaction, goal continuation, plan mode, vibe mode, and task subagents live in the session and tool layer, not only in prompt text. Goal mode can keep an idle session moving toward a stored objective. Plan mode writes a plan file and holds back mutation until the resolve and approval paths complete.</p>
 <h2 id="profiles"><a class="header" href="#profiles">Profiles</a></h2>
 <p>Every profile, including <code>default</code>, lives at <code>~/.veyyon/profiles/&lt;name&gt;/agent/</code>, which holds its settings, sessions, MCP config, skills, and hooks. See <a href="#profiles-1">Profiles</a> and <a href="#file-locations-1">File locations</a>.</p>
-<h2 id="related-1"><a class="header" href="#related-1">Related</a></h2>
+<h2 id="related"><a class="header" href="#related">Related</a></h2>
 <ul>
 <li><a href="#harness-design-goals">Design goals</a></li>
 <li><a href="#models-roles-and-profiles">Roles and profiles</a></li>
@@ -320,58 +353,117 @@ Approvals.</p>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="argot"><a class="header" href="#argot">Argot</a></h1>
-<p>Argot is a per-project token shorthand codec for model interactions. A project dictionary maps short handles to recurring text strings such as paths, import roots, and build commands. The model outputs the handle, and the runtime expands the handle to the full string before passing arguments to tools, rendering UI, or appending to transcripts.</p>
-<p>For configuration and flags, see <a href="#save-tokens-with-project-shorthand-argot-experimental">Save tokens with project shorthand</a>.</p>
-<h2 id="shorthand-format"><a class="header" href="#shorthand-format">Shorthand format</a></h2>
-<p>A handle consists of a sigil prefix followed by an identifier:</p>
-<ul>
-<li>The default sigil is <code>§</code>.</li>
-<li>Identifiers use lowercase ASCII letters, digits, and underscores.</li>
-<li>Per-project sigils are configured in the dictionary’s <code>sigil</code> field.</li>
-</ul>
-<p>When the model emits <code>§build</code>, the runtime replaces <code>§build</code> with the configured string before executing the command in the shell.</p>
-<h2 id="dictionary-structure"><a class="header" href="#dictionary-structure">Dictionary structure</a></h2>
-<p>Handles are defined in an <code>AGENTS.dict</code> file:</p>
+<p>Argot is experimental: off by default, gated to models you explicitly allow, and
+still being measured on live benches. The mechanism is fully wired and lossless;
+what is unproven is the economics (whether real sessions save enough output
+tokens to matter), which is why it ships behind a flag.</p>
+<p>Argot is a per-project shorthand that the model writes in. A project keeps a
+small table of handles, each one a short name that stands for a longer string it
+repeats a lot: a full path, an import root, a canonical build command. The model
+writes the handle, and Veyyon restores it to the full string before anything runs
+or is shown. It is one of the mechanisms Veyyon owns after the oh-my-pi fork.</p>
+<p>This chapter explains what Argot is and how the codec works. To turn it on, see
+<a href="#save-tokens-with-project-shorthand-argot-experimental">Save tokens with project shorthand</a>.</p>
+<h2 id="the-idea-in-one-example"><a class="header" href="#the-idea-in-one-example">The idea in one example</a></h2>
+<p>Say a project’s build command is a long, exact string the agent types over and
+over:</p>
+<pre><code>node --experimental-vm-modules ./scripts/build.mjs --target release --profile ci
+</code></pre>
+<p>With Argot, that string gets a handle, for example <code>§build</code>. The model writes
+<code>§build</code>, and by the time the command reaches the shell it is the full string
+again. The model carried a short token where it would have carried a long one,
+and nothing downstream ever saw the short form.</p>
+<p>A handle is a marker followed by a name. The default marker is the section sign
+<code>§</code>, so the handle is <code>§build</code>. A name is lowercase letters, digits, and
+underscores. The marker is configurable per project through the dictionary’s
+<code>sigil</code> field, and it may never contain a character that could blur into a name
+or into whitespace.</p>
+<h2 id="the-dictionary"><a class="header" href="#the-dictionary">The dictionary</a></h2>
+<p>The handles live in a file named <code>AGENTS.dict</code>. It is a small table mapping each
+name to its expansion:</p>
 <pre><code class="language-toml">sigil = "§"
 
 [handles]
 build = "node --experimental-vm-modules ./scripts/build.mjs --target release --profile ci"
 dbconn = "src/server/db/connection.ts"
 </code></pre>
-<p>The dictionary format enforces length bounds on expansions and includes a schema version. Files with incompatible major versions fail load validation.</p>
-<p>The dictionary is generated automatically from project contents. When a session starts or the <code>argot_load</code> tool runs on a target directory, the generator identifies recurring strings, ranks candidates by token reduction, and stores the compiled dictionary in the local cache directory. Nothing is written to the repository working tree.</p>
-<p>Automatic startup loading is controlled by <code>argot.autoload</code> (enabled by default).</p>
-<h2 id="codec-boundaries"><a class="header" href="#codec-boundaries">Codec boundaries</a></h2>
-<p>The codec operates under two distinct boundaries:</p>
+<p>A handle stands for a recurring string, not a document, so an expansion has an
+upper bound and a longer one is rejected. The file also declares a format
+version. A file that targets a newer major version is refused loudly rather than
+read on a guess.</p>
+<p>You do not write or commit this file by hand. Veyyon loads the folder you started
+the session in, and the agent loads any further project by calling the
+<code>argot_load</code> tool on the folder it is about to work in. Either way Veyyon
+generates the dictionary for that project from the strings it actually repeats,
+scores each candidate by how much output it would save, and keeps the result in a
+local cache under its own config directory. In a monorepo the agent loads the one
+package it is working in, not the repo root. Nothing is written into your working
+tree, so there is no file for a pull request to pick up, and a session where
+nothing is ever loaded simply behaves as if Argot were off. The startup load is
+<code>argot.autoload</code>, on by default; turn it off to leave every load to the agent.</p>
+<h2 id="two-directions-two-rules"><a class="header" href="#two-directions-two-rules">Two directions, two rules</a></h2>
+<p>Argot has two directions, and they are gated differently on purpose.</p>
+<p><strong>Decoding</strong> is turning a handle back into its full text. It is unconditional.
+Once a dictionary is loaded, every handle expands, always, before the text
+reaches a tool, the disk, or your screen. A handle that arrived at a tool
+unexpanded would be a broken path, not merely worse text, so decoding is never
+something a setting can switch off.</p>
+<p><strong>Encoding</strong> is teaching the model the notation so it writes handles in the first
+place. This is a policy choice, and it has two levers:</p>
 <ul>
-<li><strong>Decoding</strong>: Turning handles back into full text is unconditional. Whenever a dictionary is active, all handles are expanded before text reaches tool execution, transcript storage, or terminal display.</li>
-<li><strong>Encoding</strong>: Teaching shorthand syntax to the model is controlled by configuration:
-<ul>
-<li>Model allowlist (<code>argot.models</code>): Shorthand instructions are provided only to explicitly allowed models.</li>
-<li>Context cutoff (<code>argot.maxContextTokens</code>): Shorthand instructions are omitted once session context exceeds the specified token limit.</li>
+<li>A model allowlist. Only the models you name are taught the shorthand. The list
+is empty by default, so turning Argot on without naming a model stays inert.
+This lets you keep shorthand on for a model you trust to recall the dictionary
+and off for one you are still measuring.</li>
+<li>A context-size cutoff. Recall of the dictionary degrades as a conversation
+grows, so past a token threshold Veyyon stops teaching new shorthand and the
+model writes in full.</li>
 </ul>
-</li>
-</ul>
-<p>When encoding is disabled, the model writes full strings. Decoding remains active so existing handles in session history continue to expand.</p>
-<h2 id="cache-storage"><a class="header" href="#cache-storage">Cache storage</a></h2>
-<p>Cache entries are content-keyed using the repository commit hash or a directory fingerprint:</p>
+<p>Because decoding never depends on either lever, it is always safe to stop
+encoding. The worst case is the model writing a full string it could have
+shortened, never a raw handle leaking through. Switching models mid-session is
+safe for the same reason: a handle already in the history expands whatever model
+is active now.</p>
+<h2 id="why-it-saves-tokens"><a class="header" href="#why-it-saves-tokens">Why it saves tokens</a></h2>
+<p>Output tokens cost several times more than input tokens. A handle pays off when
+the model would otherwise retype a long string many times across a session, since
+each repeat is output the model is charged for at the higher rate. The generator
+optimizes for exactly this: it fills the dictionary highest-value first, where
+value is how much output a handle removes across the project’s text, and it stops
+before the dictionary itself grows large enough to cost more to carry than it
+saves.</p>
+<h2 id="the-cache-is-immutable-and-content-keyed"><a class="header" href="#the-cache-is-immutable-and-content-keyed">The cache is immutable and content-keyed</a></h2>
+<p>Each cache entry is named by the content it was built from: the git commit for a
+git project, or a signature of the file listing for a project with a <code>.argot</code>
+marker. An entry is never rewritten once it exists. A new commit reads a new
+entry, built from the new tree; the old entry stays exactly as it was. Two agents
+on the same commit read one entry, agents on different commits read different
+entries, and a race to build the same entry produces byte-identical output, so
+the write is safe with no lock.</p>
+<p>Nothing depends on a handle keeping its name from one entry to the next. The
+expansion rule (see “Two directions, two rules” above) expands every handle
+before it reaches the saved transcript, so no stored transcript ever holds a raw
+handle. Because the history never references a handle, a rebuilt-from-empty cache
+would break nothing: the two directions stay correct whatever the dictionary
+holds. That is why the cache can be keyed on content and thrown away freely,
+rather than pinned and grown forever. To rebuild deliberately, delete the
+project’s cache directory and let the next session regenerate it.</p>
+<h2 id="subagents-each-expand-their-own-output"><a class="header" href="#subagents-each-expand-their-own-output">Subagents each expand their own output</a></h2>
+<p>A subagent veyyon spawns for a task follows the same two rules on its own. Every
+agent expands its output before it reaches a tool, the saved transcript, a prompt
+it hands to a child, or the result it returns to a parent, so a handle never
+crosses between a parent and a child in either direction. A subagent that starts
+with no dictionary is already correct: it reads the full text its parent wrote
+(the parent expanded it) and writes full text back (the child expands it).
+Sharing a dictionary between parent and child is only a way to save tokens, never
+a thing correctness rests on. The <code>argot.subagents</code> setting picks between no
+shorthand, a fresh dictionary from the child’s own project, and a copy of the
+parent’s; see <a href="#choose-how-subagents-start">the configuration
+page</a>.</p>
+<h2 id="related-1"><a class="header" href="#related-1">Related</a></h2>
 <ul>
-<li>Cache files are immutable once written.</li>
-<li>Distinct commits produce separate cache entries.</li>
-<li>Stored transcripts contain expanded text rather than raw handles, allowing cache entries to be discarded and rebuilt without corrupting session history.</li>
-</ul>
-<p>To rebuild a project cache, remove the cached dictionary directory under <code>~/.veyyon/cache/argot/</code>.</p>
-<h2 id="subagent-boundary"><a class="header" href="#subagent-boundary">Subagent boundary</a></h2>
-<p>Subagents evaluate shorthand independently:</p>
-<ul>
-<li>Each agent instance expands its output before invoking tools, writing transcripts, prompting subagents, or returning values to a parent agent.</li>
-<li>Raw handles do not cross agent boundaries.</li>
-<li>The <code>argot.subagents</code> setting controls whether child agents inherit the parent dictionary, generate a project-specific dictionary, or operate without shorthand. See <a href="#choose-how-subagents-start">Subagents configuration</a>.</li>
-</ul>
-<h2 id="related-2"><a class="header" href="#related-2">Related</a></h2>
-<ul>
-<li><a href="#save-tokens-with-project-shorthand-argot-experimental">Save tokens with project shorthand</a></li>
-<li><a href="#mechanisms">Mechanisms</a></li>
+<li><a href="#save-tokens-with-project-shorthand-argot-experimental">Save tokens with project shorthand</a>: the settings and how to enable it</li>
+<li><a href="#mechanisms">Mechanisms</a>: the current product contracts and shared mechanisms</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="harness-design-goals"><a class="header" href="#harness-design-goals">Harness design goals</a></h1>
@@ -388,7 +480,7 @@ dbconn = "src/server/db/connection.ts"
 <li>Engine-enforced modes: plan file + resolve path, goal continuation, approval tiers.</li>
 <li>Schema-based tool-call repair before argument validation (see <a href="#tool-call-repair">Repair</a>).</li>
 </ul>
-<h2 id="related-3"><a class="header" href="#related-3">Related</a></h2>
+<h2 id="related-2"><a class="header" href="#related-2">Related</a></h2>
 <ul>
 <li><a href="#mechanisms">Mechanisms</a></li>
 <li><a href="#tool-call-repair">Repair</a></li>
@@ -396,7 +488,7 @@ dbconn = "src/server/db/connection.ts"
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="architecture-at-a-glance"><a class="header" href="#architecture-at-a-glance">Architecture at a glance</a></h1>
-<p>Veyyon ships as the <strong><code>veyyon</code></strong> CLI (Bun + TypeScript, Rust helpers). Subsystems map
+<p>Veyyon ships as the <strong><code>veyyon</code></strong> CLI (Bun + TypeScript, Rust helpers). This chapter maps subsystems;
 each has a handbook page and matching engineering notes under <code>docs/</code>.</p>
 <h2 id="the-request-path"><a class="header" href="#the-request-path">The request path</a></h2>
 <pre><code class="language-text">            ┌──────────────────────────────────────────────────────────────┐
@@ -433,20 +525,99 @@ prompt ──► │  veyyon (packages/coding-agent)                            
 <p>Tool-call argument repair (alias maps, strict unknown-key rejection, parse leniency) runs at the dispatch seam in <code>packages/coding-agent/src/repair/schema-repair.ts</code>. See <a href="#tool-call-repair">Repair</a>. Providers and models: <a href="#the-provider-stack-and-bring-your-own-key">Providers</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="performance"><a class="header" href="#performance">Performance</a></h1>
-<p>Agent execution latency is composed of model generation latency, tool execution I/O, validation failure retries, and harness runtime overhead.</p>
-<h2 id="retry-bounds"><a class="header" href="#retry-bounds">Retry bounds</a></h2>
-<p>Tool calls or edits that fail schema validation or patch application require additional model turns. Schema repair on tool arguments and patch validation on edits catch structural issues before execution. Implementation: <code>packages/coding-agent/src/repair/</code>, <code>@veyyon/hashline</code>.</p>
+<p>Agent wall time is the sum of model latency, tool I/O, retries after failed tool/edit validation, and harness overhead.</p>
+<h2 id="retry-cost"><a class="header" href="#retry-cost">Retry cost</a></h2>
+<p>A tool call or edit that fails schema or apply verification usually costs another model turn. Schema repair (tool arguments) and hashline verification (edits) reduce those failures. Implementation: <code>packages/coding-agent/src/repair/</code>, <code>@veyyon/hashline</code>.</p>
 <h2 id="edit-path"><a class="header" href="#edit-path">Edit path</a></h2>
-<p>Hashline edits reference surrounding anchor lines rather than full file rewrites. Application cost scales with patch size instead of total file length. See <a href="#the-hashline-edit-engine">Hashline engine</a>.</p>
+<p>Hashline avoids re-emitting large surrounding context when anchors are available. Apply cost scales with patch size, not with re-serializing the full file for every change. See <a href="#the-hashline-edit-engine">Hashline engine</a>.</p>
 <h2 id="runtime-architecture"><a class="header" href="#runtime-architecture">Runtime architecture</a></h2>
-<p>The CLI, TUI, and session loop run as TypeScript on Bun. Native grep, PTY handling, shell support, and tree-sitter parsing execute via native addons. Rust crates provide glob matching, grep orchestration, key normalization, text indexing, diffing, and directory walking. Token streaming renders output incrementally as chunks arrive from provider streams.</p>
-<h2 id="related-4"><a class="header" href="#related-4">Related</a></h2>
+<p>The CLI, TUI, and session loop run as TypeScript on Bun. Native grep, PTY, shell support, and tree-sitter parsing handle hot paths. Reusable Rust crates provide glob matching, grep orchestration, key normalization, text indexing, diffing, and directory walking. Hashline apply remains TypeScript in <code>@veyyon/hashline</code>. Streaming returns tokens as they arrive.</p>
+<h2 id="measurement"><a class="header" href="#measurement">Measurement</a></h2>
+<p>Hot-path changes are covered by package tests and criteria where present. Do not treat marketing numbers as SLAs without the linked method and host.</p>
+<h2 id="related-3"><a class="header" href="#related-3">Related</a></h2>
 <ul>
 <li><a href="#mechanisms">Mechanisms</a></li>
 <li><a href="#getting-started">Getting started</a></li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="install-1"><a class="header" href="#install-1">Install</a></h1>
+<h1 id="why-it-helps"><a class="header" href="#why-it-helps">Why it helps</a></h1>
+<p>The model weights are the same ones you get anywhere. What Veyyon changes is how often a change
+lands on the first attempt, and what a failed attempt costs when it happens. This chapter names the
+concrete reasons, and each links the page that covers it in full.</p>
+<h2 id="fewer-failed-edits-and-tool-calls"><a class="header" href="#fewer-failed-edits-and-tool-calls">Fewer failed edits and tool calls</a></h2>
+<p>Edits and tool calls go through harness steps that catch apply and schema failures before they burn a
+full retry turn.</p>
+<ul>
+<li>Hashline edits anchor on <code>read</code> / <code>grep</code> / <code>write</code> snapshot tags, so an edit that targets stale
+content fails verification with recovery context instead of writing a corrupt file.</li>
+<li><code>edit</code>, <code>write</code>, and the compatibility apply modes share one approval gate.</li>
+<li>Schema repair coerces unambiguous malformed tool JSON before dispatch; ambiguous input is refused
+rather than guessed.</li>
+</ul>
+<p>See <a href="#editing-and-repair">Editing and repair</a>, <a href="#tool-call-repair">Repair overview</a>, and
+<a href="#the-hashline-edit-engine">The hashline edit engine</a>.</p>
+<h2 id="less-spent-on-context-and-retries"><a class="header" href="#less-spent-on-context-and-retries">Less spent on context and retries</a></h2>
+<p>A run that avoids a retry turn, and that compacts instead of truncating, spends fewer tokens for the
+same result. See <a href="#context-size-and-retries">Context size and retries</a>.</p>
+<h2 id="the-right-model-for-the-job"><a class="header" href="#the-right-model-for-the-job">The right model for the job</a></h2>
+<p>Roles let a cheap model do the cheap work and a stronger one do the hard work, without you switching
+by hand. See <a href="#model-and-provider-selection">Model and provider selection</a>.</p>
+<h2 id="mistakes-stop-at-the-approval-gate"><a class="header" href="#mistakes-stop-at-the-approval-gate">Mistakes stop at the approval gate</a></h2>
+<p>Approval tiers and clear error returns keep a wrong tool call from cascading into more damage. See
+<a href="#approvals-and-errors">Approvals and errors</a>.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="context-size-and-retries"><a class="header" href="#context-size-and-retries">Context size and retries</a></h1>
+<p>Token use and turn count depend on tool output size, compaction, and whether bad edits or tool JSON force retries.</p>
+<h2 id="mechanisms-1"><a class="header" href="#mechanisms-1">Mechanisms</a></h2>
+<ul>
+<li>Bounded <code>read</code>, <code>glob</code>, and <code>grep</code> outputs (truncation is marked in tool results)</li>
+<li>In-place summary compaction compresses older history instead of dropping it silently</li>
+<li>Goal mode keeps an objective outside the raw transcript tail</li>
+<li>Edit verification and tool repair reduce failed apply/schema turns</li>
+</ul>
+<h2 id="details"><a class="header" href="#details">Details</a></h2>
+<ul>
+<li><a href="#bounded-reads-and-search">Bounded reads and search</a></li>
+<li><a href="#compaction-and-project-memory">Compaction and project memory</a></li>
+<li><a href="#goal-state-and-long-sessions">Goal state</a></li>
+<li><a href="#performance">Performance</a></li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="model-and-provider-selection"><a class="header" href="#model-and-provider-selection">Model and provider selection</a></h1>
+<p>The agent loop is provider-neutral. Point it at a local server, a direct provider API, or a compatible gateway. The harness selects wire format, prompts, and tool exposure from the model catalog and settings.</p>
+<h2 id="behavior"><a class="header" href="#behavior">Behavior</a></h2>
+<ul>
+<li>Provider and model metadata live in the catalog, not hard-coded per call site</li>
+<li>Per-model prompt section order and tool allowlists can be set via harness profiles</li>
+<li>Explicit pin: <code>/model</code>, <code>--model</code>, and <code>config.yml</code></li>
+<li>Tool repair, edit verification, goal/context handling, and output bounds apply regardless of vendor</li>
+</ul>
+<h2 id="details-1"><a class="header" href="#details-1">Details</a></h2>
+<ul>
+<li><a href="#models-and-providers">Models and providers</a></li>
+<li><a href="#the-provider-stack-and-bring-your-own-key">Providers</a></li>
+<li><a href="#execution-order-prompts">Execution-order prompts</a></li>
+<li><a href="#per-model-repair-posture">Per-model repair posture</a></li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="approvals-and-errors"><a class="header" href="#approvals-and-errors">Approvals and errors</a></h1>
+<p>File writes and shell commands are gated by <code>tools.approvalMode</code> and related policy (per-tool <code>tools.approval</code> overrides, hard-coded flagged bash patterns). There is no OS-level command sandbox.</p>
+<h2 id="behavior-1"><a class="header" href="#behavior-1">Behavior</a></h2>
+<ul>
+<li>Approval mode selects which tiers (read / write / exec) auto-run vs prompt</li>
+<li>Denied or failed policy checks return to the model; they do not widen permissions</li>
+<li>Tool output records truncation when limits apply</li>
+<li>Invalid config and unrepairable tool arguments surface errors instead of silent defaults</li>
+</ul>
+<h2 id="details-2"><a class="header" href="#details-2">Details</a></h2>
+<ul>
+<li><a href="#approvals">Approvals</a></li>
+<li><a href="#configuration-4">Configuration</a></li>
+<li><a href="#tool-call-repair">Repair</a></li>
+<li><a href="#observability">Observability</a></li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="install"><a class="header" href="#install">Install</a></h1>
 <p>Veyyon installs as a single self-contained binary. The release installer stages the download and proves it has the published checksum, the requested version, and working native support before it changes the active install or your shell. It then links a short <code>vey</code> launch command next to <code>veyyon</code>. Under the hood Veyyon is a TypeScript and Bun agent loop, with Rust natives handling the hot paths: grep, the file walker, the shell and PTY, and tree-sitter block resolution for hashline block edits. The prebuilt binary bundles all of that, so you do not need Bun, Node, or a package manager to run it.</p>
 <h2 id="install-on-linux-or-macos"><a class="header" href="#install-on-linux-or-macos">Install on Linux or macOS</a></h2>
 <pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh
@@ -940,7 +1111,7 @@ vey --version
 <p>If it is missing, the one-command installer wires up your PATH, shell completions, and the <code>vey</code> alias:</p>
 <pre><code class="language-shell">curl -fsSL https://get.veyyon.dev | sh
 </code></pre>
-<p>You can also pin a release binary with <code>curl -fsSL https://get.veyyon.dev | sh -s -- --ref v1.0.11</code>. The installer only ever downloads a published release binary. To run an unreleased ref instead, clone the repository yourself and run <code>bun run setup &amp;&amp; bun dev</code> in that checkout. See <a href="#install-1">Install</a>.</p>
+<p>You can also pin a release binary with <code>curl -fsSL https://get.veyyon.dev | sh -s -- --ref v1.0.11</code>. The installer only ever downloads a published release binary. To run an unreleased ref instead, clone the repository yourself and run <code>bun run setup &amp;&amp; bun dev</code> in that checkout. See <a href="#install">Install</a>.</p>
 <h2 id="check-the-environment"><a class="header" href="#check-the-environment">Check the environment</a></h2>
 <pre><code class="language-shell">veyyon plugin doctor
 </code></pre>
@@ -974,7 +1145,7 @@ vey
 <p>You now know the loop: start <code>veyyon</code>, ask, approve the tools, and inspect the diffs.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="getting-started"><a class="header" href="#getting-started">Getting started</a></h1>
-<p>Four steps take a fresh machine to a first change in a project: install, run the first-time setup, sign in to a provider, hand Veyyon a task.</p>
+<p>This chapter takes you from nothing installed to a first real change in your own project. It has four steps: install Veyyon, run the first-time setup, sign in to a provider, and hand Veyyon a small task.</p>
 <h2 id="1-install"><a class="header" href="#1-install">1. Install</a></h2>
 <p>The quickest path is the one-line installer, which downloads a self-contained binary and links a short <code>vey</code> command.</p>
 <pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh    # Linux or macOS
@@ -988,7 +1159,7 @@ $ bun run setup
 $ bun dev --version
 </code></pre>
 <p><code>bun run setup</code> installs the workspace dependencies and builds <code>@veyyon/natives</code>, the Rust addon. That checkout is yours: you chose where it lives, and the installer neither creates it nor writes into it. Your configuration lives under <code>~/.veyyon</code>, and the default profile keeps its agent state in <code>~/.veyyon/profiles/default/agent/</code>.</p>
-<p>The installer sets up shell completions for you when your shell supports them. The <a href="#install-1">Install</a> chapter has the full details.</p>
+<p>The installer sets up shell completions for you when your shell supports them. The <a href="#install">Install</a> chapter has the full details.</p>
 <h2 id="2-first-launch"><a class="header" href="#2-first-launch">2. First launch</a></h2>
 <p>The first time you run <code>veyyon</code> (or any time you run <code>veyyon setup</code>), the setup UI walks you through five steps:</p>
 <ol>
@@ -1064,7 +1235,7 @@ $ veyyon
 <p>From here, the <a href="#quickstart">Quickstart</a> is a shorter walkthrough, <a href="#configuration-4">Configuration</a> covers settings, <a href="#sessions">Sessions</a> explains resuming and branching, <a href="#memory">Memory</a> covers the mnemopi backend, and <a href="#diagnostics-and-health">Diagnostics</a> covers the doctor and debug tools.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="configuring-providers"><a class="header" href="#configuring-providers">Configuring providers</a></h1>
-<p>Copy-paste setups for bring-your-own-key (BYOK) and local providers.
+<p>This page gives you copy-paste setups for bring-your-own-key (BYOK) and local providers.
 Once a provider works, see <a href="#models-and-providers">Models and providers</a> to choose and switch models.
 For what the harness owns versus what the provider owns, see
 <a href="#model-contract">Model contract</a>.</p>
@@ -1203,8 +1374,8 @@ fix that rather than retrying with a different silent default.</p>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="core-concepts"><a class="header" href="#core-concepts">Core concepts</a></h1>
-<p>The vocabulary for how Veyyon runs: sessions, permissions, and the boundary between the harness and the model provider. For operator commands see <a href="#getting-started">Using Veyyon</a>; for feature guides see <a href="#features">Features</a>.</p>
-<h2 id="pages"><a class="header" href="#pages">Pages</a></h2>
+<p>This chapter gives you the vocabulary for how Veyyon runs: sessions, permissions, and the boundary between the harness and your model provider. If you want operator commands instead, see <a href="#getting-started">Using Veyyon</a>, and for feature guides see <a href="#features">Features</a>.</p>
+<h2 id="what-this-chapter-covers"><a class="header" href="#what-this-chapter-covers">What this chapter covers</a></h2>
 <p>The CLI is <code>veyyon</code>. It calls a configured model endpoint with your credentials and runs a tool loop: read, edit, verify, stop. The pages below define the units and contracts of that loop, so that later chapters can assume you know them.</p>
 <div class="table-wrapper">
 <table>
@@ -1219,7 +1390,7 @@ fix that rather than retrying with a different silent default.</p>
 </table>
 </div>
 <h2 id="foundations-that-pair-with-these-pages"><a class="header" href="#foundations-that-pair-with-these-pages">Foundations that pair with these pages</a></h2>
-<p>The foundations pages give the design spine without repeating the operator workflow.</p>
+<p>The foundations pages give the design spine without repeating the operator workflow. Read them before or after this chapter, whichever suits you.</p>
 <ul>
 <li><a href="#architecture-at-a-glance">Architecture at a glance</a> maps the subsystems to their responsibilities.</li>
 <li>For provider and model configuration, see <a href="#the-provider-stack-and-bring-your-own-key">Providers</a> and <a href="../../providers.html"><code>docs/providers.md</code></a>.</li>
@@ -1461,7 +1632,7 @@ containment.</p>
 <p>When a tool is denied, or a policy check fails, Veyyon returns an error to the model. It
 does not retry with more permission. An error never escalates what the model is allowed to
 do.</p>
-<h2 id="related-5"><a class="header" href="#related-5">Related</a></h2>
+<h2 id="related-4"><a class="header" href="#related-4">Related</a></h2>
 <ul>
 <li><a href="#approvals">Approvals</a></li>
 <li><a href="#safety-1">Safety</a></li>
@@ -1473,7 +1644,7 @@ do.</p>
 endpoint exposes model choice, provide the key, and Veyyon calls that API directly. The endpoint can be
 a local server (Ollama, LM Studio), a direct provider API (OpenAI, Anthropic, Google), or any
 OpenAI-compatible gateway.</p>
-<p>The contract between the harness and the model. For copy-paste provider setup, see
+<p>This page is the contract between the harness and the model. For copy-paste provider setup, see
 <a href="#configuring-providers">Configuring providers</a>. For model switching, see
 <a href="#models-and-providers">Models and providers</a>.</p>
 <h2 id="the-three-things-you-bring"><a class="header" href="#the-three-things-you-bring">The three things you bring</a></h2>
@@ -1620,7 +1791,7 @@ working-directory, credential and critical-command guards still stop the calls t
 <li>Edit verification, approvals, and context handling are harness behavior.</li>
 <li>Provider is configuration: endpoint, credentials, and model id.</li>
 </ul>
-<h2 id="next"><a class="header" href="#next">Next</a></h2>
+<h2 id="next-1"><a class="header" href="#next-1">Next</a></h2>
 <ul>
 <li><a href="#configuring-providers">Configuring providers</a>: Ollama, LM Studio, Anthropic, and custom
 OpenAI-compatible endpoints.</li>
@@ -1631,7 +1802,7 @@ OpenAI-compatible endpoints.</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="features"><a class="header" href="#features">Features</a></h1>
-<p>Features, in two groups: the surfaces of an everyday session, then what extends and customizes the agent. Worked examples are at the end.</p>
+<p>This chapter is the hub for Veyyon’s features: the surfaces you touch every session, then what you add on top to extend and customize the agent. For worked examples, see the recipes at the end.</p>
 <h2 id="interactive-surfaces"><a class="header" href="#interactive-surfaces">Interactive surfaces</a></h2>
 <p>These are the parts of the TUI you touch every session:</p>
 <ul>
@@ -1673,7 +1844,7 @@ OpenAI-compatible endpoints.</li>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="editing-and-repair"><a class="header" href="#editing-and-repair">Editing and repair</a></h1>
 <p>Editing reliably is the core of a coding agent, so it is worth understanding how Veyyon does it. The default edit surface is hashline. In practice that means three things work together: numbered lines that come back from <code>read</code> and <code>grep</code>, snapshot tags that identify a known state of a file, and the <code>edit</code> tool with its <code>SWAP</code>, <code>DEL</code>, and <code>INS</code> operations.</p>
-<p>For the design behind the edit and repair path, see <a href="#the-hashline-edit-engine">The hashline edit engine</a>.</p>
+<p>For the design behind the edit and repair path, see <a href="#why-it-helps">Edit path and tool arguments</a> and <a href="#the-hashline-edit-engine">The hashline edit engine</a>.</p>
 <h2 id="failure-modes"><a class="header" href="#failure-modes">Failure modes</a></h2>
 <p>Models often emit slightly wrong tool JSON, or line anchors that have gone stale. Hashline catches a stale <code>[path#TAG]</code> tag and returns recovery hints instead of writing the wrong bytes. On top of that, general schema repair runs on every tool call before validation. See <a href="#tool-call-repair">Repair overview</a>.</p>
 <h2 id="write-path-versus-edit-path"><a class="header" href="#write-path-versus-edit-path">Write path versus edit path</a></h2>
@@ -1731,7 +1902,7 @@ and confirm that it matches the command or browser scenario that ran.</p>
 Seatbelt, or bubblewrap). Shell commands and file writes run as your user, bounded only by
 this policy, per-tool <code>tools.approval</code> overrides, and the hard-coded flagged bash patterns
 below.</p>
-<p>Operator reference. For the model behind it, see
+<p>This page is the operator reference. For the model behind it, see
 <a href="#permission-model">Permission model</a>. For the wider boundary, see
 <a href="#safety-1">Safety</a>.</p>
 <h2 id="tool-tiers-1"><a class="header" href="#tool-tiers-1">Tool tiers</a></h2>
@@ -1829,7 +2000,7 @@ typed. To turn the floor off on <code>yolo</code>, set <code>tools.approval.bash
 <p>Separately, the bash interceptor (<code>bashInterceptor.enabled</code>, default off) blocks shell
 commands that duplicate dedicated tools, so the model reaches for <code>read</code>/<code>grep</code>/<code>glob</code>
 instead of <code>cat</code>/<code>rg</code>/<code>find</code>. Its rules live in <code>bashInterceptor.patterns</code>.</p>
-<h2 id="related-6"><a class="header" href="#related-6">Related</a></h2>
+<h2 id="related-5"><a class="header" href="#related-5">Related</a></h2>
 <ul>
 <li><a href="#permission-model">Permission model</a></li>
 <li><a href="#non-interactive-mode-veyyon---print">Non-interactive mode</a></li>
@@ -1837,7 +2008,7 @@ instead of <code>cat</code>/<code>rg</code>/<code>find</code>. Its rules live in
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="safety-1"><a class="header" href="#safety-1">Safety</a></h1>
-<p>Commands and file writes go through <strong>approval mode</strong> (<code>tools.approvalMode</code>). There is no OS command sandbox (Landlock, seccomp, Seatbelt, bubblewrap). Policy details: <a href="#approvals">Approvals</a>. Concepts: <a href="#permission-model">Permission model</a>.</p>
+<p>Commands and file writes go through <strong>approval mode</strong> (<code>tools.approvalMode</code>). There is no OS command sandbox (Landlock, seccomp, Seatbelt, bubblewrap). Policy details: <a href="#approvals">Approvals</a>. Concepts: <a href="#permission-model">Permission model</a>. Summary: <a href="#approvals-and-errors">Approvals and errors</a>.</p>
 <p>Task subagents can use <strong>filesystem isolation</strong> (CoW worktree backends via <code>subagent.isolation.*</code>) so their edits land in a private tree until merged. That is change-control for subagents, not an OS process sandbox. See the task tool docs, or the Isolation group in the Subagents settings tab.</p>
 <h2 id="operator-visible-cases"><a class="header" href="#operator-visible-cases">Operator-visible cases</a></h2>
 <div class="table-wrapper">
@@ -1857,7 +2028,7 @@ instead of <code>cat</code>/<code>rg</code>/<code>find</code>. Its rules live in
 </div>
 <h2 id="headless-1"><a class="header" href="#headless-1">Headless</a></h2>
 <p><code>veyyon --print</code> has no TTY for prompts. Set <code>--approval-mode</code> / <code>--yolo</code> explicitly for the job. Reserve full auto-approve for disposable runners. See <a href="#non-interactive-mode-veyyon---print">Non-interactive mode</a>.</p>
-<h2 id="related-7"><a class="header" href="#related-7">Related</a></h2>
+<h2 id="related-6"><a class="header" href="#related-6">Related</a></h2>
 <ul>
 <li><a href="#approvals">Approvals</a></li>
 <li><a href="#configuration-4">Configuration</a></li>
@@ -1944,7 +2115,7 @@ session.cpuLimitCores.
 Sent SIGTERM to 9 process(es) because session.cpuLimitKill is on. A command that just
 stopped was killed by the CPU budget, not a crash.
 </code></pre>
-<h2 id="related-8"><a class="header" href="#related-8">Related</a></h2>
+<h2 id="related-7"><a class="header" href="#related-7">Related</a></h2>
 <ul>
 <li><a href="#approvals">Approvals</a></li>
 <li><a href="#non-interactive-mode-veyyon---print">Non-interactive mode</a></li>
@@ -1953,7 +2124,7 @@ stopped was killed by the CPU budget, not a crash.
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="secrets"><a class="header" href="#secrets">Secrets</a></h1>
 <p>You often need the agent to run a command that requires a credential. A deploy needs a token. A database query needs a password. If you paste the value into chat without protection, it can reach the model provider and any session export you create.</p>
-<p>Veyyon can keep the value away from the provider while the command still works. Some local surfaces can still contain it; those are named below.</p>
+<p>Veyyon can keep the value away from the provider while the command still works. This page shows you how, including which local surfaces can still contain it.</p>
 <h2 id="turning-it-on"><a class="header" href="#turning-it-on">Turning it on</a></h2>
 <p>Secret protection is off by default. The quickest way to turn it on is to store a credential: storing one switches protection on and tells you it did, because a stored credential is only useful once the protection that substitutes it is running.</p>
 <p>To turn it on without storing anything, use <code>/settings</code>, or write it into <code>config.yml</code>:</p>
@@ -2782,7 +2953,7 @@ followUpMode: all
 Recalling a queued follow-up is a TUI-local action (<code>Esc</code> or the dequeue chord); the
 RPC protocol has no recall command. An empty follow-up is a no-op in the TUI, and <code>/queue</code> with no
 text shows a usage warning.</p>
-<h2 id="next-1"><a class="header" href="#next-1">Next</a></h2>
+<h2 id="next-2"><a class="header" href="#next-2">Next</a></h2>
 <p>Read <a href="#examples">Examples</a> for concrete prompts and workflows.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="subagents"><a class="header" href="#subagents">Subagents</a></h1>
@@ -2959,8 +3130,18 @@ which nothing acts on, and a subagent’s remaining window is not something its 
 decides anything with. The question both were reached for — is this one stuck — is
 answered by the recovery column as a fact. <code>/agents</code> carries the roster with the
 numbers.</p>
-<p>A lane keeps its badge on its own row.
-Narrow the terminal and the model badge comes off first, then the columns shrink to
+<p>A lane keeps its badge on its own row. It did not always: both anchored blocks clamped every row
+to the width they were handed, and that width was the terminal’s rather than the two-cells-narrower
+one their mount wraps to, so each row’s right-aligned tail arrived on a line of its own at column
+zero, outside the block. Every unit test agreed the rows were in bounds, because they were in the
+bound they were given. The recording is what saw it:
+<a href="../../../assets/subagent-lanes-before.png">before</a>, the badge wrapped below its lane, and
+<a href="../../../assets/subagent-lanes-after.png">after</a>, two lanes each ending in its badge at the far
+margin. One scene recorded twice at 131 columns, sampled at the same second of the same script: the
+after arm from <code>proof/docker/record-x11.sh proof/scenes/agent-lanes.sh</code>, the before arm from
+<code>proof/docker/record-x11-before.sh proof/scenes/agent-lanes.sh</code>, which holds every changed source
+file at the content of the commit before the fix, <code>f1390cf3c</code>.</p>
+<p>Narrow the terminal and the model badge comes off first, then the columns shrink to
 what is left. Nothing wraps: the block draws no row it cannot fit, and draws nothing
 at all rather than overflow.</p>
 <p>Eight lanes are drawn. Past that the block says how many more are running and points
@@ -3263,7 +3444,7 @@ follows the print-mode run (<code>veyyon --help</code>).</p>
 <h2 id="approvals-2"><a class="header" href="#approvals-2">Approvals</a></h2>
 <p>Tool approvals use <code>tools.approvalMode</code> and per-tool policy. See <a href="#approvals">Approvals</a> and
 <a href="#safety-1">Safety</a>.</p>
-<h2 id="related-9"><a class="header" href="#related-9">Related</a></h2>
+<h2 id="related-8"><a class="header" href="#related-8">Related</a></h2>
 <ul>
 <li><a href="#approvals">Approvals</a></li>
 <li><a href="#non-interactive-mode-veyyon---print">Non-interactive mode</a></li>
@@ -3311,7 +3492,7 @@ EOF
 </table>
 </div>
 <p>Headless runs have no TTY for approval prompts: choose a mode that does not block (<code>--yolo</code> only on disposable runners) or expect the turn to stop when a prompt would be required. See <a href="#approvals">Approvals</a>.</p>
-<h2 id="related-10"><a class="header" href="#related-10">Related</a></h2>
+<h2 id="related-9"><a class="header" href="#related-9">Related</a></h2>
 <ul>
 <li><a href="#approvals">Approvals</a></li>
 <li><a href="#safety-1">Safety</a></li>
@@ -3530,8 +3711,12 @@ travels down the rail while anything on the board is in flight and the rail is f
 is, so a board waiting on you is distinguishable from a board being worked. A task closing sweeps a
 strike across its text, exhales its glyph and cools from green to grey; when the last task closes,
 the whole block makes one pass down its rail and clears. Where <code>display.transitions</code> is off, all of
-that is still and the glyphs are static.
-Configure the behavior under <strong>Settings → Tools → Todos</strong>:</p>
+that is still and the glyphs are static.</p>
+<p>The block was rebuilt in this shape: <a href="../../../assets/todos-block-before.png">before</a> and
+<a href="../../../assets/todos-block-after.png">after</a>, one scene recorded twice at 131 columns and
+sampled at the same second of the same script. The after arm comes from <code>proof/docker/record-x11.sh proof/scenes/rail-and-todo.sh</code>. The before arm comes from <code>proof/docker/record-x11-before.sh proof/scenes/rail-and-todo.sh</code>, which holds every changed source file at the content of the commit
+before the rebuild, <code>f1390cf3c</code>.</p>
+<p>Configure the behavior under <strong>Settings → Tools → Todos</strong>:</p>
 <ul>
 <li><strong>Todo Reminders</strong> enables continuation instructions for unfinished plans.</li>
 <li><strong>Todo Reminder Limit</strong> caps distinct todo-state reminders before reminders stay silent.</li>
@@ -3596,10 +3781,27 @@ stripped of every one of those variables. It then signs its work in one <code>ba
 <code>#RELEASE_SIGNATURE#</code> appended to <code>SIGNED.md</code> as a single line. Veyyon resolves the placeholder only
 at the outbound tool boundary and asks for approval before the call runs, so the credential itself is
 never printed and never reaches the transcript. The board closes 6/6.</p>
-<p>The <a href="../../../assets/demo-hd.webp">recorded clip</a> runs the whole task. Untouched screens are
-shortened rather than accelerated.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Surface</th><th>Evidence</th></tr>
+</thead>
+<tbody>
+<tr><td>Complete task</td><td><a href="../../../assets/demo-hd.webp">Published clip</a> · <a href="../../../proof/captures/x11/demo-hd.mp4">unedited take</a></td></tr>
+<tr><td>Secret setup</td><td><a href="../../../assets/demo-hd-secret-stored.png">Release key stored from the environment</a></td></tr>
+<tr><td>Plan</td><td><a href="../../../assets/demo-hd-todo-board.png">Three phases, six tasks, nothing started</a> · <a href="../../../assets/demo-hd-todo-strike.png">tasks closing on the board</a></td></tr>
+<tr><td>Parallel implementation</td><td><a href="../../../assets/demo-hd-agent-lanes.png">Three directory refactors fanned out at once</a></td></tr>
+<tr><td>Integration</td><td><a href="../../../assets/demo-hd-edit-diff.png">The applied guard, as a diff</a></td></tr>
+<tr><td>Verification</td><td><a href="../../../assets/demo-hd-verify-command.png">Nine defaults resolved in a stripped environment</a></td></tr>
+<tr><td>Protected signing</td><td><a href="../../../assets/demo-hd-secret-approval.png">The approval card names the tool, the scope and the secret the call would spend</a> · <a href="../../../assets/demo-hd-signature-written.png">the digest appended to SIGNED.md, the credential never echoed</a></td></tr>
+<tr><td>Stored secrets</td><td><a href="../../../assets/demo-hd-secret-list.png">The placeholder inventory</a> · <a href="../../../assets/demo-hd-secret-log.png">the spend log</a></td></tr>
+</tbody>
+</table>
+</div>
+<p>Every frame and the clip come from the same guarded take. Untouched screens are shortened rather than
+accelerated, and no frame is composited from a second session.</p>
 <p>See <a href="#recording-terminal-proofs">Testing and verification</a> for the
-recording environment and the regeneration command.</p>
+recording environment, the regeneration command, and the before-and-after proof requirements.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="plan-mode-and-goals"><a class="header" href="#plan-mode-and-goals">Plan mode and goals</a></h1>
 <p>Plan mode and goal mode are separate engine modes with different tools and continuation behavior. They cannot be active together (and each conflicts with vibe mode).</p>
@@ -3611,7 +3813,7 @@ recording environment and the regeneration command.</p>
 <li>Slash: <code>/plan</code> toggles plan mode; <code>/plan &lt;prompt&gt;</code> enters plan mode and submits the prompt</li>
 <li><code>/plan-review</code> reopens plan review while plan mode is active</li>
 </ul>
-<h3 id="behavior"><a class="header" href="#behavior">Behavior</a></h3>
+<h3 id="behavior-2"><a class="header" href="#behavior-2">Behavior</a></h3>
 <ol>
 <li>Session selects a plan file path and records plan-mode state.</li>
 <li>Tool surface adjusts: <code>resolve</code> is available for plan approval; plan-file <code>write</code>/<code>edit</code> may be enabled for drafting.</li>
@@ -3820,7 +4022,7 @@ plugins, see <a href="#task-guides">Task guides</a>.</p>
 <p>Engineering detail: <a href="../../skills.html"><code>docs/skills.md</code></a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="skills-authoring"><a class="header" href="#skills-authoring">Skills authoring</a></h1>
-<p>A skill is a folder that adds a reusable capability to Veyyon. For how skills are discovered and loaded, see <a href="#skills">Skills</a>.</p>
+<p>A skill is a folder that adds a reusable capability to Veyyon. This page explains how to write one from scratch. For background on how skills are discovered and loaded, see <a href="#skills">Skills</a>.</p>
 <h2 id="directory-structure"><a class="header" href="#directory-structure">Directory structure</a></h2>
 <p>Skills load only from the active profile. Veyyon reads these locations, all under the profile’s agent dir (<code>profiles/default/</code> when you have not selected a profile):</p>
 <div class="table-wrapper">
@@ -4159,7 +4361,7 @@ export default function hook(pi: HookAPI): void {
 <li>Audit tool usage outside the TUI</li>
 <li>Register your own slash commands</li>
 </ul>
-<h2 id="related-11"><a class="header" href="#related-11">Related</a></h2>
+<h2 id="related-10"><a class="header" href="#related-10">Related</a></h2>
 <ul>
 <li>Repository <code>docs/hooks.md</code></li>
 </ul>
@@ -4199,7 +4401,7 @@ common connection errors, see <a href="#mcp-server-setup">MCP server setup</a>.<
 Veyyon the agent an editor talks to; MCP makes Veyyon the client that talks to tool servers.</li>
 <li><strong>SDK</strong>: embedding the agent in your own host process.</li>
 </ul>
-<h2 id="related-12"><a class="header" href="#related-12">Related</a></h2>
+<h2 id="related-11"><a class="header" href="#related-11">Related</a></h2>
 <ul>
 <li><a href="#mcp-server-setup">MCP server setup</a>: the configuration and troubleshooting guide</li>
 <li><a href="#mcp-3">MCP internals</a>: how the client is built</li>
@@ -4208,7 +4410,7 @@ Veyyon the agent an editor talks to; MCP makes Veyyon the client that talks to t
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="mcp-server-setup"><a class="header" href="#mcp-server-setup">MCP server setup</a></h1>
 <p>Veyyon can connect to third-party Model Context Protocol (MCP) servers so external tools and data
-sources become available to the agent. Register a server, choose a
+sources become available to the agent. This guide explains how to register those servers, choose a
 transport, authenticate, and fix the most common connection problems.</p>
 <p>For an overview of what MCP does in Veyyon, see <a href="#mcp">MCP</a>. Engineering reference:
 <a href="../../mcp-config.html"><code>docs/mcp-config.md</code></a>.</p>
@@ -4801,7 +5003,7 @@ appends a position. Delete removes only the highlighted position.</p>
 <p><code>tools.approvalMode</code>: <code>plan</code> | <code>ask</code> | <code>ask-command</code> | <code>auto</code> | <code>yolo</code> (schema default <code>auto</code>).
 Aliases: <code>always-ask</code> → <code>ask</code>, <code>write</code> and <code>auto-edit</code> → <code>ask-command</code>.
 See <a href="#approvals">Approvals</a>.</p>
-<h2 id="related-13"><a class="header" href="#related-13">Related</a></h2>
+<h2 id="related-12"><a class="header" href="#related-12">Related</a></h2>
 <ul>
 <li><a href="#models-and-providers">Models and providers</a></li>
 <li><a href="../../settings.html">Settings: models</a> (repo <code>docs/settings.md</code>)</li>
@@ -5405,7 +5607,7 @@ $ # edit ~/.veyyon/profiles/work/agent/config.yml
 }
 </code></pre>
 <p>Hooks: TypeScript modules under project/profile hook paths (<code>pi.on(...)</code>). See <a href="#hooks">Hooks</a>, <a href="#task-guides">Task guides</a>. MCP: <a href="#mcp">MCP</a>.</p>
-<h2 id="related-14"><a class="header" href="#related-14">Related</a></h2>
+<h2 id="related-13"><a class="header" href="#related-13">Related</a></h2>
 <ul>
 <li><a href="#getting-started">Getting started</a></li>
 <li><a href="#task-guides">Task guides</a></li>
@@ -5445,7 +5647,7 @@ $ veyyon plugin features &lt;plugin&gt; --disable f1    # turn features off
 $ veyyon plugin features &lt;plugin&gt; --set f1,f2     # replace the enabled set
 </code></pre>
 <p>See <a href="#plugins">Plugins</a> for installation and management.</p>
-<h2 id="related-15"><a class="header" href="#related-15">Related</a></h2>
+<h2 id="related-14"><a class="header" href="#related-14">Related</a></h2>
 <p>Tool approvals are not feature flags, they use <code>tools.approvalMode</code> and per-tool policy.
 See <a href="#approvals">Approvals</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -5460,7 +5662,7 @@ See <a href="#approvals">Approvals</a>.</p>
 <p>External tools via Model Context Protocol: client config in the profile’s <code>mcp.json</code> (there is no project scope). See <a href="#mcp">MCP</a>.</p>
 <h2 id="hooks-1"><a class="header" href="#hooks-1">Hooks</a></h2>
 <p>TypeScript modules with <code>pi.on(...)</code>, not JSON command tables. See <a href="#hooks">Hooks</a>.</p>
-<h2 id="related-16"><a class="header" href="#related-16">Related</a></h2>
+<h2 id="related-15"><a class="header" href="#related-15">Related</a></h2>
 <ul>
 <li><a href="#configuration-4">Configuration</a>: approval mode and settings paths</li>
 <li><a href="#mechanisms">Mechanisms</a></li>
@@ -6128,7 +6330,7 @@ load. Run <strong><code>/hotkeys</code></strong> in a session to see active chor
 and repository <a href="../../keybindings.html"><code>docs/keybindings.md</code></a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="environment-variables"><a class="header" href="#environment-variables">Environment variables</a></h1>
-<p>The common operator surface: identity and profile selection, provider auth, and the
+<p>This page covers the common operator surface: identity/profile selection, provider auth, and the
 handful of <code>VEYYON_*</code> variables that are actually read by the runtime today. Veyyon also reads a large
 number of <code>VEYYON_*</code> debug/behavior-toggle variables (timing, startup tracing, TUI flags, eval-runtime
 toggles, and more) that are less common configuration. For the complete, code-grounded reference,
@@ -6637,7 +6839,7 @@ auth, request, and response formats.</p>
 <li>Translate between the provider-specific wire format and the engine’s
 protocol types.</li>
 </ul>
-<h2 id="implementation-1"><a class="header" href="#implementation-1">Implementation</a></h2>
+<h2 id="implementation"><a class="header" href="#implementation">Implementation</a></h2>
 <p>The provider stack lives in the <code>@veyyon/ai</code> package.</p>
 <div class="table-wrapper">
 <table>
@@ -6670,102 +6872,6 @@ implicitly or not at all. Two settings under <strong>Settings → Context → Pr
 optionally block on a cache the provider demonstrably did not use. The full per-provider account,
 including the breakpoint budget and what invalidates what, is
 <a href="../../internal/prompt-caching.html"><code>docs/internal/prompt-caching.md</code></a>.</p>
-<h2 id="the-first-event-budget"><a class="header" href="#the-first-event-budget">The first-event budget</a></h2>
-<p>A caller declares <code>streamFirstEventTimeoutMs</code>. It is one attempt’s deadline, and
-it also bounds how many stalled attempts a turn may pay for: the phase before
-the first event ends after two of them. The first stall is retried, because a
-single connect that never produces an event is common and recovering it is what
-makes a provider feel smooth. A second consecutive stall is a dead endpoint, and
-re-spending the deadline there is what turned a declared 100s into minutes of
-silence.</p>
-<p>The phase ends at the first of these:</p>
-<ul>
-<li>the first event arrives, after which <code>streamIdleTimeoutMs</code> owns the turn;</li>
-<li>the phase budget is spent and the turn fails with the deadline as its reason.</li>
-</ul>
-<p><code>utils/first-event-budget.ts</code> in <code>@veyyon/ai</code> owns the shape:</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Function</th><th>Use</th></tr>
-</thead>
-<tbody>
-<tr><td><code>openFirstEventBudget(totalMs)</code></td><td>Open a budget for the declared number. A non-positive or absent total is unbounded, matching <code>streamFirstEventTimeoutMs: 0</code>.</td></tr>
-<tr><td><code>openStallLadderBudget(perAttemptMs)</code></td><td>A phase budget for a retry ladder: the per-attempt deadline times <code>PRE_RESPONSE_STALL_ATTEMPTS</code> (two). What Anthropic and Codex open.</td></tr>
-<tr><td><code>openBoundedFirstEventBudget(declaredMs, ceilingMs)</code></td><td>The smaller of the caller’s number and a provider’s own ceiling. It can only tighten a deadline.</td></tr>
-<tr><td><code>budget.spent()</code></td><td>True once nothing is left. A retry ladder asks before retrying a stall.</td></tr>
-<tr><td><code>budget.fence(callerSignal)</code></td><td>A signal covering what remains, plus the <code>cancel()</code> that clears its timer. A setup chain fences once and passes that signal to every call.</td></tr>
-<tr><td><code>isPreResponseStall(error)</code></td><td>True when no byte of a response ever arrived.</td></tr>
-</tbody>
-</table>
-</div>
-<p>Four rules keep this narrow.</p>
-<p><strong>A stall is bounded by the budget; a server-directed wait is bounded by the
-cap.</strong> A 429 or 503 carrying <code>retry-after</code> means the server answered and asked
-for a later attempt. Honoring that is what makes a rate limit survivable, so
-those failures are not refused when the first-event budget is gone — only a
-failure where nothing arrived at all is, which is why the guard is a veto
-predicate rather than a fence around a retry loop. The wait itself is bounded
-separately: <code>maxRetryDelayMs</code> is the longest single server-directed wait a
-caller will sit on, <code>DEFAULT_MAX_DELAY_MS</code> (60s) when it declares none, and a
-hint above it surfaces the refusal instead of sleeping on it. Every retrying
-path reads the caller’s number — <code>fetchWithRetry</code> for the OpenAI-compatible
-family, Bedrock, Ollama and Codex, and the Anthropic client and provider ladder
-for their own <code>retry-after-ms</code> handling.</p>
-<p><strong>A deadline that fires ends the phase.</strong> A helper that degrades on its own
-timeout — GitLab Duo’s settings PUT, its project lookup, its model list, and the
-catalog namespace reader behind them — must rethrow when the caller’s deadline is
-what fired. Reporting it as “nothing found” and continuing spends time nobody
-granted, and it reaches the user as a configuration remedy for a network fault.</p>
-<p><strong>A refusal names its remedy.</strong> <code>401</code>, <code>404</code>, <code>429</code> and <code>400</code> have four
-different answers — fix the credential, fix the route or the model id, wait, fix
-the request — and a provider that renders all four as one wording has reported
-the failure and told nobody anything. Two shapes cause it: a status that is read
-for a debug log and then discarded (Cursor’s Connect stream did this, so every
-refusal arrived as “stream ended without a turn_ended update”), and a handshake
-that treats a refusal as one candidate’s silence and concludes with the remedy
-for having found nothing (GitLab Duo’s namespace walk did this with a rejected
-token).</p>
-<p><strong>A stream that stopped is not a stream that finished.</strong> Every dialect ends a
-turn with a marker of its own — <code>finish_reason</code> and <code>[DONE]</code>,
-<code>response.completed</code>, <code>message_stop</code>, <code>finishReason</code>, <code>done: true</code>,
-<code>messageStop</code>, <code>turn_ended</code> — and reaching the end of the body without one is a
-transport-clean EOF that says nothing about the turn. Reporting a normal stop
-there persists whatever arrived as an answer, and the model reads it back as
-history on the next turn; rejecting every such EOF fails turns that were
-complete, because several compatible servers simply do not send the marker.
-<code>stopReasonForTerminallessEof</code> in <code>utils/terminalless-eof</code> owns the judgement
-for every dialect: visible text is a stop, reasoning with no answer is a
-<code>length</code> the session can recover, a tool batch counts only when every call
-parsed, and anything else is an <code>incomplete-stream</code> failure. A provider that
-seeds <code>stopReason: "stop"</code> before the first byte and never consults this rule
-writes a blank turn into the session, which is what Bedrock and Ollama did.</p>
-<h3 id="where-each-providers-deadline-sits"><a class="header" href="#where-each-providers-deadline-sits">Where each provider’s deadline sits</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Provider</th><th>Bound before the first event</th></tr>
-</thead>
-<tbody>
-<tr><td>OpenAI completions, Responses, OpenRouter, Azure</td><td>Pre-response fence plus the stream watchdog.</td></tr>
-<tr><td>Anthropic</td><td>The same, and the retry ladder retries one stall and refuses the next once the phase budget is spent.</td></tr>
-<tr><td>Codex</td><td>The same, on both ladders: <code>fetchWithRetry</code> (no response) and the provider-error reopen (a retryable envelope that is itself a stall).</td></tr>
-<tr><td>GitLab Duo</td><td>One setup deadline over the whole REST chain: the caller’s number, or 90s (three REST timeouts), whichever is smaller.</td></tr>
-<tr><td>Bedrock, Google, Vertex, Gemini CLI, Ollama, Cursor, Devin</td><td>The registered lazy-stream limits and each transport’s own abort.</td></tr>
-</tbody>
-</table>
-</div>
-<p><code>packages/ai/test/no-api-outlives-the-budget-its-caller-declared.test.ts</code> drives
-every API in the union against a silent endpoint and pins the observed class per
-API, so a provider that stops honoring the number turns that suite red.</p>
-<p><code>packages/ai/test/every-provider-refusal-names-what-to-do-about-it.test.ts</code>
-drives the same fourteen against a refusing transport — <code>401</code>, <code>404</code>, <code>429</code> with
-a two-minute <code>retry-after</code>, and <code>400</code> — and pins the class each one surfaces,
-plus the invariant that no refusal echoes the api key back into its message.</p>
-<p><code>packages/ai/test/a-stream-that-stops-mid-turn-is-never-reported-as-a-finished-one.test.ts</code>
-drives all fourteen against a <code>200</code> that closes without a terminal marker and
-pins each verdict, so a dialect that starts accepting an empty stream as an
-answer turns red rather than shipping a blank turn.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="testing-and-verification"><a class="header" href="#testing-and-verification">Testing and verification</a></h1>
 <p>Product behavior is covered by tests that assert concrete outcomes, not only non-empty results.</p>
@@ -6777,7 +6883,7 @@ answer turns red rather than shipping a blank turn.</p>
 <li><strong>Architecture gates</strong>: layering, import cycles, and module-reach checks in <code>packages/coding-agent/test/architecture/</code>.</li>
 </ul>
 <h2 id="recording-terminal-proofs"><a class="header" href="#recording-terminal-proofs">Recording terminal proofs</a></h2>
-<p>The capture configuration below is the only source of visual proof.
+<p>This section is the capture configuration. It is the only source of visual proof.
 Record interactive proofs on the repository’s private display. Do not record a
 logged-in desktop, and do not use a terminal multiplexer capture as visual
 evidence. There are no other capture paths and no fallbacks.</p>
@@ -6798,7 +6904,7 @@ publish        Lanczos downsample to 1920x1080
   bash scripts/demos/record-hd-demo.sh demo-hd
 </code></pre>
 <p>The recorder keeps rehearsal output in the temporary directory it prints. Inspect the video and named frames there. Set <code>PUBLISH=1</code> only for a complete take whose frame guards all passed.</p>
-<p>The scene’s task prompt is static at <code>proof/prompts/demo-hd.md</code>. The scene stores the secret, submits that prompt once, and sends no phase-by-phase operator prompts; every later turn is the model’s own. A take is published only when every named frame guard passed, so a scene whose model does not reach a guarded surface produces a rehearsal and nothing else.</p>
+<p>The scene’s task prompt is static at <code>proof/prompts/demo-hd.md</code>. The scene stores the secret, submits that prompt once, and sends no phase-by-phase operator prompts; every later turn is the model’s own. A take is published only when every named frame guard passed, so a scene whose model does not reach a guarded surface produces a rehearsal and nothing else. The frames and clip published today come from an earlier session of this scene, described in <a href="#recorded-end-to-end-workflow">Examples</a>.</p>
 <p>The archived take remains at capture speed. The landing-page cut keeps the plan, the worker setup, verification and signing at 1×. Visible implementation between the worker launch and the verified build plays at 1.25×. Named marks in the take select those boundaries; untouched screens are shortened to four seconds rather than accelerated.</p>
 <h3 id="vhs-settings-captures"><a class="header" href="#vhs-settings-captures">VHS settings captures</a></h3>
 <p>Use the same baseline for settings differentials:</p>
@@ -6829,9 +6935,10 @@ copy and proving the restore by sha256. No git mutation command runs and the wor
 tree ends byte-identical. Once the change is on <code>main</code>, reproducing the before arm
 means pointing that hold at the commit before it.</p>
 <p>Both arms record the same scene at the same width and are sampled at the same second
-of the same script, so the only difference between them is the change. Attach the
-labeled Before and After pair to the pull request body. It is never committed: not to
-<code>assets/</code>, not to a README, not to a handbook page, not to the website.</p>
+of the same script, so the only difference between them is the change. Publish the
+pair under <code>assets/</code> as <code>&lt;surface&gt;-before.png</code> and <code>&lt;surface&gt;-after.png</code>;
+<code>proof/pics.html</code> folds a <code>-before</code>/<code>-after</code> stem onto one row, because a comparison
+split across two rows is half an answer.</p>
 <p>A pair whose two arms differ for an unrelated reason is a failed proof. An arm that
 does not show the surface at all is a failed proof: a lane block is not evidence
 about lanes in a frame where no agent is running.</p>
@@ -6845,15 +6952,22 @@ ground.</p>
 <p><code>render-proof.ts</code> writes <code>&lt;surface&gt;-grey.png</code> with background <code>#1e2127</code> and
 <code>&lt;surface&gt;-black.png</code> with background <code>#000000</code>. Inspect both. A background fill
 can disappear on black while remaining visible as a slab on grey.</p>
-<p>The output draws a fixture written by hand, at a chosen width, through a constructed
-call, so it cannot show that the surface is reachable, that the state is real, or
-that the block is positioned, sized and clipped the way a session draws it. It does
-not satisfy an evidence requirement. Write the file to a temporary path.</p>
-<p><code>scripts/an-off-screen-raster-never-enters-assets.test.ts</code> pins the raster set under
-<code>assets/</code> by exact equality, so the list only shrinks, and fails on a demo driver
-that writes a render into <code>assets/</code>. Drivers write outside the tracked tree;
-<code>scripts/demos/record-argot-settings.sh</code> is the shape a settings differential takes.</p>
-<h2 id="related-17"><a class="header" href="#related-17">Related</a></h2>
+<p>The output is not a proof and does not satisfy any evidence requirement. It draws a
+fixture written by hand, at a chosen width, through a constructed call. It cannot
+show that the surface is reachable, that the state is real, or that the block is
+positioned, sized and clipped the way a session draws it. Write the file to a
+temporary path. A rasterized image never enters <code>assets/</code>, a README, or a handbook
+page as before-and-after evidence.</p>
+<p>Seventeen raster pairs are already committed under <code>assets/</code>. They were produced
+under an earlier rule that sanctioned them, they are not evidence, and no handbook
+page or README cites them; <code>proof/pics.html</code> enumerates the directory from disk and
+still lists them. Each is replaced by a real capture of its screen when that feature
+is next touched. <code>scripts/an-off-screen-raster-never-enters-assets.test.ts</code> pins the
+set by exact equality and fails on any addition, so the list only shrinks, and it
+fails as well on a demo driver that writes a render into <code>assets/</code>. Drivers write to
+a temporary directory; <code>scripts/demos/record-argot-settings.sh</code> is the shape a real
+settings differential takes.</p>
+<h2 id="related-16"><a class="header" href="#related-16">Related</a></h2>
 <ul>
 <li><a href="#the-repair-cascade">The repair cascade</a></li>
 <li><a href="#the-hashline-edit-engine">The hashline edit engine</a></li>
@@ -6862,7 +6976,7 @@ that writes a render into <code>assets/</code>. Drivers write outside the tracke
 <h1 id="tool-call-repair"><a class="header" href="#tool-call-repair">Tool-call repair</a></h1>
 <p>Models often emit tool arguments that are almost valid JSON or almost match the tool schema: stringified objects, trailing commas, truncated payloads, or misnamed fields. Without a repair step those calls fail validation and cost a full turn.</p>
 <p>Repair runs in the agent loop <strong>before</strong> argument validation. Clear malformations are coerced into a schema-valid object; ambiguous cases are refused and returned to the model as an error tool result (no dispatch).</p>
-<h2 id="behavior-1"><a class="header" href="#behavior-1">Behavior</a></h2>
+<h2 id="behavior-3"><a class="header" href="#behavior-3">Behavior</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -6880,7 +6994,7 @@ that writes a render into <code>assets/</code>. Drivers write outside the tracke
 </table>
 </div>
 <p>Implementation: <code>packages/coding-agent/src/repair/schema-repair.ts</code><br>Tests: <code>packages/coding-agent/test/repair/schema-repair.test.ts</code></p>
-<h2 id="related-18"><a class="header" href="#related-18">Related</a></h2>
+<h2 id="related-17"><a class="header" href="#related-17">Related</a></h2>
 <ul>
 <li><a href="#the-repair-cascade">The repair cascade</a>: ordered rules</li>
 <li><a href="#per-model-repair-posture">Per-model posture</a>: harness profiles</li>
@@ -6899,7 +7013,7 @@ that writes a render into <code>assets/</code>. Drivers write outside the tracke
 </ol>
 <p>Conformance suite: <code>packages/coding-agent/test/repair/schema-repair.test.ts</code> (alias renames, ambiguity refusals, strict-mode refusals, and a guard that strict rejection does not fire on ArkType/Zod wire schemas that synthesize <code>additionalProperties: false</code> for closed-object emission rather than authorial strictness).</p>
 <p>Per-model enable/disable and tool allowlist hints: <a href="#per-model-repair-posture">Per-model posture</a>.</p>
-<h2 id="related-19"><a class="header" href="#related-19">Related</a></h2>
+<h2 id="related-18"><a class="header" href="#related-18">Related</a></h2>
 <ul>
 <li><a href="#tool-call-repair">Why repair exists</a></li>
 <li><a href="#repair-on-edits">Repair on edits</a></li>
@@ -6941,7 +7055,7 @@ that writes a render into <code>assets/</code>. Drivers write outside the tracke
 </ul>
 <h2 id="opentelemetry"><a class="header" href="#opentelemetry">OpenTelemetry</a></h2>
 <p>When <code>OTEL_EXPORTER_OTLP_ENDPOINT</code> or <code>OTEL_EXPORTER_OTLP_TRACES_ENDPOINT</code> is set, the process registers an OTLP/protobuf trace exporter and exports agent-loop spans (<code>invoke_agent</code>, <code>chat</code>, <code>execute_tool</code>, …). Standard <code>OTEL_*</code> env vars apply (<code>OTEL_SERVICE_NAME</code>, headers, <code>OTEL_SDK_DISABLED</code>, <code>OTEL_TRACES_EXPORTER=none</code>). Transport is <code>http/protobuf</code> only. See <code>packages/coding-agent/src/telemetry-export.ts</code>.</p>
-<h2 id="related-20"><a class="header" href="#related-20">Related</a></h2>
+<h2 id="related-19"><a class="header" href="#related-19">Related</a></h2>
 <ul>
 <li><a href="#observability">Observability</a></li>
 <li><a href="#the-repair-cascade">Repair cascade</a></li>
@@ -7479,9 +7593,10 @@ veyyon plugin doctor
 <h2 id="command-or-edit-blocked-or-prompting"><a class="header" href="#command-or-edit-blocked-or-prompting">Command or edit blocked or prompting</a></h2>
 <p>Policy is <strong><code>tools.approvalMode</code></strong> and <code>tools.approval</code>, plus the working-directory and secret-use boundaries (every rung except <code>yolo</code>) and hard-coded flagged bash patterns: the destructive ones prompt on every rung, <code>yolo</code> included, and the merely dangerous ones (<code>curl | sh</code>, <code>reboot</code>, <code>nc -e</code>) prompt on every rung below it. There is no OS command sandbox. Schema default is <strong><code>auto</code></strong>. See <a href="#approvals">Approvals</a> and <a href="#configuration-4">Configuration</a>.</p>
 <h2 id="truncated-tool-output"><a class="header" href="#truncated-tool-output">Truncated tool output</a></h2>
-<p>Tool results truncate at configured budgets; the result text should state that truncation occurred and how to continue (limit, offset, narrower query). See <a href="#bounded-reads-and-search">Bounded reads and search</a>.</p>
-<h2 id="related-21"><a class="header" href="#related-21">Related</a></h2>
+<p>Tool results truncate at configured budgets; the result text should state that truncation occurred and how to continue (limit, offset, narrower query). See <a href="#context-size-and-retries">Context size and retries</a>, <a href="#bounded-reads-and-search">Bounded reads and search</a>.</p>
+<h2 id="related-20"><a class="header" href="#related-20">Related</a></h2>
 <ul>
+<li><a href="#approvals-and-errors">Approvals and errors</a></li>
 <li><a href="#observability">Observability</a></li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -7570,13 +7685,15 @@ $ veyyon plugin doctor --fix
 <p>Both <code>veyyon setup status</code> and <code>veyyon plugin doctor</code> exit non-zero when a check reports an error, and zero when the worst result is a warning.</p>
 <h2 id="see-also-6"><a class="header" href="#see-also-6">See also</a></h2>
 <ul>
-<li><a href="#install-1">Install</a></li>
+<li><a href="#install">Install</a></li>
 <li><a href="#troubleshooting">Troubleshooting</a></li>
 <li><a href="#plugins">Plugins</a></li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="acknowledgements"><a class="header" href="#acknowledgements">Acknowledgements</a></h1>
-<p>Veyyon incorporates ideas and code from upstream and peer projects.</p>
+<p>Veyyon stands on the work of others, and we credit it plainly. The handbook keeps this as a footnote on
+purpose: Veyyon’s public docs explain Veyyon’s behavior first, while detailed competitive study stays in
+private research notes.</p>
 <ul>
 <li><strong>oh-my-pi</strong> (<a href="https://github.com/can1357/oh-my-pi">can1357/oh-my-pi</a>), under the MIT license. Veyyon
 is a fork of oh-my-pi: the TypeScript/Bun agent loop and TUI, the <code>pi-*</code> Rust natives (grep, PTY,
