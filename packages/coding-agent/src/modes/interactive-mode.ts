@@ -2777,6 +2777,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			logger.warn("goal mode is disabled; the session's stored goal stays inactive", {
 				mode: sessionContext.mode,
 				readable: stored !== undefined,
+				goalId: stored?.id,
 			});
 			this.showWarning(
 				stored
