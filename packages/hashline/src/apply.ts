@@ -17,8 +17,6 @@ import {
 import { cloneCursor } from "./tokenizer";
 import type { Anchor, ApplyResult, Cursor, Edit } from "./types";
 
-type LineOrigin = "original" | "insert" | "replacement";
-
 type InsertEdit = Extract<Edit, { kind: "insert" }>;
 type DeleteEdit = Extract<Edit, { kind: "delete" }>;
 type AppliedEdit = InsertEdit | DeleteEdit;
@@ -88,30 +86,24 @@ function cloneAppliedEdit(edit: AppliedEdit, index: number): AppliedEdit {
 	return { ...edit, cursor: cloneCursor(edit.cursor), index };
 }
 
-function insertAtStart(fileLines: string[], lineOrigins: LineOrigin[], lines: string[]): void {
+function insertAtStart(fileLines: string[], lines: string[]): void {
 	if (lines.length === 0) return;
-	const origins = lines.map((): LineOrigin => "insert");
 	if (fileLines.length === 1 && fileLines[0] === "") {
 		fileLines.splice(0, 1, ...lines);
-		lineOrigins.splice(0, 1, ...origins);
 		return;
 	}
 	fileLines.splice(0, 0, ...lines);
-	lineOrigins.splice(0, 0, ...origins);
 }
 
-function insertAtEnd(fileLines: string[], lineOrigins: LineOrigin[], lines: string[]): number | undefined {
+function insertAtEnd(fileLines: string[], lines: string[]): number | undefined {
 	if (lines.length === 0) return undefined;
-	const origins = lines.map((): LineOrigin => "insert");
 	if (fileLines.length === 1 && fileLines[0] === "") {
 		fileLines.splice(0, 1, ...lines);
-		lineOrigins.splice(0, 1, ...origins);
 		return 1;
 	}
 	const hasTrailingNewline = fileLines.length > 0 && fileLines[fileLines.length - 1] === "";
 	const insertIndex = hasTrailingNewline ? fileLines.length - 1 : fileLines.length;
 	fileLines.splice(insertIndex, 0, ...lines);
-	lineOrigins.splice(insertIndex, 0, ...origins);
 	return insertIndex + 1;
 }
 
@@ -1252,7 +1244,6 @@ export function applyEdits(text: string, edits: readonly Edit[]): ApplyResult {
 	const appliedEdits = edits as readonly AppliedEdit[];
 
 	let fileLines = text.split("\n");
-	let lineOrigins: LineOrigin[] = fileLines.map(() => "original");
 
 	let firstChangedLine: number | undefined;
 	const trackFirstChanged = (line: number) => {
@@ -1287,20 +1278,17 @@ export function applyEdits(text: string, edits: readonly Edit[]): ApplyResult {
 	// `DEL 1.=30000`, which expands to 30000 single-line deletes) every splice
 	// shifted the whole tail, making the applier O(edits * n) — ~1.8e9 ops /
 	// ~160ms on a 60k-line file. Walking the original lines once and emitting
-	// each line's replacement into fresh arrays is O(n + output). Reading the
-	// current line/origin from the untouched originals keeps the result
-	// byte-identical to the old bottom-up in-place pass.
+	// each line's replacement into a fresh array is O(n + output). Reading the
+	// current line from the untouched original keeps the result byte-identical
+	// to the old bottom-up in-place pass.
 	const byLine = bucketAnchorEditsByLine(anchorEdits);
 	const rebuiltLines: string[] = [];
-	const rebuiltOrigins: LineOrigin[] = [];
 	for (let idx = 0; idx < fileLines.length; idx++) {
 		const line = idx + 1;
 		const currentLine = fileLines[idx] ?? "";
-		const currentOrigin = lineOrigins[idx] ?? "original";
 		const bucket = byLine.get(line);
 		if (!bucket) {
 			rebuiltLines.push(currentLine);
-			rebuiltOrigins.push(currentOrigin);
 			continue;
 		}
 		bucket.sort((a, b) => a.idx - b.idx);
@@ -1328,36 +1316,30 @@ export function applyEdits(text: string, edits: readonly Edit[]): ApplyResult {
 			!deleteLine
 		) {
 			rebuiltLines.push(currentLine);
-			rebuiltOrigins.push(currentOrigin);
 			continue;
 		}
 
 		for (const l of beforeInsertLines) {
 			rebuiltLines.push(l);
-			rebuiltOrigins.push("insert");
 		}
 		for (const l of replacementLines) {
 			rebuiltLines.push(l);
-			rebuiltOrigins.push(deleteLine ? "replacement" : "insert");
 		}
 		if (!deleteLine) {
 			rebuiltLines.push(currentLine);
-			rebuiltOrigins.push(currentOrigin);
 		}
 		for (const l of afterInsertLines) {
 			rebuiltLines.push(l);
-			rebuiltOrigins.push("insert");
 		}
 		trackFirstChanged(line);
 	}
 	fileLines = rebuiltLines;
-	lineOrigins = rebuiltOrigins;
 
 	if (bofLines.length > 0) {
-		insertAtStart(fileLines, lineOrigins, bofLines);
+		insertAtStart(fileLines, bofLines);
 		trackFirstChanged(1);
 	}
-	const eofChangedLine = insertAtEnd(fileLines, lineOrigins, eofLines);
+	const eofChangedLine = insertAtEnd(fileLines, eofLines);
 	if (eofChangedLine !== undefined) trackFirstChanged(eofChangedLine);
 
 	return {

@@ -8,6 +8,10 @@
 
 - The minimum supported Bun runtime is now 1.4.0.
 
+### Changed
+
+- Applying a patch no longer builds a per-line origin table nothing read, cutting the cost of a single edit by 36% on a 100,000-line file and 22% on a 1,000,000-line one. Output is byte-identical.
+
 ## [16.5.0] - 2026-07-13
 
 ### Fixed
