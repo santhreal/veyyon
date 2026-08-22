@@ -350,15 +350,12 @@ const replaceStrategy: EditStreamingStrategy<ReplaceArgs> = {
 		const first = args.edits?.[0];
 		if (!first || first.old_text === undefined || first.new_text === undefined) return null;
 		ctx.signal.throwIfAborted();
-		const result = await computeEditDiff(
-			args.path,
-			first.old_text,
-			first.new_text,
-			ctx.cwd,
-			ctx.allowFuzzy ?? true,
-			first.all,
-			ctx.fuzzyThreshold,
-		);
+		const result = await computeEditDiff(args.path, first.old_text, first.new_text, ctx.cwd, {
+			fuzzy: ctx.allowFuzzy ?? true,
+			all: first.all,
+			threshold: ctx.fuzzyThreshold,
+			streaming: ctx.isStreaming,
+		});
 		ctx.signal.throwIfAborted();
 		return [toPerFilePreview(args.path, result)];
 	},
