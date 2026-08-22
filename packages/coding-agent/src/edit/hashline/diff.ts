@@ -34,7 +34,7 @@ import { errorMessage } from "@veyyon/utils";
 import { resolveToCwd } from "../../tools/path-utils";
 import { generateDiffString } from "../diff";
 import { canonicalSnapshotKey } from "../file-snapshot-store";
-import { readEditFileText } from "../read-file";
+import { readPreviewText } from "../preview-text-cache";
 import { nativeBlockResolver } from "./block-resolver";
 
 export interface HashlineDiffOptions {
@@ -50,48 +50,6 @@ export interface HashlineDiffOptions {
 	 * authoring input; the final apply path still validates through Patcher.
 	 */
 	skipHashValidation?: boolean;
-}
-
-async function readSectionText(absolutePath: string, sectionPath: string): Promise<string> {
-	try {
-		return await readEditFileText(absolutePath, sectionPath);
-	} catch (error) {
-		const message = errorMessage(error);
-		throw new Error(message || `Unable to read ${sectionPath}`);
-	}
-}
-
-/**
- * Streaming previews recompute on every streamed chunk; re-reading the target
- * file from disk each tick dominates the cost on large files. Cache the raw
- * section text keyed by mtime+size so any on-disk change invalidates
- * naturally. Used by the streaming path only — the args-complete pass always
- * reads fresh.
- */
-const streamingTextCache = new Map<string, { mtimeMs: number; size: number; rawContent: string }>();
-const STREAMING_TEXT_CACHE_MAX = 8;
-
-async function readSectionTextCached(absolutePath: string, sectionPath: string): Promise<string> {
-	let stamp: { mtimeMs: number; size: number } | undefined;
-	try {
-		const stat = await Bun.file(absolutePath).stat();
-		stamp = { mtimeMs: stat.mtimeMs, size: stat.size };
-	} catch {
-		stamp = undefined;
-	}
-	if (stamp) {
-		const cached = streamingTextCache.get(absolutePath);
-		if (cached && cached.mtimeMs === stamp.mtimeMs && cached.size === stamp.size) return cached.rawContent;
-	}
-	const rawContent = await readSectionText(absolutePath, sectionPath);
-	if (stamp) {
-		if (streamingTextCache.size >= STREAMING_TEXT_CACHE_MAX && !streamingTextCache.has(absolutePath)) {
-			const oldest = streamingTextCache.keys().next().value;
-			if (oldest !== undefined) streamingTextCache.delete(oldest);
-		}
-		streamingTextCache.set(absolutePath, { mtimeMs: stamp.mtimeMs, size: stamp.size, rawContent });
-	}
-	return rawContent;
 }
 
 /**
@@ -134,12 +92,11 @@ async function readSectionForPreview(
 	snapshots: SnapshotStore,
 	streaming: boolean | undefined,
 ): Promise<{ absolutePath: string; rawContent: string }> {
-	const read = streaming ? readSectionTextCached : readSectionText;
 	const recovered = (await Bun.file(authoredAbsolutePath).exists())
 		? undefined
 		: recoverSectionPathFromTag(section, authoredAbsolutePath, snapshots);
 	const target = recovered ?? authoredAbsolutePath;
-	return { absolutePath: target, rawContent: await read(target, section.path) };
+	return { absolutePath: target, rawContent: await readPreviewText(target, section.path, streaming) };
 }
 
 function createMismatchError(

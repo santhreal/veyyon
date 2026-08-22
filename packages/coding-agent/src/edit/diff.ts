@@ -8,12 +8,12 @@
 import { errorMessage } from "@veyyon/utils";
 import * as Diff from "diff";
 import { resolveToCwd } from "../tools/path-utils";
-import { type BlockContextSource, findBlockContextLines } from "../utils/block-context";
+import { type BlockContextSource, exceedsBlockContextScanCeiling, findBlockContextLines } from "../utils/block-context";
 import { parseUnifiedHunkHeader } from "../utils/unified-hunk-header";
 import { EOF_MARKER, FILE_OP_MARKERS, PATCH_WRAPPER_MARKERS } from "./apply-patch/markers";
 import { DEFAULT_FUZZY_THRESHOLD, EditMatchError, findMatch } from "./match";
 import { adjustIndentation, normalizeToLF, stripBom } from "./normalize";
-import { readEditFileText } from "./read-file";
+import { readPreviewText } from "./preview-text-cache";
 
 export interface DiffResult {
 	diff: string;
@@ -181,6 +181,10 @@ function addMatchingBracketContextRows(
 	newText: string,
 	source: BlockContextSource,
 ): void {
+	// Ask before splitting: each side of a large pair is a whole-file array, and
+	// on a source over the boundary-scan ceiling the lookup below returns
+	// nothing regardless.
+	if (exceedsBlockContextScanCeiling(oldText) || exceedsBlockContextScanCeiling(newText)) return;
 	const oldLines = oldText.split("\n");
 	const newLines = newText.split("\n");
 	const oldVisible: number[] = [];
@@ -905,16 +909,20 @@ export function replaceText(content: string, oldText: string, newText: string, o
 /**
  * Compute the diff for an edit operation without applying it.
  * Used for preview rendering in the TUI before the tool executes.
+ *
+ * `options.streaming` marks a pass computed while the tool's arguments are
+ * still arriving: the target file is then read through the preview cache, so a
+ * stream of chunks against one large file reads it once instead of once per
+ * chunk. The args-complete pass leaves it unset and reads fresh.
  */
 export async function computeEditDiff(
 	path: string,
 	oldText: string,
 	newText: string,
 	cwd: string,
-	fuzzy = true,
-	all = false,
-	threshold?: number,
+	options: { fuzzy?: boolean; all?: boolean; threshold?: number; streaming?: boolean } = {},
 ): Promise<DiffResult | DiffError> {
+	const { fuzzy = true, all = false, threshold, streaming } = options;
 	if (oldText.length === 0) {
 		return { error: "oldText must not be empty." };
 	}
@@ -923,12 +931,11 @@ export async function computeEditDiff(
 		const absolutePath = resolveToCwd(path, cwd);
 		let rawContent: string;
 		try {
-			rawContent = await readEditFileText(absolutePath, path);
+			rawContent = await readPreviewText(absolutePath, path, streaming);
 		} catch (error) {
 			const message = errorMessage(error);
 			return { error: message || `Unable to read ${path}` };
 		}
-
 		const { text: content } = stripBom(rawContent);
 		const normalizedContent = normalizeToLF(content);
 		const normalizedOldText = normalizeToLF(oldText);
