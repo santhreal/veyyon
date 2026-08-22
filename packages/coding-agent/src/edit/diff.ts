@@ -177,10 +177,12 @@ function insertBracketContextRows(
  */
 function addMatchingBracketContextRows(
 	rows: string[],
-	oldLines: readonly string[],
-	newLines: readonly string[],
+	oldText: string,
+	newText: string,
 	source: BlockContextSource,
 ): void {
+	const oldLines = oldText.split("\n");
+	const newLines = newText.split("\n");
 	const oldVisible: number[] = [];
 	const newVisible: number[] = [];
 	const seenRows = new Set(rows);
@@ -220,8 +222,11 @@ function addMatchingBracketContextRows(
 		return newLineNumber - shift;
 	};
 
-	const contextRows = findBlockContextLines(oldLines, oldVisible, source);
-	for (const [lineNumber, text] of findBlockContextLines(newLines, newVisible, source)) {
+	// Each side hands its own text down: the lookup joins the line array back
+	// into a source when it is not given one, which is a copy of the whole file
+	// per side per call, and this caller is holding both strings already.
+	const contextRows = findBlockContextLines(oldLines, oldVisible, { ...source, text: oldText });
+	for (const [lineNumber, text] of findBlockContextLines(newLines, newVisible, { ...source, text: newText })) {
 		const oldLineNumber = toOldLineNumber(lineNumber);
 		if (!contextRows.has(oldLineNumber)) contextRows.set(oldLineNumber, text);
 	}
@@ -342,7 +347,7 @@ export function generateDiffString(
 		}
 	}
 
-	addMatchingBracketContextRows(output, oldContent.split("\n"), newContent.split("\n"), source);
+	addMatchingBracketContextRows(output, oldContent, newContent, source);
 
 	return { diff: output.join("\n"), firstChangedLine };
 }
@@ -407,7 +412,7 @@ export function generateUnifiedDiffString(
 		}
 	}
 
-	addMatchingBracketContextRows(output, oldContent.split("\n"), newContent.split("\n"), source);
+	addMatchingBracketContextRows(output, oldContent, newContent, source);
 
 	return { diff: output.join("\n"), firstChangedLine };
 }
