@@ -1546,11 +1546,12 @@ export class InteractiveMode implements InteractiveModeContext {
 		//
 		// It reloads project settings, reapplies provider globals, clears the plugin
 		// root cache, resets capabilities, refreshes the ssh tool, and rebuilds the
-		// base system prompt for the destination. The prompt matters most: it states
-		// the cwd verbatim ("the current working directory is '<path>'") and carries
-		// the workspace tree and the discovered context files, so before this was
+		// base system prompt for the destination. The prompt matters most: it carries
+		// the discovered context files and the workspace tree, so before this was
 		// rebuilt a `/cd` left the model reading the previous project's AGENTS.md
-		// while resolving relative paths against the new directory.
+		// while resolving relative paths against the new directory. The path itself
+		// is no longer in there — it rides a turn message, so a move inside one
+		// project rebuilds to identical bytes and costs no prompt-cache invalidation.
 		await this.session.rescopeToCwd(newCwd);
 		// What stays here is what only a terminal session has: the title prompt read
 		// from the destination, the slash-command picker, and the rendered chrome.

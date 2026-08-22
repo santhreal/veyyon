@@ -27,6 +27,7 @@ import sessionPersonalitiesFriendly from "./personalities/friendly.md" with { ty
 import sessionPersonalitiesPragmatic from "./personalities/pragmatic.md" with { type: "text" };
 import sessionProjectPrompt from "./project-prompt.md" with { type: "text" };
 import sessionSecretInventory from "./secret-inventory.md" with { type: "text" };
+import sessionSessionState from "./session-state.md" with { type: "text" };
 import sessionSystemPrompt from "./system-prompt.md" with { type: "text" };
 import sessionUserInstructionAuthority from "./user-instruction-authority.md" with { type: "text" };
 import sessionVerificationEvidenceReminder from "./verification-evidence-reminder.md" with { type: "text" };
@@ -59,6 +60,11 @@ export const sessionPrompts = definePromptRows({
 	"session/secret-inventory": {
 		text: sessionSecretInventory,
 		purpose: "the AVAILABLE SECRETS runtime section: the credential placeholders this session can actually spend",
+	},
+	"session/session-state": {
+		text: sessionSessionState,
+		purpose:
+			"the date and working directory, delivered as a turn message so a re-root does not rewrite the cached prompt prefix",
 	},
 	"session/system-prompt": { text: sessionSystemPrompt, purpose: "the main system prompt" },
 	"session/user-instruction-authority": {

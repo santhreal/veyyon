@@ -1,11 +1,9 @@
 /**
  * A working-directory change must rebuild the base system prompt.
  *
- * WHY THIS SUITE EXISTS. The system prompt states the working directory
- * verbatim ("the current working directory is '<path>'") and carries the
- * workspace tree, the discovered context files (AGENTS.md / CLAUDE.md), and the
- * active-repo-context block. All of it is assembled ONCE, when the session is
- * built.
+ * WHY THIS SUITE EXISTS. The prompt carries the workspace tree, the discovered
+ * context files (AGENTS.md / CLAUDE.md), the skills and the active-repo-context
+ * block. All of it is assembled ONCE, when the session is built.
  *
  * `applyCwdChange` re-scoped everything else on a `/cd`, `/move`, `/cwd`, or the
  * agent's own `set_cwd` — settings, plugin roots, capabilities, slash commands,
@@ -15,14 +13,24 @@
  * directory it had already left. The failure is invisible from inside the model,
  * which simply believes what the prompt says.
  *
- * That made "launch from anywhere, move later" quietly unsound, which is exactly
- * the workflow the re-root exists to support. `event-controller-cwd-changed-reroot`
- * already documented "the system-prompt project framing for the new directory"
- * as part of the contract; this suite is what actually holds it.
+ * WHAT FLIPPED, AND WHY THIS SUITE CHANGED. The prompt used to also state the
+ * path verbatim ("the current working directory is '<path>'"), and this suite
+ * asserted exactly that, on the premise that a prompt independent of cwd would
+ * make the rebuild pointless. The premise held and the sentence was the problem:
+ * the prompt is the provider's cache prefix, so a move that changed nothing else
+ * still discarded the cached prefix for the whole conversation to restate one
+ * path. The path is delivered as a turn message now, and the assertion below is
+ * the same premise stated against what still differs — the RULES the destination
+ * loads, which is the reason the rebuild is worth its cost.
+ * `test/session/a-re-root-does-not-rewrite-the-cached-prompt-prefix.test.ts`
+ * owns the other half: that a move inside one project rebuilds to identical
+ * bytes.
  */
-import { describe, expect, it } from "bun:test";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { describe, expect, it, vi } from "bun:test";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { InteractiveMode } from "@veyyon/coding-agent/modes/interactive-mode";
 import { buildSystemPrompt } from "@veyyon/coding-agent/system-prompt";
 
 const EMPTY_TREE = {
@@ -33,10 +41,13 @@ const EMPTY_TREE = {
 	agentsMdFiles: [] as string[],
 };
 
-async function promptFor(cwd: string): Promise<string> {
+async function promptFor(
+	cwd: string,
+	contextFiles: { path: string; content: string; level: "project" }[],
+): Promise<string> {
 	const result = await buildSystemPrompt({
 		toolNames: ["read"],
-		contextFiles: [],
+		contextFiles,
 		skills: [],
 		rules: [],
 		workspaceTree: EMPTY_TREE,
@@ -49,55 +60,85 @@ async function promptFor(cwd: string): Promise<string> {
 describe("the system prompt is directory-specific", () => {
 	/**
 	 * The premise of the whole contract: if the prompt did NOT depend on cwd,
-	 * skipping the rebuild would be harmless and this suite would be pointless.
-	 * It does depend on it, verbatim, which is what makes a stale prompt a lie.
+	 * skipping the rebuild would be harmless and this suite would be pointless. It
+	 * depends on it through the rules the destination loads, which is what a stale
+	 * prompt gets wrong — the agent follows the previous project's instructions.
 	 */
-	it("names the working directory in the prompt, and changes when the directory changes", async () => {
-		const alpha = await promptFor("/tmp/project-alpha");
-		const beta = await promptFor("/tmp/project-beta");
+	it("carries the destination project's rules, and changes when the project changes", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-cwd-rules-"));
+		const alphaDir = path.join(root, "project-alpha");
+		const betaDir = path.join(root, "project-beta");
+		fs.mkdirSync(alphaDir);
+		fs.mkdirSync(betaDir);
+		try {
+			const alpha = await promptFor(alphaDir, [
+				{ path: path.join(alphaDir, "AGENTS.md"), content: "Alpha rule: two spaces.", level: "project" },
+			]);
+			const beta = await promptFor(betaDir, [
+				{ path: path.join(betaDir, "AGENTS.md"), content: "Beta rule: tabs only.", level: "project" },
+			]);
 
-		expect(alpha).toContain("the current working directory is '/tmp/project-alpha'");
-		expect(beta).toContain("the current working directory is '/tmp/project-beta'");
-		// The stale-prompt bug in one assertion: serving the alpha prompt after a
-		// move to beta tells the model it is somewhere it is not.
-		expect(alpha).not.toContain("/tmp/project-beta");
-		expect(alpha).not.toBe(beta);
+			expect(alpha).toContain("Alpha rule: two spaces.");
+			expect(beta).toContain("Beta rule: tabs only.");
+			// The stale-prompt bug in one assertion: serving the alpha prompt after a
+			// move to beta hands the model the wrong project's rules.
+			expect(alpha).not.toContain("Beta rule: tabs only.");
+			expect(alpha).not.toBe(beta);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
 	});
 });
 
 describe("applyCwdChange re-scopes the destination through the session", () => {
 	/**
-	 * The rebuild itself now lives on `AgentSession.rescopeToCwd`, where every mode
-	 * reaches it, and `test/session/rescope-to-cwd.test.ts` covers it with real
-	 * behavior tests. What is left to prove here is the TUI's own wiring, and it
-	 * still cannot be proven by behavior: `applyCwdChange` lives on
-	 * `InteractiveMode`, whose construction pulls in the whole TUI, so the cwd
-	 * tests all mock it and none cover its body.
+	 * The rebuild itself lives on `AgentSession.rescopeToCwd`, where every mode
+	 * reaches it, and `test/session/rescope-to-cwd.test.ts` covers it. What is left
+	 * to prove here is the TUI's own wiring, and it matters because
+	 * `applyCwdChange` has three callers and only ONE goes through `setCwd`.
+	 * `/move` calls `sessionManager.moveTo` directly, and resuming a session from
+	 * another project calls `switchSession`; neither raises `cwd_changed`, so
+	 * neither re-scopes unless this method asks for it.
 	 *
-	 * The wiring matters because `applyCwdChange` has three callers and only ONE of
-	 * them goes through `setCwd`. `/move` calls `sessionManager.moveTo` directly,
-	 * and resuming a session from another project calls `switchSession`; neither
-	 * raises `cwd_changed`, so neither re-scopes unless this method asks for it.
-	 * Reading the shipped source is weaker than a behavior test and is chosen over
-	 * no coverage at all for a call whose omission is invisible at runtime.
+	 * The method is driven for real on a bare prototype instance rather than read
+	 * as source text. Constructing an `InteractiveMode` pulls in the whole TUI,
+	 * which is why this was a source scan for so long; the method itself touches
+	 * only six members, so supplying those and calling it exercises the shipped
+	 * body and fails on a call that was removed, reordered past the re-scope, or
+	 * pointed at the wrong destination.
 	 */
-	it("delegates to session.rescopeToCwd inside applyCwdChange", () => {
-		const source = readFileSync(
-			fileURLToPath(new URL("../../src/modes/interactive-mode.ts", import.meta.url)),
-			"utf8",
-		);
-		const start = source.indexOf("async applyCwdChange(");
-		expect(start, "applyCwdChange not found — did it move or get renamed?").toBeGreaterThan(-1);
+	it("re-scopes the session to the destination before refreshing its own chrome", async () => {
+		const calls: string[] = [];
+		const rescopeToCwd = vi.fn(async (cwd: string) => {
+			calls.push(`rescope:${cwd}`);
+		});
+		const mode = Object.create(InteractiveMode.prototype) as InteractiveMode & {
+			session: unknown;
+			sessionManager: unknown;
+			statusLine: unknown;
+			ui: unknown;
+			refreshTitleSystemPrompt: (cwd: string) => Promise<void>;
+			refreshSlashCommandState: (cwd: string) => Promise<void>;
+		};
+		Object.assign(mode, {
+			session: { rescopeToCwd },
+			sessionManager: { getSessionName: () => "test-session", getCwd: () => "/destination" },
+			statusLine: { invalidate: () => calls.push("status") },
+			ui: { requestRender: () => calls.push("render") },
+			refreshTitleSystemPrompt: async (cwd: string) => {
+				calls.push(`title:${cwd}`);
+			},
+			refreshSlashCommandState: async (cwd: string) => {
+				calls.push(`slash:${cwd}`);
+			},
+		});
 
-		// Bound the scan to this method: the next method declaration at the same
-		// indentation ends it, so a call elsewhere in the file cannot satisfy this
-		// assertion by accident.
-		const rest = source.slice(start + 1);
-		const end = rest.search(/\n\tasync |\n\t[A-Za-z#][A-Za-z0-9_]*\(/);
-		const body = end === -1 ? rest : rest.slice(0, end);
+		await mode.applyCwdChange("/destination");
 
-		expect(body, "applyCwdChange must re-scope the session for the new directory").toContain(
-			"this.session.rescopeToCwd(newCwd)",
-		);
+		// Order is the contract, not just presence: the title prompt and the slash
+		// commands are read FROM the destination, so a re-scope that ran after them
+		// would refresh them against the directory being left.
+		expect(calls).toEqual(["rescope:/destination", "title:/destination", "slash:/destination", "status", "render"]);
+		expect(rescopeToCwd).toHaveBeenCalledTimes(1);
 	});
 });

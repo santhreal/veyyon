@@ -160,7 +160,11 @@ describe("the registry-lookup pattern", () => {
 			onlyFiles: true,
 		})) {
 			const text = await Bun.file(path.join(REPO_ROOT, "packages/coding-agent/src/prompts", relative)).text();
-			const declared = text.match(/^export const (\w+) = \{$/m);
+			// Both spellings, because the row modules were converted from a bare object
+			// literal to `definePromptRows({ ... })` and this pattern kept looking for
+			// the old one: it then enumerated NOTHING and the loop below asserted
+			// against an empty list, which is the shape of a sweep that cannot fail.
+			const declared = text.match(/^export const (\w+) = (?:definePromptRows\()?\{$/m);
 
 			expect(declared, `${relative} declares no row table`).not.toBeNull();
 			tables.push((declared as RegExpMatchArray)[1] as string);
