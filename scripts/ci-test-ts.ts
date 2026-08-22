@@ -367,6 +367,7 @@ export const repoScriptTests = [
 	"scripts/run-rs-task.test.ts",
 	"scripts/verify-deployed-installers.test.ts",
 	"scripts/verify-deployed-changelog.test.ts",
+	"scripts/verify-scene.test.ts",
 	"scripts/installer-brand-parity.test.ts",
 	"scripts/upstream-radar.test.ts",
 	"scripts/release-sentinel.test.ts",
