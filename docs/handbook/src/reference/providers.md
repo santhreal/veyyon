@@ -60,7 +60,7 @@ providers:
   my-gateway:
     baseUrl: https://gateway.example.com/v1
     api: openai-completions
-    apiKey: MY_GATEWAY_API_KEY # reads this env var if set, else literal text
+    apiKey: MY_GATEWAY_API_KEY # reads this env var; unset means no key, not a literal
     models:
       - id: claude-sonnet
         name: Claude Sonnet via Gateway
@@ -283,7 +283,7 @@ providers:
   my-openai-compatible:
     baseUrl: https://api.example.com/v1
     api: openai-completions
-    apiKey: MY_OPENAI_COMPATIBLE_KEY # env-var-name or literal
+    apiKey: MY_OPENAI_COMPATIBLE_KEY # env-var name; `literal:text` for verbatim text
     models:
       - id: fast-chat
         name: Fast Chat

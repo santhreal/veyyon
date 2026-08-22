@@ -17,7 +17,7 @@ providers:
   acme:
     baseUrl: https://api.acme.example/v1
     api: openai-completions
-    apiKey: ACME_API_KEY        # env-var name if set, else literal text
+    apiKey: ACME_API_KEY        # env-var name; `literal:text` for verbatim text
     models:
       - id: acme-coder
         name: ACME Coder

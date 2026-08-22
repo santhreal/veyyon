@@ -30,7 +30,7 @@ providers:
   deepseek:
     baseUrl: https://api.deepseek.com
     api: openai-completions
-    apiKey: DEEPSEEK_API_KEY   # env-var name or literal
+    apiKey: DEEPSEEK_API_KEY   # env-var name; unset means no key, not a literal
     models:
       - id: deepseek-chat
         name: DeepSeek Chat

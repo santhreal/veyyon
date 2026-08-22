@@ -13,6 +13,7 @@ import { isDefinitiveOAuthFailure } from "@veyyon/ai/error/auth-classify";
 import { errorMessage, logger } from "@veyyon/utils";
 import { FOREIGN_PROVIDER_IDS } from "../capability/index";
 import type { SourceMeta } from "../capability/types";
+import { describeConfigEnvReference } from "../config/config-value-resolution";
 import { invalidateConfigValue, resolveConfigValue } from "../config/resolve-config-value";
 import type { CustomTool } from "../extensibility/custom-tools/types";
 import { type AuthStorage, REMOTE_REFRESH_SENTINEL } from "../session/auth-storage";
@@ -21,6 +22,7 @@ import {
 	MCPAuthRequiredError,
 	type MCPAuthResolution,
 	MCPBrokerRedactedRefreshError,
+	MCPUnresolvedEnvReferenceError,
 } from "./auth-failure";
 import {
 	closeTransportDetached,
@@ -1488,11 +1490,27 @@ export class MCPManager {
 			}
 		}
 
+		const requireResolved = async (key: string, value: string, describedAs: string): Promise<string | undefined> => {
+			const present = await resolveConfigValue(value, `${describedAs} "${key}"`);
+			if (present) return present;
+			const reference = describeConfigEnvReference(value);
+			if (!reference) return undefined;
+			// An unresolved REFERENCE is fatal: proceeding means dialling the server with
+			// the variable's own name as the credential. A failed `!command` is not
+			// handled here — it has its own back-off and report, and its key is skipped.
+			throw new MCPUnresolvedEnvReferenceError({
+				variable: reference.variable,
+				empty: process.env[reference.variable] !== undefined,
+				describedAs: `${describedAs} "${key}"`,
+				target: describeMCPServerTarget(config),
+			});
+		};
+
 		if (resolved.type !== "http" && resolved.type !== "sse") {
 			if (resolved.env) {
 				const nextEnv: Record<string, string> = {};
 				for (const [key, value] of Object.entries(resolved.env)) {
-					const resolvedValue = await resolveConfigValue(value);
+					const resolvedValue = await requireResolved(key, value, "environment variable");
 					if (resolvedValue) nextEnv[key] = resolvedValue;
 				}
 				resolved = { ...resolved, env: nextEnv };
@@ -1501,7 +1519,7 @@ export class MCPManager {
 			if (resolved.headers) {
 				const nextHeaders: Record<string, string> = {};
 				for (const [key, value] of Object.entries(resolved.headers)) {
-					const resolvedValue = await resolveConfigValue(value);
+					const resolvedValue = await requireResolved(key, value, "header");
 					if (resolvedValue) nextHeaders[key] = resolvedValue;
 				}
 				resolved = { ...resolved, headers: nextHeaders };

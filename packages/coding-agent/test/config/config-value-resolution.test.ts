@@ -19,9 +19,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import {
 	commandFailureReason,
 	createCommandResolutionPolicy,
+	describeConfigEnvReference,
 	isConfigValueCommand,
 	parseConfigValueCommand,
-	resolveEnvOrLiteral,
+	resolveConfigEnvReference,
 } from "@veyyon/coding-agent/config/config-value-resolution";
 import { logger } from "@veyyon/utils";
 
@@ -51,7 +52,7 @@ describe("the shared config-value grammar", () => {
 		});
 	});
 
-	describe("resolveEnvOrLiteral", () => {
+	describe("resolveConfigEnvReference", () => {
 		const KEY = "VEYYON_TEST_SHARED_RESOLUTION";
 
 		afterEach(() => {
@@ -61,21 +62,86 @@ describe("the shared config-value grammar", () => {
 		it("returns the environment variable when it is set", () => {
 			process.env[KEY] = "from-env";
 
-			expect(resolveEnvOrLiteral(KEY)).toBe("from-env");
+			expect(resolveConfigEnvReference(KEY)).toEqual({ ok: true, value: "from-env" });
 		});
 
-		it("falls back to the literal when the variable is absent", () => {
-			// A name that is not an env var is the value itself, which is how a plain
-			// string apiKey works.
-			expect(resolveEnvOrLiteral("sk-literal-value")).toBe("sk-literal-value");
+		it("keeps a value outside the environment-name shape as the value itself", () => {
+			// A real key is not shaped like a variable name, and failing those closed
+			// would break working configs to fix a typo they cannot make.
+			expect(resolveConfigEnvReference("sk-literal-value")).toEqual({ ok: true, value: "sk-literal-value" });
+			expect(resolveConfigEnvReference("sk_live_51abc")).toEqual({ ok: true, value: "sk_live_51abc" });
 		});
 
-		it("treats an empty environment variable as absent and uses the literal", () => {
-			// An exported-but-empty variable is not a usable secret, so it must not
-			// shadow a literal of the same name.
+		it("fails closed for an environment name that is not set", () => {
+			expect(resolveConfigEnvReference(KEY)).toEqual({ ok: false, variable: KEY, explicit: false, empty: false });
+		});
+
+		it("fails closed for an environment name that is set but empty", () => {
+			// An exported-but-empty variable is the CI failure this exists to catch: it
+			// is not a usable secret and it is not a literal either.
 			process.env[KEY] = "";
 
-			expect(resolveEnvOrLiteral(KEY)).toBe(KEY);
+			expect(resolveConfigEnvReference(KEY)).toEqual({ ok: false, variable: KEY, explicit: false, empty: true });
+		});
+
+		it.each([`\${${KEY}}`, `$${KEY}`])("resolves the explicit reference %p", spelling => {
+			process.env[KEY] = "from-env";
+
+			expect(resolveConfigEnvReference(spelling)).toEqual({ ok: true, value: "from-env" });
+		});
+
+		it.each([`\${${KEY}}`, `$${KEY}`])("fails closed for the unset explicit reference %p", spelling => {
+			expect(resolveConfigEnvReference(spelling)).toEqual({
+				ok: false,
+				variable: KEY,
+				explicit: true,
+				empty: false,
+			});
+		});
+
+		it("takes a lower-case explicit reference, which the bare form does not read", () => {
+			process.env.veyyon_test_lower_ref = "from-lower-env";
+			try {
+				// biome-ignore lint/suspicious/noTemplateCurlyInString: the config grammar's own spelling, not an interpolation
+				expect(resolveConfigEnvReference("${veyyon_test_lower_ref}")).toEqual({
+					ok: true,
+					value: "from-lower-env",
+				});
+				expect(resolveConfigEnvReference("veyyon_test_lower_ref")).toEqual({
+					ok: true,
+					value: "from-lower-env",
+				});
+			} finally {
+				delete process.env.veyyon_test_lower_ref;
+			}
+		});
+
+		it("sends a literal: value verbatim, even when a variable of that name is set", () => {
+			process.env[KEY] = "from-env";
+
+			expect(resolveConfigEnvReference(`literal:${KEY}`)).toEqual({ ok: true, value: KEY });
+			expect(resolveConfigEnvReference("literal:$NOT_A_REFERENCE")).toEqual({ ok: true, value: "$NOT_A_REFERENCE" });
+		});
+
+		it("keeps a value that only looks like a reference as a literal", () => {
+			// `$` followed by something that is not a variable name is text, so a
+			// password of that shape is still transmitted as written.
+			expect(resolveConfigEnvReference("$ecret-p4ss")).toEqual({ ok: true, value: "$ecret-p4ss" });
+			// biome-ignore lint/suspicious/noTemplateCurlyInString: the config grammar's own spelling, not an interpolation
+			expect(resolveConfigEnvReference("${A} ${B}")).toEqual({ ok: true, value: "${A} ${B}" });
+		});
+	});
+
+	describe("describeConfigEnvReference", () => {
+		it("names the variable a value refers to, and nothing else", () => {
+			// biome-ignore lint/suspicious/noTemplateCurlyInString: the config grammar's own spelling, not an interpolation
+			expect(describeConfigEnvReference("${GITHUB_TOKN}")).toEqual({ variable: "GITHUB_TOKN", explicit: true });
+			expect(describeConfigEnvReference("GITHUB_TOKN")).toEqual({ variable: "GITHUB_TOKN", explicit: false });
+			// A literal, an escaped literal and a command refer to no variable, so a
+			// caller that must fail closed on a reference leaves all three alone.
+			expect(describeConfigEnvReference("sk-literal-value")).toBeNull();
+			expect(describeConfigEnvReference("literal:GITHUB_TOKN")).toBeNull();
+			expect(describeConfigEnvReference("!op read op://vault/key")).toBeNull();
 		});
 	});
 

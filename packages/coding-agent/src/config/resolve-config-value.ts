@@ -13,10 +13,12 @@
 import { executeShell } from "@veyyon/natives";
 import { errorMessage } from "@veyyon/utils";
 import {
+	clearUnresolvedEnvReports,
 	commandFailureReason,
 	configCommandPolicy,
 	parseConfigValueCommand,
-	resolveEnvOrLiteral,
+	reportUnresolvedEnvReference,
+	resolveConfigEnvReference,
 } from "./config-value-resolution";
 
 /**
@@ -37,12 +39,22 @@ const commandInFlight = new Map<string, InFlightCommand>();
 /**
  * Resolve a config value (API key, header value, etc.) to an actual value.
  * - If it starts with "!", the rest runs as a shell command and its stdout is used (cached).
- * - Otherwise the environment is checked first, then the value is treated as a literal.
+ * - `${NAME}` / `$NAME` and a bare environment name resolve from the environment
+ *   and produce nothing when the variable is unset or empty.
+ * - `literal:<text>` and any other bare value are the value itself.
  */
 export async function resolveConfigValue(config: string, describedAs?: string): Promise<string | undefined> {
 	const command = parseConfigValueCommand(config);
-	if (command === null) return resolveEnvOrLiteral(config);
-	return await executeCommand(command, describedAs);
+	if (command !== null) return await executeCommand(command, describedAs);
+	const outcome = resolveConfigEnvReference(config);
+	if (outcome.ok) return outcome.value;
+	reportUnresolvedEnvReference({
+		variable: outcome.variable,
+		explicit: outcome.explicit,
+		empty: outcome.empty,
+		describedAs,
+	});
+	return undefined;
 }
 
 async function executeCommand(command: string, describedAs?: string): Promise<string | undefined> {
@@ -165,8 +177,12 @@ export function invalidateConfigValue(config: string): boolean {
 	return true;
 }
 
-/** Clear the shared config-value command cache and this path's in-flight map. Exported for testing. */
+/**
+ * Clear the shared config-value command cache, this path's in-flight map, and
+ * which unresolved variables have been reported. Exported for testing.
+ */
 export function clearConfigValueCache(): void {
 	configCommandPolicy.clear();
 	commandInFlight.clear();
+	clearUnresolvedEnvReports();
 }
