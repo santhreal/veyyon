@@ -6,7 +6,7 @@
 //! CPU and appends to a resumable ledger.
 //!
 //! ```text
-//! campaign [--limit N] [--deadline SECONDS] [--ledger PATH] [--report]
+//! campaign [--limit N] [--deadline SECONDS] [--run-cap SECONDS] [--ledger PATH] [--report]
 //! ```
 //!
 //! `--report` reads the ledger and prints the verdict without running anything.
@@ -14,6 +14,11 @@
 //! not already carry, stopping early once `--deadline` seconds have elapsed, so
 //! an interrupted campaign resumes instead of restarting and a chunk under a
 //! wall-clock cap ends between mutants with the tree restored.
+//!
+//! `--run-cap` bounds one mutant's suite. A mutation that removes a loop's exit
+//! makes the suite hang rather than fail, and an unbounded wait spends the
+//! whole chunk on it; past the cap the run's process group is killed and the
+//! mutant is recorded as killed.
 //!
 //! # What this campaign can and cannot cover
 //!
@@ -31,8 +36,10 @@
 use std::{
 	collections::BTreeSet,
 	env, fs,
+	os::unix::process::CommandExt,
 	path::{Path, PathBuf},
-	process::Command,
+	process::{Child, Command, ExitStatus, Stdio},
+	thread,
 	time::{Duration, Instant},
 };
 
@@ -263,6 +270,13 @@ fn candidates(root: &Path) -> Vec<Candidate> {
 	interleaved
 }
 
+/// How long one mutant's suite may run before it is treated as detected.
+///
+/// The unmutated library suite finishes in about nine seconds and the rebuild
+/// in front of it in tens of seconds, so a run still alive after four minutes
+/// is not slow, it is stuck.
+const RUN_CAP: Duration = Duration::from_mins(4);
+
 /// Build and run `package`'s library suite, and say what became of the mutant.
 ///
 /// A mutant is one token different from the tree that was just compiled, so the
@@ -272,19 +286,45 @@ fn candidates(root: &Path) -> Vec<Candidate> {
 /// planned mutants out of reach at about ninety seconds each. Incremental is
 /// requested for the child alone, so the campaign pays for its own speed
 /// without changing what any other build does.
-fn verdict(root: &Path, package: &str) -> Outcome {
-	let output = Command::new("cargo")
+///
+/// The run is bounded. Several operators can remove a loop's exit — a
+/// `break;` becoming `continue;` in the clock's deadline scan is one that
+/// exists — and the suite then never returns. An unbounded wait turns one such
+/// mutant into a stalled campaign: the first one observed here held a chunk for
+/// eight minutes and was killed by hand. Non-termination is a behavioural
+/// difference the original does not have, so a mutant whose suite must be
+/// killed counts as killed, the same as one whose suite went red.
+fn verdict(root: &Path, package: &str, cap: Duration) -> Outcome {
+	// Child output goes to a file rather than a pipe: a pipe that fills while
+	// nothing reads it deadlocks the very hang this cap exists to break.
+	let log = env::temp_dir().join(format!("veyyon-campaign-{}.log", std::process::id()));
+	let Ok(sink) = fs::File::create(&log) else {
+		return Outcome::NotViable;
+	};
+	let Ok(errors) = sink.try_clone() else {
+		return Outcome::NotViable;
+	};
+	let spawned = Command::new("cargo")
 		.args(["test", "-p", package, "--lib", "-q"])
 		.env("CARGO_INCREMENTAL", "1")
 		.current_dir(root)
-		.output();
-	let Ok(output) = output else {
+		.stdout(Stdio::from(sink))
+		.stderr(Stdio::from(errors))
+		// Its own process group, so the kill below reaches the test binary and
+		// not only the cargo that spawned it.
+		.process_group(0)
+		.spawn();
+	let Ok(mut child) = spawned else {
 		return Outcome::NotViable;
 	};
-	if output.status.success() {
+	let Some(status) = wait_bounded(&mut child, cap) else {
+		println!("  suite did not finish within {}s; counted as killed", cap.as_secs());
+		return Outcome::Killed;
+	};
+	if status.success() {
 		return Outcome::Survived;
 	}
-	let text = String::from_utf8_lossy(&output.stderr);
+	let text = fs::read_to_string(&log).unwrap_or_default();
 	// A mutant that did not build was not executed. The distinction is the
 	// whole reason `NotViable` exists: counting it would clear the floor
 	// without testing anything.
@@ -292,6 +332,41 @@ fn verdict(root: &Path, package: &str) -> Outcome {
 		return Outcome::NotViable;
 	}
 	Outcome::Killed
+}
+
+/// Wait for `child`, killing its process group once `cap` elapses.
+///
+/// `None` means the wait ended without a status: the group was killed, or the
+/// handle stopped answering. Either way the caller must not wait again.
+fn wait_bounded(child: &mut Child, cap: Duration) -> Option<ExitStatus> {
+	let started = Instant::now();
+	loop {
+		match child.try_wait() {
+			Ok(Some(status)) => return Some(status),
+			Ok(None) => {},
+			Err(_) => return None,
+		}
+		if started.elapsed() >= cap {
+			// Negative pid: the whole group, cargo and the test binary under it.
+			// Through `sh` on purpose: util-linux `kill(1)` reads `-<pid>` as an
+			// unknown option and refuses it, so the group survived the cap and
+			// the wait below became the child's own lifetime instead of the
+			// bound. The shell builtin takes a group id.
+			let _ = Command::new("sh")
+				.arg("-c")
+				.arg(format!("kill -9 -{}", child.id()))
+				.stdout(Stdio::null())
+				.stderr(Stdio::null())
+				.status();
+			// The direct child too: if the group kill was refused for any other
+			// reason, this still ends the wait rather than inheriting the
+			// child's lifetime.
+			let _ = child.kill();
+			let _ = child.wait();
+			return None;
+		}
+		thread::sleep(Duration::from_millis(100));
+	}
 }
 
 /// Read the ledger, refusing a row this shape cannot read.
@@ -400,6 +475,7 @@ fn main() {
 	// A deadline the runner enforces itself stops between mutants, with the tree
 	// restored and the ledger complete.
 	let mut deadline: Option<Duration> = None;
+	let mut run_cap = RUN_CAP;
 	let mut args = env::args().skip(1);
 	while let Some(argument) = args.next() {
 		match argument.as_str() {
@@ -417,6 +493,14 @@ fn main() {
 						.and_then(|value| value.parse().ok())
 						.expect("--deadline takes seconds"),
 				));
+			},
+			"--run-cap" => {
+				run_cap = Duration::from_secs(
+					args
+						.next()
+						.and_then(|value| value.parse().ok())
+						.expect("--run-cap takes seconds"),
+				);
 			},
 			"--report" => only_report = true,
 			other => {
@@ -479,7 +563,7 @@ fn main() {
 				eprintln!("cannot write {}", candidate.mutant.site.file);
 				continue;
 			}
-			verdict(&root, candidate.package)
+			verdict(&root, candidate.package, run_cap)
 		};
 		let seconds = started.elapsed().as_secs();
 
@@ -542,6 +626,12 @@ fn main() {
 // lands and put back on the next start, so recovery does not depend on the
 // dying process running any more code.
 //
+// The second class here is the opposite failure: a mutant the runner never gets
+// an answer about. A mutation that removes a loop's exit hangs the suite
+// instead of failing it, and an unbounded wait spends the chunk on one mutant;
+// the cap and the process-group kill are what make that a recorded kill rather
+// than a stall.
+//
 // WHAT IT DOES NOT CATCH. A machine that dies between the write of the source
 // and the write of the record — the window is one syscall and the record is
 // written first, so the surviving state is a record whose file is already
@@ -550,39 +640,29 @@ fn main() {
 // construction and nothing here makes it safe to share.
 #[cfg(test)]
 mod tests {
-	use super::{Pending, Restore, recover_pending};
+	use std::{
+		os::unix::process::CommandExt,
+		process::{Command, Stdio},
+		time::{Duration, Instant},
+	};
 
-	/// A scratch directory that cleans up after itself.
-	struct Scratch(std::path::PathBuf);
+	use veyyon_test_scratch::scratch_dir;
 
-	impl Scratch {
-		fn new(name: &str) -> Self {
-			let path =
-				std::env::temp_dir().join(format!("veyyon-campaign-{}-{name}", std::process::id()));
-			std::fs::create_dir_all(&path).expect("scratch directory");
-			Self(path)
-		}
-	}
-
-	impl Drop for Scratch {
-		fn drop(&mut self) {
-			let _ = std::fs::remove_dir_all(&self.0);
-		}
-	}
+	use super::{Pending, Restore, recover_pending, wait_bounded};
 
 	#[test]
 	fn an_interrupted_mutant_is_restored_on_the_next_start() {
-		let scratch = Scratch::new("interrupted");
-		let source = scratch.0.join("clock.rs");
+		let scratch = scratch_dir("veyyon-conformance-campaign-interrupted");
+		let source = scratch.join("clock.rs");
 		std::fs::write(&source, "break;\n").expect("original written");
-		let record = scratch.0.join("campaign.pending");
+		let record = scratch.join("campaign.pending");
 		let pending = Pending { file: "clock.rs".to_owned(), original: "break;\n".to_owned() };
 		std::fs::write(&record, serde_json::to_string(&pending).expect("a record serializes"))
 			.expect("record");
 		// The mutation survives the runner, exactly as a kill leaves it.
 		std::fs::write(&source, "continue;\n").expect("mutant written");
 
-		let repaired = recover_pending(&scratch.0, &record);
+		let repaired = recover_pending(&scratch, &record);
 
 		assert_eq!(repaired.as_deref(), Some("clock.rs"));
 		assert_eq!(std::fs::read_to_string(&source).expect("source readable"), "break;\n");
@@ -594,30 +674,30 @@ mod tests {
 
 	#[test]
 	fn a_record_whose_file_is_already_original_is_dropped_without_a_write() {
-		let scratch = Scratch::new("clean");
-		let source = scratch.0.join("clock.rs");
+		let scratch = scratch_dir("veyyon-conformance-campaign-clean");
+		let source = scratch.join("clock.rs");
 		std::fs::write(&source, "break;\n").expect("original written");
-		let record = scratch.0.join("campaign.pending");
+		let record = scratch.join("campaign.pending");
 		let pending = Pending { file: "clock.rs".to_owned(), original: "break;\n".to_owned() };
 		std::fs::write(&record, serde_json::to_string(&pending).expect("a record serializes"))
 			.expect("record");
 
-		assert_eq!(recover_pending(&scratch.0, &record), None);
+		assert_eq!(recover_pending(&scratch, &record), None);
 		assert!(!record.exists());
 	}
 
 	#[test]
 	fn no_record_means_nothing_to_repair() {
-		let scratch = Scratch::new("absent");
-		assert_eq!(recover_pending(&scratch.0, &scratch.0.join("campaign.pending")), None);
+		let scratch = scratch_dir("veyyon-conformance-campaign-absent");
+		assert_eq!(recover_pending(&scratch, &scratch.join("campaign.pending")), None);
 	}
 
 	#[test]
 	fn the_guard_restores_the_source_and_clears_its_record() {
-		let scratch = Scratch::new("guard");
-		let source = scratch.0.join("clock.rs");
+		let scratch = scratch_dir("veyyon-conformance-campaign-guard");
+		let source = scratch.join("clock.rs");
 		std::fs::write(&source, "break;\n").expect("original written");
-		let record = scratch.0.join("campaign.pending");
+		let record = scratch.join("campaign.pending");
 
 		{
 			let _guard =
@@ -628,5 +708,45 @@ mod tests {
 
 		assert_eq!(std::fs::read_to_string(&source).expect("source readable"), "break;\n");
 		assert!(!record.exists());
+	}
+
+	// A hang is the failure mode an assertion on values cannot see: the suite
+	// neither passes nor fails, it never answers. These two cases pin that the
+	// wait ends and that it ends at the cap rather than whenever the machine
+	// feels like it.
+	#[test]
+	fn a_child_that_never_exits_is_killed_at_the_cap() {
+		let mut child = Command::new("sleep")
+			.arg("120")
+			.stdout(Stdio::null())
+			.stderr(Stdio::null())
+			.process_group(0)
+			.spawn()
+			.expect("sleep spawns");
+		let started = Instant::now();
+
+		let status = wait_bounded(&mut child, Duration::from_millis(300));
+
+		assert!(status.is_none(), "a killed group reports no status");
+		assert!(
+			started.elapsed() < Duration::from_secs(30),
+			"the wait is bounded by the cap, not by the child: took {:?}",
+			started.elapsed()
+		);
+	}
+
+	#[test]
+	fn a_child_that_exits_is_reported_with_its_own_status() {
+		let mut child = Command::new("false")
+			.stdout(Stdio::null())
+			.stderr(Stdio::null())
+			.process_group(0)
+			.spawn()
+			.expect("false spawns");
+
+		let status = wait_bounded(&mut child, Duration::from_secs(30));
+
+		assert!(status.is_some(), "an exit inside the cap is observed");
+		assert!(!status.expect("a status").success(), "the child's own failure is not masked");
 	}
 }
