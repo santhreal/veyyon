@@ -42,6 +42,7 @@ import {
 	StreamMarkupHealing,
 	type StreamMarkupHealingEvent,
 } from "../utils/stream-markup-healing";
+import { stopReasonForTerminallessEof } from "../utils/terminalless-eof";
 import { transformMessages } from "./transform-messages";
 import { joinTextWithImagePlaceholder, partitionVisionContent } from "./vision-guard";
 
@@ -424,6 +425,7 @@ const streamOllamaOnce = (
 	void (async () => {
 		const startTime = performance.now();
 		let firstTokenTime: number | undefined;
+		let sawDone = false;
 		const output = createEmptyOutput(model);
 		let rawRequestDump: RawHttpRequestDump | undefined;
 		let capturedErrorResponse: CapturedHttpErrorResponse | undefined;
@@ -655,6 +657,7 @@ const streamOllamaOnce = (
 					}
 				}
 				if (chunk.done) {
+					sawDone = true;
 					if (streamMarkupHealing) {
 						for (const event of streamMarkupHealing.flushEvents()) {
 							emitHealingEvent(event);
@@ -687,6 +690,21 @@ const streamOllamaOnce = (
 			}
 			endActiveThinkingBlock();
 			endActiveTextBlock();
+			// No chunk ever carried `done`, so nothing in the response said the
+			// turn was over and `output.stopReason` is still the seed it was given
+			// before the first line arrived — an empty body reached the session as
+			// a finished answer. A tool call still open at EOF is a partial batch:
+			// its arguments never closed.
+			if (!sawDone) {
+				const stopReason = stopReasonForTerminallessEof(output.content, activeToolIndices.size === 0);
+				if (stopReason === undefined) {
+					throw new AIError.ProviderResponseError(
+						"Ollama stream ended without a done chunk (connection dropped or response truncated)",
+						{ provider: model.provider, kind: "incomplete-stream" },
+					);
+				}
+				output.stopReason = stopReason;
+			}
 			if (output.stopReason === "length" && !hasVisibleAssistantContent(output)) {
 				output.stopReason = "error";
 				output.errorMessage = EMPTY_OLLAMA_LENGTH_COMPLETION_MESSAGE;

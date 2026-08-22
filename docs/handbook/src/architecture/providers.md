@@ -69,7 +69,7 @@ The phase ends at the first of these:
 | `budget.fence(callerSignal)` | A signal covering what remains, plus the `cancel()` that clears its timer. A setup chain fences once and passes that signal to every call. |
 | `isPreResponseStall(error)` | True when no byte of a response ever arrived. |
 
-Three rules keep this narrow.
+Four rules keep this narrow.
 
 **A stall is bounded by the budget; a server-directed wait is bounded by the
 cap.** A 429 or 503 carrying `retry-after` means the server answered and asked
@@ -100,6 +100,21 @@ that treats a refusal as one candidate's silence and concludes with the remedy
 for having found nothing (GitLab Duo's namespace walk did this with a rejected
 token).
 
+**A stream that stopped is not a stream that finished.** Every dialect ends a
+turn with a marker of its own — `finish_reason` and `[DONE]`,
+`response.completed`, `message_stop`, `finishReason`, `done: true`,
+`messageStop`, `turn_ended` — and reaching the end of the body without one is a
+transport-clean EOF that says nothing about the turn. Reporting a normal stop
+there persists whatever arrived as an answer, and the model reads it back as
+history on the next turn; rejecting every such EOF fails turns that were
+complete, because several compatible servers simply do not send the marker.
+`stopReasonForTerminallessEof` in `utils/terminalless-eof` owns the judgement
+for every dialect: visible text is a stop, reasoning with no answer is a
+`length` the session can recover, a tool batch counts only when every call
+parsed, and anything else is an `incomplete-stream` failure. A provider that
+seeds `stopReason: "stop"` before the first byte and never consults this rule
+writes a blank turn into the session, which is what Bedrock and Ollama did.
+
 ### Where each provider's deadline sits
 
 | Provider | Bound before the first event |
@@ -118,3 +133,8 @@ API, so a provider that stops honoring the number turns that suite red.
 drives the same fourteen against a refusing transport — `401`, `404`, `429` with
 a two-minute `retry-after`, and `400` — and pins the class each one surfaces,
 plus the invariant that no refusal echoes the api key back into its message.
+
+`packages/ai/test/a-stream-that-stops-mid-turn-is-never-reported-as-a-finished-one.test.ts`
+drives all fourteen against a `200` that closes without a terminal marker and
+pins each verdict, so a dialect that starts accepting an empty stream as an
+answer turns red rather than shipping a blank turn.

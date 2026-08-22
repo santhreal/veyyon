@@ -64,6 +64,7 @@ import {
 	StreamMarkupHealing,
 	type StreamMarkupHealingEvent,
 } from "../utils/stream-markup-healing";
+import { stopReasonForTerminallessEof } from "../utils/terminalless-eof";
 import { isForcedToolChoice, mapToOpenAICompletionsToolChoice } from "../utils/tool-choice";
 import type { CacheControlEphemeral } from "./anthropic-wire";
 import type {
@@ -1336,35 +1337,20 @@ const streamOpenAICompletionsOnce = (
 			}
 
 			// Reaching the end of the async iterator without an exception is a
-			// clean HTTP body EOF, not a dropped transport. Several compatible
-			// providers (including DeepSeek V4 Flash and Muse Spark) omit
-			// `finish_reason` and `[DONE]`. Classify the accumulated shape:
-			// visible text is a complete stop, reasoning without an answer is an
-			// incomplete/length stop that the session can recover, and a tool
-			// batch is usable only when every call has an id, name, and complete
-			// JSON-object arguments. A partial/malformed call wins over any
-			// accompanying text or reasoning and remains retryable.
+			// clean HTTP body EOF, not a dropped transport, so the accumulated
+			// shape decides what it was. `stopReasonForTerminallessEof` owns that
+			// judgement for every dialect; see its header for why rejecting or
+			// accepting unconditionally are both wrong.
 			if (streamFinishedAt === undefined) {
-				const hasToolCalls = output.content.some(block => block.type === "toolCall");
-				const hasVisibleText = output.content.some(block => block.type === "text" && block.text.trim().length > 0);
-				const hasThinking = output.content.some(
-					block => block.type === "thinking" && block.thinking.trim().length > 0,
-				);
-				if (hasToolCalls && hasCompleteToolCallBatch()) {
-					output.stopReason = "toolUse";
-					streamFinishedAt = Date.now();
-				} else if (!hasToolCalls && hasVisibleText) {
-					output.stopReason = "stop";
-					streamFinishedAt = Date.now();
-				} else if (!hasToolCalls && hasThinking) {
-					output.stopReason = "length";
-					streamFinishedAt = Date.now();
-				} else {
+				const stopReason = stopReasonForTerminallessEof(output.content, hasCompleteToolCallBatch());
+				if (stopReason === undefined) {
 					throw new AIError.ProviderResponseError(
 						"OpenAI completions stream closed before a terminal finish reason was received",
 						{ provider: model.provider, kind: "incomplete-stream" },
 					);
 				}
+				output.stopReason = stopReason;
+				streamFinishedAt = Date.now();
 			}
 
 			if (streamMarkupHealing) {

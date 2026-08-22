@@ -925,13 +925,14 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 					started = false;
 					resetOutput();
 
+					const requestUrl = `${endpoint}/v1internal:streamGenerateContent?alt=sse`;
 					// Per attempt: arm a pre-response (TTFT) timer, cleared the instant
 					// headers arrive so it never aborts the actively streaming body —
 					// an absolute `AbortSignal.timeout` would (issue #2422).
 					const watchdog = armPreResponseTimeout(callerSignal, firstEventTimeoutMs);
 					let response: Response;
 					try {
-						response = await fetchWithRetry(() => `${endpoint}/v1internal:streamGenerateContent?alt=sse`, {
+						response = await fetchWithRetry(() => requestUrl, {
 							method: "POST",
 							headers: requestHeaders,
 							body: requestBodyJson,
@@ -968,7 +969,11 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 						);
 					}
 
-					const requestUrl = response.url;
+					// The URL this attempt POSTed to, not `response.url`: a custom
+					// `options.fetch` that answers with a constructed `Response`
+					// leaves that empty, and the empty-stream retry below then
+					// failed with a configuration error naming a URL the provider
+					// had in hand all along.
 					let currentResponse = response;
 
 					for (let emptyAttempt = 0; emptyAttempt <= MAX_EMPTY_STREAM_RETRIES; emptyAttempt++) {
@@ -982,10 +987,6 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 								await scheduler.wait(backoffMs, { signal: options?.signal });
 							} catch {
 								throw new AIError.RequestAbortError("Request was aborted");
-							}
-
-							if (!requestUrl) {
-								throw new AIError.ConfigurationError("Missing request URL");
 							}
 
 							currentResponse = await (options?.fetch ?? fetch)(requestUrl, {

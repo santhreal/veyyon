@@ -534,11 +534,34 @@ async function fetchDevinAuthMetadata(
 	};
 }
 
+/**
+ * Decode a `GetUserJwt` response, which arrives as bare protobuf or gzipped
+ * protobuf depending on what the server negotiated.
+ *
+ * The third case is neither, and it has to name itself: a proxy's error page, a
+ * truncated body, or an SSE keepalive from something that is not Devin all fail
+ * the protobuf parse and then fail `gunzipSync`, whose own message is
+ * "incorrect header check" — a zlib internal that names no provider, no step
+ * and no remedy, and that was reaching the operator as the whole explanation of
+ * a failed turn.
+ */
 function decodeDevinUserJwtResponse(payload: Uint8Array) {
 	try {
 		return fromBinary(GetUserJwtResponseSchema, payload);
 	} catch {
-		return fromBinary(GetUserJwtResponseSchema, gunzipSync(payload));
+		try {
+			return fromBinary(GetUserJwtResponseSchema, gunzipSync(payload));
+		} catch {
+			throw new AIError.ProviderResponseError(
+				`Devin auth error: GetUserJwt answered with ${payload.byteLength} byte(s) that are neither a protobuf response nor gzip: ${AIError.boundProviderErrorDetail(new TextDecoder().decode(payload))}`,
+				// `envelope`, not `incomplete-stream`: a body that is neither
+				// protobuf nor gzip is structurally wrong rather than cut short, so
+				// the three-rung auth ladder cannot improve on it — and retrying
+				// spent the caller's whole first-event budget, which turned an
+				// actionable message into a deadline.
+				{ provider: "devin", kind: "envelope" },
+			);
+		}
 	}
 }
 
