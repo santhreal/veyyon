@@ -226,6 +226,80 @@ describe("the corpus is reproducible, or the numbers mean nothing", () => {
 	});
 });
 
+describe("the density knobs hold match volume fixed while the file spread changes", () => {
+	// WHY: the worker-scaling instrument asks whether the results mutex is the limiter.
+	// It can only answer that by comparing two corpora with the SAME number of matches
+	// and a twentyfold difference in how many files carry them, since a matching file
+	// is one lock acquisition and a match is one collected row. If these knobs silently
+	// changed the match total as well, the comparison would measure two things at once
+	// and the verdict would be worthless. What this does not catch: whether the addon
+	// takes the lock once per matching file, which is a property of the Rust side.
+	it("makes every file a matching file when one match is pinned to every index", async () => {
+		const root = await corpusRoot();
+		const facts = await generateCorpus({ root, seed: 5, files: 40, matchEvery: 1, matchesPerFile: 1 });
+		const pattern = new RegExp(CORPUS_PATTERN);
+
+		expect(facts.matchEvery).toBe(1);
+		expect(facts.matchesPerFile).toBe(1);
+		expect(facts.matchingFiles).toBe(40);
+		expect(facts.srcMatches).toBe(40);
+		for (const contents of await readAll(root, 40)) {
+			expect(contents.split("\n").filter(line => pattern.test(line)).length).toBe(1);
+		}
+	});
+
+	it("pins the matches per matching file instead of cycling one to four", async () => {
+		const root = await corpusRoot();
+		const facts = await generateCorpus({ root, seed: 5, files: 40, matchEvery: 20, matchesPerFile: 20 });
+		const pattern = new RegExp(CORPUS_PATTERN);
+
+		expect(facts.matchingFiles).toBe(2);
+		expect(facts.srcMatches).toBe(40);
+		const perFile = (await readAll(root, 40)).map(
+			contents => contents.split("\n").filter(line => pattern.test(line)).length,
+		);
+		expect(perFile.filter(count => count > 0)).toEqual([20, 20]);
+		expect(matchesForIndex(0, 20, 20)).toBe(20);
+		expect(matchesForIndex(1, 20, 20)).toBe(0);
+		expect(matchesForIndex(20, 20)).toBe(2);
+	});
+
+	it("reaches the same match total from twenty times fewer matching files", async () => {
+		const [spread, dense] = [await corpusRoot(), await corpusRoot()];
+		const everyFile = await generateCorpus({ root: spread, seed: 5, files: 40, matchEvery: 1, matchesPerFile: 1 });
+		const fewFiles = await generateCorpus({ root: dense, seed: 5, files: 40, matchEvery: 20, matchesPerFile: 20 });
+
+		expect(fewFiles.srcMatches).toBe(everyFile.srcMatches);
+		expect(fewFiles.files).toBe(everyFile.files);
+		expect(everyFile.matchingFiles / fewFiles.matchingFiles).toBe(20);
+	});
+
+	it("rewrites a corpus whose density, pinning or file size no longer matches", async () => {
+		const root = await corpusRoot();
+		const request = { root, seed: 5, files: 40, matchEvery: 20, matchesPerFile: 20, fileBytes: 512 };
+		expect((await generateCorpus(request)).reused).toBe(false);
+		expect((await generateCorpus(request)).reused).toBe(true);
+
+		expect((await generateCorpus({ ...request, matchEvery: 1 })).reused).toBe(false);
+		expect((await generateCorpus({ ...request, matchEvery: 1, matchesPerFile: 1 })).reused).toBe(false);
+		expect((await generateCorpus({ ...request, matchEvery: 1, matchesPerFile: 1, fileBytes: 1024 })).reused).toBe(
+			false,
+		);
+		const settled = await generateCorpus({ ...request, matchEvery: 1, matchesPerFile: 1, fileBytes: 1024 });
+		expect(settled.reused).toBe(true);
+		expect(settled.fileBytes).toBe(1024);
+	});
+
+	it("keeps the cycling shape when nothing is pinned", async () => {
+		const root = await corpusRoot();
+		const facts = await generateCorpus({ root, seed: 5, files: 80 });
+		expect(facts.matchEvery).toBe(MATCH_EVERY);
+		// Zero records that the generator, not the caller, chose the per-file count.
+		expect(facts.matchesPerFile).toBe(0);
+		expect(facts.srcMatches).toBeGreaterThan(facts.matchingFiles);
+	});
+});
+
 describe("an rg that did not search is never timed", () => {
 	it("names the failure when rg cannot be started at all", async () => {
 		const root = await corpusRoot();

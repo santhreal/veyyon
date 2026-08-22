@@ -108,6 +108,12 @@ export interface CorpusFacts {
 	readonly matchingFiles: number;
 	/** Matching lines under `src/`. */
 	readonly srcMatches: number;
+	/** One file in this many carries matching lines. */
+	readonly matchEvery: number;
+	/** Matching lines per matching file, or 0 when the generator cycles them. */
+	readonly matchesPerFile: number;
+	/** Target bytes per generated file, before the closing line. */
+	readonly fileBytes: number;
 	/** Matching lines in each control directory. */
 	readonly hiddenMatches: number;
 	readonly ignoredMatches: number;
@@ -121,6 +127,20 @@ export interface CorpusRequest {
 	readonly root?: string;
 	readonly seed?: number;
 	readonly files?: number;
+	/**
+	 * One file in this many matches. The scaling instrument uses 1 (every file
+	 * matches, so the result accumulator is hit once per file) against the default
+	 * 5% as its control.
+	 */
+	readonly matchEvery?: number;
+	/**
+	 * Matching lines per matching file, pinned rather than cycled. Holding the total
+	 * match volume fixed while changing `matchEvery` is what separates the cost of
+	 * collecting a match from the cost of filing a per-file result.
+	 */
+	readonly matchesPerFile?: number;
+	/** Target bytes per file. The scaling instrument uses 1024. */
+	readonly fileBytes?: number;
 	/** Write the corpus even when a matching manifest is already on disk. */
 	readonly regenerate?: boolean;
 }
@@ -164,14 +184,22 @@ export function corpusRelativePath(index: number): string {
 }
 
 /** Whether corpus file `index` carries matching lines. */
-export function isMatchingIndex(index: number): boolean {
-	return index % MATCH_EVERY === 0;
+export function isMatchingIndex(index: number, matchEvery: number = MATCH_EVERY): boolean {
+	return index % matchEvery === 0;
 }
 
-/** How many matching lines corpus file `index` carries. */
-export function matchesForIndex(index: number): number {
-	if (!isMatchingIndex(index)) return 0;
-	return 1 + ((index / MATCH_EVERY) % MAX_MATCHES_PER_FILE);
+/**
+ * How many matching lines corpus file `index` carries.
+ *
+ * `matchesPerFile` pins the count instead of cycling it. The scaling instrument uses
+ * it to hold the total match volume fixed while changing how many files the matches
+ * are spread over, which is what separates the cost of collecting a match from the
+ * cost of taking the lock that files a result.
+ */
+export function matchesForIndex(index: number, matchEvery: number = MATCH_EVERY, matchesPerFile?: number): number {
+	if (!isMatchingIndex(index, matchEvery)) return 0;
+	if (matchesPerFile !== undefined) return matchesPerFile;
+	return 1 + (Math.floor(index / matchEvery) % MAX_MATCHES_PER_FILE);
 }
 
 function matchingLine(rand: () => number, ordinal: number): string {
@@ -187,16 +215,21 @@ function fillerLine(rand: () => number, ordinal: number): string {
 }
 
 /**
- * The bytes of one generated file. Pure in (`index`, `seed`, `matches`), which is
- * what makes two corpora with the same version and seed byte-identical.
+ * The bytes of one generated file. Pure in (`index`, `seed`, `matches`, `fileBytes`),
+ * which is what makes two corpora with the same version and seed byte-identical.
  */
-export function corpusFileContents(index: number, seed: number, matches: number): string {
+export function corpusFileContents(
+	index: number,
+	seed: number,
+	matches: number,
+	fileBytes: number = TARGET_FILE_BYTES,
+): string {
 	const rand = mulberry32((seed ^ Math.imul(index + 1, 0x9e3779b1)) >>> 0);
 	const filler: string[] = [];
 	let bytes = 0;
 	const header = `// f${pad(index, 5)} corpus v${CORPUS_VERSION} seed ${pad(seed, 8)} -- generated, do not edit`;
 	bytes += header.length + 1;
-	for (let ordinal = 0; bytes < TARGET_FILE_BYTES; ordinal++) {
+	for (let ordinal = 0; bytes < fileBytes; ordinal++) {
 		const line = fillerLine(rand, ordinal);
 		filler.push(line);
 		bytes += line.length + 1;
@@ -219,6 +252,9 @@ interface Manifest {
 	pathLength: number;
 	matchingFiles: number;
 	srcMatches: number;
+	matchEvery: number;
+	matchesPerFile: number;
+	fileBytes: number;
 	hiddenMatches: number;
 	ignoredMatches: number;
 	nodeModulesMatches: number;
@@ -254,6 +290,9 @@ function factsFrom(root: string, manifest: Manifest, reused: boolean): CorpusFac
 		pathLength: manifest.pathLength,
 		matchingFiles: manifest.matchingFiles,
 		srcMatches: manifest.srcMatches,
+		matchEvery: manifest.matchEvery,
+		matchesPerFile: manifest.matchesPerFile,
+		fileBytes: manifest.fileBytes,
 		hiddenMatches: manifest.hiddenMatches,
 		ignoredMatches: manifest.ignoredMatches,
 		nodeModulesMatches: manifest.nodeModulesMatches,
@@ -263,11 +302,14 @@ function factsFrom(root: string, manifest: Manifest, reused: boolean): CorpusFac
 
 /**
  * Write the corpus, or reuse the one on disk when its manifest already describes
- * exactly this version, seed and file count.
+ * exactly this version, seed, file count, match density and file size.
  */
 export async function generateCorpus(request: CorpusRequest = {}): Promise<CorpusFacts> {
 	const seed = request.seed ?? DEFAULT_SEED;
 	const files = request.files ?? DEFAULT_FILE_COUNT;
+	const matchEvery = request.matchEvery ?? MATCH_EVERY;
+	const matchesPerFile = request.matchesPerFile ?? 0;
+	const fileBytes = request.fileBytes ?? TARGET_FILE_BYTES;
 	const root = request.root ?? defaultCorpusDir(seed);
 
 	const existing = await readManifest(root);
@@ -276,7 +318,10 @@ export async function generateCorpus(request: CorpusRequest = {}): Promise<Corpu
 		existing &&
 		existing.version === CORPUS_VERSION &&
 		existing.seed === seed &&
-		existing.files === files
+		existing.files === files &&
+		existing.matchEvery === matchEvery &&
+		existing.matchesPerFile === matchesPerFile &&
+		existing.fileBytes === fileBytes
 	) {
 		return factsFrom(root, existing, true);
 	}
@@ -294,12 +339,12 @@ export async function generateCorpus(request: CorpusRequest = {}): Promise<Corpu
 			await fs.mkdir(dir, { recursive: true });
 			lastDir = dir;
 		}
-		const matches = matchesForIndex(index);
+		const matches = matchesForIndex(index, matchEvery, matchesPerFile === 0 ? undefined : matchesPerFile);
 		if (matches > 0) {
 			matchingFiles++;
 			srcMatches += matches;
 		}
-		const contents = corpusFileContents(index, seed, matches);
+		const contents = corpusFileContents(index, seed, matches, fileBytes);
 		bytes += Buffer.byteLength(contents);
 		await fs.writeFile(absolute, contents);
 	}
@@ -329,6 +374,9 @@ export async function generateCorpus(request: CorpusRequest = {}): Promise<Corpu
 		pathLength: corpusRelativePath(0).length,
 		matchingFiles,
 		srcMatches,
+		matchEvery,
+		matchesPerFile,
+		fileBytes,
 		hiddenMatches: CONTROL_FILES,
 		ignoredMatches: CONTROL_FILES,
 		nodeModulesMatches: CONTROL_FILES,
