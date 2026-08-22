@@ -19,9 +19,13 @@
  * What it does not catch: whether an individual provider's `search()` honours its
  * arguments, and the aggregate Public Web fan-out's own engine selection
  * (`test/tools/web-search-public.test.ts` covers that). It also cannot see network
- * behaviour: every case here is decided before a request is made.
+ * behaviour — every case here is decided before a request is made, which is what lets
+ * the tool-seam cases below run the real `runSearchQuery` against a credential-free
+ * store without reaching an engine.
  */
 import { afterEach, describe, expect, it } from "bun:test";
+import type { AuthStorage } from "@veyyon/ai";
+import { runSearchQuery, type SearchQueryParams } from "@veyyon/coding-agent/web/search";
 import {
 	resolveProviderCandidates,
 	selectSearchProviders,
@@ -156,5 +160,67 @@ describe("a configuration that cannot be satisfied is refused, not widened", () 
 		if (!("refusal" in selection)) throw new Error("expected a refusal");
 		expect(selection.refusal).toContain("providers.webSearchExclude");
 		expect(resolveProviderCandidates("auto")).toEqual([]);
+	});
+});
+
+/**
+ * The decision is only half the fix: the other half is that the tool ASKS for it with
+ * the call's own argument and surfaces a refusal instead of searching anyway. Both of
+ * those live at `executeSearch`, so these cases drive `runSearchQuery`, which is the
+ * function the `veyyon search` CLI calls and the same `executeSearch` the tool class and
+ * the custom tool call. Kagi decides availability from `authStorage.hasAuth` alone, so a
+ * store that holds nothing keeps every case off the network.
+ */
+describe("the search the tool actually runs", () => {
+	const emptyStore = {
+		hasAuth: () => false,
+		async getApiKey() {
+			throw new Error("a provider with no credential must not be asked for one");
+		},
+		resolver() {
+			throw new Error("a provider with no credential must not be asked for a resolver");
+		},
+	} as unknown as AuthStorage;
+
+	const search = (params: SearchQueryParams) => runSearchQuery(params, { authStorage: emptyStore });
+
+	it("names the provider the call chose, not the one the setting chose", async () => {
+		setPreferredSearchProvider("kagi");
+		setExcludedSearchProviders(["tinyfish"]);
+
+		// The per-call argument used to be resolved inside the search loop, one seam past
+		// the setting, so an argument could be dropped while the setting was honoured.
+		const result = await search({ query: "anything", provider: "tinyfish" });
+
+		expect(result.details.error).toContain("TinyFish");
+		expect(result.details.error).toContain("the provider argument");
+		expect(result.details.error).not.toContain("Kagi");
+	});
+
+	it("returns the refusal as the tool's error rather than searching anyway", async () => {
+		setPreferredSearchProvider("kagi");
+		setExcludedSearchProviders(["kagi"]);
+
+		const result = await search({ query: "anything" });
+
+		expect(result.content[0]?.text).toBe(`Error: ${result.details.error}`);
+		expect(result.details.error).toContain("providers.webSearchExclude");
+		expect(result.details.response.provider).toBe("none");
+		expect(result.details.response.sources).toEqual([]);
+	});
+
+	it("names the chosen provider when it is the thing that has no credential", async () => {
+		setPreferredSearchProvider("kagi");
+
+		const result = await search({ query: "anything" });
+
+		// "No web search provider configured" is true of a machine with no keys at all and
+		// says nothing an operator who chose one engine can act on. The two facts are
+		// different, and only this one names the credential to add.
+		expect(result.details.error).toBe(
+			"Kagi is the chosen web search provider and is not configured. " +
+				"Add its credential, or set providers.webSearch to auto.",
+		);
+		expect(result.details.response.provider).toBe("kagi");
 	});
 });
