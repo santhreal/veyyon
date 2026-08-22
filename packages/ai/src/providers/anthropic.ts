@@ -70,7 +70,7 @@ import {
 } from "../utils/block-symbols";
 import { withEmptyCompletionRetry } from "../utils/empty-completion-retry";
 import { AssistantMessageEventStream } from "../utils/event-stream";
-import { isPreResponseStall, openFirstEventBudget } from "../utils/first-event-budget";
+import { isPreResponseStall, openStallLadderBudget } from "../utils/first-event-budget";
 import { isFoundryEnabled } from "../utils/foundry";
 import { finalizeErrorMessage, type RawHttpRequestDump } from "../utils/http-inspector";
 import { getStreamFirstEventTimeoutMs, getStreamIdleTimeoutMs, iterateWithIdleTimeout } from "../utils/idle-iterator";
@@ -2134,12 +2134,13 @@ const streamAnthropicOnce = (
 			// Provider-level transport/rate-limit failures: only before any streamed content starts.
 			// Malformed envelopes/JSON: only before replay-unsafe text/tool events are visible on this stream.
 			let providerRetryAttempt = 0;
-			// The declared first-event budget bounds the WHOLE pre-first-event
-			// phase, not one attempt inside it. A stall retried
-			// PROVIDER_MAX_RETRIES times used to multiply the caller's number by
-			// the ladder plus its backoff, so a dead endpoint held a turn for
-			// minutes under a budget that said one hundred seconds.
-			const firstEventBudget = openFirstEventBudget(firstEventTimeoutMs);
+			// The declared first-event timeout is one attempt's deadline; the
+			// pre-first-event PHASE is that deadline times the stall allowance.
+			// A stall retried PROVIDER_MAX_RETRIES times used to multiply the
+			// caller's number by the ladder plus its backoff, so a dead endpoint
+			// held a turn for minutes under a budget that said one hundred
+			// seconds. One retry survives; the second stall ends the phase.
+			const firstEventBudget = openStallLadderBudget(firstEventTimeoutMs);
 			const firstEventTimeoutAbortError = new AIError.StreamTimeoutError(
 				"Anthropic stream timed out while waiting for the first event",
 			);

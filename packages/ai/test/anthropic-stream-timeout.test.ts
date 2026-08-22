@@ -343,10 +343,16 @@ describe("anthropic first-event timeout retries", () => {
 			providerRetryWait,
 		}).result();
 
-		expect(attempt).toBe(11);
-		expect(providerRetryWait).toHaveBeenCalledTimes(10);
-		expect(requestTimeouts).toEqual(new Array(11).fill(1));
-		expect(requestMaxRetries).toEqual(new Array(11).fill(0));
+		// The declared 1ms is ONE attempt's deadline; the pre-first-event phase
+		// is that deadline times the stall allowance of two. So the first stall
+		// is retried — a flaky connect still recovers — and the second ends the
+		// phase. Before the budget existed this ladder ran PROVIDER_MAX_RETRIES
+		// deep and spent the caller's declared number eleven times over, which
+		// is why the counts here are literals and not derived from the source.
+		expect(attempt).toBe(2);
+		expect(providerRetryWait).toHaveBeenCalledTimes(1);
+		expect(requestTimeouts).toEqual([1, 1]);
+		expect(requestMaxRetries).toEqual([0, 0]);
 		expect(result.stopReason).toBe("error");
 		expect(result.errorMessage).toBe("Anthropic stream timed out while waiting for the first event");
 	});
