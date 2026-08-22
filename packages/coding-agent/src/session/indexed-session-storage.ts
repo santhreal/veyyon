@@ -1,11 +1,13 @@
 import { enoentError, toError } from "@veyyon/utils";
 import type { PathState } from "@veyyon/utils/fs-optional";
 import { sessionFileStem } from "@veyyon/utils/session-file";
-import type {
-	SessionStorage,
-	SessionStorageStat,
-	SessionStorageWriter,
-	WriteTextAtomicOptions,
+import {
+	type SessionFileBody,
+	type SessionStorage,
+	type SessionStorageStat,
+	type SessionStorageWriter,
+	sessionBodyToString,
+	type WriteTextAtomicOptions,
 } from "./session-storage";
 import {
 	overlayTitleSlotContent,
@@ -140,7 +142,8 @@ export class IndexedSessionStorage implements SessionStorage {
 		return this.#index.has(path) ? "present" : "absent";
 	}
 
-	writeTextSync(path: string, content: string): void {
+	writeTextSync(path: string, body: SessionFileBody): void {
+		const content = sessionBodyToString(body);
 		const mtimeMs = this.#allocMtimeMs();
 		const title = titleUpdateFromSlot(parseTitleSlotFromContent(content));
 		this.#setIndex(path, byteLength(content), mtimeMs, title ?? null);
@@ -256,7 +259,7 @@ export class IndexedSessionStorage implements SessionStorage {
 		}
 	}
 
-	async writeTextAtomic(path: string, content: string, options?: WriteTextAtomicOptions): Promise<void> {
+	async writeTextAtomic(path: string, body: SessionFileBody, options?: WriteTextAtomicOptions): Promise<void> {
 		const commitGuard = options?.commitGuard;
 		if (commitGuard && !commitGuard()) return;
 		await this.#awaitPath(path);
@@ -264,6 +267,9 @@ export class IndexedSessionStorage implements SessionStorage {
 		// awaitPath yield and bumped the epoch. Re-check before touching the
 		// index or enqueueing the backend publish.
 		if (commitGuard && !commitGuard()) return;
+		// Only now: this backend keeps the whole text (it indexes the byte length and
+		// the title slot), but an abandoned write should not pay to build it.
+		const content = sessionBodyToString(body);
 		const previous = this.#index.get(path);
 		const mtimeMs = this.#allocMtimeMs();
 		const title = titleUpdateFromSlot(parseTitleSlotFromContent(content));

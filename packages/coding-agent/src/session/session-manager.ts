@@ -76,6 +76,7 @@ import { prepareEntryForPersistence } from "./session-persistence";
 import {
 	FileSessionStorage,
 	MemorySessionStorage,
+	type SessionFileBody,
 	type SessionStorage,
 	type SessionStorageStat,
 	type SessionStorageWriter,
@@ -83,6 +84,18 @@ import {
 import { type SessionTitleUpdate, serializeTitleSlot } from "./session-title-slot";
 
 const DRAFT_ONLY_SESSION_MARKER = ".draft-only-session";
+
+/**
+ * How much text a session rewrite hands the filesystem at a time. Big enough
+ * that a whole-file write is a handful of syscalls rather than one per line,
+ * small enough that the transient copy is bounded no matter how large the
+ * transcript is, and that the async writer yields to the loop while it works.
+ *
+ * Counted in characters, which is what a JS string charges for; a chunk of
+ * multibyte text reaches the filesystem as a few times this many bytes, and
+ * bounded is bounded either way.
+ */
+const CHUNK_TARGET_CHARS = 1 << 20;
 
 function mintSessionId(): string {
 	return Bun.randomUUIDv7();
@@ -514,6 +527,12 @@ export class SessionManager {
 	/** Bumped on every sync rewrite / chain reset so stale queued tasks become no-ops. */
 	#diskEpoch = 0;
 	/**
+	 * UTF-8 bytes the most recent {@link #fileChunks} pass produced. The body is
+	 * never held whole, so this is how a publish knows the file's size without
+	 * serializing it a second time.
+	 */
+	#lastBodyBytes = 0;
+	/**
 	 * Epoch of the in-flight atomic rewrite, or `null` when no rewrite is running.
 	 * The fence in {@link #appendToSessionFile} only applies while this matches
 	 * `#diskEpoch`: once a synchronous rewrite (`flushSync` → `#rewriteSynchronously`)
@@ -769,13 +788,42 @@ export class SessionManager {
 	 * our entries, and finally any line another writer appended (see
 	 * {@link #idsEverSeen}). The foreign tail goes last because its entries hang
 	 * off ids we already emitted, so parents still precede children.
+	 *
+	 * A factory over chunks rather than one string, because the joined body is a
+	 * second copy of the entire transcript on top of the lines it is made of: a
+	 * 253MiB session rewrote at a peak of 684MiB above baseline and held the loop
+	 * for 554ms in one stretch. Each pass records its own byte total in
+	 * {@link #lastBodyBytes}, so `#notePublishedFile` costs no second
+	 * serialization, and the total resets per pass so a body written twice (the
+	 * EPERM fallback re-writes it at the target path) still reports one file's
+	 * size. Read it only after the write returns.
 	 */
-	#fileBody(): string {
-		let body = this.#titleSlotLine();
-		body += this.#lineFor(this.#header);
-		for (const entry of this.#entries) body += this.#lineFor(entry);
-		for (const line of this.#foreignLines) body += line.endsWith("\n") ? line : `${line}\n`;
-		return body;
+	#fileBody(): SessionFileBody {
+		return () => this.#fileChunks();
+	}
+
+	/** Every line of the file, in publish order. */
+	*#fileLines(): Generator<string> {
+		yield this.#titleSlotLine();
+		yield this.#lineFor(this.#header);
+		for (const entry of this.#entries) yield this.#lineFor(entry);
+		for (const line of this.#foreignLines) yield line.endsWith("\n") ? line : `${line}\n`;
+	}
+
+	/** Those lines batched into writes of about {@link CHUNK_TARGET_CHARS}. */
+	*#fileChunks(): Generator<string> {
+		this.#lastBodyBytes = 0;
+		let chunk = "";
+		for (const line of this.#fileLines()) {
+			chunk += line;
+			if (chunk.length < CHUNK_TARGET_CHARS) continue;
+			this.#lastBodyBytes += Buffer.byteLength(chunk, "utf-8");
+			yield chunk;
+			chunk = "";
+		}
+		if (chunk.length === 0) return;
+		this.#lastBodyBytes += Buffer.byteLength(chunk, "utf-8");
+		yield chunk;
 	}
 
 	/** Remember an id as ours, so a line carrying it is never treated as foreign. */
@@ -804,6 +852,29 @@ export class SessionManager {
 	}
 
 	/**
+	 * True when what is at {@link #sessionFile} is exactly what this manager put
+	 * there: same object, same length. Nothing else has written to it, so a
+	 * read-back can only report the lines we already know about.
+	 *
+	 * Both halves are required. Equal length alone does not rule out a same-size
+	 * replacement, and matching identity alone does not rule out an append, so an
+	 * unknown identity (a backend that reports none) answers `false` and pays for
+	 * the read.
+	 */
+	#fileIsExactlyAsPublished(): boolean {
+		const expected = this.#publishedFileState;
+		if (expected === null || !this.#sessionFile) return false;
+		if (expected.identity === undefined) return false;
+		let current: SessionStorageStat;
+		try {
+			current = this.#storage.statSync(this.#sessionFile);
+		} catch {
+			return false;
+		}
+		return current.identity === expected.identity && current.size === expected.size;
+	}
+
+	/**
 	 * Re-read the session file and record any line this manager never wrote, so
 	 * the publish that follows carries it instead of deleting it.
 	 *
@@ -811,9 +882,15 @@ export class SessionManager {
 	 * the publish: losing the elision a rewrite was asked for is worse than
 	 * carrying a slightly stale foreign tail, and an unreadable file is reported
 	 * by the read paths already.
+	 *
+	 * The read is skipped when the file is still byte-for-byte the one we
+	 * published, which is the ordinary case: a second writer is rare, and reading
+	 * a large transcript back to learn nothing is the single most expensive step
+	 * of a rewrite (246ms and 322MiB of a 253MiB session's 778ms and 1056MiB).
 	 */
 	async #refreshForeignLines(): Promise<void> {
 		if (!this.#persist || !this.#sessionFile) return;
+		if (this.#fileIsExactlyAsPublished()) return;
 		if (!(await this.#storage.exists(this.#sessionFile))) return;
 		let text: string;
 		try {
@@ -837,6 +914,7 @@ export class SessionManager {
 	 */
 	#refreshForeignLinesSync(): void {
 		if (!this.#persist || !this.#sessionFile) return;
+		if (this.#fileIsExactlyAsPublished()) return;
 		let text: string | undefined;
 		try {
 			text = this.#storage.readTextSync?.(this.#sessionFile);
@@ -850,6 +928,12 @@ export class SessionManager {
 	/**
 	 * Record which of a file's lines were never ours, and tell the operator once
 	 * that something else is writing the file.
+	 *
+	 * `split("\n")` and not an index walk over the text. The walk looks like the
+	 * cheaper shape and measures worse: on a 253MiB transcript it costs 482MiB of
+	 * peak RSS against 325MiB for the split, because JSC hands out substrings that
+	 * share the parent buffer while `indexOf`/`slice` over a string that size
+	 * materializes copies.
 	 */
 	#adoptForeignLines(text: string): void {
 		const foreign: string[] = [];
@@ -910,7 +994,7 @@ export class SessionManager {
 			this.#diskTail = Promise.resolve();
 			this.#closeWriterEventually();
 			this.#storage.writeTextSync(this.#sessionFile, body);
-			this.#notePublishedFile(Buffer.byteLength(body, "utf-8"));
+			this.#notePublishedFile(this.#lastBodyBytes);
 			// The file matches memory again, so the fault episode is over and a later one
 			// is a new thing to report.
 			this.#clearDiskError();
@@ -978,7 +1062,7 @@ export class SessionManager {
 					commitGuard: () => this.#diskEpoch === epoch,
 				});
 				if (this.#diskEpoch !== epoch) return false;
-				this.#notePublishedFile(Buffer.byteLength(body, "utf-8"));
+				this.#notePublishedFile(this.#lastBodyBytes);
 			} while (this.#atomicRewriteDirty);
 			return true;
 		} finally {
