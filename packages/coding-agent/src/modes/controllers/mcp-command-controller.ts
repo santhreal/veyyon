@@ -1903,6 +1903,12 @@ export class MCPCommandController {
 			return;
 		}
 
+		// A reload re-reads the config files, so the credentials a `!command` in them mints or
+		// reads are re-read too. Nothing else can notice that kind of secret rotated: the cache is
+		// keyed by the command text, which is identical before and after. Scoped to MCP configs,
+		// so a command that resolves a provider key elsewhere keeps its value.
+		this.ctx.mcpManager.invalidateCommandCredentials();
+
 		// Disconnect all existing servers
 		await this.ctx.mcpManager.disconnectAll();
 

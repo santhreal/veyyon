@@ -79,8 +79,19 @@ export interface CommandResolutionPolicy {
 	getCached(command: string): string | undefined;
 	/** True while the command is inside its failure back-off window. */
 	isBackedOff(command: string): boolean;
-	/** Record a success: cache it and clear any back-off. */
-	recordSuccess(command: string, value: string): void;
+	/**
+	 * The command's current cache generation, which an asynchronous caller reads
+	 * before it starts running and hands back to {@link recordSuccess}. An
+	 * {@link invalidate} that lands while the command is in flight bumps it, so
+	 * the run already under way cannot re-cache the value that was just rejected.
+	 */
+	generationOf(command: string): number;
+	/**
+	 * Record a success: cache it and clear any back-off. `atGeneration` is the
+	 * value {@link generationOf} returned before the run started; a stale one is
+	 * returned to its own caller but not cached.
+	 */
+	recordSuccess(command: string, value: string, atGeneration?: number): void;
 	/**
 	 * Record a failure: start or extend the back-off, and report it once per
 	 * streak (a later success resets the streak, so a fresh failure is reported
@@ -88,6 +99,18 @@ export interface CommandResolutionPolicy {
 	 * from stdout; the async path cannot and passes nothing.
 	 */
 	recordFailure(command: string, describedAs: string | undefined, reason: string, stderr?: string): void;
+	/**
+	 * Drop one command's cached value, so the next resolution runs it again.
+	 *
+	 * A password-manager read or a token-minting command returns a credential
+	 * that rotates, and the cache key is the command text, which does not change
+	 * when the secret behind it does. Without this, a value rejected with a 401
+	 * was re-sent from cache until the process restarted. The failure back-off is
+	 * deliberately left alone: a cached value and an active back-off never
+	 * coexist, so touching it here could only erase a back-off that is
+	 * protecting a command which is genuinely failing.
+	 */
+	invalidate(command: string): void;
 	/** Drop all cached values and back-off timers. For process reuse in tests. */
 	clear(): void;
 }
@@ -95,13 +118,16 @@ export interface CommandResolutionPolicy {
 export function createCommandResolutionPolicy(retryMs: number = COMMAND_FAILURE_RETRY_MS): CommandResolutionPolicy {
 	const values = new Map<string, string>();
 	const retryAt = new Map<string, number>();
+	const generations = new Map<string, number>();
 	return {
 		getCached: command => values.get(command),
 		isBackedOff: command => {
 			const at = retryAt.get(command);
 			return at !== undefined && Date.now() < at;
 		},
-		recordSuccess: (command, value) => {
+		generationOf: command => generations.get(command) ?? 0,
+		recordSuccess: (command, value, atGeneration) => {
+			if (atGeneration !== undefined && atGeneration !== (generations.get(command) ?? 0)) return;
 			retryAt.delete(command);
 			values.set(command, value);
 		},
@@ -114,9 +140,14 @@ export function createCommandResolutionPolicy(retryMs: number = COMMAND_FAILURE_
 			}
 			retryAt.set(command, Date.now() + retryMs);
 		},
+		invalidate: command => {
+			values.delete(command);
+			generations.set(command, (generations.get(command) ?? 0) + 1);
+		},
 		clear: () => {
 			values.clear();
 			retryAt.clear();
+			generations.clear();
 		},
 	};
 }
