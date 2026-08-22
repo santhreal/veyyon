@@ -27,10 +27,14 @@ import * as path from "node:path";
 
 const NATIVE_DIR = path.resolve(import.meta.dir, "..", "native");
 
-/** Every `export function` name in the implementation. */
+/**
+ * Every `export function` name in the implementation, `async` included — an async export
+ * reads as a phantom declaration to a parser that only knows the sync spelling, which is
+ * how a correctly declared function turned this gate red.
+ */
 function implementationExports(): string[] {
 	const text = readFileSync(path.join(NATIVE_DIR, "loader-state.js"), "utf8");
-	return [...text.matchAll(/^export function (\w+)/gm)].map(match => match[1]).sort();
+	return [...text.matchAll(/^export (?:async )?function (\w+)/gm)].map(match => match[1]).sort();
 }
 
 /** Every function name the declaration file promises. */

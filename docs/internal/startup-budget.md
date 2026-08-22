@@ -83,6 +83,22 @@ Bun source, cold home, medians of 3, same machine.
 `version` and `ready:load` are unchanged within noise, which is the expected shape: the probe was
 inside a boot phase, not in module load.
 
+The first native call carries its own arm, measured separately because its cost comes from the
+user's disk rather than from the code. Five runs per cell, fresh child process per run, a seeded
+cache root holding three 150MiB dead version directories:
+
+| First native call | No stale cache | 450MiB stale | Change |
+| --- | --- | --- | --- |
+| Prune inside `loadNative` | 124.9ms | 146.4ms | +17.2% |
+| Prune handed to the event loop | 123.7ms | 123.0ms | -0.6% |
+
+`cleanupStaleNativeVersions` ran between `dlopen` returning and the bindings reaching the caller,
+so a launch paid for whatever dead cache was on disk: 7ms for one 150MiB directory, 24ms for three,
+105ms for three that also held 5000 small files. `scheduleStaleNativeCleanup` hands the same prune
+to the event loop with the unlink work off the calling thread. A process that exits within the tick
+reclaims nothing and the next launch prunes instead, and `packages/natives/scripts/ensure-native.ts`
+still prunes synchronously at install time, which is when a stale cache appears.
+
 ## What codex did
 
 Techniques taken from openai/codex's own startup work, each with what it maps onto here.
@@ -113,4 +129,4 @@ The current binary misses the first target by 4.5x and the second by 4x, so the 
 and not yet a gate. Wiring it to CI needs a runner whose timings are stable enough that a red build
 means a regression; the numbers above vary by 30% across repetitions on an idle workstation.
 
-*Verified against `2958189d0` on 2026-08-22.*
+*Verified against `a6d3fa8e4` on 2026-08-22.*
