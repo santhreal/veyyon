@@ -6,8 +6,10 @@
  * subsequent MCP request — producing a permanent 401 / reauth loop until the
  * user hand-cleared the row in `agent.db`. The fix routes definitive failures
  * (`invalid_grant`, `invalid_token`, `revoked`, plain 401/403 not classified as
- * transient) through `AuthStorage.remove(credentialId)` and suppresses the
- * Bearer injection, so the next request surfaces a clean auth error instead.
+ * transient) through `AuthStorage.remove(credentialId)`. A cleared credential now REFUSES
+ * the connection with `MCPAuthRequiredError` rather than continuing without a
+ * Bearer: an anonymous request earns the server's 401 instead of the
+ * credential's own diagnosis, and enough of them earn a lockout.
  */
 import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, setSystemTime, test, vi } from "bun:test";
@@ -15,6 +17,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { AuthStorage, SqliteAuthCredentialStore } from "@veyyon/ai";
+import { MCPAuthRequiredError } from "@veyyon/coding-agent/mcp/auth-failure";
 import { MCPManager } from "@veyyon/coding-agent/mcp/manager";
 import * as oauthFlow from "@veyyon/coding-agent/mcp/oauth-flow";
 import type { MCPServerConfig } from "@veyyon/coding-agent/mcp/types";
@@ -162,7 +165,7 @@ describe("MCPManager OAuth refresh failure", () => {
 				),
 			);
 
-		const prepared = await manager.prepareConfig(serverConfig);
+		await expect(manager.prepareConfig(serverConfig)).rejects.toThrow(MCPAuthRequiredError);
 
 		expect(refreshSpy).toHaveBeenCalledTimes(1);
 		expect(refreshSpy).toHaveBeenCalledWith(
@@ -173,8 +176,6 @@ describe("MCPManager OAuth refresh failure", () => {
 			"https://logfire.example.com/mcp",
 			{ authorizationUrl: undefined, stripSameOriginResource: true, signal: expect.any(AbortSignal) },
 		);
-		// The poisoned Bearer must not be re-injected — that is the loop in #1908.
-		expect(getAuthorizationHeader(prepared)).toBeUndefined();
 		// The credential row is gone so neither this nor a future session keeps
 		// shipping the dead refresh token.
 		expect(authStorage.get(CREDENTIAL_ID)).toBeUndefined();
@@ -185,9 +186,8 @@ describe("MCPManager OAuth refresh failure", () => {
 			new Error("MCP OAuth refresh failed: 401 Unauthorized"),
 		);
 
-		const prepared = await manager.prepareConfig(serverConfig);
+		await expect(manager.prepareConfig(serverConfig)).rejects.toThrow(MCPAuthRequiredError);
 
-		expect(getAuthorizationHeader(prepared)).toBeUndefined();
 		expect(authStorage.get(CREDENTIAL_ID)).toBeUndefined();
 	});
 
