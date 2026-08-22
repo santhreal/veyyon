@@ -90,12 +90,7 @@ import {
 	stageArmAttachment,
 	writeArmAttachmentManifest,
 } from "./arm-attachments";
-import {
-	armNamesIn,
-	armSelectionError,
-	computeArmFingerprint,
-	findZeroIvCollisions,
-} from "./arm-fingerprint";
+import { armNamesIn, armSelectionError, computeArmFingerprint, findZeroIvCollisions } from "./arm-fingerprint";
 import { formatArmPrediction, predictArmSaving } from "./arm-prediction";
 import { promptOverrideIdError } from "./arm-prompts";
 import {
