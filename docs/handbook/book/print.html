@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-46c8c618.js";
+            window.path_to_searchindex_js = "searchindex-db88019f.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-13566cf4.js"></script>
@@ -347,8 +347,8 @@ dbconn = "src/server/db/connection.ts"
 <li><strong>Decoding</strong>: Turning handles back into full text is unconditional. Whenever a dictionary is active, all handles are expanded before text reaches tool execution, transcript storage, or terminal display.</li>
 <li><strong>Encoding</strong>: Teaching shorthand syntax to the model is controlled by configuration:
 <ul>
-<li>Model allowlist (<code>argot.models</code>): Shorthand instructions are provided only to explicitly allowed models.</li>
-<li>Context cutoff (<code>argot.maxContextTokens</code>): Shorthand instructions are omitted once session context exceeds the specified token limit.</li>
+<li>Model allowlist (<code>argot.encode.models</code>): Shorthand instructions are provided only to explicitly allowed models.</li>
+<li>Context cutoff (<code>argot.encode.disableAboveTokens</code>): Shorthand instructions are omitted once session context exceeds the specified token limit.</li>
 </ul>
 </li>
 </ul>
