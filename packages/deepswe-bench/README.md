@@ -143,7 +143,7 @@ Start with `--dry-run`. The first paid run uses `tasks/smoke.txt` and one repeat
 - `--limit N`: Uniformly sample N tasks across the task list.
 - `--dry-run`: Validate configurations, arms, and auth without running containers.
 - `--trial-timeout S`: Wall-clock timeout per trial in seconds (defaults to task definition).
-- `--jobs N`: Concurrent Pier container runs.
+- `--jobs N`: Concurrent Pier container runs. When `N` equals the arm count, the runner uses paired waves: one trial per arm for the same task starts together, and the next task waits until the whole wave settles.
 - `--model <provider/id>`: Model identifier under test.
 - `--repeats K`: Number of samples per (arm, task) cell (default: 1).
 - `--binary <path>`: Use an existing compiled `vey` binary instead of rebuilding.
