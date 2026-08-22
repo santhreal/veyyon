@@ -21,7 +21,7 @@ Use bash ONLY for: a single binary call, or one short pipeline that COMPUTES a f
 - Multiline commands, `&&`-chains mixing control flow
 - Quote/JSON escaping that fights the shell
 {{/if}}
-{{#if hasGrep}}- GNU grep BRE extensions are not guaranteed in the embedded shell: use `grep -E 'json|tool'` for alternation instead of `grep 'json\|tool'`; use the built-in `grep` tool with `pattern: "json|tool"` (Rust regex, so `\bword\b` works there){{#if hasEval}}, or `eval` for exact text processing{{/if}}.{{else}}- GNU grep BRE extensions are not guaranteed in the embedded shell: use `grep -E 'json|tool'` for alternation instead of `grep 'json\|tool'`{{#if hasEval}}, or use `eval` for exact text processing{{/if}}.{{/if}}
+{{#if hasSearch}}- Workspace discovery belongs to `search`: use `purpose: "match"` for text or `purpose: "analyze"` for code structure, never shell `grep`/`rg`.{{else}}{{#if hasGrep}}- GNU grep BRE extensions are not guaranteed in the embedded shell: use `grep -E 'json|tool'` for alternation instead of `grep 'json\|tool'`; use the built-in `grep` tool with `pattern: "json|tool"` (Rust regex, so `\bword\b` works there){{#if hasEval}}, or `eval` for exact text processing{{/if}}.{{else}}- GNU grep BRE extensions are not guaranteed in the embedded shell: use `grep -E 'json|tool'` for alternation instead of `grep 'json\|tool'`{{#if hasEval}}, or use `eval` for exact text processing{{/if}}.{{/if}}{{/if}}
 
 <instruction>
 - `env: { NAME: "…" }` for multiline / quote-heavy / untrusted values; reference `$NAME`
@@ -40,9 +40,12 @@ Use bash ONLY for: a single binary call, or one short pipeline that COMPUTES a f
 {{#unless hasEval}}
 - Writing a shell program rather than invoking a binary? Use a purpose-built tool or checked-in script.
 {{/unless}}
-{{#unless hasGrep}}
+{{#ifAll (not hasGrep) (not hasSearch)}}
 - Avoid shelling out for broad content search; use an active search/read tool when one is available.
-{{/unless}}
+{{/ifAll}}
+{{#if hasSearch}}
+- `grep`/`rg`/`find` are blocked for workspace discovery; use `search`. Use `read` for known files and directories when it is active.
+{{else}}
 {{#ifAll hasRead hasGlob}}
 - `ls`/`find` are blocked in the shell, even for one quick listing: `ls` → `read`, `find` → `glob`.
 {{/ifAll}}
@@ -55,6 +58,7 @@ Use bash ONLY for: a single binary call, or one short pipeline that COMPUTES a f
 {{#ifAll (not hasRead) (not hasGlob)}}
 - If no file read/listing tool is active, keep shell inspection narrow and state that limitation.
 {{/ifAll}}
+{{/if}}
 - Avoid head/tail/redirections: stderr already merged; long output auto-truncated, FULL capture kept at `artifact://<id>`.
 {{#if hasLaunch}}
 - Ends on its own? bash, however long it runs{{#if asyncEnabled}} (`async: true` for a slow one){{/if}}. Runs until stopped, or needs later stdin? `launch` — NEVER `cmd &`, `nohup`, or async bash as a process supervisor.

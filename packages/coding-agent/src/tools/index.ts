@@ -549,6 +549,7 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 					goalEnabled,
 					astGrepEnabled: session.settings.get("astGrep.enabled"),
 					astEditEnabled: session.settings.get("astEdit.enabled"),
+					unifiedSearch: session.settings.get("tools.unifiedSearch"),
 					memoryBackend,
 					autolearnEnabled: session.settings.get("autolearn.enabled"),
 					isTopLevelSession: taskDepth === 0,

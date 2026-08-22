@@ -64,6 +64,29 @@ describe("BashTool interception", () => {
 	});
 });
 
+describe("default unified-search redirects", () => {
+	it.each([
+		["grep -R needle src", "match"],
+		["find src -name '*.ts'", "locate"],
+	])("routes %s to search purpose %s", (command, purpose) => {
+		const result = checkBashInterception(command, ["search"], DEFAULT_BASH_INTERCEPTOR_RULES);
+		expect(result.block).toBe(true);
+		expect(result.suggestedTool).toBe("search");
+		expect(result.message).toContain(`purpose: "${purpose}"`);
+	});
+
+	it("preserves primitive redirects when unified search is absent", () => {
+		const result = checkBashInterception("grep -R needle src", ["grep"], DEFAULT_BASH_INTERCEPTOR_RULES);
+		expect(result.block).toBe(true);
+		expect(result.suggestedTool).toBe("grep");
+		expect(result.message).toContain("Use the `grep` tool");
+	});
+
+	it("does not block when no replacement tool is active", () => {
+		expect(checkBashInterception("grep -R needle src", ["bash"], DEFAULT_BASH_INTERCEPTOR_RULES).block).toBe(false);
+	});
+});
+
 describe("default echo/printf redirect rule", () => {
 	const tools = ["write"];
 

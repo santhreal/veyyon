@@ -387,6 +387,8 @@ export interface RequestedToolNamesInputs {
 	astGrepEnabled: boolean;
 	/** `astEdit.enabled`. */
 	astEditEnabled: boolean;
+	/** `tools.unifiedSearch`; replaces requested glob, grep, or ast_grep tools with search. */
+	unifiedSearch: boolean;
 	/** `memory.backend`, defaulted to `""`. */
 	memoryBackend: string;
 	/** `autolearn.enabled`. */
@@ -419,8 +421,11 @@ export function augmentRequestedToolNames(
 		if (!requested.includes(name)) requested.push(name);
 	};
 	if (inputs.goalEnabled) push(TOOL.goal);
+	if (inputs.unifiedSearch && [TOOL.glob, TOOL.grep, TOOL.ast_grep].some(name => requested.includes(name))) {
+		push(TOOL.search);
+	}
 	// Auto-include AST counterparts when their text-based sibling is present
-	if (requested.includes(TOOL.grep) && inputs.astGrepEnabled) push(TOOL.ast_grep);
+	if (!inputs.unifiedSearch && requested.includes(TOOL.grep) && inputs.astGrepEnabled) push(TOOL.ast_grep);
 	if (requested.includes(TOOL.edit) && inputs.astEditEnabled) push(TOOL.ast_edit);
 	if (memoryToolsBackendEnabled(inputs.memoryBackend)) {
 		for (const name of [TOOL.recall, TOOL.retain, TOOL.reflect]) push(name);

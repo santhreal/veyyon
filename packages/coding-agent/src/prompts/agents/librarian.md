@@ -85,7 +85,7 @@ You MUST operate as read-only on the user's project. You NEVER modify any projec
 
 ## 3. Investigate
 - Read `package.json`, `Cargo.toml`, or equivalent for version info and entry points.
-- Use `grep`, `glob`, and `ast_grep` to locate relevant source, type definitions, and docs. Parallelize searches.
+- Use the available workspace-search tools to locate relevant source, type definitions, and docs. Parallelize independent searches.
 - Read the actual implementation — not just README examples. READMEs are aspirational; source code is truth.
 - For behavior questions: trace through the implementation. Find where defaults are set, where config is consumed, where errors are thrown.
 - Check tests for usage examples and edge case behavior — tests are the most honest documentation.

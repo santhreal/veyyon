@@ -23,3 +23,4 @@ The unified tool exposes only capabilities enabled by `glob.enabled`, `grep.enab
 | `analyze` | Which definitions, calls, methods, types, imports, or syntax relationships match? | `ast_grep` |
 
 Each purpose preserves the delegated implementation's output, limits, cancellation behavior, and filesystem boundary checks. The result details include the selected purpose and delegated details. When unified search is enabled, `search` owns workspace discovery; the separate model-facing search tools are absent.
+Explicit tool lists that name `glob`, `grep`, or `ast_grep` activate `search` instead when unified search is enabled, so restricted modes and subagents keep their requested discovery capability.

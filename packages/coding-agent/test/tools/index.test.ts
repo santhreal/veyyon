@@ -314,6 +314,10 @@ describe("createTools", () => {
 		expect(bash?.description).not.toContain("`grep` tool");
 		expect(bash?.description).not.toContain("`ls` → `read`");
 		expect(bash?.description).not.toContain("`find` → the `glob` tool");
+		session.setActiveToolNames?.(["bash", "search", "read"]);
+		expect(bash?.description).toContain('use `purpose: "match"` for text');
+		expect(bash?.description).toContain("`grep`/`rg`/`find` are blocked");
+		expect(bash?.description).not.toContain("`ls` → `read`");
 	});
 
 	it("includes search_tool_bm25 when MCP tool discovery is enabled and executable", async () => {

@@ -638,6 +638,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 			autoBackgroundSeconds: Math.max(0, Math.floor(this.#autoBackgroundThresholdMs / 1000)),
 			stallDetectionEnabled: this.#stallDetectionEnabled,
 			stallSeconds: Math.max(0, Math.floor(this.#stallMs / 1000)),
+			hasSearch: isToolActive("search", this.session.settings.get("tools.unifiedSearch")),
 			hasGrep: isToolActive("grep", this.session.settings.get("grep.enabled")),
 			hasGlob: isToolActive("glob", this.session.settings.get("glob.enabled")),
 			hasRead: isToolActive("read", true),

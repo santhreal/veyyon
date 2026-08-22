@@ -10379,6 +10379,12 @@ export class AgentSession {
 		// sentence sent the model at an agent the spawn path then refused.
 		const subagentNames = enabledSubagentNames(this.#toolRegistry.get(TOOL.task));
 		const researchAgent = preferredSubagentName(subagentNames, "scout"); // not-a-tool-name: agent ids
+		const activeToolNames = new Set(this.agent.state.tools.map(tool => tool.name));
+		const workspaceDiscoveryTools =
+			[TOOL.search, TOOL.glob, TOOL.grep, TOOL.read]
+				.filter(name => activeToolNames.has(name))
+				.map(name => `\`${name}\``)
+				.join(", ") || "the available read-only tools";
 		const content = prompt.render(planModePrompts["plan-mode/active"].text, {
 			planFilePath: displayPlanPath,
 			planExists,
@@ -10386,6 +10392,7 @@ export class AgentSession {
 			// that survives is exactly the prose there is a name for.
 			canDelegate: researchAgent !== undefined,
 			researchAgent,
+			workspaceDiscoveryTools,
 			askToolName: TOOL.ask,
 			writeToolName: TOOL.write,
 			editToolName: TOOL.edit,
