@@ -65,9 +65,10 @@ From the tree, binary, warm, in order of cost:
   before that change, so a cold `ready:boot` re-measured today is lower than the number it records.
 - **`modelRegistry:init` 43ms, `discoverAuthStorage` 35ms, `initTheme:final` 33ms.** Fixed cost, warm
   or cold.
-- **`discoverAndLoadMCPTools`, 0.00ms** with no servers configured, because there is nothing to
-  spawn. `discoverAndConnect` is awaited on the boot path, so a configured stdio server pays its
-  spawn and its `initialize` handshake before the first frame.
+- **`discoverAndLoadMCPTools`, off the pre-paint path.** With a UI it runs unwaited after the
+  session is built, so it appears in the tree only when a launch has no UI to protect. A configured
+  stdio server's spawn and `initialize` handshake are therefore paid concurrently with the first
+  turn, not before the first frame.
 
 ## Measured deltas
 
@@ -92,8 +93,13 @@ Techniques taken from openai/codex's own startup work, each with what it maps on
   frame — the recent list is built when it is asked for — so this is a property to keep rather than
   a cost to remove. Anything added to the pre-paint path that reads the session directory reopens it.
 - **Start a subprocess when it is first used, not when it is configured.** codex#3726 made MCP
-  servers start lazily. veyyon still connects every configured server before the first frame, which
-  is the largest remaining pre-paint cost for anyone who configures one.
+  servers start lazily. veyyon already defers this on the UI path: `deferMCPDiscoveryForUI` in
+  `packages/coding-agent/src/sdk.ts` builds the manager, starts discovery without awaiting it, and
+  delivers the tools through `refreshMCPTools` once the servers answer, so a hung server costs the
+  first frame nothing. The headless path still awaits the connect, because a caller with no frame to
+  protect expects a fully provisioned session on return.
+  `packages/coding-agent/test/mcp/a-configured-server-never-delays-the-first-frame.test.ts` holds
+  both halves: the fence is a server that never writes a byte.
 - **Keep hardware and network out of the pre-paint path.** The GPU probe above is this technique
   applied: the answer is computed for the next launch instead of waited for by this one.
 
@@ -107,4 +113,4 @@ The current binary misses the first target by 4.5x and the second by 4x, so the 
 and not yet a gate. Wiring it to CI needs a runner whose timings are stable enough that a red build
 means a regression; the numbers above vary by 30% across repetitions on an idle workstation.
 
-*Verified against `c6a52deb0` on 2026-08-22.*
+*Verified against `2958189d0` on 2026-08-22.*
