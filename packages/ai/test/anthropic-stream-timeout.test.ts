@@ -330,7 +330,7 @@ describe("anthropic first-event timeout retries", () => {
 			requestMaxRetries.push(requestOptions?.maxRetries);
 			return createAnthropicMockStream({
 				signal: requestOptions?.signal,
-				connectDelayMs: 20,
+				connectDelayMs: 400,
 				events: createSuccessfulAnthropicEvents("too late"),
 			}) as never;
 		}) as unknown as AnthropicMessagesClientLike["messages"]["create"];
@@ -339,7 +339,14 @@ describe("anthropic first-event timeout retries", () => {
 
 		const result = await streamAnthropic(model, context, {
 			client,
-			streamFirstEventTimeoutMs: 1,
+			// A real-timer arm, so the numbers have to clear scheduler noise. The
+			// phase is the declared budget times the stall allowance of two, and a
+			// declared 1ms made that 2ms: on a loaded runner the first stall's
+			// retry decision landed after the fence was already spent, so the
+			// ladder stopped at one attempt and this arm failed on the machine and
+			// not on the code. 50ms leaves 50ms of slack before the retry is
+			// refused, and the connect above never completes inside the phase.
+			streamFirstEventTimeoutMs: 50,
 			providerRetryWait,
 		}).result();
 
@@ -351,7 +358,7 @@ describe("anthropic first-event timeout retries", () => {
 		// is why the counts here are literals and not derived from the source.
 		expect(attempt).toBe(2);
 		expect(providerRetryWait).toHaveBeenCalledTimes(1);
-		expect(requestTimeouts).toEqual([1, 1]);
+		expect(requestTimeouts).toEqual([50, 50]);
 		expect(requestMaxRetries).toEqual([0, 0]);
 		expect(result.stopReason).toBe("error");
 		expect(result.errorMessage).toBe("Anthropic stream timed out while waiting for the first event");
