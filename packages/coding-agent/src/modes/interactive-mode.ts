@@ -310,6 +310,26 @@ const EDITOR_MIN_RENDERED_ROWS = 3; // bordered editor floor: top+bottom border 
 const COMPOSER_PLACEHOLDER = "ask anything · / for commands";
 
 /**
+ * Consecutive provider-killed goal turns tolerated before goal mode stops
+ * driving on its own. A transport fault is routinely retried and recovered, so
+ * one is not a reason to stand down; a provider that is genuinely gone must not
+ * let the goal spin forever.
+ */
+const GOAL_FAILED_TURN_LIMIT = 3;
+
+/**
+ * Whether the turn that just ended died rather than finished. An aborted turn is
+ * the user's own interrupt and is handled by the goal runtime's pause path, so
+ * only a provider/transport error counts here.
+ */
+function goalTurnEndedInError(event: Extract<AgentSessionEvent, { type: "agent_end" }>): boolean {
+	const lastAssistant = [...event.messages]
+		.reverse()
+		.find((message): message is AssistantMessage => message.role === "assistant");
+	return lastAssistant?.stopReason === "error";
+}
+
+/**
  * Editor max-height cap for a terminal of `terminalRows` rows.
  *
  * Roomy terminals get the comfortable [6, 18] band. Small terminals shrink the
@@ -569,6 +589,10 @@ export class InteractiveMode implements InteractiveModeContext {
 	#vibeModePreviousTools: string[] | undefined;
 	#goalContinuationTimer: NodeJS.Timeout | undefined;
 	#goalTurnHadToolCalls = false;
+	/** Consecutive goal turns that ended in a provider error, reset by any turn that did not. */
+	#goalFailedTurns = 0;
+	/** Set between a retry's `auto_retry_start` and the `agent_start` that resumes the same turn. */
+	#goalTurnRetrying = false;
 	#goalContinuationTurnInFlight = false;
 	#goalSuppressNextContinuation = false;
 	#goalUserContinuationSuppressed = false;
@@ -2556,8 +2580,22 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	async #handleGoalSessionEvent(event: AgentSessionEvent): Promise<void> {
+		if (event.type === "auto_retry_start") {
+			// The next `agent_start` is this same turn resuming, not a new one. The
+			// session's retry supersedes the killed attempt's `agent_end`, so this is
+			// the only notice the mode gets that the work continues.
+			this.#goalTurnRetrying = true;
+			return;
+		}
 		if (event.type === "agent_start") {
-			this.#goalTurnHadToolCalls = false;
+			// A retried turn keeps the tool calls its killed attempt already made:
+			// the work happened, and a retry that only talks afterwards is not the
+			// model saying it has nothing left to do.
+			if (this.#goalTurnRetrying) {
+				this.#goalTurnRetrying = false;
+			} else {
+				this.#goalTurnHadToolCalls = false;
+			}
 			this.#cancelGoalContinuation();
 			return;
 		}
@@ -2601,11 +2639,34 @@ export class InteractiveMode implements InteractiveModeContext {
 		if (event.type !== "agent_end") {
 			return;
 		}
+		this.#goalUserTurnInFlight = false;
+		// A retry that never resumed (aborted, cancelled) must not make the NEXT turn
+		// inherit this one's tool-call evidence.
+		this.#goalTurnRetrying = false;
+		if (goalTurnEndedInError(event)) {
+			// A turn the provider killed neither finished the goal's work nor showed
+			// that the model had nothing left to call, so its tool-call count says
+			// nothing about whether the goal should keep driving. Latching
+			// suppression from it is what left a recovered session idle: the retry
+			// landed, the suppression stayed, and a human had to type "keep going".
+			// The continuation stays owed, and the tolerance is bounded.
+			this.#goalFailedTurns += 1;
+			if (this.#goalFailedTurns >= GOAL_FAILED_TURN_LIMIT) {
+				this.#goalContinuationTurnInFlight = false;
+				this.#goalSuppressNextContinuation = true;
+				this.showWarning(
+					`Goal mode stopped driving after ${formatCount("failed turn", this.#goalFailedTurns)}. Send a message to resume it.`,
+				);
+				return;
+			}
+			this.#scheduleGoalContinuation();
+			return;
+		}
+		this.#goalFailedTurns = 0;
 		if (this.#goalContinuationTurnInFlight) {
 			this.#goalSuppressNextContinuation = !this.#goalTurnHadToolCalls;
 			this.#goalContinuationTurnInFlight = false;
 		}
-		this.#goalUserTurnInFlight = false;
 		if (this.session.getGoalModeState()?.mode === "exiting") {
 			await this.#exitGoalMode({ reason: "completed", silent: true });
 			return;
