@@ -8,6 +8,10 @@
 
 - The minimum supported Bun runtime is now 1.4.0.
 
+### Added
+
+- `definePromptRegistry` honors eval-only id-keyed prompt overrides from `VEYYON_EVAL_PROMPTS`, allowing benchmark harnesses to vary tool descriptions and prompt registry entries across arms without mutating prompt files in the shared repository tree. Unrecognized prompt ids fail loudly with suggestions, and active overrides announce themselves once per process.
+
 ### Fixed
 
 - `stripAnsi` canonicalizes 8-bit C1 control sequences (0x90 DCS, 0x98 SOS, 0x9B CSI, 0x9C ST, 0x9D OSC, 0x9E PM, 0x9F APC) to their 7-bit `ESC` equivalents, stripping 8-bit ANSI escape sequences consistently across both sequence representations.

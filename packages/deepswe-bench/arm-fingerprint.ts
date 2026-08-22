@@ -48,6 +48,13 @@ export interface ArmInputs {
 	 * attributed to a cause. `null` removes exactly one rule.
 	 */
 	readonly statements?: unknown;
+	/**
+	 * The arm's `.prompts.yml` after parse, if any: `prompt id -> replacement text`.
+	 *
+	 * The prompt registry vehicle: overrides a tool description, subagent prompt, or agent prompt
+	 * without modifying the prompt files in the shared repository tree.
+	 */
+	readonly prompts?: unknown;
 	/** Optional always-apply rule bytes; prompt text, so whitespace-significant. */
 	readonly rule?: Uint8Array;
 }
@@ -87,7 +94,7 @@ function sortDeep(value: unknown): unknown {
  * Adding `.statements.yml` made the duplication urgent rather than merely untidy, since a third suffix
  * would have had to be added to three places to avoid inventing a second phantom.
  */
-export const ARM_ATTACHMENT_SUFFIXES: readonly string[] = [".sections.yml", ".statements.yml"];
+export const ARM_ATTACHMENT_SUFFIXES: readonly string[] = [".sections.yml", ".statements.yml", ".prompts.yml"];
 
 /** Whether an `arms/` filename is an arm's config, as opposed to an attachment to one. */
 export function isArmConfigFile(name: string): boolean {
@@ -133,7 +140,7 @@ export function armSelectionError(arm: string, available: readonly string[]): st
 /**
  * A stable content fingerprint of everything the container sees for an arm.
  * Two arms fingerprint equal iff their canonical config, canonical section
- * override, canonical statement override AND rule bytes are all identical. Each field is length-prefixed so
+ * override, canonical statement override, canonical prompt override AND rule bytes are all identical. Each field is length-prefixed so
  * the encoding is injective: a plain-concatenation scheme is ambiguous (config
  * text ending in the rule's bytes could hash the same as a separate rule),
  * whereas prefixing every field's byte length makes the tuple unambiguous. A
@@ -156,6 +163,8 @@ export function computeArmFingerprint(mod: ArmInputs): string {
 	// file cannot pass the single-IV guard by looking different from an identical arm without one.
 	const statements = canonicalizeConfig(mod.statements ?? {});
 	if (statements !== "{}") field("statements", new TextEncoder().encode(statements));
+	const prompts = canonicalizeConfig(mod.prompts ?? {});
+	if (prompts !== "{}") field("prompts", new TextEncoder().encode(prompts));
 	if (mod.rule !== undefined) field("rule", mod.rule);
 	return h.digest("hex");
 }

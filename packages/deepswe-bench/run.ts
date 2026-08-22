@@ -1204,8 +1204,11 @@ async function main(): Promise<void> {
 	// run. A per-STATEMENT experiment rides the same way from
 	// arms/<arm>.statements.yml, which is the vehicle for ablating or rewording ONE
 	// rule; a section override cannot do that, since TOOL POLICY is one region and
-	// 34 rules. The fingerprint enforces the single-IV floor below: two arms may not
-	// reduce to identical (config, sections, statements, rule).
+	// 34 rules. An id-keyed PROMPT override rides from arms/<arm>.prompts.yml, which
+	// is the vehicle for overriding a registry prompt (a tool description, a subagent
+	// prompt, an agent prompt) staged as prompts/<arm>.json and read through the
+	// eval-only VEYYON_EVAL_PROMPTS env var. The fingerprint enforces the single-IV floor below: two arms may not
+	// reduce to identical (config, sections, statements, prompts, rule).
 	// An `--arms` entry naming an ATTACHMENT would otherwise be read as an arm config: `--arms
 	// candidate-delivery-terse.sections` finds `candidate-delivery-terse.sections.yml`, parses a
 	// section-override map as a config overlay, and benches nonsense with no error. Refused with the
@@ -1368,6 +1371,34 @@ async function main(): Promise<void> {
 			// expressible: an empty string would mean "this rule says nothing but is still here".
 			fs.writeFileSync(path.join(assetsDir, "statements", `${arm}.json`), JSON.stringify(statements));
 		}
+		let prompts: unknown;
+		const promptsPath = path.join(BENCH_DIR, "arms", `${configArm}.prompts.yml`);
+		if (fs.existsSync(promptsPath)) {
+			try {
+				prompts = YAML.parse(fs.readFileSync(promptsPath, "utf8")) ?? {};
+			} catch (err) {
+				console.error(`error: arm "${arm}" has invalid YAML in arms/${arm}.prompts.yml:\n${err}`);
+				process.exit(1);
+			}
+			if (prompts === null || typeof prompts !== "object" || Array.isArray(prompts)) {
+				console.error(
+					`error: arm "${arm}" arms/${arm}.prompts.yml must be a mapping of prompt id -> replacement text, ` +
+						`got ${Array.isArray(prompts) ? "a sequence" : typeof prompts}.`,
+				);
+				process.exit(1);
+			}
+			for (const [id, value] of Object.entries(prompts as Record<string, unknown>)) {
+				if (typeof value !== "string") {
+					console.error(
+						`error: arm "${arm}" arms/${arm}.prompts.yml value for "${id}" must be text, got ${typeof value}.`,
+					);
+					process.exit(1);
+				}
+			}
+			fs.mkdirSync(path.join(assetsDir, "prompts"), { recursive: true });
+			// Stage the exact JSON the env var will carry (compact, deterministic).
+			fs.writeFileSync(path.join(assetsDir, "prompts", `${arm}.json`), JSON.stringify(prompts));
+		}
 		let rule: Uint8Array | undefined;
 		const rulePath = path.join(BENCH_DIR, "arms", `${configArm}.rule.md`);
 		if (fs.existsSync(rulePath)) {
@@ -1379,6 +1410,7 @@ async function main(): Promise<void> {
 			config,
 			...(sections !== undefined ? { sections } : {}),
 			...(statements !== undefined ? { statements } : {}),
+			...(prompts !== undefined ? { prompts } : {}),
 			...(rule !== undefined ? { rule } : {}),
 		};
 		armFingerprints.set(arm, computeArmFingerprint(mod));
@@ -1395,9 +1427,9 @@ async function main(): Promise<void> {
 			console.error(
 				"error: zero-IV arm collision — a controlled comparison must vary exactly one\n" +
 					"independent variable, but these arms reduce to the same (config, sections, statements,\n" +
-					`rule), so every delta between them is noise:\n${detail}\n` +
+					`prompts, rule), so every delta between them is noise:\n${detail}\n` +
 					"Fix: give each arm a distinct config, a distinct .sections.yml, a distinct\n" +
-					".statements.yml, or a distinct .rule.md, or drop the redundant arm from --arms. See\n" +
+					".statements.yml, a distinct .prompts.yml, or a distinct .rule.md, or drop the redundant arm from --arms. See\n" +
 					"README 'Single Independent Variable Rule'.",
 			);
 			process.exit(1);
@@ -1480,12 +1512,14 @@ async function main(): Promise<void> {
 		for (const arm of arms) {
 			const sectionsFile = path.join(BENCH_DIR, "arms", `${arm}.sections.yml`);
 			const statementsFile = path.join(BENCH_DIR, "arms", `${arm}.statements.yml`);
+			const promptsFile = path.join(BENCH_DIR, "arms", `${arm}.prompts.yml`);
 			const ruleFile = path.join(BENCH_DIR, "arms", `${arm}.rule.md`);
 			const parts = [
 				`temp=${armTemperature.get(arm)}`,
 				encodeArms.has(arm) ? "ENCODE" : "no-encode",
 				fs.existsSync(sectionsFile) ? "sections" : null,
 				fs.existsSync(statementsFile) ? "statements" : null,
+				fs.existsSync(promptsFile) ? "prompts" : null,
 				fs.existsSync(ruleFile) ? "rule" : null,
 			].filter(Boolean);
 			console.log(`    ${arm.padEnd(28)} ${parts.join(" ")}  fp=${(armFingerprints.get(arm) ?? "").slice(0, 12)}`);
@@ -1792,7 +1826,7 @@ async function main(): Promise<void> {
 					perArm: Object.fromEntries(arms.map(a => [a, armTemperature.get(a) ?? PINNED_TEMPERATURE])),
 					note: "greedy at temperature 0: top-p / top-k are irrelevant, so temperature alone fixes the regime",
 				},
-				// The semantic fingerprint of each arm's exact (config, sections, rule)
+				// The semantic fingerprint of each arm's exact (config, sections, statements, prompts, rule)
 				// inputs — the same value the zero-IV guard uses. Stamping it makes every
 				// run self-identifying: two runs of an arm with the same name but a changed
 				// config produce different fingerprints, so a longitudinal diff catches the
