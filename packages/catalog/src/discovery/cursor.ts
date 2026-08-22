@@ -143,17 +143,27 @@ async function fetchViaHttp2(
 ): Promise<Uint8Array | null> {
 	const { promise, resolve } = Promise.withResolvers<Uint8Array | null>();
 	const client = http2.connect(baseUrl);
-	const timer = setTimeout(() => {
-		client.destroy();
-		report("request", `no response within ${timeoutMs}ms`);
-		resolve(null);
-	}, timeoutMs);
+	// ONE REASON PER REQUEST. Four events end this request and every one of them used to
+	// report: `Promise.withResolvers` made the second `resolve` a no-op, so the RESULT was
+	// single-valued while the reasons were not. One unresolvable host under Bun 1.4 fires
+	// the session `error` and then the cancelled stream's `error`, which reported
+	// "HTTP/2 connection failed: getaddrinfo ENOTFOUND" and "HTTP/2 stream failed: The
+	// pending stream has been canceled" for one failure, so a caller listing why discovery
+	// found nothing showed the same failure twice and the cancellation read as a second
+	// fault. The first event is the cause, and it is the only one anybody can act on.
+	let settled = false;
+	const timer = setTimeout(() => giveUp("request", `no response within ${timeoutMs}ms`), timeoutMs);
 
-	client.on("error", error => {
+	function giveUp(stage: DiscoveryFailure["stage"], detail: string): void {
+		if (settled) return;
+		settled = true;
 		clearTimeout(timer);
-		report("request", `HTTP/2 connection failed: ${errorMessage(error)}`);
+		client.destroy();
+		report(stage, detail);
 		resolve(null);
-	});
+	}
+
+	client.on("error", error => giveUp("request", `HTTP/2 connection failed: ${errorMessage(error)}`));
 
 	const req = client.request({
 		":method": "POST",
@@ -164,25 +174,19 @@ async function fetchViaHttp2(
 	const chunks: Buffer[] = [];
 	req.on("data", (chunk: Buffer) => chunks.push(chunk));
 	req.on("end", () => {
+		if (settled) return;
+		settled = true;
 		clearTimeout(timer);
 		client.close();
 		resolve(new Uint8Array(Buffer.concat(chunks)));
 	});
-	req.on("error", error => {
-		clearTimeout(timer);
-		client.close();
-		report("request", `HTTP/2 stream failed: ${errorMessage(error)}`);
-		resolve(null);
-	});
+	req.on("error", error => giveUp("request", `HTTP/2 stream failed: ${errorMessage(error)}`));
 	req.on("response", headers => {
 		const status = Number(headers[":status"] ?? 0);
 		if (status < 200 || status >= 300) {
-			clearTimeout(timer);
-			client.close();
 			// Cursor answers 464 to an HTTP/1.1 request and 401 to a stale token, and an operator does
 			// different things about each, so the status is the reason rather than a bare "unavailable".
-			report("status", `HTTP ${status}`);
-			resolve(null);
+			giveUp("status", `HTTP ${status}`);
 		}
 	});
 

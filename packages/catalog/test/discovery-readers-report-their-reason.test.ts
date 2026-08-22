@@ -353,6 +353,10 @@ describe("Cursor discovery", () => {
 	 * Cursor speaks HTTP/2 to a real socket, so an unresolvable host is the failure this suite can provoke
 	 * without a server: it exercises the `client.on("error")` path, which resolved `null` with no record at
 	 * all. The detail says HTTP/2 so the reason distinguishes the transport from a status.
+	 *
+	 * The length is the second half of the contract: ONE reason per request. Four events end this request,
+	 * and one dead host fires two of them under Bun 1.4 — the session error, then the cancelled stream —
+	 * so the reader reported the same failure twice and the cancellation read as a separate fault.
 	 */
 	it("reports a connection failure through its HTTP/2 transport", async () => {
 		const { failures, onFailure } = collector();
