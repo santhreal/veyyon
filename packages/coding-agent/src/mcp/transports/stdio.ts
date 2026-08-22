@@ -21,6 +21,7 @@ import type {
 	MCPTransport,
 } from "../../mcp/types";
 import { toJsonRpcError } from "../../mcp/types";
+import { buildMcpChildEnv } from "../child-environment";
 import { isMCPTimeoutEnabled, resolveMCPTimeoutMs } from "../timeout";
 import { describeJsonRpcError, isUnattributableError, rejectAllPending } from "../unattributable-error";
 import { mcpNotConnectedMessage, mcpTimeoutMessage } from "./transport-failure";
@@ -411,10 +412,18 @@ export class StdioTransport implements MCPTransport {
 	async connect(): Promise<void> {
 		if (this.#connected) return;
 
-		const env = {
-			...Bun.env,
-			...this.config.env,
-		};
+		// A server sees what a program needs in order to run, plus what the operator named. The
+		// whole ambient environment used to be handed over, which made every credential on the
+		// machine readable by a subprocess nobody reads. `mcp/child-environment.ts` owns the rule.
+		const { env, withheld, inherited } = buildMcpChildEnv(this.config, Bun.env, process.platform);
+		if (inherited) {
+			logger.warn("MCP server spawned with the whole environment", {
+				command: this.config.command,
+				reason: "inheritEnv is set for this server, so every ambient credential is readable by it",
+			});
+		} else if (withheld.length > 0) {
+			logger.debug("MCP server environment bounded", { command: this.config.command, withheld });
+		}
 		const cwd = this.config.cwd ?? getProjectDir();
 		const spawnCommand = await resolveStdioSpawnCommand(this.config, {
 			cwd,

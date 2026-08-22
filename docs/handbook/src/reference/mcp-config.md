@@ -113,7 +113,16 @@ Optional:
 - `type?: "stdio"`
 - `args?: string[]`
 - `env?: Record<string, string>`
+- `envPassthrough?: string[]` — ambient variables to forward by name
+- `inheritEnv?: boolean` — forward the whole ambient environment, credentials included
 - `cwd?: string`
+
+A stdio server receives a baseline of variables a program needs in order to run (`PATH`, `HOME`,
+temp, locale, certificate and proxy settings, and version-manager directories; on Windows also
+`PATHEXT`, `SystemRoot`, `ComSpec` and the `ProgramFiles` variants), plus `env` and the names
+listed in `envPassthrough`. Every other ambient variable is withheld. `inheritEnv: true` disables
+that bound for one server and logs a warning on each spawn. See
+[MCP setup](../using/mcp-setup.md#pass-environment-variables).
 
 Example:
 
