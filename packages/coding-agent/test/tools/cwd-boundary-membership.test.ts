@@ -108,7 +108,7 @@ describe("boundary membership", () => {
 });
 
 describe("docs/handbook/src/reference/approval-mode.md agrees with the code", () => {
-	const doc = fs.readFileSync(path.join(REPO_ROOT, "docs", "approval-mode.md"), "utf8");
+	const doc = fs.readFileSync(path.join(REPO_ROOT, "docs", "handbook", "src", "reference", "approval-mode.md"), "utf8");
 
 	/**
 	 * A reader who trusts this list and finds it incomplete has been misled about what is gated,
