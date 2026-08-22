@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-0c15bee8.js";
+            window.path_to_searchindex_js = "searchindex-12bd7fa0.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-79e2ba62.js"></script>
@@ -3787,19 +3787,22 @@ never printed and never reaches the transcript. The board closes 6/6.</p>
 <tr><th>Surface</th><th>Evidence</th></tr>
 </thead>
 <tbody>
-<tr><td>Complete task</td><td><a href="../../../assets/demo-hd.webp">Published clip</a> · <a href="../../../proof/captures/x11/demo-hd.mp4">unedited take</a></td></tr>
+<tr><td>Complete task</td><td><a href="../../../assets/demo-hd.webp">Published clip</a> · <a href="../../../proof/captures/wayland/demo-hd.mp4">unedited take</a></td></tr>
 <tr><td>Secret setup</td><td><a href="../../../assets/demo-hd-secret-stored.png">Release key stored from the environment</a></td></tr>
-<tr><td>Plan</td><td><a href="../../../assets/demo-hd-todo-board.png">Three phases, six tasks, nothing started</a> · <a href="../../../assets/demo-hd-todo-strike.png">tasks closing on the board</a></td></tr>
+<tr><td>Plan</td><td><a href="../../../assets/demo-hd-todo-board.png">Three phases, six tasks, parked before the first edit</a> · <a href="../../../assets/demo-hd-todo-strike.png">tasks closing on the board</a></td></tr>
 <tr><td>Parallel implementation</td><td><a href="../../../assets/demo-hd-agent-lanes.png">Three directory refactors fanned out at once</a></td></tr>
 <tr><td>Integration</td><td><a href="../../../assets/demo-hd-edit-diff.png">The applied guard, as a diff</a></td></tr>
 <tr><td>Verification</td><td><a href="../../../assets/demo-hd-verify-command.png">Nine defaults resolved in a stripped environment</a></td></tr>
 <tr><td>Protected signing</td><td><a href="../../../assets/demo-hd-secret-approval.png">The approval card names the tool, the scope and the secret the call would spend</a> · <a href="../../../assets/demo-hd-signature-written.png">the digest appended to SIGNED.md, the credential never echoed</a></td></tr>
-<tr><td>Stored secrets</td><td><a href="../../../assets/demo-hd-secret-list.png">The placeholder inventory</a> · <a href="../../../assets/demo-hd-secret-log.png">the spend log</a></td></tr>
+<tr><td>Stored secrets</td><td><a href="../../../assets/demo-hd-secret-list.png">The placeholder inventory</a> · <a href="../../../assets/demo-hd-secret-log.png">the call that spent it, placeholder intact in the log</a></td></tr>
 </tbody>
 </table>
 </div>
-<p>Every frame and the clip come from the same guarded take. Untouched screens are shortened rather than
-accelerated, and no frame is composited from a second session.</p>
+<p>Every frame and the clip come from one guarded take, recorded on the Wayland recorder. Untouched
+screens are shortened rather than accelerated, and no frame is composited from a second session.
+A second, separate take of the same scene on the X11 recorder is archived at
+<code>proof/captures/x11/demo-hd.mp4</code>; its model chose a different task, so none of its frames are mixed
+in here.</p>
 <p>See <a href="#recording-terminal-proofs">Testing and verification</a> for the
 recording environment, the regeneration command, and the before-and-after proof requirements.</p>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -6872,6 +6875,65 @@ implicitly or not at all. Two settings under <strong>Settings → Context → Pr
 optionally block on a cache the provider demonstrably did not use. The full per-provider account,
 including the breakpoint budget and what invalidates what, is
 <a href="../../internal/prompt-caching.html"><code>docs/internal/prompt-caching.md</code></a>.</p>
+<h2 id="the-first-event-budget"><a class="header" href="#the-first-event-budget">The first-event budget</a></h2>
+<p>A caller declares <code>streamFirstEventTimeoutMs</code>. It is one attempt’s deadline, and
+it also bounds how many stalled attempts a turn may pay for: the phase before
+the first event ends after two of them. The first stall is retried, because a
+single connect that never produces an event is common and recovering it is what
+makes a provider feel smooth. A second consecutive stall is a dead endpoint, and
+re-spending the deadline there is what turned a declared 100s into minutes of
+silence.</p>
+<p>The phase ends at the first of these:</p>
+<ul>
+<li>the first event arrives, after which <code>streamIdleTimeoutMs</code> owns the turn;</li>
+<li>the phase budget is spent and the turn fails with the deadline as its reason.</li>
+</ul>
+<p><code>utils/first-event-budget.ts</code> in <code>@veyyon/ai</code> owns the shape:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Function</th><th>Use</th></tr>
+</thead>
+<tbody>
+<tr><td><code>openFirstEventBudget(totalMs)</code></td><td>Open a budget for the declared number. A non-positive or absent total is unbounded, matching <code>streamFirstEventTimeoutMs: 0</code>.</td></tr>
+<tr><td><code>openStallLadderBudget(perAttemptMs)</code></td><td>A phase budget for a retry ladder: the per-attempt deadline times <code>PRE_RESPONSE_STALL_ATTEMPTS</code> (two). What Anthropic and Codex open.</td></tr>
+<tr><td><code>openBoundedFirstEventBudget(declaredMs, ceilingMs)</code></td><td>The smaller of the caller’s number and a provider’s own ceiling. It can only tighten a deadline.</td></tr>
+<tr><td><code>budget.spent()</code></td><td>True once nothing is left. A retry ladder asks before retrying a stall.</td></tr>
+<tr><td><code>budget.fence(callerSignal)</code></td><td>A signal covering what remains, plus the <code>cancel()</code> that clears its timer. A setup chain fences once and passes that signal to every call.</td></tr>
+<tr><td><code>isPreResponseStall(error)</code></td><td>True when no byte of a response ever arrived.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Two rules keep this narrow.</p>
+<p><strong>A stall is bounded; a server-directed retry is not.</strong> A 429 or 503 carrying
+<code>retry-after</code> means the server answered and asked for a later attempt. Honoring
+that is what makes a rate limit survivable, so those failures keep their own
+budget (<code>CODEX_RATE_LIMIT_BUDGET_MS</code>, and the Anthropic header hint). Only a
+failure where nothing arrived at all is refused once the budget is gone, which
+is why the guard is a veto predicate rather than a fence around a retry loop.</p>
+<p><strong>A deadline that fires ends the phase.</strong> A helper that degrades on its own
+timeout — GitLab Duo’s settings PUT, its project lookup, its model list, and the
+catalog namespace reader behind them — must rethrow when the caller’s deadline is
+what fired. Reporting it as “nothing found” and continuing spends time nobody
+granted, and it reaches the user as a configuration remedy for a network fault.</p>
+<h3 id="where-each-providers-deadline-sits"><a class="header" href="#where-each-providers-deadline-sits">Where each provider’s deadline sits</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Provider</th><th>Bound before the first event</th></tr>
+</thead>
+<tbody>
+<tr><td>OpenAI completions, Responses, OpenRouter, Azure</td><td>Pre-response fence plus the stream watchdog.</td></tr>
+<tr><td>Anthropic</td><td>The same, and the retry ladder retries one stall and refuses the next once the phase budget is spent.</td></tr>
+<tr><td>Codex</td><td>The same, on both ladders: <code>fetchWithRetry</code> (no response) and the provider-error reopen (a retryable envelope that is itself a stall).</td></tr>
+<tr><td>GitLab Duo</td><td>One setup deadline over the whole REST chain: the caller’s number, or 90s (three REST timeouts), whichever is smaller.</td></tr>
+<tr><td>Bedrock, Google, Vertex, Gemini CLI, Ollama, Cursor, Devin</td><td>The registered lazy-stream limits and each transport’s own abort.</td></tr>
+</tbody>
+</table>
+</div>
+<p><code>packages/ai/test/no-api-outlives-the-budget-its-caller-declared.test.ts</code> drives
+every API in the union against a silent endpoint and pins the observed class per
+API, so a provider that stops honoring the number turns that suite red.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="testing-and-verification"><a class="header" href="#testing-and-verification">Testing and verification</a></h1>
 <p>Product behavior is covered by tests that assert concrete outcomes, not only non-empty results.</p>
