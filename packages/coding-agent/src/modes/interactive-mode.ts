@@ -2550,6 +2550,11 @@ export class InteractiveMode implements InteractiveModeContext {
 		};
 	}
 
+	/** The objective as it appears in a one-line notice. One owner for the cap. */
+	#goalSummary(objective: string): string {
+		return objective.length > 48 ? `${objective.slice(0, 47)}…` : objective;
+	}
+
 	async #handleGoalSessionEvent(event: AgentSessionEvent): Promise<void> {
 		if (event.type === "agent_start") {
 			this.#goalTurnHadToolCalls = false;
@@ -2699,13 +2704,33 @@ export class InteractiveMode implements InteractiveModeContext {
 		const sessionContext = this.sessionManager.buildSessionContext();
 		const goalEnabled = this.session.settings.get("goal.enabled");
 		if (!goalEnabled && (sessionContext.mode === "goal" || sessionContext.mode === "goal_paused")) {
+			// Goal mode is off, so nothing activates here — but the stored objective
+			// is not this setting's to destroy. Recording `none` dropped it for
+			// good, and in silence: a session came back with no goal and nothing
+			// saying that a settings toggle had taken it. The record stays on the
+			// branch, inert, so turning Goal Mode back on restores it. Plan mode
+			// still clears below, because its entry can come from a startup default
+			// nobody chose.
 			this.session.goalRuntime.clearAccounting();
-			this.sessionManager.appendModeChange("none");
+			const stored = this.#goalFromModeData(sessionContext.modeData);
+			logger.warn("goal mode is disabled; the session's stored goal stays inactive", {
+				mode: sessionContext.mode,
+				readable: stored !== undefined,
+			});
+			this.showWarning(
+				stored
+					? `Goal Mode is off in settings, so "${this.#goalSummary(stored.objective)}" stays stored and inactive.`
+					: "Goal Mode is off in settings, so this session's stored goal stays inactive.",
+			);
 			return;
 		}
 		if (sessionContext.mode === "goal" || sessionContext.mode === "goal_paused") {
 			const goal = this.#goalFromModeData(sessionContext.modeData);
 			if (!goal) {
+				// A record that cannot be parsed cannot be restored, so it goes —
+				// out loud. Silence here read as the goal unsetting itself.
+				logger.warn("stored goal record is unreadable; clearing goal mode", { mode: sessionContext.mode });
+				this.showWarning("This session's stored goal could not be read and was cleared.");
 				this.sessionManager.appendModeChange("none");
 				return;
 			}
@@ -3703,7 +3728,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	async #openGoalMenu(state: "active" | "paused"): Promise<void> {
 		const goal = this.session.getGoalModeState()?.goal;
 		if (!goal) return;
-		const summary = goal.objective.length > 48 ? `${goal.objective.slice(0, 47)}…` : goal.objective;
+		const summary = this.#goalSummary(goal.objective);
 		const title = state === "active" ? `Goal: ${summary} (${goal.status})` : `Goal paused: ${summary}`;
 		const items = state === "active" ? ["Show details", "Pause", "Drop"] : ["Resume", "Show details", "Drop"];
 		const choice = await this.showHookSelector(title, items);
