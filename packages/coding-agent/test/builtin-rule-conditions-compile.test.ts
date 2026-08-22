@@ -17,7 +17,7 @@
  *
  * A tool-scoped rule that inherits the global interrupt mode can silently turn post-tool guidance
  * into a stream abort and retry. Requiring every bundled tool rule to choose a policy closes that
- * omission; ordinary edit/write guidance selects the cache-preserving deferred-reminder path.
+ * omission, and pinning the intentional interrupt list makes a new aborting rule fail by default.
  * The remaining tests pin `irc-signal`'s behavior, which exists because subagents wake each other
  * with acknowledgements and progress reports: a message stops an idle peer, costs it a full turn,
  * and changes nothing it does, which is also how a two-agent loop sustains itself.
@@ -63,13 +63,15 @@ describe("bundled rule conditions", () => {
 		expect(empty.map(source => source.name)).toEqual([]);
 	});
 
-	it("makes every tool-scoped rule choose whether to interrupt", () => {
-		const missingPolicy = BUILTIN_RULE_SOURCES.flatMap(source => {
+	it("makes every tool-scoped rule choose a policy and pins the interrupting exceptions", () => {
+		const toolRules = BUILTIN_RULE_SOURCES.flatMap(source => {
 			const rule = ruleNamed(source.name);
-			const isToolScoped = (rule.scope ?? []).some(scope => scope.startsWith("tool:"));
-			return isToolScoped && rule.interruptMode === undefined ? [source.name] : [];
+			return (rule.scope ?? []).some(scope => scope.startsWith("tool:")) ? [{ name: source.name, rule }] : [];
 		});
-		expect(missingPolicy).toEqual([]);
+		expect(toolRules.flatMap(({ name, rule }) => (rule.interruptMode === undefined ? [name] : []))).toEqual([]);
+		expect(toolRules.flatMap(({ name, rule }) => (rule.interruptMode !== "never" ? [name] : []))).toEqual([
+			"ts-no-inline-cast-access",
+		]);
 	});
 });
 
