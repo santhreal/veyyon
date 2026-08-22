@@ -90,6 +90,45 @@ export interface PromptCommandResult {
 }
 
 /**
+ * Which view of a prompt this invocation asked for, with the id the view needs.
+ *
+ * ONE OWNER FOR PRECEDENCE, and the reason is that `--json` used to be dropped in silence.
+ * The command was a chain of early returns in flag order, and five of the six views
+ * returned their text table before the `flags.json` line was ever reached: `--prompts
+ * --json`, `--prompt <id> --json`, `--tools --json`, `--section <id> --json` and
+ * `--statement <id> --json` all printed a human table and exited 0, so a consumer that
+ * asked for JSON got padded columns and a parse error, with nothing saying the flag had
+ * been ignored. Selecting the view in one function separates "which view" from "in which
+ * format", which is what makes the second question answerable for every view.
+ */
+export type PromptView =
+	| { readonly kind: "prompts" }
+	| { readonly kind: "prompt"; readonly id: string }
+	| { readonly kind: "statement"; readonly id: string }
+	| { readonly kind: "tools" }
+	| { readonly kind: "section"; readonly id: string }
+	| { readonly kind: "inspection" };
+
+/**
+ * Every view kind, for a sweep that has to cover all of them.
+ *
+ * A union cannot be enumerated at run time, so this is the runtime half of it, and
+ * `a-prompt-view-that-was-asked-for-json-returns-json.test.ts` keys a total `Record` off
+ * this list: a kind added to the union without a row there stops compiling.
+ */
+export const PROMPT_VIEW_KINDS = ["prompts", "prompt", "statement", "tools", "section", "inspection"] as const;
+
+/** Resolve the view from the flags, in the order the flags have always been read in. */
+export function selectPromptView(flags: PromptCommandFlags): PromptView {
+	if (flags.prompts) return { kind: "prompts" };
+	if (flags.prompt !== undefined && flags.prompt !== "system") return { kind: "prompt", id: flags.prompt };
+	if (flags.statement !== undefined) return { kind: "statement", id: flags.statement };
+	if (flags.tools) return { kind: "tools" };
+	if (flags.section !== undefined) return { kind: "section", id: flags.section };
+	return { kind: "inspection" };
+}
+
+/**
  * Build the inspection for `flags` and render it.
  *
  * Returns the text rather than printing it so tests can assert the bytes, and
@@ -97,8 +136,10 @@ export interface PromptCommandResult {
  * list rather than an empty stdout that reads like an empty section.
  */
 export async function runPromptCommand(flags: PromptCommandFlags = {}): Promise<PromptCommandResult> {
-	if (flags.prompts) return listRegisteredPrompts();
-	if (flags.prompt !== undefined && flags.prompt !== "system") return describeRegisteredPrompt(flags.prompt);
+	const view = selectPromptView(flags);
+	const asJson = flags.json === true;
+	if (view.kind === "prompts") return listRegisteredPrompts(asJson);
+	if (view.kind === "prompt") return describeRegisteredPrompt(view.id, asJson);
 
 	const cwd = flags.cwd ?? process.cwd();
 	// THE REAL CONFIGURATION, read without writing anything.
@@ -143,10 +184,13 @@ export async function runPromptCommand(flags: PromptCommandFlags = {}): Promise<
 	const incomplete = inspection.missing.some(section => !section.optional);
 	const inspectExit = incomplete ? 1 : 0;
 
-	if (flags.statement !== undefined) return renderOneStatement(inspection, flags.statement);
-	if (flags.tools) return formatToolCostTable(tools, inspection.totalTokens);
-	if (flags.section !== undefined) return renderOneSection(inspection, flags.section);
-	if (flags.json) return { output: JSON.stringify(toJson(inspection), null, 2), exitCode: inspectExit };
+	if (view.kind === "statement") return renderOneStatement(inspection, view.id, asJson);
+	if (view.kind === "tools") return formatToolCostTable(tools, inspection.totalTokens, asJson);
+	if (view.kind === "section") return renderOneSection(inspection, view.id, asJson);
+	// The three inspection views share one JSON document, because it already carries every
+	// field each of their text tables renders: a consumer diffing two configurations reads
+	// `sections` or `statements` out of it rather than running the command three times.
+	if (asJson) return { output: JSON.stringify(toJson(inspection), null, 2), exitCode: inspectExit };
 	if (flags.statements) return { output: formatStatementTable(inspection), exitCode: inspectExit };
 	if (flags.sections) return { output: formatInspectionTable(inspection), exitCode: inspectExit };
 	// Blocks are joined with a marker rather than concatenated: they are separate
@@ -181,7 +225,7 @@ async function resolveTools(cwd: string, settings: Settings): Promise<Tool[]> {
  * Sorted by total cost, because the question a reader has is which description
  * is not earning its tokens.
  */
-function formatToolCostTable(tools: readonly Tool[], promptTokens: number): PromptCommandResult {
+function formatToolCostTable(tools: readonly Tool[], promptTokens: number, asJson: boolean): PromptCommandResult {
 	const rows = tools
 		.map(tool => {
 			const description = tool.description ?? "";
@@ -197,9 +241,17 @@ function formatToolCostTable(tools: readonly Tool[], promptTokens: number): Prom
 			};
 		})
 		.sort((left, right) => right.tokens - left.tokens);
+	const total = rows.reduce((sum, row) => sum + row.tokens, 0);
+	if (asJson) {
+		// `promptTokens` rides along because the only question this view answers is what a
+		// turn pays before its first user message, and the prompt is the other half of it.
+		return {
+			output: JSON.stringify({ promptTokens, toolTokens: total, tools: rows }, null, 2),
+			exitCode: 0,
+		};
+	}
 	if (rows.length === 0) return { output: "No tools are active in this configuration.", exitCode: 0 };
 
-	const total = rows.reduce((sum, row) => sum + row.tokens, 0);
 	const nameWidth = Math.max(...rows.map(row => row.name.length), "tool".length, "TOTAL".length);
 	const lines = [
 		`${"tool".padEnd(nameWidth)}  ${"bytes".padStart(7)}  ${"desc".padStart(7)}  ${"schema".padStart(7)}  ${"tokens".padStart(7)}  share`,
@@ -241,8 +293,31 @@ function ownerOf(id: string): PromptRegistryView {
  * prompts does this thing send" could only be reconstructed by grepping for
  * `systemPrompt` and following each template import by hand.
  */
-function listRegisteredPrompts(): PromptCommandResult {
-	// `system/system-prompt` is registered like every other prompt, but the useful
+function listRegisteredPrompts(asJson: boolean): PromptCommandResult {
+	if (asJson) {
+		// The synthetic `system` row below is a pointer to another command, not data, so the
+		// JSON carries the registered prompts and nothing else. `session/system-prompt` is one
+		// of them, so a consumer loses nothing by the row being absent.
+		return {
+			output: JSON.stringify(
+				{
+					prompts: REGISTRIES.flatMap(registry =>
+						registry.ids.map(id => ({
+							id,
+							dir: registry.dir,
+							template: registry.fileFor(id),
+							purpose: registry.require(id).purpose,
+							sections: registry.require(id).sections ?? null,
+						})),
+					),
+				},
+				null,
+				2,
+			),
+			exitCode: 0,
+		};
+	}
+	// `session/system-prompt` is registered like every other prompt, but the useful
 	// view of it is the live assembly with its per-section costs rather than the
 	// raw template, so the list points at the command that produces that.
 	const lines = ["system       the assembled system prompt (see `veyyon prompt --sections` for its breakdown)"];
@@ -270,15 +345,19 @@ function listRegisteredPrompts(): PromptCommandResult {
  * Falls back to a loud error naming the known ids, because a silent empty
  * result would read as "this prompt has nothing in it".
  */
-function describeRegisteredPrompt(id: string): PromptCommandResult {
+function describeRegisteredPrompt(id: string, asJson: boolean): PromptCommandResult {
 	const owner = ownerOf(id);
 	let entry: PromptEntry;
 	try {
 		entry = owner.require(id);
 	} catch (error) {
-		return { output: (error as Error).message, exitCode: 1 };
+		// The refusal is JSON too when JSON was asked for, and it keeps its non-zero exit: a
+		// consumer that has to parse prose to find out an id was wrong is being told twice.
+		const message = (error as Error).message;
+		return { output: asJson ? JSON.stringify({ error: message }, null, 2) : message, exitCode: 1 };
 	}
-	const lines = [`${id} — ${entry.purpose}`, `template: ${owner.fileFor(id)}`, "", "sections:"];
+	const template = owner.fileFor(id);
+	const lines = [`${id} — ${entry.purpose}`, `template: ${template}`, "", "sections:"];
 	// Annotated, so the stand-in row is checked against the real section type rather
 	// than inferred into a shape of its own. It was missing `name` and nothing said
 	// so, because this function happens not to print it — the row would have started
@@ -287,6 +366,12 @@ function describeRegisteredPrompt(id: string): PromptCommandResult {
 		// A prompt with no declared sections is one undivided body, so it has no banner.
 		{ id: "body", name: null, purpose: entry.purpose, optional: false },
 	];
+	if (asJson) {
+		return {
+			output: JSON.stringify({ id, template, purpose: entry.purpose, sections }, null, 2),
+			exitCode: 0,
+		};
+	}
 	for (const section of sections) {
 		lines.push(`  ${section.id.padEnd(12)} ${section.optional ? "optional" : "always  "}  ${section.purpose}`);
 	}
@@ -297,17 +382,37 @@ function blockHeader(index: number): string {
 	return `# ---- system prompt block ${index} ----`;
 }
 
-function renderOneSection(inspection: PromptInspection, id: string): PromptCommandResult {
+function renderOneSection(inspection: PromptInspection, id: string, asJson: boolean): PromptCommandResult {
 	const matches = inspection.sections.filter(section => section.id === id);
 	if (matches.length === 0) {
 		const known = inspection.sections.map(section => section.id).join(", ");
+		const message = `Unknown section \`${id}\`. This prompt contains: ${known}`;
 		return {
-			output: `Unknown section \`${id}\`. This prompt contains: ${known}`,
+			output: asJson ? JSON.stringify({ error: message, sections: known.split(", ") }, null, 2) : message,
 			exitCode: 1,
 		};
 	}
 	// A section id can legitimately appear more than once (a custom template with
 	// two same-named banners), so all matches print rather than the first.
+	if (asJson) {
+		return {
+			output: JSON.stringify(
+				{
+					id,
+					matches: matches.map(section => ({
+						source: section.source,
+						blockIndex: section.blockIndex,
+						bytes: section.bytes,
+						tokens: section.tokens,
+						text: section.text,
+					})),
+				},
+				null,
+				2,
+			),
+			exitCode: 0,
+		};
+	}
 	return { output: matches.map(section => section.text).join("\n"), exitCode: 0 };
 }
 
@@ -322,12 +427,13 @@ function renderOneSection(inspection: PromptInspection, id: string): PromptComma
  * the answer to the question being asked. Printing nothing would be indistinguishable from a rule that
  * renders to nothing, and exiting non-zero would report a working configuration as broken.
  */
-function renderOneStatement(inspection: PromptInspection, id: string): PromptCommandResult {
+function renderOneStatement(inspection: PromptInspection, id: string, asJson: boolean): PromptCommandResult {
 	if (!inspection.fromStatements) {
+		const message =
+			"This prompt was not assembled from statements (a custom system prompt replaced it), " +
+			"so there is no statement to print.";
 		return {
-			output:
-				"This prompt was not assembled from statements (a custom system prompt replaced it), " +
-				"so there is no statement to print.",
+			output: asJson ? JSON.stringify({ error: message, fromStatements: false }, null, 2) : message,
 			exitCode: 1,
 		};
 	}
@@ -341,7 +447,35 @@ function renderOneStatement(inspection: PromptInspection, id: string): PromptCom
 			nearby.length > 0
 				? `statements in ${section}: ${nearby.map(statement => statement.id).join(", ")}`
 				: `sections: ${[...new Set(inspection.statements.map(statement => statement.section))].join(", ")}`;
-		return { output: `Unknown statement \`${id}\`. Try \`veyyon prompt --statements\`. ${known}`, exitCode: 1 };
+		const message = `Unknown statement \`${id}\`. Try \`veyyon prompt --statements\`. ${known}`;
+		return {
+			output: asJson
+				? JSON.stringify({ error: message, nearby: nearby.map(statement => statement.id) }, null, 2)
+				: message,
+			exitCode: 1,
+		};
+	}
+	// An absent rule exits 0 in both formats, and the JSON says `present: false` rather than
+	// omitting the rule: a consumer that cannot tell "off in this configuration" from "no such
+	// rule" has the same ambiguity the text form was written to remove.
+	if (asJson) {
+		return {
+			output: JSON.stringify(
+				{
+					id: found.id,
+					section: found.section,
+					purpose: found.purpose,
+					condition: found.condition,
+					present: found.present,
+					bytes: found.bytes,
+					tokens: found.tokens,
+					text: found.present ? found.text : null,
+				},
+				null,
+				2,
+			),
+			exitCode: 0,
+		};
 	}
 	if (!found.present) {
 		return {
