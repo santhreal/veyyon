@@ -195,6 +195,7 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<DiscoveredSkill>
 		ctx.home,
 		ctx.cwd,
 		pluginsRootFor(ctx.agentDir ?? getAgentDir()),
+		ctx.agentDir ?? getAgentDir(),
 	);
 	warnings.push(...rootWarnings);
 	const results = await Promise.all(
@@ -248,6 +249,7 @@ async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashComm
 		ctx.home,
 		ctx.cwd,
 		pluginsRootFor(ctx.agentDir ?? getAgentDir()),
+		ctx.agentDir ?? getAgentDir(),
 	);
 	warnings.push(...rootWarnings);
 
@@ -337,6 +339,7 @@ async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
 		ctx.home,
 		ctx.cwd,
 		pluginsRootFor(ctx.agentDir ?? getAgentDir()),
+		ctx.agentDir ?? getAgentDir(),
 	);
 	warnings.push(...rootWarnings);
 
@@ -388,6 +391,7 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<DiscoveredCustomT
 		ctx.home,
 		ctx.cwd,
 		pluginsRootFor(ctx.agentDir ?? getAgentDir()),
+		ctx.agentDir ?? getAgentDir(),
 	);
 	warnings.push(...rootWarnings);
 
@@ -429,6 +433,7 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 		ctx.home,
 		ctx.cwd,
 		pluginsRootFor(ctx.agentDir ?? getAgentDir()),
+		ctx.agentDir ?? getAgentDir(),
 	);
 	warnings.push(...rootWarnings);
 

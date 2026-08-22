@@ -149,7 +149,7 @@ export async function discoverAgents(
 	// installs. Reading the active profile's here handed a spawned agent whichever
 	// system prompt and tool list the booted profile's marketplace happened to ship.
 	const { roots: pluginRoots } = isProviderEnabled("claude-plugins")
-		? await listClaudePluginRoots(home, resolvedCwd, agentDir ? pluginsRootFor(agentDir) : undefined)
+		? await listClaudePluginRoots(home, resolvedCwd, agentDir ? pluginsRootFor(agentDir) : undefined, agentDir)
 		: { roots: [] };
 	for (const plugin of pluginRoots.filter(root => root.scope !== "project")) {
 		orderedDirs.push({ dir: path.join(plugin.path, "agents"), source: "user" });

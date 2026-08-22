@@ -1508,6 +1508,12 @@ export interface LoadedExtension {
 export interface LoadExtensionsResult {
 	extensions: LoadedExtension[];
 	errors: Array<{ path: string; error: string }>;
+	/**
+	 * Project-scoped extensions that were NOT imported because the project carries no trust
+	 * decision covering them. Separate from `errors` because nothing failed: the code is intact
+	 * and deliberately not run, and the operator's next move is a decision rather than a fix.
+	 */
+	withheld: Array<{ path: string; reason: string }>;
 	runtime: ExtensionRuntime;
 }
 

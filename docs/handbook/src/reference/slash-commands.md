@@ -137,6 +137,7 @@ act on a bare invocation: `/yolo`, `/fast`, and `/browser` flip a switch, `/goal
 | `/account switch <provider>` | Open the manager focused on one provider, to move that provider to another of your accounts |
 | `/statusline` | Settings UI, jumped to Status Line (preset/segments/separator) |
 | `/reload-plugins` | Reload extensions |
+| `/trust` | Decide whether this project's code may run; `approve`, `deny`, `forget`, or a path ([Project trust](./project-trust.md)) |
 | `/force <tool> [prompt]` (`/force:`) | Force the next turn to use a specific tool |
 
 ## Tools, context, and jobs
@@ -219,5 +220,6 @@ own page; typing the bare command lists them with their descriptions.
 | `/shake` | `elide`, `images` |
 | `/memory` | `view`, `stats`, `diagnose`, `clear`, `reset`, `enqueue`, `rebuild`, `mm list`, `mm show`, `mm refresh`, `mm history`, `mm seed`, `mm delete`, `mm reload` |
 | `/plugins` | `list` |
+| `/trust` | `approve`, `deny`, `forget` |
 
 Extension packages (for example swarm) register additional commands when installed. The live set is whatever the session registers; use `/help` or the command palette in the TUI. Status line: `/statusline` opens the Status Line settings group (see [Multi-agent monitoring](../features/cockpit.md)). Keybindings: `/hotkeys`. Memory: `/memory` and settings under the active memory backend.

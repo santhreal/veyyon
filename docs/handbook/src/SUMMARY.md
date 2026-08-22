@@ -95,6 +95,7 @@
   - [Providers](./reference/providers.md)
   - [MCP configuration](./reference/mcp-config.md)
   - [Approval modes](./reference/approval-mode.md)
+  - [Project trust](./reference/project-trust.md)
   - [Themes](./reference/theme.md)
   - [Hooks API](./reference/hooks.md)
   - [Skills](./reference/skills.md)

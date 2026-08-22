@@ -848,6 +848,22 @@ export const BUILTIN_SLASH_COMMAND_DECLARATIONS = [
 	},
 
 	{
+		name: "trust",
+		textMode: true,
+		description: "Decide whether the code this project carries may run (plugins, extensions, hooks, MCP)",
+		acpDescription: "Decide whether project code may run",
+		acpInputHint: "[approve|deny|forget]",
+		// Bare /trust reports; it never approves. A decision that runs project code is not something
+		// a bare command should do on a keystroke.
+		subcommands: [
+			{ name: "approve", description: "Approve the project files exactly as they are now" },
+			{ name: "deny", description: "Refuse this project, and remember the refusal" },
+			{ name: "forget", description: "Drop the decision so it is asked again" },
+		],
+		allowArgs: true,
+	},
+
+	{
 		name: "force",
 		textMode: true,
 		description: "Force next turn to use a specific tool",

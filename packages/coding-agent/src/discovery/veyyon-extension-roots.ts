@@ -225,7 +225,7 @@ async function listInstalledPluginRoots(ctx: LoadContext, pluginsRoot: string | 
 			// marketplace installs, or a package the named profile installed by hand
 			// gets dropped because the ACTIVE profile happens to have it from a
 			// marketplace, and vice versa.
-			listClaudePluginRoots(ctx.home, ctx.cwd, pluginsRoot),
+			listClaudePluginRoots(ctx.home, ctx.cwd, pluginsRoot, ctx.agentDir),
 		]);
 		const marketplaceRealpaths = new Set(
 			await Promise.all(marketplaceRoots.roots.map(root => realpathOrResolved(root.path))),

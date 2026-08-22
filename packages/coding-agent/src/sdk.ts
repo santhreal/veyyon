@@ -876,7 +876,10 @@ export async function loadSessionExtensions(
 	adoptSpawnedPid?: (pid: number) => void,
 ): Promise<LoadExtensionsResult> {
 	const paths = await discoverSessionExtensionPaths(options, cwd, settings, agentDir);
-	const result = await logger.time("loadExtensions", loadExtensions, paths, cwd, eventBus, adoptSpawnedPid);
+	const result = await logger.time("loadExtensions", loadExtensions, paths, cwd, eventBus, adoptSpawnedPid, {
+		agentDir,
+		configuredPaths: [...(options.additionalExtensionPaths ?? []), ...(settings.get("extensions") ?? [])],
+	});
 	reportExtensionLoadFailures(result);
 	return result;
 }
@@ -901,6 +904,14 @@ function reportExtensionLoadFailures(result: LoadExtensionsResult, operatorNotic
 	for (const { path, error } of result.errors) {
 		logger.error("Failed to load extension", { path, error });
 		operatorNotices?.error("extensions", `${path}: ${error}`);
+	}
+	// Withheld is not a failure and must not read as one, but it MUST be seen: project code the
+	// operator has not approved is silently absent otherwise, and "my repo's extension does
+	// nothing" would be indistinguishable from a broken extension. A warning names the file and
+	// what would make it run.
+	for (const { path, reason } of result.withheld) {
+		logger.warn("Withheld project extension", { path, reason });
+		operatorNotices?.warn("extensions", reason);
 	}
 }
 
