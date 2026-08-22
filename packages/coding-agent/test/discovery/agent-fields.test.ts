@@ -98,17 +98,17 @@ describe("parseAgentFields", () => {
 			tools: ["Read", "Search"],
 		});
 
-		expect(fields?.tools).toEqual(["read", "grep", "yield"]);
+		expect(fields?.tools).toEqual(["read", "search", "yield"]);
 	});
 
-	test("maps legacy search and find tool names", () => {
+	test("maps legacy find while keeping search canonical", () => {
 		const fields = parseAgentFields({
 			name: "reviewer",
 			description: "desc",
 			tools: ["Find", "Glob", "Search", "Grep"],
 		});
 
-		expect(fields?.tools).toEqual(["glob", "grep", "yield"]);
+		expect(fields?.tools).toEqual(["glob", "search", "grep", "yield"]);
 	});
 
 	test("parses autoloadSkills from array frontmatter", () => {

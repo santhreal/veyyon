@@ -96,7 +96,7 @@ export const runtimeToolRenderer: ToolRenderer = {
 		if (isRecord(args) && args.op === "exec") {
 			return evalToolRenderer.renderCall(args as Parameters<typeof evalToolRenderer.renderCall>[0], options, theme);
 		}
-		return launchToolRenderer.renderCall(args, options, theme);
+		return launchToolRenderer.renderCall(args as Parameters<typeof launchToolRenderer.renderCall>[0], options, theme);
 	},
 	renderResult(
 		result: { content: Array<{ type: string; text?: string }>; details?: unknown; isError?: boolean },
@@ -115,10 +115,10 @@ export const runtimeToolRenderer: ToolRenderer = {
 						? result.details.eval
 						: result.details;
 			return evalToolRenderer.renderResult(
-				{ ...result, details: evalDetails },
+				{ ...result, details: evalDetails } as Parameters<typeof evalToolRenderer.renderResult>[0],
 				options,
 				theme,
-				args,
+				args as Parameters<typeof evalToolRenderer.renderResult>[3],
 			);
 		}
 		const launchDetails =
@@ -128,10 +128,68 @@ export const runtimeToolRenderer: ToolRenderer = {
 					? result.details.launch
 					: result.details;
 		return launchToolRenderer.renderResult(
-			{ ...result, details: launchDetails },
+			{ ...result, details: launchDetails } as Parameters<typeof launchToolRenderer.renderResult>[0],
 			options,
 			theme,
-			args,
+			args as Parameters<typeof launchToolRenderer.renderResult>[3],
+		);
+	},
+};
+
+function unifiedSearchMode(args: unknown, details?: unknown): "files" | "text" | "ast" {
+	if (isRecord(args) && (args.mode === "files" || args.mode === "text" || args.mode === "ast")) return args.mode;
+	if (isRecord(details) && (details.mode === "files" || details.mode === "text" || details.mode === "ast")) {
+		return details.mode;
+	}
+	return "text";
+}
+
+export const unifiedSearchToolRenderer: ToolRenderer = {
+	renderCall(args: unknown, options: RenderResultOptions, theme: Theme): Component {
+		const mode = unifiedSearchMode(args);
+		if (mode === "files") {
+			return globToolRenderer.renderCall(args as Parameters<typeof globToolRenderer.renderCall>[0], options, theme);
+		}
+		if (mode === "ast") {
+			const delegatedArgs = isRecord(args) ? { ...args, pat: args.pattern } : args;
+			return astGrepToolRenderer.renderCall(
+				delegatedArgs as Parameters<typeof astGrepToolRenderer.renderCall>[0],
+				options,
+				theme,
+			);
+		}
+		return grepToolRenderer.renderCall(args as Parameters<typeof grepToolRenderer.renderCall>[0], options, theme);
+	},
+	renderResult(
+		result: { content: Array<{ type: string; text?: string }>; details?: unknown; isError?: boolean },
+		options: RenderResultOptions & { renderContext?: Record<string, unknown> },
+		theme: Theme,
+		args?: unknown,
+	): Component {
+		const mode = unifiedSearchMode(args, result.details);
+		const details = isRecord(result.details) && "details" in result.details ? result.details.details : result.details;
+		if (mode === "files") {
+			return globToolRenderer.renderResult(
+				{ ...result, details } as Parameters<typeof globToolRenderer.renderResult>[0],
+				options,
+				theme,
+				args as Parameters<typeof globToolRenderer.renderResult>[3],
+			);
+		}
+		if (mode === "ast") {
+			const delegatedArgs = isRecord(args) ? { ...args, pat: args.pattern } : args;
+			return astGrepToolRenderer.renderResult(
+				{ ...result, details } as Parameters<typeof astGrepToolRenderer.renderResult>[0],
+				options,
+				theme,
+				delegatedArgs as Parameters<typeof astGrepToolRenderer.renderResult>[3],
+			);
+		}
+		return grepToolRenderer.renderResult(
+			{ ...result, details } as Parameters<typeof grepToolRenderer.renderResult>[0],
+			options,
+			theme,
+			args as Parameters<typeof grepToolRenderer.renderResult>[3],
 		);
 	},
 };
@@ -148,6 +206,7 @@ export const toolRenderers: Record<string, ToolRenderer> = {
 	apply_patch: editToolRenderer as ToolRenderer,
 	glob: globToolRenderer as ToolRenderer,
 	grep: grepToolRenderer as ToolRenderer,
+	search: unifiedSearchToolRenderer,
 	lsp: lspToolRenderer as ToolRenderer,
 	inspect_image: inspectImageToolRenderer as ToolRenderer,
 	irc: ircToolRenderer as ToolRenderer,

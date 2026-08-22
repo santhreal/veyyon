@@ -523,6 +523,12 @@ export const TOOLS_SETTINGS = {
 		default: false,
 	},
 
+	// Unified search tool (replaces glob, grep, and ast_grep when enabled)
+	"tools.unifiedSearch": {
+		type: "boolean",
+		default: false,
+	},
+
 	// Optional Python eval workspace guidance
 	"eval.pyWorkspace": {
 		type: "boolean",

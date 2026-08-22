@@ -27,6 +27,7 @@ these pages:
 | `glob` | [glob.md](glob.md) |
 | `grep` | [grep.md](grep.md) |
 | `ast_grep` | [ast-grep.md](ast-grep.md) |
+| `search` | [search.md](search.md) (experimental: replaces `glob`, `grep`, and `ast_grep`) |
 | `ast_edit` | [ast-edit.md](ast-edit.md) |
 | `resolve` | [resolve.md](resolve.md) (hidden: merge-conflict resolution) |
 

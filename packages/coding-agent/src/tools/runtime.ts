@@ -19,16 +19,16 @@ import {
 	describeCodeField,
 	describeLanguageField,
 	EVAL_LANGUAGE_ORDER,
-	enabledEvalLanguages,
-	evalCellCommonFields,
-	EvalTool,
-	summarizeEvalLanguages,
 	type EvalLanguageToken,
+	EvalTool,
 	type EvalToolOptions,
 	type EvalToolParams,
+	enabledEvalLanguages,
+	evalCellCommonFields,
+	summarizeEvalLanguages,
 } from "./eval";
 import { resolveEvalBackends } from "./eval-backends";
-import { LaunchTool, type LaunchParams, type LaunchToolDetails } from "./launch";
+import { type LaunchParams, LaunchTool, type LaunchToolDetails } from "./launch";
 import { ToolError } from "./tool-errors";
 
 const runtimeStartSchema = type({
@@ -151,8 +151,8 @@ export interface RuntimeEvalDetails {
 export interface RuntimeLaunchDetails {
 	target: "launch";
 	op: LaunchParams["op"];
-	details: LaunchToolDetails;
-	launch: LaunchToolDetails;
+	details?: LaunchToolDetails;
+	launch?: LaunchToolDetails;
 }
 
 export type RuntimeToolDetails = RuntimeEvalDetails | RuntimeLaunchDetails;
@@ -317,11 +317,12 @@ export class RuntimeTool implements AgentTool<typeof runtimeSchema, RuntimeToolD
 			return this.#evalTool.intent?.(evalParams);
 		}
 		if (args.op) {
-			const target = "name" in args && typeof args.name === "string"
-				? args.name
-				: "application" in args && typeof args.application === "string"
-					? args.application
-					: undefined;
+			const target =
+				"name" in args && typeof args.name === "string"
+					? args.name
+					: "application" in args && typeof args.application === "string"
+						? args.application
+						: undefined;
 			return target ? `launch ${args.op} ${target}` : `launch ${args.op}`;
 		}
 		return undefined;
@@ -445,15 +446,16 @@ export class RuntimeTool implements AgentTool<typeof runtimeSchema, RuntimeToolD
 				timeout: params.timeout,
 				reset: params.reset,
 			};
-			const evalOnUpdate: AgentToolUpdateCallback<EvalToolDetails | undefined> = onUpdate
+			const evalOnUpdate: AgentToolUpdateCallback | undefined = onUpdate
 				? update => {
+						const details = update.details as EvalToolDetails | undefined;
 						onUpdate({
 							content: update.content,
 							details: {
 								target: "eval",
 								op: "exec",
-								details: update.details,
-								eval: update.details,
+								details,
+								eval: details,
 							},
 						});
 					}
@@ -509,7 +511,7 @@ export class RuntimeTool implements AgentTool<typeof runtimeSchema, RuntimeToolD
 				signal: "signal" in params ? params.signal : undefined,
 				timeout: "timeout" in params ? params.timeout : undefined,
 			};
-			const launchOnUpdate: AgentToolUpdateCallback<LaunchToolDetails> = onUpdate
+			const launchOnUpdate: AgentToolUpdateCallback<LaunchToolDetails> | undefined = onUpdate
 				? update => {
 						onUpdate({
 							content: update.content,
@@ -535,7 +537,8 @@ export class RuntimeTool implements AgentTool<typeof runtimeSchema, RuntimeToolD
 			};
 		}
 
-		const unhandledOp = typeof params === "object" && params !== null && "op" in params ? String(params.op) : "unknown";
+		const unhandledOp =
+			typeof params === "object" && params !== null && "op" in params ? String(params.op) : "unknown";
 		throw new ToolError(`Unsupported runtime operation: ${unhandledOp}`);
 	}
 }

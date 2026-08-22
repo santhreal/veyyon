@@ -446,6 +446,7 @@ const BUILTIN_TOOL_HELP: Record<BuiltinToolName, string> = {
 	retain: "Store important facts in long-term memory",
 	rewind: "Rewind to a previously created checkpoint",
 	runtime: "Execute kernel code or control shared project processes in the unified runtime",
+	search: "Search paths, text, or syntax through one tool",
 	search_tool_bm25: "Search the descriptions of tools that have not been loaded yet",
 	set_cwd: "Change the session's working directory for the rest of the session",
 	ssh: "Execute a command on a remote host over SSH",
