@@ -372,7 +372,11 @@ describe("plugin extension discovery", () => {
 		const extension = result.extensions.find(ext => ext.path === extensionPath);
 		const pluginError = result.errors.find(err => err.path === extensionPath);
 
-		expect(pluginError?.error).toContain("#src/internal");
+		// The refusal is what proves the exclusion held: were `#src/*` allowed to answer
+		// `#src/internal`, the import would resolve and the extension would be active.
+		// Bun names the unresolvable import root (`#src` from 1.4.0, `#src/internal`
+		// before it), so the assertion is on the root rather than on one Bun's phrasing.
+		expect(pluginError?.error).toContain("#src");
 		expect(extension).toBeUndefined();
 	});
 

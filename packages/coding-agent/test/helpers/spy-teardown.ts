@@ -10,14 +10,14 @@ import { afterEach, type Mock, spyOn } from "bun:test";
  * rows failing with NO ASSERTION MESSAGE on any of them, which reads as a deadlock in the code under
  * test rather than as one broken row plus fallout.
  *
- * Scope, measured rather than assumed: bun restores spies at the end of each test FILE, so this does
- * NOT escape into other files sharing the process. An earlier version of this comment claimed it did,
- * on reasoning alone; a probe that deadline-kills a row and then reads whether the spy is still
- * installed showed the escape does not happen. The within-file cascade is real and is what this
- * prevents. Four suites in `test/secrets/` had the unprotected shape at once, and the misreading it
- * produces is not hypothetical: it cost three lanes an investigation into a defect that did not
- * exist, because a uniform block of deadline failures looks exactly like a real hang and nothing in
- * the output points at the row that actually broke.
+ * Scope, measured rather than assumed, and it moved: through bun 1.3 spies were restored at the end
+ * of each test FILE, so an unrestored one poisoned the rest of its file and no other. Under bun 1.4 a
+ * module-object spy also reaches the NEXT FILE of the same run, which the probe in the sibling test
+ * shows by letting a clean second file fail on the first file's `lstat`. So the cascade this prevents
+ * is now the whole run, not one file. Four suites in `test/secrets/` had the unprotected shape at
+ * once, and the misreading it produces is not hypothetical: it cost three lanes an investigation into
+ * a defect that did not exist, because a uniform block of deadline failures looks exactly like a real
+ * hang and nothing in the output points at the row that actually broke.
  *
  * WHY IT IS A HELPER RATHER THAN A LINT RULE. The correct rule is "a prototype spy whose undo is not
  * registered for automatic teardown", and it cannot be written here: Biome 2.5.4 loads GritQL
