@@ -82,15 +82,11 @@ export async function validateOpenAICompatibleApiKey(options: OpenAICompatibleVa
 			return;
 		}
 
-		let details = "";
-		try {
-			details = (await response.text()).trim();
-		} catch {
-			// ignore body parse errors, status is enough
-		}
-
-		const message = details
-			? `${options.provider} API key validation failed (${response.status}): ${details}`
+		// A validation endpoint answers the request that carried the key, so the body is read
+		// under the shared ceiling and redacted before it can reach a message or a log.
+		const body = await AIError.readProviderErrorBody(response);
+		const message = body.text.trim()
+			? `${options.provider} API key validation failed (${response.status}): ${body.detail}`
 			: `${options.provider} API key validation failed (${response.status})`;
 		throw new AIError.ApiKeyRequiredError(message);
 	} finally {
@@ -129,15 +125,9 @@ export async function validateAnthropicCompatibleApiKey(options: AnthropicCompat
 			return;
 		}
 
-		let details = "";
-		try {
-			details = (await response.text()).trim();
-		} catch {
-			// ignore body parse errors, status is enough
-		}
-
-		const message = details
-			? `${options.provider} API key validation failed (${response.status}): ${details}`
+		const body = await AIError.readProviderErrorBody(response);
+		const message = body.text.trim()
+			? `${options.provider} API key validation failed (${response.status}): ${body.detail}`
 			: `${options.provider} API key validation failed (${response.status})`;
 		throw new AIError.ApiKeyRequiredError(message);
 	} finally {
@@ -172,15 +162,9 @@ export async function validateApiKeyAgainstModelsEndpoint(options: ModelListVali
 			return;
 		}
 
-		let details = "";
-		try {
-			details = (await response.text()).trim();
-		} catch {
-			// ignore body parse errors, status is enough
-		}
-
-		const message = details
-			? `${options.provider} API key validation failed (${response.status}): ${details}`
+		const body = await AIError.readProviderErrorBody(response);
+		const message = body.text.trim()
+			? `${options.provider} API key validation failed (${response.status}): ${body.detail}`
 			: `${options.provider} API key validation failed (${response.status})`;
 		throw new AIError.ApiKeyRequiredError(message);
 	} finally {

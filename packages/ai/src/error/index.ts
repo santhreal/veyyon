@@ -5,6 +5,7 @@ export * from "./aws";
 export * from "./classes";
 export * from "./connect";
 export * from "./detail-bounds";
+export * from "./error-body";
 export * from "./finalize";
 export * from "./flags";
 export * from "./format";

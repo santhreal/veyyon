@@ -953,15 +953,15 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 								continue;
 							}
 						}
-						const errorText = await response.text();
-						const validationUrl = extractGoogleValidationUrl(errorText);
+						const errorBody = await AIError.readProviderErrorBody(response);
+						const validationUrl = extractGoogleValidationUrl(errorBody.text);
 						const errorMessage = validationUrl
 							? formatGoogleValidationRequiredMessage(
 									validationUrl,
 									"retry your request",
 									parsedCredentials.email,
 								)
-							: errorText;
+							: errorBody.detail;
 						throw new AIError.GeminiCliApiError(
 							`Cloud Code Assist API error (${response.status}): ${errorMessage}`,
 							response.status,

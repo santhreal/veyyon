@@ -279,10 +279,11 @@ async function readSsoCredentials(
 	});
 	if (!response.ok) {
 		// The STATUS is the failure; the body is the detail attached to it. An unreadable body must not replace
-		// a credential-service error with a read error.
-		const body = await response.text().catch(() => "");
+		// a credential-service error with a read error, and this endpoint answers a bearer token, so its body
+		// goes through the shared redactor rather than a local slice.
+		const detail = await AIError.readProviderErrorDetail(response);
 		throw new AIError.AwsCredentialsError(
-			`AWS SSO GetRoleCredentials failed: ${response.status} ${body.slice(0, 200)}`,
+			`AWS SSO GetRoleCredentials failed: ${response.status} ${detail}`,
 			"sso-role",
 		);
 	}

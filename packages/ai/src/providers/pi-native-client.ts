@@ -82,13 +82,16 @@ function buildWireOptions(options: SimpleStreamOptions | undefined): Record<stri
 
 async function decodeGatewayError(response: Response): Promise<AIError.AuthGatewayError> {
 	const status = response.status;
-	let body: unknown;
+	// One bounded read, then a parse of what it returned. `response.json()` decodes the
+	// whole body before anything can cap it, and the case that matters here is a gateway
+	// in front of the gateway answering an HTML page instead of an envelope. The STATUS is
+	// the failure; an unreadable body degrades to empty rather than replacing it.
+	const read = await AIError.readProviderErrorBody(response);
+	let body: unknown = read.text;
 	try {
-		body = await response.json();
+		body = JSON.parse(read.text);
 	} catch {
-		// The STATUS is the failure; the body is the detail attached to it. An unreadable body degrades to
-		// empty rather than replacing the status with a read error.
-		body = await response.text().catch(() => "");
+		// Not an envelope. `body` stays the sanitized text.
 	}
 	if (typeof body === "object" && body !== null && "error" in body) {
 		const err = (body as { error: unknown }).error;
@@ -96,14 +99,14 @@ async function decodeGatewayError(response: Response): Promise<AIError.AuthGatew
 			const message = (err as { message?: unknown }).message;
 			const type = (err as { type?: unknown }).type;
 			return new AIError.AuthGatewayError(
-				typeof message === "string" ? message : `auth-gateway ${status}`,
+				typeof message === "string" ? AIError.boundProviderErrorDetail(message) : `auth-gateway ${status}`,
 				status,
 				response.headers,
 				typeof type === "string" ? type : undefined,
 			);
 		}
 	}
-	const text = typeof body === "string" ? body : JSON.stringify(body);
+	const text = typeof body === "string" ? read.detail : AIError.boundProviderErrorDetail(JSON.stringify(body));
 	return new AIError.AuthGatewayError(
 		`auth-gateway ${status}: ${text || response.statusText}`,
 		status,

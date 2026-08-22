@@ -245,9 +245,9 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 			});
 
 			if (!response.ok) {
-				const text = await response.text();
+				const detail = await AIError.readProviderErrorDetail(response);
 				throw new AIError.DevinApiError(
-					`Devin API error ${response.status} ${response.statusText}: ${AIError.boundProviderErrorDetail(text)}`,
+					`Devin API error ${response.status} ${response.statusText}: ${detail}`,
 					response.status,
 				);
 			}

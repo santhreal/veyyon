@@ -160,7 +160,7 @@ class GitLabDuoOAuthFlow extends OAuthCallbackFlow {
 
 		if (!response.ok) {
 			throw new AIError.OAuthError(
-				`GitLab OAuth token exchange failed: ${response.status} ${await response.text()}`,
+				`GitLab OAuth token exchange failed: ${response.status} ${await AIError.readProviderErrorDetail(response)}`,
 				{
 					kind: "token-exchange",
 					provider: "gitlab-duo",
@@ -201,7 +201,8 @@ export async function refreshGitLabDuoToken(credentials: OAuthCredentials): Prom
 	});
 
 	if (!response.ok) {
-		throw new AIError.OAuthError(`GitLab OAuth refresh failed: ${response.status} ${await response.text()}`, {
+		const detail = await AIError.readProviderErrorDetail(response);
+		throw new AIError.OAuthError(`GitLab OAuth refresh failed: ${response.status} ${detail}`, {
 			kind: "token-refresh",
 			provider: "gitlab-duo",
 			status: response.status,
