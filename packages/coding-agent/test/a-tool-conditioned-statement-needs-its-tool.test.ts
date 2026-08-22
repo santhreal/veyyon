@@ -154,7 +154,7 @@ describe("a statement conditioned on a tool needs that tool", () => {
 	it("does not direct unified-search sessions to a missing legacy grep tool", async () => {
 		const unified = await composed(["search", "ast_edit"]);
 		expect(unified).not.toContain("Use `grep` only for plain-text lookup");
-		expect(unified).toContain("`search` owns workspace discovery");
+		expect(unified).toContain("`search` owns workspace file discovery");
 
 		const legacy = await composed(["grep", "ast_edit"]);
 		expect(legacy).toContain("Use `grep` only for plain-text lookup");
