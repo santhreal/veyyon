@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- Veyyon source checkouts, Docker images, and published packages now require Bun 1.4.0 or newer.
+
 ### Changed
 
 - The Subagents block is a lane per agent instead of a tree of names, and what it shows is live. It used to print an id, a description and a model badge — three facts all fixed the moment an agent spawns — so three agents in completely different states rendered byte-identically, and the block answered "who is running" while saying nothing about what any of them was doing. A lane now carries the tool in flight and its argument (`bash cargo test --workspace`, `read modes/interactive-mode.ts`), then the resolved model. Activity and description share the one middle column, in that order, and an agent asleep between provider attempts pre-empts both with its countdown and the reason it is retrying (`Retrying (2/5) in 38s · 429 rate limit exceeded`), which is the question a lane is read for. An agent with nothing in flight and no description says `waiting`, because a blank middle column is indistinguishable from a lane that failed to render. `├─`/`└─` connectors are gone — they defeat the one thing a concurrency display needs, a fixed column you can run your eye down to compare rows against each other.

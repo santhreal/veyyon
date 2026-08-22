@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- The minimum supported Bun runtime is now 1.4.0.
+
 ## [16.5.0] - 2026-07-13
 
 ### Fixed

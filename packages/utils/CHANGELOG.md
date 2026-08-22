@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- The minimum supported Bun runtime is now 1.4.0.
+
 ### Fixed
 
 - `fetchWithRetry` accepts `shouldRetryError`, a veto consulted before a thrown attempt is retried. The retry ladder could only be limited by attempt count and delay, which is the wrong axis for a caller that has a deadline: an attempt whose failure means "no response ever arrived" is worth another try only while there is time left to receive one, and a caller with that knowledge had no way to say so short of catching, inspecting and re-driving the request itself. The veto runs after the attempt-count check and before the delay, so a refusal costs no extra wait, and omitting it leaves behaviour exactly as before.

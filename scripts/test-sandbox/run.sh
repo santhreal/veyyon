@@ -145,7 +145,7 @@ BUILD_DIR="${GUEST_DIR}/.build"
 # when the file is not there, and the default on the next line is the whole point
 # of reading the manifest optionally.
 BUN_VERSION="$(sed -n 's/.*"packageManager"[[:space:]]*:[[:space:]]*"bun@\([^"]*\)".*/\1/p' "${REPO_ROOT}/package.json" 2>/dev/null | head -n1 || true)"
-: "${BUN_VERSION:=1.3.14}"
+: "${BUN_VERSION:=1.4.0}"
 GUEST_IMAGE="veyyon-test-guest:${BUN_VERSION}"
 
 # The host home this sandbox removes from the guest's view. Taken from the passwd
