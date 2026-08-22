@@ -99,13 +99,27 @@ describe("stripStructuredContent removes pasted escape sequences", () => {
 	/**
 	 * A capture cut mid-sequence, which is what a paste from a scrolled buffer looks like.
 	 *
-	 * The stray escape byte goes and the text after it stays, which is `stripAnsi`'s
-	 * documented contract and the reason stripping is a fixed point: a leftover escape
-	 * could be pushed against a following `[` by a later removal and MAKE a sequence that
-	 * was not there before.
+	 * An escape that opens nothing goes alone and the text after it stays, which is what
+	 * makes stripping a fixed point: a leftover escape could be pushed against a
+	 * following `[` by a later removal and MAKE a sequence that was not there before.
 	 */
-	it("drops a stray escape byte and keeps the words after it", () => {
-		expect(stripStructuredContent(`\x1b${SENTENCE}`)).toBe(SENTENCE);
+	it("drops an escape that opens nothing and keeps the words after it", () => {
+		expect(stripStructuredContent(`\x1b\n${SENTENCE}`)).toBe(`\n${SENTENCE}`);
+	});
+
+	/**
+	 * An escape followed by a final byte, which is a complete two-byte sequence and not
+	 * a truncated one.
+	 *
+	 * `ESC p` is Fs, so the pair goes and the `p` goes with it. This expectation used to
+	 * read as if only the escape byte went, from a grammar that knew CSI and OSC and
+	 * published every short sequence's final byte as text. A terminal consumes the pair
+	 * too, and drawing what a terminal would draw is this function's whole contract, so
+	 * the first letter of a word that follows a bare escape is not recoverable here.
+	 */
+	it("removes a short sequence whole, final byte included", () => {
+		expect(stripStructuredContent(`\x1bp${SENTENCE}`)).toBe(SENTENCE);
+		expect(stripStructuredContent(`\x1bcfresh start`)).toBe("fresh start");
 	});
 
 	/**
