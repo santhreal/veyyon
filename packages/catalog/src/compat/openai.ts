@@ -21,6 +21,7 @@ import {
 	isQwenModelId,
 	modelFamilyToken,
 } from "../identity/family";
+import { providerWireCapabilities } from "../provider-models/wire-capabilities";
 import type {
 	ModelSpec,
 	OpenAICompat,
@@ -142,17 +143,13 @@ function mergeMimoReasoningEffortMap(compat: ResolvedOpenAISharedCompat, enabled
 	compat.reasoningEffortMap = { ...MIMO_REASONING_EFFORT_MAP, ...compat.reasoningEffortMap };
 }
 
+/**
+ * A provider whose entry declares `strictTools`, or a host known to honor them
+ * — a model pointed at one of those hosts under a custom provider id gets the
+ * same answer as the provider it is really talking to.
+ */
 function detectStrictModeSupport(provider: string, baseUrl: string): boolean {
-	if (
-		provider === "openai" ||
-		provider === "openrouter" ||
-		provider === "cerebras" ||
-		provider === "together" ||
-		provider === "github-copilot" ||
-		provider === "zenmux"
-	) {
-		return true;
-	}
+	if (providerWireCapabilities(provider)?.strictTools) return true;
 	return (
 		hostMatchesUrl(baseUrl, "openai") ||
 		hostMatchesUrl(baseUrl, "azureOpenAI") ||
@@ -164,27 +161,17 @@ function detectStrictModeSupport(provider: string, baseUrl: string): boolean {
 }
 
 /**
- * Local OpenAI-compatible inference servers whose chat templates re-tokenize
- * the entire prompt every request — llama.cpp prefix-KV-cache reuse only
- * survives when the rendered tokens stay byte-identical across turns. The
- * runtime auto-enables {@link OpenAICompat.replayReasoningContent} for these
- * providers (and for any provider pointed at a loopback / RFC1918 baseUrl) so
- * Qwen3 / DeepSeek-R1 / GLM templates can reconstruct the prior assistant
- * turn's `<think>` block from `reasoning_content` (#3528).
+ * True for a provider running a local chat-template renderer, or for any
+ * provider pointed at a loopback / RFC1918 baseUrl, and false for a provider
+ * that declares it forwards to an unrelated upstream. Which providers are which
+ * is declared in `provider-models/wire-capabilities.ts`, next to what every
+ * other per-provider decision reads.
  */
-const LOCAL_OPENAI_COMPAT_PROVIDERS = new Set(["llama.cpp", "lm-studio", "vllm", "ollama"]);
-
-/**
- * Local proxy providers that share the loopback-default baseUrl but forward
- * to an unrelated upstream (OpenAI, Anthropic, …) rather than running a
- * chat-template renderer themselves — `replayReasoningContent` would push
- * `reasoning_content` to the upstream, which gains no KV-cache benefit and
- * may 400 on the extra field. Excluded from BOTH the provider check above
- * and the loopback heuristic below; users who want the replay on a custom
- * proxy setup can opt in via the sparse `compat.replayReasoningContent`
- * override.
- */
-const PROXY_OPENAI_COMPAT_PROVIDERS = new Set(["litellm"]);
+function isLocalOpenAICompatEndpoint(provider: string, baseUrl: string): boolean {
+	const capabilities = providerWireCapabilities(provider);
+	if (capabilities?.forwardsUpstream) return false;
+	return capabilities?.localInference === true || hasLocalLoopbackBaseUrl(baseUrl);
+}
 
 /**
  * Build the resolved chat-completions compat record for a model spec.
@@ -252,9 +239,7 @@ export function buildOpenAICompat(spec: ModelSpec<"openai-completions">): Resolv
 		isMoonshotNative ||
 		isOpenCodeHost;
 	const isOpenCodeProvider = provider === "opencode-go" || provider === "opencode-zen";
-	const isLocalOpenAICompatBackend =
-		!PROXY_OPENAI_COMPAT_PROVIDERS.has(provider) &&
-		(LOCAL_OPENAI_COMPAT_PROVIDERS.has(provider) || hasLocalLoopbackBaseUrl(baseUrl));
+	const isLocalOpenAICompatBackend = isLocalOpenAICompatEndpoint(provider, baseUrl);
 
 	const useMaxTokens =
 		isMistral ||
@@ -560,9 +545,7 @@ export function buildOpenAIResponsesCompat(spec: OpenAIResponsesSpecLike): Resol
 	const isAnthropicModel = id ? isClaudeModelId(id) || isAnthropicNamespacedModelId(id) : false;
 	const isDeepseekFamily = id ? isDeepseekModelIdOrName(id) || isDeepseekModelIdOrName(spec.name) : false;
 	const reasoningCapable = Boolean(spec.reasoning);
-	const isLocalOpenAICompatBackend =
-		!PROXY_OPENAI_COMPAT_PROVIDERS.has(spec.provider) &&
-		(LOCAL_OPENAI_COMPAT_PROVIDERS.has(spec.provider) || hasLocalLoopbackBaseUrl(baseUrl));
+	const isLocalOpenAICompatBackend = isLocalOpenAICompatEndpoint(spec.provider, baseUrl);
 
 	const compat: ResolvedOpenAIResponsesCompat = {
 		supportsDeveloperRole: isAzure || isOpenAIUrl || hostMatchesUrl(baseUrl, "githubCopilot"),

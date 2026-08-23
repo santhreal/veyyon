@@ -70,10 +70,10 @@ function createCodexTestToken(accountId = "acc_test"): string {
 	return `aaa.${payload}.bbb`;
 }
 
-function createCodexTestModel(baseUrl?: string): Model<"openai-codex-responses"> {
+function createCodexTestModel(baseUrl?: string, id = "gpt-5.3-codex-spark"): Model<"openai-codex-responses"> {
 	return buildModel({
-		id: "gpt-5.3-codex-spark",
-		name: "GPT-5.3 Codex Spark",
+		id,
+		name: id,
 		api: "openai-codex-responses",
 		provider: "openai-codex",
 		baseUrl: baseUrl ?? "",
@@ -1452,7 +1452,7 @@ describe("openai-codex streaming", () => {
 
 		global.WebSocket = LiteWebSocket as unknown as typeof WebSocket;
 		const result = await streamOpenAICodexResponses(
-			createCodexTestModel("https://chatgpt.com/backend-api"),
+			createCodexTestModel("https://chatgpt.com/backend-api", "gpt-5.6-terra"),
 			createCodexTestContext(),
 			{
 				apiKey: token,

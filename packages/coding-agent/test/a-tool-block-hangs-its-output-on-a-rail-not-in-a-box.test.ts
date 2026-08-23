@@ -168,20 +168,22 @@ describe("a tool block hangs its output on a rail, not in a box", () => {
 		}
 	});
 
-	it.each(SHAPES.map(shape => [shape.name, shape] as const))("%s rails every row under the title", (_name, shape) => {
-		const options = shape.build(120);
-		const lines = plain(renderOutputBlock(options, theme));
-		// A shape with a header owns column 0 on that first row -- it carries the status
-		// icon the caller built -- and every row under it is railed. A shape with NO
-		// header has no such row, so all of its rows are body: reading the title off line
-		// 0 regardless is how this arm used to demand a rail-free row from a block that
-		// had none to give. A header with no sections is one line and no body at all,
-		// which is the `set_cwd` shape asserted whole further down.
-		const body = options.header === undefined ? lines : lines.slice(1);
-		if (options.header !== undefined) expect(lines[0]?.startsWith(rail())).toBe(false);
-		expect(body.length > 0, `${body.length} body rows`).toBe(options.sections !== undefined);
-		for (const line of body) expect(line, JSON.stringify(line)).toStartWith(`${rail()} `);
-	});
+	it.each(SHAPES.map(shape => [shape.name, shape] as const))(
+		"%s rails every row, the title included",
+		(_name, shape) => {
+			const options = shape.build(120);
+			const lines = plain(renderOutputBlock(options, theme));
+			// One left edge from the title to the last row of output. The header used to
+			// own column 0, which put the block's left edge under its own title, and a
+			// shape with NO header had no such row at all -- so the arm that read the
+			// title off line 0 regardless demanded a rail-free row from a block that had
+			// none to give. A header with no sections is one line and no body, which is
+			// the `set_cwd` shape asserted whole further down.
+			const body = options.header === undefined ? lines : lines.slice(1);
+			expect(body.length > 0, `${body.length} body rows`).toBe(options.sections !== undefined);
+			for (const line of lines) expect(line, JSON.stringify(line)).toStartWith(`${rail()} `);
+		},
+	);
 
 	it.each(SHAPES.map(shape => [shape.name, shape] as const))("%s stops well short of the terminal", (_name, shape) => {
 		const lines = plain(renderOutputBlock(shape.build(120), theme));
@@ -200,7 +202,7 @@ describe("a tool block hangs its output on a rail, not in a box", () => {
 		// two of them chrome, for one fact.
 		const lines = renderOutputBlock({ width: 120, header: "cwd · /srv/app" }, theme);
 		expect(lines.length).toBe(1);
-		expect(plain(lines)[0]).toBe("cwd · /srv/app");
+		expect(plain(lines)[0]).toBe(`${rail()} cwd · /srv/app`);
 	});
 
 	it("spends no row on chrome above or below the output", async () => {
@@ -217,7 +219,7 @@ describe("a tool block hangs its output on a rail, not in a box", () => {
 		const header = "Read a/very/long/path/that/is/wider/than/the/body.ts";
 		const lines = plain(renderOutputBlock({ width: 200, header, sections: [{ lines: ["x"] }] }, theme));
 		// The title is a line of its own now, so nothing about the body can crop it.
-		expect(lines[0]).toBe(header);
+		expect(lines[0]).toBe(`${rail()} ${header}`);
 	});
 
 	it("wraps its body at the width a renderer budgets rows against", () => {
@@ -421,9 +423,10 @@ describe("a tool block hangs its output on a rail, not in a box", () => {
 
 	/**
 	 * Both arms ask the same questions of two real tools, and `unrailed` is the count
-	 * of ink rows that are NOT railed, measured per tool rather than assumed to be one:
-	 * `read` prints a title row carrying its own status icon, and `bash` prints none at
-	 * all -- its first row is the command, railed like the output under it.
+	 * of ink rows that are NOT railed, pinned per tool rather than assumed: a title
+	 * row carrying a status icon hangs from the rail too, so a block with a title
+	 * (`read`) and a block with none (`bash`, whose first row is the command) both
+	 * report zero. A renderer drawing one row at column 0 turns this red.
 	 */
 	const REAL_BLOCKS: ReadonlyArray<{ name: string; unrailed: number; build: () => ToolExecutionComponent }> = [
 		{
@@ -442,7 +445,7 @@ describe("a tool block hangs its output on a rail, not in a box", () => {
 		},
 		{
 			name: "read",
-			unrailed: 1,
+			unrailed: 0,
 			build: () => {
 				const block = createToolExecution("read", { path: "src/parser.ts" }, {}, undefined, ui);
 				block.setArgsComplete();
@@ -460,8 +463,7 @@ describe("a tool block hangs its output on a rail, not in a box", () => {
 		(_name, entry) => {
 			const lines = entry.build().render(120);
 			const { railed, ink } = componentFrame(lines);
-			// Every row of output hangs on the rail; only the tool's own title row, when it
-			// has one, owns column 0.
+			// Every row of output hangs on the rail, the tool's own title row included.
 			expect(ink.length - railed.length, `${ink.length} ink rows, ${railed.length} railed`).toBe(entry.unrailed);
 			for (const glyph of boxGlyphs()) {
 				for (const line of plain(lines)) expect(line, `${glyph} in ${JSON.stringify(line)}`).not.toContain(glyph);
