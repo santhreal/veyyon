@@ -87,4 +87,15 @@ there; 23 entries across several packages were written into it and would have be
 render. The write path now refuses when the root holds an unreleased entry the render does not
 produce, and names each one.
 
-*Verified against `d26b915d1` on 2026-08-22.*
+## The rendered handbook is checked, not deployed on demand
+
+`docs/handbook/book` is committed, and the `Docs` workflow rebuilds it with mdbook and fails when the
+result differs from the tree. A handbook edit therefore lands in two parts: the source page, and the
+render (`cd docs/handbook && mdbook build`) in the same change. `website/docs` is a symlink to that
+directory, so a source-only change would publish the previous text at the next deploy.
+
+The version is pinned. mdbook v0.5.2 renders the search index under a content-hashed filename, so a
+different mdbook writes a different file name for identical prose and the gate reports the whole book
+as stale.
+
+*Verified against `b6a056eee` on 2026-08-23.*
