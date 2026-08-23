@@ -26,7 +26,7 @@
  * WHAT IT DOES NOT CATCH. Nothing here says a description still TEACHES. Bytes are not
  * comprehension: a prune that deletes the selector grammar passes this gate and breaks the
  * product. The benches are what answer that (`packages/typescript-edit-benchmark` for the
- * edit/read/grep surface, `packages/deepswe-bench` end to end), and they are the required
+ * edit/read/search surface, `packages/deepswe-bench` end to end), and they are the required
  * companion to any cut made here. This gate also says nothing about JSON schema bytes, which
  * are structural (field names, enum literals) and not prose to be shortened.
  */

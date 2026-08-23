@@ -23,14 +23,16 @@ function argBadges(args: Record<string, unknown>): ReactNode[] {
 
 function Pattern({ args }: { args: Record<string, unknown> }): ReactNode {
 	const pattern = str(args.input);
-	if (pattern === null) return <InvalidArg what="input" />;
+	if (pattern === null || pattern.trim().length === 0) return <InvalidArg what="input" />;
 	return <span className="tv-pattern">/{pattern}/</span>;
 }
 
 function Summary({ args }: ToolRenderProps): ReactNode {
+	const pattern = str(args.input);
+	if (pattern === null || pattern.trim().length === 0) return <InvalidArg what="input" />;
 	return (
 		<span>
-			<Pattern args={args} /> <span className="tv-muted">in</span>{" "}
+			<span className="tv-pattern">/{pattern}/</span> <span className="tv-muted">in</span>{" "}
 			<span className="tv-path">{pathsOf(args).join(", ")}</span> <Badges items={argBadges(args)} />
 		</span>
 	);

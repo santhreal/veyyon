@@ -57,6 +57,9 @@ const TYPE_FIELDS: Record<SearchType, ReadonlySet<keyof SearchToolInput>> = {
 
 function rejectCrossTypeFields(params: SearchToolInput): void {
 	const allowed = TYPE_FIELDS[params.type];
+	if (!allowed) {
+		throw new ToolError(`Invalid search type "${params.type}"`);
+	}
 	const invalid = Object.keys(params).filter(
 		key => params[key as keyof SearchToolInput] !== undefined && !allowed.has(key as keyof SearchToolInput),
 	);
