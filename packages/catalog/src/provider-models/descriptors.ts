@@ -120,6 +120,7 @@ export const CATALOG_PROVIDERS = [
 		defaultModel: "moonshotai/Kimi-K2.7-Code",
 		envVars: ["CMD_API_KEY", "COMMAND_CODE_API_KEY"],
 		createModelManagerOptions: (config: ModelManagerConfig) => commandCodeModelManagerOptions(config),
+		publishesOwnModelLimits: true,
 		catalogDiscovery: { label: "Command Code" },
 	},
 	{
@@ -280,6 +281,7 @@ export const CATALOG_PROVIDERS = [
 		envVars: ["NOUS_API_KEY"],
 		createModelManagerOptions: (config: ModelManagerConfig) => nousResearchModelManagerOptions(config),
 		dynamicModelsAuthoritative: true,
+		publishesOwnModelLimits: true,
 		catalogDiscovery: { label: "Nous Research", oauthProvider: "nous-research" },
 	},
 	{
@@ -531,6 +533,16 @@ export const PROVIDER_DESCRIPTORS: readonly ProviderDescriptor[] = CATALOG_ENTRY
 		},
 	];
 });
+
+/**
+ * Providers whose own endpoint is the sole authority for context windows and
+ * output caps, derived from the catalog table so a generation pass cannot skip
+ * a member. Every pass that would backfill a limit from another host reads this
+ * set instead of naming providers.
+ */
+export const PROVIDERS_PUBLISHING_OWN_MODEL_LIMITS: ReadonlySet<string> = new Set(
+	CATALOG_ENTRY_LIST.filter(provider => provider.publishesOwnModelLimits).map(provider => provider.id),
+);
 
 /** Default model IDs for all known providers, derived from the catalog table. */
 export const DEFAULT_MODEL_PER_PROVIDER: Record<KnownProvider, string> = Object.fromEntries(

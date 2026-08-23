@@ -4,11 +4,9 @@
 
 ### Added
 
-- Added Command Code and Nous Research provider catalogs with credential-aware model discovery.
-
-### Fixed
-
-- Corrected Command Code context and output-limit metadata and changed Nous Portal discovery to use OAuth-backed, tool-capable rich model metadata with Claude Sonnet 4.6 as the default.
+- Added the Command Code provider catalog, with its documented coding flagships as the offline seed and credentialed discovery for the wider Provider API list.
+- Added the Nous Research provider catalog, whose credentialed discovery keeps tool-capable chat models and excludes embedding, media-generation and non-tool rows.
+- Added the `publishesOwnModelLimits` provider flag, which stops generation from backfilling a context window or output cap from another host's same-family model.
 
 ## [1.2.0] - 2026-08-23
 

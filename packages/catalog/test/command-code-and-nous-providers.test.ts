@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { getBundledModel } from "@veyyon/catalog/models";
-import { DEFAULT_MODEL_PER_PROVIDER, getCatalogProviderEntry } from "@veyyon/catalog/provider-models/descriptors";
+import {
+	DEFAULT_MODEL_PER_PROVIDER,
+	getCatalogProviderEntry,
+	PROVIDERS_PUBLISHING_OWN_MODEL_LIMITS,
+} from "@veyyon/catalog/provider-models/descriptors";
 import {
 	COMMAND_CODE_STATIC_MODELS,
 	commandCodeModelManagerOptions,
@@ -14,8 +18,33 @@ import { applyCanonicalLimitFallback, applyGeneratedModelPolicies } from "../scr
 /**
  * These providers expose model routers, so catalog discovery must preserve the
  * endpoint's capability metadata rather than inheriting same-family defaults
- * from another host. The gap this suite does not cover is live upstream drift.
+ * from another host. Which providers get that treatment is one derived set, so
+ * a generation pass cannot honor it for one member and miss another, and a new
+ * member turns the pin below red until someone records it. The gap this suite
+ * does not cover is live upstream drift.
  */
+describe("providers that own their model limits", () => {
+	test("the opt-out set is derived from the catalog table, not restated per pass", () => {
+		expect([...PROVIDERS_PUBLISHING_OWN_MODEL_LIMITS].sort()).toEqual(["command-code", "nous-research"]);
+		expect(getCatalogProviderEntry("command-code")?.publishesOwnModelLimits).toBe(true);
+		expect(getCatalogProviderEntry("nous-research")?.publishesOwnModelLimits).toBe(true);
+	});
+
+	test("a flagged provider keeps a null output cap through both generation passes", () => {
+		const nousModel: ModelSpec<Api> = { ...NOUS_RESEARCH_STATIC_MODELS[0]!, contextWindow: null };
+		const sameFamilyReference: ModelSpec<Api> = {
+			...NOUS_RESEARCH_STATIC_MODELS[0]!,
+			provider: "anthropic",
+			id: "claude-sonnet-4.6",
+			contextWindow: 200000,
+			maxTokens: 64000,
+		};
+		applyCanonicalLimitFallback([sameFamilyReference, nousModel]);
+		expect(nousModel.contextWindow).toBeNull();
+		expect(nousModel.maxTokens).toBeNull();
+	});
+});
+
 describe("Command Code provider", () => {
 	test("prefers CMD_API_KEY and retains the Veyyon alias", () => {
 		const entry = getCatalogProviderEntry("command-code");
