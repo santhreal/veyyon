@@ -21,7 +21,8 @@ import { type MCPServer, mcpCapability } from "../capability/mcp";
 import type { Rule } from "../capability/rule";
 import { ruleCapability } from "../capability/rule";
 import type { LoadContext, LoadResult, SourceMeta } from "../capability/types";
-import { buildRuleFromMarkdown, createSourceMeta, expandEnvVarsDeep, getUserPath, loadFilesFromDir } from "./helpers";
+import { expandEnvVarsDeep, warnUnresolved } from "./env-expansion";
+import { buildRuleFromMarkdown, createSourceMeta, getUserPath, loadFilesFromDir } from "./helpers";
 
 const PROVIDER_ID = "cursor";
 const DISPLAY_NAME = "Cursor";
@@ -31,15 +32,17 @@ const PRIORITY = 50;
 // MCP Servers
 // =============================================================================
 
-function parseMCPServers(content: string, path: string): { items: MCPServer[]; warning?: string } {
+function parseMCPServers(content: string, path: string): LoadResult<MCPServer> {
 	const items: MCPServer[] = [];
+	const warnings: string[] = [];
 
 	const parsed = tryParseJson<{ mcpServers?: Record<string, unknown> }>(content);
 	if (!parsed?.mcpServers) {
-		return { items, warning: `${path}: missing or invalid 'mcpServers' key` };
+		warnings.push(`${path}: missing or invalid 'mcpServers' key`);
+		return { items, warnings };
 	}
 
-	const servers = expandEnvVarsDeep(parsed.mcpServers);
+	const servers = expandEnvVarsDeep(parsed.mcpServers, warnUnresolved(warnings, path));
 	for (const [name, config] of Object.entries(servers)) {
 		const serverConfig = config as Record<string, unknown>;
 		items.push({
@@ -57,7 +60,7 @@ function parseMCPServers(content: string, path: string): { items: MCPServer[]; w
 		});
 	}
 
-	return { items };
+	return { items, warnings };
 }
 
 async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> {
@@ -65,8 +68,7 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 	const userContent = userPath ? await readFile(userPath) : null;
 	if (!userContent || !userPath) return { items: [], warnings: [] };
 
-	const result = parseMCPServers(userContent, userPath);
-	return { items: result.items, warnings: result.warning ? [result.warning] : [] };
+	return parseMCPServers(userContent, userPath);
 }
 
 // =============================================================================

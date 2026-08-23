@@ -6,7 +6,7 @@
 import { type Component, type OverlayHandle, replaceTabs, Spacer, Text } from "@veyyon/tui";
 import { errorMessage, getMCPConfigPath, getProjectDir, isAbortError } from "@veyyon/utils";
 import type { SourceMeta } from "../../capability/types";
-import { expandEnvVarsDeep } from "../../discovery/helpers";
+import { expandEnvVarsDeep, unresolvedRefusedDownstream } from "../../discovery/env-expansion";
 import {
 	analyzeAuthError,
 	discoverOAuthEndpoints,
@@ -1715,7 +1715,12 @@ export class MCPCommandController {
 			const currentAuth = (found.config as MCPServerConfig & { auth?: MCPAuthConfig }).auth;
 			const authStorage = this.ctx.session.modelRegistry.authStorage;
 			const baseConfig = this.#stripOAuthAuth(found.config);
-			const runtimeBaseConfig = expandEnvVarsDeep(baseConfig);
+			// The connect guard is the enforcement point and names the field and the variable in the
+			// refusal the operator sees, so reporting here would say it twice.
+			const refusedAtConnect = unresolvedRefusedDownstream(
+				"the MCP connect guard refuses an unresolved structural field before a transport exists",
+			);
+			const runtimeBaseConfig = expandEnvVarsDeep(baseConfig, refusedAtConnect);
 			// Resolve endpoints first: this fails fast for stdio transports and
 			// probes http/sse with { oauth: false }, so nothing destructive has
 			// happened yet if the server turns out not to need (or support) OAuth.
@@ -1737,7 +1742,9 @@ export class MCPCommandController {
 
 			this.#showMessage(["", theme.fg("muted", `Reauthorizing "${name}"...`), ""].join("\n"));
 
-			const currentAuthResource = currentAuth?.resource ? expandEnvVarsDeep(currentAuth.resource) : undefined;
+			const currentAuthResource = currentAuth?.resource
+				? expandEnvVarsDeep(currentAuth.resource, refusedAtConnect)
+				: undefined;
 			const oauthResource =
 				oauth.resource ?? currentAuthResource ?? ("url" in runtimeBaseConfig ? runtimeBaseConfig.url : undefined);
 			const oauthResourceIsFallback = !oauth.resource && !currentAuthResource;

@@ -2,9 +2,10 @@
  * The last stop for a `${VAR}` that nothing resolved.
  *
  * A discovered MCP config is expanded once at load time (`expandEnvVarsDeep` in
- * `discovery/helpers.ts`): `${VAR}` becomes the variable's value, `${VAR:-default}` falls back to
- * the default, and an unset variable with no default is re-emitted as the literal text `${VAR}`.
- * That literal is what this module rejects. Credential-bearing `env` and `headers` values are
+ * `discovery/env-expansion.ts`): `${VAR}` becomes the variable's value, `${VAR:-default}` falls
+ * back to the default, and an unset variable with no default is reported to that call's sink and
+ * left as the literal text `${VAR}`. That literal is what this module rejects, and the grammar it
+ * matches (`UNRESOLVED_ENV_REFERENCE`) is imported from the expansion so the two cannot disagree. Credential-bearing `env` and `headers` values are
  * resolved again through the config-value grammar at connect and already fail closed there
  * (`MCPUnresolvedEnvReferenceError`), so their bytes are a resolved secret by the time a transport
  * sees them and are never scanned here: a password may contain `${`.
@@ -14,14 +15,9 @@
  * text of a variable name.
  */
 
+import { UNRESOLVED_ENV_REFERENCE } from "../discovery/env-expansion";
 import { describeMCPServerTarget } from "./transports/transport-failure";
 import type { MCPServerConfig } from "./types";
-
-/**
- * The residue `expandEnvVars` leaves for an unset variable: `${NAME}`, with no `:-default` part,
- * since a default would have been substituted. `[^{}]` keeps it from spanning two placeholders.
- */
-const UNRESOLVED = /\$\{([^{}]+)\}/;
 
 /**
  * Config fields scanned for an unresolved placeholder, each named as it appears in the config file.
@@ -64,7 +60,7 @@ export function findUnresolvedPlaceholder(config: MCPServerConfig): UnresolvedPl
 	for (const field of PLACEHOLDER_CHECKED_FIELDS) {
 		const value = record[field];
 		if (typeof value === "string") {
-			const match = UNRESOLVED.exec(value);
+			const match = UNRESOLVED_ENV_REFERENCE.exec(value);
 			if (match) return { field, variable: match[1] };
 			continue;
 		}
@@ -72,7 +68,7 @@ export function findUnresolvedPlaceholder(config: MCPServerConfig): UnresolvedPl
 		for (let index = 0; index < value.length; index++) {
 			const item = value[index];
 			if (typeof item !== "string") continue;
-			const match = UNRESOLVED.exec(item);
+			const match = UNRESOLVED_ENV_REFERENCE.exec(item);
 			if (match) return { field: `${field}[${index}]`, variable: match[1] };
 		}
 	}
