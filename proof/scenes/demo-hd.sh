@@ -74,7 +74,7 @@ shot agent-lanes
 # The main agent owns integration and edits the seeded CLI while workers own their
 # disjoint modules. This is still the original user turn or a goal continuation,
 # never a new operator instruction.
-expect_model_screen "Edit: " 900 integration-edit
+expect_model_screen "Edit" 900 integration-edit
 pause 2
 if screen_has "src/cli.ts" || screen_has "src/sign.ts"; then
 	echo "scene: main-agent integration edit visible" >&2

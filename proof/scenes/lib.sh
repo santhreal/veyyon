@@ -357,9 +357,14 @@ shot() {
 	# take left under it. The mark is the record of a frame that landed, so it is only written
 	# when one did, and a failure says so in the log rather than in the gallery.
 	if ! _be_capture "${png}" 2>&1 || [ ! -s "${png}" ]; then
-		echo "scene: shot '$1' captured nothing (the capture failed or wrote an empty file)" >&2
-		return 0
+		abandon_take "$1" "shot '$1' captured nothing (the capture failed or wrote an empty file)"
 	fi
+	if [ -n "${SCENE_LAST_SHOT_PNG:-}" ] && [ -f "${SCENE_LAST_SHOT_PNG}" ]; then
+		if cmp -s "${png}" "${SCENE_LAST_SHOT_PNG}"; then
+			abandon_take "$1" "shot '$1' is byte-identical to previous shot '$(basename "${SCENE_LAST_SHOT_PNG}" .png)'"
+		fi
+	fi
+	SCENE_LAST_SHOT_PNG="${png}"
 	if [ -n "${SCENE_T0:-}" ]; then
 		local ms=$(($(date +%s%3N) - SCENE_T0))
 		# THE THIRD COLUMN IS HOW MUCH WORK THIS FRAME MAY SHOW. The clip used to
