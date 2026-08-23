@@ -1,13 +1,15 @@
+import { createHash } from "node:crypto";
 import { execSync } from "node:child_process";
+import * as fs from "node:fs";
 import * as path from "node:path";
 import { registerCustomApi, unregisterCustomApis } from "@veyyon/ai/api-registry";
 import type { Api, Context, Model, ModelSpec, SimpleStreamOptions, ThinkingConfig } from "@veyyon/ai/types";
 import type { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { buildModel } from "@veyyon/catalog/build";
 import { isVertexExpressOpenAIUrl } from "@veyyon/catalog/hosts";
+import { getBundledModels, getBundledProviders, bundledCatalogDigest } from "@veyyon/catalog/models";
 import { readModelCache } from "@veyyon/catalog/model-cache";
 import { createModelManager, type ModelManagerOptions, type ModelRefreshStrategy } from "@veyyon/catalog/model-manager";
-import { getBundledModels, getBundledProviders } from "@veyyon/catalog/models";
 import {
 	googleAntigravityModelManagerOptions,
 	googleGeminiCliModelManagerOptions,
@@ -53,7 +55,17 @@ import type { ApiKeyResolver, FetchImpl } from "@veyyon/ai";
 import { registerOAuthProvider, unregisterOAuthProviders } from "@veyyon/ai/oauth";
 import type { OAuthCredentials, OAuthLoginCallbacks } from "@veyyon/ai/oauth/types";
 import { getBundledModelReferenceIndex, resolveModelReference } from "@veyyon/catalog/identity";
-import { DAY_MS, errorMessage, HOUR_MS, isBunTestRuntime, isRecord, logger, wrapFetchForExtraCa } from "@veyyon/utils";
+import {
+	atomicWriteFileSync,
+	DAY_MS,
+	errorMessage,
+	getModelDbPath,
+	HOUR_MS,
+	isBunTestRuntime,
+	isRecord,
+	logger,
+	wrapFetchForExtraCa,
+} from "@veyyon/utils";
 import { parseModelString, resolveProviderModelReference } from "../config/model-resolver";
 import type { AuthStorage, OAuthCredential } from "../session/auth-storage";
 import { type ApiKeyResolverModel, type ApiKeyResolverOptions, createApiKeyResolver } from "./api-key-resolver";
@@ -805,6 +817,21 @@ function getDisabledProviderIdsFromSettings(): Set<string> {
 }
 
 /**
+ * Bump when the persisted static stage's contract changes: the resolved record
+ * shape, a hardcoded model policy, or the merge semantics feeding `#loadModels`.
+ * The version prefixes every fingerprint, so old files miss instead of serving
+ * state produced under retired rules — the same discipline as
+ * `CACHE_SCHEMA_VERSION` in `@veyyon/catalog/model-cache`.
+ */
+const REGISTRY_SNAPSHOT_VERSION = 1;
+
+interface StaticModelStage {
+	builtIn: Model<Api>[];
+	cachedStandard: { models: Model<Api>[]; authoritativeFreshProviders: Set<string> };
+	cachedDiscoveries: Model<Api>[];
+}
+
+/**
  * Model registry - loads and manages models, resolves API keys via AuthStorage.
  */
 export class ModelRegistry {
@@ -1071,10 +1098,38 @@ export class ModelRegistry {
 		this.#modelOverrides = modelOverrides;
 
 		this.#addImplicitDiscoverableProviders(configuredProviders);
-		let builtInModels = this.#applyHardcodedModelPolicies(this.#loadBuiltInModels(overrides));
-		const cachedStandardResult = this.#loadCachedStandardProviderModels();
-		const cachedStandardModels = this.#applyHardcodedModelPolicies(cachedStandardResult.models);
-		const cachedDiscoveries = this.#applyHardcodedModelPolicies(this.#loadCachedDiscoverableModels());
+
+		// The three data layers below are a pure function of the bundled catalog
+		// bytes, the discovery cache database and the custom-config structures —
+		// nothing auth- or runtime-derived enters them. That makes the stage
+		// safe to persist: a fingerprint over exactly those inputs either names
+		// this exact state or misses, and a miss rebuilds through the same code.
+		const staticFingerprint = this.#staticModelStageFingerprint();
+		const restored = isBunTestRuntime() ? null : this.#readStaticModelStage(staticFingerprint);
+		let builtInModels: Model<Api>[];
+		let cachedStandardModels: Model<Api>[];
+		let cachedDiscoveries: Model<Api>[];
+		let authoritativeFreshProviders: Set<string>;
+		if (restored) {
+			builtInModels = restored.builtIn;
+			cachedStandardModels = restored.cachedStandard.models;
+			cachedDiscoveries = restored.cachedDiscoveries;
+			authoritativeFreshProviders = restored.cachedStandard.authoritativeFreshProviders;
+		} else {
+			builtInModels = this.#applyHardcodedModelPolicies(this.#loadBuiltInModels(overrides));
+			const cachedStandardResult = this.#loadCachedStandardProviderModels();
+			cachedStandardModels = this.#applyHardcodedModelPolicies(cachedStandardResult.models);
+			cachedDiscoveries = this.#applyHardcodedModelPolicies(this.#loadCachedDiscoverableModels());
+			authoritativeFreshProviders = cachedStandardResult.authoritativeFreshProviders;
+			if (!isBunTestRuntime()) {
+				this.#writeStaticModelStage(staticFingerprint, {
+					builtIn: builtInModels,
+					cachedStandard: { models: cachedStandardModels, authoritativeFreshProviders },
+					cachedDiscoveries,
+				});
+			}
+		}
+
 		// Only drop bundled fallback models when the cached project-catalog row is
 		// itself fresh AND authoritative. A stale or non-authoritative snapshot
 		// (e.g. after ADC discovery failure rewrote the row with authoritative=0)
@@ -1082,11 +1137,11 @@ export class ModelRegistry {
 		// stale project-scoped rows in API-key-only environments.
 		const cachedAuthoritativeProviders = new Set<string>();
 		for (const provider of providersWithAuthoritativeProjectCatalog(cachedStandardModels)) {
-			if (cachedStandardResult.authoritativeFreshProviders.has(provider)) {
+			if (authoritativeFreshProviders.has(provider)) {
 				cachedAuthoritativeProviders.add(provider);
 			}
 		}
-		for (const provider of cachedStandardResult.authoritativeFreshProviders) {
+		for (const provider of authoritativeFreshProviders) {
 			if (AUTHORITATIVE_RUNTIME_CATALOG_PROVIDERS.has(provider)) {
 				cachedAuthoritativeProviders.add(provider);
 			}
@@ -1106,6 +1161,95 @@ export class ModelRegistry {
 		const withModelOverrides = this.#applyModelOverrides(collapseBuiltModelVariants(combined), this.#modelOverrides);
 		this.#models = this.#applyProviderReportedWindows(this.#applyRuntimeProviderOverrides(withModelOverrides));
 		this.#lastStaticLoadMtime = this.#modelsConfigFile.getMtimeMs();
+	}
+
+	/** Content digest of everything the static stage reads. */
+	#staticModelStageFingerprint(): string {
+		const dbPath = this.#cacheDbPath ?? getModelDbPath();
+		// WAL mode commits recent cache rows to `-wal` without touching the main
+		// database file, so every sidecar must join the stamp: a refresh that only
+		// moved the WAL would otherwise leave this stage fingerprint unchanged and
+		const parts: Array<string | number> = [REGISTRY_SNAPSHOT_VERSION, bundledCatalogDigest()];
+		for (const suffix of ["", "-wal", "-shm"]) {
+			try {
+				const stats = fs.statSync(dbPath + suffix);
+				parts.push(`${stats.mtimeMs}:${stats.size}`);
+			} catch {
+				parts.push("absent");
+			}
+		}
+		const customConfigDigest = createHash("sha256")
+			.update(
+				JSON.stringify({
+					overlays: this.#customModelOverlays,
+					overrides: Array.from(this.#providerOverrides),
+					modelOverrides: Array.from(this.#modelOverrides, ([provider, perModel]) => [provider, Array.from(perModel)]),
+					keyless: Array.from(this.#keylessProviders),
+					discoverable: this.#discoverableProviders,
+				}),
+			)
+			.digest("hex");
+		parts.push(customConfigDigest);
+		return parts.join(":");
+	}
+
+	#staticModelStagePath(): string {
+		return path.join(path.dirname(this.#cacheDbPath ?? getModelDbPath()), "resolved-models.json");
+	}
+
+	#readStaticModelStage(fingerprint: string): StaticModelStage | null {
+		try {
+			const parsed: unknown = JSON.parse(fs.readFileSync(this.#staticModelStagePath(), "utf8"));
+			if (!isRecord(parsed) || parsed.fingerprint !== fingerprint || !isRecord(parsed.stage)) return null;
+			const stage = parsed.stage;
+			if (!isRecord(stage.cachedStandard)) return null;
+			const builtIn = this.#snapshotModelArray(stage.builtIn);
+			const cachedStandard = this.#snapshotModelArray(stage.cachedStandard.models);
+			const cachedDiscoveries = this.#snapshotModelArray(stage.cachedDiscoveries);
+			if (!builtIn || !cachedStandard || !cachedDiscoveries) return null;
+			if (!Array.isArray(stage.cachedStandard.authoritativeFreshProviders)) return null;
+			const authoritativeFreshProviders = stage.cachedStandard.authoritativeFreshProviders.filter(
+				(provider): provider is string => typeof provider === "string",
+			);
+			if (authoritativeFreshProviders.length !== stage.cachedStandard.authoritativeFreshProviders.length) return null;
+			return {
+				builtIn,
+				cachedStandard: { models: cachedStandard, authoritativeFreshProviders: new Set(authoritativeFreshProviders) },
+				cachedDiscoveries,
+			};
+		} catch {
+			return null;
+		}
+	}
+
+	#writeStaticModelStage(fingerprint: string, stage: StaticModelStage): void {
+		try {
+			atomicWriteFileSync(this.#staticModelStagePath(), JSON.stringify({ fingerprint, stage }));
+		} catch (error) {
+			logger.debug("Static model stage snapshot not written", { error: errorMessage(error) });
+		}
+	}
+
+	/**
+	 * Validate an array of persisted model records shallowly and cast. The
+	 * fingerprint already pins the bytes to a writer of this exact version and
+	 * input set, so per-field revalidation would re-parse what the writer just
+	 * guaranteed; the guards here only reject corruption JSON.parse survived.
+	 */
+	#snapshotModelArray(value: unknown): Model<Api>[] | null {
+		if (!Array.isArray(value)) return null;
+		for (const entry of value) {
+			if (
+				!isRecord(entry) ||
+				typeof entry.id !== "string" ||
+				typeof entry.provider !== "string" ||
+				typeof entry.api !== "string"
+			) {
+				return null;
+			}
+		}
+		// Shape-checked above; the record contract itself is owned by the writer.
+		return value as Model<Api>[];
 	}
 
 	/** Load built-in models, applying provider-level overrides only.

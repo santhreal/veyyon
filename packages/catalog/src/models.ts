@@ -1,5 +1,10 @@
+import { createHash } from "node:crypto";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { atomicWriteFileSync, errorMessage, getModelDbPath, isBunTestRuntime, logger } from "@veyyon/utils";
 import { buildModel } from "./build";
-import MODELS from "./models.json" with { type: "json" };
+import modelsSourceJson from "./models.json" with { type: "text" };
+import { isRecord } from "./utils";
 import type { Api, Model, ModelSpec, Usage } from "./types";
 
 /**
@@ -10,24 +15,128 @@ import type { Api, Model, ModelSpec, Usage } from "./types";
  *
  * For runtime-aware resolution, use `createModelManager()` / `resolveProviderModels()`.
  */
-let modelRegistry: Map<string, Map<string, Model<Api>>> | undefined;
 
-/** Build (once) and return the enriched bundled-model registry. Lazy: enrichment of ~12K models is deferred off module load. */
-function getModelRegistry(): Map<string, Map<string, Model<Api>>> {
-	if (modelRegistry === undefined) {
-		modelRegistry = new Map();
-		for (const [provider, models] of Object.entries(MODELS)) {
-			const providerModels = new Map<string, Model<Api>>();
-			for (const [id, model] of Object.entries(models)) {
-				providerModels.set(id, buildModel(model as ModelSpec<Api>));
-			}
-			modelRegistry.set(provider, providerModels);
+/**
+ * Shape of the generated `models.json`, declared independently of the import:
+ * the source arrives as text so its bytes can feed the snapshot fingerprint,
+ * and parsing waits until a consumer actually builds the registry (a snapshot
+ * hit never parses the catalog at all).
+ */
+type BundledProviderModels = { readonly [modelId: string]: ModelSpec<Api> };
+type BundledModelsJson = { readonly [provider: string]: BundledProviderModels };
+
+export type GeneratedProvider = Extract<keyof BundledModelsJson, string>;
+
+// The json import resolves through the file itself rather than a sibling
+// declaration, so its value arrives typed as the literal document; one cast
+// pins it to the text this module treats it as.
+const modelsSource = modelsSourceJson as unknown as string;
+
+/**
+ * Persisted enriched-registry snapshot format. The snapshot stores RESOLVED
+ * records (`buildModel` output), so a change to what `buildModel` produces
+ * makes an old snapshot lie about capabilities the request builders rely on.
+ * Bump this version whenever the resolved record's contract changes, the same
+ * way `CACHE_SCHEMA_VERSION` is bumped in `model-cache.ts` for cached specs.
+ */
+const ENRICHED_REGISTRY_FORMAT_VERSION = 1;
+let modelRegistry: Map<string, Map<string, Model<Api>>> | undefined;
+let parsedModels: BundledModelsJson | undefined;
+let catalogDigest: string | undefined;
+
+/**
+ * Stable content digest of the bundled catalog text. Registry-level snapshots
+ * (for example the coding-agent model registry's persisted static stage) fold
+ * it into their fingerprints so a catalog regeneration invalidates them.
+ */
+export function bundledCatalogDigest(): string {
+	catalogDigest ??= createHash("sha256").update(modelsSource).digest("hex");
+	return catalogDigest;
+}
+
+/** Content hash of the bundled catalog plus the snapshot format version. */
+function registryFingerprint(): string {
+	return `v${ENRICHED_REGISTRY_FORMAT_VERSION}:${bundledCatalogDigest()}`;
+}
+
+function bundledRegistryCachePath(dbPath?: string): string {
+	return path.join(path.dirname(dbPath ?? getModelDbPath()), "bundled-models.json");
+}
+
+function buildRegistry(source: BundledModelsJson): Map<string, Map<string, Model<Api>>> {
+	const registry = new Map<string, Map<string, Model<Api>>>();
+	for (const [provider, models] of Object.entries(source)) {
+		const providerModels = new Map<string, Model<Api>>();
+		for (const [id, model] of Object.entries(models)) {
+			providerModels.set(id, buildModel(model));
 		}
+		registry.set(provider, providerModels);
+	}
+	return registry;
+}
+
+/**
+ * Restore the enriched registry from its on-disk snapshot, or null when the
+ * snapshot is absent, stale (fingerprint mismatch), or unreadable. A cache is
+ * allowed to miss: the caller falls back to the build path, which produces the
+ * same records.
+ */
+export function readEnrichedRegistrySnapshot(
+	fingerprint: string,
+	dbPath?: string,
+): Map<string, Map<string, Model<Api>>> | null {
+	try {
+		const parsed: unknown = JSON.parse(fs.readFileSync(bundledRegistryCachePath(dbPath), "utf8"));
+		if (!isRecord(parsed) || parsed.fingerprint !== fingerprint || !isRecord(parsed.registry)) return null;
+		const registry = new Map<string, Map<string, Model<Api>>>();
+		for (const [provider, models] of Object.entries(parsed.registry)) {
+			if (!isRecord(models)) return null;
+			registry.set(provider, new Map(Object.entries(models) as Array<[string, Model<Api>]>));
+		}
+		return registry;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Write the enriched registry next to `models.db`, following the
+ * `models-dev.json` payload-cache precedent. Failures are debug-level: the
+ * snapshot is an optimization across restarts, and the next launch rebuilds.
+ */
+export function writeEnrichedRegistrySnapshot(
+	registry: Map<string, Map<string, Model<Api>>>,
+	fingerprint: string,
+	dbPath?: string,
+): void {
+	try {
+		const payload = {
+			fingerprint,
+			registry: Object.fromEntries(Array.from(registry, ([provider, models]) => [provider, Object.fromEntries(models)])),
+		};
+		atomicWriteFileSync(bundledRegistryCachePath(dbPath), JSON.stringify(payload));
+	} catch (error) {
+		logger.debug("Bundled model registry snapshot not written", { error: errorMessage(error) });
+	}
+}
+
+/** Build (once) and return the enriched bundled-model registry. */
+function getModelRegistry(): Map<string, Map<string, Model<Api>>> {
+	if (modelRegistry !== undefined) return modelRegistry;
+	const fingerprint = registryFingerprint();
+	// A test process shares the operator's real agent dir; never read or write
+	// the snapshot there (the same reason model-cache tests pass explicit paths).
+	if (!isBunTestRuntime()) {
+		const restored = readEnrichedRegistrySnapshot(fingerprint);
+		if (restored) modelRegistry = restored;
+	}
+	if (modelRegistry === undefined) {
+		parsedModels ??= JSON.parse(modelsSource) as BundledModelsJson;
+		modelRegistry = buildRegistry(parsedModels);
+		if (!isBunTestRuntime()) writeEnrichedRegistrySnapshot(modelRegistry, fingerprint);
 	}
 	return modelRegistry;
 }
-
-export type GeneratedProvider = keyof typeof MODELS;
 
 export function getBundledModel<TApi extends Api = Api>(provider: GeneratedProvider, modelId: string): Model<TApi> {
 	const providerModels = getModelRegistry().get(provider);
@@ -35,7 +144,11 @@ export function getBundledModel<TApi extends Api = Api>(provider: GeneratedProvi
 }
 
 export function getBundledProviders(): GeneratedProvider[] {
-	return Object.keys(MODELS) as GeneratedProvider[];
+	// Keys come from the built/restored registry rather than the raw source so a
+	// snapshot hit answers without parsing the catalog text. JSON round-trips
+	// preserve insertion order for non-numeric keys, so provider order matches
+	// `Object.keys` on the source either way.
+	return Array.from(getModelRegistry().keys());
 }
 
 export function getBundledModels(provider: GeneratedProvider): Model<Api>[] {
