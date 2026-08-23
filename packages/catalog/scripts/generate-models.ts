@@ -71,6 +71,20 @@ const packageRoot = path.join(import.meta.dir, "..");
 const DISCOVERY_ONLY_PROVIDERS = new Set(["ollama", "vllm", "lm-studio", "litellm"]);
 const RETIRED_PROVIDERS = new Set(["wafer-pass", "wandb"]);
 
+const providerFilterArg = process.argv.find(arg => arg.startsWith("--providers="));
+const providerFilter = providerFilterArg
+	? new Set(
+			providerFilterArg
+				.slice("--providers=".length)
+				.split(",")
+				.map(provider => provider.trim())
+				.filter(Boolean),
+		)
+	: undefined;
+if (providerFilter?.size === 0) {
+	throw new Error("--providers requires at least one provider id");
+}
+
 async function resolveProviderApiKey(providerId: string, catalog: CatalogDiscoveryConfig): Promise<string | undefined> {
 	for (const envVar of catalog.envVars ?? []) {
 		const value = $env[envVar as keyof typeof $env];
@@ -805,14 +819,27 @@ async function generateModels() {
 		);
 	};
 
-	const MODELS: Record<string, Record<string, ModelSpec>> = sortObj(providers);
+	const outputProviders: Record<string, Record<string, ModelSpec>> = providerFilter
+		? { ...(prevModelsJson as unknown as Record<string, Record<string, ModelSpec>>) }
+		: providers;
+	if (providerFilter) {
+		for (const provider of providerFilter) {
+			const generated = providers[provider];
+			if (!generated) {
+				throw new Error(`Cannot generate unknown or empty provider: ${provider}`);
+			}
+			outputProviders[provider] = generated;
+		}
+	}
+
+	const MODELS: Record<string, Record<string, ModelSpec>> = sortObj(outputProviders);
 	for (const key in MODELS) {
 		MODELS[key] = sortObj(MODELS[key]);
 	}
 
 	// Generate JSON file
 	await Bun.write(path.join(packageRoot, "src/models.json"), JSON.stringify(MODELS, null, "	"));
-	console.log("Generated src/models.json");
+	console.log(`Generated src/models.json${providerFilter ? ` for ${[...providerFilter].join(", ")}` : ""}`);
 
 	// Print statistics
 	const totalModels = allModels.length;

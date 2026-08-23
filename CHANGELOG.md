@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added Command Code API-key login through the Studio Provider page, with validation against its Provider API, and Nous Research Portal OAuth device login with rotating refresh tokens and short-lived inference JWTs.
+- Added Command Code and Nous Research provider catalogs with credential-aware model discovery.
+
+### Fixed
+
+- Corrected Command Code context and output-limit metadata and changed Nous Portal discovery to use OAuth-backed, tool-capable rich model metadata with Claude Sonnet 4.6 as the default.
+
 ## [1.2.0] - 2026-08-23
 
 ### Added
@@ -12,7 +21,6 @@
 - `bun scripts/verify-scene.ts <scene>` checks a capture scene without recording it: every string the scene waits for must be produced by the prompt it submits, the product's own source, the sandbox seed, or a line the scene types, and anything else is declared in the scene with a `# needle-source:` line. A guard nothing produces does not fail fast — it waits out its timeout and the publish step then leaves the previous take's frame under that name. The HD recorder runs it as a preflight, refuses an endpoint that is not on the recording host, refuses a model row the server does not serve, and writes `<scene>-model.txt` beside the frames naming the row, endpoint and host the take was driven by. Two guards in the hero scene were already stale: the todo board carries no count in its header, and "Status: complete" is only drawn in a goal details panel the scene never opens.
 - `veyyon trust` and `/trust` decide what a project may run: bare reports, `approve` records the files exactly as they are now, `--deny`/`deny` remembers a refusal so the next launch does not ask again, `--forget`/`forget` drops the decision, and a named path decides one file — which is how a refusal that names a file the scan does not list gets answered without leaving the session. Decisions live in `<agent dir>/project-trust.json`, keyed by the symlink-resolved project root, so a symlink to a project is not a second identity; a store from another version, or one whose records are malformed, is discarded rather than half-believed.
 - `/secret clear everywhere` empties all three vaults in one command. Clearing was per vault and the only way to be sure nothing was left was to run `clear global`, `clear profile` and `clear project` and read three reports, so the question people actually ask — "is any of this still stored" — had no command. The new form names every scope in one report, including the ones that held nothing, and revokes every placeholder it removed in a single notice to the model. `everywhere`, `all`, `everything` and `every` all parse, and only on `clear`: they are refused on `add`, `scope`, `rm` and `discard`, where "all of them" is not a destination.
-- Command Code and Nous Research join the login registry as API-key providers. Command Code validates a pasted key against its Provider API (`https://api.commandcode.ai/provider/v1`) with a Kimi K2.7 Code chat completion; Nous Research validates against `https://inference-api.nousresearch.com/v1` with a Hermes 4 completion. Both accept headless env fallbacks through the catalog table's `envVars` (`COMMAND_CODE_API_KEY`, `NOUS_API_KEY`).
 - `proof/zoom.py` holds a recording on one measured region and eases back out, so a row whose subject is a small block of text survives the downsample from the 2560-wide capture to the published 1920.
 - `Snapshot.clippedLines` and `SnapshotStore.recordClippedLines` record the lines a producer showed only a prefix of, so the patcher can tell a clipped line from one that was never rendered at all. A store implemented outside this package must add the method.
 - `editRewritesItsAnchor` and `collectRewrittenAnchorLines` answer whether an edit replaces the bytes of the lines it anchors on, beside `collectEditAnchorLines`, which already owned which lines an edit set anchors against.

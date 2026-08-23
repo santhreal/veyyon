@@ -1,4 +1,5 @@
 import { decodeJwtPayload } from "@veyyon/utils/jwt";
+import { isRecord } from "@veyyon/utils/type-guards";
 import * as AIError from "../../error";
 import type { FetchImpl } from "../../types";
 import { pollOAuthDeviceCodeFlow } from "./device-code";
@@ -109,7 +110,7 @@ function parseTokenResponse(payload: TokenResponse, refreshTokenFallback?: strin
 	}
 
 	const decodedClaims = decodeJwtPayload<unknown>(access);
-	if (!decodedClaims || typeof decodedClaims !== "object" || Array.isArray(decodedClaims)) {
+	if (!isRecord(decodedClaims)) {
 		throw new AIError.OAuthError("Nous Portal access_token is not an inference JWT", {
 			kind: "validation",
 			provider: PROVIDER_ID,
@@ -201,7 +202,7 @@ async function pollForToken(
 	fetchImpl: FetchImpl,
 	signal?: AbortSignal,
 ): Promise<OAuthCredentials> {
-	return pollOAuthDeviceCodeFlow({
+	return pollOAuthDeviceCodeFlow<OAuthCredentials>({
 		intervalSeconds: Math.min(device.intervalSeconds, 1),
 		expiresInSeconds: device.expiresInSeconds,
 		signal,
