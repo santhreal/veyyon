@@ -19,14 +19,16 @@ import { describe, expect, it } from "bun:test";
 import { CATALOG_PROVIDERS } from "../src/provider-models/descriptors";
 import {
 	getPriorityPremiumRequests,
-	providersDeclaring,
-	providerWireCapabilities,
 	realizesPriorityServiceTier,
 	resolveModelServiceTier,
-	SERVICE_TIERS,
-	type ServiceTier,
 	serviceTierFamily,
 	shouldSendServiceTier,
+} from "../src/provider-models/service-tier";
+import {
+	providersDeclaring,
+	providerWireCapabilities,
+	SERVICE_TIERS,
+	type ServiceTier,
 } from "../src/provider-models/wire-capabilities";
 import type { Api, Model } from "../src/types";
 
