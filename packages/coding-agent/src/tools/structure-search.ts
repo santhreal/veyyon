@@ -37,7 +37,7 @@ import {
 	PREVIEW_LIMITS,
 	replaceTabs,
 } from "./render-utils";
-import { resolveToolSearchScope } from "./search-scope";
+import { isImmutableSearchSourcePath, resolveToolSearchScope } from "./search-scope";
 import { ToolError, throwIfAborted } from "./tool-errors";
 import { toolResult } from "./tool-result";
 
@@ -185,6 +185,7 @@ export async function executeStructureSearch(
 			rawPaths,
 			cwd: session.cwd,
 			internalUrlAction: "search",
+			trackImmutableSources: true,
 			settings: session.settings,
 			signal,
 			localProtocolOptions: session.localProtocolOptions,
@@ -200,7 +201,14 @@ export async function executeStructureSearch(
 				return { sourcePath: materialized.path, immutable: true };
 			},
 		});
-		const { searchPath: resolvedSearchPath, scopePath, isDirectory, multiTargets, globFilter } = scope;
+		const {
+			searchPath: resolvedSearchPath,
+			scopePath,
+			isDirectory,
+			multiTargets,
+			globFilter,
+			immutableSourcePaths,
+		} = scope;
 
 		const DEFAULT_AST_LIMIT = 50;
 		const result = multiTargets
@@ -280,6 +288,7 @@ export async function executeStructureSearch(
 		if (useHashLines) {
 			for (const relativePath of fileList) {
 				const absolutePath = path.resolve(session.cwd, relativePath);
+				if (isImmutableSearchSourcePath(absolutePath, immutableSourcePaths)) continue;
 				// Whole-file content tag: any anchor validates while the file is
 				// unchanged; over-cap / unreadable files get no tag (plain output).
 				const tag = await recordFileSnapshot(session, absolutePath);

@@ -8,9 +8,8 @@ import { removeWithRetries } from "@veyyon/utils";
 
 /**
  * The unified search facade must route every public discriminator through the
- * production engine while rejecting fields owned by another mode. Files-mode
- * tolerates an accidental `path` field but keeps `input` authoritative; this
- * recovers provider calls without making the public contract ambiguous.
+ * production engine while rejecting fields owned by another mode. This suite
+ * does not cover each engine's pattern dialect; their engine suites own that.
  */
 describe("one search tool dispatches every workspace search mode", () => {
 	let cwd: string;
@@ -48,6 +47,14 @@ describe("one search tool dispatches every workspace search mode", () => {
 		expect(text).toContain("sample.ts");
 	});
 
+	it("keeps the historical slash alias scoped to the workspace", async () => {
+		const result = await tool.execute("search-files-root-alias", { type: "files", input: "/" });
+		const text = result.content.find(block => block.type === "text")?.text ?? "";
+
+		expect(result.details?.type).toBe("files");
+		expect(text).toContain("sample.ts");
+	});
+
 	it("rejects a field owned by another mode but ignores an absent optional field", async () => {
 		await expect(
 			tool.execute("search-invalid-field", { type: "text", input: "needle", hidden: true }),
@@ -60,17 +67,6 @@ describe("one search tool dispatches every workspace search mode", () => {
 			hidden: undefined,
 		});
 		expect(result.details?.type).toBe("text");
-	});
-
-	it("tolerates files path but keeps the required input authoritative", async () => {
-		const result = await tool.execute("search-files-extra-path", {
-			type: "files",
-			input: "**/*.ts",
-			path: "missing-scope",
-		});
-		const text = result.content.find(block => block.type === "text")?.text ?? "";
-		expect(text).toContain("sample.ts");
-		expect(tool.filesystemTargets({ type: "files", input: "src/**/*.ts", path: "/outside" })).toEqual(["src"]);
 	});
 
 	it("rejects empty or whitespace search input", async () => {
@@ -86,6 +82,7 @@ describe("one search tool dispatches every workspace search mode", () => {
 	});
 
 	it.each([
+		["files", { type: "files" as const, input: "**/*.ts", path: "sample.ts" }, "path"],
 		["files", { type: "files" as const, input: "**/*.ts", case: true }, "case"],
 		["files", { type: "files" as const, input: "**/*.ts", skip: 0 }, "skip"],
 		["text", { type: "text" as const, input: "needle", hidden: true }, "hidden"],
@@ -115,7 +112,12 @@ describe("one search tool dispatches every workspace search mode", () => {
 		expect(tool.approval({ type: "text", input: "needle", path: "src" })).toBe("read");
 		expect(tool.approval({ type: "text", input: "needle", path: "ssh://host/path" })).toBe("exec");
 		expect(tool.approval({ type: "structure", input: "console.log($A)", path: "src/**/*.ts" })).toBe("read");
-		expect(tool.approval({ type: "structure", input: "console.log($A)", path: "ssh://host/path" })).toBe("exec");
 		expect(tool.approval(null)).toBe("read");
+	});
+
+	it("fails unsupported structure ssh scope without an exec approval prompt", async () => {
+		const params = { type: "structure" as const, input: "console.log($A)", path: "ssh://host/repo/**/*.ts" };
+		expect(tool.approval(params)).toBe("read");
+		await expect(tool.execute("search-structure-ssh", params)).rejects.toThrow("Cannot search a remote ssh:// path");
 	});
 });

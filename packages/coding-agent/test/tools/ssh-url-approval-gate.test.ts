@@ -106,15 +106,6 @@ describe("ssh:// tools are exec-gated through the production approval wrapper", 
 				ctx("ask-command"),
 			),
 		).rejects.toThrow(APPROVAL_RE);
-		await expect(
-			tool("search").execute(
-				"s-structure-ssh",
-				{ type: "structure", input: "call($A)", path: "ssh://localhost/repo/**/*.ts" },
-				undefined,
-				undefined,
-				ctx("ask-command"),
-			),
-		).rejects.toThrow(APPROVAL_RE);
 		const ok = await tool("search").execute(
 			"s-local",
 			{ type: "text", input: "hello", path: "." },

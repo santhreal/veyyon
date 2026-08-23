@@ -115,6 +115,7 @@ describe("SearchTool internal URL resolution", () => {
 		await Bun.write(path.join(skillDir, "SKILL.md"), "# Demo\n");
 		await Bun.write(path.join(skillDir, "references", "index.md"), "install needle\n");
 		await Bun.write(path.join(skillDir, "references", "docs", "guide.md"), "deep needle\n");
+		await Bun.write(path.join(skillDir, "references", "example.ts"), "demoCall(value);\n");
 		setActiveSkills([
 			{
 				name: "demo",
@@ -420,6 +421,19 @@ describe("SearchTool internal URL resolution", () => {
 		// No hashline section headers or numbered editable lines for immutable sources.
 		expect(text).not.toMatch(/^\[[^#\r\n]+#[0-9A-F]{4}\]$/m);
 		expect(text).not.toMatch(/^\*?\s*\d+:/m);
+	});
+
+	it("suppresses hashline anchors when structure-searching immutable skill:// sources", async () => {
+		await registerSkillDirectory();
+		const result = await new SearchTool(createSession({ hasEditTool: true })).execute("test-structure", {
+			type: "structure",
+			input: "demoCall($A)",
+			path: "skill://demo/references/example.ts",
+		});
+
+		const text = getResultText(result);
+		expect(text).toContain("demoCall(value)");
+		expect(text).not.toMatch(/^\[[^#\r\n]+#[0-9A-F]{4}\]$/m);
 	});
 
 	it("resolves local:// URLs before file-name lookup", async () => {

@@ -18,7 +18,7 @@ Always pass `type` before `input`:
 - For `text` and `structure`, `input` is the pattern and `path` is the scope; never swap them. Pass the narrowest known `path` instead of repeating a broad workspace search.
 - Scope `structure` to one language. Declaration forms are distinct: functions, methods, and arrow functions require their own valid patterns. C++ expression-statement calls require the trailing semicolon.
 - A structure parse error means the input or language scope is wrong. Correct it rather than falling back to `text`.
-- `path` accepts a file, directory, glob, internal URL, line selector for `text`, or semicolon-delimited set. Omit it only when the workspace root is the intended scope.
+- `path` accepts a file, directory, glob, internal URL, line selector for `text`, or semicolon-delimited set. `ssh://` scopes work only with `text`; use `read` to inspect remote code before a local `structure` search. Omit `path` only when the workspace root is the intended scope.
 </instruction>
 
 <output>
