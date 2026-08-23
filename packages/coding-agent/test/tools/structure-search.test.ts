@@ -5,10 +5,10 @@ import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
 import { createTools, type ToolSession } from "@veyyon/coding-agent/tools";
-import { astGrepToolRenderer } from "@veyyon/coding-agent/tools/ast-grep";
+import { structureSearchRenderer } from "@veyyon/coding-agent/tools/structure-search";
 import { visibleWidth } from "@veyyon/tui";
-import { removeWithRetries, sanitizeText } from "@veyyon/utils";
 import { useFullColor } from "../helpers/theme-assertions";
+import { removeWithRetries, sanitizeText } from "@veyyon/utils";
 
 function createTestSession(cwd = "/tmp/test", overrides: Partial<ToolSession> = {}): ToolSession {
 	return {
@@ -262,7 +262,249 @@ describe("search structure zero-match diagnostics", () => {
 	});
 });
 
-describe("astGrepToolRenderer", () => {
+describe("search structure mixed-language and pagination contracts", () => {
+	it("does not surface unrelated language pattern errors when a mixed directory has a valid match", async () => {
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "ast-grep-mixed-"));
+		try {
+			await fs.writeFile(
+				path.join(tempDir, "app.ts"),
+				"export function compute(x: number) {\n\treturn x * 2;\n}\n",
+				"utf8",
+			);
+			await fs.writeFile(path.join(tempDir, "helper.py"), "def compute(x):\n    return x * 2\n", "utf8");
+
+			const tools = await createTools(createTestSession(tempDir));
+			const tool = tools.find(entry => entry.name === "search");
+			expect(tool).toBeDefined();
+
+			// 1. TypeScript search in mixed directory
+			const tsResult = await tool!.execute("ast-grep-ts", {
+				type: "structure",
+				input: "export function compute($$$ARGS) { $$$BODY }",
+				path: tempDir,
+			});
+
+			const tsText = tsResult.content.find(content => content.type === "text")?.text ?? "";
+			const tsDetails = tsResult.details;
+			const tsStructure =
+				tsDetails && typeof tsDetails === "object" && "result" in tsDetails ? tsDetails.result : undefined;
+
+			expect(tsStructure?.matchCount).toBe(1);
+			expect(tsStructure?.fileCount).toBe(1);
+			expect(tsStructure?.parseErrors).toBeUndefined();
+			expect(tsText).toContain("compute");
+			expect(tsText).not.toContain("Parse issues");
+			expect(tsText).not.toContain("helper.py");
+			expect(tsResult.useless).toBeUndefined();
+
+			// 2. Python search in mixed directory
+			const pyResult = await tool!.execute("ast-grep-py", {
+				type: "structure",
+				input: "def compute($$$ARGS): $$$BODY",
+				path: tempDir,
+			});
+
+			const pyText = pyResult.content.find(content => content.type === "text")?.text ?? "";
+			const pyDetails = pyResult.details;
+			const pyStructure =
+				pyDetails && typeof pyDetails === "object" && "result" in pyDetails ? pyDetails.result : undefined;
+
+			expect(pyStructure?.matchCount).toBe(1);
+			expect(pyStructure?.fileCount).toBe(1);
+			expect(pyStructure?.parseErrors).toBeUndefined();
+			expect(pyText).toContain("compute");
+			expect(pyText).not.toContain("Parse issues");
+			expect(pyText).not.toContain("app.ts");
+			expect(pyResult.useless).toBeUndefined();
+		} finally {
+			await removeWithRetries(tempDir);
+		}
+	});
+
+	it("fails loud with parse error diagnostics when pattern is invalid across all candidate languages", async () => {
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "ast-grep-invalid-pat-"));
+		try {
+			await fs.writeFile(
+				path.join(tempDir, "app.ts"),
+				"export function compute(x: number) {\n\treturn x * 2;\n}\n",
+				"utf8",
+			);
+			await fs.writeFile(path.join(tempDir, "helper.py"), "def compute(x):\n    return x * 2\n", "utf8");
+
+			const tools = await createTools(createTestSession(tempDir));
+			const tool = tools.find(entry => entry.name === "search");
+			expect(tool).toBeDefined();
+
+			const result = await tool!.execute("ast-grep-invalid", {
+				type: "structure",
+				input: "let a = 1; let b = 2; let c = 3;",
+				path: tempDir,
+			});
+
+			const text = result.content.find(content => content.type === "text")?.text ?? "";
+			const details = result.details;
+			const structureResult =
+				details && typeof details === "object" && "result" in details ? details.result : undefined;
+
+			expect(structureResult?.matchCount).toBe(0);
+			expect(structureResult?.parseErrors).toBeDefined();
+			expect((structureResult?.parseErrors?.length ?? 0) > 0).toBe(true);
+			expect(text).toContain("No matches found. Parse issues mean the query may be mis-scoped");
+			expect(text).toContain("Parse issues:");
+			expect(result.useless).toBe(true);
+		} finally {
+			await removeWithRetries(tempDir);
+		}
+	});
+
+	it("preserves genuine source parse errors when malformed source exists alongside matching files", async () => {
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "ast-grep-source-err-"));
+		try {
+			await fs.writeFile(path.join(tempDir, "broken.ts"), "export function broken( { return 1; }", "utf8");
+			await fs.writeFile(
+				path.join(tempDir, "valid.ts"),
+				"export function compute(x: number) {\n\treturn x * 2;\n}\n",
+				"utf8",
+			);
+			await fs.writeFile(path.join(tempDir, "helper.py"), "def compute(x):\n    return x * 2\n", "utf8");
+
+			const tools = await createTools(createTestSession(tempDir));
+			const tool = tools.find(entry => entry.name === "search");
+			expect(tool).toBeDefined();
+
+			const result = await tool!.execute("ast-grep-source-err", {
+				type: "structure",
+				input: "export function compute($$$ARGS) { $$$BODY }",
+				path: tempDir,
+			});
+
+			const text = result.content.find(content => content.type === "text")?.text ?? "";
+			const details = result.details;
+			const structureResult =
+				details && typeof details === "object" && "result" in details ? details.result : undefined;
+
+			expect(structureResult?.matchCount).toBe(1);
+			expect(structureResult?.fileCount).toBe(1);
+			expect(structureResult?.parseErrors).toHaveLength(1);
+			expect(structureResult?.parseErrors?.[0]).toContain(
+				"broken.ts: parse error (syntax tree contains error nodes)",
+			);
+			expect(text).toContain("compute");
+			expect(text).toContain("broken.ts: parse error (syntax tree contains error nodes)");
+		} finally {
+			await removeWithRetries(tempDir);
+		}
+	});
+
+	it("handles pagination before, at, and after end, preserving totals and useless status", async () => {
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "ast-grep-page-"));
+		try {
+			const fileCount = 5;
+			for (let i = 1; i <= fileCount; i++) {
+				await fs.writeFile(path.join(tempDir, `item-${i}.ts`), `export const item_${i} = ${i};\n`, "utf8");
+			}
+
+			const tools = await createTools(createTestSession(tempDir));
+			const tool = tools.find(entry => entry.name === "search");
+			expect(tool).toBeDefined();
+
+			// 1. skip: 2 (before end)
+			const beforeResult = await tool!.execute("ast-grep-page-before", {
+				type: "structure",
+				input: "export const $NAME = $VAL;",
+				path: tempDir,
+				skip: 2,
+			});
+			const beforeText = beforeResult.content.find(content => content.type === "text")?.text ?? "";
+			const beforeDetails =
+				beforeResult.details && typeof beforeResult.details === "object" && "result" in beforeResult.details
+					? beforeResult.details.result
+					: undefined;
+
+			expect(beforeDetails?.matchCount).toBe(5);
+			expect(beforeDetails?.files?.length).toBe(3);
+			expect(beforeText).toContain("item_3");
+			expect(beforeResult.useless).toBeUndefined();
+
+			// 2. skip: 5 (at end: skip >= totalMatches > 0)
+			const atResult = await tool!.execute("ast-grep-page-at", {
+				type: "structure",
+				input: "export const $NAME = $VAL;",
+				path: tempDir,
+				skip: 5,
+			});
+			const atText = atResult.content.find(content => content.type === "text")?.text ?? "";
+			const atDetails =
+				atResult.details && typeof atResult.details === "object" && "result" in atResult.details
+					? atResult.details.result
+					: undefined;
+
+			expect(atDetails?.matchCount).toBe(5);
+			expect(atText).toBe("No more results (5 matches total; skip=5 has exhausted the result set)");
+			expect(atResult.useless).toBeUndefined();
+
+			// 3. skip: 10 (after end: skip > totalMatches > 0)
+			const afterResult = await tool!.execute("ast-grep-page-after", {
+				type: "structure",
+				input: "export const $NAME = $VAL;",
+				path: tempDir,
+				skip: 10,
+			});
+			const afterText = afterResult.content.find(content => content.type === "text")?.text ?? "";
+			const afterDetails =
+				afterResult.details && typeof afterResult.details === "object" && "result" in afterResult.details
+					? afterResult.details.result
+					: undefined;
+
+			expect(afterDetails?.matchCount).toBe(5);
+			expect(afterText).toBe("No more results (5 matches total; skip=10 has exhausted the result set)");
+			expect(afterResult.useless).toBeUndefined();
+
+			// 4. True zero match control: pattern never matches any file
+			const zeroResult = await tool!.execute("ast-grep-zero-control", {
+				type: "structure",
+				input: "thisPatternMatchesNothingInAnyFile($$$)",
+				path: tempDir,
+				skip: 0,
+			});
+			const zeroText = zeroResult.content.find(content => content.type === "text")?.text ?? "";
+			const zeroDetails =
+				zeroResult.details && typeof zeroResult.details === "object" && "result" in zeroResult.details
+					? zeroResult.details.result
+					: undefined;
+
+			expect(zeroDetails?.matchCount).toBe(0);
+			expect(zeroText).toContain("No matches found (searched 5 files)");
+			expect(zeroResult.useless).toBe(true);
+		} finally {
+			await removeWithRetries(tempDir);
+		}
+	});
+
+	it("rejects line selectors on search path", async () => {
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "ast-grep-selector-"));
+		try {
+			const filePath = path.join(tempDir, "file.ts");
+			await fs.writeFile(filePath, "export const x = 1;\n", "utf8");
+
+			const tools = await createTools(createTestSession(tempDir));
+			const tool = tools.find(entry => entry.name === "search");
+			expect(tool).toBeDefined();
+
+			await expect(
+				tool!.execute("ast-grep-line-sel", {
+					type: "structure",
+					input: "export const x = 1;",
+					path: `${filePath}:1-10`,
+				}),
+			).rejects.toThrow();
+		} finally {
+			await removeWithRetries(tempDir);
+		}
+	});
+});
+
+describe("structureSearchRenderer", () => {
 	useFullColor();
 
 	it("renders matched groups with railed lines and no tree connectors", async () => {
@@ -289,14 +531,14 @@ describe("astGrepToolRenderer", () => {
 			},
 		};
 
-		const rendered = astGrepToolRenderer
-			.renderResult(result as never, { expanded: true, isPartial: false }, uiTheme, { pat: "const $A = $_" })
+		const rendered = structureSearchRenderer
+			.renderResult(result as never, { expanded: true, isPartial: false }, uiTheme, { input: "const $A = $_" })
 			.render(240);
 		const plainLines = sanitizeText(rendered.join("\n")).split("\n");
 		const headerLine = plainLines[0]!;
 		const bodyLines = plainLines.slice(1);
 
-		expect(headerLine).toContain("AST Grep");
+		expect(headerLine).toContain("Search structure");
 		expect(headerLine).toContain("2 matches");
 		expect(headerLine).toContain("2 files");
 
@@ -331,11 +573,11 @@ describe("astGrepToolRenderer", () => {
 			},
 		};
 
-		const collapsed = astGrepToolRenderer.renderResult(
+		const collapsed = structureSearchRenderer.renderResult(
 			result as never,
 			{ expanded: false, isPartial: false },
 			uiTheme,
-			{ pat: "const $A = true" },
+			{ input: "const $A = true" },
 		);
 		const plainLines = sanitizeText(collapsed.render(240).join("\n")).split("\n");
 		const bodyLines = plainLines.slice(1);
@@ -348,11 +590,11 @@ describe("astGrepToolRenderer", () => {
 			expect(line).not.toMatch(/[├└]/);
 		}
 
-		const expanded = astGrepToolRenderer.renderResult(
+		const expanded = structureSearchRenderer.renderResult(
 			result as never,
 			{ expanded: true, isPartial: false },
 			uiTheme,
-			{ pat: "const $A = true" },
+			{ input: "const $A = true" },
 		);
 		const expandedLines = sanitizeText(expanded.render(240).join("\n")).split("\n");
 		const expandedBody = expandedLines.slice(1);
@@ -381,8 +623,8 @@ describe("astGrepToolRenderer", () => {
 		};
 
 		const width = 40;
-		const renderedLines = astGrepToolRenderer
-			.renderResult(result as never, { expanded: true, isPartial: false }, uiTheme, { pat: "const $A = $_" })
+		const renderedLines = structureSearchRenderer
+			.renderResult(result as never, { expanded: true, isPartial: false }, uiTheme, { input: "const $A = $_" })
 			.render(width);
 
 		// Exactly 1 header + 3 body rows: if body lines are budgeted against outer width

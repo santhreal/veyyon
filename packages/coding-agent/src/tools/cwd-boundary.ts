@@ -21,12 +21,13 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { isMissingPath } from "@veyyon/utils";
+import { isMissingPath, isRecord } from "@veyyon/utils";
 import {
 	globSearchBase,
 	isInternalUrlPath,
 	isPathWithinCwd,
 	isReadableUrlPath,
+	parseApprovalPathList,
 	pathTargetsSsh,
 	resolveToCwd,
 } from "./path-utils";
@@ -125,13 +126,22 @@ function isNonFilesystemTarget(rawPath: string): boolean {
  * A bare `*.ts` bases at cwd.
  */
 export function searchPathFilesystemTargets(args: unknown): string[] {
-	const raw = (args as { path?: unknown } | null)?.path;
-	const entries = typeof raw === "string" ? raw.split(";") : [];
+	let raw: unknown = args;
+	if (isRecord(args)) {
+		if (args.type === "files" && args.input !== undefined) {
+			raw = args.input;
+		} else if (args.path !== undefined) {
+			raw = args.path;
+		} else if (args.input !== undefined) {
+			raw = args.input;
+		} else {
+			raw = undefined;
+		}
+	}
+	const entries = parseApprovalPathList(raw);
 	const targets: string[] = [];
 	for (const entry of entries) {
-		const trimmed = entry.trim();
-		if (trimmed.length === 0) continue;
-		targets.push(isNonFilesystemTarget(trimmed) ? trimmed : globSearchBase(trimmed));
+		targets.push(isNonFilesystemTarget(entry) ? entry : globSearchBase(entry));
 	}
 	return targets;
 }
