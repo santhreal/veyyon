@@ -173,6 +173,31 @@ A pair whose two arms differ for an unrelated reason is a failed proof. An arm t
 does not show the surface at all is a failed proof: a lane block is not evidence
 about lanes in a frame where no agent is running.
 
+### Zooming into a detail
+
+A 2560-wide capture published at 1920 loses a small detail to the downsample. A row
+whose subject is one block of text names the mark to hold on, and the stage eases into
+the region and back out:
+
+```sh
+python3 proof/zoom.py take.mp4 zoomed.mp4 --marks take-marks.tsv --mark todo-board
+python3 proof/zoom.py --self-check
+```
+
+The region is measured, not typed in: the stage diffs the frames around the moment and
+holds the bounding box of what changed there, padded and clamped inside the frame at
+the source aspect ratio. A moment with nothing moving in it produces no file.
+
+The zoom ceiling defaults to the capture width over the published width, so a held
+frame is a crop rather than an upscale. The stage runs on the take, before the cut,
+and keeps every frame and the recorded rate, so the cadence gate still measures the
+capture's own cadence. A scene asks for one by setting `ZOOM_ARGS` in
+`scripts/demos/record-hd-demo.sh`.
+
+`--self-check` records a synthetic clip whose moving region is known and asserts the
+measured rect, the frame count, the rate and the held magnification. Run it on a
+recorder host before a take depends on the stage.
+
 ### Off-screen component renders are a debugging aid, not a proof
 
 Rasterizing a component's ANSI answers one narrow question quickly and without a

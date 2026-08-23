@@ -76,7 +76,7 @@ describe("composer draft token count (DS-6 dock)", () => {
 		});
 		mode = new InteractiveMode(session, "test", () => {}, [], undefined, new EventBus());
 		vi.spyOn(mode.statusLine, "watchBranch").mockImplementation(() => {});
-		await mode.init({ suppressWelcomeIntro: true });
+		await mode.init();
 	});
 
 	afterEach(async () => {

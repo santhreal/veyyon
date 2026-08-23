@@ -25,17 +25,14 @@ import { shortenPath } from "../../tools/render-utils";
 import { theme } from "../theme/theme";
 import { matchesAppInterrupt, matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
 import {
-	applyModalReveal,
-	beginModalExit,
 	computeModalDims,
 	consumeModalChipHover,
 	hitTestModalChrome,
 	MODAL_SIZING_MEDIUM,
-	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
-	modalRevealEnabled,
 	planModalChrome,
+	pointerMotionEnabled,
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
@@ -159,14 +156,6 @@ export class MCPAddWizard implements Component {
 	#hoveredShortcutId: string | null = null;
 	/** Frame row where the body begins (shell body start). */
 	#bodyRowStart = 0;
-	#reveal = new ModalRevealDriver();
-	/**
-	 * Fade out on the shared clock before the host drops this card. The overlay stack keeps painting
-	 * it and stops routing input to it the moment this is called.
-	 */
-	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
-		return beginModalExit(this.#reveal, requestRender, done);
-	}
 
 	#inputField: Input | null = null;
 	#selectedIndex = 0;
@@ -235,7 +224,7 @@ export class MCPAddWizard implements Component {
 		// The band fades only once the card has a repaint to lend it: the frames between two mouse
 		// reports have no input to hang off. Same ambient gate as the open unfold.
 		this.#hoverFade?.dispose();
-		this.#hoverFade = new HoverFade({ requestRender: cb, enabled: modalRevealEnabled() });
+		this.#hoverFade = new HoverFade({ requestRender: cb, enabled: pointerMotionEnabled() });
 		if (this.#hoveredIndex !== null) this.#hoverFade.set(this.#hoveredIndex);
 	}
 
@@ -650,7 +639,7 @@ export class MCPAddWizard implements Component {
 		});
 		this.#shellGeometry = shell.geometry;
 		this.#bodyRowStart = shell.geometry?.bodyRowStart ?? 0;
-		return applyModalReveal(shell, width, this.#reveal);
+		return shell.lines;
 	}
 
 	handleInput(keyData: string): void {

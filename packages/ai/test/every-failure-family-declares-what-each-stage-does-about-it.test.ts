@@ -118,7 +118,13 @@ describe("the retry decision is derived from the registry", () => {
 			"Transient",
 			"UsageLimit",
 		]);
-		expect(labels(RETRY_VETO_MASK)).toEqual(["ContentBlocked", "TransportRefused"]);
+		expect(labels(RETRY_VETO_MASK)).toEqual([
+			"Abort",
+			"ContentBlocked",
+			"SilentAbort",
+			"TransportRefused",
+			"UserInterrupt",
+		]);
 		expect(labels(REPLAY_SAFE_MASK)).toEqual(["MalformedFunctionCall"]);
 	});
 

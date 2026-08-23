@@ -131,7 +131,7 @@ describe("an override no registry can claim", () => {
 			const message = `${result.stdout}${result.stderr}`;
 			expect(message).toContain("tools/bsh");
 			expect(message).toContain("did you mean tools/bash");
-			expect(message).toContain("no registry holds");
+			expect(message).toContain("this build does not have");
 			// The same sentence the bench runner prints for the same mistake, from one owner:
 			// an operator who hits this before a run and again inside one reads one rule.
 			expect(message).toContain(PROMPT_ID_SHAPE_HINT);

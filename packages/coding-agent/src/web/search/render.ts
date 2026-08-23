@@ -12,47 +12,51 @@ import type { Theme } from "../../modes/theme/theme";
 import {
 	formatAge,
 	formatCount,
-	formatExpandHint,
 	formatMoreItems,
-	formatStatusIcon,
 	getDomain,
 	PREVIEW_LIMITS,
 	replaceTabs,
 	truncateToWidth,
 } from "../../tools/render-utils";
-import { renderStatusLine, renderTreeList, urlHyperlink } from "../../tui";
-import { CachedOutputBlock, markFramedBlockComponent } from "../../tui/output-block";
+import { framedBlock, outputBlockContentWidth, renderStatusLine, urlHyperlink } from "../../tui";
 import { getSearchProviderLabel } from "./provider";
 import type { SearchResponse } from "./types";
 
 const MAX_COLLAPSED_ITEMS = PREVIEW_LIMITS.COLLAPSED_ITEMS;
 
 function renderFallbackText(contentText: string, expanded: boolean, theme: Theme): Component {
+	const header = renderStatusLine(
+		{
+			icon: "warning",
+			title: "Web Search",
+			description: "Response",
+		},
+		theme,
+	);
 	const lines = contentText.split("\n").filter(line => line.trim());
-	const maxLines = expanded ? lines.length : 6;
-	const displayLines = lines.slice(0, maxLines).map(line => truncateToWidth(line.trim(), 110));
-	const remaining = lines.length - displayLines.length;
-
-	const headerIcon = formatStatusIcon("warning", theme);
-	const expandHint = formatExpandHint(theme, expanded, remaining > 0);
-	let text = `${headerIcon} ${theme.fg("dim", "Response")}${expandHint}`;
-
-	if (displayLines.length === 0) {
-		text += `\n ${theme.fg("dim", theme.tree.last)} ${theme.fg("muted", "No response data")}`;
-		return new Text(text, 0, 0);
-	}
-
-	for (let i = 0; i < displayLines.length; i++) {
-		const isLast = i === displayLines.length - 1 && remaining === 0;
-		const branch = isLast ? theme.tree.last : theme.tree.branch;
-		text += `\n ${theme.fg("dim", branch)} ${theme.fg("dim", displayLines[i])}`;
-	}
-
-	if (!expanded && remaining > 0) {
-		text += `\n ${theme.fg("dim", theme.tree.last)} ${theme.fg("muted", formatMoreItems(remaining, "line"))}`;
-	}
-
-	return new Text(text, 0, 0);
+	return framedBlock(theme, width => {
+		const maxLines = expanded ? lines.length : 6;
+		const contentWidth = outputBlockContentWidth(width);
+		const displayLines = lines.slice(0, maxLines).map(line => truncateToWidth(line.trim(), contentWidth));
+		const remaining = lines.length - displayLines.length;
+		const bodyLines: string[] = [];
+		if (displayLines.length === 0) {
+			bodyLines.push(theme.fg("muted", "No response data"));
+		} else {
+			for (const l of displayLines) {
+				bodyLines.push(theme.fg("dim", l));
+			}
+			if (!expanded && remaining > 0) {
+				bodyLines.push(theme.fg("muted", formatMoreItems(remaining, "line")));
+			}
+		}
+		return {
+			header,
+			state: "warning",
+			sections: [{ lines: bodyLines }],
+			width,
+		};
+	});
 }
 
 export interface SearchRenderDetails {
@@ -64,15 +68,12 @@ export interface SearchRenderDetails {
 function renderSearchErrorPanel(message: string, providerLabel: string | undefined, theme: Theme): Component {
 	const header = renderStatusLine({ icon: "error", title: "Web Search", description: providerLabel }, theme);
 	const body = theme.fg("error", `Error: ${replaceTabs(message)}`);
-	const outputBlock = new CachedOutputBlock();
-	return markFramedBlockComponent({
-		render(width: number): readonly string[] {
-			return outputBlock.render({ header, state: "error", sections: [{ lines: [body] }], width }, theme);
-		},
-		invalidate() {
-			outputBlock.invalidate();
-		},
-	});
+	return framedBlock(theme, width => ({
+		header,
+		state: "error",
+		sections: [{ lines: [body] }],
+		width,
+	}));
 }
 
 /** Render web search result with tree-based layout */
@@ -152,96 +153,81 @@ export function renderSearchResult(
 	}
 
 	const answerMarkdown = contentText ? new Markdown(contentText, 0, 0, getMarkdownTheme()) : undefined;
-	const outputBlock = new CachedOutputBlock();
 
-	return markFramedBlockComponent({
-		render(width: number): readonly string[] {
-			// Read mutable state at render time
-			const { expanded } = options;
+	return framedBlock(theme, width => {
+		// Read mutable state at render time
+		const { expanded } = options;
 
-			// Answer lines: full markdown when expanded, capped markdown preview when collapsed.
-			const answerWidth = Math.max(20, width - 3);
-			const renderedAnswer = answerMarkdown ? answerMarkdown.render(answerWidth) : [];
-			let answerLines: readonly string[];
-			if (renderedAnswer.length === 0) {
-				answerLines = [theme.fg("muted", "No answer text returned")];
-			} else if (args?.maxAnswerLines !== undefined && !expanded) {
-				// CLI compact mode (`veyyon q`) caps the answer; the TUI passes no cap and shows it in full.
-				// `renderedAnswer` is the Markdown component's shared cache — slice copies before appending.
-				const capped = renderedAnswer.slice(0, args.maxAnswerLines);
-				const remaining = renderedAnswer.length - capped.length;
-				if (remaining > 0) {
-					capped.push(theme.fg("muted", formatMoreItems(remaining, "line")));
-				}
-				answerLines = capped;
-			} else {
-				answerLines = renderedAnswer;
+		// Answer lines: full markdown when expanded, capped markdown preview when collapsed.
+		const contentWidth = outputBlockContentWidth(width);
+		const renderedAnswer = answerMarkdown ? answerMarkdown.render(contentWidth) : [];
+		let answerLines: readonly string[];
+		if (renderedAnswer.length === 0) {
+			answerLines = [theme.fg("muted", "No answer text returned")];
+		} else if (args?.maxAnswerLines !== undefined && !expanded) {
+			// CLI compact mode (`veyyon q`) caps the answer; the TUI passes no cap and shows it in full.
+			// `renderedAnswer` is the Markdown component's shared cache — slice copies before appending.
+			const capped = renderedAnswer.slice(0, args.maxAnswerLines);
+			const remaining = renderedAnswer.length - capped.length;
+			if (remaining > 0) {
+				capped.push(theme.fg("muted", formatMoreItems(remaining, "line")));
 			}
+			answerLines = capped;
+		} else {
+			answerLines = renderedAnswer;
+		}
 
-			const sourceTree = renderTreeList(
-				{
-					items: sources,
-					expanded,
-					maxCollapsed: MAX_COLLAPSED_ITEMS,
-					itemType: "source",
-					renderItem: src => {
-						const titleText =
-							typeof src.title === "string" && src.title.trim()
-								? src.title
-								: typeof src.url === "string" && src.url.trim()
-									? src.url
-									: "Untitled";
-						const url = typeof src.url === "string" ? src.url : "";
-						const domain = url ? getDomain(url) : "";
-						const age =
-							formatAge(src.ageSeconds) || (typeof src.publishedDate === "string" ? src.publishedDate : "");
-						const metaParts: string[] = [];
-						if (domain) metaParts.push(theme.fg("dim", `(${domain})`));
-						if (age) metaParts.push(theme.fg("muted", age));
-						const metaSep = theme.fg("dim", theme.sep.dot);
-						const metaSuffix = metaParts.length > 0 ? ` ${metaParts.join(metaSep)}` : "";
-						// One line per source: the title links to its URL, followed by domain · age.
-						// Reserve room for the box borders, the tree branch, and the meta suffix.
-						const lineBudget = Math.max(24, width - 6);
-						const titleBudget = Math.max(12, lineBudget - Bun.stringWidth(metaSuffix));
-						const title = theme.fg("accent", truncateToWidth(titleText, titleBudget));
-						const linkedTitle = url ? urlHyperlink(url, title) : title;
-						return [`${linkedTitle}${metaSuffix}`];
-					},
-				},
-				theme,
-			);
+		const maxSources = expanded ? sources.length : Math.min(sources.length, MAX_COLLAPSED_ITEMS);
+		const sourceLines: string[] = [];
+		for (let i = 0; i < maxSources; i++) {
+			const src = sources[i]!;
+			const titleText =
+				typeof src.title === "string" && src.title.trim()
+					? src.title
+					: typeof src.url === "string" && src.url.trim()
+						? src.url
+						: "Untitled";
+			const url = typeof src.url === "string" ? src.url : "";
+			const domain = url ? getDomain(url) : "";
+			const age = formatAge(src.ageSeconds) || (typeof src.publishedDate === "string" ? src.publishedDate : "");
+			const metaParts: string[] = [];
+			if (domain) metaParts.push(theme.fg("dim", `(${domain})`));
+			if (age) metaParts.push(theme.fg("muted", age));
+			const metaSep = theme.fg("dim", theme.sep.dot);
+			const metaSuffix = metaParts.length > 0 ? ` ${metaParts.join(metaSep)}` : "";
+			const titleBudget = Math.max(12, contentWidth - Bun.stringWidth(metaSuffix));
+			const title = theme.fg("accent", truncateToWidth(titleText, titleBudget));
+			const linkedTitle = url ? urlHyperlink(url, title) : title;
+			sourceLines.push(`${linkedTitle}${metaSuffix}`);
+		}
+		const remainingSources = sources.length - maxSources;
+		if (!expanded && remainingSources > 0) {
+			sourceLines.push(theme.fg("muted", formatMoreItems(remainingSources, "source")));
+		}
 
-			return outputBlock.render(
+		return {
+			header,
+			state: sourceCount > 0 ? "success" : "warning",
+			sections: [
+				...(queryPreview
+					? [
+							{
+								lines: [`${theme.fg("muted", "Query:")} ${theme.fg("text", queryPreview)}`],
+							},
+						]
+					: []),
 				{
-					header,
-					state: sourceCount > 0 ? "success" : "warning",
-					sections: [
-						...(queryPreview
-							? [
-									{
-										lines: [`${theme.fg("muted", "Query:")} ${theme.fg("text", queryPreview)}`],
-									},
-								]
-							: []),
-						{
-							label: theme.fg("toolTitle", "Answer"),
-							lines: answerLines,
-						},
-						{
-							label: theme.fg("toolTitle", "Sources"),
-							lines: sourceTree.length > 0 ? sourceTree : [theme.fg("muted", "No sources returned")],
-						},
-						{ label: theme.fg("toolTitle", "Metadata"), lines: metaLines },
-					],
-					width,
+					label: theme.fg("toolTitle", "Answer"),
+					lines: answerLines,
 				},
-				theme,
-			);
-		},
-		invalidate() {
-			outputBlock.invalidate();
-		},
+				{
+					label: theme.fg("toolTitle", "Sources"),
+					lines: sourceLines.length > 0 ? sourceLines : [theme.fg("muted", "No sources returned")],
+				},
+				{ label: theme.fg("toolTitle", "Metadata"), lines: metaLines },
+			],
+			width,
+		};
 	});
 }
 

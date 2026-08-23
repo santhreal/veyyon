@@ -511,9 +511,9 @@ export const APPEARANCE_SETTINGS = {
 			tab: "appearance",
 			group: "Display",
 			label: "Transitions",
-			description: "Structural motion: overlay open transitions and the welcome bloom",
+			description: "Structural motion: overlay open transitions and the moving rail beside a running tool",
 			options: [
-				{ value: "on", label: "On", description: "Overlays unfold open; the welcome mark blooms in" },
+				{ value: "on", label: "On", description: "Overlays unfold open; the rail travels while a tool runs" },
 				{ value: "off", label: "Off", description: "Reduced motion: every surface appears as a hard cut" },
 			],
 		},

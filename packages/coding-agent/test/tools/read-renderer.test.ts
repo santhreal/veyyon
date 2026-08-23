@@ -130,12 +130,13 @@ describe("read ToolExecutionComponent framing", () => {
 		try {
 			const rail = activeTheme.symbol("block.rail");
 			const lines = component.render(80).map(line => Bun.stripANSI(line));
-			// The title owns its own row at the container's gutter, and the output hangs on
-			// the rail under it. Nothing closes the block: the last row of output is the
-			// last row of the block, which is what the rail replaced two chrome rows with.
-			const titleIndex = lines.findIndex(line => line.includes("Read") && !line.includes(rail));
+			// Every row of the block hangs on one rail, the title row included, so the
+			// block has a single left edge from its title to its last row of output.
+			// Nothing closes it: the last row of output is the last row of the block,
+			// which is what the rail replaced two chrome rows with.
+			const titleIndex = lines.findIndex(line => line.includes("Read"));
 			expect(titleIndex).toBeGreaterThanOrEqual(0);
-			expect(lines[titleIndex]).toStartWith("  ");
+			expect(lines[titleIndex]).toStartWith(`  ${rail} `);
 			expect(lines[titleIndex + 1]).toStartWith(`  ${rail} `);
 			expect(lines[titleIndex + 1]).toContain("export const x = 1;");
 			for (const line of lines.slice(titleIndex + 2)) expect(line.trim()).toBe("");
