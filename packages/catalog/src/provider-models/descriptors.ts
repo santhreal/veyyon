@@ -118,7 +118,7 @@ export const CATALOG_PROVIDERS = [
 	{
 		id: "command-code",
 		defaultModel: "moonshotai/Kimi-K2.7-Code",
-		envVars: ["COMMAND_CODE_API_KEY"],
+		envVars: ["CMD_API_KEY", "COMMAND_CODE_API_KEY"],
 		createModelManagerOptions: (config: ModelManagerConfig) => commandCodeModelManagerOptions(config),
 		catalogDiscovery: { label: "Command Code" },
 	},
@@ -276,10 +276,11 @@ export const CATALOG_PROVIDERS = [
 	},
 	{
 		id: "nous-research",
-		defaultModel: "nousresearch/hermes-4-405b",
+		defaultModel: "anthropic/claude-sonnet-4.6",
 		envVars: ["NOUS_API_KEY"],
 		createModelManagerOptions: (config: ModelManagerConfig) => nousResearchModelManagerOptions(config),
-		catalogDiscovery: { label: "Nous Research" },
+		dynamicModelsAuthoritative: true,
+		catalogDiscovery: { label: "Nous Research", oauthProvider: "nous-research" },
 	},
 	{
 		id: "nvidia",

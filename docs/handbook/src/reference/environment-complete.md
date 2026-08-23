@@ -43,6 +43,9 @@ The provider-first projection of this map lives in [Providers](./providers.md#en
 | ------------------------------- | ------------------------------------------------ | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | `OPENAI_CODEX_OAUTH_TOKEN`      | OpenAI Codex OAuth auth                          | Using `openai-codex` provider                                  |                                                                                                     |
 | `BASETEN_API_KEY`               | Baseten auth                                     | Using `baseten` provider                                       |                                                                                                     |
+| `CMD_API_KEY`                    | Command Code auth                                | Using `command-code` provider                                  | Preferred key alias; endpoint `https://api.commandcode.ai/provider/v1`, default `moonshotai/Kimi-K2.7-Code`                |
+| `COMMAND_CODE_API_KEY`           | Command Code auth                                | Using `command-code` provider without `CMD_API_KEY`            | Fallback after `CMD_API_KEY`; keys are issued at `https://commandcode.ai/studio/provider`                                  |
+| `NOUS_API_KEY`                   | Nous Research explicit/headless auth             | Using `nous-research` without `/login nous-research`           | OAuth is preferred; endpoint `https://inference-api.nousresearch.com/v1`, default `anthropic/claude-sonnet-4.6`            |
 | `COREWEAVE_API_KEY`             | CoreWeave auth                                   | Using `coreweave` provider                                     | Takes precedence over `WANDB_API_KEY`                                                               |
 | `WANDB_API_KEY`                 | CoreWeave auth                                   | Using `coreweave` provider                                     | Fallback after `COREWEAVE_API_KEY`                                                                  |
 | `DEVIN_API_KEY`                 | Devin auth                                       | Using `devin` provider                                         |                                                                                                     |
@@ -101,6 +104,8 @@ The provider-first projection of this map lives in [Providers](./providers.md#en
 | `OLLAMA_CLOUD_API_KEY`          | Ollama Cloud auth                                | Using `ollama-cloud` provider                                  |                                                                                                     |
 | `WAFER_SERVERLESS_API_KEY`      | Wafer Serverless auth                            | Using `wafer-serverless` provider                              | Pay-as-you-go Wafer SKU; validated against `https://pass.wafer.ai/v1/models`                        |
 | `GITLAB_TOKEN`                  | GitLab Duo auth                                  | Using `gitlab-duo` provider                                    |                                                                                                     |
+
+`/login nous-research` stores the Portal refresh token and supplies refreshed short-lived inference access tokens to requests and model discovery. When no stored OAuth credential is selected, `NOUS_API_KEY` supplies the headless fallback.
 
 ### GitHub/Copilot tokens
 

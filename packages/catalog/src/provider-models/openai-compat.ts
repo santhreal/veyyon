@@ -3188,7 +3188,7 @@ export const COMMAND_CODE_STATIC_MODELS: readonly ModelSpec<"openai-completions"
 		reasoning: false,
 		input: ["text"],
 		cost: { input: 0.95, output: 4, cacheRead: 0.19, cacheWrite: 0 },
-		contextWindow: 262144,
+		contextWindow: 256000,
 		maxTokens: null,
 	},
 	{
@@ -3200,7 +3200,7 @@ export const COMMAND_CODE_STATIC_MODELS: readonly ModelSpec<"openai-completions"
 		reasoning: false,
 		input: ["text"],
 		cost: { input: 1.4, output: 4.4, cacheRead: 0.26, cacheWrite: 0 },
-		contextWindow: 1048576,
+		contextWindow: 1000000,
 		maxTokens: null,
 	},
 	{
@@ -3212,7 +3212,7 @@ export const COMMAND_CODE_STATIC_MODELS: readonly ModelSpec<"openai-completions"
 		reasoning: false,
 		input: ["text"],
 		cost: { input: 0.3, output: 1.2, cacheRead: 0.06, cacheWrite: 0 },
-		contextWindow: 1048576,
+		contextWindow: 1000000,
 		maxTokens: null,
 	},
 ];
@@ -3226,7 +3226,17 @@ export interface CommandCodeModelManagerConfig {
 export function commandCodeModelManagerOptions(
 	config?: CommandCodeModelManagerConfig,
 ): ModelManagerOptions<"openai-completions"> {
-	return createSimpleOpenAICompletionsOptions("command-code", "https://api.commandcode.ai/provider/v1", config);
+	return createSimpleOpenAICompletionsOptions(
+		"command-code",
+		"https://api.commandcode.ai/provider/v1",
+		config,
+		(entry, model) => ({
+			...model,
+			contextWindow: toPositiveNumber(entry.context_length, model.contextWindow),
+			// The Provider API publishes context_length but no output ceiling.
+			maxTokens: null,
+		}),
+	);
 }
 
 // ---------------------------------------------------------------------------
@@ -3234,37 +3244,103 @@ export function commandCodeModelManagerOptions(
 // ---------------------------------------------------------------------------
 
 /**
- * Nous' own models on its inference API. The endpoint lists every hosted
- * model publicly (third-party hosts included), so the seed carries only the
- * Hermes family — the rows the provider is named for — and live discovery
- * with a key widens the list at runtime.
+ * Nous Portal serves an OpenRouter-shaped catalog containing chat, embedding,
+ * and media-generation rows. Only tool-capable text-output models can drive the
+ * coding agent, so discovery rejects the other product surfaces before they
+ * reach the runtime picker.
  */
+const NOUS_RESEARCH_BASE_URL = "https://inference-api.nousresearch.com/v1";
+
 export const NOUS_RESEARCH_STATIC_MODELS: readonly ModelSpec<"openai-completions">[] = [
 	{
-		id: "nousresearch/hermes-4-70b",
-		name: "Hermes 4 70B",
+		id: "anthropic/claude-sonnet-4.6",
+		name: "Anthropic: Claude Sonnet 4.6",
 		api: "openai-completions",
 		provider: "nous-research",
-		baseUrl: "https://inference-api.nousresearch.com/v1",
-		reasoning: false,
+		baseUrl: NOUS_RESEARCH_BASE_URL,
+		reasoning: true,
 		input: ["text"],
-		cost: { input: 0.05, output: 0.2, cacheRead: 0, cacheWrite: 0 },
-		contextWindow: 131072,
-		maxTokens: 131072,
-	},
-	{
-		id: "nousresearch/hermes-4-405b",
-		name: "Hermes 4 405B",
-		api: "openai-completions",
-		provider: "nous-research",
-		baseUrl: "https://inference-api.nousresearch.com/v1",
-		reasoning: false,
-		input: ["text"],
-		cost: { input: 0.09, output: 0.37, cacheRead: 0, cacheWrite: 0 },
-		contextWindow: 131072,
-		maxTokens: 131072,
+		supportsTools: true,
+		compat: { supportsToolChoice: false },
+		cost: { input: 2.4, output: 12, cacheRead: 0.24, cacheWrite: 3 },
+		pricing: "published",
+		contextWindow: 1000000,
+		maxTokens: null,
 	},
 ];
+
+/** Static rows eligible for the credential-less coding-model bundle. */
+export const NOUS_RESEARCH_BUNDLED_MODELS = NOUS_RESEARCH_STATIC_MODELS;
+
+function isNousToolCapableChatModel(entry: OpenAICompatibleModelRecord): boolean {
+	const parameters = Array.isArray(entry.supported_parameters)
+		? entry.supported_parameters.filter((value): value is string => typeof value === "string")
+		: [];
+	if (!parameters.includes("tools")) {
+		return false;
+	}
+	const architecture = isRecord(entry.architecture) ? entry.architecture : {};
+	const outputModalities = Array.isArray(architecture.output_modalities) ? architecture.output_modalities : [];
+	if (outputModalities.length > 0) {
+		return outputModalities.includes("text");
+	}
+	const modality = typeof architecture.modality === "string" ? architecture.modality : "";
+	return modality.length === 0 || modality.split("->").at(-1) === "text";
+}
+
+function mapNousResearchModel(
+	entry: OpenAICompatibleModelRecord,
+	defaults: ModelSpec<"openai-completions">,
+	reference: ModelSpec<"openai-completions"> | undefined,
+): ModelSpec<"openai-completions"> {
+	const baseModel = mapWithBundledReference(entry, defaults, reference);
+	const parameters = Array.isArray(entry.supported_parameters)
+		? entry.supported_parameters.filter((value): value is string => typeof value === "string")
+		: [];
+	const architecture = isRecord(entry.architecture) ? entry.architecture : {};
+	const pricing = isRecord(entry.pricing) ? entry.pricing : undefined;
+	const topProvider = isRecord(entry.top_provider) ? entry.top_provider : undefined;
+	const reasoningMetadata = isRecord(entry.reasoning) ? entry.reasoning : undefined;
+	const reasoning =
+		parameters.includes("reasoning") ||
+		parameters.includes("reasoning_effort") ||
+		parameters.includes("include_reasoning") ||
+		reasoningMetadata !== undefined;
+	const efforts = Array.isArray(reasoningMetadata?.supported_efforts)
+		? reasoningMetadata.supported_efforts.filter((value): value is Effort => isEffort(value))
+		: [];
+	const inputModalities = Array.isArray(architecture.input_modalities)
+		? architecture.input_modalities
+		: typeof architecture.modality === "string" && architecture.modality.includes("image")
+			? ["text", "image"]
+			: ["text"];
+
+	return {
+		...baseModel,
+		reasoning,
+		...(reasoning && efforts.length > 0
+			? { reasoningOptions: { efforts: canonicalizeEfforts(efforts) } }
+			: { reasoningOptions: undefined }),
+		input: toInputCapabilities(inputModalities),
+		supportsTools: true,
+		cost: {
+			input: toPositiveNumber(pricing?.prompt, 0) * 1000000,
+			output: toPositiveNumber(pricing?.completion, 0) * 1000000,
+			cacheRead: toPositiveNumber(pricing?.input_cache_read, 0) * 1000000,
+			cacheWrite: toPositiveNumber(pricing?.input_cache_write, 0) * 1000000,
+		},
+		pricing: pricing ? "published" : "unknown",
+		contextWindow: toPositiveNumber(
+			topProvider?.context_length,
+			toPositiveNumber(entry.context_length, baseModel.contextWindow),
+		),
+		maxTokens: toPositiveNumber(topProvider?.max_completion_tokens, null),
+		compat: {
+			...(baseModel.compat ?? {}),
+			supportsToolChoice: parameters.includes("tool_choice"),
+		},
+	};
+}
 
 export interface NousResearchModelManagerConfig {
 	apiKey?: string;
@@ -3275,7 +3351,25 @@ export interface NousResearchModelManagerConfig {
 export function nousResearchModelManagerOptions(
 	config?: NousResearchModelManagerConfig,
 ): ModelManagerOptions<"openai-completions"> {
-	return createSimpleOpenAICompletionsOptions("nous-research", "https://inference-api.nousresearch.com/v1", config);
+	const apiKey = config?.apiKey;
+	const baseUrl = config?.baseUrl ?? NOUS_RESEARCH_BASE_URL;
+	const references = createBundledReferenceMap<"openai-completions">("nous-research");
+	return {
+		providerId: "nous-research",
+		...(apiKey && {
+			fetchDynamicModels: hooks =>
+				fetchOpenAICompatibleModels({
+					onFailure: hooks?.onFailure,
+					api: "openai-completions",
+					provider: "nous-research",
+					baseUrl,
+					apiKey,
+					filterModel: isNousToolCapableChatModel,
+					mapModel: (entry, defaults) => mapNousResearchModel(entry, defaults, references.get(defaults.id)),
+					fetch: config?.fetch,
+				}),
+		}),
+	};
 }
 
 // ---------------------------------------------------------------------------
