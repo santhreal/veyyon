@@ -53,6 +53,7 @@
 ### Removed
 
 - `veyyon gallery` no longer takes `--screenshot`, `--out`, `--font` or `--font-size`. The flags rendered the gallery into a PNG through a second capture stack — a headless browser driving a tape recorder — that produced frames at a different terminal, font and colour configuration from the one every other proof uses, so two frames of the same surface could not be compared. `veyyon gallery` prints the gallery; a picture of a real screen comes from the recorder described in the handbook's verification page, and that is the only capture path.
+- The system prompt no longer computes a date it does not render. The date moved into the per-turn `session-state` message when the working directory left the cached prefix, and the `date` and `dateTime` values were still assembled for the prompt template on every build, where no section reads them. `test/session/the-session-state-block-states-the-host-local-day.test.ts` states which surface owns the date now: the block states the host's local calendar day, west and east of UTC, and one instant in two zones produces two different days.
 
 ### Fixed
 
