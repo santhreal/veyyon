@@ -98,6 +98,11 @@ key_repeat() { # key_repeat <key> <count> [delay]
 # scene, or an image built before this -- and it keeps the delay that behaved best.
 KITTY_SOCKET="${KITTY_SOCKET:-unix:/tmp/kitty.sock}"
 
+# XTEST fallback used when kitty remote control does not answer. Named so a
+# missing binary fails as `_xdo: command not found` only if this function is
+# deleted, not because the fallback was never bound.
+_xdo() { xdotool "$@"; }
+
 # WHICH PATH A RUN TOOK IS PART OF THE EVIDENCE. A silent fallback would look exactly
 # like a working fix -- green gate, doubled characters in the next take -- so the first
 # send says which one it is and the run's log carries it.

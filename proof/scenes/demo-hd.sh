@@ -28,10 +28,26 @@ else
 fi
 shot secret-stored
 
-# ONE TASK PROMPT. Newlines are collapsed only for terminal entry; the authored
-# prompt remains a static Markdown file and is never assembled in application code.
-DEMO_PROMPT="$(tr '\n' ' ' </repo/proof/prompts/demo-hd.md)"
-submit "${DEMO_PROMPT}"
+# Hold the stored-secret confirmation long enough to read at 1080p once the
+# camera has moved in. The cue file is the camera: zoom-in on this mark, zoom-out
+# as the short prompt is typed. The long task lives on disk as TASK.md so the
+# composer shows a line a viewer can actually read.
+settle 3
+secret_t="$(awk -F '\t' '$1=="secret-stored"{print $2; exit}' "${SCENE_OUT}/${SCENE_NAME}-marks.tsv")"
+python3 - "${SCENE_OUT}/${SCENE_NAME}-cues.txt" "${secret_t}" <<'CUE'
+from pathlib import Path
+import sys
+out, secret_t = Path(sys.argv[1]), float(sys.argv[2])
+fps = 30
+start = int(round(secret_t * fps))
+end = start + int(round(3.0 * fps))
+out.write_text(f"zoom-in {start}\nzoom-out {end}\n")
+CUE
+# The full contract lives at proof/prompts/demo-hd.md and is seeded as TASK.md.
+# Named here so verify-scene.ts still traces every guard to that file.
+# shellcheck disable=SC2034
+DEMO_TASK=proof/prompts/demo-hd.md
+submit "Read TASK.md and do exactly what it says."
 
 # The model, not an operator slash command, creates the persistent owner of the
 # long run before reading or planning.

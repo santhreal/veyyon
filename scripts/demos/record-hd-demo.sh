@@ -77,6 +77,7 @@ ZOOM_ARGS=()
 case "${SCENE}" in
 demo-hd)
 	ASSET=assets/demo-hd.webp
+	ZOOM_ARGS=(--magnify 2.0)
 	# The hero also ships whole. The task runs for many minutes and the landing
 	# page gets a dense cut, so both are published and the cut can be checked
 	# against the complete autonomous goal session.
@@ -100,7 +101,7 @@ demo-hd)
 	CUT_WIDTH=1920
 	WEBP_WIDTH=1920
 	CUT_ARGS=(
-		--speed 1.25
+		--speed 6
 		--edge-speed 1.0
 		--real-through-mark agent-lanes
 		--real-from-mark build-verified
@@ -109,6 +110,7 @@ demo-hd)
 		--crf 26
 		--still-keep 4
 		--still-min 4
+		--speed-badge
 	)
 	;;
 todo-marathon)
@@ -525,6 +527,10 @@ fi
 # every frame and the recorded rate, so the gate below still reads the capture's own cadence,
 # and the archived whole take stays as it was recorded.
 CUT_SOURCE="${WORK}/${SCENE}.mp4"
+CUES="${WORK}/${SCENE}-cues.txt"
+if [[ -f "${CUES}" ]]; then
+	ZOOM_ARGS+=(--cues "${CUES}")
+fi
 if [[ ${#ZOOM_ARGS[@]} -gt 0 ]]; then
 	ZOOM_SOURCE="${WORK}/${SCENE}-zoomed.mp4"
 	if [[ -f "${MARKS}" && ! " ${ZOOM_ARGS[*]} " =~ " --marks " ]]; then
@@ -534,6 +540,12 @@ if [[ ${#ZOOM_ARGS[@]} -gt 0 ]]; then
 		echo "record-hd-demo.sh: the zoom stage found no region to hold; publishing nothing" >&2
 		exit 1
 	}
+	if [[ -f "${CUES}" ]]; then
+		python3 proof/glyph-height.py "${CUT_SOURCE}" --cues "${CUES}" || {
+			echo "record-hd-demo.sh: the secret hold is not 2x the wide shot; publishing nothing" >&2
+			exit 1
+		}
+	fi
 	CUT_SOURCE="${ZOOM_SOURCE}"
 fi
 # EVERY run cuts into the work directory, and a real one copies out of it afterwards. The

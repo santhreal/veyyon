@@ -279,6 +279,8 @@ cat >"${DEMO}/ship-sim/tsconfig.json" <<'JSON'
 }
 JSON
 
+cp /repo/proof/prompts/demo-hd.md "${DEMO}/ship-sim/TASK.md"
+
 cat >"${DEMO}/ship-sim/SPEC.md" <<'MD'
 # Nebula Drift
 
