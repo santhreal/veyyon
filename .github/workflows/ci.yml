@@ -878,31 +878,11 @@ jobs:
          - name: Regenerate changelog + build site (brand check gates)
            # GITHUB_REPOSITORY is auto-set; gen-changelog reconciles against it.
            run: node website/build.mjs
-         - name: Deploy to Cloudflare Pages (project veyyon → veyyon.dev)
-           env:
-              CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-              CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-           run: node website/deploy.mjs --skip-build
-         # get.veyyon.dev is the `curl | sh` install endpoint. It deploys a
-         # SEPARATE tree (website-get/: the two install scripts + a root rewrite
-         # to install.sh) so its root serves the script, not the marketing
-         # index.html — deploying the full website/ tree here put HTML at the get
-         # root and broke `curl -fsSL https://get.veyyon.dev | sh`. build.mjs
-         # generates website-get/. Redeploy on every release so the served
-         # install script stays current. Same token/account; only the project
-         # and the tree differ.
-         - name: Deploy to Cloudflare Pages (project veyyon-get → get.veyyon.dev)
-           env:
-              CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-              CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-              VEYYON_PAGES_PROJECT: veyyon-get
-           run: node website/deploy.mjs --skip-build
-         - name: Verify get.veyyon.dev serves THIS repository's install scripts
-           # The deploy step returns before Cloudflare finishes propagating, and a
-           # `wrangler deploy` exit 0 does NOT prove the root serves the script:
-           # deploying the wrong tree once put the marketing index.html at the get
-           # root. Digest verification keeps a stale deployment release-blocking.
-           run: bun scripts/verify-deployed-installers.ts
+         - name: Deploy both Pages projects and verify the served installers
+           uses: ./.github/actions/deploy-cloudflare-site
+           with:
+              cf-api-token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+              cf-account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
    release_github_verify:
       name: Verify draft release (macOS)
@@ -1230,11 +1210,15 @@ jobs:
          - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
          - name: Rebuild changelog after GitHub publication
            run: node website/build.mjs
-         - name: Deploy finalized changelog to veyyon.dev
-           env:
-              CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-              CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-           run: node website/deploy.mjs --skip-build
+         - name: Deploy the finalized changelog to veyyon.dev
+           uses: ./.github/actions/deploy-cloudflare-site
+           with:
+              cf-api-token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+              cf-account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+              # The install endpoint was already deployed and its bytes verified
+              # before publication; this pass exists only to replace the pending
+              # draft card with the immutable release link.
+              install-endpoint: "false"
          - name: Verify veyyon.dev links the published release
            run: bun scripts/verify-deployed-changelog.ts ${{ needs.release_metadata.outputs.release-tag }}
 
