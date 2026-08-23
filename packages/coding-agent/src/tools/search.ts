@@ -26,13 +26,13 @@ export const searchSchema = z.strictObject({
 	input: z
 		.string()
 		.describe(
-			"what to match: a path or glob for files, a literal or regular expression for text, or one valid structural code pattern for structure",
+			"type-specific match: path or glob for files, literal or regular expression for text, or one valid code pattern for structure; text and structure scopes belong in path",
 		),
 	path: z
 		.string()
 		.optional()
 		.describe(
-			'text or structure only: file, directory, glob, internal URL, or semicolon-delimited search scope. Omitted -> workspace root (".")',
+			'text or structure only: narrow search scope — file, directory, glob, internal URL, or semicolon-delimited set. Omitted -> workspace root (".")',
 		),
 	case: z.boolean().optional().describe("text only: case-sensitive matching"),
 	hidden: z.boolean().optional().describe("files only: include hidden files"),
