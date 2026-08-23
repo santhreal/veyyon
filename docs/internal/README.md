@@ -96,6 +96,7 @@ New here? Read [onboarding](onboarding.md) and [testing](testing.md) first.
 | [provider-streaming-internals.md](provider-streaming-internals.md) | Streaming decode/encode internals. |
 | [ai-schema-normalize.md](ai-schema-normalize.md) | Tool-schema normalization across providers. |
 | [non-compaction-retry-policy.md](non-compaction-retry-policy.md) | The non-compaction auto-retry policy. |
+| [retry-loops.md](retry-loops.md) | Every loop that sends a request again, its budget, and which verdict it reads. |
 | [local-tiny-models.md](local-tiny-models.md) | Embedded local tiny-model experiments. |
 
 ## Prompts and caching
