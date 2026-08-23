@@ -14,8 +14,8 @@ import {
 	getSettingsForTab,
 	invalidateSettingDefsCache,
 	isNestedLspKnob,
-	lspPanelPaths,
 	LSP_SETTING_PATHS,
+	lspPanelPaths,
 	settingsSearchLandingPath,
 } from "@veyyon/coding-agent/modes/components/settings-defs";
 

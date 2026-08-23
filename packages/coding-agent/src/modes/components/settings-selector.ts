@@ -115,11 +115,11 @@ import {
 	getSettingDef,
 	getSettingsForTab,
 	isNestedLspKnob,
-	lspPanelPaths,
 	LSP_SETTING_PATHS,
-	settingsSearchLandingPath,
+	lspPanelPaths,
 	type OptionList,
 	type SettingDef,
+	settingsSearchLandingPath,
 } from "./settings-defs";
 import { getPreset } from "./status-line/presets";
 
