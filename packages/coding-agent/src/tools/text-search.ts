@@ -64,7 +64,7 @@ import {
 	PREVIEW_LIMITS,
 	replaceTabs,
 } from "./render-utils";
-import { resolveToolSearchScope } from "./search-scope";
+import { isImmutableSearchSourcePath, resolveToolSearchScope } from "./search-scope";
 import { ToolError } from "./tool-errors";
 import { toolResult } from "./tool-result";
 
@@ -315,15 +315,6 @@ interface InternalSearchInputResolution {
 	virtualInputIndexes: Set<number>;
 	immutableSourcePaths: Set<string>;
 	virtualScopePath?: string;
-}
-
-function isImmutableSourcePath(filePath: string, immutableSourcePaths: ReadonlySet<string>): boolean {
-	for (const immutablePath of immutableSourcePaths) {
-		if (filePath === immutablePath || filePath.startsWith(`${immutablePath}${path.sep}`)) {
-			return true;
-		}
-	}
-	return false;
 }
 
 interface IndexedContentLines {
@@ -1400,7 +1391,7 @@ export async function executeTextSearch(
 				for (const relativePath of fileList) {
 					if (archiveDisplaySet.has(relativePath) || virtualPathSet.has(relativePath)) continue;
 					const absoluteFilePath = path.resolve(session.cwd, relativePath);
-					if (isImmutableSourcePath(absoluteFilePath, immutableSourcePaths)) continue;
+					if (isImmutableSearchSourcePath(absoluteFilePath, immutableSourcePaths)) continue;
 					// Mint a whole-file content tag so any anchor validates while the
 					// file is unchanged; over-cap / unreadable files get no tag (and
 					// therefore plain, non-editable line output).

@@ -91,6 +91,14 @@ export interface ToolScopeResolution {
 	immutableSourcePaths: Set<string>;
 }
 
+/** Whether a resolved match belongs to a source that must not mint editable anchors. */
+export function isImmutableSearchSourcePath(filePath: string, immutableSourcePaths: ReadonlySet<string>): boolean {
+	for (const immutablePath of immutableSourcePaths) {
+		if (filePath === immutablePath || filePath.startsWith(`${immutablePath}${path.sep}`)) return true;
+	}
+	return false;
+}
+
 /**
  * Shared path-input pipeline for text search, structure search, and `ast_edit`:
  *  1. normalize + reject empty paths,
