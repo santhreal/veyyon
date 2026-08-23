@@ -117,6 +117,12 @@ mnemopi:
   llmModel: gpt-4.1-mini
 ```
 
+`mnemopi.llmApiKey` and `mnemopi.embeddingApiKey` resolve through the config-value grammar the rest of
+the product uses: `${VAR}` or a bare `VAR` reads the environment, `literal:<text>` is verbatim, and
+`!command` runs a command and takes its stdout. A named variable that is unset resolves to nothing, so
+no credential is sent. Resolution happens where the client is built (`resolveMnemopiProviderOptions` in
+`src/mnemopi/backend.ts`); a config loaded without it carries the request text and no LLM.
+
 Equivalent constructor shapes:
 
 ```ts

@@ -10,7 +10,7 @@ import {
 } from "@veyyon/catalog/wire/codex";
 import { getInstallId } from "@veyyon/utils/dirs";
 import { $env, $flag } from "@veyyon/utils/env";
-import { fetchWithRetry } from "@veyyon/utils/fetch-retry";
+
 import { structuredCloneJSON } from "@veyyon/utils/json";
 import { parseStreamingJson } from "@veyyon/utils/json-parse";
 import * as logger from "@veyyon/utils/logger";
@@ -79,6 +79,7 @@ import {
 	iterateWithIdleTimeout,
 } from "../utils/idle-iterator";
 import type { OpenAIStreamHandle } from "../utils/openai-http";
+import { fetchProviderWithRetry } from "../utils/provider-fetch";
 import { notifyProviderResponse } from "../utils/provider-response";
 import { createRequestDebugSession, isRequestDebugEnabled, type RequestDebugResponseLog } from "../utils/request-debug";
 import { adaptSchemaForStrict, NO_STRICT, sanitizeSchemaForOpenAIResponses, toolWireSchema } from "../utils/schema";
@@ -252,9 +253,12 @@ const CODEX_WEBSOCKET_IDLE_TIMEOUT_MS = Number($env.VEYYON_CODEX_WEBSOCKET_IDLE_
 const CODEX_WEBSOCKET_FIRST_EVENT_TIMEOUT_MS = Number($env.VEYYON_CODEX_WEBSOCKET_FIRST_EVENT_TIMEOUT_MS || 60_000);
 const CODEX_WEBSOCKET_RETRY_BUDGET = Number($env.VEYYON_CODEX_WEBSOCKET_RETRY_BUDGET || CODEX_MAX_RETRIES);
 const CODEX_WEBSOCKET_RETRY_DELAY_MS = Number($env.VEYYON_CODEX_WEBSOCKET_RETRY_DELAY_MS || CODEX_RETRY_DELAY_MS);
+// The codes Codex sends for a failure a replay can survive. A code is this provider's own vocabulary;
+// the SENTENCE beside it is not, and the second half of this decision used to be a private regex that
+// restated the shared transient wording almost exactly — "overloaded", "service unavailable",
+// "internal error", "server error" — and drifted from it by two phrasings. Those two moved into
+// TRANSIENT_TRANSPORT_PATTERN, where every provider reads them.
 const CODEX_RETRYABLE_EVENT_CODES = new Set(["model_error", "server_error", "internal_error"]);
-const CODEX_RETRYABLE_EVENT_MESSAGE =
-	/processing your request|retry your request|temporar(?:y|ily)|overloaded|service.?unavailable|internal error|server error/i;
 const CODEX_PROVIDER_SESSION_STATE_KEY = "openai-codex-responses";
 const X_CODEX_TURN_STATE_HEADER = "x-codex-turn-state";
 const X_MODELS_ETAG_HEADER = "x-models-etag";
@@ -3956,7 +3960,7 @@ async function openCodexSseEventStream(
 	};
 	let response: Response;
 	try {
-		response = await fetchWithRetry(url, {
+		response = await fetchProviderWithRetry(url, {
 			method: "POST",
 			headers,
 			body: JSON.stringify(body),
@@ -4371,7 +4375,7 @@ export function isRetryableCodexFailureEvent(rawEvent: Record<string, unknown>):
 		return true;
 	}
 	const message = error?.message ?? event.message ?? event.response?.message;
-	return !!message && CODEX_RETRYABLE_EVENT_MESSAGE.test(message);
+	return !!message && AIError.isTransientErrorText(message);
 }
 
 export function createCodexProviderStreamError(rawEvent: Record<string, unknown>): CodexProviderStreamError {

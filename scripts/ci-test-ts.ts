@@ -68,7 +68,19 @@ const REAL_CONFIG_ROOT = path.join(os.homedir(), ".veyyon");
 // unprotected, which surfaced when the tripwire's own suite wrote its probe files
 // into the real config root.
 const TRIPWIRE_PRELOAD = path.join(repoRoot, "packages", "utils", "test", "helpers", "real-data-tripwire.ts");
-const preloadArgs = ["--preload", TRIPWIRE_PRELOAD];
+// The second tripwire: a suite that replaces a provider module process-wide and never restores it
+// answers every later file in the same bucket, so the failure lands on an innocent suite. It fails
+// the test that ends with an override it did not inherit, and puts the inherited value back so one
+// leak is one failure.
+const PROVIDER_OVERRIDE_PRELOAD = path.join(
+	repoRoot,
+	"packages",
+	"ai",
+	"test",
+	"helpers",
+	"provider-override-tripwire.ts",
+);
+const preloadArgs = ["--preload", TRIPWIRE_PRELOAD, "--preload", PROVIDER_OVERRIDE_PRELOAD];
 
 // A disposable HOME handed to every test child. This is PREVENTION, and it is
 // structural rather than advisory: config, credential and session paths are all

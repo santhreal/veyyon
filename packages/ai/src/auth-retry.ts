@@ -3,7 +3,6 @@ import type { OAuthAccess } from "./auth-storage";
 import * as AIError from "./error";
 import { isAuthRetryableError } from "./error/auth-classify";
 import { isUsageLimit } from "./error/flags";
-import { isUsageLimitOutcome } from "./error/rate-limit";
 
 /**
  * Context passed to an {@link ApiKeyResolver} on each resolution attempt.
@@ -114,13 +113,6 @@ export const AUTH_RETRY_STEPS: readonly boolean[] = [false, true];
 
 export const AUTH_RETRY_MAX_ATTEMPTS = 64;
 
-function isDirectCredentialRotationError(error: unknown): boolean {
-	if (isUsageLimit(error)) return true;
-	const status = AIError.status(error);
-	const message = error instanceof Error ? error.message : typeof error === "string" ? error : undefined;
-	return isUsageLimitOutcome(status, message);
-}
-
 /** Resolve a single retry step, swallowing resolver failures into `undefined`. */
 export async function resolveRetryKey(
 	resolver: ApiKeyResolver,
@@ -131,7 +123,7 @@ export async function resolveRetryKey(
 ): Promise<string | undefined> {
 	if (signal?.aborted) return undefined;
 	try {
-		const rotateSibling = lastChance || (!lastChance && isDirectCredentialRotationError(error));
+		const rotateSibling = lastChance || (!lastChance && isUsageLimit(error));
 		const resolved = (await resolver({ lastChance: rotateSibling, error, signal, previousKey })) || undefined;
 		if (signal?.aborted) return undefined;
 		return resolved;
@@ -190,7 +182,7 @@ export async function resolveNextAuthRetryKey(
 ): Promise<string | undefined> {
 	if (signal?.aborted) return undefined;
 	if (state.attempts >= AUTH_RETRY_MAX_ATTEMPTS) return undefined;
-	const directRotation = isDirectCredentialRotationError(error);
+	const directRotation = isUsageLimit(error);
 	if (!directRotation) {
 		if (state.legacyAuthSwitchUsed) return undefined;
 		if (!state.refreshedCurrent) {
@@ -380,7 +372,7 @@ export async function withOAuthAccess<T>(
 		let next: OAuthAccess | undefined;
 		throwIfAuthRetryAborted(signal);
 		if (attemptCount >= AUTH_RETRY_MAX_ATTEMPTS) break;
-		const directRotation = isDirectCredentialRotationError(lastError);
+		const directRotation = isUsageLimit(lastError);
 		if (!directRotation) {
 			if (legacyAuthSwitchUsed) break;
 			if (!refreshedCurrent) {

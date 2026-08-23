@@ -67,7 +67,9 @@ shot second-state
 			expect(stderr).toContain("is byte-identical to previous shot 'test-dup-first-state'");
 			expect(fs.existsSync(path.join(tempDir, "abandoned.tsv"))).toBe(true);
 			const abandoned = fs.readFileSync(path.join(tempDir, "abandoned.tsv"), "utf8");
-			expect(abandoned).toContain("second-state\tshot 'second-state' is byte-identical to previous shot 'test-dup-first-state'");
+			expect(abandoned).toContain(
+				"second-state\tshot 'second-state' is byte-identical to previous shot 'test-dup-first-state'",
+			);
 		} finally {
 			fs.rmSync(tempDir, { recursive: true, force: true });
 		}

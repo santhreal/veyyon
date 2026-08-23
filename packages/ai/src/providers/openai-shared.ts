@@ -1028,22 +1028,40 @@ export function applyChatCompletionsToolStream(
 	}
 }
 
+/**
+ * The sentence a rejection was stated in, wherever the provider put it.
+ *
+ * A captured body and an `Error.message` are two halves of one answer: some endpoints put the reason
+ * in the envelope the SDK threw, some only in the body the request-inspector kept. Reading one half
+ * is how a rejection goes unrecognised on one path and recognised on another.
+ */
+function rejectionText(error: unknown, capturedErrorResponse: CapturedHttpErrorResponse | undefined): string {
+	return [error instanceof Error ? error.message : undefined, capturedErrorResponse?.bodyText]
+		.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+		.join("\n");
+}
+
+/**
+ * The narrow rejection a caller answers by dropping strict tools for the whole session, rather than
+ * for one attempt. The words are the registry's; the status and the assembly are this path's.
+ */
 export function isCompiledGrammarTooLargeStrictError(
 	error: unknown,
 	capturedErrorResponse: CapturedHttpErrorResponse | undefined,
 ): boolean {
 	const status = extractHttpStatusFromError(error) ?? capturedErrorResponse?.status;
 	if (status !== 400) return false;
-	const messageParts = [error instanceof Error ? error.message : undefined, capturedErrorResponse?.bodyText]
-		.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-		.join("\n");
-	return (
-		/invalid_request_error/i.test(messageParts) &&
-		/compiled grammar/i.test(messageParts) &&
-		/too large/i.test(messageParts)
-	);
+	return AIError.matchesCompiledGrammarTooLargeText(rejectionText(error, capturedErrorResponse));
 }
 
+/**
+ * Whether this endpoint rejected the request for carrying strict tools.
+ *
+ * The vocabulary is `matchesStrictToolsRejectionText`, the grammar family's, and it used to be a
+ * private regex here that answered the same question with different words: the registry read
+ * `invalid_request_error` plus a grammar or schema complaint, this path read a wire-format code and a
+ * `strict` value it could not mix, and each recognised rejections the other let through.
+ */
 export function shouldRetryWithoutStrictTools(
 	error: unknown,
 	capturedErrorResponse: CapturedHttpErrorResponse | undefined,
@@ -1053,12 +1071,7 @@ export function shouldRetryWithoutStrictTools(
 	if (!tools || tools.length === 0 || !strictToolsApplied) return false;
 	const status = extractHttpStatusFromError(error) ?? capturedErrorResponse?.status;
 	if (status !== 400 && status !== 422) return false;
-	const messageParts = [error instanceof Error ? error.message : undefined, capturedErrorResponse?.bodyText]
-		.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-		.join("\n");
-	return /wrong_api_format|mixed values for 'strict'|tool[s]?\b.*strict|\bstrict\b.*tool|tool parameters? schema|invalid schema for function|structured[_ -]?outputs?\b[^\n]*(?:not (?:supported|available|enabled)|unsupported)|(?:not support|unsupported)[^\n]*structured[_ -]?outputs?\b/i.test(
-		messageParts,
-	);
+	return AIError.matchesStrictToolsRejectionText(rejectionText(error, capturedErrorResponse));
 }
 
 function normalizeOpenAIStableId(value: string | undefined, maxLength: number, hashPrefix: string): string | undefined {

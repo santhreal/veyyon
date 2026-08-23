@@ -1,6 +1,5 @@
 import { emptyUsage } from "@veyyon/catalog/models";
 import { normalizeOllamaCloudBaseUrl } from "@veyyon/catalog/provider-models/ollama";
-import { fetchWithRetry } from "@veyyon/utils/fetch-retry";
 import { parseStreamingJson } from "@veyyon/utils/json-parse";
 import * as AIError from "../error";
 import { getEnvApiKey } from "../stream";
@@ -35,6 +34,7 @@ import {
 	getOpenAIStreamFirstEventTimeoutMs,
 	getOpenAIStreamIdleTimeoutMs,
 } from "../utils/idle-iterator";
+import { fetchProviderWithRetry } from "../utils/provider-fetch";
 import { sanitizeSchemaForOllama, toolWireSchema } from "../utils/schema";
 import {
 	getStreamMarkupHealingPattern,
@@ -327,9 +327,15 @@ function createChatBody(model: Model<"ollama-chat">, context: Context, options: 
 	};
 }
 
-function shouldRetryOllamaResponse(response: Response, bodyText: string): boolean {
-	return response.status < 500 || !AIError.LLAMA_CPP_TOOL_CALL_PARSE_PATTERN.test(bodyText);
-}
+/**
+ * What a local server states for itself: the llama.cpp tool-call parse failure, which answers 500 and
+ * reproduces on every replay because the same prompt produces the same malformed output. The rest of
+ * the verdict is `retryResponse`'s.
+ */
+const OLLAMA_RESPONSE_RETRY_POLICY: AIError.ResponseRetryPolicy = {
+	api: "ollama-chat",
+	refusesReplay: body => AIError.LLAMA_CPP_TOOL_CALL_PARSE_PATTERN.test(body),
+};
 
 async function* iterateNdjson(stream: ReadableStream<Uint8Array>): AsyncGenerator<OllamaChatChunk> {
 	const reader = stream.getReader();
@@ -561,7 +567,7 @@ const streamOllamaOnce = (
 			const watchdog = armPreResponseTimeout(options.signal, firstEventTimeoutMs);
 			let response: Response;
 			try {
-				response = await fetchWithRetry(`${baseUrl}/api/chat`, {
+				response = await fetchProviderWithRetry(`${baseUrl}/api/chat`, {
 					method: "POST",
 					headers: {
 						...model.headers,
@@ -573,7 +579,7 @@ const streamOllamaOnce = (
 					signal: watchdog.signal,
 					defaultDelayMs: OLLAMA_RETRY_DELAYS_MS,
 					maxDelayMs: options.maxRetryDelayMs,
-					shouldRetryResponse: shouldRetryOllamaResponse,
+					retry: OLLAMA_RESPONSE_RETRY_POLICY,
 					fetch: options.fetch,
 					timeout: false,
 				});
