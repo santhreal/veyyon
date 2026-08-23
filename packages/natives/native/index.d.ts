@@ -487,6 +487,8 @@ export interface ContextLine {
   lineNumber: number
   /** Raw line content (trimmed line ending). */
   line: string
+  /** Whether the context line was truncated. */
+  truncated?: boolean
 }
 
 /**

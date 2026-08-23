@@ -1,4 +1,3 @@
-import type * as fs from "node:fs";
 import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
@@ -7,7 +6,7 @@ import { formatHashlineHeader } from "@veyyon/hashline";
 import { type GrepMatch, GrepOutputMode, type GrepResult, grep } from "@veyyon/natives";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
-import { errorMessage, isEnoent, logger, trimTrailingSlashes, untilAborted } from "@veyyon/utils";
+import { errorMessage, logger, trimTrailingSlashes, untilAborted } from "@veyyon/utils";
 import { recordFileSnapshot, recordSeenLinesFromBody } from "../edit/file-snapshot-store";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { LocalProtocolOptions } from "../internal-urls/local-protocol";
@@ -50,6 +49,7 @@ import {
 	pathTargetsSsh,
 	type ResolvedSearchTarget,
 	resolveReadPath,
+	resolveToCwd,
 	selectorLineRanges,
 	splitInternalUrlSel,
 	splitPathAndSel,
@@ -67,6 +67,13 @@ import {
 	replaceTabs,
 } from "./render-utils";
 import { isImmutableSearchSourcePath, resolveToolSearchScope } from "./search-scope";
+import {
+	type GrepPathSpec,
+	lineRangeFetchCap,
+	matchAbsolutePath,
+	NATIVE_GREP_MAX_FILE_BYTES,
+	TextSearchScopeProvenance,
+} from "./text-search-scope";
 import { ToolError } from "./tool-errors";
 import { toolResult } from "./tool-result";
 
@@ -98,28 +105,10 @@ export const BROAD_SEARCH_REPRESENTATIVE_MATCHES_PER_FILE = 2;
  * (DEFAULT_FILE_LIMIT files × MULTI_FILE_PER_FILE_MATCHES matches) plus
  * pagination headroom so the caller can see total file count. */
 const INTERNAL_TOTAL_CAP = 2000;
-/** Mirrors `MAX_FILE_BYTES` in `crates/veyyon-natives/src/grep.rs`. Native grep
- * searches only the first `MAX_FILE_BYTES` of a larger file (a leading mmap
- * window) and drops the rest; matches beyond the window are not returned. We
- * surface a partial-coverage note when the caller explicitly targeted such a
- * file so they know matches past the window are not shown. */
-const NATIVE_GREP_MAX_FILE_BYTES = 4 * 1024 * 1024;
 /** Wall-clock budget for a single native grep invocation. Without it, an
  * aborted or runaway search (huge tree, network mount) keeps burning CPU on
  * the native thread pool after the JS promise is abandoned. */
 const SEARCH_GREP_TIMEOUT_MS = 30_000;
-
-/**
- * Parsed `paths` entry — a path (possibly archive-shaped) plus an optional
- * line-range selector peeled off the trailing `:N-M` (or `:N+K`, `:N,M`, …)
- * chunk via {@link splitPathAndSel}.
- */
-interface GrepPathSpec {
-	original: string;
-	clean: string;
-	literalFilesystemMatch?: boolean;
-	ranges?: [LineRange, ...LineRange[]];
-}
 
 /**
  * Mirror of read's `parseSel` selector grammar (`read.ts`) so `grep` accepts
@@ -182,7 +171,16 @@ async function parsePathSpecs(rawEntries: readonly string[], cwd: string): Promi
 				);
 			}
 			if (hasGlobPathChars(split.path)) {
-				throw new ToolError(`Line-range selector requires a single file, not a glob: ${entry}`);
+				let isLiteralFile = false;
+				try {
+					const st = await stat(resolveToCwd(split.path, cwd));
+					isLiteralFile = st.isFile();
+				} catch {
+					isLiteralFile = false;
+				}
+				if (!isLiteralFile) {
+					throw new ToolError(`Line-range selector requires a single file, not a glob: ${entry}`);
+				}
 			}
 			clean = split.path;
 			ranges = parsed;
@@ -196,24 +194,6 @@ async function parsePathSpecs(rawEntries: readonly string[], cwd: string): Promi
 	}
 	return specs;
 }
-
-function mergeRangesInto(map: Map<string, LineRange[]>, absKey: string, ranges: readonly LineRange[]): void {
-	// Concat-without-merge is correct: `isLineInRanges` scans linearly, so
-	// duplicates/overlaps only cost a few extra comparisons per match.
-	const existing = map.get(absKey);
-	if (existing) {
-		existing.push(...ranges);
-	} else {
-		map.set(absKey, [...ranges]);
-	}
-}
-
-function matchAbsolutePath(matchPath: string, searchPath: string): string {
-	if (matchPath === "") return searchPath;
-	if (path.isAbsolute(matchPath)) return matchPath;
-	return path.resolve(searchPath, matchPath);
-}
-
 /**
  * Pre-resolve any `paths` entries that point at a member inside an archive
  * (e.g. `bundle.zip:src/foo.ts`, `release.tar.gz:notes.md`). Native grep
@@ -364,27 +344,6 @@ function lineAllowed(lineNumber: number, ranges: readonly LineRange[] | undefine
 	return !ranges || isLineInRanges(lineNumber, ranges);
 }
 
-/**
- * Per-file native fetch budget that guarantees the JS range filter can still
- * surface `perFileKeep` in-range hits. Matches arrive one entry per matched
- * line in line order, so a bounded range's hits all sit within the first
- * `endLine` entries, and an open-ended range starting at S is preceded by at
- * most S-1 out-of-range entries — S-1+perFileKeep entries cover the kept
- * window or exhaust the file. Clamped to the native file-size ceiling (a
- * ≤4 MiB file cannot have more matched lines than bytes), which also keeps
- * the scaled global budget inside the native layer's u32 bounds.
- */
-function lineRangeFetchCap(pathSpecs: readonly GrepPathSpec[], perFileKeep: number): number {
-	let cap = 0;
-	for (const spec of pathSpecs) {
-		if (!spec.ranges) continue;
-		for (const range of spec.ranges) {
-			cap = Math.max(cap, range.endLine ?? range.startLine - 1 + perFileKeep);
-		}
-	}
-	return Math.min(cap, NATIVE_GREP_MAX_FILE_BYTES);
-}
-
 /** Binary search for the index of the line containing byte `offset`. */
 function findLineIndex(starts: readonly number[], offset: number): number {
 	if (starts.length === 0) return -1;
@@ -528,9 +487,13 @@ async function nativeChunkedLineIndexes(
 	return indexes;
 }
 
-function makeContextLine(lines: readonly string[], lineIndex: number): { lineNumber: number; line: string } {
-	const { text } = truncateLine(lines[lineIndex] ?? "", DEFAULT_MAX_COLUMN);
-	return { lineNumber: lineIndex + 1, line: text };
+function makeContextLine(lines: readonly string[], lineIndex: number): NonNullable<GrepMatch["contextBefore"]>[number] {
+	const { text, wasTruncated } = truncateLine(lines[lineIndex] ?? "", DEFAULT_MAX_COLUMN);
+	return {
+		lineNumber: lineIndex + 1,
+		line: text,
+		...(wasTruncated ? { truncated: true } : {}),
+	};
 }
 
 function makeVirtualMatch(
@@ -934,7 +897,6 @@ export async function executeTextSearch(
 			});
 			const searchablePaths = internalResolution.paths;
 			const { virtualResources, virtualPathSet, virtualInputIndexes } = internalResolution;
-			const rangesByAbsPath = new Map<string, LineRange[]>();
 
 			if (
 				archiveUnreadable.length > 0 &&
@@ -988,44 +950,7 @@ export async function executeTextSearch(
 				for (const immutablePath of scope.immutableSourcePaths) {
 					immutableSourcePaths.add(immutablePath);
 				}
-				// Build the per-file line-range filter after URL materialization has run:
-				// archive entries are keyed by scratch path, URL entries by read-cache
-				// content path, and ordinary files by their resolved filesystem path.
-				for (let idx = 0; idx < pathSpecs.length; idx++) {
-					const spec = pathSpecs[idx];
-					if (!spec.ranges) continue;
-					if (virtualInputIndexes.has(idx)) continue;
-					const resolved = internalResolution.resolvedPathsByInput[idx];
-					if (!resolved) continue;
-					const materializedExternalPath = materializedExternalPaths.get(spec.clean);
-					if (materializedExternalPath) {
-						mergeRangesInto(rangesByAbsPath, path.resolve(materializedExternalPath), spec.ranges);
-						continue;
-					}
-					if (resolved === spec.clean && !archiveDisplayMap.has(resolved)) {
-						// Non-archive entry; ensure the cleaned path resolves to a regular file.
-						const absKey = path.resolve(resolveReadPath(resolved, session.cwd));
-						// Keep the stat failure's own reason: an unreadable path reported as "not found" sends
-						// the reader looking for a missing file instead of at the permission that blocked it.
-						let stats: fs.Stats | undefined;
-						try {
-							stats = await stat(absKey);
-						} catch (error) {
-							if (isEnoent(error)) {
-								throw new ToolError(`Path not found for line-range selector: ${spec.original}`);
-							}
-							throw new ToolError(
-								`Could not read path for line-range selector: ${spec.original}: ${errorMessage(error)}`,
-							);
-						}
-						if (!stats.isFile()) {
-							throw new ToolError(`Line-range selector requires a single file: ${spec.original} is a directory`);
-						}
-						mergeRangesInto(rangesByAbsPath, absKey, spec.ranges);
-					} else {
-						mergeRangesInto(rangesByAbsPath, path.resolve(resolved), spec.ranges);
-					}
-				}
+				// Scope provenance is built after scope resolution.
 				// When the only input was an archive selector, surface that selector instead
 				// of the temp scratch path the resolver substituted in.
 				const physicalScopePath =
@@ -1044,6 +969,14 @@ export async function executeTextSearch(
 				exactFilePaths = undefined;
 				missingPaths = [];
 			}
+			const scopeProvenance = await TextSearchScopeProvenance.build({
+				pathSpecs,
+				resolvedPathsByInput: internalResolution.resolvedPathsByInput,
+				virtualInputIndexes,
+				materializedExternalPaths,
+				archiveDisplayMap,
+				cwd: session.cwd,
+			});
 			if (
 				missingPaths.length > 0 &&
 				missingPaths.length === searchablePaths.length &&
@@ -1071,7 +1004,7 @@ export async function executeTextSearch(
 			// that filtering can still yield `perFileMatchCap` in-range hits, and
 			// scale the global safety ceiling by the same amplification so ranged
 			// searches keep the baseline file coverage while staying finite.
-			const hasLineRangeFilters = pathSpecs.some(spec => spec.ranges);
+			const hasLineRangeFilters = scopeProvenance.hasActiveLineRangeFilters();
 			const nativeMaxCountPerFile = hasLineRangeFilters
 				? Math.max(perFileMatchCap + 1, lineRangeFetchCap(pathSpecs, perFileMatchCap + 1))
 				: perFileMatchCap + 1;
@@ -1213,27 +1146,8 @@ export async function executeTextSearch(
 				throw err;
 			}
 			result = mergeGrepResults(result, virtualResult, nativeMaxCount);
-			if (rangesByAbsPath.size > 0) {
-				const filteredMatches: GrepMatch[] = [];
-				for (const match of result.matches) {
-					const abs = matchAbsolutePath(match.path, searchPath);
-					const ranges = rangesByAbsPath.get(abs);
-					if (!ranges) {
-						// Path has no line-range constraint (e.g. a peer entry without `:N-M`).
-						filteredMatches.push(match);
-						continue;
-					}
-					if (!isLineInRanges(match.lineNumber, ranges)) continue;
-					// Drop context lines that fall outside the allowed ranges; they would
-					// otherwise leak content the caller explicitly excluded.
-					const trimBefore = match.contextBefore?.filter(c => isLineInRanges(c.lineNumber, ranges));
-					const trimAfter = match.contextAfter?.filter(c => isLineInRanges(c.lineNumber, ranges));
-					filteredMatches.push({
-						...match,
-						contextBefore: trimBefore && trimBefore.length > 0 ? trimBefore : undefined,
-						contextAfter: trimAfter && trimAfter.length > 0 ? trimAfter : undefined,
-					});
-				}
+			if (scopeProvenance.hasActiveLineRangeFilters()) {
+				const filteredMatches = scopeProvenance.filterMatches(result.matches, searchPath);
 				result = {
 					matches: filteredMatches,
 					totalMatches: filteredMatches.length,
@@ -1426,17 +1340,11 @@ export async function executeTextSearch(
 				}, 0);
 				let lastEmittedLine: number | undefined;
 				const gutterPad = " ".repeat(lineNumberWidth + 1);
-				// Track match/context lines whose displayed text was
-				// column-truncated by the native (see `crates/veyyon-natives/src/grep.rs`
-				// `truncate_line`, marker `...` at max_columns). Excluded from
-				// seenLines so a follow-up edit anchored at that line still
-				// requires a full-width re-read — the model saw only the
-				// prefix. The native currently propagates `truncated` only on
-				// the match line; context lines fall back to a length check
-				// against `DEFAULT_MAX_COLUMN` as a conservative heuristic.
+				// Track match/context lines whose displayed text was column-truncated
+				// (by native grep or JS string truncation). Excluded from seenLines
+				// so a follow-up edit anchored at that line still requires a full-width
+				// re-read — the model saw only the prefix.
 				const clippedLines = new Set<number>();
-				const isNativeTruncated = (line: string): boolean =>
-					line.length >= DEFAULT_MAX_COLUMN && line.endsWith("...");
 				for (const match of fileMatches) {
 					const pushLine = (lineNumber: number, line: string, isMatch: boolean) => {
 						if (lastEmittedLine !== undefined && lineNumber > lastEmittedLine + 1) {
@@ -1450,7 +1358,10 @@ export async function executeTextSearch(
 					if (match.contextBefore) {
 						for (const ctx of match.contextBefore) {
 							pushLine(ctx.lineNumber, ctx.line, false);
-							if (isNativeTruncated(ctx.line)) clippedLines.add(ctx.lineNumber);
+							if (ctx.truncated) {
+								linesTruncated = true;
+								clippedLines.add(ctx.lineNumber);
+							}
 						}
 					}
 					pushLine(match.lineNumber, match.line, true);
@@ -1461,7 +1372,10 @@ export async function executeTextSearch(
 					if (match.contextAfter) {
 						for (const ctx of match.contextAfter) {
 							pushLine(ctx.lineNumber, ctx.line, false);
-							if (isNativeTruncated(ctx.line)) clippedLines.add(ctx.lineNumber);
+							if (ctx.truncated) {
+								linesTruncated = true;
+								clippedLines.add(ctx.lineNumber);
+							}
 						}
 					}
 					fileMatchCounts.set(relativePath, (fileMatchCounts.get(relativePath) ?? 0) + 1);
