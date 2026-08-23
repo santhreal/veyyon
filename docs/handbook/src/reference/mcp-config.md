@@ -406,6 +406,8 @@ Veyyon expands `${VAR}` and `${VAR:-default}` placeholders while discovering MCP
 
 An unset variable with no default leaves the placeholder text in the value. In `command`, `args`, `cwd`, `url` and `envPassthrough` that text would become a program, an argument, a directory or a hostname, so the server is not started: the connection is refused with the field and the variable named, and nothing is spawned or dialled. `env` and `headers` are resolved again before connect and refuse the same way (below). In `auth` and `oauth` the placeholder is sent to the authorization server, which rejects the exchange.
 
+A placeholder in a structural field is therefore resolved here or refused; it never reaches the server as text. To let a server read a variable itself, name it in `env` (or in `envPassthrough`) and read it from the process environment inside the server.
+
 Example:
 
 ```json
