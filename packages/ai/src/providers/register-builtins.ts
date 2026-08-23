@@ -49,7 +49,7 @@ import type { OpenAIResponsesOptions } from "./openai-responses";
 // Lazy provider module shape
 // ---------------------------------------------------------------------------
 
-interface LazyProviderModule<TApi extends Api> {
+export interface LazyProviderModule<TApi extends Api> {
 	stream: (model: Model<TApi>, context: Context, options: OptionsForApi<TApi>) => AsyncIterable<AssistantMessageEvent>;
 }
 
@@ -149,77 +149,111 @@ interface BedrockProviderModule {
 // Module-level lazy promise caches
 // ---------------------------------------------------------------------------
 
+/**
+ * THE TEST OVERRIDES ARE ONE MAP, AND THEY USED TO BE TWELVE VARIABLES.
+ *
+ * Each api had its own `let …ProviderModuleOverride`, its own setter and its own `if (override)`
+ * branch in its loader: the same mechanism written twelve times, so nothing could answer "is any
+ * override installed" and nothing could clear them. A suite that installed one and never restored it
+ * replaced that provider for every test file after it in the process, and the failure landed on the
+ * innocent file — a Bedrock deadline test that terminated in 3ms because it was talking to another
+ * suite's stub instead of a credential process. Keyed by api, the question is answerable, which is
+ * what {@link providerModuleOverrideSnapshot} is for.
+ */
+const providerModuleOverrides = new Map<Api, LazyProviderModule<Api>>();
+
+/**
+ * The installed overrides, exactly as they stand, for a harness that has to put one back.
+ *
+ * A tripwire cannot ask "is anything installed" and be right about both callers.
+ * `packages/simulations/src/turn-sim/harness.ts` replaces all twelve apis at module scope on purpose
+ * and keeps them for the life of the process, so an empty-set rule reds every simulation. What is
+ * always wrong is a test ending with an override it did not inherit, which a snapshot taken before
+ * the test and compared after it detects.
+ */
+export function providerModuleOverrideSnapshot(): ReadonlyMap<Api, LazyProviderModule<Api>> {
+	return new Map(providerModuleOverrides);
+}
+
+/** Put one api back to what a test inherited. The twelve named setters are the way to install one. */
+export function setProviderModuleOverrideForTest(api: Api, module: LazyProviderModule<Api> | undefined): void {
+	setProviderModuleOverride(api, module);
+}
+
+function setProviderModuleOverride<A extends Api>(api: A, module: LazyProviderModule<A> | undefined): void {
+	if (module === undefined) providerModuleOverrides.delete(api);
+	else providerModuleOverrides.set(api, module as LazyProviderModule<Api>);
+}
+
+function providerModuleOverride<A extends Api>(api: A): LazyProviderModule<A> | undefined {
+	return providerModuleOverrides.get(api) as LazyProviderModule<A> | undefined;
+}
+
 let anthropicProviderModulePromise: Promise<LazyProviderModule<"anthropic-messages">> | undefined;
-let anthropicProviderModuleOverride: LazyProviderModule<"anthropic-messages"> | undefined;
 let azureOpenAIResponsesProviderModulePromise: Promise<LazyProviderModule<"azure-openai-responses">> | undefined;
-let azureOpenAIResponsesProviderModuleOverride: LazyProviderModule<"azure-openai-responses"> | undefined;
 let googleProviderModulePromise: Promise<LazyProviderModule<"google-generative-ai">> | undefined;
-let googleProviderModuleOverride: LazyProviderModule<"google-generative-ai"> | undefined;
 let googleGeminiCliProviderModulePromise: Promise<LazyProviderModule<"google-gemini-cli">> | undefined;
-let googleGeminiCliProviderModuleOverride: LazyProviderModule<"google-gemini-cli"> | undefined;
 let googleVertexProviderModulePromise: Promise<LazyProviderModule<"google-vertex">> | undefined;
-let googleVertexProviderModuleOverride: LazyProviderModule<"google-vertex"> | undefined;
 let openAICodexResponsesProviderModulePromise: Promise<LazyProviderModule<"openai-codex-responses">> | undefined;
-let openAICodexResponsesProviderModuleOverride: LazyProviderModule<"openai-codex-responses"> | undefined;
 let openAICompletionsProviderModulePromise: Promise<LazyProviderModule<"openai-completions">> | undefined;
-let openAICompletionsProviderModuleOverride: LazyProviderModule<"openai-completions"> | undefined;
 let openAIResponsesProviderModulePromise: Promise<LazyProviderModule<"openai-responses">> | undefined;
-let openAIResponsesProviderModuleOverride: LazyProviderModule<"openai-responses"> | undefined;
 let ollamaProviderModulePromise: Promise<LazyProviderModule<"ollama-chat">> | undefined;
-let ollamaProviderModuleOverride: LazyProviderModule<"ollama-chat"> | undefined;
 let cursorProviderModulePromise: Promise<LazyProviderModule<"cursor-agent">> | undefined;
-let cursorProviderModuleOverride: LazyProviderModule<"cursor-agent"> | undefined;
 let devinProviderModulePromise: Promise<LazyProviderModule<"devin-agent">> | undefined;
-let devinProviderModuleOverride: LazyProviderModule<"devin-agent"> | undefined;
-let bedrockProviderModuleOverride: LazyProviderModule<"bedrock-converse-stream"> | undefined;
 let bedrockProviderModulePromise: Promise<LazyProviderModule<"bedrock-converse-stream">> | undefined;
 
 export function setAnthropicProviderModule(module?: AnthropicProviderModule): void {
-	anthropicProviderModuleOverride = module ? { stream: module.streamAnthropic } : undefined;
+	setProviderModuleOverride("anthropic-messages", module ? { stream: module.streamAnthropic } : undefined);
 }
 
 export function setAzureOpenAIResponsesProviderModule(module?: AzureOpenAIResponsesProviderModule): void {
-	azureOpenAIResponsesProviderModuleOverride = module ? { stream: module.streamAzureOpenAIResponses } : undefined;
+	setProviderModuleOverride(
+		"azure-openai-responses",
+		module ? { stream: module.streamAzureOpenAIResponses } : undefined,
+	);
 }
 
 export function setGoogleProviderModule(module?: GoogleProviderModule): void {
-	googleProviderModuleOverride = module ? { stream: module.streamGoogle } : undefined;
+	setProviderModuleOverride("google-generative-ai", module ? { stream: module.streamGoogle } : undefined);
 }
 
 export function setGoogleGeminiCliProviderModule(module?: GoogleGeminiCliProviderModule): void {
-	googleGeminiCliProviderModuleOverride = module ? { stream: module.streamGoogleGeminiCli } : undefined;
+	setProviderModuleOverride("google-gemini-cli", module ? { stream: module.streamGoogleGeminiCli } : undefined);
 }
 
 export function setGoogleVertexProviderModule(module?: GoogleVertexProviderModule): void {
-	googleVertexProviderModuleOverride = module ? { stream: module.streamGoogleVertex } : undefined;
+	setProviderModuleOverride("google-vertex", module ? { stream: module.streamGoogleVertex } : undefined);
 }
 
 export function setOpenAICodexResponsesProviderModule(module?: OpenAICodexResponsesProviderModule): void {
-	openAICodexResponsesProviderModuleOverride = module ? { stream: module.streamOpenAICodexResponses } : undefined;
+	setProviderModuleOverride(
+		"openai-codex-responses",
+		module ? { stream: module.streamOpenAICodexResponses } : undefined,
+	);
 }
 
 export function setOpenAICompletionsProviderModule(module?: OpenAICompletionsProviderModule): void {
-	openAICompletionsProviderModuleOverride = module ? { stream: module.streamOpenAICompletions } : undefined;
+	setProviderModuleOverride("openai-completions", module ? { stream: module.streamOpenAICompletions } : undefined);
 }
 
 export function setOpenAIResponsesProviderModule(module?: OpenAIResponsesProviderModule): void {
-	openAIResponsesProviderModuleOverride = module ? { stream: module.streamOpenAIResponses } : undefined;
+	setProviderModuleOverride("openai-responses", module ? { stream: module.streamOpenAIResponses } : undefined);
 }
 
 export function setOllamaProviderModule(module?: OllamaProviderModule): void {
-	ollamaProviderModuleOverride = module ? { stream: module.streamOllama } : undefined;
+	setProviderModuleOverride("ollama-chat", module ? { stream: module.streamOllama } : undefined);
 }
 
 export function setDevinProviderModule(module?: DevinProviderModule): void {
-	devinProviderModuleOverride = module ? { stream: module.streamDevin } : undefined;
+	setProviderModuleOverride("devin-agent", module ? { stream: module.streamDevin } : undefined);
 }
 
 export function setBedrockProviderModule(module?: BedrockProviderModule): void {
-	bedrockProviderModuleOverride = module ? { stream: module.streamBedrock } : undefined;
+	setProviderModuleOverride("bedrock-converse-stream", module ? { stream: module.streamBedrock } : undefined);
 }
 
 export function setCursorProviderModule(module?: CursorProviderModule): void {
-	cursorProviderModuleOverride = module ? { stream: module.streamCursor } : undefined;
+	setProviderModuleOverride("cursor-agent", module ? { stream: module.streamCursor } : undefined);
 }
 
 // ---------------------------------------------------------------------------
@@ -440,9 +474,8 @@ function createLazyStream<TApi extends Api>(
 // ---------------------------------------------------------------------------
 
 function loadAnthropicProviderModule(): Promise<LazyProviderModule<"anthropic-messages">> {
-	if (anthropicProviderModuleOverride) {
-		return Promise.resolve(anthropicProviderModuleOverride);
-	}
+	const override = providerModuleOverride("anthropic-messages");
+	if (override) return Promise.resolve(override);
 	anthropicProviderModulePromise ||= import("./anthropic").then(module => {
 		const provider = module as AnthropicProviderModule;
 		return { stream: provider.streamAnthropic };
@@ -451,9 +484,8 @@ function loadAnthropicProviderModule(): Promise<LazyProviderModule<"anthropic-me
 }
 
 function loadAzureOpenAIResponsesProviderModule(): Promise<LazyProviderModule<"azure-openai-responses">> {
-	if (azureOpenAIResponsesProviderModuleOverride) {
-		return Promise.resolve(azureOpenAIResponsesProviderModuleOverride);
-	}
+	const override = providerModuleOverride("azure-openai-responses");
+	if (override) return Promise.resolve(override);
 	azureOpenAIResponsesProviderModulePromise ||= import("./azure-openai-responses").then(module => {
 		const provider = module as AzureOpenAIResponsesProviderModule;
 		return { stream: provider.streamAzureOpenAIResponses };
@@ -462,9 +494,8 @@ function loadAzureOpenAIResponsesProviderModule(): Promise<LazyProviderModule<"a
 }
 
 function loadGoogleProviderModule(): Promise<LazyProviderModule<"google-generative-ai">> {
-	if (googleProviderModuleOverride) {
-		return Promise.resolve(googleProviderModuleOverride);
-	}
+	const override = providerModuleOverride("google-generative-ai");
+	if (override) return Promise.resolve(override);
 	googleProviderModulePromise ||= import("./google").then(module => {
 		const provider = module as GoogleProviderModule;
 		return { stream: provider.streamGoogle };
@@ -473,9 +504,8 @@ function loadGoogleProviderModule(): Promise<LazyProviderModule<"google-generati
 }
 
 function loadGoogleGeminiCliProviderModule(): Promise<LazyProviderModule<"google-gemini-cli">> {
-	if (googleGeminiCliProviderModuleOverride) {
-		return Promise.resolve(googleGeminiCliProviderModuleOverride);
-	}
+	const override = providerModuleOverride("google-gemini-cli");
+	if (override) return Promise.resolve(override);
 	googleGeminiCliProviderModulePromise ||= import("./google-gemini-cli").then(module => {
 		const provider = module as GoogleGeminiCliProviderModule;
 		return { stream: provider.streamGoogleGeminiCli };
@@ -484,9 +514,8 @@ function loadGoogleGeminiCliProviderModule(): Promise<LazyProviderModule<"google
 }
 
 function loadGoogleVertexProviderModule(): Promise<LazyProviderModule<"google-vertex">> {
-	if (googleVertexProviderModuleOverride) {
-		return Promise.resolve(googleVertexProviderModuleOverride);
-	}
+	const override = providerModuleOverride("google-vertex");
+	if (override) return Promise.resolve(override);
 	googleVertexProviderModulePromise ||= import("./google-vertex").then(module => {
 		const provider = module as GoogleVertexProviderModule;
 		return { stream: provider.streamGoogleVertex };
@@ -495,9 +524,8 @@ function loadGoogleVertexProviderModule(): Promise<LazyProviderModule<"google-ve
 }
 
 function loadOpenAICodexResponsesProviderModule(): Promise<LazyProviderModule<"openai-codex-responses">> {
-	if (openAICodexResponsesProviderModuleOverride) {
-		return Promise.resolve(openAICodexResponsesProviderModuleOverride);
-	}
+	const override = providerModuleOverride("openai-codex-responses");
+	if (override) return Promise.resolve(override);
 	openAICodexResponsesProviderModulePromise ||= import("./openai-codex-responses").then(module => {
 		const provider = module as OpenAICodexResponsesProviderModule;
 		return { stream: provider.streamOpenAICodexResponses };
@@ -506,9 +534,8 @@ function loadOpenAICodexResponsesProviderModule(): Promise<LazyProviderModule<"o
 }
 
 function loadOpenAICompletionsProviderModule(): Promise<LazyProviderModule<"openai-completions">> {
-	if (openAICompletionsProviderModuleOverride) {
-		return Promise.resolve(openAICompletionsProviderModuleOverride);
-	}
+	const override = providerModuleOverride("openai-completions");
+	if (override) return Promise.resolve(override);
 	openAICompletionsProviderModulePromise ||= import("./openai-completions").then(module => {
 		const provider = module as OpenAICompletionsProviderModule;
 		return { stream: provider.streamOpenAICompletions };
@@ -517,9 +544,8 @@ function loadOpenAICompletionsProviderModule(): Promise<LazyProviderModule<"open
 }
 
 function loadOpenAIResponsesProviderModule(): Promise<LazyProviderModule<"openai-responses">> {
-	if (openAIResponsesProviderModuleOverride) {
-		return Promise.resolve(openAIResponsesProviderModuleOverride);
-	}
+	const override = providerModuleOverride("openai-responses");
+	if (override) return Promise.resolve(override);
 	openAIResponsesProviderModulePromise ||= import("./openai-responses").then(module => {
 		const provider = module as OpenAIResponsesProviderModule;
 		return { stream: provider.streamOpenAIResponses };
@@ -528,9 +554,8 @@ function loadOpenAIResponsesProviderModule(): Promise<LazyProviderModule<"openai
 }
 
 function loadOllamaProviderModule(): Promise<LazyProviderModule<"ollama-chat">> {
-	if (ollamaProviderModuleOverride) {
-		return Promise.resolve(ollamaProviderModuleOverride);
-	}
+	const override = providerModuleOverride("ollama-chat");
+	if (override) return Promise.resolve(override);
 	ollamaProviderModulePromise ||= import("./ollama").then(module => {
 		const provider = module as OllamaProviderModule;
 		return { stream: provider.streamOllama };
@@ -539,9 +564,8 @@ function loadOllamaProviderModule(): Promise<LazyProviderModule<"ollama-chat">> 
 }
 
 function loadCursorProviderModule(): Promise<LazyProviderModule<"cursor-agent">> {
-	if (cursorProviderModuleOverride) {
-		return Promise.resolve(cursorProviderModuleOverride);
-	}
+	const override = providerModuleOverride("cursor-agent");
+	if (override) return Promise.resolve(override);
 	cursorProviderModulePromise ||= import("./cursor").then(module => {
 		const provider = module as CursorProviderModule;
 		return { stream: provider.streamCursor };
@@ -550,9 +574,8 @@ function loadCursorProviderModule(): Promise<LazyProviderModule<"cursor-agent">>
 }
 
 function loadDevinProviderModule(): Promise<LazyProviderModule<"devin-agent">> {
-	if (devinProviderModuleOverride) {
-		return Promise.resolve(devinProviderModuleOverride);
-	}
+	const override = providerModuleOverride("devin-agent");
+	if (override) return Promise.resolve(override);
 	devinProviderModulePromise ||= import("./devin").then(module => {
 		const provider = module as DevinProviderModule;
 		return { stream: provider.streamDevin };
@@ -561,9 +584,8 @@ function loadDevinProviderModule(): Promise<LazyProviderModule<"devin-agent">> {
 }
 
 function loadBedrockProviderModule(): Promise<LazyProviderModule<"bedrock-converse-stream">> {
-	if (bedrockProviderModuleOverride) {
-		return Promise.resolve(bedrockProviderModuleOverride);
-	}
+	const override = providerModuleOverride("bedrock-converse-stream");
+	if (override) return Promise.resolve(override);
 	bedrockProviderModulePromise ||= import("./amazon-bedrock").then(module => {
 		const provider = module as BedrockProviderModule;
 		return { stream: provider.streamBedrock };
