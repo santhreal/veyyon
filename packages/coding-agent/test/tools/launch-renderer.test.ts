@@ -79,11 +79,12 @@ describe("launchToolRenderer", () => {
 		);
 		expect(rendered[0]).toContain("Launch logs");
 		expect(rendered[0]).toContain("cursor 2210");
-		// A block hangs its output on a rail: a title row, one rail glyph down the left of the
-		// body, and nothing above the title or below the last row. The box glyphs this used to
-		// assert are a shape the product no longer draws.
+		// A block hangs every row on one rail, the title row included, so the block
+		// has a single left edge from its first row to its last. The box glyphs this
+		// used to assert are a shape the product no longer draws.
 		expect(rendered[0]).not.toContain("┌");
 		expect(rendered.at(-1)).not.toContain("└");
+		expect(rendered[0]!.trimStart().startsWith(uiTheme.symbol("block.rail"))).toBe(true);
 		expect(rendered[1]).toContain("Output");
 
 		// The log body, in order and complete. Two `some(...)` checks asserted the
@@ -94,6 +95,7 @@ describe("launchToolRenderer", () => {
 		// once: a line that survived would have to appear here.
 		const rail = uiTheme.symbol("block.rail");
 		const body = rendered
+			.slice(1)
 			.filter(line => line.trimStart().startsWith(rail))
 			.map(line => line.trimStart().slice(rail.length).trim())
 			.filter(line => line.length > 0 && line !== "Output");

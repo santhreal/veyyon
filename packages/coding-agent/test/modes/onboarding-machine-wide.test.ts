@@ -361,7 +361,6 @@ describe("a completion the filesystem refuses", () => {
 		};
 		const ctx = {
 			settings,
-			playWelcomeIntro: mock(() => {}),
 			ui: {
 				terminal: { rows: 24 },
 				showOverlay: () => ({ hide: hideOverlay }),

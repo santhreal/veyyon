@@ -192,9 +192,12 @@ describe("a ChatGPT OAuth session compacts on the codex backend", () => {
 	});
 
 	test("a lite codex row moves the instructions into a developer item, as a turn does", async () => {
-		// The real bundled row with the lite flag flipped: a hand-built spec
-		// would diverge from the shape the encoder actually receives.
-		const lite: Model = { ...codexModel(), useResponsesLite: true };
+		// A real bundled lite row, not a flag flipped onto another row: lite is
+		// refused for a model that cannot be sent `all_turns` reasoning context,
+		// so a hand-built spec would prove the opposite of what it claims.
+		const lite = getBundledModel("openai-codex", "gpt-5.6-sol");
+		if (!lite) throw new Error("Expected built-in openai-codex/gpt-5.6-sol to exist");
+		expect(lite.useResponsesLite).toBe(true);
 		const calls = mockCompactFetch();
 
 		await compactWithProvider(makePreparation(), lite, fakeCodexToken("acct-9"), "base system prompt");
@@ -208,6 +211,18 @@ describe("a ChatGPT OAuth session compacts on the codex backend", () => {
 			role: "developer",
 			content: [{ type: "input_text", text: "base system prompt" }],
 		});
+	});
+
+	test("a row that cannot take all_turns reasoning keeps top-level instructions even with the lite flag on", async () => {
+		// The transport marker and `reasoning.context: "all_turns"` are one
+		// decision: the backend refuses the marker without that context, so a
+		// pre-5.4 codex row stays on the full transport however it is flagged.
+		const flagged: Model = { ...codexModel(), useResponsesLite: true };
+		const calls = mockCompactFetch();
+
+		await compactWithProvider(makePreparation(), flagged, fakeCodexToken("acct-9"), "base system prompt");
+
+		expect(calls[0]!.body.instructions).toBe("base system prompt");
 	});
 
 	test("opening codex does not open every Responses host", () => {

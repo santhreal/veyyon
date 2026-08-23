@@ -140,8 +140,15 @@ const AUTH_STORAGE_CEILING = 227;
  * model-id vocabulary for the markup a host leaks into visible content. `compat/openai.ts` is already
  * in this closure and now reads that vocabulary instead of restating it, so the edge is one leaf module
  * deeper on a path that was already here.
+ *
+ * 77 since 2026-08-23, measured: `provider-models/wire-capabilities.ts`, the leaf table declaring what
+ * each provider realizes on the wire, read by `compat/openai.ts` for strict tool schemas and for the
+ * local-inference and forwarding-proxy answers it used to hold as two provider sets. Every import in
+ * that table is type-only, so it adds one module and no subtree; the readers that need model identity
+ * are in `provider-models/service-tier.ts`, which this closure does not reach. The remaining growth is
+ * file count, not dependency weight: the catalog's compat healer was split into per-concern modules.
  */
-const ENV_API_KEY_CEILING = 73;
+const ENV_API_KEY_CEILING = 77;
 
 /** Measured 2026-07-26 at 75: the logger and nothing else. A backend import here is the regression. */
 const USAGE_REGISTRY_CEILING = 83;

@@ -1,16 +1,5 @@
-import { isAbortError } from "@veyyon/utils/abortable";
-import { isRetryableStatus, isUnexpectedSocketCloseMessage } from "@veyyon/utils/fetch-retry";
-import { isStreamFrameLimitError } from "@veyyon/utils/stream-frame-limit";
-import {
-	classify,
-	Flag,
-	is,
-	isRetryableStreamEnvelopeError,
-	isTransientStreamParseError,
-	isUsageLimit,
-	status,
-	TRANSIENT_TRANSPORT_PATTERN,
-} from "./flags";
+import { isRetryableStatus } from "@veyyon/utils/fetch-retry";
+import { classify, Flag, is, recover, status, vetoesRetry } from "./flags";
 
 /**
  * Whether a numeric HTTP status is in the canonical transient set: 408, 429, and any 5xx.
@@ -27,16 +16,6 @@ export function isTransientStatus(status: number | undefined): boolean {
 	return status !== undefined && isRetryableStatus(status);
 }
 
-// Provider-stream transient phrasings not covered by the shared
-// TRANSIENT_TRANSPORT_PATTERN (TLS record corruption, HTTP/2 peer stream
-// errors, upstream code 1302). The shared pattern already covers rate-limit /
-// overloaded / 5xx / timeout / first-event wording.
-const PROVIDER_TRANSIENT_EXTRA_PATTERN = /bad record mac|stream error.*received from peer|1302/i;
-
-function isTransientTransportMessage(message: string): boolean {
-	return message.includes("tls: bad record mac") || message.includes("type=server_error");
-}
-
 /** Hook for provider-specific transient detection that the error module must not import directly. */
 export interface ProviderRetryableHooks {
 	/** Provider id of the failing request, used to gate provider-specific checks. */
@@ -48,70 +27,43 @@ export interface ProviderRetryableHooks {
 /**
  * Whether a provider stream error should be retried against the same credential.
  *
- * Account-level usage/quota limits are deliberately treated as **non**-retryable
- * here (they are owned by the credential-rotation layer: auth-gateway /
- * `streamSimple` a/b/c policy), not this seconds-scale provider backoff.
+ * ONE DECISION, READ FROM THE REGISTRY. A provider ladder is the transport stage of the same
+ * recovery every other layer performs, so it asks the registry what that stage does about this
+ * failure and does not decide anything itself. Every family states its own answer: `transport` and
+ * `timeout` retry, `quota` rotates a credential, `stream` and `tool-call` re-send the turn one level
+ * up, `refusal`, `content` and `interrupt` refuse outright. Before this, the function was a list of
+ * conditions that re-derived those answers from message prose, and each one it re-derived it
+ * disagreed with: an account-level cap needed a hand-written veto, a fast-mode entitlement wall was
+ * retried through the words "rate_limit_error", and a truncated stream was retried here while
+ * reaching the turn as an unclassified failure because these words lived nowhere else. They now live
+ * in the transport family, next to the rest of the transport vocabulary.
  *
- * THE CLASSIFIER OWNS TRANSIENCE. An error that declares itself transient, either
- * structurally ({@link ProviderResponseError} with an `incomplete-stream` or
- * `empty-body` kind, an Anthropic connection fault, a stream timeout) or through
- * {@link classify}'s text and status rules, is retried here. It used to be
- * re-derived from message prose in this function alone, which is a second opinion
- * and it disagreed: a Devin empty body carried `Flag.Transient` and the turn loop
- * retried it while this predicate refused, and a truncated Cursor stream was
- * retried only because its sentence happened to contain the word "truncated".
- * The text patterns below stay, because they cover transport phrasings the
- * classifier does not (TLS record corruption, HTTP/2 peer stream errors, upstream
- * 1302, mid-JSON truncation, out-of-order stream events).
+ * A 4xx IS A WALL AT THIS STAGE, and that is a fact about the stage rather than about the failure: a
+ * provider ladder is a seconds-scale backoff against the same credential and the same request, and
+ * nothing it can wait for changes a 400. Only 408 and 429 are timing answers. The one exception is a
+ * 400 whose meaning a single provider knows — Copilot's routing flap — which arrives through
+ * {@link ProviderRetryableHooks} rather than as a rule everybody else's 400 also matches.
  *
- * Provider-specific transient cases are injected via {@link ProviderRetryableHooks}
- * so this stays free of provider imports.
+ * A STATUS WITH NOTHING TO READ is the last question, and only when the registry recognised nothing:
+ * `classify` returns the bare number as the id when a failure carries a status and no wording its
+ * rules read, which is deliberate — an id that is only a status says so — so the transient set
+ * answers for it. `error/response.ts` asks the same two questions in the same order about a failed
+ * response, which is the point: one shape for one decision, whether it arrived as a throw or a 503.
  */
 export function isProviderRetryableError(error: unknown, hooks: ProviderRetryableHooks = {}): boolean {
 	if (!(error instanceof Error)) return false;
-	// A peer that never delimited its frame will not delimit it on the second attempt, so
-	// a retry is a second helping of the same exhaustion attempt. First, ahead of the
-	// provider hook and the prose rules: those read the OUTERMOST message, which a
-	// provider is free to compose around the cause it wrapped.
-	if (isStreamFrameLimitError(error)) return false;
 	const id = classify(error);
-	// THE OTHER STRUCTURAL REFUSAL, and it has to be read before the prose rules for the same
-	// reason. A named HTTP/2 code the RFC says a replay reproduces is a fact; a wrapper's sentence
-	// is not. `NGHTTP2_CANCEL: operation timed out` used to come back retryable here through the
-	// word "timed out" even though the classifier had already refused it, and a cancel is our own
-	// abort. The flag stays beside Flag.Transient rather than clearing it, so the wrapper's
-	// description survives and only the decision changes.
-	if (is(id, Flag.TransportRefused)) return false;
+	// The veto is read before anything else because everything else reads the OUTERMOST message, and a
+	// provider is free to compose a transient-sounding sentence around the cause it wrapped:
+	// `NGHTTP2_CANCEL: operation timed out`, a content filter whose body carried a 503, a cancellation
+	// whose own sentence says "aborted", an undelimited frame inside a wrapper that says "please
+	// retry".
+	if (vetoesRetry(id)) return false;
 	if (hooks.isProviderTransient?.(error)) return true;
-	if (isUsageLimit(error)) return false;
 	const httpStatus = status(error);
-	if (httpStatus !== undefined && httpStatus >= 400 && httpStatus < 500 && httpStatus !== 408 && httpStatus !== 429) {
+	if (httpStatus !== undefined && httpStatus >= 400 && httpStatus < 500 && !isTransientStatus(httpStatus)) {
 		return false;
 	}
-	if (is(id, Flag.Transient)) return true;
-	const msg = error.message.toLowerCase();
-	if (
-		isUnexpectedSocketCloseMessage(msg) ||
-		isTransientTransportMessage(msg) ||
-		TRANSIENT_TRANSPORT_PATTERN.test(msg) ||
-		PROVIDER_TRANSIENT_EXTRA_PATTERN.test(msg) ||
-		isTransientStreamParseError(error) ||
-		isRetryableStreamEnvelopeError(error)
-	) {
-		return true;
-	}
-	// A STATUS WITH NOTHING TO READ. `classify` returns the bare number as the id when a failure
-	// carries a status and no message its rules recognise, which is deliberate — an id that is only a
-	// status says so — and it means `Flag.Transient` is absent even for a 503. The transient set is
-	// the same one `isTransientStatus` states, so it is read here rather than re-derived: this used to
-	// be answered by `@veyyon/utils/fetch-retry`'s `isRetryableError`, a second classifier with a
-	// second transient vocabulary, and the two disagreed by exactly one phrase.
-	if (isTransientStatus(httpStatus)) return true;
-	// AN ABORT IS RETRIED HERE AND REFUSED EVERYWHERE ELSE, which is a contradiction this refactor
-	// preserves rather than resolves: `retriable()` answers false for `Flag.Abort`, and the utils
-	// fallback this replaces answered true for any error whose name or wording says aborted, so a
-	// provider ladder retries a cancellation the turn layer would not. Changing it changes what
-	// happens when a user presses escape mid-stream, which is a product decision and not a
-	// refactor's to take. Recorded as a row rather than silently flipped.
-	return isAbortError(error) || /\baborted\b/i.test(msg);
+	if (!is(id, Flag.Class)) return isTransientStatus(httpStatus);
+	return recover(id, "transport").action === "retry";
 }

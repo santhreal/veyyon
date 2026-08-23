@@ -102,7 +102,7 @@ describe("InteractiveMode startup scrollback", () => {
 		});
 		vi.spyOn(createdMode.statusLine, "watchBranch").mockImplementation(() => {});
 
-		await createdMode.init({ suppressWelcomeIntro: true });
+		await createdMode.init();
 		await createdTerminal.waitForRender();
 
 		return { mode: createdMode, terminal: createdTerminal, writes, startOptions };

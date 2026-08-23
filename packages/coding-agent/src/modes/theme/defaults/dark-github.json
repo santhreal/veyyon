@@ -48,7 +48,6 @@
 		"toolPendingBg": "bg",
 		"toolSuccessBg": "bg",
 		"toolErrorBg": "#1a0f0d",
-		"toolText": "",
 		"toolTitle": "",
 		"toolOutput": "textMuted",
 		"mdHeading": "blue",

@@ -475,11 +475,11 @@ describe("merged call/result transcript block", () => {
 		const finished: AgentToolResult<TodoToolDetails> = await tool.execute("c3", { op: "done", task: "a2" });
 
 		component.updateResult(finished, false);
-		const lines = component
-			.render(RENDER_WIDTH)
-			.map(line => line.trim())
-			.filter(line => Bun.stripANSI(line).length > 0);
+		const lines = component.render(RENDER_WIDTH).filter(line => Bun.stripANSI(line).trim().length > 0);
 
-		expect(lines).toEqual([doneLine(2)]);
+		// One row, and it hangs from the block's rail like every other card's rows.
+		expect(lines.length).toBe(1);
+		expect(Bun.stripANSI(lines[0]!).trim()).toBe(`${theme.symbol("block.rail")} ${Bun.stripANSI(doneLine(2))}`);
+		expect(lines[0]).toContain(doneLine(2));
 	});
 });
