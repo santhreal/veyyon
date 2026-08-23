@@ -50,7 +50,7 @@ export type SearchToolDetails =
 	| { type: "structure"; result: StructureSearchDetails };
 
 const TYPE_FIELDS: Record<SearchType, ReadonlySet<keyof SearchToolInput>> = {
-	files: new Set(["type", "input", "hidden", "gitignore", "limit"]),
+	files: new Set(["type", "input", "path", "hidden", "gitignore", "limit"]),
 	text: new Set(["type", "input", "path", "case", "gitignore", "skip"]),
 	structure: new Set(["type", "input", "path", "skip"]),
 };
@@ -101,7 +101,7 @@ export class SearchTool implements AgentTool<typeof searchSchema, SearchToolDeta
 	];
 
 	readonly approval = (args: unknown): ToolTier => {
-		if (!isRecord(args) || args.type !== "text") return "read";
+		if (!isRecord(args) || (args.type !== "text" && args.type !== "structure")) return "read";
 		return textSearchApproval({ path: typeof args.path === "string" ? args.path : undefined });
 	};
 

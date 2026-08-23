@@ -473,12 +473,17 @@ veyyon config get compaction.threshold
 | `todo.eager` | Create Todos Automatically | enum | `default` | How strongly to push automatic todo-list creation after the first message. Values: `default`, `preferred`, `always`. |
 | `tasks.todoClearDelay` | Todo Auto-Clear Delay | number | `-1` | Delay before completed or abandoned todos are removed from the todo widget. |
 
-### Search & Browser
+### Search Context
 
 | Key | Setting | Type | Default | What it does |
 |---|---|---|---|---|
-| `search.contextBefore` | Search Context Before | number | `1` | Lines of context before each text search match. |
-| `search.contextAfter` | Search Context After | number | `3` | Lines of context after each text search match. |
+| `search.contextBefore` | Text Context Before | number | `1` | Lines of context before each text search match. |
+| `search.contextAfter` | Text Context After | number | `3` | Lines of context after each text search match. |
+
+### Browser
+
+| Key | Setting | Type | Default | What it does |
+|---|---|---|---|---|
 | `browser.headless` | Headless Browser | boolean | `true` | Launch browser in headless mode (disable to show browser UI). |
 | `browser.cmux` | cmux Browser | boolean | `true` | Use cmux WKWebView surfaces for browser automation when a cmux socket is available. Set VEYYON_BROWSER_CMUX=0 or VEYYON_BROWSER_CMUX=1 to override. |
 | `browser.screenshotDir` | Screenshot Directory | string | _(unset)_ | Directory to save screenshots. If unset, screenshots go to a temp file. Supports ~. Examples: ~/Downloads, ~/Desktop, /sdcard/Download (Android). |
@@ -750,7 +755,7 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `auth.broker.token` | string | _(unset)_ |  |
 | `auth.broker.url` | string | _(unset)_ |  |
 | `autolearn.minToolCalls` | number | `5` |  |
-| `bashInterceptor.patterns` | array | `[{"pattern":"^\\s*(cat|head|tail|less|more)\\s+","tool":"read","message":"Use the `read` tool instead of cat/head/tail. It provides better context and handles binary files."},{"pattern":"^\\s*(grep|rg|ripgrep|ag|ack)\\s+","tool":"search","message":"Use the `search` tool (type: \"text\") instead of grep/rg. It respects .gitignore and provides structured output."},{"pattern":"^\\s*(find|fd|locate)\\s+.*(-name|-iname|-type|--type|-glob)","tool":"search","message":"Use the `search` tool (type: \"files\") instead of find/fd. It respects .gitignore and is faster for glob patterns."},{"pattern":"^\\s*sed\\s+(-i|--in-place)","tool":"edit","message":"Use the `edit` tool instead of sed -i. It provides diff preview and fuzzy matching."},{"pattern":"^\\s*perl\\s+.*-[pn]?i","tool":"edit","message":"Use the `edit` tool instead of perl -i. It provides diff preview and fuzzy matching."},{"pattern":"^\\s*awk\\s+.*-i\\s+inplace","tool":"edit","message":"Use the `edit` tool instead of awk -i inplace. It provides diff preview and fuzzy matching."},{"pattern":"^\\s*(echo|printf|cat\\s*\\<\\<)\\s+(?:(?:[^\"'>]|\"[^\"]*\"|'[^']*')|(?!\\|)>\\{1,2\\}\\|?\\s*(?:\"/dev/(?:null|tty|stdout|stderr)\"|'/dev/(?:null|tty|stdout|stderr)'|/dev/(?:null|tty|stdout|stderr))(?:[\\s;&|]|$))*(?!\\|)>\\{1,2\\}\\|?\\s*(?!(?:\"/dev/(?:null|tty|stdout|stderr)\"|'/dev/(?:null|tty|stdout|stderr)'|/dev/(?:null|tty|stdout|stderr))(?:[\\s;&|]|$))[$\\w./~\"'-]","tool":"write","message":"Use the `write` tool instead of echo/cat redirection. It handles encoding and provides confirmation."},{"pattern":"^\\s*nohup\\s+|(?!&)&\\s*$","tool":"launch","message":"Use the `launch` tool instead of nohup or background shell syntax so the process stays observable and managed."},{"pattern":"^\\s*(?:(?:bun|npm|pnpm|yarn)\\s+(?:run\\s+)?(?:dev|start)(?:\\s|$)|(?:vite|next\\s+dev|nuxt\\s+dev|nodemon|lldb|gdb|tail\\s+-f)(?:\\s|$)|docker\\s+compose\\s+up(?!.*(?:\\s-d(?:\\s|$)|--detach))(?:\\s|$))","tool":"launch","message":"Use the `launch` tool for services, watchers, and debuggers so other veyyon instances can observe and control them."},{"pattern":"^\\s*(?:(?:bun|npm|pnpm|yarn)\\s+(?:run\\s+)?\\S+|cargo\\s+watch|watchexec|pytest|vitest|jest|tsc)(?:.|\\n)*(?:--watch|-w)(?:\\s|$)","tool":"launch","message":"Use the `launch` tool for watch mode so its output, input, and lifecycle stay managed."}]` |  |
+| `bashInterceptor.patterns` | array | `[{"pattern":"^\\s*(cat\|head\|tail\|less\|more)\\s+","tool":"read","message":"Use the `read` tool instead of cat/head/tail. It provides better context and handles binary files."},{"pattern":"^\\s*(grep\|rg\|ripgrep\|ag\|ack)\\s+","tool":"search","message":"Use `search` with `type: \"text\"` instead of shell grep/rg."},{"pattern":"^\\s*(find\|fd\|locate)(?:\\s\|$)","tool":"search","message":"Use `search` with `type: \"files\"` instead of shell find/fd."},{"pattern":"^\\s*sed\\s+(-i\|--in-place)","tool":"edit","message":"Use the `edit` tool instead of sed -i. It provides diff preview and fuzzy matching."},{"pattern":"^\\s*perl\\s+.*-[pn]?i","tool":"edit","message":"Use the `edit` tool instead of perl -i. It provides diff preview and fuzzy matching."},{"pattern":"^\\s*awk\\s+.*-i\\s+inplace","tool":"edit","message":"Use the `edit` tool instead of awk -i inplace. It provides diff preview and fuzzy matching."},{"pattern":"^\\s*(echo\|printf\|cat\\s*\<\<)\\s+(?:(?:[^\"'>]\|\"[^\"]*\"\|'[^']*')\|(?\<!\\\|)>{1,2}\\\|?\\s*(?:\"/dev/(?:null\|tty\|stdout\|stderr)\"\|'/dev/(?:null\|tty\|stdout\|stderr)'\|/dev/(?:null\|tty\|stdout\|stderr))(?:[\\s;&\|]\|$))*(?\<!\\\|)>{1,2}\\\|?\\s*(?!(?:\"/dev/(?:null\|tty\|stdout\|stderr)\"\|'/dev/(?:null\|tty\|stdout\|stderr)'\|/dev/(?:null\|tty\|stdout\|stderr))(?:[\\s;&\|]\|$))[$\\w./~\"'-]","tool":"write","message":"Use the `write` tool instead of echo/cat redirection. It handles encoding and provides confirmation."},{"pattern":"^\\s*nohup\\s+\|(?\<!&)\\&\\s*$","tool":"launch","message":"Use the `launch` tool instead of nohup or background shell syntax so the process stays observable and managed."},{"pattern":"^\\s*(?:(?:bun\|npm\|pnpm\|yarn)\\s+(?:run\\s+)?(?:dev\|start)(?:\\s\|$)\|(?:vite\|next\\s+dev\|nuxt\\s+dev\|nodemon\|lldb\|gdb\|tail\\s+-f)(?:\\s\|$)\|docker\\s+compose\\s+up(?!.*(?:\\s-d(?:\\s\|$)\|--detach))(?:\\s\|$))","tool":"launch","message":"Use the `launch` tool for services, watchers, and debuggers so other veyyon instances can observe and control them."},{"pattern":"^\\s*(?:(?:bun\|npm\|pnpm\|yarn)\\s+(?:run\\s+)?\\S+\|cargo\\s+watch\|watchexec\|pytest\|vitest\|jest\|tsc)(?:.\|\\n)*(?:--watch\|-w)(?:\\s\|$)","tool":"launch","message":"Use the `launch` tool for watch mode so its output, input, and lifecycle stay managed."}]` |  |
 | `branchSummary.reserveTokens` | number | `16384` |  |
 | `commit.changelogMaxDiffChars` | number | `120000` |  |
 | `commit.mapReduceEnabled` | boolean | `true` |  |
@@ -866,4 +871,4 @@ These keys are not in `/settings`. Some are state veyyon writes for itself (a sc
 | `tui.maxInlineImageRows` | number | `20` |  |
 | `tui.maxInlineImages` | number | `8` |  |
 
-345 settings in /settings, 119 configuration-file keys, 464 in all.
+342 settings in /settings, 119 configuration-file keys, 461 in all.

@@ -53,13 +53,10 @@ import {
 } from "./loading";
 import { wrapToolWithMetaNotice } from "./output-meta";
 import { RerootDetector, wrapToolWithRerootHint } from "./reroot-hint";
-import { SearchTool } from "./search";
 import type { TodoPhase } from "./todo";
 
-// Most optional tool implementation modules remain lazy so the CLI boot path
-// does not parse tools this session never activates. Unified workspace search
-// is essential and imported statically; its engines are part of the default
-// session surface.
+// Builtin implementation modules remain lazy so the CLI boot path does not
+// parse tools this session never activates.
 export type { LspStartupServerInfo } from "../lsp";
 export type { BashToolDetails, BashToolInput } from "./bash";
 // Tool-loading rules now live in `./loading`. Re-exported here because `@veyyon/coding-agent/tools`
@@ -471,7 +468,7 @@ export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = {
 	bash: async s => new (await import("./bash")).BashTool(s),
 	launch: async s => new (await import("./launch")).LaunchTool(s),
 	edit: async s => new (await import("../edit")).EditTool(s),
-	search: s => new SearchTool(s),
+	search: async s => new (await import("./search")).SearchTool(s),
 	ast_edit: async s => new (await import("./ast-edit")).AstEditTool(s),
 	ask: async s => (await import("./ask")).AskTool.createIf(s),
 	debug: async s => (await import("./debug")).DebugTool.createIf(s),

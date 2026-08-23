@@ -140,6 +140,7 @@ import statementRuntimeSkillsHeading from "./statements/runtime/skills-rules-hea
 import statementRuntimeInventoryText from "./statements/runtime/tool-inventory-text.md" with { type: "text" };
 import statementToolPolicyAst from "./statements/tool-policy/ast.md" with { type: "text" };
 import statementToolPolicyAstEdit from "./statements/tool-policy/ast-edit.md" with { type: "text" };
+import statementToolPolicyAstSearch from "./statements/tool-policy/ast-search.md" with { type: "text" };
 import statementToolPolicyBashCwd from "./statements/tool-policy/bash-cwd.md" with { type: "text" };
 import statementToolPolicyDelegation from "./statements/tool-policy/delegation.md" with { type: "text" };
 import statementToolPolicyDelegationAllowed from "./statements/tool-policy/delegation-allowed.md" with { type: "text" };
@@ -596,6 +597,13 @@ export const PROMPT_STATEMENTS = [
 		condition: anyOf(contains("tools", "search"), contains("tools", "ast_edit")),
 		text: statementToolPolicyAst,
 		purpose: "the AST heading and syntax-aware rule for structural search or edits",
+	},
+	{
+		id: "tool-policy/ast-search",
+		section: "tool-policy",
+		condition: contains("tools", "search"),
+		text: statementToolPolicyAstSearch,
+		purpose: "names structural search under the AST heading when unified search is active",
 	},
 	{
 		id: "tool-policy/ast-edit",

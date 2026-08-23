@@ -28,7 +28,7 @@ Optional type-specific fields:
 
 | Field | Type | Applicable Types | Description |
 | --- | --- | --- | --- |
-| `path` | `string` | `text`, `structure` | Search scope: file, directory, glob, internal URL, or semicolon-delimited list (`"src; tests"`). Omitted defaults to workspace root (`"."`). Single file targets accept line-range selectors (`:50-100`) in text mode. |
+| `path` | `string` | `text`, `structure` | Search scope: file, directory, glob, internal URL, or semicolon-delimited list (`"src; tests"`). Pass the narrowest known scope; omit it only when the workspace root (`"."`) is intended. Single file targets accept line-range selectors (`:50-100`) in text mode. |
 | `case` | `boolean` | `text` | Case-sensitive matching. Defaults to `true`. |
 | `hidden` | `boolean` | `files` | Include hidden files. Defaults to `true`. |
 | `gitignore` | `boolean` | `files`, `text` | Respect `.gitignore`. Defaults to `true`. |
