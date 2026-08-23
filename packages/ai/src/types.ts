@@ -19,7 +19,7 @@ import type {
 	WriteResult,
 } from "@veyyon/catalog/discovery/cursor-gen/agent_pb";
 import type { Effort } from "@veyyon/catalog/effort";
-import { isOpenAIModelId } from "@veyyon/catalog/identity/family";
+import type { ServiceTier } from "@veyyon/catalog/provider-models/wire-capabilities";
 import type { Api, FetchImpl, KnownApi, Model, Provider, ThinkingBudgets, Usage } from "@veyyon/catalog/types";
 import type { Type } from "arktype";
 import type { ZodType, z } from "zod/v4";
@@ -114,221 +114,30 @@ export type CacheRetention = "none" | "short" | "long";
  */
 export type CacheEnforcement = "off" | "warn" | "error";
 
+export type {
+	ProviderServiceTierCapability,
+	ProviderWireCapabilities,
+	ServiceTier,
+	ServiceTierByFamily,
+	ServiceTierFamily,
+} from "@veyyon/catalog/provider-models/wire-capabilities";
 /**
- * Service tier hint for processing priority / cost control. These are the
- * values providers consume on the wire:
- *
- * - OpenAI / OpenAI-Codex: sent verbatim as the `service_tier` field
- *   (`flex`/`scale`/`priority`).
- * - Google (Gemini API + Vertex AI): sent as the top-level `serviceTier`
- *   field (`flex`/`priority`).
- * - OpenRouter: passed through as `service_tier`; OpenRouter realizes it for
- *   the OpenAI- and Google-family upstreams it supports and ignores it
- *   otherwise.
- * - Direct Anthropic: `"priority"` is translated into `speed: "fast"` plus the
- *   fast-mode beta on supported Opus models. Other tiers are ignored.
- *
- * Per-family scoping is expressed by {@link ServiceTierByFamily}, not by
- * scoped sentinel values — see {@link serviceTierFamily}.
+ * The service-tier vocabulary, and the per-provider capability that decides what
+ * a tier does on the wire, live in
+ * `@veyyon/catalog/provider-models/wire-capabilities` beside the provider table
+ * they describe. They are re-exported here because the tier is part of the
+ * request shape this module declares and every consumer reaches it through here.
  */
-export const SERVICE_TIERS = ["auto", "default", "flex", "scale", "priority"] as const;
-
-export type ServiceTier = (typeof SERVICE_TIERS)[number];
-
-/**
- * Is this a service tier?
- *
- * The type is derived from {@link SERVICE_TIERS} rather than declared beside it, so
- * the values exist exactly once and this guard cannot fall behind them. Both
- * OpenAI-compatible servers used to spell the five values again in a comparison
- * chain, which meant a new tier was accepted by the type system and silently
- * dropped from an incoming request.
- */
-export function isServiceTier(value: unknown): value is ServiceTier {
-	return typeof value === "string" && (SERVICE_TIERS as readonly string[]).includes(value);
-}
-
-/** Provider families that expose an independent service-tier knob. */
-export type ServiceTierFamily = "openai" | "anthropic" | "google";
-
-/**
- * Per-family service-tier selection. A request consults only the entry for the
- * family its model belongs to (see {@link resolveModelServiceTier}), so a user
- * can opt one family into priority without affecting the others when switching
- * models mid-session.
- */
-export type ServiceTierByFamily = Partial<Record<ServiceTierFamily, ServiceTier>>;
-
-type ServiceTierModel = Pick<Model, "provider" | "api" | "id">;
-
-function isOpenAIServiceTierApi(api: Api | undefined): boolean {
-	return api === "openai-completions" || api === "openai-responses" || api === "openai-codex-responses";
-}
-
-function hasDedicatedServiceTierControl(provider: Provider | undefined): boolean {
-	return provider === "fireworks";
-}
-
-function isOpenAIServiceTierModel(model: ServiceTierModel): boolean {
-	return (
-		!hasDedicatedServiceTierControl(model.provider) && isOpenAIServiceTierApi(model.api) && isOpenAIModelId(model.id)
-	);
-}
-
-/**
- * Classify a model into the service-tier family whose knob governs it, or
- * `undefined` when the model exposes no serving-priority control.
- *
- * OpenRouter models are classified by id namespace (`anthropic/`, `google/`,
- * `openai/`); Claude on Bedrock/Vertex (api `anthropic-messages`) is the
- * anthropic family even though its provider is `amazon-bedrock`/`google-vertex`.
- * Custom OpenAI-compatible relays that serve OpenAI model ids are OpenAI family
- * too unless that provider owns a separate tier control such as Fireworks.
- */
-export function serviceTierFamily(model: ServiceTierModel): ServiceTierFamily | undefined {
-	const provider = model.provider;
-	if (provider === "openrouter") {
-		const id = model.id.toLowerCase();
-		if (id.startsWith("anthropic/")) return "anthropic";
-		if (id.startsWith("google/")) return "google";
-		if (id.startsWith("openai/")) return "openai";
-		return undefined;
-	}
-	if (provider === "openai" || provider === "openai-codex") return "openai";
-	if (model.api === "anthropic-messages") return "anthropic";
-	if (provider === "google" || provider === "google-vertex") return "google";
-	if (isOpenAIServiceTierModel(model)) return "openai";
-	return undefined;
-}
-
-/**
- * Reduce a per-family tier map to the single wire tier for `model` — the entry
- * for the model's family, or `undefined` when the model has no family.
- */
-export function resolveModelServiceTier(
-	tiers: ServiceTierByFamily | null | undefined,
-	model: Pick<Model, "provider" | "api" | "id">,
-): ServiceTier | undefined {
-	if (!tiers) return undefined;
-	const family = serviceTierFamily(model);
-	return family ? tiers[family] : undefined;
-}
-
-/**
- * True when the tier should be sent on the wire as the provider's service-tier
- * request field. OpenAI / OpenAI-Codex accept `flex`/`scale`/`priority`; Google
- * (Gemini API + Vertex) and OpenRouter accept `flex`/`priority`; Fireworks
- * Serverless realizes only its Priority serving path. Anthropic is absent — it
- * realizes `priority` via `speed: "fast"`, not a service-tier field.
- */
-export function shouldSendServiceTier(
-	serviceTier: ServiceTier | null | undefined,
-	target: Provider | ServiceTierModel | undefined,
-): boolean {
-	if (!serviceTier) return false;
-	const provider = typeof target === "string" ? target : target?.provider;
-	if (provider === "openai" || provider === "openai-codex" || provider === "openrouter") {
-		return serviceTier === "flex" || serviceTier === "scale" || serviceTier === "priority";
-	}
-	if (typeof target !== "string" && target && isOpenAIServiceTierModel(target)) {
-		return serviceTier === "flex" || serviceTier === "scale" || serviceTier === "priority";
-	}
-	if (provider === "google") {
-		return serviceTier === "flex" || serviceTier === "priority";
-	}
-	// Vertex realizes only priority (via header); flex has no documented control.
-	if (provider === "google-vertex" || provider === "fireworks") {
-		return serviceTier === "priority";
-	}
-	return false;
-}
-
-/**
- * True when `priority` will actually be realized on the wire for `model`.
- * Direct Anthropic realizes fast mode; OpenAI/Google/Fireworks emit the
- * service-tier field; OpenRouter realizes it only for its OpenAI- and
- * Google-family upstreams. Bedrock/Vertex Claude and OpenRouter Anthropic
- * models do not realize priority and return `false`.
- */
-export function realizesPriorityServiceTier(
-	serviceTier: ServiceTier | null | undefined,
-	model: Pick<Model, "provider" | "api" | "id">,
-): boolean {
-	if (serviceTier !== "priority") return false;
-	if (model.provider === "anthropic") return true;
-	if (model.provider === "openrouter") {
-		const family = serviceTierFamily(model);
-		return family === "openai" || family === "google";
-	}
-	if (model.api === "anthropic-messages") return false;
-	return shouldSendServiceTier(serviceTier, model);
-}
-
-/**
- * Premium-request weight contributed by a priority request to a provider that
- * realizes it and bills extra. Mirrors GitHub Copilot's `premiumRequests`
- * accounting so the "premium requests" stat aggregates priority traffic across
- * the OpenAI family, direct Anthropic fast mode, and Google priority.
- *
- * Returns 1 only when priority is actually realized on the wire for `model`
- * (see {@link realizesPriorityServiceTier}) and the provider bills it as a
- * premium request. OpenRouter is excluded — it bills per its own pricing, not
- * Copilot-premium semantics — as are Bedrock/Vertex Claude, where priority is
- * silently dropped.
- */
-export function getPriorityPremiumRequests(
-	serviceTier: ServiceTier | null | undefined,
-	model: Pick<Model, "provider" | "api" | "id">,
-): number {
-	if (!realizesPriorityServiceTier(serviceTier, model)) return 0;
-	const provider = model.provider;
-	return provider === "openai" ||
-		provider === "openai-codex" ||
-		provider === "anthropic" ||
-		provider === "google" ||
-		provider === "google-vertex"
-		? 1
-		: 0;
-}
-
-/**
- * Coerce a persisted service-tier value to a {@link ServiceTierByFamily}. Newer
- * sessions store the family map directly; legacy sessions stored a single
- * scalar — `"priority"` applied everywhere, `"openai-only"`/`"claude-only"`
- * scoped to one family, and the remaining values were OpenAI-only semantics.
- */
-export function coerceServiceTierByFamily(value: unknown): ServiceTierByFamily | undefined {
-	if (value === null || value === undefined) return undefined;
-	if (typeof value === "object") {
-		const src = value as Record<string, unknown>;
-		const out: ServiceTierByFamily = {};
-		for (const family of ["openai", "anthropic", "google"] as const) {
-			const tier = src[family];
-			if (tier === "auto" || tier === "default" || tier === "flex" || tier === "scale" || tier === "priority") {
-				out[family] = tier;
-			}
-		}
-		return Object.keys(out).length > 0 ? out : undefined;
-	}
-	switch (value) {
-		case "priority":
-			return { openai: "priority", anthropic: "priority", google: "priority" };
-		case "openai-only":
-			return { openai: "priority" };
-		case "claude-only":
-			return { anthropic: "priority" };
-		case "auto":
-			return { openai: "auto" };
-		case "default":
-			return { openai: "default" };
-		case "flex":
-			return { openai: "flex" };
-		case "scale":
-			return { openai: "scale" };
-		default:
-			return undefined;
-	}
-}
+export {
+	coerceServiceTierByFamily,
+	getPriorityPremiumRequests,
+	isServiceTier,
+	realizesPriorityServiceTier,
+	resolveModelServiceTier,
+	SERVICE_TIERS,
+	serviceTierFamily,
+	shouldSendServiceTier,
+} from "@veyyon/catalog/provider-models/wire-capabilities";
 
 export interface ProviderSessionState {
 	close(): void;
