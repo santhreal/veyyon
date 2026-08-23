@@ -52,6 +52,32 @@ export function collectEditAnchorLines(edits: readonly Edit[]): number[] {
 	return lines;
 }
 
+/**
+ * Whether `edit` REWRITES the content of the lines it anchors on, as opposed to
+ * only using their position.
+ *
+ * A pure `INS.PRE` / `INS.POST` reads an anchor as a place, leaves its bytes
+ * untouched, and is the only form for which never having seen the anchor's full
+ * width is harmless. Everything else replaces or deletes those bytes: a plain
+ * `delete`, a replacement insert (the `SWAP` lowering), and every `block` form,
+ * including `insert_after` — a block edit is resolved from the anchored line
+ * onward, so which lines it covers is a claim about content.
+ */
+export function editRewritesItsAnchor(edit: Edit): boolean {
+	if (edit.kind === "insert") return edit.mode === "replacement";
+	return true;
+}
+
+/** Anchor lines whose CONTENT this edit set replaces or deletes, deduplicated. */
+export function collectRewrittenAnchorLines(edits: readonly Edit[]): Set<number> {
+	const lines = new Set<number>();
+	for (const edit of edits) {
+		if (!editRewritesItsAnchor(edit)) continue;
+		for (const anchor of getEditAnchors(edit)) lines.add(anchor.line);
+	}
+	return lines;
+}
+
 function trailingPhantomLine(fileLines: readonly string[]): number {
 	// `split("\n")` on a newline-terminated file yields a trailing "" sentinel.
 	// It is addressable for inserts (append-past-end), but it is not real

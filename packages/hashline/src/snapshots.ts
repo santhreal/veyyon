@@ -44,6 +44,21 @@ export interface Snapshot {
 	 * applies as before. Mutated in place as more of the same content is read.
 	 */
 	seenLines?: Set<number>;
+	/**
+	 * 1-indexed lines a producer DISPLAYED BUT CLIPPED at its per-line column
+	 * cap: the model received the line number and a leading prefix, never the
+	 * full width. Deliberately kept out of {@link seenLines}, because an edit
+	 * that rewrites those bytes would be rewriting bytes nobody read.
+	 *
+	 * Tracked separately rather than merely omitted so the patcher can tell a
+	 * clipped line from one that was never rendered at all (an elided body, a
+	 * folded summary row, a line outside the read range). The distinction is
+	 * what lets a pure insertion anchor a clipped line — an insertion uses the
+	 * anchor's POSITION and leaves its bytes alone — while every destructive
+	 * form stays refused. A line never rendered is refused for every form,
+	 * insertion included: without even a prefix there is nothing to identify.
+	 */
+	clippedLines?: Set<number>;
 }
 
 /**
@@ -97,6 +112,15 @@ export abstract class SnapshotStore {
 	 */
 	abstract recordSeenLines(path: string, hash: string, lines: Iterable<number>): void;
 
+	/**
+	 * Merge `lines` into the {@link Snapshot.clippedLines} of the version whose
+	 * tag equals `hash`. Same contract as {@link recordSeenLines}, for the lines
+	 * a producer showed only a prefix of. A producer that applies a per-line
+	 * column cap reports both sets: the lines it displayed in full here as seen,
+	 * and the ones it truncated here.
+	 */
+	abstract recordClippedLines(path: string, hash: string, lines: Iterable<number>): void;
+
 	/** Drop the version history for a single path. */
 	abstract invalidate(path: string): void;
 
@@ -121,6 +145,13 @@ function mergeSeenLines(snapshot: Snapshot, lines: Iterable<number> | undefined)
 	if (lines === undefined) return;
 	if (snapshot.seenLines === undefined) snapshot.seenLines = new Set<number>();
 	for (const line of lines) snapshot.seenLines.add(line);
+}
+
+/** Union `lines` into `snapshot.clippedLines`, lazily creating the set. */
+function mergeClippedLines(snapshot: Snapshot, lines: Iterable<number> | undefined): void {
+	if (lines === undefined) return;
+	if (snapshot.clippedLines === undefined) snapshot.clippedLines = new Set<number>();
+	for (const line of lines) snapshot.clippedLines.add(line);
 }
 
 export interface InMemorySnapshotStoreOptions {
@@ -222,6 +253,11 @@ export class InMemorySnapshotStore extends SnapshotStore {
 	recordSeenLines(path: string, hash: string, lines: Iterable<number>): void {
 		const version = this.#versions.get(path)?.find(snapshot => snapshot.hash === hash);
 		if (version) mergeSeenLines(version, lines);
+	}
+
+	recordClippedLines(path: string, hash: string, lines: Iterable<number>): void {
+		const version = this.#versions.get(path)?.find(snapshot => snapshot.hash === hash);
+		if (version) mergeClippedLines(version, lines);
 	}
 
 	invalidate(path: string): void {

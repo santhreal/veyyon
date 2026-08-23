@@ -191,6 +191,7 @@ class StatelessNullStore extends SnapshotStore {
 		return computeFileHash(fullText);
 	}
 	recordSeenLines(): void {}
+	recordClippedLines(): void {}
 	invalidate(): void {}
 	relocate(): void {}
 	clear(): void {}

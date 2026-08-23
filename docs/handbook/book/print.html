@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-cf1b8fa0.js";
+            window.path_to_searchindex_js = "searchindex-1c3fdd30.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-a2abefc1.js"></script>
@@ -17196,6 +17196,18 @@ comparing two clips cannot hold both states side by side. The recorder publishes
 animation as WebP at 33 ms per frame; a GIF is the same clip in an older container and
 proves the same thing. Both arms of a pair are the same class, produced by one driver
 run, and attached to the pull request body.</p>
+<p>The recorder refuses to publish a clip whose cadence is not the one it captured. Two
+criteria, both from <code>--expect-ms</code>:</p>
+<pre><code class="language-text">typical frame    33 ms, +/-1 (34 ms alternates at 30 fps)
+moving average   within 10% of 30 fps, held stills set aside
+</code></pre>
+<p>The first catches a resample, where every frame was rewritten. The second catches a
+clip whose most common frame is correct and whose wall clock is mostly slower than it —
+frames held for two or three intervals in the middle of a scroll. A hold at or past ten
+intervals is a still screen, is reported, and does not count against the average.
+Measure a published file with:</p>
+<pre><code class="language-sh">python3 proof/webp-cadence.py assets/demo-hd.webp --expect-ms 33
+</code></pre>
 <h3 id="real-interactive-sessions"><a class="header" href="#real-interactive-sessions">Real interactive sessions</a></h3>
 <p>The HD recorder starts Xvfb, picom, and kitty inside the recorder container. It drives the shipped CLI with real keyboard and pointer events and records the private display at 30 frames per second.</p>
 <p>The landing-page terminal uses:</p>

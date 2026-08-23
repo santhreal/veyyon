@@ -1,0 +1,55 @@
+name: Deploy the site to Cloudflare Pages
+description: >-
+   The one production deploy sequence. Two Pages projects back the site: `veyyon`
+   serves veyyon.dev from `website/`, and `veyyon-get` serves get.veyyon.dev — the
+   `curl | sh` install endpoint — from the staged `website-get/` tree. Three jobs
+   deploy (site.yml on a main push, ci.yml before and after a release), and each
+   one used to spell out the project names, the credential environment and the
+   post-deploy digest check itself. A change to any of the three had to be made in
+   all three, and a project name written in one place and not another is how
+   get.veyyon.dev came to serve an install script hundreds of lines behind main.
+
+inputs:
+   cf-api-token:
+      description: "`secrets.CLOUDFLARE_API_TOKEN`, a Pages-edit token."
+      required: true
+   cf-account-id:
+      description: "`secrets.CLOUDFLARE_ACCOUNT_ID`."
+      required: true
+   install-endpoint:
+      description: >-
+         `true` also deploys get.veyyon.dev and verifies the bytes it serves against
+         `scripts/install.{sh,ps1}`. `false` deploys veyyon.dev alone, which is what
+         a post-publication changelog rebuild needs.
+      required: false
+      default: "true"
+
+runs:
+   using: composite
+   steps:
+      - name: Deploy to Cloudflare Pages (project veyyon → veyyon.dev)
+        shell: bash
+        env:
+           CLOUDFLARE_API_TOKEN: ${{ inputs.cf-api-token }}
+           CLOUDFLARE_ACCOUNT_ID: ${{ inputs.cf-account-id }}
+        run: node website/deploy.mjs --skip-build
+      # A separate project fed by a separate tree, so its root serves the script
+      # rather than the marketing index.html — deploying the full `website/` tree
+      # here once put HTML at the get root and broke `curl -fsSL https://get.veyyon.dev | sh`.
+      # `website/build.mjs` generates `website-get/`; `deploy.mjs` owns the
+      # project-to-tree mapping and refuses a project name it does not know.
+      - name: Deploy to Cloudflare Pages (project veyyon-get → get.veyyon.dev)
+        if: ${{ inputs.install-endpoint == 'true' }}
+        shell: bash
+        env:
+           CLOUDFLARE_API_TOKEN: ${{ inputs.cf-api-token }}
+           CLOUDFLARE_ACCOUNT_ID: ${{ inputs.cf-account-id }}
+           VEYYON_PAGES_PROJECT: veyyon-get
+        run: node website/deploy.mjs --skip-build
+      # The deploy step returns before Cloudflare finishes propagating, and a
+      # `wrangler deploy` exit 0 does not prove the root serves the script. Digest
+      # verification keeps a stale deployment release-blocking.
+      - name: Verify get.veyyon.dev serves THIS repository's install scripts
+        if: ${{ inputs.install-endpoint == 'true' }}
+        shell: bash
+        run: bun scripts/verify-deployed-installers.ts
