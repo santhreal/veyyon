@@ -48,6 +48,7 @@
 ### Added
 
 - Added GPT-5.6 Luna, Sol, and Terra models
+- Added built-in provider support for Cohere (Command family via its OpenAI-compatible endpoint) and Nous Research (Hermes 4 on the official inference API)
 - Added perplexity-academic-researcher model
 
 ### Changed

@@ -41,6 +41,7 @@ import {
 	isKimiK27CodeModelId,
 	MODELS_DEV_PROVIDER_DESCRIPTORS,
 	mapModelsDevToModels,
+	NOUS_RESEARCH_STATIC_MODELS,
 	projectOpenAIProReasoningAliases,
 	SAKANA_FUGU_STATIC_MODELS,
 	stripFireworksDeepSeekThinkingToggle,
@@ -644,6 +645,15 @@ async function generateModels() {
 	// Sakana is authoritative and stale seed IDs must stay out.
 	if (!authoritativeCatalogProviders.has("sakana")) {
 		allModels.push(...SAKANA_FUGU_STATIC_MODELS);
+	}
+	// Seed Nous Research's Hermes models so the provider is usable when catalog
+	// generation has no live API key. The public /v1/models list names every
+	// hosted model (third-party hosts included) and carries no tool_call data,
+	// so a credential-less regen would otherwise bundle an empty provider. If
+	// live discovery succeeds, the fetched rows win dedup and the seed only
+	// fills ids discovery did not report.
+	if (!authoritativeCatalogProviders.has("nous-research")) {
+		allModels.push(...NOUS_RESEARCH_STATIC_MODELS);
 	}
 	// Seed the GitLab Duo Agent fallback model so a fresh install (no credentialed
 	// dynamic discovery/cache yet) still surfaces the provider's default model in the

@@ -16552,6 +16552,191 @@
 			"maxTokens": 262144
 		}
 	},
+	"cohere": {
+		"command-a-03-2025": {
+			"id": "command-a-03-2025",
+			"name": "Command A",
+			"api": "openai-completions",
+			"provider": "cohere",
+			"baseUrl": "https://api.cohere.ai/compatibility/v1",
+			"reasoning": false,
+			"input": [
+				"text"
+			],
+			"cost": {
+				"input": 2.5,
+				"output": 10,
+				"cacheRead": 0,
+				"cacheWrite": 0
+			},
+			"contextWindow": 256000,
+			"maxTokens": 8000
+		},
+		"command-a-plus-05-2026": {
+			"id": "command-a-plus-05-2026",
+			"name": "Command A Plus",
+			"api": "openai-completions",
+			"provider": "cohere",
+			"baseUrl": "https://api.cohere.ai/compatibility/v1",
+			"reasoning": true,
+			"input": [
+				"text",
+				"image"
+			],
+			"cost": {
+				"input": 2.5,
+				"output": 10,
+				"cacheRead": 0,
+				"cacheWrite": 0
+			},
+			"contextWindow": 128000,
+			"maxTokens": 64000
+		},
+		"command-a-reasoning-08-2025": {
+			"id": "command-a-reasoning-08-2025",
+			"name": "Command A Reasoning",
+			"api": "openai-completions",
+			"provider": "cohere",
+			"baseUrl": "https://api.cohere.ai/compatibility/v1",
+			"reasoning": true,
+			"input": [
+				"text"
+			],
+			"cost": {
+				"input": 2.5,
+				"output": 10,
+				"cacheRead": 0,
+				"cacheWrite": 0
+			},
+			"contextWindow": 256000,
+			"maxTokens": 32000
+		},
+		"command-a-translate-08-2025": {
+			"id": "command-a-translate-08-2025",
+			"name": "Command A Translate",
+			"api": "openai-completions",
+			"provider": "cohere",
+			"baseUrl": "https://api.cohere.ai/compatibility/v1",
+			"reasoning": false,
+			"input": [
+				"text"
+			],
+			"cost": {
+				"input": 2.5,
+				"output": 10,
+				"cacheRead": 0,
+				"cacheWrite": 0
+			},
+			"contextWindow": 8000,
+			"maxTokens": 8000
+		},
+		"command-r-08-2024": {
+			"id": "command-r-08-2024",
+			"name": "Command R",
+			"api": "openai-completions",
+			"provider": "cohere",
+			"baseUrl": "https://api.cohere.ai/compatibility/v1",
+			"reasoning": false,
+			"input": [
+				"text"
+			],
+			"cost": {
+				"input": 0.15,
+				"output": 0.6,
+				"cacheRead": 0,
+				"cacheWrite": 0
+			},
+			"contextWindow": 128000,
+			"maxTokens": 4000
+		},
+		"command-r-plus-08-2024": {
+			"id": "command-r-plus-08-2024",
+			"name": "Command R+",
+			"api": "openai-completions",
+			"provider": "cohere",
+			"baseUrl": "https://api.cohere.ai/compatibility/v1",
+			"reasoning": false,
+			"input": [
+				"text"
+			],
+			"cost": {
+				"input": 2.5,
+				"output": 10,
+				"cacheRead": 0,
+				"cacheWrite": 0
+			},
+			"contextWindow": 128000,
+			"maxTokens": 4000
+		},
+		"command-r7b-12-2024": {
+			"id": "command-r7b-12-2024",
+			"name": "Command R7B",
+			"api": "openai-completions",
+			"provider": "cohere",
+			"baseUrl": "https://api.cohere.ai/compatibility/v1",
+			"reasoning": false,
+			"input": [
+				"text"
+			],
+			"cost": {
+				"input": 0.0375,
+				"output": 0.15,
+				"cacheRead": 0,
+				"cacheWrite": 0
+			},
+			"contextWindow": 128000,
+			"maxTokens": 4000
+		},
+		"command-r7b-arabic-02-2025": {
+			"id": "command-r7b-arabic-02-2025",
+			"name": "Command R7B Arabic",
+			"api": "openai-completions",
+			"provider": "cohere",
+			"baseUrl": "https://api.cohere.ai/compatibility/v1",
+			"reasoning": false,
+			"input": [
+				"text"
+			],
+			"cost": {
+				"input": 0.0375,
+				"output": 0.15,
+				"cacheRead": 0,
+				"cacheWrite": 0
+			},
+			"contextWindow": 128000,
+			"maxTokens": 4000
+		},
+		"north-mini-code-1-0": {
+			"id": "north-mini-code-1-0",
+			"name": "North Mini Code",
+			"api": "openai-completions",
+			"provider": "cohere",
+			"baseUrl": "https://api.cohere.ai/compatibility/v1",
+			"reasoning": true,
+			"reasoningOptions": {
+				"efforts": [
+					"high"
+				]
+			},
+			"input": [
+				"text"
+			],
+			"cost": {
+				"input": 0,
+				"output": 0,
+				"cacheRead": 0,
+				"cacheWrite": 0
+			},
+			"contextWindow": 256000,
+			"maxTokens": 64000,
+			"thinking": {
+				"mode": "effort",
+				"efforts": [
+					"high"
+				]
+			}
+		}
+	},
 	"cursor": {
 		"claude-4.5-opus-high": {
 			"id": "claude-4.5-opus-high",
@@ -62264,6 +62449,46 @@
 					"xhigh"
 				]
 			}
+		}
+	},
+	"nous-research": {
+		"nousresearch/hermes-4-405b": {
+			"id": "nousresearch/hermes-4-405b",
+			"name": "Hermes 4 405B",
+			"api": "openai-completions",
+			"provider": "nous-research",
+			"baseUrl": "https://inference-api.nousresearch.com/v1",
+			"reasoning": false,
+			"input": [
+				"text"
+			],
+			"cost": {
+				"input": 0.09,
+				"output": 0.37,
+				"cacheRead": 0,
+				"cacheWrite": 0
+			},
+			"contextWindow": 131072,
+			"maxTokens": 131072
+		},
+		"nousresearch/hermes-4-70b": {
+			"id": "nousresearch/hermes-4-70b",
+			"name": "Hermes 4 70B",
+			"api": "openai-completions",
+			"provider": "nous-research",
+			"baseUrl": "https://inference-api.nousresearch.com/v1",
+			"reasoning": false,
+			"input": [
+				"text"
+			],
+			"cost": {
+				"input": 0.05,
+				"output": 0.2,
+				"cacheRead": 0,
+				"cacheWrite": 0
+			},
+			"contextWindow": 131072,
+			"maxTokens": 131072
 		}
 	},
 	"novita": {

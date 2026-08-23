@@ -3167,6 +3167,71 @@ export function coreWeaveModelManagerOptions(
 }
 
 // ---------------------------------------------------------------------------
+// 15.6 Cohere (Command Code / OpenAI-compatible endpoint)
+// ---------------------------------------------------------------------------
+
+export interface CohereModelManagerConfig {
+	apiKey?: string;
+	baseUrl?: string;
+	fetch?: FetchImpl;
+}
+
+export function cohereModelManagerOptions(
+	config?: CohereModelManagerConfig,
+): ModelManagerOptions<"openai-completions"> {
+	return createSimpleOpenAICompletionsOptions("cohere", "https://api.cohere.ai/compatibility/v1", config);
+}
+
+// ---------------------------------------------------------------------------
+// 15.7 Nous Research
+// ---------------------------------------------------------------------------
+
+/**
+ * Nous' own models on its inference API. The endpoint lists every hosted
+ * model publicly (third-party hosts included), so the seed carries only the
+ * Hermes family — the rows the provider is named for — and live discovery
+ * with a key widens the list at runtime.
+ */
+export const NOUS_RESEARCH_STATIC_MODELS: readonly ModelSpec<"openai-completions">[] = [
+	{
+		id: "nousresearch/hermes-4-70b",
+		name: "Hermes 4 70B",
+		api: "openai-completions",
+		provider: "nous-research",
+		baseUrl: "https://inference-api.nousresearch.com/v1",
+		reasoning: false,
+		input: ["text"],
+		cost: { input: 0.05, output: 0.2, cacheRead: 0, cacheWrite: 0 },
+		contextWindow: 131072,
+		maxTokens: 131072,
+	},
+	{
+		id: "nousresearch/hermes-4-405b",
+		name: "Hermes 4 405B",
+		api: "openai-completions",
+		provider: "nous-research",
+		baseUrl: "https://inference-api.nousresearch.com/v1",
+		reasoning: false,
+		input: ["text"],
+		cost: { input: 0.09, output: 0.37, cacheRead: 0, cacheWrite: 0 },
+		contextWindow: 131072,
+		maxTokens: 131072,
+	},
+];
+
+export interface NousResearchModelManagerConfig {
+	apiKey?: string;
+	baseUrl?: string;
+	fetch?: FetchImpl;
+}
+
+export function nousResearchModelManagerOptions(
+	config?: NousResearchModelManagerConfig,
+): ModelManagerOptions<"openai-completions"> {
+	return createSimpleOpenAICompletionsOptions("nous-research", "https://inference-api.nousresearch.com/v1", config);
+}
+
+// ---------------------------------------------------------------------------
 // 16. Moonshot
 // ---------------------------------------------------------------------------
 
@@ -5081,6 +5146,8 @@ const MODELS_DEV_PROVIDER_DESCRIPTORS_SPECIALIZED: readonly ModelsDevProviderDes
 			return { api: "openai-completions" as const, baseUrl: ZENMUX_OPENAI_BASE_URL };
 		},
 	}),
+	// --- Cohere ---
+	openAiCompletionsDescriptor("cohere", "cohere", "https://api.cohere.ai/compatibility/v1"),
 ];
 /** All provider descriptors for models.dev data mapping in generate-models.ts. */
 export const MODELS_DEV_PROVIDER_DESCRIPTORS: readonly ModelsDevProviderDescriptor[] = [
