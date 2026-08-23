@@ -432,10 +432,13 @@ const streamOllamaOnce = (
 		let activeThinkingIndex: number | undefined;
 		let activeTextIndex: number | undefined;
 		const activeToolIndices = new Set<number>();
-		const streamMarkupHealingPattern = getStreamMarkupHealingPattern(model.provider, model.id);
-		const streamMarkupHealing = streamMarkupHealingPattern
-			? new StreamMarkupHealing({ pattern: streamMarkupHealingPattern })
-			: undefined;
+		// `getStreamMarkupHealingPattern` always names a pattern -- "thinking" is the
+		// floor, not an absence -- so the healer is always present here. Ollama heals
+		// inline rather than through the generic wrap because it alone knows whether
+		// the provider also streamed native reasoning (`suppressHealedThinking`).
+		const streamMarkupHealing = new StreamMarkupHealing({
+			pattern: getStreamMarkupHealingPattern(model.provider, model.id),
+		});
 		let healedToolCallEmitted = false;
 		// Once the provider streams native reasoning (`message.thinking`), drop any
 		// thinking the text-channel healer also recovers so a model that emits both
@@ -524,7 +527,6 @@ const streamOllamaOnce = (
 			}
 		};
 		const drainHealedToolCalls = (): void => {
-			if (!streamMarkupHealing) return;
 			for (const call of streamMarkupHealing.drainCompleted()) emitHealedToolCall(call);
 		};
 		try {
@@ -616,15 +618,11 @@ const streamOllamaOnce = (
 				const chunkContent = chunk.message?.content;
 				const structuredCalls = chunk.message?.tool_calls?.length ? chunk.message.tool_calls : undefined;
 				if (chunkContent) {
-					if (streamMarkupHealing) {
-						const healingEvents = structuredCalls
-							? streamMarkupHealing.feedEventsWithoutCalls(chunkContent)
-							: streamMarkupHealing.feedEvents(chunkContent);
-						for (const event of healingEvents) {
-							emitHealingEvent(event);
-						}
-					} else {
-						appendVisibleText(chunkContent);
+					const healingEvents = structuredCalls
+						? streamMarkupHealing.feedEventsWithoutCalls(chunkContent)
+						: streamMarkupHealing.feedEvents(chunkContent);
+					for (const event of healingEvents) {
+						emitHealingEvent(event);
 					}
 				}
 				if (structuredCalls) {
@@ -658,12 +656,10 @@ const streamOllamaOnce = (
 				}
 				if (chunk.done) {
 					sawDone = true;
-					if (streamMarkupHealing) {
-						for (const event of streamMarkupHealing.flushEvents()) {
-							emitHealingEvent(event);
-						}
-						drainHealedToolCalls();
+					for (const event of streamMarkupHealing.flushEvents()) {
+						emitHealingEvent(event);
 					}
+					drainHealedToolCalls();
 					endActiveThinkingBlock();
 					endActiveTextBlock();
 					for (const index of activeToolIndices) {
@@ -679,14 +675,12 @@ const streamOllamaOnce = (
 					output.usage.totalTokens = output.usage.input + output.usage.output;
 				}
 			}
-			if (streamMarkupHealing) {
-				for (const event of streamMarkupHealing.flushEvents()) {
-					emitHealingEvent(event);
-				}
-				drainHealedToolCalls();
-				if (healedToolCallEmitted && output.stopReason === "stop") {
-					output.stopReason = "toolUse";
-				}
+			for (const event of streamMarkupHealing.flushEvents()) {
+				emitHealingEvent(event);
+			}
+			drainHealedToolCalls();
+			if (healedToolCallEmitted && output.stopReason === "stop") {
+				output.stopReason = "toolUse";
 			}
 			endActiveThinkingBlock();
 			endActiveTextBlock();
