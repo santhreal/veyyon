@@ -1,13 +1,21 @@
 import { describe, expect, it } from "bun:test";
 import {
 	classify,
+	create,
+	ERROR_DOMAINS,
+	ERROR_KIND_LABELS,
 	Flag,
 	is,
 	isProviderRetryableError,
 	isTransientStatus,
 	isUsageLimit,
+	RequestAbortError,
 	recover,
+	retriable,
+	StreamTimeoutError,
+	vetoesRetry,
 } from "@veyyon/ai/error";
+import { cancellationError } from "@veyyon/utils/abortable";
 import * as fetchRetry from "@veyyon/utils/fetch-retry";
 
 /**
@@ -26,8 +34,7 @@ import * as fetchRetry from "@veyyon/utils/fetch-retry";
  *
  * WHAT IT DOES NOT CATCH. It does not sweep the retry LOOPS: thirteen of them still ask this
  * predicate rather than `recover(id, stage)`, and a loop that reaches its own conclusion from prose
- * would pass this file. Each is migrated with its own suite. It also does not decide whether an
- * abort should be retried — see the last block, which pins today's answer and says why.
+ * would pass this file. Each is migrated with its own suite.
  */
 
 /** A `{status, message}` shape, which is what a provider SDK rejects with. */
@@ -132,23 +139,99 @@ describe("the cases the second home used to answer", () => {
 	});
 });
 
-describe("an abort is retried here and refused everywhere else", () => {
+describe("a veto refuses a retry at every reader of the decision", () => {
 	/**
-	 * NOT A CONTRADICTION THIS REFACTOR RESOLVED, and the pin is deliberate. `retriable()` answers
-	 * false for `Flag.Abort` and `Flag.SilentAbort`, while the utils fallback answered true for any
-	 * error whose name or wording says aborted, so a provider ladder retries a cancellation the turn
-	 * layer would not. Flipping it changes what happens when a user presses escape mid-stream, which
-	 * is a product decision. These assertions record today's answer so the decision is visible and
-	 * the flip is a deliberate edit to a test that says why, not an accident.
+	 * WHY THIS BLOCK EXISTS. A veto is the registry's strongest statement about a failure — "however
+	 * the rest of this classified, do not send it again" — and it had two readers that disagreed.
+	 * `retriable()` read the mask. This predicate re-derived the answer: it restated the HTTP/2 bit
+	 * by hand, never asked about the other two, and reached transience from message prose, so a
+	 * content filter whose body also carried a 503 was retried by the transport wording and a
+	 * cancellation was retried by the word "aborted" in its own sentence while the turn refused the
+	 * identical failure. Pressing escape mid-stream re-entered the stream.
+	 *
+	 * THE CLASS THIS CLOSES: a veto family whose refusal one reader honors and another does not. The
+	 * families are enumerated from `ERROR_DOMAINS` at run time and every flag each one recovers is
+	 * swept, so a fourth veto family is covered the day it is declared and the `toEqual` below turns
+	 * red until someone records the decision to add it.
+	 *
+	 * WHAT IT DOES NOT CATCH. It does not sweep the retry loops that call this predicate, and it
+	 * cannot see a cancellation that never identified itself as one: an error minted as a bare
+	 * `new Error("Request was aborted")` carries no name and no flag, and is a cancellation only to
+	 * a human reader. `packages/utils/test/fetch-retry.test.ts` covers the mint sites.
+	 */
+	const vetoFamilies = ERROR_DOMAINS.filter(domain => domain.vetoesRetry === true);
+	const flagLabel = (flag: number): string =>
+		ERROR_KIND_LABELS.find(([bit]) => bit === flag)?.[1] ?? `0x${flag.toString(16)}`;
+
+	it("is declared by exactly the interrupt, content and refusal families", () => {
+		expect(vetoFamilies.map(domain => domain.id)).toEqual(["interrupt", "content", "refusal"]);
+	});
+
+	/**
+	 * The wording is transient on purpose. Every row carries a sentence the prose rules below the
+	 * veto would retry, so a row can only pass because the veto was read first.
+	 */
+	it.each(
+		vetoFamilies.flatMap(domain => domain.recovers.map(flag => [`${domain.id}/${flagLabel(flag)}`, flag] as const)),
+	)("refuses %s however the rest of the failure classified", (_label, flag) => {
+		const error = Object.assign(new Error("the model is overloaded, please retry your request"), {
+			errorId: create(flag),
+		});
+		const id = classify(error);
+
+		expect(is(id, Flag.Transient)).toBe(true);
+		expect(vetoesRetry(id)).toBe(true);
+		expect(isProviderRetryableError(error)).toBe(false);
+		expect(retriable(id)).toBe(false);
+	});
+
+	/**
+	 * A cancellation states itself in its NAME, which is the one thing the four layers that mint one
+	 * agree on. Each row wears a sentence the prose rules would retry.
 	 */
 	it.each([
-		["the DOM abort name", Object.assign(new Error("x"), { name: "AbortError" })],
-		["the wording alone", new Error("the operation was aborted")],
-	])("retries %s", (_label, error) => {
+		["the platform's own", Object.assign(new Error("connection error, please retry"), { name: "AbortError" })],
+		["the provider layer's class", new RequestAbortError("Request was aborted after a connection error")],
+		["the fetch layer's", cancellationError()],
+		[
+			"the tool loop's",
+			Object.assign(new Error("Tool execution was aborted: fetch failed"), { name: "ToolAbortError" }),
+		],
+	])("classifies %s cancellation as an abort and refuses it", (_label, error) => {
+		const id = classify(error);
+
+		expect(is(id, Flag.Abort)).toBe(true);
+		expect(recover(id, "transport").action).toBe("abort");
+		expect(isProviderRetryableError(error)).toBe(false);
+		expect(retriable(id)).toBe(false);
+	});
+
+	/**
+	 * A DEADLINE IS NOT A CANCELLATION, and the distinction is the whole reason the identity rule
+	 * reads `isAbortError` rather than `isCancellation`. A watchdog that ends a silent stream is the
+	 * failure this ladder exists to retry; widening the rule to cover a timeout would stop every
+	 * stall recovery in the product.
+	 */
+	it.each([
+		["a stream watchdog", new StreamTimeoutError("OpenAI responses stream stalled while waiting for the next event")],
+		["a pre-response deadline", Object.assign(new Error("The operation timed out."), { name: "TimeoutError" })],
+	])("still retries %s", (_label, error) => {
+		const id = classify(error);
+
+		expect(vetoesRetry(id)).toBe(false);
 		expect(isProviderRetryableError(error)).toBe(true);
 	});
 
-	it("refuses the same failure at the turn, which is the disagreement", () => {
-		expect(is(classify(new Error("the operation was aborted")), Flag.Transient)).toBe(false);
+	/**
+	 * PROSE IS NOT THE OWNER. The word in the sentence used to be the whole rule, which is why a
+	 * provider that wrote "aborted" about its own upstream got a retry and a DOM cancellation got
+	 * one too. An error that says it was aborted and identifies as nothing now decides nothing: it
+	 * carries no abort flag, and it is not retried either.
+	 */
+	it("reads no cancellation out of the word alone", () => {
+		const error = new Error("the operation was aborted");
+
+		expect(is(classify(error), Flag.Abort)).toBe(false);
+		expect(isProviderRetryableError(error)).toBe(false);
 	});
 });

@@ -1,5 +1,5 @@
 import { scheduler } from "node:timers/promises";
-import { isAbortError } from "./abortable";
+import { cancellationError, isAbortError } from "./abortable";
 
 // "reset after 1h2m3s" / "10m15s" / "39s"
 const QUOTA_RESET_PATTERN = /reset after (?:(\d+)h)?(?:(\d+)m)?(\d+(?:\.\d+)?)s/i;
@@ -347,7 +347,7 @@ export async function fetchWithRetry(
 	const signal = baseInit.signal as AbortSignal | undefined;
 
 	for (let attempt = 0; ; attempt++) {
-		if (signal?.aborted) throw new Error("Request was aborted");
+		if (signal?.aborted) throw cancellationError();
 		const requestUrl = typeof url === "function" ? url(attempt) : url;
 		// `timeout` is destructured out of `baseInit`, so forward it to the underlying
 		// fetch on the no-`prepareInit` path too. Without this, callers that pass
@@ -366,7 +366,7 @@ export async function fetchWithRetry(
 		try {
 			response = await fetchImpl(requestUrl, init);
 		} catch (error) {
-			if (signal?.aborted) throw new Error("Request was aborted");
+			if (signal?.aborted) throw cancellationError();
 			const wrapped = wrapNetworkError(error);
 			// A named HTTP/2 code this module has already ruled deterministic
 			// (`NON_RETRYABLE_HTTP2_ERROR_CODES`) fails the same way on every replay,
@@ -411,7 +411,7 @@ function mergeInit(base: RequestInit, overlay: RequestInit, timeout: number | fa
 function wrapNetworkError(error: unknown): Error {
 	if (error instanceof Error) {
 		if (isAbortError(error) || error.message === "Request was aborted") {
-			return new Error("Request was aborted");
+			return cancellationError();
 		}
 		if (error.message === "fetch failed" && error.cause instanceof Error) {
 			return new Error(`Network error: ${error.cause.message}`);

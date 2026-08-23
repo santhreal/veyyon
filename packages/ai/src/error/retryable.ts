@@ -1,4 +1,3 @@
-import { isAbortError } from "@veyyon/utils/abortable";
 import { isRetryableStatus, isUnexpectedSocketCloseMessage } from "@veyyon/utils/fetch-retry";
 import { isStreamFrameLimitError } from "@veyyon/utils/stream-frame-limit";
 import {
@@ -10,6 +9,7 @@ import {
 	isUsageLimit,
 	status,
 	TRANSIENT_TRANSPORT_PATTERN,
+	vetoesRetry,
 } from "./flags";
 
 /**
@@ -64,6 +64,12 @@ export interface ProviderRetryableHooks {
  * classifier does not (TLS record corruption, HTTP/2 peer stream errors, upstream
  * 1302, mid-JSON truncation, out-of-order stream events).
  *
+ * THE REGISTRY OWNS REFUSAL. A family that declares `vetoesRetry` refuses a retry
+ * for the whole failure, and this predicate reads that mask instead of holding a
+ * second opinion about it: a cancellation gets the same answer here as
+ * {@link retriable} gives at the turn, so pressing escape mid-stream ends the
+ * stream instead of re-entering it.
+ *
  * Provider-specific transient cases are injected via {@link ProviderRetryableHooks}
  * so this stays free of provider imports.
  */
@@ -75,13 +81,18 @@ export function isProviderRetryableError(error: unknown, hooks: ProviderRetryabl
 	// provider is free to compose around the cause it wrapped.
 	if (isStreamFrameLimitError(error)) return false;
 	const id = classify(error);
-	// THE OTHER STRUCTURAL REFUSAL, and it has to be read before the prose rules for the same
-	// reason. A named HTTP/2 code the RFC says a replay reproduces is a fact; a wrapper's sentence
-	// is not. `NGHTTP2_CANCEL: operation timed out` used to come back retryable here through the
-	// word "timed out" even though the classifier had already refused it, and a cancel is our own
-	// abort. The flag stays beside Flag.Transient rather than clearing it, so the wrapper's
-	// description survives and only the decision changes.
-	if (is(id, Flag.TransportRefused)) return false;
+	// THE REGISTRY REFUSES, and this reads its answer rather than restating any part of it. A family
+	// that declares `vetoesRetry` refuses a retry for the whole failure however the rest of it
+	// classified, and three do: a named HTTP/2 code the RFC says a replay reproduces, a content
+	// filter's verdict on the request, and a cancellation. All three had to be read before the prose
+	// rules below, because those read the OUTERMOST message and a provider is free to compose a
+	// sentence around the cause it wrapped — `NGHTTP2_CANCEL: operation timed out` came back
+	// retryable through the words "timed out", a filter whose body also carried a 503 through the
+	// transport wording, and a cancellation through the word "aborted" in its own message while
+	// `retriable()` refused the identical failure at the turn. The flags sit BESIDE `Flag.Transient`
+	// rather than clearing it, so each failure still describes itself the way it arrived and only
+	// the decision changes. The HTTP/2 case was a hand-written second copy of one bit of this mask.
+	if (vetoesRetry(id)) return false;
 	if (hooks.isProviderTransient?.(error)) return true;
 	if (isUsageLimit(error)) return false;
 	const httpStatus = status(error);
@@ -107,11 +118,5 @@ export function isProviderRetryableError(error: unknown, hooks: ProviderRetryabl
 	// be answered by `@veyyon/utils/fetch-retry`'s `isRetryableError`, a second classifier with a
 	// second transient vocabulary, and the two disagreed by exactly one phrase.
 	if (isTransientStatus(httpStatus)) return true;
-	// AN ABORT IS RETRIED HERE AND REFUSED EVERYWHERE ELSE, which is a contradiction this refactor
-	// preserves rather than resolves: `retriable()` answers false for `Flag.Abort`, and the utils
-	// fallback this replaces answered true for any error whose name or wording says aborted, so a
-	// provider ladder retries a cancellation the turn layer would not. Changing it changes what
-	// happens when a user presses escape mid-stream, which is a product decision and not a
-	// refactor's to take. Recorded as a row rather than silently flipped.
-	return isAbortError(error) || /\baborted\b/i.test(msg);
+	return false;
 }

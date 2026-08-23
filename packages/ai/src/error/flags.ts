@@ -44,6 +44,7 @@ export {
 	recover,
 	retriable,
 	TURN_RETRIABLE_MASK,
+	vetoesRetry,
 } from "./registry";
 
 /**
