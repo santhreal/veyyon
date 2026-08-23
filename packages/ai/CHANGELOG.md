@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added Command Code API-key login through the Studio Provider page, with validation against its Provider API, and Nous Research Portal OAuth device login with rotating refresh tokens and short-lived inference JWTs.
+
 ## [1.2.0] - 2026-08-23
 
 ### Breaking Changes
@@ -14,10 +18,6 @@
 - The Anthropic retry wrapper is `isAnthropicStreamRetryable`. It was a second exported `isProviderRetryableError`, wrapping the one in `error/retryable.ts` and adding Copilot's `model_not_supported` check, so a caller's retry decision depended on whether it imported `@veyyon/ai` or `@veyyon/ai/error` and neither call site said which rule it got. One production call site used the wrapper; every other caller already used the classification directly. An embedder importing `isProviderRetryableError` from `@veyyon/ai/providers/anthropic` imports `isAnthropicStreamRetryable` from there, or the unwrapped predicate from `@veyyon/ai/error`.
 - `isUsageLimitOutcome` and `isUsageLimitStatus` are removed from `@veyyon/ai/error/rate-limit` and from the `@veyyon/ai` root. They were the quota decision tree written a second time, outside the classifier, and six call sites wrote `isUsageLimit(error) || isUsageLimitOutcome(status, message)` because each half missed a case the other caught. The question has one accessor, `isUsageLimit(error)` from `@veyyon/ai/error/flags`, which now also answers a failure that arrived as a bare status with no body. An embedder calling `isUsageLimitOutcome(status, message)` calls `isUsageLimit({ status, message })` instead; the parts the quota family reads — `matchesUsageLimitText`, `isOpaqueStatusBody`, `parseRateLimitReason` — are unchanged.
 - `isRetryableStreamEnvelopeError` is removed from `@veyyon/ai/error`; the out-of-order envelope wording is now a transport rule in the registry, and `isStreamEnvelopeError` still answers the identity question a provider asks about a stream it was reading.
-
-### Added
-
-- Added Command Code API-key login through the Studio Provider page, with validation against its Provider API, and Nous Research Portal OAuth device login with rotating refresh tokens and short-lived inference JWTs.
 
 ### Changed
 

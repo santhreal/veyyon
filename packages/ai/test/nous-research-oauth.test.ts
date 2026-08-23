@@ -95,7 +95,7 @@ describe("Nous Portal OAuth", () => {
 		expect(fetchStub).not.toHaveBeenCalled();
 	});
 
-	test("refreshes through the derived registry, persists the rotated token shape, and sends the refresh header", async () => {
+	test("refreshes through the derived registry, returns the rotated token shape, and sends the refresh header", async () => {
 		const expiresAtSeconds = Math.floor(Date.now() / 1000) + 7200;
 		const nextAccess = inferenceJwt(expiresAtSeconds, ["profile", "inference:invoke"]);
 		const requests: CapturedRequest[] = [];
@@ -165,8 +165,10 @@ describe("Nous Portal OAuth", () => {
 	] as const)(
 		"surfaces a revoked %s refresh grant with the machine-readable OAuth error",
 		async (code, description) => {
-			vi.spyOn(globalThis, "fetch").mockImplementation((async () =>
-				Response.json({ error: code, error_description: description }, { status: 400 })) as typeof fetch);
+			vi.spyOn(globalThis, "fetch").mockImplementation((async (
+				_input: string | URL | Request,
+				_init?: RequestInit,
+			) => Response.json({ error: code, error_description: description }, { status: 400 })) as typeof fetch);
 			const credentials: OAuthCredentials = {
 				access: inferenceJwt(Math.floor(Date.now() / 1000) - 60),
 				refresh: "revoked-refresh",
