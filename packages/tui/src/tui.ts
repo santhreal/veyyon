@@ -1064,20 +1064,37 @@ export class TUI extends Container {
 	#renderScheduler: RenderScheduler;
 	#lastRenderAt = 0;
 	/**
-	 * Wall-clock cost of the most recent `#doRender()` call. Used by
-	 * `#scheduleRender` to inflate the next render delay proportionally so a
-	 * spike of slow frames (large transcript diffs, huge assistant text wrap,
-	 * component-tree walks) does not busy-loop the CPU: the throttle would
-	 * otherwise collapse to zero once `elapsed >= MIN_RENDER_INTERVAL_MS` and
-	 * fire the next frame immediately (see #4145).
+	 * Decayed estimate of what a frame costs, in milliseconds. `#scheduleRender`
+	 * derives the adaptive floor from it to hold the render loop near a 50%
+	 * duty cycle: without one the throttle collapses to zero as soon as
+	 * `elapsed >= MIN_RENDER_INTERVAL_MS`, and a run of slow frames (large
+	 * transcript diffs, huge assistant text wrap, component-tree walks) turns
+	 * the loop into a busy loop at 40-50% CPU (see #4145).
+	 *
+	 * A duty cycle is a property of a window, not of one frame, and reading the
+	 * previous frame alone conflated two different situations. A loop that
+	 * paints slowly on every frame converges here and is held to half the CPU,
+	 * which is what #4145 asked for. A single expensive paint among cheap ones
+	 * moves the estimate by a fraction of itself, so the frame after it still
+	 * arrives at the cadence: a scrolled viewport leaves the diff nothing to
+	 * reuse and costs a full paint, and putting a 66ms floor under the cheap
+	 * diff that followed it is how a session that painted on time 68% of the
+	 * time published at 14.2 fps against a 30 fps capture.
 	 */
-	#lastFrameCostMs = 0;
+	#frameCostEstimateMs = 0;
+	/**
+	 * Weight of the newest frame in `#frameCostEstimateMs`. At 0.3 a sustained
+	 * change in frame cost is ~90% absorbed within seven frames, so the loop
+	 * reaches its duty-cycle floor inside a quarter second of going slow, while
+	 * an isolated spike lifts the floor by under a third of itself.
+	 */
+	static readonly #FRAME_COST_SMOOTHING = 0.3;
 	static readonly #MIN_RENDER_INTERVAL_MS = 1000 / 30;
 	static readonly #INPUT_RENDER_GRACE_MS = TUI.#MIN_RENDER_INTERVAL_MS;
 	/**
-	 * Cap on the adaptive floor derived from `#lastFrameCostMs`. Bounds the UI
-	 * responsiveness at ~5 fps under sustained heavy renders — anything slower
-	 * feels dead to the user and no longer justifies further CPU savings.
+	 * Cap on the adaptive floor derived from `#frameCostEstimateMs`. Bounds the
+	 * UI responsiveness at ~5 fps under sustained heavy renders — anything
+	 * slower feels dead to the user and no longer justifies further CPU savings.
 	 */
 	static readonly #MAX_ADAPTIVE_RENDER_MS = 200;
 	#inputRenderGraceUntilMs = 0;
@@ -3024,12 +3041,14 @@ export class TUI extends Container {
 		const elapsed = now - this.#lastRenderAt;
 		const cadenceDelay = Math.max(0, TUI.#MIN_RENDER_INTERVAL_MS - elapsed);
 		// Adaptive backpressure — target ~50% render duty cycle: the next frame
-		// starts no sooner than `last_frame_end + last_frame_cost`, i.e.
-		// `last_frame_start + 2 × last_frame_cost`. So `elapsed` (which counts
-		// from the last frame's start) must already exceed twice the cost
-		// before we allow the follow-up render to fire. Capped so a
-		// pathological one-off spike doesn't lock the UI (#4145).
-		const adaptiveFloor = Math.min(TUI.#MAX_ADAPTIVE_RENDER_MS, this.#lastFrameCostMs * 2);
+		// starts no sooner than `frame_end + estimated_cost`, i.e.
+		// `frame_start + 2 × estimated_cost`. So `elapsed` (which counts from
+		// the last frame's start) must already exceed twice the estimate before
+		// we allow the follow-up render to fire. The estimate is decayed rather
+		// than the previous sample, so a sustained slow loop is held to half the
+		// CPU (#4145) and an isolated expensive paint is not charged to the
+		// cheap frame behind it. Capped so a pathological cost cannot lock the UI.
+		const adaptiveFloor = Math.min(TUI.#MAX_ADAPTIVE_RENDER_MS, this.#frameCostEstimateMs * 2);
 		const adaptiveDelay = Math.max(0, adaptiveFloor - elapsed);
 		const inputGraceDelay = Math.max(0, this.#inputRenderGraceUntilMs - now);
 		const delay = Math.max(cadenceDelay, adaptiveDelay, inputGraceDelay);
@@ -3065,7 +3084,8 @@ export class TUI extends Container {
 			this.#doRender();
 		} finally {
 			popLoopPhase();
-			this.#lastFrameCostMs = this.#renderScheduler.now() - start;
+			const costMs = this.#renderScheduler.now() - start;
+			this.#frameCostEstimateMs += TUI.#FRAME_COST_SMOOTHING * (costMs - this.#frameCostEstimateMs);
 		}
 	}
 
