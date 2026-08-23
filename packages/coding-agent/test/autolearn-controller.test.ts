@@ -66,10 +66,10 @@ function install(
 ): Settings {
 	const settings = Settings.isolated({ "autolearn.enabled": true, ...overrides });
 	new AutoLearnController({
-			session: session as unknown as AgentSession,
-			settings,
-			memoryStartup,
-		});
+		session: session as unknown as AgentSession,
+		settings,
+		memoryStartup,
+	});
 	return settings;
 }
 

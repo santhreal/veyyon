@@ -134,16 +134,8 @@ export class AutoLearnController {
 		const autoContinue = this.#settings.get("autolearn.autoContinue") === true;
 		if (!autoContinue) return;
 
-		const content = AUTOLEARN_NUDGE_AUTOCONTINUE;
-		// Arm suppression synchronously: the synthetic capture turn's agent_end
-		// fires inside sendCustomMessage (before it resolves), so the flag must be
-		// set before then. Disarm when no turn actually started — a deferred/queued
-		// dispatch or a failed send produces no agent_end, and a latched flag would
-		// otherwise swallow the next real stop.
-		// Wait for the backgrounded backend startup before dispatching, so the
-		// capture turn's `learn` tool observes the same initialized state as
-		// normal memory tools. The wait happens here — at the first agent END,
-		// long after the first frame — not at session construction.
+		// The wait for the backgrounded backend startup happens here — at the first
+		// agent END, long after the first frame — not at session construction.
 		void this.#memoryStartup
 			.then(() => {
 				const content = AUTOLEARN_NUDGE_AUTOCONTINUE;
@@ -153,17 +145,19 @@ export class AutoLearnController {
 				// actually started — a failed send produces no agent_end, and a
 				// latched flag would otherwise swallow the next real stop.
 				this.#suppressNext = true;
-				return this.#session.sendCustomMessage(
-					{
-						customType: "autolearn-nudge",
-						content,
-						display: false,
-						attribution: "user",
-					},
-					{ deliverAs: "nextTurn", triggerTurn: true, acceptTerminalEmptyStop: true },
-				).then(started => {
-					if (!started) this.#suppressNext = false;
-				});
+				return this.#session
+					.sendCustomMessage(
+						{
+							customType: "autolearn-nudge",
+							content,
+							display: false,
+							attribution: "user",
+						},
+						{ deliverAs: "nextTurn", triggerTurn: true, acceptTerminalEmptyStop: true },
+					)
+					.then(started => {
+						if (!started) this.#suppressNext = false;
+					});
 			})
 			.catch(err => {
 				this.#suppressNext = false;
