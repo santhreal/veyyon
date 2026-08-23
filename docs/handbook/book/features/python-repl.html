@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-8ea7c097.js";
+            window.path_to_searchindex_js = "../searchindex-035739c9.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-093df7ff.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -196,8 +196,9 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="eval-tool-python-backend"><a class="header" href="#eval-tool-python-backend">Eval Tool Python Backend</a></h1>
-<p>This document describes the Python execution stack in <code>packages/coding-agent</code>.
-It covers tool behavior, runner lifecycle, environment handling, execution semantics, output rendering, supported magics, and operational failure modes.</p>
+<p>The Python execution stack in <code>packages/coding-agent</code>: tool behavior, runner lifecycle,
+environment handling, execution semantics, output rendering, supported magics, and
+operational failure modes.</p>
 <h2 id="scope-and-key-files"><a class="header" href="#scope-and-key-files">Scope and Key Files</a></h2>
 <ul>
 <li>Tool surface: <code>src/tools/eval.ts</code></li>
@@ -312,7 +313,7 @@ It covers tool behavior, runner lifecycle, environment handling, execution seman
 <li>Allow-prefixes: <code>LC_</code>, <code>XDG_</code>, <code>VEYYON_</code></li>
 <li>Denylist strips common API keys (OpenAI/Anthropic/Gemini/etc.)</li>
 </ul>
-<p>Runtime selection order (skipped entirely when the <code>python.interpreter</code> setting names an explicit executable):</p>
+<p>Runtime selection order (skipped entirely when the <code>python.interpreter</code> setting specifies an explicit executable):</p>
 <ol>
 <li>Active/located venv (<code>VIRTUAL_ENV</code>, then <code>CONDA_PREFIX</code>, then <code>&lt;cwd&gt;/.venv</code>, <code>&lt;cwd&gt;/venv</code>)</li>
 <li>Managed venv at <code>~/.veyyon/python-env</code></li>
@@ -384,7 +385,7 @@ It covers tool behavior, runner lifecycle, environment handling, execution seman
 <li>used for user-triggered Python execution in TUI</li>
 <li>collapsed preview defaults to 20 lines (<code>EXECUTION_PREVIEW_LINES</code>)</li>
 <li>clamps a very long individual line to 4000 terminal <strong>columns</strong>, not characters (<code>EXECUTION_MAX_DISPLAY_COLUMNS</code>). Columns are what the terminal has to fit, so ANSI colour codes are not counted and a wide character counts as two. The clamped line ends with <code>… [N visible columns omitted]</code>.</li>
-<li>keeps at most 100 output lines while a cell is streaming (<code>EXECUTION_STREAMING_LINE_CAP</code>, five screenfuls). When more arrive the oldest are dropped and the footer says so: <code>… N earlier lines dropped while streaming</code>. That note is separate from the <code>… N more lines (ctrl+o to expand)</code> hint, because expanding reveals hidden lines and cannot bring back dropped ones. Once the cell finishes, the full output replaces what streaming kept, so the note disappears.</li>
+<li>keeps at most 100 output lines while a cell is streaming (<code>EXECUTION_STREAMING_LINE_CAP</code>, five screenfuls). When more arrive the oldest are dropped and the footer states it: <code>… N earlier lines dropped while streaming</code>. That note is separate from the <code>… N more lines (ctrl+o to expand)</code> hint, because expanding reveals hidden lines and cannot bring back dropped ones. Once the cell finishes, the full output replaces what streaming kept, so the note disappears.</li>
 <li>shows cancellation/error/truncation notices</li>
 </ul>
 </li>

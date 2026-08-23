@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-8ea7c097.js";
+            window.path_to_searchindex_js = "../searchindex-035739c9.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-093df7ff.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -254,11 +254,11 @@ is still written the way you would expect (<code>model: anthropic/claude-sonnet-
 the compaction model row is the same list: add a fallback, and press Enter on any entry to move it
 up.</p>
 <p>Falling back is never quiet. When compaction runs on anything other than your first choice, you get
-a warning in the session naming both models and the reason:</p>
+a warning in the session stating both models and the reason:</p>
 <pre><code class="language-text">Compacted with anthropic/haiku-4-5. anthropic/opus-4-1 was skipped: it is not authenticated.
 </code></pre>
 <p>You see that once per distinct reason, not once per compaction.</p>
-<p><code>compaction.modelFallbackStrategy</code> decides what happens after your list runs out:</p>
+<p><code>compaction.modelFallbackStrategy</code> sets what happens after your list runs out:</p>
 <ul>
 <li><code>auto</code> (the default) stays on models you named: your main model, the same-provider compaction
 sibling its catalog row recommends, then each of your model roles.</li>
@@ -280,7 +280,7 @@ results and large fenced or XML blocks are replaced with a marker such as
 session artifact first, so you can always read it back with <code>read artifact://42</code>. Nothing is
 lost, it just stops being resent on every turn. Run it on demand with <code>/shake</code>.</p>
 <p>Shake also removes redundancy. When you read the same unchanged file twice, or run the same
-command twice and get the same output, every copy but the newest carries no new information.
+command twice and get the same output, every copy but the newest contains no new information.
 Shake finds each earlier tool result whose tool, arguments, and output exactly match a later
 one, and elides the earlier copies through the same artifact path. The newest copy stays in
 place. This runs even for recent results that the size-based pass would otherwise keep, because

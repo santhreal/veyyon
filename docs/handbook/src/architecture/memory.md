@@ -32,7 +32,7 @@ At session start, if a memory summary exists for the current project, it is inje
 
 A backend contributes in two places, and which one it uses matters for what a session costs you:
 
-- **The system prompt** carries the guidance that does not change while the session runs. The provider caches the prompt as
+- **The system prompt** contains the guidance that does not change while the session runs. The provider caches the prompt as
   the prefix of every request, so this text is paid for once.
 - **The context tail** carries whatever changes as you work: memories recalled for the current question, and the mental-model
   block when it reloads. These arrive as a message alongside your prompt.

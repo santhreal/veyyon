@@ -48,23 +48,23 @@ If you cap a session at 1 core, veyyon stays responsive while the build under it
 Where the operating system offers a per-group CPU quota, the kernel does the capping:
 
 - **Linux** uses a cgroup v2 directory per session with `cpu.max` set to the core count. If the
-  harness's own cgroup is not writable, veyyon asks the systemd user manager for a scope with
+  harness's own cgroup is not writable, veyyon requests a scope from the systemd user manager with
   `CPUQuota` instead.
 - **Windows** uses a Job Object with a hard CPU rate cap.
 
 A once-per-second watcher reads the group's usage on top of the kernel cap. When usage stays
-pinned at the budget for about three seconds, new commands are refused with an error that names
+pinned at the budget for about three seconds, new commands are rejected with an error that names
 the budget, the measured usage, and the fix (raise `session.cpuLimitCores` or wait), until usage
 drops. The kernel cap is the enforcement of last resort: if the watcher lags, commands throttle,
 they never run free.
 
 With `session.cpuLimitKill: true`, a sustained breach also sends SIGTERM to the group's
 processes. The kill is reported as a budget action: the notice and the killed command's result
-both say the command was stopped by the CPU budget, not that it crashed.
+both state the command was stopped by the CPU budget, not that it crashed.
 
-**macOS has no per-group CPU quota.** There the budget is policy only: new commands are refused
+**macOS has no per-group CPU quota.** There the budget is policy only: new commands are rejected
 while the group is saturated, running members are reniced, and `session.cpuLimitKill` still
-kills. Nothing throttles. The settings row and the startup warning say this, and the same
+kills. Nothing throttles. The settings row and the startup warning state this, and the same
 warning appears on any platform where no backend works. A configured limit never fails silently.
 
 Changing `session.cpuLimitCores` mid-session takes effect on the next command: the live quota is
@@ -87,7 +87,7 @@ $ veyyon
 
 `make` spawns sixteen compilers, but the whole tree shares two cores: the build takes roughly
 eight times longer than uncapped wall time would suggest, and the rest of the machine stays
-idle. While the build runs flat out, another command is refused:
+idle. While the build runs flat out, another command is rejected:
 
 ```
 Refused to start a bash command: this session's CPU budget of 2 core(s) is saturated

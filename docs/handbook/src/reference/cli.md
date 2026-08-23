@@ -111,7 +111,7 @@ Use `ultra` for a session you want to study in full, or create a study profile w
 setting and profile behavior.
 
 `--json` prints the complete report, including every turn; the text view caps the
-longest tables and says so when it does.
+longest tables and reports it when it does.
 
 There are no `veyyon app-server`, `exec-server`, `execpolicy`, or `responses-api-proxy` subcommands,
 and no top-level `resume` / `fork` / `archive` verbs. Resume and branch from the TUI (`/resume`,

@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-8ea7c097.js";
+            window.path_to_searchindex_js = "../searchindex-035739c9.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-093df7ff.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -209,6 +209,18 @@
 Record interactive proofs on the repository’s private display. Do not record a
 logged-in desktop, and do not use a terminal multiplexer capture as visual
 evidence. There are no other capture paths and no fallbacks.</p>
+<h3 id="which-artifact-proves-which-change"><a class="header" href="#which-artifact-proves-which-change">Which artifact proves which change</a></h3>
+<p>The artifact class follows the change class, and a mismatch is a failed proof.</p>
+<pre><code class="language-text">static surface changed     two PNG frames, before and after
+animation or timing changed  two animated clips, before and after
+setting added or changed   two PNG frames, off and on
+</code></pre>
+<p>A still never proves an animation: a frame cannot show a cadence, a transition, or a
+spinner. An animated clip never substitutes for a frame pair either, because a reader
+comparing two clips cannot hold both states side by side. The recorder publishes
+animation as WebP at 33 ms per frame; a GIF is the same clip in an older container and
+proves the same thing. Both arms of a pair are the same class, produced by one driver
+run, and attached to the pull request body.</p>
 <h3 id="real-interactive-sessions"><a class="header" href="#real-interactive-sessions">Real interactive sessions</a></h3>
 <p>The HD recorder starts Xvfb, picom, and kitty inside the recorder container. It drives the shipped CLI with real keyboard and pointer events and records the private display at 30 frames per second.</p>
 <p>The landing-page terminal uses:</p>
@@ -228,7 +240,7 @@ publish        Lanczos downsample to 1920x1080
 <p>The recorder keeps rehearsal output in the temporary directory it prints. Inspect the video and named frames there. Set <code>PUBLISH=1</code> only for a complete take whose frame guards all passed.</p>
 <p>The scene’s task prompt is static at <code>proof/prompts/demo-hd.md</code>. The scene stores the secret, submits that prompt once, and sends no phase-by-phase operator prompts; every later turn is the model’s own. A take is published only when every named frame guard passed, so a scene whose model does not reach a guarded surface produces a rehearsal and nothing else.</p>
 <p>Record on the machine that serves the weights. The endpoint must be a loopback address, or the
-recorder refuses to start; <code>ALLOW_REMOTE_MODEL=1</code> records against another host and says so. A
+recorder will not start; <code>ALLOW_REMOTE_MODEL=1</code> records against another host and reports it. A
 session driven across a network pauses for reasons the recording cannot separate from the product.</p>
 <p>Before anything is recorded the driver checks three things and exits on any of them:</p>
 <pre><code class="language-sh">bun scripts/verify-scene.ts demo-hd   # the same check, run on its own
@@ -241,7 +253,7 @@ frame under that name. A needle that comes from somewhere else is declared in th
 <pre><code class="language-sh"># needle-source: WARP CORE -- printed by the compiled binary's banner
 </code></pre>
 <p>The driver also requires the model row to exist on that server, and writes <code>&lt;scene&gt;-model.txt</code>
-beside the frames naming the row, the endpoint, the host and the display server the take was
+beside the frames recording the row, the endpoint, the host and the display server the take was
 recorded on.</p>
 <p>Every binary the run will use is resolved before the first frame: <code>docker</code>, <code>bun</code> for the scene
 check, and <code>ffmpeg</code> and <code>python3</code> for the publish chain. ImageMagick answers to <code>magick</code> on 7 and
@@ -249,6 +261,17 @@ check, and <code>ffmpeg</code> and <code>python3</code> for the publish chain. I
 <code>PATH</code>, because a recording is driven over ssh and a non-login shell there does not carry the
 installer’s entry. A publish tool first called after the recording is a take lost to a <code>PATH</code>
 difference, which is why a rehearsal needs only <code>docker</code>.</p>
+<p>The container is built by one script and tagged from one declaration:</p>
+<pre><code class="language-sh">bash proof/docker/build-recorder.sh
+</code></pre>
+<p>The tag contains the bun version in the root <code>package.json</code> <code>packageManager</code> field,
+because the image contains a bun and the product will not start on a runtime older
+than the one it is built for. A bump therefore makes a stale image a missing image,
+which docker reports before a display server starts. Recording with an image built
+on an older bun ends the take from inside the container after the whole rig is up.</p>
+<p>The recorder reaches a model served on the host through the docker host gateway; the
+loopback address the driver requires is rewritten for the container by
+<code>proof/docker/host-endpoint.sh</code>, so no scene needs to name a network address.</p>
 <p>The archived take remains at capture speed. The landing-page cut keeps the plan, the worker setup, verification and signing at 1×. Visible implementation between the worker launch and the verified build plays at 1.25×. Named marks in the take select those boundaries; untouched screens are shortened to four seconds rather than accelerated.</p>
 <h3 id="settings-differentials"><a class="header" href="#settings-differentials">Settings differentials</a></h3>
 <p>A settings change proves with two frames of the settings screen recorded from the

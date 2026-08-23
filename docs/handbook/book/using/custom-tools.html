@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-8ea7c097.js";
+            window.path_to_searchindex_js = "../searchindex-035739c9.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-093df7ff.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -365,13 +365,13 @@ arguments still arrive, so <code>ctx</code> is the update callback and the first
 <li><code>renderResult</code> receives <code>{ expanded, isPartial, spinnerFrame? }</code>.</li>
 </ul>
 <p>If a rendering hook throws, veyyon catches it so the session keeps running, and
-then says so where your card would have been:</p>
+then reports it where your card would have been:</p>
 <pre><code>✗ tool "widget" result renderer threw: payload has no rows — showing raw output; fix or remove the renderer
 </code></pre>
-<p>The notice names which hook failed, because <code>renderCall</code> and <code>renderResult</code> fail
-independently, and it names what you are looking at instead: the tool label alone
+<p>The notice states which hook failed, because <code>renderCall</code> and <code>renderResult</code> fail
+independently, and it shows what you are looking at instead: the tool label alone
 for a failed <code>renderCall</code>, the raw text output for a failed <code>renderResult</code>. When
-there is no raw output to fall back to, it says that too rather than implying
+there is no raw output to fall back to, it reports that too rather than implying
 output you cannot see. The failure is also written to the log.</p>
 <p>Returning <code>undefined</code> from a hook is different: that is how you decline to draw
 for a particular call, and it renders the default with no notice.</p>

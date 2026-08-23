@@ -182,16 +182,16 @@ Runtime behavior in TUI:
 - `renderResult` receives `{ expanded, isPartial, spinnerFrame? }`.
 
 If a rendering hook throws, veyyon catches it so the session keeps running, and
-then says so where your card would have been:
+then reports it where your card would have been:
 
 ```
 ✗ tool "widget" result renderer threw: payload has no rows — showing raw output; fix or remove the renderer
 ```
 
-The notice names which hook failed, because `renderCall` and `renderResult` fail
-independently, and it names what you are looking at instead: the tool label alone
+The notice states which hook failed, because `renderCall` and `renderResult` fail
+independently, and it shows what you are looking at instead: the tool label alone
 for a failed `renderCall`, the raw text output for a failed `renderResult`. When
-there is no raw output to fall back to, it says that too rather than implying
+there is no raw output to fall back to, it reports that too rather than implying
 output you cannot see. The failure is also written to the log.
 
 Returning `undefined` from a hook is different: that is how you decline to draw

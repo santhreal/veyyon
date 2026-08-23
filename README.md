@@ -27,6 +27,4 @@ The installer verifies the release checksum and binary before replacing an exist
 
 ## License
 
-Veyyon is licensed under MIT. See [LICENSE](LICENSE). Upstream and third-party notices are preserved in [UPSTREAM.md](UPSTREAM.md) and [`THIRD_PARTY_LICENSES.txt`](THIRD_PARTY_LICENSES.txt).
-</content>
-<parameter name="i">Cutting the README to video, install, license
+Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi) and is licensed under MIT. See [LICENSE](LICENSE). Upstream and third-party notices are preserved in [UPSTREAM.md](UPSTREAM.md) and [`THIRD_PARTY_LICENSES.txt`](THIRD_PARTY_LICENSES.txt).

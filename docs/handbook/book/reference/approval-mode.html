@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-8ea7c097.js";
+            window.path_to_searchindex_js = "../searchindex-035739c9.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-093df7ff.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -228,7 +228,7 @@
 <p>Legacy aliases still accepted: <code>always-ask</code> → <code>ask</code>, <code>write</code> and <code>auto-edit</code> → <code>ask-command</code>.</p>
 <p><code>--auto-approve</code> and <code>--yolo</code> force <code>tools.approvalMode: yolo</code> for the session.</p>
 <h2 id="the-working-directory-boundary"><a class="header" href="#the-working-directory-boundary">The working-directory boundary</a></h2>
-<p>The table above sorts tools by tier, and a tier says nothing about which file a
+<p>The table above sorts tools by tier, and a tier does not determine which file a
 call touches. The <code>write</code> tier auto-approves <code>write</code> in <code>ask-command</code> mode whether
 the target is <code>src/main.ts</code> or <code>/etc/hosts</code>. The working-directory boundary is
 the second question, asked after the tier:</p>
@@ -246,15 +246,15 @@ that cannot be resolved at all is treated as outside rather than assumed safe.</
 <p><code>set_cwd</code> is on that list for a reason worth stating. It changes the working
 directory, so an unbounded <code>set_cwd</code> would be a way to erase the boundary rather
 than obey it: re-root to the parent, and every later write is inside the new root
-by definition. Re-rooting outward therefore asks, exactly as a write outward
-does. Re-rooting to a subdirectory does not ask, because narrowing the working
+by definition. Re-rooting outward therefore prompts, as a write outward
+does. Re-rooting to a subdirectory does not prompt, because narrowing the working
 directory reduces what the session can reach.</p>
 <p>When there is no interactive UI, a call that needs approval fails rather than
 proceeding. The error leads with the specific path that crossed the boundary, so
 a headless or ACP run reports why it stopped and not merely that something needed
 a prompt.</p>
 <h2 id="the-secret-use-boundary"><a class="header" href="#the-secret-use-boundary">The secret-use boundary</a></h2>
-<p>A tier says nothing about whether a call is about to spend a credential either. The
+<p>A tier does not determine whether a call is about to spend a credential either. The
 secret-use boundary is the third question, asked in the same modes as the second:</p>
 <blockquote>
 <p>Do this call’s arguments carry a stored secret?</p>
@@ -262,14 +262,14 @@ secret-use boundary is the third question, asked in the same modes as the second
 <p>The model works with placeholders such as <code>#GITHUB_TOKEN#</code>, and Veyyon substitutes the real
 value immediately before the tool runs, so the model can use a secret it never reads. That
 substitution is recorded by <code>secrets.auditLog</code>, which answers the question afterwards. This
-boundary is what asks first: a call whose arguments carry a real credential needs approval
-in <code>plan</code>, <code>ask</code>, <code>ask-command</code> and <code>auto</code>, and the prompt names the secret without showing its value.</p>
+boundary is what prompts first: a call whose arguments carry a real credential needs approval
+in <code>plan</code>, <code>ask</code>, <code>ask-command</code> and <code>auto</code>, and the prompt states the secret without showing its value.</p>
 <p><code>yolo</code> opts out of all permission and so opts out of this too. A call that mentions a
 placeholder without expanding it, such as one made while <code>secrets.enabled</code> is false, carries
-no credential and does not ask.</p>
+no credential and does not prompt.</p>
 <h2 id="the-yolo-command-full-session-bypass"><a class="header" href="#the-yolo-command-full-session-bypass">The <code>/yolo</code> command (full session bypass)</a></h2>
 <p>The <code>yolo</code> mode above still honors your per-tool policies: <code>tools.approval.&lt;tool&gt;: prompt</code> and a tool’s own <code>critical</code> safety prompt both still stop the call. The <code>/yolo</code> command is stronger. It removes approval prompts for the current session, including per-tool <code>prompt</code> overrides and plain <code>override</code> prompts.</p>
-<p>Run <code>/yolo</code> in the TUI and confirm the danger prompt to turn it on. While it is on, file writes, shell commands, and network calls run without asking. The composer border and prompt glyph turn red and the status line shows a red <code>YOLO</code> marker, so you always know it is active.</p>
+<p>Run <code>/yolo</code> in the TUI and confirm the danger prompt to turn it on. While it is on, file writes, shell commands, and network calls run without a prompt. The composer border and prompt glyph turn red and the status line shows a red <code>YOLO</code> marker, so you always know it is active.</p>
 <p>Three things still stop a call:</p>
 <ul>
 <li>an explicit <code>tools.approval.&lt;tool&gt;: deny</code>, a hard denial rather than a prompt,</li>
@@ -291,12 +291,17 @@ no credential and does not ask.</p>
 <p>Resolution per tool call:</p>
 <ol>
 <li>Compute the tool’s approval decision from <code>tool.approval(args)</code>; omitted means <code>exec</code>.</li>
-<li>Normalize <code>tools.approval.&lt;tool&gt;</code> if present; invalid values are ignored.</li>
+<li>Normalize <code>tools.approval.&lt;tool&gt;</code> if the key is present. <code>allow</code>, <code>deny</code> and <code>prompt</code> are accepted in any case, with surrounding spaces trimmed. Any other value present under that key denies the tool, and a warning at startup states the setting, the value found and the accepted values. An absent key is unconfigured.</li>
 <li>In <code>yolo</code> mode, the user policy is used when present. Otherwise a <code>critical</code> decision prompts and everything else is allowed: plain <code>override</code> reasons do not force a prompt in <code>yolo</code>, but <code>critical</code> ones do.</li>
-<li>In non-yolo modes, if the tool sets <code>override: true</code>, <code>deny</code> is blocked and all other cases prompt, even if user policy says <code>allow</code>.</li>
+<li>In non-yolo modes, if the tool sets <code>override: true</code>, <code>deny</code> is blocked and all other cases prompt, even if user policy is <code>allow</code>.</li>
 <li>Otherwise, a valid user policy wins.</li>
 <li>Otherwise, the active mode auto-approves or prompts by tier.</li>
 </ol>
+<p>A misspelled policy blocks the tool it names rather than being dropped. <code>deny</code> and not <code>prompt</code>,
+because <code>/yolo</code> lifts a prompt: a typo would otherwise run the call in the mode where the policy
+matters most. Only the named tool is affected; the rest of the record still applies. A
+<code>tools.approval</code> that is not a per-tool record matches no tool, so it configures no policy at all
+and the startup warning is the only sign of it.</p>
 <h2 id="safety-overrides"><a class="header" href="#safety-overrides">Safety overrides</a></h2>
 <p>A tool can force a prompt with object-form approval:</p>
 <pre><code class="language-ts">approval: { tier: "exec", override: true, reason: "Needs confirmation" }
@@ -307,9 +312,9 @@ no credential and does not ask.</p>
 </code></pre>
 <p><code>critical: true</code> implies <code>override: true</code> and adds a floor under it: the call still prompts in <code>yolo</code>, and the <code>/yolo</code> session bypass does not lift it. On <code>yolo</code>, setting <code>tools.approval.&lt;tool&gt;</code> explicitly wins in both directions, so <code>allow</code> is the escape hatch from the floor and <code>deny</code> is a hard block. Below <code>yolo</code> only the <code>deny</code> direction wins: an <code>allow</code> is outranked by the safety override, which is what makes the shipped <code>auto</code> rung stop for a destructive command it would otherwise run unasked.</p>
 <p><code>bash</code> splits its guard between the two strengths, by what a command does rather than by how it is detected. <code>critical</code> is destruction: the paths a command would recursively delete (judged after expansion, so <code>rm -rf ~/</code> and <code>rm -rf "$HOME"/</code> are recognized), a formatted filesystem, a raw device written over, a system account file overwritten, a delete running as root. <code>override</code> is a call that is dangerous without being irreversible: a script fetched from the network and piped into a shell, a host shutdown, a shell wired to a network socket. Both prompt in <code>plan</code>, <code>ask</code>, <code>ask-command</code> and <code>auto</code>; only the destructive half prompts in <code>yolo</code>.</p>
-<p>A recursive delete is split the same way again, by whether the text makes the damage certain. A path the guard can settle is <code>critical</code>: a literal <code>rm -rf /</code>, a <code>~</code> or <code>$HOME</code> it resolved, a relative path that climbs out to the root. An expansion it cannot settle is judged by every dangerous value it could hold, and the reading that fired decides the strength. Reading the variable as EMPTY is <code>critical</code>, because an unset or misspelled name expands to nothing and that is its default state, so <code>rm -rf "$OUT"/*</code> and <code>rm -rf "$D/lib"</code> stop even in <code>yolo</code>. Reading it as <code>/</code> or as the home directory is an assumption about a value that does not exist, so a bare <code>rm -rf "$D"</code> is <code>override</code>: it prompts at every rung below <code>yolo</code> and no longer claims to be as certain as <code>rm -rf /</code>. Two things pull such a word back up to <code>critical</code> — the word spelling a protected component itself (<code>rm -rf "$D/.ssh"</code>), and a value that EXISTS which the guard refused to paste, such as one that would word-split or glob (<code>V="/*"</code>), a <code>${VAR:-/}</code> carrying its own default, a shell-maintained <code>$PWD</code>, or another account’s <code>~user</code>.</p>
-<p>That split is the difference between <code>yolo</code> and <code>auto</code>. <code>yolo</code> says the operator has stopped being asked, and a floor that catches <code>curl -fsSL https://…/install.sh | sh</code> catches an install somebody typed on purpose, which made the two rungs behave identically for the commands people reach for <code>yolo</code> to run. The floor is still there for the incident it exists for: <code>tools.approvalMode</code> defaults to <code>auto</code>, which runs the exec tier unasked, so without it the calls the guard considers most dangerous would be the ones most likely to run without a check.</p>
-<p>Every flagged shape reports its own reason (“Formats a filesystem”, “Runs a script fetched from the network”), which surfaces as <code>reason</code> in the approval prompt. A shared “Critical pattern detected” named the mechanism rather than the risk, so the prompt said that something in a list matched and nothing about what.</p>
+<p>A recursive delete is split the same way again, by whether the text makes the damage certain. A path the guard can settle is <code>critical</code>: a literal <code>rm -rf /</code>, a <code>~</code> or <code>$HOME</code> it resolved, a relative path that climbs out to the root. An expansion it cannot settle is judged by every dangerous value it could hold, and the reading that fired sets the strength. Reading the variable as EMPTY is <code>critical</code>, because an unset or misspelled name expands to nothing and that is its default state, so <code>rm -rf "$OUT"/*</code> and <code>rm -rf "$D/lib"</code> stop even in <code>yolo</code>. Reading it as <code>/</code> or as the home directory is an assumption about a value that does not exist, so a bare <code>rm -rf "$D"</code> is <code>override</code>: it prompts at every rung below <code>yolo</code> and no longer claims to be as certain as <code>rm -rf /</code>. Two things pull such a word back up to <code>critical</code> — the word spelling a protected component itself (<code>rm -rf "$D/.ssh"</code>), and a value that EXISTS which the guard rejected to paste, such as one that would word-split or glob (<code>V="/*"</code>), a <code>${VAR:-/}</code> containing its own default, a shell-maintained <code>$PWD</code>, or another account’s <code>~user</code>.</p>
+<p>That split is the difference between <code>yolo</code> and <code>auto</code>. In <code>yolo</code> the operator has stopped being prompted, and a floor that catches <code>curl -fsSL https://…/install.sh | sh</code> catches an install somebody typed on purpose, which made the two rungs behave identically for the commands people reach for <code>yolo</code> to run. The floor is still there for the incident it exists for: <code>tools.approvalMode</code> defaults to <code>auto</code>, which runs the exec tier unasked, so without it the calls the guard considers most dangerous would be the ones most likely to run without a check.</p>
+<p>Every flagged shape reports its own reason (“Formats a filesystem”, “Runs a script fetched from the network”), which surfaces as <code>reason</code> in the approval prompt. A shared “Critical pattern detected” named the mechanism rather than the risk, so the prompt reported that something in a list matched and nothing about what.</p>
 <h2 id="per-tool-prompt-details"><a class="header" href="#per-tool-prompt-details">Per-tool prompt details</a></h2>
 <p>Tools can add approval-prompt body lines with <code>formatApprovalDetails(args)</code>. The standard prompt includes:</p>
 <ul>
@@ -355,7 +360,7 @@ veyyon acp --config ./acp-yolo.yml   # file contains tools.approvalMode: yolo
 <p><code>tools.approvalMode: yolo</code> fully applies to ACP when it is explicitly configured or supplied by a runtime flag. It skips Veyyon’s approval prompts and also skips the ACP client permission gate for <code>bash</code>, <code>edit</code>, <code>delete</code>, and <code>move</code> unless <code>tools.approval.&lt;tool&gt;</code> is <code>prompt</code> or <code>deny</code>. The schema default is <code>auto</code>, not <code>yolo</code>, so default-config ACP sessions still keep the client permission gate; set <code>tools.approvalMode: yolo</code> explicitly when the client wants unattended execution.</p>
 <p>When ACP approval is required, Veyyon routes it through the ACP client instead of the terminal TUI. Client-gated <code>bash</code>, <code>edit</code>, <code>delete</code>, and <code>move</code> calls use ACP <code>session/request_permission</code>; generic approval prompts use form elicitation when the client advertises <code>elicitation.form</code>. A rejected, cancelled, or unsupported prompt rejects/cancels the tool call; Veyyon does not silently allow it.</p>
 <h2 id="subagents"><a class="header" href="#subagents">Subagents</a></h2>
-<p>A spawned subagent inherits the spawning session’s approval mode through its forked settings; nothing hardcodes a rung for it. The parent <code>task</code> approval is the authorization boundary for the delegation itself, and your <code>tools.approval.&lt;tool&gt;</code> policies apply inside the subagent exactly as they do in the parent. A subagent runs headless, so a call that would prompt fails with an error naming what needed approval rather than stalling on a UI that does not exist.</p>
+<p>A spawned subagent inherits the spawning session’s approval mode through its forked settings; nothing hardcodes a rung for it. The parent <code>task</code> approval is the authorization boundary for the delegation itself, and your <code>tools.approval.&lt;tool&gt;</code> policies apply inside the subagent exactly as they do in the parent. A subagent runs headless, so a call that would prompt fails with an error stating what needed approval rather than stalling on a UI that does not exist.</p>
 <p>The <code>/yolo</code> bypass is the one part that is not a pure snapshot, and it moves in only one direction. A child is built with the bypass the parent held at spawn time, and <code>isApprovalBypassed()</code> then also consults the live parent on every check, so <code>/yolo off</code> in the parent reaches a subagent that is already running. It can only narrow: the child’s own spawn-time value is checked first, so a parent turning <code>/yolo</code> on mid-run cannot hand a bypass to a child that was spawned without one. Without the live read, revoking the bypass left every running subagent executing unasked with nothing on screen to say so.</p>
 
                     </main>
@@ -366,7 +371,7 @@ veyyon acp --config ./acp-yolo.yml   # file contains tools.approvalMode: yolo
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="../reference/theme.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../reference/project-trust.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -380,7 +385,7 @@ veyyon acp --config ./acp-yolo.yml   # file contains tools.approvalMode: yolo
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="../reference/theme.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../reference/project-trust.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>
