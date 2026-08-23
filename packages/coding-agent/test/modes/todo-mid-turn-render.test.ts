@@ -41,16 +41,19 @@ import { VirtualTerminal } from "../../../tui/test/virtual-terminal";
 
 /**
  * Whether the anchored board drew a phase row for `Phase One` carrying `tally`.
- * The board's rows open on its rail and right-align the tally, so the row is not
- * one string a whole-viewport `toContain` can match, and matching the tally
- * alone would accept it from the transcript card below.
+ * The restored board's rows open on its rail, carry tree connectors, display the
+ * tally as ` · done/total`, and carry no phase glyph.
  */
 function hudPhaseRow(screen: string, tally: string): boolean {
 	const rail = theme.symbol("block.rail");
 	return screen
 		.split("\n")
 		.some(
-			row => row.trimStart().startsWith(`${rail} `) && row.includes("Phase One") && row.trimEnd().endsWith(tally),
+			row =>
+				row.trimStart().startsWith(`${rail} `) &&
+				row.includes("Phase One") &&
+				row.trimEnd().endsWith(`· ${tally}`) &&
+				!row.includes(theme.checkbox.progress),
 		);
 }
 
@@ -251,8 +254,10 @@ describe("a mid-turn todo result reaches the screen before the turn ends", () =>
 		// Transcript card: one summary line for the write, because the board above
 		// the composer is the surface that carries the list. Drawing the tree here
 		// too put the same plan on the screen twice.
-		expect(second).toContain(`Todo 2 tasks · 1 done · ${theme.checkbox.progress} beta task`);
-		expect(second).not.toContain(`${theme.checkbox.checked} alpha task`);
+		const transcript = second.slice(0, second.indexOf("Todos"));
+		expect(transcript).toContain(`Todo 2 tasks · 1 done · ${theme.checkbox.progress} beta task`);
+		expect(transcript).not.toContain("alpha task");
+		expect(second).toContain("alpha task");
 		expect(second).toContain("beta task");
 	});
 });

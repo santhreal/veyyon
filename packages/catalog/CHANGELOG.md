@@ -2,16 +2,19 @@
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-08-23
+
+### Breaking Changes
+
+- The minimum supported Bun runtime is now 1.4.0.
+
 ### Changed
+
 - `compat/markup-leaks.ts` owns which endpoints leak model markup into visible content. The provider list for DeepSeek's DSML envelope and the Kimi-K2 rule existed twice, byte for byte — once here as a `Set` and once in `@veyyon/ai` as an or-chain — so a newly-leaking host could be added to one and not the other. `isOfficialOpenAIEndpoint` is exported for the same reason: the streaming engine carried a third copy of the `api.openai.com` hostname check.
 - The five provider discovery readers share one set of payload readers. `codex`, `gemini`, `cursor`, `openai-compatible` and `antigravity` each declared schemas at module scope to answer questions of the form "is this field a string", so importing the descriptor table to list models built a validator graph for every provider before any request was made, and `codex.ts` also carried its own copies of three field readers. `utils.ts` — already the shared reader for cross-package callers — gained `toFields`, `toStringValue`, `toNonEmptyString`, `toFiniteNumber`, `toArray` and `toStringArray`, and the readers use those. `toFields` accepts an array, keeping the previous behavior where a bare array envelope reads as an empty model list rather than a failed response.
 - `identity` exports `statesOpenAIWireGeneration`, so a caller can tell a model below a version floor from one whose id states no version at all.
 - `provider-models/wire-capabilities.ts` declares what each provider realizes on the wire, so a service tier's effect is read from one per-provider entry instead of the provider-name comparisons that decided it in four functions.
 - Strict tool schemas, a local chat-template renderer and a loopback proxy that forwards upstream are declared per provider in `provider-models/wire-capabilities.ts`, so `compat/openai.ts` reads one entry instead of a six-provider comparison chain and two provider sets.
-
-### Breaking Changes
-
-- The minimum supported Bun runtime is now 1.4.0.
 
 ### Fixed
 

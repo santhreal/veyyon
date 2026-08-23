@@ -23,17 +23,14 @@ import {
 	matchesSelectUp,
 } from "../utils/keybinding-matchers";
 import {
-	applyModalReveal,
-	beginModalExit,
 	computeModalDims,
 	consumeModalChipHover,
 	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
-	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
-	modalRevealEnabled,
 	planModalChrome,
+	pointerMotionEnabled,
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
@@ -102,26 +99,13 @@ export class CopySelectorComponent implements Component {
 	 * once a host lends this card a repaint. Absent, the band is switched.
 	 */
 	#hoverFade: HoverFade | undefined;
-	#reveal = new ModalRevealDriver();
-	/**
-	 * Fade out on the shared clock before the host drops this card. The overlay stack keeps painting
-	 * it and stops routing input to it the moment this is called.
-	 */
-	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
-		return beginModalExit(this.#reveal, requestRender, done);
-	}
 
 	constructor(
 		roots: CopyTarget[],
 		private readonly callbacks: CopySelectorCallbacks,
-		/** Play the open unfold (TOUCH-5). Show site decides via modalRevealEnabled(). */
-		reveal?: boolean,
 	) {
 		this.#roots = roots;
 		this.#cursorId = roots[0]?.id ?? "";
-		if (reveal) {
-			this.#reveal.start(() => this.#onRequestRender?.());
-		}
 	}
 
 	setOnRequestRender(cb: () => void): void {
@@ -130,7 +114,7 @@ export class CopySelectorComponent implements Component {
 		// between two mouse reports have no input to hang off. Same ambient gate as
 		// the open unfold; without it the band is switched.
 		this.#hoverFade?.dispose();
-		this.#hoverFade = new HoverFade({ requestRender: cb, enabled: modalRevealEnabled() });
+		this.#hoverFade = new HoverFade({ requestRender: cb, enabled: pointerMotionEnabled() });
 		if (this.#hoveredIndex !== null) this.#hoverFade.set(this.#hoveredIndex);
 	}
 
@@ -387,6 +371,6 @@ export class CopySelectorComponent implements Component {
 		});
 		this.#shellGeometry = shell.geometry;
 		this.#listRowStart = shell.geometry?.bodyRowStart ?? 0;
-		return applyModalReveal(shell, width, this.#reveal);
+		return shell.lines;
 	}
 }

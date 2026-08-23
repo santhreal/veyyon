@@ -15,7 +15,6 @@ export class ThinkingSelectorComponent {
 		model: Model,
 		onSelect: (level: ConfiguredThinkingLevel | undefined) => void,
 		onCancel: () => void,
-		reveal?: boolean,
 	) {
 		const thinkingLevels: SelectItem[] = configuredThinkingLevelOptions({
 			model,
@@ -30,7 +29,6 @@ export class ThinkingSelectorComponent {
 				theme: getSelectListTheme(),
 				selectedIndex: currentIndex,
 				maxVisible: thinkingLevels.length,
-				reveal,
 			},
 			{
 				onSelect: item => onSelect(item.value ? (item.value as ConfiguredThinkingLevel) : undefined),
@@ -57,11 +55,6 @@ export class ThinkingSelectorComponent {
 
 	render(width: number): string[] {
 		return this.#inner.render(width);
-	}
-
-	/** Forwarded to the inner card, which owns the reveal this plays backwards. */
-	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
-		return this.#inner.beginOverlayExit(requestRender, done);
 	}
 
 	invalidate(): void {

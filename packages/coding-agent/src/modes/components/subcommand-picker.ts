@@ -23,7 +23,6 @@ export class SubcommandPickerComponent {
 		subcommands: readonly SubcommandDef[],
 		onSelect: (subcommand: SubcommandDef) => void,
 		onCancel: () => void,
-		reveal?: boolean,
 	) {
 		// The argument shape goes in the LABEL, not in `hint`: `SelectItem.hint` only feeds the
 		// fuzzy filter, nothing paints it, so a usage put there would be invisible on the row it
@@ -42,7 +41,6 @@ export class SubcommandPickerComponent {
 				// card for a six-letter verb and truncated the description that says what the verb
 				// does, which is the same dead end as not listing the subcommand at all.
 				layout: { maxPrimaryColumnWidth: 22 },
-				reveal,
 			},
 			{
 				onSelect: item => {
@@ -72,11 +70,6 @@ export class SubcommandPickerComponent {
 
 	render(width: number): string[] {
 		return this.#inner.render(width);
-	}
-
-	/** Forwarded to the inner card, which owns the reveal this plays backwards. */
-	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
-		return this.#inner.beginOverlayExit(requestRender, done);
 	}
 
 	invalidate(): void {

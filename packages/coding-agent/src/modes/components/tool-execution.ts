@@ -45,13 +45,21 @@ import { type FirstResultViewportRepaint, toolRenderers } from "../../tools/rend
 import type { TodoToolDetails } from "../../tools/todo";
 import { renderStatusLine, WidthAwareText } from "../../tui";
 import {
-	hasRailRow,
+	CachedOutputBlock,
+	isFramedBlockComponent,
+	markFramedBlockComponent,
+	outputBlockContentWidth,
+} from "../../tui/output-block";
+import {
 	paintRailMotion,
 	RAIL_IDLE_STEP_MS,
 	RAIL_SETTLE_FRAME_MS,
 	RAIL_SETTLE_FRAMES,
 	type RailMotion,
-	railIdleHeadAt,
+	railClockMs,
+	railIdleHeadAtMs,
+	railRowCount,
+	railStreamHeadAtRow,
 } from "../../tui/rail-motion";
 import { sanitizeWithOptionalSixelPassthrough } from "../../utils/sixel";
 import { COMPOSER_INSET_COLS } from "./composer-chrome";
@@ -125,6 +133,35 @@ function stabilizeStreamingPreviews(previews: PerFileDiffPreview[]): PerFileDiff
 
 function isEditLikeToolName(toolName: string): boolean {
 	return toolName === "edit" || toolName === "apply_patch";
+}
+
+/**
+ * Leading colour, then the spaces the row starts with. Split so an indent can
+ * be measured and shortened without moving the escape that colours the row.
+ */
+const ROW_INDENT_PATTERN = /^((?:\x1b\[[0-9;]*m)*)( *)/;
+
+/**
+ * Take the indent every row shares off all of them.
+ *
+ * An inline renderer draws its rows one cell in from the margin, which is the
+ * gutter a framed block draws itself. Without this a bash row sits one cell
+ * right of a read row inside the same frame. Only the SHARED indent goes, so a
+ * continuation row keeps the depth it was drawn at.
+ */
+function dedent(rows: readonly string[]): string[] {
+	let shared = Number.POSITIVE_INFINITY;
+	for (const row of rows) {
+		if (row.trim() === "") continue;
+		shared = Math.min(shared, ROW_INDENT_PATTERN.exec(row)?.[2]?.length ?? 0);
+		if (shared === 0) return [...rows];
+	}
+	if (!Number.isFinite(shared) || shared === 0) return [...rows];
+	return rows.map(row =>
+		row.trim() === ""
+			? row
+			: row.replace(ROW_INDENT_PATTERN, (_, color: string, indent: string) => color + indent.slice(shared)),
+	);
 }
 
 function resolveEditModeForTool(toolName: string, tool: AnyAgentTool | undefined): EditMode | undefined {
@@ -391,14 +428,14 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	// Spinner animation for partial task results
 	#spinnerFrame?: number;
 	#spinnerInterval?: NodeJS.Timeout;
-	// The rail's own motion, independent of the spinner: a live block breathes
-	// (`#railIdleStep`), and the frame its result lands makes one settling pass
-	// (`#railSettleFrame`). Only one of the two is ever armed. `#railWasLive` gates
-	// the settle to a block whose live rail was actually PAINTED at least once —
-	// set in `render`, never on construction. A transcript rebuild constructs the
-	// block and hands it its result in the same tick, before any paint, so history
-	// does not settle two hundred blocks at once.
-	#railIdleStep?: number;
+	// The rail's own motion, independent of the spinner: a live block's rail
+	// travels while `#railIdleLive` is set, and the frame its result lands makes
+	// one settling pass (`#railSettleFrame`). Only one of the two is ever armed.
+	// `#railWasLive` gates the settle to a block whose live rail was actually
+	// PAINTED at least once — set in `render`, never on construction. A transcript
+	// rebuild constructs the block and hands it its result in the same tick,
+	// before any paint, so history does not settle two hundred blocks at once.
+	#railIdleLive = false;
 	#railIdleInterval?: NodeJS.Timeout;
 	#railSettleFrame?: number;
 	#railSettleInterval?: NodeJS.Timeout;
@@ -478,16 +515,18 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		// reads as a misalignment, which is why the design language says nothing sits
 		// at column 0 (docs/internal/tui-design-language.md).
 		this.#contentBox = new Box(COMPOSER_INSET_COLS, 1);
-		this.#contentText = new WidthAwareText(contentWidth => this.#formatToolExecution(contentWidth), 1, 1);
+		this.#contentText = new WidthAwareText(contentWidth => this.#formatToolExecution(contentWidth), 0, 0);
 
 		// Use Box for custom tools or built-in tools that have renderers
 		const hasRenderer = toolName in toolRenderers;
 		const hasCustomRenderer = !!(tool?.renderCall || tool?.renderResult);
-		if (hasCustomRenderer || hasRenderer) {
-			this.addChild(this.#contentBox);
-		} else {
-			this.addChild(this.#contentText);
+		if (!hasCustomRenderer && !hasRenderer) {
+			// A tool with no renderer of its own — an MCP tool, an extension tool —
+			// is a card like any other: it hangs from the same rail at the same
+			// column instead of sitting one cell in from the margin on its own.
+			this.#contentBox.addChild(this.#onRail(this.#contentText));
 		}
+		this.addChild(this.#contentBox);
 		// Tool blocks are visually distinct cards (background-tinted or framed),
 		// so keep their horizontal padding even when the user enables tight layout.
 		this.setIgnoreTight(true);
@@ -845,9 +884,8 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		if (live) {
 			this.#stopRailSettle();
 			if (this.#railIdleInterval) return;
-			this.#railIdleStep = 0;
+			this.#railIdleLive = true;
 			this.#railIdleInterval = setInterval(() => {
-				this.#railIdleStep = (this.#railIdleStep ?? 0) + 1;
 				// Only a block whose LAST render actually drew a rail asks for another
 				// paint. A plain-text preview (a bare tool-name label, a github watch
 				// row) has nothing here to move, and a block nobody has rendered yet
@@ -892,7 +930,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			clearInterval(this.#railIdleInterval);
 			this.#railIdleInterval = undefined;
 		}
-		this.#railIdleStep = undefined;
+		this.#railIdleLive = false;
 	}
 
 	#stopRailSettle(): void {
@@ -908,11 +946,69 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		this.#stopRailSettle();
 	}
 
+	/**
+	 * A call row on the rail.
+	 *
+	 * A renderer's `renderCall` hands back a bare status row while its
+	 * `renderResult` hands back a framed block, so the same title sat two columns
+	 * left of the block that replaced it and stepped right the instant the result
+	 * landed — and until it landed, the card had no rail for the light to travel
+	 * down. The rows are framed here, once, rather than in each of thirty
+	 * renderers: the first non-blank row is the card's title and the rest is its
+	 * body, and a renderer that already frames itself is handed back untouched.
+	 *
+	 * The inner component renders at {@link outputBlockContentWidth}, so a row it
+	 * budgeted against the width it was given still fits inside the frame instead
+	 * of soft-wrapping out of it.
+	 */
+	#onRail(component: Component): Component {
+		if (isFramedBlockComponent(component)) return component;
+		const block = new CachedOutputBlock();
+		return markFramedBlockComponent({
+			render: (width: number): readonly string[] => {
+				const inner = component.render(outputBlockContentWidth(width, 0));
+				const first = inner.findIndex(line => line.trim() !== "");
+				if (first === -1) return [];
+				// An inline renderer indents its own rows off the margin it used to
+				// sit on. The frame supplies that gutter now, so the shared indent
+				// comes off and the relative indent inside the block survives:
+				// otherwise a bash row sits one cell right of a read row.
+				const rows = dedent(inner.slice(first));
+				const body = rows.slice(1);
+				return block.render(
+					{
+						header: rows[0],
+						state: this.#result === undefined ? "running" : this.#result.isError ? "error" : "success",
+						sections: body.length > 0 ? [{ lines: body }] : [],
+						contentPaddingLeft: 0,
+						width,
+					},
+					theme,
+				);
+			},
+			invalidate: () => {
+				block.invalidate();
+				component.invalidate?.();
+			},
+		});
+	}
+
 	/** The frame the rail is on, or `undefined` when it is not animating. */
-	#railMotion(): RailMotion | undefined {
+	#railMotion(railRows: number): RailMotion | undefined {
 		if (this.#railSettleFrame !== undefined) return { kind: "settle", frame: this.#railSettleFrame };
-		if (this.#railIdleStep !== undefined) return { kind: "idle", head: railIdleHeadAt(this.#railIdleStep) };
-		return undefined;
+		if (!this.#railIdleLive) return undefined;
+		// A block whose rows are still being WRITTEN carries the light on its newest
+		// row instead of on the clock: an edit or a write streaming its arguments
+		// grows a row at a time, and the operator is already reading the bottom
+		// edge, so a highlight arriving somewhere else on a timer of its own is a
+		// second thing moving and neither one is the content.
+		if (!this.#argsComplete && (isEditLikeToolName(this.#toolName) || this.#toolName === "write")) {
+			return { kind: "idle", head: railStreamHeadAtRow(railRows) };
+		}
+		// Otherwise the head comes from the clock and not from a count of the
+		// repaints this block has managed to get, so a busy terminal costs
+		// smoothness and never travel, and every rail on screen is on the same head.
+		return { kind: "idle", head: railIdleHeadAtMs(railClockMs()) };
 	}
 
 	/**
@@ -1103,10 +1199,14 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		// spurious `resetDisplay()`.
 		this.#firstResultViewportRepaintShapePainted = this.#needsFirstResultViewportRepaintAtRender();
 		this.#partialResultShapePainted = this.#result !== undefined && this.#isPartial;
-		const motion = this.#railMotion();
+		// A rail that is not moving is not counted: this runs on every compose of
+		// every block on screen, and a settled card has nothing here to paint.
+		if (this.#railSettleFrame === undefined && !this.#railIdleLive) return lines;
+		const railRows = railRowCount(lines, theme.symbol("block.rail"));
+		this.#railRowsPresent = railRows > 0;
+		if (railRows === 0) return lines;
+		const motion = this.#railMotion(railRows);
 		if (!motion) return lines;
-		this.#railRowsPresent = hasRailRow(lines, theme.symbol("block.rail"));
-		if (!this.#railRowsPresent) return lines;
 		// The settle is owed only to a rail the operator actually watched run.
 		if (motion.kind === "idle") this.#railWasLive = true;
 		// `paintRailMotion` hands back the same array when the frame changes no byte,
@@ -1171,16 +1271,20 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 					try {
 						const callArgs = this.#getCallArgsForRender();
 						const callComponent = tool.renderCall(callArgs, this.#renderState, theme);
-						if (callComponent) this.#contentBox.addChild(callComponent as Component);
+						if (callComponent) this.#contentBox.addChild(this.#onRail(callComponent as Component));
 					} catch (err) {
 						this.#contentBox.addChild(
 							reportRendererFailure(this.#rendererSubject("call"), err, "showing the tool name only"),
 						);
-						this.#contentBox.addChild(new Text(theme.fg("toolTitle", theme.bold(this.#toolLabel)), 0, 0));
+						this.#contentBox.addChild(
+							this.#onRail(new Text(theme.fg("toolTitle", theme.bold(this.#toolLabel)), 0, 0)),
+						);
 					}
 				} else {
 					// No custom renderCall, show tool name
-					this.#contentBox.addChild(new Text(theme.fg("toolTitle", theme.bold(this.#toolLabel)), 0, 0));
+					this.#contentBox.addChild(
+						this.#onRail(new Text(theme.fg("toolTitle", theme.bold(this.#toolLabel)), 0, 0)),
+					);
 				}
 			}
 
@@ -1203,7 +1307,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 						theme,
 						this.#args,
 					);
-					if (resultComponent) this.#contentBox.addChild(resultComponent);
+					if (resultComponent) this.#contentBox.addChild(this.#onRail(resultComponent));
 				} catch (err) {
 					const output = this.#getTextOutput();
 					this.#contentBox.addChild(
@@ -1214,14 +1318,14 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 						),
 					);
 					if (output) {
-						this.#contentBox.addChild(new Text(theme.fg("toolOutput", replaceTabs(output)), 0, 0));
+						this.#contentBox.addChild(this.#onRail(new Text(theme.fg("toolOutput", replaceTabs(output)), 0, 0)));
 					}
 				}
 			} else if (renderableResult) {
 				// Has result but no custom renderResult
 				const output = this.#getTextOutput();
 				if (output) {
-					this.#contentBox.addChild(new Text(theme.fg("toolOutput", replaceTabs(output)), 0, 0));
+					this.#contentBox.addChild(this.#onRail(new Text(theme.fg("toolOutput", replaceTabs(output)), 0, 0)));
 				}
 			}
 			// Custom tools that draw their own frame (task) render flush; plain
@@ -1269,7 +1373,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 							this.#renderState,
 							theme,
 						);
-						if (resultComponent) fileBox.addChild(resultComponent);
+						if (resultComponent) fileBox.addChild(this.#onRail(resultComponent));
 					} catch (err) {
 						// Without this row the file's box renders empty, which reads as
 						// "this file produced no result" rather than "the renderer broke".
@@ -1304,7 +1408,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 						},
 						theme,
 					);
-					pendingBox.addChild(new Text(pendingText, 0, 0));
+					pendingBox.addChild(this.#onRail(new Text(pendingText, 0, 0)));
 					this.#multiFileBoxes.push(pendingBox);
 					this.addChild(pendingBox);
 				}
@@ -1324,18 +1428,22 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 				const shouldRenderCall = !renderableResult || !renderer.mergeCallAndResult;
 				if (shouldRenderCall) {
 					if (suppressMergedWidget) {
-						this.#contentBox.addChild(new Text(theme.fg("toolTitle", theme.bold(this.#toolLabel)), 0, 0));
+						this.#contentBox.addChild(
+							this.#onRail(new Text(theme.fg("toolTitle", theme.bold(this.#toolLabel)), 0, 0)),
+						);
 					} else {
 						// Render call component
 						try {
 							const callArgs = this.#getCallArgsForRender();
 							const callComponent = renderer.renderCall(callArgs, this.#renderState, theme);
-							if (callComponent) this.#contentBox.addChild(callComponent);
+							if (callComponent) this.#contentBox.addChild(this.#onRail(callComponent));
 						} catch (err) {
 							this.#contentBox.addChild(
 								reportRendererFailure(this.#rendererSubject("call"), err, "showing the tool name only"),
 							);
-							this.#contentBox.addChild(new Text(theme.fg("toolTitle", theme.bold(this.#toolLabel)), 0, 0));
+							this.#contentBox.addChild(
+								this.#onRail(new Text(theme.fg("toolTitle", theme.bold(this.#toolLabel)), 0, 0)),
+							);
 						}
 					}
 				}
@@ -1353,7 +1461,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 							theme,
 							this.#getCallArgsForRender(),
 						);
-						if (resultComponent) this.#contentBox.addChild(resultComponent);
+						if (resultComponent) this.#contentBox.addChild(this.#onRail(resultComponent));
 					} catch (err) {
 						const output = this.#getTextOutput();
 						this.#contentBox.addChild(
@@ -1364,7 +1472,9 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 							),
 						);
 						if (output) {
-							this.#contentBox.addChild(new Text(theme.fg("toolOutput", replaceTabs(output)), 0, 0));
+							this.#contentBox.addChild(
+								this.#onRail(new Text(theme.fg("toolOutput", replaceTabs(output)), 0, 0)),
+							);
 						}
 					}
 				}
@@ -1569,12 +1679,13 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 
 		const argsObject = this.#args && typeof this.#args === "object" ? (this.#args as Record<string, unknown>) : null;
 		if (!this.#expanded && argsObject && Object.keys(argsObject).length > 0) {
-			// Budget the inline preview against the render width, leaving room for
-			// the ` └─ ` connector prefix instead of a fixed cap.
-			const inlineBudget = Math.max(20, contentWidth - Bun.stringWidth(theme.tree.last) - 2);
+			// The preview is one row under the title inside the same card, so it is
+			// indented rather than hung off a connector: a flat row is not a
+			// hierarchy and the rail is already the block's left edge.
+			const inlineBudget = Math.max(20, contentWidth - 2);
 			const preview = formatArgsInline(argsObject, inlineBudget);
 			if (preview) {
-				lines.push(` ${theme.fg("dim", theme.tree.last)} ${theme.fg("dim", preview)}`);
+				lines.push(` ${theme.fg("dim", preview)}`);
 			}
 		}
 

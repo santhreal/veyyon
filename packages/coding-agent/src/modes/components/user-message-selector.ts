@@ -14,16 +14,13 @@ import {
 import { theme } from "../../modes/theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../../modes/utils/keybinding-matchers";
 import {
-	applyModalReveal,
-	beginModalExit,
 	computeModalDims,
 	consumeModalChipHover,
 	hitTestModalChrome,
 	MODAL_SIZING_MEDIUM,
-	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
-	modalRevealEnabled,
+	pointerMotionEnabled,
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
@@ -301,25 +298,8 @@ export class UserMessageSelectorComponent implements Component {
 	/** Frame row where the message list begins (shell body start + hint + blank). */
 	#listRowStart = 0;
 	#onRequestRender?: () => void;
-	#reveal = new ModalRevealDriver();
-	/**
-	 * Fade out on the shared clock before the host drops this card. The overlay stack keeps painting
-	 * it and stops routing input to it the moment this is called.
-	 */
-	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
-		return beginModalExit(this.#reveal, requestRender, done);
-	}
 
-	constructor(
-		messages: UserMessageItem[],
-		onSelect: (entryId: string) => void,
-		onCancel: () => void,
-		/** Play the open unfold (TOUCH-5). Show site decides via modalRevealEnabled(). */
-		reveal?: boolean,
-	) {
-		if (reveal) {
-			this.#reveal.start(() => this.#onRequestRender?.());
-		}
+	constructor(messages: UserMessageItem[], onSelect: (entryId: string) => void, onCancel: () => void) {
 		this.#onCancelCallback = onCancel;
 		this.#messageList = new UserMessageList(messages);
 		this.#messageList.onSelect = onSelect;
@@ -336,12 +316,11 @@ export class UserMessageSelectorComponent implements Component {
 		// The pointer band fades only once the card has a repaint to lend it: the
 		// frames between two mouse reports have no input to hang off. Same ambient
 		// gate as the open unfold; without it the band is switched.
-		this.#messageList.setHoverMotion({ requestRender: cb, enabled: modalRevealEnabled() });
+		this.#messageList.setHoverMotion({ requestRender: cb, enabled: pointerMotionEnabled() });
 	}
 
-	/** Settle the reveal and the pointer band so no timer outlives a dismissed card. */
+	/** Settle the pointer band so no timer outlives a dismissed card. */
 	dispose(): void {
-		this.#reveal.stop();
 		this.#messageList.disposeHoverMotion();
 	}
 
@@ -435,6 +414,6 @@ export class UserMessageSelectorComponent implements Component {
 		this.#shellGeometry = shell.geometry;
 		// The body leads with a hint line and a blank before the list's own rows.
 		this.#listRowStart = (shell.geometry?.bodyRowStart ?? 0) + 2;
-		return applyModalReveal(shell, width, this.#reveal);
+		return shell.lines;
 	}
 }

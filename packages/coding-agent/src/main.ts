@@ -1274,10 +1274,13 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 
 	const notifs: (InteractiveModeNotify | null)[] = [];
 
-	// Create AuthStorage and ModelRegistry upfront
-	const authStorage = await logger.time("discoverAuthStorage", deps.discoverAuthStorage ?? discoverAuthStorage);
-	const modelRegistry = logger.time("modelRegistry:init", () => new ModelRegistry(authStorage));
-
+	// Kick off AuthStorage and ModelRegistry discovery in parallel with settings/theme init.
+	// Awaited when resolveModelScope / session construction needs it.
+	const authStoragePromise = logger.time("discoverAuthStorage", deps.discoverAuthStorage ?? discoverAuthStorage);
+	const modelRegistryPromise = authStoragePromise.then(auth =>
+		logger.time("modelRegistry:init", () => new ModelRegistry(auth)),
+	);
+	modelRegistryPromise.catch(() => {});
 	if (parsedArgs.version) {
 		writeStartupNotice(parsedArgs, `${VERSION}\n`);
 		process.exit(EXIT_OK);
@@ -1478,6 +1481,40 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 		settingsInstance.get("theme.dark"),
 		settingsInstance.get("theme.light"),
 	);
+	const showStartupSplash = shouldShowStartupSplash({
+		configured: settingsInstance.get("startup.showSplash"),
+		isInteractive,
+		resuming: Boolean(parsedArgs.continue || parsedArgs.resume || parsedArgs.fork),
+		quiet: settingsInstance.get("startup.quiet"),
+		timing: Boolean($env.VEYYON_TIMING),
+		stdinIsTTY: process.stdin.isTTY,
+		stdoutIsTTY: process.stdout.isTTY,
+	});
+
+	// Paint the launch card immediately once settings and the theme are up.
+	// The sun, the wordmark, the version, and the tips need no session, no models,
+	// and no plugins. Everything below — model registry, plugin preload, extension
+	// discovery, and session construction — runs while the finished resting frame
+	// is already in front of the operator.
+	if (isInteractive && !isProtocolMode) {
+		const onboarding = resolveOnboardingGeneration(settingsInstance);
+		const { paintFirstFrame, shouldPaintFirstFrame } = await loadFirstFrame();
+		const paint = shouldPaintFirstFrame({
+			isInteractive,
+			protocolMode: isProtocolMode,
+			quiet: settingsInstance.get("startup.quiet"),
+			splash: showStartupSplash,
+			setupWizard:
+				deps.forceSetupWizard === true || (!onboarding.unreadable && onboarding.version < CURRENT_SETUP_VERSION),
+			stdinIsTTY: process.stdin.isTTY,
+			stdoutIsTTY: process.stdout.isTTY,
+			resuming: Boolean(parsedArgs.continue || parsedArgs.resume || parsedArgs.fork),
+		});
+		if (paint) logger.time("paintFirstFrame", paintFirstFrame, VERSION);
+	}
+
+	const authStorage = await authStoragePromise;
+	const modelRegistry = await modelRegistryPromise;
 
 	let scopedModels: ScopedModel[] = [];
 	const modelPatterns = parsedArgs.models ?? settingsInstance.get("enabledModels");
@@ -1751,38 +1788,6 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 				'No prompt provided: pass a message (`veyyon -p "…"`) or pipe one on stdin (`echo "…" | veyyon -p`).\n',
 			);
 			process.exit(EXIT_USAGE);
-		}
-
-		const showStartupSplash = shouldShowStartupSplash({
-			configured: settingsInstance.get("startup.showSplash"),
-			isInteractive,
-			resuming: Boolean(parsedArgs.continue || parsedArgs.resume || parsedArgs.fork),
-			quiet: settingsInstance.get("startup.quiet"),
-			timing: Boolean($env.VEYYON_TIMING),
-			stdinIsTTY: process.stdin.isTTY,
-			stdoutIsTTY: process.stdout.isTTY,
-		});
-
-		// Paint the launch card before the session is built. Everything below —
-		// plugin roots, extension and skill discovery, the model registry, the MCP
-		// connections, then the interactive mode's own mount — used to run against
-		// a blank terminal. The mode adopts this screen and this card rather than
-		// building its own (`modes/first-frame.ts`). Loaded here, not imported at
-		// the top: a print/rpc run never touches the TUI.
-		if (isInteractive && !isProtocolMode) {
-			const onboarding = resolveOnboardingGeneration(settingsInstance);
-			const { paintFirstFrame, shouldPaintFirstFrame } = await loadFirstFrame();
-			const paint = shouldPaintFirstFrame({
-				isInteractive,
-				protocolMode: isProtocolMode,
-				quiet: settingsInstance.get("startup.quiet"),
-				splash: showStartupSplash,
-				setupWizard:
-					deps.forceSetupWizard === true || (!onboarding.unreadable && onboarding.version < CURRENT_SETUP_VERSION),
-				stdinIsTTY: process.stdin.isTTY,
-				stdoutIsTTY: process.stdout.isTTY,
-			});
-			if (paint) logger.time("paintFirstFrame", paintFirstFrame, VERSION);
 		}
 
 		// The TUI cannot render anything until its screen exists, and session startup is exactly
