@@ -95,9 +95,11 @@ describe("every pull request gets a review request", () => {
 
 		// One definition, so the lookup and the comment cannot drift apart.
 		expect(markers).toEqual(["<!-- devin-review-requested -->"]);
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: `${marker}` is a shell expansion inside the workflow's own run step, quoted here as the fixture.
 		expect(script).toContain("${marker}");
 		expect(script).toContain("/devin review");
 		// A draft is requested at `ready_for_review` instead, not twice.
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: `${DRAFT}` is a shell variable in the workflow's run step, not a missed template literal.
 		expect(script).toContain("${DRAFT}");
 	});
 
