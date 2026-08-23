@@ -29,8 +29,12 @@ import {
 	TAB_GROUPS,
 	TAB_METADATA,
 } from "../packages/coding-agent/src/config/settings-schema";
+import { withGeneratedDocMarker } from "./lib/generated-doc";
 
 export const REFERENCE_DOC_PATH = "docs/handbook/src/reference/settings-reference.md";
+
+/** This script's own path, as the marker on the rendered document's first line names it. */
+export const GENERATOR_PATH = "scripts/gen-settings-reference.ts";
 
 /** The header every `/settings` table carries; the row parser keys off its first cell. */
 export const UI_TABLE_HEADER = "| Key | Setting | Type | Default | What it does |";
@@ -141,6 +145,10 @@ function renderConfigOnlyTable(paths: SettingPath[]): string[] {
 
 /** The whole document, deterministic in the schema alone. */
 export function renderReference(): string {
+	return withGeneratedDocMarker(GENERATOR_PATH, renderBody());
+}
+
+function renderBody(): string {
 	const lines = [
 		"# Settings reference",
 		"",
