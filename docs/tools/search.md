@@ -35,7 +35,7 @@ Optional type-specific fields:
 | `limit` | `number` | `files` | Maximum returned paths. Defaults to `200`, max `200`. |
 | `skip` | `number` | `text`, `structure` | Results to skip for pagination (file page offset for `text`, match offset for `structure`). |
 
-Cross-type fields are rejected with `Search type "<type>" does not accept: <field>`.
+Cross-type fields are rejected with `Search type "<type>" does not accept: <field>`. Files mode tolerates an accidental `path` field for provider-call recovery but ignores it; required `input` remains authoritative.
 
 ## Outputs
 
@@ -81,6 +81,6 @@ The tool is part of the default inventory. Text matching uses two settings:
 ## Errors
 
 - `Search input must not be empty` when `input` is empty or whitespace.
-- `Search type "<type>" does not accept: <fields>` on cross-type options.
+- `Search type "<type>" does not accept: <fields>` on cross-type options other than the ignored files-mode `path` recovery field.
 - `Search scope entries must be non-empty paths or globs` for invalid `path`.
 - `Path not found: ...` when target paths do not exist.

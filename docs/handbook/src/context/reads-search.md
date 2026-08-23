@@ -59,7 +59,7 @@ takes two required ordered fields followed by type-specific options:
 
 ### Type-specific options and validation
 
-Options are strictly validated per `type`; cross-type fields are rejected with an actionable error:
+Options are validated per `type`; cross-type fields are rejected with an actionable error. Files mode tolerates an accidental `path` field for provider-call recovery but ignores it, so required `input` remains authoritative:
 
 - **`type: "files"`** accepts `hidden`, `gitignore`, and `limit`:
   - **`hidden` (default `true`)** includes dotfiles.
