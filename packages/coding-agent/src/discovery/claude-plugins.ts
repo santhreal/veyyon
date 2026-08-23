@@ -15,10 +15,10 @@ import { type DiscoveredSkill, skillCapability } from "../capability/skill";
 import { type SlashCommand, slashCommandCapability } from "../capability/slash-command";
 import { type DiscoveredCustomTool, toolCapability } from "../capability/tool";
 import type { LoadContext, LoadResult } from "../capability/types";
+import { expandEnvVarsDeep, unresolvedRefusedDownstream, warnUnresolved } from "./env-expansion";
 import {
 	type ClaudePluginRoot,
 	createSourceMeta,
-	expandEnvVarsDeep,
 	listClaudePluginRoots,
 	loadFilesFromDir,
 	pluginsRootFor,
@@ -510,8 +510,15 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 				...(raw.args !== undefined && { args: substitutePluginRoot(raw.args, root.path) }),
 				...(raw.env !== undefined && { env: substitutePluginRoot(raw.env, root.path) }),
 				...(rooted.cwd !== undefined && { cwd: rooted.cwd }),
-				...(raw.url !== undefined && { url: expandEnvVarsDeep(raw.url) }),
-				...(raw.headers !== undefined && { headers: expandEnvVarsDeep(raw.headers) }),
+				...(raw.url !== undefined && { url: expandEnvVarsDeep(raw.url, warnUnresolved(warnings, mcpPath)) }),
+				...(raw.headers !== undefined && {
+					// A header value is credential material: the config-value grammar owns whether it
+					// resolved, and the connect guard refuses an entry whose structural fields did not.
+					headers: expandEnvVarsDeep(
+						raw.headers,
+						unresolvedRefusedDownstream("the MCP connect guard refuses an unresolved structural field"),
+					),
+				}),
 				...(raw.auth !== undefined && { auth: raw.auth }),
 				...(raw.oauth !== undefined && { oauth: raw.oauth }),
 				...(raw.type !== undefined && { transport: raw.type as MCPServer["transport"] }),

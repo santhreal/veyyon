@@ -18,11 +18,11 @@ import { type DiscoveredCustomTool, toolCapability } from "../capability/tool";
 import type { LoadContext, LoadResult } from "../capability/types";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../config/settings-instance";
+import { expandEnvVarsDeep, warnUnresolved } from "./env-expansion";
 import {
 	calculateDepth,
 	createSourceMeta,
 	discoverExtensionModulePaths,
-	expandEnvVarsDeep,
 	getExtensionNameFromPath,
 	loadFilesFromDir,
 	readContextFile,
@@ -77,7 +77,7 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 		const json = tryParseJson<{ mcpServers?: Record<string, unknown> }>(content);
 		if (!json?.mcpServers) return [];
 
-		const mcpServers = expandEnvVarsDeep(json.mcpServers);
+		const mcpServers = expandEnvVarsDeep(json.mcpServers, warnUnresolved(warnings, path));
 		return Object.entries(mcpServers).map(([name, config]) => {
 			const serverConfig = config as Record<string, unknown>;
 			return {

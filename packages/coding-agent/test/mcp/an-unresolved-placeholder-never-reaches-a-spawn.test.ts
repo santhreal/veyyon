@@ -1,6 +1,7 @@
 /**
  * WHY. A discovered MCP config is expanded once at load time, and an unset `${VAR}` with no default
- * is re-emitted as the literal text `${VAR}` (`expandEnvVars` in `discovery/helpers.ts`). Credential
+ * is reported to that expansion's sink and left as the literal text `${VAR}` (`expandEnvVarsDeep` in
+ * `discovery/env-expansion.ts`). Credential
  * fields fail closed at connect, but the structural fields did not: `command`, `args`, `cwd` and
  * `url` carried the literal into `Bun.spawn` and into a URL, so an unset variable became a command
  * argument, a working directory that does not exist, or a hostname nobody meant. The failure that
@@ -24,7 +25,7 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { expandEnvVarsDeep } from "@veyyon/coding-agent/discovery/helpers";
+import { collectUnresolved, expandEnvVarsDeep } from "@veyyon/coding-agent/discovery/env-expansion";
 import { connectToServer } from "@veyyon/coding-agent/mcp/client";
 import type { MCPServerConfig, MCPStdioServerConfig } from "@veyyon/coding-agent/mcp/types";
 import {
@@ -75,10 +76,15 @@ async function refusal(config: MCPServerConfig): Promise<unknown> {
 	}
 }
 
+/** Expansion exactly as a discovery provider performs it: reports to a sink, value travels on. */
+function expandUnderTest<T>(config: T): T {
+	return expandEnvVarsDeep(config, collectUnresolved());
+}
+
 describe("an unresolved placeholder never reaches a spawn", () => {
 	it("refuses a command that is still a placeholder, naming the field and the variable", async () => {
 		delete process.env[ABSENT];
-		const error = await refusal(expandEnvVarsDeep({ type: "stdio", command: `\${${ABSENT}}` } as MCPServerConfig));
+		const error = await refusal(expandUnderTest({ type: "stdio", command: `\${${ABSENT}}` } as MCPServerConfig));
 		expect(error).toBeInstanceOf(MCPUnresolvedPlaceholderError);
 		const message = (error as Error).message;
 		expect(message).toContain("command");
@@ -94,7 +100,7 @@ describe("an unresolved placeholder never reaches a spawn", () => {
 		const marker = path.join(path.resolve(dir.path()), "spawned-from-args");
 		const config = markerConfig(marker, {});
 		config.args = [...(config.args ?? []), `--flag=\${${ABSENT}}`];
-		const error = await refusal(expandEnvVarsDeep(config as MCPServerConfig));
+		const error = await refusal(expandUnderTest(config as MCPServerConfig));
 		expect(error).toBeInstanceOf(MCPUnresolvedPlaceholderError);
 		expect((error as MCPUnresolvedPlaceholderError).field).toBe("args[2]");
 		expect((error as MCPUnresolvedPlaceholderError).variable).toBe(ABSENT);
@@ -106,7 +112,7 @@ describe("an unresolved placeholder never reaches a spawn", () => {
 		using dir = TempDir.createSync("veyyon-mcp-placeholder-");
 		const marker = path.join(path.resolve(dir.path()), "spawned-from-cwd");
 		const config = markerConfig(marker, { cwd: `/tmp/\${${ABSENT}}` });
-		const error = await refusal(expandEnvVarsDeep(config as MCPServerConfig));
+		const error = await refusal(expandUnderTest(config as MCPServerConfig));
 		expect(error).toBeInstanceOf(MCPUnresolvedPlaceholderError);
 		expect((error as MCPUnresolvedPlaceholderError).field).toBe("cwd");
 		expect(await marked(marker)).toBe(false);
@@ -124,7 +130,7 @@ describe("an unresolved placeholder never reaches a spawn", () => {
 		});
 		try {
 			const error = await refusal(
-				expandEnvVarsDeep({
+				expandUnderTest({
 					type: "http",
 					url: `http://127.0.0.1:${server.port}/mcp/\${${ABSENT}}`,
 					timeout: 2000,
@@ -141,7 +147,7 @@ describe("an unresolved placeholder never reaches a spawn", () => {
 	it("refuses a passthrough name that is still a placeholder", () => {
 		delete process.env[ABSENT];
 		const found = findUnresolvedPlaceholder(
-			expandEnvVarsDeep({
+			expandUnderTest({
 				type: "stdio",
 				command: "server",
 				envPassthrough: ["HOME", `\${${ABSENT}}`],
@@ -155,7 +161,7 @@ describe("an unresolved placeholder never reaches a spawn", () => {
 		try {
 			expect(
 				findUnresolvedPlaceholder(
-					expandEnvVarsDeep({ type: "stdio", command: `\${${ABSENT}}/bin/server` } as MCPServerConfig),
+					expandUnderTest({ type: "stdio", command: `\${${ABSENT}}/bin/server` } as MCPServerConfig),
 				),
 			).toBeUndefined();
 		} finally {
@@ -163,7 +169,7 @@ describe("an unresolved placeholder never reaches a spawn", () => {
 		}
 		expect(
 			findUnresolvedPlaceholder(
-				expandEnvVarsDeep({
+				expandUnderTest({
 					type: "stdio",
 					command: "server",
 					args: [`--root=\${${ABSENT}:-/var/empty}`],
@@ -177,7 +183,7 @@ describe("an unresolved placeholder never reaches a spawn", () => {
 		// A resolved secret may itself contain `${`, so scanning these would reject working servers.
 		expect(
 			findUnresolvedPlaceholder(
-				expandEnvVarsDeep({
+				expandUnderTest({
 					type: "stdio",
 					command: "server",
 					env: { TOKEN: `\${${ABSENT}}` },
@@ -186,7 +192,7 @@ describe("an unresolved placeholder never reaches a spawn", () => {
 		).toBeUndefined();
 		expect(
 			findUnresolvedPlaceholder(
-				expandEnvVarsDeep({
+				expandUnderTest({
 					type: "http",
 					url: "https://example.invalid/mcp",
 					headers: { Authorization: `Bearer \${${ABSENT}}` },

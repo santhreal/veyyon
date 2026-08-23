@@ -28,11 +28,11 @@ import type { LoadContext, LoadResult, SourceMeta } from "../capability/types";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../config/settings-instance";
 
+import { expandEnvVarsDeep, warnUnresolved } from "./env-expansion";
 import {
 	buildExtensionModuleItems,
 	createSourceMeta,
 	discoverExtensionModulePaths,
-	expandEnvVarsDeep,
 	getUserPath,
 	loadFilesFromDir,
 	readContextFile,
@@ -180,7 +180,7 @@ function extractMCPServers(config: Record<string, unknown>, configPath: string):
 		return { items, warnings };
 	}
 
-	const servers = expandEnvVarsDeep(config.mcp as Record<string, unknown>);
+	const servers = expandEnvVarsDeep(config.mcp as Record<string, unknown>, warnUnresolved(warnings, configPath));
 
 	for (const [name, raw] of Object.entries(servers)) {
 		if (!raw || typeof raw !== "object") {
