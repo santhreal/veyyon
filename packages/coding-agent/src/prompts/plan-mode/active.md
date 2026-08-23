@@ -85,7 +85,7 @@ Write scannable markdown using these sections. Let depth track the change, not a
   - State the concrete edit — verb + exact target + the new behavior — NEVER just an area to "update" or "handle".
   - Name existing functions/utilities to reuse, with paths; introduce new code only with a one-line note that no existing equivalent was found.
   - For a new or changed symbol whose callers must fit it, or whose value is load-bearing (enum member, error/log string, config key, wire/JSON field), give the exact signature or literal.
-  - For a rename, signature change, or removal, list every callsite to update (or the exact `grep` that returns exactly them) and what to delete — default to a clean cutover with no dead code or compatibility aliases.
+  - For a rename, signature change, or removal, list every callsite to update (or the exact `search` query that returns exactly them) and what to delete — default to a clean cutover with no dead code or compatibility aliases.
   - When rival patterns exist, name the one to copy and the one to avoid.
   - Specify the edge and failure handling for each new path (empty, missing, conflict, error), or state that none is needed and why.
 - **Critical files & anchors** — the ≤5 files that disambiguate non-obvious work, each as path + the symbol or region + a one-line reason. Line numbers are hints; the implementer re-reads before editing. Skip files already obvious from the Approach.

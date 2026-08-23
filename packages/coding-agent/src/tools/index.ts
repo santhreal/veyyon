@@ -56,15 +56,12 @@ import { RerootDetector, wrapToolWithRerootHint } from "./reroot-hint";
 import { SearchTool } from "./search";
 import type { TodoPhase } from "./todo";
 
-// NOTE: tool implementation modules are intentionally NOT imported eagerly
-// here. Each factory in BUILTIN_TOOLS / HIDDEN_TOOLS dynamic-imports its
-// module on first construction, so the CLI boot path never parses tool
-// implementations it does not activate. The public re-exports of every tool
-// module live in `src/index.ts` (the library entry), not in this barrel.
-// Type-only re-exports below are erased at runtime and cost nothing.
+// Most optional tool implementation modules remain lazy so the CLI boot path
+// does not parse tools this session never activates. Unified workspace search
+// is essential and imported statically; its engines are part of the default
+// session surface.
 export type { LspStartupServerInfo } from "../lsp";
 export type { BashToolDetails, BashToolInput } from "./bash";
-export type { SearchToolDetails, SearchToolInput } from "./search";
 // Tool-loading rules now live in `./loading`. Re-exported here because `@veyyon/coding-agent/tools`
 // is the documented import path for them and the SDK plus several suites use it.
 export {
@@ -73,6 +70,7 @@ export {
 	filterInitialToolsForDiscoveryAll,
 } from "./loading";
 export type { ReadToolDetails, ReadToolInput } from "./read";
+export type { SearchToolDetails, SearchToolInput } from "./search";
 export type { WriteToolInput } from "./write";
 
 /** Tool type (AgentTool from pi-ai) */
@@ -630,7 +628,6 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 		debugEnabled: session.settings.get("debug.enabled"),
 		requireYieldTool: includeYield,
 		todoEnabled: session.settings.get("todo.enabled"),
-		searchEnabled: session.settings.get("search.enabled"),
 		githubEnabled: session.settings.get("github.enabled"),
 		astEditEnabled: session.settings.get("astEdit.enabled"),
 		inspectImageEnabled: session.settings.get("inspect_image.enabled"),

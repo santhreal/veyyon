@@ -158,18 +158,6 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
-	// Unified workspace search
-	"search.enabled": {
-		type: "boolean",
-		default: true,
-		ui: {
-			tab: "tools",
-			group: "Available Tools",
-			label: "Search",
-			description: "Enable workspace file, text, and structure search",
-		},
-	},
-
 	// How tightly an early tool result is held before it spills to an artifact.
 	//
 	// A tool result is billed once as fresh input and then re-read as a cache
@@ -238,7 +226,6 @@ export const TOOLS_SETTINGS = {
 			],
 		},
 	},
-
 
 	"astEdit.enabled": {
 		type: "boolean",
@@ -649,7 +636,7 @@ export const TOOLS_SETTINGS = {
 			group: "Discovery & MCP",
 			label: "Essential Tools Override",
 			description:
-				"Override the always-loaded built-in tools (default: read, bash, launch, edit, write, glob, eval). Leave empty to use defaults.",
+				"Override the always-loaded built-in tools (default: read, bash, launch, edit, write, search, eval). Leave empty to use defaults.",
 		},
 	},
 

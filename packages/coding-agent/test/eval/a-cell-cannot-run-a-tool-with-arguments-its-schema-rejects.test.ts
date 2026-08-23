@@ -285,7 +285,6 @@ const CHECKED_BY_THE_SWEEP: string[] = [
 	"argot_unload",
 	"ask",
 	"ast_edit",
-	"ast_grep",
 	"bash",
 	"browser",
 	"checkpoint",
@@ -294,7 +293,6 @@ const CHECKED_BY_THE_SWEEP: string[] = [
 	"eval",
 	"github",
 	"goal",
-	"grep",
 	"inspect_image",
 	"irc",
 	"launch",
@@ -310,6 +308,7 @@ const CHECKED_BY_THE_SWEEP: string[] = [
 	"resolve",
 	"retain",
 	"rewind",
+	"search",
 	"search_tool_bm25",
 	"set_cwd",
 	"ssh",
@@ -324,8 +323,7 @@ const CHECKED_BY_THE_SWEEP: string[] = [
  * after previously being checked has dropped a required argument, which is
  * exactly the change that should be looked at.
  */
-const NO_REQUIRED_ARGUMENTS: string[] = ["glob", "job", "todo"];
-
+const NO_REQUIRED_ARGUMENTS: string[] = ["job", "todo"];
 /**
  * Tools no session can register, whatever the settings say. Empty, and it has
  * to stay empty: a factory that returns null here is a tool the sweep never

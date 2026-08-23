@@ -221,7 +221,7 @@ describe("AgentSession mid-run todo reconciliation nudge", () => {
 	});
 
 	it("read-only exploration never ticks the counter, no matter how long", async () => {
-		for (let i = 0; i < THRESHOLD * 3; i++) emitToolResult(i % 2 === 0 ? "grep" : "read");
+		for (let i = 0; i < THRESHOLD * 3; i++) emitToolResult(i % 2 === 0 ? "search" : "read");
 
 		await settle();
 		expect(await drainNudges()).toEqual([]);

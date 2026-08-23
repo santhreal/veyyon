@@ -38,10 +38,9 @@ function bashSession(cwd: string, settings: Settings) {
 				if (key === "bash.autoBackground.enabled") return false;
 				if (key === "bash.autoBackground.thresholdMs") return 60_000;
 				if (key === "bashInterceptor.enabled") return false;
-				if (key === "astGrep.enabled") return false;
+
 				if (key === "astEdit.enabled") return false;
-				if (key === "grep.enabled") return false;
-				if (key === "glob.enabled") return false;
+
 				return settings.get(key as never);
 			},
 			getBashInterceptorRules() {

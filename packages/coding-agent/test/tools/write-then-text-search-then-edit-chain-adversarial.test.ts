@@ -3,8 +3,9 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { GrepTool } from "@veyyon/coding-agent/tools/grep";
+import { executeHashlineSingle } from "@veyyon/coding-agent/edit";
 import { ReadTool } from "@veyyon/coding-agent/tools/read";
+import { SearchTool } from "@veyyon/coding-agent/tools/search";
 import { WriteTool } from "@veyyon/coding-agent/tools/write";
 import { removeWithRetries } from "@veyyon/utils";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";
@@ -17,7 +18,11 @@ function textOf(result: { content: Array<{ type: string; text?: string }> }): st
 		.join("\n");
 }
 
-describe("write→grep→read chain adversarial", () => {
+/**
+ * write → grep (find token) → read header → SWAP token → grep confirms change.
+ */
+
+describe("write→search(text)→edit→search(text) chain adversarial", () => {
 	let settingsState: SettingsTestState | undefined;
 	let tmpDir: string;
 
@@ -32,7 +37,7 @@ describe("write→grep→read chain adversarial", () => {
 	});
 
 	beforeEach(async () => {
-		tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "wgr-chain-"));
+		tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "wge-chain-"));
 	});
 
 	afterEach(async () => {
@@ -51,23 +56,48 @@ describe("write→grep→read chain adversarial", () => {
 				"lsp.formatOnWrite": false,
 				"lsp.diagnosticsOnWrite": false,
 				"read.summarize.enabled": false,
-				"grep.enabled": true,
 			}),
 			enableLsp: false,
 			getPlanModeState: () => ({ enabled: false }),
 		});
 	}
 
-	it("write unique token, grep finds it, read returns the same body", async () => {
+	function editOpts(sess: ReturnType<typeof session>, input: string) {
+		return {
+			session: sess,
+			input,
+			writethrough: async (targetPath: string, content: string) => {
+				await Bun.write(targetPath, content);
+				return undefined;
+			},
+			beginDeferredDiagnosticsForPath: () => ({
+				onDeferredDiagnostics: () => {},
+				signal: new AbortController().signal,
+				finalize: () => {},
+			}),
+		};
+	}
+
+	it("token is replaced and old token disappears from grep", async () => {
 		const s = session();
-		const file = path.join(tmpDir, "hit.ts");
-		const token = "UNIQUE_TOKEN_ZX9Q";
-		const body = `const x = '${token}';\n`;
-		await new WriteTool(s).execute("w", { path: file, content: body });
-		const grepText = textOf(await new GrepTool(s as never).execute("g", { pattern: token, path: file }));
-		expect(grepText).toContain(token);
-		const readText = textOf(await new ReadTool(s).execute("r", { path: file }));
-		expect(readText).toContain(token);
-		expect(await Bun.file(file).text()).toBe(body);
+		const file = path.join(tmpDir, "chain.ts");
+		const oldTok = "OLD_TOKEN_AAA";
+		const newTok = "NEW_TOKEN_BBB";
+		await new WriteTool(s).execute("w", {
+			path: file,
+			content: `const x = '${oldTok}';\n`,
+		});
+		expect(textOf(await new SearchTool(s).execute("g1", { type: "text", input: oldTok, path: file }))).toContain(
+			oldTok,
+		);
+
+		const header = textOf(await new ReadTool(s).execute("r", { path: file })).split("\n")[0]!;
+		await executeHashlineSingle(editOpts(s, `${header}\nSWAP 1.=1:\n+const x = '${newTok}';\n`));
+		expect(await Bun.file(file).text()).toBe(`const x = '${newTok}';\n`);
+		expect(textOf(await new SearchTool(s).execute("g2", { type: "text", input: newTok, path: file }))).toContain(
+			newTok,
+		);
+		const oldGrep = textOf(await new SearchTool(s).execute("g3", { type: "text", input: oldTok, path: file }));
+		expect(oldGrep.includes(oldTok)).toBe(false);
 	});
 });

@@ -889,287 +889,233 @@ export async function executeTextSearch(
 	params: TextSearchInput,
 	signal?: AbortSignal,
 ): Promise<AgentToolResult<TextSearchDetails>> {
-		const { pattern, path: rawPath, case: caseSensitive, gitignore, skip } = params;
+	const { pattern, path: rawPath, case: caseSensitive, gitignore, skip } = params;
 
-		return untilAborted(signal, async () => {
-			// Preserve the pattern verbatim — leading/trailing whitespace is
-			// meaningful in regexes (indentation anchors, trailing-space matches).
-			if (!pattern.trim()) {
-				throw new ToolError("Pattern must not be empty");
-			}
-			const normalizedPattern = pattern;
+	return untilAborted(signal, async () => {
+		// Preserve the pattern verbatim — leading/trailing whitespace is
+		// meaningful in regexes (indentation anchors, trailing-space matches).
+		if (!pattern.trim()) {
+			throw new ToolError("Pattern must not be empty");
+		}
+		const normalizedPattern = pattern;
 
-			const normalizedSkip =
-				skip === undefined || skip === null ? 0 : Number.isFinite(skip) ? Math.floor(skip) : Number.NaN;
-			if (normalizedSkip < 0 || !Number.isFinite(normalizedSkip)) {
-				throw new ToolError("Skip must be a non-negative number");
-			}
-			const scopedPaths = toPathList(rawPath);
-			const effectivePaths = scopedPaths.length > 0 ? scopedPaths : ["."];
-			const rawEntries = await expandDelimitedPathEntries(effectivePaths, session.cwd);
-			const pathSpecs = await parsePathSpecs(rawEntries, session.cwd);
-			const materializedExternalPaths = new Map<string, string>();
-			const materializeExternalUrlForSearch = async (rawPath: string) => {
-				const target = parseReadUrlTarget(rawPath);
-				if (!target) return undefined;
-				const materialized = await materializeReadUrlToFile(
-					session,
-					{ path: target.path, raw: target.raw },
-					signal,
-				);
-				materializedExternalPaths.set(rawPath, materialized.path);
-				return { sourcePath: materialized.path, immutable: true };
-			};
-			const {
+		const normalizedSkip =
+			skip === undefined || skip === null ? 0 : Number.isFinite(skip) ? Math.floor(skip) : Number.NaN;
+		if (normalizedSkip < 0 || !Number.isFinite(normalizedSkip)) {
+			throw new ToolError("Skip must be a non-negative number");
+		}
+		const scopedPaths = toPathList(rawPath);
+		const effectivePaths = scopedPaths.length > 0 ? scopedPaths : ["."];
+		const rawEntries = await expandDelimitedPathEntries(effectivePaths, session.cwd);
+		const pathSpecs = await parsePathSpecs(rawEntries, session.cwd);
+		const materializedExternalPaths = new Map<string, string>();
+		const materializeExternalUrlForSearch = async (rawPath: string) => {
+			const target = parseReadUrlTarget(rawPath);
+			if (!target) return undefined;
+			const materialized = await materializeReadUrlToFile(session, { path: target.path, raw: target.raw }, signal);
+			materializedExternalPaths.set(rawPath, materialized.path);
+			return { sourcePath: materialized.path, immutable: true };
+		};
+		const {
+			resolvedPaths,
+			displayMap: archiveDisplayMap,
+			displaySet: archiveDisplaySet,
+			unreadable: archiveUnreadable,
+			cleanup: cleanupArchiveScratch,
+		} = await resolveArchiveSearchPaths(pathSpecs, session.cwd);
+		try {
+			const internalResolution = await resolveInternalSearchInputs({
+				pathSpecs,
 				resolvedPaths,
-				displayMap: archiveDisplayMap,
-				displaySet: archiveDisplaySet,
-				unreadable: archiveUnreadable,
-				cleanup: cleanupArchiveScratch,
-			} = await resolveArchiveSearchPaths(pathSpecs, session.cwd);
-			try {
-				const internalResolution = await resolveInternalSearchInputs({
-					pathSpecs,
-					resolvedPaths,
+				cwd: session.cwd,
+				settings: session.settings,
+				signal,
+				archiveDisplayMap,
+				localProtocolOptions: session.localProtocolOptions,
+				skills: session.skills,
+			});
+			const searchablePaths = internalResolution.paths;
+			const { virtualResources, virtualPathSet, virtualInputIndexes } = internalResolution;
+			const rangesByAbsPath = new Map<string, LineRange[]>();
+
+			if (
+				archiveUnreadable.length > 0 &&
+				searchablePaths.length === archiveUnreadable.length &&
+				virtualResources.length === 0
+			) {
+				// All inputs were archive selectors we couldn't materialize; surface the
+				// reason instead of a downstream "path not found" from the scope resolver.
+				throw new ToolError(
+					`Cannot search archive member(s): ${archiveUnreadable.join(", ")}. ` +
+						`Read the member with \`read <archive>:<member>\` and inspect the returned text, ` +
+						`or pass a UTF-8 text member.`,
+				);
+			}
+			const normalizedContextBefore = session.settings.get("search.contextBefore");
+			const normalizedContextAfter = session.settings.get("search.contextAfter");
+			const ignoreCase = !(caseSensitive ?? true);
+			const useGitignore = gitignore ?? true;
+			const patternHasNewline = normalizedPattern.includes("\n") || normalizedPattern.includes("\\n");
+			const effectiveMultiline = patternHasNewline;
+
+			let searchPath: string;
+			let scopePath: string;
+			let globFilter: string | undefined;
+			let isDirectory: boolean;
+			let multiTargets: ResolvedSearchTarget[] | undefined;
+			let exactFilePaths: string[] | undefined;
+			let missingPaths: string[];
+			const immutableSourcePaths = new Set(internalResolution.immutableSourcePaths);
+			if (searchablePaths.length > 0) {
+				const scope = await resolveToolSearchScope({
+					rawPaths: searchablePaths,
 					cwd: session.cwd,
+					internalUrlAction: "search",
+					trackImmutableSources: true,
+					surfaceExactFilePaths: true,
+					fanOutFileTargets: true,
+					multipathStatHint: " (`path` list entries must each exist relative to cwd)",
 					settings: session.settings,
 					signal,
-					archiveDisplayMap,
 					localProtocolOptions: session.localProtocolOptions,
 					skills: session.skills,
+					resolveExternalUrl: materializeExternalUrlForSearch,
 				});
-				const searchablePaths = internalResolution.paths;
-				const { virtualResources, virtualPathSet, virtualInputIndexes } = internalResolution;
-				const rangesByAbsPath = new Map<string, LineRange[]>();
-
-				if (
-					archiveUnreadable.length > 0 &&
-					searchablePaths.length === archiveUnreadable.length &&
-					virtualResources.length === 0
-				) {
-					// All inputs were archive selectors we couldn't materialize; surface the
-					// reason instead of a downstream "path not found" from the scope resolver.
-					throw new ToolError(
-						`Cannot search archive member(s): ${archiveUnreadable.join(", ")}. ` +
-							`Read the member with \`read <archive>:<member>\` and inspect the returned text, ` +
-							`or pass a UTF-8 text member.`,
-					);
+				searchPath = scope.searchPath;
+				isDirectory = scope.isDirectory;
+				multiTargets = scope.multiTargets;
+				exactFilePaths = scope.exactFilePaths;
+				missingPaths = scope.missingPaths;
+				globFilter = scope.globFilter;
+				for (const immutablePath of scope.immutableSourcePaths) {
+					immutableSourcePaths.add(immutablePath);
 				}
-				const normalizedContextBefore = session.settings.get("search.contextBefore");
-				const normalizedContextAfter = session.settings.get("search.contextAfter");
-				const ignoreCase = !(caseSensitive ?? true);
-				const useGitignore = gitignore ?? true;
-				const patternHasNewline = normalizedPattern.includes("\n") || normalizedPattern.includes("\\n");
-				const effectiveMultiline = patternHasNewline;
+				// Build the per-file line-range filter after URL materialization has run:
+				// archive entries are keyed by scratch path, URL entries by read-cache
+				// content path, and ordinary files by their resolved filesystem path.
+				for (let idx = 0; idx < pathSpecs.length; idx++) {
+					const spec = pathSpecs[idx];
+					if (!spec.ranges) continue;
+					if (virtualInputIndexes.has(idx)) continue;
+					const resolved = internalResolution.resolvedPathsByInput[idx];
+					if (!resolved) continue;
+					const materializedExternalPath = materializedExternalPaths.get(spec.clean);
+					if (materializedExternalPath) {
+						mergeRangesInto(rangesByAbsPath, path.resolve(materializedExternalPath), spec.ranges);
+						continue;
+					}
+					if (resolved === spec.clean && !archiveDisplayMap.has(resolved)) {
+						// Non-archive entry; ensure the cleaned path resolves to a regular file.
+						const absKey = path.resolve(resolveReadPath(resolved, session.cwd));
+						// Keep the stat failure's own reason: an unreadable path reported as "not found" sends
+						// the reader looking for a missing file instead of at the permission that blocked it.
+						let stats: Awaited<ReturnType<typeof stat>> | undefined;
+						try {
+							stats = await stat(absKey);
+						} catch (error) {
+							const code = (error as { code?: string }).code;
+							if (code === "ENOENT") {
+								throw new ToolError(`Path not found for line-range selector: ${spec.original}`);
+							}
+							throw new ToolError(
+								`Could not read path for line-range selector: ${spec.original}: ${errorMessage(error)}`,
+							);
+						}
+						if (!stats.isFile()) {
+							throw new ToolError(`Line-range selector requires a single file: ${spec.original} is a directory`);
+						}
+						mergeRangesInto(rangesByAbsPath, absKey, spec.ranges);
+					} else {
+						mergeRangesInto(rangesByAbsPath, path.resolve(resolved), spec.ranges);
+					}
+				}
+				// When the only input was an archive selector, surface that selector instead
+				// of the temp scratch path the resolver substituted in.
+				const physicalScopePath =
+					searchablePaths.length === 1 && archiveDisplayMap.get(searchPath)
+						? (archiveDisplayMap.get(searchPath) as string)
+						: scope.scopePath;
+				scopePath = internalResolution.virtualScopePath
+					? `${physicalScopePath}, ${internalResolution.virtualScopePath}`
+					: physicalScopePath;
+			} else {
+				searchPath = session.cwd;
+				scopePath = internalResolution.virtualScopePath ?? ".";
+				globFilter = undefined;
+				isDirectory = false;
+				multiTargets = undefined;
+				exactFilePaths = undefined;
+				missingPaths = [];
+			}
+			if (
+				missingPaths.length > 0 &&
+				missingPaths.length === searchablePaths.length &&
+				virtualResources.length === 0
+			) {
+				const archiveHint =
+					archiveUnreadable.length > 0
+						? ` (archive members were not searchable: ${archiveUnreadable.join(", ")})`
+						: "";
+				throw new ToolError(
+					`Path not found: ${missingPaths.join(", ")}; list each target in the semicolon-delimited \`path\`${archiveHint}`,
+				);
+			}
+			const baseDisplayMode = resolveFileDisplayMode(session);
 
-				let searchPath: string;
-				let scopePath: string;
-				let globFilter: string | undefined;
-				let isDirectory: boolean;
-				let multiTargets: ResolvedSearchTarget[] | undefined;
-				let exactFilePaths: string[] | undefined;
-				let missingPaths: string[];
-				const immutableSourcePaths = new Set(internalResolution.immutableSourcePaths);
+			const effectiveOutputMode = GrepOutputMode.Content;
+			const isMultiScope =
+				isDirectory ||
+				Boolean(exactFilePaths) ||
+				Boolean(multiTargets) ||
+				(virtualResources.length > 0 && (virtualResources.length > 1 || searchablePaths.length > 0));
+			const perFileMatchCap = isMultiScope ? MULTI_FILE_PER_FILE_MATCHES : SINGLE_FILE_MATCHES;
+			// Range filtering happens in JS after the native fetch, so out-of-range
+			// matches consume fetch budget. Widen the per-file budget just enough
+			// that filtering can still yield `perFileMatchCap` in-range hits, and
+			// scale the global safety ceiling by the same amplification so ranged
+			// searches keep the baseline file coverage while staying finite.
+			const hasLineRangeFilters = pathSpecs.some(spec => spec.ranges);
+			const nativeMaxCountPerFile = hasLineRangeFilters
+				? Math.max(perFileMatchCap + 1, lineRangeFetchCap(pathSpecs, perFileMatchCap + 1))
+				: perFileMatchCap + 1;
+			const nativeMaxCount = hasLineRangeFilters
+				? Math.ceil(INTERNAL_TOTAL_CAP / (perFileMatchCap + 1)) * nativeMaxCountPerFile
+				: INTERNAL_TOTAL_CAP;
+
+			// Run grep
+			let result: GrepResult = {
+				matches: [],
+				totalMatches: 0,
+				filesWithMatches: 0,
+				filesSearched: 0,
+				limitReached: false,
+			};
+			let skippedOversizedCount = 0;
+			// Set when native grep could not compile the pattern as a regex on
+			// either engine and demoted it to a literal search (Law 10: the
+			// demotion must not be silent). Same pattern across every sub-search,
+			// so the first non-empty notice is authoritative.
+			let literalFallbackError: string | undefined;
+			try {
 				if (searchablePaths.length > 0) {
-					const scope = await resolveToolSearchScope({
-						rawPaths: searchablePaths,
-						cwd: session.cwd,
-						internalUrlAction: "search",
-						trackImmutableSources: true,
-						surfaceExactFilePaths: true,
-						fanOutFileTargets: true,
-						multipathStatHint: " (`path` list entries must each exist relative to cwd)",
-						settings: session.settings,
-						signal,
-						localProtocolOptions: session.localProtocolOptions,
-						skills: session.skills,
-						resolveExternalUrl: materializeExternalUrlForSearch,
-					});
-					searchPath = scope.searchPath;
-					isDirectory = scope.isDirectory;
-					multiTargets = scope.multiTargets;
-					exactFilePaths = scope.exactFilePaths;
-					missingPaths = scope.missingPaths;
-					globFilter = scope.globFilter;
-					for (const immutablePath of scope.immutableSourcePaths) {
-						immutableSourcePaths.add(immutablePath);
-					}
-					// Build the per-file line-range filter after URL materialization has run:
-					// archive entries are keyed by scratch path, URL entries by read-cache
-					// content path, and ordinary files by their resolved filesystem path.
-					for (let idx = 0; idx < pathSpecs.length; idx++) {
-						const spec = pathSpecs[idx];
-						if (!spec.ranges) continue;
-						if (virtualInputIndexes.has(idx)) continue;
-						const resolved = internalResolution.resolvedPathsByInput[idx];
-						if (!resolved) continue;
-						const materializedExternalPath = materializedExternalPaths.get(spec.clean);
-						if (materializedExternalPath) {
-							mergeRangesInto(rangesByAbsPath, path.resolve(materializedExternalPath), spec.ranges);
-							continue;
-						}
-						if (resolved === spec.clean && !archiveDisplayMap.has(resolved)) {
-							// Non-archive entry; ensure the cleaned path resolves to a regular file.
-							const absKey = path.resolve(resolveReadPath(resolved, session.cwd));
-							// Keep the stat failure's own reason: an unreadable path reported as "not found" sends
-							// the reader looking for a missing file instead of at the permission that blocked it.
-							let stats: Awaited<ReturnType<typeof stat>> | undefined;
-							try {
-								stats = await stat(absKey);
-							} catch (error) {
-								const code = (error as { code?: string }).code;
-								if (code === "ENOENT") {
-									throw new ToolError(`Path not found for line-range selector: ${spec.original}`);
-								}
-								throw new ToolError(
-									`Could not read path for line-range selector: ${spec.original}: ${errorMessage(error)}`,
-								);
-							}
-							if (!stats.isFile()) {
-								throw new ToolError(
-									`Line-range selector requires a single file: ${spec.original} is a directory`,
-								);
-							}
-							mergeRangesInto(rangesByAbsPath, absKey, spec.ranges);
-						} else {
-							mergeRangesInto(rangesByAbsPath, path.resolve(resolved), spec.ranges);
-						}
-					}
-					// When the only input was an archive selector, surface that selector instead
-					// of the temp scratch path the resolver substituted in.
-					const physicalScopePath =
-						searchablePaths.length === 1 && archiveDisplayMap.get(searchPath)
-							? (archiveDisplayMap.get(searchPath) as string)
-							: scope.scopePath;
-					scopePath = internalResolution.virtualScopePath
-						? `${physicalScopePath}, ${internalResolution.virtualScopePath}`
-						: physicalScopePath;
-				} else {
-					searchPath = session.cwd;
-					scopePath = internalResolution.virtualScopePath ?? ".";
-					globFilter = undefined;
-					isDirectory = false;
-					multiTargets = undefined;
-					exactFilePaths = undefined;
-					missingPaths = [];
-				}
-				if (
-					missingPaths.length > 0 &&
-					missingPaths.length === searchablePaths.length &&
-					virtualResources.length === 0
-				) {
-					const archiveHint =
-						archiveUnreadable.length > 0
-							? ` (archive members were not searchable: ${archiveUnreadable.join(", ")})`
-							: "";
-					throw new ToolError(
-						`Path not found: ${missingPaths.join(", ")}; list each target in the semicolon-delimited \`path\`${archiveHint}`,
-					);
-				}
-				const baseDisplayMode = resolveFileDisplayMode(session);
-
-				const effectiveOutputMode = GrepOutputMode.Content;
-				const isMultiScope =
-					isDirectory ||
-					Boolean(exactFilePaths) ||
-					Boolean(multiTargets) ||
-					(virtualResources.length > 0 && (virtualResources.length > 1 || searchablePaths.length > 0));
-				const perFileMatchCap = isMultiScope ? MULTI_FILE_PER_FILE_MATCHES : SINGLE_FILE_MATCHES;
-				// Range filtering happens in JS after the native fetch, so out-of-range
-				// matches consume fetch budget. Widen the per-file budget just enough
-				// that filtering can still yield `perFileMatchCap` in-range hits, and
-				// scale the global safety ceiling by the same amplification so ranged
-				// searches keep the baseline file coverage while staying finite.
-				const hasLineRangeFilters = pathSpecs.some(spec => spec.ranges);
-				const nativeMaxCountPerFile = hasLineRangeFilters
-					? Math.max(perFileMatchCap + 1, lineRangeFetchCap(pathSpecs, perFileMatchCap + 1))
-					: perFileMatchCap + 1;
-				const nativeMaxCount = hasLineRangeFilters
-					? Math.ceil(INTERNAL_TOTAL_CAP / (perFileMatchCap + 1)) * nativeMaxCountPerFile
-					: INTERNAL_TOTAL_CAP;
-
-				// Run grep
-				let result: GrepResult = {
-					matches: [],
-					totalMatches: 0,
-					filesWithMatches: 0,
-					filesSearched: 0,
-					limitReached: false,
-				};
-				let skippedOversizedCount = 0;
-				// Set when native grep could not compile the pattern as a regex on
-				// either engine and demoted it to a literal search (Law 10: the
-				// demotion must not be silent). Same pattern across every sub-search,
-				// so the first non-empty notice is authoritative.
-				let literalFallbackError: string | undefined;
-				try {
-					if (searchablePaths.length > 0) {
-						if (exactFilePaths || multiTargets) {
-							const matches: GrepMatch[] = [];
-							const seenMatchKeys = new Set<string>();
-							let limitReached = false;
-							let totalMatches = 0;
-							let filesSearched = 0;
-							const targets = exactFilePaths
-								? exactFilePaths.map(filePath => ({
-										basePath: filePath,
-										glob: undefined as string | undefined,
-									}))
-								: (multiTargets ?? []);
-							for (const target of targets) {
-								const targetResult = await grep(
-									{
-										pattern: normalizedPattern,
-										path: target.basePath,
-										glob: target.glob,
-										ignoreCase,
-										multiline: effectiveMultiline,
-										hidden: true,
-										gitignore: useGitignore,
-										maxCount: nativeMaxCount,
-										contextBefore: normalizedContextBefore,
-										contextAfter: normalizedContextAfter,
-										maxColumns: DEFAULT_MAX_COLUMN,
-										mode: effectiveOutputMode,
-										maxCountPerFile: nativeMaxCountPerFile,
-										signal,
-										timeoutMs: SEARCH_GREP_TIMEOUT_MS,
-									},
-									undefined,
-								);
-								skippedOversizedCount += targetResult.skippedOversized ?? 0;
-								literalFallbackError ??= targetResult.patternTreatedAsLiteral ?? undefined;
-								limitReached = limitReached || Boolean(targetResult.limitReached);
-								totalMatches += targetResult.totalMatches;
-								filesSearched += targetResult.filesSearched;
-								for (const match of targetResult.matches) {
-									const absolute = path.resolve(target.basePath, match.path);
-									// Overlapping targets (a directory plus a file nested
-									// inside it) surface the same physical line twice;
-									// keep the first occurrence.
-									const matchKey = `${absolute}\0${match.lineNumber}`;
-									if (seenMatchKeys.has(matchKey)) {
-										totalMatches = Math.max(0, totalMatches - 1);
-										continue;
-									}
-									seenMatchKeys.add(matchKey);
-									const rebased = path.relative(searchPath, absolute).replace(/\\/g, "/");
-									matches.push({ ...match, path: rebased });
-								}
-							}
-							result = {
-								matches,
-								totalMatches: exactFilePaths ? matches.length : totalMatches,
-								filesWithMatches: new Set(matches.map(match => match.path)).size,
-								filesSearched: exactFilePaths ? exactFilePaths.length : filesSearched,
-								limitReached,
-							};
-						} else {
-							result = await grep(
+					if (exactFilePaths || multiTargets) {
+						const matches: GrepMatch[] = [];
+						const seenMatchKeys = new Set<string>();
+						let limitReached = false;
+						let totalMatches = 0;
+						let filesSearched = 0;
+						const targets = exactFilePaths
+							? exactFilePaths.map(filePath => ({
+									basePath: filePath,
+									glob: undefined as string | undefined,
+								}))
+							: (multiTargets ?? []);
+						for (const target of targets) {
+							const targetResult = await grep(
 								{
 									pattern: normalizedPattern,
-									path: searchPath,
-									glob: globFilter,
+									path: target.basePath,
+									glob: target.glob,
 									ignoreCase,
 									multiline: effectiveMultiline,
 									hidden: true,
@@ -1185,403 +1131,445 @@ export async function executeTextSearch(
 								},
 								undefined,
 							);
-							skippedOversizedCount = result.skippedOversized ?? 0;
-							literalFallbackError ??= result.patternTreatedAsLiteral ?? undefined;
-						}
-					}
-				} catch (err) {
-					if (err instanceof Error && /^regex(?: parse)? error/i.test(err.message)) {
-						throw new ToolError(err.message.replace(/^regex(?: parse)? error:?\s*/i, "Invalid regex: "));
-					}
-					if (err instanceof Error && err.message.includes("Aborted: Timeout")) {
-						throw new ToolError(
-							`Grep timed out after ${SEARCH_GREP_TIMEOUT_MS / 1000}s; narrow paths or pattern, or scope with \`glob\` first`,
-						);
-					}
-					throw err;
-				}
-				let virtualResult: GrepResult;
-				try {
-					virtualResult = await searchVirtualResources(
-						virtualResources,
-						normalizedPattern,
-						ignoreCase,
-						effectiveMultiline,
-						normalizedContextBefore,
-						normalizedContextAfter,
-						INTERNAL_TOTAL_CAP,
-						signal,
-					);
-				} catch (err) {
-					if (err instanceof Error && /^regex(?: parse)? error/i.test(err.message)) {
-						throw new ToolError(err.message.replace(/^regex(?: parse)? error:?\s*/i, "Invalid regex: "));
-					}
-					if (err instanceof SyntaxError) {
-						throw new ToolError(`Invalid regex: ${err.message}`);
-					}
-					throw err;
-				}
-				result = mergeGrepResults(result, virtualResult, nativeMaxCount);
-				if (rangesByAbsPath.size > 0) {
-					const filteredMatches: GrepMatch[] = [];
-					for (const match of result.matches) {
-						const abs = matchAbsolutePath(match.path, searchPath);
-						const ranges = rangesByAbsPath.get(abs);
-						if (!ranges) {
-							// Path has no line-range constraint (e.g. a peer entry without `:N-M`).
-							filteredMatches.push(match);
-							continue;
-						}
-						if (!isLineInRanges(match.lineNumber, ranges)) continue;
-						// Drop context lines that fall outside the allowed ranges; they would
-						// otherwise leak content the caller explicitly excluded.
-						const trimBefore = match.contextBefore?.filter(c => isLineInRanges(c.lineNumber, ranges));
-						const trimAfter = match.contextAfter?.filter(c => isLineInRanges(c.lineNumber, ranges));
-						filteredMatches.push({
-							...match,
-							contextBefore: trimBefore && trimBefore.length > 0 ? trimBefore : undefined,
-							contextAfter: trimAfter && trimAfter.length > 0 ? trimAfter : undefined,
-						});
-					}
-					result = {
-						matches: filteredMatches,
-						totalMatches: filteredMatches.length,
-						filesWithMatches: new Set(filteredMatches.map(match => match.path)).size,
-						filesSearched: result.filesSearched,
-						limitReached: result.limitReached,
-					};
-				}
-				if (archiveDisplayMap.size > 0) {
-					for (const match of result.matches) {
-						const abs = matchAbsolutePath(match.path, searchPath);
-						const display = archiveDisplayMap.get(abs);
-						if (display) match.path = display;
-					}
-				}
-
-				const formatPath = (filePath: string): string =>
-					archiveDisplaySet.has(filePath) || virtualPathSet.has(filePath)
-						? filePath
-						: formatResultPath(filePath, isDirectory, searchPath, session.cwd);
-
-				// Group matches by file in encounter order. Detect per-file overflow
-				// BEFORE truncation so the renderer can surface that a hot file was
-				// trimmed for diversity.
-				const fileOrder: string[] = [];
-				const matchesByPath = new Map<string, GrepMatch[]>();
-				for (const match of result.matches) {
-					if (!matchesByPath.has(match.path)) {
-						fileOrder.push(match.path);
-						matchesByPath.set(match.path, []);
-					}
-					matchesByPath.get(match.path)!.push(match);
-				}
-				let perFileLimitReached = false;
-				for (const file of fileOrder) {
-					const list = matchesByPath.get(file)!;
-					if (list.length > perFileMatchCap) {
-						perFileLimitReached = true;
-						list.length = perFileMatchCap;
-					}
-				}
-				const totalFiles = fileOrder.length;
-				// When native grep stopped at its internal cap, files past the cap were
-				// never surfaced — the file total is only a lower bound.
-				const totalFilesLabel = result.limitReached ? `${totalFiles}+` : `${totalFiles}`;
-				// Single-file scopes can't paginate — there is one file by definition.
-				const canPaginate = isMultiScope;
-				const skipFiles = canPaginate ? Math.min(normalizedSkip, totalFiles) : 0;
-				const windowFiles = canPaginate ? fileOrder.slice(skipFiles, skipFiles + DEFAULT_FILE_LIMIT) : fileOrder;
-				const fileLimitReached = canPaginate && totalFiles > skipFiles + DEFAULT_FILE_LIMIT;
-				const selectedMatches: GrepMatch[] = [];
-				if (windowFiles.length > 0) {
-					const lists = windowFiles.map(file => matchesByPath.get(file) ?? []);
-					const cursors = new Array<number>(lists.length).fill(0);
-					let anyAdded = true;
-					while (anyAdded) {
-						anyAdded = false;
-						for (let i = 0; i < lists.length; i++) {
-							if (cursors[i] < lists[i].length) {
-								selectedMatches.push(lists[i][cursors[i]++]);
-								anyAdded = true;
-							}
-						}
-					}
-				}
-				const nextSkip = skipFiles + windowFiles.length;
-				const limitMessage = fileLimitReached
-					? `Showing files ${skipFiles + 1}-${nextSkip} of ${totalFilesLabel}. Use skip=${nextSkip} for the next page, or narrow paths/pattern.`
-					: "";
-				const { record: recordFile, list: fileList } = createFileRecorder();
-				const fileMatchCounts = new Map<string, number>();
-				// Detect explicit file targets that exceed the native grep size cap.
-				// Native searches only their first NATIVE_GREP_MAX_FILE_BYTES; without
-				// this note the caller might miss that matches beyond the window
-				// (or "no matches") reflect partial coverage, not the whole file.
-				const oversizedNote = await (async (): Promise<string | undefined> => {
-					const explicitFileTargets: string[] = [];
-					if (exactFilePaths) {
-						explicitFileTargets.push(...exactFilePaths);
-					} else if (searchablePaths.length > 0 && !isDirectory && !multiTargets) {
-						explicitFileTargets.push(searchPath);
-					}
-					if (explicitFileTargets.length === 0) return undefined;
-					const oversized: string[] = [];
-					await Promise.all(
-						explicitFileTargets.map(async target => {
-							try {
-								const st = await stat(target);
-								if (st.isFile() && st.size > NATIVE_GREP_MAX_FILE_BYTES) {
-									oversized.push(path.relative(session.cwd, target) || target);
+							skippedOversizedCount += targetResult.skippedOversized ?? 0;
+							literalFallbackError ??= targetResult.patternTreatedAsLiteral ?? undefined;
+							limitReached = limitReached || Boolean(targetResult.limitReached);
+							totalMatches += targetResult.totalMatches;
+							filesSearched += targetResult.filesSearched;
+							for (const match of targetResult.matches) {
+								const absolute = path.resolve(target.basePath, match.path);
+								// Overlapping targets (a directory plus a file nested
+								// inside it) surface the same physical line twice;
+								// keep the first occurrence.
+								const matchKey = `${absolute}\0${match.lineNumber}`;
+								if (seenMatchKeys.has(matchKey)) {
+									totalMatches = Math.max(0, totalMatches - 1);
+									continue;
 								}
-							} catch {
-								// Stat failures here are surfaced by other code paths.
+								seenMatchKeys.add(matchKey);
+								const rebased = path.relative(searchPath, absolute).replace(/\\/g, "/");
+								matches.push({ ...match, path: rebased });
 							}
-						}),
-					);
-					if (oversized.length === 0) return undefined;
-					const limitMb = Math.floor(NATIVE_GREP_MAX_FILE_BYTES / (1024 * 1024));
-					return `Searched only the first ${limitMb}MB of large files (matches past the ${limitMb}MB window are not shown; use \`read\` for the rest): ${oversized.join(", ")}`;
-				})();
-				// Directory/multi-target scopes: native counts files it could not map
-				// even a prefix of (rare mmap failures), but cannot name them.
-				const oversizedScanNote =
-					!oversizedNote && skippedOversizedCount > 0
-						? `Skipped ${skippedOversizedCount} unreadable large file(s); target them directly with \`read\``
-						: undefined;
-				const archiveNote =
-					archiveUnreadable.length > 0
-						? `Skipped archive entries (search supports text members only): ${archiveUnreadable.join(", ")}`
-						: undefined;
-				// Suppress entries we already explained via archiveNote — they would otherwise
-				// double up (the unreadable selector also failed the scope's existence check).
-				const archiveUnreadablePaths = new Set(archiveUnreadable.map(s => s.replace(/ \(.*\)$/, "")));
-				const missingPathsForNote = missingPaths.filter(p => !archiveUnreadablePaths.has(p));
-				const missingPathsNote =
-					missingPathsForNote.length > 0 ? `Skipped missing paths: ${missingPathsForNote.join(", ")}` : undefined;
-				// The pattern did not compile as a regex on either engine, so native
-				// grep matched it literally instead of failing. Surface that loudly —
-				// a silent literal demotion hides the recall gap (regex metacharacters
-				// were matched as plain text). Listed first: it reframes every result.
-				const literalFallbackNote = literalFallbackError
-					? `Pattern did not compile as a regex (${literalFallbackError}); searched for it literally instead. Matches reflect the exact text, not the intended pattern — fix the regex or escape it if a literal search was intended.`
-					: undefined;
-				const warningNote =
-					[literalFallbackNote, missingPathsNote, archiveNote, oversizedNote, oversizedScanNote]
-						.filter((s): s is string => Boolean(s))
-						.join("\n") || undefined;
-				if (selectedMatches.length === 0) {
-					const details: TextSearchDetails = {
-						scopePath,
-						searchPath,
-						cwd: session.cwd,
-						matchCount: 0,
-						fileCount: 0,
-						files: [],
-						truncated: false,
-						missingPaths: missingPaths.length > 0 ? missingPaths : undefined,
-					};
-					const skipPastEnd = canPaginate && normalizedSkip > 0 && totalFiles > 0 && skipFiles >= totalFiles;
-					const noMatchText = skipPastEnd
-						? `No more results (${totalFilesLabel} files total; skip=${normalizedSkip} is past the end)`
-						: "No matches found";
-					const text = warningNote ? `${noMatchText}\n${warningNote}` : noMatchText;
-					// Zero matches is useless regardless of warnings: by the time
-					// compaction runs, the follow-up call has already corrected course.
-					return toolResult(details).text(text).useless().done();
-				}
-				const outputLines: string[] = [];
-				let linesTruncated = false;
-				const matchesByFile = new Map<string, GrepMatch[]>();
-				for (const match of selectedMatches) {
-					const relativePath = formatPath(match.path);
-					recordFile(relativePath);
-					if (!matchesByFile.has(relativePath)) {
-						matchesByFile.set(relativePath, []);
-					}
-					matchesByFile.get(relativePath)!.push(match);
-				}
-				const displayLines: string[] = [];
-				const hashContexts = new Map<string, { tag: string }>();
-				if (baseDisplayMode.hashLines) {
-					for (const relativePath of fileList) {
-						if (archiveDisplaySet.has(relativePath) || virtualPathSet.has(relativePath)) continue;
-						const absoluteFilePath = path.resolve(session.cwd, relativePath);
-						if (isImmutableSourcePath(absoluteFilePath, immutableSourcePaths)) continue;
-						// Mint a whole-file content tag so any anchor validates while the
-						// file is unchanged; over-cap / unreadable files get no tag (and
-						// therefore plain, non-editable line output).
-						const tag = await recordFileSnapshot(session, absoluteFilePath);
-						if (tag) hashContexts.set(relativePath, { tag });
-					}
-				}
-				const renderMatchesForFile = (relativePath: string): { model: string[]; display: string[] } => {
-					const modelOut: string[] = [];
-					const displayOut: string[] = [];
-					const fileMatches = matchesByFile.get(relativePath) ?? [];
-					const hashContext = hashContexts.get(relativePath);
-					const useHashLines = hashContext !== undefined;
-					const lineNumberWidth = fileMatches.reduce((width, match) => {
-						let nextWidth = Math.max(width, String(match.lineNumber).length);
-						for (const ctx of match.contextBefore ?? []) {
-							nextWidth = Math.max(nextWidth, String(ctx.lineNumber).length);
 						}
-						for (const ctx of match.contextAfter ?? []) {
-							nextWidth = Math.max(nextWidth, String(ctx.lineNumber).length);
-						}
-						return nextWidth;
-					}, 0);
-					let lastEmittedLine: number | undefined;
-					const gutterPad = " ".repeat(lineNumberWidth + 1);
-					// Track match/context lines whose displayed text was
-					// column-truncated by the native (see `crates/veyyon-natives/src/grep.rs`
-					// `truncate_line`, marker `...` at max_columns). Excluded from
-					// seenLines so a follow-up edit anchored at that line still
-					// requires a full-width re-read — the model saw only the
-					// prefix. The native currently propagates `truncated` only on
-					// the match line; context lines fall back to a length check
-					// against `DEFAULT_MAX_COLUMN` as a conservative heuristic.
-					const clippedLines = new Set<number>();
-					const isNativeTruncated = (line: string): boolean =>
-						line.length >= DEFAULT_MAX_COLUMN && line.endsWith("...");
-					for (const match of fileMatches) {
-						const pushLine = (lineNumber: number, line: string, isMatch: boolean) => {
-							if (lastEmittedLine !== undefined && lineNumber > lastEmittedLine + 1) {
-								modelOut.push("...");
-								displayOut.push(`${gutterPad}│...`);
-							}
-							modelOut.push(formatMatchLine(lineNumber, line, isMatch, { useHashLines }));
-							displayOut.push(formatCodeFrameLine(isMatch ? "*" : " ", lineNumber, line, lineNumberWidth));
-							lastEmittedLine = lineNumber;
+						result = {
+							matches,
+							totalMatches: exactFilePaths ? matches.length : totalMatches,
+							filesWithMatches: new Set(matches.map(match => match.path)).size,
+							filesSearched: exactFilePaths ? exactFilePaths.length : filesSearched,
+							limitReached,
 						};
-						if (match.contextBefore) {
-							for (const ctx of match.contextBefore) {
-								pushLine(ctx.lineNumber, ctx.line, false);
-								if (isNativeTruncated(ctx.line)) clippedLines.add(ctx.lineNumber);
-							}
-						}
-						pushLine(match.lineNumber, match.line, true);
-						if (match.truncated) {
-							linesTruncated = true;
-							clippedLines.add(match.lineNumber);
-						}
-						if (match.contextAfter) {
-							for (const ctx of match.contextAfter) {
-								pushLine(ctx.lineNumber, ctx.line, false);
-								if (isNativeTruncated(ctx.line)) clippedLines.add(ctx.lineNumber);
-							}
-						}
-						fileMatchCounts.set(relativePath, (fileMatchCounts.get(relativePath) ?? 0) + 1);
-					}
-					if (hashContext?.tag) {
-						const absoluteFilePath = path.resolve(session.cwd, relativePath);
-						recordSeenLinesFromBody(
-							session,
-							absoluteFilePath,
-							hashContext.tag,
-							modelOut.join("\n"),
-							clippedLines,
+					} else {
+						result = await grep(
+							{
+								pattern: normalizedPattern,
+								path: searchPath,
+								glob: globFilter,
+								ignoreCase,
+								multiline: effectiveMultiline,
+								hidden: true,
+								gitignore: useGitignore,
+								maxCount: nativeMaxCount,
+								contextBefore: normalizedContextBefore,
+								contextAfter: normalizedContextAfter,
+								maxColumns: DEFAULT_MAX_COLUMN,
+								mode: effectiveOutputMode,
+								maxCountPerFile: nativeMaxCountPerFile,
+								signal,
+								timeoutMs: SEARCH_GREP_TIMEOUT_MS,
+							},
+							undefined,
 						);
-					}
-					return { model: modelOut, display: displayOut };
-				};
-				const useGroupedOutput = isDirectory || isMultiScope;
-				if (useGroupedOutput) {
-					const grouped = formatGroupedFiles(fileList, relativePath => {
-						const rendered = renderMatchesForFile(relativePath);
-						const hashContext = hashContexts.get(relativePath);
-						return {
-							modelLines: rendered.model,
-							displayLines: rendered.display,
-							headerSuffix: hashContext?.tag ? `#${hashContext.tag}` : "",
-							skip: rendered.model.length === 0,
-						};
-					});
-					outputLines.push(...grouped.model);
-					displayLines.push(...grouped.display);
-				} else {
-					for (const relativePath of fileList) {
-						const rendered = renderMatchesForFile(relativePath);
-						if (rendered.model.length === 0) continue;
-						if (outputLines.length > 0) {
-							outputLines.push("");
-							displayLines.push("");
-						}
-						const hashContext = hashContexts.get(relativePath);
-						if (hashContext?.tag) {
-							outputLines.push(formatHashlineHeader(relativePath, hashContext.tag));
-						}
-						outputLines.push(...rendered.model);
-						displayLines.push(...rendered.display);
+						skippedOversizedCount = result.skippedOversized ?? 0;
+						literalFallbackError ??= result.patternTreatedAsLiteral ?? undefined;
 					}
 				}
-				if (limitMessage) {
-					outputLines.push("", limitMessage);
+			} catch (err) {
+				if (err instanceof Error && /^regex(?: parse)? error/i.test(err.message)) {
+					throw new ToolError(err.message.replace(/^regex(?: parse)? error:?\s*/i, "Invalid regex: "));
 				}
-				if (warningNote) {
-					outputLines.push("", warningNote);
+				if (err instanceof Error && err.message.includes("Aborted: Timeout")) {
+					throw new ToolError(
+						`Text search timed out after ${SEARCH_GREP_TIMEOUT_MS / 1000}s; narrow \`path\` or \`input\`, or locate a tighter scope with \`type: "files"\` first`,
+					);
 				}
-				const rawOutput = outputLines.join("\n");
-				// A single query can return a match set that dwarfs the inline floor
-				// (the line/column budget alone permits well over a megabyte).
-				// truncateHead bounds the model-facing text to DEFAULT_MAX_BYTES, but
-				// on its own that silently DROPS the elided tail. When it truncates,
-				// save the FULL match set to an artifact and append the recoverable
-				// `artifact://<id>` footer so nothing is lost and the huge result is
-				// not carried verbatim for every later turn.
-				// Bounded by the same turn-scaled budget every other tool uses. grep keeps
-				// a HEAD window rather than head-and-tail because matches arrive in
-				// order, but the SIZE of that window is priced identically: an early
-				// result is re-read for the rest of the session whichever tool produced
-				// it. See `inlineBudgetFor`.
-				const truncation = truncateHead(rawOutput, {
-					maxLines: Number.MAX_SAFE_INTEGER,
-					maxBytes: inlineBudgetFor(session),
-				});
-				let output = truncation.content;
-				let spillArtifactId: string | undefined;
-				if (truncation.truncated) {
-					spillArtifactId = await saveOutputArtifact(session, "search-text", rawOutput);
-					if (spillArtifactId) {
-						const sep = output.endsWith("\n") ? "" : "\n";
-						output += `${sep}${artifactFooter(spillArtifactId)}`;
-					}
-				}
-				const displayText = displayLines.join("\n");
-				const truncated = Boolean(
-					fileLimitReached || perFileLimitReached || result.limitReached || truncation.truncated || linesTruncated,
+				throw err;
+			}
+			let virtualResult: GrepResult;
+			try {
+				virtualResult = await searchVirtualResources(
+					virtualResources,
+					normalizedPattern,
+					ignoreCase,
+					effectiveMultiline,
+					normalizedContextBefore,
+					normalizedContextAfter,
+					INTERNAL_TOTAL_CAP,
+					signal,
 				);
+			} catch (err) {
+				if (err instanceof Error && /^regex(?: parse)? error/i.test(err.message)) {
+					throw new ToolError(err.message.replace(/^regex(?: parse)? error:?\s*/i, "Invalid regex: "));
+				}
+				if (err instanceof SyntaxError) {
+					throw new ToolError(`Invalid regex: ${err.message}`);
+				}
+				throw err;
+			}
+			result = mergeGrepResults(result, virtualResult, nativeMaxCount);
+			if (rangesByAbsPath.size > 0) {
+				const filteredMatches: GrepMatch[] = [];
+				for (const match of result.matches) {
+					const abs = matchAbsolutePath(match.path, searchPath);
+					const ranges = rangesByAbsPath.get(abs);
+					if (!ranges) {
+						// Path has no line-range constraint (e.g. a peer entry without `:N-M`).
+						filteredMatches.push(match);
+						continue;
+					}
+					if (!isLineInRanges(match.lineNumber, ranges)) continue;
+					// Drop context lines that fall outside the allowed ranges; they would
+					// otherwise leak content the caller explicitly excluded.
+					const trimBefore = match.contextBefore?.filter(c => isLineInRanges(c.lineNumber, ranges));
+					const trimAfter = match.contextAfter?.filter(c => isLineInRanges(c.lineNumber, ranges));
+					filteredMatches.push({
+						...match,
+						contextBefore: trimBefore && trimBefore.length > 0 ? trimBefore : undefined,
+						contextAfter: trimAfter && trimAfter.length > 0 ? trimAfter : undefined,
+					});
+				}
+				result = {
+					matches: filteredMatches,
+					totalMatches: filteredMatches.length,
+					filesWithMatches: new Set(filteredMatches.map(match => match.path)).size,
+					filesSearched: result.filesSearched,
+					limitReached: result.limitReached,
+				};
+			}
+			if (archiveDisplayMap.size > 0) {
+				for (const match of result.matches) {
+					const abs = matchAbsolutePath(match.path, searchPath);
+					const display = archiveDisplayMap.get(abs);
+					if (display) match.path = display;
+				}
+			}
+
+			const formatPath = (filePath: string): string =>
+				archiveDisplaySet.has(filePath) || virtualPathSet.has(filePath)
+					? filePath
+					: formatResultPath(filePath, isDirectory, searchPath, session.cwd);
+
+			// Group matches by file in encounter order. Detect per-file overflow
+			// BEFORE truncation so the renderer can surface that a hot file was
+			// trimmed for diversity.
+			const fileOrder: string[] = [];
+			const matchesByPath = new Map<string, GrepMatch[]>();
+			for (const match of result.matches) {
+				if (!matchesByPath.has(match.path)) {
+					fileOrder.push(match.path);
+					matchesByPath.set(match.path, []);
+				}
+				matchesByPath.get(match.path)!.push(match);
+			}
+			let perFileLimitReached = false;
+			for (const file of fileOrder) {
+				const list = matchesByPath.get(file)!;
+				if (list.length > perFileMatchCap) {
+					perFileLimitReached = true;
+					list.length = perFileMatchCap;
+				}
+			}
+			const totalFiles = fileOrder.length;
+			// When native grep stopped at its internal cap, files past the cap were
+			// never surfaced — the file total is only a lower bound.
+			const totalFilesLabel = result.limitReached ? `${totalFiles}+` : `${totalFiles}`;
+			// Single-file scopes can't paginate — there is one file by definition.
+			const canPaginate = isMultiScope;
+			const skipFiles = canPaginate ? Math.min(normalizedSkip, totalFiles) : 0;
+			const windowFiles = canPaginate ? fileOrder.slice(skipFiles, skipFiles + DEFAULT_FILE_LIMIT) : fileOrder;
+			const fileLimitReached = canPaginate && totalFiles > skipFiles + DEFAULT_FILE_LIMIT;
+			const selectedMatches: GrepMatch[] = [];
+			if (windowFiles.length > 0) {
+				const lists = windowFiles.map(file => matchesByPath.get(file) ?? []);
+				const cursors = new Array<number>(lists.length).fill(0);
+				let anyAdded = true;
+				while (anyAdded) {
+					anyAdded = false;
+					for (let i = 0; i < lists.length; i++) {
+						if (cursors[i] < lists[i].length) {
+							selectedMatches.push(lists[i][cursors[i]++]);
+							anyAdded = true;
+						}
+					}
+				}
+			}
+			const nextSkip = skipFiles + windowFiles.length;
+			const limitMessage = fileLimitReached
+				? `Showing files ${skipFiles + 1}-${nextSkip} of ${totalFilesLabel}. Use skip=${nextSkip} for the next page, or narrow paths/pattern.`
+				: "";
+			const { record: recordFile, list: fileList } = createFileRecorder();
+			const fileMatchCounts = new Map<string, number>();
+			// Detect explicit file targets that exceed the native grep size cap.
+			// Native searches only their first NATIVE_GREP_MAX_FILE_BYTES; without
+			// this note the caller might miss that matches beyond the window
+			// (or "no matches") reflect partial coverage, not the whole file.
+			const oversizedNote = await (async (): Promise<string | undefined> => {
+				const explicitFileTargets: string[] = [];
+				if (exactFilePaths) {
+					explicitFileTargets.push(...exactFilePaths);
+				} else if (searchablePaths.length > 0 && !isDirectory && !multiTargets) {
+					explicitFileTargets.push(searchPath);
+				}
+				if (explicitFileTargets.length === 0) return undefined;
+				const oversized: string[] = [];
+				await Promise.all(
+					explicitFileTargets.map(async target => {
+						try {
+							const st = await stat(target);
+							if (st.isFile() && st.size > NATIVE_GREP_MAX_FILE_BYTES) {
+								oversized.push(path.relative(session.cwd, target) || target);
+							}
+						} catch {
+							// Stat failures here are surfaced by other code paths.
+						}
+					}),
+				);
+				if (oversized.length === 0) return undefined;
+				const limitMb = Math.floor(NATIVE_GREP_MAX_FILE_BYTES / (1024 * 1024));
+				return `Searched only the first ${limitMb}MB of large files (matches past the ${limitMb}MB window are not shown; use \`read\` for the rest): ${oversized.join(", ")}`;
+			})();
+			// Directory/multi-target scopes: native counts files it could not map
+			// even a prefix of (rare mmap failures), but cannot name them.
+			const oversizedScanNote =
+				!oversizedNote && skippedOversizedCount > 0
+					? `Skipped ${skippedOversizedCount} unreadable large file(s); target them directly with \`read\``
+					: undefined;
+			const archiveNote =
+				archiveUnreadable.length > 0
+					? `Skipped archive entries (search supports text members only): ${archiveUnreadable.join(", ")}`
+					: undefined;
+			// Suppress entries we already explained via archiveNote — they would otherwise
+			// double up (the unreadable selector also failed the scope's existence check).
+			const archiveUnreadablePaths = new Set(archiveUnreadable.map(s => s.replace(/ \(.*\)$/, "")));
+			const missingPathsForNote = missingPaths.filter(p => !archiveUnreadablePaths.has(p));
+			const missingPathsNote =
+				missingPathsForNote.length > 0 ? `Skipped missing paths: ${missingPathsForNote.join(", ")}` : undefined;
+			// The pattern did not compile as a regex on either engine, so native
+			// grep matched it literally instead of failing. Surface that loudly —
+			// a silent literal demotion hides the recall gap (regex metacharacters
+			// were matched as plain text). Listed first: it reframes every result.
+			const literalFallbackNote = literalFallbackError
+				? `Pattern did not compile as a regex (${literalFallbackError}); searched for it literally instead. Matches reflect the exact text, not the intended pattern — fix the regex or escape it if a literal search was intended.`
+				: undefined;
+			const warningNote =
+				[literalFallbackNote, missingPathsNote, archiveNote, oversizedNote, oversizedScanNote]
+					.filter((s): s is string => Boolean(s))
+					.join("\n") || undefined;
+			if (selectedMatches.length === 0) {
 				const details: TextSearchDetails = {
 					scopePath,
 					searchPath,
 					cwd: session.cwd,
-					matchCount: selectedMatches.length,
-					fileCount: fileList.length,
-					files: fileList,
-					fileMatches: fileList.map(path => ({
-						path,
-						count: fileMatchCounts.get(path) ?? 0,
-					})),
-					truncated,
-					fileLimitReached: fileLimitReached ? DEFAULT_FILE_LIMIT : undefined,
-					perFileLimitReached: perFileLimitReached ? perFileMatchCap : undefined,
-					displayContent: displayText,
+					matchCount: 0,
+					fileCount: 0,
+					files: [],
+					truncated: false,
 					missingPaths: missingPaths.length > 0 ? missingPaths : undefined,
 				};
-				if (truncation.truncated) details.truncation = truncation;
-				if (linesTruncated) details.linesTruncated = true;
-				const resultBuilder = toolResult(details)
-					.text(output)
-					.limits({ columnMax: linesTruncated ? DEFAULT_MAX_COLUMN : undefined });
-				if (truncation.truncated) {
-					resultBuilder.truncation(truncation, { direction: "head", artifactId: spillArtifactId });
-				}
-				return resultBuilder.done();
-			} finally {
-				await cleanupArchiveScratch();
+				const skipPastEnd = canPaginate && normalizedSkip > 0 && totalFiles > 0 && skipFiles >= totalFiles;
+				const noMatchText = skipPastEnd
+					? `No more results (${totalFilesLabel} files total; skip=${normalizedSkip} is past the end)`
+					: "No matches found";
+				const text = warningNote ? `${noMatchText}\n${warningNote}` : noMatchText;
+				// Zero matches is useless regardless of warnings: by the time
+				// compaction runs, the follow-up call has already corrected course.
+				return toolResult(details).text(text).useless().done();
 			}
-		});
-	}
+			const outputLines: string[] = [];
+			let linesTruncated = false;
+			const matchesByFile = new Map<string, GrepMatch[]>();
+			for (const match of selectedMatches) {
+				const relativePath = formatPath(match.path);
+				recordFile(relativePath);
+				if (!matchesByFile.has(relativePath)) {
+					matchesByFile.set(relativePath, []);
+				}
+				matchesByFile.get(relativePath)!.push(match);
+			}
+			const displayLines: string[] = [];
+			const hashContexts = new Map<string, { tag: string }>();
+			if (baseDisplayMode.hashLines) {
+				for (const relativePath of fileList) {
+					if (archiveDisplaySet.has(relativePath) || virtualPathSet.has(relativePath)) continue;
+					const absoluteFilePath = path.resolve(session.cwd, relativePath);
+					if (isImmutableSourcePath(absoluteFilePath, immutableSourcePaths)) continue;
+					// Mint a whole-file content tag so any anchor validates while the
+					// file is unchanged; over-cap / unreadable files get no tag (and
+					// therefore plain, non-editable line output).
+					const tag = await recordFileSnapshot(session, absoluteFilePath);
+					if (tag) hashContexts.set(relativePath, { tag });
+				}
+			}
+			const renderMatchesForFile = (relativePath: string): { model: string[]; display: string[] } => {
+				const modelOut: string[] = [];
+				const displayOut: string[] = [];
+				const fileMatches = matchesByFile.get(relativePath) ?? [];
+				const hashContext = hashContexts.get(relativePath);
+				const useHashLines = hashContext !== undefined;
+				const lineNumberWidth = fileMatches.reduce((width, match) => {
+					let nextWidth = Math.max(width, String(match.lineNumber).length);
+					for (const ctx of match.contextBefore ?? []) {
+						nextWidth = Math.max(nextWidth, String(ctx.lineNumber).length);
+					}
+					for (const ctx of match.contextAfter ?? []) {
+						nextWidth = Math.max(nextWidth, String(ctx.lineNumber).length);
+					}
+					return nextWidth;
+				}, 0);
+				let lastEmittedLine: number | undefined;
+				const gutterPad = " ".repeat(lineNumberWidth + 1);
+				// Track match/context lines whose displayed text was
+				// column-truncated by the native (see `crates/veyyon-natives/src/grep.rs`
+				// `truncate_line`, marker `...` at max_columns). Excluded from
+				// seenLines so a follow-up edit anchored at that line still
+				// requires a full-width re-read — the model saw only the
+				// prefix. The native currently propagates `truncated` only on
+				// the match line; context lines fall back to a length check
+				// against `DEFAULT_MAX_COLUMN` as a conservative heuristic.
+				const clippedLines = new Set<number>();
+				const isNativeTruncated = (line: string): boolean =>
+					line.length >= DEFAULT_MAX_COLUMN && line.endsWith("...");
+				for (const match of fileMatches) {
+					const pushLine = (lineNumber: number, line: string, isMatch: boolean) => {
+						if (lastEmittedLine !== undefined && lineNumber > lastEmittedLine + 1) {
+							modelOut.push("...");
+							displayOut.push(`${gutterPad}│...`);
+						}
+						modelOut.push(formatMatchLine(lineNumber, line, isMatch, { useHashLines }));
+						displayOut.push(formatCodeFrameLine(isMatch ? "*" : " ", lineNumber, line, lineNumberWidth));
+						lastEmittedLine = lineNumber;
+					};
+					if (match.contextBefore) {
+						for (const ctx of match.contextBefore) {
+							pushLine(ctx.lineNumber, ctx.line, false);
+							if (isNativeTruncated(ctx.line)) clippedLines.add(ctx.lineNumber);
+						}
+					}
+					pushLine(match.lineNumber, match.line, true);
+					if (match.truncated) {
+						linesTruncated = true;
+						clippedLines.add(match.lineNumber);
+					}
+					if (match.contextAfter) {
+						for (const ctx of match.contextAfter) {
+							pushLine(ctx.lineNumber, ctx.line, false);
+							if (isNativeTruncated(ctx.line)) clippedLines.add(ctx.lineNumber);
+						}
+					}
+					fileMatchCounts.set(relativePath, (fileMatchCounts.get(relativePath) ?? 0) + 1);
+				}
+				if (hashContext?.tag) {
+					const absoluteFilePath = path.resolve(session.cwd, relativePath);
+					recordSeenLinesFromBody(session, absoluteFilePath, hashContext.tag, modelOut.join("\n"), clippedLines);
+				}
+				return { model: modelOut, display: displayOut };
+			};
+			const useGroupedOutput = isDirectory || isMultiScope;
+			if (useGroupedOutput) {
+				const grouped = formatGroupedFiles(fileList, relativePath => {
+					const rendered = renderMatchesForFile(relativePath);
+					const hashContext = hashContexts.get(relativePath);
+					return {
+						modelLines: rendered.model,
+						displayLines: rendered.display,
+						headerSuffix: hashContext?.tag ? `#${hashContext.tag}` : "",
+						skip: rendered.model.length === 0,
+					};
+				});
+				outputLines.push(...grouped.model);
+				displayLines.push(...grouped.display);
+			} else {
+				for (const relativePath of fileList) {
+					const rendered = renderMatchesForFile(relativePath);
+					if (rendered.model.length === 0) continue;
+					if (outputLines.length > 0) {
+						outputLines.push("");
+						displayLines.push("");
+					}
+					const hashContext = hashContexts.get(relativePath);
+					if (hashContext?.tag) {
+						outputLines.push(formatHashlineHeader(relativePath, hashContext.tag));
+					}
+					outputLines.push(...rendered.model);
+					displayLines.push(...rendered.display);
+				}
+			}
+			if (limitMessage) {
+				outputLines.push("", limitMessage);
+			}
+			if (warningNote) {
+				outputLines.push("", warningNote);
+			}
+			const rawOutput = outputLines.join("\n");
+			// A single query can return a match set that dwarfs the inline floor
+			// (the line/column budget alone permits well over a megabyte).
+			// truncateHead bounds the model-facing text to DEFAULT_MAX_BYTES, but
+			// on its own that silently DROPS the elided tail. When it truncates,
+			// save the FULL match set to an artifact and append the recoverable
+			// `artifact://<id>` footer so nothing is lost and the huge result is
+			// not carried verbatim for every later turn.
+			// Bounded by the same turn-scaled budget every other tool uses. grep keeps
+			// a HEAD window rather than head-and-tail because matches arrive in
+			// order, but the SIZE of that window is priced identically: an early
+			// result is re-read for the rest of the session whichever tool produced
+			// it. See `inlineBudgetFor`.
+			const truncation = truncateHead(rawOutput, {
+				maxLines: Number.MAX_SAFE_INTEGER,
+				maxBytes: inlineBudgetFor(session),
+			});
+			let output = truncation.content;
+			let spillArtifactId: string | undefined;
+			if (truncation.truncated) {
+				spillArtifactId = await saveOutputArtifact(session, "search-text", rawOutput);
+				if (spillArtifactId) {
+					const sep = output.endsWith("\n") ? "" : "\n";
+					output += `${sep}${artifactFooter(spillArtifactId)}`;
+				}
+			}
+			const displayText = displayLines.join("\n");
+			const truncated = Boolean(
+				fileLimitReached || perFileLimitReached || result.limitReached || truncation.truncated || linesTruncated,
+			);
+			const details: TextSearchDetails = {
+				scopePath,
+				searchPath,
+				cwd: session.cwd,
+				matchCount: selectedMatches.length,
+				fileCount: fileList.length,
+				files: fileList,
+				fileMatches: fileList.map(path => ({
+					path,
+					count: fileMatchCounts.get(path) ?? 0,
+				})),
+				truncated,
+				fileLimitReached: fileLimitReached ? DEFAULT_FILE_LIMIT : undefined,
+				perFileLimitReached: perFileLimitReached ? perFileMatchCap : undefined,
+				displayContent: displayText,
+				missingPaths: missingPaths.length > 0 ? missingPaths : undefined,
+			};
+			if (truncation.truncated) details.truncation = truncation;
+			if (linesTruncated) details.linesTruncated = true;
+			const resultBuilder = toolResult(details)
+				.text(output)
+				.limits({ columnMax: linesTruncated ? DEFAULT_MAX_COLUMN : undefined });
+			if (truncation.truncated) {
+				resultBuilder.truncation(truncation, { direction: "head", artifactId: spillArtifactId });
+			}
+			return resultBuilder.done();
+		} finally {
+			await cleanupArchiveScratch();
+		}
+	});
+}
 
 // =============================================================================
 // TUI Renderer

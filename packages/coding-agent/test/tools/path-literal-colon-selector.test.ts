@@ -13,7 +13,7 @@ import {
 } from "@veyyon/coding-agent/tools/path-utils";
 import { ReadTool } from "@veyyon/coding-agent/tools/read";
 import { removeWithRetries } from "@veyyon/utils";
-import { GrepTool } from "../../src/tools/grep";
+import { SearchTool } from "../../src/tools/search";
 import { makeToolSession } from "../helpers/tool-session";
 
 function getText(result: { content: Array<{ type: string; text?: string }> }): string {
@@ -46,7 +46,7 @@ describe("literal colon filename resolution (issue #4618)", () => {
 			hasUI: false,
 			getSessionFile: () => null,
 			getSessionSpawns: () => "*",
-			settings: Settings.isolated({ "grep.contextBefore": 0, "grep.contextAfter": 0 }),
+			settings: Settings.isolated({ "search.contextBefore": 0, "search.contextAfter": 0 }),
 			...overrides,
 		};
 	}
@@ -220,15 +220,16 @@ describe("literal colon filename resolution (issue #4618)", () => {
 		});
 	});
 
-	describe("grep tool", () => {
+	describe("search tool (text)", () => {
 		it("searches inside a literal `test:1-2` file", async () => {
 			const literal = "test:1-2";
 			const absolute = path.join(tmpDir, literal);
 			await Bun.write(absolute, "needle\n");
 
-			const tool = new GrepTool(createSession());
+			const tool = new SearchTool(createSession());
 			const result = await tool.execute("grep-literal", {
-				pattern: "needle",
+				type: "text",
+				input: "needle",
 				path: absolute,
 			});
 			const output = getText(result);
@@ -241,9 +242,10 @@ describe("literal colon filename resolution (issue #4618)", () => {
 			await fs.mkdir(path.join(tmpDir, "dir"), { recursive: true });
 			await Bun.write(path.join(tmpDir, "dir", "a b:1-2"), "escaped literal needle\n");
 
-			const tool = new GrepTool(createSession());
+			const tool = new SearchTool(createSession());
 			const result = await tool.execute("grep-escaped-literal", {
-				pattern: "needle",
+				type: "text",
+				input: "needle",
 				path: "dir/a\\ b:1-2",
 			});
 			const output = getText(result);
@@ -258,13 +260,14 @@ describe("literal colon filename resolution (issue #4618)", () => {
 			const literal = path.join(tmpDir, "a;b:1-2");
 			await Bun.write(literal, "delimited literal needle\n");
 
-			const tool = new GrepTool(createSession());
+			const tool = new SearchTool(createSession());
 			const result = await tool.execute("grep-literal-semicolon-selector", {
-				pattern: "needle",
+				type: "text",
+				input: "needle",
 				path: literal,
 			});
-			const output = getText(result);
 
+			const output = getText(result);
 			expect(output).toContain("delimited literal needle");
 			expect(output).not.toMatch(/not found/i);
 		});
@@ -277,13 +280,14 @@ describe("literal colon filename resolution (issue #4618)", () => {
 			const literal = path.join(tmpDir, "data.zip:1-2");
 			await Bun.write(literal, "literal archive needle\n");
 
-			const tool = new GrepTool(createSession());
+			const tool = new SearchTool(createSession());
 			const result = await tool.execute("grep-literal-zip-selector", {
-				pattern: "needle",
+				type: "text",
+				input: "needle",
 				path: literal,
 			});
-			const output = getText(result);
 
+			const output = getText(result);
 			expect(output).toContain("literal archive needle");
 		});
 
@@ -291,9 +295,10 @@ describe("literal colon filename resolution (issue #4618)", () => {
 			const absolute = path.join(tmpDir, "notes.txt");
 			await Bun.write(absolute, "one\ntwo\nthree\nfour\n");
 
-			const tool = new GrepTool(createSession());
+			const tool = new SearchTool(createSession());
 			const rangedResult = await tool.execute("grep-range-filter", {
-				pattern: ".",
+				type: "text",
+				input: ".",
 				path: `${absolute}:1-2`,
 			});
 			const rangedOutput = getText(rangedResult);
@@ -337,8 +342,8 @@ describe("leading-colon path recovery (issue #5508)", () => {
 			getSessionId: () => null,
 			getPlanModeState: () => undefined,
 			settings: Settings.isolated({
-				"grep.contextBefore": 0,
-				"grep.contextAfter": 0,
+				"search.contextBefore": 0,
+				"search.contextAfter": 0,
 				"edit.mode": "patch",
 			}),
 			...overrides,
@@ -382,12 +387,13 @@ describe("leading-colon path recovery (issue #5508)", () => {
 		expect(output).not.toMatch(/not found/i);
 	});
 
-	it("grep searches a file addressed with a leading colon", async () => {
+	it("search searches a file addressed with a leading colon", async () => {
 		const abs = path.join(tmpDir, "colon-grep.txt");
 		await Bun.write(abs, "needle here\nsecond line\n");
 
-		const result = await new GrepTool(createSession()).execute("grep-leading-colon", {
-			pattern: "needle",
+		const result = await new SearchTool(createSession()).execute("grep-leading-colon", {
+			type: "text",
+			input: "needle",
 			path: `:${abs}`,
 		});
 		const output = getText(result);

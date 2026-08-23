@@ -120,7 +120,6 @@ describe("a statement conditioned on a tool needs that tool", () => {
 		expect(compound.map(statement => statement.id).sort()).toEqual([
 			"execution-workflow/implement-no-destructive",
 			"tool-policy/ast",
-			"tool-policy/ast-plain-text",
 			"tool-policy/delegation",
 			"tool-policy/delegation-allowed",
 			"tool-policy/delegation-codex-eager",

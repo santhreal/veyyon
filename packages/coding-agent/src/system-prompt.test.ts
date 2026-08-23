@@ -584,7 +584,7 @@ describe("system prompt cache prefix", () => {
 					hide: false,
 				},
 			],
-			toolNames: ["read", "bash", "task", "lsp", "ast_grep"],
+			toolNames: ["read", "bash", "task", "lsp", "search"],
 			model: "openai/gpt-5.6",
 			personality: "friendly",
 			eagerTasks: true,

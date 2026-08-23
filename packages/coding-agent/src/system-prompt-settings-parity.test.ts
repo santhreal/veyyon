@@ -6,9 +6,9 @@ import { RUNTIME_SECTIONS } from "./system-prompt-builder/section-registry";
 import { PROMPT_STATEMENTS, type StatementCondition } from "./system-prompt-builder/statement-registry";
 import { delegationEnabled } from "./task/subagent-settings";
 import { TOOL } from "./tools/builtin-names";
-import { SearchTool } from "./tools/search";
 import type { ToolSession } from "./tools/index";
 import { type BuiltinToolPermissionInputs, isBuiltinToolAllowed } from "./tools/loading/policy";
+import { SearchTool } from "./tools/search";
 import type { ActiveRepoContext } from "./utils/active-repo-context";
 
 /**
@@ -48,7 +48,7 @@ const EMPTY_TREE = {
 };
 
 /** Tool set that unlocks the delegation section and the specialized-tool bullets. */
-const DELEGATION_TOOLS = ["read", "edit", "write", "bash", "grep", "glob", "task"];
+const DELEGATION_TOOLS = ["read", "edit", "write", "bash", "search", "task"];
 
 /**
  * Render the default template's static block (systemPrompt[0]) with pre-loaded
@@ -181,8 +181,7 @@ const GATING_PROPS = [
 	"hasRead",
 	"hasEdit",
 	"hasWrite",
-	"hasGrep",
-	"hasGlob",
+	"hasSearch",
 	"hasBash",
 	"hasAsk",
 	"hasInspectImage",
@@ -310,8 +309,8 @@ describe("system prompt settings parity: tool policy", () => {
 		expect(await renderBlock0({ toolNames: ["read"] })).not.toContain("Todo calls NEVER travel alone");
 	});
 
-	it(`${asserted("hasAstTools")} exposes AST guidance through unified structure search`, async () => {
-		expect(await renderBlock0({ toolNames: ["read", "search"] })).toContain("# AST");
+	it(`${asserted("hasAstTools")} exposes AST guidance for structural edits`, async () => {
+		expect(await renderBlock0({ toolNames: ["read", "ast_edit"] })).toContain("# AST");
 		expect(await renderBlock0({ toolNames: ["read"] })).not.toContain("# AST");
 	});
 
@@ -338,14 +337,12 @@ describe("system prompt settings parity: tool policy", () => {
 		expect(await renderBlock0({ toolNames: ["read"] })).not.toContain("Create or overwrite");
 	});
 
-	it(`${asserted("hasGrep")} toggles the grep-tool routing bullet`, async () => {
-		expect(await renderBlock0({ toolNames: ["read", "grep"] })).toContain("Regex search");
-		expect(await renderBlock0({ toolNames: ["read"] })).not.toContain("Regex search");
-	});
-
-	it(`${asserted("hasGlob")} toggles the glob-tool routing bullet`, async () => {
-		expect(await renderBlock0({ toolNames: ["read", "glob"] })).toContain("Globbing");
-		expect(await renderBlock0({ toolNames: ["read"] })).not.toContain("Globbing");
+	it(`${asserted("hasSearch")} toggles unified workspace-search routing`, async () => {
+		const enabled = await renderBlock0({ toolNames: ["read", "search"] });
+		expect(enabled).toContain("# AST");
+		expect(enabled).toContain("Workspace discovery");
+		expect(enabled).toContain('type: "structure"');
+		expect(await renderBlock0({ toolNames: ["read"] })).not.toContain("Workspace discovery");
 	});
 
 	it(`${asserted("hasBash")} toggles the bash-tool routing bullet`, async () => {
@@ -730,8 +727,7 @@ const IDENTIFIER_TO_PROP: Record<string, (typeof GATING_PROPS)[number]> = {
 	"tools:read": "hasRead",
 	"tools:edit": "hasEdit",
 	"tools:write": "hasWrite",
-	"tools:grep": "hasGrep",
-	"tools:glob": "hasGlob",
+	"tools:search": "hasSearch",
 	"tools:bash": "hasBash",
 	"tools:ask": "hasAsk",
 	"tools:task": "hasTask",
@@ -739,7 +735,6 @@ const IDENTIFIER_TO_PROP: Record<string, (typeof GATING_PROPS)[number]> = {
 	"tools:todo": "hasTodo",
 	"tools:inspect_image": "hasInspectImage",
 	"tools:report_tool_issue": "hasReportToolIssue",
-	"tools:ast_grep": "hasAstTools",
 	"tools:ast_edit": "hasAstTools",
 	"tools:browser": "hasBrowser",
 };

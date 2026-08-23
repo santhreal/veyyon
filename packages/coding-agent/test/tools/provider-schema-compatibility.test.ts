@@ -12,6 +12,7 @@ import {
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { createTools, HIDDEN_TOOLS, type ToolSession } from "@veyyon/coding-agent/tools";
 import { createVibeTools } from "@veyyon/coding-agent/tools/vibe";
+import { isRecord } from "@veyyon/utils";
 
 interface ToolSchemaEntry {
 	name: string;
@@ -37,6 +38,16 @@ function asSchemaObject(value: unknown): Record<string, unknown> | null {
 		return null;
 	}
 	return value as Record<string, unknown>;
+}
+
+function assertCanonicalSearchSchema(schema: Record<string, unknown>, provider: string): void {
+	expect(schema.type, provider).toBe("object");
+	const required = schema.required as string[] | undefined;
+	expect(required?.slice(0, 2), provider).toEqual(["type", "input"]);
+	const properties = schema.properties as Record<string, Record<string, unknown>>;
+	expect(Object.keys(properties).slice(0, 2), provider).toEqual(["type", "input"]);
+	expect(properties.type?.enum, provider).toEqual(["files", "text", "structure"]);
+	expect(properties.input?.type, provider).toBe("string");
 }
 
 async function collectToolSchemas(): Promise<ToolSchemaEntry[]> {
@@ -163,5 +174,28 @@ describe("builtin tool schemas provider compatibility", () => {
 		const browserEntry = toolSchemas.find(tool => tool.name === "browser");
 		expect(browserEntry).toBeDefined();
 		expect(browserEntry?.schema.type).toBe("object");
+	});
+
+	it("preserves canonical search order and discriminator through every provider normalization", async () => {
+		const toolSchemas = await collectToolSchemas();
+		const searchEntry = toolSchemas.find(tool => tool.name === "search");
+		expect(searchEntry).toBeDefined();
+		if (!searchEntry) return;
+
+		const googleSchema = normalizeSchemaForGoogle(searchEntry.schema);
+		const cloudCodeAssistSchema = normalizeSchemaForCCA(searchEntry.schema);
+		if (!isRecord(googleSchema) || !isRecord(cloudCodeAssistSchema)) {
+			throw new Error("Search schema normalization must produce object schemas");
+		}
+
+		const variants: Array<[string, Record<string, unknown>]> = [
+			["wire", searchEntry.schema],
+			["openai-strict", adaptSchemaForStrict(searchEntry.schema, true).schema],
+			["google", googleSchema],
+			["cloud-code-assist", cloudCodeAssistSchema],
+		];
+		for (const [provider, schema] of variants) {
+			assertCanonicalSearchSchema(schema, provider);
+		}
 	});
 });

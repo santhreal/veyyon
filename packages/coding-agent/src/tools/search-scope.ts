@@ -20,9 +20,9 @@ import {
 import { ToolError } from "./tool-errors";
 
 /**
- * The shared path-input pipeline for the `search`, `ast_grep` and `ast_edit`
- * tools: normalize the raw paths, resolve internal URLs to backing files, and
- * derive the scope those tools walk.
+ * The shared path-input pipeline for the text and structure search engines and
+ * `ast_edit`: normalize the raw paths, resolve internal URLs to backing files,
+ * and derive the scope those operations walk.
  *
  * WHY THIS IS NOT IN `./path-utils`, WHERE IT USED TO LIVE. It is the only thing
  * there that needs `InternalUrlRouter`, and that one import made `path-utils`
@@ -92,7 +92,7 @@ export interface ToolScopeResolution {
 }
 
 /**
- * Shared path-input pipeline for `search`, `ast_grep`, and `ast_edit`:
+ * Shared path-input pipeline for text search, structure search, and `ast_edit`:
  *  1. normalize + reject empty paths,
  *  2. resolve internal URLs through {@link InternalUrlRouter} to backing files,
  *  3. partition existing vs missing when multiple paths are supplied,
@@ -153,7 +153,7 @@ export async function resolveToolSearchScope(opts: ToolScopeOptions): Promise<To
 		}
 		if (isSshUrl(rawPath)) {
 			throw new ToolError(
-				`Cannot ${internalUrlAction} a remote ssh:// path (no local file): ${rawPath}. Use \`read ${rawPath}\` to view it, or the \`search\` tool to grep remote files.`,
+				`Cannot ${internalUrlAction} a remote ssh:// path (no local file): ${rawPath}. Use \`read ${rawPath}\` to view it, or \`search\` with \`type: "text"\` to search remote file text.`,
 			);
 		}
 		if (hasGlobPathChars(rawPath)) {

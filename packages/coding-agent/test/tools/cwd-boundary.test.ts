@@ -261,7 +261,7 @@ describe("per-tool filesystemTargets extraction", () => {
 		expect(cwdEscapingTargets(toolWith(editFilesystemTargets), { input: inCwd }, CWD)).toEqual([]);
 	});
 
-	it("grep/glob/ast_grep search roots escape when the path base is outside cwd", () => {
+	it("search roots escape when the path base is outside cwd", () => {
 		// Policy (FINDING-CWD-BOUNDARY-SEARCH-TOOLS): search tools gate like point
 		// reads — an out-of-cwd search root prompts in non-yolo modes. Bases come
 		// from globSearchBase (literal path, or the fixed prefix before the first
@@ -347,7 +347,7 @@ describe("filesystem cwd boundary through the approval gate", () => {
 			slashCommands: [],
 			enableMCP: false,
 			enableLsp: false,
-			toolNames: ["read", "write", "edit", "grep", "glob"],
+			toolNames: ["read", "write", "edit", "search"],
 		});
 		session = created.session;
 	});
@@ -375,7 +375,7 @@ describe("filesystem cwd boundary through the approval gate", () => {
 		} as AgentToolContext;
 	}
 
-	function tool(name: "read" | "write" | "edit" | "grep" | "glob") {
+	function tool(name: "read" | "write" | "edit" | "search") {
 		const t = session.getToolByName(name);
 		if (!t) throw new Error(`expected ${name} tool`);
 		return t;
@@ -489,21 +489,21 @@ describe("filesystem cwd boundary through the approval gate", () => {
 		expect(fs.readFileSync(target, "utf8")).toBe("before");
 	});
 
-	it("blocks an out-of-cwd grep in ask-command mode (search tools honor the same boundary as read)", async () => {
-		// Differential: in-cwd grep auto-approves (read tier alone is not the blocker);
+	it("blocks an out-of-cwd search text query in ask-command mode (search tools honor the same boundary as read)", async () => {
+		// Differential: in-cwd search auto-approves (read tier alone is not the blocker);
 		// out-of-cwd path is blocked by the cwd boundary before content leaks.
-		const inside = await tool("grep").execute(
-			"gin-askcommand",
-			{ pattern: "INSIDE", path: cwd },
+		const inside = await tool("search").execute(
+			"sin-askcommand",
+			{ type: "text", input: "INSIDE", path: cwd },
 			undefined,
 			undefined,
 			ctx({ "tools.approvalMode": "ask-command" }),
 		);
 		expect(textOf(inside)).toContain("INSIDE_CONTENT");
 		await expect(
-			tool("grep").execute(
-				"gout-askcommand",
-				{ pattern: "OUTSIDE", path: outsideFile },
+			tool("search").execute(
+				"sout-askcommand",
+				{ type: "text", input: "OUTSIDE", path: outsideFile },
 				undefined,
 				undefined,
 				ctx({ "tools.approvalMode": "ask-command" }),
@@ -511,11 +511,11 @@ describe("filesystem cwd boundary through the approval gate", () => {
 		).rejects.toThrow(/outside the session working directory/);
 	});
 
-	it("blocks an out-of-cwd glob in ask-command mode", async () => {
+	it("blocks an out-of-cwd search files query in ask-command mode", async () => {
 		await expect(
-			tool("glob").execute(
-				"glob-out-askcommand",
-				{ path: path.join(tempDir, "*") },
+			tool("search").execute(
+				"sfiles-out-askcommand",
+				{ type: "files", input: path.join(tempDir, "*") },
 				undefined,
 				undefined,
 				ctx({ "tools.approvalMode": "ask-command" }),

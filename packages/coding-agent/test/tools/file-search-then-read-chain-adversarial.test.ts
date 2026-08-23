@@ -3,9 +3,8 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { executeHashlineSingle } from "@veyyon/coding-agent/edit";
-import { GrepTool } from "@veyyon/coding-agent/tools/grep";
 import { ReadTool } from "@veyyon/coding-agent/tools/read";
+import { SearchTool } from "@veyyon/coding-agent/tools/search";
 import { WriteTool } from "@veyyon/coding-agent/tools/write";
 import { removeWithRetries } from "@veyyon/utils";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";
@@ -19,10 +18,10 @@ function textOf(result: { content: Array<{ type: string; text?: string }> }): st
 }
 
 /**
- * write → grep (find token) → read header → SWAP token → grep confirms change.
+ * write files → glob finds them → read each found file returns its body.
  */
 
-describe("write→grep→edit→grep chain adversarial", () => {
+describe("write→search(files)→read chain adversarial", () => {
 	let settingsState: SettingsTestState | undefined;
 	let tmpDir: string;
 
@@ -37,7 +36,7 @@ describe("write→grep→edit→grep chain adversarial", () => {
 	});
 
 	beforeEach(async () => {
-		tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "wge-chain-"));
+		tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "wgr-glob-"));
 	});
 
 	afterEach(async () => {
@@ -56,45 +55,29 @@ describe("write→grep→edit→grep chain adversarial", () => {
 				"lsp.formatOnWrite": false,
 				"lsp.diagnosticsOnWrite": false,
 				"read.summarize.enabled": false,
-				"grep.enabled": true,
 			}),
 			enableLsp: false,
 			getPlanModeState: () => ({ enabled: false }),
 		});
 	}
 
-	function editOpts(sess: ReturnType<typeof session>, input: string) {
-		return {
-			session: sess,
-			input,
-			writethrough: async (targetPath: string, content: string) => {
-				await Bun.write(targetPath, content);
-				return undefined;
-			},
-			beginDeferredDiagnosticsForPath: () => ({
-				onDeferredDiagnostics: () => {},
-				signal: new AbortController().signal,
-				finalize: () => {},
-			}),
-		};
-	}
-
-	it("token is replaced and old token disappears from grep", async () => {
+	it("search(files) discovers written files and read returns each body", async () => {
 		const s = session();
-		const file = path.join(tmpDir, "chain.ts");
-		const oldTok = "OLD_TOKEN_AAA";
-		const newTok = "NEW_TOKEN_BBB";
-		await new WriteTool(s).execute("w", {
-			path: file,
-			content: `const x = '${oldTok}';\n`,
-		});
-		expect(textOf(await new GrepTool(s as never).execute("g1", { pattern: oldTok, path: file }))).toContain(oldTok);
-
-		const header = textOf(await new ReadTool(s).execute("r", { path: file })).split("\n")[0]!;
-		await executeHashlineSingle(editOpts(s, `${header}\nSWAP 1.=1:\n+const x = '${newTok}';\n`));
-		expect(await Bun.file(file).text()).toBe(`const x = '${newTok}';\n`);
-		expect(textOf(await new GrepTool(s as never).execute("g2", { pattern: newTok, path: file }))).toContain(newTok);
-		const oldGrep = textOf(await new GrepTool(s as never).execute("g3", { pattern: oldTok, path: file }));
-		expect(oldGrep.includes(oldTok)).toBe(false);
+		const write = new WriteTool(s);
+		const bodies: Record<string, string> = {
+			"src/a.ts": "export const a = 1;\n",
+			"src/b.ts": "export const b = 2;\n",
+		};
+		for (const [rel, body] of Object.entries(bodies)) {
+			await write.execute(`w-${rel}`, { path: path.join(tmpDir, rel), content: body });
+		}
+		const globText = textOf(await new SearchTool(s).execute("g", { type: "files", input: "src/**/*.ts" }));
+		expect(globText).toContain("a.ts");
+		expect(globText).toContain("b.ts");
+		const read = new ReadTool(s);
+		for (const [rel, body] of Object.entries(bodies)) {
+			const out = textOf(await read.execute(`r-${rel}`, { path: path.join(tmpDir, rel) }));
+			expect(out).toContain(body.trim());
+		}
 	});
 });
