@@ -59,19 +59,19 @@ takes two required ordered fields followed by type-specific options:
 
 ### Type-specific options and validation
 
-Options are validated per `type`; cross-type fields are rejected with an actionable error. Files mode tolerates an accidental `path` field for provider-call recovery but ignores it, so required `input` remains authoritative:
+Options are strictly validated per `type`; cross-type fields are rejected with an actionable error:
 
 - **`type: "files"`** accepts `hidden`, `gitignore`, and `limit`:
   - **`hidden` (default `true`)** includes dotfiles.
   - **`gitignore` (default `true`)** respects `.gitignore` rules; set `false` to search ignored paths.
   - **`limit` (default `200`, max `200`)** bounds returned paths; output is sorted by `mtime` descending and grouped under `# <dir>/` directory headers.
 - **`type: "text"`** accepts `path`, `case`, `gitignore`, and `skip`:
-  - **`path`** scopes the search (file, directory, glob, internal URL like `veyyon://`, or a semicolon-delimited list). Pass the narrowest known scope; omit it only when the workspace root (`"."`) is intended. Line-range selectors (e.g. `:50-100`) on a single file target constrain matches.
+  - **`path`** scopes the search (file, directory, glob, internal URL like `veyyon://`, or a semicolon-delimited list). `ssh://` scopes are supported here. Pass the narrowest known scope; omit it only when the workspace root (`"."`) is intended. Line-range selectors (e.g. `:50-100`) on a single file target constrain matches.
   - **`case` (default `true`)** toggles case sensitivity.
   - **`gitignore` (default `true`)** respects `.gitignore`.
   - **`skip`** pages past already-returned files; results are paginated at `20` files per call (`DEFAULT_FILE_LIMIT`) with an internal cap of `2000` matches. Context lines around matches are governed by `search.contextBefore` (default `1`) and `search.contextAfter` (default `3`).
 - **`type: "structure"`** accepts `path` and `skip`:
-  - **`path`** scopes the search (file, directory, glob, internal URL, or semicolon-delimited list).
+  - **`path`** scopes the search (file, directory, glob, local or materialized internal URL, or semicolon-delimited list). `ssh://` is not supported; inspect remote code with `read` before structural matching.
   - **`skip`** specifies match offset for pagination (default limit `50` matches).
   - Metavariable syntax supports `$NAME` (single node), `$_` (anonymous node), `$$$NAME` (multi-node sequence), and `$$$` (anonymous sequence).
 

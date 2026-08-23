@@ -51,12 +51,16 @@ describe("grep/rg rule (grep/rg/ripgrep/ag/ack)", () => {
 });
 
 describe("find/fd rule (find/fd/locate)", () => {
-	it.each(["find . -name x", "fd --type f", "find . -iname '*.ts'", "find .", "locate foo"])(
-		"routes %s to search",
+	it.each(["find . -name x", "fd --type f", "find . -iname '*.ts'"])("routes %s to search", command => {
+		const r = check(command);
+		expect(r.block).toBe(true);
+		expect(r.suggestedTool).toBe("search");
+	});
+
+	it.each(["find .", "find . -exec rm {} \\;", "find . -delete", "locate foo"])(
+		"does not redirect %s when search cannot preserve its behavior",
 		command => {
-			const r = check(command);
-			expect(r.block).toBe(true);
-			expect(r.suggestedTool).toBe("search");
+			expect(check(command).block).toBe(false);
 		},
 	);
 });

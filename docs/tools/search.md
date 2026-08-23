@@ -28,14 +28,14 @@ Optional type-specific fields:
 
 | Field | Type | Applicable Types | Description |
 | --- | --- | --- | --- |
-| `path` | `string` | `text`, `structure` | Search scope: file, directory, glob, internal URL, or semicolon-delimited list (`"src; tests"`). Pass the narrowest known scope; omit it only when the workspace root (`"."`) is intended. Single file targets accept line-range selectors (`:50-100`) in text mode. |
+| `path` | `string` | `text`, `structure` | Search scope: file, directory, glob, internal URL, or semicolon-delimited list (`"src; tests"`). `ssh://` is text-only; inspect remote code with `read` before structural matching. Pass the narrowest known scope; omit it only when the workspace root (`"."`) is intended. Single file targets accept line-range selectors (`:50-100`) in text mode. |
 | `case` | `boolean` | `text` | Case-sensitive matching. Defaults to `true`. |
 | `hidden` | `boolean` | `files` | Include hidden files. Defaults to `true`. |
 | `gitignore` | `boolean` | `files`, `text` | Respect `.gitignore`. Defaults to `true`. |
 | `limit` | `number` | `files` | Maximum returned paths. Defaults to `200`, max `200`. |
 | `skip` | `number` | `text`, `structure` | Results to skip for pagination (file page offset for `text`, match offset for `structure`). |
 
-Cross-type fields are rejected with `Search type "<type>" does not accept: <field>`. Files mode tolerates an accidental `path` field for provider-call recovery but ignores it; required `input` remains authoritative.
+Cross-type fields are rejected with `Search type "<type>" does not accept: <field>`.
 
 ## Outputs
 
@@ -81,6 +81,6 @@ The tool is part of the default inventory. Text matching uses two settings:
 ## Errors
 
 - `Search input must not be empty` when `input` is empty or whitespace.
-- `Search type "<type>" does not accept: <fields>` on cross-type options other than the ignored files-mode `path` recovery field.
+- `Search type "<type>" does not accept: <fields>` on cross-type options.
 - `Search scope entries must be non-empty paths or globs` for invalid `path`.
 - `Path not found: ...` when target paths do not exist.

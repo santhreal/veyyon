@@ -32,7 +32,7 @@ export const searchSchema = z.strictObject({
 		.string()
 		.optional()
 		.describe(
-			'text or structure only: narrow search scope — file, directory, glob, internal URL, or semicolon-delimited set. Omitted -> workspace root (".")',
+			'text or structure only: narrow search scope — file, directory, glob, internal URL, or semicolon-delimited set. ssh:// is text-only. Omitted -> workspace root (".")',
 		),
 	case: z.boolean().optional().describe("text only: case-sensitive matching"),
 	hidden: z.boolean().optional().describe("files only: include hidden files"),
@@ -50,7 +50,7 @@ export type SearchToolDetails =
 	| { type: "structure"; result: StructureSearchDetails };
 
 const TYPE_FIELDS: Record<SearchType, ReadonlySet<keyof SearchToolInput>> = {
-	files: new Set(["type", "input", "path", "hidden", "gitignore", "limit"]),
+	files: new Set(["type", "input", "hidden", "gitignore", "limit"]),
 	text: new Set(["type", "input", "path", "case", "gitignore", "skip"]),
 	structure: new Set(["type", "input", "path", "skip"]),
 };
@@ -101,7 +101,7 @@ export class SearchTool implements AgentTool<typeof searchSchema, SearchToolDeta
 	];
 
 	readonly approval = (args: unknown): ToolTier => {
-		if (!isRecord(args) || (args.type !== "text" && args.type !== "structure")) return "read";
+		if (!isRecord(args) || args.type !== "text") return "read";
 		return textSearchApproval({ path: typeof args.path === "string" ? args.path : undefined });
 	};
 
@@ -143,6 +143,7 @@ export class SearchTool implements AgentTool<typeof searchSchema, SearchToolDeta
 				},
 				signal,
 				update,
+				{ rootPathAlias: true },
 			);
 			if (!result.details) throw new ToolError("File search returned no result details");
 			return { ...result, details: { type: "files", result: result.details } };

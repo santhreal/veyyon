@@ -20,7 +20,7 @@ export const DEFAULT_BASH_INTERCEPTOR_RULES: BashInterceptorRule[] = [
 		message: 'Use `search` with `type: "text"` instead of shell grep/rg.',
 	},
 	{
-		pattern: "^\\s*(find|fd|locate)(?:\\s|$)",
+		pattern: "^\\s*(find|fd|locate)\\s+.*(-name|-iname|-type|--type|-glob)",
 		tool: "search",
 		message: 'Use `search` with `type: "files"` instead of shell find/fd.',
 	},

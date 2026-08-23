@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-85384dad.js";
+            window.path_to_searchindex_js = "../searchindex-2f05118a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -255,7 +255,7 @@ takes two required ordered fields followed by type-specific options:</p>
 </li>
 </ol>
 <h3 id="type-specific-options-and-validation"><a class="header" href="#type-specific-options-and-validation">Type-specific options and validation</a></h3>
-<p>Options are validated per <code>type</code>; cross-type fields are rejected with an actionable error. Files mode tolerates an accidental <code>path</code> field for provider-call recovery but ignores it, so required <code>input</code> remains authoritative:</p>
+<p>Options are strictly validated per <code>type</code>; cross-type fields are rejected with an actionable error:</p>
 <ul>
 <li><strong><code>type: "files"</code></strong> accepts <code>hidden</code>, <code>gitignore</code>, and <code>limit</code>:
 <ul>
@@ -266,7 +266,7 @@ takes two required ordered fields followed by type-specific options:</p>
 </li>
 <li><strong><code>type: "text"</code></strong> accepts <code>path</code>, <code>case</code>, <code>gitignore</code>, and <code>skip</code>:
 <ul>
-<li><strong><code>path</code></strong> scopes the search (file, directory, glob, internal URL like <code>veyyon://</code>, or a semicolon-delimited list). Pass the narrowest known scope; omit it only when the workspace root (<code>"."</code>) is intended. Line-range selectors (e.g. <code>:50-100</code>) on a single file target constrain matches.</li>
+<li><strong><code>path</code></strong> scopes the search (file, directory, glob, internal URL like <code>veyyon://</code>, or a semicolon-delimited list). <code>ssh://</code> scopes are supported here. Pass the narrowest known scope; omit it only when the workspace root (<code>"."</code>) is intended. Line-range selectors (e.g. <code>:50-100</code>) on a single file target constrain matches.</li>
 <li><strong><code>case</code> (default <code>true</code>)</strong> toggles case sensitivity.</li>
 <li><strong><code>gitignore</code> (default <code>true</code>)</strong> respects <code>.gitignore</code>.</li>
 <li><strong><code>skip</code></strong> pages past already-returned files; results are paginated at <code>20</code> files per call (<code>DEFAULT_FILE_LIMIT</code>) with an internal cap of <code>2000</code> matches. Context lines around matches are governed by <code>search.contextBefore</code> (default <code>1</code>) and <code>search.contextAfter</code> (default <code>3</code>).</li>
@@ -274,7 +274,7 @@ takes two required ordered fields followed by type-specific options:</p>
 </li>
 <li><strong><code>type: "structure"</code></strong> accepts <code>path</code> and <code>skip</code>:
 <ul>
-<li><strong><code>path</code></strong> scopes the search (file, directory, glob, internal URL, or semicolon-delimited list).</li>
+<li><strong><code>path</code></strong> scopes the search (file, directory, glob, local or materialized internal URL, or semicolon-delimited list). <code>ssh://</code> is not supported; inspect remote code with <code>read</code> before structural matching.</li>
 <li><strong><code>skip</code></strong> specifies match offset for pagination (default limit <code>50</code> matches).</li>
 <li>Metavariable syntax supports <code>$NAME</code> (single node), <code>$_</code> (anonymous node), <code>$$$NAME</code> (multi-node sequence), and <code>$$$</code> (anonymous sequence).</li>
 </ul>

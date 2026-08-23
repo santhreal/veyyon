@@ -326,7 +326,7 @@ Those stay literals and carry a `// not-a-tool-name:` comment saying which they 
 `test/tools/tool-name-literals-have-one-owner.test.ts` reads the selection sites and fails on any
 unmarked tool-name literal.
 
-As a caller of the SDK you keep passing plain strings: `toolNames` takes the names as text.
+As a caller of the SDK you keep passing plain strings: `toolNames` takes the names as text. Retired workspace-search names (`glob`, `grep`, `find`, and `ast_grep`) normalize to the canonical `search` builtin at this compatibility boundary; they are not registered as model-facing tools.
 
 ### Extensions
 
