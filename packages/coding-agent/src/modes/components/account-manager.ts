@@ -55,17 +55,14 @@ import {
 	sidebarSummaryLine,
 } from "./account-manager-rows";
 import {
-	applyModalReveal,
-	beginModalExit,
 	computeModalDims,
 	consumeModalChipHover,
 	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
-	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
-	modalRevealEnabled,
 	planModalChrome,
+	pointerMotionEnabled,
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
@@ -147,11 +144,6 @@ export interface AccountManagerCallbacks {
 export interface AccountManagerOptions {
 	/** Focus this provider's sidebar entry on open (`/account switch <provider>`). */
 	initialProviderId?: string;
-	/**
-	 * Play the open unfold. Opt-in at the real show site only: the reveal is wall-clock-driven,
-	 * so a default-on would make every direct construction (tests, embedders) render mid-frame.
-	 */
-	reveal?: boolean;
 	/** Repaint hook, for the reveal driver and for mouse-only state changes. */
 	requestRender?: () => void;
 	/**
@@ -239,15 +231,6 @@ export class AccountManagerComponent implements Component {
 	#splitRowCount = 0;
 	#sidebarWidthLast = SIDEBAR_MIN_WIDTH;
 	#bodyLines: BodyLine[] = [];
-	#reveal = new ModalRevealDriver();
-	/**
-	 * Fade out on the shared clock before the host drops this card. The overlay stack keeps painting
-	 * it and stops routing input to it the moment this is called.
-	 */
-	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
-		return beginModalExit(this.#reveal, requestRender, done);
-	}
-
 	/** Mirrors `accounts.loadBalancing`; only `b` and the chip change it. */
 	#loadBalancing = false;
 
@@ -263,12 +246,11 @@ export class AccountManagerComponent implements Component {
 			this.#activeProviderId = requested;
 		}
 		this.#selectFirstEntry();
-		if (options.reveal) this.#reveal.start(() => this.#requestRender?.());
 		// The band fades only once the card has a repaint to lend it: the frames between two mouse
 		// reports have no input to hang off. Same ambient gate as the open unfold.
 		const requestRender = options.requestRender;
 		if (requestRender) {
-			this.#sidebarFade = new HoverFade({ requestRender, enabled: modalRevealEnabled() });
+			this.#sidebarFade = new HoverFade({ requestRender, enabled: pointerMotionEnabled() });
 		}
 	}
 
@@ -292,7 +274,6 @@ export class AccountManagerComponent implements Component {
 	}
 
 	dispose(): void {
-		this.#reveal.stop();
 		this.#sidebarFade?.dispose();
 		this.#sidebarFade = undefined;
 		this.#sidebarHover = null;
@@ -1045,6 +1026,6 @@ export class AccountManagerComponent implements Component {
 		this.#shellGeometry = shell.geometry;
 		this.#frameLeft = shell.geometry?.leftPad ?? 0;
 		this.#contentRowStart = shell.geometry?.bodyRowStart ?? 0;
-		return applyModalReveal(shell, width, this.#reveal);
+		return shell.lines;
 	}
 }

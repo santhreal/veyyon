@@ -21,7 +21,7 @@ import { truncateToVisualLines } from "../modes/components/visual-truncate";
 import { getMarkdownTheme } from "../modes/theme/markdown-theme";
 import type { Theme } from "../modes/theme/theme";
 import { expandHintSuffix } from "../modes/utils/key-hint";
-import { markFramedBlockComponent, outputBlockContentWidth, renderCodeCell } from "../tui";
+import { markFramedBlockComponent, outputBlockContentWidth, renderCodeCell, renderOutputBlock } from "../tui";
 import {
 	JSON_TREE_MAX_DEPTH_COLLAPSED,
 	JSON_TREE_MAX_DEPTH_EXPANDED,
@@ -642,20 +642,27 @@ export const evalToolRenderer = {
 							lines.push("");
 						}
 					}
-					if (jsonLines.length > 0) {
+					// The cells drew themselves as railed cards. What follows them belongs
+					// to the same call, so it takes the same rail instead of sitting at the
+					// rail's column with nothing in it.
+					const trailing = [...jsonLines, timeoutLine, noticeLine, warningLine].filter(
+						(line): line is string => line !== undefined,
+					);
+					if (trailing.length > 0) {
 						if (lines.length > 0) {
 							lines.push("");
 						}
-						lines.push(...jsonLines);
-					}
-					if (timeoutLine) {
-						lines.push(timeoutLine);
-					}
-					if (noticeLine) {
-						lines.push(noticeLine);
-					}
-					if (warningLine) {
-						lines.push(warningLine);
+						lines.push(
+							...renderOutputBlock(
+								{
+									sections: [{ lines: trailing }],
+									state: details?.cells?.some(cell => cell.status === "error") ? "error" : "success",
+									width,
+									contentPaddingLeft: 0,
+								},
+								uiTheme,
+							),
+						);
 					}
 					cached = { key, width, result: lines };
 					return lines;

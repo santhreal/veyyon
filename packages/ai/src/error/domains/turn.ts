@@ -12,6 +12,7 @@
  * also carried a 503 used to come back retryable through the transport wording. An interrupt is
  * somebody asking the turn to stop.
  */
+import { isAbortError } from "@veyyon/utils/abortable";
 import { Flag } from "../flag";
 import type { ErrorDomain } from "./types";
 
@@ -106,9 +107,17 @@ export const interruptDomain: ErrorDomain = {
 	id: "interrupt",
 	why: "The turn ended because the operator or an internal step asked it to, so there is nothing to recover.",
 	recovers: [Flag.Abort, Flag.UserInterrupt, Flag.SilentAbort],
+	vetoesRetry: true,
 	recovery: {
 		transport: { action: "abort" },
 		credential: { action: "abort" },
 		turn: { action: "abort" },
 	},
+	classes: [
+		{
+			why: "A cancellation states itself in its name, and the name is the only thing every layer that mints one agrees on: a DOM `AbortError` from a fetch, `RequestAbortError` from a provider, `ToolAbortError` from the tool loop. Without this rule the flag reached the id only from the classes that attach it themselves, so a cancellation that arrived from the platform carried no flag and was read as an unclassified failure — and the provider ladder retried it, because the only thing left to read was the word `aborted` in its own sentence.",
+			matches: link => isAbortError(link),
+			flags: () => Flag.Abort,
+		},
+	],
 };

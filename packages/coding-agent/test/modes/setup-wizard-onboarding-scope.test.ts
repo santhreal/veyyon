@@ -189,7 +189,6 @@ describe("onboarding runs once per machine", () => {
 		};
 		const ctx = {
 			settings,
-			playWelcomeIntro: mock(() => {}),
 			ui: {
 				terminal: { rows: 24 },
 				showOverlay: () => ({ hide: hideOverlay }),

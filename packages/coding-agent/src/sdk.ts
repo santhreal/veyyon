@@ -4668,23 +4668,21 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			});
 		};
 
-		// Memory startup runs in the background for EVERY session, including
-		// auto-learn ones. The invariant the old pre-paint `await` protected — the
-		// capture turn's `learn` tool must observe the same initialized backend
-		// state as normal memory tools — only binds before a capture turn fires,
-		// which happens at the first agent END. `AutoLearnController` awaits the
-		// startup promise there, so the invariant holds while the first frame no
-		// longer pays for the backend's synchronous probe.
+		// Memory startup runs in the background for every session. Turn execution
+		// waits through `deferStartupWork`, while the auto-learn controller also
+		// retains the original promise so a capture turn cannot fire until the
+		// backend's per-session state is installed. The first frame reads neither
+		// result and does not wait.
 		//
-		// Gated on `autolearn.enabled` to match the tools: `createTools` builds the
-		// `learn`/`manage_skill` registry ONCE at session start and no settings
-		// change rebuilds it, so installing the controller while disabled would let a
-		// mid-session enable fire a nudge pointing at tools the session never built.
-		// Activation is therefore a session-start decision for BOTH the controller
-		// and the tools; the fire-time re-check in `#onAgentEnd` still handles a
-		// mid-session DISABLE. The subscription lives for the session's lifetime; the
-		// reference is intentionally discarded (the listener retains it).
+		// The controller is installed only when `autolearn.enabled` and only for a
+		// top-level session, matching the tools built once at session start. Its
+		// fire-time re-check still handles a mid-session disable.
 		const memoryStartup = logger.time("startMemoryStartupTask", startMemoryBackend);
+		session.deferStartupWork(
+			memoryStartup.catch(error => {
+				logger.warn("memory backend startup failed", { error: errorMessage(error) });
+			}),
+		);
 		if (settings.get("autolearn.enabled") && taskDepth === 0) {
 			new AutoLearnController({ session, settings, memoryStartup });
 		}

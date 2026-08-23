@@ -23,16 +23,13 @@ import {
 import { theme } from "../theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
 import {
-	applyModalReveal,
-	beginModalExit,
 	computeModalDims,
 	consumeModalChipHover,
 	hitTestModalChrome,
 	MODAL_SIZING_MEDIUM,
-	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
-	modalRevealEnabled,
+	pointerMotionEnabled,
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
@@ -210,24 +207,8 @@ export class MoveOverlay implements Component, Focusable {
 	 * lends this card a repaint. Absent, the band is switched.
 	 */
 	#hoverFade: HoverFade | undefined;
-	#reveal = new ModalRevealDriver();
-	/**
-	 * Fade out on the shared clock before the host drops this card. The overlay stack keeps painting
-	 * it and stops routing input to it the moment this is called.
-	 */
-	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
-		return beginModalExit(this.#reveal, requestRender, done);
-	}
 
-	constructor(
-		cwd: string,
-		done: (result: MoveOverlayResult | undefined) => void,
-		/** Play the open unfold (TOUCH-5). Show site decides via modalRevealEnabled(). */
-		reveal?: boolean,
-	) {
-		if (reveal) {
-			this.#reveal.start(() => this.#onRequestRender?.());
-		}
+	constructor(cwd: string, done: (result: MoveOverlayResult | undefined) => void) {
 		this.#cwd = cwd;
 		this.#done = done;
 		// Warm the cache for the current directory so the first keystroke is instant.
@@ -240,7 +221,7 @@ export class MoveOverlay implements Component, Focusable {
 		// The band fades only once the card has a repaint to lend it: the frames between two mouse
 		// reports have no input to hang off. Same ambient gate as the open unfold.
 		this.#hoverFade?.dispose();
-		this.#hoverFade = new HoverFade({ requestRender: cb, enabled: modalRevealEnabled() });
+		this.#hoverFade = new HoverFade({ requestRender: cb, enabled: pointerMotionEnabled() });
 		if (this.#hoveredIndex !== null) this.#hoverFade.set(this.#hoveredIndex);
 	}
 
@@ -359,7 +340,7 @@ export class MoveOverlay implements Component, Focusable {
 		this.#shellGeometry = shell.geometry;
 		// The body leads with the input line and a blank before the suggestion rows.
 		this.#listRowStart = (shell.geometry?.bodyRowStart ?? 0) + 2;
-		return applyModalReveal(shell, width, this.#reveal);
+		return shell.lines;
 	}
 
 	invalidate(): void {}
