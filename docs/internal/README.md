@@ -110,7 +110,7 @@ New here? Read [onboarding](onboarding.md) and [testing](testing.md) first.
 | Doc | Covers |
 | --- | --- |
 | [session.md](session.md) | Session storage and the entry model. |
-| [session-tree-plan.md](session-tree-plan.md) | The session-tree architecture. |
+| [session-tree-architecture.md](session-tree-architecture.md) | The session-tree architecture. |
 | [session-operations-export-share-fork-resume.md](session-operations-export-share-fork-resume.md) | export / dump / share / fresh / fork / resume. |
 | [session-switching-and-recent-listing.md](session-switching-and-recent-listing.md) | Switching sessions and the recent-list. |
 | [mnemosyne-memory-backend.md](mnemosyne-memory-backend.md) | The mnemopi memory backend. |

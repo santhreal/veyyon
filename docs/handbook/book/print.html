@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-eba5ca40.js";
+            window.path_to_searchindex_js = "searchindex-cf1b8fa0.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-a2abefc1.js"></script>
@@ -3332,7 +3332,8 @@ EOF
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="themes-and-identity"><a class="header" href="#themes-and-identity">Themes and identity</a></h1>
-<p>Veyyon’s interface is built around near-black, near-white, and a persistent <strong>Veyyon silver</strong> accent (<code>#C6CBD4</code>).</p>
+<p>Veyyon’s interface is built around near-black, near-white, silver structure (<code>#C6CBD4</code>), and a single
+<strong>ember</strong> accent (<code>#F0862E</code>) — the same tokens the website ships.</p>
 <h2 id="bundled-themes"><a class="header" href="#bundled-themes">Bundled themes</a></h2>
 <div class="table-wrapper">
 <table>
@@ -3340,9 +3341,9 @@ EOF
 <tr><th>File</th><th>Name</th><th>Notes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>dark.json</code></td><td>Veyyon Dark</td><td><strong>Default dark theme.</strong> Pitch black <code>#000000</code> / <code>#FAFAFA</code> / silver <code>#B8BDC7</code>; predates the ember accent</td></tr>
-<tr><td><code>light.json</code></td><td>Light</td><td><strong>Default light theme.</strong> White <code>#FFFFFF</code> ground with dark-silver structure <code>#5C6470</code></td></tr>
-<tr><td><code>defaults/titanium.json</code></td><td>Titanium</td><td>The brand theme: pitch black <code>#000000</code>, silver <code>#C6CBD4</code>, ember accent <code>#F0862E</code>, matches the website tokens (<code>website/site.css</code>)</td></tr>
+<tr><td><code>defaults/titanium.json</code></td><td>Titanium</td><td><strong>Default dark theme.</strong> Pitch black <code>#000000</code>, silver <code>#C6CBD4</code>, ember accent <code>#F0862E</code>; mirrors the website tokens (<code>website/site.css</code>)</td></tr>
+<tr><td><code>dark.json</code></td><td>Veyyon Dark</td><td>Bundled alternative. Pitch black <code>#000000</code> / <code>#FAFAFA</code> / silver <code>#B8BDC7</code>; predates the ember accent</td></tr>
+<tr><td><code>light.json</code></td><td>Light</td><td><strong>Default light theme.</strong> White <code>#FFFFFF</code> ground with dark-silver structure <code>#5C6470</code>, ember accent</td></tr>
 </tbody>
 </table>
 </div>
@@ -6691,7 +6692,7 @@ Use MCP, plugins, hooks, and skills for integrations.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="session-branching"><a class="header" href="#session-branching">Session branching</a></h1>
 <p>Veyyon sessions are <strong>trees</strong>, not linear chat logs. Each entry has <code>id</code> and <code>parentId</code>; the active position is the current <strong>leaf</strong>. Branching appends from the chosen parent without deleting sibling branches.</p>
-<p>Engine reference: <code>docs/handbook/src/reference/tree-command.md</code>, <code>docs/internal/session-tree-plan.md</code>.</p>
+<p>Engine reference: <code>docs/handbook/src/reference/tree-command.md</code>, <code>docs/internal/session-tree-architecture.md</code>.</p>
 <h2 id="navigate-in-place-tree"><a class="header" href="#navigate-in-place-tree">Navigate in place: <code>/tree</code></a></h2>
 <p><code>/tree</code> opens the session tree selector (<code>TreeSelectorComponent</code>). It moves the leaf <strong>within the same session file</strong>, no new session id.</p>
 <p>Also opens via:</p>
