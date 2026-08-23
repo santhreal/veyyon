@@ -45,6 +45,9 @@ const RETRY_DECISION: Record<string, boolean> = {
 	// The call was never well-formed enough to run, so there is no tool effect
 	// to duplicate and re-sampling is the repair.
 	MalformedFunctionCall: true,
+	// A code whose meaning is that a replay reproduces it. It rides BESIDE Transient rather than
+	// clearing it — the wording still describes the failure — so the veto has to be the decision.
+	TransportRefused: false,
 	// Repeating these reproduces them exactly. Retrying is pure cost.
 	Timeout: false,
 	ContentBlocked: false,
@@ -117,6 +120,7 @@ async function sourceFilePaths(): Promise<string[]> {
 const FRAME_BAIT_TEXT: Record<keyof typeof AIError.Flag, string> = {
 	Class: "class marker",
 	Transient: "503 service unavailable: overloaded_error",
+	TransportRefused: "NGHTTP2_CANCEL: stream cancelled by peer",
 	ThinkingLoop: "model repeated the same thinking block",
 	StaleResponsesItem: "Item with id 'rs_abc' not found. previous_response expired",
 	ProviderFinishError: "Provider finish_reason: error",
