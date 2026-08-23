@@ -26,7 +26,7 @@
  * default; the effective temperature per arm is stamped into results.json so two
  * runs stay comparable over time.
  *
- * Prerequisites: pier (uv tool install datacurve-pier), docker, a compiled
+ * Prerequisites: pier (uv tool install 'datacurve-pier>=0.3.1'), docker, a compiled
  * binary at ../coding-agent/dist/vey (bun scripts/build-binary.ts there), and
  * google-antigravity OAuth in ~/.veyyon/shared-auth/agent.db.
  *
@@ -35,6 +35,7 @@
  * copies them into $HOME at run time; see pier_agent/veyyon_agent.py).
  */
 
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -104,6 +105,7 @@ import {
 } from "./auth-preflight";
 import { decideAuthSeed, probeCredentialStore, snapshotCredentialStore } from "./auth-seed";
 import { resolveBinaryPin } from "./binary-pin";
+import { MINIMUM_DEEPSWE_PIER_VERSION, pierSupportsSeparateVerifierCollect } from "./pier-version";
 import { conversationCollapsed, measureRunPrefix, PREFIX_CATEGORIES, prefixShares } from "./prefix-composition";
 import { type LoadedReplayManifest, loadReplayManifest } from "./replay-manifest";
 import {
@@ -1124,7 +1126,19 @@ async function main(): Promise<void> {
 	}
 	const pier = Bun.which("pier") ?? `${os.homedir()}/.local/bin/pier`;
 	if (!fs.existsSync(pier)) {
-		console.error("pier not found on PATH or ~/.local/bin — uv tool install datacurve-pier");
+		console.error(
+			`pier not found on PATH or ~/.local/bin — uv tool install 'datacurve-pier>=${MINIMUM_DEEPSWE_PIER_VERSION}'`,
+		);
+		process.exit(1);
+	}
+	const pierVersionRun = spawnSync(pier, ["--version"], { encoding: "utf8", timeout: 30_000 });
+	const pierVersion = `${pierVersionRun.stdout ?? ""}\n${pierVersionRun.stderr ?? ""}`.trim();
+	if (pierVersionRun.error || pierVersionRun.status !== 0 || !pierSupportsSeparateVerifierCollect(pierVersion)) {
+		console.error(
+			`DeepSWE v1.1 requires Pier >=${MINIMUM_DEEPSWE_PIER_VERSION} for separate-verifier collect hooks; ` +
+				`found ${pierVersion || "an unreadable version"}. ` +
+				`Upgrade before spending model quota: uv tool upgrade datacurve-pier`,
+		);
 		process.exit(1);
 	}
 	let factoryBinary: string | null = null;
