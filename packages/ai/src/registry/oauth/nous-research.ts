@@ -178,7 +178,6 @@ async function requestDeviceAuthorization(fetchImpl: FetchImpl, signal?: AbortSi
 		!isNonEmptyString(payload.device_code) ||
 		!isNonEmptyString(payload.user_code) ||
 		!isNonEmptyString(payload.verification_uri) ||
-		!isNonEmptyString(payload.verification_uri_complete) ||
 		!isPositiveFiniteNumber(payload.expires_in) ||
 		!isPositiveFiniteNumber(payload.interval)
 	) {
@@ -187,11 +186,16 @@ async function requestDeviceAuthorization(fetchImpl: FetchImpl, signal?: AbortSi
 			provider: PROVIDER_ID,
 		});
 	}
+	const verificationUri = payload.verification_uri.trim();
 	return {
 		deviceCode: payload.device_code.trim(),
 		userCode: payload.user_code.trim(),
-		verificationUri: payload.verification_uri.trim(),
-		verificationUriComplete: payload.verification_uri_complete.trim(),
+		verificationUri,
+		// RFC 8628 marks `verification_uri_complete` optional. Without it the
+		// user opens the plain URI and types the code shown beside it.
+		verificationUriComplete: isNonEmptyString(payload.verification_uri_complete)
+			? payload.verification_uri_complete.trim()
+			: verificationUri,
 		expiresInSeconds: payload.expires_in,
 		intervalSeconds: payload.interval,
 	};
@@ -203,7 +207,9 @@ async function pollForToken(
 	signal?: AbortSignal,
 ): Promise<OAuthCredentials> {
 	return pollOAuthDeviceCodeFlow<OAuthCredentials>({
-		intervalSeconds: Math.min(device.intervalSeconds, 1),
+		// RFC 8628 `interval` is a floor, not a ceiling. `pollOAuthDeviceCodeFlow`
+		// enforces its own 1s minimum and 5s default.
+		intervalSeconds: device.intervalSeconds,
 		expiresInSeconds: device.expiresInSeconds,
 		signal,
 		poll: async () => {

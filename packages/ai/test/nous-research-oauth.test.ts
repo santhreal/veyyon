@@ -1,7 +1,8 @@
 /**
  * WHY: Nous Portal credentials are rotating OAuth grants, not pasted API keys. This suite drives the
  * registry flow across the official device-code and refresh endpoints so a key-paste regression,
- * a wrong form/header contract, a stale refresh token, or an unusable inference JWT fails here.
+ * a wrong form/header contract, a poll cadence faster than the Portal asked for, a device response
+ * without the optional completion URI, a stale refresh token, or an unusable inference JWT fails here.
  * It does not contact the live Portal or verify the JWT signature; the Portal is the mocked external boundary.
  */
 import { afterEach, describe, expect, test, vi } from "bun:test";
@@ -93,6 +94,78 @@ describe("Nous Portal OAuth", () => {
 		const fetchStub: FetchImpl = vi.fn(async () => Response.json({}));
 		await expect(loginNousResearch({ fetch: fetchStub })).rejects.toThrow("requires an onAuth callback");
 		expect(fetchStub).not.toHaveBeenCalled();
+	});
+
+	test("polls at the cadence the Portal asked for instead of its own floor", async () => {
+		const sleeps: number[] = [];
+		vi.spyOn(Bun, "sleep").mockImplementation(async (ms: number | Date) => {
+			sleeps.push(typeof ms === "number" ? ms : ms.getTime() - Date.now());
+		});
+		let tokenAttempts = 0;
+		const fetchStub: FetchImpl = vi.fn(async (input: string | URL | Request) => {
+			if (String(input) === NOUS_DEVICE_CODE_URL) {
+				return Response.json({
+					device_code: "device-secret",
+					user_code: "ABCD-EFGH",
+					verification_uri: "https://portal.nousresearch.com/device",
+					verification_uri_complete: "https://portal.nousresearch.com/device?user_code=ABCD-EFGH",
+					expires_in: 600,
+					interval: 5,
+				});
+			}
+			tokenAttempts += 1;
+			if (tokenAttempts === 1) {
+				return Response.json({ error: "authorization_pending" }, { status: 400 });
+			}
+			return Response.json({
+				access_token: inferenceJwt(Math.floor(Date.now() / 1000) + 3600),
+				refresh_token: "refresh-one",
+				expires_in: 3600,
+				scope: "inference:invoke",
+			});
+		});
+
+		await loginNousResearch({ onAuth: () => undefined, fetch: fetchStub });
+
+		expect(tokenAttempts).toBe(2);
+		expect(sleeps).toEqual([5000]);
+	});
+
+	test("accepts a device response without the optional completion URI", async () => {
+		const authEvents: OAuthAuthInfo[] = [];
+		const expiresAtSeconds = Math.floor(Date.now() / 1000) + 3600;
+		const accessToken = inferenceJwt(expiresAtSeconds);
+		const fetchStub: FetchImpl = vi.fn(async (input: string | URL | Request) => {
+			if (String(input) === NOUS_DEVICE_CODE_URL) {
+				return Response.json({
+					device_code: "device-secret",
+					user_code: "ABCD-EFGH",
+					verification_uri: "https://portal.nousresearch.com/device",
+					expires_in: 600,
+					interval: 5,
+				});
+			}
+			return Response.json({
+				access_token: accessToken,
+				refresh_token: "refresh-one",
+				expires_in: 3600,
+				scope: "inference:invoke",
+			});
+		});
+
+		const credentials = await loginNousResearch({
+			onAuth: info => authEvents.push(info),
+			fetch: fetchStub,
+		});
+
+		expect(authEvents).toHaveLength(1);
+		expect(authEvents[0]?.url).toBe("https://portal.nousresearch.com/device");
+		expect(authEvents[0]?.instructions).toContain("ABCD-EFGH");
+		expect(credentials).toEqual({
+			access: accessToken,
+			refresh: "refresh-one",
+			expires: expiresAtSeconds * 1000 - 120_000,
+		});
 	});
 
 	test("refreshes through the derived registry, returns the rotated token shape, and sends the refresh header", async () => {
