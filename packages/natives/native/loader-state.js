@@ -510,17 +510,39 @@ export function classifyAvx2Support(probes) {
 	return "unknown";
 }
 
-/** The persisted AVX2 verdict file: one JSON object, hardware-keyed. */
+/** The persisted AVX2 verdict file: one versioned JSON object, hardware-keyed. */
 const HOST_VARIANT_FILE = "host-variant.json";
+const HOST_VARIANT_SCHEMA_VERSION = 1;
+
+/**
+ * Return a stable CPU-model identity without spawning a probe. Platform and
+ * architecture alone are not a hardware identity: a roaming home directory,
+ * restored VM disk, or CPU replacement can otherwise replay a persisted
+ * "supported" verdict on a machine where loading the modern addon would SIGILL.
+ *
+ * @param {Array<{ model?: string }> | undefined} cpus
+ * @returns {string | null}
+ */
+export function hostCpuIdentity(cpus = os.cpus()) {
+	if (!Array.isArray(cpus)) return null;
+	const models = [
+		...new Set(
+			cpus
+				.map((cpu) => (typeof cpu?.model === "string" ? cpu.model.trim() : ""))
+				.filter((model) => model.length > 0 && model.toLowerCase() !== "unknown"),
+		),
+	].sort();
+	return models.length > 0 ? models.join("\u0000") : null;
+}
 
 /**
  * Parse a persisted verdict. Returns null for anything that is not a genuine
- * verdict for THIS platform/arch — a stale copy from other hardware, a
- * corrupted file, or a recorded "unknown" (which must never be treated as an
- * answer; Law 10) all read as "no verdict".
+ * verdict for this schema, platform, architecture, and CPU identity. Legacy
+ * platform/arch-only rows are rejected because they can cross a hardware
+ * replacement and turn a stale performance cache into an illegal instruction.
  */
-export function parseHostVariantVerdict(text, { platform, arch }) {
-	if (typeof text !== "string") return null;
+export function parseHostVariantVerdict(text, { platform, arch, cpuIdentity }) {
+	if (typeof text !== "string" || typeof cpuIdentity !== "string" || cpuIdentity.length === 0) return null;
 	let data;
 	try {
 		data = JSON.parse(text);
@@ -528,22 +550,38 @@ export function parseHostVariantVerdict(text, { platform, arch }) {
 		return null;
 	}
 	if (data === null || typeof data !== "object") return null;
-	if (data.platform !== platform || data.arch !== arch) return null;
+	if (data.version !== HOST_VARIANT_SCHEMA_VERSION) return null;
+	if (data.platform !== platform || data.arch !== arch || data.cpuIdentity !== cpuIdentity) return null;
 	if (data.verdict !== "supported" && data.verdict !== "unsupported") return null;
 	return data.verdict;
 }
 
 /**
- * Persist a GENUINE verdict next to the versioned addon caches. Only
- * "supported"/"unsupported" ever reach disk: the probes ran and answered, so
- * the answer is a fact about the machine, not a guess.
+ * Persist a genuine verdict next to the versioned addon caches. Unknown
+ * answers and hosts without a stable CPU identity are never written.
  */
-export function writeHostVariantVerdict(nativesDir, verdict, { platform, arch }) {
+export function writeHostVariantVerdict(nativesDir, verdict, { platform, arch, cpuIdentity }) {
+	if (
+		(verdict !== "supported" && verdict !== "unsupported") ||
+		typeof cpuIdentity !== "string" ||
+		cpuIdentity.length === 0
+	) {
+		return;
+	}
 	try {
 		fs.mkdirSync(nativesDir, { recursive: true });
 		const file = path.join(nativesDir, HOST_VARIANT_FILE);
 		const tmp = `${file}.${process.pid}.tmp`;
-		fs.writeFileSync(tmp, `${JSON.stringify({ platform, arch, verdict })}\n`);
+		fs.writeFileSync(
+			tmp,
+			`${JSON.stringify({
+				version: HOST_VARIANT_SCHEMA_VERSION,
+				platform,
+				arch,
+				cpuIdentity,
+				verdict,
+			})}\n`,
+		);
 		fs.renameSync(tmp, file);
 	} catch {
 		// An unwritable cache costs one re-probe on the next launch; it must
@@ -555,26 +593,26 @@ export function writeHostVariantVerdict(nativesDir, verdict, { platform, arch })
  * Detect AVX2 support on the real host, as a tri-state.
  *
  * A genuine verdict from an earlier run is read back from
- * `<nativesDir>/host-variant.json` so later launches skip the probe entirely —
- * on Windows that probe is a PowerShell spawn worth hundreds of milliseconds,
- * paid inside boot before the first native call can proceed. "unknown" is
- * NEVER persisted, per Law 10: an unanswerable probe must be asked again, not
- * remembered as a downgrade.
+ * `<nativesDir>/host-variant.json` so later launches skip the expensive probe.
+ * The row is versioned and CPU-keyed; an unidentifiable host or stale row is
+ * probed again. "unknown" is never persisted.
  *
- * Thin wrapper over {@link classifyAvx2Support} that supplies the real
- * filesystem/spawn probes.
  * @returns {"supported" | "unsupported" | "unknown"}
  */
 function detectAvx2Support() {
 	const cacheFile = path.join(getNativesDir(), HOST_VARIANT_FILE);
-	let cached;
-	try {
-		cached = parseHostVariantVerdict(fs.readFileSync(cacheFile, "utf8"), {
-			platform: process.platform,
-			arch: process.arch,
-		});
-	} catch {
-		cached = null;
+	const cpuIdentity = hostCpuIdentity();
+	let cached = null;
+	if (cpuIdentity !== null) {
+		try {
+			cached = parseHostVariantVerdict(fs.readFileSync(cacheFile, "utf8"), {
+				platform: process.platform,
+				arch: process.arch,
+				cpuIdentity,
+			});
+		} catch {
+			cached = null;
+		}
 	}
 	if (cached !== null) {
 		startupMarker(`native:avx2:persisted:${cached}`);
@@ -596,21 +634,39 @@ function detectAvx2Support() {
 		trialLoad: process.platform === "win32" ? trialLoadModernAddon : undefined,
 	});
 	startupMarker("native:avx2:probe:done");
-	if (verdict === "supported" || verdict === "unsupported") {
-		writeHostVariantVerdict(getNativesDir(), verdict, { platform: process.platform, arch: process.arch });
+	if (cpuIdentity !== null && (verdict === "supported" || verdict === "unsupported")) {
+		writeHostVariantVerdict(getNativesDir(), verdict, {
+			platform: process.platform,
+			arch: process.arch,
+			cpuIdentity,
+		});
 	}
 	return verdict;
 }
 
 /**
- * Trial-load the `modern` addon in a child process — the ground-truth probe
- * for machines where no shell-level CPU-feature query exists (stock Windows
- * has only PowerShell 5.1 on .NET Framework, which carries neither
- * `System.Runtime.Intrinsics` nor any SIMD type). If the CPU lacks AVX2 the
- * child dies executing an illegal instruction; the parent survives and reads
- * that as a GENUINE "unsupported", so it may be persisted. A load failure the
- * child could catch (file absent, antivirus block, ABI mismatch) reports as
- * "unknown" instead: a broken file says nothing about the CPU.
+ * Classify the child-process trial without mistaking an arbitrary addon crash
+ * for proof that the CPU lacks AVX2. Only SIGILL (POSIX) or Windows
+ * STATUS_ILLEGAL_INSTRUCTION is an unsupported verdict; access violations,
+ * timeouts, launch failures, and unexplained exits remain unknown.
+ *
+ * @param {{ stdout?: unknown; status?: number | null; signal?: string | null; error?: unknown }} result
+ * @returns {"supported" | "unsupported" | "unknown"}
+ */
+export function classifyTrialLoadResult(result) {
+	if (result.error) return "unknown";
+	const markers = String(result.stdout || "").split(/\r?\n/);
+	if (result.status === 0 && markers.includes("TRIAL_OK")) return "supported";
+	if (markers.includes("TRIAL_INCOMPATIBLE")) return "unknown";
+	if (result.signal === "SIGILL") return "unsupported";
+	if (typeof result.status === "number" && (result.status >>> 0) === 0xc000001d) return "unsupported";
+	return "unknown";
+}
+
+/**
+ * Trial-load the `modern` addon in a child process. A genuine illegal
+ * instruction proves the CPU is unsupported; every catchable load failure or
+ * other process failure is inconclusive.
  *
  * The addon path travels by environment variable, not argv: `-e` argv
  * indexing differs between Node and Bun eval modes.
@@ -620,10 +676,6 @@ function detectAvx2Support() {
 function trialLoadModernAddon() {
 	const tag = `${process.platform}-${process.arch}`;
 	const modernFilename = `veyyon_natives.${tag}-modern.node`;
-	// ONLY the modern file: the loader's candidate lists fall back to
-	// baseline/default, and a trial that loaded a baseline binary would answer
-	// "supported" on any x64 CPU — a persisted lie. No modern file present is
-	// "unknown": nothing here can speak for the CPU.
 	const dirs = [path.join(import.meta.dir, "..", "native"), versionedNativeCacheDir(packageJson.version)];
 	const addonPath = dirs.map((dir) => path.join(dir, modernFilename)).find((candidate) => fs.existsSync(candidate));
 	if (!addonPath) return "unknown";
@@ -638,13 +690,7 @@ function trialLoadModernAddon() {
 	} catch {
 		return "unknown";
 	}
-	if (result.error) return "unknown"; // could not run ourselves at all
-	const out = String(result.stdout || "");
-	if (out.includes("TRIAL_OK")) return "supported";
-	if (out.includes("TRIAL_INCOMPATIBLE")) return "unknown";
-	// Clean exit without the OK line, or death by signal (SIGILL / access
-	// violation): the binary executed but the CPU could not run it.
-	return "unsupported";
+	return classifyTrialLoadResult(result);
 }
 
 const TRIAL_LOAD_SCRIPT = [

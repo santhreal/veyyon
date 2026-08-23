@@ -2,7 +2,13 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { classifyAvx2Support, parseHostVariantVerdict, writeHostVariantVerdict } from "../native/loader-state.js";
+import {
+	classifyAvx2Support,
+	classifyTrialLoadResult,
+	hostCpuIdentity,
+	parseHostVariantVerdict,
+	writeHostVariantVerdict,
+} from "../native/loader-state.js";
 
 /**
  * WHY: stock Windows PowerShell 5.1 runs .NET Framework, which has no
@@ -13,12 +19,14 @@ import { classifyAvx2Support, parseHostVariantVerdict, writeHostVariantVerdict }
  * try every installed Windows shell before answering, must treat garbage or
  * unrunnable shells as "unknown" rather than "unsupported", must fall through
  * to a child-process trial load of the modern addon when no shell can answer
- * (the stock-Windows case: the child dying on an illegal instruction is ground
- * truth, not a guess), and must persist ONLY genuine verdicts so later
- * launches skip the probe without ever remembering a guess.
+ * (only an illegal-instruction exit is ground truth), and must persist only
+ * genuine, schema-versioned, CPU-keyed verdicts. An arbitrary addon crash,
+ * legacy row, copied cache, or unavailable CPU identity must remain unknown.
  */
 
 const AVX2_COMMAND = "[System.Runtime.Intrinsics.X86.Avx2]::IsSupported";
+
+const CPU_ID = hostCpuIdentity([{ model: "Test CPU with AVX2" }])!;
 
 function scriptedWin32(responses: Record<string, string | null>) {
 	return (command: string, args: string[]) => {
@@ -130,32 +138,85 @@ describe("win32 AVX2 ground-truth trial load", () => {
 	});
 });
 
+describe("win32 modern-addon trial exit classification", () => {
+	it("accepts only a clean success marker as supported", () => {
+		expect(classifyTrialLoadResult({ stdout: "TRIAL_OK\n", status: 0, signal: null })).toBe("supported");
+		expect(classifyTrialLoadResult({ stdout: "TRIAL_OK\n", status: 0xc0000005, signal: null })).toBe("unknown");
+	});
+
+	it("accepts only illegal-instruction exits as unsupported", () => {
+		expect(classifyTrialLoadResult({ stdout: "", status: null, signal: "SIGILL" })).toBe("unsupported");
+		expect(classifyTrialLoadResult({ stdout: "", status: 0xc000001d, signal: null })).toBe("unsupported");
+		expect(classifyTrialLoadResult({ stdout: "", status: -1073741795, signal: null })).toBe("unsupported");
+	});
+
+	it("keeps access violations, timeouts, incompatible loads, and unexplained exits unknown", () => {
+		expect(classifyTrialLoadResult({ stdout: "", status: 0xc0000005, signal: null })).toBe("unknown");
+		expect(classifyTrialLoadResult({ stdout: "TRIAL_INCOMPATIBLE\n", status: 0, signal: null })).toBe("unknown");
+		expect(classifyTrialLoadResult({ stdout: "", status: 1, signal: null })).toBe("unknown");
+		expect(classifyTrialLoadResult({ stdout: "", status: null, signal: null, error: new Error("timeout") })).toBe(
+			"unknown",
+		);
+	});
+});
+
 describe("persisted host variant verdict", () => {
-	it("reads back what was written for the same hardware", () => {
+	it("reads back what was written for the same hardware and schema", () => {
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-variant-"));
 		try {
-			writeHostVariantVerdict(dir, "supported", { platform: "win32", arch: "x64" });
+			writeHostVariantVerdict(dir, "supported", {
+				platform: "win32",
+				arch: "x64",
+				cpuIdentity: CPU_ID,
+			});
 			const text = fs.readFileSync(path.join(dir, "host-variant.json"), "utf8");
-			expect(parseHostVariantVerdict(text, { platform: "win32", arch: "x64" })).toBe("supported");
+			expect(
+				parseHostVariantVerdict(text, {
+					platform: "win32",
+					arch: "x64",
+					cpuIdentity: CPU_ID,
+				}),
+			).toBe("supported");
 		} finally {
 			fs.rmSync(dir, { recursive: true, force: true });
 		}
 	});
 
-	it("never accepts a verdict from other hardware, corruption, or a recorded guess", () => {
-		const same = { platform: "win32" as const, arch: "x64" };
+	it("never accepts a legacy, foreign-hardware, corrupt, or guessed verdict", () => {
+		const same = { platform: "win32" as const, arch: "x64", cpuIdentity: CPU_ID };
+		const row = (overrides: Record<string, unknown> = {}) =>
+			JSON.stringify({
+				version: 1,
+				platform: "win32",
+				arch: "x64",
+				cpuIdentity: CPU_ID,
+				verdict: "supported",
+				...overrides,
+			});
+
+		expect(parseHostVariantVerdict(row({ version: 0 }), same)).toBeNull();
+		expect(parseHostVariantVerdict(row({ platform: "linux" }), same)).toBeNull();
+		expect(parseHostVariantVerdict(row({ arch: "arm64" }), same)).toBeNull();
+		expect(parseHostVariantVerdict(row({ cpuIdentity: "Replacement CPU" }), same)).toBeNull();
 		expect(
-			parseHostVariantVerdict(JSON.stringify({ platform: "linux", arch: "x64", verdict: "supported" }), same),
-		).toBeNull();
-		expect(
-			parseHostVariantVerdict(JSON.stringify({ platform: "win32", arch: "arm64", verdict: "supported" }), same),
+			parseHostVariantVerdict(JSON.stringify({ platform: "win32", arch: "x64", verdict: "supported" }), same),
 		).toBeNull();
 		expect(parseHostVariantVerdict("{not json", same)).toBeNull();
 		expect(parseHostVariantVerdict("42", same)).toBeNull();
-		// An "unknown" answer is not an answer: persisting it would pin the
-		// slower build on hardware we simply failed to ask.
-		expect(
-			parseHostVariantVerdict(JSON.stringify({ platform: "win32", arch: "x64", verdict: "unknown" }), same),
-		).toBeNull();
+		expect(parseHostVariantVerdict(row({ verdict: "unknown" }), same)).toBeNull();
+	});
+
+	it("does not write without a stable CPU identity", () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-variant-"));
+		try {
+			writeHostVariantVerdict(dir, "supported", {
+				platform: "win32",
+				arch: "x64",
+				cpuIdentity: null,
+			});
+			expect(fs.existsSync(path.join(dir, "host-variant.json"))).toBe(false);
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
 	});
 });
