@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-08-23
+
 ### Added
 
 - The HD recorder resolves every binary a take will need before it records one frame: docker, bun for the scene check, and ffmpeg and python3 for the publish chain, with ImageMagick accepted under either of its two names and bun looked for at `~/.bun/bin/bun` when a non-login ssh shell does not carry it. A publish tool first called after the recording is a take lost to a PATH difference; a rehearsal, which publishes nothing, needs only docker.
