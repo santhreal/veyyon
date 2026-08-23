@@ -25,9 +25,11 @@ import { classifyIdentity, classifySignal } from "./registry";
 export { isDefinitiveOAuthFailure } from "./domains/account";
 export {
 	isStreamReadErrorText,
+	isTransientErrorText,
 	STREAM_READ_ERROR_PATTERN,
 	TRANSIENT_TRANSPORT_PATTERN,
 } from "./domains/network";
+export { matchesCompiledGrammarTooLargeText, matchesStrictToolsRejectionText } from "./domains/request";
 export type { ClassificationRule, ClassRule, ErrorDomain, Recovery, RecoveryStage, Signal } from "./domains/types";
 export * from "./flag";
 export {
