@@ -124,12 +124,11 @@ import { formatDurationCoarse, formatProviderName } from "../slash-commands/help
 import type { SubcommandDef } from "../slash-commands/types";
 import { STTController, type SttState } from "../stt";
 import { discoverTitleSystemPromptFile, resolvePromptInput } from "../system-prompt";
-import { formatTaskId } from "../task/render";
 import type { ConfiguredThinkingLevel } from "../thinking";
 import type { LspStartupServerInfo } from "../tools";
 import { hasForegroundBashWait, onForegroundBashWaitChange } from "../tools/bash-foreground-registry";
 import { type ResolveToolDetails, runResolveInvocation } from "../tools/resolve";
-import { TODO_STRIKE_TOTAL_FRAMES, todoMatchesAnyDescription } from "../tools/todo";
+import { todoMatchesAnyDescription } from "../tools/todo";
 import { ToolError } from "../tools/tool-errors";
 import { vocalizer } from "../tts/vocalizer";
 import {
@@ -137,7 +136,8 @@ import {
 	RAIL_IDLE_STEP_MS,
 	RAIL_SETTLE_FRAMES,
 	type RailMotion,
-	railIdleHeadAt,
+	railClockMs,
+	railIdleHeadAtMs,
 } from "../tui/rail-motion";
 import { copyToClipboard } from "../utils/clipboard";
 import type { EventBus } from "../utils/event-bus";
@@ -166,14 +166,12 @@ import type { HookSelectorComponent, HookSelectorSlider } from "./components/hoo
 import { modalRevealEnabled, modalRevealGround } from "./components/modal-shell";
 import { PlanReviewOverlay } from "./components/plan-review-overlay";
 import { StatusLineComponent } from "./components/status-line";
-import { renderSubagentLaneLines } from "./components/subagent-lanes";
+import { renderSubagentHudLines } from "./components/subagent-hud";
 import { renderSunsetField } from "./components/sun";
 import {
 	renderTodoBoardLines,
 	TODO_BOARD_FRAME_DIVISOR,
-	TODO_BOARD_RAIL_DIVISOR,
 	type TodoBoardMotion,
-	type TodoBoardOwner,
 	todoBoardIsLive,
 	todoBoardMarkerAnimates,
 	todoBoardRailTravels,
@@ -476,14 +474,11 @@ export class InteractiveMode implements InteractiveModeContext {
 	#modelCycleClearTimer: NodeJS.Timeout | undefined;
 	/**
 	 * Frame counter for everything animated in the anchored region: the lane
-	 * sweep, the board's sweep, the breathing glyph on the task in flight, and the
-	 * completion sweep across a task that just closed. One counter, so the two
-	 * blocks cannot drift out of step.
+	 * sweep, the board's rail sweep, and the mark on the task in flight. One
+	 * counter, so the two blocks cannot drift out of step.
 	 */
 	#anchoredStep = 0;
 	#anchoredMotionInterval: NodeJS.Timeout | undefined;
-	/** Task content → the step its completion sweep started on. */
-	#todoCompleting = new Map<string, number>();
 	/** Settle frame while a closed board is going out, `undefined` otherwise. */
 	#todoSettleFrame: number | undefined;
 	/** The board being drawn for the length of that exit, held nowhere else. */
@@ -2216,8 +2211,8 @@ export class InteractiveMode implements InteractiveModeContext {
 		if (phases.length === 0) return;
 		if (settling === undefined && isTodoListDone(phases)) return;
 
-		const owners = this.#todoOwners();
-		this.#todoBoardLive = todoBoardIsLive(phases, owners);
+		const owned = this.#todoOwnedTasks();
+		this.#todoBoardLive = todoBoardIsLive(phases, owned);
 		const lines = renderTodoBoardLines(phases, {
 			columns: this.#anchoredColumns(),
 			// The two anchored blocks share one budget rather than each capping
@@ -2227,16 +2222,14 @@ export class InteractiveMode implements InteractiveModeContext {
 			// agents are live.
 			maxRows: this.#anchoredRowBudget(),
 			expanded: this.todoExpanded,
-			owners,
-			striking: this.#todoStriking(),
+			owned,
 			// The board steps on its own divisor. The shared clock is the tool
-			// rail's, fast enough for a highlight travelling down a block; a task
-			// marker on that clock churns several times a second next to text
-			// nobody is reading that fast.
+			// rail's, fast enough for a highlight travelling down a block; a mark on
+			// that clock changes several times a second next to text nobody is
+			// reading that fast.
 			frame: Math.floor(this.#anchoredStep / TODO_BOARD_FRAME_DIVISOR),
-			// Motion says the agent is working, so it is owed only while the agent
-			// IS working. A completion envelope still animates after the turn ends,
-			// because a task closing is an event rather than a state.
+			// Motion states that the agent is working, so it is owed only while the
+			// agent IS working: an interrupted or idle session gets a still board.
 			animate: todoBoardMarkerAnimates(this.#todoMotion()),
 			live: this.#todoBoardLive,
 		});
@@ -2279,59 +2272,47 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	/**
-	 * Which pending task each detached subagent is on, keyed by task content.
+	 * Pending tasks a detached subagent is working on right now.
 	 *
-	 * The board already computed this and kept a boolean, so it could say that
-	 * someone was on a task and never who. The owner's id and its session accent
-	 * are the join between this block and the lane block below it.
+	 * A pending task that an active spawn's description matches takes the accent
+	 * and the in-flight mark, which is the only thing on the board stating that
+	 * someone other than the main agent is on it.
 	 */
-	#todoOwners(): Map<string, TodoBoardOwner> {
-		const owners = new Map<string, TodoBoardOwner>();
+	#todoOwnedTasks(): Set<string> {
+		const owned = new Set<string>();
 		const active = this.#observerRegistry
 			.getSessionsSpawnedBy(this.focusedAgentId)
 			.filter(session => session.status === "active");
-		if (active.length === 0) return owners;
-		const phases = this.todoPhases;
+		if (active.length === 0) return owned;
+		const descriptions: string[] = [];
 		for (const session of active) {
 			const description =
 				session.description?.trim() || session.progress?.description?.trim() || session.label?.trim();
-			if (!description) continue;
-			const owner: TodoBoardOwner = {
-				id: formatTaskId(session.id),
-				accentHex: getSessionAccentHex(session.id, theme.getMajorThemeColorHexes(), theme.accentSurfaceLuminance),
-			};
-			for (const phase of phases) {
-				for (const task of phase.tasks) {
-					if (task.status !== "pending" || owners.has(task.content)) continue;
-					if (todoMatchesAnyDescription(task.content, [description])) owners.set(task.content, owner);
-				}
+			if (description) descriptions.push(description);
+		}
+		if (descriptions.length === 0) return owned;
+		for (const phase of this.todoPhases) {
+			for (const task of phase.tasks) {
+				if (task.status !== "pending" || owned.has(task.content)) continue;
+				if (todoMatchesAnyDescription(task.content, descriptions)) owned.add(task.content);
 			}
 		}
-		return owners;
-	}
-
-	/** Tasks still inside their completion sweep, and how many frames in they are. */
-	#todoStriking(): Map<string, number> {
-		const striking = new Map<string, number>();
-		for (const [content, startedStep] of this.#todoCompleting) {
-			striking.set(content, this.#anchoredStep - startedStep);
-		}
-		return striking;
+		return owned;
 	}
 
 	/**
-	 * The board's rail motion for this frame: the settle pass while the plan is
+	 * The board's rail motion for this frame: the exit pass while the plan is
 	 * going out, the idle sweep while anything is in flight, and nothing at all
-	 * when the board is open but waiting on the operator.
+	 * when the board is open but the agent is not working.
 	 *
 	 * That last state is the one the block could not previously express. A board
-	 * being worked and a board waiting for you to answer rendered byte-identically,
-	 * so the loudest region on the screen could not say whose turn it was.
+	 * being worked and a board waiting for the operator rendered byte-identically,
+	 * so the loudest region on the screen could not state whose turn it was.
 	 */
 	#todoRailMotion(): RailMotion | undefined {
 		if (this.#todoSettleFrame !== undefined) return { kind: "settle", frame: this.#todoSettleFrame };
 		if (!todoBoardRailTravels(this.#todoMotion())) return undefined;
-		return { kind: "idle", head: railIdleHeadAt(this.#anchoredStep / TODO_BOARD_RAIL_DIVISOR) };
+		return { kind: "idle", head: railIdleHeadAtMs(railClockMs()) };
 	}
 
 	/**
@@ -2339,17 +2320,16 @@ export class InteractiveMode implements InteractiveModeContext {
 	 *
 	 * A task marked in progress is not motion. The model marks one, the turn
 	 * ends, and the mark stays until the next turn changes it — so a board keyed
-	 * on task state alone breathed for as long as the operator sat and read it,
-	 * which says the agent is working when it is waiting for input.
+	 * on task state alone moved for as long as the operator sat and read it,
+	 * stating that the agent is working while it waits for input.
 	 * `session.isStreaming || isCompacting || hasPostPromptWork` is the same
 	 * predicate the composer treats as busy, so the board moves exactly while the
-	 * thing it reports on moves.
+	 * thing it draws moves, and an interrupt stops it on the frame the turn ends.
 	 */
 	#todoMotion(): TodoBoardMotion {
 		return {
 			transitions: transitionsEnabled(),
 			agentInMotion: this.session.isStreaming || this.session.isCompacting || this.session.hasPostPromptWork,
-			completing: this.#todoCompleting.size > 0,
 			live: this.#todoBoardLive,
 		};
 	}
@@ -2382,16 +2362,15 @@ export class InteractiveMode implements InteractiveModeContext {
 	#renderSubagentList(): void {
 		this.subagentContainer.clear();
 		const sessions = this.#observerRegistry.getSessionsSpawnedBy(this.#focusController.focusedAgentId);
-		const block = renderSubagentLaneLines(sessions, {
+		const block = renderSubagentHudLines(sessions, {
 			columns: this.#anchoredColumns(),
 			showModelBadge: settings.get("subagent.showResolvedModelBadge"),
-			nowMs: Date.now(),
 		});
 		this.#syncAnchoredMotionTimer();
 		if (block.lines.length === 0) return;
 		const painted =
 			transitionsEnabled() && block.lit.some(Boolean)
-				? paintRailMotion(block.lines, { kind: "idle", head: railIdleHeadAt(this.#anchoredStep) }, theme, {
+				? paintRailMotion(block.lines, { kind: "idle", head: railIdleHeadAtMs(railClockMs()) }, theme, {
 						lit: index => block.lit[index] === true,
 					})
 				: block.lines;
@@ -2431,7 +2410,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#anchoredMotionInterval = setInterval(() => {
 			this.#anchoredStep++;
 			this.#advanceTodoSettle();
-			this.#expireTodoCompletions();
 			this.#renderTodoList();
 			this.#renderSubagentList();
 			this.ui.requestRender();
@@ -2451,13 +2429,12 @@ export class InteractiveMode implements InteractiveModeContext {
 	 * Whether either anchored block has something in flight worth a frame.
 	 *
 	 * The board's own liveness is read from what the last render measured rather
-	 * than measured again: this runs on every frame, `#todoOwners` walks every
+	 * than measured again: this runs on every frame, `#todoOwnedTasks` walks every
 	 * active session against every task on the board, and the answer cannot have
 	 * changed since the render that produced it — a change to either side arrives
 	 * as an event that re-renders first.
 	 */
 	#anchoredMotionOwed(): boolean {
-		if (this.#todoCompleting.size > 0) return true;
 		// A live board is owed frames only while the agent is moving. Otherwise
 		// the clock ran for the whole time the operator spent reading a plan that
 		// was not being worked, and every one of those frames repainted two
@@ -2485,36 +2462,13 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#todoSettleFrame++;
 	}
 
-	/** Drop tasks whose completion sweep has finished, so the rows settle. */
-	#expireTodoCompletions(): void {
-		for (const [content, startedStep] of this.#todoCompleting) {
-			if (this.#anchoredStep - startedStep >= TODO_STRIKE_TOTAL_FRAMES) this.#todoCompleting.delete(content);
-		}
-	}
-
 	/**
-	 * Note what changed between two versions of the board, so the render can draw
-	 * the change as an event instead of as a new state.
+	 * Note that the plan closed, so the render can draw the exit as an event.
 	 *
-	 * Two things are events: a task that just closed (its sweep) and a plan that
-	 * just closed (the board's exit). Everything else about a board is a state and
-	 * needs no memory. Keyed by task content, which is what the todo tool itself
-	 * treats as a task's identity.
+	 * A plan closing is the only event the board has; everything else about a
+	 * board is a state and needs no memory.
 	 */
 	#noteTodoTransitions(before: TodoPhase[], after: TodoPhase[]): void {
-		const wasOpen = new Set<string>();
-		for (const phase of before) {
-			for (const task of phase.tasks) {
-				if (task.status !== "completed" && task.status !== "abandoned") wasOpen.add(task.content);
-			}
-		}
-		for (const phase of after) {
-			for (const task of phase.tasks) {
-				if (task.status === "completed" && wasOpen.has(task.content)) {
-					this.#todoCompleting.set(task.content, this.#anchoredStep);
-				}
-			}
-		}
 		const nonEmptyBefore = before.filter(phase => phase.tasks.length > 0);
 		const nonEmptyAfter = after.filter(phase => phase.tasks.length > 0);
 		// A board that arrives ALREADY finished never had rows on screen, so there is

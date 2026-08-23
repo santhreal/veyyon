@@ -383,7 +383,7 @@ describe("the collapsed board reaches the screen", () => {
 	beforeEach(async () => {
 		resetSettingsForTest();
 		tempDir = TempDir.createSync("@pi-todo-hud-done-paint-");
-		await Settings.init({ inMemory: true, cwd: tempDir.path() });
+		await Settings.init({ inMemory: true, cwd: tempDir.path(), overrides: { "display.transitions": "off" } });
 		authStorage = await AuthStorage.create(path.join(tempDir.path(), "testauth.db"));
 		const modelRegistry = new ModelRegistry(authStorage);
 		const model = modelRegistry.find("anthropic", "claude-sonnet-4-5");
@@ -391,7 +391,7 @@ describe("the collapsed board reaches the screen", () => {
 		session = new AgentSession({
 			agent: new Agent({ initialState: { model, systemPrompt: ["Test"], tools: [], messages: [] } }),
 			sessionManager: SessionManager.create(tempDir.path(), tempDir.path()),
-			settings: Settings.isolated({ "startup.quiet": true }),
+			settings: Settings.isolated({ "startup.quiet": true, "display.transitions": "off" }),
 			modelRegistry,
 		});
 		mode = new InteractiveMode(session, "test");

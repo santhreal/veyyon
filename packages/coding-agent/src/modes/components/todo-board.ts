@@ -1,69 +1,33 @@
 /**
- * The anchored todo board, drawn as a railed block.
+ * The anchored todo board above the composer.
  *
- * WHY a rail and not a tree. `renderTreeList` drew this board for its whole life
- * and the connectors were never the problem on their own — `├─ │ └─` is the
- * right shape for an ordered, nested, finite list, which is exactly what a plan
- * is. The problem is that a tree cannot be ALIVE. Every other live region in this
- * product hangs off `block.rail` and says it is working by moving light down
- * that rail ({@link paintRailMotion}), and `findRailCell` can only find the rail
- * when it is the first non-space on the row. A board whose rows begin with a
- * connector is, mechanically, a board no house animation can reach. Railing it
- * is not a restyle; it is the precondition for the block being able to say
- * anything about its own state.
+ * The list is the tree list this board has had for its whole life: a header
+ * carrying the phase the plan is on, one row per phase with its own tally, and
+ * the tasks of the phase being worked nested under it with `renderTreeList`'s
+ * connectors. Two things are added to it, and nothing else.
  *
- * WHAT the motion says, and it is two things a reader could not previously ask
- * this block:
+ * The RAIL is the side bar. `block.rail` is the first non-space cell of every
+ * row, which is the one arrangement {@link paintRailMotion} and `findRailCell`
+ * can reach, so the block can carry the same travelling light every other live
+ * region in this product carries. A row that began with a connector was a row
+ * no house animation could find.
  *
- *   - The RAIL is the block: light travels down it while the plan is being
- *     worked, and the rail is flat and dim while it is not. A board waiting on
- *     the operator and a board being worked used to render byte-identically,
- *     which made the loudest region on the screen the one that could not tell
- *     you whether it was your turn.
- *   - The GLYPH is the row: the task in flight draws the breathing pixel — the
- *     status spinner's density ramp with its full-cell peak dropped, `· : ░ ▒ ▓
- *     ▒ ░ :`, which the symbol table calls "the brand compressed into one quiet
- *     cell". The peak comes off because a full cell is the largest ink this
- *     surface ever draws, so at the top of the ramp the pulse reads as a block
- *     appearing rather than as a cell breathing; the status line keeps the full
- *     ramp, where it sits in a dense row and does not. Nothing rotates and
- *     nothing new was invented: this is `formatStatusIcon`'s own substitution (a
- *     spinner frame while a frame exists, the static symbol otherwise) applied
- *     to the one row that is actually running.
+ * The MARK is the row in flight: one small square alternating between hollow and
+ * filled, at the task it belongs to. It replaces nothing else — every other row
+ * keeps the checkbox vocabulary (`■` done, `□` open, `◧` unused here) and every
+ * other row is still.
  *
- * WHY the glyphs are all square. Every load-bearing glyph in this product is a
- * square cell modulated by ink: the rail is a block partial, `BAR_RAMPS` is
- * `▏▎▍▌▋▊▉█`, the spinner is a density ramp, the checkboxes are `■ □ ◧`. The ink
- * ramp here runs the other way from the old board's, which spent its heaviest
- * mark (`■`) on completed work: a finished task is context, so it recedes to
- * `status.done`, and the ink on screen tracks what is LEFT.
- *
- * WHY completion is a gesture and not a state flip. A task closing is the only
- * event this block has, and it used to be a single frame: the strike appeared
- * whole, the box flipped, done. Now the same 14-frame envelope the transcript
- * card already sweeps ({@link todoStrikeReveal}) runs here too, the glyph
- * exhales down the density ramp as the strike travels, and the row's colour
- * cools from `success` to `dim` behind it. One gesture, read three ways, on one
- * clock — and the card and the board finally agree about what a completion looks
- * like.
- *
- * WHY a delegated row names its agent. The board already computed which pending
- * task a detached subagent is on, then threw the agent away and kept a boolean,
- * so it could say "someone is on this" and never "who" — while the block one row
- * below it said who and never which task. The owner's id, in that agent's own
- * session accent, is the join. It costs columns only on rows that have an owner
- * and comes off before it wraps.
+ * Both stop when the agent stops. Motion states that the agent is working, and a
+ * task stays marked in progress across the turn boundary, so a board keyed on
+ * task state alone moved for as long as the operator sat reading it.
+ * {@link todoBoardMarkerAnimates} and {@link todoBoardRailTravels} are where
+ * that is decided, once, for all three motion sites.
  */
 
-import { blendHex, visibleWidth } from "@veyyon/tui";
+import { visibleWidth } from "@veyyon/tui";
 import type { TodoItem, TodoPhase } from "../../tools/todo";
-import {
-	boundedTodoPreviewText,
-	formatPhaseDisplayName,
-	TODO_STRIKE_TOTAL_FRAMES,
-	todoStrikeReveal,
-} from "../../tools/todo";
-import { spinnerRampOneLevelShallower } from "../theme/symbols";
+import { boundedTodoPreviewText, formatPhaseDisplayName, todoStrikeReveal } from "../../tools/todo";
+import { renderTreeList } from "../../tui/tree-list";
 import { theme } from "../theme/theme";
 
 /** Stages listed after the active one when the board is collapsed. */
@@ -72,284 +36,111 @@ const SUBSEQUENT_PHASE_CAP = 4;
 const ACTIVE_TASK_CAP = 5;
 /** Recently finished tasks kept alongside them, so a stage that just closed work shows it. */
 const DONE_TASK_CAP = 2;
-/** Task rows are indented under their phase. Two cells: the rail is the block's only rule. */
-const TASK_INDENT = 2;
-/** Gap before a right-aligned tally or owner id. */
-const RIGHT_GAP = 2;
 /**
  * Shared clock steps per board frame. The anchored clock is the tool rail's, at
- * `RAIL_IDLE_STEP_MS`; a task marker on that clock churns several times a
+ * `RAIL_IDLE_STEP_MS`; a task marker on that clock changes several times a
  * second, which is faster than anything a reader is tracking on a plan. Four
  * steps is a change roughly every quarter second.
  */
 export const TODO_BOARD_FRAME_DIVISOR = 4;
 
 /**
- * Shared clock steps per row the board's rail highlight travels. The rail is
- * one column of the tallest region above the composer, so it reads as a slow
- * sweep rather than as the fast fill of a block that is about to finish.
- */
-export const TODO_BOARD_RAIL_DIVISOR = 3;
-
-/**
- * What the board knows about whether it may move.
+ * What the board is allowed to move on.
  *
- * The three motion sites — the task marker's breath, the rail's travel, and the
- * anchored clock that has to keep ticking for either to be seen — read one
- * decision from here instead of each recomposing it. They disagreed once: the
- * marker animated off task state alone, so a plan with a task marked in progress
- * breathed while the session sat idle waiting for input.
+ * The three motion sites — the task mark, the rail, and the anchored clock that
+ * has to keep ticking for either to be seen — read one decision from here
+ * instead of each recomposing it. They disagreed once: the mark animated off
+ * task state alone, so a plan with a task marked in progress moved while the
+ * session sat idle waiting for input.
  */
 export interface TodoBoardMotion {
 	/** `display.transitions`. Off means the block is a still image. */
 	transitions: boolean;
 	/** Whether the agent is streaming, compacting, or running post-prompt work. */
 	agentInMotion: boolean;
-	/** Whether a completion envelope is mid-sweep. */
-	completing: boolean;
 	/** Whether the plan has open work at all. */
 	live: boolean;
 }
 
-/**
- * Whether the in-flight task marker breathes.
- *
- * A completion sweep is an event with an end, so it finishes its envelope even
- * after the turn that produced it is over.
- */
+/** Whether the in-flight task mark alternates. */
 export function todoBoardMarkerAnimates(motion: TodoBoardMotion): boolean {
 	if (!motion.transitions) return false;
-	return motion.agentInMotion || motion.completing;
+	return motion.agentInMotion;
 }
 
 /**
- * Whether the rail highlight travels. Unlike the marker this needs open work:
- * the rail says the plan is being worked, and a settled plan is not.
+ * Whether the rail highlight travels. Unlike the mark this needs open work: the
+ * rail states that the plan is being worked, and a settled plan is not.
  */
 export function todoBoardRailTravels(motion: TodoBoardMotion): boolean {
 	if (!motion.transitions) return false;
 	return motion.live && motion.agentInMotion;
 }
-
-/** The agent a delegated row belongs to. */
-export interface TodoBoardOwner {
-	/** Already formatted for display (`formatTaskId`). */
-	id: string;
-	/** That agent's stable session accent, so the row and its lane match. */
-	accentHex: string;
-}
-
 export interface TodoBoardOptions {
 	columns: number;
 	/**
 	 * Hard cap on drawn rows, header included. The board is an anchored region
-	 * above the composer, so it cannot be allowed to grow without bound: the
-	 * expanded board used to list every phase and every task, which on a long
-	 * plan is a region taller than the viewport that does not scroll away.
+	 * above the composer, so it cannot be allowed to grow without bound: a
+	 * wrapped or overlong row does not scroll away, it makes the region taller on
+	 * every rebuild.
 	 */
 	maxRows: number;
 	expanded: boolean;
-	/** Task content → the detached subagent working on it right now. */
-	owners: ReadonlyMap<string, TodoBoardOwner>;
-	/** Task content → frames since it closed, for tasks still inside the strike window. */
-	striking: ReadonlyMap<string, number>;
-	/** Wall step for the breathing glyph. */
+	/** Task contents a detached subagent is working on right now. */
+	owned: ReadonlySet<string>;
+	/** Board frame, already divided down from the shared anchored clock. */
 	frame: number;
-	/** `display.transitions`, read by the caller so this stays pure. */
+	/** Whether the in-flight mark alternates, decided by the caller so this stays pure. */
 	animate: boolean;
-	/** Whether anything is in flight, which is what the rail's colour means. */
+	/** Whether anything is in flight, which is what the rail's colour states. */
 	live: boolean;
-}
-
-/** One row of the block, before the rail is attached. */
-interface BoardRow {
-	/** Cells of indent under the phase. */
-	indent: number;
-	glyph: string;
-	text: string;
-	/** Right-aligned tally or owner id, dropped before the row would overflow. */
-	right?: string;
-	/** Which phase this row belongs to, so a trim knows what to drop first. */
-	phase: number;
 }
 
 function isClosed(task: TodoItem): boolean {
 	return task.status === "completed" || task.status === "abandoned";
 }
 
-/** The board's ramp: the activity ramp with its full-cell peak dropped. */
-function boardFrames(): string[] {
-	return spinnerRampOneLevelShallower(theme.spinnerFrames);
+/**
+ * The mark on the task in flight: a small square, hollow on one frame and filled
+ * on the next.
+ *
+ * Small and square by construction. The density ramp (`░ ▒ ▓ █`) fills the whole
+ * cell, and a terminal cell is half as wide as it is tall, so a ramp cell at the
+ * task indent reads as a rectangle switching on and off — louder than the row it
+ * marks. `▫`/`▪` are the two smallest marks the symbol table carries and they
+ * differ only in ink, so the alternation reads as one mark pulsing. Still, it is
+ * the filled one, which is the same mark a reader is already tracking.
+ */
+function workingMark(frame: number, animate: boolean): string {
+	const filled = theme.symbol("status.done");
+	if (!animate) return filled;
+	return frame % 2 === 0 ? theme.symbol("status.shadowed") : filled;
 }
 
 /**
- * The active task's marker: the two lowest ink levels of the ramp, alternating.
+ * One task row.
  *
- * A task row is the smallest thing on the board and it gets the smallest mark
- * the surface has. The full density ramp reads as a block appearing and
- * disappearing at the task indent, which is louder than the work it reports and
- * louder than the phase row above it; two adjacent low-ink cells read as one
- * mark breathing. With `display.transitions` off, or while nothing is running,
- * the lower of the two draws and the cell never churns.
- *
- * A phase row never draws this. Phase rows carry the checkbox vocabulary
- * (`■ ◧ □`) and task rows carry marks, so the glyph column says which level of
- * the plan a row belongs to before colour says anything at all.
+ * Every state is separated by its glyph before it is separated by colour, so the
+ * row still reads in a low-contrast theme and in a capture that dropped every
+ * SGR. A pending task a detached subagent is working on takes the accent, which
+ * is the only thing on the board that states someone else is on it.
  */
-function taskMarkGlyph(frame: number, animate: boolean): string {
-	const frames = boardFrames();
-	const low = frames[0] ?? theme.symbol("status.enabled");
-	if (!animate) return low;
-	const high = frames[1] ?? low;
-	return frame % 2 === 0 ? low : high;
-}
-
-/**
- * The density ramp exhaling, for a task inside its completion window.
- *
- * The ramp's first half is its rise, so walking it backwards is the fall, and the
- * row lands on `status.done` when the strike reaches the end of the text. A
- * preset whose frames are not a density ramp (`ascii`: `| / - \`) still gets a
- * bounded countdown that terminates on the same glyph, rather than a special
- * case that would only ever be read as a missing animation.
- */
-function exhaleGlyph(frame: number, animate: boolean): string {
-	if (!animate) return theme.symbol("status.done");
-	const frames = boardFrames();
-	const half = Math.max(1, Math.floor(frames.length / 2));
-	const progress = Math.min(1, Math.max(0, frame / TODO_STRIKE_TOTAL_FRAMES));
-	const step = Math.min(half - 1, Math.floor(progress * half));
-	return frames[half - 1 - step] ?? theme.symbol("status.done");
-}
-
-function paintHex(hex: string, text: string): string {
-	const ansi = theme.fgHexAnsi(hex);
-	return ansi ? `${ansi}${text}\x1b[39m` : text;
-}
-
-/**
- * One task row's glyph and painted text.
- *
- * Every state is separated by its GLYPH before it is separated by colour, so the
- * board still reads in a low-contrast theme and in any capture that dropped
- * every SGR. The one place two states share a glyph is a delegated row, which IS
- * an in-progress row — the only difference is who observed it — so it takes the
- * same shape in its owner's accent and names the owner outright.
- */
-function taskRow(task: TodoItem, options: TodoBoardOptions, width: number): Omit<BoardRow, "phase"> {
+function taskLine(task: TodoItem, options: TodoBoardOptions, width: number): string {
+	const checkbox = theme.checkbox;
 	const content = boundedTodoPreviewText(task.content, width);
-	const striking = options.striking.get(task.content);
 	switch (task.status) {
-		case "completed": {
-			// Past the last frame of the envelope the row IS settled, and it must be
-			// settled in the same BYTES: `blendHex` at t=1 and `theme.fg("dim", …)`
-			// are the same colour spelled two ways, and the ramp's own last step is
-			// its faintest cell rather than the done glyph. A caller that keeps
-			// counting therefore has to fall through here, or the block repaints a
-			// row that differs from its own static render forever.
-			if (striking !== undefined && striking < TODO_STRIKE_TOTAL_FRAMES) {
-				// Heat behind the sweep: the row lands on `success` and cools to the
-				// colour it settles at, so a completion is visible for its envelope and
-				// then stops asking for attention.
-				const t = Math.min(1, striking / TODO_STRIKE_TOTAL_FRAMES);
-				const hex = blendHex(theme.getColorHex("success"), theme.getColorHex("dim"), t);
-				return {
-					indent: TASK_INDENT,
-					glyph: paintHex(hex, exhaleGlyph(striking, options.animate)),
-					text: paintHex(hex, todoStrikeReveal(content, striking)),
-				};
-			}
-			// A closed task keeps its mark in `success` rather than fading the mark
-			// with the text: a plan whose finished rows were dim ink on a dim
-			// ground read as though nothing in it had been done, which is the
-			// opposite of what a board is for. The text is `muted`, so the row
-			// stops competing with the row being worked while staying legible.
-			return {
-				indent: TASK_INDENT,
-				glyph: theme.fg("success", theme.symbol("status.done")),
-				text: theme.fg("muted", todoStrikeReveal(content, undefined)),
-			};
-		}
-		case "abandoned":
-			return {
-				indent: TASK_INDENT,
-				glyph: theme.fg("error", theme.symbol("status.aborted")),
-				text: theme.fg("error", todoStrikeReveal(content, undefined)),
-			};
+		case "completed":
+			return theme.fg("success", `${checkbox.checked} ${todoStrikeReveal(content, undefined)}`);
 		case "in_progress":
-			return {
-				indent: TASK_INDENT,
-				glyph: theme.fg("accent", taskMarkGlyph(options.frame, options.animate)),
-				text: theme.fg("accent", content),
-			};
-		default: {
-			const owner = options.owners.get(task.content);
-			if (owner) {
-				return {
-					indent: TASK_INDENT,
-					glyph: paintHex(owner.accentHex, taskMarkGlyph(options.frame, options.animate)),
-					text: paintHex(owner.accentHex, content),
-					right: paintHex(owner.accentHex, owner.id),
-				};
+			return theme.fg("accent", `${workingMark(options.frame, options.animate)} ${content}`);
+		case "abandoned":
+			return theme.fg("error", `${checkbox.unchecked} ${todoStrikeReveal(content, undefined)}`);
+		default:
+			if (options.owned.has(task.content)) {
+				return theme.fg("accent", `${workingMark(options.frame, options.animate)} ${content}`);
 			}
-			return {
-				indent: TASK_INDENT,
-				glyph: theme.fg("dim", theme.symbol("status.shadowed")),
-				text: theme.fg("dim", content),
-			};
-		}
+			return theme.fg("dim", `${checkbox.unchecked} ${content}`);
 	}
-}
-
-/**
- * A phase's row, in the checkbox vocabulary its tasks never use: `■` for a
- * phase with nothing open, `◧` for the one being worked, `□` for one nobody has
- * reached. Task rows carry marks (`▪ ▫ ∎`), so one glance down the glyph column
- * separates the stages of the plan from the work inside them.
- *
- * The worked phase is STATIC. It used to draw the same breathing cell its
- * active task drew, which put the same animation on two rows that mean
- * different things and left neither of them saying anything: a half-filled box
- * already states that this stage is part-done, and the tally beside it states
- * how far.
- */
-function phaseRow(
-	phase: TodoPhase,
-	oneBased: number,
-	multiPhase: boolean,
-	options: TodoBoardOptions,
-	width: number,
-): Omit<BoardRow, "phase"> {
-	const done = phase.tasks.filter(task => task.status === "completed").length;
-	const tally = `${done}/${phase.tasks.length}`;
-	const open = phase.tasks.filter(task => !isClosed(task));
-	const working = phase.tasks.some(task => task.status === "in_progress" || options.owners.has(task.content));
-	const label = boundedTodoPreviewText(
-		multiPhase ? formatPhaseDisplayName(phase.name, oneBased) : phase.name,
-		Math.max(1, width - visibleWidth(tally) - RIGHT_GAP),
-	);
-	if (open.length === 0) {
-		return {
-			indent: 0,
-			glyph: theme.fg("success", theme.checkbox.checked),
-			text: theme.fg("muted", label),
-			right: theme.fg("dim", tally),
-		};
-	}
-	if (working) {
-		return {
-			indent: 0,
-			glyph: theme.fg("accent", theme.checkbox.progress),
-			text: theme.bold(theme.fg("accent", label)),
-			right: theme.fg("dim", tally),
-		};
-	}
-	return {
-		indent: 0,
-		glyph: theme.fg("muted", theme.checkbox.unchecked),
-		text: theme.fg("muted", label),
-		right: theme.fg("dim", tally),
-	};
 }
 
 /**
@@ -372,11 +163,9 @@ export function activeTodoPhaseIndex(phases: readonly TodoPhase[]): number {
 }
 
 /** Whether a board with this state has anything in flight, which is what the rail means. */
-export function todoBoardIsLive(phases: readonly TodoPhase[], owners: ReadonlyMap<string, unknown>): boolean {
+export function todoBoardIsLive(phases: readonly TodoPhase[], owned: ReadonlySet<string>): boolean {
 	return phases.some(phase =>
-		phase.tasks.some(
-			task => task.status === "in_progress" || (task.status === "pending" && owners.has(task.content)),
-		),
+		phase.tasks.some(task => task.status === "in_progress" || (task.status === "pending" && owned.has(task.content))),
 	);
 }
 
@@ -386,8 +175,8 @@ export function todoBoardIsLive(phases: readonly TodoPhase[], owners: ReadonlyMa
  * Returns an empty array when there is nothing to draw, so the container clears
  * itself. Whether a CLOSED plan is worth drawing is the caller's decision, not
  * this function's: a finished board is history and belongs in the transcript,
- * but it is drawn for the length of its exit animation, and a renderer that
- * refused a closed plan could not draw that exit.
+ * but it is drawn for the length of its exit pass, and a renderer that refused a
+ * closed plan could not draw that exit.
  */
 export function renderTodoBoardLines(phases: readonly TodoPhase[], options: TodoBoardOptions): string[] {
 	const live = phases.filter(phase => phase.tasks.length > 0);
@@ -395,74 +184,87 @@ export function renderTodoBoardLines(phases: readonly TodoPhase[], options: Todo
 
 	const rail = theme.symbol("block.rail");
 	// The last column is left clear: a row that fills it arms the terminal's
-	// pending wrap, and a wrapped row in an anchored region does not scroll away,
-	// it makes the region taller on every rebuild. Chrome is the Text's own left
-	// padding, the rail, and the space after it.
+	// pending wrap. Chrome is the rail, the space after it, and the connectors
+	// `renderTreeList` puts in front of a nested row (three cells per level).
 	const usable = Math.max(1, options.columns - 1);
-	const content = usable - 1 - visibleWidth(rail) - 1;
-	if (content < 4) return [];
+	const content = usable - visibleWidth(rail) - 1;
+	if (content < 8) return [];
+	const glyphColumns = Math.max(
+		visibleWidth(theme.checkbox.checked),
+		visibleWidth(theme.checkbox.unchecked),
+		visibleWidth(theme.symbol("status.done")),
+		visibleWidth(theme.symbol("status.shadowed")),
+	);
+	const taskWidth = Math.max(8, content - 6 - glyphColumns - 1);
 
 	const multiPhase = live.length > 1;
 	const activeIdx = activeTodoPhaseIndex(live);
 
-	// Every phase gets its row, including the ones already finished: a closed
-	// phase costs exactly one row now, and its tally is the only thing on screen
-	// that says the plan has come this far. The old board sliced them away and a
-	// stage that had just closed three tasks looked exactly like one that had done
-	// nothing. Tasks are drawn only for the phase being worked and the few after
-	// it, so the body stays bounded by what is ahead rather than by what is done.
-	const rows: BoardRow[] = [];
-	for (let i = 0; i < live.length; i++) {
-		const phase = live[i]!;
-		rows.push({ ...phaseRow(phase, i + 1, multiPhase, options, content - 2), phase: i });
-		if (phase.tasks.every(isClosed)) continue;
-		if (!options.expanded && (i < activeIdx || i > activeIdx + SUBSEQUENT_PHASE_CAP)) continue;
-		const tasks = options.expanded ? phase.tasks : collapsedTasks(phase);
-		for (const task of tasks) {
-			rows.push({ ...taskRow(task, options, content - TASK_INDENT - 2), phase: i });
-		}
-	}
-
-	// Header included in the budget, and the overflow row too when there is one,
-	// so `maxRows` is the height of the block and not the height of its body.
-	//
-	// What a trim drops is the whole question. Trimming the tail of the row list
-	// spends the budget on whatever the plan happens to have finished and cuts the
-	// work in flight, which on a ten-phase plan sitting in phase eight means a
-	// board of nothing but closed tallies. Finished phases come off the TOP
-	// instead, oldest first, and the active phase onward is what the budget is
-	// there to protect; only when that alone overflows does the tail go, with the
-	// overflow row saying how much.
-	const budget = Math.max(1, options.maxRows - 1);
-	const firstLive = rows.findIndex(row => row.phase >= activeIdx);
-	const head = firstLive < 0 ? rows.length : firstLive;
-	let shown = rows;
-	let hidden = 0;
-	if (rows.length > budget) {
-		const dropFromTop = Math.min(head, rows.length - budget + 1);
-		shown = rows.slice(dropFromTop);
-		hidden = dropFromTop;
-		if (shown.length > budget - 1) {
-			hidden += shown.length - (budget - 1);
-			shown = shown.slice(0, Math.max(0, budget - 1));
-		}
-	}
-	const trimmed = hidden > 0;
-
-	const railFor = (): string => theme.fg(options.live ? "accent" : "dim", rail);
-	const draw = (row: BoardRow): string => {
-		const indent = " ".repeat(row.indent);
-		const left = `${indent}${row.glyph} ${row.text}`;
-		if (!row.right) return `${railFor()} ${left}`.trimEnd();
-		const room = content - visibleWidth(left) - RIGHT_GAP;
-		if (room < visibleWidth(row.right)) return `${railFor()} ${left}`.trimEnd();
-		const pad = " ".repeat(content - visibleWidth(left) - visibleWidth(row.right));
-		return `${railFor()} ${left}${pad}${row.right}`.trimEnd();
+	// One phase node. The stage being worked carries its tasks and its label in
+	// accent; a stage nobody has reached is one muted row, and its tasks are
+	// listed only when the board is expanded. This is what keeps the block short:
+	// the plan has as many phases as it has, and the board is a region above the
+	// composer that does not scroll.
+	const phaseLines = (phase: TodoPhase, oneBased: number, active: boolean): string[] => {
+		const done = phase.tasks.filter(task => task.status === "completed").length;
+		const tally = ` · ${done}/${phase.tasks.length}`;
+		const label = boundedTodoPreviewText(
+			multiPhase ? formatPhaseDisplayName(phase.name, oneBased) : phase.name,
+			Math.max(8, content - 3 - visibleWidth(tally)),
+		);
+		const header = active
+			? theme.bold(theme.fg("accent", label)) + theme.fg("dim", tally)
+			: theme.fg("muted", label) + theme.fg("dim", tally);
+		if (!active && !options.expanded) return [header];
+		return [
+			header,
+			...renderTreeList(
+				{
+					items: options.expanded ? phase.tasks : collapsedTasks(phase),
+					expanded: true,
+					renderItem: task => taskLine(task, options, taskWidth),
+				},
+				theme,
+			),
+		];
 	};
 
-	const lines = [`${railFor()} ${theme.bold(theme.fg("accent", "Todos"))}`, ...shown.map(draw)];
-	if (trimmed) {
-		lines.push(`${railFor()} ${theme.fg("dim", boundedTodoPreviewText(`… ${hidden} more`, content))}`);
+	// Collapsed: the active stage and a bounded number of the stages after it.
+	// The stages already finished are not drawn — the header's `phase n/total`
+	// states how far the plan has come, and a column of closed tallies is what
+	// made the block read as one undifferentiated chunk. Expanded lists every
+	// stage from the top. Roman numerals stay tied to the real phase index.
+	const baseIdx = options.expanded ? 0 : activeIdx;
+	const slice = options.expanded ? live.slice(baseIdx) : live.slice(baseIdx, baseIdx + 1 + SUBSEQUENT_PHASE_CAP);
+	const body = renderTreeList(
+		{
+			items: slice,
+			expanded: true,
+			renderItem: (phase, ctx) => phaseLines(phase, baseIdx + ctx.index + 1, baseIdx + ctx.index === activeIdx),
+		},
+		theme,
+	);
+
+	const railCell = theme.fg(options.live ? "accent" : "dim", rail);
+	const header =
+		theme.bold(theme.fg("accent", "Todos")) +
+		(multiPhase ? theme.fg("dim", ` · phase ${activeIdx + 1}/${live.length}`) : "");
+
+	// The header is inside the row budget, and so is the overflow row when there
+	// is one, so `maxRows` is the height of the block rather than the height of
+	// its body. The tail is what goes: the rows are the active stage first, so
+	// what a trim drops is the stages furthest ahead of the work.
+	const budget = Math.max(1, options.maxRows - 1);
+	let shown = body;
+	let hidden = 0;
+	if (body.length > budget) {
+		shown = body.slice(0, Math.max(0, budget - 1));
+		hidden = body.length - shown.length;
+	}
+
+	const lines = [`${railCell} ${header}`, ...shown.map(line => `${railCell} ${line}`.trimEnd())];
+	if (hidden > 0) {
+		lines.push(`${railCell} ${theme.fg("dim", boundedTodoPreviewText(`… ${hidden} more`, content))}`);
 	}
 	return ["", ...lines];
 }

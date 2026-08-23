@@ -1,5 +1,5 @@
 /**
- * The anchored todo board moves only while the agent is in motion or closing a task.
+ * The anchored todo board moves only while the agent is in motion.
  *
  * WHY THIS EXISTS.
  * The defect: The anchored todo board HUD above the composer previously animated
@@ -23,7 +23,6 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import {
 	renderTodoBoardLines,
 	TODO_BOARD_FRAME_DIVISOR,
-	TODO_BOARD_RAIL_DIVISOR,
 	type TodoBoardMotion,
 	type TodoBoardOptions,
 	todoBoardMarkerAnimates,
@@ -31,9 +30,15 @@ import {
 } from "@veyyon/coding-agent/modes/components/todo-board";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { TodoItem, TodoPhase } from "@veyyon/coding-agent/tools/todo";
+import {
+	RAIL_IDLE_ROW_MS,
+	RAIL_IDLE_ROWS_PER_STEP,
+	RAIL_IDLE_STEP_MS,
+	railIdleHeadAtMs,
+} from "@veyyon/coding-agent/tui/rail-motion";
 import { type AnsiPolicy, getAnsiPolicy, setAnsiPolicy } from "@veyyon/tui";
 
-const EXPECTED_MOTION_FIELDS = ["agentInMotion", "completing", "live", "transitions"] as const;
+const EXPECTED_MOTION_FIELDS = ["agentInMotion", "live", "transitions"] as const;
 
 type MotionField = (typeof EXPECTED_MOTION_FIELDS)[number];
 
@@ -46,8 +51,7 @@ function options(overrides: Partial<TodoBoardOptions> = {}): TodoBoardOptions {
 		columns: 100,
 		maxRows: 14,
 		expanded: false,
-		owners: new Map(),
-		striking: new Map(),
+		owned: new Set<string>(),
 		frame: 0,
 		animate: true,
 		live: false,
@@ -71,17 +75,18 @@ function rowFor(phases: readonly TodoPhase[], text: string, overrides: Partial<T
 
 /** The glyph column of the row naming `text`: the first non-space after the indent. */
 function glyphFor(phases: readonly TodoPhase[], text: string, overrides: Partial<TodoBoardOptions> = {}): string {
-	return rowFor(phases, text, overrides).trimStart().slice(0, 1);
+	const row = rowFor(phases, text, overrides);
+	const before = row.slice(0, row.indexOf(text)).trimEnd();
+	return before.slice(-1);
 }
 
 function generateAllMotions(): TodoBoardMotion[] {
 	const motions: TodoBoardMotion[] = [];
-	for (let i = 0; i < 16; i++) {
+	for (let i = 0; i < 8; i++) {
 		motions.push({
 			transitions: (i & 1) !== 0,
 			agentInMotion: (i & 2) !== 0,
-			completing: (i & 4) !== 0,
-			live: (i & 8) !== 0,
+			live: (i & 4) !== 0,
 		});
 	}
 	return motions;
@@ -101,24 +106,23 @@ describe("the todo board moves only while the agent does", () => {
 	});
 
 	describe("exhaustive TodoBoardMotion decision space", () => {
-		it("enforces that TodoBoardMotion has exactly four fields", () => {
+		it("enforces that TodoBoardMotion has exactly three fields", () => {
 			const canonical: TodoBoardMotion = {
 				transitions: true,
 				agentInMotion: true,
-				completing: true,
 				live: true,
 			};
 			const fields = Object.keys(canonical).sort() as MotionField[];
-			expect(fields).toHaveLength(4);
+			expect(fields).toHaveLength(3);
 			expect(fields).toEqual([...EXPECTED_MOTION_FIELDS].sort());
 		});
 
-		it("evaluates all 16 motion combinations against the canonical rules", () => {
+		it("evaluates all 8 motion combinations against the canonical rules", () => {
 			const allMotions = generateAllMotions();
-			expect(allMotions).toHaveLength(16);
+			expect(allMotions).toHaveLength(8);
 
 			for (const motion of allMotions) {
-				const expectedMarker = motion.transitions && (motion.agentInMotion || motion.completing);
+				const expectedMarker = motion.transitions && motion.agentInMotion;
 				const expectedRail = motion.transitions && motion.live && motion.agentInMotion;
 
 				expect(todoBoardMarkerAnimates(motion)).toBe(expectedMarker);
@@ -130,7 +134,7 @@ describe("the todo board moves only while the agent does", () => {
 	describe("core behavioral motion invariants", () => {
 		it("transitions off is absolute for both marker animation and rail travel", () => {
 			const disabledMotions = generateAllMotions().filter(m => !m.transitions);
-			expect(disabledMotions).toHaveLength(8);
+			expect(disabledMotions).toHaveLength(4);
 			for (const motion of disabledMotions) {
 				expect(todoBoardMarkerAnimates(motion)).toBe(false);
 				expect(todoBoardRailTravels(motion)).toBe(false);
@@ -141,38 +145,16 @@ describe("the todo board moves only while the agent does", () => {
 			const idleWithActiveTask: TodoBoardMotion = {
 				transitions: true,
 				agentInMotion: false,
-				completing: false,
 				live: true,
 			};
 			expect(todoBoardMarkerAnimates(idleWithActiveTask)).toBe(false);
 			expect(todoBoardRailTravels(idleWithActiveTask)).toBe(false);
 		});
 
-		it("a completion sweep with the agent idle animates the marker but not the rail", () => {
-			const completingIdleLive: TodoBoardMotion = {
-				transitions: true,
-				agentInMotion: false,
-				completing: true,
-				live: true,
-			};
-			expect(todoBoardMarkerAnimates(completingIdleLive)).toBe(true);
-			expect(todoBoardRailTravels(completingIdleLive)).toBe(false);
-
-			const completingIdleSettled: TodoBoardMotion = {
-				transitions: true,
-				agentInMotion: false,
-				completing: true,
-				live: false,
-			};
-			expect(todoBoardMarkerAnimates(completingIdleSettled)).toBe(true);
-			expect(todoBoardRailTravels(completingIdleSettled)).toBe(false);
-		});
-
 		it("a live plan with a moving agent animates both the marker and the rail", () => {
 			const liveMoving: TodoBoardMotion = {
 				transitions: true,
 				agentInMotion: true,
-				completing: false,
 				live: true,
 			};
 			expect(todoBoardMarkerAnimates(liveMoving)).toBe(true);
@@ -183,7 +165,6 @@ describe("the todo board moves only while the agent does", () => {
 			const settledMoving: TodoBoardMotion = {
 				transitions: true,
 				agentInMotion: true,
-				completing: false,
 				live: false,
 			};
 			expect(todoBoardMarkerAnimates(settledMoving)).toBe(true);
@@ -208,14 +189,14 @@ describe("the todo board moves only while the agent does", () => {
 				expect(renderedLines).toEqual(baseLines);
 
 				const glyph = glyphFor(testPhases, "Active Task", { animate: false, frame });
-				expect(glyph).toBe(theme.spinnerFrames[0]);
+				expect(glyph).toBe(theme.symbol("status.done"));
 			}
 		});
 
 		it("with animate: true, the in-flight glyph alternates strictly between the two lowest theme ramp frames", () => {
 			const frames = Array.from({ length: 16 }, (_, f) => f);
-			const low = theme.spinnerFrames[0];
-			const high = theme.spinnerFrames[1];
+			const low = theme.symbol("status.shadowed");
+			const high = theme.symbol("status.done");
 			expect(low).toBeDefined();
 			expect(high).toBeDefined();
 			expect(low).not.toBe(high);
@@ -233,17 +214,25 @@ describe("the todo board moves only while the agent does", () => {
 	});
 
 	describe("clock divisor cadence", () => {
-		it("pins TODO_BOARD_FRAME_DIVISOR and TODO_BOARD_RAIL_DIVISOR to be greater than 1", () => {
+		it("pins the board frame to one glyph per four clock steps", () => {
 			expect(TODO_BOARD_FRAME_DIVISOR).toBeGreaterThan(1);
-			expect(TODO_BOARD_RAIL_DIVISOR).toBeGreaterThan(1);
 			expect(TODO_BOARD_FRAME_DIVISOR).toBe(4);
-			expect(TODO_BOARD_RAIL_DIVISOR).toBe(3);
+		});
+
+		// The rail has no divisor of its own: every rail in the product travels at
+		// `RAIL_IDLE_ROW_MS` per row off one monotonic clock, so two blocks on
+		// screen carry the same head and the board's edge does not crawl at a
+		// different speed from the lane block one row above it.
+		it("puts the board's rail on the house rate and gives it no divisor", () => {
+			expect(RAIL_IDLE_ROW_MS).toBe(RAIL_IDLE_STEP_MS / RAIL_IDLE_ROWS_PER_STEP);
+			expect(railIdleHeadAtMs(RAIL_IDLE_ROW_MS * 3)).toBe(3);
+			expect(railIdleHeadAtMs(0)).toBe(0);
 		});
 
 		it("advances the board frame once per TODO_BOARD_FRAME_DIVISOR clock steps, holding glyph identical across each step block", () => {
 			const testPhases = [phase("Active Phase", [["Active Task", "in_progress"]])];
-			const low = theme.spinnerFrames[0];
-			const high = theme.spinnerFrames[1];
+			const low = theme.symbol("status.shadowed");
+			const high = theme.symbol("status.done");
 
 			const clockSteps = Array.from({ length: 16 }, (_, s) => s);
 			const renderedGlyphs = clockSteps.map(step => {

@@ -67,9 +67,12 @@ export const RAIL_SETTLE_FRAME_MS = 45;
 /** Rows of glow the settling head trails behind it. */
 export const RAIL_SETTLE_TAIL_ROWS = 3;
 
+/** Milliseconds the idle head takes to travel one rail row. */
+export const RAIL_IDLE_ROW_MS = RAIL_IDLE_STEP_MS / RAIL_IDLE_ROWS_PER_STEP;
+
 export interface RailIdleMotion {
 	kind: "idle";
-	/** Rows travelled since the block went live. Fractional. */
+	/** Rows travelled, fractional. */
 	head: number;
 }
 
@@ -81,9 +84,34 @@ export interface RailSettleMotion {
 
 export type RailMotion = RailIdleMotion | RailSettleMotion;
 
-/** Head position for an idle step counter. */
+/** Head position for an idle step counter, for a frame-indexed proof or a demo. */
 export function railIdleHeadAt(step: number): number {
 	return step * RAIL_IDLE_ROWS_PER_STEP;
+}
+
+/**
+ * The idle head every live rail in the product is on, from one monotonic clock.
+ *
+ * Counting repaint ticks instead made the head's SPEED the punctuality of a
+ * `setInterval` callback: a tool printing output holds the loop, several ticks
+ * land late or coalesce, and the highlight stalls and then jumps — which is the
+ * hitch an operator sees while the terminal is busiest. Elapsed time cannot
+ * stall, so a dropped repaint costs a frame of smoothness and never a frame of
+ * travel.
+ *
+ * One absolute clock and not a per-block epoch, so two blocks on screen carry
+ * the same head at the same instant: the sweep reads as one light crossing the
+ * screen rather than as several animations that happened to start at different
+ * times. It is the argument that makes this testable — a test names the
+ * milliseconds and never the wall clock.
+ */
+export function railIdleHeadAtMs(nowMs: number): number {
+	return nowMs / RAIL_IDLE_ROW_MS;
+}
+
+/** The monotonic clock the rails run on. */
+export function railClockMs(): number {
+	return performance.now();
 }
 
 /**

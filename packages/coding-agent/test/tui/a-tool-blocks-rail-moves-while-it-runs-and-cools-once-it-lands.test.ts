@@ -50,12 +50,14 @@ import {
 	hasRailRow,
 	paintRailMotion,
 	RAIL_IDLE_CYCLE_MAX_ROWS,
+	RAIL_IDLE_ROW_MS,
 	RAIL_IDLE_ROWS_PER_STEP,
 	RAIL_IDLE_STEP_MS,
 	RAIL_SETTLE_FRAME_MS,
 	RAIL_SETTLE_FRAMES,
 	railIdleCycleRows,
 	railIdleHeadAt,
+	railIdleHeadAtMs,
 	railIdleIntensity,
 } from "@veyyon/coding-agent/tui/rail-motion";
 import type { TUI } from "@veyyon/tui";
@@ -211,6 +213,35 @@ describe("a tool block's rail while it runs", () => {
 			// one cell.
 			expect([...brightest].sort((a, b) => a - b)).toEqual(Array.from({ length: rows }, (_, i) => i));
 		}
+	});
+
+	// The hitch this replaces: the head was a count of repaint ticks, so a tool
+	// printing output held the loop, `setInterval` callbacks landed late or
+	// coalesced, and the highlight stalled and then jumped several rows at once.
+	it("advances by elapsed time and not by how many repaints arrived", () => {
+		const elapsed = RAIL_IDLE_ROW_MS * 7.5;
+		// One sample or a hundred: the head is where the clock says, so a frame the
+		// terminal never got back costs smoothness and never travel.
+		expect(railIdleHeadAtMs(elapsed)).toBe(7.5);
+		expect(railIdleHeadAtMs(elapsed + RAIL_IDLE_ROW_MS) - railIdleHeadAtMs(elapsed)).toBe(1);
+		let previous = -1;
+		for (let ms = 0; ms <= RAIL_IDLE_ROW_MS * 40; ms += 7) {
+			const head = railIdleHeadAtMs(ms);
+			expect(head).toBeGreaterThan(previous);
+			previous = head;
+		}
+	});
+
+	it("puts every rail on screen on the same head at the same instant", () => {
+		// One absolute clock and no per-block epoch, so the sweep reads as one light
+		// crossing the screen: two blocks of the same height painted at the same
+		// millisecond light the same row, whatever order they went live in.
+		const now = RAIL_IDLE_ROW_MS * 3.25;
+		const rows = 8;
+		const first = Array.from({ length: rows }, (_, row) => railIdleIntensity(row, rows, railIdleHeadAtMs(now)));
+		const second = Array.from({ length: rows }, (_, row) => railIdleIntensity(row, rows, railIdleHeadAtMs(now)));
+		expect(second).toEqual(first);
+		expect(first.some(intensity => intensity > 0)).toBe(true);
 	});
 });
 

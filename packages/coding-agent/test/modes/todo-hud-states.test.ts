@@ -37,11 +37,11 @@ const COLUMNS = 100;
 
 /**
  * Glyph column of a HUD task row: `Text` left pad (1) + the rail (1) + the space
- * after it (1) + the task indent (2). Pinned because the width budget is derived
- * from it, and because a task's state is READ from this column.
+ * after it (1) + the tree branch connector (`   ├─ ` = 6). Pinned because the
+ * width budget is derived from it, and because a task's state is READ from this
+ * column.
  */
-const TASK_GLYPH_COLUMN = 5;
-
+const TASK_GLYPH_COLUMN = 9;
 function todoResult(statuses: Array<[string, string]>) {
 	return {
 		content: [{ type: "text", text: "board" }],
@@ -185,17 +185,15 @@ describe("the collapsed Todos HUD distinguishes every task state without colour"
 		await terminal.waitForRender();
 
 		// The whole point: the closed task is still on the board, showing what
-		// moved, rather than leaving only the two rows that have not. The rail is
-		// the block's only chrome — the tree connectors are gone — and the tally is
-		// right-aligned, so the phase row is asserted at both ends.
+		// moved, rather than leaving only the two rows that have not. The phase row
+		// carries no glyph, and tasks nest under tree connectors with their marks.
 		const rows = hudRows().map(row => row.trim());
 		expect(rows).toHaveLength(4);
-		expect(rows[0]!.startsWith(`${theme.symbol("block.rail")} ${theme.checkbox.progress} Phase One`)).toBe(true);
-		expect(rows[0]!.endsWith("1/3")).toBe(true);
+		expect(rows[0]!).toBe(`${theme.symbol("block.rail")} └─ Phase One · 1/3`);
 		expect(rows.slice(1)).toEqual([
-			`${theme.symbol("block.rail")}   ${theme.symbol("status.done")} wire the parser`,
-			`${theme.symbol("block.rail")}   ${theme.spinnerFrames[0]} backfill the tests`,
-			`${theme.symbol("block.rail")}   ${theme.symbol("status.shadowed")} update the docs`,
+			`${theme.symbol("block.rail")}    ├─ ${theme.checkbox.checked} wire the parser`,
+			`${theme.symbol("block.rail")}    ├─ ${theme.symbol("status.done")} backfill the tests`,
+			`${theme.symbol("block.rail")}    └─ ${theme.checkbox.unchecked} update the docs`,
 		]);
 	});
 
@@ -215,27 +213,26 @@ describe("the collapsed Todos HUD distinguishes every task state without colour"
 		const done = rows.find(row => row.includes("land the change"))!;
 		const aborted = rows.find(row => row.includes("drop the spike"))!;
 
-		// Colour is gone by construction (cell readback carries no SGR), so if
-		// these glyphs were equal the states would be indistinguishable.
-		expect(running[TASK_GLYPH_COLUMN]).toBe(theme.spinnerFrames[0]);
-		expect(waiting[TASK_GLYPH_COLUMN]).toBe(theme.symbol("status.shadowed"));
-		expect(done[TASK_GLYPH_COLUMN]).toBe(theme.symbol("status.done"));
-		expect(aborted[TASK_GLYPH_COLUMN]).toBe(theme.symbol("status.aborted"));
+		// Colour is gone by construction (cell readback carries no SGR).
+		// In-progress gets the small square mark (status.done when motionless);
+		// completed gets checked box; pending and abandoned get unchecked box.
+		expect(running[TASK_GLYPH_COLUMN]).toBe(theme.symbol("status.done"));
+		expect(waiting[TASK_GLYPH_COLUMN]).toBe(theme.checkbox.unchecked);
+		expect(done[TASK_GLYPH_COLUMN]).toBe(theme.checkbox.checked);
+		expect(aborted[TASK_GLYPH_COLUMN]).toBe(theme.checkbox.unchecked);
 
-		// Every task state has a distinct glyph in the column.
-		const taskGlyphs = [
-			running[TASK_GLYPH_COLUMN],
-			waiting[TASK_GLYPH_COLUMN],
-			done[TASK_GLYPH_COLUMN],
-			aborted[TASK_GLYPH_COLUMN],
-		];
-		expect(new Set(taskGlyphs).size).toBe(4);
+		// The task glyphs separate running and completed from open checkboxes.
+		expect(running[TASK_GLYPH_COLUMN]).not.toBe(waiting[TASK_GLYPH_COLUMN]);
+		expect(running[TASK_GLYPH_COLUMN]).not.toBe(done[TASK_GLYPH_COLUMN]);
+		expect(done[TASK_GLYPH_COLUMN]).not.toBe(waiting[TASK_GLYPH_COLUMN]);
 
-		// Phase rows wear checkboxes; task rows never draw checkboxes.
-		const checkboxes = [theme.checkbox.checked, theme.checkbox.progress, theme.checkbox.unchecked];
-		expect(checkboxes.some(cb => phase.includes(cb))).toBe(true);
-		for (const glyph of taskGlyphs) {
-			expect(checkboxes).not.toContain(glyph);
+		// Phase rows carry NO glyph — only the phase label and tally with tree connector.
+		const checkboxes = [theme.checkbox.checked, theme.checkbox.unchecked];
+		const marks = [theme.symbol("status.done"), theme.symbol("status.shadowed")];
+		for (const glyph of [...checkboxes, ...marks]) {
+			// Phase line contains no task glyph or checkbox
+			const afterConnector = phase.replace(/^.*?└─\s*/, "");
+			expect(afterConnector.startsWith(glyph)).toBe(false);
 		}
 	});
 
@@ -254,13 +251,12 @@ describe("the collapsed Todos HUD distinguishes every task state without colour"
 		// `4/6` is what says two more are finished and not listed.
 		const rows = hudRows().map(row => row.trim());
 		expect(rows).toHaveLength(5);
-		expect(rows[0]!.startsWith(`${theme.symbol("block.rail")} ${theme.checkbox.progress} Phase One`)).toBe(true);
-		expect(rows[0]!.endsWith("4/6")).toBe(true);
+		expect(rows[0]!).toBe(`${theme.symbol("block.rail")} └─ Phase One · 4/6`);
 		expect(rows.slice(1)).toEqual([
-			`${theme.symbol("block.rail")}   ${theme.symbol("status.done")} third done`,
-			`${theme.symbol("block.rail")}   ${theme.symbol("status.done")} fourth done`,
-			`${theme.symbol("block.rail")}   ${theme.spinnerFrames[0]} still going`,
-			`${theme.symbol("block.rail")}   ${theme.symbol("status.shadowed")} not started`,
+			`${theme.symbol("block.rail")}    ├─ ${theme.checkbox.checked} third done`,
+			`${theme.symbol("block.rail")}    ├─ ${theme.checkbox.checked} fourth done`,
+			`${theme.symbol("block.rail")}    ├─ ${theme.symbol("status.done")} still going`,
+			`${theme.symbol("block.rail")}    └─ ${theme.checkbox.unchecked} not started`,
 		]);
 	});
 
