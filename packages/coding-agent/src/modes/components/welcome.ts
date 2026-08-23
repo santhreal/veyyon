@@ -12,7 +12,6 @@ import {
 import { APP_NAME, clamp01, DEFAULT_PROFILE_DIR_NAME, getActiveProfileOrDefault } from "@veyyon/utils";
 // The slot leaf, not the 94-module store: this file reads values, it does not fill them.
 import { isSettingsInitialized, settings } from "../../config/settings-instance";
-import { transitionsEnabled } from "../../modes/theme/shimmer";
 import { theme } from "../../modes/theme/theme";
 
 // The forced-tip state and the post-update message live in `launch-tip.ts`, which `main.ts` can import
@@ -165,12 +164,9 @@ export interface LspServerInfo {
  * ember. No dashboard panels, no interior dividers, no clutter.
  */
 export class WelcomeComponent implements Component {
-	#animStart: number | null = null;
-	#animTimer: Timer | null = null;
 	#selectedTip: string | undefined;
 	// Render cache: the welcome box is the first transcript-area component, so a
-	// stable array reference keeps the whole frame prefix stable. Bypassed while
-	// the intro animation runs (every frame differs).
+	// stable array reference keeps the whole frame prefix stable.
 	#cachedWidth = -1;
 	#cachedLines: string[] | undefined;
 
@@ -214,46 +210,6 @@ export class WelcomeComponent implements Component {
 		this.#cachedLines = undefined;
 	}
 
-	/**
-	 * Play the one-shot launch bloom: the sun rises from a hot point to a full
-	 * resting disc, then settles. Safe to call repeatedly — it resets and replays.
-	 * Degraded path: without truecolor, or with structural motion off
-	 * (`display.transitions: off`), the bloom is skipped entirely and the mark
-	 * renders one static settled frame.
-	 */
-	playIntro(requestRender: () => void): void {
-		this.#stopAnimation();
-		if (!TERMINAL.trueColor || !transitionsEnabled()) {
-			requestRender();
-			return;
-		}
-		this.#animStart = performance.now();
-		requestRender();
-		this.#animTimer = setInterval(() => {
-			const elapsed = performance.now() - (this.#animStart ?? 0);
-			if (elapsed >= INTRO_MS) {
-				this.#stopAnimation();
-			}
-			requestRender();
-		}, INTRO_TICK_MS);
-	}
-
-	/** Halt the intro timer — used when the card is dismissed mid-bloom so the
-	 *  interval doesn't keep repainting a removed component. */
-	stopIntro(): void {
-		this.#stopAnimation();
-	}
-
-	#stopAnimation(): void {
-		if (this.#animTimer != null) {
-			clearInterval(this.#animTimer);
-			this.#animTimer = null;
-		}
-		this.#animStart = null;
-		// The settled (resting) frame differs from the last intro frame.
-		this.invalidate();
-	}
-
 	setModel(modelName: string, providerName: string): void {
 		this.modelName = modelName;
 		this.providerName = providerName;
@@ -272,18 +228,12 @@ export class WelcomeComponent implements Component {
 	}
 
 	render(termWidth: number): readonly string[] {
-		const animating = this.#animStart != null;
-		if (!animating && this.#cachedLines && this.#cachedWidth === termWidth) {
+		if (this.#cachedLines && this.#cachedWidth === termWidth) {
 			return this.#cachedLines;
 		}
 		const lines = this.#renderLines(termWidth);
-		if (animating) {
-			this.#cachedLines = undefined;
-			this.#cachedWidth = -1;
-		} else {
-			this.#cachedLines = lines;
-			this.#cachedWidth = termWidth;
-		}
+		this.#cachedLines = lines;
+		this.#cachedWidth = termWidth;
 		return lines;
 	}
 
@@ -367,15 +317,9 @@ export class WelcomeComponent implements Component {
 		const sunPad = padding(Math.max(0, Math.floor((termWidth - sunW) / 2)));
 		for (const row of sun) lines.push(sunPad + row);
 		lines.push("");
-		let shine: ShineConfig | undefined;
-		if (this.#animStart != null) {
-			const p = Math.min(1, (performance.now() - this.#animStart) / INTRO_MS);
-			shine = { strength: 1 - p, pos: p };
-		}
 		// The wordmark is text, not glyph art — it renders in the terminal's own
-		// font (JetBrains Mono), letterspaced to hold its own under the sun,
-		// silver with the shine sweeping through it.
-		for (const row of gradientLogo([APP_NAME.split("").join(" ")], 0, shine)) {
+		// font (JetBrains Mono), letterspaced to hold its own under the sun.
+		for (const row of gradientLogo([APP_NAME.split("").join(" ")])) {
 			lines.push(centerLine(theme.bold(row), termWidth));
 		}
 		lines.push("");
@@ -446,25 +390,9 @@ export class WelcomeComponent implements Component {
 		return truncateToWidth(str, width, Ellipsis.Unicode, true);
 	}
 
-	/**
-	 * The sun mark for the card. At rest it is a steady ember disc; during the
-	 * intro it blooms (radius eases open, dither churns) then settles. A pure
-	 * function of elapsed time, so the intro timer drives it by re-rendering.
-	 */
+	/** The sun mark for the card: a steady ember disc at its resting size. */
 	#currentLogoFrame(sunW: number, sunH: number): readonly string[] {
-		let bloom: number | undefined;
-		let rise: number | undefined;
-		let time = 0.6;
-		if (this.#animStart != null) {
-			const elapsed = performance.now() - this.#animStart;
-			bloom = Math.min(1, elapsed / INTRO_MS);
-			// The opening is a sunrise: the disc climbs over the field's bottom
-			// edge (its horizon) as it blooms. Rise completes a beat before the
-			// bloom so the sun settles onto its resting centre, still growing.
-			rise = Math.min(1, bloom * 1.25);
-			time = 0.2 + (elapsed / 1000) * 1.6;
-		}
-		return sunMark(sunW, sunH, { trueColor: TERMINAL.trueColor, bloom, rise, time });
+		return sunMark(sunW, sunH, { trueColor: TERMINAL.trueColor, time: 0.6 });
 	}
 }
 
@@ -534,52 +462,23 @@ export function silverEscape(intensity: number): string {
 	return `\x1b[38;5;${ramp256[idx]}m`;
 }
 
-export interface ShineConfig {
-	/** 0 = fully revealed / resting; 1 = intro start (edge hot). */
-	strength: number;
-	/** Reveal frontier along the wordmark (0..1), left → right. */
-	pos: number;
+/** Wordmark foreground: brand silver. */
+export function gradientEscape(): string {
+	return silverEscape(0.55);
 }
 
-/**
- * Wordmark foreground. Resting = brand silver. During entrance, `shine.pos` is
- * the reveal frontier and `shine.strength` warms the leading edge.
- */
-export function gradientEscape(_t: number, shine?: ShineConfig): string {
-	if (!shine || shine.strength <= 0) return silverEscape(0.55);
-	const edge = Math.max(0, 1 - Math.abs(_t - shine.pos) / 0.12) * shine.strength;
-	return silverEscape(0.45 + edge * 0.55);
-}
-
-/** Paint multi-line art in Veyyon silver with an optional left→right reveal. */
-export function gradientLogo(lines: readonly string[], phase = 0, shine?: ShineConfig): string[] {
+/** Paint multi-line art in Veyyon silver. */
+export function gradientLogo(lines: readonly string[]): string[] {
 	const reset = SGR_RESET;
-	const cols = Math.max(1, ...lines.map(l => l.length));
-	const frontier = shine ? clamp01(shine.pos) : 1;
-	const edgeStrength = shine?.strength ?? 0;
-	void phase;
 	return lines.map(line => {
 		let result = "";
-		for (let x = 0; x < line.length; x++) {
-			const char = line[x];
+		for (const char of line) {
 			if (char === " ") {
 				result += char;
 				continue;
 			}
-			const t = x / Math.max(1, cols - 1);
-			if (t > frontier + 0.02) {
-				result += " ";
-				continue;
-			}
-			const nearEdge = Math.max(0, 1 - Math.abs(t - frontier) / 0.14) * edgeStrength;
-			const intensity = frontier >= 0.999 ? 0.55 : 0.4 + nearEdge * 0.6;
-			result += silverEscape(intensity) + char + reset;
+			result += silverEscape(0.55) + char + reset;
 		}
 		return result;
 	});
 }
-
-/** Total length of the launch bloom. */
-const INTRO_MS = 2200;
-/** Render cadence during the intro (~30fps). */
-const INTRO_TICK_MS = 33;

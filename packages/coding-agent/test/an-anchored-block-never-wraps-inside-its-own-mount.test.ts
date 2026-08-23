@@ -239,7 +239,7 @@ describe("the live subagent HUD fits the width the mode reports", () => {
 	// fallback a terminal with no reported size gets.
 	for (const columns of [80, 131]) {
 		it(`draws two lanes as two rows at ${columns} columns`, async () => {
-			await mode.init({ suppressWelcomeIntro: true });
+			await mode.init();
 			vi.spyOn(mode.ui, "requestRender").mockImplementation(() => {});
 			// `spyOn` cannot stub an accessor, and the terminal reports its width
 			// through one. The own property dies with this test's own instance.

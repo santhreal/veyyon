@@ -152,7 +152,6 @@ export function markSetupWizardComplete(settings: Settings, version: number = CU
 
 export interface RunSetupWizardOptions {
 	markComplete?: boolean;
-	playWelcomeIntro?: boolean;
 }
 
 export async function runSetupWizard(
@@ -189,8 +188,5 @@ export async function runSetupWizard(
 		component.dispose();
 		ctx.ui.setFocus(component);
 		overlay.hide();
-	}
-	if (options.playWelcomeIntro !== false) {
-		ctx.playWelcomeIntro();
 	}
 }
