@@ -1,6 +1,7 @@
 import * as os from "node:os";
 import { scheduler } from "node:timers/promises";
 import { calculateCost, discardAttemptUsage, emptyUsage, scaleUsageCost } from "@veyyon/catalog/models";
+import { toFields, toStringValue } from "@veyyon/catalog/utils";
 import {
 	CODEX_BASE_URL,
 	CODEX_CLIENT_VERSION,
@@ -10,14 +11,12 @@ import {
 } from "@veyyon/catalog/wire/codex";
 import { getInstallId } from "@veyyon/utils/dirs";
 import { $env, $flag } from "@veyyon/utils/env";
-import { fetchWithRetry } from "@veyyon/utils/fetch-retry";
 import { structuredCloneJSON } from "@veyyon/utils/json";
 import { parseStreamingJson } from "@veyyon/utils/json-parse";
 import * as logger from "@veyyon/utils/logger";
 import { readSseJson } from "@veyyon/utils/stream";
 import { asRecord, errorMessage } from "@veyyon/utils/type-guards";
 import { trimTrailingSlashes } from "@veyyon/utils/url";
-import { type } from "arktype";
 import packageJson from "../../package.json" with { type: "json" };
 import {
 	beginCacheTrackedRequest,
@@ -32,6 +31,11 @@ import {
 	takePendingCacheFailure,
 } from "../cache";
 import * as AIError from "../error";
+import {
+	CodexProviderStreamError,
+	CodexWebSocketTransportError,
+	CodexWhitespaceToolCallLoopError,
+} from "../error/classes";
 import { getEnvApiKey } from "../stream";
 import type {
 	Api,
@@ -74,6 +78,7 @@ import {
 	iterateWithIdleTimeout,
 } from "../utils/idle-iterator";
 import type { OpenAIStreamHandle } from "../utils/openai-http";
+import { fetchProviderWithRetry } from "../utils/provider-fetch";
 import { notifyProviderResponse } from "../utils/provider-response";
 import { createRequestDebugSession, isRequestDebugEnabled, type RequestDebugResponseLog } from "../utils/request-debug";
 import { adaptSchemaForStrict, NO_STRICT, sanitizeSchemaForOpenAIResponses, toolWireSchema } from "../utils/schema";
@@ -247,10 +252,12 @@ const CODEX_WEBSOCKET_IDLE_TIMEOUT_MS = Number($env.VEYYON_CODEX_WEBSOCKET_IDLE_
 const CODEX_WEBSOCKET_FIRST_EVENT_TIMEOUT_MS = Number($env.VEYYON_CODEX_WEBSOCKET_FIRST_EVENT_TIMEOUT_MS || 60_000);
 const CODEX_WEBSOCKET_RETRY_BUDGET = Number($env.VEYYON_CODEX_WEBSOCKET_RETRY_BUDGET || CODEX_MAX_RETRIES);
 const CODEX_WEBSOCKET_RETRY_DELAY_MS = Number($env.VEYYON_CODEX_WEBSOCKET_RETRY_DELAY_MS || CODEX_RETRY_DELAY_MS);
-const CODEX_WEBSOCKET_TRANSPORT_ERROR_PREFIX = "Codex websocket transport error";
+// The codes Codex sends for a failure a replay can survive. A code is this provider's own vocabulary;
+// the SENTENCE beside it is not, and the second half of this decision used to be a private regex that
+// restated the shared transient wording almost exactly — "overloaded", "service unavailable",
+// "internal error", "server error" — and drifted from it by two phrasings. Those two moved into
+// TRANSIENT_TRANSPORT_PATTERN, where every provider reads them.
 const CODEX_RETRYABLE_EVENT_CODES = new Set(["model_error", "server_error", "internal_error"]);
-const CODEX_RETRYABLE_EVENT_MESSAGE =
-	/processing your request|retry your request|temporar(?:y|ily)|overloaded|service.?unavailable|internal error|server error/i;
 const CODEX_PROVIDER_SESSION_STATE_KEY = "openai-codex-responses";
 const X_CODEX_TURN_STATE_HEADER = "x-codex-turn-state";
 const X_MODELS_ETAG_HEADER = "x-models-etag";
@@ -2554,10 +2561,12 @@ class CodexStreamProcessor {
 					sentTurnStateHeader: Boolean(this.requestContext.websocketState?.turnState),
 					sentModelsEtagHeader: Boolean(this.requestContext.websocketState?.modelsEtag),
 				});
-			throw new CodexProviderStreamError("Codex stream ended before terminal completion event", false);
+			throw new CodexProviderStreamError("Codex stream ended before terminal completion event", {
+				retryable: false,
+			});
 		}
 		if (output.stopReason === "aborted" || output.stopReason === "error") {
-			throw new CodexProviderStreamError("Codex response failed", false);
+			throw new CodexProviderStreamError("Codex response failed", { retryable: false });
 		}
 
 		output.providerPayload = createOpenAIResponsesHistoryPayload(this.model.provider, this.runtime.nativeOutputItems);
@@ -3950,7 +3959,7 @@ async function openCodexSseEventStream(
 	};
 	let response: Response;
 	try {
-		response = await fetchWithRetry(url, {
+		response = await fetchProviderWithRetry(url, {
 			method: "POST",
 			headers,
 			body: JSON.stringify(body),
@@ -3990,7 +3999,7 @@ async function openCodexSseEventStream(
 	}
 	updateCodexSessionMetadataFromHeaders(state, response.headers);
 	if (!response.body) {
-		throw new CodexProviderStreamError("No response body", false);
+		throw new CodexProviderStreamError("No response body", { retryable: false });
 	}
 	const events = readSseJson<Record<string, unknown>>(response.body, signal, event =>
 		notifyRawSseEvent(onSseEvent, { event: event.event, data: event.data, raw: [...event.raw] }),
@@ -4308,96 +4317,83 @@ export function convertOpenAICodexResponsesTools(
 	});
 }
 
-export class CodexWebSocketTransportError extends Error {
-	constructor(detail: string) {
-		super(`${CODEX_WEBSOCKET_TRANSPORT_ERROR_PREFIX}: ${detail}`);
-		this.name = "CodexWebSocketTransportError";
-	}
-}
-class CodexWhitespaceToolCallLoopError extends Error {
-	constructor(message: string) {
-		super(message);
-		this.name = "CodexWhitespaceToolCallLoopError";
-	}
-}
-
-class CodexProviderStreamError extends Error {
-	readonly retryable: boolean;
-	readonly code?: string;
-
-	constructor(message: string, retryable: boolean, code?: string) {
-		super(message);
-		this.name = "CodexProviderStreamError";
-		this.retryable = retryable;
-		this.code = code;
-	}
+/**
+ * The fields a Codex failure event carries, wherever it nests them.
+ *
+ * Read field by field. The five schemas this replaced typed every field `unknown` and piped it
+ * through a `typeof` check, so the schema library contributed nothing but its 362ms of module
+ * evaluation, paid by every launch that loads a provider. The outer schema also could not fail --
+ * it fell back to an all-`undefined` event -- so the three `instanceof type.errors` branches
+ * below it were unreachable.
+ */
+interface CodexErrorDetail {
+	code?: string | undefined;
+	type?: string | undefined;
+	message?: string | undefined;
 }
 
-const optionalCodexString = type("unknown").pipe(raw => {
-	const out = type("string")(raw);
-	return out instanceof type.errors ? undefined : out;
-});
+interface CodexFailureResponse {
+	error?: CodexErrorDetail | undefined;
+	message?: string | undefined;
+	status?: string | undefined;
+}
 
-const innerErrorDetailSchema = type({
-	"code?": optionalCodexString,
-	"type?": optionalCodexString,
-	"message?": optionalCodexString,
-});
+interface CodexFailureEvent {
+	type?: string | undefined;
+	code?: string | undefined;
+	message?: string | undefined;
+	status?: string | undefined;
+	error?: CodexErrorDetail | undefined;
+	response?: CodexFailureResponse | undefined;
+}
 
-const codexErrorDetailSchema = type("unknown").pipe(raw => {
-	const out = innerErrorDetailSchema(raw);
-	return out instanceof type.errors ? undefined : out;
-});
+function readCodexErrorDetail(value: unknown): CodexErrorDetail | undefined {
+	const fields = toFields(value);
+	if (!fields) {
+		return undefined;
+	}
+	return {
+		code: toStringValue(fields.code),
+		type: toStringValue(fields.type),
+		message: toStringValue(fields.message),
+	};
+}
 
-const innerFailureEventSchema = type({
-	"type?": optionalCodexString,
-	"code?": optionalCodexString,
-	"message?": optionalCodexString,
-	"status?": optionalCodexString,
-	"error?": codexErrorDetailSchema,
-	"response?": type("unknown").pipe(raw => {
-		const out = type({
-			"error?": codexErrorDetailSchema,
-			"message?": optionalCodexString,
-			"status?": optionalCodexString,
-		})(raw);
-		return out instanceof type.errors ? undefined : out;
-	}),
-});
-
-const codexFailureEventSchema = type("unknown").pipe(raw => {
-	const out = innerFailureEventSchema(raw);
-	return out instanceof type.errors
-		? {
-				type: undefined,
-				code: undefined,
-				message: undefined,
-				status: undefined,
-				error: undefined,
-				response: undefined,
-			}
-		: out;
-});
+/**
+ * Always answers: an event this reader understands nothing of reads as an event with no fields,
+ * which is what the callers below already treated as "not retryable, no message of its own".
+ */
+function readCodexFailureEvent(rawEvent: Record<string, unknown>): CodexFailureEvent {
+	const response = toFields(rawEvent.response);
+	return {
+		type: toStringValue(rawEvent.type),
+		code: toStringValue(rawEvent.code),
+		message: toStringValue(rawEvent.message),
+		status: toStringValue(rawEvent.status),
+		error: readCodexErrorDetail(rawEvent.error),
+		response: response
+			? {
+					error: readCodexErrorDetail(response.error),
+					message: toStringValue(response.message),
+					status: toStringValue(response.status),
+				}
+			: undefined,
+	};
+}
 
 export function isRetryableCodexFailureEvent(rawEvent: Record<string, unknown>): boolean {
-	const event = codexFailureEventSchema(rawEvent);
-	if (event instanceof type.errors) {
-		return false;
-	}
+	const event = readCodexFailureEvent(rawEvent);
 	const error = event.error ?? event.response?.error;
 	const code = error?.code ?? error?.type ?? event.code;
 	if (code && CODEX_RETRYABLE_EVENT_CODES.has(code.toLowerCase())) {
 		return true;
 	}
 	const message = error?.message ?? event.message ?? event.response?.message;
-	return !!message && CODEX_RETRYABLE_EVENT_MESSAGE.test(message);
+	return !!message && AIError.isTransientErrorText(message);
 }
 
 export function createCodexProviderStreamError(rawEvent: Record<string, unknown>): CodexProviderStreamError {
-	const event = codexFailureEventSchema(rawEvent);
-	if (event instanceof type.errors) {
-		return new CodexProviderStreamError("Codex response failed", false);
-	}
+	const event = readCodexFailureEvent(rawEvent);
 	const nestedError = event.error ?? event.response?.error;
 	const code = nestedError?.code ?? nestedError?.type ?? event.code ?? "";
 	const message = event.message ?? "";
@@ -4405,14 +4401,14 @@ export function createCodexProviderStreamError(rawEvent: Record<string, unknown>
 		event.type === "error"
 			? formatCodexErrorEvent(rawEvent, code, message)
 			: (formatCodexFailure(rawEvent) ?? "Codex response failed");
-	return new CodexProviderStreamError(formattedMessage, isRetryableCodexFailureEvent(rawEvent), code || undefined);
+	return new CodexProviderStreamError(formattedMessage, {
+		retryable: isRetryableCodexFailureEvent(rawEvent),
+		code: code || undefined,
+	});
 }
 
 function formatCodexFailure(rawEvent: Record<string, unknown>): string | null {
-	const event = codexFailureEventSchema(rawEvent);
-	if (event instanceof type.errors) {
-		return null;
-	}
+	const event = readCodexFailureEvent(rawEvent);
 	const error = event.error ?? event.response?.error;
 	const message = error?.message ?? event.message ?? event.response?.message;
 	const code = error?.code ?? error?.type ?? event.code;

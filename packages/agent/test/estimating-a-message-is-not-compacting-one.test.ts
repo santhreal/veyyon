@@ -58,11 +58,14 @@ function runtimeImportsOf(relative: string): string[] {
 }
 
 /**
- * Measured at 85. Almost all of it is `../tokenizer` (83), which is the native tokenizer binding and is the
- * one thing an estimate genuinely needs. The rest is `@veyyon/utils/json` for `stringifyJson`, named as the
- * owner subpath rather than the `@veyyon/utils` barrel, which would have cost 74 modules for one function.
+ * Measured at 85, then 86 once the estimator took `LEGACY_FRAME_TOKEN_ESTIMATE` from
+ * `legacy-snapcompact-archive.ts`. Almost all of it is `../tokenizer` (83), which is the native tokenizer
+ * binding and is the one thing an estimate genuinely needs. The rest is `@veyyon/utils/json` for
+ * `stringifyJson`, named as the owner subpath rather than the `@veyyon/utils` barrel, which would have cost
+ * 74 modules for one function, plus the archive module, which imports nothing at all — the test below pins
+ * that, so the constant's home cannot grow a graph behind this ceiling.
  */
-const TOKEN_ESTIMATE_CEILING = 90;
+const TOKEN_ESTIMATE_CEILING = 91;
 
 /** Measured at 88, down from 398. Its own graph is the estimator plus a handful of local modules. */
 const SHAKE_CEILING = 95;
@@ -103,6 +106,18 @@ describe("the estimator is a leaf", () => {
 
 		expect(reached).toContain(path.join("packages", "agent", "src", "tokenizer.ts"));
 		expect(reached.length).toBeGreaterThan(50);
+	});
+
+	/**
+	 * The one non-tokenizer sibling the estimator reaches is a constant with no graph of its own: its reach is
+	 * itself. That is what keeps this ceiling a statement about the tokenizer, and an import added to the
+	 * archive module fails here rather than spending the estimator's budget unnoticed.
+	 */
+	it("takes the legacy frame constant from a module that imports nothing", () => {
+		expect(reachedNames("compaction/legacy-snapcompact-archive.ts")).toEqual([
+			path.join("packages", "agent", "src", "compaction", "legacy-snapcompact-archive.ts"),
+		]);
+		expect(runtimeImportsOf("compaction/legacy-snapcompact-archive.ts")).toEqual([]);
 	});
 
 	/**

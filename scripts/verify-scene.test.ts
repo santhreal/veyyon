@@ -41,7 +41,7 @@ describe("a scene guard has to resolve to something that produces it", () => {
 	it("accepts a needle the submitted prompt asks the model to print", () => {
 		expect(
 			problems({
-				scene: 'wait_for_screen "BUILD VERIFIED: all green" 60\n',
+				scene: 'expect_model_screen "BUILD VERIFIED: all green" 60\n',
 				prompts: [{ path: "proof/prompts/x.md", text: "print exactly BUILD VERIFIED: all green" }],
 			}),
 		).toEqual([]);
@@ -50,7 +50,7 @@ describe("a scene guard has to resolve to something that produces it", () => {
 	it("accepts a needle the product's own source renders", () => {
 		expect(
 			problems({
-				scene: 'wait_for_screen "Permission required" 60\n',
+				scene: 'expect_model_screen "Permission required" 60\n',
 				agentText: 'const title = "Permission required";',
 			}),
 		).toEqual([]);
@@ -74,7 +74,7 @@ describe("a scene guard has to resolve to something that produces it", () => {
 	it("refuses a needle that only exists in the guard that waits for it", () => {
 		// The scene file is not a source for itself, or every stale guard would prove itself by
 		// being written down. This is the shape both hero-scene defects had.
-		expect(problems({ scene: 'wait_for_screen "Todo 0/8 tasks" 420\n' })).toEqual([
+		expect(problems({ scene: 'expect_model_screen "Todo 0/8 tasks" 420\n' })).toEqual([
 			'waits for "Todo 0/8 tasks", which no prompt, source file, seed or scene line produces — rename the guard or declare it with "# needle-source: Todo 0/8 tasks -- <where it comes from>"',
 		]);
 	});
@@ -82,20 +82,20 @@ describe("a scene guard has to resolve to something that produces it", () => {
 	it("accepts a needle whose source the scene declares by hand", () => {
 		expect(
 			problems({
-				scene: '# needle-source: WARP CORE -- printed by the compiled binary\nwait_for_screen "WARP CORE" 60\n',
+				scene: '# needle-source: WARP CORE -- printed by the compiled binary\nexpect_model_screen "WARP CORE" 60\n',
 			}),
 		).toEqual([]);
 	});
 
 	it("ignores a needle assembled from a shell variable, which only run time can resolve", () => {
 		// biome-ignore lint/suspicious/noTemplateCurlyInString: bash parameter expansion in a scene fixture
-		expect(problems({ scene: 'wait_for_screen "${SCENE_SIGNING_NUMBER}" 60\n' })).toEqual([]);
+		expect(problems({ scene: 'expect_model_screen "${SCENE_SIGNING_NUMBER}" 60\n' })).toEqual([]);
 	});
 
 	it("accepts a trailing colon the renderer adds to a name the prompt supplies", () => {
 		expect(
 			problems({
-				scene: 'wait_for_screen "FlightAgent:" 60\n',
+				scene: 'expect_model_screen "FlightAgent:" 60\n',
 				prompts: [{ path: "proof/prompts/x.md", text: "dispatch FlightAgent to own the cli" }],
 			}),
 		).toEqual([]);
@@ -113,14 +113,38 @@ describe("a scene guard has to resolve to something that produces it", () => {
 
 describe("a scene has to fail rather than hang or overwrite", () => {
 	it("refuses a wait with no timeout", () => {
-		expect(problems({ scene: 'wait_for_screen "Todos"\n', agentText: "Todos" })).toEqual([
-			'wait_for_screen "Todos" has no numeric timeout, so a missing string waits forever',
+		expect(problems({ scene: 'expect_model_screen "Todos"\n', agentText: "Todos" })).toEqual([
+			'expect_model_screen "Todos" has no numeric timeout, so a missing string waits forever',
 		]);
 	});
 
 	it("accepts a timeout supplied through a variable", () => {
 		// biome-ignore lint/suspicious/noTemplateCurlyInString: bash parameter expansion in a scene fixture
-		expect(problems({ scene: 'wait_for_screen "Todos" "${WAIT}"\n', agentText: "Todos" })).toEqual([]);
+		expect(problems({ scene: 'expect_model_screen "Todos" "${WAIT}"\n', agentText: "Todos" })).toEqual([]);
+	});
+
+	/**
+	 * A guard that returns instead of abandoning hands its successor the whole ceiling
+	 * again. The two wrappers say which kind of miss the guard is and end the take on one,
+	 * so a scene that calls the bare form has classified nothing.
+	 */
+	it("refuses a bare wait_for_screen in a scene", () => {
+		expect(problems({ scene: 'wait_for_screen "Todos" 60\n', agentText: "Todos" })).toEqual([
+			'waits on "Todos" with a bare wait_for_screen, which runs its ceiling out and continues — use expect_screen for product output or expect_model_screen for a model choice',
+		]);
+	});
+
+	it("accepts either classified guard", () => {
+		expect(
+			problems({ scene: 'expect_screen "Todos" 60\nexpect_model_screen "Goal:" 420\n', agentText: "Todos\nGoal:" }),
+		).toEqual([]);
+	});
+
+	/** A commented-out guard is not a guard, so the rule reads code and not prose. */
+	it("ignores a wait_for_screen inside a comment", () => {
+		expect(
+			problems({ scene: '# wait_for_screen "Todos" 60 used to be the guard here\n', agentText: "Todos" }),
+		).toEqual([]);
 	});
 
 	it("refuses two shots under one name", () => {

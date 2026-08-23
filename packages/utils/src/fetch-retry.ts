@@ -1,5 +1,5 @@
 import { scheduler } from "node:timers/promises";
-import { isAbortError } from "./abortable";
+import { cancellationError, isAbortError } from "./abortable";
 
 // "reset after 1h2m3s" / "10m15s" / "39s"
 const QUOTA_RESET_PATTERN = /reset after (?:(\d+)h)?(?:(\d+)m)?(\d+(?:\.\d+)?)s/i;
@@ -287,9 +287,11 @@ export interface FetchWithRetryOptions extends RequestInit {
 	 */
 	fetch?: (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 	/**
-	 * Optional retry gate for HTTP responses whose status is retryable. Receives a
-	 * cloned body string so callers can fail fast on deterministic provider
-	 * failures that happen to use a 5xx status.
+	 * The retry verdict for a FAILED response — any status that is not 2xx, not only the transient
+	 * set. Receives a cloned body string, because a status means something only next to a body: a 429
+	 * that says `overloaded` is a throttle, one with nothing to read is a wall, and a 400 carrying a
+	 * deterministic parse failure is the same wall at a different number. Absent, the transient set
+	 * ({@link isRetryableStatus}) decides, which is all this module can say on its own.
 	 */
 	shouldRetryResponse?: (response: Response, bodyText: string, attempt: number) => boolean | Promise<boolean>;
 	/**
@@ -321,11 +323,11 @@ export const DEFAULT_MAX_DELAY_MS = 60_000;
 const DEFAULT_MAX_ATTEMPTS = 5;
 
 /**
- * Fetch with bounded retries and sensible defaults. Retries on any
- * `isRetryableStatus` (5xx, 408, 429) and on transient network errors. Server
- * `Retry-After`/quota hints are honoured up to `maxDelayMs`; a hint that exceeds
- * the cap returns the current response so the caller can fail fast. Aborts on
- * `init.signal` propagate as `"Request was aborted"`.
+ * Fetch with bounded retries and sensible defaults. A 2xx is returned untouched; every other status
+ * goes to `shouldRetryResponse`, or to `isRetryableStatus` (5xx, 408, 429) when the caller passes no
+ * verdict. Transient network errors are retried. Server `Retry-After`/quota hints are honoured up to
+ * `maxDelayMs`; a hint that exceeds the cap returns the current response so the caller can fail fast.
+ * Aborts on `init.signal` propagate as `"Request was aborted"`.
  *
  * The caller is responsible for inspecting `!response.ok` once the call returns.
  */
@@ -347,7 +349,7 @@ export async function fetchWithRetry(
 	const signal = baseInit.signal as AbortSignal | undefined;
 
 	for (let attempt = 0; ; attempt++) {
-		if (signal?.aborted) throw new Error("Request was aborted");
+		if (signal?.aborted) throw cancellationError();
 		const requestUrl = typeof url === "function" ? url(attempt) : url;
 		// `timeout` is destructured out of `baseInit`, so forward it to the underlying
 		// fetch on the no-`prepareInit` path too. Without this, callers that pass
@@ -366,7 +368,7 @@ export async function fetchWithRetry(
 		try {
 			response = await fetchImpl(requestUrl, init);
 		} catch (error) {
-			if (signal?.aborted) throw new Error("Request was aborted");
+			if (signal?.aborted) throw cancellationError();
 			const wrapped = wrapNetworkError(error);
 			// A named HTTP/2 code this module has already ruled deterministic
 			// (`NON_RETRYABLE_HTTP2_ERROR_CODES`) fails the same way on every replay,
@@ -381,11 +383,22 @@ export async function fetchWithRetry(
 			continue;
 		}
 
-		if (!isRetryableStatus(response.status)) return response;
+		// A SUCCESS IS NEVER RETRIED AND ITS BODY IS NEVER READ: a 2xx may be a live stream, and
+		// `clone().text()` on one buffers the whole response. Every other status is a failure, so the
+		// caller's verdict decides it — including the ones outside the transient set, which is what
+		// `isRetryableStatus` stops being: it was the gate in front of the verdict, so a status an API
+		// documents as retryable (Anthropic's 409) and a body a provider knows a replay reproduces
+		// (llama.cpp's deterministic tool-call parse failure) were answered here, by a module that
+		// cannot read a body and does not know which API sent it. It is the DEFAULT now, for a caller
+		// that passes no verdict at all.
+		if (response.ok) return response;
 		if (attempt + 1 >= maxAttempts) return response;
 
 		const retryBody = await response.clone().text();
-		if (shouldRetryResponse && !(await shouldRetryResponse(response, retryBody, attempt))) return response;
+		const retry = shouldRetryResponse
+			? await shouldRetryResponse(response, retryBody, attempt)
+			: isRetryableStatus(response.status);
+		if (!retry) return response;
 
 		const hint = extractRetryHint(response, retryBody);
 		if (hint !== undefined && hint > maxDelayMs) return response;
@@ -411,7 +424,7 @@ function mergeInit(base: RequestInit, overlay: RequestInit, timeout: number | fa
 function wrapNetworkError(error: unknown): Error {
 	if (error instanceof Error) {
 		if (isAbortError(error) || error.message === "Request was aborted") {
-			return new Error("Request was aborted");
+			return cancellationError();
 		}
 		if (error.message === "fetch failed" && error.cause instanceof Error) {
 			return new Error(`Network error: ${error.cause.message}`);
@@ -599,35 +612,17 @@ export function http2RetryVerdict(message: string): boolean | undefined {
 	return HTTP2_GOAWAY_PATTERN.test(message) ? true : undefined;
 }
 
-const TRANSIENT_MESSAGE_PATTERN =
-	/overloaded|rate.?limit|too many requests|service.?unavailable|server error|internal error|connection.?error|unable to connect|fetch failed|network error|stream stall|other side closed|HTTP2(?:StreamReset|RefusedStream|EnhanceYourCalm)/i;
-
-const VALIDATION_MESSAGE_PATTERN =
-	/invalid|validation|bad request|unsupported|schema|missing required|not found|unauthorized|forbidden/i;
-
 /**
- * Identify errors that should be retried: aborts/timeouts in the error name or
- * message, retryable HTTP statuses (see `isRetryableStatus`), unexpected socket
- * closes, and the standard transient phrases. 4xx statuses other than 408/429
- * and validation-shaped messages short-circuit to `false`.
+ * THERE IS NO `isRetryableError` HERE ANY MORE, and that is the contract.
  *
- * A named HTTP/2 error code (see {@link http2RetryVerdict}) answers first,
- * because it is a fact about the transport rather than an inference from
- * wording.
+ * This module kept its own transient vocabulary (`overloaded`, `rate limit`, `service unavailable`,
+ * `connection error`, `unable to connect`, …) and its own validation veto, and
+ * `@veyyon/ai`'s `isProviderRetryableError` consulted it as a last resort. So one provider sentence
+ * was matched by two rule sets that had drifted apart by a phrase, and a failure the utils list
+ * recognised came back retryable while carrying no flag — which is what the session layer reads.
+ *
+ * `utils` cannot import `ai`, so the split is by KIND rather than by convenience: what a transport
+ * states about itself lives here ({@link http2RetryVerdict}, {@link isRetryableStatus},
+ * {@link isUnexpectedSocketCloseMessage}, {@link extractHttpStatusFromError}), and what a failure
+ * MEANS is `@veyyon/ai/error`'s registry, which composes these. A retry decision belongs there.
  */
-export function isRetryableError(error: unknown): boolean {
-	const info = error as { message?: string; name?: string } | null;
-	const message = info?.message ?? "";
-	const http2Verdict = http2RetryVerdict(message);
-	if (http2Verdict !== undefined) return http2Verdict;
-	if (isAbortError(error) || /timeout|timed out|aborted/i.test(message)) return true;
-
-	const status = extractHttpStatusFromError(error);
-	if (status !== undefined) {
-		if (isRetryableStatus(status)) return true;
-		if (status >= 400 && status < 500) return false;
-	}
-
-	if (VALIDATION_MESSAGE_PATTERN.test(message)) return false;
-	return isUnexpectedSocketCloseMessage(message) || TRANSIENT_MESSAGE_PATTERN.test(message);
-}

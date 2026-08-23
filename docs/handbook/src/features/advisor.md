@@ -88,7 +88,7 @@ The `advise` tool accepts one note and an optional severity:
 | `concern` | Interrupting steering message. | Material risk, likely wrong direction, missing constraint, hallucinated API. |
 | `blocker` | Interrupting steering message. | Continuing would clearly waste work or produce broken output. |
 
-Interrupting advice is sent through the steering channel and can abort in-flight tools at the next steering boundary. Each note (interrupting or batched) is rendered into the primary transcript as an `<advisory>` element, severity rides a `severity` attribute, and a `guidance` attribute carries the "weigh, don't blindly obey" framing (the primary agent's system prompt never mentions advisories, so the tag is its only cue). Note bodies are XML-escaped so advice containing `<`, `>`, or `&` can't break the wrapper:
+Interrupting advice is sent through the steering channel and can abort in-flight tools at the next steering boundary. Each note (interrupting or batched) is rendered into the primary transcript as an `<advisory>` element, severity rides a `severity` attribute, and a `guidance` attribute contains the "weigh, don't blindly obey" framing (the primary agent's system prompt never mentions advisories, so the tag is its only cue). Note bodies are XML-escaped so advice containing `<`, `>`, or `&` can't break the wrapper:
 
 ```text
 <advisory severity="concern" guidance="weigh, don't blindly obey">
@@ -273,4 +273,4 @@ Why a file:
 
 The file follows session switches: on `/new`, resume/switch, and branch the recorder reopens at the new session's path on the next advisor turn; before a `/drop` deletes the old artifacts dir the recorder feed is detached and drained so a queued write cannot recreate the deleted file. The on-disk log is append-only and independent of the in-memory context, re-primes and compaction never truncate it.
 
-The advisor is never a peer. The `advisor`-kind registry ref is excluded from every agent-facing surface, the `irc` peer roster and broadcast targets, the subagent peer prompt, and the `history://` index/lookup/completions, and cannot be messaged (`irc send` and collab chat refuse it) or revived/killed from the Agent Control Center or collab. It is not addressable as a peer, regardless of what tools it has been granted.
+The advisor is never a peer. The `advisor`-kind registry ref is excluded from every agent-facing surface, the `irc` peer roster and broadcast targets, the subagent peer prompt, and the `history://` index/lookup/completions, and cannot be messaged (`irc send` and collab chat reject it) or revived/killed from the Agent Control Center or collab. It is not addressable as a peer, regardless of what tools it has been granted.

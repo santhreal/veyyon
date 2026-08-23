@@ -38,7 +38,13 @@ import {
 import { AI_PROMPTS } from "@veyyon/ai/prompts/registry";
 import type { Tool } from "@veyyon/ai/types";
 import { validateToolArguments } from "@veyyon/ai/utils/validation";
-import { moduleSpecifiersIn } from "@veyyon/utils/module-reach";
+import { moduleSpecifiersIn, namedImportsFrom } from "@veyyon/utils/module-reach";
+import {
+	type DeclaringModule,
+	declarersOfStringValue,
+	stringConstantsIn,
+	stringConstantValue,
+} from "@veyyon/utils/source-declarations";
 import { z } from "zod/v4";
 
 const AI_SRC = path.resolve(import.meta.dir, "../src");
@@ -87,12 +93,21 @@ const SHARED_TAGS: ReadonlyArray<readonly [string, string]> = [
 	["XML_THINKING_CLOSE", XML_THINKING_CLOSE],
 ];
 
-async function aiSources(): Promise<ReadonlyArray<{ file: string; text: string }>> {
+async function aiSources(): Promise<ReadonlyArray<DeclaringModule>> {
 	const files = [...new Bun.Glob("**/*.ts").scanSync(AI_SRC)]
 		.map(file => file.split(path.sep).join("/"))
 		.filter(file => file !== OWNER_REL)
 		.sort();
-	return await Promise.all(files.map(async file => ({ file, text: await Bun.file(path.join(AI_SRC, file)).text() })));
+	return await Promise.all(
+		files.map(async file => ({ file, source: await Bun.file(path.join(AI_SRC, file)).text() })),
+	);
+}
+
+/** One module's source out of a scan, throwing rather than passing vacuously when the scan missed it. */
+function sourceOf(modules: ReadonlyArray<DeclaringModule>, file: string): string {
+	const found = modules.find(module => module.file === file);
+	if (!found) throw new Error(`${file} is not in the scan`);
+	return found.source;
 }
 
 describe("the shared in-band tag bytes", () => {
@@ -362,11 +377,9 @@ describe("the markdown code fence", () => {
 	 * block and swallow the rest of the stream as arguments.
 	 */
 	it("is read by both dialects that scan for it", async () => {
-		const dialects = path.resolve(import.meta.dir, "../src/dialect");
-		for (const file of ["gemini.ts", "deepseek.ts"]) {
-			const text = await Bun.file(path.join(dialects, file)).text();
-			expect(text, file).toContain("CODE_FENCE");
-			expect(text, file).toMatch(/from "\.\/wire-tags";/);
+		const modules = await aiSources();
+		for (const file of ["dialect/gemini.ts", "dialect/deepseek.ts"]) {
+			expect(namedImportsFrom(sourceOf(modules, file), "./wire-tags"), file).toContain("CODE_FENCE");
 		}
 	});
 
@@ -376,64 +389,59 @@ describe("the markdown code fence", () => {
 	 * asserting: a change to the fence would have to move them too.
 	 */
 	it("leaves info-string fences with their dialects", async () => {
-		const dialects = path.resolve(import.meta.dir, "../src/dialect");
-		const deepseek = await Bun.file(path.join(dialects, "deepseek.ts")).text();
-		const gemini = await Bun.file(path.join(dialects, "gemini.ts")).text();
-		expect(deepseek).toContain('const LEGACY_JSON_FENCE = "```json";');
-		expect(gemini).toContain("const GEMINI_THINK_FENCE_OPEN = ");
-		for (const fenced of ["```json", "```thinking\n"]) {
-			expect(fenced.startsWith(CODE_FENCE), fenced).toBeTrue();
-		}
+		const modules = await aiSources();
+		const flavours = [
+			stringConstantValue(sourceOf(modules, "dialect/deepseek.ts"), "LEGACY_JSON_FENCE"),
+			stringConstantValue(sourceOf(modules, "dialect/gemini.ts"), "GEMINI_THINK_FENCE_OPEN"),
+		];
+
+		expect(flavours).toEqual(["```json", "```thinking\n"]);
+		for (const flavour of flavours) expect(flavour?.startsWith(CODE_FENCE), flavour).toBeTrue();
 	});
 
 	/**
-	 * And the owner DECLARES only the bare fence, not a dialect's flavour of it. Keyed on the declaration rather
-	 * than on the bytes, because the owner's doc names both info-string fences while explaining why they stay
-	 * where they are, and that prose is the record of the decision.
+	 * And the owner DECLARES only the bare fence, not a dialect's flavour of it. Read from the declaration
+	 * rather than from the line's bytes, because the owner's doc names both info-string fences while explaining
+	 * why they stay where they are, and that prose is the record of the decision.
 	 */
 	it("declares only the bare fence", async () => {
-		const owner = await Bun.file(path.resolve(import.meta.dir, "../src/dialect/wire-tags.ts")).text();
-		expect(owner).toContain('export const CODE_FENCE = "```";');
-		// Leading whitespace and spacing around `=` are tolerated. Anchoring hard at the line start is how a
-		// sibling lock in `packages/utils/test/url.test.ts` missed a real violation for as long as the
-		// formatter kept it wrapped: a source-text check that a reformat defeats reports formatting, not code.
-		for (const flavour of ["```json", "```thinking"]) {
-			expect(
-				new RegExp(`^\\s*(?:export\\s+)?const\\s+\\w+\\s*=\\s*"${flavour}`, "m").test(owner),
-				flavour,
-			).toBeFalse();
-		}
-		// And the check is not vacuous: the same pattern DOES match a declaration of that shape.
-		expect(/^\s*(?:export\s+)?const\s+\w+\s*=\s*"```json/m.test('\tconst LEGACY_JSON_FENCE = "```json";')).toBeTrue();
+		const owner = await Bun.file(path.join(AI_SRC, OWNER_REL)).text();
+		const fences = stringConstantsIn(owner).filter(constant => constant.value.startsWith(CODE_FENCE));
+
+		expect(fences).toEqual([{ name: "CODE_FENCE", value: CODE_FENCE, exported: true }]);
 	});
 });
 
 describe("the vocabulary has one owner", () => {
 	/**
-	 * The ratchet, keyed on the LITERAL rather than on the retired names. A copy reintroduced under a fresh
+	 * The ratchet, keyed on the VALUE rather than on the retired names. A copy reintroduced under a fresh
 	 * spelling is the failure mode a name-based check misses, and it is the likely one: the copies that existed
-	 * were all under names of their own.
+	 * were all under names of their own. The census reads declarations, so a copy in single quotes, with
+	 * different spacing, or carrying a type annotation is caught as readily as one that matches the owner's
+	 * formatting.
 	 */
-	it("declares no shared tag literal outside the owner", async () => {
-		const offenders: string[] = [];
-		for (const { file, text } of await aiSources()) {
-			for (const [, value] of SHARED_TAGS) {
-				if (new RegExp(`^\\s*(?:export )?const \\w+ = "${value.replace(/[/]/g, "\\/")}";`, "m").test(text)) {
-					offenders.push(`${file} declares ${value}`);
-				}
-			}
-		}
+	it("declares no shared tag value outside the owner", async () => {
+		const modules = await aiSources();
+		const offenders = SHARED_TAGS.flatMap(([name, value]) =>
+			declarersOfStringValue(modules, value).map(file => `${file} declares ${name}`),
+		);
+
 		expect(offenders).toEqual([]);
 	});
 
-	/** No module uses one of the retired names for a tag either, under any value. */
+	/**
+	 * No module uses one of the retired names for a string tag either, under any value. Only string
+	 * declarations are visible here: a retired name rebound to a number or an object is not a tag, and
+	 * catching it would need a real parse of the module.
+	 */
 	it("declares none of the retired tag names", async () => {
 		const offenders: string[] = [];
-		for (const { file, text } of await aiSources()) {
-			for (const name of RETIRED_NAMES) {
-				if (new RegExp(`^\\s*(?:export )?const ${name}\\b`, "m").test(text)) offenders.push(`${file}: ${name}`);
+		for (const { file, source } of await aiSources()) {
+			for (const { name } of stringConstantsIn(source)) {
+				if (RETIRED_NAMES.includes(name)) offenders.push(`${file}: ${name}`);
 			}
 		}
+
 		expect(offenders).toEqual([]);
 	});
 
@@ -443,18 +451,22 @@ describe("the vocabulary has one owner", () => {
 	 * handful of files.
 	 */
 	it("scans the whole package including every former declarer", async () => {
-		const files = (await aiSources()).map(entry => entry.file);
+		const files = (await aiSources()).map(module => module.file);
+
 		expect(files.length).toBeGreaterThan(100);
-		for (const declarer of FORMER_DECLARERS) {
-			expect(files).toContain(declarer);
-		}
+		for (const declarer of FORMER_DECLARERS) expect(files).toContain(declarer);
 	});
 
 	/** The positive half: every former declarer now imports from the owner. */
 	it("has every former declarer importing from the owner", async () => {
+		const modules = await aiSources();
 		for (const declarer of FORMER_DECLARERS) {
-			const text = await Bun.file(path.join(AI_SRC, declarer)).text();
-			expect(text, declarer).toMatch(/from "(?:\.\.\/dialect\/wire-tags|\.\/wire-tags)";/);
+			const specifiers = moduleSpecifiersIn(sourceOf(modules, declarer));
+
+			expect(
+				specifiers.filter(specifier => specifier.endsWith("/wire-tags")),
+				declarer,
+			).not.toEqual([]);
 		}
 	});
 
@@ -465,15 +477,19 @@ describe("the vocabulary has one owner", () => {
 	 * so no module can take the bare name back.
 	 */
 	it("leaves no module declaring a bare THINK_OPEN or THINK_CLOSE", async () => {
+		const bare = ["THINK_OPEN", "THINK_CLOSE", "XML_THINKING_OPEN", "XML_THINKING_CLOSE"];
+		const modules = await aiSources();
 		const offenders: string[] = [];
-		for (const { file, text } of await aiSources()) {
-			for (const name of ["THINK_OPEN", "THINK_CLOSE", "XML_THINKING_OPEN", "XML_THINKING_CLOSE"]) {
-				if (new RegExp(`^\\s*(?:export )?const ${name}\\b`, "m").test(text)) offenders.push(`${file}: ${name}`);
+		for (const { file, source } of modules) {
+			for (const { name } of stringConstantsIn(source)) {
+				if (bare.includes(name)) offenders.push(`${file}: ${name}`);
 			}
 		}
+
 		expect(offenders).toEqual([]);
-		const gemini = await Bun.file(path.join(AI_SRC, "dialect/gemini.ts")).text();
-		expect(gemini).toContain('const GEMINI_THINK_FENCE_OPEN = "```thinking\\n";');
+		expect(stringConstantValue(sourceOf(modules, "dialect/gemini.ts"), "GEMINI_THINK_FENCE_OPEN")).toBe(
+			"```thinking\n",
+		);
 	});
 
 	/**
@@ -489,24 +505,23 @@ describe("the vocabulary has one owner", () => {
 	});
 
 	/**
-	 * The general form of the worst case, asserted as a scan rather than as a list of the three names that were
-	 * wrong. Three sibling dialects used one name for different bytes: `THINK_OPEN` was `<think>` in six files
-	 * and ` ```thinking\n ` in `gemini.ts`, `CALL_OPEN` was `<|tool_call>` in `gemma.ts` and `<call:` in
+	 * The general form of the worst case, asserted as a census rather than as a list of the three names that
+	 * were wrong. Three sibling dialects used one name for different bytes: `THINK_OPEN` was `<think>` in six
+	 * files and ` ```thinking\n ` in `gemini.ts`, `CALL_OPEN` was `<|tool_call>` in `gemma.ts` and `<call:` in
 	 * `pi-native.ts`, and `RESPONSE_OPEN` was `<|tool_response>` in `gemma.ts` and `<tool_response>` in
 	 * `glm.ts`. Each is a latent bug rather than a style nit: a reader who learns the name in one file carries
 	 * the wrong bytes into the next, and in the `THINK_OPEN` case adding the shared name to gemini's imports
 	 * would have shadowed it silently.
 	 *
-	 * The scan is over declared string tags in the dialect directory, so a future dialect reusing any of these
-	 * names for its own token fails here rather than in a reader's head.
+	 * Over DECODED values, so two spellings of the same bytes are one value and a divergence is a real one: a
+	 * future dialect reusing any of these names for its own token fails here rather than in a reader's head.
 	 */
 	it("gives no tag name two different values across the dialect directory", async () => {
 		const byName = new Map<string, Map<string, string[]>>();
-		for (const { file, text } of await aiSources()) {
+		for (const { file, source } of await aiSources()) {
 			if (!file.startsWith("dialect/")) continue;
-			for (const match of text.matchAll(/^(?:export )?const ([A-Z][A-Z0-9_]*) = ("(?:[^"\\]|\\.)*");$/gm)) {
-				const name = match[1] as string;
-				const value = match[2] as string;
+			for (const { name, value } of stringConstantsIn(source)) {
+				if (!/^[A-Z][A-Z0-9_]*$/.test(name)) continue;
 				const values = byName.get(name) ?? new Map<string, string[]>();
 				values.set(value, [...(values.get(value) ?? []), file]);
 				byName.set(name, values);
@@ -518,10 +533,11 @@ describe("the vocabulary has one owner", () => {
 				([name, values]) =>
 					`${name}: ${[...values].map(([value, files]) => `${value} in ${files.join(",")}`).join(" vs ")}`,
 			);
+
 		expect(divergent).toEqual([]);
-		// Non-vacuity: the scan really did read the dialect tag declarations it claims to check.
-		expect(byName.get("GEMMA_CALL_OPEN")?.has('"<|tool_call>"')).toBeTrue();
-		expect(byName.get("PI_CALL_OPEN")?.has('"<call:"')).toBeTrue();
+		// Non-vacuity: the census really did read the dialect tag declarations it claims to check.
+		expect(byName.get("GEMMA_CALL_OPEN")?.has("<|tool_call>")).toBeTrue();
+		expect(byName.get("PI_CALL_OPEN")?.has("<call:")).toBeTrue();
 		expect(byName.size).toBeGreaterThan(20);
 	});
 
@@ -530,15 +546,20 @@ describe("the vocabulary has one owner", () => {
 	 * by one dialect and nobody else stays with that dialect. Hoisting DeepSeek's fullwidth tokens, Harmony's
 	 * channel markers or Gemma's turn envelope would turn the owner into a dumping ground in which a reader
 	 * could no longer tell which tags are actually shared, which is the property that makes it useful.
+	 *
+	 * The owner is asked what it DECLARES, not what its text contains: its doc comment names several of these
+	 * tags while explaining why they stay where they are, and that prose is the record of the decision.
 	 */
 	it("leaves single-dialect tags with their dialect", async () => {
-		const owner = await Bun.file(path.join(AI_SRC, OWNER_REL)).text();
+		const modules = await aiSources();
+		const owner = { file: OWNER_REL, source: await Bun.file(path.join(AI_SRC, OWNER_REL)).text() };
 		for (const single of ["<｜begin▁of▁sentence｜>", "<|channel|>", "<|tool_call>", "```tool_code"]) {
-			expect(owner).not.toContain(single);
+			expect(declarersOfStringValue([owner], single), single).toEqual([]);
 		}
-		const deepseek = await Bun.file(path.join(AI_SRC, "dialect/deepseek.ts")).text();
-		expect(deepseek).toContain('const DEEPSEEK_BOS = "<｜begin▁of▁sentence｜>";');
-		const harmony = await Bun.file(path.join(AI_SRC, "dialect/harmony.ts")).text();
-		expect(harmony).toContain('const CHANNEL = "<|channel|>";');
+
+		expect(stringConstantValue(sourceOf(modules, "dialect/deepseek.ts"), "DEEPSEEK_BOS")).toBe(
+			"<｜begin▁of▁sentence｜>",
+		);
+		expect(stringConstantValue(sourceOf(modules, "dialect/harmony.ts"), "CHANNEL")).toBe("<|channel|>");
 	});
 });

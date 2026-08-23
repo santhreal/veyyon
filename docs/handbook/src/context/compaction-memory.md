@@ -62,7 +62,7 @@ the compaction model row is the same list: add a fallback, and press Enter on an
 up.
 
 Falling back is never quiet. When compaction runs on anything other than your first choice, you get
-a warning in the session naming both models and the reason:
+a warning in the session stating both models and the reason:
 
 ```text
 Compacted with anthropic/haiku-4-5. anthropic/opus-4-1 was skipped: it is not authenticated.
@@ -70,7 +70,7 @@ Compacted with anthropic/haiku-4-5. anthropic/opus-4-1 was skipped: it is not au
 
 You see that once per distinct reason, not once per compaction.
 
-`compaction.modelFallbackStrategy` decides what happens after your list runs out:
+`compaction.modelFallbackStrategy` sets what happens after your list runs out:
 
 - `auto` (the default) stays on models you named: your main model, the same-provider compaction
   sibling its catalog row recommends, then each of your model roles.
@@ -96,7 +96,7 @@ session artifact first, so you can always read it back with `read artifact://42`
 lost, it just stops being resent on every turn. Run it on demand with `/shake`.
 
 Shake also removes redundancy. When you read the same unchanged file twice, or run the same
-command twice and get the same output, every copy but the newest carries no new information.
+command twice and get the same output, every copy but the newest contains no new information.
 Shake finds each earlier tool result whose tool, arguments, and output exactly match a later
 one, and elides the earlier copies through the same artifact path. The newest copy stays in
 place. This runs even for recent results that the size-based pass would otherwise keep, because

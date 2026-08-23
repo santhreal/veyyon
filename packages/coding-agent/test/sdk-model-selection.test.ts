@@ -51,7 +51,7 @@ describe("createAgentSession deferred model pattern resolution", () => {
 	const providerExtension: ExtensionFactory = pi => {
 		pi.registerProvider("runtime-provider", {
 			baseUrl: "https://runtime.example.com/v1",
-			apiKey: "RUNTIME_KEY",
+			apiKey: "literal:RUNTIME_KEY",
 			api: "openai-completions",
 			models: [
 				{
@@ -78,7 +78,7 @@ describe("createAgentSession deferred model pattern resolution", () => {
 
 	const dynamicOnlyProviderConfig: ProviderConfigInput = {
 		baseUrl: "https://runtime.example.com/v1",
-		apiKey: "RUNTIME_KEY",
+		apiKey: "literal:RUNTIME_KEY",
 		api: "openai-completions",
 		fetchDynamicModels: async () => [
 			{

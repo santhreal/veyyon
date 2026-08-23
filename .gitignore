@@ -178,7 +178,7 @@ rr-session-*.res.log
 # every worktree that checked it out, because the agent that owned it kept appending.
 # The transcript is the conversation verbatim: prompts, file contents, tool output.
 */sessions/*.jsonl
-scratch-docs-lane/
+scratch-settings-probes/
 
 # The release-notes staging buffer. `scripts/ci-release-notes.ts` writes it from
 # the CHANGELOG on a tag build and the release job feeds it straight to the

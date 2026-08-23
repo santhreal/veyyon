@@ -257,6 +257,22 @@ async function main(): Promise<void> {
 		const headContent = await Bun.file(path.join(repoRoot, pkg.dir, "CHANGELOG.md")).text();
 		headUnreleased.set(pkg.dir, unreleasedEntries(headContent));
 	}
+	// Register warning, not a violation: a changelog entry states what changed and
+	// why in a sentence or three. An entry that runs past this bound has drifted
+	// into an essay, and essays bury the change. The root render copies these
+	// bullets verbatim, so one long entry is read by every visitor of CHANGELOG.md.
+	const ENTRY_WORD_BOUND = 120;
+	for (const pkg of packages) {
+		for (const bullet of headUnreleased.get(pkg.dir) ?? []) {
+			const words = bullet.split(/\s+/).filter(Boolean).length;
+			if (words > ENTRY_WORD_BOUND) {
+				console.log(
+					`changelog gate: WARNING ${pkg.name} Unreleased entry is ${words} words (bound ${ENTRY_WORD_BOUND});` +
+						` state the change and at most a sentence of why: "${bullet.slice(0, 60)}..."`,
+				);
+			}
+		}
+	}
 
 	const violations = evaluateChangelogRequirement({
 		changedFiles,

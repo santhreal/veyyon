@@ -151,9 +151,16 @@ export class AuthGatewayError extends ProviderHttpError {
 	}
 }
 
+/** Prefix on the message of every Codex websocket transport failure. */
+export const CODEX_WEBSOCKET_TRANSPORT_ERROR_PREFIX = "Codex websocket transport error";
+
+/**
+ * Raised by the Codex websocket transport. It lives here, not beside the
+ * transport, so `classify()` reaches it by identity instead of by name.
+ */
 export class CodexWebSocketTransportError extends Error {
 	constructor(detail: string) {
-		super(`Codex websocket transport failure: ${detail}`);
+		super(`${CODEX_WEBSOCKET_TRANSPORT_ERROR_PREFIX}: ${detail}`);
 		this.name = "CodexWebSocketTransportError";
 	}
 }
@@ -167,11 +174,14 @@ export class CodexWhitespaceToolCallLoopError extends Error {
 
 export class CodexProviderStreamError extends Error {
 	readonly retryable: boolean;
+	/** Provider error code (`error.code` / `error.type`) when the event carried one. */
+	readonly code: string | undefined;
 
-	constructor(message: string, options?: { retryable?: boolean; cause?: unknown }) {
-		super(message, { cause: options?.cause });
+	constructor(message: string, options: { retryable: boolean; code?: string; cause?: unknown }) {
+		super(message, { cause: options.cause });
 		this.name = "CodexProviderStreamError";
-		this.retryable = options?.retryable !== false;
+		this.retryable = options.retryable;
+		this.code = options.code;
 	}
 }
 
@@ -186,6 +196,11 @@ export class AuthBrokerError extends Error {
 	}
 }
 
+/**
+ * A broker answered 404 to `GET /v1/snapshot/stream`: it predates the SSE
+ * endpoint. `RemoteAuthCredentialStore` reads this as the signal to fall back
+ * to long-polling for the rest of the process.
+ */
 export class AuthBrokerStreamUnsupportedError extends AuthBrokerError {
 	constructor(message = "Auth broker does not support /v1/snapshot/stream") {
 		super(message, { status: 404 });

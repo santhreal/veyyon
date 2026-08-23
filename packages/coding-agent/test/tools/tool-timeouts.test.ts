@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { beforeAll, describe, expect, it } from "bun:test";
 import { executeBash } from "@veyyon/coding-agent/exec/bash-executor";
 
 import {
@@ -334,6 +334,16 @@ async function resolvedBashDeadlinesMs(options?: { timeout?: number }): Promise<
 	}
 	return delays;
 }
+
+/**
+ * The first `executeBash` in a process loads the native shell binding, and the loader
+ * schedules its own stale-cache prune with `setTimeout(…, 0)`. That timer is not the
+ * executor's deadline and belongs in no assertion below, so the load happens here, on
+ * the real clock, before anything is captured.
+ */
+beforeAll(async () => {
+	await executeBash("true");
+});
 
 describe("the bash executor's resolved deadline", () => {
 	it("falls back to TOOL_TIMEOUTS.bash.default converted to milliseconds, and nothing else", async () => {

@@ -265,6 +265,43 @@ wait_for_screen() {
 	return 1
 }
 
+# Abandon the take now, naming the guard that did not arrive.
+#
+# A scene used to record a miss in MISSED and walk on to the next guard. A take with five
+# model-dependent guards left after the first miss then spent every remaining ceiling in
+# series before anything reported: one run waited out 1200s on a subagent name and 1800s
+# on an edit block, ran past an hour, and published two byte-identical frames under two
+# names. Abandoning at the first miss costs one ceiling, and the reason file is what the
+# host reads to decide whether the scene or the model is at fault.
+abandon_take() {
+	local guard="$1" reason="$2"
+	echo "scene: abandoning the take -- ${guard}: ${reason}" >&2
+	if [ -n "${SCENE_OUT:-}" ]; then
+		printf '%s\t%s\n' "${guard}" "${reason}" >>"${SCENE_OUT}/abandoned.tsv"
+	fi
+	exit 2
+}
+
+# A guard on output the PRODUCT prints for what the scene already did: chrome, a command
+# echo, a slash-command result, a line the scene typed. It cannot depend on a model
+# choice, so a miss is a defect in the scene or the build and the take ends here.
+expect_screen() {
+	local needle="$1" ceiling="${2:-120}"
+	wait_for_screen "${needle}" "${ceiling}" ||
+		abandon_take "${3:-${needle}}" "deterministic guard '${needle}' never printed in ${ceiling}s"
+}
+
+# A guard on output only a MODEL choice produces: a name it picked, a tool it decided to
+# call, a sentinel the prompt asked it to print. The ceiling is the whole budget for that
+# choice, and running it out ends the take instead of leaving every later guard to spend
+# its own. Every such guard is declared here, which is what `scripts/verify-scene.ts`
+# reads: a bare `wait_for_screen` in a scene is neither kind and fails verification.
+expect_model_screen() {
+	local needle="$1" ceiling="${2:-300}"
+	wait_for_screen "${needle}" "${ceiling}" ||
+		abandon_take "${3:-${needle}}" "model-dependent guard '${needle}' never printed in ${ceiling}s"
+}
+
 # Scroll back until a string is on screen, then stop. Says whether it got there.
 #
 # WHY A SCENE HAS TO SCROLL FOR A SURFACE. A shot named after a surface is only that shot if
@@ -320,9 +357,14 @@ shot() {
 	# take left under it. The mark is the record of a frame that landed, so it is only written
 	# when one did, and a failure says so in the log rather than in the gallery.
 	if ! _be_capture "${png}" 2>&1 || [ ! -s "${png}" ]; then
-		echo "scene: shot '$1' captured nothing (the capture failed or wrote an empty file)" >&2
-		return 0
+		abandon_take "$1" "shot '$1' captured nothing (the capture failed or wrote an empty file)"
 	fi
+	if [ -n "${SCENE_LAST_SHOT_PNG:-}" ] && [ -f "${SCENE_LAST_SHOT_PNG}" ]; then
+		if cmp -s "${png}" "${SCENE_LAST_SHOT_PNG}"; then
+			abandon_take "$1" "shot '$1' is byte-identical to previous shot '$(basename "${SCENE_LAST_SHOT_PNG}" .png)'"
+		fi
+	fi
+	SCENE_LAST_SHOT_PNG="${png}"
 	if [ -n "${SCENE_T0:-}" ]; then
 		local ms=$(($(date +%s%3N) - SCENE_T0))
 		# THE THIRD COLUMN IS HOW MUCH WORK THIS FRAME MAY SHOW. The clip used to

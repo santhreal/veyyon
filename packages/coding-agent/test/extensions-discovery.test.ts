@@ -38,6 +38,15 @@ describe("extensions discovery", () => {
 	 * asserting that it grants nothing.
 	 */
 	let extensionsDir: string;
+	/**
+	 * Where a symlink's TARGET lives.
+	 *
+	 * Outside the project on purpose: a link whose target resolves into the working tree is
+	 * repository code and needs a trust decision before it runs, which is a different contract
+	 * from the symlink resolution these cases are about. Parking the target under the project
+	 * made every symlink case double as a project-trust case.
+	 */
+	let linkTargetDir: TempDir;
 
 	// One case installs a Settings carrying `disabledExtensions`, and
 	// `initializeWithSettings` copies that into MODULE-GLOBAL state in
@@ -47,6 +56,7 @@ describe("extensions discovery", () => {
 	beforeEach(() => {
 		registrySnapshot = captureRegistryForTests();
 		tempDir = TempDir.createSync("@pi-ext-test-");
+		linkTargetDir = TempDir.createSync("@pi-ext-link-");
 		extensionsDir = path.join(getAgentDir(), "extensions");
 		fs.mkdirSync(extensionsDir, { recursive: true });
 		// Discovery reads directories through the capability FS cache, and every case
@@ -63,6 +73,7 @@ describe("extensions discovery", () => {
 		fs.rmSync(extensionsDir, { recursive: true, force: true });
 		fs.rmSync(path.join(getAgentDir(), "hooks"), { recursive: true, force: true });
 		tempDir.removeSync();
+		linkTargetDir.removeSync();
 		clearFsCache();
 	});
 
@@ -185,7 +196,7 @@ describe("extensions discovery", () => {
 	});
 
 	it("discovers a symlinked extension package directory", async () => {
-		const packageDir = path.join(tempDir.path(), "linked-package");
+		const packageDir = path.join(linkTargetDir.path(), "linked-package");
 		const sourceDir = path.join(packageDir, "src");
 		fs.mkdirSync(sourceDir, { recursive: true });
 		fs.writeFileSync(path.join(sourceDir, "main.ts"), extensionCode);
@@ -208,7 +219,7 @@ describe("extensions discovery", () => {
 	});
 
 	it("discovers index.ts in a symlinked extension directory", async () => {
-		const packageDir = path.join(tempDir.path(), "linked-index-ts");
+		const packageDir = path.join(linkTargetDir.path(), "linked-index-ts");
 		fs.mkdirSync(packageDir);
 		fs.writeFileSync(path.join(packageDir, "index.ts"), extensionCode);
 		fs.symlinkSync(packageDir, path.join(extensionsDir, "linked-index-ts"), "dir");
@@ -221,7 +232,7 @@ describe("extensions discovery", () => {
 	});
 
 	it("discovers index.js in a symlinked extension directory", async () => {
-		const packageDir = path.join(tempDir.path(), "linked-index-js");
+		const packageDir = path.join(linkTargetDir.path(), "linked-index-js");
 		fs.mkdirSync(packageDir);
 		fs.writeFileSync(path.join(packageDir, "index.js"), extensionCode);
 		fs.symlinkSync(packageDir, path.join(extensionsDir, "linked-index-js"), "dir");
@@ -349,7 +360,7 @@ describe("extensions discovery", () => {
 		// A single extension dir shared across profiles via a symlink: the real
 		// directory lives outside extensions/ and is linked into it. Native glob
 		// never descends into the symlink, so this exercises the symlink fallback.
-		const realDir = path.join(tempDir.path(), "external", "shared-ext");
+		const realDir = path.join(linkTargetDir.path(), "external", "shared-ext");
 		fs.mkdirSync(realDir, { recursive: true });
 		fs.writeFileSync(path.join(realDir, "index.ts"), extensionCode);
 		fs.symlinkSync(realDir, path.join(extensionsDir, "linked-ext"), "dir");
@@ -365,7 +376,7 @@ describe("extensions discovery", () => {
 	it("discovers a symlinked extension directory with a package.json manifest", async () => {
 		// Mirrors the real-world shape: a packaged extension (package.json + index.ts)
 		// symlinked into a profile's extensions/ dir.
-		const realDir = path.join(tempDir.path(), "external", "ctk");
+		const realDir = path.join(linkTargetDir.path(), "external", "ctk");
 		fs.mkdirSync(realDir, { recursive: true });
 		fs.writeFileSync(path.join(realDir, "index.ts"), extensionCodeWithTool("ctk-tool"));
 		fs.writeFileSync(
@@ -387,7 +398,7 @@ describe("extensions discovery", () => {
 	it("discovers a symlinked extension file", async () => {
 		// Symlinked *files* resolve through the native file-type filter; guards that
 		// the directory fallback does not regress the file case.
-		const realFile = path.join(tempDir.path(), "external", "shared.ts");
+		const realFile = path.join(linkTargetDir.path(), "external", "shared.ts");
 		fs.mkdirSync(path.dirname(realFile), { recursive: true });
 		fs.writeFileSync(realFile, extensionCode);
 		fs.symlinkSync(realFile, path.join(extensionsDir, "linked.ts"), "file");
@@ -403,7 +414,7 @@ describe("extensions discovery", () => {
 		// A profile symlink pointing at a since-deleted shared extension. The fallback
 		// reads the (missing) target, gets [], and must yield no extension and no
 		// error rather than throwing.
-		fs.symlinkSync(path.join(tempDir.path(), "external", "gone"), path.join(extensionsDir, "broken"), "dir");
+		fs.symlinkSync(path.join(linkTargetDir.path(), "external", "gone"), path.join(extensionsDir, "broken"), "dir");
 
 		const result = await discoverForTest();
 
@@ -416,7 +427,7 @@ describe("extensions discovery", () => {
 		// file-type filter rejects it as a direct file (target is a dir), so it must
 		// resolve exactly once via the synthesized subdir index — never double-counted
 		// as both a direct file and a subdir entry.
-		const realDir = path.join(tempDir.path(), "external", "weird");
+		const realDir = path.join(linkTargetDir.path(), "external", "weird");
 		fs.mkdirSync(realDir, { recursive: true });
 		fs.writeFileSync(path.join(realDir, "index.ts"), extensionCode);
 		fs.symlinkSync(realDir, path.join(extensionsDir, "weird.ts"), "dir");
@@ -750,7 +761,9 @@ describe("extensions discovery", () => {
 		fs.writeFileSync(explicitPath, extensionCodeWithTool("explicit"));
 
 		// Use loadExtensions directly to skip discovery
-		const result = await loadExtensions([explicitPath], tempDir.path());
+		const result = await loadExtensions([explicitPath], tempDir.path(), undefined, undefined, {
+			configuredPaths: [explicitPath],
+		});
 
 		expect(result.errors).toHaveLength(0);
 		expect(result.extensions).toHaveLength(1);

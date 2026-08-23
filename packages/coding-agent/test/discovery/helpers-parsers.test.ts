@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import {
 	compareSkillOrder,
-	expandEnvVarsDeep,
 	getExtensionNameFromPath,
 	parseArrayOrCSV,
 	parseBoolean,
@@ -24,9 +23,10 @@ import {
  *   - getExtensionNameFromPath: index.{ts,js} names resolve to the parent dir, otherwise the
  *     basename minus its extension (a leading-dot dotfile keeps its name);
  *   - compareSkillOrder: case-insensitive name, then exact name, then path;
- *   - resolveCopilotHome: COPILOT_HOME (trimmed, non-blank) wins, else <home>/.copilot;
- *   - expandEnvVarsDeep: recursively substitutes ${VAR} / ${VAR:-default}, leaving an
- *     unresolved reference literal.
+ *   - resolveCopilotHome: COPILOT_HOME (trimmed, non-blank) wins, else <home>/.copilot.
+ *
+ * `expandEnvVarsDeep` moved to `discovery/env-expansion.ts` and is pinned by
+ * `an-unresolved-environment-reference-is-reported-not-passed-on.test.ts`.
  */
 
 describe("parseBoolean", () => {
@@ -113,20 +113,5 @@ describe("resolveCopilotHome", () => {
 		expect(resolveCopilotHome("/home/u")).toBe("/custom/copilot");
 		process.env.COPILOT_HOME = "   ";
 		expect(resolveCopilotHome("/home/u")).toBe("/home/u/.copilot");
-	});
-});
-
-describe("expandEnvVarsDeep", () => {
-	// Build the literal placeholder strings via concatenation so the env-var syntax under
-	// test does not trip the noTemplateCurlyInString lint (these are intentionally NOT
-	// template strings — they are the raw input the function must expand).
-	const D = "$";
-	const foo = `${D}{FOO}`;
-	const barDefault = `${D}{BAR:-def}`;
-	const unresolved = `${D}{VEYYON_TEST_UNSET_VAR_XYZ}`;
-
-	it("recursively substitutes VAR and VAR-with-default refs, leaving an unresolved ref literal", () => {
-		const result = expandEnvVarsDeep({ a: foo, b: [barDefault, 5], c: { d: unresolved } }, { FOO: "vfoo" });
-		expect(result).toEqual({ a: "vfoo", b: ["def", 5], c: { d: unresolved } });
 	});
 });

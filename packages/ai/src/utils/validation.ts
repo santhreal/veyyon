@@ -24,7 +24,7 @@
  */
 import { structuredCloneJSON } from "@veyyon/utils/json";
 import { isRecord } from "@veyyon/utils/type-guards";
-import { type Type, type } from "arktype";
+import type { Type } from "arktype";
 import type { ZodType } from "zod/v4";
 import type { $ZodIssue as ZodIssue } from "zod/v4/core";
 import { ARG_KEY_CLOSE, ARG_KEY_OPEN, ARG_VALUE_CLOSE, ARG_VALUE_OPEN, TOOL_CALL_CLOSE } from "../dialect/wire-tags";
@@ -37,7 +37,7 @@ import {
 	validateJsonSchemaValue,
 } from "./schema/json-schema-validator";
 import { stamp } from "./schema/stamps";
-import { arkToWireSchema, isArkSchema, isZodSchema, zodToWireSchema } from "./schema/wire";
+import { arkToWireSchema, isArkErrors, isArkSchema, isZodSchema, zodToWireSchema } from "./schema/wire";
 
 // ============================================================================
 // Type Coercion Utilities
@@ -1684,7 +1684,7 @@ function validateContext(ctx: ValidationContext, value: unknown): ContextValidat
 
 	if (ctx.kind === "arktype") {
 		const out = ctx.ark(value);
-		if (!(out instanceof type.errors)) {
+		if (!isArkErrors(out)) {
 			return { success: true, value: preserveUnknownRootFields(value, out) };
 		}
 		// A `.narrow()`/cross-field failure can have ArkType reject while the wire

@@ -155,10 +155,7 @@ function makeMnemopiConfig(
 			embeddingApiKey: undefined,
 			llm: false,
 		},
-		llmMode: "none",
-		llmBaseUrl: undefined,
-		llmApiKey: undefined,
-		llmModel: undefined,
+		llm: { mode: "none" },
 		...overrides,
 	};
 }

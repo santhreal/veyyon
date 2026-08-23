@@ -23,7 +23,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { classify, Flag, is } from "@veyyon/ai/error/flags";
+import { classify, Flag, is, recover, retriable, vetoesRetry } from "@veyyon/ai/error/flags";
 import { isProviderRetryableError } from "@veyyon/ai/error/retryable";
 import { type StreamFrameKind, StreamFrameLimitError } from "@veyyon/utils/stream-frame-limit";
 
@@ -37,6 +37,38 @@ describe("a peer that broke framing is not worth a second request", () => {
 
 		expect(isProviderRetryableError(error)).toBe(false);
 		expect(is(classify(error), Flag.Transient)).toBe(false);
+	});
+
+	/**
+	 * THE REFUSAL IS A FLAG NOW, not an absence of one. Clearing `Flag.Transient` for the chain left
+	 * every veto reader with nothing to read, so the provider ladder needed a hand-written check of
+	 * its own — and a wrapper sentence that classified as something ELSE still got past it: a
+	 * deadline's "operation timed out" reaches the timeout family, whose transport stage retries.
+	 * `Flag.TransportRefused` is the same answer the named HTTP/2 codes give, so one veto covers both
+	 * structural refusals and every reader of the decision sees it.
+	 */
+	it.each(FRAME_KINDS)("declares a %s violation a refusal every reader can see", frame => {
+		const error = new StreamFrameLimitError(frame, 2048, 1024);
+		const id = classify(error);
+
+		expect(is(id, Flag.TransportRefused)).toBe(true);
+		expect(vetoesRetry(id)).toBe(true);
+		expect(retriable(id)).toBe(false);
+		expect(recover(id, "transport").action).toBe("surface");
+	});
+
+	it("stays terminal under a wrapper that classifies as a deadline", () => {
+		// The hole the hand-written check left: this sentence is the timeout family's, whose transport
+		// stage retries, so a ladder reading the stage's answer would have re-sent it.
+		const wrapped = new Error("operation timed out", {
+			cause: new StreamFrameLimitError("sse-event", 70_000_000, 67_108_864),
+		});
+		const id = classify(wrapped);
+
+		expect(is(id, Flag.Timeout)).toBe(true);
+		expect(vetoesRetry(id)).toBe(true);
+		expect(isProviderRetryableError(wrapped)).toBe(false);
+		expect(retriable(id)).toBe(false);
 	});
 
 	it("stays terminal when a provider wraps it in a transient-sounding sentence", () => {

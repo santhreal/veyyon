@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e2394775.js";
+            window.path_to_searchindex_js = "../searchindex-03ea301b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -219,7 +219,7 @@ where an extension is written while you are developing it. Settings come from
 your profile and your home directory, so a repository cannot add itself to that
 list.</p>
 <h2 id="deciding"><a class="header" href="#deciding">Deciding</a></h2>
-<pre><code class="language-sh">veyyon trust           # show what the project wants to run, and approve it
+<pre><code class="language-sh">veyyon trust           # show the code the project would run, and approve it
 veyyon trust --list    # show it without deciding
 veyyon trust --deny    # refuse, and remember the refusal
 veyyon trust --forget  # drop the decision
@@ -227,7 +227,7 @@ veyyon trust path/to/file.ts   # decide one named file
 </code></pre>
 <p>Inside a session, <code>/trust</code> reports, and <code>/trust approve</code>, <code>/trust deny</code> and
 <code>/trust forget</code> decide. <code>/trust approve &lt;path&gt;</code> approves one file by name, which
-is how you answer a refusal that names a file the discovery scan does not list.</p>
+is how you answer a refusal that states a file the discovery scan does not list.</p>
 <h2 id="what-a-decision-records"><a class="header" href="#what-a-decision-records">What a decision records</a></h2>
 <p>One sha-256 per approved file, keyed by the symlink-resolved project root, in
 <code>&lt;agent dir&gt;/project-trust.json</code>. Consequences:</p>
@@ -237,9 +237,9 @@ is how you answer a refusal that names a file the discovery scan does not list.<
 <li>Approving the plugin registry approves the plugins it names. Their install
 directories are usually outside the project, and their contents are not
 digested.</li>
-<li>A denial is stored, so the next launch neither loads the code nor asks again.</li>
+<li>A denial is stored, so the next launch neither loads the code nor prompts again.</li>
 <li>A store written by another version of veyyon, or one whose records are
-malformed, is discarded. Nothing is trusted and you are asked again.</li>
+malformed, is discarded. Nothing is trusted and you are prompted again.</li>
 </ul>
 <h2 id="reading-a-refusal"><a class="header" href="#reading-a-refusal">Reading a refusal</a></h2>
 <pre><code>extensions: ext/hostile.ts was not loaded because this project has not been
@@ -260,7 +260,7 @@ untrusted.
 </tbody>
 </table>
 </div>
-<p>Refusals appear as startup warnings. Nothing prompts: a session that cannot ask
+<p>Refusals appear as startup warnings. Nothing prompts: a session that cannot prompt
 loads nothing rather than defaulting to yes.</p>
 
                     </main>

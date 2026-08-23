@@ -47,6 +47,7 @@ import * as processTree from "@veyyon/coding-agent/mcp/transports/process-tree";
 import { createStdioTransport, type StdioTransport } from "@veyyon/coding-agent/mcp/transports/stdio";
 import type { MCPStdioServerConfig } from "@veyyon/coding-agent/mcp/types";
 import { Process, ProcessStatus } from "@veyyon/natives";
+import { hermeticSpawnEnv } from "../helpers/hermetic-spawn-env";
 import { useTrackedTempDirs } from "../helpers/tracked-temp-dir";
 
 const makeTempDir = useTrackedTempDirs("veyyon-mcp-reap-");
@@ -258,13 +259,23 @@ describe("an MCP server takes everything it spawned with it", () => {
 		// held. The observable is a BYSTANDER in the same group, not this runner: inside a
 		// container the runner is pid 1, which the kernel will not signal, so a suicide
 		// check would pass no matter what the code did.
+		// The probe only sleeps, but it is spawned from this repository's own runtime, so it
+		// gets a hermetic HOME like every other spawn here rather than the developer's.
 		const spawnShared = (): { pid: number; kill: () => void } => {
+			const hermetic = hermeticSpawnEnv();
 			const proc = Bun.spawn([process.execPath, "-e", "setInterval(() => {}, 1000);"], {
+				env: hermetic.env,
 				stdin: "ignore",
 				stdout: "ignore",
 				stderr: "ignore",
 			});
-			return { pid: proc.pid, kill: () => proc.kill("SIGKILL") };
+			return {
+				pid: proc.pid,
+				kill: () => {
+					proc.kill("SIGKILL");
+					hermetic.cleanup();
+				},
+			};
 		};
 		const target = spawnShared();
 		const bystander = spawnShared();

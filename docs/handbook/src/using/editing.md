@@ -53,6 +53,6 @@ and confirm that it matches the command or browser scenario that ran.
 
 ## Safety
 
-Edits honor the approval mode, just as `bash` does. A `tools.approval.<tool>: deny` policy keeps the tool in the model's list but refuses every call at dispatch with an error naming the policy. Tools leave the model's list via `<tool>.enabled: false`, harness-profile allowlists, `tools.discoveryMode` (BM25 hiding), extension or agent tool-set overrides, or agent definitions. Plan mode keeps the list and blocks mutations at approval time.
+Edits honor the approval mode, just as `bash` does. A `tools.approval.<tool>: deny` policy keeps the tool in the model's list but rejects every call at dispatch with an error stating the policy. Tools leave the model's list via `<tool>.enabled: false`, harness-profile allowlists, `tools.discoveryMode` (BM25 hiding), extension or agent tool-set overrides, or agent definitions. Plan mode keeps the list and blocks mutations at approval time.
 
 Hashline is the primary write path, and `apply_patch` is a compatibility mode. There is no single V4A applier that routes every mutation through a `make_update_patch` envelope.

@@ -162,7 +162,7 @@ selected node
 
 Summary prompt is controlled by `branchSummary.enabled` (default: `false`).
 
-When enabled, after picking a node the UI asks:
+When enabled, after picking a node the UI prompts:
 
 - `No summary`
 - `Summarize`

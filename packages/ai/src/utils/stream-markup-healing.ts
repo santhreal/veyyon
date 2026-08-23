@@ -1,13 +1,24 @@
 /**
- * Streaming-safe filters for leaked chat-template tool-call and thinking markup.
+ * The scanner layer for leaked chat-template markup, and the owner of which
+ * pattern a model needs.
  *
- * Hosted models sometimes leak raw template markup into visible `content` instead
- * of returning structured events. Tool-call healing delegates to the same
- * dialect scanners used by owned in-band tool calling; this file keeps the
- * provider-facing compatibility wrapper and model/provider gating.
+ * Hosted models sometimes leak raw template markup into visible `content`
+ * instead of returning structured events. This file holds the incremental feed
+ * API ({@link StreamMarkupHealing}) and the never-abstaining gate
+ * ({@link getStreamMarkupHealingPattern}). WHICH grammar a model may leak is the
+ * catalog's `compat/markup-leaks`, beside the rest of its model identity; tool-call
+ * scanning delegates to the same dialect scanners as owned in-band tool calling.
+ *
+ * Two consumers sit above it: `leaked-thinking-stream.ts` wraps a whole provider
+ * stream for the generic thinking case, and a provider calls this directly when
+ * it has to combine healing with knowledge only it holds (Ollama suppresses
+ * healed thinking once the provider streams native reasoning). `harmony-leak.ts`
+ * is not part of this layer: it fuses GPT-5 Harmony channel signals and is gated
+ * to `openai-codex`.
  */
 
-import { isDeepseekModelIdOrName } from "@veyyon/catalog/identity";
+import { leakedToolCallGrammar } from "@veyyon/catalog/compat/markup-leaks";
+import type { OpenAIStreamMarkupHealingPattern } from "@veyyon/catalog/types";
 
 // The markers below have ONE owner each: the dialect that defines the format.
 // They used to be retyped here, byte-identical, which is how a dialect can change
@@ -24,7 +35,8 @@ export interface HealedToolCall {
 	readonly arguments: string;
 }
 
-export type StreamMarkupHealingPattern = "kimi" | "dsml" | "thinking";
+/** The same union as the catalog's `OpenAIStreamMarkupHealingPattern`, which owns it. */
+export type StreamMarkupHealingPattern = OpenAIStreamMarkupHealingPattern;
 
 export interface StreamMarkupHealingOptions {
 	readonly pattern: StreamMarkupHealingPattern;
@@ -213,36 +225,16 @@ function generateHealedToolCallId(): string {
 	return `call_${crypto.randomUUID().replace(/-/g, "").slice(0, 24)}`;
 }
 
-/** Cheap model/provider gate for Kimi-K2 chat-template token leaks. */
-export function modelMayLeakKimiToolCalls(provider: string, modelId: string): boolean {
-	if (provider === "kimi-code" || provider === "moonshot") return true;
-	return /kimi[-/_.]?k2/i.test(modelId);
-}
-
-/** Cheap model/provider gate for DeepSeek DSML envelope leaks. */
-export function modelMayLeakDsmlToolCalls(provider: string, modelId: string): boolean {
-	if (!isDeepseekModelIdOrName(modelId)) return false;
-	return (
-		provider === "ollama" ||
-		provider === "ollama-cloud" ||
-		provider === "nvidia" ||
-		provider === "deepseek" ||
-		provider === "fireworks" ||
-		provider === "nanogpt" ||
-		provider === "opencode-go" ||
-		provider === "openrouter"
-	);
-}
-
 /**
- * Pick the leaked-markup healer for an OpenAI-compatible / Ollama visible-text
- * stream. Kimi chat-template tokens and DeepSeek DSML envelopes need their
- * dedicated tool-call grammars; every other model uses `"thinking"`. All three
- * patterns run the generic {@link ThinkingInbandScanner}, so leaked reasoning
- * idioms (e.g. a Gemini ` ```thinking ` fence on OpenRouter) are always healed.
+ * Pick the leaked-markup healer for a visible-text stream that always gets one.
+ *
+ * The tool-call grammar comes from `@veyyon/catalog`'s `leakedToolCallGrammar`, which is where the
+ * provider and model-id vocabulary lives; `"thinking"` is the floor rather than an absence, because
+ * every pattern runs the generic {@link ThinkingInbandScanner} and a leaked reasoning idiom (a Gemini
+ * ` ```thinking ` fence arriving through OpenRouter, say) has to be recovered whatever else the model
+ * did or did not leak. A caller that may skip healing entirely asks the catalog detector instead —
+ * this one never abstains, and the two lists it used to restate are gone.
  */
 export function getStreamMarkupHealingPattern(provider: string, modelId: string): StreamMarkupHealingPattern {
-	if (modelMayLeakKimiToolCalls(provider, modelId)) return "kimi";
-	if (modelMayLeakDsmlToolCalls(provider, modelId)) return "dsml";
-	return "thinking";
+	return leakedToolCallGrammar(provider, modelId) ?? "thinking";
 }

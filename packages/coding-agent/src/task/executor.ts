@@ -422,6 +422,8 @@ export interface ExecutorOptions {
 	 * extension against its own `ExtensionAPI` (cwd, eventBus, runtime).
 	 */
 	preloadedExtensionPaths?: string[];
+	/** The operator-named subset of {@link preloadedExtensionPaths}; see the SDK option of the same name. */
+	preloadedNamedExtensionPaths?: string[];
 	/**
 	 * Parent's discovered custom-tool source paths. Forwarded to skip the
 	 * `.veyyon/tools/` FS scan in the subagent; the subagent then re-binds each
@@ -3120,6 +3122,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 				workspaceTree: options.workspaceTree,
 				rules: options.rules,
 				preloadedExtensionPaths: options.preloadedExtensionPaths,
+				preloadedNamedExtensionPaths: options.preloadedNamedExtensionPaths,
 				preloadedCustomToolPaths: options.preloadedCustomToolPaths,
 				systemPrompt: defaultPrompt => {
 					const subagentPrompt = prompt.render(subagentPrompts["subagent/system-prompt"].text, {

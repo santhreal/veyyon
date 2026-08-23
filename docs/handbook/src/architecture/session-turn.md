@@ -12,7 +12,7 @@ tool calls, and the final assistant message.
 
 ## Public boundary
 
-- The `AgentSession` owns the turn loop.
+- The `AgentSession` runs the turn loop.
 - On-disk layout: `~/.veyyon/profiles/default/agent/sessions/<dir-encoded>/<timestamp>_<id>.jsonl`
 - Blob store: `~/.veyyon/profiles/default/agent/blobs/<sha256>`
 

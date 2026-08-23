@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e2394775.js";
+            window.path_to_searchindex_js = "../searchindex-03ea301b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -270,7 +270,7 @@ export default function hook(pi: HookAPI): void {
 <li><code>session_before_branch</code> → can return <code>{ cancel?: boolean; skipConversationRestore?: boolean }</code></li>
 <li><code>session_branch</code></li>
 <li><code>session_before_compact</code> → can return <code>{ cancel?: boolean; compaction?: CompactionResult }</code></li>
-<li><code>session.compacting</code> → can return <code>{ context?: string[]; prompt?: string; preserveData?: Record&lt;string, unknown&gt; }</code></li>
+<li><code>session_compacting</code> → can return <code>{ context?: string[]; prompt?: string; preserveData?: Record&lt;string, unknown&gt; }</code></li>
 <li><code>session_compact</code></li>
 <li><code>session_before_tree</code> → can return <code>{ cancel?: boolean; summary?: { summary: string; details?: unknown } }</code></li>
 <li><code>session_tree</code></li>
@@ -341,7 +341,7 @@ tool_call handlers
 <li>LLM context for a single call via <code>context</code> (<code>messages</code> replacement chain)</li>
 <li>tool output content/details on successful tool calls (<code>tool_result</code> path)</li>
 <li>pre-agent injected message via <code>before_agent_start</code></li>
-<li>cancellation/custom compaction/tree behavior via <code>session_before_*</code> and <code>session.compacting</code></li>
+<li>cancellation/custom compaction/tree behavior via <code>session_before_*</code> and <code>session_compacting</code></li>
 </ul>
 <h3 id="what-hooks-cannot-mutate-in-this-implementation"><a class="header" href="#what-hooks-cannot-mutate-in-this-implementation">What hooks cannot mutate in this implementation</a></h3>
 <ul>
@@ -369,7 +369,7 @@ File order within each discovered directory depends on <code>readdir</code> outp
 <li><code>context</code>: chained; each handler receives prior handler’s message output</li>
 <li><code>before_agent_start</code>: first returned message is kept; later messages ignored</li>
 <li><code>session_before_*</code>: latest returned result is tracked; <code>cancel: true</code> short-circuits immediately</li>
-<li><code>session.compacting</code>: latest returned result wins</li>
+<li><code>session_compacting</code>: latest returned result wins</li>
 </ul>
 <p>Command/renderer conflicts:</p>
 <ul>

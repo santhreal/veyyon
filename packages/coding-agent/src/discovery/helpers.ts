@@ -529,39 +529,6 @@ export async function scanSkillsFromDir(options: ScanSkillsFromDirOptions): Prom
 }
 
 /**
- * Expand environment variables in a string.
- * Supports ${VAR} and ${VAR:-default} syntax.
- */
-function expandEnvVars(value: string, extraEnv?: Record<string, string>): string {
-	return value.replace(/\$\{([^}:]+)(?::-([^}]*))?\}/g, (_, varName: string, defaultValue?: string) => {
-		const envValue = extraEnv?.[varName] ?? Bun.env[varName];
-		if (envValue !== undefined) return envValue;
-		if (defaultValue !== undefined) return defaultValue;
-		return `\${${varName}}`;
-	});
-}
-
-/**
- * Recursively expand environment variables in an object.
- */
-export function expandEnvVarsDeep<T>(obj: T, extraEnv?: Record<string, string>): T {
-	if (typeof obj === "string") {
-		return expandEnvVars(obj, extraEnv) as T;
-	}
-	if (Array.isArray(obj)) {
-		return obj.map(item => expandEnvVarsDeep(item, extraEnv)) as T;
-	}
-	if (obj !== null && typeof obj === "object") {
-		const result: Record<string, unknown> = {};
-		for (const [key, value] of Object.entries(obj)) {
-			result[key] = expandEnvVarsDeep(value, extraEnv);
-		}
-		return result as T;
-	}
-	return obj;
-}
-
-/**
  * Load files from `dir` matching `options.extensions`.
  * Uses native glob for fast filesystem scanning with gitignore support.
  *

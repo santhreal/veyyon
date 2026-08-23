@@ -55,7 +55,6 @@
 		"toolPendingBg": "toolPendingBg",
 		"toolSuccessBg": "toolSuccessBg",
 		"toolErrorBg": "toolErrorBg",
-		"toolText": "",
 		"toolTitle": "",
 		"toolOutput": "gray",
 		"mdHeading": "yellow",

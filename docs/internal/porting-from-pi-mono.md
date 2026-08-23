@@ -386,4 +386,99 @@ These exist in our fork but not upstream. **Never overwrite:**
 - Bash interception (`checkBashInterception`)
 - Fuzzy path suggestions in read tool
 
-*Verified against `d3e3db30` on 2026-07-23.*
+## 16) Upstream lineage
+
+What the fork took from oh-my-pi:
+
+- The TypeScript/Bun agent loop, TUI, and mode system (`packages/coding-agent`,
+  `packages/agent`, `packages/tui`, `packages/ai`, `packages/catalog`, and
+  most of `packages/*`).
+- The Rust native hot paths, including their vendored third-party dependencies
+  under `crates/vendor/`. The crates were renamed after the fork, so the paths
+  here are the current ones: search in `crates/veyyon-grep-kernel` and
+  `crates/veyyon-uu-grep`, the shell and its output minimizer in
+  `crates/veyyon-shell`, and the PTY and the rest of the N-API surface in
+  `crates/veyyon-natives`. The hashline edit engine is TypeScript, in
+  `packages/hashline`, not in a crate.
+- The prompt/agent model, hashline edit engine, mnemopi memory system, and
+  provider catalog that oh-my-pi shipped.
+
+What diverged since: the name, brand constants, config directory, package
+scope, splash and theme, emoji removal, and settings simplification came first;
+then the prompt and context contract, model effort and subsystem routing,
+compaction, credential and session storage, tool and extension architecture,
+worker operations, native kernels, and documentation. Veyyon is not a drop-in
+resync target. Changes here are not assumed to belong upstream, and upstream
+changes are not pulled automatically.
+
+This repository's history begins with one imported snapshot rather than
+oh-my-pi's individual pre-fork commits. Commits after that snapshot are
+Veyyon's work. Use the `upstream` remote to compare current oh-my-pi behavior
+with Veyyon when you reconcile a specific change; the sync markers and
+intentional divergences are in the sections above.
+
+`UPSTREAM.md` states the fork and lists where the legal notices live. Neither
+file tracks ordinary runtime dependency licenses declared in `package.json` /
+`Cargo.toml` and resolved via `bun.lock` / `Cargo.lock`: the package managers
+manage those and they are audited separately. The notice list covers code that
+is forked, vendored, or adapted directly into this repository's source tree.
+
+## 17) Staying current: the port pipeline
+
+Upstream keeps merging fixes after the fork point, so the repo keeps a port
+pipeline. It has two halves:
+
+1. The radar (`scripts/upstream-radar.ts`) mirrors newly merged upstream fixes
+   and performance corrections into `upstream-port` issues. It runs on demand:
+   it was on a 30-minute schedule and no longer is, because mirroring every
+   merged pull request produced a queue nobody read. It also mirrors feature
+   additions whose touched files avoid every architecture-owned surface in
+   `scripts/upstream-port-policy.json`. This is a conservative candidate
+   screen, not an assertion that the feature belongs in veyyon. Refactors,
+   chores, and upstream product or infrastructure direction stay excluded.
+   Documentation-only feature diffs are excluded; documentation accompanying an
+   implementation does not block an otherwise clean candidate. Fixes touching a
+   diverged surface still enter semantic triage with a warning, so the
+   underlying bug can be adapted to veyyon's design.
+2. veybot (`python/veybot`) watches the `upstream-port` label. It prepares each
+   port in its own worktree and opens one candidate pull request that closes the
+   tracking issue. The issue body is evidence only; the execution contract is in
+   veybot's own prompts, starting at
+   `python/veybot/src/prompts/kickoff_port_upstream.md`. When a candidate's
+   checks go red veybot repairs that branch in place, at most
+   `VEYBOT_CI_MAX_REPAIRS` times per head commit, and never by weakening a gate.
+
+veybot never merges a pull request, never enables auto-merge, and never pushes
+to the default branch. No merge path exists anywhere in its tree, and that
+absence is what makes it safe to run unattended. An issue carrying only
+`upstream-port` is queued; once a candidate is open, the pull request is the
+state a human reviews.
+
+`RADAR_MAX_ISSUES` is an advisory burst threshold, not a truncation limit. The
+runner creates every eligible issue it found in the current lookback window,
+because it has no separate durable queue for deferred pull requests.
+
+### Reviewing a candidate port
+
+Prove the fix before you merge it. Run the ported test, revert the source
+change, and confirm the test fails; restore it and confirm the test passes. A
+ported test that passes both ways tests nothing, which is easy to ship when the
+fix is someone else's and the mechanism is unfamiliar. Ports #6217, #6226,
+#6233 and #6296 were each landed after checking the test in both directions.
+
+Add the cases the port left out while you are there. An upstream fix arrives
+with the one test that reproduces its bug and rarely with the negative twin:
+#6296 gained coverage for the per-tool floor still winning over the global cap
+and for `0` meaning no cap, and #6233 gained proof that the discovery pass it
+adds to startup stays off the path an ordinary launch takes.
+
+Read the whole diff, not the title. A porting agent works from a clone that
+goes stale while it runs, and reconciling that clone in its own favour reverses
+commits that landed meanwhile. That is invisible in the title and nearly
+invisible in review: PR #184 was titled a one-file IME composition fix, and its
+diff reverted the port manager, the radar, four workflows and 180 rendered
+handbook pages. `neverPorted` in `scripts/upstream-port-policy.json` lists the
+paths a port has no business authoring, which is the checklist to read that diff
+against.
+
+*Verified against `d22ae362` on 2026-08-22.*

@@ -1,6 +1,6 @@
 # Memory
 
-By default, each session starts fresh: Veyyon knows nothing about your last one. Turn memory on and it
+By default, each session starts fresh: Veyyon holds no record of your last one. Turn memory on and it
 carries durable project context forward, so a fact it learned yesterday is available today. Memory is
 off by default. To use it, you pick a backend, which is the store that holds what Veyyon remembers, in
 `config.yml` or `/settings`.

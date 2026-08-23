@@ -6,10 +6,10 @@ import { AuthStorage, REMOTE_REFRESH_SENTINEL, SqliteAuthCredentialStore } from 
 import {
 	AuthBrokerClient,
 	type AuthBrokerServerHandle,
-	AuthBrokerStreamUnsupportedError,
 	type SnapshotStreamEvent,
 	startAuthBroker,
 } from "@veyyon/ai/auth-broker";
+import { AuthBrokerStreamUnsupportedError } from "@veyyon/ai/error";
 import * as oauthUtils from "@veyyon/ai/registry/oauth";
 import { removeWithRetries } from "../../utils/src/temp";
 

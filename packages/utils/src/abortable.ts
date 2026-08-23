@@ -37,6 +37,25 @@ export class AbortError extends Error {
 	}
 }
 
+/**
+ * Mint a cancellation error that {@link isAbortError} recognises.
+ *
+ * THE NAME IS THE CONTRACT, and a bare `new Error("Request was aborted")` breaks it: the sentence
+ * says the work was cancelled and every predicate that asks reads `name`, so such an error is a
+ * cancellation only to a human. `fetchWithRetry` minted three of them, and downstream the auth
+ * gateway classified the result as a server fault rather than a client that closed the request,
+ * while the provider retry ladder could only recognise it by matching the word `aborted` in its
+ * own message — which retried what the caller had just cancelled.
+ *
+ * {@link AbortError} is the class for an aborted SIGNAL, whose reason supplies both the name and
+ * the message. This is for the sites that have a sentence and no signal to read.
+ */
+export function cancellationError(message = "Request was aborted"): Error {
+	const error = new Error(message);
+	error.name = "AbortError";
+	return error;
+}
+
 /** The `name` of a thrown value, for any shape that carries one. */
 function errorName(error: unknown): string | undefined {
 	if (typeof error !== "object" || error === null) return undefined;

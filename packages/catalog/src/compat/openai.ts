@@ -32,6 +32,7 @@ import type {
 } from "../types";
 import { applyCompatOverrides } from "./apply";
 import { matchesKimiK27CodeFamily } from "./kimi";
+import { leakedToolCallGrammar } from "./markup-leaks";
 
 /** GLM coding-plan SKUs idle for minutes mid-reasoning; see `streamIdleTimeoutMs`. */
 const GLM_CODING_PLAN_MODEL_PATTERN = /(^|\/)glm-5(?:[.-]|$)/i;
@@ -55,17 +56,6 @@ const ALIBABA_CODING_PLAN_STREAM_IDLE_TIMEOUT_MS = 600_000;
 /** Local OpenAI-compatible backends can spend minutes cold-loading a model before the first SSE event. */
 const LOCAL_OPENAI_COMPAT_STREAM_IDLE_TIMEOUT_MS = 300_000;
 const MINIMAX_PROVIDER_OR_ID_PATTERN = /minimax/i;
-const DSML_HEALING_PROVIDERS = new Set([
-	"ollama",
-	"ollama-cloud",
-	"nvidia",
-	"deepseek",
-	"fireworks",
-	"nanogpt",
-	"opencode-go",
-	"openrouter",
-]);
-
 // Ollama's OpenAI-compatible `reasoning.effort` accepts `high|medium|low|max|none`;
 // `ollama`-provider reasoning models carry that host-declared `low..max` effort
 // ladder (see OLLAMA_WIRE_EFFORTS), so no compat-level remapping is needed.
@@ -104,18 +94,14 @@ function detectStreamMarkupHealingPattern(
 	modelId: string,
 	baseUrl: string,
 ): OpenAIStreamMarkupHealingPattern | undefined {
-	if (provider === "kimi-code" || provider === "moonshot" || /kimi[-/_.]?k2/i.test(modelId)) {
-		return "kimi";
-	}
-	if (isDeepseekModelIdOrName(modelId) && DSML_HEALING_PROVIDERS.has(provider)) {
-		return "dsml";
-	}
+	const grammar = leakedToolCallGrammar(provider, modelId);
+	if (grammar) return grammar;
 	if (isOfficialOpenAIEndpoint(provider, baseUrl)) return undefined;
 	return "thinking";
 }
 
 /** Strict official-OpenAI check: provider id `openai` and an `api.openai.com` host (missing baseUrl defaults there). */
-function isOfficialOpenAIEndpoint(provider: string, baseUrl: string): boolean {
+export function isOfficialOpenAIEndpoint(provider: string, baseUrl: string): boolean {
 	if (provider !== "openai") return false;
 	if (!baseUrl) return true;
 	try {

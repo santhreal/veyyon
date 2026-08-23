@@ -128,7 +128,9 @@ describe("pi-* scope aliases", () => {
 	});
 
 	it("remaps every aliased pi-* scope and known upstream subpath to the bundled in-process copy", async () => {
-		const result = await loadExtensions([extensionPath], projectDir.path());
+		const result = await loadExtensions([extensionPath], projectDir.path(), undefined, undefined, {
+			configuredPaths: [extensionPath],
+		});
 		expect(result.errors).toEqual([]);
 		const extension = result.extensions.find(ext => ext.path === extensionPath);
 		expect(extension).toBeDefined();

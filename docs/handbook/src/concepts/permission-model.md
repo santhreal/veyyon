@@ -1,7 +1,7 @@
 # Permission model
 
-Every tool the model wants to run passes through one gate: the approval mode. The
-approval mode decides whether a tool runs on its own or waits for you to say yes. You
+Every tool the model attempts to run passes through one gate: the approval mode. The
+approval mode sets whether a tool runs on its own or waits for you to say yes. You
 set it once in config, and you can change it for a single run from the command line.
 
 One setting controls this: `tools.approvalMode`. Nothing else confines what a command
@@ -18,7 +18,7 @@ Every tool belongs to one of three tiers, ordered by how much it can change:
 - **exec** runs commands: `bash` and anything else that executes a program.
 
 A mode approves whole tiers, not individual tools. That is why the tiers come first: once
-you know which tier a tool is in, the mode tells you whether it runs.
+you know which tier a tool is in, the mode determines whether it runs.
 
 ## Modes
 
@@ -45,7 +45,7 @@ The launch flags `--yolo` and `--plan-yolo` set `yolo` and a plan-mode variant o
 
 ## The working-directory boundary
 
-A tier tells you what kind of thing a tool does. It does not tell you which file the
+A tier describes what kind of thing a tool does. It does not identify which file the
 tool is about to touch. In `ask-command` and `auto`, the `write` tier is approved, so
 `write` runs without asking whether the target is `src/main.ts` or a file in your home
 directory.
@@ -54,7 +54,7 @@ The working-directory boundary is the second question, asked after the tier:
 
 > Does this call touch a path outside the session working directory?
 
-If it does, the call asks for approval even though its tier would have allowed it. This
+If it does, the call requires approval even though its tier would have allowed it. This
 holds in `plan`, `ask`, `ask-command` and `auto`, so the shipped default is inside it. It
 does not hold in `yolo`, which turns off permission entirely.
 
@@ -65,7 +65,7 @@ $ veyyon --approval-mode ask-command "update the config"
 ```
 
 Writing `~/projects/api/config.yml` runs without asking, because it is inside the
-working directory and `write` is an approved tier. Writing `~/.ssh/config` asks, because
+working directory and `write` is an approved tier. Writing `~/.ssh/config` prompts, because
 it is outside, even though the tier is the same.
 
 The check looks at where a path really leads, not at how it is spelled. A path written
@@ -78,12 +78,12 @@ These tools take part: `read`, `write`, `edit`, `ast_edit`, `search`,
 
 `set_cwd` is on that list because it changes the working directory itself. If it were
 not bound, you could move the boundary instead of obeying it: re-root to the parent
-directory, and every later write counts as inside. So re-rooting outward asks, the same
-as writing outward. Re-rooting into a subdirectory does not ask, because that narrows
+directory, and every later write counts as inside. So re-rooting outward prompts, the same
+as writing outward. Re-rooting into a subdirectory does not prompt, because that narrows
 what the session can reach rather than widening it.
 
 When no interactive prompt is available, such as a headless or ACP run, a call that
-needs approval fails instead of proceeding. The error names the path that crossed the
+needs approval fails instead of proceeding. The error states the path that crossed the
 boundary, so you can see why the run stopped.
 
 ## Secrets in arguments
@@ -96,11 +96,11 @@ secret-use boundary is the third question, asked the same way and in the same mo
 Your secrets reach a tool as real values. The model works with placeholders such as
 `#GITHUB_TOKEN#`, and Veyyon substitutes the credential just before the tool runs, so the
 model can use a secret it never reads. That substitution used to be recorded and never
-asked about: `secrets.auditLog` could tell you afterwards which credential an agent had
-spent, and nothing could ask you first.
+asked about: `secrets.auditLog` could report afterwards which credential an agent had
+spent, and nothing prompted you first.
 
-Now a call whose arguments carry a real credential asks for approval in `plan`, `ask`,
-`ask-command` and `auto`, even when its tier would have allowed it. The prompt names the
+Now a call whose arguments carry a real credential requires approval in `plan`, `ask`,
+`ask-command` and `auto`, even when its tier would have allowed it. The prompt states the
 secret and never shows its value:
 
 ```text
@@ -112,13 +112,13 @@ real credential.
 As with the working-directory boundary, `yolo` turns permission off entirely and turns
 this off with it. Every other rung keeps it, the shipped `auto` included. A call that
 mentions a placeholder without expanding it, such as one made while `secrets.enabled` is
-false, is not carrying a credential and does not ask.
+false, is not a credential reference and does not prompt.
 
 ## Per-tool overrides
 
 When you want one tool to behave differently from its tier, name it under
 `tools.approval`. Each entry maps a tool to `allow`, `deny`, or `prompt`, and that choice
-wins for that tool whatever the mode says, with one exception: while a plan-mode session is
+wins for that tool whatever the mode is, with one exception: while a plan-mode session is
 active, a per-tool `allow` does not let an exec-tier tool run. Plan mode is a cap rather
 than a default, so it outranks both the configured mode and the per-tool setting. A `deny`
 is a hard block in every direction.
@@ -132,7 +132,7 @@ tools:
     read: allow
 ```
 
-Here the mode is `ask-command`, so writes run without asking. The override then pulls `bash`
+Here the mode is `ask-command`, so writes run without a prompt. The override then pulls `bash`
 back to `prompt`, so commands still stop for your approval.
 
 ## Critical bash commands
@@ -147,7 +147,7 @@ are recognized as the home directory. Every target is judged, not just the first
 it, of the system directories, and of the directories that hold your credentials all stop for
 approval. So does a recursive delete whose target the guard cannot resolve, such as
 `rm -rf "$dir"/*`: if `$dir` is empty that command starts at the root, and nothing in the command
-text says whether it is.
+text states whether it is.
 
 The same half stops a truncating redirect into a directory that holds credentials, because
 `echo x > ~/.ssh/id_ed25519` destroys a private key as thoroughly as a delete does. Appending with

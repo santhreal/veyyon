@@ -7,6 +7,24 @@ import type { Settings } from "../config/settings";
 
 export type MnemopiLlmMode = "none" | "smol" | "remote";
 
+/**
+ * What the operator asked for, as the settings state it: the mode and the three remote fields.
+ *
+ * This is the REQUEST, not the LLM. The live client is built in one place --
+ * `resolveMnemopiProviderOptions` in `backend.ts` -- because that is the only layer that can apply the
+ * three things a request does not carry: the `providers.memoryModel` on-device override, a credential
+ * resolver that refreshes and rotates, and `obfuscateProviderText`, which keeps secrets out of the text a
+ * memory prompt sends. This module used to answer the same question a second time, building a remote
+ * client straight from these settings into `providerOptions.llm`; every session overwrote it, so the
+ * duplicate was invisible while being wrong in exactly the way that matters: no sanitizer.
+ */
+export interface MnemopiLlmRequest {
+	mode: MnemopiLlmMode;
+	baseUrl?: string;
+	apiKey?: string;
+	model?: string;
+}
+
 export type MnemopiScoping = "global" | "per-project" | "per-project-tagged";
 
 export type MnemopiProviderOptions = Pick<
@@ -34,10 +52,8 @@ export interface MnemopiBackendConfig {
 	injectionTokenLimit: number;
 	debug: boolean;
 	providerOptions: MnemopiProviderOptions;
-	llmMode: MnemopiLlmMode;
-	llmBaseUrl?: string;
-	llmApiKey?: string;
-	llmModel?: string;
+	/** What the operator asked for. The client itself is resolved elsewhere; see {@link MnemopiLlmRequest}. */
+	llm: MnemopiLlmRequest;
 }
 
 export function loadMnemopiConfig(settings: Settings, agentDir: string): MnemopiBackendConfig {
@@ -85,19 +101,18 @@ export function loadMnemopiConfig(settings: Settings, agentDir: string): Mnemopi
 			embeddingModel,
 			embeddingApiUrl: settings.get("mnemopi.embeddingApiUrl"),
 			embeddingApiKey: settings.get("mnemopi.embeddingApiKey"),
-			llm:
-				llmMode === "remote"
-					? {
-							baseUrl: settings.get("mnemopi.llmBaseUrl"),
-							apiKey: settings.get("mnemopi.llmApiKey"),
-							model: settings.get("mnemopi.llmModel"),
-						}
-					: false,
+			// NO LLM UNTIL ONE IS RESOLVED. A config carries the request, and `resolveMnemopiProviderOptions`
+			// turns it into a client. The paths that load a config without resolving it -- dispose,
+			// diagnostics, the stats memories -- do not call an LLM, and handing them one built from settings
+			// alone gave them a remote client with no credential resolver and no provider-text sanitizer.
+			llm: false,
 		},
-		llmMode,
-		llmBaseUrl: settings.get("mnemopi.llmBaseUrl"),
-		llmApiKey: settings.get("mnemopi.llmApiKey"),
-		llmModel: settings.get("mnemopi.llmModel"),
+		llm: {
+			mode: llmMode,
+			baseUrl: settings.get("mnemopi.llmBaseUrl"),
+			apiKey: settings.get("mnemopi.llmApiKey"),
+			model: settings.get("mnemopi.llmModel"),
+		},
 	};
 }
 

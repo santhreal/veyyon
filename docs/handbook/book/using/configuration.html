@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e2394775.js";
+            window.path_to_searchindex_js = "../searchindex-03ea301b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -196,7 +196,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="configuration"><a class="header" href="#configuration">Configuration</a></h1>
-<p>This page groups settings by what you are trying to do. For provider and sign-in setup, see <a href="../reference/models-yml.html">Models and providers</a> and <a href="./authentication.html">Authentication</a>. For the full list of every key, see the repository’s <code>docs/handbook/src/reference/settings.md</code>.</p>
+<p>Settings grouped by task. For provider and sign-in setup, see <a href="../reference/models-yml.html">Models and providers</a> and <a href="./authentication.html">Authentication</a>. For the full list of every key, see the repository’s <code>docs/handbook/src/reference/settings.md</code>.</p>
 <h2 id="where-settings-live"><a class="header" href="#where-settings-live">Where settings live</a></h2>
 <p>Settings are YAML mappings. Persistent settings live in <code>config.yml</code>; custom model providers live in
 <code>models.yml</code>; MCP servers live in <code>mcp.json</code>.</p>
@@ -230,7 +230,7 @@ $ veyyon config path                     # print the active agent directory
 <ul>
 <li><strong>Persistent Profile Default (<code>session.workdir</code>)</strong>: Configures the default working directory for a profile across all future sessions. Set interactively via <code>/settings</code> (Interaction › Profile) or in <code>~/.veyyon/profiles/&lt;profile&gt;/agent/config.yml</code>.</li>
 <li><strong>Ephemeral Session Re-root (<code>set_cwd</code> tool / <code>/cwd</code>)</strong>: Re-roots the active session’s working directory temporarily. It never writes <code>session.workdir</code>.</li>
-<li><strong>What a re-root costs</strong>: the system prompt names the working directory and carries that project’s context files and workspace tree, so a re-root rebuilds it. That rebuild invalidates the provider’s prefix prompt cache, and the next request re-reads the whole context as fresh input. It is done anyway because the alternative is worse: a frozen header tells the model it is working in the directory it just left, so it follows the previous project’s <code>AGENTS.md</code> and resolves relative paths against a directory it has moved out of. Moving is worth paying for; being lied to about where you are is not. The rebuild happens once per move, in every mode, and a re-root to the directory already in force does nothing at all.</li>
+<li><strong>What a re-root costs</strong>: the system prompt includes the working directory and that project’s context files and workspace tree, so a re-root rebuilds it. That rebuild invalidates the provider’s prefix prompt cache, and the next request re-reads the whole context as fresh input. It is done anyway because the alternative is worse: a frozen header tells the model it is working in the directory it just left, so it follows the previous project’s <code>AGENTS.md</code> and resolves relative paths against a directory it has moved out of. Moving is worth paying for; being lied to about where you are is not. The rebuild happens once per move, in every mode, and a re-root to the directory already in force does nothing at all.</li>
 </ul>
 <h3 id="your-comments-and-formatting-survive-a-save"><a class="header" href="#your-comments-and-formatting-survive-a-save">Your comments and formatting survive a save</a></h3>
 <p><code>config.yml</code> is yours to edit by hand, and veyyon writes to the same file when you change a
@@ -285,7 +285,7 @@ profile does not claim the old one’s name. Everything else in the file, commen
 arrives exactly as you wrote it.</p>
 <h3 id="when-a-settings-file-has-a-syntax-error"><a class="header" href="#when-a-settings-file-has-a-syntax-error">When a settings file has a syntax error</a></h3>
 <p>If you edit a config file by hand and leave it with invalid YAML, veyyon cannot
-read it. It tells you at startup, names the file, and runs the session on
+read it. It reports the file at startup and runs the session on
 defaults for whatever that file held:</p>
 <pre><code class="language-text">Could not read your settings, so this session is using defaults for them:
   ~/.veyyon/profiles/default/agent/config.yml
@@ -303,7 +303,7 @@ as the start of a nested mapping, so this line is invalid:</p>
 <p>Fix the syntax in the original file, or copy the preserved file back over it and
 edit from there.</p>
 <h3 id="when-a-setting-cannot-be-saved"><a class="header" href="#when-a-setting-cannot-be-saved">When a setting cannot be saved</a></h3>
-<p>If veyyon cannot write your config file, it tells you in the session rather than letting the
+<p>If veyyon cannot write your config file, it reports the failure in the session rather than letting the
 change disappear. This happens when the file or its directory is not writable, when the disk
 is full, or when something has left a directory where <code>config.yml</code> should be:</p>
 <pre><code class="language-text">Could not save your settings after 3 attempts, so this change will not survive a restart:
@@ -437,7 +437,7 @@ git tracks, or a walk of the tree for a <code>.argot</code> project), proposes h
 the strings that would save the most tokens, and keeps the result in a local
 cache under its own config directory. In a monorepo the agent loads the one
 package it works in, not the repo root. Loading reads a project tree and writes
-the cache, so in the approval-gated autonomy modes veyyon asks before running
+the cache, so in the approval-gated autonomy modes veyyon prompts before running
 it and shows the resolved root; unloading never needs approval, because it only
 teaches less and every handle already written keeps expanding.</p>
 <p>Nothing is written to the working tree, so there is no file for a pull request
@@ -484,14 +484,14 @@ models allowed to do so:</p>
       - anthropic/claude-opus-4
 </code></pre>
 <p>A model on this list is taught the notation; a model left off never is. The list
-is empty by default, so turning Argot on without naming a model stays inert. This
+is empty by default, so turning Argot on without setting a model stays inert. This
 lets you keep shorthand on for a model you trust to recall the dictionary and off
 for one you are still measuring. Expansion never depends on this list: a handle
 already written expands whatever model is active, so switching models never
 leaves a raw handle behind.</p>
 <p>The two settings under <code>encode</code> are the two that decide whether a model is taught
 to write shorthand: this list, and the context cutoff described below. Everything
-else about Argot sits directly under <code>argot</code>, because it decides whether the
+else about Argot sits directly under <code>argot</code>, because it sets whether the
 feature runs, when a dictionary is built, how large it is, and what a subagent
 starts with. The split is there to make one thing obvious: nothing under <code>encode</code>
 affects reading. A handle already in the conversation expands whatever these hold.</p>
@@ -524,7 +524,7 @@ either way; when it finishes it refreshes the system prompt to teach the handles
 which is the same thing <code>argot_load</code> does.</p>
 <h3 id="size-the-dictionary"><a class="header" href="#size-the-dictionary">Size the dictionary</a></h3>
 <p>The generated dictionary is packed under a token budget: handles are added in
-value order until the next one would breach it, so the budget decides how many
+value order until the next one would breach it, so the budget sets how many
 strings earn shorthand. A larger budget teaches more handles, which gives the
 model more chances to save tokens in its writing, but it also makes the notation
 preamble longer every turn. A smaller budget keeps the preamble cheap and teaches
@@ -597,7 +597,7 @@ bash:
 </code></pre>
 <p>Plan mode and agent definitions can narrow the tool set further. <code>enabled: false</code> removes the tool from both
 the model-visible set and the dispatch registry; <code>tools.approval.*: deny</code> keeps the tool visible but
-refuses every call with an error naming the policy.</p>
+rejects every call with an error stating the policy.</p>
 <h2 id="set-the-default-working-directory"><a class="header" href="#set-the-default-working-directory">Set the default working directory</a></h2>
 <p>Each profile can pin a default session working directory so launches from <code>$HOME</code>
 (or any other directory) still root tools at the right project:</p>

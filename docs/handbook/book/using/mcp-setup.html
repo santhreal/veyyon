@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e2394775.js";
+            window.path_to_searchindex_js = "../searchindex-03ea301b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -215,7 +215,7 @@ transport, authenticate, and fix the most common connection problems.</p>
 </div>
 <p>There is no project scope: a repository’s own <code>mcp.json</code>, <code>.mcp.json</code>, or <code>.veyyon/mcp.json</code> is not
 read, because a checked-in file must not name a server the agent connects to. No <code>/mcp</code> subcommand
-takes a scope, and writing <code>project</code> or <code>user</code> as an argument is refused with that reason rather than
+takes a scope, and writing <code>project</code> or <code>user</code> as an argument is rejected with that reason rather than
 accepted, in a terminal and in a client alike.</p>
 <p>Veyyon also discovers MCP entries from other tools’ user-level configs (Claude, Cursor, Codex,
 Gemini, OpenCode, Windsurf). The easiest way to add a server is <code>/mcp add</code> in the TUI, which writes
@@ -294,7 +294,7 @@ variants, and names match without regard to case.</p>
 </code></pre>
 <p><code>inheritEnv: true</code> hands one server the whole environment, including every credential in it. Use
 it when a server needs a variable you cannot name in advance. It is set per server, and each
-spawn logs a warning naming the command.</p>
+spawn logs a warning stating the command.</p>
 <pre><code class="language-json">{
   "mcpServers": {
     "legacy": { "command": "/opt/legacy/mcp", "inheritEnv": true }

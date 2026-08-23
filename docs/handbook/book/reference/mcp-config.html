@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e2394775.js";
+            window.path_to_searchindex_js = "../searchindex-03ea301b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -215,14 +215,14 @@
 <p>There is no project scope, and no <code>/mcp</code> subcommand takes a scope at all. <code>.veyyon/mcp.json</code>, a root
 <code>mcp.json</code> and a root <code>.mcp.json</code> inside a working tree used to be loaded and used to be writable
 through <code>/mcp add --scope project</code>; none of them is read now, and neither the option spelling nor the
-plain words <code>project</code> and <code>user</code> are accepted. Both are refused with the reason, on the text surface
+plain words <code>project</code> and <code>user</code> are accepted. Both are rejected with the reason, on the text surface
 as well as in the terminal: the text handler kept the scope after the terminal dropped it, defaulted
 to it, and wrote a file nothing loads while reporting success. A repository is content you may not
 have written, so a checked-in file must not name a server the agent connects to or a command it
 spawns. Veyyon still discovers servers from other tools’ user-level configs (<code>~/.claude.json</code>,
 <code>~/.claude/mcp.json</code>, <code>~/.cursor/mcp.json</code>, <code>~/.codex/config.toml</code>, <code>~/.gemini/settings.json</code>,
 opencode, windsurf, and more), always from your home directory, never from a working tree, and
-<code>/mcp list</code> names the file each server came from.</p>
+<code>/mcp list</code> shows the file each server came from.</p>
 <p>One project-controlled route to an MCP server remains, and it is gated rather than removed: a
 project plugin registry (<code>.veyyon/plugins/installed_plugins.json</code>) names plugin directories, and a
 plugin may ship a <code>.mcp.json</code>. The registry is withheld until you approve it. See
@@ -403,7 +403,7 @@ url-keyed binding.</p>
 <p>The binding is per profile but not per project: once a profile has authorized a
 URL, any config defining a server at that URL connects with that profile’s
 credential automatically. That is one reason a repository cannot define an MCP
-server: a checked-in entry naming an already-authorized URL would have borrowed
+server: a checked-in entry stating an already-authorized URL would have borrowed
 the profile’s credential. Servers you add through <code>/mcp add</code> are yours, and the
 editor configs Veyyon still reads are named by file in <code>/mcp list</code>.</p>
 <h3 id="oauth"><a class="header" href="#oauth"><code>oauth</code></a></h3>
@@ -520,7 +520,9 @@ editor configs Veyyon still reads are named by file in <code>/mcp list</code>.</
 <h2 id="secrets-and-variable-resolution"><a class="header" href="#secrets-and-variable-resolution">Secrets and variable resolution</a></h2>
 <p>This is the part that usually trips people up.</p>
 <h3 id="discovery-time--expansion"><a class="header" href="#discovery-time--expansion">Discovery-time <code>${...}</code> expansion</a></h3>
-<p>Veyyon expands <code>${VAR}</code> and <code>${VAR:-default}</code> placeholders while discovering MCP configs from Veyyon-native files and standalone fallback files. Expansion applies recursively to string values in <code>command</code>, <code>args</code>, <code>env</code>, <code>cwd</code>, <code>url</code>, <code>headers</code>, <code>auth</code>, and <code>oauth</code>; unresolved placeholders remain literal strings.</p>
+<p>Veyyon expands <code>${VAR}</code> and <code>${VAR:-default}</code> placeholders while discovering MCP configs from Veyyon-native files and standalone fallback files. Expansion applies recursively to string values in <code>command</code>, <code>args</code>, <code>env</code>, <code>cwd</code>, <code>url</code>, <code>headers</code>, <code>auth</code>, and <code>oauth</code>.</p>
+<p>An unset variable with no default leaves the placeholder text in the value. In <code>command</code>, <code>args</code>, <code>cwd</code>, <code>url</code> and <code>envPassthrough</code> that text would become a program, an argument, a directory or a hostname, so the server is not started: the connection is refused with the field and the variable named, and nothing is spawned or dialled. <code>env</code> and <code>headers</code> are resolved again before connect and refuse the same way (below). In <code>auth</code> and <code>oauth</code> the placeholder is sent to the authorization server, which rejects the exchange.</p>
+<p>A placeholder in a structural field is therefore resolved here or refused; it never reaches the server as text. To let a server read a variable itself, name it in <code>env</code> (or in <code>envPassthrough</code>) and read it from the process environment inside the server.</p>
 <p>Example:</p>
 <pre><code class="language-json">{
   "mcpServers": {
@@ -547,7 +549,7 @@ underscores) reads that variable too.</li>
 <li>Any other value is itself.</li>
 </ol>
 <p>A variable that is unset, or set to an empty string, resolves to nothing. The connection is not
-attempted and the error names the variable:</p>
+attempted and the error states the variable:</p>
 <pre><code class="language-console">The header "Authorization" for https://api.example.com/mcp refers to the environment variable
 GITHUB_TOKN, which is not set, so the connection was not attempted rather than sent with the
 variable's own name as the value.
@@ -576,25 +578,25 @@ environment, and refuse to connect when it is missing</li>
 session however many servers and headers use it. Three events drop that cached output and run the
 command again:</p>
 <ul>
-<li>A request answered with 401 or 403. The retry carries the new value.</li>
+<li>A request answered with 401 or 403. The retry uses the new value.</li>
 <li><code>/mcp reconnect &lt;name&gt;</code>, which re-reads the credentials of that server only.</li>
 <li><code>/mcp reload</code>, which re-reads the credentials of every configured MCP server. Commands used
 outside MCP config, such as a provider <code>apiKey</code>, keep their cached value.</li>
 </ul>
-<p>An automatic reconnect after a dropped connection reuses the cached value. A lost connection says
+<p>An automatic reconnect after a dropped connection reuses the cached value. A lost connection indicates
 nothing about the credential, and re-running a password-manager command on every reconnect means
 an unlock prompt for each one.</p>
 <p>A command that fails is not retried for 30 seconds, and an invalidation does not shorten that.</p>
 <h3 id="when-a-stored-credential-cannot-be-presented"><a class="header" href="#when-a-stored-credential-cannot-be-presented">When a stored credential cannot be presented</a></h3>
 <p>A server authorized with OAuth keeps its credential in the profile’s credential store. When that
 credential exists but cannot be used, Veyyon does not connect without it. The connection fails,
-<code>/mcp list</code> shows the failure, and the message names the state and the command that fixes it:</p>
+<code>/mcp list</code> shows the failure, and the message states the state and the command that fixes it:</p>
 <ul>
 <li>The credential was rejected and cleared. Run <code>/mcp reauth &lt;name&gt;</code>.</li>
 <li>The access token expired and the refresh token is held by the auth broker, which this process
 cannot use. Run <code>/mcp reauth &lt;name&gt;</code> to authorize again through the broker.</li>
 <li>The credential store could not be read or renewed. Run <code>/mcp reconnect &lt;name&gt;</code> to retry; the
-credential is left alone, because a store failure says nothing about it.</li>
+credential is left alone, because a store failure indicates nothing about it.</li>
 </ul>
 <p>A refresh that fails while the access token is still valid keeps connecting with that token: the
 refresh runs up to five minutes before expiry, so the session still works.</p>
@@ -660,7 +662,7 @@ unauthenticated request is what the server sees, and its own answer is what Veyy
 <li>the OAuth or API token is valid</li>
 </ul>
 <h3 id="the-server-exists-in-another-tools-config-but-not-in-veyyon"><a class="header" href="#the-server-exists-in-another-tools-config-but-not-in-veyyon">The server exists in another tool’s config but not in Veyyon</a></h3>
-<p>Run <code>/mcp list</code>: it names the file each server came from. Veyyon discovers many third-party MCP files, but it never reads a repository’s own <code>mcp.json</code>, <code>.mcp.json</code> or <code>.veyyon/mcp.json</code>, and a <code>disabledServers</code> entry in your profile’s <code>mcp.json</code> can suppress a discovered server by name.</p>
+<p>Run <code>/mcp list</code>: it shows the file each server came from. Veyyon discovers many third-party MCP files, but it never reads a repository’s own <code>mcp.json</code>, <code>.mcp.json</code> or <code>.veyyon/mcp.json</code>, and a <code>disabledServers</code> entry in your profile’s <code>mcp.json</code> can suppress a discovered server by name.</p>
 <h3 id="a-call-fails-with-a-protocol-error-rather-than-a-timeout"><a class="header" href="#a-call-fails-with-a-protocol-error-rather-than-a-timeout">A call fails with a protocol error rather than a timeout</a></h3>
 <p>JSON-RPC lets a server answer with <code>"id": null</code> when it cannot tell which request an error belongs
 to. A parse error is the usual case: the server could not read the request well enough to find its
@@ -669,7 +671,7 @@ id, so it has nothing to attribute the failure to.</p>
 the server’s own code and message, for example:</p>
 <pre><code>MCP error -32700: Parse error
 </code></pre>
-<p>The alternative would be to ignore a reply that names no request, and then every pending call sits
+<p>The alternative would be to ignore a reply with no request id, and then every pending call sits
 until its timeout and reports that the server did not answer. That is the opposite of what
 happened: the server answered, and told you exactly what was wrong.</p>
 <p>A <code>-32700</code> means the bytes Veyyon sent were not valid JSON to that server, so report it with the

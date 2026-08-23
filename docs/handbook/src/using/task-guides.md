@@ -155,7 +155,7 @@ task, and status. Compaction and handoff keep that complete structured state, in
 dozens of items.
 
 When the model tries to finish with open work, Veyyon injects one continuation instruction for that
-exact todo state. The instruction says to continue, puts the active task first, shows at most five
+exact todo state. The instruction states to continue, puts the active task first, shows at most five
 open items, and reports how many more remain hidden. It does not replay an unchanged state after a
 user says `continue` or after an unrelated tool call. A real todo change makes the new state eligible
 for one reminder, up to the configured limit.
@@ -169,7 +169,7 @@ The anchored `Todos` block above the composer is a railed list. Every phase gets
 tally, so a stage that just closed three tasks does not look like one that has done nothing, and
 task rows are drawn for the phase being worked and the few after it. The block is bounded by the
 viewport: it never grows past a third of the terminal's height, it drops finished phases from the
-top before it drops work in flight, and it says how many rows it withheld. Expanding it shows every
+top before it drops work in flight, and it states how many rows it withheld. Expanding it shows every
 task of the phases it draws, not an unbounded list — an anchored region that outgrows the screen
 cannot be scrolled away from.
 

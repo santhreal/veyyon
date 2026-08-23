@@ -451,11 +451,21 @@ async function openTrustGate(
 	if (paths.length === 0) return allow;
 
 	const root = await canonicalProjectRoot(cwd);
-	const exempt = new Set((trustOptions?.configuredPaths ?? []).map(configured => resolvePath(configured, cwd)));
+	// A configured entry may name a FILE or a DIRECTORY, and discovery expands a directory into
+	// the entry files inside it, so exact-path equality exempted the operator's `extensions: [./dev]`
+	// and then gated every file that entry resolved to. Containment is the same claim the operator
+	// made: they named that tree.
+	const exempt = (trustOptions?.configuredPaths ?? []).map(configured => resolvePath(configured, cwd));
+	const isExempt = (resolved: string): boolean =>
+		exempt.some(entry => {
+			if (entry === resolved) return true;
+			const relative = path.relative(entry, resolved);
+			return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
+		});
 	const candidates = new Map<string, ProjectExecutable>();
 	for (const extPath of paths) {
 		const resolved = resolvePath(extPath, cwd);
-		if (exempt.has(resolved)) continue;
+		if (isExempt(resolved)) continue;
 		const executable = await describeProjectExecutable(resolved, root);
 		if (executable) candidates.set(extPath, executable);
 	}

@@ -1699,6 +1699,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				promptTemplates,
 				rules: inheritedRules,
 				preloadedExtensionPaths: this.session.extensionPaths,
+				preloadedNamedExtensionPaths: this.session.namedExtensionPaths,
 				preloadedCustomToolPaths: this.session.customToolPaths,
 				localProtocolOptions,
 				parentArtifactManager,

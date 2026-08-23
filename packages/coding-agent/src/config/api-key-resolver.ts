@@ -1,8 +1,5 @@
 import type { Api, ApiKeyResolver, AuthStorage, Model } from "@veyyon/ai";
 import * as AIError from "@veyyon/ai/error";
-// The owner, not the barrel: this predicate is one function over a status code and a
-// message, in a module that imports nothing, against the barrel's 363.
-import { isUsageLimitOutcome } from "@veyyon/ai/error/rate-limit";
 
 /** Model slice accepted by the model-form `resolver(model, sessionId)` overload. */
 export type ApiKeyResolverModel = Pick<Model<Api>, "provider" | "baseUrl" | "id">;
@@ -70,12 +67,10 @@ export function createApiKeyResolver(
 				apiKey: previousKey,
 			});
 			if (!switched) {
-				const status = AIError.status(error);
-				const message = error instanceof Error ? error.message : typeof error === "string" ? error : undefined;
 				// No sibling for an account-quota failure: stop so the outer
 				// whole-turn retry layer can honor the recorded backoff. A hard
 				// auth decline can instead mean a peer refreshed the bearer.
-				if (AIError.isUsageLimit(error) || isUsageLimitOutcome(status, message)) return undefined;
+				if (AIError.isUsageLimit(error)) return undefined;
 			}
 			return registry.getApiKeyForProvider(provider, sessionId, { baseUrl, modelId });
 		}

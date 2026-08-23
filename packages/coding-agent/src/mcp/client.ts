@@ -39,6 +39,7 @@ import type {
 	MCPToolDefinition,
 	MCPTransport,
 } from "./types";
+import { assertNoUnresolvedPlaceholder } from "./unresolved-placeholder";
 
 /** MCP protocol version we support */
 
@@ -76,8 +77,12 @@ async function defaultRequestHandler(method: string, _params: unknown): Promise<
 
 /**
  * Create a transport for the given server config.
+ *
+ * The placeholder guard runs first: nothing below it may spawn a process or dial a host with the
+ * text of an unset environment variable in place of a value.
  */
 async function createTransport(config: MCPServerConfig): Promise<MCPTransport> {
+	assertNoUnresolvedPlaceholder(config);
 	const serverType = config.type ?? "stdio";
 
 	switch (serverType) {

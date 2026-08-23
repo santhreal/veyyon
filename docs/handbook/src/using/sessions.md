@@ -30,14 +30,14 @@ presenting a clean-looking summary that dropped the real constraint.
 
 ## Session files are trees
 
-A session file (`~/.veyyon/profiles/default/agent/sessions/**/<timestamp>_<id>.jsonl`) is an append-oriented log whose entries form a tree. Recorded session entries carry an `id` and a `parentId`. Branching appends a new entry whose `parentId` names an earlier entry, so it starts a sibling branch from that point.
+A session file (`~/.veyyon/profiles/default/agent/sessions/**/<timestamp>_<id>.jsonl`) is an append-oriented log whose entries form a tree. Recorded session entries carry an `id` and a `parentId`. Branching appends a new entry whose `parentId` states an earlier entry, so it starts a sibling branch from that point.
 
 The *active leaf* advances to each appended entry. On load it falls back to the last entry in the file. Not every line carries `parentId`: the first-line session header does not, and in-place refresh records are full replacements of the original logical record rather than tree entries. Storage maintenance may atomically rewrite the file to update the header or representation, but it preserves the history entries. Branches you navigate away from remain addressable.
 
 Four properties are guaranteed by the storage layer:
 
 - **No history deletion during navigation.** Branching appends new entries; abandoned entries remain addressable.
-- **A corrupt header never initializes over existing bytes.** A non-empty file without a valid first session record is refused. Veyyon leaves it byte-for-byte unchanged so you can inspect or repair it.
+- **A corrupt header never initializes over existing bytes.** A non-empty file without a valid first session record is rejected. Veyyon leaves it byte-for-byte unchanged so you can inspect or repair it.
 - **Recoverable record loss is operator-visible.** A malformed later record is skipped so one damaged line does not make the entire session unopenable. The session shows one bounded warning with the file, one-based line and byte offset, and shape problem. It never quotes the dropped record's content. Duplicate ids are last-write-win, and broken parent chains appear as extra roots.
 - **Moves are transactional.** Moving a session changes the transcript, its artifacts, and its recorded working directory as one operation through the active storage backend. If relocation or the final header write fails, Veyyon restores the old paths and in-memory working directory.
 
@@ -118,7 +118,7 @@ gc:
 
 Pass `--write-grace-minutes` to override it for one run. The minimum is one minute: a shorter window
 would let GC delete a blob a live session wrote a moment ago, so a smaller value is raised to the minimum
-and the run says so.
+and the run reports it.
 
 ## Typing while the agent works
 

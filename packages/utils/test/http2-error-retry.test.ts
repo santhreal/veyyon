@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { constants } from "node:http2";
-import { fetchWithRetry, http2ErrorCode, http2RetryVerdict, isRetryableError } from "@veyyon/utils/fetch-retry";
+import { fetchWithRetry, http2ErrorCode, http2RetryVerdict } from "@veyyon/utils/fetch-retry";
 
 /**
  * WHY: a Cursor turn died on `Stream closed with error code NGHTTP2_INTERNAL_ERROR`
@@ -41,7 +41,7 @@ const HARD = [
 describe("HTTP/2 error-code retry classification", () => {
 	it("retries the reset that lost the turn", () => {
 		const error = new Error("Stream closed with error code NGHTTP2_INTERNAL_ERROR");
-		expect(isRetryableError(error)).toBe(true);
+		expect(http2RetryVerdict(error.message)).toBe(true);
 	});
 
 	it("reads the code out of both the stream and the session spelling", () => {
@@ -72,7 +72,6 @@ describe("HTTP/2 error-code retry classification", () => {
 		it(`retries ${code}`, () => {
 			const message = `Stream closed with error code ${code}`;
 			expect(http2RetryVerdict(message)).toBe(true);
-			expect(isRetryableError(new Error(message))).toBe(true);
 		});
 	}
 
@@ -80,7 +79,6 @@ describe("HTTP/2 error-code retry classification", () => {
 		it(`does not retry ${code}`, () => {
 			const message = `Stream closed with error code ${code}`;
 			expect(http2RetryVerdict(message)).toBe(false);
-			expect(isRetryableError(new Error(message))).toBe(false);
 		});
 	}
 
@@ -88,8 +86,12 @@ describe("HTTP/2 error-code retry classification", () => {
 		// A named code is a definite answer about whether a replay can differ.
 		// Without the override, "server error" in the surrounding prose drags a
 		// user-initiated cancel back into the retry loop.
+		// The wording says "server error", which every transient vocabulary in the tree matches. The
+		// code says CANCEL. Whether the code outvotes the sentence in the composite decision is
+		// `packages/ai/test/a-named-http2-refusal-outvotes-the-sentence-wrapped-around-it.test.ts`;
+		// here it is only that the verdict itself is not swayed by the prose around it.
 		const error = new Error("upstream server error: Stream closed with error code NGHTTP2_CANCEL");
-		expect(isRetryableError(error)).toBe(false);
+		expect(http2RetryVerdict(error.message)).toBe(false);
 	});
 
 	it("retries a GOAWAY that closed the session before the stream was created", () => {
@@ -97,12 +99,12 @@ describe("HTTP/2 error-code retry classification", () => {
 		// processed and the replay is unambiguously safe.
 		const error = new Error("New streams cannot be created after receiving a GOAWAY");
 		expect(http2RetryVerdict(error.message)).toBe(true);
-		expect(isRetryableError(error)).toBe(true);
 	});
 
 	it("leaves the pending-stream cancel spelling hard", () => {
-		// ERR_HTTP2_STREAM_CANCEL is our own abort, not the peer's weather.
-		expect(isRetryableError(new Error("The pending stream has been canceled"))).toBe(false);
+		// ERR_HTTP2_STREAM_CANCEL is our own abort, not the peer's weather. It names no RFC code, so
+		// the verdict abstains and nothing here promotes it.
+		expect(http2RetryVerdict("The pending stream has been canceled")).toBeUndefined();
 	});
 });
 

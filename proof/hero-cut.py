@@ -244,7 +244,7 @@ def apply_edge_speed(
 	rated: list[tuple[float, float, float]] = []
 	for lo, hi in spans:
 		points = [lo, *(point for point in boundaries if lo < point < hi), hi]
-		for start, end in zip(points, points[1:], strict=True):
+		for start, end in zip(points, points[1:]):
 			at_edge = (real_through is not None and end <= real_through) or (
 				real_from is not None and start >= real_from
 			)

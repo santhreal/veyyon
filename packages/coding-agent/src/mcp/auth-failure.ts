@@ -36,7 +36,7 @@
  * fails while the access token is still valid keeps connecting, because a
  * working session is worth more than a punctual complaint.
  */
-import { isDefinitiveOAuthFailure } from "@veyyon/ai/error/auth-classify";
+import { isDefinitiveOAuthFailure } from "@veyyon/ai/error/flags";
 import { errorMessage } from "@veyyon/utils";
 import type { MCPStoredOAuthCredential } from "./oauth-flow";
 

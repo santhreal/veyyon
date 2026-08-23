@@ -42,7 +42,9 @@ describe("issue #1215: legacy @mariozechner/pi-ai imports survive getResolvedSpe
 	});
 
 	it("loads the extension and registers the tool", async () => {
-		const result = await loadExtensions([extensionPath], projectDir.path());
+		const result = await loadExtensions([extensionPath], projectDir.path(), undefined, undefined, {
+			configuredPaths: [extensionPath],
+		});
 
 		expect(result.errors).toEqual([]);
 		expect(result.extensions).toHaveLength(1);

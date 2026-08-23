@@ -118,11 +118,11 @@ The checks are:
 
 * `plugins_directory`, `package_manifest`, `node_modules`: the three things a plugin install needs.
   Each one distinguishes "not created yet" from "there but unreadable". The first is normal and
-  reports `ok`; the second is an error naming the path, because a plugins directory whose permissions
+  reports `ok`; the second is an error stating the path, because a plugins directory whose permissions
   have been mangled looks identical to an empty one from the outside and the fix is `chmod`, not a
   reinstall.
 * `plugin:<name>`: one per installed plugin. An error means the package is missing from
-  `node_modules` or has no `package.json`. A warning means it loaded but carries no plugin manifest,
+  `node_modules` or has no `package.json`. A warning means it loaded but contains no plugin manifest,
   so veyyon can see the package and cannot use it.
 * `plugin:<name>:tools`, `:hooks`, `:extension:<path>`: an entry point the manifest names and the
   package does not contain.
@@ -137,7 +137,7 @@ The checks are:
 
 `--fix` repairs what can be repaired without a decision: it runs an install for a missing package,
 drops an orphaned config entry, and removes an enabled feature the manifest does not define. A check
-that was repaired says so. Everything else is left for you, because the remedy depends on what you
+that was repaired is reported. Everything else is left for you, because the remedy depends on what you
 meant.
 
 ### Managing Marketplaces
@@ -208,9 +208,9 @@ controls the startup update check. It runs in the background, so it never delays
 paint, and it takes one of three values:
 
 - `notify` (the default) refreshes any marketplace catalog older than a day, compares your
-  installed versions against it, and prints one line naming how many updates are available.
+  installed versions against it, and prints one line with how many updates are available.
   Install them with `veyyon plugin upgrade` (all) or `veyyon plugin upgrade <name>@<marketplace>`.
-- `auto` does the same check and installs the updates itself, then prints one line naming how
+- `auto` does the same check and installs the updates itself, then prints one line with how
   many landed. The running session keeps the versions it loaded at startup, so restart to use
   the new ones.
 - `off` skips the check entirely and contacts no marketplace.

@@ -52,7 +52,7 @@ export default function myExtension(pi: ExtensionAPI): void {
 | `session_before_branch` | Before session branch | `{ cancel?: boolean; skipConversationRestore?: boolean }` |
 | `session_branch` | After session branch | n/a |
 | `session_before_compact` | Before compaction | `{ cancel?: boolean; compaction?: CompactionResult }` |
-| `session.compacting` | During compaction (inject context) | `{ context?: string[]; prompt?: string; preserveData?: Record<string, unknown> }` |
+| `session_compacting` | During compaction (inject context) | `{ context?: string[]; prompt?: string; preserveData?: Record<string, unknown> }` |
 | `session_compact` | After compaction | n/a |
 | `session_before_tree` | Before tree navigation | `{ cancel?: boolean; summary?: { summary: string; details?: unknown } }` |
 | `session_tree` | After tree navigation | n/a |

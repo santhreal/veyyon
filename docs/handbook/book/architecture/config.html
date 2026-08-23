@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e2394775.js";
+            window.path_to_searchindex_js = "../searchindex-03ea301b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -360,7 +360,7 @@ written.</p>
 <p>Field-level migrations in <code>#migrateRawSettings</code>:</p>
 <ul>
 <li><code>queueMode</code> -&gt; <code>steeringMode</code></li>
-<li><code>ask.timeout</code> milliseconds -&gt; seconds when the old value looks like ms (<code>&gt; 1000</code>). The threshold is a guess, because nothing on disk says which format a file uses, so the rewrite is logged with both values. Every other migration here is a fixed point; this one is not, which is why <code>packages/coding-agent/test/settings-migration-idempotence.test.ts</code> pins the property.</li>
+<li><code>ask.timeout</code> milliseconds -&gt; seconds when the old value looks like ms (<code>&gt; 1000</code>). The threshold is a guess, because nothing on disk records which format a file uses, so the rewrite is logged with both values. Every other migration here is a fixed point; this one is not, which is why <code>packages/coding-agent/test/settings-migration-idempotence.test.ts</code> pins the property.</li>
 <li>Legacy flat <code>theme: "..."</code> -&gt; <code>theme.dark/theme.light</code> structure</li>
 </ul>
 <hr>
@@ -435,7 +435,7 @@ Generate a session name using lowercase `&lt;type&gt;:&lt;primary-objective&gt;`
 <li>Missing <code>TITLE_SYSTEM.md</code> keeps the bundled title prompts.</li>
 <li>Discovery checks project config bases first, including <code>.veyyon/TITLE_SYSTEM.md</code>, then the active profile’s <code>agent/TITLE_SYSTEM.md</code> and the supported external-tool config bases.</li>
 <li>The file replaces only the automatic session-title generation system prompt. The agent’s own base prompt is assembled. Use <code>--system-prompt</code> or <code>--append-system-prompt</code> for a one-run override, or <code>PROMPT_SECTIONS/</code> for persistent section changes.</li>
-<li>The online path asks the title model to wrap the title in <code>&lt;title&gt;...&lt;/title&gt;</code> and parses it leniently from text (a plain sentence, a truncated/unclosed tag, or a stray <code>{"title": "..."}</code> JSON echo all still work). A <code>TITLE_SYSTEM.md</code> override gets the wrap-in-<code>&lt;title&gt;</code> instruction appended after it. The local tiny-title path keeps the <code>&lt;title&gt;...&lt;/title&gt;</code> prefill/stop wrapper and uses this file as its system turn.</li>
+<li>The online path instructs the title model to wrap the title in <code>&lt;title&gt;...&lt;/title&gt;</code> and parses it leniently from text (a plain sentence, a truncated/unclosed tag, or a stray <code>{"title": "..."}</code> JSON echo all still work). A <code>TITLE_SYSTEM.md</code> override gets the wrap-in-<code>&lt;title&gt;</code> instruction appended after it. The local tiny-title path keeps the <code>&lt;title&gt;...&lt;/title&gt;</code> prefill/stop wrapper and uses this file as its system turn.</li>
 </ul>
 <h2 id="skills-subsystem"><a class="header" href="#skills-subsystem">Skills subsystem</a></h2>
 <ul>

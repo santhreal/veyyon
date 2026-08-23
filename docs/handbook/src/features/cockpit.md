@@ -36,13 +36,13 @@ main|AM              applying a patch series with git am
 detached|BISECT      bisecting
 ```
 
-A rebase detaches HEAD, so without the suffix the segment could only say `detached`, which tells you neither which branch you are rebasing nor that a rebase is running. Veyyon reads the branch back from the rebase's own record, so you see `topic|REBASE`. A merge is the opposite case: it leaves HEAD on its branch, so the segment would look like an ordinary checkout while your working tree holds conflict markers. The suffix is what distinguishes them.
+A rebase detaches HEAD, so without the suffix the segment could only say `detached`, which shows neither the branch being rebased nor that a rebase is running. Veyyon reads the branch back from the rebase's own record, so you see `topic|REBASE`. A merge is the opposite case: it leaves HEAD on its branch, so the segment would look like an ordinary checkout while your working tree holds conflict markers. The suffix is what distinguishes them.
 
 The `pr` segment is skipped while any of these operations is in progress. A branch being rebased does not yet point where it is going to end up, so a pull request looked up against it would describe a state that is about to be replaced.
 
 The `profile` segment shows the active profile name (`work`, `rec`, a client sandbox), so you always know which profile's config, sessions, and keys are live. It hides itself on the built-in `default` profile, so an unconfigured status line stays clean. Every built-in preset places it, so switching profiles is visible without any configuration.
 
-The `secrets` segment says a stored credential is live where you are working: `2 secrets`. It counts
+The `secrets` segment shows that a stored credential is live where you are working: `2 secrets`. It counts
 what would actually expand at the tool boundary in this directory, not what is in the vault file, so
 a credential scoped elsewhere or already expired is not counted. It hides itself when nothing is
 live, so a session with no vault shows nothing. When the soonest deadline is under an hour it appends
@@ -74,7 +74,7 @@ Two run clocks tick alongside the segments, both measuring model runtime, never 
 
 Each row is one agent that exists right now: a status glyph, its call sign, the TYPE of agent it was spawned from (`reviewer`, `scout`), its status, how long since it last did anything, and what it is doing. Rows sit in spawn order, oldest first, with your own session at the top. The row you are on is marked two ways, a cursor glyph in the first column and a band across the whole row, so it stays readable on a terminal that renders no colour. Agents from earlier runs of the same session appear too, marked `parked`, because their transcripts are still on disk even though this process never started them.
 
-Press Enter on a row and the main view becomes that agent's session: the transcript, the composer, and the status line all point at it, so you read what it is doing and then answer it. Press Esc there to come back to your own session. While you are focused on an agent, the composer footline carries a persistent `<agent-id> · esc to go back` badge at the left, and the inline `Subagents` block above the composer lists that session's own spawns, so inside a leaf agent with no spawns of its own the block disappears. Opening a parked agent revives it on the way in.
+Press Enter on a row and the main view becomes that agent's session: the transcript, the composer, and the status line all point at it, so you read what it is doing and then answer it. Press Esc there to come back to your own session. While you are focused on an agent, the composer footline contains a persistent `<agent-id> · esc to go back` badge at the left, and the inline `Subagents` block above the composer lists that session's own spawns, so inside a leaf agent with no spawns of its own the block disappears. Opening a parked agent revives it on the way in.
 
 To terminate a subagent, select its row and press `x`, or hover the row and click the `[x]` at its right edge. Both gestures open the same confirmation card. Choose **Dismiss** to return without changing the agent, or choose **Yes, terminate** to abort any turn in flight and release the session. The transcript stays on disk. Your main session and read-only advisor transcripts do not show the termination action.
 

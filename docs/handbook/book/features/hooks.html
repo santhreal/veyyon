@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e2394775.js";
+            window.path_to_searchindex_js = "../searchindex-03ea301b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -198,7 +198,7 @@
                         <h1 id="hooks"><a class="header" href="#hooks">Hooks</a></h1>
 <p>A hook lets you run your own code at a moment in the session: before a tool call, after a message,
 when a turn ends. You use one to enforce policy (block a dangerous command), add context, or record
-what happened. The example below refuses any <code>bash</code> command containing <code>rm -rf</code>.</p>
+what happened. The example below rejects any <code>bash</code> command containing <code>rm -rf</code>.</p>
 <p>A hook is a TypeScript module. You put it under a hook path in your profile (for example
 <code>~/.veyyon/profiles/&lt;name&gt;/agent/hooks/</code>), and Veyyon loads it through the extension runner. A
 repository cannot ship a hook: a <code>.veyyon/hooks/</code> directory inside a working tree is not read. The

@@ -68,7 +68,7 @@ and that account's remaining quota. A provider you hold credentials for but have
 session is not listed.
 
 If your chosen account hits its rate limit, Veyyon moves to another one so your work continues, and
-says so:
+reports it:
 
 ```text
 Anthropic          personal                    main model  (opus-5)
@@ -93,8 +93,8 @@ Kimi Code · 1 account
   press a to sign in again
 ```
 
-If that provider had only one login, it now has none, and the card says so rather than showing the
-provider as one you never signed into. `/account` names it too, so you do not have to open the card
+If that provider had only one login, it now has none, and the card states that rather than showing the
+provider as one you never signed into. `/account` shows it too, so you do not have to open the card
 to find out:
 
 ```text

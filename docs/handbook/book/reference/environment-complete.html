@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e2394775.js";
+            window.path_to_searchindex_js = "../searchindex-03ea301b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -215,9 +215,9 @@ code paths in:</p>
 <li>Config-root <code>.env</code> (<code>~/.veyyon/profiles/default/.env</code>, respecting <code>VEYYON_CONFIG_DIR</code> and the active profile) for keys not already set</li>
 <li>Home <code>.env</code> (<code>~/.env</code>) for keys not already set</li>
 </ol>
-<p>Precedence is not the same as load order, and the difference matters if you are reading the source. Part of the home <code>.env</code> is applied FIRST, by <code>packages/utils/src/dotenv-home.ts</code>, because a <code>VEYYON_CODING_AGENT_DIR</code> or <code>XDG_CONFIG_HOME</code> set there decides where layers 3 and 4 are. <code>packages/utils/src/dirs.ts</code> imports that module before it resolves anything, so a directory is never computed from a pre-<code>.env</code> environment. <code>env.ts</code> then applies all four layers in full, overriding the values home contributed and nothing else, and refreshes the directory resolver. The result is the precedence listed above, whichever module a program imported.</p>
+<p>Precedence is not the same as load order, and the difference matters if you are reading the source. Part of the home <code>.env</code> is applied FIRST, by <code>packages/utils/src/dotenv-home.ts</code>, because a <code>VEYYON_CODING_AGENT_DIR</code> or <code>XDG_CONFIG_HOME</code> set there sets where layers 3 and 4 are. <code>packages/utils/src/dirs.ts</code> imports that module before it resolves anything, so a directory is never computed from a pre-<code>.env</code> environment. <code>env.ts</code> then applies all four layers in full, overriding the values home contributed and nothing else, and refreshes the directory resolver. The result is the precedence listed above, whichever module a program imported.</p>
 <p>That early phase applies only the variables that decide where a directory is: <code>VEYYON_CODING_AGENT_DIR</code>, <code>VEYYON_CONFIG_DIR</code>, and the four <code>XDG_*</code> bases. Everything else in your home <code>.env</code>, including every API key, waits for <code>env.ts</code>. The reason is that whatever is in the environment that early is inherited by every process veyyon spawns, and the sandboxed evaluator that runs your <code>eval</code> code is one of them: it should not receive your credentials.</p>
-<p>Two variables are deliberately not read from a <code>.env</code> file at all. <code>VEYYON_PROFILE</code> selects the profile, and the profile decides where layers 3 and 4 are, so reading it out of one of them would be circular; set it in your shell or pass <code>--profile</code>. <code>PATH</code> is read only after <code>env.ts</code> has run, which is when binary lookup happens anyway, so extending <code>PATH</code> in a <code>.env</code> works as it always has.</p>
+<p>Two variables are deliberately not read from a <code>.env</code> file at all. <code>VEYYON_PROFILE</code> selects the profile, and the profile sets where layers 3 and 4 are, so reading it out of one of them would be circular; set it in your shell or pass <code>--profile</code>. <code>PATH</code> is read only after <code>env.ts</code> has run, which is when binary lookup happens anyway, so extending <code>PATH</code> in a <code>.env</code> works as it always has.</p>
 <hr>
 <h2 id="1-modelprovider-authentication"><a class="header" href="#1-modelprovider-authentication">1) Model/provider authentication</a></h2>
 <p>These are consumed via <code>getEnvApiKey()</code> (<code>packages/ai/src/env-api-key.ts</code>) unless noted otherwise.</p>
@@ -407,7 +407,7 @@ material remains Anthropic-Foundry-specific.</p>
 </tbody>
 </table>
 </div>
-<p>Base URL resolution: option <code>azureBaseUrl</code> → env <code>AZURE_OPENAI_BASE_URL</code> → option/env resource name → <code>model.baseUrl</code>.</p>
+<p>Base URL resolution: option <code>azureBaseUrl</code> → env <code>AZURE_OPENAI_BASE_URL</code> → option/env resource name → the model row’s <code>baseUrl</code> in <code>models.yml</code>.</p>
 <h3 id="google-vertex-ai"><a class="header" href="#google-vertex-ai">Google Vertex AI</a></h3>
 <div class="table-wrapper">
 <table>
@@ -603,7 +603,7 @@ material remains Anthropic-Foundry-specific.</p>
 <ul>
 <li>If <code>BUN_ENV=test</code> or <code>NODE_ENV=test</code>, Python availability checks are treated as OK and warming is skipped.</li>
 <li>Python env filtering denies common API keys and allows safe base vars + <code>LC_</code>, <code>XDG_</code>, <code>VEYYON_</code> prefixes.</li>
-<li>Every eval kernel names its IPC trace variable <code>VEYYON_&lt;LANGUAGE&gt;_IPC_TRACE</code>, with the language spelled out
+<li>Every eval kernel spells its IPC trace variable <code>VEYYON_&lt;LANGUAGE&gt;_IPC_TRACE</code>, with the language spelled out
 in full (<code>PYTHON</code>, <code>RUBY</code>, <code>JULIA</code>), not abbreviated the way the source directories are. A language added
 later follows the same convention: it comes from one helper in <code>packages/coding-agent/src/eval/kernel-base.ts</code>
 rather than from each kernel formatting its own name.</li>
@@ -617,7 +617,7 @@ rather than from each kernel formatting its own name.</li>
 </thead>
 <tbody>
 <tr><td><code>VEYYON_SMOL_MODEL</code></td><td>Ephemeral model-role override for <code>smol</code> (CLI <code>--smol</code> takes precedence)</td></tr>
-<tr><td><code>VEYYON_STREAM_FRAME_MAX_BYTES</code></td><td>Bytes one frame of a streamed protocol may occupy before the reader refuses it and cancels the source: a line, a JSONL record, or an SSE event ending at a blank line. Default <code>67108864</code> (64 MiB). Covers provider response streams, MCP server stdout and session files. A value that is not a positive integer keeps the default, so a typo cannot remove the bound. The refusal is terminal and never retried.</td></tr>
+<tr><td><code>VEYYON_STREAM_FRAME_MAX_BYTES</code></td><td>Bytes one frame of a streamed protocol may occupy before the reader rejects it and cancels the source: a line, a JSONL record, or an SSE event ending at a blank line. Default <code>67108864</code> (64 MiB). Covers provider response streams, MCP server stdout and session files. A value that is not a positive integer keeps the default, so a typo cannot remove the bound. The refusal is terminal and never retried.</td></tr>
 <tr><td><code>VEYYON_SLOW_MODEL</code></td><td>Ephemeral model-role override for <code>slow</code> (CLI <code>--slow</code> takes precedence)</td></tr>
 <tr><td><code>VEYYON_PLAN_MODEL</code></td><td>Ephemeral model-role override for <code>plan</code> (CLI <code>--plan</code> takes precedence)</td></tr>
 <tr><td><code>VEYYON_NO_TITLE</code></td><td>If set (any non-empty value), disables auto session title generation on first user message</td></tr>
@@ -627,12 +627,12 @@ rather than from each kernel formatting its own name.</li>
 <tr><td><code>VEYYON_NO_INTERLEAVED_THINKING</code></td><td>If <code>1</code>, disables Anthropic interleaved thinking budget behavior and uses output-token inflation for older thinking mode</td></tr>
 <tr><td><code>VEYYON_NO_INTENT</code></td><td>If <code>1</code>, tool schemas ship without the injected <code>i</code> intent parameter, so the model stops stating what each call is for. Tools that already opt out are unaffected</td></tr>
 <tr><td><code>NULL_PROMPT</code></td><td>If <code>true</code>, system prompt builder returns empty string</td></tr>
-<tr><td><code>VEYYON_BLOCKED_AGENT</code></td><td>Self-recursion prevention: read once from the process env when the <code>task</code> tool is constructed, and any spawn whose agent type equals it is refused with <code>Cannot spawn &lt;name&gt; agent from within itself (recursion prevention).</code> The comparison is against the name the caller wrote, before retired-name resolution, so it must be spelled the way the spawn spells it (<code>deep</code>, not the retired <code>task</code>, unless the caller itself writes <code>task</code>). Nothing in the product sets it; it is a harness/debug knob.</td></tr>
+<tr><td><code>VEYYON_BLOCKED_AGENT</code></td><td>Self-recursion prevention: read once from the process env when the <code>task</code> tool is constructed, and any spawn whose agent type equals it is rejected with <code>Cannot spawn &lt;name&gt; agent from within itself (recursion prevention).</code> The comparison is against the name the caller wrote, before retired-name resolution, so it must be spelled the way the spawn spells it (<code>deep</code>, not the retired <code>task</code>, unless the caller itself writes <code>task</code>). Nothing in the product sets it; it is a harness/debug knob.</td></tr>
 <tr><td><code>VEYYON_SUBPROCESS_CMD</code></td><td>Overrides subagent spawn command (<code>veyyon</code> / <code>veyyon.cmd</code> resolution bypass)</td></tr>
 <tr><td><code>VEYYON_TASK_MAX_OUTPUT_BYTES</code></td><td>Max captured output bytes per subagent (default <code>500000</code>)</td></tr>
 <tr><td><code>VEYYON_TASK_MAX_OUTPUT_LINES</code></td><td>Max captured output lines per subagent (default <code>5000</code>)</td></tr>
 <tr><td><code>VEYYON_TIMING</code></td><td>If set (any non-empty value), prints a hierarchical timing-span tree to <strong>stderr</strong> via <code>logger.printTimings()</code>. In interactive mode the tree prints once the agent is ready (before the TUI starts); in print mode it prints after the whole prompt batch completes. Print-mode prompts are wrapped in <code>print:prompt:initial</code> / <code>print:prompt:next</code> spans so each user message shows up as its own row. <code>VEYYON_TIMING=x</code> exits the process with code 0 right after printing in interactive mode (use to measure cold startup only). <code>VEYYON_TIMING=full</code> lists every module-load entry instead of just the top N.</td></tr>
-<tr><td><code>VEYYON_DEBUG_STARTUP</code></td><td>If set (any non-empty value), streams one synchronous <code>[startup] &lt;phase&gt;:start</code> / <code>:done</code> marker line to <strong>stderr</strong> as each startup phase begins/ends, including command-module imports (<code>cli:load:&lt;name&gt;</code>) and the native addon extraction/<code>dlopen</code> (<code>native:*</code>). Unlike <code>VEYYON_TIMING</code> (which prints only once startup completes), the markers survive a hard hang: the last line on stderr names the phase the process is stuck in. Combine with <code>VEYYON_TIMING</code> freely; markers and the span tree share the same phase names.</td></tr>
+<tr><td><code>VEYYON_DEBUG_STARTUP</code></td><td>If set (any non-empty value), streams one synchronous <code>[startup] &lt;phase&gt;:start</code> / <code>:done</code> marker line to <strong>stderr</strong> as each startup phase begins/ends, including command-module imports (<code>cli:load:&lt;name&gt;</code>) and the native addon extraction/<code>dlopen</code> (<code>native:*</code>). Unlike <code>VEYYON_TIMING</code> (which prints only once startup completes), the markers survive a hard hang: the last line on stderr states the phase the process is stuck in. Combine with <code>VEYYON_TIMING</code> freely; markers and the span tree share the same phase names.</td></tr>
 <tr><td><code>VEYYON_PACKAGE_DIR</code></td><td>Overrides package asset base dir resolution (docs, examples, and CHANGELOG assets)</td></tr>
 <tr><td><code>VEYYON_REPAIR_DISABLE</code></td><td>If <code>1</code>/<code>true</code>/<code>yes</code>, disables malformed-tool-call schema repair (calls fail instead of being repaired)</td></tr>
 <tr><td><code>VEYYON_DISABLE_LSPMUX</code></td><td>If <code>1</code>, disables lspmux detection/integration and forces direct LSP server spawning</td></tr>
@@ -641,7 +641,7 @@ rather than from each kernel formatting its own name.</li>
 <tr><td><code>SMITHERY_API_URL</code></td><td>Smithery API base URL override (default <code>https://api.smithery.ai</code>)</td></tr>
 <tr><td><code>SMITHERY_API_KEY</code></td><td>Smithery API key for managed MCP auth lookup</td></tr>
 <tr><td><code>PUPPETEER_EXECUTABLE_PATH</code></td><td>Browser tool Chromium executable override</td></tr>
-<tr><td><code>LITELLM_BASE_URL</code></td><td>LiteLLM proxy base URL fallback (<code>http://localhost:4000/v1</code> if unset); explicit <code>providers.litellm.baseUrl</code> / <code>models.yml</code> config wins</td></tr>
+<tr><td><code>LITELLM_BASE_URL</code></td><td>LiteLLM proxy base URL fallback (<code>http://localhost:4000/v1</code> if unset); an explicit <code>baseUrl</code> on the <code>litellm</code> provider in <code>models.yml</code> wins</td></tr>
 <tr><td><code>LM_STUDIO_BASE_URL</code></td><td>Default implicit LM Studio discovery base URL override (<code>http://127.0.0.1:1234/v1</code> if unset)</td></tr>
 <tr><td><code>OLLAMA_BASE_URL</code></td><td>Default implicit Ollama discovery base URL override (<code>OLLAMA_HOST</code> if unset, then <code>http://127.0.0.1:11434</code>)</td></tr>
 <tr><td><code>OLLAMA_HOST</code></td><td>Ollama host used for implicit Ollama discovery when <code>OLLAMA_BASE_URL</code> is unset; accepts Ollama-style values such as <code>127.0.0.1:11434</code> or <code>http://host:11434</code></td></tr>
@@ -682,7 +682,7 @@ rather than from each kernel formatting its own name.</li>
 <tr><th>Variable</th><th>Default / behavior</th></tr>
 </thead>
 <tbody>
-<tr><td><code>VEYYON_CONFIG_DIR</code></td><td>Config root dirname under home (default <code>.veyyon</code>). A name, not a path: an absolute value is refused at startup.</td></tr>
+<tr><td><code>VEYYON_CONFIG_DIR</code></td><td>Config root dirname under home (default <code>.veyyon</code>). A name, not a path: an absolute value is rejected at startup.</td></tr>
 <tr><td><code>VEYYON_PROFILE</code></td><td>Activate a named profile (relocates the user base to <code>~/.veyyon/profiles/&lt;name&gt;</code>)</td></tr>
 <tr><td><code>VEYYON_WORKTREE_DIR</code></td><td>Base directory for task-isolation worktrees (default <code>~/.veyyon/profiles/&lt;name&gt;/wt</code>)</td></tr>
 <tr><td><code>VEYYON_GITHUB_CACHE_DB</code></td><td>Path override for the GitHub tool cache database</td></tr>

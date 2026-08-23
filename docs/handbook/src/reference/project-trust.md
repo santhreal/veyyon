@@ -22,7 +22,7 @@ list.
 ## Deciding
 
 ```sh
-veyyon trust           # show what the project wants to run, and approve it
+veyyon trust           # show the code the project would run, and approve it
 veyyon trust --list    # show it without deciding
 veyyon trust --deny    # refuse, and remember the refusal
 veyyon trust --forget  # drop the decision
@@ -31,7 +31,7 @@ veyyon trust path/to/file.ts   # decide one named file
 
 Inside a session, `/trust` reports, and `/trust approve`, `/trust deny` and
 `/trust forget` decide. `/trust approve <path>` approves one file by name, which
-is how you answer a refusal that names a file the discovery scan does not list.
+is how you answer a refusal that states a file the discovery scan does not list.
 
 ## What a decision records
 
@@ -43,9 +43,9 @@ One sha-256 per approved file, keyed by the symlink-resolved project root, in
 - Approving the plugin registry approves the plugins it names. Their install
   directories are usually outside the project, and their contents are not
   digested.
-- A denial is stored, so the next launch neither loads the code nor asks again.
+- A denial is stored, so the next launch neither loads the code nor prompts again.
 - A store written by another version of veyyon, or one whose records are
-  malformed, is discarded. Nothing is trusted and you are asked again.
+  malformed, is discarded. Nothing is trusted and you are prompted again.
 
 ## Reading a refusal
 
@@ -63,5 +63,5 @@ untrusted.
 | changed since it was trusted | the file's bytes differ from the approved ones |
 | not part of the approved set | the file was not in the decision |
 
-Refusals appear as startup warnings. Nothing prompts: a session that cannot ask
+Refusals appear as startup warnings. Nothing prompts: a session that cannot prompt
 loads nothing rather than defaulting to yes.

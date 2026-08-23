@@ -199,7 +199,7 @@ On startup, if `config.yml` is missing:
 Field-level migrations in `#migrateRawSettings`:
 
 - `queueMode` -> `steeringMode`
-- `ask.timeout` milliseconds -> seconds when the old value looks like ms (`> 1000`). The threshold is a guess, because nothing on disk says which format a file uses, so the rewrite is logged with both values. Every other migration here is a fixed point; this one is not, which is why `packages/coding-agent/test/settings-migration-idempotence.test.ts` pins the property.
+- `ask.timeout` milliseconds -> seconds when the old value looks like ms (`> 1000`). The threshold is a guess, because nothing on disk records which format a file uses, so the rewrite is logged with both values. Every other migration here is a fixed point; this one is not, which is why `packages/coding-agent/test/settings-migration-idempotence.test.ts` pins the property.
 - Legacy flat `theme: "..."` -> `theme.dark/theme.light` structure
 
 ---
@@ -291,7 +291,7 @@ Generate a session name using lowercase `<type>:<primary-objective>`.
 - Missing `TITLE_SYSTEM.md` keeps the bundled title prompts.
 - Discovery checks project config bases first, including `.veyyon/TITLE_SYSTEM.md`, then the active profile's `agent/TITLE_SYSTEM.md` and the supported external-tool config bases.
 - The file replaces only the automatic session-title generation system prompt. The agent's own base prompt is assembled. Use `--system-prompt` or `--append-system-prompt` for a one-run override, or `PROMPT_SECTIONS/` for persistent section changes.
-- The online path asks the title model to wrap the title in `<title>...</title>` and parses it leniently from text (a plain sentence, a truncated/unclosed tag, or a stray `{"title": "..."}` JSON echo all still work). A `TITLE_SYSTEM.md` override gets the wrap-in-`<title>` instruction appended after it. The local tiny-title path keeps the `<title>...</title>` prefill/stop wrapper and uses this file as its system turn.
+- The online path instructs the title model to wrap the title in `<title>...</title>` and parses it leniently from text (a plain sentence, a truncated/unclosed tag, or a stray `{"title": "..."}` JSON echo all still work). A `TITLE_SYSTEM.md` override gets the wrap-in-`<title>` instruction appended after it. The local tiny-title path keeps the `<title>...</title>` prefill/stop wrapper and uses this file as its system turn.
 
 ## Skills subsystem
 

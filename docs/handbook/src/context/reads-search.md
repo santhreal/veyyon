@@ -27,9 +27,9 @@ to a budget:
   the tool has. Every other tool's output is bounded by `tools.artifactSpillThreshold`, described
   under [The `search` tool](#the-search-tool-toolssearchts) below.
 - **Structural summaries for parseable code.** A read with no selector on a parseable source file
-  returns declarations with bodies elided (`…`), and the footer names the recovery selector so the model
+  returns declarations with bodies elided (`…`), and the footer states the recovery selector so the model
   re-issues only the ranges it actually needs instead of re-reading the whole file.
-- **Truncation is explicit.** A summary footer or a `[Showing lines …]`-style notice names the
+- **Truncation is explicit.** A summary footer or a `[Showing lines …]`-style notice states the
   continuation selector.
 - **Beyond plain text files:** the same tool also reads directories (depth-limited listing), archives
   (`.tar`, `.tar.gz`, `.zip`, via `archive.zip:path/inside`), SQLite databases (`file.db:table`, with

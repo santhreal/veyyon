@@ -33,6 +33,24 @@ animation as WebP at 33 ms per frame; a GIF is the same clip in an older contain
 proves the same thing. Both arms of a pair are the same class, produced by one driver
 run, and attached to the pull request body.
 
+The recorder refuses to publish a clip whose cadence is not the one it captured. Two
+criteria, both from `--expect-ms`:
+
+```text
+typical frame    33 ms, +/-1 (34 ms alternates at 30 fps)
+moving average   within 10% of 30 fps, held stills set aside
+```
+
+The first catches a resample, where every frame was rewritten. The second catches a
+clip whose most common frame is correct and whose wall clock is mostly slower than it —
+frames held for two or three intervals in the middle of a scroll. A hold at or past ten
+intervals is a still screen, is reported, and does not count against the average.
+Measure a published file with:
+
+```sh
+python3 proof/webp-cadence.py assets/demo-hd.webp --expect-ms 33
+```
+
 ### Real interactive sessions
 
 The HD recorder starts Xvfb, picom, and kitty inside the recorder container. It drives the shipped CLI with real keyboard and pointer events and records the private display at 30 frames per second.
@@ -62,7 +80,7 @@ The recorder keeps rehearsal output in the temporary directory it prints. Inspec
 The scene's task prompt is static at `proof/prompts/demo-hd.md`. The scene stores the secret, submits that prompt once, and sends no phase-by-phase operator prompts; every later turn is the model's own. A take is published only when every named frame guard passed, so a scene whose model does not reach a guarded surface produces a rehearsal and nothing else.
 
 Record on the machine that serves the weights. The endpoint must be a loopback address, or the
-recorder refuses to start; `ALLOW_REMOTE_MODEL=1` records against another host and says so. A
+recorder will not start; `ALLOW_REMOTE_MODEL=1` records against another host and reports it. A
 session driven across a network pauses for reasons the recording cannot separate from the product.
 
 Before anything is recorded the driver checks three things and exits on any of them:
@@ -82,7 +100,7 @@ frame under that name. A needle that comes from somewhere else is declared in th
 ```
 
 The driver also requires the model row to exist on that server, and writes `<scene>-model.txt`
-beside the frames naming the row, the endpoint, the host and the display server the take was
+beside the frames recording the row, the endpoint, the host and the display server the take was
 recorded on.
 
 Every binary the run will use is resolved before the first frame: `docker`, `bun` for the scene
@@ -98,8 +116,8 @@ The container is built by one script and tagged from one declaration:
 bash proof/docker/build-recorder.sh
 ```
 
-The tag carries the bun version in the root `package.json` `packageManager` field,
-because the image carries a bun and the product refuses to start on a runtime older
+The tag contains the bun version in the root `package.json` `packageManager` field,
+because the image contains a bun and the product will not start on a runtime older
 than the one it is built for. A bump therefore makes a stale image a missing image,
 which docker reports before a display server starts. Recording with an image built
 on an older bun ends the take from inside the container after the whole rig is up.
@@ -160,6 +178,31 @@ labeled Before and After pair to the pull request body. It is never committed: n
 A pair whose two arms differ for an unrelated reason is a failed proof. An arm that
 does not show the surface at all is a failed proof: a lane block is not evidence
 about lanes in a frame where no agent is running.
+
+### Zooming into a detail
+
+A 2560-wide capture published at 1920 loses a small detail to the downsample. A row
+whose subject is one block of text names the mark to hold on, and the stage eases into
+the region and back out:
+
+```sh
+python3 proof/zoom.py take.mp4 zoomed.mp4 --marks take-marks.tsv --mark todo-board
+python3 proof/zoom.py --self-check
+```
+
+The region is measured, not typed in: the stage diffs the frames around the moment and
+holds the bounding box of what changed there, padded and clamped inside the frame at
+the source aspect ratio. A moment with nothing moving in it produces no file.
+
+The zoom ceiling defaults to the capture width over the published width, so a held
+frame is a crop rather than an upscale. The stage runs on the take, before the cut,
+and keeps every frame and the recorded rate, so the cadence gate still measures the
+capture's own cadence. A scene asks for one by setting `ZOOM_ARGS` in
+`scripts/demos/record-hd-demo.sh`.
+
+`--self-check` records a synthetic clip whose moving region is known and asserts the
+measured rect, the frame count, the rate and the held magnification. Run it on a
+recorder host before a take depends on the stage.
 
 ### Off-screen component renders are a debugging aid, not a proof
 
