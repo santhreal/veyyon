@@ -49,6 +49,23 @@ const DEFAULT_LIMIT = 200;
 const MAX_LIMIT = 200;
 const DEFAULT_GLOB_TIMEOUT_MS = 5000;
 
+interface FileSearchResultEntry {
+	path: string;
+	mtime: number;
+}
+
+/**
+ * Deterministic file-search comparator matching native semantics:
+ * mtime descending (most recent first), then normalized displayed path ascending.
+ */
+function compareFileSearchResults(a: FileSearchResultEntry, b: FileSearchResultEntry): number {
+	const mtimeDiff = b.mtime - a.mtime;
+	if (mtimeDiff !== 0) {
+		return mtimeDiff;
+	}
+	return a.path < b.path ? -1 : a.path > b.path ? 1 : 0;
+}
+
 export interface FileSearchDetails {
 	truncation?: TruncationResult;
 	resultLimitReached?: number;
@@ -426,9 +443,12 @@ export async function executeFileSearch(
 			// Drain the partial matches accumulated during streaming and return them
 			// instead of throwing — empty results after a multi-second wait force the
 			// caller to retry blind, which is the worst possible outcome.
-			const partial = onUpdateMatches.map((entry, index) => ({ p: entry, m: onUpdateMtimes[index] ?? 0 }));
-			partial.sort((a, b) => b.m - a.m);
-			const sortedPaths = partial.map(entry => entry.p);
+			const partial: FileSearchResultEntry[] = onUpdateMatches.map((entry, index) => ({
+				path: entry,
+				mtime: onUpdateMtimes[index] ?? 0,
+			}));
+			partial.sort(compareFileSearchResults);
+			const sortedPaths = partial.map(entry => entry.path);
 			const seconds = timeoutMs % 1000 === 0 ? `${timeoutMs / 1000}` : (timeoutMs / 1000).toFixed(1);
 			// Walk cost tracks directory-tree size, not pattern specificity: a
 			// mtime-ranked scan cannot early-exit, so a "narrow" pattern over a
@@ -445,7 +465,7 @@ export async function executeFileSearch(
 		// matches by mtime and caps them at the limit, so a global mtime re-sort
 		// plus dedup yields the correct top-N across all roots.
 		const seen = new Set<string>();
-		const merged: Array<{ path: string; mtime: number }> = [];
+		const merged: FileSearchResultEntry[] = [];
 		for (const group of perTarget) {
 			for (const entry of group) {
 				if (seen.has(entry.path)) continue;
@@ -453,7 +473,7 @@ export async function executeFileSearch(
 				merged.push(entry);
 			}
 		}
-		merged.sort((a, b) => b.mtime - a.mtime);
+		merged.sort(compareFileSearchResults);
 		return buildResult(merged.map(entry => entry.path));
 	});
 }

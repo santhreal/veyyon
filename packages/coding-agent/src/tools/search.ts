@@ -67,13 +67,19 @@ function rejectCrossTypeFields(params: SearchToolInput): void {
 	throw new ToolError(`Search type "${params.type}" does not accept: ${invalid.join(", ")}`);
 }
 
+const SEARCH_TARGET_FIELDS: Record<SearchType, "input" | "path"> = {
+	files: "input",
+	text: "path",
+	structure: "path",
+};
+
 function searchFilesystemTargets(args: unknown): string[] {
 	if (!isRecord(args)) return [];
-	const type = args.type;
-	if (type === "files") {
-		return searchPathFilesystemTargets({ path: typeof args.input === "string" ? args.input : undefined });
-	}
-	return searchPathFilesystemTargets({ path: typeof args.path === "string" ? args.path : undefined });
+	const type = args.type as SearchType | undefined;
+	if (typeof type !== "string") return [];
+	const targetField = SEARCH_TARGET_FIELDS[type];
+	if (!targetField) return [];
+	return searchPathFilesystemTargets(args[targetField]);
 }
 
 export class SearchTool implements AgentTool<typeof searchSchema, SearchToolDetails> {
