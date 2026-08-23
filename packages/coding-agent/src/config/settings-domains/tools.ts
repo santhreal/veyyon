@@ -158,26 +158,15 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
-	// Grep, glob, and AST tools
-	"glob.enabled": {
+	// Unified workspace search
+	"search.enabled": {
 		type: "boolean",
 		default: true,
 		ui: {
 			tab: "tools",
 			group: "Available Tools",
-			label: "Glob",
-			description: "Enable the glob tool for glob-based file lookup",
-		},
-	},
-
-	"grep.enabled": {
-		type: "boolean",
-		default: true,
-		ui: {
-			tab: "tools",
-			group: "Available Tools",
-			label: "Grep",
-			description: "Enable the grep tool for regex content search",
+			label: "Search",
+			description: "Enable workspace file, text, and structure search",
 		},
 	},
 
@@ -202,7 +191,7 @@ export const TOOLS_SETTINGS = {
 			group: "Output Limits",
 			label: "Inline Output Floor",
 			description:
-				"Smallest share of the inline output budget an early tool result may use before the rest spills to an artifact. A result that arrives early is re-read on every later turn, so it is charged more tightly than one that arrives near the end. Lower spills sooner and costs fewer context tokens; 1 keeps the flat cap and never spills early. This governs every tool that streams output, including eval, bash, ssh and the interactive shell, as well as grep and the browser.",
+				"Smallest share of the inline output budget an early tool result may use before the rest spills to an artifact. A result that arrives early is re-read on every later turn, so it is charged more tightly than one that arrives near the end. Lower spills sooner and costs fewer context tokens; 1 keeps the flat cap and never spills early. This governs every tool that streams output, including eval, bash, ssh and the interactive shell, as well as search and the browser.",
 			options: [
 				{ value: "1", label: "Flat cap (no early spill)" },
 				{ value: "0.5", label: "Half budget" },
@@ -213,14 +202,14 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
-	"grep.contextBefore": {
+	"search.contextBefore": {
 		type: "number",
 		default: 1,
 		ui: {
 			tab: "tools",
-			group: "Grep & Browser",
-			label: "Grep Context Before",
-			description: "Lines of context before each grep match",
+			group: "Search Context",
+			label: "Text Context Before",
+			description: "Lines of context before each text search match",
 			options: [
 				{ value: "0", label: "0 lines" },
 				{ value: "1", label: "1 line" },
@@ -231,14 +220,14 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
-	"grep.contextAfter": {
+	"search.contextAfter": {
 		type: "number",
 		default: 3,
 		ui: {
 			tab: "tools",
-			group: "Grep & Browser",
-			label: "Grep Context After",
-			description: "Lines of context after each grep match",
+			group: "Search Context",
+			label: "Text Context After",
+			description: "Lines of context after each text search match",
 			options: [
 				{ value: "0", label: "0 lines" },
 				{ value: "1", label: "1 line" },
@@ -250,16 +239,6 @@ export const TOOLS_SETTINGS = {
 		},
 	},
 
-	"astGrep.enabled": {
-		type: "boolean",
-		default: true,
-		ui: {
-			tab: "tools",
-			group: "Available Tools",
-			label: "AST Grep",
-			description: "Enable the ast_grep tool for structural AST search",
-		},
-	},
 
 	"astEdit.enabled": {
 		type: "boolean",

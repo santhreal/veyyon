@@ -21,7 +21,7 @@ Before making changes within these directories, you MUST read:
 {{/if}}
 
 {{#ifAny contextFiles.length agentsMdSearch.files.length}}
-The context files above are loaded automatically: one project file per directory, from the working directory up to the repository root, is already inlined, along with the user and global ones. Each directory contributes only its highest-priority file (`.veyyon/AGENTS.md`, else `AGENTS.md`, else `CLAUDE.md`), so a `CLAUDE.md` sitting beside an `AGENTS.md` is deliberately not loaded and is not a rule you are missing. You NEVER `grep`/`glob` for `AGENTS.md`, `CLAUDE.md`, `.cursorrules`, or similar agent/context files: the relevant ones are already in your context, and any others are noise. The exception is a file named under `<dir-context>`: those sit below the working directory, so read one before changing anything inside its directory.
+The context files above are loaded automatically: one project file per directory, from the working directory up to the repository root, is already inlined, along with the user and global ones. Each directory contributes only its highest-priority file (`.veyyon/AGENTS.md`, else `AGENTS.md`, else `CLAUDE.md`), so a `CLAUDE.md` sitting beside an `AGENTS.md` is deliberately not loaded and is not a rule you are missing. You NEVER use `search` to look for `AGENTS.md`, `CLAUDE.md`, `.cursorrules`, or similar agent/context files: the relevant ones are already in your context, and any others are noise. The exception is a file named under `<dir-context>`: those sit below the working directory, so read one before changing anything inside its directory.
 {{/ifAny}}
 
 <working-directory>
@@ -44,7 +44,7 @@ The third case is already confirmed for this session: the working directory is n
 Working directory layout (sorted by mtime, recent first; depth ≤ 3):
 {{workspaceTree.rendered}}
 {{#if workspaceTree.truncated}}
-(some entries elided to keep the tree short — use `glob`/`read` to drill in)
+(some entries elided to keep the tree short — use `search`/`read` to drill in)
 {{/if}}
 </workspace-tree>
 {{/if}}

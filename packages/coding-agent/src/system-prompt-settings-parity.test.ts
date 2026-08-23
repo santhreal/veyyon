@@ -5,10 +5,8 @@ import { buildSystemPrompt } from "./system-prompt";
 import { RUNTIME_SECTIONS } from "./system-prompt-builder/section-registry";
 import { PROMPT_STATEMENTS, type StatementCondition } from "./system-prompt-builder/statement-registry";
 import { delegationEnabled } from "./task/subagent-settings";
-import { AstGrepTool } from "./tools/ast-grep";
 import { TOOL } from "./tools/builtin-names";
-import { GlobTool } from "./tools/glob";
-import { GrepTool } from "./tools/grep";
+import { SearchTool } from "./tools/search";
 import type { ToolSession } from "./tools/index";
 import { type BuiltinToolPermissionInputs, isBuiltinToolAllowed } from "./tools/loading/policy";
 import type { ActiveRepoContext } from "./utils/active-repo-context";
@@ -123,22 +121,18 @@ function demoSkills(): Skill[] {
 const DELEGATION_MENTION = /delegat|subagent|task tool|`task`/i;
 
 /**
- * The three search tools' live descriptions under one subagent configuration.
+ * The unified search tool's live description under one subagent configuration.
  *
- * A tool description describes the tool: its inputs, its results, its usage
- * hints. Delegation is policy, it belongs to the prompt's Delegation section,
- * and these three carried it anyway (`grep` and `ast_grep` behind a
- * master-switch-only `canDelegate` gate, `glob` behind no gate at all), so they
- * ordered a handoff to a `task` subagent in states where the section itself was
- * correctly suppressed. The settings are varied here to prove the descriptions
- * no longer read the delegation settings at all.
+ * A tool description describes the tool: its inputs, results, and usage hints.
+ * Delegation is policy and belongs to the prompt's Delegation section, so the
+ * description must not vary with delegation settings.
  */
 function searchToolDescriptions(subagentsEnabled: boolean, delegation: string): string[] {
 	const session = {
 		cwd: import.meta.dir,
 		settings: Settings.isolated({ "subagent.enabled": subagentsEnabled, "subagent.delegation": delegation }),
 	} as unknown as ToolSession;
-	return [new GrepTool(session).description, new GlobTool(session).description, new AstGrepTool(session).description];
+	return [new SearchTool(session).description];
 }
 
 /**
@@ -316,8 +310,8 @@ describe("system prompt settings parity: tool policy", () => {
 		expect(await renderBlock0({ toolNames: ["read"] })).not.toContain("Todo calls NEVER travel alone");
 	});
 
-	it(`${asserted("hasAstTools")} toggles the AST section`, async () => {
-		expect(await renderBlock0({ toolNames: ["read", "ast_grep"] })).toContain("# AST");
+	it(`${asserted("hasAstTools")} exposes AST guidance through unified structure search`, async () => {
+		expect(await renderBlock0({ toolNames: ["read", "search"] })).toContain("# AST");
 		expect(await renderBlock0({ toolNames: ["read"] })).not.toContain("# AST");
 	});
 
