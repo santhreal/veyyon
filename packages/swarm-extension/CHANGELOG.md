@@ -10,6 +10,10 @@
 
 - The minimum supported Bun runtime is now 1.4.0.
 
+### Changed
+
+- Swarm's documented agent tool inventory now names the canonical `search` and `eval` tools instead of retired workspace-search names. No runtime behavior changed.
+
 ## [16.3.7] - 2026-07-05
 
 ### Fixed
