@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { isAbortError } from "@veyyon/utils/abortable";
 import * as fetchRetry from "@veyyon/utils/fetch-retry";
 import {
 	extractHttpStatusFromError,
@@ -137,7 +138,56 @@ describe("fetchWithRetry", () => {
 		expect(attempts).toBe(3);
 	});
 
-	it("throws 'Request was aborted' for a pre-aborted signal without fetching", async () => {
+	/**
+	 * THE NAME IS THE CONTRACT, and this module mints three cancellations. A bare
+	 * `new Error("Request was aborted")` is a cancellation only to a human: `isAbortError` reads
+	 * `name`, so the auth gateway classified such an error as a server fault rather than a client
+	 * that closed the request, and the provider retry ladder could recognise it only by matching the
+	 * word `aborted` in the sentence — which retried what the caller had just cancelled. Each row is
+	 * one mint site, and the message is asserted byte-exact because it is the documented one.
+	 */
+	it.each([
+		[
+			"a pre-aborted signal, without fetching",
+			(controller: AbortController) => {
+				controller.abort();
+				return async () => new Response("");
+			},
+		],
+		[
+			"a signal that aborts mid-flight",
+			(controller: AbortController) => async () => {
+				controller.abort();
+				throw new Error("socket closed");
+			},
+		],
+		[
+			"a transport that reports the abort itself",
+			() => async () => {
+				throw Object.assign(new Error("This operation was aborted"), { name: "AbortError" });
+			},
+		],
+	])("throws a named cancellation for %s", async (_label, arrange) => {
+		const controller = new AbortController();
+		const fetch = arrange(controller);
+		let thrown: unknown;
+
+		try {
+			await fetchWithRetry("https://example.invalid/aborted", {
+				signal: controller.signal,
+				fetch,
+				defaultDelayMs: 1,
+				maxAttempts: 2,
+			});
+		} catch (error) {
+			thrown = error;
+		}
+
+		expect(isAbortError(thrown)).toBe(true);
+		expect((thrown as Error).message).toBe("Request was aborted");
+	});
+
+	it("does not fetch at all for a pre-aborted signal", async () => {
 		const controller = new AbortController();
 		controller.abort();
 		let fetched = false;

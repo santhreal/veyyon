@@ -9,6 +9,7 @@
 ### Fixed
 
 - The remote-summarizer cap comment names the profile-scoped log directory it writes to (`~/.veyyon/profiles/<name>/logs`) instead of the pre-migration `~/.veyyon/logs`. Comment only; the cap and the write path are unchanged.
+- A cancelled turn carries `Flag.Abort` whatever reason it was aborted with, instead of only when its text matched the generic `Request was aborted` sentinel.
 
 ## [16.5.2] - 2026-07-14
 
