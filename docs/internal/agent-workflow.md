@@ -12,17 +12,12 @@ This page is the loop that ties them together: queue → change → gate → shi
 (review-only, machine-local) and is the source of truth for open work across
 sessions and context resets:
 
-- Row shape: `id | affected files | problem | acceptance criteria | status`.
-  The row key carries lifecycle state: a finding or lane id is open, `DONE` is
-  landed and verified, and `CLOSED` means no fix was needed.
-- Every finding, an agent's own, a subagent's, a test failure, a doc drift, is
-  appended **the moment it is found**. A finding that lives only in chat context
-  is lost work.
-- Rename a completed row to `DONE` only when it records a durable decision the
-  next reader would otherwise revisit. Delete a routine fixed row; rename a
-  withdrawn or disproved finding to `CLOSED` and record why.
-  There is exactly one ledger and one plan; never a second notes/findings/report
-  file, never a competing roadmap.
+- `BACKLOG.md`'s own header states the row shape and the lifecycle. Read it there; it is
+  the ledger's contract, not this page's.
+- Every finding — an agent's own, a subagent's, a test failure, a doc drift — is appended
+  **the moment it is found**. A finding that lives only in chat context is lost work.
+- There is one ledger and one plan. Never a second notes/findings/report file, never a
+  competing roadmap.
 
 An agent starting a session reads the ledger first, claims a slice of open rows
 that doesn't collide with other active sessions, and drains it.
@@ -36,17 +31,15 @@ that doesn't collide with other active sessions, and drains it.
 2. **Edit in batches.** Land a coherent unit (a refactor, a module, a test suite),
    not one-line dribbles. Don't run the full gate after every tiny edit, batch,
    then gate.
-3. **Gate.** Run each touched package's declared `check:types` script
-   (`bun --cwd=packages/<name> run check:types`),
-   run the targeted test slice (`bun test <files>`), then the repo gate
-   (`bun run check`) before anything is considered done. `bun run check` is the
-   type gate only, `check:ts` plus `cargo fmt --check` and clippy; CI runs
-   `check:ts` in its own job and Checks runs `lint:ts` and `check:tools`, so run
-   `bun run lint:ts` and `bun run check:tools` too or a formatting or
-   import-order drift fails CI behind a green local `check`. Website changes
-   must pass `bun run site:build`'s brand check. New behavior gets proving tests
-   that assert real values; a failing contract test is a finding, never a test
-   to weaken.
+3. **Gate.** Run the touched package's `check:types` script
+   (`bun --cwd=packages/<name> run check:types`), then the targeted test slice, then the
+   repo gate (`bun run check`) before anything is done. `bun run check` is the type gate
+   only — `check:ts` plus `cargo fmt --check` and clippy — so run `bun run check:tools`
+   as well or a formatting or import-order drift fails Checks behind a green local
+   `check`. Website changes pass `bun run site:build`'s brand check.
+   [testing.md](./testing.md) states how a suite is run and which boundary it runs in.
+   New behavior gets proving tests that assert real values; a failing contract test is a
+   finding, never a test to weaken.
 4. **Run long gates in the background.** Fire builds/tests with the harness's
    background execution and keep editing the next non-colliding unit; reconcile
    when the result lands. A final full reconcile at the end of a drive catches
@@ -128,4 +121,4 @@ a ledger row like any other bug.
   account-level Cloudflare/GitHub state) is a human-blocker: record it in the
   ledger with what was tried, and continue on other rows rather than stopping.
 
-*Verified against `289302390` on 2026-08-11.*
+*Verified against `0b075fd23` on 2026-08-22.*
