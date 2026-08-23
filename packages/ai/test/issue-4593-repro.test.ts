@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import { setBedrockProviderModule, streamBedrock } from "@veyyon/ai/providers/register-builtins";
 import type { AssistantMessage, Context, Model } from "@veyyon/ai/types";
 import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
@@ -54,6 +54,13 @@ function createAssistantMessage(): AssistantMessage {
 }
 
 const baseContext: Context = { messages: [] };
+
+// An override replaces the provider for the whole process, so a test that leaves one installed
+// answers every later test FILE in the bucket. This one did, and the failure surfaced in a Bedrock
+// deadline suite that terminated in 3ms against this file's stub.
+afterEach(() => {
+	setBedrockProviderModule();
+});
 
 describe("idle watchdog local-work deferral (issue #4593)", () => {
 	it("slides the idle deadline while consumer-side local work is pending", async () => {

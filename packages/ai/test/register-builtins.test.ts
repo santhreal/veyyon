@@ -1,8 +1,15 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import { setBedrockProviderModule, streamBedrock } from "@veyyon/ai/providers/register-builtins";
 import type { AssistantMessage, Context, Model } from "@veyyon/ai/types";
 import type { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { buildModel } from "@veyyon/catalog/build";
+
+// Four tests here install a process-wide Bedrock override. Left behind, one answers every later
+// test file in the bucket, which is how a Bedrock deadline suite came to terminate in 3ms against a
+// stub. `packages/ai/test/helpers/provider-override-tripwire.ts` fails the test that forgets.
+afterEach(() => {
+	setBedrockProviderModule();
+});
 
 function createModel(): Model<"bedrock-converse-stream"> {
 	return buildModel({
