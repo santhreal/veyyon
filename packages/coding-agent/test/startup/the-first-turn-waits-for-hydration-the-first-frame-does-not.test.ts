@@ -81,7 +81,11 @@ describe("the first turn waits for hydration, the first frame does not", () => {
 		let finished = false;
 		const { promise, resolve } = Promise.withResolvers<void>();
 
-		session.deferStartupWork(promise.then(() => void (finished = true)));
+		session.deferStartupWork(
+			promise.then(() => {
+				finished = true;
+			}),
+		);
 
 		// Construction is already done; handing work over must not have waited for it.
 		expect(finished).toBe(false);
