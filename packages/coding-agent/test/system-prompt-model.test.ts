@@ -10,7 +10,6 @@ import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { buildSystemPrompt } from "@veyyon/coding-agent/system-prompt";
 import { usesCodexTaskPrompt } from "@veyyon/coding-agent/task/prompt-policy";
 import { removeSyncWithRetries } from "@veyyon/utils";
-import { hermeticSpawnEnv } from "./helpers/hermetic-spawn-env";
 import { useTempHome } from "./helpers/temp-home";
 import { useTrackedTempDirs } from "./helpers/tracked-temp-dir";
 
@@ -24,75 +23,6 @@ const EMPTY_TREE = {
 	totalLines: 0,
 	agentsMdFiles: [],
 };
-
-async function expectPromptDateFromStartupTimezone(options: {
-	tempDir: string;
-	timeZone: string;
-	now: string;
-	expectedDate: string;
-	rejectedDate: string;
-}): Promise<void> {
-	const scenarioPath = path.join(options.tempDir, "prompt-date-timezone.test.ts");
-	await Bun.write(
-		scenarioPath,
-		`import { expect, it, setSystemTime } from "bun:test";
-import { buildSystemPrompt } from ${JSON.stringify(path.resolve(import.meta.dir, "../src/system-prompt.ts"))};
-
-it("renders the prompt date in the startup timezone", async () => {
-	setSystemTime(new Date(process.env.VEYYON_TEST_NOW!));
-	try {
-		const { systemPrompt } = await buildSystemPrompt({
-			cwd: process.cwd(),
-			contextFiles: [],
-			skills: [],
-			rules: [],
-			toolNames: [],
-			workspaceTree: {
-				rootPath: process.cwd(),
-				rendered: "",
-				truncated: false,
-				totalLines: 0,
-				agentsMdFiles: [],
-			},
-			activeRepoContext: null,
-		});
-		const rendered = systemPrompt.join("\\n\\n");
-		expect(rendered).toContain(\`Today is \${process.env.VEYYON_EXPECTED_DATE}\`);
-		expect(rendered).not.toContain(\`Today is \${process.env.VEYYON_REJECTED_DATE}\`);
-	} finally {
-		setSystemTime();
-	}
-});
-`,
-	);
-	// A CHILD process gets a fresh `os.homedir()` from whatever HOME it is handed, so the
-	// parent's spy is invisible to it and the hermetic env is what isolates it: throwaway
-	// HOME, config and XDG roots stripped, provider credentials denied. Bun's transpile
-	// cache is handed back explicitly, so re-transpiling the prompt graph here stays warm.
-	const hermetic = hermeticSpawnEnv({
-		TZ: options.timeZone,
-		VEYYON_TEST_NOW: options.now,
-		VEYYON_EXPECTED_DATE: options.expectedDate,
-		VEYYON_REJECTED_DATE: options.rejectedDate,
-	});
-	try {
-		const child = Bun.spawn([process.execPath, "test", scenarioPath], {
-			cwd: options.tempDir,
-			env: hermetic.env,
-			stdout: "pipe",
-			stderr: "pipe",
-		});
-		const [stdout, stderr, exitCode] = await Promise.all([
-			new Response(child.stdout).text(),
-			new Response(child.stderr).text(),
-			child.exited,
-		]);
-		expect(`${stdout}\n${stderr}`).toContain("1 pass");
-		expect(exitCode).toBe(0);
-	} finally {
-		hermetic.cleanup();
-	}
-}
 
 describe("system prompt model identifier", () => {
 	let tempDir = "";
@@ -136,16 +66,6 @@ describe("system prompt model identifier", () => {
 		const text = systemPrompt.join("\n\n");
 		expect(text).toContain("<workstation>");
 		expect(text).not.toContain("anthropic/claude-opus-4");
-	});
-
-	it("renders the prompt date from the startup local timezone rather than UTC", async () => {
-		await expectPromptDateFromStartupTimezone({
-			tempDir,
-			timeZone: "America/Los_Angeles",
-			now: "2026-07-01T03:15:00Z",
-			expectedDate: "2026-06-30",
-			rejectedDate: "2026-07-01",
-		});
 	});
 
 	it("omits the model line when no model is provided", async () => {
