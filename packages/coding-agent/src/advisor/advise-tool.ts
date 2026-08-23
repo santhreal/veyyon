@@ -158,7 +158,7 @@ export function deriveAdvisorTelemetry(
  * read-only investigative set. The full available pool is every built tool the
  * session has (the advisor is a full agent); a config's `tools` selects from it.
  */
-export const ADVISOR_DEFAULT_TOOL_NAMES: ReadonlySet<string> = new Set(["read", "grep", "glob"]);
+export const ADVISOR_DEFAULT_TOOL_NAMES: ReadonlySet<string> = new Set(["read", "search"]);
 
 function advisorNoteDedupeKey(note: string): string {
 	return note.trim().replace(/\s+/g, " ");

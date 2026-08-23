@@ -195,42 +195,4 @@ export const fsFixtures: Record<string, GalleryFixture> = {
 		},
 	},
 
-	glob: {
-		label: "Glob",
-		// Streaming: glob half-typed, no limit yet.
-		streamingArgs: { path: "packages/coding-agent/src/tools/*-render" },
-		args: { path: "packages/coding-agent/src/**/*.test.ts", limit: 50 },
-		result: {
-			content: [
-				{
-					type: "text",
-					text: [
-						"packages/coding-agent/src/tools/read.test.ts",
-						"packages/coding-agent/src/tools/write.test.ts",
-						"packages/coding-agent/src/tools/glob.test.ts",
-						"packages/coding-agent/src/cli/gallery-cli.test.ts",
-						"packages/coding-agent/src/edit/edit.test.ts",
-					].join("\n"),
-				},
-			],
-			details: {
-				scopePath: "packages/coding-agent/src",
-				cwd: "/Users/dev/Projects/pi",
-				fileCount: 5,
-				truncated: false,
-				files: [
-					"packages/coding-agent/src/cli/gallery-cli.test.ts",
-					"packages/coding-agent/src/edit/edit.test.ts",
-					"packages/coding-agent/src/tools/glob.test.ts",
-					"packages/coding-agent/src/tools/read.test.ts",
-					"packages/coding-agent/src/tools/write.test.ts",
-				],
-			},
-		},
-		errorResult: {
-			isError: true,
-			content: [{ type: "text", text: "Glob failed: invalid glob pattern '[unclosed'." }],
-			details: { error: "invalid glob pattern '[unclosed'" },
-		},
-	},
 };
