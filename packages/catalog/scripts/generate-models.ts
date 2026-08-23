@@ -42,7 +42,7 @@ import {
 	isKimiK27CodeModelId,
 	MODELS_DEV_PROVIDER_DESCRIPTORS,
 	mapModelsDevToModels,
-	NOUS_RESEARCH_STATIC_MODELS,
+	NOUS_RESEARCH_BUNDLED_MODELS,
 	projectOpenAIProReasoningAliases,
 	SAKANA_FUGU_STATIC_MODELS,
 	stripFireworksDeepSeekThinkingToggle,
@@ -200,7 +200,14 @@ function applyGlobalModelsDevFallback(
 	const globalReferences = createGlobalModelsDevReferenceMap(modelsDevModels);
 	const twinByKey = new Map(modelsDevModels.map(model => [`${model.provider}/${model.id}`, model]));
 	return models.map(model => {
-		if (model.provider === "devin" || model.provider === "baseten") {
+		if (
+			model.provider === "devin" ||
+			model.provider === "baseten" ||
+			model.provider === "command-code" ||
+			model.provider === "nous-research"
+		) {
+			// These endpoints publish their own model surfaces; cross-router
+			// references must not invent capabilities or limits.
 			return model;
 		}
 		// Same provider AND id: the models.dev twin owns the declared surface.
@@ -647,18 +654,13 @@ async function generateModels() {
 	if (!authoritativeCatalogProviders.has("sakana")) {
 		allModels.push(...SAKANA_FUGU_STATIC_MODELS);
 	}
-	// Seed Nous Research's Hermes models so the provider is usable when catalog
-	// generation has no live API key. The public /v1/models list names every
-	// hosted model (third-party hosts included) and carries no tool_call data,
-	// so a credential-less regen would otherwise bundle an empty provider. If
-	// live discovery succeeds, the fetched rows win dedup and the seed only
-	// fills ids discovery did not report.
+	// Seed Nous Portal's documented default so it resolves before the first
+	// OAuth-backed refresh.
 	if (!authoritativeCatalogProviders.has("nous-research")) {
-		allModels.push(...NOUS_RESEARCH_STATIC_MODELS);
+		allModels.push(...NOUS_RESEARCH_BUNDLED_MODELS);
 	}
-	// Same shape as the Nous seed: the Provider API's model list is public, but
-	// a credential-less regen cannot run dynamic discovery, so the documented
-	// flagships ship in the bundle and a live fetch replaces them per key.
+	// Seed Command Code's documented flagships when credentialed discovery is
+	// unavailable. Live discovery keeps the router's wider published catalog.
 	if (!authoritativeCatalogProviders.has("command-code")) {
 		allModels.push(...COMMAND_CODE_STATIC_MODELS);
 	}
@@ -700,6 +702,9 @@ async function generateModels() {
 	}
 
 	const modelsDevSnapshotExcludedProviders = new Set<string>();
+	// The Nous offline seed is an intentional tool-capable subset. Never carry
+	// non-tool Hermes rows forward from an older generated snapshot.
+	modelsDevSnapshotExcludedProviders.add("nous-research");
 	for (const model of modelsDevModels) {
 		if (model.provider === "google-vertex") {
 			modelsDevSnapshotExcludedProviders.add(model.provider);

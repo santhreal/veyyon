@@ -3,8 +3,8 @@ import type { ProviderDefinition } from "./types";
 
 export const loginCommandCode = createApiKeyLogin({
 	providerLabel: "Command Code",
-	authUrl: "https://commandcode.ai/billing",
-	instructions: "Create or copy your API key from Command Code (Studio > Billing)",
+	authUrl: "https://commandcode.ai/studio/provider",
+	instructions: "Create or copy your API key from Command Code Studio's Provider page",
 	promptMessage: "Paste your Command Code API key",
 	placeholder: "sk-...",
 	validation: {
@@ -18,5 +18,5 @@ export const loginCommandCode = createApiKeyLogin({
 export const commandCodeProvider = {
 	id: "command-code",
 	name: "Command Code",
-	login: (cb: Parameters<typeof loginCommandCode>[0]) => loginCommandCode(cb),
+	login: loginCommandCode,
 } as const satisfies ProviderDefinition;
