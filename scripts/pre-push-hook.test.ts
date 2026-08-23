@@ -54,6 +54,12 @@ async function runHook(options: {
 	env?: Record<string, string>;
 	/** Leave uncommitted and untracked files behind before the hook runs. */
 	dirty?: boolean;
+	/**
+	 * Commit a handbook book whose pages load a content-hashed asset. `"complete"`
+	 * commits the asset too; `"missing-asset"` commits only the page, which is what a
+	 * rebuild followed by `git commit --only` produces.
+	 */
+	handbook?: "complete" | "missing-asset";
 }): Promise<HookRun> {
 	using dir = TempDir.createSync("veyyon-hooktest-");
 	// TempDir.path() is relative to the process cwd. The hook runs as a child
@@ -87,6 +93,21 @@ async function runHook(options: {
 	await fs.symlink("../../packages/pkg", path.join(root, "node_modules", "@veyyon", "pkg"));
 	await Bun.$`git -C ${root} add packages/pkg/index.ts`.quiet();
 	await Bun.$`git -C ${root} commit -qm workspace`.quiet();
+	if (options.handbook) {
+		const book = path.join(root, "docs", "handbook", "book");
+		await Bun.write(
+			path.join(book, "index.html"),
+			'<html><head><link rel="stylesheet" href="css/general-2459343d.css">\n' +
+				'<script>window.path_to_searchindex_js = "searchindex-deadbeef.js";</script>\n' +
+				"</head><body>page</body></html>\n",
+		);
+		await Bun.write(path.join(book, "css", "general-2459343d.css"), "body{}\n");
+		if (options.handbook === "complete") {
+			await Bun.write(path.join(book, "searchindex-deadbeef.js"), "window.search = {};\n");
+		}
+		await Bun.$`git -C ${root} add docs/handbook/book`.quiet();
+		await Bun.$`git -C ${root} commit -qm handbook`.quiet();
+	}
 	const head = (await Bun.$`git -C ${root} rev-parse HEAD`.text()).trim();
 	if (options.dirty) {
 		await Bun.write(path.join(root, "seed.txt"), "locally edited, never committed\n");
@@ -271,5 +292,34 @@ describe("pre-push hook", () => {
 		expect(pass.leftoverWorktrees).toEqual([]);
 		const fail = await runHook({ stdin: `refs/heads/main ${SHA} refs/heads/main ${SHA}\n`, bunExit: 1 });
 		expect(fail.leftoverWorktrees).toEqual([]);
+	});
+
+	/**
+	 * mdbook renames a hashed asset on every rebuild that changes its content, so the
+	 * new `searchindex-<hash>.js` is an UNTRACKED file and `git commit --only` stages
+	 * only the old one's deletion. The pushed book then loads an asset it does not
+	 * carry, which is a 404 on the published search box; the Docs workflow reports it a
+	 * full run later, and it has.
+	 */
+	it("refuses a handbook whose pages load an asset the commit does not carry", async () => {
+		const run = await runHook({
+			stdin: `refs/heads/main ${SHA} refs/heads/main ${SHA}\n`,
+			bunExit: 0,
+			handbook: "missing-asset",
+		});
+		expect(run.exitCode).not.toBe(0);
+		expect(run.stderr).toContain("searchindex-deadbeef.js");
+		expect(run.leftoverWorktrees).toEqual([]);
+	});
+
+	/** And the same book with the asset committed goes through. */
+	it("allows a handbook that ships every asset its pages load", async () => {
+		const run = await runHook({
+			stdin: `refs/heads/main ${SHA} refs/heads/main ${SHA}\n`,
+			bunExit: 0,
+			handbook: "complete",
+		});
+		expect(run.exitCode).toBe(0);
+		expect(run.stderr).not.toContain("searchindex-deadbeef.js");
 	});
 });
