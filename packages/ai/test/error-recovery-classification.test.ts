@@ -50,7 +50,6 @@ const RETRY_DECISION: Record<string, boolean> = {
 	ContentBlocked: false,
 	ContextOverflow: false,
 	AuthFailed: false,
-	OAuthExpiry: false,
 	Grammar: false,
 	FastModeUnsupported: false,
 	// Deliberate stops. Retrying one overrides a decision already taken.
@@ -127,7 +126,6 @@ const FRAME_BAIT_TEXT: Record<keyof typeof AIError.Flag, string> = {
 	ContentBlocked: "incomplete: content_filter",
 	ContextOverflow: "prompt is too long: 250000 tokens > 200000 maximum",
 	AuthFailed: "401 Unauthorized: invalid api key",
-	OAuthExpiry: '400 {"error":"invalid_grant","error_description":"Refresh token not found or invalid"}',
 	Grammar: "grammar error",
 	FastModeUnsupported: "fast mode is not supported for this model",
 	SilentAbort: "silent abort",

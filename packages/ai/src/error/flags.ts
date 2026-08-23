@@ -29,8 +29,14 @@ export const Flag = {
 	Grammar: 0x1000_0000,
 	/** Anthropic model/account does not support fast mode / the `speed` parameter. */
 	FastModeUnsupported: 0x2000_0000,
-	/** OAuth refresh failed definitively — the stored grant is dead, re-login required. */
-	OAuthExpiry: 0x4000_0000,
+	// A dead OAuth grant has no flag. It used to have one — `OAuthExpiry`, in this table and in
+	// KIND_MASK — that nothing ever set, so `is(id, Flag.OAuthExpiry)` answered false for every dead
+	// grant there has ever been. The answer belongs to `isDefinitiveOAuthFailure` below, which is a
+	// boolean because it decides whether to DISABLE a credential and its two answers are not
+	// symmetric: a wrong yes destroys a working account, so anything ambiguous resolves to no. A
+	// classification bit cannot carry that asymmetry, and classifying the same prose here would turn
+	// a bare `400 invalid_grant` from a status into a flag set and take the status away from callers
+	// that read it.
 } as const;
 
 export type Flag = (typeof Flag)[keyof typeof Flag];
@@ -50,8 +56,7 @@ const KIND_MASK =
 	Flag.UserInterrupt |
 	Flag.Abort |
 	Flag.Grammar |
-	Flag.FastModeUnsupported |
-	Flag.OAuthExpiry;
+	Flag.FastModeUnsupported;
 
 const RETRIABLE_KINDS =
 	Flag.Transient | Flag.UsageLimit | Flag.ThinkingLoop | Flag.StaleResponsesItem | Flag.ProviderFinishError;
@@ -193,8 +198,8 @@ const OAUTH_TRANSIENT_FAILURE_PATTERN =
 	/timeout|network|fetch failed|ECONN(?:REFUSED|RESET)|ETIMEDOUT|EAI_AGAIN|socket hang up|\b(?:408|425|429|5\d{2})\b|rate.?limit|too many requests|temporar|unavailable|forbidden|permission_denied|cloudflare|captcha/i;
 const OAUTH_HTTP_AUTH_PATTERN = /\b401\b/;
 
-function matchesStrictToolsRejection(message: string, errorStatus: number | undefined): boolean {
-	if (errorStatus !== 400) return false;
+/** The 400 body of a strict-tool rejection, in either of the two shapes providers send it. */
+function matchesStrictToolsRejectionText(message: string): boolean {
 	if (STRUCTURED_OUTPUTS_PATTERN.test(message) && FEATURE_NOT_SUPPORTED_PATTERN.test(message)) return true;
 	if (!INVALID_REQUEST_PATTERN.test(message)) return false;
 	const grammarTooLarge = GRAMMAR_TOO_LARGE_PATTERN.test(message) && GRAMMAR_TOO_LARGE_DETAIL_PATTERN.test(message);
@@ -205,19 +210,18 @@ function matchesStrictToolsRejection(message: string, errorStatus: number | unde
 	return grammarTooLarge || schemaTooComplex;
 }
 
-function matchesFastModeUnsupported(message: string, errorStatus: number | undefined): boolean {
-	if (errorStatus !== 400 && errorStatus !== 429) return false;
-	if (
-		errorStatus === 400 &&
+/** The 400 body: the request named `speed` and the model answered that it does not support it. */
+function matchesFastModeRejectedParameterText(message: string): boolean {
+	return (
 		INVALID_REQUEST_PATTERN.test(message) &&
 		FAST_MODE_SPEED_PARAM_PATTERN.test(message) &&
 		FAST_MODE_NOT_SUPPORTED_PATTERN.test(message)
-	) {
-		return true;
-	}
-	return (
-		errorStatus === 429 && FAST_MODE_RATE_LIMIT_PATTERN.test(message) && FAST_MODE_ENTITLEMENT_PATTERN.test(message)
 	);
+}
+
+/** The 429 body: a rate-limit error naming fast mode, which is an entitlement wall, not a throttle. */
+function matchesFastModeEntitlementText(message: string): boolean {
+	return FAST_MODE_RATE_LIMIT_PATTERN.test(message) && FAST_MODE_ENTITLEMENT_PATTERN.test(message);
 }
 
 /**
@@ -274,21 +278,17 @@ export function isDefinitiveOAuthFailure(errorMessage: string): boolean {
 	return OAUTH_HTTP_AUTH_PATTERN.test(diagnostic);
 }
 
-const ERROR_KIND_LABELS: readonly [Flag, string][] = [
-	[Flag.ThinkingLoop, "thinking-loop"],
-	[Flag.Transient, "transient"],
-	[Flag.Timeout, "timeout"],
-	[Flag.UsageLimit, "usage-limit"],
-	[Flag.StaleResponsesItem, "stale-responses-item"],
-	[Flag.MalformedFunctionCall, "malformed-function-call"],
-	[Flag.ProviderFinishError, "provider-finish-error"],
-	[Flag.ContentBlocked, "content-blocked"],
-	[Flag.ContextOverflow, "context-overflow"],
-	[Flag.AuthFailed, "auth-failed"],
-	[Flag.SilentAbort, "silent-abort"],
-	[Flag.UserInterrupt, "user-interrupt"],
-	[Flag.Abort, "abort"],
-];
+/**
+ * The label for each flag, derived from the flag's own name so a flag cannot exist without one.
+ *
+ * The hand-kept list this replaced stopped at thirteen entries while `Flag` grew to sixteen, so a
+ * grammar rejection, a fast-mode wall and a dead OAuth grant each rendered in diagnostics as
+ * `classified:0x10000000` — the three failures whose recovery is least obvious were the three with
+ * no name. `Class` is the classified-marker bit rather than a kind, so it carries no label.
+ */
+const ERROR_KIND_LABELS: readonly [Flag, string][] = Object.entries(Flag)
+	.filter(([name]) => name !== "Class")
+	.map(([name, bit]) => [bit, name.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase()] as [Flag, string]);
 
 const STATUS_MESSAGE_PATTERNS = [
 	/\bstatus(?:_code)?[:=]\s*(\d{3})\b/i,
@@ -396,10 +396,6 @@ function isTimeoutText(text: string): boolean {
 	return TIMEOUT_PATTERN.test(text);
 }
 
-function isAuthFailureText(text: string): boolean {
-	return AUTH_FAILURE_PATTERN.test(text);
-}
-
 function isStaleResponsesText(text: string): boolean {
 	return (
 		STALE_RESPONSE_ITEM_PATTERNS[0].test(text) ||
@@ -407,87 +403,161 @@ function isStaleResponsesText(text: string): boolean {
 	);
 }
 
-function isMalformedFunctionCallText(text: string): boolean {
-	return MALFORMED_FUNCTION_CALL_PATTERN.test(text);
-}
-
-function isProviderFinishErrorText(text: string): boolean {
-	return PROVIDER_FINISH_ERROR_PATTERN.test(text);
-}
-
-function isContentBlockedText(text: string): boolean {
-	return CONTENT_FILTER_PATTERN.test(text);
-}
-
 function matchesOverflowText(text: string): boolean {
 	return OVERFLOW_PATTERNS.some(p => p.test(text)) || OVERFLOW_NO_BODY_PATTERN.test(text);
+}
+
+/**
+ * Everything a rule may read about one failure, computed once.
+ *
+ * `text` is the message with stack frames stripped, because callers arrive with `String(error)` and
+ * this codebase's errors embed their cause chain AND their stack: a frame named
+ * `…/scoped-timeout.ts` contains the word "timeout", and matching failure keywords against frame
+ * names classified a dead credential as transient and retried it to exhaustion. `status` is parsed
+ * from the RAW message instead, since a frame name cannot introduce an HTTP status token but can
+ * easily introduce a keyword. `http2` is the RFC 7540 §7 verdict, `undefined` when the message names
+ * no HTTP/2 error code.
+ */
+interface Signal {
+	readonly text: string;
+	readonly status: number | undefined;
+	readonly api: Api | undefined;
+	readonly http2: boolean | undefined;
+}
+
+/**
+ * One classification rule: the flags it sets, and the condition that sets them.
+ *
+ * A rule is SELF-CONTAINED. Its condition states every fact it depends on, including the facts that
+ * used to be expressed as position in an if-chain, so the rules can be applied in any order and a
+ * reader can decide one rule without holding the other twenty in mind. That is the whole reason
+ * this is a table: the file it replaced classified by prose in a chain whose branches were the
+ * history of what had broken, and adding a rule meant guessing where in the chain it belonged.
+ *
+ * `structural` reads status, api or transport verdict — facts a provider states rather than writes.
+ * `text` reads the message. A rule with a `text` condition and no `structural` one decides on prose
+ * alone, which is a last resort: it is the shape that reclassifies itself when a provider rewords a
+ * sentence, so the set of such rules is pinned by a test and each states its reason in `why`.
+ */
+interface ClassificationRule {
+	readonly flags: number;
+	/** The failure this rule was added for, and why prose decides it when it does. */
+	readonly why: string;
+	readonly structural?: (signal: Signal) => boolean;
+	readonly text?: (text: string) => boolean;
+}
+
+export const CLASSIFICATION_RULES: readonly ClassificationRule[] = [
+	{
+		flags: Flag.ContextOverflow,
+		why: "Every provider says 'too long' in its own words and none of them says it with a status: 413 and 400 both carry it, and a bare '400 (no body)' carries nothing else at all.",
+		text: matchesOverflowText,
+	},
+	{
+		flags: Flag.MalformedFunctionCall,
+		why: "Google returns MALFORMED_FUNCTION_CALL as a finish reason wrapped into prose; the call never parsed, so there is nothing to duplicate and the turn is safe to retry.",
+		text: text => MALFORMED_FUNCTION_CALL_PATTERN.test(text),
+	},
+	{
+		flags: Flag.ProviderFinishError,
+		why: "A stream that finished with reason 'error' and no status: the provider ended the turn without saying what failed.",
+		text: text => PROVIDER_FINISH_ERROR_PATTERN.test(text),
+	},
+	{
+		flags: Flag.ContentBlocked,
+		why: "A content filter is a verdict on the request, not a fault: it is the one kind that must never be retried.",
+		text: text => CONTENT_FILTER_PATTERN.test(text),
+	},
+	{
+		flags: Flag.AuthFailed,
+		why: "401/403 arrive as prose inside a wrapper as often as they arrive as a status, and 'no api key' has no status at all.",
+		text: text => AUTH_FAILURE_PATTERN.test(text),
+	},
+	{
+		flags: Flag.UsageLimit,
+		why: "The quota vocabulary is the provider's own (usage_limit_reached, insufficient_quota, account rate limit), and it rotates a credential rather than retrying it.",
+		text: matchesUsageLimitText,
+	},
+	{
+		flags: Flag.UsageLimit,
+		why: "A 429 whose body is opaque or names an exhausted quota is a wall, not a throttle: the structure decides and the prose only says which.",
+		structural: signal => signal.status === 429,
+		text: text => isOpaqueStatusBody(text) || parseRateLimitReason(text) === "QUOTA_EXHAUSTED",
+	},
+	{
+		flags: Flag.Transient,
+		why: "A named HTTP/2 error code is a fact about the transport, so it decides transience on its own and no wording heuristic is consulted: the heuristics matched NGHTTP2_INTERNAL_ERROR only for containing 'internal error', and would have promoted a wrapper around NGHTTP2_CANCEL — our own abort — back into the retry loop.",
+		structural: signal => signal.http2 === true,
+	},
+	{
+		flags: Flag.Timeout,
+		why: "The HTTP/2 verdict owns transience and nothing else. Flag.Timeout authorizes no retry on its own; it tells the candidate loops the fault was a timeout, which is what makes auto-compaction move to the next model instead of re-sending a full context to the one that just timed out.",
+		structural: signal => signal.http2 !== undefined,
+		text: isTimeoutText,
+	},
+	{
+		flags: Flag.Transient | Flag.Timeout,
+		why: "A timeout with no HTTP/2 code is transient and a timeout: the next attempt can differ, and the caller needs to know which fault it was.",
+		structural: signal => signal.http2 === undefined,
+		text: isTimeoutText,
+	},
+	{
+		flags: Flag.Transient,
+		why: "The transport vocabulary of last resort: a socket that closed, a gateway page, an errno. It reads prose because a dead socket arrives as a rejection with no status, and its status numbers are word-bounded for the same reason (see TRANSIENT_TRANSPORT_PATTERN).",
+		structural: signal => signal.http2 === undefined,
+		text: text => !isTimeoutText(text) && isTransientErrorText(text),
+	},
+	{
+		flags: Flag.StaleResponsesItem,
+		why: "Only the Responses APIs carry server-side conversation items, so only they can be told an item is gone; the same sentence from another api means something else.",
+		structural: signal => signal.api === "openai-responses" || signal.api === "openai-codex-responses",
+		text: isStaleResponsesText,
+	},
+	{
+		flags: Flag.Transient,
+		why: "Copilot's per-client routing flap: a 400 model_not_supported for a model the account has, where a retry usually lands on a backend that serves it.",
+		structural: signal => signal.status === 400,
+		text: text => COPILOT_MODEL_NOT_SUPPORTED_PATTERN.test(text),
+	},
+	{
+		flags: Flag.Grammar,
+		why: "A 400 rejecting strict tools: grammar too large, schema too complex, or structured outputs the endpoint does not have. The turn retries without strict tools and the session remembers the downgrade.",
+		structural: signal => signal.status === 400,
+		text: matchesStrictToolsRejectionText,
+	},
+	{
+		flags: Flag.FastModeUnsupported,
+		why: "Anthropic rejects the `speed` parameter with a 400 when the model does not have fast mode; retrying it without the parameter is the recovery, so it is not a throttle.",
+		structural: signal => signal.status === 400,
+		text: matchesFastModeRejectedParameterText,
+	},
+	{
+		flags: Flag.FastModeUnsupported,
+		why: "The same wall arrives as a 429 when the account lacks the extra-usage entitlement fast mode requires. Classified as a throttle it was retried against a limit no wait can clear.",
+		structural: signal => signal.status === 429,
+		text: matchesFastModeEntitlementText,
+	},
+];
+
+function matches(rule: ClassificationRule, signal: Signal): boolean {
+	if (rule.structural && !rule.structural(signal)) return false;
+	if (rule.text && !rule.text(signal.text)) return false;
+	return rule.structural !== undefined || rule.text !== undefined;
 }
 
 function classifyText(errorMessage: string | undefined, errorStatus: number | undefined, api?: Api): number {
 	let kinds = 0;
 	if (errorMessage) {
-		// Classify the MESSAGE, never the stack. Callers reach here with
-		// `String(error)`, and this codebase's errors embed their cause chain and
-		// their stack, so the text carries our own file and frame names. A frame
-		// like `at async withScopedTimeoutSignal (…/utils/src/scoped-timeout.ts)`
-		// contains "timeout", which used to set Flag.Transient — and Transient is
-		// in RETRIABLE_KINDS, so a dead credential got retried to exhaustion
-		// instead of being surfaced once. {@link isDefinitiveOAuthFailure} already sanitized
-		// for exactly this reason; the general classifier did not.
-		const cleanMessage = withoutStackTrace(errorMessage);
-		if (matchesOverflowText(cleanMessage)) kinds |= Flag.ContextOverflow;
-		if (isMalformedFunctionCallText(cleanMessage)) kinds |= Flag.MalformedFunctionCall;
-		if (isProviderFinishErrorText(cleanMessage)) kinds |= Flag.ProviderFinishError;
-		if (isContentBlockedText(cleanMessage)) kinds |= Flag.ContentBlocked;
-		if (isAuthFailureText(cleanMessage)) kinds |= Flag.AuthFailed;
-
-		// Status parsing stays on the raw string: a status code is a token the
-		// caller prefixed to the message, and stripping frames cannot add one.
-		const statusClean = errorStatus ? errorStatus : (status({ message: errorMessage }) ?? undefined);
-		const isOpaque = isOpaqueStatusBody(cleanMessage);
-
-		const isLimitStatus = statusClean === 429;
-		if (
-			matchesUsageLimitText(cleanMessage) ||
-			(isLimitStatus && (isOpaque || parseRateLimitReason(cleanMessage) === "QUOTA_EXHAUSTED"))
-		) {
-			kinds |= Flag.UsageLimit;
+		const text = withoutStackTrace(errorMessage);
+		const signal: Signal = {
+			text,
+			status: errorStatus ?? status({ message: errorMessage }),
+			api,
+			http2: http2RetryVerdict(text),
+		};
+		for (const rule of CLASSIFICATION_RULES) {
+			if (matches(rule, signal)) kinds |= rule.flags;
 		}
-
-		// A named HTTP/2 error code (RFC 7540 section 7) is a fact about the
-		// transport, so it decides transience on its own and the wording heuristics
-		// below never see the message. They cannot read these codes: they matched
-		// `NGHTTP2_INTERNAL_ERROR` only because it contains the phrase "internal
-		// error", and they would just as happily promote a wrapper around
-		// `NGHTTP2_CANCEL` -- our own abort -- back into the retry loop.
-		const http2Verdict = http2RetryVerdict(cleanMessage);
-		if (http2Verdict !== undefined) {
-			if (http2Verdict) kinds |= Flag.Transient;
-			// The verdict owns TRANSIENCE and nothing else. Flag.Timeout is not in
-			// RETRIABLE_KINDS, so it authorizes no retry on its own; it tells the
-			// candidate loops the fault was a timeout, which is what makes
-			// auto-compaction move to the next model instead of re-sending a full
-			// context to the one that just timed out. Suppressing it alongside
-			// transience threw that signal away for every wrapper whose prose named
-			// a timeout around an HTTP/2 code.
-			if (isTimeoutText(cleanMessage)) kinds |= Flag.Timeout;
-			// The verdict owns TRANSIENCE and nothing else. Flag.Timeout is not in
-			// RETRIABLE_KINDS, so it authorizes no retry on its own; it tells the
-			// candidate loops the fault was a timeout, which is what makes
-			// auto-compaction move to the next model instead of re-sending a full
-			// context to the one that just timed out. Suppressing it alongside
-			// transience threw that signal away for every wrapper whose prose named
-			// a timeout around an HTTP/2 code.
-		} else if (isTimeoutText(cleanMessage)) kinds |= Flag.Transient | Flag.Timeout;
-		else if (isTransientErrorText(cleanMessage)) kinds |= Flag.Transient;
-		if ((api === "openai-responses" || api === "openai-codex-responses") && isStaleResponsesText(cleanMessage)) {
-			kinds |= Flag.StaleResponsesItem;
-		}
-
-		// Copilot per-client routing flap is transient.
-		if (statusClean === 400 && COPILOT_MODEL_NOT_SUPPORTED_PATTERN.test(cleanMessage)) kinds |= Flag.Transient;
-		if (matchesStrictToolsRejection(cleanMessage, statusClean)) kinds |= Flag.Grammar;
-		if (matchesFastModeUnsupported(cleanMessage, statusClean)) kinds |= Flag.FastModeUnsupported;
 	}
 	if (kinds !== 0) return create(kinds);
 	const fallbackStatus = errorStatus ?? (errorMessage ? status({ message: errorMessage }) : undefined);
