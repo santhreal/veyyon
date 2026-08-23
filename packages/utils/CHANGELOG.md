@@ -6,6 +6,10 @@
 
 ### Breaking Changes
 
+- `fetch-retry` no longer exports `isRetryableError`. It was a second retry classifier: this module owns what a transport states about itself (`http2RetryVerdict`, `isRetryableStatus`, `isUnexpectedSocketCloseMessage`, `extractHttpStatusFromError`) and `@veyyon/ai/error` owns what a failure means, but `isRetryableError` answered the composite question with a transient vocabulary of its own, and the two lists had drifted apart by a phrase. An embedder asking whether a provider failure should be retried calls `isProviderRetryableError` from `@veyyon/ai/error`, which composes the transport facts this module still exports.
+
+### Breaking Changes
+
 - The minimum supported Bun runtime is now 1.4.0.
 
 ### Added

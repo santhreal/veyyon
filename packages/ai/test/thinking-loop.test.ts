@@ -2,6 +2,7 @@ import { describe, expect, spyOn, test } from "bun:test";
 import { scheduler } from "node:timers/promises";
 import { clearCustomApis } from "@veyyon/ai/api-registry";
 import * as AIError from "@veyyon/ai/error";
+import { isProviderRetryableError } from "@veyyon/ai/error";
 import { createMockModel, type MockContent, registerMockApi } from "@veyyon/ai/providers/mock";
 import { complete, completeSimple, stream, streamSimple } from "@veyyon/ai/stream";
 import type { Api, AssistantMessage, AssistantMessageEvent, Context, Model } from "@veyyon/ai/types";
@@ -16,7 +17,6 @@ import {
 	ThinkingLoopDetector,
 	withGeminiThinkingLoopGuard,
 } from "@veyyon/ai/utils/thinking-loop";
-import { isRetryableError } from "@veyyon/utils";
 
 function context(): Context {
 	return { systemPrompt: [], messages: [{ role: "user", content: "go", timestamp: 0 }] };
@@ -384,7 +384,7 @@ describe("gemini thinking-loop guard (stream wrapper)", () => {
 			expect(AIError.is(result.errorId, AIError.Flag.ThinkingLoop)).toBe(true);
 			// Empty content + transient phrasing is what makes the turn auto-retry.
 			expect(result.errorMessage).toContain("stream stall");
-			expect(isRetryableError(new Error(result.errorMessage))).toBe(true);
+			expect(isProviderRetryableError(new Error(result.errorMessage))).toBe(true);
 		} finally {
 			clearCustomApis();
 		}
@@ -508,7 +508,7 @@ describe("gemini thinking-loop guard (stream wrapper)", () => {
 			expect(result.content).toEqual([]);
 			expect(result.errorMessage).toContain(THINKING_LOOP_ERROR_MARKER);
 			expect(AIError.is(result.errorId, AIError.Flag.ThinkingLoop)).toBe(true);
-			expect(isRetryableError(new Error(result.errorMessage))).toBe(true);
+			expect(isProviderRetryableError(new Error(result.errorMessage))).toBe(true);
 		} finally {
 			clearCustomApis();
 		}
@@ -538,7 +538,7 @@ describe("withGeminiThinkingLoopGuard (Vertex transport)", () => {
 		expect(result.content.length).toBe(0);
 		expect(result.errorMessage).toContain(THINKING_LOOP_ERROR_MARKER);
 		expect(AIError.is(result.errorId, AIError.Flag.ThinkingLoop)).toBe(true);
-		expect(isRetryableError(new Error(result.errorMessage))).toBe(true);
+		expect(isProviderRetryableError(new Error(result.errorMessage))).toBe(true);
 		// The loop's own tokens are gone with its text, and the prompt behind them
 		// was billed: the stall error carries that spend instead of writing it off.
 		expect(result.usage.discarded).toEqual({
@@ -611,7 +611,7 @@ describe("loop guard assistant prose/text loops", () => {
 		expect(result.errorMessage).toContain(THINKING_LOOP_ERROR_MARKER);
 		expect(AIError.is(result.errorId, AIError.Flag.ThinkingLoop)).toBe(true);
 		expect(result.errorMessage).toContain("stream stall");
-		expect(isRetryableError(new Error(result.errorMessage))).toBe(true);
+		expect(isProviderRetryableError(new Error(result.errorMessage))).toBe(true);
 		expect(result.usage.discarded?.attempts).toBe(1);
 		expect(result.usage.discarded?.input).toBe(1200);
 	});

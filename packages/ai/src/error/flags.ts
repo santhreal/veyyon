@@ -16,7 +16,7 @@ import { STREAM_FRAME_LIMIT_ERROR_NAME } from "@veyyon/utils/stream-frame-limit"
 import type { Api, AssistantMessage } from "../types";
 import { STREAM_ENVELOPE_ERROR_PREFIX } from "./classes";
 import { withoutStackTrace } from "./domains/account";
-import { http2Verdict, STREAM_BEFORE_MESSAGE_START_PATTERN } from "./domains/network";
+import { http2Verdict, isCopilotModelNotSupported, STREAM_BEFORE_MESSAGE_START_PATTERN } from "./domains/network";
 import { matchesOverflowText } from "./domains/request";
 import type { Signal } from "./domains/types";
 import { create, Flag, is, KIND_MASK, statusFromId } from "./flag";
@@ -104,15 +104,30 @@ function statusInternal(error: unknown, depth: number): number | undefined {
 	return undefined;
 }
 
-function classifyText(errorMessage: string | undefined, errorStatus: number | undefined, api?: Api): number {
+/** The machine-readable code a provider sent, from `code` or the SDK's nested `error.code`. */
+function providerCode(link: unknown): string | undefined {
+	if (link === null || typeof link !== "object") return undefined;
+	const info = link as { code?: unknown; error?: { code?: unknown } | null };
+	if (typeof info.code === "string") return info.code;
+	const nested = info.error?.code;
+	return typeof nested === "string" ? nested : undefined;
+}
+
+function classifyText(
+	errorMessage: string | undefined,
+	errorStatus: number | undefined,
+	api?: Api,
+	code?: string,
+): number {
 	let kinds = 0;
-	if (errorMessage) {
-		const text = withoutStackTrace(errorMessage);
+	if (errorMessage || code !== undefined) {
+		const text = withoutStackTrace(errorMessage ?? "");
 		const signal: Signal = {
 			text,
-			status: errorStatus ?? status({ message: errorMessage }),
+			status: errorStatus ?? status({ message: errorMessage ?? "" }),
 			api,
 			http2: http2Verdict(text),
+			code,
 		};
 		kinds = classifySignal(signal);
 	}
@@ -169,7 +184,7 @@ export function classify(error: unknown, api?: Api): number {
 			linkMessage = (link as { message: string }).message;
 		}
 
-		const textId = classifyText(linkMessage, status(link), api);
+		const textId = classifyText(linkMessage, status(link), api, providerCode(link));
 		kinds |= textId & KIND_MASK;
 
 		link = typeof link === "object" && "cause" in link ? (link as { cause: unknown }).cause : undefined;
@@ -210,16 +225,17 @@ export function isFastModeUnsupported(error: unknown): boolean {
 }
 
 /**
- * GitHub Copilot 400 `model_not_supported` routing flap — transient. Reads the
- * structural `code` (and falls back to {@link Flag.Transient} text classification).
+ * GitHub Copilot 400 `model_not_supported` routing flap — transient.
+ *
+ * It had its own copy of the rule, reading `code` and the SDK's nested `error.code` and nothing
+ * else, while the classifier read the body text and nothing else. `Signal.code` carries the field
+ * into the rules, so the rule is stated once in the network family and this is one reader of it: the
+ * Copilot ladder needs the answer on its own to pick a backoff, which is why the accessor stays.
  */
 export function isCopilotTransientModelError(error: unknown): boolean {
-	if (status(error) === 400 && error && typeof error === "object") {
-		const info = error as { code?: unknown; error?: { code?: unknown } | null };
-		const code = typeof info.code === "string" ? info.code : info.error?.code;
-		if (code === "model_not_supported") return true;
-	}
-	return false;
+	if (status(error) !== 400) return false;
+	const message = error instanceof Error ? error.message : "";
+	return isCopilotModelNotSupported({ text: withoutStackTrace(message), code: providerCode(error) });
 }
 
 export function classifyMessage(message: {
