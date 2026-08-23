@@ -18,6 +18,7 @@ import { isMimoModelIdOrName } from "../src/identity/family";
 import { getLongestModelLikeIdSegment } from "../src/identity/id";
 import { buildModelReferenceIndex, resolveModelReference } from "../src/identity/reference";
 import { resolveModelThinking } from "../src/model-thinking";
+import { PROVIDERS_PUBLISHING_OWN_MODEL_LIMITS } from "../src/provider-models/descriptors";
 import { resolveWaferServerlessThinkingFormat } from "../src/provider-models/openai-compat";
 import type { Api, Model, ModelSpec } from "../src/types";
 import { isVariantCollapsedSpec } from "../src/variant-collapse";
@@ -177,9 +178,9 @@ export function applyCanonicalLimitFallback(models: ModelSpec<Api>[]): void {
 	const referenceIndex = buildModelReferenceIndex(catalog);
 
 	for (const model of models) {
-		if (model.provider === "command-code" || model.provider === "nous-research") {
-			// These routers leave unknown completion ceilings unset; a
-			// cross-provider same-family reference must not invent one.
+		if (PROVIDERS_PUBLISHING_OWN_MODEL_LIMITS.has(model.provider)) {
+			// The endpoint owns its limits; a cross-provider same-family
+			// reference must not invent one it never published.
 			continue;
 		}
 		if (model.contextWindow !== null && model.maxTokens !== null) {

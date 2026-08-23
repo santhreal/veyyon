@@ -30,7 +30,7 @@ import {
 	type CatalogProviderDescriptor,
 	isCatalogDescriptor,
 } from "../src/provider-models/descriptor-types";
-import { PROVIDER_DESCRIPTORS } from "../src/provider-models/descriptors";
+import { PROVIDER_DESCRIPTORS, PROVIDERS_PUBLISHING_OWN_MODEL_LIMITS } from "../src/provider-models/descriptors";
 import {
 	ANTHROPIC_CURATED_FALLBACK_MODELS,
 	buildFireworksFastSeed,
@@ -71,6 +71,20 @@ const packageRoot = path.join(import.meta.dir, "..");
 const DISCOVERY_ONLY_PROVIDERS = new Set(["ollama", "vllm", "lm-studio", "litellm"]);
 const RETIRED_PROVIDERS = new Set(["wafer-pass", "wandb"]);
 
+/**
+ * The committed snapshot, read back so a provider that no discovery run reached
+ * keeps its previous rows. The JSON import is structurally a ModelSpec table,
+ * which the type import cannot express.
+ */
+const previousSnapshot = prevModelsJson as unknown as Record<string, Record<string, ModelSpec>>;
+
+/**
+ * `--providers=a,b` regenerates only the named providers and carries every
+ * other provider's rows over from the committed snapshot. It exists for a
+ * provider whose discovery needs a key that a full run does not have. The
+ * committed snapshot is only a full-tree regeneration when `bun run gen:models`
+ * runs without this flag, so a partial run states which providers it wrote.
+ */
 const providerFilterArg = process.argv.find(arg => arg.startsWith("--providers="));
 const providerFilter = providerFilterArg
 	? new Set(
@@ -217,8 +231,7 @@ function applyGlobalModelsDevFallback(
 		if (
 			model.provider === "devin" ||
 			model.provider === "baseten" ||
-			model.provider === "command-code" ||
-			model.provider === "nous-research"
+			PROVIDERS_PUBLISHING_OWN_MODEL_LIMITS.has(model.provider)
 		) {
 			// These endpoints publish their own model surfaces; cross-router
 			// references must not invent capabilities or limits.
@@ -745,7 +758,7 @@ async function generateModels() {
 	// Previous-snapshot entries may carry an older ThinkingConfig vocabulary;
 	// applyGeneratedModelPolicies re-bakes `thinking` for every model, so the
 	// inbound shape is irrelevant beyond identity/pricing/compat fields.
-	for (const models of Object.values(prevModelsJson as unknown as Record<string, Record<string, ModelSpec>>)) {
+	for (const models of Object.values(previousSnapshot)) {
 		for (const model of Object.values(models)) {
 			if (
 				!fetchedKeys.has(`${model.provider}/${model.id}`) &&
@@ -820,7 +833,7 @@ async function generateModels() {
 	};
 
 	const outputProviders: Record<string, Record<string, ModelSpec>> = providerFilter
-		? { ...(prevModelsJson as unknown as Record<string, Record<string, ModelSpec>>) }
+		? { ...previousSnapshot }
 		: providers;
 	if (providerFilter) {
 		for (const provider of providerFilter) {
