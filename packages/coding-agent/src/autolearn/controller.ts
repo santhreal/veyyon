@@ -39,11 +39,18 @@ export function buildAutoLearnInstructions(available: { manageSkill: boolean; le
 export interface AutoLearnControllerOptions {
 	session: AgentSession;
 	settings: Settings;
+	/**
+	 * The backgrounded memory-backend startup promise. A capture turn must not
+	 * fire until the backend's per-session state is installed, so dispatch waits
+	 * for it; the first frame does not.
+	 */
+	memoryStartup: Promise<unknown>;
 }
 
 export class AutoLearnController {
 	readonly #session: AgentSession;
 	readonly #settings: Settings;
+	readonly #memoryStartup: Promise<unknown>;
 	#toolCalls = 0;
 	/**
 	 * Whether the in-flight turn BEGAN while goal mode was active. Captured at
@@ -58,6 +65,7 @@ export class AutoLearnController {
 	constructor(options: AutoLearnControllerOptions) {
 		this.#session = options.session;
 		this.#settings = options.settings;
+		this.#memoryStartup = options.memoryStartup;
 		// The listener closure captures `this`, so the session's listener array
 		// keeps the controller alive — no stored unsubscribe needed.
 		this.#session.subscribe(event => this.#onEvent(event));
@@ -132,20 +140,30 @@ export class AutoLearnController {
 		// set before then. Disarm when no turn actually started — a deferred/queued
 		// dispatch or a failed send produces no agent_end, and a latched flag would
 		// otherwise swallow the next real stop.
-		this.#suppressNext = true;
-
-		this.#session
-			.sendCustomMessage(
-				{
-					customType: "autolearn-nudge",
-					content,
-					display: false,
-					attribution: "user",
-				},
-				{ deliverAs: "nextTurn", triggerTurn: true, acceptTerminalEmptyStop: true },
-			)
-			.then(started => {
-				if (!started) this.#suppressNext = false;
+		// Wait for the backgrounded backend startup before dispatching, so the
+		// capture turn's `learn` tool observes the same initialized state as
+		// normal memory tools. The wait happens here — at the first agent END,
+		// long after the first frame — not at session construction.
+		void this.#memoryStartup
+			.then(() => {
+				const content = AUTOLEARN_NUDGE_AUTOCONTINUE;
+				// Arm suppression synchronously with the send: the synthetic capture
+				// turn's agent_end fires inside sendCustomMessage (before it
+				// resolves), so the flag must be set before then. Disarm when no turn
+				// actually started — a failed send produces no agent_end, and a
+				// latched flag would otherwise swallow the next real stop.
+				this.#suppressNext = true;
+				return this.#session.sendCustomMessage(
+					{
+						customType: "autolearn-nudge",
+						content,
+						display: false,
+						attribution: "user",
+					},
+					{ deliverAs: "nextTurn", triggerTurn: true, acceptTerminalEmptyStop: true },
+				).then(started => {
+					if (!started) this.#suppressNext = false;
+				});
 			})
 			.catch(err => {
 				this.#suppressNext = false;

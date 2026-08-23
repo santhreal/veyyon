@@ -4661,11 +4661,13 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			});
 		};
 
-		// Auto-learn can immediately trigger a synthetic capture turn after the
-		// first real stop. When a memory backend is selected, install that backend's
-		// per-session state first so the capture turn's `learn` tool observes the
-		// same initialized state as normal memory tools. Other sessions keep memory
-		// startup in the background to preserve the existing startup profile.
+		// Memory startup runs in the background for EVERY session, including
+		// auto-learn ones. The invariant the old pre-paint `await` protected — the
+		// capture turn's `learn` tool must observe the same initialized backend
+		// state as normal memory tools — only binds before a capture turn fires,
+		// which happens at the first agent END. `AutoLearnController` awaits the
+		// startup promise there, so the invariant holds while the first frame no
+		// longer pays for the backend's synchronous probe.
 		//
 		// Gated on `autolearn.enabled` to match the tools: `createTools` builds the
 		// `learn`/`manage_skill` registry ONCE at session start and no settings
@@ -4675,11 +4677,9 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// and the tools; the fire-time re-check in `#onAgentEnd` still handles a
 		// mid-session DISABLE. The subscription lives for the session's lifetime; the
 		// reference is intentionally discarded (the listener retains it).
+		const memoryStartup = logger.time("startMemoryStartupTask", startMemoryBackend);
 		if (settings.get("autolearn.enabled") && taskDepth === 0) {
-			await logger.time("startMemoryStartupTask", startMemoryBackend);
-			new AutoLearnController({ session, settings });
-		} else {
-			void logger.time("startMemoryStartupTask", startMemoryBackend);
+			new AutoLearnController({ session, settings, memoryStartup });
 		}
 
 		// Wire MCP manager callbacks to session for reactive tool updates.
