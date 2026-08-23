@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-c0972181.js";
+            window.path_to_searchindex_js = "../searchindex-4c361937.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -938,6 +938,7 @@ julia:
 
 lsp:
   enabled: true
+  tool: true
   lazy: true
   diagnosticsOnWrite: true
   diagnosticsOnEdit: false
@@ -961,10 +962,11 @@ lsp:
 <tr><td><code>ruby.kernelMode</code></td><td>enum</td><td><code>session</code></td><td>Same choice for Ruby cells: keep one kernel per session, or start and shut down a kernel for each cell.</td></tr>
 <tr><td><code>julia.kernelMode</code></td><td>enum</td><td><code>session</code></td><td>Same choice for Julia cells. A fresh Julia kernel recompiles, so <code>per-call</code> trades startup time for a clean slate.</td></tr>
 <tr><td><code>python.interpreter</code></td><td>string</td><td><code>""</code></td><td>Path to a Python interpreter; empty = auto-detect.</td></tr>
-<tr><td><code>lsp.enabled</code></td><td>boolean</td><td><code>false</code></td><td>Language-server integration. Opt in; <code>--no-lsp</code> disables it for a run where config turned it on.</td></tr>
+<tr><td><code>lsp.enabled</code></td><td>boolean</td><td><code>false</code></td><td>Start language servers. Opt in; Files → LSP enters the nested switches. <code>--no-lsp</code> disables the whole stack for a run.</td></tr>
+<tr><td><code>lsp.tool</code></td><td>boolean</td><td><code>true</code></td><td>Expose the <code>lsp</code> tool to the agent. Independent of injected diagnostics.</td></tr>
 <tr><td><code>lsp.lazy</code></td><td>boolean</td><td><code>true</code></td><td>Start servers on demand.</td></tr>
-<tr><td><code>lsp.diagnosticsOnWrite</code></td><td>boolean</td><td><code>true</code></td><td>Run diagnostics after a write.</td></tr>
-<tr><td><code>lsp.diagnosticsOnEdit</code></td><td>boolean</td><td><code>false</code></td><td>Run diagnostics after an edit.</td></tr>
+<tr><td><code>lsp.diagnosticsOnWrite</code></td><td>boolean</td><td><code>true</code></td><td>Inject diagnostics after a write. Independent of the agent tool.</td></tr>
+<tr><td><code>lsp.diagnosticsOnEdit</code></td><td>boolean</td><td><code>false</code></td><td>Inject diagnostics after an edit. Independent of the agent tool.</td></tr>
 <tr><td><code>lsp.formatOnWrite</code></td><td>boolean</td><td><code>false</code></td><td>Format files on write.</td></tr>
 <tr><td><code>lsp.diagnosticsDeduplicate</code></td><td>boolean</td><td><code>true</code></td><td>Collapse duplicate diagnostics.</td></tr>
 <tr><td><code>shellPath</code></td><td>string</td><td><em>(unset)</em></td><td>Override the shell binary used by bash.</td></tr>
