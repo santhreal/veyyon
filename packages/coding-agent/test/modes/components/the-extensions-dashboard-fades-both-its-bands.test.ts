@@ -254,7 +254,7 @@ describe("the extensions inventory list fades its band", () => {
 
 describe("the extensions dashboard hands both its bands the clock and takes it back", () => {
 	it("registers a fade when the pointer moves over a provider tab, and drops it on close", async () => {
-		const dashboard = await ExtensionDashboard.create(process.cwd(), null, 40, false);
+		const dashboard = await ExtensionDashboard.create(process.cwd(), null, 40);
 		let renders = 0;
 		dashboard.setOnRequestRender(() => {
 			renders += 1;
@@ -274,7 +274,7 @@ describe("the extensions dashboard hands both its bands the clock and takes it b
 	});
 
 	it("registers a fade when the pointer moves over an inventory row", async () => {
-		const dashboard = await ExtensionDashboard.create(process.cwd(), null, 40, false);
+		const dashboard = await ExtensionDashboard.create(process.cwd(), null, 40);
 		dashboard.setOnRequestRender(() => {});
 		const lines = plain(dashboard);
 		// The inventory rows are the ones the list paints with its bullet; the dashboard discovers

@@ -230,7 +230,7 @@ describe("a reconcile that declines to restore a goal says so", () => {
 		sessionManager.appendModeChange("goal", { goal: storedGoal() });
 		const showWarning = vi.spyOn(mode, "showWarning").mockImplementation(() => {});
 
-		await mode.init({ suppressWelcomeIntro: true });
+		await mode.init();
 
 		expect(showWarning).toHaveBeenCalledWith(
 			'Goal Mode is off in settings, so "Ship the release" stays stored and inactive.',
@@ -246,7 +246,7 @@ describe("a reconcile that declines to restore a goal says so", () => {
 		const off = await build({ goalEnabled: false });
 		off.sessionManager.appendModeChange("goal", { goal: storedGoal() });
 		vi.spyOn(off.mode, "showWarning").mockImplementation(() => {});
-		await off.mode.init({ suppressWelcomeIntro: true });
+		await off.mode.init();
 		expect(off.session.getGoalModeState()).toBeUndefined();
 		const sessionFile = off.sessionManager.getSessionFile();
 		if (!sessionFile) throw new Error("Expected persistent session file");
@@ -257,7 +257,7 @@ describe("a reconcile that declines to restore a goal says so", () => {
 		expect(await fileExists(sessionFile)).toBe(true);
 
 		const on = await build({ goalEnabled: true, attachTo: sessionFile });
-		await on.mode.init({ suppressWelcomeIntro: true });
+		await on.mode.init();
 
 		expect(on.session.getGoalModeState()?.goal.objective).toBe("Ship the release");
 	});
@@ -268,7 +268,7 @@ describe("a reconcile that declines to restore a goal says so", () => {
 		sessionManager.appendModeChange("goal", { goal: storedGoal({ objective }) });
 		const showWarning = vi.spyOn(mode, "showWarning").mockImplementation(() => {});
 
-		await mode.init({ suppressWelcomeIntro: true });
+		await mode.init();
 
 		const message = showWarning.mock.calls.at(0)?.[0] ?? "";
 		expect(message).toContain(`"${"a".repeat(47)}…"`);
@@ -290,7 +290,7 @@ describe("a reconcile that declines to restore a goal says so", () => {
 		sessionManager.appendModeChange("goal", { goal });
 		const showWarning = vi.spyOn(mode, "showWarning").mockImplementation(() => {});
 
-		await mode.init({ suppressWelcomeIntro: true });
+		await mode.init();
 
 		expect(showWarning).toHaveBeenCalledWith("This session's stored goal could not be read and was cleared.");
 		expect(session.getGoalModeState()).toBeUndefined();
@@ -304,7 +304,7 @@ describe("a reconcile that declines to restore a goal says so", () => {
 		sessionManager.appendModeChange("goal", { goal: storedGoal() });
 		const showWarning = vi.spyOn(mode, "showWarning").mockImplementation(() => {});
 
-		await mode.init({ suppressWelcomeIntro: true });
+		await mode.init();
 
 		expect(showWarning).not.toHaveBeenCalled();
 		expect(session.getGoalModeState()?.goal.objective).toBe("Ship the release");

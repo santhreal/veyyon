@@ -112,7 +112,7 @@ describe("InteractiveMode plan.defaultOnStartup", () => {
 	it("enters plan mode at startup when the setting is enabled", async () => {
 		const created = createHarness(Settings.isolated({ "plan.defaultOnStartup": true, "compaction.enabled": false }));
 
-		await created.init({ suppressWelcomeIntro: true });
+		await created.init();
 
 		expect(created.planModeEnabled).toBe(true);
 		expect(session?.getPlanModeState()).toMatchObject({ enabled: true, planFilePath: "local://PLAN.md" });
@@ -133,7 +133,7 @@ describe("InteractiveMode plan.defaultOnStartup", () => {
 
 		expect(session?.getActiveToolNames()).not.toContain("write");
 
-		await created.init({ suppressWelcomeIntro: true });
+		await created.init();
 
 		expect(created.planModeEnabled).toBe(true);
 		expect(session?.getActiveToolNames()).toContain("write");
@@ -146,7 +146,7 @@ describe("InteractiveMode plan.defaultOnStartup", () => {
 			extraRegistryTools: [shadowWriteTool],
 		});
 
-		await created.init({ suppressWelcomeIntro: true });
+		await created.init();
 
 		expect(created.planModeEnabled).toBe(true);
 		expect(session?.getActiveToolNames()).toContain("resolve");
@@ -156,7 +156,7 @@ describe("InteractiveMode plan.defaultOnStartup", () => {
 	it("does not enter plan mode at startup by default", async () => {
 		const created = createHarness(Settings.isolated({ "compaction.enabled": false }));
 
-		await created.init({ suppressWelcomeIntro: true });
+		await created.init();
 
 		expect(created.planModeEnabled).toBe(false);
 		expect(session?.getPlanModeState()).toBeUndefined();
@@ -170,7 +170,7 @@ describe("InteractiveMode plan.defaultOnStartup", () => {
 		const created = createHarness(Settings.isolated({ "plan.defaultOnStartup": true, "compaction.enabled": false }));
 		created.sessionManager.appendMessage({ role: "user", content: "prior turn", timestamp: Date.now() });
 
-		await created.init({ suppressWelcomeIntro: true });
+		await created.init();
 
 		expect(created.planModeEnabled).toBe(false);
 		expect(session?.getPlanModeState()).toBeUndefined();
@@ -185,7 +185,7 @@ describe("InteractiveMode plan.defaultOnStartup", () => {
 		created.sessionManager.appendModelChange("anthropic/claude-sonnet-4-5");
 		created.sessionManager.appendThinkingLevelChange("medium");
 
-		await created.init({ suppressWelcomeIntro: true });
+		await created.init();
 
 		expect(created.planModeEnabled).toBe(true);
 		expect(session?.getPlanModeState()).toMatchObject({ enabled: true });
@@ -199,7 +199,7 @@ describe("InteractiveMode plan.defaultOnStartup", () => {
 		created.sessionManager.appendModelChange("anthropic/claude-sonnet-4-5");
 		created.sessionManager.appendCustomEntry("my-extension-state", { foo: "bar" });
 
-		await created.init({ suppressWelcomeIntro: true });
+		await created.init();
 
 		expect(created.planModeEnabled).toBe(true);
 		expect(session?.getPlanModeState()).toMatchObject({ enabled: true });
@@ -213,7 +213,7 @@ describe("InteractiveMode plan.defaultOnStartup", () => {
 		created.sessionManager.appendModelChange("anthropic/claude-sonnet-4-5");
 		created.sessionManager.appendCompaction("prior conversation summary", undefined, "first-kept", 1000);
 
-		await created.init({ suppressWelcomeIntro: true });
+		await created.init();
 
 		expect(created.planModeEnabled).toBe(false);
 		expect(session?.getPlanModeState()).toBeUndefined();
@@ -227,7 +227,7 @@ describe("InteractiveMode plan.defaultOnStartup", () => {
 		created.sessionManager.appendModeChange("plan", { planFilePath: "local://PLAN.md" });
 		created.sessionManager.appendModeChange("none");
 
-		await created.init({ suppressWelcomeIntro: true });
+		await created.init();
 
 		expect(created.planModeEnabled).toBe(false);
 		expect(session?.getPlanModeState()).toBeUndefined();
@@ -238,7 +238,7 @@ describe("InteractiveMode plan.defaultOnStartup", () => {
 			Settings.isolated({ "plan.defaultOnStartup": true, "plan.enabled": false, "compaction.enabled": false }),
 		);
 
-		await created.init({ suppressWelcomeIntro: true });
+		await created.init();
 
 		expect(created.planModeEnabled).toBe(false);
 		expect(session?.getPlanModeState()).toBeUndefined();

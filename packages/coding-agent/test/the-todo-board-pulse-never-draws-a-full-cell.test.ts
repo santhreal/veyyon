@@ -1,5 +1,5 @@
 /**
- * The anchored todos board's in-flight glyph stops one ink level below a full cell.
+ * The anchored todos board's in-flight glyph never draws a full cell or density-ramp cell.
  *
  * WHAT THIS CLOSES. The board drew the status spinner's own density ramp, which
  * peaks on `█` once a cycle. In the status line that is right: the row is dense and
@@ -9,12 +9,11 @@
  * breathing, which is too large a glyph for what it means.
  *
  * THE CLASS, not the incident. The invariant is that no frame the board can emit
- * draws the ramp's brightest glyph, swept over every frame index in the ramp rather
- * than the one or two a reader would think to try, and over the completion exhale as
- * well as the in-flight breath. The ramp is read from the theme at run time and the
- * peak is derived from it, so retuning the ramp cannot leave a stale literal here
- * agreeing with nothing. The status line's ramp is asserted UNCHANGED in the same
- * file, because the cheap way to satisfy this suite is to shorten the ramp for
+ * draws the ramp's brightest glyph or any density ramp cell, swept over every frame
+ * index in the ramp rather than the one or two a reader would think to try. The
+ * in-flight task mark is constrained to `theme.symbol("status.shadowed")` and
+ * `theme.symbol("status.done")`. The status line's ramp is asserted UNCHANGED in the
+ * same file, because the cheap way to satisfy this suite is to shorten the ramp for
  * everybody, and that is a different change nobody asked for.
  *
  * The derivation's own fence is pinned too: it recognises a rise-and-fall by shape,
@@ -22,8 +21,8 @@
  * centre glyph repeats, and one too short to have a middle are all returned
  * untouched. Without those a "peak" would be invented for a sequence that has none.
  *
- * WHAT IT DOES NOT CATCH. Whether the shallower pulse reads better to an eye — that
- * is the before-and-after pair on the pull request. It says nothing about the rail
+ * WHAT IT DOES NOT CATCH. Whether the mark reads better to an eye — that is the
+ * before-and-after pair on the pull request. It says nothing about the rail
  * motion, the colours, or the timer that supplies `frame`.
  */
 import { beforeAll, describe, expect, it } from "bun:test";
@@ -31,7 +30,6 @@ import { renderTodoBoardLines, type TodoBoardOptions } from "@veyyon/coding-agen
 import { SPINNER_FRAMES, spinnerRampOneLevelShallower } from "@veyyon/coding-agent/modes/theme/symbols";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import type { TodoItem, TodoPhase } from "@veyyon/coding-agent/tools/todo";
-import { TODO_STRIKE_TOTAL_FRAMES } from "@veyyon/coding-agent/tools/todo";
 
 function phase(name: string, tasks: Array<[string, TodoItem["status"]]>): TodoPhase {
 	return { name, tasks: tasks.map(([content, status]) => ({ content, status })) };
@@ -42,8 +40,7 @@ function options(overrides: Partial<TodoBoardOptions> = {}): TodoBoardOptions {
 		columns: 100,
 		maxRows: 14,
 		expanded: true,
-		owners: new Map(),
-		striking: new Map(),
+		owned: new Set<string>(),
 		frame: 0,
 		animate: true,
 		live: true,
@@ -64,8 +61,8 @@ const PLAN: TodoPhase[] = [
 ];
 
 describe("the todo board pulse never draws a full cell", () => {
-	beforeAll(() => {
-		initTheme();
+	beforeAll(async () => {
+		await initTheme();
 	});
 
 	/** The ramp the status line runs, read from the live theme. */
@@ -88,8 +85,13 @@ describe("the todo board pulse never draws a full cell", () => {
 		return gone.sort();
 	};
 
-	/** The first cell after the rail, which is the row's status glyph. */
-	const glyphOf = (row: string): string => row.replace(/^\s*▏\s*/, "").slice(0, 1);
+	const glyphOf = (row: string, text: string): string => {
+		const idx = row.indexOf(text);
+		if (idx <= 0) return "";
+		const before = row.slice(0, idx).trimEnd();
+		const lastSpace = before.lastIndexOf(" ");
+		return lastSpace >= 0 ? before.slice(lastSpace + 1) : before;
+	};
 
 	it("gives up the whole top ink level, not the peak alone", () => {
 		// Named as well as derived: a reader has to see which glyph the operator
@@ -100,29 +102,56 @@ describe("the todo board pulse never draws a full cell", () => {
 		expect(spinnerRampOneLevelShallower(fullRamp())).toEqual(["·", ":", "░", "▒", "▓", "▒", "░", ":"]);
 	});
 
-	it("emits no full cell at any frame of the in-flight breath", () => {
-		// Every index in the ramp, not a sample: the peak is one frame in ten, so a
-		// spot check passes nine times out of ten while the defect is on screen.
-		const seen = new Set<string>();
+	it("emits no full cell and no density-ramp cell at any frame of the in-flight breath", () => {
+		// Across every index in the sweep, the in-flight task row alternates only
+		// between status.shadowed and status.done, never drawing `█` and never
+		// drawing any density-ramp cell.
+		const seenTaskGlyphs = new Set<string>();
+		const densityRampCells = ["░", "▒", "▓", "█"];
 		for (let frame = 0; frame < fullRamp().length * 3; frame++) {
-			const rows = rowsOf(PLAN, { frame });
+			const rows = rowsOf(PLAN, { frame, animate: true });
+			const joined = rows.join("\n");
+			for (const rampCell of densityRampCells) {
+				expect(joined).not.toContain(rampCell);
+			}
+
 			const inFlight = rows.find(row => row.includes("wire the workspace")) ?? "";
 			expect(inFlight).not.toBe("");
-			expect(rows.join("\n")).not.toContain("█");
-			// The rail leads every row, so the glyph is the first cell after it.
-			seen.add(glyphOf(inFlight));
+			seenTaskGlyphs.add(glyphOf(inFlight, "wire the workspace"));
+
+			const phaseLine = rows.find(row => row.includes("Foundation")) ?? "";
+			expect(phaseLine).not.toBe("");
+			expect(phaseLine.trimEnd().endsWith(" · 1/3")).toBe(true);
 		}
-		// The sweep has to have actually moved the glyph, or "no full cell" is
-		// satisfied by a board that draws one static frame forever.
-		expect(seen.size).toBeGreaterThan(3);
+		expect(seenTaskGlyphs).toEqual(new Set([theme.symbol("status.shadowed"), theme.symbol("status.done")]));
+
+		const stillTaskGlyphs = new Set<string>();
+		for (let frame = 0; frame < fullRamp().length * 3; frame++) {
+			const rows = rowsOf(PLAN, { frame, animate: false });
+			const inFlight = rows.find(row => row.includes("wire the workspace")) ?? "";
+			expect(inFlight).not.toBe("");
+			stillTaskGlyphs.add(glyphOf(inFlight, "wire the workspace"));
+		}
+		expect(stillTaskGlyphs).toEqual(new Set([theme.symbol("status.done")]));
 	});
 
-	it("emits no full cell at any frame of the completion exhale", () => {
+	it("emits no full cell at any frame of a closed task and holds it still", () => {
 		const closing: TodoPhase[] = [phase("Foundation", [["wire the workspace", "completed"]])];
-		for (let frame = 0; frame <= TODO_STRIKE_TOTAL_FRAMES; frame++) {
-			const striking = new Map([["wire the workspace", frame]]);
-			expect(rowsOf(closing, { frame, striking }).join("\n")).not.toContain("█");
+		const rendered = new Set<string>();
+		for (let frame = 0; frame < 20; frame++) {
+			for (const animate of [true, false]) {
+				const lines = renderTodoBoardLines(closing, options({ frame, animate }));
+				const stripped = lines.map(line => Bun.stripANSI(line)).join("\n");
+				expect(stripped).not.toContain("█");
+				for (const rampCell of ["░", "▒", "▓"]) {
+					expect(stripped).not.toContain(rampCell);
+				}
+				const row = lines.find(line => Bun.stripANSI(line).includes("wire the workspace")) ?? "";
+				expect(row).not.toBe("");
+				rendered.add(row);
+			}
 		}
+		expect(rendered.size).toBe(1);
 	});
 
 	it("leaves the status line's ramp at full depth", () => {

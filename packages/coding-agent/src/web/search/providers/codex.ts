@@ -9,7 +9,10 @@
 import * as os from "node:os";
 import type { AuthStorage, FetchImpl, Model, OAuthAccess } from "@veyyon/ai";
 import { withOAuthAccess } from "@veyyon/ai/auth-retry";
-import { applyCodexResponsesLiteShape } from "@veyyon/ai/providers/openai-codex/request-transformer";
+import {
+	applyCodexResponsesLiteShape,
+	resolveCodexResponsesLite,
+} from "@veyyon/ai/providers/openai-codex/request-transformer";
 import { createOpenAICodexCompatibilityMetadata } from "@veyyon/ai/providers/openai-codex-responses";
 import { getBundledModels } from "@veyyon/catalog/models";
 import {
@@ -387,7 +390,12 @@ async function callCodexSearch(
 	const headers = buildCodexHeaders(auth.accessToken, auth.accountId);
 
 	const requestedModel = options.model.modelId;
-	const usesResponsesLite = options.model.catalogModel?.useResponsesLite === true;
+	const candidateModel = options.model.catalogModel ?? {
+		id: requestedModel,
+		api: "openai-codex-responses" as const,
+		provider: "openai-codex" as const,
+	};
+	const usesResponsesLite = resolveCodexResponsesLite(candidateModel, undefined);
 
 	const body: Record<string, unknown> = {
 		model: requestedModel,

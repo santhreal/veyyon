@@ -38,7 +38,7 @@ import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { renderSubagentLaneLines } from "@veyyon/coding-agent/modes/components/subagent-lanes";
+import { renderSubagentHudLines } from "@veyyon/coding-agent/modes/components/subagent-hud";
 import { renderTodoBoardLines } from "@veyyon/coding-agent/modes/components/todo-board";
 import { ANCHORED_BLOCK_PADDING_X, InteractiveMode } from "@veyyon/coding-agent/modes/interactive-mode";
 import type { ObservableSession } from "@veyyon/coding-agent/modes/session-observer-registry";
@@ -50,7 +50,7 @@ import { type SubagentProgressPayload, TASK_SUBAGENT_PROGRESS_CHANNEL } from "@v
 import type { TodoItem, TodoPhase } from "@veyyon/coding-agent/tools/todo";
 import { paintRailMotion, railIdleHeadAt } from "@veyyon/coding-agent/tui/rail-motion";
 import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
-import { getPaddingX, Text } from "@veyyon/tui";
+import { getPaddingX, Text, visibleWidth } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
 
 /** The width the mode hands a block, which is what the mount leaves it. */
@@ -109,12 +109,17 @@ function laneSessions(): ObservableSession[] {
 }
 
 const plan: readonly TodoPhase[] = [
-	phase("Foundation", [
-		["read the rate limiter and its test", "completed"],
-		["write the validating owner", "in_progress"],
+	phase("Foundation and core architecture setup for the new subsystem", [
+		["read the rate limiter and its test across multiple packages and directories", "completed"],
+		["write the validating owner with exhaustive property assertions and invariant checks", "in_progress"],
+		["implement fallback mechanisms for when rate limiting is temporarily degraded", "pending"],
 	]),
-	phase("Migration", [["fan the edits out to three directories", "pending"]]),
-	phase("Validation", [["run the suite and advance the plan", "pending"]]),
+	phase("Migration and rollout across all service endpoints", [
+		["fan the edits out to three directories and update all caller signatures", "pending"],
+	]),
+	phase("Validation and comprehensive end-to-end integration tests", [
+		["run the suite across full terminal width spectrum and advance the plan", "pending"],
+	]),
 ];
 
 /**
@@ -122,28 +127,30 @@ const plan: readonly TodoPhase[] = [
  * are painted the way their owner paints them, because the sweep is what turns
  * a settled row into a lit one and a lit row is a different string.
  */
-const ANCHORED_BLOCKS: Record<string, (terminalColumns: number) => readonly string[]> = {
-	subagentContainer: terminalColumns => {
-		const block = renderSubagentLaneLines(laneSessions(), {
-			columns: contentColumns(terminalColumns),
-			showModelBadge: true,
-			nowMs: 0,
-		});
-		return paintRailMotion(block.lines, { kind: "idle", head: railIdleHeadAt(4) }, theme, {
-			lit: index => block.lit[index] === true,
-		});
+const ANCHORED_BLOCKS: Record<string, { minColumns: number; build: (terminalColumns: number) => readonly string[] }> = {
+	subagentContainer: {
+		minColumns: 12,
+		build: terminalColumns => {
+			const lines = renderSubagentHudLines(laneSessions(), {
+				columns: contentColumns(terminalColumns),
+				showModelBadge: true,
+			});
+			return paintRailMotion(lines, { kind: "idle", head: railIdleHeadAt(4) }, theme);
+		},
 	},
-	todoContainer: terminalColumns =>
-		renderTodoBoardLines(plan, {
-			columns: contentColumns(terminalColumns),
-			maxRows: 14,
-			expanded: false,
-			owners: new Map(),
-			striking: new Map(),
-			frame: 4,
-			animate: true,
-			live: true,
-		}),
+	todoContainer: {
+		minColumns: 21,
+		build: terminalColumns =>
+			renderTodoBoardLines(plan, {
+				columns: contentColumns(terminalColumns),
+				maxRows: 14,
+				expanded: false,
+				owned: new Set(["implement fallback mechanisms for when rate limiting is temporarily degraded"]),
+				frame: 4,
+				animate: true,
+				live: true,
+			}),
+	},
 };
 
 /**
@@ -175,11 +182,15 @@ describe("an anchored block never wraps inside its own mount", () => {
 		]);
 	});
 
-	for (const [name, build] of Object.entries(ANCHORED_BLOCKS)) {
+	for (const [name, entry] of Object.entries(ANCHORED_BLOCKS)) {
 		it(`${name} renders through its mount without gaining a row`, () => {
-			for (let columns = 12; columns <= 220; columns++) {
-				const lines = build(columns);
+			for (let columns = entry.minColumns; columns <= 220; columns++) {
+				const lines = entry.build(columns);
 				if (lines.length === 0) continue;
+				const usable = contentColumns(columns);
+				for (const line of lines) {
+					expect(visibleWidth(line)).toBeLessThanOrEqual(usable);
+				}
 				const mounted = new Text(lines.join("\n"), ANCHORED_BLOCK_PADDING_X, 0).render(columns);
 				// A blank line inside a multi-line `Text` is a row, so the leading blank
 				// every anchored block emits is one of them: the count is every line.
@@ -239,7 +250,7 @@ describe("the live subagent HUD fits the width the mode reports", () => {
 	// fallback a terminal with no reported size gets.
 	for (const columns of [80, 131]) {
 		it(`draws two lanes as two rows at ${columns} columns`, async () => {
-			await mode.init({ suppressWelcomeIntro: true });
+			await mode.init();
 			vi.spyOn(mode.ui, "requestRender").mockImplementation(() => {});
 			// `spyOn` cannot stub an accessor, and the terminal reports its width
 			// through one. The own property dies with this test's own instance.
@@ -270,4 +281,47 @@ describe("the live subagent HUD fits the width the mode reports", () => {
 			for (const row of rows) expect(Bun.stringWidth(Bun.stripANSI(row))).toBeLessThanOrEqual(columns);
 		});
 	}
+
+	it("strips literal newlines from subagent progress so no text leaks outside the block", async () => {
+		await mode.init();
+		vi.spyOn(mode.ui, "requestRender").mockImplementation(() => {});
+		Object.defineProperty(mode.ui.terminal, "columns", { get: () => 100, configurable: true });
+		vi.useFakeTimers();
+
+		eventBus.emit(TASK_SUBAGENT_PROGRESS_CHANNEL, {
+			index: 0,
+			agent: "task",
+			agentSource: "bundled",
+			task: "Inspect\nrate\nlimiter",
+			parentToolCallId: "tool-call-1",
+			detached: true,
+			progress: {
+				index: 0,
+				agent: "task",
+				agentSource: "bundled",
+				id: "MultilineTask",
+				task: "Multiline\ntask\nwith\nnewlines",
+				status: "running",
+				currentTool: "bash\nexec",
+				currentToolArgs: "echo hello\nrm -rf /tmp/leak\nexit 0",
+				resolvedModel: "local/demo-model",
+			},
+		} as SubagentProgressPayload);
+
+		await Promise.resolve();
+		vi.advanceTimersByTime(500);
+		await Promise.resolve();
+
+		const rows = mode.subagentContainer.render(100);
+		// Blank, header, exactly one lane row. Any unstripped newline would split the lane into multiple rows.
+		expect(rows.length).toBe(3);
+		for (const row of rows) {
+			expect(row).not.toContain("\n");
+			expect(row).not.toContain("\r");
+			expect(Bun.stringWidth(Bun.stripANSI(row))).toBeLessThanOrEqual(100);
+		}
+		const laneRow = rows[2]!;
+		expect(laneRow).toContain(theme.symbol("block.rail"));
+		expect(laneRow).toContain("MultilineTask");
+	});
 });
