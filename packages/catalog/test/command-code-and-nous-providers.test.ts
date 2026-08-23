@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_MODEL_PER_PROVIDER, getCatalogProviderEntry } from "@veyyon/catalog/provider-models/descriptors";
 import {
-	cohereModelManagerOptions,
+	COMMAND_CODE_STATIC_MODELS,
+	commandCodeModelManagerOptions,
 	NOUS_RESEARCH_STATIC_MODELS,
 	nousResearchModelManagerOptions,
 } from "@veyyon/catalog/provider-models/openai-compat";
@@ -13,37 +14,50 @@ import type { FetchImpl } from "@veyyon/catalog/types";
  * at the official OpenAI-compatible endpoints (asserted through the URL the
  * dynamic fetch calls, not through source text).
  */
-describe("Cohere provider", () => {
-	test("descriptor carries both official env spellings and the Command default", () => {
-		const entry = getCatalogProviderEntry("cohere");
+describe("Command Code provider", () => {
+	test("descriptor resolves COMMAND_CODE_API_KEY and defaults to Kimi K2.7 Code", () => {
+		const entry = getCatalogProviderEntry("command-code");
 		expect(entry).toBeDefined();
-		expect(entry?.envVars).toEqual(["COHERE_API_KEY", "CO_API_KEY"]);
-		expect(DEFAULT_MODEL_PER_PROVIDER.cohere).toBe("command-a-plus-05-2026");
+		expect(entry?.envVars).toEqual(["COMMAND_CODE_API_KEY"]);
+		expect(DEFAULT_MODEL_PER_PROVIDER["command-code"]).toBe("moonshotai/Kimi-K2.7-Code");
 	});
 
-	test("discovery calls the official compatibility endpoint with the bearer key", async () => {
+	test("static seed bundles the documented coding flagships against the official endpoint", () => {
+		expect(COMMAND_CODE_STATIC_MODELS.map(model => model.id)).toEqual([
+			"moonshotai/Kimi-K2.7-Code",
+			"zai-org/GLM-5.3",
+			"MiniMaxAI/MiniMax-M3",
+		]);
+		for (const model of COMMAND_CODE_STATIC_MODELS) {
+			expect(model.baseUrl).toBe("https://api.commandcode.ai/provider/v1");
+			expect(model.provider).toBe("command-code");
+			expect(model.contextWindow).toBeGreaterThan(0);
+		}
+	});
+
+	test("discovery calls the official Provider API with the bearer key", async () => {
 		const calls: Array<{ url: string; authorization: string | null }> = [];
 		const fetchMock: FetchImpl = async (input: string | URL | Request, init?: RequestInit) => {
 			const headers = new Headers(init?.headers);
 			calls.push({ url: String(input), authorization: headers.get("authorization") });
-			return new Response(JSON.stringify({ data: [{ id: "command-a-03-2025" }] }), {
+			return new Response(JSON.stringify({ data: [{ id: "moonshotai/Kimi-K2.7-Code" }] }), {
 				status: 200,
 				headers: { "content-type": "application/json" },
 			});
 		};
 
-		const options = cohereModelManagerOptions({ apiKey: "cohere-test-key", fetch: fetchMock });
+		const options = commandCodeModelManagerOptions({ apiKey: "cmd-test-key", fetch: fetchMock });
 		const models = await options.fetchDynamicModels?.();
 
 		expect(calls).toEqual([
 			{
-				url: "https://api.cohere.ai/compatibility/v1/models",
-				authorization: "Bearer cohere-test-key",
+				url: "https://api.commandcode.ai/provider/v1/models",
+				authorization: "Bearer cmd-test-key",
 			},
 		]);
 		expect(models?.[0]).toMatchObject({
-			id: "command-a-03-2025",
-			provider: "cohere",
+			id: "moonshotai/Kimi-K2.7-Code",
+			provider: "command-code",
 			api: "openai-completions",
 		});
 	});

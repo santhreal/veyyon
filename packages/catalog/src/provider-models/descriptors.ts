@@ -15,7 +15,7 @@ import {
 	basetenModelManagerOptions,
 	cerebrasModelManagerOptions,
 	cloudflareAiGatewayModelManagerOptions,
-	cohereModelManagerOptions,
+	commandCodeModelManagerOptions,
 	coreWeaveModelManagerOptions,
 	deepseekModelManagerOptions,
 	firepassModelManagerOptions,
@@ -116,13 +116,11 @@ export const CATALOG_PROVIDERS = [
 		catalogDiscovery: { label: "Cloudflare AI Gateway" },
 	},
 	{
-		id: "cohere",
-		defaultModel: "command-a-plus-05-2026",
-		// CO_API_KEY is Cohere's documented short spelling; accept it so either
-		// official name works.
-		envVars: ["COHERE_API_KEY", "CO_API_KEY"],
-		createModelManagerOptions: (config: ModelManagerConfig) => cohereModelManagerOptions(config),
-		catalogDiscovery: { label: "Cohere" },
+		id: "command-code",
+		defaultModel: "moonshotai/Kimi-K2.7-Code",
+		envVars: ["COMMAND_CODE_API_KEY"],
+		createModelManagerOptions: (config: ModelManagerConfig) => commandCodeModelManagerOptions(config),
+		catalogDiscovery: { label: "Command Code" },
 	},
 	{
 		id: "cursor",
