@@ -316,7 +316,9 @@ describe("the vocabulary the ladder used to hold alone", () => {
 		["a server error the upstream named", new Error("upstream said type=server_error")],
 		["a peer-reported HTTP/2 stream error", new Error("stream error 7 received from peer")],
 		["the upstream code 1302", new Error("upstream error code 1302")],
-		["a body that stopped mid-JSON", new Error("Unterminated string in JSON at position 12")],
+		// "unterminated string" is in the general transient vocabulary already; this sentence is the
+		// truncation rule's alone, so the row goes red if that rule stops being read.
+		["a body that stopped mid-JSON", new Error("Unexpected end of JSON input")],
 		["an envelope whose events arrived out of order", new Error("stream event order: text before message_start")],
 	])("classifies %s as well as retrying it", (_label, error) => {
 		expect(is(classify(error), Flag.Transient)).toBe(true);
