@@ -27,7 +27,8 @@
     "fix": "biome check --write --unsafe .",
     "fmt": "biome format --write .",
     "generate": "bun run src/generate.ts --typescript-dir /tmp/pi-mono-source --count-per-type 4",
-    "bench:search": "bun run src/search-parity-bench.ts"
+    "bench:search": "bun run src/search-parity-bench.ts",
+    "bench:search-disclosure": "bun run src/search-disclosure-bench.ts"
   },
   "dependencies": {
     "@babel/generator": "catalog:",
