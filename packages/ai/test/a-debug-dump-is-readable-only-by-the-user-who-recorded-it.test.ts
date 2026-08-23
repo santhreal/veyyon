@@ -119,4 +119,32 @@ describe("a debug dump is owner-only under any umask", () => {
 			expect({ name, mode: stat.mode & 0o777 }).toEqual({ name, mode: OWNER_ONLY });
 		}
 	});
+
+	/**
+	 * The remaining route to a wide dump is a file the recording did not create: `open(path, "w")`
+	 * reuses it and ignores `mode`, so a name left world-readable by an earlier run, or planted by
+	 * another account, would keep 0666 while the exchange was written into it. Every candidate
+	 * response-log name is planted here, so whichever id the reservation picks has one waiting: the
+	 * secret must not appear in any file that is not owner-only, whether the recording refuses the
+	 * name or takes a fresh one.
+	 */
+	it("never writes the exchange into a file it did not create", async () => {
+		previousUmask = process.umask(0o000);
+		for (let id = 1; id <= 64; id++) {
+			const planted = path.join(tempDir, `rr-session-${id}.res.log`);
+			await fs.writeFile(planted, "", { mode: 0o666 });
+			await fs.chmod(planted, 0o666);
+		}
+
+		await record();
+
+		for (const name of await fs.readdir(tempDir)) {
+			const filePath = path.join(tempDir, name);
+			const stat = await fs.stat(filePath);
+			if ((stat.mode & 0o777) === OWNER_ONLY) continue;
+			const contents = await fs.readFile(filePath, "utf8");
+			expect({ name, holdsSecret: contents.includes(REFRESH_TOKEN) }).toEqual({ name, holdsSecret: false });
+			expect({ name, holdsResponse: contents.includes("granted") }).toEqual({ name, holdsResponse: false });
+		}
+	});
 });
