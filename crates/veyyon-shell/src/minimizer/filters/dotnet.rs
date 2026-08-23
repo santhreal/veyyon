@@ -1,6 +1,6 @@
 //! .NET CLI output filters.
 
-use crate::minimizer::{MinimizerCtx, MinimizerOutput, primitives};
+use crate::minimizer::{MinimizerCtx, MinimizerOutput, contract, primitives};
 
 #[must_use]
 pub fn supports(program: &str, subcommand: Option<&str>) -> bool {
@@ -65,27 +65,16 @@ fn filter_build_like(label: &str, input: &str, exit_code: i32) -> String {
 				is_count_summary || is_msbuild_diagnostic(trimmed) || is_later_failure
 			});
 			if !has_later_issues {
-				let noun = if label == "dotnet restore" {
-					"restore"
-				} else {
-					"build"
-				};
-				return format!("ok ({noun} succeeded)\n");
+				let verdict = contract::clean(label);
+				return contract::apply(&verdict, "");
 			}
 		}
 	}
 
-	// Written once and matched once, so the line this pass emits is exactly the
-	// line a later pass skips. Without the skip, filtering our own output read
-	// the header back as a failure diagnostic (it does contain "failed"),
-	// emitted the header again above it, and the dedup pass collapsed the pair
-	// into `dotnet build: failed (×2)`. Captures get replayed, so a filter has to
-	// survive reading its own output.
-	let failure_header = format!("{label}: failed");
-
 	for line in input.lines() {
 		let trimmed = line.trim();
-		if trimmed.is_empty() || is_dotnet_boilerplate(trimmed) || trimmed == failure_header {
+		if trimmed.is_empty() || is_dotnet_boilerplate(trimmed) || contract::is_result_header(trimmed)
+		{
 			continue;
 		}
 		let truncated = primitives::truncate_line(trimmed, primitives::CapClass::Errors.lines());
@@ -98,18 +87,25 @@ fn filter_build_like(label: &str, input: &str, exit_code: i32) -> String {
 		}
 	}
 
-	let mut out = String::new();
-	if exit_code != 0 {
-		out.push_str(&failure_header);
-		out.push('\n');
-	}
-	out.push_str(&primitives::group_by_file(&diagnostics, 24));
-	out.push_str(&summaries);
+	let mut body = String::new();
+	body.push_str(&primitives::group_by_file(&diagnostics, 24));
+	body.push_str(&summaries);
 
-	if out.trim().is_empty() {
-		compact_general(input)
+	if body.trim().is_empty() {
+		if exit_code != 0 {
+			let verdict = contract::errors_unknown(label);
+			contract::apply(&verdict, "")
+		} else {
+			compact_general(input)
+		}
 	} else {
-		primitives::head_tail_dedup_capped(&out, 140, 80)
+		let capped = primitives::head_tail_dedup_capped(&body, 140, 80);
+		if exit_code != 0 {
+			let verdict = contract::errors_unknown(label);
+			contract::apply(&verdict, &capped)
+		} else {
+			capped
+		}
 	}
 }
 
@@ -400,7 +396,7 @@ mod tests {
 		             FAILED.\n    0 Warning(s)\n    1 Error(s)\n";
 
 		let out = filter(&ctx, input, 1);
-		assert!(out.text.contains("dotnet build: failed"));
+		assert!(out.text.contains("[errors] dotnet build"));
 		assert!(out.text.contains("Program.cs(10,5): error CS1002"));
 		assert!(out.text.contains("1 Error(s)"));
 		assert!(!out.text.contains("Determining projects"));
@@ -431,7 +427,7 @@ mod tests {
 		             /home/user/MyApp/bin/Debug/net8.0/MyApp.dll\n\nBuild succeeded.\n    0 \
 		             Warning(s)\n    0 Error(s)\n\nTime Elapsed 00:00:02.34\n";
 		let out = filter(&ctx, input, 0);
-		assert_eq!(out.text, "ok (build succeeded)\n");
+		assert_eq!(out.text, "[clean] dotnet build\n");
 	}
 
 	#[test]
@@ -448,7 +444,7 @@ mod tests {
 		             All projects are up-to-date for restore.\n\n  0 Warning(s)\n  0 \
 		             Error(s)\n\nTime Elapsed 00:00:01.23\n";
 		let out = filter(&ctx, input, 0);
-		assert_eq!(out.text, "ok (restore succeeded)\n");
+		assert_eq!(out.text, "[clean] dotnet restore\n");
 	}
 
 	#[test]
@@ -466,7 +462,7 @@ mod tests {
 		             warning CS8600: Converting null literal or possible null value to non-nullable \
 		             type\nBuild succeeded.\n    1 Warning(s)\n    0 Error(s)\n";
 		let out = filter(&ctx, input, 0);
-		assert!(!out.text.contains("ok (build succeeded)"));
+		assert!(!out.text.contains("[clean]"));
 		assert!(out.text.contains("1 Warning(s)"));
 	}
 
@@ -483,7 +479,7 @@ mod tests {
 		// consecutive unindented lines must not short-circuit.
 		let input = "Build succeeded.\n0 Warning(s)\n0 Error(s)\n";
 		let out = filter(&ctx, input, 0);
-		assert!(!out.text.contains("ok (build succeeded)"));
+		assert!(!out.text.contains("[clean]"));
 		assert!(out.text.contains("0 Warning(s)"));
 	}
 
@@ -524,7 +520,7 @@ mod tests {
 		let out = filter(&ctx, input, 1);
 		assert_eq!(
 			out.text,
-			"dotnet build: failed\nsrc/Program.cs(10,5): error CS1002: ; expected \
+			"[errors] dotnet build\nsrc/Program.cs(10,5): error CS1002: ; expected \
 			 [/home/user/MyApp/MyApp.csproj]\nBuild FAILED.\n0 Warning(s)\n1 Error(s)\n"
 		);
 	}

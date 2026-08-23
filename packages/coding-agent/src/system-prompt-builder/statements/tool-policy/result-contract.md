@@ -1,0 +1,1 @@
+- Result contract: when output opens with `[clean]` or `[errors]`, that line IS the verdict. Do not grep or search the result blob, and do not re-invoke the runner to rediscover failures; no artifact footer means the run was complete. Grep the repo only for symbols or files a retained diagnostic explicitly named.

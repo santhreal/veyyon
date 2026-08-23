@@ -2,7 +2,7 @@
 
 use std::fmt::Write as _;
 
-use crate::minimizer::{MinimizerCtx, MinimizerOutput, primitives};
+use crate::minimizer::{MinimizerCtx, MinimizerOutput, contract, primitives};
 
 #[must_use]
 pub fn supports(program: &str, subcommand: Option<&str>) -> bool {
@@ -148,15 +148,15 @@ fn aggregate_go_test_success(input: &str) -> String {
 		return compact_general(input);
 	}
 
-	let mut summary = format!("go test: {packages_ok} packages ok");
+	let mut detail = format!("{packages_ok} packages ok");
 	if no_tests > 0 {
-		let _ = write!(summary, ", {no_tests} no tests");
+		let _ = write!(detail, ", {no_tests} no tests");
 	}
 	if tests_skipped > 0 {
-		let _ = write!(summary, ", {tests_skipped} tests skipped");
+		let _ = write!(detail, ", {tests_skipped} tests skipped");
 	}
-	summary.push('\n');
-	summary
+	let verdict = contract::clean_with("go test", detail);
+	contract::apply(&verdict, "")
 }
 
 fn render_go_test_json_line(line: &str) -> Option<String> {
@@ -310,10 +310,11 @@ fn summarize_golangci_json(line: &str) -> Option<String> {
 	let value: serde_json::Value = serde_json::from_str(line).ok()?;
 	let issues = value.get("Issues")?.as_array()?;
 	if issues.is_empty() {
-		return Some("golangci-lint: no issues found\n".to_string());
+		let verdict = contract::clean("golangci-lint");
+		return Some(contract::apply(&verdict, ""));
 	}
 
-	let mut out = format!("golangci-lint: {} issues\n", issues.len());
+	let mut body = String::new();
 	for issue in issues.iter().take(40) {
 		let file = issue
 			.get("Pos")
@@ -338,23 +339,24 @@ fn summarize_golangci_json(line: &str) -> Option<String> {
 			.get("Text")
 			.and_then(|v| v.as_str())
 			.map_or("", |value| value);
-		out.push_str(file);
-		out.push(':');
-		out.push_str(&line_no.to_string());
-		out.push(':');
-		out.push_str(&col_no.to_string());
-		out.push_str(": ");
-		out.push_str(text);
-		out.push_str(" (");
-		out.push_str(linter);
-		out.push_str(")\n");
+		body.push_str(file);
+		body.push(':');
+		body.push_str(&line_no.to_string());
+		body.push(':');
+		body.push_str(&col_no.to_string());
+		body.push_str(": ");
+		body.push_str(text);
+		body.push_str(" (");
+		body.push_str(linter);
+		body.push_str(")\n");
 	}
 	if issues.len() > 40 {
-		out.push_str("[…");
-		out.push_str(&(issues.len() - 40).to_string());
-		out.push_str(" issues elided…]\n");
+		body.push_str("[…");
+		body.push_str(&(issues.len() - 40).to_string());
+		body.push_str(" issues elided…]\n");
 	}
-	Some(out)
+	let verdict = contract::errors("golangci-lint", issues.len() as u64);
+	Some(contract::apply(&verdict, &body))
 }
 
 fn compact_general(input: &str) -> String {
@@ -485,7 +487,7 @@ mod tests {
 		let out = filter(&ctx, input, 0);
 		// On success the two `ok` packages collapse to one summary line; the per-test
 		// PASS lines and `=== RUN`/ginkgo banner noise disappear.
-		assert!(out.text.contains("go test: 2 packages ok"));
+		assert!(out.text.contains("[clean] go test: 2 packages ok"));
 		assert!(!out.text.contains("--- PASS"));
 		assert!(!out.text.contains("=== RUN"));
 		assert!(!out.text.contains("SUCCESS!"));
@@ -504,14 +506,14 @@ mod tests {
 		             \texample.com/c\t0.20s\n--- SKIP: TestSkipped (0.00s)\nok  \
 		             \texample.com/d\t0.30s\n";
 		let out = filter(&ctx, input, 0);
-		assert_eq!(out.text.trim(), "go test: 3 packages ok, 1 no tests, 1 tests skipped");
+		assert_eq!(out.text.trim(), "[clean] go test: 3 packages ok, 1 no tests, 1 tests skipped");
 	}
 
 	#[test]
 	fn summarizes_golangci_json_issues() {
 		let input = r#"{"Issues":[{"FromLinter":"govet","Text":"unreachable code","Pos":{"Filename":"main.go","Line":7,"Column":2}}]}"#;
 		let out = filter_golangci_lint(input);
-		assert!(out.contains("golangci-lint: 1 issues"));
+		assert!(out.contains("[errors 1] golangci-lint"));
 		assert!(out.contains("main.go:7:2: unreachable code (govet)"));
 
 		// Match up-to-40 limits, testing elison formatting
@@ -527,7 +529,7 @@ mod tests {
 		}
 		many_issues.push_str("]}");
 		let out_many = filter_golangci_lint(&many_issues);
-		assert!(out_many.contains("golangci-lint: 42 issues"));
+		assert!(out_many.contains("[errors 42] golangci-lint"));
 		assert!(out_many.contains("[…2 issues elided…]"));
 	}
 

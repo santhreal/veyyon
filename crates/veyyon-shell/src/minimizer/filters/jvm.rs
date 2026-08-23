@@ -23,7 +23,7 @@ use std::{collections::HashSet, fmt::Write as _, sync::LazyLock};
 use regex::Regex;
 
 use crate::minimizer::{
-	MinimizerCtx, MinimizerOutput,
+	MinimizerCtx, MinimizerOutput, contract,
 	primitives::{self, CapClass},
 };
 
@@ -1503,7 +1503,8 @@ fn filter_gradle_lint(input: &str) -> String {
 
 	if filtered.trim().is_empty() {
 		if input.contains("BUILD SUCCESSFUL") {
-			return "ok ✓ lint passed".to_string();
+			let verdict = contract::clean("gradle lint");
+			return contract::apply(&verdict, "");
 		}
 		return input.trim().to_string();
 	}
@@ -2845,7 +2846,7 @@ mod tests {
 		let o = filter_gradle_lint(input);
 		assert!(!o.is_empty(), "must output on success; got:\n{o}");
 		assert!(
-			o.contains("ok ✓ lint passed") || o.contains("BUILD SUCCESSFUL"),
+			o.contains("[clean] gradle lint") || o.contains("BUILD SUCCESSFUL"),
 			"success indicated; got:\n{o}"
 		);
 	}

@@ -20,6 +20,7 @@
 - `proof/zoom.py` holds a recording on one measured region and eases back out, so a row whose subject is a small block of text survives the downsample from the 2560-wide capture to the published 1920.
 
 ### Changed
+- Classified runner output (cargo, bun, go, ctest, dotnet, clippy, golangci-lint, gradle, pytest, tsc/eslint-family) now opens with a result-contract header: `[clean] <command>` or `[errors]` / `[errors N] <command>`. That line is the verdict; the body is only retained diagnostics. The prompt tells the model not to grep the result blob or re-invoke the same runner to rediscover failures.
 - The memory backend's start finishes behind the first frame instead of in front of it: a session hands it to `AgentSession.deferStartupWork`, and the first turn awaits it, so every tool call and subagent spawn still observes an installed per-session state.
 - A session no longer builds every prompt registry in order to validate an environment variable: the eval-override refusal reads the generated id space at `prompts/ids.generated.ts`, which takes prompt assembly from 718 reachable modules to 528 and accepts an id owned by a sibling package whatever the import order was.
 - The launch hero is a still card. The sun used to bloom open and the wordmark reveal behind a 33 ms timer for 2.2 seconds before the screen settled, and `display.transitions` no longer governs it; overlays and the tool rail still read that setting.

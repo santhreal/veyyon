@@ -160,6 +160,9 @@ fn is_pkg_lint_invocation(ctx: &MinimizerCtx<'_>) -> bool {
 /// asked for.
 #[must_use]
 pub fn filter(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> MinimizerOutput {
+	if crate::minimizer::contract::already_classified(input) {
+		return MinimizerOutput::passthrough(input);
+	}
 	let stripped: Cow<'_, str> = if input.contains('\x1b') {
 		Cow::Owned(primitives::strip_ansi(input))
 	} else {

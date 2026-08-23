@@ -93,3 +93,4 @@ Use bash ONLY for: a single binary call, or one short pipeline that COMPUTES a f
 # Output minimizer
 
 - Long output is truncated and test/lint runner output filtered to failures. A `[raw output: artifact://<id>]` footer appears whenever visible text changed: read it if a run looks suspicious or you need exact bytes. No footer means you saw exactly what the command emitted.
+- If the result starts with `[clean]` or `[errors]`, that IS the verdict; do not grep/search the result blob; no artifact footer means complete; grep the repo only for symbols a kept diagnostic named; do not re-invoke the same runner to rediscover failures.

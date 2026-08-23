@@ -1,20 +1,78 @@
 //! Jest, Vitest, and Playwright output filters.
 
-use crate::minimizer::{MinimizerCtx, MinimizerOutput, primitives};
+use crate::minimizer::{MinimizerCtx, MinimizerOutput, contract, primitives};
 
 #[must_use]
-pub fn filter(_ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> MinimizerOutput {
+pub fn filter(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> MinimizerOutput {
 	let cleaned = primitives::strip_ansi(input);
-	let text = if exit_code == 0 {
-		drop_passed_lines(&cleaned)
+	let subject = test_subject(ctx);
+	let (verdict, text) = if exit_code == 0 {
+		let dropped = drop_passed_lines(&cleaned);
+		if dropped == input {
+			return MinimizerOutput::passthrough(input);
+		}
+		(contract::clean(subject), dropped)
 	} else {
-		failures_only(&cleaned)
+		let failures = failures_only(&cleaned);
+		if failures == input {
+			return MinimizerOutput::passthrough(input);
+		}
+		let v = if let Some(n) = parse_failed_count(&failures) {
+			contract::errors(subject, n)
+		} else {
+			contract::errors_unknown(subject)
+		};
+		(v, failures)
 	};
-	if text == input {
+	let applied = contract::apply(&verdict, &text);
+	if applied == input {
 		MinimizerOutput::passthrough(input)
 	} else {
-		MinimizerOutput::transformed(text, input.len())
+		MinimizerOutput::transformed(applied, input.len())
 	}
+}
+
+fn test_subject<'a>(ctx: &'a MinimizerCtx<'_>) -> &'a str {
+	if ctx.program == "bun" {
+		"bun test"
+	} else if matches!(ctx.subcommand, Some("jest" | "vitest" | "playwright")) {
+		ctx.subcommand.unwrap()
+	} else if matches!(ctx.program, "jest" | "vitest" | "playwright") {
+		ctx.program
+	} else if let Some(sub) = ctx.subcommand {
+		sub
+	} else {
+		ctx.program
+	}
+}
+
+fn parse_failed_count(text: &str) -> Option<u64> {
+	for line in text.lines() {
+		let trimmed = line.trim();
+		for prefix in &["Tests:", "Tests", "Test Suites:", "Test Suites", "Test Files:", "Test Files"]
+		{
+			if let Some(rest) = trimmed.strip_prefix(prefix) {
+				let rest = rest.trim();
+				let mut parts = rest.split_whitespace();
+				if let Some(num_str) = parts.next()
+					&& let Ok(num) = num_str.parse::<u64>()
+					&& let Some(marker) = parts.next()
+					&& marker.starts_with("fail")
+				{
+					return Some(num);
+				}
+			}
+		}
+		if let Some((first, rest)) = trimmed.split_once(' ') {
+			if let Ok(num) = first.parse::<u64>() {
+				let marker = rest.trim();
+				if marker.starts_with("fail") {
+					return Some(num);
+				}
+			}
+		}
+	}
+	None
 }
 
 fn drop_passed_lines(input: &str) -> String {

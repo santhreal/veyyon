@@ -6,6 +6,7 @@
 //! The engine is inert unless a [`MinimizerConfig`] explicitly opts in.
 
 pub mod config;
+pub mod contract;
 pub mod detect;
 pub mod engine;
 pub mod filters;
