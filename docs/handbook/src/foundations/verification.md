@@ -33,6 +33,24 @@ animation as WebP at 33 ms per frame; a GIF is the same clip in an older contain
 proves the same thing. Both arms of a pair are the same class, produced by one driver
 run, and attached to the pull request body.
 
+The recorder refuses to publish a clip whose cadence is not the one it captured. Two
+criteria, both from `--expect-ms`:
+
+```text
+typical frame    33 ms, +/-1 (34 ms alternates at 30 fps)
+moving average   within 10% of 30 fps, held stills set aside
+```
+
+The first catches a resample, where every frame was rewritten. The second catches a
+clip whose most common frame is correct and whose wall clock is mostly slower than it —
+frames held for two or three intervals in the middle of a scroll. A hold at or past ten
+intervals is a still screen, is reported, and does not count against the average.
+Measure a published file with:
+
+```sh
+python3 proof/webp-cadence.py assets/demo-hd.webp --expect-ms 33
+```
+
 ### Real interactive sessions
 
 The HD recorder starts Xvfb, picom, and kitty inside the recorder container. It drives the shipped CLI with real keyboard and pointer events and records the private display at 30 frames per second.
