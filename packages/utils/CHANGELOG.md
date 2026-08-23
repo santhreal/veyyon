@@ -34,6 +34,10 @@
 - `AnsiStripper` strips the `stripAnsi` grammar from a stream one chunk at a time, for a consumer that displays a live tail. Re-stripping the whole accumulated buffer on every arrival pays for bytes already stripped: 256 arrivals of 4KiB scanned 128MiB and the last arrival cost nine times the first. Each `push` scans what arrived plus whatever sequence had not closed, `pending` renders that unclosed remainder the way a whole-string strip renders an input ending mid-sequence, and `held` reports what is being held back. A fragment that stays open past 64KiB is settled as text rather than held, which is the one case the chunked and whole-string answers differ and is what keeps a stream from growing the buffer. It is built from the same regex source as `stripAnsi`, because a second copy of the grammar is what made two implementations disagree before.
 - `cancellationError(message?)` mints a cancellation carrying the `AbortError` name that `isAbortError` reads.
 
+### Changed
+
+- Prompt-variable documentation now uses canonical `toolRefs.search` examples instead of the retired `toolRefs.grep` name. No runtime behavior changed.
+
 ### Fixed
 
 - `fetchWithRetry` asks `shouldRetryResponse` about every failed response instead of only the transient set, so a status an API documents as retryable and a decision that lives in a 400's body are no longer answered by the loop; a 2xx is still returned without reading its body, and the transient set is the default for a caller that passes no verdict.
