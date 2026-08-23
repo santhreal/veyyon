@@ -11,7 +11,14 @@ import { recordFileSnapshot, recordSeenLinesFromBody } from "../edit/file-snapsh
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { Theme } from "../modes/theme/theme";
 import { toolsPrompts } from "../prompts/tools/rows";
-import { Ellipsis, fileHyperlink, renderStatusLine, renderTreeList, truncateToWidth } from "../tui";
+import {
+	Ellipsis,
+	fileHyperlink,
+	framedBlock,
+	outputBlockContentWidth,
+	renderStatusLine,
+	truncateToWidth,
+} from "../tui";
 import { resolveFileDisplayMode } from "../utils/file-display-mode";
 import type { ToolSession } from ".";
 import { searchPathFilesystemTargets } from "./cwd-boundary";
@@ -24,14 +31,15 @@ import { toPathList } from "./path-utils";
 import {
 	appendParseErrorsBulletList,
 	capParseErrors,
-	createCachedComponent,
 	formatCodeFrameLine,
 	formatCount,
 	formatEmptyMessage,
 	formatErrorMessage,
+	formatMoreItems,
 	formatParseErrors,
 	formatParseErrorsCountLabel,
 	PREVIEW_LIMITS,
+	replaceTabs,
 } from "./render-utils";
 import { resolveToolSearchScope } from "./search-scope";
 import { ToolError, throwIfAborted } from "./tool-errors";
@@ -418,6 +426,54 @@ interface AstGrepRenderArgs {
 
 const COLLAPSED_MATCH_LIMIT = PREVIEW_LIMITS.COLLAPSED_LINES * 2;
 
+function renderBudgetedAstGrepGroups(
+	groups: string[][],
+	maxLines: number,
+	uiTheme: Theme,
+	expanded: boolean,
+): string[] {
+	if (groups.length === 0 || maxLines <= 0) return [];
+	if (expanded) {
+		const lines: string[] = [];
+		for (const group of groups) {
+			lines.push(replaceTabs(group[0]!));
+			for (let j = 1; j < group.length; j++) {
+				lines.push(`  ${replaceTabs(group[j]!)}`);
+			}
+		}
+		return lines;
+	}
+
+	let fittingCount = groups.length;
+	let fittedLineCount = 0;
+	for (let i = 0; i < groups.length; i++) {
+		const count = groups[i]!.length;
+		const remainingAfter = groups.length - (i + 1);
+		const reservedSummaryLines = remainingAfter > 0 ? 1 : 0;
+		if (fittedLineCount + count + reservedSummaryLines > maxLines) {
+			fittingCount = i;
+			break;
+		}
+		fittedLineCount += count;
+		fittingCount = i + 1;
+	}
+
+	const visibleGroups = groups.slice(0, fittingCount);
+	const remaining = groups.length - fittingCount;
+	const hasSummary = remaining > 0 && (maxLines === Infinity || fittedLineCount < maxLines);
+
+	const lines: string[] = [];
+	for (const group of visibleGroups) {
+		lines.push(replaceTabs(group[0]!));
+		for (let j = 1; j < group.length; j++) {
+			lines.push(`  ${replaceTabs(group[j]!)}`);
+		}
+	}
+	if (hasSummary) {
+		lines.push(uiTheme.fg("dim", formatMoreItems(remaining, "match")));
+	}
+	return lines;
+}
 export const astGrepToolRenderer = {
 	inline: true,
 	renderCall(args: AstGrepRenderArgs, _options: RenderResultOptions, uiTheme: Theme): Component {
@@ -516,23 +572,18 @@ export const astGrepToolRenderer = {
 			);
 		}
 
-		return createCachedComponent(
-			() => options.expanded,
-			width => {
-				const matchLines = renderTreeList(
-					{
-						items: matchGroups,
-						expanded: options.expanded,
-						maxCollapsed: matchGroups.length,
-						maxCollapsedLines: COLLAPSED_MATCH_LIMIT,
-						itemType: "match",
-						renderItem: group => group,
-					},
-					uiTheme,
-				);
-				return [header, ...matchLines, ...extraLines].map(l => truncateToWidth(l, width, Ellipsis.Omit));
-			},
-		);
+		return framedBlock(uiTheme, width => {
+			const budget = Math.max((options.expanded ? Infinity : COLLAPSED_MATCH_LIMIT) - extraLines.length, 0);
+			const matchLines = renderBudgetedAstGrepGroups(matchGroups, budget, uiTheme, Boolean(options.expanded));
+			const innerWidth = outputBlockContentWidth(width);
+			const bodyLines = [...matchLines, ...extraLines].map(l => truncateToWidth(l, innerWidth, Ellipsis.Omit));
+			return {
+				header,
+				sections: [{ lines: bodyLines }],
+				state: limitReached ? "warning" : "success",
+				width,
+			};
+		});
 	},
 	mergeCallAndResult: true,
 };

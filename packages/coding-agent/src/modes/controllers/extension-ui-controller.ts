@@ -27,7 +27,6 @@ import { AskDialogComponent, boundPromptTitle } from "../../modes/components/ask
 import { HookEditorComponent } from "../../modes/components/hook-editor";
 import { HookInputComponent } from "../../modes/components/hook-input";
 import { HookSelectorComponent, type HookSelectorSlider } from "../../modes/components/hook-selector";
-import { modalRevealEnabled } from "../../modes/components/modal-shell";
 import { getAvailableThemesWithPaths, getThemeByName, setTheme, type Theme, theme } from "../../modes/theme/theme";
 import type { InteractiveModeContext, InteractiveSelectorDialogOptions } from "../../modes/types";
 import { abortDetached } from "../../session/detached-abort";
@@ -740,7 +739,6 @@ export class ExtensionUiController {
 					timeout: dialogOptions?.timeout,
 					onTimeout: dialogOptions?.onTimeout,
 					tui: this.ctx.ui,
-					reveal: modalRevealEnabled(),
 				},
 			);
 			askDialog.setOnRequestRender(() => this.ctx.ui.requestRender());

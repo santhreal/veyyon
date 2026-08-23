@@ -101,7 +101,8 @@ import { PACKAGES, RESOLUTION, reach, reachedNames, SRC } from "../helpers/modul
  *
  * THE SAME MISTAKE TWICE MORE, in the session layer, found by re-running the ranking afterwards:
  * `session/session-context.ts` took `coerceServiceTierByFamily` from the barrel though
- * `@veyyon/ai/types` defines it and is 5 modules, and `session/auth-storage.ts` -- a pure re-export
+ * `@veyyon/ai/types` re-exports it and is 6 modules (the sixth is the catalog's provider wire
+ * capability table, which owns the tier vocabulary), and `session/auth-storage.ts` -- a pure re-export
  * shim that 149 test files import for a credential type -- forwarded every name from the barrel rather
  * than from `@veyyon/ai/auth-storage`, which defines all of them. 602 -> 472 and 345 -> 213, carrying
  * `session/session-manager.ts` from 612 to 482. Five edges now, one shape: a value owned by a cheap
@@ -189,8 +190,8 @@ const CHEAP_OWNERS: ReadonlyArray<readonly [name: string, owner: string, ownerRe
 	// The effort ladder is owned by the catalog, and `@veyyon/catalog/effort` imports nothing at all.
 	["Effort", "@veyyon/catalog/effort", 1],
 	["THINKING_EFFORTS", "@veyyon/catalog/effort", 1],
-	// 5 modules: the wire shapes and their coercions.
-	["coerceServiceTierByFamily", "@veyyon/ai/types", 5],
+	// 6 modules: the wire shapes, plus the catalog table that declares what a service tier does.
+	["coerceServiceTierByFamily", "@veyyon/ai/types", 6],
 	// The provider registry is inherently ~164 (75 provider definition modules are the point of it), but
 	// that is still less than half the barrel, which adds the streaming engine and every transport.
 	["PASTE_CODE_LOGIN_PROVIDERS", "@veyyon/ai/registry/derived", 164],

@@ -2,9 +2,14 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import type { SegmentContext } from "@veyyon/coding-agent/modes/components/status-line/segments";
 import { renderSegment } from "@veyyon/coding-agent/modes/components/status-line/segments";
 import { stateSeparator } from "@veyyon/coding-agent/modes/components/status-line/state-grammar";
-import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme, type ThemeColor, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { normalizeApprovalMode } from "@veyyon/coding-agent/tools/approval";
 import { AUTONOMY_LABEL } from "@veyyon/coding-agent/tools/approval-modes";
+import { useFullColor } from "./helpers/theme-assertions";
+
+// Every assertion below names a colour, so the policy is declared rather than
+// inherited from the terminal the run happened to start in.
+useFullColor();
 
 beforeAll(async () => {
 	await initTheme();
@@ -114,6 +119,17 @@ function goalLabel(icon: string, readout: string): string {
 	return `${modeLabel(icon, readout)}${Bun.stripANSI(stateSeparator())}${RUNG}`;
 }
 
+/**
+ * The same segment as {@link goalLabel}, painted the way production paints it:
+ * the goal readout in the colour its state earns, the state separator in its own
+ * muted hue, and the approval rung in the rung's colour. One colour across the
+ * whole segment is the wrong shape -- the separator and the rung are not part of
+ * the goal's state.
+ */
+function paintedSegment(color: ThemeColor, icon: string, readout: string): string {
+	return `${theme.fg(color, modeLabel(icon, readout))}${stateSeparator()}${theme.fg("warning", RUNG)}`;
+}
+
 /** The spinner frame the segment must show for a given active-ms (period 120ms). */
 function expectedSpinnerFrame(activeMs: number): string {
 	const frames = theme.spinnerFrames;
@@ -143,9 +159,7 @@ describe("goal status-line segment (GMI-1)", () => {
 			modelBudgetsEnabled: false,
 		});
 		expect(plain(ctx)).toBe(goalLabel(theme.icon.goal, "50K"));
-		expect(renderSegment("mode", ctx).content).toBe(
-			`${theme.fg("accent", modeLabel(theme.icon.goal, "50K"))}${stateSeparator()}${theme.fg("warning", RUNG)}`,
-		);
+		expect(renderSegment("mode", ctx).content).toBe(paintedSegment("accent", theme.icon.goal, "50K"));
 	});
 
 	it("appends a compact progress bar only in verbose mode", () => {
@@ -190,24 +204,20 @@ describe("goal status-line segment (GMI-1)", () => {
 		const icon = theme.icon.pause || theme.symbol("status.pending");
 		// Paused is not "running" -> no spinner, and it keeps the token readout.
 		expect(plain(ctx)).toBe(goalLabel(icon, "30K/50K 60%"));
-		expect(renderSegment("mode", ctx).content).toContain(theme.fg("warning", goalLabel(icon, "30K/50K 60%")));
+		expect(renderSegment("mode", ctx).content).toBe(paintedSegment("warning", icon, "30K/50K 60%"));
 	});
 
 	it("recolors to warning at ≥90% of budget while still running", () => {
 		const ctx = createGoalContext({ goal: { tokensUsed: 45_000, tokenBudget: 50_000 }, streaming: false });
 		// 45000/50000 = 90% -> near-budget warning, static icon (not streaming).
 		expect(plain(ctx)).toBe(goalLabel(theme.icon.goal, "45K/50K 90%"));
-		expect(renderSegment("mode", ctx).content).toContain(
-			theme.fg("warning", goalLabel(theme.icon.goal, "45K/50K 90%")),
-		);
+		expect(renderSegment("mode", ctx).content).toBe(paintedSegment("warning", theme.icon.goal, "45K/50K 90%"));
 	});
 
 	it("stays accent-colored below the near-budget threshold", () => {
 		const ctx = createGoalContext({ goal: { tokensUsed: 40_000, tokenBudget: 50_000 }, streaming: false });
 		// 80% < 90% -> accent, not warning.
-		expect(renderSegment("mode", ctx).content).toContain(
-			theme.fg("accent", goalLabel(theme.icon.goal, "40K/50K 80%")),
-		);
+		expect(renderSegment("mode", ctx).content).toBe(paintedSegment("accent", theme.icon.goal, "40K/50K 80%"));
 	});
 });
 
@@ -219,7 +229,7 @@ describe("goal status-line segment — terminal statuses (GMI-4)", () => {
 		const ctx = createGoalContext({ goal: { status: "complete", tokensUsed: 48_000, tokenBudget: 50_000 } });
 		const icon = theme.symbol("status.success");
 		expect(plain(ctx)).toBe(goalLabel(icon, "48K/50K 96%"));
-		expect(renderSegment("mode", ctx).content).toBe(theme.fg("success", goalLabel(icon, "48K/50K 96%")));
+		expect(renderSegment("mode", ctx).content).toBe(paintedSegment("success", icon, "48K/50K 96%"));
 	});
 
 	/** budget-limited is the HARD budget stop (distinct from the ≥90% soft
@@ -229,7 +239,7 @@ describe("goal status-line segment — terminal statuses (GMI-4)", () => {
 		const ctx = createGoalContext({ goal: { status: "budget-limited", tokensUsed: 50_000, tokenBudget: 50_000 } });
 		const icon = theme.symbol("status.warning");
 		expect(plain(ctx)).toBe(goalLabel(icon, "50K/50K 100%"));
-		expect(renderSegment("mode", ctx).content).toBe(theme.fg("warning", goalLabel(icon, "50K/50K 100%")));
+		expect(renderSegment("mode", ctx).content).toBe(paintedSegment("warning", icon, "50K/50K 100%"));
 	});
 
 	/** A dropped goal dims out (aborted glyph, dim color): it is history, and
@@ -238,7 +248,7 @@ describe("goal status-line segment — terminal statuses (GMI-4)", () => {
 		const ctx = createGoalContext({ goal: { status: "dropped", tokensUsed: 5_000 } });
 		const icon = theme.symbol("status.aborted");
 		expect(plain(ctx)).toBe(goalLabel(icon, "5K"));
-		expect(renderSegment("mode", ctx).content).toBe(theme.fg("dim", goalLabel(icon, "5K")));
+		expect(renderSegment("mode", ctx).content).toBe(paintedSegment("dim", icon, "5K"));
 	});
 
 	/** Terminal statuses are not "running": the spinner must never replace
@@ -266,7 +276,7 @@ describe("goal status-line segment — terminal statuses (GMI-4)", () => {
 	it("does not apply the near-budget recolor to a non-running status", () => {
 		const ctx = createGoalContext({ goal: { status: "complete", tokensUsed: 48_000, tokenBudget: 50_000 } });
 		expect(renderSegment("mode", ctx).content).toBe(
-			theme.fg("success", goalLabel(theme.symbol("status.success"), "48K/50K 96%")),
+			paintedSegment("success", theme.symbol("status.success"), "48K/50K 96%"),
 		);
 	});
 });

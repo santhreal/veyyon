@@ -10,7 +10,6 @@ import { isEnoent } from "@veyyon/utils/fs-error";
 import * as logger from "@veyyon/utils/logger";
 import { clamp } from "@veyyon/utils/math";
 import { errorMessage } from "@veyyon/utils/type-guards";
-import { type } from "arktype";
 import {
 	onAutoThemeMappingChanged,
 	onColorBlindModeChanged,
@@ -29,12 +28,12 @@ import {
 	type ColorMode,
 	detectColorMode,
 	fgAnsi,
-	getThemeJsonSchema,
 	resolveThemeColors,
 	resolveVarRefs,
 	type ThemeBg,
 	type ThemeColor,
 	type ThemeJson,
+	validateThemeJson,
 } from "./color";
 import { lavaText } from "./shimmer";
 import { getSymbolTheme } from "./symbol-theme";
@@ -131,20 +130,8 @@ async function loadThemeJson(name: string): Promise<ThemeJson> {
 	} catch (error) {
 		throw new Error(`Failed to parse theme ${name}: ${error}`);
 	}
-	let parsed: ThemeJson;
-	try {
-		parsed = getThemeJsonSchema()(json) as ThemeJson;
-		if (parsed instanceof type.errors) {
-			throw new Error(parsed.summary);
-		}
-	} catch (error) {
-		const parseErrorMessage = errorMessage(error);
-		// Extract color key information if available
-		const missingColorMatch = parseErrorMessage.match(/missing keys: (.+)/i);
-		const missingColors: string[] = missingColorMatch
-			? missingColorMatch[1].split(",").map((s: string) => s.trim())
-			: [];
-
+	const { missingColors, problems } = validateThemeJson(json);
+	if (missingColors.length > 0 || problems.length > 0) {
 		let fullErrorMessage = `Invalid theme "${name}":\n`;
 		if (missingColors.length > 0) {
 			fullErrorMessage += `\nMissing required color tokens:\n`;
@@ -152,11 +139,12 @@ async function loadThemeJson(name: string): Promise<ThemeJson> {
 			fullErrorMessage += `\n\nPlease add these colors to your theme's "colors" object.`;
 			fullErrorMessage += `\nSee the built-in themes (dark.json, light.json) for reference values.`;
 		}
-		fullErrorMessage += `\n\nValidation error:\n  - ${parseErrorMessage}`;
-
+		if (problems.length > 0) {
+			fullErrorMessage += `\n\nValidation error:\n${problems.map(problem => `  - ${problem}`).join("\n")}`;
+		}
 		throw new Error(fullErrorMessage);
 	}
-	return parsed;
+	return json as ThemeJson;
 }
 
 interface CreateThemeOptions {

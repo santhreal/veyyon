@@ -13,6 +13,7 @@
  * other, which is the same thing with an extra edge.
  */
 import { http2RetryVerdict, isUnexpectedSocketCloseMessage } from "@veyyon/utils/fetch-retry";
+import { isStreamFrameLimitError } from "@veyyon/utils/stream-frame-limit";
 import {
 	AnthropicConnectionError,
 	AnthropicConnectionTimeoutError,
@@ -65,6 +66,36 @@ export const STREAM_READ_ERROR_PATTERN = /stream[_ -]?read[_ -]?error/i;
 const TRANSIENT_ENVELOPE_PATTERN = /anthropic stream envelope error:/i;
 /** `before message_start`: the stream ended before the provider opened the message. */
 export const STREAM_BEFORE_MESSAGE_START_PATTERN = /before message_start/i;
+/**
+ * The stream-corruption vocabulary: a response that arrived in pieces the reader cannot assemble.
+ *
+ * `STREAM_PARSE_TRUNCATION_PATTERN` is a body that stopped mid-JSON, `STREAM_EVENT_ORDER_PATTERN` an
+ * envelope whose events arrived out of order, and `STREAM_CORRUPTION_EXTRA_PATTERN` the three
+ * transport phrasings neither of those nor {@link TRANSIENT_TRANSPORT_PATTERN} covers: a TLS record
+ * the peer corrupted, an HTTP/2 stream error the peer reported, and the upstream code `1302`. All of
+ * it lived in `isProviderRetryableError` as a prose block the provider ladder read and no other
+ * reader had, so a truncated stream from an Anthropic-compatible proxy was retried by that ladder
+ * and came back to the turn as an unclassified failure. The words are unchanged; the owner is.
+ *
+ * `1302` is word-bounded for the reason the status numbers are (see {@link
+ * TRANSIENT_TRANSPORT_PATTERN}): provider errors carry model ids, request ids and token counts, and
+ * a bare four digits matches any of them.
+ */
+export const STREAM_PARSE_TRUNCATION_PATTERN =
+	/unterminated string|unexpected end of json input|unexpected end of data|unexpected eof|end of file|eof while parsing|truncated/i;
+/** `stream event order`: the envelope's events did not arrive in the order the protocol states. */
+export const STREAM_EVENT_ORDER_PATTERN = /stream event order|before message_start/i;
+const STREAM_CORRUPTION_EXTRA_PATTERN = /bad record mac|stream error.*received from peer|(?<![\w-])1302(?![\w-])/i;
+
+/** Whether a message describes a stream whose bytes did not survive the transport. */
+export function isStreamCorruptionText(text: string): boolean {
+	return (
+		STREAM_PARSE_TRUNCATION_PATTERN.test(text) ||
+		STREAM_EVENT_ORDER_PATTERN.test(text) ||
+		STREAM_CORRUPTION_EXTRA_PATTERN.test(text)
+	);
+}
+
 // Copilot routing flap: HTTP 400 `model_not_supported` (structural code on the
 // error, also surfaced in text). Treated as transient — a retry usually lands
 // on a backend that has the model.
@@ -164,6 +195,12 @@ export const transportDomain: ErrorDomain = {
 		},
 		{
 			flags: Flag.Transient,
+			why: "A stream whose bytes did not survive the transport: a body that stopped mid-JSON, an envelope whose events arrived out of order, a corrupted TLS record, a peer-reported HTTP/2 stream error. Read here rather than at the provider ladder, which held these words alone: the same truncated proxy response was retried there and reached the turn carrying no flag at all.",
+			structural: signal => signal.http2 === undefined,
+			text: isStreamCorruptionText,
+		},
+		{
+			flags: Flag.Transient,
 			why: "Copilot's per-client routing flap: a 400 model_not_supported for a model the account has, where a retry usually lands on a backend that serves it. The code counts wherever the provider put it — a `code` field, the SDK's nested `error.code`, or the body text — because reading only the text made this rule disagree with the Copilot ladder, which read only the field.",
 			structural: signal => signal.status === 400 && isCopilotModelNotSupported(signal),
 		},
@@ -171,7 +208,11 @@ export const transportDomain: ErrorDomain = {
 };
 
 /**
- * The refusal family: the peer NAMED a transport failure that a replay reproduces.
+ * The refusal family: a transport failure whose next identical attempt fails the same way.
+ *
+ * Two kinds of evidence say that, and both are structural. The peer NAMED an HTTP/2 code the RFC
+ * says a replay reproduces, or the peer never delimited a frame it was still sending — a framing
+ * violation reaches the same peer with the same behavior, so a retry is a second helping of it.
  *
  * Separate from `transport` because it is the same subject with the opposite answer, and separate
  * from a wording because a code is a fact. It vetoes a retry for the whole failure and is ordered
@@ -182,7 +223,7 @@ export const transportDomain: ErrorDomain = {
  */
 export const refusalDomain: ErrorDomain = {
 	id: "refusal",
-	why: "The peer named an HTTP/2 code whose meaning is that the next identical attempt fails the same way.",
+	why: "The peer named an HTTP/2 code, or never delimited a frame, so the next identical attempt fails the same way.",
 	recovers: [Flag.TransportRefused],
 	vetoesRetry: true,
 	recovery: {
@@ -190,6 +231,13 @@ export const refusalDomain: ErrorDomain = {
 		credential: { action: "surface" },
 		turn: { action: "surface" },
 	},
+	classes: [
+		{
+			why: "A framing violation is the peer's own protocol breach: it sent bytes its protocol says must be delimited and never delimited them. The flag was previously nowhere — the classifier cleared `Flag.Transient` for the chain and stopped there, so the veto readers had nothing to read and the provider ladder needed a hand-written check of its own, which a timeout-worded wrapper around the breach still got past.",
+			matches: link => isStreamFrameLimitError(link),
+			flags: () => Flag.TransportRefused,
+		},
+	],
 	rules: [
 		{
 			flags: Flag.TransportRefused,

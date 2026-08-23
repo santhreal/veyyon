@@ -24,7 +24,7 @@
 
 import { clamp01 } from "@veyyon/utils/math";
 import { blendHex } from "./motion-paint";
-import { type ColumnPainter, type ColumnWindow, paintBlockBackground } from "./paint-columns";
+import { type ColumnWindow, paintBlockBackground } from "./paint-columns";
 import { parseHexColor } from "./paint-ground";
 
 /** White, as a hex the blender can take. Lifting toward it is what "lit" means. */
@@ -145,100 +145,4 @@ export function fillSurface(lines: readonly string[], width: number, spec: Surfa
 		},
 		spec.columns,
 	);
-}
-
-export interface SweepSpec {
-	/** Where the highlight is, 0 just before the left edge, 1 just past the right. */
-	phase: number;
-	/** How far off the ground the centre of the highlight lifts a cell. */
-	strength?: number;
-	/** Half-width of the highlight in columns. Narrow reads as light; wide reads as a wash. */
-	halfWidth?: number;
-	/**
-	 * Columns the highlight leans right per row, so it crosses as a diagonal. A
-	 * vertical band reads as a wipe, which is a transition; a diagonal reads as
-	 * light moving over a plane, which is a material.
-	 */
-	skew?: number;
-	/**
-	 * The columns the highlight crosses. Omitted, it crosses the whole row; given a
-	 * card's own columns, it enters at the card's left edge and leaves at its right,
-	 * which is also the only way its travel time matches the card it is lighting.
-	 */
-	columns?: ColumnWindow;
-}
-
-const DEFAULT_SWEEP_STRENGTH = 0.2;
-const DEFAULT_SWEEP_HALF_WIDTH = 7;
-const DEFAULT_SWEEP_SKEW = 0.9;
-/**
- * Quantization of the highlight's falloff. Sixteen steps across the band is below
- * the threshold where a ramp on a terminal cell reads as stepped, and it bounds
- * the cost: a new background sequence is written only where the step changes, so a
- * swept row carries about thirty sequences rather than one per column.
- */
-const SWEEP_STEPS = 16;
-
-/**
- * A specular highlight crossing a block, once.
- *
- * The falloff is a raised cosine, so the band has no edge — an edge is what makes
- * a highlight read as a rectangle sliding past. Cells keep whatever background
- * they had, lifted: the sweep crosses a selection band without erasing it, which
- * is exactly what light does.
- */
-export function sweepSurface(lines: readonly string[], width: number, ground: string, sweep: SweepSpec): string[] {
-	const strength = sweep.strength ?? DEFAULT_SWEEP_STRENGTH;
-	if (strength <= 0 || lines.length === 0) return [...lines];
-	const halfWidth = Math.max(1, sweep.halfWidth ?? DEFAULT_SWEEP_HALF_WIDTH);
-	const skew = sweep.skew ?? DEFAULT_SWEEP_SKEW;
-	// The centre travels from off the left edge to off the right, so the highlight
-	// enters and leaves rather than appearing in place and vanishing.
-	const first = sweep.columns === undefined ? 0 : sweep.columns.start;
-	const last = sweep.columns === undefined ? width : Math.min(width, sweep.columns.end);
-	const span = Math.max(1, last - first);
-	const travel = span + halfWidth * 2;
-	const target = liftTarget(ground);
-	return paintBlockBackground(
-		lines,
-		width,
-		row => {
-			const centre = first - halfWidth + sweep.phase * travel + row * skew;
-			if (centre + halfWidth < first || centre - halfWidth > last) return null;
-			const painter: ColumnPainter = ({ col, background }) => {
-				const distance = Math.abs(col - centre) / halfWidth;
-				if (distance >= 1) return undefined;
-				const raw = (Math.cos(distance * Math.PI) + 1) / 2;
-				const step = Math.round(raw ** 1.4 * SWEEP_STEPS) / SWEEP_STEPS;
-				if (step <= 0) return undefined;
-				return blendHex(background ?? ground, target, step * strength);
-			};
-			return painter;
-		},
-		sweep.columns,
-	);
-}
-
-/**
- * How much of an entrance a given row has played, when the rows arrive one after
- * another instead of all at once.
- *
- * This is the difference between an unfold and a cascade. With one strength for
- * the whole block, an animation has as many distinct frames as the block has rows.
- * With a per-row offset, every row is on its own continuous ramp, so a card of
- * fifteen rows has fifteen overlapping fades and the eye reads it as one smooth
- * motion — which is what a list on a phone is doing when it looks expensive.
- *
- * `stagger` is the fraction of the whole timeline between one row starting and the
- * next. The last row still lands exactly at progress 1: the ramp each row runs is
- * compressed to fit, rather than the animation being extended, so adding a
- * cascade does not make the card slower to arrive.
- */
-export function cascadeStrength(row: number, rows: number, progress: number, stagger = 0.045): number {
-	if (rows <= 1) return clamp01(progress);
-	const spread = Math.min(0.85, stagger * (rows - 1));
-	const start = rows === 1 ? 0 : (row / (rows - 1)) * spread;
-	const window = 1 - spread;
-	if (window <= 0) return clamp01(progress);
-	return clamp01((progress - start) / window);
 }

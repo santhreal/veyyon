@@ -219,7 +219,6 @@ describe("setup wizard persistence", () => {
 		const hideOverlay = mock(() => {});
 		const setFocus = mock((_component: unknown) => {});
 		const requestRender = mock(() => {});
-		const playWelcomeIntro = mock(() => {});
 		let component: SetupWizardComponent | undefined;
 		const scene: SetupScene = {
 			id: "providers",
@@ -234,7 +233,6 @@ describe("setup wizard persistence", () => {
 		};
 		const ctx = {
 			settings,
-			playWelcomeIntro,
 			ui: {
 				terminal: { rows: 24 },
 				showOverlay: (nextComponent: SetupWizardComponent) => {
@@ -252,7 +250,7 @@ describe("setup wizard persistence", () => {
 			dismissWelcome: vi.fn(),
 		} as unknown as InteractiveModeContext;
 
-		const pending = runSetupWizard(ctx, [scene], { markComplete: false, playWelcomeIntro: false });
+		const pending = runSetupWizard(ctx, [scene], { markComplete: false });
 		component?.handleInput?.("\n");
 		component?.handleInput?.("\n");
 		await pending;
@@ -260,7 +258,6 @@ describe("setup wizard persistence", () => {
 		// `markComplete: false` means a targeted re-run (the provider-only flow) must
 		// not claim the machine has been onboarded, even though the overlay went up.
 		expect(settings.get("onboardingVersion")).toBe(0);
-		expect(playWelcomeIntro).not.toHaveBeenCalled();
 		expect(hideOverlay).toHaveBeenCalledTimes(1);
 		expect(setFocus).toHaveBeenCalled();
 	});
