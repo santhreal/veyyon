@@ -853,9 +853,10 @@ function parseStringEncodedPathArray(input: string): string[] | null {
  * Delimited single strings (`"a.ts b.ts"`) are left for
  * {@link expandDelimitedPathEntries} to split.
  */
-export function toPathList(input: string | string[] | undefined): string[] {
+export function toPathList(input: unknown): string[] {
 	if (typeof input === "string") return parseStringEncodedPathArray(input) ?? [input];
-	return input ?? [];
+	if (Array.isArray(input)) return input.filter((entry): entry is string => typeof entry === "string");
+	return [];
 }
 
 const GLOB_PATH_CHARS = ["*", "?", "[", "{"] as const;
@@ -900,7 +901,7 @@ function hasTopLevelPathDelimiter(entry: string): boolean {
 	return false;
 }
 
-function splitTopLevelDelimitedPath(entry: string, mode: DelimitedPathSplitMode): string[] {
+export function splitTopLevelDelimitedPath(entry: string, mode: DelimitedPathSplitMode): string[] {
 	const parts: string[] = [];
 	let braceDepth = 0;
 	let start = 0;
@@ -924,6 +925,39 @@ function splitTopLevelDelimitedPath(entry: string, mode: DelimitedPathSplitMode)
 	}
 	parts.push(entry.slice(start));
 	return parts;
+}
+
+/**
+ * Conservative synchronous path list parser for approval / cwd-boundary preflight.
+ * Normalizes JSON-encoded arrays, direct arrays, and delimited path strings
+ * (semicolon, comma, whitespace) while respecting glob braces and protecting URLs.
+ */
+export function parseApprovalPathList(input: unknown): string[] {
+	const rawList = toPathList(input);
+	const targets: string[] = [];
+	for (const raw of rawList) {
+		if (typeof raw !== "string") continue;
+		const trimmed = raw.trim();
+		if (trimmed.length === 0) continue;
+		// Split documented top-level semicolons first so compound entries like
+		// `https://example/x;/etc/**` or `local://x;/etc` don't hide the physical peer.
+		const semicolonParts = splitTopLevelDelimitedPath(trimmed, "semicolon");
+		for (const semiPart of semicolonParts) {
+			const semiTrimmed = normalizePathLikeInput(semiPart);
+			if (semiTrimmed.length === 0) continue;
+			if (isReadableUrlPath(semiTrimmed) || isInternalUrlPath(semiTrimmed) || pathTargetsSsh(semiTrimmed)) {
+				targets.push(semiTrimmed);
+				continue;
+			}
+			const mixedParts = splitTopLevelDelimitedPath(semiTrimmed, "mixed");
+			for (const part of mixedParts) {
+				const partTrimmed = normalizePathLikeInput(part);
+				if (partTrimmed.length === 0) continue;
+				targets.push(partTrimmed);
+			}
+		}
+	}
+	return targets;
 }
 
 async function delimitedPathPartResolves(entry: string, cwd: string, splitter: PathEntrySplitter): Promise<boolean> {

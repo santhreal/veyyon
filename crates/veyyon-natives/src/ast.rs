@@ -711,15 +711,21 @@ pub fn ast_grep(options: AstFindOptions<'_>) -> task::Promise<AstFindResult> {
 		let mut total_matches = 0u32;
 		let mut match_sequence = 0u64;
 		let mut files_with_matches = BTreeSet::new();
+
+		for compiled in &compiled_patterns {
+			if compiled.compiled_by_lang.is_empty() && !languages.is_empty() {
+				for (lang_key, error) in &compiled.compile_errors_by_lang {
+					parse_errors.push(format!("{}: {lang_key}: {error}", compiled.pattern));
+				}
+			}
+		}
+
 		for resolved in resolved_candidates {
 			ct.heartbeat()?;
 			let ResolvedCandidate { candidate, language, language_error } = resolved;
 
 			if let Some(error) = language_error.as_deref() {
-				for compiled in &compiled_patterns {
-					parse_errors
-						.push(format!("{}: {}: {error}", compiled.pattern, candidate.display_path));
-				}
+				parse_errors.push(format!("{}: {error}", candidate.display_path));
 				continue;
 			}
 
@@ -727,25 +733,10 @@ pub fn ast_grep(options: AstFindOptions<'_>) -> task::Promise<AstFindResult> {
 				continue;
 			};
 			let lang_key = language.canonical_name();
-			let source = match std::fs::read_to_string(&candidate.absolute_path) {
-				Ok(source) => source,
-				Err(err) => {
-					for compiled in &compiled_patterns {
-						parse_errors
-							.push(format!("{}: {}: {err}", compiled.pattern, candidate.display_path));
-					}
-					continue;
-				},
-			};
 
 			let mut runnable_patterns: Vec<(&str, &Pattern)> = Vec::new();
 			for compiled in &compiled_patterns {
 				ct.heartbeat()?;
-				if let Some(error) = compiled.compile_errors_by_lang.get(lang_key) {
-					parse_errors
-						.push(format!("{}: {}: {error}", compiled.pattern, candidate.display_path));
-					continue;
-				}
 				if let Some(pattern) = compiled.compiled_by_lang.get(lang_key) {
 					runnable_patterns.push((compiled.pattern.as_str(), pattern));
 				}
@@ -754,6 +745,14 @@ pub fn ast_grep(options: AstFindOptions<'_>) -> task::Promise<AstFindResult> {
 				continue;
 			}
 
+			let source = match std::fs::read_to_string(&candidate.absolute_path) {
+				Ok(source) => source,
+				Err(err) => {
+					parse_errors.push(format!("{}: {err}", candidate.display_path));
+					continue;
+				},
+			};
+
 			let ast = language.ast_grep(source);
 			if ast.root().dfs().any(|node| node.is_error()) {
 				parse_errors.push(format!(
@@ -761,7 +760,6 @@ pub fn ast_grep(options: AstFindOptions<'_>) -> task::Promise<AstFindResult> {
 					candidate.display_path
 				));
 			}
-
 			let mut file_had_match = false;
 			for (_, pattern) in runnable_patterns {
 				ct.heartbeat()?;

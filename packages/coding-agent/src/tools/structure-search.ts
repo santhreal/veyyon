@@ -246,6 +246,18 @@ export async function executeStructureSearch(
 		};
 
 		if (result.matches.length === 0) {
+			const skipPastEnd = skip > 0 && result.totalMatches > 0 && skip >= result.totalMatches;
+			if (skipPastEnd) {
+				const parseMessage = cappedParseErrors.length
+					? `\n${formatParseErrors(cappedParseErrors, parseErrorsTotal).join("\n")}`
+					: "";
+				return toolResult(baseDetails)
+					.text(
+						`No more results (${result.totalMatches} matches total; skip=${skip} has exhausted the result set)${parseMessage}`,
+					)
+					.done();
+			}
+
 			const searched = result.filesSearched;
 			const where = scopePath ?? resolvedSearchPath;
 			// A bare "No matches found" hid WHY it was empty. The most common
