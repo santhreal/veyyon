@@ -221,7 +221,7 @@ export const EDITING_SETTINGS = {
 			label: "Language Servers",
 			keywords: ["lsp", "tool", "diagnostics", "inject", "format", "enter"],
 			description:
-				"Start language servers. Files → LSP is the row you enter; this switch and the ones beside it (agent tool, diagnostics after write, diagnostics after edit, format after write) are independent once servers are running.",
+				"Start language servers. Files → LSP is the row you enter; this switch and the others on that page (agent tool, diagnostics after write, diagnostics after edit, format after write) are independent once servers are running.",
 		},
 	},
 
