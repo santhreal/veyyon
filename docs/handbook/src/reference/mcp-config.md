@@ -402,7 +402,9 @@ This is the part that usually trips people up.
 
 ### Discovery-time `${...}` expansion
 
-Veyyon expands `${VAR}` and `${VAR:-default}` placeholders while discovering MCP configs from Veyyon-native files and standalone fallback files. Expansion applies recursively to string values in `command`, `args`, `env`, `cwd`, `url`, `headers`, `auth`, and `oauth`; unresolved placeholders remain literal strings.
+Veyyon expands `${VAR}` and `${VAR:-default}` placeholders while discovering MCP configs from Veyyon-native files and standalone fallback files. Expansion applies recursively to string values in `command`, `args`, `env`, `cwd`, `url`, `headers`, `auth`, and `oauth`.
+
+An unset variable with no default leaves the placeholder text in the value. In `command`, `args`, `cwd`, `url` and `envPassthrough` that text would become a program, an argument, a directory or a hostname, so the server is not started: the connection is refused with the field and the variable named, and nothing is spawned or dialled. `env` and `headers` are resolved again before connect and refuse the same way (below). In `auth` and `oauth` the placeholder is sent to the authorization server, which rejects the exchange.
 
 Example:
 
