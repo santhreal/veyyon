@@ -97,23 +97,10 @@ publishes nothing on its own, and nothing cuts a release on its own: no green ru
 and no waiting `[Unreleased]` bullet produces a tag. Only the tag publishes, and
 `ci.yml` refuses to publish unless that tag names a commit that reached `main`.
 
-The whole surface is two commands, both driven by `scripts/release-cut.ts`.
-`bun run release:dry <major|minor|patch|x.y.z>` says what a cut would do and
-publishes nothing, which is why it is the non-interactive mode. `bun run release
-<bump>` rolls every version authority and changelog, commits
-`chore: bump version to vX.Y.Z`, shows you the commit and the tag, asks once, then
-pushes `main`, waits for that commit's checks, and tags it (`scripts/release-ship.ts`).
-There is no `--yes`: the prompt is the approval, and everything before the tag is
-local and undone by answering no.
-
-```sh
-bun run release:dry minor     # inspect what a cut would do
-bun run release minor         # bump, prompt, push, wait for checks, tag
-```
-
-The tag push starts the one CI run that verifies the tag against `main`, builds
-every platform binary, and publishes. See
-[releasing.md](./releasing.md) for the full flow.
+The command an agent may run is `bun run release:dry <bump>`, which writes nothing.
+`bun run release <bump>` pushes `main` and cuts the tag; its prompt is the operator's
+approval, no flag answers it in advance, and an agent never answers it.
+[releasing.md](./releasing.md) states what each half does.
 
 **Website and install scripts**, `bun run site:build` locally at will because the
 brand check is part of the gate. A matching push to `main`, and every release,

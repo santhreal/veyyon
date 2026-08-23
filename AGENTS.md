@@ -87,10 +87,10 @@ Every user-facing feature lands with:
    reaches it, and shows it behaving differently off vs on. Not a unit test, not a snippet in a
    comment.
 2. **A settings differential in the pull request body.** The settings screen with the feature off,
-   then with it on. Seed each state with `veyyon config set <path> <value>` rather than pressing a
-   toggle whose keybinding may not land, and drive both states from one driver so the pair
-   regenerates together. Two identical frames, or an "on" frame that is not on, is a failed proof:
-   check the bytes differ and the values changed.
+   then with it on, each arm seeded before the session starts rather than toggled by a keybinding
+   that may not land, and both arms driven from one scene so they regenerate together. The capture
+   config above states how an arm is seeded. Two identical frames, or an "on" frame that is not on,
+   is a failed proof: check the bytes differ and the values changed.
 3. **A committed bench with exact parity.** Same corpus, inputs and seed. The off-arm reproduces the
    pre-feature baseline to the token or the millisecond, so any delta belongs to the feature. Report
    the exact numbers.
