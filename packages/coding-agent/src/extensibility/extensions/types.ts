@@ -1267,7 +1267,9 @@ export interface ExtensionAPI {
 	 * // Register a new provider with custom models and streaming
 	 * pi.registerProvider("google-vertex-claude", {
 	 *   baseUrl: "https://us-east5-aiplatform.googleapis.com",
-	 *   apiKey: "GOOGLE_CLOUD_PROJECT",
+	 *   // A bare `NAME_LIKE_THIS` reads the environment variable and resolves to nothing
+	 *   // when it is unset. Write `${NAME}` for a reference or `literal:<text>` for a value.
+	 *   apiKey: "${GOOGLE_CLOUD_PROJECT}",
 	 *   api: "vertex-claude-api",
 	 *   streamSimple: myStreamFunction,
 	 *   models: [
