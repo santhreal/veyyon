@@ -104,7 +104,7 @@ function commitTools(selected: ReadonlySet<string>, all: readonly string[]): str
 }
 
 function formatAdvisorTools(tools: readonly string[] | undefined, emptyLabel: string): string {
-	if (tools === undefined) return "read, grep, glob (default)";
+	if (tools === undefined) return "read, search (default)";
 	return tools.length > 0 ? tools.join(", ") : emptyLabel;
 }
 

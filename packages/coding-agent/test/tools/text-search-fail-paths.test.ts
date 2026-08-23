@@ -3,13 +3,13 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { GrepTool } from "@veyyon/coding-agent/tools/grep";
+import { SearchTool } from "@veyyon/coding-agent/tools/search";
 import { removeWithRetries } from "@veyyon/utils";
 import { makeToolSession } from "../helpers/tool-session";
 
 /**
- * Grep tool contracts: match exact lines, no match, empty pattern behavior,
- * and path scoping. Drives GrepTool.execute when the native binding is present.
+ * Search (text) tool contracts: match exact lines, no match, empty pattern behavior,
+ * and path scoping. Drives SearchTool.execute when the native binding is present.
  */
 
 function textOf(result: { content: Array<{ type: string; text?: string }> }): string {
@@ -19,7 +19,7 @@ function textOf(result: { content: Array<{ type: string; text?: string }> }): st
 		.join("\n");
 }
 
-describe("GrepTool fail paths and matches", () => {
+describe("SearchTool text fail paths and matches", () => {
 	let tmpDir: string;
 
 	beforeEach(async () => {
@@ -39,15 +39,16 @@ describe("GrepTool fail paths and matches", () => {
 			getSessionFile: () => null,
 			getSessionSpawns: () => "*",
 			getArtifactsDir: () => path.join(tmpDir, "artifacts"),
-			settings: Settings.isolated({ "grep.enabled": true }),
+			settings: Settings.isolated(),
 		});
 	}
 
 	it("finds foo lines when path is a single file", async () => {
-		const tool = new GrepTool(session() as never);
+		const tool = new SearchTool(session());
 		const aPath = path.join(tmpDir, "a.ts");
 		const result = await tool.execute("g1", {
-			pattern: "foo",
+			type: "text",
+			input: "foo",
 			path: aPath,
 		});
 		const text = textOf(result);
@@ -58,9 +59,10 @@ describe("GrepTool fail paths and matches", () => {
 	});
 
 	it("reports no matches for a pattern that does not exist", async () => {
-		const tool = new GrepTool(session() as never);
+		const tool = new SearchTool(session());
 		const result = await tool.execute("g2", {
-			pattern: "ZZZ_NOT_PRESENT_999",
+			type: "text",
+			input: "ZZZ_NOT_PRESENT_999",
 			path: tmpDir,
 		});
 		const text = textOf(result).toLowerCase();
@@ -69,10 +71,10 @@ describe("GrepTool fail paths and matches", () => {
 	});
 
 	it("rejects or no-ops an empty pattern without matching everything", async () => {
-		const tool = new GrepTool(session() as never);
+		const tool = new SearchTool(session());
 		let text = "";
 		try {
-			const result = await tool.execute("g3", { pattern: "", path: tmpDir });
+			const result = await tool.execute("g3", { type: "text", input: "", path: tmpDir });
 			text = textOf(result);
 		} catch (e) {
 			text = String(e);
@@ -84,8 +86,8 @@ describe("GrepTool fail paths and matches", () => {
 
 	it("matches across multiple files when path is the directory", async () => {
 		await Bun.write(path.join(tmpDir, "c.ts"), "const foo = 99;\n");
-		const tool = new GrepTool(session() as never);
-		const result = await tool.execute("g4", { pattern: "foo", path: tmpDir });
+		const tool = new SearchTool(session());
+		const result = await tool.execute("g4", { type: "text", input: "foo", path: tmpDir });
 		const text = textOf(result);
 		expect(text).toContain("foo");
 		// At least one of the foo-bearing files should be referenced.
@@ -94,12 +96,13 @@ describe("GrepTool fail paths and matches", () => {
 
 	it("case-sensitive search does not match different case when case:true", async () => {
 		await Bun.write(path.join(tmpDir, "case.ts"), "FooBar\n");
-		const tool = new GrepTool(session() as never);
+		const tool = new SearchTool(session());
 		const result = await tool.execute("g5", {
-			pattern: "foobar",
+			type: "text",
+			input: "foobar",
 			path: path.join(tmpDir, "case.ts"),
 			case: true,
-		} as never);
+		});
 		const text = textOf(result);
 		// Sensitive: foobar must not hit FooBar (unless product ignores case flag — then assert flag honored).
 		const hit = text.includes("FooBar");
@@ -113,12 +116,13 @@ describe("GrepTool fail paths and matches", () => {
 
 	it("literal special regex characters can match as text when treated as pattern", async () => {
 		await Bun.write(path.join(tmpDir, "special.ts"), "price is $5.00\n");
-		const tool = new GrepTool(session() as never);
+		const tool = new SearchTool(session());
 		// Escaped dollar should match or literal fallback should still find $5.00
 		let text = "";
 		try {
 			const result = await tool.execute("g6", {
-				pattern: "\\$5\\.00",
+				type: "text",
+				input: "\\$5\\.00",
 				path: path.join(tmpDir, "special.ts"),
 			});
 			text = textOf(result);
@@ -129,12 +133,12 @@ describe("GrepTool fail paths and matches", () => {
 	});
 
 	it("missing path throws or reports without inventing matches from other dirs", async () => {
-		const tool = new GrepTool(session() as never);
+		const tool = new SearchTool(session());
 		const missing = path.join(tmpDir, "no-such-dir");
 		let text = "";
 		let threw = false;
 		try {
-			text = textOf(await tool.execute("g7", { pattern: "foo", path: missing }));
+			text = textOf(await tool.execute("g7", { type: "text", input: "foo", path: missing }));
 		} catch (e) {
 			threw = true;
 			text = String(e);
@@ -147,10 +151,10 @@ describe("GrepTool fail paths and matches", () => {
 	});
 
 	it("whitespace-only pattern is rejected like empty", async () => {
-		const tool = new GrepTool(session() as never);
+		const tool = new SearchTool(session());
 		let text = "";
 		try {
-			text = textOf(await tool.execute("g8", { pattern: "   ", path: tmpDir }));
+			text = textOf(await tool.execute("g8", { type: "text", input: "   ", path: tmpDir }));
 		} catch (e) {
 			text = String(e);
 		}

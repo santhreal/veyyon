@@ -2,10 +2,10 @@ import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import type {
 	AgentEvent,
-	AgentTool,
 	AgentToolContext,
 	AgentToolResult,
 	AgentToolUpdateCallback,
+	AnyAgentTool,
 } from "@veyyon/agent-core";
 import type {
 	CursorMcpCall,
@@ -54,7 +54,7 @@ export function cursorContextFileRules(files: readonly ContextFileEntry[]): Curs
 
 interface CursorExecBridgeOptions {
 	cwd: string;
-	tools: Map<string, AgentTool>;
+	tools: Map<string, AnyAgentTool>;
 	getToolContext?: () => AgentToolContext | undefined;
 	emitEvent?: (event: AgentEvent) => void;
 }

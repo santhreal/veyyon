@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Settings } from "../../config/settings";
 import type { ToolSession } from "..";
-import { executeFileSearch } from "../glob";
+import { executeFileSearch } from "../file-search";
 import { ToolError } from "../tool-errors";
 
 const ROOT_SEARCH_ERROR = "Searching from root directory '/' is not allowed";

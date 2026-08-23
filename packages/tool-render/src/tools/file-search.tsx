@@ -1,23 +1,23 @@
-/** `glob` (legacy `find`) — glob-based file finder; results are paths sorted by mtime. */
+/** File-pattern search results, rendered for unified `search`. */
 import { formatCount } from "@veyyon/utils/format";
 import type { ReactNode } from "react";
 import { Badge, Badges, InvalidArg, Note, ResultText } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
-import { detailsRecord, isRecord, num, scopePaths, shortenPath, str, truncate } from "../util";
+import { detailsRecord, isRecord, num, shortenPath, str, truncate } from "../util";
+
+function inputOf(args: Record<string, unknown>): string | null {
+	return str(args.input);
+}
 
 function Summary({ args }: ToolRenderProps): ReactNode {
-	const raw = args.path ?? args.paths;
-	if (raw !== undefined && typeof raw !== "string" && !Array.isArray(raw)) return <InvalidArg what="path" />;
-	const globs = scopePaths(args)
-		.map(p => shortenPath(p))
-		.join(", ");
-	return <span className="tv-pattern">{truncate(globs || "*", 120)}</span>;
+	const input = inputOf(args);
+	if (input === null) return <InvalidArg what="input" />;
+	return <span className="tv-pattern">{truncate(shortenPath(input), 120)}</span>;
 }
 
 function Body({ args, result }: ToolRenderProps): ReactNode {
 	const details = detailsRecord(result);
 	const limit = num(args.limit);
-	const timeout = num(args.timeout);
 	const fileCount = num(details?.fileCount);
 	const resultLimit = num(details?.resultLimitReached);
 	const scopePath = str(details?.scopePath);
@@ -41,7 +41,6 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 					limit !== null && <Badge>limit {limit}</Badge>,
 					args.gitignore === false && <Badge>no-gitignore</Badge>,
 					args.hidden === false && <Badge>no-hidden</Badge>,
-					timeout !== null && <Badge>timeout {timeout}s</Badge>,
 					fileCount !== null && <Badge tone="accent">{formatCount("file", fileCount)}</Badge>,
 					scopePath !== null && <Badge>in {shortenPath(scopePath)}</Badge>,
 					truncated && (
@@ -56,4 +55,4 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 	);
 }
 
-export const globRenderer: ToolRenderer = { Summary, Body };
+export const fileSearchRenderer: ToolRenderer = { Summary, Body };

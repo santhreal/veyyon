@@ -2,25 +2,21 @@ import { describe, expect, it } from "bun:test";
 import { normalizeToolName, normalizeToolNames } from "@veyyon/coding-agent/tools/builtin-names";
 
 /**
- * normalizeToolName / normalizeToolNames map a user- or config-supplied tool name onto its canonical
- * builtin name: lowercase, then apply the legacy alias table (search -> grep, find -> glob) so an old
- * config or a legacy request still resolves to the tool that replaced it. They had no direct test. A
- * regression that skipped the alias step would leave a legacy name unresolved (the tool silently
- * disappears from an allowlist); one that broke case folding would fail to match "Grep"/"BASH". The
- * plural form additionally deduplicates by canonical name while preserving first-seen order, so an
- * allowlist listing both "search" and "grep" does not enable the same tool twice.
+ * normalizeToolName / normalizeToolNames lowercase user- or config-supplied tool names and
+ * deduplicate them without aliases. A retired tool identity must stay retired rather than
+ * silently resolving to a different public contract; persisted-config migration is the one
+ * boundary that rewrites old IDs.
  */
 
 describe("normalizeToolName", () => {
-	it("rewrites the legacy aliases to their current builtin names", () => {
-		expect(normalizeToolName("search")).toBe("grep");
-		expect(normalizeToolName("find")).toBe("glob");
+	it("keeps canonical builtin names stable", () => {
+		expect(normalizeToolName("search")).toBe("search");
+		expect(normalizeToolName("bash")).toBe("bash");
 	});
 
-	it("folds case before looking up the alias or returning the name", () => {
-		expect(normalizeToolName("SEARCH")).toBe("grep");
-		expect(normalizeToolName("Find")).toBe("glob");
-		expect(normalizeToolName("Grep")).toBe("grep");
+	it("folds case without applying aliases", () => {
+		expect(normalizeToolName("SEARCH")).toBe("search");
+		expect(normalizeToolName("Bash")).toBe("bash");
 	});
 
 	it("lowercases an unknown name and passes it through unchanged otherwise", () => {
@@ -29,9 +25,8 @@ describe("normalizeToolName", () => {
 });
 
 describe("normalizeToolNames", () => {
-	it("normalizes each name and deduplicates by canonical name, preserving first-seen order", () => {
-		// "search" -> "grep" collides with the later literal "grep"; "BASH"/"bash" collapse.
-		expect(normalizeToolNames(["search", "grep", "Find", "glob", "BASH", "bash"])).toEqual(["grep", "glob", "bash"]);
+	it("normalizes each name and deduplicates while preserving first-seen order", () => {
+		expect(normalizeToolNames(["Search", "search", "BASH", "bash", "MyTool"])).toEqual(["search", "bash", "mytool"]);
 	});
 
 	it("returns an empty array for no names", () => {

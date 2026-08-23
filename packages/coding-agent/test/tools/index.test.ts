@@ -67,8 +67,9 @@ describe("createTools", () => {
 		expect(names).toContain("read");
 		expect(names).toContain("edit");
 		expect(names).toContain("write");
-		expect(names).toContain("grep");
-		expect(names).toContain("glob");
+		expect(names).toContain("search");
+		expect(names).not.toContain("grep");
+		expect(names).not.toContain("glob");
 		expect(names).toContain("lsp");
 		expect(names).toContain("browser");
 		expect(names).toContain("task");
@@ -79,18 +80,18 @@ describe("createTools", () => {
 		expect(names).not.toContain("vim");
 	});
 
-	it("normalizes legacy explicit tool names", async () => {
+	it("normalizes case and leaves retired tool names unregistered", async () => {
 		const session = createTestSession({
-			settings: createSettingsWithOverrides({ "astGrep.enabled": false }),
+			settings: createSettingsWithOverrides(),
 		});
-		const tools = await createTools(session, ["search", "find", "grep"]);
+		const tools = await createTools(session, ["SEARCH", "find", "grep"]);
 		const names = tools.map(t => t.name);
 
-		expect(names.filter(name => name === "grep")).toHaveLength(1);
-		expect(names).toContain("glob");
+		expect(names.filter(name => name === "search")).toHaveLength(1);
 		expect(names).toContain("resolve");
-		expect(names).not.toContain("search");
 		expect(names).not.toContain("find");
+		expect(names).not.toContain("grep");
+		expect(names).not.toContain("glob");
 	});
 
 	it("includes bash and eval when both eval backends are allowed", async () => {
@@ -219,12 +220,9 @@ describe("createTools", () => {
 		expect(tools.map(t => t.name)).toContain("ask");
 	});
 
-	it("filters disabled builtin tools by settings", async () => {
+	it("filters optional builtin tools by settings while keeping default search", async () => {
 		const session = createTestSession({
 			settings: createSettingsWithOverrides({
-				"glob.enabled": false,
-				"grep.enabled": false,
-				"astGrep.enabled": false,
 				"astEdit.enabled": false,
 				"bash.enabled": false,
 				"launch.enabled": false,
@@ -238,9 +236,7 @@ describe("createTools", () => {
 
 		expect(names).not.toContain("bash");
 		expect(names).not.toContain("launch");
-		expect(names).not.toContain("glob");
-		expect(names).not.toContain("grep");
-		expect(names).not.toContain("ast_grep");
+		expect(names).toContain("search");
 		expect(names).not.toContain("ast_edit");
 		expect(names).not.toContain("web_search");
 		expect(names).not.toContain("browser");
@@ -307,14 +303,14 @@ describe("createTools", () => {
 			},
 		});
 
-		const tools = await createTools(session, ["bash", "grep", "read", "glob"]);
+		const tools = await createTools(session, ["bash", "search", "read"]);
 		const bash = tools.find(tool => tool.name === "bash");
 
-		expect(bash?.description).toContain("`grep` tool");
+		expect(bash?.description).toContain("Workspace discovery belongs to `search`");
 		session.setActiveToolNames?.(["bash"]);
-		expect(bash?.description).not.toContain("`grep` tool");
+		expect(bash?.description).not.toContain("Workspace discovery belongs to `search`");
 		expect(bash?.description).not.toContain("`ls` → `read`");
-		expect(bash?.description).not.toContain("`find` → the `glob` tool");
+		expect(bash?.description).not.toContain("blocked for workspace discovery; use `search`");
 	});
 
 	it("includes search_tool_bm25 when MCP tool discovery is enabled and executable", async () => {

@@ -115,26 +115,18 @@ function isNonFilesystemTarget(rawPath: string): boolean {
 }
 
 /**
- * Filesystem targets for a SEARCH tool (`grep` / `glob` / `ast_grep`), which all
- * take a semicolon-delimited `path` of directories/globs to search. A search
- * reads file contents or directory listings under each pattern's base directory,
- * so an out-of-cwd base must be gated the same as a point read (the user policy
- * is that all non-yolo out-of-cwd filesystem access prompts). Each entry reduces
- * to its {@link globSearchBase} — the fixed root the glob descends from — except
- * a non-filesystem entry (URL / ssh / internal scheme), which is passed through
- * verbatim so the boundary skips it. A bare `*.ts` bases at cwd (in-bounds).
- * Shared by all three tools so the split-and-base rule lives in ONE place.
+ * Filesystem targets for unified workspace search.
+ *
+ * The canonical search tool passes a semicolon-delimited `path` containing
+ * directories or globs. Search reads file contents or directory listings under
+ * each pattern's base directory, so an out-of-cwd base is gated like a point
+ * read. Each entry reduces to its {@link globSearchBase}, except a URL, SSH
+ * target, or internal scheme, which passes through so the boundary can skip it.
+ * A bare `*.ts` bases at cwd.
  */
 export function searchPathFilesystemTargets(args: unknown): string[] {
-	// `grep` documents `path` but its approval also accepts a legacy `paths`
-	// (string or array); mirror that breadth so a search cannot under-report.
-	const a = args as { path?: unknown; paths?: unknown } | null;
-	const raw = a?.path ?? a?.paths;
-	const entries: string[] = [];
-	if (typeof raw === "string") entries.push(...raw.split(";"));
-	else if (Array.isArray(raw)) {
-		for (const item of raw) if (typeof item === "string") entries.push(...item.split(";"));
-	}
+	const raw = (args as { path?: unknown } | null)?.path;
+	const entries = typeof raw === "string" ? raw.split(";") : [];
 	const targets: string[] = [];
 	for (const entry of entries) {
 		const trimmed = entry.trim();

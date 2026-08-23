@@ -3,13 +3,13 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { create } from "@bufbuild/protobuf";
-import type { AgentEvent, AgentTool } from "@veyyon/agent-core";
-import { ReadArgsSchema, ShellArgsSchema } from "@veyyon/catalog/discovery/cursor-gen/agent_pb";
+import type { AgentEvent, AnyAgentTool } from "@veyyon/agent-core";
+import { GrepArgsSchema, ReadArgsSchema, ShellArgsSchema } from "@veyyon/catalog/discovery/cursor-gen/agent_pb";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import { CursorExecHandlers } from "@veyyon/coding-agent/cursor";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
-import { GrepTool } from "@veyyon/coding-agent/tools/grep";
-import { removeWithRetries } from "@veyyon/utils";
+import { SearchTool } from "@veyyon/coding-agent/tools/search";
+import { isRecord, removeWithRetries } from "@veyyon/utils";
 import { type } from "arktype";
 
 function createTestSession(cwd: string, overrides: Partial<ToolSession> = {}): ToolSession {
@@ -23,18 +23,23 @@ function createTestSession(cwd: string, overrides: Partial<ToolSession> = {}): T
 	};
 }
 
+function textMatchCount(details: unknown): number | undefined {
+	if (!isRecord(details) || details.type !== "text" || !isRecord(details.result)) return undefined;
+	return typeof details.result.matchCount === "number" ? details.result.matchCount : undefined;
+}
+
 describe("CursorExecHandlers.grep bridge", () => {
 	let cwd: string;
-	let searchTool: GrepTool;
+	let searchTool: SearchTool;
 	let handlers: CursorExecHandlers;
 
 	beforeEach(async () => {
 		cwd = await fs.mkdtemp(path.join(os.tmpdir(), "cursor-exec-test-"));
 		await Bun.write(path.join(cwd, "sample.txt"), "Hello World\nhello world\n");
-		searchTool = new GrepTool(createTestSession(cwd));
+		searchTool = new SearchTool(createTestSession(cwd));
 		handlers = new CursorExecHandlers({
 			cwd,
-			tools: new Map([["grep", searchTool as any]]),
+			tools: new Map<string, AnyAgentTool>([["search", searchTool]]),
 		});
 	});
 
@@ -44,35 +49,41 @@ describe("CursorExecHandlers.grep bridge", () => {
 
 	it("maps caseInsensitive parameter correctly through the grep bridge", async () => {
 		// 1. By default/omitted caseInsensitive, should be case-sensitive (match count 1 for "hello")
-		const defaultResult = await handlers.grep({
-			toolCallId: "call-1",
-			path: cwd,
-			pattern: "hello",
-		} as any);
-		expect((defaultResult.details as { matchCount?: number } | undefined)?.matchCount).toBe(1);
+		const defaultResult = await handlers.grep(
+			create(GrepArgsSchema, {
+				toolCallId: "call-1",
+				path: cwd,
+				pattern: "hello",
+			}),
+		);
+		expect(textMatchCount(defaultResult.details)).toBe(1);
 
 		// 2. If caseInsensitive: true, should be case-insensitive (match count 2 for "hello")
-		const insensitiveResult = await handlers.grep({
-			toolCallId: "call-2",
-			path: cwd,
-			pattern: "hello",
-			caseInsensitive: true,
-		} as any);
-		expect((insensitiveResult.details as { matchCount?: number } | undefined)?.matchCount).toBe(2);
+		const insensitiveResult = await handlers.grep(
+			create(GrepArgsSchema, {
+				toolCallId: "call-2",
+				path: cwd,
+				pattern: "hello",
+				caseInsensitive: true,
+			}),
+		);
+		expect(textMatchCount(insensitiveResult.details)).toBe(2);
 
 		// 3. If caseInsensitive: false, should be case-sensitive (match count 1 for "hello")
-		const sensitiveResult = await handlers.grep({
-			toolCallId: "call-3",
-			path: cwd,
-			pattern: "hello",
-			caseInsensitive: false,
-		} as any);
-		expect((sensitiveResult.details as { matchCount?: number } | undefined)?.matchCount).toBe(1);
+		const sensitiveResult = await handlers.grep(
+			create(GrepArgsSchema, {
+				toolCallId: "call-3",
+				path: cwd,
+				pattern: "hello",
+				caseInsensitive: false,
+			}),
+		);
+		expect(textMatchCount(sensitiveResult.details)).toBe(1);
 	});
 });
 
 describe("CursorExecHandlers error results", () => {
-	const rewrittenErrorTool = (name: string): AgentTool => ({
+	const rewrittenErrorTool = (name: string): AnyAgentTool => ({
 		name,
 		label: name,
 		description: "returns a rewritten tool failure",

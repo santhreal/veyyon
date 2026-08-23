@@ -2152,14 +2152,17 @@ export class Settings {
 			delete raw["power.preventDisplaySleep"];
 		}
 
-
 		// Tool-name arrays use canonical wire IDs and remain deduplicated.
 		const migrateToolNameList = (names: unknown): unknown => {
 			if (!Array.isArray(names)) return names;
 			const out: unknown[] = [];
 			const seen = new Set<string>();
 			for (const name of names) {
-				const migrated = typeof name === "string" ? normalizeToolName(name) : name;
+				const normalized = typeof name === "string" ? normalizeToolName(name) : name;
+				const migrated =
+					normalized === "find" || normalized === "glob" || normalized === "grep" || normalized === "ast_grep"
+						? "search"
+						: normalized;
 				if (typeof migrated === "string") {
 					if (seen.has(migrated)) continue;
 					seen.add(migrated);
@@ -2189,13 +2192,45 @@ export class Settings {
 			delete raw["tools.essentialOverride"];
 		}
 
-		// Also clean up any empty nested objects we might have created or left behind
-		if (raw.glob && typeof raw.glob === "object" && Object.keys(raw.glob).length === 0) {
-			delete raw.glob;
+		// Retired per-engine enable flags no longer control the canonical search
+		// tool, which is part of the default inventory. Preserve only the text
+		// context settings; canonical values win when both generations exist.
+		const legacySetting = (section: string, key: string): unknown => {
+			const nested = raw[section];
+			if (isRecord(nested) && key in nested) return nested[key];
+			return raw[`${section}.${key}`];
+		};
+		const legacyContextBefore = legacySetting("grep", "contextBefore");
+		const legacyContextAfter = legacySetting("grep", "contextAfter");
+		const searchObj = isRecord(raw.search) ? raw.search : {};
+		delete searchObj.enabled;
+		if (
+			!("contextBefore" in searchObj) &&
+			typeof raw["search.contextBefore"] !== "number" &&
+			typeof legacyContextBefore === "number"
+		) {
+			searchObj.contextBefore = legacyContextBefore;
 		}
-		if (raw.grep && typeof raw.grep === "object" && Object.keys(raw.grep).length === 0) {
-			delete raw.grep;
+		if (
+			!("contextAfter" in searchObj) &&
+			typeof raw["search.contextAfter"] !== "number" &&
+			typeof legacyContextAfter === "number"
+		) {
+			searchObj.contextAfter = legacyContextAfter;
 		}
+		if (Object.keys(searchObj).length > 0) raw.search = searchObj;
+		else delete raw.search;
+		delete raw["search.enabled"];
+		delete raw.find;
+		delete raw.glob;
+		delete raw.grep;
+		delete raw.astGrep;
+		delete raw["find.enabled"];
+		delete raw["glob.enabled"];
+		delete raw["grep.enabled"];
+		delete raw["grep.contextBefore"];
+		delete raw["grep.contextAfter"];
+		delete raw["astGrep.enabled"];
 		// readHashLines: removed. Hashline anchors are now driven solely by
 		// edit.mode === "hashline"; the separate read toggle only ever produced
 		// the incoherent "hashline edits without addressable anchors" state.

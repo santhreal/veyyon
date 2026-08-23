@@ -251,7 +251,7 @@ describe("WATCHDOG.yml file round-trip", () => {
 		instructions: 'Shared baseline.\nSecond line with: a colon and "quotes".',
 		advisors: [
 			{ name: "Architecture", model: "x-ai/grok-code-fast:high", instructions: "Watch module boundaries." },
-			{ name: "Security", tools: ["read", "grep"] },
+			{ name: "Security", tools: ["read", "search"] },
 		],
 	};
 

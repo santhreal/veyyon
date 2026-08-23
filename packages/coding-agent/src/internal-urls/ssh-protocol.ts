@@ -326,7 +326,7 @@ export class SshProtocolHandler implements ProtocolHandler {
 		signal?: AbortSignal,
 		skipListing?: boolean,
 	): Promise<InternalResource> {
-		// `search`/`find` reject an ssh:// directory outright, so they pass `skipListing`
+		// `search` rejects an ssh:// directory outright, so it passes `skipListing`
 		// to avoid draining a full remote `ls` we would only discard.
 		const content = skipListing ? "" : formatDirListing(await listRemoteDir(target, remotePath, { signal }));
 		return {

@@ -3,7 +3,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { GlobTool } from "@veyyon/coding-agent/tools/glob";
+import { SearchTool } from "@veyyon/coding-agent/tools/search";
 import { removeWithRetries } from "@veyyon/utils";
 import { makeToolSession } from "../helpers/tool-session";
 
@@ -14,7 +14,7 @@ function textOf(result: { content: Array<{ type: string; text?: string }> }): st
 		.join("\n");
 }
 
-describe("GlobTool fail paths and matches", () => {
+describe("SearchTool files fail paths and matches", () => {
 	let tmpDir: string;
 
 	beforeEach(async () => {
@@ -35,13 +35,13 @@ describe("GlobTool fail paths and matches", () => {
 			hasUI: false,
 			getSessionFile: () => null,
 			getSessionSpawns: () => "*",
-			settings: Settings.isolated({ "glob.enabled": true }),
+			settings: Settings.isolated(),
 		});
 	}
 
 	it("lists ts files for src/**/*.ts path glob", async () => {
-		const tool = new GlobTool(session() as never);
-		const result = await tool.execute("g1", { path: "src/**/*.ts" });
+		const tool = new SearchTool(session());
+		const result = await tool.execute("g1", { type: "files", input: "src/**/*.ts" });
 		const text = textOf(result);
 		expect(text).toContain("a.ts");
 		expect(text).toContain("b.ts");
@@ -50,8 +50,8 @@ describe("GlobTool fail paths and matches", () => {
 	});
 
 	it("returns no-match wording or empty list for a pattern with zero hits", async () => {
-		const tool = new GlobTool(session() as never);
-		const result = await tool.execute("g2", { path: "src/**/*.zzz" });
+		const tool = new SearchTool(session());
+		const result = await tool.execute("g2", { type: "files", input: "src/**/*.zzz" });
 		const text = textOf(result);
 		// Must not list a.ts as a match. If a.ts appears only inside "no files
 		// matching" wording, that's fine.
@@ -63,9 +63,10 @@ describe("GlobTool fail paths and matches", () => {
 	});
 
 	it("does not crash on absolute path under tmpDir", async () => {
-		const tool = new GlobTool(session() as never);
+		const tool = new SearchTool(session());
 		const result = await tool.execute("g3", {
-			path: path.join(tmpDir, "src", "*.ts"),
+			type: "files",
+			input: path.join(tmpDir, "src", "*.ts"),
 		});
 		const text = textOf(result);
 		expect(typeof text).toBe("string");
@@ -75,8 +76,8 @@ describe("GlobTool fail paths and matches", () => {
 		for (let i = 0; i < 20; i++) {
 			await Bun.write(path.join(tmpDir, "src", `f${i}.ts`), `${i}\n`);
 		}
-		const tool = new GlobTool(session() as never);
-		const result = await tool.execute("g4", { path: "src/**/*.ts", limit: 3 } as never);
+		const tool = new SearchTool(session());
+		const result = await tool.execute("g4", { type: "files", input: "src/**/*.ts", limit: 3 });
 		const text = textOf(result);
 		const matches = text.split("\n").filter(l => /\.ts\b/.test(l) && !/limit|truncated|more/i.test(l));
 		// Cap is soft if footer mentions more; never explode to 20+ full rows without notice.
@@ -87,8 +88,8 @@ describe("GlobTool fail paths and matches", () => {
 	});
 
 	it("md-only pattern does not list ts files", async () => {
-		const tool = new GlobTool(session() as never);
-		const result = await tool.execute("g5", { path: "**/*.md" });
+		const tool = new SearchTool(session());
+		const result = await tool.execute("g5", { type: "files", input: "**/*.md" });
 		const text = textOf(result);
 		expect(text).toContain("readme.md");
 		expect(text.includes("a.ts") && !/no files|0 file/i.test(text)).toBe(false);
@@ -116,32 +117,35 @@ describe("GlobTool fail paths and matches", () => {
 	 */
 	it("keeps a dotfile out of every listing unless hidden is enabled", async () => {
 		await Bun.write(path.join(tmpDir, ".secret.env"), "SECRET=1\n");
-		const tool = new GlobTool(session() as never);
-		const run = async (id: string, args: Record<string, unknown>) => textOf(await tool.execute(id, args as never));
+		const tool = new SearchTool(session());
+		const run = async (id: string, args: { type: "files"; input: string; hidden?: boolean }) =>
+			textOf(await tool.execute(id, args));
 
 		// Broad listing, hidden off: the dotfile is absent AND ordinary files are still
 		// there, so "absent" cannot be satisfied by a glob that found nothing.
-		const broadOff = await run("g6a", { path: "**/*", hidden: false });
+		const broadOff = await run("g6a", { type: "files", input: "**/*", hidden: false });
 		expect(broadOff).not.toContain(".secret.env");
 		expect(broadOff).toContain("a.ts");
 
 		// Broad listing, hidden on: the flag requested it, so it appears.
-		const broadOn = await run("g6b", { path: "**/*", hidden: true });
+		const broadOn = await run("g6b", { type: "files", input: "**/*", hidden: true });
 		expect(broadOn).toContain(".secret.env");
 		expect(broadOn).toContain("a.ts");
 
 		// Exact name, hidden on: found.
-		expect(await run("g6c", { path: "**/.secret.env", hidden: true })).toContain(".secret.env");
+		expect(await run("g6c", { type: "files", input: "**/.secret.env", hidden: true })).toContain(".secret.env");
 
 		// Exact name, hidden OFF: still refused. Naming a dotfile is not a way around
 		// the flag, and the exact string is asserted so a future "helpful" override
 		// that starts returning it is a failure rather than a silent policy change.
-		expect(await run("g6d", { path: "**/.secret.env", hidden: false })).toBe("No files found matching pattern");
+		expect(await run("g6d", { type: "files", input: "**/.secret.env", hidden: false })).toBe(
+			"No files found matching pattern",
+		);
 	});
 
 	it("semicolon multi-pattern can include both src and root md", async () => {
-		const tool = new GlobTool(session() as never);
-		const result = await tool.execute("g7", { path: "src/**/*.ts; *.md" });
+		const tool = new SearchTool(session());
+		const result = await tool.execute("g7", { type: "files", input: "src/**/*.ts; *.md" });
 		const text = textOf(result);
 		expect(text.includes("a.ts") || text.includes("b.ts")).toBe(true);
 		expect(text.includes("readme.md") || text.includes(".md")).toBe(true);

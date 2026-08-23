@@ -177,7 +177,7 @@ describe("createAgentSession MCP discovery prompt gating", () => {
 		// its own switch instead of discovery. The second session below is the control that
 		// separates the two, and these names are the ones the permission table admits with the
 		// default settings this session was built with.
-		for (const name of ["read", "bash", "edit", "grep", "glob", "task", "todo", "web_search"]) {
+		for (const name of ["read", "bash", "edit", "search", "task", "todo", "web_search"]) {
 			expect(activeNames, `${name} is entitled and must be directly callable`).toContain(name);
 		}
 		expect(activeNames).not.toContain("browser");
@@ -228,7 +228,7 @@ describe("createAgentSession MCP discovery prompt gating", () => {
 
 		const prompt = session.systemPrompt.join("\n");
 		const searchTool = session.agent.state.tools.find(tool => tool.name === "search_tool_bm25");
-		expect(session.getActiveToolNames()).not.toContain("search");
+		expect(session.getActiveToolNames()).not.toContain("debug");
 		expect(prompt).toContain("call `search_tool_bm25` before concluding no such tool exists");
 		expect(searchTool?.description).toContain("Total discoverable tools available:");
 	});
@@ -426,15 +426,15 @@ describe("createAgentSession MCP discovery prompt gating", () => {
 			enableLsp: false,
 		});
 
-		expect(await session.activateDiscoveredTools(["grep"])).toEqual(["grep"]);
-		expect(session.getSelectedDiscoveredToolNames()).toContain("grep");
+		expect(await session.activateDiscoveredTools(["debug"])).toEqual(["debug"]);
+		expect(session.getSelectedDiscoveredToolNames()).toContain("debug");
 
 		await session.setActiveToolsByName(["read", "search_tool_bm25"]);
 
-		expect(session.getActiveToolNames()).not.toContain("grep");
-		expect(session.getSelectedDiscoveredToolNames()).not.toContain("grep");
-		expect(await session.activateDiscoveredTools(["grep"])).toEqual(["grep"]);
-		expect(session.getActiveToolNames()).toContain("grep");
+		expect(session.getActiveToolNames()).not.toContain("debug");
+		expect(session.getSelectedDiscoveredToolNames()).not.toContain("debug");
+		expect(await session.activateDiscoveredTools(["debug"])).toEqual(["debug"]);
+		expect(session.getActiveToolNames()).toContain("debug");
 	});
 	it("restores explicit MCP, thinking, and service-tier entries when resuming without rewriting the session file", async () => {
 		const firstManager = SessionManager.create(tempDir, tempDir);
