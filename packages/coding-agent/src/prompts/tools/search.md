@@ -15,10 +15,10 @@ Always pass `type` before `input`:
 
 <instruction>
 - Use `structure` whenever the question depends on code syntax or relationships; text matches do not prove definitions, calls, or types.
-- For `text` and `structure`, `input` is the pattern and `path` is the scope; never swap them, and scope `path` as narrowly as known.
+- For `text` and `structure`, `input` is the pattern and `path` is the scope; never swap them. Pass the narrowest known `path` instead of repeating a broad workspace search.
 - Scope `structure` to one language. Declaration forms are distinct: functions, methods, and arrow functions require their own valid patterns. C++ expression-statement calls require the trailing semicolon.
 - A structure parse error means the input or language scope is wrong. Correct it rather than falling back to `text`.
-- `path` accepts a file, directory, glob, internal URL, line selector for `text`, or semicolon-delimited set. Omitted `path` searches the workspace root.
+- `path` accepts a file, directory, glob, internal URL, line selector for `text`, or semicolon-delimited set. Omit it only when the workspace root is the intended scope.
 </instruction>
 
 <output>

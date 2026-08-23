@@ -8,8 +8,9 @@ import { removeWithRetries } from "@veyyon/utils";
 
 /**
  * The unified search facade must route every public discriminator through the
- * production engine while rejecting fields owned by another mode. This suite
- * does not cover each engine's pattern dialect; their engine suites own that.
+ * production engine while rejecting fields owned by another mode. Files-mode
+ * tolerates an accidental `path` field but keeps `input` authoritative; this
+ * recovers provider calls without making the public contract ambiguous.
  */
 describe("one search tool dispatches every workspace search mode", () => {
 	let cwd: string;
@@ -61,6 +62,17 @@ describe("one search tool dispatches every workspace search mode", () => {
 		expect(result.details?.type).toBe("text");
 	});
 
+	it("tolerates files path but keeps the required input authoritative", async () => {
+		const result = await tool.execute("search-files-extra-path", {
+			type: "files",
+			input: "**/*.ts",
+			path: "missing-scope",
+		});
+		const text = result.content.find(block => block.type === "text")?.text ?? "";
+		expect(text).toContain("sample.ts");
+		expect(tool.filesystemTargets({ type: "files", input: "src/**/*.ts", path: "/outside" })).toEqual(["src"]);
+	});
+
 	it("rejects empty or whitespace search input", async () => {
 		await expect(tool.execute("search-empty", { type: "files", input: "   " })).rejects.toThrow(
 			"Search input must not be empty",
@@ -74,7 +86,6 @@ describe("one search tool dispatches every workspace search mode", () => {
 	});
 
 	it.each([
-		["files", { type: "files" as const, input: "**/*.ts", path: "sample.ts" }, "path"],
 		["files", { type: "files" as const, input: "**/*.ts", case: true }, "case"],
 		["files", { type: "files" as const, input: "**/*.ts", skip: 0 }, "skip"],
 		["text", { type: "text" as const, input: "needle", hidden: true }, "hidden"],
@@ -104,6 +115,7 @@ describe("one search tool dispatches every workspace search mode", () => {
 		expect(tool.approval({ type: "text", input: "needle", path: "src" })).toBe("read");
 		expect(tool.approval({ type: "text", input: "needle", path: "ssh://host/path" })).toBe("exec");
 		expect(tool.approval({ type: "structure", input: "console.log($A)", path: "src/**/*.ts" })).toBe("read");
+		expect(tool.approval({ type: "structure", input: "console.log($A)", path: "ssh://host/path" })).toBe("exec");
 		expect(tool.approval(null)).toBe("read");
 	});
 });

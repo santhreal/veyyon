@@ -342,6 +342,7 @@ describe("system prompt settings parity: tool policy", () => {
 		expect(enabled).toContain("# AST");
 		expect(enabled).toContain("Workspace discovery");
 		expect(enabled).toContain('type: "structure"');
+		expect(enabled).toContain('- `search` with `type: "structure"` for structural discovery.');
 		expect(await renderBlock0({ toolNames: ["read"] })).not.toContain("Workspace discovery");
 	});
 

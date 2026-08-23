@@ -103,7 +103,7 @@ const KNOWN_TOOL_NAME_SET: ReadonlySet<string> = new Set<string>([...BUILTIN_TOO
  * an agent can DO has to treat an unknown name as unknown rather than as harmless. `task/agent-role.ts`
  * uses it for exactly that.
  *
- * Tool names are canonical; unknown names remain unknown third-party tools.
+ * Legacy workspace-search names normalize to `search`; other unknown names remain unknown third-party tools.
  */
 export function isKnownToolName(name: string): boolean {
 	return KNOWN_TOOL_NAME_SET.has(normalizeToolNames([name])[0] ?? name);
@@ -130,9 +130,17 @@ export const TOOL = Object.fromEntries([...BUILTIN_TOOL_NAMES, ...HIDDEN_TOOL_NA
 	[K in ToolNameLiteral]: K;
 };
 
-/** Return the canonical lowercase tool name. */
+const LEGACY_BUILTIN_TOOL_NAME_ALIASES: ReadonlyMap<string, BuiltinToolName> = new Map([
+	["glob", "search"],
+	["grep", "search"],
+	["find", "search"],
+	["ast_grep", "search"],
+]);
+
+/** Return the canonical tool name for current and retired built-in tool IDs. */
 export function normalizeToolName(name: string): string {
-	return name.toLowerCase();
+	const normalized = name.toLowerCase();
+	return LEGACY_BUILTIN_TOOL_NAME_ALIASES.get(normalized) ?? normalized;
 }
 
 /** Normalize and deduplicate tool names while preserving first-seen order. */

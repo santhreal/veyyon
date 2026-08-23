@@ -1,7 +1,7 @@
 /**
  * The tool block, at one width, in the two chromes.
  *
- * A tool block is the most repeated object in a session: every read, bash, grep and
+ * A tool block is the most repeated object in a session: every read, bash, search and
  * diff result is one. It used to be a box — a rule with the title cut into it, a wall
  * down each side, a rule under the last line — drawn at the terminal width with every
  * row padded out to reach it. It is now a title line and a rail: one thin glyph down

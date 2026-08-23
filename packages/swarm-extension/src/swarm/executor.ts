@@ -37,7 +37,7 @@ export interface SwarmExecutorOptions {
  * - System prompt: built from role + extra_context
  * - User prompt (task): the full task instructions from the YAML
  * - Working directory: the swarm workspace
- * - Full tool access (bash, python, read, write, edit, grep, find, fetch, web_search, browser)
+ * - Full tool access (bash, eval, read, write, edit, search, web_search, browser)
  */
 export async function executeSwarmAgent(
 	agent: SwarmAgent,

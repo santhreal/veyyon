@@ -70,7 +70,7 @@ describe("SearchTool internal URL resolution", () => {
 	let artifactsDir: string;
 
 	beforeEach(async () => {
-		tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "grep-test-"));
+		tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "text-search-test-"));
 		artifactsDir = path.join(tmpDir, "artifacts");
 		await fs.mkdir(artifactsDir);
 
@@ -161,18 +161,18 @@ describe("SearchTool internal URL resolution", () => {
 		expect(getResultText(result)).toContain("# Demo");
 		expect(result.details?.resolvedPath).toBe(path.join(skillDir, "SKILL.md"));
 	});
-	it("walks skill:// directory subpaths for search and find", async () => {
+	it("walks skill:// directory subpaths for text and file search", async () => {
 		await registerSkillDirectory();
 		const session = createSession({ hasEditTool: true });
 		const searchTool = new SearchTool(session);
-		const findTool = new SearchTool(session);
+		const fileSearchTool = new SearchTool(session);
 
 		const searchResult = await searchTool.execute("test-search", {
 			type: "text",
 			input: "deep needle",
 			path: "skill://demo/references",
 		});
-		const findResult = await findTool.execute("test-find", {
+		const fileSearchResult = await fileSearchTool.execute("test-files", {
 			type: "files",
 			input: "skill://demo/references",
 		});
@@ -180,30 +180,30 @@ describe("SearchTool internal URL resolution", () => {
 		const searchText = getResultText(searchResult);
 		expect(searchText).toContain("deep needle");
 		expect(searchText).not.toMatch(/^\[[^#\r\n]+#[0-9A-F]{4}\]$/m);
-		expect(getResultText(findResult)).toContain("guide.md");
+		expect(getResultText(fileSearchResult)).toContain("guide.md");
 	});
 
-	it("walks bare skill:// roots for search and find", async () => {
+	it("walks bare skill:// roots for text and file search", async () => {
 		await registerSkillDirectory();
 		const session = createSession({ hasEditTool: true });
 		const searchTool = new SearchTool(session);
-		const findTool = new SearchTool(session);
+		const fileSearchTool = new SearchTool(session);
 
 		const searchResult = await searchTool.execute("test-search", {
 			type: "text",
 			input: "deep needle",
 			path: "skill://demo",
 		});
-		const findResult = await findTool.execute("test-find", {
+		const fileSearchResult = await fileSearchTool.execute("test-files", {
 			type: "files",
 			input: "skill://demo",
 		});
 
 		expect(getResultText(searchResult)).toContain("deep needle");
-		expect(getResultText(findResult)).toContain("guide.md");
+		expect(getResultText(fileSearchResult)).toContain("guide.md");
 	});
 
-	it("resolves artifact:// URL to backing file and greps it", async () => {
+	it("resolves artifact:// URL to a backing file and searches it", async () => {
 		const content = "line one\nfound the needle here\nline three\n";
 		await Bun.write(path.join(artifactsDir, "5.bash.log"), content);
 
@@ -220,7 +220,7 @@ describe("SearchTool internal URL resolution", () => {
 		expect(text).toContain("needle");
 	});
 
-	it("greps artifact:// with regex pattern", async () => {
+	it("searches artifact:// with a regex pattern", async () => {
 		const content = "ERROR: connection refused\nWARN: timeout\nERROR: disk full\nINFO: ok\n";
 		await Bun.write(path.join(artifactsDir, "3.python.log"), content);
 
@@ -346,7 +346,7 @@ describe("SearchTool internal URL resolution", () => {
 		expect(text).toContain("Search workspace files, text, or code structure");
 	});
 
-	it("expands veyyon://docs to grep embedded documentation files", async () => {
+	it("expands veyyon://docs to search embedded documentation files", async () => {
 		const session = createSession();
 		const tool = new SearchTool(session);
 
@@ -441,7 +441,7 @@ describe("SearchTool internal URL resolution", () => {
 		expect(text).toContain("PLAN.md");
 	});
 
-	it("walks local:// directory subpaths for read and find", async () => {
+	it("walks local:// directory subpaths for read and file search", async () => {
 		const localRoot = path.join(artifactsDir, "local");
 		await fs.mkdir(path.join(localRoot, "notes"), { recursive: true });
 		await Bun.write(path.join(localRoot, "notes", "PLAN.md"), "# Plan\n");
@@ -450,7 +450,7 @@ describe("SearchTool internal URL resolution", () => {
 
 		const session = createSession({ hasEditTool: true });
 		const readResult = await new ReadTool(session).execute("test-read", { path: "local://notes" });
-		const findResult = await new SearchTool(session).execute("test-find", {
+		const fileSearchResult = await new SearchTool(session).execute("test-files", {
 			type: "files",
 			input: "local://notes",
 		});
@@ -461,7 +461,7 @@ describe("SearchTool internal URL resolution", () => {
 		// Directory listings must stay immutable so hashline edit anchors never key on a directory path.
 		expect(readText).not.toMatch(/^\[[^#\r\n]+#[0-9A-F]{4}\]$/m);
 		expect(dirResource.immutable).toBe(true);
-		expect(getResultText(findResult)).toContain("PLAN.md");
+		expect(getResultText(fileSearchResult)).toContain("PLAN.md");
 	});
 
 	it("keeps hashline anchors when searching mutable local:// sources", async () => {
@@ -617,7 +617,7 @@ describe("SearchTool internal URL resolution", () => {
 
 	it("refuses to search a directory listing that has no backing local path", async () => {
 		// A directory resource with no sourcePath (e.g. a remote ssh:// listing) must
-		// not be virtual-grepped — its listing text is not the directory's contents.
+		// not be searched as virtual text — its listing is not the directory's contents.
 		InternalUrlRouter.instance().register({
 			scheme: "dirstub",
 			immutable: true,
