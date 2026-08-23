@@ -182,7 +182,7 @@ mod a_filter_does_not_change_its_own_output {
 		let config = enabled();
 		let ctx = context("ctest", Some("ctest"), "ctest", &config);
 		let first = filters::filter(&ctx, "Test project /tmp/build\n", 0);
-		assert_eq!(first.text, "ctest: ok\n", "a clean run collapses to a terminated summary");
+		assert_eq!(first.text, "[clean] ctest\n", "a clean run collapses to a terminated summary",);
 
 		let second = filters::filter(&ctx, &first.text, 0);
 		assert_eq!(second.text, first.text, "filtering a summary must not rewrite it");
