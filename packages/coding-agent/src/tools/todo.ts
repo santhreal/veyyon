@@ -1656,6 +1656,34 @@ export const todoToolRenderer = {
 			return new Text(`${header}\n  ${uiTheme.fg("dim", fallback)}`, 0, 0);
 		}
 
+		// An OPEN plan is drawn by the anchored board above the composer, which is
+		// the live surface: it is rebuilt on every change, it carries the phase
+		// tallies, and it is on screen for as long as the plan is. A card that
+		// also drew every phase and every task put the same list on the screen
+		// twice, one copy of it anchored, in the same glyphs, four rows apart.
+		//
+		// The card is the record of ONE write, so unexpanded it states what that
+		// write did: the totals, the phase in play, and the task that moved.
+		// Expanded (the block's own toggle) it is the full list, which is what a
+		// reader scrolling back through history wants — by then the board is gone.
+		if (!options.expanded) {
+			const active = allTasks.find(task => task.status === "in_progress");
+			const moved = active ?? completedTasks[completedTasks.length - 1];
+			const phaseOf = phases.find(phase => phase.tasks.some(task => task.content === moved?.content));
+			const parts = [
+				uiTheme.fg("dim", formatCount("done", allTasks.filter(task => task.status === "completed").length)),
+			];
+			if (phaseOf && phases.length > 1) {
+				parts.push(uiTheme.fg("muted", boundedTodoPreviewText(phaseOf.name, TODO_ITEM_PREVIEW_WIDTH)));
+			}
+			if (moved) {
+				const mark = active ? uiTheme.checkbox.progress : uiTheme.checkbox.checked;
+				const color = active ? "accent" : "success";
+				parts.push(uiTheme.fg(color, `${mark} ${boundedTodoPreviewText(moved.content, TODO_ITEM_PREVIEW_WIDTH)}`));
+			}
+			return new Text(`${header} ${uiTheme.fg("dim", "·")} ${parts.join(uiTheme.fg("dim", " · "))}`, 0, 0);
+		}
+
 		return framedBlock(uiTheme, width => {
 			const { expanded, spinnerFrame } = options;
 			const multiPhase = phases.length > 1;

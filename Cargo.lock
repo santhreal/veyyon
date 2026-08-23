@@ -887,9 +887,9 @@ dependencies = [
 
 [[package]]
 name = "crc32fast"
-version = "1.5.0"
+version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9481c1c90cbf2ac953f07c8d4a58aa3945c425b7185c9154d67a65e4230da511"
+checksum = "8498c871161e1742aaa9d52551b2d6ebdd4c3d45a3be423e3728f33b955be550"
 dependencies = [
  "cfg-if",
 ]
@@ -2580,9 +2580,9 @@ dependencies = [
 
 [[package]]
 name = "log"
-version = "0.4.33"
+version = "0.4.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
+checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
 name = "lru"
@@ -2688,9 +2688,9 @@ dependencies = [
 
 [[package]]
 name = "napi"
-version = "3.12.1"
+version = "3.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "459197f1592f4c3dbbf9c1b13f5a4599a343e4ef66b96bc340e2a518b36a6662"
+checksum = "58c5f4d5375213fdb7be2655e152386e82f026f9a5ba36a75556e11359aafe09"
 dependencies = [
  "bitflags 2.13.1",
  "ctor",
@@ -3028,9 +3028,9 @@ dependencies = [
 
 [[package]]
 name = "ordered-float"
-version = "5.3.0"
+version = "5.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b7d950ca161dc355eaf28f82b11345ed76c6e1f6eb1f4f4479e0323b9e2fbd0e"
+checksum = "8c7c9e0d9b23589f26070720bac724174bfec1083e82f7854cdd0267518343c0"
 dependencies = [
  "num-traits",
 ]
@@ -5823,9 +5823,9 @@ checksum = "0bb6d972f580f8223cb7052d8580aea2b7061e368cf476de32ea9457b19459ed"
 
 [[package]]
 name = "uuid"
-version = "1.24.1"
+version = "1.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2cefc03fd367c0c6d4305de1b312cf00248c4114f4a0418ce6a6af769e3b0bd9"
+checksum = "f053576934f05a761a402421fbbe3d425d9366f75f978806a037b3ca481abecc"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
@@ -5858,7 +5858,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "veyyon-ast"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "anyhow",
  "ast-grep-core",
@@ -5928,7 +5928,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-conformance"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "anyhow",
  "blake3",
@@ -5945,21 +5945,21 @@ dependencies = [
 
 [[package]]
 name = "veyyon-diff-kernel"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "similar 3.2.0",
 ]
 
 [[package]]
 name = "veyyon-glob"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "globset",
 ]
 
 [[package]]
 name = "veyyon-grep-kernel"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "grep-matcher",
  "grep-pcre2",
@@ -5970,7 +5970,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-iso"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "async-trait",
  "libc",
@@ -5983,14 +5983,14 @@ dependencies = [
 
 [[package]]
 name = "veyyon-keys"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "phf 0.13.1",
 ]
 
 [[package]]
 name = "veyyon-natives"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "anyhow",
  "arboard",
@@ -6047,7 +6047,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-shell"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "anyhow",
  "brush-builtins",
@@ -6125,11 +6125,11 @@ dependencies = [
 
 [[package]]
 name = "veyyon-test-scratch"
-version = "1.1.1"
+version = "1.2.0"
 
 [[package]]
 name = "veyyon-text"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "smallvec",
  "unicode-segmentation",
@@ -6138,7 +6138,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-uu-diff"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "clap",
  "parking_lot",
@@ -6149,7 +6149,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-uu-grep"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "clap",
  "clap_complete",
@@ -6173,7 +6173,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-uutils-ctx"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "libc",
  "veyyon-test-scratch",
@@ -6181,7 +6181,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-walker"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "dashmap",
  "globset",

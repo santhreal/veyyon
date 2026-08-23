@@ -15,6 +15,7 @@ import type {
 	ToolCallContext,
 } from "@veyyon/agent-core/types";
 import type { AssistantMessage, AssistantMessageEvent, Message, ToolResultMessage } from "@veyyon/ai";
+import { Flag, is, recover } from "@veyyon/ai/error";
 import { createMockModel, type MockResponse } from "@veyyon/ai/providers/mock";
 import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { parseJsonWithRepair } from "@veyyon/utils/json-parse";
@@ -333,6 +334,12 @@ describe("agentLoop with AgentMessage", () => {
 		// The reason rides AbortController.abort(reason) onto the message verbatim,
 		// instead of the generic "Request was aborted" default.
 		expect(finalMessage.errorMessage).toBe("Interrupted by user");
+		// AND IT IS STILL AN ABORT. The flag used to be attached only when the text matched the
+		// generic sentinel byte for byte, so a cancellation carrying a reason produced an `aborted`
+		// message whose id classified as nothing — and every reader of the id (recovery, the retry
+		// decision, the renderer) saw an unclassified failure instead of a stop somebody asked for.
+		expect(is(finalMessage.errorId, Flag.Abort)).toBe(true);
+		expect(recover(finalMessage.errorId, "turn").action).toBe("abort");
 	});
 
 	it("should handle custom message types via convertToLlm", async () => {

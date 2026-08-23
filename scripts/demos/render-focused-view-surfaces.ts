@@ -83,7 +83,7 @@ const eventBus = new EventBus();
 const mode = new InteractiveMode(mainSession, "proof", undefined, undefined, undefined, eventBus);
 const terminal = new VirtualTerminal(width, 30);
 mode.ui = new TUI(terminal);
-await mode.init({ suppressWelcomeIntro: true });
+await mode.init();
 
 // The driving session's own state: a todo board, two detached spawns, and a
 // failed turn pinned above the composer.

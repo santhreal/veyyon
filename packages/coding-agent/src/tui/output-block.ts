@@ -196,7 +196,7 @@ export function renderOutputBlock(options: OutputBlockOptions, theme: Theme): st
 		if (row.kind === "sixel") continue;
 		const ink =
 			row.kind === "header"
-				? visibleWidth(row.text)
+				? visibleWidth(row.text) + chromeWidth
 				: row.kind === "content"
 					? visibleWidth(row.inner) + chromeWidth
 					: row.kind === "label"
@@ -220,7 +220,14 @@ export function renderOutputBlock(options: OutputBlockOptions, theme: Theme): st
 		}
 		const line =
 			row.kind === "header"
-				? row.text
+				? // The header sits ON the rail like every other row. It used to start at
+					// column zero, one glyph left of the body and two cells left of the rail
+					// below it, so the block's left edge began under its own title: a status
+					// icon at the top of the spinner ramp is a full cell, the rail is an
+					// eighth of one, and the two stacked read as a chip balanced on a wire.
+					// One edge down the whole block instead, which is what the anchored
+					// Todos and Subagents blocks already draw.
+					onRail(row.text)
 				: row.kind === "content"
 					? onRail(`${contentLeftPadding}${row.inner}`)
 					: row.kind === "label"

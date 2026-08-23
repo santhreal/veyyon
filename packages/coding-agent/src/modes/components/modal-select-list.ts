@@ -13,15 +13,12 @@ import {
 	type SgrMouseEvent,
 } from "@veyyon/tui";
 import {
-	applyModalReveal,
-	beginModalExit,
 	computeModalDims,
 	consumeModalChipHover,
 	hitTestModalChrome,
 	MODAL_SIZING_MEDIUM,
-	ModalRevealDriver,
 	type ModalShellGeometry,
-	modalRevealEnabled,
+	pointerMotionEnabled,
 	renderModalShell,
 	SELECT_LIST_SHORTCUTS,
 	sizingForArea,
@@ -53,14 +50,7 @@ export interface ModalSelectListOptions {
 	 * consumer with short values sets a narrow primary column and gets both.
 	 */
 	layout?: SelectListLayoutOptions;
-	/**
-	 * Play the open unfold (TOUCH-5). Honored blindly; the ambient gate
-	 * (truecolor + shimmer) is the SHOW site's job via modalRevealEnabled(), so
-	 * direct constructions render settled frames deterministically.
-	 */
-	reveal?: boolean;
 }
-
 /**
  * Floating medium ModalShell hosting a SelectList. Host as a fullscreen
  * overlay so the shell can paint clear underpaint around the card.
@@ -74,14 +64,6 @@ export class ModalSelectListComponent implements Component {
 	#hoveredShortcutId: string | null = null;
 	#onCancel: () => void;
 	#onRequestRender?: () => void;
-	#reveal = new ModalRevealDriver();
-	/**
-	 * Fade out on the shared clock before the host drops this card. The overlay stack keeps painting
-	 * it and stops routing input to it the moment this is called.
-	 */
-	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
-		return beginModalExit(this.#reveal, requestRender, done);
-	}
 
 	/**
 	 * Tallest body this card has ever drawn, which is the height it keeps.
@@ -104,11 +86,6 @@ export class ModalSelectListComponent implements Component {
 	#highWaterWidth = -1;
 
 	constructor(options: ModalSelectListOptions, callbacks: ModalSelectListCallbacks) {
-		if (options.reveal) {
-			// The driver anchors its clock at first paint, so starting here (before
-			// setOnRequestRender wires the host) never skips the unfold.
-			this.#reveal.start(() => this.#onRequestRender?.());
-		}
 		this.#title = options.title;
 		this.#tipCandidates = options.tipCandidates;
 		this.#getTerminalRows = options.getTerminalRows ?? (() => process.stdout.rows || 40);
@@ -132,7 +109,7 @@ export class ModalSelectListComponent implements Component {
 		// frames between two mouse reports have no input to hang off. Same ambient
 		// gate as the unfold, so a terminal that shows no structural motion shows a
 		// switched band, which is what it had before.
-		this.#list.setHoverMotion({ requestRender: cb, enabled: modalRevealEnabled() });
+		this.#list.setHoverMotion({ requestRender: cb, enabled: pointerMotionEnabled() });
 	}
 
 	getSelectList(): SelectList {
@@ -230,12 +207,11 @@ export class ModalSelectListComponent implements Component {
 			showClose: true,
 		});
 		this.#shellGeometry = shell.geometry;
-		return applyModalReveal(shell, width, this.#reveal);
+		return shell.lines;
 	}
 
-	/** Settle the reveal and the pointer band so no timer outlives a dismissed card. */
+	/** Settle the pointer band so no timer outlives a dismissed card. */
 	dispose(): void {
-		this.#reveal.stop();
 		this.#list.disposeHoverMotion();
 	}
 }

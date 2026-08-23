@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-08-23
+
 ### Breaking Changes
 
 - The minimum supported Bun runtime is now 1.4.0.
@@ -9,6 +11,7 @@
 ### Fixed
 
 - The remote-summarizer cap comment names the profile-scoped log directory it writes to (`~/.veyyon/profiles/<name>/logs`) instead of the pre-migration `~/.veyyon/logs`. Comment only; the cap and the write path are unchanged.
+- A cancelled turn carries `Flag.Abort` whatever reason it was aborted with, instead of only when its text matched the generic `Request was aborted` sentinel.
 
 ### Changed
 

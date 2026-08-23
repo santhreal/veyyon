@@ -11,7 +11,7 @@ import type { InteractiveModeContext } from "../../types";
  */
 export type SetupWizardContext = Pick<
 	InteractiveModeContext,
-	"openInBrowser" | "playWelcomeIntro" | "session" | "settings" | "showError" | "ui"
+	"openInBrowser" | "session" | "settings" | "showError" | "ui"
 >;
 
 export type SetupSceneResult = "done" | "skipped";

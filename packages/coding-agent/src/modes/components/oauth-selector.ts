@@ -15,7 +15,7 @@ import { settings } from "../../config/settings-instance";
 import { theme } from "../../modes/theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../../modes/utils/keybinding-matchers";
 import type { AuthStorage, CredentialOriginKind } from "../../session/auth-storage";
-import { modalRevealEnabled } from "./modal-shell";
+import { pointerMotionEnabled } from "./modal-shell";
 import { hoverBandAt, renderScrollableList } from "./selector-helpers";
 
 /** Default visible provider rows when the host does not size the selector. */
@@ -115,7 +115,7 @@ export class OAuthSelectorComponent implements Component {
 		// have no input to hang off. Same ambient gate as a card's open unfold.
 		if (this.#requestRenderCallback !== undefined) {
 			const requestRender = this.#requestRenderCallback;
-			this.#hoverFade = new HoverFade({ requestRender, enabled: modalRevealEnabled() });
+			this.#hoverFade = new HoverFade({ requestRender, enabled: pointerMotionEnabled() });
 		}
 		this.#loadProviders();
 		this.#startValidation();

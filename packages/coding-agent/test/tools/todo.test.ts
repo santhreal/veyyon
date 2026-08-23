@@ -538,9 +538,8 @@ describe("todoToolRenderer.renderResult phase collapsing", () => {
 		return lines.slice(1, -1).map(line => line.replace(/^│/, "").replace(/│\s*$/, "").trim());
 	}
 	/**
-	 * Collapsed multi-phase output is one global actionable preview. The active
-	 * item stays first, closed history falls behind open work, and phase context
-	 * survives without one unbounded block per phase.
+	 * Collapsed multi-phase output is a single summary line for the open plan,
+	 * while manual expansion reveals the full framed phase/task tree.
 	 */
 	it("bounds all phases through one active-first preview", async () => {
 		const result = await buildThreePhaseAfterDone();
@@ -548,28 +547,65 @@ describe("todoToolRenderer.renderResult phase collapsing", () => {
 			op: "done",
 			task: "a1",
 		});
-		const rendered = Bun.stripANSI(component.render(100).join("\n"));
+		const lines = component.render(100);
+		expect(lines).toHaveLength(1);
 
-		expect(rendered).toContain("a2");
-		expect(rendered).toContain("(Alpha)");
-		expect(rendered).toContain("b1");
-		expect(rendered).toContain("(Beta)");
-		expect(rendered).toContain("c1");
-		expect(rendered).toContain("(Gamma)");
+		const rendered = Bun.stripANSI(lines[0]);
+		expect(rendered).toContain("Todo");
+		expect(rendered).toContain("6 tasks");
+		expect(rendered).toContain("1 done");
+		expect(rendered).toContain("Alpha");
+		expect(rendered).toContain(`${theme.checkbox.progress} a2`);
 		expect(rendered).not.toContain("a1");
-		expect(rendered).toContain("1 more todo");
+		expect(rendered).not.toContain("b1");
+		expect(rendered).not.toContain("b2");
+		expect(rendered).not.toContain("c1");
+		expect(rendered).not.toContain("c2");
+		expect(rendered).not.toContain("Beta");
+		expect(rendered).not.toContain("Gamma");
+
+		const expanded = todoToolRenderer.renderResult(result, { expanded: true, isPartial: false }, theme, {
+			op: "done",
+			task: "a1",
+		});
+		const expandedRendered = Bun.stripANSI(expanded.render(100).join("\n"));
+		expect(expandedRendered).toContain("Alpha");
+		expect(expandedRendered).toContain("a1");
+		expect(expandedRendered).toContain("a2");
+		expect(expandedRendered).toContain("Beta");
+		expect(expandedRendered).toContain("b1");
+		expect(expandedRendered).toContain("b2");
+		expect(expandedRendered).toContain("Gamma");
+		expect(expandedRendered).toContain("c1");
+		expect(expandedRendered).toContain("c2");
 	});
 
 	/** Transcript rebuilds without call arguments must use the same bounded projection. */
 	it("keeps collapsed output stable when call args are unavailable", async () => {
 		const result = await buildThreePhaseAfterDone();
 		const component = todoToolRenderer.renderResult(result, { expanded: false, isPartial: false }, theme);
-		const rendered = Bun.stripANSI(component.render(100).join("\n"));
+		const lines = component.render(100);
+		expect(lines).toHaveLength(1);
 
-		expect(rendered).toContain("a2");
-		expect(rendered).toContain("b1");
+		const rendered = Bun.stripANSI(lines[0]);
+		expect(rendered).toContain("Todo");
+		expect(rendered).toContain("6 tasks");
+		expect(rendered).toContain("1 done");
+		expect(rendered).toContain("Alpha");
+		expect(rendered).toContain(`${theme.checkbox.progress} a2`);
 		expect(rendered).not.toContain("a1");
-		expect(rendered).toContain("1 more todo");
+		expect(rendered).not.toContain("b1");
+		expect(rendered).not.toContain("c1");
+
+		const expanded = todoToolRenderer.renderResult(result, { expanded: true, isPartial: false }, theme);
+		const expandedRendered = Bun.stripANSI(expanded.render(100).join("\n"));
+		expect(expandedRendered).toContain("Alpha");
+		expect(expandedRendered).toContain("a1");
+		expect(expandedRendered).toContain("a2");
+		expect(expandedRendered).toContain("Beta");
+		expect(expandedRendered).toContain("b1");
+		expect(expandedRendered).toContain("Gamma");
+		expect(expandedRendered).toContain("c1");
 	});
 
 	/** Phase count must not multiply the collapsed line budget. */
@@ -583,13 +619,21 @@ describe("todoToolRenderer.renderResult phase collapsing", () => {
 			})),
 		});
 		const component = todoToolRenderer.renderResult(result, { expanded: false, isPartial: false }, theme);
-		const rendered = Bun.stripANSI(component.render(100).join("\n"));
+		const lines = component.render(100);
+		expect(lines).toHaveLength(1);
 
-		expect(rendered).toContain("task-1");
-		expect(rendered).toContain("task-5");
+		const rendered = Bun.stripANSI(lines[0]);
+		expect(rendered).toContain("Todo");
+		expect(rendered).toContain("12 tasks");
+		expect(rendered).toContain("0 dones");
+		expect(rendered).toContain("Phase 1");
+		expect(rendered).toContain(`${theme.checkbox.progress} task-1`);
+		expect(rendered).not.toContain("task-2");
+		expect(rendered).not.toContain("task-5");
 		expect(rendered).not.toContain("task-6");
 		expect(rendered).not.toContain("task-12");
-		expect(rendered).toContain("7 more todos");
+		expect(rendered).not.toContain("Phase 2");
+		expect(rendered).not.toContain("Phase 12");
 	});
 	it("shows every phase fully when manually expanded", async () => {
 		const result = await buildThreePhaseAfterDone();

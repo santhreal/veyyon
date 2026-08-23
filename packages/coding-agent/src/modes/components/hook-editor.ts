@@ -29,13 +29,10 @@ import {
 } from "../../modes/utils/keybinding-matchers";
 import { getEditorCommand, openInEditor } from "../../utils/external-editor";
 import {
-	applyModalReveal,
-	beginModalExit,
 	computeModalDims,
 	consumeModalChipHover,
 	hitTestModalChrome,
 	MODAL_SIZING_MEDIUM,
-	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
 	planModalChrome,
@@ -80,14 +77,6 @@ export class HookEditorComponent extends Container {
 	#onRequestRender: (() => void) | undefined;
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
-	#reveal = new ModalRevealDriver();
-	/**
-	 * Fade out on the shared clock before the host drops this card. The overlay stack keeps painting
-	 * it and stops routing input to it the moment this is called.
-	 */
-	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
-		return beginModalExit(this.#reveal, requestRender, done);
-	}
 
 	constructor(
 		tui: TUI,
@@ -238,7 +227,7 @@ export class HookEditorComponent extends Container {
 			showClose: true,
 		});
 		this.#shellGeometry = shell.geometry;
-		return applyModalReveal(shell, renderWidth, this.#reveal);
+		return shell.lines;
 	}
 
 	handleInput(keyData: string): void {

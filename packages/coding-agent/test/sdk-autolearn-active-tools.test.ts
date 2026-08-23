@@ -60,7 +60,7 @@ describe("createAgentSession auto-learn tool activation", () => {
 		expect(names).toContain("manage_skill");
 	});
 
-	it("initializes the selected memory backend before an auto-learn session can run", async () => {
+	it("initializes the selected memory backend before an auto-learn session can run a turn", async () => {
 		const sessionManager = SessionManager.inMemory();
 		const { session } = await createAgentSession({
 			cwd: registryDir,
@@ -78,6 +78,9 @@ describe("createAgentSession auto-learn tool activation", () => {
 			toolNames: ["read"],
 		});
 		sessions.push(session);
+		// The start is HYDRATION: it finishes behind the first frame, and a turn awaits it, so this is
+		// the boundary a tool call observes rather than the return of `createAgentSession`.
+		await session.whenStartupHydrated();
 
 		// The memory tools (`learn`, `memory_recall`, `memory_retain`) all refuse with "Hindsight
 		// backend is not initialised for this session" when this returns undefined, so a merely

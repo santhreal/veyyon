@@ -18,6 +18,7 @@
  */
 import { type } from "arktype";
 import { REMOTE_REFRESH_SENTINEL } from "../auth-storage";
+import { usageWireSchemas } from "../usage/report-wire";
 
 function buildWireSchemas() {
 	// ─── Credential payloads ─────────────────────────────────────────────────
@@ -161,66 +162,10 @@ function buildWireSchemas() {
 
 	// ─── Usage ───────────────────────────────────────────────────────────────
 
-	const usageUnitSchema = type("'percent' | 'tokens' | 'requests' | 'usd' | 'minutes' | 'bytes' | 'unknown'");
-	const usageStatusSchema = type("'ok' | 'warning' | 'exhausted' | 'unknown'");
-
-	const usageWindowSchema = type({
-		id: "string",
-		label: "string",
-		"durationMs?": "number",
-		"resetsAt?": "number",
-	});
-
-	const usageAmountSchema = type({
-		"used?": "number",
-		"limit?": "number",
-		"remaining?": "number",
-		"usedFraction?": "number",
-		"remainingFraction?": "number",
-		unit: usageUnitSchema,
-	});
-
-	const usageScopeSchema = type({
-		provider: "string",
-		"accountId?": "string",
-		"projectId?": "string",
-		"orgId?": "string",
-		"modelId?": "string",
-		"tier?": "string",
-		"windowId?": "string",
-		"shared?": "boolean",
-	});
-
-	const usageLimitSchema = type({
-		id: "string",
-		label: "string",
-		scope: usageScopeSchema,
-		"window?": usageWindowSchema,
-		amount: usageAmountSchema,
-		"status?": usageStatusSchema,
-		"notes?": "string[]",
-	});
-
-	const usageResetCreditDetailSchema = type({
-		"grantedAt?": "string",
-		"expiresAt?": "string",
-		"status?": "string",
-	});
-
-	const usageResetCreditsSchema = type({
-		availableCount: "number",
-		"credits?": usageResetCreditDetailSchema.array(),
-	});
-
-	const arkUsageReportSchema = type({
-		provider: "string",
-		fetchedAt: "number",
-		limits: usageLimitSchema.array(),
-		"resetCredits?": usageResetCreditsSchema,
-		"notes?": "string[]",
-		"metadata?": { "[string]": "unknown" },
-		"raw?": "unknown",
-	});
+	// The report vocabulary has one owner. This file restated all nine schemas, identically,
+	// beside the copy `usage.ts` declared at module scope: the broker's response embeds a
+	// report, it is not a second definition of what a report is.
+	const usage = usageWireSchemas();
 
 	/**
 	 * Broker `/v1/usage` response. Reports are full UsageReports minus the
@@ -231,7 +176,7 @@ function buildWireSchemas() {
 	const usageResponseSchema = type({
 		"+": "reject",
 		generatedAt: "number",
-		reports: arkUsageReportSchema.array(),
+		reports: usage.report.array(),
 	});
 
 	// ─── Refresh ─────────────────────────────────────────────────────────────

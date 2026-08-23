@@ -2095,10 +2095,13 @@ function emitAbortedAssistantMessage(
 ): AssistantMessage {
 	const model = config.getModel?.() ?? config.model;
 	const errorMessage = abortReasonText(requestSignal);
-	const errorId =
-		errorMessage === "Request was aborted"
-			? AIError.create(AIError.Flag.Abort)
-			: AIError.classify(requestSignal?.reason) || undefined;
+	// THIS MESSAGE IS AN ABORT, so it carries the flag whatever the reason said. The flag used to
+	// be attached only when the text matched the generic sentinel byte for byte, so a cancellation
+	// that carried a reason — the user-interrupt label, a tool-scoped stop — produced an `aborted`
+	// message whose id classified as nothing, and every reader of the id (recovery, retry, the
+	// renderer) saw an unclassified failure. Whatever the reason itself classifies as rides
+	// alongside rather than replacing it.
+	const errorId = AIError.create(AIError.Flag.Abort) | (AIError.classify(requestSignal?.reason) || 0);
 	const base: AssistantMessage = partialMessage
 		? { ...partialMessage, stopReason: "aborted", errorMessage, errorId }
 		: {

@@ -14,7 +14,6 @@ export class ThemeSelectorComponent {
 		onSelect: (themeName: string) => void,
 		onCancel: () => void,
 		onPreview: (themeName: string) => void,
-		reveal?: boolean,
 	) {
 		const themeItems: SelectItem[] = themes.map(name => ({
 			value: name,
@@ -30,7 +29,6 @@ export class ThemeSelectorComponent {
 				selectedIndex: currentIndex,
 				maxVisible: 10,
 				tipCandidates: ["Tip · Themes apply live as you move", "Tip · Esc cancel"],
-				reveal,
 			},
 			{
 				onSelect: item => onSelect(item.value),
@@ -59,11 +57,6 @@ export class ThemeSelectorComponent {
 
 	render(width: number): string[] {
 		return this.#inner.render(width);
-	}
-
-	/** Forwarded to the inner card, which owns the reveal this plays backwards. */
-	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
-		return this.#inner.beginOverlayExit(requestRender, done);
 	}
 
 	invalidate(): void {

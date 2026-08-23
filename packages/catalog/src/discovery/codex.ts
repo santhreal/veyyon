@@ -1,9 +1,8 @@
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { normalizeBaseUrl } from "@veyyon/utils/url";
-import { type } from "arktype";
 import { parseKnownModel, semverEqual } from "../identity/classify";
 import type { ModelSpec } from "../types";
-import { discoveryFetch } from "../utils";
+import { discoveryFetch, toArray, toBoolean, toFields, toFiniteNumber, toNonEmptyString } from "../utils";
 import { CODEX_BASE_URL, CODEX_CLIENT_VERSION, OPENAI_HEADER_VALUES, OPENAI_HEADERS } from "../wire/codex";
 import type { DiscoveryFailure, DiscoveryHooks } from "./failure";
 
@@ -25,30 +24,28 @@ const CODEX_DEFAULT_MAX_TOKENS = 128_000;
  */
 const GPT_5_6_CONTEXT_WINDOW = 372_000;
 
-const codexReasoningPresetSchema = type({
-	"effort?": "unknown",
-});
+/**
+ * The Codex model list, read field by field.
+ *
+ * There is no schema library here. The three schemas this file declared marked every field
+ * `unknown` and then coerced it by hand anyway, so all they contributed was arktype's 362ms
+ * module evaluation on a launch path that reaches this file through the provider descriptor
+ * table. The field readers live in `../utils` and are shared with the four sibling readers.
+ */
+interface CodexModelEntry {
+	slug?: unknown;
+	id?: unknown;
+	display_name?: unknown;
+	context_window?: unknown;
+	default_reasoning_level?: unknown;
+	supported_reasoning_levels?: unknown;
+	input_modalities?: unknown;
+	supported_in_api?: unknown;
+	priority?: unknown;
+	prefer_websockets?: unknown;
+	use_responses_lite?: unknown;
+}
 
-const codexModelEntrySchema = type({
-	"slug?": "unknown",
-	"id?": "unknown",
-	"display_name?": "unknown",
-	"context_window?": "unknown",
-	"default_reasoning_level?": "unknown",
-	"supported_reasoning_levels?": "unknown",
-	"input_modalities?": "unknown",
-	"supported_in_api?": "unknown",
-	"priority?": "unknown",
-	"prefer_websockets?": "unknown",
-	"use_responses_lite?": "unknown",
-});
-
-const codexModelsResponseSchema = type({
-	"models?": "unknown[]",
-	"data?": "unknown[]",
-});
-
-type CodexModelEntry = typeof codexModelEntrySchema.infer;
 interface NormalizedCodexModel {
 	model: ModelSpec<"openai-codex-responses">;
 	priority: number;
@@ -194,12 +191,20 @@ function normalizeClientVersion(value: unknown): string | undefined {
 }
 
 function normalizeCodexModels(payload: unknown, baseUrl: string): ModelSpec<"openai-codex-responses">[] | null {
-	const parsedResponse = codexModelsResponseSchema(payload);
-	if (parsedResponse instanceof type.errors) {
+	const fields = toFields(payload);
+	if (!fields) {
+		return null;
+	}
+	// A list field that is present and not an array is a response shape this reader does not
+	// know, not an empty list: answering `[]` would report "the account has no models".
+	if (fields.models !== undefined && !Array.isArray(fields.models)) {
+		return null;
+	}
+	if (fields.data !== undefined && !Array.isArray(fields.data)) {
 		return null;
 	}
 
-	const entries = parsedResponse.models ?? parsedResponse.data ?? [];
+	const entries = toArray(fields.models) ?? toArray(fields.data) ?? [];
 	const normalized: NormalizedCodexModel[] = [];
 	for (const entry of entries) {
 		const model = normalizeCodexModelEntry(entry, baseUrl);
@@ -219,12 +224,11 @@ function normalizeCodexModels(payload: unknown, baseUrl: string): ModelSpec<"ope
 }
 
 function normalizeCodexModelEntry(entry: unknown, baseUrl: string): NormalizedCodexModel | null {
-	const parsedEntry = codexModelEntrySchema(entry);
-	if (parsedEntry instanceof type.errors) {
+	const payload: CodexModelEntry | undefined = toFields(entry);
+	if (!payload) {
 		return null;
 	}
 
-	const payload: CodexModelEntry = parsedEntry;
 	const slug = toNonEmptyString(payload.slug) ?? toNonEmptyString(payload.id);
 	if (!slug) {
 		return null;
@@ -288,11 +292,7 @@ function supportsReasoning(defaultReasoningLevel: unknown, supportedReasoningLev
 	}
 
 	for (const level of supportedReasoningLevels) {
-		const parsedLevel = codexReasoningPresetSchema(level);
-		if (parsedLevel instanceof type.errors) {
-			continue;
-		}
-		const effort = toNonEmptyString(parsedLevel.effort)?.toLowerCase();
+		const effort = toNonEmptyString(toFields(level)?.effort)?.toLowerCase();
 		if (effort && effort !== "none") {
 			return true;
 		}
@@ -331,14 +331,6 @@ function getResponseEtag(headers: Headers): string | undefined {
 	return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function toNonEmptyString(value: unknown): string | null {
-	if (typeof value !== "string") {
-		return null;
-	}
-	const trimmed = value.trim();
-	return trimmed.length > 0 ? trimmed : null;
-}
-
 function toPositiveInt(value: unknown): number | null {
 	if (typeof value !== "number" || !Number.isFinite(value)) {
 		return null;
@@ -347,18 +339,4 @@ function toPositiveInt(value: unknown): number | null {
 		return null;
 	}
 	return Math.trunc(value);
-}
-
-function toFiniteNumber(value: unknown): number | null {
-	if (typeof value !== "number" || !Number.isFinite(value)) {
-		return null;
-	}
-	return value;
-}
-
-function toBoolean(value: unknown): boolean | null {
-	if (typeof value !== "boolean") {
-		return null;
-	}
-	return value;
 }

@@ -9,8 +9,5 @@ export async function runProviderSetupWizard(ctx: SetupWizardContext): Promise<v
 		ctx.showError("Provider setup is unavailable.");
 		return;
 	}
-	await runSetupWizard(ctx, [providersScene], {
-		markComplete: false,
-		playWelcomeIntro: false,
-	});
+	await runSetupWizard(ctx, [providersScene], { markComplete: false });
 }
