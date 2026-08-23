@@ -7,9 +7,9 @@
 import * as path from "node:path";
 import * as url from "node:url";
 import type { TSchema } from "@veyyon/ai";
-// The owner, not the barrel: classifying an OAuth failure is a string test, and
-// `error/auth-classify.ts` reaches 7 modules.
-import { isDefinitiveOAuthFailure } from "@veyyon/ai/error/auth-classify";
+// The owner, not the barrel: classifying an OAuth failure is a string test that
+// belongs to the flag it decides, and `error/flags.ts` is where that flag lives.
+import { isDefinitiveOAuthFailure } from "@veyyon/ai/error/flags";
 import { errorMessage, logger } from "@veyyon/utils";
 import { FOREIGN_PROVIDER_IDS } from "../capability/index";
 import type { SourceMeta } from "../capability/types";

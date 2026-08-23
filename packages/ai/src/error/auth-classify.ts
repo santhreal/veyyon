@@ -1,16 +1,6 @@
 import { extractHttpStatusFromError } from "@veyyon/utils/fetch-retry";
-import { isOAuthExpiry, isUsageLimit } from "./flags";
+import { isUsageLimit } from "./flags";
 import { isUsageLimitOutcome } from "./rate-limit";
-
-/**
- * Whether an OAuth refresh failure is definitive (the credential must be
- * disabled) versus transient. Thin alias over the {@link Flag.OAuthExpiry}
- * text classifier {@link isOAuthExpiry}; retained as the public
- * `@veyyon/ai` entrypoint name used by the coding agent and auth-broker.
- */
-export function isDefinitiveOAuthFailure(errorMsg: string): boolean {
-	return isOAuthExpiry(errorMsg);
-}
 
 /**
  * Whether an upstream failure should rotate to a sibling credential: a hard

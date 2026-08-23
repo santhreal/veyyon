@@ -34,7 +34,7 @@
  * in the same message.
  */
 import { describe, expect, it } from "bun:test";
-import { isDefinitiveOAuthFailure } from "../src/error/auth-classify";
+import { isDefinitiveOAuthFailure } from "../src/error/flags";
 
 describe("dead-grant classification", () => {
 	it("classifies the exact Kimi rejection that caused the loop", () => {

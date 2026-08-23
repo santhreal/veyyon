@@ -5,6 +5,8 @@
 ### Breaking Changes
 
 - The minimum supported Bun runtime is now 1.4.0.
+- One OAuth classifier, one name. `isDefinitiveOAuthFailure` was a wrapper that returned `isOAuthExpiry(msg)` and nothing else, kept because callers had learned the second name, and `@veyyon/ai/auth-storage` re-exported it a third way. Two names for one predicate is how two behaviours appear later, so the wrapper is gone: the classifier lives in `@veyyon/ai/error/flags` as `isDefinitiveOAuthFailure`, beside the patterns it tests. An embedder importing `isOAuthExpiry`, or importing `isDefinitiveOAuthFailure` from `@veyyon/ai/auth-storage` or `@veyyon/ai/error/auth-classify`, imports it from `@veyyon/ai/error/flags` instead; `@veyyon/ai` itself is unchanged. `error/auth-classify` keeps `isAuthRetryableError`, which is a rule of its own.
+- `@veyyon/ai/utils/retry` no longer re-exports `isCopilotTransientModelError`. It was a compatibility line for importers that predated the classifier moving into the error module; that classifier is at `@veyyon/ai/error/flags` and is imported from there. `callWithCopilotModelRetry` still lives in `utils/retry`.
 
 ### Fixed
 - A `VEYYON_REQ_DEBUG` dump is never written into a file the recording did not create. Both dump files are opened through one helper that creates them owner-only (0600) with `wx`, so a name left world-readable by an earlier run or planted by another account is refused rather than reused with its permissions inherited. The unreachable overwrite path that made reuse possible is gone.

@@ -177,7 +177,7 @@ const FAST_MODE_ENTITLEMENT_PATTERN = /fast mode/i;
 // the thing that is invalid (`grant` or `refresh token`), in either order and
 // with at most a short run of words between. A bare "invalid" or "expired"
 // anywhere in a message is not enough, because a wrong "yes" here disables a
-// working account (see {@link isOAuthExpiry}). The transient guard still runs
+// working account (see {@link isDefinitiveOAuthFailure}). The transient guard still runs
 // first and still wins, so a 429 or a 5xx page repeating this prose stays
 // transient.
 const OAUTH_DEFINITIVE_FAILURE_PATTERN = new RegExp(
@@ -267,7 +267,7 @@ function withoutStackTrace(errorMessage: string): string {
  * the guard was only ever reached on the 401 branch. A throttled auth endpoint
  * could permanently tear down a healthy account.
  */
-export function isOAuthExpiry(errorMessage: string): boolean {
+export function isDefinitiveOAuthFailure(errorMessage: string): boolean {
 	const diagnostic = withoutStackTrace(errorMessage);
 	if (OAUTH_TRANSIENT_FAILURE_PATTERN.test(diagnostic)) return false;
 	if (OAUTH_DEFINITIVE_FAILURE_PATTERN.test(diagnostic)) return true;
@@ -432,7 +432,7 @@ function classifyText(errorMessage: string | undefined, errorStatus: number | un
 		// like `at async withScopedTimeoutSignal (…/utils/src/scoped-timeout.ts)`
 		// contains "timeout", which used to set Flag.Transient — and Transient is
 		// in RETRIABLE_KINDS, so a dead credential got retried to exhaustion
-		// instead of being surfaced once. {@link isOAuthExpiry} already sanitized
+		// instead of being surfaced once. {@link isDefinitiveOAuthFailure} already sanitized
 		// for exactly this reason; the general classifier did not.
 		const cleanMessage = withoutStackTrace(errorMessage);
 		if (matchesOverflowText(cleanMessage)) kinds |= Flag.ContextOverflow;
