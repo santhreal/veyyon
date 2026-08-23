@@ -13,6 +13,7 @@
 - The minimum supported Bun runtime is now 1.4.0.
 
 ### Added
+- `run()` renders root help straight from a `summaries` map on the CLI config when every registered command carries one, loading only the hidden default command's module for its inline flag table instead of every command module in the table. A command whose summary is missing falls back to loading the full registry rather than rendering an incomplete listing. `CommandSummary` mirrors the class statics (`description`, `hidden`, `devTool`) that root help reads.
 - `source-declarations.ts`: `stringConstantsIn`, `declarersOfStringValue` and `stringConstantValue` read the string constants a module declares and compare decoded values, so a one-owner gate no longer searches source text for a formatted line. A duplicate declared under another name, in single quotes, with different spacing, or behind a type annotation is now caught; a rename or a reflow of the owner no longer reports a failure that is only formatting.
 
 - `definePromptRows` declares a directory's prompt rows and is the seam where an eval-only prompt override applies. A module that sends one prompt imports its row table directly, so replacing text in the aggregate registry alone reached the inspection commands and nothing a model is sent. Costs nothing when `VEYYON_EVAL_PROMPTS` is unset: the table is returned by identity.
