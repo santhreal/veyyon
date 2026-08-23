@@ -4237,7 +4237,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// summary caches, all keyed on session identity — stays isolated from the
 		// primary, while edit/bash/write stay fully functional: the advisor is a full
 		// agent and its config's `tools` selects which of these it actually gets
-		// (defaulting to read/grep/glob).
+		// (defaulting to read/search).
 		const advisorToolSession: ToolSession = {
 			...toolSession,
 			get cwd() {

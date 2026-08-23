@@ -92,6 +92,13 @@ export function scopePaths(args: Record<string, unknown>): string[] {
 				// Not valid JSON — treat the whole string as one path.
 			}
 		}
+		if (trimmed.includes(";")) {
+			const parts = trimmed
+				.split(";")
+				.map(p => p.trim())
+				.filter(Boolean);
+			if (parts.length > 0) return parts;
+		}
 		return [raw];
 	}
 	if (Array.isArray(raw)) return raw.filter((p): p is string => typeof p === "string");
