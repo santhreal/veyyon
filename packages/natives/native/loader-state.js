@@ -443,6 +443,7 @@ function getVariantOverride() {
  *   arch: string;
  *   readCpuInfo: () => string | null;
  *   runCommand: (command: string, args: string[]) => string | null;
+ *   trialLoad?: () => "supported" | "unsupported" | "unknown";
  * }} probes
  * @returns {"supported" | "unsupported" | "unknown"}
  */
@@ -477,26 +478,111 @@ export function classifyAvx2Support(probes) {
 	}
 
 	if (probes.platform === "win32") {
-		const output = probes.runCommand("powershell.exe", [
-			"-NoProfile",
-			"-NonInteractive",
-			"-Command",
-			"[System.Runtime.Intrinsics.X86.Avx2]::IsSupported",
-		]);
-		if (output === null) return "unknown"; // powershell could not run
-		return output.toLowerCase() === "true" ? "supported" : "unsupported";
+		// Stock Windows ships PowerShell 5.1 (`powershell.exe`), which runs
+		// .NET Framework — and .NET Framework has NO
+		// System.Runtime.Intrinsics.X86.Avx2 type, so the old single probe
+		// threw TypeNotFound on EVERY stock Windows box and the loader fell
+		// back to "unknown" → baseline forever. PowerShell 7 installs as
+		// `pwsh` on a newer .NET and does carry the type, so try it first;
+		// backed by a newer runtime. Anything but an explicit True/False leaves
+		// the tri-state at "unknown" — never a guessed downgrade.
+		for (const shell of ["pwsh.exe", "powershell.exe"]) {
+			const output = probes.runCommand(shell, [
+				"-NoProfile",
+				"-NonInteractive",
+				"-Command",
+				"[System.Runtime.Intrinsics.X86.Avx2]::IsSupported",
+			]);
+			if (output === null) continue; // shell could not run at all
+			const normalized = output.toLowerCase();
+			if (normalized === "true") return "supported";
+			if (normalized === "false") return "unsupported";
+		}
+		// Last resort, ground truth: trial-load the modern addon in a child
+		// process. If the CPU lacks AVX2 the child dies on an illegal
+		// instruction — a crash the parent survives and reads as a genuine
+		// "unsupported", not a guess. A JS-level failure (file missing,
+		// antivirus block) is catchable inside the child, which reports it as
+		// inconclusive instead.
+		return probes.trialLoad ? probes.trialLoad() : "unknown";
 	}
 
 	return "unknown";
 }
 
+/** The persisted AVX2 verdict file: one JSON object, hardware-keyed. */
+const HOST_VARIANT_FILE = "host-variant.json";
+
 /**
- * Detect AVX2 support on the real host, as a tri-state. Thin wrapper over
- * {@link classifyAvx2Support} that supplies the real filesystem/spawn probes.
+ * Parse a persisted verdict. Returns null for anything that is not a genuine
+ * verdict for THIS platform/arch — a stale copy from other hardware, a
+ * corrupted file, or a recorded "unknown" (which must never be treated as an
+ * answer; Law 10) all read as "no verdict".
+ */
+export function parseHostVariantVerdict(text, { platform, arch }) {
+	if (typeof text !== "string") return null;
+	let data;
+	try {
+		data = JSON.parse(text);
+	} catch {
+		return null;
+	}
+	if (data === null || typeof data !== "object") return null;
+	if (data.platform !== platform || data.arch !== arch) return null;
+	if (data.verdict !== "supported" && data.verdict !== "unsupported") return null;
+	return data.verdict;
+}
+
+/**
+ * Persist a GENUINE verdict next to the versioned addon caches. Only
+ * "supported"/"unsupported" ever reach disk: the probes ran and answered, so
+ * the answer is a fact about the machine, not a guess.
+ */
+export function writeHostVariantVerdict(nativesDir, verdict, { platform, arch }) {
+	try {
+		fs.mkdirSync(nativesDir, { recursive: true });
+		const file = path.join(nativesDir, HOST_VARIANT_FILE);
+		const tmp = `${file}.${process.pid}.tmp`;
+		fs.writeFileSync(tmp, `${JSON.stringify({ platform, arch, verdict })}\n`);
+		fs.renameSync(tmp, file);
+	} catch {
+		// An unwritable cache costs one re-probe on the next launch; it must
+		// never break loading.
+	}
+}
+
+/**
+ * Detect AVX2 support on the real host, as a tri-state.
+ *
+ * A genuine verdict from an earlier run is read back from
+ * `<nativesDir>/host-variant.json` so later launches skip the probe entirely —
+ * on Windows that probe is a PowerShell spawn worth hundreds of milliseconds,
+ * paid inside boot before the first native call can proceed. "unknown" is
+ * NEVER persisted, per Law 10: an unanswerable probe must be asked again, not
+ * remembered as a downgrade.
+ *
+ * Thin wrapper over {@link classifyAvx2Support} that supplies the real
+ * filesystem/spawn probes.
  * @returns {"supported" | "unsupported" | "unknown"}
  */
 function detectAvx2Support() {
-	return classifyAvx2Support({
+	const cacheFile = path.join(getNativesDir(), HOST_VARIANT_FILE);
+	let cached;
+	try {
+		cached = parseHostVariantVerdict(fs.readFileSync(cacheFile, "utf8"), {
+			platform: process.platform,
+			arch: process.arch,
+		});
+	} catch {
+		cached = null;
+	}
+	if (cached !== null) {
+		startupMarker(`native:avx2:persisted:${cached}`);
+		return cached;
+	}
+
+	startupMarker("native:avx2:probe:start");
+	const verdict = classifyAvx2Support({
 		platform: process.platform,
 		arch: process.arch,
 		readCpuInfo: () => {
@@ -507,8 +593,72 @@ function detectAvx2Support() {
 			}
 		},
 		runCommand,
+		trialLoad: process.platform === "win32" ? trialLoadModernAddon : undefined,
 	});
+	startupMarker("native:avx2:probe:done");
+	if (verdict === "supported" || verdict === "unsupported") {
+		writeHostVariantVerdict(getNativesDir(), verdict, { platform: process.platform, arch: process.arch });
+	}
+	return verdict;
 }
+
+/**
+ * Trial-load the `modern` addon in a child process — the ground-truth probe
+ * for machines where no shell-level CPU-feature query exists (stock Windows
+ * has only PowerShell 5.1 on .NET Framework, which carries neither
+ * `System.Runtime.Intrinsics` nor any SIMD type). If the CPU lacks AVX2 the
+ * child dies executing an illegal instruction; the parent survives and reads
+ * that as a GENUINE "unsupported", so it may be persisted. A load failure the
+ * child could catch (file absent, antivirus block, ABI mismatch) reports as
+ * "unknown" instead: a broken file says nothing about the CPU.
+ *
+ * The addon path travels by environment variable, not argv: `-e` argv
+ * indexing differs between Node and Bun eval modes.
+ *
+ * @returns {"supported" | "unsupported" | "unknown"}
+ */
+function trialLoadModernAddon() {
+	const tag = `${process.platform}-${process.arch}`;
+	const modernFilename = `veyyon_natives.${tag}-modern.node`;
+	// ONLY the modern file: the loader's candidate lists fall back to
+	// baseline/default, and a trial that loaded a baseline binary would answer
+	// "supported" on any x64 CPU — a persisted lie. No modern file present is
+	// "unknown": nothing here can speak for the CPU.
+	const dirs = [path.join(import.meta.dir, "..", "native"), versionedNativeCacheDir(packageJson.version)];
+	const addonPath = dirs.map((dir) => path.join(dir, modernFilename)).find((candidate) => fs.existsSync(candidate));
+	if (!addonPath) return "unknown";
+	startupMarker(`native:avx2:trial:${addonPath}`);
+	let result;
+	try {
+		result = childProcess.spawnSync(process.execPath, ["-e", TRIAL_LOAD_SCRIPT], {
+			env: { ...process.env, VEYYON_TRIAL_ADDON_PATH: addonPath },
+			encoding: "utf-8",
+			timeout: 30_000,
+		});
+	} catch {
+		return "unknown";
+	}
+	if (result.error) return "unknown"; // could not run ourselves at all
+	const out = String(result.stdout || "");
+	if (out.includes("TRIAL_OK")) return "supported";
+	if (out.includes("TRIAL_INCOMPATIBLE")) return "unknown";
+	// Clean exit without the OK line, or death by signal (SIGILL / access
+	// violation): the binary executed but the CPU could not run it.
+	return "unsupported";
+}
+
+const TRIAL_LOAD_SCRIPT = [
+	"const path = process.env.VEYYON_TRIAL_ADDON_PATH;",
+	"try {",
+	"	const m = require(path);",
+	'	if (m && typeof m === "object") { console.log("TRIAL_OK"); process.exit(0); }',
+	'	console.log("TRIAL_INCOMPATIBLE");',
+	"	process.exit(0);",
+	"} catch {",
+	'	console.log("TRIAL_INCOMPATIBLE");',
+	"	process.exit(0);",
+	"}",
+].join("\n");
 
 /**
  * Pure variant-selection helper, exposed for unit tests. Resolution order:
