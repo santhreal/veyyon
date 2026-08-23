@@ -79,6 +79,8 @@ Options are strictly validated per `type`; cross-type fields are rejected with a
 
 Results return formatted text plus structured details `{ type, result }` corresponding to the search type (`FileSearchDetails`, `TextSearchDetails`, or `StructureSearchDetails`).
 
+Broad grouped multi-file text searches use progressive disclosure when the full formatted match set exceeds the session's discovery budget (scaled from an 8 KiB search-specific ceiling through the turn curve to ~2 KiB at turn 0). The full pre-disclosure output is saved to an artifact before compacting. The inline result emits up to two representative matches per file, total match and file counts, warnings, and an `artifact://<id>` recovery footer. Explicit single-file searches and line-range queries keep detailed output without compacting. Only the visible representative lines emitted with snapshot tags are recorded as seen for anchored editing; un-emitted matches remain unseen. If artifact storage is unavailable, broad searches fall back to generic turn-scaled head truncation.
+
 The tool is part of the default inventory. Text matching uses two settings:
 - `search.contextBefore`: number, default `1` (lines of context before each text match).
 - `search.contextAfter`: number, default `3` (lines of context after each text match).

@@ -22,5 +22,6 @@ Always pass `type` before `input`:
 </instruction>
 
 <output>
+Broad multi-file `text` results may show representative matches and a recoverable `artifact://` reference instead of carrying the entire match set through later turns. Narrow `path` for detail; read the artifact only when the complete set is needed.
 {{#if HASH_LINES}}Text and structure matches use snapshot-tag headers and numbered lines such as `[src/login.ts#A1B2]`; copy the header for anchored edits.{{else}}{{#if LINE_NUMBERS}}Text and structure matches use line-number-prefixed output.{{/if}}{{/if}}
 </output>
