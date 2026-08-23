@@ -186,6 +186,7 @@ import { TanCommandController } from "./controllers/tan-command-controller";
 import { TodoCommandController } from "./controllers/todo-command-controller";
 import { TranscriptComposer } from "./controllers/transcript-composer";
 import { WelcomeController } from "./controllers/welcome-controller";
+import { type FirstFrame, takeFirstFrame } from "./first-frame";
 import {
 	consumeLoopLimitIteration,
 	createLoopLimitRuntime,
@@ -736,6 +737,15 @@ export class InteractiveMode implements InteractiveModeContext {
 		requestComponentRender: component => this.ui.requestComponentRender(component),
 	};
 
+	/**
+	 * The screen the launch card was already painted on, when this process
+	 * painted one (`first-frame.ts`). Held so `init` can drop the placeholder
+	 * rows, remount that same card, and release the input gate the frame
+	 * installed. Undefined in every other case, and the mode then builds its
+	 * own screen and owns the tty handover itself.
+	 */
+	readonly #firstFrame: FirstFrame | undefined = takeFirstFrame();
+
 	constructor(
 		session: AgentSession,
 		version: string,
@@ -774,7 +784,10 @@ export class InteractiveMode implements InteractiveModeContext {
 
 		setTuiTight(settings.get("tui.tight"));
 		setMarkdownMermaidRendering(settings.get("tui.renderMermaid"));
-		this.ui = new TUI(new ProcessTerminal(), settings.get("showHardwareCursor"));
+		// One TUI per process: `terminal.start` puts stdin in raw mode and installs
+		// the reader, so the screen the launch card is already on is the screen
+		// this mode drives.
+		this.ui = this.#firstFrame?.ui ?? new TUI(new ProcessTerminal(), settings.get("showHardwareCursor"));
 		this.ui.setMaxInlineImages(settings.get("tui.maxInlineImages"));
 		this.ui.setScrollbackRebuild(settings.get("tui.scrollbackRebuild"));
 		this.ui.setScrollIsolation(settings.get("tui.scrollIsolation"));
@@ -1133,6 +1146,11 @@ export class InteractiveMode implements InteractiveModeContext {
 
 		const startupQuiet = settings.get("startup.quiet");
 
+		// The launch card is on screen already when the first frame painted one;
+		// its placeholder rows come off here, and the card itself is remounted
+		// below in the mode's own order.
+		this.#firstFrame?.release();
+
 		for (const warning of this.session.configWarnings) {
 			this.ui.addChild(new Text(theme.fg("warning", `Warning: ${warning}`), 1, 0));
 			this.ui.addChild(new Spacer(1));
@@ -1145,7 +1163,10 @@ export class InteractiveMode implements InteractiveModeContext {
 		// hero, not the anchor.
 		this.ui.addChild(this.#layout.topFill);
 		if (!startupQuiet) {
-			this.#welcomeController.mountHero({ version: this.#version, modelName, providerName, recentSessions });
+			this.#welcomeController.mountHero(
+				{ version: this.#version, modelName, providerName, recentSessions },
+				this.#firstFrame?.hero,
+			);
 		}
 
 		this.ui.addChild(this.chatContainer);
@@ -1196,47 +1217,56 @@ export class InteractiveMode implements InteractiveModeContext {
 		// Load initial todos
 		this.#syncTodoSurfaceToView();
 
-		// The tty handover. This process may be a relaunch (`/profile <name>`
-		// respawns the CLI), and between the parent restoring the terminal and
-		// the line below resuming stdin nothing is reading fd 0, so the kernel
-		// queues everything that arrives in that window. `ui.start()` resumes
-		// stdin, and the kernel then delivers that backlog as this session's
-		// first input event: it reaches the composer, and a queued carriage
-		// return submits a turn the operator never typed.
-		//
-		// Drop the queue outright first. `tcflush` is the real fix because it is
-		// source-agnostic: keystrokes, a terminal's replies to the dying
-		// parent's probes, or anything a multiplexer injected all go the same
-		// way, and no timing window is involved.
-		const flushed = flushPendingTtyInput();
-		// Windows consoles have no termios and an unusual libc may not resolve,
-		// so `tcflush` can be unavailable. The documented degrade is to discard
-		// whatever gets READ before startup finishes: swallow every input event
-		// until the release below runs. Ctrl+C stays live for the same reason
-		// the shutdown gate lets it through (issue #2600) — an operator must be
-		// able to abort a session that is still coming up.
-		this.#startupInputGateRelease ??= this.ui.addInputListener(data =>
-			matchesKey(data, "ctrl+c") ? undefined : { consume: true },
-		);
-		// Start the UI. The first paint always clears the viewport (ED 2), so the
-		// welcome frame never appends over the previous run's frame. Erasing the
-		// terminal's saved scrollback (ED 3) is a separate, unrecoverable act that
-		// also takes whatever the operator had on screen before launch, so it
-		// happens only when they asked for it.
-		this.ui.start({ clearScrollback: this.settings.get("startup.clearScrollback") });
-		// Release on the first check phase after `ui.start()`. The kernel's
-		// queued backlog is delivered in the poll phase of that same event-loop
-		// iteration, so it is always inside the gate; a keystroke the operator
-		// actually meant cannot be, because it requires them to have seen a
-		// frame that has not reached the terminal yet. That is the boundary,
-		// and it is a loop turn rather than a duration: no sleep to tune, and
-		// nothing typed at a live prompt is ever refused.
-		setImmediate(() => {
-			this.#startupInputGateRelease?.();
-			this.#startupInputGateRelease = undefined;
-		});
-		if (!flushed) {
-			logger.debug("No tty input flush available at startup; discarding buffered input until mount completes");
+		// The tty handover. Owned by whoever started the screen: when the launch
+		// card was painted before this mode existed, `first-frame.ts` already
+		// flushed the queue, installed the swallow gate and started the UI, and
+		// the gate has been holding input for the whole of session startup. It
+		// releases here, where the composer exists to receive the next keystroke.
+		if (this.#firstFrame) {
+			this.#firstFrame.releaseInput();
+		} else {
+			// This process may be a relaunch (`/profile <name>` respawns the CLI),
+			// and between the parent restoring the terminal and the line below
+			// resuming stdin nothing is reading fd 0, so the kernel queues
+			// everything that arrives in that window. `ui.start()` resumes stdin,
+			// and the kernel then delivers that backlog as this session's first
+			// input event: it reaches the composer, and a queued carriage return
+			// submits a turn the operator never typed.
+			//
+			// Drop the queue outright first. `tcflush` is the real fix because it
+			// is source-agnostic: keystrokes, a terminal's replies to the dying
+			// parent's probes, or anything a multiplexer injected all go the same
+			// way, and no timing window is involved.
+			const flushed = flushPendingTtyInput();
+			// Windows consoles have no termios and an unusual libc may not resolve,
+			// so `tcflush` can be unavailable. The documented degrade is to discard
+			// whatever gets READ before startup finishes: swallow every input event
+			// until the release below runs. Ctrl+C stays live for the same reason
+			// the shutdown gate lets it through (issue #2600) — an operator must be
+			// able to abort a session that is still coming up.
+			this.#startupInputGateRelease ??= this.ui.addInputListener(data =>
+				matchesKey(data, "ctrl+c") ? undefined : { consume: true },
+			);
+			// Start the UI. The first paint always clears the viewport (ED 2), so the
+			// welcome frame never appends over the previous run's frame. Erasing the
+			// terminal's saved scrollback (ED 3) is a separate, unrecoverable act that
+			// also takes whatever the operator had on screen before launch, so it
+			// happens only when they asked for it.
+			this.ui.start({ clearScrollback: this.settings.get("startup.clearScrollback") });
+			// Release on the first check phase after `ui.start()`. The kernel's
+			// queued backlog is delivered in the poll phase of that same event-loop
+			// iteration, so it is always inside the gate; a keystroke the operator
+			// actually meant cannot be, because it requires them to have seen a
+			// frame that has not reached the terminal yet. That is the boundary,
+			// and it is a loop turn rather than a duration: no sleep to tune, and
+			// nothing typed at a live prompt is ever refused.
+			setImmediate(() => {
+				this.#startupInputGateRelease?.();
+				this.#startupInputGateRelease = undefined;
+			});
+			if (!flushed) {
+				logger.debug("No tty input flush available at startup; discarding buffered input until mount completes");
+			}
 		}
 		// The first paint used an estimated fill (no composed frame existed yet);
 		// now the exact composed height is known, so re-anchor precisely. It only

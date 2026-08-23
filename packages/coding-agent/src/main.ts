@@ -511,6 +511,13 @@ function loadInteractiveMode(): Promise<typeof import("./modes/interactive-mode"
 	return interactiveModeLoad;
 }
 
+let firstFrameLoad: Promise<typeof import("./modes/first-frame")> | undefined;
+
+function loadFirstFrame(): Promise<typeof import("./modes/first-frame")> {
+	firstFrameLoad ??= import("./modes/first-frame");
+	return firstFrameLoad;
+}
+
 async function runInteractiveMode(
 	session: AgentSession,
 	version: string,
@@ -1755,6 +1762,28 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 			stdinIsTTY: process.stdin.isTTY,
 			stdoutIsTTY: process.stdout.isTTY,
 		});
+
+		// Paint the launch card before the session is built. Everything below —
+		// plugin roots, extension and skill discovery, the model registry, the MCP
+		// connections, then the interactive mode's own mount — used to run against
+		// a blank terminal. The mode adopts this screen and this card rather than
+		// building its own (`modes/first-frame.ts`). Loaded here, not imported at
+		// the top: a print/rpc run never touches the TUI.
+		if (isInteractive && !isProtocolMode) {
+			const onboarding = resolveOnboardingGeneration(settingsInstance);
+			const { paintFirstFrame, shouldPaintFirstFrame } = await loadFirstFrame();
+			const paint = shouldPaintFirstFrame({
+				isInteractive,
+				protocolMode: isProtocolMode,
+				quiet: settingsInstance.get("startup.quiet"),
+				splash: showStartupSplash,
+				setupWizard:
+					deps.forceSetupWizard === true || (!onboarding.unreadable && onboarding.version < CURRENT_SETUP_VERSION),
+				stdinIsTTY: process.stdin.isTTY,
+				stdoutIsTTY: process.stdout.isTTY,
+			});
+			if (paint) logger.time("paintFirstFrame", paintFirstFrame, VERSION);
+		}
 
 		// The TUI cannot render anything until its screen exists, and session startup is exactly
 		// when a degraded skill or an unprotectable secret is discovered. An interactive run

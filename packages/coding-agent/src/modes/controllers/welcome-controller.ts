@@ -51,14 +51,19 @@ export class WelcomeController {
 	}
 
 	/** Mount the startup hero (spacer · card · spacer) at the top of the UI
-	 * tree. The host adds its centring top fill first; ordering matters. */
-	mountHero(inputs: WelcomeHeroInputs): void {
-		this.#component = new WelcomeComponent(
-			inputs.version,
-			inputs.modelName,
-			inputs.providerName,
-			inputs.recentSessions,
-		);
+	 * tree. The host adds its centring top fill first; ordering matters.
+	 *
+	 * `adopted` is the card the first frame already painted (`first-frame.ts`).
+	 * Its data is refreshed rather than a second card built, so the sun, the
+	 * tip and the row count do not change under the operator when the session
+	 * finally lands. */
+	mountHero(inputs: WelcomeHeroInputs, adopted?: WelcomeComponent): void {
+		if (adopted) {
+			adopted.setModel(inputs.modelName, inputs.providerName);
+			adopted.setRecentSessions(inputs.recentSessions);
+		}
+		this.#component =
+			adopted ?? new WelcomeComponent(inputs.version, inputs.modelName, inputs.providerName, inputs.recentSessions);
 		this.#spacers = [new Spacer(1), new Spacer(1)];
 		this.port.ui.addChild(this.#spacers[0] as Spacer);
 		this.port.ui.addChild(this.#component);
