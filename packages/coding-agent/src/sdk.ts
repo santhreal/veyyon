@@ -98,6 +98,7 @@ import {
 	type ExtensionFactory,
 	ExtensionRunner,
 	ExtensionToolWrapper,
+	type ExtensionTrustOptions,
 	type ExtensionUIContext,
 	type LoadExtensionsResult,
 	loadExtensionFromFactory,
@@ -547,6 +548,15 @@ export interface CreateAgentSessionOptions {
 	 * This is the safe pass-through for parent → subagent forwarding.
 	 */
 	preloadedExtensionPaths?: string[];
+	/**
+	 * The operator-named subset of {@link preloadedExtensionPaths}: the parent's `--extension`
+	 * flags and `extensions:` entries.
+	 *
+	 * The project-trust gate exempts a path the operator named and withholds one the project scan
+	 * found. A subagent inherits the parent's path list and cannot tell those apart, so without
+	 * this it re-gated the operator's own file and started without it.
+	 */
+	preloadedNamedExtensionPaths?: string[];
 	/**
 	 * Pre-discovered custom-tool source paths from `.veyyon/tools/`, `.claude/tools/`,
 	 * plugins, etc. When provided, the filesystem-scan inside
@@ -2866,6 +2876,20 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// the flag and pre-resolved the result already reflects that choice.
 		let extensionPaths: string[];
 		let extensionsResult: LoadExtensionsResult;
+		// The trust gate reads the SESSION's profile, and the paths the operator named are the
+		// operator's own even when they live inside the project. Both `loadExtensions` calls
+		// below used to pass neither: a `--extension ./dev/tool.ts` was withheld as repository
+		// code, and the decision was looked up in whichever profile the process booted with
+		// rather than the one this session runs under.
+		const namedExtensionPaths = [
+			...(options.additionalExtensionPaths ?? []),
+			...(options.preloadedNamedExtensionPaths ?? []),
+			...(settings.get("extensions") ?? []),
+		];
+		const extensionTrustOptions: ExtensionTrustOptions = {
+			agentDir,
+			configuredPaths: namedExtensionPaths,
+		};
 		if (options.preloadedExtensions) {
 			extensionsResult = {
 				...options.preloadedExtensions,
@@ -2889,6 +2913,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				cwd,
 				eventBus,
 				adoptSpawnedPid,
+				extensionTrustOptions,
 			);
 			reportExtensionLoadFailures(extensionsResult, operatorNotices);
 		} else {
@@ -2902,12 +2927,14 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				cwd,
 				eventBus,
 				adoptSpawnedPid,
+				extensionTrustOptions,
 			);
 			reportExtensionLoadFailures(extensionsResult, operatorNotices);
 		}
 		// Forward the source-path list (NOT the loaded instances) so subagents
 		// rebuild their own session-scoped extensions.
 		toolSession.extensionPaths = extensionPaths;
+		toolSession.namedExtensionPaths = namedExtensionPaths;
 
 		// Load inline extensions from factories
 		if (inlineExtensions.length > 0) {

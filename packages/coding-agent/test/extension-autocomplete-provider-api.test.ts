@@ -177,7 +177,9 @@ export default function (pi) {
 `,
 		);
 
-		const result = await loadExtensions([extPath], tempDir.path());
+		const result = await loadExtensions([extPath], tempDir.path(), undefined, undefined, {
+			configuredPaths: [extPath],
+		});
 		expect(result.errors).toEqual([]);
 		const runner = new ExtensionRunner(
 			result.extensions,

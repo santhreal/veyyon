@@ -624,9 +624,9 @@ describe("AgentSession handoff", () => {
 			settings: { ...compactionModule.DEFAULT_COMPACTION_SETTINGS, strategy: "summary" },
 		};
 		const extensionRunner = {
-			hasHandlers: vi.fn((eventType: string) => eventType === "session.compacting"),
+			hasHandlers: vi.fn((eventType: string) => eventType === "session_compacting"),
 			emit: vi.fn(async (event: { type: string }) =>
-				event.type === "session.compacting"
+				event.type === "session_compacting"
 					? {
 							preserveData: {
 								otherState: "keep-me",
@@ -697,9 +697,9 @@ describe("AgentSession handoff", () => {
 			settings: { ...compactionModule.DEFAULT_COMPACTION_SETTINGS, strategy: "summary" },
 		};
 		const extensionRunner = {
-			hasHandlers: vi.fn((eventType: string) => eventType === "session.compacting"),
+			hasHandlers: vi.fn((eventType: string) => eventType === "session_compacting"),
 			emit: vi.fn(async (event: { type: string }) =>
-				event.type === "session.compacting"
+				event.type === "session_compacting"
 					? {
 							preserveData: {
 								otherState: "keep-me",

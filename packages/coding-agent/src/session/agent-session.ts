@@ -16118,10 +16118,10 @@ export class AgentSession {
 		let hookPrompt: string | undefined;
 		let preserveData: Record<string, unknown> | undefined;
 
-		if (!hookCompaction && this.#extensionRunner?.hasHandlers("session.compacting")) {
+		if (!hookCompaction && this.#extensionRunner?.hasHandlers("session_compacting")) {
 			const compactMessages = preparation.messagesToSummarize.concat(preparation.turnPrefixMessages);
 			const result = (await this.#extensionRunner.emit({
-				type: "session.compacting",
+				type: "session_compacting",
 				sessionId: this.sessionId,
 				messages: compactMessages,
 			})) as { context?: string[]; prompt?: string; preserveData?: Record<string, unknown> } | undefined;

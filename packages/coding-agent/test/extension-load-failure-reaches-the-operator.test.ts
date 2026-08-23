@@ -137,7 +137,9 @@ describe("an extension that cannot be loaded is reported to the operator", () =>
 		const { cwd, agentDir, extensionPath } = projectWithBrokenExtension();
 		const { notices, shown } = collectingNotices();
 
-		const preloadedExtensions = await loadExtensions([extensionPath], cwd, new EventBus());
+		const preloadedExtensions = await loadExtensions([extensionPath], cwd, new EventBus(), undefined, {
+			configuredPaths: [extensionPath],
+		});
 		expect(preloadedExtensions.errors).toHaveLength(1);
 
 		const { session } = await createAgentSession({

@@ -498,7 +498,7 @@ export interface HookAPI {
 		event: "session_before_compact",
 		handler: HookHandler<SessionBeforeCompactEvent, SessionBeforeCompactResult>,
 	): void;
-	on(event: "session.compacting", handler: HookHandler<SessionCompactingEvent, SessionCompactingResult>): void;
+	on(event: "session_compacting", handler: HookHandler<SessionCompactingEvent, SessionCompactingResult>): void;
 	on(event: "session_compact", handler: HookHandler<SessionCompactEvent>): void;
 	on(event: "session_shutdown", handler: HookHandler<SessionShutdownEvent>): void;
 	on(event: "session_before_tree", handler: HookHandler<SessionBeforeTreeEvent, SessionBeforeTreeResult>): void;

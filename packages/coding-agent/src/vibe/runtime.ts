@@ -626,6 +626,7 @@ export class VibeSessionRegistry {
 				agentName: record.agent.name,
 			}),
 			preloadedExtensionPaths: session.extensionPaths,
+			preloadedNamedExtensionPaths: session.namedExtensionPaths,
 			preloadedCustomToolPaths: session.customToolPaths,
 			localProtocolOptions,
 			parentArtifactManager: session.getArtifactManager?.() ?? undefined,
