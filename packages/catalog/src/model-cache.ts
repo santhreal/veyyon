@@ -183,3 +183,30 @@ export function writeModelCache<TApi extends Api>(
 		// Cache writes are best-effort; failures should not break model resolution.
 	}
 }
+
+/**
+ * Content-derived stamp of the cache table, for snapshot fingerprints.
+ *
+ * File stamps (mtime/size of `models.db` and its `-wal`/`-shm` sidecars) are
+ * the wrong instrument here: SQLite moves the sidecars on every connection —
+ * including reads and the writer's own first launch — so a file-stamped
+ * fingerprint misses on every launch that follows one of its own writes, and
+ * the snapshot it guards is rebuilt and rewritten each time. The row content,
+ * summarized as row count plus updated-at bounds, changes only when a row is
+ * actually written, which is the event a static-stage fingerprint exists to
+ * observe.
+ */
+export function modelCacheStamp(dbPath?: string): string {
+	try {
+		return withModelCacheDb(dbPath, db => {
+			const row = db
+				.query(
+					"SELECT COUNT(*) AS n, COALESCE(SUM(updated_at), 0) AS sum, COALESCE(MAX(updated_at), 0) AS max FROM model_cache",
+				)
+				.get() as { n: number; sum: number; max: number } | null;
+			return row ? `${row.n}:${row.sum}:${row.max}` : "empty";
+		});
+	} catch {
+		return "unreadable";
+	}
+}

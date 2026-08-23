@@ -4,8 +4,8 @@ import * as path from "node:path";
 import { atomicWriteFileSync, errorMessage, getModelDbPath, isBunTestRuntime, logger } from "@veyyon/utils";
 import { buildModel } from "./build";
 import modelsSourceJson from "./models.json" with { type: "text" };
-import { isRecord } from "./utils";
 import type { Api, Model, ModelSpec, Usage } from "./types";
+import { isRecord } from "./utils";
 
 /**
  * Static bundled model registry loaded from `models.json`.
@@ -43,6 +43,17 @@ const ENRICHED_REGISTRY_FORMAT_VERSION = 1;
 let modelRegistry: Map<string, Map<string, Model<Api>>> | undefined;
 let parsedModels: BundledModelsJson | undefined;
 let catalogDigest: string | undefined;
+/**
+ * Where the enriched-registry snapshot is read and written when a caller does
+ * not pass an explicit db path. A relocated registry (SDK hosts, tests) passes
+ * its own `models.db` location; without the pin the snapshot silently lands
+ * beside the default profile's database where nothing reads it back.
+ */
+let registryCacheDbPathOverride: string | undefined;
+
+export function setBundledRegistryCacheDbPath(dbPath: string | undefined): void {
+	registryCacheDbPathOverride = dbPath;
+}
 
 /**
  * Stable content digest of the bundled catalog text. Registry-level snapshots
@@ -60,7 +71,7 @@ function registryFingerprint(): string {
 }
 
 function bundledRegistryCachePath(dbPath?: string): string {
-	return path.join(path.dirname(dbPath ?? getModelDbPath()), "bundled-models.json");
+	return path.join(path.dirname(dbPath ?? registryCacheDbPathOverride ?? getModelDbPath()), "bundled-models.json");
 }
 
 function buildRegistry(source: BundledModelsJson): Map<string, Map<string, Model<Api>>> {
@@ -112,7 +123,9 @@ export function writeEnrichedRegistrySnapshot(
 	try {
 		const payload = {
 			fingerprint,
-			registry: Object.fromEntries(Array.from(registry, ([provider, models]) => [provider, Object.fromEntries(models)])),
+			registry: Object.fromEntries(
+				Array.from(registry, ([provider, models]) => [provider, Object.fromEntries(models)]),
+			),
 		};
 		atomicWriteFileSync(bundledRegistryCachePath(dbPath), JSON.stringify(payload));
 	} catch (error) {
