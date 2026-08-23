@@ -4,6 +4,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { scheduler } from "node:timers/promises";
 import { isOfficialAnthropicApiUrl } from "@veyyon/catalog/compat/anthropic";
+import { isOfficialOpenAIEndpoint } from "@veyyon/catalog/compat/openai";
 import type { Effort } from "@veyyon/catalog/effort";
 import { isVertexExpressOpenAIUrl, isVertexRawPredictUrl } from "@veyyon/catalog/hosts";
 import {
@@ -125,21 +126,14 @@ function isLeakedThinkingHealExempt(model: Model<Api>): boolean {
 			// FOUNDRY_BASE_URL, so exempt only when the effective endpoint is official.
 			return isOfficialAnthropicApiUrl((isFoundryEnabled() && $env.FOUNDRY_BASE_URL?.trim()) || model.baseUrl);
 		case "openai":
-			return isOfficialOpenAIApiUrl(model.baseUrl);
+			// The catalog's check, not a third copy of it: the same hostname question decides whether this
+			// endpoint gets the obfuscation opt-out and server compaction, and a local copy drifted into
+			// answering it here.
+			return isOfficialOpenAIEndpoint("openai", model.baseUrl ?? "");
 		case "openai-codex":
 			return isOfficialCodexApiUrl(model.baseUrl);
 		default:
 			return false;
-	}
-}
-
-/** Strict official-OpenAI endpoint check; missing baseUrl defaults to `api.openai.com`. */
-function isOfficialOpenAIApiUrl(baseUrl: string | undefined): boolean {
-	if (!baseUrl) return true;
-	try {
-		return new URL(baseUrl).hostname === "api.openai.com";
-	} catch {
-		return false;
 	}
 }
 

@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Changed
+- `compat/markup-leaks.ts` owns which endpoints leak model markup into visible content. The provider list for DeepSeek's DSML envelope and the Kimi-K2 rule existed twice, byte for byte — once here as a `Set` and once in `@veyyon/ai` as an or-chain — so a newly-leaking host could be added to one and not the other. `isOfficialOpenAIEndpoint` is exported for the same reason: the streaming engine carried a third copy of the `api.openai.com` hostname check.
+
 ### Breaking Changes
 
 - The minimum supported Bun runtime is now 1.4.0.
