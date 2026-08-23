@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-3b188d48.js";
+            window.path_to_searchindex_js = "../searchindex-85384dad.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -255,7 +255,7 @@ takes two required ordered fields followed by type-specific options:</p>
 </li>
 </ol>
 <h3 id="type-specific-options-and-validation"><a class="header" href="#type-specific-options-and-validation">Type-specific options and validation</a></h3>
-<p>Options are strictly validated per <code>type</code>; cross-type fields are rejected with an actionable error:</p>
+<p>Options are validated per <code>type</code>; cross-type fields are rejected with an actionable error. Files mode tolerates an accidental <code>path</code> field for provider-call recovery but ignores it, so required <code>input</code> remains authoritative:</p>
 <ul>
 <li><strong><code>type: "files"</code></strong> accepts <code>hidden</code>, <code>gitignore</code>, and <code>limit</code>:
 <ul>

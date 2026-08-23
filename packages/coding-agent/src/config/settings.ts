@@ -2159,15 +2159,11 @@ export class Settings {
 			const seen = new Set<string>();
 			for (const name of names) {
 				const normalized = typeof name === "string" ? normalizeToolName(name) : name;
-				const migrated =
-					normalized === "find" || normalized === "glob" || normalized === "grep" || normalized === "ast_grep"
-						? "search"
-						: normalized;
-				if (typeof migrated === "string") {
-					if (seen.has(migrated)) continue;
-					seen.add(migrated);
+				if (typeof normalized === "string") {
+					if (seen.has(normalized)) continue;
+					seen.add(normalized);
 				}
-				out.push(migrated);
+				out.push(normalized);
 			}
 			return out;
 		};
