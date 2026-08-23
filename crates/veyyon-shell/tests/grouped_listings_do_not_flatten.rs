@@ -249,7 +249,7 @@ mod filters_that_trim_check_before_they_trim {
 		             name not found\n";
 		let (first, second) = two_passes(&ctx, input, 1);
 
-		assert!(first.starts_with("dotnet build: failed\n"), "got: {first:?}");
+		assert!(first.starts_with("[errors] dotnet build\n"), "got: {first:?}");
 		assert!(first.contains("error CS1002"), "the diagnostics survive: {first:?}");
 		assert_eq!(second, first, "and the whole block settles after one pass");
 	}

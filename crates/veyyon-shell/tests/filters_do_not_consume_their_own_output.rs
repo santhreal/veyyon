@@ -54,7 +54,7 @@ mod pytest_does_not_count_its_marker_as_surviving_output {
 		let (first, second) = two_passes(&ctx, &input, 0);
 
 		assert!(
-			first.starts_with("[…70ln elided…]\n"),
+			first.starts_with("[clean] pytest\n[…70ln elided…]\n"),
 			"first pass elides 70 of 90 lines, got: {first:?}"
 		);
 		assert_eq!(
@@ -183,7 +183,10 @@ mod dotnet_does_not_reread_its_failure_header {
 		let ctx = context("dotnet", Some("build"), "dotnet build", &config);
 		let (first, second) = two_passes(&ctx, "dotnet build: failed\n", 1);
 
-		assert_eq!(first, "dotnet build: failed\n", "one header, no repeat counter");
+		assert_eq!(
+			first, "[errors] dotnet build\ndotnet build: failed\n",
+			"one header, no repeat counter"
+		);
 		assert_eq!(second, first, "and still one after a second pass");
 	}
 
@@ -199,7 +202,7 @@ mod dotnet_does_not_reread_its_failure_header {
 		let input = "src/Program.cs(10,5): error CS1002: ; expected\nBuild FAILED.\n";
 		let (first, second) = two_passes(&ctx, input, 1);
 
-		assert!(first.starts_with("dotnet build: failed\n"), "got: {first:?}");
+		assert!(first.starts_with("[errors] dotnet build\n"), "got: {first:?}");
 		assert!(first.contains("error CS1002"), "the diagnostic is program output: {first:?}");
 		assert_eq!(second, first, "and the whole thing settles after one pass");
 	}
