@@ -137,5 +137,4 @@ export const searchFixtures: Record<string, GalleryFixture> = {
 			isError: true,
 		},
 	},
-
 };

@@ -99,8 +99,10 @@ import statementExecutionImplement from "./statements/execution-workflow/impleme
 import statementExecutionImplementAskFirst from "./statements/execution-workflow/implement-ask-first.md" with {
 	type: "text",
 };
-import statementExecutionImplementSearch from "./statements/execution-workflow/implement-search.md" with { type: "text" };
 import statementExecutionImplementNoDestructive from "./statements/execution-workflow/implement-no-destructive.md" with {
+	type: "text",
+};
+import statementExecutionImplementSearch from "./statements/execution-workflow/implement-search.md" with {
 	type: "text",
 };
 import statementExecutionReadRulesOnly from "./statements/execution-workflow/read-rules-only.md" with { type: "text" };
@@ -164,8 +166,8 @@ import statementToolPolicyDelegationSubagentValue from "./statements/tool-policy
 	type: "text",
 };
 import statementToolPolicyExploration from "./statements/tool-policy/exploration.md" with { type: "text" };
-import statementToolPolicyExplorationSearch from "./statements/tool-policy/exploration-search.md" with { type: "text" };
 import statementToolPolicyExplorationRead from "./statements/tool-policy/exploration-read.md" with { type: "text" };
+import statementToolPolicyExplorationSearch from "./statements/tool-policy/exploration-search.md" with { type: "text" };
 import statementToolPolicyGeneral from "./statements/tool-policy/general.md" with { type: "text" };
 import statementToolPolicyInspectImage from "./statements/tool-policy/inspect-image.md" with { type: "text" };
 import statementToolPolicyIntentField from "./statements/tool-policy/intent-field.md" with { type: "text" };
@@ -174,13 +176,13 @@ import statementToolPolicyParallelMeansSubagents from "./statements/tool-policy/
 	type: "text",
 };
 import statementToolPolicyReportToolIssue from "./statements/tool-policy/report-tool-issue.md" with { type: "text" };
+import statementToolPolicySearch from "./statements/tool-policy/search.md" with { type: "text" };
 import statementToolPolicySecretsRedaction from "./statements/tool-policy/secrets-redaction.md" with { type: "text" };
 import statementToolPolicySpecializedBash from "./statements/tool-policy/specialized-bash.md" with { type: "text" };
 import statementToolPolicySpecializedBashLitmus from "./statements/tool-policy/specialized-bash-litmus.md" with {
 	type: "text",
 };
 import statementToolPolicySpecializedEdit from "./statements/tool-policy/specialized-edit.md" with { type: "text" };
-import statementToolPolicySearch from "./statements/tool-policy/search.md" with { type: "text" };
 import statementToolPolicySpecializedLsp from "./statements/tool-policy/specialized-lsp.md" with { type: "text" };
 import statementToolPolicySpecializedRead from "./statements/tool-policy/specialized-read.md" with { type: "text" };
 import statementToolPolicySpecializedTools from "./statements/tool-policy/specialized-tools.md" with { type: "text" };
@@ -591,9 +593,9 @@ export const PROMPT_STATEMENTS = [
 	{
 		id: "tool-policy/ast",
 		section: "tool-policy",
-		condition: contains("tools", "ast_edit"),
+		condition: anyOf(contains("tools", "search"), contains("tools", "ast_edit")),
 		text: statementToolPolicyAst,
-		purpose: "the AST heading and syntax-aware rule for structural edits",
+		purpose: "the AST heading and syntax-aware rule for structural search or edits",
 	},
 	{
 		id: "tool-policy/ast-edit",

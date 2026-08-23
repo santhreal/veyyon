@@ -696,8 +696,8 @@ export function isReadableUrlPath(value: string): boolean {
  * The literal base directory a glob/search pattern descends from — the longest
  * leading path segment run that contains no glob metacharacter (`*?[{`).
  *
- * This is what the cwd boundary checks for a search tool (`grep`/`glob`/
- * `ast_grep`): the pattern names a scope, and the scope's fixed root is what
+ * This is what the cwd boundary checks for each search mode (text, files, and
+ * structure): the pattern names a scope, and the scope's fixed root is what
  * decides whether the search reaches outside cwd. `src/**\/*.ts` bases at `src`,
  * `/etc/**` at `/etc`, a plain `/etc/passwd` (no metachar) is its own base, and
  * a bare `*.ts` or `**\/x` bases at `""` (an empty string meaning "starts at
@@ -1307,7 +1307,7 @@ export async function resolveExplicitFindPatterns(
  * Result of partitioning a list of user-supplied paths/globs into entries whose
  * base directory currently exists on disk versus those that do not.
  *
- * Used by multi-path tools (search, find, ast_grep, ast_edit) to tolerate one
+ * Used by multi-path search modes and `ast_edit` to tolerate one
  * or more missing entries in a multi-path call: the surviving entries should
  * still be searched, with the missing entries surfaced as a non-fatal warning.
  */

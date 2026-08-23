@@ -51,10 +51,10 @@ import type { ReadonlySessionManager, SessionManager } from "../../session/sessi
 import type {
 	BashToolDetails,
 	BashToolInput,
-	SearchToolDetails,
-	SearchToolInput,
 	ReadToolDetails,
 	ReadToolInput,
+	SearchToolDetails,
+	SearchToolInput,
 	WriteToolInput,
 } from "../../tools";
 import type { ApprovalMode } from "../../tools/approval";

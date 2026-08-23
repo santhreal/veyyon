@@ -71,7 +71,7 @@ For `.sqlite`, `.sqlite3`, `.db`, `.db3`:
 
 All URI schemes take the same line selectors. `artifact://<id>` recovers spilled output; large artifacts block unbounded `:raw`, so page with `artifact://<id>:N-M` / `artifact://<id>:raw:N-M` and use the reported artifact file path for search/copy workflows.
 
-`ssh://host/<absolute-path>` reads a remote text file (UTF-8, ≤ 1 MiB) or lists a directory one level deep, on a configured SSH host or `~/.ssh/config` alias; `ssh://host/` lists the remote root and bare `ssh://` lists the hosts. Remote files are also writable via `write` and searchable via `grep`; a directory only lists, so `grep` refuses one and `write` refuses to overwrite one. Percent-encode a literal `:`, `?`, or `#` in the path (`%3A`/`%3F`/`%23`), since a trailing `:sel` is read as a line selector. Requires a POSIX login shell; a Windows host or a non-POSIX shell (fish, csh/tcsh) is rejected, so use the `ssh` tool there.
+`ssh://host/<absolute-path>` reads a remote text file (UTF-8, ≤ 1 MiB) or lists a directory one level deep, on a configured SSH host or `~/.ssh/config` alias; `ssh://host/` lists the remote root and bare `ssh://` lists the hosts. Remote files are also writable via `write` and searchable via `search` with `type: "text"`; a directory only lists, so text search refuses one and `write` refuses to overwrite one. Percent-encode a literal `:`, `?`, or `#` in the path (`%3A`/`%3F`/`%23`), since a trailing `:sel` is read as a line selector. Requires a POSIX login shell; a Windows host or a non-POSIX shell (fish, csh/tcsh) is rejected, so use the `ssh` tool there.
 
 <critical>
 - Summary footer names elided ranges? Re-issue ONLY those ranges. NEVER guess `..`/`…` content.

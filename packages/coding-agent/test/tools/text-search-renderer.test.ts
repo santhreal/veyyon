@@ -4,7 +4,8 @@ import * as url from "node:url";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
 import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
 import { sanitizeText } from "@veyyon/utils";
-import { grepToolRenderer } from "../../src/tools/grep";
+import { searchToolRenderer } from "../../src/tools/search-renderer";
+import { textSearchRenderer } from "../../src/tools/text-search";
 import { expectNotAccented } from "../helpers/theme-assertions";
 
 function extractLinkUris(text: string): string[] {
@@ -24,7 +25,7 @@ afterAll(() => {
 	resetSettingsForTest();
 });
 
-describe("grepToolRenderer", () => {
+describe("textSearchRenderer and searchToolRenderer (text)", () => {
 	it("indents inline grep output and avoids accent-colored success headers", async () => {
 		const theme = await getThemeByName("dark");
 		expect(theme).toBeDefined();
@@ -38,13 +39,25 @@ describe("grepToolRenderer", () => {
 			},
 		};
 
-		const renderedLines = grepToolRenderer
-			.renderResult(result as never, { expanded: true, isPartial: false }, uiTheme, { pattern: "needle" })
+		const renderedLines = textSearchRenderer
+			.renderResult(result as never, { expanded: true, isPartial: false }, uiTheme, { input: "needle" })
 			.render(240);
 		const plainLines = sanitizeText(renderedLines.join("\n")).split("\n");
 
+		const unifiedRenderedLines = searchToolRenderer
+			.renderResult(
+				{ content: result.content, details: { type: "text", result: result.details } },
+				{ expanded: true, isPartial: false },
+				uiTheme,
+				{ type: "text", input: "needle" },
+			)
+			.render(240);
+		const unifiedPlainLines = sanitizeText(unifiedRenderedLines.join("\n")).split("\n");
+
 		expect(plainLines.every(line => line.startsWith(" "))).toBe(true);
+		expect(unifiedPlainLines.every(line => line.startsWith(" "))).toBe(true);
 		expectNotAccented(uiTheme, renderedLines[0]!, [uiTheme.symbol("icon.search"), "Search"]);
+		expectNotAccented(uiTheme, unifiedRenderedLines[0]!, [uiTheme.symbol("icon.search"), "Search"]);
 	});
 
 	it("keeps truncation status in the header without a bottom notice", async () => {
@@ -68,9 +81,14 @@ describe("grepToolRenderer", () => {
 			},
 		};
 
-		const collapsed = grepToolRenderer.renderResult(result as never, { expanded: false, isPartial: false }, uiTheme, {
-			pattern: "needle",
-		});
+		const collapsed = textSearchRenderer.renderResult(
+			result as never,
+			{ expanded: false, isPartial: false },
+			uiTheme,
+			{
+				input: "needle",
+			},
+		);
 		const renderedLines = sanitizeText(collapsed.render(200).join("\n")).split("\n");
 		const bodyLines = renderedLines.slice(1);
 
@@ -106,9 +124,14 @@ describe("grepToolRenderer", () => {
 			},
 		};
 
-		const collapsed = grepToolRenderer.renderResult(result as never, { expanded: false, isPartial: false }, uiTheme, {
-			pattern: "Flag",
-		});
+		const collapsed = textSearchRenderer.renderResult(
+			result as never,
+			{ expanded: false, isPartial: false },
+			uiTheme,
+			{
+				input: "Flag",
+			},
+		);
 		const renderedLines = sanitizeText(collapsed.render(240).join("\n")).split("\n");
 		const bodyLines = renderedLines.slice(1);
 
@@ -151,8 +174,8 @@ describe("grepToolRenderer", () => {
 			},
 		};
 
-		const rendered = grepToolRenderer
-			.renderResult(result as never, { expanded: true, isPartial: false }, uiTheme, { pattern: "needle" })
+		const rendered = textSearchRenderer
+			.renderResult(result as never, { expanded: true, isPartial: false }, uiTheme, { input: "needle" })
 			.render(240)
 			.join("\n");
 		const fileUri = url.pathToFileURL(path.resolve(filePath)).href;
@@ -182,8 +205,8 @@ describe("grepToolRenderer", () => {
 			},
 		};
 
-		const rendered = grepToolRenderer
-			.renderResult(result as never, { expanded: true, isPartial: false }, uiTheme, { pattern: "needle" })
+		const rendered = textSearchRenderer
+			.renderResult(result as never, { expanded: true, isPartial: false }, uiTheme, { input: "needle" })
 			.render(240)
 			.join("\n");
 
@@ -222,8 +245,8 @@ describe("grepToolRenderer", () => {
 
 		const render = (expanded: boolean) =>
 			sanitizeText(
-				grepToolRenderer
-					.renderResult(result as never, { expanded, isPartial: false }, uiTheme, { pattern: "needle" })
+				textSearchRenderer
+					.renderResult(result as never, { expanded, isPartial: false }, uiTheme, { input: "needle" })
 					.render(200)
 					.join("\n"),
 			).split("\n");

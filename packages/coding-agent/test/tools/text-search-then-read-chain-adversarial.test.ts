@@ -3,7 +3,8 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { GlobTool } from "@veyyon/coding-agent/tools/glob";
+import { ReadTool } from "@veyyon/coding-agent/tools/read";
+import { SearchTool } from "@veyyon/coding-agent/tools/search";
 import { WriteTool } from "@veyyon/coding-agent/tools/write";
 import { removeWithRetries } from "@veyyon/utils";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";
@@ -16,7 +17,7 @@ function textOf(result: { content: Array<{ type: string; text?: string }> }): st
 		.join("\n");
 }
 
-describe("write→glob chain adversarial", () => {
+describe("write→search(text)→read chain adversarial", () => {
 	let settingsState: SettingsTestState | undefined;
 	let tmpDir: string;
 
@@ -31,7 +32,7 @@ describe("write→glob chain adversarial", () => {
 	});
 
 	beforeEach(async () => {
-		tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "wg-chain-"));
+		tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "wgr-chain-"));
 	});
 
 	afterEach(async () => {
@@ -49,20 +50,23 @@ describe("write→glob chain adversarial", () => {
 			settings: Settings.isolated({
 				"lsp.formatOnWrite": false,
 				"lsp.diagnosticsOnWrite": false,
-				"glob.enabled": true,
+				"read.summarize.enabled": false,
 			}),
 			enableLsp: false,
 			getPlanModeState: () => ({ enabled: false }),
 		});
 	}
 
-	it("files written under src/ appear in **/*.ts glob", async () => {
+	it("write unique token, search(text) finds it, read returns the same body", async () => {
 		const s = session();
-		const write = new WriteTool(s);
-		await write.execute("w1", { path: path.join(tmpDir, "src", "a.ts"), content: "a\n" });
-		await write.execute("w2", { path: path.join(tmpDir, "src", "b.ts"), content: "b\n" });
-		const text = textOf(await new GlobTool(s as never).execute("g", { path: "src/**/*.ts" }));
-		expect(text).toContain("a.ts");
-		expect(text).toContain("b.ts");
+		const file = path.join(tmpDir, "hit.ts");
+		const token = "UNIQUE_TOKEN_ZX9Q";
+		const body = `const x = '${token}';\n`;
+		await new WriteTool(s).execute("w", { path: file, content: body });
+		const grepText = textOf(await new SearchTool(s).execute("g", { type: "text", input: token, path: file }));
+		expect(grepText).toContain(token);
+		const readText = textOf(await new ReadTool(s).execute("r", { path: file }));
+		expect(readText).toContain(token);
+		expect(await Bun.file(file).text()).toBe(body);
 	});
 });

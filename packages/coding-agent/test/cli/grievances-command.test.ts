@@ -41,9 +41,9 @@ function seedDb(home: string): void {
 		);
 	`);
 	const insert = db.prepare("INSERT INTO grievances (model, version, tool, report) VALUES (?, ?, ?, ?)");
-	insert.run("test-model", "1.0.0", "find", "find missed a glob");
-	insert.run("test-model", "1.0.0", "grep", "grep dropped a match");
-	insert.run("test-model", "1.0.0", "grep", "grep mangled unicode");
+	insert.run("test-model", "1.0.0", "read", "find missed a glob");
+	insert.run("test-model", "1.0.0", "search", "grep dropped a match");
+	insert.run("test-model", "1.0.0", "search", "grep mangled unicode");
 	db.close();
 }
 
@@ -168,14 +168,14 @@ describe("veyyon grievances", () => {
 			id: 3,
 			model: "test-model",
 			version: "1.0.0",
-			tool: "grep",
+			tool: "search",
 			report: "grep mangled unicode",
 		});
 
-		const filtered = await runGrievances(env, ["list", "--tool", "grep", "--json"]);
+		const filtered = await runGrievances(env, ["list", "--tool", "search", "--json"]);
 		const grepRows = JSON.parse(filtered.stdout) as { tool: string }[];
 		expect(grepRows.length).toBe(2);
-		expect(grepRows.every(row => row.tool === "grep")).toBe(true);
+		expect(grepRows.every(row => row.tool === "search")).toBe(true);
 
 		const limited = await runGrievances(env, ["--limit", "1", "--json"]);
 		expect((JSON.parse(limited.stdout) as unknown[]).length).toBe(1);
@@ -205,7 +205,7 @@ describe("veyyon grievances", () => {
 		expect(byId.exitCode).toBe(0);
 		expect(JSON.parse(byId.stdout)).toEqual({ deleted: 1 });
 
-		const byTool = await runGrievances(env, ["clean", "--tool", "grep", "--json"]);
+		const byTool = await runGrievances(env, ["clean", "--tool", "search", "--json"]);
 		expect(JSON.parse(byTool.stdout)).toEqual({ deleted: 2 });
 
 		const remaining = JSON.parse((await runGrievances(env, ["--json"])).stdout) as unknown[];

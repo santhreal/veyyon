@@ -97,7 +97,7 @@ function buildLargeSessionEntries(): SessionEntry[] {
 						{
 							type: "toolCall",
 							id,
-							name: pick(["read", "grep", "bash", "edit"]),
+							name: pick(["read", "search", "bash", "edit"]),
 							arguments: { path: "src/mod.ts" },
 						},
 					]

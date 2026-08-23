@@ -7,41 +7,41 @@ import type {
 } from "@veyyon/agent-core";
 import type { ToolExample } from "@veyyon/ai";
 import { isRecord, prompt } from "@veyyon/utils";
-import { type } from "arktype";
+import { z } from "zod/v4";
 import { toolsPrompts } from "../prompts/tools/rows";
 import { resolveFileDisplayMode } from "../utils/file-display-mode";
 import type { ToolSession } from ".";
-import {
-	executeStructureSearch,
-	type StructureSearchDetails,
-} from "./ast-grep";
 import { searchPathFilesystemTargets } from "./cwd-boundary";
-import { executeFileSearch, type FileSearchDetails } from "./glob";
-import {
-	executeTextSearch,
-	type TextSearchDetails,
-	textSearchApproval,
-} from "./grep";
+import { executeFileSearch, type FileSearchDetails } from "./file-search";
+import { executeStructureSearch, type StructureSearchDetails } from "./structure-search";
+import { executeTextSearch, type TextSearchDetails, textSearchApproval } from "./text-search";
 import { ToolError } from "./tool-errors";
 
-export const searchSchema = type({
-	type: type.enumerated("files", "text", "structure").describe(
-		"representation to match: files for paths and repository layout, text for syntax-irrelevant content, structure for code syntax and relationships",
-	),
-	input: type("string").describe(
-		"what to match: a path or glob for files, a literal or regular expression for text, or one valid structural code pattern for structure",
-	),
-	"path?": type("string").describe(
-		'text or structure only: file, directory, glob, internal URL, or semicolon-delimited search scope. Omitted -> workspace root (".")',
-	),
-	"case?": type("boolean").describe("text only: case-sensitive matching"),
-	"hidden?": type("boolean").describe("files only: include hidden files"),
-	"gitignore?": type("boolean").describe("files or text only: respect gitignore"),
-	"limit?": type("number").describe("files only: maximum results"),
-	"skip?": type("number").describe("text or structure only: results to skip for pagination"),
+export const searchSchema = z.strictObject({
+	type: z
+		.enum(["files", "text", "structure"])
+		.describe(
+			"representation to match: files for paths and repository layout, text for syntax-irrelevant content, structure for code syntax and relationships",
+		),
+	input: z
+		.string()
+		.describe(
+			"what to match: a path or glob for files, a literal or regular expression for text, or one valid structural code pattern for structure",
+		),
+	path: z
+		.string()
+		.optional()
+		.describe(
+			'text or structure only: file, directory, glob, internal URL, or semicolon-delimited search scope. Omitted -> workspace root (".")',
+		),
+	case: z.boolean().optional().describe("text only: case-sensitive matching"),
+	hidden: z.boolean().optional().describe("files only: include hidden files"),
+	gitignore: z.boolean().optional().describe("files or text only: respect gitignore"),
+	limit: z.number().optional().describe("files only: maximum results"),
+	skip: z.number().optional().describe("text or structure only: results to skip for pagination"),
 });
 
-export type SearchToolInput = typeof searchSchema.infer;
+export type SearchToolInput = z.infer<typeof searchSchema>;
 export type SearchType = SearchToolInput["type"];
 
 export type SearchToolDetails =
@@ -57,7 +57,9 @@ const TYPE_FIELDS: Record<SearchType, ReadonlySet<keyof SearchToolInput>> = {
 
 function rejectCrossTypeFields(params: SearchToolInput): void {
 	const allowed = TYPE_FIELDS[params.type];
-	const invalid = Object.keys(params).filter(key => !allowed.has(key as keyof SearchToolInput));
+	const invalid = Object.keys(params).filter(
+		key => params[key as keyof SearchToolInput] !== undefined && !allowed.has(key as keyof SearchToolInput),
+	);
 	if (invalid.length === 0) return;
 	throw new ToolError(`Search type "${params.type}" does not accept: ${invalid.join(", ")}`);
 }
@@ -120,7 +122,13 @@ export class SearchTool implements AgentTool<typeof searchSchema, SearchToolDeta
 
 		if (params.type === "files") {
 			const update: AgentToolUpdateCallback<FileSearchDetails> | undefined = onUpdate
-				? event => onUpdate({ content: event.content, details: { type: "files", result: event.details } })
+				? event => {
+						const partial: AgentToolResult<SearchToolDetails> = { content: event.content };
+						if (event.details) partial.details = { type: "files", result: event.details };
+						if (event.isError !== undefined) partial.isError = event.isError;
+						if (event.useless !== undefined) partial.useless = event.useless;
+						onUpdate(partial);
+					}
 				: undefined;
 			const result = await executeFileSearch(
 				this.session,
@@ -133,7 +141,8 @@ export class SearchTool implements AgentTool<typeof searchSchema, SearchToolDeta
 				signal,
 				update,
 			);
-			return { content: result.content, details: { type: "files", result: result.details } };
+			if (!result.details) throw new ToolError("File search returned no result details");
+			return { ...result, details: { type: "files", result: result.details } };
 		}
 
 		if (params.type === "text") {
@@ -148,7 +157,8 @@ export class SearchTool implements AgentTool<typeof searchSchema, SearchToolDeta
 				},
 				signal,
 			);
-			return { content: result.content, details: { type: "text", result: result.details } };
+			if (!result.details) throw new ToolError("Text search returned no result details");
+			return { ...result, details: { type: "text", result: result.details } };
 		}
 
 		const result = await executeStructureSearch(
@@ -156,6 +166,7 @@ export class SearchTool implements AgentTool<typeof searchSchema, SearchToolDeta
 			{ pattern: params.input, path: params.path, skip: params.skip },
 			signal,
 		);
-		return { content: result.content, details: { type: "structure", result: result.details } };
+		if (!result.details) throw new ToolError("Structure search returned no result details");
+		return { ...result, details: { type: "structure", result: result.details } };
 	}
 }

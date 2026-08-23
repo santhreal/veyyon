@@ -268,8 +268,6 @@ export interface BuiltinToolPermissionInputs {
 	requireYieldTool: boolean;
 	/** `todo.enabled`. */
 	todoEnabled: boolean;
-	/** `search.enabled`. */
-	searchEnabled: boolean;
 	/** `github.enabled`. */
 	githubEnabled: boolean;
 	/** `astEdit.enabled`. */
@@ -331,7 +329,7 @@ export function isBuiltinToolAllowed(name: string, inputs: BuiltinToolPermission
 	if (name === TOOL.eval) return inputs.evalAllowed;
 	if (name === TOOL.debug) return inputs.debugEnabled;
 	if (name === TOOL.todo) return !inputs.requireYieldTool && inputs.todoEnabled;
-	if (name === TOOL.search) return inputs.searchEnabled;
+	if (name === TOOL.github) return inputs.githubEnabled;
 	if (name === TOOL.ast_edit) return inputs.astEditEnabled;
 	if (name === TOOL.inspect_image) return inputs.inspectImageEnabled;
 	if (name === TOOL.web_search) return inputs.webSearchEnabled;

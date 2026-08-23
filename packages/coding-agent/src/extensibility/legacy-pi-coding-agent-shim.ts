@@ -45,9 +45,9 @@ import {
 } from "../session/streaming-output";
 import type { Tool, ToolSession } from "../tools";
 import { BashTool } from "../tools/bash";
-import { SearchTool } from "../tools/search";
 import { ReadTool } from "../tools/read";
 import { formatBytes } from "../tools/render-utils";
+import { SearchTool } from "../tools/search";
 import { WriteTool } from "../tools/write";
 import { EventBus } from "../utils/event-bus";
 import { loadExtensionFromFactory, loadExtensions } from "./extensions";

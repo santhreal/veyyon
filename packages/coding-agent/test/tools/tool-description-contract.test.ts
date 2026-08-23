@@ -18,12 +18,10 @@ import { makeToolSession } from "../helpers/tool-session";
  */
 const RETAINED: Readonly<Record<string, readonly string[]>> = {
 	bash: [
-		// The specialized-tool routing that survived the cut of its system-prompt duplicate.
-		// The system prompt names neither `find` nor the single-listing exception, so both
-		// clauses had to stay here.
-		"`ls` → `read`",
-		"`find` → `glob`",
-		"even for one quick listing",
+		// The workspace-discovery routing retained in the provider-visible description.
+		"`grep`/`rg`/`find`/`fd`",
+		"use `search`",
+		"known files and directories",
 		// The launch routing rule, re-cut on how a process ENDS rather than on how long
 		// it runs: a four-minute test gate satisfied "long-running" and went to the
 		// process supervisor, which does not return a result. Every clause is
@@ -111,12 +109,12 @@ const RETAINED: Readonly<Record<string, readonly string[]>> = {
 		"NEVER send JSON status objects",
 		"DM them before editing, not after",
 	],
-	ast_grep: [
-		// The example array went 5 -> 2, so the metavariable grammar is now stated
-		// once. A pattern written with the two-dollar form silently matches nothing.
-		"`$$$NAME`, NOT `$$NAME`",
-		"MUST be the whole AST node",
-		"Parse issues = query failure, not absence",
+	search: [
+		"Always pass `type` before `input`",
+		"`files` matches file names, paths",
+		"`text` matches literals",
+		"`structure` matches definitions",
+		"`$$$ARGS` captures zero or more",
 	],
 	ast_edit: [
 		// Same grammar, same single statement, plus the one op an example no longer
@@ -128,12 +126,6 @@ const RETAINED: Readonly<Record<string, readonly string[]>> = {
 		// The repl example went; the rule it stood next to did not.
 		"Only one active debug session at a time",
 		"`program` is a target path, not a shell command",
-	],
-	glob: [
-		// Two of four examples went, including the gitignored-file pair, so the
-		// defaults they demonstrated have to be readable in the prose.
-		"`gitignore` (default `true`)",
-		"becomes `**/*.json`",
 	],
 	browser: [
 		// Ref lifetime is the failure mode a trimmed sentence could have dropped.

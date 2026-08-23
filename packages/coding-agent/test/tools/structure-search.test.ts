@@ -17,7 +17,7 @@ function createTestSession(cwd = "/tmp/test", overrides: Partial<ToolSession> = 
 	};
 }
 
-describe("ast_grep parse errors", () => {
+describe("search structure parse errors", () => {
 	it("reports parse errors for the searched file", async () => {
 		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "ast-grep-parse-"));
 		try {
@@ -25,23 +25,28 @@ describe("ast_grep parse errors", () => {
 			await Bun.write(filePath, "export function broken( { return 1; }");
 
 			const tools = await createTools(createTestSession(tempDir));
-			const tool = tools.find(entry => entry.name === "ast_grep");
+			const tool = tools.find(entry => entry.name === "search");
 			expect(tool).toBeDefined();
 
 			const result = await tool!.execute("ast-grep-parse", {
-				pat: "someUnlikelyCall($A)",
+				type: "structure",
+				input: "someUnlikelyCall($A)",
 				path: filePath,
 			});
 
 			const text = result.content.find(content => content.type === "text")?.text ?? "";
-			const details = result.details as { parseErrors?: string[]; matchCount?: number } | undefined;
+			const details = result.details;
+			const structureResult =
+				details && typeof details === "object" && "result" in details ? details.result : undefined;
 
-			expect(details?.matchCount).toBe(0);
+			expect(structureResult?.matchCount).toBe(0);
 			expect(text).toContain("No matches found");
 			expect(text).toContain("Parse issues mean the query may be mis-scoped");
-			expect(details?.parseErrors).toHaveLength(1);
-			expect(details?.parseErrors?.[0]).toContain("broken.ts: parse error (syntax tree contains error nodes)");
-			expect(details?.parseErrors?.[0]).not.toContain("someUnlikelyCall($A):");
+			expect(structureResult?.parseErrors).toHaveLength(1);
+			expect(structureResult?.parseErrors?.[0]).toContain(
+				"broken.ts: parse error (syntax tree contains error nodes)",
+			);
+			expect(structureResult?.parseErrors?.[0]).not.toContain("someUnlikelyCall($A):");
 			expect(text.match(/parse error \(syntax tree contains error nodes\)/g)?.length ?? 0).toBe(1);
 		} finally {
 			await removeWithRetries(tempDir);
@@ -56,22 +61,23 @@ describe("ast_grep parse errors", () => {
 			}
 
 			const tools = await createTools(createTestSession(tempDir));
-			const tool = tools.find(entry => entry.name === "ast_grep");
+			const tool = tools.find(entry => entry.name === "search");
 			expect(tool).toBeDefined();
 
 			const result = await tool!.execute("ast-grep-parse-cap", {
-				pat: "someUnlikelyCall($A)",
+				type: "structure",
+				input: "someUnlikelyCall($A)",
 				path: tempDir,
 			});
 
 			const text = result.content.find(content => content.type === "text")?.text ?? "";
-			const details = result.details as
-				| { parseErrors?: string[]; parseErrorsTotal?: number; matchCount?: number }
-				| undefined;
+			const details = result.details;
+			const structureResult =
+				details && typeof details === "object" && "result" in details ? details.result : undefined;
 
-			expect(details?.matchCount).toBe(0);
-			expect(details?.parseErrors?.length).toBe(20);
-			expect(details?.parseErrorsTotal).toBe(fileCount);
+			expect(structureResult?.matchCount).toBe(0);
+			expect(structureResult?.parseErrors?.length).toBe(20);
+			expect(structureResult?.parseErrorsTotal).toBe(fileCount);
 			expect(text).toContain(`Parse issues (20 / ${fileCount}):`);
 		} finally {
 			await removeWithRetries(tempDir);
@@ -90,16 +96,19 @@ describe("ast_grep parse errors", () => {
 			await Bun.write(path.join(tempDir, "outside.ts"), "const providerOptions = {};\n");
 
 			const tools = await createTools(createTestSession(tempDir));
-			const tool = tools.find(entry => entry.name === "ast_grep");
+			const tool = tools.find(entry => entry.name === "search");
 			expect(tool).toBeDefined();
 
 			const result = await tool!.execute("ast-grep-glob", {
-				pat: "providerOptions",
+				type: "structure",
+				input: "providerOptions",
 				path: `${packagesDir}/pkg-*/src/**/*.ts`,
 			});
 
 			const text = result.content.find(content => content.type === "text")?.text ?? "";
-			const details = result.details as { matchCount?: number; fileCount?: number } | undefined;
+			const details = result.details;
+			const structureResult =
+				details && typeof details === "object" && "result" in details ? details.result : undefined;
 
 			// Multi-level tree output: `# packages/pkg-…/src/`, `## root.ts#<hash>`, then a
 			// nested `## nested/` directory with `### child.ts#<hash>` under it.
@@ -107,8 +116,8 @@ describe("ast_grep parse errors", () => {
 			expect(text).toMatch(/^### child\.ts#[0-9A-F]{4}/m);
 			expect(text).not.toContain("ignore.js");
 			expect(text).not.toContain("outside.ts");
-			expect(details?.matchCount).toBe(2);
-			expect(details?.fileCount).toBe(2);
+			expect(structureResult?.matchCount).toBe(2);
+			expect(structureResult?.fileCount).toBe(2);
 		} finally {
 			await removeWithRetries(tempDir);
 		}
@@ -127,23 +136,24 @@ describe("ast_grep parse errors", () => {
 			}
 
 			const tools = await createTools(createTestSession(tempDir));
-			const tool = tools.find(entry => entry.name === "ast_grep");
+			const tool = tools.find(entry => entry.name === "search");
 			expect(tool).toBeDefined();
 
 			const result = await tool!.execute("ast-grep-multi-page", {
-				pat: "marker($A)",
+				type: "structure",
+				input: "marker($A)",
 				path: `${lateDir}; ${earlyDir}`,
 			});
 
 			const text = result.content.find(content => content.type === "text")?.text ?? "";
-			const details = result.details as
-				| { matchCount?: number; fileCount?: number; limitReached?: boolean }
-				| undefined;
+			const details = result.details;
+			const structureResult =
+				details && typeof details === "object" && "result" in details ? details.result : undefined;
 
 			expect(text).toMatch(/^## early\.ts#[0-9A-F]{4}/m);
-			expect(details?.matchCount).toBe(61);
-			expect(details?.fileCount).toBe(61);
-			expect(details?.limitReached).toBe(true);
+			expect(structureResult?.matchCount).toBe(61);
+			expect(structureResult?.fileCount).toBe(61);
+			expect(structureResult?.limitReached).toBe(true);
 		} finally {
 			await removeWithRetries(tempDir);
 		}
@@ -159,20 +169,23 @@ describe("ast_grep parse errors", () => {
 			);
 
 			const tools = await createTools(createTestSession(tempDir));
-			const tool = tools.find(entry => entry.name === "ast_grep");
+			const tool = tools.find(entry => entry.name === "search");
 			expect(tool).toBeDefined();
 
 			const result = await tool!.execute("ast-grep-tlaplus", {
-				pat: "Inc",
+				type: "structure",
+				input: "Inc",
 				path: filePath,
 			});
 
 			const text = result.content.find(content => content.type === "text")?.text ?? "";
-			const details = result.details as { matchCount?: number; parseErrors?: string[] } | undefined;
+			const details = result.details;
+			const structureResult =
+				details && typeof details === "object" && "result" in details ? details.result : undefined;
 
 			expect(text).toContain("Inc");
-			expect(details?.matchCount).toBe(1);
-			expect(details?.parseErrors).toBeUndefined();
+			expect(structureResult?.matchCount).toBe(1);
+			expect(structureResult?.parseErrors).toBeUndefined();
 		} finally {
 			await removeWithRetries(tempDir);
 		}
@@ -186,20 +199,26 @@ describe("ast_grep parse errors", () => {
 // files and still reports "no matches" — a silent recall hole (Law 10). The empty
 // result now states how many files were searched, and a zero-file search reads as a
 // scoping problem, not proven absence. These tests lock the diagnostic in.
-describe("ast_grep zero-match diagnostics", () => {
+describe("search structure zero-match diagnostics", () => {
 	it("says NO FILES were searched when the path has nothing to search", async () => {
 		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "ast-grep-empty-"));
 		try {
 			const tools = await createTools(createTestSession(tempDir));
-			const tool = tools.find(entry => entry.name === "ast_grep");
+			const tool = tools.find(entry => entry.name === "search");
 			expect(tool).toBeDefined();
 
-			const result = await tool!.execute("ast-grep-empty", { pat: "someCall($A)", path: tempDir });
+			const result = await tool!.execute("ast-grep-empty", {
+				type: "structure",
+				input: "someCall($A)",
+				path: tempDir,
+			});
 			const text = result.content.find(content => content.type === "text")?.text ?? "";
-			const details = result.details as { matchCount?: number; filesSearched?: number } | undefined;
+			const details = result.details;
+			const structureResult =
+				details && typeof details === "object" && "result" in details ? details.result : undefined;
 
-			expect(details?.matchCount).toBe(0);
-			expect(details?.filesSearched).toBe(0);
+			expect(structureResult?.matchCount).toBe(0);
+			expect(structureResult?.filesSearched).toBe(0);
 			expect(text).toContain("NO FILES were searched");
 			expect(text).toContain("selects files by language");
 			// It must NOT read as proven absence.
@@ -215,15 +234,21 @@ describe("ast_grep zero-match diagnostics", () => {
 			await Bun.write(path.join(tempDir, "code.ts"), "export const x = 1;\nexport function y() { return 2; }\n");
 
 			const tools = await createTools(createTestSession(tempDir));
-			const tool = tools.find(entry => entry.name === "ast_grep");
+			const tool = tools.find(entry => entry.name === "search");
 			expect(tool).toBeDefined();
 
-			const result = await tool!.execute("ast-grep-nomatch", { pat: "thisCallDoesNotExist($A)", path: tempDir });
+			const result = await tool!.execute("ast-grep-nomatch", {
+				type: "structure",
+				input: "thisCallDoesNotExist($A)",
+				path: tempDir,
+			});
 			const text = result.content.find(content => content.type === "text")?.text ?? "";
-			const details = result.details as { matchCount?: number; filesSearched?: number } | undefined;
+			const details = result.details;
+			const structureResult =
+				details && typeof details === "object" && "result" in details ? details.result : undefined;
 
-			expect(details?.matchCount).toBe(0);
-			expect(details?.filesSearched ?? 0).toBeGreaterThan(0);
+			expect(structureResult?.matchCount).toBe(0);
+			expect(structureResult?.filesSearched ?? 0).toBeGreaterThan(0);
 			expect(text).toContain("searched");
 			expect(text).toContain("file");
 			expect(text).not.toContain("NO FILES were searched");

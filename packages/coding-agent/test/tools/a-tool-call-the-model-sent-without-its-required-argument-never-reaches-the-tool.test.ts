@@ -281,11 +281,11 @@ describe("a tool call the model sent without its required argument", () => {
 		expect(unconstructable).toEqual([]);
 		expect(notRegistered).toEqual([]);
 		// Pinned by exact equality, both of them: `yield` is the one tool that
-		// opts out of loop-side validation, and these three declare nothing
+		// opts out of loop-side validation, and these two declare nothing
 		// mandatory. A second name in either list is a tool that stopped being
 		// validated by anyone, and this is where that decision gets recorded.
 		expect(optedOut).toEqual(["yield"]);
-		expect(noRequiredArguments.sort()).toEqual(["glob", "job", "todo"]);
+		expect(noRequiredArguments.sort()).toEqual(["job", "todo"]);
 		// And the sweep did drive something: an empty `checked` would satisfy
 		// every assertion above.
 		expect(checked.length).toBeGreaterThan(20);

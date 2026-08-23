@@ -43,17 +43,15 @@ const RECORDED_TOKENS: Record<string, number> = {
 	"tools/apply-patch": 726,
 	"tools/ask": 285,
 	"tools/ast-edit": 375,
-	"tools/ast-grep": 401,
 	"tools/async-result": 105,
-	"tools/bash": 1624,
+	"tools/bash": 1516,
 	"tools/browser": 1439,
-	"tools/checkpoint": 163,
+	"tools/checkpoint": 165,
 	"tools/debug": 414,
 	"tools/eval": 1693,
 	"tools/github": 410,
-	"tools/glob": 281,
 	"tools/goal": 162,
-	"tools/grep": 236,
+	"tools/search": 573,
 	"tools/image-attachment-describe": 142,
 	"tools/image-attachment-describe-system": 196,
 	"tools/image-gen": 110,
@@ -68,7 +66,7 @@ const RECORDED_TOKENS: Record<string, number> = {
 	"tools/manage-skill": 217,
 	"tools/memory-edit": 243,
 	"tools/patch": 692,
-	"tools/read": 1116,
+	"tools/read": 1123,
 	"tools/recall": 164,
 	"tools/reflect": 98,
 	"tools/replace": 318,
@@ -76,7 +74,7 @@ const RECORDED_TOKENS: Record<string, number> = {
 	"tools/retain": 103,
 	"tools/rewind": 181,
 	"tools/search-tool-bm25": 334,
-	"tools/set-cwd": 448,
+	"tools/set-cwd": 449,
 	"tools/ssh": 236,
 	"tools/task": 1150,
 	"tools/task-summary": 151,
@@ -93,7 +91,7 @@ const RECORDED_TOKENS: Record<string, number> = {
 };
 
 /** The sum the recorded table claims, so the total is in the diff of any trim. */
-const RECORDED_TOTAL = 19166;
+const RECORDED_TOTAL = 18723;
 
 const measured = new Map(Object.entries(toolsPrompts).map(([id, entry]) => [id, estimateTokensFromText(entry.text)]));
 
