@@ -90,14 +90,40 @@ function declaredNeedles(scene: string): Set<string> {
 	return declared;
 }
 
+/** Every guard form a scene may wait on, and the one it may not. */
+const GUARD_FORMS = ["expect_screen", "expect_model_screen", "wait_for_screen"] as const;
+
 function verifyTimeouts(scene: string, findings: Finding[], name: string): void {
-	for (const match of scene.matchAll(/wait_for_screen\s+("[^"]*"|\S+)(\s+\S+)?/g)) {
-		const timeout = match[2]?.trim();
-		if (timeout && /^\d+$/.test(timeout)) continue;
-		if (timeout && /^"?\$\{?\w/.test(timeout)) continue;
+	for (const form of GUARD_FORMS) {
+		for (const match of scene.matchAll(new RegExp(`${form}\\s+("[^"]*"|\\S+)(\\s+\\S+)?`, "g"))) {
+			const timeout = match[2]?.trim();
+			if (timeout && /^\d+$/.test(timeout)) continue;
+			if (timeout && /^"?\$\{?\w/.test(timeout)) continue;
+			findings.push({
+				scene: name,
+				problem: `${form} ${match[1]} has no numeric timeout, so a missing string waits forever`,
+			});
+		}
+	}
+}
+
+/**
+ * A scene classifies every guard it waits on.
+ *
+ * `wait_for_screen` returns and lets the scene walk on to the next guard, so a miss used
+ * to cost a ceiling and then hand the next guard its own: one take waited out 1200s on a
+ * subagent name and 1800s on an edit block, ran past an hour, and published two
+ * byte-identical frames under two names. `expect_screen` is for output the product prints
+ * for what the scene already did, `expect_model_screen` for output only a model choice
+ * produces, and both abandon the take at the first miss with the reason. A bare
+ * `wait_for_screen` in a scene says which of the two it is nowhere, so it is a finding —
+ * `lib.sh` is a helper and is where the two wrappers call it.
+ */
+function verifyGuardKinds(scene: string, findings: Finding[], name: string): void {
+	for (const match of scene.matchAll(/^[^#\n]*\bwait_for_screen\s+("[^"]*"|\S+)/gm)) {
 		findings.push({
 			scene: name,
-			problem: `wait_for_screen ${match[1]} has no numeric timeout, so a missing string waits forever`,
+			problem: `waits on ${match[1]} with a bare wait_for_screen, which runs its ceiling out and continues — use expect_screen for product output or expect_model_screen for a model choice`,
 		});
 	}
 }
@@ -163,7 +189,9 @@ function verifyNeedles(sources: SceneSources, findings: Finding[]): void {
 		typedByScene(scene),
 	];
 	const needles = new Set<string>();
-	for (const match of scene.matchAll(/(?:wait_for_screen|screen_has)\s+"([^"]*)"/g)) {
+	for (const match of scene.matchAll(
+		/(?:expect_screen|expect_model_screen|wait_for_screen|screen_has)\s+"([^"]*)"/g,
+	)) {
 		const needle = match[1];
 		// A needle built from a shell variable is checked at run time, not here.
 		if (needle === "" || needle.includes("$")) continue;
@@ -186,6 +214,7 @@ export function verifySceneSources(sources: SceneSources): Finding[] {
 	verifyTimeouts(sources.scene, findings, sources.name);
 	verifyShotNames(sources.scene, findings, sources.name);
 	verifyMissedIsFatal(sources.scene, findings, sources.name);
+	verifyGuardKinds(sources.scene, findings, sources.name);
 	verifyNeedles(sources, findings);
 	return findings;
 }
