@@ -15,6 +15,7 @@
 
 ### Changed
 - The provider retry ladder asks the registry what the transport stage does about a failure instead of reading `Flag.Transient` and five message patterns, so a fast-mode entitlement wall, a malformed tool call and a stream that ended without saying why are no longer re-sent against the same credential.
+- The Codex usage reader takes `toBoolean` from `@veyyon/catalog/utils`, where its sibling Copilot reader already took it, instead of declaring a third copy of the same one-line typeof check.
 - The stream-corruption vocabulary — a corrupted TLS record, a peer-reported HTTP/2 stream error, the upstream code `1302`, a body that stopped mid-JSON, an envelope whose events arrived out of order — is a transport rule in the registry rather than a prose block only the provider ladder read, so the turn sees the same fault the ladder does.
 - A framing violation carries `Flag.TransportRefused`, so every reader of the retry decision refuses it and a wrapper sentence that classifies as a deadline no longer gets it re-sent.
 - The OAuth callback-path and dialect wire-tag ownership gates read declarations instead of source text. Both proved "declared here and nowhere else" by matching the owner's formatted line, which stayed green for a duplicate spelled any other way; they now ask the declaration census in `@veyyon/utils/source-declarations` and the parsed import lists, so a re-copied constant is red however it is written.

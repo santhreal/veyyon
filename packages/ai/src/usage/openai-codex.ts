@@ -1,4 +1,4 @@
-import { toNumber } from "@veyyon/catalog/utils";
+import { toBoolean, toNumber } from "@veyyon/catalog/utils";
 import { getCodexAccountEmail, getCodexAccountId } from "@veyyon/catalog/wire/codex";
 import { clamp } from "@veyyon/utils/math";
 import { HOUR_MS, MINUTE_MS, WEEK_MS } from "@veyyon/utils/time";
@@ -72,11 +72,6 @@ interface ParsedUsage {
 	additional: ParsedAdditionalUsage[];
 	raw: CodexUsagePayload;
 }
-
-const toBoolean = (value: unknown): boolean | undefined => {
-	if (typeof value === "boolean") return value;
-	return undefined;
-};
 
 // The claim namespaces, the empty-claim rule and the email lowercasing all live in
 // `@veyyon/catalog/wire/codex`. This module's own copy passed an empty `chatgpt_account_id` through
