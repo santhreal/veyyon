@@ -120,14 +120,9 @@ function session(agent: (typeof AGENTS)[number], index: number): ObservableSessi
 
 await initRender(flag("theme", "titanium"));
 const sessions = AGENTS.map(session);
-const block = renderSubagentHudLines(sessions, { columns, showModelBadge: true });
-// The same painting interactive mode does, from the same owner, gated by the
-// same `lit` the renderer returns: the head travels every row and warms only
-// the ones inside a tool.
+const lines = renderSubagentHudLines(sessions, { columns, showModelBadge: true });
+// The same painting interactive mode does, from the same owner: one sweep down
+// the whole block, the same one a tool block runs.
 const painted =
-	frame === undefined
-		? block.lines
-		: paintRailMotion(block.lines, { kind: "idle", head: railIdleHeadAt(frame) }, theme, {
-				lit: index => block.lit[index] === true,
-			});
+	frame === undefined ? lines : paintRailMotion(lines, { kind: "idle", head: railIdleHeadAt(frame) }, theme);
 process.stdout.write(`${painted.join("\n")}\n`);

@@ -47,7 +47,6 @@ import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { bashToolRenderer } from "@veyyon/coding-agent/tools/bash";
 import {
 	findRailCell,
-	hasRailRow,
 	paintRailMotion,
 	RAIL_IDLE_CYCLE_MAX_ROWS,
 	RAIL_IDLE_ROW_MS,
@@ -59,6 +58,7 @@ import {
 	railIdleHeadAt,
 	railIdleHeadAtMs,
 	railIdleIntensity,
+	railRowCount,
 } from "@veyyon/coding-agent/tui/rail-motion";
 import type { TUI } from "@veyyon/tui";
 import { useFullColor } from "../helpers/theme-assertions";
@@ -295,7 +295,7 @@ describe("a rail this animation must not touch", () => {
 
 	it("leaves a block with no rail exactly as it was", () => {
 		const lines = ["Todo 4/9 tasks", "  plain rows, no rail"];
-		expect(hasRailRow(lines, theme.symbol("block.rail"))).toBe(false);
+		expect(railRowCount(lines, theme.symbol("block.rail"))).toBe(0);
 		expect(paintRailMotion(lines, { kind: "idle", head: 3 }, theme)).toBe(lines);
 	});
 
@@ -329,15 +329,16 @@ describe("the component that drives the rail", () => {
 	// guard that forgets a second interval is the same defect.
 	//
 	// The rail's settling pass is the ONLY animation a landed block plays. The todo
-	// board had a fourteen-frame entrance for one release and no longer has one:
-	// the board is drawn once when the result lands and never repaints. Both board
-	// members are here because they finalize DIFFERENTLY and byte-stability is
-	// protected differently on each side. A board carrying `phases` details is
-	// displaceable and never final, so the engine holds its rows live; a board
-	// without them finalizes on arrival, and its rows must then be byte-stable for
-	// good, because nothing above the seam protects them. Either one drawing a
-	// second frame goes red here, which is what a re-added board animation would
-	// do, and points at the block instead of shipping as a screen repaint.
+	// board had a fourteen-frame entrance of its own for one release and has none
+	// now: every row it draws hangs from the block's rail, so the cooling pass is
+	// the whole of its motion. Both board members are here because they finalize
+	// DIFFERENTLY and byte-stability is protected differently on each side. A board
+	// carrying `phases` details is displaceable and never final, so the engine holds
+	// its rows live; a board without them finalizes on arrival, and every frame it
+	// draws after that must declare itself live or the engine repairs it with an
+	// erase-and-replay of the whole screen. A second interval on either side, or a
+	// re-added board entrance, changes the byte count inside the envelope and goes
+	// red here.
 	type LandedResult = Parameters<ToolExecutionComponent["updateResult"]>[0];
 	const animatedBlocks: Array<[string, string, unknown, LandedResult, boolean, boolean]> = [
 		[
@@ -354,7 +355,7 @@ describe("the component that drives the rail", () => {
 			interactionFixtures.todo!.args,
 			interactionFixtures.todo!.result!,
 			false,
-			false,
+			true,
 		],
 		[
 			"a board that finalized on arrival",
@@ -362,7 +363,7 @@ describe("the component that drives the rail", () => {
 			{ op: "view" },
 			{ content: [{ type: "text", text: "Remaining items: 3." }], details: { exitCode: 0 } },
 			true,
-			false,
+			true,
 		],
 	];
 

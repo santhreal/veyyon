@@ -31,16 +31,13 @@ import { getTabBarTheme } from "../../../modes/shared";
 import { theme } from "../../../modes/theme/theme";
 import { matchesAppInterrupt } from "../../../modes/utils/keybinding-matchers";
 import {
-	applyModalReveal,
-	beginModalExit,
 	computeModalDims,
 	consumeModalChipHover,
 	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
-	ModalRevealDriver,
 	type ModalShellGeometry,
-	modalRevealEnabled,
 	planModalChrome,
+	pointerMotionEnabled,
 	renderModalShell,
 	sizingForArea,
 } from "../modal-shell";
@@ -100,14 +97,6 @@ export class ExtensionDashboard implements Component {
 
 	onClose?: () => void;
 	onRequestRender?: () => void;
-	#reveal = new ModalRevealDriver();
-	/**
-	 * Fade out on the shared clock before the host drops this card. The overlay stack keeps painting
-	 * it and stops routing input to it the moment this is called.
-	 */
-	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
-		return beginModalExit(this.#reveal, requestRender, done);
-	}
 
 	/**
 	 * Lend the two pointer surfaces a repaint and take the frames the shared clock will owe them.
@@ -116,13 +105,12 @@ export class ExtensionDashboard implements Component {
 	 */
 	setOnRequestRender(cb: () => void): void {
 		this.onRequestRender = cb;
-		this.#mainList.setHoverMotion({ requestRender: cb, enabled: modalRevealEnabled() });
-		this.#tabBar.setHoverMotion({ requestRender: cb, enabled: modalRevealEnabled() });
+		this.#mainList.setHoverMotion({ requestRender: cb, enabled: pointerMotionEnabled() });
+		this.#tabBar.setHoverMotion({ requestRender: cb, enabled: pointerMotionEnabled() });
 	}
 
 	/** Settle both bands so no timer outlives a dismissed dashboard. */
 	dispose(): void {
-		this.#reveal.stop();
 		this.#mainList.disposeHoverMotion();
 		this.#tabBar.disposeHoverMotion();
 	}
@@ -137,13 +125,8 @@ export class ExtensionDashboard implements Component {
 		cwd: string,
 		settings: Settings | null = null,
 		terminalHeight?: number,
-		/** Play the open unfold (TOUCH-5). Show site decides via modalRevealEnabled(). */
-		reveal?: boolean,
 	): Promise<ExtensionDashboard> {
 		const dashboard = new ExtensionDashboard(cwd, settings, terminalHeight ?? process.stdout.rows ?? 24);
-		if (reveal) {
-			dashboard.#reveal.start(() => dashboard.onRequestRender?.());
-		}
 		await dashboard.#init();
 		return dashboard;
 	}
@@ -250,7 +233,7 @@ export class ExtensionDashboard implements Component {
 		this.#tabRowCount = tabLines.length;
 		this.#bodyRowStart = this.#tabRowStart + tabLines.length;
 		this.#bodyRowCount = contentRows;
-		return applyModalReveal(shell, width, this.#reveal);
+		return shell.lines;
 	}
 
 	invalidate(): void {
