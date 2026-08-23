@@ -34,7 +34,7 @@ describe("the Files → LSP nested panel", () => {
 	it("treats Language Servers as the enterable parent, not a boolean Files row", () => {
 		const def = getSettingDef("lsp.enabled");
 		expect(def?.type).toBe("lsp");
-		expect(def?.label).toBe("LSP");
+		expect(def?.label).toBe("Language Servers");
 	});
 
 	it("keeps every nested piece as its own boolean setting", () => {
