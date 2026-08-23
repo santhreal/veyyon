@@ -382,11 +382,11 @@ export const fixtureAgents: AgentSnapshot[] = [
 	},
 ];
 
-const PROBE_TOOLS = ["bash", "read", "grep", "edit"] as const;
+const PROBE_TOOLS = ["bash", "read", "search", "edit"] as const;
 const PROBE_TOOL_ARGS: Record<(typeof PROBE_TOOLS)[number], string> = {
 	bash: "bun test packages/coding-agent/test/collab --filter reconnect",
 	read: "packages/coding-agent/src/collab/relay-client.ts:168-197",
-	grep: "scheduleRetry|failFatal",
+	search: 'text "scheduleRetry|failFatal" in packages/coding-agent/src/collab',
 	edit: "packages/coding-agent/test/collab/reconnect.test.ts",
 };
 
@@ -455,13 +455,13 @@ const subagentTranscriptLines: unknown[] = [
 		message: {
 			role: "assistant",
 			content: [
-				{ type: "thinking", thinking: "Grep the doc for 4xxx codes, then diff against protocol.ts." },
+				{ type: "thinking", thinking: "Search the doc for 4xxx codes, then diff against protocol.ts." },
 				{ type: "text", text: "Scanning `docs/handbook/src/features/collab.md` for close-code mentions." },
 				{
 					type: "toolCall",
 					id: "sub-call-01",
-					name: "grep",
-					arguments: { pattern: "40\\d\\d", paths: ["docs/handbook/src/features/collab.md"] },
+					name: "search",
+					arguments: { type: "text", input: "40\\d\\d", path: "docs/handbook/src/features/collab.md" },
 					intent: "Finding close codes",
 				},
 			],
@@ -480,7 +480,7 @@ const subagentTranscriptLines: unknown[] = [
 		message: {
 			role: "toolResult",
 			toolCallId: "sub-call-01",
-			toolName: "grep",
+			toolName: "search",
 			content: [
 				{
 					type: "text",

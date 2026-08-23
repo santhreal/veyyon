@@ -175,3 +175,38 @@ it("scanFile recovers usage, turns, spawns, residency, and pruned result sizes",
 	expect(scan.lastAssistantText).toBe("All done.");
 	expect(scan.title).toBe("Test session");
 });
+
+it("summarizes canonical search arguments in large-result reports", async () => {
+	const lines = [
+		JSON.stringify({ type: "session", id: "s2", timestamp: "2026-06-09T10:00:00.000Z" }),
+		JSON.stringify({ type: "message", message: { role: "user", content: "find it", timestamp: 1000 } }),
+		asst({
+			ts: 2000,
+			usage: { input: 100, output: 10, cost: 0.1 },
+			content: [
+				{
+					type: "toolCall",
+					id: "search-1",
+					name: "search",
+					arguments: { type: "text", input: "needle", path: "src" },
+				},
+			],
+		}),
+		JSON.stringify({
+			type: "message",
+			message: {
+				role: "toolResult",
+				toolCallId: "search-1",
+				toolName: "search",
+				timestamp: 2500,
+				content: [{ type: "text", text: "x".repeat(9_000) }],
+			},
+		}),
+	];
+	const file = path.join(tmpDir, "search-summary.jsonl");
+	await Bun.write(file, `${lines.join("\n")}\n`);
+
+	const scan = await scanFile(file);
+	if (!scan) throw new Error("scanFile returned undefined");
+	expect(scan.topResults).toContainEqual({ tool: "search", summary: "text needle in src", toks: 2250 });
+});

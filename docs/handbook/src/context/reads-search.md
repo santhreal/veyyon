@@ -66,7 +66,7 @@ Options are strictly validated per `type`; cross-type fields are rejected with a
   - **`gitignore` (default `true`)** respects `.gitignore` rules; set `false` to search ignored paths.
   - **`limit` (default `200`, max `200`)** bounds returned paths; output is sorted by `mtime` descending and grouped under `# <dir>/` directory headers.
 - **`type: "text"`** accepts `path`, `case`, `gitignore`, and `skip`:
-  - **`path`** scopes the search (file, directory, glob, internal URL like `veyyon://`, or a semicolon-delimited list; omitted searches the workspace root `"."`). Line-range selectors (e.g. `:50-100`) on a single file target constrain matches.
+  - **`path`** scopes the search (file, directory, glob, internal URL like `veyyon://`, or a semicolon-delimited list). Pass the narrowest known scope; omit it only when the workspace root (`"."`) is intended. Line-range selectors (e.g. `:50-100`) on a single file target constrain matches.
   - **`case` (default `true`)** toggles case sensitivity.
   - **`gitignore` (default `true`)** respects `.gitignore`.
   - **`skip`** pages past already-returned files; results are paginated at `20` files per call (`DEFAULT_FILE_LIMIT`) with an internal cap of `2000` matches. Context lines around matches are governed by `search.contextBefore` (default `1`) and `search.contextAfter` (default `3`).
@@ -82,6 +82,7 @@ Results return formatted text plus structured details `{ type, result }` corresp
 The tool is part of the default inventory. Text matching uses two settings:
 - `search.contextBefore`: number, default `1` (lines of context before each text match).
 - `search.contextAfter`: number, default `3` (lines of context after each text match).
+
 ## The `write` tool (`tools/write.ts`)
 
 `read` and `search` are the read side; `write {path, content}` creates or replaces a whole file. It

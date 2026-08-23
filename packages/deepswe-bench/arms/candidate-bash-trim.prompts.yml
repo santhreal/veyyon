@@ -38,7 +38,7 @@ tools/bash: |
   - Multiline commands, `&&`-chains mixing control flow
   - Quote/JSON escaping that fights the shell
   {{/if}}
-  {{#if hasGrep}}- GNU grep BRE extensions are not guaranteed in the embedded shell: use `grep -E 'json|tool'` for alternation instead of `grep 'json\|tool'`; use the built-in `grep` tool with `pattern: "json|tool"` (Rust regex, so `\bword\b` works there){{#if hasEval}}, or `eval` for exact text processing{{/if}}.{{else}}- GNU grep BRE extensions are not guaranteed in the embedded shell: use `grep -E 'json|tool'` for alternation instead of `grep 'json\|tool'`{{#if hasEval}}, or use `eval` for exact text processing{{/if}}.{{/if}}
+  {{#if hasSearch}}- Workspace discovery belongs to `search`; use `type: "text"` for content and `type: "structure"` for code syntax.{{else}}- GNU grep BRE extensions are not guaranteed in the embedded shell: use `grep -E 'json|tool'` for alternation{{#if hasEval}}, or use `eval` for exact text processing{{/if}}.{{/if}}
 
   <instruction>
   - `env: { NAME: "…" }` for multiline / quote-heavy / untrusted values; reference `$NAME`
@@ -56,21 +56,16 @@ tools/bash: |
   {{#unless hasEval}}
   - Writing a shell program rather than invoking a binary? Use a purpose-built tool or checked-in script.
   {{/unless}}
-  {{#unless hasGrep}}
-  - Avoid shelling out for broad content search; use an active search/read tool when one is available.
-  {{/unless}}
-  {{#ifAll hasRead hasGlob}}
-  - `ls`/`find` are blocked in the shell, even for one quick listing: `ls` → `read`, `find` → `glob`.
-  {{/ifAll}}
-  {{#ifAll hasRead (not hasGlob)}}
-  - Prefer `read` for known file and directory reads. Only use shell listing when no file-listing tool is active.
-  {{/ifAll}}
-  {{#ifAll (not hasRead) hasGlob}}
-  - Prefer `glob` for file discovery; avoid `find` when `glob` is active.
-  {{/ifAll}}
-  {{#ifAll (not hasRead) (not hasGlob)}}
-  - If no file read/listing tool is active, keep shell inspection narrow and state that limitation.
-  {{/ifAll}}
+  {{#if hasSearch}}
+  - `grep`/`rg`/`find`/`fd` are blocked for workspace discovery; use `search`. Use `read` for known files and directories when it is active.
+  {{else}}
+  - Avoid shelling out for broad workspace discovery when a purpose-built tool is active.
+  {{#if hasRead}}
+  - Prefer `read` for known file and directory reads. Keep shell discovery narrow.
+  {{else}}
+  - If no file read or search tool is active, keep shell inspection narrow and state that limitation.
+  {{/if}}
+  {{/if}}
   - Avoid head/tail/redirections: the output block already merges stderr and keeps the full capture.
   {{#if hasLaunch}}
   - Ends on its own? bash, however long it runs{{#if asyncEnabled}} (`async: true` for a slow one){{/if}}. Runs until stopped, or needs later stdin? `launch` — NEVER `cmd &`, `nohup`, or async bash as a process supervisor.
