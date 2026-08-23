@@ -389,7 +389,6 @@ function pathToSettingDef(path: SettingPath): SettingDef | null {
 		return {
 			...base,
 			type: "lsp",
-			label: "LSP",
 			description:
 				"Enter to turn language servers, the agent tool, injected diagnostics, and format-after-write on or off independently.",
 		};
