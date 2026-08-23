@@ -556,9 +556,7 @@ async function runInteractiveMode(
 		: [];
 	const playStartupSplash = showStartupSplash && setupScenes.length === 0;
 
-	await mode.init({
-		suppressWelcomeIntro: resuming || setupScenes.length > 0 || playStartupSplash,
-	});
+	await mode.init();
 
 	// Subscribed BEFORE the wizard, not after it. The write-side twin of the
 	// unparseable-settings notice, and it cannot be a startup check: a save happens

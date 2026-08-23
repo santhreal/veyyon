@@ -114,7 +114,7 @@ describe("a mid-turn todo result reaches the screen before the turn ends", () =>
 		terminal = new VirtualTerminal(100, 24);
 		mode.ui = new TUI(terminal);
 		vi.spyOn(mode.statusLine, "watchBranch").mockImplementation(() => {});
-		await mode.init({ suppressWelcomeIntro: true });
+		await mode.init();
 		await terminal.waitForRender();
 	});
 

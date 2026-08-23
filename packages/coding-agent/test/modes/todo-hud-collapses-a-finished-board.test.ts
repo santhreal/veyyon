@@ -398,7 +398,7 @@ describe("the collapsed board reaches the screen", () => {
 		terminal = new VirtualTerminal(COLUMNS, 24);
 		mode.ui = new TUI(terminal);
 		vi.spyOn(mode.statusLine, "watchBranch").mockImplementation(() => {});
-		await mode.init({ suppressWelcomeIntro: true });
+		await mode.init();
 		await terminal.waitForRender();
 	});
 

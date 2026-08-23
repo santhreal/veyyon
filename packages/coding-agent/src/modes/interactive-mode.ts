@@ -226,7 +226,6 @@ import { flushPendingTtyInput } from "./tty-input-flush";
 import type {
 	CompactionQueuedMessage,
 	InteractiveModeContext,
-	InteractiveModeInitOptions,
 	InteractiveSelectorDialogOptions,
 	SubmittedUserInput,
 	TodoItem,
@@ -1063,11 +1062,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		return null;
 	}
 
-	playWelcomeIntro(): void {
-		this.#welcomeController.playIntro();
-	}
-
-	async init(options: InteractiveModeInitOptions = {}): Promise<void> {
+	async init(): Promise<void> {
 		if (this.isInitialized) return;
 
 		this.keybindings = logger.time("InteractiveMode.init:keybindings", () => KeybindingsManager.create());
@@ -1150,10 +1145,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		// hero, not the anchor.
 		this.ui.addChild(this.#layout.topFill);
 		if (!startupQuiet) {
-			this.#welcomeController.mountHero(
-				{ version: this.#version, modelName, providerName, recentSessions },
-				{ playIntro: !options.suppressWelcomeIntro },
-			);
+			this.#welcomeController.mountHero({ version: this.#version, modelName, providerName, recentSessions });
 		}
 
 		this.ui.addChild(this.chatContainer);

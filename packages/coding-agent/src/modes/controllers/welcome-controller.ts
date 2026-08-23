@@ -32,9 +32,9 @@ export interface WelcomeLayoutPort {
 }
 
 /**
- * Owns the startup welcome hero and the full `/welcome` card: mounting,
- * the intro bloom, and dismissal. Extracted from interactive-mode (ARCH-2)
- * so the god-file keeps only orchestration and the layout math it owns.
+ * Owns the startup welcome hero and the full `/welcome` card: mounting and
+ * dismissal. Extracted from interactive-mode (ARCH-2) so the god-file keeps
+ * only orchestration and the layout math it owns.
  */
 export class WelcomeController {
 	#component: WelcomeComponent | undefined;
@@ -52,7 +52,7 @@ export class WelcomeController {
 
 	/** Mount the startup hero (spacer · card · spacer) at the top of the UI
 	 * tree. The host adds its centring top fill first; ordering matters. */
-	mountHero(inputs: WelcomeHeroInputs, options: { playIntro: boolean }): void {
+	mountHero(inputs: WelcomeHeroInputs): void {
 		this.#component = new WelcomeComponent(
 			inputs.version,
 			inputs.modelName,
@@ -63,15 +63,6 @@ export class WelcomeController {
 		this.port.ui.addChild(this.#spacers[0] as Spacer);
 		this.port.ui.addChild(this.#component);
 		this.port.ui.addChild(this.#spacers[1] as Spacer);
-		if (options.playIntro) this.playIntro();
-	}
-
-	/** Play the launch bloom. Component-scoped: the intro only mutates the
-	 * welcome box's own rows, so a resumed long transcript is not re-walked
-	 * per animation frame. */
-	playIntro(): void {
-		const welcome = this.#component;
-		welcome?.playIntro(() => this.port.ui.requestComponentRender(welcome));
 	}
 
 	/** Remove the startup hero (and its spacers) — the first real keystroke
@@ -82,7 +73,6 @@ export class WelcomeController {
 		const welcome = this.#component;
 		if (!welcome) return;
 		this.#component = undefined;
-		welcome.stopIntro();
 		const width = this.port.ui.terminal.columns;
 		// The host's anchor measures via the last composed frame, which still
 		// includes the card — report the removed rows explicitly so the fill
@@ -114,6 +104,5 @@ export class WelcomeController {
 		this.port.chatContainer.addChild(new Spacer(1));
 		// Remeasure so the anchor accounts for the card on THIS frame.
 		this.port.remeasureAnchor();
-		welcome.playIntro(() => this.port.ui.requestComponentRender(welcome));
 	}
 }
