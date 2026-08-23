@@ -149,6 +149,31 @@ const ROUTE_RIGS: Record<SettleContinuationRoute, RouteRig> = {
 			},
 		],
 	},
+	"code-review": {
+		settings: { "edit.critiqueCodeMutations": true },
+		tools: [
+			simTool("edit", async () => ({
+				content: [{ type: "text", text: "edited file" }],
+				details: { path: "/tmp/simulation/a.ts" },
+			})),
+			simTool("write", async () => ({
+				content: [{ type: "text", text: "wrote file" }],
+				details: { resolvedPath: "/tmp/simulation/b.ts" },
+			})),
+			simTool("bash", async () => ({
+				content: [{ type: "text", text: "ok" }],
+				details: { exitCode: 0 },
+			})),
+		],
+		lead: [
+			turn => {
+				turn.toolCall("edit", { path: "/tmp/simulation/a.ts" });
+				turn.toolCall("write", { path: "/tmp/simulation/b.ts", content: "y" });
+				turn.toolCall("bash", { command: "bun test" });
+				turn.finish("toolUse");
+			},
+		],
+	},
 	"unexpected-stop-retry": {
 		settings: { "features.unexpectedStopDetection": true, "providers.unexpectedStopModel": "online" },
 		// The classifier is an out-of-process model call, i.e. the same category of

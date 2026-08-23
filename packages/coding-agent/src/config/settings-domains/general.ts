@@ -41,6 +41,7 @@ export const GENERAL_SETTINGS = {
 	// per-machine overrides remain trivial.
 	"auth.broker.url": { type: "string", default: undefined },
 	"auth.broker.token": { type: "string", default: undefined },
+	"session.critiqueCodeMutations": { type: "boolean", default: false },
 
 	autoResume: {
 		type: "boolean",

@@ -10,7 +10,50 @@ const MAX_PATHS_PER_MUTATION = 12;
 const MAX_TEXT_LENGTH = 240;
 
 export const VERIFICATION_EVIDENCE_REMINDER_TYPE = "verification-evidence-reminder";
+export const CODE_REVIEW_REMINDER_TYPE = "code-review-reminder";
 
+const NON_CODE_EXTENSIONS: Record<string, true> = {
+	".md": true,
+	".markdown": true,
+	".mdown": true,
+	".mkdn": true,
+	".mdx": true,
+	".txt": true,
+	".text": true,
+	".rst": true,
+	".adoc": true,
+	".asciidoc": true,
+	".org": true,
+	".log": true,
+};
+
+const NON_CODE_FILENAMES: Record<string, true> = {
+	license: true,
+	licence: true,
+	copying: true,
+	notice: true,
+	changelog: true,
+	readme: true,
+	".gitignore": true,
+	".npmignore": true,
+	".dockerignore": true,
+	"package-lock.json": true,
+	"pnpm-lock.yaml": true,
+	"yarn.lock": true,
+	"cargo.lock": true,
+	"bun.lock": true,
+	"bun.lockb": true,
+};
+
+export function isCodeFile(filePath: string): boolean {
+	const normalized = filePath.replace(/\\/g, "/");
+	const basename = normalized.split("/").pop()?.toLowerCase() ?? "";
+	if (NON_CODE_FILENAMES[basename]) return false;
+	const dotIndex = basename.lastIndexOf(".");
+	if (dotIndex <= 0) return true;
+	const ext = basename.slice(dotIndex);
+	return !NON_CODE_EXTENSIONS[ext];
+}
 export interface MutationEvidence {
 	sequence: number;
 	toolName: "edit" | "write" | "ast_edit";
@@ -29,6 +72,7 @@ export interface VerificationLedgerSnapshot {
 	mutations: readonly MutationEvidence[];
 	proofs: readonly ProofEvidence[];
 	intervenedThisTurn: boolean;
+	intervenedCodeReviewThisTurn?: boolean;
 	turnStartedAtSequence: number;
 }
 
@@ -145,6 +189,7 @@ function appendBounded<T>(items: T[], item: T): void {
 export class VerificationEvidenceLedger {
 	#sequence = 0;
 	#intervenedThisTurn = false;
+	#intervenedCodeReviewThisTurn = false;
 	#turnStartedAtSequence = 0;
 	readonly #mutations: MutationEvidence[] = [];
 	readonly #proofs: ProofEvidence[] = [];
@@ -152,6 +197,7 @@ export class VerificationEvidenceLedger {
 
 	startUserTurn(): void {
 		this.#intervenedThisTurn = false;
+		this.#intervenedCodeReviewThisTurn = false;
 		this.#turnStartedAtSequence = this.#sequence;
 	}
 
@@ -173,6 +219,7 @@ export class VerificationEvidenceLedger {
 			...this.#proofs.map(item => item.sequence),
 		);
 		this.#intervenedThisTurn = snapshot.intervenedThisTurn;
+		this.#intervenedCodeReviewThisTurn = snapshot.intervenedCodeReviewThisTurn ?? false;
 		this.#turnStartedAtSequence = Math.min(snapshot.turnStartedAtSequence, this.#sequence);
 	}
 
@@ -232,11 +279,40 @@ export class VerificationEvidenceLedger {
 		});
 	}
 
+	/**
+	 * Returns a code review reminder when multi-file (>= 2) code mutations occurred this turn.
+	 * Triggered at most once per user turn.
+	 */
+	takeCodeReviewReminder(): string | undefined {
+		if (this.#intervenedCodeReviewThisTurn) return undefined;
+		const turnMutations = this.#mutations.filter(m => m.sequence > this.#turnStartedAtSequence);
+		if (turnMutations.length === 0) return undefined;
+
+		const distinctCodePaths: string[] = [];
+		const seen = new Set<string>();
+		for (const mutation of turnMutations) {
+			for (const path of mutation.paths) {
+				if (isCodeFile(path) && !seen.has(path)) {
+					seen.add(path);
+					distinctCodePaths.push(path);
+				}
+			}
+		}
+
+		if (distinctCodePaths.length < 2) return undefined;
+
+		this.#intervenedCodeReviewThisTurn = true;
+		return prompt.render(sessionPrompts["session/code-review-reminder"].text, {
+			pathsMarkdown: distinctCodePaths.map(path => `- ${path}`).join("\n"),
+		});
+	}
+
 	snapshot(): VerificationLedgerSnapshot {
 		return {
 			mutations: this.#mutations.map(item => ({ ...item, paths: [...item.paths] })),
 			proofs: this.#proofs.map(item => ({ ...item })),
 			intervenedThisTurn: this.#intervenedThisTurn,
+			intervenedCodeReviewThisTurn: this.#intervenedCodeReviewThisTurn,
 			turnStartedAtSequence: this.#turnStartedAtSequence,
 		};
 	}
