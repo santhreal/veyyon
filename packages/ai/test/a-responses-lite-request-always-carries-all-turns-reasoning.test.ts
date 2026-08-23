@@ -26,7 +26,11 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import { resolveCodexResponsesLite, transformRequestBody } from "@veyyon/ai/providers/openai-codex/request-transformer";
+import {
+	acceptsAllTurnsReasoningContext,
+	resolveCodexResponsesLite,
+	transformRequestBody,
+} from "@veyyon/ai/providers/openai-codex/request-transformer";
 import {
 	createOpenAICodexDirectRequest,
 	streamOpenAICodexResponses,
@@ -195,15 +199,18 @@ describe("Responses Lite all_turns invariant suite", () => {
 
 	it("discovers both lite-eligible and lite-ineligible models from the catalog", () => {
 		expect(allCodexCatalogModels.length).toBeGreaterThan(0);
-		const eligible = allCodexCatalogModels.filter(m => supportsAllTurnsReasoningContext(m.id));
-		const ineligible = allCodexCatalogModels.filter(m => !supportsAllTurnsReasoningContext(m.id));
+		const eligible = allCodexCatalogModels.filter(m => acceptsAllTurnsReasoningContext(m));
+		const ineligible = allCodexCatalogModels.filter(m => !acceptsAllTurnsReasoningContext(m));
 		expect(eligible.length).toBeGreaterThan(0);
 		expect(ineligible.length).toBeGreaterThan(0);
+		// A codenamed id the version floor cannot read is eligible only through
+		// its lite flag, and the catalog ships some: the two rules are separate.
+		expect(eligible.some(m => !supportsAllTurnsReasoningContext(m.id))).toBe(true);
 	});
 
 	describe("Dynamic catalog model sweep for HTTP SSE requests", () => {
 		for (const catalogModel of allCodexCatalogModels) {
-			const isEligible = supportsAllTurnsReasoningContext(catalogModel.id);
+			const isEligible = acceptsAllTurnsReasoningContext(catalogModel);
 
 			it(`verifies lite invariant for catalog model ${catalogModel.id} (eligible: ${isEligible})`, async () => {
 				let captured: CapturedCodexRequest | undefined;
