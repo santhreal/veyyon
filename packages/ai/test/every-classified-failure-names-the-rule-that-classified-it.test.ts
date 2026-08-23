@@ -59,21 +59,25 @@ describe("the classification rule set", () => {
 	 * shape that reclassifies itself when a provider rewords a sentence. Each one is here because
 	 * the failure genuinely arrives with no status and no code — a dead socket is a rejection, not a
 	 * response — and the set is pinned so a new prose-only rule is a decision somebody makes on
-	 * purpose rather than the path of least resistance.
+	 * purpose rather than the path of least resistance. It is a SET: the rules are grouped by the
+	 * failure family that owns them and applied in any order, so their sequence in the registry is
+	 * the recovery precedence and says nothing about classification.
 	 */
 	it("decides on prose alone only for the failures that arrive without structure", () => {
-		const proseOnly = CLASSIFICATION_RULES.filter(rule => rule.structural === undefined).map(rule =>
-			flagNames
-				.filter(({ bit }) => (rule.flags & bit) !== 0)
-				.map(({ name }) => name)
-				.join("|"),
-		);
+		const proseOnly = CLASSIFICATION_RULES.filter(rule => rule.structural === undefined)
+			.map(rule =>
+				flagNames
+					.filter(({ bit }) => (rule.flags & bit) !== 0)
+					.map(({ name }) => name)
+					.join("|"),
+			)
+			.sort();
 		expect(proseOnly).toEqual([
+			"AuthFailed",
+			"ContentBlocked",
 			"ContextOverflow",
 			"MalformedFunctionCall",
 			"ProviderFinishError",
-			"ContentBlocked",
-			"AuthFailed",
 			"UsageLimit",
 		]);
 	});

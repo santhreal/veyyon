@@ -1,296 +1,57 @@
-import { http2RetryVerdict, isUnexpectedSocketCloseMessage } from "@veyyon/utils/fetch-retry";
+/**
+ * The classifier: what a failure IS, read once off the whole cause chain.
+ *
+ * Three files, three jobs. `flag.ts` is the vocabulary — one bit per failure kind and the
+ * primitives that read a set of them. `domains/` holds one file per failure family: the rules that
+ * recognise it and what each stage does about it. `registry.ts` assembles the domains in the order
+ * that decides which family speaks when a failure belongs to several. This file is the walk: it
+ * takes an arbitrary thrown value, unwraps its cause chain, asks the registry's identity and signal
+ * rules about each link, and returns the flags they set between them.
+ *
+ * The accessors at the bottom are the public way to ask a yes/no question about a failure. They all
+ * go through {@link classify}, which is the point: a call site that re-runs a regex of its own is a
+ * second opinion, and the second opinion is always the one that disagrees.
+ */
 import { STREAM_FRAME_LIMIT_ERROR_NAME } from "@veyyon/utils/stream-frame-limit";
 import type { Api, AssistantMessage } from "../types";
-import { AwsCredentialsError } from "./aws";
-import {
-	AnthropicConnectionError,
-	AnthropicConnectionTimeoutError,
-	CodexProviderStreamError,
-	CodexWebSocketTransportError,
-	ProviderHttpError,
-	STREAM_ENVELOPE_ERROR_PREFIX,
-} from "./classes";
-import { isOpaqueStatusBody, matchesUsageLimitText, parseRateLimitReason } from "./rate-limit";
+import { STREAM_ENVELOPE_ERROR_PREFIX } from "./classes";
+import { withoutStackTrace } from "./domains/account";
+import { http2Verdict, STREAM_BEFORE_MESSAGE_START_PATTERN } from "./domains/network";
+import { matchesOverflowText } from "./domains/request";
+import type { Signal } from "./domains/types";
+import { create, Flag, is, KIND_MASK, statusFromId } from "./flag";
+import { classifyIdentity, classifySignal } from "./registry";
 
-export const Flag = {
-	Class: 0x1000,
-	ThinkingLoop: 0x0001_0000,
-	Transient: 0x0002_0000,
-	Timeout: 0x0004_0000,
-	UsageLimit: 0x0008_0000,
-	StaleResponsesItem: 0x0010_0000,
-	MalformedFunctionCall: 0x0020_0000,
-	ProviderFinishError: 0x0040_0000,
-	ContentBlocked: 0x0000_8000,
-	ContextOverflow: 0x0080_0000,
-	AuthFailed: 0x0100_0000,
-	SilentAbort: 0x0200_0000,
-	UserInterrupt: 0x0400_0000,
-	Abort: 0x0800_0000,
-	/** Strict-tool rejection (400): grammar too large, schema too complex, or structured outputs unsupported by the model/endpoint. */
-	Grammar: 0x1000_0000,
-	/** Anthropic model/account does not support fast mode / the `speed` parameter. */
-	FastModeUnsupported: 0x2000_0000,
-	// A dead OAuth grant has no flag. It used to have one — `OAuthExpiry`, in this table and in
-	// KIND_MASK — that nothing ever set, so `is(id, Flag.OAuthExpiry)` answered false for every dead
-	// grant there has ever been. The answer belongs to `isDefinitiveOAuthFailure` below, which is a
-	// boolean because it decides whether to DISABLE a credential and its two answers are not
-	// symmetric: a wrong yes destroys a working account, so anything ambiguous resolves to no. A
-	// classification bit cannot carry that asymmetry, and classifying the same prose here would turn
-	// a bare `400 invalid_grant` from a status into a flag set and take the status away from callers
-	// that read it.
-} as const;
+export { isDefinitiveOAuthFailure } from "./domains/account";
+export {
+	isStreamReadErrorText,
+	STREAM_READ_ERROR_PATTERN,
+	TRANSIENT_TRANSPORT_PATTERN,
+} from "./domains/network";
+export type { ClassificationRule, ClassRule, ErrorDomain, Recovery, RecoveryStage, Signal } from "./domains/types";
+export * from "./flag";
+export {
+	CLASS_RULES,
+	CLASSIFICATION_RULES,
+	classifyIdentity,
+	classifySignal,
+	domainOf,
+	ERROR_DOMAINS,
+	REPLAY_SAFE_MASK,
+	RETRY_VETO_MASK,
+	recover,
+	retriable,
+	TURN_RETRIABLE_MASK,
+} from "./registry";
 
-export type Flag = (typeof Flag)[keyof typeof Flag];
-
-const KIND_MASK =
-	Flag.ThinkingLoop |
-	Flag.Transient |
-	Flag.Timeout |
-	Flag.UsageLimit |
-	Flag.StaleResponsesItem |
-	Flag.MalformedFunctionCall |
-	Flag.ProviderFinishError |
-	Flag.ContentBlocked |
-	Flag.ContextOverflow |
-	Flag.AuthFailed |
-	Flag.SilentAbort |
-	Flag.UserInterrupt |
-	Flag.Abort |
-	Flag.Grammar |
-	Flag.FastModeUnsupported;
-
-const RETRIABLE_KINDS =
-	Flag.Transient | Flag.UsageLimit | Flag.ThinkingLoop | Flag.StaleResponsesItem | Flag.ProviderFinishError;
-
-const OVERFLOW_PATTERNS = [
-	/prompt is too long/i, // Anthropic
-	/input is too long for requested model/i, // Amazon Bedrock
-	/exceeds the context window/i, // OpenAI (Completions & Responses API)
-	/input token count.*exceeds the maximum/i, // Google (Gemini)
-	/maximum prompt length is \d+/i, // xAI (Grok)
-	/reduce the length of the messages/i, // Groq
-	/maximum context length is \d+ tokens/i, // OpenRouter (all backends)
-	/exceeds the limit of \d+/i, // GitHub Copilot
-	/exceeds the available context size/i, // llama.cpp server
-	/requested tokens?.*exceed.*context (window|length|size)/i, // llama.cpp / OpenAI-compatible local servers
-	/context (window|length|size).*(exceeded|overflow|too small)/i, // Generic local server variants
-	/(prompt|input).*(too long|too large).*(context|n_ctx)/i, // llama.cpp phrasing variants
-	/requested tokens?.*(exceeds?|greater than).*(n_ctx|context)/i, // llama.cpp n_ctx variants
-	/greater than the context length/i, // LM Studio
-	/context window exceeds limit/i, // MiniMax
-	/exceeded model token limit/i, // Kimi For Coding
-	/context[_ ]length[_ ]exceeded/i, // Generic fallback
-	/too many tokens/i, // Generic fallback
-	/token limit exceeded/i, // Generic fallback
-	/request_too_large/i, // Anthropic 413 (request body too large)
-	/request exceeds the maximum size/i, // Anthropic 413 variant
-	/payload too large/i, // Generic HTTP 413 variant
-	/entity too large/i, // Generic HTTP 413 variant
-	/\b413\b.*\b(request|payload|entity)\b.*\btoo large\b/i, // "413 Request Entity Too Large" variants
-	/model_context_window_exceeded/i, // z.ai non-standard finish_reason surfaced as error text
-	/prompt filled the context window/i, // Ollama OpenAI-compatible empty length completion
-];
-
-const OVERFLOW_NO_BODY_PATTERN = /\b4(00|13)\s*(status code)?\s*\(no body\)/i;
-const TIMEOUT_PATTERN = /\b(?:operation\s+)?timed?\s*out\b|\btimeout\b|\bstream stall\b/i;
-const TRANSIENT_ENVELOPE_PATTERN = /anthropic stream envelope error:/i;
-const TRANSIENT_ENVELOPE_BEFORE_START_PATTERN = /before message_start/i;
-export const STREAM_READ_ERROR_PATTERN = /stream[_ -]?read[_ -]?error/i;
-/**
- * THE STATUS NUMBERS ARE WORD-BOUNDED, and they used to be bare.
- *
- * `429|500|502|503|504` with nothing around them matches those digits ANYWHERE in the message, so
- * this classified as a transient transport failure any error whose text merely contained them:
- * `invalid_argument: bad tool schema (trace ID: aaa503bbb)` was retried as a server fault, and so
- * was `model 500m-params is not supported`. Devin puts a hex trace ID in every message it sends,
- * which is how this surfaced, but the reach is every provider and every message with a digit run in
- * it: a token count, a timestamp, a request id.
- *
- * It fails in the expensive direction. A permanent failure classified transient is retried through
- * the whole budget with backoff before the operator is told anything, and for a rate limit that
- * means burning real quota on a request that cannot succeed.
- *
- * THE GUARD IS `[\w-]`, NOT `\b`, and the hyphen is the whole reason. `\b` alone still matched
- * `gpt-504-turbo` and every other hyphenated identifier, because a hyphen is a non-word character
- * and therefore a word boundary; the model-name case is exactly where this class of false positive
- * lives. Excluding a neighbouring hyphen as well as a neighbouring word character narrows nothing
- * real, since every genuine rendering has whitespace, punctuation that is not a hyphen, or a string
- * edge beside the number: `503`, `HTTP 503`, `status: 503`, `(503)`, `upstream/502`, `503.`
- *
- * THE ERRNO SPELLINGS ARE HERE because they are the same faults under a different name. Undici
- * usually wraps a dead socket as `fetch failed` or `terminated`, both matched above, but not
- * always: a rejection can arrive carrying only `read ECONNRESET` or `connect ETIMEDOUT 10.0.0.1:443`,
- * and neither contains a word this pattern matched. `connection.?refused` covered the prose form of
- * one of them and nothing covered the code form of any. {@link OAUTH_TRANSIENT_FAILURE_PATTERN} in
- * this same file has treated these codes as transient all along, so a token refresh retried the
- * fault that ended a model request, which is one classifier disagreeing with another about the same
- * bytes. Word-bounded like the status numbers, so an identifier that happens to contain one does
- * not match.
- */
-export const TRANSIENT_TRANSPORT_PATTERN =
-	/overloaded|provider.?returned.?error|rate.?limit|too many requests|(?<![\w-])(?:429|500|502|503|504)(?![\w-])|service.?unavailable|server.?error|internal.?error|retry your request|network.?error|connection.?error|connection.?refused|other side closed|fetch failed|upstream.?connect|upstream.?request.?failed|reset before headers|socket hang up|timed? out|timeout|terminated|retry delay|stream stall|no error details in response|HTTP2(?:StreamReset|RefusedStream|EnhanceYourCalm)|malformed.?function.?call|(?<![\w-])(?:ECONNRESET|ECONNREFUSED|ECONNABORTED|ETIMEDOUT|EPIPE|EAI_AGAIN)(?![\w-])/i;
-const AUTH_FAILURE_PATTERN =
-	/\b(?:401|403|unauthorized|forbidden|authentication|auth[_ ]?unavailable|no auth available|(?:invalid|no)[_ ]?api[_ ]?key)\b/i;
-const MALFORMED_FUNCTION_CALL_PATTERN = /\bmalformed.?function.?call\b/i;
-const PROVIDER_FINISH_ERROR_PATTERN = /\bProvider (?:returned error finish_reason|finish_reason:\s*error)\b/i;
-const CONTENT_FILTER_PATTERN = /\b(?:incomplete:\s*)?content_filter\b/i;
-const STALE_RESPONSE_ITEM_PATTERNS = [/\bItem with id ['"][^'"]+['"] not found\.?/i, /previous[ _]?response/i] as const;
-const STALE_RESPONSE_ITEM_DETAIL_PATTERN = /not[ _]?found|invalid|expired|stale|zero[ _-]?data[ _-]?retention/i;
 /**
  * Local llama.cpp / Ollama deterministic tool-call argument JSON parse failure.
- * The model emitted invalid JSON in a tool call and the server returned HTTP 500
- * with this exact text — replaying the same prompt yields the same malformed
- * output, so callers strip {@link Flag.Transient} when this matches.
+ *
+ * The server answers 500, which reads as transient, but the same prompt produces the same
+ * malformed output every time, so an agent-level retry loops until the budget is gone.
  */
 export const LLAMA_CPP_TOOL_CALL_PARSE_PATTERN =
 	/failed to parse tool call arguments as json|\[json\.exception\.parse_error\.101\]/i;
-
-// Copilot routing flap: HTTP 400 `model_not_supported` (structural code on the
-// error, also surfaced in text). Treated as transient — a retry usually lands
-// on a backend that has the model.
-const COPILOT_MODEL_NOT_SUPPORTED_PATTERN = /model_not_supported/i;
-// Anthropic strict-tool grammar too large / schema too complex (400 invalid_request_error).
-// Feature-gated deployments (Azure Foundry, Baseten, …) reject `strict: true`
-// tools outright when the hosted model lacks structured outputs, e.g.
-// "structured_outputs not supported" — without an invalid_request_error wrapper.
-const GRAMMAR_TOO_LARGE_PATTERN = /compiled grammar/i;
-const GRAMMAR_TOO_LARGE_DETAIL_PATTERN = /too large/i;
-const SCHEMA_TOO_COMPLEX_PATTERN = /schema/i;
-const SCHEMA_TOO_COMPLEX_DETAIL_PATTERN = /too complex/i;
-const SCHEMA_COMPILE_PATTERN = /compil/i;
-const INVALID_REQUEST_PATTERN = /invalid_request_error/i;
-const STRUCTURED_OUTPUTS_PATTERN = /structured[_ -]?outputs?/i;
-const FEATURE_NOT_SUPPORTED_PATTERN = /not (?:supported|available|enabled)|unsupported|does(?: not|n'?t) support/i;
-// Anthropic fast-mode unsupported: 400 rejecting `speed`, or 429 rate_limit_error
-// because the account lacks the extra-usage entitlement fast mode requires.
-const FAST_MODE_SPEED_PARAM_PATTERN = /\bspeed\b/i;
-const FAST_MODE_NOT_SUPPORTED_PATTERN = /not support/i;
-const FAST_MODE_RATE_LIMIT_PATTERN = /rate_limit_error/i;
-const FAST_MODE_ENTITLEMENT_PATTERN = /fast mode/i;
-// Definitive OAuth refresh failure — the stored grant/client is dead.
-//
-// Two spellings, because providers use both. The first alternation is the
-// machine-readable RFC 6749 §5.2 error codes, which is what a well-formed token
-// endpoint returns. The second is the same conditions written as PROSE, which
-// several providers return instead of, or alongside, the code: Kimi answers a
-// dead grant with `400 "The provided authorization grant is invalid"`. That
-// carries no code and is not a 401, so before the prose form was recognised
-// every dead Kimi grant classified as transient, and the credential was blocked
-// for five minutes and retried forever instead of being disabled once with a
-// re-login prompt.
-//
-// The prose form is deliberately narrow: an invalidity word has to sit next to
-// the thing that is invalid (`grant` or `refresh token`), in either order and
-// with at most a short run of words between. A bare "invalid" or "expired"
-// anywhere in a message is not enough, because a wrong "yes" here disables a
-// working account (see {@link isDefinitiveOAuthFailure}). The transient guard still runs
-// first and still wins, so a 429 or a 5xx page repeating this prose stays
-// transient.
-const OAUTH_DEFINITIVE_FAILURE_PATTERN = new RegExp(
-	[
-		String.raw`invalid_grant|invalid_token|unauthorized_client|\brevoked\b|refresh[\s_]?token.*expired`,
-		String.raw`(?:authorization\s+)?grant(?:\s+\w+){0,3}\s+(?:is\s+|was\s+|has\s+been\s+)?(?:invalid|expired|revoked)`,
-		String.raw`refresh[\s_]?token(?:\s+\w+){0,3}\s+(?:is\s+|was\s+|has\s+been\s+)?(?:invalid|expired|revoked|not found)`,
-		String.raw`(?:invalid|expired|revoked)\s+(?:\w+\s+){0,2}(?:authorization\s+)?(?:grant|refresh[\s_]?token)`,
-	].join("|"),
-	"i",
-);
-const OAUTH_TRANSIENT_FAILURE_PATTERN =
-	/timeout|network|fetch failed|ECONN(?:REFUSED|RESET)|ETIMEDOUT|EAI_AGAIN|socket hang up|\b(?:408|425|429|5\d{2})\b|rate.?limit|too many requests|temporar|unavailable|forbidden|permission_denied|cloudflare|captcha/i;
-const OAUTH_HTTP_AUTH_PATTERN = /\b401\b/;
-
-/** The 400 body of a strict-tool rejection, in either of the two shapes providers send it. */
-function matchesStrictToolsRejectionText(message: string): boolean {
-	if (STRUCTURED_OUTPUTS_PATTERN.test(message) && FEATURE_NOT_SUPPORTED_PATTERN.test(message)) return true;
-	if (!INVALID_REQUEST_PATTERN.test(message)) return false;
-	const grammarTooLarge = GRAMMAR_TOO_LARGE_PATTERN.test(message) && GRAMMAR_TOO_LARGE_DETAIL_PATTERN.test(message);
-	const schemaTooComplex =
-		SCHEMA_TOO_COMPLEX_PATTERN.test(message) &&
-		SCHEMA_TOO_COMPLEX_DETAIL_PATTERN.test(message) &&
-		SCHEMA_COMPILE_PATTERN.test(message);
-	return grammarTooLarge || schemaTooComplex;
-}
-
-/** The 400 body: the request named `speed` and the model answered that it does not support it. */
-function matchesFastModeRejectedParameterText(message: string): boolean {
-	return (
-		INVALID_REQUEST_PATTERN.test(message) &&
-		FAST_MODE_SPEED_PARAM_PATTERN.test(message) &&
-		FAST_MODE_NOT_SUPPORTED_PATTERN.test(message)
-	);
-}
-
-/** The 429 body: a rate-limit error naming fast mode, which is an entitlement wall, not a throttle. */
-function matchesFastModeEntitlementText(message: string): boolean {
-	return FAST_MODE_RATE_LIMIT_PATTERN.test(message) && FAST_MODE_ENTITLEMENT_PATTERN.test(message);
-}
-
-/**
- * Strip an appended stack trace from an error string before classifying it.
- *
- * Callers reach the classifier with `String(error)`, and this codebase's errors
- * embed their cause chain AND their stack, so the string that arrives is not a
- * message: it carries source paths and frame names. Matching failure keywords
- * against that is matching against the names of our own files.
- *
- * It was not theoretical. A real dead grant
- * (`400 {"error":"invalid_grant","error_description":"Refresh token not found
- * or invalid"}`) arrived with `at async withScopedTimeoutSignal
- * (…/utils/src/scoped-timeout.ts:53:16)` in its stack, and `scoped-timeout`
- * matches the transient pattern's `timeout`. Every OAuth failure refreshed
- * through that helper carried the word, so the transient guard was reading a
- * frame name rather than anything the provider said.
- *
- * The old ordering hid it, because the definitive check returned before the
- * transient guard was ever consulted. Making the guard authoritative surfaced
- * it immediately, which is the useful kind of regression: the guard was always
- * wrong, it just never got to be wrong about anything that mattered.
- */
-function withoutStackTrace(errorMessage: string): string {
-	const stackMarker = errorMessage.indexOf("stack=");
-	const withoutAppendedStack = stackMarker === -1 ? errorMessage : errorMessage.slice(0, stackMarker);
-	return withoutAppendedStack
-		.split("\n")
-		.filter(line => !/^\s+at\s/.test(line))
-		.join("\n");
-}
-
-/**
- * Whether an OAuth refresh error message means the grant is definitively dead.
- *
- * Saying yes DISABLES the credential, which forces the user through a re-login,
- * so the two answers are not symmetric. A wrong "yes" destroys a working account
- * over a blip; a wrong "no" costs one more retry. Anything ambiguous therefore
- * resolves to no.
- *
- * That is why the transient check comes FIRST and applies to every message, not
- * just to a bare 401. A message can carry both signals: a gateway 502 whose body
- * echoes a `WWW-Authenticate: Bearer error="invalid_token"` header, a 429 whose
- * payload repeats the request it throttled, a 5xx error page containing the word
- * "revoked". Those used to disable the credential outright, because a definitive
- * token matched and returned before the transient guard was ever consulted, and
- * the guard was only ever reached on the 401 branch. A throttled auth endpoint
- * could permanently tear down a healthy account.
- */
-export function isDefinitiveOAuthFailure(errorMessage: string): boolean {
-	const diagnostic = withoutStackTrace(errorMessage);
-	if (OAUTH_TRANSIENT_FAILURE_PATTERN.test(diagnostic)) return false;
-	if (OAUTH_DEFINITIVE_FAILURE_PATTERN.test(diagnostic)) return true;
-	return OAUTH_HTTP_AUTH_PATTERN.test(diagnostic);
-}
-
-/**
- * The label for each flag, derived from the flag's own name so a flag cannot exist without one.
- *
- * The hand-kept list this replaced stopped at thirteen entries while `Flag` grew to sixteen, so a
- * grammar rejection, a fast-mode wall and a dead OAuth grant each rendered in diagnostics as
- * `classified:0x10000000` — the three failures whose recovery is least obvious were the three with
- * no name. `Class` is the classified-marker bit rather than a kind, so it carries no label.
- */
-const ERROR_KIND_LABELS: readonly [Flag, string][] = Object.entries(Flag)
-	.filter(([name]) => name !== "Class")
-	.map(([name, bit]) => [bit, name.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase()] as [Flag, string]);
 
 const STATUS_MESSAGE_PATTERNS = [
 	/\bstatus(?:_code)?[:=]\s*(\d{3})\b/i,
@@ -299,44 +60,6 @@ const STATUS_MESSAGE_PATTERNS = [
 	/\b(?:error|failed)\s*[:=]?\s*(\d{3})\b/i,
 	/(?:^|\s)(\d{3})\s+(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/,
 ] as const;
-
-export function create(...flags: number[]): number {
-	let bits = 0;
-	for (const f of flags) bits |= f;
-	return bits | Flag.Class;
-}
-
-export function is(id: number | undefined, flag: Flag): boolean {
-	return ((id ?? 0) & flag) !== 0;
-}
-
-/**
- * Whether a failed turn is worth another attempt.
- *
- * `replayUnsafe` means the failed assistant message already carried a tool
- * call, so the tool may have run and replaying would duplicate its effect. That
- * is a separate question from whether the failure was transient, and it wins:
- * a transport fault says the next attempt could differ, never that repeating
- * the turn is safe. HTTP/2 stream resets are classified transient for exactly
- * that reason and deliberately get no bypass here, because a reset that arrives
- * after the stream delivered a tool call is precisely the case the guard
- * exists for. `MalformedFunctionCall` is the one exception: the call was never
- * well-formed enough to execute, so there is nothing to duplicate.
- */
-export function retriable(id: number | undefined, opts?: { replayUnsafe?: boolean }): boolean {
-	if (is(id, Flag.ContentBlocked)) return false;
-	if (is(id, Flag.MalformedFunctionCall)) return true;
-	if (opts?.replayUnsafe) return false;
-	return ((id ?? 0) & RETRIABLE_KINDS) !== 0;
-}
-
-function isClassified(id: number | undefined): boolean {
-	return ((id ?? 0) & Flag.Class) !== 0;
-}
-
-function statusFromId(id: number | undefined): number | undefined {
-	return id && !isClassified(id) ? id : undefined;
-}
 
 export function status(error: unknown): number | undefined {
 	return statusInternal(error, 0);
@@ -381,172 +104,6 @@ function statusInternal(error: unknown, depth: number): number | undefined {
 	return undefined;
 }
 
-export function isStreamReadErrorText(text: string): boolean {
-	return STREAM_READ_ERROR_PATTERN.test(text);
-}
-
-function isTransientErrorText(text: string): boolean {
-	return (
-		isUnexpectedSocketCloseMessage(text) ||
-		isStreamReadErrorText(text) ||
-		(TRANSIENT_ENVELOPE_PATTERN.test(text) && TRANSIENT_ENVELOPE_BEFORE_START_PATTERN.test(text)) ||
-		TRANSIENT_TRANSPORT_PATTERN.test(text)
-	);
-}
-
-function isTimeoutText(text: string): boolean {
-	return TIMEOUT_PATTERN.test(text);
-}
-
-function isStaleResponsesText(text: string): boolean {
-	return (
-		STALE_RESPONSE_ITEM_PATTERNS[0].test(text) ||
-		(STALE_RESPONSE_ITEM_PATTERNS[1].test(text) && STALE_RESPONSE_ITEM_DETAIL_PATTERN.test(text))
-	);
-}
-
-function matchesOverflowText(text: string): boolean {
-	return OVERFLOW_PATTERNS.some(p => p.test(text)) || OVERFLOW_NO_BODY_PATTERN.test(text);
-}
-
-/**
- * Everything a rule may read about one failure, computed once.
- *
- * `text` is the message with stack frames stripped, because callers arrive with `String(error)` and
- * this codebase's errors embed their cause chain AND their stack: a frame named
- * `…/scoped-timeout.ts` contains the word "timeout", and matching failure keywords against frame
- * names classified a dead credential as transient and retried it to exhaustion. `status` is parsed
- * from the RAW message instead, since a frame name cannot introduce an HTTP status token but can
- * easily introduce a keyword. `http2` is the RFC 7540 §7 verdict, `undefined` when the message names
- * no HTTP/2 error code.
- */
-interface Signal {
-	readonly text: string;
-	readonly status: number | undefined;
-	readonly api: Api | undefined;
-	readonly http2: boolean | undefined;
-}
-
-/**
- * One classification rule: the flags it sets, and the condition that sets them.
- *
- * A rule is SELF-CONTAINED. Its condition states every fact it depends on, including the facts that
- * used to be expressed as position in an if-chain, so the rules can be applied in any order and a
- * reader can decide one rule without holding the other twenty in mind. That is the whole reason
- * this is a table: the file it replaced classified by prose in a chain whose branches were the
- * history of what had broken, and adding a rule meant guessing where in the chain it belonged.
- *
- * `structural` reads status, api or transport verdict — facts a provider states rather than writes.
- * `text` reads the message. A rule with a `text` condition and no `structural` one decides on prose
- * alone, which is a last resort: it is the shape that reclassifies itself when a provider rewords a
- * sentence, so the set of such rules is pinned by a test and each states its reason in `why`.
- */
-interface ClassificationRule {
-	readonly flags: number;
-	/** The failure this rule was added for, and why prose decides it when it does. */
-	readonly why: string;
-	readonly structural?: (signal: Signal) => boolean;
-	readonly text?: (text: string) => boolean;
-}
-
-export const CLASSIFICATION_RULES: readonly ClassificationRule[] = [
-	{
-		flags: Flag.ContextOverflow,
-		why: "Every provider says 'too long' in its own words and none of them says it with a status: 413 and 400 both carry it, and a bare '400 (no body)' carries nothing else at all.",
-		text: matchesOverflowText,
-	},
-	{
-		flags: Flag.MalformedFunctionCall,
-		why: "Google returns MALFORMED_FUNCTION_CALL as a finish reason wrapped into prose; the call never parsed, so there is nothing to duplicate and the turn is safe to retry.",
-		text: text => MALFORMED_FUNCTION_CALL_PATTERN.test(text),
-	},
-	{
-		flags: Flag.ProviderFinishError,
-		why: "A stream that finished with reason 'error' and no status: the provider ended the turn without saying what failed.",
-		text: text => PROVIDER_FINISH_ERROR_PATTERN.test(text),
-	},
-	{
-		flags: Flag.ContentBlocked,
-		why: "A content filter is a verdict on the request, not a fault: it is the one kind that must never be retried.",
-		text: text => CONTENT_FILTER_PATTERN.test(text),
-	},
-	{
-		flags: Flag.AuthFailed,
-		why: "401/403 arrive as prose inside a wrapper as often as they arrive as a status, and 'no api key' has no status at all.",
-		text: text => AUTH_FAILURE_PATTERN.test(text),
-	},
-	{
-		flags: Flag.UsageLimit,
-		why: "The quota vocabulary is the provider's own (usage_limit_reached, insufficient_quota, account rate limit), and it rotates a credential rather than retrying it.",
-		text: matchesUsageLimitText,
-	},
-	{
-		flags: Flag.UsageLimit,
-		why: "A 429 whose body is opaque or names an exhausted quota is a wall, not a throttle: the structure decides and the prose only says which.",
-		structural: signal => signal.status === 429,
-		text: text => isOpaqueStatusBody(text) || parseRateLimitReason(text) === "QUOTA_EXHAUSTED",
-	},
-	{
-		flags: Flag.Transient,
-		why: "A named HTTP/2 error code is a fact about the transport, so it decides transience on its own and no wording heuristic is consulted: the heuristics matched NGHTTP2_INTERNAL_ERROR only for containing 'internal error', and would have promoted a wrapper around NGHTTP2_CANCEL — our own abort — back into the retry loop.",
-		structural: signal => signal.http2 === true,
-	},
-	{
-		flags: Flag.Timeout,
-		why: "The HTTP/2 verdict owns transience and nothing else. Flag.Timeout authorizes no retry on its own; it tells the candidate loops the fault was a timeout, which is what makes auto-compaction move to the next model instead of re-sending a full context to the one that just timed out.",
-		structural: signal => signal.http2 !== undefined,
-		text: isTimeoutText,
-	},
-	{
-		flags: Flag.Transient | Flag.Timeout,
-		why: "A timeout with no HTTP/2 code is transient and a timeout: the next attempt can differ, and the caller needs to know which fault it was.",
-		structural: signal => signal.http2 === undefined,
-		text: isTimeoutText,
-	},
-	{
-		flags: Flag.Transient,
-		why: "The transport vocabulary of last resort: a socket that closed, a gateway page, an errno. It reads prose because a dead socket arrives as a rejection with no status, and its status numbers are word-bounded for the same reason (see TRANSIENT_TRANSPORT_PATTERN).",
-		structural: signal => signal.http2 === undefined,
-		text: text => !isTimeoutText(text) && isTransientErrorText(text),
-	},
-	{
-		flags: Flag.StaleResponsesItem,
-		why: "Only the Responses APIs carry server-side conversation items, so only they can be told an item is gone; the same sentence from another api means something else.",
-		structural: signal => signal.api === "openai-responses" || signal.api === "openai-codex-responses",
-		text: isStaleResponsesText,
-	},
-	{
-		flags: Flag.Transient,
-		why: "Copilot's per-client routing flap: a 400 model_not_supported for a model the account has, where a retry usually lands on a backend that serves it.",
-		structural: signal => signal.status === 400,
-		text: text => COPILOT_MODEL_NOT_SUPPORTED_PATTERN.test(text),
-	},
-	{
-		flags: Flag.Grammar,
-		why: "A 400 rejecting strict tools: grammar too large, schema too complex, or structured outputs the endpoint does not have. The turn retries without strict tools and the session remembers the downgrade.",
-		structural: signal => signal.status === 400,
-		text: matchesStrictToolsRejectionText,
-	},
-	{
-		flags: Flag.FastModeUnsupported,
-		why: "Anthropic rejects the `speed` parameter with a 400 when the model does not have fast mode; retrying it without the parameter is the recovery, so it is not a throttle.",
-		structural: signal => signal.status === 400,
-		text: matchesFastModeRejectedParameterText,
-	},
-	{
-		flags: Flag.FastModeUnsupported,
-		why: "The same wall arrives as a 429 when the account lacks the extra-usage entitlement fast mode requires. Classified as a throttle it was retried against a limit no wait can clear.",
-		structural: signal => signal.status === 429,
-		text: matchesFastModeEntitlementText,
-	},
-];
-
-function matches(rule: ClassificationRule, signal: Signal): boolean {
-	if (rule.structural && !rule.structural(signal)) return false;
-	if (rule.text && !rule.text(signal.text)) return false;
-	return rule.structural !== undefined || rule.text !== undefined;
-}
-
 function classifyText(errorMessage: string | undefined, errorStatus: number | undefined, api?: Api): number {
 	let kinds = 0;
 	if (errorMessage) {
@@ -555,11 +112,9 @@ function classifyText(errorMessage: string | undefined, errorStatus: number | un
 			text,
 			status: errorStatus ?? status({ message: errorMessage }),
 			api,
-			http2: http2RetryVerdict(text),
+			http2: http2Verdict(text),
 		};
-		for (const rule of CLASSIFICATION_RULES) {
-			if (matches(rule, signal)) kinds |= rule.flags;
-		}
+		kinds = classifySignal(signal);
 	}
 	if (kinds !== 0) return create(kinds);
 	const fallbackStatus = errorStatus ?? (errorMessage ? status({ message: errorMessage }) : undefined);
@@ -582,36 +137,7 @@ export function classify(error: unknown, api?: Api): number {
 			}
 		}
 
-		if (link instanceof AwsCredentialsError) {
-			kinds |= Flag.AuthFailed;
-		} else if (link instanceof AnthropicConnectionTimeoutError) {
-			kinds |= Flag.Timeout | Flag.Transient;
-		} else if (link instanceof AnthropicConnectionError) {
-			kinds |= Flag.Transient;
-		} else if (link instanceof CodexWebSocketTransportError) {
-			kinds |= Flag.Transient;
-		} else if (link instanceof CodexProviderStreamError && link.retryable) {
-			kinds |= Flag.Transient;
-		} else if (link instanceof ProviderHttpError) {
-			let linkKinds = 0;
-			const { status: codeStatus, code } = link;
-			if (code === "usage_limit_reached" || code === "insufficient_quota") {
-				linkKinds |= Flag.UsageLimit;
-			}
-			if (code === "overloaded_error" || code === "rate_limit_error") {
-				linkKinds |= Flag.Transient;
-			}
-			if (codeStatus === 401 || codeStatus === 403) {
-				linkKinds |= Flag.AuthFailed;
-			} else if (codeStatus === 429) {
-				if ((linkKinds & Flag.UsageLimit) === 0) {
-					linkKinds |= Flag.Transient;
-				}
-			} else if (codeStatus >= 500) {
-				linkKinds |= Flag.Transient;
-			}
-			kinds |= linkKinds;
-		}
+		kinds |= classifyIdentity(link);
 
 		// A framing violation is the peer's protocol breach, and it decides transience for
 		// the whole chain: whatever a wrapper's sentence says, and whatever else the chain
@@ -620,6 +146,10 @@ export function classify(error: unknown, api?: Api): number {
 		// as well — "a line arrived with no line feed" names no transport and carries no
 		// status, yet an earlier wording matched TRANSIENT_TRANSPORT_PATTERN's /terminated/
 		// through the word "unterminated" and came back retryable.
+		//
+		// A named HTTP/2 refusal is the OTHER structural refusal and works differently on
+		// purpose: it sets Flag.TransportRefused and leaves the description alone, because a
+		// deadline that cancels its own stream still has to say it timed out. See flag.ts.
 		const isFramingViolation =
 			typeof link === "object" && (link as { name?: unknown }).name === STREAM_FRAME_LIMIT_ERROR_NAME;
 		if (isFramingViolation) framingViolation = true;
@@ -729,13 +259,6 @@ export function isContextOverflow(message: AssistantMessage, contextWindow?: num
 	return message.stopReason === "error" && !!message.errorMessage && matchesOverflowText(message.errorMessage);
 }
 
-export function stringify(id: number | undefined): string {
-	if (!id) return "none";
-	if (!isClassified(id)) return `status:${id}`;
-	const labels = ERROR_KIND_LABELS.filter(([kind]) => is(id, kind)).map(([, label]) => label);
-	return labels.length > 0 ? labels.join("|") : `classified:0x${id.toString(16)}`;
-}
-
 const STREAM_PARSE_TRUNCATION_PATTERN =
 	/unterminated string|unexpected end of json input|unexpected end of data|unexpected eof|end of file|eof while parsing|truncated/i;
 const STREAM_EVENT_ORDER_PATTERN = /stream event order|before message_start/i;
@@ -772,6 +295,6 @@ export function isEmptyStreamEnvelopeError(error: unknown): boolean {
 	return (
 		error instanceof Error &&
 		error.message.includes(STREAM_ENVELOPE_ERROR_PREFIX) &&
-		TRANSIENT_ENVELOPE_BEFORE_START_PATTERN.test(error.message)
+		STREAM_BEFORE_MESSAGE_START_PATTERN.test(error.message)
 	);
 }

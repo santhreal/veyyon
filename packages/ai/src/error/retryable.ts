@@ -70,13 +70,21 @@ export function isProviderRetryableError(error: unknown, hooks: ProviderRetryabl
 	// provider hook and the prose rules: those read the OUTERMOST message, which a
 	// provider is free to compose around the cause it wrapped.
 	if (isStreamFrameLimitError(error)) return false;
+	const id = classify(error);
+	// THE OTHER STRUCTURAL REFUSAL, and it has to be read before the prose rules for the same
+	// reason. A named HTTP/2 code the RFC says a replay reproduces is a fact; a wrapper's sentence
+	// is not. `NGHTTP2_CANCEL: operation timed out` used to come back retryable here through the
+	// word "timed out" even though the classifier had already refused it, and a cancel is our own
+	// abort. The flag stays beside Flag.Transient rather than clearing it, so the wrapper's
+	// description survives and only the decision changes.
+	if (is(id, Flag.TransportRefused)) return false;
 	if (hooks.isProviderTransient?.(error)) return true;
 	if (isUsageLimit(error)) return false;
 	const httpStatus = status(error);
 	if (httpStatus !== undefined && httpStatus >= 400 && httpStatus < 500 && httpStatus !== 408 && httpStatus !== 429) {
 		return false;
 	}
-	if (is(classify(error), Flag.Transient)) return true;
+	if (is(id, Flag.Transient)) return true;
 	const msg = error.message.toLowerCase();
 	if (
 		isUnexpectedSocketCloseMessage(msg) ||
