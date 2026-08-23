@@ -63,12 +63,12 @@ fn parse_failed_count(text: &str) -> Option<u64> {
 				}
 			}
 		}
-		if let Some((first, rest)) = trimmed.split_once(' ') {
-			if let Ok(num) = first.parse::<u64>() {
-				let marker = rest.trim();
-				if marker.starts_with("fail") {
-					return Some(num);
-				}
+		if let Some((first, rest)) = trimmed.split_once(' ')
+			&& let Ok(num) = first.parse::<u64>()
+		{
+			let marker = rest.trim();
+			if marker.starts_with("fail") {
+				return Some(num);
 			}
 		}
 	}

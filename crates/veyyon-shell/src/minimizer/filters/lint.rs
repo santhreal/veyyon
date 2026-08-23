@@ -118,10 +118,10 @@ fn classify_lint(program: &str, body: String, exit_code: i32) -> String {
 fn lint_diagnostic_count(body: &str) -> Option<u64> {
 	for line in body.lines() {
 		let trimmed = line.trim();
-		if let Some(rest) = trimmed.strip_suffix(" diagnostics") {
-			if let Ok(n) = rest.parse::<u64>() {
-				return Some(n);
-			}
+		if let Some(rest) = trimmed.strip_suffix(" diagnostics")
+			&& let Ok(n) = rest.parse::<u64>()
+		{
+			return Some(n);
 		}
 		if let Some((count, _)) = trimmed.split_once(" diagnostics in ") {
 			return count.parse().ok();

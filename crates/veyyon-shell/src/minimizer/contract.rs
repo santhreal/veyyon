@@ -132,15 +132,14 @@ pub fn parse(line: &str) -> Option<ParsedHeader> {
 		(Status::Clean, None, rest)
 	} else if let Some(rest) = trimmed.strip_prefix("[errors]") {
 		(Status::Errors, None, rest)
-	} else if let Some(rest) = trimmed.strip_prefix("[errors ") {
+	} else {
+		let rest = trimmed.strip_prefix("[errors ")?;
 		let (count_text, after_bracket) = rest.split_once(']')?;
 		if count_text.is_empty() || !count_text.bytes().all(|b| b.is_ascii_digit()) {
 			return None;
 		}
 		let count = count_text.parse().ok()?;
 		(Status::Errors, Some(count), after_bracket)
-	} else {
-		return None;
 	};
 
 	let rest = after_tag.strip_prefix(' ')?.trim();

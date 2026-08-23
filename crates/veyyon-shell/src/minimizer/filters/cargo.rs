@@ -585,16 +585,16 @@ fn parse_nextest_count(label: &'static str) -> impl Fn(&str) -> Option<u64> {
 	move |summary: &str| {
 		for chunk in summary.split([',', ':']) {
 			let trimmed = chunk.trim();
-			if let Some(num) = trimmed.strip_suffix(label).map(str::trim) {
-				if let Ok(value) = num.parse() {
-					return Some(value);
-				}
+			if let Some(num) = trimmed.strip_suffix(label).map(str::trim)
+				&& let Ok(value) = num.parse()
+			{
+				return Some(value);
 			}
 			let suffix = format!(" {label}");
-			if let Some(num) = trimmed.strip_suffix(suffix.as_str()) {
-				if let Ok(value) = num.parse() {
-					return Some(value);
-				}
+			if let Some(num) = trimmed.strip_suffix(suffix.as_str())
+				&& let Ok(value) = num.parse()
+			{
+				return Some(value);
 			}
 		}
 		None

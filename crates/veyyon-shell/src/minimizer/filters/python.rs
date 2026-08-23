@@ -257,7 +257,10 @@ fn pytest_summary_detail(body: &str) -> Option<String> {
 
 fn pytest_failed_count(body: &str) -> Option<u64> {
 	for line in body.lines() {
-		let trimmed = line.trim().strip_prefix("pytest: ").unwrap_or(line.trim());
+		let trimmed = line
+			.trim()
+			.strip_prefix("pytest: ")
+			.unwrap_or_else(|| line.trim());
 		for part in trimmed.split(',') {
 			let part = part.trim();
 			let mut words = part.split_whitespace();

@@ -16,8 +16,7 @@ fn cargo_available() -> bool {
 	Command::new("cargo")
 		.arg("-V")
 		.output()
-		.map(|out| out.status.success())
-		.unwrap_or(false)
+		.is_ok_and(|out| out.status.success())
 }
 
 fn temp_crate() -> PathBuf {
