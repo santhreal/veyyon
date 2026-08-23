@@ -1,10 +1,20 @@
 /**
- * Streaming-safe filters for leaked chat-template tool-call and thinking markup.
+ * The scanner layer for leaked chat-template markup, and the owner of which
+ * pattern a model needs.
  *
- * Hosted models sometimes leak raw template markup into visible `content` instead
- * of returning structured events. Tool-call healing delegates to the same
- * dialect scanners used by owned in-band tool calling; this file keeps the
- * provider-facing compatibility wrapper and model/provider gating.
+ * Hosted models sometimes leak raw template markup into visible `content`
+ * instead of returning structured events. This file holds the incremental feed
+ * API ({@link StreamMarkupHealing}) and the model/provider gate
+ * ({@link getStreamMarkupHealingPattern}, which answers `"kimi"`, `"dsml"` or
+ * `"thinking"` and never abstains); tool-call scanning delegates to the same
+ * dialect scanners as owned in-band tool calling.
+ *
+ * Two consumers sit above it: `leaked-thinking-stream.ts` wraps a whole provider
+ * stream for the generic thinking case, and a provider calls this directly when
+ * it has to combine healing with knowledge only it holds (Ollama suppresses
+ * healed thinking once the provider streams native reasoning). `harmony-leak.ts`
+ * is not part of this layer: it fuses GPT-5 Harmony channel signals and is gated
+ * to `openai-codex`.
  */
 
 import { isDeepseekModelIdOrName } from "@veyyon/catalog/identity";
