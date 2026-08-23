@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { callWithCopilotModelRetry, isCopilotTransientModelError } from "@veyyon/ai/utils/retry";
+import { isCopilotTransientModelError } from "@veyyon/ai/error/flags";
+import { callWithCopilotModelRetry } from "@veyyon/ai/utils/retry";
 import { isRetryableError } from "@veyyon/utils";
 
 type ErrorShape = {

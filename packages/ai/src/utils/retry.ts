@@ -3,10 +3,6 @@ import { isRetryableError } from "@veyyon/utils/fetch-retry";
 import { isCopilotTransientModelError, status } from "../error/flags";
 import { getHeadersFromError, getRetryAfterMsFromHeaders } from "./retry-after";
 
-// `isCopilotTransientModelError` now lives in the error module (its classifier
-// home). Re-exported here so existing `../utils/retry` importers keep working.
-export { isCopilotTransientModelError };
-
 const COPILOT_MODEL_RETRY_MAX_ATTEMPTS = 3;
 const COPILOT_MODEL_RETRY_BASE_DELAY_MS = 400;
 /** Longest server-requested backoff we are willing to sit out before giving up. */

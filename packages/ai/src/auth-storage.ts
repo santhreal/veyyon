@@ -925,10 +925,6 @@ const MAX_PENDING_DISABLED_EVENTS = 32;
  */
 const MAX_WITHHELD_QUOTA_NOTICES = 64;
 
-// Re-exported from the error module (its new home) to preserve the public
-// `@veyyon/ai` entrypoint and the in-module call sites below.
-export { isDefinitiveOAuthFailure } from "./error/auth-classify";
-
 /**
  * Outcome of {@link AuthStorage.markUsageLimitReached}.
  *
