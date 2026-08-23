@@ -168,7 +168,7 @@ describe.skipIf(!SSH_OK)("ssh:// handler against a real localhost ssh", () => {
 	);
 });
 
-describe.skipIf(!SSH_OK)("ssh:// through the real read/grep/write tools (localhost)", () => {
+describe.skipIf(!SSH_OK)("ssh:// through the real read/search/write tools (localhost)", () => {
 	const TMP = `/tmp/veyyon-ssh-tools-e2e-${process.pid}`;
 
 	function createSession(): ToolSession {

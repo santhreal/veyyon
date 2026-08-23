@@ -1,24 +1,21 @@
 /** Structure-pattern search results, rendered for unified `search`. */
 import type { ReactNode } from "react";
-import { Badge, Badges, CodeBlock, InvalidArg, Kv, KvGrid, Output, PathText, ResultText } from "../parts";
+import { Badge, Badges, CodeBlock, InvalidArg, Kv, KvGrid, Note, Output, PathText, ResultText } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
 import { detailsRecord, normalizeWs, num, scopePaths, str, truncate } from "../util";
 
 function patternsOf(args: Record<string, unknown>): string[] {
 	const input = str(args.input);
-	return input === null ? [] : [input];
+	return input === null || input.trim().length === 0 ? [] : [input];
 }
 
 function Summary({ args }: ToolRenderProps): ReactNode {
 	const patterns = patternsOf(args);
+	if (patterns.length === 0) return <InvalidArg what="input" />;
 	const paths = scopePaths(args);
 	return (
 		<>
-			{patterns.length === 0 ? (
-				<InvalidArg what="input" />
-			) : (
-				<span className="tv-pattern">{truncate(normalizeWs(patterns[0]!), 64)}</span>
-			)}
+			<span className="tv-pattern">{truncate(normalizeWs(patterns[0]!), 64)}</span>
 			{patterns.length > 1 && <span className="tv-faint">+{patterns.length - 1}</span>}
 			{paths.length > 0 && <PathText path={paths[0]!} />}
 			{paths.length > 1 && <span className="tv-faint">+{paths.length - 1}</span>}
@@ -37,6 +34,7 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 	const filesSearched = num(details?.filesSearched);
 	const limitReached = details?.limitReached === true;
 	const scopePath = str(details?.scopePath);
+	const error = str(details?.error);
 	const parseErrors = Array.isArray(details?.parseErrors)
 		? details.parseErrors.filter((e): e is string => typeof e === "string")
 		: [];
@@ -101,6 +99,7 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 					}
 				/>
 			)}
+			{error !== null && !result?.isError && <Note tone="err">{error}</Note>}
 			<ResultText result={result} maxLines={12} />
 		</>
 	);

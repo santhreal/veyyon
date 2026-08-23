@@ -20,7 +20,7 @@ import { TempDir } from "@veyyon/utils";
  * stop-time reminder ladder. The contract this defends:
  *
  *   1. Only SUCCESSFUL MUTATING tool results (bash/eval/edit/write/ast_edit)
- *      tick the counter. Read-only exploration (grep/read/glob/lsp) and
+ *      tick the counter. Read-only exploration (search/read/lsp) and
  *      errored results never do.
  *   2. At {@link MID_RUN_TODO_NUDGE_MUTATION_THRESHOLD} mutations without a
  *      `todo` call, the aside provider injects a hidden custom message

@@ -525,7 +525,7 @@ const PLAN_DECISION_TOOLS = new Set<string>([TOOL.ask, TOOL.resolve]);
 /**
  * Mutating tool results (`bash`/`eval`/`edit`/`write`/`ast_edit`) without the
  * agent touching the `todo` tool that trip the mid-run reconciliation nudge.
- * Read-only exploration (grep/read/glob/lsp) never ticks this: an agent
+ * Read-only exploration (search/read/lsp) never ticks this: an agent
  * researching for a long stretch has nothing to flip. Picked so a normal
  * fix-verify loop (~3-6 mutations) never sees the nudge, but a sustained run
  * of landed work without flipping any todos does. Without this nudge, long
@@ -1250,7 +1250,7 @@ export interface AgentSessionConfig {
 	 * Full advisor toolset, pre-built in `createAgentSession` against a distinct,
 	 * advisor-scoped `ToolSession` (its own `-advisor` session/agent id) so the
 	 * advisor's tool state stays isolated from the primary. The advisor is a full
-	 * agent; its config `tools` selects a subset (default read/grep/glob). Undefined
+	 * agent; its config `tools` selects a subset (default read/search). Undefined
 	 * when the advisor is disabled.
 	 */
 	advisorTools?: AgentTool[];

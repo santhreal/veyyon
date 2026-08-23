@@ -1,3 +1,4 @@
+import type * as fs from "node:fs";
 import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
@@ -1007,7 +1008,7 @@ export async function executeTextSearch(
 						const absKey = path.resolve(resolveReadPath(resolved, session.cwd));
 						// Keep the stat failure's own reason: an unreadable path reported as "not found" sends
 						// the reader looking for a missing file instead of at the permission that blocked it.
-						let stats: Awaited<ReturnType<typeof stat>> | undefined;
+						let stats: fs.Stats | undefined;
 						try {
 							stats = await stat(absKey);
 						} catch (error) {
