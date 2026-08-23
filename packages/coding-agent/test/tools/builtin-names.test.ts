@@ -2,10 +2,10 @@ import { describe, expect, it } from "bun:test";
 import { normalizeToolName, normalizeToolNames } from "@veyyon/coding-agent/tools/builtin-names";
 
 /**
- * normalizeToolName / normalizeToolNames lowercase user- or config-supplied tool names and
- * deduplicate them without aliases. A retired tool identity must stay retired rather than
- * silently resolving to a different public contract; persisted-config migration is the one
- * boundary that rewrites old IDs.
+ * normalizeToolName / normalizeToolNames lowercase user- or config-supplied tool names,
+ * translate every retired workspace-search identity at configuration and SDK boundaries,
+ * and deduplicate the resulting canonical names. Translation keeps persisted agent fields
+ * and caller allowlists usable without registering legacy names as model-facing tools.
  */
 
 describe("normalizeToolName", () => {
@@ -14,9 +14,13 @@ describe("normalizeToolName", () => {
 		expect(normalizeToolName("bash")).toBe("bash");
 	});
 
-	it("folds case without applying aliases", () => {
+	it("folds case for canonical names", () => {
 		expect(normalizeToolName("SEARCH")).toBe("search");
 		expect(normalizeToolName("Bash")).toBe("bash");
+	});
+
+	it("translates every retired workspace-search identity to search", () => {
+		expect(normalizeToolNames(["glob", "grep", "find", "ast_grep", "search"])).toEqual(["search"]);
 	});
 
 	it("lowercases an unknown name and passes it through unchanged otherwise", () => {
