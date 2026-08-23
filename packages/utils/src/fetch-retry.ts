@@ -599,35 +599,17 @@ export function http2RetryVerdict(message: string): boolean | undefined {
 	return HTTP2_GOAWAY_PATTERN.test(message) ? true : undefined;
 }
 
-const TRANSIENT_MESSAGE_PATTERN =
-	/overloaded|rate.?limit|too many requests|service.?unavailable|server error|internal error|connection.?error|unable to connect|fetch failed|network error|stream stall|other side closed|HTTP2(?:StreamReset|RefusedStream|EnhanceYourCalm)/i;
-
-const VALIDATION_MESSAGE_PATTERN =
-	/invalid|validation|bad request|unsupported|schema|missing required|not found|unauthorized|forbidden/i;
-
 /**
- * Identify errors that should be retried: aborts/timeouts in the error name or
- * message, retryable HTTP statuses (see `isRetryableStatus`), unexpected socket
- * closes, and the standard transient phrases. 4xx statuses other than 408/429
- * and validation-shaped messages short-circuit to `false`.
+ * THERE IS NO `isRetryableError` HERE ANY MORE, and that is the contract.
  *
- * A named HTTP/2 error code (see {@link http2RetryVerdict}) answers first,
- * because it is a fact about the transport rather than an inference from
- * wording.
+ * This module kept its own transient vocabulary (`overloaded`, `rate limit`, `service unavailable`,
+ * `connection error`, `unable to connect`, …) and its own validation veto, and
+ * `@veyyon/ai`'s `isProviderRetryableError` consulted it as a last resort. So one provider sentence
+ * was matched by two rule sets that had drifted apart by a phrase, and a failure the utils list
+ * recognised came back retryable while carrying no flag — which is what the session layer reads.
+ *
+ * `utils` cannot import `ai`, so the split is by KIND rather than by convenience: what a transport
+ * states about itself lives here ({@link http2RetryVerdict}, {@link isRetryableStatus},
+ * {@link isUnexpectedSocketCloseMessage}, {@link extractHttpStatusFromError}), and what a failure
+ * MEANS is `@veyyon/ai/error`'s registry, which composes these. A retry decision belongs there.
  */
-export function isRetryableError(error: unknown): boolean {
-	const info = error as { message?: string; name?: string } | null;
-	const message = info?.message ?? "";
-	const http2Verdict = http2RetryVerdict(message);
-	if (http2Verdict !== undefined) return http2Verdict;
-	if (isAbortError(error) || /timeout|timed out|aborted/i.test(message)) return true;
-
-	const status = extractHttpStatusFromError(error);
-	if (status !== undefined) {
-		if (isRetryableStatus(status)) return true;
-		if (status >= 400 && status < 500) return false;
-	}
-
-	if (VALIDATION_MESSAGE_PATTERN.test(message)) return false;
-	return isUnexpectedSocketCloseMessage(message) || TRANSIENT_MESSAGE_PATTERN.test(message);
-}

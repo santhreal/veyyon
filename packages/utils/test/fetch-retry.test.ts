@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
+import * as fetchRetry from "@veyyon/utils/fetch-retry";
 import {
 	extractHttpStatusFromError,
 	extractRetryHint,
 	fetchWithRetry,
-	isRetryableError,
 	isRetryableStatus,
 	isUnexpectedSocketCloseMessage,
 	RESET_EPOCH_MS_MIN,
@@ -272,17 +272,14 @@ describe("retryability predicates", () => {
 		expect(isUnexpectedSocketCloseMessage("connection reset by peer")).toBe(false);
 	});
 
-	it("isRetryableError: aborts/timeouts and transient phrases retry", () => {
-		expect(isRetryableError(Object.assign(new Error("x"), { name: "AbortError" }))).toBe(true);
-		expect(isRetryableError(new Error("request timed out"))).toBe(true);
-		expect(isRetryableError(new Error("model is overloaded"))).toBe(true);
-		expect(isRetryableError(new Error("fetch failed"))).toBe(true);
-	});
-
-	it("isRetryableError: non-408/429 4xx and validation shapes fail fast", () => {
-		expect(isRetryableError({ status: 401, message: "unauthorized" })).toBe(false);
-		expect(isRetryableError({ status: 429, message: "rate limited" })).toBe(true);
-		expect(isRetryableError(new Error("schema validation failed"))).toBe(false);
-		expect(isRetryableError(new Error("completely unknown"))).toBe(false);
+	/**
+	 * The composite retry decision moved to `@veyyon/ai/error`'s registry, and the four cases that used
+	 * to be asserted here (an abort, a timeout, transient wording, a validation shape) moved with it to
+	 * `packages/ai/test/one-predicate-decides-whether-a-provider-failure-is-retried.test.ts`. What is
+	 * left in this module is what a transport states about itself, which is what the two assertions
+	 * above cover. This one refuses the return of a second opinion.
+	 */
+	it("states transport facts and no retry decision", () => {
+		expect("isRetryableError" in fetchRetry).toBe(false);
 	});
 });

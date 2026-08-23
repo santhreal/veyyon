@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
+import { classify, Flag, is, isProviderRetryableError } from "@veyyon/ai/error";
 import { isCopilotTransientModelError } from "@veyyon/ai/error/flags";
 import { callWithCopilotModelRetry } from "@veyyon/ai/utils/retry";
-import { isRetryableError } from "@veyyon/utils";
 
 type ErrorShape = {
 	status: number;
@@ -262,10 +262,10 @@ describe("callWithCopilotModelRetry", () => {
 	});
 });
 
-describe("isRetryableError transport failures", () => {
+describe("the one retry predicate on transport failures", () => {
 	it("retries Bun socket closure errors", () => {
 		expect(
-			isRetryableError(
+			isProviderRetryableError(
 				new Error(
 					"The socket connection was closed unexpectedly. For more information, pass `verbose: true` in the second argument to fetch()",
 				),
@@ -277,14 +277,14 @@ describe("isRetryableError transport failures", () => {
 		// message — see oven-sh/bun src/http/h2_client/dispatch.zig (HTTP2StreamReset,
 		// HTTP2RefusedStream) and FetchTasklet.zig's "{s} fetching \"...\"" template.
 		expect(
-			isRetryableError(
+			isProviderRetryableError(
 				new Error(
 					'HTTP2StreamReset fetching "https://chatgpt.com/backend-api/codex/responses". For more information, pass `verbose: true` in the second argument to fetch()',
 				),
 			),
 		).toBe(true);
 		expect(
-			isRetryableError(
+			isProviderRetryableError(
 				new Error(
 					'HTTP2RefusedStream fetching "https://api.example.com/x". For more information, pass `verbose: true` in the second argument to fetch()',
 				),
@@ -293,10 +293,56 @@ describe("isRetryableError transport failures", () => {
 	});
 });
 
-describe("isRetryableError does not treat 4xx as retryable", () => {
-	// Regression guard: the new Copilot carveout must not leak into the generic predicate.
-	it("returns false for Copilot transient model errors", () => {
-		const err = copilotError({ status: 400, code: "model_not_supported", message: "x" });
-		expect(isRetryableError(err)).toBe(false);
+describe("the Copilot routing flap is one rule with two readers", () => {
+	/**
+	 * WHAT THIS BLOCK NOW DEFENDS. `isProviderRetryableError` refuses every 4xx that is not 408 or
+	 * 429, the flap included, and that veto is deliberate: a provider-level ladder is a seconds-scale
+	 * backoff against the same credential and a 400 is a wall to everything except the one loop that
+	 * knows what this particular 400 means. So the flap is answered by `isCopilotTransientModelError`,
+	 * which `callWithCopilotModelRetry` calls, and the two predicates differ on purpose.
+	 *
+	 * WHAT WAS BROKEN. The rule had two homes reading different evidence. The accessor read `code` and
+	 * the SDK's nested `error.code`; the classifier read the body text. A 400 whose message was `x`
+	 * and whose code said `model_not_supported` was therefore retried by the ladder while carrying no
+	 * flag at all, so every flag reader — the session's retry banner, a diagnostic, anything asking
+	 * `classify` — saw an unclassified 400. `Signal.code` carries the field into the rules, the rule
+	 * lives once in the network family, and both readers now agree about what the failure IS while
+	 * still disagreeing about who retries it.
+	 */
+	it.each([
+		["a top-level code", copilotError({ status: 400, code: "model_not_supported", message: "x" })],
+		["the SDK's nested code", copilotError({ status: 400, error: { code: "model_not_supported" }, message: "x" })],
+		["the body text", copilotError({ status: 400, message: "400 model_not_supported: pick another" })],
+	])("classifies the flap stated as %s", (_label, err) => {
+		expect(isCopilotTransientModelError(err)).toBe(true);
+		expect(is(classify(err), Flag.Transient)).toBe(true);
+	});
+
+	/** And the provider-level ladder still refuses it, because a 400 is not its business. */
+	it.each([
+		["a top-level code", copilotError({ status: 400, code: "model_not_supported", message: "x" })],
+		["the SDK's nested code", copilotError({ status: 400, error: { code: "model_not_supported" }, message: "x" })],
+		["the body text", copilotError({ status: 400, message: "400 model_not_supported: pick another" })],
+	])("leaves the flap stated as %s to the Copilot ladder", (_label, err) => {
+		expect(isProviderRetryableError(err)).toBe(false);
+	});
+
+	/** A 400 that names something else is still a wall, so the rule is narrow. */
+	it("keeps every other 400 a wall", () => {
+		const err = copilotError({ status: 400, code: "invalid_request_error", message: "bad tool schema" });
+
+		expect(isProviderRetryableError(err)).toBe(false);
+		expect(isCopilotTransientModelError(err)).toBe(false);
+	});
+
+	/**
+	 * The accessor must not widen into "any transient 400". A 400 whose body reads like a gateway page
+	 * classifies transient through the transport vocabulary, and treating that as the routing flap
+	 * would skip the ladder's retry-after handling.
+	 */
+	it("does not read a transient-sounding 400 as the routing flap", () => {
+		const err = copilotError({ status: 400, message: "400 upstream server error, please retry" });
+
+		expect(isCopilotTransientModelError(err)).toBe(false);
 	});
 });
