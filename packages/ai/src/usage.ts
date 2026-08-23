@@ -4,7 +4,6 @@
  * Provides a normalized schema to represent multiple limit windows, model tiers,
  * and shared quotas across providers.
  */
-import { type } from "arktype";
 import type { FetchImpl, Provider } from "./types";
 export type UsageUnit = "percent" | "tokens" | "requests" | "usd" | "minutes" | "bytes" | "unknown";
 
@@ -179,70 +178,10 @@ export interface UsageCostHistoryQuery {
 	sinceMs?: number;
 }
 
-// ─── Zod schemas (wire-shape validation for the broker `/v1/usage` endpoint) ─
-
-export const usageUnitSchema = type("'percent' | 'tokens' | 'requests' | 'usd' | 'minutes' | 'bytes' | 'unknown'");
-export const usageStatusSchema = type("'ok' | 'warning' | 'exhausted' | 'unknown'");
-
-export const usageWindowSchema = type({
-	id: "string",
-	label: "string",
-	"durationMs?": "number",
-	"resetsAt?": "number",
-});
-
-export const usageAmountSchema = type({
-	"used?": "number",
-	"limit?": "number",
-	"remaining?": "number",
-	"usedFraction?": "number",
-	"remainingFraction?": "number",
-	unit: usageUnitSchema,
-});
-
-export const usageScopeSchema = type({
-	provider: "string",
-	"accountId?": "string",
-	"projectId?": "string",
-	"orgId?": "string",
-	"modelId?": "string",
-	"tier?": "string",
-	"windowId?": "string",
-	"shared?": "boolean",
-});
-
-export const usageLimitSchema = type({
-	id: "string",
-	label: "string",
-	scope: usageScopeSchema,
-	"window?": usageWindowSchema,
-	amount: usageAmountSchema,
-	"status?": usageStatusSchema,
-	"notes?": "string[]",
-});
-
-export const usageResetCreditDetailSchema = type({
-	"grantedAt?": "string",
-	"expiresAt?": "string",
-	"status?": "string",
-});
-
-export const usageResetCreditsSchema = type({
-	availableCount: "number",
-	"credits?": usageResetCreditDetailSchema.array(),
-});
-
-export const usageReportSchema = type({
-	provider: "string",
-	fetchedAt: "number",
-	limits: usageLimitSchema.array(),
-	"resetCredits?": usageResetCreditsSchema,
-	"notes?": "string[]",
-	"metadata?": { "[string]": "unknown" },
-	// `raw` is provider-specific and may be anything; the broker strips it before
-	// sending the report over the wire, so accept-but-ignore here.
-	"raw?": "unknown",
-});
+// The wire schemas for a usage report live in `./usage/report-wire`, built on first use.
+// Declaring them here made every consumer of this module -- which is every launch, through
+// `auth-storage.ts` -> `api-registry.ts` -> `stream.ts` -- evaluate arktype for 362ms in
+// order to hold a validator nothing had asked to run yet.
 
 /** Optional logger for usage fetchers. */
 export interface UsageLogger {
