@@ -58,7 +58,7 @@ const TOOL_PROMPT_CEILINGS: Record<string, number> = {
 	edit: 8030,
 	eval: 5610,
 	read: 4180,
-	bash: 3910,
+	bash: 4150,
 	todo: 2640,
 	irc: 3450,
 	launch: 2820,
@@ -83,9 +83,11 @@ const TOOL_PROMPT_CEILINGS: Record<string, number> = {
  * what each tool may cost on its own, this says what the block may cost together, so a paragraph
  * added inside one tool's slack still has to come out of somewhere. `goal` joining the default
  * boot moved it from 46,800 to 47,000 — 645 bytes of new prose against 200 bytes of headroom,
- * which is the trade being recorded here rather than absorbed.
+ * which is the trade being recorded here rather than absorbed. The classified-runner
+ * verdict header on bash (result-contract) moved the live total to 47,203, so the
+ * cap follows it to 47,300 rather than absorbing the growth as leftover slack.
  */
-const TOTAL_PROMPT_CEILING = 47_000;
+const TOTAL_PROMPT_CEILING = 47_300;
 
 /**
  * How far under its ceiling a tool may sit before the row is stale.
