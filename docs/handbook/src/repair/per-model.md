@@ -7,7 +7,7 @@ harness:
   profiles:
     "anthropic/claude-sonnet-4-20250514":
       repair: true
-      tools: ["read", "edit", "grep", "bash"]
+      tools: ["read", "edit", "search", "bash"]
       promptSectionOrder: ["tool-policy", "delivery-contract"]
     "google/*":
       repair: false

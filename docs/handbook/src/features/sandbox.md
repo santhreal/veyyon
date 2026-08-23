@@ -14,7 +14,7 @@ Operator reference. For the model behind it, see
 
 | Tier | Examples |
 | --- | --- |
-| **read** | `read`, `grep`, `glob`, listing |
+| **read** | `read`, `search`, listing |
 | **write** | `edit`, `write` |
 | **exec** | `bash` and other command execution |
 
@@ -109,7 +109,7 @@ typed. To turn the floor off on `yolo`, set `tools.approval.bash` to `allow`; be
 `allow` is outranked by the guard, and `deny` is a hard block on every rung.
 
 Separately, the bash interceptor (`bashInterceptor.enabled`, default off) blocks shell
-commands that duplicate dedicated tools, so the model reaches for `read`/`grep`/`glob`
+commands that duplicate dedicated tools, so the model reaches for `read`/`search`
 instead of `cat`/`rg`/`find`. Its rules live in `bashInterceptor.patterns`.
 
 ## Related

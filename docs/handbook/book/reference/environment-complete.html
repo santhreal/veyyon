@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-8ea7c097.js";
+            window.path_to_searchindex_js = "../searchindex-1fab5344.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-093df7ff.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -617,6 +617,7 @@ rather than from each kernel formatting its own name.</li>
 </thead>
 <tbody>
 <tr><td><code>VEYYON_SMOL_MODEL</code></td><td>Ephemeral model-role override for <code>smol</code> (CLI <code>--smol</code> takes precedence)</td></tr>
+<tr><td><code>VEYYON_STREAM_FRAME_MAX_BYTES</code></td><td>Bytes one frame of a streamed protocol may occupy before the reader refuses it and cancels the source: a line, a JSONL record, or an SSE event ending at a blank line. Default <code>67108864</code> (64 MiB). Covers provider response streams, MCP server stdout and session files. A value that is not a positive integer keeps the default, so a typo cannot remove the bound. The refusal is terminal and never retried.</td></tr>
 <tr><td><code>VEYYON_SLOW_MODEL</code></td><td>Ephemeral model-role override for <code>slow</code> (CLI <code>--slow</code> takes precedence)</td></tr>
 <tr><td><code>VEYYON_PLAN_MODEL</code></td><td>Ephemeral model-role override for <code>plan</code> (CLI <code>--plan</code> takes precedence)</td></tr>
 <tr><td><code>VEYYON_NO_TITLE</code></td><td>If set (any non-empty value), disables auto session title generation on first user message</td></tr>

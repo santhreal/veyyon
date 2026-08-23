@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-8ea7c097.js";
+            window.path_to_searchindex_js = "../searchindex-1fab5344.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-093df7ff.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -202,7 +202,7 @@
 <h2 id="multi-edit-in-one-call"><a class="header" href="#multi-edit-in-one-call">Multi-edit in one call</a></h2>
 <p>The <code>edit</code> tool can apply several disjoint changes in one call. Anchors match against the original file (not incrementally); replacements are ordered so earlier growth does not invalidate later matches. Ambiguous anchors, overlapping regions, and no-ops fail with an actionable error.</p>
 <h2 id="hashline"><a class="header" href="#hashline">Hashline</a></h2>
-<p>Hashline avoids re-echoing surrounding text: the model references spans by <code>[PATH#TAG]</code> snapshot anchors from <code>read</code> / <code>grep</code> / <code>write</code>, then sends operations (<code>SWAP</code>, <code>DEL</code>, <code>INS</code>) and new text. Stale tags fail verification instead of applying a wrong edit. Default: <code>edit.mode: hashline</code> in <code>config.yml</code>.</p>
+<p>Hashline avoids re-echoing surrounding text: the model references spans by <code>[PATH#TAG]</code> snapshot anchors from <code>read</code> / <code>search</code> / <code>write</code>, then sends operations (<code>SWAP</code>, <code>DEL</code>, <code>INS</code>) and new text. Stale tags fail verification instead of applying a wrong edit. Default: <code>edit.mode: hashline</code> in <code>config.yml</code>.</p>
 <h2 id="concurrency"><a class="header" href="#concurrency">Concurrency</a></h2>
 <p>Non-parallel tools take an exclusive lock so file mutations from one turn are serialized. Same-file concurrent edits from subagents still need care; independent files may proceed under the tool locking rules.</p>
 <h2 id="trailing-newlines"><a class="header" href="#trailing-newlines">Trailing newlines</a></h2>

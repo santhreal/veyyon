@@ -12,7 +12,7 @@ The `edit` tool can apply several disjoint changes in one call. Anchors match ag
 
 ## Hashline
 
-Hashline avoids re-echoing surrounding text: the model references spans by `[PATH#TAG]` snapshot anchors from `read` / `grep` / `write`, then sends operations (`SWAP`, `DEL`, `INS`) and new text. Stale tags fail verification instead of applying a wrong edit. Default: `edit.mode: hashline` in `config.yml`.
+Hashline avoids re-echoing surrounding text: the model references spans by `[PATH#TAG]` snapshot anchors from `read` / `search` / `write`, then sends operations (`SWAP`, `DEL`, `INS`) and new text. Stale tags fail verification instead of applying a wrong edit. Default: `edit.mode: hashline` in `config.yml`.
 
 ## Concurrency
 

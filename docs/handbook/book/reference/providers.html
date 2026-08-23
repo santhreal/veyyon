@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-8ea7c097.js";
+            window.path_to_searchindex_js = "../searchindex-1fab5344.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-093df7ff.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -241,7 +241,7 @@ providers:
   my-gateway:
     baseUrl: https://gateway.example.com/v1
     api: openai-completions
-    apiKey: MY_GATEWAY_API_KEY # reads this env var if set, else literal text
+    apiKey: MY_GATEWAY_API_KEY # reads this env var; unset means no key, not a literal
     models:
       - id: claude-sonnet
         name: Claude Sonnet via Gateway
@@ -450,7 +450,7 @@ disabledProviders:
   my-openai-compatible:
     baseUrl: https://api.example.com/v1
     api: openai-completions
-    apiKey: MY_OPENAI_COMPATIBLE_KEY # env-var-name or literal
+    apiKey: MY_OPENAI_COMPATIBLE_KEY # env-var name; `literal:text` for verbatim text
     models:
       - id: fast-chat
         name: Fast Chat

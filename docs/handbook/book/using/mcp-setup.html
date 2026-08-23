@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-8ea7c097.js";
+            window.path_to_searchindex_js = "../searchindex-1fab5344.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-093df7ff.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -272,6 +272,32 @@ and <code>headers</code>.</p>
       "args": ["/path/to/sqlite-mcp-server/index.js"],
       "env": { "DB_PATH": "/var/data/app.db", "SQLITE_LOG_LEVEL": "warn" }
     }
+  }
+}
+</code></pre>
+<p>A stdio server does not inherit the shell environment. It receives a baseline of variables a
+program needs in order to run — <code>PATH</code>, <code>HOME</code>, temp and locale settings, certificate and proxy
+settings, and the directories version managers use to resolve a command — plus whatever <code>env</code>
+sets. Every other ambient variable, including provider keys and CI tokens, is withheld. On
+Windows the baseline also carries <code>PATHEXT</code>, <code>SystemRoot</code>, <code>ComSpec</code> and the <code>ProgramFiles</code>
+variants, and names match without regard to case.</p>
+<p>To forward an ambient variable, name it:</p>
+<pre><code class="language-json">{
+  "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "envPassthrough": ["GITHUB_TOKEN"]
+    }
+  }
+}
+</code></pre>
+<p><code>inheritEnv: true</code> hands one server the whole environment, including every credential in it. Use
+it when a server needs a variable you cannot name in advance. It is set per server, and each
+spawn logs a warning naming the command.</p>
+<pre><code class="language-json">{
+  "mcpServers": {
+    "legacy": { "command": "/opt/legacy/mcp", "inheritEnv": true }
   }
 }
 </code></pre>

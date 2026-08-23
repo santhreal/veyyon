@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-8ea7c097.js";
+            window.path_to_searchindex_js = "../searchindex-1fab5344.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-093df7ff.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -665,7 +665,7 @@ thinkingBudgets:
 </thead>
 <tbody>
 <tr><td><code>tools.approvalMode</code></td><td>enum</td><td><code>auto</code></td><td>Canonical: <code>plan</code> (read auto; write asks with an active plan-mode session, otherwise write/exec denied), <code>ask</code> (nothing auto; every tier asks, reads included), <code>ask-command</code> (read+write auto; exec ask), <code>auto</code> (all tiers auto, with the per-tool, working-directory, credential and critical-call guards still asking), <code>yolo</code> (all tiers auto). Legacy aliases still accepted: <code>always-ask</code> → <code>ask</code>, <code>write</code> and <code>auto-edit</code> → <code>ask-command</code>. Override per run with <code>--approval-mode</code> / <code>--auto-approve</code> / <code>--yolo</code>.</td></tr>
-<tr><td><code>tools.approval</code></td><td>record</td><td><code>{}</code></td><td>Per-tool policy keyed by tool name; each value is <code>allow</code>, <code>deny</code>, or <code>prompt</code>. e.g. <code>veyyon config set tools.approval '{"bash":"prompt"}'</code>.</td></tr>
+<tr><td><code>tools.approval</code></td><td>record</td><td><code>{}</code></td><td>Per-tool policy keyed by tool name; each value is <code>allow</code>, <code>deny</code>, or <code>prompt</code>. Any other value denies that tool and is named in a startup warning. e.g. <code>veyyon config set tools.approval '{"bash":"prompt"}'</code>.</td></tr>
 <tr><td><code>tools.discoveryMode</code></td><td>enum</td><td><code>auto</code></td><td><code>auto</code>, <code>off</code>, <code>mcp-only</code>, <code>all</code>. <code>all</code> hides non-essential built-ins and first-party heavyweight tools such as <code>generate_image</code> until the discovery search activates them.</td></tr>
 <tr><td><code>tools.essentialOverride</code></td><td>array</td><td><code>[]</code></td><td>Tool names kept available even when tools are narrowed.</td></tr>
 <tr><td><code>tools.maxTimeout</code></td><td>number</td><td><code>0</code></td><td>Max tool runtime in seconds; <code>0</code> = no cap.</td></tr>
@@ -678,7 +678,7 @@ thinkingBudgets:
 </tbody>
 </table>
 </div>
-<p>Individual built-in tools are toggled by their own keys, e.g. <code>bash.enabled</code>, <code>launch.enabled</code>, <code>eval.py</code>, <code>eval.js</code>, <code>glob.enabled</code>, <code>grep.enabled</code>, <code>fetch.enabled</code>, <code>browser.enabled</code>, <code>astEdit.enabled</code>, <code>astGrep.enabled</code>, <code>web_search.enabled</code>, <code>inspect_image.enabled</code>.</p>
+<p>Most optional built-in tools are toggled by their own keys, e.g. <code>bash.enabled</code>, <code>launch.enabled</code>, <code>eval.py</code>, <code>eval.js</code>, <code>fetch.enabled</code>, <code>browser.enabled</code>, <code>astEdit.enabled</code>, <code>web_search.enabled</code>, <code>inspect_image.enabled</code>. Workspace <code>search</code> is part of the default tool inventory.</p>
 <h3 id="subagents"><a class="header" href="#subagents">Subagents</a></h3>
 <p>Everything about spawned agents lives here, under <code>subagent.</code>: whether this session
 delegates at all, which agent types it may use, what model and effort they run, and
