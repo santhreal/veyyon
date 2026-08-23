@@ -2,7 +2,7 @@
  * WHY THIS SUITE EXISTS.
  *
  * Every tool description is paid for on every request of every session, and nothing was
- * counting them. The whole `tools/` set is 19230 tokens of prompt before a single tool
+ * counting them. The whole `tools/` set is 19166 tokens of prompt before a single tool
  * schema is serialised, and it grew one careful paragraph at a time: each edit was small,
  * each was defensible on its own, and no edit ever had to answer for the total. A budget
  * nobody measures is not a budget.
@@ -45,7 +45,7 @@ const RECORDED_TOKENS: Record<string, number> = {
 	"tools/ast-edit": 375,
 	"tools/ast-grep": 401,
 	"tools/async-result": 105,
-	"tools/bash": 1688,
+	"tools/bash": 1624,
 	"tools/browser": 1439,
 	"tools/checkpoint": 163,
 	"tools/debug": 414,
@@ -93,7 +93,7 @@ const RECORDED_TOKENS: Record<string, number> = {
 };
 
 /** The sum the recorded table claims, so the total is in the diff of any trim. */
-const RECORDED_TOTAL = 19230;
+const RECORDED_TOTAL = 19166;
 
 const measured = new Map(Object.entries(toolsPrompts).map(([id, entry]) => [id, estimateTokensFromText(entry.text)]));
 

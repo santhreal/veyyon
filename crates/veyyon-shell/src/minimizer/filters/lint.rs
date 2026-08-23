@@ -69,7 +69,14 @@ pub fn condense_lint_output(program: &str, input: &str, exit_code: i32) -> Strin
 	// header and stopping is the only reliable guard. See
 	// `primitives::is_diagnostic_count_header`.
 	if input.lines().any(primitives::is_diagnostic_count_header) {
-		return input.to_string();
+		let verdict = if exit_code == 0 {
+			contract::clean(program)
+		} else if let Some(count) = lint_diagnostic_count(input) {
+			contract::errors(program, count)
+		} else {
+			contract::errors_unknown(program)
+		};
+		return contract::apply(&verdict, input);
 	}
 	let cleaned = primitives::strip_ansi(input);
 	let stripped = strip_lint_noise(program, &cleaned, exit_code);
@@ -94,9 +101,6 @@ pub fn condense_lint_output(program: &str, input: &str, exit_code: i32) -> Strin
 }
 
 fn classify_lint(program: &str, body: String, exit_code: i32) -> String {
-	if contract::already_classified(&body) {
-		return body;
-	}
 	if body.trim().is_empty() {
 		let verdict = if exit_code == 0 {
 			contract::clean(program)
@@ -883,6 +887,16 @@ mod tests {
 		assert!(supports_program("basedpyright", None));
 		let out = condense_lint_output("basedpyright", "0 errors, 0 warnings, 0 notes\n", 0);
 		assert_eq!(out, "[clean] basedpyright\n");
+	}
+
+	#[test]
+	fn already_grouped_untrusted_input_still_gets_a_verdict() {
+		let input = "1 diagnostics in 1 files\nsrc/app.ts (1 diagnostics)\n  4:7 error TS2322\n";
+		let out = condense_lint_output("tsc", input, 1);
+		assert!(
+			out.starts_with("[errors 1] tsc\n"),
+			"grouped-looking command output cannot bypass classification: {out:?}"
+		);
 	}
 
 	#[test]

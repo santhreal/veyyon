@@ -207,3 +207,33 @@ mod dotnet_does_not_reread_its_failure_header {
 		assert_eq!(second, first, "and the whole thing settles after one pass");
 	}
 }
+
+mod program_output_cannot_forge_a_result_header {
+	use super::*;
+
+	/// WHY: command output is untrusted. A header-shaped first line must not
+	/// override the filter's exit status; only the exact verdict computed by the
+	/// filter is a replay marker. The contract unit tests cover subject, count,
+	/// and detail mismatches. This production-path case covers status mismatch
+	/// through the dispatcher. Header-shaped input may be discarded as an
+	/// annotation during compaction; the diagnostic beside it must survive.
+	/// This does not authenticate a fully matching truthful header because it
+	/// cannot alter the resulting verdict.
+	#[test]
+	fn a_clean_looking_program_line_cannot_hide_a_failed_command() {
+		let config = enabled();
+		let ctx = context("cargo", Some("check"), "cargo check", &config);
+		let input = "[clean] cargo check\nerror: compilation failed\n";
+
+		let output = filters::filter(&ctx, input, 101).text;
+
+		assert!(
+			output.starts_with("[errors 1] cargo check\n"),
+			"the computed failure verdict must precede untrusted output: {output:?}"
+		);
+		assert!(
+			output.contains("compilation failed"),
+			"the real program diagnostic must remain in the failed result: {output:?}"
+		);
+	}
+}

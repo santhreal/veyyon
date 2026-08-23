@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Classified runner output (cargo, bun, Go, ctest, dotnet, clippy, golangci-lint, Gradle lint, pytest, and tsc/eslint-family) now opens with a result-contract header: `[clean] <command>` or `[errors]` / `[errors N] <command>`. The header is the verdict and the body contains retained diagnostics.
+
 ## [1.2.0] - 2026-08-23
 
 ### Added
@@ -25,7 +29,6 @@
 
 ### Changed
 
-- Classified runner output (cargo, bun, go, ctest, dotnet, clippy, golangci-lint, gradle, pytest, tsc/eslint-family) now opens with a result-contract header: `[clean] <command>` or `[errors]` / `[errors N] <command>`. That line is the verdict; the body is only retained diagnostics. The prompt tells the model not to grep the result blob or re-invoke the same runner to rediscover failures.
 - The Subagents block above the composer is one row per running agent again — a mark, the agent's id, its spawn description and the model it resolved to — with the house rail as its left edge and no tree connectors. It had been rebuilt as a table of lanes with an id column, a model column against the right margin and a live activity column resolving recovery over tool over description, and the table said less than the short list it replaced: three padded columns read as a grid to scan, the activity column drew whatever text a tool call happened to carry, and a `bun -e` command with a real newline in it put the tail of that command outside the block. Every cell folds newlines to spaces before it is bounded, because a bounded width states nothing about how many lines a string occupies, and the row never draws a task's prompt.
 - Light travels down the rail of the Subagents block, and only the rows whose agent is inside a tool are lit, so the sweep is a count of what is working rather than a decoration on the block.
 - Every tool result block hangs its output from the same rail and draws no tree connectors. Grep, ast-grep, glob, the file list, web search, the IRC renderer and the diagnostics list each drew `├─`, `│` and `└─` to nest rows that are not a hierarchy, which put a second vertical edge inside a block that already had one; nesting is two spaces of indent instead, and an IRC message body no longer carries a quote glyph of its own either.

@@ -17,12 +17,12 @@ pub fn supports(program: &str, subcommand: Option<&str>) -> bool {
 pub fn filter(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> MinimizerOutput {
 	let cleaned = primitives::strip_ansi(input);
 	let text = if ctx.program == "golangci-lint" || is_go_tool_golangci_lint(ctx) {
-		filter_golangci_lint(&cleaned)
+		filter_golangci_lint(&cleaned, exit_code)
 	} else {
 		match ctx.subcommand {
 			Some("test") => filter_go_test(&cleaned, exit_code),
 			Some("build") => filter_go_build(&cleaned, exit_code),
-			Some("vet") => filter_go_vet(&cleaned),
+			Some("vet") => filter_go_vet(&cleaned, exit_code),
 			Some("tool") => input.to_string(),
 			_ => compact_general(&cleaned),
 		}
@@ -91,22 +91,24 @@ fn filter_go_test(input: &str, exit_code: i32) -> String {
 		}
 	}
 
-	if kept == 0 {
-		return compact_general(input);
-	}
-
-	primitives::head_tail_dedup_capped(&out, 140, 80)
+	let body = if kept == 0 {
+		compact_general(input)
+	} else {
+		primitives::head_tail_dedup_capped(&out, 140, 80)
+	};
+	contract::apply(&contract::errors_unknown("go test"), &body)
 }
 
 /// Success-path aggregation: count package and test markers (re-derived for
 /// DEFAULT text, with opportunistic JSON rendering) and emit one summary line.
 fn aggregate_go_test_success(input: &str) -> String {
-	// Benchmark output is signal — don't collapse it into a count.
+	// Benchmark output is signal — keep it beneath the verdict.
 	if input
 		.lines()
 		.any(|l| l.trim_start().starts_with("Benchmark"))
 	{
-		return primitives::head_tail_lines(input, 140, 80);
+		let body = primitives::head_tail_lines(input, 140, 80);
+		return contract::apply(&contract::clean("go test"), &body);
 	}
 
 	let mut packages_ok = 0usize;
@@ -145,7 +147,8 @@ fn aggregate_go_test_success(input: &str) -> String {
 	}
 
 	if packages_ok == 0 && no_tests == 0 && tests_skipped == 0 {
-		return compact_general(input);
+		let body = compact_general(input);
+		return contract::apply(&contract::clean("go test"), &body);
 	}
 
 	let mut detail = format!("{packages_ok} packages ok");
@@ -224,7 +227,7 @@ fn should_keep_go_test_line(line: &str, exit_code: i32) -> bool {
 
 fn filter_go_build(input: &str, exit_code: i32) -> String {
 	if primitives::is_grouped_listing(input) {
-		return input.to_string();
+		return contract::from_exit("go build", exit_code, input);
 	}
 	let mut out = String::new();
 	let mut saw_diagnostic = false;
@@ -244,17 +247,18 @@ fn filter_go_build(input: &str, exit_code: i32) -> String {
 		}
 	}
 
-	if !saw_diagnostic {
-		return compact_general(input);
-	}
-
-	let grouped = primitives::group_by_file(&out, 24);
-	primitives::head_tail_lines(&grouped, 120, 80)
+	let body = if saw_diagnostic {
+		let grouped = primitives::group_by_file(&out, 24);
+		primitives::head_tail_lines(&grouped, 120, 80)
+	} else {
+		compact_general(input)
+	};
+	contract::from_exit("go build", exit_code, &body)
 }
 
-fn filter_go_vet(input: &str) -> String {
+fn filter_go_vet(input: &str, exit_code: i32) -> String {
 	if primitives::is_grouped_listing(input) {
-		return input.to_string();
+		return contract::from_exit("go vet", exit_code, input);
 	}
 	let mut out = String::new();
 	for line in input.lines() {
@@ -268,22 +272,20 @@ fn filter_go_vet(input: &str) -> String {
 		}
 	}
 
-	if out.is_empty() {
-		return compact_general(input);
-	}
-
-	let grouped = primitives::group_by_file(&out, 24);
-	primitives::head_tail_lines(&grouped, 120, 80)
+	let body = if out.is_empty() {
+		compact_general(input)
+	} else {
+		let grouped = primitives::group_by_file(&out, 24);
+		primitives::head_tail_lines(&grouped, 120, 80)
+	};
+	contract::from_exit("go vet", exit_code, &body)
 }
 
-fn filter_golangci_lint(input: &str) -> String {
-	if primitives::is_grouped_listing(input) {
-		return input.to_string();
-	}
+fn filter_golangci_lint(input: &str, exit_code: i32) -> String {
 	if let Some(json_line) = input
 		.lines()
 		.find(|line| line.trim_start().starts_with('{'))
-		&& let Some(summary) = summarize_golangci_json(json_line.trim())
+		&& let Some(summary) = summarize_golangci_json(json_line.trim(), exit_code)
 	{
 		return summary;
 	}
@@ -298,19 +300,24 @@ fn filter_golangci_lint(input: &str) -> String {
 		out.push('\n');
 	}
 
-	if out.is_empty() {
+	let body = if out.is_empty() {
 		compact_general(input)
 	} else {
 		let grouped = primitives::group_by_file(&out, 24);
 		primitives::head_tail_lines(&grouped, 160, 80)
-	}
+	};
+	contract::from_exit("golangci-lint", exit_code, &body)
 }
 
-fn summarize_golangci_json(line: &str) -> Option<String> {
+fn summarize_golangci_json(line: &str, exit_code: i32) -> Option<String> {
 	let value: serde_json::Value = serde_json::from_str(line).ok()?;
 	let issues = value.get("Issues")?.as_array()?;
 	if issues.is_empty() {
-		let verdict = contract::clean("golangci-lint");
+		let verdict = if exit_code == 0 {
+			contract::clean("golangci-lint")
+		} else {
+			contract::errors_unknown("golangci-lint")
+		};
 		return Some(contract::apply(&verdict, ""));
 	}
 
@@ -444,6 +451,11 @@ mod tests {
 "#;
 
 		let out = filter(&ctx, input, 1);
+		assert!(
+			out.text.starts_with("[errors] go test\n"),
+			"failed go tests must carry a verdict: {:?}",
+			out.text
+		);
 		assert!(out.text.contains("app_test.go:12"));
 		assert!(out.text.contains("expected 2, got 1"));
 		assert!(out.text.contains("--- FAIL: TestBad"));
@@ -512,7 +524,7 @@ mod tests {
 	#[test]
 	fn summarizes_golangci_json_issues() {
 		let input = r#"{"Issues":[{"FromLinter":"govet","Text":"unreachable code","Pos":{"Filename":"main.go","Line":7,"Column":2}}]}"#;
-		let out = filter_golangci_lint(input);
+		let out = filter_golangci_lint(input, 1);
 		assert!(out.contains("[errors 1] golangci-lint"));
 		assert!(out.contains("main.go:7:2: unreachable code (govet)"));
 
@@ -528,7 +540,7 @@ mod tests {
 			);
 		}
 		many_issues.push_str("]}");
-		let out_many = filter_golangci_lint(&many_issues);
+		let out_many = filter_golangci_lint(&many_issues, 1);
 		assert!(out_many.contains("[errors 42] golangci-lint"));
 		assert!(out_many.contains("[…2 issues elided…]"));
 	}
@@ -602,6 +614,11 @@ mod tests {
 		             /tmp/x: run 'go mod vendor'\nruntime.main_main·f: function main is undeclared \
 		             in the main package\n";
 		let out = filter(&ctx, input, 1);
+		assert!(
+			out.text.starts_with("[errors] go build\n"),
+			"failed go builds must carry a verdict: {:?}",
+			out.text
+		);
 		assert!(out.text.contains("does not contain main module"));
 		assert!(out.text.contains("no Go files in /tmp/example"));
 		assert!(out.text.contains("inconsistent vendoring"));
@@ -609,6 +626,19 @@ mod tests {
 			out.text
 				.contains("function main is undeclared in the main package")
 		);
+	}
+
+	#[test]
+	fn quiet_go_build_and_vet_successes_still_emit_verdicts() {
+		let cfg = MinimizerConfig { enabled: true, ..Default::default() };
+		for (subcommand, command, expected) in [
+			("build", "go build ./...", "[clean] go build\n"),
+			("vet", "go vet ./...", "[clean] go vet\n"),
+		] {
+			let ctx =
+				MinimizerCtx { program: "go", subcommand: Some(subcommand), command, config: &cfg };
+			assert_eq!(filter(&ctx, "", 0).text, expected);
+		}
 	}
 
 	#[test]

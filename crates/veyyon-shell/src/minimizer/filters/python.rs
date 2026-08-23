@@ -224,18 +224,20 @@ fn pytest_success(input: &str) -> String {
 }
 
 fn classify_pytest(body: String, exit_code: i32) -> String {
-	let verdict = if exit_code == 0 {
-		if let Some(detail) = pytest_summary_detail(&body) {
+	let failed = pytest_failed_count(&body).filter(|count| *count > 0);
+	let summary = pytest_summary_detail(&body);
+	let verdict = if let Some(count) = failed {
+		contract::errors("pytest", count)
+	} else if exit_code == 0 {
+		if let Some(detail) = summary.as_deref() {
 			contract::clean_with("pytest", detail)
 		} else {
 			contract::clean("pytest")
 		}
-	} else if let Some(count) = pytest_failed_count(&body) {
-		contract::errors("pytest", count)
 	} else {
 		contract::errors_unknown("pytest")
 	};
-	let body = if exit_code == 0 && pytest_summary_detail(&body).is_some() {
+	let body = if matches!(verdict.status, contract::Status::Clean) && summary.is_some() {
 		String::new()
 	} else {
 		body
@@ -526,6 +528,17 @@ mod tests {
 		             [100%]\n\n====== 33 passed in 0.05s ======\n";
 		let out = filter_pytest(input, 0);
 		assert_eq!(out, "[clean] pytest: 33 passed in 0.05s\n");
+	}
+
+	#[test]
+	fn pytest_failure_summary_wins_over_a_contradictory_zero_exit() {
+		let input = "test_bad.py F\n===== 1 failed in 0.05s =====\n";
+		let out = filter_pytest(input, 0);
+		assert!(
+			out.starts_with("[errors 1] pytest\n"),
+			"a failed pytest summary must never be rendered as clean: {out:?}"
+		);
+		assert!(out.contains("pytest: 1 failed in 0.05s"));
 	}
 
 	#[test]

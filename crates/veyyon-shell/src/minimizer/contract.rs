@@ -161,17 +161,50 @@ pub fn is_result_header(line: &str) -> bool {
 	parse(line).is_some()
 }
 
-/// True when the first non-empty line of `text` is a result header.
+/// True when the first non-empty line of `text` matches `verdict`.
 ///
-/// Filters that opt in call [`apply`], which uses this so a replayed capture
-/// is not classified a second time.
+/// A syntactically valid header is not enough: command output is untrusted and
+/// may contain header-shaped text. Only the exact verdict this filter computed
+/// proves that the body is a replay of its own classified output.
+fn already_classified_as(text: &str, verdict: &Verdict) -> bool {
+	let Some(parsed) = text
+		.lines()
+		.map(str::trim)
+		.find(|line| !line.is_empty())
+		.and_then(parse)
+	else {
+		return false;
+	};
+	let expected_detail = verdict
+		.detail
+		.as_deref()
+		.map(str::trim)
+		.filter(|detail| !detail.is_empty());
+	parsed.status == verdict.status
+		&& parsed.errors == verdict.errors
+		&& parsed.subject == verdict.subject.trim()
+		&& parsed.detail.as_deref() == expected_detail
+}
+
+/// True when a replayed result header agrees with the process exit status.
+///
+/// The dispatcher uses this before a filter reparses its own compact body. A
+/// header-shaped program line cannot turn a failed process into `[clean]` (or
+/// a successful process into `[errors]`), while a genuine replay retains
+/// summary details that no longer exist in the compact body.
 #[must_use]
-pub fn already_classified(text: &str) -> bool {
+pub fn replay_matches_exit(text: &str, exit_code: i32) -> bool {
+	let expected = if exit_code == 0 {
+		Status::Clean
+	} else {
+		Status::Errors
+	};
 	text
 		.lines()
 		.map(str::trim)
 		.find(|line| !line.is_empty())
-		.is_some_and(is_result_header)
+		.and_then(parse)
+		.is_some_and(|header| header.status == expected)
 }
 
 /// Classify by process exit: zero is clean, anything else is unknown-count
@@ -192,13 +225,13 @@ pub fn from_exit(subject: impl Into<String>, exit_code: i32, body: &str) -> Stri
 	apply(&verdict, body)
 }
 
-/// Prepend the header unless `body` is already classified.
+/// Prepend the header unless `body` already starts with the same verdict.
 ///
-/// An empty body becomes the header alone. A classified body is returned
-/// unchanged (plus a trailing newline if it was missing one).
+/// An empty body becomes the header alone. A body with the exact verdict is
+/// returned unchanged (plus a trailing newline if it was missing one).
 #[must_use]
 pub fn apply(verdict: &Verdict, body: &str) -> String {
-	if already_classified(body) {
+	if already_classified_as(body, verdict) {
 		let mut out = body.to_string();
 		if !out.is_empty() && !out.ends_with('\n') {
 			out.push('\n');
@@ -280,7 +313,10 @@ mod tests {
 		let first = apply(&verdict, "");
 		assert_eq!(first, "[clean] cargo test: 2 passed (1 suite)\n");
 		assert_eq!(apply(&verdict, &first), first);
-		assert_eq!(apply(&errors("cargo test", 1), &first), first);
+		assert_eq!(
+			apply(&errors("cargo test", 1), &first),
+			"[errors 1] cargo test\n[clean] cargo test: 2 passed (1 suite)\n"
+		);
 	}
 
 	#[test]
@@ -292,10 +328,26 @@ mod tests {
 	}
 
 	#[test]
-	fn already_classified_reads_the_first_non_empty_line() {
-		assert!(already_classified("\n[clean] ctest\n"));
-		assert!(!already_classified("failures:\n[clean] ctest\n"));
-		assert!(!already_classified(""));
+	fn apply_trusts_only_the_verdict_the_filter_computed() {
+		let cases = [
+			(clean("cargo test"), "[errors 1] cargo test\n"),
+			(errors("cargo test", 2), "[errors 1] cargo test\n"),
+			(errors("cargo test", 1), "[errors 1] ctest\n"),
+			(clean_with("cargo test", "2 passed"), "[clean] cargo test: 1 passed\n"),
+		];
+		for (verdict, spoofed) in cases {
+			let out = apply(&verdict, spoofed);
+			assert_eq!(out, format!("{}{spoofed}", render(&verdict)));
+		}
+	}
+
+	#[test]
+	fn replay_requires_status_to_match_the_process_exit() {
+		assert!(replay_matches_exit("[clean] cargo test: 2 passed\n", 0));
+		assert!(replay_matches_exit("[errors 2] cargo test\n", 101));
+		assert!(!replay_matches_exit("[clean] cargo test\n", 101));
+		assert!(!replay_matches_exit("[errors] cargo test\n", 0));
+		assert!(!replay_matches_exit("program output\n", 0));
 	}
 
 	#[test]
@@ -306,6 +358,9 @@ mod tests {
 			"[errors] cargo check\nerror: nope\n"
 		);
 		let classified = from_exit("cargo check", 0, "");
-		assert_eq!(from_exit("cargo check", 1, &classified), classified);
+		assert_eq!(
+			from_exit("cargo check", 1, &classified),
+			"[errors] cargo check\n[clean] cargo check\n"
+		);
 	}
 }

@@ -113,9 +113,9 @@ fn is_gradle_family(program: &str) -> bool {
 }
 
 #[must_use]
-pub fn filter(ctx: &MinimizerCtx<'_>, input: &str, _exit_code: i32) -> MinimizerOutput {
+pub fn filter(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> MinimizerOutput {
 	if is_gradle_family(ctx.program) {
-		return filter_gradle(ctx, input);
+		return filter_gradle(ctx, input, exit_code);
 	}
 
 	// Maven family.
@@ -162,7 +162,7 @@ pub fn filter(ctx: &MinimizerCtx<'_>, input: &str, _exit_code: i32) -> Minimizer
 /// (`--stacktrace`/`--info`/`--debug`/`--full-stacktrace`) bypass filtering —
 /// the user explicitly asked for full detail (adopts rtk's
 /// `gradlew_cmd.rs::run` user-asked-for-detail rule).
-fn filter_gradle(ctx: &MinimizerCtx<'_>, input: &str) -> MinimizerOutput {
+fn filter_gradle(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> MinimizerOutput {
 	if has_gradle_verbose_flag(ctx.command) {
 		return MinimizerOutput::passthrough(input);
 	}
@@ -172,7 +172,7 @@ fn filter_gradle(ctx: &MinimizerCtx<'_>, input: &str) -> MinimizerOutput {
 		GradleTask::Build => filter_gradle_build(&stripped),
 		GradleTask::Test => filter_gradle_test(&stripped),
 		GradleTask::ConnectedTest => filter_gradle_connected(&stripped),
-		GradleTask::Lint => filter_gradle_lint(&stripped),
+		GradleTask::Lint => filter_gradle_lint(&stripped, exit_code),
 		GradleTask::Dependencies => filter_gradle_dependencies(&stripped),
 		GradleTask::SpringBootRun => filter_spring_boot(&stripped),
 		GradleTask::Other => filter_gradle_other(&stripped),
@@ -1448,9 +1448,9 @@ static GRADLE_LINT_REPORT: LazyLock<Regex> = LazyLock::new(|| {
 /// explanation block, separated from the next violation by a blank line; up to
 /// 3 non-empty context lines are kept (cross-line state) so the LLM sees the
 /// offending code without opening the file.
-fn filter_gradle_lint(input: &str) -> String {
+fn filter_gradle_lint(input: &str, exit_code: i32) -> String {
 	if input.is_empty() {
-		return String::new();
+		return contract::from_exit("gradle lint", exit_code, "");
 	}
 
 	const MAX_CONTEXT_LINES: usize = 3;
@@ -1499,17 +1499,23 @@ fn filter_gradle_lint(input: &str) -> String {
 		}
 	}
 
-	let filtered = primitives::join_lines(&result_lines);
-
-	if filtered.trim().is_empty() {
-		if input.contains("BUILD SUCCESSFUL") {
-			let verdict = contract::clean("gradle lint");
-			return contract::apply(&verdict, "");
-		}
-		return input.trim().to_string();
+	let has_lint_signal = result_lines.iter().any(|line| {
+		GRADLE_LINT_SUMMARY.is_match(line)
+			|| GRADLE_ANDROID_LINT_ERROR.is_match(line)
+			|| GRADLE_ANDROID_LINT_WARNING.is_match(line)
+			|| GRADLE_KTLINT_VIOLATION.is_match(line)
+			|| GRADLE_DETEKT_VIOLATION.is_match(line)
+	});
+	if exit_code == 0 && !has_lint_signal {
+		return contract::apply(&contract::clean("gradle lint"), "");
 	}
-
-	filtered
+	let filtered = primitives::join_lines(&result_lines);
+	let body = if filtered.trim().is_empty() {
+		input.trim().to_string()
+	} else {
+		filtered
+	};
+	contract::from_exit("gradle lint", exit_code, &body)
 }
 
 // ── Dependencies filter (rtk ~436-526) ───────────────────────────────────────
@@ -2817,7 +2823,7 @@ mod tests {
 		             example/MainActivity.kt:45: Error: Format string invalid \
 		             [StringFormatInvalid]\n  String.format(getString(R.string.no_args), arg)\n  \
 		             ^\n0 errors, 4 warnings";
-		let o = filter_gradle_lint(input);
+		let o = filter_gradle_lint(input, 0);
 		assert!(o.contains("StringFormatInvalid"), "violation kept; got:\n{o}");
 		assert!(o.contains("0 errors, 4 warnings"), "summary kept; got:\n{o}");
 		assert!(!o.contains("Wrote HTML report"), "report path stripped; got:\n{o}");
@@ -2830,7 +2836,7 @@ mod tests {
 		             ~~~~~~~~~~~~~\nsrc/main/res/layout/activity_main.xml:15: Warning: Missing \
 		             contentDescription attribute on image [ContentDescription]\n    \
 		             <ImageView\nRan lint on variant debug: 2 warnings";
-		let o = filter_gradle_lint(input);
+		let o = filter_gradle_lint(input, 0);
 		assert!(o.contains("HardcodedText"), "warning kept; got:\n{o}");
 		assert!(o.contains("ContentDescription"), "warning kept; got:\n{o}");
 		assert!(o.contains("2 warnings"), "summary kept; got:\n{o}");
@@ -2843,12 +2849,19 @@ mod tests {
 	fn gradle_lint_no_violations_success() {
 		let input =
 			"> Task :app:lint\nBUILD SUCCESSFUL in 8s\n3 actionable tasks: 1 executed, 2 up-to-date";
-		let o = filter_gradle_lint(input);
-		assert!(!o.is_empty(), "must output on success; got:\n{o}");
+		let o = filter_gradle_lint(input, 0);
+		assert_eq!(o, "[clean] gradle lint\n");
+	}
+
+	#[test]
+	fn gradle_lint_failure_opens_with_error_verdict() {
+		let input = "> Task :app:lint FAILED\nBUILD FAILED in 2s\n";
+		let out = filter_gradle_lint(input, 1);
 		assert!(
-			o.contains("[clean] gradle lint") || o.contains("BUILD SUCCESSFUL"),
-			"success indicated; got:\n{o}"
+			out.starts_with("[errors] gradle lint\n"),
+			"failed lint must carry a verdict: {out:?}"
 		);
+		assert!(out.contains("BUILD FAILED"));
 	}
 
 	// ── Dependencies filter (rtk ~1235-1308) ────────────────────────────────
@@ -2954,7 +2967,7 @@ mod tests {
 	fn gradle_filter_empty_input() {
 		assert_eq!(filter_gradle_test(""), "");
 		assert_eq!(filter_gradle_connected(""), "");
-		assert_eq!(filter_gradle_lint(""), "");
+		assert_eq!(filter_gradle_lint("", 0), "[clean] gradle lint\n");
 		assert_eq!(filter_gradle_dependencies(""), "");
 	}
 

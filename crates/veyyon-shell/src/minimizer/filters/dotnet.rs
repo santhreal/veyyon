@@ -14,7 +14,7 @@ pub fn filter(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> MinimizerO
 		Some("build") => filter_build_like("dotnet build", &cleaned, exit_code),
 		Some("test") => filter_test(&cleaned, exit_code),
 		Some("restore") => filter_build_like("dotnet restore", &cleaned, exit_code),
-		Some("format") => filter_format(&cleaned),
+		Some("format") => contract::from_exit("dotnet format", exit_code, &filter_format(&cleaned)),
 		_ => compact_general(&cleaned),
 	};
 
@@ -31,7 +31,7 @@ fn filter_build_like(label: &str, input: &str, exit_code: i32) -> String {
 	// grouped block would come back flattened. See
 	// `primitives::is_grouped_listing`.
 	if primitives::is_grouped_listing(input) {
-		return input.to_string();
+		return contract::from_exit(label, exit_code, input);
 	}
 	let mut diagnostics = String::new();
 	let mut summaries = String::new();
@@ -91,22 +91,12 @@ fn filter_build_like(label: &str, input: &str, exit_code: i32) -> String {
 	body.push_str(&primitives::group_by_file(&diagnostics, 24));
 	body.push_str(&summaries);
 
-	if body.trim().is_empty() {
-		if exit_code != 0 {
-			let verdict = contract::errors_unknown(label);
-			contract::apply(&verdict, "")
-		} else {
-			compact_general(input)
-		}
+	let body = if body.trim().is_empty() {
+		compact_general(input)
 	} else {
-		let capped = primitives::head_tail_dedup_capped(&body, 140, 80);
-		if exit_code != 0 {
-			let verdict = contract::errors_unknown(label);
-			contract::apply(&verdict, &capped)
-		} else {
-			capped
-		}
-	}
+		primitives::head_tail_dedup_capped(&body, 140, 80)
+	};
+	contract::from_exit(label, exit_code, &body)
 }
 
 fn filter_test(input: &str, exit_code: i32) -> String {
@@ -147,7 +137,8 @@ fn filter_test(input: &str, exit_code: i32) -> String {
 		return filter_build_like("dotnet test", input, exit_code);
 	}
 
-	primitives::head_tail_dedup_capped(&out, 180, 100)
+	let body = primitives::head_tail_dedup_capped(&out, 180, 100);
+	contract::from_exit("dotnet test", exit_code, &body)
 }
 
 fn filter_format(input: &str) -> String {
@@ -462,7 +453,7 @@ mod tests {
 		             warning CS8600: Converting null literal or possible null value to non-nullable \
 		             type\nBuild succeeded.\n    1 Warning(s)\n    0 Error(s)\n";
 		let out = filter(&ctx, input, 0);
-		assert!(!out.text.contains("[clean]"));
+		assert!(out.text.starts_with("[clean] dotnet build\n"));
 		assert!(out.text.contains("1 Warning(s)"));
 	}
 
@@ -479,7 +470,7 @@ mod tests {
 		// consecutive unindented lines must not short-circuit.
 		let input = "Build succeeded.\n0 Warning(s)\n0 Error(s)\n";
 		let out = filter(&ctx, input, 0);
-		assert!(!out.text.contains("[clean]"));
+		assert!(out.text.starts_with("[clean] dotnet build\n"));
 		assert!(out.text.contains("0 Warning(s)"));
 	}
 
@@ -499,8 +490,8 @@ mod tests {
 		let out = filter(&ctx, input, 0);
 		assert_eq!(
 			out.text,
-			"MyApp -> /home/user/MyApp/bin/Debug/net8.0/MyApp.dll\nBuild succeeded.\n3 Warning(s)\n0 \
-			 Error(s)\nTime Elapsed 00:00:01.87\n"
+			"[clean] dotnet build\nMyApp -> /home/user/MyApp/bin/Debug/net8.0/MyApp.dll\nBuild \
+			 succeeded.\n3 Warning(s)\n0 Error(s)\nTime Elapsed 00:00:01.87\n"
 		);
 	}
 

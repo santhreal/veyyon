@@ -8,15 +8,9 @@ pub fn filter(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> MinimizerO
 	let subject = test_subject(ctx);
 	let (verdict, text) = if exit_code == 0 {
 		let dropped = drop_passed_lines(&cleaned);
-		if dropped == input {
-			return MinimizerOutput::passthrough(input);
-		}
 		(contract::clean(subject), dropped)
 	} else {
 		let failures = failures_only(&cleaned);
-		if failures == input {
-			return MinimizerOutput::passthrough(input);
-		}
 		let v = if let Some(n) = parse_failed_count(&failures) {
 			contract::errors(subject, n)
 		} else {
@@ -279,7 +273,26 @@ fn is_playwright_numbered_failure(trimmed: &str) -> bool {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::minimizer::MinimizerConfig;
 
+	fn ctx<'a>(program: &'a str, config: &'a MinimizerConfig) -> MinimizerCtx<'a> {
+		MinimizerCtx { program, subcommand: None, command: program, config }
+	}
+
+	#[test]
+	fn already_compact_runner_output_still_gets_a_verdict() {
+		let config = MinimizerConfig::default();
+		let clean = filter(&ctx("vitest", &config), "Tests  1 passed (1)\n", 0).text;
+		assert_eq!(clean, "[clean] vitest\nTests  1 passed (1)\n");
+
+		let failed =
+			filter(&ctx("jest", &config), "FAIL src/a.test.ts\nError: expected 1 to be 2\n", 1).text;
+		assert!(
+			failed.starts_with("[errors] jest\n"),
+			"failed compact output must still be classified: {failed:?}"
+		);
+		assert!(failed.contains("expected 1 to be 2"));
+	}
 	#[test]
 	fn drops_passed_lines() {
 		assert_eq!(drop_passed_lines("PASS a.test.ts\n✓ ok\nTests 1 passed\n"), "Tests 1 passed\n");

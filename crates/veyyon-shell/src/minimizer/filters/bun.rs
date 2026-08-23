@@ -202,15 +202,18 @@ fn compact_bun_check_output(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32)
 		}
 	}
 
-	if !root_checked && packages.is_empty() && diagnostics.is_empty() && nonzero_exits.is_empty() {
+	if !root_checked
+		&& packages.is_empty()
+		&& diagnostics.is_empty()
+		&& nonzero_exits.is_empty()
+		&& timeout.is_none()
+	{
 		return None;
 	}
 
 	let subject = command_summary(ctx.command);
-	let verdict = if !nonzero_exits.is_empty() || !diagnostics.is_empty() {
+	let verdict = if !nonzero_exits.is_empty() || !diagnostics.is_empty() || timeout.is_some() {
 		contract::errors_unknown(subject)
-	} else if timeout.is_some() {
-		contract::clean_with(subject, "visible checks passed; wrapper timed out")
 	} else if exit_code == 0 {
 		contract::clean(subject)
 	} else {
@@ -531,7 +534,7 @@ mod tests {
 	}
 
 	#[test]
-	fn bun_run_check_timeout_preserves_ambiguous_success() {
+	fn bun_run_check_timeout_is_an_error() {
 		let cfg = MinimizerConfig { enabled: true, ..Default::default() };
 		let ctx = ctx("bun", Some("run"), "bun run check:ts", &cfg);
 		let out = filter(
@@ -542,14 +545,14 @@ mod tests {
 		);
 
 		assert!(
+			out.text.starts_with("[errors] check:ts\n"),
+			"an incomplete check cannot advertise a clean verdict: {:?}",
 			out.text
-				.contains("visible checks passed; wrapper timed out")
 		);
 		assert!(
 			out.text
 				.contains("timeout: Command timed out after 300 seconds")
 		);
-		assert!(!out.text.contains("failed"));
 	}
 
 	#[test]

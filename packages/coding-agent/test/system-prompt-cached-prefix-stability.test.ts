@@ -86,13 +86,12 @@ describe("the cacheable prefix does not move without somebody saying so", () => 
 
 		expect({ sha: sha(blockZero), length: blockZero.length }).toEqual({
 			// Updated 2026-08-23, deliberately: `202098222aec1f01` / 10_413 ->
-			// `d840defc23be9617` / 10_728 (+315).
+			// `eaca56aa5c352dfe` / 10_743 (+330).
 			//
-			// WHAT THE +315 IS. Classified runner output now opens with a `[clean]` /
-			// `[errors]` verdict (`result-contract` in the tool-policy statements, and
-			// the matching bash-tool prose). This fixture grants bash, so the new
-			// contract renders in block 0. Cache invalidation is the one-time prefix
-			// reread this gate exists to surface.
+			// WHAT THE +330 IS. Classified runner output now opens with a `[clean]`,
+			// `[errors]`, or `[errors N]` verdict (`result-contract` in the tool-policy
+			// statements). This fixture grants bash, so the contract renders in block 0.
+			// Cache invalidation is the one-time prefix reread this gate exists to surface.
 			//
 			// Updated 2026-08-16, deliberately: `3a000fddb2eb6620` / 10_515 ->
 			// `202098222aec1f01` / 10_413 (−102).
@@ -189,8 +188,8 @@ describe("the cacheable prefix does not move without somebody saying so", () => 
 			//
 			// The one-time cost this gate exists to surface is real and was accepted:
 			// every conversation re-reads its prefix once after the release.
-			sha: "d840defc23be9617",
-			length: 10_728,
+			sha: "eaca56aa5c352dfe",
+			length: 10_743,
 		});
 	});
 

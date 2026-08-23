@@ -25,6 +25,9 @@ pub fn supports(subcommand: Option<&str>) -> bool {
 
 #[must_use]
 pub fn filter(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> MinimizerOutput {
+	if contract::replay_matches_exit(input, exit_code) {
+		return MinimizerOutput::passthrough(input);
+	}
 	let cleaned = primitives::strip_ansi(input);
 	let subject = cargo_subject(ctx.subcommand);
 	let text = if looks_like_cargo_json(&cleaned)
@@ -285,7 +288,10 @@ fn is_generated_warnings_rollup(trimmed: &str) -> bool {
 }
 
 fn failures_only(input: &str, exit_code: i32, subject: &str) -> String {
-	if exit_code == 0 {
+	let reports_failed_suite = input.lines().map(str::trim).any(|line| {
+		line.starts_with("test result: FAILED.") || line.starts_with("test result: FAILED")
+	});
+	if exit_code == 0 && !reports_failed_suite {
 		return summarize_successful_test_run(input, subject);
 	}
 	let mut out = String::new();
@@ -1399,6 +1405,16 @@ mod tests {
 		let out = filter_cargo("test", "cargo test", input, 101);
 		assert!(out.starts_with("[errors 1] cargo test\n"), "{out:?}");
 		assert!(out.contains("thread 'bad' panicked"));
+	}
+
+	#[test]
+	fn cargo_test_failure_summary_wins_over_a_contradictory_zero_exit() {
+		let input = "running 1 test\ntest bad ... FAILED\ntest result: FAILED. 0 passed; 1 failed\n";
+		let out = filter_cargo("test", "cargo test", input, 0);
+		assert!(
+			out.starts_with("[errors 1] cargo test\n"),
+			"a failed suite must never be rendered as clean: {out:?}"
+		);
 	}
 
 	#[test]
