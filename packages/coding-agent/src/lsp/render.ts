@@ -226,22 +226,19 @@ function renderHover(
 	const icon = theme.styledSymbol("status.info", "accent");
 	const langLabel = lang ? theme.fg("mdCodeBlockBorder", ` ${lang}`) : "";
 
+	// The transcript frame supplies the block's single left edge, so a code row
+	// is indented under the header instead of carrying a border of its own.
+	const CODE_INDENT = "   ";
 	if (expanded) {
-		const h = theme.boxSharp.horizontal;
-		const v = theme.boxSharp.vertical;
-		const top = `${theme.boxSharp.topLeft}${h.repeat(3)}`;
-		const bottom = `${theme.boxSharp.bottomLeft}${h.repeat(3)}`;
 		let output = `${icon}${langLabel}`;
 		if (beforeCode) {
 			for (const line of beforeCode.split("\n")) {
 				output += `\n ${theme.fg("muted", line)}`;
 			}
 		}
-		output += `\n ${theme.fg("mdCodeBlockBorder", top)}`;
 		for (const line of codeLines) {
-			output += `\n ${theme.fg("mdCodeBlockBorder", v)} ${line}`;
+			output += `\n${CODE_INDENT}${line}`;
 		}
-		output += `\n ${theme.fg("mdCodeBlockBorder", bottom)}`;
 		if (afterCode) {
 			output += `\n ${theme.fg("muted", afterCode)}`;
 		}
@@ -256,22 +253,17 @@ function renderHover(
 	let output = `${icon}${langLabel}${expandHint}`;
 	if (beforeCode) {
 		const preview = truncateToWidth(beforeCode, TRUNCATE_LENGTHS.TITLE);
-		output += `\n ${theme.fg("dim", theme.tree.branch)} ${theme.fg("muted", preview)}`;
+		output += `\n${CODE_INDENT}${theme.fg("muted", preview)}`;
 	}
-	const h = theme.boxSharp.horizontal;
-	const v = theme.boxSharp.vertical;
-	const bottom = `${theme.boxSharp.bottomLeft}${h.repeat(3)}`;
-	output += `\n ${theme.fg("mdCodeBlockBorder", v)} ${firstCodeLine}`;
+	output += `\n${CODE_INDENT}${firstCodeLine}`;
 
 	if (codeLines.length > 1) {
-		output += `\n ${theme.fg("mdCodeBlockBorder", v)} ${theme.fg("muted", `… ${formatMoreLines(codeLines.length - 1)}`)}`;
+		output += `\n${CODE_INDENT}${theme.fg("muted", `… ${formatMoreLines(codeLines.length - 1)}`)}`;
 	}
 
 	if (afterCode) {
 		const docPreview = truncateToWidth(afterCode, TRUNCATE_LENGTHS.TITLE);
-		output += `\n ${theme.fg("dim", theme.tree.last)} ${theme.fg("muted", docPreview)}`;
-	} else {
-		output += `\n ${theme.fg("mdCodeBlockBorder", bottom)}`;
+		output += `\n${CODE_INDENT}${theme.fg("muted", docPreview)}`;
 	}
 
 	return output.split("\n");

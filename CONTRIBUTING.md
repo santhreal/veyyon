@@ -42,7 +42,6 @@ Every PR runs the full CI suite before a human looks at it:
 | **Checks** (`checks.yml`) | Biome lint and format, workspace type check, Rust format and clippy, secret scan, changelog entry, global-state leak check on changed suites, repo script gates |
 | **CI** (`ci.yml`) | Native addon builds, Rust + TS test matrix, install-method smoke tests |
 | **Site** (`site.yml`) | Builds the website when a PR touches `website/**`, so a blog post or report with bad frontmatter fails here; deploys on merge to `main` |
-| **Devin review** (`devin-review.yml`) | Requests an AI review automatically, once per PR, when the PR opens or leaves draft |
 | **veybot** | The in-repo review bot posts a deeper contextual review |
 
 Findings arrive as inline review comments on the PR. Read all of them from the
