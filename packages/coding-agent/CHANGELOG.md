@@ -5,6 +5,7 @@
 ### Changed
 
 - Files → LSP is one enterable row whose nested page independently controls language servers, the agent tool, diagnostics after write or edit, format after write, lazy startup, and diagnostics deduplication; `--no-lsp` still disables the full stack.
+- The vibe screens, the image-inspection call and an LSP hover code block draw no border of their own inside a tool block, so a block keeps one left edge; a tree connector remains only where a row belongs to the row above it, in the eval value tree, the grep line gutter, the job tree and the LSP reference tree.
 
 ## [1.2.0] - 2026-08-23
 
