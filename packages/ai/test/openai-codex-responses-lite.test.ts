@@ -258,7 +258,7 @@ describe("openai-codex reasoning.summary", () => {
 
 describe("openai-codex Responses Lite input shaping", () => {
 	it("strips image detail and keeps lite when the input contains images", async () => {
-		const model = createCodexModel("gpt-5.1-codex");
+		const model = createCodexModel("gpt-5.6-terra");
 		const makeInput = (): InputItem[] => [
 			{
 				type: "message",
@@ -358,7 +358,7 @@ describe("openai-codex Responses Lite input shaping", () => {
 	});
 
 	it("forces parallel_tool_calls off and moves tools into input under lite", async () => {
-		const model = createCodexModel("gpt-5.1-codex");
+		const model = createCodexModel("gpt-5.6-terra");
 		const tools = [{ type: "function", name: "shot", parameters: { type: "object" } }];
 
 		const lite = await transformRequestBody({ model: model.id, tools, parallel_tool_calls: true }, model, {
@@ -473,7 +473,7 @@ describe("openai-codex fresh execution input shaping", () => {
 
 describe("openai-codex Responses Lite and client metadata wire format", () => {
 	it("sends canonical Codex metadata and protects reserved fields over SSE", async () => {
-		const model = createCodexModel("gpt-5.1-codex");
+		const model = createCodexModel("gpt-5.6-terra");
 		const context = createCodexTestContext();
 		const clientMetadata = {
 			workspace_kind: "repo",
