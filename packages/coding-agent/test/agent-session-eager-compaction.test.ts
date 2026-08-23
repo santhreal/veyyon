@@ -31,6 +31,29 @@ type ObservedPromptCall = {
 
 type WaitForCall = (predicate: (call: ObservedPromptCall) => boolean) => Promise<ObservedPromptCall>;
 
+/**
+ * A re-injected nudge is prepended immediately before the auto-continuation prompt, so
+ * that contiguous run of `<system-reminder>` blocks is the only place this turn's nudges
+ * can appear. A prelude from the first user turn that outlived the summary cut is still
+ * somewhere in the retained history, and asserting mere presence would read it as a
+ * re-injection — which is how the surviving-todos case went green while the nudge was
+ * correctly suppressed.
+ */
+function reinjectedText(call: ObservedPromptCall, needle: string): string | undefined {
+	const marker = call.messageTexts.findIndex(text => text.includes(CONTINUE_MARKER));
+	if (marker < 0) return undefined;
+	for (let i = marker - 1; i >= 0; i--) {
+		const text = call.messageTexts[i] ?? "";
+		if (!text.startsWith("<system-reminder>")) return undefined;
+		if (text.includes(needle)) return text;
+	}
+	return undefined;
+}
+
+function reinjected(call: ObservedPromptCall, needle: string): boolean {
+	return reinjectedText(call, needle) !== undefined;
+}
+
 type Harness = {
 	session: AgentSession;
 	observedCalls: ObservedPromptCall[];
@@ -282,7 +305,7 @@ describe("AgentSession eager prelude re-injection after compaction", () => {
 
 		const continuation = await runToContinuation(session, waitForCall);
 
-		const reminder = continuation.messageTexts.find(text => text.includes("delegation is enabled"));
+		const reminder = reinjectedText(continuation, "delegation is enabled");
 		expect(reminder).toBeDefined();
 		expect(reminder).toContain("`task`");
 		// Reminder-only: the post-compaction nudge never forces a tool on the resumed turn.
@@ -295,7 +318,7 @@ describe("AgentSession eager prelude re-injection after compaction", () => {
 
 		const continuation = await runToContinuation(session, waitForCall);
 
-		expect(continuation.messageTexts.some(text => text.includes("delegation is enabled"))).toBe(false);
+		expect(reinjected(continuation, "delegation is enabled")).toBe(false);
 	});
 
 	it("does not re-inject the delegation reminder when delegation is preferred", async () => {
@@ -304,7 +327,7 @@ describe("AgentSession eager prelude re-injection after compaction", () => {
 
 		const continuation = await runToContinuation(session, waitForCall);
 
-		expect(continuation.messageTexts.some(text => text.includes("delegation is enabled"))).toBe(false);
+		expect(reinjected(continuation, "delegation is enabled")).toBe(false);
 	});
 
 	it("does not re-inject the eager task reminder for subagent sessions", async () => {
@@ -313,7 +336,7 @@ describe("AgentSession eager prelude re-injection after compaction", () => {
 
 		const continuation = await runToContinuation(session, waitForCall);
 
-		expect(continuation.messageTexts.some(text => text.includes("delegation is enabled"))).toBe(false);
+		expect(reinjected(continuation, "delegation is enabled")).toBe(false);
 	});
 
 	it("does not re-inject the eager task reminder in plan mode", async () => {
@@ -323,7 +346,7 @@ describe("AgentSession eager prelude re-injection after compaction", () => {
 
 		const continuation = await runToContinuation(session, waitForCall);
 
-		expect(continuation.messageTexts.some(text => text.includes("delegation is enabled"))).toBe(false);
+		expect(reinjected(continuation, "delegation is enabled")).toBe(false);
 	});
 
 	it("re-injects the eager todo reminder on the auto-continuation turn (todo.eager preferred)", async () => {
@@ -336,7 +359,7 @@ describe("AgentSession eager prelude re-injection after compaction", () => {
 
 		const continuation = await runToContinuation(session, waitForCall);
 
-		expect(continuation.messageTexts.some(text => text.includes("Consider calling"))).toBe(true);
+		expect(reinjected(continuation, "Consider calling")).toBe(true);
 		expect(continuation.toolChoice).toBeUndefined();
 	});
 
@@ -351,7 +374,7 @@ describe("AgentSession eager prelude re-injection after compaction", () => {
 		const continuation = await runToContinuation(session, waitForCall);
 
 		// `always` keeps the strong forced wording in the reminder text...
-		expect(continuation.messageTexts.some(text => text.includes("You MUST call"))).toBe(true);
+		expect(reinjected(continuation, "You MUST call")).toBe(true);
 		// ...but post-compaction never attaches the forced todo tool_choice.
 		expect(continuation.toolChoice).toBeUndefined();
 	});
@@ -376,8 +399,8 @@ describe("AgentSession eager prelude re-injection after compaction", () => {
 		const continuation = await continuationPromise;
 
 		expect(session.getTodoPhases().length).toBeGreaterThan(0);
-		expect(continuation.messageTexts.some(text => text.includes("Consider calling"))).toBe(false);
-		expect(continuation.messageTexts.some(text => text.includes("You MUST call"))).toBe(false);
+		expect(reinjected(continuation, "Consider calling")).toBe(false);
+		expect(reinjected(continuation, "You MUST call")).toBe(false);
 	});
 
 	it("resets Codex provider history after successful auto-compaction", async () => {

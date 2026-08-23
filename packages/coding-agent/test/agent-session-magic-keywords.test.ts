@@ -55,6 +55,18 @@ async function createMagicKeywordSession(
 	return { session, settings, authStorage };
 }
 
+/**
+ * Custom types of the keyword notices attached to a turn. `session-state` is dropped:
+ * every turn carries that one row (the date and the working directory) whether or not a
+ * keyword matched, so counting it here would state that a notice was attached when none
+ * was.
+ */
+function noticeTypes(messages: Array<{ customType?: string }>): string[] {
+	return messages
+		.map(message => message.customType)
+		.filter((customType): customType is string => Boolean(customType) && customType !== "session-state");
+}
+
 describe("AgentSession magic keyword settings", () => {
 	let root: string;
 	let session: AgentSession | undefined;
@@ -83,7 +95,7 @@ describe("AgentSession magic keyword settings", () => {
 		await session.prompt("please workflowz this and ultrathink through it");
 
 		const promptMessages = promptSpy.mock.calls[0]![0] as unknown as Array<{ customType?: string }>;
-		expect(promptMessages.map(message => message.customType).filter(Boolean)).toEqual([]);
+		expect(noticeTypes(promptMessages)).toEqual([]);
 	});
 
 	it("honors non-ultrathink per-keyword notice toggles", async () => {
@@ -97,7 +109,7 @@ describe("AgentSession magic keyword settings", () => {
 		await session.prompt("please orchestratez and workflowz this");
 
 		const promptMessages = promptSpy.mock.calls[0]![0] as unknown as Array<{ customType?: string }>;
-		expect(promptMessages.map(message => message.customType).filter(Boolean)).toEqual([]);
+		expect(noticeTypes(promptMessages)).toEqual([]);
 	});
 
 	it("still appends enabled non-ultrathink notices", async () => {
@@ -109,10 +121,7 @@ describe("AgentSession magic keyword settings", () => {
 		await session.prompt("please orchestratez and workflowz this");
 
 		const promptMessages = promptSpy.mock.calls[0]![0] as unknown as Array<{ customType?: string }>;
-		expect(promptMessages.map(message => message.customType).filter(Boolean)).toEqual([
-			"orchestrate-notice",
-			"workflow-notice",
-		]);
+		expect(noticeTypes(promptMessages)).toEqual(["orchestrate-notice", "workflow-notice"]);
 	});
 
 	/**
@@ -130,7 +139,7 @@ describe("AgentSession magic keyword settings", () => {
 		await session.prompt("please orchestrate this migration yourself, inline");
 
 		const promptMessages = promptSpy.mock.calls[0]![0] as unknown as Array<{ customType?: string }>;
-		expect(promptMessages.map(message => message.customType).filter(Boolean)).toEqual([]);
+		expect(noticeTypes(promptMessages)).toEqual([]);
 	});
 
 	it("renders workflowz notice for the active task schema", async () => {
@@ -158,7 +167,7 @@ describe("AgentSession magic keyword settings", () => {
 		await session.prompt("please workflowz this");
 
 		const promptMessages = promptSpy.mock.calls[0]![0] as unknown as Array<{ customType?: string }>;
-		expect(promptMessages.map(message => message.customType).filter(Boolean)).toEqual([]);
+		expect(noticeTypes(promptMessages)).toEqual([]);
 	});
 
 	it("does not use a disabled ultrathink keyword to force auto thinking", async () => {
