@@ -130,6 +130,32 @@ for sha in $shas; do
 		echo "          Run: bun scripts/sync-root-changelog.ts, then commit CHANGELOG.md" >&2
 		exit 1
 	fi
+
+	# mdbook names every asset by content hash, so a rebuild writes a NEW
+	# `searchindex-<hash>.js` and deletes the old one. `git commit --only -- docs/handbook/book`
+	# stages the deletion and NOT the new file, which produces a book whose every page
+	# loads an asset the commit does not carry: the published search box fetches a 404,
+	# and the Docs workflow reports it a full run later. Comparing what the pages ask for
+	# against what the commit ships answers it here in milliseconds and needs no mdbook.
+	book="$checkout/docs/handbook/book"
+	if [ -d "$book" ]; then
+		refs="${TMPDIR:-/tmp}/veyyon-prepush-refs-$$"
+		grep -ohE '"[^"]*-[0-9a-f]{8}\.(js|css)"' "$book"/*.html 2>/dev/null | tr -d '"' | sort -u >"$refs" || true
+		absent=""
+		while read -r asset; do
+			[ -z "$asset" ] && continue
+			[ -e "$book/$asset" ] || absent="$absent $asset"
+		done <"$refs"
+		rm -f "$refs"
+		if [ -n "$absent" ]; then
+			echo >&2
+			echo "pre-push: REFUSED. Commit $short has handbook pages that load assets it does" >&2
+			echo "          not carry:$absent" >&2
+			echo "          A rebuild renames a hashed asset, and --only does not stage a new file." >&2
+			echo "          Run: git add -- docs/handbook/book, then commit" >&2
+			exit 1
+		fi
+	fi
 	cleanup
 	checkout=""
 done
