@@ -24,11 +24,22 @@
  * one screen, and whoever owns it owns it for the process.
  */
 
-import { matchesKey, ProcessTerminal, Spacer, setTerminalTextSizing, setTuiTight, TERMINAL, TUI } from "@veyyon/tui";
+import {
+	matchesKey,
+	ProcessTerminal,
+	planPaintGround,
+	Spacer,
+	setTerminalTextSizing,
+	setTuiTight,
+	TERMINAL,
+	TUI,
+} from "@veyyon/tui";
 import { logger } from "@veyyon/utils";
 import { settings } from "../config/settings-instance";
 import { WelcomeComponent } from "./components/welcome";
 import { HomeAnchorLayout } from "./controllers/home-anchor-layout";
+import { applyGroundPaint, setDetectedTerminalGround } from "./theme/ground-tints";
+import { theme } from "./theme/theme";
 import { flushPendingTtyInput } from "./tty-input-flush";
 
 /**
@@ -128,6 +139,15 @@ export function paintFirstFrame(version: string): FirstFrame {
 	// scrollback (ED 3) also takes whatever the operator had on screen before
 	// launch, so it happens only when they asked for it.
 	ui.start({ clearScrollback: settings.get("startup.clearScrollback") });
+	// The theme ground goes on with the card, not 300ms after it. `auto` needs
+	// the terminal's OSC 11 answer, which has not arrived this early, so it
+	// paints nothing here and the mode applies it when the report lands; the
+	// modes that need no report (`always`, `never`) are settled now.
+	setDetectedTerminalGround(ui.terminal.backgroundColor);
+	applyGroundPaint(
+		planPaintGround(settings.get("tui.paintGround"), theme.getGroundHex(), ui.terminal.backgroundColor),
+		ui.terminal,
+	);
 
 	let mounted = true;
 	const frame: FirstFrame = {
