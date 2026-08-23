@@ -41,17 +41,14 @@ import {
 import { theme } from "../theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
 import {
-	applyModalReveal,
-	beginModalExit,
 	computeModalDims,
 	consumeModalChipHover,
 	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
-	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
-	modalRevealEnabled,
 	planModalChrome,
+	pointerMotionEnabled,
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
@@ -115,12 +112,6 @@ export interface ModelHubCallbacks {
 export interface ModelHubOptions {
 	/** Preselect this provider's sidebar entry (e.g. when reopening after /login). */
 	initialProviderId?: string;
-	/**
-	 * Play the open unfold (TOUCH-5). Opt-in at the real show site only: the
-	 * reveal is wall-clock-driven, so a default-on would make every direct
-	 * construction (tests, embedders) render mid-animation frames.
-	 */
-	reveal?: boolean;
 }
 
 interface SidebarEntry {
@@ -264,15 +255,6 @@ export class ModelHubComponent implements Component {
 	#rolesRowStart = 1;
 	/** First roles row drawn: the window offset that keeps the selection on screen. */
 	#rolesScroll = 0;
-	/** One-shot open unfold (TOUCH-5); settles instantly with shimmer disabled. */
-	#reveal = new ModalRevealDriver();
-	/**
-	 * Fade out on the shared clock before the host drops this card. The overlay stack keeps painting
-	 * it and stops routing input to it the moment this is called.
-	 */
-	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
-		return beginModalExit(this.#reveal, requestRender, done);
-	}
 
 	constructor(
 		tui: TUI,
@@ -288,14 +270,6 @@ export class ModelHubComponent implements Component {
 		this.#scopedModels = scopedModels;
 		this.#callbacks = callbacks;
 
-		// Overlays composite from the overlay stack each frame, so a plain
-		// requestRender (not a component-scoped one) is the correct tick here.
-		// The show site decides availability (modalRevealEnabled); a truthy
-		// option here always animates, keeping direct constructions deterministic.
-		if (options.reveal) {
-			this.#reveal.start(() => this.#tui.requestRender());
-		}
-
 		this.#browser = new ModelBrowser(settings, {
 			emptyText: () => this.#emptyStateMessage(),
 		});
@@ -305,7 +279,7 @@ export class ModelHubComponent implements Component {
 
 		// Three pointer surfaces share the card's repaint: the sidebar, the roles pane, and the
 		// model list. The browser paints inside this card's frame and has no repaint of its own.
-		const bandMotion = { requestRender: () => this.#tui.requestRender(), enabled: modalRevealEnabled() };
+		const bandMotion = { requestRender: () => this.#tui.requestRender(), enabled: pointerMotionEnabled() };
 		this.#sidebarFade = new HoverFade(bandMotion);
 		this.#roleFade = new HoverFade(bandMotion);
 		this.#browser.setHoverMotion(bandMotion);
@@ -338,7 +312,6 @@ export class ModelHubComponent implements Component {
 
 	/** Cancel pending provider refresh timers and the spinner. Host calls this on overlay close. */
 	dispose(): void {
-		this.#reveal.stop();
 		this.#sidebarFade?.dispose();
 		this.#sidebarFade = undefined;
 		this.#sidebarHover = null;
@@ -2182,6 +2155,6 @@ export class ModelHubComponent implements Component {
 		this.#frameLeft = shell.geometry?.leftPad ?? 0;
 		this.#contentRowStart = shell.geometry?.bodyRowStart ?? 0;
 		this.#stripRow = this.#contentRowStart + splitRows;
-		return applyModalReveal(shell, width, this.#reveal);
+		return shell.lines;
 	}
 }

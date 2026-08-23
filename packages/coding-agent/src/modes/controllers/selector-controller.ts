@@ -69,7 +69,6 @@ import { CopySelectorComponent } from "../components/copy-selector";
 import { ExtensionDashboard } from "../components/extensions";
 import { HistorySearchComponent } from "../components/history-search";
 import { LoginDialogComponent } from "../components/login-dialog";
-import { modalRevealEnabled } from "../components/modal-shell";
 import { ModelHubComponent } from "../components/model-hub";
 import { ModelPickerComponent } from "../components/model-picker";
 import { ResetUsageSelectorComponent } from "../components/reset-usage-selector";
@@ -348,7 +347,6 @@ export class SelectorController {
 					},
 				},
 				initialItemId,
-				modalRevealEnabled(),
 			);
 			overlayHandle = this.ctx.ui.showOverlay(selector, {
 				anchor: "bottom-center",
@@ -382,7 +380,6 @@ export class SelectorController {
 					done();
 					this.ctx.ui.requestRender();
 				},
-				modalRevealEnabled(),
 			);
 			return { component, focus: component };
 		});
@@ -412,7 +409,6 @@ export class SelectorController {
 					done();
 				},
 				() => done(),
-				modalRevealEnabled(),
 			);
 			return { component, focus: component };
 		});
@@ -439,7 +435,6 @@ export class SelectorController {
 					onSelect(subcommand);
 				},
 				() => done(),
-				modalRevealEnabled(),
 			);
 			return { component, focus: component };
 		});
@@ -450,12 +445,7 @@ export class SelectorController {
 	 * Replaces /status with a unified view of all providers and extensions.
 	 */
 	async showExtensionsDashboard(): Promise<void> {
-		const dashboard = await ExtensionDashboard.create(
-			getProjectDir(),
-			this.ctx.settings,
-			this.ctx.ui.terminal.rows,
-			modalRevealEnabled(),
-		);
+		const dashboard = await ExtensionDashboard.create(getProjectDir(), this.ctx.settings, this.ctx.ui.terminal.rows);
 		// Fullscreen dashboard on the alternate screen (the /settings idiom): the
 		// overlay borrows the terminal's alt buffer and enables mouse tracking for
 		// its lifetime, leaving the transcript untouched underneath.
@@ -496,7 +486,6 @@ export class SelectorController {
 	showAgentsDashboard(observers: SessionObserverRegistry, options?: { requireContent?: boolean }): void {
 		const dashboard = new AgentDashboard({
 			terminalHeight: this.ctx.ui.terminal.rows,
-			reveal: modalRevealEnabled(),
 			// The comms stream expands a folded message with the same key the
 			// transcript expands a truncated tool result with.
 			expandKeys: this.ctx.keybindings.getKeys("app.tools.expand"),
@@ -901,7 +890,6 @@ export class SelectorController {
 			{
 				currentContextTokens,
 				currentSelector: current ? `${current.provider}/${current.id}` : undefined,
-				reveal: modalRevealEnabled(),
 			},
 		);
 		// Fullscreen host; ModelPicker paints a floating ModalShell medium card.
@@ -1016,7 +1004,6 @@ export class SelectorController {
 			},
 			{
 				initialProviderId: hubOptions.initialProviderId,
-				reveal: modalRevealEnabled(),
 			},
 		);
 		overlayHandle = this.ctx.ui.showOverlay(hub, {
@@ -1071,7 +1058,6 @@ export class SelectorController {
 					done();
 					this.ctx.ui.requestRender();
 				},
-				modalRevealEnabled(),
 			);
 			return { component: selector, focus: selector };
 		});
@@ -1096,19 +1082,15 @@ export class SelectorController {
 			selector?.dispose();
 			this.ctx.ui.requestRender();
 		};
-		selector = new CopySelectorComponent(
-			targets,
-			{
-				onPick: target => {
-					done();
-					if (target.content === undefined) return;
-					void copyToClipboard(target.content);
-					this.ctx.showStatus(target.copyMessage ?? "Copied to clipboard");
-				},
-				onCancel: done,
+		selector = new CopySelectorComponent(targets, {
+			onPick: target => {
+				done();
+				if (target.content === undefined) return;
+				void copyToClipboard(target.content);
+				this.ctx.showStatus(target.copyMessage ?? "Copied to clipboard");
 			},
-			modalRevealEnabled(),
-		);
+			onCancel: done,
+		});
 
 		overlayHandle = this.ctx.ui.showOverlay(selector, {
 			anchor: "top-left",
@@ -1243,7 +1225,6 @@ export class SelectorController {
 					this.ctx.ui.requestRender();
 				},
 				settings.get("treeFilterMode"),
-				modalRevealEnabled(),
 			);
 			return { component: selector, focus: selector };
 		});
@@ -1307,7 +1288,6 @@ export class SelectorController {
 				loadAllSessions: () => SessionManager.listAll(),
 				getTerminalRows: () => this.ctx.ui.terminal.rows,
 				fillHeight: true,
-				reveal: modalRevealEnabled(),
 			},
 		);
 		selector.setOnRequestRender(() => this.ctx.ui.requestRender());
@@ -1448,7 +1428,7 @@ export class SelectorController {
 				restoreEditor();
 				if (message) this.ctx.showStatus(message);
 			},
-			{ getTerminalRows: () => this.ctx.ui.terminal.rows, reveal: modalRevealEnabled() },
+			{ getTerminalRows: () => this.ctx.ui.terminal.rows },
 		);
 		overlayHandle = this.ctx.ui.showOverlay(dialog, {
 			anchor: "top-left",
@@ -1793,7 +1773,6 @@ export class SelectorController {
 			{
 				initialProviderId: providerId,
 				loadBalancing: this.ctx.session.settings.get("accounts.loadBalancing") === true,
-				reveal: modalRevealEnabled(),
 				requestRender: () => {
 					const component = manager;
 					if (component) this.ctx.ui.requestComponentRender(component);
@@ -1923,7 +1902,6 @@ export class SelectorController {
 					done();
 					this.ctx.ui.requestRender();
 				},
-				modalRevealEnabled(),
 			);
 			return { component: selector, focus: selector };
 		});

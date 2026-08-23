@@ -1,5 +1,5 @@
 import { centerLine, padLineToWidth, TERMINAL } from "@veyyon/tui";
-import { APP_NAME, clamp01, clampLow } from "@veyyon/utils";
+import { APP_NAME, clampLow } from "@veyyon/utils";
 import { sunMark } from "../../components/sun";
 import { silverEscape } from "../../components/welcome";
 import { theme } from "../../theme/theme";
@@ -13,41 +13,30 @@ export const SETUP_TICK_MS = 33;
 const START_HINT = "enter start setup  ·  esc skip setup";
 
 /**
- * Setup splash: a miniature sunrise. The sun blooms open and rises over its
- * own horizon while the ember churns, then the wordmark reveals beneath in
- * quiet silver — the terminal's own font, letterspaced. The same `sunMark`
- * recipe the home screen rests on: the sun IS the logo.
+ * Setup splash: the resting brand signature rendered immediately on first paint.
+ * The full-bloomed sun mark rests over the silver letterspaced wordmark, so
+ * the initial frame is the complete finished frame with zero entrance delay.
  */
-export function renderSetupSplash(width: number, height: number, elapsedMs: number): string[] {
+export function renderSetupSplash(width: number, height: number, _elapsedMs = 0): string[] {
 	const w = Math.max(1, width);
 	const h = Math.max(1, height);
-	const progress = clamp01(elapsedMs / SETUP_SPLASH_MS);
-	const eased = 1 - (1 - progress) ** 3;
 
 	// Sun sized to the field but capped so it stays a tasteful disc, not a wall.
 	// Rows ≈ cols / 2.1 keeps the disc round under terminal cell aspect (sunMark
 	// applies the same correction internally).
 	const sunCols = clampLow(Math.floor(w * 0.45), 9, 32);
 	const sunRows = clampLow(Math.round(sunCols / 2.1), 5, 16);
-	// Rise completes a beat before the bloom, so the disc lifts over the horizon
-	// first and the ember catches up — the sunrise, not a fade-in.
-	const rise = clamp01(eased * 1.25);
 	const sun = sunMark(sunCols, sunRows, {
 		trueColor: TERMINAL.trueColor,
-		bloom: eased,
-		rise,
-		time: 0.25 + eased * 0.7,
+		time: 0.6,
 	});
 
-	// Wordmark reveals only once the disc is most of the way open, so the eye lands
-	// on the sun first and the name second — the micro-interaction the harness lives on.
-	const nameReveal = clamp01((eased - 0.45) / 0.55);
-	const content: string[] = [...sun];
-	if (nameReveal > 0) {
-		content.push("");
-		content.push(`${silverEscape(0.55)}${theme.bold(APP_NAME.split("").join(" "))}\x1b[39m`);
-		if (nameReveal > 0.5) content.push(theme.fg("dim", "coding agent"));
-	}
+	const content: string[] = [
+		...sun,
+		"",
+		`${silverEscape(0.55)}${theme.bold(APP_NAME.split("").join(" "))}\x1b[39m`,
+		theme.fg("dim", "coding agent"),
+	];
 
 	const start = Math.max(0, Math.floor((h - content.length) / 2));
 	const lines: string[] = [];

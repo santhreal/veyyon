@@ -23,7 +23,7 @@ function filledCells(lines: string[]): number {
 		.filter(c => c !== " ").length;
 }
 
-describe("setup splash — the sun-bloom launch signature", () => {
+describe("setup splash — the resting launch signature", () => {
 	it("returns exactly `height` lines, each exactly `width` visible cells, at any progress", () => {
 		for (const t of [0, SETUP_SPLASH_MS / 2, SETUP_SPLASH_MS]) {
 			const out = renderSetupSplash(W, H, t);
@@ -32,21 +32,20 @@ describe("setup splash — the sun-bloom launch signature", () => {
 		}
 	});
 
-	it("blooms the sun open — lit cells grow monotonically and strictly from start to end", () => {
-		const counts = [0, 0.1, 0.25, 0.5, 1].map(f => filledCells(renderSetupSplash(W, H, SETUP_SPLASH_MS * f)));
-		// Monotonic non-decreasing: the disc only ever opens, never contracts mid-bloom.
-		for (let i = 1; i < counts.length; i++) expect(counts[i]).toBeGreaterThanOrEqual(counts[i - 1]);
-		// And a clear net bloom: the closed point lights far fewer cells than the settled disc.
-		expect(counts[0]).toBeLessThan(counts[counts.length - 1]);
+	it("first frame (t = 0) renders the full resting disc immediately with no entrance lag", () => {
+		const initial = filledCells(renderSetupSplash(W, H, 0));
+		const late = filledCells(renderSetupSplash(W, H, SETUP_SPLASH_MS));
+		// The first frame must be the finished frame: full resting disc on frame 0.
+		expect(initial).toBeGreaterThan(0);
+		expect(initial).toBe(late);
 	});
 
-	it("reveals the letterspaced lowercase wordmark only after the disc has mostly bloomed", () => {
-		const early = strip(renderSetupSplash(W, H, 0).join("\n"));
-		const late = strip(renderSetupSplash(W, H, SETUP_SPLASH_MS).join("\n"));
+	it("first frame (t = 0) includes the letterspaced lowercase wordmark and tagline on frame zero", () => {
+		const firstFrame = strip(renderSetupSplash(W, H, 0).join("\n"));
 		const wordmark = APP_NAME.split("").join(" ");
 		expect(APP_NAME).toBe("veyyon"); // brand invariant: lowercase wordmark
-		expect(early).not.toContain(wordmark);
-		expect(late).toContain(wordmark);
+		expect(firstFrame).toContain(wordmark);
+		expect(firstFrame).toContain("coding agent");
 	});
 
 	/**

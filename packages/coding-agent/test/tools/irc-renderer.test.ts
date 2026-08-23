@@ -11,7 +11,9 @@ async function theme() {
 }
 
 const lines = (component: { render: (w: number) => readonly string[] }, width = 200) =>
-	sanitizeText(component.render(width).join("\n")).split("\n");
+	sanitizeText(component.render(width).join("\n"))
+		.split("\n")
+		.map(l => l.trimEnd());
 
 const msg = (overrides: Partial<IrcMessage>): IrcMessage => ({
 	id: "7181122334455667789",
@@ -176,19 +178,19 @@ describe("ircToolRenderer inbox", () => {
 				{ op: "inbox", peek: true },
 			),
 		);
-		// The whole tree, in order. Three `some(line => line.includes(...))` checks
-		// stood here before, and between them they could not see which sender each
-		// body belonged to, which message came first, that the last message gets
-		// the closing `└─` connector, or that the reply marker sits on RateLimiter
-		// and not on AuthLoader. An inbox that rendered both bodies under the wrong
-		// senders satisfied all three.
+		// The whole block, in order. Every row hangs from the house rail, including
+		// the header; items carry no tree connectors and a message body is nested
+		// detail indented by two spaces, with no quote glyph of its own.
 		expect(rendered).toEqual([
-			"IRC inbox 2 messages · peek",
-			"├─ AuthLoader just now",
-			"│  ▏ bus landed.",
-			"└─ RateLimiter just now ⟦reply⟧",
-			"   ▏ receipts carry outcome.",
+			"▏ IRC inbox 2 messages · peek",
+			"▏  AuthLoader just now",
+			"▏    bus landed.",
+			"▏  RateLimiter just now ⟦reply⟧",
+			"▏    receipts carry outcome.",
 		]);
+		for (const line of rendered) {
+			expect(line).not.toMatch(/[├└│]/);
+		}
 	});
 
 	it("marks only the message that is a reply", async () => {
@@ -211,7 +213,10 @@ describe("ircToolRenderer inbox", () => {
 			),
 		);
 
-		expect(rendered).toEqual(["IRC inbox 1 message · peek", "└─ AuthLoader just now", "   ▏ bus landed."]);
+		expect(rendered).toEqual(["▏ IRC inbox 1 message · peek", "▏  AuthLoader just now", "▏    bus landed."]);
+		for (const line of rendered) {
+			expect(line).not.toMatch(/[├└│]/);
+		}
 	});
 });
 
@@ -295,6 +300,51 @@ describe("ircToolRenderer list", () => {
 		expect(row).toBeDefined();
 		expect(row).toContain("Auth-flow security reviewer");
 		expect(row).toContain("auditing the token refresh path");
+		for (const line of rendered) {
+			expect(line).not.toMatch(/[├└│]/);
+		}
+	});
+
+	it("collapses peer roster with an overflow line when not expanded", async () => {
+		const uiTheme = await theme();
+		const peers = Array.from({ length: 12 }, (_, i) => ({
+			id: `Agent_${i + 1}`,
+			displayName: "task",
+			kind: "sub",
+			status: "idle" as const,
+			parentId: "Main",
+			unread: 0,
+			lastActivity: Date.now() - 10_000,
+		}));
+		const rendered = lines(
+			ircToolRenderer.renderResult(
+				{
+					content: [{ type: "text", text: "" }],
+					details: { op: "list", from: "Main", peers } satisfies IrcDetails,
+				},
+				{ expanded: false, isPartial: false },
+				uiTheme,
+				{ op: "list" },
+			),
+		);
+		expect(rendered.some(l => l.includes("… 4 more peers"))).toBe(true);
+		for (const line of rendered) {
+			expect(line).not.toMatch(/[├└│]/);
+		}
+
+		const expanded = lines(
+			ircToolRenderer.renderResult(
+				{
+					content: [{ type: "text", text: "" }],
+					details: { op: "list", from: "Main", peers } satisfies IrcDetails,
+				},
+				{ expanded: true, isPartial: false },
+				uiTheme,
+				{ op: "list" },
+			),
+		);
+		expect(expanded.some(l => l.includes("more peers"))).toBe(false);
+		expect(expanded.some(l => l.includes("Agent_12"))).toBe(true);
 	});
 });
 

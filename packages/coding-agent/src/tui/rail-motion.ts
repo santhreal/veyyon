@@ -43,8 +43,8 @@ import type { Theme } from "../modes/theme/theme";
 
 /** Milliseconds between idle steps. One repaint of one block per step. */
 export const RAIL_IDLE_STEP_MS = 60;
-/** Rows the idle highlight travels per step, so the head moves at ~8 rows/s. */
-export const RAIL_IDLE_ROWS_PER_STEP = 0.5;
+/** Rows the idle highlight travels per step, so the head moves at ~4 rows/s. */
+export const RAIL_IDLE_ROWS_PER_STEP = 0.25;
 /** Rows of afterglow above the head. */
 export const RAIL_IDLE_TAIL_ROWS = 3.5;
 /** Rows of lead-in below the head, which is the highlight's sharp edge. */
@@ -67,9 +67,12 @@ export const RAIL_SETTLE_FRAME_MS = 45;
 /** Rows of glow the settling head trails behind it. */
 export const RAIL_SETTLE_TAIL_ROWS = 3;
 
+/** Milliseconds the idle head takes to travel one rail row. */
+export const RAIL_IDLE_ROW_MS = RAIL_IDLE_STEP_MS / RAIL_IDLE_ROWS_PER_STEP;
+
 export interface RailIdleMotion {
 	kind: "idle";
-	/** Rows travelled since the block went live. Fractional. */
+	/** Rows travelled, fractional. */
 	head: number;
 }
 
@@ -81,9 +84,53 @@ export interface RailSettleMotion {
 
 export type RailMotion = RailIdleMotion | RailSettleMotion;
 
-/** Head position for an idle step counter. */
+/** Head position for an idle step counter, for a frame-indexed proof or a demo. */
 export function railIdleHeadAt(step: number): number {
 	return step * RAIL_IDLE_ROWS_PER_STEP;
+}
+
+/**
+ * The idle head every live rail in the product is on, from one monotonic clock.
+ *
+ * Counting repaint ticks instead made the head's SPEED the punctuality of a
+ * `setInterval` callback: a tool printing output holds the loop, several ticks
+ * land late or coalesce, and the highlight stalls and then jumps — which is the
+ * hitch an operator sees while the terminal is busiest. Elapsed time cannot
+ * stall, so a dropped repaint costs a frame of smoothness and never a frame of
+ * travel.
+ *
+ * One absolute clock and not a per-block epoch, so two blocks on screen carry
+ * the same head at the same instant: the sweep reads as one light crossing the
+ * screen rather than as several animations that happened to start at different
+ * times. It is the argument that makes this testable — a test names the
+ * milliseconds and never the wall clock.
+ */
+export function railIdleHeadAtMs(nowMs: number): number {
+	return nowMs / RAIL_IDLE_ROW_MS;
+}
+
+/** The monotonic clock the rails run on. */
+export function railClockMs(): number {
+	return performance.now();
+}
+
+/**
+ * The head that parks on the newest row of a block whose rows are still being
+ * written — an edit or a write whose diff grows as the arguments stream.
+ *
+ * The clock is the wrong driver there. A block that is GROWING already carries
+ * the operator's attention at its bottom edge, and a light crossing it on a
+ * timer of its own arrives somewhere else, so two things move at once and
+ * neither one is the content. Parked on the last row, the light advances exactly
+ * when a row does, which is the progress the operator is watching for.
+ *
+ * Taken modulo the cycle because {@link railIdleIntensity} wraps its head into
+ * one: a block taller than {@link RAIL_IDLE_CYCLE_MAX_ROWS} would otherwise
+ * light a row the head was never on.
+ */
+export function railStreamHeadAtRow(railRows: number): number {
+	if (railRows <= 0) return 0;
+	return (railRows - 1) % railIdleCycleRows(railRows);
 }
 
 /**
@@ -236,12 +283,13 @@ export function findRailCell(line: string, rail: string): RailCell | undefined {
 	return undefined;
 }
 
-/** Whether any row in `lines` carries a rail this module can repaint. */
-export function hasRailRow(lines: readonly string[], rail: string): boolean {
+/** How many rows in `lines` carry a rail this module can repaint. */
+export function railRowCount(lines: readonly string[], rail: string): number {
+	let count = 0;
 	for (const line of lines) {
-		if (findRailCell(line, rail)) return true;
+		if (findRailCell(line, rail)) count++;
 	}
-	return false;
+	return count;
 }
 
 /** The four colours one frame of rail motion mixes between. */

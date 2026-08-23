@@ -243,13 +243,13 @@ describe("InteractiveMode todo HUD anchor", () => {
 
 	/**
 	 * The board is a railed block now, not a connector tree, and the redesign moved
-	 * two things this arm used to pin: the header lost its stage count (a bare
-	 * `Todos`, because a count on the header and a tally on every row said the same
-	 * thing twice), and a stage ahead of the worked one is no longer collapsed —
-	 * `SUBSEQUENT_PHASE_CAP` stages of tasks are drawn, so the board says what is
-	 * coming and not only what is open right now.
+	 * two things this arm used to pin: the header states which phase the plan is on
+	 * instead of a task count (a count on the header and a tally on every row said
+	 * the same thing twice), and the stages already finished are not drawn at all —
+	 * a collapsed board is the worked stage with its tasks, then one muted row per
+	 * stage ahead of it, so the plan's shape is on screen without its history.
 	 */
-	it("renders the railed Todos board: bare header, a tally per stage, the worked stage and the ones ahead of it", () => {
+	it("renders the railed Todos board: the phase on the header, a tally per stage, the worked stage and the ones ahead of it", () => {
 		mode.setTodos([
 			{
 				name: "Foundation",
@@ -277,22 +277,28 @@ describe("InteractiveMode todo HUD anchor", () => {
 		const drawn = lines.filter(line => line.trim().length > 0);
 		expect(drawn.length).toBeGreaterThan(0);
 		expect(drawn.every(line => line.trimStart().startsWith(rail))).toBe(true);
-		// The header carries no count. The tally belongs to the rows that have one.
+		// The header states the phase and carries no task count. A tally belongs to
+		// the stage rows, which each have one.
 		const root = lines.find(line => line.includes("Todos"));
-		expect(root?.replace(rail, "").trim()).toBe("Todos");
+		expect(root?.replace(rail, "").trim()).toBe("Todos · phase 1/2");
 		// Each stage carries its own progress, numbered while there is more than one.
 		expect(lines.some(line => line.includes("I. Foundation") && line.includes("1/3"))).toBe(true);
 		expect(lines.some(line => line.includes("II. Verification") && line.includes("0/1"))).toBe(true);
 		// One square vocabulary down the glyph column: in-progress breathes, the
 		// finished task stays on the board rather than being sliced away, pending is
 		// the shadowed mark. Phase rows keep the hollow checkbox; task rows do not.
-		const glyphOf = (needle: string): string =>
-			(lines.find(line => line.includes(needle)) ?? "").replace(rail, "").trim().split(" ")[0] ?? "";
-		expect([...theme.spinnerFrames, theme.checkbox.progress]).toContain(glyphOf("second task"));
+		// The mark is the cell immediately left of the task text, so this reads it
+		// there rather than assuming what precedes it.
+		const glyphOf = (needle: string): string => {
+			const row = lines.find(line => line.includes(needle)) ?? "";
+			return row.slice(0, row.indexOf(needle)).trimEnd().slice(-1);
+		};
+		expect([theme.symbol("status.done"), theme.symbol("status.shadowed")]).toContain(glyphOf("second task"));
 		expect(glyphOf("third task")).toBe(theme.symbol("status.shadowed"));
-		expect(glyphOf("first task")).toBe(theme.symbol("status.done"));
-		// The stage ahead is inside the cap, so its work is listed too.
-		expect(lines.some(line => line.includes("run tests"))).toBe(true);
+		expect(glyphOf("first task")).toBe(theme.checkbox.checked);
+		// The stage ahead is one row and a tally. Its tasks belong to the expanded
+		// board: listing them here is what made the block a wall of pending work.
+		expect(lines.some(line => line.includes("run tests"))).toBe(false);
 		// Nothing came off, so there is no overflow row to say so.
 		expect(lines.some(line => line.includes("more"))).toBe(false);
 	});
@@ -326,12 +332,15 @@ describe("InteractiveMode todo HUD anchor", () => {
 	});
 
 	/**
-	 * The block shares one row budget with the lane block below it, so a long plan
-	 * is windowed. The count of what came off used to live on the header; it lives
-	 * in the overflow row and nowhere else, which is the only row on screen that
-	 * can say how much is hidden without repeating a tally.
+	 * A collapsed board draws the stage being worked and `SUBSEQUENT_PHASE_CAP`
+	 * stages after it, in plan order, and no more: the block is a region above the
+	 * composer that does not scroll, so a plan of any length has to end somewhere.
+	 * How many ROWS come off when the window still exceeds the shared budget, and
+	 * what the overflow row then says, is pinned in
+	 * `a-worked-todo-board-moves-and-a-waiting-one-does-not.test.ts`, which can fix
+	 * the budget; here the terminal's height is whatever the host reports.
 	 */
-	it("windows a long plan to the anchored budget and names the hidden rows in the overflow row", () => {
+	it("windows a long plan to the stage being worked and the stages just ahead of it", () => {
 		const stage = (name: string): TodoPhase => ({ name, tasks: [{ content: `${name} task`, status: "pending" }] });
 		mode.setTodos([
 			stage("Discovery"),
@@ -349,18 +358,21 @@ describe("InteractiveMode todo HUD anchor", () => {
 		// Which stages are in the window, and in which order. Sampling two of them
 		// left everything between unstated: a window that dropped one, or listed them
 		// out of order, or repeated one, satisfied the sample. Nothing is finished
-		// here, so the window is the head of the plan and the tail is what came off.
+		// here, so the window opens on the first stage and the tail is what came off.
 		const stageHeadings = lines.flatMap(
 			line => line.match(/\b(?:[IVX]+\. )?(?:Discovery|Two|Three|Four|Five|Six|Seven)\b(?! task)/) ?? [],
 		);
-		expect(stageHeadings).toEqual(["I. Discovery", "II. Two", "III. Three"]);
-		// Six rows came off — four stage rows and two task rows — and the overflow
-		// row is where that number lives.
-		const overflow = lines.find(line => line.includes("more"));
-		expect(overflow?.replace(theme.symbol("block.rail"), "").trim()).toBe("… 6 more");
-		// Still no count on the header, even with a plan this long.
+		expect(stageHeadings).toEqual(["I. Discovery", "II. Two", "III. Three", "IV. Four", "V. Five"]);
+		// The stages past the window are not on the board at all.
+		for (const dropped of ["Six", "Seven"]) {
+			expect(
+				lines.some(line => line.includes(dropped)),
+				dropped,
+			).toBe(false);
+		}
+		// The header states which stage is being worked, out of how many the plan has.
 		const root = lines.find(line => line.includes("Todos"));
-		expect(root?.replace(theme.symbol("block.rail"), "").trim()).toBe("Todos");
+		expect(root?.replace(theme.symbol("block.rail"), "").trim()).toBe("Todos · phase 1/7");
 	});
 
 	it("anchors the todo HUD as a native-scrollback live region while populated", () => {

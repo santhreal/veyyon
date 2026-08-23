@@ -87,18 +87,15 @@ import {
 import { getTabBarTheme } from "../shared";
 import { formatSelectorSummary, renderEffortStep } from "./effort-picker";
 import {
-	applyModalReveal,
 	BREADCRUMB_HOVER_ID,
-	beginModalExit,
 	computeModalDims,
 	consumeModalChipHover,
 	hitTestModalChrome,
 	MODAL_SIZING_SETTINGS,
-	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
-	modalRevealEnabled,
 	planModalChrome,
+	pointerMotionEnabled,
 	renderModalShell,
 	SETTINGS_BROWSE_SHORTCUTS,
 	SETTINGS_FILTER_SHORTCUTS,
@@ -921,7 +918,7 @@ class ModelRolesSubmenu extends MouseRoutedSubmenu {
 				},
 			},
 		);
-		panel.setHoverMotion({ requestRender: () => this.requestRender?.(), enabled: modalRevealEnabled() });
+		panel.setHoverMotion({ requestRender: () => this.requestRender?.(), enabled: pointerMotionEnabled() });
 		this.addChild(panel);
 	}
 
@@ -2290,7 +2287,7 @@ class DefaultEffortSubmenu extends MouseRoutedSubmenu {
 				},
 			},
 		);
-		panel.setHoverMotion({ requestRender: () => this.requestRender?.(), enabled: modalRevealEnabled() });
+		panel.setHoverMotion({ requestRender: () => this.requestRender?.(), enabled: pointerMotionEnabled() });
 		this.addChild(panel);
 	}
 
@@ -2406,7 +2403,7 @@ class DefaultModelSubmenu extends MouseRoutedSubmenu {
 				onCancel: () => this.onCancel(),
 			},
 		);
-		panel.setHoverMotion({ requestRender: () => this.requestRender?.(), enabled: modalRevealEnabled() });
+		panel.setHoverMotion({ requestRender: () => this.requestRender?.(), enabled: pointerMotionEnabled() });
 		this.addChild(panel);
 	}
 
@@ -2565,7 +2562,7 @@ export class ModelChainSubmenu extends MouseRoutedSubmenu {
 				},
 			},
 		);
-		panel.setHoverMotion({ requestRender: () => this.requestRender?.(), enabled: modalRevealEnabled() });
+		panel.setHoverMotion({ requestRender: () => this.requestRender?.(), enabled: pointerMotionEnabled() });
 		this.addChild(panel);
 	}
 
@@ -2971,14 +2968,6 @@ export class SettingsSelectorComponent implements Component {
 	 * return to the settings rows — matching the visual left/right layout.
 	 */
 	#sidebarFocused = false;
-	#reveal = new ModalRevealDriver();
-	/**
-	 * Fade out on the shared clock before the host drops this card. The overlay stack keeps painting
-	 * it and stops routing input to it the moment this is called.
-	 */
-	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
-		return beginModalExit(this.#reveal, requestRender, done);
-	}
 
 	/** @deprecated Prefer ModalShell sizing; kept for tests that assert width. */
 	static readonly MODAL_MAX_WIDTH = MODAL_SIZING_SETTINGS.maxWidth;
@@ -2986,14 +2975,8 @@ export class SettingsSelectorComponent implements Component {
 	constructor(
 		private readonly context: SettingsRuntimeContext,
 		private readonly callbacks: SettingsCallbacks,
-		/** Setting path to pre-select on the default (appearance) tab, e.g. `/statusline` jumping to `statusLine.preset`. */
 		initialItemId?: string,
-		/** Play the open unfold (TOUCH-5). Show site decides via modalRevealEnabled(). */
-		reveal?: boolean,
 	) {
-		if (reveal) {
-			this.#reveal.start(() => this.context.requestRender?.());
-		}
 		// No label prefix (the frame title already says Settings) and no
 		// "(tab to cycle)" hint (folded into the footer hint line).
 		this.#tabBar = new TabBar("", getSettingsTabs(), getTabBarTheme());
@@ -3003,7 +2986,7 @@ export class SettingsSelectorComponent implements Component {
 		// and switches in the other reads as a rendering fault.
 		this.#tabBar.setHoverMotion({
 			requestRender: () => this.context.requestRender?.(),
-			enabled: modalRevealEnabled(),
+			enabled: pointerMotionEnabled(),
 		});
 		this.#tabBar.onTabChange = () => {
 			const tabId = this.#tabBar.getActiveTab().id as SettingTab | "plugins";
@@ -3027,7 +3010,6 @@ export class SettingsSelectorComponent implements Component {
 	 * frames.
 	 */
 	dispose(): void {
-		this.#reveal.stop();
 		this.#tabBar.disposeHoverMotion();
 		this.#currentList?.disposeHoverMotion();
 		this.#searchList?.disposeHoverMotion();
@@ -3290,7 +3272,7 @@ export class SettingsSelectorComponent implements Component {
 		this.#contentRowStart = this.#tabRowStart;
 		this.#contentRowCount = shell.geometry?.bodyRowCount ?? 0;
 		this.#sidebarCols = sidebarWidth;
-		return applyModalReveal(shell, width, this.#reveal);
+		return shell.lines;
 	}
 
 	/**
@@ -3460,7 +3442,7 @@ export class SettingsSelectorComponent implements Component {
 		);
 		list.setHoverMotion({
 			requestRender: () => this.context.requestRender?.(),
-			enabled: modalRevealEnabled(),
+			enabled: pointerMotionEnabled(),
 		});
 		// Keep the footer tab highlight on the tab owning the selected result.
 		list.onSelectionChange = item => this.#syncTabBarToSelection(item);
@@ -4472,7 +4454,7 @@ export class SettingsSelectorComponent implements Component {
 		);
 		this.#currentList.setHoverMotion({
 			requestRender: () => this.context.requestRender?.(),
-			enabled: modalRevealEnabled(),
+			enabled: pointerMotionEnabled(),
 		});
 	}
 
