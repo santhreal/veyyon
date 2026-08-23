@@ -42,7 +42,6 @@
 		"toolPendingBg": "toolBgPending",
 		"toolSuccessBg": "toolBgSuccess",
 		"toolErrorBg": "toolBgError",
-		"toolText": "printBlack",
 		"toolTitle": "printBlack",
 		"toolOutput": "fadedInk",
 		"mdHeading": "amberDark",

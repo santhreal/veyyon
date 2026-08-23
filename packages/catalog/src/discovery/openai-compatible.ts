@@ -1,8 +1,7 @@
 import { errorMessage } from "@veyyon/utils/type-guards";
 import { normalizeBaseUrl } from "@veyyon/utils/url";
-import { type } from "arktype";
 import type { Api, FetchImpl, ModelSpec, Provider } from "../types";
-import { discoveryFetch } from "../utils";
+import { discoveryFetch, toArray, toFields } from "../utils";
 import type { DiscoveryHooks } from "./failure";
 
 const MODELS_PATH = "/models";
@@ -57,23 +56,38 @@ export interface OpenAICompatibleModelsEnvelope {
 	[key: string]: unknown;
 }
 
-const openAICompatibleModelRecordSchema = type({
-	id: "string >= 1",
-	"name?": "string | null",
-	"object?": "unknown",
-	"owned_by?": "unknown",
-});
+/**
+ * One `/models` record, as far as this reader insists on knowing it.
+ *
+ * An entry keeps every field the service sent — a custom mapper reads pricing and limits off
+ * the same object — so the read narrows the two fields the reader itself depends on and hands
+ * the node back unchanged. Field readers instead of a schema library: the three schemas here
+ * checked `typeof`, and reaching the library cost 362ms of module evaluation on a launch path
+ * that touches this file through the provider descriptor table.
+ */
+interface ParsedOpenAICompatibleModelRecord extends OpenAICompatibleModelRecord {
+	id: string;
+	name?: string | null | undefined;
+}
 
-const openAICompatibleModelsEnvelopeSchema = type({
-	"data?": "unknown",
-	"models?": "unknown",
-	"result?": "unknown",
-	"items?": "unknown",
-});
-
-const openAICompatibleModelsPayloadSchema = type("unknown[]").or(openAICompatibleModelsEnvelopeSchema);
-
-type ParsedOpenAICompatibleModelRecord = typeof openAICompatibleModelRecordSchema.infer;
+/**
+ * A record, or `undefined` when it has no usable id or a name of an unreadable type.
+ *
+ * `id` is what a request is addressed to, so an entry without a non-empty one is dropped. A
+ * `name` that is neither a string nor null means this is not the shape it looks like, and a
+ * catalog row named after a number would reach the model picker.
+ */
+function readModelRecord(value: unknown): ParsedOpenAICompatibleModelRecord | undefined {
+	const fields = toFields(value);
+	if (!fields || typeof fields.id !== "string" || fields.id.length === 0) {
+		return undefined;
+	}
+	const name = fields.name;
+	if (name !== undefined && name !== null && typeof name !== "string") {
+		return undefined;
+	}
+	return fields as ParsedOpenAICompatibleModelRecord;
+}
 /**
  * Context passed to custom OpenAI-compatible model mappers.
  */
@@ -249,17 +263,18 @@ function extractModelEntries(payload: unknown): ParsedOpenAICompatibleModelRecor
 }
 
 function extractModelEntriesFromNode(node: unknown): ParsedOpenAICompatibleModelRecord[] | null {
-	const parsedPayload = openAICompatibleModelsPayloadSchema(node);
-	if (parsedPayload instanceof type.errors) {
+	const fields = toFields(node);
+	if (!fields) {
 		return null;
 	}
-	if (Array.isArray(parsedPayload)) {
-		const parsedEntries = parsedPayload
-			.map(entry => openAICompatibleModelRecordSchema(entry))
-			.flatMap(entry => (entry instanceof type.errors ? [] : [entry]));
-		return parsedEntries;
+	const list = toArray(node);
+	if (list) {
+		return list.flatMap(entry => {
+			const record = readModelRecord(entry);
+			return record ? [record] : [];
+		});
 	}
-	for (const candidate of [parsedPayload.data, parsedPayload.models, parsedPayload.result, parsedPayload.items]) {
+	for (const candidate of [fields.data, fields.models, fields.result, fields.items]) {
 		if (candidate === undefined) {
 			continue;
 		}

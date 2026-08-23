@@ -40,7 +40,6 @@
 		"toolPendingBg": "nord1",
 		"toolSuccessBg": "nord0",
 		"toolErrorBg": "#3b2f31",
-		"toolText": "",
 		"toolTitle": "nord8",
 		"toolOutput": "nord3",
 		"mdHeading": "nord8",
