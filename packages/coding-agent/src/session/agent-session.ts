@@ -515,7 +515,11 @@ import { ToolChoiceQueue } from "./tool-choice-queue";
 import { parseTurnBudgetDirective } from "./turn-budget";
 import { planTurnPersistence, sameMessageContent, sessionMessagePersistenceKey } from "./turn-persistence";
 import { classifyUnexpectedStop, isUnexpectedStopCandidate } from "./unexpected-stop-classifier";
-import { VERIFICATION_EVIDENCE_REMINDER_TYPE, VerificationEvidenceLedger } from "./verification-evidence-ledger";
+import {
+	CODE_REVIEW_REMINDER_TYPE,
+	VERIFICATION_EVIDENCE_REMINDER_TYPE,
+	VerificationEvidenceLedger,
+} from "./verification-evidence-ledger";
 import { YieldQueue } from "./yield-queue";
 
 const SESSION_STOP_CONTINUATION_CAP = 8;
@@ -6322,6 +6326,10 @@ export class AgentSession {
 			// as it reads it, so deferring from inside would spend the reminder it
 			// meant to keep.
 			if (mayContinueAtSettle("verification-evidence", settleState) && this.#enforceVerificationBeforeFinalize()) {
+				await emitAgentEndNotification();
+				return;
+			}
+			if (mayContinueAtSettle("code-review", settleState) && this.#enforceCodeReviewBeforeFinalize()) {
 				await emitAgentEndNotification();
 				return;
 			}
@@ -14822,6 +14830,32 @@ export class AgentSession {
 		return true;
 	}
 
+	#enforceCodeReviewBeforeFinalize(): boolean {
+		if (this.#isSubagent) return false;
+		const isCritiqueEnabled =
+			this.settings.get("edit.critiqueCodeMutations") || this.settings.get("session.critiqueCodeMutations");
+		if (!isCritiqueEnabled) return false;
+		const reminder = this.#verificationEvidence.takeCodeReviewReminder();
+		if (!reminder) return false;
+		const reminderMessage: CustomMessage = {
+			role: "custom",
+			customType: CODE_REVIEW_REMINDER_TYPE,
+			content: reminder,
+			display: false,
+			attribution: "agent",
+			timestamp: Date.now(),
+		};
+		this.agent.appendMessage(reminderMessage);
+		this.sessionManager.appendCustomMessageEntry(
+			reminderMessage.customType,
+			reminderMessage.content,
+			reminderMessage.display,
+			undefined,
+			reminderMessage.attribution,
+		);
+		this.#scheduleAgentContinue({ generation: this.#promptGeneration });
+		return true;
+	}
 	#extractRewindReport(messages: AgentMessage[]): string | undefined {
 		if (!this.#checkpointState) return undefined;
 		if (this.#pendingRewindReport) return this.#pendingRewindReport;
