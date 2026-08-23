@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-bef9a160.js";
+            window.path_to_searchindex_js = "../searchindex-a95782c3.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -520,7 +520,8 @@ editor configs Veyyon still reads are named by file in <code>/mcp list</code>.</
 <h2 id="secrets-and-variable-resolution"><a class="header" href="#secrets-and-variable-resolution">Secrets and variable resolution</a></h2>
 <p>This is the part that usually trips people up.</p>
 <h3 id="discovery-time--expansion"><a class="header" href="#discovery-time--expansion">Discovery-time <code>${...}</code> expansion</a></h3>
-<p>Veyyon expands <code>${VAR}</code> and <code>${VAR:-default}</code> placeholders while discovering MCP configs from Veyyon-native files and standalone fallback files. Expansion applies recursively to string values in <code>command</code>, <code>args</code>, <code>env</code>, <code>cwd</code>, <code>url</code>, <code>headers</code>, <code>auth</code>, and <code>oauth</code>; unresolved placeholders remain literal strings.</p>
+<p>Veyyon expands <code>${VAR}</code> and <code>${VAR:-default}</code> placeholders while discovering MCP configs from Veyyon-native files and standalone fallback files. Expansion applies recursively to string values in <code>command</code>, <code>args</code>, <code>env</code>, <code>cwd</code>, <code>url</code>, <code>headers</code>, <code>auth</code>, and <code>oauth</code>.</p>
+<p>An unset variable with no default leaves the placeholder text in the value. In <code>command</code>, <code>args</code>, <code>cwd</code>, <code>url</code> and <code>envPassthrough</code> that text would become a program, an argument, a directory or a hostname, so the server is not started: the connection is refused with the field and the variable named, and nothing is spawned or dialled. <code>env</code> and <code>headers</code> are resolved again before connect and refuse the same way (below). In <code>auth</code> and <code>oauth</code> the placeholder is sent to the authorization server, which rejects the exchange.</p>
 <p>Example:</p>
 <pre><code class="language-json">{
   "mcpServers": {
