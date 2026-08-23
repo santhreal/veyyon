@@ -53,6 +53,7 @@ import {
 } from "./loading";
 import { wrapToolWithMetaNotice } from "./output-meta";
 import { RerootDetector, wrapToolWithRerootHint } from "./reroot-hint";
+import { SearchTool } from "./search";
 import type { TodoPhase } from "./todo";
 
 // NOTE: tool implementation modules are intentionally NOT imported eagerly
@@ -63,8 +64,7 @@ import type { TodoPhase } from "./todo";
 // Type-only re-exports below are erased at runtime and cost nothing.
 export type { LspStartupServerInfo } from "../lsp";
 export type { BashToolDetails, BashToolInput } from "./bash";
-export type { GlobToolDetails, GlobToolInput } from "./glob";
-export type { GrepToolDetails, GrepToolInput } from "./grep";
+export type { SearchToolDetails, SearchToolInput } from "./search";
 // Tool-loading rules now live in `./loading`. Re-exported here because `@veyyon/coding-agent/tools`
 // is the documented import path for them and the SDK plus several suites use it.
 export {
@@ -473,15 +473,13 @@ export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = {
 	bash: async s => new (await import("./bash")).BashTool(s),
 	launch: async s => new (await import("./launch")).LaunchTool(s),
 	edit: async s => new (await import("../edit")).EditTool(s),
-	ast_grep: async s => new (await import("./ast-grep")).AstGrepTool(s),
+	search: s => new SearchTool(s),
 	ast_edit: async s => new (await import("./ast-edit")).AstEditTool(s),
 	ask: async s => (await import("./ask")).AskTool.createIf(s),
 	debug: async s => (await import("./debug")).DebugTool.createIf(s),
 	eval: async s => (await import("./eval")).EvalTool.create(s),
 	ssh: async s => (await import("./ssh")).loadSshTool(s),
 	github: async s => (await import("./gh")).GithubTool.createIf(s),
-	glob: async s => new (await import("./glob")).GlobTool(s, { rootPathAlias: true }),
-	grep: async s => new (await import("./grep")).GrepTool(s),
 	lsp: async s => (await import("../lsp")).LspTool.createIf(s),
 	inspect_image: async s => new (await import("./inspect-image")).InspectImageTool(s),
 	browser: async s => new (await import("./browser")).BrowserTool(s),
@@ -544,7 +542,6 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 		toolNames && toolNames.length > 0
 			? augmentRequestedToolNames(normalizeToolNames(toolNames), {
 					goalEnabled,
-					astGrepEnabled: session.settings.get("astGrep.enabled"),
 					astEditEnabled: session.settings.get("astEdit.enabled"),
 					memoryBackend,
 					autolearnEnabled: session.settings.get("autolearn.enabled"),
@@ -633,10 +630,8 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 		debugEnabled: session.settings.get("debug.enabled"),
 		requireYieldTool: includeYield,
 		todoEnabled: session.settings.get("todo.enabled"),
-		globEnabled: session.settings.get("glob.enabled"),
-		grepEnabled: session.settings.get("grep.enabled"),
+		searchEnabled: session.settings.get("search.enabled"),
 		githubEnabled: session.settings.get("github.enabled"),
-		astGrepEnabled: session.settings.get("astGrep.enabled"),
 		astEditEnabled: session.settings.get("astEdit.enabled"),
 		inspectImageEnabled: session.settings.get("inspect_image.enabled"),
 		webSearchEnabled: session.settings.get("web_search.enabled"),

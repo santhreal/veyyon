@@ -1,0 +1,26 @@
+Searches workspace paths, text, and code structure through one type-first interface.
+
+<schema>
+Always pass `type` before `input`:
+- `{ type: "files", input: "src/**/*.ts" }`
+- `{ type: "text", input: "TODO|FIXME", path: "src" }`
+- `{ type: "structure", input: "console.log($$$)", path: "src/**/*.ts" }`
+</schema>
+
+<types>
+- `files` matches file names, paths, extensions, directories, and repository layout. `input` is a file, directory, glob, or semicolon-delimited set. A leading glob such as `*.json` is recursive; prefix a directory to limit depth. `hidden`, `gitignore`, and `limit` apply only here.
+- `text` matches literals, comments, documentation, configuration, and regular expressions where syntax role is irrelevant. `input` supports Rust regular expressions and PCRE2 syntax; literal `\n` or `\\n` crosses lines. `path`, `case`, `gitignore`, and `skip` apply only here.
+- `structure` matches definitions, calls, methods, types, fields, imports, operators, and syntax relationships. `input` is one valid syntax node in the target language. `$NAME` captures one node, `$_` matches one anonymously, and `$$$ARGS` captures zero or more nodes. Metavariables are uppercase and occupy whole nodes. `path` and `skip` apply only here.
+</types>
+
+<instruction>
+- Use `structure` whenever the question depends on what code means syntactically. A text-match chain is not proof of a definition, call, method, type, field, import, or operator.
+- Scope `structure` to one language. Declaration forms are distinct: functions, methods, and arrow functions require their own valid patterns. C++ expression-statement calls require the trailing semicolon.
+- A structure parse error means the input or language scope is wrong. Correct it rather than falling back to `text`.
+- `path` accepts a file, directory, glob, internal URL, line selector for `text`, or semicolon-delimited set. Omitted `path` searches the workspace root.
+- Use `skip` to paginate `text` and `structure`; use `limit` to bound `files`.
+</instruction>
+
+<output>
+{{#if HASH_LINES}}Text and structure matches use snapshot-tag headers and numbered lines such as `[src/login.ts#A1B2]`; copy the header for anchored edits.{{else}}{{#if LINE_NUMBERS}}Text and structure matches use line-number-prefixed output.{{/if}}{{/if}}
+</output>

@@ -13,14 +13,11 @@ import { taskToolRenderer } from "../task/renderer";
 import { webSearchToolRenderer } from "../web/search/render";
 import { askToolRenderer } from "./ask";
 import { astEditToolRenderer } from "./ast-edit";
-import { astGrepToolRenderer } from "./ast-grep";
 import { bashToolRenderer } from "./bash";
 import { browserToolRenderer } from "./browser/render";
 import { debugToolRenderer } from "./debug";
 import { evalToolRenderer } from "./eval-render";
 import { githubToolRenderer } from "./gh-renderer";
-import { globToolRenderer } from "./glob";
-import { grepToolRenderer } from "./grep";
 import { inspectImageToolRenderer } from "./inspect-image-renderer";
 import { ircToolRenderer } from "./irc-render";
 import { jobToolRenderer } from "./job";
@@ -28,6 +25,7 @@ import { launchToolRenderer } from "./launch";
 import { recallToolRenderer, reflectToolRenderer, retainToolRenderer } from "./memory-render";
 import { readToolRenderer } from "./read";
 import { resolveToolRenderer } from "./resolve";
+import { searchToolRenderer } from "./search-renderer";
 import { searchToolBm25Renderer } from "./search-tool-bm25";
 import { setCwdToolRenderer } from "./set-cwd";
 import { sshToolRenderer } from "./ssh";
@@ -92,7 +90,6 @@ export type ToolRenderer = {
 
 export const toolRenderers: Record<string, ToolRenderer> = {
 	ask: askToolRenderer as ToolRenderer,
-	ast_grep: astGrepToolRenderer as ToolRenderer,
 	ast_edit: astEditToolRenderer as ToolRenderer,
 	bash: bashToolRenderer as ToolRenderer,
 	browser: browserToolRenderer as ToolRenderer,
@@ -100,8 +97,7 @@ export const toolRenderers: Record<string, ToolRenderer> = {
 	eval: evalToolRenderer as ToolRenderer,
 	edit: editToolRenderer as ToolRenderer,
 	apply_patch: editToolRenderer as ToolRenderer,
-	glob: globToolRenderer as ToolRenderer,
-	grep: grepToolRenderer as ToolRenderer,
+	search: searchToolRenderer as ToolRenderer,
 	lsp: lspToolRenderer as ToolRenderer,
 	inspect_image: inspectImageToolRenderer as ToolRenderer,
 	irc: ircToolRenderer as ToolRenderer,

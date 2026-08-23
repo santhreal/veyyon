@@ -1,21 +1,17 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
-import type { ToolExample } from "@veyyon/ai";
+import type { AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import * as natives from "@veyyon/natives";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
-import { formatGroupedPaths, isCancellation, isEnoent, prompt, untilAborted } from "@veyyon/utils";
-import { type } from "arktype";
+import { formatGroupedPaths, isCancellation, isEnoent, untilAborted } from "@veyyon/utils";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { InternalUrlRouter } from "../internal-urls";
 import type { Theme } from "../modes/theme/theme";
-import { toolsPrompts } from "../prompts/tools/rows";
 import { type TruncationResult, truncateHead } from "../session/streaming-output";
 import { Ellipsis, fileHyperlink, renderFileList, renderStatusLine, renderTreeList, truncateToWidth } from "../tui";
 import { isTimeoutError, scopedTimeoutSignal } from "../utils/fetch-timeout";
 import type { ToolSession } from ".";
-import { searchPathFilesystemTargets } from "./cwd-boundary";
 import { applyListLimit } from "./list-limit";
 import { formatFullOutputReference, type OutputMeta } from "./output-meta";
 import {
@@ -40,22 +36,18 @@ import {
 import { ToolError, throwIfAborted, toolAbort } from "./tool-errors";
 import { toolResult } from "./tool-result";
 
-const findSchema = type({
-	"path?": type("string").describe(
-		'glob, file, or directory to search — a single path or a semicolon-delimited list ("src/**/*.ts; test/**/*.ts"). Omitted -> searches the workspace root (".")',
-	),
-	"hidden?": type("boolean").describe("include hidden files"),
-	"gitignore?": type("boolean").describe("respect gitignore"),
-	"limit?": type("number").describe("max results"),
-});
-
-export type GlobToolInput = typeof findSchema.infer;
+export interface FileSearchInput {
+	path?: string;
+	hidden?: boolean;
+	gitignore?: boolean;
+	limit?: number;
+}
 
 const DEFAULT_LIMIT = 200;
 const MAX_LIMIT = 200;
 const DEFAULT_GLOB_TIMEOUT_MS = 5000;
 
-export interface GlobToolDetails {
+export interface FileSearchDetails {
 	truncation?: TruncationResult;
 	resultLimitReached?: number;
 	meta?: OutputMeta;
@@ -78,7 +70,7 @@ export interface GlobToolDetails {
  * Pluggable operations for the find tool.
  * Override these to delegate file search to remote systems (e.g., SSH).
  */
-export interface GlobOperations {
+export interface FileSearchOperations {
 	/** Check if path exists */
 	exists: (absolutePath: string) => Promise<boolean> | boolean;
 	/** Optional stat for distinguishing files vs directories. */
@@ -89,75 +81,39 @@ export interface GlobOperations {
 	glob: (pattern: string, cwd: string, options: { ignore: string[]; limit: number }) => Promise<string[]> | string[];
 }
 
-export interface GlobToolOptions {
-	/** Custom operations for find. Default: local filesystem + rg */
-	operations?: GlobOperations;
+export interface FileSearchOptions {
+	/** Custom operations for non-local filesystems. */
+	operations?: FileSearchOperations;
 	/** Remap slash-only paths to the session cwd before root-search validation. */
 	rootPathAlias?: boolean;
 }
 
-interface GlobTarget {
+interface FileSearchTarget {
 	searchPath: string;
 	globPattern: string;
 	hasGlob: boolean;
 }
 
-export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
-	readonly name = "glob";
-	readonly approval = "read" as const;
-	readonly loadMode = "essential";
-	readonly label = "Glob";
-	readonly description: string;
-	readonly parameters = findSchema;
+export async function executeFileSearch(
+	session: ToolSession,
+	params: FileSearchInput,
+	signal?: AbortSignal,
+	onUpdate?: AgentToolUpdateCallback<FileSearchDetails>,
+	options?: FileSearchOptions,
+): Promise<AgentToolResult<FileSearchDetails>> {
+	const customOps = options?.operations;
+	const rootPathAlias = options?.rootPathAlias === true;
+	const { path: pathInput, limit, hidden, gitignore } = params;
 
-	readonly examples: readonly ToolExample<typeof findSchema.infer>[] = [
-		{
-			caption: "Multiple targets — semicolon-delimited list",
-			call: { path: "src/**/*.ts; test/**/*.ts" },
-		},
-		{
-			caption: "Glob gitignored files like .env",
-			call: { path: ".env*", gitignore: false },
-		},
-	];
-	readonly strict = true;
-
-	// A glob reads directory listings/contents under each pattern's base dir, so an
-	// out-of-cwd base must prompt in non-yolo modes like a point read does. Reduce
-	// the `path` (semicolon-delimited patterns) to each fixed search base. See
-	// cwd-boundary.ts.
-	readonly filesystemTargets = (args: unknown): string[] => searchPathFilesystemTargets(args);
-
-	readonly #customOps?: GlobOperations;
-	readonly #rootPathAlias: boolean;
-
-	constructor(
-		private readonly session: ToolSession,
-		options?: GlobToolOptions,
-	) {
-		this.#customOps = options?.operations;
-		this.#rootPathAlias = options?.rootPathAlias === true;
-		this.description = prompt.render(toolsPrompts["tools/glob"].text);
-	}
-
-	async execute(
-		_toolCallId: string,
-		params: typeof findSchema.infer,
-		signal?: AbortSignal,
-		onUpdate?: AgentToolUpdateCallback<GlobToolDetails>,
-		_context?: AgentToolContext,
-	): Promise<AgentToolResult<GlobToolDetails>> {
-		const { path: pathInput, limit, hidden, gitignore } = params;
-
-		return untilAborted(signal, async () => {
-			const formatScopePath = (targetPath: string): string => formatPathRelativeToCwd(targetPath, this.session.cwd);
+	return untilAborted(signal, async () => {
+			const formatScopePath = (targetPath: string): string => formatPathRelativeToCwd(targetPath, session.cwd);
 			const scopedPaths = toPathList(pathInput);
 			const effectivePaths = scopedPaths.length > 0 ? scopedPaths : ["."];
-			const rawPatternInputs = this.#customOps
+			const rawPatternInputs = customOps
 				? effectivePaths
-				: await expandDelimitedPathEntries(effectivePaths, this.session.cwd, { splitter: parseFindPattern });
+				: await expandDelimitedPathEntries(effectivePaths, session.cwd, { splitter: parseFindPattern });
 			const rawPatterns = rawPatternInputs.map(input => normalizePathLikeInput(input).replace(/\\/g, "/"));
-			const aliasResolvedPatterns = this.#rootPathAlias
+			const aliasResolvedPatterns = rootPathAlias
 				? rawPatterns.map(pattern => (/^\/+$/.test(pattern) ? "." : pattern))
 				: rawPatterns;
 			if (aliasResolvedPatterns.some(pattern => /^\/+$/.test(pattern))) {
@@ -179,11 +135,11 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 					throw new ToolError(`Glob patterns are not supported for internal URLs: ${rawPattern}`);
 				}
 				const resource = await internalRouter.resolve(rawPattern, {
-					cwd: this.session.cwd,
-					settings: this.session.settings,
+					cwd: session.cwd,
+					settings: session.settings,
 					signal,
-					localProtocolOptions: this.session.localProtocolOptions,
-					skills: this.session.skills,
+					localProtocolOptions: session.localProtocolOptions,
+					skills: session.skills,
 					pathOnly: true,
 				});
 				if (!resource.sourcePath) {
@@ -201,8 +157,8 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 			// asked about that one path, so silent empty results would be misleading.
 			let missingPaths: string[] = [];
 			let effectivePatterns = normalizedPatterns;
-			if (normalizedPatterns.length > 1 && !this.#customOps) {
-				const partition = await partitionExistingPaths(normalizedPatterns, this.session.cwd, parseFindPattern);
+			if (normalizedPatterns.length > 1 && !customOps) {
+				const partition = await partitionExistingPaths(normalizedPatterns, session.cwd, parseFindPattern);
 				if (partition.valid.length === 0) {
 					throw new ToolError(`Path not found: ${partition.missing.join(", ")}`);
 				}
@@ -210,11 +166,11 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 				missingPaths = partition.missing;
 			}
 
-			const multiPattern = await resolveExplicitFindPatterns(effectivePatterns, this.session.cwd);
+			const multiPattern = await resolveExplicitFindPatterns(effectivePatterns, session.cwd);
 			const isSingle = !multiPattern;
-			const targets: GlobTarget[] = multiPattern
+		const targets: FileSearchTarget[] = multiPattern
 				? multiPattern.targets.map(target => ({
-						searchPath: resolveToCwd(target.basePath, this.session.cwd),
+						searchPath: resolveToCwd(target.basePath, session.cwd),
 						globPattern: target.globPattern,
 						hasGlob: target.hasGlob,
 					}))
@@ -222,7 +178,7 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 						(() => {
 							const parsed = parseFindPattern(effectivePatterns[0] ?? ".");
 							return {
-								searchPath: resolveToCwd(parsed.basePath, this.session.cwd),
+								searchPath: resolveToCwd(parsed.basePath, session.cwd),
 								globPattern: parsed.globPattern,
 								hasGlob: parsed.hasGlob,
 							};
@@ -249,7 +205,7 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 			const formatMatchPath = (matchPath: string, base: string, fileType?: natives.FileType): string => {
 				const hadTrailingSlash = matchPath.endsWith("/") || matchPath.endsWith("\\");
 				const absolutePath = path.isAbsolute(matchPath) ? matchPath : path.resolve(base, matchPath);
-				return formatPathRelativeToCwd(absolutePath, this.session.cwd, {
+				return formatPathRelativeToCwd(absolutePath, session.cwd, {
 					trailingSlash: fileType === natives.FileType.Dir || hadTrailingSlash,
 				});
 			};
@@ -260,16 +216,16 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 			const buildResult = (
 				files: string[],
 				opts?: { notice?: string; forceTruncated?: boolean; timedOut?: boolean },
-			): AgentToolResult<GlobToolDetails> => {
+		): AgentToolResult<FileSearchDetails> => {
 				const notice = opts?.notice;
 				const forceTruncated = opts?.forceTruncated ?? false;
 				if (files.length === 0) {
-					const details: GlobToolDetails = {
+				const details: FileSearchDetails = {
 						scopePath,
 						fileCount: 0,
 						files: [],
 						truncated: forceTruncated,
-						cwd: this.session.cwd,
+						cwd: session.cwd,
 						missingPaths: missingPaths.length > 0 ? missingPaths : undefined,
 					};
 					// A timed-out empty result is an incomplete scan, not a verified
@@ -293,14 +249,14 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 				const rawOutput = trailingNotes.length > 0 ? `${baseOutput}\n\n${trailingNotes.join("\n")}` : baseOutput;
 				const truncation = truncateHead(rawOutput, { maxLines: Number.MAX_SAFE_INTEGER });
 
-				const details: GlobToolDetails = {
+			const details: FileSearchDetails = {
 					scopePath,
 					fileCount: limited.length,
 					files: limited,
 					truncated: Boolean(forceTruncated || limitMeta.resultLimit || truncation.truncated),
 					resultLimitReached: limitMeta.resultLimit?.reached,
 					truncation: truncation.truncated ? truncation : undefined,
-					cwd: this.session.cwd,
+					cwd: session.cwd,
 					missingPaths: missingPaths.length > 0 ? missingPaths : undefined,
 				};
 
@@ -318,19 +274,19 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 			// Collapsing multiple paths to a shared base would force the walker to
 			// traverse and stat every unrelated sibling under that ancestor; per-path
 			// roots keep each scan bounded to exactly what the user asked for.
-			if (this.#customOps?.glob) {
-				const customOps = this.#customOps;
-				const perTarget = await Promise.all(
-					targets.map(async target => {
-						if (!(await customOps.exists(target.searchPath))) {
-							if (isSingle) throw new ToolError(`Path not found: ${scopePath}`);
-							return [] as string[];
-						}
-						if (!target.hasGlob && customOps.stat) {
-							const stat = await customOps.stat(target.searchPath);
-							if (stat.isFile()) return [formatScopePath(target.searchPath)];
-						}
-						const results = await customOps.glob(target.globPattern, target.searchPath, {
+		if (customOps?.glob) {
+			const operations = customOps;
+			const perTarget = await Promise.all(
+				targets.map(async target => {
+					if (!(await operations.exists(target.searchPath))) {
+						if (isSingle) throw new ToolError(`Path not found: ${scopePath}`);
+						return [] as string[];
+					}
+					if (!target.hasGlob && operations.stat) {
+						const stat = await operations.stat(target.searchPath);
+						if (stat.isFile()) return [formatScopePath(target.searchPath)];
+					}
+					const results = await operations.glob(target.globPattern, target.searchPath, {
 							ignore: ["**/node_modules/**", "**/.git/**"],
 							limit: effectiveLimit,
 						});
@@ -358,7 +314,7 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 				const now = Date.now();
 				if (now - lastUpdate < updateIntervalMs) return;
 				lastUpdate = now;
-				const details: GlobToolDetails = {
+			const details: FileSearchDetails = {
 					scopePath,
 					fileCount: onUpdateMatches.length,
 					files: onUpdateMatches.slice(),
@@ -383,7 +339,7 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 				};
 
 			let timedOut = false;
-			const runTarget = async (target: GlobTarget): Promise<Array<{ path: string; mtime: number }>> => {
+		const runTarget = async (target: FileSearchTarget): Promise<Array<{ path: string; mtime: number }>> => {
 				throwIfAborted(signal);
 				let stat: fs.Stats;
 				try {
@@ -499,42 +455,38 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 			return buildResult(merged.map(entry => entry.path));
 		});
 	}
-}
 
 // =============================================================================
 // TUI Renderer
 // =============================================================================
 
-interface GlobRenderArgs {
-	path?: string | string[];
-	/** Legacy pre-`path` argument name; kept so historical transcripts still render a scope. */
-	paths?: string | string[];
+export interface FileSearchRenderArgs {
+	input?: string;
 	limit?: number;
 }
 
-function formatGlobRenderPaths(args: GlobRenderArgs | undefined): string | undefined {
-	const list = toPathList(args?.path ?? args?.paths);
-	return list.length > 0 ? list.join(", ") : undefined;
+function formatFileSearchRenderInput(args: FileSearchRenderArgs | undefined): string | undefined {
+	return args?.input;
 }
 
 const COLLAPSED_LIST_LIMIT = PREVIEW_LIMITS.COLLAPSED_ITEMS;
 
-function globStatusIcon(uiTheme: Theme): string {
+function fileSearchStatusIcon(uiTheme: Theme): string {
 	return uiTheme.fg("toolTitle", uiTheme.symbol("icon.search"));
 }
 
-export const globToolRenderer = {
+export const fileSearchRenderer = {
 	inline: true,
-	renderCall(args: GlobRenderArgs, _options: RenderResultOptions, uiTheme: Theme): Component {
+	renderCall(args: FileSearchRenderArgs, _options: RenderResultOptions, uiTheme: Theme): Component {
 		const meta: string[] = [];
 		if (args.limit !== undefined) meta.push(`limit:${args.limit}`);
 
 		const text = renderStatusLine(
 			{
 				icon: "pending",
-				title: "Glob",
+				title: "Search files",
 				titleColor: "toolTitle",
-				description: formatGlobRenderPaths(args) || "*",
+				description: formatFileSearchRenderInput(args) || "*",
 				meta,
 			},
 			uiTheme,
@@ -543,10 +495,10 @@ export const globToolRenderer = {
 	},
 
 	renderResult(
-		result: { content: Array<{ type: string; text?: string }>; details?: GlobToolDetails; isError?: boolean },
+		result: { content: Array<{ type: string; text?: string }>; details?: FileSearchDetails; isError?: boolean },
 		options: RenderResultOptions,
 		uiTheme: Theme,
-		args?: GlobRenderArgs,
+		args?: FileSearchRenderArgs,
 	): Component {
 		const details = result.details;
 
@@ -571,10 +523,10 @@ export const globToolRenderer = {
 			const lines = textContent.split("\n").filter(l => l.trim());
 			const header = renderStatusLine(
 				{
-					iconOverride: globStatusIcon(uiTheme),
-					title: "Glob",
+					iconOverride: fileSearchStatusIcon(uiTheme),
+					title: "Search files",
 					titleColor: "toolTitle",
-					description: formatGlobRenderPaths(args),
+					description: formatFileSearchRenderInput(args),
 					meta: [formatCount("file", lines.length)],
 				},
 				uiTheme,
@@ -615,9 +567,9 @@ export const globToolRenderer = {
 			const header = renderStatusLine(
 				{
 					icon: "warning",
-					title: "Glob",
+					title: "Search files",
 					titleColor: "toolTitle",
-					description: formatGlobRenderPaths(args),
+					description: formatFileSearchRenderInput(args),
 					meta: truncated ? ["0 files", uiTheme.fg("warning", "timed out")] : ["0 files"],
 				},
 				uiTheme,
@@ -631,10 +583,10 @@ export const globToolRenderer = {
 		if (truncated) meta.push(uiTheme.fg("warning", "truncated"));
 		const header = renderStatusLine(
 			{
-				...(truncated ? { icon: "warning" as const } : { iconOverride: globStatusIcon(uiTheme) }),
-				title: "Glob",
+				...(truncated ? { icon: "warning" as const } : { iconOverride: fileSearchStatusIcon(uiTheme) }),
+				title: "Search files",
 				titleColor: "toolTitle",
-				description: formatGlobRenderPaths(args),
+				description: formatFileSearchRenderInput(args),
 				meta,
 			},
 			uiTheme,

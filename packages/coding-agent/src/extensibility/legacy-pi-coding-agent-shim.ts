@@ -45,8 +45,7 @@ import {
 } from "../session/streaming-output";
 import type { Tool, ToolSession } from "../tools";
 import { BashTool } from "../tools/bash";
-import { GlobTool } from "../tools/glob";
-import { GrepTool } from "../tools/grep";
+import { SearchTool } from "../tools/search";
 import { ReadTool } from "../tools/read";
 import { formatBytes } from "../tools/render-utils";
 import { WriteTool } from "../tools/write";
@@ -64,7 +63,7 @@ const LEGACY_CODING_TOOL_NAMES = ["read", "bash", "edit", "write"] as const;
 const LEGACY_READ_ONLY_TOOL_NAMES = ["read", "grep", "find", "ls"] as const;
 
 type LegacyCodingToolName = (typeof LEGACY_CODING_TOOL_NAMES)[number];
-type LegacyRegistryToolName = LegacyCodingToolName | "grep" | "glob";
+type LegacyRegistryToolName = LegacyCodingToolName | "search";
 type LegacyBuiltinToolDefinition = ToolDefinition & { [LEGACY_BUILTIN_TOOL_MARKER]: true };
 
 type LegacySettingOverrides = Partial<Record<SettingPath, unknown>>;
@@ -200,10 +199,8 @@ function createRegistryTool(
 			return new BashTool(session);
 		case "edit":
 			return new EditTool(session);
-		case "glob":
-			return new GlobTool(session);
-		case "grep":
-			return new GrepTool(session);
+		case "search":
+			return new SearchTool(session);
 		case "read":
 			return new ReadTool(session);
 		case "write":
@@ -489,7 +486,7 @@ export function createGrepToolDefinition(cwd: string, options?: GrepToolOptions)
 				"defineTool() instead of passing operations to createGrepTool()/createGrepToolDefinition().",
 		);
 	}
-	const tool = createRegistryTool(cwd, "grep");
+	const tool = createRegistryTool(cwd, "search");
 	return markToolDefinition({
 		name: "grep",
 		label: "grep",
@@ -509,19 +506,20 @@ export function createGrepToolDefinition(cwd: string, options?: GrepToolOptions)
 			const searchPath = stringField(params, "path") ?? ".";
 			const glob = stringField(params, "glob");
 			const context = numberField(params, "context");
-			// The new grep reads context from settings fixed at construction; build a
-			// per-call tool when the model passes an explicit legacy `context`.
-			const grepTool =
+			// Unified text search reads context from settings fixed at construction;
+			// build a per-call tool when the legacy API passes an explicit context.
+			const searchTool =
 				context === undefined
 					? tool
-					: createRegistryTool(cwd, "grep", {
-							"grep.contextBefore": Math.max(0, Math.floor(context)),
-							"grep.contextAfter": Math.max(0, Math.floor(context)),
+					: createRegistryTool(cwd, "search", {
+							"search.contextBefore": Math.max(0, Math.floor(context)),
+							"search.contextAfter": Math.max(0, Math.floor(context)),
 						});
-			return grepTool.execute(
+			return searchTool.execute(
 				toolCallId,
 				{
-					pattern,
+					type: "text",
+					input: pattern,
 					path: glob ? joinLegacyGlob(searchPath, glob) : searchPath,
 					case: booleanField(params, "ignoreCase") ? false : undefined,
 				},
@@ -539,7 +537,7 @@ export function createGrepTool(cwd: string, options?: GrepToolOptions): ToolDefi
 
 /** Create the legacy find tool definition. */
 export function createFindToolDefinition(cwd: string, options?: FindToolOptions): ToolDefinition {
-	const tool = createRegistryTool(cwd, "glob");
+	const tool = createRegistryTool(cwd, "search");
 	return markToolDefinition({
 		name: "find",
 		label: "find",
@@ -580,7 +578,7 @@ export function createFindToolDefinition(cwd: string, options?: FindToolOptions)
 			}
 			return tool.execute(
 				toolCallId,
-				{ path: joinLegacyGlob(searchPath, pattern), hidden: true, gitignore: true, limit },
+				{ type: "files", input: joinLegacyGlob(searchPath, pattern), hidden: true, gitignore: true, limit },
 				signal,
 				onUpdate,
 			);

@@ -113,7 +113,7 @@ export const DEFAULT_ESSENTIAL_TOOL_NAMES: readonly string[] = [
 	TOOL.launch,
 	TOOL.edit,
 	TOOL.write,
-	TOOL.glob,
+	TOOL.search,
 	TOOL.eval,
 ] as const;
 
@@ -268,14 +268,10 @@ export interface BuiltinToolPermissionInputs {
 	requireYieldTool: boolean;
 	/** `todo.enabled`. */
 	todoEnabled: boolean;
-	/** `glob.enabled`. */
-	globEnabled: boolean;
-	/** `grep.enabled`. */
-	grepEnabled: boolean;
+	/** `search.enabled`. */
+	searchEnabled: boolean;
 	/** `github.enabled`. */
 	githubEnabled: boolean;
-	/** `astGrep.enabled`. */
-	astGrepEnabled: boolean;
 	/** `astEdit.enabled`. */
 	astEditEnabled: boolean;
 	/** `inspect_image.enabled`. */
@@ -335,10 +331,7 @@ export function isBuiltinToolAllowed(name: string, inputs: BuiltinToolPermission
 	if (name === TOOL.eval) return inputs.evalAllowed;
 	if (name === TOOL.debug) return inputs.debugEnabled;
 	if (name === TOOL.todo) return !inputs.requireYieldTool && inputs.todoEnabled;
-	if (name === TOOL.glob) return inputs.globEnabled;
-	if (name === TOOL.grep) return inputs.grepEnabled;
-	if (name === TOOL.github) return inputs.githubEnabled;
-	if (name === TOOL.ast_grep) return inputs.astGrepEnabled;
+	if (name === TOOL.search) return inputs.searchEnabled;
 	if (name === TOOL.ast_edit) return inputs.astEditEnabled;
 	if (name === TOOL.inspect_image) return inputs.inspectImageEnabled;
 	if (name === TOOL.web_search) return inputs.webSearchEnabled;
@@ -375,8 +368,6 @@ export function isBuiltinToolAllowed(name: string, inputs: BuiltinToolPermission
 export interface RequestedToolNamesInputs {
 	/** `goal.enabled`; the model may create the initial goal or resume a paused one. */
 	goalEnabled: boolean;
-	/** `astGrep.enabled`. */
-	astGrepEnabled: boolean;
 	/** `astEdit.enabled`. */
 	astEditEnabled: boolean;
 	/** `memory.backend`, defaulted to `""`. */
@@ -411,8 +402,6 @@ export function augmentRequestedToolNames(
 		if (!requested.includes(name)) requested.push(name);
 	};
 	if (inputs.goalEnabled) push(TOOL.goal);
-	// Auto-include AST counterparts when their text-based sibling is present
-	if (requested.includes(TOOL.grep) && inputs.astGrepEnabled) push(TOOL.ast_grep);
 	if (requested.includes(TOOL.edit) && inputs.astEditEnabled) push(TOOL.ast_edit);
 	if (memoryToolsBackendEnabled(inputs.memoryBackend)) {
 		for (const name of [TOOL.recall, TOOL.retain, TOOL.reflect]) push(name);

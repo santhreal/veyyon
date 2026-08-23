@@ -2152,82 +2152,8 @@ export class Settings {
 			delete raw["power.preventDisplaySleep"];
 		}
 
-		// Migration for renamed settings grep.* and glob.* from search.* and find.*:
-		// 1. Nested settings: find -> glob, search -> grep (per-property merge to avoid clobbering)
-		const ensureRawObject = (key: "glob" | "grep"): Record<string, unknown> => {
-			const current = raw[key];
-			if (isRecord(current)) {
-				return current;
-			}
-			const created: Record<string, unknown> = {};
-			raw[key] = created;
-			return created;
-		};
 
-		if ("find" in raw) {
-			const findObj = raw.find;
-			if (isRecord(findObj)) {
-				const globObj = ensureRawObject("glob");
-				const findKeys: Array<"enabled"> = ["enabled"];
-				for (const key of findKeys) {
-					if (key in findObj && !(key in globObj)) {
-						globObj[key] = findObj[key];
-					}
-				}
-			}
-			delete raw.find;
-		}
-
-		if ("search" in raw) {
-			const searchObj = raw.search;
-			if (isRecord(searchObj)) {
-				const grepObj = ensureRawObject("grep");
-				const searchKeys: Array<"enabled" | "contextBefore" | "contextAfter"> = [
-					"enabled",
-					"contextBefore",
-					"contextAfter",
-				];
-				for (const key of searchKeys) {
-					if (key in searchObj && !(key in grepObj)) {
-						grepObj[key] = searchObj[key];
-					}
-				}
-			}
-			delete raw.search;
-		}
-
-		// 2. Flat settings keys: map them to the proper nested target so get/set resolves them correctly
-		if ("find.enabled" in raw) {
-			const globObj = ensureRawObject("glob");
-			if (!("enabled" in globObj)) {
-				globObj.enabled = raw["find.enabled"];
-			}
-			delete raw["find.enabled"];
-		}
-		if ("search.enabled" in raw) {
-			const grepObj = ensureRawObject("grep");
-			if (!("enabled" in grepObj)) {
-				grepObj.enabled = raw["search.enabled"];
-			}
-			delete raw["search.enabled"];
-		}
-		if ("search.contextBefore" in raw) {
-			const grepObj = ensureRawObject("grep");
-			if (!("contextBefore" in grepObj)) {
-				grepObj.contextBefore = raw["search.contextBefore"];
-			}
-			delete raw["search.contextBefore"];
-		}
-		if ("search.contextAfter" in raw) {
-			const grepObj = ensureRawObject("grep");
-			if (!("contextAfter" in grepObj)) {
-				grepObj.contextAfter = raw["search.contextAfter"];
-			}
-			delete raw["search.contextAfter"];
-		}
-
-		// 3. Tool-name arrays use wire IDs too. Preserve user overrides across
-		// the rename without duplicating entries if they already added grep/glob.
+		// Tool-name arrays use canonical wire IDs and remain deduplicated.
 		const migrateToolNameList = (names: unknown): unknown => {
 			if (!Array.isArray(names)) return names;
 			const out: unknown[] = [];
