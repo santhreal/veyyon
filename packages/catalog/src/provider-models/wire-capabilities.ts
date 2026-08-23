@@ -98,9 +98,37 @@ export interface ProviderServiceTierCapability {
 /** Everything one provider declares about what it realizes on the wire. */
 export interface ProviderWireCapabilities {
 	readonly serviceTier?: ProviderServiceTierCapability;
+	/** True when the provider's OpenAI-compatible endpoint honors strict tool schemas. */
+	readonly strictTools?: boolean;
+	/**
+	 * True when the provider is a local inference server whose chat template
+	 * re-tokenizes the whole prompt every request — llama.cpp prefix-KV-cache
+	 * reuse only survives while the rendered tokens stay byte-identical across
+	 * turns, so the prior assistant turn's `<think>` block is replayed through
+	 * `reasoning_content` (#3528).
+	 */
+	readonly localInference?: boolean;
+	/**
+	 * True when the provider listens on a loopback default but forwards to an
+	 * unrelated upstream rather than rendering a chat template itself. Replaying
+	 * `reasoning_content` at such a proxy gains no KV-cache benefit upstream and
+	 * may 400 on the extra field, so it is excluded from both the local-inference
+	 * declaration and the loopback heuristic; the sparse
+	 * `compat.replayReasoningContent` override is how a custom proxy opts in.
+	 */
+	readonly forwardsUpstream?: boolean;
 }
 
-const PROVIDER_WIRE_CAPABILITIES: Partial<Record<KnownProvider, ProviderWireCapabilities>> = {
+/**
+ * A provider id with no catalog entry: a local server a user points at by hand,
+ * so nothing generates models for it and it never appears in `CATALOG_PROVIDERS`.
+ * The sweep pins this set, so a typo in a key below cannot pass as one of these.
+ */
+type ProviderWithoutCatalogEntry = "llama.cpp";
+
+const PROVIDER_WIRE_CAPABILITIES: Partial<
+	Record<KnownProvider | ProviderWithoutCatalogEntry, ProviderWireCapabilities>
+> = {
 	anthropic: {
 		serviceTier: {
 			family: "anthropic",
@@ -109,12 +137,14 @@ const PROVIDER_WIRE_CAPABILITIES: Partial<Record<KnownProvider, ProviderWireCapa
 			premiumPriority: true,
 		},
 	},
+	cerebras: { strictTools: true },
 	fireworks: {
 		// Fireworks Serverless realizes only its own Priority serving path, so no
 		// family knob governs it and an OpenAI model id served here is not the
 		// OpenAI family either.
 		serviceTier: { wireTiers: ["priority"], premiumPriority: false },
 	},
+	"github-copilot": { strictTools: true },
 	google: {
 		serviceTier: {
 			family: "google",
@@ -132,7 +162,14 @@ const PROVIDER_WIRE_CAPABILITIES: Partial<Record<KnownProvider, ProviderWireCapa
 			premiumPriority: true,
 		},
 	},
-	openai: { serviceTier: { family: "openai", wireTiers: OPENAI_WIRE_TIERS, premiumPriority: true } },
+	litellm: { forwardsUpstream: true },
+	"llama.cpp": { localInference: true },
+	"lm-studio": { localInference: true },
+	ollama: { localInference: true },
+	openai: {
+		serviceTier: { family: "openai", wireTiers: OPENAI_WIRE_TIERS, premiumPriority: true },
+		strictTools: true,
+	},
 	"openai-codex": { serviceTier: { family: "openai", wireTiers: OPENAI_WIRE_TIERS, premiumPriority: true } },
 	openrouter: {
 		// Billed per OpenRouter's own pricing, not Copilot-premium semantics.
@@ -142,7 +179,11 @@ const PROVIDER_WIRE_CAPABILITIES: Partial<Record<KnownProvider, ProviderWireCapa
 			realizesPriorityForFamilies: ["openai", "google"],
 			premiumPriority: false,
 		},
+		strictTools: true,
 	},
+	together: { strictTools: true },
+	vllm: { localInference: true },
+	zenmux: { strictTools: true },
 };
 
 /** The one accessor. `undefined` means the provider declares no wire capability. */
@@ -151,10 +192,10 @@ export function providerWireCapabilities(provider: string | undefined): Provider
 	return PROVIDER_WIRE_CAPABILITIES[provider as KnownProvider];
 }
 
-/** Every provider that declares a service-tier capability. Read by the sweep, not by a request. */
-export function providersDeclaringServiceTier(): readonly string[] {
+/** Every provider that declares `capability`. Read by the sweep, not by a request. */
+export function providersDeclaring(capability: keyof ProviderWireCapabilities): readonly string[] {
 	return Object.keys(PROVIDER_WIRE_CAPABILITIES).filter(
-		id => PROVIDER_WIRE_CAPABILITIES[id as KnownProvider]?.serviceTier !== undefined,
+		id => PROVIDER_WIRE_CAPABILITIES[id as KnownProvider]?.[capability] !== undefined,
 	);
 }
 

@@ -19,7 +19,7 @@ import { describe, expect, it } from "bun:test";
 import { CATALOG_PROVIDERS } from "../src/provider-models/descriptors";
 import {
 	getPriorityPremiumRequests,
-	providersDeclaringServiceTier,
+	providersDeclaring,
 	providerWireCapabilities,
 	realizesPriorityServiceTier,
 	resolveModelServiceTier,
@@ -113,7 +113,7 @@ describe("the provider table decides what a provider realizes on the wire", () =
 	});
 
 	it("declares a tier knob for exactly the providers that have one", () => {
-		expect([...providersDeclaringServiceTier()].sort()).toEqual([
+		expect([...providersDeclaring("serviceTier")].sort()).toEqual([
 			"anthropic",
 			"fireworks",
 			"google",
@@ -124,8 +124,39 @@ describe("the provider table decides what a provider realizes on the wire", () =
 		]);
 	});
 
+	it("declares strict tool schemas for exactly the endpoints that honor them", () => {
+		expect([...providersDeclaring("strictTools")].sort()).toEqual([
+			"cerebras",
+			"github-copilot",
+			"openai",
+			"openrouter",
+			"together",
+			"zenmux",
+		]);
+	});
+
+	it("declares which providers run a local chat template and which forward upstream", () => {
+		expect([...providersDeclaring("localInference")].sort()).toEqual(["llama.cpp", "lm-studio", "ollama", "vllm"]);
+		expect([...providersDeclaring("forwardsUpstream")].sort()).toEqual(["litellm"]);
+	});
+
+	/**
+	 * A key that is not a catalog provider is either a local server a user points
+	 * at by hand or a typo. The first set is pinned; a typo is in neither and reds.
+	 */
+	it("keys every entry by a catalog provider, or by a declared local server", () => {
+		const keys = new Set<string>([
+			...providersDeclaring("serviceTier"),
+			...providersDeclaring("strictTools"),
+			...providersDeclaring("localInference"),
+			...providersDeclaring("forwardsUpstream"),
+		]);
+		const outsideCatalog = [...keys].filter(id => !catalogProviderIds.includes(id)).sort();
+		expect(outsideCatalog).toEqual(["llama.cpp"]);
+	});
+
 	it("declares only tiers that exist, and premium billing only where priority is realized", () => {
-		for (const id of providersDeclaringServiceTier()) {
+		for (const id of providersDeclaring("serviceTier")) {
 			const capability = providerWireCapabilities(id)?.serviceTier;
 			expect(capability).toBeDefined();
 			if (!capability) continue;

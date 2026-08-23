@@ -7,6 +7,7 @@
 - The five provider discovery readers share one set of payload readers. `codex`, `gemini`, `cursor`, `openai-compatible` and `antigravity` each declared schemas at module scope to answer questions of the form "is this field a string", so importing the descriptor table to list models built a validator graph for every provider before any request was made, and `codex.ts` also carried its own copies of three field readers. `utils.ts` — already the shared reader for cross-package callers — gained `toFields`, `toStringValue`, `toNonEmptyString`, `toFiniteNumber`, `toArray` and `toStringArray`, and the readers use those. `toFields` accepts an array, keeping the previous behavior where a bare array envelope reads as an empty model list rather than a failed response.
 - `identity` exports `statesOpenAIWireGeneration`, so a caller can tell a model below a version floor from one whose id states no version at all.
 - `provider-models/wire-capabilities.ts` declares what each provider realizes on the wire, so a service tier's effect is read from one per-provider entry instead of the provider-name comparisons that decided it in four functions.
+- Strict tool schemas, a local chat-template renderer and a loopback proxy that forwards upstream are declared per provider in `provider-models/wire-capabilities.ts`, so `compat/openai.ts` reads one entry instead of a six-provider comparison chain and two provider sets.
 
 ### Breaking Changes
 
