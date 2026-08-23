@@ -203,7 +203,7 @@ describe("InteractiveMode goal mode integration", () => {
 	});
 
 	it("lets the model create the initial persistent goal from an ordinary session", async () => {
-		await harness.mode.init({ suppressWelcomeIntro: true });
+		await harness.mode.init();
 		harness.session.agent.emitExternalEvent({
 			type: "message_start",
 			message: {
@@ -510,7 +510,7 @@ describe("InteractiveMode goal mode integration", () => {
 	});
 
 	it("pauses after a visible no-tool user turn and resumes only after user-driven tool work", async () => {
-		await harness.mode.init({ suppressWelcomeIntro: true });
+		await harness.mode.init();
 		await harness.mode.handleGoalModeCommand("Ship the release");
 		const userMessage = (text: string) => ({
 			role: "user" as const,

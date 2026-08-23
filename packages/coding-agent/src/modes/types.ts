@@ -88,10 +88,6 @@ import type { TodoItem, TodoPhase } from "../tools/todo";
 
 export type { TodoItem, TodoPhase, TodoStatus } from "../tools/todo";
 
-export interface InteractiveModeInitOptions {
-	suppressWelcomeIntro?: boolean;
-}
-
 export type InteractiveSelectorDialogOptions = ExtensionUIDialogOptions & Pick<HookSelectorOptions, "disabledIndices">;
 
 export interface InteractiveModeContext {
@@ -234,8 +230,7 @@ export interface InteractiveModeContext {
 	todoPhases: TodoPhase[];
 
 	// Lifecycle
-	init(options?: InteractiveModeInitOptions): Promise<void>;
-	playWelcomeIntro(): void;
+	init(): Promise<void>;
 	shutdown(): Promise<void>;
 	checkShutdownRequested(): Promise<void>;
 	/**

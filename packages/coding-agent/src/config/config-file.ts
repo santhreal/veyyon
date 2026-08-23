@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { isArkErrors } from "@veyyon/ai/utils/schema";
 import {
 	atomicWriteFileSync,
 	getAgentDir,
@@ -9,7 +10,7 @@ import {
 	reportFault,
 	truncate,
 } from "@veyyon/utils";
-import { ArkErrors, type Type } from "arktype";
+import type { Type } from "arktype";
 import { JSONC, YAML } from "bun";
 
 /** Minimal subset of the AJV ConfigSchemaError shape this module actually relies on. */
@@ -377,7 +378,7 @@ export class ConfigFile<T> implements IConfigFile<T> {
 			}
 
 			const checked = this.schema(parsed);
-			if (checked instanceof ArkErrors) {
+			if (isArkErrors(checked)) {
 				const schemaErrors: ConfigSchemaError[] = checked.map(error => ({
 					instancePath: error.path.length === 0 ? "root" : error.path.join("."),
 					message: error.problem,

@@ -227,27 +227,23 @@ describe("WelcomeComponent degraded sun path (SUN-4)", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("skips the intro bloom and renders one static settled frame when structural motion is off", () => {
-		// The bloom is gated on `display.transitions` (structural motion), not on
-		// `display.shimmer` (working-message text animation): coupling the two
-		// silently killed the bloom when the shimmer default flipped to disabled.
-		settings.set("display.transitions", "off");
+	it("renders one still frame, and the same bytes every time", () => {
+		// The hero used to bloom in over 2.2s behind a 33ms timer. It is a still
+		// card now, so the contract is that nothing schedules and nothing changes:
+		// truecolor forced on, because the old animated path was gated on it and a
+		// non-truecolor host would take the degraded branch by accident.
+		const originalTrueColor = TERMINAL.trueColor;
+		Object.assign(TERMINAL, { trueColor: true });
+		const intervalSpy = vi.spyOn(globalThis, "setInterval");
 		try {
 			const welcome = new WelcomeComponent("1.2.3", "gpt-5", "openai");
-			const intervalSpy = vi.spyOn(globalThis, "setInterval");
-			let renders = 0;
-			welcome.playIntro(() => {
-				renders++;
-			});
-			// No timer scheduled — the mark rests immediately on the settled frame.
-			expect(intervalSpy).not.toHaveBeenCalled();
-			expect(renders).toBe(1);
-			// Static: two consecutive renders are byte-identical.
-			const a = welcome.render(80).join("\n");
+			const first = welcome.render(80).join("\n");
 			welcome.invalidate();
-			expect(welcome.render(80).join("\n")).toBe(a);
+
+			expect(welcome.render(80).join("\n")).toBe(first);
+			expect(intervalSpy).not.toHaveBeenCalled();
 		} finally {
-			settings.set("display.transitions", "on");
+			Object.assign(TERMINAL, { trueColor: originalTrueColor });
 		}
 	});
 
@@ -255,7 +251,8 @@ describe("WelcomeComponent degraded sun path (SUN-4)", () => {
 		// Locks the regression where `display.shimmer: disabled` (the DEFAULT)
 		// silently killed every structural transition: shimmer style must not
 		// affect transitionsEnabled(), and the off switch must win regardless of
-		// shimmer.
+		// shimmer. The welcome hero no longer reads it, but overlays and the tool
+		// rail do.
 		settings.set("display.shimmer", "disabled");
 		try {
 			expect(transitionsEnabled()).toBe(true);
@@ -269,23 +266,16 @@ describe("WelcomeComponent degraded sun path (SUN-4)", () => {
 		}
 	});
 
-	it("plays the bloom timer when animations are enabled (positive twin)", () => {
-		settings.set("display.shimmer", "classic");
-		// The animated path is gated on `TERMINAL.trueColor` too (welcome.ts
-		// playIntro): a non-truecolor terminal takes the static degraded path and
-		// schedules no timer. CI runs on a non-truecolor TTY, so force truecolor
-		// here to assert the animated path deterministically rather than depend on
-		// the host terminal's capability. Restore it so no other test is affected.
-		const originalTrueColor = TERMINAL.trueColor;
-		Object.assign(TERMINAL, { trueColor: true });
+	it("draws the same card whether structural motion is on or off", () => {
 		const welcome = new WelcomeComponent("1.2.3", "gpt-5", "openai");
-		const intervalSpy = vi.spyOn(globalThis, "setInterval");
-		welcome.playIntro(() => {});
+		const on = welcome.render(80).join("\n");
+		settings.set("display.transitions", "off");
 		try {
-			expect(intervalSpy).toHaveBeenCalledTimes(1);
+			welcome.invalidate();
+
+			expect(welcome.render(80).join("\n")).toBe(on);
 		} finally {
-			welcome.stopIntro();
-			Object.assign(TERMINAL, { trueColor: originalTrueColor });
+			settings.set("display.transitions", "on");
 		}
 	});
 });

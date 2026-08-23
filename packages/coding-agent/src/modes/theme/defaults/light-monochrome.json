@@ -44,7 +44,6 @@
 		"toolPendingBg": "bgToolPending",
 		"toolSuccessBg": "bgToolSuccess",
 		"toolErrorBg": "bgToolError",
-		"toolText": "",
 		"toolTitle": "",
 		"toolOutput": "gray600",
 		"link": "accent",

@@ -65,7 +65,7 @@ describe("composer morph glyphs", () => {
 		});
 		mode = new InteractiveMode(session, "test", () => {}, [], undefined, new EventBus());
 		vi.spyOn(mode.statusLine, "watchBranch").mockImplementation(() => {});
-		await mode.init({ suppressWelcomeIntro: true });
+		await mode.init();
 	});
 
 	afterEach(async () => {
