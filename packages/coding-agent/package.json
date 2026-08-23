@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "@veyyon/coding-agent",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "Coding agent CLI with read, bash, edit, write tools and session management",
   "homepage": "https://veyyon.dev",
   "author": "santhreal",
@@ -43,6 +43,7 @@
     "gen:bundle": "bun scripts/bundle-dist.ts",
     "gen:mupdf": "bun scripts/embed-mupdf-wasm.ts --generate",
     "gen:mupdf:reset": "bun scripts/embed-mupdf-wasm.ts --reset",
+    "gen:prompt-ids": "bun scripts/gen-prompt-ids.ts",
     "gen:native": "bun --cwd=../natives run gen:native",
     "gen:tool-views": "bun --cwd=../collab-web run gen:tool-views",
     "gen:native:reset": "bun --cwd=../natives run gen:native:reset",

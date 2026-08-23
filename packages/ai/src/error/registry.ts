@@ -88,6 +88,19 @@ export const RETRY_VETO_MASK: number = maskOf(ERROR_DOMAINS.filter(d => d.vetoes
 /** The flags whose retry is safe even when the failed turn already emitted a tool call. */
 export const REPLAY_SAFE_MASK: number = maskOf(ERROR_DOMAINS.filter(d => d.replaySafe === true));
 
+/**
+ * Whether a failure refuses a retry outright, however the rest of it classified.
+ *
+ * ONE READER PER MASK. The veto is the registry's strongest statement about a failure, and it was
+ * consulted by {@link retriable} alone: the provider ladder's own predicate re-derived transience
+ * from message prose and never asked, so a content filter whose body also carried a 503 came back
+ * retryable there while the turn refused it, and a cancellation came back retryable through the
+ * word "aborted" in its own sentence. Both readers ask this.
+ */
+export function vetoesRetry(id: number | undefined): boolean {
+	return ((id ?? 0) & RETRY_VETO_MASK) !== 0;
+}
+
 /** The domain that decides recovery for `flag`, or `undefined` for a bit no domain claims. */
 export function domainOf(flag: Flag): ErrorDomain | undefined {
 	return ERROR_DOMAINS.find(domain => domain.recovers.includes(flag));
@@ -121,7 +134,7 @@ export function recover(id: number | undefined, stage: RecoveryStage): Recovery 
  * execute, so there is nothing to duplicate.
  */
 export function retriable(id: number | undefined, opts?: { replayUnsafe?: boolean }): boolean {
-	if (((id ?? 0) & RETRY_VETO_MASK) !== 0) return false;
+	if (vetoesRetry(id)) return false;
 	if (((id ?? 0) & REPLAY_SAFE_MASK) !== 0) return true;
 	if (opts?.replayUnsafe) return false;
 	return ((id ?? 0) & TURN_RETRIABLE_MASK) !== 0;

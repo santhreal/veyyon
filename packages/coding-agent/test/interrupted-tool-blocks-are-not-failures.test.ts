@@ -47,7 +47,7 @@ const CALL_ONLY_FRAME = ["  ▏  $ npm run migrate:up"];
  * frame keeps its failed header.
  */
 const ENTERED_FRAME = [
-	"  ✗ failed",
+	"  ▏ ✗ failed",
 	"  ▏  $ npm run migrate:up",
 	"  ▏  Output",
 	"  ▏  Skipped due to queued user message.",
@@ -115,7 +115,7 @@ describe("a tool block an interrupt cut short says so", () => {
 		});
 
 		expect(rows(block)).toEqual([
-			"  ✗ failed",
+			"  ▏ ✗ failed",
 			"  ▏  $ npm run migrate:up",
 			"  ▏  Output",
 			"  ▏  exit 1: relation already exists",

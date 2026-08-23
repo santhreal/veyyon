@@ -7,7 +7,7 @@
 // and model-resolver imports this file back, so routing through the barrel forms an
 // import cycle whose top-level `const MODEL_ROLE_ALIAS_PREFIXES = [...]` reads this
 // module's still-uninitialized exports (a TDZ ReferenceError) whenever model-roles is
-// the entry point. color.ts is a true leaf (arktype only), so this edge breaks the cycle.
+// the entry point. color.ts reaches type guards and nothing else, so this edge breaks the cycle.
 import { isValidThemeColor, type ThemeColor } from "../modes/theme/color";
 import type { Settings } from "./settings";
 

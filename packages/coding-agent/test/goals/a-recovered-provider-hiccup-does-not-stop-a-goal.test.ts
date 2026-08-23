@@ -150,7 +150,7 @@ describe("a goal keeps driving across a provider hiccup it recovered from", () =
 			warnings.push(message);
 		});
 		mode.ui.requestRender = vi.fn();
-		await mode.init({ suppressWelcomeIntro: true });
+		await mode.init();
 		// The production path a `/goal` or a goal-tool create takes, so the mode learns about the
 		// goal the way it does in a session rather than from a field poke.
 		await session.goalRuntime.createGoal({ objective: "Ship the release" });
