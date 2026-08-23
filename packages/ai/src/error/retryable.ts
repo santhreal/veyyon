@@ -1,5 +1,5 @@
 import { isAbortError } from "@veyyon/utils/abortable";
-import { isUnexpectedSocketCloseMessage } from "@veyyon/utils/fetch-retry";
+import { isRetryableStatus, isUnexpectedSocketCloseMessage } from "@veyyon/utils/fetch-retry";
 import { isStreamFrameLimitError } from "@veyyon/utils/stream-frame-limit";
 import {
 	classify,
@@ -13,15 +13,18 @@ import {
 } from "./flags";
 
 /**
- * Whether a numeric HTTP status is in the canonical transient/retryable set:
- * 408 (Request Timeout), 429 (Too Many Requests), and any 5xx.
+ * Whether a numeric HTTP status is in the canonical transient set: 408, 429, and any 5xx.
  *
- * This is a pure predicate over a status code already in hand — distinct from
- * {@link classify}, which inspects a whole error (including message text) and
- * may match more. Use this when you only have a `status: number`.
+ * The set itself belongs to `@veyyon/utils`' `isRetryableStatus`, because a status is a fact about a
+ * transport and `utils` cannot import `ai`. This wrapper adds the one thing this layer needs — a
+ * status that may be absent — and nothing else. It used to restate the three comparisons, which is
+ * how two copies of one vocabulary end up disagreeing by a number.
+ *
+ * Distinct from {@link classify}, which reads a whole failure including its wording and may say more.
+ * Use this when a status is all there is.
  */
 export function isTransientStatus(status: number | undefined): boolean {
-	return status !== undefined && (status === 408 || status === 429 || status >= 500);
+	return status !== undefined && isRetryableStatus(status);
 }
 
 // Provider-stream transient phrasings not covered by the shared

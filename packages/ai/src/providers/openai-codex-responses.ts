@@ -10,7 +10,7 @@ import {
 } from "@veyyon/catalog/wire/codex";
 import { getInstallId } from "@veyyon/utils/dirs";
 import { $env, $flag } from "@veyyon/utils/env";
-import { fetchWithRetry } from "@veyyon/utils/fetch-retry";
+
 import { structuredCloneJSON } from "@veyyon/utils/json";
 import { parseStreamingJson } from "@veyyon/utils/json-parse";
 import * as logger from "@veyyon/utils/logger";
@@ -79,6 +79,7 @@ import {
 	iterateWithIdleTimeout,
 } from "../utils/idle-iterator";
 import type { OpenAIStreamHandle } from "../utils/openai-http";
+import { fetchProviderWithRetry } from "../utils/provider-fetch";
 import { notifyProviderResponse } from "../utils/provider-response";
 import { createRequestDebugSession, isRequestDebugEnabled, type RequestDebugResponseLog } from "../utils/request-debug";
 import { adaptSchemaForStrict, NO_STRICT, sanitizeSchemaForOpenAIResponses, toolWireSchema } from "../utils/schema";
@@ -3956,7 +3957,7 @@ async function openCodexSseEventStream(
 	};
 	let response: Response;
 	try {
-		response = await fetchWithRetry(url, {
+		response = await fetchProviderWithRetry(url, {
 			method: "POST",
 			headers,
 			body: JSON.stringify(body),
