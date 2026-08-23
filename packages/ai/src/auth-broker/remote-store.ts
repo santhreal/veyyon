@@ -23,7 +23,7 @@ import * as AIError from "../error";
 import type { OAuthCredentials } from "../registry/oauth/types";
 import type { Provider } from "../types";
 import type { UsageReport } from "../usage";
-import { type AuthBrokerClient, AuthBrokerStreamUnsupportedError } from "./client";
+import type { AuthBrokerClient } from "./client";
 import type {
 	CredentialBlockSnapshot,
 	RefresherSchedule,
@@ -311,7 +311,7 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 					continue;
 				} catch (error) {
 					if (this.#closed || this.#backgroundAbort.signal.aborted) break;
-					if (error instanceof AuthBrokerStreamUnsupportedError) {
+					if (error instanceof AIError.AuthBrokerStreamUnsupportedError) {
 						this.#streamingUnsupported = true;
 						logger.debug("auth-broker snapshot stream unsupported; falling back to long-poll");
 						continue;

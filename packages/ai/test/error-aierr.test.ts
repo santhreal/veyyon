@@ -44,19 +44,20 @@ describe("AIError.classify — structural provider errors", () => {
 		expect(AIError.is(id, AIError.Flag.UsageLimit)).toBe(true);
 	});
 
-	it("recognizes Codex transport errors by name without importing the provider", () => {
-		const transport = Object.assign(new Error("websocket closed"), { name: "CodexWebSocketTransportError" });
+	it("classifies Codex transport and stream failures by class identity", () => {
+		const transport = new AIError.CodexWebSocketTransportError("websocket closed");
 		expect(AIError.is(AIError.classify(transport), AIError.Flag.Transient)).toBe(true);
-		const retryableStream = Object.assign(new Error("server error"), {
-			name: "CodexProviderStreamError",
-			retryable: true,
-		});
+		const retryableStream = new AIError.CodexProviderStreamError("server error", { retryable: true });
 		expect(AIError.is(AIError.classify(retryableStream), AIError.Flag.Transient)).toBe(true);
-		const fatalStream = Object.assign(new Error("bad request"), {
-			name: "CodexProviderStreamError",
-			retryable: false,
-		});
+		const fatalStream = new AIError.CodexProviderStreamError("bad request", { retryable: false });
 		expect(AIError.is(AIError.classify(fatalStream), AIError.Flag.Transient)).toBe(false);
+	});
+
+	it("refuses a plain error wearing a Codex error name", () => {
+		const impostor = Object.assign(new Error("sprocket count mismatch"), {
+			name: "CodexWebSocketTransportError",
+		});
+		expect(AIError.is(AIError.classify(impostor), AIError.Flag.Transient)).toBe(false);
 	});
 
 	it("classifies an incomplete provider stream as transient + retryable", () => {

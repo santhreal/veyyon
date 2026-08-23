@@ -5,6 +5,8 @@ import { AwsCredentialsError } from "./aws";
 import {
 	AnthropicConnectionError,
 	AnthropicConnectionTimeoutError,
+	CodexProviderStreamError,
+	CodexWebSocketTransportError,
 	ProviderHttpError,
 	STREAM_ENVELOPE_ERROR_PREFIX,
 } from "./classes";
@@ -586,18 +588,9 @@ export function classify(error: unknown, api?: Api): number {
 			kinds |= Flag.Timeout | Flag.Transient;
 		} else if (link instanceof AnthropicConnectionError) {
 			kinds |= Flag.Transient;
-		} else if (
-			typeof link === "object" &&
-			"name" in link &&
-			(link as { name: string }).name === "CodexWebSocketTransportError"
-		) {
+		} else if (link instanceof CodexWebSocketTransportError) {
 			kinds |= Flag.Transient;
-		} else if (
-			link instanceof Error &&
-			link.name === "CodexProviderStreamError" &&
-			"retryable" in link &&
-			(link as { retryable: unknown }).retryable === true
-		) {
+		} else if (link instanceof CodexProviderStreamError && link.retryable) {
 			kinds |= Flag.Transient;
 		} else if (link instanceof ProviderHttpError) {
 			let linkKinds = 0;
