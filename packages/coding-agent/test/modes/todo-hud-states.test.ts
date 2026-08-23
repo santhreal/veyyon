@@ -190,12 +190,12 @@ describe("the collapsed Todos HUD distinguishes every task state without colour"
 		// right-aligned, so the phase row is asserted at both ends.
 		const rows = hudRows().map(row => row.trim());
 		expect(rows).toHaveLength(4);
-		expect(rows[0]!.startsWith(`${theme.symbol("block.rail")} ◧ Phase One`)).toBe(true);
+		expect(rows[0]!.startsWith(`${theme.symbol("block.rail")} ${theme.checkbox.progress} Phase One`)).toBe(true);
 		expect(rows[0]!.endsWith("1/3")).toBe(true);
 		expect(rows.slice(1)).toEqual([
-			`${theme.symbol("block.rail")}   ▪ wire the parser`,
-			`${theme.symbol("block.rail")}   ◧ backfill the tests`,
-			`${theme.symbol("block.rail")}   □ update the docs`,
+			`${theme.symbol("block.rail")}   ${theme.symbol("status.done")} wire the parser`,
+			`${theme.symbol("block.rail")}   ${theme.spinnerFrames[0]} backfill the tests`,
+			`${theme.symbol("block.rail")}   ${theme.symbol("status.shadowed")} update the docs`,
 		]);
 	});
 
@@ -203,17 +203,40 @@ describe("the collapsed Todos HUD distinguishes every task state without colour"
 		board([
 			["scan the tree", "in_progress"],
 			["write the guard", "pending"],
+			["land the change", "completed"],
+			["drop the spike", "abandoned"],
 		]);
 		await terminal.waitForRender();
 
 		const rows = hudRows();
+		const phase = rows.find(row => row.includes("Phase One"))!;
 		const running = rows.find(row => row.includes("scan the tree"))!;
 		const waiting = rows.find(row => row.includes("write the guard"))!;
+		const done = rows.find(row => row.includes("land the change"))!;
+		const aborted = rows.find(row => row.includes("drop the spike"))!;
+
 		// Colour is gone by construction (cell readback carries no SGR), so if
-		// these two glyphs were equal the states would be indistinguishable.
-		expect(running[TASK_GLYPH_COLUMN]).toBe("◧");
-		expect(waiting[TASK_GLYPH_COLUMN]).toBe("□");
-		expect(running[TASK_GLYPH_COLUMN]).not.toBe(waiting[TASK_GLYPH_COLUMN]);
+		// these glyphs were equal the states would be indistinguishable.
+		expect(running[TASK_GLYPH_COLUMN]).toBe(theme.spinnerFrames[0]);
+		expect(waiting[TASK_GLYPH_COLUMN]).toBe(theme.symbol("status.shadowed"));
+		expect(done[TASK_GLYPH_COLUMN]).toBe(theme.symbol("status.done"));
+		expect(aborted[TASK_GLYPH_COLUMN]).toBe(theme.symbol("status.aborted"));
+
+		// Every task state has a distinct glyph in the column.
+		const taskGlyphs = [
+			running[TASK_GLYPH_COLUMN],
+			waiting[TASK_GLYPH_COLUMN],
+			done[TASK_GLYPH_COLUMN],
+			aborted[TASK_GLYPH_COLUMN],
+		];
+		expect(new Set(taskGlyphs).size).toBe(4);
+
+		// Phase rows wear checkboxes; task rows never draw checkboxes.
+		const checkboxes = [theme.checkbox.checked, theme.checkbox.progress, theme.checkbox.unchecked];
+		expect(checkboxes.some(cb => phase.includes(cb))).toBe(true);
+		for (const glyph of taskGlyphs) {
+			expect(checkboxes).not.toContain(glyph);
+		}
 	});
 
 	it("bounds the finished rows so a long-running stage cannot grow the block", async () => {
@@ -231,13 +254,13 @@ describe("the collapsed Todos HUD distinguishes every task state without colour"
 		// `4/6` is what says two more are finished and not listed.
 		const rows = hudRows().map(row => row.trim());
 		expect(rows).toHaveLength(5);
-		expect(rows[0]!.startsWith(`${theme.symbol("block.rail")} ◧ Phase One`)).toBe(true);
+		expect(rows[0]!.startsWith(`${theme.symbol("block.rail")} ${theme.checkbox.progress} Phase One`)).toBe(true);
 		expect(rows[0]!.endsWith("4/6")).toBe(true);
 		expect(rows.slice(1)).toEqual([
-			`${theme.symbol("block.rail")}   ▪ third done`,
-			`${theme.symbol("block.rail")}   ▪ fourth done`,
-			`${theme.symbol("block.rail")}   ◧ still going`,
-			`${theme.symbol("block.rail")}   □ not started`,
+			`${theme.symbol("block.rail")}   ${theme.symbol("status.done")} third done`,
+			`${theme.symbol("block.rail")}   ${theme.symbol("status.done")} fourth done`,
+			`${theme.symbol("block.rail")}   ${theme.spinnerFrames[0]} still going`,
+			`${theme.symbol("block.rail")}   ${theme.symbol("status.shadowed")} not started`,
 		]);
 	});
 

@@ -168,7 +168,16 @@ import { PlanReviewOverlay } from "./components/plan-review-overlay";
 import { StatusLineComponent } from "./components/status-line";
 import { renderSubagentLaneLines } from "./components/subagent-lanes";
 import { renderSunsetField } from "./components/sun";
-import { renderTodoBoardLines, type TodoBoardOwner, todoBoardIsLive } from "./components/todo-board";
+import {
+	renderTodoBoardLines,
+	TODO_BOARD_FRAME_DIVISOR,
+	TODO_BOARD_RAIL_DIVISOR,
+	type TodoBoardMotion,
+	type TodoBoardOwner,
+	todoBoardIsLive,
+	todoBoardMarkerAnimates,
+	todoBoardRailTravels,
+} from "./components/todo-board";
 import type { ToolExecutionHandle } from "./components/tool-execution";
 import { TranscriptContainer } from "./components/transcript-container";
 import { BtwController } from "./controllers/btw-controller";
@@ -2220,8 +2229,15 @@ export class InteractiveMode implements InteractiveModeContext {
 			expanded: this.todoExpanded,
 			owners,
 			striking: this.#todoStriking(),
-			frame: this.#anchoredStep,
-			animate: transitionsEnabled(),
+			// The board steps on its own divisor. The shared clock is the tool
+			// rail's, fast enough for a highlight travelling down a block; a task
+			// marker on that clock churns several times a second next to text
+			// nobody is reading that fast.
+			frame: Math.floor(this.#anchoredStep / TODO_BOARD_FRAME_DIVISOR),
+			// Motion says the agent is working, so it is owed only while the agent
+			// IS working. A completion envelope still animates after the turn ends,
+			// because a task closing is an event rather than a state.
+			animate: todoBoardMarkerAnimates(this.#todoMotion()),
 			live: this.#todoBoardLive,
 		});
 		if (lines.length === 0) return;
@@ -2314,9 +2330,28 @@ export class InteractiveMode implements InteractiveModeContext {
 	 */
 	#todoRailMotion(): RailMotion | undefined {
 		if (this.#todoSettleFrame !== undefined) return { kind: "settle", frame: this.#todoSettleFrame };
-		if (!transitionsEnabled()) return undefined;
-		if (!this.#todoBoardLive) return undefined;
-		return { kind: "idle", head: railIdleHeadAt(this.#anchoredStep) };
+		if (!todoBoardRailTravels(this.#todoMotion())) return undefined;
+		return { kind: "idle", head: railIdleHeadAt(this.#anchoredStep / TODO_BOARD_RAIL_DIVISOR) };
+	}
+
+	/**
+	 * What the board is allowed to move on this frame.
+	 *
+	 * A task marked in progress is not motion. The model marks one, the turn
+	 * ends, and the mark stays until the next turn changes it — so a board keyed
+	 * on task state alone breathed for as long as the operator sat and read it,
+	 * which says the agent is working when it is waiting for input.
+	 * `session.isStreaming || isCompacting || hasPostPromptWork` is the same
+	 * predicate the composer treats as busy, so the board moves exactly while the
+	 * thing it reports on moves.
+	 */
+	#todoMotion(): TodoBoardMotion {
+		return {
+			transitions: transitionsEnabled(),
+			agentInMotion: this.session.isStreaming || this.session.isCompacting || this.session.hasPostPromptWork,
+			completing: this.#todoCompleting.size > 0,
+			live: this.#todoBoardLive,
+		};
 	}
 
 	/**
@@ -2423,7 +2458,11 @@ export class InteractiveMode implements InteractiveModeContext {
 	 */
 	#anchoredMotionOwed(): boolean {
 		if (this.#todoCompleting.size > 0) return true;
-		if (this.#todoBoardLive) return true;
+		// A live board is owed frames only while the agent is moving. Otherwise
+		// the clock ran for the whole time the operator spent reading a plan that
+		// was not being worked, and every one of those frames repainted two
+		// regions to draw the same thing.
+		if (todoBoardRailTravels(this.#todoMotion())) return true;
 		return this.#observerRegistry
 			.getSessionsSpawnedBy(this.#focusController.focusedAgentId)
 			.some(session => session.kind === "subagent" && session.status === "active" && session.detached === true);
@@ -4582,6 +4621,11 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.ui.requestRender();
 		}
 		this.applyPendingWorkingMessage();
+		// The board's motion is owed by the agent moving, and this is the edge
+		// where it starts. Nothing else on this path touches the anchored
+		// regions, so without it a board that was still when the turn began
+		// stays still until some unrelated event redraws it.
+		this.#renderTodoList();
 	}
 
 	#stopLoadingAnimation(clearStatusContainer: boolean): void {
@@ -4619,6 +4663,10 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.statusContainer.removeChild(this.loadingAnimation);
 		this.loadingAnimation = undefined;
 		this.#resetTaskClock();
+		// The other edge: the agent has stopped, so the board owes no more
+		// frames. Skipped while frame production is frozen, because a frozen mode
+		// must not touch its containers on the way out.
+		if (!this.#frameProductionFrozen) this.#renderTodoList();
 		return true;
 	}
 

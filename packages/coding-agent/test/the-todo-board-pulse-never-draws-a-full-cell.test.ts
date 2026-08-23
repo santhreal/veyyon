@@ -101,20 +101,27 @@ describe("the todo board pulse never draws a full cell", () => {
 	});
 
 	it("emits no full cell at any frame of the in-flight breath", () => {
-		// Every index in the ramp, not a sample: the peak is one frame in ten, so a
-		// spot check passes nine times out of ten while the defect is on screen.
-		const seen = new Set<string>();
+		// Across every index in the sweep, the in-flight task row draws only the
+		// two lowest ink cells of the ramp (alternating), never `█` and never
+		// any cell above `theme.spinnerFrames[1]`. The phase row remains static.
+		const seenTaskGlyphs = new Set<string>();
+		const seenPhaseGlyphs = new Set<string>();
 		for (let frame = 0; frame < fullRamp().length * 3; frame++) {
 			const rows = rowsOf(PLAN, { frame });
 			const inFlight = rows.find(row => row.includes("wire the workspace")) ?? "";
 			expect(inFlight).not.toBe("");
 			expect(rows.join("\n")).not.toContain("█");
 			// The rail leads every row, so the glyph is the first cell after it.
-			seen.add(glyphOf(inFlight));
+			seenTaskGlyphs.add(glyphOf(inFlight));
+
+			const phaseLine = rows.find(row => row.includes("Foundation")) ?? "";
+			expect(phaseLine).not.toBe("");
+			seenPhaseGlyphs.add(glyphOf(phaseLine));
 		}
-		// The sweep has to have actually moved the glyph, or "no full cell" is
-		// satisfied by a board that draws one static frame forever.
-		expect(seen.size).toBeGreaterThan(3);
+		// The permitted task glyph set is exactly the two lowest ink levels of the ramp.
+		expect(seenTaskGlyphs).toEqual(new Set([theme.spinnerFrames[0], theme.spinnerFrames[1]]));
+		// The phase row is static across the entire sweep, wearing the progress checkbox.
+		expect(seenPhaseGlyphs).toEqual(new Set([theme.checkbox.progress]));
 	});
 
 	it("emits no full cell at any frame of the completion exhale", () => {
