@@ -15,12 +15,11 @@
  * pins that opt-out set by exact equality, so a new provider is red until
  * someone records a decision for it.
  *
- * The table is a leaf: `KnownProvider` is imported as a type, so nothing here
- * pulls the descriptor table's forty model-manager factories onto a caller's
- * graph.
+ * The table is a leaf and stays one: every import here is type-only, so a
+ * caller reading one boolean does not pull the descriptor table's forty
+ * model-manager factories, or the model-identity subtree, onto its graph. The
+ * readers that need identity live in `service-tier.ts`.
  */
-import { isOpenAIModelId } from "../identity/family";
-import type { Api, Model } from "../types";
 import type { KnownProvider } from "./descriptors";
 
 /**
@@ -69,7 +68,7 @@ export type ServiceTierFamily = "openai" | "anthropic" | "google";
 export type ServiceTierByFamily = Partial<Record<ServiceTierFamily, ServiceTier>>;
 
 /** The tiers the OpenAI service-tier field accepts, and the set an OpenAI-compatible relay inherits. */
-const OPENAI_WIRE_TIERS = ["flex", "scale", "priority"] as const satisfies readonly ServiceTier[];
+export const OPENAI_WIRE_TIERS = ["flex", "scale", "priority"] as const satisfies readonly ServiceTier[];
 
 /** How one provider realizes a service tier. */
 export interface ProviderServiceTierCapability {
@@ -197,118 +196,6 @@ export function providersDeclaring(capability: keyof ProviderWireCapabilities): 
 	return Object.keys(PROVIDER_WIRE_CAPABILITIES).filter(
 		id => PROVIDER_WIRE_CAPABILITIES[id as KnownProvider]?.[capability] !== undefined,
 	);
-}
-
-type ServiceTierModel = Pick<Model, "provider" | "api" | "id">;
-
-function isOpenAIServiceTierApi(api: Api | undefined): boolean {
-	return api === "openai-completions" || api === "openai-responses" || api === "openai-codex-responses";
-}
-
-/**
- * A custom OpenAI-compatible relay serving an OpenAI model id: the OpenAI
- * family reaches it through the model, not through a declaration. Both callers
- * ask the declaration first, so this answers only for a provider that declares
- * nothing — which is why Fireworks, whose own entry names its dedicated serving
- * control, never inherits the OpenAI knob through an OpenAI model id.
- */
-function isOpenAIRelayModel(model: ServiceTierModel): boolean {
-	return isOpenAIServiceTierApi(model.api) && isOpenAIModelId(model.id);
-}
-
-function namespaceFamily(modelId: string): ServiceTierFamily | undefined {
-	const id = modelId.toLowerCase();
-	if (id.startsWith("anthropic/")) return "anthropic";
-	if (id.startsWith("google/")) return "google";
-	if (id.startsWith("openai/")) return "openai";
-	return undefined;
-}
-
-/**
- * Classify a model into the service-tier family whose knob governs it, or
- * `undefined` when the model exposes no serving-priority control.
- *
- * A gateway declaring `"model-namespace"` is classified by id namespace
- * (`anthropic/`, `google/`, `openai/`); Claude on Bedrock/Vertex (api
- * `anthropic-messages`) is the anthropic family even though its provider is
- * `amazon-bedrock`/`google-vertex`.
- */
-export function serviceTierFamily(model: ServiceTierModel): ServiceTierFamily | undefined {
-	const capability = providerWireCapabilities(model.provider)?.serviceTier;
-	if (capability) {
-		if (capability.family === "model-namespace") return namespaceFamily(model.id);
-		if (capability.family && !capability.anthropicMessagesOverridesFamily) return capability.family;
-		if (model.api === "anthropic-messages") return "anthropic";
-		return capability.family;
-	}
-	if (model.api === "anthropic-messages") return "anthropic";
-	return isOpenAIRelayModel(model) ? "openai" : undefined;
-}
-
-/**
- * Reduce a per-family tier map to the single wire tier for `model` — the entry
- * for the model's family, or `undefined` when the model has no family.
- */
-export function resolveModelServiceTier(
-	tiers: ServiceTierByFamily | null | undefined,
-	model: ServiceTierModel,
-): ServiceTier | undefined {
-	if (!tiers) return undefined;
-	const family = serviceTierFamily(model);
-	return family ? tiers[family] : undefined;
-}
-
-/**
- * True when the tier should be sent on the wire as the provider's service-tier
- * request field: the provider declares it, or the request reaches an
- * OpenAI-compatible relay serving an OpenAI model id.
- */
-export function shouldSendServiceTier(
-	serviceTier: ServiceTier | null | undefined,
-	target: string | ServiceTierModel | undefined,
-): boolean {
-	if (!serviceTier) return false;
-	const provider = typeof target === "string" ? target : target?.provider;
-	const capability = providerWireCapabilities(provider)?.serviceTier;
-	if (capability) return capability.wireTiers.includes(serviceTier);
-	if (typeof target !== "string" && target && isOpenAIRelayModel(target)) {
-		return (OPENAI_WIRE_TIERS as readonly ServiceTier[]).includes(serviceTier);
-	}
-	return false;
-}
-
-/**
- * True when `priority` will actually be realized on the wire for `model`.
- * Bedrock/Vertex Claude and an OpenRouter Anthropic model do not realize
- * priority and return `false`.
- */
-export function realizesPriorityServiceTier(
-	serviceTier: ServiceTier | null | undefined,
-	model: ServiceTierModel,
-): boolean {
-	if (serviceTier !== "priority") return false;
-	const capability = providerWireCapabilities(model.provider)?.serviceTier;
-	if (capability?.realizesPriorityOffWire) return true;
-	if (capability?.realizesPriorityForFamilies) {
-		const family = serviceTierFamily(model);
-		return family !== undefined && capability.realizesPriorityForFamilies.includes(family);
-	}
-	if (model.api === "anthropic-messages") return false;
-	return shouldSendServiceTier(serviceTier, model);
-}
-
-/**
- * Premium-request weight contributed by a priority request to a provider that
- * realizes it and bills extra. Mirrors GitHub Copilot's `premiumRequests`
- * accounting so the "premium requests" stat aggregates priority traffic across
- * the OpenAI family, direct Anthropic fast mode, and Google priority.
- */
-export function getPriorityPremiumRequests(
-	serviceTier: ServiceTier | null | undefined,
-	model: ServiceTierModel,
-): number {
-	if (!realizesPriorityServiceTier(serviceTier, model)) return 0;
-	return providerWireCapabilities(model.provider)?.serviceTier?.premiumPriority ? 1 : 0;
 }
 
 /**

@@ -114,13 +114,6 @@ export type CacheRetention = "none" | "short" | "long";
  */
 export type CacheEnforcement = "off" | "warn" | "error";
 
-export type {
-	ProviderServiceTierCapability,
-	ProviderWireCapabilities,
-	ServiceTier,
-	ServiceTierByFamily,
-	ServiceTierFamily,
-} from "@veyyon/catalog/provider-models/wire-capabilities";
 /**
  * The service-tier vocabulary, and the per-provider capability that decides what
  * a tier does on the wire, live in
@@ -129,14 +122,23 @@ export type {
  * request shape this module declares and every consumer reaches it through here.
  */
 export {
-	coerceServiceTierByFamily,
 	getPriorityPremiumRequests,
-	isServiceTier,
 	realizesPriorityServiceTier,
 	resolveModelServiceTier,
-	SERVICE_TIERS,
 	serviceTierFamily,
 	shouldSendServiceTier,
+} from "@veyyon/catalog/provider-models/service-tier";
+export type {
+	ProviderServiceTierCapability,
+	ProviderWireCapabilities,
+	ServiceTier,
+	ServiceTierByFamily,
+	ServiceTierFamily,
+} from "@veyyon/catalog/provider-models/wire-capabilities";
+export {
+	coerceServiceTierByFamily,
+	isServiceTier,
+	SERVICE_TIERS,
 } from "@veyyon/catalog/provider-models/wire-capabilities";
 
 export interface ProviderSessionState {
