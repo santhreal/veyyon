@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-8ea7c097.js";
+            window.path_to_searchindex_js = "../searchindex-1fab5344.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-093df7ff.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -209,6 +209,18 @@
 Record interactive proofs on the repository’s private display. Do not record a
 logged-in desktop, and do not use a terminal multiplexer capture as visual
 evidence. There are no other capture paths and no fallbacks.</p>
+<h3 id="which-artifact-proves-which-change"><a class="header" href="#which-artifact-proves-which-change">Which artifact proves which change</a></h3>
+<p>The artifact class follows the change class, and a mismatch is a failed proof.</p>
+<pre><code class="language-text">static surface changed     two PNG frames, before and after
+animation or timing changed  two animated clips, before and after
+setting added or changed   two PNG frames, off and on
+</code></pre>
+<p>A still never proves an animation: a frame cannot show a cadence, a transition, or a
+spinner. An animated clip never substitutes for a frame pair either, because a reader
+comparing two clips cannot hold both states side by side. The recorder publishes
+animation as WebP at 33 ms per frame; a GIF is the same clip in an older container and
+proves the same thing. Both arms of a pair are the same class, produced by one driver
+run, and attached to the pull request body.</p>
 <h3 id="real-interactive-sessions"><a class="header" href="#real-interactive-sessions">Real interactive sessions</a></h3>
 <p>The HD recorder starts Xvfb, picom, and kitty inside the recorder container. It drives the shipped CLI with real keyboard and pointer events and records the private display at 30 frames per second.</p>
 <p>The landing-page terminal uses:</p>
@@ -249,6 +261,17 @@ check, and <code>ffmpeg</code> and <code>python3</code> for the publish chain. I
 <code>PATH</code>, because a recording is driven over ssh and a non-login shell there does not carry the
 installer’s entry. A publish tool first called after the recording is a take lost to a <code>PATH</code>
 difference, which is why a rehearsal needs only <code>docker</code>.</p>
+<p>The container is built by one script and tagged from one declaration:</p>
+<pre><code class="language-sh">bash proof/docker/build-recorder.sh
+</code></pre>
+<p>The tag carries the bun version in the root <code>package.json</code> <code>packageManager</code> field,
+because the image carries a bun and the product refuses to start on a runtime older
+than the one it is built for. A bump therefore makes a stale image a missing image,
+which docker reports before a display server starts. Recording with an image built
+on an older bun ends the take from inside the container after the whole rig is up.</p>
+<p>The recorder reaches a model served on the host through the docker host gateway; the
+loopback address the driver requires is rewritten for the container by
+<code>proof/docker/host-endpoint.sh</code>, so no scene needs to name a network address.</p>
 <p>The archived take remains at capture speed. The landing-page cut keeps the plan, the worker setup, verification and signing at 1×. Visible implementation between the worker launch and the verified build plays at 1.25×. Named marks in the take select those boundaries; untouched screens are shortened to four seconds rather than accelerated.</p>
 <h3 id="settings-differentials"><a class="header" href="#settings-differentials">Settings differentials</a></h3>
 <p>A settings change proves with two frames of the settings screen recorded from the
@@ -261,14 +284,17 @@ starts, so each arm is seeded rather than toggled by a keybinding that may not l
 OUT_DIR=proof/captures/x11/on SCENE_SETTINGS='argot.enabled: true' \
   proof/docker/record-x11.sh proof/scenes/settings-pointer.sh
 </code></pre>
-<p>Both arms run the same scene at the same window size, so the only difference between
-them is the setting. A pair whose two frames are byte-identical, or whose “on” arm
-does not show the value in effect, is a failed proof.</p>
 <h3 id="before-and-after-pairs-for-a-ui-change"><a class="header" href="#before-and-after-pairs-for-a-ui-change">Before-and-after pairs for a UI change</a></h3>
 <p>A change to a visible surface proves with two frames of the same scene, one on the
 tree without the change and one on the tree with it.</p>
 <pre><code class="language-sh">proof/docker/record-x11.sh proof/scenes/&lt;name&gt;.sh        # the after arm
 proof/docker/record-x11-before.sh proof/scenes/&lt;name&gt;.sh # the before arm
+</code></pre>
+<p>The unified workspace search settings surface uses:</p>
+<pre><code class="language-sh">OUT_DIR=proof/captures/x11/after \
+  proof/docker/record-x11.sh proof/scenes/settings-search.sh
+
+proof/docker/record-x11-before.sh proof/scenes/settings-search.sh
 </code></pre>
 <p>The after arm writes to <code>proof/captures/x11/</code>. The before arm writes to
 <code>proof/captures/x11/before/</code>, holding every source file the change touched at the

@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-8ea7c097.js";
+            window.path_to_searchindex_js = "../searchindex-1fab5344.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-093df7ff.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -324,15 +324,33 @@ equivalence:
 <li><code>id</code> required</li>
 <li><code>contextWindow</code> and <code>maxTokens</code> must be positive if provided</li>
 </ul>
-<h3 id="command-resolved-secrets"><a class="header" href="#command-resolved-secrets">Command-resolved secrets</a></h3>
-<p>Provider <code>apiKey</code> values and provider/model <code>headers</code> values may start with <code>!</code> to read a secret from command stdout. The command is run with a 10 s timeout, stdout is trimmed, and empty/failing commands are omitted:</p>
+<h3 id="secret-values"><a class="header" href="#secret-values">Secret values</a></h3>
+<p>Provider <code>apiKey</code> values and provider/model <code>headers</code> values are resolved in this order:</p>
+<ol>
+<li>A value starting with <code>!</code> runs as a shell command with a 10 s timeout and its trimmed stdout is
+used. Empty or failing commands are omitted. Successful outputs are cached for the process
+lifetime, so the command is not re-run for every model.</li>
+<li><code>${NAME}</code> or <code>$NAME</code> reads the environment variable <code>NAME</code>.</li>
+<li>A bare value shaped like an environment variable name (<code>DEEPSEEK_API_KEY</code>, upper case, digits and
+underscores) reads that variable too.</li>
+<li><code>literal:&lt;text&gt;</code> is <code>&lt;text&gt;</code>, verbatim, with no lookup.</li>
+<li>Any other value is itself, which is how a key such as <code>sk-...</code> or <code>sk_live_...</code> works.</li>
+</ol>
 <pre><code class="language-yaml">providers:
   openai:
     apiKey: "!op read op://dev/openai/api-key"
     headers:
       X-Team-Key: "!bw get password veyyon-team-key"
+  gateway:
+    apiKey: ${GATEWAY_API_KEY}
+    headers:
+      X-Tenant: literal:ACME_TENANT
 </code></pre>
-<p>Successful command outputs are cached for the process lifetime so the command is not re-run for every model.</p>
+<p>A variable named in cases 2 or 3 that is unset, or set to an empty string, resolves to nothing: the
+key is not installed, no request carries it, and a warning names the variable and the setting.
+Earlier versions used the variable’s own name as the value, so <code>apiKey: DEEPSEK_API_KEY</code> was sent to
+the provider as the key. A key that is genuinely upper case text rather than a variable name is
+written <code>literal:MY_KEY</code>.</p>
 <h2 id="merge-and-override-order"><a class="header" href="#merge-and-override-order">Merge and override order</a></h2>
 <p>ModelRegistry pipeline (on refresh):</p>
 <ol>
@@ -734,7 +752,7 @@ disabledProviders:
 <h3 id="anthropic-compatibility-anthropic-messages"><a class="header" href="#anthropic-compatibility-anthropic-messages">Anthropic compatibility (<code>anthropic-messages</code>)</a></h3>
 <p>For <code>anthropic-messages</code> models the runtime uses a separate <code>AnthropicCompat</code> shape (<code>packages/catalog/src/types.ts</code>). The <code>models.yml</code> schema exposes the strict-tools opt-out as a top-level provider field (see below) plus two Anthropic-side flags in the same <code>compat</code> slot, <code>requiresToolResultId</code> (non-standard <code>id</code> alias on <code>tool_result</code> blocks for Z.AI-style proxies) and <code>replayUnsignedThinking</code> (replay unsigned thinking blocks as native thinking instead of demoting them to text); the remaining Anthropic-side knobs (<code>disableAdaptiveThinking</code>, <code>supportsEagerToolInputStreaming</code>, <code>supportsLongCacheRetention</code>, <code>supportsMidConversationSystem</code>, <code>supportsForcedToolChoice</code>, <code>supportsSamplingParams</code>, <code>escapeBuiltinToolNames</code>) are set by built-in catalog metadata and are not user-configurable from <code>models.yml</code>.</p>
 <h3 id="strict-tool-schemas-disablestricttools"><a class="header" href="#strict-tool-schemas-disablestricttools">Strict tool schemas (<code>disableStrictTools</code>)</a></h3>
-<p>Anthropic’s API supports a <code>strict</code> field on tool definitions that forces the model to always follow the provided schema exactly. Veyyon enables it by default for a small allowlist of high-frequency built-in <code>anthropic-messages</code> tools (<code>bash</code>, <code>python</code>, <code>edit</code>, and <code>find</code>) whose schemas fit Anthropic’s strict grammar limits; other tools still send normalized schemas but omit <code>strict</code>.</p>
+<p>Anthropic’s API supports a <code>strict</code> field on tool definitions that forces the model to always follow the provided schema exactly. Veyyon enables it by default for a small allowlist of high-frequency built-in <code>anthropic-messages</code> tools (<code>bash</code>, <code>python</code>, <code>edit</code>, and <code>search</code>) whose schemas fit Anthropic’s strict grammar limits; other tools still send normalized schemas but omit <code>strict</code>.</p>
 <p>Third-party providers that front the Anthropic API (AWS Bedrock, Azure, self-hosted proxies) do not always implement this field and will reject requests that include it. Set <code>disableStrictTools: true</code> at the provider level to opt out of strict mode for the allowlisted tools:</p>
 <pre><code class="language-yaml">providers:
   bedrock-anthropic:

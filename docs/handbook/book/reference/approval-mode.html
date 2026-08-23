@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-8ea7c097.js";
+            window.path_to_searchindex_js = "../searchindex-1fab5344.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-093df7ff.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -242,7 +242,7 @@ opts out of all permission and so opts out of this too.</p>
 directory but reaching outside it through a symlink is still outside, and a path
 that cannot be resolved at all is treated as outside rather than assumed safe.</p>
 <p>Every tool that reads or writes files takes part: <code>read</code>, <code>write</code>, <code>edit</code>,
-<code>ast_edit</code>, <code>grep</code>, <code>glob</code>, <code>ast_grep</code>, <code>inspect_image</code>, and <code>set_cwd</code>.</p>
+<code>ast_edit</code>, <code>search</code>, <code>inspect_image</code>, and <code>set_cwd</code>.</p>
 <p><code>set_cwd</code> is on that list for a reason worth stating. It changes the working
 directory, so an unbounded <code>set_cwd</code> would be a way to erase the boundary rather
 than obey it: re-root to the parent, and every later write is inside the new root
@@ -291,12 +291,17 @@ no credential and does not ask.</p>
 <p>Resolution per tool call:</p>
 <ol>
 <li>Compute the tool’s approval decision from <code>tool.approval(args)</code>; omitted means <code>exec</code>.</li>
-<li>Normalize <code>tools.approval.&lt;tool&gt;</code> if present; invalid values are ignored.</li>
+<li>Normalize <code>tools.approval.&lt;tool&gt;</code> if the key is present. <code>allow</code>, <code>deny</code> and <code>prompt</code> are accepted in any case, with surrounding spaces trimmed. Any other value present under that key denies the tool, and a warning at startup names the setting, the value found and the accepted values. An absent key is unconfigured.</li>
 <li>In <code>yolo</code> mode, the user policy is used when present. Otherwise a <code>critical</code> decision prompts and everything else is allowed: plain <code>override</code> reasons do not force a prompt in <code>yolo</code>, but <code>critical</code> ones do.</li>
 <li>In non-yolo modes, if the tool sets <code>override: true</code>, <code>deny</code> is blocked and all other cases prompt, even if user policy says <code>allow</code>.</li>
 <li>Otherwise, a valid user policy wins.</li>
 <li>Otherwise, the active mode auto-approves or prompts by tier.</li>
 </ol>
+<p>A misspelled policy blocks the tool it names rather than being dropped. <code>deny</code> and not <code>prompt</code>,
+because <code>/yolo</code> lifts a prompt: a typo would otherwise run the call in the mode where the policy
+matters most. Only the named tool is affected; the rest of the record still applies. A
+<code>tools.approval</code> that is not a per-tool record names no tool, so it configures no policy at all
+and the startup warning is the only sign of it.</p>
 <h2 id="safety-overrides"><a class="header" href="#safety-overrides">Safety overrides</a></h2>
 <p>A tool can force a prompt with object-form approval:</p>
 <pre><code class="language-ts">approval: { tier: "exec", override: true, reason: "Needs confirmation" }
@@ -366,7 +371,7 @@ veyyon acp --config ./acp-yolo.yml   # file contains tools.approvalMode: yolo
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="../reference/theme.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../reference/project-trust.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -380,7 +385,7 @@ veyyon acp --config ./acp-yolo.yml   # file contains tools.approvalMode: yolo
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="../reference/theme.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../reference/project-trust.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

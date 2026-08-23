@@ -67,7 +67,7 @@ specialist for each independent slice:
 # agents/accessibility-reviewer.md frontmatter
 name: accessibility-reviewer
 description: Reviews terminal interfaces for accessibility problems and reports findings
-tools: read, grep, glob
+tools: read, search
 ```
 
 Enable that role when you want it available:

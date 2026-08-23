@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-8ea7c097.js";
+            window.path_to_searchindex_js = "../searchindex-1fab5344.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-093df7ff.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -208,7 +208,7 @@
 <ul>
 <li>The provider’s environment variable (see <a href="../models/providers.html">Providers</a> for the full map), or</li>
 <li><code>/login</code> inside the TUI, which stores the credential in the auth store, or</li>
-<li>A <code>models.yml</code> <code>apiKey</code> on a custom provider (env-var name or literal).</li>
+<li>A <code>models.yml</code> <code>apiKey</code> on a custom provider (an env-var name, or <code>literal:&lt;text&gt;</code>).</li>
 </ul>
 <p>See <a href="./authentication.html">Signing in</a> for storage modes and <a href="./configuring-providers.html">Configuring providers</a>
 for full <code>models.yml</code> examples.</p>
@@ -319,14 +319,14 @@ harness:
   profiles:
     "openai/gpt-4.1":
       repair: true
-      tools: ["read", "edit", "grep", "bash", "write"]
+      tools: ["read", "edit", "search", "bash", "write"]
       promptSectionOrder: ["tool-policy", "delivery-contract"]
 </code></pre>
 <pre><code class="language-yaml"># harness-profiles.yml
 profiles:
   "openai/gpt-4.1":
     repair: true
-    tools: ["read", "edit", "grep", "bash", "write"]
+    tools: ["read", "edit", "search", "bash", "write"]
     promptSectionOrder: ["tool-policy", "delivery-contract"]
 </code></pre>
 <p>Keys: exact <code>provider/model-id</code> or <code>provider/*</code>. See <a href="../repair/per-model.html">Per-model repair posture</a>.</p>

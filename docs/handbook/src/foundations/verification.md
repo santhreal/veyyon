@@ -125,9 +125,6 @@ OUT_DIR=proof/captures/x11/on SCENE_SETTINGS='argot.enabled: true' \
   proof/docker/record-x11.sh proof/scenes/settings-pointer.sh
 ```
 
-Both arms run the same scene at the same window size, so the only difference between
-them is the setting. A pair whose two frames are byte-identical, or whose "on" arm
-does not show the value in effect, is a failed proof.
 
 ### Before-and-after pairs for a UI change
 
@@ -137,6 +134,15 @@ tree without the change and one on the tree with it.
 ```sh
 proof/docker/record-x11.sh proof/scenes/<name>.sh        # the after arm
 proof/docker/record-x11-before.sh proof/scenes/<name>.sh # the before arm
+```
+
+The unified workspace search settings surface uses:
+
+```sh
+OUT_DIR=proof/captures/x11/after \
+  proof/docker/record-x11.sh proof/scenes/settings-search.sh
+
+proof/docker/record-x11-before.sh proof/scenes/settings-search.sh
 ```
 
 The after arm writes to `proof/captures/x11/`. The before arm writes to

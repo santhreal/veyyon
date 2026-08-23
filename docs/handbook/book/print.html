@@ -51,10 +51,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-8ea7c097.js";
+            window.path_to_searchindex_js = "searchindex-1fab5344.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-093df7ff.js"></script>
+        <script src="toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -260,7 +260,7 @@ live in the agent loop, not in prompt text.</li>
 </thead>
 <tbody>
 <tr><td>Edits</td><td>Hashline <code>edit</code> and <code>write</code>, checked against file contents before writing to disk</td></tr>
-<tr><td>Tools</td><td><code>read</code>, <code>grep</code>, <code>glob</code>, <code>bash</code>, LSP, DAP, browser, MCP, task subagents, and extensions</td></tr>
+<tr><td>Tools</td><td><code>read</code>, <code>search</code>, <code>bash</code>, LSP, DAP, browser, MCP, task subagents, and extensions</td></tr>
 <tr><td>Approvals</td><td><code>tools.approvalMode</code> gates read, write, and exec tiers</td></tr>
 <tr><td>Models</td><td>Separate slots for interactive, subagent, and compaction models, with role mappings per profile</td></tr>
 <tr><td>Sessions</td><td>Branchable session trees with resume and fork support</td></tr>
@@ -1036,7 +1036,7 @@ $ veyyon
 </code></pre>
 <p>A typical run looks like this:</p>
 <ol>
-<li>Veyyon reads the files it needs with <code>read</code>, <code>grep</code>, and <code>glob</code>.</li>
+<li>Veyyon reads the files it needs with <code>read</code> and <code>search</code>.</li>
 <li>It proposes an edit through the hashline <code>edit</code> and <code>write</code> tools.</li>
 <li>When your policy requires it, you approve the tool call. The <code>tools.approvalMode</code> setting decides when this happens; see <a href="#safety-1">Safety</a>.</li>
 <li>The change lands, and the diff appears in the TUI.</li>
@@ -1082,7 +1082,7 @@ providers:
   acme:
     baseUrl: https://api.acme.example/v1
     api: openai-completions
-    apiKey: ACME_API_KEY        # env-var name if set, else literal text
+    apiKey: ACME_API_KEY        # env-var name; `literal:text` for verbatim text
     models:
       - id: acme-coder
         name: ACME Coder
@@ -1318,7 +1318,7 @@ it as the boundary.</p>
 <h2 id="tool-tiers"><a class="header" href="#tool-tiers">Tool tiers</a></h2>
 <p>Every tool belongs to one of three tiers, ordered by how much it can change:</p>
 <ul>
-<li><strong>read</strong> looks but does not touch: <code>read</code>, <code>grep</code>, <code>glob</code>, and directory listing.</li>
+<li><strong>read</strong> looks but does not touch: <code>read</code>, <code>search</code>, and directory listing.</li>
 <li><strong>write</strong> changes files: <code>edit</code> and <code>write</code>.</li>
 <li><strong>exec</strong> runs commands: <code>bash</code> and anything else that executes a program.</li>
 </ul>
@@ -1368,7 +1368,7 @@ it is outside, even though the tier is the same.</p>
 entirely inside the working directory that reaches outside it through a symlink counts
 as outside. A path that cannot be resolved at all also counts as outside, because
 treating an unreadable path as safe is the assumption you least want to be wrong about.</p>
-<p>These tools take part: <code>read</code>, <code>write</code>, <code>edit</code>, <code>ast_edit</code>, <code>grep</code>, <code>glob</code>, <code>ast_grep</code>,
+<p>These tools take part: <code>read</code>, <code>write</code>, <code>edit</code>, <code>ast_edit</code>, <code>search</code>,
 <code>inspect_image</code>, and <code>set_cwd</code>.</p>
 <p><code>set_cwd</code> is on that list because it changes the working directory itself. If it were
 not bound, you could move the boundary instead of obeying it: re-root to the parent
@@ -1503,7 +1503,7 @@ providers:
   deepseek:
     baseUrl: https://api.deepseek.com
     api: openai-completions
-    apiKey: DEEPSEEK_API_KEY   # env-var name or literal
+    apiKey: DEEPSEEK_API_KEY   # env-var name; unset means no key, not a literal
     models:
       - id: deepseek-chat
         name: DeepSeek Chat
@@ -1677,7 +1677,7 @@ OpenAI-compatible endpoints.</li>
 <p>For worked examples, see the <a href="#task-guides">Task guides</a>. For the full command and setting reference, see <a href="#reference-1">Reference</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="editing-and-repair"><a class="header" href="#editing-and-repair">Editing and repair</a></h1>
-<p>Editing reliably is the core of a coding agent, so it is worth understanding how Veyyon does it. The default edit surface is hashline. In practice that means three things work together: numbered lines that come back from <code>read</code> and <code>grep</code>, snapshot tags that identify a known state of a file, and the <code>edit</code> tool with its <code>SWAP</code>, <code>DEL</code>, and <code>INS</code> operations.</p>
+<p>Editing reliably is the core of a coding agent, so it is worth understanding how Veyyon does it. The default edit surface is hashline. In practice that means three things work together: numbered lines that come back from <code>read</code> and <code>search</code>, snapshot tags that identify a known state of a file, and the <code>edit</code> tool with its <code>SWAP</code>, <code>DEL</code>, and <code>INS</code> operations.</p>
 <p>For the design behind the edit and repair path, see <a href="#the-hashline-edit-engine">The hashline edit engine</a>.</p>
 <h2 id="failure-modes"><a class="header" href="#failure-modes">Failure modes</a></h2>
 <p>Models often emit slightly wrong tool JSON, or line anchors that have gone stale. Hashline catches a stale <code>[path#TAG]</code> tag and returns recovery hints instead of writing the wrong bytes. On top of that, general schema repair runs on every tool call before validation. See <a href="#tool-call-repair">Repair overview</a>.</p>
@@ -1713,7 +1713,7 @@ OpenAI-compatible endpoints.</li>
 <h2 id="hashline-workflow"><a class="header" href="#hashline-workflow">Hashline workflow</a></h2>
 <p>The loop is short:</p>
 <ol>
-<li><code>read</code> (or <code>grep</code>) returns <code>[relative/path#TAG]</code> and <code>LINE:text</code> rows.</li>
+<li><code>read</code> (or <code>search</code>) returns <code>[relative/path#TAG]</code> and <code>LINE:text</code> rows.</li>
 <li>The model calls <code>edit</code>, anchoring each section on the same <code>TAG</code>.</li>
 <li>On success, the output includes a fresh <code>[path#NEW_TAG]</code> and a compact diff.</li>
 </ol>
@@ -1746,7 +1746,7 @@ below.</p>
 <tr><th>Tier</th><th>Examples</th></tr>
 </thead>
 <tbody>
-<tr><td><strong>read</strong></td><td><code>read</code>, <code>grep</code>, <code>glob</code>, listing</td></tr>
+<tr><td><strong>read</strong></td><td><code>read</code>, <code>search</code>, listing</td></tr>
 <tr><td><strong>write</strong></td><td><code>edit</code>, <code>write</code></td></tr>
 <tr><td><strong>exec</strong></td><td><code>bash</code> and other command execution</td></tr>
 </tbody>
@@ -1832,7 +1832,7 @@ a rung whose entire promise is that it does not ask cannot be stopping an instal
 typed. To turn the floor off on <code>yolo</code>, set <code>tools.approval.bash</code> to <code>allow</code>; below <code>yolo</code> an
 <code>allow</code> is outranked by the guard, and <code>deny</code> is a hard block on every rung.</p>
 <p>Separately, the bash interceptor (<code>bashInterceptor.enabled</code>, default off) blocks shell
-commands that duplicate dedicated tools, so the model reaches for <code>read</code>/<code>grep</code>/<code>glob</code>
+commands that duplicate dedicated tools, so the model reaches for <code>read</code>/<code>search</code>
 instead of <code>cat</code>/<code>rg</code>/<code>find</code>. Its rules live in <code>bashInterceptor.patterns</code>.</p>
 <h2 id="related-6"><a class="header" href="#related-6">Related</a></h2>
 <ul>
@@ -2519,7 +2519,7 @@ Set "minLength" on the entry if short matches are real secrets, or tighten the p
 <ul>
 <li>The provider’s environment variable (see <a href="#the-provider-stack-and-bring-your-own-key">Providers</a> for the full map), or</li>
 <li><code>/login</code> inside the TUI, which stores the credential in the auth store, or</li>
-<li>A <code>models.yml</code> <code>apiKey</code> on a custom provider (env-var name or literal).</li>
+<li>A <code>models.yml</code> <code>apiKey</code> on a custom provider (an env-var name, or <code>literal:&lt;text&gt;</code>).</li>
 </ul>
 <p>See <a href="#signing-in">Signing in</a> for storage modes and <a href="#configuring-providers">Configuring providers</a>
 for full <code>models.yml</code> examples.</p>
@@ -2630,14 +2630,14 @@ harness:
   profiles:
     "openai/gpt-4.1":
       repair: true
-      tools: ["read", "edit", "grep", "bash", "write"]
+      tools: ["read", "edit", "search", "bash", "write"]
       promptSectionOrder: ["tool-policy", "delivery-contract"]
 </code></pre>
 <pre><code class="language-yaml"># harness-profiles.yml
 profiles:
   "openai/gpt-4.1":
     repair: true
-    tools: ["read", "edit", "grep", "bash", "write"]
+    tools: ["read", "edit", "search", "bash", "write"]
     promptSectionOrder: ["tool-policy", "delivery-contract"]
 </code></pre>
 <p>Keys: exact <code>provider/model-id</code> or <code>provider/*</code>. See <a href="#per-model-repair-posture">Per-model repair posture</a>.</p>
@@ -2858,7 +2858,7 @@ specialist for each independent slice:</p>
 <pre><code class="language-yaml"># agents/accessibility-reviewer.md frontmatter
 name: accessibility-reviewer
 description: Reviews terminal interfaces for accessibility problems and reports findings
-tools: read, grep, glob
+tools: read, search
 </code></pre>
 <p>Enable that role when you want it available:</p>
 <pre><code class="language-console">$ veyyon config set subagent.agents.accessibility-reviewer.enabled true
@@ -5990,7 +5990,7 @@ export default function contextFilter(veyyon: HookAPI): void {
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="advisor-watchdogmd-and-watchdogyml"><a class="header" href="#advisor-watchdogmd-and-watchdogyml">Advisor, WATCHDOG.md, and WATCHDOG.yml</a></h1>
 <p>The advisor is an optional second model attached to a session. It reviews the primary agent’s transcript after each turn, inspects the workspace with its own tools, and injects concise advice back into the primary session.</p>
-<p>The advisor is not a second executor: it cannot approve actions or change primary session state directly. Its default toolset is read-only (<code>read</code>, <code>grep</code>, <code>glob</code>) plus <code>advise</code>, but a <code>WATCHDOG.yml</code> roster entry may broaden <code>tools:</code> to any built-in, including mutating tools such as <code>edit</code>, <code>write</code>, <code>bash</code>, <code>eval</code>, and <code>browser</code>, so grant those tools only when the advisor model and workspace are trusted (see <a href="#tools-and-isolation">Tools and isolation</a>).</p>
+<p>The advisor is not a second executor: it cannot approve actions or change primary session state directly. Its default toolset is read-only (<code>read</code>, <code>search</code>) plus <code>advise</code>, but a <code>WATCHDOG.yml</code> roster entry may broaden <code>tools:</code> to any built-in, including mutating tools such as <code>edit</code>, <code>write</code>, <code>bash</code>, <code>eval</code>, and <code>browser</code>, so grant those tools only when the advisor model and workspace are trusted (see <a href="#tools-and-isolation">Tools and isolation</a>).</p>
 <h2 id="implementation-files"><a class="header" href="#implementation-files">Implementation files</a></h2>
 <ul>
 <li><a href="../../../packages/coding-agent/src/advisor/runtime.ts"><code>src/advisor/runtime.ts</code></a></li>
@@ -6051,8 +6051,7 @@ advisor:
 <p>Every advisor has the <code>advise</code> tool for surfacing notes into the primary transcript. Its investigative pool defaults to the read-only subset:</p>
 <ul>
 <li><code>read</code></li>
-<li><code>grep</code></li>
-<li><code>glob</code></li>
+<li><code>search</code></li>
 </ul>
 <p>A <code>WATCHDOG.yml</code> roster entry may broaden this with <code>tools: [...]</code>, selecting any subset of the built-in pool the session actually built (a factory that returned <code>null</code>, e.g. <code>lsp</code> with no matching servers, is absent). Grantable tools include mutating ones: <code>edit</code>, <code>write</code>, <code>bash</code>, <code>eval</code>, <code>browser</code>, <code>debug</code>, <code>ast_edit</code>, <code>task</code>, <code>job</code>, and the memory tools. Tool names outside <a href="../../../packages/coding-agent/src/tools/builtin-names.ts"><code>BUILTIN_TOOL_NAMES</code></a> are dropped with a warning.</p>
 <p>Advisor grants are not routed through the primary agent’s approval wrapper. The advisor pool is built from the built-in tool factories against its own <code>-advisor</code> <code>ToolSession</code> and then filtered by <code>WATCHDOG.yml</code>; it is not the primary <code>toolRegistry</code> wrapped with <code>ExtensionToolWrapper</code>. Granting write- or exec-tier tools therefore lets the advisor invoke those tools directly, subject to the tool’s own runtime guards but not to <code>tools.approvalMode</code> / <code>tools.approval.&lt;tool&gt;</code> prompts. Keep mutating grants narrow and trusted.</p>
@@ -6167,13 +6166,13 @@ Especially watch for:
 advisors:
   - name: Architecture
     model: anthropic/claude-sonnet-4-5:medium
-    tools: [read, grep, glob]
+    tools: [read, search]
     instructions: |
       Watch cross-module coupling and public-API growth.
 
   - name: Fixer
     model: anthropic/claude-sonnet-4-5:high
-    tools: [read, grep, glob, edit, bash]
+    tools: [read, search, edit, bash]
     instructions: |
       You may edit and run tests to prove a fix locally, then advise.
 </code></pre>
@@ -6182,7 +6181,7 @@ advisors:
 <li><code>instructions</code> (top level): shared prompt prepended to every advisor’s system prompt alongside <code>WATCHDOG.md</code>. Concatenated across all discovered <code>WATCHDOG.yml</code> files.</li>
 <li><code>advisors[].name</code>: human label; slugified for the session id and the <code>&lt;session&gt;/__advisor.jsonl</code> filename. Duplicate slugs across files are resolved by the same specificity rule as <code>WATCHDOG.md</code> discovery (project leaf &gt; project ancestor &gt; user).</li>
 <li><code>advisors[].model</code>: optional model selector with optional <code>:level</code> thinking suffix (e.g. <code>x-ai/grok-code-fast:high</code>). Omitted → the advisor uses <code>modelRoles.advisor</code>.</li>
-<li><code>advisors[].tools</code>: optional list of built-in tool names to grant. Omitted or empty → the default <code>read</code>/<code>grep</code>/<code>glob</code> subset. Any name in <a href="../../../packages/coding-agent/src/tools/builtin-names.ts"><code>BUILTIN_TOOL_NAMES</code></a> is accepted, including mutating tools (<code>edit</code>, <code>write</code>, <code>bash</code>, <code>eval</code>, <code>browser</code>, <code>debug</code>, <code>ast_edit</code>, <code>task</code>, <code>job</code>, and the memory tools). Legacy aliases (<code>search</code>→<code>grep</code>, <code>find</code>→<code>glob</code>) are normalized. Unknown names are dropped with a warning. See <a href="#tools-and-isolation">Tools and isolation</a> for the safety implications of granting mutating tools.</li>
+<li><code>advisors[].tools</code>: optional list of built-in tool names to grant. Omitted or empty → the default <code>read</code>/<code>search</code> subset. Any name in <a href="../../../packages/coding-agent/src/tools/builtin-names.ts"><code>BUILTIN_TOOL_NAMES</code></a> is accepted, including mutating tools (<code>edit</code>, <code>write</code>, <code>bash</code>, <code>eval</code>, <code>browser</code>, <code>debug</code>, <code>ast_edit</code>, <code>task</code>, <code>job</code>, and the memory tools). Unknown names are dropped with a warning. See <a href="#tools-and-isolation">Tools and isolation</a> for the safety implications of granting mutating tools.</li>
 <li><code>advisors[].instructions</code>: this advisor’s specialization, appended after the shared baseline. Both instruction fields expand <code>@path</code> imports like <code>WATCHDOG.md</code>.</li>
 </ul>
 <h3 id="discovery-locations-1"><a class="header" href="#discovery-locations-1">Discovery locations</a></h3>
@@ -6549,6 +6548,32 @@ and <code>headers</code>.</p>
       "args": ["/path/to/sqlite-mcp-server/index.js"],
       "env": { "DB_PATH": "/var/data/app.db", "SQLITE_LOG_LEVEL": "warn" }
     }
+  }
+}
+</code></pre>
+<p>A stdio server does not inherit the shell environment. It receives a baseline of variables a
+program needs in order to run — <code>PATH</code>, <code>HOME</code>, temp and locale settings, certificate and proxy
+settings, and the directories version managers use to resolve a command — plus whatever <code>env</code>
+sets. Every other ambient variable, including provider keys and CI tokens, is withheld. On
+Windows the baseline also carries <code>PATHEXT</code>, <code>SystemRoot</code>, <code>ComSpec</code> and the <code>ProgramFiles</code>
+variants, and names match without regard to case.</p>
+<p>To forward an ambient variable, name it:</p>
+<pre><code class="language-json">{
+  "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "envPassthrough": ["GITHUB_TOKEN"]
+    }
+  }
+}
+</code></pre>
+<p><code>inheritEnv: true</code> hands one server the whole environment, including every credential in it. Use
+it when a server needs a variable you cannot name in advance. It is set per server, and each
+spawn logs a warning naming the command.</p>
+<pre><code class="language-json">{
+  "mcpServers": {
+    "legacy": { "command": "/opt/legacy/mcp", "inheritEnv": true }
   }
 }
 </code></pre>
@@ -7717,7 +7742,7 @@ See <a href="#approvals">Approvals</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="tools-skills-and-extension-data"><a class="header" href="#tools-skills-and-extension-data">Tools, skills, and extension data</a></h1>
 <h2 id="tools-1"><a class="header" href="#tools-1">Tools</a></h2>
-<p>Built-in tools (read, grep, glob, edit, bash, …) run through the agent loop under <code>tools.approvalMode</code> and related policy. Edit paths share hashline verification. Catalog: <a href="#tools-reference">Tools reference</a>.</p>
+<p>Built-in tools (read, search, edit, bash, …) run through the agent loop under <code>tools.approvalMode</code> and related policy. Edit paths share hashline verification. Catalog: <a href="#tools-reference">Tools reference</a>.</p>
 <h2 id="skills-1"><a class="header" href="#skills-1">Skills</a></h2>
 <p>Filesystem skill packages (e.g. <code>SKILL.md</code> trees) discovered under the active profile’s skill dir. A project-local skills directory is never scanned. Unreadable or malformed skill files surface load warnings. See <a href="#skills">Skills</a>.</p>
 <h2 id="plugins-1"><a class="header" href="#plugins-1">Plugins</a></h2>
@@ -7826,7 +7851,7 @@ rollback, compare your <code>config.yml</code> against the backup from before th
 <ul>
 <li><a href="#cli-reference">CLI reference</a>: the <code>veyyon</code> command and every subcommand, plus common flags and config overrides.</li>
 <li><a href="#slash-commands-3">Slash commands</a>: every <code>/</code> command available inside an interactive session, grouped by task.</li>
-<li><a href="#tools-reference">Tools reference</a>: model-facing tools (read/edit/write, grep/glob, bash/eval, browser, MCP resource access) with params and safety.</li>
+<li><a href="#tools-reference">Tools reference</a>: model-facing tools (read/edit/write, search, bash/eval, browser, MCP resource access) with params and safety.</li>
 <li><a href="#environment-variables">Environment variables</a>: supported common variables grouped by purpose (location, auth, catalog, TLS, install, repair, terminal), plus descoped names.</li>
 <li><a href="#exit-codes-1">Exit codes</a>: the return codes Veyyon uses and how child-process exit status passes through.</li>
 <li><a href="#file-locations-1">File locations</a>: where Veyyon stores config, sessions, logs, and credentials under <code>~/.veyyon</code>.</li>
@@ -7902,6 +7927,7 @@ $ veyyon "fix the failing test in auth.rs"
 <tr><td><code>tiny-models</code></td><td></td><td>On-device tiny model utilities</td></tr>
 <tr><td><code>token</code></td><td></td><td>Print a provider’s API key or OAuth token</td></tr>
 <tr><td><code>ttsr</code></td><td></td><td>Time-traveling stream rules test</td></tr>
+<tr><td><code>trust</code></td><td></td><td>Decide whether this project’s code may run (<a href="#project-trust">Project trust</a>)</td></tr>
 <tr><td><code>update</code></td><td></td><td>Self-update</td></tr>
 <tr><td><code>usage</code></td><td></td><td>Provider usage limits</td></tr>
 <tr><td><code>worktree</code></td><td><code>wt</code></td><td>Git worktree helpers</td></tr>
@@ -8066,6 +8092,7 @@ act on a bare invocation: <code>/yolo</code>, <code>/fast</code>, and <code>/bro
 <tr><td><code>/account switch &lt;provider&gt;</code></td><td>Open the manager focused on one provider, to move that provider to another of your accounts</td></tr>
 <tr><td><code>/statusline</code></td><td>Settings UI, jumped to Status Line (preset/segments/separator)</td></tr>
 <tr><td><code>/reload-plugins</code></td><td>Reload extensions</td></tr>
+<tr><td><code>/trust</code></td><td>Decide whether this project’s code may run; <code>approve</code>, <code>deny</code>, <code>forget</code>, or a path (<a href="#project-trust">Project trust</a>)</td></tr>
 <tr><td><code>/force &lt;tool&gt; [prompt]</code> (<code>/force:</code>)</td><td>Force the next turn to use a specific tool</td></tr>
 </tbody>
 </table>
@@ -8172,6 +8199,7 @@ own page; typing the bare command lists them with their descriptions.</p>
 <tr><td><code>/shake</code></td><td><code>elide</code>, <code>images</code></td></tr>
 <tr><td><code>/memory</code></td><td><code>view</code>, <code>stats</code>, <code>diagnose</code>, <code>clear</code>, <code>reset</code>, <code>enqueue</code>, <code>rebuild</code>, <code>mm list</code>, <code>mm show</code>, <code>mm refresh</code>, <code>mm history</code>, <code>mm seed</code>, <code>mm delete</code>, <code>mm reload</code></td></tr>
 <tr><td><code>/plugins</code></td><td><code>list</code></td></tr>
+<tr><td><code>/trust</code></td><td><code>approve</code>, <code>deny</code>, <code>forget</code></td></tr>
 </tbody>
 </table>
 </div>
@@ -8202,7 +8230,7 @@ leniency (e.g. hashline parsing) is layered on top. See <a href="#tool-call-repa
 </tbody>
 </table>
 </div>
-<p>Hashline flow: <code>read</code>/<code>grep</code> mint <code>[path#TAG]</code> anchors → model copies tags into <code>edit</code> →
+<p>Hashline flow: <code>read</code>/<code>search</code> mint <code>[path#TAG]</code> anchors → model copies tags into <code>edit</code> →
 <code>@veyyon/hashline</code> applies ops. See <a href="#the-hashline-edit-engine">Edit engine</a> and
 <a href="../../tools/edit.html"><code>docs/tools/edit.md</code></a>.</p>
 <h2 id="read-and-search"><a class="header" href="#read-and-search">Read and search</a></h2>
@@ -8213,8 +8241,7 @@ leniency (e.g. hashline parsing) is layered on top. See <a href="#tool-call-repa
 </thead>
 <tbody>
 <tr><td><code>read</code></td><td>Files, dirs, URLs, archives, SQLite, <code>memory://</code>, <code>skill://</code>, …</td></tr>
-<tr><td><code>grep</code></td><td>Ripgrep-backed search; hashline headers in hashline display mode</td></tr>
-<tr><td><code>glob</code></td><td>Path globbing</td></tr>
+<tr><td><code>search</code></td><td>Unified workspace search (files/paths, text/regex, and code structure)</td></tr>
 <tr><td><code>search_tool_bm25</code></td><td>Discover tools by description (when enabled)</td></tr>
 </tbody>
 </table>
@@ -8268,7 +8295,7 @@ leniency (e.g. hashline parsing) is layered on top. See <a href="#tool-call-repa
 </table>
 </div>
 <h2 id="other-builtins"><a class="header" href="#other-builtins">Other builtins</a></h2>
-<p><code>web_search</code>, <code>github</code>, <code>lsp</code>, <code>ast_edit</code>, <code>ast_grep</code>, <code>checkpoint</code>, <code>rewind</code>, <code>resolve</code>,
+<p><code>web_search</code>, <code>github</code>, <code>lsp</code>, <code>ast_edit</code>, <code>checkpoint</code>, <code>rewind</code>, <code>resolve</code>,
 <code>set_cwd</code>, <code>manage_skill</code>, <code>launch</code>, <code>inspect_image</code>, <code>argot_load</code>, <code>argot_unload</code>,
 <code>generate_image</code>, <code>tts</code>, and MCP tools (<code>mcp__*</code>). Extension hooks may register more.
 <code>goal</code>, <code>yield</code>, and <code>report_finding</code> are hidden session-lifecycle tools with no user-facing
@@ -8476,6 +8503,7 @@ active profile is selected by its own variable:</p>
 <tr><td><code>VEYYON_PIPED_STDIN_WAIT_MS</code></td><td>Milliseconds <code>veyyon -p "prompt"</code> waits for the first byte of piped stdin when a prompt is already on the command line (default <code>10000</code>). Only the wait before the first byte is bounded, so slow producers are still read in full. Set <code>0</code> to wait indefinitely.</td></tr>
 <tr><td><code>VEYYON_WORKTREE_DIR</code></td><td>Absolute path for agent-managed git worktrees (default profile path <code>~/.veyyon/profiles/&lt;name&gt;/wt</code>; also settable via the <code>worktree.base</code> setting). <code>~</code> is expanded; a relative value is ignored.</td></tr>
 <tr><td><code>VEYYON_GITHUB_CACHE_DB</code></td><td>Full path override for the GitHub view cache database (default <code>~/.veyyon/profiles/&lt;name&gt;/cache/github-cache.db</code>).</td></tr>
+<tr><td><code>VEYYON_STREAM_FRAME_MAX_BYTES</code></td><td>Bytes one frame of a streamed protocol may occupy before the reader refuses it: a line, a JSONL record, or an SSE event ending at a blank line. Default <code>67108864</code> (64 MiB). Applies to a provider’s response stream, an MCP server’s stdout, and session files. A value that is not a positive integer keeps the default.</td></tr>
 </tbody>
 </table>
 </div>
@@ -9076,6 +9104,7 @@ rather than from each kernel formatting its own name.</li>
 </thead>
 <tbody>
 <tr><td><code>VEYYON_SMOL_MODEL</code></td><td>Ephemeral model-role override for <code>smol</code> (CLI <code>--smol</code> takes precedence)</td></tr>
+<tr><td><code>VEYYON_STREAM_FRAME_MAX_BYTES</code></td><td>Bytes one frame of a streamed protocol may occupy before the reader refuses it and cancels the source: a line, a JSONL record, or an SSE event ending at a blank line. Default <code>67108864</code> (64 MiB). Covers provider response streams, MCP server stdout and session files. A value that is not a positive integer keeps the default, so a typo cannot remove the bound. The refusal is terminal and never retried.</td></tr>
 <tr><td><code>VEYYON_SLOW_MODEL</code></td><td>Ephemeral model-role override for <code>slow</code> (CLI <code>--slow</code> takes precedence)</td></tr>
 <tr><td><code>VEYYON_PLAN_MODEL</code></td><td>Ephemeral model-role override for <code>plan</code> (CLI <code>--plan</code> takes precedence)</td></tr>
 <tr><td><code>VEYYON_NO_TITLE</code></td><td>If set (any non-empty value), disables auto session title generation on first user message</td></tr>
@@ -9709,7 +9738,7 @@ thinkingBudgets:
 </thead>
 <tbody>
 <tr><td><code>tools.approvalMode</code></td><td>enum</td><td><code>auto</code></td><td>Canonical: <code>plan</code> (read auto; write asks with an active plan-mode session, otherwise write/exec denied), <code>ask</code> (nothing auto; every tier asks, reads included), <code>ask-command</code> (read+write auto; exec ask), <code>auto</code> (all tiers auto, with the per-tool, working-directory, credential and critical-call guards still asking), <code>yolo</code> (all tiers auto). Legacy aliases still accepted: <code>always-ask</code> → <code>ask</code>, <code>write</code> and <code>auto-edit</code> → <code>ask-command</code>. Override per run with <code>--approval-mode</code> / <code>--auto-approve</code> / <code>--yolo</code>.</td></tr>
-<tr><td><code>tools.approval</code></td><td>record</td><td><code>{}</code></td><td>Per-tool policy keyed by tool name; each value is <code>allow</code>, <code>deny</code>, or <code>prompt</code>. e.g. <code>veyyon config set tools.approval '{"bash":"prompt"}'</code>.</td></tr>
+<tr><td><code>tools.approval</code></td><td>record</td><td><code>{}</code></td><td>Per-tool policy keyed by tool name; each value is <code>allow</code>, <code>deny</code>, or <code>prompt</code>. Any other value denies that tool and is named in a startup warning. e.g. <code>veyyon config set tools.approval '{"bash":"prompt"}'</code>.</td></tr>
 <tr><td><code>tools.discoveryMode</code></td><td>enum</td><td><code>auto</code></td><td><code>auto</code>, <code>off</code>, <code>mcp-only</code>, <code>all</code>. <code>all</code> hides non-essential built-ins and first-party heavyweight tools such as <code>generate_image</code> until the discovery search activates them.</td></tr>
 <tr><td><code>tools.essentialOverride</code></td><td>array</td><td><code>[]</code></td><td>Tool names kept available even when tools are narrowed.</td></tr>
 <tr><td><code>tools.maxTimeout</code></td><td>number</td><td><code>0</code></td><td>Max tool runtime in seconds; <code>0</code> = no cap.</td></tr>
@@ -9722,7 +9751,7 @@ thinkingBudgets:
 </tbody>
 </table>
 </div>
-<p>Individual built-in tools are toggled by their own keys, e.g. <code>bash.enabled</code>, <code>launch.enabled</code>, <code>eval.py</code>, <code>eval.js</code>, <code>glob.enabled</code>, <code>grep.enabled</code>, <code>fetch.enabled</code>, <code>browser.enabled</code>, <code>astEdit.enabled</code>, <code>astGrep.enabled</code>, <code>web_search.enabled</code>, <code>inspect_image.enabled</code>.</p>
+<p>Most optional built-in tools are toggled by their own keys, e.g. <code>bash.enabled</code>, <code>launch.enabled</code>, <code>eval.py</code>, <code>eval.js</code>, <code>fetch.enabled</code>, <code>browser.enabled</code>, <code>astEdit.enabled</code>, <code>web_search.enabled</code>, <code>inspect_image.enabled</code>. Workspace <code>search</code> is part of the default tool inventory.</p>
 <h3 id="subagents-2"><a class="header" href="#subagents-2">Subagents</a></h3>
 <p>Everything about spawned agents lives here, under <code>subagent.</code>: whether this session
 delegates at all, which agent types it may use, what model and effort they run, and
@@ -10533,7 +10562,7 @@ veyyon config get compaction.threshold
 <tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><code>tools.approval</code></td><td>Tool Approval Policies</td><td>record</td><td><code>{}</code></td><td>Per-tool approval policies. Set to ‘allow’ to auto-approve, ‘prompt’ to require confirmation, or ‘deny’ to block. Overrides are honored in every approval mode.</td></tr>
+<tr><td><code>tools.approval</code></td><td>Tool Approval Policies</td><td>record</td><td><code>{}</code></td><td>Per-tool approval policies. Set to ‘allow’ to auto-approve, ‘prompt’ to require confirmation, or ‘deny’ to block. Overrides are honored in every approval mode. Any other value denies that tool and is reported at startup.</td></tr>
 <tr><td><code>tools.protectedPaths</code></td><td>Extra Protected Paths</td><td>array</td><td><code>[]</code></td><td>Additional absolute paths (a leading ~ is expanded) that a recursive delete must never target without approval. Adds to the built-in set; it cannot remove from it.</td></tr>
 <tr><td><code>tools.approvalMode</code></td><td>Tool Approval</td><td>enum</td><td><code>auto</code></td><td>How much the agent may do without asking. Defaults to Auto: every tier runs, with the per-tool policies, working-directory boundary, credential and critical-call guards still asking. This is the persisted default; override it for one session with /permissions. Values: <code>plan</code>, <code>ask</code>, <code>ask-command</code>, <code>auto</code>, <code>yolo</code>, <code>always-ask</code>, <code>write</code>, <code>auto-edit</code>.</td></tr>
 </tbody>
@@ -10944,9 +10973,6 @@ veyyon config get compaction.threshold
 </thead>
 <tbody>
 <tr><td><code>todo.enabled</code></td><td>Todos</td><td>boolean</td><td><code>true</code></td><td>Enable the todo tool for task tracking.</td></tr>
-<tr><td><code>glob.enabled</code></td><td>Glob</td><td>boolean</td><td><code>true</code></td><td>Enable the glob tool for glob-based file lookup.</td></tr>
-<tr><td><code>grep.enabled</code></td><td>Grep</td><td>boolean</td><td><code>true</code></td><td>Enable the grep tool for regex content search.</td></tr>
-<tr><td><code>astGrep.enabled</code></td><td>AST Grep</td><td>boolean</td><td><code>true</code></td><td>Enable the ast_grep tool for structural AST search.</td></tr>
 <tr><td><code>astEdit.enabled</code></td><td>AST Edit</td><td>boolean</td><td><code>true</code></td><td>Enable the ast_edit tool for structural AST rewrites.</td></tr>
 <tr><td><code>debug.enabled</code></td><td>Debug</td><td>boolean</td><td><code>true</code></td><td>Enable the debug tool for DAP-based debugging.</td></tr>
 <tr><td><code>launch.enabled</code></td><td>Launch</td><td>boolean</td><td><code>true</code></td><td>Enable the launch tool for supervising shared long-running project processes.</td></tr>
@@ -10977,15 +11003,15 @@ veyyon config get compaction.threshold
 </tbody>
 </table>
 </div>
-<h3 id="grep--browser"><a class="header" href="#grep--browser">Grep &amp; Browser</a></h3>
+<h3 id="search--browser"><a class="header" href="#search--browser">Search &amp; Browser</a></h3>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><code>grep.contextBefore</code></td><td>Grep Context Before</td><td>number</td><td><code>1</code></td><td>Lines of context before each grep match.</td></tr>
-<tr><td><code>grep.contextAfter</code></td><td>Grep Context After</td><td>number</td><td><code>3</code></td><td>Lines of context after each grep match.</td></tr>
+<tr><td><code>search.contextBefore</code></td><td>Search Context Before</td><td>number</td><td><code>1</code></td><td>Lines of context before each text search match.</td></tr>
+<tr><td><code>search.contextAfter</code></td><td>Search Context After</td><td>number</td><td><code>3</code></td><td>Lines of context after each text search match.</td></tr>
 <tr><td><code>browser.headless</code></td><td>Headless Browser</td><td>boolean</td><td><code>true</code></td><td>Launch browser in headless mode (disable to show browser UI).</td></tr>
 <tr><td><code>browser.cmux</code></td><td>cmux Browser</td><td>boolean</td><td><code>true</code></td><td>Use cmux WKWebView surfaces for browser automation when a cmux socket is available. Set VEYYON_BROWSER_CMUX=0 or VEYYON_BROWSER_CMUX=1 to override.</td></tr>
 <tr><td><code>browser.screenshotDir</code></td><td>Screenshot Directory</td><td>string</td><td><em>(unset)</em></td><td>Directory to save screenshots. If unset, screenshots go to a temp file. Supports ~. Examples: ~/Downloads, ~/Desktop, /sdcard/Download (Android).</td></tr>
@@ -11012,12 +11038,12 @@ veyyon config get compaction.threshold
 <tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><code>tools.artifactSpillThreshold</code></td><td>Artifact Spill Threshold (KB)</td><td>number</td><td><code>50</code></td><td>Tool output above this size is saved as an artifact and the result keeps a head/tail window plus the artifact:// id that reads the full text back, so a lower threshold costs a re-read rather than losing output. It governs every tool that streams output, including bash, eval, ssh and the interactive shell, as well as grep and the browser.</td></tr>
+<tr><td><code>tools.artifactSpillThreshold</code></td><td>Artifact Spill Threshold (KB)</td><td>number</td><td><code>50</code></td><td>Tool output above this size is saved as an artifact and the result keeps a head/tail window plus the artifact:// id that reads the full text back, so a lower threshold costs a re-read rather than losing output. It governs every tool that streams output, including bash, eval, ssh and the interactive shell, as well as search and the browser.</td></tr>
 <tr><td><code>tools.artifactTailBytes</code></td><td>Artifact Tail Size (KB)</td><td>number</td><td><code>20</code></td><td>Amount of tail content kept inline when output spills to artifact.</td></tr>
 <tr><td><code>tools.artifactHeadBytes</code></td><td>Artifact Head Size (KB)</td><td>number</td><td><code>20</code></td><td>Amount of head content kept inline alongside the tail when output spills to artifact (middle elision). 0 disables — keep tail only.</td></tr>
 <tr><td><code>tools.outputMaxColumns</code></td><td>Output Column Cap</td><td>number</td><td><code>768</code></td><td>Per-line byte cap for streaming tool outputs (bash, ssh, python, js eval) and <code>read</code>. Lines wider than this are ellipsis-truncated; remaining bytes up to the next newline are dropped. 0 disables.</td></tr>
 <tr><td><code>tools.artifactTailLines</code></td><td>Artifact Tail Lines</td><td>number</td><td><code>500</code></td><td>Maximum lines of tail content kept inline when output spills to artifact.</td></tr>
-<tr><td><code>tools.inlineOutputFloor</code></td><td>Inline Output Floor</td><td>number</td><td><code>0.25</code></td><td>Smallest share of the inline output budget an early tool result may use before the rest spills to an artifact. A result that arrives early is re-read on every later turn, so it is charged more tightly than one that arrives near the end. Lower spills sooner and costs fewer context tokens; 1 keeps the flat cap and never spills early. This governs every tool that streams output, including eval, bash, ssh and the interactive shell, as well as grep and the browser. Shown under the tab’s Advanced fold.</td></tr>
+<tr><td><code>tools.inlineOutputFloor</code></td><td>Inline Output Floor</td><td>number</td><td><code>0.25</code></td><td>Smallest share of the inline output budget an early tool result may use before the rest spills to an artifact. A result that arrives early is re-read on every later turn, so it is charged more tightly than one that arrives near the end. Lower spills sooner and costs fewer context tokens; 1 keeps the flat cap and never spills early. This governs every tool that streams output, including eval, bash, ssh and the interactive shell, as well as search and the browser. Shown under the tab’s Advanced fold.</td></tr>
 </tbody>
 </table>
 </div>
@@ -11044,7 +11070,7 @@ veyyon config get compaction.threshold
 </thead>
 <tbody>
 <tr><td><code>tools.discoveryMode</code></td><td>Tool Discovery</td><td>enum</td><td><code>auto</code></td><td>Hide tools behind a search tool to save tokens. ‘auto’ hides MCP tools once the tool set has more than 40 tools; ‘mcp-only’ always hides MCP tools; ‘all’ also hides non-essential built-ins and first-party heavyweight tools such as generate_image. Values: <code>auto</code>, <code>off</code>, <code>mcp-only</code>, <code>all</code>.</td></tr>
-<tr><td><code>tools.essentialOverride</code></td><td>Essential Tools Override</td><td>array</td><td><code>[]</code></td><td>Override the always-loaded built-in tools (default: read, bash, launch, edit, write, glob, eval). Leave empty to use defaults.</td></tr>
+<tr><td><code>tools.essentialOverride</code></td><td>Essential Tools Override</td><td>array</td><td><code>[]</code></td><td>Override the always-loaded built-in tools (default: read, bash, launch, edit, write, search, eval). Leave empty to use defaults.</td></tr>
 <tr><td><code>mcp.discoveryMode</code></td><td>MCP Tool Discovery</td><td>boolean</td><td><code>false</code></td><td>Hide MCP tools by default and expose them through a tool discovery tool.</td></tr>
 <tr><td><code>mcp.discoveryDefaultServers</code></td><td>MCP Discovery Default Servers</td><td>array</td><td><code>[]</code></td><td>Keep MCP tools from these servers visible while discovery mode hides other MCP tools.</td></tr>
 <tr><td><code>mcp.notifications</code></td><td>MCP Update Injection</td><td>boolean</td><td><code>false</code></td><td>Inject MCP resource updates into the agent conversation.</td></tr>
@@ -11391,7 +11417,7 @@ veyyon config get compaction.threshold
 <tr><td><code>auth.broker.token</code></td><td>string</td><td><em>(unset)</em></td><td></td></tr>
 <tr><td><code>auth.broker.url</code></td><td>string</td><td><em>(unset)</em></td><td></td></tr>
 <tr><td><code>autolearn.minToolCalls</code></td><td>number</td><td><code>5</code></td><td></td></tr>
-<tr><td><code>bashInterceptor.patterns</code></td><td>array</td><td><code>[{"pattern":"^\\s*(cat|head|tail|less|more)\\s+","tool":"read","message":"Use the </code>read<code>tool instead of cat/head/tail. It provides better context and handles binary files."},{"pattern":"^\\s*(grep|rg|ripgrep|ag|ack)\\s+","tool":"grep","message":"Use the</code>grep<code>tool instead of grep/rg. It respects .gitignore and provides structured output."},{"pattern":"^\\s*(find|fd|locate)\\s+.*(-name|-iname|-type|--type|-glob)","tool":"glob","message":"Use the</code>glob<code>tool instead of find/fd. It respects .gitignore and is faster for glob patterns."},{"pattern":"^\\s*sed\\s+(-i|--in-place)","tool":"edit","message":"Use the</code>edit<code>tool instead of sed -i. It provides diff preview and fuzzy matching."},{"pattern":"^\\s*perl\\s+.*-[pn]?i","tool":"edit","message":"Use the</code>edit<code>tool instead of perl -i. It provides diff preview and fuzzy matching."},{"pattern":"^\\s*awk\\s+.*-i\\s+inplace","tool":"edit","message":"Use the</code>edit<code>tool instead of awk -i inplace. It provides diff preview and fuzzy matching."},{"pattern":"^\\s*(echo|printf|cat\\s*\&lt;\&lt;)\\s+(?:(?:[^\"'&gt;]|\"[^\"]*\"|'[^']*')|(?\&lt;!\\|)&gt;{1,2}\\|?\\s*(?:\"/dev/(?:null|tty|stdout|stderr)\"|'/dev/(?:null|tty|stdout|stderr)'|/dev/(?:null|tty|stdout|stderr))(?:[\\s;&amp;|]|$))*(?\&lt;!\\|)&gt;{1,2}\\|?\\s*(?!(?:\"/dev/(?:null|tty|stdout|stderr)\"|'/dev/(?:null|tty|stdout|stderr)'|/dev/(?:null|tty|stdout|stderr))(?:[\\s;&amp;|]|$))[$\\w./~\"'-]","tool":"write","message":"Use the</code>write<code>tool instead of echo/cat redirection. It handles encoding and provides confirmation."},{"pattern":"^\\s*nohup\\s+|(?\&lt;!&amp;)\\&amp;\\s*$","tool":"launch","message":"Use the</code>launch<code>tool instead of nohup or background shell syntax so the process stays observable and managed."},{"pattern":"^\\s*(?:(?:bun|npm|pnpm|yarn)\\s+(?:run\\s+)?(?:dev|start)(?:\\s|$)|(?:vite|next\\s+dev|nuxt\\s+dev|nodemon|lldb|gdb|tail\\s+-f)(?:\\s|$)|docker\\s+compose\\s+up(?!.*(?:\\s-d(?:\\s|$)|--detach))(?:\\s|$))","tool":"launch","message":"Use the</code>launch<code>tool for services, watchers, and debuggers so other veyyon instances can observe and control them."},{"pattern":"^\\s*(?:(?:bun|npm|pnpm|yarn)\\s+(?:run\\s+)?\\S+|cargo\\s+watch|watchexec|pytest|vitest|jest|tsc)(?:.|\\n)*(?:--watch|-w)(?:\\s|$)","tool":"launch","message":"Use the</code>launch<code> tool for watch mode so its output, input, and lifecycle stay managed."}]</code></td><td></td></tr>
+<tr><td><code>bashInterceptor.patterns</code></td><td>array</td><td>`[{“pattern”:“^\s*(cat</td><td>head</td></tr>
 <tr><td><code>branchSummary.reserveTokens</code></td><td>number</td><td><code>16384</code></td><td></td></tr>
 <tr><td><code>commit.changelogMaxDiffChars</code></td><td>number</td><td><code>120000</code></td><td></td></tr>
 <tr><td><code>commit.mapReduceEnabled</code></td><td>boolean</td><td><code>true</code></td><td></td></tr>
@@ -11640,15 +11666,33 @@ equivalence:
 <li><code>id</code> required</li>
 <li><code>contextWindow</code> and <code>maxTokens</code> must be positive if provided</li>
 </ul>
-<h3 id="command-resolved-secrets"><a class="header" href="#command-resolved-secrets">Command-resolved secrets</a></h3>
-<p>Provider <code>apiKey</code> values and provider/model <code>headers</code> values may start with <code>!</code> to read a secret from command stdout. The command is run with a 10 s timeout, stdout is trimmed, and empty/failing commands are omitted:</p>
+<h3 id="secret-values"><a class="header" href="#secret-values">Secret values</a></h3>
+<p>Provider <code>apiKey</code> values and provider/model <code>headers</code> values are resolved in this order:</p>
+<ol>
+<li>A value starting with <code>!</code> runs as a shell command with a 10 s timeout and its trimmed stdout is
+used. Empty or failing commands are omitted. Successful outputs are cached for the process
+lifetime, so the command is not re-run for every model.</li>
+<li><code>${NAME}</code> or <code>$NAME</code> reads the environment variable <code>NAME</code>.</li>
+<li>A bare value shaped like an environment variable name (<code>DEEPSEEK_API_KEY</code>, upper case, digits and
+underscores) reads that variable too.</li>
+<li><code>literal:&lt;text&gt;</code> is <code>&lt;text&gt;</code>, verbatim, with no lookup.</li>
+<li>Any other value is itself, which is how a key such as <code>sk-...</code> or <code>sk_live_...</code> works.</li>
+</ol>
 <pre><code class="language-yaml">providers:
   openai:
     apiKey: "!op read op://dev/openai/api-key"
     headers:
       X-Team-Key: "!bw get password veyyon-team-key"
+  gateway:
+    apiKey: ${GATEWAY_API_KEY}
+    headers:
+      X-Tenant: literal:ACME_TENANT
 </code></pre>
-<p>Successful command outputs are cached for the process lifetime so the command is not re-run for every model.</p>
+<p>A variable named in cases 2 or 3 that is unset, or set to an empty string, resolves to nothing: the
+key is not installed, no request carries it, and a warning names the variable and the setting.
+Earlier versions used the variable’s own name as the value, so <code>apiKey: DEEPSEK_API_KEY</code> was sent to
+the provider as the key. A key that is genuinely upper case text rather than a variable name is
+written <code>literal:MY_KEY</code>.</p>
 <h2 id="merge-and-override-order"><a class="header" href="#merge-and-override-order">Merge and override order</a></h2>
 <p>ModelRegistry pipeline (on refresh):</p>
 <ol>
@@ -12050,7 +12094,7 @@ disabledProviders:
 <h3 id="anthropic-compatibility-anthropic-messages"><a class="header" href="#anthropic-compatibility-anthropic-messages">Anthropic compatibility (<code>anthropic-messages</code>)</a></h3>
 <p>For <code>anthropic-messages</code> models the runtime uses a separate <code>AnthropicCompat</code> shape (<code>packages/catalog/src/types.ts</code>). The <code>models.yml</code> schema exposes the strict-tools opt-out as a top-level provider field (see below) plus two Anthropic-side flags in the same <code>compat</code> slot, <code>requiresToolResultId</code> (non-standard <code>id</code> alias on <code>tool_result</code> blocks for Z.AI-style proxies) and <code>replayUnsignedThinking</code> (replay unsigned thinking blocks as native thinking instead of demoting them to text); the remaining Anthropic-side knobs (<code>disableAdaptiveThinking</code>, <code>supportsEagerToolInputStreaming</code>, <code>supportsLongCacheRetention</code>, <code>supportsMidConversationSystem</code>, <code>supportsForcedToolChoice</code>, <code>supportsSamplingParams</code>, <code>escapeBuiltinToolNames</code>) are set by built-in catalog metadata and are not user-configurable from <code>models.yml</code>.</p>
 <h3 id="strict-tool-schemas-disablestricttools"><a class="header" href="#strict-tool-schemas-disablestricttools">Strict tool schemas (<code>disableStrictTools</code>)</a></h3>
-<p>Anthropic’s API supports a <code>strict</code> field on tool definitions that forces the model to always follow the provided schema exactly. Veyyon enables it by default for a small allowlist of high-frequency built-in <code>anthropic-messages</code> tools (<code>bash</code>, <code>python</code>, <code>edit</code>, and <code>find</code>) whose schemas fit Anthropic’s strict grammar limits; other tools still send normalized schemas but omit <code>strict</code>.</p>
+<p>Anthropic’s API supports a <code>strict</code> field on tool definitions that forces the model to always follow the provided schema exactly. Veyyon enables it by default for a small allowlist of high-frequency built-in <code>anthropic-messages</code> tools (<code>bash</code>, <code>python</code>, <code>edit</code>, and <code>search</code>) whose schemas fit Anthropic’s strict grammar limits; other tools still send normalized schemas but omit <code>strict</code>.</p>
 <p>Third-party providers that front the Anthropic API (AWS Bedrock, Azure, self-hosted proxies) do not always implement this field and will reject requests that include it. Set <code>disableStrictTools: true</code> at the provider level to opt out of strict mode for the allowlisted tools:</p>
 <pre><code class="language-yaml">providers:
   bedrock-anthropic:
@@ -12201,7 +12245,7 @@ providers:
   my-gateway:
     baseUrl: https://gateway.example.com/v1
     api: openai-completions
-    apiKey: MY_GATEWAY_API_KEY # reads this env var if set, else literal text
+    apiKey: MY_GATEWAY_API_KEY # reads this env var; unset means no key, not a literal
     models:
       - id: claude-sonnet
         name: Claude Sonnet via Gateway
@@ -12410,7 +12454,7 @@ disabledProviders:
   my-openai-compatible:
     baseUrl: https://api.example.com/v1
     api: openai-completions
-    apiKey: MY_OPENAI_COMPATIBLE_KEY # env-var-name or literal
+    apiKey: MY_OPENAI_COMPATIBLE_KEY # env-var name; `literal:text` for verbatim text
     models:
       - id: fast-chat
         name: Fast Chat
@@ -12480,6 +12524,10 @@ spawns. Veyyon still discovers servers from other tools’ user-level configs (<
 <code>~/.claude/mcp.json</code>, <code>~/.cursor/mcp.json</code>, <code>~/.codex/config.toml</code>, <code>~/.gemini/settings.json</code>,
 opencode, windsurf, and more), always from your home directory, never from a working tree, and
 <code>/mcp list</code> names the file each server came from.</p>
+<p>One project-controlled route to an MCP server remains, and it is gated rather than removed: a
+project plugin registry (<code>.veyyon/plugins/installed_plugins.json</code>) names plugin directories, and a
+plugin may ship a <code>.mcp.json</code>. The registry is withheld until you approve it. See
+<a href="#project-trust">Project trust</a>.</p>
 <h3 id="profiles-5"><a class="header" href="#profiles-5">Profiles</a></h3>
 <p>Named profiles (<code>veyyon --profile &lt;name&gt;</code>, the <code>--alias</code> shortcut, or <code>VEYYON_PROFILE</code> still work) isolate MCP config. When a profile is active, <code>mcp.json</code> resolves to that profile’s agent directory:</p>
 <ul>
@@ -12539,8 +12587,16 @@ opencode, windsurf, and more), always from your home directory, never from a wor
 <li><code>type?: "stdio"</code></li>
 <li><code>args?: string[]</code></li>
 <li><code>env?: Record&lt;string, string&gt;</code></li>
+<li><code>envPassthrough?: string[]</code> — ambient variables to forward by name</li>
+<li><code>inheritEnv?: boolean</code> — forward the whole ambient environment, credentials included</li>
 <li><code>cwd?: string</code></li>
 </ul>
+<p>A stdio server receives a baseline of variables a program needs in order to run (<code>PATH</code>, <code>HOME</code>,
+temp, locale, certificate and proxy settings, and version-manager directories; on Windows also
+<code>PATHEXT</code>, <code>SystemRoot</code>, <code>ComSpec</code> and the <code>ProgramFiles</code> variants), plus <code>env</code> and the names
+listed in <code>envPassthrough</code>. Every other ambient variable is withheld. <code>inheritEnv: true</code> disables
+that bound for one server and logs a warning on each spawn. See
+<a href="#pass-environment-variables">MCP setup</a>.</p>
 <p>Example:</p>
 <pre><code class="language-json">{
   "$schema": "https://raw.githubusercontent.com/santhreal/veyyon/main/packages/coding-agent/src/config/mcp-schema.json",
@@ -12602,6 +12658,22 @@ opencode, windsurf, and more), always from your home directory, never from a wor
 }
 </code></pre>
 <p><code>sse</code> is still supported for compatibility, but the MCP spec now prefers Streamable HTTP (<code>type: "http"</code>) for new servers.</p>
+<h2 id="stopping-a-stdio-server"><a class="header" href="#stopping-a-stdio-server">Stopping a stdio server</a></h2>
+<p>A stdio server is usually started through a wrapper: <code>npx</code>, <code>uvx</code>, <code>docker run</code>, or a script
+in a repository. The wrapper starts the real server as a child of its own, so the process
+Veyyon spawned is not the process serving tools.</p>
+<p>Ending a server ends the whole tree. Veyyon signals every live descendant and then the
+process it spawned, waits 500 ms, and repeats the wave with a hard kill if anything is still
+running. The second wave re-walks the tree, so a process started during the wait is included.
+The wait after the hard kill is bounded at 1.5 s, so <code>/mcp reload</code>, a disconnect, and session
+shutdown always return. The same teardown runs when a handshake fails, including a server that
+never answers <code>initialize</code>.</p>
+<p>The process group is signalled only when the server leads a group of its own. On Linux the
+server starts in a new session, so its group holds nothing else. On macOS it stays attached so
+the system can prompt for file access, and Windows has no process groups; there the group is
+Veyyon’s own and is left alone.</p>
+<p>A server that daemonizes — double-forks into its own session — is outside this. It outlives the
+session that started it and has to be stopped by hand.</p>
 <h2 id="auth-fields"><a class="header" href="#auth-fields">Auth fields</a></h2>
 <p>Veyyon understands two auth-related objects.</p>
 <h3 id="auth"><a class="header" href="#auth"><code>auth</code></a></h3>
@@ -12764,29 +12836,71 @@ editor configs Veyyon still reads are named by file in <code>/mcp list</code>.</
 }
 </code></pre>
 <h3 id="pre-connect-envheader-resolution"><a class="header" href="#pre-connect-envheader-resolution">Pre-connect env/header resolution</a></h3>
-<p>Before Veyyon launches a stdio server or makes an HTTP/SSE request, it resolves stdio <code>env</code> values and HTTP/SSE <code>headers</code> values like this:</p>
+<p>Before Veyyon launches a stdio server or makes an HTTP/SSE request, it resolves stdio <code>env</code> values
+and HTTP/SSE <code>headers</code> values like this:</p>
 <ol>
-<li>If a value starts with <code>!</code>, Veyyon runs the rest as a shell command with a 10s timeout and uses trimmed stdout.</li>
-<li>If the command fails, times out, or prints only whitespace, that <code>env</code>/<code>headers</code> entry is omitted.</li>
-<li>Otherwise Veyyon checks whether the value names an environment variable.</li>
-<li>If that environment variable is set to a non-empty value, Veyyon uses the environment value; otherwise it uses the string literally.</li>
+<li>A value starting with <code>!</code> runs as a shell command with a 10s timeout and its trimmed stdout is
+used. A command that fails, times out, or prints only whitespace omits that entry.</li>
+<li><code>${NAME}</code> or <code>$NAME</code> reads the environment variable <code>NAME</code>.</li>
+<li>A bare value shaped like an environment variable name (<code>GITHUB_TOKEN</code>, upper case, digits and
+underscores) reads that variable too.</li>
+<li><code>literal:&lt;text&gt;</code> is <code>&lt;text&gt;</code>, verbatim, with no lookup.</li>
+<li>Any other value is itself.</li>
 </ol>
+<p>A variable that is unset, or set to an empty string, resolves to nothing. The connection is not
+attempted and the error names the variable:</p>
+<pre><code class="language-console">The header "Authorization" for https://api.example.com/mcp refers to the environment variable
+GITHUB_TOKN, which is not set, so the connection was not attempted rather than sent with the
+variable's own name as the value.
+</code></pre>
+<p>Earlier versions used the variable’s own name as the value in that case, so a typo was sent to the
+server as the credential and came back as the server’s opinion of a bad token.</p>
 <p>Examples:</p>
 <pre><code class="language-json">{
   "env": {
-    "GITHUB_PERSONAL_ACCESS_TOKEN": "GITHUB_PERSONAL_ACCESS_TOKEN"
+    "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"
   },
   "headers": {
     "X-MCP-Insiders": "true"
   }
 }
 </code></pre>
-<p>That means this is valid and convenient for local secrets:</p>
 <ul>
-<li><code>"GITHUB_PERSONAL_ACCESS_TOKEN": "GITHUB_PERSONAL_ACCESS_TOKEN"</code> → copy from the current shell environment</li>
+<li><code>"GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"</code> → copy from the current shell
+environment, and refuse to connect when it is missing</li>
 <li><code>"Authorization": "Bearer hardcoded-token"</code> → use the literal value</li>
+<li><code>"X-Api-Key": "literal:PROJECT_KEY"</code> → send <code>PROJECT_KEY</code> as the value, without looking it up</li>
 <li><code>"Authorization": "!printf 'Bearer %s' \"$GITHUB_TOKEN\""</code> → build the header from a command</li>
 </ul>
+<h3 id="when-a-command-runs-again"><a class="header" href="#when-a-command-runs-again">When a command runs again</a></h3>
+<p>A command’s output is cached under the command text, so the same command is executed once per
+session however many servers and headers use it. Three events drop that cached output and run the
+command again:</p>
+<ul>
+<li>A request answered with 401 or 403. The retry carries the new value.</li>
+<li><code>/mcp reconnect &lt;name&gt;</code>, which re-reads the credentials of that server only.</li>
+<li><code>/mcp reload</code>, which re-reads the credentials of every configured MCP server. Commands used
+outside MCP config, such as a provider <code>apiKey</code>, keep their cached value.</li>
+</ul>
+<p>An automatic reconnect after a dropped connection reuses the cached value. A lost connection says
+nothing about the credential, and re-running a password-manager command on every reconnect means
+an unlock prompt for each one.</p>
+<p>A command that fails is not retried for 30 seconds, and an invalidation does not shorten that.</p>
+<h3 id="when-a-stored-credential-cannot-be-presented"><a class="header" href="#when-a-stored-credential-cannot-be-presented">When a stored credential cannot be presented</a></h3>
+<p>A server authorized with OAuth keeps its credential in the profile’s credential store. When that
+credential exists but cannot be used, Veyyon does not connect without it. The connection fails,
+<code>/mcp list</code> shows the failure, and the message names the state and the command that fixes it:</p>
+<ul>
+<li>The credential was rejected and cleared. Run <code>/mcp reauth &lt;name&gt;</code>.</li>
+<li>The access token expired and the refresh token is held by the auth broker, which this process
+cannot use. Run <code>/mcp reauth &lt;name&gt;</code> to authorize again through the broker.</li>
+<li>The credential store could not be read or renewed. Run <code>/mcp reconnect &lt;name&gt;</code> to retry; the
+credential is left alone, because a store failure says nothing about it.</li>
+</ul>
+<p>A refresh that fails while the access token is still valid keeps connecting with that token: the
+refresh runs up to five minutes before expiry, so the session still works.</p>
+<p>A server with no stored credential connects as configured. Nothing was authorized, so an
+unauthenticated request is what the server sees, and its own answer is what Veyyon reports.</p>
 <h2 id="disabledservers"><a class="header" href="#disabledservers"><code>disabledServers</code></a></h2>
 <p><code>disabledServers</code> is read from the user config file (<code>~/.veyyon/profiles/default/agent/mcp.json</code>) when a server is discovered from any source and you want Veyyon to ignore it without editing that other tool’s config.</p>
 <p>Example:</p>
@@ -12917,7 +13031,7 @@ opts out of all permission and so opts out of this too.</p>
 directory but reaching outside it through a symlink is still outside, and a path
 that cannot be resolved at all is treated as outside rather than assumed safe.</p>
 <p>Every tool that reads or writes files takes part: <code>read</code>, <code>write</code>, <code>edit</code>,
-<code>ast_edit</code>, <code>grep</code>, <code>glob</code>, <code>ast_grep</code>, <code>inspect_image</code>, and <code>set_cwd</code>.</p>
+<code>ast_edit</code>, <code>search</code>, <code>inspect_image</code>, and <code>set_cwd</code>.</p>
 <p><code>set_cwd</code> is on that list for a reason worth stating. It changes the working
 directory, so an unbounded <code>set_cwd</code> would be a way to erase the boundary rather
 than obey it: re-root to the parent, and every later write is inside the new root
@@ -12966,12 +13080,17 @@ no credential and does not ask.</p>
 <p>Resolution per tool call:</p>
 <ol>
 <li>Compute the tool’s approval decision from <code>tool.approval(args)</code>; omitted means <code>exec</code>.</li>
-<li>Normalize <code>tools.approval.&lt;tool&gt;</code> if present; invalid values are ignored.</li>
+<li>Normalize <code>tools.approval.&lt;tool&gt;</code> if the key is present. <code>allow</code>, <code>deny</code> and <code>prompt</code> are accepted in any case, with surrounding spaces trimmed. Any other value present under that key denies the tool, and a warning at startup names the setting, the value found and the accepted values. An absent key is unconfigured.</li>
 <li>In <code>yolo</code> mode, the user policy is used when present. Otherwise a <code>critical</code> decision prompts and everything else is allowed: plain <code>override</code> reasons do not force a prompt in <code>yolo</code>, but <code>critical</code> ones do.</li>
 <li>In non-yolo modes, if the tool sets <code>override: true</code>, <code>deny</code> is blocked and all other cases prompt, even if user policy says <code>allow</code>.</li>
 <li>Otherwise, a valid user policy wins.</li>
 <li>Otherwise, the active mode auto-approves or prompts by tier.</li>
 </ol>
+<p>A misspelled policy blocks the tool it names rather than being dropped. <code>deny</code> and not <code>prompt</code>,
+because <code>/yolo</code> lifts a prompt: a typo would otherwise run the call in the mode where the policy
+matters most. Only the named tool is affected; the rest of the record still applies. A
+<code>tools.approval</code> that is not a per-tool record names no tool, so it configures no policy at all
+and the startup warning is the only sign of it.</p>
 <h2 id="safety-overrides"><a class="header" href="#safety-overrides">Safety overrides</a></h2>
 <p>A tool can force a prompt with object-form approval:</p>
 <pre><code class="language-ts">approval: { tier: "exec", override: true, reason: "Needs confirmation" }
@@ -13032,6 +13151,74 @@ veyyon acp --config ./acp-yolo.yml   # file contains tools.approvalMode: yolo
 <h2 id="subagents-4"><a class="header" href="#subagents-4">Subagents</a></h2>
 <p>A spawned subagent inherits the spawning session’s approval mode through its forked settings; nothing hardcodes a rung for it. The parent <code>task</code> approval is the authorization boundary for the delegation itself, and your <code>tools.approval.&lt;tool&gt;</code> policies apply inside the subagent exactly as they do in the parent. A subagent runs headless, so a call that would prompt fails with an error naming what needed approval rather than stalling on a UI that does not exist.</p>
 <p>The <code>/yolo</code> bypass is the one part that is not a pure snapshot, and it moves in only one direction. A child is built with the bypass the parent held at spawn time, and <code>isApprovalBypassed()</code> then also consults the live parent on every check, so <code>/yolo off</code> in the parent reaches a subagent that is already running. It can only narrow: the child’s own spawn-time value is checked first, so a parent turning <code>/yolo</code> on mid-run cannot hand a bypass to a child that was spawned without one. Without the live read, revoking the bypass left every running subagent executing unasked with nothing on screen to say so.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="project-trust"><a class="header" href="#project-trust">Project trust</a></h1>
+<p>A repository can carry code that veyyon loads at startup: a plugin registry at
+<code>.veyyon/plugins/installed_plugins.json</code>, and extension or hook files it names.
+That code runs before tool approval applies. Opening a directory does not approve
+it. Until you decide, it is withheld.</p>
+<h2 id="what-is-withheld"><a class="header" href="#what-is-withheld">What is withheld</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Project file</th><th>What it grants</th></tr>
+</thead>
+<tbody>
+<tr><td><code>.veyyon/plugins/installed_plugins.json</code></td><td>extensions, hooks, custom tools, slash commands and MCP servers, from the directories it names</td></tr>
+<tr><td>an extension or hook file inside the project</td><td>module top-level code and its factory, at import</td></tr>
+</tbody>
+</table>
+</div>
+<p>A file outside the project root is not affected. Profile extensions, installed
+plugins and paths you set in <code>extensions:</code> load as before — a configured path is
+your own instruction and loads even when it lives inside the project, which is
+where an extension is written while you are developing it. Settings come from
+your profile and your home directory, so a repository cannot add itself to that
+list.</p>
+<h2 id="deciding"><a class="header" href="#deciding">Deciding</a></h2>
+<pre><code class="language-sh">veyyon trust           # show what the project wants to run, and approve it
+veyyon trust --list    # show it without deciding
+veyyon trust --deny    # refuse, and remember the refusal
+veyyon trust --forget  # drop the decision
+veyyon trust path/to/file.ts   # decide one named file
+</code></pre>
+<p>Inside a session, <code>/trust</code> reports, and <code>/trust approve</code>, <code>/trust deny</code> and
+<code>/trust forget</code> decide. <code>/trust approve &lt;path&gt;</code> approves one file by name, which
+is how you answer a refusal that names a file the discovery scan does not list.</p>
+<h2 id="what-a-decision-records"><a class="header" href="#what-a-decision-records">What a decision records</a></h2>
+<p>One sha-256 per approved file, keyed by the symlink-resolved project root, in
+<code>&lt;agent dir&gt;/project-trust.json</code>. Consequences:</p>
+<ul>
+<li>A file that changes after you approved it is withheld again.</li>
+<li>A file that appears later was not approved by an earlier decision.</li>
+<li>Approving the plugin registry approves the plugins it names. Their install
+directories are usually outside the project, and their contents are not
+digested.</li>
+<li>A denial is stored, so the next launch neither loads the code nor asks again.</li>
+<li>A store written by another version of veyyon, or one whose records are
+malformed, is discarded. Nothing is trusted and you are asked again.</li>
+</ul>
+<h2 id="reading-a-refusal"><a class="header" href="#reading-a-refusal">Reading a refusal</a></h2>
+<pre><code>extensions: ext/hostile.ts was not loaded because this project has not been
+trusted. Project code runs with your permissions; approve it with `/trust
+approve` in this session or `veyyon trust` in this directory, or leave it
+untrusted.
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Reason</th><th>Meaning</th></tr>
+</thead>
+<tbody>
+<tr><td>has not been trusted</td><td>no decision exists for this project</td></tr>
+<tr><td>marked untrusted</td><td>you denied this project</td></tr>
+<tr><td>changed since it was trusted</td><td>the file’s bytes differ from the approved ones</td></tr>
+<tr><td>not part of the approved set</td><td>the file was not in the decision</td></tr>
+</tbody>
+</table>
+</div>
+<p>Refusals appear as startup warnings. Nothing prompts: a session that cannot ask
+loads nothing rather than defaulting to yes.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="theming-reference"><a class="header" href="#theming-reference">Theming Reference</a></h1>
 <p>Theming in the coding agent: schema, loading, runtime behavior, and failure modes.</p>
@@ -14885,7 +15072,7 @@ const { session } = await createAgentSession({
 <li>Hidden tools (for example <code>yield</code>) are opt-in unless required by options.</li>
 </ul>
 <pre><code class="language-ts">const { session } = await createAgentSession({
-  toolNames: ["read", "grep", "glob", "write"],
+  toolNames: ["read", "search", "write"],
   requireYieldTool: true,
 });
 </code></pre>
@@ -14907,8 +15094,7 @@ symptom is a tool that is no longer there.</p>
 Those stay literals and carry a <code>// not-a-tool-name:</code> comment saying which they are. The test
 <code>test/tools/tool-name-literals-have-one-owner.test.ts</code> reads the selection sites and fails on any
 unmarked tool-name literal.</p>
-<p>As a caller of the SDK you keep passing plain strings: <code>toolNames</code> takes the names as text, and
-legacy spellings (<code>search</code> for <code>grep</code>, <code>find</code> for <code>glob</code>) are still normalized for you.</p>
+<p>As a caller of the SDK you keep passing plain strings: <code>toolNames</code> takes the names as text.</p>
 <h3 id="extensions-2"><a class="header" href="#extensions-2">Extensions</a></h3>
 <ul>
 <li><code>extensions</code>: inline <code>ExtensionFactory[]</code></li>
@@ -15003,7 +15189,7 @@ const { session } = await createAgentSession({
   modelRegistry,
   settings,
   sessionManager: SessionManager.inMemory(),
-  toolNames: ["read", "grep", "glob", "edit", "write"],
+  toolNames: ["read", "search", "edit", "write"],
   enableMCP: false,
   enableLsp: true,
 });
@@ -16997,6 +17183,18 @@ export default function extension(pi: ExtensionAPI): void {
 Record interactive proofs on the repository’s private display. Do not record a
 logged-in desktop, and do not use a terminal multiplexer capture as visual
 evidence. There are no other capture paths and no fallbacks.</p>
+<h3 id="which-artifact-proves-which-change"><a class="header" href="#which-artifact-proves-which-change">Which artifact proves which change</a></h3>
+<p>The artifact class follows the change class, and a mismatch is a failed proof.</p>
+<pre><code class="language-text">static surface changed     two PNG frames, before and after
+animation or timing changed  two animated clips, before and after
+setting added or changed   two PNG frames, off and on
+</code></pre>
+<p>A still never proves an animation: a frame cannot show a cadence, a transition, or a
+spinner. An animated clip never substitutes for a frame pair either, because a reader
+comparing two clips cannot hold both states side by side. The recorder publishes
+animation as WebP at 33 ms per frame; a GIF is the same clip in an older container and
+proves the same thing. Both arms of a pair are the same class, produced by one driver
+run, and attached to the pull request body.</p>
 <h3 id="real-interactive-sessions"><a class="header" href="#real-interactive-sessions">Real interactive sessions</a></h3>
 <p>The HD recorder starts Xvfb, picom, and kitty inside the recorder container. It drives the shipped CLI with real keyboard and pointer events and records the private display at 30 frames per second.</p>
 <p>The landing-page terminal uses:</p>
@@ -17037,6 +17235,17 @@ check, and <code>ffmpeg</code> and <code>python3</code> for the publish chain. I
 <code>PATH</code>, because a recording is driven over ssh and a non-login shell there does not carry the
 installer’s entry. A publish tool first called after the recording is a take lost to a <code>PATH</code>
 difference, which is why a rehearsal needs only <code>docker</code>.</p>
+<p>The container is built by one script and tagged from one declaration:</p>
+<pre><code class="language-sh">bash proof/docker/build-recorder.sh
+</code></pre>
+<p>The tag carries the bun version in the root <code>package.json</code> <code>packageManager</code> field,
+because the image carries a bun and the product refuses to start on a runtime older
+than the one it is built for. A bump therefore makes a stale image a missing image,
+which docker reports before a display server starts. Recording with an image built
+on an older bun ends the take from inside the container after the whole rig is up.</p>
+<p>The recorder reaches a model served on the host through the docker host gateway; the
+loopback address the driver requires is rewritten for the container by
+<code>proof/docker/host-endpoint.sh</code>, so no scene needs to name a network address.</p>
 <p>The archived take remains at capture speed. The landing-page cut keeps the plan, the worker setup, verification and signing at 1×. Visible implementation between the worker launch and the verified build plays at 1.25×. Named marks in the take select those boundaries; untouched screens are shortened to four seconds rather than accelerated.</p>
 <h3 id="settings-differentials"><a class="header" href="#settings-differentials">Settings differentials</a></h3>
 <p>A settings change proves with two frames of the settings screen recorded from the
@@ -17049,14 +17258,17 @@ starts, so each arm is seeded rather than toggled by a keybinding that may not l
 OUT_DIR=proof/captures/x11/on SCENE_SETTINGS='argot.enabled: true' \
   proof/docker/record-x11.sh proof/scenes/settings-pointer.sh
 </code></pre>
-<p>Both arms run the same scene at the same window size, so the only difference between
-them is the setting. A pair whose two frames are byte-identical, or whose “on” arm
-does not show the value in effect, is a failed proof.</p>
 <h3 id="before-and-after-pairs-for-a-ui-change"><a class="header" href="#before-and-after-pairs-for-a-ui-change">Before-and-after pairs for a UI change</a></h3>
 <p>A change to a visible surface proves with two frames of the same scene, one on the
 tree without the change and one on the tree with it.</p>
 <pre><code class="language-sh">proof/docker/record-x11.sh proof/scenes/&lt;name&gt;.sh        # the after arm
 proof/docker/record-x11-before.sh proof/scenes/&lt;name&gt;.sh # the before arm
+</code></pre>
+<p>The unified workspace search settings surface uses:</p>
+<pre><code class="language-sh">OUT_DIR=proof/captures/x11/after \
+  proof/docker/record-x11.sh proof/scenes/settings-search.sh
+
+proof/docker/record-x11-before.sh proof/scenes/settings-search.sh
 </code></pre>
 <p>The after arm writes to <code>proof/captures/x11/</code>. The before arm writes to
 <code>proof/captures/x11/before/</code>, holding every source file the change touched at the
@@ -17146,7 +17358,7 @@ that writes a render into <code>assets/</code>. Drivers write outside the tracke
   profiles:
     "anthropic/claude-sonnet-4-20250514":
       repair: true
-      tools: ["read", "edit", "grep", "bash"]
+      tools: ["read", "edit", "search", "bash"]
       promptSectionOrder: ["tool-policy", "delivery-contract"]
     "google/*":
       repair: false
@@ -17186,13 +17398,13 @@ that writes a render into <code>assets/</code>. Drivers write outside the tracke
 <p>Default edit mode is <strong>hashline</strong> (<code>edit.mode: hashline</code> in <code>config.yml</code>), implemented in
 <code>@veyyon/hashline</code>.</p>
 <p>Veyyon applies file changes through the <strong><code>edit</code></strong> tool (hashline patch language by default). The
-model copies <code>[PATH#TAG]</code> anchors from <code>read</code> / <code>grep</code> / <code>write</code> output, then emits <code>SWAP</code>, <code>DEL</code>,
+model copies <code>[PATH#TAG]</code> anchors from <code>read</code> / <code>search</code> / <code>write</code> output, then emits <code>SWAP</code>, <code>DEL</code>,
 and <code>INS</code> operations against numbered lines. Snapshot tags detect stale anchors and drive recovery.</p>
 <p>Alternate modes (<code>apply_patch</code>, <code>patch</code>, <code>replace</code>) exist for compatibility; hashline is the
 default and the path Veyyon optimizes for.</p>
 <h2 id="how-a-hashline-edit-works"><a class="header" href="#how-a-hashline-edit-works">How a hashline edit works</a></h2>
 <ol>
-<li><strong><code>read</code> or <code>grep</code></strong> records a whole-file snapshot and prints <code>[relative/path#TAG]</code> plus
+<li><strong><code>read</code> or <code>search</code></strong> records a whole-file snapshot and prints <code>[relative/path#TAG]</code> plus
 <code>LINE:content</code> rows (<code>TAG</code> is a four-hex snapshot id).</li>
 <li>The model sends <strong><code>edit</code></strong> with an <code>input</code> string: one or more <code>[PATH#TAG]</code> sections and hashline
 ops (<code>SWAP N.=M:</code>, <code>DEL N.=M</code>, <code>INS.PRE N:</code> / <code>INS.POST N:</code> / <code>INS.HEAD</code> / <code>INS.TAIL</code>, block ops
@@ -17221,7 +17433,7 @@ headers for the next edit.</li>
 <ul>
 <li>User guide: <a href="#editing-and-repair">Editing and repair</a></li>
 <li>Tool contract: <a href="../../tools/edit.html"><code>docs/tools/edit.md</code></a></li>
-<li>Read/grep anchors: <a href="../../tools/read.html"><code>docs/tools/read.md</code></a>, <a href="../../tools/grep.html"><code>docs/tools/grep.md</code></a></li>
+<li>Read/search anchors: <a href="../../tools/read.html"><code>docs/tools/read.md</code></a>, <a href="../../tools/search.html"><code>docs/tools/search.md</code></a></li>
 <li>Settings: <code>edit.mode</code> in <a href="#settings-1"><code>docs/handbook/src/reference/settings.md</code></a></li>
 </ul>
 <p>There is no <code>veyyon-edit</code> Rust crate, no V4A-only write path, and no <code>make_update_patch</code> envelope
@@ -17246,7 +17458,7 @@ routing. General schema-based tool-call repair <strong>is</strong> shipped, see
 <h2 id="multi-edit-in-one-call"><a class="header" href="#multi-edit-in-one-call">Multi-edit in one call</a></h2>
 <p>The <code>edit</code> tool can apply several disjoint changes in one call. Anchors match against the original file (not incrementally); replacements are ordered so earlier growth does not invalidate later matches. Ambiguous anchors, overlapping regions, and no-ops fail with an actionable error.</p>
 <h2 id="hashline"><a class="header" href="#hashline">Hashline</a></h2>
-<p>Hashline avoids re-echoing surrounding text: the model references spans by <code>[PATH#TAG]</code> snapshot anchors from <code>read</code> / <code>grep</code> / <code>write</code>, then sends operations (<code>SWAP</code>, <code>DEL</code>, <code>INS</code>) and new text. Stale tags fail verification instead of applying a wrong edit. Default: <code>edit.mode: hashline</code> in <code>config.yml</code>.</p>
+<p>Hashline avoids re-echoing surrounding text: the model references spans by <code>[PATH#TAG]</code> snapshot anchors from <code>read</code> / <code>search</code> / <code>write</code>, then sends operations (<code>SWAP</code>, <code>DEL</code>, <code>INS</code>) and new text. Stale tags fail verification instead of applying a wrong edit. Default: <code>edit.mode: hashline</code> in <code>config.yml</code>.</p>
 <h2 id="concurrency"><a class="header" href="#concurrency">Concurrency</a></h2>
 <p>Non-parallel tools take an exclusive lock so file mutations from one turn are serialized. Same-file concurrent edits from subagents still need care; independent files may proceed under the tool locking rules.</p>
 <h2 id="trailing-newlines"><a class="header" href="#trailing-newlines">Trailing newlines</a></h2>
@@ -17998,14 +18210,14 @@ registry declares, and the module refuses to load if any one has no statements. 
 assembly failure rather than a silent reversion.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="bounded-reads-and-search"><a class="header" href="#bounded-reads-and-search">Bounded reads and search</a></h1>
-<p>Four tools give the agent controlled access to your files: <code>read</code>, <code>glob</code>, <code>grep</code>, and
+<p>Three tools give the agent controlled access to your files: <code>read</code>, <code>search</code>, and
 <code>write</code>. They are always available; there is no <code>experimental_tools</code> or <code>backends.toml</code> gate
 to turn them on.</p>
 <p>The point of these tools is bounds. An unbounded <code>cat</code>, <code>find</code>, or <code>grep -r</code> in the shell
 can dump enough text to fill the whole context window. These tools apply line, byte, and
 result caps instead, and they surface truncation rather than dropping output silently. This
 page documents each tool’s parameters and the limits it enforces. The implementations live
-under <code>packages/coding-agent/src/tools/{read,glob,grep,write}.ts</code>.</p>
+under <code>packages/coding-agent/src/tools/{read,search,write}.ts</code>.</p>
 <h2 id="the-read-tool-toolsreadts"><a class="header" href="#the-read-tool-toolsreadts">The <code>read</code> tool (<code>tools/read.ts</code>)</a></h2>
 <p><code>read</code> takes a single <code>path</code> string (no separate <code>offset</code>/<code>limit</code> arguments) and bounds every read
 to a budget:</p>
@@ -18020,7 +18232,7 @@ blob) is bounded by bytes; a file with many short lines is bounded by lines. Bot
 configured, and <code>read</code> is deliberately the one tool exempt from artifact spilling: it is bounded by
 LINES, so spilling on bytes would hand back fewer lines than you asked for and break the contract
 the tool has. Every other tool’s output is bounded by <code>tools.artifactSpillThreshold</code>, described
-under <a href="#the-grep-tool-toolsgrepts">The <code>grep</code> tool</a> below.</li>
+under <a href="#the-search-tool-toolssearchts">The <code>search</code> tool</a> below.</li>
 <li><strong>Structural summaries for parseable code.</strong> A read with no selector on a parseable source file
 returns declarations with bodies elided (<code>…</code>), and the footer names the recovery selector so the model
 re-issues only the ranges it actually needs instead of re-reading the whole file.</li>
@@ -18036,43 +18248,61 @@ notebooks (editable cell text), images, URLs (reader-mode by default), and inter
 files (PNG, JPEG, GIF, WEBP) inline for direct visual analysis. When <code>inspect_image.enabled</code> is set,
 <code>read</code> returns image metadata instead and the model inspects the image by calling <code>inspect_image</code>
 with a question.</p>
-<h2 id="the-glob-tool-toolsglobts"><a class="header" href="#the-glob-tool-toolsglobts">The <code>glob</code> tool (<code>tools/glob.ts</code>)</a></h2>
-<p>There is no separate <code>find</code> or <code>ls</code> tool, pattern matching and directory listing are both the <code>glob</code>
-tool. A model that runs <code>find . -name '*.rs'</code> or <code>ls -R</code> in the shell gets back an unbounded dump that
-includes <code>target/</code>, <code>node_modules/</code>, and <code>.git/</code>; <code>glob</code> is bounded and gitignore-aware instead:</p>
+<h2 id="the-search-tool-toolssearchts"><a class="header" href="#the-search-tool-toolssearchts">The <code>search</code> tool (<code>tools/search.ts</code>)</a></h2>
+<p>Workspace discovery and searching are unified in the <code>search</code> tool, covering file path lookup,
+text/regex search, and structural code search through one canonical model-facing interface. It
+takes two required ordered fields followed by type-specific options:</p>
+<ol>
+<li><strong><code>type</code> (ordered first):</strong> representation to match:
 <ul>
-<li><strong>Glob matching, or a bare directory/file path.</strong> <code>glob {path?, hidden?, gitignore?, limit?}</code>. <code>path</code>
-accepts a glob, a single file, a directory (recursed), or a semicolon-delimited list of any of those
-(<code>src/**/*.ts; test/**/*.ts</code>); omitted, it searches the workspace root.</li>
-<li><strong><code>gitignore</code> (default <code>true</code>)</strong> hides <code>.gitignore</code> matches; set <code>false</code> to find <code>.env*</code>, build
-output, or anything the repo ignores. <strong><code>hidden</code> (default <code>true</code>)</strong> includes dotfiles.</li>
-<li><strong>Bounded by result count</strong>, default and max <code>200</code> (<code>DEFAULT_LIMIT</code> / <code>MAX_LIMIT</code> in <code>glob.ts</code>): not
-a byte cap. Every truncation is surfaced as an actionable notice.</li>
-<li><strong>Sorted by mtime, newest first</strong> (not lexicographic), grouped under <code># &lt;dir&gt;/</code> headers with
-basenames below; directories get a trailing <code>/</code>.</li>
-<li><strong><code>.git</code> and <code>node_modules</code> are never descended</strong>. Traversal uses the same filesystem abstraction
-as <code>read</code>/<code>grep</code> (including remote/task workspaces when those backends are active).</li>
+<li><code>"files"</code>: match paths and repository layout.</li>
+<li><code>"text"</code>: match syntax-irrelevant text or regex content.</li>
+<li><code>"structure"</code>: match code syntax and structural relationships.</li>
 </ul>
-<h2 id="the-grep-tool-toolsgrepts"><a class="header" href="#the-grep-tool-toolsgrepts">The <code>grep</code> tool (<code>tools/grep.ts</code>)</a></h2>
-<p>A model that runs <code>grep -r</code> / <code>rg</code> in the shell can get back tens of thousands of matching lines. The
-<code>grep</code> tool is always regex (Rust regex / PCRE2 syntax; no literal-match flag) and paginates by file
-count on top of the same gitignore-aware traversal <code>glob</code> uses:</p>
+</li>
+<li><strong><code>input</code> (ordered second):</strong> what to match:
 <ul>
-<li><strong><code>grep {pattern, path?, case?, gitignore?, skip?}</code>.</strong> <code>path</code> scopes the search (single path,
-semicolon-delimited list, or a <code>file:line-range</code> selector on one target); <code>case</code> toggles
-case-sensitivity and defaults to sensitive (<code>caseSensitive ?? true</code> in <code>grep.ts</code>); <code>skip</code> pages
-past files already returned once a call hits the file limit.</li>
-<li><strong>Bounded by file count, not match count.</strong> Results are paginated at <code>DEFAULT_FILE_LIMIT = 20</code> files
-per call, with an internal total cap of <code>2000</code> matches (<code>grep.ts</code>); <code>skip</code> continues from where the
-previous call left off.</li>
-<li><strong>Output is per-file, line-number-prefixed</strong>, with context rows around each match when the harness
-runs in line-number mode.</li>
-<li><strong>Cross-line patterns</strong> are detected from a literal <code>\n</code>/<code>\\n</code> in <code>pattern</code>.</li>
-<li>The tool description explicitly forbids shelling out to <code>grep</code>/<code>rg</code>/<code>ripgrep</code>/<code>ag</code>/<code>ack</code>/<code>git grep</code>
-via Bash, the built-in tool is the only sanctioned path.</li>
+<li>for <code>"files"</code>: a path, directory, or glob pattern (e.g. <code>"src/**/*.ts"</code>).</li>
+<li>for <code>"text"</code>: a literal or regular expression pattern (e.g. <code>"TODO|FIXME"</code>).</li>
+<li>for <code>"structure"</code>: one structural code pattern (e.g. <code>"console.log($$$)"</code>).</li>
+</ul>
+</li>
+</ol>
+<h3 id="type-specific-options-and-validation"><a class="header" href="#type-specific-options-and-validation">Type-specific options and validation</a></h3>
+<p>Options are strictly validated per <code>type</code>; cross-type fields are rejected with an actionable error:</p>
+<ul>
+<li><strong><code>type: "files"</code></strong> accepts <code>hidden</code>, <code>gitignore</code>, and <code>limit</code>:
+<ul>
+<li><strong><code>hidden</code> (default <code>true</code>)</strong> includes dotfiles.</li>
+<li><strong><code>gitignore</code> (default <code>true</code>)</strong> respects <code>.gitignore</code> rules; set <code>false</code> to search ignored paths.</li>
+<li><strong><code>limit</code> (default <code>200</code>, max <code>200</code>)</strong> bounds returned paths; output is sorted by <code>mtime</code> descending and grouped under <code># &lt;dir&gt;/</code> directory headers.</li>
+</ul>
+</li>
+<li><strong><code>type: "text"</code></strong> accepts <code>path</code>, <code>case</code>, <code>gitignore</code>, and <code>skip</code>:
+<ul>
+<li><strong><code>path</code></strong> scopes the search (file, directory, glob, internal URL like <code>veyyon://</code>, or a semicolon-delimited list; omitted searches the workspace root <code>"."</code>). Line-range selectors (e.g. <code>:50-100</code>) on a single file target constrain matches.</li>
+<li><strong><code>case</code> (default <code>true</code>)</strong> toggles case sensitivity.</li>
+<li><strong><code>gitignore</code> (default <code>true</code>)</strong> respects <code>.gitignore</code>.</li>
+<li><strong><code>skip</code></strong> pages past already-returned files; results are paginated at <code>20</code> files per call (<code>DEFAULT_FILE_LIMIT</code>) with an internal cap of <code>2000</code> matches. Context lines around matches are governed by <code>search.contextBefore</code> (default <code>1</code>) and <code>search.contextAfter</code> (default <code>3</code>).</li>
+</ul>
+</li>
+<li><strong><code>type: "structure"</code></strong> accepts <code>path</code> and <code>skip</code>:
+<ul>
+<li><strong><code>path</code></strong> scopes the search (file, directory, glob, internal URL, or semicolon-delimited list).</li>
+<li><strong><code>skip</code></strong> specifies match offset for pagination (default limit <code>50</code> matches).</li>
+<li>Metavariable syntax supports <code>$NAME</code> (single node), <code>$_</code> (anonymous node), <code>$$$NAME</code> (multi-node sequence), and <code>$$$</code> (anonymous sequence).</li>
+</ul>
+</li>
+</ul>
+<h3 id="unified-result-contract-and-settings"><a class="header" href="#unified-result-contract-and-settings">Unified result contract and settings</a></h3>
+<p>Results return formatted text plus structured details <code>{ type, result }</code> corresponding to the search type (<code>FileSearchDetails</code>, <code>TextSearchDetails</code>, or <code>StructureSearchDetails</code>).</p>
+<p>The tool is part of the default inventory. Text matching uses two settings:</p>
+<ul>
+<li><code>search.contextBefore</code>: number, default <code>1</code> (lines of context before each text match).</li>
+<li><code>search.contextAfter</code>: number, default <code>3</code> (lines of context after each text match).</li>
 </ul>
 <h2 id="the-write-tool-toolswritets"><a class="header" href="#the-write-tool-toolswritets">The <code>write</code> tool (<code>tools/write.ts</code>)</a></h2>
-<p><code>read</code>/<code>glob</code>/<code>grep</code> are the read side; <code>write {path, content}</code> creates or replaces a whole file. It
+<p><code>read</code> and <code>search</code> are the read side; <code>write {path, content}</code> creates or replaces a whole file. It
 shares infrastructure with the edit engine rather than touching the filesystem directly:</p>
 <ul>
 <li><strong>Shared verified pipeline.</strong> <code>write.ts</code> imports the same file-snapshot store and LF-normalization
@@ -18549,6 +18779,16 @@ written, because the disk is full or the directory is read-only, veyyon logs an
 error naming the file and the cause, stops recording that response, and lets the
 response through untouched. You get your answer and a truncated log, not a
 failed request.</p>
+<p>Each file stops at 32 MiB. Past that the response log writes a line naming the
+ceiling, then a final line stating how many bytes it recorded and how many it
+omitted; a request body that ran past the ceiling carries the same counts under
+<code>bodyCapture</code>, and the body itself is stored as <code>bodyText</code> rather than parsed
+JSON. The response you get is unaffected: the ceiling bounds the recording, not
+the request. Raise or lower it with <code>VEYYON_REQ_DEBUG_MAX_BYTES</code>, in bytes; a
+value that is not a positive integer is a typo rather than a request for no
+ceiling, so veyyon warns and keeps the default. An omitted count of <code>null</code> on a
+request body means the sender declared no length, so the bytes past the ceiling
+were never counted.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="troubleshooting-4"><a class="header" href="#troubleshooting-4">Troubleshooting</a></h1>
 <p>Common failure paths.</p>
@@ -18559,6 +18799,19 @@ veyyon plugin doctor
 <p><code>veyyon plugin doctor</code> reports extension health and missing optional binaries/keys. Non-zero exit: fix the reported check and re-run.</p>
 <h2 id="provider-errors"><a class="header" href="#provider-errors">Provider errors</a></h2>
 <p>Check API key / auth store / <code>models.yml</code> for that provider id, base URL, and scopes. See <a href="#model-and-provider-configuration-modelsyml--modelsyaml">Models and providers</a>.</p>
+<p>A provider error message carries the failing status and the body the server sent, with three
+limits. At most 64 KiB of the body is read, and the message says so: <code>[truncated, showing 4096 of 65536 chars read, 134505 of 200041 bytes not read]</code>, or <code>read stopped at 65536 bytes</code>
+when the server declared no length. Control characters and terminal escape sequences are
+removed, so an error page cannot repaint the screen. Credential-shaped text is replaced with
+<code>&lt;redacted N chars&gt;</code>: an <code>Authorization</code> or <code>Cookie</code> value, a bearer token, a JWT, and the
+vendor key prefixes. A proxy or captive portal answering HTML instead of the provider is the
+usual reason a message is truncated.</p>
+<p>A streamed response is read one frame at a time: a line, a JSONL record, or an SSE event
+ending at a blank line. One frame may occupy 64 MiB. A server or proxy that keeps sending
+without ever sending the delimiter is stopped at that point, the connection is cancelled,
+and the message names the protocol and both byte counts: <code>an SSE event arrived with no blank-line dispatch: 67109376 bytes exceeded the 67108864 byte frame limit</code>. The same
+bound covers a stream of <code>data:</code> lines that never dispatches and a keepalive comment sent
+in a loop. This failure is never retried: the next attempt reaches the same peer.</p>
 <h2 id="command-or-edit-blocked-or-prompting"><a class="header" href="#command-or-edit-blocked-or-prompting">Command or edit blocked or prompting</a></h2>
 <p>Policy is <strong><code>tools.approvalMode</code></strong> and <code>tools.approval</code>, plus the working-directory and secret-use boundaries (every rung except <code>yolo</code>) and hard-coded flagged bash patterns: the destructive ones prompt on every rung, <code>yolo</code> included, and the merely dangerous ones (<code>curl | sh</code>, <code>reboot</code>, <code>nc -e</code>) prompt on every rung below it. There is no OS command sandbox. Schema default is <strong><code>auto</code></strong>. See <a href="#approvals">Approvals</a> and <a href="#configuration-4">Configuration</a>.</p>
 <h2 id="truncated-tool-output"><a class="header" href="#truncated-tool-output">Truncated tool output</a></h2>

@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-8ea7c097.js";
+            window.path_to_searchindex_js = "../searchindex-1fab5344.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-093df7ff.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -223,6 +223,10 @@ spawns. Veyyon still discovers servers from other tools’ user-level configs (<
 <code>~/.claude/mcp.json</code>, <code>~/.cursor/mcp.json</code>, <code>~/.codex/config.toml</code>, <code>~/.gemini/settings.json</code>,
 opencode, windsurf, and more), always from your home directory, never from a working tree, and
 <code>/mcp list</code> names the file each server came from.</p>
+<p>One project-controlled route to an MCP server remains, and it is gated rather than removed: a
+project plugin registry (<code>.veyyon/plugins/installed_plugins.json</code>) names plugin directories, and a
+plugin may ship a <code>.mcp.json</code>. The registry is withheld until you approve it. See
+<a href="./project-trust.html">Project trust</a>.</p>
 <h3 id="profiles"><a class="header" href="#profiles">Profiles</a></h3>
 <p>Named profiles (<code>veyyon --profile &lt;name&gt;</code>, the <code>--alias</code> shortcut, or <code>VEYYON_PROFILE</code> still work) isolate MCP config. When a profile is active, <code>mcp.json</code> resolves to that profile’s agent directory:</p>
 <ul>
@@ -282,8 +286,16 @@ opencode, windsurf, and more), always from your home directory, never from a wor
 <li><code>type?: "stdio"</code></li>
 <li><code>args?: string[]</code></li>
 <li><code>env?: Record&lt;string, string&gt;</code></li>
+<li><code>envPassthrough?: string[]</code> — ambient variables to forward by name</li>
+<li><code>inheritEnv?: boolean</code> — forward the whole ambient environment, credentials included</li>
 <li><code>cwd?: string</code></li>
 </ul>
+<p>A stdio server receives a baseline of variables a program needs in order to run (<code>PATH</code>, <code>HOME</code>,
+temp, locale, certificate and proxy settings, and version-manager directories; on Windows also
+<code>PATHEXT</code>, <code>SystemRoot</code>, <code>ComSpec</code> and the <code>ProgramFiles</code> variants), plus <code>env</code> and the names
+listed in <code>envPassthrough</code>. Every other ambient variable is withheld. <code>inheritEnv: true</code> disables
+that bound for one server and logs a warning on each spawn. See
+<a href="../using/mcp-setup.html#pass-environment-variables">MCP setup</a>.</p>
 <p>Example:</p>
 <pre><code class="language-json">{
   "$schema": "https://raw.githubusercontent.com/santhreal/veyyon/main/packages/coding-agent/src/config/mcp-schema.json",
@@ -345,6 +357,22 @@ opencode, windsurf, and more), always from your home directory, never from a wor
 }
 </code></pre>
 <p><code>sse</code> is still supported for compatibility, but the MCP spec now prefers Streamable HTTP (<code>type: "http"</code>) for new servers.</p>
+<h2 id="stopping-a-stdio-server"><a class="header" href="#stopping-a-stdio-server">Stopping a stdio server</a></h2>
+<p>A stdio server is usually started through a wrapper: <code>npx</code>, <code>uvx</code>, <code>docker run</code>, or a script
+in a repository. The wrapper starts the real server as a child of its own, so the process
+Veyyon spawned is not the process serving tools.</p>
+<p>Ending a server ends the whole tree. Veyyon signals every live descendant and then the
+process it spawned, waits 500 ms, and repeats the wave with a hard kill if anything is still
+running. The second wave re-walks the tree, so a process started during the wait is included.
+The wait after the hard kill is bounded at 1.5 s, so <code>/mcp reload</code>, a disconnect, and session
+shutdown always return. The same teardown runs when a handshake fails, including a server that
+never answers <code>initialize</code>.</p>
+<p>The process group is signalled only when the server leads a group of its own. On Linux the
+server starts in a new session, so its group holds nothing else. On macOS it stays attached so
+the system can prompt for file access, and Windows has no process groups; there the group is
+Veyyon’s own and is left alone.</p>
+<p>A server that daemonizes — double-forks into its own session — is outside this. It outlives the
+session that started it and has to be stopped by hand.</p>
 <h2 id="auth-fields"><a class="header" href="#auth-fields">Auth fields</a></h2>
 <p>Veyyon understands two auth-related objects.</p>
 <h3 id="auth"><a class="header" href="#auth"><code>auth</code></a></h3>
@@ -507,29 +535,71 @@ editor configs Veyyon still reads are named by file in <code>/mcp list</code>.</
 }
 </code></pre>
 <h3 id="pre-connect-envheader-resolution"><a class="header" href="#pre-connect-envheader-resolution">Pre-connect env/header resolution</a></h3>
-<p>Before Veyyon launches a stdio server or makes an HTTP/SSE request, it resolves stdio <code>env</code> values and HTTP/SSE <code>headers</code> values like this:</p>
+<p>Before Veyyon launches a stdio server or makes an HTTP/SSE request, it resolves stdio <code>env</code> values
+and HTTP/SSE <code>headers</code> values like this:</p>
 <ol>
-<li>If a value starts with <code>!</code>, Veyyon runs the rest as a shell command with a 10s timeout and uses trimmed stdout.</li>
-<li>If the command fails, times out, or prints only whitespace, that <code>env</code>/<code>headers</code> entry is omitted.</li>
-<li>Otherwise Veyyon checks whether the value names an environment variable.</li>
-<li>If that environment variable is set to a non-empty value, Veyyon uses the environment value; otherwise it uses the string literally.</li>
+<li>A value starting with <code>!</code> runs as a shell command with a 10s timeout and its trimmed stdout is
+used. A command that fails, times out, or prints only whitespace omits that entry.</li>
+<li><code>${NAME}</code> or <code>$NAME</code> reads the environment variable <code>NAME</code>.</li>
+<li>A bare value shaped like an environment variable name (<code>GITHUB_TOKEN</code>, upper case, digits and
+underscores) reads that variable too.</li>
+<li><code>literal:&lt;text&gt;</code> is <code>&lt;text&gt;</code>, verbatim, with no lookup.</li>
+<li>Any other value is itself.</li>
 </ol>
+<p>A variable that is unset, or set to an empty string, resolves to nothing. The connection is not
+attempted and the error names the variable:</p>
+<pre><code class="language-console">The header "Authorization" for https://api.example.com/mcp refers to the environment variable
+GITHUB_TOKN, which is not set, so the connection was not attempted rather than sent with the
+variable's own name as the value.
+</code></pre>
+<p>Earlier versions used the variable’s own name as the value in that case, so a typo was sent to the
+server as the credential and came back as the server’s opinion of a bad token.</p>
 <p>Examples:</p>
 <pre><code class="language-json">{
   "env": {
-    "GITHUB_PERSONAL_ACCESS_TOKEN": "GITHUB_PERSONAL_ACCESS_TOKEN"
+    "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"
   },
   "headers": {
     "X-MCP-Insiders": "true"
   }
 }
 </code></pre>
-<p>That means this is valid and convenient for local secrets:</p>
 <ul>
-<li><code>"GITHUB_PERSONAL_ACCESS_TOKEN": "GITHUB_PERSONAL_ACCESS_TOKEN"</code> → copy from the current shell environment</li>
+<li><code>"GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"</code> → copy from the current shell
+environment, and refuse to connect when it is missing</li>
 <li><code>"Authorization": "Bearer hardcoded-token"</code> → use the literal value</li>
+<li><code>"X-Api-Key": "literal:PROJECT_KEY"</code> → send <code>PROJECT_KEY</code> as the value, without looking it up</li>
 <li><code>"Authorization": "!printf 'Bearer %s' \"$GITHUB_TOKEN\""</code> → build the header from a command</li>
 </ul>
+<h3 id="when-a-command-runs-again"><a class="header" href="#when-a-command-runs-again">When a command runs again</a></h3>
+<p>A command’s output is cached under the command text, so the same command is executed once per
+session however many servers and headers use it. Three events drop that cached output and run the
+command again:</p>
+<ul>
+<li>A request answered with 401 or 403. The retry carries the new value.</li>
+<li><code>/mcp reconnect &lt;name&gt;</code>, which re-reads the credentials of that server only.</li>
+<li><code>/mcp reload</code>, which re-reads the credentials of every configured MCP server. Commands used
+outside MCP config, such as a provider <code>apiKey</code>, keep their cached value.</li>
+</ul>
+<p>An automatic reconnect after a dropped connection reuses the cached value. A lost connection says
+nothing about the credential, and re-running a password-manager command on every reconnect means
+an unlock prompt for each one.</p>
+<p>A command that fails is not retried for 30 seconds, and an invalidation does not shorten that.</p>
+<h3 id="when-a-stored-credential-cannot-be-presented"><a class="header" href="#when-a-stored-credential-cannot-be-presented">When a stored credential cannot be presented</a></h3>
+<p>A server authorized with OAuth keeps its credential in the profile’s credential store. When that
+credential exists but cannot be used, Veyyon does not connect without it. The connection fails,
+<code>/mcp list</code> shows the failure, and the message names the state and the command that fixes it:</p>
+<ul>
+<li>The credential was rejected and cleared. Run <code>/mcp reauth &lt;name&gt;</code>.</li>
+<li>The access token expired and the refresh token is held by the auth broker, which this process
+cannot use. Run <code>/mcp reauth &lt;name&gt;</code> to authorize again through the broker.</li>
+<li>The credential store could not be read or renewed. Run <code>/mcp reconnect &lt;name&gt;</code> to retry; the
+credential is left alone, because a store failure says nothing about it.</li>
+</ul>
+<p>A refresh that fails while the access token is still valid keeps connecting with that token: the
+refresh runs up to five minutes before expiry, so the session still works.</p>
+<p>A server with no stored credential connects as configured. Nothing was authorized, so an
+unauthenticated request is what the server sees, and its own answer is what Veyyon reports.</p>
 <h2 id="disabledservers"><a class="header" href="#disabledservers"><code>disabledServers</code></a></h2>
 <p><code>disabledServers</code> is read from the user config file (<code>~/.veyyon/profiles/default/agent/mcp.json</code>) when a server is discovered from any source and you want Veyyon to ignore it without editing that other tool’s config.</p>
 <p>Example:</p>

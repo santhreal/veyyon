@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-8ea7c097.js";
+            window.path_to_searchindex_js = "../searchindex-1fab5344.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-093df7ff.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -196,14 +196,14 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="bounded-reads-and-search"><a class="header" href="#bounded-reads-and-search">Bounded reads and search</a></h1>
-<p>Four tools give the agent controlled access to your files: <code>read</code>, <code>glob</code>, <code>grep</code>, and
+<p>Three tools give the agent controlled access to your files: <code>read</code>, <code>search</code>, and
 <code>write</code>. They are always available; there is no <code>experimental_tools</code> or <code>backends.toml</code> gate
 to turn them on.</p>
 <p>The point of these tools is bounds. An unbounded <code>cat</code>, <code>find</code>, or <code>grep -r</code> in the shell
 can dump enough text to fill the whole context window. These tools apply line, byte, and
 result caps instead, and they surface truncation rather than dropping output silently. This
 page documents each tool’s parameters and the limits it enforces. The implementations live
-under <code>packages/coding-agent/src/tools/{read,glob,grep,write}.ts</code>.</p>
+under <code>packages/coding-agent/src/tools/{read,search,write}.ts</code>.</p>
 <h2 id="the-read-tool-toolsreadts"><a class="header" href="#the-read-tool-toolsreadts">The <code>read</code> tool (<code>tools/read.ts</code>)</a></h2>
 <p><code>read</code> takes a single <code>path</code> string (no separate <code>offset</code>/<code>limit</code> arguments) and bounds every read
 to a budget:</p>
@@ -218,7 +218,7 @@ blob) is bounded by bytes; a file with many short lines is bounded by lines. Bot
 configured, and <code>read</code> is deliberately the one tool exempt from artifact spilling: it is bounded by
 LINES, so spilling on bytes would hand back fewer lines than you asked for and break the contract
 the tool has. Every other tool’s output is bounded by <code>tools.artifactSpillThreshold</code>, described
-under <a href="#the-grep-tool-toolsgrepts">The <code>grep</code> tool</a> below.</li>
+under <a href="#the-search-tool-toolssearchts">The <code>search</code> tool</a> below.</li>
 <li><strong>Structural summaries for parseable code.</strong> A read with no selector on a parseable source file
 returns declarations with bodies elided (<code>…</code>), and the footer names the recovery selector so the model
 re-issues only the ranges it actually needs instead of re-reading the whole file.</li>
@@ -234,43 +234,61 @@ notebooks (editable cell text), images, URLs (reader-mode by default), and inter
 files (PNG, JPEG, GIF, WEBP) inline for direct visual analysis. When <code>inspect_image.enabled</code> is set,
 <code>read</code> returns image metadata instead and the model inspects the image by calling <code>inspect_image</code>
 with a question.</p>
-<h2 id="the-glob-tool-toolsglobts"><a class="header" href="#the-glob-tool-toolsglobts">The <code>glob</code> tool (<code>tools/glob.ts</code>)</a></h2>
-<p>There is no separate <code>find</code> or <code>ls</code> tool, pattern matching and directory listing are both the <code>glob</code>
-tool. A model that runs <code>find . -name '*.rs'</code> or <code>ls -R</code> in the shell gets back an unbounded dump that
-includes <code>target/</code>, <code>node_modules/</code>, and <code>.git/</code>; <code>glob</code> is bounded and gitignore-aware instead:</p>
+<h2 id="the-search-tool-toolssearchts"><a class="header" href="#the-search-tool-toolssearchts">The <code>search</code> tool (<code>tools/search.ts</code>)</a></h2>
+<p>Workspace discovery and searching are unified in the <code>search</code> tool, covering file path lookup,
+text/regex search, and structural code search through one canonical model-facing interface. It
+takes two required ordered fields followed by type-specific options:</p>
+<ol>
+<li><strong><code>type</code> (ordered first):</strong> representation to match:
 <ul>
-<li><strong>Glob matching, or a bare directory/file path.</strong> <code>glob {path?, hidden?, gitignore?, limit?}</code>. <code>path</code>
-accepts a glob, a single file, a directory (recursed), or a semicolon-delimited list of any of those
-(<code>src/**/*.ts; test/**/*.ts</code>); omitted, it searches the workspace root.</li>
-<li><strong><code>gitignore</code> (default <code>true</code>)</strong> hides <code>.gitignore</code> matches; set <code>false</code> to find <code>.env*</code>, build
-output, or anything the repo ignores. <strong><code>hidden</code> (default <code>true</code>)</strong> includes dotfiles.</li>
-<li><strong>Bounded by result count</strong>, default and max <code>200</code> (<code>DEFAULT_LIMIT</code> / <code>MAX_LIMIT</code> in <code>glob.ts</code>): not
-a byte cap. Every truncation is surfaced as an actionable notice.</li>
-<li><strong>Sorted by mtime, newest first</strong> (not lexicographic), grouped under <code># &lt;dir&gt;/</code> headers with
-basenames below; directories get a trailing <code>/</code>.</li>
-<li><strong><code>.git</code> and <code>node_modules</code> are never descended</strong>. Traversal uses the same filesystem abstraction
-as <code>read</code>/<code>grep</code> (including remote/task workspaces when those backends are active).</li>
+<li><code>"files"</code>: match paths and repository layout.</li>
+<li><code>"text"</code>: match syntax-irrelevant text or regex content.</li>
+<li><code>"structure"</code>: match code syntax and structural relationships.</li>
 </ul>
-<h2 id="the-grep-tool-toolsgrepts"><a class="header" href="#the-grep-tool-toolsgrepts">The <code>grep</code> tool (<code>tools/grep.ts</code>)</a></h2>
-<p>A model that runs <code>grep -r</code> / <code>rg</code> in the shell can get back tens of thousands of matching lines. The
-<code>grep</code> tool is always regex (Rust regex / PCRE2 syntax; no literal-match flag) and paginates by file
-count on top of the same gitignore-aware traversal <code>glob</code> uses:</p>
+</li>
+<li><strong><code>input</code> (ordered second):</strong> what to match:
 <ul>
-<li><strong><code>grep {pattern, path?, case?, gitignore?, skip?}</code>.</strong> <code>path</code> scopes the search (single path,
-semicolon-delimited list, or a <code>file:line-range</code> selector on one target); <code>case</code> toggles
-case-sensitivity and defaults to sensitive (<code>caseSensitive ?? true</code> in <code>grep.ts</code>); <code>skip</code> pages
-past files already returned once a call hits the file limit.</li>
-<li><strong>Bounded by file count, not match count.</strong> Results are paginated at <code>DEFAULT_FILE_LIMIT = 20</code> files
-per call, with an internal total cap of <code>2000</code> matches (<code>grep.ts</code>); <code>skip</code> continues from where the
-previous call left off.</li>
-<li><strong>Output is per-file, line-number-prefixed</strong>, with context rows around each match when the harness
-runs in line-number mode.</li>
-<li><strong>Cross-line patterns</strong> are detected from a literal <code>\n</code>/<code>\\n</code> in <code>pattern</code>.</li>
-<li>The tool description explicitly forbids shelling out to <code>grep</code>/<code>rg</code>/<code>ripgrep</code>/<code>ag</code>/<code>ack</code>/<code>git grep</code>
-via Bash, the built-in tool is the only sanctioned path.</li>
+<li>for <code>"files"</code>: a path, directory, or glob pattern (e.g. <code>"src/**/*.ts"</code>).</li>
+<li>for <code>"text"</code>: a literal or regular expression pattern (e.g. <code>"TODO|FIXME"</code>).</li>
+<li>for <code>"structure"</code>: one structural code pattern (e.g. <code>"console.log($$$)"</code>).</li>
+</ul>
+</li>
+</ol>
+<h3 id="type-specific-options-and-validation"><a class="header" href="#type-specific-options-and-validation">Type-specific options and validation</a></h3>
+<p>Options are strictly validated per <code>type</code>; cross-type fields are rejected with an actionable error:</p>
+<ul>
+<li><strong><code>type: "files"</code></strong> accepts <code>hidden</code>, <code>gitignore</code>, and <code>limit</code>:
+<ul>
+<li><strong><code>hidden</code> (default <code>true</code>)</strong> includes dotfiles.</li>
+<li><strong><code>gitignore</code> (default <code>true</code>)</strong> respects <code>.gitignore</code> rules; set <code>false</code> to search ignored paths.</li>
+<li><strong><code>limit</code> (default <code>200</code>, max <code>200</code>)</strong> bounds returned paths; output is sorted by <code>mtime</code> descending and grouped under <code># &lt;dir&gt;/</code> directory headers.</li>
+</ul>
+</li>
+<li><strong><code>type: "text"</code></strong> accepts <code>path</code>, <code>case</code>, <code>gitignore</code>, and <code>skip</code>:
+<ul>
+<li><strong><code>path</code></strong> scopes the search (file, directory, glob, internal URL like <code>veyyon://</code>, or a semicolon-delimited list; omitted searches the workspace root <code>"."</code>). Line-range selectors (e.g. <code>:50-100</code>) on a single file target constrain matches.</li>
+<li><strong><code>case</code> (default <code>true</code>)</strong> toggles case sensitivity.</li>
+<li><strong><code>gitignore</code> (default <code>true</code>)</strong> respects <code>.gitignore</code>.</li>
+<li><strong><code>skip</code></strong> pages past already-returned files; results are paginated at <code>20</code> files per call (<code>DEFAULT_FILE_LIMIT</code>) with an internal cap of <code>2000</code> matches. Context lines around matches are governed by <code>search.contextBefore</code> (default <code>1</code>) and <code>search.contextAfter</code> (default <code>3</code>).</li>
+</ul>
+</li>
+<li><strong><code>type: "structure"</code></strong> accepts <code>path</code> and <code>skip</code>:
+<ul>
+<li><strong><code>path</code></strong> scopes the search (file, directory, glob, internal URL, or semicolon-delimited list).</li>
+<li><strong><code>skip</code></strong> specifies match offset for pagination (default limit <code>50</code> matches).</li>
+<li>Metavariable syntax supports <code>$NAME</code> (single node), <code>$_</code> (anonymous node), <code>$$$NAME</code> (multi-node sequence), and <code>$$$</code> (anonymous sequence).</li>
+</ul>
+</li>
+</ul>
+<h3 id="unified-result-contract-and-settings"><a class="header" href="#unified-result-contract-and-settings">Unified result contract and settings</a></h3>
+<p>Results return formatted text plus structured details <code>{ type, result }</code> corresponding to the search type (<code>FileSearchDetails</code>, <code>TextSearchDetails</code>, or <code>StructureSearchDetails</code>).</p>
+<p>The tool is part of the default inventory. Text matching uses two settings:</p>
+<ul>
+<li><code>search.contextBefore</code>: number, default <code>1</code> (lines of context before each text match).</li>
+<li><code>search.contextAfter</code>: number, default <code>3</code> (lines of context after each text match).</li>
 </ul>
 <h2 id="the-write-tool-toolswritets"><a class="header" href="#the-write-tool-toolswritets">The <code>write</code> tool (<code>tools/write.ts</code>)</a></h2>
-<p><code>read</code>/<code>glob</code>/<code>grep</code> are the read side; <code>write {path, content}</code> creates or replaces a whole file. It
+<p><code>read</code> and <code>search</code> are the read side; <code>write {path, content}</code> creates or replaces a whole file. It
 shares infrastructure with the edit engine rather than touching the filesystem directly:</p>
 <ul>
 <li><strong>Shared verified pipeline.</strong> <code>write.ts</code> imports the same file-snapshot store and LF-normalization
