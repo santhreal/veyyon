@@ -1646,6 +1646,12 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 					vaultRevision: undefined,
 				};
 			}
+			// The key read depends only on `globalConfigRoot`, so start it before the
+			// secrets/env/vault entry loads below and await a settled promise instead of
+			// paying the reads back to back.
+			const placeholderKeyPromise = logger.time("loadSecretPlaceholderKey", () =>
+				loadOrCreateVaultKey(globalConfigRoot),
+			);
 
 			const fileEntries = await logger.time("loadSecrets", loadSecrets, runtimeCwd, agentDir);
 			const envKeywords = await logger.time("loadEnvSecretKeywords", () =>
@@ -1712,9 +1718,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 
 			let placeholderKey: Buffer;
 			try {
-				placeholderKey = await logger.time("loadSecretPlaceholderKey", () =>
-					loadOrCreateVaultKey(globalConfigRoot),
-				);
+				placeholderKey = await placeholderKeyPromise;
 			} catch (error) {
 				throw new Error(secretProtectionUnavailableMessage(globalConfigRoot), { cause: error });
 			}
@@ -2075,6 +2079,30 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			existingBranch = logger.time("getRecoveredSessionBranch", () => sessionManager.getBranch());
 		}
 		let existingSession = logger.time("loadSessionContext", () => sessionManager.buildSessionContext());
+		// Rules discovery shares no inputs with model resolution and prompt assembly between
+		// here and its consumer below, so start it now and let the scan overlap that work
+		// instead of trailing the skills await serially.
+		const ttsrRulesPromise = logger.time("discoverTtsrRules", async () => {
+			const { TtsrManager } = await import("./export/ttsr");
+			const ttsrSettings = settings.getGroup("ttsr");
+			// `getCwd` is a live getter, not `cwd`: a rule with a `pathScope` compares the match
+			// against the CURRENT working directory, and `set_cwd` moves it mid-session.
+			const ttsrManager = new TtsrManager(ttsrSettings, { getCwd: () => sessionManager.getCwd() });
+			const rulesResult =
+				options.rules !== undefined
+					? { items: options.rules, warnings: undefined }
+					: await discoverRules(cwd, agentDir);
+			const { rulebookRules, alwaysApplyRules } = bucketRules(rulesResult.items, ttsrManager, {
+				builtinRules: ttsrSettings.builtinRules,
+				disabledRules: ttsrSettings.disabledRules,
+				experimentalRules: ttsrSettings.experimentalRules,
+			});
+			if (existingSession.injectedTtsrRules.length > 0) {
+				ttsrManager.restoreInjected(existingSession.injectedTtsrRules);
+			}
+			return { ttsrManager, rulebookRules, alwaysApplyRules, allRules: rulesResult.items };
+		});
+
 		// Decode-only re-arm on resume. Persisted history keeps cheap handles (the
 		// token win), so a resumed branch can hold `§handle` tokens from argot_load
 		// calls in earlier sessions; the display/export seams can only expand them
@@ -2231,29 +2259,8 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		}
 
 		// Discover rules and bucket them in one pass to avoid repeated scans over large rule sets.
-		const { ttsrManager, rulebookRules, alwaysApplyRules, allRules } = await logger.time(
-			"discoverTtsrRules",
-			async () => {
-				const { TtsrManager } = await import("./export/ttsr");
-				const ttsrSettings = settings.getGroup("ttsr");
-				// `getCwd` is a live getter, not `cwd`: a rule with a `pathScope` compares the match
-				// against the CURRENT working directory, and `set_cwd` moves it mid-session.
-				const ttsrManager = new TtsrManager(ttsrSettings, { getCwd: () => sessionManager.getCwd() });
-				const rulesResult =
-					options.rules !== undefined
-						? { items: options.rules, warnings: undefined }
-						: await discoverRules(cwd, agentDir);
-				const { rulebookRules, alwaysApplyRules } = bucketRules(rulesResult.items, ttsrManager, {
-					builtinRules: ttsrSettings.builtinRules,
-					disabledRules: ttsrSettings.disabledRules,
-					experimentalRules: ttsrSettings.experimentalRules,
-				});
-				if (existingSession.injectedTtsrRules.length > 0) {
-					ttsrManager.restoreInjected(existingSession.injectedTtsrRules);
-				}
-				return { ttsrManager, rulebookRules, alwaysApplyRules, allRules: rulesResult.items };
-			},
-		);
+		// Started above so the scan overlaps model resolution and prompt assembly.
+		const { ttsrManager, rulebookRules, alwaysApplyRules, allRules } = await ttsrRulesPromise;
 
 		// Resolve contextFiles up-front (it's needed before tool creation). The
 		// workspace tree scan is slow on large repos and we MUST NOT block startup on
