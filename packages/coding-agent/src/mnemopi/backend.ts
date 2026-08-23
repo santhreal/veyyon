@@ -9,6 +9,7 @@ import type { DiagnosticSummary } from "@veyyon/mnemopi/diagnose";
 import { clampLow, logger } from "@veyyon/utils";
 import type { ModelRegistry } from "../config/model-registry";
 import { resolveRoleSelectionWithInherit } from "../config/model-resolver";
+import { resolveConfigValue } from "../config/resolve-config-value";
 import type {
 	MemoryBackend,
 	MemoryBackendSaveInput,
@@ -468,6 +469,26 @@ async function openrouterKeyResolver(
 	return modelRegistry.resolver("openrouter", { sessionId });
 }
 
+/**
+ * A memory credential the operator configured, read through the ONE config-value grammar.
+ *
+ * `mnemopi.llmApiKey` and `mnemopi.embeddingApiKey` were handed to Mnemopi as raw setting text while every
+ * other configured credential in the product -- provider keys, MCP headers, the auth broker -- went
+ * through `resolveConfigValue`. So `llmApiKey: ${OPENAI_API_KEY}`, which is the spelling the memory
+ * backend's own documentation shows, sent the seven characters of the variable's name to the endpoint as
+ * the key, and `!op read ...` sent the command text. The failure arrived as a 401 from the memory host
+ * with nothing naming the setting.
+ *
+ * Not a string means an `ApiKeyResolver` the caller already built, which resolves itself.
+ */
+async function resolveMemoryCredential(
+	configured: MnemopiProviderOptions["embeddingApiKey"],
+	describedAs: string,
+): Promise<MnemopiProviderOptions["embeddingApiKey"]> {
+	if (typeof configured !== "string") return configured;
+	return await resolveConfigValue(configured, describedAs);
+}
+
 async function resolveMnemopiProviderOptions(
 	config: MnemopiBackendConfig,
 	settings: MemoryBackendStartOptions["settings"],
@@ -481,13 +502,13 @@ async function resolveMnemopiProviderOptions(
 		embeddingModel: config.providerOptions.embeddingModel,
 		embeddingApiUrl: config.providerOptions.embeddingApiUrl,
 		embeddingApiKey:
-			config.providerOptions.embeddingApiKey ??
+			(await resolveMemoryCredential(config.providerOptions.embeddingApiKey, "Mnemopi embedding API key")) ??
 			(await openrouterKeyResolver(modelRegistry, sessionId, config.providerOptions.embeddingApiUrl)),
 		embeddings: { sanitizeProviderText },
 		llm: false,
 	};
 
-	if (config.llmMode === "none") return base;
+	if (config.llm.mode === "none") return base;
 
 	// A local on-device memory model (providers.memoryModel) overrides the smol/remote
 	// LLM for both consolidation and the configured extraction path. `none` still wins
@@ -504,17 +525,17 @@ async function resolveMnemopiProviderOptions(
 			},
 		};
 	}
-	if (config.llmMode === "remote") {
+	if (config.llm.mode === "remote") {
 		return {
 			...base,
 			llm: {
-				baseUrl: config.llmBaseUrl,
+				baseUrl: config.llm.baseUrl,
 				apiKey:
-					config.llmApiKey ??
-					(config.llmBaseUrl === undefined
+					(await resolveMemoryCredential(config.llm.apiKey, "Mnemopi LLM API key")) ??
+					(config.llm.baseUrl === undefined
 						? undefined
-						: await openrouterKeyResolver(modelRegistry, sessionId, config.llmBaseUrl)),
-				model: config.llmModel,
+						: await openrouterKeyResolver(modelRegistry, sessionId, config.llm.baseUrl)),
+				model: config.llm.model,
 				sanitizeProviderText,
 			},
 		};
