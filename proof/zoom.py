@@ -49,7 +49,13 @@ SEARCH_LEAD = 1.0
 # the thing it is pointing at.
 PAD = 0.25
 EASE = 0.5
-HOLD = 1.6
+HOLD = 2.0
+# How much larger a glyph is than in the published wide shot. 2.0 crops at most
+# half the capture width and scales it to the published frame, which is an
+# upscale of the crop and is the camera move the hero take needs: the secret
+# line has to be readable at 1080p, not merely a few cells in a wide terminal.
+MAGNIFY = 2.0
+CUE_FPS = 30
 
 
 @dataclass(frozen=True)
@@ -282,9 +288,13 @@ def zoom_into(
 	pad: float,
 	crf: int,
 	report: bool = True,
+	magnify: float = MAGNIFY,
+	forced_rect: tuple[int, int, int, int] | None = None,
 ) -> Rect:
 	width, height = size(take)
 	ceiling = zoom if zoom is not None else width / PUBLISH_WIDTH
+	if magnify > 1.0:
+		ceiling = max(ceiling, magnify)
 	if ceiling <= 1.0:
 		raise ValueError(f"a zoom of {ceiling:.2f}x is not a zoom; the capture is {width} wide")
 	# The search frames are an intermediate of this take, so they live beside the file
@@ -295,9 +305,26 @@ def zoom_into(
 		if len(frames) < 2:
 			raise ValueError(f"{take}: {at:.1f}s is outside the recording")
 		box = motion_box(frames)
-	if box is None:
-		raise ValueError(f"{take}: nothing changed around {at:.1f}s, so there is no region to zoom into")
-	rect = frame_rect(box, width=width, height=height, zoom=ceiling, pad=pad)
+	if forced_rect is not None:
+		rect = Rect(x=forced_rect[0], y=forced_rect[1], w=forced_rect[2], h=forced_rect[3])
+	else:
+		if box is None:
+			raise ValueError(f"{take}: nothing changed around {at:.1f}s, so there is no region to zoom into")
+		rect = frame_rect(box, width=width, height=height, zoom=ceiling, pad=pad)
+	# Magnify is a camera floor, not a ceiling the region can talk us out of.
+	# A full-frame repaint would otherwise pin held at 1x and the secret line
+	# would stay a few cells on a 1080p landing page.
+	floor_w = _even(width / magnify)
+	floor_h = _even(height / magnify)
+	if rect.w > floor_w or rect.h > floor_h:
+		cx = rect.x + rect.w / 2
+		cy = rect.y + rect.h / 2
+		rect = Rect(
+			x=_clamp(round(cx - floor_w / 2), 0, width - floor_w),
+			y=_clamp(round(cy - floor_h / 2), 0, height - floor_h),
+			w=floor_w,
+			h=floor_h,
+		)
 	if report:
 		print(
 			f"{take}: {rect.w}x{rect.h} at {rect.x},{rect.y}"
@@ -367,7 +394,7 @@ def self_check() -> int:
 			check=True,
 		)
 		out = root / "zoomed.mp4"
-		rect = zoom_into(take, out, at=1.5, hold=1.0, ease=0.4, zoom=None, pad=PAD, crf=18, report=False)
+		rect = zoom_into(take, out, at=1.5, hold=1.0, ease=0.4, zoom=None, pad=PAD, crf=18, report=False, magnify=1.0)
 
 		if not (
 			rect.x <= block["x"]
@@ -397,10 +424,83 @@ def self_check() -> int:
 		if opening > before * 1.3:
 			failures.append(f"the clip opens already zoomed ({opening:.4f} against {before:.4f})")
 
+		cues_path = root / "cues.txt"
+		cues_path.write_text("zoom-in 45\nzoom-out 150\n")
+		at, hold = cues_to_window(parse_cues(cues_path), fps=30, ease=0.5)
+		if abs(at - 1.5) > 1e-9:
+			failures.append(f"cue zoom-in 45 at 30fps should be 1.5s, got {at}")
+		if hold < HOLD:
+			failures.append(f"cue hold {hold} is under the 2s floor")
+		cues_path.write_text("zoom-in 30\nzoom-out 60\n")
+		try:
+			cues_to_window(parse_cues(cues_path), fps=30, ease=0.5)
+			failures.append("a 1s cue pair was accepted; the secret hold is 2s")
+		except ValueError:
+			pass
 	for failure in failures:
 		print(f"zoom self-check: {failure}", file=sys.stderr)
 	print(f"zoom self-check: {'FAILED' if failures else 'ok'}")
 	return 1 if failures else 0
+
+
+
+@dataclass(frozen=True)
+class Cue:
+	"""One camera move. Frame numbers are in the take's capture rate."""
+
+	kind: str
+	frame: int
+	rect: tuple[int, int, int, int] | None = None
+
+
+def parse_cues(path: Path) -> list[Cue]:
+	"""Read `zoom-in FRAME [x,y,w,h]` / `zoom-out FRAME` rows."""
+	cues: list[Cue] = []
+	for raw in path.read_text().splitlines():
+		line = raw.strip()
+		if not line or line.startswith("#"):
+			continue
+		parts = line.split()
+		if parts[0] == "zoom-in":
+			if len(parts) not in (2, 3):
+				raise ValueError(f"{path}: bad zoom-in row: {raw}")
+			rect = None
+			if len(parts) == 3:
+				nums = [int(n) for n in parts[2].split(",")]
+				if len(nums) != 4:
+					raise ValueError(f"{path}: zoom-in rect must be x,y,w,h")
+				rect = (nums[0], nums[1], nums[2], nums[3])
+			cues.append(Cue("in", int(parts[1]), rect))
+		elif parts[0] == "zoom-out":
+			if len(parts) != 2:
+				raise ValueError(f"{path}: bad zoom-out row: {raw}")
+			cues.append(Cue("out", int(parts[1])))
+		else:
+			raise ValueError(f"{path}: unknown cue {parts[0]!r}")
+	if not cues:
+		raise ValueError(f"{path}: no cues")
+	return cues
+
+
+def cues_to_window(cues: list[Cue], *, fps: float, ease: float) -> tuple[float, float]:
+	"""The first zoom-in / zoom-out pair, as take-seconds and hold length."""
+	ins = [c for c in cues if c.kind == "in"]
+	outs = [c for c in cues if c.kind == "out"]
+	if len(ins) != 1 or len(outs) != 1:
+		raise ValueError("cues must name exactly one zoom-in and one zoom-out")
+	at = ins[0].frame / fps
+	out_at = outs[0].frame / fps
+	hold = out_at - at - 2 * ease
+	if hold < HOLD - 1e-9:
+		raise ValueError(f"cue hold is {hold:.2f}s; the secret must stay readable for {HOLD:.1f}s")
+	return at, hold
+
+
+def first_in_rect(cues: list[Cue]) -> tuple[int, int, int, int] | None:
+	for cue in cues:
+		if cue.kind == "in":
+			return cue.rect
+	return None
 
 
 def main() -> int:
@@ -420,6 +520,14 @@ def main() -> int:
 	parser.add_argument("--pad", type=float, default=PAD, help=f"region padding as a share of its size (default {PAD})")
 	parser.add_argument("--crf", type=int, default=18, help="x264 quality of the intermediate")
 	parser.add_argument("--self-check", action="store_true", help="prove the stage on a synthetic clip")
+	parser.add_argument("--cues", type=Path, help="camera cue file the scene emitted")
+	parser.add_argument("--fps", type=float, default=CUE_FPS, help="capture rate used to turn cue frames into seconds")
+	parser.add_argument(
+		"--magnify",
+		type=float,
+		default=MAGNIFY,
+		help=f"glyph size relative to the published wide shot (default {MAGNIFY})",
+	)
 	args = parser.parse_args()
 
 	if args.self_check:
@@ -432,22 +540,34 @@ def main() -> int:
 		parser.error("take and out are required")
 	if args.mark and not args.marks:
 		parser.error("--mark requires --marks")
-	if (args.at is None) == (args.mark is None):
-		parser.error("pass exactly one of --at and --mark")
+	named = [args.at is not None, args.mark is not None, args.cues is not None]
+	if sum(named) != 1:
+		parser.error("pass exactly one of --at, --mark, and --cues")
 	if args.hold <= 0 or args.ease <= 0:
 		parser.error("--hold and --ease must be greater than zero")
+	if args.magnify < 2.0:
+		parser.error("--magnify must be at least 2 so the secret line is readable at 1080p")
 
 	try:
-		at = args.at if args.at is not None else mark_time(args.marks, args.mark)
+		rect = None
+		if args.cues is not None:
+			cues = parse_cues(args.cues)
+			at, hold = cues_to_window(cues, fps=args.fps, ease=args.ease)
+			rect = first_in_rect(cues)
+		else:
+			at = args.at if args.at is not None else mark_time(args.marks, args.mark)
+			hold = args.hold
 		zoom_into(
 			args.take,
 			args.out,
 			at=at,
-			hold=args.hold,
+			hold=hold,
 			ease=args.ease,
 			zoom=args.zoom,
 			pad=args.pad,
 			crf=args.crf,
+			magnify=args.magnify,
+			forced_rect=rect,
 		)
 	except ValueError as error:
 		print(f"zoom.py: {error}", file=sys.stderr)

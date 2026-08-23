@@ -188,10 +188,19 @@ The region is measured, not typed in: the stage diffs the frames around the mome
 holds the bounding box of what changed there, padded and clamped inside the frame at
 the source aspect ratio. A moment with nothing moving in it produces no file.
 
-The zoom ceiling defaults to the capture width over the published width, so a held
-frame is a crop rather than an upscale. The stage runs on the take, before the cut,
-and keeps every frame and the recorded rate, so the cadence gate still measures the
-capture's own cadence. A scene asks for one by setting `ZOOM_ARGS` in
+The hero take drives the same stage from a cue file the scene writes next to its
+marks (`zoom-in FRAME [x,y,w,h]`, `zoom-out FRAME`). The hold between those cues
+is at least two seconds of real time, with no time compression on that span, so
+the stored secret is readable. Magnification is relative to the published wide
+shot and is at least 2x: `proof/glyph-height.py` measures `capture_width /
+crop_width` on the hold. A missing rect on `zoom-in` means "measure it".
+
+The zoom ceiling still defaults to the capture width over the published width so a
+1.33x hold is a crop. The hero's 2x secret hold is a tighter crop scaled back to
+1920x1080 — a camera move of the one capture path, not a second recorder. The
+stage runs on the take, before the cut, and keeps every frame and the recorded
+rate, so the cadence gate still measures the capture's own cadence. A scene asks
+for one by writing the cue file, or by setting `ZOOM_ARGS` in
 `scripts/demos/record-hd-demo.sh`.
 
 `--self-check` records a synthetic clip whose moving region is known and asserts the
