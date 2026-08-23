@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-8ea7c097.js";
+            window.path_to_searchindex_js = "../searchindex-035739c9.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-093df7ff.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -200,8 +200,8 @@
 <ol>
 <li><strong>Parse leniency</strong>: trailing commas / relaxed JSON; stringified argument blobs.</li>
 <li><strong>Alias / typo key rename</strong>: unknown keys that match a common alias (<code>filepath</code> → <code>path</code>, <code>contents</code> → <code>content</code>) or a casing/separator typo of a declared property are renamed to the declared name. Refuse when the rename would be ambiguous (two unknown keys map to the same property, one unknown key matches more than one declared property, or the alias target already has a value).</li>
-<li><strong>Strict unknown-key rejection</strong>: when the tool schema declares <code>additionalProperties: false</code>, any key left after alias resolution is refused rather than dropped or passed through.</li>
-<li><strong>Ambiguity guard</strong>: refuse when required string fields have multiple plausible donors.</li>
+<li><strong>Strict unknown-key rejection</strong>: when the tool schema declares <code>additionalProperties: false</code>, any key left after alias resolution is rejected rather than dropped or passed through.</li>
+<li><strong>Ambiguity guard</strong>: reject when required string fields have multiple plausible donors.</li>
 <li><strong>Outcome</strong>: <code>clean</code>, <code>repaired</code> (canonical args + hints), or <code>unrepairable</code> (error tool result, no dispatch).</li>
 </ol>
 <p>Conformance suite: <code>packages/coding-agent/test/repair/schema-repair.test.ts</code> (alias renames, ambiguity refusals, strict-mode refusals, and a guard that strict rejection does not fire on ArkType/Zod wire schemas that synthesize <code>additionalProperties: false</code> for closed-object emission rather than authorial strictness).</p>

@@ -14,7 +14,7 @@ active profile is selected by its own variable:
 
 | Variable | Purpose |
 | --- | --- |
-| `VEYYON_CONFIG_DIR` | Overrides the config directory **name** under `$HOME` (default `.veyyon`). It is a name, not a path. An absolute value is refused at startup, with a message naming the directory it would otherwise have created inside your home; to place the config root on another volume, use the `XDG_*_HOME` variables below. |
+| `VEYYON_CONFIG_DIR` | Overrides the config directory **name** under `$HOME` (default `.veyyon`). It is a name, not a path. An absolute value is rejected at startup, with a message stating the directory it would otherwise have created inside your home; to place the config root on another volume, use the `XDG_*_HOME` variables below. |
 | `VEYYON_CODING_AGENT_DIR` | Full override for the agent directory (default `~/<config-dir-name>/profiles/<active-or-default>/agent`). |
 | `VEYYON_PROFILE` | Selects the active named profile (`~/.veyyon/profiles/<name>/agent`). |
 | `VEYYON_PACKAGE_DIR` | Override package directory for bundled assets (Nix/Guix). |
@@ -23,7 +23,7 @@ active profile is selected by its own variable:
 | `VEYYON_PIPED_STDIN_WAIT_MS` | Milliseconds `veyyon -p "prompt"` waits for the first byte of piped stdin when a prompt is already on the command line (default `10000`). Only the wait before the first byte is bounded, so slow producers are still read in full. Set `0` to wait indefinitely. |
 | `VEYYON_WORKTREE_DIR` | Absolute path for agent-managed git worktrees (default profile path `~/.veyyon/profiles/<name>/wt`; also settable via the `worktree.base` setting). `~` is expanded; a relative value is ignored. |
 | `VEYYON_GITHUB_CACHE_DB` | Full path override for the GitHub view cache database (default `~/.veyyon/profiles/<name>/cache/github-cache.db`). |
-| `VEYYON_STREAM_FRAME_MAX_BYTES` | Bytes one frame of a streamed protocol may occupy before the reader refuses it: a line, a JSONL record, or an SSE event ending at a blank line. Default `67108864` (64 MiB). Applies to a provider's response stream, an MCP server's stdout, and session files. A value that is not a positive integer keeps the default. |
+| `VEYYON_STREAM_FRAME_MAX_BYTES` | Bytes one frame of a streamed protocol may occupy before the reader rejects it: a line, a JSONL record, or an SSE event ending at a blank line. Default `67108864` (64 MiB). Applies to a provider's response stream, an MCP server's stdout, and session files. A value that is not a positive integer keeps the default. |
 
 On Linux, `veyyon config init-xdg` migrates state under `$XDG_DATA_HOME`/`$XDG_STATE_HOME`/`$XDG_CACHE_HOME`
 when those are set; unmigrated installs stay under `~/.veyyon`. See

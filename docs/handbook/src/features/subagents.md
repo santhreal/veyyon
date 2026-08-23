@@ -12,11 +12,11 @@ other. It does not configure anything.
 
 ## What you get out of the box
 
-One agent type, the general-purpose worker, and delegation that the prompt asks for:
+One agent type, the general-purpose worker, and delegation that the prompt requests:
 
 ```yaml
 subagent:
-  delegation: preferred   # the default; the prompt asks for substantial work to be delegated
+  delegation: preferred   # the default; the prompt requests that substantial work be delegated
 ```
 
 Every subagent runs the model you are working with. Change the model you are talking
@@ -31,12 +31,12 @@ them.
 
 ## How hard to push
 
-`subagent.delegation` decides how hard this session is pushed to delegate:
+`subagent.delegation` sets how hard this session is pushed to delegate:
 
 | Value | What happens |
 | --- | --- |
-| `allowed` | The tool is there; the model judges when it is worth it, and is never asked. |
-| `preferred` | The default. The prompt asks the model to fan substantial work out instead of doing it alone. |
+| `allowed` | The tool is there; the model judges when it helps, and the prompt does not request it. |
+| `preferred` | The default. The prompt instructs the model to fan substantial work out instead of doing it alone. |
 | `required` | The same, plus a first-turn reminder that delegation is the default here. |
 
 The strength applies only when an enabled role matches the work. If `task` is
@@ -54,8 +54,8 @@ the prompt uses it as the general-purpose route. Enabling `designer` or
 
 ### What counts as delegable work
 
-`subagent.delegation` decides how strongly the model is pushed to delegate.
-The description of each enabled agent decides which work that role can own.
+`subagent.delegation` sets how strongly the model is pushed to delegate.
+The description of each enabled agent scopes the work that role covers.
 These are separate settings.
 
 Veyyon preserves concrete roles. It does not infer a second role category from
@@ -105,7 +105,7 @@ A row has two states:
 | **Disabled** | Refused even when named, with a message pointing at the setting. Specialists and user or project agents default to disabled. |
 
 The built-in flows still work with the specialists disabled because a command can grant its
-agent for the turn: `/review` asks for `agent: "reviewer"` through a per-turn grant, and so can
+agent for the turn: `/review` requests `agent: "reviewer"` through a per-turn grant, and so can
 you ("use the scout agent to map the parser").
 
 Writing an agent file makes the role available but does not grant spawn
@@ -113,7 +113,7 @@ permission. Enable the role during setup or in the Agents settings table.
 
 ## Choosing models
 
-Four things can name the model a subagent runs. The first that names one wins:
+Four things can set the model a subagent runs. The first that specifies one wins:
 
 1. that agent's own row, `subagent.agents.<name>.model`
 2. the blanket `subagent.model`
@@ -131,7 +131,7 @@ subagent:
 
 No bundled agent pins a model, so layer 4 is the normal case and `subagent.model`
 moves all of them together. `subagent.thinkingLevel` does the same for effort. **Inherit** passes the
-current session's effective effort into the child, while an explicit `auto` asks the provider to
+current session's effective effort into the child, while an explicit `auto` requests that the provider
 choose. An explicit `:effort` suffix on a model pattern always wins over an agent's own default.
 
 ### Fallback models
@@ -160,7 +160,7 @@ subagent:
 Write it whichever way suits the file. `compaction.model` takes a chain the same two ways.
 
 A chain only covers errors at run time. A model pattern that matches nothing is still a
-configuration mistake, so veyyon refuses to spawn the agent and names the setting, rather than
+configuration mistake, so veyyon will not spawn the agent and states the setting, rather than
 quietly running it on the next entry: a typo must not silently downgrade every subagent you spawn.
 
 In the `Subagents` block above the composer, an agent that fell back is marked with `↓` before its
@@ -168,12 +168,12 @@ model badge, so you can tell a deliberate model from a retried one at a glance.
 
 Effort is chosen from a list: `off`, `minimal` through `max`, `auto`, or `Inherit`.
 The same list appears in both places, so you cannot set a level that does not exist. If a hand-written config
-holds one that does not, veyyon says so and names the levels that work, rather than
+holds one that does not, veyyon reports the levels that work, rather than
 treating it as `Inherit` and leaving you with a setting that reads as configured and
 changes nothing.
 
 A configured model that matches nothing available does **not** quietly fall through to
-the next layer. The spawn is refused and the message names the setting to fix, because
+the next layer. The spawn is rejected and the message states the setting to fix, because
 falling through is indistinguishable from your setting having no effect. Both agent
 surfaces show, for the selected agent, the pattern, the model it resolves to, and
 which of the four layers decided.
@@ -198,31 +198,28 @@ name and the same one a delegated todo row uses to point back at it.
 The middle column holds the most urgent fact the agent has. An agent asleep between
 provider attempts shows the recovery, its attempt count and the reason, counting down.
 An agent running a tool shows the tool and its argument. An agent waiting on the model
-has nothing to report, so it shows the work it was given instead, dimmed. That order
-matters: every lower rank is still true when a higher one is, and a lane that printed
-the description while the agent was asleep on a rate limit was byte-identical to one
-thinking.
+has nothing to report, so it shows the work it was given instead, dimmed. Every lower
+rank is still true when a higher one is, and a lane that printed the description while
+the agent was asleep on a rate limit was byte-identical to one thinking.
 
 Light travels down the rail while agents are working, and a lane is lit only while it
-has a tool in flight. The head crosses the whole block — the cycle belongs to the
-block, not the row — and arrives cold on a lane that is waiting or recovering, so the
-motion says which agents are moving. Where `display.transitions` is off, the block is
-still.
+has a tool in flight. The head crosses the whole block, so the cycle belongs to the
+block rather than the row, and arrives cold on a lane that is waiting or recovering.
+Where `display.transitions` is off, the block is still.
 
 There is no elapsed clock and no context gauge. Total age ranks agents by seniority,
-which nothing acts on, and a subagent's remaining window is not something its parent
-decides anything with. The question both were reached for — is this one stuck — is
-answered by the recovery column as a fact. `/agents` carries the roster with the
-numbers.
+which nothing acts on, and a parent decides nothing with a subagent's remaining
+window. Whether a lane is stuck is answered by the recovery column. `/agents` carries
+the roster with the numbers.
 
 A lane keeps its badge on its own row.
 Narrow the terminal and the model badge comes off first, then the columns shrink to
 what is left. Nothing wraps: the block draws no row it cannot fit, and draws nothing
 at all rather than overflow.
 
-Eight lanes are drawn. Past that the block says how many more are running and points
-at `/agents`, which is the full roster. That row is the only place a count appears —
-the header is bare, because a number next to the rows that are the agents is not news.
+Eight lanes are drawn. Past that the block states how many more are running and points
+at `/agents`, which is the full roster. That row is the only place a count appears; the
+header is bare.
 
 ## Limits and isolation
 
@@ -250,12 +247,12 @@ default; turn it off to keep every parked subagent listed and revivable until yo
 `subagent.autoClose.parkedMs` ("Close After") is how long a parked subagent stays listed,
 counted from the moment it parked, and defaults to five minutes.
 `subagent.autoClose.waitingMs` ("Close After (Waiting)") is the same budget for a subagent
-whose last message said it was waiting on another agent, and defaults to thirty minutes:
+whose last message reported waiting on another agent, and defaults to thirty minutes:
 it stopped on purpose to let a peer finish, so it is the agent you are most likely to
 message next. Set the two equal to treat both the same.
 
 Turning auto-close off does not turn parking off. Parking is what releases the session, and
-it happens either way; the toggle only decides whether the parked reference is eventually
+it happens either way; the toggle only sets whether the parked reference is eventually
 dropped. That is why "Park After" sits in this group but is not hidden when the toggle is
 off.
 
@@ -272,7 +269,7 @@ deadline moves with its own activity.
 
 ### Only idle and parked agents have a deadline
 
-A `running` agent carries no deadline at all, and neither does an `aborted` one. Nothing
+A `running` agent has no deadline at all, and neither does an `aborted` one. Nothing
 parks or closes an agent that is mid-turn.
 
 This matters when an agent looks stuck. A subagent waiting for you to answer an approval
@@ -284,7 +281,7 @@ auto-close settings will not affect it.
 ### Turning it off
 
 Set `subagent.autoClose.parkedMs` to `0` and no parked agent is ever closed. That also
-forces the waiting budget to `0`, whatever `subagent.autoClose.waitingMs` says.
+forces the waiting budget to `0`, whatever `subagent.autoClose.waitingMs` is.
 
 That coupling is deliberate. If a zero parked budget still honoured a separate waiting
 budget, the only agents that ever closed would be the ones that stopped to wait on a peer,

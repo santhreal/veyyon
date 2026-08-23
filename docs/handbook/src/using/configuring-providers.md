@@ -173,7 +173,7 @@ $ veyyon --model <provider>/<id> "reply with the model name you are"
 
 The provider form bypasses the cache and contacts only the named provider. Omit it when you need to refresh every configured catalog.
 
-If discovery or auth fails, the error names the provider and the missing key or unreachable base URL,
+If discovery or auth fails, the error states the provider and the missing key or unreachable base URL,
 fix that rather than retrying with a different silent default.
 
 ## See also

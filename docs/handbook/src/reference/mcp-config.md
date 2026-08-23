@@ -22,14 +22,14 @@ The native provider also reads `.mcp.json` beside it for compatibility, but Veyy
 There is no project scope, and no `/mcp` subcommand takes a scope at all. `.veyyon/mcp.json`, a root
 `mcp.json` and a root `.mcp.json` inside a working tree used to be loaded and used to be writable
 through `/mcp add --scope project`; none of them is read now, and neither the option spelling nor the
-plain words `project` and `user` are accepted. Both are refused with the reason, on the text surface
+plain words `project` and `user` are accepted. Both are rejected with the reason, on the text surface
 as well as in the terminal: the text handler kept the scope after the terminal dropped it, defaulted
 to it, and wrote a file nothing loads while reporting success. A repository is content you may not
 have written, so a checked-in file must not name a server the agent connects to or a command it
 spawns. Veyyon still discovers servers from other tools' user-level configs (`~/.claude.json`,
 `~/.claude/mcp.json`, `~/.cursor/mcp.json`, `~/.codex/config.toml`, `~/.gemini/settings.json`,
 opencode, windsurf, and more), always from your home directory, never from a working tree, and
-`/mcp list` names the file each server came from.
+`/mcp list` shows the file each server came from.
 
 One project-controlled route to an MCP server remains, and it is gated rather than removed: a
 project plugin registry (`.veyyon/plugins/installed_plugins.json`) names plugin directories, and a
@@ -258,7 +258,7 @@ url-keyed binding.
 The binding is per profile but not per project: once a profile has authorized a
 URL, any config defining a server at that URL connects with that profile's
 credential automatically. That is one reason a repository cannot define an MCP
-server: a checked-in entry naming an already-authorized URL would have borrowed
+server: a checked-in entry stating an already-authorized URL would have borrowed
 the profile's credential. Servers you add through `/mcp add` are yours, and the
 editor configs Veyyon still reads are named by file in `/mcp list`.
 
@@ -434,7 +434,7 @@ and HTTP/SSE `headers` values like this:
 5. Any other value is itself.
 
 A variable that is unset, or set to an empty string, resolves to nothing. The connection is not
-attempted and the error names the variable:
+attempted and the error states the variable:
 
 ```console
 The header "Authorization" for https://api.example.com/mcp refers to the environment variable
@@ -470,12 +470,12 @@ A command's output is cached under the command text, so the same command is exec
 session however many servers and headers use it. Three events drop that cached output and run the
 command again:
 
-- A request answered with 401 or 403. The retry carries the new value.
+- A request answered with 401 or 403. The retry uses the new value.
 - `/mcp reconnect <name>`, which re-reads the credentials of that server only.
 - `/mcp reload`, which re-reads the credentials of every configured MCP server. Commands used
   outside MCP config, such as a provider `apiKey`, keep their cached value.
 
-An automatic reconnect after a dropped connection reuses the cached value. A lost connection says
+An automatic reconnect after a dropped connection reuses the cached value. A lost connection indicates
 nothing about the credential, and re-running a password-manager command on every reconnect means
 an unlock prompt for each one.
 
@@ -485,13 +485,13 @@ A command that fails is not retried for 30 seconds, and an invalidation does not
 
 A server authorized with OAuth keeps its credential in the profile's credential store. When that
 credential exists but cannot be used, Veyyon does not connect without it. The connection fails,
-`/mcp list` shows the failure, and the message names the state and the command that fixes it:
+`/mcp list` shows the failure, and the message states the state and the command that fixes it:
 
 - The credential was rejected and cleared. Run `/mcp reauth <name>`.
 - The access token expired and the refresh token is held by the auth broker, which this process
   cannot use. Run `/mcp reauth <name>` to authorize again through the broker.
 - The credential store could not be read or renewed. Run `/mcp reconnect <name>` to retry; the
-  credential is left alone, because a store failure says nothing about it.
+  credential is left alone, because a store failure indicates nothing about it.
 
 A refresh that fails while the access token is still valid keeps connecting with that token: the
 refresh runs up to five minutes before expiry, so the session still works.
@@ -576,7 +576,7 @@ The JSON is valid, but the server may still be unreachable. Use `/mcp test <name
 
 ### The server exists in another tool's config but not in Veyyon
 
-Run `/mcp list`: it names the file each server came from. Veyyon discovers many third-party MCP files, but it never reads a repository's own `mcp.json`, `.mcp.json` or `.veyyon/mcp.json`, and a `disabledServers` entry in your profile's `mcp.json` can suppress a discovered server by name.
+Run `/mcp list`: it shows the file each server came from. Veyyon discovers many third-party MCP files, but it never reads a repository's own `mcp.json`, `.mcp.json` or `.veyyon/mcp.json`, and a `disabledServers` entry in your profile's `mcp.json` can suppress a discovered server by name.
 
 ### A call fails with a protocol error rather than a timeout
 
@@ -591,7 +591,7 @@ the server's own code and message, for example:
 MCP error -32700: Parse error
 ```
 
-The alternative would be to ignore a reply that names no request, and then every pending call sits
+The alternative would be to ignore a reply with no request id, and then every pending call sits
 until its timeout and reports that the server did not answer. That is the opposite of what
 happened: the server answered, and told you exactly what was wrong.
 

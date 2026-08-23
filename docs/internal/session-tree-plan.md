@@ -174,7 +174,7 @@ Events around tree navigation:
 Adjacent but related lifecycle hooks:
 
 - `session_before_branch` / `session_branch` for `/branch` flow
-- `session_before_compact`, `session.compacting`, `session_compact` for compaction entries that later affect tree-context reconstruction
+- `session_before_compact`, `session_compacting`, `session_compact` for compaction entries that later affect tree-context reconstruction
 
 ## Real constraints and edge conditions
 
@@ -222,4 +222,4 @@ Session migrations still run on load:
 
 Current runtime behavior is version-3 tree semantics after migration.
 
-*Verified against `d3e3db30` on 2026-07-23.*
+*Verified against `d26b915d` on 2026-08-22.*

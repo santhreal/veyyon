@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-8ea7c097.js";
+            window.path_to_searchindex_js = "../searchindex-035739c9.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-093df7ff.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -294,11 +294,11 @@ ever installed. That is the state a fresh install is in, and <code>doctor</code>
 <ul>
 <li><code>plugins_directory</code>, <code>package_manifest</code>, <code>node_modules</code>: the three things a plugin install needs.
 Each one distinguishes “not created yet” from “there but unreadable”. The first is normal and
-reports <code>ok</code>; the second is an error naming the path, because a plugins directory whose permissions
+reports <code>ok</code>; the second is an error stating the path, because a plugins directory whose permissions
 have been mangled looks identical to an empty one from the outside and the fix is <code>chmod</code>, not a
 reinstall.</li>
 <li><code>plugin:&lt;name&gt;</code>: one per installed plugin. An error means the package is missing from
-<code>node_modules</code> or has no <code>package.json</code>. A warning means it loaded but carries no plugin manifest,
+<code>node_modules</code> or has no <code>package.json</code>. A warning means it loaded but contains no plugin manifest,
 so veyyon can see the package and cannot use it.</li>
 <li><code>plugin:&lt;name&gt;:tools</code>, <code>:hooks</code>, <code>:extension:&lt;path&gt;</code>: an entry point the manifest names and the
 package does not contain.</li>
@@ -313,7 +313,7 @@ report.</li>
 </ul>
 <p><code>--fix</code> repairs what can be repaired without a decision: it runs an install for a missing package,
 drops an orphaned config entry, and removes an enabled feature the manifest does not define. A check
-that was repaired says so. Everything else is left for you, because the remedy depends on what you
+that was repaired is reported. Everything else is left for you, because the remedy depends on what you
 meant.</p>
 <h3 id="managing-marketplaces"><a class="header" href="#managing-marketplaces">Managing Marketplaces</a></h3>
 <h4 id="add-a-marketplace"><a class="header" href="#add-a-marketplace">Add a Marketplace</a></h4>
@@ -362,9 +362,9 @@ controls the startup update check. It runs in the background, so it never delays
 paint, and it takes one of three values:</p>
 <ul>
 <li><code>notify</code> (the default) refreshes any marketplace catalog older than a day, compares your
-installed versions against it, and prints one line naming how many updates are available.
+installed versions against it, and prints one line with how many updates are available.
 Install them with <code>veyyon plugin upgrade</code> (all) or <code>veyyon plugin upgrade &lt;name&gt;@&lt;marketplace&gt;</code>.</li>
-<li><code>auto</code> does the same check and installs the updates itself, then prints one line naming how
+<li><code>auto</code> does the same check and installs the updates itself, then prints one line with how
 many landed. The running session keeps the versions it loaded at startup, so restart to use
 the new ones.</li>
 <li><code>off</code> skips the check entirely and contacts no marketplace.</li>

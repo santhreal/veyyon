@@ -16,7 +16,7 @@ That installs the `veyyon` binary to `~/.local/bin`, links `vey` beside it, and 
 
 The checksum proves which bytes you received, but it cannot prove that the release uploaded the right version or a usable native build. If any preflight fails, the installer removes the staged file when it can and leaves the active binary and shell files unchanged. After the verified file moves into place, `doctor:` repeats the version and native checks from the final path. When `~/.local/bin` is not on your `PATH` yet, the installer then adds it to your shell profile. A profile is read when a shell starts, and the shell you ran the installer from has already started, so the final message gives you the exact reload command before the normal next steps:
 
-The installer records a small ownership receipt beside each binary and completion file it creates. A reinstall or uninstall changes only receipt-backed files. An older Veyyon install is adopted when its exact launcher or generated completion signature identifies it. If another executable or completion already occupies a target path, the installer leaves it byte-for-byte unchanged and tells you to move it yourself before retrying, and names the receipt it consulted so you can see what it was comparing against.
+The installer records a small ownership receipt beside each binary and completion file it creates. A reinstall or uninstall changes only receipt-backed files. An older Veyyon install is adopted when its exact launcher or generated completion signature identifies it. If another executable or completion already occupies a target path, the installer leaves it byte-for-byte unchanged and reports to move it yourself before retrying, and states the receipt it consulted so you can see what it was comparing against.
 
 A receipt is written before the binary it describes, so a reinstall repairs an install that was interrupted mid-swap instead of refusing it. Installing the same release over a byte-identical binary leaves the file untouched and only rewrites the receipt.
 
@@ -43,7 +43,7 @@ irm https://veyyon.dev/install.ps1 | iex
 
 That works in both shells Windows ships: Windows PowerShell 5.1, which is what `powershell.exe` opens on a stock machine, and PowerShell 7. The installer enables TLS 1.2 before it fetches anything, because 5.1 still offers SSL 3.0 and TLS 1.0 by default and GitHub has required TLS 1.2 since 2018.
 
-Like the Unix installer, it never calls the GitHub API, and it puts the install directory at the front of your user `PATH`. The one-liner above runs in the window you typed it in, so `veyyon` works there straight away, with no restart. A `PATH` entry reaches every other program when that program starts, so terminals you already have open elsewhere will not see it until they restart. The closing steps say which case you are in: run the installer as a file (`pwsh -File install.ps1`) and it is a separate process whose `PATH` change cannot reach your shell, so the first step is to open a new window.
+Like the Unix installer, it never calls the GitHub API, and it puts the install directory at the front of your user `PATH`. The one-liner above runs in the window you typed it in, so `veyyon` works there straight away, with no restart. A `PATH` entry reaches every other program when that program starts, so terminals you already have open elsewhere will not see it until they restart. The closing steps state which case you are in: run the installer as a file (`pwsh -File install.ps1`) and it is a separate process whose `PATH` change cannot reach your shell, so the first step is to open a new window.
 
 ## Prebuilt release platforms
 
@@ -57,7 +57,7 @@ GitHub Releases publishes these application binaries:
 | macOS | arm64 (Apple silicon) | `veyyon-darwin-arm64` |
 | Windows | x64 | `veyyon-windows-x64.exe` |
 
-There is no native Windows arm64 release. On Windows arm64, run the Windows x64 binary under emulation. Linux release binaries require glibc. On a musl system such as Alpine, the installer stops before downloading and tells you to clone the repository and build it yourself.
+There is no native Windows arm64 release. On Windows arm64, run the Windows x64 binary under emulation. Linux release binaries require glibc. On a musl system such as Alpine, the installer stops before downloading and reports to clone the repository and build it yourself.
 
 ## After install
 
@@ -71,7 +71,7 @@ Your configuration home is `~/.veyyon`, and the default profile keeps its agent 
 
 If an install is interrupted before the final replacement, run it again. The installer stages the binary beside its final path, so a partial download never overwrites an existing `veyyon`. On Linux and macOS, the verified file takes the live path with one same-filesystem rename. On Windows, the installer moves the old binary aside immediately before replacement and restores it if moving the staged file fails.
 
-Ctrl-C removes the staged file on the way out. A kill the process cannot catch can leave that staged file behind, and the next install reclaims it and names it:
+Ctrl-C removes the staged file on the way out. A kill the process cannot catch can leave that staged file behind, and the next install reclaims it and reports it:
 
 ```console
   ok  removed /home/you/.local/bin/.veyyon.download.48213 left by an interrupted install (pid 48213)
@@ -105,7 +105,7 @@ The PowerShell installer uses named PowerShell parameters. Create a script block
 
 You cannot append parameters to `irm ... | iex`. Use the script-block form above whenever you need an option. If you downloaded `install.ps1` as a file instead, use the same parameters with `pwsh -File install.ps1`.
 
-Release tags carry a leading `v`, and `--ref 1.0.11` on POSIX or `-Ref 1.0.11` on Windows works as well as the leading-`v` form. The installer looks for the tag you named, then for the `v` form, and prints which one it resolved to before it downloads anything. It does that only for something that reads as a version. `--ref` names a published release tag and nothing else, so a branch or a commit is looked up once and then refused.
+Release tags carry a leading `v`, and `--ref 1.0.11` on POSIX or `-Ref 1.0.11` on Windows works as well as the leading-`v` form. The installer looks for the tag you named, then for the `v` form, and prints which one it resolved to before it downloads anything. It does that only for something that reads as a version. `--ref` states a published release tag and nothing else, so a branch or a commit is looked up once and then rejected.
 
 ### Run an unreleased ref, or an unsupported platform
 
@@ -146,7 +146,7 @@ $ vey plugin doctor --fix
 
 ### When the staged binary would not run
 
-The preflight runs from the staging path inside the install directory. If the binary cannot start or its native search fails, the error includes the exit status and repeats what the system said. A missing shared library means the machine needs that package. A permission error usually means the install directory is mounted `noexec`, so choose another with `VEYYON_INSTALL_DIR`. A native-addon load error usually means the release does not support that platform, so clone the repository and build it yourself instead.
+The preflight runs from the staging path inside the install directory. If the binary cannot start or its native search fails, the error includes the exit status and the system error text. A missing shared library means the machine needs that package. A permission error usually means the install directory is mounted `noexec`, so choose another with `VEYYON_INSTALL_DIR`. A native-addon load error usually means the release does not support that platform, so clone the repository and build it yourself instead.
 
 This failure occurs before the active binary, alias, `PATH`, and completion files change. Fix the reported cause and run the installer again rather than trying to finish by hand.
 
@@ -182,7 +182,7 @@ veyyon 1.2.0 installed · restart to use it
 
 The running process keeps the version it started with, so the update takes
 effect the next time you launch. On that launch the welcome card's tip line
-names the new version and points at what you can do about it:
+states the new version and points at what you can do about it:
 
 ```text
 Tip: Updated to veyyon 1.2.0 · /changelog · roll back or turn auto-update off in /settings
@@ -200,7 +200,7 @@ several agents spent it on startup checks alone, and then every machine behind
 that address reported that it could not check for updates. Nothing here needs a
 token, and setting one changes nothing.
 
-The one thing that still asks the API is the version list behind `veyyon
+The one thing that still queries the API is the version list behind `veyyon
 rollback`, because a list of every published version has no redirect to read it
 from. That runs when you open the picker, not on startup.
 
@@ -209,7 +209,7 @@ Two settings control this, both on by default:
 | Setting | Effect when off |
 | --- | --- |
 | `startup.checkUpdate` | No version check runs at all, so nothing updates automatically. |
-| `startup.autoUpdate` | Veyyon still tells you a new version exists, but waits for you to run `veyyon update`. |
+| `startup.autoUpdate` | Veyyon still reports that a new version exists, but waits for you to run `veyyon update`. |
 
 Turn automatic updates off like this:
 
@@ -277,22 +277,22 @@ That installs 1.1.0 the same way an update installs a new release, verifies the
 binary really is the version it claims, and prints the changelog link for it. Like
 an update, it takes effect the next time you launch.
 
-Two things it refuses rather than guesses at. Rolling back to the version you are
-already running does nothing useful, so it says so instead of reinstalling and
+Two things it will not guess at. Rolling back to the version you are
+already running does nothing useful, so it reports that instead of reinstalling and
 reporting success. And a source checkout cannot be rolled back: it updates by
-fast-forwarding its git branch, which only moves forward, so Veyyon tells you
+fast-forwarding its git branch, which only moves forward, so Veyyon reports
 that rather than quietly reinstalling the latest version. To run an older version
 from a checkout, check the tag out yourself, or install the binary build and roll
 back from there.
 
 Add `--json` to `--list` when you want the same information for a script; each
-row carries the version, its publish date, the markers, and the changelog URL.
+row contains the version, its publish date, the markers, and the changelog URL.
 Without a terminal on both ends, the bare `veyyon rollback` prints the list
 rather than opening a picker nothing can drive, so it is safe in a pipeline.
 
-Building that list is the one thing Veyyon asks the GitHub API for, so it is also
-the one thing that can be refused because of the API's per-address limit. When it
-is, the error says so and says what still works: updating forward does not touch
+Building that list is the one thing Veyyon queries the GitHub API for, so it is also
+the one thing that can be rejected because of the API's per-address limit. When it
+is, the error states what failed and what still works: updating forward does not touch
 the API, so `veyyon update` is unaffected. Wait a few minutes and the list comes
 back.
 
@@ -324,14 +324,14 @@ left by a hard kill, is reclaimed by a later update.
 A source checkout updates in its own terms: `veyyon update` fast-forwards the
 checkout, reinstalls dependencies, regenerates build artifacts, and refreshes
 the native addon, all in one command. It then reads the checkout's own version
-back and refuses to report success unless the checkout really is at the new
+back and will not report success unless the checkout really is at the new
 release. A fast-forward only advances the branch you are on, so a checkout on a
 feature branch, or on a fork whose upstream lags, can merge cleanly and stay
-behind; Veyyon tells you that instead of claiming a version you do not have. The
+behind; Veyyon reports that instead of claiming a version you do not have. The
 background updater leaves source checkouts alone and never runs git against your
-working tree. It tells you a version exists, and you run `veyyon update` when
+working tree. It reports that a version exists, and you run `veyyon update` when
 you want it. There is no npm, Homebrew, or other package-manager channel to go
-through. If an update fails, Veyyon says so and tells you to retry with `veyyon
+through. If an update fails, Veyyon reports the failure and the retry command `veyyon
 update`; it never fails quietly and leaves you on an old version without a word.
 
 Veyyon works out which of the two you have by following the `veyyon` on your
@@ -357,9 +357,9 @@ $ veyyon update
 ```
 
 An update also rewrites the shell completion files you already have, so tab
-completion knows about the new version's subcommands and flags. It rewrites only
-files that are already there because the installer owns the choice of shells.
-If a file cannot be rewritten, a manual update names the path and says it still
+completion covers the new version's subcommands and flags. It rewrites only
+files that are already there because the installer chooses which shells are wired.
+If a file cannot be rewritten, a manual update states the path and that it still
 describes the previous version. A background automatic update adds a visible
 warning to the TUI update notice, counts the stale completion files, and tells
 you to re-run the installer to rewrite them. The binary update remains
@@ -381,10 +381,10 @@ the same binary at the same time.
 The installer sets up tab completion for you. On macOS and Linux it writes one
 file per shell into the directory bash, zsh, and fish each autoload from. If a
 shell will not load that directory (zsh's `$fpath` often does not include it,
-and bash needs the `bash-completion` package), the installer says so and prints
+and bash needs the `bash-completion` package), the installer reports it and prints
 the exact line to add, rather than leaving you a file nothing reads.
 
-Completion knows more than the command names. It offers the models in the
+Completion covers more than the command names. It offers the models in the
 catalog for `--model`, your saved sessions for `--resume`, and for `veyyon
 config` it offers the settings that exist and the values each one accepts:
 
@@ -400,7 +400,7 @@ version you are running rather than the version the script was written for. A
 value only you know, an API key or a search term, is left alone: completion
 offers nothing rather than a list of your files.
 
-Attachments complete as paths. A word starting with `@` names a file to send
+Attachments complete as paths. A word starting with `@` specifies a file to send
 along with your message, so the shell completes it the way it completes any
 path:
 
@@ -448,7 +448,7 @@ export PATH='/home/you/.local/bin':"$PATH"
 
 On fish it is `fish_add_path '/home/you/.local/bin'` instead. Uninstall removes that exact line, and the comment directly above it when the comment is still there, and nothing else: a line you wrote yourself that happens to name the same directory stays. Installs made before the quoting was added wrote `export PATH="/home/you/.local/bin:$PATH"`, and uninstall recognizes that older form too, so upgrading and then uninstalling does not strand a line in your profile.
 
-Because a profile is read when a shell starts, the shell you ran the uninstall in still has the old entry on its `PATH`, and bash and zsh also remember where they last found a command. The uninstall says so:
+Because a profile is read when a shell starts, the shell you ran the uninstall in still has the old entry on its `PATH`, and bash and zsh also remember where they last found a command. The uninstall reports it:
 
 ```console
 veyyon uninstalled.
@@ -465,7 +465,7 @@ outlive the update that made it. Uninstall removes those too, so the install
 directory is left empty rather than holding a few hundred megabytes you have no
 name for. A backup you saved yourself under a name of your own is left alone.
 
-Two things it deliberately leaves behind. If you already had your own `vey` command, the installer never created that alias in the first place (it says so at install time and tells you to launch with `veyyon`), so uninstall does not touch it or its completion file. And if a checkout at `~/.veyyon/src` has uncommitted edits or commits on a local branch that is on no remote, it is moved to `~/.veyyon/src.bak-<timestamp>` instead of being deleted, so nothing you wrote is lost. Older installers created that tree. The current installer never does, so uninstall only ever cleans up one an older version left behind.
+Two things it deliberately leaves behind. If you already had your own `vey` command, the installer never created that alias in the first place (it reports that at install time and prints the `veyyon` command instead), so uninstall does not touch it or its completion file. And if a checkout at `~/.veyyon/src` has uncommitted edits or commits on a local branch that is on no remote, it is moved to `~/.veyyon/src.bak-<timestamp>` instead of being deleted, so nothing you wrote is lost. Older installers created that tree. The current installer never does, so uninstall only ever cleans up one an older version left behind.
 
 ```console
 $ curl -fsSL https://get.veyyon.dev | sh -s -- --uninstall

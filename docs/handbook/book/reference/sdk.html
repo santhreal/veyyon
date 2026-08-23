@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-8ea7c097.js";
+            window.path_to_searchindex_js = "../searchindex-035739c9.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-093df7ff.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -319,7 +319,7 @@ console.log(session.sessionFile); // absolute .jsonl path
 <ul>
 <li>Persists conversation/messages/state deltas to session files.</li>
 <li>Supports resume/open/list/fork workflows.</li>
-<li><code>session.sessionFile</code> is defined.</li>
+<li><code>sessionFile</code> is defined on the session options.</li>
 </ul>
 <h3 id="in-memory"><a class="header" href="#in-memory">In-memory</a></h3>
 <pre><code class="language-ts">import { createAgentSession, SessionManager } from "@veyyon/coding-agent";
@@ -532,7 +532,7 @@ legacy spellings (<code>search</code> for <code>grep</code>, <code>find</code> f
 <p><code>createAgentSession()</code> runs two background optimizations to overlap I/O with the rest of session setup:</p>
 <ul>
 <li>
-<p><strong>Model-host preconnect.</strong> As soon as the model is resolved, the SDK fires a best-effort <code>fetch.preconnect(model.baseUrl)</code> so DNS + TCP + TLS + HTTP/2 to the provider’s host happens in parallel with extension/skill load, tool registry build, and system-prompt assembly. The first real <code>fetch(...)</code> then reuses the warm connection, saving 100–300 ms on transcontinental hops (e.g. residential IP → <code>api.anthropic.com</code>). Implementation lives in <code>preconnectModelHost()</code> in <code>packages/coding-agent/src/sdk.ts</code>. If <code>fetch.preconnect</code> is unavailable (non-Bun runtime) or the call throws, the optimization is silently skipped: never a hard dependency. Applies to every mode (interactive, print, RPC, ACP).</p>
+<p><strong>Model-host preconnect.</strong> As soon as the model is resolved, the SDK fires a best-effort <code>fetch.preconnect()</code> call against the model host so DNS + TCP + TLS + HTTP/2 to the provider’s host happens in parallel with extension/skill load, tool registry build, and system-prompt assembly. The first real <code>fetch(...)</code> then reuses the warm connection, saving 100–300 ms on transcontinental hops (e.g. residential IP → <code>api.anthropic.com</code>). Implementation lives in <code>preconnectModelHost()</code> in <code>packages/coding-agent/src/sdk.ts</code>. If Bun’s <code>preconnect</code> is unavailable (non-Bun runtime) or the call throws, the optimization is silently skipped: never a hard dependency. Applies to every mode (interactive, print, RPC, ACP).</p>
 </li>
 <li>
 <p><strong>Conditional LSP warmup.</strong> Startup LSP servers (those returned by <code>discoverStartupLspServers(cwd)</code>) are only warmed when <strong>all</strong> of these hold:</p>

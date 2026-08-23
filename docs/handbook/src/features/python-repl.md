@@ -1,7 +1,8 @@
 # Eval Tool Python Backend
 
-This document describes the Python execution stack in `packages/coding-agent`.
-It covers tool behavior, runner lifecycle, environment handling, execution semantics, output rendering, supported magics, and operational failure modes.
+The Python execution stack in `packages/coding-agent`: tool behavior, runner lifecycle,
+environment handling, execution semantics, output rendering, supported magics, and
+operational failure modes.
 
 ## Scope and Key Files
 
@@ -130,7 +131,7 @@ Environment is filtered before launching the runner:
 - Allow-prefixes: `LC_`, `XDG_`, `VEYYON_`
 - Denylist strips common API keys (OpenAI/Anthropic/Gemini/etc.)
 
-Runtime selection order (skipped entirely when the `python.interpreter` setting names an explicit executable):
+Runtime selection order (skipped entirely when the `python.interpreter` setting specifies an explicit executable):
 
 1. Active/located venv (`VIRTUAL_ENV`, then `CONDA_PREFIX`, then `<cwd>/.venv`, `<cwd>/venv`)
 2. Managed venv at `~/.veyyon/python-env`
@@ -218,7 +219,7 @@ Output is streamed through `OutputSink` and may be persisted to artifact storage
   - used for user-triggered Python execution in TUI
   - collapsed preview defaults to 20 lines (`EXECUTION_PREVIEW_LINES`)
   - clamps a very long individual line to 4000 terminal **columns**, not characters (`EXECUTION_MAX_DISPLAY_COLUMNS`). Columns are what the terminal has to fit, so ANSI colour codes are not counted and a wide character counts as two. The clamped line ends with `… [N visible columns omitted]`.
-  - keeps at most 100 output lines while a cell is streaming (`EXECUTION_STREAMING_LINE_CAP`, five screenfuls). When more arrive the oldest are dropped and the footer says so: `… N earlier lines dropped while streaming`. That note is separate from the `… N more lines (ctrl+o to expand)` hint, because expanding reveals hidden lines and cannot bring back dropped ones. Once the cell finishes, the full output replaces what streaming kept, so the note disappears.
+  - keeps at most 100 output lines while a cell is streaming (`EXECUTION_STREAMING_LINE_CAP`, five screenfuls). When more arrive the oldest are dropped and the footer states it: `… N earlier lines dropped while streaming`. That note is separate from the `… N more lines (ctrl+o to expand)` hint, because expanding reveals hidden lines and cannot bring back dropped ones. Once the cell finishes, the full output replaces what streaming kept, so the note disappears.
   - shows cancellation/error/truncation notices
 
 The bash execution block (`bash-execution.ts`) shares all three of those limits, along with the clamp itself, through `modes/components/execution-shared.ts`.

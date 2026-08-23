@@ -91,13 +91,13 @@ A typical run looks like this:
 
 1. Veyyon reads the files it needs with `read`, `grep`, and `glob`.
 2. It proposes an edit through the hashline `edit` and `write` tools.
-3. When your policy requires it, you approve the tool call. The `tools.approvalMode` setting decides when this happens; see [Safety](./safety.md).
+3. When your policy requires it, you approve the tool call. The `tools.approvalMode` setting sets when this happens; see [Safety](./safety.md).
 4. The change lands, and the diff appears in the TUI.
-5. If you asked for tests, Veyyon runs them with `bash`; under the default `auto` mode that call runs without asking, and a stricter mode prompts you first.
+5. If you asked for tests, Veyyon runs them with `bash`; under the default `auto` mode that call runs without a prompt, and a stricter mode prompts you first.
 
 ## Approval mode
 
-Every tool call falls into one of three tiers: `read`, `write`, or `exec`. The `tools.approvalMode` setting decides which tiers run without asking and which ones prompt you first.
+Every tool call falls into one of three tiers: `read`, `write`, or `exec`. The `tools.approvalMode` setting sets which tiers run without asking and which ones prompt you first.
 
 | Mode | Runs without asking | Prompts you for |
 | --- | --- | --- |

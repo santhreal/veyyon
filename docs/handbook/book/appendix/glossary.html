@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-8ea7c097.js";
+            window.path_to_searchindex_js = "../searchindex-035739c9.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-093df7ff.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -202,7 +202,7 @@
 <p><strong>apply_patch</strong>: Edit mode (<code>edit.mode: apply_patch</code>) for a Codex-style <code>*** Begin Patch … *** End Patch</code> envelope. Default edit mode is <strong>hashline</strong> via the <code>edit</code> tool. Apply-patch shares approval policy with other write paths.</p>
 </li>
 <li>
-<p><strong>approval mode</strong>: The autonomy control (<code>tools.approvalMode</code>) for tool tiers: <code>plan</code>, <code>ask</code>, <code>ask-command</code>, <code>auto</code> (the default), <code>yolo</code> (legacy <code>always-ask</code> → <code>ask</code>, <code>write</code> and <code>auto-edit</code> → <code>ask-command</code>). There is no OS command sandbox; the mode, per-tool <code>tools.approval</code> overrides, the working-directory and secret-use boundaries, and hard-coded flagged bash patterns are the boundary. Of those patterns, the destructive ones ask on every rung, <code>yolo</code> included, and the merely dangerous ones ask on every rung below it.</p>
+<p><strong>approval mode</strong>: The autonomy control (<code>tools.approvalMode</code>) for tool tiers: <code>plan</code>, <code>ask</code>, <code>ask-command</code>, <code>auto</code> (the default), <code>yolo</code> (legacy <code>always-ask</code> → <code>ask</code>, <code>write</code> and <code>auto-edit</code> → <code>ask-command</code>). There is no OS command sandbox; the mode, per-tool <code>tools.approval</code> overrides, the working-directory and secret-use boundaries, and hard-coded flagged bash patterns are the boundary. Of those patterns, the destructive ones prompt on every rung, <code>yolo</code> included, and the merely dangerous ones prompt on every rung below it.</p>
 </li>
 <li>
 <p><strong>model catalog</strong>: Bundled provider/model data plus <code>models.yml</code> / <code>models.yaml</code> custom entries. There is no separate <code>backends.toml</code> subsystem.</p>
@@ -232,7 +232,7 @@
 <p><strong>personality</strong>: Style-only system prompt block. Built-ins include <code>default</code>, <code>pragmatic</code>, <code>friendly</code>, and <code>none</code>.</p>
 </li>
 <li>
-<p><strong>plugin</strong>: A directory with a <code>.claude-plugin/plugin.json</code> manifest (or a <code>package.json</code> carrying the <code>veyyon</code> manifest) that can add skills, MCP servers, hooks, and related assets. Plugins are discovered through marketplaces, npm installs, or <code>veyyon plugin link</code>.</p>
+<p><strong>plugin</strong>: A directory with a <code>.claude-plugin/plugin.json</code> manifest (or a <code>package.json</code> containing the <code>veyyon</code> manifest) that can add skills, MCP servers, hooks, and related assets. Plugins are discovered through marketplaces, npm installs, or <code>veyyon plugin link</code>.</p>
 </li>
 <li>
 <p><strong>profile</strong>: A directory under <code>~/.veyyon/profiles/&lt;name&gt;/</code> (including <code>default</code>) holding agent settings, sessions, MCP, skills, and related state. Activate with <code>--profile</code>, <code>VEYYON_PROFILE</code>, or <code>/profile</code> (relaunch).</p>
@@ -247,7 +247,7 @@
 <p><strong>repair cascade</strong>: The ordered set of sound transforms the repair engine applies to a tool call (parse leniency, alias/typo key repair, strict unknown-key rejection, ambiguity guard). The engine returns a status (<code>clean</code> / <code>repaired</code> / <code>unrepairable</code>), the coerced arguments, and coaching hints; an unrepairable call returns an error tool result without dispatch.</p>
 </li>
 <li>
-<p><strong>rollout</strong>: The append-only JSONL log of a session’s entries. Each entry carries an <code>id</code> and a <code>parentId</code>. Branching moves the in-memory leaf; the next appended entry’s <code>parentId</code> (and an optional <code>branch_summary</code> entry) records the move without rewriting history.</p>
+<p><strong>rollout</strong>: The append-only JSONL log of a session’s entries. Each entry contains an <code>id</code> and a <code>parentId</code>. Branching moves the in-memory leaf; the next appended entry’s <code>parentId</code> (and an optional <code>branch_summary</code> entry) records the move without rewriting history.</p>
 </li>
 <li>
 <p><strong>session</strong>: The unit of interactive work in Veyyon. A session records turns, tool activity, approvals, edits, and verification output.</p>

@@ -3,7 +3,7 @@
 Slash commands run inside an interactive Veyyon session. Type `/` in the composer to open the
 picker. Commands below are the **builtin** set; extensions may add more.
 
-A command nothing can handle is refused, not sent to the model. If you mistype a name, or type a
+A command nothing can handle is rejected, not sent to the model. If you mistype a name, or type a
 command your installed build does not have, you get:
 
 ```text
@@ -11,7 +11,7 @@ Unknown command "/secrt". Nothing handled it, so it was not sent to the model. T
 commands this build has, or drop the leading slash to send it as a message.
 ```
 
-The refusal names the command and never repeats what followed it, because the tail of a mistyped
+The refusal states the command and never repeats what followed it, because the tail of a mistyped
 `/secret` is a credential. The rule reaches further than one mistyped word: in a terminal the whole
 argument line of `/secret` is the credential, whatever it happens to spell, so there is no tail
 there that is safe to echo back.
@@ -48,12 +48,12 @@ with a grammar to state, and each used to spell part of it with dashes:
 Position covers every required word, so `/mcp remove project` removes a server actually named
 `project`. Where meaning is taken from a word's shape instead, the sets provably cannot overlap: on
 `/ssh add` a port is digits and nothing else the command reads is, and `user` and `key` are the only
-two keywords, each taking the word after it. A word the command cannot use is refused rather than
+two keywords, each taking the word after it. A word the command cannot use is rejected rather than
 ignored, because a word that is silently dropped looks like a setting that was applied.
 
 ### A spelling that was an option
 
-Each of these commands remembers the option spellings it used to have, and refuses them naming the
+Each of these commands remembers the option spellings it used to have, and rejects them, stating the
 plain word that replaced each one:
 
 ```text
@@ -62,19 +62,19 @@ plain word that replaced each one:
 Usage: /ssh add <name> <host> [user <user>] [<port>] [key <keyPath>]
 ```
 
-The plain word gets the same answer as the dashed one. `/stats port 8080` is refused the way
+The plain word gets the same answer as the dashed one. `/stats port 8080` is rejected the way
 `/stats --port 8080` is, and `/mcp add srv project` the way `/mcp add srv --scope project` is,
 because the operator who types the word an older grammar taught is asking the same question either
 way and wants the same answer. Which words those are is read from the same table the refusal text
 comes from, so the two spellings cannot drift apart.
 
-A word that never was an option is refused more briefly, since there is no replacement to name:
+A word that never was an option is rejected more briefly, since there is no replacement to name:
 `Unknown argument: <word>`, or `Invalid port: <word>` where a port was the only thing the command
 reads.
 
 `/mcp smithery-search` is the exception, and it is one on purpose: its trailing words are search
 terms, arbitrary text with no closed set, so a plain `project` there is a keyword to search for and
-is searched for. Only the dashed spellings are refused.
+is searched for. Only the dashed spellings are rejected.
 
 ## A bare command that has subcommands
 
@@ -129,7 +129,7 @@ act on a bare invocation: `/yolo`, `/fast`, and `/browser` flip a switch, `/goal
 | `/guided-goal` | Guided goal wizard |
 | `/loop` | Loop mode controls |
 | `/prewalk` | Prewalk edit path |
-| `/secret` | Store a credential the agent uses by placeholder and never sees. A command comes first on every surface and every argument after it is a plain word: `/secret add <value>` stores it in a terminal, `/secret add` alone opens a hidden field, `/secret from-env <VAR>` reads it out of the environment, and the name is asked afterwards with Enter accepting the generated one. The commands are `add`, `from-env`, `list`, `rm`, `clear`, `rename`, `value`, `scope`, `copy`, `extend`, `log`, `discard`, `help`; a first word that is none of them is refused and nothing is stored. See [Secrets](../features/secrets.md) |
+| `/secret` | Store a credential the agent uses by placeholder and never sees. A command comes first on every surface and every argument after it is a plain word: `/secret add <value>` stores it in a terminal, `/secret add` alone opens a hidden field, `/secret from-env <VAR>` reads it out of the environment, and the name is prompted afterwards, with Enter accepting the generated one. The commands are `add`, `from-env`, `list`, `rm`, `clear`, `rename`, `value`, `scope`, `copy`, `extend`, `log`, `discard`, `help`; a first word that is none of them is rejected and nothing is stored. See [Secrets](../features/secrets.md) |
 | `/settings`, `/setup` | Settings UI; `/setup` opens first-run provider sign-in |
 | `/providers`, `/account manager` | Open the account manager: every stored account per provider, with its email, plan, health, and usage. See [Authentication](../using/authentication.md) |
 | `/account status` | Show which account each provider is serving this session with. A bare `/account` opens the picker |

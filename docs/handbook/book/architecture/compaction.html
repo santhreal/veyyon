@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-8ea7c097.js";
+            window.path_to_searchindex_js = "../searchindex-035739c9.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-093df7ff.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -335,7 +335,7 @@ What the LLM sees:
 <li>Tool-output pruning can reduce the measured token count before threshold comparison.</li>
 <li>Context promotion is tried before post-turn compaction.</li>
 <li>If promotion is unavailable, auto maintenance runs with <code>reason: "threshold"</code> and <code>willRetry: false</code>.</li>
-<li>On success, if <code>compaction.autoContinue !== false</code>, post-turn maintenance schedules an agent-authored developer auto-continue prompt from <code>prompts/turn-control/auto-continue.md</code>; mid-turn maintenance never schedules a separate continuation because the core loop already owns the next provider request.</li>
+<li>On success, if <code>compaction.autoContinue !== false</code>, post-turn maintenance schedules an agent-authored developer auto-continue prompt from <code>prompts/turn-control/auto-continue.md</code>; mid-turn maintenance never schedules a separate continuation because the core loop already defines the next provider request.</li>
 </ul>
 </li>
 <li>
@@ -355,7 +355,7 @@ boundary, <code>prepareCompaction</code> then hard-bounds the tail: a kept turn 
 has its heavy non-error tool results replaced with an elision marker (largest first, originals
 offloaded to a recovery <code>artifact://</code> blob), so the tail stays within budget even when one turn
 alone is bigger. User messages, assistant text, tool calls, and error results are never elided.</p>
-<p>Note that the summary prompt does not say any of that. Its opening line asks for “a structured
+<p>Note that the summary prompt does not state any of that. Its opening line requests “a structured
 handoff summary for another LLM to resume the task”, which describes a cold restart that compaction
 does not perform. This is inherited from upstream, whose engine keeps the same recent tail, so the
 mismatch is upstream’s rather than a fork difference. It is recorded here because a summarizer told
@@ -417,7 +417,7 @@ compaction’s <code>firstKeptEntryId</code> are summarized away and are never r
 <li><strong>Summary serialization</strong>: <code>serializeConversation</code> drops the whole tool call/result pair from summarizer input: the source region is discarded after summarization anyway, so the exclusion costs no cache.</li>
 </ul>
 <p>The flag never reaches provider wire formats, and flagged pairs are never removed from history (only blanked in place), so tool-call/result pairing stays intact.</p>
-<h3 id="what-the-summary-prompts-ask-for"><a class="header" href="#what-the-summary-prompts-ask-for">What the summary prompts ask for</a></h3>
+<h3 id="what-the-summary-prompts-request"><a class="header" href="#what-the-summary-prompts-request">What the summary prompts request</a></h3>
 <p><code>compaction-summary.md</code>, <code>compaction-update-summary.md</code>, and <code>compaction-summary-context.md</code> are
 oh-my-pi’s text verbatim, by operator order, on the measurement that upstream scores higher on
 long-run evals. <code>packages/agent/test/compaction-strategy-contracts.test.ts</code> pins each one by
@@ -534,7 +534,7 @@ be added later. The only way to produce it is to pay a second model to describe 
 which is the local strategy with an extra network round trip in front of it, and any text
 derived from the blob rather than the span would be invented. An empty summary is the
 honest record of what happened.</p>
-<p>Because the entry cannot explain itself, the rebuild refuses to trust it outside the
+<p>Because the entry cannot explain itself, the rebuild will not trust it outside the
 provider that minted it. <code>buildSessionContext</code> treats a compaction as usable only when the
 stored window replays on the active provider, or when there is real summary text. When
 neither holds, which is a fork or resume onto a different provider, it re-expands every
@@ -544,7 +544,7 @@ message the compaction hid. Nothing was lost to recover: compaction only advance
 whose summary field held a fixed placeholder) load through the same rule and re-expand.</p>
 <h3 id="handoff-generation"><a class="header" href="#handoff-generation">Handoff generation</a></h3>
 <p><code>packages/agent/src/compaction/compaction.ts</code> also exports <code>generateHandoff(...)</code>. Handoff generation uses the same <code>completeSimple(...)</code> oneshot style as summarization, but it preserves the live agent cache prefix by sending the active system prompt, tool array, and real LLM message history, then appending one agent-attributed <code>user</code> message containing the handoff prompt. It forces <code>toolChoice: "none"</code> and returns joined text blocks directly.</p>
-<p>Handoff does not write a <code>CompactionEntry</code>. <code>AgentSession.handoff()</code> owns the session transition: it starts a new session, injects the generated document as a visible <code>custom_message</code> with <code>customType: "handoff"</code>, and rebuilds agent messages from that new session.</p>
+<p>Handoff does not write a <code>CompactionEntry</code>. <code>AgentSession.handoff()</code> performs the session transition: it starts a new session, injects the generated document as a visible <code>custom_message</code> with <code>customType: "handoff"</code>, and rebuilds agent messages from that new session.</p>
 <h3 id="file-operation-context-in-summaries"><a class="header" href="#file-operation-context-in-summaries">File-operation context in summaries</a></h3>
 <p>Compaction tracks cumulative file activity using assistant tool calls:</p>
 <ul>
@@ -556,7 +556,7 @@ whose summary field held a fixed placeholder) load through the same rule and re-
 <ul>
 <li>Includes prior compaction details only when prior entry is pi-generated (<code>fromExtension !== true</code>).</li>
 <li>In split turns, includes turn-prefix file ops too.</li>
-<li><code>details.readFiles</code> excludes files also modified; <code>details.modifiedFiles</code> carries the rest (persisted shape is unchanged).</li>
+<li><code>details.readFiles</code> excludes files also modified; <code>details.modifiedFiles</code> contains the rest (persisted shape is unchanged).</li>
 </ul>
 <p>The file list is a grouped, prefix-folded directory tree (find-tool shape) with a per-file access marker, <code>(Read)</code> for read-only files, <code>(Write)</code> for modified files never read, <code>(RW)</code> for modified files also present in the cumulative read set. Capped at 20 files with an <code>[…N files elided…]</code> line. Compaction and explicit handoff append it as a <code>&lt;files&gt;</code> tag (via <code>upsertFileOperations</code>).</p>
 <pre><code class="language-xml">&lt;files&gt;
@@ -635,7 +635,7 @@ After navigation with summary:
 <li>cancel compaction (<code>{ cancel: true }</code>)</li>
 <li>provide full custom compaction payload (<code>{ compaction: CompactionResult }</code>)</li>
 </ul>
-<h3 id="sessioncompacting"><a class="header" href="#sessioncompacting"><code>session.compacting</code></a></h3>
+<h3 id="session_compacting"><a class="header" href="#session_compacting"><code>session_compacting</code></a></h3>
 <p>Prompt/context customization hook for default compaction.</p>
 <p>Can return:</p>
 <ul>

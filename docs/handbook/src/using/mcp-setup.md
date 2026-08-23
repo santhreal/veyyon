@@ -17,7 +17,7 @@ MCP servers are configured as **JSON** in `mcp.json`, not in `config.yml`:
 
 There is no project scope: a repository's own `mcp.json`, `.mcp.json`, or `.veyyon/mcp.json` is not
 read, because a checked-in file must not name a server the agent connects to. No `/mcp` subcommand
-takes a scope, and writing `project` or `user` as an argument is refused with that reason rather than
+takes a scope, and writing `project` or `user` as an argument is rejected with that reason rather than
 accepted, in a terminal and in a client alike.
 
 Veyyon also discovers MCP entries from other tools' user-level configs (Claude, Cursor, Codex,
@@ -109,7 +109,7 @@ To forward an ambient variable, name it:
 
 `inheritEnv: true` hands one server the whole environment, including every credential in it. Use
 it when a server needs a variable you cannot name in advance. It is set per server, and each
-spawn logs a warning naming the command.
+spawn logs a warning stating the command.
 
 ```json
 {

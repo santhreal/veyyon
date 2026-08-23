@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-8ea7c097.js";
+            window.path_to_searchindex_js = "../searchindex-035739c9.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-093df7ff.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -232,7 +232,7 @@ protocol types.</li>
 <a href="../models/providers.html">Provider stack and bring-your-own-key</a> for how to add
 your own keys and choose models.</p>
 <h2 id="prompt-caching"><a class="header" href="#prompt-caching">Prompt caching</a></h2>
-<p>Each provider adapter also decides where the request’s cache markers go, and the shapes differ:
+<p>Each provider adapter also sets where the request’s cache markers go, and the shapes differ:
 Anthropic places up to four <code>cache_control</code> breakpoints, Bedrock interleaves <code>cachePoint</code> blocks,
 the OpenAI Responses path sends an explicit <code>prompt_cache_breakpoint</code>, and everything else caches
 implicitly or not at all. Two settings under <strong>Settings → Context → Prompt Cache</strong> report and
@@ -241,18 +241,17 @@ including the breakpoint budget and what invalidates what, is
 <a href="../../../internal/prompt-caching.html"><code>docs/internal/prompt-caching.md</code></a>.</p>
 <h2 id="the-first-event-budget"><a class="header" href="#the-first-event-budget">The first-event budget</a></h2>
 <p>A caller declares <code>streamFirstEventTimeoutMs</code>. It is one attempt’s deadline, and
-it also bounds how many stalled attempts a turn may pay for: the phase before
-the first event ends after two of them. The first stall is retried, because a
-single connect that never produces an event is common and recovering it is what
-makes a provider feel smooth. A second consecutive stall is a dead endpoint, and
-re-spending the deadline there is what turned a declared 100s into minutes of
-silence.</p>
+it bounds how many stalled attempts a turn pays for: the phase before the first
+event ends after two. The first stall is retried, because a single connect that
+never produces an event is common and recoverable. A second consecutive stall is
+a dead endpoint, and re-spending the deadline there turned a declared 100s into
+minutes of silence.</p>
 <p>The phase ends at the first of these:</p>
 <ul>
-<li>the first event arrives, after which <code>streamIdleTimeoutMs</code> owns the turn;</li>
+<li>the first event arrives, after which <code>streamIdleTimeoutMs</code> bounds the turn;</li>
 <li>the phase budget is spent and the turn fails with the deadline as its reason.</li>
 </ul>
-<p><code>utils/first-event-budget.ts</code> in <code>@veyyon/ai</code> owns the shape:</p>
+<p><code>utils/first-event-budget.ts</code> in <code>@veyyon/ai</code> defines the shape:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -262,7 +261,7 @@ silence.</p>
 <tr><td><code>openFirstEventBudget(totalMs)</code></td><td>Open a budget for the declared number. A non-positive or absent total is unbounded, matching <code>streamFirstEventTimeoutMs: 0</code>.</td></tr>
 <tr><td><code>openStallLadderBudget(perAttemptMs)</code></td><td>A phase budget for a retry ladder: the per-attempt deadline times <code>PRE_RESPONSE_STALL_ATTEMPTS</code> (two). What Anthropic and Codex open.</td></tr>
 <tr><td><code>openBoundedFirstEventBudget(declaredMs, ceilingMs)</code></td><td>The smaller of the caller’s number and a provider’s own ceiling. It can only tighten a deadline.</td></tr>
-<tr><td><code>budget.spent()</code></td><td>True once nothing is left. A retry ladder asks before retrying a stall.</td></tr>
+<tr><td><code>budget.spent()</code></td><td>True once nothing is left. A retry ladder checks it before retrying a stall.</td></tr>
 <tr><td><code>budget.fence(callerSignal)</code></td><td>A signal covering what remains, plus the <code>cancel()</code> that clears its timer. A setup chain fences once and passes that signal to every call.</td></tr>
 <tr><td><code>isPreResponseStall(error)</code></td><td>True when no byte of a response ever arrived.</td></tr>
 </tbody>
@@ -270,45 +269,41 @@ silence.</p>
 </div>
 <p>Four rules keep this narrow.</p>
 <p><strong>A stall is bounded by the budget; a server-directed wait is bounded by the
-cap.</strong> A 429 or 503 carrying <code>retry-after</code> means the server answered and asked
-for a later attempt. Honoring that is what makes a rate limit survivable, so
-those failures are not refused when the first-event budget is gone — only a
-failure where nothing arrived at all is, which is why the guard is a veto
+cap.</strong> A 429 or 503 carrying <code>retry-after</code> is the server answering and asking for
+a later attempt, so it is not rejected when the first-event budget is gone. Only a
+failure where nothing arrived at all is rejected, which makes the guard a veto
 predicate rather than a fence around a retry loop. The wait itself is bounded
-separately: <code>maxRetryDelayMs</code> is the longest single server-directed wait a
-caller will sit on, <code>DEFAULT_MAX_DELAY_MS</code> (60s) when it declares none, and a
-hint above it surfaces the refusal instead of sleeping on it. Every retrying
-path reads the caller’s number — <code>fetchWithRetry</code> for the OpenAI-compatible
-family, Bedrock, Ollama and Codex, and the Anthropic client and provider ladder
-for their own <code>retry-after-ms</code> handling.</p>
+separately: <code>maxRetryDelayMs</code> is the longest single server-directed wait a caller
+sits on, <code>DEFAULT_MAX_DELAY_MS</code> (60s) when it declares none, and a hint above
+that cap surfaces the refusal instead of sleeping on it. Every retrying path
+reads the caller’s number: <code>fetchWithRetry</code> for the OpenAI-compatible family,
+Bedrock, Ollama and Codex, and the Anthropic client and provider ladder for their
+own <code>retry-after-ms</code> handling.</p>
 <p><strong>A deadline that fires ends the phase.</strong> A helper that degrades on its own
-timeout — GitLab Duo’s settings PUT, its project lookup, its model list, and the
-catalog namespace reader behind them — must rethrow when the caller’s deadline is
-what fired. Reporting it as “nothing found” and continuing spends time nobody
-granted, and it reaches the user as a configuration remedy for a network fault.</p>
-<p><strong>A refusal names its remedy.</strong> <code>401</code>, <code>404</code>, <code>429</code> and <code>400</code> have four
-different answers — fix the credential, fix the route or the model id, wait, fix
-the request — and a provider that renders all four as one wording has reported
-the failure and told nobody anything. Two shapes cause it: a status that is read
-for a debug log and then discarded (Cursor’s Connect stream did this, so every
-refusal arrived as “stream ended without a turn_ended update”), and a handshake
-that treats a refusal as one candidate’s silence and concludes with the remedy
-for having found nothing (GitLab Duo’s namespace walk did this with a rejected
-token).</p>
+timeout (GitLab Duo’s settings PUT, its project lookup, its model list, and the
+catalog namespace reader behind them) rethrows when the caller’s deadline is what
+fired. Reporting it as “nothing found” and continuing spends time nobody granted
+and reaches the user as a configuration remedy for a network fault.</p>
+<p><strong>A refusal states its remedy.</strong> <code>401</code>, <code>404</code>, <code>429</code> and <code>400</code> have four different
+answers: fix the credential, fix the route or the model id, wait, fix the
+request. Two shapes collapse them into one wording. A status read for a debug log
+and then discarded: Cursor’s Connect stream did this, so every refusal arrived as
+“stream ended without a turn_ended update”. A handshake that treats a refusal as
+one candidate’s silence and reports the remedy for having found nothing: GitLab
+Duo’s namespace walk did this with a rejected token.</p>
 <p><strong>A stream that stopped is not a stream that finished.</strong> Every dialect ends a
-turn with a marker of its own — <code>finish_reason</code> and <code>[DONE]</code>,
-<code>response.completed</code>, <code>message_stop</code>, <code>finishReason</code>, <code>done: true</code>,
-<code>messageStop</code>, <code>turn_ended</code> — and reaching the end of the body without one is a
-transport-clean EOF that says nothing about the turn. Reporting a normal stop
-there persists whatever arrived as an answer, and the model reads it back as
-history on the next turn; rejecting every such EOF fails turns that were
-complete, because several compatible servers simply do not send the marker.
-<code>stopReasonForTerminallessEof</code> in <code>utils/terminalless-eof</code> owns the judgement
-for every dialect: visible text is a stop, reasoning with no answer is a
-<code>length</code> the session can recover, a tool batch counts only when every call
+turn with its own marker: <code>finish_reason</code> and <code>[DONE]</code>, <code>response.completed</code>,
+<code>message_stop</code>, <code>finishReason</code>, <code>done: true</code>, <code>messageStop</code>, <code>turn_ended</code>. The
+end of a body without one is a transport-clean EOF that indicates nothing about the
+turn. Reporting a normal stop there persists whatever arrived as an answer, and
+the model reads it back as history on the next turn. Rejecting every such EOF
+fails turns that were complete, because several compatible servers do not send
+the marker. <code>stopReasonForTerminallessEof</code> in <code>utils/terminalless-eof</code> defines the
+judgement for every dialect: visible text is a stop, reasoning with no answer is
+a <code>length</code> the session can recover, a tool batch counts only when every call
 parsed, and anything else is an <code>incomplete-stream</code> failure. A provider that
 seeds <code>stopReason: "stop"</code> before the first byte and never consults this rule
-writes a blank turn into the session, which is what Bedrock and Ollama did.</p>
+writes a blank turn into the session, as Bedrock and Ollama did.</p>
 <h3 id="where-each-providers-deadline-sits"><a class="header" href="#where-each-providers-deadline-sits">Where each provider’s deadline sits</a></h3>
 <div class="table-wrapper">
 <table>
@@ -317,7 +312,7 @@ writes a blank turn into the session, which is what Bedrock and Ollama did.</p>
 </thead>
 <tbody>
 <tr><td>OpenAI completions, Responses, OpenRouter, Azure</td><td>Pre-response fence plus the stream watchdog.</td></tr>
-<tr><td>Anthropic</td><td>The same, and the retry ladder retries one stall and refuses the next once the phase budget is spent.</td></tr>
+<tr><td>Anthropic</td><td>The same, and the retry ladder retries one stall and rejects the next once the phase budget is spent.</td></tr>
 <tr><td>Codex</td><td>The same, on both ladders: <code>fetchWithRetry</code> (no response) and the provider-error reopen (a retryable envelope that is itself a stall).</td></tr>
 <tr><td>GitLab Duo</td><td>One setup deadline over the whole REST chain: the caller’s number, or 90s (three REST timeouts), whichever is smaller.</td></tr>
 <tr><td>Bedrock, Google, Vertex, Gemini CLI, Ollama, Cursor, Devin</td><td>The registered lazy-stream limits and each transport’s own abort.</td></tr>

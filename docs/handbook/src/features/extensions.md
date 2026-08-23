@@ -200,7 +200,7 @@ Canonical event unions and payload types are in `types.ts`.
 - `session_start`
 - `session_before_switch` / `session_switch`
 - `session_before_branch` / `session_branch`
-- `session_before_compact` / `session.compacting` / `session_compact`
+- `session_before_compact` / `session_compacting` / `session_compact`
 - `session_before_tree` / `session_tree`
 - `session_shutdown`
 

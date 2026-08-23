@@ -62,7 +62,7 @@ The recorder keeps rehearsal output in the temporary directory it prints. Inspec
 The scene's task prompt is static at `proof/prompts/demo-hd.md`. The scene stores the secret, submits that prompt once, and sends no phase-by-phase operator prompts; every later turn is the model's own. A take is published only when every named frame guard passed, so a scene whose model does not reach a guarded surface produces a rehearsal and nothing else.
 
 Record on the machine that serves the weights. The endpoint must be a loopback address, or the
-recorder refuses to start; `ALLOW_REMOTE_MODEL=1` records against another host and says so. A
+recorder will not start; `ALLOW_REMOTE_MODEL=1` records against another host and reports it. A
 session driven across a network pauses for reasons the recording cannot separate from the product.
 
 Before anything is recorded the driver checks three things and exits on any of them:
@@ -82,7 +82,7 @@ frame under that name. A needle that comes from somewhere else is declared in th
 ```
 
 The driver also requires the model row to exist on that server, and writes `<scene>-model.txt`
-beside the frames naming the row, the endpoint, the host and the display server the take was
+beside the frames recording the row, the endpoint, the host and the display server the take was
 recorded on.
 
 Every binary the run will use is resolved before the first frame: `docker`, `bun` for the scene
@@ -98,8 +98,8 @@ The container is built by one script and tagged from one declaration:
 bash proof/docker/build-recorder.sh
 ```
 
-The tag carries the bun version in the root `package.json` `packageManager` field,
-because the image carries a bun and the product refuses to start on a runtime older
+The tag contains the bun version in the root `package.json` `packageManager` field,
+because the image contains a bun and the product will not start on a runtime older
 than the one it is built for. A bump therefore makes a stale image a missing image,
 which docker reports before a display server starts. Recording with an image built
 on an older bun ends the take from inside the container after the whole rig is up.

@@ -2,7 +2,7 @@
 
 A hook lets you run your own code at a moment in the session: before a tool call, after a message,
 when a turn ends. You use one to enforce policy (block a dangerous command), add context, or record
-what happened. The example below refuses any `bash` command containing `rm -rf`.
+what happened. The example below rejects any `bash` command containing `rm -rf`.
 
 A hook is a TypeScript module. You put it under a hook path in your profile (for example
 `~/.veyyon/profiles/<name>/agent/hooks/`), and Veyyon loads it through the extension runner. A

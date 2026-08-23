@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-8ea7c097.js";
+            window.path_to_searchindex_js = "../searchindex-035739c9.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-093df7ff.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -204,6 +204,19 @@ veyyon plugin doctor
 <p><code>veyyon plugin doctor</code> reports extension health and missing optional binaries/keys. Non-zero exit: fix the reported check and re-run.</p>
 <h2 id="provider-errors"><a class="header" href="#provider-errors">Provider errors</a></h2>
 <p>Check API key / auth store / <code>models.yml</code> for that provider id, base URL, and scopes. See <a href="../reference/models-yml.html">Models and providers</a>.</p>
+<p>A provider error message contains the failing status and the body the server sent, with three
+limits. At most 64 KiB of the body is read, and the message states it: <code>[truncated, showing 4096 of 65536 chars read, 134505 of 200041 bytes not read]</code>, or <code>read stopped at 65536 bytes</code>
+when the server declared no length. Control characters and terminal escape sequences are
+removed, so an error page cannot repaint the screen. Credential-shaped text is replaced with
+<code>&lt;redacted N chars&gt;</code>: an <code>Authorization</code> or <code>Cookie</code> value, a bearer token, a JWT, and the
+vendor key prefixes. A proxy or captive portal answering HTML instead of the provider is the
+usual reason a message is truncated.</p>
+<p>A streamed response is read one frame at a time: a line, a JSONL record, or an SSE event
+ending at a blank line. One frame may occupy 64 MiB. A server or proxy that keeps sending
+without ever sending the delimiter is stopped at that point, the connection is cancelled,
+and the message states the protocol and both byte counts: <code>an SSE event arrived with no blank-line dispatch: 67109376 bytes exceeded the 67108864 byte frame limit</code>. The same
+bound covers a stream of <code>data:</code> lines that never dispatches and a keepalive comment sent
+in a loop. This failure is never retried: the next attempt reaches the same peer.</p>
 <h2 id="command-or-edit-blocked-or-prompting"><a class="header" href="#command-or-edit-blocked-or-prompting">Command or edit blocked or prompting</a></h2>
 <p>Policy is <strong><code>tools.approvalMode</code></strong> and <code>tools.approval</code>, plus the working-directory and secret-use boundaries (every rung except <code>yolo</code>) and hard-coded flagged bash patterns: the destructive ones prompt on every rung, <code>yolo</code> included, and the merely dangerous ones (<code>curl | sh</code>, <code>reboot</code>, <code>nc -e</code>) prompt on every rung below it. There is no OS command sandbox. Schema default is <strong><code>auto</code></strong>. See <a href="../features/sandbox.html">Approvals</a> and <a href="./configuration.html">Configuration</a>.</p>
 <h2 id="truncated-tool-output"><a class="header" href="#truncated-tool-output">Truncated tool output</a></h2>

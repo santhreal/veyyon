@@ -50,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-8ea7c097.js";
+            window.path_to_searchindex_js = "../searchindex-035739c9.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-093df7ff.js"></script>
+        <script src="../toc-a2abefc1.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -203,7 +203,7 @@
 <p>Veyyon should read the relevant configuration files in your project, name the boundary where state
 enters, and point at tests or missing tests.</p>
 <h2 id="make-a-small-fix"><a class="header" href="#make-a-small-fix">Make a small fix</a></h2>
-<pre><code class="language-text">Fix the config error so it names the invalid file and the setting to change. Add the regression test.
+<pre><code class="language-text">Fix the config error so it states the invalid file and the setting to change. Add the regression test.
 </code></pre>
 <p>Veyyon should edit through hashline or <code>write</code>, run the focused test (<code>bun test</code> in the relevant
 package), and stop when the test proves the behavior.</p>
@@ -246,7 +246,7 @@ directory-scoped refactors out to parallel workers, one per directory, applies t
 the change is one guard, and verifies that all nine documented defaults resolve in an environment
 stripped of every one of those variables. It then signs its work in one <code>bash</code> call: the sha256 of
 <code>#RELEASE_SIGNATURE#</code> appended to <code>SIGNED.md</code> as a single line. Veyyon resolves the placeholder only
-at the outbound tool boundary and asks for approval before the call runs, so the credential itself is
+at the outbound tool boundary and requires approval before the call runs, so the credential itself is
 never printed and never reaches the transcript. The board closes 6/6.</p>
 <p>The <a href="../../../../assets/demo-hd.webp">recorded clip</a> runs the whole task. Untouched screens are
 shortened rather than accelerated.</p>

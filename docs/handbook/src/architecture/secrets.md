@@ -7,7 +7,7 @@ Sensitive values (API keys, tokens, passwords) are kept out of LLM provider requ
 
 ## Enabling
 
-Disabled by default. Storing a credential with `/secret` turns it on for you, because storing one for the agent to use is the opt-in, and it says so in the confirmation. To turn it on without storing anything, use the `/settings` UI or `config.yml` directly:
+Disabled by default. Storing a credential with `/secret` turns it on for you, because storing one for the agent to use is the opt-in, and the confirmation reports it. To turn it on without storing anything, use the `/settings` UI or `config.yml` directly:
 
 ```yaml
 secrets:
@@ -27,13 +27,13 @@ Nothing turns it back off on your behalf. Revoking a credential removes it and l
 
 The final provider boundary works from raw strings before trimming, truncation, serialization, or other lossy transforms. It resolves the live runtime for every physical attempt, including authentication retries, fallback models, delayed queues, compaction, commit analysis, evaluation, benchmarks, memory services, TTS, and image tools. JSON object keys and values are both covered, and key collisions fail closed.
 
-Opaque authenticated replay fields are validated rather than mutated. A live secret in a signature, provider item id, encrypted reasoning block, or provider payload refuses dispatch with a value-free error. Provider-bound images are content-detected, decoded, and canonically re-encoded so EXIF, comments, and other container metadata cannot bypass string obfuscation. URLs that appear to carry credentials bypass cloud reader and enrichment services.
+Opaque authenticated replay fields are validated rather than mutated. A live secret in a signature, provider item id, encrypted reasoning block, or provider payload rejects dispatch with a value-free error. Provider-bound images are content-detected, decoded, and canonically re-encoded so EXIF, comments, and other container metadata cannot bypass string obfuscation. URLs that appear to carry credentials bypass cloud reader and enrichment services.
 
 3. Local display restoration expands only live reversible placeholders. Replace-mode substitutions are one-way. Expired and removed values lose expansion rights but retain forward redaction tombstones, so old transcript text cannot become provider-visible.
 
 4. Toggling secret protection and running `/secret` commands rebuilds the runtime immediately, and the system-prompt inventory of spendable names with it. A working-directory move loads the destination project scope transactionally and drops the source project's mappings. If loading fails, both the old directory and runtime are restored. Persisted subagents and resumed sessions initialize from their recorded directory. A same-directory refresh retains only forward redaction history for removed values.
 
-### Spending a secret asks first
+### Spending a secret prompts first
 
 Substitution runs on tool arguments just before a tool executes, so the model can put
 `#GITHUB_TOKEN#` in a shell command and Veyyon supplies the credential it never showed the model.
@@ -41,12 +41,12 @@ That is recorded by `secrets.auditLog`, which answers "which credential did this
 where" after the fact.
 
 A call whose arguments carry a real credential also needs approval, in the same modes as the
-working-directory boundary: `plan`, `ask`, and `auto-edit`. The prompt names the secret and never
-shows its value, and it is added to whatever the tier already required, so it can only ask for more
+working-directory boundary: `plan`, `ask`, and `auto-edit`. The prompt states the secret and never
+shows its value, and it is added to whatever the tier already required, so it can only require more
 approval and never less. `yolo` opts out of all permission and opts out of this with it, so the
-shipped default asks nothing extra. An unknown placeholder carries no credential and does not ask.
+shipped default requires nothing extra. An unknown placeholder contains no credential and does not prompt.
 If the name was advertised earlier in this process and expansion is later removed or disabled, the
-tool call is refused before approval instead of running with stale literal text. See
+tool call is rejected before approval instead of running with stale literal text. See
 [Approval modes](../reference/approval-mode.md).
 
 ### What the session file records about the call
@@ -78,66 +78,66 @@ Two modes control what happens to each secret:
 
 ### The 8-character minimum
 
-`obfuscate` mode replaces every occurrence of the value, so a very short secret would blank out fragments of ordinary words. Values under 8 characters are therefore refused rather than protected, and the refusal is loud:
+`obfuscate` mode replaces every occurrence of the value, so a very short secret would blank out fragments of ordinary words. Values under 8 characters are therefore rejected rather than protected, and the refusal is loud:
 
-- A plain `obfuscate` entry under 8 characters **stops startup** with an error naming the entry and the fix. It is not skipped. Skipping it would send the value to the provider while the file said otherwise.
+- A plain `obfuscate` entry under 8 characters **stops startup** with an error stating the entry and the fix. It is not skipped. Skipping it would send the value to the provider while the file stated otherwise.
 - Use `mode: replace` for a short value. Replace is one-way, needs no reversible placeholder, and has no minimum.
-- A **regex** match under the floor is skipped rather than refused, because a short match usually means the pattern reached into ordinary prose. The skip is recorded once per pattern so you can see that the pattern is over-matching. If short matches are genuinely secret, set `minLength` on that entry.
+- A **regex** match under the floor is skipped rather than rejected, because a short match usually means the pattern reached into ordinary prose. The skip is recorded once per pattern so you can see that the pattern is over-matching. If short matches are genuinely secret, set `minLength` on that entry.
 
 An unreadable or malformed `secrets.yml` also stops startup. A missing file does not: nothing was declared, so there is nothing to protect. The distinction matters because reading a broken file as "no secrets" starts a session that believes it has nothing to hide.
 
 ### Per-entry validation is a refusal, not a skip
 
-`validateEntry` refuses. Every branch in it was once `logger.warn` followed by `return false`, which is the failure this subsystem exists to prevent, reached from the inside: the default transport set is `{ file: true }` with no console transport (`logger.ts:219`), so a mistyped `type:` dropped the entry, told nobody, and sent the credential the operator had just declared to the provider in plain text. The handbook promised a refusal while the code warned into a file.
+`validateEntry` rejects a malformed entry instead of warning and dropping it. The default transport set is `{ file: true }` with no console transport (`logger.ts:219`), so a warn-and-drop hides the fault in a log file and sends the credential the operator declared to the provider in plain text.
 
-Problems are accumulated and reported together, so an operator with three typos restarts once. The message names the entry index, the field, and the fix. It never quotes the offending `content`: on a plain entry that is the credential, and a malformed declaration is no reason for a secret to appear in an error message.
+Problems accumulate and are reported together, so three typos cost one restart. The message states the entry index, the field and the fix. It never quotes the offending `content`: on a plain entry that content is the credential.
 
-Unknown fields and fields that do not apply to an entry type are errors. Regex declarations also reject duplicate or incompatible flags, sticky or zero-width matching, and conservatively detected catastrophic-backtracking forms. These checks happen before a session can send provider traffic.
+Unknown fields, and fields that do not apply to an entry type, are errors. Regex declarations also reject duplicate or incompatible flags, sticky or zero-width matching, and conservatively detected catastrophic-backtracking forms. These checks run before a session can send provider traffic.
 
 ## The vault (`/secret`)
 
 Two stores feed the obfuscator. `secrets.yml` below is declarative and plaintext. The **vault** is imperative and encrypted: entries are added at runtime with `/secret`, are named, and expire.
 
-### Two grammars, and why the surface decides
+### Two grammars, selected by surface
 
-`parseSecretCommand(args, surface)` reads one of two grammars, and `surface` is the only thing that selects between them. It is a capability rather than a preference: `runSecretCommandForSurface` passes `"noninteractive"` when `port.promptForValue` is absent, which is exactly the case where the client cannot hide what is typed, and `"tui"` otherwise. The branch is on the surface and never on the shape of the input, so nothing an operator types can move them from one grammar to the other.
+`parseSecretCommand(args, surface)` reads one of two grammars, and `surface` alone selects between them. `runSecretCommandForSurface` passes `"noninteractive"` when `port.promptForValue` is absent, which is the case where the client cannot hide what is typed, and `"tui"` otherwise. The branch is on the surface and never on the shape of the input, so nothing an operator types moves them from one grammar to the other.
 
 **Both grammars require a command first, and what differs is where the value may come from.** A first word that is not a command is nothing:
 
 | Typed | Parsed as |
 | ----- | --------- |
 | `/secret` | `{ subcommand: "help" }`, on both surfaces. |
-| `/secret <anything unreserved>` | refused. Nothing is stored, and the refusal never repeats the word. |
+| `/secret <anything unreserved>` | rejected. Nothing is stored, and the refusal never repeats the word. |
 | `/secret <reserved word> ...` | that subcommand, or a refusal when the rest of the line does not fit its shape. Never a credential. |
 | `/secret add` | `{ subcommand: "add" }`. `needsValuePrompt` is then true, so the surface opens the masked field. |
 | `/secret add <anything>` | `{ subcommand: "add", value }`, sliced from the first token's start to the last token's end. A credential may therefore begin with a reserved word. |
-| `/secret add -- ...` | refused, naming the plain word that replaced `--`. Nothing is stored. |
-| `/secret from-env VAR [NAME] [7d] [project]` | `{ subcommand: "from-env", fromEnv, name?, ttl?, scope? }`. Its own command, not a modifier on `add`. The name is required on a client and optional in a terminal, where a field asks for it. |
+| `/secret add -- ...` | rejected, stating the plain word that replaced `--`. Nothing is stored. |
+| `/secret from-env VAR [NAME] [7d] [project]` | `{ subcommand: "from-env", fromEnv, name?, ttl?, scope? }`. Its own command, not a modifier on `add`. The name is required on a client and optional in a terminal, where a field prompts for it. |
 
-The slice rather than a trim is deliberate. It drops the whitespace a terminal adds around what was typed and preserves, byte for byte, any whitespace inside the credential, because a passphrase is allowed to contain spaces.
+The slice rather than a trim drops the whitespace a terminal adds around what was typed and preserves, byte for byte, any whitespace inside the credential, because a passphrase may contain spaces.
 
-**Requiring the command deleted three mechanisms.** The terminal grammar used to read any unreserved first word as the credential, which saved one word and bought: a rule that every command be reserved in advance so it could not be mistaken for a value, a collision for any credential beginning with one of those words, and an escape spelling for that collision. A value is now read in exactly one place, after `add`, so a reserved word is a command because nothing else on that line can be a value. The reserved words are still the keys of `SECRET_VERB_SPELLINGS` — every canonical subcommand plus the second spellings `env`, `remove`, `delete`, `wipe`, `purge`, `empty`, `reset`, `name`, `replace`, `move`, `renew` and `audit` — but they are now a list of what runs rather than a list of what a value may not start with. A reserved word whose remainder does not fit its shape is REFUSED, because a grammar that fell back to storage would turn `/secret log 50` into a credential and report it as a success.
+**A value is read in exactly one place, after `add`.** The reserved words are the keys of `SECRET_VERB_SPELLINGS`: every canonical subcommand plus the second spellings `env`, `remove`, `delete`, `wipe`, `purge`, `empty`, `reset`, `name`, `replace`, `move`, `renew` and `audit`. They are a list of what runs, not a list of what a value may not start with. A reserved word whose remainder does not fit its shape is rejected, because falling back to storage would turn `/secret log 50` into a stored credential reported as a success.
 
-**The refusal states the exposure, and never the bytes.** An operator with the old gesture in their fingers types `/secret ghp_...` and lands somewhere neither outcome prepares them for: nothing was stored, AND the credential is in a scrollback the vault never saw and cannot obfuscate. The terminal refusal therefore says nothing was stored, that the line is exposed, and to rotate it — while never echoing the word, because that word is very often the credential. The noninteractive surface gets the same refusal without the scrollback sentence: it never had the verbless form to unlearn, and its line came from argv rather than a screen.
+**The refusal states the exposure, and never the bytes.** A terminal refusal states that nothing was stored, that the line is exposed, and to rotate the credential, and never echoes the word, because that word is very often the credential. The noninteractive refusal drops the scrollback sentence: its line came from argv rather than a screen.
 
-`--` was a second spelling of `add` and was removed with every other dash spelling: a slash command has no options to end, so the shell convention pointed at nothing and had to be taught. The exact token is refused rather than passed through to the value reader, which would otherwise slice `-- sk-live-x` verbatim and store a credential with the dashes attached. That failure is invisible until the credential is spent, and then it surfaces as an authentication error with nothing connecting it to a slash command. The match is on the whole first word after `add`, so a value that merely begins with dashes -- a PEM block, most obviously -- is stored byte for byte.
+`--` is rejected as the first word after `add`, stating the plain word that replaced it, rather than passed to the value reader, which would slice `-- sk-live-x` verbatim and store a credential with the dashes attached. That failure is invisible until the credential is spent, and then surfaces as an authentication error with nothing connecting it to a slash command. The match is on the whole first word after `add`, so a value that merely begins with dashes, a PEM block for instance, is stored byte for byte.
 
-**There are no options left, on any `/secret` command.** `--from-env`, `--ttl`, `--scope`, `--limit` and `--name` are gone, and each is refused naming the plain word that replaced it. A word now means something for one of two reasons: the POSITION it sits in, or a CLOSED SET or SHAPE it belongs to. Position covers every required word, so `/secret rm PROFILE` removes the secret named `PROFILE`; a trailing-word reading would have handed that word to the vault slot and left the operator no way to name a secret after one of the three vaults. Shape covers the trailing words that may be omitted or reordered, and only where the sets provably cannot overlap: a vault is one of exactly three words, a lifetime is `isTtlWord` or any digit-leading word, a limit is digits only, a secret name may not begin with a digit and may not contain a hyphen. Each such slot states its own disjointness proof in `SECRET_SUBCOMMAND_SHAPES`.
+**No `/secret` command takes an option.** `--from-env`, `--ttl`, `--scope`, `--limit` and `--name` are rejected, each stating the plain word that replaced it. A word is read by the POSITION it sits in, or by a CLOSED SET or SHAPE it belongs to. Position covers every required word, so `/secret rm PROFILE` removes the secret named `PROFILE`. Shape covers trailing words that may be omitted or reordered, and only where the sets cannot overlap: a vault is one of exactly three words, a lifetime is `isTtlWord` or any digit-leading word, a limit is digits only, a secret name may not begin with a digit and may not contain a hyphen. Each slot states its own disjointness proof in `SECRET_SUBCOMMAND_SHAPES`.
 
-`from-env` became a command of its own rather than a modifier on `add`, because the two are different actions on the same subject and a modifier reads as optional decoration on the one it hangs off. It also takes the lifetime and the vault the value forms cannot: `/secret from-env DEPLOY_KEY DEPLOY_TOKEN 30m project` is a complete store. A terminal `add` still takes the `secrets.defaultTtl` lifetime and the default `profile` vault, because everything after `add` is the credential and there is no room on that line for anything else; `/secret extend` sets a different lifetime afterwards and `/secret scope` moves it, from the same prompt.
+`from-env` is a command of its own rather than a modifier on `add`, and it takes the lifetime and the vault that the value forms cannot: `/secret from-env DEPLOY_KEY DEPLOY_TOKEN 30m project` is a complete store. A terminal `add` takes the `secrets.defaultTtl` lifetime and the default `profile` vault, because everything after `add` is the credential; `/secret extend` sets a different lifetime afterwards and `/secret scope` moves it, from the same prompt.
 
-**Why the terminal form dropped the name.** `/secret add <name> <value>` demanded a label before it would accept the thing being labelled, and the two positionals had no unique reading once the value was arbitrary text. The name came first, so `/secret add ghp_realToken` stored a live credential as a NAME with no value attached. The value is the whole line now, and the name is asked afterwards.
+The terminal form takes no name. `/secret add <name> <value>` had no unique reading once the value was arbitrary text, and `/secret add ghp_realToken` stored a live credential as a NAME with no value attached. The value is the whole line, and the name is prompted afterwards.
 
-**The name is asked last, and only ever last.** `runSecretCommandForSurface` calls `port.promptForName()` once a value is in hand, for a pasted value, a masked one and a `from-env` one alike, because all three arrive without a name. That field is visible: a label is not a credential, and `maskedPromptTitle` says "value, not a name" precisely because the masked field is the one place the two could be confused. An empty answer keeps the generated name. Escape abandons the store rather than falling back to a generated name, since the operator has an unstored credential on screen and pressed escape, and keeping it under a name they never saw is the one reading they did not ask for.
+**The name is prompted last.** `runSecretCommandForSurface` calls `port.promptForName()` once a value is in hand, for a pasted value, a masked one and a `from-env` one alike, because all three arrive without a name. That field is visible: a label is not a credential, and `maskedPromptTitle` states "value, not a name" because the masked field is the one place the two can be confused. An empty answer keeps the generated name. Escape abandons the store rather than falling back to a generated name.
 
-**One grammar, and one asymmetry.** A client with no terminal differs in ONE thing, which is that it cannot accept a credential the caller types. So `add` is refused there and `from-env` requires the name that a terminal asks for in a field afterwards. Everything else parses identically:
+**One asymmetry.** A client with no terminal cannot accept a credential the caller types, so `add` is rejected there and `from-env` requires the name a terminal prompts for in a field afterwards. Everything else parses identically:
 
 | Subcommand | Purpose |
 | ---------- | ------- |
-| `/secret from-env <VAR> <name>` | Store the value of an environment variable. The credential is never typed. The only entry form a client with no field accepts: an inline value is refused, because it would be retained in the client's request history. In a terminal the name may be omitted and is asked for afterwards. |
+| `/secret from-env <VAR> <name>` | Store the value of an environment variable. The credential is never typed. The only entry form a client with no field accepts: an inline value is rejected, because it would be retained in the client's request history. In a terminal the name may be omitted and is prompted afterwards. |
 | `/secret list` | An aligned table of placeholders, scopes and lifetimes, plus a `STATUS` column when a row is near expiry. Never values, not even a prefix. |
 | `/secret rm <name>` | Remove the entry that is currently in effect, and tell the model that its placeholder is revoked. |
-| `/secret rename <name> <new-name>` | Relabel an entry, carrying its value, creation time and expiry across. Refused when the new name is taken. |
+| `/secret rename <name> <new-name>` | Relabel an entry, keeping its value, creation time and expiry. Refused when the new name is taken. |
 | `/secret value <name>` | Replace an entry's value, keeping its name, scope, creation time and expiry. Takes a masked field, or the trailing pair `from-env <VAR>`. |
 | `/secret scope <name> <scope>` | Move an entry to another vault. Refused when the destination holds that name, and what moves is the lifetime REMAINING. |
 | `/secret copy <name>` | Hand the surface `#NAME#` to put on the clipboard. Never the value. |
@@ -145,42 +145,42 @@ The slice rather than a trim is deliberate. It drops the whitespace a terminal a
 | `/secret log [<name>] [<limit>]` | The expansion log: which placeholder went into which command, when. A name narrows it to one credential; a number sets how many records. Either order, because a name may not begin with a digit. |
 | `/secret discard <vault>` | Move one vault's unreadable file aside so that vault works again. Never deletes it. |
 
-A word neither grammar reserves is refused where a value cannot be typed, and the refusal prints the whole usage without repeating the word: the caller cannot open a help screen, so the list of what it CAN run is the actionable part, and the unknown first token is very often the credential itself.
+A word neither grammar reserves is rejected where a value cannot be typed, and the refusal prints the whole usage without repeating the word: the caller cannot open a help screen, and the unknown first token is very often the credential itself.
 
-Both grammars produce the same `SecretCommandRequest` and run through the same `runSecretCommand`, so the two cannot drift into different ideas of what a lifetime or a scope means. `secretCommandUsage(surface)` picks help to match, and the credential-entry lines are the only thing the two help texts disagree about. They are named once rather than written out twice, because that disagreement is a security property: a surface with no way to hide what is typed must never advertise typing a credential, and two hand-maintained lists drift silently.
+Both grammars produce the same `SecretCommandRequest` and run through the same `runSecretCommand`, so the two cannot drift into different ideas of what a lifetime or a scope means. `secretCommandUsage(surface)` picks help to match, and the credential-entry lines are the only text the two help outputs disagree about. They are named once rather than written out twice: a surface with no way to hide what is typed must never advertise typing a credential.
 
 Each slot belongs to the commands that read it, and `SECRET_SUBCOMMAND_SHAPES` is the one owner of that mapping:
 
 | Word | Read by | How it is recognised |
 | ---- | ------- | -------------------- |
 | an environment variable | `from-env` (position 1), `value` (after `from-env`) | position, and a keyword on `value` because a variable name is arbitrary text |
-| a name | every command that names one entry | position, except on `log` where it is the non-numeric trailing word |
+| a name | every command that takes one entry | position, except on `log` where it is the non-numeric trailing word |
 | a lifetime | `from-env`, `extend` | `30m`, `12h`, `7d`, `2w`, `never`, or any digit-leading word |
 | a vault | `from-env`, `rm`, `clear`, `scope`, `discard` | one of `profile`, `project`, `global`. Position on `clear`, `scope` and `discard`; trailing on `from-env` and `rm` |
 | a limit | `log` | digits only, and a safe integer |
 
-`SECRET_SUBCOMMAND_SHAPES` also records how many words each command reads and which of them are required: one for `rm`, `value`, `copy`, `clear` and `discard`, two for `rename`, `scope`, `extend` and `from-env`, none for `list`, `log` and `help`, and unbounded for a terminal `add`. `add` has to be unbounded because the whole line after it is rejoined into the credential and a passphrase contains spaces, so a word count there would refuse `/secret add gpg my long pass phrase` as five arguments when it is two. `clear` and `discard` read one word and it is a vault rather than a name, because each acts on a whole file, and `/secret discard MY_TOKEN` reads as removing one secret when it would in fact have moved every secret in that vault.
+`SECRET_SUBCOMMAND_SHAPES` also records how many words each command reads and which are required: one for `rm`, `value`, `copy`, `clear` and `discard`, two for `rename`, `scope`, `extend` and `from-env`, none for `list`, `log` and `help`, and unbounded for a terminal `add`. `add` is unbounded because the whole line after it is rejoined into the credential and a passphrase contains spaces, so a word count would reject `/secret add gpg my long pass phrase` as five arguments when it is two. `clear` and `discard` read one word and it is a vault rather than a name, because each acts on a whole file.
 
-A word a command does not read is **refused**, naming the position it arrived in. Earlier grammars parsed every option for every verb and let each subcommand read only the fields it cared about, so `/secret extend NAME --scope global` reported success and did nothing about the scope, and `/secret rm NAME --scope project` read as "the project copy is gone" when the copy in effect had been removed and the others were untouched. A silent no-op on a command that moves credentials around is the worst place for one, and the rule now covers plain words for the same reason: `/secret extend TOKEN global` is refused rather than re-dated with the vault word ignored.
+A word a command does not read is **rejected**, stating the position it arrived in. An earlier grammar parsed every option for every verb and let each subcommand read only the fields it cared about, so `/secret extend NAME --scope global` reported success and did nothing about the scope, and `/secret rm NAME --scope project` read as "the project copy is gone" when the copy in effect had been removed and the others were untouched. The rule covers plain words too: `/secret extend TOKEN global` is rejected rather than re-dated with the vault word ignored.
 
-The refusal names the POSITION and never repeats the word. The realistic slip is muscle memory for `add` under another command -- `/secret extend TOKEN sk-live-...`, `/secret rm TOKEN sk-live-...`, a value appended to `/secret list` -- so the extra word is very often the credential, and quoting it would write that credential into an error that lands in the scrollback and in the saved transcript permanently. A digit-only word is the one exception and is echoed, because a number cannot be a credential worth protecting and is exactly what makes the hint useful: `/secret rm TOKEN 50` can then say what a bare number would have meant. In a terminal the refusal also names the value form, since the second reading of every one of those lines is an operator who meant to store something.
+The refusal states the POSITION and never repeats the word. The common slip is muscle memory for `add` under another command (`/secret extend TOKEN sk-live-...`, `/secret rm TOKEN sk-live-...`, a value appended to `/secret list`), so the extra word is very often the credential, and quoting it would write that credential into the scrollback and the saved transcript permanently. A digit-only word is echoed, because a number cannot be a credential and the echo is what makes the hint useful: `/secret rm TOKEN 50` can then state what a bare number would have meant. In a terminal the refusal also states the value form.
 
-`needsValuePrompt` decides whether a surface prompts, and it lives in the pure command layer so the TUI and text/ACP paths cannot disagree about when a masked field is warranted. A surface that cannot mask must not substitute an unmasked prompt: absent `promptForValue`, `runSecretCommand` refuses the add and names `from-env`. That same absence is what selects the grammar, so a client is never offered a field it cannot open.
+`needsValuePrompt` sets whether a surface prompts, and it lives in the pure command layer so the TUI and text/ACP paths cannot disagree about when a masked field is warranted. A surface that cannot mask must not substitute an unmasked prompt: absent `promptForValue`, `runSecretCommand` rejects the add and names `from-env`. That same absence is what selects the grammar, so a client is never offered a field it cannot open.
 
 ### `discard`: the repair for a vault that cannot be read
 
-`load()` skips a scope whose file exists and cannot be read, with a notice, and `remove()` refuses to touch one. Between them that left the operator able to start and unable to fix: `discardUnreadableScope` existed with no caller, so the only real route was deleting the file by hand. `/secret discard <vault>` is that route, and it parses on every surface, which is what lets one notice name one repair whichever client prints it.
+`load()` skips a scope whose file exists and cannot be read, with a notice, and `remove()` will not touch one. Between them the operator could start and could not repair: `discardUnreadableScope` had no caller, so the only route was deleting the file by hand. `/secret discard <vault>` is that route, and it parses on every surface, so one notice states one repair whichever client prints it.
 
-It **moves** the file to a `vault.json.unreadable-<timestamp>-<uuid>` sibling rather than deleting it. The file still holds real credentials, sealed with a key that is still on disk, so the damage may be a truncated tail with recoverable entries behind it, and destroying a credential store to make the product usable again is a trade the operator has not agreed to. A rename costs nothing. The new path is returned and printed, because it is the operator's only route back to those entries: a message that omitted it would make a recoverable move indistinguishable from a delete.
+It **moves** the file to a `vault.json.unreadable-<timestamp>-<uuid>` sibling rather than deleting it. The file still holds real credentials, sealed with a key that is still on disk, so the damage may be a truncated tail with recoverable entries behind it. The new path is returned and printed: it is the operator's only route back to those entries, and a message that omitted it would make a recoverable move indistinguishable from a delete.
 
-**The vault is required here and defaulted everywhere else**, which is the one exception in the table above. Elsewhere the word names where to PUT something, so a wrong guess costs a secret filed in the wrong place and `/secret list` shows you that. Here it selects a file to move aside, so a default would let a bare `/secret discard` move a working vault out from under the session. It sits at position 1 rather than trailing, because `discard` takes no name and there is nothing else a bare word after it could mean. The refusal carries the usage and its own sentence explaining why there is no default, and the guard is repeated at the dispatch as well as the parser, because ACP and other adapters build a request object without going through `parseSecretCommand`.
+**The vault is required here and defaulted everywhere else**, the one exception in the table above. Elsewhere the word states where to PUT something, and `/secret list` shows a wrong guess. Here it selects a file to move aside, so a default would let a bare `/secret discard` move a working vault out from under the session. It sits at position 1 rather than trailing, because `discard` takes no name. The refusal contains the usage and states that there is no default, and the guard is repeated at the dispatch as well as the parser, because ACP and other adapters build a request object without going through `parseSecretCommand`.
 
-Two refusals are load-bearing:
+Two refusals:
 
-- **A scope that reads normally.** Checked inside `discardUnreadableScope`, under the file lock, rather than trusted from an earlier `load()`: the file may have been repaired in between. This is not a second delete path, and the refusal names `/secret rm <name>`, which unlike this can say what it removed.
-- **A scope whose path is also another scope's vault.** A profile directory that is the config root makes the profile and global vaults one file, so moving it aside as one would take the other with it. `#scopePathOwner` resolves the owner by file identity and the refusal names it, because an operator told only "cannot discard" reaches for `rm` on the file and loses both.
+- **A scope that reads normally.** Checked inside `discardUnreadableScope`, under the file lock, rather than trusted from an earlier `load()`, because the file may have been repaired in between. The refusal names `/secret rm <name>`, which can state what it removed.
+- **A scope whose path is also another scope's vault.** A profile directory that is the config root makes the profile and global vaults one file, so moving it aside as one takes the other with it. `#scopePathOwner` resolves the owner by file identity and the refusal states it, because an operator told only "cannot discard" uses `rm` on the file and loses both.
 
-Afterwards the result carries `changed: true`, so the surface rebuilds the obfuscator: a scope's file has just stopped existing at the path the loader reads, and until it reloads the session still holds the pre-discard view. The moved-aside file keeps mode `0600`, since a repair that widened permissions on a sealed credential store would be a worse outcome than the fault it fixed.
+Afterwards the result carries `changed: true`, so the surface rebuilds the obfuscator: the scope's file has stopped existing at the path the loader reads, and until it reloads the session holds the pre-discard view. The moved-aside file keeps mode `0600`.
 
 ### Masked entry
 
@@ -202,9 +202,9 @@ Entries without a name get a generated name (`SECRET_1`), so every vault entry h
 
 Argument completion offers the subcommands and nothing else, derived from `SECRET_TUI_SUBCOMMANDS`, which the parser builds from the same table it routes with. A verb cannot be typeable and unoffered, and a word cannot be offered and unparseable. The operator-facing account is [Managing what you stored](../features/secrets.md#managing-what-you-stored).
 
-No stored NAME is ever offered. Completing one from `session.obfuscator.namedSecretNames()` renders part of the vault on a keystroke, and accepting a suggestion writes it onto a line whose first word decides between a command and a credential, so a fumbled verb would store the suggestion instead of running it. `/secret list` is where names are read.
+No stored NAME is ever offered. Completing one from `session.obfuscator.namedSecretNames()` renders part of the vault on a keystroke, and accepting a suggestion writes it onto a line whose first word decides between a command and a credential, so a fumbled verb stores the suggestion instead of running it. `/secret list` is where names are read.
 
-The prefix filter is what keeps the menu out of a paste. A pasted credential arrives as one insert, so the prefix is the whole token and matches nothing; only a hand-typed word that is genuinely the start of a subcommand opens the dropdown. Nothing about the vault is read to build it either, so completion does not fall silent when secret protection is off, which is exactly the state a new operator meets it in.
+The prefix filter keeps the menu out of a paste. A pasted credential arrives as one insert, so the prefix is the whole token and matches nothing; only a hand-typed word that is the start of a subcommand opens the dropdown. Nothing about the vault is read to build it, so completion still works when secret protection is off.
 
 ### What the model is told about a stored secret
 
@@ -212,7 +212,7 @@ The operator-facing account is [What the agent knows, and when](../features/secr
 
 **The inventory** is a system-prompt section. `SecretObfuscator.namedSecretNames()` returns every readable name the live runtime can expand, sorted, and never a value. It calls `#forgetExpired()` first, so a name stops being answered at the moment it stops working. That list becomes an optional option-backed runtime section registered in `RUNTIME_SECTIONS` (`system-prompt-builder/section-registry.ts`) and supplied where `sdk.ts` calls the system-prompt builder, beside `secretsEnabled`. `AgentSession.refreshSecrets()` reloads the runtime and rebuilds the base prompt, which is what makes a removed or expired name stop appearing.
 
-Sorted because the section sits in the cached prompt prefix. Map insertion order would shuffle between refreshes and invalidate the provider's prompt cache without changing anything the section says.
+Sorted because the section sits in the cached prompt prefix. Map insertion order would shuffle between refreshes and invalidate the provider's prompt cache without changing the section text.
 
 An optional section renders only when its option is present, so protection being off, or nothing being spendable, produces no section rather than an empty heading. Names are listed in placeholder form, which is the form the model has to write. Index-form secrets are absent, having no name to list.
 
@@ -220,9 +220,9 @@ It belongs in the prompt rather than in the conversation because the vault outli
 
 **The notice** is a `developer` message. `runSecretCommand` returns `agentNotice` for `add`, `rm` and `extend`; `list`, `log` and `help` return none. `tellTheAgent` (`slash-commands/helpers/secret.ts`) appends it to the live agent and to the session file, because only the first leaves a resumed session holding a placeholder it was never introduced to, and only the second withholds the news until the next restart.
 
-`rm` states the revocation rather than leaving it to the name's disappearance from the inventory. A model does not reliably notice an absence. The tool boundary also keeps the exact retired placeholder name in memory and refuses a later attempt to spend it, while unknown text such as `#TODO#` remains ordinary input. The removal notice is still delivered even when `secrets.enabled` is off because it reaches the model and persists in resumable history; the boundary is the local backstop that prevents an ignored notice from becoming a confusing remote authentication failure. A revoked placeholder is already in the history; a new one with protection off has nothing to expand into.
+`rm` states the revocation rather than leaving it to the name's disappearance from the inventory. A model does not reliably notice an absence. The tool boundary also keeps the exact retired placeholder name in memory and rejects a later attempt to spend it, while unknown text such as `#TODO#` remains ordinary input. The removal notice is still delivered even when `secrets.enabled` is off because it reaches the model and persists in resumable history; the boundary is the local backstop that prevents an ignored notice from becoming a confusing remote authentication failure. A revoked placeholder is already in the history; a new one with protection off has nothing to expand into.
 
-No notice carries a lifetime. A duration is accurate when written and wrong afterwards, and the operator reads the exact time left from the terminal confirmation instead.
+No notice contains a lifetime. A duration is accurate when written and wrong afterwards, and the operator reads the exact time left from the terminal confirmation instead.
 
 Expiry that no command triggered has no notice at all. The name leaves the inventory on the next rebuild, `#forgetPlaceholder` has already revoked expansion, and the operator hears about it through `OperatorNotices`.
 
@@ -253,7 +253,7 @@ Failure behavior is fail-closed:
 | No vault file | Empty. Nothing was stored. |
 | Vault present, key missing | Hard error. Never read as an empty vault. |
 | Key of wrong length | Hard error, so a new key is not written beside a recoverable one. |
-| Unsafe key directory, key file, or vault permissions | Hard error naming the permission fix. POSIX ownership and modes and Windows owner-only ACLs are checked. |
+| Unsafe key directory, key file, or vault permissions | Hard error stating the permission fix. POSIX ownership and modes and Windows owner-only ACLs are checked. |
 | Symlink, hard-linked file, or non-regular key/vault path | Hard error. The path is never followed or shared. |
 | Ciphertext, nonce, authentication tag, scope, canonical path, or physical scope identity modified | Hard error. GCM authenticates the complete envelope and its location. |
 | Legacy version 1 envelope | Hard error directing the operator to re-add the entry in the bound current format. |
@@ -270,12 +270,12 @@ Expiry is enforced at use time as well as at load:
 
 - The check sits on `deobfuscate`, `hasNamedSecret` and `knowsPlaceholder`, so no path reaches a value without passing it.
 - `#nextExpiryAt` caches the soonest deadline, so the hot path is one number comparison and the map is scanned only when a deadline is crossed.
-- A lapse calls `onExpiry` with explicit persisted-deletion state. `sdk.ts` renders an operator notice that says expansion was revoked and, until a vault refresh succeeds, that encrypted ciphertext remains.
+- A lapse calls `onExpiry` with explicit persisted-deletion state. `sdk.ts` renders an operator notice that states expansion was revoked and, until a vault refresh succeeds, that encrypted ciphertext remains.
 - A successful vault refresh prunes expired entries before rebuilding the runtime.
 - `addNamedSecret` takes the deadline, so `/secret extend` moves the moment substitution stops.
 - `#forgetPlaceholder` is the one owner of revoking reverse mappings and installing forward redaction tombstones.
 
-`WARN_AT_FRACTIONS` (`[0.5, 0.9]`) is the single owner of when a warning fires, as fractions rather than absolute times so one rule serves `1d` and `90d` alike. `expiryWarnings` consults `warningThresholdCrossed` rather than doing its own comparison: it previously held an inline `0.9`, which meant two owners disagreeing and a halfway warning that could not fire. The wording reads the urgent threshold off the end of the list for the same reason, so adding a `0.99` would not leave a secret with minutes left described as "over halfway through its lifetime". `expiryUrgency` wraps that one comparison and classifies an entry as `soon` or `halfway`, so the `STATUS` column in `/secret list` reads the same thresholds as the warnings rather than becoming a third owner of the question. Warnings are raised at session startup through `OperatorNotices`, and the channel collapses repeats so a long-running session is told once. Each line names the `/secret extend` command that prevents the loss, since expiry is not recoverable after the fact.
+`WARN_AT_FRACTIONS` (`[0.5, 0.9]`) is the single owner of when a warning fires, as fractions rather than absolute times so one rule serves `1d` and `90d` alike. `expiryWarnings` consults `warningThresholdCrossed` rather than doing its own comparison: it previously held an inline `0.9`, which meant two owners disagreeing and a halfway warning that could not fire. The wording reads the urgent threshold off the end of the list for the same reason, so adding a `0.99` would not leave a secret with minutes left described as "over halfway through its lifetime". `expiryUrgency` wraps that one comparison and classifies an entry as `soon` or `halfway`, so the `STATUS` column in `/secret list` reads the same thresholds as the warnings rather than becoming a third owner of the question. Warnings are raised at session startup through `OperatorNotices`, and the channel collapses repeats so a long-running session is told once. Each line states the `/secret extend` command that prevents the loss, since expiry is not recoverable after the fact.
 
 ### The expansion log
 
@@ -286,7 +286,7 @@ Expiry is enforced at use time as well as at load:
 | `at` | Epoch milliseconds at expansion. |
 | `secrets` | Placeholders substituted, in order of appearance, deduplicated. |
 | `tool` | Tool that received them. |
-| `session` | Session id. Omitted when the session has none yet. `/secret log` says how many distinct sessions the shown records came from, since the log is per-profile and two windows append to one file. |
+| `session` | Session id. Omitted when the session has none yet. `/secret log` states how many distinct sessions the shown records came from, since the log is per-profile and two windows append to one file. |
 | `command` | The arguments as the model produced them, JSON-encoded. |
 | `truncated` | `true` when `command` was cut to fit the byte cap. |
 | `omittedSecrets` | Number of additional placeholder references omitted to keep the encoded record under the byte cap. |
@@ -297,13 +297,13 @@ Written from the arguments **before** substitution, which is the form in which e
 
 Failure behaviour differs from the vault's, deliberately. Obfuscation is the preventive control and it fails closed; the log is a detective control, so a failed append raises an operator notice and the command still runs. Refusing to execute a tool because a log file could not be written turns a full disk into an agent outage while nothing is actually unsafe. What is not permitted is silence: a log that stopped recording must not look like a log with nothing to record.
 
-The log lives in the profile directory, never the project one, and is written 0600. It names which credentials exist and when they are used, which is reconnaissance even without values.
+The log is written in the profile directory, never the project one, and is written 0600. It states which credentials exist and when they are used, which is reconnaissance even without values.
 
-Three properties keep the reader honest:
+Three properties hold:
 
 - **Rotation.** `ROTATE_AT_BYTES` (2 MiB, about ten thousand uses) atomically moves the file to `secret-audit.jsonl.1` and starts a fresh one, keeping two generations. The same cross-process lock covers both sessions that race at the boundary. `read` spans both generations, so `/secret log 20` immediately after a rotation still answers with twenty records.
-- **Full validation on the way back in.** A parsed line is accepted only when every field the renderer reads has the right type. The check was `typeof at === "number" && Array.isArray(secrets)` followed by a cast, so a line missing `tool` printed `undefined` in the middle of a security report. Anything that fails is counted as malformed and the count is shown, never dropped. Terminal control characters in records, paths, and notices are escaped before display. Hard-linked generations are refused, and the 2 MiB generation limit is checked before allocating a read buffer.
-- **Flushed on dispose.** Appends are queued so a tool call is never blocked by a write, which means an exit that does not drain the queue loses records silently. `session.dispose` awaits `flush()`, because quitting ends the process rather than waiting for pending work, and the last credential used is exactly the one an incident asks about.
+- **Full validation on the way back in.** A parsed line is accepted only when every field the renderer reads has the right type. The check was `typeof at === "number" && Array.isArray(secrets)` followed by a cast, so a line missing `tool` printed `undefined` in the middle of a security report. Anything that fails is counted as malformed and the count is shown, never dropped. Terminal control characters in records, paths, and notices are escaped before display. Hard-linked generations are rejected, and the 2 MiB generation limit is checked before allocating a read buffer.
+- **Flushed on dispose.** Appends are queued so a tool call is never blocked by a write, which means an exit that does not drain the queue loses records silently. the session's `dispose()` awaits `flush()`, because quitting ends the process rather than waiting for pending work, and the last credential used is the one an incident concerns.
 
 ### Operator notices
 
@@ -315,7 +315,7 @@ Identical notices collapse on `severity + source + text`, keeping the first time
 
 ## Env keyword list
 
-`secrets/env-keywords.ts` owns the keyword list and the boundary rule; nothing else matches an environment variable name. The list was an inline regex in `secrets/index.ts` and is Tier B data now, so an operator can extend it without editing source.
+`secrets/env-keywords.ts` defines the keyword list and the boundary rule; nothing else matches an environment variable name. The list was an inline regex in `secrets/index.ts` and is Tier B data now, so an operator can extend it without editing source.
 
 The boundary rule is `(?:<keyword>)(?:_|$)`, case-insensitive: a keyword matches only where it ends the name or is followed by an underscore.
 
@@ -325,7 +325,7 @@ The boundary rule is `(?:<keyword>)(?:_|$)`, case-insensitive: a keyword matches
 | `APIKEY` | no entry needed | `KEY` at the end of a name already matches it. |
 | `PRIVKEY` | no entry needed | Same. |
 | `SECRETKEY` | no entry needed | Same. |
-| `PWD` | **refused** | The POSIX current-working-directory variable, present in every shell, with a value that is almost always over the length floor. Detecting it would replace the working directory with a placeholder in every message mentioning a path: text corruption, not protection. `OLDPWD` is the same. |
+| `PWD` | **rejected** | The POSIX current-working-directory variable, present in every shell, with a value that is almost always over the length floor. Detecting it would replace the working directory with a placeholder in every message mentioning a path: text corruption, not protection. `OLDPWD` is the same. |
 
 Three of the five filed candidates turned out to be already covered, which is why the list stays short: the trailing-position half of the boundary rule does most of the work.
 
@@ -371,7 +371,7 @@ Each entry in the array has these fields:
   replacement: "********"
 ```
 
-Generated `replace` aliases use counter-mode HMAC with the machine placeholder key. A custom replacement that looks like `#NAME#` or a machine-keyed placeholder is refused, so one-way output cannot be reinterpreted as a live credential. Emitted placeholders are protected spans: later literal or regex rules cannot scan inside and corrupt them.
+Generated `replace` aliases use counter-mode HMAC with the machine placeholder key. A custom replacement that looks like `#NAME#` or a machine-keyed placeholder is rejected, so one-way output cannot be reinterpreted as a live credential. Emitted placeholders are protected spans: later literal or regex rules cannot scan inside and corrupt them.
 
 #### Regex secrets
 
@@ -397,9 +397,9 @@ Generated `replace` aliases use counter-mode HMAC with the machine placeholder k
 
 Regex entries always scan globally (the `g` flag is enforced automatically). The regex literal syntax `/pattern/flags` is supported as an alternative to separate `content` + `flags` fields. Escaped slashes within the pattern (`\\/`) are handled correctly.
 
-Alternations whose branches can consume concatenated prefixes are refused along with nested ambiguous quantifiers. This prevents exponential backtracking even when the ambiguity is spread across alternatives.
+Alternations whose branches can consume concatenated prefixes are rejected along with nested ambiguous quantifiers. This prevents exponential backtracking even when the ambiguity is spread across alternatives.
 
-Only standard, bounded global matching is accepted. The sticky `y` flag and expressions that can match an empty string are refused because their scan semantics can skip text or make no progress. Nested ambiguous quantifiers and related catastrophic-backtracking forms are refused before compilation. Regex replacement rewrites exact match spans rather than every equal substring elsewhere in the message.
+Only standard, bounded global matching is accepted. The sticky `y` flag and expressions that can match an empty string are rejected because their scan semantics can skip text or make no progress. Nested ambiguous quantifiers and related catastrophic-backtracking forms are rejected before compilation. Regex replacement rewrites exact match spans rather than every equal substring elsewhere in the message.
 
 #### Replace mode with regex
 
