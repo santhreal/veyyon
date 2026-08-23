@@ -111,8 +111,13 @@ import { RollbackPanelComponent } from "./rollback-panel";
 import { MouseRoutedSubmenu, routeSettingsListPointer } from "./select-list-mouse-routing";
 import {
 	DEFAULT_MODEL_SETTING_ID,
+	formatLspSummary,
 	getSettingDef,
 	getSettingsForTab,
+	isNestedLspKnob,
+	lspPanelPaths,
+	LSP_SETTING_PATHS,
+	settingsSearchLandingPath,
 	type OptionList,
 	type SettingDef,
 } from "./settings-defs";
@@ -315,6 +320,85 @@ class SelectSubmenu extends MouseRoutedSubmenu {
 
 	handleInput(data: string): void {
 		this.#selectList.handleInput(data);
+	}
+}
+
+const LSP_PANEL_MAX_ROWS = 8;
+
+/**
+ * Nested LSP page. Files shows one row; Enter opens this list so each piece
+ * is its own on/off rather than a pile of similarly-named Files rows.
+ */
+class LspSubmenu extends MouseRoutedSubmenu {
+	#selectList: SelectList | undefined;
+	#focused: string | undefined;
+
+	constructor(
+		private readonly onChange: (path: SettingPath, value: boolean) => void,
+		private readonly onCancel: () => void,
+		private readonly requestRender?: () => void,
+		initialFocus?: SettingPath,
+	) {
+		super();
+		this.#focused = initialFocus;
+		this.#show();
+	}
+
+	#show(): void {
+		this.clear();
+		this.addChild(new Text(theme.bold(theme.fg("accent", "LSP")), 0, 0));
+		this.addChild(new Spacer(1));
+		this.addChild(
+			new Text(theme.fg("muted", "Each row is its own switch. Enter toggles. Esc returns to Files."), 0, 0),
+		);
+		this.addChild(new Spacer(1));
+
+		const items: SelectItem[] = [];
+		for (const path of lspPanelPaths()) {
+			const ui = getUi(path);
+			if (!ui) continue;
+			const on = settings.get(path) === true;
+			const state = on ? theme.fg("success", "on") : theme.fg("dim", "off");
+			const label = path === "lsp.enabled" ? "Language Servers" : ui.label;
+			items.push({
+				value: path,
+				label,
+				description: `${state} · ${ui.description}`,
+			});
+		}
+
+		const visible = Math.min(items.length, LSP_PANEL_MAX_ROWS);
+		this.#selectList = new SelectList(items, visible, getSelectListTheme(), {
+			minPrimaryColumnWidth: 1,
+			maxPrimaryColumnWidth: 28,
+		});
+		const focusedIndex = this.#focused ? items.findIndex(item => item.value === this.#focused) : -1;
+		if (focusedIndex >= 0) this.#selectList.setSelectedIndex(focusedIndex);
+		this.#selectList.onSelect = item => {
+			const path = item.value as SettingPath;
+			const next = settings.get(path) !== true;
+			settings.set(path, next as never);
+			this.onChange(path, next);
+			this.#focused = path;
+			this.#show();
+			this.requestRender?.();
+		};
+		this.#selectList.onCancel = this.onCancel;
+		this.addChild(this.#selectList);
+		this.addChild(new Spacer(1));
+		this.addChild(new Text(theme.fg("dim", "  Enter to toggle · Esc to go back"), 0, 0));
+	}
+
+	mouseTarget(): SelectList | undefined {
+		return this.#selectList;
+	}
+
+	handleInput(data: string): void {
+		if (this.#selectList) {
+			this.#selectList.handleInput(data);
+			return;
+		}
+		this.children[0]?.handleInput?.(data);
 	}
 }
 
@@ -2861,6 +2945,8 @@ export class SettingsSelectorComponent implements Component {
 	#showAdvanced = new Map<SettingTab, boolean>();
 	/** Last selected setting per category; rendering derives the matching scroll window. */
 	#selectedSettingByTab = new Map<SettingTab, string>();
+	/** Search landed on a nested LSP knob: focus that row after the parent opens. */
+	#lspPanelFocusPath: SettingPath | undefined;
 	// Frame geometry from the last render, for mouse hit-testing (the
 	// fullscreen overlay paints from screen row 0, so mouse rows map 1:1).
 	#tabRowStart = 0;
@@ -3468,8 +3554,13 @@ export class SettingsSelectorComponent implements Component {
 		this.#tabBar.setTabs(getSettingsTabs(), targetTab);
 		this.#switchToTab(targetTab);
 		if (selectedDef) {
-			this.#currentList?.selectItem(selectedDef.path);
-			this.#selectedSettingByTab.set(selectedDef.tab, selectedDef.path);
+			const landOn = settingsSearchLandingPath(selectedDef.path);
+			this.#currentList?.selectItem(landOn);
+			this.#selectedSettingByTab.set(selectedDef.tab, landOn);
+			if (isNestedLspKnob(selectedDef.path)) {
+				this.#lspPanelFocusPath = selectedDef.path;
+				this.#currentList?.activateSelected();
+			}
 		}
 	}
 
@@ -3699,6 +3790,16 @@ export class SettingsSelectorComponent implements Component {
 					currentValue: this.#formatRulesValue(),
 					submenu: (_cv, done) => this.#createRulesInput(done),
 					changed,
+				};
+
+			case "lsp":
+				return {
+					id: def.path,
+					label: def.label,
+					description: def.description,
+					currentValue: formatLspSummary(),
+					submenu: (_cv, done) => this.#createLspInput(done),
+					changed: LSP_SETTING_PATHS.some(path => !Object.is(settings.get(path), getDefault(path))),
 				};
 
 			case "defaultModel": {
@@ -4174,6 +4275,17 @@ export class SettingsSelectorComponent implements Component {
 		);
 	}
 
+	#createLspInput(done: (value?: string) => void): Container {
+		const focus = this.#lspPanelFocusPath;
+		this.#lspPanelFocusPath = undefined;
+		return new LspSubmenu(
+			(path, value) => this.callbacks.onChange(path, value),
+			() => done(formatLspSummary()),
+			this.context.requestRender,
+			focus,
+		);
+	}
+
 	#createModelRolesInput(done: (value?: string) => void): Container {
 		const ctx = this.#requireModelPickerContext();
 		if (!ctx) {
@@ -4392,6 +4504,9 @@ export class SettingsSelectorComponent implements Component {
 		let lastGroup: string | undefined;
 		let advancedTotal = 0;
 		for (const def of defs) {
+			// Nested LSP knobs are a page behind the LSP row, not siblings on Files.
+			// Search still lists them (it does not go through this builder).
+			if (isNestedLspKnob(def.path)) continue;
 			const item = this.#defToItem(def);
 			if (!item) continue;
 			if (def.advanced) {
