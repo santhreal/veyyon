@@ -68,6 +68,7 @@
 
 ### Fixed
 
+- Unified search approval preflight now covers every multi-target syntax execution accepts; search also excludes byte-truncated context from editable seen lines, unions ranged and unrestricted text scopes, orders equal-mtime file results by path, suppresses pattern errors from unrelated structure languages, and distinguishes exhausted structure pages from a search with no matches.
 - Unified search no longer broadens or misroutes malformed calls: files-mode rejects a `path` owned by other modes while retaining the historical `/`-means-workspace alias, structure search rejects unsupported `ssh://` scopes without an approval prompt for work it cannot execute, immutable internal or fetched sources never receive editable hashline anchors, and the Bash interceptor no longer redirects mutating or otherwise non-equivalent `find` commands to a read-only file search.
 - The plan-mode extension example now keeps canonical `search` available both while planning and after restoring normal tools. It previously advertised retired `grep`/`find` identities, requested a nonexistent `find` tool, and dropped search when plan mode ended.
 - Memory summarization now retains canonical `search` results from session rollouts. It previously allowlisted the retired `grep` tool name but discarded every result emitted by unified search before Stage 1 summarization.
