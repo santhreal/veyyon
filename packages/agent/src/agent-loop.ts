@@ -231,7 +231,24 @@ export function resolveOwnedDialectFromEnv(value: string | undefined): Dialect |
 type AssistantContentBlock = AssistantMessage["content"][number];
 type AssistantToolCallBlock = Extract<AssistantContentBlock, { type: "toolCall" }>;
 
-function snapshotAssistantContentBlock(block: AssistantContentBlock): AssistantContentBlock {
+type SnapshotMode = "full" | "delta";
+
+/**
+ * Copy a content block for an immutable subscriber view.
+ *
+ * `delta` mode serves the per-streaming-event path, where cost scales with
+ * event count: a `toolCall` block copies its fields but shares `arguments` by
+ * reference. That stays immutable under provider activity because every
+ * arguments write across `packages/ai` REPLACES the value wholesale (`parseStreamingJson`,
+ * throttle re-parses, object merges, literals) and none mutates an existing
+ * arguments object in place, so a reference captured now never changes later.
+ * The block itself is still copied because providers do mutate block fields
+ * (`text +=`, marker keys) across deltas. `full` mode additionally deep-clones
+ * `arguments` with own-enumerable-only semantics; it runs once per message at
+ * terminal paths (`done`, `error`, `message_end`, final `toolCall` events),
+ * where the sanitized view is authoritative.
+ */
+function snapshotAssistantContentBlock(block: AssistantContentBlock, mode: SnapshotMode): AssistantContentBlock {
 	switch (block.type) {
 		case "text":
 			return { ...block };
@@ -242,14 +259,14 @@ function snapshotAssistantContentBlock(block: AssistantContentBlock): AssistantC
 		case "fallback":
 			return { ...block, from: { ...block.from }, to: { ...block.to } };
 		case "toolCall":
-			return { ...block, arguments: structuredCloneJSON(block.arguments) };
+			return mode === "delta" ? { ...block } : { ...block, arguments: structuredCloneJSON(block.arguments) };
 	}
 }
 
-function snapshotAssistantMessage(message: AssistantMessage): AssistantMessage {
+function snapshotAssistantMessage(message: AssistantMessage, mode: SnapshotMode = "full"): AssistantMessage {
 	return {
 		...message,
-		content: message.content.map(snapshotAssistantContentBlock),
+		content: message.content.map(block => snapshotAssistantContentBlock(block, mode)),
 		usage: {
 			...message.usage,
 			cost: { ...message.usage.cost },
@@ -260,10 +277,13 @@ function snapshotAssistantMessage(message: AssistantMessage): AssistantMessage {
 }
 
 /**
- * Deep-clone an assistant streaming event so subscribers get an immutable view.
- * Pass `partialSnapshot` when the caller has already snapshotted `event.partial`
- * (the `message_update` push sites alias it as the event's `message`) so the
- * identical partial is not deep-cloned twice per streaming delta.
+ * Copy an assistant streaming event so subscribers get an immutable view.
+ *
+ * Pass `partialSnapshot` when the caller has already snapshotted
+ * `event.partial` (the `message_update` push sites alias it as the event's
+ * `message`) so the identical partial is not copied twice per streaming delta.
+ * Streaming arms use `delta` mode; terminal events (`done`, `error`, and a
+ * `toolcall_end`'s authoritative tool call) keep full sanitizing clones.
  */
 function snapshotAssistantMessageEvent(
 	event: AssistantMessageEvent,
@@ -271,7 +291,7 @@ function snapshotAssistantMessageEvent(
 ): AssistantMessageEvent {
 	switch (event.type) {
 		case "start":
-			return { ...event, partial: partialSnapshot ?? snapshotAssistantMessage(event.partial) };
+			return { ...event, partial: partialSnapshot ?? snapshotAssistantMessage(event.partial, "delta") };
 		case "text_start":
 		case "text_delta":
 		case "text_end":
@@ -280,12 +300,12 @@ function snapshotAssistantMessageEvent(
 		case "thinking_end":
 		case "toolcall_start":
 		case "toolcall_delta":
-			return { ...event, partial: partialSnapshot ?? snapshotAssistantMessage(event.partial) };
+			return { ...event, partial: partialSnapshot ?? snapshotAssistantMessage(event.partial, "delta") };
 		case "toolcall_end":
 			return {
 				...event,
-				toolCall: snapshotAssistantContentBlock(event.toolCall) as AssistantToolCallBlock,
-				partial: partialSnapshot ?? snapshotAssistantMessage(event.partial),
+				toolCall: snapshotAssistantContentBlock(event.toolCall, "full") as AssistantToolCallBlock,
+				partial: partialSnapshot ?? snapshotAssistantMessage(event.partial, "delta"),
 			};
 		case "done":
 			return { ...event, message: snapshotAssistantMessage(event.message) };
@@ -1714,9 +1734,10 @@ async function streamAssistantResponse(
 								completedToolCallIds.clear();
 								// `message` and `assistantMessageEvent.partial` intentionally share one
 								// immutable snapshot of the streaming partial: every message_update
-								// consumer treats both as read-only, so cloning the identical partial
-								// twice per delta was pure waste.
-								const messageSnapshot = snapshotAssistantMessage(partialMessage);
+								// consumer treats both as read-only. Delta mode shares tool-call
+								// `arguments` by reference (providers replace, never mutate) so
+								// per-delta cost no longer scales with accumulated argument size.
+								const messageSnapshot = snapshotAssistantMessage(partialMessage, "delta");
 								stream.push({
 									type: "message_update",
 									assistantMessageEvent: snapshotAssistantMessageEvent(event, messageSnapshot),
@@ -1747,9 +1768,10 @@ async function streamAssistantResponse(
 								config.onAssistantMessageEvent?.(partialMessage, event);
 								// `message` and `assistantMessageEvent.partial` intentionally share one
 								// immutable snapshot of the streaming partial: every message_update
-								// consumer treats both as read-only, so cloning the identical partial
-								// twice per delta was pure waste.
-								const messageSnapshot = snapshotAssistantMessage(partialMessage);
+								// consumer treats both as read-only. Delta mode shares tool-call
+								// `arguments` by reference (providers replace, never mutate) so
+								// per-delta cost no longer scales with accumulated argument size.
+								const messageSnapshot = snapshotAssistantMessage(partialMessage, "delta");
 								stream.push({
 									type: "message_update",
 									assistantMessageEvent: snapshotAssistantMessageEvent(event, messageSnapshot),
