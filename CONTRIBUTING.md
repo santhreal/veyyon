@@ -42,11 +42,18 @@ Every PR runs the full CI suite before a human looks at it:
 | **Checks** (`checks.yml`) | Biome lint and format, workspace type check, Rust format and clippy, secret scan, changelog entry, global-state leak check on changed suites, repo script gates |
 | **CI** (`ci.yml`) | Native addon builds, Rust + TS test matrix, install-method smoke tests |
 | **Site** (`site.yml`) | Builds the website when a PR touches `website/**`, so a blog post or report with bad frontmatter fails here; deploys on merge to `main` |
-| **Devin review** | A maintainer requests an AI review by commenting `/devin review` on the PR |
+| **Devin review** (`devin-review.yml`) | Requests an AI review automatically, once per PR, when the PR opens or leaves draft |
 | **veybot** | The in-repo review bot posts a deeper contextual review |
 
-Green CI plus the requested Devin review is the entry point to human review. A
-maintainer makes the final call.
+Findings arrive as inline review comments on the PR. Read all of them from the
+API rather than the summary the web UI renders:
+
+```bash
+gh api repos/santhreal/veyyon/pulls/<N>/comments --jq '.[].body'
+```
+
+Green CI plus the review is the entry point to human review. A maintainer makes
+the final call.
 
 Pushing more commits to an open PR re-runs the pipeline; that's expected.
 
