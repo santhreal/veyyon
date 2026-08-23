@@ -480,6 +480,11 @@ function parseDiagnosticMessage(msg: string): ParsedDiagnostic | null {
 	};
 }
 
+/**
+ * Emits plain railed-ready lines (file header, two-space indented diagnostics, overflow)
+ * without tree connectors. Callers that embed this in a framedBlock (edit/renderer.ts,
+ * tools/write.ts) or display component (late-diagnostics-message.ts) provide the outer rail.
+ */
 export function formatDiagnostics(
 	diag: { errored: boolean; summary: string; messages: string[] },
 	expanded: boolean,
@@ -529,53 +534,15 @@ export function formatDiagnostics(
 	const totalParsedDiags = files.reduce((sum, [, diags]) => sum + diags.length, 0);
 	const totalDiags = totalParsedDiags + unparsed.length;
 
-	// Helper to check if this is the very last item in the tree
-	const isTreeEnd = (fileIdx: number, diagIdx: number | null, unparsedIdx: number | null): boolean => {
-		const willShowMore = totalDiags > diagsShown + 1;
-		if (willShowMore) return false;
-
-		if (unparsedIdx !== null) {
-			return unparsedIdx === unparsed.length - 1;
-		}
-		if (diagIdx !== null) {
-			const isLastDiagInFile = diagIdx === files[fileIdx][1].length - 1;
-			const isLastFile = fileIdx === files.length - 1;
-			return isLastDiagInFile && isLastFile && unparsed.length === 0;
-		}
-		// File node - never the tree end if it has diagnostics
-		return false;
-	};
-
 	for (let fi = 0; fi < files.length && diagsShown < maxDiags; fi++) {
 		const [filePath, diagnostics] = files[fi];
-		// File is "last" only if no more files AND no unparsed AND we'll show all diags AND no "... X more"
-		const remainingDiagsInFile = diagnostics.length;
-		const remainingDiagsAfter = files.slice(fi + 1).reduce((sum, [, d]) => sum + d.length, 0) + unparsed.length;
-		const willShowAllRemaining = diagsShown + remainingDiagsInFile + remainingDiagsAfter <= maxDiags;
-		const isLastFileNode = fi === files.length - 1 && unparsed.length === 0 && willShowAllRemaining;
-		const fileBranch = isLastFileNode ? theme.tree.last : theme.tree.branch;
 
-		// The badge carries its own trailing space, so a preset without a glyph for this
-		// language leaves the path directly after the branch instead of one column adrift.
 		const fileIcon = getLangIcon(filePath);
 		const badge = fileIcon ? `${theme.fg("muted", fileIcon)} ` : "";
-		output += `\n ${theme.fg("dim", fileBranch)} ${badge}${theme.fg("accent", filePath)}`;
+		output += `\n${badge}${theme.fg("accent", filePath)}`;
 
 		for (let di = 0; di < diagnostics.length && diagsShown < maxDiags; di++) {
 			const d = diagnostics[di];
-			const isLastDiagInFile = di === diagnostics.length - 1;
-			// This is the last visible diag in file if it's actually last OR we're about to hit the limit
-			const atDisplayLimit = diagsShown + 1 >= maxDiags;
-			const isLastVisibleInFile = isLastDiagInFile || atDisplayLimit;
-			// Check if this is the last visible item in the entire tree
-			const isVeryLast = isTreeEnd(fi, di, null);
-			const diagBranch = isLastFileNode
-				? isLastVisibleInFile || isVeryLast
-					? `  ${theme.tree.last}`
-					: `  ${theme.tree.branch}`
-				: isLastVisibleInFile || isVeryLast
-					? `${theme.tree.vertical} ${theme.tree.last}`
-					: `${theme.tree.vertical} ${theme.tree.branch}`;
 
 			const sevIcon =
 				d.severity === "error"
@@ -587,26 +554,21 @@ export function formatDiagnostics(
 			const codeTag = d.code ? theme.fg("dim", ` (${d.code})`) : "";
 			const msgColor = d.severity === "error" ? "error" : d.severity === "warning" ? "warning" : "toolOutput";
 
-			output += `\n ${theme.fg("dim", diagBranch)} ${sevIcon}${location} ${theme.fg(msgColor, d.message)}${codeTag}`;
+			output += `\n  ${sevIcon}${location} ${theme.fg(msgColor, d.message)}${codeTag}`;
 			diagsShown++;
 		}
 	}
 
 	for (let ui = 0; ui < unparsed.length && diagsShown < maxDiags; ui++) {
 		const msg = unparsed[ui];
-		const isVeryLast = isTreeEnd(-1, null, ui);
-		const branch = isVeryLast ? theme.tree.last : theme.tree.branch;
 		const color = msg.includes("[error]") ? "error" : msg.includes("[warning]") ? "warning" : "dim";
-		output += `\n ${theme.fg("dim", branch)} ${theme.fg(color, msg)}`;
+		output += `\n  ${theme.fg(color, msg)}`;
 		diagsShown++;
 	}
 
 	if (totalDiags > diagsShown) {
 		const remaining = totalDiags - diagsShown;
-		output += `\n ${theme.fg("dim", theme.tree.last)} ${theme.fg(
-			"muted",
-			`… ${remaining} more`,
-		)} ${formatExpandHint(theme)}`;
+		output += `\n${theme.fg("dim", `… ${remaining} more`)} ${formatExpandHint(theme)}`;
 	}
 
 	return output;

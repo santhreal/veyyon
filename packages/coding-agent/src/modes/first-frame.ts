@@ -66,12 +66,14 @@ export interface FirstFrameDecisionOptions {
 	readonly setupWizard: boolean;
 	readonly stdinIsTTY: boolean | undefined;
 	readonly stdoutIsTTY: boolean | undefined;
+	/** Restoring a session (--resume, --continue, --fork) skips the welcome hero. */
+	readonly resuming?: boolean;
 }
 
 /** True only for a normal interactive TTY launch that lands on the home screen. */
 export function shouldPaintFirstFrame(options: FirstFrameDecisionOptions): boolean {
 	if (!options.isInteractive || options.protocolMode) return false;
-	if (options.quiet || options.splash || options.setupWizard) return false;
+	if (options.quiet || options.splash || options.setupWizard || options.resuming) return false;
 	return options.stdinIsTTY === true && options.stdoutIsTTY === true;
 }
 

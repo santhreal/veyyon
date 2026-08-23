@@ -8,17 +8,18 @@
  * Keeping the renderer here keeps those off the CLI boot path (PERF-6);
  * every runtime import below is type-only and erased at compile time.
  */
-import { type Component, Text } from "@veyyon/tui";
+import type { Component } from "@veyyon/tui";
 import { formatAge, formatDuration } from "@veyyon/utils";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
-import type { IrcDeliveryReceipt, IrcMessage } from "../irc/bus";
+import type { IrcDeliveryReceipt } from "../irc/bus";
 import type { Theme } from "../modes/theme/theme";
-import { Ellipsis, renderStatusLine, renderTreeList, truncateToWidth } from "../tui";
+import { Ellipsis, framedBlock, renderStatusLine, type State, truncateToWidth } from "../tui";
 import type { IrcDetails, IrcParams } from "./irc";
 import {
 	createCachedComponent,
 	formatBadge,
 	formatErrorDetail,
+	formatMoreItems,
 	getPreviewLines,
 	PREVIEW_LIMITS,
 	replaceTabs,
@@ -91,13 +92,15 @@ function bodyLines(
 	const tone = options.tone ?? "toolOutput";
 	const max = expanded ? BODY_LINES_EXPANDED : (options.collapsedLines ?? BODY_LINES_COLLAPSED);
 	const total = body.split("\n").filter(line => line.trim()).length;
-	const quote = theme.fg("dim", theme.md.quoteBorder);
+	// A message body is indented text and carries no quote glyph of its own. The
+	// block already hangs from the house rail, and a second `▏` two cells inside
+	// it drew a second left edge for the same rows.
 	const lines = getPreviewLines(body, max, BODY_LINE_WIDTH, Ellipsis.Unicode).map(
-		line => `${indent}${quote} ${theme.fg(tone, replaceTabs(line))}`,
+		line => `${indent}${theme.fg(tone, replaceTabs(line))}`,
 	);
 	const hidden = total - Math.min(total, max);
 	if (hidden > 0) {
-		lines.push(`${indent}${quote} ${theme.fg("dim", `… +${hidden} more ${hidden === 1 ? "line" : "lines"}`)}`);
+		lines.push(`${indent}${theme.fg("dim", `… +${hidden} more ${hidden === 1 ? "line" : "lines"}`)}`);
 	}
 	return lines;
 }
@@ -134,12 +137,13 @@ function renderErrorResult(
 	result: { content: Array<{ type: string; text?: string }> },
 	args: IrcRenderArgs | undefined,
 	theme: Theme,
-): string[] {
+): { header: string; bodyLines: string[]; state: State } {
 	const text = textContent(result) || "IRC call failed.";
-	return [
-		renderStatusLine({ icon: "error", title: callTitle(args, theme), meta: callMeta(args) }, theme),
-		formatErrorDetail(text, theme),
-	];
+	return {
+		header: renderStatusLine({ icon: "error", title: callTitle(args, theme), meta: callMeta(args) }, theme),
+		bodyLines: [formatErrorDetail(text, theme)],
+		state: "error",
+	};
 }
 
 /**
@@ -193,7 +197,7 @@ function renderSendResult(
 	args: IrcRenderArgs | undefined,
 	expanded: boolean,
 	theme: Theme,
-): string[] {
+): { header: string; bodyLines: string[]; state: State } {
 	const receipts = details.receipts ?? [];
 	const to = details.to ?? args?.to?.trim() ?? "?";
 	const title = `IRC ${theme.nav.selected} ${to}`;
@@ -201,10 +205,11 @@ function renderSendResult(
 	// Pre-delivery failures (validation) and empty broadcasts carry no receipts.
 	if (receipts.length === 0) {
 		const text = textContent(result) || (result.isError ? "Send failed." : "Nothing to deliver.");
-		return [
-			renderStatusLine({ icon: result.isError ? "error" : "warning", title }, theme),
-			result.isError ? formatErrorDetail(text, theme) : `  ${theme.fg("muted", replaceTabs(text))}`,
-		];
+		return {
+			header: renderStatusLine({ icon: result.isError ? "error" : "warning", title }, theme),
+			bodyLines: [result.isError ? formatErrorDetail(text, theme) : theme.fg("muted", replaceTabs(text))],
+			state: result.isError ? "error" : "warning",
+		};
 	}
 
 	const delivered = receipts.filter(receipt => receipt.outcome !== "failed");
@@ -228,43 +233,41 @@ function renderSendResult(
 		: timedOut
 			? { icon: "warning" as const }
 			: { iconOverride: ircGlyph(theme) };
-	const lines = [renderStatusLine({ ...icon, title, meta }, theme)];
+	const header = renderStatusLine({ ...icon, title, meta }, theme);
+	const body: string[] = [];
 
 	const sent = args?.message?.trim();
-	if (sent) lines.push(...bodyLines(sent, expanded, theme, { indent: "  ", tone: "dim" }));
+	if (sent) body.push(...bodyLines(sent, expanded, theme, { tone: "dim" }));
 
 	if (receipts.length > 1 || failedCount > 0) {
-		lines.push(
-			...renderTreeList<IrcDeliveryReceipt>(
-				{
-					items: receipts,
-					expanded,
-					maxCollapsed: PREVIEW_LIMITS.COLLAPSED_ITEMS,
-					itemType: "recipient",
-					renderItem: receipt => {
-						const badge = formatBadge(receipt.outcome, outcomeColor(receipt.outcome), theme);
-						const error =
-							receipt.outcome === "failed" && receipt.error
-								? ` ${theme.fg("error", `${theme.format.dash} ${receipt.error}`)}`
-								: "";
-						return `${theme.fg("toolOutput", receipt.to)} ${badge}${error}`;
-					},
-				},
-				theme,
-			),
-		);
+		const maxItems = expanded ? receipts.length : Math.min(receipts.length, PREVIEW_LIMITS.COLLAPSED_ITEMS);
+		for (let i = 0; i < maxItems; i++) {
+			const receipt = receipts[i]!;
+			const badge = formatBadge(receipt.outcome, outcomeColor(receipt.outcome), theme);
+			const error =
+				receipt.outcome === "failed" && receipt.error
+					? ` ${theme.fg("error", `${theme.format.dash} ${receipt.error}`)}`
+					: "";
+			body.push(`${theme.fg("toolOutput", receipt.to)} ${badge}${error}`);
+		}
+		if (!expanded && receipts.length > maxItems) {
+			const remaining = receipts.length - maxItems;
+			body.push(theme.fg("dim", formatMoreItems(remaining, "recipient")));
+		}
 	}
 
 	if (waited) {
 		const age = messageAge(waited.ts);
-		lines.push(
-			`  ${theme.fg("dim", theme.nav.back)} ${theme.fg("accent", waited.from)}${age ? ` ${theme.fg("dim", age)}` : ""}`,
+		body.push(
+			`${theme.fg("dim", theme.nav.back)} ${theme.fg("accent", waited.from)}${age ? ` ${theme.fg("dim", age)}` : ""}`,
 		);
-		lines.push(...bodyLines(waited.body, expanded, theme, { indent: "  " }));
+		body.push(...bodyLines(waited.body, expanded, theme, { indent: "  " }));
 	} else if (timedOut) {
-		lines.push(`  ${theme.fg("warning", "No reply yet — they may answer later; check inbox or wait again.")}`);
+		body.push(theme.fg("warning", "No reply yet — they may answer later; check inbox or wait again."));
 	}
-	return lines;
+
+	const state: State = result.isError ? "error" : timedOut ? "warning" : "success";
+	return { header, bodyLines: body, state };
 }
 
 function renderWaitResult(
@@ -273,24 +276,29 @@ function renderWaitResult(
 	args: IrcRenderArgs | undefined,
 	expanded: boolean,
 	theme: Theme,
-): string[] {
+): { header: string; bodyLines: string[]; state: State } {
 	const waited = details.waited;
 	if (!waited) {
 		const text = textContent(result) || "No message arrived.";
-		return [
-			renderStatusLine(
+		return {
+			header: renderStatusLine(
 				{ icon: "warning", title: `IRC ${theme.nav.back} ${args?.from?.trim() || "anyone"}`, meta: ["timed out"] },
 				theme,
 			),
-			`  ${theme.fg("muted", replaceTabs(text))}`,
-		];
+			bodyLines: [theme.fg("muted", replaceTabs(text))],
+			state: "warning",
+		};
 	}
 	const meta = [messageAge(waited.ts)];
 	if (waited.replyTo) meta.push("reply");
-	return [
-		renderStatusLine({ iconOverride: ircGlyph(theme), title: `IRC ${theme.nav.back} ${waited.from}`, meta }, theme),
-		...bodyLines(waited.body, expanded, theme, { indent: "  " }),
-	];
+	return {
+		header: renderStatusLine(
+			{ iconOverride: ircGlyph(theme), title: `IRC ${theme.nav.back} ${waited.from}`, meta },
+			theme,
+		),
+		bodyLines: bodyLines(waited.body, expanded, theme),
+		state: "success",
+	};
 }
 
 function renderInboxResult(
@@ -298,39 +306,50 @@ function renderInboxResult(
 	args: IrcRenderArgs | undefined,
 	expanded: boolean,
 	theme: Theme,
-): string[] {
+): { header: string; bodyLines: string[]; state: State } {
 	const messages = details.inbox ?? [];
 	if (messages.length === 0) {
-		return [renderStatusLine({ iconOverride: ircGlyph(theme), title: "IRC inbox", meta: ["empty"] }, theme)];
+		return {
+			header: renderStatusLine({ iconOverride: ircGlyph(theme), title: "IRC inbox", meta: ["empty"] }, theme),
+			bodyLines: [],
+			state: "success",
+		};
 	}
 	const meta = [`${messages.length} ${messages.length === 1 ? "message" : "messages"}`];
 	if (args?.peek) meta.push("peek");
 	const header = renderStatusLine({ iconOverride: ircGlyph(theme), title: "IRC inbox", meta }, theme);
-	const items = renderTreeList<IrcMessage>(
-		{
-			items: messages,
-			expanded,
-			maxCollapsed: PREVIEW_LIMITS.COLLAPSED_ITEMS,
-			itemType: "message",
-			renderItem: msg => {
-				const age = messageAge(msg.ts);
-				const replyBadge = msg.replyTo ? ` ${formatBadge("reply", "muted", theme)}` : "";
-				const head = `${theme.fg("accent", msg.from)}${age ? ` ${theme.fg("dim", age)}` : ""}${replyBadge}`;
-				return [head, ...bodyLines(msg.body, expanded, theme, { collapsedLines: 1 })];
-			},
-		},
-		theme,
-	);
-	return [header, ...items];
+	const body: string[] = [];
+	const maxItems = expanded ? messages.length : Math.min(messages.length, PREVIEW_LIMITS.COLLAPSED_ITEMS);
+	for (let i = 0; i < maxItems; i++) {
+		const msg = messages[i]!;
+		const age = messageAge(msg.ts);
+		const replyBadge = msg.replyTo ? ` ${formatBadge("reply", "muted", theme)}` : "";
+		const head = `${theme.fg("accent", msg.from)}${age ? ` ${theme.fg("dim", age)}` : ""}${replyBadge}`;
+		body.push(head);
+		body.push(...bodyLines(msg.body, expanded, theme, { indent: "  ", collapsedLines: 1 }));
+	}
+	if (!expanded && messages.length > maxItems) {
+		const remaining = messages.length - maxItems;
+		body.push(theme.fg("dim", formatMoreItems(remaining, "message")));
+	}
+	return { header, bodyLines: body, state: "success" };
 }
 
-function renderListResult(details: Partial<IrcDetails>, expanded: boolean, theme: Theme): string[] {
+function renderListResult(
+	details: Partial<IrcDetails>,
+	expanded: boolean,
+	theme: Theme,
+): { header: string; bodyLines: string[]; state: State } {
 	const peers = [...(details.peers ?? [])].sort(
 		(a, b) =>
 			(PEER_STATUS_ORDER[a.status] ?? 9) - (PEER_STATUS_ORDER[b.status] ?? 9) || b.lastActivity - a.lastActivity,
 	);
 	if (peers.length === 0) {
-		return [renderStatusLine({ icon: "info", title: "IRC peers", meta: ["no other agents"] }, theme)];
+		return {
+			header: renderStatusLine({ icon: "info", title: "IRC peers", meta: ["no other agents"] }, theme),
+			bodyLines: [],
+			state: "success",
+		};
 	}
 	const counts = new Map<string, number>();
 	for (const peer of peers) counts.set(peer.status, (counts.get(peer.status) ?? 0) + 1);
@@ -338,33 +357,33 @@ function renderListResult(details: Partial<IrcDetails>, expanded: boolean, theme
 	const unreadTotal = peers.reduce((sum, peer) => sum + peer.unread, 0);
 	if (unreadTotal > 0) meta.push(theme.fg("warning", `${unreadTotal} unread`));
 	const header = renderStatusLine({ iconOverride: ircGlyph(theme), title: "IRC peers", meta }, theme);
-	const items = renderTreeList(
-		{
-			items: peers,
-			expanded,
-			maxCollapsed: PREVIEW_LIMITS.COLLAPSED_ITEMS,
-			itemType: "peer",
-			renderItem: peer => {
-				const kindText = peer.parentId ? `${peer.kind}${theme.sep.dot}of ${peer.parentId}` : peer.kind;
-				const unread = peer.unread > 0 ? ` ${formatBadge(`${peer.unread} unread`, "warning", theme)}` : "";
-				const age = messageAge(peer.lastActivity);
-				const activity = peer.activity ? ` ${theme.fg("dim", replaceTabs(peer.activity))}` : "";
-				const name = theme.fg("dim", replaceTabs(peer.displayName));
-				return `${peerStatusBadge(peer.status, theme)} ${theme.bold(replaceTabs(peer.id))} ${name} ${theme.fg("dim", kindText)}${activity}${unread}${age ? ` ${theme.fg("dim", age)}` : ""}`;
-			},
-		},
-		theme,
-	);
-	return [header, ...items];
+	const body: string[] = [];
+	const maxItems = expanded ? peers.length : Math.min(peers.length, PREVIEW_LIMITS.COLLAPSED_ITEMS);
+	for (let i = 0; i < maxItems; i++) {
+		const peer = peers[i]!;
+		const kindText = peer.parentId ? `${peer.kind}${theme.sep.dot}of ${peer.parentId}` : peer.kind;
+		const unread = peer.unread > 0 ? ` ${formatBadge(`${peer.unread} unread`, "warning", theme)}` : "";
+		const age = messageAge(peer.lastActivity);
+		const activity = peer.activity ? ` ${theme.fg("dim", replaceTabs(peer.activity))}` : "";
+		const name = theme.fg("dim", replaceTabs(peer.displayName));
+		body.push(
+			`${peerStatusBadge(peer.status, theme)} ${theme.bold(replaceTabs(peer.id))} ${name} ${theme.fg("dim", kindText)}${activity}${unread}${age ? ` ${theme.fg("dim", age)}` : ""}`,
+		);
+	}
+	if (!expanded && peers.length > maxItems) {
+		const remaining = peers.length - maxItems;
+		body.push(theme.fg("dim", formatMoreItems(remaining, "peer")));
+	}
+	return { header, bodyLines: body, state: "success" };
 }
 
-function buildResultLines(
+function buildResultBlock(
 	result: { content: Array<{ type: string; text?: string }>; isError?: boolean },
 	details: Partial<IrcDetails>,
 	args: IrcRenderArgs | undefined,
 	expanded: boolean,
 	theme: Theme,
-): string[] {
+): { header: string; bodyLines: string[]; state: State } {
 	switch (details.op ?? args?.op) {
 		case "send":
 			return renderSendResult(result, details, args, expanded, theme);
@@ -378,10 +397,14 @@ function buildResultLines(
 			return result.isError ? renderErrorResult(result, args, theme) : renderListResult(details, expanded, theme);
 		default: {
 			const text = textContent(result) || (result.isError ? "IRC call failed." : "Done.");
-			return [
-				renderStatusLine({ icon: result.isError ? "error" : "success", title: callTitle(args, theme) }, theme),
-				result.isError ? formatErrorDetail(text, theme) : `  ${theme.fg("muted", replaceTabs(text))}`,
-			];
+			return {
+				header: renderStatusLine(
+					{ icon: result.isError ? "error" : "success", title: callTitle(args, theme) },
+					theme,
+				),
+				bodyLines: [result.isError ? formatErrorDetail(text, theme) : theme.fg("muted", replaceTabs(text))],
+				state: result.isError ? "error" : "success",
+			};
 		}
 	}
 }
@@ -391,13 +414,20 @@ export const ircToolRenderer = {
 	mergeCallAndResult: true,
 
 	renderCall(args: IrcRenderArgs, _options: RenderResultOptions, uiTheme: Theme): Component {
-		const lines = [
-			renderStatusLine({ icon: "pending", title: callTitle(args, uiTheme), meta: callMeta(args) }, uiTheme),
-		];
+		const header = renderStatusLine(
+			{ icon: "pending", title: callTitle(args, uiTheme), meta: callMeta(args) },
+			uiTheme,
+		);
+		const body: string[] = [];
 		if (args?.op === "send" && args.message?.trim()) {
-			lines.push(...bodyLines(args.message, false, uiTheme, { indent: "  ", tone: "dim", collapsedLines: 1 }));
+			body.push(...bodyLines(args.message, false, uiTheme, { tone: "dim", collapsedLines: 1 }));
 		}
-		return new Text(lines.join("\n"), 0, 0);
+		return framedBlock(uiTheme, width => ({
+			header,
+			sections: body.length > 0 ? [{ lines: body }] : [],
+			state: "pending",
+			width,
+		}));
 	},
 
 	renderResult(
@@ -407,12 +437,18 @@ export const ircToolRenderer = {
 		args?: IrcRenderArgs,
 	): Component {
 		const details: Partial<IrcDetails> = result.details ?? {};
-		return createCachedComponent(
-			() => options.expanded,
-			(width, expanded) =>
-				buildResultLines(result, details, args, expanded, uiTheme).map(line =>
-					truncateToWidth(line, width, Ellipsis.Unicode),
-				),
-		);
+		return framedBlock(uiTheme, width => {
+			const {
+				header,
+				bodyLines: lines,
+				state,
+			} = buildResultBlock(result, details, args, Boolean(options.expanded), uiTheme);
+			return {
+				header,
+				sections: lines.length > 0 ? [{ lines }] : [],
+				state: options.isPartial ? "pending" : state,
+				width,
+			};
+		});
 	},
 };
