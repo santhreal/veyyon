@@ -1,12 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { ProviderHttpError } from "@veyyon/ai/error";
 import { isUsageLimit } from "@veyyon/ai/error/flags";
-import {
-	calculateRateLimitBackoffMs,
-	isUsageLimitOutcome,
-	isUsageLimitStatus,
-	parseRateLimitReason,
-} from "@veyyon/ai/error/rate-limit";
+import { calculateRateLimitBackoffMs, parseRateLimitReason } from "@veyyon/ai/error/rate-limit";
 
 describe("parseRateLimitReason", () => {
 	it("classifies Google Quota exceeded as QUOTA_EXHAUSTED", () => {
@@ -147,8 +142,6 @@ describe("isUsageLimit", () => {
 		for (const message of ["insufficient_quota", "usage_limit_exceeded", "usage_limit_reached"]) {
 			expect(isUsageLimit(message)).toBe(true);
 		}
-		expect(isUsageLimitStatus(429)).toBe(true);
-		expect(isUsageLimitStatus(400)).toBe(false);
 	});
 
 	it("detects structured provider usage codes without quota wording", () => {
@@ -161,61 +154,72 @@ describe("isUsageLimit", () => {
 	});
 });
 
-describe("isUsageLimitOutcome", () => {
-	it("rotates on bare/opaque 429 bodies (status-only fallback)", () => {
-		expect(isUsageLimitOutcome(429, undefined)).toBe(true);
-		expect(isUsageLimitOutcome(429, "")).toBe(true);
-		expect(isUsageLimitOutcome(429, "429")).toBe(true);
-		expect(isUsageLimitOutcome(429, "HTTP 429")).toBe(true);
-		expect(isUsageLimitOutcome(429, "Error 429")).toBe(true);
-		expect(isUsageLimitOutcome(429, "{}")).toBe(true);
+// WHY: `isUsageLimit` is the only accessor for the quota question, and these cases are the ones six
+// call sites used to answer with a second predicate over `(status, message)`. The pair that matters
+// is the last two blocks: a 429 with NO body is a wall, and a 429 whose body says "too many
+// requests" is a throttle. A rule that reads the status without checking for a body first collapses
+// them, which is how every throttle would start burning sibling credentials.
+describe("isUsageLimit, over a status and a body", () => {
+	it("reads a bare or opaque 429 as a wall", () => {
+		expect(isUsageLimit({ status: 429 })).toBe(true);
+		expect(isUsageLimit({ status: 429, message: "" })).toBe(true);
+		expect(isUsageLimit({ status: 429, message: "429" })).toBe(true);
+		expect(isUsageLimit({ status: 429, message: "HTTP 429" })).toBe(true);
+		expect(isUsageLimit({ status: 429, message: "Error 429" })).toBe(true);
+		expect(isUsageLimit({ status: 429, message: "{}" })).toBe(true);
 	});
 
-	it("rotates on 429 carrying quota payload codes", () => {
-		for (const message of ["insufficient_quota", "usage_limit_exceeded", "usage_limit_reached"]) {
-			expect(isUsageLimitOutcome(429, message)).toBe(true);
-		}
+	it("reads a status other than 429 as no wall of its own", () => {
+		expect(isUsageLimit({ status: 400 })).toBe(false);
+		expect(isUsageLimit({ status: 401 })).toBe(false);
+		expect(isUsageLimit({ status: 500 })).toBe(false);
+		expect(isUsageLimit({ status: 503 })).toBe(false);
 	});
 
-	it("keeps informative transient 429s in the upstream-backoff lane", () => {
+	it("keeps an informative transient 429 in the upstream-backoff lane", () => {
 		// RATE_LIMIT_EXCEEDED — generic throttling.
-		expect(isUsageLimitOutcome(429, "Cloud Code Assist API error (429): Too many requests")).toBe(false);
-		expect(isUsageLimitOutcome(429, "Requests per minute limit reached")).toBe(false);
+		expect(isUsageLimit({ status: 429, message: "Cloud Code Assist API error (429): Too many requests" })).toBe(
+			false,
+		);
+		expect(isUsageLimit({ status: 429, message: "Requests per minute limit reached" })).toBe(false);
 		// MODEL_CAPACITY_EXHAUSTED — provider overload, not account quota.
-		expect(isUsageLimitOutcome(429, "Service overloaded 529")).toBe(false);
-		// UNKNOWN but carries a transient retry hint — body is informative,
-		// so we defer to parseRateLimitReason and stay out of the quota lane.
-		expect(isUsageLimitOutcome(429, "Please retry in 5s")).toBe(false);
+		expect(isUsageLimit({ status: 429, message: "Service overloaded 529" })).toBe(false);
+		// UNKNOWN but carries a transient retry hint — the body is informative, so the reason decides.
+		expect(isUsageLimit({ status: 429, message: "Please retry in 5s" })).toBe(false);
 	});
 
-	it("still rotates on 429 with explicit account rate-limit framing", () => {
+	it("reads explicit account rate-limit framing on a 429 as a wall", () => {
 		expect(
-			isUsageLimitOutcome(
-				429,
-				'{"type":"error","error":{"type":"rate_limit_error","message":"This request would exceed your account\'s rate limit. Please try again later."}}',
-			),
+			isUsageLimit({
+				status: 429,
+				message:
+					'{"type":"error","error":{"type":"rate_limit_error","message":"This request would exceed your account\'s rate limit. Please try again later."}}',
+			}),
 		).toBe(true);
 	});
 
-	it("rotates on usage-limit message regardless of status", () => {
-		expect(isUsageLimitOutcome(undefined, "usage_limit_reached")).toBe(true);
-		expect(isUsageLimitOutcome(500, "insufficient_quota")).toBe(true);
+	it("reads quota wording as a wall whatever the status says", () => {
+		expect(isUsageLimit({ message: "usage_limit_reached" })).toBe(true);
+		expect(isUsageLimit({ status: 500, message: "insufficient_quota" })).toBe(true);
 		expect(
-			isUsageLimitOutcome(403, "403 订阅额度不足或未配置订阅: subscription quota insufficient, need=14447"),
+			isUsageLimit({
+				status: 403,
+				message: "403 订阅额度不足或未配置订阅: subscription quota insufficient, need=14447",
+			}),
 		).toBe(true);
 	});
 
-	it("rotates on xAI Grok 403 credit/spending-limit exhaustion regardless of status", () => {
+	it("reads an xAI Grok credit exhaustion as a wall on 403, 429 and no status", () => {
 		const message =
 			"403 You have run out of credits or need a Grok subscription. Add credits at https://grok.com/?_s=usage or upgrade at https://grok.com/supergrok. (type=personal-team-blocked:spending-limit)";
-		expect(isUsageLimitOutcome(403, message)).toBe(true);
-		expect(isUsageLimitOutcome(undefined, message)).toBe(true);
-		expect(isUsageLimitOutcome(429, message)).toBe(true);
+		expect(isUsageLimit({ status: 403, message })).toBe(true);
+		expect(isUsageLimit({ message })).toBe(true);
+		expect(isUsageLimit({ status: 429, message })).toBe(true);
 	});
 
-	it("does not rotate on auth/invalid-request statuses with unrelated bodies", () => {
-		expect(isUsageLimitOutcome(401, "Invalid API key")).toBe(false);
-		expect(isUsageLimitOutcome(400, "invalid_request_error: model unsupported")).toBe(false);
+	it("reads an auth or invalid-request body as no wall", () => {
+		expect(isUsageLimit({ status: 401, message: "Invalid API key" })).toBe(false);
+		expect(isUsageLimit({ status: 400, message: "invalid_request_error: model unsupported" })).toBe(false);
 	});
 });
 
