@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
 import { execSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { registerCustomApi, unregisterCustomApis } from "@veyyon/ai/api-registry";
@@ -7,9 +7,14 @@ import type { Api, Context, Model, ModelSpec, SimpleStreamOptions, ThinkingConfi
 import type { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { buildModel } from "@veyyon/catalog/build";
 import { isVertexExpressOpenAIUrl } from "@veyyon/catalog/hosts";
-import { getBundledModels, getBundledProviders, bundledCatalogDigest } from "@veyyon/catalog/models";
-import { readModelCache } from "@veyyon/catalog/model-cache";
+import { modelCacheStamp, readModelCache } from "@veyyon/catalog/model-cache";
 import { createModelManager, type ModelManagerOptions, type ModelRefreshStrategy } from "@veyyon/catalog/model-manager";
+import {
+	bundledCatalogDigest,
+	getBundledModels,
+	getBundledProviders,
+	setBundledRegistryCacheDbPath,
+} from "@veyyon/catalog/models";
 import {
 	googleAntigravityModelManagerOptions,
 	googleGeminiCliModelManagerOptions,
@@ -823,9 +828,18 @@ function getDisabledProviderIdsFromSettings(): Set<string> {
  * state produced under retired rules — the same discipline as
  * `CACHE_SCHEMA_VERSION` in `@veyyon/catalog/model-cache`.
  */
-const REGISTRY_SNAPSHOT_VERSION = 1;
+const REGISTRY_SNAPSHOT_VERSION = 2;
 
 interface StaticModelStage {
+	builtIn: Model<Api>[];
+	// Persisted as an array: JSON.stringify turns a Set into `{}` and the
+	// reader's Array.isArray guard would then reject every restore.
+	cachedStandard: { models: Model<Api>[]; authoritativeFreshProviders: string[] };
+	cachedDiscoveries: Model<Api>[];
+}
+
+/** What the reader hands back: the persisted array is a `Set` again by here. */
+interface RestoredStaticStage {
 	builtIn: Model<Api>[];
 	cachedStandard: { models: Model<Api>[]; authoritativeFreshProviders: Set<string> };
 	cachedDiscoveries: Model<Api>[];
@@ -848,6 +862,7 @@ export class ModelRegistry {
 	#registeredProviderSources: Set<string> = new Set();
 	#providerDiscoveryStates: Map<string, ProviderDiscoveryState> = new Map();
 	#cacheDbPath?: string;
+	#snapshotIo: boolean;
 	#suppressedSelectors: Map<string, number> = new Map();
 	#backgroundRefresh?: Promise<void>;
 	#lastDiscoveryWarnings: Map<string, string> = new Map();
@@ -904,15 +919,17 @@ export class ModelRegistry {
 	constructor(
 		readonly authStorage: AuthStorage,
 		modelsPath?: string,
-		options?: { fetch?: FetchImpl },
+		options?: { fetch?: FetchImpl; snapshotIo?: boolean },
 	) {
 		this.#fetch =
 			options?.fetch ??
 			(isBunTestRuntime()
 				? () => Promise.reject(new Error("network disabled in model-registry runtime test"))
 				: wrapFetchForExtraCa(fetch));
+		this.#snapshotIo = options?.snapshotIo ?? !isBunTestRuntime();
 		this.#modelsConfigFile = ModelsConfigFile.relocate(modelsPath);
 		this.#cacheDbPath = modelsPath ? path.join(path.dirname(modelsPath), "models.db") : undefined;
+		setBundledRegistryCacheDbPath(this.#cacheDbPath);
 		// Set up fallback resolver for custom provider API keys
 		this.authStorage.setFallbackResolver(provider => {
 			const keyConfig = this.#customProviderApiKeys.get(provider);
@@ -1105,7 +1122,7 @@ export class ModelRegistry {
 		// safe to persist: a fingerprint over exactly those inputs either names
 		// this exact state or misses, and a miss rebuilds through the same code.
 		const staticFingerprint = this.#staticModelStageFingerprint();
-		const restored = isBunTestRuntime() ? null : this.#readStaticModelStage(staticFingerprint);
+		const restored = this.#snapshotIo ? this.#readStaticModelStage(staticFingerprint) : null;
 		let builtInModels: Model<Api>[];
 		let cachedStandardModels: Model<Api>[];
 		let cachedDiscoveries: Model<Api>[];
@@ -1121,10 +1138,13 @@ export class ModelRegistry {
 			cachedStandardModels = this.#applyHardcodedModelPolicies(cachedStandardResult.models);
 			cachedDiscoveries = this.#applyHardcodedModelPolicies(this.#loadCachedDiscoverableModels());
 			authoritativeFreshProviders = cachedStandardResult.authoritativeFreshProviders;
-			if (!isBunTestRuntime()) {
+			if (this.#snapshotIo) {
 				this.#writeStaticModelStage(staticFingerprint, {
 					builtIn: builtInModels,
-					cachedStandard: { models: cachedStandardModels, authoritativeFreshProviders },
+					cachedStandard: {
+						models: cachedStandardModels,
+						authoritativeFreshProviders: Array.from(authoritativeFreshProviders),
+					},
 					cachedDiscoveries,
 				});
 			}
@@ -1166,24 +1186,24 @@ export class ModelRegistry {
 	/** Content digest of everything the static stage reads. */
 	#staticModelStageFingerprint(): string {
 		const dbPath = this.#cacheDbPath ?? getModelDbPath();
-		// WAL mode commits recent cache rows to `-wal` without touching the main
-		// database file, so every sidecar must join the stamp: a refresh that only
-		// moved the WAL would otherwise leave this stage fingerprint unchanged and
-		const parts: Array<string | number> = [REGISTRY_SNAPSHOT_VERSION, bundledCatalogDigest()];
-		for (const suffix of ["", "-wal", "-shm"]) {
-			try {
-				const stats = fs.statSync(dbPath + suffix);
-				parts.push(`${stats.mtimeMs}:${stats.size}`);
-			} catch {
-				parts.push("absent");
-			}
-		}
+		// Content stamp, not file stamps: SQLite moves the -wal/-shm sidecars on
+		// every connection, so mtime-based inputs missed on the launch after every
+		// write — including this stage's own — and rebuilt and rewrote the snapshot
+		// each launch. The row-content summary moves only when a row is written.
+		const parts: Array<string | number> = [
+			REGISTRY_SNAPSHOT_VERSION,
+			bundledCatalogDigest(),
+			modelCacheStamp(dbPath),
+		];
 		const customConfigDigest = createHash("sha256")
 			.update(
 				JSON.stringify({
 					overlays: this.#customModelOverlays,
 					overrides: Array.from(this.#providerOverrides),
-					modelOverrides: Array.from(this.#modelOverrides, ([provider, perModel]) => [provider, Array.from(perModel)]),
+					modelOverrides: Array.from(this.#modelOverrides, ([provider, perModel]) => [
+						provider,
+						Array.from(perModel),
+					]),
 					keyless: Array.from(this.#keylessProviders),
 					discoverable: this.#discoverableProviders,
 				}),
@@ -1197,7 +1217,7 @@ export class ModelRegistry {
 		return path.join(path.dirname(this.#cacheDbPath ?? getModelDbPath()), "resolved-models.json");
 	}
 
-	#readStaticModelStage(fingerprint: string): StaticModelStage | null {
+	#readStaticModelStage(fingerprint: string): RestoredStaticStage | null {
 		try {
 			const parsed: unknown = JSON.parse(fs.readFileSync(this.#staticModelStagePath(), "utf8"));
 			if (!isRecord(parsed) || parsed.fingerprint !== fingerprint || !isRecord(parsed.stage)) return null;
@@ -1211,10 +1231,14 @@ export class ModelRegistry {
 			const authoritativeFreshProviders = stage.cachedStandard.authoritativeFreshProviders.filter(
 				(provider): provider is string => typeof provider === "string",
 			);
-			if (authoritativeFreshProviders.length !== stage.cachedStandard.authoritativeFreshProviders.length) return null;
+			if (authoritativeFreshProviders.length !== stage.cachedStandard.authoritativeFreshProviders.length)
+				return null;
 			return {
 				builtIn,
-				cachedStandard: { models: cachedStandard, authoritativeFreshProviders: new Set(authoritativeFreshProviders) },
+				cachedStandard: {
+					models: cachedStandard,
+					authoritativeFreshProviders: new Set(authoritativeFreshProviders),
+				},
 				cachedDiscoveries,
 			};
 		} catch {

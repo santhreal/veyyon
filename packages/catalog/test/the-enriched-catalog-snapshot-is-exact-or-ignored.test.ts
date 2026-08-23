@@ -15,16 +15,21 @@
  * semantics without bumping ENRICHED_REGISTRY_FORMAT_VERSION. The version is
  * pinned by exact value below so an unrecorded change fails loudly here first.
  */
+
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { buildModel } from "../src/build";
 // Relative imports, not `@veyyon/catalog/...`: the workspace `node_modules`
 // link resolves to the primary checkout rather than to this worktree, so the
 // package specifier would test someone else's source.
-import { readEnrichedRegistrySnapshot, writeEnrichedRegistrySnapshot } from "../src/models";
-import { getBundledModels, getBundledProviders } from "../src/models";
+import {
+	getBundledModels,
+	getBundledProviders,
+	readEnrichedRegistrySnapshot,
+	writeEnrichedRegistrySnapshot,
+} from "../src/models";
 import type { Api, Model } from "../src/types";
 
 /** Pinned so an unrecorded format change cannot silently reuse old snapshots. */
@@ -76,10 +81,7 @@ describe("the enriched catalog snapshot is exact or ignored", () => {
 	it("refuses a corrupt file instead of serving partial records", () => {
 		const snapshotPath = path.join(path.dirname(dbPath), "bundled-models.json");
 		fs.mkdirSync(path.dirname(snapshotPath), { recursive: true });
-		fs.writeFileSync(
-			snapshotPath,
-			"{\"fingerprint\": \"v1:x\", \"registry\": {\"anthropic\": {\"claude-3\"",
-		);
+		fs.writeFileSync(snapshotPath, '{"fingerprint": "v1:x", "registry": {"anthropic": {"claude-3"');
 		expect(readEnrichedRegistrySnapshot("v1:x", dbPath)).toBeNull();
 	});
 
