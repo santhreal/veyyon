@@ -87,13 +87,13 @@ const RECORDED_TOKENS: Record<string, number> = {
 	"tools/vibe-spawn": 247,
 	"tools/vibe-turn-result": 163,
 	"tools/vibe-wait": 142,
-	"tools/web-search": 188,
+	"tools/web-search": 151,
 	"tools/web-search-system": 365,
 	"tools/write": 160,
 };
 
 /** The sum the recorded table claims, so the total is in the diff of any trim. */
-const RECORDED_TOTAL = 19322;
+const RECORDED_TOTAL = 19285;
 
 const measured = new Map(Object.entries(toolsPrompts).map(([id, entry]) => [id, estimateTokensFromText(entry.text)]));
 
