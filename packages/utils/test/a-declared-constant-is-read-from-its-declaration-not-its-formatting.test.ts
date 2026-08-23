@@ -76,8 +76,8 @@ describe("a declared string constant is read from its declaration", () => {
 
 	it("ignores an interpolated template, a `let`, and a non-string initializer", () => {
 		const source = [
-			// biome-ignore lint/suspicious/noTemplateCurlyInString: the `${x}` is the fixture -- an
-			// interpolated template the census must refuse to report as a constant.
+			// The `${x}` is the fixture: an interpolated template the census must refuse to report.
+			// biome-ignore lint/suspicious/noTemplateCurlyInString: the placeholder is the fixture's own bytes
 			"const INTERPOLATED = `a${x}b`;",
 			'let MUTABLE = "v";',
 			"const NUMBER = 3;",

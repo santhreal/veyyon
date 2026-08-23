@@ -12,7 +12,7 @@
  */
 
 import { isRecord } from "@veyyon/utils/type-guards";
-import type { Type } from "arktype";
+import type { ArkErrors, Type } from "arktype";
 // We import the Zod *value* (z) for runtime APIs. Marker checks rely on the
 // `_zod` symbol that every Zod v4 schema instance carries.
 import { type ZodType, z } from "zod/v4";
@@ -65,6 +65,19 @@ export function isArkSchema(value: unknown): value is Type {
 		typeof (value as { toJsonSchema?: unknown }).toJsonSchema === "function" &&
 		typeof (value as { assert?: unknown }).assert === "function"
 	);
+}
+
+/**
+ * True when `value` is what an ArkType schema returns for input it rejected.
+ *
+ * Structural, like {@link isArkSchema} above, and for the same reason plus one more: an
+ * `instanceof type.errors` test needs arktype's VALUE, and importing that costs 362ms of module
+ * evaluation wherever it is reached. `ArkErrors` is an array carrying a `summary` string; a
+ * validated result is the input value, and no schema in this tree produces a plain array with a
+ * string `summary` of its own.
+ */
+export function isArkErrors(value: unknown): value is ArkErrors {
+	return Array.isArray(value) && typeof (value as { summary?: unknown }).summary === "string";
 }
 
 function isArkJsonAst(value: unknown): boolean {

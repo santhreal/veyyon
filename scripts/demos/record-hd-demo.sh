@@ -69,6 +69,11 @@ SETTINGS=
 # named here. A clip of a static pane is a still with a file size, and the seconds it
 # spends arriving are seconds of a recorder typing.
 STILL=
+# A row about a detail on a 2560-wide screen names the mark to zoom into. The take is
+# captured wider than it publishes, so a 1920-wide crop is a 1.33x zoom with no upscale;
+# empty means the take publishes at full width. `proof/zoom.py --self-check` proves the
+# stage on the host before a take depends on it.
+ZOOM_ARGS=()
 case "${SCENE}" in
 demo-hd)
 	ASSET=assets/demo-hd.webp
@@ -296,6 +301,20 @@ for tool in "${REQUIRED_TOOLS[@]}"; do
 	fi
 done
 
+# The zoom stage measures its region with ffprobe and Pillow, both first called after the
+# recording is over. A row that asks for a zoom resolves them here for the same reason the
+# publish tools are resolved here.
+if [[ ${#ZOOM_ARGS[@]} -gt 0 && "${REHEARSAL}" -eq 0 ]]; then
+	if ! command -v ffprobe >/dev/null 2>&1; then
+		echo "record-hd-demo.sh: the zoom stage needs ffprobe, which is not on PATH." >&2
+		exit 2
+	fi
+	if ! python3 -c "import PIL" >/dev/null 2>&1; then
+		echo "record-hd-demo.sh: the zoom stage needs Pillow (python3 -m pip install pillow)." >&2
+		exit 2
+	fi
+fi
+
 # The scene checker below runs under bun. A recording is driven on the machine serving the
 # weights, which means over ssh, and a non-login shell there does not carry the installer's
 # PATH entry -- so the default install location is tried before giving up.
@@ -500,12 +519,29 @@ MARKS="${WORK}/${SCENE}-marks.tsv"
 if [[ -f "${MARKS}" && ! " ${CUT_ARGS[*]} " =~ " --single " ]]; then
 	CUT_ARGS+=(--marks "${MARKS}")
 fi
+# THE ZOOM RUNS ON THE TAKE, BEFORE THE CUT, and only when a row asked for one. A row whose
+# subject is a block of text on a 2560-wide screen loses it to the downsample, and cropping
+# after the cut would resample a clip that already passed the cadence gate. The stage keeps
+# every frame and the recorded rate, so the gate below still reads the capture's own cadence,
+# and the archived whole take stays as it was recorded.
+CUT_SOURCE="${WORK}/${SCENE}.mp4"
+if [[ ${#ZOOM_ARGS[@]} -gt 0 ]]; then
+	ZOOM_SOURCE="${WORK}/${SCENE}-zoomed.mp4"
+	if [[ -f "${MARKS}" && ! " ${ZOOM_ARGS[*]} " =~ " --marks " ]]; then
+		ZOOM_ARGS+=(--marks "${MARKS}")
+	fi
+	python3 proof/zoom.py "${CUT_SOURCE}" "${ZOOM_SOURCE}" "${ZOOM_ARGS[@]}" || {
+		echo "record-hd-demo.sh: the zoom stage found no region to hold; publishing nothing" >&2
+		exit 1
+	}
+	CUT_SOURCE="${ZOOM_SOURCE}"
+fi
 # EVERY run cuts into the work directory, and a real one copies out of it afterwards. The
 # cut used to write straight over the published asset, so a clip that had been resampled
 # on the way through replaced a good one and was only discovered later, by reading the
 # file's own frame durations. What is published now is a file that passed the gate below.
 CUT_WEBP="${WORK}/$(basename "${ASSET}")"
-python3 proof/hero-cut.py "${WORK}/${SCENE}.mp4" \
+python3 proof/hero-cut.py "${CUT_SOURCE}" \
 	--mp4 "${WORK}/${SCENE}-cut.mp4" --webp "${CUT_WEBP}" \
 	--width "${CUT_WIDTH:-2560}" --webp-width "${WEBP_WIDTH:-1920}" "${CUT_ARGS[@]}"
 

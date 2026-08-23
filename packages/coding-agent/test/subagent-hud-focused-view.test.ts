@@ -122,7 +122,7 @@ describe("the subagent HUD while the view is focused on an agent", () => {
 		terminal = new VirtualTerminal(110, 30);
 		mode.ui = new TUI(terminal);
 		vi.spyOn(mode.statusLine, "watchBranch").mockImplementation(() => {});
-		await mode.init({ suppressWelcomeIntro: true });
+		await mode.init();
 		await terminal.waitForRender();
 	});
 

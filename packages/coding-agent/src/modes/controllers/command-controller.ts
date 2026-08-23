@@ -35,7 +35,6 @@ import { compactionActionLabel, willCompactRemotely } from "../../modes/componen
 import { COMPOSER_INSET_COLS } from "../../modes/components/composer-chrome";
 import { ComposerLoader } from "../../modes/components/composer-loader";
 import { EvalExecutionComponent } from "../../modes/components/eval-execution";
-import { modalRevealEnabled } from "../../modes/components/modal-shell";
 import { MoveOverlay, type MoveOverlayResult } from "../../modes/components/move-overlay";
 import { mountTranscriptBlock, transcriptBlockText } from "../../modes/components/transcript-block-chrome";
 import { TranscriptBlock } from "../../modes/components/transcript-container";
@@ -901,21 +900,17 @@ export class CommandController {
 		const { promise, resolve } = Promise.withResolvers<MoveOverlayResult | undefined>();
 		let overlayHandle: OverlayHandle | undefined;
 		let closed = false;
-		const overlay = new MoveOverlay(
-			this.ctx.sessionManager.getCwd(),
-			result => {
-				if (closed) return;
-				closed = true;
-				overlayHandle?.hide();
-				// The suggestion band lives on the shared clock; hiding the overlay does not tell
-				// it that, and a band still travelling would keep asking for frames.
-				overlay.dispose();
-				this.ctx.focusActiveEditorArea();
-				this.ctx.ui.requestRender();
-				resolve(result);
-			},
-			modalRevealEnabled(),
-		);
+		const overlay = new MoveOverlay(this.ctx.sessionManager.getCwd(), result => {
+			if (closed) return;
+			closed = true;
+			overlayHandle?.hide();
+			// The suggestion band lives on the shared clock; hiding the overlay does not tell
+			// it that, and a band still travelling would keep asking for frames.
+			overlay.dispose();
+			this.ctx.focusActiveEditorArea();
+			this.ctx.ui.requestRender();
+			resolve(result);
+		});
 		overlay.setOnRequestRender(() => this.ctx.ui.requestRender());
 		overlayHandle = this.ctx.ui.showOverlay(overlay, {
 			anchor: "top-left",

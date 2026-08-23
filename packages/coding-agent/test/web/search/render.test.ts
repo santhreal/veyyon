@@ -97,4 +97,100 @@ describe("renderSearchResult", () => {
 		expect(answer).toMatch(/more line/);
 		expect(answer).not.toContain("FINAL_UNIQUE_MARKER");
 	});
+
+	it("renders sources as railed body lines without tree connectors", async () => {
+		const uiTheme = (await getThemeByName("dark"))!;
+		const component = renderSearchResult(buildResult(ANSWER), { expanded: true, isPartial: false }, uiTheme, {
+			query: "test query",
+		});
+		const rendered = component.render(120);
+		const plainLines = rendered.map(l => sanitizeText(l));
+		const rail = uiTheme.symbol("block.rail");
+
+		expect(plainLines[0]!).toContain("2 sources");
+
+		// Every line (header and body) starts on the rail
+		for (const line of plainLines) {
+			expect(line.startsWith(`${rail} `)).toBe(true);
+			expect(line).not.toMatch(/[├└│]/);
+		}
+
+		// Sources section contains the sources
+		const sourcesIndex = plainLines.findIndex(l => /Sources/.test(l));
+		expect(sourcesIndex).toBeGreaterThan(0);
+		expect(plainLines[sourcesIndex + 1]!).toContain("Src One");
+		expect(plainLines[sourcesIndex + 2]!).toContain("Src Two");
+	});
+
+	it("respects collapsed vs expanded sources budgets with overflow summary line", async () => {
+		const uiTheme = (await getThemeByName("dark"))!;
+		const sources = Array.from({ length: 12 }, (_, i) => ({
+			title: `Source Result ${i}`,
+			url: `https://example.com/res${i}`,
+		}));
+		const res: { content: Array<{ type: string; text?: string }>; details: SearchRenderDetails } = {
+			content: [{ type: "text", text: "Some answer" }],
+			details: {
+				response: {
+					provider: "perplexity",
+					answer: "Some answer",
+					sources,
+				},
+			},
+		};
+
+		const rail = uiTheme.symbol("block.rail");
+
+		// Collapsed mode: shows 8 sources + 1 overflow summary line
+		const collapsed = renderSearchResult(res, { expanded: false, isPartial: false }, uiTheme).render(120);
+		const plainCollapsed = collapsed.map(l => sanitizeText(l));
+		expect(plainCollapsed[0]!).toContain("12 sources");
+		for (const line of plainCollapsed.slice(1)) {
+			expect(line.startsWith(`${rail} `)).toBe(true);
+			expect(line).not.toMatch(/[├└│]/);
+		}
+		expect(plainCollapsed.some(l => l.includes("… 4 more sources"))).toBe(true);
+
+		// Expanded mode: shows all 12 sources
+		const expanded = renderSearchResult(res, { expanded: true, isPartial: false }, uiTheme).render(120);
+		const plainExpanded = expanded.map(l => sanitizeText(l));
+		expect(plainExpanded[0]!).toContain("12 sources");
+		for (const line of plainExpanded.slice(1)) {
+			expect(line.startsWith(`${rail} `)).toBe(true);
+			expect(line).not.toMatch(/[├└│]/);
+		}
+		expect(plainExpanded.some(l => l.includes("more source"))).toBe(false);
+	});
+
+	it("renders fallback text and error panels as railed framed blocks without tree connectors", async () => {
+		const uiTheme = (await getThemeByName("dark"))!;
+		const rail = uiTheme.symbol("block.rail");
+
+		// Fallback text (no response details)
+		const fallbackComp = renderSearchResult(
+			{ content: [{ type: "text", text: "Line 1\nLine 2\nLine 3" }] },
+			{ expanded: true, isPartial: false },
+			uiTheme,
+		);
+		const fallbackLines = fallbackComp.render(120).map(l => sanitizeText(l));
+		for (const line of fallbackLines) {
+			expect(line.startsWith(`${rail} `)).toBe(true);
+			expect(line).not.toMatch(/[├└│]/);
+		}
+
+		// Error panel
+		const errorComp = renderSearchResult(
+			{ content: [], details: { error: "Network timeout", response: { provider: "brave" } as never } },
+			{ expanded: false, isPartial: false },
+			uiTheme,
+		);
+		const errorLines = errorComp.render(120).map(l => sanitizeText(l));
+		expect(errorLines[0]!).toContain("Web Search");
+		expect(errorLines[0]!).toContain("Brave");
+		for (const line of errorLines) {
+			expect(line.startsWith(`${rail} `)).toBe(true);
+			expect(line).not.toMatch(/[├└│]/);
+		}
+		expect(errorLines[1]!).toContain("Error: Network timeout");
+	});
 });

@@ -16,7 +16,13 @@ import { STREAM_FRAME_LIMIT_ERROR_NAME } from "@veyyon/utils/stream-frame-limit"
 import type { Api, AssistantMessage } from "../types";
 import { STREAM_ENVELOPE_ERROR_PREFIX } from "./classes";
 import { withoutStackTrace } from "./domains/account";
-import { http2Verdict, isCopilotModelNotSupported, STREAM_BEFORE_MESSAGE_START_PATTERN } from "./domains/network";
+import {
+	http2Verdict,
+	isCopilotModelNotSupported,
+	STREAM_BEFORE_MESSAGE_START_PATTERN,
+	STREAM_EVENT_ORDER_PATTERN,
+	STREAM_PARSE_TRUNCATION_PATTERN,
+} from "./domains/network";
 import { matchesOverflowText } from "./domains/request";
 import type { Signal } from "./domains/types";
 import { create, Flag, is, KIND_MASK, statusFromId } from "./flag";
@@ -44,6 +50,7 @@ export {
 	recover,
 	retriable,
 	TURN_RETRIABLE_MASK,
+	vetoesRetry,
 } from "./registry";
 
 /**
@@ -323,9 +330,9 @@ export function isContextOverflow(message: AssistantMessage, contextWindow?: num
 	return message.stopReason === "error" && !!message.errorMessage && matchesOverflowText(message.errorMessage);
 }
 
-const STREAM_PARSE_TRUNCATION_PATTERN =
-	/unterminated string|unexpected end of json input|unexpected end of data|unexpected eof|end of file|eof while parsing|truncated/i;
-const STREAM_EVENT_ORDER_PATTERN = /stream event order|before message_start/i;
+// The stream-corruption vocabulary belongs to the transport family, which is the only place that
+// decides what it means; these two predicates are the identity questions the providers ask about a
+// stream they were reading when it broke.
 
 /** Transient stream corruption where the response was truncated mid-JSON. */
 export function isTransientStreamParseError(error: unknown): boolean {
@@ -338,11 +345,6 @@ export function isStreamEnvelopeError(error: unknown): boolean {
 		error instanceof Error &&
 		(error.message.includes(STREAM_ENVELOPE_ERROR_PREFIX) || STREAM_EVENT_ORDER_PATTERN.test(error.message))
 	);
-}
-
-/** Stream-envelope errors safe to retry against the provider (event ordering only). */
-export function isRetryableStreamEnvelopeError(error: unknown): boolean {
-	return error instanceof Error && STREAM_EVENT_ORDER_PATTERN.test(error.message);
 }
 
 /**

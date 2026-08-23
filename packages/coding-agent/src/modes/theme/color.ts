@@ -4,7 +4,7 @@
 // surface so external imports are unchanged.
 
 import { SGR_BG_RESET, SGR_FG_RESET } from "@veyyon/tui/ansi";
-import { type } from "arktype";
+import { isRecord } from "@veyyon/utils/type-guards";
 import type { SpinnerFramesOverride } from "./symbols";
 
 // ============================================================================
@@ -13,147 +13,183 @@ import type { SpinnerFramesOverride } from "./symbols";
 
 export type ColorValue = string | number;
 
-// Schema construction is deferred: building these arktype schemas costs
-// ~15ms at import time, yet they are only needed when validating a CUSTOM
-// theme JSON file (builtin themes bypass validation). getThemeJsonSchema()
-// builds once on first use.
-function buildThemeJsonSchema() {
-	const themeColorsSchema = type({
-		accent: "string | number",
-		border: "string | number",
-		borderAccent: "string | number",
-		borderMuted: "string | number",
-		success: "string | number",
-		error: "string | number",
-		warning: "string | number",
-		muted: "string | number",
-		dim: "string | number",
-		text: "string | number",
-		thinkingText: "string | number",
-		selectedBg: "string | number",
-		userMessageBg: "string | number",
-		userMessageText: "string | number",
-		customMessageBg: "string | number",
-		customMessageText: "string | number",
-		customMessageLabel: "string | number",
-		toolPendingBg: "string | number",
-		toolSuccessBg: "string | number",
-		toolErrorBg: "string | number",
-		toolTitle: "string | number",
-		toolOutput: "string | number",
-		mdHeading: "string | number",
-		mdLink: "string | number",
-		mdLinkUrl: "string | number",
-		"link?": "string | number",
-		mdCode: "string | number",
-		mdCodeBlock: "string | number",
-		mdCodeBlockBorder: "string | number",
-		mdQuote: "string | number",
-		mdQuoteBorder: "string | number",
-		mdHr: "string | number",
-		mdListBullet: "string | number",
-		toolDiffAdded: "string | number",
-		toolDiffRemoved: "string | number",
-		toolDiffContext: "string | number",
-		syntaxComment: "string | number",
-		syntaxKeyword: "string | number",
-		syntaxFunction: "string | number",
-		syntaxVariable: "string | number",
-		syntaxString: "string | number",
-		syntaxNumber: "string | number",
-		syntaxType: "string | number",
-		syntaxOperator: "string | number",
-		syntaxPunctuation: "string | number",
-		thinkingOff: "string | number",
-		thinkingMinimal: "string | number",
-		thinkingLow: "string | number",
-		thinkingMedium: "string | number",
-		thinkingHigh: "string | number",
-		thinkingXhigh: "string | number",
-		"thinkingMax?": "string | number",
-		bashMode: "string | number",
-		pythonMode: "string | number",
-		statusLineBg: "string | number",
-		statusLineSep: "string | number",
-		statusLineModel: "string | number",
-		statusLinePath: "string | number",
-		statusLineGitClean: "string | number",
-		statusLineGitDirty: "string | number",
-		statusLineContext: "string | number",
-		statusLineSpend: "string | number",
-		statusLineStaged: "string | number",
-		statusLineDirty: "string | number",
-		statusLineUntracked: "string | number",
-		statusLineOutput: "string | number",
-		statusLineCost: "string | number",
-		statusLineSubagents: "string | number",
-		// Identity/state accent tokens (the design system's cool arc) plus the
-		// match highlight (warm arc). Optional: themes that predate them get the
-		// documented load-time defaults (see QUIET_TOKEN_DEFAULTS in theme.ts).
-		"sessionAccent?": "string | number",
-		"modeAccent?": "string | number",
-		"shareAccent?": "string | number",
-		"infoAccent?": "string | number",
-		"matchHighlight?": "string | number",
-		// Composer quiet-card ground (DS-6 layer 0). Optional: themes that omit
-		// it inherit statusLineBg (see QUIET_TOKEN_DEFAULTS in theme.ts).
-		"composerBg?": "string | number",
-	});
-	const spinnerFramesSchema = type("unknown").narrow((value): value is SpinnerFramesOverride => {
-		if (Array.isArray(value)) {
-			return value.length >= 1 && value.every(item => typeof item === "string");
-		}
-		if (value && typeof value === "object") {
-			const obj = value as Record<string, unknown>;
-			const entries = [obj.status, obj.activity, obj.thinking];
-			if (entries.every(entry => entry === undefined)) return false;
-			for (const entry of entries) {
-				if (entry === undefined) continue;
-				if (!Array.isArray(entry) || entry.length < 1 || !entry.every(item => typeof item === "string")) {
-					return false;
-				}
-			}
-			return true;
-		}
-		return false;
-	});
-	return type({
-		"$schema?": "string",
-		name: "string",
-		"vars?": "Record<string, string | number>",
-		colors: themeColorsSchema,
-		"export?": {
-			"pageBg?": "string | number",
-			"cardBg?": "string | number",
-			"infoBg?": "string | number",
-		},
-		"symbols?": {
-			"preset?": "'unicode' | 'nerd' | 'ascii'",
-			"overrides?": "Record<string, string>",
-			"spinnerFrames?": spinnerFramesSchema,
-		},
-	});
+/**
+ * A theme file, as a custom theme on disk is allowed to be written.
+ *
+ * Declared rather than inferred from a schema library. The library was reached at module load
+ * for the sake of validating a file that only a custom theme has, and its own evaluation is
+ * 362ms before a single schema is built -- paid by every launch, because the theme module is on
+ * the path that draws the first frame. The token lists below carry a `satisfies` proof that the
+ * runtime key sets and the compile-time unions are the same set, which is what the schema was
+ * really providing.
+ */
+export interface ThemeJson {
+	$schema?: string;
+	name: string;
+	vars?: Record<string, ColorValue>;
+	colors: ThemeJsonColors;
+	export?: {
+		pageBg?: ColorValue;
+		cardBg?: ColorValue;
+		infoBg?: ColorValue;
+	};
+	symbols?: {
+		preset?: "unicode" | "nerd" | "ascii";
+		overrides?: Record<string, string>;
+		spinnerFrames?: SpinnerFramesOverride;
+	};
 }
 
 /**
- * The validator `buildThemeJsonSchema` returns.
- *
- * Named once because three declarations needed it and each had spelled
- * `ReturnType<typeof buildThemeJsonSchema>` again: the cache slot, the accessor's
- * return, and the inferred theme shape. The type is arktype's, with no name of
- * its own to import, so the alias is the only place the derivation can live.
+ * Color tokens a theme file may leave out; every other token in `ThemeColor | ThemeBg` is
+ * required. A token added to this list stops being required, which is the whole reason the list
+ * is one array and not a `?` sprinkled across seventy lines.
  */
-type ThemeJsonSchema = ReturnType<typeof buildThemeJsonSchema>;
+export const OPTIONAL_THEME_COLOR_TOKENS = [
+	"link",
+	"thinkingMax",
+	"sessionAccent",
+	"modeAccent",
+	"shareAccent",
+	"infoAccent",
+	"matchHighlight",
+	"composerBg",
+] as const satisfies readonly (ThemeColor | ThemeBg)[];
 
-let themeJsonSchemaCache: ThemeJsonSchema | undefined;
+type OptionalThemeColorToken = (typeof OPTIONAL_THEME_COLOR_TOKENS)[number];
+type RequiredThemeColorToken = Exclude<ThemeColor | ThemeBg, OptionalThemeColorToken>;
 
-/** The theme JSON validator, built lazily on first custom-theme load. */
-export function getThemeJsonSchema(): ThemeJsonSchema {
-	themeJsonSchemaCache ??= buildThemeJsonSchema();
-	return themeJsonSchemaCache;
+/**
+ * A theme file's `colors` object.
+ *
+ * An alias and not an interface: callers pass it where a `Record<string, ColorValue>` is wanted,
+ * and TypeScript grants an implicit index signature to an alias of a mapped type but never to an
+ * interface.
+ */
+export type ThemeJsonColors = Record<RequiredThemeColorToken, ColorValue> &
+	Partial<Record<OptionalThemeColorToken, ColorValue>>;
+
+/**
+ * What a theme file got wrong, or nothing.
+ *
+ * Missing colors are separated from the rest because the reader tells a theme author which
+ * tokens to add, and the previous code recovered that list by running a regular expression over
+ * a validator's prose summary.
+ */
+export interface ThemeJsonProblems {
+	missingColors: string[];
+	problems: string[];
 }
 
-export type ThemeJson = ThemeJsonSchema["infer"];
+function isColorValue(value: unknown): boolean {
+	return typeof value === "string" || typeof value === "number";
+}
+
+function isColorValueRecord(value: unknown): boolean {
+	return isRecord(value) && Object.values(value).every(isColorValue);
+}
+
+function isStringRecord(value: unknown): boolean {
+	return isRecord(value) && Object.values(value).every(entry => typeof entry === "string");
+}
+
+function isSpinnerFrameList(value: unknown): boolean {
+	return Array.isArray(value) && value.length >= 1 && value.every(item => typeof item === "string");
+}
+
+/** A frame list, or a named set of them with at least one lane declared. */
+function isSpinnerFramesOverride(value: unknown): value is SpinnerFramesOverride {
+	if (isSpinnerFrameList(value)) {
+		return true;
+	}
+	if (!isRecord(value)) {
+		return false;
+	}
+	const lanes = [value.status, value.activity, value.thinking];
+	if (lanes.every(lane => lane === undefined)) {
+		return false;
+	}
+	return lanes.every(lane => lane === undefined || isSpinnerFrameList(lane));
+}
+
+/**
+ * Checks a parsed theme file. Both lists empty means the value is a {@link ThemeJson}.
+ *
+ * Unknown keys pass, as they did before: a theme written for a newer build carries tokens this
+ * one has never heard of, and refusing the file would make an upgrade the only way to open it.
+ */
+export function validateThemeJson(value: unknown): ThemeJsonProblems {
+	const problems: string[] = [];
+	const missingColors: string[] = [];
+
+	if (!isRecord(value)) {
+		return { missingColors, problems: ["the file is not a JSON object"] };
+	}
+	if (typeof value.name !== "string") {
+		problems.push('"name" must be a string');
+	}
+	if (value.$schema !== undefined && typeof value.$schema !== "string") {
+		problems.push('"$schema" must be a string');
+	}
+	if (value.vars !== undefined && !isColorValueRecord(value.vars)) {
+		problems.push('"vars" must map each name to a string or a number');
+	}
+
+	const colors = value.colors;
+	if (!isRecord(colors)) {
+		problems.push('"colors" must be an object');
+	} else {
+		for (const token of REQUIRED_THEME_COLOR_TOKENS) {
+			if (colors[token] === undefined) {
+				missingColors.push(token);
+			} else if (!isColorValue(colors[token])) {
+				problems.push(`"colors.${token}" must be a string or a number`);
+			}
+		}
+		for (const token of OPTIONAL_THEME_COLOR_TOKENS) {
+			if (colors[token] !== undefined && !isColorValue(colors[token])) {
+				problems.push(`"colors.${token}" must be a string or a number`);
+			}
+		}
+	}
+
+	const exported = value.export;
+	if (exported !== undefined) {
+		if (!isRecord(exported)) {
+			problems.push('"export" must be an object');
+		} else {
+			for (const key of ["pageBg", "cardBg", "infoBg"] as const) {
+				if (exported[key] !== undefined && !isColorValue(exported[key])) {
+					problems.push(`"export.${key}" must be a string or a number`);
+				}
+			}
+		}
+	}
+
+	const symbols = value.symbols;
+	if (symbols !== undefined) {
+		if (!isRecord(symbols)) {
+			problems.push('"symbols" must be an object');
+		} else {
+			if (
+				symbols.preset !== undefined &&
+				(typeof symbols.preset !== "string" || !["unicode", "nerd", "ascii"].includes(symbols.preset))
+			) {
+				problems.push('"symbols.preset" must be "unicode", "nerd" or "ascii"');
+			}
+			if (symbols.overrides !== undefined && !isStringRecord(symbols.overrides)) {
+				problems.push('"symbols.overrides" must map each name to a string');
+			}
+			if (symbols.spinnerFrames !== undefined && !isSpinnerFramesOverride(symbols.spinnerFrames)) {
+				problems.push(
+					'"symbols.spinnerFrames" must be a non-empty list of strings, or name at least one of status, activity, thinking with one',
+				);
+			}
+		}
+	}
+
+	return { missingColors, problems };
+}
 
 export type ThemeColor =
 	| "accent"
@@ -309,6 +345,32 @@ export type ThemeBg =
 	| "toolErrorBg"
 	| "statusLineBg"
 	| "composerBg";
+
+/** Set of all valid ThemeBg string values, and the runtime half of the required-token list. */
+const THEME_BG_RECORD = {
+	selectedBg: true,
+	userMessageBg: true,
+	customMessageBg: true,
+	toolPendingBg: true,
+	toolSuccessBg: true,
+	toolErrorBg: true,
+	statusLineBg: true,
+	composerBg: true,
+} satisfies Record<ThemeBg, true>;
+
+/**
+ * Every color token a theme file must carry: both unions minus the optional list.
+ *
+ * Derived from the two `satisfies Record<..., true>` tables rather than written out again, so a
+ * token added to either union is required by this validator without anyone remembering to add
+ * it here. The `satisfies` on the result is the proof that the derivation stayed a subset.
+ */
+export const REQUIRED_THEME_COLOR_TOKENS: readonly RequiredThemeColorToken[] = [
+	...Object.keys(THEME_COLOR_RECORD),
+	...Object.keys(THEME_BG_RECORD),
+].filter(
+	(token): token is RequiredThemeColorToken => !(OPTIONAL_THEME_COLOR_TOKENS as readonly string[]).includes(token),
+);
 
 export type ColorMode = "truecolor" | "256color";
 
