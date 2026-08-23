@@ -117,7 +117,7 @@ bun measure-retype-likelihood.ts --json
    ```
 2. Install Pier and verify Docker is running:
    ```bash
-   uv tool install datacurve-pier
+   uv tool install 'datacurve-pier>=0.3.1'
    ```
 3. `run.ts` compiles `dist/vey` if out of date and stages credentials to `assets/auth-agent.db`.
 
