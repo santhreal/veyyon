@@ -2,6 +2,13 @@ import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import { DEFAULT_CALLBACK_PATH, OAuthCallbackFlow } from "@veyyon/ai/oauth/callback-server";
 import type { OAuthController, OAuthCredentials } from "@veyyon/ai/oauth/types";
+import { namedImportsFrom } from "@veyyon/utils/module-reach";
+import {
+	type DeclaringModule,
+	declarersOfStringValue,
+	stringConstantsIn,
+	stringConstantValue,
+} from "@veyyon/utils/source-declarations";
 
 /**
  * The default loopback path an OAuth provider redirects back to, and the one place it is decided.
@@ -23,6 +30,16 @@ import type { OAuthController, OAuthCredentials } from "@veyyon/ai/oauth/types";
 
 const AI_SRC = path.resolve(import.meta.dir, "../src");
 const OWNER = "registry/oauth/callback-server.ts";
+
+/** The three modules that each kept their own copy of the default, and now import it. */
+const FORMER_DECLARERS = ["registry/oauth/anthropic.ts", "registry/oauth/devin.ts", "registry/oauth/gitlab-duo.ts"];
+
+/** The paths that stay local, because each is what that provider registered as its redirect URI. */
+const PROVIDER_PATHS = new Map([
+	["registry/oauth/google-antigravity.ts", "/oauth-callback"],
+	["registry/oauth/google-gemini-cli.ts", "/oauth2callback"],
+	["registry/oauth/openai-codex.ts", "/auth/callback"],
+]);
 
 /**
  * The smallest concrete flow this class allows, so the constructor's own defaults can be read back. Neither
@@ -90,56 +107,50 @@ describe("OAuthCallbackFlow defaults to the exported path", () => {
 });
 
 describe("the default path has one owner", () => {
-	async function oauthSources(): Promise<Array<{ file: string; text: string }>> {
+	async function oauthModules(): Promise<DeclaringModule[]> {
 		const files = [...new Bun.Glob("registry/oauth/**/*.ts").scanSync(AI_SRC)]
 			.map(file => file.split(path.sep).join("/"))
 			.sort();
 		return await Promise.all(
-			files.map(async file => ({ file, text: await Bun.file(path.join(AI_SRC, file)).text() })),
+			files.map(async file => ({ file, source: await Bun.file(path.join(AI_SRC, file)).text() })),
 		);
 	}
 
 	/**
 	 * The ratchet. Three of the four duplicates lived in this directory, each one line long and each
-	 * looking harmless on its own. This fails the moment a fourth appears.
+	 * looking harmless on its own. This fails the moment a fourth appears, whatever it names the binding
+	 * and however it quotes the value: the census compares decoded declarations, so a second
+	 * `const CALLBACK_PATH = '/callback'` is red where a search for the owner's formatted line was green.
 	 */
-	it("declares the literal in callback-server.ts and nowhere else under registry/oauth", async () => {
-		const declarers = (await oauthSources())
-			.filter(entry => /=\s*"\/callback"/.test(entry.text))
-			.map(entry => entry.file);
-		expect(declarers).toEqual([OWNER]);
+	it("declares the value in callback-server.ts and nowhere else under registry/oauth", async () => {
+		expect(declarersOfStringValue(await oauthModules(), DEFAULT_CALLBACK_PATH)).toEqual([OWNER]);
 	});
 
 	/**
 	 * The non-vacuity twin. A broken glob would let the case above pass by reading nothing, so this proves
-	 * the scan covers the providers that used to declare it and can see the literal in the owner.
+	 * the scan covers the providers that used to declare it and that the owner's declaration is the one
+	 * the census found.
 	 */
 	it("scans the providers that used to declare it", async () => {
-		const files = (await oauthSources()).map(entry => entry.file);
-		for (const provider of [
-			"registry/oauth/anthropic.ts",
-			"registry/oauth/devin.ts",
-			"registry/oauth/gitlab-duo.ts",
-		]) {
-			expect(files).toContain(provider);
-		}
-		const owner = await Bun.file(path.join(AI_SRC, OWNER)).text();
-		expect(owner).toContain('export const DEFAULT_CALLBACK_PATH = "/callback";');
+		const modules = await oauthModules();
+		expect(modules.map(module => module.file)).toEqual(expect.arrayContaining(FORMER_DECLARERS));
+
+		const owner = modules.find(module => module.file === OWNER);
+		expect(stringConstantsIn(owner?.source ?? "")).toEqual(
+			expect.arrayContaining([{ name: "DEFAULT_CALLBACK_PATH", value: DEFAULT_CALLBACK_PATH, exported: true }]),
+		);
 	});
 
 	/**
-	 * The positive half: each former declarer now imports the value. A module that had gone back to its own
-	 * literal spelled differently would slip past the ratchet above but not past this.
+	 * The positive half: each former declarer now takes the value from the owner. A module that had gone
+	 * back to its own literal spelled differently would slip past the ratchet above but not past this,
+	 * because the binding it imports is what it can pass to `super`.
 	 */
 	it("has every former declarer importing the owner's constant", async () => {
-		for (const provider of [
-			"registry/oauth/anthropic.ts",
-			"registry/oauth/devin.ts",
-			"registry/oauth/gitlab-duo.ts",
-		]) {
-			const text = await Bun.file(path.join(AI_SRC, provider)).text();
-			expect(text).toContain("DEFAULT_CALLBACK_PATH");
-			expect(text).toMatch(/from "\.\/callback-server";/);
+		const modules = await oauthModules();
+		for (const declarer of FORMER_DECLARERS) {
+			const source = modules.find(module => module.file === declarer)?.source ?? "";
+			expect(namedImportsFrom(source, "./callback-server"), declarer).toContain("DEFAULT_CALLBACK_PATH");
 		}
 	});
 
@@ -149,29 +160,30 @@ describe("the default path has one owner", () => {
 	 * It is asserted from here because this module is what the value belongs to, wherever a duplicate lived.
 	 */
 	it("has the MCP flow taking the fallback from here rather than redeclaring it", async () => {
-		const mcpFlow = path.resolve(import.meta.dir, "../../coding-agent/src/mcp/oauth-flow.ts");
-		const text = await Bun.file(mcpFlow).text();
-		expect(text).toContain(
-			'import { DEFAULT_CALLBACK_PATH, OAuthCallbackFlow } from "@veyyon/ai/oauth/callback-server";',
+		const file = "../coding-agent/src/mcp/oauth-flow.ts";
+		const source = await Bun.file(path.resolve(import.meta.dir, "../../coding-agent/src/mcp/oauth-flow.ts")).text();
+
+		expect(namedImportsFrom(source, "@veyyon/ai/oauth/callback-server")).toEqual(
+			expect.arrayContaining(["DEFAULT_CALLBACK_PATH", "OAuthCallbackFlow"]),
 		);
-		expect(text).not.toMatch(/=\s*"\/callback"/);
+		expect(declarersOfStringValue([{ file, source }], DEFAULT_CALLBACK_PATH)).toEqual([]);
 	});
 
 	/**
 	 * The three provider-specific paths are deliberately NOT unified: each is what that provider has
-	 * registered as its redirect URI, so they are provider facts and not a shared default. Recorded as an
-	 * expectation so that collapsing them into the owner fails here and has to be argued for.
+	 * registered as its redirect URI, so they are provider facts and not a shared default. Read by name
+	 * because each is module-private and cannot be imported; recorded as an expectation so that collapsing
+	 * them into the owner fails here and has to be argued for.
 	 */
 	it("leaves each provider-specific path local to its provider", async () => {
-		const expected = new Map([
-			["registry/oauth/openai-codex.ts", "/auth/callback"],
-			["registry/oauth/google-antigravity.ts", "/oauth-callback"],
-			["registry/oauth/google-gemini-cli.ts", "/oauth2callback"],
-		]);
-		for (const [file, servedPath] of expected) {
-			const text = await Bun.file(path.join(AI_SRC, file)).text();
-			expect(text).toContain(`const CALLBACK_PATH = "${servedPath}";`);
-			expect(servedPath).not.toBe(DEFAULT_CALLBACK_PATH);
-		}
+		const modules = await oauthModules();
+		const served = new Map(
+			modules
+				.filter(module => PROVIDER_PATHS.has(module.file))
+				.map(module => [module.file, stringConstantValue(module.source, "CALLBACK_PATH")]),
+		);
+
+		expect(served).toEqual(PROVIDER_PATHS);
+		for (const servedPath of PROVIDER_PATHS.values()) expect(servedPath).not.toBe(DEFAULT_CALLBACK_PATH);
 	});
 });

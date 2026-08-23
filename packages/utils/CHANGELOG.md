@@ -13,6 +13,7 @@
 - The minimum supported Bun runtime is now 1.4.0.
 
 ### Added
+- `source-declarations.ts`: `stringConstantsIn`, `declarersOfStringValue` and `stringConstantValue` read the string constants a module declares and compare decoded values, so a one-owner gate no longer searches source text for a formatted line. A duplicate declared under another name, in single quotes, with different spacing, or behind a type annotation is now caught; a rename or a reflow of the owner no longer reports a failure that is only formatting.
 
 - `definePromptRows` declares a directory's prompt rows and is the seam where an eval-only prompt override applies. A module that sends one prompt imports its row table directly, so replacing text in the aggregate registry alone reached the inspection commands and nothing a model is sent. Costs nothing when `VEYYON_EVAL_PROMPTS` is unset: the table is returned by identity.
 - `VEYYON_EVAL_PROMPTS` (JSON of prompt id to replacement text) varies any registered prompt for one benchmark arm, so a tool description or a subagent prompt can be measured without editing a file both arms share. An active override announces itself once per id, naming the registry it altered. `eval-prompt-overrides.ts` owns the parse, the substitution and the announcement, and `unclaimedEvalPromptOverrideIds` reports ids no registry took, for a caller that knows the complete registry set.
