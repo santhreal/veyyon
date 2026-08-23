@@ -3167,19 +3167,66 @@ export function coreWeaveModelManagerOptions(
 }
 
 // ---------------------------------------------------------------------------
-// 15.6 Cohere (Command Code / OpenAI-compatible endpoint)
+// 15.6 Command Code
 // ---------------------------------------------------------------------------
 
-export interface CohereModelManagerConfig {
+/**
+ * The Command Code models the provider documents with fixed rates and context
+ * windows (the coding flagships of its open-model catalog). Its Provider API
+ * lists every hosted model publicly, so live discovery with a key widens the
+ * list at runtime; the seed keeps the provider usable when generation has no
+ * key. Output ceilings are left unset: the endpoint is an OpenAI-compatible
+ * proxy and does not document a per-model completion cap.
+ */
+export const COMMAND_CODE_STATIC_MODELS: readonly ModelSpec<"openai-completions">[] = [
+	{
+		id: "moonshotai/Kimi-K2.7-Code",
+		name: "Kimi K2.7 Code",
+		api: "openai-completions",
+		provider: "command-code",
+		baseUrl: "https://api.commandcode.ai/provider/v1",
+		reasoning: false,
+		input: ["text"],
+		cost: { input: 0.95, output: 4, cacheRead: 0.19, cacheWrite: 0 },
+		contextWindow: 262144,
+		maxTokens: null,
+	},
+	{
+		id: "zai-org/GLM-5.3",
+		name: "GLM-5.3",
+		api: "openai-completions",
+		provider: "command-code",
+		baseUrl: "https://api.commandcode.ai/provider/v1",
+		reasoning: false,
+		input: ["text"],
+		cost: { input: 1.4, output: 4.4, cacheRead: 0.26, cacheWrite: 0 },
+		contextWindow: 1048576,
+		maxTokens: null,
+	},
+	{
+		id: "MiniMaxAI/MiniMax-M3",
+		name: "MiniMax M3",
+		api: "openai-completions",
+		provider: "command-code",
+		baseUrl: "https://api.commandcode.ai/provider/v1",
+		reasoning: false,
+		input: ["text"],
+		cost: { input: 0.3, output: 1.2, cacheRead: 0.06, cacheWrite: 0 },
+		contextWindow: 1048576,
+		maxTokens: null,
+	},
+];
+
+export interface CommandCodeModelManagerConfig {
 	apiKey?: string;
 	baseUrl?: string;
 	fetch?: FetchImpl;
 }
 
-export function cohereModelManagerOptions(
-	config?: CohereModelManagerConfig,
+export function commandCodeModelManagerOptions(
+	config?: CommandCodeModelManagerConfig,
 ): ModelManagerOptions<"openai-completions"> {
-	return createSimpleOpenAICompletionsOptions("cohere", "https://api.cohere.ai/compatibility/v1", config);
+	return createSimpleOpenAICompletionsOptions("command-code", "https://api.commandcode.ai/provider/v1", config);
 }
 
 // ---------------------------------------------------------------------------
@@ -5146,8 +5193,6 @@ const MODELS_DEV_PROVIDER_DESCRIPTORS_SPECIALIZED: readonly ModelsDevProviderDes
 			return { api: "openai-completions" as const, baseUrl: ZENMUX_OPENAI_BASE_URL };
 		},
 	}),
-	// --- Cohere ---
-	openAiCompletionsDescriptor("cohere", "cohere", "https://api.cohere.ai/compatibility/v1"),
 ];
 /** All provider descriptors for models.dev data mapping in generate-models.ts. */
 export const MODELS_DEV_PROVIDER_DESCRIPTORS: readonly ModelsDevProviderDescriptor[] = [

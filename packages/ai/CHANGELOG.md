@@ -14,7 +14,7 @@
 
 ### Added
 
-- Cohere and Nous Research join the login registry as API-key providers. Cohere validates a pasted key against the official compatibility endpoint (`https://api.cohere.ai/compatibility/v1`) with a Command chat completion; Nous Research validates against `https://inference-api.nousresearch.com/v1` with a Hermes 4 completion. Both accept headless env fallbacks through the catalog table's `envVars` (`COHERE_API_KEY`/`CO_API_KEY`, `NOUS_API_KEY`).
+- Command Code and Nous Research join the login registry as API-key providers. Command Code validates a pasted key against its Provider API (`https://api.commandcode.ai/provider/v1`) with a Kimi K2.7 Code chat completion; Nous Research validates against `https://inference-api.nousresearch.com/v1` with a Hermes 4 completion. Both accept headless env fallbacks through the catalog table's `envVars` (`COMMAND_CODE_API_KEY`, `NOUS_API_KEY`).
 
 ### Changed
 - The OAuth callback-path and dialect wire-tag ownership gates read declarations instead of source text. Both proved "declared here and nowhere else" by matching the owner's formatted line, which stayed green for a duplicate spelled any other way; they now ask the declaration census in `@veyyon/utils/source-declarations` and the parsed import lists, so a re-copied constant is red however it is written.

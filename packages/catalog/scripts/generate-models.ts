@@ -35,6 +35,7 @@ import {
 	ANTHROPIC_CURATED_FALLBACK_MODELS,
 	buildFireworksFastSeed,
 	buildXaiOAuthStaticSeed,
+	COMMAND_CODE_STATIC_MODELS,
 	clampFireworksKimiMaxTokens,
 	clampKimiK27CodeMaxTokens,
 	isFireworksKimiK2ModelId,
@@ -654,6 +655,12 @@ async function generateModels() {
 	// fills ids discovery did not report.
 	if (!authoritativeCatalogProviders.has("nous-research")) {
 		allModels.push(...NOUS_RESEARCH_STATIC_MODELS);
+	}
+	// Same shape as the Nous seed: the Provider API's model list is public, but
+	// a credential-less regen cannot run dynamic discovery, so the documented
+	// flagships ship in the bundle and a live fetch replaces them per key.
+	if (!authoritativeCatalogProviders.has("command-code")) {
+		allModels.push(...COMMAND_CODE_STATIC_MODELS);
 	}
 	// Seed the GitLab Duo Agent fallback model so a fresh install (no credentialed
 	// dynamic discovery/cache yet) still surfaces the provider's default model in the

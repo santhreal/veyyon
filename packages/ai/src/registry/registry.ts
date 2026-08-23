@@ -7,7 +7,7 @@ import { azureProvider } from "./azure";
 import { basetenProvider } from "./baseten";
 import { cerebrasProvider } from "./cerebras";
 import { cloudflareAiGatewayProvider } from "./cloudflare-ai-gateway";
-import { cohereProvider } from "./cohere";
+import { commandCodeProvider } from "./command-code";
 import { coreWeaveProvider } from "./coreweave";
 import { cursorProvider } from "./cursor";
 import { deepseekProvider } from "./deepseek";
@@ -109,7 +109,7 @@ const ALL = [
 	deepseekProvider,
 	moonshotProvider,
 	cerebrasProvider,
-	cohereProvider,
+	commandCodeProvider,
 	basetenProvider,
 	fireworksProvider,
 	togetherProvider,
