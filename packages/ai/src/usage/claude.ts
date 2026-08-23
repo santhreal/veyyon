@@ -217,13 +217,13 @@ function hasUsageData(payload: ClaudeUsageResponse): boolean {
 	);
 }
 
-function isRetryableStatus(status: number): boolean {
-	// Exclude 429: the usage endpoint is informational and rate-limited per
-	// source IP, so retrying a rate_limit_error inside a single fetch can't
-	// succeed and only deepens the throttle (3 attempts per poll). Fall through
-	// to the caller's failure cool-down and retry on the next poll instead.
-	return AIError.isTransientStatus(status) && status !== 429;
-}
+/**
+ * What the usage endpoint states for itself: it never retries a 429. The endpoint is informational
+ * and throttled per source IP, so a second attempt inside one poll cannot succeed and only deepens
+ * the throttle; the caller's cool-down and the next poll are the answer. The rest of the verdict is
+ * `retryResponse`'s.
+ */
+const USAGE_RESPONSE_RETRY_POLICY: AIError.ResponseRetryPolicy = { api: "anthropic", neverRetry: [429] };
 
 function isAbortError(error: unknown, signal?: AbortSignal): boolean {
 	if (signal?.aborted) return true;
@@ -279,7 +279,7 @@ async function fetchUsagePayload(
 			lastOrgId = orgId ?? lastOrgId;
 
 			if (!response.ok) {
-				const retryable = isRetryableStatus(response.status);
+				const retryable = await AIError.retryResponseAfterReading(response, USAGE_RESPONSE_RETRY_POLICY);
 				ctx.logger?.warn("Claude usage fetch failed", {
 					status: response.status,
 					statusText: response.statusText,

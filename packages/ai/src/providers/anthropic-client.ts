@@ -94,16 +94,13 @@ function createAbortError(): Error {
 	return new AIError.RequestAbortError("Request was aborted.");
 }
 
-/** `x-should-retry` override, then 408/409/429/5xx. */
-function shouldRetryResponse(response: Response): boolean {
-	const shouldRetryHeader = response.headers.get("x-should-retry");
-	if (shouldRetryHeader === "true") return true;
-	if (shouldRetryHeader === "false") return false;
-	const status = response.status;
-	// Canonical transient set (408/429/5xx) plus 409, which Anthropic's client
-	// also retries.
-	return AIError.isTransientStatus(status) || status === 409;
-}
+/**
+ * Anthropic's own addition to what a response says: 409, which its client retries and the registry
+ * does not read as transient. Everything else — the `x-should-retry` instruction, the transient set,
+ * and the difference between a 429 that named a spent allowance and one that named a throttle — is
+ * `retryResponse`'s, so this ladder and the credential layer answer the same failure the same way.
+ */
+const ANTHROPIC_RESPONSE_RETRY_POLICY: AIError.ResponseRetryPolicy = { api: "anthropic", alsoRetry: [409] };
 
 /** Server-suggested delay (`retry-after-ms`, then `retry-after` seconds or HTTP date). */
 export function retryDelayFromHeaders(headers: Headers | undefined): number | undefined {
@@ -248,7 +245,10 @@ export class AnthropicMessagesClient implements AnthropicMessagesClientLike {
 
 			if (response.ok) return response;
 
-			if (attempt < maxRetries && shouldRetryResponse(response)) {
+			if (
+				attempt < maxRetries &&
+				(await AIError.retryResponseAfterReading(response, ANTHROPIC_RESPONSE_RETRY_POLICY))
+			) {
 				// A hint longer than the caller will wait is an answer, not a delay:
 				// the wait was taken verbatim, so a `retry-after` measured in hours
 				// held the request for hours with nothing armed to interrupt it.
