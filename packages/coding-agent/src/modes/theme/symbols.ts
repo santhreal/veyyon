@@ -1129,6 +1129,39 @@ export const SPINNER_FRAMES: Record<SymbolPreset, Record<SpinnerType, string[]>>
 };
 
 /**
+ * The same ramp one ink level shallower.
+ *
+ * The activity ramp peaks on a full cell (`█`) once a cycle. In the status line
+ * that is right: the row is dense and a full cell is not the largest ink
+ * present. On the anchored todos board it is the largest ink any row ever
+ * draws, so at the top of the ramp the pulse reads as a block appearing rather
+ * than as a cell breathing.
+ *
+ * The whole top level comes off, not the peak alone. Removing `█` from
+ * `· : ░ ▒ ▓ █ ▓ ▒ ░ :` would leave the two `▓` adjacent, which holds the top of
+ * the breath for two frames instead of one. Taking the peak and its rising
+ * neighbour leaves `· : ░ ▒ ▓ ▒ ░ :` — the same gesture on a shorter ramp, still
+ * a rise and fall about a single peak.
+ *
+ * Derived rather than declared, so a theme that overrides `spinnerFrames` is
+ * carried without a second knob to set. A ramp is recognised by its shape: a
+ * rise and fall mirrors about one unique peak. `ascii`'s `| / - \` does not
+ * mirror, has no brightest frame, and is returned untouched.
+ */
+export function spinnerRampOneLevelShallower(frames: readonly string[]): string[] {
+	// The mirror runs over indices 1..n-1, so its centre is n/2 and only an
+	// even-length ramp has one. A frame appearing twice at the centre is not a
+	// peak, so `frames[peak]` must be unique for the shape to be a rise and fall.
+	if (frames.length < 4 || frames.length % 2 !== 0) return [...frames];
+	const peak = frames.length / 2;
+	if (frames.filter(frame => frame === frames[peak]).length !== 1) return [...frames];
+	for (let i = 1; i < frames.length; i++) {
+		if (i !== peak && frames[i] !== frames[frames.length - i]) return [...frames];
+	}
+	return frames.filter((_, i) => i !== peak && i !== peak - 1);
+}
+
+/**
  * The glyphs a progress, usage or context bar is drawn from, per preset.
  *
  * Sub-cell precision is a GLYPH capability, so it belongs to the same preset

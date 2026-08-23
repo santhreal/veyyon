@@ -21,11 +21,15 @@
  *     which made the loudest region on the screen the one that could not tell
  *     you whether it was your turn.
  *   - The GLYPH is the row: the task in flight draws the breathing pixel — the
- *     same `· : ░ ▒ ▓ █ ▓ ▒ ░ :` density ramp the status spinner runs, which the
- *     symbol table calls "the brand compressed into one quiet cell". Nothing
- *     rotates and nothing new was invented: this is `formatStatusIcon`'s own
- *     substitution (a spinner frame while a frame exists, the static symbol
- *     otherwise) applied to the one row that is actually running.
+ *     status spinner's density ramp with its full-cell peak dropped, `· : ░ ▒ ▓
+ *     ▒ ░ :`, which the symbol table calls "the brand compressed into one quiet
+ *     cell". The peak comes off because a full cell is the largest ink this
+ *     surface ever draws, so at the top of the ramp the pulse reads as a block
+ *     appearing rather than as a cell breathing; the status line keeps the full
+ *     ramp, where it sits in a dense row and does not. Nothing rotates and
+ *     nothing new was invented: this is `formatStatusIcon`'s own substitution (a
+ *     spinner frame while a frame exists, the static symbol otherwise) applied
+ *     to the one row that is actually running.
  *
  * WHY the glyphs are all square. Every load-bearing glyph in this product is a
  * square cell modulated by ink: the rail is a block partial, `BAR_RAMPS` is
@@ -59,6 +63,7 @@ import {
 	TODO_STRIKE_TOTAL_FRAMES,
 	todoStrikeReveal,
 } from "../../tools/todo";
+import { spinnerRampOneLevelShallower } from "../theme/symbols";
 import { theme } from "../theme/theme";
 
 /** Stages listed after the active one when the board is collapsed. */
@@ -118,17 +123,24 @@ function isClosed(task: TodoItem): boolean {
 	return task.status === "completed" || task.status === "abandoned";
 }
 
+/** The board's ramp: the activity ramp with its full-cell peak dropped. */
+function boardFrames(): string[] {
+	return spinnerRampOneLevelShallower(theme.spinnerFrames);
+}
+
 /**
  * The breathing pixel at `frame`, or the static half-square when motion is off.
  *
  * `formatStatusIcon` makes exactly this substitution for a running tool, so a
- * running task and a running tool are the same glyph on the same clock. With
- * `display.transitions` off, or on the ASCII preset, the static symbol is what
- * draws and the cell never churns.
+ * running task and a running tool are the same glyph on the same clock. The
+ * board's ramp stops one ink level short of the status line's, because a full
+ * cell here is the largest ink on the surface and reads as a block appearing
+ * rather than as a cell breathing. With `display.transitions` off, or on the
+ * ASCII preset, the static symbol is what draws and the cell never churns.
  */
 function breathGlyph(frame: number, animate: boolean): string {
 	if (!animate) return theme.checkbox.progress;
-	const frames = theme.spinnerFrames;
+	const frames = boardFrames();
 	if (frames.length === 0) return theme.checkbox.progress;
 	return frames[((frame % frames.length) + frames.length) % frames.length]!;
 }
@@ -144,7 +156,7 @@ function breathGlyph(frame: number, animate: boolean): string {
  */
 function exhaleGlyph(frame: number, animate: boolean): string {
 	if (!animate) return theme.symbol("status.done");
-	const frames = theme.spinnerFrames;
+	const frames = boardFrames();
 	const half = Math.max(1, Math.floor(frames.length / 2));
 	const progress = Math.min(1, Math.max(0, frame / TODO_STRIKE_TOTAL_FRAMES));
 	const step = Math.min(half - 1, Math.floor(progress * half));
