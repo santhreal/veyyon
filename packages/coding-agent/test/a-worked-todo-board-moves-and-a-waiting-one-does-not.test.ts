@@ -144,29 +144,59 @@ describe("the todo board's state", () => {
 			glyphs.set(status, glyphFor(plan, `task ${status}`));
 		}
 		expect([...glyphs.keys()].sort()).toEqual(["abandoned", "completed", "in_progress", "pending"]);
-		expect(glyphs.get("pending")).toBe(theme.checkbox.unchecked);
+		expect(glyphs.get("pending")).toBe(theme.symbol("status.shadowed"));
 		expect(glyphs.get("completed")).toBe(theme.symbol("status.done"));
 		expect(glyphs.get("abandoned")).toBe(theme.symbol("status.aborted"));
-		// The running row is the breathing pixel, which is a spinner frame and so
+		// The running row is a low-ink ramp cell, which is a spinner frame and so
 		// is not pinned to one glyph — only to being none of the others.
 		expect(new Set(glyphs.values()).size).toBe(TODO_STATUSES.length);
+		// And no task row ever draws a checkbox: that vocabulary belongs to the
+		// phase rows, which is what stops the two levels of the plan from wearing
+		// the same mark.
+		const checkboxes = new Set([theme.checkbox.checked, theme.checkbox.unchecked, theme.checkbox.progress]);
+		for (const glyph of glyphs.values()) expect(checkboxes.has(glyph)).toBe(false);
 	});
 
 	/**
-	 * The row in flight breathes: one cell walking the density ramp, on the same
-	 * clock and the same frames as the status spinner. With `display.transitions`
-	 * off the cell must be STILL — a static glyph, not frame 0 of an animation
-	 * leaking through as a default.
+	 * A phase row is a checkbox and a task row never is: `■` for a stage with
+	 * nothing open, `◧` for the stage in play, `□` for one nobody has reached. The
+	 * stage in play is STATIC — it used to draw the breathing cell its own running
+	 * task drew, so the two rows carried one animation between them and neither
+	 * said what it meant.
 	 */
-	it("breathes the running row and holds it still when transitions are off", () => {
+	it("gives a phase row the checkbox vocabulary, and holds the worked one still", () => {
+		const plan = [
+			phase("Auth", [["Refresh a stored token", "in_progress"]]),
+			phase("Ship", [["Cut the release", "pending"]]),
+			phase("Done", [["Wire the store", "completed"]]),
+		];
+		expect(glyphFor(plan, "Auth")).toBe(theme.checkbox.progress);
+		expect(glyphFor(plan, "Ship")).toBe(theme.checkbox.unchecked);
+		expect(glyphFor(plan, "Done")).toBe(theme.checkbox.checked);
+
+		const frames = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+		const worked = new Set(frames.map(frame => glyphFor(plan, "Auth", { frame, animate: true })));
+		expect([...worked]).toEqual([theme.checkbox.progress]);
+		// The task inside it is the row that moves, so the pair is never still together.
+		expect(new Set(frames.map(frame => glyphFor(plan, "Refresh", { frame, animate: true }))).size).toBe(2);
+	});
+
+	/**
+	 * The row in flight breathes with the SMALLEST mark on the surface: the two
+	 * lowest ink levels of the ramp, alternating. The full ramp read as a block
+	 * appearing and disappearing at the task indent, louder than the work it
+	 * reports. With `display.transitions` off the cell must be STILL — a static
+	 * glyph, not frame 0 of an animation leaking through as a default.
+	 */
+	it("breathes the running row with two low-ink cells and holds it still when transitions are off", () => {
 		const plan = [phase("Auth", [["Refresh a stored token", "in_progress"]])];
 		const frames = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
 		const animated = new Set(frames.map(frame => glyphFor(plan, "Refresh", { frame, animate: true })));
-		expect(animated.size).toBeGreaterThan(1);
-		for (const glyph of animated) expect(theme.spinnerFrames).toContain(glyph);
+		expect(animated.size).toBe(2);
+		for (const glyph of animated) expect(theme.spinnerFrames.slice(0, 2)).toContain(glyph);
 
 		const still = new Set(frames.map(frame => glyphFor(plan, "Refresh", { frame, animate: false })));
-		expect([...still]).toEqual([theme.checkbox.progress]);
+		expect([...still]).toEqual([theme.spinnerFrames[0]]);
 	});
 
 	/**
@@ -234,10 +264,10 @@ describe("the todo board's state", () => {
 		// Right-aligned, so the id column lines up down the block.
 		expect(delegated.trimEnd().endsWith(OWNER.id)).toBe(true);
 		// A delegated row IS an in-progress row: same shape, different observer.
-		expect(theme.spinnerFrames).toContain(glyphFor(plan, "Audit", { owners, live: true }));
-		// Unowned, the same task is a hollow box and names nobody.
+		expect(theme.spinnerFrames.slice(0, 2)).toContain(glyphFor(plan, "Audit", { owners, live: true }));
+		// Unowned, the same task is a waiting mark and names nobody.
 		expect(rowFor(plan, "Audit")).not.toContain(OWNER.id);
-		expect(glyphFor(plan, "Audit")).toBe(theme.checkbox.unchecked);
+		expect(glyphFor(plan, "Audit")).toBe(theme.symbol("status.shadowed"));
 	});
 
 	/**

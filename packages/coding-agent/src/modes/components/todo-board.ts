@@ -76,6 +76,60 @@ const DONE_TASK_CAP = 2;
 const TASK_INDENT = 2;
 /** Gap before a right-aligned tally or owner id. */
 const RIGHT_GAP = 2;
+/**
+ * Shared clock steps per board frame. The anchored clock is the tool rail's, at
+ * `RAIL_IDLE_STEP_MS`; a task marker on that clock churns several times a
+ * second, which is faster than anything a reader is tracking on a plan. Four
+ * steps is a change roughly every quarter second.
+ */
+export const TODO_BOARD_FRAME_DIVISOR = 4;
+
+/**
+ * Shared clock steps per row the board's rail highlight travels. The rail is
+ * one column of the tallest region above the composer, so it reads as a slow
+ * sweep rather than as the fast fill of a block that is about to finish.
+ */
+export const TODO_BOARD_RAIL_DIVISOR = 3;
+
+/**
+ * What the board knows about whether it may move.
+ *
+ * The three motion sites — the task marker's breath, the rail's travel, and the
+ * anchored clock that has to keep ticking for either to be seen — read one
+ * decision from here instead of each recomposing it. They disagreed once: the
+ * marker animated off task state alone, so a plan with a task marked in progress
+ * breathed while the session sat idle waiting for input.
+ */
+export interface TodoBoardMotion {
+	/** `display.transitions`. Off means the block is a still image. */
+	transitions: boolean;
+	/** Whether the agent is streaming, compacting, or running post-prompt work. */
+	agentInMotion: boolean;
+	/** Whether a completion envelope is mid-sweep. */
+	completing: boolean;
+	/** Whether the plan has open work at all. */
+	live: boolean;
+}
+
+/**
+ * Whether the in-flight task marker breathes.
+ *
+ * A completion sweep is an event with an end, so it finishes its envelope even
+ * after the turn that produced it is over.
+ */
+export function todoBoardMarkerAnimates(motion: TodoBoardMotion): boolean {
+	if (!motion.transitions) return false;
+	return motion.agentInMotion || motion.completing;
+}
+
+/**
+ * Whether the rail highlight travels. Unlike the marker this needs open work:
+ * the rail says the plan is being worked, and a settled plan is not.
+ */
+export function todoBoardRailTravels(motion: TodoBoardMotion): boolean {
+	if (!motion.transitions) return false;
+	return motion.live && motion.agentInMotion;
+}
 
 /** The agent a delegated row belongs to. */
 export interface TodoBoardOwner {
@@ -129,20 +183,25 @@ function boardFrames(): string[] {
 }
 
 /**
- * The breathing pixel at `frame`, or the static half-square when motion is off.
+ * The active task's marker: the two lowest ink levels of the ramp, alternating.
  *
- * `formatStatusIcon` makes exactly this substitution for a running tool, so a
- * running task and a running tool are the same glyph on the same clock. The
- * board's ramp stops one ink level short of the status line's, because a full
- * cell here is the largest ink on the surface and reads as a block appearing
- * rather than as a cell breathing. With `display.transitions` off, or on the
- * ASCII preset, the static symbol is what draws and the cell never churns.
+ * A task row is the smallest thing on the board and it gets the smallest mark
+ * the surface has. The full density ramp reads as a block appearing and
+ * disappearing at the task indent, which is louder than the work it reports and
+ * louder than the phase row above it; two adjacent low-ink cells read as one
+ * mark breathing. With `display.transitions` off, or while nothing is running,
+ * the lower of the two draws and the cell never churns.
+ *
+ * A phase row never draws this. Phase rows carry the checkbox vocabulary
+ * (`■ ◧ □`) and task rows carry marks, so the glyph column says which level of
+ * the plan a row belongs to before colour says anything at all.
  */
-function breathGlyph(frame: number, animate: boolean): string {
-	if (!animate) return theme.checkbox.progress;
+function taskMarkGlyph(frame: number, animate: boolean): string {
 	const frames = boardFrames();
-	if (frames.length === 0) return theme.checkbox.progress;
-	return frames[((frame % frames.length) + frames.length) % frames.length]!;
+	const low = frames[0] ?? theme.symbol("status.enabled");
+	if (!animate) return low;
+	const high = frames[1] ?? low;
+	return frame % 2 === 0 ? low : high;
 }
 
 /**
@@ -200,10 +259,15 @@ function taskRow(task: TodoItem, options: TodoBoardOptions, width: number): Omit
 					text: paintHex(hex, todoStrikeReveal(content, striking)),
 				};
 			}
+			// A closed task keeps its mark in `success` rather than fading the mark
+			// with the text: a plan whose finished rows were dim ink on a dim
+			// ground read as though nothing in it had been done, which is the
+			// opposite of what a board is for. The text is `muted`, so the row
+			// stops competing with the row being worked while staying legible.
 			return {
 				indent: TASK_INDENT,
-				glyph: theme.fg("dim", theme.symbol("status.done")),
-				text: theme.fg("dim", todoStrikeReveal(content, undefined)),
+				glyph: theme.fg("success", theme.symbol("status.done")),
+				text: theme.fg("muted", todoStrikeReveal(content, undefined)),
 			};
 		}
 		case "abandoned":
@@ -215,7 +279,7 @@ function taskRow(task: TodoItem, options: TodoBoardOptions, width: number): Omit
 		case "in_progress":
 			return {
 				indent: TASK_INDENT,
-				glyph: theme.fg("accent", breathGlyph(options.frame, options.animate)),
+				glyph: theme.fg("accent", taskMarkGlyph(options.frame, options.animate)),
 				text: theme.fg("accent", content),
 			};
 		default: {
@@ -223,14 +287,14 @@ function taskRow(task: TodoItem, options: TodoBoardOptions, width: number): Omit
 			if (owner) {
 				return {
 					indent: TASK_INDENT,
-					glyph: paintHex(owner.accentHex, breathGlyph(options.frame, options.animate)),
+					glyph: paintHex(owner.accentHex, taskMarkGlyph(options.frame, options.animate)),
 					text: paintHex(owner.accentHex, content),
 					right: paintHex(owner.accentHex, owner.id),
 				};
 			}
 			return {
 				indent: TASK_INDENT,
-				glyph: theme.fg("dim", theme.checkbox.unchecked),
+				glyph: theme.fg("dim", theme.symbol("status.shadowed")),
 				text: theme.fg("dim", content),
 			};
 		}
@@ -238,10 +302,16 @@ function taskRow(task: TodoItem, options: TodoBoardOptions, width: number): Omit
 }
 
 /**
- * A phase's row. Its glyph is the same vocabulary its tasks use, so one glance
- * down the glyph column reads the shape of the whole plan rather than of one
- * stage: a closed phase is a tick of ink, the one being worked breathes, and a
- * phase nobody has reached is a hollow box.
+ * A phase's row, in the checkbox vocabulary its tasks never use: `■` for a
+ * phase with nothing open, `◧` for the one being worked, `□` for one nobody has
+ * reached. Task rows carry marks (`▪ ▫ ∎`), so one glance down the glyph column
+ * separates the stages of the plan from the work inside them.
+ *
+ * The worked phase is STATIC. It used to draw the same breathing cell its
+ * active task drew, which put the same animation on two rows that mean
+ * different things and left neither of them saying anything: a half-filled box
+ * already states that this stage is part-done, and the tally beside it states
+ * how far.
  */
 function phaseRow(
 	phase: TodoPhase,
@@ -261,15 +331,15 @@ function phaseRow(
 	if (open.length === 0) {
 		return {
 			indent: 0,
-			glyph: theme.fg("dim", theme.symbol("status.done")),
-			text: theme.fg("dim", label),
+			glyph: theme.fg("success", theme.checkbox.checked),
+			text: theme.fg("muted", label),
 			right: theme.fg("dim", tally),
 		};
 	}
 	if (working) {
 		return {
 			indent: 0,
-			glyph: theme.fg("accent", breathGlyph(options.frame, options.animate)),
+			glyph: theme.fg("accent", theme.checkbox.progress),
 			text: theme.bold(theme.fg("accent", label)),
 			right: theme.fg("dim", tally),
 		};

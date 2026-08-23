@@ -248,8 +248,11 @@ describe("a mid-turn todo result reaches the screen before the turn ends", () =>
 		// HUD: the tally advanced. The closed task stays on the board — the board
 		// keeps the few most recent — so the tally is what says work moved.
 		expect(hudPhaseRow(second, "1/2")).toBe(true);
-		// Transcript card: the completed task carries the checked marker.
-		expect(second).toContain("■ alpha task");
+		// Transcript card: one summary line for the write, because the board above
+		// the composer is the surface that carries the list. Drawing the tree here
+		// too put the same plan on the screen twice.
+		expect(second).toContain(`Todo 2 tasks · 1 done · ${theme.checkbox.progress} beta task`);
+		expect(second).not.toContain(`${theme.checkbox.checked} alpha task`);
 		expect(second).toContain("beta task");
 	});
 });
