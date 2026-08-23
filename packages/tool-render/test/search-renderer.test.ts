@@ -54,6 +54,11 @@ describe("unified search web renderer", () => {
 		expect(render("Body", { input: "needle" })).toContain("type");
 	});
 
+	it("fails visibly for empty text and structure inputs", () => {
+		expect(render("Summary", { type: "text", input: "   " })).toContain("input");
+		expect(render("Summary", { type: "structure", input: "" })).toContain("input");
+	});
+
 	it("recovers search type from result details when omitted from args", () => {
 		const res = result("files", { fileCount: 5 });
 		expect(render("Summary", { input: "src/**/*.ts" }, res)).toContain("src/**/*.ts");
@@ -70,14 +75,36 @@ describe("unified search web renderer", () => {
 		expect(insensitiveSummary).not.toContain("type=");
 	});
 
-	it("renders file search truncation and missing paths", () => {
+	it("renders file search truncation, missing paths, and hidden overrides", () => {
 		const body = render(
 			"Body",
-			{ type: "files", input: "src/**/*.ts" },
+			{ type: "files", input: "src/**/*.ts", hidden: false },
 			result("files", { fileCount: 10, resultLimitReached: 10, missingPaths: ["missing/dir"] }),
 		);
+		expect(body).toContain("no-hidden");
 		expect(body).toContain("truncated at 10");
 		expect(body).toContain("skipped missing: missing/dir");
+
+		const defaultHiddenBody = render(
+			"Body",
+			{ type: "files", input: "src/**/*.ts" },
+			result("files", { fileCount: 1 }),
+		);
+		expect(defaultHiddenBody).not.toContain("no-hidden");
+		expect(defaultHiddenBody).not.toContain("hidden");
+	});
+
+	it("renders semicolon-delimited scope paths cleanly for text and structure searches", () => {
+		const textSummary = render("Summary", { type: "text", input: "needle", path: "src; tests" });
+		expect(textSummary).toContain("src, tests");
+
+		const structBody = render(
+			"Body",
+			{ type: "structure", input: "call($A)", path: "src; tests" },
+			result("structure", { matchCount: 1, fileCount: 1 }),
+		);
+		expect(structBody).toContain("src");
+		expect(structBody).toContain("tests");
 	});
 
 	it("renders structure search parse issues and limits", () => {
@@ -94,6 +121,13 @@ describe("unified search web renderer", () => {
 		expect(body).toContain("limit reached");
 		expect(body).toContain("parse issues");
 		expect(body).toContain("syntax error at line 1");
+
+		const errorBody = render(
+			"Body",
+			{ type: "structure", input: "call($A)" },
+			result("structure", { error: "failed to parse query" }),
+		);
+		expect(errorBody).toContain("failed to parse query");
 	});
 
 	it("fails visibly on malformed input across all search types", () => {

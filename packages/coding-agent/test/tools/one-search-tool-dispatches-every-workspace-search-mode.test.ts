@@ -60,4 +60,50 @@ describe("one search tool dispatches every workspace search mode", () => {
 		});
 		expect(result.details?.type).toBe("text");
 	});
+
+	it("rejects empty or whitespace search input", async () => {
+		await expect(tool.execute("search-empty", { type: "files", input: "   " })).rejects.toThrow(
+			"Search input must not be empty",
+		);
+	});
+
+	it("rejects invalid search type", async () => {
+		await expect(
+			tool.execute("search-invalid-type", { type: "invalid" as unknown as "files", input: "foo" }),
+		).rejects.toThrow('Invalid search type "invalid"');
+	});
+
+	it.each([
+		["files", { type: "files" as const, input: "**/*.ts", path: "sample.ts" }, "path"],
+		["files", { type: "files" as const, input: "**/*.ts", case: true }, "case"],
+		["files", { type: "files" as const, input: "**/*.ts", skip: 0 }, "skip"],
+		["text", { type: "text" as const, input: "needle", hidden: true }, "hidden"],
+		["text", { type: "text" as const, input: "needle", limit: 10 }, "limit"],
+		["structure", { type: "structure" as const, input: "console.log($A)", case: true }, "case"],
+		["structure", { type: "structure" as const, input: "console.log($A)", hidden: true }, "hidden"],
+		["structure", { type: "structure" as const, input: "console.log($A)", limit: 10 }, "limit"],
+		["structure", { type: "structure" as const, input: "console.log($A)", gitignore: false }, "gitignore"],
+	])("rejects invalid cross-type field for %s", async (mode, params, invalidField) => {
+		await expect(tool.execute(`search-cross-${mode}-${invalidField}`, params)).rejects.toThrow(
+			`Search type "${mode}" does not accept: ${invalidField}`,
+		);
+	});
+
+	it("resolves filesystem targets per search mode", () => {
+		expect(tool.filesystemTargets({ type: "files", input: "src/**/*.ts" })).toEqual(["src"]);
+		expect(tool.filesystemTargets({ type: "text", input: "needle", path: "src" })).toEqual(["src"]);
+		expect(tool.filesystemTargets({ type: "structure", input: "console.log($A)", path: "src/**/*.ts" })).toEqual([
+			"src",
+		]);
+		expect(tool.filesystemTargets({ type: "text", input: "needle" })).toEqual([]);
+		expect(tool.filesystemTargets(null)).toEqual([]);
+	});
+
+	it("assigns tool tier approval according to target", () => {
+		expect(tool.approval({ type: "files", input: "src/**/*.ts" })).toBe("read");
+		expect(tool.approval({ type: "text", input: "needle", path: "src" })).toBe("read");
+		expect(tool.approval({ type: "text", input: "needle", path: "ssh://host/path" })).toBe("exec");
+		expect(tool.approval({ type: "structure", input: "console.log($A)", path: "src/**/*.ts" })).toBe("read");
+		expect(tool.approval(null)).toBe("read");
+	});
 });
