@@ -215,6 +215,23 @@ describe("JSON-encoded and delimited search paths enforce cwd boundary", () => {
 			).toEqual([outsideFile]);
 		});
 
+		it("escalates every text path-list encoding containing ssh to exec tier", () => {
+			const sshPath = "ssh://example/repo/file.ts";
+			const encodings: unknown[] = [
+				sshPath,
+				`${insideFile};${sshPath}`,
+				JSON.stringify([insideFile, sshPath]),
+				[insideFile, sshPath],
+			];
+
+			for (const encodedPath of encodings) {
+				expect(searchTool.approval({ type: "text", input: "needle", path: encodedPath })).toBe("exec");
+			}
+			expect(searchTool.approval({ type: "text", input: "needle", path: { malformed: true } })).toBe("read");
+			expect(searchTool.approval({ type: "files", input: sshPath })).toBe("read");
+			expect(searchTool.approval({ type: "structure", input: "call($$$)", path: sshPath })).toBe("read");
+		});
+
 		it("sweeps all searchSchema discriminators for JSON array support", () => {
 			const discriminators = searchSchema.shape.type.options;
 			expect(discriminators).toEqual(["files", "text", "structure"]);

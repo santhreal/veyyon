@@ -609,9 +609,9 @@ describe("SearchTool internal URL resolution", () => {
 		expect(text).toContain("virtual");
 	});
 
-	it("reports 'No more results' instead of 'No matches found' when skip is past the end", async () => {
-		await Bun.write(path.join(tmpDir, "a.txt"), "needle in a\n");
-		await Bun.write(path.join(tmpDir, "b.txt"), "needle in b\n");
+	it("keeps an exhausted page useful and distinct from a true zero-match result", async () => {
+		await fs.writeFile(path.join(tmpDir, "a.txt"), "needle in a\n", "utf8");
+		await fs.writeFile(path.join(tmpDir, "b.txt"), "needle in b\n", "utf8");
 
 		const session = createSession();
 		const tool = new SearchTool(session);
@@ -624,9 +624,12 @@ describe("SearchTool internal URL resolution", () => {
 		});
 
 		const text = getResultText(result);
-		expect(text).toContain("No more results");
-		expect(text).toContain("2 files total");
-		expect(text).not.toContain("No matches found");
+		expect(text).toBe("No more results (2 files total; skip=5 has exhausted the result set)");
+		expect(result.useless).toBeUndefined();
+		expect(result.details?.type).toBe("text");
+		if (result.details?.type !== "text") throw new Error("Expected text search details");
+		expect(result.details.result.matchCount).toBe(2);
+		expect(result.details.result.fileCount).toBe(2);
 	});
 
 	it("refuses to search a directory listing that has no backing local path", async () => {

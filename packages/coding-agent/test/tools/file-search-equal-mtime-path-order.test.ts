@@ -136,6 +136,34 @@ describe("SearchTool multi-scope file ordering", () => {
 		expect(files).toEqual(["alpha/1.ts", "alpha/2.ts", "zulu/1.ts", "zulu/2.ts"]);
 	});
 
+	it("matches native Unicode scalar ordering across multi-target ties", async () => {
+		const bmpFileName = "\uE000.ts";
+		const supplementaryFileName = "😀.ts";
+		const bmpFile = path.join(tmpDir, bmpFileName);
+		const supplementaryFile = path.join(tmpDir, supplementaryFileName);
+		await fs.writeFile(bmpFile, "bmp\n", "utf8");
+		await fs.writeFile(supplementaryFile, "supplementary\n", "utf8");
+
+		const fixedMtime = new Date(1700000000000);
+		await fs.utimes(bmpFile, fixedMtime, fixedMtime);
+		await fs.utimes(supplementaryFile, fixedMtime, fixedMtime);
+
+		const tool = new SearchTool(session());
+		const multiTarget = await tool.execute("unicode-multi", {
+			type: "files",
+			input: `${supplementaryFileName};${bmpFileName}`,
+		});
+		const multiFiles = multiTarget.details?.type === "files" ? multiTarget.details.result.files : [];
+		expect(multiFiles).toEqual([bmpFileName, supplementaryFileName]);
+
+		const nativeSingleTarget = await tool.execute("unicode-native", {
+			type: "files",
+			input: "*.ts",
+		});
+		const nativeFiles = nativeSingleTarget.details?.type === "files" ? nativeSingleTarget.details.result.files : [];
+		expect(nativeFiles).toEqual(multiFiles);
+	});
+
 	it("respects limit after deterministic ordering", async () => {
 		const a1 = path.join(tmpDir, "alpha", "1.ts");
 		const a2 = path.join(tmpDir, "alpha", "2.ts");

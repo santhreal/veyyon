@@ -63,7 +63,17 @@ function compareFileSearchResults(a: FileSearchResultEntry, b: FileSearchResultE
 	if (mtimeDiff !== 0) {
 		return mtimeDiff;
 	}
-	return a.path < b.path ? -1 : a.path > b.path ? 1 : 0;
+	let leftIndex = 0;
+	let rightIndex = 0;
+	while (leftIndex < a.path.length && rightIndex < b.path.length) {
+		const left = a.path.codePointAt(leftIndex)!;
+		const right = b.path.codePointAt(rightIndex)!;
+		if (left !== right) return left - right;
+		leftIndex += left > 0xffff ? 2 : 1;
+		rightIndex += right > 0xffff ? 2 : 1;
+	}
+	if (leftIndex === a.path.length && rightIndex === b.path.length) return 0;
+	return leftIndex === a.path.length ? -1 : 1;
 }
 
 export interface FileSearchDetails {

@@ -1,3 +1,12 @@
+/**
+ * WHY: Broad text searches must bound provider context without losing exact
+ * recovery or granting edit authority for omitted lines. This suite drives the
+ * production SearchTool and closes compact preview ownership, generic head
+ * truncation, warning-dominated byte budgets, and artifact fallback behavior.
+ * It does not cover artifact recovery after session replay or concurrent
+ * sessions that allocate the same artifact identifier.
+ */
+
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
@@ -295,6 +304,35 @@ describe("SearchTool (text) progressive disclosure contract", () => {
 		}
 		expect(selectorText).not.toContain("SINGLE_SCOPE_NEEDLE_15");
 	});
+	it("does not authorize single-file matches omitted by generic head truncation", async () => {
+		const singleFile = path.join(tmpDir, "large-single.ts");
+		const lines = Array.from(
+			{ length: 200 },
+			(_, index) => `const value_${index + 1} = "GENERIC_HEAD_NEEDLE_${index + 1}_${"x".repeat(400)}";`,
+		);
+		await fs.writeFile(singleFile, `${lines.join("\n")}\n`, "utf8");
+
+		const session = createSession();
+		const result = await new SearchTool(session).execute("call-generic-head", {
+			type: "text",
+			input: "GENERIC_HEAD_NEEDLE",
+			path: "large-single.ts",
+		});
+		const text = extractText(result);
+		expect(result.details?.type).toBe("text");
+		if (result.details?.type !== "text") throw new Error("Expected text search details");
+		expect(result.details.result.truncation?.truncated).toBe(true);
+		expect(text).toContain("GENERIC_HEAD_NEEDLE_1_");
+		expect(text).not.toContain("GENERIC_HEAD_NEEDLE_200_");
+
+		const tag = text.match(/\[large-single\.ts#([0-9A-F]{4})\]/)?.[1];
+		expect(tag).toBeDefined();
+		if (!tag) throw new Error("Expected hashline snapshot tag");
+		const snapshot = getFileSnapshotStore(session).byHash(canonicalSnapshotKey(singleFile), tag);
+		expect(snapshot?.seenLines?.has(1)).toBe(true);
+		expect(snapshot?.seenLines?.has(200)).toBe(false);
+	});
+
 	it("returns full output without compaction when broad search output is within discovery budget", async () => {
 		// 2 files with 1 tiny match each (well within turn-0 discovery budget of ~2KB)
 		await fs.writeFile(path.join(tmpDir, "small_1.ts"), 'const x = "TINY_NEEDLE";\n');
@@ -315,6 +353,38 @@ describe("SearchTool (text) progressive disclosure contract", () => {
 		expect(result.details?.type).toBe("text");
 		if (result.details?.type !== "text") throw new Error("Expected text search details");
 		expect(result.details.result.truncation).toBeUndefined();
+	});
+
+	it("bounds warnings and preserves recovery for semicolon lists longer than a filesystem component", async () => {
+		for (let fileIndex = 1; fileIndex <= 2; fileIndex++) {
+			const lines = Array.from(
+				{ length: 20 },
+				(_, lineIndex) => `const warning_${fileIndex}_${lineIndex} = "WARNING_CAP_NEEDLE";`,
+			);
+			await fs.writeFile(path.join(tmpDir, `warning-cap-${fileIndex}.ts`), `${lines.join("\n")}\n`, "utf8");
+		}
+		const missingPaths = Array.from({ length: 40 }, (_, index) => `missing-${index}-${"x".repeat(80)}.ts`);
+		const session = createSession();
+		const result = await new SearchTool(session).execute("call-warning-cap", {
+			type: "text",
+			input: "WARNING_CAP_NEEDLE",
+			path: ["warning-cap-1.ts", "warning-cap-2.ts", ...missingPaths].join(";"),
+		});
+
+		const text = extractText(result);
+		expect(Buffer.byteLength(text, "utf8")).toBeLessThanOrEqual(inlineCapForTurn(BROAD_SEARCH_INLINE_MAX_BYTES, 0));
+		expect(text).toContain("artifact://");
+		expect(result.details?.type).toBe("text");
+		if (result.details?.type !== "text") throw new Error("Expected text search details");
+		const artifactId = result.details.result.meta?.truncation?.artifactId;
+		expect(artifactId).toBeDefined();
+		if (!artifactId) throw new Error("Expected artifact id");
+		const artifactPath = idToPath.get(artifactId);
+		expect(artifactPath).toBeDefined();
+		if (!artifactPath) throw new Error("Expected artifact path");
+		const fullOutput = await fs.readFile(artifactPath, "utf8");
+		expect(fullOutput).toContain("Skipped missing paths:");
+		expect(fullOutput).toContain(missingPaths.at(-1)!);
 	});
 
 	it("retains warnings and notices in compact broad search", async () => {
