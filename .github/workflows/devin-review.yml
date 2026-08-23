@@ -46,7 +46,10 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
+          # `gh` has no checkout to read the repository from, so it is named here rather
+          # than left for git to answer. Every call below writes `{owner}/{repo}`, which
+          # gh fills in from this.
+          GH_REPO: ${{ github.repository }}
           NUMBER: ${{ github.event.pull_request.number }}
           DRAFT: ${{ github.event.pull_request.draft }}
         run: |
@@ -63,12 +66,12 @@ jobs:
           # request instead of posting a duplicate that spends another review. jq does the
           # matching, so this composes no pipeline and cannot report a dead left-hand side.
           marker='<!-- devin-review-requested -->'
-          existing=$(gh api "repos/${REPO}/issues/${NUMBER}/comments" --paginate \
+          existing=$(gh api "repos/{owner}/{repo}/issues/${NUMBER}/comments" --paginate \
             --jq "[.[] | select(.body | contains(\"${marker}\")) | .id] | join(\",\")")
           if [ -n "${existing//,/}" ]; then
             echo "pull request ${NUMBER} already carries a review request"
             exit 0
           fi
-          gh api "repos/${REPO}/issues/${NUMBER}/comments" -f "body=/devin review
+          gh api "repos/{owner}/{repo}/issues/${NUMBER}/comments" -f "body=/devin review
           ${marker}" >/dev/null
           echo "requested a review on pull request ${NUMBER}"
