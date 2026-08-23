@@ -7,7 +7,7 @@ import { formatHashlineHeader } from "@veyyon/hashline";
 import { type GrepMatch, GrepOutputMode, type GrepResult, grep } from "@veyyon/natives";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
-import { errorMessage, logger, trimTrailingSlashes, untilAborted } from "@veyyon/utils";
+import { errorMessage, isEnoent, logger, trimTrailingSlashes, untilAborted } from "@veyyon/utils";
 import { recordFileSnapshot, recordSeenLinesFromBody } from "../edit/file-snapshot-store";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { LocalProtocolOptions } from "../internal-urls/local-protocol";
@@ -87,6 +87,12 @@ export const MULTI_FILE_PER_FILE_MATCHES = 20;
 /** Per-file match cap for single-file searches — there's no diversity
  * concern when the scope is one file. */
 export const SINGLE_FILE_MATCHES = 200;
+/** Maximum budget in bytes for broad grouped multi-file search output before
+ * progressive disclosure reduces the inline body. Feeds into the session's
+ * turn-scaled budget curve (yielding ~2 KiB early). */
+export const BROAD_SEARCH_INLINE_MAX_BYTES = 8 * 1024;
+/** Maximum representative matches emitted per file in broad compact search output. */
+export const BROAD_SEARCH_REPRESENTATIVE_MATCHES_PER_FILE = 2;
 /** Hard safety ceiling on how many matches we fetch from native grep
  * before JS-side grouping. Sized to comfortably cover the file window
  * (DEFAULT_FILE_LIMIT files × MULTI_FILE_PER_FILE_MATCHES matches) plus
@@ -1005,8 +1011,7 @@ export async function executeTextSearch(
 						try {
 							stats = await stat(absKey);
 						} catch (error) {
-							const code = (error as { code?: string }).code;
-							if (code === "ENOENT") {
+							if (isEnoent(error)) {
 								throw new ToolError(`Path not found for line-range selector: ${spec.original}`);
 							}
 							throw new ToolError(
@@ -1401,6 +1406,8 @@ export async function executeTextSearch(
 					if (tag) hashContexts.set(relativePath, { tag });
 				}
 			}
+			const clippedLinesByFile = new Map<string, Set<number>>();
+			const fullModelOutByFile = new Map<string, string[]>();
 			const renderMatchesForFile = (relativePath: string): { model: string[]; display: string[] } => {
 				const modelOut: string[] = [];
 				const displayOut: string[] = [];
@@ -1459,10 +1466,8 @@ export async function executeTextSearch(
 					}
 					fileMatchCounts.set(relativePath, (fileMatchCounts.get(relativePath) ?? 0) + 1);
 				}
-				if (hashContext?.tag) {
-					const absoluteFilePath = path.resolve(session.cwd, relativePath);
-					recordSeenLinesFromBody(session, absoluteFilePath, hashContext.tag, modelOut.join("\n"), clippedLines);
-				}
+				clippedLinesByFile.set(relativePath, clippedLines);
+				fullModelOutByFile.set(relativePath, modelOut);
 				return { model: modelOut, display: displayOut };
 			};
 			const useGroupedOutput = isDirectory || isMultiScope;
@@ -1504,32 +1509,141 @@ export async function executeTextSearch(
 			const rawOutput = outputLines.join("\n");
 			// A single query can return a match set that dwarfs the inline floor
 			// (the line/column budget alone permits well over a megabyte).
-			// truncateHead bounds the model-facing text to DEFAULT_MAX_BYTES, but
-			// on its own that silently DROPS the elided tail. When it truncates,
-			// save the FULL match set to an artifact and append the recoverable
-			// `artifact://<id>` footer so nothing is lost and the huge result is
-			// not carried verbatim for every later turn.
-			// Bounded by the same turn-scaled budget every other tool uses. Text search keeps
-			// a HEAD window rather than head-and-tail because matches arrive in
-			// order, but the SIZE of that window is priced identically: an early
-			// result is re-read for the rest of the session whichever tool produced
-			// it. See `inlineBudgetFor`.
-			const truncation = truncateHead(rawOutput, {
-				maxLines: Number.MAX_SAFE_INTEGER,
-				maxBytes: inlineBudgetFor(session),
-			});
-			let output = truncation.content;
+			// For broad multi-file searches exceeding the discovery budget, progressive
+			// disclosure saves the full raw output to an artifact and presents a
+			// compact page with representative matches per file, total counts, and
+			// the recovery footer.
+			// If artifact allocation/write fails, or for narrow/single-file scopes,
+			// fallback to the generic turn-scaled byte budget head truncation.
+			let output = rawOutput;
 			let spillArtifactId: string | undefined;
-			if (truncation.truncated) {
-				spillArtifactId = await saveOutputArtifact(session, "search-text", rawOutput);
-				if (spillArtifactId) {
-					const sep = output.endsWith("\n") ? "" : "\n";
-					output += `${sep}${artifactFooter(spillArtifactId)}`;
+			let truncation: TruncationResult | undefined;
+			let compactMode = false;
+			const isGroupedMultiFile = useGroupedOutput && !hasLineRangeFilters && fileList.length > 1;
+			if (isGroupedMultiFile) {
+				const broadBudget = inlineBudgetFor(session, BROAD_SEARCH_INLINE_MAX_BYTES);
+				if (Buffer.byteLength(rawOutput, "utf-8") > broadBudget) {
+					spillArtifactId = await saveOutputArtifact(session, "search-text", rawOutput);
+					if (spillArtifactId) {
+						compactMode = true;
+						const representativeLinesByFile = new Map<string, string[]>();
+						for (const relativePath of fileList) {
+							const modelOut: string[] = [];
+							const fileMatches = matchesByFile.get(relativePath) ?? [];
+							const hashContext = hashContexts.get(relativePath);
+							const representativeMatches = fileMatches.slice(0, BROAD_SEARCH_REPRESENTATIVE_MATCHES_PER_FILE);
+							let lastEmittedLine: number | undefined;
+							for (const match of representativeMatches) {
+								if (lastEmittedLine !== undefined && match.lineNumber > lastEmittedLine + 1) {
+									modelOut.push("...");
+								}
+								modelOut.push(
+									formatMatchLine(match.lineNumber, match.line, true, {
+										useHashLines: hashContext !== undefined,
+									}),
+								);
+								lastEmittedLine = match.lineNumber;
+							}
+							if (fileMatches.length > representativeMatches.length) {
+								modelOut.push("...");
+							}
+							representativeLinesByFile.set(relativePath, modelOut);
+						}
+						const buildCompactLines = (previewFiles: string[]): string[] => {
+							const compactGrouped = formatGroupedFiles(previewFiles, relativePath => {
+								const hashContext = hashContexts.get(relativePath);
+								const modelLines = representativeLinesByFile.get(relativePath) ?? [];
+								return {
+									modelLines,
+									headerSuffix: hashContext?.tag ? `#${hashContext.tag}` : "",
+									skip: modelLines.length === 0,
+								};
+							});
+							const compactLines = [...compactGrouped.model];
+							const previewSummary =
+								previewFiles.length < fileList.length
+									? `[Showing representative matches from ${previewFiles.length} of ${fileList.length} files; ${formatCount("match", selectedMatches.length)} total. Narrow path or recover the full output.]`
+									: `[Showing up to ${BROAD_SEARCH_REPRESENTATIVE_MATCHES_PER_FILE} representative matches per file; ${formatCount("match", selectedMatches.length)} in ${formatCount("file", fileList.length)}.]`;
+							compactLines.push("", previewSummary);
+							if (limitMessage) {
+								compactLines.push("", limitMessage);
+							}
+							if (warningNote) {
+								compactLines.push("", warningNote);
+							}
+							return compactLines;
+						};
+						let previewFileCount = fileList.length;
+						let previewFiles = fileList;
+						let compactLines = buildCompactLines(previewFiles);
+						let compactBody = compactLines.join("\n");
+						let compactOutput = `${compactBody}${compactBody.endsWith("\n") ? "" : "\n"}${artifactFooter(spillArtifactId)}`;
+						while (previewFileCount > 1 && Buffer.byteLength(compactOutput, "utf-8") > broadBudget) {
+							previewFileCount -= 1;
+							previewFiles = fileList.slice(0, previewFileCount);
+							compactLines = buildCompactLines(previewFiles);
+							compactBody = compactLines.join("\n");
+							compactOutput = `${compactBody}${compactBody.endsWith("\n") ? "" : "\n"}${artifactFooter(spillArtifactId)}`;
+						}
+						for (const relativePath of previewFiles) {
+							const hashContext = hashContexts.get(relativePath);
+							if (!hashContext?.tag) continue;
+							recordSeenLinesFromBody(
+								session,
+								path.resolve(session.cwd, relativePath),
+								hashContext.tag,
+								(representativeLinesByFile.get(relativePath) ?? []).join("\n"),
+								clippedLinesByFile.get(relativePath),
+							);
+						}
+						output = compactOutput;
+						truncation = {
+							truncated: true,
+							truncatedBy: "bytes",
+							content: compactBody,
+							totalBytes: Buffer.byteLength(rawOutput, "utf-8"),
+							outputBytes: Buffer.byteLength(output, "utf-8"),
+							totalLines: outputLines.length,
+							outputLines: compactLines.length,
+						};
+					}
+				}
+			}
+			if (!compactMode) {
+				// In full/non-compact mode, record all seen lines from the full output
+				for (const relativePath of fileList) {
+					const hashContext = hashContexts.get(relativePath);
+					if (hashContext?.tag) {
+						const absoluteFilePath = path.resolve(session.cwd, relativePath);
+						const modelOut = fullModelOutByFile.get(relativePath);
+						if (modelOut) {
+							recordSeenLinesFromBody(
+								session,
+								absoluteFilePath,
+								hashContext.tag,
+								modelOut.join("\n"),
+								clippedLinesByFile.get(relativePath),
+							);
+						}
+					}
+				}
+				const headTruncation = truncateHead(rawOutput, {
+					maxLines: Number.MAX_SAFE_INTEGER,
+					maxBytes: inlineBudgetFor(session),
+				});
+				output = headTruncation.content;
+				if (headTruncation.truncated) {
+					spillArtifactId = await saveOutputArtifact(session, "search-text", rawOutput);
+					if (spillArtifactId) {
+						const sep = output.endsWith("\n") ? "" : "\n";
+						output += `${sep}${artifactFooter(spillArtifactId)}`;
+					}
+					truncation = headTruncation;
 				}
 			}
 			const displayText = displayLines.join("\n");
 			const truncated = Boolean(
-				fileLimitReached || perFileLimitReached || result.limitReached || truncation.truncated || linesTruncated,
+				fileLimitReached || perFileLimitReached || result.limitReached || truncation?.truncated || linesTruncated,
 			);
 			const details: TextSearchDetails = {
 				scopePath,
@@ -1548,12 +1662,12 @@ export async function executeTextSearch(
 				displayContent: displayText,
 				missingPaths: missingPaths.length > 0 ? missingPaths : undefined,
 			};
-			if (truncation.truncated) details.truncation = truncation;
+			if (truncation?.truncated) details.truncation = truncation;
 			if (linesTruncated) details.linesTruncated = true;
 			const resultBuilder = toolResult(details)
 				.text(output)
 				.limits({ columnMax: linesTruncated ? DEFAULT_MAX_COLUMN : undefined });
-			if (truncation.truncated) {
+			if (truncation?.truncated) {
 				resultBuilder.truncation(truncation, { direction: "head", artifactId: spillArtifactId });
 			}
 			return resultBuilder.done();

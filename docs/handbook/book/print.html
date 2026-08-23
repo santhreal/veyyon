@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-2f05118a.js";
+            window.path_to_searchindex_js = "searchindex-e2394775.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-a2abefc1.js"></script>
@@ -18306,6 +18306,7 @@ takes two required ordered fields followed by type-specific options:</p>
 </ul>
 <h3 id="unified-result-contract-and-settings"><a class="header" href="#unified-result-contract-and-settings">Unified result contract and settings</a></h3>
 <p>Results return formatted text plus structured details <code>{ type, result }</code> corresponding to the search type (<code>FileSearchDetails</code>, <code>TextSearchDetails</code>, or <code>StructureSearchDetails</code>).</p>
+<p>Broad grouped multi-file text searches use progressive disclosure when the full formatted match set exceeds the session’s discovery budget (scaled from an 8 KiB search-specific ceiling through the turn curve to ~2 KiB at turn 0). The full pre-disclosure output is saved to an artifact before compacting. The inline result emits up to two representative matches per file, total match and file counts, warnings, and an <code>artifact://&lt;id&gt;</code> recovery footer. Explicit single-file searches and line-range queries keep detailed output without compacting. Only the visible representative lines emitted with snapshot tags are recorded as seen for anchored editing; un-emitted matches remain unseen. If artifact storage is unavailable, broad searches fall back to generic turn-scaled head truncation.</p>
 <p>The tool is part of the default inventory. Text matching uses two settings:</p>
 <ul>
 <li><code>search.contextBefore</code>: number, default <code>1</code> (lines of context before each text match).</li>
