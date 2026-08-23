@@ -1,6 +1,6 @@
 # Bounded reads and search
 
-Four tools give the agent controlled access to your files: `read`, `glob`, `grep`, and
+Three tools give the agent controlled access to your files: `read`, `search`, and
 `write`. They are always available; there is no `experimental_tools` or `backends.toml` gate
 to turn them on.
 
@@ -8,7 +8,7 @@ The point of these tools is bounds. An unbounded `cat`, `find`, or `grep -r` in 
 can dump enough text to fill the whole context window. These tools apply line, byte, and
 result caps instead, and they surface truncation rather than dropping output silently. This
 page documents each tool's parameters and the limits it enforces. The implementations live
-under `packages/coding-agent/src/tools/{read,glob,grep,write}.ts`.
+under `packages/coding-agent/src/tools/{read,search,write}.ts`.
 
 ## The `read` tool (`tools/read.ts`)
 
@@ -25,7 +25,7 @@ to a budget:
   configured, and `read` is deliberately the one tool exempt from artifact spilling: it is bounded by
   LINES, so spilling on bytes would hand back fewer lines than you asked for and break the contract
   the tool has. Every other tool's output is bounded by `tools.artifactSpillThreshold`, described
-  under [The `grep` tool](#the-grep-tool-toolsgrepts) below.
+  under [The `search` tool](#the-search-tool-toolssearchts) below.
 - **Structural summaries for parseable code.** A read with no selector on a parseable source file
   returns declarations with bodies elided (`…`), and the footer states the recovery selector so the model
   re-issues only the ranges it actually needs instead of re-reading the whole file.
@@ -42,46 +42,49 @@ files (PNG, JPEG, GIF, WEBP) inline for direct visual analysis. When `inspect_im
 `read` returns image metadata instead and the model inspects the image by calling `inspect_image`
 with a question.
 
-## The `glob` tool (`tools/glob.ts`)
+## The `search` tool (`tools/search.ts`)
 
-There is no separate `find` or `ls` tool, pattern matching and directory listing are both the `glob`
-tool. A model that runs `find . -name '*.rs'` or `ls -R` in the shell gets back an unbounded dump that
-includes `target/`, `node_modules/`, and `.git/`; `glob` is bounded and gitignore-aware instead:
+Workspace discovery and searching are unified in the `search` tool, covering file path lookup,
+text/regex search, and structural code search through one canonical model-facing interface. It
+takes two required ordered fields followed by type-specific options:
 
-- **Glob matching, or a bare directory/file path.** `glob {path?, hidden?, gitignore?, limit?}`. `path`
-  accepts a glob, a single file, a directory (recursed), or a semicolon-delimited list of any of those
-  (`src/**/*.ts; test/**/*.ts`); omitted, it searches the workspace root.
-- **`gitignore` (default `true`)** hides `.gitignore` matches; set `false` to find `.env*`, build
-  output, or anything the repo ignores. **`hidden` (default `true`)** includes dotfiles.
-- **Bounded by result count**, default and max `200` (`DEFAULT_LIMIT` / `MAX_LIMIT` in `glob.ts`): not
-  a byte cap. Every truncation is surfaced as an actionable notice.
-- **Sorted by mtime, newest first** (not lexicographic), grouped under `# <dir>/` headers with
-  basenames below; directories get a trailing `/`.
-- **`.git` and `node_modules` are never descended**. Traversal uses the same filesystem abstraction
-  as `read`/`grep` (including remote/task workspaces when those backends are active).
+1. **`type` (ordered first):** representation to match:
+   - `"files"`: match paths and repository layout.
+   - `"text"`: match syntax-irrelevant text or regex content.
+   - `"structure"`: match code syntax and structural relationships.
+2. **`input` (ordered second):** what to match:
+   - for `"files"`: a path, directory, or glob pattern (e.g. `"src/**/*.ts"`).
+   - for `"text"`: a literal or regular expression pattern (e.g. `"TODO|FIXME"`).
+   - for `"structure"`: one structural code pattern (e.g. `"console.log($$$)"`).
 
-## The `grep` tool (`tools/grep.ts`)
+### Type-specific options and validation
 
-A model that runs `grep -r` / `rg` in the shell can get back tens of thousands of matching lines. The
-`grep` tool is always regex (Rust regex / PCRE2 syntax; no literal-match flag) and paginates by file
-count on top of the same gitignore-aware traversal `glob` uses:
+Options are strictly validated per `type`; cross-type fields are rejected with an actionable error:
 
-- **`grep {pattern, path?, case?, gitignore?, skip?}`.** `path` scopes the search (single path,
-  semicolon-delimited list, or a `file:line-range` selector on one target); `case` toggles
-  case-sensitivity and defaults to sensitive (`caseSensitive ?? true` in `grep.ts`); `skip` pages
-  past files already returned once a call hits the file limit.
-- **Bounded by file count, not match count.** Results are paginated at `DEFAULT_FILE_LIMIT = 20` files
-  per call, with an internal total cap of `2000` matches (`grep.ts`); `skip` continues from where the
-  previous call left off.
-- **Output is per-file, line-number-prefixed**, with context rows around each match when the harness
-  runs in line-number mode.
-- **Cross-line patterns** are detected from a literal `\n`/`\\n` in `pattern`.
-- The tool description explicitly forbids shelling out to `grep`/`rg`/`ripgrep`/`ag`/`ack`/`git grep`
-  via Bash, the built-in tool is the only sanctioned path.
+- **`type: "files"`** accepts `hidden`, `gitignore`, and `limit`:
+  - **`hidden` (default `true`)** includes dotfiles.
+  - **`gitignore` (default `true`)** respects `.gitignore` rules; set `false` to search ignored paths.
+  - **`limit` (default `200`, max `200`)** bounds returned paths; output is sorted by `mtime` descending and grouped under `# <dir>/` directory headers.
+- **`type: "text"`** accepts `path`, `case`, `gitignore`, and `skip`:
+  - **`path`** scopes the search (file, directory, glob, internal URL like `veyyon://`, or a semicolon-delimited list; omitted searches the workspace root `"."`). Line-range selectors (e.g. `:50-100`) on a single file target constrain matches.
+  - **`case` (default `true`)** toggles case sensitivity.
+  - **`gitignore` (default `true`)** respects `.gitignore`.
+  - **`skip`** pages past already-returned files; results are paginated at `20` files per call (`DEFAULT_FILE_LIMIT`) with an internal cap of `2000` matches. Context lines around matches are governed by `search.contextBefore` (default `1`) and `search.contextAfter` (default `3`).
+- **`type: "structure"`** accepts `path` and `skip`:
+  - **`path`** scopes the search (file, directory, glob, internal URL, or semicolon-delimited list).
+  - **`skip`** specifies match offset for pagination (default limit `50` matches).
+  - Metavariable syntax supports `$NAME` (single node), `$_` (anonymous node), `$$$NAME` (multi-node sequence), and `$$$` (anonymous sequence).
 
+### Unified result contract and settings
+
+Results return formatted text plus structured details `{ type, result }` corresponding to the search type (`FileSearchDetails`, `TextSearchDetails`, or `StructureSearchDetails`).
+
+The tool is part of the default inventory. Text matching uses two settings:
+- `search.contextBefore`: number, default `1` (lines of context before each text match).
+- `search.contextAfter`: number, default `3` (lines of context after each text match).
 ## The `write` tool (`tools/write.ts`)
 
-`read`/`glob`/`grep` are the read side; `write {path, content}` creates or replaces a whole file. It
+`read` and `search` are the read side; `write {path, content}` creates or replaces a whole file. It
 shares infrastructure with the edit engine rather than touching the filesystem directly:
 
 - **Shared verified pipeline.** `write.ts` imports the same file-snapshot store and LF-normalization
