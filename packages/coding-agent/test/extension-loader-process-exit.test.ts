@@ -39,7 +39,7 @@ describe("extension/hook loader process.exit guard (#3680)", () => {
 		const cwd = project!.path();
 		const originalExit = process.exit;
 
-		const result = await loadExtensions([ext], cwd);
+		const result = await loadExtensions([ext], cwd, undefined, undefined, { configuredPaths: [ext] });
 
 		expect(process.exit).toBe(originalExit);
 		expect(result.extensions).toEqual([]);
@@ -73,9 +73,13 @@ describe("extension/hook loader process.exit guard (#3680)", () => {
 		const originalExit = process.exit;
 		const originalReallyExit = process.reallyExit;
 
-		const extensionResult = await loadExtensions([extension], cwd);
+		const extensionResult = await loadExtensions([extension], cwd, undefined, undefined, {
+			configuredPaths: [extension],
+		});
 		const hookResult = await loadHooks([hook], cwd);
-		const reallyExitResult = await loadExtensions([reallyExitExtension], cwd);
+		const reallyExitResult = await loadExtensions([reallyExitExtension], cwd, undefined, undefined, {
+			configuredPaths: [reallyExitExtension],
+		});
 
 		expect(process.exit).toBe(originalExit);
 		expect(process.reallyExit).toBe(originalReallyExit);
@@ -101,7 +105,7 @@ describe("extension/hook loader process.exit guard (#3680)", () => {
 		);
 		const cwd = project!.path();
 
-		const result = await loadExtensions([bad, good], cwd);
+		const result = await loadExtensions([bad, good], cwd, undefined, undefined, { configuredPaths: [bad, good] });
 
 		expect(result.errors.map(e => e.path)).toEqual([bad]);
 		expect(result.extensions.map(e => path.basename(e.path))).toEqual(["good-extension.ts"]);

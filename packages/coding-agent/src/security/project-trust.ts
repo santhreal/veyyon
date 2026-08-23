@@ -39,7 +39,7 @@
 import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { isEnoent, logger } from "@veyyon/utils";
+import { atomicWriteFile, errorMessage, isEnoent, isRecord, logger } from "@veyyon/utils";
 
 /** Bump when the record shape changes. A file at any other version is discarded, not migrated. */
 export const PROJECT_TRUST_STORE_VERSION = 1;
@@ -231,16 +231,14 @@ export class ProjectTrust {
 		const body = `${JSON.stringify({ version: PROJECT_TRUST_STORE_VERSION, projects: this.#store.projects }, null, 2)}\n`;
 		try {
 			await fs.mkdir(path.dirname(this.filePath), { recursive: true });
-			// Written through a temp file in the same directory: a half-written trust store read by
-			// the next launch is a store that trusts nothing, and losing an operator's decision to
-			// an interrupted write would train them to answer the prompt without reading it.
-			const temp = `${this.filePath}.${process.pid}.tmp`;
-			await fs.writeFile(temp, body, { mode: 0o600 });
-			await fs.rename(temp, this.filePath);
+			// Written atomically: a half-written trust store read by the next launch is a store
+			// that trusts nothing, and losing an operator's decision to an interrupted write
+			// would train them to answer the prompt without reading it.
+			await atomicWriteFile(this.filePath, body, { mode: 0o600 });
 		} catch (err) {
 			logger.warn("project trust: could not persist the decision", {
 				path: this.filePath,
-				error: err instanceof Error ? err.message : String(err),
+				error: errorMessage(err),
 			});
 		}
 	}
@@ -264,7 +262,7 @@ async function readStore(filePath: string): Promise<ProjectTrustStore> {
 		logger.warn("project trust: store is not JSON, trusting nothing", { path: filePath });
 		return fresh;
 	}
-	if (!isRecordObject(parsed)) return fresh;
+	if (!isRecord(parsed)) return fresh;
 	if (parsed.version !== PROJECT_TRUST_STORE_VERSION) {
 		// A record written by another version may mean something else by the same fields. The
 		// operator is asked again rather than obeyed on a guess.
@@ -276,7 +274,7 @@ async function readStore(filePath: string): Promise<ProjectTrustStore> {
 		return fresh;
 	}
 	const projects = parsed.projects;
-	if (!isRecordObject(projects)) return fresh;
+	if (!isRecord(projects)) return fresh;
 	const kept: Record<string, ProjectTrustRecord> = {};
 	for (const [root, record] of Object.entries(projects)) {
 		const valid = validateRecord(record);
@@ -293,11 +291,11 @@ async function readStore(filePath: string): Promise<ProjectTrustStore> {
  * "some of the files you approved are still approved".
  */
 function validateRecord(value: unknown): ProjectTrustRecord | null {
-	if (!isRecordObject(value)) return null;
+	if (!isRecord(value)) return null;
 	const decision = value.decision;
 	if (decision !== "trusted" && decision !== "denied") return null;
 	const entries = value.entries;
-	if (!isRecordObject(entries)) return null;
+	if (!isRecord(entries)) return null;
 	const kept: Record<string, string> = {};
 	for (const [relative, hash] of Object.entries(entries)) {
 		if (typeof hash !== "string" || !/^[0-9a-f]{64}$/.test(hash)) return null;
@@ -305,10 +303,6 @@ function validateRecord(value: unknown): ProjectTrustRecord | null {
 	}
 	const decidedAt = typeof value.decidedAt === "string" ? value.decidedAt : new Date(0).toISOString();
 	return { decision, entries: kept, decidedAt };
-}
-
-function isRecordObject(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /**

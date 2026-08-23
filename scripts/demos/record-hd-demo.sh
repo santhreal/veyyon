@@ -243,14 +243,32 @@ else
 	REHEARSAL=0
 fi
 
-mkdir -p .captures
-WORK="$(mktemp -d .captures/veyyon-hd-demo.XXXXXX)"
+# WHERE THE TAKE IS WRITTEN. The recorder writes the video, every frame and the marks
+# file into this directory through a bind mount, as root inside the container. On an NFS
+# export with root_squash -- which is how this repo is mounted on the host that serves the
+# weights -- root maps to an anonymous uid and every one of those writes is denied. The
+# first symptom is `rm: cannot remove .../<scene>-marks.tsv: Permission denied` for a file
+# that did not exist, because unlink in an unwritable directory reports EACCES rather than
+# ENOENT, and by then the display server, the compositor and the model are all up.
+# WORK_DIR names a directory on local disk instead.
+WORK_BASE="${WORK_DIR:-.captures}"
+mkdir -p "${WORK_BASE}"
+WORK="$(mktemp -d "${WORK_BASE}/veyyon-hd-demo.XXXXXX")"
 # Kept on failure, deleted on success. A twenty-five minute take died here on `magick:
 # command not found` and the unconditional cleanup then removed the fifteen frames it had
 # already taken, so a missing publishing tool cost the whole recording rather than the last
 # step of it. On success there is nothing left worth keeping: every frame has been copied
 # into proof/captures and resampled into assets.
 trap 'if [ "$?" -eq 0 ] && [ "${REHEARSAL}" -eq 0 ]; then rm -rf "${WORK}"; else echo "record-hd-demo.sh: kept ${WORK}" >&2; fi' EXIT
+
+# The same question the take asks, asked in one second: can the container write here?
+# shellcheck source=proof/docker/recorder-image.sh
+source proof/docker/recorder-image.sh
+if ! docker run --rm --mount "type=bind,src=$(cd "${WORK}" && pwd),dst=/out" "${RECORDER_IMAGE}" \
+	bash -lc 'touch /out/.write-probe && rm /out/.write-probe' >/dev/null 2>&1; then
+	echo "record-hd-demo.sh: the recorder cannot write into ${WORK}. A network mount that squashes root denies every frame the take produces. Set WORK_DIR to a directory on local disk." >&2
+	exit 2
+fi
 
 # EVERY EXTERNAL BINARY THIS RUN WILL NEED, RESOLVED BEFORE ANY WEIGHTS ARE TOUCHED.
 # ImageMagick 7 ships `magick` and 6 ships `convert`, this fleet has 6, and the resampling

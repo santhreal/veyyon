@@ -88,7 +88,9 @@ describe("AgentSession auto-compaction queue resume", () => {
 		sessionManager = SessionManager.create(tempDir.path(), tempDir.path());
 		getRuntimeSignals().length = 0;
 
-		const extensionsResult = await loadExtensions([extensionPath], tempDir.path());
+		const extensionsResult = await loadExtensions([extensionPath], tempDir.path(), undefined, undefined, {
+			configuredPaths: [extensionPath],
+		});
 		const extensionRunner = new ExtensionRunner(
 			extensionsResult.extensions,
 			extensionsResult.runtime,

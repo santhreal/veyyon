@@ -76,7 +76,7 @@ export interface SessionBeforeCompactEvent {
 
 /** Fired before compaction summarization to customize prompts/context */
 export interface SessionCompactingEvent {
-	type: "session.compacting";
+	type: "session_compacting";
 	sessionId: string;
 	messages: AgentMessage[];
 }
@@ -347,7 +347,7 @@ export interface SessionBeforeCompactResult {
 	compaction?: CompactionResult;
 }
 
-/** Return type for `session.compacting` handlers */
+/** Return type for `session_compacting` handlers */
 export interface SessionCompactingResult {
 	/** Additional context lines to include in summary */
 	context?: string[];

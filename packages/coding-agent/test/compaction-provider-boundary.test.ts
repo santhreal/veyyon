@@ -80,9 +80,9 @@ describe("AgentSession compaction confidentiality wiring", () => {
 			return new SecretObfuscator(entries);
 		};
 		const extensionRunner = {
-			hasHandlers: (eventType: string) => eventType === "session.compacting",
+			hasHandlers: (eventType: string) => eventType === "session_compacting",
 			emit: async (event: { type: string }) => {
-				if (event.type !== "session.compacting") return undefined;
+				if (event.type !== "session_compacting") return undefined;
 				await session.refreshSecrets({ refreshPrompt: false });
 				return { context: [`hook-safe ${HOOK_SECRET}`], prompt: `prompt-safe ${HOOK_SECRET}` };
 			},
