@@ -21,6 +21,7 @@ import { extractMessages } from "../hindsight/transcript";
 import type { AgentSession, AgentSessionEvent } from "../session/agent-session";
 import type { MnemopiBackendConfig, MnemopiScoping } from "./config";
 import { mnemopiEmbedClient } from "./embed-client";
+import type { MnemopiMemoryEditOperation } from "./verbs";
 
 // The mnemopi package pulls the embeddings stack; keep it off the CLI startup
 // module graph by loading it lazily at the async boundaries that need it.
@@ -102,7 +103,7 @@ interface MnemopiScopedResources {
 type MnemopiRememberInput = Parameters<Mnemopi["remember"]>[0];
 type MnemopiRememberOptions = Parameters<Mnemopi["remember"]>[1];
 
-export type MnemopiMemoryEditOperation = "update" | "forget" | "invalidate";
+export { MNEMOPI_MEMORY_EDIT_OPERATIONS, type MnemopiMemoryEditOperation } from "./verbs";
 
 export interface MnemopiMemoryEditOptions {
 	content?: string;
