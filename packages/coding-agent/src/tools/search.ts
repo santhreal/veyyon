@@ -32,7 +32,7 @@ export const searchSchema = z.strictObject({
 		.string()
 		.optional()
 		.describe(
-			'text or structure only: narrow search scope — file, directory, glob, internal URL, or semicolon-delimited set. ssh:// is text-only. Omitted -> workspace root (".")',
+			'TEXT/STRUCTURE ONLY — NEVER use with files; files put the complete scope/glob in input. Narrow scope: file, directory, glob, internal URL, or semicolon-delimited set. ssh:// is text-only. Omitted -> workspace root (".")',
 		),
 	case: z.boolean().optional().describe("text only: case-sensitive matching"),
 	hidden: z.boolean().optional().describe("files only: include hidden files"),
