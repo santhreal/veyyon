@@ -130,10 +130,25 @@ export interface Avx2Probes {
 	arch: string;
 	readCpuInfo: () => string | null;
 	runCommand: (command: string, args: string[]) => string | null;
+	/** Ground-truth fallback: trial-load the modern addon in a child process. Win32 only. */
+	trialLoad?: () => Avx2Support;
 }
 
 /** Pure, side-effect-free AVX2 classification from injected probes (the runtime twin of scripts/host-detect's classifier). */
 export function classifyAvx2Support(probes: Avx2Probes): Avx2Support;
+
+/** Parse a persisted host-variant.json body into a verdict, or null when it is absent, foreign, corrupt, or a non-answer. */
+export function parseHostVariantVerdict(
+	text: string | undefined | null,
+	host: { platform: NodeJS.Platform; arch: string },
+): Avx2Support | null;
+
+/** Persist a genuine verdict as host-variant.json under `nativesDir`; best-effort, never throws. */
+export function writeHostVariantVerdict(
+	nativesDir: string,
+	verdict: "supported" | "unsupported",
+	host: { platform: NodeJS.Platform; arch: string },
+): void;
 
 export interface SelectCpuVariantInput {
 	arch: string;
