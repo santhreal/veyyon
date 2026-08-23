@@ -71,6 +71,70 @@ describe("fetchWithRetry", () => {
 		expect(attempt).toBe(1);
 	});
 
+	/**
+	 * WHY: the transient set was the GATE in front of the verdict, so a caller that knew its API
+	 * documents 409 as retryable, or that reads a decision out of a 400's body, never got asked. The
+	 * set is the default for a caller with no verdict; it is not a veto over one.
+	 */
+	it.each([409, 400, 401])("asks the caller's verdict about a %s", async status => {
+		let attempts = 0;
+		const customFetch = async () => {
+			attempts += 1;
+			return attempts === 1 ? new Response("try again", { status }) : new Response("ok", { status: 200 });
+		};
+
+		const response = await fetchWithRetry("https://example.invalid/verdict", {
+			fetch: customFetch,
+			defaultDelayMs: 1,
+			maxAttempts: 3,
+			shouldRetryResponse: (_response, bodyText) => bodyText === "try again",
+		});
+
+		expect(response.status).toBe(200);
+		expect(attempts).toBe(2);
+	});
+
+	it("never reads the body of a success, and never asks about one", async () => {
+		// A 2xx may be a live stream: `clone().text()` on one buffers the whole response, so the loop
+		// returns before it can. A verdict that would retry everything must not see it.
+		let asked = 0;
+		const stream = new ReadableStream<Uint8Array>({
+			start(controller) {
+				controller.enqueue(new TextEncoder().encode("first chunk"));
+			},
+		});
+
+		const response = await fetchWithRetry("https://example.invalid/stream", {
+			fetch: async () => new Response(stream, { status: 200 }),
+			defaultDelayMs: 1,
+			maxAttempts: 3,
+			shouldRetryResponse: () => {
+				asked += 1;
+				return true;
+			},
+		});
+
+		expect(asked).toBe(0);
+		expect(response.bodyUsed).toBe(false);
+	});
+
+	it("falls back to the transient set when no verdict is passed", async () => {
+		let attempts = 0;
+		const customFetch = async () => {
+			attempts += 1;
+			return new Response("gone", { status: 404 });
+		};
+
+		const response = await fetchWithRetry("https://example.invalid/default", {
+			fetch: customFetch,
+			defaultDelayMs: 1,
+			maxAttempts: 3,
+		});
+
+		expect(response.status).toBe(404);
+		expect(attempts).toBe(1);
+	});
+
 	it("returns retryable responses immediately when retry hints exceed the delay cap", async () => {
 		let attempt = 0;
 		const customFetch = async () => {
