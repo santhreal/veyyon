@@ -108,6 +108,7 @@
 - The rail's travelling light advances at four rows a second instead of eight.
 - A streaming edit or write block carries the rail light on its newest row rather than at a position taken from the clock.
 - An overlay's first frame is its settled frame: a card no longer unfolds row by row and no highlight sweeps across it as it opens.
+- Broad multi-file text searches now keep only deterministic representative matches inline and save the complete formatted result behind an `artifact://` reference. The preview budget follows the turn-aware output curve from an 8 KiB search ceiling (~2 KiB early at turn 0), emitting up to two representative matches per file while preserving counts and warnings; explicit single-file and line-range searches retain their full output, and only visible representative lines are recorded as seen for anchored edits.
 
 ### Fixed
 
