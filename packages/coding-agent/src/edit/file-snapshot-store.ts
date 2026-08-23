@@ -187,22 +187,35 @@ export function recordSeenLines(
  * when the body has no numbered rows or the snapshot already aged out. `tag`
  * must be the tag returned when this exact content was recorded.
  *
- * `excludedLines` prunes 1-indexed line numbers whose displayed text was
- * column-truncated (or otherwise not shown in full). A column-clipped row
- * still carries a `NN:` prefix — the parser sees the number and would
- * otherwise mark the line "seen" even though only its prefix ever reached
- * the model. Producers that apply per-line column truncation MUST supply
- * the clipped line set so the patcher's seen-line guard keeps rejecting
- * edits against those lines until a full-width read of them occurs.
+ * `clippedLines` names 1-indexed lines whose displayed text was cut at the
+ * per-line column cap. A clipped row still carries a `NN:` prefix, so the
+ * parser sees the number and would otherwise mark the line fully seen when only
+ * its prefix reached the model. Those lines are kept OUT of the seen set and
+ * recorded as clipped instead, which is a weaker permission and not none: the
+ * patcher refuses every edit that rewrites their bytes, and allows a pure
+ * insertion beside them, whose anchor is a position rather than content.
+ * Producers that apply per-line column truncation MUST supply the set.
  */
 export function recordSeenLinesFromBody(
 	session: FileSnapshotStoreOwner,
 	absolutePath: string,
 	tag: string,
 	body: string,
-	excludedLines?: ReadonlySet<number>,
+	clippedLines?: ReadonlySet<number>,
 ): void {
 	const parsed = parseSeenLinesFromHashlineBody(body);
-	const filtered = excludedLines && excludedLines.size > 0 ? parsed.filter(line => !excludedLines.has(line)) : parsed;
-	recordSeenLines(session, absolutePath, tag, filtered);
+	if (!clippedLines || clippedLines.size === 0) {
+		recordSeenLines(session, absolutePath, tag, parsed);
+		return;
+	}
+	recordSeenLines(
+		session,
+		absolutePath,
+		tag,
+		parsed.filter(line => !clippedLines.has(line)),
+	);
+	const displayedAndClipped = parsed.filter(line => clippedLines.has(line));
+	if (displayedAndClipped.length > 0) {
+		getFileSnapshotStore(session).recordClippedLines(canonicalSnapshotKey(absolutePath), tag, displayedAndClipped);
+	}
 }
