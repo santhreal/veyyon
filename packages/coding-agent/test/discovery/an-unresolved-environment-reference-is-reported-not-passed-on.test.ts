@@ -114,8 +114,6 @@ describe("a discovered MCP config naming a variable that is not set", () => {
 		const result = await loadCapability<MCPServer>(mcpCapability.id, { providers: ["native"] });
 		const reported = result.warnings.filter(w => w.includes(ABSENT));
 		// `[Veyyon]` is the provider's own prefix on every warning it reports.
-		expect(reported).toEqual([
-			`[Veyyon] ${configPath}: environment variable ${ABSENT} is not set in probe.args[0]`,
-		]);
+		expect(reported).toEqual([`[Veyyon] ${configPath}: environment variable ${ABSENT} is not set in probe.args[0]`]);
 	});
 });
