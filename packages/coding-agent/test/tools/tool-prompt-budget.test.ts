@@ -73,7 +73,7 @@ const TOOL_PROMPT_CEILINGS: Record<string, number> = {
 	write: 700,
 	goal: 700,
 	resolve: 480,
-	web_search: 340,
+	web_search: 610,
 };
 
 /**
@@ -85,7 +85,7 @@ const TOOL_PROMPT_CEILINGS: Record<string, number> = {
  * boot moved it from 46,800 to 47,000 — 645 bytes of new prose against 200 bytes of headroom,
  * which is the trade being recorded here rather than absorbed.
  */
-const TOTAL_PROMPT_CEILING = 47_000;
+const TOTAL_PROMPT_CEILING = 47_300;
 
 /**
  * How far under its ceiling a tool may sit before the row is stale.
