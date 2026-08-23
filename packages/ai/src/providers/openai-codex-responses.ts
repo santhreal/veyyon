@@ -32,6 +32,11 @@ import {
 	takePendingCacheFailure,
 } from "../cache";
 import * as AIError from "../error";
+import {
+	CodexProviderStreamError,
+	CodexWebSocketTransportError,
+	CodexWhitespaceToolCallLoopError,
+} from "../error/classes";
 import { getEnvApiKey } from "../stream";
 import type {
 	Api,
@@ -247,7 +252,6 @@ const CODEX_WEBSOCKET_IDLE_TIMEOUT_MS = Number($env.VEYYON_CODEX_WEBSOCKET_IDLE_
 const CODEX_WEBSOCKET_FIRST_EVENT_TIMEOUT_MS = Number($env.VEYYON_CODEX_WEBSOCKET_FIRST_EVENT_TIMEOUT_MS || 60_000);
 const CODEX_WEBSOCKET_RETRY_BUDGET = Number($env.VEYYON_CODEX_WEBSOCKET_RETRY_BUDGET || CODEX_MAX_RETRIES);
 const CODEX_WEBSOCKET_RETRY_DELAY_MS = Number($env.VEYYON_CODEX_WEBSOCKET_RETRY_DELAY_MS || CODEX_RETRY_DELAY_MS);
-const CODEX_WEBSOCKET_TRANSPORT_ERROR_PREFIX = "Codex websocket transport error";
 const CODEX_RETRYABLE_EVENT_CODES = new Set(["model_error", "server_error", "internal_error"]);
 const CODEX_RETRYABLE_EVENT_MESSAGE =
 	/processing your request|retry your request|temporar(?:y|ily)|overloaded|service.?unavailable|internal error|server error/i;
@@ -2554,10 +2558,12 @@ class CodexStreamProcessor {
 					sentTurnStateHeader: Boolean(this.requestContext.websocketState?.turnState),
 					sentModelsEtagHeader: Boolean(this.requestContext.websocketState?.modelsEtag),
 				});
-			throw new CodexProviderStreamError("Codex stream ended before terminal completion event", false);
+			throw new CodexProviderStreamError("Codex stream ended before terminal completion event", {
+				retryable: false,
+			});
 		}
 		if (output.stopReason === "aborted" || output.stopReason === "error") {
-			throw new CodexProviderStreamError("Codex response failed", false);
+			throw new CodexProviderStreamError("Codex response failed", { retryable: false });
 		}
 
 		output.providerPayload = createOpenAIResponsesHistoryPayload(this.model.provider, this.runtime.nativeOutputItems);
@@ -3990,7 +3996,7 @@ async function openCodexSseEventStream(
 	}
 	updateCodexSessionMetadataFromHeaders(state, response.headers);
 	if (!response.body) {
-		throw new CodexProviderStreamError("No response body", false);
+		throw new CodexProviderStreamError("No response body", { retryable: false });
 	}
 	const events = readSseJson<Record<string, unknown>>(response.body, signal, event =>
 		notifyRawSseEvent(onSseEvent, { event: event.event, data: event.data, raw: [...event.raw] }),
@@ -4308,31 +4314,6 @@ export function convertOpenAICodexResponsesTools(
 	});
 }
 
-export class CodexWebSocketTransportError extends Error {
-	constructor(detail: string) {
-		super(`${CODEX_WEBSOCKET_TRANSPORT_ERROR_PREFIX}: ${detail}`);
-		this.name = "CodexWebSocketTransportError";
-	}
-}
-class CodexWhitespaceToolCallLoopError extends Error {
-	constructor(message: string) {
-		super(message);
-		this.name = "CodexWhitespaceToolCallLoopError";
-	}
-}
-
-class CodexProviderStreamError extends Error {
-	readonly retryable: boolean;
-	readonly code?: string;
-
-	constructor(message: string, retryable: boolean, code?: string) {
-		super(message);
-		this.name = "CodexProviderStreamError";
-		this.retryable = retryable;
-		this.code = code;
-	}
-}
-
 const optionalCodexString = type("unknown").pipe(raw => {
 	const out = type("string")(raw);
 	return out instanceof type.errors ? undefined : out;
@@ -4396,7 +4377,7 @@ export function isRetryableCodexFailureEvent(rawEvent: Record<string, unknown>):
 export function createCodexProviderStreamError(rawEvent: Record<string, unknown>): CodexProviderStreamError {
 	const event = codexFailureEventSchema(rawEvent);
 	if (event instanceof type.errors) {
-		return new CodexProviderStreamError("Codex response failed", false);
+		return new CodexProviderStreamError("Codex response failed", { retryable: false });
 	}
 	const nestedError = event.error ?? event.response?.error;
 	const code = nestedError?.code ?? nestedError?.type ?? event.code ?? "";
@@ -4405,7 +4386,10 @@ export function createCodexProviderStreamError(rawEvent: Record<string, unknown>
 		event.type === "error"
 			? formatCodexErrorEvent(rawEvent, code, message)
 			: (formatCodexFailure(rawEvent) ?? "Codex response failed");
-	return new CodexProviderStreamError(formattedMessage, isRetryableCodexFailureEvent(rawEvent), code || undefined);
+	return new CodexProviderStreamError(formattedMessage, {
+		retryable: isRetryableCodexFailureEvent(rawEvent),
+		code: code || undefined,
+	});
 }
 
 function formatCodexFailure(rawEvent: Record<string, unknown>): string | null {
