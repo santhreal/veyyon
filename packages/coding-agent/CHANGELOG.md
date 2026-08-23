@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Files → LSP is one enterable row whose nested page independently controls language servers, the agent tool, diagnostics after write or edit, format after write, lazy startup, and diagnostics deduplication; `--no-lsp` still disables the full stack.
+
 ## [1.2.0] - 2026-08-23
 
 ### Breaking Changes
@@ -22,7 +26,6 @@
 - `proof/zoom.py` holds a recording on one measured region and eases back out, so a row whose subject is a small block of text survives the downsample from the 2560-wide capture to the published 1920.
 
 ### Changed
-- Files → LSP is one row you enter. The nested page has a switch per piece: **Language Servers** starts the servers; **Agent Tool** is the `lsp` tool (definitions, references, rename); **Diagnostics after Write** and **Diagnostics after Edit** inject late diagnostics after those tools save; **Format after Write** formats. Turning the tool off leaves injection and format in place, and turning injection off leaves the tool. All of them still need Language Servers on, and a session `--no-lsp` still forces the whole stack off.
 
 - The Subagents block above the composer is one row per running agent again — a mark, the agent's id, its spawn description and the model it resolved to — with the house rail as its left edge and no tree connectors. It had been rebuilt as a table of lanes with an id column, a model column against the right margin and a live activity column resolving recovery over tool over description, and the table said less than the short list it replaced: three padded columns read as a grid to scan, the activity column drew whatever text a tool call happened to carry, and a `bun -e` command with a real newline in it put the tail of that command outside the block. Every cell folds newlines to spaces before it is bounded, because a bounded width states nothing about how many lines a string occupies, and the row never draws a task's prompt.
 - Light travels down the rail of the Subagents block, and only the rows whose agent is inside a tool are lit, so the sweep is a count of what is working rather than a decoration on the block.
