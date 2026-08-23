@@ -51,6 +51,7 @@
 - The hook event `session.compacting` is now `session_compacting`. Its old spelling collided with the `session` settings root, so a hook subscribing to it was read as configuration under `session` and dropped. A hook file naming the old event is rejected with the new name in the error rather than silently never firing.
 - `prompts/all-registries.ts` no longer exports `assertEvalPromptOverridesClaimed`. The refusal it performed is `assertEvalPromptOverrideIdsExist` in `prompts/eval-overrides.ts`, which reads the generated id space instead of the loaded registries.
 - The welcome hero no longer animates in, so `InteractiveMode.playWelcomeIntro`, the `suppressWelcomeIntro` init option, the `InteractiveModeInitOptions` type and the setup wizard's `playWelcomeIntro` option are gone, and `gradientLogo` and `gradientEscape` take no shine argument.
+- The model-facing workspace search surface is now one mandatory `search` tool taking ordered required `type` (`"files" | "text" | "structure"`) and `input`, replacing the separate `glob`, `grep`, and `ast_grep` tool IDs. Retired per-engine and `search.enabled` values are discarded while text-context values and persisted tool inventories migrate.
 
 ### Added
 
@@ -61,7 +62,6 @@
 - `proof/zoom.py` holds a recording on one measured region and eases back out, so a row whose subject is a small block of text survives the downsample from the 2560-wide capture to the published 1920.
 
 ### Changed
-- The model-facing search surface is unified into one default `search` tool taking ordered required `type` (`"files" | "text" | "structure"`) and `input` with type-specific validation and structured `{ type, result }` details, replacing separate model-facing `glob`, `grep`, and `ast_grep` tool IDs. Search is no longer optional: retired per-engine and `search.enabled` values are discarded while text-context values and explicit tool inventories migrate.
 
 - The Subagents block above the composer is one row per running agent again — a mark, the agent's id, its spawn description and the model it resolved to — with the house rail as its left edge and no tree connectors. It had been rebuilt as a table of lanes with an id column, a model column against the right margin and a live activity column resolving recovery over tool over description, and the table said less than the short list it replaced: three padded columns read as a grid to scan, the activity column drew whatever text a tool call happened to carry, and a `bun -e` command with a real newline in it put the tail of that command outside the block. Every cell folds newlines to spaces before it is bounded, because a bounded width states nothing about how many lines a string occupies, and the row never draws a task's prompt.
 - Light travels down the rail of the Subagents block, and only the rows whose agent is inside a tool are lit, so the sweep is a count of what is working rather than a decoration on the block.

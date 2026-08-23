@@ -31,9 +31,9 @@ export default class Grievances extends Command {
 
 	static examples = [
 		"veyyon grievances",
-		"veyyon grievances list --tool find",
+		"veyyon grievances list --tool search",
 		"veyyon grievances clean --id 209",
-		"veyyon grievances clean --tool find",
+		"veyyon grievances clean --tool search",
 		"veyyon grievances clean --all",
 		"veyyon grievances push",
 	];

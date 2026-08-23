@@ -1516,7 +1516,7 @@ export async function executeTextSearch(
 			// save the FULL match set to an artifact and append the recoverable
 			// `artifact://<id>` footer so nothing is lost and the huge result is
 			// not carried verbatim for every later turn.
-			// Bounded by the same turn-scaled budget every other tool uses. grep keeps
+			// Bounded by the same turn-scaled budget every other tool uses. Text search keeps
 			// a HEAD window rather than head-and-tail because matches arrive in
 			// order, but the SIZE of that window is priced identically: an early
 			// result is re-read for the rest of the session whichever tool produced

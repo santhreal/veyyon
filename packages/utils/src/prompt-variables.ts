@@ -21,7 +21,7 @@
  * THE DISTINCTION THAT MAKES THIS WORK is between the two ways a template can
  * name a variable:
  *
- *   - INTERPOLATED, as in `{{toolRefs.grep}}`. The name's value is written into
+ *   - INTERPOLATED, as in `{{toolRefs.search}}`. The name's value is written into
  *     the output. If it is absent the output has a hole in it, and that is
  *     ALWAYS a bug — there is no reading of `Regex search -> ``` where the
  *     empty backticks were intended.
@@ -52,7 +52,7 @@ export interface TemplateVariable {
 	/** The root name looked up on the context object, e.g. `toolRefs`. */
 	readonly name: string;
 	readonly use: TemplateVariableUse;
-	/** Every full dotted path seen for this root, e.g. `toolRefs.grep`. */
+	/** Every full dotted path seen for this root, e.g. `toolRefs.search`. */
 	readonly paths: readonly string[];
 	/**
 	 * Conditions under which the name is actually printed, as sets of other

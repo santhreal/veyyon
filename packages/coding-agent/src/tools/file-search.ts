@@ -150,7 +150,7 @@ export async function executeFileSearch(
 			normalizedPatterns.push(resource.sourcePath);
 		}
 		if (normalizedPatterns.some(pattern => pattern.length === 0)) {
-			throw new ToolError("`path` must contain non-empty globs or paths");
+			throw new ToolError("`input` must contain non-empty globs or paths");
 		}
 
 		// Tolerate missing entries in a multi-path call: skip ones whose base
