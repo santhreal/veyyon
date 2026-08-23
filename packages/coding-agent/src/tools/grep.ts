@@ -1,26 +1,18 @@
 import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
-import type {
-	AgentTool,
-	AgentToolContext,
-	AgentToolResult,
-	AgentToolUpdateCallback,
-	ToolTier,
-} from "@veyyon/agent-core";
+import type { AgentToolResult, ToolTier } from "@veyyon/agent-core";
 import { formatHashlineHeader } from "@veyyon/hashline";
 import { type GrepMatch, GrepOutputMode, type GrepResult, grep } from "@veyyon/natives";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
-import { errorMessage, logger, prompt, trimTrailingSlashes, untilAborted } from "@veyyon/utils";
-import { type } from "arktype";
+import { errorMessage, logger, trimTrailingSlashes, untilAborted } from "@veyyon/utils";
 import { recordFileSnapshot, recordSeenLinesFromBody } from "../edit/file-snapshot-store";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { LocalProtocolOptions } from "../internal-urls/local-protocol";
 import { InternalUrlRouter } from "../internal-urls/router";
 import type { InternalResource, ResolveContext } from "../internal-urls/types";
 import type { Theme } from "../modes/theme/theme";
-import { toolsPrompts } from "../prompts/tools/rows";
 import {
 	artifactFooter,
 	DEFAULT_MAX_COLUMN,
@@ -42,7 +34,6 @@ import {
 import { resolveFileDisplayMode } from "../utils/file-display-mode";
 import { type ArchiveReader, type ExtractedArchiveFile, openArchive, parseArchivePathCandidates } from "../utils/zip";
 import type { ToolSession } from ".";
-import { searchPathFilesystemTargets } from "./cwd-boundary";
 import { materializeReadUrlToFile, parseReadUrlTarget } from "./fetch";
 import { createFileRecorder, formatResultPath } from "./file-recorder";
 import { classifyGroupedLines, formatGroupedFiles, groupLineIndicesByBlank } from "./grouped-file-output";
@@ -78,22 +69,13 @@ import { resolveToolSearchScope } from "./search-scope";
 import { ToolError } from "./tool-errors";
 import { toolResult } from "./tool-result";
 
-const searchPathEntry = type("string").describe(
-	'file, directory, glob, internal URL, or "<file>:<lines>" selector to search (e.g. "src/foo.ts:50-100", "src/foo.ts:50+10", "src/foo.ts:50-100,200-300")',
-);
-const searchSchema = type({
-	pattern: type("string").describe("regex pattern"),
-	"path?": searchPathEntry.describe(
-		'file, directory, glob, internal URL, or "<file>:<lines>" selector to search; pass several as a semicolon-delimited list ("src; tests"). Omitted -> searches the workspace root (".")',
-	),
-	"case?": type("boolean").describe("case-sensitive search"),
-	"gitignore?": type("boolean").describe("respect gitignore"),
-	"skip?": type("number")
-		.or("null")
-		.describe("files to skip before collecting results — use to paginate when the prior call hit the file limit"),
-});
-
-export type GrepToolInput = typeof searchSchema.infer;
+export interface TextSearchInput {
+	pattern: string;
+	path?: string;
+	case?: boolean;
+	gitignore?: boolean;
+	skip?: number | null;
+}
 
 /** Maximum number of distinct files surfaced in a single response. The
  * agent paginates further pages via `skip`. */
@@ -867,7 +849,7 @@ async function resolveInternalSearchInputs(opts: {
 	};
 }
 
-export interface GrepToolDetails {
+export interface TextSearchDetails {
 	truncation?: TruncationResult;
 	fileLimitReached?: number;
 	perFileLimitReached?: number;
@@ -897,39 +879,16 @@ export interface GrepToolDetails {
 	missingPaths?: string[];
 }
 
-type SearchParams = typeof searchSchema.infer;
+export function textSearchApproval(args: unknown): ToolTier {
+	const input = args as { path?: string | string[] };
+	return toPathList(input.path).some(pathTargetsSsh) ? "exec" : "read";
+}
 
-export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails> {
-	readonly name = "grep";
-	readonly approval = (args: unknown): ToolTier => {
-		const a = args as { path?: string | string[]; paths?: string | string[] };
-		return toPathList(a.path ?? a.paths).some(pathTargetsSsh) ? "exec" : "read";
-	};
-	// grep reads file contents under its search path, so an out-of-cwd search
-	// prompts in non-yolo modes like a point read does. See cwd-boundary.ts.
-	readonly filesystemTargets = (args: unknown): string[] => searchPathFilesystemTargets(args);
-	readonly label = "Grep";
-	readonly loadMode = "discoverable";
-	readonly summary = "Grep file contents using ripgrep (fast regex search)";
-	readonly description: string;
-	readonly parameters = searchSchema;
-	readonly strict = true;
-
-	constructor(private readonly session: ToolSession) {
-		const displayMode = resolveFileDisplayMode(session);
-		this.description = prompt.render(toolsPrompts["tools/grep"].text, {
-			IS_HL_MODE: displayMode.hashLines,
-			IS_LINE_NUMBER_MODE: !displayMode.hashLines && displayMode.lineNumbers,
-		});
-	}
-
-	async execute(
-		_toolCallId: string,
-		params: SearchParams,
-		signal?: AbortSignal,
-		_onUpdate?: AgentToolUpdateCallback<GrepToolDetails>,
-		_toolContext?: AgentToolContext,
-	): Promise<AgentToolResult<GrepToolDetails>> {
+export async function executeTextSearch(
+	session: ToolSession,
+	params: TextSearchInput,
+	signal?: AbortSignal,
+): Promise<AgentToolResult<TextSearchDetails>> {
 		const { pattern, path: rawPath, case: caseSensitive, gitignore, skip } = params;
 
 		return untilAborted(signal, async () => {
@@ -947,14 +906,14 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 			}
 			const scopedPaths = toPathList(rawPath);
 			const effectivePaths = scopedPaths.length > 0 ? scopedPaths : ["."];
-			const rawEntries = await expandDelimitedPathEntries(effectivePaths, this.session.cwd);
-			const pathSpecs = await parsePathSpecs(rawEntries, this.session.cwd);
+			const rawEntries = await expandDelimitedPathEntries(effectivePaths, session.cwd);
+			const pathSpecs = await parsePathSpecs(rawEntries, session.cwd);
 			const materializedExternalPaths = new Map<string, string>();
 			const materializeExternalUrlForSearch = async (rawPath: string) => {
 				const target = parseReadUrlTarget(rawPath);
 				if (!target) return undefined;
 				const materialized = await materializeReadUrlToFile(
-					this.session,
+					session,
 					{ path: target.path, raw: target.raw },
 					signal,
 				);
@@ -967,17 +926,17 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 				displaySet: archiveDisplaySet,
 				unreadable: archiveUnreadable,
 				cleanup: cleanupArchiveScratch,
-			} = await resolveArchiveSearchPaths(pathSpecs, this.session.cwd);
+			} = await resolveArchiveSearchPaths(pathSpecs, session.cwd);
 			try {
 				const internalResolution = await resolveInternalSearchInputs({
 					pathSpecs,
 					resolvedPaths,
-					cwd: this.session.cwd,
-					settings: this.session.settings,
+					cwd: session.cwd,
+					settings: session.settings,
 					signal,
 					archiveDisplayMap,
-					localProtocolOptions: this.session.localProtocolOptions,
-					skills: this.session.skills,
+					localProtocolOptions: session.localProtocolOptions,
+					skills: session.skills,
 				});
 				const searchablePaths = internalResolution.paths;
 				const { virtualResources, virtualPathSet, virtualInputIndexes } = internalResolution;
@@ -996,8 +955,8 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 							`or pass a UTF-8 text member.`,
 					);
 				}
-				const normalizedContextBefore = this.session.settings.get("grep.contextBefore");
-				const normalizedContextAfter = this.session.settings.get("grep.contextAfter");
+				const normalizedContextBefore = session.settings.get("search.contextBefore");
+				const normalizedContextAfter = session.settings.get("search.contextAfter");
 				const ignoreCase = !(caseSensitive ?? true);
 				const useGitignore = gitignore ?? true;
 				const patternHasNewline = normalizedPattern.includes("\n") || normalizedPattern.includes("\\n");
@@ -1014,16 +973,16 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 				if (searchablePaths.length > 0) {
 					const scope = await resolveToolSearchScope({
 						rawPaths: searchablePaths,
-						cwd: this.session.cwd,
+						cwd: session.cwd,
 						internalUrlAction: "search",
 						trackImmutableSources: true,
 						surfaceExactFilePaths: true,
 						fanOutFileTargets: true,
 						multipathStatHint: " (`path` list entries must each exist relative to cwd)",
-						settings: this.session.settings,
+						settings: session.settings,
 						signal,
-						localProtocolOptions: this.session.localProtocolOptions,
-						skills: this.session.skills,
+						localProtocolOptions: session.localProtocolOptions,
+						skills: session.skills,
 						resolveExternalUrl: materializeExternalUrlForSearch,
 					});
 					searchPath = scope.searchPath;
@@ -1051,7 +1010,7 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 						}
 						if (resolved === spec.clean && !archiveDisplayMap.has(resolved)) {
 							// Non-archive entry; ensure the cleaned path resolves to a regular file.
-							const absKey = path.resolve(resolveReadPath(resolved, this.session.cwd));
+							const absKey = path.resolve(resolveReadPath(resolved, session.cwd));
 							// Keep the stat failure's own reason: an unreadable path reported as "not found" sends
 							// the reader looking for a missing file instead of at the permission that blocked it.
 							let stats: Awaited<ReturnType<typeof stat>> | undefined;
@@ -1086,7 +1045,7 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 						? `${physicalScopePath}, ${internalResolution.virtualScopePath}`
 						: physicalScopePath;
 				} else {
-					searchPath = this.session.cwd;
+					searchPath = session.cwd;
 					scopePath = internalResolution.virtualScopePath ?? ".";
 					globFilter = undefined;
 					isDirectory = false;
@@ -1107,7 +1066,7 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 						`Path not found: ${missingPaths.join(", ")}; list each target in the semicolon-delimited \`path\`${archiveHint}`,
 					);
 				}
-				const baseDisplayMode = resolveFileDisplayMode(this.session);
+				const baseDisplayMode = resolveFileDisplayMode(session);
 
 				const effectiveOutputMode = GrepOutputMode.Content;
 				const isMultiScope =
@@ -1303,7 +1262,7 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 				const formatPath = (filePath: string): string =>
 					archiveDisplaySet.has(filePath) || virtualPathSet.has(filePath)
 						? filePath
-						: formatResultPath(filePath, isDirectory, searchPath, this.session.cwd);
+						: formatResultPath(filePath, isDirectory, searchPath, session.cwd);
 
 				// Group matches by file in encounter order. Detect per-file overflow
 				// BEFORE truncation so the renderer can surface that a hot file was
@@ -1373,7 +1332,7 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 							try {
 								const st = await stat(target);
 								if (st.isFile() && st.size > NATIVE_GREP_MAX_FILE_BYTES) {
-									oversized.push(path.relative(this.session.cwd, target) || target);
+									oversized.push(path.relative(session.cwd, target) || target);
 								}
 							} catch {
 								// Stat failures here are surfaced by other code paths.
@@ -1412,10 +1371,10 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 						.filter((s): s is string => Boolean(s))
 						.join("\n") || undefined;
 				if (selectedMatches.length === 0) {
-					const details: GrepToolDetails = {
+					const details: TextSearchDetails = {
 						scopePath,
 						searchPath,
-						cwd: this.session.cwd,
+						cwd: session.cwd,
 						matchCount: 0,
 						fileCount: 0,
 						files: [],
@@ -1447,12 +1406,12 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 				if (baseDisplayMode.hashLines) {
 					for (const relativePath of fileList) {
 						if (archiveDisplaySet.has(relativePath) || virtualPathSet.has(relativePath)) continue;
-						const absoluteFilePath = path.resolve(this.session.cwd, relativePath);
+						const absoluteFilePath = path.resolve(session.cwd, relativePath);
 						if (isImmutableSourcePath(absoluteFilePath, immutableSourcePaths)) continue;
 						// Mint a whole-file content tag so any anchor validates while the
 						// file is unchanged; over-cap / unreadable files get no tag (and
 						// therefore plain, non-editable line output).
-						const tag = await recordFileSnapshot(this.session, absoluteFilePath);
+						const tag = await recordFileSnapshot(session, absoluteFilePath);
 						if (tag) hashContexts.set(relativePath, { tag });
 					}
 				}
@@ -1515,9 +1474,9 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 						fileMatchCounts.set(relativePath, (fileMatchCounts.get(relativePath) ?? 0) + 1);
 					}
 					if (hashContext?.tag) {
-						const absoluteFilePath = path.resolve(this.session.cwd, relativePath);
+						const absoluteFilePath = path.resolve(session.cwd, relativePath);
 						recordSeenLinesFromBody(
-							this.session,
+							session,
 							absoluteFilePath,
 							hashContext.tag,
 							modelOut.join("\n"),
@@ -1577,12 +1536,12 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 				// it. See `inlineBudgetFor`.
 				const truncation = truncateHead(rawOutput, {
 					maxLines: Number.MAX_SAFE_INTEGER,
-					maxBytes: inlineBudgetFor(this.session),
+					maxBytes: inlineBudgetFor(session),
 				});
 				let output = truncation.content;
 				let spillArtifactId: string | undefined;
 				if (truncation.truncated) {
-					spillArtifactId = await saveOutputArtifact(this.session, "grep", rawOutput);
+					spillArtifactId = await saveOutputArtifact(session, "search-text", rawOutput);
 					if (spillArtifactId) {
 						const sep = output.endsWith("\n") ? "" : "\n";
 						output += `${sep}${artifactFooter(spillArtifactId)}`;
@@ -1592,10 +1551,10 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 				const truncated = Boolean(
 					fileLimitReached || perFileLimitReached || result.limitReached || truncation.truncated || linesTruncated,
 				);
-				const details: GrepToolDetails = {
+				const details: TextSearchDetails = {
 					scopePath,
 					searchPath,
-					cwd: this.session.cwd,
+					cwd: session.cwd,
 					matchCount: selectedMatches.length,
 					fileCount: fileList.length,
 					files: fileList,
@@ -1623,17 +1582,14 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 			}
 		});
 	}
-}
 
 // =============================================================================
 // TUI Renderer
 // =============================================================================
 
-interface GrepRenderArgs {
-	pattern: string;
-	path?: string | string[];
-	/** Legacy pre-`path` argument name; kept so historical transcripts still render a scope. */
-	paths?: string | string[];
+export interface TextSearchRenderArgs {
+	input: string;
+	path?: string;
 	case?: boolean;
 	gitignore?: boolean;
 	skip?: number;
@@ -1647,7 +1603,7 @@ const EXPANDED_TEXT_LIMIT = PREVIEW_LIMITS.EXPANDED_LINES * 2;
 
 const SEARCH_CODE_FRAME_LINE_RE = /^\s*\*?(\d+)│/;
 
-function searchScopeMeta(details: GrepToolDetails | undefined): string | undefined {
+function searchScopeMeta(details: TextSearchDetails | undefined): string | undefined {
 	if (!details?.scopePath) return undefined;
 	const label = details.searchPath ? fileHyperlink(details.searchPath, details.scopePath) : details.scopePath;
 	return `in ${label}`;
@@ -1795,14 +1751,14 @@ function renderBudgetedSearchGroups(
 	return lines;
 }
 
-function grepStatusIcon(uiTheme: Theme): string {
+function textSearchStatusIcon(uiTheme: Theme): string {
 	return uiTheme.fg("toolTitle", uiTheme.symbol("icon.search"));
 }
 
-export const grepToolRenderer = {
+export const textSearchRenderer = {
 	inline: true,
-	renderCall(args: GrepRenderArgs, _options: RenderResultOptions, uiTheme: Theme): Component {
-		const paths = toPathList(args.path ?? args.paths);
+	renderCall(args: TextSearchRenderArgs, _options: RenderResultOptions, uiTheme: Theme): Component {
+		const paths = toPathList(args.path);
 		const meta: string[] = [];
 		if (paths.length) meta.push(`in ${paths.join(", ")}`);
 		if (args.case === false) meta.push("case:insensitive");
@@ -1810,17 +1766,17 @@ export const grepToolRenderer = {
 		if (args.skip !== undefined && args.skip > 0) meta.push(`skip:${args.skip}`);
 
 		const text = renderStatusLine(
-			{ icon: "pending", title: "Grep", titleColor: "toolTitle", description: args.pattern || "?", meta },
+			{ icon: "pending", title: "Search text", titleColor: "toolTitle", description: args.input || "?", meta },
 			uiTheme,
 		);
 		return new Text(text, 1, 0);
 	},
 
 	renderResult(
-		result: { content: Array<{ type: string; text?: string }>; details?: GrepToolDetails; isError?: boolean },
+		result: { content: Array<{ type: string; text?: string }>; details?: TextSearchDetails; isError?: boolean },
 		options: RenderResultOptions,
 		uiTheme: Theme,
-		args?: GrepRenderArgs,
+		args?: TextSearchRenderArgs,
 	): Component {
 		const details = result.details;
 
@@ -1837,11 +1793,11 @@ export const grepToolRenderer = {
 				return new Text(formatEmptyMessage("No matches found", uiTheme), 1, 0);
 			}
 			const lines = textContent.split("\n").filter(line => line.trim() !== "");
-			const description = args?.pattern ?? undefined;
+			const description = args?.input ?? undefined;
 			const header = renderStatusLine(
 				{
-					iconOverride: grepStatusIcon(uiTheme),
-					title: "Grep",
+					iconOverride: textSearchStatusIcon(uiTheme),
+					title: "Search text",
 					titleColor: "toolTitle",
 					description,
 					meta: [formatCount("item", lines.length)],
@@ -1885,7 +1841,7 @@ export const grepToolRenderer = {
 			const scopeMeta = searchScopeMeta(details);
 			if (scopeMeta) meta.push(scopeMeta);
 			const header = renderStatusLine(
-				{ icon: "warning", title: "Grep", titleColor: "toolTitle", description: args?.pattern, meta },
+				{ icon: "warning", title: "Search text", titleColor: "toolTitle", description: args?.input, meta },
 				uiTheme,
 			);
 			const lines = [header, formatEmptyMessage("No matches found", uiTheme)];
@@ -1898,11 +1854,11 @@ export const grepToolRenderer = {
 		const scopeMeta = searchScopeMeta(details);
 		if (scopeMeta) meta.push(scopeMeta);
 		if (truncated) meta.push(uiTheme.fg("warning", "truncated"));
-		const description = args?.pattern ?? undefined;
+		const description = args?.input ?? undefined;
 		const header = renderStatusLine(
 			{
-				...(truncated ? { icon: "warning" as const } : { iconOverride: grepStatusIcon(uiTheme) }),
-				title: "Grep",
+				...(truncated ? { icon: "warning" as const } : { iconOverride: textSearchStatusIcon(uiTheme) }),
+				title: "Search text",
 				titleColor: "toolTitle",
 				description,
 				meta,

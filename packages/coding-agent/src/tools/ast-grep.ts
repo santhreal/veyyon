@@ -1,20 +1,16 @@
 import * as path from "node:path";
-import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
-import type { ToolExample } from "@veyyon/ai";
+import type { AgentToolResult } from "@veyyon/agent-core";
 import { formatHashlineHeader } from "@veyyon/hashline";
 import { type AstFindMatch, astGrep } from "@veyyon/natives";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
-import { prompt, untilAborted } from "@veyyon/utils";
-import { type } from "arktype";
+import { untilAborted } from "@veyyon/utils";
 import { recordFileSnapshot, recordSeenLinesFromBody } from "../edit/file-snapshot-store";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { Theme } from "../modes/theme/theme";
-import { toolsPrompts } from "../prompts/tools/rows";
 import { Ellipsis, fileHyperlink, renderStatusLine, renderTreeList, truncateToWidth } from "../tui";
 import { resolveFileDisplayMode } from "../utils/file-display-mode";
 import type { ToolSession } from ".";
-import { searchPathFilesystemTargets } from "./cwd-boundary";
 import { materializeReadUrlToFile, parseReadUrlTarget } from "./fetch";
 import { createFileRecorder, formatResultPath } from "./file-recorder";
 import { classifyGroupedLines, formatGroupedFiles, groupLineIndicesByBlank } from "./grouped-file-output";
@@ -37,13 +33,11 @@ import { resolveToolSearchScope } from "./search-scope";
 import { ToolError, throwIfAborted } from "./tool-errors";
 import { toolResult } from "./tool-result";
 
-const astGrepSchema = type({
-	pat: type("string").describe("ast pattern"),
-	"path?": type("string").describe(
-		'file, directory, glob, or internal URL to search; pass several as a semicolon-delimited list ("src; tests"). Omitted -> searches the workspace root (".")',
-	),
-	"skip?": type("number").describe("matches to skip"),
-});
+export interface StructureSearchInput {
+	pattern: string;
+	path?: string;
+	skip?: number;
+}
 
 function compareAstFindMatch(left: AstFindMatch, right: AstFindMatch): number {
 	const pathCmp = left.path.localeCompare(right.path);
@@ -131,7 +125,7 @@ async function runMultiTargetAstGrep(
 	};
 }
 
-export interface AstGrepToolDetails {
+export interface StructureSearchDetails {
 	matchCount: number;
 	fileCount: number;
 	filesSearched: number;
@@ -154,45 +148,15 @@ export interface AstGrepToolDetails {
 	cwd?: string;
 }
 
-export class AstGrepTool implements AgentTool<typeof astGrepSchema, AstGrepToolDetails> {
-	readonly name = "ast_grep";
-	readonly approval = "read" as const;
-	// ast_grep reads file contents under its search path, so an out-of-cwd search
-	// prompts in non-yolo modes like a point read does. See cwd-boundary.ts.
-	readonly filesystemTargets = (args: unknown): string[] => searchPathFilesystemTargets(args);
-	readonly label = "AST Grep";
-	readonly summary = "Search code with AST patterns (structural grep)";
-	readonly description: string;
-	readonly parameters = astGrepSchema;
-	readonly strict = true;
-
-	readonly examples: readonly ToolExample<typeof astGrepSchema.inferIn>[] = [
-		{
-			caption: "Search TypeScript files under src",
-			call: { pat: "console.log($$$)", path: "src/**/*.ts" },
-		},
-		{
-			caption: "Method call on any object, ignoring method name with `$_`",
-			call: { pat: "logger.$_($$$ARGS)", path: "src/**/*.ts" },
-		},
-	];
-	readonly loadMode = "discoverable";
-
-	constructor(private readonly session: ToolSession) {
-		this.description = prompt.render(toolsPrompts["tools/ast-grep"].text);
-	}
-
-	async execute(
-		_toolCallId: string,
-		params: typeof astGrepSchema.infer,
-		signal?: AbortSignal,
-		_onUpdate?: AgentToolUpdateCallback<AstGrepToolDetails>,
-		_context?: AgentToolContext,
-	): Promise<AgentToolResult<AstGrepToolDetails>> {
+export async function executeStructureSearch(
+	session: ToolSession,
+	params: StructureSearchInput,
+	signal?: AbortSignal,
+): Promise<AgentToolResult<StructureSearchDetails>> {
 		return untilAborted(signal, async () => {
-			const pattern = params.pat.trim();
+			const pattern = params.pattern.trim();
 			if (pattern.length === 0) {
-				throw new ToolError("`pat` must be a non-empty pattern");
+				throw new ToolError("Structure search input must not be empty");
 			}
 			const patterns = [pattern];
 			const skip = params.skip === undefined ? 0 : Math.floor(params.skip);
@@ -203,17 +167,17 @@ export class AstGrepTool implements AgentTool<typeof astGrepSchema, AstGrepToolD
 			const rawPaths = scopedPaths.length > 0 ? scopedPaths : ["."];
 			const scope = await resolveToolSearchScope({
 				rawPaths,
-				cwd: this.session.cwd,
+				cwd: session.cwd,
 				internalUrlAction: "search",
-				settings: this.session.settings,
+				settings: session.settings,
 				signal,
-				localProtocolOptions: this.session.localProtocolOptions,
-				skills: this.session.skills,
+				localProtocolOptions: session.localProtocolOptions,
+				skills: session.skills,
 				resolveExternalUrl: async rawPath => {
 					const target = parseReadUrlTarget(rawPath);
 					if (!target) return undefined;
 					const materialized = await materializeReadUrlToFile(
-						this.session,
+						session,
 						{ path: target.path, raw: target.raw },
 						signal,
 					);
@@ -246,7 +210,7 @@ export class AstGrepTool implements AgentTool<typeof astGrepSchema, AstGrepToolD
 			});
 			const { errors: cappedParseErrors, total: parseErrorsTotal } = capParseErrors(normalizedParseErrors);
 			const formatPath = (filePath: string): string =>
-				formatResultPath(filePath, isDirectory, resolvedSearchPath, this.session.cwd);
+				formatResultPath(filePath, isDirectory, resolvedSearchPath, session.cwd);
 
 			const { record: recordFile, list: fileList } = createFileRecorder();
 			const fileMatchCounts = new Map<string, number>();
@@ -260,7 +224,7 @@ export class AstGrepTool implements AgentTool<typeof astGrepSchema, AstGrepToolD
 				matchesByFile.get(relativePath)!.push(match);
 			}
 
-			const baseDetails: AstGrepToolDetails = {
+			const baseDetails: StructureSearchDetails = {
 				matchCount: result.totalMatches,
 				fileCount: result.filesWithMatches,
 				filesSearched: result.filesSearched,
@@ -268,7 +232,7 @@ export class AstGrepTool implements AgentTool<typeof astGrepSchema, AstGrepToolD
 				...(cappedParseErrors.length > 0 ? { parseErrors: cappedParseErrors, parseErrorsTotal } : {}),
 				scopePath,
 				searchPath: resolvedSearchPath,
-				cwd: this.session.cwd,
+				cwd: session.cwd,
 				files: fileList,
 				fileMatches: [],
 			};
@@ -295,14 +259,14 @@ export class AstGrepTool implements AgentTool<typeof astGrepSchema, AstGrepToolD
 				return toolResult(baseDetails).text(`${noMatchMessage}${parseMessage}`).useless().done();
 			}
 
-			const useHashLines = resolveFileDisplayMode(this.session).hashLines;
+			const useHashLines = resolveFileDisplayMode(session).hashLines;
 			const hashContexts = new Map<string, { tag: string }>();
 			if (useHashLines) {
 				for (const relativePath of fileList) {
-					const absolutePath = path.resolve(this.session.cwd, relativePath);
+					const absolutePath = path.resolve(session.cwd, relativePath);
 					// Whole-file content tag: any anchor validates while the file is
 					// unchanged; over-cap / unreadable files get no tag (plain output).
-					const tag = await recordFileSnapshot(this.session, absolutePath);
+					const tag = await recordFileSnapshot(session, absolutePath);
 					if (tag) hashContexts.set(relativePath, { tag });
 				}
 			}
@@ -340,8 +304,8 @@ export class AstGrepTool implements AgentTool<typeof astGrepSchema, AstGrepToolD
 					fileMatchCounts.set(relativePath, (fileMatchCounts.get(relativePath) ?? 0) + 1);
 				}
 				if (hashContext?.tag) {
-					const absoluteFilePath = path.resolve(this.session.cwd, relativePath);
-					recordSeenLinesFromBody(this.session, absoluteFilePath, hashContext.tag, modelOut.join("\n"));
+					const absoluteFilePath = path.resolve(session.cwd, relativePath);
+					recordSeenLinesFromBody(session, absoluteFilePath, hashContext.tag, modelOut.join("\n"));
 				}
 				return { model: modelOut, display: displayOut };
 			};
@@ -376,7 +340,7 @@ export class AstGrepTool implements AgentTool<typeof astGrepSchema, AstGrepToolD
 				}
 			}
 
-			const details: AstGrepToolDetails = {
+			const details: StructureSearchDetails = {
 				...baseDetails,
 				fileMatches: fileList.map(filePath => ({
 					path: filePath,
@@ -394,40 +358,37 @@ export class AstGrepTool implements AgentTool<typeof astGrepSchema, AstGrepToolD
 			return toolResult(details).text(outputLines.join("\n")).done();
 		});
 	}
-}
 
 // =============================================================================
 // TUI Renderer
 // =============================================================================
 
-interface AstGrepRenderArgs {
-	pat?: string;
-	path?: string | string[];
-	/** Legacy pre-`path` argument name; kept so historical transcripts still render a scope. */
-	paths?: string[];
+export interface StructureSearchRenderArgs {
+	input: string;
+	path?: string;
 	skip?: number;
 }
 
 const COLLAPSED_MATCH_LIMIT = PREVIEW_LIMITS.COLLAPSED_LINES * 2;
 
-export const astGrepToolRenderer = {
+export const structureSearchRenderer = {
 	inline: true,
-	renderCall(args: AstGrepRenderArgs, _options: RenderResultOptions, uiTheme: Theme): Component {
+	renderCall(args: StructureSearchRenderArgs, _options: RenderResultOptions, uiTheme: Theme): Component {
 		const meta: string[] = [];
-		const scopePaths = toPathList(args.path ?? args.paths);
+		const scopePaths = toPathList(args.path);
 		if (scopePaths.length) meta.push(`in ${scopePaths.join(", ")}`);
 		if (args.skip !== undefined && args.skip > 0) meta.push(`skip:${args.skip}`);
 
-		const description = args.pat ?? "?";
-		const text = renderStatusLine({ icon: "pending", title: "AST Grep", description, meta }, uiTheme);
+		const description = args.input || "?";
+		const text = renderStatusLine({ icon: "pending", title: "Search structure", description, meta }, uiTheme);
 		return new Text(text, 0, 0);
 	},
 
 	renderResult(
-		result: { content: Array<{ type: string; text?: string }>; details?: AstGrepToolDetails; isError?: boolean },
+		result: { content: Array<{ type: string; text?: string }>; details?: StructureSearchDetails; isError?: boolean },
 		options: RenderResultOptions,
 		uiTheme: Theme,
-		args?: AstGrepRenderArgs,
+		args?: StructureSearchRenderArgs,
 	): Component {
 		const details = result.details;
 
@@ -442,11 +403,11 @@ export const astGrepToolRenderer = {
 		const limitReached = details?.limitReached ?? false;
 
 		if (matchCount === 0) {
-			const description = args?.pat;
+			const description = args?.input;
 			const meta = ["0 matches"];
 			if (details?.scopePath) meta.push(`in ${details.scopePath}`);
 			if (filesSearched > 0) meta.push(`searched ${filesSearched}`);
-			const header = renderStatusLine({ icon: "warning", title: "AST Grep", description, meta }, uiTheme);
+			const header = renderStatusLine({ icon: "warning", title: "Search structure", description, meta }, uiTheme);
 			const lines = [header, formatEmptyMessage("No matches found", uiTheme)];
 			if (details?.parseErrors?.length) {
 				lines.push(uiTheme.fg("warning", "Query may be mis-scoped; narrow `path` before concluding absence"));
@@ -460,13 +421,13 @@ export const astGrepToolRenderer = {
 		if (details?.scopePath) meta.push(`in ${details.scopePath}`);
 		meta.push(`searched ${filesSearched}`);
 		if (limitReached) meta.push(uiTheme.fg("warning", "limit reached"));
-		const description = args?.pat;
+		const description = args?.input;
 		const header = renderStatusLine(
 			{
 				...(limitReached
 					? { icon: "warning" as const }
 					: { iconOverride: uiTheme.fg("accent", uiTheme.symbol("icon.search")) }),
-				title: "AST Grep",
+				title: "Search structure",
 				description,
 				meta,
 			},
