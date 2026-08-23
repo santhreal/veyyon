@@ -15,6 +15,7 @@ import {
 	basetenModelManagerOptions,
 	cerebrasModelManagerOptions,
 	cloudflareAiGatewayModelManagerOptions,
+	cohereModelManagerOptions,
 	coreWeaveModelManagerOptions,
 	deepseekModelManagerOptions,
 	firepassModelManagerOptions,
@@ -29,6 +30,7 @@ import {
 	mistralModelManagerOptions,
 	moonshotModelManagerOptions,
 	nanoGptModelManagerOptions,
+	nousResearchModelManagerOptions,
 	novitaModelManagerOptions,
 	nvidiaModelManagerOptions,
 	ollamaModelManagerOptions,
@@ -112,6 +114,15 @@ export const CATALOG_PROVIDERS = [
 		envVars: ["CLOUDFLARE_AI_GATEWAY_API_KEY"],
 		createModelManagerOptions: (config: ModelManagerConfig) => cloudflareAiGatewayModelManagerOptions(config),
 		catalogDiscovery: { label: "Cloudflare AI Gateway" },
+	},
+	{
+		id: "cohere",
+		defaultModel: "command-a-plus-05-2026",
+		// CO_API_KEY is Cohere's documented short spelling; accept it so either
+		// official name works.
+		envVars: ["COHERE_API_KEY", "CO_API_KEY"],
+		createModelManagerOptions: (config: ModelManagerConfig) => cohereModelManagerOptions(config),
+		catalogDiscovery: { label: "Cohere" },
 	},
 	{
 		id: "cursor",
@@ -264,6 +275,13 @@ export const CATALOG_PROVIDERS = [
 		envVars: ["NANO_GPT_API_KEY"],
 		createModelManagerOptions: (config: ModelManagerConfig) => nanoGptModelManagerOptions(config),
 		catalogDiscovery: { label: "NanoGPT" },
+	},
+	{
+		id: "nous-research",
+		defaultModel: "nousresearch/hermes-4-405b",
+		envVars: ["NOUS_API_KEY"],
+		createModelManagerOptions: (config: ModelManagerConfig) => nousResearchModelManagerOptions(config),
+		catalogDiscovery: { label: "Nous Research" },
 	},
 	{
 		id: "nvidia",
