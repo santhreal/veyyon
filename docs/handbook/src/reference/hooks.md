@@ -85,7 +85,7 @@ Hook events are strongly typed in `types.ts`.
 - `session_before_branch` → can return `{ cancel?: boolean; skipConversationRestore?: boolean }`
 - `session_branch`
 - `session_before_compact` → can return `{ cancel?: boolean; compaction?: CompactionResult }`
-- `session.compacting` → can return `{ context?: string[]; prompt?: string; preserveData?: Record<string, unknown> }`
+- `session_compacting` → can return `{ context?: string[]; prompt?: string; preserveData?: Record<string, unknown> }`
 - `session_compact`
 - `session_before_tree` → can return `{ cancel?: boolean; summary?: { summary: string; details?: unknown } }`
 - `session_tree`
@@ -165,7 +165,7 @@ On tool failure, wrapper emits `tool_result` with `isError: true` and error text
 - LLM context for a single call via `context` (`messages` replacement chain)
 - tool output content/details on successful tool calls (`tool_result` path)
 - pre-agent injected message via `before_agent_start`
-- cancellation/custom compaction/tree behavior via `session_before_*` and `session.compacting`
+- cancellation/custom compaction/tree behavior via `session_before_*` and `session_compacting`
 
 ### What hooks cannot mutate in this implementation
 
@@ -200,7 +200,7 @@ Conflict behavior by event type:
 - `context`: chained; each handler receives prior handler’s message output
 - `before_agent_start`: first returned message is kept; later messages ignored
 - `session_before_*`: latest returned result is tracked; `cancel: true` short-circuits immediately
-- `session.compacting`: latest returned result wins
+- `session_compacting`: latest returned result wins
 
 Command/renderer conflicts:
 

@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e2394775.js";
+            window.path_to_searchindex_js = "../searchindex-03ea301b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -220,9 +220,9 @@ LINES, so spilling on bytes would hand back fewer lines than you asked for and b
 the tool has. Every other tool’s output is bounded by <code>tools.artifactSpillThreshold</code>, described
 under <a href="#the-search-tool-toolssearchts">The <code>search</code> tool</a> below.</li>
 <li><strong>Structural summaries for parseable code.</strong> A read with no selector on a parseable source file
-returns declarations with bodies elided (<code>…</code>), and the footer names the recovery selector so the model
+returns declarations with bodies elided (<code>…</code>), and the footer states the recovery selector so the model
 re-issues only the ranges it actually needs instead of re-reading the whole file.</li>
-<li><strong>Truncation is explicit.</strong> A summary footer or a <code>[Showing lines …]</code>-style notice names the
+<li><strong>Truncation is explicit.</strong> A summary footer or a <code>[Showing lines …]</code>-style notice states the
 continuation selector.</li>
 <li><strong>Beyond plain text files:</strong> the same tool also reads directories (depth-limited listing), archives
 (<code>.tar</code>, <code>.tar.gz</code>, <code>.zip</code>, via <code>archive.zip:path/inside</code>), SQLite databases (<code>file.db:table</code>, with

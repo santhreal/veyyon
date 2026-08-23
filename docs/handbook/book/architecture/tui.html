@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e2394775.js";
+            window.path_to_searchindex_js = "../searchindex-03ea301b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -196,7 +196,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="tui-integration-for-extensions-and-custom-tools"><a class="header" href="#tui-integration-for-extensions-and-custom-tools">TUI integration for extensions and custom tools</a></h1>
-<p>This document covers the <strong>current</strong> TUI contract used by <code>packages/coding-agent</code> and <code>packages/tui</code> for extension UI, custom tool UI, and custom renderers.</p>
+<p>The current TUI contract used by <code>packages/coding-agent</code> and <code>packages/tui</code> for extension UI, custom tool UI, and custom renderers.</p>
 <h2 id="what-this-subsystem-is"><a class="header" href="#what-this-subsystem-is">What this subsystem is</a></h2>
 <p>The runtime has two layers:</p>
 <ul>
@@ -254,7 +254,7 @@ render(width: number): readonly string[] {
 <h3 id="raw-key-matching"><a class="header" href="#raw-key-matching">Raw key matching</a></h3>
 <p>Use <code>matchesKey(data, "...")</code> for navigation keys and combos.</p>
 <h3 id="match-app-keybinding-actions"><a class="header" href="#match-app-keybinding-actions">Match app keybinding actions</a></h3>
-<p>Extension UI factories receive a <code>KeybindingsManager</code> (interactive mode; an in-memory instance carrying the default bindings, not the user’s <code>keybindings.yml</code>) so you can match action ids instead of hardcoding keys:</p>
+<p>Extension UI factories receive a <code>KeybindingsManager</code> (interactive mode; an in-memory instance containing the default bindings, not the user’s <code>keybindings.yml</code>) so you can match action ids instead of hardcoding keys:</p>
 <pre><code class="language-ts">if (keybindings.matches(data, "app.interrupt")) {
   done(undefined);
   return;

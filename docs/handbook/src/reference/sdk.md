@@ -151,7 +151,7 @@ console.log(session.sessionFile); // absolute .jsonl path
 
 - Persists conversation/messages/state deltas to session files.
 - Supports resume/open/list/fork workflows.
-- `session.sessionFile` is defined.
+- `sessionFile` is defined on the session options.
 
 ### In-memory
 
@@ -396,7 +396,7 @@ Use `setToolUIContext(...)` only if your embedder provides UI capabilities that 
 
 `createAgentSession()` runs two background optimizations to overlap I/O with the rest of session setup:
 
-- **Model-host preconnect.** As soon as the model is resolved, the SDK fires a best-effort `fetch.preconnect(model.baseUrl)` so DNS + TCP + TLS + HTTP/2 to the provider's host happens in parallel with extension/skill load, tool registry build, and system-prompt assembly. The first real `fetch(...)` then reuses the warm connection, saving 100–300 ms on transcontinental hops (e.g. residential IP → `api.anthropic.com`). Implementation lives in `preconnectModelHost()` in `packages/coding-agent/src/sdk.ts`. If `fetch.preconnect` is unavailable (non-Bun runtime) or the call throws, the optimization is silently skipped: never a hard dependency. Applies to every mode (interactive, print, RPC, ACP).
+- **Model-host preconnect.** As soon as the model is resolved, the SDK fires a best-effort `fetch.preconnect()` call against the model host so DNS + TCP + TLS + HTTP/2 to the provider's host happens in parallel with extension/skill load, tool registry build, and system-prompt assembly. The first real `fetch(...)` then reuses the warm connection, saving 100–300 ms on transcontinental hops (e.g. residential IP → `api.anthropic.com`). Implementation lives in `preconnectModelHost()` in `packages/coding-agent/src/sdk.ts`. If Bun's `preconnect` is unavailable (non-Bun runtime) or the call throws, the optimization is silently skipped: never a hard dependency. Applies to every mode (interactive, print, RPC, ACP).
 - **Conditional LSP warmup.** Startup LSP servers (those returned by `discoverStartupLspServers(cwd)`) are only warmed when **all** of these hold:
   - `enableLsp !== false` on the session options, **and**
   - `options.hasUI === true` (interactive TUI), **and**

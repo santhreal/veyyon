@@ -10,6 +10,7 @@ import { readSseEvents } from "@veyyon/utils/stream";
 import { trimTrailingSlashes } from "@veyyon/utils/url";
 import { type } from "arktype";
 import type { AuthCredential } from "../auth-storage";
+import { AuthBrokerError, AuthBrokerStreamUnsupportedError } from "../error/classes";
 import { formatGenerationTag, parseGenerationTag } from "./generation-tag";
 import type {
 	CredentialBlockRequest,
@@ -39,29 +40,6 @@ export interface AuthBrokerClientOptions {
 	maxRetries?: number;
 	/** Override fetch (used in tests). Default global `fetch`. */
 	fetchImpl?: typeof fetch;
-}
-
-export class AuthBrokerError extends Error {
-	readonly status: number | undefined;
-	readonly body: string | undefined;
-	constructor(message: string, opts: { status?: number; body?: string; cause?: unknown } = {}) {
-		super(message, { cause: opts.cause });
-		this.name = "AuthBrokerError";
-		this.status = opts.status;
-		this.body = opts.body;
-	}
-}
-
-/**
- * Thrown when a broker responds 404 to `GET /v1/snapshot/stream` — old
- * brokers that predate the SSE endpoint. Callers (`RemoteAuthCredentialStore`)
- * detect this sentinel to fall back to long-polling permanently.
- */
-export class AuthBrokerStreamUnsupportedError extends AuthBrokerError {
-	constructor(message = "Auth broker does not support /v1/snapshot/stream") {
-		super(message, { status: 404 });
-		this.name = "AuthBrokerStreamUnsupportedError";
-	}
 }
 
 export interface FetchSnapshotOptions {

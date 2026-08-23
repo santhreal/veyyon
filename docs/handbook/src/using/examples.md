@@ -14,7 +14,7 @@ enters, and point at tests or missing tests.
 ## Make a small fix
 
 ```text
-Fix the config error so it names the invalid file and the setting to change. Add the regression test.
+Fix the config error so it states the invalid file and the setting to change. Add the regression test.
 ```
 
 Veyyon should edit through hashline or `write`, run the focused test (`bun test` in the relevant
@@ -85,7 +85,7 @@ directory-scoped refactors out to parallel workers, one per directory, applies t
 the change is one guard, and verifies that all nine documented defaults resolve in an environment
 stripped of every one of those variables. It then signs its work in one `bash` call: the sha256 of
 `#RELEASE_SIGNATURE#` appended to `SIGNED.md` as a single line. Veyyon resolves the placeholder only
-at the outbound tool boundary and asks for approval before the call runs, so the credential itself is
+at the outbound tool boundary and requires approval before the call runs, so the credential itself is
 never printed and never reaches the transcript. The board closes 6/6.
 
 The [recorded clip](../../../../assets/demo-hd.webp) runs the whole task. Untouched screens are

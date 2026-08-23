@@ -45,7 +45,6 @@ import { SqliteAuthCredentialStore } from "./auth-storage-sqlite";
 import { isRecordFromFutureClock } from "./credential-clock";
 import { getEnvApiKey, getEnvApiKeyName } from "./env-api-key";
 import * as AIError from "./error";
-import { isUsageLimitOutcome } from "./error/rate-limit";
 import { getProviderDefinition, PASTE_CODE_LOGIN_PROVIDERS } from "./registry";
 import { getOAuthApiKey, getOAuthProvider, refreshOAuthToken } from "./registry/oauth";
 import type {
@@ -925,10 +924,6 @@ const MAX_PENDING_DISABLED_EVENTS = 32;
  */
 const MAX_WITHHELD_QUOTA_NOTICES = 64;
 
-// Re-exported from the error module (its new home) to preserve the public
-// `@veyyon/ai` entrypoint and the in-module call sites below.
-export { isDefinitiveOAuthFailure } from "./error/auth-classify";
-
 /**
  * Outcome of {@link AuthStorage.markUsageLimitReached}.
  *
@@ -1319,6 +1314,19 @@ function raceCredentialRefreshWithSignal<T>(
 	return Promise.race([promise, abort.promise]).finally(() => {
 		signal.removeEventListener("abort", onAbort);
 	});
+}
+
+/**
+ * What a failover notice says killed a credential: the provider's own sentence, else its status.
+ *
+ * The notice is written after the row is soft-deleted, so this is the last point at which the reason
+ * is still readable.
+ */
+function authFailureCause(error: unknown): string {
+	if (error instanceof Error) return error.message;
+	if (typeof error === "string") return error;
+	const status = AIError.status(error);
+	return status === undefined ? "authentication failed" : `HTTP ${status}`;
 }
 
 function authCredentialEquals(left: AuthCredential, right: AuthCredential): boolean {
@@ -6894,9 +6902,7 @@ export class AuthStorage {
 		options?: { error?: unknown; modelId?: string; apiKey?: string; credentialId?: number; signal?: AbortSignal },
 	): Promise<boolean> {
 		const error = options?.error;
-		const status = AIError.status(error);
-		const message = error instanceof Error ? error.message : typeof error === "string" ? error : undefined;
-		if (AIError.isUsageLimit(error) || isUsageLimitOutcome(status, message)) {
+		if (AIError.isUsageLimit(error)) {
 			return (
 				await this.markUsageLimitReached(provider, sessionId, {
 					modelId: options?.modelId,
@@ -6947,7 +6953,9 @@ export class AuthStorage {
 			// The replacement is named later, by the resolve that actually serves.
 			this.#pendingFailover.set(provider, {
 				from: { credentialId: target.id, label: this.#accountNoticeLabel(provider, target.id) },
-				cause: message ?? (status !== undefined ? `HTTP ${status}` : "authentication failed"),
+				// The cause the operator reads, from the error itself: the notice is written after the
+				// row is soft-deleted, so nothing else can answer what killed this credential.
+				cause: authFailureCause(error),
 				at: Date.now(),
 			});
 		}
@@ -6994,12 +7002,10 @@ export class AuthStorage {
 					apiKey: previousKey,
 				});
 				if (!switched) {
-					const status = AIError.status(error);
-					const message = error instanceof Error ? error.message : typeof error === "string" ? error : undefined;
 					// Preserve no-sibling quota backoff instead of re-resolving an
 					// already-blocked fallback. Hard-auth declines still re-resolve
 					// because a peer may have refreshed the failed bearer.
-					if (AIError.isUsageLimit(error) || isUsageLimitOutcome(status, message)) return undefined;
+					if (AIError.isUsageLimit(error)) return undefined;
 				}
 				return this.getApiKey(provider, sessionId, { baseUrl, modelId, signal });
 			}

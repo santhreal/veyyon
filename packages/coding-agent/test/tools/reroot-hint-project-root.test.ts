@@ -322,6 +322,21 @@ describe("isRepositoryContainer", () => {
 
 		expect(await isRepositoryContainer(path.join(tempRoot, "broken"))).toBe(true);
 	});
+
+	/**
+	 * The scan reads one round of directories per depth rather than one directory at a time, so
+	 * the sample cap is applied when a depth completes rather than mid-frontier. A tree far past
+	 * the cap must still answer, and answer the same way twice: the walk is what bounds the work,
+	 * and a bound that depends on which read returned first is not a bound.
+	 */
+	it("answers a tree far past its sample cap, and answers it the same way twice", async () => {
+		initRepo("huge");
+		for (let i = 0; i < 80; i++) initRepo(`huge/p${String(i).padStart(3, "0")}`);
+
+		const target = path.join(tempRoot, "huge");
+		expect(await isRepositoryContainer(target)).toBe(true);
+		expect(await isRepositoryContainer(target)).toBe(true);
+	});
 });
 
 describe("resolveProjectRoot against a container", () => {

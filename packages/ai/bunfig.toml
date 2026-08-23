@@ -7,4 +7,8 @@
 # (packages/utils/test/helpers/real-data-tripwire.ts); only this pointer repeats,
 # because Bun offers no way to inherit a parent config. See docs/internal/testing.md.
 [test]
-preload = ["../utils/test/helpers/real-data-tripwire.ts"]
+#
+# The second entry refuses a leaked provider-module override; `register-builtins`
+# replaces a provider for the whole process, and this package is where those setters
+# are called.
+preload = ["../utils/test/helpers/real-data-tripwire.ts", "./test/helpers/provider-override-tripwire.ts"]

@@ -527,7 +527,7 @@ When a session tool resolves a host-owned URL, RPC mode emits:
 ```
 
 Writes look the same with `"operation": "write"` and an additional
-`"content": "..."` field carrying the full replacement bytes.
+`"content": "..."` field containing the full replacement bytes.
 
 If the request is later aborted (caller cancels, session ends), RPC mode
 emits:

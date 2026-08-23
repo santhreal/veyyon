@@ -56,7 +56,7 @@ When you run `veyyon plugin marketplace add <source>`, the system classifies the
 | `https://...*.json`             | Direct catalog URL                                 | `https://example.com/marketplace.json` |
 | `https://...` / `http://...`    | Git repository unless the URL path ends in `.json` | `https://github.com/org/repo`          |
 | `git@...` / `ssh://...`         | Git repository                                     | `git@github.com:org/repo.git`          |
-| `./path` or `~/path` or `/path` | Local directory                                    | `./my-marketplace`                     |
+| `./path` or `~/path` or an absolute path | Local directory                                    | `./my-marketplace`                     |
 
 Git and local sources must contain a catalog at `.veyyon-plugin/marketplace.json` (preferred) or `.claude-plugin/marketplace.json` (Claude Code-compatible fallback). Direct catalog URLs cache only the JSON catalog; plugins in URL-sourced catalogs cannot use relative string sources like `"./plugins/foo"`.
 

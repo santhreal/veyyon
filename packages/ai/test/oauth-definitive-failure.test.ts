@@ -6,7 +6,7 @@
  * below are load-bearing, not cosmetic.
  */
 import { describe, expect, it } from "bun:test";
-import { isDefinitiveOAuthFailure } from "@veyyon/ai/auth-storage";
+import { isDefinitiveOAuthFailure } from "@veyyon/ai/error/flags";
 
 describe("isDefinitiveOAuthFailure", () => {
 	it("treats explicit dead-grant errors as definitive", () => {

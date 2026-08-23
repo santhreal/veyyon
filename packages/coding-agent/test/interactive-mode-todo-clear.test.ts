@@ -14,6 +14,7 @@ import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
 import type { NativeScrollbackLiveRegion } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
+import { warmNativeTextPath } from "./helpers/warm-native-text";
 
 function renderTodos(mode: InteractiveMode): string {
 	return Bun.stripANSI(mode.todoContainer.render(120).join("\n"));
@@ -106,7 +107,10 @@ describe("InteractiveMode todo HUD persistence", () => {
 	 * so the test still fails if someone reinstates a timer with a longer delay
 	 * instead of no timer. The pending-timer count is what separates "never
 	 * armed" from "armed and never reached", which render identically here and
-	 * not at all identically to a process trying to exit.
+	 * not at all identically to a process trying to exit. One clock that is not
+	 * this one is kept out of the count: the first `Text` render loads the native
+	 * addon, which schedules its own unref'd cache prune, so that render happens
+	 * before the fake clock is installed.
 	 *
 	 * The board keeps one open task on purpose. A board with nothing open at all
 	 * collapses to the single `Todo list done` line (see
@@ -115,6 +119,7 @@ describe("InteractiveMode todo HUD persistence", () => {
 	 */
 	it("keeps closed todos on the board indefinitely at the default delay", async () => {
 		await createMode();
+		warmNativeTextPath();
 		vi.useFakeTimers();
 
 		mode.setTodos([

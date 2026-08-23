@@ -17,14 +17,27 @@ container and reports them.
     python3 proof/webp-cadence.py assets/demo-hd.webp
     python3 proof/webp-cadence.py assets/demo-hd.webp --expect-ms 33
 
-With `--expect-ms` it is a gate, and what it gates is the TYPICAL frame: the most
-common duration must be that value give or take a millisecond, which is the rounding a
-30 fps source allows (33ms and 34ms alternate). It is deliberately not every frame. A
-WebP encoder merges frames that are byte-identical, so a stretch where the screen is
-genuinely still becomes one frame held for 100ms, and that is compression rather than
-lag -- the old asset's defect was that its typical frame was 83ms, not that a few were
-long. The longest hold is printed either way, because a second-long hold in the middle
-of a scroll is worth looking at.
+With `--expect-ms` it is a gate, and it asks two questions about two different
+failures.
+
+THE TYPICAL FRAME must be that value give or take a millisecond, which is the rounding
+a 30 fps source allows (33ms and 34ms alternate). That catches a RESAMPLE: the old
+asset's typical frame was 83ms, and every frame in the file had been rewritten.
+
+THE MOVING PORTION must average close to the capture rate. That catches the other
+failure, which the typical-frame check cannot see: a file whose most common duration is
+correct and whose wall clock is mostly slower than it. The hero published at 14.2 fps
+against a 30 fps capture with 33ms as its most common frame at 44%; the other 56% held
+for 66ms and 100ms, so a third of the clip played at 10 to 15 fps and the gate passed.
+A criterion that reads the most common value cannot see a file that is mostly slower
+than the most common value.
+
+A WebP encoder merges byte-identical frames, so a stretch where the screen is genuinely
+still becomes one long hold, and that is compression rather than lag. Holds at or past
+`--still-ms` (default ten times the expected interval) are counted as stills, reported,
+and left out of the moving average. Everything shorter counts against it: a frame held
+for two or three intervals in the middle of a scroll is the product drawing slowly,
+which is what a viewer reads as lag.
 """
 
 import argparse
@@ -63,7 +76,18 @@ def main() -> int:
 	ap.add_argument(
 		"--expect-ms",
 		type=int,
-		help="fail unless every frame holds for this long, +/-1ms",
+		help="the capture interval; gates the typical frame and the moving average against it",
+	)
+	ap.add_argument(
+		"--still-ms",
+		type=int,
+		help="a hold this long or longer is a still screen, not lag (default: ten times --expect-ms)",
+	)
+	ap.add_argument(
+		"--tolerance",
+		type=float,
+		default=0.10,
+		help="how far below the capture rate the moving average may sit (default 0.10)",
 	)
 	args = ap.parse_args()
 
@@ -93,6 +117,38 @@ def main() -> int:
 		)
 		return 1
 	print(f"  the typical frame holds {args.expect_ms}ms +/-1, which is the cadence the recorder captured")
+
+	# The moving portion: everything that is not a held still screen. A hold is
+	# either compression (the screen did not change) or the product drawing
+	# slowly, and the file cannot tell them apart -- so the threshold says where
+	# the line is, and it is reported rather than assumed.
+	still_ms = args.still_ms if args.still_ms is not None else args.expect_ms * 10
+	moving = [ms for ms in durations if ms < still_ms]
+	stills = [ms for ms in durations if ms >= still_ms]
+	if stills:
+		print(f"  stills: {len(stills)} holds >= {still_ms}ms, {sum(stills) / 1000:.2f}s set aside")
+	if not moving:
+		print(f"  FAIL: every frame holds >= {still_ms}ms — nothing in this file moves", file=sys.stderr)
+		return 1
+
+	captured_fps = 1000 / args.expect_ms
+	moving_fps = len(moving) / (sum(moving) / 1000)
+	floor_fps = captured_fps * (1 - args.tolerance)
+	at_cadence = sum(1 for ms in moving if abs(ms - args.expect_ms) <= 1)
+	cadence_share = 100 * at_cadence / len(moving)
+	print(
+		f"  moving: {len(moving)} frames, {sum(moving) / 1000:.2f}s, {moving_fps:.1f} fps"
+		f" ({cadence_share:.0f}% at the capture interval)"
+	)
+	if moving_fps < floor_fps:
+		print(
+			f"  FAIL: the moving portion averages {moving_fps:.1f} fps, under the {floor_fps:.1f} fps floor"
+			f" ({captured_fps:.1f} fps captured, {args.tolerance:.0%} tolerance) —"
+			f" most of the clock is slower than its most common frame",
+			file=sys.stderr,
+		)
+		return 1
+	print(f"  the moving portion averages {moving_fps:.1f} fps against {captured_fps:.1f} fps captured")
 	return 0
 
 

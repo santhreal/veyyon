@@ -23,11 +23,11 @@ import { type ExtensionModule, extensionModuleCapability } from "../capability/e
 import { readDirEntries, readFile } from "../capability/fs";
 import { type MCPServer, mcpCapability } from "../capability/mcp";
 import type { LoadContext, LoadResult } from "../capability/types";
+import { expandEnvVarsDeep, warnUnresolved } from "./env-expansion";
 import {
 	buildExtensionModuleItems,
 	createSourceMeta,
 	discoverExtensionModulePaths,
-	expandEnvVarsDeep,
 	getUserPath,
 	readContextFile,
 } from "./helpers";
@@ -74,7 +74,7 @@ async function loadMCPFromSettings(_ctx: LoadContext, path: string): Promise<Loa
 		return { items, warnings };
 	}
 
-	const servers = expandEnvVarsDeep(parsed.mcpServers);
+	const servers = expandEnvVarsDeep(parsed.mcpServers, warnUnresolved(warnings, path));
 
 	for (const [name, config] of Object.entries(servers)) {
 		if (!config || typeof config !== "object") {

@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e2394775.js";
+            window.path_to_searchindex_js = "../searchindex-03ea301b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -235,14 +235,14 @@ original session is never modified.</p>
 <p>Compaction preserves the goal card, active user instructions, recent turns, and a deterministic working-set of files touched so a resumed session does not require the full raw transcript.</p>
 <p>Prefer <code>/compact</code> when you need a summary to retain state. Prefer the <code>/new</code> command when prior transcript is no longer useful and you want a clean session without summarization. See <a href="../reference/slash-commands.html">Slash commands</a>.</p>
 <h2 id="the-rollout"><a class="header" href="#the-rollout">The rollout</a></h2>
-<p>Session history lives in one layer: the JSONL rollout. Every event is one line: a user message, an agent response, a tool call, a compaction, a goal update, or a branch summary. The rollout is the only source of truth. Listing and resume read it through the active storage backend, including indexed Redis and SQL storage. A non-empty rollout without a valid header is refused without changing its bytes; malformed later records are skipped with an operator-visible path, line, byte, and shape warning. Goal cards persist as rollout entries. There is no separate session-state database.</p>
+<p>Session history lives in one layer: the JSONL rollout. Every event is one line: a user message, an agent response, a tool call, a compaction, a goal update, or a branch summary. The rollout is the only source of truth. Listing and resume read it through the active storage backend, including indexed Redis and SQL storage. A non-empty rollout without a valid header is rejected without changing its bytes; malformed later records are skipped with an operator-visible path, line, byte, and shape warning. Goal cards persist as rollout entries. There is no separate session-state database.</p>
 <h2 id="how-the-pieces-relate"><a class="header" href="#how-the-pieces-relate">How the pieces relate</a></h2>
 <ul>
-<li>A <strong>session</strong> owns one or more <strong>threads</strong> and stores them on disk.</li>
+<li>A <strong>session</strong> contains one or more <strong>threads</strong> and stores them on disk.</li>
 <li>A <strong>thread</strong> is a path through the session’s tree of turns.</li>
 <li>A <strong>turn</strong> is one step on that path.</li>
 <li>The <strong>rollout</strong> is the append-only log that holds every turn, branch, and system event.</li>
-<li>The <strong>goal card</strong> is a separate context slot that carries the current objective across turns and compactions. See <a href="../context/goal-state.html">Goal state and long sessions</a>.</li>
+<li>The <strong>goal card</strong> is a separate context slot that contains the current objective across turns and compactions. See <a href="../context/goal-state.html">Goal state and long sessions</a>.</li>
 </ul>
 <h2 id="where-the-details-live"><a class="header" href="#where-the-details-live">Where the details live</a></h2>
 <ul>

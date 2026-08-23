@@ -31,7 +31,7 @@ import {
 	type ResolvedPersonality,
 	resolvePersonality,
 } from "./personality/resolver";
-import { assertEvalPromptOverridesClaimed } from "./prompts/all-registries";
+import { assertEvalPromptOverrideIdsExist } from "./prompts/eval-overrides";
 import { sessionPrompts } from "./prompts/session/rows";
 import {
 	assembleDefaultTemplate,
@@ -68,7 +68,6 @@ import { shortenPath } from "./tools/render-utils";
 import { isNonProjectRoot, NON_PROJECT_REASON_TEXT, type NonProjectReason } from "./tools/reroot-hint";
 import { type ActiveRepoContext, resolveActiveRepoContext } from "./utils/active-repo-context";
 import { getCachedGpu, getCpuModel, getEnvironmentInfo } from "./utils/host-environment";
-import { formatLocalCalendarDate } from "./utils/local-date";
 import { normalizePromptPath } from "./utils/prompt-path";
 import { AGENTS_MD_LIMIT, buildWorkspaceTree, type WorkspaceTree } from "./workspace-tree";
 
@@ -942,8 +941,6 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		}
 	}
 
-	const date = formatLocalCalendarDate();
-	const dateTime = date;
 	const promptCwd = shortenPath(normalizePromptPath(resolvedCwd));
 
 	// Build tool metadata for system prompt rendering.
@@ -1023,8 +1020,6 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		skills: filteredSkills,
 		rules: rules ?? [],
 		alwaysApplyRules: injectedAlwaysApplyRules,
-		date,
-		dateTime,
 		cwd: promptCwd,
 		model: includeModelInPrompt ? (model ?? "") : "",
 		useCodexTaskPrompt: usesCodexTaskPrompt(model),
@@ -1056,13 +1051,11 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		includeWorkspaceTree,
 		renderMermaid,
 	};
-	// A `VEYYON_EVAL_PROMPTS` id no registry holds is refused here, where every
-	// registry in the build is known. The registries themselves cannot answer it: one
-	// registry does not know whether an unclaimed id belongs to a sibling. Assembly is
-	// the earliest point at which the whole set is loaded and still before the first
-	// model call, so a typo costs one hard error instead of an arm's worth of trials
-	// that quietly ran the shipped prompt under a treatment's name.
-	assertEvalPromptOverridesClaimed();
+	// A `VEYYON_EVAL_PROMPTS` id this build does not have is refused here, against the
+	// generated id space of every registry. Assembly is before the first model call, so a
+	// typo costs one hard error instead of an arm's worth of trials that quietly ran the
+	// shipped prompt under a treatment's name.
+	assertEvalPromptOverrideIdsExist();
 	const evalSectionOverrides = resolveEvalSectionOverrides();
 	const evalStatementOverrides = resolveEvalStatementOverrides();
 	const overriddenStatementIds = Object.keys(evalStatementOverrides);

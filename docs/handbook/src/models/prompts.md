@@ -33,8 +33,8 @@ Then look at one:
 veyyon prompt --prompt subagent/system-prompt
 ```
 
-The lookup spans every registry, so an id from any of them works without naming its package.
-A mistyped id is refused with the nearest real id quoted back.
+The lookup spans every registry, so an id from any of them works without specifying its package.
+A mistyped id is rejected with the nearest real id quoted back.
 
 For the system prompt itself, `veyyon prompt` prints the assembled text and
 `veyyon prompt --sections` breaks it down by section with the byte and token cost of each.
@@ -51,7 +51,7 @@ tool-policy/lsp                                  412      103   4.0%  tools has 
 
 Two things to read from it. The cost is MARGINAL: it is what the prompt would be shorter by without
 that rule, not the length of the rule's text, so the numbers add up to their section rather than
-exceeding it. And the condition tells you what turns the rule on, which is what you need to know
+exceeding it. And the condition states what turns the rule on, which is what you need to know
 before deciding a rule is not earning its tokens.
 
 Under the table is every rule this configuration leaves out, with the condition that would include
@@ -104,6 +104,6 @@ marker files, so inspecting the prompt cannot change what the next session does.
 
 The system prompt is not one string. It is an ordered list of parts, and the boundary between the
 first part and the rest is a provider-caching contract rather than a stylistic choice. To change
-what a part says, read [System prompt customization](system-prompt.md). To
+what a part contains, read [System prompt customization](system-prompt.md). To
 understand why the parts are split where they are, and where a new part would belong, read
 [`docs/internal/system-prompt-architecture.md`](../../../internal/system-prompt-architecture.md).

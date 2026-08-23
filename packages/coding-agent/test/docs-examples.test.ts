@@ -445,8 +445,11 @@ describe("docs examples — documented slash commands exist in the builtin regis
 	// or filesystem path, and only the handbook promises the TUI surface.
 	const SLASH_MENTION_RE = /(?<![\w.])`\/([a-z][a-z0-9_-]*)(?: [^`]*)?`/g;
 	// Denial mentions ("There is no `/clone` command", "`/import` is **not** in
-	// the registry", "(not `/side`)") are honest docs, not claims.
-	const SLASH_NEGATION_RE = /\bnot?\s+`|\*\*not\*\*|does not exist|not shipped/i;
+	// the registry", "(not `/side`)") are honest docs, not claims. So is a
+	// removal note: a page that says `/advisor` was removed has to name the
+	// command it is telling you not to reach for.
+	const SLASH_NEGATION_RE =
+		/\bnot?\s+`|\*\*not\*\*|does not exist|not shipped|\b(?:was|were|is|are)\s+removed|\bremoved\b[^`]*`\//i;
 
 	const registered = new Set<string>();
 	for (const command of BUILTIN_SLASH_COMMAND_DEFS) {
@@ -610,7 +613,7 @@ describe("docs examples — inline dotted settings mentions are registered paths
 	 * documenting it.
 	 */
 	const LEGACY_SETTING_RE =
-		/from an earlier version|earlier version|moves them under|moves it under|renamed|used to be called|the old key/i;
+		/from an earlier version|earlier version|moves them under|moves it under|renamed|used to be called|the old key|legacy config keys?/i;
 
 	it("every settings-rooted dotted mention in handbook prose resolves in the schema", () => {
 		const failures: string[] = [];

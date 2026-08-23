@@ -1,6 +1,6 @@
 # Model and Provider Configuration (`models.yml` / `models.yaml`)
 
-This document describes how the coding agent loads models, applies overrides, resolves credentials, and chooses models at runtime.
+How the coding agent loads models, applies overrides, resolves credentials, and chooses models at runtime.
 
 ## What controls model behavior
 
@@ -107,7 +107,7 @@ providers:
 ### Allowed auth/discovery values
 
 - `auth`: `apiKey` (default), `none`, or `oauth`; for `models.yml` custom models, `oauth` is accepted by schema but does not waive the `apiKey` requirement
-- `discovery.type`: `ollama`, `llama.cpp`, `lm-studio`, `openai-models-list`, `proxy`, or `litellm`
+- `type` under `discovery`: `ollama`, `llama.cpp`, `lm-studio`, `openai-models-list`, `proxy`, or `litellm`
 - `transport`: `pi-native` only. When set, every model under that provider is sent to an `veyyon auth-gateway` compatible `baseUrl` via `POST /v1/pi/stream`; `apiKey` is the gateway bearer.
 
 ## Validation rules (current)
@@ -168,7 +168,7 @@ providers:
 ```
 
 A variable named in cases 2 or 3 that is unset, or set to an empty string, resolves to nothing: the
-key is not installed, no request carries it, and a warning names the variable and the setting.
+key is not installed, no request contains it, and a warning states the variable and the setting.
 Earlier versions used the variable's own name as the value, so `apiKey: DEEPSEK_API_KEY` was sent to
 the provider as the key. A key that is genuinely upper case text rather than a variable name is
 written `literal:MY_KEY`.
@@ -354,7 +354,7 @@ providers:
       type: litellm
 ```
 
-LiteLLM metadata endpoints use the configured base URL with a trailing `/v1` stripped for discovery only, preserving any preceding proxy path. Runtime model calls keep the configured OpenAI-compatible `/v1` base URL.
+LiteLLM metadata endpoints use the configured base URL with a trailing `v1` segment stripped for discovery only, preserving any preceding proxy path. Runtime model calls keep the configured OpenAI-compatible base URL, `v1` segment included.
 
 ### Proxy discovery (`discovery.type: proxy`)
 
@@ -368,9 +368,9 @@ derives each model's `api` from the entry's `supported_endpoint_types`:
 - otherwise -> falls back to provider-level `api` if set, else dropped
 
 Provider-level `api` is **optional** with `discovery.type: proxy` because the
-per-model wire is auto-detected. The Anthropic SDK strips a trailing `/v1`
-from `baseUrl` before appending `/v1/messages`, so a single discovery `baseUrl`
-(ending in `/v1`) round-trips correctly to both wires.
+per-model wire is auto-detected. The Anthropic SDK strips a trailing `v1` segment
+from `baseUrl` before appending its own `v1/messages` path, so a single discovery
+`baseUrl` ending in `v1` round-trips correctly to both wires.
 
 ```yaml
 providers:
@@ -452,7 +452,7 @@ Resolution precedence for exact selectors:
 
 ### Initial model selection priority
 
-`buildSessionOptions(...)` in `main.ts` decides the model a session starts on, in this order:
+`buildSessionOptions(...)` in `main.ts` sets the model a session starts on, in this order:
 
 1. an explicit `--model` (or the legacy `--provider` pair). A pattern that matches nothing is fatal, except for a bare id with no provider and no `:` suffix, which is carried as `options.modelPattern` and resolved again after extensions load, since an extension may register the provider it names.
 2. the scoped set from `--models`, when this is not a `--continue` or `--resume`. Inside that set the remembered `modelRoles.default` wins if it is there; if it is configured but unavailable, `fallbackForUnavailableDefault` substitutes and prints the reason; otherwise the first scoped model is used.

@@ -35,7 +35,7 @@ submit "${DEMO_PROMPT}"
 
 # The model, not an operator slash command, creates the persistent owner of the
 # long run before reading or planning.
-wait_for_screen "Goal:" 420 || MISSED="${MISSED:-} goal-created"
+expect_model_screen "Goal:" 420 goal-created
 if screen_has "Nebula Drift" && { screen_has "active" || screen_has "Goal:"; }; then
 	echo "scene: model-created persistent build goal visible" >&2
 else
@@ -49,7 +49,7 @@ shot goal-created
 # "Todo 0/8 tasks" and now carries no count, so a scene pinned to the count waited out its whole
 # timeout and published the previous take's frame under this name. The phase names below are what
 # prove the board is the one this prompt asked for.
-wait_for_screen "Todos" 420 || MISSED="${MISSED:-} todo-board"
+expect_model_screen "Todos" 420 todo-board
 if screen_has "Flight plan" && screen_has "Parallel build" && screen_has "Release"; then
 	echo "scene: four-phase todo board visible before implementation" >&2
 else
@@ -57,10 +57,12 @@ else
 fi
 shot todo-board
 
-# The three implementation lanes must overlap. The task renderer adds the colon;
-# bare names in the submitted prompt do not satisfy this guard.
-wait_for_screen "Subagents" 600 || MISSED="${MISSED:-} agent-lanes"
-wait_for_screen "FlightAgent:" 600 || MISSED="${MISSED:-} agent-lanes"
+# The three implementation lanes must overlap. The block's header is the guard, because
+# it is the one string a spawn always produces; a lane's NAME is the model's choice, and a
+# take that waited 1200s on one name then spent every later ceiling in series. The names
+# below are content checks on the frame, so a run with different names records the miss
+# and keeps going.
+expect_model_screen "Subagents" 600 agent-lanes
 pause 2
 if screen_has "DynamicsAgent:" && screen_has "RenderAgent:" && screen_has "FlightAgent:" && ! screen_has "Error:"; then
 	echo "scene: all three ship-simulator workers visible" >&2
@@ -72,7 +74,7 @@ shot agent-lanes
 # The main agent owns integration and edits the seeded CLI while workers own their
 # disjoint modules. This is still the original user turn or a goal continuation,
 # never a new operator instruction.
-wait_for_screen "Edit: " 900 || MISSED="${MISSED:-} integration-edit"
+expect_model_screen "Edit" 900 integration-edit
 pause 2
 if screen_has "src/cli.ts" || screen_has "src/sign.ts"; then
 	echo "scene: main-agent integration edit visible" >&2
@@ -84,7 +86,7 @@ shot integration-edit
 # The prompt prints this sentinel only after tests, typecheck, and compilation all
 # succeed. Everything between the worker launch and this mark is the modest 1.25x
 # section of the published cut.
-wait_for_screen "BUILD VERIFIED: tests, typecheck, and dist/nebula-drift passed" 1800 || MISSED="${MISSED:-} build-verified"
+expect_model_screen "BUILD VERIFIED: tests, typecheck, and dist/nebula-drift passed" 1800 build-verified
 pause 2
 if screen_has "BUILD VERIFIED" && ! screen_has "fail" && ! screen_has "error:"; then
 	echo "scene: tests, typecheck, and compiled binary verified" >&2
@@ -94,7 +96,7 @@ fi
 shot build-verified
 
 # Show the actual compiled product before release signing.
-wait_for_screen "NEBULA DRIFT" 360 || MISSED="${MISSED:-} simulator-preview"
+expect_model_screen "NEBULA DRIFT" 360 simulator-preview
 pause 2
 if screen_has "AUTOPILOT" && screen_has "FUEL" && screen_has "GATE"; then
 	echo "scene: compiled 3D flight display visible" >&2
@@ -105,7 +107,7 @@ shot simulator-preview
 
 # Secret expansion raises an explicit permission dialog. The model-authored command
 # carries only the placeholder; the operator sees the resolved command before it runs.
-wait_for_screen "Permission required" 600 || MISSED="${MISSED:-} secret-approval"
+expect_model_screen "Permission required" 600 secret-approval
 if screen_has "RELEASE_SIGNATURE" || screen_has "release-signature" || screen_has "SHIP_RELEASE_KEY"; then
 	echo "scene: binary signing held for explicit approval" >&2
 else
@@ -114,7 +116,7 @@ fi
 shot secret-approval
 approve_while_asked 6
 
-wait_for_screen "SIGNED BINARY: dist/nebula-drift" 360 || MISSED="${MISSED:-} signature-written"
+expect_model_screen "SIGNED BINARY: dist/nebula-drift" 360 signature-written
 pause 2
 if screen_has "nebula-drift.sig" || screen_has "SIGNED BINARY"; then
 	echo "scene: signed binary artifact visible" >&2
@@ -125,7 +127,7 @@ shot signature-written
 
 # The model closes both planning layers before its final tool call. This proves the
 # list was worked, not merely created, and that model-visible goal completion is real.
-wait_for_screen "Todo list done" 420 || MISSED="${MISSED:-} todo-finished"
+expect_model_screen "Todo list done" 420 todo-finished
 if screen_has "8 tasks" || screen_has "8/8"; then
 	echo "scene: all eight tasks completed" >&2
 else
@@ -135,7 +137,7 @@ shot todo-finished
 
 # "Status: complete" is only ever drawn inside the goal details panel, which this scene never
 # opens. What a completing session prints is the notice below, so that is what the shot waits for.
-wait_for_screen "Goal mode completed." 420 || MISSED="${MISSED:-} goal-complete"
+expect_model_screen "Goal mode completed." 420 goal-complete
 if screen_has "Goal mode completed."; then
 	echo "scene: model completed the persistent goal" >&2
 else
@@ -143,7 +145,7 @@ else
 fi
 shot goal-complete
 
-wait_for_screen "NEBULA DRIFT READY" 600 || MISSED="${MISSED:-} presentation"
+expect_model_screen "NEBULA DRIFT READY" 600 presentation
 pause 3
 if screen_has "NEBULA DRIFT" && screen_has "AUTOPILOT" && screen_has "binary signed"; then
 	echo "scene: final signed simulator presentation visible" >&2

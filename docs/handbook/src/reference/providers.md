@@ -4,9 +4,9 @@ Providers are the model backends `veyyon` can route requests to: Anthropic, Open
 
 A **provider** is the account or backend namespace, such as `anthropic`, `openai`, `google`, or `ollama`. A **model** is a concrete model under that provider, selected as `provider/model-id`, such as `anthropic/claude-opus-4-6`. Disabling a provider removes every model under it from selection; if you only want to narrow individual models, use model settings instead.
 
-This page covers how providers become available, how credentials are resolved, the provider/environment-variable map, local engines, disabling providers, and custom providers. For endpoint-specific request, reasoning, tool, stream, usage, and retry constraints, see [Provider endpoint constraints](../../../internal/provider-endpoint-constraints.md). For model selection and the full `models.yml` schema, see [Model and Provider Configuration](./models-yml.md). For config-file locations and merge precedence, see [Settings](./settings.md). For credential storage and login flows in depth, see [Secrets and credentials](../architecture/secrets.md). For the complete environment-variable reference, see [Environment variables](./environment-complete.md). For the embedded tiny-model engineering record (title/memory/auto-thinking local models), see [Local tiny models](../../../internal/local-tiny-models.md). For context-file discovery providers, see [Context files](../context/context-files.md).
+For endpoint-specific request, reasoning, tool, stream, usage, and retry constraints, see [Provider endpoint constraints](../../../internal/provider-endpoint-constraints.md). For model selection and the full `models.yml` schema, see [Model and Provider Configuration](./models-yml.md). For config-file locations and merge precedence, see [Settings](./settings.md). For credential storage and login flows in depth, see [Secrets and credentials](../architecture/secrets.md). For the complete environment-variable reference, see [Environment variables](./environment-complete.md). For the embedded tiny-model engineering record (title/memory/auto-thinking local models), see [Local tiny models](../../../internal/local-tiny-models.md). For context-file discovery providers, see [Context files](../context/context-files.md).
 
-## How `veyyon` decides a provider is available
+## When a provider is available
 
 At startup the model registry assembles its catalog from four sources, in order:
 
@@ -48,11 +48,11 @@ Use the interactive slash commands inside a session:
 
 For headless or remote setups backed by a shared auth broker, the CLI exposes `veyyon auth-broker login <provider>` / `veyyon auth-broker logout` (and `status`, `list`, `import`, `migrate`). See [Secrets and credentials](../architecture/secrets.md) for the broker model.
 
-When a model has no credentials, `veyyon` tells you to run `/login` or set the provider's environment variable.
+When a model has no credentials, `veyyon` prints the `/login` command and the provider's environment variable.
 
 ### Pinning a key in `models.yml`
 
-A custom provider's `apiKey` is resolved as **environment-variable-name-or-literal**: if the value names an existing environment variable, that variable's value is used; otherwise the string itself is the key. Prefixing the value with `!` runs it as a shell command and uses the trimmed stdout (see [Model and Provider Configuration](./models-yml.md) for the full value syntax).
+A custom provider's `apiKey` is resolved as **environment-variable-name-or-literal**: if the value matches an existing environment variable, that variable's value is used; otherwise the string itself is the key. Prefixing the value with `!` runs it as a shell command and uses the trimmed stdout (see [Model and Provider Configuration](./models-yml.md) for the full value syntax).
 
 ```yaml
 # ~/.veyyon/profiles/default/agent/models.yml
@@ -158,7 +158,7 @@ Both `<agentDir>` and `<configRoot>` follow the active profile, so `--profile wo
 
 A variable already present in the process environment is never overwritten by a `.env` file. Among the files, a value set in `<cwd>/.env` wins over `<agentDir>/.env`, which wins over `<configRoot>/.env`, which wins over `~/.env`. So a shell-exported `OPENAI_API_KEY` beats every `.env` file, and a project's `<cwd>/.env` beats your home `~/.env`.
 
-The order does not depend on which part of `veyyon` runs first. `~/.env` is applied before anything resolves a directory, because a `VEYYON_CODING_AGENT_DIR` or `XDG_CONFIG_HOME` set there decides where the other two files even are; the remaining layers are applied once those directories are known, and they override the values `~/.env` contributed. Whichever module a program imports, it sees the same result.
+The order does not depend on which part of `veyyon` runs first. `~/.env` is applied before anything resolves a directory, because a `VEYYON_CODING_AGENT_DIR` or `XDG_CONFIG_HOME` set there determines where the other two files even are; the remaining layers are applied once those directories are known, and they override the values `~/.env` contributed. Whichever module a program imports, it sees the same result.
 
 Project-local `.env` is the simplest way to make one repository use a project-specific gateway, key, or local endpoint:
 

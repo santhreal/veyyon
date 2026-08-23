@@ -24,7 +24,7 @@ my-skill/
 └── scripts/, references/, assets/ ...optional
 ```
 
-Only `SKILL.md` is required. The other files are loaded when the skill is active or when the model explicitly asks for them.
+Only `SKILL.md` is required. The other files are loaded when the skill is active or when the model requests them.
 
 ## SKILL.md frontmatter
 

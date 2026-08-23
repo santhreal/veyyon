@@ -58,15 +58,15 @@ Prefer `/compact` when you need a summary to retain state. Prefer the `/new` com
 
 ## The rollout
 
-Session history lives in one layer: the JSONL rollout. Every event is one line: a user message, an agent response, a tool call, a compaction, a goal update, or a branch summary. The rollout is the only source of truth. Listing and resume read it through the active storage backend, including indexed Redis and SQL storage. A non-empty rollout without a valid header is refused without changing its bytes; malformed later records are skipped with an operator-visible path, line, byte, and shape warning. Goal cards persist as rollout entries. There is no separate session-state database.
+Session history lives in one layer: the JSONL rollout. Every event is one line: a user message, an agent response, a tool call, a compaction, a goal update, or a branch summary. The rollout is the only source of truth. Listing and resume read it through the active storage backend, including indexed Redis and SQL storage. A non-empty rollout without a valid header is rejected without changing its bytes; malformed later records are skipped with an operator-visible path, line, byte, and shape warning. Goal cards persist as rollout entries. There is no separate session-state database.
 
 ## How the pieces relate
 
-- A **session** owns one or more **threads** and stores them on disk.
+- A **session** contains one or more **threads** and stores them on disk.
 - A **thread** is a path through the session's tree of turns.
 - A **turn** is one step on that path.
 - The **rollout** is the append-only log that holds every turn, branch, and system event.
-- The **goal card** is a separate context slot that carries the current objective across turns and compactions. See [Goal state and long sessions](../context/goal-state.md).
+- The **goal card** is a separate context slot that contains the current objective across turns and compactions. See [Goal state and long sessions](../context/goal-state.md).
 
 ## Where the details live
 

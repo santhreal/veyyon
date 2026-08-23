@@ -19,7 +19,7 @@ The root itself holds only **global, cross-profile** state. Everything else is p
 ## Profiles (`~/.veyyon/profiles/<name>/`)
 
 Every profile, including `default`, is a directory under `profiles/` with the same shape.
-A profile owns two layers:
+A profile has two layers:
 
 **Profile root** (`profiles/<name>/`), operational state:
 
@@ -72,7 +72,7 @@ The name `default` always addresses `profiles/default/` and cannot be removed.
 
 Before this layout, the default profile lived bare in the config root (`~/.veyyon/agent/`,
 `~/.veyyon/logs/`, …). On first launch Veyyon migrates that state into `profiles/default/`
-once, and refuses to guess if both layouts are present, the error names the exact
+once, and will not guess if both layouts are present, the error states the exact
 directories to reconcile.
 
 ## Credential storage

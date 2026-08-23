@@ -83,7 +83,7 @@ home-anchor slack routes ABOVE the transcript (`home-anchor-layout.ts`): the
 first prompt renders directly above the composer at the viewport bottom and
 content climbs upward as replies land. There is no latch. The routing is
 recomputed every frame from the measured content height, so a full screen
-simply means zero slack and the composer sits at the natural bottom, and a
+means zero slack and the composer sits at the natural bottom, and a
 transient tall frame followed by a collapse can never strand it mid-screen.
 Never reintroduce a flexible fill BETWEEN the transcript
 and the composer once a conversation exists: that layout painted the prompt at
@@ -215,7 +215,7 @@ Control Center drew a tofu box. `⤵` and `⤴` (U+2935/U+2934) were the token i
 status line and exist in none of the three fonts measured.
 
 The bar is **DejaVu Sans Mono and FreeMono**, the two broad-repertoire monospace faces shipped nearly
-everywhere. Noto Sans Mono is deliberately not the bar: its repertoire stops at Latin, Greek and
+everywhere. Noto Sans Mono is not the bar: its repertoire stops at Latin, Greek and
 Cyrillic, so it lacks even `✓` and `✗` and relies on fontconfig falling back to Noto Sans Symbols.
 Holding the preset to Noto's own `cmap` would mean giving up the check mark, which is making the
 product worse to satisfy a gate.
@@ -265,11 +265,11 @@ Where a status marker is a bare presence dot, it is a **square**, not a circle:
 | `radio.selected` / `radio.unselected` | `◉` `○` | `▣` `□` (square-in-square vs open square, kept distinct from the `■`/`□` checkbox) |
 | `thinking.minimal…max` | `o ◔ ◑ ◒ ◕ ◉` | text labels `min` `low` `med` `high` `xhigh` `max` (a deliberate exception: the gauge-bar glyphs `▁▂▃…` were retired because they rendered as stray solid rectangles) |
 
-These live in the `unicode` preset (`symbols.ts`), the base the default Titanium theme inherits, and are locked by `test/modes/theme/symbol-presets.test.ts` (with `test/tools/ask.test.ts` pinning the radio/checkbox distinction). The `nerd` and `ascii` presets keep their own icon/text vocabularies. **Named themes may override the house set** when circles are part of their identity (the poimandres themes keep their circular glyphs deliberately); the block style is the Veyyon default, not a constraint on every theme.
+These live in the `unicode` preset (`symbols.ts`), the base the default Titanium theme inherits, and are locked by `test/modes/theme/symbol-presets.test.ts` (with `test/tools/ask.test.ts` pinning the radio/checkbox distinction). The `nerd` and `ascii` presets keep their own icon/text vocabularies. **Named themes may override the house set** when circles are part of their identity (the poimandres themes keep their circular glyphs); the block style is the Veyyon default, not a constraint on every theme.
 
 ## Voice register
 
-The website nav speaks lowercase terse ("docs install models changelog"), a display-typography choice for the marketing surface. The TUI deliberately does **not** copy it: menu items, action rows, and settings labels use sentence case ("Resume session", "Settings") because terminal UIs carry no font-weight hierarchy and lowercase labels read as unfinished next to command literals (`/resume`, `ctrl+d`). Command names, flags, and paths stay verbatim lowercase everywhere. Do not mix registers within one surface.
+The website nav speaks lowercase terse ("docs install models changelog"), a display-typography choice for the marketing surface. The TUI does **not** copy it: menu items, action rows, and settings labels use sentence case ("Resume session", "Settings") because terminal UIs carry no font-weight hierarchy and lowercase labels read as unfinished next to command literals (`/resume`, `ctrl+d`). Command names, flags, and paths stay verbatim lowercase everywhere. Do not mix registers within one surface.
 
 ## Composer and chrome
 

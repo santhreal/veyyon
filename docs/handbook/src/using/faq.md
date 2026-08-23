@@ -1,6 +1,6 @@
 # Frequently asked questions
 
-This page answers common questions and errors. For a guided diagnostic path, see [Troubleshooting](./troubleshooting.md).
+Common questions and errors. For a guided diagnostic path, see [Troubleshooting](./troubleshooting.md).
 
 ## Setup
 
@@ -36,7 +36,7 @@ Veyyon lists models from a bundled catalog plus live discovery from providers th
 
 ### Why did my edit ask for approval?
 
-The approval mode decides when Veyyon prompts before a tool runs. In `ask`, every tier prompts, reads included. In `ask-command`, reads and edits run and anything that executes asks. In `auto`, the default, every tier runs with the per-tool, working-directory, credential and critical-call guards still asking. In `plan`, exec is blocked outright and write prompts only inside an active plan-mode session. Change mode with `--approval-mode <mode>` (`plan`, `ask`, `ask-command`, `auto`, `yolo`), `--auto-approve` / `--yolo`, or `tools.approvalMode` in `config.yml`. See [Approvals](../features/sandbox.md).
+The approval mode sets when Veyyon prompts before a tool runs. In `ask`, every tier prompts, reads included. In `ask-command`, reads and edits run and anything that executes prompts. In `auto`, the default, every tier runs with the per-tool, working-directory, credential and critical-call guards still prompting. In `plan`, exec is blocked outright and write prompts only inside an active plan-mode session. Change mode with `--approval-mode <mode>` (`plan`, `ask`, `ask-command`, `auto`, `yolo`), `--auto-approve` / `--yolo`, or `tools.approvalMode` in `config.yml`. See [Approvals](../features/sandbox.md).
 
 ### How do I resume a session?
 

@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e2394775.js";
+            window.path_to_searchindex_js = "../searchindex-03ea301b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -238,12 +238,12 @@ attach to a bug report. Bodies are recorded verbatim, so an OAuth token
 exchange still puts a refresh token in the file.</p>
 <p>Recording never interferes with the session it records. If a log cannot be
 written, because the disk is full or the directory is read-only, veyyon logs an
-error naming the file and the cause, stops recording that response, and lets the
+error stating the file and the cause, stops recording that response, and lets the
 response through untouched. You get your answer and a truncated log, not a
 failed request.</p>
-<p>Each file stops at 32 MiB. Past that the response log writes a line naming the
+<p>Each file stops at 32 MiB. Past that the response log writes a line stating the
 ceiling, then a final line stating how many bytes it recorded and how many it
-omitted; a request body that ran past the ceiling carries the same counts under
+omitted; a request body that ran past the ceiling contains the same counts under
 <code>bodyCapture</code>, and the body itself is stored as <code>bodyText</code> rather than parsed
 JSON. The response you get is unaffected: the ceiling bounds the recording, not
 the request. Raise or lower it with <code>VEYYON_REQ_DEBUG_MAX_BYTES</code>, in bytes; a

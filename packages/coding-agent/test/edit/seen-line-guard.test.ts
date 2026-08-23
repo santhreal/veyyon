@@ -358,6 +358,42 @@ describe("read → edit seen-line guard", () => {
 	});
 
 	/**
+	 * And a pure insertion beside that same clipped line APPLIES.
+	 *
+	 * The case above proves a clipped line stays out of `seenLines`, which is what
+	 * keeps a rewrite of bytes nobody read refused. This one proves the other half
+	 * of the same decision, through the real read tool, the real store and the real
+	 * patcher: `INS.PRE` reads its anchor as a place and leaves the anchored bytes
+	 * identical, so refusing it asked for a 4KB line to be pulled into context in
+	 * order to add a line next to it. Observed live on a file of multi-kilobyte
+	 * rows, refused twice, with `:raw` named as the only way through.
+	 *
+	 * Without this case the producer wiring is unproven: the store could record no
+	 * clipped lines at all and every other case here would stay green.
+	 */
+	it("applies an insertion beside a column-clipped line, and leaves that line identical", async () => {
+		const file = path.join(tmpDir, "wide-insert.txt");
+		const wide = "a".repeat(4096);
+		const content = `head\n${wide}\nfoot\n`;
+		await Bun.write(file, content);
+		const session = createSession(tmpDir);
+
+		const read = await new ReadTool(session).execute("r1", { path: `${file}:2` });
+		const tag = tagFromOutput(resultText(read));
+
+		const snapshot = getFileSnapshotStore(session).byHash(canonicalSnapshotKey(file), tag);
+		// The read displayed the row and clipped it: out of `seenLines`, in `clippedLines`.
+		expect(snapshot?.seenLines?.has(2)).toBe(false);
+		expect(snapshot?.clippedLines?.has(2)).toBe(true);
+
+		await executeHashlineSingle(execOptions(`[wide-insert.txt#${tag}]\nINS.PRE 2:\n+ADDED`, session));
+
+		// The clipped row survives byte-identical, which is the whole argument for
+		// allowing this: the edit is not a write to the line it anchors on.
+		expect(await Bun.file(file).text()).toBe(`head\nADDED\n${wide}\nfoot\n`);
+	});
+
+	/**
 	 * The rejection on a column-clipped line must name a re-read that can
 	 * actually clear the gate.
 	 *

@@ -1,5 +1,5 @@
 import { getActiveProfile } from "@veyyon/utils/dirs";
-import { expandEnvVarsDeep } from "../discovery/helpers";
+import { expandEnvVarsDeep, unresolvedRefusedDownstream } from "../discovery/env-expansion";
 import type { AuthStorage } from "../session/auth-storage";
 import {
 	isManagedMCPOAuthCredentialId,
@@ -19,7 +19,13 @@ export type MCPOAuthRefreshMaterial = MCPStoredOAuthCredential | MCPAuthConfig |
 export function mcpOAuthCredentialIdsForServerUrl(serverUrl: string | undefined): string[] {
 	if (!serverUrl) return [];
 	const ids: string[] = [];
-	for (const url of [expandEnvVarsDeep(serverUrl), serverUrl]) {
+	// Both spellings on purpose: a credential stored before the variable was set is keyed by the
+	// literal `${VAR}` url, so an unresolved reference here is a lookup key, not a defect to report.
+	// A server that is actually connected to with one is refused by the connect guard.
+	const residueIsALookupKey = unresolvedRefusedDownstream(
+		"the MCP connect guard refuses an unresolved structural field before a transport exists",
+	);
+	for (const url of [expandEnvVarsDeep(serverUrl, residueIsALookupKey), serverUrl]) {
 		const id = mcpOAuthCredentialId(url);
 		if (!ids.includes(id)) ids.push(id);
 	}

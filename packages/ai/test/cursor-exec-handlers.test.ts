@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import { create, fromJson, type JsonValue } from "@bufbuild/protobuf";
 import {
 	type BlockState,
@@ -15,6 +15,7 @@ import { streamCursor as lazyStreamCursor, setCursorProviderModule } from "@veyy
 import type { AssistantMessage, Context, CursorExecHandlers, Model, ToolResultMessage } from "@veyyon/ai/types";
 import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import { buildModel } from "@veyyon/catalog/build";
+
 import {
 	type AgentRunRequest,
 	AgentRunRequestSchema,
@@ -22,6 +23,13 @@ import {
 	ExecServerMessageSchema,
 	ReadArgsSchema,
 } from "@veyyon/catalog/discovery/cursor-gen/agent_pb";
+
+// Two tests here install a process-wide Cursor override. Left behind, one answers every later test
+// file in the bucket; `packages/ai/test/helpers/provider-override-tripwire.ts` fails the test that
+// forgets, which is how these two were found.
+afterEach(() => {
+	setCursorProviderModule();
+});
 
 const cursorModel: Model<"cursor-agent"> = buildModel({
 	id: "cursor-composer-2.5",

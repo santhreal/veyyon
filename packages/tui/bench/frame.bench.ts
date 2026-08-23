@@ -118,8 +118,17 @@ function buildTranscript(tui: TUI, blocks: number): void {
 	}
 }
 
-function makeTui(blocks: number): { tui: TUI; terminal: SinkTerminal; scheduler: ManualScheduler } {
-	const terminal = new SinkTerminal();
+/**
+ * @param grid terminal geometry. The default is a normal window; the hero
+ *   recording runs a 1920x1080 terminal at font size 15, which is about
+ *   213x32 cells, and a frame's cost is a function of the cell count, so the
+ *   numbers a demo is judged by are not the numbers this bench reported.
+ */
+function makeTui(
+	blocks: number,
+	grid: { columns: number; rows: number } = { columns: 100, rows: 40 },
+): { tui: TUI; terminal: SinkTerminal; scheduler: ManualScheduler } {
+	const terminal = new SinkTerminal(grid.columns, grid.rows);
 	const scheduler = new ManualScheduler();
 	const tui = new TUI(terminal, undefined, { renderScheduler: scheduler });
 	buildTranscript(tui, blocks);
@@ -128,6 +137,9 @@ function makeTui(blocks: number): { tui: TUI; terminal: SinkTerminal; scheduler:
 	scheduler.flush();
 	return { tui, terminal, scheduler };
 }
+
+/** The recorder's grid: 1920x1080 at font size 15 in `proof/docker/xsession.sh`. */
+const HD_GRID = { columns: 213, rows: 32 };
 
 function report(label: string, samples: number[], extra = ""): void {
 	const { p50, p95, mean } = benchStats(samples);
@@ -147,8 +159,14 @@ function report(label: string, samples: number[], extra = ""): void {
  * @param legacy invalidate() the live component before every frame, forcing
  *   the pre-cache full re-wrap so the incremental win is measured in-run.
  */
-function benchStreaming(blocks: number, tokens: number, newlineEvery: number, legacy = false): void {
-	const { tui, terminal, scheduler } = makeTui(blocks);
+function benchStreaming(
+	blocks: number,
+	tokens: number,
+	newlineEvery: number,
+	legacy = false,
+	grid?: { columns: number; rows: number },
+): void {
+	const { tui, terminal, scheduler } = makeTui(blocks, grid);
 	const live = new Text("");
 	tui.addChild(live);
 	let text = "";
@@ -175,8 +193,9 @@ function benchStreaming(blocks: number, tokens: number, newlineEvery: number, le
 	if (terminal.bytes === bytesBefore) benchFail("streaming phase wrote no bytes");
 	if (!terminal.lastChunk.includes("FINAL_SENTINEL")) benchFail("last streamed token never reached the terminal");
 	const shape = newlineEvery > 0 ? "prose" : "one-line";
+	const where = grid ? ` ${grid.columns}x${grid.rows}` : "";
 	report(
-		`streaming ${shape}${legacy ? " legacy" : ""} (${blocks} blocks)`,
+		`streaming ${shape}${legacy ? " legacy" : ""} (${blocks} blocks)${where}`,
 		samples,
 		`bytes=${terminal.bytes - bytesBefore}`,
 	);
@@ -242,6 +261,12 @@ benchStreaming(2000, 2000, 12);
 benchStreaming(500, 2000, 12, true); // pre-cache behavior for comparison
 benchStreaming(500, 2000, 0); // worst case: one giant logical line
 benchStreaming(500, 2000, 0, true);
+// The recorder's grid. A frame's cost scales with the cell count, and the
+// scheduler's adaptive floor is `min(200ms, lastFrameCost * 2)`: a frame that
+// costs 33ms holds the next one for 66ms, so a published take runs at 15 fps
+// while the recorder captures at 30. These are the arms that speak about that.
+benchStreaming(500, 2000, 12, false, HD_GRID);
+benchStreaming(500, 2000, 0, false, HD_GRID);
 benchSpinner(500, 2000);
 benchSpinner(2000, 2000);
 benchColdPaint(500, 20);

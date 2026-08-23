@@ -1,6 +1,6 @@
 # The provider stack and bring-your-own-key
 
-The harness owns the model registry and provider auth.
+The harness provides the model registry and provider auth.
 
 A **provider** is the API namespace (`anthropic`, `openai`, `google`, custom gateways, local
 `ollama`, …). A **model** is `provider/model-id`. Veyyon assembles the selectable catalog from:

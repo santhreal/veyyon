@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e2394775.js";
+            window.path_to_searchindex_js = "../searchindex-03ea301b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -198,8 +198,8 @@
                         <h1 id="providers"><a class="header" href="#providers">Providers</a></h1>
 <p>Providers are the model backends <code>veyyon</code> can route requests to: Anthropic, OpenAI, Google Gemini, Groq, OpenRouter, Mistral, xAI, local engines like Ollama, hosted gateways, custom <code>models.yml</code> providers, and providers registered by extensions.</p>
 <p>A <strong>provider</strong> is the account or backend namespace, such as <code>anthropic</code>, <code>openai</code>, <code>google</code>, or <code>ollama</code>. A <strong>model</strong> is a concrete model under that provider, selected as <code>provider/model-id</code>, such as <code>anthropic/claude-opus-4-6</code>. Disabling a provider removes every model under it from selection; if you only want to narrow individual models, use model settings instead.</p>
-<p>This page covers how providers become available, how credentials are resolved, the provider/environment-variable map, local engines, disabling providers, and custom providers. For endpoint-specific request, reasoning, tool, stream, usage, and retry constraints, see <a href="../../../internal/provider-endpoint-constraints.html">Provider endpoint constraints</a>. For model selection and the full <code>models.yml</code> schema, see <a href="./models-yml.html">Model and Provider Configuration</a>. For config-file locations and merge precedence, see <a href="./settings.html">Settings</a>. For credential storage and login flows in depth, see <a href="../architecture/secrets.html">Secrets and credentials</a>. For the complete environment-variable reference, see <a href="./environment-complete.html">Environment variables</a>. For the embedded tiny-model engineering record (title/memory/auto-thinking local models), see <a href="../../../internal/local-tiny-models.html">Local tiny models</a>. For context-file discovery providers, see <a href="../context/context-files.html">Context files</a>.</p>
-<h2 id="how-veyyon-decides-a-provider-is-available"><a class="header" href="#how-veyyon-decides-a-provider-is-available">How <code>veyyon</code> decides a provider is available</a></h2>
+<p>For endpoint-specific request, reasoning, tool, stream, usage, and retry constraints, see <a href="../../../internal/provider-endpoint-constraints.html">Provider endpoint constraints</a>. For model selection and the full <code>models.yml</code> schema, see <a href="./models-yml.html">Model and Provider Configuration</a>. For config-file locations and merge precedence, see <a href="./settings.html">Settings</a>. For credential storage and login flows in depth, see <a href="../architecture/secrets.html">Secrets and credentials</a>. For the complete environment-variable reference, see <a href="./environment-complete.html">Environment variables</a>. For the embedded tiny-model engineering record (title/memory/auto-thinking local models), see <a href="../../../internal/local-tiny-models.html">Local tiny models</a>. For context-file discovery providers, see <a href="../context/context-files.html">Context files</a>.</p>
+<h2 id="when-a-provider-is-available"><a class="header" href="#when-a-provider-is-available">When a provider is available</a></h2>
 <p>At startup the model registry assembles its catalog from four sources, in order:</p>
 <ol>
 <li>The bundled model catalog (every built-in provider and its known models).</li>
@@ -233,9 +233,9 @@
 <li><code>/logout</code>: opens the provider selector to remove stored credentials.</li>
 </ul>
 <p>For headless or remote setups backed by a shared auth broker, the CLI exposes <code>veyyon auth-broker login &lt;provider&gt;</code> / <code>veyyon auth-broker logout</code> (and <code>status</code>, <code>list</code>, <code>import</code>, <code>migrate</code>). See <a href="../architecture/secrets.html">Secrets and credentials</a> for the broker model.</p>
-<p>When a model has no credentials, <code>veyyon</code> tells you to run <code>/login</code> or set the provider’s environment variable.</p>
+<p>When a model has no credentials, <code>veyyon</code> prints the <code>/login</code> command and the provider’s environment variable.</p>
 <h3 id="pinning-a-key-in-modelsyml"><a class="header" href="#pinning-a-key-in-modelsyml">Pinning a key in <code>models.yml</code></a></h3>
-<p>A custom provider’s <code>apiKey</code> is resolved as <strong>environment-variable-name-or-literal</strong>: if the value names an existing environment variable, that variable’s value is used; otherwise the string itself is the key. Prefixing the value with <code>!</code> runs it as a shell command and uses the trimmed stdout (see <a href="./models-yml.html">Model and Provider Configuration</a> for the full value syntax).</p>
+<p>A custom provider’s <code>apiKey</code> is resolved as <strong>environment-variable-name-or-literal</strong>: if the value matches an existing environment variable, that variable’s value is used; otherwise the string itself is the key. Prefixing the value with <code>!</code> runs it as a shell command and uses the trimmed stdout (see <a href="./models-yml.html">Model and Provider Configuration</a> for the full value syntax).</p>
 <pre><code class="language-yaml"># ~/.veyyon/profiles/default/agent/models.yml
 providers:
   my-gateway:
@@ -341,7 +341,7 @@ providers:
 </ol>
 <p>Both <code>&lt;agentDir&gt;</code> and <code>&lt;configRoot&gt;</code> follow the active profile, so <code>--profile work</code> reads <code>~/.veyyon/profiles/work/agent/.env</code> and <code>~/.veyyon/profiles/work/.env</code>.</p>
 <p>A variable already present in the process environment is never overwritten by a <code>.env</code> file. Among the files, a value set in <code>&lt;cwd&gt;/.env</code> wins over <code>&lt;agentDir&gt;/.env</code>, which wins over <code>&lt;configRoot&gt;/.env</code>, which wins over <code>~/.env</code>. So a shell-exported <code>OPENAI_API_KEY</code> beats every <code>.env</code> file, and a project’s <code>&lt;cwd&gt;/.env</code> beats your home <code>~/.env</code>.</p>
-<p>The order does not depend on which part of <code>veyyon</code> runs first. <code>~/.env</code> is applied before anything resolves a directory, because a <code>VEYYON_CODING_AGENT_DIR</code> or <code>XDG_CONFIG_HOME</code> set there decides where the other two files even are; the remaining layers are applied once those directories are known, and they override the values <code>~/.env</code> contributed. Whichever module a program imports, it sees the same result.</p>
+<p>The order does not depend on which part of <code>veyyon</code> runs first. <code>~/.env</code> is applied before anything resolves a directory, because a <code>VEYYON_CODING_AGENT_DIR</code> or <code>XDG_CONFIG_HOME</code> set there determines where the other two files even are; the remaining layers are applied once those directories are known, and they override the values <code>~/.env</code> contributed. Whichever module a program imports, it sees the same result.</p>
 <p>Project-local <code>.env</code> is the simplest way to make one repository use a project-specific gateway, key, or local endpoint:</p>
 <pre><code class="language-dotenv"># &lt;project&gt;/.env
 OPENROUTER_API_KEY=sk-or-...

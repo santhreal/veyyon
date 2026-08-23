@@ -137,7 +137,7 @@ The automatic paths are intentionally different:
   - Tool-output pruning can reduce the measured token count before threshold comparison.
   - Context promotion is tried before post-turn compaction.
   - If promotion is unavailable, auto maintenance runs with `reason: "threshold"` and `willRetry: false`.
-  - On success, if `compaction.autoContinue !== false`, post-turn maintenance schedules an agent-authored developer auto-continue prompt from `prompts/turn-control/auto-continue.md`; mid-turn maintenance never schedules a separate continuation because the core loop already owns the next provider request.
+  - On success, if `compaction.autoContinue !== false`, post-turn maintenance schedules an agent-authored developer auto-continue prompt from `prompts/turn-control/auto-continue.md`; mid-turn maintenance never schedules a separate continuation because the core loop already defines the next provider request.
 
 - **Idle maintenance**
   - Trigger: `runIdleCompaction()` when not streaming or already compacting.
@@ -154,7 +154,7 @@ has its heavy non-error tool results replaced with an elision marker (largest fi
 offloaded to a recovery `artifact://` blob), so the tail stays within budget even when one turn
 alone is bigger. User messages, assistant text, tool calls, and error results are never elided.
 
-Note that the summary prompt does not say any of that. Its opening line asks for "a structured
+Note that the summary prompt does not state any of that. Its opening line requests "a structured
 handoff summary for another LLM to resume the task", which describes a cold restart that compaction
 does not perform. This is inherited from upstream, whose engine keeps the same recent tail, so the
 mismatch is upstream's rather than a fork difference. It is recorded here because a summarizer told
@@ -228,7 +228,7 @@ Tools can flag a finished result as contextually useless, a search with zero mat
 
 The flag never reaches provider wire formats, and flagged pairs are never removed from history (only blanked in place), so tool-call/result pairing stays intact.
 
-### What the summary prompts ask for
+### What the summary prompts request
 
 `compaction-summary.md`, `compaction-update-summary.md`, and `compaction-summary-context.md` are
 oh-my-pi's text verbatim, by operator order, on the measurement that upstream scores higher on
@@ -366,7 +366,7 @@ which is the local strategy with an extra network round trip in front of it, and
 derived from the blob rather than the span would be invented. An empty summary is the
 honest record of what happened.
 
-Because the entry cannot explain itself, the rebuild refuses to trust it outside the
+Because the entry cannot explain itself, the rebuild will not trust it outside the
 provider that minted it. `buildSessionContext` treats a compaction as usable only when the
 stored window replays on the active provider, or when there is real summary text. When
 neither holds, which is a fork or resume onto a different provider, it re-expands every
@@ -380,7 +380,7 @@ whose summary field held a fixed placeholder) load through the same rule and re-
 
 `packages/agent/src/compaction/compaction.ts` also exports `generateHandoff(...)`. Handoff generation uses the same `completeSimple(...)` oneshot style as summarization, but it preserves the live agent cache prefix by sending the active system prompt, tool array, and real LLM message history, then appending one agent-attributed `user` message containing the handoff prompt. It forces `toolChoice: "none"` and returns joined text blocks directly.
 
-Handoff does not write a `CompactionEntry`. `AgentSession.handoff()` owns the session transition: it starts a new session, injects the generated document as a visible `custom_message` with `customType: "handoff"`, and rebuilds agent messages from that new session.
+Handoff does not write a `CompactionEntry`. `AgentSession.handoff()` performs the session transition: it starts a new session, injects the generated document as a visible `custom_message` with `customType: "handoff"`, and rebuilds agent messages from that new session.
 
 ### File-operation context in summaries
 
@@ -394,7 +394,7 @@ Cumulative behavior:
 
 - Includes prior compaction details only when prior entry is pi-generated (`fromExtension !== true`).
 - In split turns, includes turn-prefix file ops too.
-- `details.readFiles` excludes files also modified; `details.modifiedFiles` carries the rest (persisted shape is unchanged).
+- `details.readFiles` excludes files also modified; `details.modifiedFiles` contains the rest (persisted shape is unchanged).
 
 The file list is a grouped, prefix-folded directory tree (find-tool shape) with a per-file access marker, `(Read)` for read-only files, `(Write)` for modified files never read, `(RW)` for modified files also present in the cumulative read set. Capped at 20 files with an `[…N files elided…]` line. Compaction and explicit handoff append it as a `<files>` tag (via `upsertFileOperations`).
 
@@ -492,7 +492,7 @@ Can:
 - cancel compaction (`{ cancel: true }`)
 - provide full custom compaction payload (`{ compaction: CompactionResult }`)
 
-### `session.compacting`
+### `session_compacting`
 
 Prompt/context customization hook for default compaction.
 

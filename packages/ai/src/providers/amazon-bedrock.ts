@@ -11,7 +11,7 @@ import type { Effort } from "@veyyon/catalog/effort";
 import { mapEffortToAnthropicAdaptiveEffort, requireSupportedEffort } from "@veyyon/catalog/model-thinking";
 import { calculateCost, emptyUsage } from "@veyyon/catalog/models";
 import { $env, $flag } from "@veyyon/utils/env";
-import { fetchWithRetry } from "@veyyon/utils/fetch-retry";
+
 import { parseStreamingJson, parseStreamingJsonThrottled } from "@veyyon/utils/json-parse";
 import { renderDemotedThinking } from "../dialect/demotion";
 import * as AIError from "../error";
@@ -44,6 +44,7 @@ import {
 import { AssistantMessageEventStream } from "../utils/event-stream";
 import type { RawHttpRequestDump } from "../utils/http-inspector";
 import { armPreResponseTimeout, getStreamFirstEventTimeoutMs } from "../utils/idle-iterator";
+import { fetchProviderWithRetry } from "../utils/provider-fetch";
 import { notifyProviderResponse } from "../utils/provider-response";
 import { toolWireSchema } from "../utils/schema/wire";
 import { stopReasonForTerminallessEof } from "../utils/terminalless-eof";
@@ -433,7 +434,7 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 				// Preserve the provider's payload-capture contract for an
 				// already-aborted call without creating a physical attempt.
 				if (watchdog.signal?.aborted) await prepareRequest();
-				response = await fetchWithRetry(url, {
+				response = await fetchProviderWithRetry(url, {
 					method: "POST",
 					signal: watchdog.signal,
 					fetch: observedFetch,

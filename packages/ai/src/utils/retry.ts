@@ -1,11 +1,7 @@
 import { scheduler } from "node:timers/promises";
-import { isRetryableError } from "@veyyon/utils/fetch-retry";
 import { isCopilotTransientModelError, status } from "../error/flags";
+import { isProviderRetryableError } from "../error/retryable";
 import { getHeadersFromError, getRetryAfterMsFromHeaders } from "./retry-after";
-
-// `isCopilotTransientModelError` now lives in the error module (its classifier
-// home). Re-exported here so existing `../utils/retry` importers keep working.
-export { isCopilotTransientModelError };
 
 const COPILOT_MODEL_RETRY_MAX_ATTEMPTS = 3;
 const COPILOT_MODEL_RETRY_BASE_DELAY_MS = 400;
@@ -37,7 +33,13 @@ export async function callWithCopilotModelRetry<T>(
 			lastError = error;
 			if (options.signal?.aborted) throw options.signal.reason ?? error;
 			const transientModelError = isCopilotTransientModelError(error);
-			if (!transientModelError && !isRetryableError(error)) throw error;
+			// ONE PREDICATE DECIDES. This asked `@veyyon/utils/fetch-retry`'s `isRetryableError`, a
+			// second classifier with its own transient vocabulary, so this ladder retried failures the
+			// provider ladders refused and refused ones they retried. `isProviderRetryableError` also
+			// brings the vetoes this loop never had: an account-level cap belongs to credential
+			// rotation rather than to a 30-second backoff, and a refused HTTP/2 code or an
+			// undelimited frame reproduces on every attempt.
+			if (!transientModelError && !isProviderRetryableError(error)) throw error;
 			if (attempt === COPILOT_MODEL_RETRY_MAX_ATTEMPTS - 1) break;
 			let delayMs = retryBaseDelayMs * (attempt + 1);
 			if (!transientModelError) {

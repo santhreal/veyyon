@@ -54,7 +54,6 @@ interface ReservedRequestDebugFile {
 	requestPath: string;
 	responsePath: string;
 	handle: fs.FileHandle;
-	overwrite: boolean;
 }
 
 export interface RequestDebugResponseLog {
@@ -195,7 +194,7 @@ export function withRequestDebugFetch<T extends { fetch?: FetchImpl } | undefine
 }
 
 export async function createRequestDebugSession(payload: RequestDebugPayload): Promise<RequestDebugSession> {
-	const { id, requestPath, responsePath, handle, overwrite } = await reserveRequestDebugFile();
+	const { id, requestPath, responsePath, handle } = await reserveRequestDebugFile();
 	const requestDump: Record<string, unknown> = {
 		id,
 		protocol: payload.protocol ?? "http",
@@ -218,7 +217,7 @@ export async function createRequestDebugSession(payload: RequestDebugPayload): P
 		await handle.close();
 	}
 
-	return new FileRequestDebugSession(id, requestPath, responsePath, overwrite);
+	return new FileRequestDebugSession(id, requestPath, responsePath);
 }
 
 async function createFetchRequestDebugSession(
@@ -239,17 +238,15 @@ class FileRequestDebugSession implements RequestDebugSession {
 	readonly id: number;
 	readonly requestPath: string;
 	readonly responsePath: string;
-	readonly #overwriteResponseLog: boolean;
 
-	constructor(id: number, requestPath: string, responsePath: string, overwriteResponseLog: boolean) {
+	constructor(id: number, requestPath: string, responsePath: string) {
 		this.id = id;
 		this.requestPath = requestPath;
 		this.responsePath = responsePath;
-		this.#overwriteResponseLog = overwriteResponseLog;
 	}
 
 	async openResponseLog(statusLine: string, headers?: RequestDebugHeaders): Promise<RequestDebugResponseLog> {
-		const handle = await fs.open(this.responsePath, this.#overwriteResponseLog ? "w" : "wx", DEBUG_FILE_MODE);
+		const handle = await openPrivateDebugFile(this.responsePath);
 		const log = new FileRequestDebugResponseLog(handle, this.responsePath, requestDebugCaptureCeiling());
 		// Through the log's own write, not the raw handle: a failure here is the same
 		// kind of failure as one mid-body and has to be absorbed the same way. Writes
@@ -479,13 +476,27 @@ function copyResponseMetadata(target: Response, source: Response): void {
  */
 const DEBUG_FILE_MODE = 0o600;
 
+/**
+ * Both dump files are created here, so the mode cannot be dropped at one of two call sites.
+ *
+ * `wx` is what makes the mode effective: it creates the file and applies `DEBUG_FILE_MODE` as it
+ * does. Reopening an existing file with `w` would ignore `mode` and inherit whatever permissions a
+ * previous run left, so no caller may name a file it did not create. A name already taken is
+ * reported by the caller and the exchange goes unrecorded, which is the safe direction for an
+ * observability flag. On win32 `mode` does nothing, so the owner-only contract there is an ACL
+ * question this file does not answer.
+ */
+async function openPrivateDebugFile(filePath: string): Promise<fs.FileHandle> {
+	return fs.open(filePath, "wx", DEBUG_FILE_MODE);
+}
+
 async function reserveRequestDebugFile(): Promise<ReservedRequestDebugFile> {
 	for (;;) {
 		const id = nextSessionId++;
 		const requestPath = `rr-session-${id}.json`;
 		try {
-			const handle = await fs.open(requestPath, "wx", DEBUG_FILE_MODE);
-			return { id, requestPath, responsePath: `rr-session-${id}.res.log`, handle, overwrite: false };
+			const handle = await openPrivateDebugFile(requestPath);
+			return { id, requestPath, responsePath: `rr-session-${id}.res.log`, handle };
 		} catch (error) {
 			if (isFileExistsError(error)) continue;
 			throw error;

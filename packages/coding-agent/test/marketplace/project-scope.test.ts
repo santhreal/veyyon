@@ -24,8 +24,13 @@ import {
 	readInstalledPluginsRegistry,
 	writeInstalledPluginsRegistry,
 } from "@veyyon/coding-agent/extensibility/plugins/marketplace";
+import {
+	canonicalProjectRoot,
+	describeProjectExecutable,
+	ProjectTrust,
+} from "@veyyon/coding-agent/security/project-trust";
 import { removeSyncWithRetries } from "@veyyon/utils";
-import { CONFIG_DIR_NAME } from "@veyyon/utils/dirs";
+import { CONFIG_DIR_NAME, getPluginsDir } from "@veyyon/utils/dirs";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -136,6 +141,8 @@ describe("resolveActiveProjectRegistryPath", () => {
 describe("listClaudePluginRoots — project shadows user", () => {
 	let tmpHome: string;
 	let tmpProject: string;
+	/** Profile directory the trust decision is recorded in and read back from. */
+	let tmpAgentDir: string;
 	/** Path where listClaudePluginRoots reads the user Veyyon registry. */
 	let userRegPath: string;
 	/** Path where listClaudePluginRoots reads the project registry (resolved from tmpProject). */
@@ -144,11 +151,16 @@ describe("listClaudePluginRoots — project shadows user", () => {
 	beforeEach(() => {
 		tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-shadow-home-"));
 		tmpProject = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-shadow-proj-"));
+		tmpAgentDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-shadow-agent-"));
 
 		// Create .veyyon/ in project so resolveActiveProjectRegistryPath finds it.
 		fs.mkdirSync(path.join(tmpProject, CONFIG_DIR_NAME, "plugins"), { recursive: true });
 
-		userRegPath = path.join(tmpHome, CONFIG_DIR_NAME, "plugins", "installed_plugins.json");
+		// The user registry is read from the ACTIVE PROFILE's plugins dir, which is where
+		// the marketplace writer puts it — not `<home>/.veyyon/plugins`. Writing it anywhere
+		// else leaves no user entry to shadow, and the shadowing assertion below then holds
+		// for a registry that was never loaded.
+		userRegPath = path.join(getPluginsDir(tmpHome), "installed_plugins.json");
 		fs.mkdirSync(path.dirname(userRegPath), { recursive: true });
 
 		projectRegPath = path.join(tmpProject, CONFIG_DIR_NAME, "plugins", "installed_plugins.json");
@@ -159,27 +171,55 @@ describe("listClaudePluginRoots — project shadows user", () => {
 		clearClaudePluginRootsCache();
 		removeSyncWithRetries(tmpHome);
 		removeSyncWithRetries(tmpProject);
+		removeSyncWithRetries(tmpAgentDir);
 	});
 
-	it("project entry shadows user entry when plugin IDs match", async () => {
-		const pluginId = buildPluginId("shared-plugin", "test-mkt");
-
-		// User registry has the plugin at a user-side install path.
+	/** Both registries carry the same plugin ID, at different install paths. */
+	async function writeBothRegistries(pluginId: string): Promise<void> {
 		let userReg = await readInstalledPluginsRegistry(userRegPath);
 		userReg = addInstalledPlugin(userReg, pluginId, makeEntry("/user/install/shared-plugin"));
 		await writeInstalledPluginsRegistry(userRegPath, userReg);
 
-		// Project registry has the same plugin ID at a project-side install path.
 		let projReg = await readInstalledPluginsRegistry(projectRegPath);
 		projReg = addInstalledPlugin(projReg, pluginId, makeEntry("/project/install/shared-plugin", "project"));
 		await writeInstalledPluginsRegistry(projectRegPath, projReg);
+	}
 
-		const { roots } = await listClaudePluginRoots(tmpHome, tmpProject);
+	/** Record the operator's approval of the project registry file's exact bytes. */
+	async function trustProjectRegistry(): Promise<void> {
+		const canonicalRoot = await canonicalProjectRoot(tmpProject);
+		const executable = await describeProjectExecutable(projectRegPath, canonicalRoot);
+		if (!executable) throw new Error("Expected the project registry to be readable");
+		const trust = await ProjectTrust.load(tmpAgentDir);
+		await trust.trust(canonicalRoot, [executable]);
+	}
+
+	it("project entry shadows user entry when plugin IDs match", async () => {
+		const pluginId = buildPluginId("shared-plugin", "test-mkt");
+		await writeBothRegistries(pluginId);
+		await trustProjectRegistry();
+
+		const { roots } = await listClaudePluginRoots(tmpHome, tmpProject, undefined, tmpAgentDir);
 		const matching = roots.filter(r => r.id === pluginId);
 
 		// Exactly one entry survives — the user entry is suppressed.
 		expect(matching).toHaveLength(1);
 		expect(matching[0]?.path).toBe("/project/install/shared-plugin");
 		expect(matching[0]?.scope).toBe("project");
+	});
+
+	it("keeps the user entry and reports a refusal when the project registry is not trusted", async () => {
+		const pluginId = buildPluginId("shared-plugin", "test-mkt");
+		await writeBothRegistries(pluginId);
+
+		const { roots, warnings } = await listClaudePluginRoots(tmpHome, tmpProject, undefined, tmpAgentDir);
+		const matching = roots.filter(r => r.id === pluginId);
+
+		// The project entry names install paths, so an undecided project supplies none of
+		// them; the user's own entry is untouched by that refusal.
+		expect(matching).toHaveLength(1);
+		expect(matching[0]?.path).toBe("/user/install/shared-plugin");
+		expect(matching[0]?.scope).toBe("user");
+		expect(warnings.some(warning => warning.includes("plugins"))).toBe(true);
 	});
 });
