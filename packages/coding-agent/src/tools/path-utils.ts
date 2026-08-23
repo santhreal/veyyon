@@ -323,6 +323,8 @@ export function isLineInRanges(lineNumber: number, ranges: readonly LineRange[])
  */
 export const splitPathAndSel: (rawPath: string) => { path: string; sel?: string } = splitReadSelector;
 
+class PathLengthLimitError extends Error {}
+
 /**
  * Three-way probe for whether the exact filesystem entry named by `filePath`
  * exists. `stat` (used earlier) failed for reasons other than "no such file"
@@ -333,7 +335,13 @@ export const splitPathAndSel: (rawPath: string) => { path: string; sel?: string 
  * `"unknown"` so callers keep the raw path instead of guessing.
  */
 export async function probeLiteralPathExists(filePath: string, cwd: string): Promise<"exists" | "missing" | "unknown"> {
-	const resolved = resolveReadPath(filePath, cwd);
+	let resolved: string;
+	try {
+		resolved = resolveReadPath(filePath, cwd);
+	} catch (err) {
+		if (err instanceof PathLengthLimitError) return "missing";
+		throw err;
+	}
 	try {
 		await fs.promises.lstat(resolved);
 		return "exists";
@@ -530,7 +538,7 @@ function assertPathLengthWithinLimits(original: string, resolved: string): void 
 	for (const component of resolved.split(/[/\\]/)) {
 		const bytes = Buffer.byteLength(component, "utf8");
 		if (bytes > MAX_PATH_COMPONENT_BYTES) {
-			throw new Error(
+			throw new PathLengthLimitError(
 				`Path component is ${bytes} bytes, over the ${MAX_PATH_COMPONENT_BYTES}-byte filename limit, ` +
 					`in ${JSON.stringify(original)}. Shorten the name ${JSON.stringify(
 						`${component.slice(0, 40)}…`,
@@ -543,7 +551,7 @@ function assertPathLengthWithinLimits(original: string, resolved: string): void 
 	if (process.platform === "win32") return;
 	const totalBytes = Buffer.byteLength(resolved, "utf8");
 	if (totalBytes > MAX_PATH_TOTAL_BYTES) {
-		throw new Error(
+		throw new PathLengthLimitError(
 			`Path is ${totalBytes} bytes, over the ${MAX_PATH_TOTAL_BYTES}-byte total path limit, ` +
 				`starting from ${JSON.stringify(original.slice(0, 60))}. Use a shorter directory or filename.`,
 		);
@@ -962,14 +970,14 @@ export function parseApprovalPathList(input: unknown): string[] {
 
 async function delimitedPathPartResolves(entry: string, cwd: string, splitter: PathEntrySplitter): Promise<boolean> {
 	if (isInternalUrlPath(entry)) return true;
-	const peeled = splitPathAndSel(entry).path;
-	const { basePath } = splitter(peeled);
-	const absoluteBasePath = resolveToCwd(basePath, cwd);
 	try {
+		const peeled = splitPathAndSel(entry).path;
+		const { basePath } = splitter(peeled);
+		const absoluteBasePath = resolveToCwd(basePath, cwd);
 		await fs.promises.stat(absoluteBasePath);
 		return true;
 	} catch (err) {
-		if (isEnoent(err)) return false;
+		if (err instanceof PathLengthLimitError || isEnoent(err)) return false;
 		throw err;
 	}
 }

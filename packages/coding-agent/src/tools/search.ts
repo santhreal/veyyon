@@ -108,7 +108,7 @@ export class SearchTool implements AgentTool<typeof searchSchema, SearchToolDeta
 
 	readonly approval = (args: unknown): ToolTier => {
 		if (!isRecord(args) || args.type !== "text") return "read";
-		return textSearchApproval({ path: typeof args.path === "string" ? args.path : undefined });
+		return textSearchApproval({ path: args.path });
 	};
 
 	constructor(private readonly session: ToolSession) {
