@@ -87,14 +87,27 @@ export interface RequestBody {
 }
 
 /**
- * Resolve whether a Codex request uses the Responses Lite transport: an
- * explicit option wins, otherwise the model's catalog flag (codex-rs
- * `model_info.use_responses_lite`) decides.
+ * Resolves whether a Codex request uses the Responses Lite transport.
+ *
+ * Owner / Choke Point: This function is the single authority for Responses
+ * Lite transport enablement across all Codex request builders (HTTP SSE,
+ * WebSocket frames, prewarming, compaction, and web search).
+ *
+ * Responses Lite strictly requires `reasoning.context: "all_turns"` on the
+ * wire. Because pre-5.4 Codex models reject `all_turns` with
+ * `Unsupported value: 'all_turns' is not supported with this model`, a model
+ * that does not satisfy `supportsAllTurnsReasoningContext(model.id)` is
+ * structurally ineligible for Responses Lite and must use the regular
+ * Responses transport, suppressing both the lite marker header/metadata and
+ * the lite body shape regardless of catalog flags or caller overrides.
  */
 export function resolveCodexResponsesLite(
-	model: Model<"openai-codex-responses">,
-	requested: boolean | undefined,
+	model: Pick<Model<"openai-codex-responses">, "id"> & { useResponsesLite?: boolean },
+	requested?: boolean,
 ): boolean {
+	if (!supportsAllTurnsReasoningContext(model.id)) {
+		return false;
+	}
 	return requested ?? model.useResponsesLite === true;
 }
 
@@ -393,7 +406,6 @@ export async function transformRequestBody(
 		// value is only accepted from gpt-5.4 onward — earlier Codex ids
 		// (gpt-5.1-codex, gpt-5.3-codex, gpt-5.3-codex-spark) reject it with
 		// "Unsupported value: 'all_turns' is not supported with this model".
-		// For those, drop `context` so the server applies its `current_turn`
 		// default. The version gate is authoritative: even an explicit
 		// `all_turns` override is suppressed on unsupported models, while
 		// `current_turn`/`auto` (universally supported) always pass through.
