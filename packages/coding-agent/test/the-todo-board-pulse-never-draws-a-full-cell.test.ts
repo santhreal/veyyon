@@ -6,7 +6,7 @@
  * a full cell is not the largest ink present. On the board it is — the block sits
  * anchored above the composer, every other row is a checkbox or a partial, and at
  * the top of the ramp the pulse reads as a block appearing rather than as a cell
- * breathing. The operator's report was exactly that: the flashing block is too big.
+ * breathing, which is too large a glyph for what it means.
  *
  * THE CLASS, not the incident. The invariant is that no frame the board can emit
  * draws the ramp's brightest glyph, swept over every frame index in the ramp rather
