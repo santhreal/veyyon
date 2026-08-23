@@ -90,7 +90,7 @@ const COPILOT_MODEL_NOT_SUPPORTED_PATTERN = /model_not_supported/i;
  * phrase that list had and this one did not; the rest of it was already here, word for word.
  */
 export const TRANSIENT_TRANSPORT_PATTERN =
-	/overloaded|provider.?returned.?error|rate.?limit|too many requests|(?<![\w-])(?:429|500|502|503|504)(?![\w-])|service.?unavailable|server.?error|internal.?error|retry your request|network.?error|connection.?error|connection.?refused|unable to connect|other side closed|fetch failed|upstream.?connect|upstream.?request.?failed|reset before headers|socket hang up|timed? out|timeout|terminated|retry delay|stream stall|no error details in response|HTTP2(?:StreamReset|RefusedStream|EnhanceYourCalm)|malformed.?function.?call|(?<![\w-])(?:ECONNRESET|ECONNREFUSED|ECONNABORTED|ETIMEDOUT|EPIPE|EAI_AGAIN)(?![\w-])/i;
+	/overloaded|provider.?returned.?error|rate.?limit|too many requests|temporar(?:y|ily)|processing your request|(?<![\w-])(?:429|500|502|503|504)(?![\w-])|service.?unavailable|server.?error|internal.?error|retry your request|network.?error|connection.?error|connection.?refused|unable to connect|other side closed|fetch failed|upstream.?connect|upstream.?request.?failed|reset before headers|socket hang up|timed? out|timeout|terminated|retry delay|stream stall|no error details in response|HTTP2(?:StreamReset|RefusedStream|EnhanceYourCalm)|malformed.?function.?call|(?<![\w-])(?:ECONNRESET|ECONNREFUSED|ECONNABORTED|ETIMEDOUT|EPIPE|EAI_AGAIN)(?![\w-])/i;
 
 export function isStreamReadErrorText(text: string): boolean {
 	return STREAM_READ_ERROR_PATTERN.test(text);

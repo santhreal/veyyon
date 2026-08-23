@@ -86,16 +86,43 @@ const FAST_MODE_NOT_SUPPORTED_PATTERN = /not support/i;
 const FAST_MODE_RATE_LIMIT_PATTERN = /rate_limit_error/i;
 const FAST_MODE_ENTITLEMENT_PATTERN = /fast mode/i;
 
-/** The 400 body of a strict-tool rejection, in either of the two shapes providers send it. */
+// The phrasings an endpoint uses to reject strict tools without calling it an invalid request:
+// a wire-format complaint, a `strict` value it will not mix, a tool schema it cannot take. These
+// arrived from the OpenAI paths, which asked this same question with a vocabulary of their own and a
+// second status; the answer is the same wherever it is asked, so the words live here.
+const STRICT_TOOLS_REJECTION_PATTERNS = [
+	/wrong_api_format/i,
+	/mixed values for 'strict'/i,
+	/tools?\b.*\bstrict\b|\bstrict\b.*\btools?\b/i,
+	/tool parameters? schema/i,
+	/invalid schema for function/i,
+] as const;
+
+/**
+ * The narrow case: a compiled grammar the endpoint will not accept at the size we sent it.
+ *
+ * Named separately because a caller acts on it differently — the capability is dropped for the rest
+ * of the session rather than for one attempt — not because it is a different vocabulary.
+ */
+export function matchesCompiledGrammarTooLargeText(message: string): boolean {
+	return (
+		INVALID_REQUEST_PATTERN.test(message) &&
+		GRAMMAR_TOO_LARGE_PATTERN.test(message) &&
+		GRAMMAR_TOO_LARGE_DETAIL_PATTERN.test(message)
+	);
+}
+
+/** The body of a strict-tool rejection, in every shape a provider sends it. */
 export function matchesStrictToolsRejectionText(message: string): boolean {
 	if (STRUCTURED_OUTPUTS_PATTERN.test(message) && FEATURE_NOT_SUPPORTED_PATTERN.test(message)) return true;
+	if (STRICT_TOOLS_REJECTION_PATTERNS.some(pattern => pattern.test(message))) return true;
 	if (!INVALID_REQUEST_PATTERN.test(message)) return false;
-	const grammarTooLarge = GRAMMAR_TOO_LARGE_PATTERN.test(message) && GRAMMAR_TOO_LARGE_DETAIL_PATTERN.test(message);
-	const schemaTooComplex =
+	if (matchesCompiledGrammarTooLargeText(message)) return true;
+	return (
 		SCHEMA_TOO_COMPLEX_PATTERN.test(message) &&
 		SCHEMA_TOO_COMPLEX_DETAIL_PATTERN.test(message) &&
-		SCHEMA_COMPILE_PATTERN.test(message);
-	return grammarTooLarge || schemaTooComplex;
+		SCHEMA_COMPILE_PATTERN.test(message)
+	);
 }
 
 /** The 400 body: the request named `speed` and the model answered that it does not support it. */
@@ -124,8 +151,8 @@ export const grammarDomain: ErrorDomain = {
 	rules: [
 		{
 			flags: Flag.Grammar,
-			why: "A 400 rejecting strict tools: grammar too large, schema too complex, or structured outputs the endpoint does not have. The turn retries without strict tools and the session remembers the downgrade.",
-			structural: signal => signal.status === 400,
+			why: "A 400 or 422 rejecting strict tools: grammar too large, schema too complex, a tool schema it cannot take, or structured outputs the endpoint does not have. The turn retries without strict tools and the session remembers the downgrade. 422 counts because the OpenAI-compatible endpoints that answer with it reject the same request for the same reason.",
+			structural: signal => signal.status === 400 || signal.status === 422,
 			text: matchesStrictToolsRejectionText,
 		},
 	],
