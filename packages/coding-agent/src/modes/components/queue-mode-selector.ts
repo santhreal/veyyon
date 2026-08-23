@@ -12,7 +12,6 @@ export class QueueModeSelectorComponent {
 		currentMode: "all" | "one-at-a-time",
 		onSelect: (mode: "all" | "one-at-a-time") => void,
 		onCancel: () => void,
-		reveal?: boolean,
 	) {
 		const queueModes: SelectItem[] = [
 			{
@@ -30,7 +29,6 @@ export class QueueModeSelectorComponent {
 				theme: getSelectListTheme(),
 				selectedIndex: currentIndex,
 				maxVisible: 2,
-				reveal,
 			},
 			{
 				onSelect: item => onSelect(item.value as "all" | "one-at-a-time"),
@@ -57,11 +55,6 @@ export class QueueModeSelectorComponent {
 
 	render(width: number): string[] {
 		return this.#inner.render(width);
-	}
-
-	/** Forwarded to the inner card, which owns the reveal this plays backwards. */
-	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
-		return this.#inner.beginOverlayExit(requestRender, done);
 	}
 
 	invalidate(): void {

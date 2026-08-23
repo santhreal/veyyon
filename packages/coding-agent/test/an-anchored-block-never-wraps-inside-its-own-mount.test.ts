@@ -131,13 +131,11 @@ const ANCHORED_BLOCKS: Record<string, { minColumns: number; build: (terminalColu
 	subagentContainer: {
 		minColumns: 12,
 		build: terminalColumns => {
-			const block = renderSubagentHudLines(laneSessions(), {
+			const lines = renderSubagentHudLines(laneSessions(), {
 				columns: contentColumns(terminalColumns),
 				showModelBadge: true,
 			});
-			return paintRailMotion(block.lines, { kind: "idle", head: railIdleHeadAt(4) }, theme, {
-				lit: index => block.lit[index] === true,
-			});
+			return paintRailMotion(lines, { kind: "idle", head: railIdleHeadAt(4) }, theme);
 		},
 	},
 	todoContainer: {

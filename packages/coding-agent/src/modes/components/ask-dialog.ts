@@ -37,17 +37,14 @@ import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../util
 import { CountdownTimer } from "./countdown-timer";
 import { HOOK_EDITOR_TEXT_PAD_COLS } from "./hook-editor";
 import {
-	applyModalReveal,
-	beginModalExit,
 	computeModalDims,
 	consumeModalChipHover,
 	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
-	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
 	minModalChromeRows,
-	modalRevealEnabled,
+	pointerMotionEnabled,
 	renderModalShell,
 } from "./modal-shell";
 import { handleTabSwitchKey, hoverBandAt } from "./selector-helpers";
@@ -124,8 +121,6 @@ interface AskDialogOptions {
 	timeout?: number;
 	onTimeout?: () => void;
 	tui?: TUI;
-	/** Play the open unfold (TOUCH-5). Show site decides via modalRevealEnabled(). */
-	reveal?: boolean;
 }
 
 interface QuestionState {
@@ -465,14 +460,6 @@ export class AskDialogComponent implements Component {
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
 	#onRequestRenderExternal: (() => void) | undefined;
-	#reveal = new ModalRevealDriver();
-	/**
-	 * Fade out on the shared clock before the host drops this card. The overlay stack keeps painting
-	 * it and stops routing input to it the moment this is called.
-	 */
-	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
-		return beginModalExit(this.#reveal, requestRender, done);
-	}
 
 	constructor(
 		private readonly questions: ExtensionAskDialogQuestion[],
@@ -500,9 +487,6 @@ export class AskDialogComponent implements Component {
 		// status to `ask` so any concurrent shimmer surface reads the green
 		// "your turn" breath. `dispose()` returns it to rest.
 		setShimmerActivity("ask");
-		if (options.reveal) {
-			this.#reveal.start(() => this.#onRequestRenderExternal?.());
-		}
 		if (options.timeout && options.timeout > 0) {
 			this.#countdown = new CountdownTimer(
 				options.timeout,
@@ -522,7 +506,6 @@ export class AskDialogComponent implements Component {
 
 	dispose(): void {
 		this.#closed = true;
-		this.#reveal.stop();
 		this.#countdown?.dispose();
 		// A dismissed card leaves nothing running on the shared clock, and forgets
 		// where the pointer was: the next dialog opens with no band under a pointer
@@ -541,7 +524,7 @@ export class AskDialogComponent implements Component {
 		// between two mouse reports have no input to hang off. Same ambient gate as
 		// the open unfold; without it the band is switched.
 		this.#hoverFade?.dispose();
-		this.#hoverFade = new HoverFade({ requestRender: callback, enabled: modalRevealEnabled() });
+		this.#hoverFade = new HoverFade({ requestRender: callback, enabled: pointerMotionEnabled() });
 		if (this.#hoveredRowIndex !== null) this.#hoverFade.set(this.#hoveredRowIndex);
 	}
 
@@ -606,7 +589,7 @@ export class AskDialogComponent implements Component {
 						scrollOffset: bodyLines.scrollOffset,
 					}
 				: null;
-		return applyModalReveal(shell, width, this.#reveal);
+		return shell.lines;
 	}
 
 	/** Footer chips for the active tab (browse vs submit review), mirroring

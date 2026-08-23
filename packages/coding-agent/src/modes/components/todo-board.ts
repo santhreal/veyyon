@@ -36,6 +36,8 @@ const SUBSEQUENT_PHASE_CAP = 4;
 const ACTIVE_TASK_CAP = 5;
 /** Recently finished tasks kept alongside them, so a stage that just closed work shows it. */
 const DONE_TASK_CAP = 2;
+/** Cells a task's text needs before the board is worth drawing at all. */
+const TASK_TEXT_FLOOR = 8;
 /**
  * Shared clock steps per board frame. The anchored clock is the tool rail's, at
  * `RAIL_IDLE_STEP_MS`; a task marker on that clock changes several times a
@@ -188,14 +190,18 @@ export function renderTodoBoardLines(phases: readonly TodoPhase[], options: Todo
 	// `renderTreeList` puts in front of a nested row (three cells per level).
 	const usable = Math.max(1, options.columns - 1);
 	const content = usable - visibleWidth(rail) - 1;
-	if (content < 8) return [];
 	const glyphColumns = Math.max(
 		visibleWidth(theme.checkbox.checked),
 		visibleWidth(theme.checkbox.unchecked),
 		visibleWidth(theme.symbol("status.done")),
 		visibleWidth(theme.symbol("status.shadowed")),
 	);
-	const taskWidth = Math.max(8, content - 6 - glyphColumns - 1);
+	// A task row is two levels deep, so it carries six connector cells, then the
+	// checkbox, a space, and the text. Below the width that leaves the text
+	// `TASK_TEXT_FLOOR` cells there is nothing to read, and a clamped row would
+	// be wider than the mount and wrap outside the rail.
+	const taskWidth = content - 6 - glyphColumns - 1;
+	if (taskWidth < TASK_TEXT_FLOOR) return [];
 
 	const multiPhase = live.length > 1;
 	const activeIdx = activeTodoPhaseIndex(live);
@@ -210,7 +216,7 @@ export function renderTodoBoardLines(phases: readonly TodoPhase[], options: Todo
 		const tally = ` · ${done}/${phase.tasks.length}`;
 		const label = boundedTodoPreviewText(
 			multiPhase ? formatPhaseDisplayName(phase.name, oneBased) : phase.name,
-			Math.max(8, content - 3 - visibleWidth(tally)),
+			Math.max(1, content - 3 - visibleWidth(tally)),
 		);
 		const header = active
 			? theme.bold(theme.fg("accent", label)) + theme.fg("dim", tally)

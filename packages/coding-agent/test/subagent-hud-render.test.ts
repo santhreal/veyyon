@@ -23,10 +23,7 @@ import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import {
-	renderSubagentHudLines,
-	SUBAGENT_HUD_VISIBLE_LIMIT,
-} from "@veyyon/coding-agent/modes/components/subagent-hud";
+import { renderSubagentHudLines, SUBAGENT_HUD_VISIBLE_LIMIT } from "@veyyon/coding-agent/modes/components/subagent-hud";
 import { InteractiveMode, SUBAGENT_OBSERVER_UI_COALESCE_MS } from "@veyyon/coding-agent/modes/interactive-mode";
 import { type ObservableSession, SessionObserverRegistry } from "@veyyon/coding-agent/modes/session-observer-registry";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
@@ -106,10 +103,10 @@ function makeProgressPayload(
 
 /** The block's own bytes, stripped, for a terminal `columns` wide. */
 function renderAt(sessions: ObservableSession[], columns = 120, showModelBadge = true): string {
-	return Bun.stripANSI(renderSubagentHudLines(sessions, { columns, showModelBadge }).lines.join("\n"));
+	return Bun.stripANSI(renderSubagentHudLines(sessions, { columns, showModelBadge }).join("\n"));
 }
 /** The whole block, unstripped, for the cases that assert on colour or motion. */
-function block(sessions: ObservableSession[], columns = 120) {
+function block(sessions: ObservableSession[], columns = 120): string[] {
 	return renderSubagentHudLines(sessions, { columns, showModelBadge: true });
 }
 
@@ -150,10 +147,10 @@ describe("subagent HUD lines", () => {
 			makeSession({ id: "AuthLoader", description: "Refactoring the auth flow" }),
 			makeSession({ id: "SchemaMigrator", description: "Migrating the users table" }),
 		]);
-		expect(blockResult.lines[0]).toBe("");
-		expect(blockResult.lines[1]).toContain("Subagents");
+		expect(blockResult[0]).toBe("");
+		expect(blockResult[1]).toContain("Subagents");
 
-		const out = fitsIn(Bun.stripANSI(blockResult.lines.join("\n")), 120);
+		const out = fitsIn(Bun.stripANSI(blockResult.join("\n")), 120);
 		const lines = out.split("\n");
 		expect(lines[0]).toBe("");
 		expect(lines[1]).toBe("▏ Subagents");
@@ -172,7 +169,7 @@ describe("subagent HUD lines", () => {
 			{ id: "main", kind: "main", label: "Main Session", status: "active", lastUpdate: Date.now() },
 			...finishedStates.map(status => makeSession({ id: `Done-${status}`, status, description: "old work" })),
 		];
-		expect(block(sessions).lines).toEqual([]);
+		expect(block(sessions)).toEqual([]);
 
 		const out = renderAt([...sessions, makeSession({ id: "StillRunning", description: "live work" })]);
 		expect(rowFor(out, "StillRunning")).toContain("live work");
@@ -251,9 +248,9 @@ describe("subagent HUD lines", () => {
 			80,
 		);
 		// Blank line, header, exactly one agent row.
-		expect(multiline.lines.length).toBe(3);
-		for (const line of multiline.lines) expect(line).not.toContain("\n");
-		expect(multiline.lines[2]).toContain("run the sandbox second line of a description");
+		expect(multiline.length).toBe(3);
+		for (const line of multiline) expect(line).not.toContain("\n");
+		expect(multiline[2]).toContain("run the sandbox second line of a description");
 	});
 
 	it("hides non-detached spawns: sync task calls and eval agent() helpers", () => {
@@ -261,7 +258,7 @@ describe("subagent HUD lines", () => {
 			makeSession({ id: "SyncSpawn", description: "inline task work", detached: false }),
 			makeSession({ id: "EvalSpawn", description: "eval cell work", detached: undefined }),
 		];
-		expect(block(sessions).lines).toEqual([]);
+		expect(block(sessions)).toEqual([]);
 
 		const out = renderAt([...sessions, makeSession({ id: "BackgroundSpawn", description: "detached work" })]);
 		expect(rowFor(out, "BackgroundSpawn")).toContain("detached work");
@@ -443,26 +440,20 @@ describe("subagent HUD lines", () => {
 			makeSession({ id: "Short", description: "waiting on the model" }),
 		];
 		for (let columns = 1; columns <= 220; columns++) {
-			const blockResult = block(sessions, columns);
-			const painted = paintRailMotion(
-				blockResult.lines,
-				{ kind: "idle", head: railIdleHeadAt(4) },
-				theme,
-				{ lit: index => blockResult.lit[index] === true },
-			);
+			const lines = block(sessions, columns);
+			const painted = paintRailMotion(lines, { kind: "idle", head: railIdleHeadAt(4) }, theme);
 			for (const line of painted) {
 				expect(Bun.stringWidth(Bun.stripANSI(line))).toBeLessThanOrEqual(columns - 1);
 			}
 			if (columns <= 5) {
-				expect(blockResult.lines).toEqual([]);
-				expect(blockResult.lit).toEqual([]);
+				expect(lines).toEqual([]);
 			} else {
-				expect(blockResult.lines.length).toBeGreaterThan(0);
+				expect(lines.length).toBeGreaterThan(0);
 			}
 		}
 	});
 
-	it("aligns rail and lit flags index-for-index across railed rows", () => {
+	it("sweeps every railed row, whatever each agent happens to be doing", () => {
 		const sessions = [
 			makeSession({
 				id: "Working",
@@ -476,63 +467,41 @@ describe("subagent HUD lines", () => {
 				}),
 			}),
 		];
-		const built = block(sessions);
-		// lines[0] is "", lines[1] is header, lines[2..4] are agents.
-		expect(built.lines.length).toBe(5);
-		// lit aligns index-for-index with the 4 railed rows (header + 3 agents).
-		expect(built.lit.length).toBe(4);
-		// Header is lit because Working has a tool; Working is lit; Waiting and Sleeping are not.
-		expect(built.lit).toEqual([true, true, false, false]);
+		const lines = block(sessions);
+		// lines[0] is "", lines[1] is the header, lines[2..4] are the agents.
+		expect(lines.length).toBe(5);
+		const rail = theme.symbol("block.rail");
+		for (const line of lines.slice(1)) expect(Bun.stripANSI(line).startsWith(rail)).toBe(true);
 
-		// When no session has an active tool, everything is unlit.
-		const idleSessions = [
-			makeSession({ id: "WaitingA", description: "idle work" }),
-			makeSession({ id: "WaitingB", description: "idle work" }),
-		];
-		const idleBuilt = block(idleSessions);
-		expect(idleBuilt.lit).toEqual([false, false, false]);
+		// The block is drawn in ONE colour and the sweep is the motion. A gate per
+		// row lit only the rows whose agent was inside a tool, so a roster where one
+		// agent kept starting and finishing calls flashed a chunk of the rail while
+		// the rest of it stood still.
+		const settledRailCells = new Set(lines.slice(1).map(line => line.slice(0, line.indexOf(rail) + rail.length)));
+		expect(settledRailCells.size).toBe(1);
 
-		// paintRailMotion with all-false lit returns settled bytes matching unpainted lines
-		const settled = paintRailMotion(
-			idleBuilt.lines,
-			{ kind: "idle", head: railIdleHeadAt(4) },
-			theme,
-			{ lit: index => idleBuilt.lit[index] === true },
-		);
-		expect(settled).toEqual(idleBuilt.lines);
-
-		// Motion test across animation frames: idle agent's line is static, active agent's line animates
-		const rowAt = (id: string, frame: number | undefined): string => {
-			const lines =
-				frame === undefined
-					? built.lines
-					: paintRailMotion(built.lines, { kind: "idle", head: railIdleHeadAt(frame) }, theme, {
-							lit: index => built.lit[index] === true,
-						});
-			return lines.find(line => line.includes(id)) ?? "";
-		};
-		const frames = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
-		expect(new Set(frames.map(frame => rowAt("Waiting", frame))).size).toBe(1);
-		expect(new Set(frames.map(frame => rowAt("Sleeping", frame))).size).toBe(1);
-		expect(new Set(frames.map(frame => rowAt("Working", frame))).size).toBeGreaterThan(1);
+		const frames = [0, 4, 8, 12, 16, 20, 24, 28, 32, 36];
+		const rowAt = (index: number, frame: number): string =>
+			paintRailMotion(lines, { kind: "idle", head: railIdleHeadAt(frame) }, theme)[index] ?? "";
+		for (let index = 1; index < lines.length; index++) {
+			expect(new Set(frames.map(frame => rowAt(index, frame))).size).toBeGreaterThan(1);
+		}
 	});
 
 	it("renders the first eight active detached subagents and summarizes the rest", () => {
-		const active = Array.from({ length: 10 }, (_, index) =>
+		const shown = SUBAGENT_HUD_VISIBLE_LIMIT;
+		const active = Array.from({ length: shown + 2 }, (_, index) =>
 			makeSession({ id: `Worker${index}`, description: `job ${index}` }),
 		);
 
-		const built = block(active, 120);
-		// 1 blank + 1 header + 8 agents + 1 overflow = 11 lines
-		expect(built.lines.length).toBe(11);
-		// lit has 1 header + 8 agents + 1 overflow = 10 entries (all false since idle)
-		expect(built.lit.length).toBe(10);
-		expect(built.lit.every(l => l === false)).toBe(true);
+		const lines = block(active, 120);
+		// 1 blank + 1 header + the visible agents + 1 overflow row.
+		expect(lines.length).toBe(shown + 3);
 
 		const out = fitsIn(renderAt(active, 120), 120);
-		for (const session of active.slice(0, 8))
+		for (const session of active.slice(0, shown))
 			expect(rowFor(out, session.id)).toContain(`job ${session.id.slice(6)}`);
-		for (const session of active.slice(8)) expect(out).not.toContain(session.id);
+		for (const session of active.slice(shown)) expect(out).not.toContain(session.id);
 		expect(out).toContain(`… 2 more running — /agents for the full roster`);
 	});
 });

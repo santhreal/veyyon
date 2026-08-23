@@ -23,25 +23,25 @@ import * as path from "node:path";
 import { Agent } from "@veyyon/agent-core";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
-import { InteractiveMode } from "@veyyon/coding-agent/modes/interactive-mode";
+import { ANCHORED_BLOCK_PADDING_X, InteractiveMode } from "@veyyon/coding-agent/modes/interactive-mode";
 import { ASCII_SYMBOLS, NERD_SYMBOLS, UNICODE_SYMBOLS } from "@veyyon/coding-agent/modes/theme/symbols";
 import { initTheme, stopThemeWatcher, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
-import { TUI } from "@veyyon/tui";
+import { getPaddingX, TUI } from "@veyyon/tui";
 import { TempDir } from "@veyyon/utils";
 import { VirtualTerminal } from "../../../tui/test/virtual-terminal";
 
 const COLUMNS = 100;
 
 /**
- * Glyph column of a HUD task row: `Text` left pad (1) + the rail (1) + the space
- * after it (1) + the tree branch connector (`   ├─ ` = 6). Pinned because the
- * width budget is derived from it, and because a task's state is READ from this
- * column.
+ * Glyph column of a HUD task row: the `Text` left pad the mode mounts the board
+ * with, the rail (1), the space after it (1), and the tree branch connector
+ * (`   ├─ ` = 6). Derived from the mount rather than pinned, because a task's
+ * state is READ from this column and the mount owns where the column lands.
  */
-const TASK_GLYPH_COLUMN = 9;
+const TASK_GLYPH_COLUMN = getPaddingX(ANCHORED_BLOCK_PADDING_X) + 2 + 6;
 function todoResult(statuses: Array<[string, string]>) {
 	return {
 		content: [{ type: "text", text: "board" }],

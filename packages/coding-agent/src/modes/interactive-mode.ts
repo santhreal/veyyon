@@ -163,7 +163,7 @@ import type { EvalExecutionComponent } from "./components/eval-execution";
 import type { HookEditorComponent } from "./components/hook-editor";
 import type { HookInputComponent } from "./components/hook-input";
 import type { HookSelectorComponent, HookSelectorSlider } from "./components/hook-selector";
-import { modalRevealEnabled, modalRevealGround } from "./components/modal-shell";
+import { modalRevealGround, pointerMotionEnabled } from "./components/modal-shell";
 import { PlanReviewOverlay } from "./components/plan-review-overlay";
 import { StatusLineComponent } from "./components/status-line";
 import { renderSubagentHudLines } from "./components/subagent-hud";
@@ -425,8 +425,13 @@ export const SUBAGENT_OBSERVER_UI_COALESCE_MS = 100;
  * their width budget is derived from. One constant because a mount and a budget
  * that disagree is a soft wrap, and a soft wrap in an anchored region is a row
  * outside the block's own rail.
+ *
+ * `COMPOSER_INSET_COLS`, because a tool block's rail sits there and the prose
+ * above it starts there. At one cell the board's rail was a column left of every
+ * other left edge on screen, which is the distance that reads as broken rather
+ * than as a margin.
  */
-export const ANCHORED_BLOCK_PADDING_X = 1;
+export const ANCHORED_BLOCK_PADDING_X = COMPOSER_INSET_COLS;
 
 export class InteractiveMode implements InteractiveModeContext {
 	session: AgentSession;
@@ -2353,27 +2358,24 @@ export class InteractiveMode implements InteractiveModeContext {
 	 * seconds produces no events at all, which is exactly the stretch the motion
 	 * exists to cover.
 	 *
-	 * The sweep is gated per lane. `lit` comes back from the renderer with one
-	 * entry per lane, and a lane whose agent is waiting on the model or sleeping
-	 * on a recovery keeps the colour it was drawn in while the head travels past
-	 * it, so the motion reads as a scan across the roster rather than as a
-	 * decoration on the whole block.
+	 * One sweep for the whole block, the same one every tool block runs. Gating it
+	 * per row lit only the rows whose agent was inside a tool, so a roster where
+	 * one agent kept starting and finishing calls flashed a chunk of the rail on
+	 * and off while the rest of it stood still — motion an operator reads as a
+	 * fault rather than as progress.
 	 */
 	#renderSubagentList(): void {
 		this.subagentContainer.clear();
 		const sessions = this.#observerRegistry.getSessionsSpawnedBy(this.#focusController.focusedAgentId);
-		const block = renderSubagentHudLines(sessions, {
+		const lines = renderSubagentHudLines(sessions, {
 			columns: this.#anchoredColumns(),
 			showModelBadge: settings.get("subagent.showResolvedModelBadge"),
 		});
 		this.#syncAnchoredMotionTimer();
-		if (block.lines.length === 0) return;
-		const painted =
-			transitionsEnabled() && block.lit.some(Boolean)
-				? paintRailMotion(block.lines, { kind: "idle", head: railIdleHeadAtMs(railClockMs()) }, theme, {
-						lit: index => block.lit[index] === true,
-					})
-				: block.lines;
+		if (lines.length === 0) return;
+		const painted = transitionsEnabled()
+			? paintRailMotion(lines, { kind: "idle", head: railIdleHeadAtMs(railClockMs()) }, theme)
+			: lines;
 		this.subagentContainer.addChild(new Text(painted.join("\n"), ANCHORED_BLOCK_PADDING_X, 0));
 	}
 
@@ -3161,7 +3163,6 @@ export class InteractiveMode implements InteractiveModeContext {
 				initialIndex: dialogOptions?.initialIndex,
 				slider: extra?.slider,
 				externalEditorLabel: this.keybindings.getDisplayString("app.editor.external") || undefined,
-				reveal: modalRevealEnabled(),
 				requestRender: () => this.ui.requestRender(),
 			},
 			{
@@ -4391,7 +4392,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	#lendPopupMotion(editor: CustomEditor): void {
 		editor.setAutocompleteMotion({
 			requestRender: () => this.ui.requestRender(),
-			enabled: modalRevealEnabled(),
+			enabled: pointerMotionEnabled(),
 			ground: modalRevealGround(),
 		});
 	}

@@ -19,13 +19,10 @@ import { theme } from "../../modes/theme/theme";
 import { matchesAppInterrupt } from "../../modes/utils/keybinding-matchers";
 import { CountdownTimer } from "./countdown-timer";
 import {
-	applyModalReveal,
-	beginModalExit,
 	computeModalDims,
 	consumeModalChipHover,
 	hitTestModalChrome,
 	MODAL_SIZING_MEDIUM,
-	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
 	type ModalSizing,
@@ -72,14 +69,6 @@ export class HookInputComponent extends Container {
 	#onRequestRender: (() => void) | undefined;
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
-	#reveal = new ModalRevealDriver();
-	/**
-	 * Fade out on the shared clock before the host drops this card. The overlay stack keeps painting
-	 * it and stops routing input to it the moment this is called.
-	 */
-	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
-		return beginModalExit(this.#reveal, requestRender, done);
-	}
 
 	constructor(
 		title: string,
@@ -256,7 +245,7 @@ export class HookInputComponent extends Container {
 			showClose: true,
 		});
 		this.#shellGeometry = shell.geometry;
-		return applyModalReveal(shell, renderWidth, this.#reveal);
+		return shell.lines;
 	}
 
 	dispose(): void {

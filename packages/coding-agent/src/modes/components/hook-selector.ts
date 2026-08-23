@@ -34,17 +34,14 @@ import {
 } from "../../modes/utils/keybinding-matchers";
 import { CountdownTimer } from "./countdown-timer";
 import {
-	applyModalReveal,
-	beginModalExit,
 	computeModalDims,
 	consumeModalChipHover,
 	hitTestModalChrome,
 	MODAL_SIZING_MEDIUM,
-	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
-	modalRevealEnabled,
 	planModalChrome,
+	pointerMotionEnabled,
 	renderModalShell,
 	SELECT_LIST_SHORTCUTS,
 	sizingForArea,
@@ -195,14 +192,6 @@ export class HookSelectorComponent extends Container {
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
 	#bodyRowStart = 0;
-	#reveal = new ModalRevealDriver();
-	/**
-	 * Fade out on the shared clock before the host drops this card. The overlay stack keeps painting
-	 * it and stops routing input to it the moment this is called.
-	 */
-	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
-		return beginModalExit(this.#reveal, requestRender, done);
-	}
 
 	constructor(
 		title: string,
@@ -589,7 +578,7 @@ export class HookSelectorComponent extends Container {
 		// The band fades only once the card has a repaint to lend it: the frames between two mouse
 		// reports have no input to hang off. Same ambient gate as the open unfold.
 		this.#hoverFade?.dispose();
-		this.#hoverFade = new HoverFade({ requestRender: callback, enabled: modalRevealEnabled() });
+		this.#hoverFade = new HoverFade({ requestRender: callback, enabled: pointerMotionEnabled() });
 		if (this.#hoveredIndex !== null) this.#hoverFade.set(this.#hoveredIndex);
 	}
 
@@ -926,7 +915,7 @@ export class HookSelectorComponent extends Container {
 		});
 		this.#shellGeometry = shell.geometry;
 		this.#bodyRowStart = shell.geometry?.bodyRowStart ?? 0;
-		return applyModalReveal(shell, renderWidth, this.#reveal);
+		return shell.lines;
 	}
 
 	dispose(): void {

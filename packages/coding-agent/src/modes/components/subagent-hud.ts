@@ -10,10 +10,12 @@
  *
  * One thing is added, which is the RAIL. `block.rail` is the first non-space
  * cell of every row, the one arrangement {@link paintRailMotion} and
- * `findRailCell` can find, so light travels down the left edge of the block
- * while an agent is inside a tool. `lit` names which rows the sweep may light:
- * one entry per railed row, in render order, so an agent waiting on the model
- * keeps the colour it was drawn in while the head passes it.
+ * `findRailCell` can find, so light travels down the left edge of the block the
+ * way it travels down a tool block's. Every row is drawn in the same settled
+ * colour and the sweep is what lights them: gating it per row lit only the rows
+ * whose agent was inside a tool, and a roster where one agent kept starting and
+ * finishing calls flashed a chunk of the rail on and off while the rest of it
+ * stood still.
  */
 
 import { visibleWidth } from "@veyyon/tui";
@@ -29,13 +31,6 @@ export const SUBAGENT_HUD_VISIBLE_LIMIT = 8;
 const BADGE_MAX = 30;
 /** Width of the `: ` that introduces a description. */
 const DESCRIPTION_SEP = 2;
-
-/** The block, plus which of its railed rows the sweep is allowed to light. */
-export interface SubagentHudBlock {
-	lines: string[];
-	/** One entry per railed row, in render order, for `RailMotionOptions.lit`. */
-	lit: boolean[];
-}
 
 export interface SubagentHudOptions {
 	columns: number;
@@ -74,14 +69,11 @@ function cell(text: string, width: number): string {
  * instead of wrapping the row: the roster drops it on a narrow card for the same
  * reason.
  */
-export function renderSubagentHudLines(
-	sessions: readonly ObservableSession[],
-	options: SubagentHudOptions,
-): SubagentHudBlock {
+export function renderSubagentHudLines(sessions: readonly ObservableSession[], options: SubagentHudOptions): string[] {
 	const running = sessions.filter(
 		session => session.kind === "subagent" && session.status === "active" && session.detached === true,
 	);
-	if (running.length === 0) return { lines: [], lit: [] };
+	if (running.length === 0) return [];
 
 	const dot = theme.styledSymbol("status.done", "accent");
 	const rail = theme.symbol("block.rail");
@@ -102,7 +94,7 @@ export function renderSubagentHudLines(
 	// block. The empty block is how this says so — the same path it takes when
 	// nothing is running, so the container clears rather than drawing a row wider
 	// than the terminal.
-	if (body < 1) return { lines: [], lit: [] };
+	if (body < 1) return [];
 
 	// One row per agent, with no tree connectors. Four branches drawn under a
 	// header to hold four flat siblings is scaffolding for a hierarchy this block
@@ -146,21 +138,10 @@ export function renderSubagentHudLines(
 		rows.push(theme.fg("dim", cell(`… ${hidden} more running — /agents for the full roster`, content)));
 	}
 
-	// A row is lit only while its agent is inside a tool, so the sweep is a count
-	// of what is working rather than a decoration on the block. The header and the
-	// overflow row travel with the lanes: the rail is one edge, and a gap in it
-	// reads as a broken block rather than as a header that is not an agent.
-	const live = visible.map(session => (session.progress?.currentTool?.trim() ?? "") !== "");
-	const anyLive = live.some(Boolean);
-	const railCell = (lit: boolean): string => theme.fg(lit ? "accent" : "dim", rail);
-	const lines = [`${railCell(anyLive)} ${theme.bold(theme.fg("accent", cell("Subagents", content)))}`];
-	const lit = [anyLive];
-	for (let index = 0; index < rows.length; index++) {
-		// One line per agent in agent order, then the overflow row pushed above: a
-		// row past the agents is that row, and it is not lit.
-		const rowLive = live[index] === true;
-		lines.push(`${railCell(rowLive)} ${rows[index]}`.trimEnd());
-		lit.push(rowLive);
-	}
-	return { lines: ["", ...lines], lit };
+	// The rail is one edge from the header to the last row, drawn in one colour:
+	// the sweep is the motion, and a gap in the edge reads as a broken block.
+	const railCell = theme.fg("dim", rail);
+	const lines = [`${railCell} ${theme.bold(theme.fg("accent", cell("Subagents", content)))}`];
+	for (const row of rows) lines.push(`${railCell} ${row}`.trimEnd());
+	return ["", ...lines];
 }

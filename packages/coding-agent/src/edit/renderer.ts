@@ -170,6 +170,7 @@ export interface EditRenderContext {
 }
 
 const EDIT_STREAMING_PREVIEW_LINES = 12;
+const EDIT_STREAMING_HEADROOM = 4;
 
 function plainDiffRender(diffText: string): string {
 	return diffText;
@@ -422,6 +423,7 @@ function formatStreamingDiff(
 	label = "streaming",
 	spinnerFrame?: number,
 	cache?: RenderedStringCache,
+	maxVisualRows?: number,
 ): string {
 	if (!diff) return "";
 	// Clamp the tail to the viewport so a tall or fast-growing diff cannot
@@ -436,7 +438,12 @@ function formatStreamingDiff(
 	// the cheap raw-line wrap walk keeps the per-chunk cost bounded.
 	// innerWidth/budget are in the cache salt so a resize re-slices.
 	const innerWidth = Math.max(1, width - 2);
-	const budget = expanded ? previewWindowRows() : Math.min(EDIT_STREAMING_PREVIEW_LINES, previewWindowRows());
+	const budget =
+		maxVisualRows !== undefined
+			? Math.max(1, maxVisualRows)
+			: expanded
+				? Math.max(1, previewWindowRows() - EDIT_STREAMING_HEADROOM)
+				: Math.min(EDIT_STREAMING_PREVIEW_LINES, previewWindowRows());
 	let text = cachedRenderedString(cache, uiTheme, expanded, `${rawPath}:${innerWidth}:${budget}`, diff, () => {
 		// "Cursor" tail window: pin the last rows to the bottom so freshly streamed
 		// changes stay on screen. The whole-file diff is recomputed every chunk and
@@ -447,7 +454,7 @@ function formatStreamingDiff(
 		let visualUsed = 0;
 		let cut = allLines.length;
 		for (let i = allLines.length - 1; i >= 0; i--) {
-			const lineRows = Math.max(1, wrapTextWithAnsi(replaceTabs(allLines[i]!), innerWidth).length);
+			const lineRows = Math.max(1, wrapEditRendererLine(replaceTabs(allLines[i]!), innerWidth).length);
 			if (visualUsed + lineRows > budget && visualUsed > 0) break;
 			visualUsed += lineRows;
 			cut = i;
@@ -487,6 +494,15 @@ function formatMultiFileStreamingDiff(
 	spinnerFrame?: number,
 	caches?: RenderedStringCache[],
 ): string {
+	const innerWidth = Math.max(1, width - 2);
+	const totalBudget = expanded
+		? Math.max(1, previewWindowRows() - EDIT_STREAMING_HEADROOM)
+		: Math.min(EDIT_STREAMING_PREVIEW_LINES, previewWindowRows());
+
+	const activePreviews = previews.filter(p => p.diff || p.error);
+	let remainingActiveFiles = activePreviews.length;
+	let remainingBudget = totalBudget;
+
 	const parts: string[] = [];
 	for (let index = 0; index < previews.length; index++) {
 		const preview = previews[index]!;
@@ -494,6 +510,9 @@ function formatMultiFileStreamingDiff(
 		const header = uiTheme.fg("dim", `\n\n── ${shortenPath(preview.path)} ──`);
 		if (preview.error) {
 			parts.push(`${header}\n${uiTheme.fg("error", replaceTabs(preview.error))}`);
+			const errorLines = wrapTextWithAnsi(replaceTabs(preview.error), innerWidth).length;
+			remainingBudget = Math.max(1, remainingBudget - errorLines);
+			remainingActiveFiles--;
 			continue;
 		}
 		if (preview.diff) {
@@ -502,9 +521,31 @@ function formatMultiFileStreamingDiff(
 			// can commit to native scrollback mid-stream.
 			const isLast = index === previews.length - 1;
 			const cache = previewCacheAt(caches, index);
-			parts.push(
-				`${header}${formatStreamingDiff(preview.diff, preview.path, width, uiTheme, expanded, "preview", isLast ? spinnerFrame : undefined, cache)}`,
+			const fileBudget =
+				remainingActiveFiles <= 1
+					? Math.max(1, remainingBudget)
+					: Math.max(1, Math.floor(remainingBudget / remainingActiveFiles));
+			const formatted = formatStreamingDiff(
+				preview.diff,
+				preview.path,
+				width,
+				uiTheme,
+				expanded,
+				"preview",
+				isLast ? spinnerFrame : undefined,
+				cache,
+				fileBudget,
 			);
+			parts.push(`${header}${formatted}`);
+			const allLines = preview.diff.replace(/\n+$/u, "").split("\n");
+			let visualUsed = 0;
+			for (let i = allLines.length - 1; i >= 0; i--) {
+				const lineRows = Math.max(1, wrapEditRendererLine(replaceTabs(allLines[i]!), innerWidth).length);
+				if (visualUsed + lineRows > fileBudget && visualUsed > 0) break;
+				visualUsed += lineRows;
+			}
+			remainingBudget = Math.max(1, remainingBudget - visualUsed);
+			remainingActiveFiles--;
 		}
 	}
 	return parts.join("");
@@ -676,6 +717,41 @@ function renderDiffSection(
 	});
 }
 
+/**
+ * Split a diff row into the prefix it keeps on its first visual row and the
+ * prefix its wrapped rows carry instead. `undefined` means the row is not a
+ * diff row and wraps generically.
+ *
+ * Gutter shapes produced by formatCodeFrameLine: "-315│", " 313│", "+322│",
+ * plus the deduplicated forms "   +│" and "    │" whose repeated line number
+ * renderDiff blanked (single-line replacement pairs and insert-then-context
+ * runs) — all │-separated. ASCII "|" gutters exist only in raw canonical diff
+ * rows passed through by the plain fallback ("-42|old", " 42|ctx"), which always
+ * carry a marker column ("+"/"-"/space) and a line number. So the number is
+ * optional for "│", while "|" requires the full canonical shape; anything else
+ * (a body line merely starting with "|", error text like "123|…") is not a diff
+ * row.
+ *
+ * A row a preview produced before the edit landed has no line number to draw, so
+ * its gutter is the marker alone: `+return raw.split(...)`. It wraps as often as
+ * a numbered row does, and a wrapped row that starts back in the marker column
+ * reads as one more added line rather than the tail of the one above it.
+ */
+function splitDiffRow(body: string): { prefix: string; continuation: string; content: string } | undefined {
+	const gutter = /^(\s*[+-]?\s*\d*)([|│])(.*)$/s.exec(body);
+	if (gutter && gutter[1].length > 0 && (gutter[2] === "│" || /^[+\-\s]\s*\d+$/.test(gutter[1]))) {
+		const prefix = `${gutter[1]}${gutter[2]}`;
+		return {
+			prefix,
+			continuation: `${" ".repeat(Math.max(0, visibleWidth(prefix) - 1))}${gutter[2]}`,
+			content: gutter[3] ?? "",
+		};
+	}
+	const marker = /^([+-])(.*)$/s.exec(body);
+	if (marker) return { prefix: marker[1] ?? "", continuation: " ", content: marker[2] ?? "" };
+	return undefined;
+}
+
 function wrapEditRendererLine(line: string, width: number): string[] {
 	if (width <= 0) return [line];
 	if (line.length === 0) return [""];
@@ -683,27 +759,11 @@ function wrapEditRendererLine(line: string, width: number): string[] {
 	const startAnsi = line.match(/^((?:\x1b\[[0-9;]*m)*)/)?.[1] ?? "";
 	const bodyWithReset = line.slice(startAnsi.length);
 	const body = bodyWithReset.endsWith(SGR_FG_RESET) ? bodyWithReset.slice(0, -SGR_FG_RESET.length) : bodyWithReset;
-	// Gutter shapes produced by formatCodeFrameLine: "-315│", " 313│", "+322│",
-	// plus the deduplicated forms "   +│" and "    │" whose repeated line number
-	// renderDiff blanked (single-line replacement pairs and insert-then-context
-	// runs) — all │-separated. ASCII "|" gutters exist only in raw canonical
-	// diff rows passed through by the plain fallback ("-42|old", " 42|ctx"),
-	// which always carry a marker column ("+"/"-"/space) and a line number. So
-	// the number is optional for "│", while "|" requires the full canonical
-	// shape; anything else (a body line merely starting with "|", error text
-	// like "123|…") is not a diff row and wraps generically.
-	const diffMatch = /^(\s*[+-]?\s*\d*)([|│])(.*)$/s.exec(body);
+	const split = splitDiffRow(body);
+	if (!split) return wrapTextWithAnsi(line, width);
 
-	if (!diffMatch || diffMatch[1].length === 0 || (diffMatch[2] === "|" && !/^[+\-\s]\s*\d+$/.test(diffMatch[1]))) {
-		return wrapTextWithAnsi(line, width);
-	}
-
-	const [, gutter, separator, content] = diffMatch;
-	const prefix = `${gutter}${separator}`;
-	const prefixWidth = visibleWidth(prefix);
-	const contentWidth = Math.max(1, width - prefixWidth);
-	const continuationPrefix = `${" ".repeat(Math.max(0, prefixWidth - 1))}${separator}`;
-	const wrappedContent = wrapTextWithAnsi(content ?? "", contentWidth);
+	const contentWidth = Math.max(1, width - visibleWidth(split.prefix));
+	const wrappedContent = wrapTextWithAnsi(split.content, contentWidth);
 
 	// Each visual row is a standalone terminal line: wrapTextWithAnsi re-opens
 	// active SGR state at the next row's start, so a row that breaks inside an
@@ -711,7 +771,7 @@ function wrapEditRendererLine(line: string, width: number): string[] {
 	// alongside the foreground reset — otherwise the frame padding appended
 	// after the row is painted as an inverse block (default-foreground cells).
 	return wrappedContent.map(
-		(segment, index) => `${startAnsi}${index === 0 ? prefix : continuationPrefix}${segment}\x1b[27m\x1b[39m`,
+		(segment, index) => `${startAnsi}${index === 0 ? split.prefix : split.continuation}${segment}\x1b[27m\x1b[39m`,
 	);
 }
 
@@ -785,7 +845,11 @@ export const editToolRenderer = {
 			if (applyPatchSummary?.error) {
 				body += `\n${uiTheme.fg("error", truncateToWidth(replaceTabs(applyPatchSummary.error), Math.max(1, width - 2)))}`;
 			}
-			const bodyLines = body ? body.split("\n") : [];
+			// Pre-wrap with the continuation gutter, as the landed result does, so a
+			// row too long for the frame keeps reading as one row of the diff.
+			const bodyLines = body
+				? body.split("\n").flatMap(line => wrapEditRendererLine(line, Math.max(1, width - 2)))
+				: [];
 			while (bodyLines.length > 0 && bodyLines[0].trim() === "") bodyLines.shift();
 			return {
 				header,

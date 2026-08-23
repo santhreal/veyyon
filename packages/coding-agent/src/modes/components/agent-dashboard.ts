@@ -96,15 +96,12 @@ import { agentDisplayState, agentStatusGlyph, agentStatusWord } from "./agent-st
 import { type AgentTranscriptRemote, AgentTranscriptViewer } from "./agent-transcript-viewer";
 import { AGENT_VIEW_AGE_TICK_MS, AGENT_VIEW_DATA_CHANGE_COALESCE_MS } from "./agent-view-timings";
 import {
-	applyModalReveal,
-	beginModalExit,
 	CARD_BODY_COL_INSET,
 	computeModalDims,
 	consumeModalChipHover,
 	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
 	MODAL_SIZING_MEDIUM,
-	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
 	planModalChrome,
@@ -777,8 +774,6 @@ class CommsPane implements Component {
 export interface AgentDashboardDeps {
 	/** Rows to size the card against. Defaults to the live terminal height. */
 	terminalHeight?: number;
-	/** Play the open unfold (TOUCH-5). Show site decides via `modalRevealEnabled()`. */
-	reveal?: boolean;
 	/** Keys that expand folded comms messages (`app.tools.expand`). */
 	expandKeys?: readonly KeyId[];
 	/** Keys that toggle the card closed from inside (`app.agents.hub` + `app.session.observe`). */
@@ -907,14 +902,6 @@ export class AgentDashboard extends Container {
 
 	onClose?: () => void;
 	onRequestRender?: () => void;
-	#reveal = new ModalRevealDriver();
-	/**
-	 * Fade out on the shared clock before the host drops this card. The overlay stack keeps painting
-	 * it and stops routing input to it the moment this is called.
-	 */
-	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
-		return beginModalExit(this.#reveal, requestRender, done);
-	}
 
 	constructor(deps: AgentDashboardDeps = {}) {
 		super();
@@ -934,7 +921,6 @@ export class AgentDashboard extends Container {
 				requestRender: () => this.onRequestRender?.(),
 				requestComponentRender: () => this.onRequestRender?.(),
 			} as unknown as TUI);
-		if (deps.reveal) this.#reveal.start(() => this.onRequestRender?.());
 
 		this.#refreshLiveAgents();
 		this.#comms = this.#scopedComms();
@@ -1307,7 +1293,7 @@ export class AgentDashboard extends Container {
 		// not compact, which put the row-local [x] permanently out of reach of the
 		// pointer while still drawing it under the cursor.
 		this.#bodyColStart = (shell.geometry?.cardColStart ?? 0) + CARD_BODY_COL_INSET;
-		return applyModalReveal(shell, width, this.#reveal);
+		return shell.lines;
 	}
 
 	#switchView(direction: 1 | -1): void {
