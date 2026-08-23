@@ -6,7 +6,7 @@ import { formatHashlineHeader } from "@veyyon/hashline";
 import { type GrepMatch, GrepOutputMode, type GrepResult, grep } from "@veyyon/natives";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
-import { errorMessage, logger, trimTrailingSlashes, untilAborted } from "@veyyon/utils";
+import { errorMessage, isRecord, logger, trimTrailingSlashes, untilAborted } from "@veyyon/utils";
 import { recordFileSnapshot, recordSeenLinesFromBody } from "../edit/file-snapshot-store";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { LocalProtocolOptions } from "../internal-urls/local-protocol";
@@ -841,8 +841,8 @@ export interface TextSearchDetails {
 }
 
 export function textSearchApproval(args: unknown): ToolTier {
-	const input = args as { path?: string | string[] };
-	return toPathList(input.path).some(pathTargetsSsh) ? "exec" : "read";
+	if (!isRecord(args)) return "read";
+	return toPathList(args.path).some(pathTargetsSsh) ? "exec" : "read";
 }
 
 export async function executeTextSearch(
@@ -1276,24 +1276,26 @@ export async function executeTextSearch(
 					.filter((s): s is string => Boolean(s))
 					.join("\n") || undefined;
 			if (selectedMatches.length === 0) {
+				const skipPastEnd = canPaginate && normalizedSkip > 0 && totalFiles > 0 && skipFiles >= totalFiles;
 				const details: TextSearchDetails = {
 					scopePath,
 					searchPath,
 					cwd: session.cwd,
-					matchCount: 0,
-					fileCount: 0,
+					matchCount: skipPastEnd ? result.totalMatches : 0,
+					fileCount: skipPastEnd ? totalFiles : 0,
 					files: [],
 					truncated: false,
 					missingPaths: missingPaths.length > 0 ? missingPaths : undefined,
 				};
-				const skipPastEnd = canPaginate && normalizedSkip > 0 && totalFiles > 0 && skipFiles >= totalFiles;
 				const noMatchText = skipPastEnd
-					? `No more results (${totalFilesLabel} files total; skip=${normalizedSkip} is past the end)`
+					? `No more results (${totalFilesLabel} files total; skip=${normalizedSkip} has exhausted the result set)`
 					: "No matches found";
 				const text = warningNote ? `${noMatchText}\n${warningNote}` : noMatchText;
-				// Zero matches is useless regardless of warnings: by the time
-				// compaction runs, the follow-up call has already corrected course.
-				return toolResult(details).text(text).useless().done();
+				const resultBuilder = toolResult(details).text(text);
+				if (skipPastEnd) return resultBuilder.done();
+				// A true zero-match result is useless: by the time compaction runs,
+				// the follow-up call has already corrected course.
+				return resultBuilder.useless().done();
 			}
 			const outputLines: string[] = [];
 			let linesTruncated = false;
@@ -1414,6 +1416,33 @@ export async function executeTextSearch(
 					displayLines.push(...rendered.display);
 				}
 			}
+			const bodyLineCount = outputLines.length;
+			const recordVisibleBodyLines = (visibleBodyLines: readonly string[]): void => {
+				const visibleContexts = classifyGroupedLines(visibleBodyLines, session.cwd, searchPath);
+				const visibleLinesByFile = new Map<string, string[]>();
+				for (let index = 0; index < visibleBodyLines.length; index++) {
+					const context = visibleContexts[index];
+					if (context?.kind !== "content" || !context.filePath) continue;
+					const absoluteFilePath = path.resolve(context.filePath);
+					const fileLines = visibleLinesByFile.get(absoluteFilePath);
+					if (fileLines) fileLines.push(visibleBodyLines[index]!);
+					else visibleLinesByFile.set(absoluteFilePath, [visibleBodyLines[index]!]);
+				}
+				for (const relativePath of fileList) {
+					const hashContext = hashContexts.get(relativePath);
+					if (!hashContext?.tag) continue;
+					const absoluteFilePath = path.resolve(session.cwd, relativePath);
+					const visibleLines = visibleLinesByFile.get(absoluteFilePath);
+					if (!visibleLines) continue;
+					recordSeenLinesFromBody(
+						session,
+						absoluteFilePath,
+						hashContext.tag,
+						visibleLines.join("\n"),
+						clippedLinesByFile.get(relativePath),
+					);
+				}
+			};
 			if (limitMessage) {
 				outputLines.push("", limitMessage);
 			}
@@ -1491,25 +1520,29 @@ export async function executeTextSearch(
 						let previewFiles = fileList;
 						let compactLines = buildCompactLines(previewFiles);
 						let compactBody = compactLines.join("\n");
-						let compactOutput = `${compactBody}${compactBody.endsWith("\n") ? "" : "\n"}${artifactFooter(spillArtifactId)}`;
+						const footer = artifactFooter(spillArtifactId);
+						const assembleCompactOutput = (body: string): string =>
+							`${body}${body.length > 0 && !body.endsWith("\n") ? "\n" : ""}${footer}`;
+						let compactOutput = assembleCompactOutput(compactBody);
 						while (previewFileCount > 1 && Buffer.byteLength(compactOutput, "utf-8") > broadBudget) {
 							previewFileCount -= 1;
 							previewFiles = fileList.slice(0, previewFileCount);
 							compactLines = buildCompactLines(previewFiles);
 							compactBody = compactLines.join("\n");
-							compactOutput = `${compactBody}${compactBody.endsWith("\n") ? "" : "\n"}${artifactFooter(spillArtifactId)}`;
+							compactOutput = assembleCompactOutput(compactBody);
 						}
-						for (const relativePath of previewFiles) {
-							const hashContext = hashContexts.get(relativePath);
-							if (!hashContext?.tag) continue;
-							recordSeenLinesFromBody(
-								session,
-								path.resolve(session.cwd, relativePath),
-								hashContext.tag,
-								(representativeLinesByFile.get(relativePath) ?? []).join("\n"),
-								clippedLinesByFile.get(relativePath),
-							);
+						if (Buffer.byteLength(compactOutput, "utf-8") > broadBudget) {
+							const footerBytes = Buffer.byteLength(footer, "utf-8");
+							const bodyBudget = Math.max(0, broadBudget - footerBytes - 1);
+							const boundedBody = truncateHead(compactBody, {
+								maxLines: Number.MAX_SAFE_INTEGER,
+								maxBytes: bodyBudget,
+							});
+							compactBody = boundedBody.content;
+							compactLines = compactBody.length > 0 ? compactBody.split("\n") : [];
+							compactOutput = assembleCompactOutput(compactBody);
 						}
+						recordVisibleBodyLines(compactLines);
 						output = compactOutput;
 						truncation = {
 							truncated: true,
@@ -1524,35 +1557,34 @@ export async function executeTextSearch(
 				}
 			}
 			if (!compactMode) {
-				// In full/non-compact mode, record all seen lines from the full output
-				for (const relativePath of fileList) {
-					const hashContext = hashContexts.get(relativePath);
-					if (hashContext?.tag) {
-						const absoluteFilePath = path.resolve(session.cwd, relativePath);
-						const modelOut = fullModelOutByFile.get(relativePath);
-						if (modelOut) {
-							recordSeenLinesFromBody(
-								session,
-								absoluteFilePath,
-								hashContext.tag,
-								modelOut.join("\n"),
-								clippedLinesByFile.get(relativePath),
-							);
-						}
-					}
-				}
 				const headTruncation = truncateHead(rawOutput, {
 					maxLines: Number.MAX_SAFE_INTEGER,
 					maxBytes: inlineBudgetFor(session),
 				});
 				output = headTruncation.content;
 				if (headTruncation.truncated) {
+					const visibleBodyLines = outputLines.slice(0, Math.min(headTruncation.outputLines ?? 0, bodyLineCount));
+					recordVisibleBodyLines(visibleBodyLines);
 					spillArtifactId = await saveOutputArtifact(session, "search-text", rawOutput);
 					if (spillArtifactId) {
 						const sep = output.endsWith("\n") ? "" : "\n";
 						output += `${sep}${artifactFooter(spillArtifactId)}`;
 					}
 					truncation = headTruncation;
+				} else {
+					for (const relativePath of fileList) {
+						const hashContext = hashContexts.get(relativePath);
+						if (!hashContext?.tag) continue;
+						const modelOut = fullModelOutByFile.get(relativePath);
+						if (!modelOut) continue;
+						recordSeenLinesFromBody(
+							session,
+							path.resolve(session.cwd, relativePath),
+							hashContext.tag,
+							modelOut.join("\n"),
+							clippedLinesByFile.get(relativePath),
+						);
+					}
 				}
 			}
 			const displayText = displayLines.join("\n");
