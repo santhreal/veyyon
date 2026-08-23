@@ -20,7 +20,7 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as AIError from "@veyyon/ai/error";
-import { isProviderRetryableError } from "@veyyon/ai/providers/anthropic";
+import { isAnthropicStreamRetryable } from "@veyyon/ai/providers/anthropic";
 
 /**
  * Whether a turn carrying only this flag is worth sending again.
@@ -346,7 +346,7 @@ describe("observed failure corpus", () => {
 			expect(`${observed.name}: usageLimit=${AIError.isUsageLimit(error)}`).toBe(
 				`${observed.name}: usageLimit=${observed.usageLimit}`,
 			);
-			expect(`${observed.name}: providerRetryable=${isProviderRetryableError(error, "anthropic")}`).toBe(
+			expect(`${observed.name}: providerRetryable=${isAnthropicStreamRetryable(error, "anthropic")}`).toBe(
 				`${observed.name}: providerRetryable=${observed.providerRetryable}`,
 			);
 		}
@@ -359,7 +359,7 @@ describe("observed failure corpus", () => {
 		for (const observed of OBSERVED_FAILURES) {
 			const error = new Error(observed.message);
 			if (!AIError.isUsageLimit(error)) continue;
-			expect(`${observed.name}: ${isProviderRetryableError(error, "anthropic")}`).toBe(`${observed.name}: false`);
+			expect(`${observed.name}: ${isAnthropicStreamRetryable(error, "anthropic")}`).toBe(`${observed.name}: false`);
 		}
 	});
 

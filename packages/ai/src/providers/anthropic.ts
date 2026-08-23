@@ -1617,11 +1617,13 @@ function shouldIgnoreAnthropicPreambleEvent(eventType: unknown): boolean {
 
 /**
  * Whether an Anthropic (or Copilot-over-Anthropic) stream error should be
- * retried. The classification lives in {@link AIError.isProviderRetryableError};
- * this wrapper injects the Copilot-specific `model_not_supported` transient
- * check, which the error module must not import directly.
+ * retried. The classification is {@link AIError.isProviderRetryableError}; this
+ * supplies the one hook it cannot import — Copilot's `model_not_supported`,
+ * which is transient only when the provider is Copilot. It carries its own name
+ * because a second `isProviderRetryableError` in the package made a caller's
+ * retry decision depend on which module it happened to import.
  */
-export function isProviderRetryableError(error: unknown, provider?: string): boolean {
+export function isAnthropicStreamRetryable(error: unknown, provider?: string): boolean {
 	return AIError.isProviderRetryableError(error, {
 		provider,
 		isProviderTransient:
@@ -2761,7 +2763,7 @@ const streamAnthropicOnce = (
 						!isLocalIdleTimeout &&
 						firstTokenTime === undefined &&
 						!streamedReplayUnsafeContent &&
-						isProviderRetryableError(streamFailure, model.provider);
+						isAnthropicStreamRetryable(streamFailure, model.provider);
 					// A failure where NOTHING came back may not outlive the declared
 					// first-event budget. The server never answered, so another
 					// attempt cannot produce an event any sooner than this one did,

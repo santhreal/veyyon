@@ -40,6 +40,22 @@ function errorClasses(surfaces: Record<string, object>): Map<string, Map<unknown
 	return byName;
 }
 
+/** Every exported callable, grouped by exported name then by the implementation it resolves to. */
+function callables(surfaces: Record<string, object>): Map<string, Map<unknown, string[]>> {
+	const byName = new Map<string, Map<unknown, string[]>>();
+	for (const [surface, namespace] of Object.entries(surfaces)) {
+		for (const [exported, value] of Object.entries(namespace)) {
+			if (typeof value !== "function") continue;
+			const homes = byName.get(exported) ?? new Map<unknown, string[]>();
+			const paths = homes.get(value) ?? [];
+			paths.push(surface);
+			homes.set(value, paths);
+			byName.set(exported, homes);
+		}
+	}
+	return byName;
+}
+
 describe("an error class has exactly one home", () => {
 	const surfaces = { "@veyyon/ai": AI, "@veyyon/ai/error": AIError, "@veyyon/ai/auth-broker": AuthBroker };
 
@@ -96,5 +112,21 @@ describe("an error class has exactly one home", () => {
 			retryable: true,
 		});
 		expect(AIError.is(AIError.classify(impostor), AIError.Flag.Transient)).toBe(false);
+	});
+	/**
+	 * The same defect one level up: `isProviderRetryableError` was exported by
+	 * both `error/retryable.ts` and `providers/anthropic.ts`, where the second
+	 * wrapped the first and added a Copilot hook. A caller's retry decision then
+	 * depended on which subpath it imported, and nothing at either call site said
+	 * so. The wrapper is `isAnthropicStreamRetryable`; this fails if any exported
+	 * name resolves to two implementations across the package surface.
+	 */
+	it("resolves every exported callable name to a single implementation", () => {
+		const collisions: string[] = [];
+		for (const [name, homes] of callables(surfaces)) {
+			if (homes.size < 2) continue;
+			collisions.push(`${name}: ${[...homes.values()].map(paths => paths.join("+")).join(" vs ")}`);
+		}
+		expect(collisions).toEqual([]);
 	});
 });
