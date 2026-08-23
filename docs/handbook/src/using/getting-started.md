@@ -89,7 +89,7 @@ Add a function add(a, b) in src/lib.rs and a unit test. Run the test.
 
 A typical run looks like this:
 
-1. Veyyon reads the files it needs with `read`, `grep`, and `glob`.
+1. Veyyon reads the files it needs with `read` and `search`.
 2. It proposes an edit through the hashline `edit` and `write` tools.
 3. When your policy requires it, you approve the tool call. The `tools.approvalMode` setting sets when this happens; see [Safety](./safety.md).
 4. The change lands, and the diff appears in the TUI.

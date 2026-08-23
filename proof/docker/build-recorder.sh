@@ -46,4 +46,10 @@ if [ "${IN_IMAGE}" != "${BUN_VERSION}" ]; then
 	log "error: ${RECORDER_IMAGE} carries bun ${IN_IMAGE}, but this repo declares ${BUN_VERSION}"
 	exit 1
 fi
+
+PROOF_NETWORK="${PROOF_NETWORK:-veyyon-proof}"
+if ! docker network inspect "${PROOF_NETWORK}" >/dev/null 2>&1; then
+	docker network create "${PROOF_NETWORK}" >/dev/null
+	log "created recorder network ${PROOF_NETWORK}"
+fi
 log "${RECORDER_IMAGE} ready: bun ${IN_IMAGE}"

@@ -2,7 +2,7 @@
 
 ## Tools
 
-Built-in tools (read, grep, glob, edit, bash, …) run through the agent loop under `tools.approvalMode` and related policy. Edit paths share hashline verification. Catalog: [Tools reference](../reference/tools.md).
+Built-in tools (read, search, edit, bash, …) run through the agent loop under `tools.approvalMode` and related policy. Edit paths share hashline verification. Catalog: [Tools reference](../reference/tools.md).
 
 ## Skills
 

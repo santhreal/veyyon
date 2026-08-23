@@ -46,7 +46,7 @@ directory but reaching outside it through a symlink is still outside, and a path
 that cannot be resolved at all is treated as outside rather than assumed safe.
 
 Every tool that reads or writes files takes part: `read`, `write`, `edit`,
-`ast_edit`, `grep`, `glob`, `ast_grep`, `inspect_image`, and `set_cwd`.
+`ast_edit`, `search`, `inspect_image`, and `set_cwd`.
 
 `set_cwd` is on that list for a reason worth stating. It changes the working
 directory, so an unbounded `set_cwd` would be a way to erase the boundary rather
