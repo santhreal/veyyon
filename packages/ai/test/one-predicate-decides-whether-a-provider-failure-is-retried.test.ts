@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+	attach,
 	classify,
 	create,
 	ERROR_DOMAINS,
@@ -32,9 +33,10 @@ import * as fetchRetry from "@veyyon/utils/fetch-retry";
  * a status number, a socket-close phrasing) and states no verdict. The four cases that used to be
  * asserted against the utils predicate live here, against the one that decides.
  *
- * WHAT IT DOES NOT CATCH. It does not sweep the retry LOOPS: thirteen of them still ask this
- * predicate rather than `recover(id, stage)`, and a loop that reaches its own conclusion from prose
- * would pass this file. Each is migrated with its own suite.
+ * WHAT IT DOES NOT CATCH. It does not sweep the retry LOOPS. Each of the thirteen calls this
+ * predicate, which now reads `recover(id, "transport")`, so they share one answer — but a loop that
+ * asks nothing and reaches its own conclusion from prose would still pass this file. Each is
+ * migrated with its own suite.
  */
 
 /** A `{status, message}` shape, which is what a provider SDK rejects with. */
@@ -232,6 +234,104 @@ describe("a veto refuses a retry at every reader of the decision", () => {
 		const error = new Error("the operation was aborted");
 
 		expect(is(classify(error), Flag.Abort)).toBe(false);
+		expect(isProviderRetryableError(error)).toBe(false);
+	});
+});
+
+/** A sentence no rule in the registry reads, so only the attached flag decides. */
+const NEUTRAL = "the provider did not say what happened";
+
+/** A failure carrying exactly the flags a family declares, and no wording to add any others. */
+function failureCarrying(flag: Flag): Error {
+	return attach(new Error(NEUTRAL), create(flag));
+}
+
+describe("the transport stage answers with what its family declares", () => {
+	/**
+	 * WHY THIS BLOCK EXISTS. A provider ladder is the transport stage of the same recovery every other
+	 * layer performs, and this predicate used to reach its own conclusion instead of asking: it read
+	 * `Flag.Transient` and then five prose patterns, so a family whose declared transport action was
+	 * `surface` was retried anyway whenever the transport vocabulary happened to match its message. A
+	 * `MALFORMED_FUNCTION_CALL` is in that vocabulary. So is a `rate_limit_error` naming fast mode,
+	 * which is an entitlement wall no wait clears. Both were re-sent against the same credential for
+	 * the ladder's whole budget before the turn ever saw them.
+	 *
+	 * WHAT IT DOES NOT CATCH. It proves the ladder reads the declaration; it does not prove the
+	 * declaration is right for a family. That is `every-failure-family-declares-what-each-stage-does-
+	 * about-it.test.ts`, which pins the actions themselves.
+	 */
+	const withRecovery = ERROR_DOMAINS.filter(domain => domain.recovery !== undefined);
+
+	it("retries exactly the families that say the transport stage retries", () => {
+		const retrying = withRecovery
+			.filter(domain => domain.recovery?.transport.action === "retry")
+			.map(domain => domain.id);
+
+		expect(retrying).toEqual(["transport", "timeout"]);
+	});
+
+	it.each(withRecovery.map(domain => [domain.id, domain] as const))(
+		"%s is answered by its own declaration",
+		(_id, domain) => {
+			expect(domain.recovers.length).toBeGreaterThan(0);
+			for (const flag of domain.recovers) {
+				const error = failureCarrying(flag);
+				const expected = recover(create(flag), "transport").action === "retry";
+
+				expect(isProviderRetryableError(error), `${domain.id}: ${ERROR_KIND_LABELS[flag] ?? flag}`).toBe(expected);
+			}
+		},
+	);
+
+	/**
+	 * THE ORDER DECIDES, NOT THE PRESENCE OF A FLAG. A failure carries several: a malformed function
+	 * call is also transient because the transport vocabulary contains the phrase. The family that
+	 * comes first in the registry owns the answer, so the ladder surfaces it and the turn re-sends it,
+	 * which is what each of them declares. Reading `Flag.Transient` on its own inverted that.
+	 */
+	it.each([
+		["a malformed function call", Flag.MalformedFunctionCall],
+		["a stream that ended without saying why", Flag.ProviderFinishError],
+		["a fast-mode entitlement wall", Flag.FastModeUnsupported],
+	])("hands %s to the family that owns it rather than to the transport vocabulary", (_label, flag) => {
+		const error = attach(new Error(NEUTRAL), create(flag, Flag.Transient));
+		const id = classify(error);
+
+		expect(is(id, Flag.Transient)).toBe(true);
+		expect(recover(id, "transport").action).not.toBe("retry");
+		expect(isProviderRetryableError(error)).toBe(false);
+	});
+});
+
+describe("the vocabulary the ladder used to hold alone", () => {
+	/**
+	 * WHY THIS BLOCK EXISTS. These five phrasings lived in `isProviderRetryableError` and nowhere
+	 * else. The ladder retried them and the classifier saw nothing, so the same truncated response
+	 * from an Anthropic-compatible proxy was re-sent by the provider loop and reached the session as
+	 * an unclassified failure — and a session that cannot see a transport fault cannot report one.
+	 * They are now rules in the transport family, which is the only place that decides what they mean.
+	 */
+	it.each([
+		["a corrupted TLS record", new Error("read error: tls: bad record mac")],
+		["a server error the upstream named", new Error("upstream said type=server_error")],
+		["a peer-reported HTTP/2 stream error", new Error("stream error 7 received from peer")],
+		["the upstream code 1302", new Error("upstream error code 1302")],
+		["a body that stopped mid-JSON", new Error("Unterminated string in JSON at position 12")],
+		["an envelope whose events arrived out of order", new Error("stream event order: text before message_start")],
+	])("classifies %s as well as retrying it", (_label, error) => {
+		expect(is(classify(error), Flag.Transient)).toBe(true);
+		expect(isProviderRetryableError(error)).toBe(true);
+	});
+
+	/**
+	 * THE NUMBER IS WORD-BOUNDED, for the reason every status number in the transport pattern is:
+	 * provider errors carry model ids, request ids and token counts, and a bare four digits matches
+	 * any of them. `1302` inside a model name is not an upstream code.
+	 */
+	it("does not read the upstream code out of a model id", () => {
+		const error = new Error("model qwen-1302b rejected the request");
+
+		expect(is(classify(error), Flag.Transient)).toBe(false);
 		expect(isProviderRetryableError(error)).toBe(false);
 	});
 });
