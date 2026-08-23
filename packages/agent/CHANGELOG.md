@@ -6,6 +6,10 @@
 
 - The minimum supported Bun runtime is now 1.4.0.
 
+### Changed
+
+- Compaction's directory-list documentation now uses canonical `search` `files` terminology instead of the retired `find` tool name. No runtime behavior changed.
+
 ### Fixed
 
 - The remote-summarizer cap comment names the profile-scoped log directory it writes to (`~/.veyyon/profiles/<name>/logs`) instead of the pre-migration `~/.veyyon/logs`. Comment only; the cap and the write path are unchanged.

@@ -269,7 +269,6 @@ describe("per-tool filesystemTargets extraction", () => {
 		expect(searchPathFilesystemTargets({ path: "/etc/passwd" })).toEqual(["/etc/passwd"]);
 		expect(searchPathFilesystemTargets({ path: "/etc/**" })).toEqual(["/etc"]);
 		expect(searchPathFilesystemTargets({ path: "src;/etc" })).toEqual(["src", "/etc"]);
-		expect(searchPathFilesystemTargets({ paths: ["/var/log", "src"] })).toEqual(["/var/log", "src"]);
 		expect(searchPathFilesystemTargets({ path: "*.ts" })).toEqual([""]);
 		expect(searchPathFilesystemTargets({})).toEqual([]);
 

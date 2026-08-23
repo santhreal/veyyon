@@ -16,6 +16,10 @@
 - `PROMPT_ID_SHAPE_HINT` and `describeUnknownPromptIds` own the words a refusal uses for a prompt id no registry holds: every unknown id on its own line with the nearest registered ids, then one sentence saying what an id is. Two places refuse the same mistake — the bench runner before a container starts and the app at prompt assembly — and each had written its own explanation, so one operator error produced two differently worded answers to the same question.
 - `AnsiStripper` strips the `stripAnsi` grammar from a stream one chunk at a time, for a consumer that displays a live tail. Re-stripping the whole accumulated buffer on every arrival pays for bytes already stripped: 256 arrivals of 4KiB scanned 128MiB and the last arrival cost nine times the first. Each `push` scans what arrived plus whatever sequence had not closed, `pending` renders that unclosed remainder the way a whole-string strip renders an input ending mid-sequence, and `held` reports what is being held back. A fragment that stays open past 64KiB is settled as text rather than held, which is the one case the chunked and whole-string answers differ and is what keeps a stream from growing the buffer. It is built from the same regex source as `stripAnsi`, because a second copy of the grammar is what made two implementations disagree before.
 
+### Changed
+
+- Prompt-variable documentation now uses canonical `toolRefs.search` examples instead of the retired `toolRefs.grep` name. No runtime behavior changed.
+
 ### Fixed
 
 - Bounded every streaming reader to one 64 MiB frame: a peer that never sends a line feed, or an SSE peer that never sends a blank line, is refused with a `StreamFrameLimitError` naming the protocol and both byte counts, and its stream is cancelled instead of buffered until the heap runs out. `readLines`, `readJsonl`, `readSseEvents` and `readSseJson` take an optional `StreamFrameLimits`, `VEYYON_STREAM_FRAME_MAX_BYTES` moves the default, and a value that is not a positive integer keeps the compiled default rather than removing the bound.
