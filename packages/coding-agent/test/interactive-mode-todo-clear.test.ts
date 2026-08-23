@@ -285,11 +285,11 @@ describe("InteractiveMode todo HUD anchor", () => {
 		expect(lines.some(line => line.includes("II. Verification") && line.includes("0/1"))).toBe(true);
 		// One square vocabulary down the glyph column: in-progress breathes, the
 		// finished task stays on the board rather than being sliced away, pending is
-		// the hollow box.
+		// the shadowed mark. Phase rows keep the hollow checkbox; task rows do not.
 		const glyphOf = (needle: string): string =>
 			(lines.find(line => line.includes(needle)) ?? "").replace(rail, "").trim().split(" ")[0] ?? "";
 		expect([...theme.spinnerFrames, theme.checkbox.progress]).toContain(glyphOf("second task"));
-		expect(glyphOf("third task")).toBe(theme.checkbox.unchecked);
+		expect(glyphOf("third task")).toBe(theme.symbol("status.shadowed"));
 		expect(glyphOf("first task")).toBe(theme.symbol("status.done"));
 		// The stage ahead is inside the cap, so its work is listed too.
 		expect(lines.some(line => line.includes("run tests"))).toBe(true);
