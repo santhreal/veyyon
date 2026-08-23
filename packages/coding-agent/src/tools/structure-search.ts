@@ -92,7 +92,7 @@ async function runMultiTargetAstGrep(
 	let filesWithMatches = 0;
 	let filesSearched = 0;
 	let limitReached = false;
-	throwIfAborted(options.signal, "ast_grep");
+	throwIfAborted(options.signal, "search");
 	// Each target is an independent native scan on libuv's blocking pool, so
 	// they run concurrently instead of serializing behind one another. Every
 	// scan still carries the tool's own signal, so a cancellation fails each
@@ -169,211 +169,209 @@ export async function executeStructureSearch(
 	params: StructureSearchInput,
 	signal?: AbortSignal,
 ): Promise<AgentToolResult<StructureSearchDetails>> {
-		return untilAborted(signal, async () => {
-			const pattern = params.pattern.trim();
-			if (pattern.length === 0) {
-				throw new ToolError("Structure search input must not be empty");
-			}
-			const patterns = [pattern];
-			const skip = params.skip === undefined ? 0 : Math.floor(params.skip);
-			if (!Number.isFinite(skip) || skip < 0) {
-				throw new ToolError("skip must be a non-negative number");
-			}
-			const scopedPaths = toPathList(params.path);
-			const rawPaths = scopedPaths.length > 0 ? scopedPaths : ["."];
-			const scope = await resolveToolSearchScope({
-				rawPaths,
-				cwd: session.cwd,
-				internalUrlAction: "search",
-				settings: session.settings,
-				signal,
-				localProtocolOptions: session.localProtocolOptions,
-				skills: session.skills,
-				resolveExternalUrl: async rawPath => {
-					const target = parseReadUrlTarget(rawPath);
-					if (!target) return undefined;
-					const materialized = await materializeReadUrlToFile(
-						session,
-						{ path: target.path, raw: target.raw },
-						signal,
-					);
-					return { sourcePath: materialized.path, immutable: true };
-				},
-			});
-			const { searchPath: resolvedSearchPath, scopePath, isDirectory, multiTargets, globFilter } = scope;
-
-			const DEFAULT_AST_LIMIT = 50;
-			const result = multiTargets
-				? await runMultiTargetAstGrep(multiTargets, {
-						patterns,
-						commonBasePath: resolvedSearchPath,
-						skip,
-						limit: DEFAULT_AST_LIMIT,
-						signal,
-					})
-				: await astGrep({
-						patterns,
-						path: resolvedSearchPath,
-						glob: globFilter,
-						offset: skip,
-						includeMeta: true,
-						signal,
-					});
-
-			const normalizedParseErrors = (result.parseErrors ?? []).map(error => {
-				const parseError = error.match(/^.+: (.+: parse error \(syntax tree contains error nodes\))$/);
-				return parseError?.[1] ?? error;
-			});
-			const { errors: cappedParseErrors, total: parseErrorsTotal } = capParseErrors(normalizedParseErrors);
-			const formatPath = (filePath: string): string =>
-				formatResultPath(filePath, isDirectory, resolvedSearchPath, session.cwd);
-
-			const { record: recordFile, list: fileList } = createFileRecorder();
-			const fileMatchCounts = new Map<string, number>();
-			const matchesByFile = new Map<string, AstFindMatch[]>();
-			for (const match of result.matches) {
-				const relativePath = formatPath(match.path);
-				recordFile(relativePath);
-				if (!matchesByFile.has(relativePath)) {
-					matchesByFile.set(relativePath, []);
-				}
-				matchesByFile.get(relativePath)!.push(match);
-			}
-
-			const baseDetails: StructureSearchDetails = {
-				matchCount: result.totalMatches,
-				fileCount: result.filesWithMatches,
-				filesSearched: result.filesSearched,
-				limitReached: result.limitReached,
-				...(cappedParseErrors.length > 0 ? { parseErrors: cappedParseErrors, parseErrorsTotal } : {}),
-				scopePath,
-				searchPath: resolvedSearchPath,
-				cwd: session.cwd,
-				files: fileList,
-				fileMatches: [],
-			};
-
-			if (result.matches.length === 0) {
-				const searched = result.filesSearched;
-				const where = scopePath ?? resolvedSearchPath;
-				// A bare "No matches found" hid WHY it was empty. The most common
-				// cause of a surprising zero is that ast_grep selects files by
-				// language, so a language mismatch (or a path with no files of that
-				// language) searches ZERO files and still says "no matches" — a
-				// silent recall hole (Law 10). Surface the file-search count so a
-				// zero-file search reads as a scoping problem, not proven absence.
-				const noMatchMessage = cappedParseErrors.length
-					? "No matches found. Parse issues mean the query may be mis-scoped; narrow `path` before concluding absence."
-					: searched === 0
-						? `No matches found because NO FILES were searched (0 files under ${where}). ast_grep selects files by language, so this usually means the path has no files of the target language, the path is wrong, or the language was not detected. Verify the path and language before concluding the pattern does not match.`
-						: `No matches found (searched ${searched} file${searched === 1 ? "" : "s"}). If you expected matches, check the pattern syntax for this language and that the path covers the intended files.`;
-				const parseMessage = cappedParseErrors.length
-					? `\n${formatParseErrors(cappedParseErrors, parseErrorsTotal).join("\n")}`
-					: "";
-				// Zero matches is useless even with parse issues: the follow-up
-				// call has already corrected course by the time compaction runs.
-				return toolResult(baseDetails).text(`${noMatchMessage}${parseMessage}`).useless().done();
-			}
-
-			const useHashLines = resolveFileDisplayMode(session).hashLines;
-			const hashContexts = new Map<string, { tag: string }>();
-			if (useHashLines) {
-				for (const relativePath of fileList) {
-					const absolutePath = path.resolve(session.cwd, relativePath);
-					// Whole-file content tag: any anchor validates while the file is
-					// unchanged; over-cap / unreadable files get no tag (plain output).
-					const tag = await recordFileSnapshot(session, absolutePath);
-					if (tag) hashContexts.set(relativePath, { tag });
-				}
-			}
-			const outputLines: string[] = [];
-			const displayLines: string[] = [];
-			const renderMatchesForFile = (relativePath: string): { model: string[]; display: string[] } => {
-				const modelOut: string[] = [];
-				const displayOut: string[] = [];
-				const fileMatches = matchesByFile.get(relativePath) ?? [];
-				const hashContext = hashContexts.get(relativePath);
-				const lineNumberWidth = fileMatches.reduce((width, match) => {
-					const lineCount = match.text.split("\n").length;
-					const endLine = match.startLine + lineCount - 1;
-					return Math.max(width, String(match.startLine).length, String(endLine).length);
-				}, 0);
-				for (const match of fileMatches) {
-					const matchLines = match.text.split("\n");
-					for (let index = 0; index < matchLines.length; index++) {
-						const lineNumber = match.startLine + index;
-						const isMatch = index === 0;
-						const line = matchLines[index] ?? "";
-						modelOut.push(
-							formatMatchLine(lineNumber, line, isMatch, { useHashLines: hashContext !== undefined }),
-						);
-						displayOut.push(formatCodeFrameLine(isMatch ? "*" : " ", lineNumber, line, lineNumberWidth));
-					}
-					if (match.metaVariables && Object.keys(match.metaVariables).length > 0) {
-						const serializedMeta = Object.entries(match.metaVariables)
-							.sort(([left], [right]) => left.localeCompare(right))
-							.map(([key, value]) => `${key}=${value}`)
-							.join(", ");
-						modelOut.push(`  meta: ${serializedMeta}`);
-						displayOut.push(`  meta: ${serializedMeta}`);
-					}
-					fileMatchCounts.set(relativePath, (fileMatchCounts.get(relativePath) ?? 0) + 1);
-				}
-				if (hashContext?.tag) {
-					const absoluteFilePath = path.resolve(session.cwd, relativePath);
-					recordSeenLinesFromBody(session, absoluteFilePath, hashContext.tag, modelOut.join("\n"));
-				}
-				return { model: modelOut, display: displayOut };
-			};
-
-			if (isDirectory) {
-				const grouped = formatGroupedFiles(fileList, relativePath => {
-					const rendered = renderMatchesForFile(relativePath);
-					const hashContext = hashContexts.get(relativePath);
-					return {
-						modelLines: rendered.model,
-						displayLines: rendered.display,
-						headerSuffix: hashContext?.tag ? `#${hashContext.tag}` : "",
-						skip: rendered.model.length === 0,
-					};
-				});
-				outputLines.push(...grouped.model);
-				displayLines.push(...grouped.display);
-			} else {
-				for (const relativePath of fileList) {
-					const rendered = renderMatchesForFile(relativePath);
-					if (rendered.model.length === 0) continue;
-					if (outputLines.length > 0) {
-						outputLines.push("");
-						displayLines.push("");
-					}
-					const hashContext = hashContexts.get(relativePath);
-					if (hashContext?.tag) {
-						outputLines.push(formatHashlineHeader(relativePath, hashContext.tag));
-					}
-					outputLines.push(...rendered.model);
-					displayLines.push(...rendered.display);
-				}
-			}
-
-			const details: StructureSearchDetails = {
-				...baseDetails,
-				fileMatches: fileList.map(filePath => ({
-					path: filePath,
-					count: fileMatchCounts.get(filePath) ?? 0,
-				})),
-				displayContent: displayLines.join("\n"),
-			};
-			if (result.limitReached) {
-				outputLines.push("", "Result limit reached; narrow path or increase limit.");
-			}
-			if (cappedParseErrors.length) {
-				outputLines.push("", ...formatParseErrors(cappedParseErrors, parseErrorsTotal));
-			}
-
-			return toolResult(details).text(outputLines.join("\n")).done();
+	return untilAborted(signal, async () => {
+		const pattern = params.pattern.trim();
+		if (pattern.length === 0) {
+			throw new ToolError("Structure search input must not be empty");
+		}
+		const patterns = [pattern];
+		const skip = params.skip === undefined ? 0 : Math.floor(params.skip);
+		if (!Number.isFinite(skip) || skip < 0) {
+			throw new ToolError("skip must be a non-negative number");
+		}
+		const scopedPaths = toPathList(params.path);
+		const rawPaths = scopedPaths.length > 0 ? scopedPaths : ["."];
+		const scope = await resolveToolSearchScope({
+			rawPaths,
+			cwd: session.cwd,
+			internalUrlAction: "search",
+			settings: session.settings,
+			signal,
+			localProtocolOptions: session.localProtocolOptions,
+			skills: session.skills,
+			resolveExternalUrl: async rawPath => {
+				const target = parseReadUrlTarget(rawPath);
+				if (!target) return undefined;
+				const materialized = await materializeReadUrlToFile(
+					session,
+					{ path: target.path, raw: target.raw },
+					signal,
+				);
+				return { sourcePath: materialized.path, immutable: true };
+			},
 		});
-	}
+		const { searchPath: resolvedSearchPath, scopePath, isDirectory, multiTargets, globFilter } = scope;
+
+		const DEFAULT_AST_LIMIT = 50;
+		const result = multiTargets
+			? await runMultiTargetAstGrep(multiTargets, {
+					patterns,
+					commonBasePath: resolvedSearchPath,
+					skip,
+					limit: DEFAULT_AST_LIMIT,
+					signal,
+				})
+			: await astGrep({
+					patterns,
+					path: resolvedSearchPath,
+					glob: globFilter,
+					offset: skip,
+					includeMeta: true,
+					signal,
+				});
+
+		const normalizedParseErrors = (result.parseErrors ?? []).map(error => {
+			const parseError = error.match(/^.+: (.+: parse error \(syntax tree contains error nodes\))$/);
+			return parseError?.[1] ?? error;
+		});
+		const { errors: cappedParseErrors, total: parseErrorsTotal } = capParseErrors(normalizedParseErrors);
+		const formatPath = (filePath: string): string =>
+			formatResultPath(filePath, isDirectory, resolvedSearchPath, session.cwd);
+
+		const { record: recordFile, list: fileList } = createFileRecorder();
+		const fileMatchCounts = new Map<string, number>();
+		const matchesByFile = new Map<string, AstFindMatch[]>();
+		for (const match of result.matches) {
+			const relativePath = formatPath(match.path);
+			recordFile(relativePath);
+			if (!matchesByFile.has(relativePath)) {
+				matchesByFile.set(relativePath, []);
+			}
+			matchesByFile.get(relativePath)!.push(match);
+		}
+
+		const baseDetails: StructureSearchDetails = {
+			matchCount: result.totalMatches,
+			fileCount: result.filesWithMatches,
+			filesSearched: result.filesSearched,
+			limitReached: result.limitReached,
+			...(cappedParseErrors.length > 0 ? { parseErrors: cappedParseErrors, parseErrorsTotal } : {}),
+			scopePath,
+			searchPath: resolvedSearchPath,
+			cwd: session.cwd,
+			files: fileList,
+			fileMatches: [],
+		};
+
+		if (result.matches.length === 0) {
+			const searched = result.filesSearched;
+			const where = scopePath ?? resolvedSearchPath;
+			// A bare "No matches found" hid WHY it was empty. The most common
+			// cause of a surprising zero is that the structure matcher selects
+			// files by language, so a mismatch (or a path with no files of that
+			// language) searches ZERO files and still says "no matches" — a
+			// silent recall hole (Law 10). Surface the file-search count so a
+			// zero-file search reads as a scoping problem, not proven absence.
+			const noMatchMessage = cappedParseErrors.length
+				? "No matches found. Parse issues mean the query may be mis-scoped; narrow `path` before concluding absence."
+				: searched === 0
+					? `No matches found because NO FILES were searched (0 files under ${where}). Structure search selects files by language, so this usually means the path has no files of the target language, the path is wrong, or the language was not detected. Verify the path and language before concluding the pattern does not match.`
+					: `No matches found (searched ${searched} file${searched === 1 ? "" : "s"}). If you expected matches, check the pattern syntax for this language and that the path covers the intended files.`;
+			const parseMessage = cappedParseErrors.length
+				? `\n${formatParseErrors(cappedParseErrors, parseErrorsTotal).join("\n")}`
+				: "";
+			// Zero matches is useless even with parse issues: the follow-up
+			// call has already corrected course by the time compaction runs.
+			return toolResult(baseDetails).text(`${noMatchMessage}${parseMessage}`).useless().done();
+		}
+
+		const useHashLines = resolveFileDisplayMode(session).hashLines;
+		const hashContexts = new Map<string, { tag: string }>();
+		if (useHashLines) {
+			for (const relativePath of fileList) {
+				const absolutePath = path.resolve(session.cwd, relativePath);
+				// Whole-file content tag: any anchor validates while the file is
+				// unchanged; over-cap / unreadable files get no tag (plain output).
+				const tag = await recordFileSnapshot(session, absolutePath);
+				if (tag) hashContexts.set(relativePath, { tag });
+			}
+		}
+		const outputLines: string[] = [];
+		const displayLines: string[] = [];
+		const renderMatchesForFile = (relativePath: string): { model: string[]; display: string[] } => {
+			const modelOut: string[] = [];
+			const displayOut: string[] = [];
+			const fileMatches = matchesByFile.get(relativePath) ?? [];
+			const hashContext = hashContexts.get(relativePath);
+			const lineNumberWidth = fileMatches.reduce((width, match) => {
+				const lineCount = match.text.split("\n").length;
+				const endLine = match.startLine + lineCount - 1;
+				return Math.max(width, String(match.startLine).length, String(endLine).length);
+			}, 0);
+			for (const match of fileMatches) {
+				const matchLines = match.text.split("\n");
+				for (let index = 0; index < matchLines.length; index++) {
+					const lineNumber = match.startLine + index;
+					const isMatch = index === 0;
+					const line = matchLines[index] ?? "";
+					modelOut.push(formatMatchLine(lineNumber, line, isMatch, { useHashLines: hashContext !== undefined }));
+					displayOut.push(formatCodeFrameLine(isMatch ? "*" : " ", lineNumber, line, lineNumberWidth));
+				}
+				if (match.metaVariables && Object.keys(match.metaVariables).length > 0) {
+					const serializedMeta = Object.entries(match.metaVariables)
+						.sort(([left], [right]) => left.localeCompare(right))
+						.map(([key, value]) => `${key}=${value}`)
+						.join(", ");
+					modelOut.push(`  meta: ${serializedMeta}`);
+					displayOut.push(`  meta: ${serializedMeta}`);
+				}
+				fileMatchCounts.set(relativePath, (fileMatchCounts.get(relativePath) ?? 0) + 1);
+			}
+			if (hashContext?.tag) {
+				const absoluteFilePath = path.resolve(session.cwd, relativePath);
+				recordSeenLinesFromBody(session, absoluteFilePath, hashContext.tag, modelOut.join("\n"));
+			}
+			return { model: modelOut, display: displayOut };
+		};
+
+		if (isDirectory) {
+			const grouped = formatGroupedFiles(fileList, relativePath => {
+				const rendered = renderMatchesForFile(relativePath);
+				const hashContext = hashContexts.get(relativePath);
+				return {
+					modelLines: rendered.model,
+					displayLines: rendered.display,
+					headerSuffix: hashContext?.tag ? `#${hashContext.tag}` : "",
+					skip: rendered.model.length === 0,
+				};
+			});
+			outputLines.push(...grouped.model);
+			displayLines.push(...grouped.display);
+		} else {
+			for (const relativePath of fileList) {
+				const rendered = renderMatchesForFile(relativePath);
+				if (rendered.model.length === 0) continue;
+				if (outputLines.length > 0) {
+					outputLines.push("");
+					displayLines.push("");
+				}
+				const hashContext = hashContexts.get(relativePath);
+				if (hashContext?.tag) {
+					outputLines.push(formatHashlineHeader(relativePath, hashContext.tag));
+				}
+				outputLines.push(...rendered.model);
+				displayLines.push(...rendered.display);
+			}
+		}
+
+		const details: StructureSearchDetails = {
+			...baseDetails,
+			fileMatches: fileList.map(filePath => ({
+				path: filePath,
+				count: fileMatchCounts.get(filePath) ?? 0,
+			})),
+			displayContent: displayLines.join("\n"),
+		};
+		if (result.limitReached) {
+			outputLines.push("", "Result limit reached; narrow path or increase limit.");
+		}
+		if (cappedParseErrors.length) {
+			outputLines.push("", ...formatParseErrors(cappedParseErrors, parseErrorsTotal));
+		}
+
+		return toolResult(details).text(outputLines.join("\n")).done();
+	});
+}
 
 // =============================================================================
 // TUI Renderer

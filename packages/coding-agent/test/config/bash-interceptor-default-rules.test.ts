@@ -16,7 +16,7 @@ import { checkBashInterception } from "@veyyon/coding-agent/tools/bash-intercept
  * interceptable command slip through with the wrong suggested tool.
  */
 
-const ALL = ["read", "grep", "glob", "edit", "write", "launch"];
+const ALL = ["read", "search", "edit", "write", "launch"];
 const check = (command: string, tools: string[] = ALL) =>
 	checkBashInterception(command, tools, DEFAULT_BASH_INTERCEPTOR_RULES);
 
@@ -38,11 +38,11 @@ describe("read rule (cat/head/tail/less/more)", () => {
 	);
 });
 
-describe("grep rule (grep/rg/ripgrep/ag/ack)", () => {
-	it.each(["grep foo file", "rg foo", "ripgrep foo", "ag foo", "ack foo"])("routes %s to grep", command => {
+describe("grep/rg rule (grep/rg/ripgrep/ag/ack)", () => {
+	it.each(["grep foo file", "rg foo", "ripgrep foo", "ag foo", "ack foo"])("routes %s to search", command => {
 		const r = check(command);
 		expect(r.block).toBe(true);
-		expect(r.suggestedTool).toBe("grep");
+		expect(r.suggestedTool).toBe("search");
 	});
 
 	it("does not intercept a bare grep with no pattern", () => {
@@ -50,16 +50,15 @@ describe("grep rule (grep/rg/ripgrep/ag/ack)", () => {
 	});
 });
 
-describe("glob rule (find/fd/locate with a predicate)", () => {
-	it.each(["find . -name x", "fd --type f", "find . -iname '*.ts'"])("routes %s to glob", command => {
-		const r = check(command);
-		expect(r.block).toBe(true);
-		expect(r.suggestedTool).toBe("glob");
-	});
-
-	it.each(["find .", "find . -exec rm {} ;"])("does not intercept %s (no name/type/glob predicate)", command => {
-		expect(check(command).block).toBe(false);
-	});
+describe("find/fd rule (find/fd/locate)", () => {
+	it.each(["find . -name x", "fd --type f", "find . -iname '*.ts'", "find .", "locate foo"])(
+		"routes %s to search",
+		command => {
+			const r = check(command);
+			expect(r.block).toBe(true);
+			expect(r.suggestedTool).toBe("search");
+		},
+	);
 });
 
 describe("edit rule (in-place sed/perl/awk)", () => {
@@ -80,6 +79,6 @@ describe("edit rule (in-place sed/perl/awk)", () => {
 describe("tool-availability gate", () => {
 	it("fires only when the suggested replacement tool is available", () => {
 		expect(check("cat file", ["read"]).block).toBe(true);
-		expect(check("cat file", ["grep", "glob", "edit"]).block).toBe(false);
+		expect(check("cat file", ["search", "edit"]).block).toBe(false);
 	});
 });

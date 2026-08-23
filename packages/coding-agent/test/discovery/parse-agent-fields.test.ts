@@ -46,9 +46,9 @@ describe("parseAgentFields identity validation", () => {
 });
 
 describe("parseAgentFields tools normalization", () => {
-	it("lower-cases, applies legacy aliases (search->grep, find->glob), and always appends yield", () => {
-		const fields = parseAgentFields({ name: "n", description: "d", tools: "Read, search, find" });
-		expect(fields?.tools).toEqual(["read", "grep", "glob", "yield"]);
+	it("lower-cases, deduplicates, and always appends yield", () => {
+		const fields = parseAgentFields({ name: "n", description: "d", tools: "Read, search, read" });
+		expect(fields?.tools).toEqual(["read", "search", "yield"]);
 	});
 
 	it("de-duplicates case-insensitively while preserving first-seen order and keeps a single yield", () => {

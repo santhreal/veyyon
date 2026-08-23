@@ -1,24 +1,20 @@
-/** `grep` (legacy `search`) — ripgrep content search across workspace files. */
+/** Text-pattern search results, rendered for unified `search`. */
 import type { ReactNode } from "react";
 import { Badge, Badges, InvalidArg, Note, ResultText } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
 import { detailsRecord, num, resultTextOf, scopePaths, shortenPath, str } from "../util";
 
-/** Grep scope: current `path` (string, delimited, or JSON array) or legacy `paths`; defaults to workspace root. */
+/** Search scope defaults to the workspace root when canonical `path` is omitted. */
 function pathsOf(args: Record<string, unknown>): string[] {
 	const list = scopePaths(args).map(p => shortenPath(p));
 	return list.length ? list : ["."];
 }
 
-/** Flag badges covering current and legacy arg dialects. */
+/** Badges for canonical text-search fields. */
 function argBadges(args: Record<string, unknown>): ReactNode[] {
 	const badges: ReactNode[] = [];
-	const glob = str(args.glob);
-	if (glob) badges.push(`glob=${glob}`);
-	const type = str(args.type);
-	if (type) badges.push(`type=${type}`);
-	if (args.i === true) badges.push("i");
-	if (args.multiline === true) badges.push("multiline");
+	if (args.case === true) badges.push("case");
+	if (args.case === false) badges.push("no-case");
 	if (args.gitignore === false) badges.push("no-gitignore");
 	const skip = num(args.skip);
 	if (skip !== null && skip > 0) badges.push(`skip=${skip}`);
@@ -26,8 +22,8 @@ function argBadges(args: Record<string, unknown>): ReactNode[] {
 }
 
 function Pattern({ args }: { args: Record<string, unknown> }): ReactNode {
-	const pattern = str(args.pattern);
-	if (pattern === null) return <InvalidArg what="pattern" />;
+	const pattern = str(args.input);
+	if (pattern === null) return <InvalidArg what="input" />;
 	return <span className="tv-pattern">/{pattern}/</span>;
 }
 
@@ -74,4 +70,4 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 	);
 }
 
-export const grepRenderer: ToolRenderer = { Summary, Body };
+export const textSearchRenderer: ToolRenderer = { Summary, Body };

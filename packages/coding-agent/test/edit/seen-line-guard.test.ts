@@ -9,7 +9,7 @@ import { DEFAULT_MAX_BYTES } from "@veyyon/coding-agent/session/streaming-output
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { ReadTool } from "@veyyon/coding-agent/tools/read";
 import { removeWithRetries } from "@veyyon/utils";
-import { GrepTool } from "../../src/tools/grep";
+import { SearchTool } from "../../src/tools/search";
 
 function createSession(cwd: string): ToolSession {
 	return {
@@ -512,7 +512,7 @@ describe("search → edit seen-line guard", () => {
 			getArtifactsDir: () => path.join(cwd, "artifacts"),
 			allocateOutputArtifact: async () => ({ id: "artifact-1", path: path.join(cwd, "artifact-1.log") }),
 			// Zero context so the seen set is exactly the matched lines.
-			settings: Settings.isolated({ "grep.contextBefore": 0, "grep.contextAfter": 0 }),
+			settings: Settings.isolated({ "search.contextBefore": 0, "search.contextAfter": 0 }),
 			enableLsp: false,
 		} as ToolSession;
 	}
@@ -523,7 +523,7 @@ describe("search → edit seen-line guard", () => {
 		await Bun.write(file, `${lines.join("\n")}\n`);
 		const session = searchSession(tmpDir);
 
-		const search = await new GrepTool(session).execute("s1", { pattern: "NEEDLE", path: file });
+		const search = await new SearchTool(session).execute("s1", { type: "text", input: "NEEDLE", path: file });
 		const tag = tagFromOutput(resultText(search));
 
 		const seen = getFileSnapshotStore(session).byHash(canonicalSnapshotKey(file), tag)?.seenLines;
@@ -541,7 +541,7 @@ describe("search → edit seen-line guard", () => {
 		await Bun.write(file, `${lines.join("\n")}\n`);
 		const session = searchSession(tmpDir);
 
-		const search = await new GrepTool(session).execute("s1", { pattern: "NEEDLE", path: file });
+		const search = await new SearchTool(session).execute("s1", { type: "text", input: "NEEDLE", path: file });
 		const tag = tagFromOutput(resultText(search));
 
 		await expect(executeHashlineSingle(execOptions(`[code.txt#${tag}]\nSWAP 8.=8:\n+X`, session))).rejects.toThrow(

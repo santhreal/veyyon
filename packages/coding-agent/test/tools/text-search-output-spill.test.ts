@@ -6,7 +6,7 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { DEFAULT_MAX_BYTES } from "@veyyon/coding-agent/session/streaming-output";
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { removeWithRetries } from "@veyyon/utils";
-import { GrepTool } from "../../src/tools/grep";
+import { SearchTool } from "../../src/tools/search";
 import { makeToolSession } from "../helpers/tool-session";
 
 // TW-9: a single grep query can return a match set that dwarfs the inline floor
@@ -25,7 +25,7 @@ function getResultText(result: { content: Array<{ type: string; text?: string }>
 		.join("\n");
 }
 
-describe("GrepTool oversized-result spill (TW-9)", () => {
+describe("SearchTool (text) oversized-result spill (TW-9)", () => {
 	let tmpDir: string;
 	let artifactDir: string;
 	let idToPath: Map<string, string>;
@@ -54,7 +54,7 @@ describe("GrepTool oversized-result spill (TW-9)", () => {
 				idToPath.set(id, filePath);
 				return { path: filePath, id };
 			},
-			settings: Settings.isolated({ "grep.contextBefore": 0, "grep.contextAfter": 0 }),
+			settings: Settings.isolated({ "search.contextBefore": 0, "search.contextAfter": 0 }),
 		});
 	}
 
@@ -75,8 +75,8 @@ describe("GrepTool oversized-result spill (TW-9)", () => {
 		const file = path.join(tmpDir, "big.txt");
 		await fs.writeFile(file, `${lines.join("\n")}\n`);
 
-		const tool = new GrepTool(createSession());
-		const result = await tool.execute("call-grep-big", { pattern: "NEEDLE", path: "big.txt" });
+		const tool = new SearchTool(createSession());
+		const result = await tool.execute("call-grep-big", { type: "text", input: "NEEDLE", path: "big.txt" });
 
 		const text = getResultText(result);
 		const textBytes = Buffer.byteLength(text, "utf-8");
@@ -84,7 +84,7 @@ describe("GrepTool oversized-result spill (TW-9)", () => {
 		// The inline body is bounded near the budget (plus a small footer), not the
 		// full ~85KB it matched.
 		expect(textBytes).toBeLessThanOrEqual(DEFAULT_MAX_BYTES + 128);
-		expect(result.details?.truncated).toBe(true);
+		expect((result.details as { result?: { truncated?: boolean } })?.result?.truncated).toBe(true);
 		expect(text).toContain("artifact://");
 		expect(text).toContain(HEAD_SENTINEL);
 
@@ -107,8 +107,8 @@ describe("GrepTool oversized-result spill (TW-9)", () => {
 		const file = path.join(tmpDir, "small.txt");
 		await fs.writeFile(file, "NEEDLE small-marker-4d1e alpha\nNEEDLE beta\nNEEDLE gamma\n");
 
-		const tool = new GrepTool(createSession());
-		const result = await tool.execute("call-grep-small", { pattern: "NEEDLE", path: "small.txt" });
+		const tool = new SearchTool(createSession());
+		const result = await tool.execute("call-grep-small", { type: "text", input: "NEEDLE", path: "small.txt" });
 
 		const text = getResultText(result);
 		expect(text).toContain("small-marker-4d1e");

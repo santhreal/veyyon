@@ -90,11 +90,11 @@ describe("AgentSession per-turn prune", () => {
 			content: "Investigate every module of the project.",
 			timestamp: now - 200,
 		});
-		sessionManager.appendMessage(assistantCall(BIG_CALL_ID, "grep", { pattern: "TODO" }, now - 180));
+		sessionManager.appendMessage(assistantCall(BIG_CALL_ID, "search", { type: "text", input: "TODO" }, now - 180));
 		sessionManager.appendMessage({
 			role: "toolResult",
 			toolCallId: BIG_CALL_ID,
-			toolName: "grep",
+			toolName: "search",
 			content: [{ type: "text", text: USELESS_TEXT }],
 			isError: false,
 			useless: true,

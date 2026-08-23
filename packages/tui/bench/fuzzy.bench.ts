@@ -77,7 +77,7 @@ const VARIANTS = [
 const FILES = [
 	"src/components/markdown.ts",
 	"src/tools/read.ts",
-	"src/tools/grep.ts",
+	"src/tools/text-search.ts",
 	"src/utils/git.ts",
 	"src/modes/theme/theme.ts",
 	"src/system-prompt.ts",

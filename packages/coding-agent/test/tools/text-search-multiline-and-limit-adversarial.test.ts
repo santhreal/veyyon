@@ -3,7 +3,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { GrepTool } from "@veyyon/coding-agent/tools/grep";
+import { SearchTool } from "@veyyon/coding-agent/tools/search";
 import { removeWithRetries } from "@veyyon/utils";
 import { makeToolSession } from "../helpers/tool-session";
 
@@ -18,7 +18,7 @@ function textOf(result: { content: Array<{ type: string; text?: string }> }): st
 		.join("\n");
 }
 
-describe("GrepTool multiline and unicode adversarial", () => {
+describe("SearchTool (text) multiline and unicode adversarial", () => {
 	let tmpDir: string;
 
 	beforeEach(async () => {
@@ -40,42 +40,47 @@ describe("GrepTool multiline and unicode adversarial", () => {
 			getSessionFile: () => null,
 			getSessionSpawns: () => "*",
 			getArtifactsDir: () => path.join(tmpDir, "artifacts"),
-			settings: Settings.isolated({ "grep.enabled": true }),
+			settings: Settings.isolated(),
 		});
 	}
 
 	it("matches unicode identifier", async () => {
-		const tool = new GrepTool(session() as never);
-		const text = textOf(await tool.execute("g1", { pattern: "名前", path: path.join(tmpDir, "u.ts") }));
+		const tool = new SearchTool(session());
+		const text = textOf(await tool.execute("g1", { type: "text", input: "名前", path: path.join(tmpDir, "u.ts") }));
 		expect(text).toContain("名前");
 		expect(text.includes("const name = 2") && !text.includes("名前")).toBe(false);
 	});
 
 	it("finds deep-token under nested path when searching the tree", async () => {
-		const tool = new GrepTool(session() as never);
-		const text = textOf(await tool.execute("g2", { pattern: "deep-token-zzz", path: tmpDir }));
+		const tool = new SearchTool(session());
+		const text = textOf(await tool.execute("g2", { type: "text", input: "deep-token-zzz", path: tmpDir }));
 		expect(text).toContain("deep-token-zzz");
 	});
 
 	it("reports multiple alpha lines from dup.ts", async () => {
-		const tool = new GrepTool(session() as never);
-		const text = textOf(await tool.execute("g3", { pattern: "alpha", path: path.join(tmpDir, "dup.ts") }));
+		const tool = new SearchTool(session());
+		const text = textOf(
+			await tool.execute("g3", { type: "text", input: "alpha", path: path.join(tmpDir, "dup.ts") }),
+		);
 		const alphaHits = text.split("\n").filter(l => l.includes("alpha")).length;
 		expect(alphaHits).toBeGreaterThanOrEqual(3);
 	});
 
 	it("regex alternation matches either branch", async () => {
-		const tool = new GrepTool(session() as never);
-		const text = textOf(await tool.execute("g4", { pattern: "alpha|beta", path: path.join(tmpDir, "dup.ts") }));
+		const tool = new SearchTool(session());
+		const text = textOf(
+			await tool.execute("g4", { type: "text", input: "alpha|beta", path: path.join(tmpDir, "dup.ts") }),
+		);
 		expect(text).toContain("alpha");
 		expect(text).toContain("beta");
 	});
 
 	it("does not match across files when path is a single file", async () => {
-		const tool = new GrepTool(session() as never);
+		const tool = new SearchTool(session());
 		const text = textOf(
 			await tool.execute("g5", {
-				pattern: "deep-token-zzz",
+				type: "text",
+				input: "deep-token-zzz",
 				path: path.join(tmpDir, "dup.ts"),
 			}),
 		);

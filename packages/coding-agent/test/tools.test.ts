@@ -18,8 +18,9 @@ import * as toolTimeouts from "@veyyon/coding-agent/tools/tool-timeouts";
 import { WriteTool } from "@veyyon/coding-agent/tools/write";
 import { unzip } from "@veyyon/coding-agent/utils/zip";
 import { $which, errorMessage, removeSyncWithRetries, Snowflake } from "@veyyon/utils";
-import { GlobTool } from "../src/tools/glob";
-import { DEFAULT_FILE_LIMIT, GrepTool, MULTI_FILE_PER_FILE_MATCHES } from "../src/tools/grep";
+import type { FileSearchDetails } from "../src/tools/file-search";
+import { SearchTool, type SearchToolDetails } from "../src/tools/search";
+import { DEFAULT_FILE_LIMIT, MULTI_FILE_PER_FILE_MATCHES, type TextSearchDetails } from "../src/tools/text-search";
 import { useIsolatedGlobalSettings } from "./helpers/isolated-global-settings";
 
 // Helper to extract text from content blocks
@@ -34,6 +35,14 @@ function getTextOutput(result: any): string {
 			.map((c: any) => c.text)
 			.join("\n") || ""
 	);
+}
+
+function textSearchDetails(result: { details?: SearchToolDetails }): TextSearchDetails | undefined {
+	return result.details?.type === "text" ? result.details.result : undefined;
+}
+
+function fileSearchDetails(result: { details?: SearchToolDetails }): FileSearchDetails | undefined {
+	return result.details?.type === "files" ? result.details.result : undefined;
 }
 
 function writeFileWithMtime(filePath: string, content: string, mtimeMs: number): void {
@@ -273,8 +282,8 @@ describe("Coding Agent Tools", () => {
 	let writeTool: WriteTool;
 	let editTool: EditTool;
 	let bashTool: BashTool;
-	let searchTool: GrepTool;
-	let findTool: GlobTool;
+	let searchTool: SearchTool;
+	let fileSearchTool: SearchTool;
 	let originalEditVariant: string | undefined;
 
 	beforeAll(async () => {
@@ -299,8 +308,8 @@ describe("Coding Agent Tools", () => {
 		writeTool = wrapToolWithMetaNotice(new WriteTool(session));
 		editTool = wrapToolWithMetaNotice(new EditTool(session));
 		bashTool = wrapToolWithMetaNotice(new BashTool(session));
-		searchTool = wrapToolWithMetaNotice(new GrepTool(session));
-		findTool = wrapToolWithMetaNotice(new GlobTool(session));
+		searchTool = wrapToolWithMetaNotice(new SearchTool(session));
+		fileSearchTool = searchTool;
 	});
 
 	afterEach(() => {
@@ -1245,8 +1254,8 @@ function b() {
 							"bashInterceptor.patterns": [
 								{
 									pattern: "^\\s*customcmd\\s+",
-									tool: "grep",
-									message: "Use the `grep` tool for customcmd.",
+									tool: "search",
+									message: "Use the `search` tool for customcmd.",
 								},
 							],
 						}),
@@ -1259,9 +1268,9 @@ function b() {
 					{ command: "customcmd foo" },
 					undefined,
 					undefined,
-					createTestToolContext(["grep"]),
+					createTestToolContext(["search"]),
 				),
-			).rejects.toThrow(/Use the `grep` tool for customcmd\./);
+			).rejects.toThrow(/Use the `search` tool for customcmd\./);
 		});
 
 		it("should expose env values without shell re-parsing", async () => {
@@ -1677,10 +1686,7 @@ function b() {
 			const testFile = path.join(testDir, "example.txt");
 			fs.writeFileSync(testFile, "first line\nmatch line\nlast line");
 
-			const result = await searchTool.execute("test-call-11", {
-				pattern: "match",
-				path: testFile,
-			});
+			const result = await searchTool.execute("test-call-11", { type: "text", input: "match", path: testFile });
 
 			const output = getTextOutput(result);
 			expect(output).not.toContain("# example.txt");
@@ -1692,7 +1698,8 @@ function b() {
 			fs.writeFileSync(path.join(testDir, "plain.txt"), "nothing interesting here\n");
 
 			const result = await searchTool.execute("test-call-useless-search", {
-				pattern: "ZZZ_NO_SUCH_TOKEN_999",
+				type: "text",
+				input: "ZZZ_NO_SUCH_TOKEN_999",
 				path: testDir,
 			});
 
@@ -1704,7 +1711,8 @@ function b() {
 			fs.writeFileSync(path.join(testDir, "plain.txt"), "nothing interesting here\n");
 
 			const result = await searchTool.execute("test-call-useless-search-warn", {
-				pattern: "ZZZ_NO_SUCH_TOKEN_999",
+				type: "text",
+				input: "ZZZ_NO_SUCH_TOKEN_999",
 				path: `${testDir}; ${path.join(testDir, "missing-file.txt")}`,
 			});
 
@@ -1718,7 +1726,8 @@ function b() {
 			fs.writeFileSync(path.join(testDir, "schema-other.test.ts"), "review target\n");
 
 			const result = await searchTool.execute("test-call-11-path-glob", {
-				pattern: "review target",
+				type: "text",
+				input: "review target",
 				path: `${testDir}/schema-review-*.test.ts`,
 			});
 
@@ -1726,7 +1735,7 @@ function b() {
 			expect(output).toContain("# schema-review-alpha.test.ts");
 			expect(output).toContain("# schema-review-beta.test.ts");
 			expect(output).not.toContain("schema-other.test.ts");
-			expect(result.details?.fileCount).toBe(2);
+			expect(textSearchDetails(result)?.fileCount).toBe(2);
 		});
 		it("should accept nested wildcard filters in paths", async () => {
 			const packageDir = path.join(testDir, "node_modules", ".bun");
@@ -1739,7 +1748,8 @@ function b() {
 			fs.writeFileSync(path.join(testDir, "outside.ts"), "providerOptions\n");
 
 			const result = await searchTool.execute("test-call-11-path-and-glob", {
-				pattern: "providerOptions",
+				type: "text",
+				input: "providerOptions",
 				path: `${packageDir}/ai@6.0.119+*/node_modules/ai/**/*.{d.ts,ts}`,
 				gitignore: false,
 			});
@@ -1749,7 +1759,7 @@ function b() {
 			expect(output).toContain("## child.d.ts");
 			expect(output).not.toContain("ignore.js");
 			expect(output).not.toContain("outside.ts");
-			expect(result.details?.fileCount).toBe(2);
+			expect(textSearchDetails(result)?.fileCount).toBe(2);
 		});
 
 		it("should include configured context lines", async () => {
@@ -1757,12 +1767,13 @@ function b() {
 			const content = ["before", "match one", "after", "middle", "match two", "after two"].join("\n");
 			fs.writeFileSync(testFile, content);
 
-			const contextSettings = Settings.isolated({ "grep.contextBefore": 1, "grep.contextAfter": 1 });
+			const contextSettings = Settings.isolated({ "search.contextBefore": 1, "search.contextAfter": 1 });
 			const contextSearchTool = wrapToolWithMetaNotice(
-				new GrepTool(createTestToolSession(testDir, contextSettings)),
+				new SearchTool(createTestToolSession(testDir, contextSettings)),
 			);
 			const result = await contextSearchTool.execute("test-call-12", {
-				pattern: "match",
+				type: "text",
+				input: "match",
 				path: testFile,
 			});
 
@@ -1779,12 +1790,13 @@ function b() {
 			const lines = Array.from({ length: 10 }, (_, idx) => (idx === 0 || idx === 5 ? "match" : `filler ${idx}`));
 			fs.writeFileSync(testFile, lines.join("\n"));
 
-			const noContextSettings = Settings.isolated({ "grep.contextBefore": 0, "grep.contextAfter": 0 });
+			const noContextSettings = Settings.isolated({ "search.contextBefore": 0, "search.contextAfter": 0 });
 			const noContextSearchTool = wrapToolWithMetaNotice(
-				new GrepTool(createTestToolSession(testDir, noContextSettings)),
+				new SearchTool(createTestToolSession(testDir, noContextSettings)),
 			);
 			const result = await noContextSearchTool.execute("test-call-12-gap", {
-				pattern: "match",
+				type: "text",
+				input: "match",
 				path: testFile,
 			});
 
@@ -1800,18 +1812,20 @@ function b() {
 			}
 
 			const first = await searchTool.execute("test-call-12-skip-first", {
-				pattern: "needle",
+				type: "text",
+				input: "needle",
 				path: skipDir,
 			});
-			expect(first.details?.fileCount).toBe(4);
+			expect(textSearchDetails(first)?.fileCount).toBe(4);
 
 			const second = await searchTool.execute("test-call-12-skip-page", {
-				pattern: "needle",
+				type: "text",
+				input: "needle",
 				path: skipDir,
 				skip: 2,
 			});
 			const secondOutput = getTextOutput(second);
-			expect(second.details?.fileCount).toBe(2);
+			expect(textSearchDetails(second)?.fileCount).toBe(2);
 			expect(secondOutput).not.toContain("# file-1.txt");
 			expect(secondOutput).not.toContain("# file-2.txt");
 			expect(secondOutput).toContain("# file-3.txt");
@@ -1824,26 +1838,29 @@ function b() {
 
 			// 1. By default, search is case-sensitive (only matches the lowercase pattern "hello")
 			const defaultResult = await searchTool.execute("test-case-default", {
-				pattern: "hello",
+				type: "text",
+				input: "hello",
 				path: caseFile,
 			});
-			expect(defaultResult.details?.matchCount).toBe(1);
+			expect(textSearchDetails(defaultResult)?.matchCount).toBe(1);
 
 			// 2. With case: true, search is case-sensitive (only matches "hello")
 			const sensitiveResult = await searchTool.execute("test-case-sensitive", {
-				pattern: "hello",
+				type: "text",
+				input: "hello",
 				path: caseFile,
 				case: true,
 			});
-			expect(sensitiveResult.details?.matchCount).toBe(1);
+			expect(textSearchDetails(sensitiveResult)?.matchCount).toBe(1);
 
 			// 3. With case: false, search is case-insensitive (matches both "Hello World" and "hello world")
 			const insensitiveResult = await searchTool.execute("test-case-insensitive", {
-				pattern: "hello",
+				type: "text",
+				input: "hello",
 				path: caseFile,
 				case: false,
 			});
-			expect(insensitiveResult.details?.matchCount).toBe(2);
+			expect(textSearchDetails(insensitiveResult)?.matchCount).toBe(2);
 		});
 
 		it("should group multi-file matches", async () => {
@@ -1853,7 +1870,8 @@ function b() {
 			fs.writeFileSync(path.join(testDir, "dominant.txt"), "needle a\nneedle b\nneedle c\nneedle d");
 
 			const result = await searchTool.execute("test-call-13-round-robin", {
-				pattern: "needle",
+				type: "text",
+				input: "needle",
 				path: testDir,
 			});
 
@@ -1864,8 +1882,8 @@ function b() {
 			expect(output).toContain("# dominant.txt");
 			expect(output).not.toContain("# .");
 			expect(output).not.toContain("Result limit reached");
-			expect(result.details?.fileCount).toBe(4);
-			expect(result.details?.matchCount).toBe(10);
+			expect(textSearchDetails(result)?.fileCount).toBe(4);
+			expect(textSearchDetails(result)?.matchCount).toBe(10);
 		});
 
 		it("should not repeat file headings for multiple matches per file", async () => {
@@ -1873,7 +1891,8 @@ function b() {
 			fs.writeFileSync(path.join(testDir, "beta.txt"), "needle b1\nneedle b2\nneedle b3");
 
 			const result = await searchTool.execute("test-call-14-grouped-headings", {
-				pattern: "needle",
+				type: "text",
+				input: "needle",
 				path: testDir,
 			});
 
@@ -1882,7 +1901,7 @@ function b() {
 			const betaHeadings = output.match(/# beta\.txt/g)?.length ?? 0;
 			expect(alphaHeadings).toBe(1);
 			expect(betaHeadings).toBe(1);
-			expect(result.details?.fileMatches).toEqual(
+			expect(textSearchDetails(result)?.fileMatches).toEqual(
 				expect.arrayContaining([
 					expect.objectContaining({ path: "alpha.txt", count: 3 }),
 					expect.objectContaining({ path: "beta.txt", count: 3 }),
@@ -1897,7 +1916,8 @@ function b() {
 			fs.writeFileSync(path.join(nestedDir, "models.json"), '{ "name": "Claude Opus" }\n');
 
 			const result = await searchTool.execute("test-call-15-directory-headings", {
-				pattern: "Claude Opus",
+				type: "text",
+				input: "Claude Opus",
 				path: testDir,
 			});
 
@@ -1905,7 +1925,7 @@ function b() {
 			expect(output).toContain("# packages/ai");
 			expect(output).toContain("## CHANGELOG.md");
 			expect(output).toContain("## models.json");
-			expect(result.details?.fileCount).toBeGreaterThanOrEqual(2);
+			expect(textSearchDetails(result)?.fileCount).toBeGreaterThanOrEqual(2);
 		});
 
 		it("should respect .gitignore by default", async () => {
@@ -1916,15 +1936,16 @@ function b() {
 			fs.writeFileSync(path.join(scenarioDir, "kept.txt"), "needle kept\n");
 
 			const result = await searchTool.execute("test-call-15-gitignore-default", {
-				pattern: "needle",
+				type: "text",
+				input: "needle",
 				path: scenarioDir,
 			});
 
 			const output = getTextOutput(result);
 			expect(output).toContain("kept.txt");
 			expect(output).not.toContain("ignored.txt");
-			expect(result.details?.fileCount).toBe(1);
-			expect(result.details?.matchCount).toBe(1);
+			expect(textSearchDetails(result)?.fileCount).toBe(1);
+			expect(textSearchDetails(result)?.matchCount).toBe(1);
 		});
 
 		it("should include ignored files when gitignore is false", async () => {
@@ -1934,15 +1955,16 @@ function b() {
 			fs.writeFileSync(path.join(scenarioDir, "ignored.txt"), "needle ignored\n");
 
 			const result = await searchTool.execute("test-call-16-gitignore-off", {
-				pattern: "needle",
+				type: "text",
+				input: "needle",
 				path: scenarioDir,
 				gitignore: false,
 			});
 
 			const output = getTextOutput(result);
 			expect(output).toContain("ignored.txt");
-			expect(result.details?.fileCount).toBe(1);
-			expect(result.details?.matchCount).toBe(1);
+			expect(textSearchDetails(result)?.fileCount).toBe(1);
+			expect(textSearchDetails(result)?.matchCount).toBe(1);
 		});
 
 		it("should ignore FIFOs when searching a directory with gitignore disabled", async () => {
@@ -1956,7 +1978,8 @@ function b() {
 			}
 
 			const result = await searchTool.execute("test-call-16-fifo-dir", {
-				pattern: "needle",
+				type: "text",
+				input: "needle",
 				path: scenarioDir,
 				gitignore: false,
 			});
@@ -1966,8 +1989,8 @@ function b() {
 			expect(output).toContain("needle kept");
 			expect(output).not.toContain("blocked.fifo");
 			expect(output).not.toContain("## blocked.fifo");
-			expect(result.details?.fileCount).toBe(1);
-			expect(result.details?.matchCount).toBe(1);
+			expect(textSearchDetails(result)?.fileCount).toBe(1);
+			expect(textSearchDetails(result)?.matchCount).toBe(1);
 		});
 		it("should cap distinct files and surface pagination", async () => {
 			const limitDir = path.join(testDir, "file-limit-dir");
@@ -1978,14 +2001,15 @@ function b() {
 			}
 
 			const result = await searchTool.execute("test-call-14-file-limit", {
-				pattern: "needle",
+				type: "text",
+				input: "needle",
 				path: limitDir,
 			});
 
 			const output = getTextOutput(result);
-			expect(result.details?.fileCount).toBe(DEFAULT_FILE_LIMIT);
-			expect(result.details?.matchCount).toBe(DEFAULT_FILE_LIMIT);
-			expect(result.details?.fileLimitReached).toBe(DEFAULT_FILE_LIMIT);
+			expect(textSearchDetails(result)?.fileCount).toBe(DEFAULT_FILE_LIMIT);
+			expect(textSearchDetails(result)?.matchCount).toBe(DEFAULT_FILE_LIMIT);
+			expect(textSearchDetails(result)?.fileLimitReached).toBe(DEFAULT_FILE_LIMIT);
 			expect(output).toContain(`Showing files 1-${DEFAULT_FILE_LIMIT} of ${totalFiles}`);
 			expect(output).toContain(`Use skip=${DEFAULT_FILE_LIMIT}`);
 		});
@@ -2001,13 +2025,15 @@ function b() {
 			fs.writeFileSync(path.join(concDir, "cool.txt"), "needle cool");
 
 			const result = await searchTool.execute("test-call-14-per-file-cap", {
-				pattern: "needle",
+				type: "text",
+				input: "needle",
 				path: concDir,
 			});
 
-			const hotCount = result.details?.fileMatches?.find(entry => entry.path.endsWith("hot.txt"))?.count ?? 0;
+			const hotCount =
+				textSearchDetails(result)?.fileMatches?.find(entry => entry.path.endsWith("hot.txt"))?.count ?? 0;
 			expect(hotCount).toBe(MULTI_FILE_PER_FILE_MATCHES);
-			expect(result.details?.perFileLimitReached).toBe(MULTI_FILE_PER_FILE_MATCHES);
+			expect(textSearchDetails(result)?.perFileLimitReached).toBe(MULTI_FILE_PER_FILE_MATCHES);
 		});
 
 		it("should let a single-file scope exceed the multi-file per-file cap", async () => {
@@ -2016,13 +2042,14 @@ function b() {
 			fs.writeFileSync(single, Array.from({ length: count }, (_, i) => `needle ${i + 1}`).join("\n"));
 
 			const result = await searchTool.execute("test-call-14-single-file-cap", {
-				pattern: "needle",
+				type: "text",
+				input: "needle",
 				path: single,
 			});
 
-			expect(result.details?.matchCount).toBe(count);
-			expect(result.details?.fileLimitReached).toBeUndefined();
-			expect(result.details?.perFileLimitReached).toBeUndefined();
+			expect(textSearchDetails(result)?.matchCount).toBe(count);
+			expect(textSearchDetails(result)?.fileLimitReached).toBeUndefined();
+			expect(textSearchDetails(result)?.perFileLimitReached).toBeUndefined();
 		});
 	});
 
@@ -2031,9 +2058,7 @@ function b() {
 			const testFile = path.join(testDir, "single.txt");
 			fs.writeFileSync(testFile, "single");
 
-			const result = await findTool.execute("test-call-13a", {
-				path: testFile,
-			});
+			const result = await fileSearchTool.execute("test-call-13a", { type: "files", input: testFile });
 
 			const outputLines = getTextOutput(result)
 				.split("\n")
@@ -2049,12 +2074,13 @@ function b() {
 			fs.writeFileSync(path.join(hiddenDir, "hidden.txt"), "hidden");
 			fs.writeFileSync(path.join(testDir, "visible.txt"), "visible");
 
-			const result = await findTool.execute("test-call-13", {
-				path: `${testDir}/**/*.txt`,
+			const result = await fileSearchTool.execute("test-call-13", {
+				type: "files",
+				input: `${testDir}/**/*.txt`,
 				hidden: true,
 			});
 
-			const files = (result.details?.files ?? []).slice().sort();
+			const files = (fileSearchDetails(result)?.files ?? []).slice().sort();
 			expect(files).toContain("visible.txt");
 			expect(files).toContain(".secret/hidden.txt");
 		});
@@ -2065,9 +2091,7 @@ function b() {
 			fs.writeFileSync(path.join(testDir, "ignored.txt"), "ignored");
 			fs.writeFileSync(path.join(testDir, "kept.txt"), "kept");
 
-			const result = await findTool.execute("test-call-14", {
-				path: `${testDir}/**/*.txt`,
-			});
+			const result = await fileSearchTool.execute("test-call-14", { type: "files", input: `${testDir}/**/*.txt` });
 
 			const output = getTextOutput(result);
 			expect(output).toContain("kept.txt");
@@ -2090,11 +2114,12 @@ function b() {
 			fs.utimesSync(olderFile, olderTime, olderTime);
 			fs.utimesSync(newerFile, newerTime, newerTime);
 
-			const result = await findTool.execute("test-call-14b", {
-				path: `${testDir}/**/auth-actions.spec.ts`,
+			const result = await fileSearchTool.execute("test-call-14b", {
+				type: "files",
+				input: `${testDir}/**/auth-actions.spec.ts`,
 			});
 
-			expect(result.details?.files).toEqual(["z/auth-actions.spec.ts", "a/auth-actions.spec.ts"]);
+			expect(fileSearchDetails(result)?.files).toEqual(["z/auth-actions.spec.ts", "a/auth-actions.spec.ts"]);
 		});
 
 		it("should render nested glob results relative to the session cwd", async () => {
@@ -2102,11 +2127,12 @@ function b() {
 			fs.mkdirSync(nestedDir, { recursive: true });
 			fs.writeFileSync(path.join(nestedDir, "daemon-telemetry.ts"), "telemetry\n");
 
-			const result = await findTool.execute("test-call-14c", {
-				path: "apps/daemon/src/**/daemon-telemetry.ts",
+			const result = await fileSearchTool.execute("test-call-14c", {
+				type: "files",
+				input: "apps/daemon/src/**/daemon-telemetry.ts",
 			});
 
-			expect(result.details?.files).toEqual(["apps/daemon/src/telemetry/daemon-telemetry.ts"]);
+			expect(fileSearchDetails(result)?.files).toEqual(["apps/daemon/src/telemetry/daemon-telemetry.ts"]);
 		});
 
 		it("should not double-prefix multi-pattern results under a shared base", async () => {
@@ -2117,11 +2143,12 @@ function b() {
 			fs.writeFileSync(path.join(daemonDir, "daemon.ts"), "daemon\n");
 			fs.writeFileSync(path.join(clientDir, "client.ts"), "client\n");
 
-			const result = await findTool.execute("test-call-14e", {
-				path: JSON.stringify(["apps/daemon/src/**/*.ts", "apps/client/src/**/*.ts"]),
+			const result = await fileSearchTool.execute("test-call-14e", {
+				type: "files",
+				input: JSON.stringify(["apps/daemon/src/**/*.ts", "apps/client/src/**/*.ts"]),
 			});
 
-			const files = (result.details?.files ?? []).slice().sort();
+			const files = (fileSearchDetails(result)?.files ?? []).slice().sort();
 			expect(files).toEqual(["apps/client/src/client.ts", "apps/daemon/src/daemon.ts"]);
 		});
 
@@ -2133,9 +2160,7 @@ function b() {
 			fs.writeFileSync(path.join(testDir, "ignored-generated", ".env.generated"), "SECRET=value\n");
 
 			const startedAt = performance.now();
-			const result = await findTool.execute("test-call-14d", {
-				path: "**/.env*",
-			});
+			const result = await fileSearchTool.execute("test-call-14d", { type: "files", input: "**/.env*" });
 			const elapsedMs = performance.now() - startedAt;
 
 			const output = getTextOutput(result);
@@ -2151,11 +2176,9 @@ function b() {
 			fs.writeFileSync(path.join(testDir, "pkg", "file.txt"), "f");
 			fs.writeFileSync(path.join(testDir, "pkg", "nested", "deep.txt"), "d");
 
-			const result = await findTool.execute("test-call-14f", {
-				path: `${testDir}/pkg/**/*`,
-			});
+			const result = await fileSearchTool.execute("test-call-14f", { type: "files", input: `${testDir}/pkg/**/*` });
 
-			const files = (result.details?.files ?? []).slice().sort();
+			const files = (fileSearchDetails(result)?.files ?? []).slice().sort();
 			expect(files).toEqual(["pkg/file.txt", "pkg/nested/", "pkg/nested/deep.txt"]);
 		});
 
@@ -2164,11 +2187,9 @@ function b() {
 			fs.mkdirSync(path.join(testDir, "beta", "tests"), { recursive: true });
 			fs.writeFileSync(path.join(testDir, "alpha", "tests", "a.ts"), "a");
 
-			const result = await findTool.execute("test-call-14g", {
-				path: `${testDir}/**/tests`,
-			});
+			const result = await fileSearchTool.execute("test-call-14g", { type: "files", input: `${testDir}/**/tests` });
 
-			const files = (result.details?.files ?? []).slice().sort();
+			const files = (fileSearchDetails(result)?.files ?? []).slice().sort();
 			expect(files).toEqual(["alpha/tests/", "beta/tests/"]);
 		});
 
@@ -2179,11 +2200,9 @@ function b() {
 			fs.writeFileSync(path.join(dir, "top.tsx"), "t");
 			fs.writeFileSync(path.join(sub, "nested.tsx"), "n");
 
-			const result = await findTool.execute("test-call-14h", {
-				path: `${dir}/*.tsx`,
-			});
+			const result = await fileSearchTool.execute("test-call-14h", { type: "files", input: `${dir}/*.tsx` });
 
-			const files = (result.details?.files ?? []).slice().sort();
+			const files = (fileSearchDetails(result)?.files ?? []).slice().sort();
 			expect(files).toEqual(["shallow/top.tsx"]);
 		});
 	});

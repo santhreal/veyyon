@@ -114,7 +114,7 @@ describe("every builtin tool's argument contract", () => {
 		// are the ones every agent turn depends on, so their absence means the table
 		// was built wrong rather than merely built small.
 		const names = tools.map(tool => tool.name);
-		for (const required of ["read", "write", "edit", "bash", "grep"]) {
+		for (const required of ["read", "write", "edit", "bash", "search"]) {
 			expect(names).toContain(required);
 		}
 		expect(toolsWithRequiredArgs().length).toBeGreaterThan(5);
@@ -234,7 +234,7 @@ describe("every builtin tool's argument contract", () => {
 			// are always built, so their absence means the sweep found nothing.
 			const covered = cases.map(c => c.name);
 			expect(covered).toContain("bash");
-			expect(covered).toContain("glob");
+			expect(covered).toContain("read");
 
 			const accepted = cases.filter(c => c.error === undefined).map(c => `${c.name}.${c.field}`);
 			expect(accepted).toEqual([]);

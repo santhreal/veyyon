@@ -36,29 +36,16 @@ import { hasFilesystemTargets } from "@veyyon/coding-agent/tools/cwd-boundary";
  * all, `read ~/.ssh/id_rsa` asked and `bash cat ~/.ssh/id_rsa` did not, so the
  * boundary had a hole that the more natural spelling walked straight through.
  */
-const BOUND_TOOLS = [
-	"ast_edit",
-	"ast_grep",
-	"bash",
-	"edit",
-	"glob",
-	"grep",
-	"inspect_image",
-	"read",
-	"set_cwd",
-	"write",
-].sort();
+const BOUND_TOOLS = ["ast_edit", "bash", "edit", "inspect_image", "read", "search", "set_cwd", "write"].sort();
 
 /** Source files that implement a tool class, keyed by the tool's `name`. */
 const TOOL_SOURCES: ReadonlyArray<readonly [name: string, file: string]> = [
 	["ast_edit", "ast-edit.ts"],
-	["ast_grep", "ast-grep.ts"],
 	["bash", "bash.ts"],
 	["edit", "../edit/index.ts"],
-	["glob", "glob.ts"],
-	["grep", "grep.ts"],
 	["inspect_image", "inspect-image.ts"],
 	["read", "read.ts"],
+	["search", "search.ts"],
 	["set_cwd", "set-cwd.ts"],
 	["write", "write.ts"],
 ];
