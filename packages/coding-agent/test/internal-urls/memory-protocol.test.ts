@@ -290,7 +290,7 @@ async function withMnemopiSession(
 			noEmbeddings: true,
 			llm: false,
 		},
-		llmMode: "none" as const,
+		llm: { mode: "none" as const },
 	} as unknown as ConstructorParameters<typeof MnemopiSessionState>[0]["config"];
 	const session = {
 		sessionId: "test-mnemopi",

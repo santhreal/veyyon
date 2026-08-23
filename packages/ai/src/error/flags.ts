@@ -16,7 +16,7 @@ import { STREAM_FRAME_LIMIT_ERROR_NAME } from "@veyyon/utils/stream-frame-limit"
 import type { Api, AssistantMessage } from "../types";
 import { STREAM_ENVELOPE_ERROR_PREFIX } from "./classes";
 import { withoutStackTrace } from "./domains/account";
-import { http2Verdict, STREAM_BEFORE_MESSAGE_START_PATTERN } from "./domains/network";
+import { http2Verdict, isCopilotModelNotSupported, STREAM_BEFORE_MESSAGE_START_PATTERN } from "./domains/network";
 import { matchesOverflowText } from "./domains/request";
 import type { Signal } from "./domains/types";
 import { create, Flag, is, KIND_MASK, statusFromId } from "./flag";
@@ -25,9 +25,11 @@ import { classifyIdentity, classifySignal } from "./registry";
 export { isDefinitiveOAuthFailure } from "./domains/account";
 export {
 	isStreamReadErrorText,
+	isTransientErrorText,
 	STREAM_READ_ERROR_PATTERN,
 	TRANSIENT_TRANSPORT_PATTERN,
 } from "./domains/network";
+export { matchesCompiledGrammarTooLargeText, matchesStrictToolsRejectionText } from "./domains/request";
 export type { ClassificationRule, ClassRule, ErrorDomain, Recovery, RecoveryStage, Signal } from "./domains/types";
 export * from "./flag";
 export {
@@ -104,15 +106,30 @@ function statusInternal(error: unknown, depth: number): number | undefined {
 	return undefined;
 }
 
-function classifyText(errorMessage: string | undefined, errorStatus: number | undefined, api?: Api): number {
+/** The machine-readable code a provider sent, from `code` or the SDK's nested `error.code`. */
+function providerCode(link: unknown): string | undefined {
+	if (link === null || typeof link !== "object") return undefined;
+	const info = link as { code?: unknown; error?: { code?: unknown } | null };
+	if (typeof info.code === "string") return info.code;
+	const nested = info.error?.code;
+	return typeof nested === "string" ? nested : undefined;
+}
+
+function classifyText(
+	errorMessage: string | undefined,
+	errorStatus: number | undefined,
+	api?: Api,
+	code?: string,
+): number {
 	let kinds = 0;
-	if (errorMessage) {
-		const text = withoutStackTrace(errorMessage);
+	if (errorMessage || code !== undefined) {
+		const text = withoutStackTrace(errorMessage ?? "");
 		const signal: Signal = {
 			text,
-			status: errorStatus ?? status({ message: errorMessage }),
+			status: errorStatus ?? status({ message: errorMessage ?? "" }),
 			api,
 			http2: http2Verdict(text),
+			code,
 		};
 		kinds = classifySignal(signal);
 	}
@@ -120,6 +137,19 @@ function classifyText(errorMessage: string | undefined, errorStatus: number | un
 	const fallbackStatus = errorStatus ?? (errorMessage ? status({ message: errorMessage }) : undefined);
 	if (fallbackStatus === 401 || fallbackStatus === 403) return create(Flag.AuthFailed);
 	return fallbackStatus ?? 0;
+}
+
+/**
+ * The flags a failure states through its status alone, for one that carried no wording at all.
+ *
+ * Today exactly one family answers: a 429 with nothing to read is a quota wall. A bare 500, 502, 503
+ * or 504 states nothing here and stays an unclassified status on purpose — "the peer answered 503"
+ * is not the same claim as "this is transient", and the predicate that retries a bare status says so
+ * itself.
+ */
+function classifyBareStatus(bare: number | undefined, api?: Api): number {
+	if (bare === undefined) return 0;
+	return classifySignal({ text: "", status: bare, api, http2: undefined, code: undefined });
 }
 
 export function classify(error: unknown, api?: Api): number {
@@ -169,7 +199,7 @@ export function classify(error: unknown, api?: Api): number {
 			linkMessage = (link as { message: string }).message;
 		}
 
-		const textId = classifyText(linkMessage, status(link), api);
+		const textId = classifyText(linkMessage, status(link), api, providerCode(link));
 		kinds |= textId & KIND_MASK;
 
 		link = typeof link === "object" && "cause" in link ? (link as { cause: unknown }).cause : undefined;
@@ -178,15 +208,44 @@ export function classify(error: unknown, api?: Api): number {
 	// Cleared after the walk, not skipped during it: a wrapper's own prose is classified
 	// before the cause carrying the breach is even reached.
 	if (framingViolation) kinds &= ~Flag.Transient;
+	// A FAILURE THAT ARRIVED AS A STATUS AND NOTHING ELSE. The rules above run per link only when the
+	// link has something to read, so `{ status: 429 }` reached none of them and came back as the raw
+	// number, and the quota family answers a status on its own: an opaque 429 is a wall rather than a
+	// throttle, because the provider gave nothing else to go on. This asks the same rules rather than
+	// letting a call site OR in a second predicate, which is what six of them did.
+	//
+	// Only when NO link carried wording. A body that says `Too many requests` was already read with
+	// its status, and asking again about the status alone would call every throttle a wall.
+	if (kinds === 0 && !carriesText(error)) kinds = classifyBareStatus(status(error), api);
 
 	return kinds !== 0 ? create(kinds) : (status(error) ?? 0);
 }
 
+/** Whether any link of the chain carried wording the rules could read. */
+function carriesText(error: unknown): boolean {
+	const seen = new Set<object>();
+	let link: unknown = error;
+	while (link !== undefined && link !== null) {
+		if (typeof link === "string") return link.length > 0;
+		if (typeof link !== "object") return false;
+		if (seen.has(link)) return false;
+		seen.add(link);
+		const message = (link as { message?: unknown }).message;
+		if (typeof message === "string" && message.length > 0) return true;
+		link = "cause" in link ? (link as { cause: unknown }).cause : undefined;
+	}
+	return false;
+}
+
 /**
- * Whether an error (or message string) classifies as an account usage/quota
- * limit — the persistent, credential-rotation-worthy kind. This is the public
- * accessor for {@link Flag.UsageLimit}; prefer it over re-running message
- * regexes at call sites.
+ * Whether the account's allowance is spent, so the request needs a different credential rather than
+ * another attempt. This is the ONE accessor for {@link Flag.UsageLimit}, and the quota family in
+ * `domains/account.ts` is the one place its rules live.
+ *
+ * Six call sites used to write `isUsageLimit(error) || isUsageLimitOutcome(status, message)`, a
+ * second decision tree over `(status, message)` that existed because this accessor missed the
+ * failure that arrives as a bare status. {@link classify} answers that one now, so the flag is on
+ * the id and every reader of the id — `recover`, `retriable`, `is` — gives the same answer as this.
  */
 export function isUsageLimit(error: unknown, api?: Api): boolean {
 	return is(classify(error, api), Flag.UsageLimit);
@@ -210,16 +269,17 @@ export function isFastModeUnsupported(error: unknown): boolean {
 }
 
 /**
- * GitHub Copilot 400 `model_not_supported` routing flap — transient. Reads the
- * structural `code` (and falls back to {@link Flag.Transient} text classification).
+ * GitHub Copilot 400 `model_not_supported` routing flap — transient.
+ *
+ * It had its own copy of the rule, reading `code` and the SDK's nested `error.code` and nothing
+ * else, while the classifier read the body text and nothing else. `Signal.code` carries the field
+ * into the rules, so the rule is stated once in the network family and this is one reader of it: the
+ * Copilot ladder needs the answer on its own to pick a backoff, which is why the accessor stays.
  */
 export function isCopilotTransientModelError(error: unknown): boolean {
-	if (status(error) === 400 && error && typeof error === "object") {
-		const info = error as { code?: unknown; error?: { code?: unknown } | null };
-		const code = typeof info.code === "string" ? info.code : info.error?.code;
-		if (code === "model_not_supported") return true;
-	}
-	return false;
+	if (status(error) !== 400) return false;
+	const message = error instanceof Error ? error.message : "";
+	return isCopilotModelNotSupported({ text: withoutStackTrace(message), code: providerCode(error) });
 }
 
 export function classifyMessage(message: {
@@ -239,6 +299,10 @@ export function classifyMessage(message: {
 		// auto-retry would loop. Strip Transient so the recovery message surfaces immediately.
 		kinds &= ~Flag.Transient;
 	}
+	// The same status-with-nothing-to-read case as in `classify`: a terminal error event can carry a
+	// status and no wording, and the flag has to be on the id there too, or the same failure means one
+	// thing thrown and another emitted.
+	if (kinds === 0 && !message.errorMessage) kinds = classifyBareStatus(currentStatus, message.api);
 	const id = kinds !== 0 ? create(kinds) : (statusFromId(textId) ?? statusFromId(existingId) ?? currentStatus ?? 0);
 
 	message.errorId = id;

@@ -116,6 +116,19 @@ export function redactProviderSecrets(text: string): string {
 	return redactedText;
 }
 
+/**
+ * The part of a response a bounded error-body read touches.
+ *
+ * Structural rather than `Response` because the caller is often holding a clone, and a clone's type
+ * comes from whichever fetch typings the package resolves. Widening the parameter is honest about
+ * what the read needs; casting the argument would be a claim about the whole interface.
+ */
+export interface ReadableErrorResponse {
+	body: ReadableStream<Uint8Array> | null;
+	headers: { get(name: string): string | null };
+	text(): Promise<string>;
+}
+
 /** What a bounded read of a failed response produced. */
 export interface ProviderErrorBody {
 	/**
@@ -138,7 +151,7 @@ export interface ProviderErrorBody {
 	readonly declaredBytes: number | undefined;
 }
 
-function declaredLength(response: Response): number | undefined {
+function declaredLength(response: ReadableErrorResponse): number | undefined {
 	const header = response.headers.get("content-length");
 	if (header === null) return undefined;
 	const parsed = Number.parseInt(header, 10);
@@ -173,7 +186,7 @@ function truncationNote(
 }
 
 async function readBoundedText(
-	response: Response,
+	response: ReadableErrorResponse,
 	maxBytes: number,
 ): Promise<{ text: string; bytesRead: number; truncated: boolean }> {
 	const body = response.body;
@@ -248,7 +261,7 @@ async function readBoundedText(
  * detail, because a read error must not replace the status that caused the failure.
  */
 export async function readProviderErrorBody(
-	response: Response,
+	response: ReadableErrorResponse,
 	options?: { maxBytes?: number },
 ): Promise<ProviderErrorBody> {
 	const maxBytes = options?.maxBytes ?? MAX_PROVIDER_ERROR_BODY_BYTES;

@@ -68,6 +68,7 @@ export const STREAM_BEFORE_MESSAGE_START_PATTERN = /before message_start/i;
 // Copilot routing flap: HTTP 400 `model_not_supported` (structural code on the
 // error, also surfaced in text). Treated as transient — a retry usually lands
 // on a backend that has the model.
+const COPILOT_MODEL_NOT_SUPPORTED_CODE = "model_not_supported";
 const COPILOT_MODEL_NOT_SUPPORTED_PATTERN = /model_not_supported/i;
 
 /**
@@ -81,9 +82,15 @@ const COPILOT_MODEL_NOT_SUPPORTED_PATTERN = /model_not_supported/i;
  *
  * `(?<![\w-])…(?![\w-])` requires the number to stand alone: not adjacent to a letter, digit,
  * underscore or hyphen. `503 Service Unavailable` still matches; `20240502` does not.
+ *
+ * `unable to connect` ARRIVED FROM THE SECOND CLASSIFICATION HOME. `@veyyon/utils/fetch-retry` kept
+ * its own transient vocabulary and `isProviderRetryableError` consulted it as a last resort, so a
+ * provider that could not be reached at all was retried by the utils pattern while carrying no flag
+ * of its own — the session layer reads flags, so it saw an unclassified failure. It is the one
+ * phrase that list had and this one did not; the rest of it was already here, word for word.
  */
 export const TRANSIENT_TRANSPORT_PATTERN =
-	/overloaded|provider.?returned.?error|rate.?limit|too many requests|(?<![\w-])(?:429|500|502|503|504)(?![\w-])|service.?unavailable|server.?error|internal.?error|retry your request|network.?error|connection.?error|connection.?refused|other side closed|fetch failed|upstream.?connect|upstream.?request.?failed|reset before headers|socket hang up|timed? out|timeout|terminated|retry delay|stream stall|no error details in response|HTTP2(?:StreamReset|RefusedStream|EnhanceYourCalm)|malformed.?function.?call|(?<![\w-])(?:ECONNRESET|ECONNREFUSED|ECONNABORTED|ETIMEDOUT|EPIPE|EAI_AGAIN)(?![\w-])/i;
+	/overloaded|provider.?returned.?error|rate.?limit|too many requests|temporar(?:y|ily)|processing your request|(?<![\w-])(?:429|500|502|503|504)(?![\w-])|service.?unavailable|server.?error|internal.?error|retry your request|network.?error|connection.?error|connection.?refused|unable to connect|other side closed|fetch failed|upstream.?connect|upstream.?request.?failed|reset before headers|socket hang up|timed? out|timeout|terminated|retry delay|stream stall|no error details in response|HTTP2(?:StreamReset|RefusedStream|EnhanceYourCalm)|malformed.?function.?call|(?<![\w-])(?:ECONNRESET|ECONNREFUSED|ECONNABORTED|ETIMEDOUT|EPIPE|EAI_AGAIN)(?![\w-])/i;
 
 export function isStreamReadErrorText(text: string): boolean {
 	return STREAM_READ_ERROR_PATTERN.test(text);
@@ -103,9 +110,17 @@ export function http2Verdict(text: string): boolean | undefined {
 	return http2RetryVerdict(text);
 }
 
-/** The Copilot routing flap, in the wording it also arrives as. */
-export function isCopilotModelNotSupportedText(text: string): boolean {
-	return COPILOT_MODEL_NOT_SUPPORTED_PATTERN.test(text);
+/**
+ * The Copilot routing flap, whichever way the provider states it.
+ *
+ * The code arrives in a `code` field, in the SDK's nested `error.code`, and inside the body text,
+ * and the three used to be read by two different owners: the text spelling was a rule here and the
+ * field was a separate exported predicate the Copilot ladder called. A 400 whose message said `x`
+ * and whose code said `model_not_supported` was therefore retried by that ladder and refused by
+ * everything that reads flags. `Signal.code` closed the gap, and this is the only reader of either.
+ */
+export function isCopilotModelNotSupported(signal: { text: string; code: string | undefined }): boolean {
+	return signal.code === COPILOT_MODEL_NOT_SUPPORTED_CODE || COPILOT_MODEL_NOT_SUPPORTED_PATTERN.test(signal.text);
 }
 
 export const transportDomain: ErrorDomain = {
@@ -149,9 +164,8 @@ export const transportDomain: ErrorDomain = {
 		},
 		{
 			flags: Flag.Transient,
-			why: "Copilot's per-client routing flap: a 400 model_not_supported for a model the account has, where a retry usually lands on a backend that serves it.",
-			structural: signal => signal.status === 400,
-			text: isCopilotModelNotSupportedText,
+			why: "Copilot's per-client routing flap: a 400 model_not_supported for a model the account has, where a retry usually lands on a backend that serves it. The code counts wherever the provider put it — a `code` field, the SDK's nested `error.code`, or the body text — because reading only the text made this rule disagree with the Copilot ladder, which read only the field.",
+			structural: signal => signal.status === 400 && isCopilotModelNotSupported(signal),
 		},
 	],
 };

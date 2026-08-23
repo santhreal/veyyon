@@ -1,4 +1,5 @@
-import { isRetryableError, isUnexpectedSocketCloseMessage } from "@veyyon/utils/fetch-retry";
+import { isAbortError } from "@veyyon/utils/abortable";
+import { isRetryableStatus, isUnexpectedSocketCloseMessage } from "@veyyon/utils/fetch-retry";
 import { isStreamFrameLimitError } from "@veyyon/utils/stream-frame-limit";
 import {
 	classify,
@@ -12,15 +13,18 @@ import {
 } from "./flags";
 
 /**
- * Whether a numeric HTTP status is in the canonical transient/retryable set:
- * 408 (Request Timeout), 429 (Too Many Requests), and any 5xx.
+ * Whether a numeric HTTP status is in the canonical transient set: 408, 429, and any 5xx.
  *
- * This is a pure predicate over a status code already in hand — distinct from
- * {@link classify}, which inspects a whole error (including message text) and
- * may match more. Use this when you only have a `status: number`.
+ * The set itself belongs to `@veyyon/utils`' `isRetryableStatus`, because a status is a fact about a
+ * transport and `utils` cannot import `ai`. This wrapper adds the one thing this layer needs — a
+ * status that may be absent — and nothing else. It used to restate the three comparisons, which is
+ * how two copies of one vocabulary end up disagreeing by a number.
+ *
+ * Distinct from {@link classify}, which reads a whole failure including its wording and may say more.
+ * Use this when a status is all there is.
  */
 export function isTransientStatus(status: number | undefined): boolean {
-	return status !== undefined && (status === 408 || status === 429 || status >= 500);
+	return status !== undefined && isRetryableStatus(status);
 }
 
 // Provider-stream transient phrasings not covered by the shared
@@ -96,5 +100,18 @@ export function isProviderRetryableError(error: unknown, hooks: ProviderRetryabl
 	) {
 		return true;
 	}
-	return isRetryableError(error);
+	// A STATUS WITH NOTHING TO READ. `classify` returns the bare number as the id when a failure
+	// carries a status and no message its rules recognise, which is deliberate — an id that is only a
+	// status says so — and it means `Flag.Transient` is absent even for a 503. The transient set is
+	// the same one `isTransientStatus` states, so it is read here rather than re-derived: this used to
+	// be answered by `@veyyon/utils/fetch-retry`'s `isRetryableError`, a second classifier with a
+	// second transient vocabulary, and the two disagreed by exactly one phrase.
+	if (isTransientStatus(httpStatus)) return true;
+	// AN ABORT IS RETRIED HERE AND REFUSED EVERYWHERE ELSE, which is a contradiction this refactor
+	// preserves rather than resolves: `retriable()` answers false for `Flag.Abort`, and the utils
+	// fallback this replaces answered true for any error whose name or wording says aborted, so a
+	// provider ladder retries a cancellation the turn layer would not. Changing it changes what
+	// happens when a user presses escape mid-stream, which is a product decision and not a
+	// refactor's to take. Recorded as a row rather than silently flipped.
+	return isAbortError(error) || /\baborted\b/i.test(msg);
 }

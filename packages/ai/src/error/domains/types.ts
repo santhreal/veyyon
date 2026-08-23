@@ -26,12 +26,21 @@ import type { Flag } from "../flag";
  * from the RAW message instead, since a frame name cannot introduce an HTTP status token but can
  * easily introduce a keyword. `http2` is the RFC 7540 §7 verdict, `undefined` when the message names
  * no HTTP/2 error code.
+ *
+ * `code` is the machine-readable error code the provider sent, from `error.code` or the SDK's nested
+ * `error.error.code`, and it exists because reading one from wording alone splits a rule in two. The
+ * Copilot routing flap arrived both ways — `model_not_supported` in the body text and in a `code`
+ * field — and the text spelling was a classification rule while the field was a separate exported
+ * predicate the Copilot ladder called. One failure, two homes, two answers: a 400 whose message was
+ * `x` and whose code said `model_not_supported` was retried by the ladder and refused by everything
+ * that reads flags.
  */
 export interface Signal {
 	readonly text: string;
 	readonly status: number | undefined;
 	readonly api: Api | undefined;
 	readonly http2: boolean | undefined;
+	readonly code: string | undefined;
 }
 
 /**

@@ -135,8 +135,13 @@ const AUTH_STORAGE_CEILING = 227;
  * owns those rules now, at 23 modules, and `registry/types.ts` no longer declares the field, so there is one
  * place to write a rule and one module that reads it. Downstream: `web/parallel.ts` 164 -> 72,
  * `tools/fetch.ts` 368 -> 282, `tools/read.ts` 542 -> 468.
+ *
+ * 73 since 2026-08-22: `compat/markup-leaks.ts`, one file in the catalog holding the provider and
+ * model-id vocabulary for the markup a host leaks into visible content. `compat/openai.ts` is already
+ * in this closure and now reads that vocabulary instead of restating it, so the edge is one leaf module
+ * deeper on a path that was already here.
  */
-const ENV_API_KEY_CEILING = 72;
+const ENV_API_KEY_CEILING = 73;
 
 /** Measured 2026-07-26 at 75: the logger and nothing else. A backend import here is the regression. */
 const USAGE_REGISTRY_CEILING = 83;

@@ -19,14 +19,13 @@
  */
 
 import { Effort } from "@veyyon/catalog/effort";
-import { extractHttpStatusFromError, extractRetryHint } from "@veyyon/utils/fetch-retry";
+import { extractRetryHint } from "@veyyon/utils/fetch-retry";
 import * as logger from "@veyyon/utils/logger";
 import { errorMessage } from "@veyyon/utils/type-guards";
 import type { ApiKeyResolver } from "../auth-retry";
 import type { AuthStorage } from "../auth-storage";
 import * as AIError from "../error";
 import { classifyGatewayError } from "../error/gateway";
-import { isUsageLimitOutcome } from "../error/rate-limit";
 import * as anthropicMessages from "../providers/anthropic-messages-server";
 import * as openaiChat from "../providers/openai-chat-server";
 import * as openaiResponses from "../providers/openai-responses-server";
@@ -275,8 +274,7 @@ async function refreshGatewayApiKeyAfterAuthError(
 	peer: string,
 ): Promise<string | undefined> {
 	const message = errorMessage(error);
-	const status = extractHttpStatusFromError(error);
-	if (AIError.isUsageLimit(error) || isUsageLimitOutcome(status, message)) {
+	if (AIError.isUsageLimit(error)) {
 		const retryAfterMs = extractRetryHint(undefined, message);
 		const { switched, retryAtMs } = await storage.markUsageLimitReached(provider, sessionId, {
 			retryAfterMs,

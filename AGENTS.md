@@ -5,6 +5,11 @@
 This repo holds many packages. `packages/coding-agent/` is the subject of a request unless it names
 another one. "Agent" in a request means that CLI, not the assistant answering.
 
+Maps and indexes: [`packages/coding-agent/DEVELOPMENT.md`](packages/coding-agent/DEVELOPMENT.md) maps
+the source tree to its owning documents; [`docs/internal/README.md`](docs/internal/README.md) indexes
+contributor docs ([onboarding](docs/internal/onboarding.md), [testing](docs/internal/testing.md));
+[`docs/handbook/`](docs/handbook/) is the operator manual.
+
 |Package|Description|
 |---|---|
 |`packages/ai`|Multi-provider LLM client with streaming support|
@@ -305,7 +310,7 @@ argot. Never hand-roll handle logic here.
   Pushing is separate and needs explicit approval.
 - Stage only the paths you changed. `git add -A` is banned; this tree carries other lanes' in-flight
   work.
-- Never `tsc`/`npx tsc`. Always `bun check`.
+- Never `tsc`/`npx tsc`. Always `bun run check`.
 
 Gate scripts (defined in the root `package.json`; run the narrowest one that covers the change):
 
@@ -334,6 +339,9 @@ Commit conventions:
   changelog exemption off that prefix. `scripts/release-cut.ts` writes it; never hand-craft it.
 
 ## Testing Guidance
+
+The enforced rules live here; `docs/internal/testing.md` is the expanded reference (suites, buckets,
+sandbox, isolation helpers) and owns everything this section does not restate.
 
 Test the contract the system exposes, not the easiest internal detail to assert.
 

@@ -14,7 +14,7 @@
  *   captured response body for the strict-tools fallback and the responses
  *   chain-state detectors, which regex over `error.message`.
  */
-import { fetchWithRetry } from "@veyyon/utils/fetch-retry";
+
 import { readSseJson, type SseEventObserver } from "@veyyon/utils/stream";
 import * as AIError from "../error";
 import { OpenAIHttpError } from "../error";
@@ -23,6 +23,7 @@ export { OpenAIHttpError };
 
 import type { FetchImpl } from "../types";
 import { captureHttpErrorResponse } from "./http-inspector";
+import { fetchProviderWithRetry } from "./provider-fetch";
 
 /**
  * Total attempts (initial + retries). Parity with the removed SDK clients'
@@ -71,7 +72,7 @@ export interface OpenAIStreamHandle<TEvent> {
  * watchdog timers and abort-reason bookkeeping.
  */
 export async function postOpenAIStream<TEvent>(init: OpenAIStreamRequestInit): Promise<OpenAIStreamHandle<TEvent>> {
-	const response = await fetchWithRetry(init.url, {
+	const response = await fetchProviderWithRetry(init.url, {
 		method: "POST",
 		headers: { "Content-Type": "application/json", Accept: "text/event-stream", ...init.headers },
 		body: JSON.stringify(init.body),

@@ -87,7 +87,7 @@ Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),
 |---|---|---|
 | `cli/`, `commands/`, `commit/`, `export/` | Command-line adapters and concrete subcommands | — |
 | `modes/` | Interactive TUI, print, and RPC runtimes | [rpc.md](../../docs/handbook/src/reference/rpc.md), [sdk.md](../../docs/handbook/src/reference/sdk.md) |
-| `session/` | `AgentSession`, JSONL session tree, storage, history | [session.md](../../docs/internal/session.md), [session-tree-plan.md](../../docs/internal/session-tree-plan.md) |
+| `session/` | `AgentSession`, JSONL session tree, storage, history | [session.md](../../docs/internal/session.md), [session-tree-architecture.md](../../docs/internal/session-tree-architecture.md) |
 | `config/`, `registry/`, `secrets/` | Settings, model/provider registry, secret obfuscation | [settings.md](../../docs/handbook/src/reference/settings.md), [config-usage.md](../../docs/handbook/src/architecture/config.md), [models.md](../../docs/handbook/src/reference/models-yml.md), [secrets.md](../../docs/handbook/src/architecture/secrets.md) |
 | `tools/` | Built-in tool implementations + render/meta helpers | [custom-tools.md](../../docs/handbook/src/using/custom-tools.md), [`tools/`](../../docs/tools/) |
 | `exec/`, `eval/`, `ssh/`, `dap/`, `debug/` | Execution backends (shell, py/js kernels, ssh, debugger) | [bash-tool-runtime.md](../../docs/internal/bash-tool-runtime.md), [python-repl.md](../../docs/handbook/src/features/python-repl.md) |
@@ -110,7 +110,7 @@ Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),
 
 ### Sessions, persistence, and turn lifecycle
 - [session.md](../../docs/internal/session.md) — storage and entry model
-- [session-tree-plan.md](../../docs/internal/session-tree-plan.md) — branch/tree architecture
+- [session-tree-architecture.md](../../docs/internal/session-tree-architecture.md) — branch/tree architecture
 - [session-switching-and-recent-listing.md](../../docs/internal/session-switching-and-recent-listing.md)
 - [session-operations-export-share-fork-resume.md](../../docs/internal/session-operations-export-share-fork-resume.md)
 - [compaction.md](../../docs/handbook/src/architecture/compaction.md) — compaction and branch summaries
@@ -135,7 +135,8 @@ Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),
 - Authoring + registry: [custom-tools.md](../../docs/handbook/src/using/custom-tools.md)
 - Output/artifacts: [blob-artifact-architecture.md](../../docs/internal/blob-artifact-architecture.md)
 - Gating/approval: [approval-mode.md](../../docs/handbook/src/reference/approval-mode.md), [resolve-tool-runtime.md](../../docs/internal/resolve-tool-runtime.md)
-- Per-tool reference: [`docs/tools/`](../../docs/tools/) — `read`, `write`, `edit`, `ast-edit`, `ast-grep`, `search`, `search_tool_bm25`, `find`, `bash`, `eval`, `job`, `lsp`, `debug`, `task`, `irc`, `web_search`, `browser`, `github`, `ssh`, `inspect_image`, `ask`, `resolve`, `todo`, `recall`, `retain`, `reflect`, `checkpoint`, `rewind`
+- Per-tool reference: [`docs/tools/`](../../docs/tools/) — one page per tool, indexed in
+  [`docs/tools/README.md`](../../docs/tools/README.md) by registry and subsystem.
 
 ### Execution backends
 - [bash-tool-runtime.md](../../docs/internal/bash-tool-runtime.md), [tools/bash.md](../../docs/tools/bash.md)
