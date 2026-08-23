@@ -12,7 +12,15 @@ import { InternalUrlRouter } from "../internal-urls";
 import type { Theme } from "../modes/theme/theme";
 import { toolsPrompts } from "../prompts/tools/rows";
 import { type TruncationResult, truncateHead } from "../session/streaming-output";
-import { Ellipsis, fileHyperlink, renderFileList, renderStatusLine, renderTreeList, truncateToWidth } from "../tui";
+import {
+	Ellipsis,
+	fileHyperlink,
+	framedBlock,
+	outputBlockContentWidth,
+	renderFileList,
+	renderStatusLine,
+	truncateToWidth,
+} from "../tui";
 import { isTimeoutError, scopedTimeoutSignal } from "../utils/fetch-timeout";
 import type { ToolSession } from ".";
 import { searchPathFilesystemTargets } from "./cwd-boundary";
@@ -30,13 +38,7 @@ import {
 	resolveToCwd,
 	toPathList,
 } from "./path-utils";
-import {
-	createCachedComponent,
-	formatCount,
-	formatEmptyMessage,
-	formatErrorMessage,
-	PREVIEW_LIMITS,
-} from "./render-utils";
+import { formatCount, formatEmptyMessage, formatErrorMessage, formatMoreItems, PREVIEW_LIMITS } from "./render-utils";
 import { ToolError, throwIfAborted, toolAbort } from "./tool-errors";
 import { toolResult } from "./tool-result";
 
@@ -579,23 +581,26 @@ export const globToolRenderer = {
 				},
 				uiTheme,
 			);
-			return createCachedComponent(
-				() => options.expanded,
-				width => {
-					const listLines = renderTreeList(
-						{
-							items: lines,
-							expanded: options.expanded,
-							maxCollapsed: COLLAPSED_LIST_LIMIT,
-							itemType: "file",
-							renderItem: line => uiTheme.fg("accent", line),
-						},
-						uiTheme,
+			return framedBlock(uiTheme, width => {
+				const maxItems = options.expanded ? lines.length : Math.min(lines.length, COLLAPSED_LIST_LIMIT);
+				const contentWidth = outputBlockContentWidth(width);
+				const bodyLines: string[] = [];
+				for (let i = 0; i < maxItems; i++) {
+					bodyLines.push(truncateToWidth(`  ${uiTheme.fg("accent", lines[i]!)}`, contentWidth, Ellipsis.Omit));
+				}
+				const remaining = lines.length - maxItems;
+				if (!options.expanded && remaining > 0) {
+					bodyLines.push(
+						truncateToWidth(uiTheme.fg("dim", formatMoreItems(remaining, "file")), contentWidth, Ellipsis.Omit),
 					);
-					return [header, ...listLines].map(l => truncateToWidth(l, width, Ellipsis.Omit));
-				},
-				{ paddingX: 1 },
-			);
+				}
+				return {
+					header,
+					sections: [{ lines: bodyLines }],
+					state: "success",
+					width,
+				};
+			});
 		}
 
 		const fileCount = details?.fileCount ?? 0;
@@ -655,27 +660,30 @@ export const globToolRenderer = {
 		}
 		if (missingNote) extraLines.push(missingNote);
 
-		return createCachedComponent(
-			() => options.expanded,
-			width => {
-				const cwd = details?.cwd;
-				const fileLines = renderFileList(
-					{
-						files: files.map(entry => ({
-							path: entry,
-							isDirectory: entry.endsWith("/"),
-							absPath: cwd && !entry.endsWith("/") ? path.resolve(cwd, entry) : undefined,
-						})),
-						expanded: options.expanded,
-						maxCollapsed: COLLAPSED_LIST_LIMIT,
-						hyperlinkFn: fileHyperlink,
-					},
-					uiTheme,
-				);
-				return [header, ...fileLines, ...extraLines].map(l => truncateToWidth(l, width, Ellipsis.Omit));
-			},
-			{ paddingX: 1 },
-		);
+		return framedBlock(uiTheme, width => {
+			const cwd = details?.cwd;
+			const fileLines = renderFileList(
+				{
+					files: files.map(entry => ({
+						path: entry,
+						isDirectory: entry.endsWith("/"),
+						absPath: cwd && !entry.endsWith("/") ? path.resolve(cwd, entry) : undefined,
+					})),
+					expanded: options.expanded,
+					maxCollapsed: COLLAPSED_LIST_LIMIT,
+					hyperlinkFn: fileHyperlink,
+				},
+				uiTheme,
+			);
+			const contentWidth = outputBlockContentWidth(width);
+			const bodyLines = [...fileLines, ...extraLines].map(l => truncateToWidth(l, contentWidth, Ellipsis.Omit));
+			return {
+				header,
+				sections: [{ lines: bodyLines }],
+				state: truncated ? "warning" : "success",
+				width,
+			};
+		});
 	},
 	mergeCallAndResult: true,
 };

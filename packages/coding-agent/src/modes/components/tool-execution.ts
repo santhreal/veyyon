@@ -51,7 +51,8 @@ import {
 	RAIL_SETTLE_FRAME_MS,
 	RAIL_SETTLE_FRAMES,
 	type RailMotion,
-	railIdleHeadAt,
+	railClockMs,
+	railIdleHeadAtMs,
 } from "../../tui/rail-motion";
 import { sanitizeWithOptionalSixelPassthrough } from "../../utils/sixel";
 import { COMPOSER_INSET_COLS } from "./composer-chrome";
@@ -391,14 +392,14 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	// Spinner animation for partial task results
 	#spinnerFrame?: number;
 	#spinnerInterval?: NodeJS.Timeout;
-	// The rail's own motion, independent of the spinner: a live block breathes
-	// (`#railIdleStep`), and the frame its result lands makes one settling pass
-	// (`#railSettleFrame`). Only one of the two is ever armed. `#railWasLive` gates
-	// the settle to a block whose live rail was actually PAINTED at least once —
-	// set in `render`, never on construction. A transcript rebuild constructs the
-	// block and hands it its result in the same tick, before any paint, so history
-	// does not settle two hundred blocks at once.
-	#railIdleStep?: number;
+	// The rail's own motion, independent of the spinner: a live block's rail
+	// travels while `#railIdleLive` is set, and the frame its result lands makes
+	// one settling pass (`#railSettleFrame`). Only one of the two is ever armed.
+	// `#railWasLive` gates the settle to a block whose live rail was actually
+	// PAINTED at least once — set in `render`, never on construction. A transcript
+	// rebuild constructs the block and hands it its result in the same tick,
+	// before any paint, so history does not settle two hundred blocks at once.
+	#railIdleLive = false;
 	#railIdleInterval?: NodeJS.Timeout;
 	#railSettleFrame?: number;
 	#railSettleInterval?: NodeJS.Timeout;
@@ -845,9 +846,8 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		if (live) {
 			this.#stopRailSettle();
 			if (this.#railIdleInterval) return;
-			this.#railIdleStep = 0;
+			this.#railIdleLive = true;
 			this.#railIdleInterval = setInterval(() => {
-				this.#railIdleStep = (this.#railIdleStep ?? 0) + 1;
 				// Only a block whose LAST render actually drew a rail asks for another
 				// paint. A plain-text preview (a bare tool-name label, a github watch
 				// row) has nothing here to move, and a block nobody has rendered yet
@@ -892,7 +892,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			clearInterval(this.#railIdleInterval);
 			this.#railIdleInterval = undefined;
 		}
-		this.#railIdleStep = undefined;
+		this.#railIdleLive = false;
 	}
 
 	#stopRailSettle(): void {
@@ -911,7 +911,10 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	/** The frame the rail is on, or `undefined` when it is not animating. */
 	#railMotion(): RailMotion | undefined {
 		if (this.#railSettleFrame !== undefined) return { kind: "settle", frame: this.#railSettleFrame };
-		if (this.#railIdleStep !== undefined) return { kind: "idle", head: railIdleHeadAt(this.#railIdleStep) };
+		// The head comes from the clock and not from a count of the repaints this
+		// block has managed to get, so a busy terminal costs smoothness and never
+		// travel, and every rail on screen is on the same head.
+		if (this.#railIdleLive) return { kind: "idle", head: railIdleHeadAtMs(railClockMs()) };
 		return undefined;
 	}
 
