@@ -66,12 +66,6 @@ jobs:
            run: node website/build.mjs
          - name: Assert every published post rendered and is in the sitemap
            run: bun website/tools/check-blog-publish.ts
-         - name: Deploy to Cloudflare Pages (project veyyon → veyyon.dev)
-           if: ${{ env.IS_MAIN == 'true' && env.HAS_CF_TOKEN == 'true' }}
-           env:
-              CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-              CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-           run: node website/deploy.mjs --skip-build
          # get.veyyon.dev is a SEPARATE Pages project fed by a separate tree
          # (website-get/: the two install scripts and a root rewrite), staged by
          # the build step above. This workflow already triggers on
@@ -81,16 +75,12 @@ jobs:
          # That is how get.veyyon.dev came to serve a script hundreds of lines
          # behind main. Both trees deploy together now; ci.yml still redeploys both
          # on a release, and the two overlap harmlessly.
-         - name: Deploy to Cloudflare Pages (project veyyon-get → get.veyyon.dev)
+         - name: Deploy both Pages projects and verify the served installers
            if: ${{ env.IS_MAIN == 'true' && env.HAS_CF_TOKEN == 'true' }}
-           env:
-              CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-              CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-              VEYYON_PAGES_PROJECT: veyyon-get
-           run: node website/deploy.mjs --skip-build
-         - name: Verify get.veyyon.dev serves THIS repository's install scripts
-           if: ${{ env.IS_MAIN == 'true' && env.HAS_CF_TOKEN == 'true' }}
-           run: bun scripts/verify-deployed-installers.ts
+           uses: ./.github/actions/deploy-cloudflare-site
+           with:
+              cf-api-token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+              cf-account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
          # A missing token must never look like a successful publish: say so loudly
          # so the fix is "add the secret", not "wonder why the post never appeared".
          - name: Warn when the deploy was skipped for a missing token

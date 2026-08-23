@@ -513,6 +513,12 @@ python3 proof/hero-cut.py "${WORK}/${SCENE}.mp4" \
 # display servers record at 30 fps, so the typical frame of anything published from a take
 # holds 33ms. The hero shipped at a 7.7 fps average because the path resampled it twice and
 # nothing here was looking: it read as a laggy product rather than as a resampled file.
+#
+# The gate then passed a take that averaged 14.2 fps, because it read only the most common
+# frame and 33ms was the most common frame at 44% while the other 56% held for two or three
+# intervals. It now also gates the MOVING portion of the clip against the capture rate, with
+# held still screens named and set aside, so a file that is mostly slower than its most
+# common frame cannot pass. `--expect-ms` supplies both criteria.
 python3 proof/webp-cadence.py "${CUT_WEBP}" --expect-ms 33 || {
 	echo "record-hd-demo.sh: refusing to publish a clip that is not the cadence the recorder captured" >&2
 	exit 1

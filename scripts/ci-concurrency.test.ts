@@ -7,6 +7,7 @@
 // flag for every event shape we care about.
 
 import { describe, expect, it } from "bun:test";
+import * as fs from "node:fs";
 import * as path from "node:path";
 
 const WORKFLOW_PATH = path.resolve(import.meta.dir, "..", ".github", "workflows", "ci.yml");
@@ -347,49 +348,95 @@ describe("ci.yml concurrency", () => {
 // 2026-07-24: checks.yml / docs.yml still used branch-wide
 // `cancel-in-progress: true`, so a release sha's sibling runs could be cancelled
 // by the next main push. The fix copies ci.yml's expression into each sibling
-// (GitHub cannot share concurrency expressions across workflow files). This
-// suite locks two contracts: (1) each sibling resolves a release tag to a
-// per-sha no-cancel group and normal pushes to a cancellable branch group, and
-// (2) the copies stay BYTE-IDENTICAL to ci.yml's expression, so a future edit to
-// one file cannot silently drift the others.
-const SIBLINGS = ["checks", "docs"] as const;
+// (GitHub cannot share concurrency expressions across workflow files).
+//
+// The sibling set is READ OFF DISK rather than listed here. It was a literal
+// `["checks", "docs"]` for a while, which is the same defect one level up: a new
+// workflow triggered by a push to main could ship `cancel-in-progress: true` and
+// nothing would say so, because the list did not know about it. Every workflow
+// that a push to `main` or a `v*` tag can schedule is now enumerated and checked,
+// so a new one is red on arrival until it states how it survives a successor push.
+//
+// Two ways to survive one, and both are accepted: never cancel at all (site.yml's
+// `production-site-deploy` group, which serializes deploys instead), or take a
+// group unique to the sha (ci.yml's expression and the copies of it). Anything
+// that copies the shared expression must copy it BYTE FOR BYTE, so an edit to
+// ci.yml cannot silently leave the others behind.
 
-function extractConcurrency(yaml: string, file: string): { group: string; cancel: string } {
-	const section = yaml.slice(yaml.indexOf("\nconcurrency:") + 1);
+function extractConcurrency(yaml: string, file: string): { group: string; cancel: string } | undefined {
+	const marker = "\nconcurrency:";
+	const at = yaml.indexOf(marker);
+	// No block at all is safe: nothing groups the run, so nothing cancels it.
+	if (at < 0) return undefined;
+	const section = yaml.slice(at + 1);
 	const groupRaw = /^\s*group:\s*(\S.*?)\s*$/m.exec(section)?.[1];
 	const cancelRaw = /^\s*cancel-in-progress:\s*(\S.*?)\s*$/m.exec(section)?.[1];
 	const unwrap = (s: string | undefined) => (s?.startsWith('"') && s.endsWith('"') ? s.slice(1, -1) : s);
 	const group = unwrap(groupRaw);
 	const cancel = unwrap(cancelRaw);
-	if (!group || !cancel) throw new Error(`could not locate concurrency in ${file}`);
-	return { group, cancel };
+	if (!group) throw new Error(`could not locate concurrency.group in ${file}`);
+	// An omitted `cancel-in-progress` defaults to false on GitHub.
+	return { group, cancel: cancel ?? "false" };
 }
 
-describe("sibling workflow concurrency stays in release lockstep with ci.yml", () => {
-	for (const name of SIBLINGS) {
-		const file = path.resolve(import.meta.dir, "..", ".github", "workflows", `${name}.yml`);
+const WORKFLOW_DIR = path.resolve(import.meta.dir, "..", ".github", "workflows");
 
-		it(`${name}.yml: a release tag resolves to a per-sha group with cancellation off`, async () => {
-			const { group, cancel } = extractConcurrency(await Bun.file(file).text(), `${name}.yml`);
-			const ctx = baseCtx({ ref: "refs/tags/v15.12.6", sha: "deadbeefcafebabe" });
-			expect(GhaEval.template(group, ctx)).toBe(`${name}-release-deadbeefcafebabe`);
-			expect(GhaEval.template(cancel, ctx)).toBe("false");
+/** A workflow a push to `main` or a `v*` tag can schedule, and therefore a release sha reaches. */
+function releasePathWorkflows(): { name: string; yaml: string }[] {
+	return fs
+		.readdirSync(WORKFLOW_DIR)
+		.filter(f => f.endsWith(".yml"))
+		.map(f => ({ name: f, yaml: fs.readFileSync(path.join(WORKFLOW_DIR, f), "utf8") }))
+		.filter(({ yaml }) => {
+			const on = yaml.slice(yaml.indexOf("\non:"));
+			const pushBlock = /\n\s*push:\n((?:\s{3,}.*\n|\n)*)/.exec(on)?.[1] ?? "";
+			return /branches:.*\bmain\b/.test(pushBlock) || /tags:.*v\*/.test(pushBlock);
 		});
+}
 
-		it(`${name}.yml: an ordinary main push gets its own per-sha group`, async () => {
-			const { group, cancel } = extractConcurrency(await Bun.file(file).text(), `${name}.yml`);
-			const ctx = baseCtx({ event: { head_commit: { message: "fix(ux): theme tweak" } } });
-			expect(GhaEval.template(group, ctx)).toBe(`${name}-main-deadbeefcafebabe`);
-			expect(GhaEval.template(cancel, ctx)).toBe("false");
-		});
+/** The shared expression's fingerprint: a per-sha release arm. Copying it means copying it exactly. */
+const SHARED_GROUP_MARK = "format('release-{0}', github.sha)";
 
-		it(`${name}.yml: expression is byte-identical to ci.yml's (drift guard)`, async () => {
-			const { group, cancel } = extractConcurrency(await Bun.file(file).text(), `${name}.yml`);
-			// ci.yml prefixes with `${{ github.workflow }}-`; siblings hardcode
-			// their name. Everything after the prefix must match ci.yml exactly.
-			// biome-ignore lint/suspicious/noTemplateCurlyInString: "${{ github.workflow }}" is GitHub Actions syntax being stripped
-			expect(group).toBe(`${name}-${groupTemplate.replace("${{ github.workflow }}-", "")}`);
-			expect(cancel).toBe(cancelTemplate);
-		});
+describe("a release sha's run cannot be cancelled by a successor push", () => {
+	const workflows = releasePathWorkflows();
+
+	it("finds the workflows a release sha reaches", () => {
+		// Names, not a count: a rename has to be seen, and this is the list every
+		// case below is generated from, so an empty or truncated scan cannot pass.
+		expect(workflows.map(w => w.name).sort()).toEqual(["checks.yml", "ci.yml", "docs.yml", "site.yml"]);
+	});
+
+	for (const { name, yaml } of workflows) {
+		const concurrency = extractConcurrency(yaml, name);
+
+		for (const [label, ctx] of [
+			["a release tag", baseCtx({ ref: "refs/tags/v15.12.6", sha: "deadbeefcafebabe" })],
+			["a main push", baseCtx({ event: { head_commit: { message: RELEASE_SUBJECT } } })],
+		] as const) {
+			it(`${name} survives a successor push at ${label}`, () => {
+				if (!concurrency) return; // no group, no cancellation
+				const cancel = GhaEval.template(concurrency.cancel, ctx);
+				if (cancel === "false") return;
+				// Cancellation is on, so the group has to be unique to this sha.
+				expect(GhaEval.template(concurrency.group, ctx)).toContain(ctx.github.sha);
+			});
+		}
+
+		if (concurrency?.group.includes(SHARED_GROUP_MARK)) {
+			it(`${name} copies ci.yml's expression byte for byte`, () => {
+				// ci.yml prefixes with `${{ github.workflow }}-`; a sibling hardcodes
+				// its own name. Everything after the prefix must match ci.yml exactly.
+				// biome-ignore lint/suspicious/noTemplateCurlyInString: "${{ github.workflow }}" is GitHub Actions syntax being stripped
+				const shared = groupTemplate.replace("${{ github.workflow }}-", "");
+				expect(concurrency.group.endsWith(shared)).toBe(true);
+				expect(concurrency.cancel).toBe(cancelTemplate);
+			});
+
+			it(`${name} groups a release tag per sha and never cancels it`, () => {
+				const ctx = baseCtx({ ref: "refs/tags/v15.12.6", sha: "deadbeefcafebabe" });
+				expect(GhaEval.template(concurrency.group, ctx)).toContain("release-deadbeefcafebabe");
+				expect(GhaEval.template(concurrency.cancel, ctx)).toBe("false");
+			});
+		}
 	}
 });

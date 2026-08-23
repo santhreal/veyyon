@@ -23,7 +23,7 @@
  * filesystem configuration.
  */
 import * as path from "node:path";
-import { applyEdits } from "./apply";
+import { applyEdits, collectRewrittenAnchorLines } from "./apply";
 import { hasAnchorScopedEdit, hasBlockEdit, resolveBlockEdits } from "./block";
 import { computeFileHash, formatHashlineHeader } from "./format";
 import type { Filesystem, WriteResult } from "./fs";
@@ -565,11 +565,27 @@ export class Patcher {
 	 * its way past the guard across multiple retries
 	 * (over-cap retry → tail reveal → next retry applies), nor coax the tool
 	 * into dumping a minified megabyte-wide line into the error preview.
+	 *
+	 * One anchor is exempt: a PURE INSERTION beside a line the producer displayed
+	 * but CLIPPED at its column cap. `INS.PRE` / `INS.POST` read an anchor as a
+	 * place and leave its bytes byte-identical, the position is what the content
+	 * tag certifies, and the model saw the line number plus a leading prefix, so
+	 * it can identify the row. Refusing that asked for a megabyte-wide line to be
+	 * pulled into context in order to add a line next to it, and the named remedy
+	 * (`:raw`) was the only way through. Every destructive form on a clipped line
+	 * stays refused, because those rewrite bytes nobody read; and a line never
+	 * rendered AT ALL — elided body, folded summary row, outside the read range —
+	 * stays refused for every form including an insertion, since without even a
+	 * prefix there is nothing to identify.
 	 */
 	#assertSeenLines(section: PatchSection, expected: string, matchedSnapshot: Snapshot | null): void {
 		const seen = matchedSnapshot?.seenLines;
 		if (!seen || seen.size === 0) return;
-		const unseen = section.collectAnchorLines().filter(line => !seen.has(line));
+		const clipped = matchedSnapshot?.clippedLines;
+		const rewritten = collectRewrittenAnchorLines(section.edits);
+		const unseen = section
+			.collectAnchorLines()
+			.filter(line => !seen.has(line) && !(clipped?.has(line) === true && !rewritten.has(line)));
 		if (unseen.length === 0) return;
 		const sourceLines = matchedSnapshot?.text.split("\n") ?? [];
 		const revealed: RevealedLine[] = [];
