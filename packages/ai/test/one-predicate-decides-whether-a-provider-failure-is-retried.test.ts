@@ -1,5 +1,13 @@
 import { describe, expect, it } from "bun:test";
-import { classify, Flag, is, isProviderRetryableError, isTransientStatus } from "@veyyon/ai/error";
+import {
+	classify,
+	Flag,
+	is,
+	isProviderRetryableError,
+	isTransientStatus,
+	isUsageLimit,
+	recover,
+} from "@veyyon/ai/error";
 import * as fetchRetry from "@veyyon/utils/fetch-retry";
 
 /**
@@ -89,12 +97,33 @@ describe("the cases the second home used to answer", () => {
 	 * has to read the status. The set is `isTransientStatus`, read rather than re-derived, and this
 	 * sweeps both sides of it so a fourth transient status cannot be added in one place only.
 	 */
-	it.each([408, 429, 500, 502, 503, 504])("retries a bare %i with nothing to read", status => {
+	it.each([408, 500, 502, 503, 504])("retries a bare %i with nothing to read", status => {
 		const error = statusError(status, "");
 
 		expect(isTransientStatus(status)).toBe(true);
 		expect(is(classify(error), Flag.Transient)).toBe(false);
 		expect(isProviderRetryableError(error)).toBe(true);
+	});
+
+	/**
+	 * 429 IS IN THE TRANSIENT STATUS SET AND IS STILL NOT RETRIED HERE, and the two layers now agree
+	 * about that. A 429 carrying no body at all is a quota wall — the provider gave nothing else to go
+	 * on — and a wall is the credential layer's to answer by rotating to a sibling, not this ladder's
+	 * to re-send against the account that is out of allowance. The rotation layer has classified it
+	 * that way for as long as it has existed; this predicate used to disagree, because a bare status
+	 * reached no rule and `isUsageLimit` therefore said no, so the same failure was a wall to one
+	 * layer and a throttle to the other.
+	 *
+	 * A 429 that says something keeps the old answer: the reason decides, and only an EXHAUSTED
+	 * account is a wall. That is the row above (`a 429`, "rate limited", retried).
+	 */
+	it("hands a bare 429 to the credential layer instead of retrying the spent account", () => {
+		const error = statusError(429, "");
+
+		expect(isTransientStatus(429)).toBe(true);
+		expect(isUsageLimit(error)).toBe(true);
+		expect(isProviderRetryableError(error)).toBe(false);
+		expect(recover(classify(error), "credential").action).toBe("rotate-credential");
 	});
 
 	it.each([400, 401, 403, 404, 409, 422])("refuses a bare %i with nothing to read", status => {

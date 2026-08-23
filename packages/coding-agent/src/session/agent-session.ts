@@ -127,7 +127,6 @@ import {
 	calculateRateLimitBackoffMs,
 	clearAnthropicFastModeFallback,
 	deriveClaudeDeviceId,
-	isUsageLimitOutcome,
 	parseRateLimitReason,
 	realizesPriorityServiceTier,
 	resolveModelServiceTier,
@@ -161,7 +160,6 @@ import { MacOSPowerAssertion } from "@veyyon/natives";
 import {
 	errorMessage,
 	escapeXmlText,
-	extractHttpStatusFromError,
 	extractRetryHint,
 	formatCount,
 	formatDuration,
@@ -3883,7 +3881,7 @@ export class AgentSession {
 					// only — other failures keep the plain retry/notify path (never
 					// suspect-mark a credential on a transient advisor error).
 					const message = errorMessage(error);
-					if (!isUsageLimitOutcome(extractHttpStatusFromError(error), message)) return;
+					if (!AIError.isUsageLimit(error)) return;
 					await this.#modelRegistry.authStorage.markUsageLimitReached(
 						advisorModel.provider,
 						advisorProviderSessionId,
