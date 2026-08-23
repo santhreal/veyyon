@@ -1,8 +1,8 @@
 import { Key } from "@veyyon/tui";
 // Read-only tools for plan mode
-const PLAN_MODE_TOOLS = ["read", "bash", "search", "find"];
+const PLAN_MODE_TOOLS = ["read", "bash", "search"];
 // Full set of tools for normal mode
-const NORMAL_MODE_TOOLS = ["read", "bash", "edit", "write"];
+const NORMAL_MODE_TOOLS = ["read", "bash", "search", "edit", "write"];
 // Patterns for destructive bash commands that should be blocked in plan mode
 const DESTRUCTIVE_PATTERNS = [
     /\brm\b/i,
@@ -304,7 +304,7 @@ export default function planModeExtension(pi) {
 You are in plan mode - a read-only exploration mode for safe code analysis.
 
 Restrictions:
-- You can only use: read, bash, grep, find, ls
+- You can only use: read, bash, search
 - You CANNOT use: edit, write (file modifications are disabled)
 - Bash is restricted to READ-ONLY commands
 - Focus on analysis, planning, and understanding the codebase
