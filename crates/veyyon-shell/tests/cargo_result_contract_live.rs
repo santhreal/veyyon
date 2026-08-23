@@ -3,14 +3,10 @@
 //! Skips when `cargo` is not on PATH. Uses a tiny no-deps crate so `--offline`
 //! does not need crates.io.
 
-use std::{
-	fs,
-	path::PathBuf,
-	process::Command,
-	time::{SystemTime, UNIX_EPOCH},
-};
+use std::{fs, process::Command};
 
 use veyyon_shell::minimizer::{self, MinimizerConfig};
+use veyyon_test_scratch::{TempTree, scratch_dir};
 
 fn cargo_available() -> bool {
 	Command::new("cargo")
@@ -19,15 +15,8 @@ fn cargo_available() -> bool {
 		.is_ok_and(|out| out.status.success())
 }
 
-fn temp_crate() -> PathBuf {
-	let dir = std::env::temp_dir().join(format!(
-		"veyyon-cargo-contract-{}-{}",
-		std::process::id(),
-		SystemTime::now()
-			.duration_since(UNIX_EPOCH)
-			.expect("clock")
-			.as_nanos()
-	));
+fn temp_crate() -> TempTree {
+	let dir = scratch_dir("cargo-contract");
 	fs::create_dir_all(dir.join("src")).expect("temp src");
 	fs::write(
 		dir.join("Cargo.toml"),
@@ -103,6 +92,4 @@ fn live_cargo_quiet_color_and_json_headers() {
 		json_exit == 0 && json_out.starts_with("[clean] cargo check"),
 		"json: exit={json_exit} out={json_out:?} raw={json:?}"
 	);
-
-	let _ = fs::remove_dir_all(&dir);
 }
