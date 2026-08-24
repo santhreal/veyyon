@@ -18,8 +18,61 @@ settle 16
 screen_has "model:" || screen_has "demo" || screen_has "veyyon" || MISSED="${MISSED:-} idle"
 shot idle
 
-# Operator setup: store the key without typing it into the transcript.
-slash "/secret from-env RELEASE_SIGNATURE release-signature"
+# Camera helpers for the directed secret take. Cues are capture frames at SCENE_FPS.
+# zoom-in is the peak on `/secret` (left composer); pan is the value sliding right;
+# zoom-out is the frame the camera is wide again.
+_even() { echo $(( ($1 / 2) * 2 )); }
+now_frame() {
+	local ms=$(($(date +%s%3N) - SCENE_T0))
+	echo $((ms * ${SCENE_FPS:-60} / 1000))
+}
+composer_crop() {
+	local side="$1"
+	local canvas_w="${SCENE_WIDTH:-2560}"
+	local canvas_h="${SCENE_HEIGHT:-1440}"
+	local crop_w crop_h x y max_x max_y
+	crop_w=$(_even $((canvas_w / 2)))
+	crop_h=$(_even $((canvas_h / 2)))
+	y=$((WIN_Y + WIN_H - crop_h + CELL_H))
+	max_y=$((canvas_h - crop_h))
+	[ "$y" -lt 0 ] && y=0
+	[ "$y" -gt "$max_y" ] && y=$max_y
+	if [ "$side" = right ]; then
+		x=$((WIN_X + WIN_W - crop_w))
+	else
+		x=$WIN_X
+	fi
+	max_x=$((canvas_w - crop_w))
+	[ "$x" -lt 0 ] && x=0
+	[ "$x" -gt "$max_x" ] && x=$max_x
+	echo "$(_even "$x"),$(_even "$y"),${crop_w},${crop_h}"
+}
+type_visible() {
+	local s="$1"
+	local i
+	for ((i = 0; i < ${#s}; i++)); do
+		t "${s:i:1}"
+		pause 0.05
+	done
+}
+emit_cue() {
+	printf '%s\n' "$1" >>"${SCENE_OUT}/${SCENE_NAME}-cues.txt"
+}
+
+# Operator setup: type `/secret` in the composer so the camera has something to follow.
+# The key itself stays in the environment; from-env never echoes it.
+: >"${SCENE_OUT}/${SCENE_NAME}-cues.txt"
+clear_composer
+pause 0.2
+emit_cue "zoom-in $(now_frame) $(composer_crop left)"
+type_visible "/secret "
+pause 0.25
+emit_cue "pan $(now_frame) $(composer_crop right)"
+type_visible "from-env RELEASE_SIGNATURE release-signature"
+pause 0.7
+k Escape
+pause 0.3
+k Return
 settle 8
 if screen_has "release-signature" || screen_has "Stored" || screen_has "secret"; then
 	echo "scene: release signing secret stored" >&2
@@ -27,22 +80,10 @@ else
 	MISSED="${MISSED:-} secret-stored"
 fi
 shot secret-stored
-
-# Hold the stored-secret confirmation long enough to read at 1080p once the
-# camera has moved in. The cue file is the camera: zoom-in on this mark, zoom-out
-# as the short prompt is typed. The long task lives on disk as TASK.md so the
-# composer shows a line a viewer can actually read.
-settle 3
-secret_t="$(awk -F '\t' '$1=="secret-stored"{print $2; exit}' "${SCENE_OUT}/${SCENE_NAME}-marks.tsv")"
-python3 - "${SCENE_OUT}/${SCENE_NAME}-cues.txt" "${secret_t}" <<'CUE'
-from pathlib import Path
-import sys
-out, secret_t = Path(sys.argv[1]), float(sys.argv[2])
-fps = 30
-start = int(round(secret_t * fps))
-end = start + int(round(3.0 * fps))
-out.write_text(f"zoom-in {start}\nzoom-out {end}\n")
-CUE
+# Hold the confirmation in the right-hand crop, then ease out before the short prompt.
+settle 2
+emit_cue "zoom-out $(now_frame)"
+pause 0.6
 # The full contract lives at proof/prompts/demo-hd.md and is seeded as TASK.md.
 # Named here so verify-scene.ts still traces every guard to that file.
 # shellcheck disable=SC2034
