@@ -158,7 +158,7 @@ describe("SettingsList", () => {
 			() => {},
 		);
 
-		expect(list.render(16)[0]).toBe("→ Mode  ‹ 1234");
+		expect(list.render(16)[0]).toBe("→ Mode  ‹ 123…");
 	});
 
 	it("renders a non-string currentValue without crashing the row", () => {
@@ -674,7 +674,7 @@ describe("SettingsList", () => {
 		);
 		const line = list.render(16)[0];
 		// The selected cyclable row wears the ‹ › cycling affordance.
-		expect(line).toBe("→ Mode  ‹ 1234");
+		expect(line).toBe("→ Mode  ‹ 123…");
 
 		// Cursor + label columns (0..7) are select-only, not the value gutter.
 		expect(list.isValueColumnHit(0, 0)).toBe(false);

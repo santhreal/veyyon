@@ -8,6 +8,9 @@
 
 ### Changed
 
+- Settings search ranks the typed phrase above scattered per-word matches: a multi-word query contained in one label ("compaction model" → Compaction Model) now outranks items whose keyword and label fields merely split the words, while the label-beats-prose field hierarchy is preserved.
+- `SettingsList` expand-mode descriptions render for the selected row without an expand keypress, and the `expandedIds` option is gone.
+- A settings label longer than the 30-column label column clips with an ellipsis instead of overflowing and shifting that row's value out of the column every other row aligns to, and a clipped value now carries the ellipsis marker instead of being cut silently.
 - `imageFallback` takes the file name, media type, pixel size and cause of an undrawn image and returns a row naming all four; `ImageFallbackReason` states the cause.
 
 ## [1.2.0] - 2026-08-23
