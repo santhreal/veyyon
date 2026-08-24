@@ -96,6 +96,22 @@ function renderReadGroupFixtureState(state: GalleryFixtureState, width: number, 
 }
 
 export const fsFixtures: Record<string, GalleryFixture> = {
+	set_cwd: {
+		label: "Set Cwd",
+		streamingArgs: { path: "packages/coding" },
+		args: { path: "packages/coding-agent" },
+		result: {
+			content: [{ type: "text", text: "Moved cwd to packages/coding-agent" }],
+			details: {
+				previous: "/home/dev/veyyon",
+				cwd: "/home/dev/veyyon/packages/coding-agent",
+				requested: "packages/coding-agent",
+				rulesApplied: ["packages/coding-agent/AGENTS.md"],
+				rulesUnchanged: 2,
+			},
+		},
+	},
+
 	read: {
 		label: "Read",
 		// Streaming: path still being typed, selector not yet appended.
