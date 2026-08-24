@@ -15,21 +15,57 @@
 
 magick_tmpdir_scope() {
 	local parent="${1:?magick_tmpdir_scope <parent-dir>}"
-	if [ -n "${MAGICK_SCOPED_TMPDIR:-}" ] && [ -d "${MAGICK_SCOPED_TMPDIR}" ]; then
-		return 0
+	if [ -n "${MAGICK_SCOPED_TMPDIR:-}" ] && [ -n "${MAGICK_SCOPED_TMPDIR_TOKEN:-}" ] && [ -d "${MAGICK_SCOPED_TMPDIR}" ]; then
+		case "$(basename "${MAGICK_SCOPED_TMPDIR}")" in
+		veyyon-magick.*)
+			local inherited_token=
+			IFS= read -r inherited_token <"${MAGICK_SCOPED_TMPDIR}/.veyyon-magick-scope" 2>/dev/null || true
+			if [ "${inherited_token}" = "${MAGICK_SCOPED_TMPDIR_TOKEN}" ]; then
+				return 0
+			fi
+			;;
+		esac
 	fi
-	mkdir -p "${parent}"
-	MAGICK_SCOPED_TMPDIR="$(mktemp -d "${parent}/veyyon-magick.XXXXXX")"
+	parent="${parent%/}"
+	mkdir -p "${parent}" 2>/dev/null || return 1
+	local tmp
+	tmp="$(mktemp -d "${parent}/veyyon-magick.XXXXXX" 2>/dev/null)" || return 1
+	if [ -z "${tmp}" ] || [ ! -d "${tmp}" ]; then
+		return 1
+	fi
+	local token
+	token="$(od -An -N16 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n')" || {
+		rm -rf "${tmp}" 2>/dev/null || true
+		return 1
+	}
+	if [ -z "${token}" ] || ! printf '%s\n' "${token}" >"${tmp}/.veyyon-magick-scope"; then
+		rm -rf "${tmp}" 2>/dev/null || true
+		return 1
+	fi
+	MAGICK_SCOPED_TMPDIR="${tmp}"
+	MAGICK_SCOPED_TMPDIR_TOKEN="${token}"
 	export MAGICK_SCOPED_TMPDIR
+	export MAGICK_SCOPED_TMPDIR_TOKEN
 	export MAGICK_TMPDIR="${MAGICK_SCOPED_TMPDIR}"
 	export MAGICK_TEMPORARY_PATH="${MAGICK_SCOPED_TMPDIR}"
 }
 
 magick_tmpdir_release() {
-	if [ -n "${MAGICK_SCOPED_TMPDIR:-}" ]; then
-		rm -rf "${MAGICK_SCOPED_TMPDIR}"
-		unset MAGICK_SCOPED_TMPDIR
-		unset MAGICK_TMPDIR
-		unset MAGICK_TEMPORARY_PATH
+	local dir="${MAGICK_SCOPED_TMPDIR:-}"
+	local token="${MAGICK_SCOPED_TMPDIR_TOKEN:-}"
+	if [ -n "${dir}" ] && [ -n "${token}" ] && [ -d "${dir}" ]; then
+		case "$(basename "${dir}")" in
+		veyyon-magick.*)
+			local stored_token=
+			IFS= read -r stored_token <"${dir}/.veyyon-magick-scope" 2>/dev/null || true
+			if [ "${stored_token}" = "${token}" ]; then
+				rm -rf "${dir}"
+			fi
+			;;
+		esac
 	fi
+	unset MAGICK_SCOPED_TMPDIR
+	unset MAGICK_SCOPED_TMPDIR_TOKEN
+	unset MAGICK_TMPDIR
+	unset MAGICK_TEMPORARY_PATH
 }

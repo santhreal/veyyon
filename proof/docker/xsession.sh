@@ -24,6 +24,7 @@ source "$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)/magick-tmpdir.sh"
 magick_tmpdir_scope /tmp
 
 cleanup() {
+	trap - EXIT
 	[ -n "${FFMPEG_PID:-}" ] && { kill -INT "${FFMPEG_PID}" 2>/dev/null || true; wait "${FFMPEG_PID}" 2>/dev/null || true; FFMPEG_PID=; }
 	[ -n "${KITTY_PID:-}" ] && { kill "${KITTY_PID}" 2>/dev/null || true; KITTY_PID=; }
 	[ -n "${XVFB_PID:-}" ] && { kill "${XVFB_PID}" 2>/dev/null || true; XVFB_PID=; }
