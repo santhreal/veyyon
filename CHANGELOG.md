@@ -11,7 +11,7 @@
 - A picture the block gives up on after the fact, because the session's image budget demoted it or a Kitty session could not convert it, is stated to the model as undrawn instead of being reported as displayed.
 - `read` accepts a semicolon-delimited list of internal resources (`skill://demo/one.md;skill://demo/two.md`), the same list form `grep` and `glob` take, and returns one section per entry.
 - Eval kernels gain `kv`, a JSON store under the session's artifacts directory that survives kernel resets and is shared between the JavaScript and Python kernels, and `defs()`, which lists the names user code has defined in the kernel.
-- Every supervised process termination records which component ended it and why, with distinct attribution for each path (operator stop, signal, restart, broker shutdown, idle reaper, OS signal, broker recovery, launch failure, external signal, and natural exit); `job list` output shows the lifetime owning condition and retained completion records with exit codes, reasons, and output tails, queryable after the name is reused and across broker restarts.
+- Every supervised process termination records which component ended it and why, with distinct attribution for each path (operator stop, signal, restart, broker shutdown, idle reaper, OS signal, broker recovery, launch failure, external signal, and natural exit); `launch list` output shows the lifetime owning condition and retained completion records with exit codes, reasons, and output tails, queryable after the name is reused and across broker restarts.
 - Added Command Code API-key login through the Studio Provider page, with validation against its Provider API, and Nous Research Portal OAuth device login with rotating refresh tokens and short-lived inference JWTs.
 - `explain(error)` in `@veyyon/ai/error/flags` returns the classification id together with the names of the rules that produced it, and every classification rule states a name.
 - Added the Command Code provider catalog, with its documented coding flagships as the offline seed and credentialed discovery for the wider Provider API list.
@@ -45,9 +45,16 @@
 ### Fixed
 
 - A completed background job now fills its still-pending originating tool call instead of starting an unrelated recap turn after an interruption.
+- When every summarizer candidate refuses, automatic compaction now parks the run (or drains already-queued input once) instead of reporting that nothing happened and looping. Local rescue tiers still run first; idle compaction stays silent.
+- An interrupted subagent now renders its terminal red status instead of retaining a stale approval-blocked indicator.
+- `/agents` keeps a parked subagent focused, preserving its reconstructed assistant messages, tool calls, and results instead of returning to the parent spawn prompt.
+- IRC broadcasts no longer wake completed idle peers; direct messages still wake the addressed peer.
 - An indented row inside a tool block keeps its indent when it wraps at a narrow width, instead of continuing at the block's left edge.
 - A colour or title escape sequence a command writes in two pieces no longer leaves part of itself in tool output: the sink holds a sequence its chunk ended inside until the piece that finishes it arrives, and drops one the stream never completes.
-- A wrapped line now continues under the indent its first row opened at, so an indented row no longer reads as a new top-level row at a narrow width.
+- Side requests derive a stable conversation ID per oneshot kind, preventing compaction, handoff, and branch summaries from overwriting live Cursor and Devin conversation state.
+- Aborting while paused rejects the pause wait and prevents the agent loop from starting another provider turn or paused tool.
+- API option mapping preserves side-request conversation IDs, preventing Cursor and Devin requests from falling back to the live session ID.
+- Cursor turns fail immediately when an asynchronous exec-server handler fails, and malformed grep line or count values no longer stall the stream during protobuf serialization.
 - `splitTrailingPartialEscape` lets a streaming reader hold back an escape sequence a chunk ended inside, so a sequence divided across two reads is stripped whole instead of losing its head and leaking its tail as text.
 - `discarded-fault.ts`: `bestEffort` and `optionalResult` state which contract discarded a promise's failure, one for a step nobody waits on and one for a probe whose failure is the answer, each taking a mandatory reason.
 

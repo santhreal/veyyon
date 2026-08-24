@@ -9,7 +9,7 @@
 - A picture the block gives up on after the fact, because the session's image budget demoted it or a Kitty session could not convert it, is stated to the model as undrawn instead of being reported as displayed.
 - `read` accepts a semicolon-delimited list of internal resources (`skill://demo/one.md;skill://demo/two.md`), the same list form `grep` and `glob` take, and returns one section per entry.
 - Eval kernels gain `kv`, a JSON store under the session's artifacts directory that survives kernel resets and is shared between the JavaScript and Python kernels, and `defs()`, which lists the names user code has defined in the kernel.
-- Every supervised process termination records which component ended it and why, with distinct attribution for each path (operator stop, signal, restart, broker shutdown, idle reaper, OS signal, broker recovery, launch failure, external signal, and natural exit); `job list` output shows the lifetime owning condition and retained completion records with exit codes, reasons, and output tails, queryable after the name is reused and across broker restarts.
+- Every supervised process termination records which component ended it and why, with distinct attribution for each path (operator stop, signal, restart, broker shutdown, idle reaper, OS signal, broker recovery, launch failure, external signal, and natural exit); `launch list` output shows the lifetime owning condition and retained completion records with exit codes, reasons, and output tails, queryable after the name is reused and across broker restarts.
 
 ### Changed
 
@@ -26,7 +26,6 @@
 ### Fixed
 
 - A completed background job now fills its still-pending originating tool call instead of starting an unrelated recap turn after an interruption.
-- `launch list` retains the last 100 daemon completions for 24 hours across broker restarts and reports which lifecycle path ended each process and why.
 - When every summarizer candidate refuses, automatic compaction now parks the run (or drains already-queued input once) instead of reporting that nothing happened and looping. Local rescue tiers still run first; idle compaction stays silent.
 - An interrupted subagent now renders its terminal red status instead of retaining a stale approval-blocked indicator.
 - `/agents` keeps a parked subagent focused, preserving its reconstructed assistant messages, tool calls, and results instead of returning to the parent spawn prompt.
