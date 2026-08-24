@@ -12,6 +12,7 @@
 - `explain(error)` in `@veyyon/ai/error/flags` returns the classification id together with the names of the rules that produced it, and every classification rule states a name.
 - `ProviderWireCapabilities.anthropicMessages` declares how a provider serves the Anthropic Messages API — its endpoint, credential placement, rejected request features and retryable model errors — and `declaredProviders()` and `declaredCapabilityNames()` derive the declaring sets from the table.
 - `Image` accepts an `onDisplayed` callback and reports the cause each time an image starts or stops falling back to a placeholder.
+- `source-declarations.ts`: `exportedDeclarationsIn` and `declarersOfName` report which modules declare a name, so a one-owner gate no longer matches the declaration's own bytes; a reflowed signature, a signature quoted in a comment and a second module declaring the same name are now all answered correctly.
 
 ### Changed
 
