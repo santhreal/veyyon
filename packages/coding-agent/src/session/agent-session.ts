@@ -178,6 +178,7 @@ import {
 	withScopedTimeoutSignal,
 	withTimeout,
 } from "@veyyon/utils";
+import { startupMarker } from "@veyyon/utils/startup-marker";
 import type { ArgotSession } from "argot";
 import {
 	ADVISOR_DEFAULT_TOOL_NAMES,
@@ -10932,6 +10933,7 @@ export class AgentSession {
 		},
 	): Promise<void> {
 		this.#beginInFlight();
+		startupMarker("prompt:start");
 		const generation = this.#promptGeneration;
 		try {
 			// Flush any pending bash messages before the new prompt
@@ -11010,15 +11012,22 @@ export class AgentSession {
 			}
 
 			// Check whether an aborted response left enough context pressure to require
-			// in-place compaction before this prompt starts its agent loop.
+			// Phase markers for the submit path: VEYYON_DEBUG_STARTUP=1 writes one
+			// synchronous stderr line per phase, so a "submit feels slow" report
+			// names the phase that spent the time instead of offering a guess.
+			startupMarker("prompt:compaction-check:start");
 			const lastAssistant = this.#findLastAssistantMessage();
 			if (lastAssistant && !options?.skipCompactionCheck) {
 				await this.#checkCompaction(lastAssistant, false, false);
 			}
+			startupMarker("prompt:compaction-check:done");
 
+			startupMarker("prompt:plan-arm:start");
 			await this.#armPlanYoloIfNeeded();
+			startupMarker("prompt:plan-arm:done");
 
 			// Build messages array (session context, eager todo prelude, then active prompt message)
+			startupMarker("prompt:context-build:start");
 			const messages: AgentMessage[] = [];
 			const planReferenceMessage = await this.#buildPlanReferenceMessage?.();
 			if (planReferenceMessage) {
@@ -11071,15 +11080,19 @@ export class AgentSession {
 			// should already know when it reads the question, which is how the eager-task
 			// prelude is placed too. Position within the turn is free either way — the
 			// cache prefix ends before all of it.
+			startupMarker("prompt:memory-context:start");
 			const memoryContextMessage = await this.#collectVolatileMemoryContext(expandedText);
 			if (memoryContextMessage) messages.unshift(memoryContextMessage);
+			startupMarker("prompt:memory-context:done");
+			startupMarker("prompt:context-build:done");
+
 			// Ahead of the memories for the same reason the memories are ahead of the
 			// question: the date and the working directory are what the model should
 			// already know when it reads either.
 			const sessionStateMessage = this.#buildSessionStateMessage();
 			if (sessionStateMessage) messages.unshift(sessionStateMessage);
 			const beforeAgentStartSystemPrompt = this.#baseSystemPrompt;
-
+			startupMarker("prompt:before-agent-start:start");
 			// Emit before_agent_start extension event
 			if (this.#extensionRunner) {
 				const result = await this.#extensionRunner.emitBeforeAgentStart(
@@ -11122,10 +11135,7 @@ export class AgentSession {
 				this.agent.setSystemPrompt(beforeAgentStartSystemPrompt);
 			}
 
-			// Bail out if a newer abort/prompt cycle has started since we began setup
-			if (this.#promptGeneration !== generation) {
-				return;
-			}
+			startupMarker("prompt:before-agent-start:done");
 
 			// Auto thinking: classify this real user turn and set the effective level
 			// before the model request. Synthetic/tool-continuation turns (developer/
@@ -11138,7 +11148,9 @@ export class AgentSession {
 				}
 			}
 
+			startupMarker("prompt:pre-prompt-compaction:start");
 			await this.#runPrePromptCompactionIfNeeded(messages);
+			startupMarker("prompt:pre-prompt-compaction:done");
 			if (this.#promptGeneration !== generation) {
 				return;
 			}
