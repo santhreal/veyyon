@@ -2,10 +2,10 @@ import { describe, expect, it } from "bun:test";
 import * as Beam from "@veyyon/mnemopi/core/beam";
 import {
 	explainRecallDiagnostics,
-	getDiagnostics,
 	getRecallDiagnostics,
 	RECALL_TIERS,
 	RecallDiagnostics,
+	recallDiagnostics,
 	resetRecallDiagnostics,
 } from "@veyyon/mnemopi/core/recall-diagnostics";
 import * as Db from "@veyyon/mnemopi/db";
@@ -66,8 +66,8 @@ describe("recall diagnostics counters", () => {
 		expect(diag.snapshot().by_tier.em_vec.total_hits).toBe(0);
 
 		resetRecallDiagnostics();
-		const first = getDiagnostics();
-		const second = getDiagnostics();
+		const first = recallDiagnostics();
+		const second = recallDiagnostics();
 		expect(first).toBe(second);
 		first.recordCall();
 		expect(getRecallDiagnostics().totals.calls).toBe(1);

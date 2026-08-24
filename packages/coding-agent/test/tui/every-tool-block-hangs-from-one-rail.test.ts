@@ -28,10 +28,17 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/components/composer-chrome";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
+import { Text } from "@veyyon/tui";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";
 
 /** Widths a block is asked for: one narrow enough to wrap every preview row, one roomy. */
 const WIDTHS = [60, 100] as const;
+
+/** Cells a row has for content once the block's gutter and rail are drawn. */
+const NARROW_CONTENT = WIDTHS[0] - COMPOSER_INSET_COLS - 1;
+
+/** The wrapper's floor: an indent leaving fewer text cells than this wraps flush. */
+const HANGING_INDENT_MIN_TEXT = 4;
 
 /**
  * Cards whose first row is a section row rather than a title, with the reason.
@@ -181,6 +188,51 @@ describe("every tool block hangs from one rail", () => {
 		}
 
 		expect([...drawing].sort()).toEqual(Object.keys(RENDERERS_THAT_DRAW_A_TREE).sort());
+	});
+
+	// A renderer indents a row to nest it under the row above. At a narrow width
+	// that row wraps, and the continuation used to return to column zero, so a
+	// detail row read as a new top-level row of the card. The sweep is every
+	// renderer's real output: each indented row it draws is re-wrapped at the
+	// narrow content width, and every row of the result opens where the first
+	// one did.
+	it("keeps a wrapped row under the indent its first row opened at, for every renderer", async () => {
+		const rail = theme.symbol("block.rail");
+		const lost: string[] = [];
+		let wrappedRows = 0;
+
+		for (const name of Object.keys(toolRenderers).sort()) {
+			const fixture = resolveFixture(name);
+			for (const state of GALLERY_STATES) {
+				const rendered = await renderGalleryState(name, fixture, state, WIDTHS[1]);
+				for (const line of rendered) {
+					const railAt = line.indexOf(rail);
+					if (railAt < 0) continue;
+					const logical = line.slice(railAt + rail.length);
+					const plain = Bun.stripANSI(logical);
+					if (plain.trim().length === 0) continue;
+					const indent = plain.length - plain.trimStart().length;
+					// An indent that leaves fewer than four cells of text wraps flush,
+					// which is the wrapper's own floor rather than a lost indent.
+					if (indent === 0 || indent + HANGING_INDENT_MIN_TEXT > NARROW_CONTENT) continue;
+					const rows = new Text(logical, 0, 0)
+						.render(NARROW_CONTENT)
+						.map(row => Bun.stripANSI(row))
+						.filter(row => row.trim().length > 0);
+					if (rows.length < 2) continue;
+					wrappedRows++;
+					for (const row of rows) {
+						if (row.length - row.trimStart().length !== indent) {
+							lost.push(`${name}/${state} ${JSON.stringify(row.slice(0, 40))}`);
+						}
+					}
+				}
+			}
+		}
+
+		expect(lost).toEqual([]);
+		// Without this the arm passes on a sweep that found nothing that wrapped.
+		expect(wrappedRows).toBeGreaterThan(10);
 	});
 
 	it("renders an LSP hover code block without a frame of its own", async () => {
