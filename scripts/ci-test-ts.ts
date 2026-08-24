@@ -338,6 +338,7 @@ export const repoScriptTests = [
 	"scripts/fuzz.test.ts",
 	"scripts/fuzz-triage.test.ts",
 	"scripts/a-source-file-that-reads-as-binary-is-invisible.test.ts",
+	"scripts/a-streamed-tool-argument-object-is-replaced-never-mutated.test.ts",
 	"scripts/barrel-files-are-imported.test.ts",
 	"scripts/class-privacy-is-the-hash.test.ts",
 	"scripts/handbook-built-pages-contain-source-contracts.test.ts",
