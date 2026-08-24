@@ -23,7 +23,7 @@ import { type GitSource, parseGitUrl } from "./git-url";
 import { getInstalledPluginsRegistryPath, readInstalledPluginsRegistry } from "./installed-registry";
 import { installLegacyPiSpecifierShim, loadLegacyPiModule } from "./legacy-pi-compat";
 import { resolvePluginManifestEntries } from "./loader";
-import { extractPackageName, parsePluginSpec } from "./parser";
+import { extractPackageName, type ParsedPluginSpec, parsePluginSpec } from "./parser";
 import { parsePluginId } from "./plugin-id";
 import { normalizePluginRuntimeConfig } from "./runtime-config";
 import type {
@@ -123,6 +123,47 @@ function findGitPackageName(source: GitSource, deps: Record<string, string>): st
 		}
 	}
 	return undefined;
+}
+
+/**
+ * Pull the resolved package name and version out of `bun install --dry-run`
+ * stdout, which ends with a summary line:
+ *
+ * ```
+ * installed escape-string-regexp@5.0.0
+ * installed @mariozechner/pi-ai@0.73.1 with binaries:
+ * installed escape-string-regexp@github:sindresorhus/escape-string-regexp#cbc4240
+ * ```
+ *
+ * A git spec resolves to a name that is not derivable from the spec, so this line
+ * is the only place a dry run can learn it. The separator is the first `@` after
+ * index 0, which keeps `@scope/name` intact and leaves the whole remainder — a
+ * semver, or a `github:owner/repo#sha` pin — as the version.
+ *
+ * Returns null when the line is absent, so a bun output change degrades the
+ * reported version rather than failing an install that bun resolved fine.
+ */
+function parseDryRunResolution(stdout: string): { name: string; version: string } | null {
+	for (const raw of stdout.split("\n")) {
+		const line = raw.trim();
+		if (!line.startsWith("installed ")) {
+			continue;
+		}
+		const descriptor = line
+			.slice("installed ".length)
+			.replace(/ with binaries:$/, "")
+			.trim();
+		const separator = descriptor.indexOf("@", 1);
+		if (separator === -1) {
+			continue;
+		}
+		const name = descriptor.slice(0, separator);
+		const version = descriptor.slice(separator + 1);
+		if (name && version) {
+			return { name, version };
+		}
+	}
+	return null;
 }
 
 function hasDefaultExport(value: unknown): value is { default?: unknown } {
@@ -469,15 +510,10 @@ export class PluginManager {
 
 		await this.#ensurePackageJson();
 
+		const packageInstallSpec = gitSource ? gitInstallSpec(spec.packageName, gitSource) : spec.packageName;
+
 		if (options.dryRun) {
-			return {
-				name: spec.packageName,
-				version: "0.0.0-dryrun",
-				path: "",
-				manifest: { version: "0.0.0-dryrun" },
-				enabledFeatures: spec.features === "*" ? null : (spec.features as string[] | null),
-				enabled: true,
-			};
+			return await this.#resolveDryRun(spec, packageInstallSpec);
 		}
 		const pkgJsonPath = getPluginsPackageJson();
 		const packageJsonBefore = await Bun.file(pkgJsonPath).text();
@@ -495,7 +531,6 @@ export class PluginManager {
 			bunLockBefore = null;
 		}
 		const depsBefore = await this.#readDeps(pkgJsonPath);
-		const packageInstallSpec = gitSource ? gitInstallSpec(spec.packageName, gitSource) : spec.packageName;
 		const existingActualName = gitSource
 			? findGitPackageName(gitSource, depsBefore)
 			: extractPackageName(spec.packageName);
@@ -691,7 +726,67 @@ export class PluginManager {
 	}
 
 	/**
-	 * Uninstall a plugin.
+	 * Resolve a dry-run install without writing anything.
+	 *
+	 * `bun install <spec> --dry-run` runs the same registry and git resolution the
+	 * real install runs, exits non-zero when the target cannot be resolved, and
+	 * writes no package.json, lockfile or node_modules entry. Resolution is the
+	 * whole point: a dry-run that checked only spec syntax reported success for a
+	 * package that does not exist, so `plugin install <anything> --dry-run` printed
+	 * "Would install" and exited 0 for an unpublished name or a missing repository
+	 * (#911).
+	 *
+	 * The returned record carries the version bun resolved, so `--json` reports what
+	 * a real install would produce rather than a placeholder. `path` stays empty
+	 * because nothing was extracted, and `manifest` carries only that version: the
+	 * package is never unpacked, so its manifest cannot be read here. A dry-run
+	 * therefore proves the target resolves, not that it is a veyyon plugin.
+	 */
+	async #resolveDryRun(spec: ParsedPluginSpec, packageInstallSpec: string): Promise<InstalledPlugin> {
+		const proc = Bun.spawn(["bun", "install", packageInstallSpec, "--dry-run"], {
+			cwd: getPluginsDir(),
+			stdin: "ignore",
+			stdout: "pipe",
+			stderr: "pipe",
+			windowsHide: true,
+		});
+		adoptIntoPrimarySessionCpuBudget(proc.pid);
+		// Same drain-concurrent-with-exit pattern as the real install: awaiting
+		// `exited` before reading the pipes risks a >64 KiB pipe-buffer deadlock.
+		const [exitCode, stdout, stderr] = await Promise.all([
+			proc.exited,
+			readPipeText(proc.stdout),
+			readPipeText(proc.stderr),
+		]);
+		if (exitCode !== 0) {
+			throw new Error(
+				`${spec.packageName} cannot be installed, so the dry run failed: ${stderr}. ` +
+					"Fix: read that output; a name that was never published, a version that does not exist, " +
+					"a private or missing repository, and a missing `bun` on PATH all land here.",
+			);
+		}
+		const resolved = parseDryRunResolution(stdout);
+		return {
+			name: resolved?.name ?? extractPackageName(spec.packageName),
+			version: resolved?.version ?? "",
+			path: "",
+			manifest: { version: resolved?.version ?? "" },
+			enabledFeatures: spec.features === "*" ? null : (spec.features as string[] | null),
+			enabled: true,
+		};
+	}
+
+	/**
+	 * Uninstall a plugin, whether it was installed from npm/git or linked from a
+	 * local path.
+	 *
+	 * "Installed" has to mean here exactly what it means in {@link list}: the union
+	 * of `plugins/package.json#dependencies` and the runtime config's `plugins`
+	 * map. `link` registers a plugin in the runtime config and as a node_modules
+	 * symlink and never writes a dependency entry, so gating on `dependencies`
+	 * alone made every linked plugin permanently unremovable — `list` showed it and
+	 * its tools loaded, while `uninstall` answered "is not installed" and `disable`
+	 * was the only recourse.
 	 */
 	async uninstall(name: string): Promise<void> {
 		validatePackageName(name);
@@ -701,8 +796,20 @@ export class PluginManager {
 		// which would report success for a plugin that was never installed.
 		const manifest = Bun.file(getPluginsPackageJson());
 		const deps = (await manifest.exists()) ? ((await manifest.json()).dependencies ?? {}) : {};
-		if (!(name in deps)) {
+		const config = await this.#ensureConfigLoaded();
+		if (!(name in deps) && !(name in config.plugins)) {
 			throw new Error(`Plugin ${name} is not installed. Run \`veyyon plugin list\` to see installed plugins.`);
+		}
+
+		// A linked plugin has no dependency entry for bun to remove: the install is
+		// the symlink itself, so drop that and the runtime state directly. Running
+		// `bun uninstall` here would exit 0 having done nothing and leave the link.
+		if (!(name in deps)) {
+			await this.#unlinkPluginPath(name);
+			delete config.plugins[name];
+			delete config.settings[name];
+			await this.#saveRuntimeConfig();
+			return;
 		}
 
 		const proc = Bun.spawn(["bun", "uninstall", name], {
@@ -732,10 +839,31 @@ export class PluginManager {
 		}
 
 		// Remove from runtime config
-		const config = await this.#ensureConfigLoaded();
 		delete config.plugins[name];
 		delete config.settings[name];
 		await this.#saveRuntimeConfig();
+	}
+
+	/**
+	 * Remove the node_modules entry `link` created for a locally linked plugin.
+	 *
+	 * `link` writes a symlink, but a plugin linked before that, or one whose target
+	 * was copied in by hand, can be a real directory; both are the plugin's whole
+	 * presence on disk, so both are removed. An entry that is already gone is the
+	 * intended end state, not an error.
+	 */
+	async #unlinkPluginPath(name: string): Promise<void> {
+		const linkPath = path.join(getPluginsNodeModules(), name);
+		try {
+			const stats = await fs.promises.lstat(linkPath);
+			if (stats.isSymbolicLink() || stats.isFile()) {
+				await fs.promises.unlink(linkPath);
+			} else if (stats.isDirectory()) {
+				await fs.promises.rm(linkPath, { recursive: true, force: true });
+			}
+		} catch (err) {
+			if (!isEnoent(err)) throw err;
+		}
 	}
 
 	/**
@@ -1033,6 +1161,11 @@ export class PluginManager {
 				manifestProblem = errorMessage(err);
 			}
 		}
+		// A linked plugin lives in the runtime config and node_modules only, so an
+		// absent manifest does NOT mean an empty profile. Saying "no plugins
+		// installed" while `plugin list` showed linked plugins and their tools were
+		// loading stated the opposite of the rest of the report.
+		const linkedOnlyCount = hasPkgJson ? 0 : Object.keys((await this.#ensureConfigLoaded()).plugins).length;
 		checks.push({
 			name: "package_manifest",
 			status: manifestProblem === undefined ? "ok" : "error",
@@ -1040,7 +1173,9 @@ export class PluginManager {
 				manifestProblem === undefined
 					? hasPkgJson
 						? "Found"
-						: "Not created yet (no plugins installed)"
+						: linkedOnlyCount > 0
+							? `Not created yet (${linkedOnlyCount} linked plugin${linkedOnlyCount === 1 ? "" : "s"}, no npm install yet)`
+							: "Not created yet (no plugins installed)"
 					: `${pkgJsonPath} could not be read (${manifestProblem}), so no plugin can be resolved. Fix or delete the file and reinstall.`,
 		});
 

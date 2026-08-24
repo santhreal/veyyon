@@ -26,6 +26,10 @@
 
 ### Fixed
 
+- `veyyon plugin install --dry-run` now resolves the target and fails when it cannot be installed, instead of exiting 0 with "Would install" for an unpublished npm name or a missing git repository, and reports the name and version the target resolves to rather than a `0.0.0-dryrun` placeholder ([#911](https://github.com/santhreal/veyyon/issues/911)).
+- `veyyon plugin uninstall` now removes a plugin installed from a local path, which was permanently unremovable because uninstall read only `plugins/package.json` dependencies while linking registers the plugin in the runtime config and `node_modules`; the linked directory itself is left untouched.
+- `veyyon plugin doctor` no longer reports "no plugins installed" in a profile whose plugins were all linked, and names how many linked plugins it found.
+- `veyyon plugin config <plugin>` now names the missing subcommand instead of reporting "Plugin name required" for a plugin name that was supplied.
 - A completed background job now fills its still-pending originating tool call instead of starting an unrelated recap turn after an interruption, including when zero retention is configured or foreground completion races background delivery.
 - When every summarizer candidate refuses, automatic compaction now parks the run (or drains already-queued input once) instead of reporting that nothing happened and looping. A successful local rescue retries without restoring the failed overflow or truncated assistant turn; idle compaction stays silent.
 - Agent transcript headers and roster rows share terminal, approval-blocked, and peer-waiting status precedence, so interrupted agents settle red and untyped agents render without a dangling separator.
