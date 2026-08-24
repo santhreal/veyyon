@@ -12,13 +12,10 @@ import { theme } from "../../modes/theme/theme";
 import { formatProviderName } from "../../slash-commands/helpers/format";
 import { openPath } from "../../utils/open";
 import {
-	applyModalReveal,
-	beginModalExit,
 	computeModalDims,
 	consumeModalChipHover,
 	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
-	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
 	renderModalShell,
@@ -85,20 +82,12 @@ export class LoginDialogComponent implements Component {
 	#shellGeometry: ModalShellGeometry | null = null;
 	#hoveredShortcutId: string | null = null;
 	#getTerminalRows: () => number;
-	#reveal = new ModalRevealDriver();
-	/**
-	 * Fade out on the shared clock before the host drops this card. The overlay stack keeps painting
-	 * it and stops routing input to it the moment this is called.
-	 */
-	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
-		return beginModalExit(this.#reveal, requestRender, done);
-	}
 
 	constructor(
 		tui: TUI,
 		providerId: string,
 		private onComplete: (success: boolean, message?: string) => void,
-		options?: { getTerminalRows?: () => number; reveal?: boolean },
+		options?: { getTerminalRows?: () => number },
 	) {
 		this.#tui = tui;
 		// One label owner for provider names, the same one the status line, the account card and the
@@ -106,12 +95,6 @@ export class LoginDialogComponent implements Component {
 		// for every provider that authenticates with a pasted key, since that table has no row for one.
 		this.#title = `Login to ${formatProviderName(providerId)}`;
 		this.#getTerminalRows = options?.getTerminalRows ?? (() => process.stdout.rows || 40);
-		if (options?.reveal) {
-			// The driver anchors its clock at first paint, so starting here never
-			// skips the unfold.
-			this.#reveal.start(() => this.#tui.requestRender());
-		}
-
 		this.#input = new Input();
 		this.#input.onSubmit = () => {
 			this.#settlePrompt(this.#input.getValue());
@@ -226,7 +209,7 @@ export class LoginDialogComponent implements Component {
 			showClose: true,
 		});
 		this.#shellGeometry = shell.geometry;
-		return applyModalReveal(shell, width, this.#reveal);
+		return shell.lines;
 	}
 
 	handleInput(data: string): void {
@@ -345,8 +328,5 @@ export class LoginDialogComponent implements Component {
 		this.#input.pasteText(text);
 	}
 
-	/** Settle the reveal so no timer outlives a dismissed card. */
-	dispose(): void {
-		this.#reveal.stop();
-	}
+	dispose(): void {}
 }

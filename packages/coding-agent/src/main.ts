@@ -511,6 +511,13 @@ function loadInteractiveMode(): Promise<typeof import("./modes/interactive-mode"
 	return interactiveModeLoad;
 }
 
+let firstFrameLoad: Promise<typeof import("./modes/first-frame")> | undefined;
+
+function loadFirstFrame(): Promise<typeof import("./modes/first-frame")> {
+	firstFrameLoad ??= import("./modes/first-frame");
+	return firstFrameLoad;
+}
+
 async function runInteractiveMode(
 	session: AgentSession,
 	version: string,
@@ -556,9 +563,7 @@ async function runInteractiveMode(
 		: [];
 	const playStartupSplash = showStartupSplash && setupScenes.length === 0;
 
-	await mode.init({
-		suppressWelcomeIntro: resuming || setupScenes.length > 0 || playStartupSplash,
-	});
+	await mode.init();
 
 	// Subscribed BEFORE the wizard, not after it. The write-side twin of the
 	// unparseable-settings notice, and it cannot be a startup check: a save happens
@@ -1269,10 +1274,13 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 
 	const notifs: (InteractiveModeNotify | null)[] = [];
 
-	// Create AuthStorage and ModelRegistry upfront
-	const authStorage = await logger.time("discoverAuthStorage", deps.discoverAuthStorage ?? discoverAuthStorage);
-	const modelRegistry = logger.time("modelRegistry:init", () => new ModelRegistry(authStorage));
-
+	// Kick off AuthStorage and ModelRegistry discovery in parallel with settings/theme init.
+	// Awaited when resolveModelScope / session construction needs it.
+	const authStoragePromise = logger.time("discoverAuthStorage", deps.discoverAuthStorage ?? discoverAuthStorage);
+	const modelRegistryPromise = authStoragePromise.then(auth =>
+		logger.time("modelRegistry:init", () => new ModelRegistry(auth)),
+	);
+	modelRegistryPromise.catch(() => {});
 	if (parsedArgs.version) {
 		writeStartupNotice(parsedArgs, `${VERSION}\n`);
 		process.exit(EXIT_OK);
@@ -1473,6 +1481,40 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 		settingsInstance.get("theme.dark"),
 		settingsInstance.get("theme.light"),
 	);
+	const showStartupSplash = shouldShowStartupSplash({
+		configured: settingsInstance.get("startup.showSplash"),
+		isInteractive,
+		resuming: Boolean(parsedArgs.continue || parsedArgs.resume || parsedArgs.fork),
+		quiet: settingsInstance.get("startup.quiet"),
+		timing: Boolean($env.VEYYON_TIMING),
+		stdinIsTTY: process.stdin.isTTY,
+		stdoutIsTTY: process.stdout.isTTY,
+	});
+
+	// Paint the launch card immediately once settings and the theme are up.
+	// The sun, the wordmark, the version, and the tips need no session, no models,
+	// and no plugins. Everything below — model registry, plugin preload, extension
+	// discovery, and session construction — runs while the finished resting frame
+	// is already in front of the operator.
+	if (isInteractive && !isProtocolMode) {
+		const onboarding = resolveOnboardingGeneration(settingsInstance);
+		const { paintFirstFrame, shouldPaintFirstFrame } = await loadFirstFrame();
+		const paint = shouldPaintFirstFrame({
+			isInteractive,
+			protocolMode: isProtocolMode,
+			quiet: settingsInstance.get("startup.quiet"),
+			splash: showStartupSplash,
+			setupWizard:
+				deps.forceSetupWizard === true || (!onboarding.unreadable && onboarding.version < CURRENT_SETUP_VERSION),
+			stdinIsTTY: process.stdin.isTTY,
+			stdoutIsTTY: process.stdout.isTTY,
+			resuming: Boolean(parsedArgs.continue || parsedArgs.resume || parsedArgs.fork),
+		});
+		if (paint) logger.time("paintFirstFrame", paintFirstFrame, VERSION);
+	}
+
+	const authStorage = await authStoragePromise;
+	const modelRegistry = await modelRegistryPromise;
 
 	let scopedModels: ScopedModel[] = [];
 	const modelPatterns = parsedArgs.models ?? settingsInstance.get("enabledModels");
@@ -1747,16 +1789,6 @@ async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRoo
 			);
 			process.exit(EXIT_USAGE);
 		}
-
-		const showStartupSplash = shouldShowStartupSplash({
-			configured: settingsInstance.get("startup.showSplash"),
-			isInteractive,
-			resuming: Boolean(parsedArgs.continue || parsedArgs.resume || parsedArgs.fork),
-			quiet: settingsInstance.get("startup.quiet"),
-			timing: Boolean($env.VEYYON_TIMING),
-			stdinIsTTY: process.stdin.isTTY,
-			stdoutIsTTY: process.stdout.isTTY,
-		});
 
 		// The TUI cannot render anything until its screen exists, and session startup is exactly
 		// when a degraded skill or an unprotectable secret is discovered. An interactive run

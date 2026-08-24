@@ -4,17 +4,16 @@
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-08-23
+
 ### Breaking Changes
 
 - `fetch-retry` no longer exports `isRetryableError`. It was a second retry classifier: this module owns what a transport states about itself (`http2RetryVerdict`, `isRetryableStatus`, `isUnexpectedSocketCloseMessage`, `extractHttpStatusFromError`) and `@veyyon/ai/error` owns what a failure means, but `isRetryableError` answered the composite question with a transient vocabulary of its own, and the two lists had drifted apart by a phrase. An embedder asking whether a provider failure should be retried calls `isProviderRetryableError` from `@veyyon/ai/error`, which composes the transport facts this module still exports.
-
-### Breaking Changes
-
 - The minimum supported Bun runtime is now 1.4.0.
 
 ### Added
-- `source-declarations.ts`: `stringConstantsIn`, `declarersOfStringValue` and `stringConstantValue` read the string constants a module declares and compare decoded values, so a one-owner gate no longer searches source text for a formatted line. A duplicate declared under another name, in single quotes, with different spacing, or behind a type annotation is now caught; a rename or a reflow of the owner no longer reports a failure that is only formatting.
 
+- `source-declarations.ts`: `stringConstantsIn`, `declarersOfStringValue` and `stringConstantValue` read the string constants a module declares and compare decoded values, so a one-owner gate no longer searches source text for a formatted line. A duplicate declared under another name, in single quotes, with different spacing, or behind a type annotation is now caught; a rename or a reflow of the owner no longer reports a failure that is only formatting.
 - `definePromptRows` declares a directory's prompt rows and is the seam where an eval-only prompt override applies. A module that sends one prompt imports its row table directly, so replacing text in the aggregate registry alone reached the inspection commands and nothing a model is sent. Costs nothing when `VEYYON_EVAL_PROMPTS` is unset: the table is returned by identity.
 - `VEYYON_EVAL_PROMPTS` (JSON of prompt id to replacement text) varies any registered prompt for one benchmark arm, so a tool description or a subagent prompt can be measured without editing a file both arms share. An active override announces itself once per id, naming the registry it altered. `eval-prompt-overrides.ts` owns the parse, the substitution and the announcement, and `unclaimedEvalPromptOverrideIds` reports ids no registry took, for a caller that knows the complete registry set.
 - A registry no longer refuses an override id it does not hold. Four packages ship registries and they are constructed in import order, so `@veyyon/ai`'s — which holds no tool descriptions — was built first and refused a valid `tools/bash` override on every read, killing the process at startup. An id belonging to a sibling is left for that sibling to claim.
@@ -24,6 +23,7 @@
 
 ### Fixed
 
+- `fetchWithRetry` asks `shouldRetryResponse` about every failed response instead of only the transient set, so a status an API documents as retryable and a decision that lives in a 400's body are no longer answered by the loop; a 2xx is still returned without reading its body, and the transient set is the default for a caller that passes no verdict.
 - Bounded every streaming reader to one 64 MiB frame: a peer that never sends a line feed, or an SSE peer that never sends a blank line, is refused with a `StreamFrameLimitError` naming the protocol and both byte counts, and its stream is cancelled instead of buffered until the heap runs out. `readLines`, `readJsonl`, `readSseEvents` and `readSseJson` take an optional `StreamFrameLimits`, `VEYYON_STREAM_FRAME_MAX_BYTES` moves the default, and a value that is not a positive integer keeps the compiled default rather than removing the bound.
 - `stripAnsi` canonicalizes 8-bit C1 control sequences (0x90 DCS, 0x98 SOS, 0x9B CSI, 0x9C ST, 0x9D OSC, 0x9E PM, 0x9F APC) to their 7-bit `ESC` equivalents, stripping 8-bit ANSI escape sequences consistently across both sequence representations.
 - `fetchWithRetry` accepts `shouldRetryError`, a veto consulted before a thrown attempt is retried. The retry ladder could only be limited by attempt count and delay, which is the wrong axis for a caller that has a deadline: an attempt whose failure means "no response ever arrived" is worth another try only while there is time left to receive one, and a caller with that knowledge had no way to say so short of catching, inspecting and re-driving the request itself. The veto runs after the attempt-count check and before the delay, so a refusal costs no extra wait, and omitting it leaves behaviour exactly as before.

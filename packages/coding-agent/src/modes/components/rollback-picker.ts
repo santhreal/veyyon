@@ -77,7 +77,7 @@ export class RollbackPickerComponent {
 	#rows: readonly RollbackRow[];
 	#callbacks: RollbackPickerCallbacks;
 
-	constructor(rows: readonly RollbackRow[], callbacks: RollbackPickerCallbacks, reveal?: boolean) {
+	constructor(rows: readonly RollbackRow[], callbacks: RollbackPickerCallbacks) {
 		this.#rows = rows;
 		this.#callbacks = callbacks;
 		// Open on the running version, so the list starts where the reader is and
@@ -112,7 +112,6 @@ export class RollbackPickerComponent {
 					`Tip · ${CHANGELOG_KEY} opens this version's changelog`,
 					"Tip · Type to filter, Esc cancel",
 				],
-				reveal,
 			},
 			{
 				onSelect: item => this.#choose(item.value),
@@ -169,11 +168,6 @@ export class RollbackPickerComponent {
 
 	render(width: number): string[] {
 		return this.#inner.render(width);
-	}
-
-	/** Forwarded to the inner card, which owns the reveal this plays backwards. */
-	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
-		return this.#inner.beginOverlayExit(requestRender, done);
 	}
 
 	invalidate(): void {

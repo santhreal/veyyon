@@ -95,11 +95,12 @@ describe("gallery harness", () => {
 		const lines = await renderGalleryState("task", task, "error", 100);
 		const stripped = lines.map(line => Bun.stripANSI(line).trim());
 		const rail = theme.symbol("block.rail");
-		// The block's title row carries the label, and the output hangs on the rail under
-		// it: the label is the block's own title and not a line of its body...
+		// The block's title row carries the label on the rail, and the output hangs on
+		// the same rail under it: the label is the block's own title and not a line of
+		// its body...
 		const titleIndex = stripped.findIndex(line => line.includes("Task"));
 		expect(titleIndex).toBeGreaterThanOrEqual(0);
-		expect(stripped[titleIndex]).not.toStartWith(rail);
+		expect(stripped[titleIndex]).toStartWith(rail);
 		expect(stripped.slice(titleIndex + 1).some(line => line.startsWith(rail))).toBe(true);
 		// ...but no standalone "Task" label line precedes it.
 		expect(stripped).not.toContain("Task");

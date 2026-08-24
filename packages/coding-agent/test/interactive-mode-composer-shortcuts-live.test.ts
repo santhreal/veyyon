@@ -57,7 +57,7 @@ describe("InteractiveMode composer shortcuts live refresh", () => {
 		mode = new InteractiveMode(session, "test");
 		vi.spyOn(mode.statusLine, "watchBranch").mockImplementation(() => {});
 		vi.spyOn(mode, "ensureLoadingAnimation").mockImplementation(() => {});
-		await mode.init({ suppressWelcomeIntro: true });
+		await mode.init();
 	});
 
 	afterEach(async () => {

@@ -8,10 +8,9 @@
  * (docs/internal/design.md). The ember accent leads *here* — the sun is the one
  * place it does; silver carries everything around it.
  *
- * This module is pure. `renderSunField(opts)` returns an array of ANSI rows.
- * Animation — the bloom on launch and the settle to a small resting mark — is
- * driven entirely by the caller varying `time`, `cx/cy`, and `radius`; the field
- * itself holds no state. Ripples (cursor/keypress flares) are passed in as data.
+ * This module is pure. `renderSunField(opts)` returns an array of ANSI rows; the
+ * field itself holds no state, and a caller that wants motion varies `time`,
+ * `cx/cy` and `radius` itself. Ripples (cursor/keypress flares) are data.
  */
 
 import { SGR_RESET } from "@veyyon/tui/ansi";
@@ -216,11 +215,11 @@ export interface SunMarkOptions {
 }
 
 /**
- * A centred sun mark sized for a logo slot — this is the tuned recipe behind the
- * launch signature so callers don't re-derive it. The radius is cell-aspect
- * correct for a round disc, and `bloom` (0→1) eases the disc open with
- * easeOutCubic. Drive `bloom` from 0 to 1 on launch for the rising sun, then
- * omit it (rests at full); flares go through `ripples`.
+ * A centred sun mark sized for a logo slot — the tuned recipe behind the launch
+ * signature so callers do not re-derive it. The radius is cell-aspect correct for
+ * a round disc, and `bloom` (0→1) eases the disc open with easeOutCubic. The home
+ * hero omits both and rests at full; the onboarding splash drives them for its
+ * sunrise. Flares go through `ripples`.
  */
 export function sunMark(cols: number, rows: number, o: SunMarkOptions): string[] {
 	const fullR = cols * 0.3;

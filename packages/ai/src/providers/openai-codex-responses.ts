@@ -678,6 +678,7 @@ export function createOpenAICodexDirectRequest(options: {
 		compaction: options.compaction,
 		includeInstallationHeader: true,
 	});
+	const responsesLite = resolveCodexResponsesLite(options.model, options.responsesLite);
 	const headers = createCodexHeaders(
 		options.model.headers,
 		getCodexAccountId(options.accessToken),
@@ -686,7 +687,7 @@ export function createOpenAICodexDirectRequest(options: {
 		normalizeOpenAIPromptCacheKey(options.sessionId),
 		"sse",
 		undefined,
-		options.responsesLite ?? false,
+		responsesLite,
 	);
 	for (const [name, value] of Object.entries(identity.headers)) headers.set(name, value);
 	// The compact route answers with one JSON document, not an event stream.

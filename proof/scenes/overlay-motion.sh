@@ -1,19 +1,16 @@
 #!/usr/bin/env bash
-# Overlay motion on the shared animation clock.
+# Overlay arrival and pointer tracking.
 #
-# Every card in the app opens through ModalRevealDriver + applyModalReveal, so
-# driving three overlays back to back records the one seam. Recorded at 60fps:
-# the enter preset runs 220ms, so the unfold is thirteen frames and the page's
-# filmstrips are cut out of this video by proof/filmstrip.py. A still taken from
-# inside the scene cannot catch it -- `import` alone costs longer than the
-# animation -- so the scene only takes settled stills and leaves the motion to
-# the recording.
+# Every card in the app opens through the modal shell, so driving three overlays
+# back to back records the one seam. A card's first frame is its settled frame,
+# so the stills below are the whole of what arrival looks like; the recording
+# carries the pointer band tracking the cursor down the model list.
 settle 18
 shot idle
 
-# Marker beeps are not available, so each overlay is opened after a full second
-# of a still screen. That quiet stretch is what the frame-difference pass keys
-# on when it looks for the moment the card arrives.
+# Each overlay is opened after a full second of a still screen. That quiet
+# stretch is what the frame-difference pass keys on when it looks for the moment
+# the card arrives.
 sleep 1
 submit "/settings"
 settle 3

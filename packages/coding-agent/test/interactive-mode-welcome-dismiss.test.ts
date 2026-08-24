@@ -91,7 +91,7 @@ describe("InteractiveMode welcome dismissal (UI-10)", () => {
 	}
 
 	it("centres the sunrise vertically (UI-2): real top margin above the sun", async () => {
-		await mode.init({ suppressWelcomeIntro: true });
+		await mode.init();
 		const lines = frame().split("\n");
 		const sunTop = lines.findIndex(line => /[░▒▓]/.test(line));
 		// 40 mocked terminal rows leave generous slack around the sunrise header;
@@ -105,7 +105,7 @@ describe("InteractiveMode welcome dismissal (UI-10)", () => {
 	 * blank screen with two suns in scrollback. showFullWelcome must dismiss
 	 * the home hero and remeasure the anchor on the same frame. */
 	it("/welcome replaces the home hero and renders the full card inside the viewport", async () => {
-		await mode.init({ suppressWelcomeIntro: true });
+		await mode.init();
 		await mode.showFullWelcome();
 		const lines = frame().split("\n");
 		expect(lines.length).toBeLessThanOrEqual(40);
@@ -119,8 +119,7 @@ describe("InteractiveMode welcome dismissal (UI-10)", () => {
 		// because `/welcome` plays an intro whose shine sweeps the wordmark in from
 		// the left. This frame is captured at t≈0, so only the leading letter has
 		// been revealed and a full-string match finds nothing — which is the reveal
-		// working, not the hero missing. (The home hero above passes
-		// `suppressWelcomeIntro`, so it never had the same behaviour to reveal.)
+		// working, not the hero missing.
 		//
 		// The letter still discriminates: a surviving home hero would put a second
 		// wordmark line on screen, and the count catches that regardless of how far
@@ -138,7 +137,7 @@ describe("InteractiveMode welcome dismissal (UI-10)", () => {
 		// `Settings.init` would not do it: the proxy captured the instance created
 		// in `beforeEach`, so a second init leaves the old object in place.
 		Settings.instance.set("display.transitions", "off");
-		await mode.init({ suppressWelcomeIntro: true });
+		await mode.init();
 		await mode.showFullWelcome();
 
 		const lines = frame().split("\n");
@@ -148,7 +147,7 @@ describe("InteractiveMode welcome dismissal (UI-10)", () => {
 	});
 
 	it("first message hugs the composer at the viewport bottom, no void between them", async () => {
-		await mode.init({ suppressWelcomeIntro: true });
+		await mode.init();
 
 		// Home screen: the composer is pinned to the viewport bottom by a large
 		// reserved bottom-fill, so the frame spans (about) the whole 40-row terminal.
@@ -189,7 +188,7 @@ describe("InteractiveMode welcome dismissal (UI-10)", () => {
 	});
 
 	it("latches the anchor off once the transcript fills the viewport: no reserved gap, composer on the natural bottom", async () => {
-		await mode.init({ suppressWelcomeIntro: true });
+		await mode.init();
 		mode.editor.handleInput("h");
 
 		// Submit a message tall enough to overflow the 40-row viewport on its own.
@@ -229,7 +228,7 @@ describe("InteractiveMode welcome dismissal (UI-10)", () => {
 	});
 
 	it("clears the sunrise on the first real keystroke and keeps it gone", async () => {
-		await mode.init({ suppressWelcomeIntro: true });
+		await mode.init();
 		// The wordmark is letterspaced text in the terminal's own font.
 		expect(frame()).toContain("v e y y o n");
 

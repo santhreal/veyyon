@@ -196,7 +196,7 @@ describe("profile switch handoff (atomic teardown + relaunch)", () => {
 			return realDispose(disposeOptions as never);
 		});
 
-		await createdMode.init({ suppressWelcomeIntro: true });
+		await createdMode.init();
 		await terminal.waitForRender();
 
 		const harness: HandoffHarness = {

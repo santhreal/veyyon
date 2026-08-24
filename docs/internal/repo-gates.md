@@ -29,24 +29,6 @@ behind an artifact lookup, a toolchain install and a runner queue: a rewrapped d
 `main` red about 70 minutes into a run and skipped all seven TypeScript test jobs behind it. Do not
 add a second copy to a native job.
 
-## The review request is automatic, not a maintainer's job
-
-`devin-review.yml` posts `/devin review` on a PR when it opens, reopens, or leaves draft. A review
-that has to be requested by hand is optional in practice, and a fork PR cannot request one at all.
-
-Three properties make it safe to run on every PR:
-
-- It triggers on `pull_request_target`, so the workflow definition comes from the base branch and the
-  token is available to a fork PR. It never checks out PR code, which is what keeps that token out of
-  reach of a contributor's commits.
-- It is idempotent. The request comment carries the marker `<!-- devin-review-requested -->` and the
-  job exits when a marker comment is already on the PR, so a reopen or a ready-for-review transition
-  posts nothing further.
-- It skips drafts, so a PR opened as a draft is reviewed once it is marked ready instead of twice.
-
-Findings land as inline review comments. Enumerate them from the API
-(`gh api repos/<owner>/<repo>/pulls/<N>/comments`), not the summary the web UI renders.
-
 ## A per-push cost must buy a per-push answer
 
 The installer end-to-end jobs — `install_methods` on three POSIX runners and `install_ps1_e2e` on
@@ -87,4 +69,15 @@ there; 23 entries across several packages were written into it and would have be
 render. The write path now refuses when the root holds an unreleased entry the render does not
 produce, and names each one.
 
-*Verified against `d26b915d1` on 2026-08-22.*
+## The rendered handbook is checked, not deployed on demand
+
+`docs/handbook/book` is committed, and the `Docs` workflow rebuilds it with mdbook and fails when the
+result differs from the tree. A handbook edit therefore lands in two parts: the source page, and the
+render (`cd docs/handbook && mdbook build`) in the same change. `website/docs` is a symlink to that
+directory, so a source-only change would publish the previous text at the next deploy.
+
+The version is pinned. mdbook v0.5.2 renders the search index under a content-hashed filename, so a
+different mdbook writes a different file name for identical prose and the gate reports the whole book
+as stale.
+
+*Verified against `b6a056eee` on 2026-08-23.*
