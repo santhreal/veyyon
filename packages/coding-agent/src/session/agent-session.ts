@@ -17070,12 +17070,89 @@ export class AgentSession {
 							? `Incomplete response recovery failed: ${errorMessage}`
 							: `Auto-compaction failed: ${errorMessage}`,
 			});
+			return await this.#afterFailedCompaction(reason, willRetry, autoCompactionSignal, generation, {
+				suppressContinuation,
+				shouldAutoContinue,
+			});
 		} finally {
 			if (this.#autoCompactionAbortController === autoCompactionAbortController) {
 				this.#autoCompactionAbortController = undefined;
 			}
 		}
-		return COMPACTION_CHECK_NONE;
+	}
+
+	/**
+	 * What happens after every candidate model refused to summarize.
+	 *
+	 * A compaction that threw wrote no summary, so the context is exactly as
+	 * large as it was when the pass started. Reporting that as "nothing
+	 * happened" is what wedged a session: goal mode, a todo reminder and a
+	 * `session_stop` continuation all read the same
+	 * {@link CompactionCheckResult}, so a run at zero headroom started another
+	 * turn, the provider refused the oversized request, recovery compaction
+	 * failed the same way, and the cycle repeated with the elapsed clock
+	 * restarting at 0:00 on every pass while the whole history was
+	 * re-serialized for each refused summary.
+	 *
+	 * Two things happen here instead. The provider-free reduction tiers run
+	 * first — eliding heavy tool output to an artifact, then dropping attached
+	 * images — because they need no model at all and are exactly what a stuck
+	 * operator would reach for by hand. When they create room the pass returns
+	 * to the ordinary flow, since the next request now fits. When they cannot,
+	 * automatic continuation is blocked and the pause is named once, so the
+	 * session waits for the operator rather than spinning.
+	 *
+	 * An `idle` pass keeps returning "nothing happened": it runs on a session
+	 * that is not mid-run, has no continuation to block, and a maintenance
+	 * failure there costs the operator nothing.
+	 */
+	async #afterFailedCompaction(
+		reason: "overflow" | "threshold" | "idle" | "incomplete",
+		willRetry: boolean,
+		signal: AbortSignal,
+		generation: number,
+		options: { suppressContinuation: boolean; shouldAutoContinue: boolean },
+	): Promise<CompactionCheckResult> {
+		if (reason === "idle" || signal.aborted) return COMPACTION_CHECK_NONE;
+		// The retry side only needs the rebuilt prompt to fit the window; the
+		// threshold side needs the recovery band, exactly as the success tail
+		// measures them.
+		const hasProgress = willRetry
+			? () => this.#compactionCreatedRetryFit()
+			: () => this.#compactionCreatedHeadroom();
+		const rescued =
+			hasProgress() || (await this.#rescueCompactionDeadEnd(signal, { skipElide: false, hasProgress }));
+		if (rescued) {
+			let continuationScheduled = false;
+			if (willRetry) {
+				this.#scheduleAgentContinue({ delayMs: 100, generation });
+				continuationScheduled = true;
+			} else if (options.shouldAutoContinue) {
+				this.#scheduleAutoContinuePrompt(generation);
+				continuationScheduled = true;
+			}
+			if (!continuationScheduled && !options.suppressContinuation && this.agent.hasQueuedMessages()) {
+				this.#scheduleAgentContinue({
+					delayMs: 100,
+					generation,
+					shouldContinue: () => this.agent.hasQueuedMessages(),
+				});
+				continuationScheduled = true;
+			}
+			return continuationScheduled ? COMPACTION_CHECK_CONTINUATION : COMPACTION_CHECK_NONE;
+		}
+		let continuationScheduled = false;
+		if (!options.suppressContinuation && this.agent.hasQueuedMessages()) {
+			// Pausing maintenance must not strand what the operator already typed.
+			this.#scheduleAgentContinue({
+				delayMs: 100,
+				generation,
+				shouldContinue: () => this.agent.hasQueuedMessages(),
+			});
+			continuationScheduled = true;
+		}
+		this.emitNotice("warning", compactionDeadEndWarning("clear large tool output"), "compaction");
+		return continuationScheduled ? COMPACTION_CHECK_CONTINUATION : COMPACTION_CHECK_BLOCK_AUTOMATIC_CONTINUATION;
 	}
 
 	/**

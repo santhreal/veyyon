@@ -64,18 +64,21 @@ const AGENT_STATUS_SYMBOL = {
  * The state to render for one agent. Every surface derives it here, so no two
  * can disagree about when an agent counts as blocked or waiting.
  *
- * An open approval outranks everything, because it is the one state a person
- * has to act on. Only a STOPPED agent can be `waiting`: `waitingOnPeer` is
- * written at the end of a run and left in place while the agent is woken again,
- * so reading it on a `running` row would label a working agent with the reason
- * it stopped last time.
+ * An open approval outranks working while the agent is `running`, because it is
+ * the one state a person has to act on. Only a RUNNING agent can be `blocked`:
+ * `pendingApproval` is written during a turn, and once the agent stops, is aborted,
+ * or completes, the terminal state takes precedence.
+ *
+ * Only a STOPPED agent can be `waiting`: `waitingOnPeer` is written at the end of
+ * a run and left in place while the agent is woken again, so reading it on a
+ * `running` row would label a working agent with the reason it stopped last time.
  */
 export function agentDisplayState(agent: {
 	status: AgentStatus;
 	waitingOnPeer?: boolean;
 	blockedOnApproval?: boolean;
 }): AgentDisplayState {
-	if (agent.blockedOnApproval === true) return "blocked";
+	if (agent.status === "running" && agent.blockedOnApproval === true) return "blocked";
 	if (agent.waitingOnPeer !== true) return agent.status;
 	return agent.status === "idle" || agent.status === "parked" ? "waiting" : agent.status;
 }

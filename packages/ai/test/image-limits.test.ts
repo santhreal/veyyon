@@ -68,9 +68,8 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { complete } from "@veyyon/ai/stream";
 import type { Api, Context, ImageContent, Model, OptionsForApi, UserMessage } from "@veyyon/ai/types";
@@ -78,14 +77,24 @@ import { getBundledModel } from "@veyyon/catalog/models";
 import { $which, removeSyncWithRetries } from "@veyyon/utils";
 import { e2eApiKey } from "./oauth";
 
-const TEMP_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-temp-images-"));
+const TEMP_ROOT = path.resolve(import.meta.dirname, "../../../.internal/image-limits");
+fs.mkdirSync(TEMP_ROOT, { recursive: true });
+const TEMP_DIR = fs.mkdtempSync(path.join(TEMP_ROOT, "run-"));
+const MAGICK_ENV = {
+	...process.env,
+	MAGICK_TMPDIR: TEMP_DIR,
+	MAGICK_TEMPORARY_PATH: TEMP_DIR,
+};
 
 /**
  * Generate a valid PNG image of specified dimensions using ImageMagick
  */
 async function generateImage(width: number, height: number, filename: string): Promise<string> {
 	const filepath = path.join(TEMP_DIR, filename);
-	execSync(`magick -size ${width}x${height} xc:red "${filepath}"`, { stdio: "ignore" });
+	execFileSync("magick", ["-size", `${width}x${height}`, "xc:red", filepath], {
+		env: MAGICK_ENV,
+		stdio: "ignore",
+	});
 	const buffer = await fs.promises.readFile(filepath);
 	return buffer.toBase64();
 }
@@ -100,16 +109,21 @@ async function generateImageWithSize(targetBytes: number, filename: string): Pro
 	// For a square image: side = sqrt(targetBytes / 3)
 	const side = Math.ceil(Math.sqrt(targetBytes / 3));
 	// Use noise pattern to prevent compression from shrinking the file
-	execSync(`magick -size ${side}x${side} xc: +noise Random -depth 8 PNG24:"${filepath}"`, { stdio: "ignore" });
+	execFileSync("magick", ["-size", `${side}x${side}`, "xc:", "+noise", "Random", "-depth", "8", `PNG24:${filepath}`], {
+		env: MAGICK_ENV,
+		stdio: "ignore",
+	});
 
 	// Check actual size and adjust if needed
-	const { size } = await Bun.file(filepath).stat();
+	const { size } = await fs.promises.stat(filepath);
 	if (size < targetBytes * 0.8) {
 		// If too small, increase dimensions
 		const newSide = Math.ceil(side * Math.sqrt(targetBytes / size));
-		execSync(`magick -size ${newSide}x${newSide} xc: +noise Random -depth 8 PNG24:"${filepath}"`, {
-			stdio: "ignore",
-		});
+		execFileSync(
+			"magick",
+			["-size", `${newSide}x${newSide}`, "xc:", "+noise", "Random", "-depth", "8", `PNG24:${filepath}`],
+			{ env: MAGICK_ENV, stdio: "ignore" },
+		);
 	}
 
 	const buffer = await fs.promises.readFile(filepath);

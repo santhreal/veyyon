@@ -54,6 +54,8 @@ Unified LLM API with automatic model discovery, provider configuration, token an
 - **Mistral**
 - **Groq**
 - **Cerebras**
+- **Command Code** (requires `CMD_API_KEY` or `COMMAND_CODE_API_KEY`)
+- **Nous Research** (preferred OAuth flow: `/login nous-research`; `NOUS_API_KEY` is available for headless setups)
 - **Together**
 - **Moonshot** (requires `MOONSHOT_API_KEY`)
 - **Qianfan** (requires `QIANFAN_API_KEY`)
@@ -965,6 +967,8 @@ In Node.js environments, you can set environment variables to avoid passing API 
 | Groq           | `GROQ_API_KEY`                                                               |
 | Cerebras       | `CEREBRAS_API_KEY`                                                           |
 | Together       | `TOGETHER_API_KEY`                                                           |
+| Command Code   | `CMD_API_KEY` or `COMMAND_CODE_API_KEY`                                      |
+| Nous Research  | `NOUS_API_KEY` (headless fallback; prefer `/login nous-research`)             |
 | Qianfan        | `QIANFAN_API_KEY`                                                            |
 | Hugging Face   | `HUGGINGFACE_HUB_TOKEN` or `HF_TOKEN`                                        |
 | Synthetic      | `SYNTHETIC_API_KEY`                                                          |
@@ -1008,6 +1012,8 @@ Provider endpoint defaults for the current OpenAI-compatible integrations:
 - NVIDIA: `https://integrate.api.nvidia.com/v1`
 - NanoGPT: `https://nano-gpt.com/api/v1`
 - Novita: `https://api.novita.ai/openai/v1`
+- Command Code: `https://api.commandcode.ai/provider/v1` (keys: `https://commandcode.ai/studio/provider`; default model: `moonshotai/Kimi-K2.7-Code`)
+- Nous Research: `https://inference-api.nousresearch.com/v1` (preferred OAuth login: `/login nous-research`; default model: `anthropic/claude-sonnet-4.6`)
 - Hugging Face Inference: `https://router.huggingface.co/v1`
 - Venice: `https://api.venice.ai/api/v1`
 - Xiaomi MiMo: `https://api.xiaomimimo.com/v1`
@@ -1108,9 +1114,9 @@ veyyon auth-broker logout             # interactive removal of stored credential
 
 Credentials are saved to `agent.db` in the agent directory. `/login qianfan` opens the Qianfan console and stores the pasted API key.
 
-`login` supports OAuth providers (Anthropic, OpenAI Codex, GitHub Copilot, Gemini CLI, Antigravity) and API-key onboarding flows.
+`login` supports OAuth providers (Anthropic, OpenAI Codex, GitHub Copilot, Gemini CLI, Antigravity, and Nous Research) and API-key onboarding flows. Nous Research stores a durable refresh token and uses its short-lived inference access token for requests and model discovery; `NOUS_API_KEY` remains an explicit fallback for headless setups.
 
-For the current API-key onboarding flows, the library covers Together, Moonshot, Qianfan, NVIDIA, NanoGPT, Novita, Hugging Face, Venice, Xiaomi, vLLM, LiteLLM, Cloudflare AI Gateway, Qwen Portal, and Ollama Cloud. Ollama remains the local runtime integration; set `OLLAMA_API_KEY` only when your local or self-hosted deployment enforces bearer auth.
+For the current API-key onboarding flows, the library covers Together, Moonshot, Qianfan, NVIDIA, NanoGPT, Novita, Hugging Face, Venice, Command Code, Xiaomi, vLLM, LiteLLM, Cloudflare AI Gateway, Qwen Portal, and Ollama Cloud. Ollama remains the local runtime integration; set `OLLAMA_API_KEY` only when your local or self-hosted deployment enforces bearer auth.
 
 ### Programmatic OAuth
 

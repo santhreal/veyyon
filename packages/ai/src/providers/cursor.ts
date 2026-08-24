@@ -239,7 +239,6 @@ function cursorRulesFingerprint(rules: readonly CursorRule[]): string {
 
 export interface CursorOptions extends StreamOptions {
 	customSystemPrompt?: string;
-	conversationId?: string;
 	execHandlers?: CursorExecHandlers;
 	onToolResult?: CursorToolResultHandler;
 	/** Operator-owned instruction files for the `requestContext.rules` channel (see {@link CursorRuleInput}). */
@@ -677,12 +676,13 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 							// `log` is a no-op unless DEBUG_CURSOR is set, so every failure inside a server-message
 							// handler used to vanish: an exec handler that threw, a malformed interaction update, a
 							// checkpoint that could not be applied. The turn then completed as though nothing had
-							// gone wrong. Report it for real and keep the best-effort shape.
+							// gone wrong. Report it and fail the turn immediately so the client does not wait for a watchdog.
 							logger.warn("Cursor server message handler failed", {
 								model: model.id,
 								messageCase: serverMessage.message.case,
 								error: errorMessage(error),
 							});
+							failTurn(error instanceof Error ? error : new Error(String(error)));
 						});
 
 						// The one place the turn is declared over. Both the resolve and the
@@ -695,6 +695,7 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 						}
 					} catch (e) {
 						log("error", "parseServerMessage", { error: String(e) });
+						failTurn(e instanceof Error ? e : new Error(String(e)));
 					}
 				}
 			});
@@ -722,17 +723,10 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 					await log?.close();
 				};
 
-				h2Request!.on("trailers", trailers => {
-					const status = trailers["grpc-status"];
-					const msg = trailers["grpc-message"];
-					if (status && status !== "0") {
-						void closeDebugLog().finally(() => {
-							reject(cursorStreamFailure(String(status), decodeURIComponent(String(msg || "")), "gRPC error"));
-						});
-					}
-				});
-
-				h2Request!.on("end", () => {
+				let streamTerminated = false;
+				const terminateStream = (reason?: () => void) => {
+					if (streamTerminated) return;
+					streamTerminated = true;
 					resolveH2 = undefined;
 					void closeDebugLog()
 						.then(() => {
@@ -753,21 +747,50 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 								reject(endStreamError);
 								return;
 							}
-							resolve();
+							if (reason) {
+								reason();
+								return;
+							}
+							if (turnCompleted) {
+								resolve();
+								return;
+							}
+							reject(
+								new AIError.ProviderResponseError(
+									"Cursor stream ended without a turn_ended update (connection dropped or response truncated)",
+									{ provider: model.provider, kind: "incomplete-stream" },
+								),
+							);
 						})
 						.catch(reject);
+				};
+
+				h2Request!.on("trailers", trailers => {
+					const status = trailers["grpc-status"];
+					const msg = trailers["grpc-message"];
+					if (status && status !== "0") {
+						terminateStream(() => {
+							reject(cursorStreamFailure(String(status), decodeURIComponent(String(msg || "")), "gRPC error"));
+						});
+					}
+				});
+
+				h2Request!.on("end", () => {
+					terminateStream();
+				});
+
+				h2Request!.on("close", () => {
+					terminateStream();
 				});
 
 				h2Request!.on("error", error => {
-					void closeDebugLog().finally(() => reject(error));
+					terminateStream(() => reject(error));
 				});
 
 				if (abortSignal) {
 					abortHandler = () => {
 						h2Request?.close();
-						void closeDebugLog().finally(() => {
-							reject(new AIError.RequestAbortError());
-						});
+						terminateStream(() => reject(new AIError.RequestAbortError()));
 					};
 					// Already aborted before we attached: the event will never fire, so
 					// run the handler once synchronously instead of hanging the round.
@@ -2151,7 +2174,7 @@ export function buildGrepResultFromToolResult(
 				}
 				const file = line.slice(0, separatorIndex);
 				const count = Number.parseInt(line.slice(separatorIndex + 1), 10);
-				if (!file || Number.isNaN(count)) {
+				if (!file || !Number.isSafeInteger(count) || count < 0 || count > 0x7fffffff) {
 					return null;
 				}
 				return create(GrepFileCountSchema, { file, count });
@@ -2182,6 +2205,10 @@ export function buildGrepResultFromToolResult(
 				continue;
 			}
 			const [, file, lineNumber, content] = match;
+			const parsedLine = Number.parseInt(lineNumber, 10);
+			if (!Number.isSafeInteger(parsedLine) || parsedLine < 1 || parsedLine > 0x7fffffff) {
+				continue;
+			}
 			// A line is context only when it did NOT parse as a real match. The two
 			// regexes overlap: a genuine match line whose content contains a
 			// `-<digits>-` run (an ISO date like 2024-01-15, an index like x-1-y)
@@ -2190,7 +2217,7 @@ export function buildGrepResultFromToolResult(
 			// `match` already prefers matchLine, so derive the flag from matchLine.
 			const isContextLine = matchLine === null;
 			const list = matchMap.get(file) ?? [];
-			list.push({ line: Number(lineNumber), content, isContextLine });
+			list.push({ line: parsedLine, content, isContextLine });
 			matchMap.set(file, list);
 			if (!isContextLine) {
 				totalMatchedLines += 1;
