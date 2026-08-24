@@ -51,14 +51,17 @@ describe("agent status display (ONE-PLACE)", () => {
 	 * reading it on a `running` row would report the reason it stopped LAST time
 	 * as the reason it is stopped now.
 	 */
-	it("derives blocked and waiting from the ref, with the approval winning", () => {
+	it("derives blocked and waiting from the ref, with approval winning while running", () => {
 		expect(agentDisplayState({ status: "running" })).toBe("running");
 		expect(agentDisplayState({ status: "running", blockedOnApproval: true })).toBe("blocked");
 		expect(agentDisplayState({ status: "parked", waitingOnPeer: true })).toBe("waiting");
 		expect(agentDisplayState({ status: "idle", waitingOnPeer: true })).toBe("waiting");
 		expect(agentDisplayState({ status: "parked", waitingOnPeer: false })).toBe("parked");
 		expect(agentDisplayState({ status: "running", waitingOnPeer: true })).toBe("running");
-		expect(agentDisplayState({ status: "parked", waitingOnPeer: true, blockedOnApproval: true })).toBe("blocked");
+		expect(agentDisplayState({ status: "parked", waitingOnPeer: true, blockedOnApproval: true })).toBe("waiting");
+		expect(agentDisplayState({ status: "aborted", blockedOnApproval: true })).toBe("aborted");
+		expect(agentDisplayState({ status: "idle", blockedOnApproval: true })).toBe("idle");
+		expect(agentDisplayState({ status: "parked", blockedOnApproval: true })).toBe("parked");
 	});
 
 	it("renders the glyph and word of a status in the same color", () => {
