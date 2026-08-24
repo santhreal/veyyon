@@ -29,7 +29,25 @@ CONTAINER_LLM_BASE_URL="$(container_endpoint "${PROOF_LLM_BASE_URL:-}")"
 # violet-and-cyan backdrop survived being rewritten as a neutral one: the launcher kept
 # passing the old colours in, and every take came out in the scheme the file no longer
 # contained.
+AUTH_MOUNTS=()
+if [[ -n "${PROOF_AUTH_DIR:-}" ]]; then
+	AUTH_MOUNTS+=(--mount "type=bind,src=${PROOF_AUTH_DIR},dst=/host-auth,readonly")
+fi
+
+# Mandate GPU acceleration passthrough so the terminal and compositor run at full
+# hardware refresh rate with zero CPU-compositor frame jitter.
+GPU_ARGS=()
+if [ -d /dev/dri ]; then
+	GPU_ARGS+=(--device /dev/dri)
+	if [ -e /dev/dri/renderD128 ]; then
+		RENDER_GID="$(stat -c %g /dev/dri/renderD128 2>/dev/null || echo 992)"
+		GPU_ARGS+=(--group-add "${RENDER_GID}")
+	fi
+fi
+
 docker run --rm \
+	"${AUTH_MOUNTS[@]}" \
+	"${GPU_ARGS[@]}" \
 	--network "${PROOF_NETWORK:-veyyon-proof}" \
 	--add-host "${CONTAINER_HOST_ALIAS}:host-gateway" \
 	--mount "type=bind,src=${REPO_ROOT},dst=/repo" \
@@ -62,6 +80,9 @@ docker run --rm \
 	-e "SCENE_BLUR_STRENGTH" \
 	-e "SCENE_BACKDROP_BLUR" \
 	-e "SCENE_CHROME_BACKEND" \
+	-e "SCENE_CHROME_BLUR" \
+	-e "SCENE_MOTION_GATE" \
+	-e "SCENE_MOTION_FLOOR" \
 	-e "SCENE_BACKDROP_BASE" \
 	-e "SCENE_BACKDROP_WARM" \
 	-e "SCENE_BACKDROP_COOL" \
@@ -80,6 +101,10 @@ docker run --rm \
 		set -e
 		mkdir -p /sandbox/home/.veyyon
 		cp -r /seed/. /sandbox/home/.veyyon/
+		if [ -d /host-auth ]; then
+			mkdir -p /sandbox/home/.veyyon/shared-auth
+			cp -a /host-auth/. /sandbox/home/.veyyon/shared-auth/
+		fi
 		# A recorder on another machine cannot resolve the llama.cpp container by the
 		# name it has on this daemon, so the base URL is overridable at record time.
 		if [ -n "${PROOF_LLM_BASE_URL}" ]; then
