@@ -17,9 +17,10 @@ session:
 
 Every process a session spawns to do its work joins the budget. That covers bash commands (plain
 and PTY), MCP stdio servers, the `exec` calls that custom tools, custom commands, and extensions
-make, background processes from the `launch` tool, the eval kernels (Python, Ruby, Julia),
-language servers, debug adapters, the managed browser, `git` and `jj`, `ssh`, and the installs
-that plugins run. A capped process passes the budget to its own children (cgroup / Job Object inheritance on
+make, background processes from the `launch` tool, the eval kernels (Python, Ruby, Julia) — a new
+eval cell is refused while the budget is saturated or the group could not be created, the same as
+a new bash command — language servers, debug adapters, the managed browser, `git` and `jj`, `ssh`,
+and the installs that plugins run. A capped process passes the budget to its own children (cgroup / Job Object inheritance on
 Linux and Windows; a process-tree walk on macOS), so a build that spawns a compiler fleet is
 still one budget.
 
@@ -48,10 +49,12 @@ If you cap a session at 1 core, veyyon stays responsive while the build under it
 
 Where the operating system offers a per-group CPU quota, the kernel does the capping:
 
-- **Linux** uses a cgroup v2 directory per session with `cpu.max` set to the core count. If the
-  harness's own cgroup is not writable, veyyon starts a delegated transient **service** in the
-  systemd user manager (`Delegate=yes`, `CPUQuota`) and adopts children into that cgroup. It is
-  not a `--scope` unit: a scope would block on the placeholder and leave setup failed.
+- **Linux** uses a cgroup v2 directory per session with `cpu.max` set to the core count. A
+  positive budget smaller than one microsecond of the 100ms period writes `1 100000`, not a freeze
+  quota of `0`. If the harness's own cgroup is not writable, veyyon starts a delegated transient
+  **service** in the systemd user manager (`Delegate=yes`, `CPUQuota`) and adopts children into that
+  cgroup. It is not a `--scope` unit: a scope would block on the placeholder and leave setup failed.
+  A positive `CPUQuota` too small for systemd to express floors at `0.001%` rather than `0%`.
 - **Windows** uses an unnamed Job Object with a hard CPU rate cap. `CpuRate` is a fraction of
   **host** logical processors (4 cores on a 16-processor machine is 2500, not 40000). Setting the
   limit to 0, or `/cpu-limit remove`, turns rate control off rather than flooring to 0.01% of the

@@ -236,15 +236,22 @@ describe("every spawn site in src is wired into the session CPU budget or exempt
 		// The spawn gate is sync and does not create the group. Memory and
 		// setup refusals only exist after ensureGroup(). A site that gates
 		// first lets the first command run unbounded on a failed host.
+		// `gateSpawn` / `gateSessionCpuSpawn` encode that order; either form
+		// counts as a gated site.
 		const files = await findSpawnFiles(SRC_ROOT);
 		const gated: string[] = [];
 		for (const file of files) {
 			const text = await fs.readFile(path.join(SRC_ROOT, file), "utf8");
-			if (text.includes("assertMaySpawn(")) gated.push(file);
+			if (text.includes("assertMaySpawn(") || text.includes("gateSpawn(") || text.includes("gateSessionCpuSpawn(")) {
+				gated.push(file);
+			}
 		}
 		expect(gated.length, "at least the command spawn sites gate").toBeGreaterThan(0);
 		for (const file of gated) {
 			const text = await fs.readFile(path.join(SRC_ROOT, file), "utf8");
+			if (text.includes("gateSpawn(") || text.includes("gateSessionCpuSpawn(")) {
+				continue;
+			}
 			const ensure = text.indexOf("await this.cpuLimit.ensureGroup()");
 			const gate = text.indexOf("this.cpuLimit.assertMaySpawn(");
 			const ensureAny = text.indexOf("ensureGroup()");

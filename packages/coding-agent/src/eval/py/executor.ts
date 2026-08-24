@@ -1,5 +1,5 @@
 import { errorMessage, getProjectDir, logger } from "@veyyon/utils";
-import { sessionCpuAdoption } from "../../session/cpu-limit";
+import { gateSessionCpuSpawn, sessionCpuAdoption } from "../../session/cpu-limit";
 import { registerOwnedResourceDisposer } from "../../session/owned-resources";
 import type { ToolSession } from "../../tools";
 import {
@@ -494,6 +494,7 @@ export async function executePython(code: string, options?: PythonExecutorOption
 		deadlineMs,
 	};
 
+	await gateSessionCpuSpawn(options?.toolSession?.getSessionId?.() ?? null, "a Python eval cell");
 	try {
 		requireRemainingTimeoutMs(deadlineMs);
 		if (executionOptions.signal?.aborted) {

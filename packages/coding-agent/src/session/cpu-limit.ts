@@ -127,6 +127,25 @@ export function formatCpuMaxValue(cores: number): string {
 	return `${quota} ${CPU_LIMIT_PERIOD_USEC}`;
 }
 
+/**
+ * systemd `CPUQuota=` for `cores` cores. systemd rejects `CPUQuota=0%` and
+ * scientific notation (`1e-10%`); a positive budget that would print as either
+ * floors at 0.001% — one microsecond of a 100ms period, the same 1 µs floor as
+ * {@link formatCpuMaxValue}.
+ */
+export function formatSystemdCpuQuota(cores: number): string | undefined {
+	if (!Number.isFinite(cores) || cores <= 0) return undefined;
+	// JS Number.toString uses scientific notation at 1e21. systemd rejects that.
+	const percent = Math.min(1e18, Math.max(0.001, cores * 100));
+	const rendered = Number.isInteger(percent)
+		? String(percent)
+		: percent
+				.toFixed(6)
+				.replace(/\.0+$/, "")
+				.replace(/(\.\d*?)0+$/, "$1");
+	return `CPUQuota=${rendered}%`;
+}
+
 /** Result of running a helper binary (systemd-run, systemctl) during probe or setup. */
 export interface CpuLimitCommandResult {
 	code: number;
@@ -699,6 +718,17 @@ export class SessionCpuLimit {
 	}
 
 	/**
+	 * Create the group if needed, then refuse the spawn when any budget says so.
+	 * Spawn sites call this instead of `ensureGroup` then `assertMaySpawn`: the
+	 * gate is sync and cannot see a setup failure until the group has been asked
+	 * for, so the order is part of the contract, not a local habit.
+	 */
+	async gateSpawn(what: string): Promise<void> {
+		await this.ensureGroup();
+		this.assertMaySpawn(what);
+	}
+
+	/**
 	 * Move a spawned child into the session group. Fire-and-forget at spawn
 	 * sites: membership is inherited across fork (and job-object children
 	 * inherit the job), so adopting the direct child caps its whole tree.
@@ -1033,6 +1063,7 @@ export class SessionCpuLimit {
 				// deadline killed it, setup was marked failed for the whole session, and the budget
 				// silently did nothing on every host that reached this backend. A service forks, so
 				// systemd-run returns as soon as the unit is registered and the quota is in place.
+				const cpuQuota = formatSystemdCpuQuota(this.#cores);
 				const launched = await this.#options.env.run([
 					"systemd-run",
 					"--user",
@@ -1055,7 +1086,7 @@ export class SessionCpuLimit {
 					// A group can exist for the write, process or memory limit with
 					// no CPU limit at all, and `CPUQuota=0%` is a quota of no CPU
 					// rather than an absent one.
-					...(this.#cores > 0 ? ["-p", `CPUQuota=${this.#cores * 100}%`] : []),
+					...(cpuQuota ? ["-p", cpuQuota] : []),
 					"--",
 					"true",
 				]);
@@ -1186,7 +1217,7 @@ export class SessionCpuLimit {
 	async #setQuota(cores: number): Promise<void> {
 		try {
 			if (this.#systemdUnit) {
-				const quota = cores > 0 ? `CPUQuota=${cores * 100}%` : "CPUQuota=";
+				const quota = formatSystemdCpuQuota(cores) ?? "CPUQuota=";
 				await this.#options.env.run(["systemctl", "--user", "set-property", this.#systemdUnit, quota]);
 			} else {
 				this.#group?.setCores(cores);
@@ -1394,6 +1425,17 @@ export function sessionCpuAdoption(getSessionId: () => string | null): (pid: num
 			.adoptPid(pid)
 			.catch(error => logger.debug("CPU limit: adoption failed", { error: errorMessage(error) }));
 	};
+}
+
+/**
+ * Refuse a new eval kernel cell (or any other caller that has a session id
+ * but not the limiter object) when the session budget is saturated or setup
+ * failed. No-op when the session has no limiter.
+ */
+export async function gateSessionCpuSpawn(sessionId: string | null | undefined, what: string): Promise<void> {
+	const limiter = sessionCpuLimit(sessionId);
+	if (!limiter) return;
+	await limiter.gateSpawn(what);
 }
 
 /**

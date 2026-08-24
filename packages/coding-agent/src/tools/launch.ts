@@ -464,8 +464,7 @@ export class LaunchTool implements AgentTool<typeof launchSchema, LaunchToolDeta
 				this.session.settings.get("session.cpuLimitKill"),
 				sessionBudgetLimits(this.session.settings),
 			);
-			await cpuLimit.ensureGroup();
-			cpuLimit.assertMaySpawn("a background process");
+			await cpuLimit.gateSpawn("a background process");
 		}
 		const client = await daemonClientForProject(this.session.cwd, {
 			adoptSpawnedPid: sessionCpuAdoption(getSessionId),

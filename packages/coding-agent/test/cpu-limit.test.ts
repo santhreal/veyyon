@@ -17,6 +17,7 @@ import {
 	type CpuBudgetGroupHandle,
 	CpuLimitDeniedError,
 	formatCpuMaxValue,
+	formatSystemdCpuQuota,
 	initSessionCpuLimit,
 	probeCpuLimitSupport,
 	SessionCpuLimit,
@@ -136,6 +137,35 @@ describe("formatCpuMaxValue", () => {
 			const cores = step / 10;
 			expect(formatCpuMaxValue(cores)).toBe(`${Math.round(cores * 100_000)} 100000`);
 		}
+	});
+
+	it("floors a positive budget too small to express at one microsecond, not a freeze", () => {
+		expect(formatCpuMaxValue(1e-12)).toBe("1 100000");
+		expect(formatCpuMaxValue(1e-10)).toBe("1 100000");
+		expect(formatCpuMaxValue(4e-6)).toBe("1 100000");
+	});
+});
+
+describe("formatSystemdCpuQuota", () => {
+	it("omits the property when the budget is lifted", () => {
+		expect(formatSystemdCpuQuota(0)).toBeUndefined();
+		expect(formatSystemdCpuQuota(-1)).toBeUndefined();
+		expect(formatSystemdCpuQuota(Number.NaN)).toBeUndefined();
+	});
+
+	it("prints integer percents without trailing zeros", () => {
+		expect(formatSystemdCpuQuota(2)).toBe("CPUQuota=200%");
+		expect(formatSystemdCpuQuota(1)).toBe("CPUQuota=100%");
+		expect(formatSystemdCpuQuota(0.5)).toBe("CPUQuota=50%");
+	});
+
+	it("floors a positive budget too small for systemd at 0.001%, never 0% or scientific notation", () => {
+		expect(formatSystemdCpuQuota(1e-12)).toBe("CPUQuota=0.001%");
+		expect(formatSystemdCpuQuota(1e-10)).toBe("CPUQuota=0.001%");
+		const tiny = formatSystemdCpuQuota(1e-20)!;
+		expect(tiny).toBe("CPUQuota=0.001%");
+		expect(tiny).not.toMatch(/e/i);
+		expect(tiny).not.toBe("CPUQuota=0%");
 	});
 });
 
@@ -266,6 +296,14 @@ describe("SessionCpuLimit group lifecycle", () => {
 		await limiter.dispose();
 	});
 
+	it("gateSpawn refuses a failed setup in one call", async () => {
+		const root = await makeCgroupRoot();
+		const host = makeFakeHost(root);
+		const limiter = await makeLimiter(host, { cores: 2 });
+		await expect(limiter.gateSpawn("a Python eval cell")).rejects.toThrow(CpuLimitDeniedError);
+		await limiter.dispose();
+	});
+
 	it("stays inert when cores is 0: no group, no adoption", async () => {
 		const root = await makeCgroupRoot();
 		const parent = await makeDelegatedParent(root);
@@ -357,6 +395,33 @@ describe("SessionCpuLimit group lifecycle", () => {
 		await limiter.dispose();
 		const stop = host.ran.find(cmd => cmd[0] === "systemctl" && cmd.includes("stop"));
 		expect(stop).toContain("veyyon-cpu-sess-test.service");
+	});
+
+	it("floors a tiny systemd CPUQuota instead of writing 0% or scientific notation", async () => {
+		const root = await makeCgroupRoot();
+		const unitRel = "/user.slice/user-1000.slice/user@1000.service/app.slice/veyyon-cpu-sess-tiny.service";
+		const host = makeFakeHost(root, cmd => {
+			if (cmd[0] === "systemd-run") return { code: 0, stdout: "", stderr: "" };
+			if (cmd[0] === "systemctl" && cmd.includes("show")) return { code: 0, stdout: `${unitRel}\n`, stderr: "" };
+			return { code: 0, stdout: "", stderr: "" };
+		});
+		await fs.mkdir(path.join(root, unitRel), { recursive: true });
+		await fs.writeFile(path.join(root, unitRel, "cgroup.procs"), "");
+		const probe = await probeCpuLimitSupport(host.env);
+		expect(probe.backend?.kind).toBe("systemd-run");
+		const limiter = new SessionCpuLimit({
+			sessionId: "sess-tiny",
+			cores: 1e-12,
+			kill: false,
+			probe,
+			env: host.env,
+			windowSamples: 3,
+		});
+		await limiter.ensureGroup();
+		const systemdRun = host.ran.find(cmd => cmd[0] === "systemd-run");
+		expect(systemdRun).toContain("CPUQuota=0.001%");
+		expect(systemdRun?.some(arg => /e-/i.test(arg))).toBe(false);
+		await limiter.dispose();
 	});
 });
 
