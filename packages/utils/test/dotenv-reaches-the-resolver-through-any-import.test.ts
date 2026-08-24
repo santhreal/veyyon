@@ -2,6 +2,8 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { moduleReach, moduleSpecifiersIn, namedImportsFrom } from "@veyyon/utils/module-reach";
+import { declarersOfName } from "@veyyon/utils/source-declarations";
 
 /**
  * Contracts: a user's `$HOME/.env` reaches the directory resolver no matter which module you imported.
@@ -52,6 +54,31 @@ import * as path from "node:path";
  */
 
 const UTILS_SRC = path.join(import.meta.dir, "..", "src");
+
+/** Every module of this package, so a claim about who declares a name is answered for all of them. */
+const UTILS_MODULES = fs
+	.readdirSync(UTILS_SRC, { recursive: true, encoding: "utf-8" })
+	.filter(entry => entry.endsWith(".ts"))
+	.map(entry => ({
+		file: path.posix.join("packages/utils/src", entry.split(path.sep).join("/")),
+		source: fs.readFileSync(path.join(UTILS_SRC, entry), "utf-8"),
+	}));
+
+/**
+ * The import EDGES of one module, and the modules it instantiates transitively.
+ *
+ * Both come from `@veyyon/utils/module-reach`, which owns the extraction and is pinned against
+ * fixtures in `module-reach-reads-code-not-prose.test.ts`. This suite used to match the source bytes
+ * instead — `toMatch(/^import "\.\/dotenv-home";$/m)` — which asserted a formatting choice, missed
+ * every longer route to the same module, and passed on an import quoted in a comment.
+ */
+function importsOf(module: string): string[] {
+	return moduleSpecifiersIn(fs.readFileSync(path.join(UTILS_SRC, module), "utf-8"));
+}
+
+function instantiatedBy(module: string): string[] {
+	return [...moduleReach(path.join(UTILS_SRC, module))].map(file => path.basename(file));
+}
 
 let home = "";
 let workdir = "";
@@ -165,10 +192,10 @@ describe("the phase split that makes that true", () => {
 	 * resolution order would decide whether anything is applied at all.
 	 */
 	it("dirs imports phase one and not the phase-two module", () => {
-		const dirsSource = fs.readFileSync(path.join(UTILS_SRC, "dirs.ts"), "utf-8");
+		const edges = importsOf("dirs.ts");
 
-		expect(dirsSource).toMatch(/^import "\.\/dotenv-home";$/m);
-		expect(dirsSource).not.toMatch(/^import .* from "\.\/env";$/m);
+		expect(edges).toContain("./dotenv-home");
+		expect(edges).not.toContain("./env");
 	});
 
 	/**
@@ -207,14 +234,14 @@ describe("the phase split that makes that true", () => {
 
 	it("keeps the diagnostic switches free of phase one", () => {
 		for (const leaf of ["startup-marker.ts", "module-timer.ts"]) {
-			expect(fs.readFileSync(path.join(UTILS_SRC, leaf), "utf-8"), leaf).not.toMatch(/dotenv-home/);
+			// Transitively, which the byte match could not see: a longer route to phase one costs the
+			// marker its one-builtin graph just as surely as a direct import.
+			expect(instantiatedBy(leaf), leaf).not.toContain("dotenv-home.ts");
 		}
 
 		// And the marker really is the one-builtin module its doc claims, which is what makes the exclusion
 		// load-bearing rather than laziness.
-		const marker = fs.readFileSync(path.join(UTILS_SRC, "startup-marker.ts"), "utf-8");
-		const markerImports = [...marker.matchAll(/^import .*from "([^"]+)";$/gm)].map(match => match[1]);
-		expect(markerImports).toEqual(["node:fs"]);
+		expect(importsOf("startup-marker.ts")).toEqual(["node:fs"]);
 	});
 
 	/**
@@ -223,28 +250,67 @@ describe("the phase split that makes that true", () => {
 	 * a longer route, and a warning that depends on cycle resolution order is a warning that sometimes does
 	 * not appear.
 	 */
-	it("phase one imports neither dirs nor the logger", () => {
-		const phaseOne = fs.readFileSync(path.join(UTILS_SRC, "dotenv-home.ts"), "utf-8");
+	it("phase one instantiates neither dirs nor the logger", () => {
+		const instantiated = instantiatedBy("dotenv-home.ts");
 
-		expect(phaseOne).not.toMatch(/from "\.\/dirs"/);
-		expect(phaseOne).not.toMatch(/from "\.\/logger"/);
-		expect(phaseOne).toMatch(/from "\.\/dotenv-parse"/);
+		expect(instantiated).toContain("dotenv-parse.ts");
+		expect(instantiated).not.toContain("dirs.ts");
+		expect(instantiated).not.toContain("logger.ts");
 	});
 
 	/**
 	 * The parser has ONE owner, and neither phase carries a copy. Two copies would be worse than the cycle
 	 * they would avoid: the phases would disagree about which keys are admissible, and a rejected-in-one key
 	 * reads as a `.env` line that works in some processes and not others.
+	 *
+	 * TWO MODULES DECLARE THE NAME, which the byte match this arm replaced could not see: it asserted that
+	 * phase two imports the owner under an alias and stopped there, while `env.ts` also exports a
+	 * `parseEnvFile` of its own. That one binds the reporter and delegates, which is a layer rather than a
+	 * fork, and the arm below proves it by agreement on the same file rather than by reading either body.
 	 */
-	it("both phases parse through the shared owner", () => {
-		const owner = fs.readFileSync(path.join(UTILS_SRC, "dotenv-parse.ts"), "utf-8");
-		const phaseOne = fs.readFileSync(path.join(UTILS_SRC, "dotenv-home.ts"), "utf-8");
-		const phaseTwo = fs.readFileSync(path.join(UTILS_SRC, "env.ts"), "utf-8");
+	it("both phases parse through the shared owner", async () => {
+		// Asked of every module rather than matched in one, and pinned by exact equality: a third
+		// declaration is a decision somebody records here.
+		expect(declarersOfName(UTILS_MODULES, "parseEnvFile")).toEqual([
+			"packages/utils/src/dotenv-parse.ts",
+			"packages/utils/src/env.ts",
+		]);
 
-		expect(owner).toMatch(/^export function parseEnvFile\(/m);
-		expect(phaseOne).toMatch(/parseEnvFile/);
-		expect(phaseTwo).toMatch(/parseEnvFile as parseEnvFileWithReporter/);
-		expect(phaseTwo).not.toMatch(/^\tconst content = fs\.readFileSync\(filePath/m);
+		// TypeScript refuses a module that both imports a binding and declares it, so an import edge from
+		// each phase to the owner IS the claim that neither carries a private parser.
+		expect(importsOf("dotenv-home.ts")).toContain("./dotenv-parse");
+		expect(importsOf("env.ts")).toContain("./dotenv-parse");
+
+		// And the two spellings return the same map for the same file, down to a key an ordinary reader
+		// would expect one of them to drop: `LD_PRELOAD` survives the parse and is dropped later by the
+		// scrub, which is a different owner. In a fresh process, because importing phase two applies this
+		// machine's own `.env` to whatever realm does it.
+		const probe = path.join(workdir, "delegation.env");
+		fs.writeFileSync(
+			probe,
+			[
+				"# a comment",
+				'QUOTED="a value"',
+				"BARE=plain",
+				"LD_PRELOAD=/tmp/evil.so",
+				"not a key at all",
+				"EMPTY=",
+			].join("\n"),
+		);
+		const printed = await runInFreshProcess(
+			[
+				`import { parseEnvFile as viaPhaseTwo } from ${JSON.stringify(path.join(UTILS_SRC, "env.ts"))};`,
+				`import { parseEnvFile as viaOwner } from ${JSON.stringify(path.join(UTILS_SRC, "dotenv-parse.ts"))};`,
+				`const file = ${JSON.stringify(probe)};`,
+				"const layered = JSON.stringify(viaPhaseTwo(file));",
+				"const owned = JSON.stringify(viaOwner(file, () => {}));",
+				// biome-ignore lint/suspicious/noTemplateCurlyInString: the placeholders belong to the probe
+				// process's own source, which this line quotes rather than interpolates.
+				"console.log(layered === owned ? `same ${layered}` : `different ${layered} vs ${owned}`);",
+			].join("\n"),
+		);
+
+		expect(printed).toBe('same {"QUOTED":"a value","BARE":"plain","LD_PRELOAD":"/tmp/evil.so","EMPTY":""}');
 	});
 
 	/**
@@ -254,8 +320,8 @@ describe("the phase split that makes that true", () => {
 	 * applied to `Bun.env` and invisible to every path.
 	 */
 	it("phase two still refreshes the resolver", () => {
-		const phaseTwo = fs.readFileSync(path.join(UTILS_SRC, "env.ts"), "utf-8");
-
-		expect(phaseTwo).toMatch(/^refreshDirsFromEnv\(\);$/m);
+		expect(namedImportsFrom(fs.readFileSync(path.join(UTILS_SRC, "env.ts"), "utf-8"), "./dirs")).toContain(
+			"refreshDirsFromEnv",
+		);
 	});
 });
