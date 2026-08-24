@@ -404,4 +404,87 @@ describe("a late job result completes its interrupted call", () => {
 		expect(toolResultText(agent.state.messages, CALL_ID)).toBe("late async finished");
 		expect(collectPendingToolCalls(session.sessionManager.getBranch())).toEqual([]);
 	});
+
+	it("falls back to queued async-result follow-up when the pending call was compacted away", () => {
+		session.yieldQueue.register<{ jobId: string }>("async-result", {
+			build: survivors => ({
+				role: "custom",
+				customType: "async-result",
+				content: survivors.map(entry => entry.jobId).join(","),
+				display: true,
+				timestamp: Date.now(),
+			}),
+		});
+
+		// Simulate compaction rewriting context: replace active messages with a summary entry
+		agent.replaceMessages([
+			{
+				role: "user",
+				content: "compaction summary replacing earlier history",
+				timestamp: Date.now(),
+			},
+		]);
+
+		const outcome = session.deliverAsyncJobResult("bg_compacted", "late output after compaction", {
+			id: "bg_compacted",
+			type: "bash",
+			status: "completed",
+			startTime: Date.now(),
+			label: "bash: compacted away",
+			abortController: new AbortController(),
+			promise: Promise.resolve(),
+			toolCallId: CALL_ID,
+		});
+
+		expect(outcome).toBe("queued");
+		expect(session.yieldQueue.has("async-result")).toBe(true);
+		expect(toolResultText(agent.state.messages, CALL_ID)).toBeUndefined();
+	});
+
+	it("attaches to the tool call when it is preserved in the kept tail after compaction", () => {
+		// Replace messages with compaction summary + kept call
+		const callMessage = interruptedBashCall();
+		agent.replaceMessages([
+			{
+				role: "user",
+				content: "Summary of earlier turns",
+				timestamp: Date.now() - 1000,
+			},
+			callMessage,
+		]);
+
+		const outcome = session.deliverAsyncJobResult("bg_kept", "output for kept call", {
+			id: "bg_kept",
+			type: "bash",
+			status: "completed",
+			startTime: Date.now(),
+			label: "bash: kept in tail",
+			abortController: new AbortController(),
+			promise: Promise.resolve(),
+			toolCallId: CALL_ID,
+		});
+
+		expect(outcome).toBe("attached");
+		expect(toolResultText(agent.state.messages, CALL_ID)).toBe("output for kept call");
+	});
+
+	it("attaches late tool result properly even when job manager retention is zero", async () => {
+		const zeroRetentionManager = new AsyncJobManager({
+			retentionMs: 0,
+			onJobComplete: (jobId, text, job) => {
+				session.deliverAsyncJobResult(jobId, text, job);
+			},
+		});
+
+		zeroRetentionManager.register("bash", "bash: zero retention", async () => "zero retention result", {
+			toolCallId: CALL_ID,
+		});
+
+		await zeroRetentionManager.waitForAll();
+		expect(await zeroRetentionManager.drainDeliveries({ timeoutMs: 2_000 })).toBe(true);
+
+		expect(toolResultText(agent.state.messages, CALL_ID)).toBe("zero retention result");
+		expect(collectPendingToolCalls(session.sessionManager.getBranch())).toEqual([]);
+		await zeroRetentionManager.dispose();
+	});
 });

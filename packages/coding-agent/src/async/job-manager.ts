@@ -359,6 +359,9 @@ export class AsyncJobManager {
 			if (!this.#watchedJobs.delete(jobId)) continue;
 			removed += 1;
 			this.#requeueSettledDelivery(jobId);
+			if (this.#retentionMs <= 0) {
+				this.#scheduleEviction(jobId);
+			}
 		}
 		return removed;
 	}
@@ -422,6 +425,16 @@ export class AsyncJobManager {
 			this.#deliveries.length,
 			...this.#deliveries.filter(delivery => !this.isDeliverySuppressed(delivery.jobId)),
 		);
+		if (this.#retentionMs <= 0) {
+			for (const jobId of uniqueJobIds) {
+				const job = this.#jobs.get(jobId);
+				const deliveryInFlight = this.#inFlightDeliveries.some(delivery => delivery.jobId === jobId);
+				if (job && job.status !== "running" && !deliveryInFlight) {
+					this.#suppressedDeliveries.delete(jobId);
+				}
+				this.#scheduleEviction(jobId);
+			}
+		}
 		return before - this.#deliveries.length;
 	}
 
@@ -436,6 +449,9 @@ export class AsyncJobManager {
 			if (!jobId) continue;
 			if (!this.#suppressedDeliveries.delete(jobId)) continue;
 			this.#requeueSettledDelivery(jobId);
+			if (this.#retentionMs <= 0) {
+				this.#scheduleEviction(jobId);
+			}
 		}
 	}
 
@@ -566,7 +582,17 @@ export class AsyncJobManager {
 
 	#scheduleEviction(jobId: string): void {
 		if (this.#disposed) return;
+		const job = this.#jobs.get(jobId);
+		if (job?.status === "running") return;
 		if (this.#retentionMs <= 0) {
+			if (
+				this.#suppressedDeliveries.has(jobId) ||
+				this.#watchedJobs.has(jobId) ||
+				this.#deliveries.some(delivery => delivery.jobId === jobId) ||
+				this.#inFlightDeliveries.some(delivery => delivery.jobId === jobId)
+			) {
+				return;
+			}
 			this.#jobs.delete(jobId);
 			this.#suppressedDeliveries.delete(jobId);
 			this.#watchedJobs.delete(jobId);
@@ -723,6 +749,16 @@ export class AsyncJobManager {
 			} finally {
 				const index = this.#inFlightDeliveries.indexOf(delivery);
 				if (index !== -1) this.#inFlightDeliveries.splice(index, 1);
+				if (
+					this.#retentionMs <= 0 &&
+					this.#suppressedDeliveries.has(delivery.jobId) &&
+					this.#jobs.get(delivery.jobId)?.status !== "running"
+				) {
+					this.#suppressedDeliveries.delete(delivery.jobId);
+				}
+				if (this.#retentionMs <= 0) {
+					this.#scheduleEviction(delivery.jobId);
+				}
 				if (this.#deliveries.length > 0) this.#ensureDeliveryLoop();
 			}
 		})();
