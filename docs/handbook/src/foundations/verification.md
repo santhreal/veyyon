@@ -37,7 +37,7 @@ The recorder refuses to publish a clip whose cadence is not the one it captured.
 criteria, both from `--expect-ms`:
 
 ```text
-typical frame    capture interval +/-1 ms (17 ms at 60 fps, 33/34 ms at 30 fps)
+typical frame    capture interval +/-1 ms (33/34 ms at 30 fps)
 moving average   within 10% of the capture rate, held stills set aside
 ```
 
@@ -53,19 +53,33 @@ python3 proof/webp-cadence.py assets/demo-hd.webp --expect-ms 33
 
 ### Real interactive sessions
 
-The HD recorder starts Xvfb, picom, and kitty inside the recorder container. It drives the shipped CLI with real keyboard and pointer events and records the private display at the scene rate (60 fps for the hero take, 30 fps for the rest).
+The HD recorder starts Xvfb and kitty inside the recorder container. It drives the shipped CLI with real keyboard and pointer events and records the private display at 30 frames per second.
+
+30 is the rate the pipeline delivers whole. Measured at 2560x1440 with the hero's chrome and a payload repainting every cell as fast as the terminal accepts it, a 30 fps capture returns 240 unique frames of 240 grabbed. Capturing at 60 adds no motion the session had: it doubles the encoder's cores and the file, and writes a 60 fps header over slower content, which is how a stuttering take once read as smooth to `ffprobe`.
+
+A take is judged on whether the picture moved, never on the rate the container declares. `proof/motion-gate.sh` counts unique frames with mpdecimate and fails a take below `SCENE_MOTION_FLOOR`; both session scripts run it before the take is published.
 
 The landing-page terminal uses:
 
 ```text
 terminal       kitty
 font           JetBrains Mono 21
-canvas         2560x1440 at 60 fps (hero) or 30 fps
+canvas         2560x1440 at 30 fps
 window inset   128 px
 background     #171b22
 foreground     #d3dae6
 publish        Lanczos downsample to 1920x1080
 ```
+
+### Where the settings live, and where the chrome is drawn
+
+`proof/docker/scene-config.sh` is the single definition of every `SCENE_*` knob. The two session scripts and the two host recorders source it; none of them restates a default. Override a knob by exporting it, never by editing one of those four files, because a default written down twice is two defaults and the one a run gets depends on which file it entered through.
+
+The chrome — rounded corners, the shadow, the translucent window over the backdrop — is drawn after the take by `proof/compose-chrome.sh`, not by a compositor during it. The backdrop does not move, so blending it under the window every frame recomputes one static picture thousands of times, and it cost the capture: with picom's blur on, `ffmpeg` could grab only 69 of 360 frames, and opacity alone still cost a third. `xwallpaper` puts the backdrop in the capture for free as a root pixmap; the pass replaces the square-cornered inset with the same pixels rounded, blended and shadowed.
+
+`SCENE_CHROME=live` runs a compositor during the capture instead, for comparison. It is not the default and a take recorded that way is slower.
+
+The pass is cosmetic. It cannot recover a frame the capture never drew, so a take that stuttered while it was recorded still stutters after it, and the motion gate runs on the composited file that ships.
 
 Preview a scene without replacing tracked proof assets:
 
