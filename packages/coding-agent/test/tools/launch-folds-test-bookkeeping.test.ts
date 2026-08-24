@@ -32,7 +32,9 @@ function goTestLog(): string {
 }
 
 function stubLogs(text: string): void {
-	vi.spyOn(launchClient, "daemonClientForProject").mockResolvedValue({
+	// Both scope accessors are stubbed: which one LaunchTool calls depends on
+	// launch.sharedCrossSession, and this suite's session stub leaves it off.
+	const stub = {
 		async request() {
 			return {
 				op: "logs" as const,
@@ -43,7 +45,9 @@ function stubLogs(text: string): void {
 				text,
 			};
 		},
-	} as never);
+	} as never;
+	vi.spyOn(launchClient, "daemonClientForProject").mockResolvedValue(stub);
+	vi.spyOn(launchClient, "daemonClientForSession").mockResolvedValue(stub);
 }
 
 function makeSession(): ToolSession {
