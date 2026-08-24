@@ -54,6 +54,9 @@
 - Broad multi-file text searches now keep only deterministic representative matches inline and save the complete formatted result behind an `artifact://` reference. The preview budget follows the turn-aware output curve from an 8 KiB search ceiling (~2 KiB early at turn 0), emitting up to two representative matches per file while preserving counts and warnings; explicit single-file and line-range searches retain their full output, and only visible representative lines are recorded as seen for anchored edits.
 - Compaction's directory-list documentation now uses canonical `search` `files` terminology instead of the retired `find` tool name. No runtime behavior changed.
 - The Anthropic provider reads its endpoint, credential placement, rejected betas and retry policy from the catalog's wire-capability table instead of comparing provider ids at seventeen call sites.
+- `MNEMOPI_NO_EMBEDDINGS=0`, `false`, `no` or `off` now leaves embeddings on everywhere instead of disabling them on the API path.
+- Every `MNEMOPI_*` value is read by `config.ts` alone; the local-model, extraction and embedding modules ask it instead of parsing the variable again.
+- `getDiagnostics` is now `extractionDiagnostics` in `core/extraction/diagnostics` and `recallDiagnostics` in `core/recall-diagnostics`, so the two registries are no longer reached by one name.
 - Swarm's documented agent tool inventory now names the canonical `search` and `eval` tools instead of retired workspace-search names. No runtime behavior changed.
 - Unified `search` renderer handles canonical `{ type, input }` schemas across files, text, and structure search with nested `{ type, result }` metrics and malformed-input guards. Retired search tool aliases and registry entries for glob, grep, find, and ast_grep are removed.
 - `imageFallback` takes the file name, media type, pixel size and cause of an undrawn image and returns a row naming all four; `ImageFallbackReason` states the cause.
