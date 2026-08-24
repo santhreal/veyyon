@@ -21,6 +21,25 @@
 - `isUsageLimitOutcome` and `isUsageLimitStatus` are removed from `@veyyon/ai/error/rate-limit` and from the `@veyyon/ai` root. They were the quota decision tree written a second time, outside the classifier, and six call sites wrote `isUsageLimit(error) || isUsageLimitOutcome(status, message)` because each half missed a case the other caught. The question has one accessor, `isUsageLimit(error)` from `@veyyon/ai/error/flags`, which now also answers a failure that arrived as a bare status with no body. An embedder calling `isUsageLimitOutcome(status, message)` calls `isUsageLimit({ status, message })` instead; the parts the quota family reads — `matchesUsageLimitText`, `isOpaqueStatusBody`, `parseRateLimitReason` — are unchanged.
 - `isRetryableStreamEnvelopeError` is removed from `@veyyon/ai/error`; the out-of-order envelope wording is now a transport rule in the registry, and `isStreamEnvelopeError` still answers the identity question a provider asks about a stream it was reading.
 - `fetch-retry` no longer exports `isRetryableError`. It was a second retry classifier: this module owns what a transport states about itself (`http2RetryVerdict`, `isRetryableStatus`, `isUnexpectedSocketCloseMessage`, `extractHttpStatusFromError`) and `@veyyon/ai/error` owns what a failure means, but `isRetryableError` answered the composite question with a transient vocabulary of its own, and the two lists had drifted apart by a phrase. An embedder asking whether a provider failure should be retried calls `isProviderRetryableError` from `@veyyon/ai/error`, which composes the transport facts this module still exports.
+### Added
+
+- A tool result that carries an image now states whether the picture reached the screen, so a model reading a file describes what it shows instead of reporting that it displayed it.
+- A picture the block gives up on after the fact, because the session's image budget demoted it or a Kitty session could not convert it, is stated to the model as undrawn instead of being reported as displayed.
+- `ProviderWireCapabilities.anthropicMessages` declares how a provider serves the Anthropic Messages API — its endpoint, credential placement, rejected request features and retryable model errors — and `declaredProviders()` and `declaredCapabilityNames()` derive the declaring sets from the table.
+- `Image` accepts an `onDisplayed` callback and reports the cause each time an image starts or stops falling back to a placeholder.
+
+### Changed
+
+- The vibe screens, the image-inspection call and an LSP hover code block draw no border of their own inside a tool block, so a block keeps one left edge; a tree connector remains only where a row belongs to the row above it, in the eval value tree, the grep line gutter, the job tree and the LSP reference tree.
+- A picture a terminal will not draw now leaves a row naming the file, the media type, the pixel size and the cause, in place of `[Image: image/png]`, including when a Kitty session cannot convert it to PNG.
+- The Anthropic provider reads its endpoint, credential placement, rejected betas and retry policy from the catalog's wire-capability table instead of comparing provider ids at seventeen call sites.
+- `imageFallback` takes the file name, media type, pixel size and cause of an undrawn image and returns a row naming all four; `ImageFallbackReason` states the cause.
+
+### Fixed
+
+- An indented row inside a tool block keeps its indent when it wraps at a narrow width, instead of continuing at the block's left edge.
+- A wrapped line now continues under the indent its first row opened at, so an indented row no longer reads as a new top-level row at a narrow width.
+
 ## [1.2.0] - 2026-08-23
 
 ### Added

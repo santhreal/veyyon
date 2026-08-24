@@ -6,6 +6,8 @@ import { isOfficialAnthropicApiUrl } from "@veyyon/catalog/compat/anthropic";
 import { mapEffortToAnthropicAdaptiveEffort } from "@veyyon/catalog/model-thinking";
 import { calculateCost, discardAttemptUsage, emptyCost, emptyUsage, getBundledModel } from "@veyyon/catalog/models";
 import { ANTHROPIC_API_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
+import type { ProviderAnthropicMessagesCapability } from "@veyyon/catalog/provider-models/wire-capabilities";
+import { providerWireCapabilities } from "@veyyon/catalog/provider-models/wire-capabilities";
 import { isAnthropicOAuthToken } from "@veyyon/catalog/utils";
 import { ANTHROPIC_WEB_SEARCH_TOOL, CLAUDE_CODE_VERSION as claudeCodeVersion } from "@veyyon/catalog/wire/anthropic";
 import { parseGitHubCopilotApiKey } from "@veyyon/catalog/wire/github-copilot";
@@ -60,7 +62,7 @@ import type {
 	ToolResultMessage,
 	Usage,
 } from "../types";
-import { EMPTY_ERROR_TOOL_RESULT_TEXT } from "../types";
+import { EMPTY_ERROR_TOOL_RESULT_TEXT, realizesPriorityServiceTier } from "../types";
 import { isRecord, normalizeSystemPrompts, normalizeToolCallId, resolveCacheRetention } from "../utils";
 import { createAbortSourceTracker } from "../utils/abort";
 import {
@@ -525,6 +527,15 @@ export const claudeCodeSystemInstruction = "You are a Claude agent, built on Ant
 // fingerprint. API-key requests keep the full model ceiling.
 export const CLAUDE_CODE_MAX_OUTPUT_TOKENS = 64000;
 
+/**
+ * What the model's provider declares about this wire: which credential it takes,
+ * whether it is Anthropic's own endpoint, and which request features it rejects.
+ * Every branch below reads this instead of comparing a provider id.
+ */
+function anthropicWire(model: Pick<Model<"anthropic-messages">, "provider">): ProviderAnthropicMessagesCapability {
+	return providerWireCapabilities(model.provider)?.anthropicMessages ?? {};
+}
+
 export function mapStainlessOs(platform: string): "MacOS" | "Windows" | "Linux" | "FreeBSD" | `Other::${string}` {
 	switch (platform.toLowerCase()) {
 		case "darwin":
@@ -833,7 +844,7 @@ function getUmansWebSearchProvider(headers: Record<string, string> | undefined):
 }
 
 function isUmansAnthropicModel(model: Model<"anthropic-messages">): boolean {
-	return model.provider === "umans" || model.baseUrl.toLowerCase().includes("api.code.umans.ai");
+	return anthropicWire(model).gatewayWebSearch === true || model.baseUrl.toLowerCase().includes("api.code.umans.ai");
 }
 
 function getUmansWebSearchHeader(
@@ -1250,16 +1261,17 @@ function foundryTlsOptionsCacheKey(): string {
 }
 
 function resolveAnthropicBaseUrl(model: Model<"anthropic-messages">, apiKey?: string): string | undefined {
-	if (model.provider === "github-copilot") {
+	const wire = anthropicWire(model);
+	if (wire.credential === "copilot-bearer") {
 		return normalizeAnthropicBaseUrl(resolveGitHubCopilotBaseUrl(model.baseUrl, apiKey) ?? model.baseUrl);
 	}
-	if (model.provider === "anthropic" && isFoundryEnabled()) {
+	if (wire.directEndpoint && isFoundryEnabled()) {
 		const foundryBaseUrl = normalizeAnthropicBaseUrl($env.FOUNDRY_BASE_URL);
 		if (foundryBaseUrl) {
 			return foundryBaseUrl;
 		}
 	}
-	if (model.provider === "anthropic") {
+	if (wire.directEndpoint) {
 		return normalizeAnthropicBaseUrl(model.baseUrl) ?? ANTHROPIC_API_ENDPOINT;
 	}
 	return normalizeAnthropicBaseUrl(model.baseUrl);
@@ -1302,7 +1314,7 @@ export function resolveAnthropicCustomHeadersForBaseUrl(
 }
 
 function resolveAnthropicCustomHeaders(model: Model<"anthropic-messages">): Record<string, string> | undefined {
-	if (model.provider !== "anthropic") return undefined;
+	if (!anthropicWire(model).directEndpoint) return undefined;
 	return resolveAnthropicCustomHeadersForBaseUrl(model.baseUrl);
 }
 
@@ -1330,7 +1342,7 @@ function resolvePemValue(value: string | undefined, name: string): string | unde
 }
 
 function resolveFoundryTlsOptions(model: Model<"anthropic-messages">): FoundryTlsOptions | undefined {
-	if (model.provider !== "anthropic") return undefined;
+	if (!anthropicWire(model).directEndpoint) return undefined;
 	if (!isFoundryEnabled()) return undefined;
 
 	const cacheKey = foundryTlsOptionsCacheKey();
@@ -1359,7 +1371,7 @@ function buildClaudeCodeTlsFetchOptions(
 	model: Model<"anthropic-messages">,
 	baseUrl: string | undefined,
 ): AnthropicFetchOptions | undefined {
-	if (model.provider !== "anthropic") return undefined;
+	if (!anthropicWire(model).directEndpoint) return undefined;
 	if (!baseUrl) return undefined;
 
 	let serverName: string;
@@ -1626,8 +1638,9 @@ function shouldIgnoreAnthropicPreambleEvent(eventType: unknown): boolean {
 export function isAnthropicStreamRetryable(error: unknown, provider?: string): boolean {
 	return AIError.isProviderRetryableError(error, {
 		provider,
-		isProviderTransient:
-			provider === "github-copilot" ? (err): boolean => AIError.isCopilotTransientModelError(err) : undefined,
+		isProviderTransient: providerWireCapabilities(provider)?.anthropicMessages?.transientModelErrors
+			? (err): boolean => AIError.isCopilotTransientModelError(err)
+			: undefined,
 	});
 }
 
@@ -1876,7 +1889,7 @@ const streamAnthropicOnce = (
 			// an error event instead of an unhandled rejection that leaves the stream
 			// (and any consumer awaiting `result()`) hanging forever.
 			const copilotDynamicHeaders =
-				model.provider === "github-copilot"
+				anthropicWire(model).credential === "copilot-bearer"
 					? buildCopilotDynamicHeaders({
 							messages: context.messages,
 							hasImages: hasCopilotVisionInput(context.messages),
@@ -1910,7 +1923,7 @@ const streamAnthropicOnce = (
 				isOAuthToken = false;
 			} else {
 				const extraBetas = normalizeExtraBetas(options?.betas);
-				const wantsAnthropicPriority = model.provider === "anthropic" && options?.serviceTier === "priority";
+				const wantsAnthropicPriority = realizesPriorityServiceTier(options?.serviceTier, model);
 				// Skip the fast-mode beta when this session already learned the
 				// endpoint+model rejects fast mode; `speed` is dropped from the params
 				// too (dropFastMode), so the request stays a faithful non-fast request.
@@ -1954,8 +1967,7 @@ const streamAnthropicOnce = (
 				if (
 					model.reasoning &&
 					options?.thinkingEnabled &&
-					model.provider !== "github-copilot" &&
-					model.provider !== "google-vertex" &&
+					!anthropicWire(model).rejectsContextManagement &&
 					!extraBetas.includes(contextManagementBeta)
 				) {
 					extraBetas.push(contextManagementBeta);
@@ -2725,8 +2737,7 @@ const streamAnthropicOnce = (
 					}
 					if (
 						!dropFastMode &&
-						model.provider === "anthropic" &&
-						options?.serviceTier === "priority" &&
+						realizesPriorityServiceTier(options?.serviceTier, model) &&
 						firstTokenTime === undefined &&
 						AIError.isFastModeUnsupported(streamFailure)
 					) {
@@ -2816,7 +2827,7 @@ const streamAnthropicOnce = (
 			}
 			output.duration = performance.now() - startTime;
 			if (firstTokenTime) output.ttft = firstTokenTime - startTime;
-			if (dropFastMode && model.provider === "anthropic" && options?.serviceTier === "priority") {
+			if (dropFastMode && realizesPriorityServiceTier(options?.serviceTier, model)) {
 				output.disabledFeatures = [...(output.disabledFeatures ?? []), "priority"];
 			}
 			if (forceDemoteUnsignedThinking && model.compat.replayUnsignedThinking) {
@@ -2961,7 +2972,8 @@ export function buildAnthropicClientOptions(args: AnthropicClientOptionsArgs): A
 	// Only OAuth requests inject the CC billing header; no API-key request can ever
 	// contain it, so there is no need to install the rewriter for those.
 	const cchFetch = oauthToken ? wrapFetchForCch(baseFetch) : baseFetch;
-	if (model.provider === "github-copilot") {
+	const wire = anthropicWire(model);
+	if (wire.credential === "copilot-bearer") {
 		const copilotApiKey = parseGitHubCopilotApiKey(apiKey).accessToken;
 		// The GitHub Copilot Anthropic proxy doesn't accept Anthropic beta
 		// features (and the catalog already forces `supportsEagerToolInputStreaming
@@ -3015,7 +3027,7 @@ export function buildAnthropicClientOptions(args: AnthropicClientOptionsArgs): A
 			headers,
 			dynamicHeaders,
 		),
-		isCloudflareAiGateway: model.provider === "cloudflare-ai-gateway",
+		isCloudflareAiGateway: wire.credential === "gateway-managed",
 		claudeCodeSessionId,
 		claudeCodeBetas: oauthToken
 			? buildClaudeCodeBetas(
@@ -3027,7 +3039,7 @@ export function buildAnthropicClientOptions(args: AnthropicClientOptionsArgs): A
 			: [],
 	});
 
-	if (model.provider === "cloudflare-ai-gateway") {
+	if (wire.credential === "gateway-managed") {
 		return {
 			isOAuthToken: false,
 			apiKey: null,
@@ -3040,9 +3052,9 @@ export function buildAnthropicClientOptions(args: AnthropicClientOptionsArgs): A
 		};
 	}
 
-	// OpenCode Go and Umans validate Anthropic-compatible API-key auth through
-	// `X-Api-Key`; bearer-only requests reach the endpoint but fail auth.
-	if (model.provider === "opencode-go" || model.provider === "umans") {
+	// A provider declaring `api-key-header` validates Anthropic-compatible API-key
+	// auth through `X-Api-Key`; a bearer-only request reaches it but fails auth.
+	if (wire.credential === "api-key-header") {
 		delete defaultHeaders.Authorization;
 		return {
 			isOAuthToken: false,
@@ -3055,9 +3067,9 @@ export function buildAnthropicClientOptions(args: AnthropicClientOptionsArgs): A
 			fetchOptions,
 		};
 	}
-	// OpenCode Zen's Anthropic-compatible gateway accepts bearer auth only;
-	// leaving apiKey set lets the client add X-Api-Key, which upstream Alibaba rejects.
-	if (model.provider === "opencode-zen") {
+	// A `bearer-only` gateway rejects the client-added `X-Api-Key`, so the key is
+	// dropped and only the `Authorization` header the request already carries goes out.
+	if (wire.credential === "bearer-only") {
 		return {
 			isOAuthToken: false,
 			apiKey: null,
@@ -3496,7 +3508,7 @@ function buildParams(
 		tools = convertTools(
 			context.tools,
 			isOAuthToken,
-			disableStrictTools || model.provider === "github-copilot",
+			disableStrictTools || anthropicWire(model).rejectsBetas === true,
 			model.compat.supportsEagerToolInputStreaming,
 			model.compat.escapeBuiltinToolNames,
 			useUmansGatewayWebSearch,
@@ -3580,8 +3592,7 @@ function buildParams(
 	// Anthropic HTTP beta header this code can add.
 	const shouldKeepThinkingContext =
 		!options?.client &&
-		model.provider !== "github-copilot" &&
-		model.provider !== "google-vertex" &&
+		!anthropicWire(model).rejectsContextManagement &&
 		(thinking?.type === "adaptive" || thinking?.type === "enabled");
 	const contextManagement = shouldKeepThinkingContext
 		? { edits: [{ type: "clear_thinking_20251015" as const, keep: "all" as const }] }
@@ -3643,7 +3654,7 @@ function buildParams(
 			seqs.length > ANTHROPIC_STOP_SEQUENCES_MAX ? seqs.slice(0, ANTHROPIC_STOP_SEQUENCES_MAX) : seqs;
 	}
 
-	if (model.provider === "anthropic" && options?.serviceTier === "priority") {
+	if (realizesPriorityServiceTier(options?.serviceTier, model)) {
 		params.speed = "fast";
 	}
 

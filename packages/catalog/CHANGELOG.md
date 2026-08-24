@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `ProviderWireCapabilities.anthropicMessages` declares how a provider serves the Anthropic Messages API — its endpoint, credential placement, rejected request features and retryable model errors — and `declaredProviders()` and `declaredCapabilityNames()` derive the declaring sets from the table.
+
 ## [1.2.0] - 2026-08-23
 
 ### Breaking Changes
