@@ -156,6 +156,7 @@ import { resolveVaultLocations, type ScopedVaultEntry, SecretVault, vaultPathFor
 import { loadOrCreateVaultKey, vaultKeyPath } from "./secrets/vault-crypto";
 import {
 	AgentSession,
+	type AsyncResultEntry,
 	obfuscateProviderPayload,
 	type PlanYolo,
 	type Prewalk,
@@ -246,13 +247,6 @@ import {
 	setPreferredSearchProvider,
 } from "./web/search";
 import { buildWorkspaceTree, type WorkspaceTree } from "./workspace-tree";
-
-type AsyncResultEntry = {
-	jobId: string;
-	result: string;
-	job: AsyncJob | undefined;
-	durationMs: number | undefined;
-};
 
 type AsyncResultJobDetails = {
 	jobId: string;
@@ -2422,13 +2416,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 							const formattedResult = await formatAsyncResultForFollowUp(result);
 							if (asyncJobManager!.isDeliverySuppressed(jobId)) return;
 
-							const durationMs = job ? Math.max(0, Date.now() - job.startTime) : undefined;
-							session.yieldQueue.enqueue<AsyncResultEntry>("async-result", {
-								jobId,
-								result: formattedResult,
-								job,
-								durationMs,
-							});
+							session.deliverAsyncJobResult(jobId, formattedResult, job);
 						},
 					})
 				: undefined;

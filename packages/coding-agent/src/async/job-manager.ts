@@ -61,6 +61,12 @@ export interface AsyncJob {
 	 */
 	agentId?: string;
 	/**
+	 * Tool call that started this job, when the registering tool supplied one.
+	 * Lets a late completion attach to its original call when that call is
+	 * still pending in the resumed session instead of forcing a new turn.
+	 */
+	toolCallId?: string;
+	/**
 	 * Job is registered but parked behind a caller-managed gate (e.g. a task
 	 * batch semaphore). Queued jobs do not count toward the running-job limit
 	 * until the caller invokes `markRunning()` from the run context.
@@ -97,6 +103,8 @@ export interface AsyncJobRegisterOptions {
 	ownerId?: string;
 	/** Registry id of the subagent this job runs; see {@link AsyncJob.agentId}. */
 	agentId?: string;
+	/** Tool call that started this job; see {@link AsyncJob.toolCallId}. */
+	toolCallId?: string;
 	onProgress?: (text: string, details?: Record<string, unknown>) => void | Promise<void>;
 	/** Register the job in queued state; see {@link AsyncJob.queued}. */
 	queued?: boolean;
@@ -211,6 +219,7 @@ export class AsyncJobManager {
 			promise: Promise.resolve(),
 			ownerId: options?.ownerId,
 			agentId: options?.agentId,
+			toolCallId: options?.toolCallId,
 			queued: options?.queued === true,
 		};
 

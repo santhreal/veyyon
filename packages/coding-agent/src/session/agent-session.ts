@@ -942,6 +942,14 @@ export interface AsyncJobSnapshot {
 	delivery: AsyncJobDeliveryState;
 }
 
+/** One finished background job queued for the async-result follow-up. */
+export interface AsyncResultEntry {
+	jobId: string;
+	result: string;
+	job: AsyncJob | undefined;
+	durationMs: number | undefined;
+}
+
 export type { ShakeMode, ShakeResult };
 /**
  * Prewalk: switches an active session one-way from its starting model to
@@ -4617,6 +4625,76 @@ export class AgentSession {
 	 *  flag was never set OR was already consumed by `#handleAgentEvent`. */
 	clearPlanInternalAbortPending(): void {
 		this.#planInternalAbortPending = false;
+	}
+
+	/**
+	 * Deliver a finished async job's result to the conversation.
+	 *
+	 * When the job names the tool call that started it and that call is still
+	 * pending in the current context — its `toolCall` block has no `toolResult`
+	 * because a continuation, abort or crash split the pair — the result
+	 * attaches to the original call and no model turn is enqueued: the loop
+	 * does not need to reason over an arrival the transcript can simply record.
+	 * When the call is answered already, or no longer present (the session
+	 * branched away from it), the result takes the ordinary async-result
+	 * follow-up, which re-wakes the loop; a request that then replays the
+	 * unanswered call keeps the provider-side orphan-placeholder repair.
+	 */
+	deliverAsyncJobResult(jobId: string, text: string, job?: AsyncJob): "attached" | "queued" {
+		const toolCallId = job?.toolCallId;
+		if (toolCallId && this.#attachLateToolResult(toolCallId, text, job)) {
+			return "attached";
+		}
+		this.yieldQueue.enqueue<AsyncResultEntry>("async-result", {
+			jobId,
+			result: text,
+			job,
+			durationMs: job ? Math.max(0, Date.now() - job.startTime) : undefined,
+		});
+		return "queued";
+	}
+
+	/**
+	 * Append a `toolResult` for a call the current context left unanswered.
+	 * Returns false — caller falls back to the async-result follow-up — when
+	 * the call is not in the message list at all (branched away, compacted
+	 * out) or already has its result.
+	 */
+	#attachLateToolResult(toolCallId: string, text: string, job: AsyncJob | undefined): boolean {
+		const messages = this.agent.state.messages;
+		let callIndex = -1;
+		let toolName: string | undefined;
+		for (let i = messages.length - 1; i >= 0; i--) {
+			const message = messages[i];
+			if (message.role !== "assistant") continue;
+			const block = message.content.find(part => part.type === "toolCall" && part.id === toolCallId);
+			if (block && block.type === "toolCall") {
+				callIndex = i;
+				toolName = block.name;
+				break;
+			}
+		}
+		if (callIndex < 0) return false;
+		for (let i = callIndex + 1; i < messages.length; i++) {
+			const message = messages[i];
+			if (message.role === "toolResult" && message.toolCallId === toolCallId) return false;
+		}
+		const toolResultMessage: ToolResultMessage = {
+			role: "toolResult",
+			toolCallId,
+			toolName: toolName ?? job?.type ?? "tool",
+			content: [{ type: "text", text }],
+			details: job
+				? { async: { state: job.status === "failed" ? "failed" : "completed", jobId: job.id } }
+				: undefined,
+			isError: job?.status === "failed",
+			timestamp: Date.now(),
+		};
+		this.agent.appendMessage(toolResultMessage);
+		this.#persistSessionMessageIfMissing(toolResultMessage);
+		this.#emitSessionEventDetached({ type: "message_start", message: toolResultMessage }, "late tool result");
+		this.#emitSessionEventDetached({ type: "message_end", message: toolResultMessage }, "late tool result");
+		return true;
 	}
 
 	getAsyncJobSnapshot(options?: { recentLimit?: number }): AsyncJobSnapshot | null {
