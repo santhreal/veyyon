@@ -406,12 +406,6 @@ export class StdioTransport implements MCPTransport {
 	 * the server instead of launching it and adopting afterwards.
 	 */
 	beforeSpawn?: () => Promise<void>;
-	/**
-	 * Called before the stdio subprocess is created. A session CPU budget
-	 * passes the spawn gate here so a saturated or uncreated group refuses
-	 * the server instead of launching it and adopting afterwards.
-	 */
-	beforeSpawn?: () => Promise<void>;
 
 	constructor(private config: MCPStdioServerConfig) {}
 
