@@ -56,9 +56,10 @@ Where the operating system offers a per-group CPU quota, the kernel does the cap
   cgroup. It is not a `--scope` unit: a scope would block on the placeholder and leave setup failed.
   A positive `CPUQuota` too small for systemd to express floors at `0.001%` rather than `0%`.
 - **Windows** uses an unnamed Job Object with a hard CPU rate cap. `CpuRate` is a fraction of
-  **host** logical processors (4 cores on a 16-processor machine is 2500, not 40000). Setting the
-  limit to 0, or `/cpu-limit remove`, turns rate control off rather than flooring to 0.01% of the
-  machine.
+  **host** logical processors (4 cores on a 16-processor machine is 2500, not 40000), counted with
+  `GetActiveProcessorCount` rather than this process's affinity mask, so a 2-core budget inside a
+  2-of-16 slice is 12.5% of the machine rather than 100%. Setting the limit to 0, or
+  `/cpu-limit remove`, turns rate control off rather than flooring to 0.01% of the machine.
 
 A once-per-second watcher reads the group's usage on top of the kernel cap. When usage stays
 pinned at the budget for about three seconds, new commands are rejected with an error that names
