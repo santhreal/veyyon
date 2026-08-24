@@ -611,9 +611,10 @@ python3 proof/hero-cut.py "${CUT_SOURCE}" \
 	--width "${CUT_WIDTH:-2560}" --webp-width "${WEBP_WIDTH:-1920}" "${CUT_ARGS[@]}"
 
 # THE CADENCE IS PART OF THE PUBLISH CONTRACT, not a thing to notice afterwards. Both
-# display servers record at SCENE_FPS (30, 60 for the hero), so the typical frame of anything
-# published from a take holds that interval (33ms or 17ms). The hero shipped at a 7.7 fps average because the path resampled it twice and
-# nothing here was looking: it read as a laggy product rather than as a resampled file.
+# display servers record at SCENE_FPS, which proof/docker/scene-config.sh defines once
+# as 30, so the typical frame of anything published from a take holds 33ms. The hero
+# shipped at a 7.7 fps average because the path resampled it twice and nothing here was
+# looking: it read as a laggy product rather than as a resampled file.
 #
 # The gate then passed a take that averaged 14.2 fps, because it read only the most common
 # frame and 33ms was the most common frame at 44% while the other 56% held for two or three
