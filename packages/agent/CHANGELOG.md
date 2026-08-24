@@ -4,7 +4,7 @@
 
 ### Changed
 
-- Streaming `message_update` snapshots share tool-call arguments by reference instead of deep-cloning them on every delta; a large structured tool call that previously spent ~0.5 s of per-delta snapshot cloning while streaming now spends ~8 ms. Terminal messages, and the authoritative tool call a `toolcall_end` carries, keep the sanitizing deep clone.
+- Streaming `message_update` snapshots share tool-call arguments by reference instead of deep-cloning them on every delta, cutting a large structured tool call's per-delta snapshot cost from ~0.5 s to ~8 ms, while terminal messages and the authoritative tool call a `toolcall_end` carries keep the sanitizing deep clone.
 
 ## [1.2.0] - 2026-08-23
 
