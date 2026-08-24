@@ -18,16 +18,13 @@ import type { ModelRegistry } from "../../config/model-registry";
 import type { Settings } from "../../config/settings";
 import { theme } from "../theme/theme";
 import {
-	applyModalReveal,
-	beginModalExit,
 	computeModalDims,
 	consumeModalChipHover,
 	hitTestModalChrome,
 	MODAL_SIZING_MEDIUM,
-	ModalRevealDriver,
 	type ModalShellGeometry,
-	modalRevealEnabled,
 	planModalChrome,
+	pointerMotionEnabled,
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
@@ -52,12 +49,6 @@ export interface ModelPickerOptions {
 	currentContextTokens?: number;
 	/** `provider/id` of the session's active model; highlighted and preselected. */
 	currentSelector?: string;
-	/**
-	 * Play the open unfold (TOUCH-5). Opt-in at the real show site only: the
-	 * reveal is wall-clock-driven, so a default-on would make every direct
-	 * construction (tests, embedders) render mid-animation frames.
-	 */
-	reveal?: boolean;
 }
 
 /** Rows the browser renders around its list window (search + blank, blank + two detail rows). */
@@ -100,15 +91,6 @@ export class ModelPickerComponent implements Component {
 	#hoveredShortcutId: string | null = null;
 	#refreshing = false;
 	#onCancel: () => void;
-	/** One-shot open unfold (TOUCH-5); settles instantly with shimmer disabled. */
-	#reveal = new ModalRevealDriver();
-	/**
-	 * Fade out on the shared clock before the host drops this card. The overlay stack keeps painting
-	 * it and stops routing input to it the moment this is called.
-	 */
-	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
-		return beginModalExit(this.#reveal, requestRender, done);
-	}
 
 	constructor(
 		tui: TUI,
@@ -125,12 +107,6 @@ export class ModelPickerComponent implements Component {
 		this.#currentSelector = options.currentSelector;
 		this.#onCancel = callbacks.onCancel;
 
-		// The show site decides availability (modalRevealEnabled); a truthy
-		// option here always animates, keeping direct constructions deterministic.
-		if (options.reveal) {
-			this.#reveal.start(() => this.#tui.requestRender());
-		}
-
 		this.#browser = new ModelBrowser(settings, {
 			currentContextTokens: options.currentContextTokens,
 			disableOverContext: true,
@@ -144,7 +120,7 @@ export class ModelPickerComponent implements Component {
 		// card's clock or not at all. Same ambient gate as the open unfold.
 		this.#browser.setHoverMotion({
 			requestRender: () => this.#tui.requestRender(),
-			enabled: modalRevealEnabled(),
+			enabled: pointerMotionEnabled(),
 		});
 
 		this.#syncFromRegistryState();
@@ -165,7 +141,6 @@ export class ModelPickerComponent implements Component {
 
 	/** Settle the browser's pointer band so no timer outlives a dismissed picker. */
 	dispose(): void {
-		this.#reveal.stop();
 		this.#browser.disposeHoverMotion();
 	}
 
@@ -336,6 +311,6 @@ export class ModelPickerComponent implements Component {
 		this.#shellGeometry = shell.geometry;
 		// The body leads with the status line; the browser starts one row later.
 		this.#browserRowStart = (shell.geometry?.bodyRowStart ?? 0) + 1;
-		return applyModalReveal(shell, width, this.#reveal);
+		return shell.lines;
 	}
 }

@@ -29,7 +29,6 @@ function host(settings: Settings): { host: SetupSceneHost; finished: Promise<Set
 		session: { cwd: "/tmp" },
 		ui: { invalidate() {} },
 		openInBrowser() {},
-		playWelcomeIntro() {},
 		showError() {},
 	} as unknown as SetupWizardContext;
 	return {

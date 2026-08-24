@@ -34,7 +34,7 @@ import { $env, logger, scopedTimeoutSignal, stringifyJson } from "@veyyon/utils"
 import { trimTrailingSlashes } from "@veyyon/utils/url";
 import { boundProviderErrorDetail, ProviderHttpError, readProviderErrorDetail } from "../error";
 import type { Api, CodexCompactionRequestContext, FetchImpl, Message, Model, ProviderSessionState } from "../types";
-import { applyCodexResponsesLiteShape } from "./openai-codex/request-transformer";
+import { applyCodexResponsesLiteShape, resolveCodexResponsesLite } from "./openai-codex/request-transformer";
 import { createOpenAICodexDirectRequest } from "./openai-codex-responses";
 import type { ResponseInput } from "./openai-responses-wire";
 import { buildResponsesInput, parseAzureDeploymentNameMap, resolveOpenAIRequestSetup } from "./openai-shared";
@@ -222,7 +222,7 @@ function resolveCodexCompactRequest(
 		sessionId: request.sessionId,
 		providerSessionState: request.providerSessionState,
 		compaction: request.codexCompaction,
-		responsesLite: model.useResponsesLite === true,
+		responsesLite: resolveCodexResponsesLite(model, undefined),
 	});
 }
 
@@ -261,7 +261,7 @@ export const openAIResponsesServerCompaction: ServerCompactionTransport = {
 			const clientMetadata = "clientMetadata" in resolved ? resolved.clientMetadata : undefined;
 			if (clientMetadata) body.client_metadata = clientMetadata;
 			body.store = false;
-			if (model.useResponsesLite === true) applyCodexResponsesLiteShape(body);
+			if (resolveCodexResponsesLite(model, undefined)) applyCodexResponsesLiteShape(body);
 		}
 
 		const applyCallerSanitizer = (text: string): string => {

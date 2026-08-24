@@ -166,8 +166,17 @@ describe("the modules that were repointed stay cut", () => {
 	 * split. No consumer gained an edge to anything outside the subsystem, which is the only reason these
 	 * numbers may move: a raise that cannot name its new edges is a leak with a bigger ceiling.
 	 */
+	/**
+	 * `agent/src/proxy.ts` was re-measured at 145 on 2026-08-23. Thirteen modules in this closure did not
+	 * exist when it was last measured, and every one is a leaf that was carved out of a file already here:
+	 * `error/{registry,flag,error-body,response}.ts` and `error/domains/{network,account,request,turn}.ts`
+	 * from the error subsystem, `catalog/compat/markup-leaks.ts` and
+	 * `catalog/provider-models/wire-capabilities.ts` from the compat and provider tables, and
+	 * `utils/{stream-frame-limit,eval-prompt-overrides}.ts`. No consumer gained an edge to a subsystem it
+	 * did not already reach, which is the only reason this number may move.
+	 */
 	it.each([
-		["agent/src/proxy.ts", 136],
+		["agent/src/proxy.ts", 145],
 		["stats/src/parser.ts", 115],
 		["stats/src/db.ts", 120],
 		["stats/src/sync-worker.ts", 120],

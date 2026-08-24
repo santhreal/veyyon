@@ -5,8 +5,8 @@
 // reached from the local `./index` barrel, which `tools/bash.ts` and `tools/write.ts` import, so the engine
 // arrived in both of them through one name.
 import type { Theme } from "../modes/theme/theme-class";
+import { formatMoreItems } from "../tools/render-utils";
 import { getLanguageFromPath } from "../utils/lang-from-path";
-import { renderTreeList } from "./tree-list";
 
 export interface FileEntry {
 	path: string;
@@ -30,31 +30,34 @@ export interface FileListOptions {
 export function renderFileList(options: FileListOptions, theme: Theme): string[] {
 	const { files, expanded = false, maxCollapsed = 8, showIcons = true, hyperlinkFn } = options;
 
-	return renderTreeList(
-		{
-			items: files,
-			expanded,
-			maxCollapsed,
-			itemType: "file",
-			renderItem: entry => {
-				const isDirectory = entry.isDirectory ?? entry.path.endsWith("/");
-				const displayPath = isDirectory && entry.path.endsWith("/") ? entry.path : entry.path;
-				const lang = isDirectory ? undefined : getLanguageFromPath(displayPath);
-				// A file's badge comes with its own separator, because `fg("muted", "")` is a pair of
-				// escapes rather than an empty string: the old `icon ? ... : ""` test read a preset
-				// with no glyph for this language as a badge and indented the row by one column.
-				const iconPrefix = showIcons
-					? isDirectory
-						? `${theme.fg("accent", theme.icon.folder)} `
-						: theme.langBadge(lang)
-					: "";
-				const labelColor = isDirectory ? "accent" : "toolOutput";
-				const meta = entry.meta ? ` ${theme.fg("dim", entry.meta)}` : "";
-				const pathStr = theme.fg(labelColor, displayPath);
-				const linkedPath = entry.absPath && hyperlinkFn ? hyperlinkFn(entry.absPath, pathStr) : pathStr;
-				return `${iconPrefix}${linkedPath}${meta}`;
-			},
-		},
-		theme,
-	);
+	const maxItems = expanded ? files.length : Math.min(files.length, maxCollapsed);
+	const lines: string[] = [];
+
+	for (let i = 0; i < maxItems; i++) {
+		const entry = files[i]!;
+		const isDirectory = entry.isDirectory ?? entry.path.endsWith("/");
+		const displayPath = entry.path;
+		const lang = isDirectory ? undefined : getLanguageFromPath(displayPath);
+		// A file's badge comes with its own separator, because `fg("muted", "")` is a pair of
+		// escapes rather than an empty string: the old `icon ? ... : ""` test read a preset
+		// with no glyph for this language as a badge and indented the row by one column.
+		const iconPrefix = showIcons
+			? isDirectory
+				? `${theme.fg("accent", theme.icon.folder)} `
+				: theme.langBadge(lang)
+			: "";
+		const labelColor = isDirectory ? "accent" : "toolOutput";
+		const meta = entry.meta ? ` ${theme.fg("dim", entry.meta)}` : "";
+		const pathStr = theme.fg(labelColor, displayPath);
+		const linkedPath = entry.absPath && hyperlinkFn ? hyperlinkFn(entry.absPath, pathStr) : pathStr;
+		const indent = isDirectory ? "" : "  ";
+		lines.push(`${indent}${iconPrefix}${linkedPath}${meta}`);
+	}
+
+	const remaining = files.length - maxItems;
+	if (!expanded && remaining > 0) {
+		lines.push(theme.fg("dim", formatMoreItems(remaining, "file")));
+	}
+
+	return lines;
 }

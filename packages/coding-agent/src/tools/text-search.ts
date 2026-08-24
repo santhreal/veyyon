@@ -23,10 +23,9 @@ import {
 import {
 	Ellipsis,
 	fileHyperlink,
-	getTreeBranch,
-	getTreeContinuePrefix,
+	framedBlock,
+	outputBlockContentWidth,
 	renderStatusLine,
-	renderTreeList,
 	truncateToWidth,
 	tryResolveInternalUrlSync,
 	uriHyperlink,
@@ -57,7 +56,6 @@ import {
 	toPathList,
 } from "./path-utils";
 import {
-	createCachedComponent,
 	formatCodeFrameLine,
 	formatCount,
 	formatEmptyMessage,
@@ -1775,18 +1773,15 @@ function renderBudgetedSearchGroups(
 	const lines: string[] = [];
 	for (let i = 0; i < visibleGroups.length; i++) {
 		const group = visibleGroups[i]!;
-		const isLast = !hasSummary && i === visibleGroups.length - 1;
-		const prefix = `${uiTheme.fg("dim", getTreeBranch(isLast, uiTheme))} `;
-		const continuePrefix = uiTheme.fg("dim", getTreeContinuePrefix(isLast, uiTheme));
-		lines.push(`${prefix}${replaceTabs(group[0]!.styled)}`);
+		lines.push(replaceTabs(group[0]!.styled));
 		for (let j = 1; j < group.length; j++) {
-			lines.push(`${continuePrefix}${replaceTabs(group[j]!.styled)}`);
+			lines.push(`  ${replaceTabs(group[j]!.styled)}`);
 		}
 	}
 	if (hasSummary) {
 		const hiddenLabel =
 			hiddenMatches > 0 ? formatMoreItems(hiddenMatches, "match") : formatMoreItems(hiddenLines, "line");
-		lines.push(`${uiTheme.fg("dim", uiTheme.tree.last)} ${uiTheme.fg("muted", hiddenLabel)}`);
+		lines.push(uiTheme.fg("dim", hiddenLabel));
 	}
 	return lines;
 }
@@ -1844,24 +1839,24 @@ export const textSearchRenderer = {
 				},
 				uiTheme,
 			);
-			return createCachedComponent(
-				() => options.expanded,
-				width => {
-					const listLines = renderTreeList(
-						{
-							items: lines,
-							expanded: options.expanded,
-							maxCollapsed: COLLAPSED_TEXT_LIMIT,
-							maxCollapsedLines: COLLAPSED_TEXT_LIMIT,
-							itemType: "item",
-							renderItem: line => uiTheme.fg("toolOutput", line),
-						},
-						uiTheme,
-					);
-					return [header, ...listLines].map(l => truncateToWidth(l, width, Ellipsis.Omit));
-				},
-				{ paddingX: 1 },
-			);
+			return framedBlock(uiTheme, width => {
+				const maxLines = options.expanded ? lines.length : COLLAPSED_TEXT_LIMIT;
+				const needsSummary = !options.expanded && lines.length > maxLines;
+				const contentBudget = needsSummary ? Math.max(maxLines - 1, 0) : maxLines;
+				const visible = lines.slice(0, contentBudget);
+				const remaining = lines.length - visible.length;
+				const bodyLines: string[] = visible.map(line => uiTheme.fg("toolOutput", replaceTabs(line)));
+				if (needsSummary && remaining > 0) {
+					bodyLines.push(uiTheme.fg("dim", formatMoreItems(remaining, "item")));
+				}
+				const innerWidth = outputBlockContentWidth(width);
+				return {
+					header,
+					sections: [{ lines: bodyLines.map(l => truncateToWidth(l, innerWidth, Ellipsis.Omit)) }],
+					state: "success",
+					width,
+				};
+			});
 		}
 
 		const matchCount = details?.matchCount ?? 0;
@@ -1924,18 +1919,21 @@ export const textSearchRenderer = {
 		const extraLines: string[] = [];
 		if (missingNote) extraLines.push(missingNote);
 
-		return createCachedComponent(
-			() => options.expanded,
-			width => {
-				const budget = Math.max(
-					(options.expanded ? EXPANDED_TEXT_LIMIT : COLLAPSED_TEXT_LIMIT) - extraLines.length,
-					0,
-				);
-				const matchLines = renderBudgetedSearchGroups(matchGroups, budget, matchCount, uiTheme, !options.expanded);
-				return [header, ...matchLines, ...extraLines].map(l => truncateToWidth(l, width, Ellipsis.Omit));
-			},
-			{ paddingX: 1 },
-		);
+		return framedBlock(uiTheme, width => {
+			const budget = Math.max(
+				(options.expanded ? EXPANDED_TEXT_LIMIT : COLLAPSED_TEXT_LIMIT) - extraLines.length,
+				0,
+			);
+			const matchLines = renderBudgetedSearchGroups(matchGroups, budget, matchCount, uiTheme, !options.expanded);
+			const innerWidth = outputBlockContentWidth(width);
+			const bodyLines = [...matchLines, ...extraLines].map(l => truncateToWidth(l, innerWidth, Ellipsis.Omit));
+			return {
+				header,
+				sections: [{ lines: bodyLines }],
+				state: truncated ? "warning" : "success",
+				width,
+			};
+		});
 	},
 	mergeCallAndResult: true,
 };

@@ -1,10 +1,19 @@
-import { describe, expect, it } from "bun:test";
+import { beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Settings } from "@veyyon/coding-agent/config/settings";
+import { getThemeByName, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import { createTools, type ToolSession } from "@veyyon/coding-agent/tools";
-import { removeWithRetries } from "@veyyon/utils";
+import { visibleWidth } from "@veyyon/tui";
+import { removeWithRetries, sanitizeText } from "@veyyon/utils";
+import { searchToolRenderer } from "../../src/tools/search-renderer";
+import { structureSearchRenderer } from "../../src/tools/structure-search";
+import { expectNotAccented, useFullColor } from "../helpers/theme-assertions";
+
+beforeAll(async () => {
+	await initTheme();
+});
 
 function createTestSession(cwd = "/tmp/test", overrides: Partial<ToolSession> = {}): ToolSession {
 	return {
@@ -496,6 +505,146 @@ describe("search structure mixed-language and pagination contracts", () => {
 			).rejects.toThrow();
 		} finally {
 			await removeWithRetries(tempDir);
+		}
+	});
+});
+
+describe("structureSearchRenderer and searchToolRenderer (structure)", () => {
+	useFullColor();
+
+	it("renders matched groups with railed lines and no tree connectors", async () => {
+		const theme = await getThemeByName("dark");
+		expect(theme).toBeDefined();
+		const uiTheme = theme!;
+
+		const result = {
+			content: [{ type: "text", text: "" }],
+			details: {
+				matchCount: 2,
+				fileCount: 2,
+				filesSearched: 10,
+				limitReached: false,
+				displayContent: [
+					"# src/",
+					"## first.ts",
+					"  *10│const a = 1;",
+					"",
+					"# src/",
+					"## second.ts",
+					"  *20│const b = 2;",
+				].join("\n"),
+			},
+		};
+
+		const renderedLines = structureSearchRenderer
+			.renderResult(result as never, { expanded: true, isPartial: false }, uiTheme, { input: "const $A = $_" })
+			.render(240);
+		const plainLines = sanitizeText(renderedLines.join("\n")).split("\n");
+
+		const unifiedRenderedLines = searchToolRenderer
+			.renderResult(
+				{ content: result.content, details: { type: "structure", result: result.details } },
+				{ expanded: true, isPartial: false },
+				uiTheme,
+				{ type: "structure", input: "const $A = $_" },
+			)
+			.render(240);
+		const unifiedPlainLines = sanitizeText(unifiedRenderedLines.join("\n")).split("\n");
+
+		expect(plainLines[0]!).toContain("Search structure");
+		expect(plainLines[0]!).toContain("2 matches");
+		expect(plainLines[0]!).toContain("2 files");
+		expect(unifiedPlainLines).toEqual(plainLines);
+
+		const rail = uiTheme.symbol("block.rail");
+		const bodyLines = plainLines.slice(1);
+		expect(bodyLines.length).toBe(6);
+		for (const line of bodyLines) {
+			expect(line.startsWith(`${rail} `)).toBe(true);
+			expect(line).not.toMatch(/[├└]/);
+		}
+		expectNotAccented(uiTheme, renderedLines[0]!, [uiTheme.symbol("icon.search"), "Search"]);
+		expectNotAccented(uiTheme, unifiedRenderedLines[0]!, [uiTheme.symbol("icon.search"), "Search"]);
+	});
+
+	it("truncates collapsed results and appends a dim summary row on the rail", async () => {
+		const theme = await getThemeByName("dark");
+		const uiTheme = theme!;
+
+		// Ten three-line groups: far more than the collapsed line budget, so the
+		// collapsed view must drop whole groups and account for the rest in one row.
+		const groups = Array.from({ length: 10 }, (_, i) => ["# src/", `## file${i}.ts`, `  *${i + 1}│const x${i} = true;`]);
+		const result = {
+			content: [{ type: "text", text: "" }],
+			details: {
+				matchCount: 10,
+				fileCount: 10,
+				filesSearched: 20,
+				limitReached: false,
+				displayContent: groups.map(group => group.join("\n")).join("\n\n"),
+			},
+		};
+
+		const rail = uiTheme.symbol("block.rail");
+		const collapsedLines = sanitizeText(
+			structureSearchRenderer
+				.renderResult(result as never, { expanded: false, isPartial: false }, uiTheme, { input: "const $A = true" })
+				.render(240)
+				.join("\n"),
+		).split("\n");
+		const collapsedBody = collapsedLines.slice(1);
+
+		expect(collapsedBody.length).toBeLessThan(30);
+		expect(collapsedBody.filter(line => line.includes("more matches"))).toHaveLength(1);
+		// The summary row accounts for every group that was dropped, not just that some were.
+		expect(collapsedBody.at(-1)).toContain("9 more matches");
+		for (const line of collapsedBody) {
+			expect(line.startsWith(`${rail} `)).toBe(true);
+			expect(line).not.toMatch(/[├└]/);
+		}
+
+		const expandedBody = sanitizeText(
+			structureSearchRenderer
+				.renderResult(result as never, { expanded: true, isPartial: false }, uiTheme, { input: "const $A = true" })
+				.render(240)
+				.join("\n"),
+		)
+			.split("\n")
+			.slice(1);
+		expect(expandedBody.length).toBe(30);
+		expect(expandedBody.some(line => line.includes("more matches"))).toBe(false);
+	});
+
+	it("budgets body width against outputBlockContentWidth so lines do not overflow the outer width", async () => {
+		const theme = await getThemeByName("dark");
+		const uiTheme = theme!;
+
+		const result = {
+			content: [{ type: "text", text: "" }],
+			details: {
+				matchCount: 1,
+				fileCount: 1,
+				filesSearched: 5,
+				limitReached: false,
+				displayContent: [
+					"# src/",
+					"## very-long-file-name-that-exceeds-the-narrow-terminal-width.ts",
+					"  *1│const veryLongVariableNameToEnsureWidthBudgetTruncatesProperly = true;",
+				].join("\n"),
+			},
+		};
+
+		const width = 40;
+		const renderedLines = structureSearchRenderer
+			.renderResult(result as never, { expanded: true, isPartial: false }, uiTheme, { input: "const $A = $_" })
+			.render(width);
+
+		// One header plus three body rows: budgeting body lines against the outer
+		// width instead of outputBlockContentWidth makes the frame re-wrap them,
+		// which shows up as extra lines.
+		expect(renderedLines).toHaveLength(4);
+		for (const line of renderedLines.slice(1)) {
+			expect(visibleWidth(line)).toBeLessThanOrEqual(width);
 		}
 	});
 });

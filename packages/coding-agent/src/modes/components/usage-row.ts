@@ -3,6 +3,7 @@ import { Container, Spacer, Text } from "@veyyon/tui";
 import { formatDuration, formatNumber } from "@veyyon/utils";
 import { withIcon } from "../../modes/theme/icon-label";
 import { theme } from "../../modes/theme/theme";
+import { COMPOSER_INSET_COLS } from "./composer-chrome";
 import { tokensPerSecond } from "./status-line/token-rate";
 
 /**
@@ -47,6 +48,10 @@ export function createUsageRowBlock(usage: Usage, durationMs?: number, ttftMs?: 
 	}
 	const block = new Container();
 	block.addChild(new Spacer(1));
-	block.addChild(new Text(theme.fg("dim", parts.join("  ")), 1, 0));
+	// COMPOSER_INSET_COLS, the column every other row in the transcript starts
+	// at: the prose above this row is mounted there and so is the rail of the
+	// block above it. One cell of padding put the receipt a column left of both,
+	// which is close enough to read as a mistake rather than as a margin.
+	block.addChild(new Text(theme.fg("dim", parts.join("  ")), COMPOSER_INSET_COLS, 0));
 	return block;
 }
