@@ -61,6 +61,7 @@ export const overflowDomain: ErrorDomain = {
 	rules: [
 		{
 			flags: Flag.ContextOverflow,
+			name: "context-overflow-prose",
 			why: "Every provider says 'too long' in its own words and none of them says it with a status: 413 and 400 both carry it, and a bare '400 (no body)' carries nothing else at all.",
 			text: matchesOverflowText,
 		},
@@ -151,6 +152,7 @@ export const grammarDomain: ErrorDomain = {
 	rules: [
 		{
 			flags: Flag.Grammar,
+			name: "strict-tools-rejection",
 			why: "A 400 or 422 rejecting strict tools: grammar too large, schema too complex, a tool schema it cannot take, or structured outputs the endpoint does not have. The turn retries without strict tools and the session remembers the downgrade. 422 counts because the OpenAI-compatible endpoints that answer with it reject the same request for the same reason.",
 			structural: signal => signal.status === 400 || signal.status === 422,
 			text: matchesStrictToolsRejectionText,
@@ -170,12 +172,14 @@ export const fastModeDomain: ErrorDomain = {
 	rules: [
 		{
 			flags: Flag.FastModeUnsupported,
+			name: "fast-mode-parameter-rejected",
 			why: "Anthropic rejects the `speed` parameter with a 400 when the model does not have fast mode; retrying it without the parameter is the recovery, so it is not a throttle.",
 			structural: signal => signal.status === 400,
 			text: matchesFastModeRejectedParameterText,
 		},
 		{
 			flags: Flag.FastModeUnsupported,
+			name: "fast-mode-entitlement-wall",
 			why: "The same wall arrives as a 429 when the account lacks the extra-usage entitlement fast mode requires. Classified as a throttle it was retried against a limit no wait can clear.",
 			structural: signal => signal.status === 429,
 			text: matchesFastModeEntitlementText,
@@ -211,6 +215,7 @@ export const providerHttpDomain: ErrorDomain = {
 	recovers: [],
 	classes: [
 		{
+			name: "provider-http-error",
 			why: "The status and code a provider sent are facts. A 401 is auth, a coded 429 is a spent quota, a bare 429 is a throttle, a 5xx is transport.",
 			matches: link => link instanceof ProviderHttpError,
 			flags: link => providerHttpFlags(link as ProviderHttpError),
