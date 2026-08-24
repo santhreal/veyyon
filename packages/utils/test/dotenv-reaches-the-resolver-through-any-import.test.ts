@@ -55,10 +55,16 @@ import { declarersOfName } from "@veyyon/utils/source-declarations";
 
 const UTILS_SRC = path.join(import.meta.dir, "..", "src");
 
-/** Every module of this package, so a claim about who declares a name is answered for all of them. */
+/**
+ * Every module of this package, so a claim about who declares a name is answered for all of them.
+ *
+ * Sorted, because `readdirSync` answers in the order the filesystem holds the entries: an arm that
+ * pins a declarer list by exact equality passed here and failed on CI until this line existed.
+ */
 const UTILS_MODULES = fs
 	.readdirSync(UTILS_SRC, { recursive: true, encoding: "utf-8" })
 	.filter(entry => entry.endsWith(".ts"))
+	.sort()
 	.map(entry => ({
 		file: path.posix.join("packages/utils/src", entry.split(path.sep).join("/")),
 		source: fs.readFileSync(path.join(UTILS_SRC, entry), "utf-8"),
