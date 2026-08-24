@@ -69,6 +69,14 @@ describe("Cursor session error classification and recovery", () => {
 				error: cursorStreamFailure("resource_exhausted", "capacity exhausted", "Connect error"),
 			},
 			{
+				name: "cursorStreamFailure helper for numeric gRPC status 8 (resource_exhausted)",
+				error: cursorStreamFailure("8", "Quota exceeded: monthly quota reached", "gRPC error"),
+			},
+			{
+				name: "cursorStreamFailure helper for numeric gRPC status 8 with resource_exhausted wording",
+				error: cursorStreamFailure("8", "resource_exhausted: monthly account limit reached", "gRPC error"),
+			},
+			{
 				name: "Plain Error with Connect error resource_exhausted message",
 				error: new Error("Connect error resource_exhausted: backend capacity"),
 			},
@@ -175,6 +183,10 @@ describe("Cursor session error classification and recovery", () => {
 					"cannot encode field agent.v1.GrepContentMatch.line_number to binary: invalid int32: 1753660800000",
 					"Connect error",
 				),
+			},
+			{
+				name: "cursorStreamFailure helper for numeric gRPC status 3 (invalid_argument)",
+				error: cursorStreamFailure("3", "cannot parse requested context", "gRPC error"),
 			},
 			{
 				name: "generic invalid_argument trailer failure",
