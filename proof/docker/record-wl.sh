@@ -33,12 +33,20 @@ RENDER_NODE="${RENDER_NODE:-/dev/dri/renderD128}"
 	exit 1
 }
 RENDER_GID="$(stat -c %g "${RENDER_NODE}")"
+VIDEO_GID="$(stat -c %g /dev/dri/card1 2>/dev/null || echo 44)"
+
+AUTH_MOUNTS=()
+if [[ -n "${PROOF_AUTH_DIR:-}" ]]; then
+	AUTH_MOUNTS+=(--mount "type=bind,src=${PROOF_AUTH_DIR},dst=/host-auth,readonly")
+fi
 
 docker run --rm \
+	"${AUTH_MOUNTS[@]}" \
 	--network "${PROOF_NETWORK:-veyyon-proof}" \
 	--add-host "${CONTAINER_HOST_ALIAS}:host-gateway" \
-	--device "${RENDER_NODE}" \
+	--device /dev/dri \
 	--group-add "${RENDER_GID}" \
+	--group-add "${VIDEO_GID}" \
 	--mount "type=bind,src=${REPO_ROOT},dst=/repo" \
 	--mount "type=bind,src=${REPO_ROOT}/proof/docker/home-seed,dst=/seed,readonly" \
 	--mount "type=bind,src=${OUT},dst=/out" \
@@ -62,6 +70,10 @@ docker run --rm \
 	-e "SCENE_FONT_SIZE=${SCENE_FONT_SIZE:-21}" \
 	-e "SCENE_FPS=${SCENE_FPS:-30}" \
 	-e "SCENE_THEME=${SCENE_THEME:-plain}" \
+	-e "SCENE_CHROME_BLUR" \
+	-e "SCENE_MOTION_GATE" \
+	-e "SCENE_MOTION_FLOOR" \
+	-e "SCENE_MOTION_GATE_BIN" \
 	-e "SCENE_MARGIN" \
 	-e "SCENE_RADIUS" \
 	-e "SCENE_OPACITY" \
@@ -88,6 +100,10 @@ docker run --rm \
 		set -e
 		mkdir -p /sandbox/home/.veyyon
 		cp -r /seed/. /sandbox/home/.veyyon/
+		if [ -d /host-auth ]; then
+			mkdir -p /sandbox/home/.veyyon/shared-auth
+			cp -a /host-auth/. /sandbox/home/.veyyon/shared-auth/
+		fi
 		if [ -n "${PROOF_LLM_BASE_URL}" ]; then
 			sed -i "s|baseUrl: .*|baseUrl: ${PROOF_LLM_BASE_URL}|" /sandbox/home/.veyyon/profiles/default/agent/models.yml
 		fi
