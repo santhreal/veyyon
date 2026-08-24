@@ -554,13 +554,17 @@ describe("structureSearchRenderer", () => {
 		expect(theme).toBeDefined();
 		const uiTheme = theme!;
 
-		// 10 groups of 3 lines each = 30 lines, which exceeds COLLAPSED_MATCH_LIMIT (16)
+		// Ten three-line groups: far more than the collapsed line budget, so the
+		// collapsed view must drop whole groups and account for the rest in one row.
 		const groups = Array.from({ length: 10 }, (_, i) => [
-			`# src/`,
+			"# src/",
 			`## file${i}.ts`,
 			`  *${i + 1}│const x${i} = true;`,
 		]);
-		const displayContent = groups.map(g => g.join("\n")).join("\n\n");
+		const displayContent = groups.map(g => g.join("
+")).join("
+
+");
 
 		const result = {
 			content: [{ type: "text", text: "" }],

@@ -113,6 +113,38 @@ describe("legacy search settings migrate to unified search", () => {
 		expect(settings.get("search.contextAfter")).toBe(8);
 	});
 
+	it("drops every retired search key in both spellings on rewrite", async () => {
+		const settings = await loadWith({
+			find: { enabled: false },
+			"find.enabled": false,
+			glob: { enabled: false },
+			"glob.enabled": false,
+			grep: { enabled: false, contextBefore: 4, contextAfter: 6 },
+			"grep.enabled": false,
+			"grep.contextBefore": 9,
+			"grep.contextAfter": 9,
+			astGrep: { enabled: false },
+			"astGrep.enabled": false,
+			search: { enabled: false },
+			"search.enabled": false,
+		});
+
+		expect(settings.get("search.contextBefore")).toBe(4);
+		expect(settings.get("search.contextAfter")).toBe(6);
+		await settings.set("ask.notify", "on");
+		await settings.flush?.();
+		const persisted = YAML.parse(fs.readFileSync(path.join(agentDir, "config.yml"), "utf8")) as Record<
+			string,
+			unknown
+		>;
+
+		// Pinned by exact equality, not by absence of a listed spelling: a
+		// retired key the rewrite forgets to drop, or a new key it starts
+		// emitting, turns this red until someone records the decision.
+		expect(Object.keys(persisted).sort()).toEqual(["ask", "search"]);
+		expect(persisted.search).toEqual({ contextBefore: 4, contextAfter: 6 });
+	});
+
 	it("always shows both text-context controls", async () => {
 		await loadWith({ search: { enabled: false } });
 		expect(visibleSearchSettings()).toEqual(["search.contextBefore", "search.contextAfter"]);
