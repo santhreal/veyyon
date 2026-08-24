@@ -426,7 +426,7 @@ export class LaunchTool implements AgentTool<typeof launchSchema, LaunchToolDeta
 }
 
 /** Args shape visible to the renderer, possibly mid-stream (every field optional). */
-type LaunchRenderArgs = Partial<LaunchParams>;
+type LaunchRenderArgs = Partial<LaunchParams> & { i?: string };
 
 function stateColor(state: DaemonState): ThemeColor {
 	switch (state) {
@@ -464,10 +464,10 @@ function daemonMeta(daemon: DaemonSnapshot, theme: Theme): string[] {
 /** Op-specific call context (command line, log filters, wait condition, send payload). */
 function callMeta(args: LaunchRenderArgs): string[] {
 	const meta: string[] = [];
+	if (args.application && (args.op === undefined || args.op === "start")) {
+		meta.push([args.application, ...(args.args ?? [])].join(" "));
+	}
 	switch (args.op) {
-		case "start":
-			if (args.application) meta.push([args.application, ...(args.args ?? [])].join(" "));
-			break;
 		case "logs":
 			if (args.follow) meta.push("follow");
 			if (args.grep) meta.push(`grep /${args.grep}/`);
@@ -489,16 +489,26 @@ export const launchToolRenderer = {
 	inline: true,
 	mergeCallAndResult: true,
 	animatedPendingPreview: true,
+	animatedPartialResult: true,
 
 	renderCall(args: LaunchRenderArgs, options: RenderResultOptions, theme: Theme): Component {
-		const target = args.name ?? args.application;
+		const op = args.op;
+		const target = args.name ?? (args.application ? [args.application, ...(args.args ?? [])].join(" ") : undefined);
+		const meta = callMeta(args);
+		const filteredMeta = args.name ? meta : meta.filter(m => m !== target);
+		const title = op ? `Launch ${op}` : "Launch";
+		const description = target
+			? replaceTabs(target)
+			: typeof args.i === "string" && args.i.trim().length > 0
+				? replaceTabs(args.i.trim())
+				: undefined;
 		const header = renderStatusLine(
 			{
 				icon: options.spinnerFrame !== undefined ? "running" : "pending",
 				spinnerFrame: options.spinnerFrame,
-				title: `Launch ${args.op ?? "…"}`,
-				description: target ? replaceTabs(target) : undefined,
-				meta: callMeta(args),
+				title,
+				description,
+				meta: filteredMeta,
 			},
 			theme,
 		);
@@ -548,15 +558,30 @@ export const launchToolRenderer = {
 							),
 						);
 					}
+					if (!daemon && text.trim()) {
+						for (const line of replaceTabs(text.trimEnd()).split("\n")) {
+							body.push(theme.fg("toolOutput", line));
+						}
+					}
 					break;
 				}
 				case "send":
 					meta.push(...callMeta(params));
 					if (daemon) meta.push(...daemonMeta(daemon, theme));
+					if (!daemon && text.trim()) {
+						for (const line of replaceTabs(text.trimEnd()).split("\n")) {
+							body.push(theme.fg("toolOutput", line));
+						}
+					}
 					break;
 				case "stop":
 				case "restart":
 					if (daemon) meta.push(...daemonMeta(daemon, theme));
+					if (!daemon && text.trim()) {
+						for (const line of replaceTabs(text.trimEnd()).split("\n")) {
+							body.push(theme.fg("toolOutput", line));
+						}
+					}
 					break;
 				case "wait": {
 					meta.push(...callMeta(params));
@@ -573,15 +598,28 @@ export const launchToolRenderer = {
 							),
 						);
 					}
+					if (!daemon && text.trim()) {
+						for (const line of replaceTabs(text.trimEnd()).split("\n")) {
+							body.push(theme.fg("toolOutput", line));
+						}
+					}
 					break;
 				}
 				case "list": {
-					const daemons = details?.daemons ?? [];
-					description = `${daemons.length || "no"} ${pluralize("process", daemons.length)}`;
-					for (const item of daemons) {
-						body.push(
-							`${theme.fg("accent", replaceTabs(item.name))} ${theme.fg("dim", daemonMeta(item, theme).join(theme.sep.dot))}`,
-						);
+					const daemons = details?.daemons;
+					if (daemons !== undefined) {
+						description = `${daemons.length || "no"} ${pluralize("process", daemons.length)}`;
+						for (const item of daemons) {
+							body.push(
+								`${theme.fg("accent", replaceTabs(item.name))} ${theme.fg("dim", daemonMeta(item, theme).join(theme.sep.dot))}`,
+							);
+						}
+					} else if (text.trim()) {
+						for (const line of replaceTabs(text.trimEnd()).split("\n")) {
+							body.push(theme.fg("toolOutput", line));
+						}
+					} else {
+						description = "no processes";
 					}
 					break;
 				}
@@ -609,6 +647,10 @@ export const launchToolRenderer = {
 						if (spec.detached) flags.push("detached");
 						else if (spec.persist) flags.push("persistent");
 						body.push(theme.fg("dim", flags.join(theme.sep.dot)));
+					} else if (text.trim()) {
+						for (const line of replaceTabs(text.trimEnd()).split("\n")) {
+							body.push(theme.fg("toolOutput", line));
+						}
 					}
 					break;
 				}
@@ -643,7 +685,7 @@ export const launchToolRenderer = {
 					sections: [
 						{
 							label: theme.fg("toolTitle", "Output"),
-							lines: capPreviewLines(rows, theme, {
+							lines: capPreviewLines(rows.length > 0 ? rows : [theme.fg("dim", "(no output)")], theme, {
 								expanded: options.expanded,
 								max: DEFAULT_TERMINAL_PREVIEW_LINES,
 							}),

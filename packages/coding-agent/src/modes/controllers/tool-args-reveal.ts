@@ -36,6 +36,7 @@ const STREAMING_STRING_KEYS_BY_TOOL: Record<string, readonly string[]> = {
 	edit: EDIT_RENDERER_STREAMING_KEYS,
 	apply_patch: EDIT_RENDERER_STREAMING_KEYS,
 	eval: ["code"],
+	launch: ["op", "name", "application", "text", "pattern", "signal", "i"],
 };
 
 /** String fields the streamed-args decode reads incrementally for `toolName`. */
