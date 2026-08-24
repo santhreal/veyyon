@@ -27,14 +27,19 @@ const EXIT_WAIT_WINDOW_MS = 5 * 60_000;
 const EXIT_TAIL_LINES = 60;
 const EXIT_TAIL_BYTES = 8_000;
 
-/** `${projectDir}\0${name}` → job id, so a stop can find the watch to cancel. */
+/**
+ * `${brokerRuntimeDir}\0${name}` → job id, so a stop can find the watch to cancel. The key is
+ * the BROKER SCOPE (its runtime directory), not the project: two sessions in one project run
+ * two brokers that may each supervise a process of the same name, and a project-wide key let
+ * the second start silently drop the first session's exit watch.
+ */
 const watches = new Map<string, string>();
 
 /** Carries a completed exit notice out of the watch as a failed job. */
 class LaunchExitFailure extends Error {}
 
-function watchKey(projectDir: string, name: string): string {
-	return `${projectDir}\0${name}`;
+function watchKey(brokerRuntimeDir: string, name: string): string {
+	return `${brokerRuntimeDir}\0${name}`;
 }
 
 function exitPhrase(daemon: DaemonSnapshot): string {
@@ -53,13 +58,7 @@ function tail(text: string): string {
 async function exitNotice(client: DaemonBrokerClient, daemon: DaemonSnapshot, signal: AbortSignal): Promise<string> {
 	const ran = formatDuration((daemon.exitedAt ?? Date.now()) - daemon.startedAt);
 	const lines = [`Launched process ${daemon.name} ${exitPhrase(daemon)} after ${ran}.`];
-	// Who ended it and why: an exit the caller did not request must never read
-	// as an unexplained death.
-	if (daemon.terminatedBy) {
-		lines.push(`Terminated by: ${daemon.terminatedBy}${daemon.exitReason ? ` — ${daemon.exitReason}` : ""}`);
-	} else if (daemon.exitReason) {
-		lines.push(`Reason: ${daemon.exitReason}`);
-	}
+	if (daemon.exitReason) lines.push(`Reason: ${daemon.exitReason}`);
 	let output = "";
 	try {
 		const logs = await client.request(
@@ -90,7 +89,7 @@ export function watchLaunchedProcessExit(options: {
 	if (!manager) return;
 	if (daemon.detached) return;
 	if (daemon.state === "exited" || daemon.state === "failed") return;
-	const key = watchKey(client.projectDir, daemon.name);
+	const key = watchKey(client.runtimeDir, daemon.name);
 	if (watches.has(key)) return;
 	// A watch must never be the reason a start fails: the job cap, a disposed
 	// manager and a broker that goes away all leave the process running and the
@@ -140,8 +139,8 @@ export function watchLaunchedProcessExit(options: {
 }
 
 /** Drop the watch on `name`: its end was asked for, so it is not reported. */
-export function releaseLaunchExitWatch(session: ToolSession, projectDir: string, name: string): void {
-	const key = watchKey(projectDir, name);
+export function releaseLaunchExitWatch(session: ToolSession, client: DaemonBrokerClient, name: string): void {
+	const key = watchKey(client.runtimeDir, name);
 	const jobId = watches.get(key);
 	if (jobId === undefined) return;
 	watches.delete(key);

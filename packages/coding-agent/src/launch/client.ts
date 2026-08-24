@@ -4,7 +4,13 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { isEexist, isEnoent, postmortem } from "@veyyon/utils";
 import { resolveWorkerSpawnCmd, workerEnvFromParent } from "../subprocess/worker-client";
-import { canonicalProjectDir, daemonBrokerEndpoint, daemonBrokerTokenPath, daemonRuntimeDir } from "./paths";
+import {
+	canonicalProjectDir,
+	daemonBrokerEndpoint,
+	daemonBrokerTokenPath,
+	daemonRuntimeDir,
+	daemonSessionRuntimeDir,
+} from "./paths";
 import {
 	DAEMON_BROKER_WORKER_ARG,
 	DAEMON_IDLE_GRACE_ENV,
@@ -45,9 +51,16 @@ export interface DaemonBrokerClientOptions {
 	adoptSpawnedPid?: (pid: number) => void;
 }
 
-/** Persistent per-process connection to one project's daemon broker. */
+/** Persistent per-process connection to one daemon broker scope. */
 export interface DaemonBrokerClient {
 	readonly projectDir: string;
+	/**
+	 * The runtime directory this client's broker owns: the scope identity. Two
+	 * clients for one project may serve disjoint process tables (session scopes),
+	 * so anything keyed per project — exit watches, release lookups — keys per
+	 * runtime directory instead.
+	 */
+	readonly runtimeDir: string;
 	request(operation: DaemonOperation, signal?: AbortSignal): Promise<DaemonRpcResult>;
 	close(): void;
 }
@@ -122,7 +135,7 @@ function openSocket(endpoint: string, timeoutMs: number): Promise<net.Socket> {
 
 class SocketDaemonClient implements DaemonBrokerClient {
 	readonly projectDir: string;
-	readonly #runtimeDir: string;
+	readonly runtimeDir: string;
 	readonly #endpoint: string;
 	readonly #token: string;
 	readonly #idleGraceMs: number | undefined;
@@ -135,7 +148,7 @@ class SocketDaemonClient implements DaemonBrokerClient {
 
 	constructor(projectDir: string, runtimeDir: string, token: string, options: DaemonBrokerClientOptions) {
 		this.projectDir = projectDir;
-		this.#runtimeDir = runtimeDir;
+		this.runtimeDir = runtimeDir;
 		this.#endpoint = daemonBrokerEndpoint(projectDir, runtimeDir);
 		this.#token = token;
 		this.#idleGraceMs = options.idleGraceMs;
@@ -219,7 +232,7 @@ class SocketDaemonClient implements DaemonBrokerClient {
 		const spawn = resolveWorkerSpawnCmd(DAEMON_BROKER_WORKER_ARG);
 		const overlay: Record<string, string> = {
 			[DAEMON_PROJECT_DIR_ENV]: this.projectDir,
-			[DAEMON_RUNTIME_DIR_ENV]: this.#runtimeDir,
+			[DAEMON_RUNTIME_DIR_ENV]: this.runtimeDir,
 		};
 		if (this.#idleGraceMs !== undefined) overlay[DAEMON_IDLE_GRACE_ENV] = String(this.#idleGraceMs);
 		const child = Bun.spawn(spawn.cmd, {
@@ -292,6 +305,7 @@ class SocketDaemonClient implements DaemonBrokerClient {
 }
 
 const sharedClients = new Map<string, Promise<DaemonBrokerClient>>();
+const sessionClients = new Map<string, Promise<DaemonBrokerClient>>();
 let cancelExitCleanup: (() => void) | undefined;
 
 /** Create an independent socket connection to one project's shared daemon broker. */
@@ -305,6 +319,17 @@ export async function createDaemonBrokerClient(
 	return new SocketDaemonClient(canonical, runtimeDir, token, options);
 }
 
+function rememberClient(
+	map: Map<string, Promise<DaemonBrokerClient>>,
+	key: string,
+	pending: Promise<DaemonBrokerClient>,
+): void {
+	map.set(key, pending);
+	if (!cancelExitCleanup) {
+		cancelExitCleanup = postmortem.register("daemon-broker-clients", () => closeDaemonClients());
+	}
+}
+
 /** Get the process-shared daemon broker client for one canonical project directory. */
 export async function daemonClientForProject(
 	projectDir: string,
@@ -314,18 +339,42 @@ export async function daemonClientForProject(
 	let pending = sharedClients.get(canonical);
 	if (!pending) {
 		pending = createDaemonBrokerClient(canonical, options);
-		sharedClients.set(canonical, pending);
-		if (!cancelExitCleanup) {
-			cancelExitCleanup = postmortem.register("daemon-broker-clients", () => closeDaemonClients());
-		}
+		rememberClient(sharedClients, canonical, pending);
 	}
 	return pending;
 }
 
-/** Close every project broker connection held by this veyyon process. */
+/**
+ * Get the session-private daemon broker client: a broker whose runtime directory, token, lease
+ * and supervised-process set belong to this session alone. Another session in the same project
+ * computes a different runtime directory and therefore reaches a different broker — it can
+ * neither list nor stop this session's launches. The held socket is the scope's liveness: once
+ * this process closes the connection the broker idles out on its own grace, taking
+ * non-persistent launches with it.
+ */
+export async function daemonClientForSession(
+	projectDir: string,
+	sessionId: string,
+	options: DaemonBrokerClientOptions = {},
+): Promise<DaemonBrokerClient> {
+	const canonical = await canonicalProjectDir(projectDir);
+	const key = `${canonical}::${sessionId}`;
+	let pending = sessionClients.get(key);
+	if (!pending) {
+		pending = createDaemonBrokerClient(canonical, {
+			...options,
+			runtimeDir: daemonSessionRuntimeDir(canonical, sessionId),
+		});
+		rememberClient(sessionClients, key, pending);
+	}
+	return pending;
+}
+
+/** Close every broker connection (project- and session-scoped) held by this veyyon process. */
 export async function closeDaemonClients(): Promise<void> {
-	const pending = [...sharedClients.values()];
+	const pending = [...sharedClients.values(), ...sessionClients.values()];
 	sharedClients.clear();
+	sessionClients.clear();
 	for (const client of await Promise.all(pending)) client.close();
 	cancelExitCleanup?.();
 	cancelExitCleanup = undefined;

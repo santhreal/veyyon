@@ -11,16 +11,9 @@ import { Text } from "@veyyon/tui";
 import { clampLow, prompt, sanitizeText } from "@veyyon/utils";
 import { type } from "arktype";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
-import { daemonClientForProject } from "../launch/client";
-import { DAEMON_COMPLETIONS_LIMIT } from "../launch/completions";
-import type {
-	DaemonCompletionRecord,
-	DaemonOperation,
-	DaemonRpcResult,
-	DaemonSnapshot,
-	DaemonSpec,
-	DaemonState,
-} from "../launch/protocol";
+import type { DaemonBrokerClient } from "../launch/client";
+import { daemonClientForProject, daemonClientForSession } from "../launch/client";
+import type { DaemonOperation, DaemonRpcResult, DaemonSnapshot, DaemonSpec, DaemonState } from "../launch/protocol";
 import { renderTerminalOutput } from "../launch/terminal-output";
 import type { Theme, ThemeColor } from "../modes/theme/theme";
 import { toolsPrompts } from "../prompts/tools/rows";
@@ -102,8 +95,6 @@ export interface LaunchToolDetails {
 	op: LaunchParams["op"];
 	daemon?: DaemonSnapshot;
 	daemons?: DaemonSnapshot[];
-	/** list: retained completion records alongside the active daemons. */
-	completions?: DaemonCompletionRecord[];
 	cursor?: number;
 	timedOut?: boolean;
 	/** logs: daemon lifecycle state at read time. */
@@ -218,41 +209,9 @@ export function daemonLabel(daemon: DaemonSnapshot): string {
 		: daemon.exitCode === undefined
 			? ""
 			: ` exit=${daemon.exitCode}`;
-	// Who ended it and why, so a killed process is never an unexplained death.
-	const termination =
-		daemon.terminatedBy === undefined
-			? ""
-			: ` terminated-by=${daemon.terminatedBy}${daemon.exitReason ? ` — ${daemon.exitReason}` : ""}`;
 	return `${daemon.name}: ${daemon.state}${pid}${exit} uptime=${formatDuration(
 		(daemon.exitedAt ?? Date.now()) - daemon.startedAt,
-	)} restarts=${daemon.restartCount} lifetime=${daemonLifetime(daemon)}${termination}`;
-}
-
-/**
- * The owning condition that ends a daemon: `last-client-exit` (the default —
- * the broker stops it once the last veyyon in this directory exits),
- * `broker-shutdown` (`persist`: outlives the last client, dies with the
- * broker), or `detached` (survives every veyyon and broker exit).
- */
-export function daemonLifetime(daemon: DaemonSnapshot): "detached" | "broker-shutdown" | "last-client-exit" {
-	if (daemon.detached) return "detached";
-	if (daemon.persist) return "broker-shutdown";
-	return "last-client-exit";
-}
-
-/** One retained completion record as a list line, with a bounded tail snippet. */
-function completionLabel(record: DaemonCompletionRecord): string {
-	const outcome = record.signal
-		? `signal=${record.signal}`
-		: record.exitCode === undefined
-			? "ended"
-			: `exit=${record.exitCode}`;
-	const reason = record.exitReason ? ` — ${record.exitReason}` : "";
-	const tailLine = record.outputTail.trimEnd().split("\n").pop()?.trim() ?? "";
-	const tail = tailLine ? ` · tail: ${previewLine(tailLine, TRUNCATE_LENGTHS.SHORT)}` : "";
-	return `${record.name}: ${outcome} terminated-by=${record.terminatedBy} after ${formatDuration(
-		record.exitedAt - record.startedAt,
-	)}${reason}${tail}`;
+	)} restarts=${daemon.restartCount}${daemon.detached ? " detached" : daemon.persist ? " persistent" : ""}`;
 }
 
 /**
@@ -296,7 +255,7 @@ export function toolContent(result: DaemonRpcResult, params: LaunchParams): stri
 			return lines.join("\n");
 		}
 		case "list": {
-			if (!result.daemons.length && !result.completions.length) return "No daemons.";
+			if (!result.daemons.length) return "No daemons.";
 			// Show every live daemon, but cap the terminal (exited/failed) tail so
 			// the list does not grow unbounded and waste tokens on every call when
 			// old jobs pile up (DOG-1). The most recently exited are the useful ones.
@@ -313,28 +272,6 @@ export function toolContent(result: DaemonRpcResult, params: LaunchParams): stri
 				lines.push(
 					`… and ${hidden} more exited daemon${hidden === 1 ? "" : "s"} not shown (showing the ${TERMINAL_SHOWN} most recent).`,
 				);
-			}
-			// Retained completion records whose terminal event is NOT already a row
-			// above: a daemon replaced by a same-name start, or one a dead broker
-			// never settled. Keyed by id+exitedAt so a restarted daemon's earlier
-			// generation still shows while its live row does not duplicate.
-			const settled = new Set(
-				result.daemons
-					.filter(daemon => daemon.exitedAt !== undefined)
-					.map(daemon => `${daemon.id}${daemon.exitedAt}`),
-			);
-			const completions = result.completions.filter(record => !settled.has(`${record.id}${record.exitedAt}`));
-			if (completions.length > 0) {
-				const COMPLETIONS_SHOWN = 10;
-				const shown = completions.slice(-COMPLETIONS_SHOWN).reverse();
-				lines.push(
-					"",
-					`Recently completed (records retained: last ${DAEMON_COMPLETIONS_LIMIT} or 24h, across broker restarts):`,
-					...shown.map(record => `- ${completionLabel(record)}`),
-				);
-				if (completions.length > shown.length) {
-					lines.push(`… and ${completions.length - shown.length} older retained record(s).`);
-				}
 			}
 			return lines.join("\n");
 		}
@@ -372,7 +309,7 @@ async function toolDetails(result: DaemonRpcResult, params: LaunchParams): Promi
 		case "start":
 			return { op: "start", daemon: result.daemon, timedOut: result.readyTimedOut };
 		case "list":
-			return { op: "list", daemons: result.daemons, completions: result.completions };
+			return { op: "list", daemons: result.daemons };
 		case "logs": {
 			const terminalRows =
 				result.terminalText === undefined
@@ -417,12 +354,12 @@ function approvalFor(params: unknown): ToolApprovalDecision {
 	}
 }
 
-/** Project-scoped launch tool for supervising processes in every coding-agent session. */
+/** Supervises processes that do not end on their own. Session-private by default; `launch.sharedCrossSession` restores the shared project scope. */
 export class LaunchTool implements AgentTool<typeof launchSchema, LaunchToolDetails, Theme> {
 	readonly name = "launch";
 	readonly label = "Launch";
 	readonly loadMode = "essential";
-	readonly summary = "Supervise a shared project process that does not end on its own";
+	readonly summary = "Supervise a long-running process that does not end on its own";
 	readonly description = prompt.render(toolsPrompts["tools/launch"].text);
 	readonly parameters = launchSchema;
 	readonly strict = true;
@@ -466,15 +403,70 @@ export class LaunchTool implements AgentTool<typeof launchSchema, LaunchToolDeta
 			);
 			cpuLimit.assertMaySpawn("a background process");
 		}
-		const client = await daemonClientForProject(this.session.cwd, {
-			adoptSpawnedPid: sessionCpuAdoption(getSessionId),
-		});
-		if (params.op === "stop" || params.op === "restart") {
-			// The end of a process the caller asked to end is not news. Drop the
-			// watch before the request, so the exit it causes reports nothing.
-			releaseLaunchExitWatch(this.session, client.projectDir, requiredName(params));
+		// Cross-session sharing is opt-in (`launch.sharedCrossSession`, default off). Without it
+		// ordinary starts are supervised by a session-private broker: another session in this
+		// project can neither list, read, nor stop these. Two exceptions keep processes reachable:
+		// persist/detached mean "outlive this session", so they always land in the shared scope
+		// the `veyyon launch` CLI and later sessions can reach; and ops that address an existing
+		// process fall back from the private broker to the shared one when the name is unknown
+		// there, so a persisted or shared-scope daemon stays manageable.
+		const sharedScope = this.session.settings.get("launch.sharedCrossSession") === true;
+		const adopt = { adoptSpawnedPid: sessionCpuAdoption(getSessionId) };
+		const projectClient = () => daemonClientForProject(this.session.cwd, adopt);
+		const privateClient = () =>
+			daemonClientForSession(this.session.cwd, getSessionId() ?? `proc-${process.pid}`, adopt);
+
+		let client: DaemonBrokerClient;
+		if (params.op === "start") {
+			client =
+				sharedScope || params.persist === true || params.detached === true
+					? await projectClient()
+					: await privateClient();
+		} else if (sharedScope) {
+			client = await projectClient();
+		} else {
+			client = await privateClient();
 		}
-		const result = await client.request(operationFor(params, this.session), signal);
+
+		const isUnknownDaemon = (error: unknown): boolean =>
+			error instanceof Error && error.message.startsWith("Unknown daemon");
+		const requestWithFallback = async (operation: DaemonOperation): Promise<DaemonRpcResult> => {
+			if (sharedScope || client.runtimeDir === (await projectClient()).runtimeDir) {
+				return client.request(operation, signal);
+			}
+			try {
+				return await client.request(operation, signal);
+			} catch (error) {
+				if (!isUnknownDaemon(error) || params.op === "start") throw error;
+				const fallback = await projectClient();
+				const result = await fallback.request(operation, signal);
+				// Addressing succeeded in the shared scope: the watch release below and the exit
+				// watch registration must ride the same broker the op actually hit.
+				client = fallback;
+				return result;
+			}
+		};
+
+		if (params.op === "stop" || params.op === "restart") {
+			// The end of a process the caller asked to end is not news. Drop the watch before the
+			// request, so the exit it causes reports nothing. Release on BOTH scopes: the name may
+			// live in either, and releasing an absent watch is a no-op.
+			releaseLaunchExitWatch(this.session, client, requiredName(params));
+			if (!sharedScope) {
+				const shared = await projectClient();
+				releaseLaunchExitWatch(this.session, shared, requiredName(params));
+			}
+		}
+		let result = await requestWithFallback(operationFor(params, this.session));
+		if (params.op === "list" && !sharedScope) {
+			// Merge the shared scope's rows in, so persisted/shared daemons stay visible. Private
+			// rows come first; same-name collisions are kept as two entries and every addressing
+			// op resolves them through the same fallback order.
+			const sharedRows = await (await projectClient()).request({ op: "list" }, signal);
+			if (sharedRows.op === "list" && result.op === "list") {
+				result = { ...result, daemons: [...result.daemons, ...sharedRows.daemons] };
+			}
+		}
 		if (result.op === "start" || result.op === "restart") {
 			watchLaunchedProcessExit({ session: this.session, client, daemon: result.daemon });
 		}
@@ -520,13 +512,8 @@ function daemonMeta(daemon: DaemonSnapshot, theme: Theme): string[] {
 	const lifespan = formatDuration((daemon.exitedAt ?? Date.now()) - daemon.startedAt);
 	meta.push(daemon.exitedAt === undefined ? `up ${lifespan}` : `ran ${lifespan}`);
 	if (daemon.restartCount > 0) meta.push(`restarts ${daemon.restartCount}`);
-	// The owning condition that ends this daemon, visible BEFORE it bites:
-	// the default dies with the last client, persist dies with the broker,
-	// detached survives both.
 	if (daemon.detached) meta.push("detached");
-	else if (daemon.persist) meta.push("dies with broker");
-	else meta.push("dies with last client");
-	if (daemon.terminatedBy) meta.push(theme.fg("muted", `by ${daemon.terminatedBy}`));
+	else if (daemon.persist) meta.push("persistent");
 	return meta;
 }
 
@@ -650,16 +637,6 @@ export const launchToolRenderer = {
 					for (const item of daemons) {
 						body.push(
 							`${theme.fg("accent", replaceTabs(item.name))} ${theme.fg("dim", daemonMeta(item, theme).join(theme.sep.dot))}`,
-						);
-					}
-					const settled = new Set(
-						daemons.filter(item => item.exitedAt !== undefined).map(item => `${item.id}${item.exitedAt}`),
-					);
-					for (const record of (details?.completions ?? []).filter(
-						item => !settled.has(`${item.id}${item.exitedAt}`),
-					)) {
-						body.push(
-							`${theme.fg("muted", replaceTabs(record.name))} ${theme.fg("dim", `completed${theme.sep.dot}by ${record.terminatedBy}`)}`,
 						);
 					}
 					break;
