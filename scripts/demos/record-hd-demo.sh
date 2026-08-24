@@ -289,6 +289,12 @@ else
 	echo "record-hd-demo.sh: no ImageMagick (magick or convert) on PATH" >&2
 	exit 2
 fi
+# ImageMagick 6 writes magick-* pixel-cache files under MAGICK_TMPDIR and leaves
+# them on SIGKILL. Scope them under WORK so they never land in /tmp; the EXIT
+# trap already deletes WORK on success, and a kept failure directory is bounded.
+# shellcheck source=proof/docker/magick-tmpdir.sh
+source "${REPO_ROOT}/proof/docker/magick-tmpdir.sh"
+magick_tmpdir_scope "${WORK}"
 
 REQUIRED_TOOLS=(docker)
 if [[ "${REHEARSAL}" -eq 0 ]]; then
