@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ad5e0124.js";
+            window.path_to_searchindex_js = "../searchindex-266a6dbc.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -243,9 +243,10 @@ quota of <code>0</code>. If the harness’s own cgroup is not writable, veyyon s
 cgroup. It is not a <code>--scope</code> unit: a scope would block on the placeholder and leave setup failed.
 A positive <code>CPUQuota</code> too small for systemd to express floors at <code>0.001%</code> rather than <code>0%</code>.</li>
 <li><strong>Windows</strong> uses an unnamed Job Object with a hard CPU rate cap. <code>CpuRate</code> is a fraction of
-<strong>host</strong> logical processors (4 cores on a 16-processor machine is 2500, not 40000). Setting the
-limit to 0, or <code>/cpu-limit remove</code>, turns rate control off rather than flooring to 0.01% of the
-machine.</li>
+<strong>host</strong> logical processors (4 cores on a 16-processor machine is 2500, not 40000), counted with
+<code>GetActiveProcessorCount</code> rather than this process’s affinity mask, so a 2-core budget inside a
+2-of-16 slice is 12.5% of the machine rather than 100%. Setting the limit to 0, or
+<code>/cpu-limit remove</code>, turns rate control off rather than flooring to 0.01% of the machine.</li>
 </ul>
 <p>A once-per-second watcher reads the group’s usage on top of the kernel cap. When usage stays
 pinned at the budget for about three seconds, new commands are rejected with an error that names
