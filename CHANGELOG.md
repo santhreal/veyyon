@@ -50,6 +50,7 @@
 
 - The model name segment on the composer status line is preserved against wide working directories and git branch names by ranking it above location shortening in footline degradation.
 - A clipped working directory on the composer status line now carries one ellipsis at the end instead of one at each end, so the visible text reads as a prefix of the real path.
+- The composer footline's click targets — the context gauge, the secrets chip, the goal readout and the path expansion — answer a click in a session whose transcript has not yet overflowed the viewport, instead of staying inert until it does.
 - The status line's default-branch lookup no longer raises an unhandled rejection in a directory holding a `.git` on a host with no `git` on PATH; the lookup fails to the `main` fallback instead.
 - A completed background job now fills its still-pending originating tool call instead of starting an unrelated recap turn after an interruption, including when zero retention is configured or foreground completion races background delivery.
 - When every summarizer candidate refuses, automatic compaction now parks the run (or drains already-queued input once) instead of reporting that nothing happened and looping. A successful local rescue retries without restoring the failed overflow or truncated assistant turn; idle compaction stays silent.
