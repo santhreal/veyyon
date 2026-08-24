@@ -457,13 +457,32 @@ const streamOpenAIResponsesOnce = (
 			const requestTimeoutMs =
 				firstEventTimeoutMs !== undefined && firstEventTimeoutMs > 0 ? firstEventTimeoutMs : undefined;
 			const requestUrl = `${resolvedBaseUrl}/responses`;
-			const applyPayloadReplacement = async (requestParams: OpenAIResponsesSamplingParams) => {
-				const attemptParams = structuredCloneJSON(requestParams);
-				const replacementPayload = await options?.onPayload?.(attemptParams, model);
-				const payload =
-					replacementPayload !== undefined ? (replacementPayload as OpenAIResponsesSamplingParams) : attemptParams;
-				applyReasoningEffortFallbackForRequest(payload);
-				return payload;
+			const applyPayloadReplacement = async (
+				requestParams: OpenAIResponsesSamplingParams,
+			): Promise<{ wireParams: OpenAIResponsesSamplingParams; bodyJson: string }> => {
+				// Serialize once; the hook gets an isolated parse of exactly those
+				// bytes, and when no extension handles the event the caller reuses
+				// `bodyJson` instead of re-serializing. The reasoning-effort
+				// fallback may still mutate the parsed object afterwards, which is
+				// what `reused` guards.
+				const bodyJson = JSON.stringify(requestParams);
+				let attemptParams = requestParams;
+				if (options?.onPayload) {
+					const hookView = JSON.parse(bodyJson) as OpenAIResponsesSamplingParams;
+					const replacementPayload = await options.onPayload(hookView, model);
+					attemptParams =
+						replacementPayload !== undefined && replacementPayload !== hookView
+							? (replacementPayload as OpenAIResponsesSamplingParams)
+							: hookView;
+				}
+				const fallbackKey = applyReasoningEffortFallbackForRequest(attemptParams);
+				const fallbackApplied =
+					requestReasoningEffortFallbacks.has(fallbackKey) ||
+					getOpenAIReasoningEffortFallback(providerSessionState, fallbackKey) !== undefined;
+				return {
+					wireParams: attemptParams,
+					bodyJson: fallbackApplied || attemptParams !== requestParams ? JSON.stringify(attemptParams) : bodyJson,
+				};
 			};
 			rawRequestDump = {
 				provider: model.provider,
@@ -474,19 +493,15 @@ const streamOpenAIResponsesOnce = (
 			};
 			const openResponsesStream = async (requestParams: OpenAIResponsesSamplingParams, captureOnly = false) => {
 				const prepareRequest = async (): Promise<RequestInit> => {
-					const wireParams = await applyPayloadReplacement(requestParams);
+					const { wireParams, bodyJson } = await applyPayloadReplacement(requestParams);
 					activeReasoningEffortFallbackKey = createOpenAIReasoningEffortFallbackKey(
 						"responses",
 						resolvedBaseUrl,
 						typeof wireParams.model === "string" ? wireParams.model : model.id,
 					);
 					activeRequestParams = wireParams;
-					// Retain the exact sent BYTES, not the parsed object: a dump body
-					// is read only on the 400/413 path, and holding the graph here
-					// pinned a full context-sized clone for the whole stream.
-					const body = JSON.stringify(wireParams);
-					wireBodyJson = body;
-					return { body };
+					wireBodyJson = bodyJson;
+					return { body: bodyJson };
 				};
 				if (captureOnly) {
 					await prepareRequest();
