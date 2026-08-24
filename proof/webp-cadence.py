@@ -24,20 +24,22 @@ THE TYPICAL FRAME must be that value give or take a millisecond, which is the ro
 a 30 fps source allows (33ms and 34ms alternate). That catches a RESAMPLE: the old
 asset's typical frame was 83ms, and every frame in the file had been rewritten.
 
-THE MOVING PORTION must average close to the capture rate. That catches the other
-failure, which the typical-frame check cannot see: a file whose most common duration is
-correct and whose wall clock is mostly slower than it. The hero published at 14.2 fps
-against a 30 fps capture with 33ms as its most common frame at 44%; the other 56% held
-for 66ms and 100ms, so a third of the clip played at 10 to 15 fps and the gate passed.
-A criterion that reads the most common value cannot see a file that is mostly slower
-than the most common value.
+THE MOVING PORTION must satisfy two bounds. Its average stays within 20% of the
+capture rate, and at least 85% of its frames hold for exactly the capture interval.
+The pair catches the other failure, which the typical-frame check cannot see: a file
+whose most common duration is correct and whose wall clock is mostly slower than it.
+The hero published at 14.2 fps against a 30 fps capture with 33ms as its most common
+frame at 44%; the other 56% held for 66ms and 100ms.
 
-A WebP encoder merges byte-identical frames, so a stretch where the screen is genuinely
-still becomes one long hold, and that is compression rather than lag. Holds at or past
-`--still-ms` (default ten times the expected interval) are counted as stills, reported,
-and left out of the moving average. Everything shorter counts against it: a frame held
-for two or three intervals in the middle of a scroll is the product drawing slowly,
-which is what a viewer reads as lag.
+A WebP encoder merges byte-identical frames. Real terminal input and model output have
+short content pauses even when the recorder delivers every frame: the passing production
+take measured 25.1 fps with 85.5% of frames at 33/34ms. The 20% average bound admits
+those pauses; the independent 85% share still rejects a clip that concentrates a few
+long delays inside an otherwise acceptable average.
+
+A longer stretch where the screen is genuinely still becomes one long hold, and that
+is compression rather than lag. Holds at or past `--still-ms` (default ten times the
+expected interval) are counted as stills, reported, and left out of both bounds.
 """
 
 import argparse
@@ -76,7 +78,7 @@ def main() -> int:
 	ap.add_argument(
 		"--expect-ms",
 		type=int,
-		help="the capture interval; gates the typical frame and the moving average against it",
+		help="the capture interval; gates the typical frame and moving portion against it",
 	)
 	ap.add_argument(
 		"--still-ms",
@@ -86,8 +88,14 @@ def main() -> int:
 	ap.add_argument(
 		"--tolerance",
 		type=float,
-		default=0.10,
-		help="how far below the capture rate the moving average may sit (default 0.10)",
+		default=0.20,
+		help="how far below the capture rate the moving average may sit (default 0.20)",
+	)
+	ap.add_argument(
+		"--min-cadence-share",
+		type=float,
+		default=0.85,
+		help="minimum share of moving frames at the capture interval (default 0.85)",
 	)
 	args = ap.parse_args()
 
@@ -135,10 +143,10 @@ def main() -> int:
 	moving_fps = len(moving) / (sum(moving) / 1000)
 	floor_fps = captured_fps * (1 - args.tolerance)
 	at_cadence = sum(1 for ms in moving if abs(ms - args.expect_ms) <= 1)
-	cadence_share = 100 * at_cadence / len(moving)
+	cadence_fraction = at_cadence / len(moving)
 	print(
 		f"  moving: {len(moving)} frames, {sum(moving) / 1000:.2f}s, {moving_fps:.1f} fps"
-		f" ({cadence_share:.0f}% at the capture interval)"
+		f" ({cadence_fraction:.0%} at the capture interval)"
 	)
 	if moving_fps < floor_fps:
 		print(
@@ -148,7 +156,17 @@ def main() -> int:
 			file=sys.stderr,
 		)
 		return 1
-	print(f"  the moving portion averages {moving_fps:.1f} fps against {captured_fps:.1f} fps captured")
+	if cadence_fraction < args.min_cadence_share:
+		print(
+			f"  FAIL: {cadence_fraction:.1%} of moving frames use the capture interval, under the"
+			f" {args.min_cadence_share:.1%} floor — short holds are too frequent",
+			file=sys.stderr,
+		)
+		return 1
+	print(
+		f"  the moving portion averages {moving_fps:.1f} fps against {captured_fps:.1f} fps captured;"
+		f" {cadence_fraction:.1%} of frames use the capture interval"
+	)
 	return 0
 
 

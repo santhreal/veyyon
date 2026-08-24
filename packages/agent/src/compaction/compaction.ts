@@ -969,6 +969,14 @@ export interface HandoffOptions {
 		ctx: Context,
 		options: SimpleStreamOptions,
 	) => Promise<AssistantMessage>;
+	/** Session routing key for remote compaction transports and side-request conversation derivation. */
+	sessionId?: string;
+	/** Explicit conversation ID override for the side completion. */
+	conversationId?: string;
+	/** Prompt-cache key for remote compaction transports that support provider prefix caching. */
+	promptCacheKey?: string;
+	/** Service tier for the handoff generation request. */
+	serviceTier?: ServiceTier;
 }
 
 export function renderHandoffPrompt(customInstructions?: string): string {
@@ -1105,6 +1113,10 @@ export async function generateHandoff(
 				signal,
 				initiatorOverride: options.initiatorOverride,
 				metadata: options.metadata,
+				sessionId: options.sessionId,
+				conversationId: options.conversationId,
+				promptCacheKey: options.promptCacheKey,
+				serviceTier: options.serviceTier,
 			},
 			telemetry: options.telemetry,
 			thinkingLevel: options.thinkingLevel,
