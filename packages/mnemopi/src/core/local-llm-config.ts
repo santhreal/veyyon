@@ -20,16 +20,25 @@
 
 import type { Api, ApiKey, Model } from "@veyyon/ai";
 import { estimateTokensFromText, trimTrailingSlashes } from "@veyyon/utils";
-import { envBool, envInt, envString } from "../util/env";
+import {
+	hostLlmContext,
+	hostLlmEnabled as hostLlmEnabledFromEnv,
+	llmApiKey as llmApiKeyFromEnv,
+	llmBaseUrl as llmBaseUrlFromEnv,
+	llmContext,
+	llmEnabled as llmEnabledFromEnv,
+	llmMaxTokens as llmMaxTokensFromEnv,
+	llmModel as llmModelFromEnv,
+	sleepPrompt as sleepPromptFromEnv,
+} from "../config";
 import { getHostLlmBackend } from "./llm-backends";
 import { getMnemopiRuntimeOptions, isPiAiModel, type MnemopiLlmCompletion } from "./runtime-options";
 
-const ENV_MODEL_REPO = process.env.MNEMOPI_LLM_REPO ?? "";
-const ENV_MODEL_FILE = process.env.MNEMOPI_LLM_FILE ?? "";
-export const DEFAULT_MODEL_REPO =
-	ENV_MODEL_REPO !== "" && ENV_MODEL_FILE !== "" ? ENV_MODEL_REPO : "TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF";
-export const DEFAULT_MODEL_FILE =
-	ENV_MODEL_REPO !== "" && ENV_MODEL_FILE !== "" ? ENV_MODEL_FILE : "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf";
+/**
+ * Every function below answers "what did the CALLER configure", and falls back to
+ * "what does the environment say" by asking `../config`, which is the one module
+ * that reads a `MNEMOPI_*` variable and the one place a default is written.
+ */
 
 export function activeLlmOptions() {
 	return getMnemopiRuntimeOptions()?.llm;
@@ -52,7 +61,7 @@ export function llmEnabled(): boolean {
 	if (activeCustomCompletion() !== undefined || activePiAiModel() !== undefined) {
 		return true;
 	}
-	return envBool("MNEMOPI_LLM_ENABLED", true);
+	return llmEnabledFromEnv();
 }
 
 export function llmMaxTokens(): number {
@@ -60,11 +69,11 @@ export function llmMaxTokens(): number {
 	if (active?.maxTokens !== undefined) {
 		return active.maxTokens;
 	}
-	return envInt("MNEMOPI_LLM_MAX_TOKENS", 2048);
+	return llmMaxTokensFromEnv();
 }
 
 export function llmContextTokens(): number {
-	return envInt("MNEMOPI_LLM_N_CTX", 2048);
+	return llmContext();
 }
 
 export function hostLlmEnabled(): boolean {
@@ -75,11 +84,11 @@ export function hostLlmEnabled(): boolean {
 	if (active?.baseUrl !== undefined || (typeof active?.model === "string" && active.model !== "")) {
 		return false;
 	}
-	return envBool("MNEMOPI_HOST_LLM_ENABLED", false);
+	return hostLlmEnabledFromEnv();
 }
 
 export function hostLlmContextTokens(): number {
-	return envInt("MNEMOPI_HOST_LLM_N_CTX", 32000);
+	return hostLlmContext();
 }
 
 export function llmBaseUrl(): string {
@@ -87,7 +96,7 @@ export function llmBaseUrl(): string {
 	if (active?.baseUrl !== undefined) {
 		return trimTrailingSlashes(active.baseUrl);
 	}
-	return trimTrailingSlashes(envString("MNEMOPI_LLM_BASE_URL"));
+	return llmBaseUrlFromEnv();
 }
 
 export function llmModelName(): string {
@@ -95,7 +104,7 @@ export function llmModelName(): string {
 	if (typeof model === "string") {
 		return model;
 	}
-	return envString("MNEMOPI_LLM_MODEL") || "local";
+	return llmModelFromEnv() || "local";
 }
 
 export function llmApiKey(): ApiKey {
@@ -103,11 +112,11 @@ export function llmApiKey(): ApiKey {
 	if (active?.apiKey !== undefined) {
 		return active.apiKey;
 	}
-	return envString("MNEMOPI_LLM_API_KEY");
+	return llmApiKeyFromEnv();
 }
 
 export function sleepPrompt(): string {
-	return envString("MNEMOPI_SLEEP_PROMPT").trim();
+	return sleepPromptFromEnv();
 }
 
 export function memoryLines(memories: readonly string[]): string {
