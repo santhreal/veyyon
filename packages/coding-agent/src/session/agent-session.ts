@@ -2147,6 +2147,16 @@ export class AgentSession {
 	#unsubscribeModelRoles?: () => void;
 	#unsubscribePromptSettings?: () => void;
 	#promptRefresh: Promise<void> = Promise.resolve();
+	/**
+	 * Startup work that finishes behind the first frame and gates the first turn.
+	 *
+	 * A session's own construction is on the boot path, so anything it awaits there is time before the
+	 * user sees anything. Work whose result no frame reads — a memory backend opening its database and
+	 * installing this session's state — is handed to {@link deferStartupWork} instead and awaited at
+	 * the one place that needs it, the start of a turn. Every tool call and every subagent spawn
+	 * happens inside a turn, so one await covers all of them.
+	 */
+	#startupHydration: Promise<void> = Promise.resolve();
 	/** Last (enable, providerId) tuple resolved by `#syncAppendOnlyContext` — used to skip no-op invalidations. */
 	#lastAppendOnlyResolution?: { enable: boolean; providerId: string | undefined };
 	#eventListeners: AgentSessionEventListener[] = [];
@@ -10693,6 +10703,22 @@ export class AgentSession {
 	}
 
 	/**
+	 * Hand startup work to the session instead of awaiting it on the boot path.
+	 *
+	 * Chained, so several deferrals order the way they were handed over, and swallowed, so a failure
+	 * cannot reach the process as an unhandled rejection or refuse the first turn — the work logs its
+	 * own failure.
+	 */
+	deferStartupWork(work: Promise<void>): void {
+		this.#startupHydration = this.#startupHydration.then(() => work).catch(() => {});
+	}
+
+	/** Resolves once every deferred startup task has finished. A turn awaits this before it runs. */
+	whenStartupHydrated(): Promise<void> {
+		return this.#startupHydration;
+	}
+
+	/**
 	 * Send a prompt to the agent.
 	 * - Handles extension commands (registered via pi.registerCommand) immediately, even during streaming
 	 * - Expands file-based prompt templates by default
@@ -10710,6 +10736,7 @@ export class AgentSession {
 	 */
 	async prompt(text: string, options?: PromptOptions): Promise<boolean> {
 		await this.#promptRefresh;
+		await this.#startupHydration;
 		const expandPromptTemplates = options?.expandPromptTemplates ?? true;
 
 		// Handle extension commands first (execute immediately, even during streaming)
@@ -11631,6 +11658,9 @@ export class AgentSession {
 			acceptTerminalEmptyStop?: boolean;
 		},
 	): Promise<boolean> {
+		// A message that starts a turn is a turn: it reaches the same tools, so it waits for the same
+		// hydration `prompt` waits for.
+		if (options?.triggerTurn) await this.#startupHydration;
 		const normalizedPayload = normalizeCustomMessagePayload<T>(message);
 		const details =
 			options?.queueChipText && options.deliverAs !== "nextTurn"

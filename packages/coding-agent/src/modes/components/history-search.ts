@@ -22,15 +22,12 @@ import {
 	matchesSelectUp,
 } from "../utils/keybinding-matchers";
 import {
-	applyModalReveal,
-	beginModalExit,
 	computeModalDims,
 	consumeModalChipHover,
 	hitTestModalChrome,
 	MODAL_SIZING_MEDIUM,
-	ModalRevealDriver,
 	type ModalShellGeometry,
-	modalRevealEnabled,
+	pointerMotionEnabled,
 	renderModalShell,
 	SELECT_LIST_SHORTCUTS,
 	sizingForArea,
@@ -229,25 +226,8 @@ export class HistorySearchComponent implements Component {
 	#listRowStart = 0;
 	#hoveredShortcutId: string | null = null;
 	#onRequestRender?: () => void;
-	#reveal = new ModalRevealDriver();
-	/**
-	 * Fade out on the shared clock before the host drops this card. The overlay stack keeps painting
-	 * it and stops routing input to it the moment this is called.
-	 */
-	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
-		return beginModalExit(this.#reveal, requestRender, done);
-	}
 
-	constructor(
-		historyStorage: HistoryStorage,
-		onSelect: (prompt: string) => void,
-		onCancel: () => void,
-		/** Play the open unfold (TOUCH-5). Show site decides via modalRevealEnabled(). */
-		reveal?: boolean,
-	) {
-		if (reveal) {
-			this.#reveal.start(() => this.#onRequestRender?.());
-		}
+	constructor(historyStorage: HistoryStorage, onSelect: (prompt: string) => void, onCancel: () => void) {
 		this.#historyStorage = historyStorage;
 		this.#onSelect = onSelect;
 		this.#onCancel = onCancel;
@@ -272,12 +252,11 @@ export class HistorySearchComponent implements Component {
 		// The pointer band fades only once the card has a repaint to lend it: the
 		// frames between two mouse reports have no input to hang off. Same ambient
 		// gate as the open unfold; without it the band is switched.
-		this.#resultsList.setHoverMotion({ requestRender: cb, enabled: modalRevealEnabled() });
+		this.#resultsList.setHoverMotion({ requestRender: cb, enabled: pointerMotionEnabled() });
 	}
 
-	/** Settle the reveal and the pointer band so no timer outlives a dismissed card. */
+	/** Settle the pointer band so no timer outlives a dismissed card. */
 	dispose(): void {
-		this.#reveal.stop();
 		this.#resultsList.disposeHoverMotion();
 	}
 
@@ -436,6 +415,6 @@ export class HistorySearchComponent implements Component {
 		});
 		this.#shellGeometry = shell.geometry;
 		this.#listRowStart = shell.geometry?.bodyRowStart ?? 0;
-		return applyModalReveal(shell, width, this.#reveal);
+		return shell.lines;
 	}
 }

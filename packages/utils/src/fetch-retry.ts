@@ -287,9 +287,11 @@ export interface FetchWithRetryOptions extends RequestInit {
 	 */
 	fetch?: (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 	/**
-	 * Optional retry gate for HTTP responses whose status is retryable. Receives a
-	 * cloned body string so callers can fail fast on deterministic provider
-	 * failures that happen to use a 5xx status.
+	 * The retry verdict for a FAILED response — any status that is not 2xx, not only the transient
+	 * set. Receives a cloned body string, because a status means something only next to a body: a 429
+	 * that says `overloaded` is a throttle, one with nothing to read is a wall, and a 400 carrying a
+	 * deterministic parse failure is the same wall at a different number. Absent, the transient set
+	 * ({@link isRetryableStatus}) decides, which is all this module can say on its own.
 	 */
 	shouldRetryResponse?: (response: Response, bodyText: string, attempt: number) => boolean | Promise<boolean>;
 	/**
@@ -321,11 +323,11 @@ export const DEFAULT_MAX_DELAY_MS = 60_000;
 const DEFAULT_MAX_ATTEMPTS = 5;
 
 /**
- * Fetch with bounded retries and sensible defaults. Retries on any
- * `isRetryableStatus` (5xx, 408, 429) and on transient network errors. Server
- * `Retry-After`/quota hints are honoured up to `maxDelayMs`; a hint that exceeds
- * the cap returns the current response so the caller can fail fast. Aborts on
- * `init.signal` propagate as `"Request was aborted"`.
+ * Fetch with bounded retries and sensible defaults. A 2xx is returned untouched; every other status
+ * goes to `shouldRetryResponse`, or to `isRetryableStatus` (5xx, 408, 429) when the caller passes no
+ * verdict. Transient network errors are retried. Server `Retry-After`/quota hints are honoured up to
+ * `maxDelayMs`; a hint that exceeds the cap returns the current response so the caller can fail fast.
+ * Aborts on `init.signal` propagate as `"Request was aborted"`.
  *
  * The caller is responsible for inspecting `!response.ok` once the call returns.
  */
@@ -381,11 +383,22 @@ export async function fetchWithRetry(
 			continue;
 		}
 
-		if (!isRetryableStatus(response.status)) return response;
+		// A SUCCESS IS NEVER RETRIED AND ITS BODY IS NEVER READ: a 2xx may be a live stream, and
+		// `clone().text()` on one buffers the whole response. Every other status is a failure, so the
+		// caller's verdict decides it — including the ones outside the transient set, which is what
+		// `isRetryableStatus` stops being: it was the gate in front of the verdict, so a status an API
+		// documents as retryable (Anthropic's 409) and a body a provider knows a replay reproduces
+		// (llama.cpp's deterministic tool-call parse failure) were answered here, by a module that
+		// cannot read a body and does not know which API sent it. It is the DEFAULT now, for a caller
+		// that passes no verdict at all.
+		if (response.ok) return response;
 		if (attempt + 1 >= maxAttempts) return response;
 
 		const retryBody = await response.clone().text();
-		if (shouldRetryResponse && !(await shouldRetryResponse(response, retryBody, attempt))) return response;
+		const retry = shouldRetryResponse
+			? await shouldRetryResponse(response, retryBody, attempt)
+			: isRetryableStatus(response.status);
+		if (!retry) return response;
 
 		const hint = extractRetryHint(response, retryBody);
 		if (hint !== undefined && hint > maxDelayMs) return response;

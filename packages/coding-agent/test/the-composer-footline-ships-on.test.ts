@@ -100,7 +100,7 @@ describe("the composer footline ships on", () => {
 		// A real fs.watch on the repo HEAD from a parallel Bun worker is enough to trip a SIGTRAP
 		// in unrelated workers; this contract is the footline gate, not branch watching.
 		vi.spyOn(mode.statusLine, "watchBranch").mockImplementation(() => {});
-		await mode.init({ suppressWelcomeIntro: true });
+		await mode.init();
 	});
 
 	afterEach(async () => {

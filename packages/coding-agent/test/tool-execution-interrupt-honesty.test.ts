@@ -169,7 +169,7 @@ describe("tool block honesty about calls that never ran", () => {
 		[
 			true,
 			[
-				"  ✗ failed",
+				"  ▏ ✗ failed",
 				"  ▏  $ npm run migrate:up",
 				"  ▏  Output",
 				"  ▏  dropped table users",
@@ -203,7 +203,7 @@ describe("tool block honesty about calls that never ran", () => {
 		});
 
 		expect(rows(block)).toEqual([
-			"  ✗ failed",
+			"  ▏ ✗ failed",
 			"  ▏  $ npm run migrate:up",
 			"  ▏  Output",
 			"  ▏  exit 1: relation already exists",

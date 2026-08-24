@@ -4661,25 +4661,28 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			});
 		};
 
-		// Auto-learn can immediately trigger a synthetic capture turn after the
-		// first real stop. When a memory backend is selected, install that backend's
-		// per-session state first so the capture turn's `learn` tool observes the
-		// same initialized state as normal memory tools. Other sessions keep memory
-		// startup in the background to preserve the existing startup profile.
+		// The memory backend's start is HYDRATION, not boot: it opens a database and installs this
+		// session's state, and no frame reads either. It used to be awaited here for an auto-learn
+		// session, which put both in front of the first frame so that a tool call minutes later would
+		// find the state already installed. `deferStartupWork` keeps that guarantee at the only place
+		// that needs it — a turn awaits it before running, and every tool call and subagent spawn is
+		// inside a turn — while the frame paints without it. A session with auto-learn off already ran
+		// this unawaited.
 		//
-		// Gated on `autolearn.enabled` to match the tools: `createTools` builds the
-		// `learn`/`manage_skill` registry ONCE at session start and no settings
-		// change rebuilds it, so installing the controller while disabled would let a
-		// mid-session enable fire a nudge pointing at tools the session never built.
-		// Activation is therefore a session-start decision for BOTH the controller
-		// and the tools; the fire-time re-check in `#onAgentEnd` still handles a
-		// mid-session DISABLE. The subscription lives for the session's lifetime; the
-		// reference is intentionally discarded (the listener retains it).
+		// The controller is installed only when `autolearn.enabled` and only for a top-level session,
+		// to match the tools: `createTools` builds the `learn`/`manage_skill` registry ONCE at session
+		// start and no settings change rebuilds it, so installing the controller while disabled would
+		// let a mid-session enable fire a nudge pointing at tools the session never built. Activation
+		// is a session-start decision for BOTH; the fire-time re-check in `#onAgentEnd` still handles a
+		// mid-session DISABLE. The subscription lives for the session's lifetime; the reference is
+		// intentionally discarded (the listener retains it).
+		session.deferStartupWork(
+			logger.time("startMemoryStartupTask", startMemoryBackend).catch(error => {
+				logger.warn("memory backend startup failed", { error: errorMessage(error) });
+			}),
+		);
 		if (settings.get("autolearn.enabled") && taskDepth === 0) {
-			await logger.time("startMemoryStartupTask", startMemoryBackend);
 			new AutoLearnController({ session, settings });
-		} else {
-			void logger.time("startMemoryStartupTask", startMemoryBackend);
 		}
 
 		// Wire MCP manager callbacks to session for reactive tool updates.
