@@ -202,7 +202,7 @@ async function startKernel(cwd: string, options: PythonExecutorOptions): Promise
 		signal: options.signal,
 		deadlineMs: options.deadlineMs,
 		interpreter: options.interpreter,
-		adoptPid: sessionCpuAdoption(() => options.sessionId ?? null),
+		adoptPid: sessionCpuAdoption(() => options.toolSession?.getSessionId?.() ?? null),
 	});
 }
 

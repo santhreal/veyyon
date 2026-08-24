@@ -266,6 +266,22 @@ describe("every spawn site in src is wired into the session CPU budget or exempt
 		}
 	});
 
+	it("eval executors gate and adopt by the tool session id, not the namespaced kernel id", async () => {
+		// Kernel session ids are namespaced (`python:<id>`). The limiter is
+		// registered under the tool session id. Adopting by the kernel id is a
+		// silent no-op: the cell starts and never joins the budget.
+		const files = ["eval/py/executor.ts", "eval/rb/executor.ts", "eval/jl/executor.ts"];
+		for (const file of files) {
+			const text = await fs.readFile(path.join(SRC_ROOT, file), "utf8");
+			expect(text.includes("gateSessionCpuSpawn("), `${file} must gate`).toBe(true);
+			expect(text.includes("toolSession?.getSessionId"), `${file} must key on the tool session`).toBe(true);
+			expect(
+				text.includes("sessionCpuAdoption(() => options.sessionId"),
+				`${file} must not adopt by the namespaced kernel id`,
+			).toBe(false);
+		}
+	});
+
 	it("proves the guard catches a new, unwired spawn site", async () => {
 		// RED PROOF: a fixture tree with a spawn site absent from the manifest
 		// must be reported. If this ever passes vacuously, the guard is dead.
