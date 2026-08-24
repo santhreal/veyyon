@@ -1407,11 +1407,18 @@ export class StatusLineComponent implements Component {
 		// `statusLine.segmentOptions.path.maxLength` the operator set — picking
 		// `nerd` for its long paths changed nothing on screen. The preset wins
 		// now; 30 is only the fallback for a preset that names no budget.
+		//
+		// EXPANDED PATH. A click on the path toggles `#pathExpanded`: the location zone
+		// gives up its clamp and takes the room the model chip vacates, so a path too long
+		// for the footline can be read without resizing the terminal. The shed loop below
+		// still right-truncates the location to the row, so this widens the budget rather
+		// than promising the whole path.
+		const pathBudget = this.#pathExpanded ? width : (effectiveSettings.segmentOptions?.path?.maxLength ?? 30);
 		const quietOptions = {
 			...effectiveSettings.segmentOptions,
 			path: {
 				...effectiveSettings.segmentOptions?.path,
-				maxLength: effectiveSettings.segmentOptions?.path?.maxLength ?? 30,
+				maxLength: pathBudget,
 			},
 			model: { ...effectiveSettings.segmentOptions?.model, roomy: true },
 		};
@@ -1424,6 +1431,10 @@ export class StatusLineComponent implements Component {
 		const capRight: QuietPart[] = [];
 		const push = (id: StatusLineSegmentId, out: QuietPart[]) => {
 			if (id === "subagents") return;
+			// The model chip is what an expanded path spends, and the only thing it spends:
+			// the rungs and the gauge stay put, so widening the path does not cost the
+			// reader the state they were watching. The next click brings the chip back.
+			if (id === "model" && this.#pathExpanded) return;
 			const rendered = renderSegment(id, ctx);
 			if (rendered.visible && rendered.content) out.push({ id, content: rendered.content });
 		};
@@ -1462,6 +1473,11 @@ export class StatusLineComponent implements Component {
 	// (quietSegmentAt). Rewritten on every renderQuietLine call, so it always
 	// matches the line currently on screen; empty when no footline rendered.
 	#quietLineBounds: QuietSegmentBounds[] = [];
+
+	// Set by a click on the path segment (togglePathExpanded). While true the location zone
+	// is clamped to the row rather than the preset budget and the model chip is dropped,
+	// which is the room it spends. Not persisted: a new session opens unexpanded.
+	#pathExpanded = false;
 
 	// Background-job badge animation state. Jobs ease in/out over
 	// BADGE_ANIM_MS so a start or finish reads as an intentional merge instead
@@ -1700,6 +1716,20 @@ export class StatusLineComponent implements Component {
 			if (col >= entry.start && col < entry.end) return entry.id;
 		}
 		return null;
+	}
+
+	/**
+	 * Toggle the expanded path. Clicking the path segment widens the location zone to the
+	 * row and hides the model chip; clicking again restores both. Returns the new state so
+	 * the caller can request a render without reading it back.
+	 *
+	 * The state lives here rather than in the caller because `renderQuietLine` is the only
+	 * place that knows the row's budget, and the expansion is a property of the line, not
+	 * of the session: a resize re-renders it and re-truncates to the new width.
+	 */
+	togglePathExpanded(): boolean {
+		this.#pathExpanded = !this.#pathExpanded;
+		return this.#pathExpanded;
 	}
 
 	/** Last rendered quiet-footline layout, for tests and debugging. */
