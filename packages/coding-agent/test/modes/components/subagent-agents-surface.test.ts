@@ -137,7 +137,10 @@ describe("subagent.agents settings surface", () => {
 	 */
 	function paneOf(line: string): string {
 		const columns = stripVTControlCharacters(line).split("│");
-		return columns.length >= 4 ? columns[2]! : "";
+		// With the category sidebar the line is `border │ sidebar │ pane │ border`
+		// and the pane is the third column; while a submenu owns the card the
+		// sidebar hides, the hairline goes with it, and the pane is the second.
+		return columns.length >= 4 ? columns[2]! : (columns[1] ?? "");
 	}
 
 	function paneLines(component: SettingsSelectorComponent): string[] {

@@ -115,15 +115,11 @@ describe("settings sidebar focus", () => {
 		comp.handleInput(DOWN);
 		expect(Settings.instance.get("colorBlindMode")).toBe(false);
 
-		// Right expands the description — it must NOT flip the value (left/right
-		// are reserved for sidebar focus and description expand, never edits).
+		// Right is inert on a row — descriptions show on selection, no keypress —
+		// and must NOT flip the value (left/right are reserved for focus, never edits).
 		comp.handleInput(RIGHT);
 		expect(Settings.instance.get("colorBlindMode")).toBe(false);
-		// Left collapses the description again, still no value change.
-		comp.handleInput(LEFT);
-		expect(Settings.instance.get("colorBlindMode")).toBe(false);
-		// A second Left (nothing left to collapse) focuses the sidebar, again
-		// without touching the value.
+		// Left focuses the sidebar, again without touching the value.
 		comp.handleInput(LEFT);
 		expect(Settings.instance.get("colorBlindMode")).toBe(false);
 		expect(footerText(comp.render(160))).toContain("up/down category");

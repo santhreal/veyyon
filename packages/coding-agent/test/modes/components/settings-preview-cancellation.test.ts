@@ -91,19 +91,20 @@ describe("settings preview cancellation", () => {
 		expect(events).toEqual(["preview:light", "preview:titanium", "cancel"]);
 	});
 
-	/** Switching categories discards an open picker but keeps settings open, so it must rollback without host cancellation. */
-	it("restores an unsaved theme preview before a sidebar switch", () => {
+	/** The breadcrumb peels back out of an open picker, so it must roll back the preview like Esc does. */
+	it("restores an unsaved theme preview before a breadcrumb click", () => {
 		const events: string[] = [];
 		const component = openThemePreview(events);
 		const frame = component.render(120);
-		const interaction = lineContaining(frame, "Interaction");
-		expect(interaction.row).toBeGreaterThanOrEqual(0);
+		const title = lineContaining(frame, "›");
+		expect(title.row).toBeGreaterThanOrEqual(0);
+		expect(title.text).toContain("Dark Theme");
 
-		component.handleInput(leftClick(interaction.row + 1, interaction.text.indexOf("Interaction") + 1));
+		component.handleInput(leftClick(title.row + 1, title.text.indexOf("Dark Theme") + 2));
 
 		expect(Settings.instance.get("theme.dark")).toBe("titanium");
 		expect(events).toEqual(["preview:light", "preview:titanium"]);
-		expect(component.getSelectedSettingId()).not.toBe("theme.dark");
+		expect(component.getSelectedSettingId()).toBe("theme.dark");
 	});
 
 	/** Confirming the preview persists it, and a later close must not roll back a value the operator accepted. */
