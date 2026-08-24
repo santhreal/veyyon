@@ -21,22 +21,33 @@
 # throughout, which is the point: nothing here is waiting on a server.
 #
 # Run one arm per width, and pair it with proof/docker/record-x11-before.sh at the same
-# width. 12 pixels per column in proof/docker/xsession.sh, so:
+# width. 12 pixels per column in proof/docker/xsession.sh, and OUT_DIR is a docker bind
+# mount, so it has to be absolute:
 #
 #   for px in 960 1200 1440; do            # about 80, 100 and 120 columns
-#     SCENE_WIDTH=${px} \
+#     SCENE_WIDTH=${px} SCENE_MOTION_GATE=0 \
 #     SCENE_CWD=/sandbox/home/platform-services/ingest-pipeline/normalizer \
-#     OUT_DIR=proof/captures/x11/w${px} \
+#     OUT_DIR="${PWD}/proof/captures/x11/w${px}" \
 #       proof/docker/record-x11.sh proof/scenes/statusline-widths.sh
 #   done
+#
+# SCENE_MOTION_GATE=0 because the take is five stills of a status line. The motion floor
+# is there to stop a published clip from encoding as a slideshow; this scene IS a
+# slideshow, and the frames are the artifact.
 set -euo pipefail
 
 settle 12
 
-# The seeded project name, from proof/docker/seed-demo.sh. Its presence is how the scene
-# knows SCENE_CWD arrived: without it the session opened somewhere else and every frame
-# below would photograph a short location under no pressure at all.
-screen_has "normalizer" || MISSED="${MISSED:-} idle"
+# Part of the seeded project path, from proof/docker/seed-demo.sh. Its presence is how the
+# scene knows SCENE_CWD arrived: without it the session opened somewhere else and every
+# frame below would photograph a short location under no pressure at all.
+#
+# The needle is a FRAGMENT of the first path segment, because it has to match in both arms
+# of the pair. At eighty columns the location is clipped at both ends, and it is clipped
+# HARDER once the model chip keeps its columns -- `ingest-pipeline` is on screen in the arm
+# that drops the model and gone in the arm that keeps it. A needle that only one arm can
+# satisfy would fail the take for the very difference it is recording.
+screen_has "orm-services" || MISSED="${MISSED:-} idle"
 shot idle
 
 # AUTO, the shipped approval rung. The widest right group that still carries every member.
