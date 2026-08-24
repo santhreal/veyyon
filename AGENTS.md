@@ -7,8 +7,8 @@ another one. "Agent" in a request means that CLI, not the assistant answering.
 
 Maps and indexes: [`packages/coding-agent/DEVELOPMENT.md`](packages/coding-agent/DEVELOPMENT.md) maps
 the source tree to its owning documents; [`docs/internal/README.md`](docs/internal/README.md) indexes
-contributor docs ([onboarding](docs/internal/onboarding.md), [testing](docs/internal/testing.md));
-[`docs/handbook/`](docs/handbook/) is the operator manual.
+contributor docs ([onboarding](docs/internal/onboarding.md), [testing](docs/internal/testing.md),
+[review](docs/internal/review.md)); [`docs/handbook/`](docs/handbook/) is the operator manual.
 
 |Package|Description|
 |---|---|
@@ -88,6 +88,10 @@ request says to close it.
 
 A closing keyword that already landed cannot be undone by editing the commit message: reopen the
 issue and say it autoclosed.
+
+Reviewing a pull request follows [`docs/internal/review.md`](docs/internal/review.md): its section
+order, its reject-on-sight list, and its rule that a finding names the file, the line and the input
+that breaks it. Do not report a review as clean from the GitHub summary alone.
 
 ## Proving a feature (the 10-minute rule)
 
