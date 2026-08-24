@@ -16,12 +16,14 @@ session:
 ## What is capped
 
 Every process a session spawns to do its work joins the budget. That covers bash commands (plain
-and PTY), MCP stdio servers, the `exec` calls that custom tools, custom commands, and extensions
-make — those `exec` calls are refused while the budget is saturated or the group could not be
-created, the same as bash — background processes from the `launch` tool, the eval kernels (Python, Ruby, Julia) — a new
-eval cell is refused while the budget is saturated or the group could not be created, the same as
-a new bash command — language servers, debug adapters, the managed browser, `git` and `jj`, `ssh`,
-and the installs that plugins run. A capped process passes the budget to its own children (cgroup / Job Object inheritance on
+and PTY), MCP stdio servers — a new stdio server is refused while the budget is saturated or the
+group could not be created, the same as bash — the `exec` calls that custom tools, custom commands,
+extensions, and hooks make — those `exec` calls are refused while the budget is saturated or the
+group could not be created, including extension modules the CLI loads before a session exists
+(they resolve the root session's gate lazily) — background processes from the `launch` tool, the
+eval kernels (Python, Ruby, Julia) — a new eval cell is refused while the budget is saturated or
+the group could not be created, the same as a new bash command — language servers, debug adapters,
+the managed browser, `git` and `jj`, `ssh`, and the installs that plugins run. A capped process passes the budget to its own children (cgroup / Job Object inheritance on
 Linux and Windows; a process-tree walk on macOS), so a build that spawns a compiler fleet is
 still one budget.
 

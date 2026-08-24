@@ -165,7 +165,7 @@ import {
 } from "./session/agent-session";
 import { discoverAuthStorage } from "./session/auth-broker-config";
 import type { AuthStorage } from "./session/auth-storage";
-import { sessionCpuAdoption, sessionCpuExecHooks } from "./session/cpu-limit";
+import { sessionCpuExecHooks } from "./session/cpu-limit";
 import { abortDetached } from "./session/detached-abort";
 import { createInterruptedTurnAbortMessage } from "./session/exit-diagnostics";
 import {
@@ -4719,8 +4719,11 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		if (mcpManager && !options.mcpManager) {
 			const reactiveMcpManager = mcpManager;
 			// MCP stdio servers are session-spawned processes: they join the
-			// session's CPU budget group when one is configured.
-			reactiveMcpManager.setSpawnAdoption(sessionCpuAdoption(() => session.sessionManager.getSessionId() ?? null));
+			// session's CPU budget group when one is configured, and a saturated
+			// or uncreated group refuses a new server the same way it refuses bash.
+			const mcpCpu = sessionCpuExecHooks(() => session.sessionManager.getSessionId() ?? null);
+			reactiveMcpManager.setSpawnAdoption(mcpCpu.adoptPid);
+			reactiveMcpManager.setSpawnGate(mcpCpu.gate);
 			reactiveMcpManager.setOnToolsChanged(tools => {
 				void (async () => {
 					try {

@@ -218,10 +218,27 @@ export class MCPManager {
 	#connections = new Map<string, MCPServerConnection>();
 	/** Session CPU budget hook, set by the owning session: spawned stdio server pids join the session's budget group. */
 	#adoptSpawnedPid: ((pid: number) => void) | undefined;
+	/** Session CPU budget gate: refuse a new stdio server while the group is saturated or uncreated. */
+	#gateSpawn: ((what: string) => Promise<void>) | undefined;
 
 	/** Wire the session CPU budget hook for stdio server spawns. */
 	setSpawnAdoption(adopt: ((pid: number) => void) | undefined): void {
 		this.#adoptSpawnedPid = adopt;
+	}
+
+	/** Wire the session CPU budget gate for stdio server spawns. */
+	setSpawnGate(gate: ((what: string) => Promise<void>) | undefined): void {
+		this.#gateSpawn = gate;
+	}
+
+	#stdioSpawnHooks(): {
+		onSpawnPid?: (pid: number) => void;
+		beforeSpawn?: () => Promise<void>;
+	} {
+		return {
+			...(this.#adoptSpawnedPid ? { onSpawnPid: this.#adoptSpawnedPid } : {}),
+			...(this.#gateSpawn ? { beforeSpawn: () => this.#gateSpawn!("an MCP stdio server") } : {}),
+		};
 	}
 	#tools: CustomTool<TSchema, MCPToolDetails>[] = [];
 	#pendingConnections = new Map<string, Promise<MCPServerConnection>>();
@@ -468,7 +485,7 @@ export class MCPManager {
 					onRequest: (method, params) => {
 						return this.#handleServerRequest(method, params);
 					},
-					onSpawnPid: this.#adoptSpawnedPid,
+					...this.#stdioSpawnHooks(),
 				});
 			})().then(
 				connection => {
@@ -1079,7 +1096,7 @@ export class MCPManager {
 			onRequest: (method, params) => {
 				return this.#handleServerRequest(method, params);
 			},
-			onSpawnPid: this.#adoptSpawnedPid,
+			...this.#stdioSpawnHooks(),
 		});
 
 		connection.config = config;
