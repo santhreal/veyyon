@@ -479,6 +479,7 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 				stopReason: result.stopReason,
 				status: result.status,
 				errorId: result.id,
+				rules: result.rules,
 				error: String(error),
 			});
 			output.stopReason = result.stopReason;
