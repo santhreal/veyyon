@@ -7,13 +7,13 @@
  * serialized as a `Set`, which JSON turns into `{}`, so the reader's
  * `Array.isArray` guard rejected EVERY restore regardless. The class this
  * closes: a persisted snapshot whose validity is decided by anything other
- * than the content it mirrors.
+ * than the content it mirrors, or whose parseable payload can change without
+ * detection.
  *
- * What it does not catch: a fingerprint input added outside
- * `#staticModelStageFingerprint`'s parts array in a way that stays stable
- * across these launches while still churning in production (none known).
+ * What it does not catch: a new fingerprint input that remains stable across
+ * these launches while changing in production (none known).
  */
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -21,6 +21,8 @@ import { writeModelCache } from "@veyyon/catalog/model-cache";
 import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 describe("static model stage snapshot", () => {
 	let tempDir: string;
@@ -43,6 +45,7 @@ describe("static model stage snapshot", () => {
 	const mtime = (): number => fs.statSync(snapshotPath).mtimeMs;
 
 	afterEach(() => {
+		vi.restoreAllMocks();
 		authStorage?.close();
 		authStorage = undefined;
 		if (tempDir && fs.existsSync(tempDir)) {
@@ -95,6 +98,65 @@ describe("static model stage snapshot", () => {
 		expect(mtime()).not.toBe(before);
 	});
 
+	it("expires freshness decisions even when no cache row changes", async () => {
+		tempDir = path.join(os.tmpdir(), `pi-reg-snap-${Snowflake.next()}`);
+		fs.mkdirSync(tempDir, { recursive: true });
+		modelsPath = path.join(tempDir, "models.yml");
+		snapshotPath = path.join(tempDir, "resolved-models.json");
+		authStorage = await AuthStorage.create(path.join(tempDir, "auth.db"));
+		const dbPath = path.join(tempDir, "models.db");
+		const initialNow = Date.now() + 1_000;
+		const now = vi.spyOn(Date, "now").mockReturnValue(initialNow);
+		writeModelCache("anthropic", initialNow, [], true, "", dbPath);
+
+		launch();
+		const fresh = JSON.parse(fs.readFileSync(snapshotPath, "utf8")) as {
+			stage: { createdAt: number; validUntil?: number };
+		};
+		expect(fresh.stage.validUntil).toBe(initialNow + DAY_MS);
+
+		now.mockReturnValue(initialNow + DAY_MS + 1);
+		launch();
+		const expired = JSON.parse(fs.readFileSync(snapshotPath, "utf8")) as {
+			stage: { createdAt: number; validUntil?: number };
+		};
+		expect(expired.stage.createdAt).toBe(initialNow + DAY_MS + 1);
+		expect(expired.stage.validUntil).toBeUndefined();
+	});
+
+	it("restores configured-provider discovery state on a snapshot hit", async () => {
+		tempDir = path.join(os.tmpdir(), `pi-reg-snap-${Snowflake.next()}`);
+		fs.mkdirSync(tempDir, { recursive: true });
+		modelsPath = path.join(tempDir, "models.yml");
+		snapshotPath = path.join(tempDir, "resolved-models.json");
+		fs.writeFileSync(
+			modelsPath,
+			[
+				"providers:",
+				"  scratch:",
+				"    baseUrl: http://127.0.0.1:12345/v1",
+				"    api: openai-completions",
+				"    auth: none",
+				"    discovery:",
+				"      type: openai-models-list",
+				"",
+			].join("\n"),
+		);
+		authStorage = await AuthStorage.create(path.join(tempDir, "auth.db"));
+		const cachedAt = Date.now() + 1_000;
+		vi.spyOn(Date, "now").mockReturnValue(cachedAt);
+		writeModelCache("scratch:openai-models-list-context-v2", cachedAt, [], true, "", path.join(tempDir, "models.db"));
+
+		const cold = new ModelRegistry(authStorage, modelsPath, { snapshotIo: true });
+		const expected = cold.getProviderDiscoveryState("scratch");
+		expect(expected).toMatchObject({ provider: "scratch", status: "cached", stale: false });
+		const before = mtime();
+
+		const warm = new ModelRegistry(authStorage, modelsPath, { snapshotIo: true });
+		expect(warm.getProviderDiscoveryState("scratch")).toEqual(expected);
+		expect(mtime()).toBe(before);
+	});
+
 	it("a corrupt snapshot misses and is rewritten valid", async () => {
 		await coldLaunch();
 		fs.writeFileSync(snapshotPath, "{not json at all");
@@ -103,6 +165,22 @@ describe("static model stage snapshot", () => {
 
 		const parsed = JSON.parse(fs.readFileSync(snapshotPath, "utf8")) as unknown;
 		expect(typeof parsed === "object" && parsed !== null && "fingerprint" in parsed).toBe(true);
+	});
+
+	it("a parseable stage whose content does not match its digest is rebuilt", async () => {
+		await coldLaunch();
+		const parsed = JSON.parse(fs.readFileSync(snapshotPath, "utf8")) as {
+			stage: { builtIn: Array<{ contextWindow: number }> };
+		};
+		parsed.stage.builtIn[0]!.contextWindow = 1;
+		fs.writeFileSync(snapshotPath, JSON.stringify(parsed));
+
+		launch();
+
+		const rebuilt = JSON.parse(fs.readFileSync(snapshotPath, "utf8")) as {
+			stage: { builtIn: Array<{ contextWindow: number }> };
+		};
+		expect(rebuilt.stage.builtIn[0]!.contextWindow).not.toBe(1);
 	});
 
 	it("a snapshot naming another fingerprint misses rather than serving", async () => {

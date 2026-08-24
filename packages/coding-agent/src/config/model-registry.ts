@@ -346,6 +346,15 @@ export interface ProviderDiscoveryState {
 	error?: string;
 }
 
+const PROVIDER_DISCOVERY_STATUSES: ReadonlySet<string> = new Set<ProviderDiscoveryStatus>([
+	"idle",
+	"ok",
+	"empty",
+	"cached",
+	"unavailable",
+	"unauthenticated",
+]);
+
 /** Result of loading custom models config. */
 interface CustomModelsResult {
 	models?: CustomModelOverlay[];
@@ -828,14 +837,17 @@ function getDisabledProviderIdsFromSettings(): Set<string> {
  * state produced under retired rules — the same discipline as
  * `CACHE_SCHEMA_VERSION` in `@veyyon/catalog/model-cache`.
  */
-const REGISTRY_SNAPSHOT_VERSION = 2;
+const REGISTRY_SNAPSHOT_VERSION = 4;
 
 interface StaticModelStage {
+	createdAt: number;
+	validUntil?: number;
 	builtIn: Model<Api>[];
 	// Persisted as an array: JSON.stringify turns a Set into `{}` and the
 	// reader's Array.isArray guard would then reject every restore.
 	cachedStandard: { models: Model<Api>[]; authoritativeFreshProviders: string[] };
 	cachedDiscoveries: Model<Api>[];
+	discoveryStates: ProviderDiscoveryState[];
 }
 
 /** What the reader hands back: the persisted array is a `Set` again by here. */
@@ -843,6 +855,7 @@ interface RestoredStaticStage {
 	builtIn: Model<Api>[];
 	cachedStandard: { models: Model<Api>[]; authoritativeFreshProviders: Set<string> };
 	cachedDiscoveries: Model<Api>[];
+	discoveryStates: ProviderDiscoveryState[];
 }
 
 /**
@@ -1132,20 +1145,34 @@ export class ModelRegistry {
 			cachedStandardModels = restored.cachedStandard.models;
 			cachedDiscoveries = restored.cachedDiscoveries;
 			authoritativeFreshProviders = restored.cachedStandard.authoritativeFreshProviders;
+			for (const state of restored.discoveryStates) {
+				this.#providerDiscoveryStates.set(state.provider, state);
+			}
 		} else {
 			builtInModels = this.#applyHardcodedModelPolicies(this.#loadBuiltInModels(overrides));
 			const cachedStandardResult = this.#loadCachedStandardProviderModels();
 			cachedStandardModels = this.#applyHardcodedModelPolicies(cachedStandardResult.models);
-			cachedDiscoveries = this.#applyHardcodedModelPolicies(this.#loadCachedDiscoverableModels());
+			const cachedDiscoveriesResult = this.#loadCachedDiscoverableModels();
+			cachedDiscoveries = this.#applyHardcodedModelPolicies(cachedDiscoveriesResult.models);
 			authoritativeFreshProviders = cachedStandardResult.authoritativeFreshProviders;
 			if (this.#snapshotIo) {
+				const createdAt = Date.now();
+				const validUntil =
+					cachedStandardResult.validUntil === undefined
+						? cachedDiscoveriesResult.validUntil
+						: cachedDiscoveriesResult.validUntil === undefined
+							? cachedStandardResult.validUntil
+							: Math.min(cachedStandardResult.validUntil, cachedDiscoveriesResult.validUntil);
 				this.#writeStaticModelStage(staticFingerprint, {
+					createdAt,
+					validUntil,
 					builtIn: builtInModels,
 					cachedStandard: {
 						models: cachedStandardModels,
 						authoritativeFreshProviders: Array.from(authoritativeFreshProviders),
 					},
 					cachedDiscoveries,
+					discoveryStates: Array.from(this.#providerDiscoveryStates.values()),
 				});
 			}
 		}
@@ -1188,8 +1215,8 @@ export class ModelRegistry {
 		const dbPath = this.#cacheDbPath ?? getModelDbPath();
 		// Content stamp, not file stamps: SQLite moves the -wal/-shm sidecars on
 		// every connection, so mtime-based inputs missed on the launch after every
-		// write — including this stage's own — and rebuilt and rewrote the snapshot
-		// each launch. The row-content summary moves only when a row is written.
+		// write. The ordered row-content digests move only when persisted model
+		// content changes.
 		const parts: Array<string | number> = [
 			REGISTRY_SNAPSHOT_VERSION,
 			bundledCatalogDigest(),
@@ -1220,8 +1247,27 @@ export class ModelRegistry {
 	#readStaticModelStage(fingerprint: string): RestoredStaticStage | null {
 		try {
 			const parsed: unknown = JSON.parse(fs.readFileSync(this.#staticModelStagePath(), "utf8"));
-			if (!isRecord(parsed) || parsed.fingerprint !== fingerprint || !isRecord(parsed.stage)) return null;
+			if (
+				!isRecord(parsed) ||
+				parsed.fingerprint !== fingerprint ||
+				typeof parsed.stageDigest !== "string" ||
+				!isRecord(parsed.stage)
+			) {
+				return null;
+			}
+			const stageDigest = createHash("sha256").update(JSON.stringify(parsed.stage)).digest("hex");
+			if (stageDigest !== parsed.stageDigest) return null;
 			const stage = parsed.stage;
+			const now = Date.now();
+			if (
+				typeof stage.createdAt !== "number" ||
+				!Number.isFinite(stage.createdAt) ||
+				now < stage.createdAt ||
+				(stage.validUntil !== undefined &&
+					(typeof stage.validUntil !== "number" || !Number.isFinite(stage.validUntil) || now > stage.validUntil))
+			) {
+				return null;
+			}
 			if (!isRecord(stage.cachedStandard)) return null;
 			const builtIn = this.#snapshotModelArray(stage.builtIn);
 			const cachedStandard = this.#snapshotModelArray(stage.cachedStandard.models);
@@ -1233,6 +1279,8 @@ export class ModelRegistry {
 			);
 			if (authoritativeFreshProviders.length !== stage.cachedStandard.authoritativeFreshProviders.length)
 				return null;
+			const discoveryStates = this.#snapshotDiscoveryStateArray(stage.discoveryStates);
+			if (!discoveryStates) return null;
 			return {
 				builtIn,
 				cachedStandard: {
@@ -1240,6 +1288,7 @@ export class ModelRegistry {
 					authoritativeFreshProviders: new Set(authoritativeFreshProviders),
 				},
 				cachedDiscoveries,
+				discoveryStates,
 			};
 		} catch {
 			return null;
@@ -1248,7 +1297,8 @@ export class ModelRegistry {
 
 	#writeStaticModelStage(fingerprint: string, stage: StaticModelStage): void {
 		try {
-			atomicWriteFileSync(this.#staticModelStagePath(), JSON.stringify({ fingerprint, stage }));
+			const stageDigest = createHash("sha256").update(JSON.stringify(stage)).digest("hex");
+			atomicWriteFileSync(this.#staticModelStagePath(), JSON.stringify({ fingerprint, stageDigest, stage }));
 		} catch (error) {
 			logger.debug("Static model stage snapshot not written", { error: errorMessage(error) });
 		}
@@ -1256,9 +1306,9 @@ export class ModelRegistry {
 
 	/**
 	 * Validate an array of persisted model records shallowly and cast. The
-	 * fingerprint already pins the bytes to a writer of this exact version and
-	 * input set, so per-field revalidation would re-parse what the writer just
-	 * guaranteed; the guards here only reject corruption JSON.parse survived.
+	 * snapshot digest proves the payload matches bytes this format's writer
+	 * produced; the guards reject invalid records even when the digest was
+	 * recomputed by an external writer.
 	 */
 	#snapshotModelArray(value: unknown): Model<Api>[] | null {
 		if (!Array.isArray(value)) return null;
@@ -1274,6 +1324,32 @@ export class ModelRegistry {
 		}
 		// Shape-checked above; the record contract itself is owned by the writer.
 		return value as Model<Api>[];
+	}
+
+	#snapshotDiscoveryStateArray(value: unknown): ProviderDiscoveryState[] | null {
+		if (!Array.isArray(value)) return null;
+		const states: ProviderDiscoveryState[] = [];
+		for (const entry of value) {
+			if (
+				!isRecord(entry) ||
+				typeof entry.provider !== "string" ||
+				typeof entry.status !== "string" ||
+				!PROVIDER_DISCOVERY_STATUSES.has(entry.status) ||
+				typeof entry.optional !== "boolean" ||
+				typeof entry.stale !== "boolean" ||
+				(entry.fetchedAt !== undefined &&
+					(typeof entry.fetchedAt !== "number" || !Number.isFinite(entry.fetchedAt))) ||
+				!Array.isArray(entry.models) ||
+				!entry.models.every(model => typeof model === "string") ||
+				(entry.error !== undefined && typeof entry.error !== "string")
+			) {
+				return null;
+			}
+			// Every field of ProviderDiscoveryState is checked above, including the
+			// status union; the compiler cannot narrow a Record to it.
+			states.push(entry as unknown as ProviderDiscoveryState);
+		}
+		return states;
 	}
 
 	/** Load built-in models, applying provider-level overrides only.
@@ -1340,10 +1416,15 @@ export class ModelRegistry {
 		return descriptor.createModelManagerOptions({ baseUrl, fetch: this.#fetch }).cacheProviderId ?? providerId;
 	}
 
-	#loadCachedStandardProviderModels(): { models: Model<Api>[]; authoritativeFreshProviders: Set<string> } {
+	#loadCachedStandardProviderModels(): {
+		models: Model<Api>[];
+		authoritativeFreshProviders: Set<string>;
+		validUntil?: number;
+	} {
 		const configuredDiscoveryProviders = new Set(this.#discoverableProviders.map(provider => provider.provider));
 		const cachedModels: Model<Api>[] = [];
 		const authoritativeFreshProviders = new Set<string>();
+		let validUntil: number | undefined;
 		for (const providerId of STARTUP_MODEL_CACHE_PROVIDER_IDS) {
 			if (configuredDiscoveryProviders.has(providerId)) {
 				continue;
@@ -1355,6 +1436,7 @@ export class ModelRegistry {
 			}
 			if (cache.fresh && cache.authoritative) {
 				authoritativeFreshProviders.add(providerId);
+				validUntil = Math.min(validUntil ?? Number.POSITIVE_INFINITY, cache.updatedAt + DAY_MS);
 			}
 			const models = cache.models.map(model =>
 				model.provider === providerId ? model : { ...model, provider: providerId },
@@ -1373,11 +1455,12 @@ export class ModelRegistry {
 				: withTransport.map(model => buildModel(model));
 			cachedModels.push(...this.#applyProviderModelOverrides(providerId, withCompat));
 		}
-		return { models: cachedModels, authoritativeFreshProviders };
+		return { models: cachedModels, authoritativeFreshProviders, validUntil };
 	}
 
-	#loadCachedDiscoverableModels(): Model<Api>[] {
+	#loadCachedDiscoverableModels(): { models: Model<Api>[]; validUntil?: number } {
 		const cachedModels: Model<Api>[] = [];
+		let validUntil: number | undefined;
 		for (const providerConfig of this.#discoverableProviders) {
 			const cache = readModelCache<Api>(
 				this.#configuredDiscoveryCacheProviderId(providerConfig),
@@ -1407,16 +1490,21 @@ export class ModelRegistry {
 				),
 			);
 			cachedModels.push(...models);
+			const stale =
+				providerConfig.discovery.type === "llama.cpp" || !cache.fresh || !cache.authoritative || configStale;
+			if (!stale) {
+				validUntil = Math.min(validUntil ?? Number.POSITIVE_INFINITY, cache.updatedAt + DAY_MS);
+			}
 			this.#providerDiscoveryStates.set(providerConfig.provider, {
 				provider: providerConfig.provider,
 				status: "cached",
 				optional: providerConfig.optional ?? false,
-				stale: providerConfig.discovery.type === "llama.cpp" || !cache.fresh || !cache.authoritative || configStale,
+				stale,
 				fetchedAt: cache.updatedAt,
 				models: models.map(model => model.id),
 			});
 		}
-		return cachedModels;
+		return { models: cachedModels, validUntil };
 	}
 
 	#applyProviderCompat(compat: ModelSpec<Api>["compat"] | undefined, models: Model<Api>[]): Model<Api>[] {

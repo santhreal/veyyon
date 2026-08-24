@@ -7,6 +7,7 @@
  * miss this exists to prevent.
  */
 
+import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -30,12 +31,12 @@ describe("model cache stamp", () => {
 		);
 	});
 
-	it("is stable across reads and mtime churn, and moves on a row write", () => {
+	it("is stable across reads and mtime churn, and moves on every row-content write", () => {
 		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "stamp-"));
 		const dbPath = path.join(tempDir, "models.db");
 
 		const empty = modelCacheStamp(dbPath);
-		expect(empty).toBe("0:0:0");
+		expect(empty).toMatch(/^[0-9a-f]{64}$/);
 		expect(modelCacheStamp(dbPath)).toBe(empty);
 
 		writeModelCache("p-one", 100, [], true, "", dbPath);
@@ -49,7 +50,35 @@ describe("model cache stamp", () => {
 		}
 		expect(modelCacheStamp(dbPath)).toBe(oneRow);
 
+		// A content stamp must not reduce to updated_at aggregates: a provider can
+		// be rewritten within the same millisecond with different authority/data.
+		writeModelCache("p-one", 100, [], false, "", dbPath);
+		const sameTimestampRewrite = modelCacheStamp(dbPath);
+		expect(sameTimestampRewrite).not.toBe(oneRow);
+
 		writeModelCache("p-two", 200, [], false, "", dbPath);
-		expect(modelCacheStamp(dbPath)).not.toBe(oneRow);
+		const twoRows = modelCacheStamp(dbPath);
+		expect(twoRows).not.toBe(sameTimestampRewrite);
+
+		// Revision triggers cover writers that update the table directly rather
+		// than going through writeModelCache's content-fingerprint calculation.
+		const db = new Database(dbPath);
+		db.run("UPDATE model_cache SET authoritative = 1 WHERE provider_id = 'p-two'");
+		db.close();
+		expect(modelCacheStamp(dbPath)).not.toBe(twoRows);
+	});
+
+	it("distinguishes equal-revision databases that hold different row content", () => {
+		// A deleted-and-recreated database restarts the mutation counter, so the
+		// counter alone cannot tell one write from another write at the same
+		// position. The persisted row digest is what separates them.
+		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "stamp-identity-"));
+		const authoritative = path.join(tempDir, "authoritative.db");
+		const provisional = path.join(tempDir, "provisional.db");
+
+		writeModelCache("p-one", 100, [], true, "", authoritative);
+		writeModelCache("p-one", 100, [], false, "", provisional);
+
+		expect(modelCacheStamp(authoritative)).not.toBe(modelCacheStamp(provisional));
 	});
 });
