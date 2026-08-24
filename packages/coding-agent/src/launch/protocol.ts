@@ -21,11 +21,12 @@ export const DAEMON_RUNTIME_DIR_ENV = "VEYYON_DAEMON_RUNTIME_DIR";
 export const DAEMON_IDLE_GRACE_ENV = "VEYYON_DAEMON_IDLE_GRACE_MS";
 
 /** Stable lifecycle states exposed by the launch tool. */
-export type DaemonState = "starting" | "running" | "ready" | "restarting" | "stopping" | "exited" | "failed";
+export const DAEMON_STATES = ["starting", "running", "ready", "restarting", "stopping", "exited", "failed"] as const;
+export type DaemonState = (typeof DAEMON_STATES)[number];
 
 /** Restart behavior applied after an unexpected daemon exit. */
-export type DaemonRestartPolicy = "no" | "on-failure" | "always";
-
+export const DAEMON_RESTART_POLICIES = ["no", "on-failure", "always"] as const;
+export type DaemonRestartPolicy = (typeof DAEMON_RESTART_POLICIES)[number];
 /** Readiness conditions; every configured condition must pass. */
 export interface DaemonReadySpec {
 	log?: string;
@@ -75,7 +76,8 @@ export interface DaemonSnapshot {
 }
 
 /** Signals accepted by daemon input operations. */
-export type DaemonSignal = "SIGINT" | "SIGTERM" | "SIGHUP" | "SIGQUIT" | "SIGKILL";
+export const DAEMON_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT", "SIGKILL"] as const;
+export type DaemonSignal = (typeof DAEMON_SIGNALS)[number];
 
 /**
  * Every component that can end a supervised process, as a run-time array so a
@@ -259,21 +261,25 @@ function stringRecord(value: unknown, label: string): Record<string, string> {
 
 function daemonState(value: unknown): DaemonState {
 	const state = stringValue(value, "daemon state");
-	if (state === "starting" || state === "running" || state === "ready" || state === "restarting") return state;
-	if (state === "stopping" || state === "exited" || state === "failed") return state;
+	for (const known of DAEMON_STATES) {
+		if (known === state) return known;
+	}
 	throw new Error(`Unknown daemon state: ${state}`);
 }
 
 function restartPolicy(value: unknown): DaemonRestartPolicy {
 	const policy = stringValue(value, "restart policy");
-	if (policy === "no" || policy === "on-failure" || policy === "always") return policy;
+	for (const known of DAEMON_RESTART_POLICIES) {
+		if (known === policy) return known;
+	}
 	throw new Error(`Unknown restart policy: ${policy}`);
 }
 
 function daemonSignal(value: unknown): DaemonSignal {
 	const signal = stringValue(value, "signal");
-	if (signal === "SIGINT" || signal === "SIGTERM" || signal === "SIGHUP") return signal;
-	if (signal === "SIGQUIT" || signal === "SIGKILL") return signal;
+	for (const known of DAEMON_SIGNALS) {
+		if (known === signal) return known;
+	}
 	throw new Error(`Unknown daemon signal: ${signal}`);
 }
 
