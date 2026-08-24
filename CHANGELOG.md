@@ -6,9 +6,11 @@
 
 ### Added
 
+- Added `model.toolCallLoopGuard.readSubsumptionThreshold` (default `2`) to steer models that re-read unchanged code lines back-to-back before consuming full context.
 - A tool result that carries an image now states whether the picture reached the screen, so a model reading a file describes what it shows instead of reporting that it displayed it.
 - A picture the block gives up on after the fact, because the session's image budget demoted it or a Kitty session could not convert it, is stated to the model as undrawn instead of being reported as displayed.
 - `read` accepts a semicolon-delimited list of internal resources (`skill://demo/one.md;skill://demo/two.md`), the same list form `grep` and `glob` take, and returns one section per entry.
+- `ToolCallLoopGuard` detects consecutive redundant reads of unchanged files whose requested line ranges are already fully present in recent context, steering runaway exploration loops while preserving prompt cache prefixes.
 - Added Command Code API-key login through the Studio Provider page, with validation against its Provider API, and Nous Research Portal OAuth device login with rotating refresh tokens and short-lived inference JWTs.
 - `explain(error)` in `@veyyon/ai/error/flags` returns the classification id together with the names of the rules that produced it, and every classification rule states a name.
 - Added the Command Code provider catalog, with its documented coding flagships as the offline seed and credentialed discovery for the wider Provider API list.
