@@ -59,6 +59,15 @@ export interface Signal {
  */
 export interface ClassificationRule {
 	readonly flags: number;
+	/**
+	 * What a diagnostic calls this rule, unique across the registry.
+	 *
+	 * A misclassified failure used to be diagnosed by re-running thirty patterns by hand against the
+	 * provider's sentence, because the id states what a failure IS and nothing states which rule said
+	 * so. `explain` returns these names, and the sweep pins the whole inventory by exact equality, so
+	 * a new rule is a decision someone records rather than one more condition in the pile.
+	 */
+	readonly name: string;
 	/** The failure this rule was added for, and why prose decides it when it does. */
 	readonly why: string;
 	readonly structural?: (signal: Signal) => boolean;
@@ -73,6 +82,8 @@ export interface ClassificationRule {
  * chain, in registry order, because that is what the `else if` chain they replaced did.
  */
 export interface ClassRule {
+	/** What a diagnostic calls this rule, unique across the registry. See {@link ClassificationRule.name}. */
+	readonly name: string;
 	readonly why: string;
 	readonly matches: (link: unknown) => boolean;
 	readonly flags: (link: unknown) => number;
