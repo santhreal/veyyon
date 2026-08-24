@@ -426,7 +426,7 @@ describe("AgentSession empty stop guard", () => {
 		session.subscribe(event => {
 			if (event.type === "auto_retry_end") retryEndEvents.push(event);
 		});
-		new AutoLearnController({ session, settings: session.settings, memoryStartup: Promise.resolve() });
+		new AutoLearnController({ session, settings: session.settings });
 
 		await session.prompt("record enough facts for auto-learn");
 		await session.waitForIdle();
@@ -521,7 +521,7 @@ describe("AgentSession empty stop guard", () => {
 		session.subscribe(event => {
 			if (event.type === "auto_retry_end") retryEndEvents.push(event);
 		});
-		new AutoLearnController({ session, settings: session.settings, memoryStartup: Promise.resolve() });
+		new AutoLearnController({ session, settings: session.settings });
 
 		await session.prompt("record enough facts for auto-learn");
 		await session.waitForIdle();

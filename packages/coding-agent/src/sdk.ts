@@ -4681,23 +4681,28 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			});
 		};
 
-		// Memory startup runs in the background for every session. Turn execution
-		// waits through `deferStartupWork`, while the auto-learn controller also
-		// retains the original promise so a capture turn cannot fire until the
-		// backend's per-session state is installed. The first frame reads neither
-		// result and does not wait.
+		// The memory backend's start is HYDRATION, not boot: it opens a database and installs this
+		// session's state, and no frame reads either. It used to be awaited here for an auto-learn
+		// session, which put both in front of the first frame so that a tool call minutes later would
+		// find the state already installed. `deferStartupWork` keeps that guarantee at the only place
+		// that needs it — a turn awaits it before running, and every tool call and subagent spawn is
+		// inside a turn — while the frame paints without it. A session with auto-learn off already ran
+		// this unawaited.
 		//
-		// The controller is installed only when `autolearn.enabled` and only for a
-		// top-level session, matching the tools built once at session start. Its
-		// fire-time re-check still handles a mid-session disable.
-		const memoryStartup = logger.time("startMemoryStartupTask", startMemoryBackend);
+		// The controller is installed only when `autolearn.enabled` and only for a top-level session,
+		// to match the tools: `createTools` builds the `learn`/`manage_skill` registry ONCE at session
+		// start and no settings change rebuilds it, so installing the controller while disabled would
+		// let a mid-session enable fire a nudge pointing at tools the session never built. Activation
+		// is a session-start decision for BOTH; the fire-time re-check in `#onAgentEnd` still handles a
+		// mid-session DISABLE. The subscription lives for the session's lifetime; the reference is
+		// intentionally discarded (the listener retains it).
 		session.deferStartupWork(
-			memoryStartup.catch(error => {
+			logger.time("startMemoryStartupTask", startMemoryBackend).catch(error => {
 				logger.warn("memory backend startup failed", { error: errorMessage(error) });
 			}),
 		);
 		if (settings.get("autolearn.enabled") && taskDepth === 0) {
-			new AutoLearnController({ session, settings, memoryStartup });
+			new AutoLearnController({ session, settings });
 		}
 
 		// Wire MCP manager callbacks to session for reactive tool updates.
