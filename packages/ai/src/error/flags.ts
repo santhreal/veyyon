@@ -131,6 +131,7 @@ function classifyText(
 	errorStatus: number | undefined,
 	api?: Api,
 	code?: string,
+	trace?: string[],
 ): number {
 	let kinds = 0;
 	if (errorMessage || code !== undefined) {
@@ -142,11 +143,14 @@ function classifyText(
 			http2: http2Verdict(text),
 			code,
 		};
-		kinds = classifySignal(signal);
+		kinds = classifySignal(signal, trace);
 	}
 	if (kinds !== 0) return create(kinds);
 	const fallbackStatus = errorStatus ?? (errorMessage ? status({ message: errorMessage }) : undefined);
-	if (fallbackStatus === 401 || fallbackStatus === 403) return create(Flag.AuthFailed);
+	if (fallbackStatus === 401 || fallbackStatus === 403) {
+		trace?.push("status-401-403");
+		return create(Flag.AuthFailed);
+	}
 	return fallbackStatus ?? 0;
 }
 
@@ -158,12 +162,12 @@ function classifyText(
  * is not the same claim as "this is transient", and the predicate that retries a bare status says so
  * itself.
  */
-function classifyBareStatus(bare: number | undefined, api?: Api): number {
+function classifyBareStatus(bare: number | undefined, api?: Api, trace?: string[]): number {
 	if (bare === undefined) return 0;
-	return classifySignal({ text: "", status: bare, api, http2: undefined, code: undefined });
+	return classifySignal({ text: "", status: bare, api, http2: undefined, code: undefined }, trace);
 }
 
-export function classify(error: unknown, api?: Api): number {
+export function classify(error: unknown, api?: Api, trace?: string[]): number {
 	let kinds = 0;
 	let framingViolation = false;
 	const seen = new Set<object>();
@@ -178,7 +182,7 @@ export function classify(error: unknown, api?: Api): number {
 			}
 		}
 
-		kinds |= classifyIdentity(link);
+		kinds |= classifyIdentity(link, trace);
 
 		// A framing violation is the peer's protocol breach, and it decides transience for
 		// the whole chain: whatever a wrapper's sentence says, and whatever else the chain
@@ -210,7 +214,7 @@ export function classify(error: unknown, api?: Api): number {
 			linkMessage = (link as { message: string }).message;
 		}
 
-		const textId = classifyText(linkMessage, status(link), api, providerCode(link));
+		const textId = classifyText(linkMessage, status(link), api, providerCode(link), trace);
 		kinds |= textId & KIND_MASK;
 
 		link = typeof link === "object" && "cause" in link ? (link as { cause: unknown }).cause : undefined;
@@ -218,7 +222,10 @@ export function classify(error: unknown, api?: Api): number {
 
 	// Cleared after the walk, not skipped during it: a wrapper's own prose is classified
 	// before the cause carrying the breach is even reached.
-	if (framingViolation) kinds &= ~Flag.Transient;
+	if (framingViolation) {
+		trace?.push("framing-violation-clears-transient");
+		kinds &= ~Flag.Transient;
+	}
 	// A FAILURE THAT ARRIVED AS A STATUS AND NOTHING ELSE. The rules above run per link only when the
 	// link has something to read, so `{ status: 429 }` reached none of them and came back as the raw
 	// number, and the quota family answers a status on its own: an opaque 429 is a wall rather than a
@@ -227,9 +234,33 @@ export function classify(error: unknown, api?: Api): number {
 	//
 	// Only when NO link carried wording. A body that says `Too many requests` was already read with
 	// its status, and asking again about the status alone would call every throttle a wall.
-	if (kinds === 0 && !carriesText(error)) kinds = classifyBareStatus(status(error), api);
+	if (kinds === 0 && !carriesText(error)) kinds = classifyBareStatus(status(error), api, trace);
 
 	return kinds !== 0 ? create(kinds) : (status(error) ?? 0);
+}
+
+/** A classification and the rules that produced it. */
+export interface Explanation {
+	/** The id {@link classify} returns for the same failure. */
+	readonly id: number;
+	/** The rule names that fired, in registry order, each once however many links carried it. */
+	readonly rules: readonly string[];
+}
+
+/**
+ * Classify a failure AND state which rules said so.
+ *
+ * The id says what a failure is; it does not say which of the twenty-six rules decided that, so a
+ * misclassification was diagnosed by re-running conditions by hand against the provider's sentence.
+ * Every rule states a name and the walk collects them, so a failure record can carry the decision
+ * instead of only its outcome. Two entries are not rules and say so: `status-401-403` is the
+ * status-only fallback in `classifyText`, and `framing-violation-clears-transient` is the latch that
+ * removes a flag after the walk rather than setting one.
+ */
+export function explain(error: unknown, api?: Api): Explanation {
+	const trace: string[] = [];
+	const id = classify(error, api, trace);
+	return { id, rules: [...new Set(trace)] };
 }
 
 /** Whether any link of the chain carried wording the rules could read. */
@@ -293,27 +324,31 @@ export function isCopilotTransientModelError(error: unknown): boolean {
 	return isCopilotModelNotSupported({ text: withoutStackTrace(message), code: providerCode(error) });
 }
 
-export function classifyMessage(message: {
-	api?: Api;
-	errorId?: number;
-	errorMessage?: string;
-	errorStatus?: number;
-}): number {
+export function classifyMessage(
+	message: {
+		api?: Api;
+		errorId?: number;
+		errorMessage?: string;
+		errorStatus?: number;
+	},
+	trace?: string[],
+): number {
 	const existingId = message.errorId;
 	const currentStatus = message.errorStatus ?? statusFromId(existingId);
-	const textId = classifyText(message.errorMessage, currentStatus, message.api);
+	const textId = classifyText(message.errorMessage, currentStatus, message.api, undefined, trace);
 
 	let kinds = ((existingId ?? 0) | textId) & KIND_MASK;
 	if (message.errorMessage && LLAMA_CPP_TOOL_CALL_PARSE_PATTERN.test(message.errorMessage)) {
 		// Deterministic local-model tool-call JSON parse failure: HTTP 500 is misleading
 		// because the same prompt reproduces the same malformed output, so the agent-level
 		// auto-retry would loop. Strip Transient so the recovery message surfaces immediately.
+		trace?.push("llama-cpp-tool-call-parse-clears-transient");
 		kinds &= ~Flag.Transient;
 	}
 	// The same status-with-nothing-to-read case as in `classify`: a terminal error event can carry a
 	// status and no wording, and the flag has to be on the id there too, or the same failure means one
 	// thing thrown and another emitted.
-	if (kinds === 0 && !message.errorMessage) kinds = classifyBareStatus(currentStatus, message.api);
+	if (kinds === 0 && !message.errorMessage) kinds = classifyBareStatus(currentStatus, message.api, trace);
 	const id = kinds !== 0 ? create(kinds) : (statusFromId(textId) ?? statusFromId(existingId) ?? currentStatus ?? 0);
 
 	message.errorId = id;
