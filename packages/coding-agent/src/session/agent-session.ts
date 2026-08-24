@@ -17136,7 +17136,10 @@ export class AgentSession {
 				});
 				continuationScheduled = true;
 			}
-			return continuationScheduled ? COMPACTION_CHECK_CONTINUATION : COMPACTION_CHECK_NONE;
+			return {
+				continuationScheduled,
+				historyRewritten: true,
+			};
 		}
 		let continuationScheduled = false;
 		if (!options.suppressContinuation && this.agent.hasQueuedMessages()) {
@@ -19692,13 +19695,13 @@ export class AgentSession {
 				throw new Error(missingCredentialsMessage(model.provider, model.id, "the branch summary model"));
 			}
 			await this.leaseSecretRuntime();
-			const branchSummarySettings = this.settings.getGroup("branchSummary");
 			const result = await generateBranchSummary(entriesToSummarize, {
 				model,
 				apiKey: this.#modelRegistry.resolver(model, this.sessionId),
 				signal: this.#branchSummaryAbortController.signal,
+				sessionId: this.sessionId,
+				promptCacheKey: this.agent.promptCacheKey ?? this.sessionId,
 				customInstructions: options.customInstructions,
-				reserveTokens: branchSummarySettings.reserveTokens,
 				metadata: this.agent.metadataForProvider(model.provider),
 				convertToLlm,
 				resolveObfuscateProviderText: () => {

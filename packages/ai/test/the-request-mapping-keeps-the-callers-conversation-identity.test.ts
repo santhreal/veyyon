@@ -18,44 +18,71 @@
  * asserts the seam delivers it to all of them.
  */
 import { describe, expect, it } from "bun:test";
+import { BUILTIN_API_IDS } from "@veyyon/ai/api-registry";
 import type { CursorOptions } from "@veyyon/ai/providers/cursor";
 import type { DevinOptions } from "@veyyon/ai/providers/devin";
 import { mapOptionsForApi } from "@veyyon/ai/stream";
-import type { Api, Model } from "@veyyon/ai/types";
+import type { KnownApi, Model } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
 import { getBundledModel, getBundledModels, getBundledProviders } from "@veyyon/catalog/models";
 
-/** One bundled model per distinct api, so the sweep covers every mapped case. */
-function oneModelPerApi(): Map<Api, Model<Api>> {
-	const byApi = new Map<Api, Model<Api>>();
+/** Build a model for each API in BUILTIN_API_IDS, preferring bundled catalog entries. */
+function modelForApi(api: KnownApi): Model<KnownApi> {
 	for (const provider of getBundledProviders()) {
 		for (const model of getBundledModels(provider)) {
-			if (!byApi.has(model.api)) byApi.set(model.api, model);
+			if (model.api === api) return model as Model<KnownApi>;
 		}
 	}
-	return byApi;
+	return buildModel({
+		id: `test-model-${api}`,
+		name: `Test ${api}`,
+		provider: "test-provider",
+		api,
+		baseUrl: "https://example.test",
+		reasoning: false,
+		input: ["text"],
+		cost: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 },
+		maxTokens: 4096,
+		contextWindow: 128_000,
+	});
 }
 
 describe("mapOptionsForApi keeps the caller's conversation identity", () => {
-	it("covers more than one api, so the sweep below is not vacuous", () => {
-		const apis = [...oneModelPerApi().keys()];
-		expect(apis.length).toBeGreaterThan(5);
+	it("covers all built-in apis, so the sweep below is not vacuous", () => {
+		expect(BUILTIN_API_IDS.length).toBeGreaterThanOrEqual(14);
 	});
 
-	it("forwards conversationId for every api the catalog bundles", () => {
+	it("forwards conversationId for every api in BUILTIN_API_IDS", () => {
+		expect(BUILTIN_API_IDS.length).toBeGreaterThanOrEqual(14);
 		const dropped: string[] = [];
-		for (const [api, model] of oneModelPerApi()) {
-			const mapped = mapOptionsForApi(model, { conversationId: "session-1#compaction_summary" });
+		for (const api of BUILTIN_API_IDS) {
+			const model = modelForApi(api);
+			const mapped = mapOptionsForApi(model, {
+				sessionId: "session-1",
+				conversationId: "session-1#compaction_summary",
+			});
 			if (mapped.conversationId !== "session-1#compaction_summary") dropped.push(api);
+			if (mapped.sessionId !== "session-1") dropped.push(`${api}-missing-sessionId`);
 		}
 
 		expect(dropped.sort()).toEqual([]);
 	});
 
 	it("leaves conversationId unset when the caller names none, so the provider still falls back", () => {
-		for (const [, model] of oneModelPerApi()) {
+		for (const api of BUILTIN_API_IDS) {
+			const model = modelForApi(api);
 			const mapped = mapOptionsForApi(model, { sessionId: "session-1" });
 			expect(mapped.conversationId).toBeUndefined();
 			expect(mapped.sessionId).toBe("session-1");
+		}
+	});
+
+	it("preserves explicit conversationId when sessionId is absent", () => {
+		for (const api of BUILTIN_API_IDS) {
+			const model = modelForApi(api);
+			const mapped = mapOptionsForApi(model, { conversationId: "standalone-conv-id" });
+			expect(mapped.conversationId).toBe("standalone-conv-id");
+			expect(mapped.sessionId).toBeUndefined();
 		}
 	});
 
