@@ -80,21 +80,35 @@ before it can merge. Both frames show the same surface, dimensions, terminal con
 apart from the intended change, and both come from the capture config above. A static change proves
 with a PNG pair, an animation with a GIF/WebP pair; a still never proves an animation.
 
-Proof frames must be **embedded directly** in the pull request description as Markdown images
-(e.g. `![After](https://github.com/user-attachments/assets/...)`), never pasted as monospace text
-blocks or raw attachments. Use `gh image` to upload local capture frames and generate canonical
-GitHub `user-attachments` Markdown embed references:
+Proof frames are **embedded inline** in the pull request description as Markdown images
+(`![After](https://github.com/user-attachments/assets/...)`), never pasted as monospace text
+blocks, never left as bare attachments, and never linked to a path in the repository.
+
+GitHub exposes no API for comment attachments. `gh image`, the `drogers0/gh-image` extension,
+reproduces the web upload flow and prints the canonical `user-attachments` Markdown reference for
+each file. It is unofficial and it is the only supported route here:
 
 ```sh
-# Upload capture frames and print markdown embed references:
+gh extension install drogers0/gh-image      # once per machine
+gh image check-token                        # prints the account, or fails closed
 gh image proof/captures/x11/before/<scene>.png proof/captures/x11/<scene>.png
-# Output:
 # ![before](https://github.com/user-attachments/assets/...)
 # ![after](https://github.com/user-attachments/assets/...)
 ```
 
+The token comes from a browser session, so `check-token` runs before the upload rather than after a
+half-written body. Pass `GH_SESSION_TOKEN` in the environment instead of `--token`, which is visible
+in the process list.
+
+One pair covers a change that alters one surface in one state. A change that alters how a surface
+degrades carries a labeled pair for **every state and every width it reaches** — each composer
+state, each mode combination, and each terminal width where the layout changes what it drops or
+shortens. Two frames of the widest terminal prove nothing about the narrow one, which is where a
+shed segment is decided. Name each pair for the state and the width it shows.
+
 Proof frames are committed nowhere: not `assets/`, not a README, not the handbook, not the website.
 The regeneration command belongs in the handbook page that owns the surface.
+
 ## GitHub
 
 Never comment on GitHub (issues, PRs, discussions) and never create issues, unless the request says
