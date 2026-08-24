@@ -1,13 +1,6 @@
-import {
-	bestEffort,
-	errorMessage,
-	isCancellation,
-	logger,
-	optionalResult,
-	postmortem,
-	Snowflake,
-	workerHostEntry,
-} from "@veyyon/utils";
+import { errorMessage, isCancellation, logger, postmortem, Snowflake, workerHostEntry } from "@veyyon/utils";
+// The owner, not the barrel: this module reaches the two discard contracts and nothing else.
+import { bestEffort, optionalResult } from "@veyyon/utils/discarded-fault";
 import { callSessionTool } from "../../eval/js/tool-bridge";
 import { registerOwnedResourceDisposer } from "../../session/owned-resources";
 import { logWorkerMessage } from "../../subprocess/worker-log";
