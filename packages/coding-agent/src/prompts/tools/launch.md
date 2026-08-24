@@ -1,4 +1,4 @@
-Supervises a process that does NOT end on its own. Processes are PRIVATE to this session unless `launch.sharedCrossSession` is on; the `veyyon launch` CLI reaches only shared-scope processes.
+Supervises a process that does NOT end on its own. Processes are PRIVATE to this session unless `launch.sharedCrossSession` is on; `persist: true` / `detached: true` always land in the SHARED scope (reachable by the `veyyon launch` CLI and later sessions), and `list` merges both scopes.
 
 <routing>
 - Pick by how the process ENDS, never by how long it runs. Ends on its own (test suite, build, benchmark, migration, install — any command with a last line)? That is `bash`, backgrounded if it is slow. Runs until something stops it, or you must talk to it later (server, watcher, daemon, REPL, tunnel)? That is `launch`.

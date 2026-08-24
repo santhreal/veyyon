@@ -180,6 +180,53 @@ describe("launch scope follows the session by default", () => {
 		} catch {}
 		projectScope.close();
 	}, 30_000);
+
+	it("lands persist starts in the shared scope even when sharing is off, visible to later sessions", async () => {
+		const project = await tempDir("veyyon-launch-project-");
+		const scriptPath = path.join(project, "service.ts");
+		await Bun.write(scriptPath, 'process.stdout.write("READY\\n");\nsetInterval(() => {}, 1000);\n');
+
+		const owner = session(project, "session-owner", false);
+		const started = await owner.execute("id", {
+			op: "start",
+			name: "registry",
+			application: process.execPath,
+			args: [scriptPath],
+			env: {},
+			pty: false,
+			ready: { log: "READY", timeout: 10 },
+			restart: "no",
+			persist: true,
+		});
+		const details = started.details as { daemon?: { state: string; persist: boolean } };
+		expect(details.daemon?.state).toBe("ready");
+
+		try {
+			// The shared scope hosts it (the CLI and later sessions reach it there)...
+			const projectScope = await createDaemonBrokerClient(project);
+			const sharedList = await projectScope.request({ op: "list" });
+			if (sharedList.op !== "list") throw new Error("unexpected list result");
+			expect(sharedList.daemons.map(daemon => daemon.name)).toEqual(["registry"]);
+			// ...and a LATER default-off session still sees it through the merged list and can
+			// address it by name (the unknown-daemon fallback).
+			const later = session(project, "session-later", false);
+			expect(await listNames(later)).toEqual(["registry"]);
+			const described = await later.execute("id", { op: "describe", name: "registry" });
+			const describedDetails = described.details as { spec?: { name: string } };
+			expect(describedDetails.spec?.name).toBe("registry");
+			await later.execute("id", { op: "stop", name: "registry" });
+			try {
+				await projectScope.request({ op: "shutdown" });
+			} catch {}
+			projectScope.close();
+		} catch (error) {
+			// Best-effort teardown: whatever failed above is the real assertion result.
+			try {
+				await owner.execute("id", { op: "stop", name: "registry" });
+			} catch {}
+			throw error;
+		}
+	}, 30_000);
 });
 
 describe("exit watches are scoped per broker", () => {

@@ -403,19 +403,69 @@ export class LaunchTool implements AgentTool<typeof launchSchema, LaunchToolDeta
 			cpuLimit.assertMaySpawn("a background process");
 		}
 		// Cross-session sharing is opt-in (`launch.sharedCrossSession`, default off). Without it
-		// every start is supervised by a session-private broker: another session in this project
-		// computes a different runtime directory and can neither list, read, nor stop these.
-		const client = this.session.settings.get("launch.sharedCrossSession")
-			? await daemonClientForProject(this.session.cwd, { adoptSpawnedPid: sessionCpuAdoption(getSessionId) })
-			: await daemonClientForSession(this.session.cwd, getSessionId() ?? `proc-${process.pid}`, {
-					adoptSpawnedPid: sessionCpuAdoption(getSessionId),
-				});
-		if (params.op === "stop" || params.op === "restart") {
-			// The end of a process the caller asked to end is not news. Drop the
-			// watch before the request, so the exit it causes reports nothing.
-			releaseLaunchExitWatch(this.session, client, requiredName(params));
+		// ordinary starts are supervised by a session-private broker: another session in this
+		// project can neither list, read, nor stop these. Two exceptions keep processes reachable:
+		// persist/detached mean "outlive this session", so they always land in the shared scope
+		// the `veyyon launch` CLI and later sessions can reach; and ops that address an existing
+		// process fall back from the private broker to the shared one when the name is unknown
+		// there, so a persisted or shared-scope daemon stays manageable.
+		const sharedScope = this.session.settings.get("launch.sharedCrossSession") === true;
+		const adopt = { adoptSpawnedPid: sessionCpuAdoption(getSessionId) };
+		const projectClient = () => daemonClientForProject(this.session.cwd, adopt);
+		const privateClient = () =>
+			daemonClientForSession(this.session.cwd, getSessionId() ?? `proc-${process.pid}`, adopt);
+
+		let client: DaemonBrokerClient;
+		if (params.op === "start") {
+			client =
+				sharedScope || params.persist === true || params.detached === true
+					? await projectClient()
+					: await privateClient();
+		} else if (sharedScope) {
+			client = await projectClient();
+		} else {
+			client = await privateClient();
 		}
-		const result = await client.request(operationFor(params, this.session), signal);
+
+		const isUnknownDaemon = (error: unknown): boolean =>
+			error instanceof Error && error.message.startsWith("Unknown daemon");
+		const requestWithFallback = async (operation: DaemonOperation): Promise<DaemonRpcResult> => {
+			if (sharedScope || client.runtimeDir === (await projectClient()).runtimeDir) {
+				return client.request(operation, signal);
+			}
+			try {
+				return await client.request(operation, signal);
+			} catch (error) {
+				if (!isUnknownDaemon(error) || params.op === "start") throw error;
+				const fallback = await projectClient();
+				const result = await fallback.request(operation, signal);
+				// Addressing succeeded in the shared scope: the watch release below and the exit
+				// watch registration must ride the same broker the op actually hit.
+				client = fallback;
+				return result;
+			}
+		};
+
+		if (params.op === "stop" || params.op === "restart") {
+			// The end of a process the caller asked to end is not news. Drop the watch before the
+			// request, so the exit it causes reports nothing. Release on BOTH scopes: the name may
+			// live in either, and releasing an absent watch is a no-op.
+			releaseLaunchExitWatch(this.session, client, requiredName(params));
+			if (!sharedScope) {
+				const shared = await projectClient();
+				releaseLaunchExitWatch(this.session, shared, requiredName(params));
+			}
+		}
+		let result = await requestWithFallback(operationFor(params, this.session));
+		if (params.op === "list" && !sharedScope) {
+			// Merge the shared scope's rows in, so persisted/shared daemons stay visible. Private
+			// rows come first; same-name collisions are kept as two entries and every addressing
+			// op resolves them through the same fallback order.
+			const sharedRows = await (await projectClient()).request({ op: "list" }, signal);
+			if (sharedRows.op === "list" && result.op === "list") {
+				result = { ...result, daemons: [...result.daemons, ...sharedRows.daemons] };
+			}
+		}
 		if (result.op === "start" || result.op === "restart") {
 			watchLaunchedProcessExit({ session: this.session, client, daemon: result.daemon });
 		}
