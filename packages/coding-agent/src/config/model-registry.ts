@@ -838,11 +838,10 @@ function getDisabledProviderIdsFromSettings(): Set<string> {
  * state produced under retired rules — the same discipline as
  * `CACHE_SCHEMA_VERSION` in `@veyyon/catalog/model-cache`.
  */
-const REGISTRY_SNAPSHOT_VERSION = 4;
+const REGISTRY_SNAPSHOT_VERSION = 5;
 
 interface StaticModelStage {
 	createdAt: number;
-	validUntil?: number;
 	builtIn: Model<Api>[];
 	// Persisted as an array: JSON.stringify turns a Set into `{}` and the
 	// reader's Array.isArray guard would then reject every restore.
@@ -1158,20 +1157,11 @@ export class ModelRegistry {
 			builtInModels = this.#applyHardcodedModelPolicies(this.#loadBuiltInModels(overrides));
 			const cachedStandardResult = this.#loadCachedStandardProviderModels();
 			cachedStandardModels = this.#applyHardcodedModelPolicies(cachedStandardResult.models);
-			const cachedDiscoveriesResult = this.#loadCachedDiscoverableModels();
-			cachedDiscoveries = this.#applyHardcodedModelPolicies(cachedDiscoveriesResult.models);
+			cachedDiscoveries = this.#applyHardcodedModelPolicies(this.#loadCachedDiscoverableModels());
 			authoritativeFreshProviders = cachedStandardResult.authoritativeFreshProviders;
 			if (this.#snapshotIo) {
-				const createdAt = Date.now();
-				const validUntil =
-					cachedStandardResult.validUntil === undefined
-						? cachedDiscoveriesResult.validUntil
-						: cachedDiscoveriesResult.validUntil === undefined
-							? cachedStandardResult.validUntil
-							: Math.min(cachedStandardResult.validUntil, cachedDiscoveriesResult.validUntil);
 				this.#writeStaticModelStage(staticFingerprint, {
-					createdAt,
-					validUntil,
+					createdAt: Date.now(),
 					builtIn: builtInModels,
 					cachedStandard: {
 						models: cachedStandardModels,
@@ -1222,11 +1212,18 @@ export class ModelRegistry {
 		// Content stamp, not file stamps: SQLite moves the -wal/-shm sidecars on
 		// every connection, so mtime-based inputs missed on the launch after every
 		// write. The ordered row-content digests move only when persisted model
-		// content changes.
+		// content changes, and the stamp's freshness bits move when a row crosses
+		// the 24 h TTL these layers read it under — the verdicts in the stage are
+		// only true for as long as those bits hold.
+		//
+		// `models.yml`'s mtime is an input in its own right: a discovery row older
+		// than the config file is treated as stale, so a rewrite with identical
+		// content still changes what these layers conclude.
 		const parts: Array<string | number> = [
 			REGISTRY_SNAPSHOT_VERSION,
 			bundledCatalogDigest(),
-			modelCacheStamp(dbPath),
+			modelCacheStamp(dbPath, { ttlMs: DAY_MS }),
+			this.#modelsConfigFile.getMtimeMs() ?? 0,
 		];
 		const customConfigDigest = createHash("sha256")
 			.update(
@@ -1265,13 +1262,7 @@ export class ModelRegistry {
 			if (stageDigest !== parsed.stageDigest) return null;
 			const stage = parsed.stage;
 			const now = Date.now();
-			if (
-				typeof stage.createdAt !== "number" ||
-				!Number.isFinite(stage.createdAt) ||
-				now < stage.createdAt ||
-				(stage.validUntil !== undefined &&
-					(typeof stage.validUntil !== "number" || !Number.isFinite(stage.validUntil) || now > stage.validUntil))
-			) {
+			if (typeof stage.createdAt !== "number" || !Number.isFinite(stage.createdAt) || now < stage.createdAt) {
 				return null;
 			}
 			if (!isRecord(stage.cachedStandard)) return null;
@@ -1425,12 +1416,10 @@ export class ModelRegistry {
 	#loadCachedStandardProviderModels(): {
 		models: Model<Api>[];
 		authoritativeFreshProviders: Set<string>;
-		validUntil?: number;
 	} {
 		const configuredDiscoveryProviders = new Set(this.#discoverableProviders.map(provider => provider.provider));
 		const cachedModels: Model<Api>[] = [];
 		const authoritativeFreshProviders = new Set<string>();
-		let validUntil: number | undefined;
 		for (const providerId of STARTUP_MODEL_CACHE_PROVIDER_IDS) {
 			if (configuredDiscoveryProviders.has(providerId)) {
 				continue;
@@ -1442,7 +1431,6 @@ export class ModelRegistry {
 			}
 			if (cache.fresh && cache.authoritative) {
 				authoritativeFreshProviders.add(providerId);
-				validUntil = Math.min(validUntil ?? Number.POSITIVE_INFINITY, cache.updatedAt + DAY_MS);
 			}
 			const models = cache.models.map(model =>
 				model.provider === providerId ? model : { ...model, provider: providerId },
@@ -1461,12 +1449,11 @@ export class ModelRegistry {
 				: withTransport.map(model => buildModel(model));
 			cachedModels.push(...this.#applyProviderModelOverrides(providerId, withCompat));
 		}
-		return { models: cachedModels, authoritativeFreshProviders, validUntil };
+		return { models: cachedModels, authoritativeFreshProviders };
 	}
 
-	#loadCachedDiscoverableModels(): { models: Model<Api>[]; validUntil?: number } {
+	#loadCachedDiscoverableModels(): Model<Api>[] {
 		const cachedModels: Model<Api>[] = [];
-		let validUntil: number | undefined;
 		for (const providerConfig of this.#discoverableProviders) {
 			const cache = readModelCache<Api>(
 				this.#configuredDiscoveryCacheProviderId(providerConfig),
@@ -1498,9 +1485,6 @@ export class ModelRegistry {
 			cachedModels.push(...models);
 			const stale =
 				providerConfig.discovery.type === "llama.cpp" || !cache.fresh || !cache.authoritative || configStale;
-			if (!stale) {
-				validUntil = Math.min(validUntil ?? Number.POSITIVE_INFINITY, cache.updatedAt + DAY_MS);
-			}
 			this.#providerDiscoveryStates.set(providerConfig.provider, {
 				provider: providerConfig.provider,
 				status: "cached",
@@ -1510,7 +1494,7 @@ export class ModelRegistry {
 				models: models.map(model => model.id),
 			});
 		}
-		return { models: cachedModels, validUntil };
+		return cachedModels;
 	}
 
 	#applyProviderCompat(compat: ModelSpec<Api>["compat"] | undefined, models: Model<Api>[]): Model<Api>[] {

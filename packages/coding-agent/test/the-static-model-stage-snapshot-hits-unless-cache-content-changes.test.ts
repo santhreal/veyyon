@@ -98,30 +98,48 @@ describe("static model stage snapshot", () => {
 		expect(mtime()).not.toBe(before);
 	});
 
-	it("expires freshness decisions even when no cache row changes", async () => {
+	it("a refresh that re-verifies unchanged content keeps the snapshot", async () => {
+		// This is the shape of an ordinary launch: a local-server provider re-probes
+		// and writes the same catalog back with a new timestamp. Treating that as a
+		// model change meant the stage was rebuilt at every start, which is the
+		// whole cost this snapshot exists to remove.
+		await coldLaunch();
+		const before = mtime();
+		const dbPath = path.join(tempDir, "models.db");
+		writeModelCache("scratch-provider", Date.now(), [], true, "", dbPath);
+		launch();
+		const afterFirstWrite = mtime();
+
+		writeModelCache("scratch-provider", Date.now(), [], true, "", dbPath);
+		launch();
+
+		expect(afterFirstWrite).not.toBe(before);
+		expect(mtime()).toBe(afterFirstWrite);
+	});
+
+	it("rebuilds once a cached row crosses the freshness TTL", async () => {
+		// The stage persists "this row was fresh and authoritative". No row has to
+		// move for that verdict to expire, so a launch a day later must not serve it.
 		tempDir = path.join(os.tmpdir(), `pi-reg-snap-${Snowflake.next()}`);
 		fs.mkdirSync(tempDir, { recursive: true });
 		modelsPath = path.join(tempDir, "models.yml");
 		snapshotPath = path.join(tempDir, "resolved-models.json");
 		authStorage = await AuthStorage.create(path.join(tempDir, "auth.db"));
-		const dbPath = path.join(tempDir, "models.db");
 		const initialNow = Date.now() + 1_000;
 		const now = vi.spyOn(Date, "now").mockReturnValue(initialNow);
-		writeModelCache("anthropic", initialNow, [], true, "", dbPath);
+		writeModelCache("anthropic", initialNow, [], true, "", path.join(tempDir, "models.db"));
 
 		launch();
-		const fresh = JSON.parse(fs.readFileSync(snapshotPath, "utf8")) as {
-			stage: { createdAt: number; validUntil?: number };
-		};
-		expect(fresh.stage.validUntil).toBe(initialNow + DAY_MS);
+		const fresh = mtime();
+		launch();
+		expect(mtime()).toBe(fresh);
 
 		now.mockReturnValue(initialNow + DAY_MS + 1);
 		launch();
-		const expired = JSON.parse(fs.readFileSync(snapshotPath, "utf8")) as {
-			stage: { createdAt: number; validUntil?: number };
-		};
+		const expired = JSON.parse(fs.readFileSync(snapshotPath, "utf8")) as { stage: { createdAt: number } };
+
+		expect(mtime()).not.toBe(fresh);
 		expect(expired.stage.createdAt).toBe(initialNow + DAY_MS + 1);
-		expect(expired.stage.validUntil).toBeUndefined();
 	});
 
 	it("restores configured-provider discovery state on a snapshot hit", async () => {
