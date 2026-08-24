@@ -11,7 +11,7 @@
 - The vibe screens, the image-inspection call and an LSP hover code block draw no border of their own inside a tool block, so a block keeps one left edge; a tree connector remains only where a row belongs to the row above it, in the eval value tree, the grep line gutter, the job tree and the LSP reference tree.
 - A picture a terminal will not draw now leaves a row naming the file, the media type, the pixel size and the cause, in place of `[Image: image/png]`, including when a Kitty session cannot convert it to PNG.
 - Session creation overlaps two serial file reads with neighboring startup work instead of paying them back to back. Rules discovery starts as soon as the session context loads rather than after the skills await, so its directory scan runs under model resolution and prompt assembly; and inside the secrets runtime the vault key read starts before the secrets/env/vault entry loads instead of after all three.
-- `ModelRegistry` persists its static bundled, cached-standard, and cached-discovery layers to a content-verified `resolved-models.json`, and a restored snapshot re-installs provider discovery state and expires the freshness verdicts it was built from. Catalog, cache-row and custom-model content changes invalidate it; SQLite sidecar churn does not.
+- `ModelRegistry` persists its static bundled, cached-standard, and cached-discovery layers to a content-verified `resolved-models.json`, so a warm launch restores resolved records and provider discovery state instead of rebuilding them. Catalog, cache-row and custom-model content changes invalidate it, as does a cached row crossing its 24 h freshness window; SQLite sidecar churn and a provider re-verifying models it already had do not.
 
 ## [1.2.0] - 2026-08-23
 

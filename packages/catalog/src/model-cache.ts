@@ -4,13 +4,14 @@
  */
 import { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
-import { getModelDbPath } from "@veyyon/utils";
+import { DAY_MS, getModelDbPath } from "@veyyon/utils";
 import type { Api, Model, ModelSpec } from "./types";
 
 // Rows persist ModelSpec JSON (sparse `compat`, never the resolved record);
 // the model manager rebuilds via `buildModel` on load. v11 adds a content
-// fingerprint so the resolved-registry snapshot invalidates on every cache
-// mutation, including a same-timestamp rewrite. v10 invalidated agent gateway
+// fingerprint over everything a row states EXCEPT its timestamp, so a snapshot
+// keyed to cache content survives a refresh that re-verifies a catalog and
+// finds it unchanged. v10 invalidated agent gateway
 // rows (Cursor, Devin, Antigravity) whose limits were assumed rather than
 // resolved: discovery published a blind 200k/64k pair for every proxied model,
 // and a cached row keeps telling the user a 1M-token model holds 200k long after
@@ -136,7 +137,7 @@ function installCacheRevisionTracking(db: Database): void {
 		)
 	`);
 	db.run("INSERT OR IGNORE INTO model_cache_meta (key, value) VALUES ('revision', 0)");
-	for (const operation of ["INSERT", "UPDATE", "DELETE"]) {
+	for (const operation of ["INSERT", "DELETE"]) {
 		db.run(`
 			CREATE TRIGGER IF NOT EXISTS model_cache_revision_after_${operation.toLowerCase()}
 			AFTER ${operation} ON model_cache
@@ -145,6 +146,22 @@ function installCacheRevisionTracking(db: Database): void {
 			END
 		`);
 	}
+	// An update counts only when it changes what the row STATES. A refresh that
+	// re-verifies an unchanged catalog rewrites the row with a new timestamp, and
+	// counting that as a mutation is what made the resolved-registry snapshot
+	// miss on every launch: one local-server provider re-probes each start.
+	db.run(`
+		CREATE TRIGGER IF NOT EXISTS model_cache_revision_after_update
+		AFTER UPDATE ON model_cache
+		WHEN NEW.content_fingerprint IS NOT OLD.content_fingerprint
+			OR NEW.models IS NOT OLD.models
+			OR NEW.authoritative IS NOT OLD.authoritative
+			OR NEW.static_fingerprint IS NOT OLD.static_fingerprint
+			OR NEW.version IS NOT OLD.version
+		BEGIN
+			UPDATE model_cache_meta SET value = value + 1 WHERE key = 'revision';
+		END
+	`);
 }
 
 export function readModelCache<TApi extends Api>(
@@ -196,22 +213,27 @@ export function writeModelCache<TApi extends Api>(
 			const serializedModels = JSON.stringify(
 				models.map(model => ({ ...model, compat: model.compatConfig, compatConfig: undefined })),
 			);
+			// The timestamp is deliberately absent: it states WHEN the row was
+			// verified, not what it says, and a snapshot keyed to cache content must
+			// not rebuild because a provider was re-probed and found unchanged.
 			const contentFingerprint = createHash("sha256")
 				.update(
-					JSON.stringify([
-						providerId,
-						CACHE_SCHEMA_VERSION,
-						updatedAt,
-						authoritative,
-						staticFingerprint,
-						serializedModels,
-					]),
+					JSON.stringify([providerId, CACHE_SCHEMA_VERSION, authoritative, staticFingerprint, serializedModels]),
 				)
 				.digest("hex");
+			// An upsert, not INSERT OR REPLACE: the latter deletes and re-inserts,
+			// which fires the mutation triggers for a row whose content did not move.
 			db.run(
-				`INSERT OR REPLACE INTO model_cache
+				`INSERT INTO model_cache
 				 (provider_id, version, updated_at, authoritative, static_fingerprint, content_fingerprint, models)
-				 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+				 VALUES (?, ?, ?, ?, ?, ?, ?)
+				 ON CONFLICT(provider_id) DO UPDATE SET
+				     version = excluded.version,
+				     updated_at = excluded.updated_at,
+				     authoritative = excluded.authoritative,
+				     static_fingerprint = excluded.static_fingerprint,
+				     content_fingerprint = excluded.content_fingerprint,
+				     models = excluded.models`,
 				[
 					providerId,
 					CACHE_SCHEMA_VERSION,
@@ -234,21 +256,33 @@ export function writeModelCache<TApi extends Api>(
  * File stamps (mtime/size of `models.db` and its `-wal`/`-shm` sidecars) are
  * the wrong instrument here: SQLite moves the sidecars on every connection,
  * including reads and the writer's own first launch. Each production write
- * stores a digest over every persisted field, while table triggers increment a
- * durable revision for writes outside that path. The common path reads only
- * small fixed-width values and still invalidates for every row mutation.
+ * stores a digest over every persisted field except the timestamp, while table
+ * triggers increment a durable revision for content writes outside that path.
+ *
+ * The stamp also carries each row's freshness verdict under `ttlMs`, because a
+ * consumer that persists "this row was fresh and authoritative" cannot hold
+ * that verdict past the TTL it came from: the bit flips when a row crosses the
+ * boundary in either direction, and nothing else about the row has to move.
+ * The common path reads only small fixed-width values.
  */
-export function modelCacheStamp(dbPath?: string): string {
+export function modelCacheStamp(dbPath?: string, options?: { ttlMs?: number; now?: () => number }): string {
+	const ttlMs = options?.ttlMs ?? DAY_MS;
+	const now = options?.now ?? Date.now;
 	try {
 		return withModelCacheDb(dbPath, db => {
 			const rows = db
-				.query("SELECT provider_id, content_fingerprint FROM model_cache ORDER BY provider_id")
-				.all() as Array<Pick<CacheRow, "provider_id" | "content_fingerprint">>;
+				.query("SELECT provider_id, content_fingerprint, updated_at FROM model_cache ORDER BY provider_id")
+				.all() as Array<Pick<CacheRow, "provider_id" | "content_fingerprint" | "updated_at">>;
+			const at = now();
+			const stamped = rows.map(row => {
+				const ageMs = at - row.updated_at;
+				return [row.provider_id, row.content_fingerprint, Number.isFinite(ageMs) && ageMs >= 0 && ageMs <= ttlMs];
+			});
 			const revision = db.query("SELECT value FROM model_cache_meta WHERE key = 'revision'").get() as {
 				value: number;
 			} | null;
 			return createHash("sha256")
-				.update(JSON.stringify({ revision: revision?.value ?? 0, rows }))
+				.update(JSON.stringify({ revision: revision?.value ?? 0, rows: stamped }))
 				.digest("hex");
 		});
 	} catch {

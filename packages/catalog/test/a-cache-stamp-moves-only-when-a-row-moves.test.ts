@@ -1,10 +1,17 @@
 /**
  * `modelCacheStamp` decides when the registry's persisted static stage is
- * still valid, so its contract is "moves only when a row moves": stable
- * across repeated reads and across file-mtime churn on the database or its
- * sidecars (SQLite touches those on every connection), and different after
- * any real row write. A stamp that reads mtimes re-creates the every-launch
- * miss this exists to prevent.
+ * still valid, so its contract is "moves only when what a row says moves, or
+ * when a verdict read from it would change": stable across repeated reads and
+ * across file-mtime churn on the database or its sidecars (SQLite touches those
+ * on every connection), stable when a provider is re-probed and found
+ * unchanged, and different after any real content write or a freshness
+ * transition. A stamp that reads mtimes, or that counts a re-verification as a
+ * mutation, re-creates the every-launch miss this exists to prevent — one local
+ * server provider re-probing at each start was enough to do it.
+ *
+ * WHAT THIS DOES NOT CATCH: whether the registry folds this stamp into its own
+ * fingerprint, or reads the TTL this stamp is asked about. The static-stage
+ * suite owns that.
  */
 
 import { Database } from "bun:sqlite";
@@ -80,5 +87,37 @@ describe("model cache stamp", () => {
 		writeModelCache("p-one", 100, [], false, "", provisional);
 
 		expect(modelCacheStamp(authoritative)).not.toBe(modelCacheStamp(provisional));
+	});
+
+	it("holds still when a provider is re-verified and its content has not changed", () => {
+		// The refresh path rewrites a row with a new timestamp whenever it confirms
+		// a catalog, which is not a change to what the row says.
+		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "stamp-reverify-"));
+		const dbPath = path.join(tempDir, "models.db");
+
+		writeModelCache("p-one", 100, [], true, "", dbPath);
+		const verified = modelCacheStamp(dbPath, { ttlMs: 10_000, now: () => 100 });
+
+		writeModelCache("p-one", 200, [], true, "", dbPath);
+		expect(modelCacheStamp(dbPath, { ttlMs: 10_000, now: () => 200 })).toBe(verified);
+
+		// A direct timestamp bump is the same non-event.
+		const db = new Database(dbPath);
+		db.run("UPDATE model_cache SET updated_at = 300 WHERE provider_id = 'p-one'");
+		db.close();
+		expect(modelCacheStamp(dbPath, { ttlMs: 10_000, now: () => 300 })).toBe(verified);
+	});
+
+	it("moves when a row crosses the freshness boundary it is read under", () => {
+		// A consumer persists "this row was fresh and authoritative". That verdict
+		// cannot outlive the TTL it came from, and no row has to move for it to
+		// expire, so the boundary itself is part of the stamp.
+		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "stamp-ttl-"));
+		const dbPath = path.join(tempDir, "models.db");
+		writeModelCache("p-one", 1_000, [], true, "", dbPath);
+
+		const fresh = modelCacheStamp(dbPath, { ttlMs: 10_000, now: () => 5_000 });
+		expect(modelCacheStamp(dbPath, { ttlMs: 10_000, now: () => 9_000 })).toBe(fresh);
+		expect(modelCacheStamp(dbPath, { ttlMs: 10_000, now: () => 11_001 })).not.toBe(fresh);
 	});
 });

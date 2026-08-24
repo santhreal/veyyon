@@ -5,7 +5,7 @@
 ### Added
 
 - `ProviderWireCapabilities.anthropicMessages` declares how a provider serves the Anthropic Messages API — its endpoint, credential placement, rejected request features and retryable model errors — and `declaredProviders()` and `declaredCapabilityNames()` derive the declaring sets from the table.
-- Bundled model resolution persists a content-verified enriched snapshot, and registry cache stamps invalidate on every row-content write without treating SQLite sidecar churn as a model change.
+- Bundled model resolution persists a content-verified enriched snapshot, and a registry cache stamp moves on every row-content write, and on a row crossing the freshness window it is read under, without treating SQLite sidecar churn or a provider re-verifying models it already had as a change.
 
 ### Changed
 
