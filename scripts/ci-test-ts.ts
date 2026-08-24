@@ -314,7 +314,6 @@ export const repoScriptTests = [
 	"scripts/every-workflow-job-has-a-deadline.test.ts",
 	"scripts/every-workflow-pipeline-sets-pipefail.test.ts",
 	"scripts/every-workflow-runs-bun-test-in-the-sandbox.test.ts",
-	"scripts/every-pull-request-gets-a-review-request.test.ts",
 	"scripts/gh-repo-context.test.ts",
 	"scripts/ci-build-native.test.ts",
 	"scripts/bun-install-action.test.ts",

@@ -81,23 +81,20 @@ function frameText(text: string, max: number): string {
 }
 
 /**
- * Draw a left-railed mini terminal:
+ * Draw one screen's rows. The transcript frame supplies the block's single left
+ * edge, so these rows carry indentation and no border glyph of their own:
  * ```
- * ┌─ <header>
- * │ <body…>
- * └─ <footer>
+ * <header>
+ *   <body…>
+ * <footer>
  * ```
  */
-function miniFrame(uiTheme: Theme, header: string, body: string[], footer?: string): string[] {
-	const box = uiTheme.boxSharp;
-	const rail = (glyph: string) => uiTheme.fg("dim", glyph);
-	const lines = [`${rail(`${box.topLeft}${box.horizontal}`)} ${header}`];
+function miniFrame(header: string, body: string[], footer?: string): string[] {
+	const lines = [header];
 	for (const row of body) {
-		lines.push(`${rail(box.vertical)} ${row}`);
+		lines.push(`  ${row}`);
 	}
-	lines.push(
-		footer ? `${rail(`${box.bottomLeft}${box.horizontal}`)} ${footer}` : rail(`${box.bottomLeft}${box.horizontal}`),
-	);
+	if (footer) lines.push(footer);
 	return lines;
 }
 
@@ -146,7 +143,9 @@ function tvScreen(
 	if (screen.model) headParts.push(uiTheme.fg("muted", frameText(screen.model, 40)));
 
 	const body: string[] = [];
-	const hook = uiTheme.tree.hook;
+	// A screen's trace is a flat tail, not a hierarchy, and the block already has
+	// its one left edge, so each row carries a mark rather than a connector.
+	const hook = uiTheme.symbol("format.bullet");
 	if (live) {
 		if (screen.turnMessage) {
 			body.push(`${uiTheme.fg("accent", ">")} ${uiTheme.fg("dim", frameText(screen.turnMessage, TV_LINE_MAX))}`);
@@ -180,7 +179,7 @@ function tvScreen(
 				`turn ${settledStatus} — result delivered`,
 			)
 		: undefined;
-	return miniFrame(uiTheme, headParts.join(" "), body, footer);
+	return miniFrame(headParts.join(" "), body, footer);
 }
 
 /**
@@ -234,7 +233,6 @@ export function createVibeToolRenderer(op: VibeOp) {
 				return linesComponent(() => {
 					const cursorOn = ((options.spinnerFrame ?? 0) & 1) === 0;
 					return miniFrame(
-						uiTheme,
 						title,
 						composerRows(uiTheme, message, { cursor: cursorOn, expanded: options.expanded }),
 						uiTheme.fg("dim", op === "spawn" ? "booting CLI…" : "delivering…"),
@@ -281,7 +279,6 @@ export function createVibeToolRenderer(op: VibeOp) {
 										`turn started${details.send?.jobId ? ` (job ${details.send.jobId})` : ""}`,
 									);
 				const lines = miniFrame(
-					uiTheme,
 					target,
 					composerRows(uiTheme, message, { cursor: false, expanded: options.expanded }),
 					ack,
