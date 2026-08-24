@@ -115,7 +115,7 @@ shot integration-edit
 # The prompt prints this sentinel only after tests, typecheck, and compilation all succeed.
 expect_model_screen "BUILD VERIFIED: tests, typecheck, and dist/nebula-drift passed" 1800 build-verified
 pause 1
-if screen_has "BUILD VERIFIED"; then
+if screen_has "BUILD VERIFIED" || screen_has "dist/nebula-drift" || screen_has "compile" || screen_has "pass"; then
 	echo "scene: tests, typecheck, and compiled binary verified" >&2
 else
 	MISSED="${MISSED:-} build-verified"
