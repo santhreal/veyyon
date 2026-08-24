@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-2c0008ea.js";
+            window.path_to_searchindex_js = "../searchindex-f447233b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -301,7 +301,7 @@ veyyon config get compaction.threshold
 <tr><td><code>defaultEffort</code></td><td>Default Effort</td><td>record</td><td><code>{}</code></td><td>Effort per model, applied when a run does not ask for one. Add a model and pick its effort; the “any model” row covers every model without its own. Per profile.</td></tr>
 <tr><td><code>hideThinkingBlock</code></td><td>Hide Thinking Blocks</td><td>boolean</td><td><code>false</code></td><td>Hide thinking blocks in assistant responses.</td></tr>
 <tr><td><code>proseOnlyThinking</code></td><td>Prose Only Thinking</td><td>boolean</td><td><code>true</code></td><td>Omit code blocks from thinking summaries and replace them with an ellipsis.</td></tr>
-<tr><td><code>omitThinking</code></td><td>Omit Thinking summaries</td><td>boolean</td><td><code>false</code></td><td>Instruct upstream providers to completely omit thinking summaries from responses (where supported).</td></tr>
+<tr><td><code>omitThinking</code></td><td>Omit Thinking Summaries</td><td>boolean</td><td><code>false</code></td><td>Instruct upstream providers to completely omit thinking summaries from responses (where supported).</td></tr>
 <tr><td><code>model.loopGuard.enabled</code></td><td>Loop Guard</td><td>boolean</td><td><code>true</code></td><td>Enable automatic stream loop detection for model reasoning and prose.</td></tr>
 <tr><td><code>model.loopGuard.checkAssistantContent</code></td><td>Loop Guard Scan Prose</td><td>boolean</td><td><code>true</code></td><td>Apply loop guard to assistant prose messages in addition to thinking logs.</td></tr>
 <tr><td><code>model.loopGuard.toolCallReminder</code></td><td>Loop Guard Tool-Call Reminder</td><td>boolean</td><td><code>true</code></td><td>When a Gemini reasoning stream emits many consecutive planning headers without calling a tool, interrupt it and inject a reminder to issue a tool call (requires Loop Guard).</td></tr>
@@ -361,7 +361,7 @@ veyyon config get compaction.threshold
 <tr><td><code>retry.fallbackChains</code></td><td>Retry Fallback Chains</td><td>record</td><td><code>{}</code></td><td>JSON object mapping model roles, model selectors (“provider/model-id”), or provider wildcards (“provider/<em>”) to ordered fallback selectors, e.g. {“default”:[“openai/gpt-4o-mini”],“google-antigravity/</em>”:[“google/<em>”,“google-vertex/</em>”]}. Model-oriented keys apply whenever that model/provider is active, regardless of role; a “provider/*” entry keeps the failing model’s id and swaps the provider.</td></tr>
 <tr><td><code>retry.perProvider</code></td><td>Per-Provider Retry</td><td>record</td><td><code>{}</code></td><td>JSON object overriding retry limits for specific backends, keyed like Retry Fallback Chains: a model selector (“provider/model-id”), a provider wildcard (“provider/*”), or a bare provider name. Each value may set maxRetries, baseDelayMs, and maxDelayMs; anything omitted falls back to the global retry settings. Example: {“cursor”:{“maxRetries”:3,“baseDelayMs”:2000}}. Backends whose retries are intrinsically expensive (cursor, devin) already ship with sensible limits; an entry here overrides those.</td></tr>
 <tr><td><code>retry.fallbackRevertPolicy</code></td><td>Fallback Revert Policy</td><td>enum</td><td><code>cooldown-expiry</code></td><td>When to return to the primary model after a fallback. Values: <code>cooldown-expiry</code>, <code>never</code>.</td></tr>
-<tr><td><code>providers.anthropic.serverSideFallback</code></td><td>Anthropic Server-Side Fallback (Fable 5)</td><td>boolean</td><td><code>false</code></td><td>When a Claude Fable 5 / Mythos 5 request is blocked by Anthropic’s safety classifier, retry it on Claude Opus 4.8 server-side (Anthropic <code>server-side-fallback-2026-06-01</code> beta). Opt-in — leaving this off preserves the pre-fallback behavior for every request.</td></tr>
+<tr><td><code>providers.anthropic.serverSideFallback</code></td><td>Anthropic Server-Side Fallback</td><td>boolean</td><td><code>false</code></td><td>When a Claude Fable 5 / Mythos 5 request is blocked by Anthropic’s safety classifier, retry it on Claude Opus 4.8 server-side (Anthropic <code>server-side-fallback-2026-06-01</code> beta). Opt-in — leaving this off preserves the pre-fallback behavior for every request.</td></tr>
 </tbody>
 </table>
 </div>
@@ -397,7 +397,7 @@ veyyon config get compaction.threshold
 <tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><code>images.describeForTextModels</code></td><td>Describe Images for Text Models</td><td>boolean</td><td><code>true</code></td><td>When an image is attached to a model without vision support, save it under local:// and inject a description from a vision-capable model instead of dropping it.</td></tr>
+<tr><td><code>images.describeForTextModels</code></td><td>Text-Model Image Descriptions</td><td>boolean</td><td><code>true</code></td><td>When an image is attached to a model without vision support, save it under local:// and inject a description from a vision-capable model instead of dropping it.</td></tr>
 </tbody>
 </table>
 </div>
@@ -663,7 +663,7 @@ veyyon config get compaction.threshold
 <tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><code>ttsr.enabled</code></td><td>TTSR</td><td>boolean</td><td><code>true</code></td><td>Interrupt the agent mid-stream when output matches rule patterns (Time-Traveling Stream Rules).</td></tr>
+<tr><td><code>ttsr.enabled</code></td><td>Enable TTSR</td><td>boolean</td><td><code>true</code></td><td>Interrupt the agent mid-stream when output matches rule patterns (Time-Traveling Stream Rules).</td></tr>
 <tr><td><code>ttsr.contextMode</code></td><td>Context Mode</td><td>enum</td><td><code>discard</code></td><td>What to do with partial output when TTSR triggers. Values: <code>discard</code>, <code>keep</code>.</td></tr>
 <tr><td><code>ttsr.interruptMode</code></td><td>Rule Interrupt Mode</td><td>enum</td><td><code>always</code></td><td>When to interrupt mid-stream vs inject warning after completion. Values: <code>never</code>, <code>prose-only</code>, <code>tool-only</code>, <code>always</code>.</td></tr>
 <tr><td><code>ttsr.repeatMode</code></td><td>Repeat Mode</td><td>enum</td><td><code>once</code></td><td>How rules can repeat: once per session or after a message gap. A rule may override this in its frontmatter. Values: <code>once</code>, <code>after-gap</code>.</td></tr>
@@ -725,7 +725,7 @@ veyyon config get compaction.threshold
 <tr><td><code>hindsight.autoRetain</code></td><td>Hindsight Auto Retain</td><td>boolean</td><td><code>true</code></td><td>Retain transcript every N turns and at session boundaries.</td></tr>
 <tr><td><code>hindsight.retainMode</code></td><td>Hindsight Retain Mode</td><td>enum</td><td><code>full-session</code></td><td>full-session = upsert one document per session, last-turn = chunked. Values: <code>full-session</code>, <code>last-turn</code>.</td></tr>
 <tr><td><code>hindsight.mentalModelsEnabled</code></td><td>Hindsight Mental Models</td><td>boolean</td><td><code>true</code></td><td>Read curated reflect summaries (mental models) into developer instructions at boot. Loads existing models on the bank — does not write. Pair with hindsight.mentalModelAutoSeed to also auto-create the built-in seed set.</td></tr>
-<tr><td><code>hindsight.mentalModelAutoSeed</code></td><td>Hindsight Mental Model Auto-Seed</td><td>boolean</td><td><code>true</code></td><td>At session start, create any built-in mental models (project-conventions, project-decisions, user-preferences) that do not yet exist on the bank.</td></tr>
+<tr><td><code>hindsight.mentalModelAutoSeed</code></td><td>Mental Model Auto-Seed</td><td>boolean</td><td><code>true</code></td><td>At session start, create any built-in mental models (project-conventions, project-decisions, user-preferences) that do not yet exist on the bank.</td></tr>
 </tbody>
 </table>
 </div>
@@ -769,7 +769,7 @@ veyyon config get compaction.threshold
 <tr><td><code>read.summarize.prose</code></td><td>Prose Summaries</td><td>boolean</td><td><code>false</code></td><td>Return structural summaries for Markdown and plain text reads.</td></tr>
 <tr><td><code>read.summarize.minBodyLines</code></td><td>Read Summary Body Lines</td><td>number</td><td><code>4</code></td><td>Minimum multiline body or literal length before read summaries collapse it.</td></tr>
 <tr><td><code>read.summarize.minCommentLines</code></td><td>Read Summary Comment Lines</td><td>number</td><td><code>6</code></td><td>Minimum multiline block comment length before read summaries collapse it.</td></tr>
-<tr><td><code>read.summarize.minTotalLines</code></td><td>Read Summary Minimum File Length</td><td>number</td><td><code>100</code></td><td>Files with fewer total lines are read verbatim instead of structurally summarized.</td></tr>
+<tr><td><code>read.summarize.minTotalLines</code></td><td>Read Summary Min File Length</td><td>number</td><td><code>100</code></td><td>Files with fewer total lines are read verbatim instead of structurally summarized.</td></tr>
 <tr><td><code>read.summarize.unfoldUntil</code></td><td>Read Summary Unfold Target</td><td>number</td><td><code>50</code></td><td>BFS-unfold elidable spans until the summary is at least this many visible lines. 0 keeps only the outermost elisions.</td></tr>
 <tr><td><code>read.summarize.unfoldLimit</code></td><td>Read Summary Unfold Ceiling</td><td>number</td><td><code>100</code></td><td>Hard ceiling on summary size while BFS-unfolding. An unfold whose revealed lines would exceed this is skipped (that span stays folded) and unfolding continues with the remaining spans.</td></tr>
 </tbody>
@@ -924,7 +924,7 @@ veyyon config get compaction.threshold
 </thead>
 <tbody>
 <tr><td><code>tools.intentTracing</code></td><td>Intent Tracing</td><td>boolean</td><td><code>true</code></td><td>Ask the agent to describe the intent of each tool call before executing it.</td></tr>
-<tr><td><code>tools.abortOnFabricatedResult</code></td><td>Abort On Fabricated Tool Result</td><td>boolean</td><td><code>true</code></td><td>With in-band tool calls, stop the model immediately when it starts hallucinating a tool result mid-turn. Disable to let the model finish generating and discard the fabricated continuation instead.</td></tr>
+<tr><td><code>tools.abortOnFabricatedResult</code></td><td>Abort on Fabricated Result</td><td>boolean</td><td><code>true</code></td><td>With in-band tool calls, stop the model immediately when it starts hallucinating a tool result mid-turn. Disable to let the model finish generating and discard the fabricated continuation instead.</td></tr>
 <tr><td><code>tools.maxTimeout</code></td><td>Max Tool Timeout</td><td>number</td><td><code>0</code></td><td>Maximum timeout in seconds the agent can set for any tool (0 = no limit).</td></tr>
 <tr><td><code>async.enabled</code></td><td>Async Execution</td><td>boolean</td><td><code>true</code></td><td>Enable async bash commands and background task execution.</td></tr>
 <tr><td><code>async.pollWaitDuration</code></td><td>Max Poll Time</td><td>enum</td><td><code>smart</code></td><td>How long the poll tool waits for background job updates before returning the current state. A fixed value waits that exact duration every time. <code>smart</code> adapts: it starts at 30s and climbs to 4m on a back-to-back poll, then resets to 30s after about a minute without polling. The 4m ceiling stays below the 5-minute prompt-cache boundary. Values: <code>5s</code>, <code>10s</code>, <code>30s</code>, <code>1m</code>, <code>5m</code>, <code>smart</code>.</td></tr>
@@ -1098,7 +1098,7 @@ veyyon config get compaction.threshold
 <tr><td><code>providers.ollama-cloud.maxConcurrency</code></td><td>Ollama Cloud Max Concurrency</td><td>number</td><td><code>3</code></td><td>Maximum concurrent Ollama Cloud subagent runs per process; 0 disables the provider-specific limit.</td></tr>
 <tr><td><code>providers.webSearch</code></td><td>Web Search Provider</td><td>enum</td><td><code>auto</code></td><td>The provider web_search uses; auto tries each in turn. Values: <code>auto</code>, <code>perplexity</code>, <code>gemini</code>, <code>anthropic</code>, <code>codex</code>, <code>xai</code>, <code>zai</code>, <code>exa</code>, <code>tinyfish</code>, <code>jina</code>, <code>kagi</code>, <code>tavily</code>, <code>firecrawl</code>, <code>brave</code>, <code>kimi</code>, <code>parallel</code>, <code>synthetic</code>, <code>searxng</code>, <code>startpage</code>, <code>duckduckgo</code>, <code>ecosia</code>, <code>google</code>, <code>mojeek</code>, <code>public</code>.</td></tr>
 <tr><td><code>providers.webSearchExclude</code></td><td>Excluded Web Search Providers</td><td>array</td><td><code>[]</code></td><td>Providers that web_search should never use, even as fallbacks.</td></tr>
-<tr><td><code>providers.webSearchGeminiModel</code></td><td>Gemini web_search model</td><td>string</td><td><em>(unset)</em></td><td>Model ID for Gemini Google Search grounding. Defaults to gemini-2.5-flash.</td></tr>
+<tr><td><code>providers.webSearchGeminiModel</code></td><td>Gemini Web Search Model</td><td>string</td><td><em>(unset)</em></td><td>Model ID for Gemini Google Search grounding. Defaults to gemini-2.5-flash.</td></tr>
 <tr><td><code>providers.antigravityEndpoint</code></td><td>Antigravity Endpoint Mode</td><td>enum</td><td><code>auto</code></td><td>Endpoint routing strategy for google-antigravity providers (chat, search, image, discovery). Values: <code>auto</code>, <code>production</code>, <code>sandbox</code>.</td></tr>
 <tr><td><code>providers.image</code></td><td>Image Provider</td><td>enum</td><td><code>auto</code></td><td>Preferred provider for image generation. Values: <code>auto</code>, <code>openai</code>, <code>antigravity</code>, <code>xai</code>, <code>gemini</code>, <code>openrouter</code>.</td></tr>
 <tr><td><code>providers.tts</code></td><td>Text-to-Speech Provider</td><td>enum</td><td><code>auto</code></td><td>Backend for the tts tool: local on-device neural TTS (Kokoro-82M) or xAI Grok Voice. Values: <code>auto</code>, <code>local</code>, <code>xai</code>.</td></tr>
@@ -1258,7 +1258,7 @@ veyyon config get compaction.threshold
 <tr><th>Key</th><th>Setting</th><th>Type</th><th>Default</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><code>profileSharing</code></td><td>Share Credentials Across Profiles</td><td>boolean</td><td><code>true</code></td><td>When on (the default), every profile reads one machine-wide set of provider logins. Turn off to give each profile its own private credential store. Changing this setting shuts down the active session; restart is required before any further model dispatch. Stored machine-wide, not per profile.</td></tr>
+<tr><td><code>profileSharing</code></td><td>Share Across Profiles</td><td>boolean</td><td><code>true</code></td><td>When on (the default), every profile reads one machine-wide set of provider logins. Turn off to give each profile its own private credential store. Changing this setting shuts down the active session; restart is required before any further model dispatch. Stored machine-wide, not per profile.</td></tr>
 </tbody>
 </table>
 </div>
