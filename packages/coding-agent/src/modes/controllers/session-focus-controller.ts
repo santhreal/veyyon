@@ -117,7 +117,7 @@ export class SessionFocusController {
 	#onRegistryEvent(event: RegistryEvent): void {
 		if (event.ref.id !== this.#focusedAgentId) return;
 		const gone = event.type === "removed";
-		const dead = event.type === "status_changed" && (event.ref.status === "parked" || event.ref.status === "aborted");
+		const dead = event.type === "status_changed" && event.ref.status === "aborted";
 		if (!gone && !dead) return;
 		void this.unfocus().then(() => {
 			this.ctx.showStatus(`Agent ${event.ref.id} is ${gone ? "gone" : event.ref.status}; returned to main session`);
