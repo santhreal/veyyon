@@ -33,7 +33,7 @@ import { isRecord } from "@veyyon/utils/type-guards";
 import { formatExitCodeNotice } from "../exec/exit-notice";
 import { ToolAbortError } from "../tools/tool-errors";
 import { isBlobRef, isTextBlobRef } from "./blob-store";
-import { currentImageDisplayState, imageVisibilityNotice } from "./image-visibility";
+import { currentImageDisplayState, imageVisibilityNotice, isImageVisibilityNotice } from "./image-visibility";
 
 export {
 	type BranchSummaryMessage,
@@ -481,7 +481,9 @@ export function stripImagesFromMessage(message: AgentMessage): number {
  * operator blocked them outright (`images.blockImages`).
  *
  * Consecutive placeholder texts collapse into one so a message that was nothing
- * but images does not balloon into a run of identical notes.
+ * but images does not balloon into a run of identical notes. The visibility
+ * notice a tool result carries goes with the images it describes: once the
+ * pictures are out of the request, a sentence about where they are is stale.
  */
 export function replaceLlmImagesWithText(messages: Message[], placeholder: string): Message[] {
 	let out: Message[] | undefined;
@@ -493,6 +495,7 @@ export function replaceLlmImagesWithText(messages: Message[], placeholder: strin
 		const replaced: (TextContent | ImageContent)[] = [];
 		for (const part of content) {
 			if (part.type !== "image") {
+				if (part.type === "text" && isImageVisibilityNotice(part.text)) continue;
 				replaced.push(part);
 				continue;
 			}
