@@ -87,7 +87,7 @@ describe("terminal image rendering", () => {
 			SQUARE_DIMENSIONS,
 		);
 
-		expect(image.render(20).join("")).toContain("[Image:");
+		expect(image.render(20).join("")).toContain("[image not shown, no image protocol]");
 
 		terminal.imageProtocol = ImageProtocol.Kitty;
 		const rerendered = image.render(20).join("");

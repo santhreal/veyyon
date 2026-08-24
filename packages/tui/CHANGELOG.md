@@ -5,6 +5,13 @@
 ### Changed
 
 - Settings rows can open nested panels, used by Files → LSP to keep its dependent switches behind one parent row.
+### Added
+
+- `Image` accepts an `onDisplayed` callback and reports the cause each time an image starts or stops falling back to a placeholder.
+
+### Changed
+
+- `imageFallback` takes the file name, media type, pixel size and cause of an undrawn image and returns a row naming all four; `ImageFallbackReason` states the cause.
 
 ## [1.2.0] - 2026-08-23
 
