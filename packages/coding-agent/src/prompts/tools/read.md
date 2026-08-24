@@ -7,6 +7,7 @@ Read files, directories, archives, SQLite, images, documents, internal resources
 ## Parameters
 
 - `path` — required. Local path, internal URI (`skill://`, `agent://`, `artifact://`, `memory://`, `rule://`, `local://`, `vault://`, `mcp://`, `veyyon://`, `issue://`, `pr://`, `ssh://`), or URL. Append `:<sel>` for ranges/modes (e.g. `src/foo.ts:50-200`, `src/foo.ts:raw`, `db.sqlite:users:42`).
+- Several targets in one call: a semicolon-delimited list (`src/foo.ts:1-40; skill://demo/notes.md`), one result section per entry, each entry with its own selector. Every entry is a complete target, so a later one still needs its own scheme or path.
 
 ## Selectors
 
