@@ -24,6 +24,8 @@
 
 - When every summarizer candidate refuses, automatic compaction now parks the run (or drains already-queued input once) instead of reporting that nothing happened and looping. Local rescue tiers still run first; idle compaction stays silent.
 - An interrupted subagent now renders its terminal red status instead of retaining a stale approval-blocked indicator.
+- `/agents` keeps a parked subagent focused, preserving its reconstructed assistant messages, tool calls, and results instead of returning to the parent spawn prompt.
+- IRC broadcasts no longer wake completed idle peers; direct messages still wake the addressed peer.
 - An indented row inside a tool block keeps its indent when it wraps at a narrow width, instead of continuing at the block's left edge.
 - A colour or title escape sequence a command writes in two pieces no longer leaves part of itself in tool output: the sink holds a sequence its chunk ended inside until the piece that finishes it arrives, and drops one the stream never completes.
 
