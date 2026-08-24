@@ -25,6 +25,7 @@ import * as path from "node:path";
 import { atomicWriteFile } from "@veyyon/utils/atomic-write";
 import { withFileLock } from "@veyyon/utils/file-lock";
 import { isEnoent } from "@veyyon/utils/fs-error";
+import { errorMessage } from "@veyyon/utils/type-guards";
 
 const STORE_VERSION = 1;
 /** A single value above this is refused: the store is for handles and small state, not payloads. */
@@ -71,7 +72,7 @@ function assertSerializable(value: unknown): string {
 		encoded = JSON.stringify(value);
 	} catch (error) {
 		throw new KernelStoreError(
-			`kv values must be JSON-serializable; this one is not (${error instanceof Error ? error.message : String(error)}). ` +
+			`kv values must be JSON-serializable; this one is not (${errorMessage(error)}). ` +
 				"Store the handle or token, not the live object.",
 		);
 	}

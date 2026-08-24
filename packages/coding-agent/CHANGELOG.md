@@ -22,6 +22,7 @@
 - The debug log records which classification rules decided a failed turn's retry, next to the classified kind, so a retry nobody expected is diagnosed from the log instead of by re-reading the provider's sentence.
 - The browser tab worker and supervisor state why each teardown step and each optional probe discards its failure; behavior is unchanged.
 - The browser tab worker and supervisor reach `bestEffort` and `optionalResult` through `@veyyon/utils/discarded-fault` rather than the package barrel; behavior is unchanged.
+- Daemon completion parsing and eval-store serialization errors use shared type guards; behavior is unchanged.
 
 ### Fixed
 
