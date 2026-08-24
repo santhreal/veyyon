@@ -1,9 +1,9 @@
 /**
- * isRetriableConnectionError: only Error instances with known network/session
+ * mcpFailureWarrantsReconnect: only Error instances with known network/session
  * failure substrings or HTTP 404/502/503 prefixes. Non-errors and HTTP 500 are not retriable.
  */
 import { describe, expect, it } from "bun:test";
-import { isRetriableConnectionError } from "@veyyon/coding-agent/mcp/tool-bridge";
+import { mcpFailureWarrantsReconnect } from "@veyyon/coding-agent/mcp/tool-bridge";
 
 const RETRIABLE = [
 	"ECONNRESET",
@@ -31,29 +31,29 @@ const NOT_RETRIABLE = [
 	"random failure",
 ];
 
-describe("isRetriableConnectionError matrix", () => {
+describe("mcpFailureWarrantsReconnect matrix", () => {
 	for (const msg of RETRIABLE) {
 		it(`retriable: ${msg}`, () => {
-			expect(isRetriableConnectionError(new Error(msg))).toBe(true);
+			expect(mcpFailureWarrantsReconnect(new Error(msg))).toBe(true);
 		});
 	}
 
 	for (const msg of NOT_RETRIABLE) {
 		it(`not retriable: ${msg}`, () => {
-			expect(isRetriableConnectionError(new Error(msg))).toBe(false);
+			expect(mcpFailureWarrantsReconnect(new Error(msg))).toBe(false);
 		});
 	}
 
 	it("non-Error values are never retriable", () => {
-		expect(isRetriableConnectionError("econnreset")).toBe(false);
-		expect(isRetriableConnectionError(null)).toBe(false);
-		expect(isRetriableConnectionError(undefined)).toBe(false);
-		expect(isRetriableConnectionError({ message: "econnreset" })).toBe(false);
-		expect(isRetriableConnectionError(42)).toBe(false);
+		expect(mcpFailureWarrantsReconnect("econnreset")).toBe(false);
+		expect(mcpFailureWarrantsReconnect(null)).toBe(false);
+		expect(mcpFailureWarrantsReconnect(undefined)).toBe(false);
+		expect(mcpFailureWarrantsReconnect({ message: "econnreset" })).toBe(false);
+		expect(mcpFailureWarrantsReconnect(42)).toBe(false);
 	});
 
 	it("case-insensitive substring match on message", () => {
-		expect(isRetriableConnectionError(new Error("FETCH FAILED somewhere"))).toBe(true);
-		expect(isRetriableConnectionError(new Error("TRANSPORT CLOSED"))).toBe(true);
+		expect(mcpFailureWarrantsReconnect(new Error("FETCH FAILED somewhere"))).toBe(true);
+		expect(mcpFailureWarrantsReconnect(new Error("TRANSPORT CLOSED"))).toBe(true);
 	});
 });
