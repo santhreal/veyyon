@@ -6,7 +6,7 @@
  * `ptree.exec`.
  */
 import { describe, expect, it } from "bun:test";
-import { execCommand } from "../src/exec/exec";
+import { execCommand, withSessionCpuExec } from "../src/exec/exec";
 import { StdioTransport } from "../src/mcp/transports/stdio";
 
 describe("execCommand CPU gate", () => {
@@ -79,5 +79,61 @@ describe("MCP stdio CPU gate", () => {
 		} finally {
 			await transport.close();
 		}
+	});
+});
+
+describe("withSessionCpuExec composition", () => {
+	it("runs the CPU gate before a caller beforeSpawn, and skips both the caller hook and the spawn when the gate throws", async () => {
+		const order: string[] = [];
+		const options = withSessionCpuExec(
+			{
+				beforeSpawn: async () => {
+					order.push("caller-gate");
+				},
+				adoptPid: () => {
+					order.push("caller-adopt");
+				},
+			},
+			() => {
+				order.push("session-adopt");
+			},
+			async () => {
+				order.push("session-gate");
+				throw new Error("session CPU budget saturated");
+			},
+			"a custom tool",
+		);
+		await expect(execCommand(process.execPath, ["-e", "process.exit(0)"], process.cwd(), options)).rejects.toThrow(
+			/saturated/,
+		);
+		expect(order).toEqual(["session-gate"]);
+	});
+
+	it("runs session then caller hooks when the gate allows the spawn", async () => {
+		const order: string[] = [];
+		const options = withSessionCpuExec(
+			{
+				beforeSpawn: async () => {
+					order.push("caller-gate");
+				},
+				adoptPid: () => {
+					order.push("caller-adopt");
+				},
+			},
+			() => {
+				order.push("session-adopt");
+			},
+			async () => {
+				order.push("session-gate");
+			},
+			"a custom tool",
+		);
+		const result = await execCommand(process.execPath, ["-e", "process.exit(0)"], process.cwd(), options);
+		expect(result.code).toBe(0);
+		expect(order[0]).toBe("session-gate");
+		expect(order[1]).toBe("caller-gate");
+		expect(order).toContain("session-adopt");
+		expect(order).toContain("caller-adopt");
+		expect(order.indexOf("session-adopt")).toBeLessThan(order.indexOf("caller-adopt"));
 	});
 });

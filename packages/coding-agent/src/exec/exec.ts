@@ -74,9 +74,25 @@ export function withSessionCpuExec(
 	what: string,
 ): ExecOptions | undefined {
 	if (!adoptPid && !gate) return options;
+	const priorSpawn = options?.beforeSpawn;
+	const priorAdopt = options?.adoptPid;
 	return {
 		...options,
-		...(adoptPid ? { adoptPid } : {}),
-		...(gate ? { beforeSpawn: () => gate(what) } : {}),
+		...(adoptPid || priorAdopt
+			? {
+					adoptPid: (pid: number) => {
+						adoptPid?.(pid);
+						priorAdopt?.(pid);
+					},
+				}
+			: {}),
+		...(gate || priorSpawn
+			? {
+					beforeSpawn: async () => {
+						if (gate) await gate(what);
+						await priorSpawn?.();
+					},
+				}
+			: {}),
 	};
 }
