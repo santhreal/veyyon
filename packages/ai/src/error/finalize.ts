@@ -40,6 +40,14 @@ export interface FinalizeResult {
 	 * from, so a record can never say "aborted" at `error` or the reverse.
 	 */
 	logLevel: "debug" | "error";
+	/**
+	 * The classification rules that decided this id, in registry order.
+	 *
+	 * A record that states only the outcome leaves "which rule said so" to be re-derived by hand
+	 * against the provider's sentence, which is what a misclassification costs to diagnose. The names
+	 * come from the same walk that produced `id`, so a record can never name a rule that did not fire.
+	 */
+	rules: readonly string[];
 	/** User-facing message from {@link formatMessage}, or a local abort reason. */
 	message: string;
 }
@@ -65,18 +73,23 @@ export async function finalize(error: unknown, opts: FinalizeOptions = {}): Prom
 		message = errorMessage(error);
 	}
 
-	const id = classifyMessage({
-		api: opts.api,
-		errorId: classify(error, opts.api),
-		errorMessage: message,
-		errorStatus: currentStatus,
-	});
+	const trace: string[] = [];
+	const id = classifyMessage(
+		{
+			api: opts.api,
+			errorId: classify(error, opts.api, trace),
+			errorMessage: message,
+			errorStatus: currentStatus,
+		},
+		trace,
+	);
 
 	return {
 		id,
 		status: currentStatus,
 		stopReason: aborted ? "aborted" : "error",
 		logLevel: aborted ? "debug" : "error",
+		rules: [...new Set(trace)],
 		message,
 	};
 }
