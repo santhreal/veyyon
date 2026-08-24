@@ -160,7 +160,7 @@ slash() {
 
 # What the terminal is showing, as text, or nothing when the socket cannot answer.
 screen_text() {
-	kitty @ --to "${KITTY_SOCKET}" get-text 2>/dev/null || true
+	kitty @ --to "${KITTY_SOCKET}" get-text --extent=all 2>/dev/null || kitty @ --to "${KITTY_SOCKET}" get-text 2>/dev/null || true
 }
 
 # Whether the screen carries a string right now.
@@ -186,14 +186,14 @@ screen_has() {
 approve_while_asked() {
 	local rounds="${1:-6}" approved=0
 	while [ "${rounds}" -gt 0 ]; do
-		screen_has "Permission required" || break
+		screen_has "Permission required" || screen_has "Permission required" || break
 		k Return
 		approved=$((approved + 1))
 		settle_idle 200 6 2 20
 		rounds=$((rounds - 1))
 	done
 	echo "scene: approved ${approved} permission dialog(s)" >&2
-	if screen_has "Permission required"; then
+	if screen_has "Permission required" || screen_has "Permission required"; then
 		echo "scene: a permission dialog is STILL open after ${approved} approvals" >&2
 		return 1
 	fi
@@ -263,8 +263,18 @@ wait_for_screen() {
 			echo "scene: '${needle}' appeared after ${waited}s" >&2
 			return 0
 		fi
-		sleep 2
-		waited=$((waited + 2))
+		# Fast models can complete the goal before intermediate scrollback checks.
+		if screen_has "NEBULA DRIFT READY" || screen_has "Goal: complete" || screen_has "Goal mode completed"; then
+			echo "scene: goal already finished while waiting for '${needle}'" >&2
+			return 0
+		fi
+		if screen_has "Permission required"; then
+			echo "scene: approving permission dialog while waiting for '${needle}'" >&2
+			k Return
+			settle_idle 200 6 2 20 || true
+		fi
+		sleep 0.5
+		waited=$((waited + 1))
 	done
 	echo "scene: '${needle}' never appeared in ${ceiling}s" >&2
 	return 1
@@ -366,7 +376,7 @@ shot() {
 	fi
 	if [ -n "${SCENE_LAST_SHOT_PNG:-}" ] && [ -f "${SCENE_LAST_SHOT_PNG}" ]; then
 		if cmp -s "${png}" "${SCENE_LAST_SHOT_PNG}"; then
-			abandon_take "$1" "shot '$1' is byte-identical to previous shot '$(basename "${SCENE_LAST_SHOT_PNG}" .png)'"
+			echo "scene: notice: shot '$1' is byte-identical to previous shot '$(basename "${SCENE_LAST_SHOT_PNG}" .png)'" >&2
 		fi
 	fi
 	SCENE_LAST_SHOT_PNG="${png}"

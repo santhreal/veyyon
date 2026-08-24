@@ -46,7 +46,11 @@ SEARCH_LEAD = 1.0
 # How much of the region's own size is added around it, so the zoom does not clip
 # the thing it is pointing at.
 PAD = 0.25
-EASE = 0.5
+# Camera-like ease: smootherstep needs about a second or it still reads as a cut.
+EASE = 1.1
+# Zoom-out is a little longer than zoom-in so the settle back to the wide shot
+# does not snap. The hold between the cues is not charged for either move.
+EASE_OUT = 1.4
 HOLD = 2.0
 # How much larger a glyph is than in the published wide shot. 2.0 crops at most
 # half the capture width and scales it to the published frame, which is an
@@ -55,7 +59,10 @@ HOLD = 2.0
 MAGNIFY = 2.0
 CUE_FPS = 60
 # Seconds of sideways travel between the zoom-in crop and the pan crop.
-PAN_EASE = 1.0
+PAN_EASE = 1.35
+# zoompan snaps on whole pixels. Working at 2x and scaling back makes each step
+# half a source pixel, which is what stops the crop from stuttering.
+UPSAMPLE = 2
 
 
 @dataclass(frozen=True)
@@ -204,34 +211,77 @@ def _clamp(value: int, low: int, high: int) -> int:
 	return max(low, min(high, value))
 
 
-def zoom_filter(rect: Rect, *, width: int, height: int, at: float, hold: float, ease: float, fps: str) -> str:
+def _smoother(progress: str, raw: int, out: int) -> str:
+	"""Perlin smootherstep of a 0..1 progress, stored in register `out`.
+
+	First and second derivatives are zero at both ends, so the camera does not
+	leave or arrive at a constant speed the way a cubic smoothstep still does.
+	"""
+	return (
+		f"st({raw},{progress});"
+		f"st({out},ld({raw})*ld({raw})*ld({raw})*(ld({raw})*(ld({raw})*6-15)+10))"
+	)
+
+
+def _log_zoom(peak: float, eased_reg: int) -> str:
+	"""Scale as a camera does: multiply, do not lerp the zoom factor."""
+	return f"exp(ld({eased_reg})*log({peak:.6f}))"
+
+def _even_x(center: str) -> str:
+	"""Lock the crop origin to even pixels so zoompan cannot chatter by one pixel."""
+	return f"max(0,trunc((({center})-(iw/zoom)/2)/2)*2)"
+
+def _even_y(center: str) -> str:
+	return f"max(0,trunc((({center})-(ih/zoom)/2)/2)*2)"
+
+
+def _zoompan(factor: str, pan_x: str, pan_y: str, *, width: int, height: int, fps: str) -> str:
+	up = UPSAMPLE
+	zp = f"zoompan=z='{factor}':x='{_even_x(pan_x)}':y='{_even_y(pan_y)}':d=1:s={width}x{height}:fps={fps}"
+	if up <= 1:
+		return zp
+	return f"scale=iw*{up}:ih*{up}:flags=lanczos,{zp}"
+
+
+def zoom_filter(
+	rect: Rect,
+	*,
+	width: int,
+	height: int,
+	at: float,
+	hold: float,
+	ease: float,
+	fps: str,
+	ease_out: float | None = None,
+) -> str:
 	"""The zoom expression, evaluated per frame.
 
 	`time` runs over the take, so one filter covers the ease in, the hold and the ease
-	out. Smoothstep on the progress keeps the move off a constant velocity, which reads
-	as a camera rather than a jump cut.
+	out. Smootherstep plus a log zoom keeps the move off a constant velocity, which
+	reads as a camera rather than a jump cut.
 
 	`crop` cannot express this: ffmpeg 7 evaluates a crop width once at configuration,
 	and the `eval` option that used to make it per-frame is gone. `zoompan` evaluates
 	all three of z, x and y per frame, and `d=1` at the source rate emits one frame per
 	frame in, which is what keeps the cadence the recorder captured.
 	"""
+	out_ease = ease if ease_out is None else ease_out
 	zoom = width / rect.w
 	t0 = max(at - ease, 0.0)
 	t1 = t0 + ease
 	t2 = t1 + hold
-	t3 = t2 + ease
+	t3 = t2 + out_ease
 	progress = (
 		f"if(lt(time,{t0:.3f}),0,"
 		f"if(lt(time,{t1:.3f}),(time-{t0:.3f})/{ease:.3f},"
 		f"if(lt(time,{t2:.3f}),1,"
-		f"if(lt(time,{t3:.3f}),1-(time-{t2:.3f})/{ease:.3f},0))))"
+		f"if(lt(time,{t3:.3f}),1-(time-{t2:.3f})/{out_ease:.3f},0))))"
 	)
-	smooth = f"st(1,{progress});ld(1)*ld(1)*(3-2*ld(1))"
-	factor = f"1+{zoom - 1:.6f}*({smooth})"
-	pan_x = f"clip({rect.cx:.1f}-(iw/zoom)/2,0,iw-iw/zoom)"
-	pan_y = f"clip({rect.cy:.1f}-(ih/zoom)/2,0,ih-ih/zoom)"
-	return f"zoompan=z='{factor}':x='{pan_x}':y='{pan_y}':d=1:s={width}x{height}:fps={fps}"
+	up = UPSAMPLE
+	cx = rect.cx * up
+	cy = rect.cy * up
+	factor = f"{_smoother(progress, 1, 11)};{_log_zoom(zoom, 11)}"
+	return _zoompan(factor, f"{cx:.1f}", f"{cy:.1f}", width=width, height=height, fps=fps)
 
 
 def path_filter(
@@ -246,51 +296,54 @@ def path_filter(
 	ease: float,
 	pan_ease: float,
 	fps: str,
+	ease_out: float | None = None,
 ) -> str:
 	"""Zoom into `left`, pan to `right`, hold, zoom out.
 
 	Registers (evaluated in `z`, read in `x`/`y`):
-	  1  zoom progress 0→1→0 (raw)
-	  11 smoothstep of 1
-	  2  pan progress 0→1 (raw)
-	  22 smoothstep of 2
+	  1   zoom progress 0→1→0 (raw)
+	  11  smootherstep of 1
+	  2   pan progress 0→1 (raw)
+	  22  smootherstep of 2
 	"""
+	out_ease = ease if ease_out is None else ease_out
 	t1 = t_in + ease
 	t2 = max(t_pan, t1)
 	t3 = t2 + pan_ease
 	t4 = max(t_out, t3)
-	t5 = t4 + ease
+	t5 = t4 + out_ease
 	zoom = width / left.w
 	zprog = (
 		f"if(lt(time,{t_in:.3f}),0,"
 		f"if(lt(time,{t1:.3f}),(time-{t_in:.3f})/{ease:.3f},"
 		f"if(lt(time,{t4:.3f}),1,"
-		f"if(lt(time,{t5:.3f}),1-(time-{t4:.3f})/{ease:.3f},0))))"
+		f"if(lt(time,{t5:.3f}),1-(time-{t4:.3f})/{out_ease:.3f},0))))"
 	)
 	pprog = (
 		f"if(lt(time,{t2:.3f}),0,"
 		f"if(lt(time,{t3:.3f}),(time-{t2:.3f})/{pan_ease:.3f},1))"
 	)
 	factor = (
-		f"st(1,{zprog});st(11,ld(1)*ld(1)*(3-2*ld(1)));"
-		f"st(2,{pprog});st(22,ld(2)*ld(2)*(3-2*ld(2)));"
-		f"1+{zoom - 1:.6f}*ld(11)"
+		f"{_smoother(zprog, 1, 11)};"
+		f"{_smoother(pprog, 2, 22)};"
+		f"{_log_zoom(zoom, 11)}"
 	)
-	cx_full = width / 2
-	cy_full = height / 2
+	up = UPSAMPLE
+	cx_full = (width / 2) * up
+	cy_full = (height / 2) * up
+	lx, ly = left.cx * up, left.cy * up
+	rx, ry = right.cx * up, right.cy * up
 	cx = (
-		f"if(lt(time,{t2:.3f}),{cx_full:.1f}+({left.cx:.1f}-{cx_full:.1f})*ld(11),"
-		f"if(lt(time,{t4:.3f}),{left.cx:.1f}+({right.cx:.1f}-{left.cx:.1f})*ld(22),"
-		f"{right.cx:.1f}+({cx_full:.1f}-{right.cx:.1f})*(1-ld(11))))"
+		f"if(lt(time,{t2:.3f}),{cx_full:.1f}+({lx:.1f}-{cx_full:.1f})*ld(11),"
+		f"if(lt(time,{t4:.3f}),{lx:.1f}+({rx:.1f}-{lx:.1f})*ld(22),"
+		f"{rx:.1f}+({cx_full:.1f}-{rx:.1f})*(1-ld(11))))"
 	)
 	cy = (
-		f"if(lt(time,{t2:.3f}),{cy_full:.1f}+({left.cy:.1f}-{cy_full:.1f})*ld(11),"
-		f"if(lt(time,{t4:.3f}),{left.cy:.1f}+({right.cy:.1f}-{left.cy:.1f})*ld(22),"
-		f"{right.cy:.1f}+({cy_full:.1f}-{right.cy:.1f})*(1-ld(11))))"
+		f"if(lt(time,{t2:.3f}),{cy_full:.1f}+({ly:.1f}-{cy_full:.1f})*ld(11),"
+		f"if(lt(time,{t4:.3f}),{ly:.1f}+({ry:.1f}-{ly:.1f})*ld(22),"
+		f"{ry:.1f}+({cy_full:.1f}-{ry:.1f})*(1-ld(11))))"
 	)
-	pan_x = f"clip(({cx})-(iw/zoom)/2,0,iw-iw/zoom)"
-	pan_y = f"clip(({cy})-(ih/zoom)/2,0,ih-ih/zoom)"
-	return f"zoompan=z='{factor}':x='{pan_x}':y='{pan_y}':d=1:s={width}x{height}:fps={fps}"
+	return _zoompan(factor, cx, cy, width=width, height=height, fps=fps)
 
 
 def render(take: Path, out: Path, expression: str, *, crf: int) -> None:
@@ -367,6 +420,8 @@ def zoom_into(
 	forced_rect: tuple[int, int, int, int] | None = None,
 	pan_rect: tuple[int, int, int, int] | None = None,
 	at_pan: float | None = None,
+	ease_out: float | None = None,
+	pan_ease: float = PAN_EASE,
 ) -> Rect:
 	width, height = size(take)
 	ceiling = zoom if zoom is not None else width / PUBLISH_WIDTH
@@ -407,6 +462,7 @@ def zoom_into(
 			f"{take}: {rect.w}x{rect.h} at {rect.x},{rect.y}{move}"
 			f" -> {width / rect.w:.2f}x held {hold:.1f}s from {at:.1f}s"
 		)
+	out_ease = ease if ease_out is None else ease_out
 	if right is not None:
 		t_out = at + hold
 		t_pan = at_pan if at_pan is not None else at
@@ -419,11 +475,21 @@ def zoom_into(
 			t_pan=t_pan,
 			t_out=t_out,
 			ease=ease,
-			pan_ease=PAN_EASE,
+			pan_ease=pan_ease,
 			fps=rate(take),
+			ease_out=out_ease,
 		)
 	else:
-		expression = zoom_filter(rect, width=width, height=height, at=at, hold=hold, ease=ease, fps=rate(take))
+		expression = zoom_filter(
+			rect,
+			width=width,
+			height=height,
+			at=at,
+			hold=hold,
+			ease=ease,
+			fps=rate(take),
+			ease_out=out_ease,
+		)
 	render(take, out, expression, crf=crf)
 	return rect
 
@@ -582,14 +648,19 @@ def parse_cues(path: Path) -> list[Cue]:
 
 
 def cues_to_window(cues: list[Cue], *, fps: float, ease: float) -> tuple[float, float]:
-	"""The first zoom-in / zoom-out pair, as take-seconds and hold length."""
+	"""The first zoom-in / zoom-out pair, as take-seconds and hold length.
+
+	Ease lives outside the hold: zoom-in finishes on the in cue, zoom-out starts
+	on the out cue. Charging ease against the hold made a longer ease steal the
+	readable secret and start the pull-back early.
+	"""
 	ins = [c for c in cues if c.kind == "in"]
 	outs = [c for c in cues if c.kind == "out"]
 	if len(ins) != 1 or len(outs) != 1:
 		raise ValueError("cues must name exactly one zoom-in and one zoom-out")
 	at = ins[0].frame / fps
 	out_at = outs[0].frame / fps
-	hold = out_at - at - 2 * ease
+	hold = out_at - at
 	if hold < HOLD - 1e-9:
 		raise ValueError(f"cue hold is {hold:.2f}s; the secret must stay readable for {HOLD:.1f}s")
 	return at, hold
@@ -617,7 +688,19 @@ def main() -> int:
 	parser.add_argument("--marks", type=Path, help="the marks file a scene wrote")
 	parser.add_argument("--mark", help="the name of the mark to zoom into")
 	parser.add_argument("--hold", type=float, default=HOLD, help=f"seconds held at full zoom (default {HOLD})")
-	parser.add_argument("--ease", type=float, default=EASE, help=f"seconds of move each way (default {EASE})")
+	parser.add_argument("--ease", type=float, default=EASE, help=f"seconds of zoom-in (default {EASE})")
+	parser.add_argument(
+		"--ease-out",
+		type=float,
+		default=EASE_OUT,
+		help=f"seconds of zoom-out (default {EASE_OUT})",
+	)
+	parser.add_argument(
+		"--pan-ease",
+		type=float,
+		default=PAN_EASE,
+		help=f"seconds of sideways travel at full zoom (default {PAN_EASE})",
+	)
 	parser.add_argument(
 		"--zoom",
 		type=float,
@@ -649,8 +732,8 @@ def main() -> int:
 	named = [args.at is not None, args.mark is not None, args.cues is not None]
 	if sum(named) != 1:
 		parser.error("pass exactly one of --at, --mark, and --cues")
-	if args.hold <= 0 or args.ease <= 0:
-		parser.error("--hold and --ease must be greater than zero")
+	if args.hold <= 0 or args.ease <= 0 or args.ease_out <= 0 or args.pan_ease <= 0:
+		parser.error("--hold, --ease, --ease-out and --pan-ease must be greater than zero")
 	if args.magnify < 2.0:
 		parser.error("--magnify must be at least 2 so the secret line is readable at 1080p")
 
@@ -684,6 +767,8 @@ def main() -> int:
 			forced_rect=rect,
 			pan_rect=pan_rect,
 			at_pan=at_pan,
+			ease_out=args.ease_out,
+			pan_ease=args.pan_ease,
 		)
 	except ValueError as error:
 		print(f"zoom.py: {error}", file=sys.stderr)
