@@ -30,17 +30,19 @@ import {
 	type CatalogProviderDescriptor,
 	isCatalogDescriptor,
 } from "../src/provider-models/descriptor-types";
-import { PROVIDER_DESCRIPTORS } from "../src/provider-models/descriptors";
+import { PROVIDER_DESCRIPTORS, PROVIDERS_PUBLISHING_OWN_MODEL_LIMITS } from "../src/provider-models/descriptors";
 import {
 	ANTHROPIC_CURATED_FALLBACK_MODELS,
 	buildFireworksFastSeed,
 	buildXaiOAuthStaticSeed,
+	COMMAND_CODE_STATIC_MODELS,
 	clampFireworksKimiMaxTokens,
 	clampKimiK27CodeMaxTokens,
 	isFireworksKimiK2ModelId,
 	isKimiK27CodeModelId,
 	MODELS_DEV_PROVIDER_DESCRIPTORS,
 	mapModelsDevToModels,
+	NOUS_RESEARCH_BUNDLED_MODELS,
 	projectOpenAIProReasoningAliases,
 	SAKANA_FUGU_STATIC_MODELS,
 	stripFireworksDeepSeekThinkingToggle,
@@ -68,6 +70,34 @@ const packageRoot = path.join(import.meta.dir, "..");
  */
 const DISCOVERY_ONLY_PROVIDERS = new Set(["ollama", "vllm", "lm-studio", "litellm"]);
 const RETIRED_PROVIDERS = new Set(["wafer-pass", "wandb"]);
+
+/**
+ * The committed snapshot, read back so a provider that no discovery run reached
+ * keeps its previous rows. The JSON import is structurally a ModelSpec table,
+ * which the type import cannot express.
+ */
+const previousSnapshot = prevModelsJson as unknown as Record<string, Record<string, ModelSpec>>;
+
+/**
+ * `--providers=a,b` regenerates only the named providers and carries every
+ * other provider's rows over from the committed snapshot. It exists for a
+ * provider whose discovery needs a key that a full run does not have. The
+ * committed snapshot is only a full-tree regeneration when `bun run gen:models`
+ * runs without this flag, so a partial run states which providers it wrote.
+ */
+const providerFilterArg = process.argv.find(arg => arg.startsWith("--providers="));
+const providerFilter = providerFilterArg
+	? new Set(
+			providerFilterArg
+				.slice("--providers=".length)
+				.split(",")
+				.map(provider => provider.trim())
+				.filter(Boolean),
+		)
+	: undefined;
+if (providerFilter?.size === 0) {
+	throw new Error("--providers requires at least one provider id");
+}
 
 async function resolveProviderApiKey(providerId: string, catalog: CatalogDiscoveryConfig): Promise<string | undefined> {
 	for (const envVar of catalog.envVars ?? []) {
@@ -198,7 +228,13 @@ function applyGlobalModelsDevFallback(
 	const globalReferences = createGlobalModelsDevReferenceMap(modelsDevModels);
 	const twinByKey = new Map(modelsDevModels.map(model => [`${model.provider}/${model.id}`, model]));
 	return models.map(model => {
-		if (model.provider === "devin" || model.provider === "baseten") {
+		if (
+			model.provider === "devin" ||
+			model.provider === "baseten" ||
+			PROVIDERS_PUBLISHING_OWN_MODEL_LIMITS.has(model.provider)
+		) {
+			// These endpoints publish their own model surfaces; cross-router
+			// references must not invent capabilities or limits.
 			return model;
 		}
 		// Same provider AND id: the models.dev twin owns the declared surface.
@@ -645,6 +681,16 @@ async function generateModels() {
 	if (!authoritativeCatalogProviders.has("sakana")) {
 		allModels.push(...SAKANA_FUGU_STATIC_MODELS);
 	}
+	// Seed Nous Portal's documented default so it resolves before the first
+	// OAuth-backed refresh.
+	if (!authoritativeCatalogProviders.has("nous-research")) {
+		allModels.push(...NOUS_RESEARCH_BUNDLED_MODELS);
+	}
+	// Seed Command Code's documented flagships when credentialed discovery is
+	// unavailable. Live discovery keeps the router's wider published catalog.
+	if (!authoritativeCatalogProviders.has("command-code")) {
+		allModels.push(...COMMAND_CODE_STATIC_MODELS);
+	}
 	// Seed the GitLab Duo Agent fallback model so a fresh install (no credentialed
 	// dynamic discovery/cache yet) still surfaces the provider's default model in the
 	// built-in catalog. The descriptor deliberately has NO `catalogDiscovery`, so it is
@@ -683,6 +729,9 @@ async function generateModels() {
 	}
 
 	const modelsDevSnapshotExcludedProviders = new Set<string>();
+	// The Nous offline seed is an intentional tool-capable subset. Never carry
+	// non-tool Hermes rows forward from an older generated snapshot.
+	modelsDevSnapshotExcludedProviders.add("nous-research");
 	for (const model of modelsDevModels) {
 		if (model.provider === "google-vertex") {
 			modelsDevSnapshotExcludedProviders.add(model.provider);
@@ -709,7 +758,7 @@ async function generateModels() {
 	// Previous-snapshot entries may carry an older ThinkingConfig vocabulary;
 	// applyGeneratedModelPolicies re-bakes `thinking` for every model, so the
 	// inbound shape is irrelevant beyond identity/pricing/compat fields.
-	for (const models of Object.values(prevModelsJson as unknown as Record<string, Record<string, ModelSpec>>)) {
+	for (const models of Object.values(previousSnapshot)) {
 		for (const model of Object.values(models)) {
 			if (
 				!fetchedKeys.has(`${model.provider}/${model.id}`) &&
@@ -783,14 +832,27 @@ async function generateModels() {
 		);
 	};
 
-	const MODELS: Record<string, Record<string, ModelSpec>> = sortObj(providers);
+	const outputProviders: Record<string, Record<string, ModelSpec>> = providerFilter
+		? { ...previousSnapshot }
+		: providers;
+	if (providerFilter) {
+		for (const provider of providerFilter) {
+			const generated = providers[provider];
+			if (!generated) {
+				throw new Error(`Cannot generate unknown or empty provider: ${provider}`);
+			}
+			outputProviders[provider] = generated;
+		}
+	}
+
+	const MODELS: Record<string, Record<string, ModelSpec>> = sortObj(outputProviders);
 	for (const key in MODELS) {
 		MODELS[key] = sortObj(MODELS[key]);
 	}
 
 	// Generate JSON file
 	await Bun.write(path.join(packageRoot, "src/models.json"), JSON.stringify(MODELS, null, "	"));
-	console.log("Generated src/models.json");
+	console.log(`Generated src/models.json${providerFilter ? ` for ${[...providerFilter].join(", ")}` : ""}`);
 
 	// Print statistics
 	const totalModels = allModels.length;

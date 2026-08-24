@@ -3,6 +3,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import { errorMessage, isTimeoutError, postmortem, Snowflake, untilAborted } from "@veyyon/utils";
+// The owner, not the barrel: this module reaches the two discard contracts and nothing else.
+import { bestEffort, optionalResult } from "@veyyon/utils/discarded-fault";
 import type { HTMLElement } from "linkedom";
 import type {
 	Browser,
@@ -765,15 +767,18 @@ export class WorkerCore {
 		let session: CDPSession | undefined;
 		try {
 			session = await target.createCDPSession();
-			await session.send("Page.enable").catch(() => undefined);
-			await session.send("Page.handleJavaScriptDialog", { accept: false }).catch(() => undefined);
-			await session.send("Page.stopLoading").catch(() => undefined);
+			await bestEffort(session.send("Page.enable"), "a target that refuses Page.enable is still worth nudging");
+			await bestEffort(
+				session.send("Page.handleJavaScriptDialog", { accept: false }),
+				"there may be no dialog open, which is the common case",
+			);
+			await bestEffort(session.send("Page.stopLoading"), "the load may already have stopped");
 		} catch (error) {
 			this.#log("debug", "Recovery CDP session failed; proceeding with attach", {
 				error: errorMessage(error),
 			});
 		} finally {
-			await session?.detach().catch(() => undefined);
+			if (session) await bestEffort(session.detach(), "the session may already be gone with its target");
 		}
 	}
 
@@ -799,9 +804,9 @@ export class WorkerCore {
 		this.#targetId = targetId;
 		return {
 			url: redactUrlCredentials(page.url()),
-			// Reported to the operator for display; a page mid-navigation has no title yet, and `undefined` is the
-			// honest answer for that -- distinct from an empty string, which would claim the page has no title.
-			title: await page.title().catch(() => undefined),
+			// Reported to the operator for display; `undefined` is distinct from an empty string, which would
+			// claim the page has no title.
+			title: await optionalResult(page.title(), "a page mid-navigation has no title yet"),
 			viewport: page.viewport() ?? DEFAULT_VIEWPORT,
 			targetId,
 		};
@@ -1437,9 +1442,11 @@ export class WorkerCore {
 		// endpoint, cdp/app attach). CDP `Page.captureScreenshot` reads the
 		// compositor surface, which follows the *active* target — a backgrounded
 		// page can stall waiting for a fresh frame (the 20s screenshot timeouts)
-		// or hand back a sibling tab's pixels. Activate first; best-effort so an
-		// already-active or freshly-closed target never fails the capture.
-		await untilAborted(signal, () => page.bringToFront()).catch(() => undefined);
+		// or hand back a sibling tab's pixels. Activate first.
+		await bestEffort(
+			untilAborted(signal, () => page.bringToFront()),
+			"an already-active or freshly-closed target never fails the capture",
+		);
 		const fullPage = opts.selector ? false : (opts.fullPage ?? false);
 		// An explicit save path picks the full-res capture format: puppeteer encodes
 		// png/jpeg/webp natively, so `save: "shot.webp"` gets real WebP bytes instead
@@ -1457,14 +1464,17 @@ export class WorkerCore {
 				// Bring the element into view with a single instant scroll instead of puppeteer's
 				// scrollIntoViewIfNeeded(), whose IntersectionObserver promise can stall indefinitely
 				// on continuously-animating pages (WebGL / backdrop-filter "glass" effects). Best-effort.
-				await untilAborted(signal, () =>
-					handle.evaluate(el => {
-						const target = el as unknown as {
-							scrollIntoView: (opts: { behavior: string; block: string; inline: string }) => void;
-						};
-						target.scrollIntoView({ behavior: "instant", block: "center", inline: "center" });
-					}),
-				).catch(() => undefined);
+				await bestEffort(
+					untilAborted(signal, () =>
+						handle.evaluate(el => {
+							const target = el as unknown as {
+								scrollIntoView: (opts: { behavior: string; block: string; inline: string }) => void;
+							};
+							target.scrollIntoView({ behavior: "instant", block: "center", inline: "center" });
+						}),
+					),
+					"the capture renders the clipped region whether or not the scroll landed",
+				);
 				// scrollIntoView:false skips the same IntersectionObserver check inside screenshot();
 				// captureBeyondViewport (puppeteer's default) still renders the clipped region.
 				const shotOpts: ElementScreenshotOptions = { type: captureType, scrollIntoView: false };
@@ -1725,7 +1735,7 @@ export class WorkerCore {
 			try {
 				await session.send("Page.stopLoading");
 			} finally {
-				await session.detach().catch(() => undefined);
+				await bestEffort(session.detach(), "the stop already happened, and the session goes with the target");
 			}
 		} catch (error) {
 			this.#log("debug", "Page.stopLoading failed", {
@@ -1741,7 +1751,9 @@ export class WorkerCore {
 		if (this.#dialogHandler && page && !page.isClosed()) page.off("dialog", this.#dialogHandler);
 		// The worker is shutting down and reports `closed` below regardless: a page that will not close is either
 		// already closing or belongs to a browser that is going away with it, and the disconnect follows.
-		if (this.#mode === "headless" && page && !page.isClosed()) await page.close().catch(() => undefined);
+		if (this.#mode === "headless" && page && !page.isClosed()) {
+			await bestEffort(page.close(), "a page that will not close is already closing or going with its browser");
+		}
 		if (this.#browser?.connected) this.#browser.disconnect();
 		this.#transport.send({ type: "closed" });
 		this.#transport.close();
