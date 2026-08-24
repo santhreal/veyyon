@@ -10,6 +10,7 @@
 - `read` accepts a semicolon-delimited list of internal resources (`skill://demo/one.md;skill://demo/two.md`), the same list form `grep` and `glob` take, and returns one section per entry.
 - Eval kernels gain `kv`, a bounded JSON store under the session's artifacts directory that survives kernel resets and is shared between JavaScript and Python without cross-session filename collisions or lost concurrent updates, and `defs()`, which lists the names user code has defined in the kernel.
 - Every supervised process termination records which component ended it and why, with distinct attribution for each path (operator stop, signal, restart, broker shutdown, idle reaper, OS signal, broker recovery, launch failure, external signal, and natural exit); `launch list` output shows the lifetime owning condition and retained completion records with exit codes, reasons, and output tails, queryable after the name is reused and across broker restarts.
+- `/omfg` forges rules that carry the extended TTSR frontmatter (`astCondition`, `interruptMode`, `pathScope`, `repeatMode`, `repeatGap`, `repeatCompactions`, `warmupMatches`), confirms ast-grep conditions against the conversation's tool history through the same gate chain a live stream applies, and fails loudly on a malformed optional field instead of dropping it.
 
 ### Changed
 
