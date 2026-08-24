@@ -10,7 +10,7 @@
  * provider with no login turns this suite red until someone writes that reason down. The exception
  * set itself is pinned to the three providers that genuinely cannot be one pasted key, and each
  * exception is cross-checked against the registry so a stale entry (provider deleted, or provider
- * that has since grown a login) also goes red. For the seven single-key providers the login is
+ * that has since grown a login) also goes red. For every enumerated single-key provider the login is
  * driven end to end through a fake controller: the pasted key comes back trimmed, `onAuth` receives
  * that vendor's real key page, the validation request goes to that vendor's real endpoint, and an
  * all-whitespace paste is rejected.
@@ -75,6 +75,11 @@ const SINGLE_KEY_PROVIDERS: readonly SingleKeyProvider[] = [
 		validationUrl: "https://api.minimax.io/v1/models",
 	},
 	{ id: "aimlapi", authUrl: "https://aimlapi.com/app/keys", validationUrl: null },
+	{
+		id: "command-code",
+		authUrl: "https://commandcode.ai/studio/provider",
+		validationUrl: "https://api.commandcode.ai/provider/v1/chat/completions",
+	},
 ];
 
 function providerById(id: string): ProviderDefinition {
@@ -85,17 +90,26 @@ function providerById(id: string): ProviderDefinition {
 	return def;
 }
 
+type CapturedRequest = {
+	url: string;
+	init?: RequestInit;
+};
+
 type Harness = {
 	callbacks: OAuthLoginCallbacks;
 	authCalls: OAuthAuthInfo[];
 	fetchUrls: string[];
+	fetchRequests: CapturedRequest[];
 };
 
 function harness(paste: string): Harness {
 	const authCalls: OAuthAuthInfo[] = [];
 	const fetchUrls: string[] = [];
-	const fetchStub: FetchImpl = vi.fn(async (input: string | URL | Request) => {
-		fetchUrls.push(String(input));
+	const fetchRequests: CapturedRequest[] = [];
+	const fetchStub: FetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+		const url = String(input);
+		fetchUrls.push(url);
+		fetchRequests.push({ url, init });
 		return new Response(JSON.stringify({ data: [] }), {
 			status: 200,
 			headers: { "Content-Type": "application/json" },
@@ -104,6 +118,7 @@ function harness(paste: string): Harness {
 	return {
 		authCalls,
 		fetchUrls,
+		fetchRequests,
 		callbacks: {
 			onAuth: vi.fn((info: OAuthAuthInfo) => {
 				authCalls.push(info);
@@ -171,4 +186,19 @@ describe("single-key providers have a real /login", () => {
 			expect(fetchUrls).toEqual([]);
 		},
 	);
+
+	test("Command Code validates the trimmed key with the documented bearer request and model", async () => {
+		const login = providerById("command-code").login;
+		if (typeof login !== "function") throw new Error("provider command-code has no callable login");
+		const { callbacks, fetchRequests } = harness("  command-secret  ");
+
+		await expect(login(callbacks)).resolves.toBe("command-secret");
+
+		expect(fetchRequests).toHaveLength(1);
+		const request = fetchRequests[0];
+		expect(request?.url).toBe("https://api.commandcode.ai/provider/v1/chat/completions");
+		expect(new Headers(request?.init?.headers).get("Authorization")).toBe("Bearer command-secret");
+		const body = JSON.parse(String(request?.init?.body)) as { model?: unknown };
+		expect(body.model).toBe("moonshotai/Kimi-K2.7-Code");
+	});
 });
