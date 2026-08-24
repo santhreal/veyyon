@@ -710,10 +710,10 @@ mod tests {
 	fn spawned_pid(path: &std::path::Path) -> u32 {
 		let deadline = Instant::now() + Duration::from_secs(5);
 		while Instant::now() < deadline {
-			if let Ok(text) = std::fs::read_to_string(path) {
-				if let Ok(pid) = text.trim().parse::<u32>() {
-					return pid;
-				}
+			if let Ok(text) = std::fs::read_to_string(path)
+				&& let Ok(pid) = text.trim().parse::<u32>()
+			{
+				return pid;
 			}
 			thread::sleep(Duration::from_millis(20));
 		}
