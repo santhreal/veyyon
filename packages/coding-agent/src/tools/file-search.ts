@@ -34,13 +34,7 @@ import {
 	resolveToCwd,
 	toPathList,
 } from "./path-utils";
-import {
-	formatCount,
-	formatEmptyMessage,
-	formatErrorMessage,
-	formatMoreItems,
-	PREVIEW_LIMITS,
-} from "./render-utils";
+import { formatCount, formatEmptyMessage, formatErrorMessage, formatMoreItems, PREVIEW_LIMITS } from "./render-utils";
 import { ToolError, throwIfAborted, toolAbort } from "./tool-errors";
 import { toolResult } from "./tool-result";
 
