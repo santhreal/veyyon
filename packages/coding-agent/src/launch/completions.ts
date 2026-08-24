@@ -15,9 +15,10 @@
  *
  * BOUNDS. Retention is the last {@link DAEMON_COMPLETIONS_LIMIT} records OR
  * {@link DAEMON_COMPLETIONS_MAX_AGE_MS}, whichever bites first, applied on every append. The
- * read side returns exactly what the file holds; pruning happens at write time because the
- * broker is the only writer (its lease elects one per project).
+ * read side filters too, so a quiet project cannot serve expired records merely
+ * because no later completion triggered an append.
  */
+import { readFile } from "node:fs/promises";
 
 import { atomicWriteFile, errorMessage, isEnoent, logger } from "@veyyon/utils";
 import { daemonCompletionsPath } from "./paths";
@@ -54,15 +55,21 @@ export function parseDaemonCompletionsFile(value: unknown): DaemonCompletionReco
 }
 
 /** Read the retained completion records, oldest first. Throws on an unreadable or stale store. */
-export async function readDaemonCompletions(runtimeDir: string): Promise<DaemonCompletionRecord[]> {
+export async function readDaemonCompletions(
+	runtimeDir: string,
+	now: number = Date.now(),
+): Promise<DaemonCompletionRecord[]> {
 	let decoded: unknown;
 	try {
-		decoded = await Bun.file(daemonCompletionsPath(runtimeDir)).json();
+		decoded = JSON.parse(await readFile(daemonCompletionsPath(runtimeDir), "utf8"));
 	} catch (error) {
 		if (isEnoent(error)) return [];
 		throw error;
 	}
-	return parseDaemonCompletionsFile(decoded);
+	const cutoff = now - DAEMON_COMPLETIONS_MAX_AGE_MS;
+	return parseDaemonCompletionsFile(decoded)
+		.filter(entry => entry.exitedAt >= cutoff)
+		.slice(-DAEMON_COMPLETIONS_LIMIT);
 }
 
 /**
@@ -77,7 +84,7 @@ export async function appendDaemonCompletion(
 ): Promise<DaemonCompletionRecord[]> {
 	let existing: DaemonCompletionRecord[] = [];
 	try {
-		existing = await readDaemonCompletions(runtimeDir);
+		existing = await readDaemonCompletions(runtimeDir, now);
 	} catch (error) {
 		logger.warn("Discarding unreadable daemon completion records", {
 			path: daemonCompletionsPath(runtimeDir),
