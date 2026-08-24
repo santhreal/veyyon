@@ -11,6 +11,7 @@ import { Text } from "@veyyon/tui";
 import { clampLow, prompt, sanitizeText } from "@veyyon/utils";
 import { type } from "arktype";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
+import type { DaemonBrokerClient } from "../launch/client";
 import { daemonClientForProject, daemonClientForSession } from "../launch/client";
 import type { DaemonOperation, DaemonRpcResult, DaemonSnapshot, DaemonSpec, DaemonState } from "../launch/protocol";
 import { renderTerminalOutput } from "../launch/terminal-output";

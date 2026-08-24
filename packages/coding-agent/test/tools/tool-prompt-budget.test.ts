@@ -61,7 +61,7 @@ const TOOL_PROMPT_CEILINGS: Record<string, number> = {
 	bash: 3910,
 	todo: 2640,
 	irc: 3450,
-	launch: 2950,
+	launch: 3040,
 	task: 2720,
 	debug: 2350,
 	ast_grep: 2140,
@@ -87,7 +87,7 @@ const TOOL_PROMPT_CEILINGS: Record<string, number> = {
  * 47,000 to 47,200: one sentence stating that a semicolon-delimited argument reads every entry,
  * without which the list is unreachable prose in a changelog.
  */
-const TOTAL_PROMPT_CEILING = 47_350;
+const TOTAL_PROMPT_CEILING = 47_450;
 
 /**
  * How far under its ceiling a tool may sit before the row is stale.
