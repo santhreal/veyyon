@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-c0972181.js";
+            window.path_to_searchindex_js = "../searchindex-abb5237d.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -231,6 +231,9 @@ code paths in:</p>
 <tbody>
 <tr><td><code>OPENAI_CODEX_OAUTH_TOKEN</code></td><td>OpenAI Codex OAuth auth</td><td>Using <code>openai-codex</code> provider</td><td></td></tr>
 <tr><td><code>BASETEN_API_KEY</code></td><td>Baseten auth</td><td>Using <code>baseten</code> provider</td><td></td></tr>
+<tr><td><code>CMD_API_KEY</code></td><td>Command Code auth</td><td>Using <code>command-code</code> provider</td><td>Preferred key alias; endpoint <code>https://api.commandcode.ai/provider/v1</code>, default <code>moonshotai/Kimi-K2.7-Code</code></td></tr>
+<tr><td><code>COMMAND_CODE_API_KEY</code></td><td>Command Code auth</td><td>Using <code>command-code</code> provider without <code>CMD_API_KEY</code></td><td>Fallback after <code>CMD_API_KEY</code>; keys are issued at <code>https://commandcode.ai/studio/provider</code></td></tr>
+<tr><td><code>NOUS_API_KEY</code></td><td>Nous Research explicit/headless auth</td><td>Using <code>nous-research</code> without <code>/login nous-research</code></td><td>OAuth is preferred; endpoint <code>https://inference-api.nousresearch.com/v1</code>, default <code>anthropic/claude-sonnet-4.6</code></td></tr>
 <tr><td><code>COREWEAVE_API_KEY</code></td><td>CoreWeave auth</td><td>Using <code>coreweave</code> provider</td><td>Takes precedence over <code>WANDB_API_KEY</code></td></tr>
 <tr><td><code>WANDB_API_KEY</code></td><td>CoreWeave auth</td><td>Using <code>coreweave</code> provider</td><td>Fallback after <code>COREWEAVE_API_KEY</code></td></tr>
 <tr><td><code>DEVIN_API_KEY</code></td><td>Devin auth</td><td>Using <code>devin</code> provider</td><td></td></tr>
@@ -292,6 +295,7 @@ code paths in:</p>
 </tbody>
 </table>
 </div>
+<p><code>/login nous-research</code> stores the Portal refresh token and supplies refreshed short-lived inference access tokens to requests and model discovery. When no stored OAuth credential is selected, <code>NOUS_API_KEY</code> supplies the headless fallback.</p>
 <h3 id="githubcopilot-tokens"><a class="header" href="#githubcopilot-tokens">GitHub/Copilot tokens</a></h3>
 <div class="table-wrapper">
 <table>

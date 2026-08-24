@@ -232,6 +232,11 @@ Change the source instead:
 Regenerate with `bun run gen:models` and commit `models.json` with the source change. Test the
 resolver or descriptor, not the bundled JSON, so the test survives upstream metadata shifts.
 
+`bun run gen:models --providers=a,b` regenerates only the named providers and carries every other
+provider's rows over from the committed snapshot. It covers a provider whose discovery needs a key a
+full run does not have, and it states which providers it wrote. A commit that changes a shared
+generation pass regenerates in full instead, because the carried-over rows never see that pass.
+
 ## Logging
 
 Never use `console.log`/`error`/`warn` in the coding-agent package; it corrupts TUI rendering. Use
