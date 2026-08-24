@@ -53,7 +53,9 @@ import { BASE_SETTINGS, HOST_DEPENDENT_TOOL_NAMES } from "./tool-loading-differe
  * that tool; the gate tells you when a row has gone slack. `examples` are counted with the
  * description because they are appended to it on the wire — a tool that moves prose into an
  * example array has not saved anything. `search` is one description covering files, text and
- * structure, so its row carries what the three retired workspace-search tools each spent.
+ * structure, so its row carries what the three retired workspace-search tools each spent, and
+ * `read` carries the semicolon-delimited resource list alongside the text-search cross-reference
+ * this branch renamed.
  */
 const TOOL_PROMPT_CEILINGS: Record<string, number> = {
 	edit: 8030,
