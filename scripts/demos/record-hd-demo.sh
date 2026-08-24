@@ -139,8 +139,8 @@ demo-hd)
 		--still-keep 4
 		--still-min 4
 		--speed-badge
-		--fps 60
-		--webp-fps 60
+		--fps "${SCENE_FPS}"
+		--webp-fps "${SCENE_FPS}"
 	)
 	;;
 todo-marathon)
