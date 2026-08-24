@@ -11,7 +11,6 @@ import { hostMatchesUrl } from "@veyyon/catalog/hosts";
 import { OPENROUTER_API_ENDPOINT } from "@veyyon/catalog/provider-endpoints";
 import {
 	$env,
-	$flag,
 	extractHttpStatusFromError,
 	fetchWithRetry,
 	getFastembedCacheDir,
@@ -21,7 +20,12 @@ import {
 } from "@veyyon/utils";
 import type { EmbeddingModel } from "fastembed";
 import { LRUCache } from "lru-cache/raw";
-import { embeddingModel } from "../config";
+import {
+	type Env,
+	embeddingModel,
+	embeddingsDisabled as embeddingsDisabledFromEnv,
+	isApiEmbeddingModel,
+} from "../config";
 import type { DenseVector as Vector } from "../types";
 import { ensureFastembedModelSidecars, FASTEMBED_ID_BY_HF_REPO } from "./fastembed-model-cache";
 import { loadFastembed } from "./fastembed-runtime";
@@ -185,7 +189,7 @@ export function embeddingsDisabled(): boolean {
 	if (active?.disabled !== undefined) {
 		return active.disabled;
 	}
-	return $flag("MNEMOPI_NO_EMBEDDINGS");
+	return embeddingsDisabledFromEnv();
 }
 
 /**
@@ -308,19 +312,12 @@ export function currentEmbeddingModel(): string {
 }
 
 export function isApiModel(modelName: string): boolean {
-	if (
-		modelName.startsWith("openai/") ||
-		modelName.includes("text-embedding") ||
-		modelName.startsWith("text-embedding")
-	) {
-		return true;
-	}
-	const active = activeEmbeddingOptions();
-	const baseUrl = active?.apiUrl ?? ($env.MNEMOPI_EMBEDDING_API_URL || $env.OPENROUTER_BASE_URL);
-	if (baseUrl !== undefined && baseUrl !== "" && !hostMatchesUrl(baseUrl, "openrouter")) {
-		return true;
-	}
-	return $flag("MNEMOPI_EMBEDDINGS_VIA_API");
+	const apiUrl = activeEmbeddingOptions()?.apiUrl;
+	// The rule lives in `../config`; a caller that named its own endpoint gets that
+	// endpoint laid over the environment the rule reads, rather than a second copy
+	// of the rule here.
+	const env: Env = apiUrl === undefined ? process.env : { ...process.env, MNEMOPI_EMBEDDING_API_URL: apiUrl };
+	return isApiEmbeddingModel(modelName, env);
 }
 
 /**
