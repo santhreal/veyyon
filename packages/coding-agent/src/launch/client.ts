@@ -51,9 +51,16 @@ export interface DaemonBrokerClientOptions {
 	adoptSpawnedPid?: (pid: number) => void;
 }
 
-/** Persistent per-process connection to one project's daemon broker. */
+/** Persistent per-process connection to one daemon broker scope. */
 export interface DaemonBrokerClient {
 	readonly projectDir: string;
+	/**
+	 * The runtime directory this client's broker owns: the scope identity. Two
+	 * clients for one project may serve disjoint process tables (session scopes),
+	 * so anything keyed per project — exit watches, release lookups — keys per
+	 * runtime directory instead.
+	 */
+	readonly runtimeDir: string;
 	request(operation: DaemonOperation, signal?: AbortSignal): Promise<DaemonRpcResult>;
 	close(): void;
 }
@@ -128,7 +135,7 @@ function openSocket(endpoint: string, timeoutMs: number): Promise<net.Socket> {
 
 class SocketDaemonClient implements DaemonBrokerClient {
 	readonly projectDir: string;
-	readonly #runtimeDir: string;
+	readonly runtimeDir: string;
 	readonly #endpoint: string;
 	readonly #token: string;
 	readonly #idleGraceMs: number | undefined;
@@ -141,7 +148,7 @@ class SocketDaemonClient implements DaemonBrokerClient {
 
 	constructor(projectDir: string, runtimeDir: string, token: string, options: DaemonBrokerClientOptions) {
 		this.projectDir = projectDir;
-		this.#runtimeDir = runtimeDir;
+		this.runtimeDir = runtimeDir;
 		this.#endpoint = daemonBrokerEndpoint(projectDir, runtimeDir);
 		this.#token = token;
 		this.#idleGraceMs = options.idleGraceMs;
@@ -225,7 +232,7 @@ class SocketDaemonClient implements DaemonBrokerClient {
 		const spawn = resolveWorkerSpawnCmd(DAEMON_BROKER_WORKER_ARG);
 		const overlay: Record<string, string> = {
 			[DAEMON_PROJECT_DIR_ENV]: this.projectDir,
-			[DAEMON_RUNTIME_DIR_ENV]: this.#runtimeDir,
+			[DAEMON_RUNTIME_DIR_ENV]: this.runtimeDir,
 		};
 		if (this.#idleGraceMs !== undefined) overlay[DAEMON_IDLE_GRACE_ENV] = String(this.#idleGraceMs);
 		const child = Bun.spawn(spawn.cmd, {

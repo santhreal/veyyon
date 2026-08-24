@@ -413,7 +413,7 @@ export class LaunchTool implements AgentTool<typeof launchSchema, LaunchToolDeta
 		if (params.op === "stop" || params.op === "restart") {
 			// The end of a process the caller asked to end is not news. Drop the
 			// watch before the request, so the exit it causes reports nothing.
-			releaseLaunchExitWatch(this.session, client.projectDir, requiredName(params));
+			releaseLaunchExitWatch(this.session, client, requiredName(params));
 		}
 		const result = await client.request(operationFor(params, this.session), signal);
 		if (result.op === "start" || result.op === "restart") {

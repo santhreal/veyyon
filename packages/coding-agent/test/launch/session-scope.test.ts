@@ -94,6 +94,12 @@ describe("daemonSessionRuntimeDir", () => {
 		expect(hostile.startsWith(daemonSessionRuntimeDir(project, "")));
 		expect(hostile).not.toContain("..");
 	});
+
+	it("does not collide ids that share a long sanitized prefix", async () => {
+		const project = await tempDir("veyyon-scope-project-");
+		const base = "x".repeat(60);
+		expect(daemonSessionRuntimeDir(project, base)).not.toBe(daemonSessionRuntimeDir(project, `${base}-advisor`));
+	});
 });
 
 describe("launch scope follows the session by default", () => {
@@ -174,4 +180,48 @@ describe("launch scope follows the session by default", () => {
 		} catch {}
 		projectScope.close();
 	}, 30_000);
+});
+
+describe("exit watches are scoped per broker", () => {
+	it("two scopes may each watch the same name and releasing one keeps the other", () => {
+		const { watchLaunchedProcessExit, releaseLaunchExitWatch } =
+			require("../../src/tools/launch-exit-watch") as typeof import("../../src/tools/launch-exit-watch");
+		const jobs: string[] = [];
+		const manager = {
+			register: () => {
+				const id = `job-${jobs.length + 1}`;
+				jobs.push(id);
+				return id;
+			},
+			cancel: (id: string) => {
+				const index = jobs.indexOf(id);
+				if (index >= 0) jobs.splice(index, 1);
+			},
+		};
+		const watching = (runtimeDir: string) =>
+			makeToolSession({
+				getSessionId: () => "session-x",
+				asyncJobManager: manager as never,
+			});
+		const daemon = {
+			name: "web",
+			id: "web",
+			state: "running",
+			createdAt: 1,
+			startedAt: 1,
+			restartCount: 0,
+			outputBytes: 0,
+			persist: false,
+			detached: false,
+		} as never;
+		const clientFor = (runtimeDir: string) =>
+			({ projectDir: "p", runtimeDir, request: () => Promise.reject(new Error("unused")) }) as never;
+
+		watchLaunchedProcessExit({ session: watching("rt-a"), client: clientFor("rt-a"), daemon });
+		watchLaunchedProcessExit({ session: watching("rt-b"), client: clientFor("rt-b"), daemon });
+		expect(jobs.length).toBe(2);
+
+		releaseLaunchExitWatch(watching("rt-a"), clientFor("rt-a"), "web");
+		expect(jobs.length).toBe(1);
+	});
 });

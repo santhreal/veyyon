@@ -87,8 +87,12 @@ export function daemonSessionRuntimeDir(
 	sessionId: string,
 	configRoot: string = getConfigRootDir(),
 ): string {
-	const safe = sessionId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
-	return path.join(configRoot, NAMES.brokerRoot, `session-${projectKey(projectDir)}-${safe || "anon"}`);
+	// The sanitized prefix keeps the directory readable; the full-id hash suffix keeps two ids
+	// that share a long sanitized prefix (e.g. a session id and its `${id}-advisor` derivation
+	// truncated at the cap) from landing on one broker.
+	const safe = sessionId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 48);
+	const tag = Bun.hash.wyhash(sessionId).toString(16).padStart(16, "0");
+	return path.join(configRoot, NAMES.brokerRoot, `session-${projectKey(projectDir)}-${safe}-${tag}`);
 }
 
 /**
