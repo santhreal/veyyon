@@ -47,11 +47,21 @@ export type { SegmentContext } from "./types";
  */
 const SECRET_EXPIRY_CHIP_WINDOW_MS = 60 * 60 * 1000;
 
-/** Left-truncate a path/label to `maxLen`, prefixing an ellipsis when clipped. */
+/**
+ * Clamp a path/label to `maxLen`, appending an ellipsis when clipped.
+ *
+ * CLIPPED FROM ONE END, AND IT IS THIS ONE. The width-driven shortening in the
+ * component (`truncateToWidth` on the joined location) already cuts from the right,
+ * so a clamp that cut from the left put an ellipsis on BOTH ends of the same path:
+ * `…orm-services/ingest-pipeline/norm…` kept neither the project it is under nor the
+ * directory it is in, and the surviving middle named nothing a reader could place.
+ * Both cuts now run the same direction, so a clipped path carries exactly one
+ * ellipsis and reads as a prefix of the real path.
+ */
 function clampPathLength(pwd: string, maxLen: number): string {
 	if (pwd.length <= maxLen) return pwd;
 	const ellipsis = "…";
-	return `${ellipsis}${pwd.slice(-Math.max(0, maxLen - ellipsis.length))}`;
+	return `${pwd.slice(0, Math.max(0, maxLen - ellipsis.length))}${ellipsis}`;
 }
 
 /**

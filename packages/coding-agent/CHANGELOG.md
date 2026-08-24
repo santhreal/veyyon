@@ -10,6 +10,7 @@
 - `read` accepts a semicolon-delimited list of internal resources (`skill://demo/one.md;skill://demo/two.md`), the same list form `grep` and `glob` take, and returns one section per entry.
 - Eval kernels gain `kv`, a bounded JSON store under the session's artifacts directory that survives kernel resets and is shared between JavaScript and Python without cross-session filename collisions or lost concurrent updates, and `defs()`, which lists the names user code has defined in the kernel.
 - Every supervised process termination records which component ended it and why, with distinct attribution for each path (operator stop, signal, restart, broker shutdown, idle reaper, OS signal, broker recovery, launch failure, external signal, and natural exit); `launch list` output shows the lifetime owning condition and retained completion records with exit codes, reasons, and output tails, queryable after the name is reused and across broker restarts.
+- A click on the working directory, git branch or pull-request text in the composer status line widens the path to the row and hides the model chip to pay for it; a second click restores both.
 
 ### Changed
 
@@ -27,6 +28,7 @@
 ### Fixed
 
 - The model name segment on the composer status line is preserved against wide working directories and git branch names by ranking it above location shortening in footline degradation.
+- A clipped working directory on the composer status line now carries one ellipsis at the end instead of one at each end, so the visible text reads as a prefix of the real path.
 - The status line's default-branch lookup no longer raises an unhandled rejection in a directory holding a `.git` on a host with no `git` on PATH; the lookup fails to the `main` fallback instead.
 - A completed background job now fills its still-pending originating tool call instead of starting an unrelated recap turn after an interruption, including when zero retention is configured or foreground completion races background delivery.
 - When every summarizer candidate refuses, automatic compaction now parks the run (or drains already-queued input once) instead of reporting that nothing happened and looping. A successful local rescue retries without restoring the failed overflow or truncated assistant turn; idle compaction stays silent.

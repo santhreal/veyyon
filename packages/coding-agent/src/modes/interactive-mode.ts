@@ -933,6 +933,16 @@ export class InteractiveMode implements InteractiveModeContext {
 				this.showSecretList();
 				return;
 			}
+			// A click on the path widens it and hides the model chip to pay for the room;
+			// the next click puts both back. A long path is the one thing on this line that
+			// cannot be read any other way without leaving the screen, and the footline is
+			// where the reader already is. `git` and `pr` share the location zone and toggle
+			// the same expansion, since the click target a reader aims at is the path text.
+			if (segmentId === "path" || segmentId === "git" || segmentId === "pr") {
+				this.statusLine.togglePathExpanded();
+				this.ui.requestRender();
+				return;
+			}
 			if (segmentId === "context_pct" || segmentId === "context_total") {
 				this.handleContextCommand();
 			}
