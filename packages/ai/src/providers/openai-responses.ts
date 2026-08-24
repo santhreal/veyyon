@@ -29,7 +29,7 @@ import {
 import { createAbortSourceTracker } from "../utils/abort";
 import { withEmptyCompletionRetry } from "../utils/empty-completion-retry";
 import { AssistantMessageEventStream } from "../utils/event-stream";
-import type { RawHttpRequestDump } from "../utils/http-inspector";
+import { materializeDumpBody, type RawHttpRequestDump } from "../utils/http-inspector";
 import {
 	getOpenAIStreamFirstEventTimeoutMs,
 	getOpenAIStreamIdleTimeoutMs,
@@ -381,6 +381,9 @@ const streamOpenAIResponsesOnce = (
 
 		const output: AssistantMessage = createInitialResponsesAssistantMessage(model.api, model.provider, model.id);
 		let rawRequestDump: RawHttpRequestDump | undefined;
+		/** Exact bytes of the last sent request body; materialized into a dump only on the 400/413 path. */
+		let wireBodyJson: string | undefined;
+
 		let chainState: OpenAIResponsesChainState | undefined;
 		let sentPreviousResponseId: string | undefined;
 		const abortTracker = createAbortSourceTracker(options?.signal);
@@ -468,7 +471,6 @@ const streamOpenAIResponsesOnce = (
 				model: model.id,
 				method: "POST",
 				url: requestUrl,
-				body: chained.params,
 			};
 			const openResponsesStream = async (requestParams: OpenAIResponsesSamplingParams, captureOnly = false) => {
 				const prepareRequest = async (): Promise<RequestInit> => {
@@ -479,8 +481,12 @@ const streamOpenAIResponsesOnce = (
 						typeof wireParams.model === "string" ? wireParams.model : model.id,
 					);
 					activeRequestParams = wireParams;
-					if (rawRequestDump) rawRequestDump.body = wireParams;
-					return { body: JSON.stringify(wireParams) };
+					// Retain the exact sent BYTES, not the parsed object: a dump body
+					// is read only on the 400/413 path, and holding the graph here
+					// pinned a full context-sized clone for the whole stream.
+					const body = JSON.stringify(wireParams);
+					wireBodyJson = body;
+					return { body };
 				};
 				if (captureOnly) {
 					await prepareRequest();
@@ -561,7 +567,6 @@ const streamOpenAIResponsesOnce = (
 						requestReasoningEffortFallbacks.set(activeReasoningEffortFallbackKey, reasoningEffortFallback);
 						applyOpenAIReasoningEffortFallback(chained.params, reasoningEffortFallback);
 						applyOpenAIReasoningEffortFallback(activeParams, reasoningEffortFallback);
-						rawRequestDump.body = chained.params;
 						pendingReasoningEffortFallback = {
 							key: activeReasoningEffortFallbackKey,
 							fallback: reasoningEffortFallback,
@@ -601,7 +606,6 @@ const streamOpenAIResponsesOnce = (
 								: { params: fallbackParams };
 						sentPreviousResponseId = fallbackChained.previousResponseId;
 						chained = fallbackChained;
-						rawRequestDump.body = chained.params;
 						activeParams = fallbackParams;
 						activeStrictToolsApplied = fallbackBuilt.strictToolsApplied;
 						continue;
@@ -642,7 +646,6 @@ const streamOpenAIResponsesOnce = (
 					// breaker only trips when each retry stores and the next turn re-chains.
 					currentParams.store = !zdrRejection;
 					chained = { params: currentParams };
-					rawRequestDump.body = currentParams;
 					activeParams = currentParams;
 					activeStrictToolsApplied = currentBuilt.strictToolsApplied;
 				}
@@ -747,7 +750,7 @@ const streamOpenAIResponsesOnce = (
 				api: model.api,
 				provider: model.provider,
 				abortTracker,
-				rawRequestDump,
+				rawRequestDump: materializeDumpBody(rawRequestDump, wireBodyJson),
 				capturedErrorResponse,
 			});
 			output.stopReason = result.stopReason;

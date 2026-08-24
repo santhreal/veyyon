@@ -16,6 +16,7 @@ import { createAbortSourceTracker } from "../utils/abort";
 import { withEmptyCompletionRetry } from "../utils/empty-completion-retry";
 import { AssistantMessageEventStream } from "../utils/event-stream";
 import type { RawHttpRequestDump } from "../utils/http-inspector";
+import { materializeDumpBody } from "../utils/http-inspector";
 import {
 	getOpenAIStreamFirstEventTimeoutMs,
 	getOpenAIStreamIdleTimeoutMs,
@@ -100,6 +101,8 @@ const streamAzureOpenAIResponsesOnce = (
 			model.id,
 		);
 		let rawRequestDump: RawHttpRequestDump | undefined;
+		/** Exact bytes of the last sent request body; materialized into a dump only on the 400/413 path. */
+		let wireBodyJson: string | undefined;
 		const abortTracker = createAbortSourceTracker(options?.signal);
 		const firstEventTimeoutAbortError = new AIError.StreamTimeoutError(
 			AZURE_OPENAI_RESPONSES_FIRST_EVENT_TIMEOUT_MESSAGE,
@@ -129,7 +132,6 @@ const streamAzureOpenAIResponsesOnce = (
 				model: model.id,
 				method: "POST",
 				url,
-				body: params,
 			};
 			let activeRequestParams = params;
 			let activeReasoningEffortFallbackKey = createOpenAIReasoningEffortFallbackKey(
@@ -147,8 +149,12 @@ const streamAzureOpenAIResponsesOnce = (
 					url,
 					typeof wireParams.model === "string" ? wireParams.model : model.id,
 				);
-				if (rawRequestDump) rawRequestDump.body = wireParams;
-				return { body: JSON.stringify(wireParams) };
+				// Retain the exact sent BYTES, not the parsed object: a dump body is
+				// read only on the 400/413 path, and holding the graph here pinned a
+				// full context-sized clone for the whole stream.
+				const body = JSON.stringify(wireParams);
+				wireBodyJson = body;
+				return { body };
 			};
 			const attemptedReasoningEffortFallbacks = new Set<string>();
 			let openaiHandle: OpenAIStreamHandle<ResponseStreamEvent>;
@@ -191,8 +197,9 @@ const streamAzureOpenAIResponsesOnce = (
 					const retryMarker = `${activeReasoningEffortFallbackKey}:${String(reasoningEffortFallback)}`;
 					if (attemptedReasoningEffortFallbacks.has(retryMarker)) throw error;
 					attemptedReasoningEffortFallbacks.add(retryMarker);
+					// The fallback-applied params reach `wireBodyJson` when the retried
+					// attempt's prepareRequest serializes them; no eager copy needed.
 					applyOpenAIReasoningEffortFallback(params, reasoningEffortFallback);
-					rawRequestDump.body = params;
 				} finally {
 					clearTimeout(requestTimeout);
 				}
@@ -249,7 +256,11 @@ const streamAzureOpenAIResponsesOnce = (
 			stream.push({ type: "done", reason: output.stopReason, message: output });
 			stream.end();
 		} catch (error) {
-			const result = await AIError.finalize(error, { api: model.api, abortTracker, rawRequestDump });
+			const result = await AIError.finalize(error, {
+				api: model.api,
+				abortTracker,
+				rawRequestDump: materializeDumpBody(rawRequestDump, wireBodyJson),
+			});
 			output.stopReason = result.stopReason;
 			output.errorStatus = result.status;
 			output.errorId = result.id;
