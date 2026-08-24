@@ -35,9 +35,7 @@ describe("an evicted snapshot tag cannot write", () => {
 		expect(store.byHash(PATH, tag0)).toBeNull();
 
 		const patcher = new Patcher({ fs, snapshots: store });
-		const patch = Patch.parse(
-			[formatHashlineHeader(PATH, tag0), "SWAP 2.=2:", "+should-not-land"].join("\n"),
-		);
+		const patch = Patch.parse([formatHashlineHeader(PATH, tag0), "SWAP 2.=2:", "+should-not-land"].join("\n"));
 		await expect(patcher.apply(patch)).rejects.toBeInstanceOf(MismatchError);
 		expect(fs.get(PATH)).toBe(live);
 		expect(computeFileHash(fs.get(PATH) ?? "")).toBe(computeFileHash(live));
