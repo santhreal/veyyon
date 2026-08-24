@@ -27,6 +27,7 @@
  */
 import { describe, expect, it } from "bun:test";
 import { BUILTIN_API_IDS } from "@veyyon/ai/api-registry";
+import type { Signal } from "@veyyon/ai/error/domains/types";
 import {
 	CLASS_RULES,
 	CLASSIFICATION_RULES,
@@ -278,16 +279,18 @@ describe("a classification names the rules that produced it", () => {
 	 */
 	it("keeps no structural rule another structural rule already covers", () => {
 		const structural = CLASSIFICATION_RULES.filter(rule => rule.text === undefined && rule.structural !== undefined);
-		const probes = [];
+		const probes: Signal[] = [];
 		for (const status of [undefined, 400, 401, 403, 404, 408, 413, 422, 429, 500, 502, 503, 504]) {
 			for (const api of [undefined, ...BUILTIN_API_IDS]) {
 				for (const http2 of [undefined, true, false]) {
-					for (const code of [undefined, "model_not_supported"]) probes.push({ status, api, http2, code });
+					for (const code of [undefined, "model_not_supported"]) {
+						probes.push({ text: "", status, api, http2, code });
+					}
 				}
 			}
 		}
 		const fires = new Map(
-			structural.map(rule => [rule.name, probes.map(probe => rule.structural?.({ text: "", ...probe }) === true)]),
+			structural.map(rule => [rule.name, probes.map(probe => rule.structural?.(probe) === true)]),
 		);
 
 		const dead: string[] = [];
