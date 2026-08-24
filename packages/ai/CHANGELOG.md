@@ -15,6 +15,7 @@
 ### Fixed
 
 - Fixed OpenAI server-side compaction requests omitting the `Authorization` header when constructing headers from request setup.
+- Supported server-side compaction on the ChatGPT Codex backend with OAuth credential and turn identity headers.
 
 ## [1.2.0] - 2026-08-23
 

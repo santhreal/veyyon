@@ -2,9 +2,9 @@
 
 ## [Unreleased]
 
-### Fixed
+### Added
 
-- Fixed ChatGPT Codex sessions resolving a server-side compaction transport, ensuring Codex sessions compact locally instead of failing with 404 transport errors.
+- A ChatGPT OAuth (Codex) session compacts server-side via the Responses compaction endpoint, preserving encrypted reasoning state.
 
 ## [1.2.0] - 2026-08-23
 
