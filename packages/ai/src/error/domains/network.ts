@@ -103,6 +103,52 @@ const COPILOT_MODEL_NOT_SUPPORTED_CODE = "model_not_supported";
 const COPILOT_MODEL_NOT_SUPPORTED_PATTERN = /model_not_supported/i;
 
 /**
+ * The socket vocabulary: every rendering of a peer that could not be reached, or that dropped the
+ * connection under a request, errno and prose alike.
+ *
+ * It is a list rather than a line of the transport pattern below because two layers read it. The
+ * transport rule reads it as one alternative among many, and an MCP tool call reads it on its own to
+ * decide whether a failed call is worth a reconnect and one more attempt. That second reader kept
+ * nine literals of its own (`econnrefused`, `fetch failed`, `network error`, …) beside these, so the
+ * same sentence was matched by two rule sets and `ENETUNREACH`/`EHOSTUNREACH` were retryable for one
+ * of them and not the other.
+ *
+ * The errnos are word-bounded for the reason the statuses are: `EPIPELINE` names no socket.
+ */
+export const DEAD_SOCKET_ERRNOS = [
+	"ECONNRESET",
+	"ECONNREFUSED",
+	"ECONNABORTED",
+	"ETIMEDOUT",
+	"EPIPE",
+	"ENETUNREACH",
+	"EHOSTUNREACH",
+	"EAI_AGAIN",
+] as const;
+
+/** The same faults as prose, tolerating the separator a provider chose (`network_error`, `network error`). */
+export const DEAD_SOCKET_PHRASE_SOURCES = [
+	"network.?error",
+	"connection.?error",
+	"connection.?refused",
+	"unable to connect",
+	"fetch failed",
+] as const;
+
+const DEAD_SOCKET_SOURCE = `${DEAD_SOCKET_PHRASE_SOURCES.join("|")}|(?<![\\w-])(?:${DEAD_SOCKET_ERRNOS.join("|")})(?![\\w-])`;
+
+export const DEAD_SOCKET_PATTERN = new RegExp(DEAD_SOCKET_SOURCE, "i");
+
+/**
+ * The message names a socket that cannot carry the request: the peer refused it, reset it, or is
+ * unreachable. A layer that reconnects before retrying asks this rather than the whole transient
+ * vocabulary, which also covers a live peer answering 500 or holding the request past a deadline.
+ */
+export function namesDeadSocket(text: string): boolean {
+	return DEAD_SOCKET_PATTERN.test(text);
+}
+
+/**
  * THE STATUS NUMBERS ARE WORD-BOUNDED, and they used to be bare.
  *
  * A bare `/429|500|502|503|504/` matches those three digits anywhere in a string, and provider
@@ -120,8 +166,11 @@ const COPILOT_MODEL_NOT_SUPPORTED_PATTERN = /model_not_supported/i;
  * of its own — the session layer reads flags, so it saw an unclassified failure. It is the one
  * phrase that list had and this one did not; the rest of it was already here, word for word.
  */
-export const TRANSIENT_TRANSPORT_PATTERN =
-	/overloaded|provider.?returned.?error|rate.?limit|too many requests|temporar(?:y|ily)|processing your request|(?<![\w-])(?:429|500|502|503|504)(?![\w-])|service.?unavailable|server.?error|internal.?error|retry your request|network.?error|connection.?error|connection.?refused|unable to connect|other side closed|fetch failed|upstream.?connect|upstream.?request.?failed|reset before headers|socket hang up|timed? out|timeout|terminated|retry delay|stream stall|no error details in response|HTTP2(?:StreamReset|RefusedStream|EnhanceYourCalm)|malformed.?function.?call|(?<![\w-])(?:ECONNRESET|ECONNREFUSED|ECONNABORTED|ETIMEDOUT|EPIPE|EAI_AGAIN)(?![\w-])/i;
+export const TRANSIENT_TRANSPORT_PATTERN = new RegExp(
+	String.raw`overloaded|provider.?returned.?error|rate.?limit|too many requests|temporar(?:y|ily)|processing your request|(?<![\w-])(?:429|500|502|503|504)(?![\w-])|service.?unavailable|server.?error|internal.?error|retry your request|other side closed|upstream.?connect|upstream.?request.?failed|reset before headers|socket hang up|timed? out|timeout|terminated|retry delay|stream stall|no error details in response|HTTP2(?:StreamReset|RefusedStream|EnhanceYourCalm)|malformed.?function.?call|` +
+		DEAD_SOCKET_SOURCE,
+	"i",
+);
 
 export function isStreamReadErrorText(text: string): boolean {
 	return STREAM_READ_ERROR_PATTERN.test(text);

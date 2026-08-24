@@ -30,8 +30,12 @@ import { classifyIdentity, classifySignal } from "./registry";
 
 export { isDefinitiveOAuthFailure } from "./domains/account";
 export {
+	DEAD_SOCKET_ERRNOS,
+	DEAD_SOCKET_PATTERN,
+	DEAD_SOCKET_PHRASE_SOURCES,
 	isStreamReadErrorText,
 	isTransientErrorText,
+	namesDeadSocket,
 	STREAM_READ_ERROR_PATTERN,
 	TRANSIENT_TRANSPORT_PATTERN,
 } from "./domains/network";
