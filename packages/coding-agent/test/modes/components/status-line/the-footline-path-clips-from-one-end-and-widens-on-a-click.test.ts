@@ -12,8 +12,15 @@
  * in, the branch checked out. The head is the project root every session under one project
  * shares, so it is the expendable end, and both clippers now cut it.
  *
- * THE CLASS. Two clippers on one string, disagreeing about which end is expendable. Any
- * further clipper added to the location zone reproduces it, in the same shape, on the same row.
+ * WHICH PART SURVIVES. The directory. Cutting the front of the JOINED location is a second
+ * form of the same mistake, because the tail of `path · branch` is the branch: it kept the
+ * branch and dropped the directory entirely, which is the one thing a front cut is for. The
+ * later parts are shed WHOLE, right to left, and only the directory is clipped, down to a
+ * floor, before any of them is given up.
+ *
+ * THE CLASS. Two clippers on one string, disagreeing about which end is expendable, and a cut
+ * that spans parts rather than choosing between them. Any further clipper added to the
+ * location zone reproduces it, in the same shape, on the same row.
  *
  * HOW THIS SUITE CLOSES THE CLASS. It does not assert on either clipper. It sweeps the width
  * and asserts the INVARIANT that survives any number of them: the rendered path slot never
@@ -77,6 +84,16 @@ function pathBody(text: string): string {
 }
 
 let wideCwd = "";
+
+/**
+ * Every spelling the path segment may choose before clamping, since which it picks is the
+ * fixture's business and not this contract's: absolute, the home dir collapsed to `~`, or --
+ * as here, the temp-dir helper builds under `os.tmpdir()` and `SCRATCH_ROOTS` names it --
+ * relative to the scratch root. A clipped path has to be a suffix of one of them.
+ */
+function pathSpellings(): string[] {
+	return [wideCwd, wideCwd.replace(os.homedir(), "~"), path.relative(os.tmpdir(), wideCwd)];
+}
 
 function makeSession(): AgentSession {
 	return {
@@ -167,9 +184,10 @@ describe("the footline path is clipped from one end", () => {
 	// The fully-collapsed slot is excluded and is not a right-clip: at the narrowest widths
 	// the zone is squeezed to a bare `…`, which reports that the path has no room rather
 	// than showing a clipped one. It has no end to put an ellipsis at.
-	it("clips with exactly one ellipsis and puts it at the front, at every width", () => {
+	it("clips with exactly one ellipsis at the front, and to a suffix of the real path, at every width", () => {
 		const statusLine = new StatusLineComponent(makeSession());
 		const offenders: { width: number; text: string; why: string }[] = [];
+		const spellings = pathSpellings();
 		let sawClipped = false;
 
 		// Down to 8 columns: the sweep has to pass through every width where a clipper
@@ -177,7 +195,18 @@ describe("the footline path is clipped from one end", () => {
 		for (let width = 200; width >= 8; width--) {
 			const line = statusLine.renderQuietLine(width);
 			if (line === null) continue;
-			const text = slotText(line, statusLine.getQuietSegmentBounds(), "path");
+			const bounds = statusLine.getQuietSegmentBounds();
+			const ids = renderedIds(bounds);
+			// THE RULE ITSELF: the directory is the last thing the location zone gives up.
+			// A row still showing the branch and no longer showing the directory has cut the
+			// wrong end of the join -- the tail of a `path · branch` join is the BRANCH, so a
+			// front cut on the joined string eats the directory first, which is the opposite
+			// of what a front cut is for.
+			if (LOCATION_SEGMENT_IDS.some(id => ids.has(id)) && !ids.has("path")) {
+				offenders.push({ width, text: stripAnsi(line), why: "location on the row without the directory" });
+				continue;
+			}
+			const text = slotText(line, bounds, "path");
 			if (text === null) continue;
 			const trimmed = pathBody(text.trim());
 			if (trimmed.length === 0 || trimmed === ELLIPSIS) continue;
@@ -187,6 +216,9 @@ describe("the footline path is clipped from one end", () => {
 			if (count > 1) offenders.push({ width, text: trimmed, why: `${count} ellipses` });
 			else if (count === 0) offenders.push({ width, text: trimmed, why: "no mark in the slot" });
 			else if (!trimmed.startsWith(ELLIPSIS)) offenders.push({ width, text: trimmed, why: "not at the front" });
+			else if (!spellings.some(full => full.endsWith(trimmed.slice(ELLIPSIS.length)))) {
+				offenders.push({ width, text: trimmed, why: "not a suffix of the real path" });
+			}
 		}
 
 		expect(offenders).toEqual([]);
@@ -211,16 +243,10 @@ describe("the footline path is clipped from one end", () => {
 		// WHAT "ONE END" BUYS: the surviving text is a genuine SUFFIX of the path, so it can
 		// be read as one -- and it is the end that identifies the directory. The right-clipping
 		// clamp could not satisfy this at any width.
-		//
-		// Three spellings are accepted because the segment chooses one before clamping and
-		// which it chooses is the fixture's business, not this contract's: absolute, the
-		// home dir collapsed to `~`, or -- as here, since the temp-dir helper builds under
-		// `os.tmpdir()` and `SCRATCH_ROOTS` names it -- relative to the scratch root.
 		const core = trimmed.slice(ELLIPSIS.length);
-		const spellings = [wideCwd, wideCwd.replace(os.homedir(), "~"), path.relative(os.tmpdir(), wideCwd)];
 
 		expect(core.length).toBeGreaterThan(10);
-		expect(spellings.some(full => full.endsWith(core))).toBe(true);
+		expect(pathSpellings().some(full => full.endsWith(core))).toBe(true);
 	});
 
 	// EVERY ROW THE COMPONENT CAN PAINT, not just the one the presets happen to produce. The
