@@ -5,6 +5,7 @@
 ### Fixed
 
 - Side requests derive a stable conversation ID per oneshot kind, preventing compaction, handoff, and branch summaries from overwriting live Cursor and Devin conversation state.
+- Aborting while paused rejects the pause wait and prevents the agent loop from starting another provider turn or paused tool.
 
 ## [1.2.0] - 2026-08-23
 
