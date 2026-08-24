@@ -13,6 +13,8 @@
 
 - The vibe screens, the image-inspection call and an LSP hover code block draw no border of their own inside a tool block, so a block keeps one left edge; a tree connector remains only where a row belongs to the row above it, in the eval value tree, the grep line gutter, the job tree and the LSP reference tree.
 - A picture a terminal will not draw now leaves a row naming the file, the media type, the pixel size and the cause, in place of `[Image: image/png]`, including when a Kitty session cannot convert it to PNG.
+- A failed MCP tool call decides on a reconnect from the shared socket vocabulary plus this layer's own stale-session rules, so an unreachable or unresolvable host reconnects the server the way a refused connection already did, while a live server answering 500 or holding a request past its deadline stays a failed call.
+- The debug log records which classification rules decided a failed turn's retry, next to the classified kind, so a retry nobody expected is diagnosed from the log instead of by re-reading the provider's sentence.
 
 ### Fixed
 

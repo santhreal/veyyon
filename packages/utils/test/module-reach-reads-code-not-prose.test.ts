@@ -89,11 +89,18 @@ describe("moduleSpecifiersIn reads code, not prose", () => {
 	 * A commented-OUT import is not an import. This is the case that makes the rule feel obviously right:
 	 * deleting an import by commenting it is exactly how a cut gets tried, and a metric that still counts
 	 * it reports the cut did nothing.
+	 *
+	 * The block spanning whole lines is the arm that decides it. A single-line block comment keeps the
+	 * import behind the opening delimiter, where the line-anchored pattern misses it anyway, so a suite
+	 * built only from that form passes whether or not comments were removed first.
 	 */
 	it("does not count a commented-out import", () => {
 		const source = [
 			'// import { heavy } from "./heavy-subsystem";',
 			'/* import { alsoHeavy } from "./also-heavy"; */',
+			"/*",
+			'import { retired } from "./retired-subsystem";',
+			"*/",
 			'import { light } from "./light";',
 		].join("\n");
 
