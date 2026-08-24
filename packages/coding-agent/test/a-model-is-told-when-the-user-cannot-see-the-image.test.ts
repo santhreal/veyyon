@@ -14,9 +14,11 @@
  * — so the sweeps below derive their variant space at run time: every image
  * protocol the TUI knows, and every renderer in the registry plus the two
  * branches that are not the registry (a tool with its own renderer, and a tool
- * with none). The sibling found while closing it is covered too: a Kitty
+ * with none). Two siblings found while closing it are covered too: a Kitty
  * session draws only PNG, and a conversion that failed used to leave the block
- * with neither a picture nor a word about one.
+ * with neither a picture nor a word about one; and a request whose images are
+ * scrubbed for a text-only model loses the sentence describing them, since the
+ * pictures it describes are no longer in the request.
  *
  * What it does not catch: an image a USER attaches (`@shot.png`, a paste) — the
  * user put it there and knows what it is, so `fileMention` states nothing; a
@@ -29,12 +31,13 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
 import type { AgentMessage, AgentTool } from "@veyyon/agent-core";
 import { Settings } from "@veyyon/coding-agent/config/settings";
-import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
+import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
 import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
-import { convertToLlm } from "@veyyon/coding-agent/session/messages";
+import { convertToLlm, replaceLlmImagesWithText } from "@veyyon/coding-agent/session/messages";
 import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
 import { ImageProtocol, setTerminalImageProtocol, TERMINAL, type TUI } from "@veyyon/tui";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
+import { createToolExecution } from "./helpers/tool-execution";
 
 /** 1x1 PNG: the smallest payload `getImageDimensions` can measure. */
 const TINY_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==";
@@ -78,7 +81,7 @@ interface BlockCase {
 function blockComponent(toolName: string, blockCase: BlockCase = {}): ToolExecutionComponent {
 	const onRender = blockCase.onRender ?? ((): void => {});
 	const ui = { requestRender: onRender, requestComponentRender: onRender } as unknown as TUI;
-	const component = new ToolExecutionComponent(
+	const component = createToolExecution(
 		toolName,
 		blockCase.args ?? { path: "shots/board.png" },
 		{ showImages: blockCase.showImages ?? true },
@@ -207,6 +210,27 @@ describe("a model is told when the user cannot see the image", () => {
 		} as AgentMessage);
 
 		expect(blocks).toEqual(["plain text output"]);
+	});
+
+	// A request served by a text-only model, or one an operator blocked images
+	// on, carries no picture at all. The sentence describing where the picture is
+	// goes with it, so the model is not told about an image the request does not
+	// contain.
+	it("drops the statement when the images themselves are scrubbed from the request", () => {
+		setTerminalImageProtocol(null);
+		const converted = convertToLlm([imageToolResult("read", 2)]);
+		const beforeScrub = converted[0];
+		if (!beforeScrub || typeof beforeScrub.content === "string") throw new Error("expected content blocks");
+		expect(beforeScrub.content.map(block => block.type)).toEqual(["text", "image", "image", "text"]);
+
+		const scrubbed = replaceLlmImagesWithText(converted, "[image omitted]");
+		const result = scrubbed[0];
+		if (!result || typeof result.content === "string") throw new Error("expected content blocks");
+
+		expect(result.content).toEqual([
+			{ type: "text", text: "Read image file [image/png]" },
+			{ type: "text", text: "[image omitted]" },
+		]);
 	});
 });
 
