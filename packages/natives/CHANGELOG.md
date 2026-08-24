@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- A wrapped line now continues under the indent its first row opened at, so an indented row no longer reads as a new top-level row at a narrow width.
+
 ## [1.2.0] - 2026-08-23
 
 ### Breaking Changes

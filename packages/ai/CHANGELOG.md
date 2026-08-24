@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- The Anthropic provider reads its endpoint, credential placement, rejected betas and retry policy from the catalog's wire-capability table instead of comparing provider ids at seventeen call sites.
+
 ## [1.2.0] - 2026-08-23
 
 ### Breaking Changes

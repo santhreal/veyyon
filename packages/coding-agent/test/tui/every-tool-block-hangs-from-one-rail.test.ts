@@ -28,10 +28,17 @@ import { Settings } from "@veyyon/coding-agent/config/settings";
 import { COMPOSER_INSET_COLS } from "@veyyon/coding-agent/modes/components/composer-chrome";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
+import { Text } from "@veyyon/tui";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "../helpers/settings-test-state";
 
 /** Widths a block is asked for: one narrow enough to wrap every preview row, one roomy. */
 const WIDTHS = [60, 100] as const;
+
+/** Cells a row has for content once the block's gutter and rail are drawn. */
+const NARROW_CONTENT = WIDTHS[0] - COMPOSER_INSET_COLS - 1;
+
+/** The wrapper's floor: an indent leaving fewer text cells than this wraps flush. */
+const HANGING_INDENT_MIN_TEXT = 4;
 
 /**
  * Cards whose first row is a section row rather than a title, with the reason.
@@ -45,6 +52,25 @@ const CARDS_WITHOUT_A_TITLE_ROW: Record<string, string> = {
 	debug: "a settled debug result opens on its stack rows",
 	lsp: "a settled LSP result opens on its findings",
 };
+
+/**
+ * Renderers whose rows carry a box-drawing glyph after the rail, and why it is
+ * a hierarchy rather than a second left edge. A tree connector states that a row
+ * belongs to the row above it; a frame states nothing and duplicates the edge the
+ * block already has. Pinned by exact equality: a renderer that starts drawing a
+ * border of its own lands here and the suite goes red until someone records the
+ * decision. `vibe_*`, `inspect_image` and an LSP hover code block used to sit in
+ * this set, drawing a box, a connector and a code frame inside the rail.
+ */
+const RENDERERS_THAT_DRAW_A_TREE: Record<string, string> = {
+	eval: "a value tree: each row is a child of the expression above it",
+	grep: "a line-number gutter separating the number from its source line",
+	job: "a job tree: an output row belongs to the job row above it",
+	lsp: "a reference tree: a line belongs to the file above it",
+};
+
+/** Box-drawing and rounded-corner glyphs, the alphabet a second edge is drawn in. */
+const BOX_GLYPH = /[│┌┐└┘├┤┬┴┼─╭╮╰╯╷╵]/u;
 
 let settingsState: SettingsTestState | undefined;
 
@@ -138,5 +164,100 @@ describe("every tool block hangs from one rail", () => {
 		// One section indent and no more: a row further in than that is a renderer
 		// padding itself on top of the padding the block already draws.
 		expect(widest).toBe(2);
+	});
+
+	it("draws no second left edge inside the rail, and names every renderer that draws a tree", async () => {
+		const rail = theme.symbol("block.rail");
+		const drawing = new Set<string>();
+
+		for (const name of Object.keys(toolRenderers).sort()) {
+			const fixture = resolveFixture(name);
+			for (const state of GALLERY_STATES) {
+				for (const width of WIDTHS) {
+					const rendered = await renderGalleryState(name, fixture, state, width);
+					for (const line of rendered) {
+						const row = Bun.stripANSI(line);
+						if (row.trim().length === 0) continue;
+						// Everything left of the rail is the block's own gutter; a second
+						// edge is something a renderer paints to the right of it.
+						const after = row.slice(row.indexOf(rail) + rail.length);
+						if (BOX_GLYPH.test(after)) drawing.add(name);
+					}
+				}
+			}
+		}
+
+		expect([...drawing].sort()).toEqual(Object.keys(RENDERERS_THAT_DRAW_A_TREE).sort());
+	});
+
+	// A renderer indents a row to nest it under the row above. At a narrow width
+	// that row wraps, and the continuation used to return to column zero, so a
+	// detail row read as a new top-level row of the card. The sweep is every
+	// renderer's real output: each indented row it draws is re-wrapped at the
+	// narrow content width, and every row of the result opens where the first
+	// one did.
+	it("keeps a wrapped row under the indent its first row opened at, for every renderer", async () => {
+		const rail = theme.symbol("block.rail");
+		const lost: string[] = [];
+		let wrappedRows = 0;
+
+		for (const name of Object.keys(toolRenderers).sort()) {
+			const fixture = resolveFixture(name);
+			for (const state of GALLERY_STATES) {
+				const rendered = await renderGalleryState(name, fixture, state, WIDTHS[1]);
+				for (const line of rendered) {
+					const railAt = line.indexOf(rail);
+					if (railAt < 0) continue;
+					const logical = line.slice(railAt + rail.length);
+					const plain = Bun.stripANSI(logical);
+					if (plain.trim().length === 0) continue;
+					const indent = plain.length - plain.trimStart().length;
+					// An indent that leaves fewer than four cells of text wraps flush,
+					// which is the wrapper's own floor rather than a lost indent.
+					if (indent === 0 || indent + HANGING_INDENT_MIN_TEXT > NARROW_CONTENT) continue;
+					const rows = new Text(logical, 0, 0)
+						.render(NARROW_CONTENT)
+						.map(row => Bun.stripANSI(row))
+						.filter(row => row.trim().length > 0);
+					if (rows.length < 2) continue;
+					wrappedRows++;
+					for (const row of rows) {
+						if (row.length - row.trimStart().length !== indent) {
+							lost.push(`${name}/${state} ${JSON.stringify(row.slice(0, 40))}`);
+						}
+					}
+				}
+			}
+		}
+
+		expect(lost).toEqual([]);
+		// Without this the arm passes on a sweep that found nothing that wrapped.
+		expect(wrappedRows).toBeGreaterThan(10);
+	});
+
+	it("renders an LSP hover code block without a frame of its own", async () => {
+		const rail = theme.symbol("block.rail");
+		const hover = {
+			content: [
+				{
+					type: "text",
+					text: "The session store.\n\n```ts\nexport class SessionStore {\n\tget(id: string): Session | undefined;\n}\n```\n\nReturns undefined for an evicted id.",
+				},
+			],
+			details: { action: "hover", file: "packages/server/src/session-store.ts", line: 12, character: 14 },
+		};
+		const renderer = toolRenderers.lsp;
+		if (!renderer?.renderResult) throw new Error("the lsp renderer has no renderResult");
+
+		for (const expanded of [false, true]) {
+			const component = renderer.renderResult(hover, { expanded, isPartial: false }, theme, { action: "hover" });
+			const rows = (component?.render(100) ?? []).map(line => Bun.stripANSI(line)).filter(l => l.trim().length > 0);
+			// Without this the arm passes on a renderer that drew nothing at all.
+			expect(rows.some(row => row.includes("export class SessionStore"))).toBe(true);
+			for (const row of rows) {
+				const after = row.slice(row.indexOf(rail) + rail.length);
+				expect(after).not.toMatch(BOX_GLYPH);
+			}
+		}
 	});
 });
