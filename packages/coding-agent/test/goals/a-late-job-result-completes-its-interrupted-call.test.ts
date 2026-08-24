@@ -304,12 +304,12 @@ describe("a late job result completes its interrupted call", () => {
 		agent.appendMessage(multiCallMessage);
 		session.sessionManager.appendMessage(multiCallMessage);
 
-		expect(
-			collectPendingToolCalls(session.sessionManager.getBranch()).map(call => call.toolCallId),
-		).toContain(CALL_1);
-		expect(
-			collectPendingToolCalls(session.sessionManager.getBranch()).map(call => call.toolCallId),
-		).toContain(CALL_2);
+		expect(collectPendingToolCalls(session.sessionManager.getBranch()).map(call => call.toolCallId)).toContain(
+			CALL_1,
+		);
+		expect(collectPendingToolCalls(session.sessionManager.getBranch()).map(call => call.toolCallId)).toContain(
+			CALL_2,
+		);
 
 		// Complete CALL_2 first, then CALL_1
 		const outcome2 = session.deliverAsyncJobResult("job_2", "task 2 result", {
@@ -324,12 +324,12 @@ describe("a late job result completes its interrupted call", () => {
 		});
 		expect(outcome2).toBe("attached");
 		expect(toolResultText(agent.state.messages, CALL_2)).toBe("task 2 result");
-		expect(
-			collectPendingToolCalls(session.sessionManager.getBranch()).map(call => call.toolCallId),
-		).not.toContain(CALL_2);
-		expect(
-			collectPendingToolCalls(session.sessionManager.getBranch()).map(call => call.toolCallId),
-		).toContain(CALL_1);
+		expect(collectPendingToolCalls(session.sessionManager.getBranch()).map(call => call.toolCallId)).not.toContain(
+			CALL_2,
+		);
+		expect(collectPendingToolCalls(session.sessionManager.getBranch()).map(call => call.toolCallId)).toContain(
+			CALL_1,
+		);
 
 		const outcome1 = session.deliverAsyncJobResult("job_1", "task 1 result", {
 			id: "job_1",
@@ -381,9 +381,7 @@ describe("a late job result completes its interrupted call", () => {
 		});
 		expect(outcome2).toBe("queued");
 
-		const results = agent.state.messages.filter(
-			m => m.role === "toolResult" && m.toolCallId === CALL_ID,
-		);
+		const results = agent.state.messages.filter(m => m.role === "toolResult" && m.toolCallId === CALL_ID);
 		expect(results).toHaveLength(1);
 		expect(toolResultText(agent.state.messages, CALL_ID)).toBe("initial completion");
 	});

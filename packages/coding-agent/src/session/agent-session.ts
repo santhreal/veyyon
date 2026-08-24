@@ -17117,11 +17117,8 @@ export class AgentSession {
 		// The retry side only needs the rebuilt prompt to fit the window; the
 		// threshold side needs the recovery band, exactly as the success tail
 		// measures them.
-		const hasProgress = willRetry
-			? () => this.#compactionCreatedRetryFit()
-			: () => this.#compactionCreatedHeadroom();
-		const rescued =
-			hasProgress() || (await this.#rescueCompactionDeadEnd(signal, { skipElide: false, hasProgress }));
+		const hasProgress = willRetry ? () => this.#compactionCreatedRetryFit() : () => this.#compactionCreatedHeadroom();
+		const rescued = hasProgress() || (await this.#rescueCompactionDeadEnd(signal, { skipElide: false, hasProgress }));
 		if (rescued) {
 			let continuationScheduled = false;
 			if (willRetry) {

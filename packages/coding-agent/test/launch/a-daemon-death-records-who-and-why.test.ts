@@ -334,7 +334,7 @@ describe("every termination path records who and why", () => {
 			// until init reaps it, so check via Process.fromPid which reports the
 			// actual state rather than kill(pid, 0) which returns 0 for zombies).
 			const leftoverRef = Process.fromPid(daemonPid);
-			expect(!leftoverRef || leftoverRef.status() !== "running").toBeTrue();
+			expect(leftoverRef?.status() !== "running").toBeTrue();
 			const described = await recovered.request({ op: "describe", name: "leftover" });
 			if (described.op !== "describe") throw new Error("unexpected describe result");
 			expect(described.daemon.state).toBe("exited");

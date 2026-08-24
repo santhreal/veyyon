@@ -107,7 +107,8 @@ describe("pause abort during wait does not enter turn", () => {
 				let settleCount = 0;
 				let outcome: "resolved" | "rejected" | undefined;
 
-				const waitPromise = gate.waitUntilResumed(ac.signal)
+				const waitPromise = gate
+					.waitUntilResumed(ac.signal)
 					.then(() => {
 						settleCount++;
 						outcome = "resolved";
@@ -166,13 +167,7 @@ describe("pause abort during wait does not enter turn", () => {
 			const config: AgentLoopConfig = { model: mock.model, convertToLlm: identityConverter, pauseGate };
 			const abortController = new AbortController();
 
-			const stream = agentLoop(
-				[createUserMessage("hi")],
-				context,
-				config,
-				abortController.signal,
-				mock.stream,
-			);
+			const stream = agentLoop([createUserMessage("hi")], context, config, abortController.signal, mock.stream);
 
 			const events: AgentEvent[] = [];
 			const readPromise = (async () => {
@@ -290,7 +285,11 @@ describe("pause abort during wait does not enter turn", () => {
 			const context: AgentContext = {
 				systemPrompt: ["Test"],
 				messages: [],
-				tools: [makeEchoTool(() => { toolRan = true; })],
+				tools: [
+					makeEchoTool(() => {
+						toolRan = true;
+					}),
+				],
 			};
 			const config: AgentLoopConfig = { model: mock.model, convertToLlm: identityConverter, pauseGate };
 			const abortController = new AbortController();

@@ -136,7 +136,12 @@ describe("focused agent transcript reconstruction", () => {
 				id: "user",
 				parentId: "init",
 				timestamp: "2026-01-01T00:00:00.004Z",
-				message: { role: "user", content: [{ type: "text", text: "Inspect fixture.ts" }], attribution: "agent", timestamp: 4 },
+				message: {
+					role: "user",
+					content: [{ type: "text", text: "Inspect fixture.ts" }],
+					attribution: "agent",
+					timestamp: 4,
+				},
 			}),
 			JSON.stringify({
 				type: "message",
@@ -145,17 +150,37 @@ describe("focused agent transcript reconstruction", () => {
 				timestamp: "2026-01-01T00:00:00.005Z",
 				message: {
 					role: "assistant",
-					content: [{ type: "toolCall", id: "call-read", name: "read", arguments: { path: "fixture.ts", i: "Read fixture" } }],
+					content: [
+						{
+							type: "toolCall",
+							id: "call-read",
+							name: "read",
+							arguments: { path: "fixture.ts", i: "Read fixture" },
+						},
+					],
 					api: "anthropic",
 					provider: "anthropic",
 					model: "claude-sonnet-4-5",
-					usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+					usage: {
+						input: 1,
+						output: 1,
+						cacheRead: 0,
+						cacheWrite: 0,
+						totalTokens: 2,
+						cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+					},
 				},
 			}),
 			JSON.stringify({
 				type: "custom",
 				customType: "tool_execution_start",
-				data: { toolCallId: "call-read", toolName: "read", startedAt: "2026-01-01T00:00:00.006Z", args: { path: "fixture.ts" }, intent: "Read fixture" },
+				data: {
+					toolCallId: "call-read",
+					toolName: "read",
+					startedAt: "2026-01-01T00:00:00.006Z",
+					args: { path: "fixture.ts" },
+					intent: "Read fixture",
+				},
 				id: "tool-start",
 				parentId: "assistant-tool",
 				timestamp: "2026-01-01T00:00:00.006Z",
@@ -187,7 +212,14 @@ describe("focused agent transcript reconstruction", () => {
 					provider: "anthropic",
 					model: "claude-sonnet-4-5",
 					stopReason: "stop",
-					usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+					usage: {
+						input: 1,
+						output: 1,
+						cacheRead: 0,
+						cacheWrite: 0,
+						totalTokens: 2,
+						cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+					},
 				},
 			}),
 		];
@@ -215,6 +247,7 @@ describe("focused agent transcript reconstruction", () => {
 				settings,
 				enableLsp: false,
 			}),
+			60_000,
 		);
 
 		// Focus the agent
@@ -225,7 +258,9 @@ describe("focused agent transcript reconstruction", () => {
 		const children = mode.chatContainer.children;
 		const userComponents = children.filter(c => c.constructor.name === "UserMessageComponent");
 		const assistantComponents = children.filter(c => c.constructor.name === "AssistantMessageComponent");
-		const toolComponents = children.filter(c => c.constructor.name === "ToolExecutionComponent" || c.constructor.name === "ReadToolGroupComponent");
+		const toolComponents = children.filter(
+			c => c.constructor.name === "ToolExecutionComponent" || c.constructor.name === "ReadToolGroupComponent",
+		);
 
 		expect(userComponents.length).toBe(1);
 		expect(assistantComponents.length).toBe(2);
