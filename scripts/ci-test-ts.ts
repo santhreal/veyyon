@@ -340,6 +340,7 @@ export const repoScriptTests = [
 	"scripts/a-streamed-tool-argument-object-is-replaced-never-mutated.test.ts",
 	"scripts/barrel-files-are-imported.test.ts",
 	"scripts/class-privacy-is-the-hash.test.ts",
+	"scripts/a-test-reads-a-module-through-its-graph-not-its-bytes.test.ts",
 	"scripts/handbook-built-pages-contain-source-contracts.test.ts",
 	"scripts/prompt-formatter-checks-current-tree.test.ts",
 	"scripts/workspace-typecheck-coverage.test.ts",
