@@ -1245,6 +1245,60 @@ fn wrap_single_line(line: &[u16], width: usize, tab_width: usize) -> SmallVec<[V
 /// pure overhead.
 pub type WrappedLines = SmallVec<[Vec<u16>; 4]>;
 
+/// The narrowest text column a hanging indent may leave. An indent wider than
+/// this against a narrow width would wrap one word per row, which is worse than
+/// losing the indent, so such a line keeps the flush wrap.
+const HANGING_INDENT_MIN_TEXT: usize = 4;
+
+/// Length of the run of zero-width escape sequences at the start of `line`.
+/// A renderer styles a row before it indents it, so the indent sits after this
+/// run and the row's own SGR codes stay ahead of the spaces they colour. An
+/// OSC 66 sequence carries visible cells, so the run stops there: what follows
+/// it is content rather than an indent, and treating it as one wrapped the row
+/// to a width that no longer had room for the cells already written.
+fn escape_run_len(line: &[u16], tab_width: usize) -> usize {
+	let mut i = 0usize;
+	while line.get(i) == Some(&ESC) {
+		let Some(len) = ansi_seq_len_u16(line, i) else {
+			break;
+		};
+		if osc66_visible_width_u16(&line[i..i + len], tab_width).is_some() {
+			break;
+		}
+		i += len;
+	}
+	i
+}
+
+/// A logical line's indent: the spaces before its first visible cell, and where
+/// that cell begins. Spaces and zero-width sequences interleave freely — a diff
+/// row opens with its marker space, then a colour, then the code's own indent —
+/// so both are consumed until the first cell that draws something.
+struct LeadingIndent {
+	/// Cells of indent every continuation row hangs under.
+	width:      usize,
+	/// Index in the line where content begins.
+	content_at: usize,
+}
+
+fn leading_indent(line: &[u16], tab_width: usize) -> LeadingIndent {
+	let mut at = 0usize;
+	let mut width = 0usize;
+	loop {
+		if line.get(at) == Some(&(b' ' as u16)) {
+			width += 1;
+			at += 1;
+			continue;
+		}
+		let escaped = escape_run_len(&line[at..], tab_width);
+		if escaped == 0 {
+			break;
+		}
+		at += escaped;
+	}
+	LeadingIndent { width, content_at: at }
+}
+
 fn wrap_text_with_ansi_impl(text: &[u16], width: usize, tab_width: usize) -> WrappedLines {
 	if text.is_empty() {
 		return smallvec![Vec::new()];
@@ -1257,14 +1311,56 @@ fn wrap_text_with_ansi_impl(text: &[u16], width: usize, tab_width: usize) -> Wra
 	for i in 0..=text.len() {
 		if i == text.len() || text[i] == b'\n' as u16 {
 			let line = &text[line_start..i];
+			let LeadingIndent { width: indent, content_at } = leading_indent(line, tab_width);
+			// A line of nothing but spaces has no content to hang: dropping its
+			// spaces would return an empty row where a caller wrote a padded one.
+			let hangs =
+				indent > 0 && content_at < line.len() && indent + HANGING_INDENT_MIN_TEXT <= width;
+
 			let mut line_with_prefix: Vec<u16> = Vec::new();
 			if !result.is_empty() {
 				write_active_codes(&state, &mut line_with_prefix);
 			}
-			line_with_prefix.extend_from_slice(line);
+			if hangs {
+				// The indent's own spaces are dropped and re-added per row; the
+				// sequences between them are copied so the content keeps its style.
+				let mut at = 0usize;
+				while at < content_at {
+					let escaped = escape_run_len(&line[at..], tab_width);
+					if escaped == 0 {
+						at += 1;
+						continue;
+					}
+					line_with_prefix.extend_from_slice(&line[at..at + escaped]);
+					at += escaped;
+				}
+				line_with_prefix.extend_from_slice(&line[content_at..]);
+			} else {
+				line_with_prefix.extend_from_slice(line);
+			}
 
-			let wrapped = wrap_single_line(&line_with_prefix, width, tab_width);
-			result.extend(wrapped);
+			let wrapped = wrap_single_line(
+				&line_with_prefix,
+				if hangs { width - indent } else { width },
+				tab_width,
+			);
+			if hangs {
+				// The indent leads the row, ahead of any codes: a row styled after its
+				// indent comes back byte-identical when it needed no wrap, and the
+				// spaces carry no styling of their own on the rows that did wrap.
+				for row in wrapped {
+					if row.is_empty() {
+						result.push(row);
+						continue;
+					}
+					let mut indented: Vec<u16> = Vec::with_capacity(row.len() + indent);
+					indented.resize(indent, b' ' as u16);
+					indented.extend_from_slice(&row);
+					result.push(indented);
+				}
+			} else {
+				result.extend(wrapped);
+			}
 			update_state_from_text(line, &mut state);
 			line_start = i + 1;
 		}
@@ -2561,6 +2657,96 @@ mod tests {
 	#[test]
 	fn test_wrap_oversized_grapheme_does_not_emit_a_leading_blank_line() {
 		assert_eq!(wrap_to_strings("漢漢", 1), vec!["漢", "漢"]);
+	}
+
+	/// A row a renderer indented to nest it under the row above used to lose the
+	/// indent the moment it wrapped, so the continuation read as a new top-level
+	/// row. Every row of one logical line now opens at the same column, and no
+	/// row exceeds the target width.
+	#[test]
+	fn test_wrap_keeps_an_indented_row_under_its_own_indent() {
+		assert_eq!(wrap_to_strings("  Question: what layout does it use here", 20), vec![
+			"  Question: what",
+			"  layout does it use",
+			"  here"
+		]);
+	}
+
+	/// The indent belongs to the logical line, not to the block: a flush line
+	/// after an indented one wraps flush.
+	#[test]
+	fn test_wrap_indent_does_not_leak_to_the_next_line() {
+		assert_eq!(wrap_to_strings("    nested body text here\nflush body text here", 12), vec![
+			"    nested",
+			"    body",
+			"    text",
+			"    here",
+			"flush body",
+			"text here"
+		]);
+	}
+
+	/// An indent that would leave fewer than four cells of text is worse than no
+	/// indent, so the line keeps the flush wrap: its continuation rows carry no
+	/// indent at all.
+	#[test]
+	fn test_wrap_drops_a_hanging_indent_that_leaves_no_room() {
+		let rows = wrap_to_strings("        abcd efgh", 10);
+		assert_eq!(rows.last().map(String::as_str), Some("abcd efgh"));
+	}
+
+	/// The styling of an indented row survives the wrap: every row carries both
+	/// the indent and the active codes, with the codes ahead of the spaces they
+	/// colour.
+	#[test]
+	fn test_wrap_indented_row_keeps_its_style_across_the_break() {
+		let rows = wrap_to_strings("  \x1b[31mred text that wraps here\x1b[0m", 14);
+		assert!(rows.len() > 1);
+		for row in &rows {
+			assert!(row.starts_with("  \x1b[31m"), "no indent or style: {row:?}");
+			assert!(visible_width_u16(&to_u16(row), DEFAULT_TAB_WIDTH) <= 14);
+		}
+	}
+
+	/// A diff row opens with its marker space, then a colour, then the code's
+	/// own indent, so the spaces of one indent sit on both sides of a sequence.
+	/// Counting only the run before the first sequence hung the row under one
+	/// cell of five, which is how a wrapped patch row landed four columns left
+	/// of the line it continued.
+	#[test]
+	fn test_wrap_counts_an_indent_split_by_a_style_change() {
+		let rows = wrap_to_strings(" \x1b[32m    return new Set(everything here)\x1b[0m", 20);
+		assert!(rows.len() > 1);
+		for row in &rows {
+			let units = to_u16(row);
+			let mut plain = Vec::new();
+			let mut at = 0usize;
+			while at < units.len() {
+				if let Some(len) = ansi_seq_len_u16(&units, at) {
+					at += len;
+				} else {
+					plain.push(units[at]);
+					at += 1;
+				}
+			}
+			let text = String::from_utf16_lossy(&plain);
+			assert_eq!(text.len() - text.trim_start().len(), 5, "row at the wrong column: {text:?}");
+			assert!(visible_width_u16(&units, DEFAULT_TAB_WIDTH) <= 20);
+		}
+	}
+
+	/// A renderer styles a row before it indents it, so the line opens with an
+	/// SGR sequence and its spaces come after. That row hangs too: the tool
+	/// block's own detail rows are written this way, and measuring the indent at
+	/// byte zero left every one of them wrapping flush.
+	#[test]
+	fn test_wrap_hangs_a_row_whose_indent_follows_its_style() {
+		let rows = wrap_to_strings("\x1b[2m  Question: what layout does it use here\x1b[0m", 20);
+		assert!(rows.len() > 1);
+		for row in &rows {
+			assert!(row.starts_with("  \x1b[2m"), "row without style or indent: {row:?}");
+			assert!(visible_width_u16(&to_u16(row), DEFAULT_TAB_WIDTH) <= 20);
+		}
 	}
 
 	/// The line count must equal the grapheme count. A caller sizing a viewport

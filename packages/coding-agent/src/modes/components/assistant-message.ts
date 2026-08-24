@@ -1,5 +1,16 @@
 import type { AssistantMessage, ImageContent } from "@veyyon/ai";
-import { Container, Image, type ImageBudget, ImageProtocol, Markdown, Spacer, TERMINAL, Text } from "@veyyon/tui";
+import {
+	Container,
+	getImageDimensions,
+	Image,
+	type ImageBudget,
+	ImageProtocol,
+	imageFallback,
+	Markdown,
+	Spacer,
+	TERMINAL,
+	Text,
+} from "@veyyon/tui";
 import { formatNumber } from "@veyyon/utils";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import chalk from "chalk";
@@ -660,7 +671,13 @@ export class AssistantMessageComponent extends Container {
 				);
 				continue;
 			}
-			this.#contentContainer.addChild(new Text(theme.fg("toolOutput", `[Image: ${image.mimeType}]`), 1, 0));
+			const dims = image.data ? (getImageDimensions(image.data, image.mimeType) ?? undefined) : undefined;
+			const placeholder = imageFallback({
+				mimeType: image.mimeType,
+				dimensions: dims,
+				reason: TERMINAL.imageProtocol ? "images-off" : "no-protocol",
+			});
+			this.#contentContainer.addChild(new Text(theme.fg("toolOutput", placeholder), 1, 0));
 		}
 	}
 

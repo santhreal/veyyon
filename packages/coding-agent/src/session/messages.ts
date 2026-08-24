@@ -33,6 +33,7 @@ import { isRecord } from "@veyyon/utils/type-guards";
 import { formatExitCodeNotice } from "../exec/exit-notice";
 import { ToolAbortError } from "../tools/tool-errors";
 import { isBlobRef, isTextBlobRef } from "./blob-store";
+import { currentImageDisplayState, imageVisibilityNotice, isImageVisibilityNotice } from "./image-visibility";
 
 export {
 	type BranchSummaryMessage,
@@ -480,7 +481,9 @@ export function stripImagesFromMessage(message: AgentMessage): number {
  * operator blocked them outright (`images.blockImages`).
  *
  * Consecutive placeholder texts collapse into one so a message that was nothing
- * but images does not balloon into a run of identical notes.
+ * but images does not balloon into a run of identical notes. The visibility
+ * notice a tool result carries goes with the images it describes: once the
+ * pictures are out of the request, a sentence about where they are is stale.
  */
 export function replaceLlmImagesWithText(messages: Message[], placeholder: string): Message[] {
 	let out: Message[] | undefined;
@@ -492,6 +495,7 @@ export function replaceLlmImagesWithText(messages: Message[], placeholder: strin
 		const replaced: (TextContent | ImageContent)[] = [];
 		for (const part of content) {
 			if (part.type !== "image") {
+				if (part.type === "text" && isImageVisibilityNotice(part.text)) continue;
 				replaced.push(part);
 				continue;
 			}
@@ -886,6 +890,19 @@ function isAnsweredBatchLedgerNotice(messages: AgentMessage[], index: number, me
 }
 
 /**
+ * State, on the tool result that carries them, whether the images reached the
+ * user's screen. A model holding a picture in its own context otherwise reports
+ * having shown it, while the user is looking at a placeholder row.
+ */
+function statePlacedImageVisibility(message: ToolResultMessage): ToolResultMessage {
+	const images = message.content.filter(block => block.type === "image").length;
+	if (images === 0) return message;
+	const notice = imageVisibilityNotice(currentImageDisplayState(), images);
+	if (!notice) return message;
+	return { ...message, content: [...message.content, { type: "text", text: notice }] };
+}
+
+/**
  * Transform AgentMessages (including custom types) to LLM-compatible Messages.
  *
  * This is used by:
@@ -996,7 +1013,8 @@ export function convertToLlm(messages: AgentMessage[]): Message[] {
 			case "toolResult": {
 				// Core roles share one transformer with agent-core, but this one carries
 				// a standing instruction with an expiry, so it is spelled out.
-				const converted = convertMessageToLlm(expireAnsweredBatchLedger(messages, index, m));
+				const withVisibility = statePlacedImageVisibility(expireAnsweredBatchLedger(messages, index, m));
+				const converted = convertMessageToLlm(withVisibility);
 				return converted ? [converted] : [];
 			}
 			case "user": {
