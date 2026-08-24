@@ -174,6 +174,8 @@ PGID="$(id -g "${PUSER}")"
 getent group "${SCENE_RENDER_GID:-993}" >/dev/null 2>&1 ||
 	groupadd -g "${SCENE_RENDER_GID:-993}" rendernode
 usermod -aG "${SCENE_RENDER_GID:-993}" "${PUSER}"
+usermod -aG video "${PUSER}" 2>/dev/null || true
+chmod 666 /dev/dri/* 2>/dev/null || true
 mkdir -p /tmp/xdg
 chmod 700 /tmp/xdg
 chown -R "${PUID}:${PGID}" /tmp/xdg "${OUT}"
@@ -249,6 +251,16 @@ cleanup() {
 	# leaves an mp4 with no moov atom, which plays nowhere.
 	kill -INT "${WF_PID}" 2>/dev/null || true
 	wait "${WF_PID}" 2>/dev/null || true
+	# Judge the take on motion, not on the header it was written with. wf-recorder
+	# reports the rate it was asked for whatever the compositor actually handed it,
+	# so an mp4 that plays as three frames a second is indistinguishable from a
+	# smooth one until the unique frames are counted. The X path has been gated
+	# since the blur was found; a Wayland take that is never measured is the same
+	# defect waiting on a different display server.
+	local motion_failed=0
+	if [ "${SCENE_MOTION_GATE:-1}" = "1" ]; then
+		bash "${SCENE_MOTION_GATE_BIN:-/repo/proof/motion-gate.sh}" "${SCENE_VIDEO}" >&2 || motion_failed=1
+	fi
 	kill "${KITTY_PID}" 2>/dev/null || true
 	swaymsg exit >/dev/null 2>&1 || kill "${SWAY_PID}" 2>/dev/null || true
 	# The container is gone the moment this returns, and with it every reason a
@@ -258,6 +270,11 @@ cleanup() {
 	for log in /tmp/term.log /tmp/sway.log /tmp/wf.log /tmp/app-stderr.log /tmp/app-exit /tmp/app-out.raw; do
 		[ -s "${log}" ] && cp -f "${log}" "${SCENE_OUT}/${SCENE_NAME}-$(basename "${log}")" 2>/dev/null
 	done
+	# The verdict is taken after the artifacts are out, so a failed take is still a
+	# take somebody can look at, and `exit` here rather than `return` because an
+	# EXIT trap that only returns leaves the status the run already had -- which is
+	# success, which is how an unwatchable take reports as a good one.
+	if [ "${motion_failed}" = "1" ]; then exit 1; fi
 	return 0
 }
 trap cleanup EXIT

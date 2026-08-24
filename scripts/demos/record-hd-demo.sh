@@ -20,13 +20,20 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${REPO_ROOT}"
 
-: "${PROOF_LLM_BASE_URL:?set PROOF_LLM_BASE_URL to an OpenAI-compatible endpoint}"
-# Qwen3.8 27B, served locally through the distinct 96k model row. The window is
-# part of the proof: one goal carries the plan, parallel implementation, tests,
-# compiled binary, protected signing, and final simulator presentation without
-# an operator prompt restarting the task.
+# Local takes need an OpenAI-compatible loopback. A cloud model (Gemini, …) talks
+# to its own endpoint and does not.
 DEMO_MODEL="${DEMO_MODEL:-local/demo-qwen38-27b-96k}"
 SCENE="${1:-demo-hd}"
+CLOUD_MODEL=0
+case "${DEMO_MODEL}" in
+local/*) CLOUD_MODEL=0 ;;
+*) CLOUD_MODEL=1 ;;
+esac
+if [[ ${CLOUD_MODEL} -eq 0 ]]; then
+	: "${PROOF_LLM_BASE_URL:?set PROOF_LLM_BASE_URL to an OpenAI-compatible endpoint}"
+else
+	PROOF_LLM_BASE_URL="${PROOF_LLM_BASE_URL:-}"
+fi
 
 # WHICH DISPLAY SERVER RECORDS THE TAKE. `x11` is picom's frosted backdrop behind an
 # opaque window, which is every frame published so far; `wayland` is swayfx, where the
@@ -52,6 +59,11 @@ CAPTURES="proof/captures/${DEMO_SERVER}"
 # The terminal runs the app unless a scene needs a shell, which one of them does.
 SCENE_WORKDIR="${SCENE_CWD:-/sandbox/home/demo}"
 SCENE_CMD="bun /repo/packages/coding-agent/src/cli.ts --model ${DEMO_MODEL}"
+# Cloud rows can drop thinking effort so the take is a session, not a thinking
+# stream. Gemini 3.7 Flash honours `low`.
+if [[ -n "${DEMO_THINKING:-}" ]]; then
+	SCENE_CMD="${SCENE_CMD} --thinking ${DEMO_THINKING}"
+fi
 # A row shows the block, the card or the diff, and this model reasons in pages, so
 # every scene records with `Hide Thinking Blocks` on -- the hero included, which is
 # a reversal. The hero ran once with thinking shown, on the theory that a session
@@ -77,9 +89,23 @@ ZOOM_ARGS=()
 case "${SCENE}" in
 demo-hd)
 	ASSET=assets/demo-hd.webp
-	ZOOM_ARGS=(--magnify 2.0)
-	SCENE_FPS=60
-	CADENCE_MS=17
+	ZOOM_ARGS=()
+	# 30, because 30 is what the pipeline delivers whole and 60 is not. Measured in
+	# the recorder image at 2560x1440 with the hero's own chrome, a payload
+	# repainting every cell of the 134x31 grid as fast as the terminal accepts it,
+	# unique frames counted with mpdecimate:
+	#
+	#   capture 30, themed, idle          240 unique / 240 grabbed   30 fps
+	#   capture 30, themed, 12 cores busy 223 unique / 240 grabbed   27 fps
+	#   capture 30, no compositor, idle   240 unique / 240 grabbed   30 fps
+	#
+	# Every frame distinct at 30. Capturing at 60 does not add motion the session
+	# never had: it doubles the encoder's core count and the file, and it writes a
+	# 60 fps header over content that changes far slower, which is what made an
+	# earlier take read as "60 fps but stuttering" when ffprobe was believed over
+	# the pixels. Judge a take with proof/motion-gate.sh, never with the header.
+	SCENE_FPS=30
+	CADENCE_MS=33
 	# The hero also ships whole. The task runs for many minutes and the landing
 	# page gets a dense cut, so both are published and the cut can be checked
 	# against the complete autonomous goal session.
@@ -385,6 +411,7 @@ require_every_mark_has_a_frame() {
 # panel), which is minutes of a take spent proving nothing.
 "${BUN}" scripts/verify-scene.ts "${SCENE}" >&2
 
+if [[ ${CLOUD_MODEL} -eq 0 ]]; then
 # WHICH MODEL, AND WHERE IT IS. The take is recorded on the host serving the weights, so the
 # endpoint is a loopback address; a base URL pointing at another machine means the session's
 # every token crosses a network the recording then blames for its pauses. Naming it here is
@@ -408,12 +435,6 @@ if [[ -n "${SERVED_MODELS}" ]] && ! printf '%s' "${SERVED_MODELS}" | grep -qF "$
 	exit 1
 fi
 
-# The number the session signs with, generated per run so a published frame pins one
-# specific digest and the check is reproducible rather than decorative. It is passed into
-# the container as an environment variable and stored there with `/secret from-env`, so it
-# is typed nowhere and reaches the transcript never.
-SIGNING_NUMBER="${SIGNING_NUMBER:-$(printf '%04d-%04d-%04d' $((RANDOM % 10000)) $((RANDOM % 10000)) $((RANDOM % 10000)))}"
-
 # Warm the server before anything is recorded. The first request against a freshly
 # loaded model pays for prompt evaluation, and a scene that pays for it on screen opens
 # on a spinner -- which every row used to do, by spending its first turn asking the model
@@ -423,6 +444,20 @@ curl -s --max-time 180 "${PROOF_LLM_BASE_URL%/}/chat/completions" \
 	-H 'content-type: application/json' \
 	-d "{\"model\":\"${DEMO_MODEL#local/}\",\"messages\":[{\"role\":\"user\",\"content\":\"warm\"}],\"max_tokens\":4}" \
 	>/dev/null || echo "record-hd-demo.sh: warm-up request failed; the row may open on a spinner" >&2
+
+else
+	echo "record-hd-demo.sh: cloud model ${DEMO_MODEL}${DEMO_THINKING:+ thinking ${DEMO_THINKING}}" >&2
+	MODEL_IS_LOCAL=0
+	if [[ -d "${HOME}/.veyyon/shared-auth" ]]; then
+		export PROOF_AUTH_DIR="${PROOF_AUTH_DIR:-${HOME}/.veyyon/shared-auth}"
+	fi
+fi
+
+# The number the session signs with, generated per run so a published frame pins one
+# specific digest and the check is reproducible rather than decorative. It is passed into
+# the container as an environment variable and stored there with `/secret from-env`, so it
+# is typed nowhere and reaches the transcript never.
+SIGNING_NUMBER="${SIGNING_NUMBER:-$(printf '%04d-%04d-%04d' $((RANDOM % 10000)) $((RANDOM % 10000)) $((RANDOM % 10000)))}"
 
 # WHAT DROVE THE TAKE, written beside it. A published frame is a claim about a model, and the
 # only record of which row and which endpoint produced it used to be whatever the operator
