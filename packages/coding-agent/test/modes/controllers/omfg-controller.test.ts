@@ -11,8 +11,7 @@ import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 import { Container, type TUI } from "@veyyon/tui";
 import { removeWithRetries } from "@veyyon/utils";
 
-const PROJECT_OPTION = "This project (.veyyon/rules)";
-const GLOBAL_OPTION = "Global — all projects (~/.veyyon/agent/rules)";
+const PROFILE_OPTION = "This profile — every project";
 const AMEND_OPTION = "Amend with feedback…";
 
 const usage: Usage = {
@@ -123,7 +122,7 @@ async function createHarness(options: HarnessOptions): Promise<Harness> {
 	await fs.mkdir(agentDir, { recursive: true });
 
 	const ttsrAddRule = vi.fn<AddRule>(() => true);
-	const selectorChoices = [...(options.selectorChoices ?? [options.selectorChoice ?? PROJECT_OPTION])];
+	const selectorChoices = [...(options.selectorChoices ?? [options.selectorChoice ?? PROFILE_OPTION])];
 	const showHookSelector = vi.fn<ShowHookSelector>(async () => selectorChoices.shift());
 	const showHookConfirm = vi.fn<ShowHookConfirm>(async () => options.confirmResult ?? true);
 	const showHookInput = vi.fn<ShowHookInput>(async () => options.inputChoice);
@@ -178,7 +177,7 @@ afterEach(async () => {
 });
 
 describe("OmfgController", () => {
-	it("saves a matching generated rule under project rules and registers it live", async () => {
+	it("saves a matching generated rule under profile rules and registers it live", async () => {
 		const reply = createRule("ts-no-any", ": any|as any", "tool:edit(*.ts)");
 		const runEphemeralTurn = vi.fn<RunEphemeralTurn>(async args => {
 			expect(args.dedupeReply).toBe(false);
@@ -189,20 +188,18 @@ describe("OmfgController", () => {
 		const controller = new OmfgController(harness.ctx);
 
 		await controller.start("This guy used any again");
-		const savedPath = path.join(harness.projectDir, ".veyyon", "rules", "ts-no-any.md");
+		const savedPath = path.join(harness.agentDir, "rules", "ts-no-any.md");
 		await waitFor(() => harness.ttsrAddRule.mock.calls.length === 1);
 
 		expect(await Bun.file(savedPath).text()).toBe(
 			expectedRuleMarkdown("ts-no-any", ": any|as any", "tool:edit(*.ts)"),
 		);
-		expect(harness.showHookSelector.mock.calls[0]).toEqual([
-			"Save TTSR rule where?",
-			[PROJECT_OPTION, GLOBAL_OPTION, AMEND_OPTION],
-		]);
+		expect(harness.showHookSelector.mock.calls[0]).toEqual(["Save TTSR rule where?", [PROFILE_OPTION, AMEND_OPTION]]);
 		expect(harness.ttsrAddRule.mock.calls[0]?.[0].path).toBe(savedPath);
 		const rendered = Bun.stripANSI(harness.container.render(120).join("\n"));
 		expect(rendered).toContain("Registered live");
-		expect(rendered).toContain(path.join(".veyyon", "rules", "ts-no-any.md"));
+		expect(rendered).toContain(path.join("rules", "ts-no-any.md"));
+		expect(rendered).toContain("User created in Settings");
 		expect(rendered).toContain("Esc dismiss");
 		expect(controller.hasActiveRequest()).toBe(true);
 		expect(controller.handleEscape()).toBe(true);
@@ -233,7 +230,7 @@ describe("OmfgController", () => {
 		await controller.start("Stop casting to any");
 		await waitFor(() => harness.ttsrAddRule.mock.calls.length === 1);
 
-		const savedPath = path.join(harness.projectDir, ".veyyon", "rules", "ts-no-casts.md");
+		const savedPath = path.join(harness.agentDir, "rules", "ts-no-casts.md");
 		const saved = await Bun.file(savedPath).text();
 		expect(saved).toContain('astCondition: ["$VALUE as any"]');
 		expect(saved).toContain("interruptMode: tool-only");
@@ -275,7 +272,7 @@ describe("OmfgController", () => {
 		expect(runEphemeralTurn.mock.calls[1]?.[0].promptText).toContain(
 			"No assistant history surface matched condition",
 		);
-		expect(await Bun.file(path.join(harness.projectDir, ".veyyon", "rules", "ts-no-any.md")).exists()).toBe(true);
+		expect(await Bun.file(path.join(harness.agentDir, "rules", "ts-no-any.md")).exists()).toBe(true);
 	});
 
 	it("asks before saving when validation never confirms a match", async () => {
@@ -297,7 +294,7 @@ describe("OmfgController", () => {
 		expect(runEphemeralTurn).toHaveBeenCalledTimes(3);
 		expect(harness.showHookConfirm.mock.calls[0]?.[0]).toBe("Validation");
 		expect(harness.showHookSelector).not.toHaveBeenCalled();
-		expect(await Bun.file(path.join(harness.projectDir, ".veyyon", "rules", "no-match.md")).exists()).toBe(false);
+		expect(await Bun.file(path.join(harness.agentDir, "rules", "no-match.md")).exists()).toBe(false);
 	});
 
 	it("lets the user amend from the save selector before writing the rule", async () => {
@@ -316,7 +313,7 @@ describe("OmfgController", () => {
 		const harness = await createHarness({
 			runEphemeralTurn,
 			messages: createMatchingMessages(),
-			selectorChoices: [AMEND_OPTION, PROJECT_OPTION],
+			selectorChoices: [AMEND_OPTION, PROFILE_OPTION],
 			inputChoice: "Rename it and make the guidance stricter before saving.",
 		});
 		const controller = new OmfgController(harness.ctx);
@@ -332,10 +329,8 @@ describe("OmfgController", () => {
 		expect(runEphemeralTurn.mock.calls[1]?.[0].promptText).toContain(
 			"Rename it and make the guidance stricter before saving.",
 		);
-		expect(await Bun.file(path.join(harness.projectDir, ".veyyon", "rules", "ts-any-broad.md")).exists()).toBe(false);
-		expect(await Bun.file(path.join(harness.projectDir, ".veyyon", "rules", "ts-no-explicit-any.md")).exists()).toBe(
-			true,
-		);
+		expect(await Bun.file(path.join(harness.agentDir, "rules", "ts-any-broad.md")).exists()).toBe(false);
+		expect(await Bun.file(path.join(harness.agentDir, "rules", "ts-no-explicit-any.md")).exists()).toBe(true);
 	});
 
 	it("guards empty complaints and missing models before model calls", async () => {
@@ -370,6 +365,6 @@ describe("OmfgController", () => {
 		expect(harness.container.children).toHaveLength(0);
 		expect(signal?.aborted).toBe(true);
 		expect(controller.hasActiveRequest()).toBe(false);
-		expect(await Bun.file(path.join(harness.projectDir, ".veyyon", "rules", "ts-no-any.md")).exists()).toBe(false);
+		expect(await Bun.file(path.join(harness.agentDir, "rules", "ts-no-any.md")).exists()).toBe(false);
 	});
 });
