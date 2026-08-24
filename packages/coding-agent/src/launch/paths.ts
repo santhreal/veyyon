@@ -74,10 +74,38 @@ export function daemonRuntimeDir(projectDir: string, configRoot: string = getCon
 	return path.join(configRoot, NAMES.brokerRoot, projectKey(projectDir));
 }
 
-/** Resolve the Unix socket or Windows named pipe used by one project broker. */
+/**
+ * Resolve the private runtime directory ONE SESSION's launches use.
+ *
+ * A sibling of the project layout (never inside it), prefixed so it cannot collide with any
+ * project key: without the prefix a hostile or hex-shaped session id could land a session
+ * broker on another project's socket. Two sessions in one project therefore get two brokers,
+ * two token files, and two supervised-process sets, which is the whole point of the scope.
+ */
+export function daemonSessionRuntimeDir(
+	projectDir: string,
+	sessionId: string,
+	configRoot: string = getConfigRootDir(),
+): string {
+	const safe = sessionId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
+	return path.join(configRoot, NAMES.brokerRoot, `session-${projectKey(projectDir)}-${safe || "anon"}`);
+}
+
+/**
+ * Resolve the Unix socket or Windows named pipe used by one broker.
+ *
+ * The Windows pipe cannot key off the project alone any more: a session-scoped broker and its
+ * project's broker would otherwise fight over one name. The canonical project layout keeps its
+ * historical pipe (basename equals the project key), so an upgrade neither orphans a running
+ * project broker nor changes the name existing clients compute; every other runtime directory
+ * — session scopes today — hashes its own pipe under a distinct prefix.
+ */
 export function daemonBrokerEndpoint(projectDir: string, runtimeDir: string): string {
 	if (process.platform === "win32") {
-		return `\\\\.\\pipe\\veyyon-daemon-${projectKey(projectDir)}`;
+		const base = path.basename(path.resolve(runtimeDir));
+		if (base === projectKey(projectDir)) return `\\\\.\\pipe\\veyyon-daemon-${base}`;
+		const scoped = Bun.hash.wyhash(path.resolve(runtimeDir)).toString(16).padStart(16, "0");
+		return `\\\\.\\pipe\\veyyon-daemon-session-${scoped}`;
 	}
 	return path.join(runtimeDir, NAMES.brokerSocket);
 }

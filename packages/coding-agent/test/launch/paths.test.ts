@@ -75,13 +75,26 @@ describe("daemonBrokerEndpoint", () => {
 		});
 	});
 
-	it("uses a named pipe keyed by the project path on Windows, ignoring the runtime dir", () => {
+	it("keeps the historical project pipe for the canonical project runtime dir", () => {
 		withPlatform("win32", () => {
-			// The pipe key matches the runtime-dir key so client and daemon agree, and the
-			// runtime-dir argument is irrelevant in the pipe namespace.
-			expect(daemonBrokerEndpoint("/home/x/proj", "C:\\ignored")).toBe(
-				"\\\\.\\pipe\\veyyon-daemon-0f63cb695d3d99fc",
+			const runtimeDir = daemonRuntimeDir("/home/x/proj", "C:\\cfg");
+			expect(daemonBrokerEndpoint("/home/x/proj", runtimeDir)).toBe(
+				`\\\\.\\pipe\\veyyon-daemon-${path.basename(runtimeDir)}`,
 			);
+		});
+	});
+
+	/**
+	 * A session-scoped broker lives in its own runtime directory, so on Windows it needs a
+	 * pipe of its own: keyed off the runtime dir under a distinct prefix, never the project's
+	 * historical name, or the two scopes would fight over one endpoint.
+	 */
+	it("gives a foreign runtime dir its own hashed pipe namespace", () => {
+		withPlatform("win32", () => {
+			const projectPipe = daemonBrokerEndpoint("/home/x/proj", daemonRuntimeDir("/home/x/proj", "C:\\cfg"));
+			const foreign = daemonBrokerEndpoint("/home/x/proj", "C:\\cfg\\run\\daemons\\session-abc");
+			expect(foreign).toMatch(/^\\\\\.\\pipe\\veyyon-daemon-session-[0-9a-f]{16}$/);
+			expect(foreign).not.toBe(projectPipe);
 		});
 	});
 

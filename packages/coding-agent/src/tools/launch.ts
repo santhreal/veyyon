@@ -11,7 +11,7 @@ import { Text } from "@veyyon/tui";
 import { clampLow, prompt, sanitizeText } from "@veyyon/utils";
 import { type } from "arktype";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
-import { daemonClientForProject } from "../launch/client";
+import { daemonClientForProject, daemonClientForSession } from "../launch/client";
 import type { DaemonOperation, DaemonRpcResult, DaemonSnapshot, DaemonSpec, DaemonState } from "../launch/protocol";
 import { renderTerminalOutput } from "../launch/terminal-output";
 import type { Theme, ThemeColor } from "../modes/theme/theme";
@@ -353,12 +353,12 @@ function approvalFor(params: unknown): ToolApprovalDecision {
 	}
 }
 
-/** Project-scoped launch tool for supervising processes in every coding-agent session. */
+/** Supervises processes that do not end on their own. Session-private by default; `launch.sharedCrossSession` restores the shared project scope. */
 export class LaunchTool implements AgentTool<typeof launchSchema, LaunchToolDetails, Theme> {
 	readonly name = "launch";
 	readonly label = "Launch";
 	readonly loadMode = "essential";
-	readonly summary = "Supervise a shared project process that does not end on its own";
+	readonly summary = "Supervise a long-running process that does not end on its own";
 	readonly description = prompt.render(toolsPrompts["tools/launch"].text);
 	readonly parameters = launchSchema;
 	readonly strict = true;
@@ -402,9 +402,14 @@ export class LaunchTool implements AgentTool<typeof launchSchema, LaunchToolDeta
 			);
 			cpuLimit.assertMaySpawn("a background process");
 		}
-		const client = await daemonClientForProject(this.session.cwd, {
-			adoptSpawnedPid: sessionCpuAdoption(getSessionId),
-		});
+		// Cross-session sharing is opt-in (`launch.sharedCrossSession`, default off). Without it
+		// every start is supervised by a session-private broker: another session in this project
+		// computes a different runtime directory and can neither list, read, nor stop these.
+		const client = this.session.settings.get("launch.sharedCrossSession")
+			? await daemonClientForProject(this.session.cwd, { adoptSpawnedPid: sessionCpuAdoption(getSessionId) })
+			: await daemonClientForSession(this.session.cwd, getSessionId() ?? `proc-${process.pid}`, {
+					adoptSpawnedPid: sessionCpuAdoption(getSessionId),
+				});
 		if (params.op === "stop" || params.op === "restart") {
 			// The end of a process the caller asked to end is not news. Drop the
 			// watch before the request, so the exit it causes reports nothing.

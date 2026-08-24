@@ -6,6 +6,7 @@
 
 ### Added
 
+- Launched processes are private to the session that started them. The launch tool used one broker per project directory, so every session in a checkout listed, read, stopped and restarted every other session's processes, and a second session's `list` leaked another run's logs into its context. Each session now supervises its own launches under a session-scoped broker that ends with the session; the new `launch.sharedCrossSession` setting (default off) restores the shared project scope for operators who want it.
 - A tool result that carries an image now states whether the picture reached the screen, so a model reading a file describes what it shows instead of reporting that it displayed it.
 - A picture the block gives up on after the fact, because the session's image budget demoted it or a Kitty session could not convert it, is stated to the model as undrawn instead of being reported as displayed.
 - `read` accepts a semicolon-delimited list of internal resources (`skill://demo/one.md;skill://demo/two.md`), the same list form `grep` and `glob` take, and returns one section per entry.

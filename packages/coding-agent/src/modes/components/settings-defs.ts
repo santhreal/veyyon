@@ -223,6 +223,9 @@ function whenSettingsSay(read: () => boolean): boolean {
 
 const CONDITIONS: Record<string, () => boolean> = {
 	hasImageProtocol: () => !!TERMINAL.imageProtocol,
+	// Sharing launched processes across sessions only means something while the
+	// launch tool exists at all; hidden entirely while it is off.
+	launchEnabled: () => whenSettingsSay(() => Settings.instance.get("launch.enabled") === true),
 	advisorEnabled: () => whenSettingsSay(() => Settings.instance.get("advisor.enabled") === true),
 	argotEnabled: () => whenSettingsSay(() => Settings.instance.get("argot.enabled") === true),
 	autoQaEnabled: () => whenSettingsSay(() => Settings.instance.get("dev.autoqa") === true),

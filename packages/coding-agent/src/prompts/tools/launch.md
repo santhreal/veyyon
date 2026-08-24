@@ -1,4 +1,4 @@
-Supervises a process that does NOT end on its own, shared by every veyyon instance in the same directory.
+Supervises a process that does NOT end on its own. Processes are PRIVATE to this session unless `launch.sharedCrossSession` is on; the `veyyon launch` CLI reaches only shared-scope processes.
 
 <routing>
 - Pick by how the process ENDS, never by how long it runs. Ends on its own (test suite, build, benchmark, migration, install — any command with a last line)? That is `bash`, backgrounded if it is slow. Runs until something stops it, or you must talk to it later (server, watcher, daemon, REPL, tunnel)? That is `launch`.
@@ -8,7 +8,7 @@ Supervises a process that does NOT end on its own, shared by every veyyon instan
 <instruction>
 - The schema documents every field; these are the facts it cannot state.
 - `start` BLOCKS until readiness or `ready.timeout`, so a pattern that never prints costs the whole timeout. Without `ready` it returns as soon as the process is spawned.
-- Names are unique per project directory. A completed name MAY be started again; a live name MUST be stopped or restarted.
+- Names are unique per scope (this session by default; the project when sharing is on). A completed name MAY be started again; a live name MUST be stopped or restarted.
 - Every op except `start` and `list` addresses the stable `name`.
 - `logs` with `follow` returns a cursor; pass it back on the next call to continue where you stopped.
 - `wait` blocks. An exit already arrives on its own, so `wait` is for readiness or a pattern you need before the next step — never a poll loop.
