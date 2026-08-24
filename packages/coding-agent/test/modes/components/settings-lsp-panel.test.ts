@@ -8,6 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
+import { SETTINGS_SCHEMA, type SettingPath } from "@veyyon/coding-agent/config/settings-schema";
 import {
 	formatLspSummary,
 	getSettingDef,
@@ -84,5 +85,16 @@ describe("the Files → LSP nested panel", () => {
 		expect([...lspPanelPaths()]).toEqual(["lsp.enabled"]);
 		settings.set("lsp.enabled", true);
 		expect([...lspPanelPaths()]).toEqual([...LSP_SETTING_PATHS]);
+	});
+
+	it("draws every LSP row on the nested page, so a new lsp setting cannot go missing", () => {
+		// Files drops every `lsp.*` row but the parent, and the page draws only
+		// LSP_SETTING_PATHS. A new lsp row missing from that list is reachable
+		// from neither surface, so the expected set is read off the schema at run
+		// time instead of being restated here.
+		const rows = (Object.keys(SETTINGS_SCHEMA) as SettingPath[])
+			.filter(path => path.startsWith("lsp.") && getSettingDef(path) !== undefined)
+			.sort();
+		expect(rows).toEqual([...LSP_SETTING_PATHS].sort());
 	});
 });
