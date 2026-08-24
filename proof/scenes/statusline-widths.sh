@@ -67,15 +67,15 @@ settle 12
 # frame below would photograph a short location under no pressure at all.
 #
 # EACH ARM LOOKS AT THE END OF THE PATH THAT ARM KEEPS, and that is not fussiness. At
-# seventy-eight columns the two arms share almost no path text: main clips the location
-# from the LEFT, so the tail (`…orm-services/ingest-pipeline/normalize…`) is what is on
-# screen, while the branch clips from the RIGHT and keeps the head, and it keeps less of it
-# because the model chip it no longer sheds is holding twenty columns. One needle for both
-# failed the after arm for exactly the difference it is recording.
+# seventy-eight columns the two arms share almost no path text: main clips the location at
+# BOTH ends (`…orm-services/ingest-pipeline/normalize…`), so the directory the session is
+# actually in is the one thing it does not show, while the branch cuts the head only and
+# keeps `normalizer` whole. A needle on the tail fails main; a needle on the head fails the
+# branch, which spends what main saves on a model chip it no longer sheds.
 if [ "${SCENE_ARM:-after}" = "before" ]; then
 	expect_screen "orm-services" 60 "seeded-cwd"
 else
-	expect_screen "platform" 60 "seeded-cwd"
+	expect_screen "normalizer" 60 "seeded-cwd"
 fi
 
 # ---------------------------------------------------------------------------

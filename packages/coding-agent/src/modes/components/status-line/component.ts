@@ -2,8 +2,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, UsageLimit, UsageReport } from "@veyyon/ai";
-import { type Component, padding, truncateToWidth, visibleWidth } from "@veyyon/tui";
-import { formatClock, getProjectDir, scopedTimeoutSignal, withScopedTimeoutSignal } from "@veyyon/utils";
+import { type Component, padding, sliceWithWidth, truncateToWidth, visibleWidth } from "@veyyon/tui";
+import { formatClock, getProjectDir, scopedTimeoutSignal, stripAnsi, withScopedTimeoutSignal } from "@veyyon/utils";
 import { resolveContextLimit } from "../../../config/compaction-strategy";
 // The slot leaf, not the 95-module store: this file reads settings, it does not fill them.
 import { settings } from "../../../config/settings-instance";
@@ -89,6 +89,48 @@ const RIGHT_PART_SHED_RANK: Record<string, number> = {
 	location_right: 4,
 	subagents: 5,
 };
+
+/** The one clip mark on the footline, wherever a clipper puts it. */
+const ELLIPSIS = "…";
+
+/**
+ * Clip `text` to `maxWidth` by dropping cells off the FRONT, reporting how many went.
+ *
+ * The location zone reads from its right end: the directory the session is in, the branch
+ * checked out. Cutting the tail to fit a narrow row threw exactly that away and left the
+ * project root, which every session under one project shares. Cutting the front keeps the
+ * identifying end, and keeps it in the same direction `clampPathLength` cuts, so the two of
+ * them cannot put an ellipsis on both ends of one path.
+ *
+ * `dropped` is what a caller needs to keep click targets honest: recorded slot columns are
+ * measured on the untruncated join, and a front cut shifts every survivor left by it. `mark`
+ * is 1 when this call added an ellipsis and 0 when it inherited one already in the text.
+ * `sliceWithWidth` replays the SGR state in force at the cut, so the visible tail keeps the
+ * color the dropped opening set.
+ */
+function clipStartToWidth(text: string, maxWidth: number): { text: string; dropped: number; mark: number } {
+	const total = visibleWidth(text);
+	if (total <= maxWidth) return { text, dropped: 0, mark: 0 };
+	if (maxWidth <= 0) return { text: "", dropped: total, mark: 0 };
+	// One cell pays for the mark, unless the cut lands ON a mark already in the text: the
+	// preset's `clampPathLength` ran at its own budget before the row was consulted, so the
+	// head this cut eats is often that clamp's ellipsis with the segment icon in front of it.
+	// Adding a second one painted `……orm-services/…` -- the both-ends defect again, one end
+	// at a time -- so inherit that mark instead of stacking one on it.
+	//
+	// Only this cut is tried. A cut at the FULL budget that lands on the mark returns the
+	// same string as this one does: it keeps a mark this cut drops and re-prepends, so a
+	// branch for it changes no byte.
+	//
+	// At a budget of one cell the mark is all there is room for, and a bare `…` is the honest
+	// answer: the alternative is a fragment of a directory name that reads as a real one.
+	const keep = maxWidth - 1;
+	const tail = sliceWithWidth(text, total - keep, keep, true);
+	if (stripAnsi(tail.text).startsWith(ELLIPSIS)) {
+		return { text: tail.text, dropped: total - visibleWidth(tail.text), mark: 0 };
+	}
+	return { text: `${ELLIPSIS}${tail.text}`, dropped: total - visibleWidth(tail.text), mark: 1 };
+}
 /** One segment's slot on the rendered quiet footline (0-based columns, end exclusive). */
 export interface QuietSegmentBounds {
 	id: string;
@@ -1603,6 +1645,10 @@ export class StatusLineComponent implements Component {
 		// drops entirely — so it can never squeeze a segment off the line.
 		let clockStage = 0;
 		let locationShortened = false;
+		// Cells the location lost off its front, so recorded click slots can follow it left.
+		let locationDropped = 0;
+		// 1 when the clip added its own mark, 0 when it inherited the clamp's.
+		let locationMark = 0;
 		while (rightParts.length > 0 && visibleWidth(left) + visibleWidth(right) + (left && right ? 2 : 0) > budget) {
 			if (clockStage === 0) {
 				clockStage = 1;
@@ -1636,7 +1682,10 @@ export class StatusLineComponent implements Component {
 			if (!locationShortened) {
 				locationShortened = true;
 				const leftBudget = Math.max(0, budget - visibleWidth(right) - (right ? 2 : 0));
-				left = truncateToWidth(locationContents.join(sep), leftBudget);
+				const clipped = clipStartToWidth(locationContents.join(sep), leftBudget);
+				left = clipped.text;
+				locationDropped = clipped.dropped;
+				locationMark = clipped.mark;
 				continue;
 			}
 			// The location is gone too and the ranked parts still do not fit, so the
@@ -1665,16 +1714,32 @@ export class StatusLineComponent implements Component {
 		const sepWidth = visibleWidth(sep);
 		const bounds: QuietSegmentBounds[] = [];
 		if (left) {
+			// A front cut moved every surviving part left by `locationDropped` and put the
+			// mark in the cell it vacated, so a slot is where it RENDERED, not where it sat
+			// in the join. Without this shift a click on the visible path resolved to
+			// whatever segment used to own that column.
+			//
+			// The mark itself belongs to the first part still on the line: it is that part's
+			// own clipped front, so a click on it addresses that part. Left unowned it was a
+			// dead cell at column 0 of the zone, and the path slot did not contain the
+			// ellipsis that is the path's.
+			const mark = locationMark;
 			let col = 0;
+			let first = true;
 			const leftWidth = visibleWidth(left);
 			for (const part of location) {
-				if (col >= leftWidth) break;
 				const partWidth = visibleWidth(part.content);
-				const end = Math.min(col + partWidth, leftWidth);
-				if (end > col) {
-					bounds.push({ id: part.id, start: col, end });
-				}
+				const partStart = col;
 				col += partWidth + sepWidth;
+				// Cut away entirely: it is ahead of the first visible cell.
+				if (partStart + partWidth <= locationDropped) continue;
+				const start = first ? 0 : Math.max(mark, partStart - locationDropped + mark);
+				if (start >= leftWidth) break;
+				const end = Math.min(partStart + partWidth - locationDropped + mark, leftWidth);
+				if (end > start) {
+					bounds.push({ id: part.id, start, end });
+					first = false;
+				}
 			}
 		}
 		const rightStart = left && right ? budget - visibleWidth(right) : 0;
@@ -1700,7 +1765,12 @@ export class StatusLineComponent implements Component {
 		if (left && right) {
 			return badge + left + padding(budget - visibleWidth(left) - visibleWidth(right)) + right;
 		}
-		return badge + truncateToWidth(left || right, budget);
+		// The only single group that reaches here is a RIGHT one: the subagent badge is
+		// appended to `capRight` unconditionally, so `right` is never empty and a location
+		// alone on the row cannot occur. It also means the shed loop above always runs when
+		// the row overflows, which is where the location's front cut is taken. A lone right
+		// group has no head worth keeping, so it loses its tail.
+		return badge + truncateToWidth(right, budget);
 	}
 
 	/**
@@ -1755,7 +1825,7 @@ export class StatusLineComponent implements Component {
 			if (right && visibleWidth(left) + visibleWidth(right) + 2 <= budget) {
 				locationLine = left + padding(budget - visibleWidth(left) - visibleWidth(right)) + right;
 			} else {
-				locationLine = truncateToWidth(left, budget);
+				locationLine = clipStartToWidth(left, budget).text;
 			}
 		}
 		let capabilityLine: string | null = null;

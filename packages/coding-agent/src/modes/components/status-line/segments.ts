@@ -48,20 +48,20 @@ export type { SegmentContext } from "./types";
 const SECRET_EXPIRY_CHIP_WINDOW_MS = 60 * 60 * 1000;
 
 /**
- * Clamp a path/label to `maxLen`, appending an ellipsis when clipped.
+ * Clamp a path/label to `maxLen`, prepending an ellipsis when clipped.
  *
- * CLIPPED FROM ONE END, AND IT IS THIS ONE. The width-driven shortening in the
- * component (`truncateToWidth` on the joined location) already cuts from the right,
- * so a clamp that cut from the left put an ellipsis on BOTH ends of the same path:
- * `…orm-services/ingest-pipeline/norm…` kept neither the project it is under nor the
- * directory it is in, and the surviving middle named nothing a reader could place.
- * Both cuts now run the same direction, so a clipped path carries exactly one
- * ellipsis and reads as a prefix of the real path.
+ * CLIPPED FROM ONE END, AND IT IS THE HEAD. A path's identifying end is its last
+ * segment -- the directory the session is actually in -- so that is the end that
+ * survives. The width-driven shortening in the component clips the joined location
+ * the same direction, which is what stops the two of them putting an ellipsis on
+ * BOTH ends of one path: `…orm-services/ingest-pipeline/norm…` named neither the
+ * project it sits under nor the directory it is in. A clipped path now carries
+ * exactly one ellipsis, at the front, and reads as a suffix of the real path.
  */
 function clampPathLength(pwd: string, maxLen: number): string {
 	if (pwd.length <= maxLen) return pwd;
 	const ellipsis = "…";
-	return `${pwd.slice(0, Math.max(0, maxLen - ellipsis.length))}${ellipsis}`;
+	return `${ellipsis}${pwd.slice(pwd.length - Math.max(0, maxLen - ellipsis.length))}`;
 }
 
 /**
