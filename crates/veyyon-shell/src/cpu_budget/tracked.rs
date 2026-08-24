@@ -167,6 +167,14 @@ fn close_descendant_set(roots: &[i32], children: &HashMap<i32, Vec<i32>>) -> Has
 	out
 }
 
+/// Darwin `<libproc.h>` flavor for `proc_listpids`: every live pid.
+///
+/// libc binds `proc_listpids` on Apple targets but does not export this
+/// constant (0.2.189 still has `PROC_PIDTASKINFO` and friends, not the
+/// list flavors). The value is `1` and has been since the header existed.
+#[cfg(any(target_os = "macos", test))]
+const PROC_ALL_PIDS: u32 = 1;
+
 /// Live pid → children, from libproc. Used only to close the adopted set.
 #[cfg(target_os = "macos")]
 fn macos_child_map() -> HashMap<i32, Vec<i32>> {
@@ -175,7 +183,7 @@ fn macos_child_map() -> HashMap<i32, Vec<i32>> {
 	// SAFETY: proc_listpids writes at most the buffer length in bytes.
 	let bytes = unsafe {
 		libc::proc_listpids(
-			libc::PROC_ALL_PIDS,
+			PROC_ALL_PIDS,
 			0,
 			pids.as_mut_ptr().cast(),
 			(std::mem::size_of::<i32>() * pids.len()) as i32,
@@ -461,6 +469,12 @@ mod tests {
 		members.sort_unstable();
 		assert_eq!(members, vec![202, 303], "the mid-sample adopt survives, the dead pid does not");
 		assert_eq!(total_ns, 7_000, "only the live member contributes, and exactly once");
+	}
+
+	#[test]
+	fn darwin_proc_all_pids_flavor_matches_libproc_h() {
+		// `<libproc.h>` `#define PROC_ALL_PIDS 1`. libc does not export it.
+		assert_eq!(PROC_ALL_PIDS, 1);
 	}
 
 	/// Descendants of an adopted pid are members of the budget, not just the
