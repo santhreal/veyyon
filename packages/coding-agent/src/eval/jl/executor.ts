@@ -245,7 +245,7 @@ async function startKernel(cwd: string, options: JuliaExecutorOptions): Promise<
 		env,
 		signal: options.signal,
 		deadlineMs: options.deadlineMs,
-		adoptPid: sessionCpuAdoption(() => options.sessionId ?? null),
+		adoptPid: sessionCpuAdoption(() => options.toolSession?.getSessionId?.() ?? null),
 	});
 }
 
