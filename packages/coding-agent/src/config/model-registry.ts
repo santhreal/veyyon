@@ -13,7 +13,7 @@ import {
 	bundledCatalogDigest,
 	getBundledModels,
 	getBundledProviders,
-	setBundledRegistryCacheDbPath,
+	setEnrichedRegistrySnapshotStore,
 } from "@veyyon/catalog/models";
 import {
 	googleAntigravityModelManagerOptions,
@@ -21,6 +21,7 @@ import {
 	openaiCodexModelManagerOptions,
 	PROVIDER_DESCRIPTORS,
 } from "@veyyon/catalog/provider-models";
+import { createEnrichedRegistrySnapshotStore } from "@veyyon/catalog/registry-snapshot";
 import {
 	collapseBuiltModelVariants,
 	getVariantAliasSources,
@@ -942,7 +943,12 @@ export class ModelRegistry {
 		this.#snapshotIo = options?.snapshotIo ?? !isBunTestRuntime();
 		this.#modelsConfigFile = ModelsConfigFile.relocate(modelsPath);
 		this.#cacheDbPath = modelsPath ? path.join(path.dirname(modelsPath), "models.db") : undefined;
-		setBundledRegistryCacheDbPath(this.#cacheDbPath);
+		// The enriched bundled registry persists beside the same database, and only
+		// when this registry persists its own stage: a test process shares the
+		// operator's profile directory, so nothing reads or writes there unasked.
+		setEnrichedRegistrySnapshotStore(
+			this.#snapshotIo ? createEnrichedRegistrySnapshotStore(this.#cacheDbPath) : undefined,
+		);
 		// Set up fallback resolver for custom provider API keys
 		this.authStorage.setFallbackResolver(provider => {
 			const keyConfig = this.#customProviderApiKeys.get(provider);
