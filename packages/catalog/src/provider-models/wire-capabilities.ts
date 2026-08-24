@@ -94,9 +94,39 @@ export interface ProviderServiceTierCapability {
 	readonly premiumPriority: boolean;
 }
 
+/**
+ * How one provider serves the `anthropic-messages` wire. Every entry here
+ * replaces a `model.provider === "…"` comparison in the Anthropic client, where
+ * the same seven providers were named across eighteen sites.
+ */
+export interface ProviderAnthropicMessagesCapability {
+	/**
+	 * Anthropic's own API. The Foundry endpoint override and its mTLS material
+	 * apply, and so do the headers scoped to that endpoint; another provider
+	 * serving this wire is reached at the base URL its model states.
+	 */
+	readonly directEndpoint?: boolean;
+	/**
+	 * Where the credential goes when the endpoint is not Anthropic's own:
+	 * `copilot-bearer` a GitHub Copilot token, which also states the base URL;
+	 * `gateway-managed` no credential from here at all; `api-key-header`
+	 * `X-Api-Key` only, with no `Authorization`; `bearer-only` the reverse.
+	 */
+	readonly credential?: "copilot-bearer" | "gateway-managed" | "api-key-header" | "bearer-only";
+	/** The endpoint rejects `anthropic-beta` features, and strict tool schemas with them. */
+	readonly rejectsBetas?: boolean;
+	/** The endpoint rejects the `clear_thinking` context-management edit. */
+	readonly rejectsContextManagement?: boolean;
+	/** Web search is served by a gateway header rather than the Anthropic server tool. */
+	readonly gatewayWebSearch?: boolean;
+	/** A model-level rejection from this endpoint is transient and the request is worth retrying. */
+	readonly transientModelErrors?: boolean;
+}
+
 /** Everything one provider declares about what it realizes on the wire. */
 export interface ProviderWireCapabilities {
 	readonly serviceTier?: ProviderServiceTierCapability;
+	readonly anthropicMessages?: ProviderAnthropicMessagesCapability;
 	/** True when the provider's OpenAI-compatible endpoint honors strict tool schemas. */
 	readonly strictTools?: boolean;
 	/**
@@ -129,6 +159,7 @@ const PROVIDER_WIRE_CAPABILITIES: Partial<
 	Record<KnownProvider | ProviderWithoutCatalogEntry, ProviderWireCapabilities>
 > = {
 	anthropic: {
+		anthropicMessages: { directEndpoint: true },
 		serviceTier: {
 			family: "anthropic",
 			wireTiers: [],
@@ -143,7 +174,18 @@ const PROVIDER_WIRE_CAPABILITIES: Partial<
 		// OpenAI family either.
 		serviceTier: { wireTiers: ["priority"], premiumPriority: false },
 	},
-	"github-copilot": { strictTools: true },
+	"cloudflare-ai-gateway": { anthropicMessages: { credential: "gateway-managed" } },
+	"github-copilot": {
+		// The Copilot proxy accepts no Anthropic beta feature, and its model list
+		// rejects a model per request rather than per key, so a rejection is retried.
+		anthropicMessages: {
+			credential: "copilot-bearer",
+			rejectsBetas: true,
+			rejectsContextManagement: true,
+			transientModelErrors: true,
+		},
+		strictTools: true,
+	},
 	google: {
 		serviceTier: {
 			family: "google",
@@ -153,6 +195,7 @@ const PROVIDER_WIRE_CAPABILITIES: Partial<
 		},
 	},
 	"google-vertex": {
+		anthropicMessages: { rejectsContextManagement: true },
 		// Vertex realizes only priority (via header); flex has no documented control.
 		serviceTier: {
 			family: "google",
@@ -170,6 +213,8 @@ const PROVIDER_WIRE_CAPABILITIES: Partial<
 		strictTools: true,
 	},
 	"openai-codex": { serviceTier: { family: "openai", wireTiers: OPENAI_WIRE_TIERS, premiumPriority: true } },
+	"opencode-go": { anthropicMessages: { credential: "api-key-header" } },
+	"opencode-zen": { anthropicMessages: { credential: "bearer-only" } },
 	openrouter: {
 		// Billed per OpenRouter's own pricing, not Copilot-premium semantics.
 		serviceTier: {
@@ -181,6 +226,7 @@ const PROVIDER_WIRE_CAPABILITIES: Partial<
 		strictTools: true,
 	},
 	together: { strictTools: true },
+	umans: { anthropicMessages: { credential: "api-key-header", gatewayWebSearch: true } },
 	vllm: { localInference: true },
 	zenmux: { strictTools: true },
 };
@@ -196,6 +242,23 @@ export function providersDeclaring(capability: keyof ProviderWireCapabilities): 
 	return Object.keys(PROVIDER_WIRE_CAPABILITIES).filter(
 		id => PROVIDER_WIRE_CAPABILITIES[id as KnownProvider]?.[capability] !== undefined,
 	);
+}
+
+/** Every provider with a declaration. Read by the sweep, not by a request. */
+export function declaredProviders(): readonly string[] {
+	return Object.keys(PROVIDER_WIRE_CAPABILITIES);
+}
+
+/**
+ * Every capability name some provider declares, taken from the table itself so
+ * the sweep sees a new one without being told about it.
+ */
+export function declaredCapabilityNames(): readonly string[] {
+	const names = new Set<string>();
+	for (const entry of Object.values(PROVIDER_WIRE_CAPABILITIES)) {
+		for (const name of Object.keys(entry)) names.add(name);
+	}
+	return [...names].sort();
 }
 
 /**

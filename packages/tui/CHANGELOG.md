@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- `imageFallback` takes the file name, media type, pixel size and cause of an undrawn image and returns a row naming all four; `ImageFallbackReason` states the cause.
+
 ## [1.2.0] - 2026-08-23
 
 ### Breaking Changes
