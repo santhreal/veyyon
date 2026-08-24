@@ -80,6 +80,19 @@ before it can merge. Both frames show the same surface, dimensions, terminal con
 apart from the intended change, and both come from the capture config above. A static change proves
 with a PNG pair, an animation with a GIF/WebP pair; a still never proves an animation.
 
+Proof frames must be **embedded directly** in the pull request description as Markdown images
+(e.g. `![After](https://github.com/user-attachments/assets/...)`), never pasted as monospace text
+blocks or raw attachments. Use `gh image` to upload local capture frames and generate canonical
+GitHub `user-attachments` Markdown embed references:
+
+```sh
+# Upload capture frames and print markdown embed references:
+gh image proof/captures/x11/before/<scene>.png proof/captures/x11/<scene>.png
+# Output:
+# ![before](https://github.com/user-attachments/assets/...)
+# ![after](https://github.com/user-attachments/assets/...)
+```
+
 Proof frames are committed nowhere: not `assets/`, not a README, not the handbook, not the website.
 The regeneration command belongs in the handbook page that owns the surface.
 ## GitHub
