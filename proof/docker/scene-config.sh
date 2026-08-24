@@ -46,7 +46,7 @@
 
 # ─── Chrome ─────────────────────────────────────────────────────────────────
 : "${SCENE_THEME:=plain}"
-: "${SCENE_MARGIN:=96}"
+: "${SCENE_MARGIN:=128}"
 : "${SCENE_RADIUS:=26}"
 : "${SCENE_OPACITY:=0.72}"
 : "${SCENE_SHADOW_RADIUS:=44}"

@@ -63,7 +63,7 @@ The landing-page terminal uses:
 
 ```text
 terminal       kitty
-font           JetBrains Mono 21
+font           JetBrains Mono 15
 canvas         2560x1440 at 30 fps
 window inset   128 px
 background     #171b22
