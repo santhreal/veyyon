@@ -312,7 +312,7 @@ describe("the phase split that makes that true", () => {
 				"const owned = JSON.stringify(viaOwner(file, () => {}));",
 				// biome-ignore lint/suspicious/noTemplateCurlyInString: the placeholders belong to the probe
 				// process's own source, which this line quotes rather than interpolates.
-				"console.log(layered === owned ? `same ${layered}` : `different ${layered} vs ${owned}`);",
+				"console.log(layered === owned ? `same \${layered}` : `different \${layered} vs \${owned}`);",
 			].join("\n"),
 		);
 

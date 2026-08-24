@@ -198,7 +198,7 @@ describe("exit watches are scoped per broker", () => {
 				if (index >= 0) jobs.splice(index, 1);
 			},
 		};
-		const watching = (runtimeDir: string) =>
+		const watching = () =>
 			makeToolSession({
 				getSessionId: () => "session-x",
 				asyncJobManager: manager as never,
@@ -217,11 +217,11 @@ describe("exit watches are scoped per broker", () => {
 		const clientFor = (runtimeDir: string) =>
 			({ projectDir: "p", runtimeDir, request: () => Promise.reject(new Error("unused")) }) as never;
 
-		watchLaunchedProcessExit({ session: watching("rt-a"), client: clientFor("rt-a"), daemon });
-		watchLaunchedProcessExit({ session: watching("rt-b"), client: clientFor("rt-b"), daemon });
+		watchLaunchedProcessExit({ session: watching(), client: clientFor("rt-a"), daemon });
+		watchLaunchedProcessExit({ session: watching(), client: clientFor("rt-b"), daemon });
 		expect(jobs.length).toBe(2);
 
-		releaseLaunchExitWatch(watching("rt-a"), clientFor("rt-a"), "web");
+		releaseLaunchExitWatch(watching(), clientFor("rt-a"), "web");
 		expect(jobs.length).toBe(1);
 	});
 });
