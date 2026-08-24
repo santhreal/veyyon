@@ -50,6 +50,14 @@
 #                          hole exactly where a stuttering take slipped through
 #                          once already.
 #
+#   imagemagick            `magick`, spawned by proof/compose-chrome.sh and the
+#                          suite that pins it. The chrome is drawn after a take
+#                          rather than by a compositor during it, so the pass that
+#                          draws it is ordinary software this sandbox can run --
+#                          and a suite that cannot run it is a hole exactly where
+#                          a bare square-cornered capture would ship as the themed
+#                          take.
+#
 #   gh                     The GitHub CLI. It is NOT in Debian's archive, so it is
 #                          installed from the official release tarball below. It
 #                          earns that trouble: gh is present on the host at
@@ -74,7 +82,7 @@ RUN set -eux; \
     apt-get update; \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         git ca-certificates util-linux kmod procps xz-utils cpio iproute2 \
-        ripgrep openssh-client python3 curl ffmpeg; \
+        ripgrep openssh-client python3 curl ffmpeg imagemagick; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/*; \
     git --version; \
@@ -83,6 +91,7 @@ RUN set -eux; \
     python3 --version; \
     ffmpeg -version >/dev/null; \
     ffprobe -version >/dev/null; \
+    magick -version >/dev/null; \
     test -x /usr/bin/setpriv
 
 # gh is pinned to the version the host carries (gh 2.45.0), so a suite that shells
