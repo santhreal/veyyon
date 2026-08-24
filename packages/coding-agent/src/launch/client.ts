@@ -312,7 +312,11 @@ export async function createDaemonBrokerClient(
 	return new SocketDaemonClient(canonical, runtimeDir, token, options);
 }
 
-function rememberClient(map: Map<string, Promise<DaemonBrokerClient>>, key: string, pending: Promise<DaemonBrokerClient>): void {
+function rememberClient(
+	map: Map<string, Promise<DaemonBrokerClient>>,
+	key: string,
+	pending: Promise<DaemonBrokerClient>,
+): void {
 	map.set(key, pending);
 	if (!cancelExitCleanup) {
 		cancelExitCleanup = postmortem.register("daemon-broker-clients", () => closeDaemonClients());
@@ -368,7 +372,6 @@ export async function closeDaemonClients(): Promise<void> {
 	cancelExitCleanup?.();
 	cancelExitCleanup = undefined;
 }
-
 
 /** Exercise worker-host broker startup and authenticated RPC for distribution smoke tests. */
 export async function smokeTestDaemonBroker(): Promise<void> {
