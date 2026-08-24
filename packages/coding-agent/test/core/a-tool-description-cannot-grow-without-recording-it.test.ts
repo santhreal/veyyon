@@ -49,7 +49,7 @@ const RECORDED_TOKENS: Record<string, number> = {
 	"tools/browser": 1439,
 	"tools/checkpoint": 163,
 	"tools/debug": 414,
-	"tools/eval": 1693,
+	"tools/eval": 1811,
 	"tools/github": 410,
 	"tools/glob": 281,
 	"tools/goal": 162,

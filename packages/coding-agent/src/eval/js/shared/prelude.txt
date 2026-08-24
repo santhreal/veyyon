@@ -65,6 +65,43 @@ if (!globalThis.__veyyon_js_prelude_loaded__) {
 	const write = async (path, data) => callHelper("writeFile", path, data);
 	const env = (key, value) => callHelper("env", key, value);
 
+	// The session-scoped store that outlives this kernel: values move by NAME between
+	// cells, kernels and continuations, so a handle never has to appear in a transcript.
+	const kv = {
+		get: key => callHelper("kvGet", key),
+		set: (key, value) => callHelper("kvSet", key, value),
+		delete: key => callHelper("kvDelete", key),
+		list: () => callHelper("kvList"),
+	};
+
+	// What this kernel already defines, so a cell can check before re-sending a definition.
+	// The baseline is captured after the prelude installs its own globals: anything newer
+	// than this list came from user code.
+	const formatDefValue = value => {
+		if (typeof value === "function") {
+			const head = String(value).split("\n", 1)[0];
+			return head.length <= 80 ? head : `${head.slice(0, 77)}...`;
+		}
+		if (value === null) return "null";
+		if (Array.isArray(value)) return `Array(${value.length})`;
+		if (typeof value === "object") {
+			const kind = value.constructor && value.constructor.name !== "Object" ? value.constructor.name : "object";
+			return `${kind}(${Object.keys(value).length} keys)`;
+		}
+		const text = String(value);
+		return `${typeof value} ${text.length <= 60 ? text : `${text.slice(0, 57)}...`}`;
+	};
+	const defs = () => {
+		const baseline = new Set(globalThis.__veyyon_prelude_baseline__ ?? []);
+		const entries = [];
+		for (const key of Object.keys(globalThis)) {
+			if (baseline.has(key) || key.startsWith("__veyyon")) continue;
+			entries.push(`${key}: ${formatDefValue(globalThis[key])}`);
+		}
+		entries.sort();
+		return entries.slice(0, 200);
+	};
+
 	const tool = new Proxy(
 		{},
 		{
@@ -290,4 +327,7 @@ if (!globalThis.__veyyon_js_prelude_loaded__) {
 	globalThis.read = read;
 	globalThis.write = write;
 	globalThis.env = env;
+	globalThis.kv = kv;
+	globalThis.defs = defs;
+	globalThis.__veyyon_prelude_baseline__ = Object.keys(globalThis);
 }

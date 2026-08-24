@@ -56,6 +56,123 @@ if "__veyyon_prelude_loaded__" not in globals():
         _emit_status("env", key=key, value=val, action="get")
         return val
 
+    _KV_VALUE_SIZE_LIMIT = 256 * 1024
+    _KV_STORE_SIZE_LIMIT = 4 * 1024 * 1024
+    _KV_STORE_VERSION = 1
+
+    def _kv_store_path() -> Path:
+        """The file every kernel of this session shares: `<artifacts>/kernel-store/<session>.json`."""
+        artifacts = os.environ.get("VEYYON_ARTIFACTS_DIR")
+        session = (
+            os.environ.get("VEYYON_EVAL_SESSION_ID")
+            or os.environ.get("VEYYON_TOOL_BRIDGE_SESSION")
+            or "session"
+        )
+        if not artifacts:
+            raise RuntimeError(
+                "kv needs a session artifacts directory and this session has none; "
+                "the store lives next to the session's artifacts so it outlives the kernel"
+            )
+        safe = re.sub(r"[^A-Za-z0-9._-]", "_", session)
+        return Path(artifacts) / "kernel-store" / f"{safe}.json"
+
+    def _kv_check_key(key):
+        if not isinstance(key, str) or not 1 <= len(key) <= 256 or re.search(r"[\\/\x00]", key):
+            raise ValueError("kv keys are 1-256 characters and contain no path separators or NUL bytes")
+
+    def _kv_read_file(path: Path) -> dict:
+        try:
+            parsed = json.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return {}
+        except json.JSONDecodeError:
+            raise RuntimeError(
+                f"{path} is not valid JSON; move it aside and the next write starts a fresh store"
+            ) from None
+        if not isinstance(parsed, dict) or parsed.get("version") != _KV_STORE_VERSION or not isinstance(parsed.get("values"), dict):
+            raise RuntimeError(
+                f"{path} is a kernel store of an unrecognized shape or version; "
+                "move it aside and the next write starts a fresh store"
+            )
+        return parsed["values"]
+
+    def _kv_write_file(path: Path, values: dict) -> None:
+        body = json.dumps({"version": _KV_STORE_VERSION, "values": values})
+        if len(body) > _KV_STORE_SIZE_LIMIT:
+            raise ValueError(
+                f"the kernel store would grow to {len(body)} bytes, over the "
+                f"{_KV_STORE_SIZE_LIMIT}-byte limit. Delete keys you no longer need."
+            )
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+        tmp.write_text(body, encoding="utf-8")
+        os.replace(tmp, path)
+
+    class _Kv:
+        """Session-scoped store that outlives this kernel: values move by NAME between
+        cells, kernels and continuations, so a handle never has to appear in a transcript."""
+
+        def get(self, key, default=None):
+            _kv_check_key(key)
+            values = _kv_read_file(_kv_store_path())
+            value = values.get(key, default)
+            _emit_status("kv", key=key, action="get", found=key in values)
+            return value
+
+        def set(self, key, value):
+            _kv_check_key(key)
+            try:
+                encoded = json.dumps(value)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"kv values must be JSON-serializable; this one is not ({exc}). "
+                    "Store the handle or token, not the live object."
+                ) from None
+            if len(encoded) > _KV_VALUE_SIZE_LIMIT:
+                raise ValueError(
+                    f"kv value is {len(encoded)} bytes, over the {_KV_VALUE_SIZE_LIMIT}-byte limit. "
+                    "Write payloads to a file and store the path."
+                )
+            path = _kv_store_path()
+            values = _kv_read_file(path)
+            values[key] = value
+            _kv_write_file(path, values)
+            _emit_status("kv", key=key, action="set")
+
+        def delete(self, key) -> bool:
+            _kv_check_key(key)
+            path = _kv_store_path()
+            values = _kv_read_file(path)
+            removed = values.pop(key, None) is not None
+            if removed:
+                _kv_write_file(path, values)
+            _emit_status("kv", key=key, action="delete", found=removed)
+            return removed
+
+        def list(self) -> list:
+            keys = sorted(_kv_read_file(_kv_store_path()).keys())
+            _emit_status("kv", action="list", count=len(keys))
+            return keys
+
+    kv = _Kv()
+
+    def _format_def(value) -> str:
+        if callable(value):
+            name = getattr(value, "__qualname__", None) or type(value).__name__
+            return f"function {name}"
+        text = repr(value)
+        return f"{type(value).__name__} {text[:57] + '...' if len(text) > 60 else text}"
+
+    def defs() -> list:
+        """What this kernel already defines, so a cell can check before re-sending a definition."""
+        baseline = globals().get("__veyyon_prelude_baseline__", set())
+        entries = []
+        for key, value in globals().items():
+            if key in baseline or key.startswith("__veyyon") or key.startswith("_veyyon"):
+                continue
+            entries.append(f"{key}: {_format_def(value)}")
+        return sorted(entries)[:200]
+
     _VEYYON_INTERNAL_URL_RE = re.compile(r"^([a-z][a-z0-9+.-]*)://(.*)$", re.IGNORECASE)
 
     def _should_delegate_read(path: str | Path) -> bool:
@@ -699,3 +816,6 @@ if "__veyyon_prelude_loaded__" not in globals():
                 return "<budget unavailable>"
 
     budget = _Budget()
+
+    # Captured after every prelude name exists: defs() reports anything newer than this.
+    __veyyon_prelude_baseline__ = set(globals())
