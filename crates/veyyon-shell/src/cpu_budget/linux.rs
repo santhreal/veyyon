@@ -108,8 +108,17 @@ impl LinuxBudget {
 	/// reparent is what makes removal possible mid-command.
 	pub fn teardown(&self) {
 		if let Some(parent) = &self.parent_dir {
-			for pid in self.members() {
-				let _ = std::fs::write(parent.join("cgroup.procs"), pid.to_string());
+			// One pid per write (kernel contract). Retry: a child that lands
+			// in the group between the first scan and rmdir would otherwise
+			// leave the directory populated and teardown would leak the cgroup.
+			for _ in 0..8 {
+				let pids = self.members();
+				if pids.is_empty() {
+					break;
+				}
+				for pid in pids {
+					let _ = std::fs::write(parent.join("cgroup.procs"), pid.to_string());
+				}
 			}
 			remove_cgroup_dir(&self.dir);
 		}
@@ -135,7 +144,7 @@ fn remove_cgroup_dir(dir: &Path) {
 /// cap": creating a group at zero cores wrote a literal `0 100000`, which is
 /// a quota of no CPU at all rather than an absent one.
 fn quota_value(cores: f64) -> String {
-	if cores > 0.0 {
+	if cores.is_finite() && cores > 0.0 {
 		format!("{} {PERIOD_USEC}", (cores * PERIOD_USEC as f64).round() as u64)
 	} else {
 		format!("max {PERIOD_USEC}")
@@ -244,5 +253,22 @@ mod tests {
 		assert!(!scope.join("cpu.max").exists(), "a managed scope's quota is systemd's to write");
 		budget.teardown();
 		assert!(scope.exists(), "teardown leaves a managed scope in place");
+	}
+
+	#[test]
+	fn non_finite_and_non_positive_cores_spell_max_not_a_zero_quota() {
+		for cores in [0.0, -1.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+			assert_eq!(quota_value(cores), "max 100000", "cores={cores:?} must lift, never freeze");
+		}
+	}
+
+	#[test]
+	fn quota_value_matches_period_times_cores_across_a_grid() {
+		for step in 1..=200 {
+			let cores = step as f64 / 10.0;
+			let want = format!("{} 100000", (cores * 100_000.0).round() as u64);
+			assert_eq!(quota_value(cores), want);
+		}
+		assert_eq!(quota_value(2.0), "200000 100000");
 	}
 }

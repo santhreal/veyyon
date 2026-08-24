@@ -26,6 +26,7 @@
 
 ### Fixed
 
+- Session CPU limits now fail closed and actually lift. Windows Job Objects disable rate control at `session.cpuLimitCores: 0` / `/cpu-limit remove` instead of flooring to 0.01% of the machine, and jobs are unnamed so a colliding name cannot reopen another session's cap. systemd-run units are delegated oneshot services (`Delegate=yes`) rather than a sleeper occupying the cgroup. Group setup runs before the spawn gate, a failed or unsupported group refuses new commands instead of running them uncapped, `cpuLimitKill` sends SIGTERM then SIGKILL, and the macOS tracked backend includes descendants of adopted pids in meter/renice/kill.
 - A completed background job now fills its still-pending originating tool call instead of starting an unrelated recap turn after an interruption, including when zero retention is configured or foreground completion races background delivery.
 - When every summarizer candidate refuses, automatic compaction now parks the run (or drains already-queued input once) instead of reporting that nothing happened and looping. A successful local rescue retries without restoring the failed overflow or truncated assistant turn; idle compaction stays silent.
 - Agent transcript headers and roster rows share terminal, approval-blocked, and peer-waiting status precedence, so interrupted agents settle red and untyped agents render without a dangling separator.

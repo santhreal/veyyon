@@ -117,8 +117,9 @@ const SATURATION_RATIO = 0.95;
 /** Nice level applied to budget members on sustained saturation where no kernel quota exists. */
 export const CPU_LIMIT_SATURATION_NICE = 10;
 
-/** The `cpu.max` value for `cores` cores: quota over the fixed period. */
+/** The `cpu.max` value for `cores` cores: quota over the fixed period, or `max` when lifted. */
 export function formatCpuMaxValue(cores: number): string {
+	if (!Number.isFinite(cores) || cores <= 0) return `max ${CPU_LIMIT_PERIOD_USEC}`;
 	return `${Math.round(cores * CPU_LIMIT_PERIOD_USEC)} ${CPU_LIMIT_PERIOD_USEC}`;
 }
 
@@ -142,7 +143,7 @@ export interface CpuLimitEnvironment {
 	/** The harness's own cgroup path relative to the root ("" when unknown). */
 	ownCgroupPath: string;
 	run(cmd: string[]): Promise<CpuLimitCommandResult>;
-	kill(pid: number, signal: "SIGTERM"): void;
+	kill(pid: number, signal: "SIGTERM" | "SIGKILL"): void;
 	now(): number;
 	/**
 	 * procfs mount, `/proc` in production and a tmpdir in tests. Read for the
@@ -471,7 +472,8 @@ export class SessionCpuLimit {
 	#lastSample: WatcherSample | undefined;
 	#window: boolean[] = [];
 	#denied = false;
-	#killedThisEpisode = false;
+	/** 0 idle, 1 SIGTERM sent this episode, 2 SIGKILL sent. */
+	#killWave = 0;
 	#reniced = false;
 	#lastCoresUsed = 0;
 	#lastKillReport: string | undefined;
@@ -718,6 +720,13 @@ export class SessionCpuLimit {
 	 * accountant's running total, and the group's live member list).
 	 */
 	assertMaySpawn(what: string): void {
+		if (this.#setupFailed && this.#anyLimitActive) {
+			throw new CpuLimitDeniedError(
+				`Refused to start ${what}: this session's resource budget group could not be created, ` +
+					`so a configured limit cannot be enforced. New commands are refused rather than run uncapped. ` +
+					`Fix: wait until the host can create the group, or set the limit to 0.`,
+			);
+		}
 		if (this.#denied) {
 			throw new CpuLimitDeniedError(
 				`Refused to start ${what}: this session's CPU budget of ${this.#cores} core(s) is saturated ` +
@@ -848,7 +857,7 @@ export class SessionCpuLimit {
 		if (sustained && !this.#denied) {
 			this.#denied = true;
 			if (this.#killEnabled) {
-				this.#killOverBudget();
+				this.#killOverBudget("SIGTERM");
 			} else {
 				if (!group.throttles) {
 					group.renice(CPU_LIMIT_SATURATION_NICE);
@@ -861,9 +870,11 @@ export class SessionCpuLimit {
 						`Fix: raise session.cpuLimitCores, or set session.cpuLimitKill to terminate over-budget commands instead.`,
 				);
 			}
+		} else if (sustained && this.#denied && this.#killEnabled && this.#killWave === 1) {
+			this.#killOverBudget("SIGKILL");
 		} else if (!sustained && this.#denied) {
 			this.#denied = false;
-			this.#killedThisEpisode = false;
+			this.#killWave = 0;
 			if (this.#reniced) {
 				group.renice(0);
 				this.#reniced = false;
@@ -1002,7 +1013,12 @@ export class SessionCpuLimit {
 
 	async #createGroup(): Promise<CpuBudgetGroupHandle | undefined> {
 		const probe = await this.#probe;
-		if (!probe.supported || !probe.backend) return undefined;
+		if (!probe.supported || !probe.backend) {
+			// Same fail-closed contract as a thrown create: a configured limit
+			// must not silently let the first command run unbounded.
+			if (this.#anyLimitActive) this.#setupFailed = true;
+			return undefined;
+		}
 		const create = this.#options.createGroup ?? createNativeBudgetGroup;
 		try {
 			if (probe.backend.kind === "systemd-run") {
@@ -1019,13 +1035,25 @@ export class SessionCpuLimit {
 					"--quiet",
 					"--collect",
 					`--unit=${unitBase}`,
+					// Without Delegate=yes, systemd owns the unit cgroup and rejects
+					// native writes to cgroup.procs, so adopt was a silent no-op.
+					"-p",
+					"Delegate=yes",
+					// A oneshot that has already exited leaves an empty delegated
+					// cgroup (RemainAfterExit keeps the unit). `sleep infinity` as a
+					// service would occupy pids.max and never return under --scope;
+					// the service form returns, but the sleeper still sat in the
+					// group as a live member.
+					"-p",
+					"Type=oneshot",
+					"-p",
+					"RemainAfterExit=yes",
 					// A group can exist for the write, process or memory limit with
 					// no CPU limit at all, and `CPUQuota=0%` is a quota of no CPU
 					// rather than an absent one.
 					...(this.#cores > 0 ? ["-p", `CPUQuota=${this.#cores * 100}%`] : []),
 					"--",
-					"sleep",
-					"infinity",
+					"true",
 				]);
 				if (launched.code !== 0) {
 					throw new Error(`systemd-run failed: ${launched.stderr.trim() || `exit ${launched.code}`}`);
@@ -1079,7 +1107,7 @@ export class SessionCpuLimit {
 			this.#setupFailed = true;
 			this.#emitNotice(
 				`session.cpuLimitCores is set to ${this.#cores} but the session CPU budget group could not be created: ` +
-					`${errorMessage(error)}. Spawned commands will run uncapped.`,
+					`${errorMessage(error)}. New commands are refused rather than run uncapped.`,
 			);
 			return undefined;
 		}
@@ -1173,13 +1201,15 @@ export class SessionCpuLimit {
 		this.#timer.unref();
 	}
 
-	#killOverBudget(): void {
-		if (this.#killedThisEpisode || !this.#group) return;
-		this.#killedThisEpisode = true;
+	#killOverBudget(signal: "SIGTERM" | "SIGKILL"): void {
+		if (!this.#group) return;
+		if (signal === "SIGTERM" && this.#killWave !== 0) return;
+		if (signal === "SIGKILL" && this.#killWave !== 1) return;
+		this.#killWave = signal === "SIGTERM" ? 1 : 2;
 		let killed = 0;
 		for (const pid of this.#group.members()) {
 			try {
-				this.#options.env.kill(pid, "SIGTERM");
+				this.#options.env.kill(pid, signal);
 				killed++;
 			} catch {
 				// The process exited between listing and signal; nothing to report.
@@ -1187,7 +1217,7 @@ export class SessionCpuLimit {
 		}
 		const report =
 			`Session CPU budget exceeded: limit ${this.#cores} core(s), spawned commands used ` +
-			`~${this.#lastCoresUsed.toFixed(2)} cores for ${this.#windowSeconds()}s. Sent SIGTERM to ${killed} process(es) ` +
+			`~${this.#lastCoresUsed.toFixed(2)} cores for ${this.#windowSeconds()}s. Sent ${signal} to ${killed} process(es) ` +
 			`because session.cpuLimitKill is on. A command that just stopped was killed by the CPU budget, not a crash.`;
 		this.#lastKillReport = report;
 		this.#emitNotice(report);
@@ -1198,7 +1228,7 @@ export class SessionCpuLimit {
 function unsupportedText(cores: number, probe: CpuLimitProbe): string {
 	return (
 		`session.cpuLimitCores is set to ${cores} but a CPU limit cannot be enforced here: ${probe.detail}. ` +
-		`Spawned commands will run uncapped.`
+		`New commands are refused rather than run uncapped.`
 	);
 }
 
