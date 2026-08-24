@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import type { AgentToolResult } from "@veyyon/agent-core";
-import { collapseWhitespace, prompt } from "@veyyon/utils";
+import { collapseWhitespace, prompt, trimTrailingSlashes } from "@veyyon/utils";
 import { sessionPrompts } from "../prompts/session/rows";
 
 export const MUTATION_TOOL_NAMES = ["edit", "write", "ast_edit"] as const;
@@ -175,7 +175,7 @@ function normalizeMutationPath(value: unknown, cwd?: string): string | undefined
 	if (rawPath.length === 0) return undefined;
 	const hasRoot = rawPath.startsWith("/") || /^[A-Za-z]:\//.test(rawPath) || rawPath.startsWith("//");
 	if (!hasRoot && cwd) {
-		return path.posix.normalize(`${cwd.replace(/\\/g, "/").replace(/\/+$/, "")}/${rawPath}`);
+		return path.posix.normalize(`${trimTrailingSlashes(cwd.replace(/\\/g, "/"))}/${rawPath}`);
 	}
 	return path.posix.normalize(rawPath);
 }
