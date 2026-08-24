@@ -17,7 +17,7 @@ import { ProviderHttpError } from "@veyyon/ai/error";
 import { completeSimple } from "@veyyon/ai/stream";
 import { assistantText } from "@veyyon/ai/utils/message-text";
 import { withScopedTimeoutSignal } from "@veyyon/utils";
-import { envBool, envString } from "../util/env";
+import { forceLocalLlm, hostLlmModel, hostLlmProvider } from "../config";
 import { safeForLog } from "./extraction/diagnostics";
 import { type CompleteOptions, callHostLlm, getHostLlmBackend, MNEMOPI_LLM_ATTEMPT_PLACEHOLDER } from "./llm-backends";
 import {
@@ -210,8 +210,8 @@ async function tryHostLlm(
 			maxTokens,
 			temperature,
 			timeout: 15,
-			provider: envString("MNEMOPI_HOST_LLM_PROVIDER").trim() || null,
-			model: envString("MNEMOPI_HOST_LLM_MODEL").trim() || null,
+			provider: hostLlmProvider() ?? null,
+			model: hostLlmModel() ?? null,
 			onPayload,
 		});
 		const text = typeof raw === "string" ? raw.trim() : "";
@@ -327,7 +327,7 @@ export async function callRemoteLlm(
  * local one, because the local-GGUF tier it was named for never had an implementation and is gone.
  */
 function remoteBackendAllowed(): boolean {
-	return llmEnabled() && llmBaseUrl() !== "" && !envBool("MNEMOPI_FORCE_LOCAL", false);
+	return llmEnabled() && llmBaseUrl() !== "" && !forceLocalLlm();
 }
 
 interface SummaryAttemptState {
