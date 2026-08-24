@@ -8,15 +8,16 @@
  *  - exactness: a round-trip reproduces every provider, id, insertion order
  *    and field of what the build path produced;
  *  - refusal: a mismatched fingerprint (catalog upgrade or format bump), a
- *    corrupt file, or a wrongly-shaped payload returns null so the caller
- *    rebuilds instead of serving the bad bytes.
+ *    corrupt file, a digest mismatch, or a wrongly-shaped payload returns null
+ *    so the caller rebuilds instead of serving the bad bytes.
  *
- * Not caught here: a buildModel change that keeps the same shape but changes
- * semantics without bumping ENRICHED_REGISTRY_FORMAT_VERSION. The version is
- * pinned by exact value below so an unrecorded change fails loudly here first.
+ * Not caught here: a buildModel semantic change that preserves the resolved
+ * bytes without bumping ENRICHED_REGISTRY_FORMAT_VERSION. The version is pinned
+ * by exact value below so an unrecorded format change fails loudly here first.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -33,7 +34,7 @@ import {
 import type { Api, Model } from "../src/types";
 
 /** Pinned so an unrecorded format change cannot silently reuse old snapshots. */
-const FORMAT_VERSION_PREFIX = "v1:";
+const FORMAT_VERSION_PREFIX = "v2:";
 
 describe("the enriched catalog snapshot is exact or ignored", () => {
 	let tempDir = "";
@@ -75,7 +76,7 @@ describe("the enriched catalog snapshot is exact or ignored", () => {
 
 	it("refuses a snapshot whose fingerprint names another catalog or format", () => {
 		writeEnrichedRegistrySnapshot(liveRegistry(), `${FORMAT_VERSION_PREFIX}test`, dbPath);
-		expect(readEnrichedRegistrySnapshot("v1:different", dbPath)).toBeNull();
+		expect(readEnrichedRegistrySnapshot("v2:different", dbPath)).toBeNull();
 	});
 
 	it("refuses a corrupt file instead of serving partial records", () => {
@@ -85,12 +86,32 @@ describe("the enriched catalog snapshot is exact or ignored", () => {
 		expect(readEnrichedRegistrySnapshot("v1:x", dbPath)).toBeNull();
 	});
 
+	it("refuses parseable snapshot content that does not match its digest", () => {
+		const fingerprint = `${FORMAT_VERSION_PREFIX}tampered`;
+		writeEnrichedRegistrySnapshot(liveRegistry(), fingerprint, dbPath);
+		const snapshotPath = path.join(path.dirname(dbPath), "bundled-models.json");
+		const parsed = JSON.parse(fs.readFileSync(snapshotPath, "utf8")) as {
+			registry: Record<string, Record<string, Model<Api>>>;
+		};
+		const provider = Object.keys(parsed.registry)[0]!;
+		const model = Object.keys(parsed.registry[provider]!)[0]!;
+		parsed.registry[provider]![model]!.contextWindow = 1;
+		fs.writeFileSync(snapshotPath, JSON.stringify(parsed));
+
+		expect(readEnrichedRegistrySnapshot(fingerprint, dbPath)).toBeNull();
+	});
+
 	it("refuses a well-formed file whose registry entries are not records", () => {
 		const snapshotPath = path.join(path.dirname(dbPath), "bundled-models.json");
 		fs.mkdirSync(path.dirname(snapshotPath), { recursive: true });
+		const registry = { anthropic: "not-a-record" };
 		fs.writeFileSync(
 			snapshotPath,
-			JSON.stringify({ fingerprint: `${FORMAT_VERSION_PREFIX}x`, registry: { anthropic: "not-a-record" } }),
+			JSON.stringify({
+				fingerprint: `${FORMAT_VERSION_PREFIX}x`,
+				registryDigest: createHash("sha256").update(JSON.stringify(registry)).digest("hex"),
+				registry,
+			}),
 		);
 		expect(readEnrichedRegistrySnapshot(`${FORMAT_VERSION_PREFIX}x`, dbPath)).toBeNull();
 	});

@@ -3,8 +3,7 @@
 ## [Unreleased]
 
 ### Added
-- The enriched bundled-model registry now persists to `bundled-models.json` beside `models.db`, keyed by a SHA-256 digest of the catalog text plus a format version. Launches restore the resolved records instead of running `buildModel` over all 4,313 entries; a fingerprint mismatch, corrupt file, or missing snapshot falls back to the build path, and test processes never read or write the snapshot.
-- `modelCacheStamp(dbPath)` summarizes the `model_cache` table as a row-content string for snapshot fingerprints, and `setBundledRegistryCacheDbPath(dbPath)` pins where a pathless enriched-registry snapshot write lands when a registry runs against a relocated database.
+- Bundled model resolution persists a content-verified enriched snapshot, and registry cache stamps invalidate on every row-content write without treating SQLite sidecar churn as a model change.
 
 ### Changed
 - `compat/markup-leaks.ts` owns which endpoints leak model markup into visible content. The provider list for DeepSeek's DSML envelope and the Kimi-K2 rule existed twice, byte for byte — once here as a `Set` and once in `@veyyon/ai` as an or-chain — so a newly-leaking host could be added to one and not the other. `isOfficialOpenAIEndpoint` is exported for the same reason: the streaming engine carried a third copy of the `api.openai.com` hostname check.

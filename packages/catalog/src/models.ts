@@ -39,7 +39,7 @@ const modelsSource = modelsSourceJson as unknown as string;
  * Bump this version whenever the resolved record's contract changes, the same
  * way `CACHE_SCHEMA_VERSION` is bumped in `model-cache.ts` for cached specs.
  */
-const ENRICHED_REGISTRY_FORMAT_VERSION = 1;
+const ENRICHED_REGISTRY_FORMAT_VERSION = 2;
 let modelRegistry: Map<string, Map<string, Model<Api>>> | undefined;
 let parsedModels: BundledModelsJson | undefined;
 let catalogDigest: string | undefined;
@@ -98,7 +98,16 @@ export function readEnrichedRegistrySnapshot(
 ): Map<string, Map<string, Model<Api>>> | null {
 	try {
 		const parsed: unknown = JSON.parse(fs.readFileSync(bundledRegistryCachePath(dbPath), "utf8"));
-		if (!isRecord(parsed) || parsed.fingerprint !== fingerprint || !isRecord(parsed.registry)) return null;
+		if (
+			!isRecord(parsed) ||
+			parsed.fingerprint !== fingerprint ||
+			typeof parsed.registryDigest !== "string" ||
+			!isRecord(parsed.registry)
+		) {
+			return null;
+		}
+		const registryDigest = createHash("sha256").update(JSON.stringify(parsed.registry)).digest("hex");
+		if (registryDigest !== parsed.registryDigest) return null;
 		const registry = new Map<string, Map<string, Model<Api>>>();
 		for (const [provider, models] of Object.entries(parsed.registry)) {
 			if (!isRecord(models)) return null;
@@ -121,11 +130,13 @@ export function writeEnrichedRegistrySnapshot(
 	dbPath?: string,
 ): void {
 	try {
+		const persistedRegistry = Object.fromEntries(
+			Array.from(registry, ([provider, models]) => [provider, Object.fromEntries(models)]),
+		);
 		const payload = {
 			fingerprint,
-			registry: Object.fromEntries(
-				Array.from(registry, ([provider, models]) => [provider, Object.fromEntries(models)]),
-			),
+			registryDigest: createHash("sha256").update(JSON.stringify(persistedRegistry)).digest("hex"),
+			registry: persistedRegistry,
 		};
 		atomicWriteFileSync(bundledRegistryCachePath(dbPath), JSON.stringify(payload));
 	} catch (error) {
