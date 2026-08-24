@@ -19,6 +19,8 @@
 ### Fixed
 
 - An indented row inside a tool block keeps its indent when it wraps at a narrow width, instead of continuing at the block's left edge.
+- The finalization reminder counts the files a multi-file edit actually wrote: a call that reports overall failure after writing some of its files is now unverified evidence, and a file a per-file entry skipped is no longer named as affected.
+- A mutated path is XML-escaped before it reaches the hidden finalization reminder, so a file name spelling `</system-reminder>` cannot end the reminder envelope early, and a relative `ast_edit` path is resolved against the call's working directory before duplicate paths are collapsed.
 
 ## [1.2.0] - 2026-08-23
 
