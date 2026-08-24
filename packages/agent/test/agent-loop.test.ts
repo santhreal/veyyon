@@ -3209,6 +3209,72 @@ describe("agentLoop streaming snapshots", () => {
 		expect(cloned.nul).toBeNull();
 	});
 
+	it("sanitizes the authoritative tool call a toolcall_end carries, whatever the provider does next", async () => {
+		// WHY: `toolcall_end` is the one streaming event whose payload is a
+		// decision rather than a preview — a consumer executes that tool call. It
+		// therefore keeps the full clone the partial no longer pays for, and the
+		// clone has to survive the provider reusing the same block afterwards.
+		// Mutation that proves this case exists: switch the `toolcall_end` arm of
+		// `snapshotAssistantMessageEvent` to delta mode and this test goes red
+		// while every other snapshot test stays green.
+		const context: AgentContext = {
+			systemPrompt: ["You are helpful."],
+			messages: [],
+			tools: [],
+		};
+		const config: AgentLoopConfig = {
+			model: createMockModel().model,
+			convertToLlm: identityConverter,
+		};
+
+		const inheritedProto = { inheritedKey: "from-prototype" };
+		const liveArguments: Record<string, unknown> = Object.assign(Object.create(inheritedProto), {
+			nested: { path: "one" },
+		});
+		const toolCall = {
+			type: "toolCall" as const,
+			id: "tc-end",
+			name: "noop",
+			arguments: liveArguments as Record<string, unknown>,
+		};
+
+		let turn = 0;
+		const streamFn = () => {
+			const stream = new AssistantMessageEventStream();
+			if (turn++ === 0) {
+				const partial = createAssistantMessage([toolCall], "toolUse");
+				stream.push({ type: "start", partial });
+				stream.push({ type: "toolcall_start", contentIndex: 0, partial });
+				stream.push({ type: "toolcall_end", contentIndex: 0, toolCall, partial });
+				stream.push({ type: "done", reason: "toolUse", message: partial });
+			} else {
+				const partial = createAssistantMessage([{ type: "text", text: "done" }], "stop");
+				stream.push({ type: "start", partial });
+				stream.push({ type: "text_delta", contentIndex: 0, delta: "done", partial });
+				stream.push({ type: "done", reason: "stop", message: partial });
+			}
+			return stream;
+		};
+
+		const ends: AssistantMessageEvent[] = [];
+		const stream = agentLoop([createUserMessage("call noop")], context, config, undefined, streamFn);
+		for await (const event of stream) {
+			if (event.type !== "message_update") continue;
+			if (event.assistantMessageEvent.type === "toolcall_end") ends.push(event.assistantMessageEvent);
+		}
+
+		expect(ends.length).toBe(1);
+		const pushed = ends[0];
+		if (pushed?.type !== "toolcall_end") throw new Error("missing toolcall_end");
+		// A provider that keeps its block and writes into the object it already
+		// handed out. The pushed tool call must not follow it, at any depth.
+		(liveArguments.nested as Record<string, unknown>).path = "two";
+		toolCall.arguments = { nested: { path: "three" } };
+		expect(pushed.toolCall.arguments).not.toBe(liveArguments);
+		expect(Object.hasOwn(pushed.toolCall.arguments as Record<string, unknown>, "inheritedKey")).toBe(false);
+		expect(pushed.toolCall.arguments).toEqual({ nested: { path: "one" } });
+	});
+
 	it("shares one immutable snapshot between message and assistantMessageEvent.partial on message_update", async () => {
 		const context: AgentContext = {
 			systemPrompt: ["You are helpful."],
