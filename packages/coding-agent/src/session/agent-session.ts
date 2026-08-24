@@ -11011,11 +11011,12 @@ export class AgentSession {
 				);
 			}
 
-			// Check whether an aborted response left enough context pressure to require
 			// Phase markers for the submit path: VEYYON_DEBUG_STARTUP=1 writes one
 			// synchronous stderr line per phase, so a "submit feels slow" report
 			// names the phase that spent the time instead of offering a guess.
 			startupMarker("prompt:compaction-check:start");
+			// Check whether an aborted response left enough context pressure to require
+			// in-place compaction before this prompt starts its agent loop.
 			const lastAssistant = this.#findLastAssistantMessage();
 			if (lastAssistant && !options?.skipCompactionCheck) {
 				await this.#checkCompaction(lastAssistant, false, false);
