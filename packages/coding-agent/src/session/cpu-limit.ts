@@ -120,7 +120,11 @@ export const CPU_LIMIT_SATURATION_NICE = 10;
 /** The `cpu.max` value for `cores` cores: quota over the fixed period, or `max` when lifted. */
 export function formatCpuMaxValue(cores: number): string {
 	if (!Number.isFinite(cores) || cores <= 0) return `max ${CPU_LIMIT_PERIOD_USEC}`;
-	return `${Math.round(cores * CPU_LIMIT_PERIOD_USEC)} ${CPU_LIMIT_PERIOD_USEC}`;
+	// A positive budget that rounds to 0 µs is a freeze (`0 100000`), the same
+	// trap as writing a zero quota at cores=0. Floor at 1 µs: the smallest cap
+	// cpu.max can express, matching Windows CpuRate 1 for a tiny-but-nonzero budget.
+	const quota = Math.max(1, Math.round(cores * CPU_LIMIT_PERIOD_USEC));
+	return `${quota} ${CPU_LIMIT_PERIOD_USEC}`;
 }
 
 /** Result of running a helper binary (systemd-run, systemctl) during probe or setup. */

@@ -160,7 +160,8 @@ fn is_benign_adopt_error(error: &std::io::Error) -> bool {
 /// a quota of no CPU at all rather than an absent one.
 fn quota_value(cores: f64) -> String {
 	if cores.is_finite() && cores > 0.0 {
-		format!("{} {PERIOD_USEC}", (cores * PERIOD_USEC as f64).round() as u64)
+		let quota = (cores * PERIOD_USEC as f64).round().max(1.0) as u64;
+		format!("{quota} {PERIOD_USEC}")
 	} else {
 		format!("max {PERIOD_USEC}")
 	}
@@ -285,6 +286,22 @@ mod tests {
 			assert_eq!(quota_value(cores), want);
 		}
 		assert_eq!(quota_value(2.0), "200000 100000");
+	}
+
+	#[test]
+	fn a_positive_budget_too_small_to_express_floors_at_one_microsecond_not_a_freeze() {
+		assert_eq!(quota_value(1e-12), "1 100000");
+		assert_eq!(quota_value(1e-10), "1 100000");
+		assert_eq!(quota_value(4e-6), "1 100000");
+		for step in 1..=20 {
+			let cores = 10f64.powi(-step);
+			assert!(cores > 0.0, "grid must stay a positive finite budget");
+			let line = quota_value(cores);
+			assert!(!line.starts_with("0 "), "positive cores={cores:?} must not freeze, got {line}");
+			assert_ne!(line, "max 100000");
+			let quota: u64 = line.split_whitespace().next().unwrap().parse().unwrap();
+			assert!(quota >= 1);
+		}
 	}
 	#[test]
 	fn teardown_reparents_members_then_removes_the_owned_cgroup() {
