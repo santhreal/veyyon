@@ -200,8 +200,21 @@ if [ "${SCENE_THEME:-plain}" != "plain" ]; then
 	# A published hero take measured 385 unique frames across 7415, a flat 3.3 per second
 	# through typing, streaming and idle alike, which is this row and nothing else.
 	#
-	# SCENE_CHROME_BLUR=1 turns it back on for a still, where frame rate does not exist.
-	# Anything that moves keeps it off.
+	# AND IT CHANGES NOTHING ON SCREEN, which is what makes this a deletion rather
+	# than a trade. The backdrop is generated once, never moves, and is already
+	# blurred at 0x26, so what the runtime pass convolves every frame is a constant
+	# smooth gradient -- and a blur of a smooth gradient returns the same smooth
+	# gradient. Captured as a still through .internal/frost-ab.sh, identical geometry
+	# and identical terminal contents, the blurred and unblurred arms differ by an
+	# RMSE of 0.001 of 255. Zero point zero zero percent. The frost, the rounding,
+	# the shadow and the edge highlight all survive it, because they come from
+	# --active-opacity, --corner-radius and --shadow, none of which is a blur.
+	#
+	# So the row above is not "the expensive look": it is 8 to 20 times the frame
+	# rate spent on an image difference no viewer can see.
+	#
+	# SCENE_CHROME_BLUR=1 exists only so the claim above stays falsifiable -- set it,
+	# capture the pair, and look. It is not a quality knob.
 	if [ "${SCENE_CHROME_BLUR:-0}" = "1" ]; then
 		CHROME+=(--blur-background)
 		echo "chrome: blur-background forced on; expect ~2 fps of real motion" >&2
