@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- The model-facing workspace search surface is now one mandatory `search` tool taking ordered required `type` (`"files" | "text" | "structure"`) and `input`, replacing the separate `glob`, `grep`, and `ast_grep` tool IDs. Retired per-engine and `search.enabled` values are discarded while text-context values and persisted tool inventories migrate.
+
 ### Added
 
 - `read` takes `depth` and `limit` arguments for directory listings, and a read of the session working directory root with neither now returns a concise top-level listing with per-subdirectory entry counts instead of the recursive tree.
@@ -23,6 +27,9 @@
 - The browser tab worker and supervisor state why each teardown step and each optional probe discards its failure; behavior is unchanged.
 - The browser tab worker and supervisor reach `bestEffort` and `optionalResult` through `@veyyon/utils/discarded-fault` rather than the package barrel; behavior is unchanged.
 - Daemon completion parsing and eval-store serialization errors use shared type guards; behavior is unchanged.
+- The vibe screens, the image-inspection call and an LSP hover code block draw no border of their own inside a tool block, so a block keeps one left edge; a tree connector remains only where a row belongs to the row above it, in the eval value tree, the search line gutter, the job tree and the LSP reference tree.
+- A picture a terminal will not draw now leaves a row naming the file, the media type, the pixel size and the cause, in place of `[Image: image/png]`, including when a Kitty session cannot convert it to PNG.
+- Broad multi-file text searches now keep only deterministic representative matches inline and save the complete formatted result behind an `artifact://` reference. The preview budget follows the turn-aware output curve from an 8 KiB search ceiling (~2 KiB early at turn 0), emitting up to two representative matches per file while preserving counts and warnings; explicit single-file and line-range searches retain their full output, and only visible representative lines are recorded as seen for anchored edits.
 
 ### Fixed
 
@@ -40,6 +47,11 @@
 - A colour or title escape sequence a command writes in two pieces no longer leaves part of itself in tool output: the sink holds a sequence its chunk ended inside until the piece that finishes it arrives, and drops one the stream never completes.
 - The `compaction.remote` setting description documents that server-side compaction applies to supported OpenAI, Azure OpenAI, and ChatGPT Codex Responses models.
 - `branchSummary.reserveTokens` now reaches the branch summarizer. It was declared in the settings schema but read by nothing, so every branch summary used the built-in 16384 reserve whatever the setting said.
+- Unified search approval preflight now covers every multi-target syntax execution accepts; search also excludes byte-truncated context from editable seen lines, unions ranged and unrestricted text scopes, orders equal-mtime file results by path, suppresses pattern errors from unrelated structure languages, and distinguishes exhausted structure pages from a search with no matches.
+- Unified search now keeps warning-heavy text results within the inline byte budget, preserves semicolon path lists longer than one filename component, excludes matches hidden by generic truncation from editable seen lines, classifies every SSH path-list encoding at the execution approval tier, matches native Unicode tie ordering, and reports exhausted text pages with their totals.
+- Unified search no longer broadens or misroutes malformed calls: files-mode rejects a `path` owned by other modes while retaining the historical `/`-means-workspace alias, structure search rejects unsupported `ssh://` scopes without an approval prompt for work it cannot execute, immutable internal or fetched sources never receive editable hashline anchors, and the Bash interceptor no longer redirects mutating or otherwise non-equivalent `find` commands to a read-only file search.
+- The plan-mode extension example now keeps canonical `search` available both while planning and after restoring normal tools. It previously advertised retired `grep`/`find` identities, requested a nonexistent `find` tool, and dropped search when plan mode ended.
+- Memory summarization now retains canonical `search` results from session rollouts. It previously allowlisted the retired `grep` tool name but discarded every result emitted by unified search before Stage 1 summarization.
 
 ## [1.2.0] - 2026-08-23
 
