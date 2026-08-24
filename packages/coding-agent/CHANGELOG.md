@@ -7,6 +7,7 @@
 - A tool result that carries an image now states whether the picture reached the screen, so a model reading a file describes what it shows instead of reporting that it displayed it.
 - A picture the block gives up on after the fact, because the session's image budget demoted it or a Kitty session could not convert it, is stated to the model as undrawn instead of being reported as displayed.
 - `read` accepts a semicolon-delimited list of internal resources (`skill://demo/one.md;skill://demo/two.md`), the same list form `grep` and `glob` take, and returns one section per entry.
+- Eval kernels gain `kv`, a JSON store under the session's artifacts directory that survives kernel resets and is shared between the JavaScript and Python kernels, and `defs()`, which lists the names user code has defined in the kernel.
 
 ### Changed
 
