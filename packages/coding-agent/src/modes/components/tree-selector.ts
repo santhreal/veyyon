@@ -20,17 +20,14 @@ import { shortenPath } from "../../tools/render-utils";
 import { canonicalizeMessage } from "../../utils/thinking-display";
 import { resolveAssistantErrorPresentation } from "../utils/transcript-render-helpers";
 import {
-	applyModalReveal,
-	beginModalExit,
 	computeModalDims,
 	consumeModalChipHover,
 	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
-	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
-	modalRevealEnabled,
 	planModalChrome,
+	pointerMotionEnabled,
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
@@ -1017,14 +1014,6 @@ export class TreeSelectorComponent implements Component {
 	/** Frame row where the tree's own rows begin (shell body start). */
 	#listRowStart = 0;
 	#onRequestRender?: () => void;
-	#reveal = new ModalRevealDriver();
-	/**
-	 * Fade out on the shared clock before the host drops this card. The overlay stack keeps painting
-	 * it and stops routing input to it the moment this is called.
-	 */
-	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
-		return beginModalExit(this.#reveal, requestRender, done);
-	}
 
 	constructor(
 		tree: SessionTreeNode[],
@@ -1033,8 +1022,6 @@ export class TreeSelectorComponent implements Component {
 		private readonly onCancel: () => void,
 		private readonly onLabelChangeCallback?: (entryId: string, label: string | undefined) => void,
 		initialFilterMode: FilterMode = "default",
-		/** Play the open unfold (TOUCH-5). Show site decides via modalRevealEnabled(). */
-		reveal?: boolean,
 	) {
 		// The viewport is re-sized from the chrome plan on every frame; this seed
 		// only has to be positive for the first centered window.
@@ -1042,10 +1029,6 @@ export class TreeSelectorComponent implements Component {
 		this.#treeList.onSelect = onSelect;
 		this.#treeList.onCancel = onCancel;
 		this.#treeList.onLabelEdit = (entryId, currentLabel) => this.#showLabelInput(entryId, currentLabel);
-
-		if (reveal) {
-			this.#reveal.start(() => this.#onRequestRender?.());
-		}
 
 		if (tree.length === 0) {
 			setTimeout(() => onCancel(), 100);
@@ -1057,12 +1040,11 @@ export class TreeSelectorComponent implements Component {
 		// The pointer band fades only once the card has a repaint to lend it: the
 		// frames between two mouse reports have no input to hang off. Same ambient
 		// gate as the open unfold; without it the band is switched.
-		this.#treeList.setHoverMotion({ requestRender: cb, enabled: modalRevealEnabled() });
+		this.#treeList.setHoverMotion({ requestRender: cb, enabled: pointerMotionEnabled() });
 	}
 
-	/** Settle the reveal and the pointer band so no timer outlives a dismissed card. */
+	/** Settle the pointer band so no timer outlives a dismissed card. */
 	dispose(): void {
-		this.#reveal.stop();
 		this.#treeList.disposeHoverMotion();
 	}
 
@@ -1196,6 +1178,6 @@ export class TreeSelectorComponent implements Component {
 		});
 		this.#shellGeometry = shell.geometry;
 		this.#listRowStart = shell.geometry?.bodyRowStart ?? 0;
-		return applyModalReveal(shell, width, this.#reveal);
+		return shell.lines;
 	}
 }

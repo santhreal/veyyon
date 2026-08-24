@@ -23,17 +23,14 @@ import type { SessionInfo, SessionStatus } from "../../session/session-listing";
 import { shortenPath } from "../../tools/render-utils";
 import { HookSelectorComponent } from "./hook-selector";
 import {
-	applyModalReveal,
-	beginModalExit,
 	computeModalDims,
 	consumeModalChipHover,
 	hitTestModalChrome,
 	MODAL_SIZING_LARGE,
-	ModalRevealDriver,
 	type ModalShellGeometry,
 	type ModalShortcut,
-	modalRevealEnabled,
 	planModalChrome,
+	pointerMotionEnabled,
 	renderModalShell,
 	sizingForArea,
 } from "./modal-shell";
@@ -811,12 +808,6 @@ export interface SessionSelectorOptions {
 	 * always tracks the content — a short session list renders a short card.
 	 */
 	fillHeight?: boolean;
-	/**
-	 * Play the open unfold (TOUCH-5). Honored blindly; the ambient gate is the
-	 * SHOW site's job via modalRevealEnabled(), so direct constructions stay
-	 * deterministic.
-	 */
-	reveal?: boolean;
 }
 
 /**
@@ -854,14 +845,6 @@ export class SessionSelectorComponent extends Container {
 	#hoveredShortcutId: string | null = null;
 	readonly #getTerminalRows: () => number;
 	readonly #fillHeight: boolean;
-	#reveal = new ModalRevealDriver();
-	/**
-	 * Fade out on the shared clock before the host drops this card. The overlay stack keeps painting
-	 * it and stops routing input to it the moment this is called.
-	 */
-	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
-		return beginModalExit(this.#reveal, requestRender, done);
-	}
 
 	constructor(
 		sessions: SessionInfo[],
@@ -879,9 +862,6 @@ export class SessionSelectorComponent extends Container {
 		this.#globalSessions = options.allSessions ?? null;
 		this.#getTerminalRows = options.getTerminalRows ?? (() => 24);
 		this.#fillHeight = options.fillHeight ?? false;
-		if (options.reveal) {
-			this.#reveal.start(() => this.#onRequestRender?.());
-		}
 		this.#headerText = new Text(this.#headerLabel(), 1, 0);
 		this.addChild(this.#headerText);
 		this.addChild(this.#messageContainer);
@@ -964,7 +944,7 @@ export class SessionSelectorComponent extends Container {
 		// frames between two mouse reports have no input to hang off. Same ambient
 		// gate as the open unfold; without it the band is switched, which is what
 		// this picker had before.
-		this.#sessionList.setHoverMotion({ requestRender: callback, enabled: modalRevealEnabled() });
+		this.#sessionList.setHoverMotion({ requestRender: callback, enabled: pointerMotionEnabled() });
 	}
 
 	/**
@@ -973,7 +953,6 @@ export class SessionSelectorComponent extends Container {
 	 * child-walking dispose would miss its pending history-merge timer.
 	 */
 	dispose(): void {
-		this.#reveal.stop();
 		this.#sessionList.dispose();
 		super.dispose();
 	}
@@ -1100,7 +1079,7 @@ export class SessionSelectorComponent extends Container {
 		this.#shellGeometry = shell.geometry;
 		this.#listLineOffset = (shell.geometry?.bodyRowStart ?? 0) + this.#listLineOffset;
 		this.#footerStart = shell.geometry?.footerRowStart ?? shell.lines.length;
-		return applyModalReveal(shell, width, this.#reveal);
+		return shell.lines;
 	}
 
 	handleInput(keyData: string): void {

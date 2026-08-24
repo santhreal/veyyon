@@ -8,7 +8,14 @@ import { untilAborted } from "@veyyon/utils";
 import { recordFileSnapshot, recordSeenLinesFromBody } from "../edit/file-snapshot-store";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { Theme } from "../modes/theme/theme";
-import { Ellipsis, fileHyperlink, renderStatusLine, renderTreeList, truncateToWidth } from "../tui";
+import {
+	Ellipsis,
+	fileHyperlink,
+	framedBlock,
+	outputBlockContentWidth,
+	renderStatusLine,
+	truncateToWidth,
+} from "../tui";
 import { resolveFileDisplayMode } from "../utils/file-display-mode";
 import type { ToolSession } from ".";
 import { materializeReadUrlToFile, parseReadUrlTarget } from "./fetch";
@@ -20,14 +27,15 @@ import { toPathList } from "./path-utils";
 import {
 	appendParseErrorsBulletList,
 	capParseErrors,
-	createCachedComponent,
 	formatCodeFrameLine,
 	formatCount,
 	formatEmptyMessage,
 	formatErrorMessage,
+	formatMoreItems,
 	formatParseErrors,
 	formatParseErrorsCountLabel,
 	PREVIEW_LIMITS,
+	replaceTabs,
 } from "./render-utils";
 import { isImmutableSearchSourcePath, resolveToolSearchScope } from "./search-scope";
 import { ToolError, throwIfAborted } from "./tool-errors";
@@ -390,6 +398,58 @@ export interface StructureSearchRenderArgs {
 
 const COLLAPSED_MATCH_LIMIT = PREVIEW_LIMITS.COLLAPSED_LINES * 2;
 
+function structureSearchStatusIcon(uiTheme: Theme): string {
+	return uiTheme.fg("toolTitle", uiTheme.symbol("icon.search"));
+}
+
+/**
+ * Lay out match groups inside a framed block, keeping whole groups together.
+ *
+ * A group is a file header plus its matched lines, so cutting one in half leaves
+ * a header with no matches under it. Collapsed rendering therefore fits whole
+ * groups and reserves one line for the summary row when any group is left over.
+ */
+function renderBudgetedStructureGroups(
+	groups: string[][],
+	maxLines: number,
+	uiTheme: Theme,
+	expanded: boolean,
+): string[] {
+	if (groups.length === 0 || maxLines <= 0) return [];
+	const layout = (visible: string[][]): string[] => {
+		const lines: string[] = [];
+		for (const group of visible) {
+			lines.push(replaceTabs(group[0]!));
+			for (let index = 1; index < group.length; index++) {
+				lines.push(`  ${replaceTabs(group[index]!)}`);
+			}
+		}
+		return lines;
+	};
+	if (expanded) return layout(groups);
+
+	let fittingCount = groups.length;
+	let fittedLineCount = 0;
+	for (let index = 0; index < groups.length; index++) {
+		const count = groups[index]!.length;
+		const remainingAfter = groups.length - (index + 1);
+		const reservedSummaryLines = remainingAfter > 0 ? 1 : 0;
+		if (fittedLineCount + count + reservedSummaryLines > maxLines) {
+			fittingCount = index;
+			break;
+		}
+		fittedLineCount += count;
+		fittingCount = index + 1;
+	}
+
+	const remaining = groups.length - fittingCount;
+	const lines = layout(groups.slice(0, fittingCount));
+	if (remaining > 0 && (maxLines === Infinity || fittedLineCount < maxLines)) {
+		lines.push(uiTheme.fg("dim", formatMoreItems(remaining, "match")));
+	}
+	return lines;
+}
+
 export const structureSearchRenderer = {
 	inline: true,
 	renderCall(args: StructureSearchRenderArgs, _options: RenderResultOptions, uiTheme: Theme): Component {
@@ -399,7 +459,10 @@ export const structureSearchRenderer = {
 		if (args.skip !== undefined && args.skip > 0) meta.push(`skip:${args.skip}`);
 
 		const description = args.input || "?";
-		const text = renderStatusLine({ icon: "pending", title: "Search structure", description, meta }, uiTheme);
+		const text = renderStatusLine(
+			{ icon: "pending", title: "Search structure", titleColor: "toolTitle", description, meta },
+			uiTheme,
+		);
 		return new Text(text, 0, 0);
 	},
 
@@ -426,7 +489,10 @@ export const structureSearchRenderer = {
 			const meta = ["0 matches"];
 			if (details?.scopePath) meta.push(`in ${details.scopePath}`);
 			if (filesSearched > 0) meta.push(`searched ${filesSearched}`);
-			const header = renderStatusLine({ icon: "warning", title: "Search structure", description, meta }, uiTheme);
+			const header = renderStatusLine(
+				{ icon: "warning", title: "Search structure", titleColor: "toolTitle", description, meta },
+				uiTheme,
+			);
 			const lines = [header, formatEmptyMessage("No matches found", uiTheme)];
 			if (details?.parseErrors?.length) {
 				lines.push(uiTheme.fg("warning", "Query may be mis-scoped; narrow `path` before concluding absence"));
@@ -443,10 +509,9 @@ export const structureSearchRenderer = {
 		const description = args?.input;
 		const header = renderStatusLine(
 			{
-				...(limitReached
-					? { icon: "warning" as const }
-					: { iconOverride: uiTheme.fg("accent", uiTheme.symbol("icon.search")) }),
+				...(limitReached ? { icon: "warning" as const } : { iconOverride: structureSearchStatusIcon(uiTheme) }),
 				title: "Search structure",
+				titleColor: "toolTitle",
 				description,
 				meta,
 			},
@@ -488,23 +553,18 @@ export const structureSearchRenderer = {
 			);
 		}
 
-		return createCachedComponent(
-			() => options.expanded,
-			width => {
-				const matchLines = renderTreeList(
-					{
-						items: matchGroups,
-						expanded: options.expanded,
-						maxCollapsed: matchGroups.length,
-						maxCollapsedLines: COLLAPSED_MATCH_LIMIT,
-						itemType: "match",
-						renderItem: group => group,
-					},
-					uiTheme,
-				);
-				return [header, ...matchLines, ...extraLines].map(l => truncateToWidth(l, width, Ellipsis.Omit));
-			},
-		);
+		return framedBlock(uiTheme, width => {
+			const budget = Math.max((options.expanded ? Infinity : COLLAPSED_MATCH_LIMIT) - extraLines.length, 0);
+			const matchLines = renderBudgetedStructureGroups(matchGroups, budget, uiTheme, Boolean(options.expanded));
+			const innerWidth = outputBlockContentWidth(width);
+			const bodyLines = [...matchLines, ...extraLines].map(l => truncateToWidth(l, innerWidth, Ellipsis.Omit));
+			return {
+				header,
+				sections: [{ lines: bodyLines }],
+				state: limitReached ? "warning" : "success",
+				width,
+			};
+		});
 	},
 	mergeCallAndResult: true,
 };

@@ -96,7 +96,7 @@ describe("a relaunched session ignores bytes left in the tty", () => {
 			setImmediate(() => onInput(LEAKED));
 			setImmediate(() => onInput("\r"));
 		});
-		await mode.init({ suppressWelcomeIntro: true });
+		await mode.init();
 		await nextLoopTurn();
 	});
 

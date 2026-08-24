@@ -169,19 +169,19 @@ describe("renderSunField edge sizes (the UI can pass anything — never crash)",
 });
 
 describe("sunMark (the launch-signature recipe)", () => {
+	test("rests at a full round disc: centre is solid, sized to the slot", () => {
+		const out = sunMark(16, 7, { trueColor: true });
+		expect(out.length).toBe(7);
+		for (const line of out) expect([...strip(line)].length).toBe(16);
+		expect(strip(out[3])).toContain("█");
+	});
+
 	const fill = (lines: string[]) =>
 		lines
 			.map(strip)
 			.join("")
 			.split("")
 			.filter(c => c !== " ").length;
-
-	test("rests at a full round disc (no bloom): centre is solid, sized to the slot", () => {
-		const out = sunMark(16, 7, { trueColor: true });
-		expect(out.length).toBe(7);
-		for (const line of out) expect([...strip(line)].length).toBe(16);
-		expect(strip(out[3])).toContain("█");
-	});
 
 	test("bloom eases the disc open — strictly more cells as bloom rises 0 → 1", () => {
 		const p0 = fill(sunMark(16, 7, { trueColor: true, bloom: 0 }));
@@ -191,7 +191,7 @@ describe("sunMark (the launch-signature recipe)", () => {
 		expect(pHalf).toBeLessThan(p1);
 	});
 
-	test("omitting bloom equals a fully-bloomed mark (rests at full)", () => {
+	test("omitting bloom equals a fully-bloomed mark, which is what the home hero draws", () => {
 		expect(sunMark(16, 7, { trueColor: true })).toEqual(sunMark(16, 7, { trueColor: true, bloom: 1 }));
 	});
 

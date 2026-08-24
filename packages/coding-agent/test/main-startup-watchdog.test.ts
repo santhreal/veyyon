@@ -11,8 +11,12 @@ import { __startupWatchdogArmedForTests, runRootCommand } from "@veyyon/coding-a
 
 describe("startup watchdog lifecycle", () => {
 	it("disarms the watchdog when startup throws before a mode handoff", async () => {
+		// `-p` makes the run non-interactive, so startup walks past the TTY guard
+		// (which writes to stderr and exits the process) and reaches the point
+		// where auth discovery is awaited.
 		const parsed: Args = {
-			messages: [],
+			print: true,
+			messages: ["what is 2 + 2"],
 			fileArgs: [],
 			unknownFlags: new Map(),
 			unrecognizedFlags: [],

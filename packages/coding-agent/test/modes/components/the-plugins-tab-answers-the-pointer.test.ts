@@ -229,17 +229,26 @@ describe("the plugins tab answers the pointer", () => {
 		try {
 			await awaitText(component, "mkt-side@catalog");
 
-			const before = frameLines(component);
-			const index = before.findIndex(line => strip(line).includes("mkt-side@catalog"));
-			component.handleInput(motionAt(index + 1));
+			// The selected row's caret is a wall-clock heat cycle (`theme.selectedPrefix`),
+			// so two frames captured at two instants differ on a row the pointer never
+			// touched. Freezing the clock leaves the hover band as the only thing that
+			// can move between the two captures.
+			const clock = spyOn(Date, "now").mockReturnValue(1_764_000_000_000);
+			try {
+				const before = frameLines(component);
+				const index = before.findIndex(line => strip(line).includes("mkt-side@catalog"));
+				component.handleInput(motionAt(index + 1));
 
-			const after = frameLines(component);
-			expect(strip(after[index] ?? "")).toContain("mkt-side@catalog");
-			expect(after[index]).not.toBe(before[index]);
-			// A background fill; fg-only styling cannot produce "48;".
-			expect(after[index]).toContain("48;");
-			for (let line = 0; line < before.length; line++) {
-				if (line !== index) expect(after[line], `row ${line}`).toBe(before[line]);
+				const after = frameLines(component);
+				expect(strip(after[index] ?? "")).toContain("mkt-side@catalog");
+				expect(after[index]).not.toBe(before[index]);
+				// A background fill; fg-only styling cannot produce "48;".
+				expect(after[index]).toContain("48;");
+				for (let line = 0; line < before.length; line++) {
+					if (line !== index) expect(after[line], `row ${line}`).toBe(before[line]);
+				}
+			} finally {
+				clock.mockRestore();
 			}
 		} finally {
 			restore();

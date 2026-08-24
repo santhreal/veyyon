@@ -8,7 +8,7 @@ import { ModalSelectListComponent } from "./modal-select-list";
 export class ShowImagesSelectorComponent {
 	#inner: ModalSelectListComponent;
 
-	constructor(currentValue: boolean, onSelect: (show: boolean) => void, onCancel: () => void, reveal?: boolean) {
+	constructor(currentValue: boolean, onSelect: (show: boolean) => void, onCancel: () => void) {
 		const items: SelectItem[] = [
 			{ value: "yes", label: "Yes", description: "Show images inline in terminal" },
 			{ value: "no", label: "No", description: "Show text placeholder instead" },
@@ -20,7 +20,6 @@ export class ShowImagesSelectorComponent {
 				theme: getSelectListTheme(),
 				selectedIndex: currentValue ? 0 : 1,
 				maxVisible: 5,
-				reveal,
 			},
 			{
 				onSelect: item => onSelect(item.value === "yes"),
@@ -47,11 +46,6 @@ export class ShowImagesSelectorComponent {
 
 	render(width: number): string[] {
 		return this.#inner.render(width);
-	}
-
-	/** Forwarded to the inner card, which owns the reveal this plays backwards. */
-	beginOverlayExit(requestRender: () => void, done: () => void): boolean {
-		return this.#inner.beginOverlayExit(requestRender, done);
 	}
 
 	invalidate(): void {

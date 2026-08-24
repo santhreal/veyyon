@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-03ea301b.js";
+            window.path_to_searchindex_js = "../searchindex-4c0dbea2.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-a2abefc1.js"></script>
@@ -252,7 +252,7 @@ veyyon config get compaction.threshold
 <tr><td><code>tui.tight</code></td><td>Tight Layout</td><td>boolean</td><td><code>false</code></td><td>Remove the 1-character horizontal padding from the left and right of the terminal output. Shown under the tab’s Advanced fold.</td></tr>
 <tr><td><code>tui.scrollbackRebuild</code></td><td>Rewrite Scrollback</td><td>boolean</td><td><code>true</code></td><td>Erase and replay terminal scrollback when a block’s final form replaces its live preview. On by default: with it off, the stale preview stays in history and the final content is appended underneath, so the same paragraph appears twice. Terminal multiplexers keep the append-below behaviour either way, because erasing there would take the pane’s own history with it. Shown under the tab’s Advanced fold.</td></tr>
 <tr><td><code>tui.scrollIsolation</code></td><td>Scroll Isolation</td><td>boolean</td><td><code>false</code></td><td>Read the mouse wheel so the transcript scrolls with the prompt pinned at the bottom, showing the position on the right edge. This costs you drag-select: while it is on, veyyon holds the mouse, so plain dragging selects nothing and you need shift+drag, or <code>/copy</code> to pick text and code out of the conversation without the mouse. When off (default), the terminal keeps the wheel and the mouse, so native scrollback, drag-select and copy all behave exactly as they do in any other program, and the prompt still sits at the bottom of the live view. Shown under the tab’s Advanced fold.</td></tr>
-<tr><td><code>display.transitions</code></td><td>Transitions</td><td>enum</td><td><code>on</code></td><td>Structural motion: overlay open transitions and the welcome bloom. Values: <code>on</code>, <code>off</code>.</td></tr>
+<tr><td><code>display.transitions</code></td><td>Transitions</td><td>enum</td><td><code>on</code></td><td>Structural motion: overlay open transitions and the moving rail beside a running tool. Values: <code>on</code>, <code>off</code>.</td></tr>
 <tr><td><code>display.shimmer</code></td><td>Shimmer</td><td>enum</td><td><code>disabled</code></td><td>Animation style for working/loading messages. Values: <code>classic</code>, <code>kitt</code>, <code>living</code>, <code>disabled</code>.</td></tr>
 <tr><td><code>display.smoothStreaming</code></td><td>Smooth Streaming</td><td>boolean</td><td><code>true</code></td><td>Reveal assistant text and streamed tool input smoothly while chunks arrive.</td></tr>
 <tr><td><code>display.showTokenUsage</code></td><td>Show Token Usage</td><td>boolean</td><td><code>false</code></td><td>Show what each turn spent under the assistant message: tokens, how long it took, and its rate.</td></tr>
