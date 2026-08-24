@@ -25,8 +25,8 @@ import { DEFAULT_EFFORT_POINTER } from "../config/effort-resolver";
 import { credentialRemedySentence, missingCredentialsMessage } from "../config/missing-credentials";
 import { modelResolutionFailureMessage } from "../config/model-resolution-failure";
 import {
-	expandRoleAlias,
 	getModelMatchPreferences,
+	normalizeModelPatternList,
 	resolveCliModel,
 	resolveConfiguredModelPatterns,
 	resolveModelFromString,
@@ -1343,16 +1343,27 @@ const BUILTIN_SLASH_COMMAND_HANDLERS: { [Name in BuiltinSlashCommandName]: Handl
 		},
 	},
 	prewalk: {
-		handle: async (_command, runtime) => {
-			const rolePattern = expandRoleAlias("@smol", runtime.settings);
+		handle: async (command, runtime) => {
+			// The target no longer defaults to a role alias: an unset role stopped
+			// resolving to a model (#980 fail-closed). `/prewalk <model>` names the
+			// target for this session; without an argument, `prewalk.cheapModel`
+			// is required, and the refusal names the setting that fixes it.
+			const arg = command.args.trim();
+			const cheapPattern = arg || normalizeModelPatternList(runtime.settings.get("prewalk.cheapModel"))[0];
+			if (!cheapPattern) {
+				return usage(
+					'Prewalk needs a cheap target model: run /prewalk <model> or set "prewalk.cheapModel" in settings.',
+					runtime,
+				);
+			}
 			const resolved = resolveCliModel({
-				cliModel: rolePattern,
+				cliModel: cheapPattern,
 				modelRegistry: runtime.session.modelRegistry,
 				preferences: getModelMatchPreferences(runtime.settings),
 			});
 			if (resolved.error || !resolved.model) {
 				return usage(
-					resolved.error ?? modelResolutionFailureMessage([rolePattern], runtime.session.modelRegistry),
+					resolved.error ?? modelResolutionFailureMessage([cheapPattern], runtime.session.modelRegistry),
 					runtime,
 				);
 			}

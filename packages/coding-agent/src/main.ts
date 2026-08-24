@@ -42,6 +42,7 @@ import {
 	expandRoleAlias,
 	fallbackForUnavailableDefault,
 	getModelMatchPreferences,
+	normalizeModelPatternList,
 	resolveCliModel,
 	resolveModelRoleValue,
 	resolveModelScope,
@@ -1104,21 +1105,57 @@ export async function buildSessionOptions(
 		: parsed.prewalk === true || parsed.prewalkInto !== undefined
 			? true
 			: activeSettings.get("prewalk.enabled");
+	if (prewalkEnabled && !parsed.model) {
+		// Strong-model override: the start model an operator named for prewalk
+		// alone. An explicit --model wins; unset inherits the normal start chain.
+		const strongPattern = normalizeModelPatternList(activeSettings.get("prewalk.strongModel"))[0];
+		if (strongPattern) {
+			const resolved = resolveCliModel({
+				cliModel: strongPattern,
+				modelRegistry,
+				preferences: modelMatchPreferences,
+			});
+			if (resolved.warning) {
+				process.stderr.write(`${chalk.yellow(`Warning: ${resolved.warning}`)}\n`);
+			}
+			if (resolved.error || !resolved.model) {
+				throw new Error(resolved.error ?? modelResolutionFailureMessage([strongPattern], modelRegistry));
+			}
+			if (!modelRegistry.hasConfiguredAuth(resolved.model)) {
+				throw new Error(
+					missingCredentialsMessage(resolved.model.provider, resolved.model.id, "prewalk.strongModel"),
+				);
+			}
+			options.model = resolved.model;
+			if (!parsed.thinking && resolved.thinkingLevel) {
+				options.thinkingLevel = resolved.thinkingLevel;
+				options.thinkingSource = "selector";
+			}
+		}
+	}
 	if (prewalkEnabled) {
-		const rolePattern = expandRoleAlias(parsed.prewalkInto ?? "@smol", activeSettings);
-		const resolved = resolveCliModel({ cliModel: rolePattern, modelRegistry, preferences: modelMatchPreferences });
+		// The cheap target no longer falls back to a role alias. An unset role
+		// stopped resolving to a model (#980 fail-closed), so a target the
+		// operator did not name fails loud and points at the setting that fixes
+		// it, instead of dying inside role expansion with no corrective action.
+		const cheapPattern = parsed.prewalkInto ?? normalizeModelPatternList(activeSettings.get("prewalk.cheapModel"))[0];
+		if (!cheapPattern) {
+			throw new Error(
+				'Prewalk needs a cheap target model: set "prewalk.cheapModel" in settings or pass --prewalk-into <model>.',
+			);
+		}
+		const resolved = resolveCliModel({ cliModel: cheapPattern, modelRegistry, preferences: modelMatchPreferences });
 		if (resolved.warning) {
 			process.stderr.write(`${chalk.yellow(`Warning: ${resolved.warning}`)}\n`);
 		}
 		if (resolved.error || !resolved.model) {
-			throw new Error(resolved.error ?? modelResolutionFailureMessage([rolePattern], modelRegistry));
+			throw new Error(resolved.error ?? modelResolutionFailureMessage([cheapPattern], modelRegistry));
 		}
 		if (!modelRegistry.hasConfiguredAuth(resolved.model)) {
 			throw new Error(missingCredentialsMessage(resolved.model.provider, resolved.model.id, "--prewalk target"));
 		}
 		options.prewalk = { target: resolved.model, thinkingLevel: resolved.thinkingLevel };
 	}
-
 	if (parsed.planYoloInto !== undefined && !parsed.planYolo) {
 		throw new Error("--plan-yolo-into requires --plan-yolo");
 	}
