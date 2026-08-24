@@ -175,9 +175,37 @@ if [ "${SCENE_THEME:-plain}" != "plain" ]; then
 		--corner-radius "${SCENE_RADIUS:-26}"
 		--active-opacity "${SCENE_OPACITY:-0.72}"
 		--inactive-opacity "${SCENE_OPACITY:-0.72}"
-		--blur-background
 		--shadow --shadow-radius 44 --shadow-opacity 0.55
 		--shadow-offset-x -22 --shadow-offset-y -12)
+
+	# --blur-background IS THE REASON A TAKE COMES OUT AT THREE FRAMES A SECOND, and it
+	# stays off unless something can actually accelerate it.
+	#
+	# A translucent window forces picom to re-blur everything behind it on every frame.
+	# On this stack that convolution runs on the CPU through xrender, over the whole
+	# 2304x1184 inset, and it saturates the X server itself. Measured in the recorder
+	# image at 2560x1440, one identical counter printing as fast as the terminal will
+	# take it, six seconds per arm, unique frames counted with mpdecimate:
+	#
+	#   no compositor                     171 unique / 359 grabbed   28 fps
+	#   opaque + blur                      89 unique / 337 grabbed   14 fps
+	#   0.72 opacity, no blur              69 unique / 305 grabbed   11 fps
+	#   0.72 opacity + blur (was default)  14 unique /  69 grabbed    2 fps
+	#   blur-background-fixed              13 unique /  55 grabbed    2 fps
+	#
+	# The middle column is the tell that this is not a terminal problem and not an
+	# encoder problem: with the blur on, ffmpeg could only GRAB 69 of 360 frames. The X
+	# server had nothing left to answer a screen capture with, so no capture setting and
+	# no render-loop change downstream can recover the frames -- they were never drawn.
+	# A published hero take measured 385 unique frames across 7415, a flat 3.3 per second
+	# through typing, streaming and idle alike, which is this row and nothing else.
+	#
+	# SCENE_CHROME_BLUR=1 turns it back on for a still, where frame rate does not exist.
+	# Anything that moves keeps it off.
+	if [ "${SCENE_CHROME_BLUR:-0}" = "1" ]; then
+		CHROME+=(--blur-background)
+		echo "chrome: blur-background forced on; expect ~2 fps of real motion" >&2
+	fi
 
 	# xrender's `kernel` blur is the default, and dual_kawase is opt-in behind
 	# SCENE_CHROME_BACKEND=glx. The reasoning in the note this replaces was wrong in both
@@ -205,8 +233,8 @@ if [ "${SCENE_THEME:-plain}" != "plain" ]; then
 			"${CHROME[@]}" && GLASS=1
 	fi
 	[ "${GLASS:-0}" = "1" ] ||
-		start_compositor "xrender kernel ${SCENE_BLUR_KERN:-11x11gaussian}" \
-			--backend xrender --blur-method kernel --blur-kern "${SCENE_BLUR_KERN:-11x11gaussian}" \
+		start_compositor "xrender kernel ${SCENE_BLUR_KERN:-5x5gaussian}" \
+			--backend xrender --blur-method kernel --blur-kern "${SCENE_BLUR_KERN:-5x5gaussian}" \
 			"${CHROME[@]}" || {
 			echo "picom never redirected the screen; the capture would be unthemed" >&2
 			exit 1
@@ -238,6 +266,9 @@ xterm)
 	kitty \
 		--override "font_family=JetBrains Mono" \
 		--override "font_size=${SCENE_FONT_SIZE:-15}" \
+		--override "sync_to_monitor=no" \
+		--override "repaint_delay=8" \
+		--override "input_delay=1" \
 		--override "background=${SCENE_BG:-#1e2127}" \
 		--override "foreground=${SCENE_FG:-#d7dae0}" \
 		--override "cursor_blink_interval=0" \
@@ -328,9 +359,10 @@ done
 xdotool mousemove --sync $((MARGIN + TW / 2)) $((MARGIN + TH / 2))
 sleep 1
 
-ffmpeg -loglevel error -y -f x11grab -draw_mouse 1 -framerate "${FPS}" \
+ffmpeg -loglevel error -y -thread_queue_size 2048 -f x11grab -draw_mouse 1 -framerate "${FPS}" \
 	-video_size "${W}x${H}" -i "${DISPLAY}" \
-	-c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p \
+	-c:v libx264 -preset ultrafast -tune zerolatency -crf 18 -pix_fmt yuv420p \
+	-r "${FPS}" \
 	"${OUT}/${NAME}.mp4" >/tmp/ffmpeg.log 2>&1 &
 FFMPEG_PID=$!
 # The recording's own zero, in milliseconds, so a still can name the second of the
@@ -358,6 +390,14 @@ source "${SCENE}"
 sleep 1
 cleanup
 trap - EXIT
+
+# The capture is judged on motion, not on settings: a true 60 fps CFR file that
+# encodes without dropping anything can still be three frames a second of actual
+# movement, and ffprobe cannot tell the difference. proof/motion-gate.sh owns the
+# measurement and the floor.
+if [ "${SCENE_MOTION_GATE:-1}" = "1" ]; then
+	bash "${SCENE_MOTION_GATE_BIN:-/repo/proof/motion-gate.sh}" "${OUT}/${NAME}.mp4" >&2
+fi
 
 # A GIF of the same recording, for a page that has to open in a browser without a
 # video codec argument. The palette pass is what keeps the terminal's greys from
