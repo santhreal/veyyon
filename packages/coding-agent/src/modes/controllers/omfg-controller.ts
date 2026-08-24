@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { CONFIG_DIR_NAME, errorMessage, prompt } from "@veyyon/utils";
+import { errorMessage, prompt } from "@veyyon/utils";
 import type { Rule } from "../../capability/rule";
 import { sideChannelPrompts } from "../../prompts/side-channel/rows";
 import { shortenPath } from "../../tools/render-utils";
@@ -53,8 +53,7 @@ interface GenerateCandidateOptions {
 type SaveCandidateResult = { kind: "saved" | "aborted" | "rejected" } | { kind: "amend"; feedback: string };
 
 const MAX_ATTEMPTS = 3;
-const PROJECT_OPTION = `This project (${CONFIG_DIR_NAME}/rules)`;
-const GLOBAL_OPTION = "Global — all projects (~/.veyyon/agent/rules)";
+const PROFILE_OPTION = "This profile — every project";
 const AMEND_OPTION = "Amend with feedback…";
 
 export class OmfgController {
@@ -214,11 +213,7 @@ export class OmfgController {
 	async #saveCandidate(request: OmfgRequest, candidate: OmfgCandidate): Promise<SaveCandidateResult> {
 		if (this.#shouldStop(request)) return { kind: "aborted" };
 		request.component.setStatus("saving", "Choose where to save or amend the TTSR rule…");
-		const location = await this.ctx.showHookSelector("Save TTSR rule where?", [
-			PROJECT_OPTION,
-			GLOBAL_OPTION,
-			AMEND_OPTION,
-		]);
+		const location = await this.ctx.showHookSelector("Save TTSR rule where?", [PROFILE_OPTION, AMEND_OPTION]);
 		if (!this.#isActiveRequest(request)) return { kind: "aborted" };
 		if (!location) {
 			request.component.markAborted();
@@ -242,7 +237,7 @@ export class OmfgController {
 			return { kind: "amend", feedback };
 		}
 
-		const target = this.#resolveTarget(location, candidate.rule.name);
+		const target = this.#resolveTarget(candidate.rule.name);
 		if (await Bun.file(target.filePath).exists()) {
 			const shouldOverwrite = await this.ctx.showHookConfirm(
 				"Overwrite TTSR rule?",
@@ -265,16 +260,22 @@ export class OmfgController {
 		return { kind: "saved" };
 	}
 
-	#resolveTarget(location: string, ruleName: string): { filePath: string; level: OmfgRuleSourceLevel } {
-		if (location === GLOBAL_OPTION) {
-			return {
-				filePath: path.join(this.ctx.settings.getAgentDir(), "rules", `${ruleName}.md`),
-				level: "user",
-			};
-		}
+	/**
+	 * The only save target: the active profile's rules directory.
+	 *
+	 * A project `.veyyon/rules/` target used to sit beside this one, but nothing
+	 * discovers that directory — rule discovery reads the HOME-side profile and
+	 * foreign-tool conventions only, deliberately, because a checked-out working
+	 * tree is untrusted input. A rule saved there was live for this session and
+	 * gone at the next launch, and never reached the settings list. The profile
+	 * directory is the location discovery reads, so a forged rule persists,
+	 * appears under "User created" in Settings → Stream Interrupts (TTSR), and is
+	 * toggleable there like any other rule.
+	 */
+	#resolveTarget(ruleName: string): { filePath: string; level: OmfgRuleSourceLevel } {
 		return {
-			filePath: path.join(this.ctx.sessionManager.getCwd(), CONFIG_DIR_NAME, "rules", `${ruleName}.md`),
-			level: "project",
+			filePath: path.join(this.ctx.settings.getAgentDir(), "rules", `${ruleName}.md`),
+			level: "user",
 		};
 	}
 
