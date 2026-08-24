@@ -20,7 +20,7 @@
  */
 import { readFile } from "node:fs/promises";
 
-import { atomicWriteFile, errorMessage, isEnoent, logger } from "@veyyon/utils";
+import { atomicWriteFile, errorMessage, isEnoent, isRecord, logger } from "@veyyon/utils";
 import { daemonCompletionsPath } from "./paths";
 import { type DaemonCompletionRecord, parseDaemonCompletionRecord } from "./protocol";
 
@@ -39,7 +39,7 @@ export const DAEMON_COMPLETIONS_MAX_AGE_MS = 24 * 60 * 60 * 1000;
  * prefix that parses would present a truncated history as complete.
  */
 export function parseDaemonCompletionsFile(value: unknown): DaemonCompletionRecord[] {
-	if (typeof value !== "object" || value === null || Array.isArray(value)) {
+	if (!isRecord(value)) {
 		throw new Error("daemon completions file must be an object");
 	}
 	if (!("version" in value) || value.version !== DAEMON_COMPLETIONS_SCHEMA_VERSION) {
