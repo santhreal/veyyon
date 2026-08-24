@@ -2,6 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { AgentState } from "@veyyon/agent-core";
 import { APP_NAME, isEnoent, logger } from "@veyyon/utils";
+import { atomicWriteFileWith } from "@veyyon/utils/atomic-write";
 import { isSessionFileName, SESSION_BACKUP_EXTENSION, sessionFileStem } from "@veyyon/utils/session-file";
 import { getResolvedThemeColors, getThemeExportColors } from "../../modes/theme/theme";
 import type { SecretObfuscator } from "../../secrets/obfuscator";
@@ -432,54 +433,51 @@ async function writeExportFile(
 	const templated = getTemplate().replace("<theme-vars/>", () => `<style>:root { ${themeVars} }</style>`);
 	const { head: beforeData, tail } = splitTemplateAtSessionMarker(templated);
 
-	const tempPath = `${outputPath}.tmp-${process.pid}-${Date.now()}`;
-	const handle = await fs.open(tempPath, "w");
-	try {
-		await handle.write(beforeData);
-		// Batch base64 chunks into ~1 MiB file writes: one awaited write per
-		// serializer piece turns an 80 MiB export into hundreds of thousands of
-		// async round trips (measured: 825ms -> 58s).
-		let pending: string[] = [];
-		let pendingChars = 0;
-		// Writes are chained, never launched concurrently: two overlapping
-		// handle.write calls could reorder base64 quanta and corrupt the payload.
-		let writeChain: Promise<void> = Promise.resolve();
-		const flushPending = (): Promise<void> => {
-			if (pending.length === 0) return writeChain;
-			const joined = pending.join("");
-			pending = [];
-			pendingChars = 0;
-			writeChain = writeChain.then(() => handle.write(joined).then(() => {}));
-			return writeChain;
-		};
-		const b64 = new StreamingBase64Writer(chunk => {
-			pending.push(chunk);
-			pendingChars += chunk.length;
-			if (pendingChars >= WRITE_FLUSH_CHARS) void flushPending();
-		});
-		// Yield only after crossing a byte budget, so timers and sockets keep
-		// getting service during a long export; yielding per piece measured
-		// 825ms -> 65s and is exactly what this budget avoids.
-		let bytesSinceYield = 0;
-		for (const piece of jsonPieces(sessionData)) {
-			b64.push(piece);
-			bytesSinceYield += Buffer.byteLength(piece, "utf8");
-			if (bytesSinceYield >= YIELD_BYTE_BUDGET) {
-				bytesSinceYield = 0;
-				await flushPending();
-				await new Promise<void>(resolve => setImmediate(resolve));
+	await atomicWriteFileWith(outputPath, async tempPath => {
+		const handle = await fs.open(tempPath, "w");
+		try {
+			await handle.write(beforeData);
+			// Batch base64 chunks into ~1 MiB file writes: one awaited write per
+			// serializer piece turns an 80 MiB export into hundreds of thousands of
+			// async round trips (measured: 825ms -> 58s).
+			let pending: string[] = [];
+			let pendingChars = 0;
+			// Writes are chained, never launched concurrently: two overlapping
+			// handle.write calls could reorder base64 quanta and corrupt the payload.
+			let writeChain: Promise<void> = Promise.resolve();
+			const flushPending = (): Promise<void> => {
+				if (pending.length === 0) return writeChain;
+				const joined = pending.join("");
+				pending = [];
+				pendingChars = 0;
+				writeChain = writeChain.then(() => handle.write(joined).then(() => {}));
+				return writeChain;
+			};
+			const b64 = new StreamingBase64Writer(chunk => {
+				pending.push(chunk);
+				pendingChars += chunk.length;
+				if (pendingChars >= WRITE_FLUSH_CHARS) void flushPending();
+			});
+			// Yield only after crossing a byte budget, so timers and sockets keep
+			// getting service during a long export; yielding per piece measured
+			// 825ms -> 65s and is exactly what this budget avoids.
+			let bytesSinceYield = 0;
+			for (const piece of jsonPieces(sessionData)) {
+				b64.push(piece);
+				bytesSinceYield += Buffer.byteLength(piece, "utf8");
+				if (bytesSinceYield >= YIELD_BYTE_BUDGET) {
+					bytesSinceYield = 0;
+					await flushPending();
+					await new Promise<void>(resolve => setImmediate(resolve));
+				}
 			}
+			b64.end();
+			await flushPending();
+			await handle.write(tail);
+		} finally {
+			await handle.close();
 		}
-		b64.end();
-		await flushPending();
-		await handle.write(tail);
-		await handle.close();
-		await fs.rename(tempPath, outputPath);
-	} catch (error) {
-		await handle.close().catch(() => {});
-		await fs.rm(tempPath, { force: true }).catch(() => {});
-		throw error;
-	}
+	});
 }
 
 /** Export session to HTML using SessionManager and AgentState. */
