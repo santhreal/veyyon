@@ -19702,6 +19702,7 @@ export class AgentSession {
 				sessionId: this.sessionId,
 				promptCacheKey: this.agent.promptCacheKey ?? this.sessionId,
 				customInstructions: options.customInstructions,
+				reserveTokens: this.settings.get("branchSummary.reserveTokens"),
 				metadata: this.agent.metadataForProvider(model.provider),
 				convertToLlm,
 				resolveObfuscateProviderText: () => {
