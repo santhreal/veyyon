@@ -79,7 +79,7 @@ const SPAWN_SITES: Record<string, SpawnSiteEntry> = {
 	},
 	"mcp/transports/stdio.ts": {
 		wired: true,
-		reason: "onSpawnPid hands the server pid to the session's limiter",
+		reason: "beforeSpawn gates, then onSpawnPid hands the server pid to the session's limiter",
 	},
 	"session/cpu-limit.ts": {
 		wired: true,
@@ -280,6 +280,10 @@ describe("every spawn site in src is wired into the session CPU budget or exempt
 			"extensibility/extensions/loader.ts",
 			"extensibility/hooks/loader.ts",
 			"sdk.ts",
+			"main.ts",
+			"mcp/transports/stdio.ts",
+			"mcp/manager.ts",
+			"mcp/client.ts",
 		];
 		for (const file of files) {
 			const text = await fs.readFile(path.join(SRC_ROOT, file), "utf8");
@@ -293,6 +297,26 @@ describe("every spawn site in src is wired into the session CPU budget or exempt
 			if (file === "sdk.ts") {
 				expect(text.includes("sessionCpuExecHooks("), `${file} must build exec hooks`).toBe(true);
 				expect(text.includes("gateSpawn"), `${file} must pass gateSpawn into loaders`).toBe(true);
+				expect(text.includes("setSpawnGate("), `${file} must gate MCP stdio`).toBe(true);
+				continue;
+			}
+			if (file === "main.ts") {
+				expect(text.includes("sessionCpuExecHooks("), `${file} must build exec hooks for CLI preload`).toBe(true);
+				expect(text.includes("cliCpu.gate"), `${file} must pass the gate into loadSessionExtensions`).toBe(true);
+				continue;
+			}
+			if (file === "mcp/transports/stdio.ts") {
+				expect(text.includes("beforeSpawn"), `${file} must expose beforeSpawn`).toBe(true);
+				expect(text.includes("await this.beforeSpawn"), `${file} must await the gate before Bun.spawn`).toBe(true);
+				continue;
+			}
+			if (file === "mcp/manager.ts") {
+				expect(text.includes("setSpawnGate"), `${file} must accept a spawn gate`).toBe(true);
+				expect(text.includes("beforeSpawn"), `${file} must pass beforeSpawn into connectToServer`).toBe(true);
+				continue;
+			}
+			if (file === "mcp/client.ts") {
+				expect(text.includes("beforeSpawn"), `${file} must thread beforeSpawn onto StdioTransport`).toBe(true);
 				continue;
 			}
 			expect(text.includes("withSessionCpuExec("), `${file} must wrap exec with the CPU gate`).toBe(true);
