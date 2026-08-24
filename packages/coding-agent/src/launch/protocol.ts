@@ -20,6 +20,12 @@ export const DAEMON_RUNTIME_DIR_ENV = "VEYYON_DAEMON_RUNTIME_DIR";
 /** Optional environment key overriding last-client shutdown grace. */
 export const DAEMON_IDLE_GRACE_ENV = "VEYYON_DAEMON_IDLE_GRACE_MS";
 
+/** Optional environment key overriding exited daemon cleanup TTL. */
+export const DAEMON_CLEANUP_WAIT_ENV = "VEYYON_DAEMON_CLEANUP_WAIT_MS";
+
+/** Default post-exit retention before an exited daemon is purged (15 minutes). */
+export const DEFAULT_CLEANUP_WAIT_MS = 15 * 60 * 1000;
+
 /** Stable lifecycle states exposed by the launch tool. */
 export type DaemonState = "starting" | "running" | "ready" | "restarting" | "stopping" | "exited" | "failed";
 
