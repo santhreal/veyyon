@@ -11,6 +11,26 @@
 # platform-services project, whose path and branch name together are about ninety columns,
 # so the shed order is visible rather than theoretical.
 #
+# EVERY STATE, DERIVED FROM SOURCE. The right group's `mode` segment composes three
+# independent facts through one `joinStates` call: the `/yolo` bypass marker, a base mode
+# from `BASE_MODE_STATES` (segments.ts:362 -- plan, prewalk, goal, vibe, loop) and an
+# approval rung from `AUTONOMY_LABEL` (approval-modes.ts:81 -- Plan, Ask all, Ask cmds,
+# Auto, Yolo). Twelve frames cover it: five rungs, three base modes plus a paused goal, the
+# bypass over the widest base label, and a composer draft for `location_right`.
+#
+# WHAT THIS TAKE DOES NOT CATCH, and why neither is reachable from a slash command:
+#
+#   `subagents`, rank 5 in `RIGHT_PART_SHED_RANK`. Its text is empty until a subagent is
+#   actually running, so it holds no columns in any frame here.
+#
+#   `prewalk`, second in `BASE_MODE_STATES`. `armPrewalk` needs a resolvable fast/cheap
+#   model that differs from the session's own -- it clears the state outright when the
+#   target matches the current model -- and it steers the live agent to announce the
+#   switch (agent-session.ts:2903-2941). Both need a model this host does not serve.
+#
+# The suite covers both by pinning the shed order by equality instead, so a rank that moves
+# fails there even though no frame here can show it.
+#
 # The states differ only in what the right group contains, so they do not shed at the same
 # width: a terminal that fits `Auto` does not fit `! YOLO · Plan`, and the same terminal
 # proves a different thing in each state. That is why the frames are taken per state and
@@ -31,7 +51,7 @@
 #       proof/docker/record-x11.sh proof/scenes/statusline-widths.sh
 #   done
 #
-# SCENE_MOTION_GATE=0 because the take is five stills of a status line. The motion floor
+# SCENE_MOTION_GATE=0 because the take is twelve stills of a status line. The motion floor
 # is there to stop a published clip from encoding as a slideshow; this scene IS a
 # slideshow, and the frames are the artifact.
 set -euo pipefail
@@ -47,27 +67,115 @@ settle 12
 # HARDER once the model chip keeps its columns -- `ingest-pipeline` is on screen in the arm
 # that drops the model and gone in the arm that keeps it. A needle that only one arm can
 # satisfy would fail the take for the very difference it is recording.
-screen_has "orm-services" || MISSED="${MISSED:-} idle"
+expect_screen "orm-services" 60 "seeded-cwd"
+
+# ---------------------------------------------------------------------------
+# THE RUNGS. `AUTONOMY_LABEL` in tools/approval-modes.ts is the whole set, and
+# `/permissions <rung>` is the only way to reach one without restarting. They are shot
+# before any mode is enabled, because `mode` renders bypass, base mode and rung through one
+# `joinStates` call and a base label would put two variables in the frame at once.
+# ---------------------------------------------------------------------------
 shot idle
 
-# AUTO, the shipped approval rung. The widest right group that still carries every member.
+slash "/permissions ask"
+expect_screen "Ask all" 30 "rung-ask"
+shot rung-ask-all
+
+slash "/permissions ask-command"
+expect_screen "Ask cmds" 30 "rung-ask-command"
+shot rung-ask-cmds
+
+# THE RUNG NOBODY CAN SEE ANOTHER WAY. `/permissions plan` sets the plan rung with no plan
+# session open: `renderBaseMode` says nothing and the rung is the only thing naming a state
+# where every write tool is denied. segments.ts:431-437 exists because that pair once
+# rendered as an empty segment.
+slash "/permissions plan"
+expect_screen "Plan" 30 "rung-plan"
+shot rung-plan
+
+# The configured rung reading `Yolo`, which is NOT the `! YOLO` bypass marker below: one is
+# a saved preference, the other is this session overriding it. They render differently on
+# purpose and the pair is the only place that is visible.
+slash "/permissions yolo"
+expect_screen "Yolo" 30 "rung-yolo"
+shot rung-yolo
+
+slash "/permissions reset"
+expect_screen "Auto" 30 "rung-reset"
+
+# ---------------------------------------------------------------------------
+# THE BASE MODES. `renderBaseMode` returns the FIRST non-empty entry of
+# `BASE_MODE_STATES` (plan > prewalk > goal > vibe > loop), so only one label is ever on
+# the line and the order here is chosen so each frame holds the one it is named after.
+#
+# THE ORDER IS FORCED BY THE MODES' OWN EXCLUSIONS, not by rendering priority. Plan, vibe
+# and goal are PAIRWISE exclusive -- each of the three refuses to start while either other
+# one is enabled or paused (interactive-mode.ts:2863-2868, 3034-3041, 3628-3634) -- while
+# `loop` and `prewalk` have no such guard. Of the three, only `/vibe` is a plain toggle:
+# leaving goal mode goes through a confirm dialog. So vibe is shot and toggled off first,
+# goal second, and plan last, after the dialog has been answered.
+#
+# Two orders that read as safe and are not: ascending rendering priority puts vibe before
+# goal, and the goal command then warns "Exit vibe mode first" while the guard waits out
+# its whole ceiling; and dropping the goal without answering the dialog leaves it PAUSED,
+# which blocks vibe and plan exactly as an enabled one does.
+#
+# Each frame's guard is what catches a mode that did not exit: the take abandons on the
+# label rather than shooting a frame named for a state that is not on screen.
+# ---------------------------------------------------------------------------
+slash "/loop"
+expect_screen "Loop" 30 "mode-loop"
+shot mode-loop
+slash "/loop"
+settle 2
+
+slash "/vibe"
+expect_screen "Vibe" 30 "mode-vibe"
+shot mode-vibe
+slash "/vibe"
+settle 2
+
+# GOAL MODE NEEDS AN OBJECTIVE, NOT A TURN. Bare `/goal` opens the objective editor and
+# enables nothing, which is why a guard on the chip waited out its whole ceiling here.
+# `/goal set <objective>` runs `#enterGoalMode` BEFORE it hands the objective to the
+# submit path (interactive-mode.ts:3909-3912), so the chip is on the line as soon as the
+# command returns. The submission that follows needs a model and does not resolve on this
+# host; the frame is taken on the chip, and the paused frame below is the state that
+# outlives the attempt.
+slash "/goal set keep the ingest normalizer failing closed on a malformed record"
+expect_screen "Goal" 60 "mode-goal"
+shot mode-goal
+
+# PAUSED, which is a different render and not a dimmer one: `renderGoalMode` recolors to
+# warning and appends the pause suffix. It is also the state a reader of this pair can
+# reach by hand, since the running one depends on a model answering.
+slash "/goal pause"
+settle 3
+shot mode-goal-paused
+
+# The confirm dialog from `#confirmAndDropGoal`; Return answers it. Plan mode refuses while
+# a goal is enabled OR paused, so this is what makes the next frame reachable.
+slash "/goal drop"
+pause 0.5
+k Return
+settle 3
+
+# PLAN ALONE, where the rung is suppressed rather than shed: the base label already says
+# Plan and `Plan Plan` is what the suppression at segments.ts:437 prevents. Every other
+# frame in this take carries a rung, so this is the one that proves the suppression.
+slash "/plan"
+expect_screen "Plan" 30 "mode-plan"
+shot mode-plan
+
+# ---------------------------------------------------------------------------
+# THE BYPASS, on top of the widest base label. This is the widest the right group ever
+# gets: two states in `mode` where every other frame has one.
+# ---------------------------------------------------------------------------
 slash "/yolo"
 pause 0.5
 # The confirmation dialog owns Return; the second one answers "Yes".
 k Return
-settle 3
-if screen_has "YOLO" || screen_has "bypass"; then
-	echo "scene: bypass mode confirmed" >&2
-else
-	MISSED="${MISSED:-} yolo"
-fi
-shot yolo
-
-# PLAN ON TOP OF BYPASS, which is the widest rung this line ever carries: two labels in
-# `mode` where every other state has one.
-slash "/plan"
-settle 3
-screen_has "Plan" || MISSED="${MISSED:-} plan"
+expect_screen "YOLO" 30 "bypass"
 shot plan-and-yolo
 
 # A DRAFT IN THE COMPOSER puts the token readout into `location_right`, the zone that is
@@ -77,15 +185,3 @@ clear_composer
 t "rewrite the ingest normalizer so a malformed record fails closed instead of coercing"
 settle 2
 shot draft
-
-# BACK TO A SINGLE RUNG, so the pair at this width also shows the line recovering rather
-# than only degrading.
-slash "/plan"
-settle 3
-shot plan-off
-
-if [ -n "${MISSED:-}" ]; then
-	echo "scene: these proofs did not land:${MISSED}" >&2
-	echo "scene: nothing may be published from this take" >&2
-	exit 1
-fi
