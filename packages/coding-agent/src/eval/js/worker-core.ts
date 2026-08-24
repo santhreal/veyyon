@@ -251,6 +251,7 @@ export class WorkerCore {
 			initialCwd: snapshot.cwd,
 			sessionId: snapshot.sessionId,
 			localRoots: snapshot.localRoots,
+			artifactsDir: snapshot.artifactsDir,
 		});
 		return this.#runtime;
 	}

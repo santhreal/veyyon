@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-c0972181.js";
+            window.path_to_searchindex_js = "searchindex-06b3922a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-a2abefc1.js"></script>
@@ -4130,7 +4130,7 @@ subdirectory path), a URL, or an npm package.</p>
 <tr><td><code>~/.veyyon/profiles/&lt;profile&gt;/plugins/installed_plugins.json</code></td><td>User-scope marketplace install registry</td></tr>
 <tr><td><code>~/.veyyon/profiles/&lt;profile&gt;/plugins/node_modules/</code></td><td>npm/git/link plugin packages</td></tr>
 <tr><td><code>~/.veyyon/profiles/&lt;profile&gt;/plugins/cache/</code></td><td>Cached marketplace catalogs and plugin trees</td></tr>
-<tr><td><code>~/.veyyon/profiles/&lt;profile&gt;/plugins/veyyon-plugins.lock.json</code></td><td>Lockfile for npm plugin installs</td></tr>
+<tr><td><code>~/.veyyon/profiles/&lt;profile&gt;/plugins/veyyon-plugins.lock.json</code></td><td>Enabled state, selected features and stored settings for every npm, git and linked plugin</td></tr>
 <tr><td>Project <code>.veyyon/plugins/installed_plugins.json</code></td><td>Project-scope marketplace installs</td></tr>
 </tbody>
 </table>
@@ -4139,13 +4139,42 @@ subdirectory path), a URL, or an npm package.</p>
 <p>You can manage plugins and marketplaces using the <code>veyyon plugin</code> and <code>veyyon plugin marketplace</code> command groups.</p>
 <h3 id="managing-plugins"><a class="header" href="#managing-plugins">Managing Plugins</a></h3>
 <h4 id="install-a-plugin"><a class="header" href="#install-a-plugin">Install a Plugin</a></h4>
-<p>Install a plugin from a configured marketplace. Specify the plugin as <code>plugin_name@marketplace_name</code>.</p>
+<p><code>veyyon plugin install</code> accepts four kinds of target:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Target</th><th>Form</th><th>Example</th></tr>
+</thead>
+<tbody>
+<tr><td>Marketplace</td><td><code>name@marketplace</code></td><td><code>sample@debug</code></td></tr>
+<tr><td>npm</td><td><code>name</code>, <code>@scope/name</code>, either with <code>@version</code></td><td><code>@veyyon/exa@1.2.0</code></td></tr>
+<tr><td>Git</td><td><code>github:user/repo</code>, <code>gitlab:</code>, <code>bitbucket:</code>, <code>codeberg:</code>, <code>sourcehut:</code>/<code>srht:</code>, or a full git URL, each with an optional <code>#ref</code></td><td><code>github:user/repo#v1.0</code></td></tr>
+<tr><td>Local path</td><td>a path to the plugin’s own directory</td><td><code>./path/to/plugin</code></td></tr>
+</tbody>
+</table>
+</div>
 <pre><code class="language-console">$ veyyon plugin install sample@debug
-$ veyyon plugin install --force --scope project sample@debug
+$ veyyon plugin install @veyyon/exa
+$ veyyon plugin install github:user/repo#v1.0
+$ veyyon plugin install ./path/to/plugin
 </code></pre>
+<p>A local path is linked rather than copied: veyyon symlinks the directory into the profile’s
+<code>node_modules</code>, so edits to the source appear without a reinstall. <code>veyyon plugin link &lt;path&gt;</code> does
+the same thing, and either verb works.</p>
 <p>Use <code>--force</code> to reinstall over an existing install and <code>--scope user|project</code> to choose the install
-scope. <code>--json</code> prints the installation result as JSON for npm and link installs; marketplace
-installs ignore it.</p>
+scope. <code>--scope</code> applies to marketplace installs only; npm, git and local installs warn and ignore it.
+<code>--json</code> prints the installation result as JSON for npm, git and link installs; marketplace installs
+ignore it.</p>
+<p><code>--dry-run</code> resolves the target and reports the name and version it resolves to, without writing a
+dependency, a lockfile entry or a <code>node_modules</code> entry:</p>
+<pre><code class="language-console">$ veyyon plugin install github:sindresorhus/slugify --dry-run
+[dry-run] Would install @sindresorhus/slugify@github:sindresorhus/slugify#7c318bd
+</code></pre>
+<p>A git target’s package name comes from the repository, not the spec, so a dry run is how you learn
+the name a git plugin will install under. A target that cannot be resolved — an unpublished npm name,
+a version that does not exist, a private or missing repository — fails with the resolver’s output and
+exits 1. A dry run proves the target resolves; it does not prove the package is a veyyon plugin,
+because nothing is unpacked and no manifest is read.</p>
 <h4 id="list-plugins"><a class="header" href="#list-plugins">List Plugins</a></h4>
 <p>List installed plugins and their statuses.</p>
 <pre><code class="language-console">$ veyyon plugin list
@@ -4155,11 +4184,19 @@ installs ignore it.</p>
 <li><code>--json</code>: Print the output as JSON.</li>
 </ul>
 <h4 id="uninstall-a-plugin"><a class="header" href="#uninstall-a-plugin">Uninstall a Plugin</a></h4>
-<p>Uninstall a plugin from local cache and config.</p>
+<p>Uninstall a plugin from local cache and config. Pass the name <code>veyyon plugin list</code> shows, which for a
+git or local plugin is the package’s own name rather than the spec you installed it with.</p>
 <pre><code class="language-console">$ veyyon plugin uninstall sample@debug
+$ veyyon plugin uninstall @veyyon/exa
+$ veyyon plugin uninstall linked-plugin
 </code></pre>
+<p>Every install route is removable by the same command. Uninstalling a linked plugin removes the
+symlink and the plugin’s stored settings, and leaves the directory it pointed at untouched: that is
+your working copy, not veyyon’s.</p>
 <p>Use the <code>--json</code> flag to return the removal result as JSON for npm plugins; marketplace uninstalls
 ignore it.</p>
+<p>To keep a plugin installed but inert, use <code>veyyon plugin disable &lt;name&gt;</code>, which leaves it listed and
+reversible with <code>enable</code>.</p>
 <h4 id="check-plugin-health"><a class="header" href="#check-plugin-health">Check Plugin Health</a></h4>
 <p>Report what is wrong with your plugin installation, and optionally repair it.</p>
 <pre><code class="language-console">$ veyyon plugin doctor
@@ -4178,7 +4215,8 @@ ever installed. That is the state a fresh install is in, and <code>doctor</code>
 Each one distinguishes “not created yet” from “there but unreadable”. The first is normal and
 reports <code>ok</code>; the second is an error stating the path, because a plugins directory whose permissions
 have been mangled looks identical to an empty one from the outside and the fix is <code>chmod</code>, not a
-reinstall.</li>
+reinstall. A profile holding only linked plugins has no <code>package.json</code>, because linking writes no
+dependency; <code>package_manifest</code> reports <code>ok</code> and states how many linked plugins are present.</li>
 <li><code>plugin:&lt;name&gt;</code>: one per installed plugin. An error means the package is missing from
 <code>node_modules</code> or has no <code>package.json</code>. A warning means it loaded but contains no plugin manifest,
 so veyyon can see the package and cannot use it.</li>
@@ -6352,6 +6390,15 @@ operational failure modes.</p>
 <p><code>VEYYON_PY</code> and <code>VEYYON_JS</code> use normal boolean flag parsing. Each flag, when set, overrides only its own setting; an unset flag falls back to its setting (<code>eval.py</code> / <code>eval.js</code>, both default <code>true</code>).</p>
 <p>If Python preflight fails and <code>eval.js</code> is enabled, <code>eval</code> remains available for <code>js</code> cells; <code>py</code> cells fail with a Python-backend availability error.</p>
 <p>Python prelude helpers include <code>agent(prompt, *, agent="deep", model=None, label=None, schema=None, handle=False, isolated=None, apply=None, merge=None)</code>. It synchronously calls the host bridge, runs one subagent through the task executor, and returns the final text. When <code>schema</code> is supplied, the helper parses the subagent’s JSON output and returns the object. When <code>handle=True</code>, it instead returns a DAG node dict (<code>{"text", "output", "handle", "id", "agent"}</code>) whose <code>handle</code> is the spawned agent’s recoverable <code>agent://&lt;id&gt;</code> URI (the parsed object lands under <code>"data"</code> when <code>schema</code> is also set), so a downstream <code>pipeline</code>/<code>parallel</code> stage can reference the transcript by handle instead of re-inlining it.</p>
+<h3 id="persisted-helper-state"><a class="header" href="#persisted-helper-state">Persisted helper state</a></h3>
+<p>JavaScript and Python cells expose <code>kv</code> for JSON values that must survive a kernel reset or session continuation. The store is scoped to the session under its artifacts directory and is shared across both runtimes:</p>
+<pre><code class="language-python">kv.set("cursor_handle", {"id": "callback-17"})
+saved = kv.get("cursor_handle")
+keys = kv.list()
+kv.delete("cursor_handle")
+</code></pre>
+<p><code>kv.get(name, default=None)</code> accepts a Python default value. JavaScript returns <code>undefined</code> for a missing key. Keys contain 1–256 characters without <code>/</code>, <code>\</code>, or NUL. One encoded value is limited to 256 KiB and the store is limited to 4 MiB. Concurrent JavaScript and Python writes preserve updates to different keys.</p>
+<p><code>defs()</code> returns up to 200 sorted names defined by user cells with a short value shape. Prelude and runtime names are omitted. Use it to check retained kernel state before redefining a helper.</p>
 <h2 id="execution-flow-and-cancellationtimeout"><a class="header" href="#execution-flow-and-cancellationtimeout">Execution flow and cancellation/timeout</a></h2>
 <h3 id="cell-timeout"><a class="header" href="#cell-timeout">Cell timeout</a></h3>
 <p>Each eval cell <code>timeout</code> is in seconds, defaults to 30, and is clamped to <code>1..3600</code>. It is a <strong>wall-clock budget on the cell’s own work</strong> that the watchdog (<code>IdleTimeout</code>, <code>src/eval/idle-timeout.ts</code>) enforces, <strong>but it is suspended while a host-side <code>agent()</code>/<code>parallel()</code>/<code>completion()</code> bridge call is in flight</strong>: those calls emit synthetic pause/resume timeout-control status events (<code>withBridgeTimeoutPause</code>, <code>src/eval/bridge-timeout.ts</code>) that pause the watchdog entirely and start a fresh timeout window when control returns to the runtime, so a long fanout or a slow completion runs to completion instead of being killed mid-stream. Pause is reference-counted because <code>parallel()</code> can have multiple bridge calls in flight at once.</p>
@@ -8719,6 +8766,9 @@ code paths in:</p>
 <tbody>
 <tr><td><code>OPENAI_CODEX_OAUTH_TOKEN</code></td><td>OpenAI Codex OAuth auth</td><td>Using <code>openai-codex</code> provider</td><td></td></tr>
 <tr><td><code>BASETEN_API_KEY</code></td><td>Baseten auth</td><td>Using <code>baseten</code> provider</td><td></td></tr>
+<tr><td><code>CMD_API_KEY</code></td><td>Command Code auth</td><td>Using <code>command-code</code> provider</td><td>Preferred key alias; endpoint <code>https://api.commandcode.ai/provider/v1</code>, default <code>moonshotai/Kimi-K2.7-Code</code></td></tr>
+<tr><td><code>COMMAND_CODE_API_KEY</code></td><td>Command Code auth</td><td>Using <code>command-code</code> provider without <code>CMD_API_KEY</code></td><td>Fallback after <code>CMD_API_KEY</code>; keys are issued at <code>https://commandcode.ai/studio/provider</code></td></tr>
+<tr><td><code>NOUS_API_KEY</code></td><td>Nous Research explicit/headless auth</td><td>Using <code>nous-research</code> without <code>/login nous-research</code></td><td>OAuth is preferred; endpoint <code>https://inference-api.nousresearch.com/v1</code>, default <code>anthropic/claude-sonnet-4.6</code></td></tr>
 <tr><td><code>COREWEAVE_API_KEY</code></td><td>CoreWeave auth</td><td>Using <code>coreweave</code> provider</td><td>Takes precedence over <code>WANDB_API_KEY</code></td></tr>
 <tr><td><code>WANDB_API_KEY</code></td><td>CoreWeave auth</td><td>Using <code>coreweave</code> provider</td><td>Fallback after <code>COREWEAVE_API_KEY</code></td></tr>
 <tr><td><code>DEVIN_API_KEY</code></td><td>Devin auth</td><td>Using <code>devin</code> provider</td><td></td></tr>
@@ -8780,6 +8830,7 @@ code paths in:</p>
 </tbody>
 </table>
 </div>
+<p><code>/login nous-research</code> stores the Portal refresh token and supplies refreshed short-lived inference access tokens to requests and model discovery. When no stored OAuth credential is selected, <code>NOUS_API_KEY</code> supplies the headless fallback.</p>
 <h3 id="githubcopilot-tokens"><a class="header" href="#githubcopilot-tokens">GitHub/Copilot tokens</a></h3>
 <div class="table-wrapper">
 <table>
@@ -10405,7 +10456,7 @@ veyyon config get compaction.threshold
 </thead>
 <tbody>
 <tr><td><code>display.collapseCompacted</code></td><td>Collapse Compacted History</td><td>boolean</td><td><code>true</code></td><td>Collapse pre-compaction history behind the summary divider on the live transcript; disable to keep the full transcript inline with dividers at each compaction point.</td></tr>
-<tr><td><code>compaction.remote</code></td><td>Remote Compaction</td><td>boolean</td><td><code>true</code></td><td>Applies only when the session model is a supported OpenAI Responses model, which includes Azure OpenAI Responses deployments and a ChatGPT Codex session; every other model ignores this setting and compacts locally. On, veyyon calls the OpenAI compaction endpoint and keeps the window it returns, which preserves reasoning state across the cut. That window is the whole compacted context, so the entry stores no summary text and the compaction model chain does not apply. There is no second local summary on purpose: it would pay a model to re-summarize a span the provider already compacted and leave two versions of one range that can disagree. Off, compaction runs locally on the usual summary path and stores readable summary text.</td></tr>
+<tr><td><code>compaction.remote</code></td><td>Remote Compaction</td><td>boolean</td><td><code>true</code></td><td>Applies only when the session model is a supported OpenAI Responses model, which includes Azure OpenAI Responses deployments and ChatGPT Codex sessions; every other model ignores this setting and compacts locally. On, veyyon calls the OpenAI compaction endpoint and keeps the window it returns, which preserves reasoning state across the cut. That window is the whole compacted context, so the entry stores no summary text and the compaction model chain does not apply. There is no second local summary on purpose: it would pay a model to re-summarize a span the provider already compacted and leave two versions of one range that can disagree. Off, compaction runs locally on the usual summary path and stores readable summary text.</td></tr>
 <tr><td><code>compaction.strategy</code></td><td>Compaction Type</td><td>enum</td><td><code>summary</code></td><td>Summary condenses history in place and continues the same session. Values: <code>summary</code>.</td></tr>
 <tr><td><code>compaction.threshold</code></td><td>Auto-Compaction Threshold</td><td>string</td><td><code>auto</code></td><td>When auto-compaction triggers. Auto uses the model’s window minus the reserve; a percent scales with each model’s window; a token amount is the same trigger on every model that can reach it, and a smaller model compacts at its own maximum.</td></tr>
 <tr><td><code>compaction.model</code></td><td>Compaction Model</td><td>modelChain</td><td><em>(unset)</em></td><td>Models used for in-place summary compaction, tried in order. Default: inherit — follows the main model live. Add fallbacks for when the first is unauthenticated or its window is too small.</td></tr>
@@ -12290,6 +12341,7 @@ providers:
 </thead>
 <tbody>
 <tr><td><code>cerebras</code></td><td><code>CEREBRAS_API_KEY</code></td></tr>
+<tr><td><code>command-code</code></td><td><code>CMD_API_KEY</code>, then <code>COMMAND_CODE_API_KEY</code></td></tr>
 <tr><td><code>deepseek</code></td><td><code>DEEPSEEK_API_KEY</code></td></tr>
 <tr><td><code>fireworks</code></td><td><code>FIREWORKS_API_KEY</code></td></tr>
 <tr><td><code>together</code></td><td><code>TOGETHER_API_KEY</code></td></tr>
@@ -12316,6 +12368,7 @@ providers:
 <tr><td><code>baseten</code></td><td><code>BASETEN_API_KEY</code></td></tr>
 <tr><td><code>coreweave</code></td><td><code>COREWEAVE_API_KEY</code>, then <code>WANDB_API_KEY</code></td></tr>
 <tr><td><code>devin</code></td><td><code>DEVIN_API_KEY</code></td></tr>
+<tr><td><code>nous-research</code></td><td><code>NOUS_API_KEY</code> (headless fallback; prefer <code>/login nous-research</code>)</td></tr>
 <tr><td><code>gitlab-duo-agent</code></td><td><code>GITLAB_TOKEN</code></td></tr>
 <tr><td><code>sakana</code></td><td><code>SAKANA_API_KEY</code>, then <code>FUGU_API_KEY</code></td></tr>
 <tr><td><code>xiaomi-token-plan-ams</code></td><td><code>XIAOMI_TOKEN_PLAN_AMS_API_KEY</code></td></tr>
@@ -12336,7 +12389,8 @@ providers:
 </tbody>
 </table>
 </div>
-<p>OAuth-backed providers such as <code>anthropic</code>, <code>github-copilot</code>, <code>cursor</code>, <code>ollama-cloud</code>, <code>qwen-portal</code>, <code>kimi-code</code>, <code>xai-oauth</code>, <code>wafer-serverless</code>, <code>google-gemini-cli</code>, and <code>google-antigravity</code> are normally reached through <code>/login</code> rather than an environment variable. See <a href="#environment-variables-complete">Environment variables</a> for search-tool and configuration variables not listed here.</p>
+<p>OAuth-backed providers such as <code>anthropic</code>, <code>github-copilot</code>, <code>cursor</code>, <code>ollama-cloud</code>, <code>qwen-portal</code>, <code>kimi-code</code>, <code>nous-research</code>, <code>xai-oauth</code>, <code>wafer-serverless</code>, <code>google-gemini-cli</code>, and <code>google-antigravity</code> are normally reached through <code>/login</code> rather than an environment variable. Nous Portal stores a durable refresh token and mints short-lived inference access tokens for requests and model discovery; <code>NOUS_API_KEY</code> remains available for explicit headless use.</p>
+<p>Command Code uses <code>https://api.commandcode.ai/provider/v1</code>, defaults to <code>moonshotai/Kimi-K2.7-Code</code>, and issues keys at <a href="https://commandcode.ai/studio/provider">Command Code Provider</a>. Nous Research uses <code>https://inference-api.nousresearch.com/v1</code> and defaults to the tool-capable <code>anthropic/claude-sonnet-4.6</code>; authenticated discovery adds the current tool-capable chat catalog and excludes embedding, media-generation, and non-tool rows.</p>
 <h3 id="env-discovery-and-precedence"><a class="header" href="#env-discovery-and-precedence"><code>.env</code> discovery and precedence</a></h3>
 <p><code>veyyon</code> eagerly loads <code>.env</code> files into the process environment before any provider lookup. It reads four files and, for each variable, the <strong>highest-priority</strong> source that defines it wins. Effective precedence, high to low:</p>
 <ol>
@@ -17196,29 +17250,39 @@ comparing two clips cannot hold both states side by side. The recorder publishes
 animation as WebP at 33 ms per frame; a GIF is the same clip in an older container and
 proves the same thing. Both arms of a pair are the same class, produced by one driver
 run, and attached to the pull request body.</p>
-<p>The recorder refuses to publish a clip whose cadence is not the one it captured. Two
-criteria, both from <code>--expect-ms</code>:</p>
-<pre><code class="language-text">typical frame    33 ms, +/-1 (34 ms alternates at 30 fps)
-moving average   within 10% of 30 fps, held stills set aside
+<p>The recorder refuses to publish a clip whose cadence is not the one it captured. Three
+criteria come from <code>--expect-ms</code>:</p>
+<pre><code class="language-text">typical frame     capture interval +/-1 ms (33/34 ms at 30 fps)
+moving average    at least 80% of the capture rate, held stills set aside
+cadence share     at least 85% of moving frames at the capture interval
 </code></pre>
-<p>The first catches a resample, where every frame was rewritten. The second catches a
-clip whose most common frame is correct and whose wall clock is mostly slower than it —
-frames held for two or three intervals in the middle of a scroll. A hold at or past ten
-intervals is a still screen, is reported, and does not count against the average.
+<p>The typical frame catches a resample, where every frame was rewritten. The moving
+average catches a clip whose wall clock is mostly slower than its most common frame.
+The cadence share catches frequent short holds that an acceptable average can hide.
+Byte-identical frames from normal terminal input and model output are coalesced by the
+WebP encoder, so the average allows 20% while the share limits how often that occurs.
+A hold at or past ten intervals is a still screen, is reported, and does not count.
 Measure a published file with:</p>
 <pre><code class="language-sh">python3 proof/webp-cadence.py assets/demo-hd.webp --expect-ms 33
 </code></pre>
 <h3 id="real-interactive-sessions"><a class="header" href="#real-interactive-sessions">Real interactive sessions</a></h3>
-<p>The HD recorder starts Xvfb, picom, and kitty inside the recorder container. It drives the shipped CLI with real keyboard and pointer events and records the private display at 30 frames per second.</p>
+<p>The HD recorder starts Xvfb and kitty inside the recorder container. It drives the shipped CLI with real keyboard and pointer events and records the private display at 30 frames per second.</p>
+<p>30 is the rate the pipeline delivers whole. Measured at 2560x1440 with the hero’s chrome and a payload repainting every cell as fast as the terminal accepts it, a 30 fps capture returns 240 unique frames of 240 grabbed. Capturing at 60 adds no motion the session had: it doubles the encoder’s cores and the file, and writes a 60 fps header over slower content, which is how a stuttering take once read as smooth to <code>ffprobe</code>.</p>
+<p>A take is judged on whether the picture moved, never on the rate the container declares. <code>proof/motion-gate.sh</code> counts unique frames with mpdecimate and fails a take below <code>SCENE_MOTION_FLOOR</code>; both session scripts run it before the take is published.</p>
 <p>The landing-page terminal uses:</p>
 <pre><code class="language-text">terminal       kitty
-font           JetBrains Mono 21
+font           JetBrains Mono 15
 canvas         2560x1440 at 30 fps
 window inset   128 px
 background     #171b22
 foreground     #d3dae6
 publish        Lanczos downsample to 1920x1080
 </code></pre>
+<h3 id="where-the-settings-live-and-where-the-chrome-is-drawn"><a class="header" href="#where-the-settings-live-and-where-the-chrome-is-drawn">Where the settings live, and where the chrome is drawn</a></h3>
+<p><code>proof/docker/scene-config.sh</code> is the single definition of every <code>SCENE_*</code> knob. The two session scripts and the two host recorders source it; none of them restates a default. Override a knob by exporting it, never by editing one of those four files, because a default written down twice is two defaults and the one a run gets depends on which file it entered through.</p>
+<p>The chrome — rounded corners, the shadow, the translucent window over the backdrop — is drawn after the take by <code>proof/compose-chrome.sh</code>, not by a compositor during it. The backdrop does not move, so blending it under the window every frame recomputes one static picture thousands of times, and it cost the capture: with picom’s blur on, <code>ffmpeg</code> could grab only 69 of 360 frames, and opacity alone still cost a third. <code>xwallpaper</code> puts the backdrop in the capture for free as a root pixmap; the pass replaces the square-cornered inset with the same pixels rounded, blended and shadowed.</p>
+<p><code>SCENE_CHROME=live</code> runs a compositor during the capture instead, for comparison. It is not the default and a take recorded that way is slower.</p>
+<p>The pass is cosmetic. It cannot recover a frame the capture never drew, so a take that stuttered while it was recorded still stutters after it, and the motion gate runs on the composited file that ships.</p>
 <p>Preview a scene without replacing tracked proof assets:</p>
 <pre><code class="language-sh">PUBLISH=0 DEMO_SERVER=x11 \
   PROOF_LLM_BASE_URL=http://&lt;host&gt;:11434/v1 \
@@ -17303,10 +17367,17 @@ python3 proof/zoom.py --self-check
 <p>The region is measured, not typed in: the stage diffs the frames around the moment and
 holds the bounding box of what changed there, padded and clamped inside the frame at
 the source aspect ratio. A moment with nothing moving in it produces no file.</p>
-<p>The zoom ceiling defaults to the capture width over the published width, so a held
-frame is a crop rather than an upscale. The stage runs on the take, before the cut,
-and keeps every frame and the recorded rate, so the cadence gate still measures the
-capture’s own cadence. A scene asks for one by setting <code>ZOOM_ARGS</code> in
+<p>The hero take drives the same stage from a cue file the scene writes next to its
+marks (<code>zoom-in FRAME [x,y,w,h]</code>, <code>pan FRAME x,y,w,h</code>, <code>zoom-out FRAME</code>). The hold between those cues
+is at least two seconds of real time, with no time compression on that span, so
+the stored secret is readable. Magnification is relative to the published wide
+shot and is at least 2x: <code>proof/glyph-height.py</code> measures <code>capture_width / crop_width</code> on the hold. A missing rect on <code>zoom-in</code> means “measure it”.</p>
+<p>The zoom ceiling still defaults to the capture width over the published width so a
+1.33x hold is a crop. The hero’s 2x secret hold is a tighter crop scaled back to
+1920x1080 — a camera move of the one capture path, not a second recorder. The
+stage runs on the take, before the cut, and keeps every frame and the recorded
+rate, so the cadence gate still measures the capture’s own cadence. A scene asks
+for one by writing the cue file, or by setting <code>ZOOM_ARGS</code> in
 <code>scripts/demos/record-hd-demo.sh</code>.</p>
 <p><code>--self-check</code> records a synthetic clip whose moving region is known and asserts the
 measured rect, the frame count, the rate and the held magnification. Run it on a

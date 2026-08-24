@@ -30,6 +30,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # owns it, and a bump makes a stale image a missing one.
 # shellcheck source=proof/docker/recorder-image.sh
 source "${REPO_ROOT}/proof/docker/recorder-image.sh"
+# shellcheck source=proof/docker/scene-config.sh
+source "${REPO_ROOT}/proof/docker/scene-config.sh"
 HASH="${1:?usage: record-commit-arm.sh <hash> <arm> <hold> <command...>}"
 ARM="${2:?arm}"
 HOLD="${3:?hold seconds}"
@@ -81,6 +83,11 @@ fi
 # quotes is word-split into pieces and the terminal opens on a syntax error. The
 # trailing sleep is what keeps the window alive after the command finishes --
 # the scene, not the command, decides when the camera stops.
+SCENE_COMMAND="bash /out/cmd.sh"
+SCENE_HOLD="${HOLD}"
+SCENE_CWD="${SCENE_CWD:-/repo}"
+scene_docker_env_args
+
 cat >"${OUT}/cmd.sh" <<EOF
 cd /repo
 ${COMMAND}
@@ -112,16 +119,7 @@ docker run --rm \
 	-e "VEYYON_TEST_HOST_HOME=${HOME}" \
 	-e VEYYON_TEST_SANDBOX=docker-recorder \
 	-e SCENE_LIB=/rig/scenes/lib.sh \
-	-e "SCENE_COMMAND=bash /out/cmd.sh" \
-	-e "SCENE_HOLD=${HOLD}" \
-	-e "SCENE_WIDTH=${SCENE_WIDTH:-1280}" \
-	-e "SCENE_HEIGHT=${SCENE_HEIGHT:-800}" \
-	-e "SCENE_FONT_SIZE=${SCENE_FONT_SIZE:-14}" \
-	-e "SCENE_FPS=${SCENE_FPS:-15}" \
-	-e "SCENE_GIF_FPS=${SCENE_GIF_FPS:-8}" \
-	-e "SCENE_GIF_WIDTH=${SCENE_GIF_WIDTH:-800}" \
-	-e SCENE_TERMINAL=kitty \
-	-e "SCENE_CWD=${SCENE_CWD:-/repo}" \
+	"${SCENE_DOCKER_ENV[@]}" \
 	-w /repo \
 	"${RECORDER_IMAGE}" \
 	bash -lc '
